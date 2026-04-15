@@ -1,0 +1,1378 @@
+@extends('layouts.app')
+@section('modulo', isset($contrato->id) ? 'Contrato #'.$contrato->id : 'Nuevo Contrato')
+
+@section('contenido')
+@php
+  $esEdicion      = isset($contrato->id) && $contrato->id;
+  $epsDefault     = old('eps_id',           $contrato->eps_id          ?? $clienteEpsId      ?? '');
+  $pensionDefault = old('pension_id',       $contrato->pension_id      ?? $clientePensionId  ?? '');
+  $arlDefault     = old('arl_id',           $contrato->arl_id          ?? $arlIdRazonSocial  ?? '');
+  // intval evita que PHP emita "1750905.00" que rompe el JS de Alpine
+  $defAdmon       = (int) old('administracion',   $contrato->administracion  ?? $defaultTarifas['administracion']    ?? 0);
+  $defAdmonAsesor = (int) old('admon_asesor',     $contrato->admon_asesor    ?? $defaultTarifas['admon_asesor']      ?? 0);
+  $defCosto       = (int) old('costo_afiliacion', $contrato->costo_afiliacion ?? $defaultTarifas['costo_afiliacion'] ?? 0);
+  $defSeguro      = (int) old('seguro',           $contrato->seguro           ?? $defaultTarifas['seguro']           ?? 0);
+  $defEncargado   = old('encargado_id',     $contrato->encargado_id     ?? $defaultTarifas['encargado_id']     ?? auth()->id());
+  $defSalario     = (int) old('salario',          $contrato->salario          ?? $salarioMinimo);
+  $defIbc         = (int) old('ibc',              $contrato->ibc              ?? $defSalario);
+  $S = 'width:100%;padding:0.38rem 0.5rem;border:1px solid #cbd5e1;border-radius:6px;font-size:0.82rem;background:#fff;box-sizing:border-box;';
+  $I = 'width:100%;padding:0.38rem 0.5rem;border:1px solid #cbd5e1;border-radius:6px;font-size:0.82rem;box-sizing:border-box;';
+  $M = 'width:100%;padding:0.38rem 0.5rem;border:1px solid #cbd5e1;border-radius:6px;font-size:0.82rem;font-family:monospace;box-sizing:border-box;';
+@endphp
+
+<div style="max-width:1240px;margin:0 auto;" x-data="cotizador()">
+
+{{-- ENCABEZADO --}}
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.85rem;">
+  <div style="display:flex;align-items:center;gap:0.75rem;">
+    <div style="width:36px;height:36px;background:linear-gradient(135deg,#2563eb,#1d4ed8);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:1.1rem;box-shadow:0 4px 12px rgba(37,99,235,0.35);">&#128203;</div>
+    <div>
+      <h1 style="font-size:1.05rem;font-weight:700;color:#0f172a;margin:0;">
+        {{ $esEdicion ? 'Contrato #'.$contrato->id : 'Nuevo Contrato' }}
+      </h1>
+      @if($cliente)
+      <div style="font-size:0.76rem;color:#475569;">
+        <strong>{{ $cliente->primer_nombre }} {{ $cliente->primer_apellido }}</strong>
+        &middot; CC {{ number_format($cliente->cedula,0,',','.') }}
+        @if($cliente->iva === 'SI')<span style="background:#fef3c7;color:#92400e;padding:0.1rem 0.4rem;border-radius:999px;font-size:0.68rem;margin-left:4px;">IVA</span>@endif
+      </div>
+      @endif
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:0.6rem;">
+    @if($esEdicion)
+    <span style="padding:0.28rem 0.9rem;border-radius:999px;font-size:0.78rem;font-weight:700;
+        background:{{ $contrato->estado === 'vigente' ? '#dcfce7' : ($contrato->estado === 'retirado' ? '#fee2e2' : '#f1f5f9') }};
+        color:{{ $contrato->estado === 'vigente' ? '#15803d' : ($contrato->estado === 'retirado' ? '#dc2626' : '#475569') }};">
+      {{ strtoupper($contrato->estado) }}
+    </span>
+    @endif
+    <a href="{{ route('admin.contratos.index') }}"
+       style="padding:0.38rem 0.9rem;border:1px solid #cbd5e1;border-radius:7px;color:#475569;text-decoration:none;font-size:0.8rem;">&larr; Contratos</a>
+  </div>
+</div>
+
+@if($errors->any())
+<div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;color:#991b1b;padding:0.55rem 1rem;margin-bottom:0.65rem;font-size:0.8rem;">
+  <strong>Errores:</strong> @foreach($errors->all() as $e) &middot; {{ $e }} @endforeach
+</div>
+@endif
+@if(session('success'))
+<div style="background:#dcfce7;border:1px solid #86efac;border-radius:8px;color:#166534;padding:0.55rem 1rem;margin-bottom:0.65rem;font-size:0.8rem;">&#10003; {{ session('success') }}</div>
+@endif
+
+<form method="POST"
+      action="{{ $esEdicion ? route('admin.contratos.update', $contrato->id) : route('admin.contratos.store') }}"
+      id="form-contrato">
+  @csrf
+  @if($esEdicion) @method('PUT') @endif
+  <input type="hidden" name="cedula" value="{{ old('cedula', $cliente->cedula ?? $contrato->cedula ?? '') }}">
+
+<div style="display:grid;grid-template-columns:1fr 300px;gap:1.1rem;align-items:start;">
+
+{{-- ══ COLUMNA IZQUIERDA ══ --}}
+<div style="display:flex;flex-direction:column;gap:0.7rem;">
+
+  {{-- Panel 1: RS + Modalidad + Plan + F.Ingreso --}}
+  <div class="cp">
+    <div class="pt" style="color:#2563eb;">&#127970; Contrato</div>
+    <div style="display:grid;grid-template-columns:1.6fr 1.2fr 1.2fr 120px;gap:0.5rem;">
+      <div>
+        <label class="lb">Razon Social</label>
+        <select name="razon_social_id" id="sel_rs" style="{{ $S }}" onchange="onRazonSocialChange(this)">
+          <option value="">-- Ninguna --</option>
+          @foreach($razonesSociales as $rs)
+          <option value="{{ $rs->id }}"
+              data-arl="{{ $rs->arl_nit ?? '' }}"
+              data-independiente="{{ $rs->es_independiente ? '1' : '0' }}"
+              {{ old('razon_social_id', $contrato->razon_social_id ?? '') == $rs->id ? 'selected' : '' }}>
+            {{ $rs->razon_social }}
+          </option>
+          @endforeach
+        </select>
+      </div>
+      <div>
+        <label class="lb">Modalidad</label>
+        <select name="tipo_modalidad_id" id="sel_modalidad" x-model="tipoModalidadId" @change="onModalidadChange" style="{{ $S }}">
+          <option value="">-- Modalidad --</option>
+          @foreach($tiposModalidad as $tm)
+          <option value="{{ $tm->id }}"
+              data-independiente="{{ in_array($tm->id, $modalidadesIndependientes) ? '1' : '0' }}"
+              {{ old('tipo_modalidad_id', $contrato->tipo_modalidad_id ?? '') == $tm->id ? 'selected' : '' }}>
+            {{ $tm->observacion ?: $tm->tipo_modalidad }}
+          </option>
+          @endforeach
+        </select>
+      </div>
+      <div>
+        <label class="lb">Plan
+          {{-- Badge AFP cuando el cliente puede omitirlo --}}
+          @if(!empty($clienteExentoAfp))
+          <span id="badge-exento-afp"
+              title="{{ $clienteTipoDoc && in_array($clienteTipoDoc,['CE','PP','PE','PA']) ? 'Documento: '.$clienteTipoDoc : 'Edad: '.$clienteEdad.' años ('.($clienteGenero==='M'?'hombre':'mujer').')' }}"
+              style="background:#ede9fe;color:#7c3aed;font-size:.6rem;font-weight:700;padding:.12rem .45rem;border-radius:20px;margin-left:.4rem;cursor:help;letter-spacing:.02em;">
+            📌 Puede omitir AFP
+          </span>
+          @endif
+        </label>
+        <select name="plan_id" id="sel_plan" x-model="planId" @change="onPlanChange" style="{{ $S }}">
+          <option value="">-- Plan --</option>
+          @foreach($planes as $plan)
+          <option value="{{ $plan->id }}"
+              data-eps="{{ $plan->incluye_eps ? '1':'0' }}"
+              data-arl="{{ $plan->incluye_arl ? '1':'0' }}"
+              data-pen="{{ $plan->incluye_pension ? '1':'0' }}"
+              data-caja="{{ $plan->incluye_caja ? '1':'0' }}"
+              {{ old('plan_id', $contrato->plan_id ?? '') == $plan->id ? 'selected' : '' }}>
+            {{ $plan->nombre }}
+          </option>
+          @endforeach
+        </select>
+        <div id="nota-plan-modalidad" style="display:none;font-size:.6rem;color:#94a3b8;margin-top:.15rem;">Seleccione primero la modalidad</div>
+      </div>
+      <div>
+        <label class="lb">F. Ingreso</label>
+        <input type="date" name="fecha_ingreso"
+            value="{{ old('fecha_ingreso', isset($contrato->fecha_ingreso) ? $contrato->fecha_ingreso->format('Y-m-d') : now()->format('Y-m-d')) }}"
+            style="{{ $I }}">
+      </div>
+      {{-- Solo independientes: opción de cobrar planilla + afiliacion el mismo mes --}}
+      <div x-show="esIndependiente" style="display:none;align-self:end;padding-bottom:.15rem;">
+        <label style="display:flex;align-items:center;gap:.35rem;font-size:.72rem;font-weight:600;color:#7c3aed;cursor:pointer;white-space:nowrap;">
+          <input type="checkbox" name="cobra_planilla_primer_mes" value="1"
+            {{ old('cobra_planilla_primer_mes', $contrato->cobra_planilla_primer_mes ?? false) ? 'checked' : '' }}
+            style="width:14px;height:14px;accent-color:#7c3aed;">
+          Planilla + Afil. 1er mes
+        </label>
+        <div style="font-size:.62rem;color:#94a3b8;margin-top:.08rem;padding-left:1.3rem;">Cobra ambas en el mismo mes de ingreso</div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1.8fr 1.2fr 1fr;gap:0.5rem;margin-top:0.5rem;">
+      <div>
+        <label class="lb">Actividad Economica</label>
+        <select name="actividad_economica_id" @change="onActividadChange" style="{{ $S }}">
+          <option value="">--</option>
+          @foreach($actividades as $act)
+          <option value="{{ $act->id }}" data-nivel="{{ $act->nivel_arl_sugerido }}"
+              {{ old('actividad_economica_id', $contrato->actividad_economica_id ?? '') == $act->id ? 'selected' : '' }}>
+            [N{{ $act->nivel_arl_sugerido }}] {{ $act->nombre }}
+          </option>
+          @endforeach
+        </select>
+      </div>
+      <div>
+        <label class="lb">Motivo Afiliacion</label>
+        <select name="motivo_afiliacion_id" style="{{ $S }}">
+          <option value="">--</option>
+          @foreach($motivosAfiliacion as $m)
+          <option value="{{ $m->id }}" {{ old('motivo_afiliacion_id', $contrato->motivo_afiliacion_id ?? '') == $m->id ? 'selected' : '' }}>{{ $m->nombre }}</option>
+          @endforeach
+        </select>
+      </div>
+      <div>
+        <label class="lb">Cargo / Ocupacion</label>
+        <input type="text" name="cargo" value="{{ old('cargo', $contrato->cargo ?? '') }}" style="{{ $I }}">
+      </div>
+    </div>
+  </div>
+
+  {{-- Panel 2: Entidades --}}
+  <div class="cp">
+    <div class="pt" style="color:#16a34a;">&#127963; Entidades</div>
+    <div style="display:grid;grid-template-columns:1.3fr 1.3fr 1.4fr 60px 1fr;gap:0.5rem;align-items:end;">
+      <div>
+        <label class="lb">EPS</label>
+        <select name="eps_id" id="sel_eps" style="{{ $S }}">
+          <option value="">-- Ninguna --</option>
+          @foreach($epsList as $eps)
+          <option value="{{ $eps->id }}" {{ $epsDefault == $eps->id ? 'selected' : '' }}>{{ $eps->nombre }}</option>
+          @endforeach
+        </select>
+      </div>
+      <div>
+        <label class="lb">AFP / Pension</label>
+        <select name="pension_id" id="sel_pen" style="{{ $S }}">
+          <option value="">-- Ninguna --</option>
+          @foreach($pensiones as $pen)
+          <option value="{{ $pen->id }}" {{ $pensionDefault == $pen->id ? 'selected' : '' }}>{{ $pen->razon_social }}</option>
+          @endforeach
+        </select>
+      </div>
+      <div>
+        <label class="lb">ARL <span id="lbl_arl_lock" style="color:#94a3b8;font-weight:400;font-size:0.63rem;">(de la R.Social)</span></label>
+        <select name="arl_id" id="sel_arl" style="{{ $S }}">
+          <option value="">-- Ninguna --</option>
+          @foreach($arlList as $arl)
+          <option value="{{ $arl->id }}" data-nit="{{ $arl->nit ?? '' }}"
+              {{ $arlDefault == $arl->id ? 'selected' : '' }}>{{ $arl->nombre_arl }}</option>
+          @endforeach
+        </select>
+      </div>
+      <div>
+        <label class="lb">N.ARL</label>
+        <select name="n_arl" x-model="nivelArl" @change="recalcular" style="{{ $S }}text-align:center;">
+          @for($i=1;$i<=5;$i++)
+          <option value="{{ $i }}" {{ old('n_arl', $contrato->n_arl ?? 1) == $i ? 'selected' : '' }}>{{ $i }}</option>
+          @endfor
+        </select>
+      </div>
+      <div>
+        <label class="lb">Caja Compensacion</label>
+        <select name="caja_id" id="sel_caja" style="{{ $S }}">
+          <option value="">-- Ninguna --</option>
+          @foreach($cajas as $caja)
+          <option value="{{ $caja->id }}" {{ old('caja_id', $contrato->caja_id ?? '') == $caja->id ? 'selected' : '' }}>{{ $caja->nombre }}</option>
+          @endforeach
+        </select>
+      </div>
+    </div>
+    <div x-show="mostrarModoArl" style="display:none;margin-top:0.5rem;">
+      <div style="display:grid;grid-template-columns:200px 1fr;gap:0.5rem;align-items:end;max-width:560px;">
+        {{-- Col 1: Modo ARL --}}
+        <div>
+          <label class="lb">Modo ARL</label>
+          <select name="arl_modo" id="sel_arl_modo" style="{{ $S }}" onchange="onArlModoChange(this)">
+            <option value="">--</option>
+            <option value="razon_social"  {{ old('arl_modo', $contrato->arl_modo ?? '') === 'razon_social'  ? 'selected' : '' }}>Por Razon Social</option>
+            <option value="independiente" {{ old('arl_modo', $contrato->arl_modo ?? '') === 'independiente' ? 'selected' : '' }}>Independiente</option>
+          </select>
+        </div>
+
+        {{-- Col 2: Selector de RS (cuando razon_social) o cédula readonly (cuando independiente) --}}
+        <div>
+          {{-- Panel "Por Razón Social": select de razones sociales --}}
+          <div id="panel_arl_rs" style="display:none;">
+            <label class="lb">Razón Social ARL
+              <span style="font-weight:400;color:#64748b;font-size:0.6rem;margin-left:3px;">bajo cuya RS se cotiza la ARL</span>
+            </label>
+            <select id="sel_arl_rs_cotizante" style="{{ $S }}" onchange="onArlRsChange(this)">
+              <option value="">-- Seleccione RS --</option>
+              @foreach($razonesSociales as $rs)
+              <option value="{{ $rs->id }}"
+                  data-nombre="{{ $rs->razon_social }}"
+                  {{ old('arl_nit_cotizante', $contrato->arl_nit_cotizante ?? '') == $rs->id ? 'selected' : '' }}>
+                {{ $rs->razon_social }} ({{ number_format($rs->id, 0, '', '.') }})
+              </option>
+              @endforeach
+            </select>
+          </div>
+
+          {{-- Panel "Independiente": cédula del cliente (solo lectura) --}}
+          <div id="panel_arl_cedula" style="display:none;">
+            <label class="lb">Cédula Cotizante
+              <span style="font-weight:400;color:#64748b;font-size:0.6rem;margin-left:3px;">el cliente cotiza por sí mismo</span>
+            </label>
+            <input type="text" id="disp_arl_cedula" readonly
+                style="{{ $I }}background:#f8fafc;color:#475569;font-family:monospace;cursor:not-allowed;"
+                value="{{ old('cedula', $cliente->cedula ?? $contrato->cedula ?? '') }}">
+          </div>
+        </div>
+      </div>
+
+      {{-- Campo oculto que guarda el bigInteger en BD --}}
+      <input type="hidden" name="arl_nit_cotizante" id="inp_arl_nit"
+          value="{{ old('arl_nit_cotizante', $contrato->arl_nit_cotizante ?? '') }}">
+    </div>
+  </div>
+
+  {{-- Panel 3: Salario + Asesor + Tarifas --}}
+  <div class="cp">
+    <div class="pt" style="color:#7c3aed;">&#128176; Salario y Tarifas</div>
+
+    {{-- Fila 1: Salario + IBC(indep) + Asesor + Encargado --}}
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1.4fr;gap:0.5rem;margin-bottom:0.5rem;">
+      <div>
+        <label class="lb">Salario Mensual</label>
+        <input type="text" inputmode="numeric" name="salario" id="inp_salario" class="campo-money"
+            @input="onSalarioChange"
+            value="{{ number_format($defSalario, 0, '', '.') }}" style="{{ $M }}"
+            data-raw="{{ $defSalario }}">
+        <div style="font-size:0.62rem;color:#94a3b8;margin-top:0.1rem;">Min ${{ number_format($salarioMinimo,0,',','.') }}</div>
+      </div>
+      <div x-show="esIndependiente" style="display:none;">
+        <label class="lb">IBC <span style="color:#f59e0b;font-size:0.63rem;" x-text="ibcSugFmt ? 'sug:'+ibcSugFmt : ''"></span></label>
+        <input type="number" step="1" min="0" name="ibc" x-model="ibc" @input="recalcular"
+            value="{{ old('ibc', $contrato->ibc ?? '') }}"
+            style="width:100%;padding:0.38rem 0.5rem;border:1px solid #f59e0b;border-radius:6px;font-size:0.82rem;font-family:monospace;background:#fffbeb;box-sizing:border-box;">
+      </div>
+      <div x-show="esIndependiente" style="display:none;">
+        <label class="lb">% Caja</label>
+        <select name="porcentaje_caja" x-model="pctCaja" @change="recalcular" style="{{ $S }}">
+          <option value="2">2% Normal</option>
+          <option value="0.6" {{ old('porcentaje_caja', $contrato->porcentaje_caja ?? '') == 0.6 ? 'selected' : '' }}>0.6% Reducido</option>
+        </select>
+      </div>
+      <div>
+        <label class="lb">Asesor</label>
+        <select name="asesor_id" id="sel_asesor" style="{{ $S }}" onchange="onAsesorChange(this)">
+          <option value="">-- Sin asesor --</option>
+          @foreach($asesores as $as)
+          <option value="{{ $as->id }}"
+              data-admon="{{ $as->comision_admon_valor ?? 0 }}"
+              {{ old('asesor_id', $contrato->asesor_id ?? '') == $as->id ? 'selected' : '' }}>
+            {{ $as->nombre }}
+          </option>
+          @endforeach
+        </select>
+      </div>
+      <div>
+        <label class="lb">Encargado Afiliacion</label>
+        <select name="encargado_id" style="{{ $S }}">
+          <option value="">-- Responsable --</option>
+          @foreach($usuarios as $usr)
+          <option value="{{ $usr->id }}" {{ $defEncargado == $usr->id ? 'selected' : '' }}>{{ $usr->nombre }}</option>
+          @endforeach
+        </select>
+      </div>
+    </div>
+
+    {{-- Fila 2: Admon + Admon Asesor + Costo + Seguro + Envio Planilla --}}
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:0.5rem;">
+      <div>
+        <label class="lb">Admon Mensual $</label>
+        <input type="text" inputmode="numeric" name="administracion" id="inp_admon" class="campo-money"
+            @input="recalcular"
+            value="{{ number_format($defAdmon, 0, '', '.') }}" style="{{ $M }}"
+            data-raw="{{ $defAdmon }}">
+      </div>
+      <div>
+        <label class="lb">Admon Asesor $</label>
+        <input type="text" inputmode="numeric" name="admon_asesor" id="inp_admon_asesor" class="campo-money"
+            value="{{ number_format($defAdmonAsesor, 0, '', '.') }}" style="{{ $M }}"
+            data-raw="{{ $defAdmonAsesor }}">
+      </div>
+      <div>
+        <label class="lb">Costo Afiliacion $</label>
+        <input type="text" inputmode="numeric" name="costo_afiliacion" id="inp_costo" class="campo-money"
+            value="{{ number_format($defCosto, 0, '', '.') }}" style="{{ $M }}"
+            data-raw="{{ $defCosto }}">
+      </div>
+      <div>
+        <label class="lb">Seguro $</label>
+        <input type="text" inputmode="numeric" name="seguro" id="inp_seguro" class="campo-money"
+            @input="recalcular"
+            value="{{ number_format($defSeguro, 0, '', '.') }}" style="{{ $M }}"
+            data-raw="{{ $defSeguro }}">
+      </div>
+      <div>
+        <label class="lb">Envio Planilla</label>
+        <select name="envio_planilla" style="{{ $S }}">
+          <option value="">--</option>
+          @foreach(['Correo','WhatsApp','Fisica','Web','Otro'] as $ep)
+          <option value="{{ $ep }}" {{ old('envio_planilla', $contrato->envio_planilla ?? '') === $ep ? 'selected' : '' }}>{{ $ep }}</option>
+          @endforeach
+        </select>
+      </div>
+    </div>
+  </div>
+
+  {{-- Panel 4: Observacion --}}
+  <div class="cp" style="padding:0.65rem 0.9rem;">
+    <label class="lb">Observacion</label>
+    <input type="text" name="observacion" value="{{ old('observacion', $contrato->observacion ?? '') }}"
+        style="{{ $I }}" placeholder="Nota general del contrato...">
+  </div>
+
+  {{-- Guardar --}}
+  <div style="display:flex;justify-content:flex-end;">
+    <button type="submit"
+        style="padding:0.6rem 2.2rem;background:linear-gradient(135deg,#2563eb,#1d4ed8);border:none;border-radius:9px;color:#fff;font-size:0.9rem;font-weight:700;cursor:pointer;box-shadow:0 4px 14px rgba(37,99,235,0.4);">
+        &#128190; {{ $esEdicion ? 'Actualizar Contrato' : 'Crear Contrato' }}
+    </button>
+  </div>
+
+</div>{{-- /col izq --}}
+
+{{-- ══ COLUMNA DERECHA: Cotizador + Botones + Radicados ══ --}}
+<div style="position:sticky;top:1rem;display:flex;flex-direction:column;gap:0.7rem;">
+
+  {{-- Cotizador --}}
+  <div style="background:linear-gradient(160deg,#0f172a,#1e3a5f);border-radius:14px;padding:1rem 1.15rem;color:#fff;box-shadow:0 8px 24px rgba(0,0,0,0.35);">
+    <div style="font-weight:700;font-size:0.82rem;margin-bottom:0.6rem;display:flex;align-items:center;gap:0.5rem;">
+      &#129518; Cotizacion
+      <span style="font-size:0.63rem;background:rgba(255,255,255,0.1);padding:0.1rem 0.45rem;border-radius:999px;font-weight:400;" x-text="planNombre || 'Sin plan'"></span>
+    </div>
+    <div style="background:rgba(255,255,255,0.06);border-radius:6px;padding:0.4rem 0.6rem;margin-bottom:0.55rem;font-size:0.72rem;display:flex;justify-content:space-between;align-items:center;gap:0.5rem;">
+      <div style="display:flex;align-items:center;gap:0.35rem;">
+        <span style="color:#94a3b8;">IBC: <strong x-text="fmt(ibc)">$0</strong></span>
+        <span x-text="esIndependiente ? 'Independiente' : 'Dependiente'" style="color:#64748b;"></span>
+      </div>
+      {{-- Selector de días --}}
+      <div style="display:flex;align-items:center;gap:0.3rem;">
+        <span style="color:#94a3b8;font-size:0.67rem;white-space:nowrap;">Días</span>
+        <select id="sel_dias_cotizar" x-model="diasCotizar"
+            @change="recalcular()"
+            style="background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);border-radius:5px;color:#fff;font-size:0.7rem;padding:0.15rem 0.25rem;cursor:pointer;width:52px;">
+          @for($d = 1; $d <= 30; $d++)
+          <option value="{{ $d }}" style="color:#000;">{{ $d }}</option>
+          @endfor
+        </select>
+        <span style="color:#64748b;font-size:0.63rem;">/30</span>
+      </div>
+    </div>
+    <div style="font-size:0.75rem;">
+      <div class="cr"><span style="color:#93c5fd;">EPS <span class="cp2" x-text="'('+pctEps+'%)'"></span></span><strong x-text="fmt(result.eps)">$0</strong></div>
+      <div class="cr"><span style="color:#6ee7b7;">ARL <span class="cp2" x-text="'N'+nivelArl+' ('+pctArl+'%)'"></span></span><strong x-text="fmt(result.arl)">$0</strong></div>
+      <div class="cr"><span style="color:#c4b5fd;">PENSION <span class="cp2" x-text="'('+pctPen+'%)'"></span></span><strong x-text="fmt(result.pen)">$0</strong></div>
+      <div class="cr"><span style="color:#fcd34d;">CAJA <span class="cp2" x-text="'('+pctCajaCalc+'%)'"></span></span><strong x-text="fmt(result.caja)">$0</strong></div>
+      <div class="cr" style="border-bottom:2px solid rgba(255,255,255,0.18);padding-bottom:0.35rem;margin-bottom:0.1rem;font-weight:700;"><span>S. Social <span class="cp2" x-show="diasCotizar < 30" x-text="'('+diasCotizar+'d)'"></span></span><span x-text="fmt(result.ss)">$0</span></div>
+      <div class="cr"><span style="color:#94a3b8;">Seguro <span class="cp2" style="color:#34d399;" x-show="diasCotizar < 30">(completo)</span></span><strong x-text="fmt(result.seguro)">$0</strong></div>
+      <div class="cr"><span style="color:#94a3b8;">Admon <span class="cp2" style="color:#34d399;" x-show="diasCotizar < 30">(completo)</span></span><strong x-text="fmt(result.admon)">$0</strong></div>
+      <div x-show="result.iva > 0" class="cr"><span style="color:#fca5a5;">IVA 19%</span><strong x-text="fmt(result.iva)">$0</strong></div>
+      <div class="cr" style="font-size:0.95rem;font-weight:800;padding-top:0.4rem;"><span>TOTAL</span><span style="color:#34d399;" x-text="fmt(result.total)">$0</span></div>
+    </div>
+  </div>
+
+  {{-- Botones de Accion --}}
+  @if($esEdicion)
+  <div class="cp" style="padding:0.7rem 0.85rem;">
+    <div class="pt" style="color:#475569;">&#9889; Acciones</div>
+    <div style="display:flex;flex-direction:column;gap:0.4rem;">
+      <a onclick="abrirModalFacturarContrato()" style="display:flex;align-items:center;gap:0.55rem;padding:0.5rem 0.75rem;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;color:#15803d;text-decoration:none;font-size:0.8rem;font-weight:600;cursor:pointer;">
+        &#129534; Facturar
+      </a>
+      <a href="{{ route('admin.facturacion.historial', $contrato->cedula) }}" style="display:flex;align-items:center;gap:0.55rem;padding:0.5rem 0.75rem;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:8px;color:#6d28d9;text-decoration:none;font-size:0.8rem;font-weight:600;">
+        &#128202; Historial Pagos
+      </a>
+      <button type="button" onclick="document.getElementById('modal-radicados').style.display='flex'"
+          style="display:flex;align-items:center;gap:0.55rem;padding:0.5rem 0.75rem;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;color:#0369a1;font-size:0.8rem;font-weight:600;cursor:pointer;width:100%;text-align:left;">
+        &#128193; Ver Radicados
+        @if($esEdicion && $contrato->radicados->count() > 0)
+        <span style="margin-left:auto;background:#0369a1;color:#fff;border-radius:999px;padding:0 0.45rem;font-size:0.65rem;">{{ $contrato->radicados->count() }}</span>
+        @endif
+      </button>
+      @if($contrato->estaVigente())
+      <button type="button" onclick="document.getElementById('modal-retiro').style.display='flex'"
+          style="display:flex;align-items:center;gap:0.55rem;padding:0.5rem 0.75rem;background:#fff5f5;border:1px solid #fecaca;border-radius:8px;color:#dc2626;font-size:0.8rem;font-weight:600;cursor:pointer;width:100%;text-align:left;">
+        &#128683; Marcar Retiro
+      </button>
+      @endif
+    </div>
+  </div>
+  @endif
+
+
+</div>{{-- /col der --}}
+</div>{{-- /grid --}}
+</form>
+
+{{-- ══ MODAL RADICADOS ══ --}}
+@if($esEdicion)
+<div id="modal-radicados" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:999;align-items:center;justify-content:center;padding:1rem;">
+  <div style="background:#fff;border-radius:14px;padding:1.4rem;width:100%;max-width:520px;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+      <h3 style="margin:0;font-size:0.95rem;color:#0f172a;">&#128193; Radicados — Contrato #{{ $contrato->id }}</h3>
+      <button onclick="document.getElementById('modal-radicados').style.display='none'" style="background:none;border:none;font-size:1.2rem;cursor:pointer;color:#94a3b8;line-height:1;">&times;</button>
+    </div>
+    @if($contrato->radicados->count() === 0)
+    <p style="text-align:center;color:#94a3b8;font-size:0.82rem;padding:1.5rem 0;">No hay radicados generados para este contrato.</p>
+    @else
+    @foreach($contrato->radicados as $rad)
+    <div id="radicado-{{ $rad->id }}" style="border:1px solid #e2e8f0;border-radius:9px;padding:0.65rem 0.8rem;margin-bottom:0.55rem;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.4rem;">
+        <span style="font-weight:700;font-size:0.8rem;color:#1e293b;">{{ $rad->tipoLabel() }}</span>
+        <select onchange="updateRadicado({{ $rad->id }}, 'estado', this.value)"
+            style="font-size:0.7rem;padding:0.15rem 0.45rem;border-radius:999px;border:1px solid transparent;cursor:pointer;font-weight:700;
+            background:{{ match($rad->estado) {'pendiente'=>'#fef3c7','en_tramite'=>'#dbeafe','confirmado'=>'#dcfce7','rechazado'=>'#fee2e2',default=>'#f1f5f9'} }};
+            color:{{ match($rad->estado) {'pendiente'=>'#92400e','en_tramite'=>'#1e40af','confirmado'=>'#166534','rechazado'=>'#991b1b',default=>'#475569'} }};">
+          <option value="pendiente"  {{ $rad->estado==='pendiente'  ? 'selected' : '' }}>Pendiente</option>
+          <option value="en_tramite" {{ $rad->estado==='en_tramite' ? 'selected' : '' }}>En Tramite</option>
+          <option value="confirmado" {{ $rad->estado==='confirmado' ? 'selected' : '' }}>Confirmado</option>
+          <option value="rechazado"  {{ $rad->estado==='rechazado'  ? 'selected' : '' }}>Rechazado</option>
+        </select>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr auto;gap:0.4rem;align-items:center;">
+        <input type="text" placeholder="Numero de Radicado" value="{{ $rad->numero_radicado }}"
+            onblur="updateRadicado({{ $rad->id }}, 'numero_radicado', this.value)"
+            style="padding:0.28rem 0.5rem;border:1px solid #e2e8f0;border-radius:6px;font-size:0.76rem;font-family:monospace;width:100%;box-sizing:border-box;">
+        <select onchange="updateRadicado({{ $rad->id }}, 'canal_envio', this.value)"
+            style="padding:0.28rem 0.4rem;border:1px solid #e2e8f0;border-radius:6px;font-size:0.72rem;background:#fff;">
+          <option value="">Canal</option>
+          @foreach(['web'=>'Web','correo'=>'Correo','asesor'=>'Asesor','presencial'=>'Presencial','otro'=>'Otro'] as $v=>$l)
+          <option value="{{ $v }}" {{ $rad->canal_envio===$v ? 'selected' : '' }}>{{ $l }}</option>
+          @endforeach
+        </select>
+      </div>
+      @if($rad->observacion)
+      <div style="font-size:0.7rem;color:#64748b;margin-top:0.3rem;">{{ $rad->observacion }}</div>
+      @endif
+    </div>
+    @endforeach
+    @endif
+    <div style="text-align:right;margin-top:0.75rem;">
+      <button onclick="document.getElementById('modal-radicados').style.display='none'"
+          style="padding:0.42rem 1.2rem;border:1px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer;font-size:0.82rem;">Cerrar</button>
+    </div>
+  </div>
+</div>
+@endif
+
+{{-- MODAL RETIRO --}}
+@if($esEdicion && $contrato->estaVigente())
+<div id="modal-retiro" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:999;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:14px;padding:1.5rem;max-width:420px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+    <h3 style="margin:0 0 1rem;color:#dc2626;font-size:0.95rem;">&#128683; Retirar Contrato #{{ $contrato->id }}</h3>
+    <form method="POST" action="{{ route('admin.contratos.retirar', $contrato->id) }}">
+      @csrf @method('PATCH')
+      <div style="margin-bottom:0.7rem;">
+        <label class="lb">Motivo *</label>
+        <select name="motivo_retiro_id" required style="{{ $S }}">
+          <option value="">-- Seleccione --</option>
+          @foreach($motivosRetiro as $mr)
+          <option value="{{ $mr->id }}">{{ $mr->nombre }}</option>
+          @endforeach
+        </select>
+      </div>
+      <div style="margin-bottom:0.7rem;">
+        <label class="lb">Fecha Retiro *</label>
+        <input type="date" name="fecha_retiro" required value="{{ now()->format('Y-m-d') }}" style="{{ $I }}">
+      </div>
+      <div style="margin-bottom:1rem;">
+        <label class="lb">Observacion</label>
+        <textarea name="observacion" rows="2" style="width:100%;padding:0.5rem;border:1px solid #cbd5e1;border-radius:7px;font-size:0.8rem;resize:none;box-sizing:border-box;"></textarea>
+      </div>
+      <div style="display:flex;gap:0.6rem;justify-content:flex-end;">
+        <button type="button" onclick="document.getElementById('modal-retiro').style.display='none'"
+            style="padding:0.45rem 1rem;border:1px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer;font-size:0.82rem;">Cancelar</button>
+        <button type="submit"
+            style="padding:0.45rem 1.1rem;background:#dc2626;border:none;border-radius:7px;color:#fff;font-size:0.82rem;font-weight:700;cursor:pointer;">Confirmar</button>
+      </div>
+    </form>
+  </div>
+</div>
+@endif
+
+</div>{{-- /x-data --}}
+
+{{-- ══ MODAL FACTURAR PLANILLA (unificado, individual) ══ --}}
+@if($esEdicion)
+@include('admin.facturacion._modal_facturar', ['bancos' => $bancos])
+@endif
+
+<style>
+.lb  { display:block;font-size:0.67rem;font-weight:700;color:#475569;margin-bottom:0.15rem;text-transform:uppercase;letter-spacing:0.03em; }
+.cp  { background:#fff;border-radius:11px;border:1px solid #e2e8f0;padding:0.8rem 0.95rem; }
+.pt  { font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.5rem; }
+.cr  { display:flex;justify-content:space-between;padding:0.25rem 0;border-bottom:1px solid rgba(255,255,255,0.06); }
+.cp2 { font-size:0.63rem;opacity:0.6; }
+select,input[type="text"],input[type="number"],input[type="date"],textarea { font-family:inherit; }
+input:focus,select:focus { outline:none;border-color:#3b82f6 !important;box-shadow:0 0 0 2px rgba(59,130,246,0.15); }
+select:disabled { background:#f8fafc;color:#94a3b8;cursor:not-allowed; }
+</style>
+
+@push('scripts')
+<script src="{{ asset('js/modal_facturar.js') }}"></script>
+<script>
+const MODALIDADES_MODO_ARL  = @json($modalidadesModoArl ?? []);
+const MODALIDADES_ARL_LIBRE = @json($modalidadesArlLibre ?? []);
+const ARL_ID_RS             = {{ $arlIdRazonSocial ?? 'null' }};
+const SALARIO_MINIMO        = {{ $salarioMinimo ?? 0 }};
+const PLAN_DATA             = {};
+// URLs generadas por Laravel (incluyen subdirectorio correcto)
+const URL_COTIZAR  = '{{ route('admin.contratos.cotizar') }}';
+const URL_TARIFAS  = '{{ route('admin.contratos.tarifas') }}';
+const URL_RADICADO = '{{ url('admin/contratos/api/radicado') }}';
+// Datos del cliente para auto-selección de entidades
+const CLIENTE_EPS_ID     = {{ $clienteEpsId ?? 'null' }};
+const CLIENTE_PENSION_ID = {{ $clientePensionId ?? 'null' }};
+// ── Filtrado inteligente: modalidades → planes ─────────────────────
+const MODALIDAD_PLANES   = @json($planesPermitidos ?? []);
+const MODALIDADES_INDEP  = @json($modalidadesIndependientes ?? [10,11,14]);
+const CLIENTE_EXENTO_AFP = {{ ($clienteExentoAfp ?? false) ? 'true' : 'false' }};
+
+
+// ── Formateador de miles para campos .campo-money ────────────────
+function numRaw(el)  { return parseInt(el.value.replace(/\./g, '') || 0); }
+function numFmt(v)   { return Math.round(v||0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.'); }
+function fmtMoney(el) {
+    const raw = numRaw(el);
+    el.dataset.raw = raw;
+    el.value = raw > 0 ? numFmt(raw) : (raw === 0 ? '0' : '');
+}
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.campo-money').forEach(el => {
+        // Formatear al inicio
+        const initRaw = parseInt(el.dataset.raw || el.value.replace(/\./g,'') || 0);
+        el.dataset.raw = initRaw;
+        el.value       = initRaw > 0 ? numFmt(initRaw) : '0';
+        // En foco: mostrar numero limpio para editar
+        el.addEventListener('focus', () => { el.value = el.dataset.raw || '0'; });
+        // Al salir: formatear con puntos
+        el.addEventListener('blur',  () => {
+            el.dataset.raw = parseInt(el.value.replace(/\./g,'') || 0);
+            el.value = numFmt(el.dataset.raw);
+        });
+        // Al tipear: mantener solo digitos
+        el.addEventListener('input', () => {
+            const pos = el.selectionStart;
+            const raw = el.value.replace(/[^0-9]/g,'');
+            el.value = raw;
+            el.dataset.raw = raw || '0';
+        });
+    });
+    // Antes de enviar el form: limpiar puntos de todos los campos money
+    const form = document.getElementById('form-contrato');
+    if (form) form.addEventListener('submit', () => {
+        document.querySelectorAll('.campo-money').forEach(el => {
+            el.value = el.dataset.raw || el.value.replace(/\./g,'') || '0';
+        });
+    }, true);
+});
+
+
+// Indexar NITs de ARL
+const arlNitMap = {};
+document.querySelectorAll('#sel_arl option[data-nit]').forEach(opt => {
+    if (opt.dataset.nit) arlNitMap[opt.dataset.nit] = opt.value;
+});
+
+// Indexar data de planes
+document.querySelectorAll('#sel_plan option[value]').forEach(opt => {
+    if (opt.value) PLAN_DATA[opt.value] = {
+        eps:   opt.dataset.eps  === '1',
+        arl:   opt.dataset.arl  === '1',
+        pen:   opt.dataset.pen  === '1',
+        caja:  opt.dataset.caja === '1',
+    };
+});
+
+function onRazonSocialChange(sel) {
+    const opt    = sel.options[sel.selectedIndex];
+    const arlNit = opt?.dataset?.arl || '';
+    if (arlNit && arlNitMap[arlNit]) {
+        document.getElementById('sel_arl').value = arlNitMap[arlNit];
+    }
+    // Filtrar modalidades según si la RS es independiente
+    const esIndep = opt?.dataset?.independiente === '1';
+    filtrarModalidades(esIndep);
+    actualizarBloqueoArl();
+    // Actualizar NIT cotizante si ya hay un modo ARL seleccionado
+    const modoSel = document.getElementById('sel_arl_modo');
+    if (modoSel) sincronizarNitCotizante(modoSel.value, opt?.value || '');
+}
+
+/**
+ * Se dispara cuando cambia el selector de Modo ARL.
+ * Muestra el panel correcto (RS o cédula) y sincroniza el campo oculto.
+ */
+function onArlModoChange(sel) {
+    mostrarPanelArlSegunModo(sel.value);
+}
+
+/**
+ * Se dispara cuando el usuario elige una RS en el select de RS ARL.
+ * Guarda su ID (=NIT) en el campo oculto.
+ */
+function onArlRsChange(sel) {
+    const inp = document.getElementById('inp_arl_nit');
+    if (inp) inp.value = sel.value;
+}
+
+/**
+ * Muestra/oculta los paneles de la segunda columna según el modo elegido:
+ *  - razon_social  → panel con select de razones sociales
+ *  - independiente → panel con cédula del cliente (readonly)
+ *  - otro/vacío    → ambos ocultos
+ * También sincroniza el campo oculto inp_arl_nit.
+ */
+function mostrarPanelArlSegunModo(modo) {
+    const panelRs     = document.getElementById('panel_arl_rs');
+    const panelCedula = document.getElementById('panel_arl_cedula');
+    const inpNit      = document.getElementById('inp_arl_nit');
+
+    if (!panelRs || !panelCedula) return;
+
+    if (modo === 'razon_social') {
+        panelRs.style.display     = 'block';
+        panelCedula.style.display = 'none';
+        // Sincronizar con la RS ya seleccionada en el select (si hay)
+        const selRS = document.getElementById('sel_arl_rs_cotizante');
+        if (inpNit) inpNit.value = selRS?.value || '';
+
+    } else if (modo === 'independiente') {
+        panelRs.style.display     = 'none';
+        panelCedula.style.display = 'block';
+        // Auto-llenar cédula del cliente
+        const cedula = document.querySelector('input[name="cedula"]')?.value || '';
+        const disp   = document.getElementById('disp_arl_cedula');
+        if (disp) disp.value = cedula;
+        if (inpNit) inpNit.value = cedula;
+
+    } else {
+        panelRs.style.display     = 'none';
+        panelCedula.style.display = 'none';
+        // No limpiar inp_arl_nit para no perder valores ya guardados
+    }
+}
+
+// Almacén de todas las options originales (para restaurarlas)
+const _OPTS_MODALIDAD = [];
+const _OPTS_PLAN      = [];
+
+// Inicializar stores — se llama antes de DOMContentLoaded,
+// usar defer o llamar desde DOMContentLoaded
+function _initOptsStore() {
+    const selMod = document.getElementById('sel_modalidad');
+    const selPln = document.getElementById('sel_plan');
+    if (selMod && !_OPTS_MODALIDAD.length) {
+        selMod.querySelectorAll('option').forEach(opt => {
+            _OPTS_MODALIDAD.push({ el: opt, value: opt.value });
+        });
+    }
+    if (selPln && !_OPTS_PLAN.length) {
+        selPln.querySelectorAll('option').forEach(opt => {
+            _OPTS_PLAN.push({ el: opt, value: opt.value, text: opt.textContent.trim() });
+        });
+    }
+}
+
+// ── Filtrado 1: RS → Modalidades ─────────────────────────────────
+function filtrarModalidades(soloIndependiente) {
+    const selMod = document.getElementById('sel_modalidad');
+    if (!selMod) return;
+
+    const valorActual = selMod.value;
+    // Limpiar select (excepto opción vacía)
+    while (selMod.options.length > 0) selMod.remove(0);
+
+    let primerValido = null;
+    let valorSigueDisponible = false;
+
+    _OPTS_MODALIDAD.forEach(({ el, value }) => {
+        if (!value) {
+            selMod.appendChild(el);  // siempre: opción vacía
+            return;
+        }
+        const esIndepOpt = MODALIDADES_INDEP.includes(parseInt(value));
+        const mostrar = soloIndependiente ? esIndepOpt : !esIndepOpt;
+        if (mostrar) {
+            selMod.appendChild(el);
+            if (!primerValido) primerValido = value;
+            if (value === valorActual) valorSigueDisponible = true;
+        }
+    });
+
+    // Sincronizar valor seleccionado
+    selMod.value = valorSigueDisponible ? valorActual : '';
+    // Sincronizar Alpine
+    if (!valorSigueDisponible) {
+        const alpineComp = document.querySelector('[x-data]')?._x_dataStack?.[0];
+        if (alpineComp) { alpineComp.tipoModalidadId = ''; alpineComp.planId = ''; }
+    }
+    // Filtrar planes y mostrar nota
+    filtrarPlanes(selMod.value);
+    const divNota = document.getElementById('nota-plan-modalidad');
+    if (divNota) divNota.style.display = (!selMod.value ? 'block' : 'none');
+}
+
+// ── Filtrado 2: Modalidad → Planes ───────────────────────────────
+function filtrarPlanes(modalidadId) {
+    const selPlan = document.getElementById('sel_plan');
+    if (!selPlan) return;
+    const divNota = document.getElementById('nota-plan-modalidad');
+
+    const valorActual = parseInt(selPlan.value) || 0;
+    // Limpiar select
+    while (selPlan.options.length > 0) selPlan.remove(0);
+
+    if (!modalidadId) {
+        // Sin modalidad: restaurar todas las opciones
+        _OPTS_PLAN.forEach(({ el }) => selPlan.appendChild(el));
+        if (divNota) divNota.style.display = 'block';
+        return;
+    }
+
+    const permitidos = (MODALIDAD_PLANES[modalidadId] || []).map(Number);
+    if (divNota) divNota.style.display = 'none';
+
+    let planActualPermitido = false;
+
+    _OPTS_PLAN.forEach(({ el, value, text }) => {
+        if (!value) { selPlan.appendChild(el); return; }  // opción vacía
+        const planId = parseInt(value);
+        const permitido = permitidos.includes(planId);
+        if (!permitido) return;
+
+        // Resaltar sin-AFP cuando el cliente puede omitirlo
+        if (CLIENTE_EXENTO_AFP) {
+            const sinAfp = el.dataset.pen !== '1';
+            el.textContent = (sinAfp ? '⭐ ' : '') + text;
+        } else {
+            el.textContent = text;  // restaurar texto original
+        }
+
+        selPlan.appendChild(el);
+        if (planId === valorActual) planActualPermitido = true;
+    });
+
+    // Si el plan ya no aplica, limpiar
+    if (valorActual && !planActualPermitido) {
+        selPlan.value = '';
+        const alpineComp = document.querySelector('[x-data]')?._x_dataStack?.[0];
+        if (alpineComp) { alpineComp.planId = ''; }
+    } else {
+        selPlan.value = valorActual || '';
+        if (selPlan.value) bloquearEntidadesPorPlan(selPlan.value);
+    }
+}
+
+function actualizarBloqueoArl() {
+    const midId  = parseInt(document.querySelector('select[name=tipo_modalidad_id]')?.value || 0);
+    const arlSel = document.getElementById('sel_arl');
+    const lbl    = document.getElementById('lbl_arl_lock');
+    const libre  = MODALIDADES_ARL_LIBRE.includes(midId);
+    arlSel.disabled          = !libre;
+    arlSel.style.background  = libre ? '#fff' : '#f8fafc';
+    if (lbl) lbl.textContent = libre ? '(editable)' : '(de la R.Social)';
+}
+
+// Estilos base para entidades
+const STYLE_REQUERIDO  = 'width:100%;padding:0.38rem 0.5rem;border:2px solid #ef4444;border-radius:6px;font-size:0.82rem;background:#fff;box-sizing:border-box;';
+const STYLE_DESHABILITADO = 'width:100%;padding:0.38rem 0.5rem;border:1px solid #e2e8f0;border-radius:6px;font-size:0.82rem;background:#f1f5f9;color:#94a3b8;box-sizing:border-box;cursor:not-allowed;';
+const STYLE_NORMAL     = 'width:100%;padding:0.38rem 0.5rem;border:1px solid #cbd5e1;border-radius:6px;font-size:0.82rem;background:#fff;box-sizing:border-box;';
+const STYLE_COMPLETO   = 'width:100%;padding:0.38rem 0.5rem;border:2px solid #22c55e;border-radius:6px;font-size:0.82rem;background:#f0fdf4;box-sizing:border-box;';
+
+function aplicarEstadoEntidad(sel, incluido) {
+    if (!sel) return;
+    if (!incluido) {
+        // Deshabilitado: no aplica este plan
+        sel.disabled  = true;
+        sel.required  = false;
+        sel.style.cssText = STYLE_DESHABILITADO;
+        sel.value     = '';   // limpiar
+    } else {
+        // Habilitado y requerido
+        sel.disabled  = false;
+        sel.required  = true;
+        // Color segun si tiene valor
+        if (!sel.value) {
+            sel.style.cssText = STYLE_REQUERIDO;
+        } else {
+            sel.style.cssText = STYLE_COMPLETO;
+        }
+    }
+}
+
+function bloquearEntidadesPorPlan(planId) {
+    const d      = PLAN_DATA[planId] || null;
+    const epsSel = document.getElementById('sel_eps');
+    const penSel = document.getElementById('sel_pen');
+    const arlSel = document.getElementById('sel_arl');
+    const cajSel = document.getElementById('sel_caja');
+
+    if (!d) {
+        [epsSel,penSel,arlSel,cajSel].forEach(s => { if(s) { s.disabled=false; s.required=false; s.style.cssText=STYLE_NORMAL; } });
+        return;
+    }
+
+    aplicarEstadoEntidad(epsSel, d.eps);
+    aplicarEstadoEntidad(penSel, d.pen);
+    aplicarEstadoEntidad(cajSel, d.caja);
+
+    // ARL especial
+    if (!d.arl) {
+        aplicarEstadoEntidad(arlSel, false);
+    } else {
+        actualizarBloqueoArl();
+        arlSel.required = true;
+        arlSel.style.cssText = arlSel.value ? STYLE_COMPLETO : STYLE_REQUERIDO;
+    }
+
+    // Auto-seleccionar entidades del cliente si el campo quedó habilitado pero vacío
+    if (d.eps  && epsSel  && !epsSel.value  && CLIENTE_EPS_ID)     { epsSel.value  = CLIENTE_EPS_ID;     epsSel.style.cssText  = STYLE_COMPLETO; }
+    if (d.pen  && penSel  && !penSel.value  && CLIENTE_PENSION_ID) { penSel.value  = CLIENTE_PENSION_ID; penSel.style.cssText  = STYLE_COMPLETO; }
+
+    // Actualizar en tiempo real al seleccionar una entidad
+    [epsSel, penSel, arlSel, cajSel].forEach(sel => {
+        if (!sel) return;
+        sel.onchange = function() {
+            if (sel.required) {
+                sel.style.cssText = sel.value ? STYLE_COMPLETO : STYLE_REQUERIDO;
+            }
+            // Recalcular solo para ARL (afecta el %)
+            if (sel === arlSel) {
+                const alpineComp = document.querySelector('[x-data]')?._x_dataStack?.[0];
+                if (alpineComp) alpineComp.recalcular();
+            }
+        };
+    });
+}
+
+// Validacion al enviar el formulario
+document.addEventListener('DOMContentLoaded', () => {
+    const form = document.getElementById('form-contrato');
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            const planId = document.getElementById('sel_plan')?.value;
+            const d = PLAN_DATA[planId] || {};
+            const checks = [
+                { sel: 'sel_eps',   incl: d.eps,  nombre: 'EPS' },
+                { sel: 'sel_pen',   incl: d.pen,  nombre: 'AFP/Pensión' },
+                { sel: 'sel_arl',   incl: d.arl,  nombre: 'ARL' },
+                { sel: 'sel_caja',  incl: d.caja, nombre: 'Caja' },
+            ];
+            let hayError = false;
+            checks.forEach(({ sel, incl, nombre }) => {
+                const el = document.getElementById(sel);
+                if (!el || !incl) return;
+                if (!el.value) {
+                    el.style.cssText = STYLE_REQUERIDO;
+                    hayError = true;
+                }
+            });
+            if (hayError) {
+                e.preventDefault();
+                alert('Por favor seleccione todas las entidades requeridas por el plan (marcadas en rojo).');
+            }
+        });
+    }
+});
+
+function onAsesorChange(sel) {
+    const opt      = sel.options[sel.selectedIndex];
+    const admonAse = parseFloat(opt?.dataset?.admon || 0);
+    const admonIp  = document.getElementById('inp_admon_asesor');
+    const admonTot = document.getElementById('inp_admon');
+    if (!admonIp) return;
+
+    if (!sel.value) {
+        // Sin asesor: admon_asesor = 0, admon queda completo
+        admonIp.value = 0;
+    } else {
+        // Con asesor: admon_asesor = su comision, admon = admon_plan - comision
+        admonIp.value = admonAse;
+        if (admonTot) {
+            const admonActual = parseFloat(admonTot.value || 0);
+            // Solo resta si el admon actual NO fue ya reducido (es mayor que admonAse)
+            // Usamos el dataset del option del plan como referencia
+            const planOpt = document.querySelector('#sel_plan option[value="'+ (document.getElementById('sel_plan')?.value||'') +'"]');
+            const admonPlan = planOpt ? parseFloat(planOpt.dataset.admonPlan || admonActual) : admonActual;
+            // Guardar el admon del plan en el option para futuras referencias
+            if (planOpt && !planOpt.dataset.admonPlan) planOpt.dataset.admonPlan = admonActual;
+            admonTot.value = Math.max(0, (planOpt?.dataset.admonPlan ? parseFloat(planOpt.dataset.admonPlan) : admonActual) - admonAse);
+            // Actualizar Alpine
+            const alpineData = document.querySelector('[x-data]')?._x_dataStack?.[0];
+            if (alpineData) { alpineData.admon = parseFloat(admonTot.value); alpineData.recalcular(); }
+        }
+    }
+}
+
+function updateRadicado(id, campo, valor) {
+    fetch(`${URL_RADICADO}/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content },
+        body: JSON.stringify({ [campo]: valor })
+    }).catch(console.error);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    // ── Inicializar stores de opciones (DEBE ser primero) ──────────
+    _initOptsStore();
+
+    // ── Aplicar filtros al cargar (modo edición) ──────────────────
+    const selRS  = document.getElementById('sel_rs');
+    const selMod = document.getElementById('sel_modalidad');
+    const selPln = document.getElementById('sel_plan');
+
+    if (selRS?.value) {
+        const esIndepRS = selRS.options[selRS.selectedIndex]?.dataset?.independiente === '1';
+        filtrarModalidades(esIndepRS);   // filtra modalidades sin disparar selectOnChange
+    }
+    if (selMod?.value) {
+        filtrarPlanes(selMod.value);     // filtra planes sin limpiar selección
+    }
+
+    actualizarBloqueoArl();
+    const planId = selPln?.value;
+    if (planId) bloquearEntidadesPorPlan(planId);
+    if (ARL_ID_RS && !document.getElementById('sel_arl').value) {
+        document.getElementById('sel_arl').value = ARL_ID_RS;
+    }
+
+    // Nota inicial si no hay modalidad seleccionada
+    if (!selMod?.value && document.getElementById('nota-plan-modalidad')) {
+        document.getElementById('nota-plan-modalidad').style.display = 'block';
+    }
+
+    // ── Inicializar paneles Modo ARL (modo edición: restaurar estado) ─
+    const modoArlSel = document.getElementById('sel_arl_modo');
+    if (modoArlSel?.value) {
+        mostrarPanelArlSegunModo(modoArlSel.value);
+    }
+
+    // ── Cotizador inicial: disparo directo con vanilla JS ─────────
+    const cotizarInicial = () => {
+        const fechaInp   = document.querySelector('input[name=fecha_ingreso]')?.value || '';
+        // Calcular dias antes del fetch (igual que Alpine)
+        let diasInit = 30;
+        if (fechaInp) {
+            const f = new Date(fechaInp + 'T00:00:00');
+            const h = new Date();
+            if (f.getFullYear() === h.getFullYear() && f.getMonth() === h.getMonth()) {
+                diasInit = Math.max(1, 30 - f.getDate() + 1);
+            }
+        }
+        // Sincronizar el select de dias
+        const selDias = document.getElementById('sel_dias_cotizar');
+        if (selDias) selDias.value = diasInit;
+
+        const salario    = parseInt(document.getElementById('inp_salario')?.dataset.raw || 0);
+        const planIdVal  = document.getElementById('sel_plan')?.value || '';
+        const modalidadId = document.querySelector('select[name=tipo_modalidad_id]')?.value || '';
+        const nArl       = parseInt(document.querySelector('select[name=n_arl]')?.value || 1);
+        const admon      = parseInt(document.getElementById('inp_admon')?.dataset.raw || 0);
+        const admonAse   = parseInt(document.getElementById('inp_admon_asesor')?.dataset.raw || 0);
+        const seguro     = parseInt(document.getElementById('inp_seguro')?.dataset.raw || 0);
+        const pctCaja    = parseFloat(document.querySelector('select[name=porcentaje_caja]')?.value || 4);
+        const cedula     = document.querySelector('input[name=cedula]')?.value || '';
+
+        if (!salario || !planIdVal) return;
+
+        fetch(URL_COTIZAR, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
+            },
+            body: JSON.stringify({
+                tipo_modalidad_id: modalidadId,
+                plan_id:           planIdVal,
+                n_arl:             nArl,
+                salario:           salario,
+                ibc:               salario,
+                administracion:    admon,
+                admon_asesor:      admonAse,
+                seguro:            seguro,
+                porcentaje_caja:   pctCaja || 4,
+                dias:              diasInit,
+                cedula
+            }),
+        })
+        .then(r => r.json())
+        .then(d => {
+            const fmt = v => '$' + Math.round(v||0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+            // Actualizar el HTML del cotizador directamente si Alpine no cargó aún
+            document.querySelectorAll('[x-text="fmt(result.eps)"]').forEach(el => el.textContent = fmt(d.eps));
+            document.querySelectorAll('[x-text="fmt(result.arl)"]').forEach(el => el.textContent = fmt(d.arl));
+            document.querySelectorAll('[x-text="fmt(result.pen)"]').forEach(el => el.textContent = fmt(d.pen));
+            document.querySelectorAll('[x-text="fmt(result.caja)"]').forEach(el => el.textContent = fmt(d.caja));
+            document.querySelectorAll('[x-text="fmt(result.ss)"]').forEach(el => el.textContent = fmt(d.ss));
+            document.querySelectorAll('[x-text="fmt(result.seguro)"]').forEach(el => el.textContent = fmt(d.seguro));
+            document.querySelectorAll('[x-text="fmt(result.admon)"]').forEach(el => el.textContent = fmt(d.admon));
+            document.querySelectorAll('[x-text="fmt(result.iva)"]').forEach(el => el.textContent = fmt(d.iva));
+            document.querySelectorAll('[x-text="fmt(result.total)"]').forEach(el => el.textContent = fmt(d.total));
+            // IBC
+            document.querySelectorAll('[x-text="fmt(ibc)"]').forEach(el => el.textContent = fmt(salario));
+        })
+        .catch(err => console.error('Cotizador inicial error:', err));
+    };
+
+    // Esperar un poco para que Alpine inicialice también
+    setTimeout(cotizarInicial, 400);
+});
+
+// ── Alpine.js cotizador ──────────────────────────────────────────
+function cotizador() {
+    return {
+        salario:         {{ $defSalario }},
+        ibc:             {{ $defIbc }},
+        admon:           {{ $defAdmon }},
+        seguro:          {{ $defSeguro }},
+        nivelArl:        {{ (int)old('n_arl', $contrato->n_arl ?? 1) }},
+        pctCaja:         {{ (float)old('porcentaje_caja', $contrato->porcentaje_caja ?? 4) }},
+        planId:          '{{ old('plan_id', $contrato->plan_id ?? '') }}',
+        planNombre:      '',
+        tipoModalidadId: '{{ old('tipo_modalidad_id', $contrato->tipo_modalidad_id ?? '') }}',
+        esIndependiente: false,
+        mostrarModoArl:  false,
+        ibcSugFmt:       '',
+        pctEps:0, pctPen:0, pctArl:0, pctCajaCalc:0,
+        diasCotizar: 30,
+        result: { eps:0, arl:0, pen:0, caja:0, ss:0, seguro:0, admon:0, iva:0, total:0 },
+
+        fmt(v) {
+            // Formato colombiano: punto de miles, sin decimales (ej: 1.750.905)
+            const n = Math.round(v || 0);
+            return '$' + n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+        },
+
+        init() {
+            const opt = document.querySelector(`select[name=tipo_modalidad_id] option[value="${this.tipoModalidadId}"]`);
+            this.esIndependiente = opt?.dataset.independiente === '1';
+            this.mostrarModoArl  = MODALIDADES_MODO_ARL.includes(parseInt(this.tipoModalidadId));
+            this.planNombre      = document.querySelector(`#sel_plan option[value="${this.planId}"]`)?.textContent?.trim() || '';
+            // Sincronizar IBC según modalidad
+            if (!this.esIndependiente) {
+                this.ibc = this.salario;
+            } else if (this.salario > 0) {
+                // En modo edición: si ya hay IBC guardado, respetar; si no, auto-calcular
+                if (!this.ibc || this.ibc <= 0) {
+                    this.calcularIbcIndependiente();
+                } else {
+                    // Solo actualizar el badge sugerido
+                    const sug = this.ibcSugerido();
+                    this.ibcSugFmt = this.fmt(sug);
+                }
+            }
+            // Auto-calcular dias desde fecha_ingreso al iniciar
+            this.calcularDiasDesde(document.querySelector('input[name=fecha_ingreso]')?.value);
+            // Escuchar cambios en fecha_ingreso
+            const fecInp = document.querySelector('input[name=fecha_ingreso]');
+            if (fecInp) fecInp.addEventListener('change', e => {
+                this.calcularDiasDesde(e.target.value);
+                this.recalcular();
+            });
+            // Disparar cotizacion inicial después de que Alpine termine de montar
+            setTimeout(() => {
+                if (this.salario > 0 && this.planId) this.recalcular();
+            }, 300);
+        },
+
+        /** Calcula el IBC sugerido (40% del salario) con piso en salario_minimo */
+        ibcSugerido() {
+            // Leer salario real del campo money (puede estar en dataset.raw)
+            const inpSal = document.getElementById('inp_salario');
+            const salReal = parseInt(inpSal?.dataset?.raw || inpSal?.value?.replace(/\./g,'') || this.salario || 0);
+            if (salReal > 0) this.salario = salReal;
+            const raw = Math.round(this.salario * {{ $pctIbcSugerido }} / 100);
+            return Math.max(raw, SALARIO_MINIMO);
+        },
+
+        /**
+         * Auto-llena el campo IBC con el valor sugerido:
+         * = max(salario_minimo, salario * {{ $pctIbcSugerido }}%)
+         * Actualiza Alpine + el <input> visible + el badge sugerido.
+         */
+        calcularIbcIndependiente() {
+            const sug = this.ibcSugerido();
+            this.ibc       = sug;
+            this.ibcSugFmt = this.fmt(sug);
+            // Sincronizar el <input name="ibc"> visible
+            const inpIbc = document.querySelector('input[name="ibc"]');
+            if (inpIbc) inpIbc.value = sug;
+        },
+
+        onSalarioChange() {
+            // Leer el valor real del campo money (puede estar formateado con puntos)
+            const inpSal = document.getElementById('inp_salario');
+            const salReal = parseInt(inpSal?.dataset?.raw || inpSal?.value?.replace(/\./g,'') || 0);
+            if (salReal > 0) this.salario = salReal;
+
+            if (!this.esIndependiente) {
+                // Dependiente: IBC siempre = salario
+                this.ibc = this.salario;
+            } else if (this.salario > 0) {
+                // Independiente: IBC = max(salario_minimo, salario * {{ $pctIbcSugerido }}%)
+                this.calcularIbcIndependiente();
+            } else {
+                this.ibcSugFmt = '';
+            }
+            this.recalcular();
+        },
+        // Calcula dias a cotizar segun fecha_ingreso
+        // Si es el mes actual: dias = 30 - dia + 1
+        // Si es otro mes: 30 (mes completo)
+        calcularDiasDesde(fechaStr) {
+            if (!fechaStr) { this.diasCotizar = 30; return; }
+            const fecha  = new Date(fechaStr + 'T00:00:00'); // evitar timezone
+            const hoy    = new Date();
+            if (fecha.getFullYear() === hoy.getFullYear() && fecha.getMonth() === hoy.getMonth()) {
+                const dia = fecha.getDate();
+                this.diasCotizar = Math.max(1, 30 - dia + 1);
+            } else {
+                this.diasCotizar = 30;
+            }
+            // Sincronizar el select
+            const sel = document.getElementById('sel_dias_cotizar');
+            if (sel) sel.value = this.diasCotizar;
+        },
+
+
+        onModalidadChange(e) {
+            const opt = e.target.options[e.target.selectedIndex];
+            const id  = parseInt(e.target.value || 0);
+            this.esIndependiente = MODALIDADES_INDEP.includes(id);
+            this.mostrarModoArl  = MODALIDADES_MODO_ARL.includes(id);
+            this.pctCaja = this.esIndependiente ? 2 : 4;
+            if (!this.esIndependiente) {
+                // Dependiente: IBC = salario
+                this.ibc = this.salario;
+                this.ibcSugFmt = '';
+            } else if (this.salario > 0) {
+                // Al pasar a independiente: auto-calcular IBC
+                this.calcularIbcIndependiente();
+            }
+            actualizarBloqueoArl();
+            filtrarPlanes(e.target.value);
+            this.recalcular();
+        },
+
+
+        onPlanChange(e) {
+            this.planNombre = e.target.options[e.target.selectedIndex]?.textContent?.trim() || '';
+            bloquearEntidadesPorPlan(this.planId);
+        fetch(`${URL_TARIFAS}?plan_id=${this.planId}`)
+                .then(r => r.json())
+                .then(d => {
+                    const f        = document.getElementById('form-contrato');
+                    const asesorSel = document.getElementById('sel_asesor');
+                    const asesorOpt = asesorSel?.options[asesorSel.selectedIndex];
+                    const admonAse  = parseFloat(asesorOpt?.dataset?.admon || 0);
+                    const tieneAsesor = asesorSel?.value && parseFloat(asesorSel.value) > 0;
+
+                    // Seguro y costo (solo actualizar si la API devuelve valor > 0)
+                    if (d.seguro > 0) {
+                        const inpSeg = document.getElementById('inp_seguro');
+                        if (inpSeg) { inpSeg.dataset.raw = d.seguro; inpSeg.value = numFmt(d.seguro); }
+                        this.seguro = d.seguro;
+                    }
+                    if (d.costo_afiliacion > 0) {
+                        const inpCosto = document.getElementById('inp_costo');
+                        if (inpCosto) { inpCosto.dataset.raw = d.costo_afiliacion; inpCosto.value = numFmt(d.costo_afiliacion); }
+                    }
+                    if (d.encargado_id && f.elements['encargado_id']) f.elements['encargado_id'].value = d.encargado_id;
+
+                    // Admon: solo actualizar si la API devuelve valor > 0 (no borrar valor existente)
+                    if (d.administracion > 0) {
+                        const admonPlan  = d.administracion;
+                        const planOpt    = e.target.options[e.target.selectedIndex];
+                        if (planOpt) planOpt.dataset.admonPlan = admonPlan;
+
+                        const admonFinal = tieneAsesor ? Math.max(0, admonPlan - admonAse) : admonPlan;
+                        this.admon       = admonFinal;
+                        const inpAdmon   = document.getElementById('inp_admon');
+                        if (inpAdmon) { inpAdmon.dataset.raw = admonFinal; inpAdmon.value = numFmt(admonFinal); }
+                    }
+                    // Admon asesor
+                    if (d.administracion > 0 || tieneAsesor) {
+                        const admonAsesorInput = document.getElementById('inp_admon_asesor');
+                        const admonAseVal = tieneAsesor ? (d.admon_asesor ?? admonAse) : 0;
+                        if (admonAsesorInput) { admonAsesorInput.dataset.raw = admonAseVal; admonAsesorInput.value = numFmt(admonAseVal); }
+                    }
+
+                    this.recalcular();
+                }).catch(() => this.recalcular());
+        },
+
+        onActividadChange(e) {
+            const nivel = parseInt(e.target.options[e.target.selectedIndex]?.dataset.nivel || 1);
+            this.nivelArl = nivel;
+            document.querySelector('select[name=n_arl]').value = nivel;
+            this.recalcular();
+        },
+
+        recalcular() {
+            const cedula  = document.querySelector('input[name=cedula]')?.value || '';
+            // Leer salario del campo money (dataset.raw) o del Alpine state
+            const salRaw  = parseInt(document.getElementById('inp_salario')?.dataset.raw || this.salario || 0);
+            if (salRaw > 0 && salRaw !== this.salario) this.salario = salRaw;
+            const ibcVal  = (this.esIndependiente && this.ibc > 0) ? this.ibc : (salRaw || this.salario);
+            if (!this.planId || !this.salario) return;
+            fetch(URL_COTIZAR, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                },
+                body: JSON.stringify({
+                    tipo_modalidad_id: this.tipoModalidadId,
+                    plan_id:           this.planId,
+                    n_arl:             this.nivelArl,
+                    salario:           this.salario,
+                    ibc:               ibcVal,
+                    administracion:    this.admon || 0,
+                    admon_asesor:      parseInt(document.getElementById('inp_admon_asesor')?.dataset?.raw || document.getElementById('inp_admon_asesor')?.value?.replace(/\./g,'') || 0),
+                    seguro:            this.seguro || 0,
+                    porcentaje_caja:   this.pctCaja || 4,
+                    dias:              parseInt(this.diasCotizar) || 30,
+                    cedula
+                }),
+            })
+            .then(r => { if (!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+            .then(d => {
+                this.result = {
+                    eps:    d.eps    ?? 0,
+                    arl:    d.arl    ?? 0,
+                    pen:    d.pen    ?? 0,
+                    caja:   d.caja   ?? 0,
+                    ss:     d.ss     ?? 0,
+                    seguro: d.seguro ?? 0,
+                    admon:  d.admon  ?? 0,
+                    iva:    d.iva    ?? 0,
+                    total:  d.total  ?? 0
+                };
+                this.pctEps      = d.pctEps  ?? 0;
+                this.pctPen      = d.pctPen  ?? 0;
+                this.pctArl      = d.pctArl  ?? 0;
+                this.pctCajaCalc = d.pctCaja ?? 0;
+                if (d.ibcSugerido && this.esIndependiente) this.ibcSugFmt = this.fmt(d.ibcSugerido);
+            })
+            .catch(err => console.warn('Cotizador error:', err));
+        },
+    };
+}
+
+// ── Modal Unificado de Facturación (modo individual) ──────────────────
+const FC_CSRF          = document.querySelector('meta[name="csrf-token"]').content;
+const FC_URL_FAC       = '{{ route('admin.facturacion.facturar') }}';
+const FC_URL_MES_PAG   = '{{ url('admin/facturacion/api/mes-pagado') }}';
+const FC_CONTRATO_ID   = {{ $esEdicion ? $contrato->id : 'null' }};
+const FC_FECHA_ING_MES = {{ $contrato->fecha_ingreso ? $contrato->fecha_ingreso->month : 0 }};
+const FC_FECHA_ING_ANO = {{ $contrato->fecha_ingreso ? $contrato->fecha_ingreso->year : 0 }};
+const FC_ES_INDEP      = {{ $contrato->tipoModalidad?->esIndependiente() ? 'true' : 'false' }};
+const FC_COSTO_AFIL    = {{ (int)($contrato->costo_afiliacion ?? 0) }};
+const FC_ARL_NIVEL     = {!! json_encode($contrato->n_arl ?? '') !!};
+const FC_DIST_DEFAULTS = {
+    asesor:    {{ (int)($contrato->asesor?->comision_afil_valor ?? 0) }},
+    retiro:    0,
+    encargado: 0,
+};
+
+if (typeof MF !== 'undefined' && FC_CONTRATO_ID) {
+    MF.init({
+        modo:              'individual',
+        urlFacturar:       FC_URL_FAC,
+        urlMesPagado:      FC_URL_MES_PAG,
+        csrf:              FC_CSRF,
+        contratoId:        FC_CONTRATO_ID,
+        fechaIngresoMes:   FC_FECHA_ING_MES,
+        fechaIngresoAnio:  FC_FECHA_ING_ANO,
+        esIndependiente:   FC_ES_INDEP,
+        costoAfiliacion:   FC_COSTO_AFIL,
+        arlNivel:          FC_ARL_NIVEL,
+        distDefaults:      FC_DIST_DEFAULTS,
+        getAlpineResult:   () => document.querySelector('[x-data]')?._x_dataStack?.[0]?.result || {},
+        onExito: (data) => {
+            if (data.recibo_url) window.open(data.recibo_url, '_blank');
+            alert(data.mensaje || 'Factura generada correctamente.');
+        }
+    });
+}
+
+function abrirModalFacturarContrato() {
+    if (typeof MF !== 'undefined') {
+        MF.abrir(
+            [FC_CONTRATO_ID],
+            '{{ $cliente?->primer_nombre }} {{ $cliente?->primer_apellido }}'
+        );
+    }
+}
+
+// Alias para compatibilidad con botones que todavía llaman a funciones fc*
+// Todas las funciones del modal han sido reemplazadas por MF (modal_facturar.js)
+
+
+
+
+
+
+
+
+
+
+
+
+</script>
+@endpush
+
+@endsection

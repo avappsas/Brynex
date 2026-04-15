@@ -1,0 +1,20 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class Abono extends Model
+{
+    protected $table    = 'abonos';
+    protected $fillable = [
+        'factura_id','valor','forma_pago',
+        'valor_efectivo','valor_consignado',
+        'banco_cuenta_id','fecha','usuario_id','observacion',
+    ];
+
+    protected $casts = ['fecha' => 'date'];
+
+    public function factura() { return $this->belongsTo(Factura::class); }
+    public function usuario() { return $this->belongsTo(User::class, 'usuario_id'); }
+}

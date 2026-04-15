@@ -1,0 +1,362 @@
+@extends('layouts.app')
+@section('modulo', 'Historial de Pagos')
+
+@php
+$fmt   = fn($v) => '$' . number_format($v ?? 0, 0, ',', '.');
+$meses_full = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+// $cliente viene directo del controlador (no depende de $contrato)
+$nombre  = trim(($cliente->primer_nombre ?? '') . ' ' . ($cliente->segundo_nombre ?? '') . ' ' . ($cliente->primer_apellido ?? '') . ' ' . ($cliente->segundo_apellido ?? ''));
+if (!$nombre) $nombre = $cliente->nombre_completo ?? ('CC ' . number_format($cedula, 0, '', '.'));
+$esAdmin = in_array(auth()->user()->rol ?? '', ['superadmin','admin']);
+@endphp
+
+@section('contenido')
+<style>
+/* ════ Historial de Pagos ════ */
+.hi-header{background:linear-gradient(135deg,#0f172a,#1e3a5f);border-radius:14px;padding:1rem 1.4rem;margin-bottom:1rem;color:#fff}
+.hi-h-top{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem}
+.hi-nom{font-size:1.3rem;font-weight:800}
+.hi-meta{font-size:.78rem;color:#94a3b8;display:flex;flex-wrap:wrap;gap:1.2rem;margin-top:.3rem}
+.hi-filtros{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:.65rem 1rem;margin-bottom:.85rem;display:flex;align-items:center;gap:.7rem;flex-wrap:wrap}
+.hi-filtros label{font-size:.65rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.04em}
+.hi-sel{padding:.3rem .6rem;border:1.5px solid #e2e8f0;border-radius:7px;font-size:.8rem;background:#f8fafc;cursor:pointer;font-family:inherit;outline:none;color:#0f172a;transition:border-color .15s}
+.hi-sel:focus{border-color:#3b82f6}
+.hi-pill{padding:.25rem .75rem;border-radius:20px;font-size:.72rem;font-weight:700;border:1.5px solid #e2e8f0;background:#f8fafc;color:#64748b;cursor:pointer;transition:all .15s;text-decoration:none}
+.hi-pill.active,.hi-pill:hover{background:#eff6ff;border-color:#3b82f6;color:#1d4ed8}
+/* Grupos acordeón */
+.hi-group{background:#fff;border:1px solid #e2e8f0;border-radius:13px;overflow:hidden;margin-bottom:.75rem}
+.hi-group-hdr{display:flex;align-items:center;justify-content:space-between;padding:.65rem 1rem;cursor:pointer;user-select:none;transition:background .15s}
+.hi-group-hdr:hover{background:#f8fafc}
+.hi-group-title{font-size:.9rem;font-weight:800;color:#0f172a;display:flex;align-items:center;gap:.5rem}
+.hi-group-badge{font-size:.63rem;font-weight:700;padding:.15rem .5rem;border-radius:20px;background:#eff6ff;color:#1d4ed8}
+.hi-group-total{font-size:.82rem;font-weight:900;font-family:monospace;color:#15803d}
+.hi-group-caret{font-size:.8rem;color:#94a3b8;transition:transform .2s}
+.hi-group-body{display:none}
+.hi-group.open .hi-group-body{display:block}
+.hi-group.open .hi-group-caret{transform:rotate(180deg)}
+/* Sub-grupo por año */
+.hi-year{padding:.3rem 1rem .15rem;font-size:.6rem;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid #f1f5f9;background:#fafafa;display:flex;align-items:center;justify-content:space-between}
+.hi-year-total{font-size:.7rem;font-weight:800;color:#475569}
+/* Tabla */
+table.hi-tbl{width:100%;border-collapse:collapse;font-size:.77rem}
+.hi-tbl th{background:#f8fafc;color:#64748b;font-size:.6rem;text-transform:uppercase;letter-spacing:.05em;padding:.35rem .6rem;text-align:left;border-bottom:1px solid #f1f5f9;white-space:nowrap}
+.hi-tbl td{padding:.3rem .6rem;border-bottom:1px solid #f8fafc;white-space:nowrap;vertical-align:middle}
+.hi-tbl tr:last-child td{border-bottom:none}
+.hi-tbl tr:hover td{background:#fafafa}
+.num{font-family:monospace;text-align:right;font-weight:700}
+/* Badges */
+.badge{display:inline-flex;align-items:center;gap:.25rem;padding:.12rem .5rem;border-radius:20px;font-size:.65rem;font-weight:700}
+.badge-pago    {background:#dcfce7;color:#15803d}
+.badge-pre     {background:#fef3c7;color:#92400e}
+.badge-prest   {background:#ede9fe;color:#6d28d9}
+.badge-abono   {background:#fef9c3;color:#854d0e}
+.badge-plan    {background:#dbeafe;color:#1e40af}
+.badge-afil    {background:#fce7f3;color:#9d174d}
+.badge-emp     {background:#f0fdf4;color:#166534;border:1px solid #bbf7d0}
+.badge-ind     {background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe}
+/* Botones acción */
+.btn-act-sm{padding:.2rem .55rem;border-radius:6px;font-size:.68rem;font-weight:700;border:none;cursor:pointer;transition:all .15s;display:inline-flex;align-items:center;gap:.25rem;text-decoration:none}
+.btn-recibo{background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe}.btn-recibo:hover{background:#dbeafe}
+.btn-plano {background:#f0fdf4;color:#166534;border:1px solid #bbf7d0}.btn-plano:hover{background:#dcfce7}
+/* Modal Plano */
+#modal-plano-overlay{position:fixed;inset:0;background:rgba(10,10,20,.65);backdrop-filter:blur(4px);z-index:3000;display:flex;align-items:center;justify-content:center;padding:.75rem}
+#modal-plano-box{background:#fff;border-radius:16px;width:min(620px,97vw);max-height:90vh;overflow-y:auto;box-shadow:0 24px 70px rgba(0,0,0,.4)}
+.mp-hdr{background:linear-gradient(135deg,#0f172a,#1e3a5f);padding:.75rem 1.1rem;display:flex;justify-content:space-between;align-items:center;border-radius:16px 16px 0 0}
+.mp-title{font-size:.9rem;font-weight:800;color:#fff}
+.mp-close{border:none;background:rgba(255,255,255,.12);color:#fff;border-radius:6px;width:26px;height:26px;cursor:pointer;font-size:.9rem}
+.mp-body{padding:1rem 1.1rem}
+.mp-sec{font-size:.6rem;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin:.75rem 0 .3rem}
+.mp-grid{display:grid;grid-template-columns:1fr 1fr;gap:.3rem .5rem}
+.mp-row{display:flex;justify-content:space-between;align-items:center;padding:.2rem 0;border-bottom:1px solid #f8fafc}
+.mp-lbl{font-size:.73rem;color:#64748b;font-weight:600}
+.mp-val{font-size:.74rem;font-weight:800;color:#0f172a;font-family:monospace}
+.mp-total{background:linear-gradient(135deg,#0f172a,#1e3a5f);border-radius:9px;padding:.45rem .75rem;display:flex;justify-content:space-between;align-items:center;margin-top:.6rem}
+.mp-total-lbl{font-size:.7rem;color:rgba(255,255,255,.7);font-weight:700;text-transform:uppercase}
+.mp-total-val{font-size:1rem;font-weight:900;color:#fff;font-family:monospace}
+/* Empty */
+.hi-empty{padding:2.5rem;text-align:center;color:#94a3b8;font-size:.88rem}
+</style>
+
+{{-- HEADER --}}
+<div class="hi-header">
+    <div class="hi-h-top">
+        <div>
+            <a href="{{ route('admin.clientes.edit', $cliente->id) }}" style="color:#94a3b8;font-size:.8rem;text-decoration:none">← Volver a la ficha del cliente</a>
+            <div class="hi-nom" style="margin-top:.2rem">🕒 Historial de Pagos</div>
+            <div class="hi-meta">
+                <span>👤 {{ $nombre }}</span>
+                <span>CC {{ number_format($cedula, 0, '', '.') }}</span>
+                @if($contrato)
+                <span>📋 Contrato #{{ $contrato->id }}</span>
+                @endif
+                @if($contrato?->razonSocial)
+                <span>🏢 {{ $contrato->razonSocial->razon_social }}</span>
+                @endif
+            </div>
+        </div>
+        <div style="text-align:right">
+            @if($sinFiltros)
+            <span style="background:rgba(255,255,255,.12);color:rgba(255,255,255,.7);font-size:.68rem;font-weight:700;padding:.2rem .6rem;border-radius:5px">Últimas 20 facturas</span>
+            @else
+            <span style="background:rgba(255,255,255,.12);color:rgba(255,255,255,.7);font-size:.68rem;font-weight:700;padding:.2rem .6rem;border-radius:5px">{{ collect($agrupado)->flatten(2)->count() }} facturas</span>
+            @endif
+        </div>
+    </div>
+</div>
+
+{{-- FILTROS --}}
+<form method="GET" class="hi-filtros" id="formFiltro">
+    <div style="display:flex;flex-direction:column;gap:.15rem">
+        <label>Año</label>
+        <select name="anio" class="hi-sel" onchange="document.getElementById('formFiltro').submit()">
+            <option value="0" {{ !$filtroAnio ? 'selected' : '' }}>Todos</option>
+            @foreach($aniosDisp as $a)
+            <option value="{{ $a }}" {{ $filtroAnio == $a ? 'selected' : '' }}>{{ $a }}</option>
+            @endforeach
+        </select>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:.15rem">
+        <label>Razón Social</label>
+        <select name="razon_social_id" class="hi-sel" onchange="document.getElementById('formFiltro').submit()">
+            <option value="" {{ $filtroRs === '' ? 'selected' : '' }}>Todas</option>
+            @foreach($rsSocDisp as $rs)
+            <option value="{{ $rs['id'] }}" {{ $filtroRs == $rs['id'] ? 'selected' : '' }}>{{ $rs['label'] }}</option>
+            @endforeach
+        </select>
+    </div>
+    @if(!$sinFiltros)
+    <a href="{{ route('admin.facturacion.historial', $cedula) }}" class="hi-pill active" style="margin-top:1rem">✕ Limpiar filtros</a>
+    @endif
+</form>
+
+{{-- CONTENIDO AGRUPADO --}}
+@forelse($agrupado as $razonSocial => $porAnio)
+@php $totalGrupo = collect($porAnio)->flatten()->sum('total'); $countGrupo = collect($porAnio)->flatten()->count(); @endphp
+<div class="hi-group open">
+    <div class="hi-group-hdr" onclick="toggleGrupo(this)">
+        <div class="hi-group-title">
+            🏢 {{ $razonSocial }}
+            <span class="hi-group-badge">{{ $countGrupo }} factura(s)</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:.75rem">
+            <span class="hi-group-total">{{ $fmt($totalGrupo) }}</span>
+            <span class="hi-group-caret">▼</span>
+        </div>
+    </div>
+    <div class="hi-group-body">
+        @foreach($porAnio as $anio => $facturas)
+        @php $totalAnio = collect($facturas)->sum('total'); @endphp
+        <div class="hi-year">
+            <span>📅 {{ $anio }}</span>
+            <span class="hi-year-total">{{ count($facturas) }} fact. · {{ $fmt($totalAnio) }}</span>
+        </div>
+        <table class="hi-tbl">
+            <thead><tr>
+                <th>N° Recibo</th>
+                <th>Fecha</th>
+                <th>Período</th>
+                <th>Tipo</th>
+                <th>N° Plano</th>
+                <th class="num">EPS</th>
+                <th class="num">Pensión</th>
+                <th class="num">ARL</th>
+                <th class="num">Caja</th>
+                <th class="num">Admon</th>
+                <th class="num">Total</th>
+                <th>Estado</th>
+                <th>Origen</th>
+                <th>Registró</th>
+                <th>Acciones</th>
+            </tr></thead>
+            <tbody>
+            @foreach($facturas as $f)
+            @php
+            $estadoBadge = match($f->estado) {
+                'pagada'      => ['badge-pago',  '✅ Pagada'],
+                'pre_factura' => ['badge-pre',   '📋 Pre-factura'],
+                'prestamo'    => ['badge-prest', '💳 Préstamo'],
+                'abono'       => ['badge-abono', '💰 Abono'],
+                default       => ['badge-pre',   ucfirst($f->estado)],
+            };
+            $tipoBadge = $f->tipo === 'afiliacion'
+                ? ['badge-afil', '📌 Afiliación']
+                : ['badge-plan', '📄 Planilla'];
+            $esPorEmpresa = !is_null($f->empresa_id);
+            @endphp
+            <tr>
+                <td style="font-family:monospace;font-weight:800;color:#1d4ed8;font-size:.76rem">#{{ $f->numero_factura ?? '—' }}</td>
+                <td style="color:#64748b;font-size:.72rem">{{ $f->fecha_pago?->format('d/m/Y') ?? '—' }}</td>
+                <td style="font-weight:600;color:#0f172a">{{ $meses[$f->mes] ?? '' }} {{ $f->anio }}</td>
+                <td><span class="badge {{ $tipoBadge[0] }}">{{ $tipoBadge[1] }}</span></td>
+                <td style="font-weight:700;color:#1d4ed8;font-family:monospace">{{ $f->n_plano ?? '—' }}</td>
+                <td class="num">{{ $f->v_eps > 0 ? $fmt($f->v_eps) : '—' }}</td>
+                <td class="num">{{ $f->v_afp > 0 ? $fmt($f->v_afp) : '—' }}</td>
+                <td class="num">{{ $f->v_arl > 0 ? $fmt($f->v_arl) : '—' }}</td>
+                <td class="num">{{ $f->v_caja > 0 ? $fmt($f->v_caja) : '—' }}</td>
+                <td class="num">{{ $fmt(($f->admon ?? 0) + ($f->admin_asesor ?? 0)) }}</td>
+                <td class="num" style="font-weight:900;color:{{ $f->estado==='pagada'?'#16a34a':'#0f172a' }}">{{ $fmt($f->total) }}</td>
+                <td><span class="badge {{ $estadoBadge[0] }}">{{ $estadoBadge[1] }}</span></td>
+                <td>
+                    @if($esPorEmpresa)
+                    <span class="badge badge-emp" title="{{ $f->empresa?->empresa ?? 'Empresa' }}">
+                        🏢 {{ Str::limit($f->empresa?->empresa ?? 'Empresa', 12) }}
+                    </span>
+                    @else
+                    <span class="badge badge-ind">👤 Individual</span>
+                    @endif
+                </td>
+                <td style="font-size:.68rem;color:#64748b">{{ Str::limit($f->usuario?->name ?? '—', 10) }}</td>
+                <td>
+                    <div style="display:flex;gap:.3rem;align-items:center">
+                        {{-- Recibo --}}
+                        <button onclick="abrirRecibo('{{ route('admin.facturacion.recibo', $f->id) }}?modal=1')" class="btn-act-sm btn-recibo" title="Ver recibo">
+                            📄 Recibo
+                        </button>
+                        {{-- Plano --}}
+                        @if($f->plano)
+                        <button type="button" class="btn-act-sm btn-plano"
+                            onclick="verPlano({{ json_encode($f->plano) }}, '{{ $meses[$f->mes] ?? '' }} {{ $f->anio }}')"
+                            title="Ver datos del plano">
+                            📋 Plano
+                        </button>
+                        @endif
+                    </div>
+                </td>
+            </tr>
+            @endforeach
+            </tbody>
+        </table>
+        @endforeach
+    </div>
+</div>
+@empty
+<div class="hi-empty">
+    <div style="font-size:2.5rem;margin-bottom:.5rem">📭</div>
+    <div style="font-weight:700;color:#475569">Sin facturas registradas</div>
+    <div style="margin-top:.3rem;font-size:.8rem">Este cliente no tiene facturas en el sistema.</div>
+</div>
+@endforelse
+
+{{-- ══════════════════════ MODAL PLANO ══════════════════════ --}}
+<div id="modal-plano-overlay" style="display:none" onclick="if(event.target===this)cerrarPlano()">
+<div id="modal-plano-box">
+    <div class="mp-hdr">
+        <span class="mp-title">📋 Datos del Plano — <span id="mp-periodo"></span></span>
+        <button class="mp-close" onclick="cerrarPlano()">✕</button>
+    </div>
+    <div class="mp-body">
+        {{-- Identificación --}}
+        <div class="mp-sec">Identificación y Período</div>
+        <div class="mp-grid">
+            <div class="mp-row" style="grid-column:1/-1">
+                <span class="mp-lbl">Razón Social</span>
+                <span class="mp-val" id="mp-rs">—</span>
+            </div>
+            <div class="mp-row"><span class="mp-lbl">N° Plano</span><span class="mp-val" id="mp-nplano">—</span></div>
+            <div class="mp-row"><span class="mp-lbl">Tipo</span><span class="mp-val" id="mp-tipo">—</span></div>
+            <div class="mp-row"><span class="mp-lbl">Días cotizados</span><span class="mp-val" id="mp-dias">—</span></div>
+            <div class="mp-row"><span class="mp-lbl">IBC Salud</span><span class="mp-val" id="mp-ibc">—</span></div>
+            <div class="mp-row"><span class="mp-lbl">Salario base</span><span class="mp-val" id="mp-sal">—</span></div>
+            <div class="mp-row"><span class="mp-lbl">Novedad Ingreso</span><span class="mp-val" id="mp-ing">—</span></div>
+            <div class="mp-row"><span class="mp-lbl">Fecha ingreso</span><span class="mp-val" id="mp-fing">—</span></div>
+        </div>
+
+        {{-- Entidades --}}
+        <div class="mp-sec">Seguridad Social</div>
+        <table style="width:100%;border-collapse:collapse;font-size:.75rem">
+            <thead>
+                <tr style="background:#f8fafc">
+                    <th style="padding:.28rem .5rem;text-align:left;font-size:.6rem;color:#94a3b8;text-transform:uppercase">Fondo</th>
+                    <th style="padding:.28rem .5rem;text-align:left;font-size:.6rem;color:#94a3b8;text-transform:uppercase">Entidad</th>
+                    <th style="padding:.28rem .5rem;text-align:right;font-size:.6rem;color:#94a3b8;text-transform:uppercase">Tarifa %</th>
+                    <th style="padding:.28rem .5rem;text-align:right;font-size:.6rem;color:#94a3b8;text-transform:uppercase">Valor</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr id="mp-row-eps"><td colspan="4" style="padding:.28rem .5rem;color:#94a3b8;font-size:.72rem">—</td></tr>
+                <tr id="mp-row-afp"></tr>
+                <tr id="mp-row-arl"></tr>
+                <tr id="mp-row-caja"></tr>
+            </tbody>
+        </table>
+
+        {{-- Total --}}
+        <div class="mp-total">
+            <span class="mp-total-lbl">Total cotización</span>
+            <span class="mp-total-val" id="mp-total-cot">$0</span>
+        </div>
+    </div>
+</div>
+</div>
+
+@push('scripts')
+<script>
+const HI_MESES = @json($meses_full);
+const HI_FMT   = v => '$' + Math.ceil(v||0).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'.');
+
+function toggleGrupo(hdr) {
+    hdr.closest('.hi-group').classList.toggle('open');
+}
+
+function cerrarPlano() {
+    document.getElementById('modal-plano-overlay').style.display = 'none';
+}
+
+function verPlano(p, periodo) {
+    document.getElementById('mp-periodo').textContent = periodo;
+    document.getElementById('mp-rs').textContent      = p.razon_social || '—';
+    document.getElementById('mp-nplano').textContent  = p.n_plano || '—';
+    document.getElementById('mp-tipo').textContent    = p.tipo_p || '—';
+    document.getElementById('mp-dias').textContent    = (p.num_dias_salud || 0) + ' días';
+    document.getElementById('mp-ibc').textContent     = HI_FMT(p.ibc_salud);
+    document.getElementById('mp-sal').textContent     = HI_FMT(p.salario_basico);
+    document.getElementById('mp-ing').textContent     = p.ing ? 'Sí (Afiliación)' : 'No';
+    document.getElementById('mp-fing').textContent    = p.fecha_ing || '—';
+
+    const fila = (cod, nombre, tar, val) =>
+        `<td style="padding:.28rem .5rem;font-weight:600">${cod || '—'}</td>
+         <td style="padding:.28rem .5rem">${nombre || '—'}</td>
+         <td style="padding:.28rem .5rem;text-align:right;font-family:monospace">${((tar||0)).toFixed(2)}%</td>
+         <td style="padding:.28rem .5rem;text-align:right;font-family:monospace;font-weight:800">${HI_FMT(val)}</td>`;
+
+    document.getElementById('mp-row-eps').innerHTML  = fila('EPS',    p.nombre_eps  || p.cod_eps,  p.tar_salud,   p.val_eps);
+    document.getElementById('mp-row-afp').innerHTML  = fila('Pensión',p.nombre_afp  || p.cod_afp,  p.tar_pension, p.val_afp);
+    document.getElementById('mp-row-arl').innerHTML  = fila('ARL Nv'+p.nivel_riesgo, p.nombre_arl||p.cod_arl, p.tar_arl, p.val_arl);
+    document.getElementById('mp-row-caja').innerHTML = fila('Caja',   p.nombre_caja || p.cod_caja, p.tar_caja,    p.val_caja);
+
+    document.getElementById('mp-total-cot').textContent = HI_FMT(p.total_cot);
+    document.getElementById('modal-plano-overlay').style.display = 'flex';
+}
+// ── Modal Recibo ──────────────────────────────────────
+function abrirRecibo(url) {
+    document.getElementById('recibo-frame').src = url;
+    document.getElementById('recibo-modal-ov').style.display = 'flex';
+}
+function cerrarRecibo() {
+    document.getElementById('recibo-modal-ov').style.display = 'none';
+    document.getElementById('recibo-frame').src = '';
+}
+</script>
+
+{{-- Modal Recibo --}}
+<div id="recibo-modal-ov"
+     onclick="if(event.target.id==='recibo-modal-ov')cerrarRecibo()"
+     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:99999;align-items:center;justify-content:center;">
+    <div style="position:relative;width:96vw;max-width:1100px;height:93vh;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 25px 60px rgba(0,0,0,.5);display:flex;flex-direction:column;">
+        {{-- Header del modal --}}
+        <div style="background:linear-gradient(135deg,#0f172a,#1e3a5f);padding:.6rem 1rem;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+            <div style="display:flex;align-items:center;gap:.5rem;">
+                <span style="font-size:1.1rem;">🧾</span>
+                <span style="color:#fff;font-size:.9rem;font-weight:700;letter-spacing:.02em;">Recibo de Pago</span>
+            </div>
+            <button onclick="cerrarRecibo()"
+                    style="background:rgba(255,255,255,.15);color:#fff;border:none;border-radius:6px;width:28px;height:28px;font-size:1rem;cursor:pointer;line-height:1;font-weight:700;transition:background .15s;"
+                    onmouseover="this.style.background='rgba(255,255,255,.28)'" onmouseout="this.style.background='rgba(255,255,255,.15)'">&#x2715;</button>
+        </div>
+        <div style="flex:1;background:#e8edf2;padding:.35rem 0 0;overflow:hidden;">
+            <iframe id="recibo-frame" src="" style="width:100%;height:100%;border:none;display:block;"></iframe>
+        </div>
+    </div>
+</div>
+@endpush
+@endsection

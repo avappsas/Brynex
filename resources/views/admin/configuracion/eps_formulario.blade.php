@@ -1,0 +1,465 @@
+@extends('layouts.app')
+@section('modulo','Formularios EPS')
+
+@section('contenido')
+<style>
+/* ── Layout ──────────────────────────────────────────── */
+.fmap-wrap   { display:grid;grid-template-columns:285px 1fr;gap:1rem;height:calc(100vh - 85px); }
+.fmap-panel  { background:#0f172a;border-radius:12px;padding:0.9rem;display:flex;flex-direction:column;gap:0.5rem;overflow:hidden; }
+.fmap-viewer { background:#334155;border-radius:12px;overflow:hidden;display:flex;flex-direction:column; }
+
+/* ── Panel izquierdo ────────────────────────────────── */
+.fmap-title  { color:#fff;font-size:0.9rem;font-weight:800; }
+.fmap-sub    { color:#475569;font-size:0.68rem;line-height:1.4; }
+.eps-select  { width:100%;background:#1e3a5f;color:#e2e8f0;border:1px solid #334155;border-radius:8px;padding:0.4rem 0.6rem;font-size:0.8rem;font-weight:700; }
+
+.upload-zone { border:1.5px dashed #334155;border-radius:8px;padding:0.5rem;text-align:center;
+               font-size:0.7rem;color:#64748b;cursor:pointer;transition:all .15s; }
+.upload-zone:hover { border-color:#3b82f6;color:#3b82f6; }
+.upload-zone input { display:none; }
+
+.campo-list  { flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:2px;min-height:0; }
+.campo-item  { border-radius:6px;padding:0.3rem 0.5rem;font-size:0.7rem;cursor:pointer;
+               display:flex;align-items:center;gap:0.4rem;border:1.5px solid transparent;
+               transition:all .12s;background:#1e293b;color:#94a3b8;user-select:none; }
+.campo-item:hover  { background:#1e3a5f;color:#e2e8f0; }
+.campo-item.activo { background:#1e40af;color:#fff;border-color:#3b82f6;font-weight:700; }
+.campo-item.mapeado { border-color:#16a34a;color:#86efac; }
+.campo-item.mapeado.activo { background:#14532d;border-color:#4ade80; }
+.campo-dot   { width:8px;height:8px;border-radius:50%;background:currentColor;flex-shrink:0; }
+
+/* ── Toolbar visor ───────────────────────────────────── */
+.fmap-toolbar { background:#1e293b;padding:0.4rem 0.8rem;display:flex;align-items:center;gap:0.5rem;flex-shrink:0; }
+.fmap-toolbar button { background:#334155;color:#e2e8f0;border:none;border-radius:6px;padding:0.25rem 0.6rem;font-size:0.72rem;cursor:pointer; }
+.fmap-toolbar button:hover { background:#475569; }
+.page-info   { font-size:0.72rem;color:#94a3b8; }
+.fmap-status { font-size:0.7rem;color:#fbbf24;font-weight:700;padding:0.2rem 0.6rem;background:#422006;border-radius:6px;flex:1;text-align:center;min-width:0; }
+
+/* ── Canvas ────────────────────────────────────────── */
+.canvas-wrap { flex:1;overflow:auto;position:relative;cursor:crosshair; }
+#pdfCanvas   { display:block; }
+
+/* ── Rectángulos mapeados ────────────────────────────── */
+.rect-overlay { position:absolute;border:2px solid;border-radius:2px;pointer-events:none;box-sizing:border-box; }
+.rect-label   { position:absolute;top:-1.2em;left:0;font-size:0.55rem;font-weight:700;
+                color:#fff;padding:0 3px;border-radius:2px;white-space:nowrap; }
+/* Rectángulo de preview mientras arrastra */
+#rectPreview  { position:absolute;border:2px dashed #facc15;pointer-events:none;display:none;box-sizing:border-box; }
+
+/* ── Config del campo ────────────────────────────────── */
+.campo-config { background:#1e293b;padding:0.55rem 0.8rem;border-top:1px solid #334155;
+                display:none;gap:0.5rem;align-items:center;flex-wrap:wrap;flex-shrink:0; }
+.campo-config.visible { display:flex; }
+.campo-config label { font-size:0.68rem;color:#94a3b8; }
+.campo-config input[type="number"] { width:58px;background:#0f172a;border:1px solid #334155;
+                                     color:#e2e8f0;border-radius:5px;padding:0.18rem 0.35rem;font-size:0.7rem; }
+.campo-config select { background:#0f172a;border:1px solid #334155;color:#e2e8f0;
+                       border-radius:5px;padding:0.18rem 0.35rem;font-size:0.7rem; }
+.btn-del-campo { background:#7f1d1d;color:#fca5a5;border:none;border-radius:6px;
+                 padding:0.22rem 0.55rem;font-size:0.68rem;cursor:pointer; }
+
+/* ── Botón guardar ───────────────────────────────────── */
+.btn-guardar { width:100%;background:linear-gradient(135deg,#1d4ed8,#2563eb);color:#fff;
+               border:none;border-radius:8px;padding:0.55rem;font-size:0.8rem;font-weight:700;cursor:pointer; }
+.btn-guardar:hover { filter:brightness(1.1); }
+
+/* ── Toast ──────────────────────────────────────────── */
+.toast { position:fixed;bottom:1.5rem;right:1.5rem;background:#15803d;color:#fff;
+         padding:0.65rem 1rem;border-radius:10px;font-weight:700;font-size:0.82rem;
+         box-shadow:0 4px 20px rgba(0,0,0,.25);transform:translateY(80px);opacity:0;
+         transition:all .3s;z-index:9999; }
+.toast.show { transform:translateY(0);opacity:1; }
+</style>
+
+<div class="fmap-wrap">
+
+{{-- ══ PANEL IZQUIERDO ══ --}}
+<div class="fmap-panel">
+    <div class="fmap-title">🗺️ Formularios EPS</div>
+    <div class="fmap-sub">Selecciona la EPS, elige un campo y arrastra en el PDF para definir el cuadro donde se escribirá el dato.</div>
+
+    <select class="eps-select" id="selectorEps" onchange="cambiarEps()">
+        <optgroup label="✅ Con formulario PDF">
+            @foreach($epsLista->where('formulario_pdf','!=',null)->sortBy('nombre') as $e)
+            <option value="{{ $e->id }}" {{ $e->id == $eps->id ? 'selected' : '' }}
+                style="color:#86efac;">
+                ✅ {{ $e->nombre }}
+            </option>
+            @endforeach
+        </optgroup>
+        <optgroup label="⬜ Sin formulario">
+            @foreach($epsLista->whereNull('formulario_pdf')->sortBy('nombre') as $e)
+            <option value="{{ $e->id }}" {{ $e->id == $eps->id ? 'selected' : '' }}
+                style="color:#94a3b8;">
+                {{ $e->nombre }}
+            </option>
+            @endforeach
+        </optgroup>
+    </select>
+
+    <form id="formPdf" action="{{ route('admin.configuracion.eps.formulario.pdf', $eps) }}" method="POST" enctype="multipart/form-data">
+        @csrf
+        <div class="upload-zone" onclick="document.getElementById('inputPdf').click()">
+            📁 {{ $eps->formulario_pdf ? 'Cambiar PDF' : 'Subir PDF del formulario' }}
+            <input type="file" id="inputPdf" name="pdf" accept=".pdf" onchange="this.form.submit()">
+        </div>
+        @if(session('success'))
+        <div style="font-size:0.68rem;color:#86efac;margin-top:0.25rem;text-align:center;">✅ {{ session('success') }}</div>
+        @endif
+    </form>
+
+    <hr style="border-color:#1e3a5f;margin:0.1rem 0;">
+    <div style="font-size:0.62rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.05em;">
+        Campos — {{ count($mapeados) }} / {{ count($campos) }} mapeados
+    </div>
+
+    <div class="campo-list" id="listaCampos">
+        @foreach($campos as $clave => $etiqueta)
+        @php $mapeado = collect($mapeados)->firstWhere('dato', $clave); @endphp
+        <div class="campo-item {{ $mapeado ? 'mapeado' : '' }}"
+             data-clave="{{ $clave }}" data-label="{{ $etiqueta }}"
+             onclick="seleccionarCampo('{{ $clave }}', '{{ addslashes($etiqueta) }}')"
+             id="ci-{{ str_replace('.', '-', $clave) }}">
+            <div class="campo-dot"></div>
+            <span>{{ $etiqueta }}</span>
+        </div>
+        @endforeach
+    </div>
+
+    <button class="btn-guardar" onclick="guardarMapeo()" style="margin-top:auto">💾 Guardar mapeo</button>
+    <button class="btn-guardar" onclick="limpiarObsoletos()"
+        style="background:linear-gradient(135deg,#7f1d1d,#991b1b);margin-top:0.25rem;">
+        🧹 Limpiar campos obsoletos ({{ collect($mapeados)->filter(fn($m) => !array_key_exists($m['dato'] ?? '', $campos))->count() }})
+    </button>
+</div>
+
+{{-- ══ VISOR PDF ══ --}}
+<div class="fmap-viewer">
+    <div class="fmap-toolbar">
+        <button onclick="cambiarPagina(-1)">◀</button>
+        <span class="page-info" id="pageInfo">— / —</span>
+        <button onclick="cambiarPagina(1)">▶</button>
+        <button onclick="cambiarZoom(-0.15)">–</button>
+        <span id="zoomInfo" style="font-size:0.7rem;color:#94a3b8;">100%</span>
+        <button onclick="cambiarZoom(0.15)">+</button>
+        <span id="statusCampo" class="fmap-status">
+            @if($eps->formulario_pdf) 👆 Selecciona un campo y arrastra en el PDF
+            @else ⚠️ Sube el PDF primero
+            @endif
+        </span>
+    </div>
+
+    <div class="canvas-wrap" id="canvasWrap">
+        <canvas id="pdfCanvas"></canvas>
+        <div id="pinLayer" style="position:absolute;top:0;left:0;pointer-events:none;"></div>
+        <div id="rectPreview"></div>
+    </div>
+
+    <div class="campo-config" id="campoConfig">
+        <label>Tamaño</label>
+        <input type="number" id="cfgFontSize" value="9" min="5" max="18" step="0.5">
+        <label>Estilo</label>
+        <select id="cfgStyle">
+            <option value="">Normal</option>
+            <option value="B">Negrita</option>
+            <option value="I">Itálica</option>
+        </select>
+        <label>Alineación</label>
+        <select id="cfgAlign">
+            <option value="L">Izq.</option>
+            <option value="C">Centro</option>
+            <option value="R">Der.</option>
+        </select>
+        <button class="btn-del-campo" onclick="eliminarCampoActivo()">🗑 Quitar campo</button>
+    </div>
+</div>
+
+</div>{{-- fin fmap-wrap --}}
+
+<form id="formMapeo" method="POST" action="{{ route('admin.configuracion.eps.formulario.guardar', $eps) }}">
+    @csrf
+    <input type="hidden" name="formulario_campos" id="inputMapeoJson">
+</form>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+// ── Estado ───────────────────────────────────────────────────
+let pdfDoc      = null;
+let pageNum     = 1;
+let zoom        = 1.3;
+let campoActivo = null;
+let mapeo       = {!! json_encode($mapeados ?: []) !!};
+
+const camposKeys = @json(array_keys($campos));
+const COLORES = ['#ef4444','#f97316','#eab308','#22c55e','#14b8a6','#3b82f6',
+                 '#8b5cf6','#ec4899','#06b6d4','#84cc16','#10b981','#6366f1',
+                 '#e11d48','#0ea5e9','#65a30d','#7c3aed','#be185d','#0369a1',
+                 '#15803d','#c2410c','#1d4ed8','#6d28d9','#9f1239','#047857',
+                 '#92400e','#1e3a8a','#0c4a6e'];
+
+function colorDe(clave) {
+    const idx = camposKeys.indexOf(clave);
+    return COLORES[idx % COLORES.length] ?? '#64748b';
+}
+
+// ── Cargar PDF ───────────────────────────────────────────────
+@if($eps->formulario_pdf)
+cargarPdf('{{ route('admin.configuracion.eps.formulario.vpdf', $eps) }}');
+@endif
+
+function cargarPdf(url) {
+    pdfjsLib.getDocument(url).promise.then(doc => {
+        pdfDoc = doc;
+        pageNum = 1;
+        renderizarPagina();
+    }).catch(err => {
+        document.getElementById('statusCampo').textContent = '❌ Error PDF: ' + err.message;
+    });
+}
+
+function renderizarPagina() {
+    if (!pdfDoc) return;
+    pdfDoc.getPage(pageNum).then(page => {
+        const vp     = page.getViewport({ scale: zoom });
+        const canvas = document.getElementById('pdfCanvas');
+        const ctx    = canvas.getContext('2d');
+        canvas.width  = vp.width;
+        canvas.height = vp.height;
+
+        const layer = document.getElementById('pinLayer');
+        layer.style.width  = vp.width  + 'px';
+        layer.style.height = vp.height + 'px';
+
+        page.render({ canvasContext: ctx, viewport: vp }).promise.then(() => {
+            document.getElementById('pageInfo').textContent = `${pageNum} / ${pdfDoc.numPages}`;
+            document.getElementById('zoomInfo').textContent = Math.round(zoom * 100 / 1.3) + '%';
+            dibujarRectangulos();
+        });
+    });
+}
+
+function cambiarPagina(d) {
+    if (!pdfDoc) return;
+    const n = pageNum + d;
+    if (n < 1 || n > pdfDoc.numPages) return;
+    pageNum = n;
+    renderizarPagina();
+}
+function cambiarZoom(d) {
+    zoom = Math.max(0.4, Math.min(3.5, zoom + d));
+    renderizarPagina();
+}
+
+// ── Drag-to-draw rectangulo ──────────────────────────────────
+let drag = { active: false, startX: 0, startY: 0 };
+
+const canvasWrap = document.getElementById('canvasWrap');
+const preview    = document.getElementById('rectPreview');
+
+canvasWrap.addEventListener('mousedown', e => {
+    if (!campoActivo || !pdfDoc) return;
+    e.preventDefault();
+    const rect = canvasWrap.getBoundingClientRect();
+    drag.active = true;
+    drag.startX = e.clientX - rect.left + canvasWrap.scrollLeft;
+    drag.startY = e.clientY - rect.top  + canvasWrap.scrollTop;
+    preview.style.left    = drag.startX + 'px';
+    preview.style.top     = drag.startY + 'px';
+    preview.style.width   = '0';
+    preview.style.height  = '0';
+    preview.style.display = 'block';
+});
+
+canvasWrap.addEventListener('mousemove', e => {
+    if (!drag.active) return;
+    const rect  = canvasWrap.getBoundingClientRect();
+    const curX  = e.clientX - rect.left + canvasWrap.scrollLeft;
+    const curY  = e.clientY - rect.top  + canvasWrap.scrollTop;
+    const x     = Math.min(drag.startX, curX);
+    const y     = Math.min(drag.startY, curY);
+    const w     = Math.abs(curX - drag.startX);
+    const h     = Math.abs(curY - drag.startY);
+    preview.style.left   = x + 'px';
+    preview.style.top    = y + 'px';
+    preview.style.width  = w + 'px';
+    preview.style.height = h + 'px';
+});
+
+canvasWrap.addEventListener('mouseup', e => {
+    if (!drag.active) return;
+    drag.active = false;
+    preview.style.display = 'none';
+
+    const rect  = canvasWrap.getBoundingClientRect();
+    const curX  = e.clientX - rect.left + canvasWrap.scrollLeft;
+    const curY  = e.clientY - rect.top  + canvasWrap.scrollTop;
+
+    const pxX = Math.min(drag.startX, curX);
+    const pxY = Math.min(drag.startY, curY);
+    const pxW = Math.abs(curX - drag.startX);
+    const pxH = Math.abs(curY - drag.startY);
+
+    if (pxW < 5 || pxH < 5) return; // demasiado pequeño
+
+    // Convertir px → pt PDF (dividir por zoom)
+    const ptX = Math.round((pxX / zoom) * 10) / 10;
+    const ptY = Math.round((pxY / zoom) * 10) / 10;
+    const ptW = Math.round((pxW / zoom) * 10) / 10;
+    const ptH = Math.round((pxH / zoom) * 10) / 10;
+
+    const esImagen = (campoActivo === 'empresa.sello' || campoActivo === 'cliente.firma');
+
+    const obj = {
+        dato      : campoActivo,
+        pagina    : pageNum,
+        x         : ptX,
+        y         : ptY,
+        width     : ptW,
+        height    : ptH,
+        font_size : parseFloat(document.getElementById('cfgFontSize').value) || 9,
+        style     : document.getElementById('cfgStyle').value,
+        align     : document.getElementById('cfgAlign').value,
+        tipo      : esImagen ? 'imagen' : 'texto',
+    };
+
+    const idx = mapeo.findIndex(m => m.dato === campoActivo);
+    if (idx >= 0) mapeo[idx] = obj;
+    else           mapeo.push(obj);
+
+    marcarMapeado(campoActivo);
+    dibujarRectangulos();
+    actualizarContador();
+});
+
+// Cancelar drag si sale del área
+canvasWrap.addEventListener('mouseleave', () => {
+    if (drag.active) { drag.active = false; preview.style.display = 'none'; }
+});
+
+// ── Selección de campo ───────────────────────────────────────
+function seleccionarCampo(clave, etiqueta) {
+    document.querySelectorAll('.campo-item').forEach(el => el.classList.remove('activo'));
+    if (campoActivo === clave) {
+        campoActivo = null;
+        document.getElementById('statusCampo').textContent = '👆 Selecciona un campo y arrastra en el PDF';
+        document.getElementById('campoConfig').classList.remove('visible');
+        return;
+    }
+    campoActivo = clave;
+    document.getElementById('ci-' + clave.replace('.', '-')).classList.add('activo');
+
+    const esImagen = (clave === 'empresa.sello' || clave === 'cliente.firma');
+    // Ocultar/mostrar controles de fuente para campos imagen
+    document.querySelectorAll('#campoConfig label:not(:last-of-type), #cfgFontSize, #cfgStyle, #cfgAlign')
+        .forEach(el => el.style.display = esImagen ? 'none' : '');
+
+    document.getElementById('statusCampo').textContent = esImagen
+        ? `🖼️ Arrastrando zona de imagen: ${etiqueta}`
+        : `✏️ Arrastrando: ${etiqueta}`;
+    document.getElementById('campoConfig').classList.add('visible');
+
+    const existente = mapeo.find(m => m.dato === clave);
+    if (existente) {
+        document.getElementById('cfgFontSize').value = existente.font_size ?? 9;
+        document.getElementById('cfgStyle').value    = existente.style ?? '';
+        document.getElementById('cfgAlign').value    = existente.align ?? 'L';
+        if (existente.pagina !== pageNum) { pageNum = existente.pagina; renderizarPagina(); }
+    }
+}
+
+function eliminarCampoActivo() {
+    if (!campoActivo) return;
+    mapeo = mapeo.filter(m => m.dato !== campoActivo);
+    const el = document.getElementById('ci-' + campoActivo.replace('.', '-'));
+    if (el) el.classList.remove('mapeado');
+    dibujarRectangulos();
+    actualizarContador();
+}
+
+function marcarMapeado(clave) {
+    const el = document.getElementById('ci-' + clave.replace('.', '-'));
+    if (el) el.classList.add('mapeado');
+}
+
+// ── Dibujar rectángulos en el PDF ────────────────────────────
+function dibujarRectangulos() {
+    const layer  = document.getElementById('pinLayer');
+    layer.innerHTML = '';
+
+    mapeo.filter(m => m.pagina === pageNum).forEach(m => {
+        const esObsoleto = !camposKeys.includes(m.dato);
+        const color = esObsoleto ? '#ef4444' : colorDe(m.dato);
+        const label = esObsoleto
+            ? `⚠️ OBSOLETO: ${m.dato}`
+            : (@json($campos)[m.dato] ?? m.dato);
+
+        const div = document.createElement('div');
+        div.className = 'rect-overlay';
+        div.style.left        = (m.x * zoom) + 'px';
+        div.style.top         = (m.y * zoom) + 'px';
+        div.style.width       = (m.width * zoom) + 'px';
+        div.style.height      = (m.height * zoom) + 'px';
+        div.style.borderColor = color;
+        div.style.background  = color + (esObsoleto ? '44' : '22');
+        if (esObsoleto) div.style.borderStyle = 'dashed';
+
+        const lbl = document.createElement('div');
+        lbl.className   = 'rect-label';
+        lbl.textContent = label.length > 28 ? label.slice(0, 28) + '…' : label;
+        lbl.style.background = color;
+        div.appendChild(lbl);
+        layer.appendChild(div);
+    });
+}
+
+// ── Guardar ──────────────────────────────────────────────────
+function guardarMapeo() {
+    document.getElementById('inputMapeoJson').value = JSON.stringify(mapeo);
+    document.getElementById('formMapeo').submit();
+}
+
+// ── Cambiar EPS ──────────────────────────────────────────────
+function cambiarEps() {
+    const id = document.getElementById('selectorEps').value;
+    window.location = `/admin/configuracion/eps/${id}/formulario`;
+}
+
+// ── Contador ─────────────────────────────────────────────────
+function actualizarContador() {
+    const total  = {{ count($campos) }};
+    const header = document.querySelector('[style*="font-size:0.62rem"]');
+    if (header) header.textContent = `Campos — ${mapeo.length} / ${total} mapeados`;
+}
+
+// Inicializar mapeados
+mapeo.forEach(m => marcarMapeado(m.dato));
+
+// Contar obsoletos al cargar
+const obsoletos = mapeo.filter(m => !camposKeys.includes(m.dato));
+if (obsoletos.length > 0) {
+    document.getElementById('statusCampo').textContent =
+        `⚠️ ${obsoletos.length} campo(s) obsoleto(s) en el mapeo — usa 🧹 Limpiar`;
+}
+
+// Limpiar campos que ya no existen en la lista
+function limpiarObsoletos() {
+    const antes = mapeo.length;
+    mapeo = mapeo.filter(m => camposKeys.includes(m.dato));
+    const eliminados = antes - mapeo.length;
+    // Quitar clase mapeado de items que ya no existen
+    document.querySelectorAll('.campo-item.mapeado').forEach(el => {
+        const clave = el.dataset.clave;
+        if (!mapeo.find(m => m.dato === clave)) el.classList.remove('mapeado');
+    });
+    dibujarRectangulos();
+    actualizarContador();
+    // Guardar inmediatamente
+    document.getElementById('inputMapeoJson').value = JSON.stringify(mapeo);
+    document.getElementById('formMapeo').submit();
+}
+</script>
+@endsection
