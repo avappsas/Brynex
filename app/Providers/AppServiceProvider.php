@@ -14,7 +14,12 @@ use App\Observers\ClienteObserver;
 
 class AppServiceProvider extends ServiceProvider
 {
-    public function register(): void {}
+    public function register(): void
+    {
+        // Cargar helpers globales (garantiza disponibilidad en producción
+        // aunque no se haya corrido composer dump-autoload)
+        require_once app_path('helpers.php');
+    }
 
     public function boot(): void
     {
