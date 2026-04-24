@@ -2,10 +2,10 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Models\BaseModel;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-class PlanContrato extends Model
+class PlanContrato extends BaseModel
 {
     public $timestamps = false;
     protected $table = 'planes_contrato';

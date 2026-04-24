@@ -2,9 +2,9 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Models\BaseModel;
 
-class MotivoAfiliacion extends Model
+class MotivoAfiliacion extends BaseModel
 {
     public $timestamps = false;
     protected $table = 'motivos_afiliacion';

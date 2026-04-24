@@ -2,9 +2,9 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Models\BaseModel;
 
-class RazonSocial extends Model
+class RazonSocial extends BaseModel
 {
     protected $table = 'razones_sociales';
     protected $primaryKey = 'id';

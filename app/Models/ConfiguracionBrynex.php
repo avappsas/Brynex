@@ -2,9 +2,9 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Models\BaseModel;
 
-class ConfiguracionBrynex extends Model
+class ConfiguracionBrynex extends BaseModel
 {
     protected $table = 'configuracion_brynex';
     protected $fillable = ['clave', 'valor', 'descripcion'];
@@ -74,5 +74,17 @@ class ConfiguracionBrynex extends Model
     public static function porcentajeIva(): float
     {
         return (float) static::obtener('porcentaje_iva', 19.00);
+    }
+
+    /**
+     * ¿Está activa la regla de AFP obligatorio?
+     *
+     * Si true, los contratos de modalidad Dependiente E (id=0),
+     * I Venc (id=10) e I Act (id=11) no pueden usar planes sin AFP,
+     * a menos que el cliente esté exento (tipo_doc ≠ CC, mujer ≥50, hombre ≥55).
+     */
+    public static function reglaAfpObligatorio(): bool
+    {
+        return (bool)(int) static::obtener('regla_afp_obligatorio', 0);
     }
 }

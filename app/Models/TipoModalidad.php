@@ -2,18 +2,28 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Models\BaseModel;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-class TipoModalidad extends Model
+class TipoModalidad extends BaseModel
 {
     public $timestamps    = false;
     protected $table      = 'tipo_modalidad';
     protected $primaryKey = 'id';
     public $incrementing  = false;  // El ID NO es auto-incremental
 
-    protected $fillable = ['id', 'tipo_modalidad', 'observacion', 'orden', 'modalidad', 'activo'];
-    protected $casts    = ['activo' => 'boolean'];
+    protected $fillable = [
+        'id', 'tipo_modalidad', 'observacion', 'orden', 'modalidad', 'activo',
+        'es_tiempo_parcial', 'dias_arl', 'dias_afp', 'dias_caja',
+    ];
+
+    protected $casts = [
+        'activo'            => 'boolean',
+        'es_tiempo_parcial' => 'boolean',
+        'dias_arl'          => 'integer',
+        'dias_afp'          => 'integer',
+        'dias_caja'         => 'integer',
+    ];
 
     /** Scope: activos, ordenados, sin el registro "Todos" (-100) */
     public function scopeActivos($q)
@@ -46,5 +56,37 @@ class TipoModalidad extends Model
     public function esIndependiente(): bool
     {
         return in_array($this->id, self::IDS_INDEPENDIENTE);
+    }
+
+    /**
+     * ¿Es modalidad de Tiempo Parcial?
+     * Los planes TP tienen días fijos por entidad definidos en BD.
+     */
+    public function esTiempoParcial(): bool
+    {
+        return (bool) $this->es_tiempo_parcial;
+    }
+
+    /**
+     * Retorna los días a cotizar por entidad para este plan de Tiempo Parcial.
+     * Array: ['arl' => X, 'afp' => Y, 'caja' => Z]
+     *
+     * Regla de negocio:
+     *   - ARL: siempre 30 días (cotización mensual completa, sin importar el plan)
+     *   - AFP: días fijos del plan (7, 14 ó 21)
+     *   - CAJA: días fijos del plan (7, 14 ó 21)
+     *
+     * Si no es TP, retorna 30 para todas (mes completo).
+     */
+    public function diasPorEntidad(): array
+    {
+        if ($this->esTiempoParcial()) {
+            return [
+                'arl'  => 30,                    // ARL siempre mensual completa
+                'afp'  => $this->dias_afp  ?? 30,
+                'caja' => $this->dias_caja ?? 30,
+            ];
+        }
+        return ['arl' => 30, 'afp' => 30, 'caja' => 30];
     }
 }

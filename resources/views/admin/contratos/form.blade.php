@@ -4,9 +4,11 @@
 @section('contenido')
 @php
   $esEdicion      = isset($contrato->id) && $contrato->id;
-  $epsDefault     = old('eps_id',           $contrato->eps_id          ?? $clienteEpsId      ?? '');
-  $pensionDefault = old('pension_id',       $contrato->pension_id      ?? $clientePensionId  ?? '');
-  $arlDefault     = old('arl_id',           $contrato->arl_id          ?? $arlIdRazonSocial  ?? '');
+  // En edición: usar SOLO el valor guardado en el contrato (sin fallback al cliente).
+  // En creación: usar el valor del cliente como sugerencia inicial.
+  $epsDefault     = old('eps_id',     $esEdicion ? ($contrato->eps_id     ?? '') : ($contrato->eps_id     ?? $clienteEpsId      ?? ''));
+  $pensionDefault = old('pension_id', $esEdicion ? ($contrato->pension_id ?? '') : ($contrato->pension_id ?? $clientePensionId  ?? ''));
+  $arlDefault     = old('arl_id',     $esEdicion ? ($contrato->arl_id     ?? '') : ($contrato->arl_id     ?? $arlIdRazonSocial  ?? ''));
   // intval evita que PHP emita "1750905.00" que rompe el JS de Alpine
   $defAdmon       = (int) old('administracion',   $contrato->administracion  ?? $defaultTarifas['administracion']    ?? 0);
   $defAdmonAsesor = (int) old('admon_asesor',     $contrato->admon_asesor    ?? $defaultTarifas['admon_asesor']      ?? 0);
@@ -47,8 +49,8 @@
       {{ strtoupper($contrato->estado) }}
     </span>
     @endif
-    <a href="{{ route('admin.contratos.index') }}"
-       style="padding:0.38rem 0.9rem;border:1px solid #cbd5e1;border-radius:7px;color:#475569;text-decoration:none;font-size:0.8rem;">&larr; Contratos</a>
+    <a href="{{ $backUrl ?? route('admin.contratos.index') }}"
+       style="padding:0.38rem 0.9rem;border:1px solid #cbd5e1;border-radius:7px;color:#475569;text-decoration:none;font-size:0.8rem;">&larr; Volver</a>
   </div>
 </div>
 
@@ -57,9 +59,6 @@
   <strong>Errores:</strong> @foreach($errors->all() as $e) &middot; {{ $e }} @endforeach
 </div>
 @endif
-@if(session('success'))
-<div style="background:#dcfce7;border:1px solid #86efac;border-radius:8px;color:#166534;padding:0.55rem 1rem;margin-bottom:0.65rem;font-size:0.8rem;">&#10003; {{ session('success') }}</div>
-@endif
 
 <form method="POST"
       action="{{ $esEdicion ? route('admin.contratos.update', $contrato->id) : route('admin.contratos.store') }}"
@@ -67,6 +66,7 @@
   @csrf
   @if($esEdicion) @method('PUT') @endif
   <input type="hidden" name="cedula" value="{{ old('cedula', $cliente->cedula ?? $contrato->cedula ?? '') }}">
+  <input type="hidden" name="back_url" value="{{ $backUrl ?? '' }}">
 
 <div style="display:grid;grid-template-columns:1fr 300px;gap:1.1rem;align-items:start;">
 
@@ -77,23 +77,49 @@
   <div class="cp">
     <div class="pt" style="color:#2563eb;">&#127970; Contrato</div>
     <div style="display:grid;grid-template-columns:1.6fr 1.2fr 1.2fr 120px;gap:0.5rem;">
+@php
+            // ¿Hay radicados que bloquean la RS?
+            $rsLock = $esEdicion && ($rsBloquedaPorAfiliacion ?? false);
+          @endphp
       <div>
         <label class="lb">Razon Social</label>
-        <select name="razon_social_id" id="sel_rs" style="{{ $S }}" onchange="onRazonSocialChange(this)">
+        <div class="{{ $rsLock ? 'tip-lock' : '' }}" data-tip="🔒 Bloqueado — hay afiliaciones en trámite u OK">
+        <select name="razon_social_id" id="sel_rs" style="{{ $S }}{{ $rsLock ? 'background:#f1f5f9;color:#1e293b;cursor:not-allowed;opacity:1;' : '' }}"
+            onchange="onRazonSocialChange(this)"
+            {{ $rsLock ? 'disabled' : '' }}>
           <option value="">-- Ninguna --</option>
           @foreach($razonesSociales as $rs)
+          @php
+            $rsOcupada  = in_array($rs->id, $rsOcupadasIds ?? []);
+            $rsInactiva = (strtolower(trim($rs->estado ?? 'Activa')) !== 'activa');
+            $rsDisabled = $rsLock || $rsOcupada || $rsInactiva;
+            $rsSufijo   = $rsOcupada ? ' — contrato vigente' : ($rsInactiva ? ' (Inactiva)' : '');
+            $rsEstilo   = $rsOcupada ? 'color:#94a3b8;background:#f8fafc;font-style:italic;'
+                        : ($rsInactiva ? 'color:#cbd5e1;background:#f8fafc;font-style:italic;' : '');
+          @endphp
           <option value="{{ $rs->id }}"
               data-arl="{{ $rs->arl_nit ?? '' }}"
               data-independiente="{{ $rs->es_independiente ? '1' : '0' }}"
-              {{ old('razon_social_id', $contrato->razon_social_id ?? '') == $rs->id ? 'selected' : '' }}>
-            {{ $rs->razon_social }}
+              {{ old('razon_social_id', $contrato->razon_social_id ?? '') == $rs->id ? 'selected' : '' }}
+              {{ $rsDisabled ? 'disabled' : '' }}
+              style="{{ $rsEstilo }}">
+            {{ $rs->razon_social }}{{ $rsSufijo }}
           </option>
           @endforeach
         </select>
+        @if($rsLock)
+        {{-- Campo oculto para mantener el valor al hacer submit --}}
+        <input type="hidden" name="razon_social_id" value="{{ old('razon_social_id', $contrato->razon_social_id ?? '') }}">
+        @endif
+        </div>
+
       </div>
       <div>
         <label class="lb">Modalidad</label>
-        <select name="tipo_modalidad_id" id="sel_modalidad" x-model="tipoModalidadId" @change="onModalidadChange" style="{{ $S }}">
+        <div class="{{ $rsLock ? 'tip-lock' : '' }}" data-tip="🔒 Bloqueado — hay afiliaciones en trámite u OK">
+        <select name="tipo_modalidad_id" id="sel_modalidad" x-model="tipoModalidadId" @change="onModalidadChange"
+            style="{{ $S }}{{ $rsLock ? 'background:#f1f5f9;color:#1e293b;cursor:not-allowed;opacity:1;' : '' }}"
+            {{ $rsLock ? 'disabled' : '' }}>
           <option value="">-- Modalidad --</option>
           @foreach($tiposModalidad as $tm)
           <option value="{{ $tm->id }}"
@@ -103,6 +129,10 @@
           </option>
           @endforeach
         </select>
+        @if($rsLock)
+        <input type="hidden" name="tipo_modalidad_id" value="{{ old('tipo_modalidad_id', $contrato->tipo_modalidad_id ?? '') }}">
+        @endif
+        </div>
       </div>
       <div>
         <label class="lb">Plan
@@ -115,7 +145,10 @@
           </span>
           @endif
         </label>
-        <select name="plan_id" id="sel_plan" x-model="planId" @change="onPlanChange" style="{{ $S }}">
+        <div class="{{ $rsLock ? 'tip-lock' : '' }}" data-tip="🔒 Bloqueado — hay afiliaciones en trámite u OK">
+        <select name="plan_id" id="sel_plan" x-model="planId" @change="onPlanChange"
+            style="{{ $S }}{{ $rsLock ? 'background:#f1f5f9;color:#1e293b;cursor:not-allowed;opacity:1;' : '' }}"
+            {{ $rsLock ? 'disabled' : '' }}>
           <option value="">-- Plan --</option>
           @foreach($planes as $plan)
           <option value="{{ $plan->id }}"
@@ -123,29 +156,32 @@
               data-arl="{{ $plan->incluye_arl ? '1':'0' }}"
               data-pen="{{ $plan->incluye_pension ? '1':'0' }}"
               data-caja="{{ $plan->incluye_caja ? '1':'0' }}"
-              {{ old('plan_id', $contrato->plan_id ?? '') == $plan->id ? 'selected' : '' }}>
+              {{ ($esEdicion && old('plan_id', $contrato->plan_id ?? '') == $plan->id) ? 'selected' : '' }}>
             {{ $plan->nombre }}
           </option>
           @endforeach
         </select>
+        @if($rsLock)
+        <input type="hidden" name="plan_id" value="{{ old('plan_id', $contrato->plan_id ?? '') }}">
+        @endif
+        </div>
         <div id="nota-plan-modalidad" style="display:none;font-size:.6rem;color:#94a3b8;margin-top:.15rem;">Seleccione primero la modalidad</div>
+
       </div>
       <div>
         <label class="lb">F. Ingreso</label>
+        <div class="{{ $rsLock ? 'tip-lock' : '' }}" data-tip="🔒 Bloqueado — hay afiliaciones en trámite u OK">
         <input type="date" name="fecha_ingreso"
             value="{{ old('fecha_ingreso', isset($contrato->fecha_ingreso) ? $contrato->fecha_ingreso->format('Y-m-d') : now()->format('Y-m-d')) }}"
-            style="{{ $I }}">
+            @change="calcularDiasDesde($event.target.value); recalcular()"
+            style="{{ $I }}{{ $rsLock ? 'background:#f1f5f9;color:#1e293b;cursor:not-allowed;opacity:1;' : '' }}"
+            {{ $rsLock ? 'readonly' : '' }}>
+        @if($rsLock)
+        <input type="hidden" name="fecha_ingreso" value="{{ old('fecha_ingreso', isset($contrato->fecha_ingreso) ? $contrato->fecha_ingreso->format('Y-m-d') : now()->format('Y-m-d')) }}">
+        @endif
+        </div>
       </div>
-      {{-- Solo independientes: opción de cobrar planilla + afiliacion el mismo mes --}}
-      <div x-show="esIndependiente" style="display:none;align-self:end;padding-bottom:.15rem;">
-        <label style="display:flex;align-items:center;gap:.35rem;font-size:.72rem;font-weight:600;color:#7c3aed;cursor:pointer;white-space:nowrap;">
-          <input type="checkbox" name="cobra_planilla_primer_mes" value="1"
-            {{ old('cobra_planilla_primer_mes', $contrato->cobra_planilla_primer_mes ?? false) ? 'checked' : '' }}
-            style="width:14px;height:14px;accent-color:#7c3aed;">
-          Planilla + Afil. 1er mes
-        </label>
-        <div style="font-size:.62rem;color:#94a3b8;margin-top:.08rem;padding-left:1.3rem;">Cobra ambas en el mismo mes de ingreso</div>
-      </div>
+
     </div>
     <div style="display:grid;grid-template-columns:1.8fr 1.2fr 1fr;gap:0.5rem;margin-top:0.5rem;">
       <div>
@@ -179,7 +215,28 @@
   {{-- Panel 2: Entidades --}}
   <div class="cp">
     <div class="pt" style="color:#16a34a;">&#127963; Entidades</div>
-    <div style="display:grid;grid-template-columns:1.3fr 1.3fr 1.4fr 60px 1fr;gap:0.5rem;align-items:end;">
+    @php
+      // Radicados indexados por tipo para mostrar estado en cada entidad
+      $rPT = $radicadosPorTipo ?? collect();
+      // Helper: badge HTML según estado del radicado
+      $badgeEstado = function(?object $rad): string {
+        if (!$rad) return '';
+        $cfg = [
+          'pendiente' => ['bg'=>'#fef3c7','txt'=>'#92400e','icono'=>'⏳','label'=>'Pendiente'],
+          'tramite'   => ['bg'=>'#dbeafe','txt'=>'#1e40af','icono'=>'🔵','label'=>'En Trámite'],
+          'traslado'  => ['bg'=>'#ffedd5','txt'=>'#9a3412','icono'=>'🔄','label'=>'Traslado'],
+          'error'     => ['bg'=>'#fee2e2','txt'=>'#991b1b','icono'=>'❌','label'=>'Error'],
+          'ok'        => ['bg'=>'#dcfce7','txt'=>'#166534','icono'=>'✅','label'=>'Afiliado OK'],
+        ];
+        $c = $cfg[$rad->estado] ?? ['bg'=>'#f1f5f9','txt'=>'#475569','icono'=>'❓','label'=>$rad->estado];
+        $num = $rad->numero_radicado ? $rad->numero_radicado : '';
+        return '<div style="margin-top:0.22rem;width:100%;box-sizing:border-box;">'
+          .'<span style="display:flex;align-items:center;justify-content:center;gap:0.2rem;width:100%;box-sizing:border-box;background:'.$c['bg'].';color:'.$c['txt'].';font-size:0.62rem;font-weight:700;padding:0.18rem 0.4rem;border-radius:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
+          .$c['icono'].' '.$c['label'].($num ? ' · '.$num : '').'</span>'
+          .'</div>';
+      };
+    @endphp
+    <div style="display:grid;grid-template-columns:1.3fr 1.3fr 1.4fr 60px 1fr;gap:0.5rem;align-items:start;">
       <div>
         <label class="lb">EPS</label>
         <select name="eps_id" id="sel_eps" style="{{ $S }}">
@@ -188,6 +245,9 @@
           <option value="{{ $eps->id }}" {{ $epsDefault == $eps->id ? 'selected' : '' }}>{{ $eps->nombre }}</option>
           @endforeach
         </select>
+        @if($esEdicion && $contrato->eps_id && collect($epsList)->contains('id', (int)$contrato->eps_id))
+        {!! $badgeEstado($rPT->get('eps')) !!}
+        @endif
       </div>
       <div>
         <label class="lb">AFP / Pension</label>
@@ -197,6 +257,9 @@
           <option value="{{ $pen->id }}" {{ $pensionDefault == $pen->id ? 'selected' : '' }}>{{ $pen->razon_social }}</option>
           @endforeach
         </select>
+        @if($esEdicion && $contrato->pension_id && collect($pensiones)->contains('id', (int)$contrato->pension_id))
+        {!! $badgeEstado($rPT->get('pension')) !!}
+        @endif
       </div>
       <div>
         <label class="lb">ARL <span id="lbl_arl_lock" style="color:#94a3b8;font-weight:400;font-size:0.63rem;">(de la R.Social)</span></label>
@@ -207,6 +270,9 @@
               {{ $arlDefault == $arl->id ? 'selected' : '' }}>{{ $arl->nombre_arl }}</option>
           @endforeach
         </select>
+        @if($esEdicion && $contrato->arl_id && collect($arlList)->contains('id', (int)$contrato->arl_id))
+        {!! $badgeEstado($rPT->get('arl')) !!}
+        @endif
       </div>
       <div>
         <label class="lb">N.ARL</label>
@@ -220,13 +286,40 @@
         <label class="lb">Caja Compensacion</label>
         <select name="caja_id" id="sel_caja" style="{{ $S }}">
           <option value="">-- Ninguna --</option>
-          @foreach($cajas as $caja)
-          <option value="{{ $caja->id }}" {{ old('caja_id', $contrato->caja_id ?? '') == $caja->id ? 'selected' : '' }}>{{ $caja->nombre }}</option>
+          @php
+            $cajasLocales = $cajas->where('es_local', true)->values();
+            $cajasResto   = $cajas->where('es_local', false)->values();
+          @endphp
+          @if($cajasLocales->isNotEmpty())
+          <optgroup label="📍 Tu departamento">
+            @foreach($cajasLocales as $caja)
+            <option value="{{ $caja->id }}"
+                {{ old('caja_id', $contrato->caja_id ?? '') == $caja->id ? 'selected' : '' }}
+                style="font-weight:600;">
+              ★ {{ $caja->nombre }}
+            </option>
+            @endforeach
+          </optgroup>
+          <optgroup label="─── Otras cajas ───────────────">
+          @else
+          @php $cajasResto = $cajas; @endphp
+          @endif
+          @foreach($cajasResto as $caja)
+          <option value="{{ $caja->id }}"
+              {{ old('caja_id', $contrato->caja_id ?? '') == $caja->id ? 'selected' : '' }}>
+            {{ $caja->nombre }}
+          </option>
           @endforeach
+          @if($cajasLocales->isNotEmpty())
+          </optgroup>
+          @endif
         </select>
+        @if($esEdicion && $contrato->caja_id && collect($cajas)->contains('id', (int)$contrato->caja_id))
+        {!! $badgeEstado($rPT->get('caja')) !!}
+        @endif
       </div>
     </div>
-    <div x-show="mostrarModoArl" style="display:none;margin-top:0.5rem;">
+    <div x-show="mostrarModoArl" id="panel-modo-arl" style="display:none;margin-top:0.5rem;">
       <div style="display:grid;grid-template-columns:200px 1fr;gap:0.5rem;align-items:end;max-width:560px;">
         {{-- Col 1: Modo ARL --}}
         <div>
@@ -257,14 +350,31 @@
             </select>
           </div>
 
-          {{-- Panel "Independiente": cédula del cliente (solo lectura) --}}
+          {{-- Panel "Independiente": cédula + operador planilla --}}
           <div id="panel_arl_cedula" style="display:none;">
-            <label class="lb">Cédula Cotizante
-              <span style="font-weight:400;color:#64748b;font-size:0.6rem;margin-left:3px;">el cliente cotiza por sí mismo</span>
-            </label>
-            <input type="text" id="disp_arl_cedula" readonly
-                style="{{ $I }}background:#f8fafc;color:#475569;font-family:monospace;cursor:not-allowed;"
-                value="{{ old('cedula', $cliente->cedula ?? $contrato->cedula ?? '') }}">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;align-items:end;">
+              <div>
+                <label class="lb">Cédula Cotizante
+                  <span style="font-weight:400;color:#64748b;font-size:0.6rem;margin-left:3px;">el cliente cotiza por sí mismo</span>
+                </label>
+                <input type="text" id="disp_arl_cedula" readonly
+                    style="{{ $I }}background:#f8fafc;color:#475569;font-family:monospace;cursor:not-allowed;"
+                    value="{{ old('cedula', $cliente->cedula ?? $contrato->cedula ?? '') }}">
+              </div>
+              <div>
+                <label class="lb" style="color:#1d4ed8;">&#x1F4B3; Operador Planilla</label>
+                <select name="operador_planilla_id"
+                        style="{{ $S }}border-color:#bfdbfe;background:#eff6ff;color:#1d4ed8;font-weight:600;">
+                  <option value="">&mdash; Seleccione &mdash;</option>
+                  @foreach($operadoresPlanilla ?? [] as $op)
+                  <option value="{{ $op->id }}"
+                      {{ old('operador_planilla_id', $clienteOperadorId ?? '') == $op->id ? 'selected' : '' }}>
+                    {{ $op->nombre }}{{ $op->codigo_ni ? ' ('.$op->codigo_ni.')' : '' }}
+                  </option>
+                  @endforeach
+                </select>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -287,7 +397,6 @@
             @input="onSalarioChange"
             value="{{ number_format($defSalario, 0, '', '.') }}" style="{{ $M }}"
             data-raw="{{ $defSalario }}">
-        <div style="font-size:0.62rem;color:#94a3b8;margin-top:0.1rem;">Min ${{ number_format($salarioMinimo,0,',','.') }}</div>
       </div>
       <div x-show="esIndependiente" style="display:none;">
         <label class="lb">IBC <span style="color:#f59e0b;font-size:0.63rem;" x-text="ibcSugFmt ? 'sug:'+ibcSugFmt : ''"></span></label>
@@ -295,7 +404,7 @@
             value="{{ old('ibc', $contrato->ibc ?? '') }}"
             style="width:100%;padding:0.38rem 0.5rem;border:1px solid #f59e0b;border-radius:6px;font-size:0.82rem;font-family:monospace;background:#fffbeb;box-sizing:border-box;">
       </div>
-      <div x-show="esIndependiente" style="display:none;">
+      <div x-show="esIndependiente" id="div-pct-caja" style="display:none;">
         <label class="lb">% Caja</label>
         <select name="porcentaje_caja" x-model="pctCaja" @change="recalcular" style="{{ $S }}">
           <option value="2">2% Normal</option>
@@ -395,10 +504,11 @@
     <div style="background:rgba(255,255,255,0.06);border-radius:6px;padding:0.4rem 0.6rem;margin-bottom:0.55rem;font-size:0.72rem;display:flex;justify-content:space-between;align-items:center;gap:0.5rem;">
       <div style="display:flex;align-items:center;gap:0.35rem;">
         <span style="color:#94a3b8;">IBC: <strong x-text="fmt(ibc)">$0</strong></span>
-        <span x-text="esIndependiente ? 'Independiente' : 'Dependiente'" style="color:#64748b;"></span>
+        {{-- Badge Tiempo Parcial --}}
+        <span x-show="esTiempoParcial" style="display:none;background:#f59e0b;color:#000;font-size:0.58rem;font-weight:800;padding:.1rem .38rem;border-radius:999px;">⏱ T.PARCIAL</span>
       </div>
-      {{-- Selector de días --}}
-      <div style="display:flex;align-items:center;gap:0.3rem;">
+      {{-- Selector de días: solo visible en modalidades normales --}}
+      <div style="display:flex;align-items:center;gap:0.3rem;" x-show="!esTiempoParcial">
         <span style="color:#94a3b8;font-size:0.67rem;white-space:nowrap;">Días</span>
         <select id="sel_dias_cotizar" x-model="diasCotizar"
             @change="recalcular()"
@@ -407,17 +517,47 @@
           <option value="{{ $d }}" style="color:#000;">{{ $d }}</option>
           @endfor
         </select>
-        <span style="color:#64748b;font-size:0.63rem;">/30</span>
       </div>
     </div>
     <div style="font-size:0.75rem;">
-      <div class="cr"><span style="color:#93c5fd;">EPS <span class="cp2" x-text="'('+pctEps+'%)'"></span></span><strong x-text="fmt(result.eps)">$0</strong></div>
-      <div class="cr"><span style="color:#6ee7b7;">ARL <span class="cp2" x-text="'N'+nivelArl+' ('+pctArl+'%)'"></span></span><strong x-text="fmt(result.arl)">$0</strong></div>
-      <div class="cr"><span style="color:#c4b5fd;">PENSION <span class="cp2" x-text="'('+pctPen+'%)'"></span></span><strong x-text="fmt(result.pen)">$0</strong></div>
-      <div class="cr"><span style="color:#fcd34d;">CAJA <span class="cp2" x-text="'('+pctCajaCalc+'%)'"></span></span><strong x-text="fmt(result.caja)">$0</strong></div>
-      <div class="cr" style="border-bottom:2px solid rgba(255,255,255,0.18);padding-bottom:0.35rem;margin-bottom:0.1rem;font-weight:700;"><span>S. Social <span class="cp2" x-show="diasCotizar < 30" x-text="'('+diasCotizar+'d)'"></span></span><span x-text="fmt(result.ss)">$0</span></div>
-      <div class="cr"><span style="color:#94a3b8;">Seguro <span class="cp2" style="color:#34d399;" x-show="diasCotizar < 30">(completo)</span></span><strong x-text="fmt(result.seguro)">$0</strong></div>
-      <div class="cr"><span style="color:#94a3b8;">Admon <span class="cp2" style="color:#34d399;" x-show="diasCotizar < 30">(completo)</span></span><strong x-text="fmt(result.admon)">$0</strong></div>
+      {{-- EPS: oculta en Tiempo Parcial --}}
+      <div class="cr" x-show="!esTiempoParcial"><span style="color:#93c5fd;">EPS <span class="cp2" x-text="'('+pctEps+'%)'"></span></span><strong x-text="fmt(result.eps)">$0</strong></div>
+      {{-- ARL --}}
+      <div class="cr">
+        <span style="color:#6ee7b7;">ARL <span class="cp2" x-text="'N'+nivelArl+' ('+pctArl+'%)'"></span>
+          <template x-if="esTiempoParcial">
+            <span style="color:#f59e0b;font-size:.58rem;font-weight:700;"> · 30d</span>
+          </template>
+        </span>
+        <strong x-text="fmt(result.arl)">$0</strong>
+      </div>
+      {{-- PENSIÓN --}}
+      <div class="cr">
+        <span style="color:#c4b5fd;">PENSIÓN <span class="cp2" x-text="'('+pctPen+'%)'"></span>
+          <template x-if="esTiempoParcial && diasAfp">
+            <span style="color:#f59e0b;font-size:.58rem;font-weight:700;" x-text="' · '+diasAfp+'d'"></span>
+          </template>
+        </span>
+        <strong x-text="fmt(result.pen)">$0</strong>
+      </div>
+      {{-- CAJA --}}
+      <div class="cr">
+        <span style="color:#fcd34d;">CAJA <span class="cp2" x-text="'('+pctCajaCalc+'%)'"></span>
+          <template x-if="esTiempoParcial && diasCaja">
+            <span style="color:#f59e0b;font-size:.58rem;font-weight:700;" x-text="' · '+diasCaja+'d'"></span>
+          </template>
+        </span>
+        <strong x-text="fmt(result.caja)">$0</strong>
+      </div>
+      {{-- S. Social --}}
+      <div class="cr" style="border-bottom:2px solid rgba(255,255,255,0.18);padding-bottom:0.35rem;margin-bottom:0.1rem;font-weight:700;">
+        <span>S. Social
+          <span class="cp2" x-show="!esTiempoParcial && diasCotizar < 30" x-text="'('+diasCotizar+'d)'"></span>
+        </span>
+        <span x-text="fmt(result.ss)">$0</span>
+      </div>
+      <div class="cr"><span style="color:#94a3b8;">Seguro <span class="cp2" style="color:#34d399;" x-show="!esTiempoParcial && diasCotizar < 30">(completo)</span></span><strong x-text="fmt(result.seguro)">$0</strong></div>
+      <div class="cr"><span style="color:#94a3b8;">Admon <span class="cp2" style="color:#34d399;" x-show="!esTiempoParcial && diasCotizar < 30">(completo)</span></span><strong x-text="fmt(result.admon)">$0</strong></div>
       <div x-show="result.iva > 0" class="cr"><span style="color:#fca5a5;">IVA 19%</span><strong x-text="fmt(result.iva)">$0</strong></div>
       <div class="cr" style="font-size:0.95rem;font-weight:800;padding-top:0.4rem;"><span>TOTAL</span><span style="color:#34d399;" x-text="fmt(result.total)">$0</span></div>
     </div>
@@ -464,37 +604,78 @@
       <h3 style="margin:0;font-size:0.95rem;color:#0f172a;">&#128193; Radicados — Contrato #{{ $contrato->id }}</h3>
       <button onclick="document.getElementById('modal-radicados').style.display='none'" style="background:none;border:none;font-size:1.2rem;cursor:pointer;color:#94a3b8;line-height:1;">&times;</button>
     </div>
+    {{-- Nota informativa --}}
+    <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:0.5rem 0.75rem;margin-bottom:0.85rem;font-size:0.73rem;color:#0369a1;display:flex;align-items:center;gap:0.4rem;">
+      &#128270; Los radicados se gestionan desde el módulo <strong>Afiliaciones</strong>. Aquí solo se visualizan.
+    </div>
     @if($contrato->radicados->count() === 0)
     <p style="text-align:center;color:#94a3b8;font-size:0.82rem;padding:1.5rem 0;">No hay radicados generados para este contrato.</p>
     @else
+    @php
+      // Determinar qué tipos incluye el plan del contrato
+      $planContrato = $contrato->plan;
+      $tiposIncluidos = [
+        'eps'     => $planContrato?->incluye_eps     ?? true,
+        'pension' => $planContrato?->incluye_pension ?? true,
+        'arl'     => $planContrato?->incluye_arl     ?? true,
+        'caja'    => $planContrato?->incluye_caja    ?? true,
+      ];
+    @endphp
     @foreach($contrato->radicados as $rad)
-    <div id="radicado-{{ $rad->id }}" style="border:1px solid #e2e8f0;border-radius:9px;padding:0.65rem 0.8rem;margin-bottom:0.55rem;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.4rem;">
-        <span style="font-weight:700;font-size:0.8rem;color:#1e293b;">{{ $rad->tipoLabel() }}</span>
-        <select onchange="updateRadicado({{ $rad->id }}, 'estado', this.value)"
-            style="font-size:0.7rem;padding:0.15rem 0.45rem;border-radius:999px;border:1px solid transparent;cursor:pointer;font-weight:700;
-            background:{{ match($rad->estado) {'pendiente'=>'#fef3c7','en_tramite'=>'#dbeafe','confirmado'=>'#dcfce7','rechazado'=>'#fee2e2',default=>'#f1f5f9'} }};
-            color:{{ match($rad->estado) {'pendiente'=>'#92400e','en_tramite'=>'#1e40af','confirmado'=>'#166534','rechazado'=>'#991b1b',default=>'#475569'} }};">
-          <option value="pendiente"  {{ $rad->estado==='pendiente'  ? 'selected' : '' }}>Pendiente</option>
-          <option value="en_tramite" {{ $rad->estado==='en_tramite' ? 'selected' : '' }}>En Tramite</option>
-          <option value="confirmado" {{ $rad->estado==='confirmado' ? 'selected' : '' }}>Confirmado</option>
-          <option value="rechazado"  {{ $rad->estado==='rechazado'  ? 'selected' : '' }}>Rechazado</option>
-        </select>
+    @php
+      // Saltar si el tipo de este radicado no está incluido en el plan
+      $tipoRad = strtolower($rad->tipo ?? '');
+      if (isset($tiposIncluidos[$tipoRad]) && !$tiposIncluidos[$tipoRad]) continue;
+
+      $estadoCfg = [
+        'pendiente' => ['bg'=>'#fef3c7','txt'=>'#92400e','icono'=>'⏳','label'=>'Pendiente'],
+        'tramite'   => ['bg'=>'#dbeafe','txt'=>'#1e40af','icono'=>'🔵','label'=>'En Trámite'],
+        'traslado'  => ['bg'=>'#ffedd5','txt'=>'#9a3412','icono'=>'🔄','label'=>'Traslado'],
+        'error'     => ['bg'=>'#fee2e2','txt'=>'#991b1b','icono'=>'❌','label'=>'Error'],
+        'ok'        => ['bg'=>'#dcfce7','txt'=>'#166534','icono'=>'✅','label'=>'OK — Afiliado'],
+      ];
+      $ec = $estadoCfg[$rad->estado] ?? ['bg'=>'#f1f5f9','txt'=>'#475569','icono'=>'❓','label'=>$rad->estado];
+      $canalLabel = [
+        'web'=>'Web','correo'=>'Correo','asesor'=>'Asesor',
+        'presencial'=>'Presencial','otro'=>'Otro',
+      ][$rad->canal_envio ?? ''] ?? ($rad->canal_envio ? ucfirst($rad->canal_envio) : '—');
+    @endphp
+    <div style="border:1px solid #e2e8f0;border-radius:9px;padding:0.65rem 0.8rem;margin-bottom:0.55rem;">
+      {{-- Tipo + Badge estado --}}
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.45rem;">
+        <span style="font-weight:700;font-size:0.82rem;color:#1e293b;">{{ $rad->tipoLabel() }}</span>
+        <span style="display:inline-flex;align-items:center;gap:0.25rem;background:{{ $ec['bg'] }};color:{{ $ec['txt'] }};font-size:0.7rem;font-weight:700;padding:0.18rem 0.6rem;border-radius:999px;">
+          {{ $ec['icono'] }} {{ $ec['label'] }}
+        </span>
       </div>
-      <div style="display:grid;grid-template-columns:1fr auto;gap:0.4rem;align-items:center;">
-        <input type="text" placeholder="Numero de Radicado" value="{{ $rad->numero_radicado }}"
-            onblur="updateRadicado({{ $rad->id }}, 'numero_radicado', this.value)"
-            style="padding:0.28rem 0.5rem;border:1px solid #e2e8f0;border-radius:6px;font-size:0.76rem;font-family:monospace;width:100%;box-sizing:border-box;">
-        <select onchange="updateRadicado({{ $rad->id }}, 'canal_envio', this.value)"
-            style="padding:0.28rem 0.4rem;border:1px solid #e2e8f0;border-radius:6px;font-size:0.72rem;background:#fff;">
-          <option value="">Canal</option>
-          @foreach(['web'=>'Web','correo'=>'Correo','asesor'=>'Asesor','presencial'=>'Presencial','otro'=>'Otro'] as $v=>$l)
-          <option value="{{ $v }}" {{ $rad->canal_envio===$v ? 'selected' : '' }}>{{ $l }}</option>
-          @endforeach
-        </select>
+      {{-- N° Radicado + Canal --}}
+      <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;font-size:0.73rem;color:#475569;margin-bottom:0.3rem;">
+        @if($rad->numero_radicado)
+        <span style="background:#f1f5f9;border-radius:6px;padding:0.15rem 0.5rem;font-family:monospace;font-weight:600;color:#0f172a;">
+          # {{ $rad->numero_radicado }}
+        </span>
+        @else
+        <span style="color:#94a3b8;font-style:italic;">Sin número de radicado</span>
+        @endif
+        <span style="color:#94a3b8;">|</span>
+        <span>Canal: <strong>{{ $canalLabel }}</strong></span>
       </div>
+      {{-- Observación --}}
       @if($rad->observacion)
-      <div style="font-size:0.7rem;color:#64748b;margin-top:0.3rem;">{{ $rad->observacion }}</div>
+      <div style="font-size:0.7rem;color:#64748b;background:#f8fafc;border-radius:5px;padding:0.25rem 0.5rem;margin-top:0.25rem;">
+        {{ $rad->observacion }}
+      </div>
+      @endif
+      {{-- Documento subido desde Afiliaciones --}}
+      @if($rad->ruta_pdf)
+      <div style="margin-top:0.45rem;">
+        <a href="{{ route('admin.radicados.pdf.download', $rad->id) }}" target="_blank"
+           style="display:inline-flex;align-items:center;gap:0.3rem;padding:0.28rem 0.7rem;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;color:#1d4ed8;font-size:0.72rem;font-weight:600;text-decoration:none;">
+          &#128196; Ver Documento
+        </a>
+      </div>
+      @else
+      <div style="margin-top:0.35rem;font-size:0.68rem;color:#94a3b8;font-style:italic;">Sin documento adjunto</div>
       @endif
     </div>
     @endforeach
@@ -514,6 +695,7 @@
     <h3 style="margin:0 0 1rem;color:#dc2626;font-size:0.95rem;">&#128683; Retirar Contrato #{{ $contrato->id }}</h3>
     <form method="POST" action="{{ route('admin.contratos.retirar', $contrato->id) }}">
       @csrf @method('PATCH')
+      <input type="hidden" name="back_url" value="{{ $backUrl ?? '' }}">
       <div style="margin-bottom:0.7rem;">
         <label class="lb">Motivo *</label>
         <select name="motivo_retiro_id" required style="{{ $S }}">
@@ -557,7 +739,18 @@
 .cp2 { font-size:0.63rem;opacity:0.6; }
 select,input[type="text"],input[type="number"],input[type="date"],textarea { font-family:inherit; }
 input:focus,select:focus { outline:none;border-color:#3b82f6 !important;box-shadow:0 0 0 2px rgba(59,130,246,0.15); }
-select:disabled { background:#f8fafc;color:#94a3b8;cursor:not-allowed; }
+select:disabled { background:#f1f5f9;color:#1e293b;cursor:not-allowed;opacity:1; }
+/* ── Tooltip on-hover para campos bloqueados ─────────────── */
+.tip-lock { position:relative; }
+.tip-lock::after {
+  content: attr(data-tip);
+  position:absolute; bottom:calc(100% + 5px); left:50%; transform:translateX(-50%);
+  background:#1e293b; color:#f1f5f9; font-size:0.65rem; font-weight:500;
+  padding:0.3rem 0.65rem; border-radius:6px; white-space:nowrap;
+  pointer-events:none; opacity:0; transition:opacity 0.15s ease;
+  z-index:9999; box-shadow:0 4px 12px rgba(0,0,0,0.25);
+}
+.tip-lock:hover::after { opacity:1; }
 </style>
 
 @push('scripts')
@@ -577,8 +770,32 @@ const CLIENTE_EPS_ID     = {{ $clienteEpsId ?? 'null' }};
 const CLIENTE_PENSION_ID = {{ $clientePensionId ?? 'null' }};
 // ── Filtrado inteligente: modalidades → planes ─────────────────────
 const MODALIDAD_PLANES   = @json($planesPermitidos ?? []);
-const MODALIDADES_INDEP  = @json($modalidadesIndependientes ?? [10,11,14]);
-const CLIENTE_EXENTO_AFP = {{ ($clienteExentoAfp ?? false) ? 'true' : 'false' }};
+const MODALIDADES_INDEP          = @json($modalidadesIndependientes ?? [10,11,14]);
+const CLIENTE_EXENTO_AFP         = {{ ($clienteExentoAfp ?? false) ? 'true' : 'false' }};
+const ES_EDICION                 = {{ ($esEdicion ?? false) ? 'true' : 'false' }};
+// ── Regla AFP obligatorio ──────────────────────────────────────────────────
+// Activa: planes sin AFP quedan deshabilitados para las modalidades indicadas
+// (a menos que el cliente esté exento por tipo_doc o edad)
+const REGLA_AFP_ACTIVA           = {{ ($reglaAfpActiva ?? false) ? 'true' : 'false' }};
+const MODALIDADES_AFP_OBLIGATORIO = @json($modalidadesAfpObligatorio ?? [0,10,11]);
+@php
+// Construir mapa de días TP antes de inyectarlo como JS
+// factor_salario: fraccion del salario mínimo a usar como salario mensual
+$_factorMap = [7 => 0.25, 14 => 0.50, 21 => 0.75, 30 => 1.00];
+$_modalidadesTPData = [];
+foreach ($tiposModalidad as $_tm) {
+    if ($_tm->esTiempoParcial()) {
+        $_factor = $_factorMap[$_tm->dias_afp] ?? 1.0;
+        $_modalidadesTPData[$_tm->id] = [
+            'dias_arl'       => 30,                // ARL siempre 30 días
+            'dias_afp'       => $_tm->dias_afp,
+            'dias_caja'      => $_tm->dias_caja,
+            'factor_salario' => $_factor,
+        ];
+    }
+}
+@endphp
+const MODALIDADES_TP = {!! json_encode($_modalidadesTPData) !!};
 
 
 // ── Formateador de miles para campos .campo-money ────────────────
@@ -601,6 +818,11 @@ document.addEventListener('DOMContentLoaded', () => {
         el.addEventListener('blur',  () => {
             el.dataset.raw = parseInt(el.value.replace(/\./g,'') || 0);
             el.value = numFmt(el.dataset.raw);
+            // Si es el campo salario, actualizar IBC automáticamente
+            if (el.id === 'inp_salario') {
+                const alpineComp = document.querySelector('[x-data]')?._x_dataStack?.[0];
+                if (alpineComp) alpineComp.onSalarioChange();
+            }
         });
         // Al tipear: mantener solo digitos
         el.addEventListener('input', () => {
@@ -641,6 +863,16 @@ function onRazonSocialChange(sel) {
     const arlNit = opt?.dataset?.arl || '';
     if (arlNit && arlNitMap[arlNit]) {
         document.getElementById('sel_arl').value = arlNitMap[arlNit];
+    }
+    // Resetear Plan al cambiar Razón Social SOLO en modo creación
+    if (!ES_EDICION) {
+        const selPlan = document.getElementById('sel_plan');
+        if (selPlan) {
+            selPlan.value = '';
+            // Notificar a Alpine.js que cambió el plan
+            const alpineComp = document.querySelector('[x-data]')?._x_dataStack?.[0];
+            if (alpineComp) { alpineComp.planId = ''; alpineComp.planNombre = ''; }
+        }
     }
     // Filtrar modalidades según si la RS es independiente
     const esIndep = opt?.dataset?.independiente === '1';
@@ -769,7 +1001,7 @@ function filtrarModalidades(soloIndependiente) {
 function filtrarPlanes(modalidadId) {
     const selPlan = document.getElementById('sel_plan');
     if (!selPlan) return;
-    const divNota = document.getElementById('nota-plan-modalidad');
+    const divNota    = document.getElementById('nota-plan-modalidad');
 
     const valorActual = parseInt(selPlan.value) || 0;
     // Limpiar select
@@ -778,20 +1010,51 @@ function filtrarPlanes(modalidadId) {
     if (!modalidadId) {
         // Sin modalidad: restaurar todas las opciones
         _OPTS_PLAN.forEach(({ el }) => selPlan.appendChild(el));
-        if (divNota) divNota.style.display = 'block';
+        if (divNota)    divNota.style.display    = 'block';
         return;
     }
 
     const permitidos = (MODALIDAD_PLANES[modalidadId] || []).map(Number);
+    const esTP       = !!MODALIDADES_TP[parseInt(modalidadId)];
     if (divNota) divNota.style.display = 'none';
 
+    // ── Regla AFP obligatorio ──────────────────────────────────
+    // Se activa si: la regla global está ON + modalidad en la lista + cliente NO exento
+    const modalidadIdInt     = parseInt(modalidadId);
+    const modalidadAfpOblig  = MODALIDADES_AFP_OBLIGATORIO.includes(modalidadIdInt);
+    const aplicarAfpObligatorio = REGLA_AFP_ACTIVA && modalidadAfpOblig && !CLIENTE_EXENTO_AFP;
+
+
+    // ── Regla: RS independiente + modalidad independiente → excluir planes "solo ARL"
+    // Un plan "solo ARL" es aquel con arl=1 pero sin EPS, Pensión ni Caja.
+    const selRS      = document.getElementById('sel_rs');
+    const esIndepRS  = selRS?.options[selRS.selectedIndex]?.dataset?.independiente === '1';
+    const esIndepMod = MODALIDADES_INDEP.includes(modalidadIdInt);
+    const excluirSoloArl = esIndepRS && esIndepMod;
+
     let planActualPermitido = false;
+    let planesAgregados     = [];
 
     _OPTS_PLAN.forEach(({ el, value, text }) => {
-        if (!value) { selPlan.appendChild(el); return; }  // opción vacía
+        if (!value) { selPlan.appendChild(el); return; }  // opción vacía siempre
         const planId = parseInt(value);
         const permitido = permitidos.includes(planId);
         if (!permitido) return;
+
+        // ── Filtro Tiempo Parcial: solo planes sin EPS ──────────
+        if (esTP && el.dataset.eps === '1') return;
+
+        // ── Filtro Independiente: excluir planes que son SOLO ARL ──────
+        // (independiente no puede cotizar únicamente la ARL)
+        if (excluirSoloArl
+            && el.dataset.arl  === '1'
+            && el.dataset.eps  !== '1'
+            && el.dataset.pen  !== '1'
+            && el.dataset.caja !== '1') return;
+
+        // ── Regla AFP obligatorio: ocultar planes sin AFP si aplica la regla ──
+        // Un plan sin AFP tiene incluye_pension = false (data-pen !== '1')
+        if (aplicarAfpObligatorio && el.dataset.pen !== '1') return;
 
         // Resaltar sin-AFP cuando el cliente puede omitirlo
         if (CLIENTE_EXENTO_AFP) {
@@ -802,6 +1065,7 @@ function filtrarPlanes(modalidadId) {
         }
 
         selPlan.appendChild(el);
+        planesAgregados.push(planId);
         if (planId === valorActual) planActualPermitido = true;
     });
 
@@ -814,6 +1078,17 @@ function filtrarPlanes(modalidadId) {
         selPlan.value = valorActual || '';
         if (selPlan.value) bloquearEntidadesPorPlan(selPlan.value);
     }
+
+    // ── Auto-selección: si es TP y solo hay 1 plan válido, seleccionarlo ──
+    if (esTP && !selPlan.value && planesAgregados.length === 1) {
+        selPlan.value = String(planesAgregados[0]);
+        const alpineComp = document.querySelector('[x-data]')?._x_dataStack?.[0];
+        if (alpineComp) {
+            alpineComp.planId = String(planesAgregados[0]);
+            alpineComp.recalcular();
+        }
+        bloquearEntidadesPorPlan(String(planesAgregados[0]));
+    }
 }
 
 function actualizarBloqueoArl() {
@@ -824,6 +1099,56 @@ function actualizarBloqueoArl() {
     arlSel.disabled          = !libre;
     arlSel.style.background  = libre ? '#fff' : '#f8fafc';
     if (lbl) lbl.textContent = libre ? '(editable)' : '(de la R.Social)';
+    // Restricción de niveles ARL para modalidad id=8 con RS no-independiente
+    actualizarNivelesArl();
+}
+
+/**
+ * Cuando la RS seleccionada NO es independiente y la modalidad es id=8,
+ * sólo se permiten los niveles de ARL 4 y 5.
+ * En cualquier otro caso se restauran todos los niveles (1 al 5).
+ */
+function actualizarNivelesArl() {
+    const selMod    = document.querySelector('select[name=tipo_modalidad_id]');
+    const selRS     = document.getElementById('sel_rs');
+    const selNivel  = document.querySelector('select[name=n_arl]');
+    if (!selNivel) return;
+
+    const modalidadId  = parseInt(selMod?.value || 0);
+    const esIndepRS    = selRS?.options[selRS.selectedIndex]?.dataset?.independiente === '1';
+    // Condición: modalidad 8 + RS no independiente
+    const soloNivel4y5 = (modalidadId === 8) && !esIndepRS;
+
+    // Guardar valor actual antes de manipular opciones
+    const nivelActual = parseInt(selNivel.value || 1);
+
+    // Limpiar y reconstruir opciones
+    selNivel.innerHTML = '';
+    const nivelesPermitidos = soloNivel4y5 ? [4, 5] : [1, 2, 3, 4, 5];
+    nivelesPermitidos.forEach(n => {
+        const opt = document.createElement('option');
+        opt.value = n;
+        opt.textContent = n;
+        selNivel.appendChild(opt);
+    });
+
+    // Restaurar nivel si sigue siendo válido, si no usar el menor disponible
+    if (nivelesPermitidos.includes(nivelActual)) {
+        selNivel.value = nivelActual;
+    } else {
+        selNivel.value = nivelesPermitidos[0];
+    }
+
+    // Sincronizar Alpine x-model
+    const alpineComp = document.querySelector('[x-data]')?._x_dataStack?.[0];
+    if (alpineComp) {
+        alpineComp.nivelArl = parseInt(selNivel.value);
+        alpineComp.recalcular();
+    }
+
+    // Indicador visual: marcar el selector con borde si está restringido
+    selNivel.style.border   = soloNivel4y5 ? '2px solid #f59e0b' : '1px solid #cbd5e1';
+    selNivel.title          = soloNivel4y5 ? 'Modalidad id=8 con RS empresa: solo niveles 4 y 5' : '';
 }
 
 // Estilos base para entidades
@@ -872,10 +1197,47 @@ function bloquearEntidadesPorPlan(planId) {
     // ARL especial
     if (!d.arl) {
         aplicarEstadoEntidad(arlSel, false);
+        // Ocultar panel Modo ARL e inactivar nivel ARL cuando el plan no incluye ARL
+        const panelModoArl = document.getElementById('panel-modo-arl');
+        const selNivelArl  = document.querySelector('select[name=n_arl]');
+        if (panelModoArl) panelModoArl.style.display = 'none';
+        if (selNivelArl) {
+            selNivelArl.disabled = true;
+            selNivelArl.style.background = '#f1f5f9';
+            selNivelArl.style.opacity    = '0.5';
+            selNivelArl.style.cursor     = 'not-allowed';
+        }
     } else {
         actualizarBloqueoArl();
         arlSel.required = true;
         arlSel.style.cssText = arlSel.value ? STYLE_COMPLETO : STYLE_REQUERIDO;
+        // Restaurar panel Modo ARL y nivel ARL si la modalidad lo permite
+        const panelModoArl = document.getElementById('panel-modo-arl');
+        const selNivelArl  = document.querySelector('select[name=n_arl]');
+        const midId = parseInt(document.querySelector('select[name=tipo_modalidad_id]')?.value || 0);
+        if (panelModoArl) {
+            // Solo mostrar el panel si la modalidad lo habilita (Alpine lo controla con x-show,
+            // pero forzamos display para el caso en que Alpine ya lo tenía visible)
+            const alpineComp = document.querySelector('[x-data]')?._x_dataStack?.[0];
+            if (alpineComp && alpineComp.mostrarModoArl) panelModoArl.style.display = '';
+        }
+        if (selNivelArl) {
+            selNivelArl.disabled = false;
+            selNivelArl.style.background = '';
+            selNivelArl.style.opacity    = '';
+            selNivelArl.style.cursor     = '';
+        }
+    }
+
+    // % Caja: ocultar cuando el plan no incluye caja
+    const divPctCaja = document.getElementById('div-pct-caja');
+    if (divPctCaja) {
+        // Solo aplica si estamos en modalidad independiente (de lo contrario Alpine ya lo oculta)
+        const alpineComp = document.querySelector('[x-data]')?._x_dataStack?.[0];
+        const esIndep = alpineComp ? alpineComp.esIndependiente : false;
+        if (esIndep) {
+            divPctCaja.style.display = d.caja ? '' : 'none';
+        }
     }
 
     // Auto-seleccionar entidades del cliente si el campo quedó habilitado pero vacío
@@ -982,7 +1344,7 @@ document.addEventListener('DOMContentLoaded', () => {
         filtrarPlanes(selMod.value);     // filtra planes sin limpiar selección
     }
 
-    actualizarBloqueoArl();
+    actualizarBloqueoArl();  // incluye actualizarNivelesArl()
     const planId = selPln?.value;
     if (planId) bloquearEntidadesPorPlan(planId);
     if (ARL_ID_RS && !document.getElementById('sel_arl').value) {
@@ -1016,17 +1378,29 @@ document.addEventListener('DOMContentLoaded', () => {
         const selDias = document.getElementById('sel_dias_cotizar');
         if (selDias) selDias.value = diasInit;
 
-        const salario    = parseInt(document.getElementById('inp_salario')?.dataset.raw || 0);
-        const planIdVal  = document.getElementById('sel_plan')?.value || '';
+        const salario     = parseInt(document.getElementById('inp_salario')?.dataset.raw || 0);
+        const planIdVal   = document.getElementById('sel_plan')?.value || '';
         const modalidadId = document.querySelector('select[name=tipo_modalidad_id]')?.value || '';
-        const nArl       = parseInt(document.querySelector('select[name=n_arl]')?.value || 1);
-        const admon      = parseInt(document.getElementById('inp_admon')?.dataset.raw || 0);
-        const admonAse   = parseInt(document.getElementById('inp_admon_asesor')?.dataset.raw || 0);
-        const seguro     = parseInt(document.getElementById('inp_seguro')?.dataset.raw || 0);
-        const pctCaja    = parseFloat(document.querySelector('select[name=porcentaje_caja]')?.value || 4);
-        const cedula     = document.querySelector('input[name=cedula]')?.value || '';
+        const nArl        = parseInt(document.querySelector('select[name=n_arl]')?.value || 1);
+        const admon       = parseInt(document.getElementById('inp_admon')?.dataset.raw || 0);
+        const admonAse    = parseInt(document.getElementById('inp_admon_asesor')?.dataset.raw || 0);
+        const seguro      = parseInt(document.getElementById('inp_seguro')?.dataset.raw || 0);
+        const pctCaja     = parseFloat(document.querySelector('select[name=porcentaje_caja]')?.value || 4);
+        const cedula      = document.querySelector('input[name=cedula]')?.value || '';
 
         if (!salario || !planIdVal) return;
+
+        // Calcular IBC correcto: independiente = 40% con piso en salario mínimo
+        const esIndepInit = MODALIDADES_INDEP.includes(parseInt(modalidadId));
+        let ibcInicial = salario;
+        if (esIndepInit && salario > 0) {
+            const raw40 = Math.round(salario * {{ $pctIbcSugerido }} / 100);
+            ibcInicial  = Math.max(raw40, SALARIO_MINIMO);
+        }
+        // Si Alpine ya calculó el IBC correcto, respetarlo (evitar sobrescribir)
+        const alpineData = document.querySelector('[x-data]')?._x_dataStack?.[0];
+        const ibcAlpine  = alpineData?.ibc;
+        if (ibcAlpine && ibcAlpine > 0 && esIndepInit) ibcInicial = ibcAlpine;
 
         fetch(URL_COTIZAR, {
             method: 'POST',
@@ -1039,7 +1413,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 plan_id:           planIdVal,
                 n_arl:             nArl,
                 salario:           salario,
-                ibc:               salario,
+                ibc:               ibcInicial,
                 administracion:    admon,
                 admon_asesor:      admonAse,
                 seguro:            seguro,
@@ -1051,18 +1425,21 @@ document.addEventListener('DOMContentLoaded', () => {
         .then(r => r.json())
         .then(d => {
             const fmt = v => '$' + Math.round(v||0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-            // Actualizar el HTML del cotizador directamente si Alpine no cargó aún
-            document.querySelectorAll('[x-text="fmt(result.eps)"]').forEach(el => el.textContent = fmt(d.eps));
-            document.querySelectorAll('[x-text="fmt(result.arl)"]').forEach(el => el.textContent = fmt(d.arl));
-            document.querySelectorAll('[x-text="fmt(result.pen)"]').forEach(el => el.textContent = fmt(d.pen));
-            document.querySelectorAll('[x-text="fmt(result.caja)"]').forEach(el => el.textContent = fmt(d.caja));
-            document.querySelectorAll('[x-text="fmt(result.ss)"]').forEach(el => el.textContent = fmt(d.ss));
-            document.querySelectorAll('[x-text="fmt(result.seguro)"]').forEach(el => el.textContent = fmt(d.seguro));
-            document.querySelectorAll('[x-text="fmt(result.admon)"]').forEach(el => el.textContent = fmt(d.admon));
-            document.querySelectorAll('[x-text="fmt(result.iva)"]').forEach(el => el.textContent = fmt(d.iva));
-            document.querySelectorAll('[x-text="fmt(result.total)"]').forEach(el => el.textContent = fmt(d.total));
-            // IBC
-            document.querySelectorAll('[x-text="fmt(ibc)"]').forEach(el => el.textContent = fmt(salario));
+            // Solo actualizar si Alpine aún no tomó el control
+            const alpine = document.querySelector('[x-data]')?._x_dataStack?.[0];
+            if (!alpine?.result?.total) {
+                document.querySelectorAll('[x-text="fmt(result.eps)"]').forEach(el => el.textContent = fmt(d.eps));
+                document.querySelectorAll('[x-text="fmt(result.arl)"]').forEach(el => el.textContent = fmt(d.arl));
+                document.querySelectorAll('[x-text="fmt(result.pen)"]').forEach(el => el.textContent = fmt(d.pen));
+                document.querySelectorAll('[x-text="fmt(result.caja)"]').forEach(el => el.textContent = fmt(d.caja));
+                document.querySelectorAll('[x-text="fmt(result.ss)"]').forEach(el => el.textContent = fmt(d.ss));
+                document.querySelectorAll('[x-text="fmt(result.seguro)"]').forEach(el => el.textContent = fmt(d.seguro));
+                document.querySelectorAll('[x-text="fmt(result.admon)"]').forEach(el => el.textContent = fmt(d.admon));
+                document.querySelectorAll('[x-text="fmt(result.iva)"]').forEach(el => el.textContent = fmt(d.iva));
+                document.querySelectorAll('[x-text="fmt(result.total)"]').forEach(el => el.textContent = fmt(d.total));
+            }
+            // IBC: siempre mostrar el calculado (no el salario completo)
+            document.querySelectorAll('[x-text="fmt(ibc)"]').forEach(el => el.textContent = fmt(ibcInicial));
         })
         .catch(err => console.error('Cotizador inicial error:', err));
     };
@@ -1080,14 +1457,16 @@ function cotizador() {
         seguro:          {{ $defSeguro }},
         nivelArl:        {{ (int)old('n_arl', $contrato->n_arl ?? 1) }},
         pctCaja:         {{ (float)old('porcentaje_caja', $contrato->porcentaje_caja ?? 4) }},
-        planId:          '{{ old('plan_id', $contrato->plan_id ?? '') }}',
+        planId:          '{{ $esEdicion ? old('plan_id', $contrato->plan_id ?? '') : '' }}',
         planNombre:      '',
         tipoModalidadId: '{{ old('tipo_modalidad_id', $contrato->tipo_modalidad_id ?? '') }}',
         esIndependiente: false,
+        esTiempoParcial: false,
         mostrarModoArl:  false,
         ibcSugFmt:       '',
         pctEps:0, pctPen:0, pctArl:0, pctCajaCalc:0,
         diasCotizar: 30,
+        diasArl: 0, diasAfp: 0, diasCaja: 0,
         result: { eps:0, arl:0, pen:0, caja:0, ss:0, seguro:0, admon:0, iva:0, total:0 },
 
         fmt(v) {
@@ -1101,6 +1480,14 @@ function cotizador() {
             this.esIndependiente = opt?.dataset.independiente === '1';
             this.mostrarModoArl  = MODALIDADES_MODO_ARL.includes(parseInt(this.tipoModalidadId));
             this.planNombre      = document.querySelector(`#sel_plan option[value="${this.planId}"]`)?.textContent?.trim() || '';
+            // Inicializar Tiempo Parcial al cargar
+            const tpData = MODALIDADES_TP[parseInt(this.tipoModalidadId)] || null;
+            this.esTiempoParcial = !!tpData;
+            if (tpData) {
+                this.diasArl  = tpData.dias_arl;
+                this.diasAfp  = tpData.dias_afp;
+                this.diasCaja = tpData.dias_caja;
+            }
             // Sincronizar IBC según modalidad
             if (!this.esIndependiente) {
                 this.ibc = this.salario;
@@ -1194,6 +1581,27 @@ function cotizador() {
             this.esIndependiente = MODALIDADES_INDEP.includes(id);
             this.mostrarModoArl  = MODALIDADES_MODO_ARL.includes(id);
             this.pctCaja = this.esIndependiente ? 2 : 4;
+            // Tiempo Parcial
+            const tpData = MODALIDADES_TP[id] || null;
+            this.esTiempoParcial = !!tpData;
+            if (tpData) {
+                this.diasArl  = tpData.dias_arl;
+                this.diasAfp  = tpData.dias_afp;
+                this.diasCaja = tpData.dias_caja;
+                // ── Auto-rellenar Salario e IBC según factor del plan ──
+                const factor     = tpData.factor_salario || 1;
+                const salarioTP  = Math.round(SALARIO_MINIMO * factor);
+                this.salario     = salarioTP;
+                this.ibc         = salarioTP;
+                // Actualizar el campo .campo-money del salario
+                const inpSal = document.getElementById('inp_salario');
+                if (inpSal) {
+                    inpSal.dataset.raw = salarioTP;
+                    inpSal.value       = numFmt(salarioTP);
+                }
+            } else {
+                this.diasArl = this.diasAfp = this.diasCaja = 0;
+            }
             if (!this.esIndependiente) {
                 // Dependiente: IBC = salario
                 this.ibc = this.salario;
@@ -1306,6 +1714,15 @@ function cotizador() {
                 this.pctArl      = d.pctArl  ?? 0;
                 this.pctCajaCalc = d.pctCaja ?? 0;
                 if (d.ibcSugerido && this.esIndependiente) this.ibcSugFmt = this.fmt(d.ibcSugerido);
+                // Tiempo Parcial: actualizar días y flag desde el servidor
+                if (typeof d.es_tiempo_parcial !== 'undefined') {
+                    this.esTiempoParcial = !!d.es_tiempo_parcial;
+                }
+                if (d.es_tiempo_parcial) {
+                    this.diasArl  = d.dias_arl  ?? 0;
+                    this.diasAfp  = d.dias_afp  ?? 0;
+                    this.diasCaja = d.dias_caja ?? 0;
+                }
             })
             .catch(err => console.warn('Cotizador error:', err));
         },

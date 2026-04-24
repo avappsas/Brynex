@@ -2,9 +2,9 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Models\BaseModel;
 
-class Eps extends Model
+class Eps extends BaseModel
 {
     protected $table = 'eps';
     public $timestamps = false;

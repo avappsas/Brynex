@@ -2,11 +2,11 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Models\BaseModel;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Request;
 
-class Bitacora extends Model
+class Bitacora extends BaseModel
 {
     public $timestamps = false; // Solo created_at manual
 

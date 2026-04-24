@@ -2,14 +2,14 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Models\BaseModel;
 use Illuminate\Support\Facades\DB;
 
 /**
  * Modelo Cliente - Tabla local 'clientes' en BryNex
  * (Migrada desde [Brygar_BD].[dbo].[Base_De_Datos])
  */
-class Cliente extends Model
+class Cliente extends BaseModel
 {
     protected $table      = 'clientes';
     protected $primaryKey = 'id';
@@ -25,6 +25,7 @@ class Cliente extends Model
         'departamento_id', 'municipio_id',
         'direccion_vivienda', 'direccion_cobro', 'barrio',
         'eps_id', 'pension_id',
+        'operador_planilla_id', // operador PILA asignado (solo para RS independientes)
         'ips', 'urgencias', 'iva',
         'ocupacion', 'referido', 'observacion',
         'observacion_llamada', 'claves', 'datos',
@@ -34,6 +35,7 @@ class Cliente extends Model
     protected $casts = [
         'fecha_nacimiento' => 'date',
         'fecha_expedicion' => 'date',
+        'operador_planilla_id' => 'integer',
     ];
 
     // ─── Relaciones ──────────────────────────────────────────────────

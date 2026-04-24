@@ -2,11 +2,11 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Models\BaseModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Carbon\Carbon;
 
-class ComisionAsesor extends Model
+class ComisionAsesor extends BaseModel
 {
     protected $table = 'comisiones_asesores';
 

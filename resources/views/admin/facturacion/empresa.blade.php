@@ -77,9 +77,7 @@ table.fac-tbl{width:100%;border-collapse:collapse;font-size:.78rem}
                 @if($empresa->asesor)<span>👤 {{ $empresa->asesor->nombre }}</span>
                 @elseif($empresa->contacto)<span>👤 {{ $empresa->contacto }}</span>@endif
                 @if($empresa->celular)<span>📞 {{ $empresa->celular }}</span>@endif
-                <span style="color:{{ strtoupper($empresa->iva)==='SI'?'#4ade80':'#94a3b8' }}">
-                    IVA: {{ strtoupper($empresa->iva)==='SI'?'SÍ':'NO' }}
-                </span>
+{{-- IVA oculto del encabezado --}}
             </div>
         </div>
 
@@ -89,6 +87,10 @@ table.fac-tbl{width:100%;border-collapse:collapse;font-size:.78rem}
                style="display:inline-flex;align-items:center;gap:.35rem;padding:.38rem .85rem;font-size:.8rem;font-weight:600;border-radius:7px;background:rgba(255,255,255,.1);color:#cbd5e1;text-decoration:none;transition:background .15s;"
                onmouseover="this.style.background='rgba(255,255,255,.2)'" onmouseout="this.style.background='rgba(255,255,255,.1)'"
                title="Historial de facturación">📋 Historial</a>
+            <button type="button" onclick="abrirClavesEmpresa()"
+               style="display:inline-flex;align-items:center;gap:.35rem;padding:.38rem .85rem;font-size:.8rem;font-weight:600;border-radius:7px;background:#fef9c3;color:#92400e;border:1px solid #fde68a;cursor:pointer;transition:background .15s;"
+               onmouseover="this.style.background='#fde68a'" onmouseout="this.style.background='#fef9c3'"
+               title="Claves y accesos de la empresa">🔑 Claves</button>
             <a href="{{ route('admin.facturacion.empresa.edit', $empresa->id) }}"
                style="display:inline-flex;align-items:center;gap:.35rem;padding:.38rem .85rem;font-size:.8rem;font-weight:600;border-radius:7px;background:#f59e0b;color:#fff;text-decoration:none;transition:background .15s;"
                onmouseover="this.style.background='#d97706'" onmouseout="this.style.background='#f59e0b'"
@@ -165,26 +167,29 @@ table.fac-tbl{width:100%;border-collapse:collapse;font-size:.78rem}
 <div class="tbl-wrap">
 <table class="fac-tbl" id="tblTrab">
 <thead><tr>
-    <th><input type="checkbox" id="chkAll" onchange="toggleAll(this)"></th>
     <th>TIPO</th><th>CÉDULA</th><th>NOMBRE</th><th>RAZÓN SOCIAL</th>
     <th style="text-align:center">INGRESO</th><th style="text-align:center">DÍAS</th>
     <th class="num-col">EPS</th><th class="num-col">ARL</th>
     <th class="num-col">CAJA</th><th class="num-col">PENSIÓN</th>
-    <th class="num-col">ADMON</th><th class="num-col">IVA</th>
+    <th class="num-col">ADMON</th><th class="num-col" style="display:none">IVA</th>
     <th class="num-col" style="color:#34d399">TOTAL</th>
     <th style="text-align:center">ESTADO</th><th style="text-align:center">NP</th>
-    <th style="text-align:center">ACCIONES</th>
+    <th style="text-align:center">
+        <input type="checkbox" id="chkAll" onchange="toggleAll(this)" title="Seleccionar todos"
+               style="width:1rem;height:1rem;cursor:pointer;vertical-align:middle;"> SEL
+    </th>
 </tr></thead>
 <tbody>
 @php
 $totEps=$totArl=$totCaja=$totPen=$totAdmon=$totIva=$totTotal=0;
+$totAFavor=$totPendiente=0;
 @endphp
 @forelse($contratos as $c)
 @php
 $fact  = $c->factura_exist;
 $yaP   = $fact && in_array($fact->estado,['pagada','prestamo']);
-// Nombre correcto del cliente
-$nombre = trim(($c->cliente?->primer_nombre ?? '') . ' ' . ($c->cliente?->segundo_nombre ?? '') . ' ' . ($c->cliente?->primer_apellido ?? '') . ' ' . ($c->cliente?->segundo_apellido ?? ''));
+// Nombre: solo primer nombre + primer apellido
+$nombre = trim(($c->cliente?->primer_nombre ?? '') . ' ' . ($c->cliente?->primer_apellido ?? ''));
 if(!$nombre) $nombre = $c->cliente?->nombre_completo ?? '—';
 // Tipo: campo tipo_modalidad directo (ej: 'E', 'I')
 $tipoMod  = $c->tipoModalidad?->tipo_modalidad ?? '—';
@@ -192,37 +197,51 @@ $tipoNom  = $c->tipoModalidad?->nombre ?? '—';  // tooltip
 $rs    = $c->razonSocial?->razon_social ?? '—';
 $fIng  = $c->fecha_ingreso ? $c->fecha_ingreso->format('d/m/Y') : '—';
 $dias  = $c->dias_cotizar ?? 30;
-// Detectar si este período debe ser afiliación
-$esIndep = $c->tipoModalidad?->esIndependiente() ?? false;
-$esAfil  = false;
+// Detectar si este período debe ser afiliación pura (I VENC, empresa)
+// vs I ACT primer mes (viene del controlador como es_ind_act_primer_mes)
+$esIndep          = $c->tipoModalidad?->esIndependiente() ?? false;
+$esIndActPrimerMes = $c->es_ind_act_primer_mes ?? false; // flag del controller
+$esAfil = false;
 if ($c->fecha_ingreso) {
     $fIngC = $c->fecha_ingreso;
     if ((int)$fIngC->month === $mes && (int)$fIngC->year === $anio) {
-        if (!$esIndep || !($c->cobra_planilla_primer_mes ?? false)) {
+        // I ACT: NO es afiliación pura (cobra SS también)
+        // I VENC y empresa: sí es afiliación pura
+        if (!$esIndActPrimerMes) {
             $esAfil = true;
         }
     }
 }
-// Si ya hay factura, usar su tipo
+// Si ya hay factura, usar su tipo (planilla o afiliacion)
 if ($fact) {
-    $esAfil = $fact->tipo === 'afiliacion';
+    // I ACT primer mes puede tener tipo='planilla' con afiliación incluida
+    $esAfil = $fact->tipo === 'afiliacion' && !($fact->afiliacion > 0 && $fact->total_ss > 0);
 }
-// Si es afiliación y no hay factura, días = 0
-if ($esAfil && !$fact) {
-    $dias = 0;
-}
-// Valores: si hay factura usar los de la factura, si no del contrato
+// Tiempo Parcial: detectar y obtener días por entidad
+$esTP     = $c->tipoModalidad?->esTiempoParcial() ?? false;
+$diasTP   = $esTP ? $c->tipoModalidad->diasPorEntidad() : null;
+// Valores: si hay factura usar los de la factura, si no calcular
 $vEps  = $fact ? $r100($fact->v_eps)  : 0;
 $vArl  = $fact ? $r100($fact->v_arl)  : 0;
 $vCaja = $fact ? $r100($fact->v_caja) : 0;
 $vPen  = $fact ? $r100($fact->v_afp)  : 0;
 $vAdm  = $fact ? (int)($fact->admon + $fact->admin_asesor) : (int)(($c->administracion??0) + ($c->admon_asesor??0));
 $vIva  = $fact ? $r100($fact->iva)    : 0;
-// Total estimado siempre visible
+// Total estimado
 $cotiz = $c->calcularCotizacion($dias);
 if (!$fact) {
-    if ($esAfil) {
-        // Afiliación: SS = 0, admon = 0, total = costo_afiliacion + seguro
+    if ($esIndActPrimerMes) {
+        // I ACT primer mes: SS reales (días del mes) + afiliación + admon
+        $vEps  = $r100($cotiz['eps']??0);
+        $vArl  = $r100($cotiz['arl']??0);
+        $vPen  = $r100($cotiz['pen']??0);
+        $vCaja = $r100($cotiz['caja']??0);
+        $vIva  = $r100($cotiz['iva']??0);
+        $vSS   = $r100($cotiz['ss']);
+        // admon ya calculado arriba desde contrato
+        $vTot  = $vSS + $vAdm + $vIva + (int)(($c->costo_afiliacion ?? 0) + ($c->seguro ?? 0));
+    } elseif ($esAfil) {
+        // Afiliación pura (I VENC, empresa): SS=0, admon=0
         $vEps  = 0; $vArl  = 0; $vPen  = 0; $vCaja = 0;
         $vSS   = 0; $vIva  = 0; $vAdm  = 0;
         $vTot  = (int)(($c->costo_afiliacion ?? 0) + ($c->seguro ?? 0));
@@ -239,6 +258,8 @@ if (!$fact) {
     $vSS = $r100($fact->total_ss);
     $vTot = (int)$fact->total;
 }
+// Costo de afiliación para data-* (lo necesita el modal)
+$vAfiliacion = ($esAfil || $esIndActPrimerMes) ? (int)($c->costo_afiliacion ?? 0) : 0;
 $totEps+=$vEps;$totArl+=$vArl;$totCaja+=$vCaja;$totPen+=$vPen;
 $totAdmon+=$vAdm;$totIva+=$vIva;$totTotal+=$vTot;
 @endphp
@@ -254,31 +275,61 @@ $totAdmon+=$vAdm;$totIva+=$vIva;$totTotal+=$vTot;
     data-seguro="{{ (int)($c->seguro??0) }}"
     data-nombre="{{ $nombre }}"
     data-esafil="{{ $esAfil ? '1' : '0' }}"
-    data-afiliacion="{{ $esAfil ? (int)($c->costo_afiliacion ?? 0) : 0 }}"
-    data-tipo="{{ $esAfil ? 'afiliacion' : 'planilla' }}">
-    <td><input type="checkbox" class="chk-row" value="{{ $c->id }}" {{ $yaP?'disabled':'' }} onchange="onCheckChange()"></td>
-    <td style="font-size:.75rem;font-weight:700;text-align:center;color:#334155" title="{{ $tipoNom }}">
-        {{ $tipoMod }}
-        @if($esAfil)
-        <span title="Afiliación" style="font-size:.78rem;">&#128204;</span>
-        @else
-        <span title="Planilla" style="font-size:.78rem;">&#128196;</span>
-        @endif
+    data-esindact="{{ $esIndActPrimerMes ? '1' : '0' }}"
+    data-afiliacion="{{ $vAfiliacion }}"
+    data-tipo="{{ ($esAfil && !$esIndActPrimerMes) ? 'afiliacion' : 'planilla' }}">
+
+    <td style="font-size:.75rem;font-weight:700;text-align:center;white-space:nowrap;" title="{{ $tipoNom }}{{ $esIndActPrimerMes ? ' · Afiliación + Planilla' : '' }}">
+        <span style="display:inline-flex;align-items:center;gap:3px;">
+            {{ $tipoMod }}
+            <a href="{{ route('admin.contratos.edit', $c->id) }}?back={{ urlencode(url()->current()) }}"
+               title="Abrir contrato · {{ $tipoNom }}"
+               style="color:{{ $esIndActPrimerMes ? '#7c3aed' : '#64748b' }};text-decoration:none;line-height:1;font-size:.85rem;"
+               onmouseover="this.style.color='#2563eb'" onmouseout="this.style.color='{{ $esIndActPrimerMes ? '#7c3aed' : '#64748b' }}'">
+                @if($esIndActPrimerMes)&#9889;@elseif($esAfil)&#128204;@else&#9741;@endif
+            </a>
+        </span>
     </td>
     <td style="font-family:monospace;font-size:.75rem">{{ number_format($c->cedula,0,'','.') }}</td>
-    <td style="max-width:170px;overflow:hidden;text-overflow:ellipsis;font-weight:500">{{ $nombre }}</td>
+    <td style="max-width:170px;overflow:hidden;text-overflow:ellipsis;font-weight:500">
+        @if($c->cliente?->id)
+        <a href="{{ route('admin.clientes.edit', $c->cliente->id) }}"
+           style="color:#1d4ed8;text-decoration:none;font-weight:600;"
+           title="Ver cliente"
+           onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">
+            {{ $nombre }}
+        </a>
+        @else
+            {{ $nombre }}
+        @endif
+    </td>
     <td style="font-size:.7rem;color:#64748b;max-width:130px;overflow:hidden;text-overflow:ellipsis" title="{{ $rs }}">{{ Str::limit($rs,16) }}</td>
     <td style="text-align:center;font-size:.75rem;color:#64748b">{{ $fIng }}</td>
-    <td style="text-align:center;font-weight:700;color:{{ $dias===0?'#9333ea':($dias<30?'#d97706':'#0f172a') }}">{{ $dias === 0 ? '—' : $dias }}</td>
-    <td class="num-col">{{ $vEps>0?'$'.number_format($vEps,0,',','.'):'—' }}</td>
+    <td style="text-align:center;font-weight:700;color:{{ $dias===0?'#9333ea':($dias<30?'#d97706':'#0f172a') }}">
+        @if($esTP && $diasTP)
+            <span title="T. Parcial: ARL {{ $diasTP['arl'] }}d · AFP {{ $diasTP['afp'] }}d · CAJA {{ $diasTP['caja'] }}d"
+                  style="font-size:.62rem;background:#fef3c7;color:#78350f;border-radius:6px;padding:.1rem .35rem;font-weight:700;cursor:help;white-space:nowrap;">
+                ⏱TP
+            </span>
+        @else
+            {{ $dias === 0 ? '—' : $dias }}
+        @endif
+    </td>
+    <td class="num-col">{{ (!$esTP && $vEps>0)?'$'.number_format($vEps,0,',','.'):'—' }}</td>
     <td class="num-col">{{ $vArl>0?'$'.number_format($vArl,0,',','.'):'—' }}</td>
     <td class="num-col">{{ $vCaja>0?'$'.number_format($vCaja,0,',','.'):'—' }}</td>
     <td class="num-col">{{ $vPen>0?'$'.number_format($vPen,0,',','.'):'—' }}</td>
     <td class="num-col">${{ number_format($vAdm,0,',','.') }}</td>
-    <td class="num-col">{{ $vIva>0?'$'.number_format($vIva,0,',','.'):'—' }}</td>
+    <td class="num-col" style="display:none">{{ $vIva>0?'$'.number_format($vIva,0,',','.'):'—' }}</td>
     <td class="num-col" style="font-weight:700;color:{{ $yaP?'#16a34a':'#0f172a' }}">
         ${{ number_format($vTot,0,',','.') }}
     </td>
+    @php
+        $totAFavor    += $c->saldo_a_favor;
+        $totPendiente += $c->saldo_pendiente;
+        $totProxFavor    = ($totProxFavor ?? 0)    + $c->saldo_proximo_favor;
+        $totProxPendiente= ($totProxPendiente ?? 0) + $c->saldo_proximo_pendiente;
+    @endphp
     <td style="text-align:center">
         @if($fact)
         @php $colores=$estadoBg($fact->estado); @endphp
@@ -288,7 +339,7 @@ $totAdmon+=$vAdm;$totIva+=$vIva;$totTotal+=$vTot;
         @else<span style="color:#94a3b8;font-size:.7rem">Sin factura</span>@endif
     </td>
     <td style="text-align:center;font-weight:700;color:#2563eb;font-size:.8rem">{{ $fact?->np ?? '—' }}</td>
-    <td style="text-align:center;">
+    <td style="text-align:center;white-space:nowrap;">
         @if($fact)
             <button onclick="abrirRecibo('{{ route('admin.facturacion.recibo',$fact->id) }}?modal=1')"
                class="btn-sm" style="background:#eff6ff;color:#1d4ed8;" title="Ver recibo">🖨</button>
@@ -297,8 +348,10 @@ $totAdmon+=$vAdm;$totIva+=$vIva;$totTotal+=$vTot;
                 onclick="abrirAbono({{ $fact->id }},{{ $fact->total }},{{ $fact->total_abonado??0 }})">💵</button>
             @endif
         @else
-            <button class="btn-sm" style="background:#dcfce7;color:#15803d;"
-                onclick="facturarUno({{ $c->id }})">➕</button>
+            <input type="checkbox" class="chk-row" value="{{ $c->id }}"
+                   onchange="onCheckChange()"
+                   style="width:1.1rem;height:1.1rem;cursor:pointer;accent-color:#2563eb;"
+                   title="Seleccionar para facturar">
         @endif
     </td>
 </tr>
@@ -308,13 +361,13 @@ $totAdmon+=$vAdm;$totIva+=$vIva;$totTotal+=$vTot;
 </tbody>
 <tfoot>
 <tr class="totales">
-    <td colspan="7" style="padding:.5rem;font-size:.73rem;">TOTALES ({{ $contratos->count() }} contratos)</td>
+    <td colspan="6" style="padding:.5rem;font-size:.73rem;">TOTALES ({{ $contratos->count() }} contratos)</td>
     <td class="num-col tot-val">${{ number_format($totEps,  0,',','.') }}</td>
     <td class="num-col tot-val">${{ number_format($totArl,  0,',','.') }}</td>
     <td class="num-col tot-val">${{ number_format($totCaja, 0,',','.') }}</td>
     <td class="num-col tot-val">${{ number_format($totPen,  0,',','.') }}</td>
     <td class="num-col tot-val">${{ number_format($totAdmon,0,',','.') }}</td>
-    <td class="num-col tot-val">${{ number_format($totIva,  0,',','.') }}</td>
+    <td class="num-col tot-val" style="display:none">${{ number_format($totIva,  0,',','.') }}</td>
     <td class="num-col tot-val" style="font-size:.9rem">${{ number_format($totTotal,0,',','.') }}</td>
     <td colspan="3"></td>
 </tr>
@@ -322,6 +375,38 @@ $totAdmon+=$vAdm;$totIva+=$vIva;$totTotal+=$vTot;
 </table>
 </div>
 </div>
+
+{{-- ─── Panel saldo neto de la EMPRESA (calculado en el controlador) ─────────
+     Usa empresa_id: suma TODOS los saldo_proximo hasta e incluyendo el mes actual.
+     Abril: +700k  |  Mayo: +700k - 700k = 0  |  Junio: correcto
+--}}
+@if($saldoEmpresaFavor > 0 || $saldoEmpresaPendiente > 0)
+<div style="display:flex;justify-content:flex-end;gap:.6rem;flex-wrap:wrap;margin-top:.55rem;">
+
+    @if($saldoEmpresaFavor > 0)
+    <div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;padding:.55rem .9rem;display:flex;align-items:center;gap:.5rem;min-width:210px;">
+        <span style="font-size:1.2rem;">✅</span>
+        <div>
+            <div style="font-size:.6rem;font-weight:700;color:#15803d;text-transform:uppercase;letter-spacing:.04em;">Saldo a favor empresa</div>
+            <div style="font-size:.95rem;font-weight:800;color:#15803d;">+${{ number_format($saldoEmpresaFavor,0,',','.') }}</div>
+            <div style="font-size:.58rem;color:#4ade80;">Se descuenta automáticamente al facturar</div>
+        </div>
+    </div>
+    @endif
+
+    @if($saldoEmpresaPendiente > 0)
+    <div style="background:#fef2f2;border:1.5px solid #fca5a5;border-radius:10px;padding:.55rem .9rem;display:flex;align-items:center;gap:.5rem;min-width:210px;">
+        <span style="font-size:1.2rem;">⚠️</span>
+        <div>
+            <div style="font-size:.6rem;font-weight:700;color:#dc2626;text-transform:uppercase;letter-spacing:.04em;">Pendiente empresa</div>
+            <div style="font-size:.95rem;font-weight:800;color:#dc2626;">-${{ number_format($saldoEmpresaPendiente,0,',','.') }}</div>
+            <div style="font-size:.58rem;color:#fca5a5;">Se suma al total al facturar</div>
+        </div>
+    </div>
+    @endif
+
+</div>
+@endif
 
 {{-- ═══ MODAL FACTURAR UNIFICADO ══════════════════════════════════ --}}
 @php $mfMes = $mes; $mfAnio = $anio; @endphp
@@ -397,8 +482,14 @@ MF.init({
     csrf: CSRF,
     empresaId: {{ $empresa->id }}, // para identificar pagos de empresa
     onExito: (data) => {
-        if (data.recibo_url) window.open(data.recibo_url, '_blank');
-        location.reload();
+        MF.cerrar();
+        if (data.recibo_url) {
+            // Abrir recibo en el modal iframe existente (no nueva pestaña)
+            abrirRecibo(data.recibo_url + '?modal=1');
+            // El reload ocurre al cerrar el modal de recibo (ver cerrarRecibo)
+        } else {
+            location.reload();
+        }
     }
 });
 
@@ -506,6 +597,7 @@ function _buildContratosSelec() {
         nombre:    r.dataset.nombre || '',
         tipo:      r.dataset.tipo   || 'planilla',
         afiliacion: parseInt(r.dataset.afiliacion || 0),
+        esindact:  r.dataset.esindact === '1',   // I ACT primer mes: afil + planilla juntas
     }));
 }
 
@@ -573,6 +665,7 @@ function abrirRecibo(url) {
 function cerrarRecibo() {
     document.getElementById('recibo-modal-ov').style.display = 'none';
     document.getElementById('recibo-frame').src = '';
+    location.reload(); // refrescar tabla después de ver el recibo
 }
 
 // ─── Otro Ingreso — abrir desde empresa ───────────────────────
@@ -612,4 +705,8 @@ function OI_abrirEmpresa() {
     </div>
 </div>
 @endpush
+
+{{-- Panel Claves y Accesos de la Empresa --}}
+@include('admin.facturacion.partials.clave_accesos_empresa')
+
 @endsection

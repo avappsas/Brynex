@@ -2,9 +2,9 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Models\BaseModel;
 
-class TareaSemaforoConfig extends Model
+class TareaSemaforoConfig extends BaseModel
 {
     public $timestamps = false;
     protected $table = 'tarea_semaforo_config';

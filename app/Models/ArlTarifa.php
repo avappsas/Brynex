@@ -2,11 +2,11 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Models\BaseModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-class ArlTarifa extends Model
+class ArlTarifa extends BaseModel
 {
     protected $table = 'arl_tarifas';
     protected $fillable = ['aliado_id', 'nivel', 'porcentaje', 'descripcion'];

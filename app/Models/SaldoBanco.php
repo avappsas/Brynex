@@ -2,9 +2,9 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Models\BaseModel;
 
-class SaldoBanco extends Model
+class SaldoBanco extends BaseModel
 {
     protected $table    = 'saldos_banco';
     protected $fillable = [

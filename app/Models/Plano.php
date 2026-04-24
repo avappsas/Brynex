@@ -2,10 +2,11 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Models\BaseModel;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\DB;
 
-class Plano extends Model
+class Plano extends BaseModel
 {
     use SoftDeletes;
 
@@ -40,7 +41,7 @@ class Plano extends Model
         // Clasificación
         'razon_social',           // nombre RS (legacy, se mantiene por compatibilidad)
         'razon_social_id',        // ID de razones_sociales
-        'tipo_p',                 // nombre tipo modalidad (legacy)
+        'tipo_p',                 // ID tipo modalidad (= tipo_modalidad_id, legacy smallint)
         'tipo_modalidad_id',      // ID de tipo_modalidad
         'usuario_id',
     ];
@@ -67,11 +68,19 @@ class Plano extends Model
         $rs      = $contrato->razonSocial;
         $modal   = $contrato->tipoModalidad;
 
-        // cod_arl: para dependientes viene de la RS (ya eager-loaded con razonSocial.arl).
-        // Fallback al ARL del contrato (independientes o RS sin ARL).
-        // cod_arl: campo directo arl_nit en razones_sociales (RS no tiene relación arl).
-        // Fallback al ARL del contrato individual (independientes).
-        $codArl = $rs?->arl_nit ?? $arl?->nit ?? $arl?->codigo_arl ?? null;
+        // cod_arl y nombre_arl:
+        // Prioridad 1: la RS tiene arl_nit → buscar nombre en tabla arls por ese NIT
+        // Prioridad 2: fallback al ARL del contrato individual (independientes o RS sin ARL)
+        $codArl    = $rs?->arl_nit ?? $arl?->nit ?? $arl?->codigo_arl ?? null;
+        $nombreArl = null;
+        if ($rs?->arl_nit) {
+            // Buscar el nombre real de la ARL de la RS en la tabla arls
+            $nombreArl = DB::table('arls')->where('nit', $rs->arl_nit)->value('nombre_arl');
+        }
+        // Si no se encontró por la RS, usar el ARL del contrato individual
+        if (!$nombreArl) {
+            $nombreArl = $arl?->nombre_arl ?? null;
+        }
 
         [$primerApe, $segundoApe] = static::splitNombre($cliente?->apellidos ?? ($cliente?->primer_apellido . ' ' . $cliente?->segundo_apellido ?? ''));
         [$primerNom, $segundoNom] = static::splitNombre($cliente?->nombres    ?? ($cliente?->primer_nombre   . ' ' . $cliente?->segundo_nombre   ?? ''));
@@ -132,7 +141,7 @@ class Plano extends Model
             'cod_afp'           => $afp?->nit  ?? $afp?->cod_afp  ?? null,
             'nombre_afp'        => $afp?->razon_social ?? null,
             'cod_arl'           => $codArl,
-            'nombre_arl'        => $arl?->nombre_arl ?? null,
+            'nombre_arl'        => $nombreArl,
             'cod_caja'          => $caja?->nit ?? $caja?->cod_caja ?? null,
             'nombre_caja'       => $caja?->nombre ?? null,
             'nivel_riesgo'      => $contrato->n_arl ?? 1,
@@ -144,7 +153,7 @@ class Plano extends Model
             // Clasificación
             'razon_social'      => $rs?->razon_social ?? null,
             'razon_social_id'   => $contrato->razon_social_id,
-            'tipo_p'            => $modal?->nombre ?? null,
+            'tipo_p'            => $contrato->tipo_modalidad_id,  // ID (evita texto largo)
             'tipo_modalidad_id' => $contrato->tipo_modalidad_id,
             'usuario_id'        => $factura->usuario_id,
         ]);

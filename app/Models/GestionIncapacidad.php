@@ -2,10 +2,10 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Models\BaseModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class GestionIncapacidad extends Model
+class GestionIncapacidad extends BaseModel
 {
     public $timestamps = false;
     protected $table = 'gestiones_incapacidad';

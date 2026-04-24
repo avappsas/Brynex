@@ -2,10 +2,10 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Models\BaseModel;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-class ActividadEconomica extends Model
+class ActividadEconomica extends BaseModel
 {
     public $timestamps = false;
     protected $table = 'actividades_economicas';

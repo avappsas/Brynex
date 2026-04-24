@@ -2,9 +2,9 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Models\BaseModel;
 
-class Gasto extends Model
+class Gasto extends BaseModel
 {
     protected $table    = 'gastos';
     protected $fillable = [
@@ -12,6 +12,7 @@ class Gasto extends Model
         'fecha', 'tipo', 'descripcion', 'pagado_a', 'cc_pagado_a',
         'forma_pago', 'banco_origen_id', 'banco_destino_id',
         'valor', 'recibo_caja', 'lugar', 'observacion',
+        'imagen_path',  // soporte / comprobante de pago
     ];
 
     protected $casts = [

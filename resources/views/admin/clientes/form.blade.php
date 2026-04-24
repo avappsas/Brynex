@@ -233,7 +233,10 @@
                     </div>
 
                     <div style="font-size:0.65rem;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.08em;margin:0.75rem 0 0.5rem;">💼 Información Laboral</div>
-                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 80px;gap:0.5rem;">
+                    {{-- operador_planilla_id se gestiona desde el Contrato (cuando RS = independiente) --}}
+                    <input type="hidden" name="operador_planilla_id"
+                           value="{{ old('operador_planilla_id', $cliente->operador_planilla_id) }}">
+                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 80px;gap:0.5rem;">
                         <div>
                             <label class="lbl-campo">Ocupación</label>
                             <input type="text" name="ocupacion" value="{{ old('ocupacion', $cliente->ocupacion) }}" class="inp-campo">
@@ -245,10 +248,6 @@
                         <div>
                             <label class="lbl-campo">IPS</label>
                             <input type="text" name="ips" value="{{ old('ips', $cliente->ips) }}" class="inp-campo">
-                        </div>
-                        <div>
-                            <label class="lbl-campo">Urgencias</label>
-                            <input type="text" name="urgencias" value="{{ old('urgencias', $cliente->urgencias) }}" class="inp-campo">
                         </div>
                         <div>
                             <label class="lbl-campo">IVA</label>
@@ -411,10 +410,10 @@
                         <td class="td-c" style="text-align:center;">
                             {{ $razonesMap[$c->razon_social_id] ?? '—' }}
                         </td>
-                        <td class="td-c" style="text-align:center;white-space:nowrap;">{{ $c->fecha_ingreso ? \Carbon\Carbon::parse($c->fecha_ingreso)->locale('es')->translatedFormat('d-F-y') : '—' }}</td>
+                        <td class="td-c" style="text-align:center;white-space:nowrap;">{{ $c->fecha_ingreso ? sqldate($c->fecha_ingreso)->locale('es')->translatedFormat('d-F-y') : '—' }}</td>
                         <td class="td-c" style="text-align:center;white-space:nowrap;">
                             @if($c->fecha_retiro)
-                                <span style="color:#dc2626;font-weight:600;">{{ \Carbon\Carbon::parse($c->fecha_retiro)->locale('es')->translatedFormat('d-F-y') }}</span>
+                                <span style="color:#dc2626;font-weight:600;">{{ sqldate($c->fecha_retiro)->locale('es')->translatedFormat('d-F-y') }}</span>
                             @else <span style="color:#94a3b8;">—</span>
                             @endif
                         </td>

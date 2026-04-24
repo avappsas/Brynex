@@ -2,9 +2,9 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Models\BaseModel;
 
-class Empresa extends Model
+class Empresa extends BaseModel
 {
     protected $table = 'empresas';
     protected $guarded = [];
@@ -12,6 +12,11 @@ class Empresa extends Model
     public function aliado()
     {
         return $this->belongsTo(Aliado::class);
+    }
+
+    public function clientes()
+    {
+        return $this->hasMany(Cliente::class, 'cod_empresa', 'id');
     }
 
     public function asesor()

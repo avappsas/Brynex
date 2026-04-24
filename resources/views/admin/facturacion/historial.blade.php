@@ -7,7 +7,9 @@ $meses_full = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agos
 // $cliente viene directo del controlador (no depende de $contrato)
 $nombre  = trim(($cliente->primer_nombre ?? '') . ' ' . ($cliente->segundo_nombre ?? '') . ' ' . ($cliente->primer_apellido ?? '') . ' ' . ($cliente->segundo_apellido ?? ''));
 if (!$nombre) $nombre = $cliente->nombre_completo ?? ('CC ' . number_format($cedula, 0, '', '.'));
-$esAdmin = in_array(auth()->user()->rol ?? '', ['superadmin','admin']);
+$esAdmin       = in_array(auth()->user()->rol ?? '', ['superadmin','admin']);
+// SuperAdmin de BryNex: puede anular facturas con planilla pagada
+$esSuperBrynex = auth()->user()->es_brynex && auth()->user()->hasRole('superadmin');
 @endphp
 
 @section('contenido')
@@ -73,8 +75,9 @@ table.hi-tbl{width:100%;border-collapse:collapse;font-size:.77rem}
 .mp-total{background:linear-gradient(135deg,#0f172a,#1e3a5f);border-radius:9px;padding:.45rem .75rem;display:flex;justify-content:space-between;align-items:center;margin-top:.6rem}
 .mp-total-lbl{font-size:.7rem;color:rgba(255,255,255,.7);font-weight:700;text-transform:uppercase}
 .mp-total-val{font-size:1rem;font-weight:900;color:#fff;font-family:monospace}
-/* Empty */
-.hi-empty{padding:2.5rem;text-align:center;color:#94a3b8;font-size:.88rem}
+.btn-anular{background:#fff1f2;color:#be123c;border:1px solid #fecdd3}.btn-anular:hover{background:#ffe4e6}
+.badge-planilla{display:inline-flex;align-items:center;gap:.25rem;padding:.13rem .5rem;border-radius:20px;font-size:.62rem;font-weight:700;background:#dcfce7;color:#15803d;border:1px solid #bbf7d0;font-family:monospace;letter-spacing:.03em}
+.badge-planilla-lock{background:#fef9c3;color:#854d0e;border-color:#fde68a}
 </style>
 
 {{-- HEADER --}}
@@ -164,8 +167,8 @@ table.hi-tbl{width:100%;border-collapse:collapse;font-size:.77rem}
                 <th class="num">Admon</th>
                 <th class="num">Total</th>
                 <th>Estado</th>
+                <th>N° Planilla</th>
                 <th>Origen</th>
-                <th>Registró</th>
                 <th>Acciones</th>
             </tr></thead>
             <tbody>
@@ -182,6 +185,10 @@ table.hi-tbl{width:100%;border-collapse:collapse;font-size:.77rem}
                 ? ['badge-afil', '📌 Afiliación']
                 : ['badge-plan', '📄 Planilla'];
             $esPorEmpresa = !is_null($f->empresa_id);
+            // N° Planilla del operador (si el plano fue pagado al operador)
+            $numeroPlanillaOp = $f->plano?->numero_planilla;
+            // Puede anular: admin/superadmin + si tiene planilla solo superadmin BryNex
+            $puedeAnular = $esAdmin && (!$numeroPlanillaOp || $esSuperBrynex);
             @endphp
             <tr>
                 <td style="font-family:monospace;font-weight:800;color:#1d4ed8;font-size:.76rem">#{{ $f->numero_factura ?? '—' }}</td>
@@ -196,6 +203,16 @@ table.hi-tbl{width:100%;border-collapse:collapse;font-size:.77rem}
                 <td class="num">{{ $fmt(($f->admon ?? 0) + ($f->admin_asesor ?? 0)) }}</td>
                 <td class="num" style="font-weight:900;color:{{ $f->estado==='pagada'?'#16a34a':'#0f172a' }}">{{ $fmt($f->total) }}</td>
                 <td><span class="badge {{ $estadoBadge[0] }}">{{ $estadoBadge[1] }}</span></td>
+                {{-- Nº Planilla operador — junto a Estado --}}
+                <td>
+                    @if($numeroPlanillaOp)
+                    <span class="badge-planilla" title="Planilla pagada al operador">
+                        📄 {{ $numeroPlanillaOp }}
+                    </span>
+                    @else
+                    <span style="color:#cbd5e1;font-size:.7rem">—</span>
+                    @endif
+                </td>
                 <td>
                     @if($esPorEmpresa)
                     <span class="badge badge-emp" title="{{ $f->empresa?->empresa ?? 'Empresa' }}">
@@ -205,9 +222,8 @@ table.hi-tbl{width:100%;border-collapse:collapse;font-size:.77rem}
                     <span class="badge badge-ind">👤 Individual</span>
                     @endif
                 </td>
-                <td style="font-size:.68rem;color:#64748b">{{ Str::limit($f->usuario?->name ?? '—', 10) }}</td>
                 <td>
-                    <div style="display:flex;gap:.3rem;align-items:center">
+                    <div style="display:flex;gap:.3rem;align-items:center;flex-wrap:wrap">
                         {{-- Recibo --}}
                         <button onclick="abrirRecibo('{{ route('admin.facturacion.recibo', $f->id) }}?modal=1')" class="btn-act-sm btn-recibo" title="Ver recibo">
                             📄 Recibo
@@ -219,6 +235,17 @@ table.hi-tbl{width:100%;border-collapse:collapse;font-size:.77rem}
                             title="Ver datos del plano">
                             📋 Plano
                         </button>
+                        @endif
+                        {{-- Anular --}}
+                        @if($puedeAnular)
+                        <button type="button" class="btn-act-sm btn-anular"
+                            onclick="abrirAnular({{ $f->id }}, '{{ $f->numero_factura }}', {{ $numeroPlanillaOp ? 'true' : 'false' }})">
+                            ⛔ Anular
+                        </button>
+                        @elseif($esAdmin && $numeroPlanillaOp)
+                        <span class="badge-planilla-lock" title="Solo superadmin BryNex puede anular. Planilla: {{ $numeroPlanillaOp }}">
+                            🔒 Planilla pagada
+                        </span>
                         @endif
                     </div>
                 </td>
@@ -293,6 +320,8 @@ table.hi-tbl{width:100%;border-collapse:collapse;font-size:.77rem}
 <script>
 const HI_MESES = @json($meses_full);
 const HI_FMT   = v => '$' + Math.ceil(v||0).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'.');
+const ANULAR_URL = '{{ rtrim(route("admin.facturacion.anular", ["id" => 0]), "/0") }}';
+const CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]')?.content || '{{ csrf_token() }}';
 
 function toggleGrupo(hdr) {
     hdr.closest('.hi-group').classList.toggle('open');
@@ -327,7 +356,7 @@ function verPlano(p, periodo) {
     document.getElementById('mp-total-cot').textContent = HI_FMT(p.total_cot);
     document.getElementById('modal-plano-overlay').style.display = 'flex';
 }
-// ── Modal Recibo ──────────────────────────────────────
+// ── Modal Recibo ─────────────────────────────────────
 function abrirRecibo(url) {
     document.getElementById('recibo-frame').src = url;
     document.getElementById('recibo-modal-ov').style.display = 'flex';
@@ -335,6 +364,54 @@ function abrirRecibo(url) {
 function cerrarRecibo() {
     document.getElementById('recibo-modal-ov').style.display = 'none';
     document.getElementById('recibo-frame').src = '';
+}
+
+// ── Modal Anular ─────────────────────────────────────
+let _anularId = null;
+function abrirAnular(id, nroFactura, tienePlanilla) {
+    _anularId = id;
+    document.getElementById('anular-nro').textContent = '#' + nroFactura;
+    document.getElementById('anular-adv-planilla').style.display = tienePlanilla ? 'block' : 'none';
+    document.getElementById('anular-motivo').value = '';
+    document.getElementById('modal-anular-ov').style.display = 'flex';
+}
+function cerrarAnular() {
+    document.getElementById('modal-anular-ov').style.display = 'none';
+    _anularId = null;
+}
+async function confirmarAnular() {
+    const motivo = document.getElementById('anular-motivo').value.trim();
+    if (!motivo) { alert('Debe indicar el motivo de anulación.'); return; }
+    const btn = document.getElementById('btn-ejecutar-anular');
+    btn.disabled = true; btn.textContent = '⏳ Anulando...';
+    try {
+        const resp = await fetch(`${ANULAR_URL}/${_anularId}`, {
+            method: 'DELETE',
+            credentials: 'same-origin',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': CSRF_TOKEN,
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify({ motivo }),
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            cerrarAnular();
+            const toast = document.createElement('div');
+            toast.textContent = '✅ ' + data.mensaje;
+            toast.style.cssText = 'position:fixed;bottom:1.5rem;right:1.5rem;background:#0f172a;color:#e2e8f0;border-left:4px solid #10b981;border-radius:10px;padding:.65rem 1.1rem;font-size:.82rem;font-weight:500;z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.3)';
+            document.body.appendChild(toast);
+            setTimeout(() => location.reload(), 1800);
+        } else {
+            alert('❌ ' + (data.message || data.mensaje || 'Error al anular.'));
+            btn.disabled = false; btn.textContent = '⛔ Confirmar Anulación';
+        }
+    } catch(e) {
+        alert('Error de conexión: ' + e.message);
+        btn.disabled = false; btn.textContent = '⛔ Confirmar Anulación';
+    }
 }
 </script>
 
@@ -359,4 +436,40 @@ function cerrarRecibo() {
     </div>
 </div>
 @endpush
+
+{{-- Modal de Anulación --}}
+<div id="modal-anular-ov"
+     onclick="if(event.target.id==='modal-anular-ov')cerrarAnular()"
+     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(3px);z-index:9999;align-items:center;justify-content:center;padding:.75rem">
+    <div style="background:#fff;border-radius:14px;width:min(480px,97vw);box-shadow:0 24px 60px rgba(0,0,0,.4);overflow:hidden">
+        <div style="background:linear-gradient(135deg,#7f1d1d,#b91c1c);padding:.75rem 1.1rem;display:flex;justify-content:space-between;align-items:center">
+            <span style="font-size:.9rem;font-weight:800;color:#fff">⛔ Anular Recibo <span id="anular-nro" style="font-family:monospace"></span></span>
+            <button onclick="cerrarAnular()" style="background:rgba(255,255,255,.15);color:#fff;border:none;border-radius:6px;width:26px;height:26px;cursor:pointer;font-size:.9rem">✕</button>
+        </div>
+        <div style="padding:1rem 1.1rem">
+            {{-- Advertencia planilla pagada --}}
+            <div id="anular-adv-planilla" style="display:none;background:#fef9c3;border:1px solid #fde68a;border-radius:8px;padding:.65rem .9rem;font-size:.78rem;color:#92400e;margin-bottom:.9rem;line-height:1.5">
+                <strong>⚠️ Atención: Esta factura tiene planilla pagada al operador.</strong><br>
+                La anulación es irreversible y solo la puede realizar un <strong>superadmin de BryNex</strong>.
+                Verifique que el operador también sea notificado.
+            </div>
+            <p style="font-size:.82rem;color:#475569;margin-bottom:.75rem">
+                Indique el motivo de anulación. Esta acción queda registrada en la bitácora del sistema.
+            </p>
+            <label style="font-size:.7rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.04em">Motivo <span style="color:#ef4444">*</span></label>
+            <textarea id="anular-motivo" rows="3"
+                style="width:100%;margin-top:.3rem;border:1.5px solid #cbd5e1;border-radius:8px;padding:.45rem .65rem;font-size:.83rem;resize:vertical;outline:none;font-family:inherit;box-sizing:border-box"
+                placeholder="Ej: Error de facturación, duplicado, etc."></textarea>
+        </div>
+        <div style="padding:.75rem 1.1rem 1rem;border-top:1px solid #f1f5f9;display:flex;gap:.5rem;justify-content:flex-end">
+            <button onclick="cerrarAnular()" style="padding:.38rem .85rem;border-radius:8px;font-size:.8rem;font-weight:600;border:1px solid #e2e8f0;background:#f1f5f9;color:#64748b;cursor:pointer">
+                Cancelar
+            </button>
+            <button id="btn-ejecutar-anular" onclick="confirmarAnular()"
+                style="padding:.38rem .85rem;border-radius:8px;font-size:.8rem;font-weight:700;border:none;background:linear-gradient(135deg,#b91c1c,#7f1d1d);color:#fff;cursor:pointer">
+                ⛔ Confirmar Anulación
+            </button>
+        </div>
+    </div>
+</div>
 @endsection

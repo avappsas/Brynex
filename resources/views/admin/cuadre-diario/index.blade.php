@@ -196,7 +196,7 @@ $totalBancos = $bancos->sum(fn($bc) => \App\Models\Consignacion::saldoBanco(sess
         <tbody>
         @foreach($datosPeriodo['por_dia'] as $dia)
         <tr class="{{ ($dia['ingresos'] > 0 || $dia['gastos'] > 0) ? '' : 'opacity-40' }}">
-            <td>{{ Carbon::parse($dia['fecha'])->locale('es')->isoFormat('ddd DD MMM') }}</td>
+            <td>{{ sqldate($dia['fecha'])->locale('es')->isoFormat('ddd DD MMM') }}</td>
             <td class="num" style="color:#15803d">{{ $dia['ingresos'] ? '+'.$fmt($dia['ingresos']) : '—' }}</td>
             <td class="num" style="color:#dc2626">{{ $dia['gastos'] ? '-'.$fmt($dia['gastos']) : '—' }}</td>
             <td class="num" style="font-weight:700;color:{{ $dia['saldo'] >= 0 ? '#1d4ed8' : '#dc2626' }}">

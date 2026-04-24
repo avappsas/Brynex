@@ -2,9 +2,9 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Models\BaseModel;
 
-class ClaveAcceso extends Model
+class ClaveAcceso extends BaseModel
 {
     protected $table = 'clave_accesos';
 
@@ -12,6 +12,7 @@ class ClaveAcceso extends Model
         'aliado_id',
         'cedula',
         'razon_social_id',
+        'empresa_id',
         'tipo',
         'entidad',
         'usuario',
@@ -59,5 +60,10 @@ class ClaveAcceso extends Model
     public function scopeDeRazonSocial($query, int $razonSocialId)
     {
         return $query->where('razon_social_id', $razonSocialId);
+    }
+
+    public function scopeDeEmpresa($query, int $empresaId)
+    {
+        return $query->where('empresa_id', $empresaId);
     }
 }

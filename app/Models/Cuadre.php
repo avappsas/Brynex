@@ -2,9 +2,9 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Models\BaseModel;
 
-class Cuadre extends Model
+class Cuadre extends BaseModel
 {
     protected $table    = 'cuadres';
     protected $fillable = [

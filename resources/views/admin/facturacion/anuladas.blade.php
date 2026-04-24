@@ -112,7 +112,7 @@ $anulador = \App\Models\User::find($f->anulado_por);
     <td class="n-r" style="font-weight:700">{{ $fmt($f->total) }}</td>
     <td style="max-width:220px;font-size:.74rem;color:#991b1b">{{ $f->motivo_anulacion ?? '—' }}</td>
     <td style="white-space:nowrap;font-size:.73rem;color:#64748b">
-        {{ $f->deleted_at ? Carbon::parse($f->deleted_at)->format('d/m/Y H:i') : '—' }}
+        {{ $f->deleted_at ? sqldate($f->deleted_at)->format('d/m/Y H:i') : '—' }}
     </td>
     <td style="font-size:.74rem">{{ $anulador?->nombre ?? $anulador?->name ?? 'Sistema' }}</td>
     <td style="white-space:nowrap">

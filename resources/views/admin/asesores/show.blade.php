@@ -132,7 +132,7 @@
                         </td>
                         <td style="padding:0.75rem 1rem;text-align:center;">
                             @if($com->pagado)
-                                <span style="background:#dcfce7;color:#16a34a;padding:0.2rem 0.6rem;border-radius:999px;font-size:0.72rem;font-weight:600;">✅ Pagado ({{ \Carbon\Carbon::parse($com->fecha_pago)->format('d/m/Y') }})</span>
+                                <span style="background:#dcfce7;color:#16a34a;padding:0.2rem 0.6rem;border-radius:999px;font-size:0.72rem;font-weight:600;">✅ Pagado ({{ sqldate($com->fecha_pago)->format('d/m/Y') }})</span>
                             @else
                                 <span style="background:#fee2e2;color:#dc2626;padding:0.2rem 0.6rem;border-radius:999px;font-size:0.72rem;font-weight:600;">❌ Pendiente</span>
                             @endif

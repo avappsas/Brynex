@@ -2,9 +2,9 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Models\BaseModel;
 
-class Pension extends Model
+class Pension extends BaseModel
 {
     protected $table = 'pensiones';
     public $timestamps = false;

@@ -2,9 +2,9 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Models\BaseModel;
 
-class Caja extends Model
+class Caja extends BaseModel
 {
     protected $table = 'cajas';
     public $timestamps = false;

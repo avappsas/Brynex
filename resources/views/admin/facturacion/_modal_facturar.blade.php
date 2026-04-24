@@ -121,7 +121,7 @@
 /* ── BODY 2 COLUMNAS ── */
 #mf-body {
     display: grid;
-    grid-template-columns: 1.2fr 4fr;
+    grid-template-columns: 1.5fr 3.7fr;
     gap: 0;
     overflow: hidden;
     flex: 1;
@@ -339,7 +339,7 @@
 {{-- ════════════════════════════════════════════════════════ --}}
 {{--  OVERLAY + BOX                                          --}}
 {{-- ════════════════════════════════════════════════════════ --}}
-<div id="mf-overlay" style="display:none;" onclick="if(event.target===this)MF.cerrar()">
+<div id="mf-overlay" style="display:none;">
 <div id="mf-box" onclick="event.stopPropagation()">
 
     {{-- ── HEADER ── --}}
@@ -357,35 +357,51 @@
         </div>
     </div>
 
-    {{-- ── CONTROLES: tipo / estado / mes / año ── --}}
+    {{-- ── CONTROLES: indep-opts a la izquierda | Tipo/Mes/Año a la derecha ── --}}
     <div id="mf-controls">
-        <div class="mf-ctrl-group">
-            <span class="mf-ctrl-label">Estado</span>
-            <select id="mf-estado" class="mf-ctrl-sel" onchange="MF.onEstado()">
-                <option value="pagada">✅ Pagado</option>
-                <option value="pre_factura">📋 Pre-factura</option>
-                <option value="prestamo">💳 Préstamo</option>
-            </select>
+        {{-- IZQUIERDA: opciones independiente (primer mes) --}}
+        <div id="mf-indep-opts" style="display:none;">
+            <div style="font-size:.57rem;font-weight:800;color:#7c3aed;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.3rem;">⚡ Primer mes — ¿Qué se cobra?</div>
+            <div style="display:flex;gap:.75rem;align-items:center;">
+                <label style="display:flex;align-items:center;gap:.3rem;font-size:.78rem;font-weight:700;color:#6d28d9;cursor:pointer;white-space:nowrap;">
+                    <input type="radio" name="mf_indep_modo" value="afiliacion" checked onchange="MF.actualizarTipo()" style="accent-color:#7c3aed;"> Solo Afiliación
+                </label>
+                <label style="display:flex;align-items:center;gap:.3rem;font-size:.78rem;font-weight:700;color:#6d28d9;cursor:pointer;white-space:nowrap;">
+                    <input type="radio" name="mf_indep_modo" value="ambos" onchange="MF.actualizarTipo()" style="accent-color:#7c3aed;"> Planilla + Afiliación
+                </label>
+            </div>
         </div>
-        <div class="mf-ctrl-group">
-            <span class="mf-ctrl-label">Mes</span>
-            <select id="mf-mes" class="mf-ctrl-sel" onchange="MF.cambiarPeriodo()">
-                @foreach($meses_nombres as $i => $m)
-                <option value="{{ $i+1 }}" {{ ($i+1) == $mfMesD ? 'selected' : '' }}>{{ $m }}</option>
-                @endforeach
-            </select>
-        </div>
-        <div class="mf-ctrl-group">
-            <span class="mf-ctrl-label">Año</span>
-            <select id="mf-anio" class="mf-ctrl-sel" onchange="MF.cambiarPeriodo()">
-                @for($y = now()->year - 1; $y <= now()->year + 2; $y++)
-                <option value="{{ $y }}" {{ $y == $mfAnioD ? 'selected' : '' }}>{{ $y }}</option>
-                @endfor
-            </select>
-        </div>
-        <div class="mf-ctrl-group mf-np-wrap" id="mf-nplano-wrap">
-            <span class="mf-ctrl-label">N° Plano (NP)</span>
-            <input type="number" id="mf-nplano" class="mf-np-inp" placeholder="Auto" min="1" style="width:88px;">
+
+        {{-- DERECHA: controles estándar --}}
+        <div style="display:flex;align-items:center;gap:.7rem;margin-left:auto;flex-wrap:wrap;">
+            <div class="mf-ctrl-group">
+                <span class="mf-ctrl-label">Tipo</span>
+                <select id="mf-estado" class="mf-ctrl-sel" onchange="MF.onEstado()">
+                    <option value="pagada">🧳 Facturar</option>
+                    <option value="pre_factura">📋 Pre-factura</option>
+                    <option value="prestamo">💳 Préstamo</option>
+                </select>
+            </div>
+            <div class="mf-ctrl-group">
+                <span class="mf-ctrl-label">Mes</span>
+                <select id="mf-mes" class="mf-ctrl-sel" onchange="MF.cambiarPeriodo()">
+                    @foreach($meses_nombres as $i => $m)
+                    <option value="{{ $i+1 }}" {{ ($i+1) == $mfMesD ? 'selected' : '' }}>{{ $m }}</option>
+                    @endforeach
+                </select>
+            </div>
+            <div class="mf-ctrl-group">
+                <span class="mf-ctrl-label">Año</span>
+                <select id="mf-anio" class="mf-ctrl-sel" onchange="MF.cambiarPeriodo()">
+                    @for($y = now()->year - 1; $y <= now()->year + 2; $y++)
+                    <option value="{{ $y }}" {{ $y == $mfAnioD ? 'selected' : '' }}>{{ $y }}</option>
+                    @endfor
+                </select>
+            </div>
+            <div class="mf-ctrl-group mf-np-wrap" id="mf-nplano-wrap">
+                <span class="mf-ctrl-label">N° Plano (NP)</span>
+                <input type="number" id="mf-nplano" class="mf-np-inp" placeholder="Auto" min="1" style="width:88px;">
+            </div>
         </div>
         <input type="hidden" id="mf-tipo" value="planilla">
     </div>
@@ -394,15 +410,6 @@
     <div id="mf-alerts">
         <div id="mf-aviso-mes"  style="display:none;" class="mf-alert mf-alert-warn">⚠️ <span id="mf-aviso-mes-txt"></span></div>
         <div id="mf-aviso-tipo" style="display:none;" class="mf-alert mf-alert-warn"></div>
-    </div>
-
-    {{-- ── OPCIONES INDEPENDIENTE ── --}}
-    <div id="mf-indep-opts">
-        <div style="font-size:.62rem;font-weight:800;color:#7c3aed;text-transform:uppercase;letter-spacing:.05em;">⚡ Independiente — Primer mes</div>
-        <div class="mf-radio-row">
-            <label class="mf-radio-lbl"><input type="radio" name="mf_indep_modo" value="afiliacion" checked onchange="MF.actualizarTipo()"> Solo Afiliación</label>
-            <label class="mf-radio-lbl"><input type="radio" name="mf_indep_modo" value="ambos" onchange="MF.actualizarTipo()"> Planilla + Afiliación</label>
-        </div>
     </div>
 
     {{-- ══════════════════════  BODY 2 COLUMNAS  ══════════════════════ --}}
@@ -474,17 +481,16 @@
                     <input type="text" id="mf-otros-admon" class="mf-edit-inp" value="0" oninput="MF.recalc()">
                 </div>
             </div>
-
-            {{-- Detalle afiliación (legacy, se mantiene por compatibilidad con modo individual) --}}
+            {{-- Detalle afiliación (legacy) --}}
             <div id="mf-detalle-afil" style="display:none;"></div>
 
-            {{-- Total --}}
-            <div class="mf-total-box">
-                <span class="mf-total-label">Total a pagar</span>
+            {{-- Total bruto -- al fondo de la columna izquierda --}}
+            <div class="mf-total-box" style="margin-top:.5rem;">
+                <span class="mf-total-label">Total bruto</span>
                 <span id="mf-total" class="mf-total-val">$0</span>
             </div>
 
-            {{-- Distribución afiliación --}}
+            {{-- Distribución afiliación (solo en modo afiliación) --}}
             <div id="mf-dist-sec" style="display:none;" class="mf-dist-card">
                 <div class="mf-dist-card-title">📊 Distribución Afiliación <span style="font-weight:400;opacity:.7;">(interno)</span></div>
                 <div class="mf-dist-grid">
@@ -503,7 +509,8 @@
                 </div>
                 <div id="mf-dist-aviso" style="display:none;margin-top:.3rem;font-size:.67rem;color:#dc2626;font-weight:700;"></div>
             </div>
-        </div>
+
+        </div>{{-- /mf-col-desglose --}}
 
         {{-- ╔══════════════════════════════════════════════╗ --}}
         {{-- ║  COL DERECHA — PAGOS                        ║ --}}
@@ -513,11 +520,11 @@
             {{-- Saldos a favor / pendientes (aparece si los hay) — ARRIBA del pendiente --}}
             <div id="mf-saldos-panel" style="display:none;"></div>
 
-            {{-- Pendiente --}}
+            {{-- Saldo a pagar (columna derecha) --}}
             <div class="mf-pendiente-box">
                 <div>
-                    <div class="mf-pendiente-label">Saldo pendiente</div>
-                    <div style="font-size:.62rem;color:#3b82f6;margin-top:.08rem;">Total − pagos recibidos</div>
+                    <div class="mf-pendiente-label">Saldo a pagar</div>
+                    <div style="font-size:.62rem;color:#3b82f6;margin-top:.08rem;">Total bruto − anticipo − pagos recibidos</div>
                 </div>
                 <span id="mf-pendiente" style="color:#dc2626;">$0</span>
             </div>
@@ -529,12 +536,13 @@
                     <button class="mf-consig-add-btn" onclick="MF.addConsig()">＋ Agregar</button>
                 </div>
                 {{-- Cabecera --}}
-                <div style="display:grid;grid-template-columns:2fr 90px 100px 100px 22px;gap:.25rem;padding:.22rem .6rem .15rem;background:#f8fafc;border-bottom:1px solid #f1f5f9;">
+                <div style="display:grid;grid-template-columns:2fr 90px 100px 100px 34px 22px;gap:.25rem;padding:.22rem .6rem .15rem;background:#f8fafc;border-bottom:1px solid #f1f5f9;">
                     <span style="font-size:.57rem;font-weight:700;color:#94a3b8;text-transform:uppercase;">Banco</span>
                     <span style="font-size:.57rem;font-weight:700;color:#94a3b8;text-transform:uppercase;text-align:right;">Valor</span>
                     <span style="font-size:.57rem;font-weight:700;color:#94a3b8;text-transform:uppercase;text-align:center;">Fecha</span>
                     <span style="font-size:.57rem;font-weight:700;color:#94a3b8;text-transform:uppercase;text-align:center;">Referencia</span>
-                    <span></span>
+                    <span style="font-size:.57rem;font-weight:700;color:#94a3b8;text-transform:uppercase;text-align:center;">Adj.</span>
+                    <span style="font-size:.57rem;font-weight:700;color:#94a3b8;text-transform:uppercase;text-align:center;">Del.</span>
                 </div>
                 <div id="mf-consig-list"></div>
             </div>

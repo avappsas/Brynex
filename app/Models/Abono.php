@@ -2,9 +2,9 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Models\BaseModel;
 
-class Abono extends Model
+class Abono extends BaseModel
 {
     protected $table    = 'abonos';
     protected $fillable = [

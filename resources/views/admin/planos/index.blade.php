@@ -1,4 +1,4 @@
-@extends('layouts.app')
+﻿@extends('layouts.app')
 
 @section('titulo', 'Planos SS')
 @section('modulo', 'Pago Planillas Seguridad Social')
@@ -365,20 +365,53 @@
 
             <div class="filtro-sep"></div>
 
-            {{-- Razón Social --}}
+            {{-- Razon Social --}}
             <div class="filtro-inline">
                 <span class="fi-label">RS</span>
-                <select name="razon_social_id" id="sel-rs" style="min-width:200px" onchange="onRsChange(this)">
+                <select name="razon_social_id" id="sel-rs"
+                        style="min-width:360px;font-family:'Courier New',Courier,monospace;font-size:.77rem;text-align:left"
+                        onchange="onRsChange(this)">
                     <option value="">— Todas —</option>
-                    @foreach($razonesSociales as $rs)
-                    @php $esActiva = in_array(strtolower($rs->estado ?? ''), ['activo','activa','1','si','yes']); @endphp
-                    <option value="{{ $rs->id }}"
-                        data-nplano="{{ $rs->n_plano }}"
-                        {{ $razonSocialId == $rs->id ? 'selected' : '' }}
-                        style="{{ !$esActiva ? 'color:#94a3b8' : '' }}">
-                        {{ $esActiva ? '' : '▪ ' }}{{ $rs->razon_social }} | P={{ $rs->n_plano ?? '?' }}
-                    </option>
-                    @endforeach
+
+                    @php
+                        $rsConPlanos = $razonesSociales->filter(fn($r) => isset($cantPorRs[$r->id]) && $cantPorRs[$r->id] > 0);
+                        $rsSinPlanos = $razonesSociales->filter(fn($r) => !isset($cantPorRs[$r->id]) || $cantPorRs[$r->id] == 0);
+                        $colNom = 28; $colP = 5; $colCant = 3;
+                    @endphp
+
+                    @if($rsConPlanos->count())
+                    <optgroup label="Con planos en este periodo ({{ $rsConPlanos->count() }} RS)">
+                        @foreach($rsConPlanos as $rs)
+                        @php
+                            $cant  = $cantPorRs[$rs->id] ?? 0;
+                            $rNom  = mb_strtoupper(mb_substr($rs->razon_social, 0, $colNom));
+                            $nom   = $rNom . str_repeat(chr(194).chr(160), max(0, $colNom - mb_strlen($rNom)));
+                            $pPad  = max(0, $colP - mb_strlen("P=".$rs->n_plano));
+                            $pStr  = str_repeat(chr(194).chr(160), $pPad)."P=".$rs->n_plano;
+                            $cPad  = max(0, $colCant - mb_strlen((string)$cant));
+                            $cStr  = str_repeat(chr(194).chr(160), $cPad).$cant." pers.";
+                        @endphp
+                        <option value="{{ $rs->id }}" data-nplano="{{ $rs->n_plano }}" {{ $razonSocialId == $rs->id ? "selected" : "" }}>🟢 {{ $nom }}  {{ $pStr }}  {{ $cStr }}</option>
+                        @endforeach
+                    </optgroup>
+                    @endif
+
+                    @if($rsSinPlanos->count())
+                    <optgroup label="Sin planos en este periodo ({{ $rsSinPlanos->count() }} RS)">
+                        @foreach($rsSinPlanos as $rs)
+                        @php
+                            $esA   = in_array(strtolower($rs->estado ?? ""), ["activo","activa","1","si","yes"]);
+                            $rNom  = mb_strtoupper(mb_substr($rs->razon_social, 0, $colNom));
+                            $nom   = $rNom . str_repeat(chr(194).chr(160), max(0, $colNom - mb_strlen($rNom)));
+                            $pPad  = max(0, $colP - mb_strlen("P=".$rs->n_plano));
+                            $pStr  = str_repeat(chr(194).chr(160), $pPad)."P=".$rs->n_plano;
+                            $icono = $esA ? "o" : "-";
+                        @endphp
+                        <option value="{{ $rs->id }}" data-nplano="{{ $rs->n_plano }}" {{ $razonSocialId == $rs->id ? "selected" : "" }} style="color:#94a3b8;">{{ $icono }} {{ $nom }}  {{ $pStr }}</option>
+                        @endforeach
+                    </optgroup>
+                    @endif
+
                 </select>
             </div>
 
@@ -430,10 +463,12 @@
                     @if($planos->count()==0) disabled style="opacity:.4;cursor:not-allowed" @endif>
                     📥 Descargar Plano
                 </button>
+                @if(!$esIndependiente)
                 <button type="button" class="btn-accion btn-pagar" onclick="abrirModalPago()"
                     @if($planos->count()==0) disabled style="opacity:.4;cursor:not-allowed" @endif>
                     ✅ Confirmar Pago
                 </button>
+                @endif
             </div>
 
         </div>
@@ -465,7 +500,7 @@
             <th>Planilla</th>
             <th>Empresa</th>
             <th>Envío</th>
-            <th>Edad</th>
+            @if($esIndependiente)<th>Operador</th><th>Pago</th>@endif
         </tr>
     </thead>
     <tbody>
@@ -475,14 +510,28 @@
             $tipoClass = match(strtoupper(substr($p->tipo_modal_nombre ?? '', 0, 1))) {
                 'E' => 'e', 'I' => 'i', 'K' => 'k', 'T' => 'tp', default => ''
             };
+            $clienteNombre = trim(($p->primer_nombre ?? '').' '.($p->primer_ape ?? ''));
         @endphp
-        <tr>
+        <tr id="fila-plano-{{ $p->id }}">
             <td style="color:#94a3b8">{{ $i++ }}</td>
-            <td><span class="chip-tipo {{ $tipoClass }}">{{ $p->tipo_modal_nombre ?? $p->tipo_p }}</span></td>
+            <td>
+                @if($p->contrato_id ?? null)
+                <a href="{{ url('/admin/contratos/'.$p->contrato_id.'/edit') }}" style="text-decoration:none" title="Ver contrato">
+                    <span class="chip-tipo {{ $tipoClass }}">{{ $p->tipo_modal_nombre ?? $p->tipo_p }}</span>
+                </a>
+                @else
+                <span class="chip-tipo {{ $tipoClass }}">{{ $p->tipo_modal_nombre ?? $p->tipo_p }}</span>
+                @endif
+            </td>
             <td>{{ $p->no_identifi }}</td>
-            <td class="td-nombre" title="{{ $p->nombre_completo }}">{{ $p->primer_nombre }} {{ $p->primer_ape }}</td>
-            <td>{{ $p->fecha_ing ? \Carbon\Carbon::parse($p->fecha_ing)->format('d-') . strtolower(\Carbon\Carbon::parse($p->fecha_ing)->locale('es')->isoFormat('MMM')) : '—' }}</td>
-            <td>{{ $p->fecha_ret ? \Carbon\Carbon::parse($p->fecha_ret)->format('d-') . strtolower(\Carbon\Carbon::parse($p->fecha_ret)->locale('es')->isoFormat('MMM')) : '—' }}</td>
+            <td class="td-nombre" title="{{ $p->nombre_completo ?? $clienteNombre }}">
+                <a href="{{ ($p->cliente_id ?? null) ? url('/admin/clientes/'.$p->cliente_id.'/edit') : '#' }}"
+                   style="color:#1d4ed8;text-decoration:none;font-weight:600" title="Ver cliente">
+                    {{ $p->primer_nombre }} {{ $p->primer_ape }}
+                </a>
+            </td>
+            <td>{{ $p->fecha_ing ? sqldate($p->fecha_ing)->format('d-') . strtolower(sqldate($p->fecha_ing)->locale('es')->isoFormat('MMM')) : '—' }}</td>
+            <td>{{ $p->fecha_ret ? sqldate($p->fecha_ret)->format('d-') . strtolower(sqldate($p->fecha_ret)->locale('es')->isoFormat('MMM')) : '—' }}</td>
             <td>{{ $p->num_dias }}</td>
             <td title="{{ $p->cod_eps }}">{{ $p->nombre_eps ? \Illuminate\Support\Str::limit($p->nombre_eps,18,'…') : ($p->cod_eps ?? '—') }}</td>
             <td>{{ number_format($p->v_eps ?? 0,0,',','.') }}</td>
@@ -495,22 +544,48 @@
             <td style="font-weight:700;color:var(--azul-vivo)">
                 {{ number_format($p->total_ss ?? 0,0,',','.') }}
             </td>
-            <td>
+            <td id="planilla-{{ $p->id }}">
                 @if($p->numero_planilla)
-                <span style="color:var(--verde);font-weight:600">{{ $p->numero_planilla }}</span>
+                <span style="display:inline-flex;align-items:center;gap:.25rem;background:#dcfce7;color:#15803d;border:1px solid #bbf7d0;border-radius:20px;padding:.15rem .55rem;font-size:.67rem;font-weight:700;font-family:monospace;white-space:nowrap"
+                      title="Planilla: {{ $p->numero_planilla }}">✅ {{ $p->numero_planilla }}</span>
                 @else
                 <span style="color:#cbd5e1">—</span>
                 @endif
             </td>
             <td class="td-empresa" title="{{ $p->nombre_empresa }}">{{ $p->nombre_empresa ? \Illuminate\Support\Str::limit($p->nombre_empresa,14,'…') : '—' }}</td>
             <td class="td-envio" title="{{ $p->envio_planilla }}">{{ $p->envio_planilla ? 'Sí' : 'No' }}</td>
-            <td>{{ $p->edad !== null ? $p->edad.'a' : '—' }}</td>
+            @if($esIndependiente)
+            {{-- Columna Operador (texto informativo) --}}
+            <td style="font-size:.72rem;color:#374151;white-space:nowrap">
+                @if($p->operador_cliente_nombre ?? null)
+                <span style="display:inline-flex;align-items:center;gap:.2rem;background:#f0f9ff;color:#0284c7;border:1px solid #bae6fd;border-radius:6px;padding:.1rem .4rem;font-size:.67rem;font-weight:600">
+                    🏦 {{ $p->operador_cliente_nombre }}
+                </span>
+                @else
+                <span style="color:#cbd5e1;font-size:.67rem">— sin asignar—</span>
+                @endif
+            </td>
+            {{-- Columna Acción: Pagar / Pagado --}}
+            <td id="accion-{{ $p->id }}">
+                @if($p->numero_planilla)
+                <span style="display:inline-flex;align-items:center;gap:.25rem;background:#dcfce7;color:#15803d;border:1px solid #bbf7d0;border-radius:20px;padding:.15rem .55rem;font-size:.67rem;font-weight:700;font-family:monospace;white-space:nowrap"
+                      title="Planilla: {{ $p->numero_planilla }}">✅ {{ $p->numero_planilla }}</span>
+                @else
+                <button type="button"
+                    onclick="abrirModalPagoIndividual({{ $p->id }}, {{ $p->total_ss ?? 0 }}, '{{ addslashes($clienteNombre) }}', {{ $p->operador_cliente_id ?? 'null' }})"
+                    style="padding:.2rem .55rem;border-radius:6px;font-size:.68rem;font-weight:700;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8;cursor:pointer;white-space:nowrap;transition:all .15s"
+                    onmouseover="this.style.background='#dbeafe'" onmouseout="this.style.background='#eff6ff'">
+                    💳 Pagar
+                </button>
+                @endif
+            </td>
+            @endif
         </tr>
         @endforeach
     </tbody>
     <tfoot>
         <tr>
-            <td colspan="7" style="text-align:right">TOTALES →</td>
+            <td colspan="7" style="text-align:right">TOTALES &rarr;</td>
             <td></td>
             <td>{{ number_format($planos->sum('v_eps'),0,',','.') }}</td>
             <td></td>
@@ -520,7 +595,11 @@
             <td></td>
             <td>{{ number_format($planos->sum('v_afp'),0,',','.') }}</td>
             <td style="font-size:.88rem">$ {{ number_format($totalSS,0,',','.') }}</td>
-            <td colspan="4"></td>
+            <td colspan="3"></td>
+            @if($esIndependiente)
+            <td></td>
+            <td></td>
+            @endif
         </tr>
     </tfoot>
 </table>
@@ -615,11 +694,11 @@
 <div class="modal-overlay" id="modal-pago">
     <div class="modal-box lg">
         <div class="modal-head">
-            <h3>✅ Confirmar Pago de Planilla al Operador</h3>
+            <h3 id="modal-pago-titulo">✅ Confirmar Pago de Planilla al Operador</h3>
             <button class="modal-close" onclick="cerrarModal('modal-pago')">✕</button>
         </div>
         <div class="modal-body">
-            <div class="aviso-modal">
+            <div class="aviso-modal" id="modal-pago-aviso">
                 <strong>CONFIRMAR PAGO CON EL NÚMERO DE PLANILLA EXPEDIDO POR EL OPERADOR</strong>
                 Al confirmar, <strong>todas las personas incluidas en este filtro</strong> quedarán marcadas con el número de planilla asignado. Si alguna persona no entró en este pago, cámbiela de número de plano antes de confirmar.
             </div>
@@ -630,7 +709,7 @@
                     <select id="pago-operador" required>
                         <option value="">— Seleccione —</option>
                         @foreach($operadores as $op)
-                        <option value="{{ $op->nombre }}">{{ $op->nombre }}</option>
+                        <option value="{{ $op->nombre }}" data-op-id="{{ $op->id }}">{{ $op->nombre }}</option>
                         @endforeach
                     </select>
                 </div>
@@ -642,28 +721,27 @@
 
             <div class="form-row">
                 <div class="form-grupo">
-                    <label>Valor Pagado</label>
+                    <label>Valor Pagado <span style="color:#ef4444">*</span></label>
                     <input type="number" id="pago-valor"
                            value="{{ $totalSS }}" min="1" step="100">
                 </div>
                 <div class="form-grupo">
-                    <label>Forma de Pago</label>
-                    <select id="pago-forma">
-                        <option value="consignacion">Consignación</option>
-                        <option value="transferencia">Transferencia</option>
-                        <option value="pse">PSE</option>
-                        <option value="efectivo">Efectivo</option>
+                    <label>Forma de Pago <span style="color:#ef4444">*</span></label>
+                    <select id="pago-forma" onchange="toggleBanco()">
+                        <option value="">— Seleccione —</option>
+                        <option value="transferencia">🏦 Banco (transferencia/consignación)</option>
+                        <option value="efectivo">💵 Efectivo</option>
                     </select>
                 </div>
             </div>
 
-            <div class="form-row">
+            <div class="form-row" id="fila-banco">
                 <div class="form-grupo">
-                    <label>Cuenta Bancaria que Realizó el Pago</label>
-                    <select id="pago-banco" required>
+                    <label>Cuenta Bancaria que Realizó el Pago <span style="color:#ef4444">*</span></label>
+                    <select id="pago-banco">
                         <option value="">— Seleccione banco —</option>
                         @foreach($bancos as $b)
-                        <option value="{{ $b->id }}">{{ $b->banco }} · {{ $b->numero_cuenta }}</option>
+                        <option value="{{ $b->id }}">{{ $b->nombre }}</option>
                         @endforeach
                     </select>
                 </div>
@@ -673,6 +751,23 @@
                 <div class="form-grupo">
                     <label>Observación</label>
                     <textarea id="pago-obs" placeholder="Observaciones del pago..."></textarea>
+                </div>
+            </div>
+
+            {{-- Soporte del pago (imagen o PDF) --}}
+            <div class="form-row">
+                <div class="form-grupo">
+                    <label>📎 Soporte del Pago <span style="font-weight:400;color:#94a3b8">(imagen o PDF, máx. 5 MB)</span></label>
+                    <div id="soporte-drop-area" style="border:2px dashed #cbd5e1;border-radius:10px;padding:.85rem 1rem;background:#f8fafc;cursor:pointer;transition:border-color .15s;text-align:center;color:#64748b;font-size:.8rem"
+                         onclick="document.getElementById('pago-soporte').click()"
+                         ondragover="event.preventDefault();this.style.borderColor='var(--acento)'"
+                         ondragleave="this.style.borderColor='#cbd5e1'"
+                         ondrop="handleSoporteDrop(event)">
+                        <span id="soporte-label">🖼️ Haz clic o arrastra aquí el comprobante de pago</span>
+                    </div>
+                    <input type="file" id="pago-soporte" accept="image/*,.pdf" style="display:none"
+                           onchange="previewSoporte(this.files[0])">
+                    <div id="soporte-preview" style="display:none;margin-top:.5rem"></div>
                 </div>
             </div>
 
@@ -701,6 +796,7 @@ const CTX = {
     anio          : {{ $anio }},
     modalidadesIds: {!! json_encode(array_map('intval', $modalidadesIds)) !!},
     totalSS       : {{ $totalSS }},
+    esIndependiente: {{ $esIndependiente ? 'true' : 'false' }},
     csrfToken     : '{{ csrf_token() }}',
     routes: {
         descargar    : '{{ route('admin.planos.descargar') }}',
@@ -709,6 +805,8 @@ const CTX = {
         apiRazon     : '/admin/planos/api/razon/',
     }
 };
+let _planoIdActual    = null;
+let _operadorClienteId = null;
 
 // ── Multiselect tipos modalidad ──────────────────────────────────────
 function toggleMs() {
@@ -760,8 +858,57 @@ function autoSubmit() {
 function abrirModalDescarga() {
     document.getElementById('modal-descarga').classList.add('open');
 }
+function resetModalPago() {
+    document.getElementById('pago-numero').value  = '';
+    document.getElementById('pago-obs').value     = '';
+    document.getElementById('pago-banco').value   = '';
+    document.getElementById('pago-forma').value   = '';
+    document.getElementById('pago-operador').value = '';
+    document.getElementById('pago-resultado').style.display = 'none';
+    limpiarSoporte();
+    toggleBanco();
+}
+function toggleBanco() {
+    const forma  = document.getElementById('pago-forma').value;
+    const filaBanco = document.getElementById('fila-banco');
+    if (forma === 'efectivo') {
+        filaBanco.style.display = 'none';
+        document.getElementById('pago-banco').value = ''; // limpiar selección
+    } else {
+        filaBanco.style.display = '';
+    }
+}
 function abrirModalPago() {
+    _planoIdActual    = null;
+    _operadorClienteId = null;
+    document.getElementById('modal-pago-titulo').textContent = '✅ Confirmar Pago de Planilla al Operador';
+    document.getElementById('modal-pago-aviso').style.display = '';
     document.getElementById('pago-valor').value = CTX.totalSS;
+    resetModalPago();
+    const btn = document.getElementById('btn-confirmar-pago');
+    btn.disabled = false; btn.textContent = '✅ CONFIRMAR PAGO PLANILLA';
+    document.getElementById('modal-pago').classList.add('open');
+}
+function abrirModalPagoIndividual(planoId, totalSS, clienteNombre, operadorId) {
+    _planoIdActual    = planoId;
+    _operadorClienteId = operadorId;
+    document.getElementById('modal-pago-titulo').textContent = '💳 Pagar: ' + clienteNombre;
+    document.getElementById('modal-pago-aviso').style.display = 'none';
+    document.getElementById('pago-valor').value = totalSS;
+    resetModalPago();
+    const btn = document.getElementById('btn-confirmar-pago');
+    btn.disabled = false; btn.textContent = '✅ CONFIRMAR PAGO';
+    // Pre-seleccionar operador del cliente
+    const sel = document.getElementById('pago-operador');
+    if (operadorId) {
+        let found = false;
+        for (let opt of sel.options) {
+            if (parseInt(opt.dataset.opId) === operadorId) { opt.selected = true; found = true; break; }
+        }
+        if (!found) sel.value = '';
+    } else {
+        sel.value = '';
+    }
     document.getElementById('modal-pago').classList.add('open');
 }
 function cerrarModal(id) {
@@ -812,6 +959,43 @@ async function guardarNPlano() {
     }
 }
 
+// ── Soporte (preview de imagen / PDF) ────────────────────────────────
+function previewSoporte(file) {
+    if (!file) return;
+    const label   = document.getElementById('soporte-label');
+    const preview = document.getElementById('soporte-preview');
+    const drop    = document.getElementById('soporte-drop-area');
+    label.textContent = '✅ ' + file.name;
+    drop.style.borderColor = 'var(--verde)';
+    drop.style.background  = '#f0fdf4';
+
+    if (file.type === 'application/pdf') {
+        preview.innerHTML = `<div style="background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:.55rem .9rem;font-size:.78rem;color:#92400e;display:flex;align-items:center;gap:.5rem">📄 <strong>${file.name}</strong> — PDF adjunto (${(file.size/1024).toFixed(0)} KB)</div>`;
+    } else {
+        const url = URL.createObjectURL(file);
+        preview.innerHTML = `<img src="${url}" alt="preview soporte" style="max-height:140px;border-radius:8px;border:1px solid #e2e8f0;object-fit:contain;display:block">`;
+    }
+    preview.style.display = 'block';
+}
+function handleSoporteDrop(e) {
+    e.preventDefault();
+    document.getElementById('soporte-drop-area').style.borderColor = '#cbd5e1';
+    const file = e.dataTransfer.files[0];
+    if (file) {
+        document.getElementById('pago-soporte').files = e.dataTransfer.files;
+        previewSoporte(file);
+    }
+}
+function limpiarSoporte() {
+    document.getElementById('pago-soporte').value = '';
+    document.getElementById('soporte-label').textContent = '🖼️ Haz clic o arrastra aquí el comprobante de pago';
+    document.getElementById('soporte-preview').style.display = 'none';
+    document.getElementById('soporte-preview').innerHTML = '';
+    const drop = document.getElementById('soporte-drop-area');
+    drop.style.borderColor = '#cbd5e1';
+    drop.style.background  = '#f8fafc';
+}
+
 // ── Confirmar Pago ────────────────────────────────────────────────────
 async function ejecutarConfirmarPago() {
     const operador = document.getElementById('pago-operador').value;
@@ -820,52 +1004,87 @@ async function ejecutarConfirmarPago() {
     const forma    = document.getElementById('pago-forma').value;
     const banco    = document.getElementById('pago-banco').value;
     const obs      = document.getElementById('pago-obs').value.trim();
+    const soporteInput = document.getElementById('pago-soporte');
+    const soporteFile  = soporteInput.files[0] || null;
+    const esEfectivo   = forma === 'efectivo';
 
-    if (!operador) { mostrarToast('Seleccione el operador.','error'); return; }
-    if (!numero)   { mostrarToast('Ingrese el número de planilla.','error'); return; }
-    if (!valor)    { mostrarToast('Ingrese el valor pagado.','error'); return; }
-    if (!banco)    { mostrarToast('Seleccione la cuenta bancaria.','error'); return; }
-    if (!CTX.razonSocialId) { mostrarToast('Seleccione una razón social.','error'); return; }
+    // Validaciones obligatorias
+    if (!operador) { resaltarError('pago-operador', 'Seleccione el operador.'); return; }
+    if (!numero)   { resaltarError('pago-numero',   'Ingrese el número de planilla.'); return; }
+    if (!valor || valor < 1) { resaltarError('pago-valor', 'Ingrese un valor pagado válido.'); return; }
+    if (!forma)    { resaltarError('pago-forma',    'Seleccione la forma de pago.'); return; }
+    if (!esEfectivo && !banco) { resaltarError('pago-banco', 'Seleccione la cuenta bancaria.'); return; }
+    if (!_planoIdActual && !CTX.razonSocialId) { mostrarToast('Seleccione una razón social.','error'); return; }
 
     const btn = document.getElementById('btn-confirmar-pago');
     btn.disabled = true;
     btn.textContent = '⏳ Procesando...';
 
+    // Usar FormData para soportar el archivo adjunto (multipart/form-data)
+    const fd = new FormData();
+    fd.append('_token', CTX.csrfToken);
+    fd.append('operador', operador);
+    fd.append('numero_planilla', numero);
+    fd.append('valor', valor);
+    fd.append('forma_pago', forma);
+    if (!esEfectivo && banco) fd.append('banco_id', banco);
+    fd.append('observacion', obs);
+    if (soporteFile) fd.append('soporte', soporteFile);
+
+    if (_planoIdActual) {
+        fd.append('plano_id', _planoIdActual);
+        // En modo individual se requiere también razon_social_id, mes, anio, n_plano (el controlador los necesita si no hay plano_id masivo)
+        // El controlador en modo individual no los usa, pero los valida como required
+        // → usamos valores del contexto
+        fd.append('razon_social_id', CTX.razonSocialId);
+        fd.append('mes_plano', CTX.mes);
+        fd.append('anio_plano', CTX.anio);
+        fd.append('n_plano', CTX.nPlanoFiltro ?? 1);
+    } else {
+        fd.append('razon_social_id', CTX.razonSocialId);
+        fd.append('mes_plano', CTX.mes);
+        fd.append('anio_plano', CTX.anio);
+        fd.append('n_plano', CTX.nPlanoFiltro ?? 1);
+        CTX.modalidadesIds.forEach(id => fd.append('tipos_modalidad[]', id));
+    }
+
     try {
         const resp = await fetch(CTX.routes.confirmarPago, {
             method : 'POST',
-            headers: { 'Content-Type':'application/json', 'X-CSRF-TOKEN': CTX.csrfToken },
-            body   : JSON.stringify({
-                razon_social_id : CTX.razonSocialId,
-                mes_plano       : CTX.mes,
-                anio_plano      : CTX.anio,
-                n_plano         : CTX.nPlanoFiltro,
-                tipos_modalidad : CTX.modalidadesIds,
-                operador, numero_planilla: numero, valor, forma_pago: forma,
-                banco_id: parseInt(banco), observacion: obs,
-            }),
+            headers: { 'X-CSRF-TOKEN': CTX.csrfToken }, // SIN Content-Type: el browser lo pone con boundary
+            body   : fd,
         });
         const data = await resp.json();
         const res = document.getElementById('pago-resultado');
         res.style.display = 'block';
 
         if (data.ok) {
-            res.innerHTML = `<div style="background:#dcfce7;border:1px solid #bbf7d0;border-radius:8px;padding:.65rem .9rem;color:#15803d;font-size:.82rem">
-                ✅ ${data.mensaje}
-            </div>`;
+            let soporteHtml = '';
+            if (data.soporte_url) {
+                soporteHtml = ` <a href="${data.soporte_url}" target="_blank" style="font-size:.75rem;color:#1d4ed8;text-decoration:underline">Ver soporte 📎</a>`;
+            }
+            res.innerHTML = `<div style="background:#dcfce7;border:1px solid #bbf7d0;border-radius:8px;padding:.65rem .9rem;color:#15803d;font-size:.82rem">✅ ${data.mensaje}${soporteHtml}</div>`;
             mostrarToast(data.mensaje, 'success');
-            setTimeout(() => location.reload(), 2500);
+            if (_planoIdActual) {
+                // Modo individual: actualizar visualmente la fila sin recargar
+                const chip = `<span style="display:inline-flex;align-items:center;gap:.25rem;background:#dcfce7;color:#15803d;border:1px solid #bbf7d0;border-radius:20px;padding:.15rem .55rem;font-size:.67rem;font-weight:700;font-family:monospace;white-space:nowrap" title="Planilla: ${numero}">✅ ${numero}</span>`;
+                const tdPlanilla = document.getElementById('planilla-' + _planoIdActual);
+                const tdAccion   = document.getElementById('accion-'   + _planoIdActual);
+                if (tdPlanilla) tdPlanilla.innerHTML = chip;
+                if (tdAccion)   tdAccion.innerHTML   = chip;
+                setTimeout(() => cerrarModal('modal-pago'), 1800);
+            } else {
+                setTimeout(() => location.reload(), 2500);
+            }
         } else {
-            res.innerHTML = `<div style="background:#fee2e2;border:1px solid #fecaca;border-radius:8px;padding:.65rem .9rem;color:#b91c1c;font-size:.82rem">
-                ❌ ${data.mensaje}
-            </div>`;
+            res.innerHTML = `<div style="background:#fee2e2;border:1px solid #fecaca;border-radius:8px;padding:.65rem .9rem;color:#b91c1c;font-size:.82rem">❌ ${data.mensaje}</div>`;
             btn.disabled = false;
-            btn.textContent = '✅ CONFIRMAR PAGO PLANILLA';
+            btn.textContent = _planoIdActual ? '✅ CONFIRMAR PAGO' : '✅ CONFIRMAR PAGO PLANILLA';
         }
     } catch(e) {
         mostrarToast('Error de conexión. Intente de nuevo.','error');
         btn.disabled = false;
-        btn.textContent = '✅ CONFIRMAR PAGO PLANILLA';
+        btn.textContent = _planoIdActual ? '✅ CONFIRMAR PAGO' : '✅ CONFIRMAR PAGO PLANILLA';
     }
 }
 
@@ -876,6 +1095,24 @@ function mostrarToast(msg, tipo='success') {
     t.className = `toast ${tipo} show`;
     clearTimeout(t._tmr);
     t._tmr = setTimeout(() => t.classList.remove('show'), 4000);
+}
+// ── Resaltar campo con error ──────────────────────────────────────────
+function resaltarError(fieldId, msg) {
+    const el = document.getElementById(fieldId);
+    if (el) {
+        el.style.borderColor = '#ef4444';
+        el.style.boxShadow   = '0 0 0 3px rgba(239,68,68,.18)';
+        const limpiar = () => {
+            el.style.borderColor = '';
+            el.style.boxShadow   = '';
+            el.removeEventListener('change', limpiar);
+            el.removeEventListener('input',  limpiar);
+        };
+        el.addEventListener('change', limpiar);
+        el.addEventListener('input',  limpiar);
+        el.focus();
+    }
+    mostrarToast(msg, 'error');
 }
 </script>
 @endpush

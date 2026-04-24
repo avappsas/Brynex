@@ -2,10 +2,10 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Models\BaseModel;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 
-class DocumentoCliente extends Model
+class DocumentoCliente extends BaseModel
 {
     use HasFactory;
 

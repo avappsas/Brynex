@@ -391,7 +391,9 @@ $tipoNom    = $c->tipoModalidad?->nombre ?? '—';
 
     {{-- AFIL / PLAN --}}
     <td style="text-align:center;">
-        @if($c->es_afil)
+        @if($c->es_ind_act_primer_mes ?? false)
+            <span class="badge-tipo" style="background:#f3e8ff;color:#7c3aed;" title="I ACT · Cobra Afiliación + Planilla juntas este mes">⚡ ACT</span>
+        @elseif($c->es_afil)
             <span class="badge-tipo badge-afil">📌 AFIL</span>
         @else
             <span class="badge-tipo badge-plan">📄 PLAN</span>

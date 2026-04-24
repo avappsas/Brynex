@@ -29,7 +29,17 @@
            style="color:#94a3b8;font-size:.78rem;text-decoration:none">← Volver a facturación</a>
         <div style="font-size:1.15rem;font-weight:800;margin-top:.2rem">✏️ Editar Empresa</div>
     </div>
-    <div style="font-size:.78rem;color:#94a3b8">ID: {{ $empresa->id }}</div>
+    <div style="display:flex;align-items:center;gap:.7rem;">
+        <button type="button" onclick="abrirClavesEmpresa()"
+            style="display:inline-flex;align-items:center;gap:.4rem;
+                   background:#fef9c3;color:#92400e;border:1px solid #fde68a;
+                   border-radius:8px;padding:.38rem .85rem;font-size:.8rem;font-weight:700;
+                   cursor:pointer;transition:background .15s;"
+            onmouseover="this.style.background='#fde68a'" onmouseout="this.style.background='#fef9c3'">
+            🔑 Claves
+        </button>
+        <div style="font-size:.78rem;color:#94a3b8">ID: {{ $empresa->id }}</div>
+    </div>
 </div>
 
 @if(session('success'))
@@ -128,4 +138,8 @@
 </form>
 
 </div>
+
+{{-- Panel Claves y Accesos de la Empresa --}}
+@include('admin.facturacion.partials.clave_accesos_empresa')
+
 @endsection

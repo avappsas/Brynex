@@ -53,31 +53,374 @@ $estadoCls = fn($e) => match($e) {
 
 @section('contenido')
 <style>
-/* ─── PRINT: solo mostrar el recibo ─────────── */
+/* ─── Google Fonts ───────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+/* ─── PRINT ──────────────────────────────────── */
+@page {
+    size: A4 landscape;
+    margin: 8mm 10mm;
+}
 @media print {
     body * { visibility: hidden !important; }
     #recibo-print-area, #recibo-print-area * { visibility: visible !important; }
     #recibo-print-area {
         position: fixed; inset: 0;
-        padding: 8mm; background: #fff; z-index: 9999;
+        padding: 3mm 5mm; background: #fff; z-index: 9999;
         box-shadow: none !important;
     }
     .no-print { display: none !important; }
+    .recibo-wrap { box-shadow: none !important; border-radius: 0 !important; border: none !important; overflow: visible !important; }
+    .recibo-inner { margin: 0 !important; border: none !important; box-shadow: none !important; border-radius: 0 !important; overflow: visible !important; }
+    .recibo-inner-wrap { margin: 0 !important; overflow: visible !important; }
+    .fact-header { border: none !important; border-radius: 0 !important; }
+    .fact-sello { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .hoja-fondo { background: #fff !important; padding: 0 !important; }
+    /* Colores de fondo se imprimen */
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    /* Vista simple: ocultar resumen/detalle al imprimir */
+    .bloque-resumen { display: none !important; }
+    .g-adm-row { display: none !important; }
+    .g-adm-footer { display: none !important; }
+    .g-val { display: none !important; }
+    /* Vista detallada: mostrar todo si el wrapper tiene .det */
+    #rw.det .bloque-resumen { display: grid !important; }
+    #rw.det .g-adm-row { display: table-row !important; }
+    #rw.det .g-adm-footer { display: table-row !important; }
+    #rw.det .g-val { display: block !important; }
+    #rw.det .col-valor-det { display: table-cell !important; }
+    /* Tabla: auto-layout con fuente compacta para que entre en A4 landscape */
+    .fact-table {
+        table-layout: auto !important;
+        width: 100% !important;
+        font-size: .58rem !important;
+    }
+    .fact-table td, .fact-table th {
+        overflow: visible !important;
+        white-space: normal !important;
+        word-break: normal !important;
+        padding: .25rem .4rem !important;
+    }
+    .fact-table td.right, .fact-table tfoot td.right {
+        white-space: nowrap !important;
+    }
+    /* Padding interno de la tabla no se corte */
+    .fact-section-title + div[style*="padding"] {
+        padding: 0 !important;
+    }
 }
-/* ─── Estilos ───────────────────────────────── */
-.recibo-wrap { max-width:960px;margin:0 auto;background:#fff;border-radius:12px;
-    box-shadow:0 4px 24px rgba(0,0,0,.08);overflow:hidden }
-.rec-hdr { background:linear-gradient(135deg,#0f172a,#1e3a5f);color:#fff;
-    padding:1rem 1.4rem;display:flex;justify-content:space-between;align-items:flex-start }
-.rec-num { font-size:1.55rem;font-weight:900;color:#fbbf24 }
-.rec-body{ padding:1rem 1.4rem }
-.badge   { display:inline-block;padding:.18rem .6rem;border-radius:20px;font-size:.72rem;font-weight:700 }
-.badge-pago  { background:#dcfce7;color:#15803d }
-.badge-pre   { background:#f1f5f9;color:#475569 }
-.badge-prest { background:#ede9fe;color:#6d28d9 }
-.badge-abono { background:#fef3c7;color:#92400e }
-.alerta-prest{ background:#fdf4ff;border:2px solid #c4b5fd;border-radius:8px;
-    padding:.6rem 1rem;margin:0 0 .7rem;display:flex;align-items:center;gap:.6rem }
+
+/* ─── Fondo tipo hoja ─────────────────────────── */
+.hoja-fondo {
+    background: #e8edf2;
+    padding: 1.5rem 1.2rem;
+    min-height: 100vh;
+}
+
+/* ─── Base ───────────────────────────────────── */
+#recibo-print-area, #recibo-print-area * { font-family: 'Inter', sans-serif; }
+.recibo-wrap {
+    max-width: 1150px; margin: 0 auto; background: #fff;
+    border-radius: 6px;
+    box-shadow:
+        0 1px 3px rgba(0,0,0,.14),
+        0 4px 14px rgba(0,0,0,.10),
+        0 10px 40px rgba(0,0,0,.09),
+        0 0 0 1px rgba(0,0,0,.06);
+    overflow: hidden;
+    border: 1px solid #c9d2dc;
+    position: relative;
+}
+
+/* Padding interno: separa el contenido de los bordes del recuadro */
+.recibo-inner {
+    margin: 1rem 1.2rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    overflow: hidden;
+    box-shadow: 0 1px 4px rgba(30,58,95,.07);
+}
+
+/* El header y bottom-bar del individual van dentro del recibo-inner-wrap con margen top/bot */
+.recibo-inner-wrap {
+    margin: 1rem 1.2rem 0;
+    border-radius: 6px 6px 0 0;
+    overflow: hidden;
+}
+/* El recibo-inner de datos se conecta sin brecha con el wrap del header */
+.recibo-inner-wrap + .recibo-inner {
+    margin-top: 0;
+    border-top: none;
+    border-radius: 0 0 6px 6px;
+}
+
+/* ─── BOTONES ─────────────────────────────────── */
+.btn-a {
+    padding: .4rem .9rem; border-radius: 7px; border: none;
+    font-weight: 600; cursor: pointer; font-size: .82rem;
+    text-decoration: none; font-family: 'Inter', sans-serif;
+}
+
+/* ─── BADGE ESTADO ───────────────────────────── */
+.badge {
+    display: inline-block; padding: .18rem .6rem;
+    border-radius: 20px; font-size: .72rem; font-weight: 700;
+}
+.badge-pago  { background: #dcfce7; color: #15803d; }
+.badge-pre   { background: #f1f5f9; color: #475569; }
+.badge-prest { background: #ede9fe; color: #6d28d9; }
+.badge-abono { background: #fef3c7; color: #92400e; }
+
+/* ─── SELLO DIAGONAL (individual) ───────────── */
+.fact-sello-wrap {
+    position: absolute; top: 0; right: 0;
+    width: 160px; height: 160px; overflow: hidden;
+    pointer-events: none; z-index: 10;
+}
+.fact-sello {
+    position: absolute; top: 32px; right: -32px;
+    width: 170px; text-align: center;
+    padding: 7px 0; font-size: .72rem; font-weight: 900;
+    letter-spacing: .12em; text-transform: uppercase;
+    transform: rotate(45deg);
+    box-shadow: 0 3px 10px rgba(0,0,0,.25);
+    border-radius: 3px;
+}
+.sello-pagado  { background: #15803d; color: #fff; }
+.sello-pre     { background: #64748b; color: #fff; }
+.sello-prest   { background: #7c3aed; color: #fff; }
+.sello-abono   { background: #d97706; color: #fff; }
+
+/* ─── CABECERA FACTURA ───────────────────────── */
+.fact-header {
+    display: grid;
+    grid-template-columns: 1fr auto 220px;
+    gap: 0;
+    border-bottom: 3px solid #1e3a5f;
+    padding: 0;
+}
+.fact-h-empresa {
+    padding: 1rem 1.2rem;
+    border-right: 1.5px solid #e2e8f0;
+}
+.fact-h-recibo {
+    background: linear-gradient(135deg,#1e3a5f,#0f172a);
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 0.6rem 1.2rem;
+    min-width: 200px;
+    text-align: center;
+}
+.fact-h-logo {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 0.75rem 1rem;
+    background: #f8fafc;
+    border-left: 1.5px solid #e2e8f0;
+    position: relative;
+}
+
+/* ─── DATOS CLIENTE ──────────────────────────── */
+.fact-cliente {
+    background: linear-gradient(to right, #f0f7ff, #fff);
+    border-bottom: 1.5px solid #e2e8f0;
+    padding: .65rem 1.2rem;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: .2rem .6rem;
+    font-size: .78rem;
+}
+.fact-cliente-row {
+    display: flex;
+    gap: .4rem;
+    align-items: baseline;
+    padding: .12rem 0;
+    border-bottom: .5px solid #e9f0f8;
+}
+.fact-cliente-lbl {
+    font-weight: 700;
+    color: #1e3a5f;
+    min-width: 90px;
+    font-size: .72rem;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    flex-shrink: 0;
+}
+.fact-cliente-val {
+    color: #0f172a;
+    font-weight: 600;
+    font-size: .8rem;
+}
+
+/* ─── TABLA ENTIDADES (estilo factura) ───────── */
+.fact-body { padding: 0; }
+.fact-section-title {
+    background: linear-gradient(90deg, #1e3a5f, #2563eb);
+    color: #fff;
+    font-size: .65rem;
+    font-weight: 800;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    padding: .35rem 1.2rem;
+}
+.fact-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: .79rem;
+}
+.fact-table th {
+    background: #e8f0fe;
+    color: #1e3a5f;
+    font-size: .62rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    padding: .32rem .55rem;
+    letter-spacing: .05em;
+    border-bottom: 2px solid #c7d7f5;
+    text-align: left;
+    overflow: hidden;
+    white-space: nowrap;
+}
+.fact-table th.right { text-align: right; }
+.fact-table td {
+    padding: .35rem .55rem;
+    border-bottom: 1px solid #f1f5f9;
+    vertical-align: middle;
+    overflow: hidden;
+    word-break: break-word;
+}
+.fact-table tbody tr:nth-child(odd) td  { background: #f8fafc; }
+.fact-table tbody tr:nth-child(even) td { background: #ffffff; }
+.fact-table tbody tr:hover td { background: #eff6ff; transition: background .15s; }
+.fact-table td.right { text-align: right; font-family: monospace; font-weight: 700; white-space: nowrap; }
+.fact-table td.entidad {
+    font-weight: 700;
+    color: #1d4ed8;
+    font-size: .78rem;
+}
+.fact-table td.concepto {
+    color: #334155;
+    font-weight: 600;
+}
+.fact-table td.tag {
+    font-size: .62rem;
+    color: #64748b;
+}
+.fact-table tfoot td {
+    background: #1e3a5f;
+    color: #fff;
+    font-weight: 800;
+    padding: .45rem .55rem;
+    font-size: .78rem;
+}
+.fact-table tfoot td.right {
+    color: #93c5fd;
+    font-family: monospace;
+    font-size: .82rem;
+    white-space: nowrap;
+}
+
+/* ─── PIE: Nota + Total ──────────────────────── */
+.fact-footer-area {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0;
+    border-top: 2px solid #1e3a5f;
+    min-height: 64px;
+}
+.fact-nota {
+    padding: .65rem 1rem;
+    font-size: .68rem;
+    color: #92400e;
+    background: #fffbeb;
+    border-right: 1.5px solid #fde68a;
+    line-height: 1.55;
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+}
+.fact-total-bloque {
+    background: linear-gradient(135deg, #1e3a5f, #0f172a);
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: .75rem 1.5rem;
+    min-width: 220px;
+    gap: .1rem;
+}
+.fact-total-label {
+    font-size: .63rem;
+    font-weight: 700;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: #93c5fd;
+}
+.fact-total-valor {
+    font-size: 1.6rem;
+    font-weight: 900;
+    color: #fbbf24;
+    font-family: monospace;
+    letter-spacing: -.02em;
+}
+
+/* ─── DATOS PAGO (bajo tabla) ────────────────── */
+.fact-pago-area {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    border-top: 1.5px solid #e2e8f0;
+}
+.fact-pago-col {
+    padding: .6rem 1.1rem;
+    font-size: .76rem;
+}
+.fact-pago-col:first-child {
+    border-right: 1.5px solid #e2e8f0;
+}
+.fact-pago-hdr {
+    font-size: .61rem;
+    font-weight: 800;
+    color: #1e3a5f;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    margin-bottom: .35rem;
+    padding-bottom: .2rem;
+    border-bottom: 1.5px solid #bfdbfe;
+}
+.fact-pago-row {
+    display: flex;
+    justify-content: space-between;
+    padding: .14rem 0;
+    border-bottom: .5px solid #f1f5f9;
+    color: #374151;
+}
+.fact-pago-row span:first-child { color: #64748b; }
+.fact-pago-row strong { color: #0f172a; font-weight: 700; }
+.fact-bottom-bar {
+    background: #0f172a;
+    color: #94a3b8;
+    font-size: .65rem;
+    padding: .45rem 1.2rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* ─── ALERTA PRÉSTAMO ────────────────────────── */
+.alerta-prest {
+    background: #fdf4ff; border: 2px solid #c4b5fd; border-radius: 0;
+    padding: .55rem 1.2rem; display: flex; align-items: center; gap: .6rem;
+    border-left: 4px solid #7c3aed; margin: 0;
+}
+
+/* ─── TABLA GRUPO (NP) ───────────────────────── */
 .tbl { width:100%;border-collapse:collapse;font-size:.74rem }
 .tbl th { background:#0f172a;color:#94a3b8;font-size:.61rem;text-transform:uppercase;
     padding:.38rem .42rem;white-space:nowrap;text-align:center }
@@ -86,6 +429,7 @@ $estadoCls = fn($e) => match($e) {
 .tbl tfoot td { background:#0f172a;color:#fff;font-weight:700;padding:.4rem .42rem }
 .n-r { text-align:right;font-family:monospace }
 .tot-v { color:#34d399 }
+.rec-body{ padding:1rem 1.4rem }
 .box2 { display:grid;grid-template-columns:1fr 1fr;gap:.75rem;margin:.6rem 0 }
 .ibox { background:#f8fafc;border-radius:8px;padding:.5rem .75rem;font-size:.79rem }
 .ilbl { font-size:.63rem;color:#94a3b8;text-transform:uppercase;font-weight:700;margin-bottom:.25rem }
@@ -93,28 +437,39 @@ $estadoCls = fn($e) => match($e) {
 .total-bx { background:#0f172a;color:#fff;border-radius:8px;padding:.7rem 1rem;
     display:flex;justify-content:space-between;align-items:center;margin-top:.5rem }
 .total-v { font-size:1.4rem;font-weight:900;color:#fbbf24 }
-.btn-a { padding:.4rem .9rem;border-radius:7px;border:none;font-weight:600;
-    cursor:pointer;font-size:.82rem;text-decoration:none }
-/* Vista simplificada: columnas .dc desaparecen, .simp-only aparece */
-.simp .dc { display:none }
-/* Bloque de entidades: visible solo en modo simplificado */
-.simp-only { display:none }
-.simp .simp-only { display:block }
+
+/* ─── MODO GRUPO: encabezado tipo rec original ── */
+.rec-hdr { background:linear-gradient(135deg,#0f172a,#1e3a5f);color:#fff;
+    padding:1rem 1.4rem;display:flex;justify-content:space-between;align-items:flex-start }
+.rec-num { font-size:1.55rem;font-weight:900;color:#fbbf24 }
+
+/* ─── Vista simple / detallada (individual y grupo) ─ */
+/* Por defecto = vista simple */
+.col-valor-det { display:none }
+.bloque-resumen { display:none }
+/* ── Grupo: valores bajo entidad ───────────── */
+.g-val { display:none; font-size:.6rem; color:#64748b; font-style:italic; margin-top:.08rem; }
+.g-adm-row { display:none }
+.g-adm-footer { display:none }
+/* Con clase .det: todo visible */
+.det .col-valor-det { display:table-cell }
+.det .bloque-resumen { display:grid }
+.det .g-val { display:block }
+.det .g-adm-row { display:table-row }
+.det .g-adm-footer { display:table-row }
 </style>
 
 {{-- Botonera (no se imprime) --}}
-<div class="no-print" style="max-width:960px;margin:0 auto .65rem;display:flex;gap:.5rem;justify-content:flex-end;flex-wrap:wrap;">
-    <button class="btn-a" style="background:#f1f5f9;color:#475569" onclick="toggleSimp()">👁 Vista simplificada</button>
+<div class="no-print" style="max-width:1150px;margin:0 auto .65rem;display:flex;gap:.5rem;justify-content:flex-end;flex-wrap:wrap;">
+    <button class="btn-a" id="btnToggleVista" style="background:#f1f5f9;color:#475569" onclick="toggleVistaDet()">📋 Vista detallada</button>
     <button class="btn-a" style="background:#0f172a;color:#fff" onclick="window.print()">🖨 Imprimir</button>
     @if(auth()->user()?->hasRole('admin') || auth()->user()?->hasRole('superadmin'))
     <button class="btn-a" style="background:#dc2626;color:#fff" onclick="abrirAnular()">🗑 Anular</button>
     @endif
     @if(request()->boolean('modal'))
-    {{-- En modal: botón para cerrar el modal padre --}}
     <button class="btn-a" style="background:#64748b;color:#fff"
             onclick="if(window.parent && window.parent.cerrarRecibo){ window.parent.cerrarRecibo(); } else { window.close(); }">✕ Cerrar</button>
     @else
-    {{-- Fuera de modal: botón Volver normal --}}
     <a href="{{ $factura->empresa_id
             ? route('admin.facturacion.empresa', ['id' => $factura->empresa_id, 'mes' => $factura->mes, 'anio' => $factura->anio])
             : route('admin.facturacion.index') }}"
@@ -122,84 +477,473 @@ $estadoCls = fn($e) => match($e) {
     @endif
 </div>
 
-<div id="recibo-print-area">
+<div id="recibo-print-area" class="hoja-fondo">
 <div class="recibo-wrap" id="rw">
 
-{{-- ══ ENCABEZADO ══════════════════════════════════════════════════════ --}}
-<div class="rec-hdr">
-    <div>
-        <div style="font-size:.72rem;color:#94a3b8;margin-bottom:.15rem">RECIBO DE PAGO</div>
+{{-- ══ RECIBO EMPRESARIAL (modo NP) ═════════════════════════════════════ --}}
+@if($esGrupo)
+@php
+$aliadoGObj  = \App\Models\Aliado::find($factura->aliado_id);
+$logoAliadoG = $aliadoGObj?->logo ? asset('storage/'.$aliadoGObj->logo) : null;
+$nomAliadoG  = $aliadoGObj?->nombre ?? $aliadoGObj?->razon_social ?? 'BryNex';
+$numGrupo    = str_pad($filas->first()?->numero_factura ?? $factura->numero_factura, 6, '0', STR_PAD_LEFT);
+@endphp
 
-        @if($esGrupo && $empresaObj)
-            <div style="font-size:1.1rem;font-weight:800">{{ $empresaObj->empresa }}</div>
-            <div style="font-size:.74rem;color:#94a3b8">NIT: {{ $empresaObj->nit ?? '—' }}</div>
-        @elseif($esGrupo)
-            <div style="font-size:1rem;font-weight:700">{{ $filas->first()->contrato?->razonSocial?->razon_social ?? 'Empresa' }}</div>
-        @else
-            @php
-            $cli0  = $factura->contrato?->cliente;
-            // Para otro_ingreso buscar cliente por cédula si no hay contrato
-            if (!$cli0 && $factura->tipo === 'otro_ingreso') {
-                $cli0 = \App\Models\Cliente::where('cedula', $factura->cedula)->first();
-            }
-            $nom0  = trim(($cli0?->primer_nombre ?? '').' '.($cli0?->primer_apellido ?? ''));
-            $rs0   = $factura->contrato?->razonSocial;
-            @endphp
+{{-- HEADER 3 COLUMNAS (igual que individual) --}}
+<div class="recibo-inner-wrap">
+<div class="fact-header" style="position:relative;overflow:hidden;border-radius:6px 6px 0 0;border:1px solid #e2e8f0;">
 
-            @if($factura->tipo === 'otro_ingreso')
-                {{-- Otro ingreso: empresa si viene desde empresa, cliente si es individual --}}
-                @if($factura->empresa)
-                    <div style="font-size:1rem;font-weight:800">{{ $factura->empresa->empresa }}</div>
-                    <div style="font-size:.74rem;color:#94a3b8">NIT: {{ $factura->empresa->nit ?? '—' }}</div>
-                @else
-                    <div style="font-size:1rem;font-weight:800">{{ $nom0 ?: 'CC '.$factura->cedula }}</div>
-                    <div style="font-size:.74rem;color:#94a3b8">CC {{ number_format($factura->cedula,0,'','.') }}</div>
-                @endif
-            @elseif($rs0)
-                {{-- Contrato de empresa: mostrar la empresa --}}
-                <div style="font-size:1rem;font-weight:800">{{ $rs0->razon_social }}</div>
-                <div style="font-size:.74rem;color:#94a3b8">NIT: {{ $rs0->nit ?? '—' }}</div>
-                <div style="font-size:.72rem;color:#94a3b8;margin-top:.1rem">
-                    Trabajador: {{ $nom0 ?: 'CC '.$factura->cedula }}
-                </div>
-            @else
-                {{-- Contrato individual: mostrar el cliente --}}
-                <div style="font-size:1rem;font-weight:800">{{ $nom0 ?: 'CC '.$factura->cedula }}</div>
-                <div style="font-size:.74rem;color:#94a3b8">CC {{ number_format($factura->cedula,0,'','.') }}</div>
-            @endif
-
-        @endif
-
-        <div style="font-size:.75rem;color:#94a3b8;margin-top:.2rem">
-            Período: {{ $meses[$factura->mes-1] }} {{ $factura->anio }}
-            @if($esGrupo)
-                · NP: <strong style="color:#fbbf24">{{ $factura->np }}</strong>
-                · {{ $filas->count() }} trabajadores
-            @endif
-            · {{ Carbon::parse($factura->fecha_pago)->format('d/m/Y') }}
-        </div>
-
-        <div style="margin-top:.35rem">
-            <span class="badge {{ $estadoCls($factura->estado) }}">{{ $estadoLabel($factura->estado) }}</span>
-            <span style="color:#94a3b8;font-size:.7rem;margin-left:.4rem">
-                Facturó: {{ $factura->usuario?->nombre ?? $factura->usuario?->name ?? ('Usuario #'.($factura->usuario_id ?? '?')) }}
-            </span>
+    {{-- Sello diagonal --}}
+    <div class="fact-sello-wrap">
+        <div class="fact-sello {{ $estadoCls($factura->estado) === 'badge-pago' ? 'sello-pagado' : ($estadoCls($factura->estado) === 'badge-prest' ? 'sello-prest' : ($estadoCls($factura->estado) === 'badge-abono' ? 'sello-abono' : 'sello-pre')) }}">
+            {{ $estadoLabel($factura->estado) }}
         </div>
     </div>
-    <div class="rec-num">
-        @if($esGrupo)
-            <div style="font-size:.65rem;color:#94a3b8;font-weight:500;text-align:right">N° Recibo</div>
-            {{ str_pad($filas->first()?->numero_factura ?? $factura->numero_factura, 6, '0', STR_PAD_LEFT) }}
+
+    {{-- Col 1: Empresa --}}
+    <div class="fact-h-empresa">
+        @if($empresaObj)
+            <div style="font-size:.55rem;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.07em;margin-bottom:.04rem">Empresa</div>
+            <div style="font-size:1.4rem;font-weight:900;color:#0f172a;line-height:1.15;letter-spacing:-.02em">{{ $empresaObj->empresa }}</div>
+            <div style="font-size:.65rem;color:#64748b;margin-top:.05rem">NIT: {{ $empresaObj->nit ?? '—' }}</div>
         @else
-            <div style="font-size:.65rem;color:#94a3b8;font-weight:500;text-align:right">N° Recibo</div>
-            {{ str_pad($factura->numero_factura,6,'0',STR_PAD_LEFT) }}
+            <div style="font-size:.55rem;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.07em;margin-bottom:.04rem">Empresa</div>
+            <div style="font-size:1.4rem;font-weight:900;color:#0f172a;line-height:1.15">{{ $filas->first()->contrato?->razonSocial?->razon_social ?? 'Empresa' }}</div>
         @endif
+        <div style="font-size:.68rem;color:#64748b;margin-top:.3rem;display:flex;gap:.8rem;align-items:center">
+            <span>Fecha: <strong style="color:#0f172a">{{ sqldate($factura->fecha_pago)->format('d/m/Y') }}</strong></span>
+            <span style="background:#1e3a5f;color:#93c5fd;font-size:.6rem;font-weight:800;padding:.1rem .45rem;border-radius:20px">NP {{ $factura->np }}</span>
+        </div>
+    </div>
+
+    {{-- Col 2: Número de recibo --}}
+    <div class="fact-h-recibo">
+        <div style="font-size:.58rem;font-weight:700;letter-spacing:.15em;color:#93c5fd;text-transform:uppercase;margin-bottom:.18rem">Recibo de Pago</div>
+        <div style="font-size:2rem;font-weight:900;color:#fbbf24;letter-spacing:-.03em;line-height:1">
+            {{ $numGrupo }}
+        </div>
+        <div style="margin-top:.35rem">
+            <span class="badge {{ $estadoCls($factura->estado) }}">{{ $estadoLabel($factura->estado) }}</span>
+        </div>
+    </div>
+
+    {{-- Col 3: Logo aliado --}}
+    <div class="fact-h-logo">
+        @if($logoAliadoG)
+        <img src="{{ $logoAliadoG }}" alt="{{ $nomAliadoG }}" style="max-width:140px;max-height:70px;object-fit:contain">
+        @else
+        <img src="{{ asset('img/logo-brynex.png') }}" alt="BryNex" style="max-width:140px;max-height:70px;object-fit:contain">
+        @endif
+        <div style="font-size:.55rem;color:#64748b;text-align:center;margin-top:.35rem;font-weight:600;letter-spacing:.04em">
+            {{ strtoupper($nomAliadoG) }}
+        </div>
+    </div>
+
+</div>{{-- /fact-header --}}
+</div>{{-- /recibo-inner-wrap --}}
+
+{{-- CUERPO --}}
+<div class="recibo-inner">
+
+{{-- ALERTA PRÉSTAMO --}}
+@if($totPrest > 0 || $factura->estado === 'prestamo')
+<div class="alerta-prest">
+    <span style="font-size:1.3rem">💳</span>
+    <div>
+        <div style="font-weight:700;color:#6d28d9;font-size:.84rem">Préstamo pendiente de cobro</div>
+        <div style="font-size:.77rem;color:#7c3aed">
+            Total: <strong>{{ $fmt($totTotal) }}</strong> &middot;
+            Recibido: <strong>{{ $fmt($totTotal - $totPrest) }}</strong> &middot;
+            Pendiente: <strong>{{ $fmt($totPrest) }}</strong>
+        </div>
+    </div>
+</div>
+@endif
+
+{{-- TABLA TRABAJADORES --}}
+<div class="fact-section-title">TRABAJADORES &mdash; {{ $filas->count() }} registros</div>
+<div style="padding:0 .85rem">
+<table class="fact-table" style="font-size:.72rem;table-layout:auto;width:100%">
+<thead>
+<tr>
+    <th style="width:22px;text-align:center">No</th>
+    <th style="width:18%">Nombre / CC</th>
+    <th style="width:16%">Razón Social</th>
+    <th style="width:36px;text-align:center">Días</th>
+    <th style="width:11%">EPS</th>
+    <th style="width:11%">ARL</th>
+    <th style="width:13%">Pensión</th>
+    <th style="width:11%">Caja</th>
+    <th class="right" style="width:88px;white-space:nowrap">TOTAL</th>
+</tr>
+</thead>
+<tbody>
+@php $tEps=$tArl=$tPen=$tCaj=$tAdm=$tIva=$tOtros=0; @endphp
+@foreach($filas as $idx => $f)
+@php
+$cli  = $f->contrato?->cliente;
+$nom  = trim(($cli?->primer_nombre ?? '').' '.($cli?->primer_apellido ?? ''));
+$rsG  = $f->contrato?->razonSocial?->razon_social ?? $f->razonSocial?->razon_social ?? null;
+$enEpsG = $f->contrato?->eps?->nombre ?? '—';
+$enArlNomG = null;
+$enArlNitG = $f->contrato?->razonSocial?->arl_nit ?? null;
+if ($enArlNitG) {
+    $enArlNomG = \App\Models\Arl::where('nit', $enArlNitG)->value('nombre_arl') ?? $enArlNitG;
+}
+if (!$enArlNomG) { $enArlNomG = $f->contrato?->arl?->nombre_arl ?? '—'; }
+$enArlNivelG = $f->contrato?->n_arl ?? '';
+$enArlG = $enArlNomG . ($enArlNivelG ? ' N'.$enArlNivelG : '');
+$enPenG = $f->contrato?->pension?->razon_social ?? '—';
+$enCajG = $f->contrato?->caja?->nombre ?? $f->contrato?->caja?->razon_social ?? '—';
+$vEpsG  = (int)($f->v_eps  ?? 0);
+$vArlG  = (int)($f->v_arl  ?? 0);
+$vPenG  = (int)($f->v_afp  ?? 0);
+$vCajG  = (int)($f->v_caja ?? 0);
+$vAdmG  = (int)($f->admon  ?? 0) + (int)($f->admin_asesor ?? 0);
+$vIvaG  = (int)($f->iva    ?? 0);
+$vOtrG  = (int)($f->mensajeria ?? 0) + (int)($f->otros ?? 0);
+$diasG  = $f->dias_cotizados ?? 30;
+$tEps += $vEpsG; $tArl += $vArlG; $tPen += $vPenG; $tCaj += $vCajG; $tAdm += $vAdmG;
+$tIva += $vIvaG; $tOtros += $vOtrG;
+@endphp
+<tr>
+    <td style="text-align:center;color:#94a3b8;font-weight:700;font-size:.72rem">{{ $idx+1 }}</td>
+    <td>
+        <div style="font-weight:700;font-size:.78rem;color:#0f172a">{{ $nom ?: '—' }}</div>
+        <div style="font-size:.63rem;color:#94a3b8">CC {{ number_format($f->cedula,0,'','.') }}</div>
+    </td>
+    <td>
+        @if($rsG)
+            <span style="font-size:.7rem;font-weight:700;color:#1d4ed8">{{ $rsG }}</span>
+        @else
+            <span style="font-size:.65rem;font-weight:800;color:#15803d;text-transform:uppercase;letter-spacing:.05em">Independiente</span>
+        @endif
+    </td>
+    <td style="text-align:center;font-weight:700;color:{{ $diasG < 30 ? '#d97706' : '#0f172a' }}">{{ $diasG }}</td>
+    <td class="entidad" style="font-size:.72rem">
+        {{ $enEpsG }}
+        <div class="g-val">{{ $vEpsG > 0 ? $fmt($vEpsG) : '' }}</div>
+    </td>
+    <td class="entidad" style="font-size:.72rem;color:#15803d">
+        {{ $enArlG }}
+        <div class="g-val">{{ $vArlG > 0 ? $fmt($vArlG) : '' }}</div>
+    </td>
+    <td class="entidad" style="font-size:.72rem;color:#7c3aed">
+        {{ $enPenG }}
+        <div class="g-val">{{ $vPenG > 0 ? $fmt($vPenG) : '' }}</div>
+    </td>
+    <td class="entidad" style="font-size:.72rem;color:#0369a1">
+        {{ $enCajG !== '—' ? $enCajG : 'Ninguna' }}
+        <div class="g-val">{{ $vCajG > 0 ? $fmt($vCajG) : '' }}</div>
+    </td>
+    <td class="right" style="font-weight:800;color:#0f172a">${{ number_format($f->total,0,',','.') }}</td>
+</tr>
+@endforeach
+</tbody>
+@php
+$tSS = $tEps + $tArl + $tPen + $tCaj;
+@endphp
+<tfoot>
+{{-- Fila: TOTAL FACTURA (siempre visible) --}}
+<tr style="background:#0f172a">
+    <td colspan="8" style="font-size:.78rem;font-weight:800;color:#93c5fd;letter-spacing:.07em;padding:.7rem .55rem">TOTAL &mdash; {{ $filas->count() }} trabajadores</td>
+    <td class="right" style="font-size:1.3rem;font-weight:900;color:#fbbf24;font-family:monospace;white-space:nowrap;padding:.7rem .55rem">${{ number_format($totTotal,0,',','.') }}</td>
+</tr>
+</tfoot>
+</table>
+</div>
+</div>{{-- cierre div padding --}}
+{{-- RESUMEN FINANCIERO + FORMA DE PAGO (solo visible en detallado) --}}
+<div class="fact-pago-area bloque-resumen" style="margin:.75rem .85rem 0">
+
+    {{-- Columna izquierda: Resumen Financiero --}}
+    <div class="fact-pago-col">
+        <div class="fact-pago-hdr">Resumen Financiero</div>
+        @if($totSS > 0)
+        <div class="fact-pago-row">
+            <span>Seguridad Social</span>
+            <strong>{{ $fmt($totSS) }}</strong>
+        </div>
+        @endif
+        @if($totAdmon > 0)
+        <div class="fact-pago-row">
+            <span>Administración</span><strong>{{ $fmt($totAdmon) }}</strong>
+        </div>
+        @endif
+        @if($totAfil > 0)
+        <div class="fact-pago-row">
+            <span>Afiliación</span><strong>{{ $fmt($totAfil) }}</strong>
+        </div>
+        @endif
+        @if($totSeg > 0)
+        <div class="fact-pago-row">
+            <span>Seguro</span><strong>{{ $fmt($totSeg) }}</strong>
+        </div>
+        @endif
+        @if($totIva > 0)
+        <div class="fact-pago-row" style="color:#92400e">
+            <span>IVA / 4×mil</span><strong>{{ $fmt($totIva) }}</strong>
+        </div>
+        @endif
+        @php
+        // saldo_proximo de la primera factura del grupo (anticipo o pendiente aplicado)
+        $spGrupo = (int)(collect($filas)->sum(fn($f) => (int)($f->saldo_proximo ?? 0)));
+        $saldoFavorG = $spGrupo < 0 ? abs($spGrupo) : 0; // consumió anticipo previo
+        @endphp
+        @if($saldoFavorG > 0)
+        @php
+        $mesAntG  = $factura->mes > 1 ? $factura->mes - 1 : 12;
+        $anioAntG = $factura->mes > 1 ? $factura->anio : $factura->anio - 1;
+        @endphp
+        <div class="fact-pago-row" style="color:#15803d;border-top:1px solid #d1fae5;padding-top:.2rem;margin-top:.2rem">
+            <span>✅ Anticipo aplicado <small style="font-size:.62rem">{{ $meses[$mesAntG-1] }} {{ $anioAntG }}</small></span>
+            <strong>−{{ $fmt($saldoFavorG) }}</strong>
+        </div>
+        @endif
+        @if($totPrest > 0)
+        <div class="fact-pago-row" style="color:#dc2626;border-top:1px solid #fee2e2;padding-top:.2rem;margin-top:.2rem">
+            <span>🔴 Recuper. préstamo</span>
+            <strong>+{{ $fmt($totPrest) }}</strong>
+        </div>
+        @endif
+        @if($factura->observacion)
+        <div style="margin-top:.4rem;font-size:.68rem;color:#94a3b8;font-style:italic">{{ $factura->observacion }}</div>
+        @endif
+    </div>
+
+    {{-- Columna derecha: Forma de Pago --}}
+    <div class="fact-pago-col">
+        <div class="fact-pago-hdr">Forma de Pago</div>
+        <div class="fact-pago-row">
+            <span>Tipo</span>
+            <strong>{{ ucfirst(str_replace('_', ' ', $factura->forma_pago ?? '—')) }}</strong>
+        </div>
+        @if($totEfect > 0)
+        <div class="fact-pago-row" style="color:#15803d">
+            <span>💵 Efectivo</span><strong>{{ $fmt($totEfect) }}</strong>
+        </div>
+        @endif
+        @foreach($factura->consignaciones as $csg)
+        <div style="padding:.14rem 0;border-bottom:.5px solid #f1f5f9">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start">
+                <div>
+                    <span style="color:#1d4ed8;font-weight:600;font-size:.76rem">
+                        🏦 {{ $csg->bancoCuenta?->nombre ?? 'Banco' }}
+                        @if($csg->confirmado) <span style="color:#15803d;font-size:.62rem;font-weight:700">✓</span> @endif
+                    </span>
+                    @if($csg->imagen_path)
+                    <a href="#"
+                       onclick="verSoporte('{{ route('admin.facturacion.consignacion.imagen.ver', $csg->id) }}');return false;"
+                       style="margin-left:.3rem;background:#e0f2fe;color:#0369a1;border:1px solid #bae6fd;border-radius:4px;padding:0 5px;font-size:.58rem;text-decoration:none;vertical-align:middle">🖼️ soporte</a>
+                    @endif
+                    <div style="font-size:.62rem;color:#94a3b8">
+                        {{ $csg->bancoCuenta?->tipo_cuenta }} {{ $csg->bancoCuenta?->numero_cuenta }}
+                        · {{ sqldate($csg->fecha)->format('d/m/Y') }}
+                        @if($csg->referencia) · Ref: {{ $csg->referencia }} @endif
+                    </div>
+                </div>
+                <strong style="white-space:nowrap;font-size:.78rem">{{ $fmt($csg->valor) }}</strong>
+            </div>
+        </div>
+        @endforeach
+        @if($totPrest > 0)
+        <div class="fact-pago-row" style="color:#7c3aed">
+            <span>💳 Préstamo (pendiente)</span><strong>{{ $fmt($totPrest) }}</strong>
+        </div>
+        @endif
+    </div>
+
+</div>
+{{-- NOTA LEGAL --}}
+<div style="margin:.7rem .85rem 0;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:.5rem .85rem;font-size:.68rem;color:#92400e;line-height:1.5">
+    <span style="font-weight:800">⚠️ IMPORTANTE &mdash;</span>
+    Las incapacidades por enfermedad común o accidente laboral serán reconocidas por la EPS y ARL
+    <strong>únicamente</strong> cuando los aportes se hayan realizado oportunamente,
+    <strong>antes del décimo (10º) día hábil de cada mes</strong>.
+</div>
+<div style="height:.9rem"></div>
+{{-- BARRA INFERIOR dentro del cuadro --}}
+<div class="fact-bottom-bar" style="border-top:1px solid rgba(255,255,255,.07);margin: 0 0 0; border-radius:0">
+    <span>{{ $nomAliadoG }} — Asesoría en Seguridad Social</span>
+    <span style="font-size:.65rem;color:#94a3b8">Facturó: {{ $factura->usuario?->nombre ?? $factura->usuario?->name ?? 'Usuario' }} &nbsp;&middot;&nbsp; Impreso: {{ now()->format('d/m/Y H:i') }}</span>
+</div>
+</div>{{-- /recibo-inner --}}
+@else
+{{-- ══════════════════════════════════════════════════════════════════════
+     VISTA INDIVIDUAL — Diseño Tipo Factura Premium
+══════════════════════════════════════════════════════════════════════════ --}}
+@php
+$cli1   = $factura->contrato?->cliente;
+if (!$cli1 && $factura->tipo === 'otro_ingreso') {
+    $cli1 = \App\Models\Cliente::where('cedula', $factura->cedula)->first();
+}
+$nom1     = trim(($cli1?->primer_nombre ?? '').' '.($cli1?->segundo_nombre ?? '').' '.($cli1?->primer_apellido ?? '').' '.($cli1?->segundo_apellido ?? ''));
+$rs1      = $factura->contrato?->razonSocial?->razon_social ?? $factura->razonSocial?->razon_social ?? null;
+$arlNom   = $factura->contrato?->arl?->nombre_arl;
+if (!$arlNom) {
+    $arlNit = $factura->contrato?->razonSocial?->arl_nit;
+    $arlNom = $arlNit ? (\App\Models\Arl::where('nit',$arlNit)->value('nombre_arl') ?? $arlNit) : null;
+}
+$arlNivel = $factura->contrato?->n_arl ?? '';
+$cajaNom  = $factura->contrato?->caja?->nombre ?? $factura->contrato?->caja?->razon_social ?? null;
+$penNom   = $factura->contrato?->pension?->razon_social ?? null;
+$epsNom   = $factura->contrato?->eps?->nombre ?? null;
+$vEps1    = (int)($factura->v_eps  ?? 0);
+$vArl1    = (int)($factura->v_arl  ?? 0);
+$vPen1    = (int)($factura->v_afp  ?? 0);
+$vCaj1    = (int)($factura->v_caja ?? 0);
+$vAdm1    = (int)($factura->admon  ?? 0) + (int)($factura->admin_asesor ?? 0);
+$vSeg1    = (int)($factura->seguro ?? 0);
+$vAfil1   = (int)($factura->afiliacion ?? 0);
+$vMens1   = (int)($factura->mensajeria ?? 0);
+$vOtros1  = (int)($factura->otros ?? 0);
+$vIva1    = (int)($factura->iva ?? 0);
+$dias1    = $factura->dias_cotizados ?? 30;
+
+// Sello de estado
+$selloTxt = match($factura->estado) {
+    'pagada'      => 'PAGADO',
+    'pre_factura' => 'PRE-FACT',
+    'prestamo'    => 'PRÉSTAMO',
+    'abono'       => 'ABONO',
+    default       => strtoupper($factura->estado ?? '')
+};
+$selloCls = match($factura->estado) {
+    'pagada'   => 'sello-pagado',
+    'prestamo' => 'sello-prest',
+    'abono'    => 'sello-abono',
+    default    => 'sello-pre'
+};
+
+// Dirección/contacto del cliente
+$dir1 = trim(($cli1?->direccion ?? ''));
+$tel1 = trim(($cli1?->telefono ?? '') ?: ($cli1?->celular ?? ''));
+$sal1 = (int)($factura->contrato?->salario ?? 0);
+
+// Logo del aliado
+$aliadoObj  = \App\Models\Aliado::find($factura->aliado_id);
+$logoAliado = $aliadoObj?->logo ? asset('storage/'.$aliadoObj->logo) : null;
+$nomAliado  = $aliadoObj?->nombre ?? $aliadoObj?->razon_social ?? 'BryNex';
+@endphp
+
+{{-- HEADER TIPO FACTURA (con margen superior) --}}
+<div class="recibo-inner-wrap">
+<div class="fact-header" style="position:relative;overflow:hidden;border-radius:6px 6px 0 0;border:1px solid #e2e8f0;">
+
+    {{-- Sello diagonal --}}
+    <div class="fact-sello-wrap">
+        <div class="fact-sello {{ $selloCls }}">{{ $selloTxt }}</div>
+    </div>
+
+    {{-- Col 1: Afiliado / Trabaj. / Empresa --}}
+    <div class="fact-h-empresa">
+        @if($factura->tipo === 'otro_ingreso' && $factura->empresa)
+            {{-- Otro ingreso de empresa --}}
+            <div style="font-size:1.15rem;font-weight:900;color:#0f172a;line-height:1.1">{{ $factura->empresa->empresa }}</div>
+            <div style="font-size:.68rem;color:#64748b;margin-top:.15rem">NIT: {{ $factura->empresa->nit ?? '—' }}</div>
+        @elseif($rs1)
+            {{-- Con razón social → DEPENDIENTE --}}
+            <div style="font-size:1.1rem;font-weight:900;color:#0f172a;line-height:1.1">{{ $nom1 ?: 'CC '.$factura->cedula }}</div>
+            <div style="font-size:.68rem;color:#64748b;margin-top:.12rem">C.C. {{ number_format($factura->cedula, 0, '', '.') }}</div>
+            <div style="font-size:.65rem;font-weight:800;color:#1d4ed8;text-transform:uppercase;letter-spacing:.07em;margin-top:.2rem">Dependiente</div>
+        @else
+            {{-- Sin razón social → INDEPENDIENTE --}}
+            <div style="font-size:1.1rem;font-weight:900;color:#0f172a;line-height:1.1">{{ $nom1 ?: 'CC '.$factura->cedula }}</div>
+            <div style="font-size:.68rem;color:#64748b;margin-top:.12rem">C.C. {{ number_format($factura->cedula, 0, '', '.') }}</div>
+            <div style="font-size:.65rem;font-weight:800;color:#15803d;text-transform:uppercase;letter-spacing:.07em;margin-top:.2rem">Independiente</div>
+        @endif
+    </div>
+
+    {{-- Col 2: Solo Número de recibo (centrado) --}}
+    <div class="fact-h-recibo">
+        <div style="font-size:.58rem;font-weight:700;letter-spacing:.15em;color:#93c5fd;text-transform:uppercase;margin-bottom:.18rem">Recibo de Pago</div>
+        <div style="font-size:2rem;font-weight:900;color:#fbbf24;letter-spacing:-.03em;line-height:1">
+            {{ str_pad($factura->numero_factura, 6, '0', STR_PAD_LEFT) }}
+        </div>
+        <div style="margin-top:.35rem">
+            <span class="badge {{ $estadoCls($factura->estado) }}">{{ $estadoLabel($factura->estado) }}</span>
+        </div>
+    </div>
+
+    {{-- Col 3: Logo del aliado --}}
+    <div class="fact-h-logo">
+        @if($logoAliado)
+        <img src="{{ $logoAliado }}" alt="{{ $nomAliado }}" style="max-width:140px;max-height:70px;object-fit:contain">
+        @else
+        <img src="{{ asset('img/logo-brynex.png') }}" alt="BryNex" style="max-width:140px;max-height:70px;object-fit:contain">
+        @endif
+        <div style="font-size:.55rem;color:#64748b;text-align:center;margin-top:.35rem;font-weight:600;letter-spacing:.04em">
+            {{ strtoupper($nomAliado) }}
+        </div>
+    </div>
+
+</div>{{-- /fact-header --}}
+</div>{{-- /recibo-inner-wrap --}}
+
+{{-- DATOS DEL CLIENTE (con margen interior) --}}
+<div class="recibo-inner">
+<div class="fact-cliente">
+    @if($nom1 && $rs1)
+    <div class="fact-cliente-row">
+        <span class="fact-cliente-lbl">Trabajador</span>
+        <span class="fact-cliente-val">{{ $nom1 }}</span>
+    </div>
+    @elseif($nom1)
+    <div class="fact-cliente-row">
+        <span class="fact-cliente-lbl">Nombres</span>
+        <span class="fact-cliente-val">{{ $nom1 }}</span>
+    </div>
+    @endif
+
+    <div class="fact-cliente-row">
+        <span class="fact-cliente-lbl">Cédula</span>
+        <span class="fact-cliente-val">{{ number_format($factura->cedula, 0, '', '.') }}</span>
+    </div>
+    @if($tel1)
+    <div class="fact-cliente-row">
+        <span class="fact-cliente-lbl">Teléfono</span>
+        <span class="fact-cliente-val">{{ $tel1 }}</span>
+    </div>
+    @endif
+    @if($dir1)
+    <div class="fact-cliente-row">
+        <span class="fact-cliente-lbl">Dirección</span>
+        <span class="fact-cliente-val">{{ $dir1 }}</span>
+    </div>
+    @endif
+    @if($sal1 > 0)
+    <div class="fact-cliente-row">
+        <span class="fact-cliente-lbl">Salario IBC</span>
+        <span class="fact-cliente-val" style="color:#1d4ed8">{{ $fmt($sal1) }}</span>
+    </div>
+    @endif
+    <div class="fact-cliente-row">
+        <span class="fact-cliente-lbl">Mes Liquidado</span>
+        <span class="fact-cliente-val" style="color:#1d4ed8;font-weight:800">
+            {{ $meses[$factura->mes-1] }}&nbsp;&nbsp;AÑO: {{ $factura->anio }}
+        </span>
+    </div>
+    <div class="fact-cliente-row">
+        <span class="fact-cliente-lbl">Período</span>
+        <span class="fact-cliente-val" style="color:#0f172a;font-weight:700">
+            {{ $meses[$factura->mes-1] }} {{ $factura->anio }}
+        </span>
+    </div>
+    <div class="fact-cliente-row">
+        <span class="fact-cliente-lbl">Facturó</span>
+        <span class="fact-cliente-val" style="color:#64748b;font-size:.73rem">
+            {{ $factura->usuario?->nombre ?? $factura->usuario?->name ?? ('Usuario #'.($factura->usuario_id ?? '?')) }}
+        </span>
+    </div>
+    <div class="fact-cliente-row">
+        <span class="fact-cliente-lbl">Fecha</span>
+        <span class="fact-cliente-val" style="color:#64748b;font-size:.73rem">
+            {{ sqldate($factura->fecha_pago)->format('d/m/Y') }}
+        </span>
     </div>
 </div>
 
-<div class="rec-body">
-
-{{-- ══ ALERTA PRÉSTAMO ══════════════════════════════════════════════════ --}}
+{{-- ALERTA PRÉSTAMO --}}
 @if($totPrest > 0 || $factura->estado === 'prestamo')
 <div class="alerta-prest">
     <span style="font-size:1.3rem">💳</span>
@@ -208,582 +952,370 @@ $estadoCls = fn($e) => match($e) {
         <div style="font-size:.77rem;color:#7c3aed">
             Total: <strong>{{ $fmt($totTotal) }}</strong> ·
             Recibido: <strong>{{ $fmt($totTotal - $totPrest) }}</strong> ·
-            Pendiente a cobrar: <strong>{{ $fmt($totPrest) }}</strong>
+            Pendiente: <strong>{{ $fmt($totPrest) }}</strong>
         </div>
     </div>
 </div>
 @endif
 
-{{-- ══ TABLA EMPRESA (modo NP) ═════════════════════════════════════════ --}}
-@if($esGrupo)
-<div style="font-size:.67rem;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:.28rem">Trabajadores</div>
-<div style="overflow-x:auto">
-<table class="tbl">
+{{-- TABLA ENTIDADES --}}
+<div class="fact-body">
+<div class="fact-section-title">DESCRIPCIÓN DE SERVICIOS</div>
+
+@if($factura->tipo === 'otro_ingreso')
+{{-- ── Otro Ingreso ─────────────────────────────── --}}
+<table class="fact-table">
 <thead>
-<tr>
-    <th style="width:24px">No</th>
-    <th style="text-align:left">Nombre / CC</th>
-    <th style="text-align:left">Razón Social</th>
-    <th style="text-align:center">Días</th>
-    <th class="dc n-r">EPS $</th>
-    <th class="dc n-r">ARL $</th>
-    <th class="dc n-r">Pensión $</th>
-    <th class="dc n-r">Caja $</th>
-    <th class="dc n-r">Admon $</th>
-    <th style="text-align:left;font-size:.6rem">EPS</th>
-    <th style="text-align:left;font-size:.6rem">ARL</th>
-    <th style="text-align:left;font-size:.6rem">Pensión</th>
-    <th style="text-align:left;font-size:.6rem">Caja</th>
-    <th class="n-r">TOTAL</th>
-</tr>
+    <tr>
+        <th style="width:40%">Concepto / Trámite</th>
+        <th>Detalle</th>
+        <th class="right" style="width:140px">Valor</th>
+    </tr>
 </thead>
 <tbody>
-@php $tEps=$tArl=$tPen=$tCaj=$tAdm=0; @endphp
-@foreach($filas as $idx => $f)
-@php
-$cli  = $f->contrato?->cliente;
-$nom  = trim(($cli?->primer_nombre ?? '').' '.($cli?->segundo_nombre ?? '').' '.($cli?->primer_apellido ?? '').' '.($cli?->segundo_apellido ?? ''));
-$rs   = $f->contrato?->razonSocial?->razon_social ?? $f->razonSocial?->razon_social ?? '—';
-$enEps = $f->contrato?->eps?->nombre ?? '—';
-// ARL: primero de RS, luego del contrato
-$enArlNom = null;
-$enArlNit = $f->contrato?->razonSocial?->arl_nit ?? null;
-if ($enArlNit) {
-    $enArlNom = \App\Models\Arl::where('nit', $enArlNit)->value('nombre_arl') ?? $enArlNit;
-}
-if (!$enArlNom) {
-    $enArlNom = $f->contrato?->arl?->nombre_arl ?? '—';
-}
-$enArlNivel = $f->contrato?->n_arl ?? '';
-$enArl = $enArlNom . ($enArlNivel ? ' (N'.$enArlNivel.')' : '');
-$enPen = $f->contrato?->pension?->razon_social ?? '—';
-$enCaj = $f->contrato?->caja?->nombre ?? $f->contrato?->caja?->razon_social ?? '—';
-$vEps  = (int)($f->v_eps  ?? 0);
-$vArl  = (int)($f->v_arl  ?? 0);
-$vPen  = (int)($f->v_afp  ?? 0);
-$vCaj  = (int)($f->v_caja ?? 0);
-$vAdm  = (int)($f->admon  ?? 0) + (int)($f->admin_asesor ?? 0);
-$dias  = $f->dias_cotizados ?? 30;
-$tEps += $vEps; $tArl += $vArl; $tPen += $vPen; $tCaj += $vCaj; $tAdm += $vAdm;
-@endphp
-<tr>
-    <td style="text-align:center;color:#94a3b8;font-weight:700">{{ $idx+1 }}</td>
-    <td>
-        <div style="font-weight:600;font-size:.78rem">{{ $nom ?: '—' }}</div>
-        <div style="font-size:.65rem;color:#94a3b8">CC {{ number_format($f->cedula,0,'','.') }}</div>
-    </td>
-    <td style="font-size:.72rem;color:#1d4ed8;font-weight:700">{{ $rs }}</td>
-    <td style="text-align:center;font-weight:700;color:{{ $dias < 30 ? '#d97706' : '#0f172a' }}">{{ $dias }}</td>
-    <td class="dc n-r">{{ $vEps  > 0 ? '$'.number_format($vEps, 0,',','.') : '—' }}</td>
-    <td class="dc n-r">{{ $vArl  > 0 ? '$'.number_format($vArl, 0,',','.') : '—' }}</td>
-    <td class="dc n-r">{{ $vPen  > 0 ? '$'.number_format($vPen, 0,',','.') : '—' }}</td>
-    <td class="dc n-r">{{ $vCaj  > 0 ? '$'.number_format($vCaj, 0,',','.') : '—' }}</td>
-    <td class="dc n-r">{{ $vAdm  > 0 ? '$'.number_format($vAdm, 0,',','.') : '—' }}</td>
-    <td style="font-size:.68rem;color:#0369a1">{{ $enEps }}</td>
-    <td style="font-size:.68rem;color:#7c3aed;white-space:nowrap">{{ $enArl }}</td>
-    <td style="font-size:.68rem">{{ $enPen }}</td>
-    <td style="font-size:.68rem">{{ $enCaj }}</td>
-    <td class="n-r" style="font-weight:800">${{ number_format($f->total,0,',','.') }}</td>
-</tr>
-@endforeach
+    <tr>
+        <td class="concepto" style="font-weight:800;color:#065f46">
+            💼 {{ $factura->descripcion_tramite ?? 'Trámite / Servicio' }}
+        </td>
+        <td class="tag">
+            @if($factura->empresa) Empresa: {{ $factura->empresa->empresa }} @endif
+        </td>
+        <td class="right" style="color:#0f172a">
+            @if(($factura->admon ?? 0) > 0) {{ $fmt($factura->admon) }} @endif
+        </td>
+    </tr>
+    @if(($factura->admon_asesor_oi ?? 0) > 0)
+    <tr>
+        <td class="concepto">Honorarios asesor</td>
+        <td></td>
+        <td class="right">{{ $fmt($factura->admon_asesor_oi) }}</td>
+    </tr>
+    @endif
+    @if($vIva1 > 0)
+    <tr>
+        <td class="concepto">IVA</td>
+        <td class="tag">Impuesto al valor agregado</td>
+        <td class="right" style="color:#92400e">{{ $fmt($vIva1) }}</td>
+    </tr>
+    @endif
 </tbody>
 <tfoot>
-<tr>
-    <td colspan="3" style="font-size:.7rem">TOTALES ({{ $filas->count() }})</td>
-    <td></td>
-    <td class="dc n-r tot-v">${{ number_format($tEps,0,',','.') }}</td>
-    <td class="dc n-r tot-v">${{ number_format($tArl,0,',','.') }}</td>
-    <td class="dc n-r tot-v">${{ number_format($tPen,0,',','.') }}</td>
-    <td class="dc n-r tot-v">${{ number_format($tCaj,0,',','.') }}</td>
-    <td class="dc n-r tot-v">${{ number_format($tAdm,0,',','.') }}</td>
-    <td colspan="4"></td>
-    <td class="n-r tot-v">${{ number_format($totTotal,0,',','.') }}</td>
-</tr>
+    <tr>
+        <td colspan="2" style="font-size:.75rem;letter-spacing:.06em">SUBTOTAL</td>
+        <td class="right">{{ $fmt($totTotal) }}</td>
+    </tr>
 </tfoot>
 </table>
-</div>
+
+@elseif($factura->tipo === 'afiliacion')
+{{-- ── Afiliación ───────────────────────────────── --}}
+<table class="fact-table">
+<thead>
+    <tr>
+        <th style="width:30%">Descripción</th>
+        <th>Entidad</th>
+        <th class="right" style="width:140px">Valor</th>
+    </tr>
+</thead>
+<tbody>
+    @if($epsNom)
+    <tr>
+        <td class="concepto">EPS</td>
+        <td class="entidad">{{ $epsNom }}</td>
+        <td class="right">—</td>
+    </tr>
+    @endif
+    @if($arlNom)
+    <tr>
+        <td class="concepto">ARL{{ $arlNivel ? ' · Riesgo '.$arlNivel : '' }}</td>
+        <td class="entidad" style="color:#15803d">{{ $arlNom }}</td>
+        <td class="right">—</td>
+    </tr>
+    @endif
+    @if($penNom)
+    <tr>
+        <td class="concepto">PENSIÓN</td>
+        <td class="entidad" style="color:#7c3aed">{{ $penNom }}</td>
+        <td class="right">—</td>
+    </tr>
+    @endif
+    @if($cajaNom)
+    <tr>
+        <td class="concepto">CAJA COMPENSACIÓN</td>
+        <td class="entidad" style="color:#0369a1">{{ $cajaNom }}</td>
+        <td class="right">—</td>
+    </tr>
+    @endif
+    @if($vAdm1 > 0)
+    <tr>
+        <td class="concepto">ADMINISTRACIÓN</td>
+        <td class="tag">Honorarios gestión BryNex</td>
+        <td class="right">{{ $fmt($vAdm1) }}</td>
+    </tr>
+    @endif
+    @if($vSeg1 > 0)
+    <tr>
+        <td class="concepto">SEGURO</td>
+        <td class="tag"></td>
+        <td class="right">{{ $fmt($vSeg1) }}</td>
+    </tr>
+    @endif
+    @if($vIva1 > 0)
+    <tr>
+        <td class="concepto">IVA</td>
+        <td class="tag">Impuesto al valor agregado</td>
+        <td class="right" style="color:#92400e">{{ $fmt($vIva1) }}</td>
+    </tr>
+    @endif
+    <tr style="background:#f0fdf4 !important">
+        <td class="concepto" style="font-size:.7rem;color:#64748b;font-style:italic" colspan="3">
+            ⚡ Trámite de afiliación ante entidades del Sistema de Seguridad Social
+            @if($dias1 < 30) — <span style="color:#d97706;font-weight:700">{{ $dias1 }} días cotizados</span> @endif
+        </td>
+    </tr>
+</tbody>
+<tfoot>
+    <tr>
+        <td colspan="2" style="font-size:.75rem;letter-spacing:.06em">TOTAL AFILIACIÓN</td>
+        <td class="right">{{ $fmt($totTotal) }}</td>
+    </tr>
+</tfoot>
+</table>
 
 @else
-{{-- ══ Individual ═════════════════════════════════════════════════════ --}}
-@php
-$cli1   = $factura->contrato?->cliente;
-// Para otro_ingreso puede no haber contrato, buscar por cédula directamente
-if (!$cli1 && $factura->tipo === 'otro_ingreso') {
-    $cli1 = \App\Models\Cliente::where('cedula', $factura->cedula)->first();
-}
-$nom1   = trim(($cli1?->primer_nombre ?? '').' '.($cli1?->segundo_nombre ?? '').' '.($cli1?->primer_apellido ?? '').' '.($cli1?->segundo_apellido ?? ''));
-$rs1    = $factura->contrato?->razonSocial?->razon_social ?? $factura->razonSocial?->razon_social ?? '—';
-// ARL: primero del contrato (independiente), luego de la razón social (empresa)
-$arlNom = $factura->contrato?->arl?->nombre_arl;
-if (!$arlNom) {
-    $arlNit = $factura->contrato?->razonSocial?->arl_nit;
-    $arlNom = $arlNit ? (\App\Models\Arl::where('nit',$arlNit)->value('nombre_arl') ?? $arlNit) : '—';
-}
-$arlNivel = $factura->contrato?->n_arl ?? '';
-$cajaNom  = $factura->contrato?->caja?->nombre ?? $factura->contrato?->caja?->razon_social ?? '—';
-$vEps1  = (int)($factura->v_eps  ?? 0);
-$vArl1  = (int)($factura->v_arl  ?? 0);
-$vPen1  = (int)($factura->v_afp  ?? 0);
-$vCaj1  = (int)($factura->v_caja ?? 0);
-$vAdm1  = (int)($factura->admon  ?? 0) + (int)($factura->admin_asesor ?? 0);
-$dias1  = $factura->dias_cotizados ?? 30;
-@endphp
-
-{{-- Bloque trabajador: NO mostrar en otro_ingreso de empresa --}}
-@if($factura->tipo !== 'otro_ingreso' || !$factura->empresa_id)
-<div class="ibox" style="margin-bottom:.6rem">
-    <div class="ilbl">Trabajador</div>
-    <div style="font-size:.95rem;font-weight:700">{{ $nom1 ?: 'CC '.$factura->cedula }}</div>
-    <div style="font-size:.75rem;color:#64748b">CC {{ number_format($factura->cedula,0,'','.') }}</div>
-    @if($factura->tipo !== 'otro_ingreso')
-    <div style="font-size:.78rem;color:#1d4ed8;font-weight:700;margin-top:.15rem">{{ $rs1 }}</div>
+{{-- ── Planilla (Seguridad Social) ─────────────── --}}
+<table class="fact-table">
+<thead>
+    <tr>
+        <th style="width:26%">Descripción</th>
+        <th>Entidad</th>
+        <th style="width:70px;text-align:center">Días</th>
+        <th class="right col-valor-det" style="width:130px">Valor</th>
+    </tr>
+</thead>
+<tbody>
+    @if($epsNom)
+    <tr>
+        <td class="concepto">EPS</td>
+        <td class="entidad">{{ $epsNom }}</td>
+        <td style="text-align:center;font-weight:700;color:{{ $dias1 < 30 ? '#d97706' : '#0f172a' }}">{{ $dias1 }}</td>
+        <td class="right col-valor-det">{{ $vEps1 > 0 ? $fmt($vEps1) : '—' }}</td>
+    </tr>
     @endif
-</div>
+    @if($arlNom)
+    <tr>
+        <td class="concepto">ARL{{ $arlNivel ? ' · Riesgo '.$arlNivel : '' }}</td>
+        <td class="entidad" style="color:#15803d">{{ $arlNom }}</td>
+        <td style="text-align:center;font-weight:700;color:{{ $dias1 < 30 ? '#d97706' : '#0f172a' }}">{{ $dias1 }}</td>
+        <td class="right col-valor-det">{{ $vArl1 > 0 ? $fmt($vArl1) : '—' }}</td>
+    </tr>
+    @endif
+    @if($penNom)
+    <tr>
+        <td class="concepto">PENSIÓN</td>
+        <td class="entidad" style="color:#7c3aed">{{ $penNom }}</td>
+        <td style="text-align:center;font-weight:700;color:{{ $dias1 < 30 ? '#d97706' : '#0f172a' }}">{{ $dias1 }}</td>
+        <td class="right col-valor-det">{{ $vPen1 > 0 ? $fmt($vPen1) : '—' }}</td>
+    </tr>
+    @endif
+    @if($cajaNom)
+    <tr>
+        <td class="concepto">CAJA COMPENSACIÓN</td>
+        <td class="entidad" style="color:#0369a1">{{ $cajaNom !== '—' ? $cajaNom : 'NINGUNA' }}</td>
+        <td style="text-align:center;color:#94a3b8">{{ $dias1 }}</td>
+        <td class="right col-valor-det">{{ $vCaj1 > 0 ? $fmt($vCaj1) : '—' }}</td>
+    </tr>
+    @endif
+    @if($vAdm1 > 0)
+    <tr>
+        <td class="concepto">ADMINISTRACIÓN</td>
+        <td class="tag">Honorarios gestión {{ $nomAliado }}</td>
+        <td></td>
+        <td class="right col-valor-det">{{ $fmt($vAdm1) }}</td>
+    </tr>
+    @endif
+    @if($vSeg1 > 0)
+    <tr>
+        <td class="concepto">SEGURO</td>
+        <td class="tag"></td>
+        <td></td>
+        <td class="right col-valor-det">{{ $fmt($vSeg1) }}</td>
+    </tr>
+    @endif
+    @if($vAfil1 > 0)
+    <tr style="background:#f0fdf4 !important">
+        <td class="concepto" style="color:#065f46">AFILIACIÓN</td>
+        <td class="tag">Trámite de afiliación incluido</td>
+        <td></td>
+        <td class="right col-valor-det" style="color:#15803d">{{ $fmt($vAfil1) }}</td>
+    </tr>
+    @endif
+    @if($vMens1 > 0)
+    <tr>
+        <td class="concepto">MENSAJERÍA</td>
+        <td class="tag"></td>
+        <td></td>
+        <td class="right col-valor-det">{{ $fmt($vMens1) }}</td>
+    </tr>
+    @endif
+    @if($vOtros1 > 0)
+    <tr>
+        <td class="concepto">OTROS</td>
+        <td class="tag"></td>
+        <td></td>
+        <td class="right col-valor-det">{{ $fmt($vOtros1) }}</td>
+    </tr>
+    @endif
+    @if($vIva1 > 0)
+    <tr>
+        <td class="concepto">IVA / 4×MIL</td>
+        <td class="tag">Impuesto al valor agregado</td>
+        <td></td>
+        <td class="right col-valor-det" style="color:#92400e">{{ $fmt($vIva1) }}</td>
+    </tr>
+    @endif
+</tbody>
+<tfoot>
+    <tr>
+        <td colspan="2" style="font-size:.75rem;letter-spacing:.06em">SUBTOTAL</td>
+        <td style="text-align:center;font-size:.7rem;color:#93c5fd;font-weight:600">
+            @if($dias1 < 30)<span style="color:#fbbf24">{{ $dias1 }}d</span>@endif
+        </td>
+        <td class="right col-valor-det">{{ $fmt($totTotal) }}</td>
+    </tr>
+</tfoot>
+</table>
 @endif
 
-{{-- ══ OTRO INGRESO: sección dedicada (solo vista detallada) ═════════ --}}
-@if($factura->tipo === 'otro_ingreso')
-<div class="dc">
-<div style="background:linear-gradient(135deg,#ecfdf5,#d1fae5);border:2px solid #6ee7b7;border-radius:12px;padding:.7rem 1rem;margin-bottom:.6rem;">
-    <div style="font-size:.6rem;font-weight:800;color:#065f46;text-transform:uppercase;letter-spacing:.08em;margin-bottom:.4rem;">
-        💼 Trámite / Servicio Adicional
-    </div>
-    <div style="font-size:.92rem;font-weight:700;color:#0f172a;margin-bottom:.5rem;">
-        {{ $factura->descripcion_tramite ?? 'Trámite sin descripción' }}
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem;font-size:.79rem;">
-        @if(($factura->admon ?? 0) > 0)
-        <div style="background:#fff;border-radius:8px;padding:.4rem .65rem;">
-            <div style="font-size:.6rem;color:#94a3b8;font-weight:700;text-transform:uppercase;margin-bottom:.12rem;">🏢 Admon empresa</div>
-            <div style="font-weight:800;font-family:monospace">{{ $fmt($factura->admon) }}</div>
+{{-- BLOQUE PAGO (solo en vista detallada) --}}
+<div class="fact-pago-area bloque-resumen">
+    <div class="fact-pago-col">
+        <div class="fact-pago-hdr">Resumen Financiero</div>
+        @if($factura->tipo !== 'otro_ingreso')
+        @if($vEps1+$vArl1+$vPen1+$vCaj1 > 0)
+        <div class="fact-pago-row">
+            <span>Seguridad Social</span>
+            <strong>{{ $fmt($vEps1+$vArl1+$vPen1+$vCaj1) }}</strong>
         </div>
         @endif
-        @if(($factura->admon_asesor_oi ?? 0) > 0)
-        <div style="background:#fff;border-radius:8px;padding:.4rem .65rem;">
-            <div style="font-size:.6rem;color:#94a3b8;font-weight:700;text-transform:uppercase;margin-bottom:.12rem;">💼 Asesor</div>
-            <div style="font-weight:800;font-family:monospace">{{ $fmt($factura->admon_asesor_oi) }}</div>
+        @endif
+        @if($vAdm1 > 0)
+        <div class="fact-pago-row">
+            <span>Administración</span><strong>{{ $fmt($vAdm1) }}</strong>
         </div>
         @endif
-        @if(($factura->iva ?? 0) > 0)
-        <div style="background:#fef9c3;border:1px solid #fde68a;border-radius:8px;padding:.4rem .65rem;">
-            <div style="font-size:.6rem;color:#92400e;font-weight:700;text-transform:uppercase;margin-bottom:.12rem;">🏷 IVA</div>
-            <div style="font-weight:800;font-family:monospace;color:#92400e">{{ $fmt($factura->iva) }}</div>
+        @if($vAfil1 > 0)
+        <div class="fact-pago-row">
+            <span>Afiliación</span><strong>{{ $fmt($vAfil1) }}</strong>
         </div>
         @endif
-    </div>
-    @if($factura->empresa)
-    <div style="font-size:.72rem;color:#065f46;margin-top:.45rem;font-weight:600;">
-        🏢 Empresa: {{ $factura->empresa->empresa }}
-    </div>
-    @endif
-    </div>
-</div>{{-- /dc --}}
-@else
-
-<div class="dc">
-<div class="box2">
-@if($factura->tipo === 'afiliacion')
-    {{-- ══ AFILIACIÓN: mostrar entidades + plan, sin precios SS ══ --}}
-    <div class="ibox">
-        <div class="ilbl">📋 Entidades a Afiliar</div>
+        @if($vSeg1 > 0)
+        <div class="fact-pago-row">
+            <span>Seguro</span><strong>{{ $fmt($vSeg1) }}</strong>
+        </div>
+        @endif
+        @if($vIva1 > 0)
+        <div class="fact-pago-row" style="color:#92400e">
+            <span>IVA / 4×mil</span><strong>{{ $fmt($vIva1) }}</strong>
+        </div>
+        @endif
         @php
-        $planNom = $factura->contrato?->plan?->nombre ?? '—';
+        // saldo_proximo: negativo = consumió anticipo (aplico a favor), positivo = generó anticipo
+        $spIndiv = (int)($factura->saldo_proximo ?? 0);
+        $saldoFavorMostrar = $spIndiv < 0 ? abs($spIndiv) : 0;
         @endphp
-        <div style="font-size:.72rem;font-weight:700;color:#7c3aed;margin-bottom:.35rem;">
-            Plan: {{ $planNom }}
-        </div>
-        @if($factura->contrato?->eps)
-        <div class="srow"><span>EPS</span><strong style="color:#0369a1;font-size:.8rem">{{ $factura->contrato->eps->nombre }}</strong></div>
-        @endif
-        @if($arlNom && $arlNom !== '—')
-        <div class="srow"><span>ARL{{ $arlNivel ? ' Riesgo '.$arlNivel : '' }}</span><strong style="color:#15803d;font-size:.8rem">{{ $arlNom }}</strong></div>
-        @endif
-        @if($factura->contrato?->pension)
-        <div class="srow"><span>Pensión</span><strong style="color:#7c3aed;font-size:.8rem">{{ $factura->contrato->pension->razon_social }}</strong></div>
-        @endif
-        @if($factura->contrato?->caja)
-        <div class="srow"><span>Caja</span><strong style="font-size:.8rem">{{ $cajaNom }}</strong></div>
-        @endif
-        @if($dias1 < 30)
-        <div class="srow" style="color:#d97706;font-size:.76rem"><span>Días cotizados</span><strong>{{ $dias1 }}</strong></div>
-        @endif
-    </div>
-    <div class="ibox">
-        <div class="ilbl">💰 Distribución del cobro</div>
+        @if($saldoFavorMostrar > 0)
         @php
-        $dAdmon   = (int)($factura->dist_admon   ?? 0);
-        $dAsesor  = (int)($factura->dist_asesor  ?? 0);
-        $dRetiro  = (int)($factura->dist_retiro  ?? 0);
-        $dUtil    = (int)($factura->dist_utilidad ?? 0);
+        $mesAnt2  = $factura->mes > 1 ? $factura->mes - 1 : 12;
+        $anioAnt2 = $factura->mes > 1 ? $factura->anio : $factura->anio - 1;
         @endphp
-        @if($dAdmon > 0)
-        <div class="srow"><span>🏢 Admon Empresa</span><strong>{{ $fmt($dAdmon) }}</strong></div>
-        @endif
-        @if($dAsesor > 0)
-        <div class="srow"><span>👤 Asesor</span><strong>{{ $fmt($dAsesor) }}</strong></div>
-        @endif
-        @if($dRetiro > 0)
-        <div class="srow"><span>🏦 Retiro/Novedad</span><strong>{{ $fmt($dRetiro) }}</strong></div>
-        @endif
-        @if($dUtil > 0)
-        <div class="srow"><span>📈 Utilidad</span><strong>{{ $fmt($dUtil) }}</strong></div>
-        @endif
-        @if(($factura->seguro ?? 0) > 0)
-        <div class="srow" style="border-top:1px solid #e2e8f0;padding-top:.2rem;margin-top:.2rem"><span>🛡️ Seguro</span><strong>{{ $fmt($factura->seguro) }}</strong></div>
-        @endif
-    </div>
-@else
-    {{-- ══ PLANILLA: desglose normal de SS ══ --}}
-    <div class="ibox">
-        <div class="ilbl">Seguridad Social</div>
-        <div class="srow"><span>EPS &mdash; {{ $factura->contrato?->eps?->nombre ?? '—' }}</span><strong>${{ number_format($vEps1,0,',','.') }}</strong></div>
-        <div class="srow"><span>ARL &mdash; {{ $arlNom }}{{ $arlNivel ? ' (Nivel '.$arlNivel.')' : '' }}</span><strong>${{ number_format($vArl1,0,',','.') }}</strong></div>
-        <div class="srow"><span>Pensín &mdash; {{ $factura->contrato?->pension?->razon_social ?? '—' }}</span><strong>${{ number_format($vPen1,0,',','.') }}</strong></div>
-        <div class="srow"><span>Caja &mdash; {{ $cajaNom }}</span><strong>${{ number_format($vCaj1,0,',','.') }}</strong></div>
-        <div class="srow" style="border-top:1px solid #e2e8f0;margin-top:.25rem;padding-top:.2rem;font-weight:700">
-            <span>Subtotal SS</span><strong>${{ number_format($vEps1+$vArl1+$vPen1+$vCaj1,0,',','.') }}</strong>
-        </div>
-        @if($dias1 < 30)
-        <div class="srow" style="color:#d97706;font-size:.76rem"><span>Días cotizados</span><strong>{{ $dias1 }}</strong></div>
-        @endif
-    </div>
-    <div class="ibox">
-        <div class="ilbl">Otros cargos</div>
-
-        @if(($factura->seguro ?? 0) > 0)
-        <div class="srow"><span>Seguro</span><strong>{{ $fmt($factura->seguro) }}</strong></div>
-        @endif
-
-        @if(($factura->afiliacion ?? 0) > 0)
-        <div class="srow"><span>Afiliación</span><strong>{{ $fmt($factura->afiliacion) }}</strong></div>
-        @endif
-
-        @if(($factura->otros ?? 0) > 0)
-        <div class="srow"><span>Otros</span><strong>{{ $fmt($factura->otros) }}</strong></div>
-        @endif
-
-        @if(($factura->mensajeria ?? 0) > 0)
-        <div class="srow"><span>Mensajería</span><strong>{{ $fmt($factura->mensajeria) }}</strong></div>
-        @endif
-
-        @if(($factura->iva ?? 0) > 0)
-        <div class="srow"><span>IVA</span><strong>{{ $fmt($factura->iva) }}</strong></div>
-        @endif
-    </div>
-@endif
-</div>
-</div>
-@endif {{-- otro_ingreso --}}
-
-@endif {{-- esGrupo --}}
-
-{{-- ══ BLOQUE SIMPLIFICADO: Entidades + Pago + Extras (fuera de .dc) ═══════ --}}
-@php
-// Obtener primera fila para entidades (funciona en individual y grupo)
-$fRef = $filas->first();
-$epsSimp = $fRef->contrato?->eps?->nombre ?? '—';
-$penSimp = $fRef->contrato?->pension?->razon_social ?? '—';
-$cajSimp = $fRef->contrato?->caja?->nombre ?? $fRef->contrato?->caja?->razon_social ?? '—';
-// ARL: primero de la RS, luego del contrato
-$arlSimpNom = null;
-$arlSimpNit = $fRef->contrato?->razonSocial?->arl_nit ?? null;
-if ($arlSimpNit) {
-    $arlSimpNom = \App\Models\Arl::where('nit', $arlSimpNit)->value('nombre_arl') ?? $arlSimpNit;
-}
-if (!$arlSimpNom) {
-    $arlSimpNom = $fRef->contrato?->arl?->nombre_arl ?? '—';
-}
-$arlSimpNivel = $fRef->contrato?->n_arl ?? '';
-// Extras
-$totMens = $filas->sum(fn($f) => (int)($f->mensajeria ?? 0));
-$totOtros = $filas->sum(fn($f) => (int)($f->otros ?? 0));
-$totOtrosAdmon = $filas->sum(fn($f) => (int)($f->otros_admon ?? 0));
-$totIvaSimp = $filas->sum(fn($f) => (int)($f->iva ?? 0));
-$totSaldoFavor = $filas->sum(fn($f) => (int)($f->saldo_a_favor ?? 0));
-$totSaldoPend = $filas->sum(fn($f) => (int)($f->saldo_pendiente ?? 0));
-@endphp
-<div class="simp-only">
-@if($factura->tipo === 'otro_ingreso')
-    {{-- OTRO INGRESO: vista simple — descripción + pago + total --}}
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.45rem;margin-bottom:.45rem;">
-
-        {{-- Descripción del trámite + pago --}}
-        <div style="background:#f8fafc;border-radius:8px;padding:.5rem .85rem;font-size:.77rem;">
-            @if($factura->descripcion_tramite)
-            <div style="font-size:.62rem;font-weight:800;color:#065f46;text-transform:uppercase;margin-bottom:.2rem">💼 Trámite</div>
-            <div style="font-weight:700;color:#0f172a;font-size:.85rem;margin-bottom:.4rem;">{{ $factura->descripcion_tramite }}</div>
-            @endif
-            <div style="font-size:.59rem;font-weight:800;color:#94a3b8;text-transform:uppercase;margin-bottom:.3rem">Forma de pago</div>
-            <div class="srow"><span style="color:#64748b">Tipo</span><strong>{{ ucfirst(str_replace('_',' ',$factura->forma_pago ?? '')) }}</strong></div>
-            @if($totEfect > 0)
-            <div class="srow"><span style="color:#64748b">💵 Efectivo</span><strong style="color:#15803d">{{ $fmt($totEfect) }}</strong></div>
-            @endif
-            @foreach($factura->consignaciones as $csg)
-            <div class="srow">
-                <span style="color:#64748b">🏦 {{ $csg->bancoCuenta?->nombre ?? 'Banco' }}
-                    <span style="font-size:.65rem;color:#94a3b8"> · {{ \Carbon\Carbon::parse($csg->fecha)->format('d/m/Y') }}</span>
-                </span>
-                <strong>{{ $fmt($csg->valor) }}</strong>
-            </div>
-            @endforeach
-            @if($totPrest > 0)
-            <div class="srow"><span style="color:#7c3aed">💳 Préstamo</span><strong style="color:#7c3aed">{{ $fmt($totPrest) }}</strong></div>
-            @endif
-        </div>
-
-        {{-- Total --}}
-        <div style="background:#0f172a;border-radius:8px;padding:.5rem .85rem;display:flex;flex-direction:column;align-items:center;justify-content:center;">
-            <div style="font-size:.6rem;font-weight:800;color:#94a3b8;text-transform:uppercase;margin-bottom:.25rem">Total</div>
-            <div style="font-size:1.6rem;font-weight:900;color:#fbbf24;font-family:monospace">{{ $fmt($totTotal) }}</div>
-            @if($totPrest > 0)
-            <div style="font-size:.68rem;color:#a78bfa;margin-top:.2rem">Préstamo: {{ $fmt($totPrest) }}</div>
-            @endif
-        </div>
-
-    </div>
-@else
-    {{-- Grid adaptado: en individual 3 cols (entidades | pago | nota), en grupo 2 cols (pago | nota) --}}
-    <div style="display:grid;grid-template-columns:{{ $esGrupo ? '1fr 1fr' : '1fr 1fr 1fr' }};gap:.45rem;margin-bottom:.45rem;">
-
-        {{-- Bloque entidades: solo en factura individual (no otro_ingreso) --}}
-        @if(!$esGrupo)
-        <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:.5rem .85rem;font-size:.77rem;">
-            <div style="font-size:.59rem;font-weight:800;color:#0369a1;text-transform:uppercase;margin-bottom:.3rem">
-                {{ $factura->tipo === 'afiliacion' ? '📋 Entidades' : '🏥 Seg. Social' }}
-            </div>
-            @if($factura->tipo === 'afiliacion')
-                {{-- Afiliación: solo nombres --}}
-                @if($factura->contrato?->eps)
-                <div class="srow"><span style="color:#64748b">EPS</span><strong style="color:#0369a1">{{ $factura->contrato->eps->nombre }}</strong></div>
-                @endif
-                @if($arlNom && $arlNom !== '—')
-                <div class="srow"><span style="color:#64748b">ARL{{ $arlNivel ? ' (N'.$arlNivel.')' : '' }}</span><strong style="color:#15803d">{{ $arlNom }}</strong></div>
-                @endif
-                @if($factura->contrato?->pension)
-                <div class="srow"><span style="color:#64748b">Pensión</span><strong style="color:#7c3aed">{{ $factura->contrato->pension->razon_social }}</strong></div>
-                @endif
-                @if($cajaNom && $cajaNom !== '—')
-                <div class="srow"><span style="color:#64748b">Caja</span><strong>{{ $cajaNom }}</strong></div>
-                @endif
-                <div class="srow" style="border-top:1px solid #bae6fd;margin-top:.25rem;padding-top:.2rem;font-weight:800;color:#0f172a;">
-                    <span>Total afiliación</span><strong style="color:#7c3aed">{{ $fmt($factura->afiliacion + $factura->seguro) }}</strong>
-                </div>
-            @else
-                {{-- Planilla: nombres + valores --}}
-                @if($vEps1 > 0)
-                <div class="srow"><span style="color:#64748b">EPS &mdash; {{ $factura->contrato?->eps?->nombre ?? '—' }}</span><strong>{{ $fmt($vEps1) }}</strong></div>
-                @endif
-                @if($vArl1 > 0)
-                <div class="srow"><span style="color:#64748b">ARL{{ $arlNivel ? ' (N'.$arlNivel.')' : '' }} &mdash; {{ $arlNom }}</span><strong>{{ $fmt($vArl1) }}</strong></div>
-                @endif
-                @if($vPen1 > 0)
-                <div class="srow"><span style="color:#64748b">Pensión &mdash; {{ $factura->contrato?->pension?->razon_social ?? '—' }}</span><strong>{{ $fmt($vPen1) }}</strong></div>
-                @endif
-                @if($vCaj1 > 0)
-                <div class="srow"><span style="color:#64748b">Caja &mdash; {{ $cajaNom }}</span><strong>{{ $fmt($vCaj1) }}</strong></div>
-                @endif
-                @if($vAdm1 > 0)
-                <div class="srow" style="border-top:1px dashed #e2e8f0;margin-top:.2rem;padding-top:.2rem">
-                    <span style="color:#64748b">Admon</span><strong>{{ $fmt($vAdm1) }}</strong>
-                </div>
-                @endif
-                <div class="srow" style="border-top:1px solid #bae6fd;margin-top:.25rem;padding-top:.2rem;font-weight:800;color:#0f172a;">
-                    <span>Total</span><strong style="color:#1d4ed8">{{ $fmt($factura->total) }}</strong>
-                </div>
-            @endif
+        <div class="fact-pago-row" style="color:#15803d;border-top:1px solid #d1fae5;padding-top:.2rem;margin-top:.2rem">
+            <span>✅ Anticipo aplicado <small style="font-size:.62rem">{{ $meses[$mesAnt2-1] }} {{ $anioAnt2 }}</small></span>
+            <strong>−{{ $fmt($saldoFavorMostrar) }}</strong>
         </div>
         @endif
+        {{-- Saldo pendiente heredado ya no se almacena -- se omite esta fila --}}
+        @if($factura->observacion)
+        <div style="margin-top:.4rem;font-size:.68rem;color:#94a3b8;font-style:italic">{{ $factura->observacion }}</div>
+        @endif
+    </div>
 
-        {{-- Forma de pago --}}
-        <div style="background:#f8fafc;border-radius:8px;padding:.5rem .85rem;font-size:.77rem;">
-            <div style="font-size:.59rem;font-weight:800;color:#94a3b8;text-transform:uppercase;margin-bottom:.3rem">Forma de pago</div>
-            <div class="srow"><span style="color:#64748b">Tipo</span><strong>{{ ucfirst(str_replace('_',' ',$factura->forma_pago ?? '')) }}</strong></div>
-            @if($totEfect > 0)
-            <div class="srow"><span style="color:#64748b">💵 Efectivo</span><strong style="color:#15803d">{{ $fmt($totEfect) }}</strong></div>
-            @endif
-            @foreach($factura->consignaciones as $csg)
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin:.12rem 0;">
+    <div class="fact-pago-col">
+        <div class="fact-pago-hdr">Forma de Pago</div>
+        <div class="fact-pago-row">
+            <span>Tipo</span>
+            <strong>{{ ucfirst(str_replace('_', ' ', $factura->forma_pago ?? '—')) }}</strong>
+        </div>
+        @if($totEfect > 0)
+        <div class="fact-pago-row" style="color:#15803d">
+            <span>💵 Efectivo</span><strong>{{ $fmt($totEfect) }}</strong>
+        </div>
+        @endif
+        @foreach($factura->consignaciones as $csg)
+        <div style="padding:.14rem 0;border-bottom:.5px solid #f1f5f9">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start">
                 <div>
-                    <span style="color:#64748b;font-weight:600;">🏦 {{ $csg->bancoCuenta?->nombre ?? 'Banco' }}</span>
-                    <span style="color:#94a3b8;font-size:.66rem;margin-left:.3rem">{{ \Carbon\Carbon::parse($csg->fecha)->format('d/m/Y') }}</span>
+                    <span style="color:#1d4ed8;font-weight:600;font-size:.76rem">
+                        🏦 {{ $csg->bancoCuenta?->nombre ?? 'Banco' }}
+                        @if($csg->confirmado) <span style="color:#15803d;font-size:.62rem;font-weight:700">✓</span> @endif
+                    </span>
                     @if($csg->imagen_path)
                     <a href="#"
                        onclick="verSoporte('{{ route('admin.facturacion.consignacion.imagen.ver', $csg->id) }}');return false;"
-                       title="Ver soporte de consignación"
-                       style="margin-left:.3rem;background:#e0f2fe;color:#0369a1;border:1px solid #bae6fd;border-radius:4px;padding:0 5px;font-size:.62rem;text-decoration:none;vertical-align:middle;cursor:pointer;">
-                       🖼️ soporte
-                    </a>
+                       style="margin-left:.3rem;background:#e0f2fe;color:#0369a1;border:1px solid #bae6fd;border-radius:4px;padding:0 5px;font-size:.58rem;text-decoration:none;vertical-align:middle">🖼️ soporte</a>
                     @endif
-                    <div style="font-size:.65rem;color:#94a3b8;margin-top:.05rem">
+                    <div style="font-size:.62rem;color:#94a3b8">
                         {{ $csg->bancoCuenta?->tipo_cuenta }} {{ $csg->bancoCuenta?->numero_cuenta }}
+                        · {{ sqldate($csg->fecha)->format('d/m/Y') }}
                         @if($csg->referencia) · Ref: {{ $csg->referencia }} @endif
-                        @if($csg->confirmado) <span style="color:#15803d;font-weight:700"> · ✓ Confirmado</span>@endif
                     </div>
                 </div>
-                <strong style="white-space:nowrap;margin-left:.5rem">{{ $fmt($csg->valor) }}</strong>
+                <strong style="white-space:nowrap;font-size:.78rem">{{ $fmt($csg->valor) }}</strong>
             </div>
-            @endforeach
-            @if($totPrest > 0)
-            <div class="srow"><span style="color:#7c3aed">💳 Préstamo (pendiente cobro)</span><strong style="color:#7c3aed">{{ $fmt($totPrest) }}</strong></div>
-            @endif
-            {{-- Anticipo aplicado (mes anterior pagó de más) --}}
-            @if($totSaldoFavor > 0)
-            <div style="margin-top:.3rem;padding-top:.3rem;border-top:1px solid #d1fae5;">
-                <div class="srow" style="color:#15803d;font-size:.74rem;">
-                    <span>✅ Anticipo aplicado
-                        @php
-                        $mesPrevio = $factura->mes > 1 ? $factura->mes - 1 : 12;
-                        $anioPrevio = $factura->mes > 1 ? $factura->anio : $factura->anio - 1;
-                        $mesesN = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
-                        @endphp
-                        <span style="font-size:.62rem;color:#64748b">(pago adelantado de {{ $mesesN[$mesPrevio-1] }}. {{ $anioPrevio }})</span>
-                    </span>
-                    <strong>−{{ $fmt($totSaldoFavor) }}</strong>
-                </div>
-            </div>
-            @endif
-            {{-- Deuda de mes anterior recuperada --}}
-            @if($totSaldoPend > 0)
-            <div style="margin-top:.2rem;padding-top:.2rem;border-top:1px solid #fee2e2;">
-                <div class="srow" style="color:#dc2626;font-size:.74rem;">
-                    <span>🔴 Recuperación préstamo
-                        <span style="font-size:.62rem;color:#64748b">(adeudo mes anterior)</span>
-                    </span>
-                    <strong>+{{ $fmt($totSaldoPend) }}</strong>
-                </div>
-            </div>
-            @endif
-            @if($totMens > 0 || $totOtros > 0 || $totOtrosAdmon > 0 || $totIvaSimp > 0)
-            <div style="margin-top:.3rem;padding-top:.3rem;border-top:1px solid #e2e8f0;font-size:.72rem;">
-                @if($totMens > 0)<div class="srow"><span style="color:#64748b">Mensajería</span><strong>{{ $fmt($totMens) }}</strong></div>@endif
-                @if($totOtros > 0)<div class="srow"><span style="color:#64748b">Otros planilla</span><strong>{{ $fmt($totOtros) }}</strong></div>@endif
-                @if($totOtrosAdmon > 0)<div class="srow"><span style="color:#64748b">Otros admón</span><strong>{{ $fmt($totOtrosAdmon) }}</strong></div>@endif
-                @if($totIvaSimp > 0)<div class="srow"><span style="color:#64748b">IVA / 4×mil</span><strong>{{ $fmt($totIvaSimp) }}</strong></div>@endif
-            </div>
-            @endif
-        </div>
-
-        {{-- Nota legal (solo planilla/afiliacion, no otro_ingreso) --}}
-        <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:.5rem .85rem;font-size:.69rem;color:#92400e;line-height:1.45;display:flex;align-items:flex-start;gap:.35rem;">
-            <span style="font-size:1rem;flex-shrink:0">⚠️</span>
-            <span><strong>IMPORTANTE —</strong> Las incapacidades por enfermedad común o accidente laboral serán reconocidas por la EPS y la ARL <strong>únicamente</strong> cuando los aportes al Sistema de Seguridad Social se hayan realizado de forma oportuna, es decir, <strong>a más tardar el décimo (10°) día hábil de cada mes</strong>. El incumplimiento puede generar el no reconocimiento de las prestaciones.</span>
-        </div>
-
-    </div>
-@endif
-</div>
-
-{{-- ══ DESGLOSE PAGO ═══════════════════════════════════════════════════ --}}
-<div class="dc">
-<div class="box2">
-    <div class="ibox">
-        <div class="ilbl">Resumen financiero</div>
-        @if($factura->tipo !== 'otro_ingreso')
-        <div class="srow"><span>Seg. Social</span><strong>{{ $fmt($totSS) }}</strong></div>
-        @endif
-        <div class="srow"><span>Administración{{ $factura->tipo === 'otro_ingreso' ? ' / Trámite' : '' }}</span><strong>{{ $fmt($totAdmon + ($factura->admon_asesor_oi ?? 0)) }}</strong></div>
-
-        @if($totAfil > 0)
-        <div class="srow"><span>Afiliaciones</span><strong>{{ $fmt($totAfil) }}</strong></div>
-        @endif
-
-        @if($totSeg > 0)
-        <div class="srow"><span>Seguros</span><strong>{{ $fmt($totSeg) }}</strong></div>
-        @endif
-
-        @if($totIva > 0)
-        <div class="srow"><span>IVA</span><strong>{{ $fmt($totIva) }}</strong></div>
-        @endif
-
-        @php
-        $mesAnt = $factura->mes > 1 ? $factura->mes - 1 : 12;
-        $anioAnt = $factura->mes > 1 ? $factura->anio : $factura->anio - 1;
-        $mesesArr = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-        @endphp
-        @if(($factura->saldo_a_favor ?? 0) > 0)
-        <div class="srow" style="color:#15803d;border-top:1px solid #d1fae5;padding-top:.25rem;margin-top:.25rem">
-            <span>✅ Anticipo aplicado <small style="font-size:.62rem;color:#64748b;">(pago adelantado {{ $mesesArr[$mesAnt-1] }} {{ $anioAnt }})</small></span>
-            <strong>−{{ $fmt($factura->saldo_a_favor) }}</strong>
-        </div>
-        @endif
-        @if(($factura->saldo_pendiente ?? 0) > 0)
-        <div class="srow" style="color:#dc2626;border-top:1px solid #fee2e2;padding-top:.25rem;margin-top:.25rem">
-            <span>🔴 Recuperación préstamo <small style="font-size:.62rem;color:#64748b;">(adeudo {{ $mesesArr[$mesAnt-1] }} {{ $anioAnt }})</small></span>
-            <strong>+{{ $fmt($factura->saldo_pendiente) }}</strong>
-        </div>
-        @endif
-    </div>
-    <div class="ibox">
-        <div class="ilbl">Forma de pago</div>
-        <div class="srow"><span>Tipo</span><strong>{{ ucfirst(str_replace('_',' ',$factura->forma_pago ?? '')) }}</strong></div>
-
-        @if($totEfect > 0)
-        <div class="srow" style="color:#15803d"><span>💵 Efectivo</span><strong>{{ $fmt($totEfect) }}</strong></div>
-        @endif
-
-        @foreach($factura->consignaciones as $csg)
-        <div class="srow">
-            <span>🏦 {{ ($csg->bancoCuenta?->banco ? $csg->bancoCuenta->banco.' — ' : '') }}{{ $csg->bancoCuenta?->nombre ?? 'Banco' }}
-                @if($csg->confirmado) <span style="color:#15803d;font-size:.67rem;font-weight:700">✓ Confirmado</span>@endif
-            </span>
-            <strong>{{ $fmt($csg->valor) }}</strong>
-        </div>
-        <div style="font-size:.68rem;color:#64748b;padding-left:.5rem">
-            {{ $csg->bancoCuenta?->tipo_cuenta }} {{ $csg->bancoCuenta?->numero_cuenta }}
-            &middot; {{ \Carbon\Carbon::parse($csg->fecha)->format('d/m/Y') }}
-            @if($csg->referencia) &middot; Ref: {{ $csg->referencia }}@endif
         </div>
         @endforeach
-
         @if($totPrest > 0)
-        <div class="srow" style="color:#7c3aed"><span>💳 Préstamo (pendiente)</span><strong>{{ $fmt($totPrest) }}</strong></div>
-        @endif
-
-        @if($factura->observacion)
-        <div style="font-size:.71rem;color:#94a3b8;margin-top:.3rem">{{ $factura->observacion }}</div>
+        <div class="fact-pago-row" style="color:#7c3aed">
+            <span>💳 Préstamo (pendiente)</span><strong>{{ $fmt($totPrest) }}</strong>
+        </div>
         @endif
     </div>
 </div>
-</div>
 
-{{-- ══ TOTAL: para otro_ingreso solo en vista detallada (vista simple ya tiene el total en el grid) ══ --}}
-@if($factura->tipo === 'otro_ingreso')
-<div class="dc">
-<div class="total-bx">
-    <span style="font-size:.9rem;font-weight:700">TOTAL A PAGAR</span>
-    <span class="total-v">{{ $fmt($totTotal) }}</span>
-</div>
-</div>
-@else
-<div class="total-bx">
-    <span style="font-size:.9rem;font-weight:700">TOTAL A PAGAR</span>
-    <span class="total-v">{{ $fmt($totTotal) }}</span>
-</div>
-@endif
+</div>{{-- /fact-body --}}
 
-@if($totPrest > 0)
-<div style="display:flex;justify-content:space-between;background:#ede9fe;border-radius:6px;padding:.4rem .85rem;margin-top:.35rem;font-size:.8rem;color:#6d28d9">
-    <span>Recibido: <strong>{{ $fmt($totTotal - $totPrest) }}</strong></span>
-    <span>Préstamo a cobrar: <strong>{{ $fmt($totPrest) }}</strong></span>
+{{-- PIE: Nota Legal + Total --}}
+<div class="fact-footer-area">
+    <div class="fact-nota">
+        <span style="font-size:1.15rem;flex-shrink:0">⚠️</span>
+        <span>
+            <strong>NOTA:</strong> Las incapacidades por enfermedades y/o accidentes laborales serán reconocidas por la
+            EPS y ARL solo si los aportes se han realizado oportunamente <strong>antes del décimo día hábil de cada mes</strong>.
+        </span>
+    </div>
+    <div class="fact-total-bloque">
+        <span class="fact-total-label">Total a Pagar</span>
+        <span class="fact-total-valor">{{ $fmt($totTotal) }}</span>
+        @if($totPrest > 0)
+        <div style="font-size:.65rem;color:#a78bfa;margin-top:.2rem">Préstamo: {{ $fmt($totPrest) }}</div>
+        @endif
+    </div>
 </div>
-@endif
+</div>{{-- /recibo-inner --}}
 
-{{-- ══ NOTA LEGAL: solo planilla/afiliación (no otro_ingreso) ══ --}}
-@if($factura->tipo !== 'otro_ingreso')
-<div class="dc" style="margin-top:.75rem;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;
-            padding:.5rem .85rem;font-size:.7rem;color:#92400e;line-height:1.45;">
-    <span style="font-weight:800;">⚠️ IMPORTANTE &mdash;</span>
-    Las incapacidades por enfermedad común o accidente laboral serán reconocidas por la EPS y la ARL
-    <strong>únicamente</strong> cuando los aportes al Sistema de Seguridad Social se hayan realizado de forma
-    oportuna, es decir, <strong>a más tardar el décimo (<span style="text-decoration:underline">10º</span>) día hábil de cada mes</strong>.
-    El incumplimiento en los pagos puede generar el no reconocimiento de las prestaciones económicas o asistenciales.
-</div>
-@endif
+{{-- BARRA INFERIOR (con margen inferior) --}}
+<div style="margin: 0 1.2rem 1rem; border-radius: 0 0 6px 6px; overflow:hidden; border: 1px solid #e2e8f0; border-top: none;">
+<div class="fact-bottom-bar" style="border-radius:0">
+    <span>{{ $nomAliado }} — Asesoría en Seguridad Social</span>
+    <span>Impreso: {{ now()->format('d/m/Y H:i') }}</span>
+</div>{{-- /fact-bottom-bar --}}
+</div>{{-- /bottom-wrapper --}}
 
-</div>{{-- /rec-body --}}
+@endif {{-- esGrupo --}}
+
+
 </div>{{-- /recibo-wrap --}}
 </div>{{-- /recibo-print-area --}}
-
 {{-- Modal Anular (solo admin) --}}
 @if(auth()->user()?->hasRole('admin') || auth()->user()?->hasRole('superadmin'))
 <div id="modalAnular" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:2000;align-items:center;justify-content:center" onclick="if(event.target===this)this.style.display='none'">
@@ -801,7 +1333,7 @@ $totSaldoPend = $filas->sum(fn($f) => (int)($f->saldo_pendiente ?? 0));
     </div>
     @if($factura->np)
     <label style="display:flex;align-items:center;gap:.45rem;font-size:.81rem;margin-bottom:.75rem;cursor:pointer">
-        <input type="checkbox" id="an_np" style="width:16px;height:16px">
+        <input type="checkbox" id="an_np" style="width:16px;height:16px" checked>
         Anular <strong>todas las {{ $filas->count() }} facturas</strong> del NP {{ $factura->np }}
     </label>
     @endif
@@ -826,11 +1358,32 @@ function toggleSimp() {
     const btn = document.querySelector('button[onclick="toggleSimp()"]');
     if (btn) btn.textContent = simp ? '📋 Vista detallada' : '👁 Vista simplificada';
 }
+// ── Vista detallada / simple para recibo individual ─────────
+let _modoDetallado = false;
+function toggleVistaDet() {
+    _modoDetallado = !_modoDetallado;
+    const rw  = document.getElementById('rw');
+    const btn = document.getElementById('btnToggleVista');
+    if (_modoDetallado) {
+        rw.classList.add('det');
+        if (btn) { btn.textContent = '📄 Vista simple'; btn.style.background = '#1e3a5f'; btn.style.color = '#fff'; }
+    } else {
+        rw.classList.remove('det');
+        if (btn) { btn.textContent = '📋 Vista detallada'; btn.style.background = '#f1f5f9'; btn.style.color = '#475569'; }
+    }
+}
 // Aplicar modo simplificado al cargar
 document.addEventListener('DOMContentLoaded', () => {
-    document.getElementById('rw').classList.add('simp');
-    const btn = document.querySelector('button[onclick="toggleSimp()"]');
-    if (btn) btn.textContent = '📋 Vista detallada';
+    // Grupo: inicia en modo simplificado
+    const rw = document.getElementById('rw');
+    if (rw && rw.querySelector('.simp-only') !== null) {
+        // es grupo: aplicar simp
+        rw.classList.add('simp');
+        const btn = document.querySelector('button[onclick="toggleSimp()"]');
+        if (btn) btn.textContent = '📋 Vista detallada';
+    }
+    // Individual: modo simple por defecto (sin .det)
+    // rw ya no tiene .det, las columnas .col-valor-det están ocultas
 });
 function abrirAnular() {
     document.getElementById('modalAnular').style.display = 'flex';
@@ -849,8 +1402,21 @@ async function confirmarAnulacion() {
         });
         const data = await res.json();
         if (data.ok) {
-            alert(data.mensaje);
-            window.location.href = URL_IDX;
+            // Cerrar el modal de anulación
+            document.getElementById('modalAnular').style.display = 'none';
+            setTimeout(() => {
+                if (window.parent && window.parent !== window && typeof window.parent.cerrarRecibo === 'function') {
+                    // Estamos dentro del iframe del modal recibo → cerrar y recargar la página padre
+                    window.parent.cerrarRecibo();
+                } else if (window.opener) {
+                    // Popup independiente → recargar abridor y cerrarse
+                    window.opener.location.reload();
+                    window.close();
+                } else {
+                    // Página directa → ir al índice (comportamiento original)
+                    window.location.href = URL_IDX;
+                }
+            }, 300);
         } else {
             alert(data.message || 'Error al anular.');
             btn.disabled = false;

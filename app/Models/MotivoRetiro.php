@@ -2,9 +2,9 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Models\BaseModel;
 
-class MotivoRetiro extends Model
+class MotivoRetiro extends BaseModel
 {
     public $timestamps = false;
     protected $table = 'motivos_retiro';

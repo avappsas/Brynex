@@ -2,9 +2,9 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Models\BaseModel;
 
-class CajaMenor extends Model
+class CajaMenor extends BaseModel
 {
     protected $table    = 'caja_menor';
     protected $fillable = [

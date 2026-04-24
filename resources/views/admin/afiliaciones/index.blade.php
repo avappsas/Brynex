@@ -34,7 +34,7 @@
 .tbl-afil tbody tr { border-bottom:1px solid #f1f5f9;transition:background .12s; }
 .tbl-afil tbody tr:hover { background:#f8fafc; }
 .tbl-afil td { padding:0.45rem 0.55rem;vertical-align:middle; }
-.razon-badge { font-weight:700;font-size:0.7rem;padding:0.18rem 0.5rem;border-radius:6px;background:#dbeafe;color:#1e40af;display:inline-block;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.razon-badge { font-weight:700;font-size:0.75rem;padding:0.2rem 0.6rem;border-radius:6px;background:#dbeafe;color:#1e40af;display:inline-block;min-width:130px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
 .cedula-link { color:#3b82f6;text-decoration:none;font-weight:600; }
 .cedula-link:hover { text-decoration:underline; }
 
@@ -212,10 +212,10 @@ function sortClass($col, $currSort, $currDir) {
     <thead>
         <tr>
             {{-- Razón Social --}}
-            <th>
+            <th style="max-width:110px;width:110px;">
                 <form method="GET" action="{{ route('admin.afiliaciones.index') }}" style="margin:0;">
                     @foreach(request()->except(['razon_social_id','page']) as $k => $v)<input type="hidden" name="{{ $k }}" value="{{ $v }}">@endforeach
-                    <select name="razon_social_id" onchange="this.form.submit()" class="th-select {{ $rsId ? 'activo' : '' }}">
+                    <select name="razon_social_id" onchange="this.form.submit()" class="th-select {{ $rsId ? 'activo' : '' }}" style="max-width:105px;">
                         <option value="">↓ Razón Social</option>
                         @foreach($razonesDisponibles as $rs)<option value="{{ $rs->id }}" {{ $rsId == $rs->id ? 'selected' : '' }}>{{ $rs->razon_social }}</option>@endforeach
                     </select>
@@ -234,6 +234,8 @@ function sortClass($col, $currSort, $currDir) {
             {{-- Nombres --}}
             <th>Nombres</th>
 
+            {{-- Tipo Modalidad --}}
+            <th style="white-space:nowrap">Modalidad</th>
 
 
             {{-- EPS --}}
@@ -334,7 +336,12 @@ function sortClass($col, $currSort, $currDir) {
             {{ $c->cliente?->primer_nombre }} {{ $c->cliente?->primer_apellido }}
         </td>
 
-        {{-- Tipo: tipo_modalidad real --}}
+        {{-- Tipo Modalidad --}}
+        <td style="font-size:0.68rem;color:#475569;white-space:nowrap;" title="{{ $c->tipoModalidad?->nombre ?? '' }}">
+            <span style="background:#f1f5f9;color:#334155;padding:0.12rem 0.4rem;border-radius:5px;font-weight:700;font-size:0.67rem;">
+                {{ $c->tipoModalidad?->tipo_modalidad ?? '—' }}
+            </span>
+        </td>
 
 
         {{-- EPS --}}
@@ -495,7 +502,7 @@ function sortClass($col, $currSort, $currDir) {
                     <label>Canal de trámite</label>
                     <select id="mrad-canal">
                         <option value="">— Sin especificar —</option>
-                        <option value="web">🌐 Web</option>
+                        <option value="portal">🌐 Portal</option>
                         <option value="correo">📧 Correo</option>
                         <option value="asesor">👤 Asesor</option>
                         <option value="presencial">🏢 Presencial</option>
@@ -504,13 +511,13 @@ function sortClass($col, $currSort, $currDir) {
                 </div>
             </div>
 
-            <div class="form-group" style="margin-bottom:0.8rem;">
+            <div class="form-group" style="margin-bottom:0.8rem;" id="seccionNumRadicado">
                 <label>N° Radicado (asignado por la entidad)</label>
                 <input type="text" id="mrad-numero" placeholder="Ej: EPS-2026-001234">
             </div>
 
             <div class="form-group" style="margin-bottom:0.8rem;">
-                <label>Observación *</label>
+                <label>Observación</label>
                 <textarea id="mrad-observacion" placeholder="Describe la acción realizada. Ej: Se envió correo al asesor de EPS, esperando respuesta..."></textarea>
             </div>
 
@@ -528,16 +535,16 @@ function sortClass($col, $currSort, $currDir) {
             {{-- Sección enviado al cliente --}}
             <div class="enviado-section" id="seccionEnviado">
                 <h5>📤 Envío al Cliente</h5>
-                <div class="form-row" style="margin-bottom:0;">
-                    <div class="form-group">
-                        <label>
-                            <input type="checkbox" id="mrad-enviado" style="width:auto;height:auto;margin-right:0.3rem;">
-                            Radicado enviado al cliente
-                        </label>
-                    </div>
-                    <div class="form-group">
-                        <label>Canal</label>
-                        <select id="mrad-canal-cliente">
+                <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
+                    {{-- Checkbox --}}
+                    <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.78rem;font-weight:600;color:#15803d;cursor:pointer;white-space:nowrap;flex-shrink:0;">
+                        <input type="checkbox" id="mrad-enviado" style="width:15px;height:15px;cursor:pointer;accent-color:#15803d;">
+                        Radicado enviado al cliente
+                    </label>
+                    {{-- Canal --}}
+                    <div style="display:flex;align-items:center;gap:0.5rem;flex:1;min-width:160px;">
+                        <span style="font-size:0.7rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.04em;white-space:nowrap;">Canal</span>
+                        <select id="mrad-canal-cliente" style="flex:1;padding:0.38rem 0.5rem;border:1px solid #cbd5e1;border-radius:7px;font-size:0.82rem;">
                             <option value="">— —</option>
                             <option value="correo">📧 Correo</option>
                             <option value="whatsapp">💬 WhatsApp</option>
@@ -674,8 +681,12 @@ function abrirModalRadicado(radId, radData, ctx = {}, contratoId = null, epsForm
     document.getElementById('mrad-modalidad').textContent        = ctx.tipo_modalidad  || '—';
     document.getElementById('mrad-empresa-cliente').textContent  = ctx.empresa_cliente || '—';
     document.getElementById('mrad-estado').value = radData.estado || 'pendiente';
-    document.getElementById('mrad-canal').value = radData.canal_envio || '';
-    document.getElementById('mrad-numero').value = radData.numero_radicado || '';
+
+    // ARL: sin número de radicado, canal forzado a 'portal'
+    const esArl = (radData.tipo === 'arl');
+    document.getElementById('seccionNumRadicado').style.display = esArl ? 'none' : '';
+    document.getElementById('mrad-canal').value = esArl ? 'portal' : (radData.canal_envio || '');
+    document.getElementById('mrad-numero').value = esArl ? '' : (radData.numero_radicado || '');
     document.getElementById('mrad-observacion').value = '';
     document.getElementById('mrad-enviado').checked = !!radData.enviado_al_cliente;
     document.getElementById('mrad-canal-cliente').value = radData.canal_envio_cliente || '';
@@ -732,7 +743,7 @@ async function guardarRadicado(e) {
     const canalCli = document.getElementById('mrad-canal-cliente').value;
     const btn      = document.getElementById('btnGuardarRadicado');
 
-    if(!obs.trim()) { alert('La observación es requerida para registrar el movimiento.'); return; }
+    // Observación ya no es obligatoria
 
     btn.disabled = true;
     btn.textContent = 'Guardando...';

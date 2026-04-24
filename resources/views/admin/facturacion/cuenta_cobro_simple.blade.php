@@ -204,7 +204,11 @@ table.tbl-cc .num { text-align: right; font-family: monospace; }
         @php $no = 1; $totalSaldo = 0; @endphp
         @foreach($items as $item)
         @php
-            $totalSaldo += $item->saldo_pendiente - $item->saldo_favor;
+            // saldo_proximo: positivo = a favor, negativo = pendiente
+            $spItem = (int)($item->saldo_proximo ?? 0);
+            $itemAFavor    = $spItem > 0 ? $spItem : 0;
+            $itemPendiente = $spItem < 0 ? abs($spItem) : 0;
+            $totalSaldo += $itemPendiente - $itemAFavor;
             $estadoClass = match($item->estado) {
                 'pagada'      => 'est-vigente',
                 'prestamo'    => 'est-prestamo',
@@ -229,11 +233,11 @@ table.tbl-cc .num { text-align: right; font-family: monospace; }
             <td style="text-align:center;font-family:monospace;">{{ number_format($item->cedula,0,'','.') }}</td>
             <td>
                 <div style="font-weight:600;white-space:nowrap;">{{ $item->nombre }}</div>
-                @if($item->saldo_favor > 0)
-                    <div class="saldo-info saldo-favor">✅ Saldo a favor: ${{ number_format($item->saldo_favor,0,',','.') }}</div>
+                @if($itemAFavor > 0)
+                    <div class="saldo-info saldo-favor">✅ Saldo a favor: ${{ number_format($itemAFavor,0,',','.') }}</div>
                 @endif
-                @if($item->saldo_pendiente > 0)
-                    <div class="saldo-info saldo-pendiente">⚠️ Pendiente: ${{ number_format($item->saldo_pendiente,0,',','.') }}</div>
+                @if($itemPendiente > 0)
+                    <div class="saldo-info saldo-pendiente">⚠️ Pendiente: ${{ number_format($itemPendiente,0,',','.') }}</div>
                 @endif
             </td>
             <td style="text-align:center;color:#64748b;">

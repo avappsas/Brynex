@@ -2,9 +2,9 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Models\BaseModel;
 
-class Arl extends Model
+class Arl extends BaseModel
 {
     protected $table = 'arls';
     public $timestamps = false;

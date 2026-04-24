@@ -2,9 +2,9 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Models\BaseModel;
 
-class Ciudad extends Model
+class Ciudad extends BaseModel
 {
     protected $table = 'ciudades';
     protected $primaryKey = 'id';

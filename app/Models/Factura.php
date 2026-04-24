@@ -2,12 +2,12 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Models\BaseModel;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\DB;
 
-class Factura extends Model
+class Factura extends BaseModel
 {
     use SoftDeletes;
 
@@ -21,7 +21,7 @@ class Factura extends Model
         'dias_cotizados',
         'v_eps','v_arl','v_afp','v_caja','total_ss',
         'admon','admin_asesor','seguro','afiliacion','mensajeria','otros','iva','total',
-        'saldo_a_favor','saldo_pendiente','saldo_proximo',
+        'saldo_proximo',
         'c_asesor','c_utilidad','retiro',
         'dist_admon','dist_asesor','dist_retiro','dist_utilidad',
         'np','n_plano','razon_social_id',
@@ -126,15 +126,25 @@ class Factura extends Model
      *  Formula: Abril +350k + Mayo -350k = 0 para Junio.
      *  Excluye: soft-deleted (anuladas), facturas sin saldo_proximo, pre_facturas.
      */
-    public static function saldoClienteMesPrevio(int $aliadoId, int $cedula, int $mes, int $anio): array
+    public static function saldoClienteMesPrevio(int $aliadoId, int $cedula, int $mes, int $anio, ?int $contratoId = null): array
     {
-        $suma = (int) static::where('aliado_id', $aliadoId)
+        $query = static::where('aliado_id', $aliadoId)
             ->where('cedula', $cedula)
             ->where(fn($q) => $q->where('anio', '<', $anio)
                 ->orWhere(fn($q2) => $q2->where('anio', $anio)->where('mes', '<', $mes)))
             ->whereNotNull('saldo_proximo')
             ->whereIn('estado', ['pagada', 'prestamo', 'abono'])
-            ->sum('saldo_proximo');
+            // Solo facturas individuales (sin empresa): las facturas de empresa
+            // tienen su propio saldo calculado por empresa_id en saldosContratos().
+            ->whereNull('empresa_id');
+
+        // Filtrar por contrato específico si se proporciona
+        // Esto evita mezclar saldos de contratos distintos del mismo cliente
+        if ($contratoId !== null) {
+            $query->where('contrato_id', $contratoId);
+        }
+
+        $suma = (int) $query->sum('saldo_proximo');
 
         return [
             'a_favor'   => $suma > 0 ? $suma : 0,

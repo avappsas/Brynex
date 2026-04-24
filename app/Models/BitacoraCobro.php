@@ -2,10 +2,10 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Models\BaseModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class BitacoraCobro extends Model
+class BitacoraCobro extends BaseModel
 {
     protected $table = 'bitacora_cobros';
 

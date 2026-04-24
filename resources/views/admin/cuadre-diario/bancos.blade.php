@@ -99,7 +99,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.78rem}
         <tr>
             {{-- Fecha --}}
             <td style="font-size:.73rem;white-space:nowrap;color:#64748b">
-                {{ \Carbon\Carbon::parse($mov->fecha)->format('d/m/Y') }}
+                {{ sqldate($mov->fecha)->format('d/m/Y') }}
             </td>
 
             {{-- Tipo --}}

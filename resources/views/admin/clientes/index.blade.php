@@ -77,7 +77,9 @@
                 <tr>
                     <th class="cl-th">Cliente</th>
                     <th class="cl-th">Empresa</th>
-                    <th class="cl-th" style="text-align:center;">Contrato</th>
+                    <th class="cl-th" style="text-align:center;">Estado</th>
+                    <th class="cl-th" style="text-align:center;">Vigente desde</th>
+                    <th class="cl-th" style="text-align:center;">Modalidad</th>
                     <th class="cl-th">Acciones</th>
                 </tr>
             </thead>
@@ -95,14 +97,21 @@
                     ) ?: '—';
                 @endphp
                 <tr class="cl-tr">
-                    {{-- Nombre + cédula --}}
+                    {{-- Nombre + cédula + WA --}}
                     <td class="cl-td">
                         <div class="cl-client-cell">
                             <div class="cl-avatar {{ $vigente ? 'av-vigente' : ($retirado ? 'av-retirado' : 'av-sin') }}">
                                 {{ strtoupper(substr($c->primer_nombre ?? 'C', 0, 1)) }}{{ strtoupper(substr($c->primer_apellido ?? '', 0, 1)) }}
                             </div>
                             <div>
-                                <a href="{{ route('admin.clientes.edit', $c->id) }}" class="cl-name">{{ $nombre }}</a>
+                                <div style="display:flex;align-items:center;gap:.4rem;">
+                                    <a href="{{ route('admin.clientes.edit', $c->id) }}" class="cl-name">{{ $nombre }}</a>
+                                    @if($c->celular)
+                                    <a href="https://wa.me/57{{ preg_replace('/[^0-9]/', '', $c->celular) }}" target="_blank" class="cl-wa-inline" title="WhatsApp {{ $c->celular }}">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                                    </a>
+                                    @endif
+                                </div>
                                 <div class="cl-cedula">{{ $c->cedula ? number_format($c->cedula, 0, '', '.') : '—' }}</div>
                             </div>
                         </div>
@@ -121,7 +130,7 @@
                         @endif
                     </td>
 
-                    {{-- Último contrato --}}
+                    {{-- Columna: Estado --}}
                     <td class="cl-td" style="text-align:center;">
                         @if($contrato)
                             @if($vigente)
@@ -137,39 +146,54 @@
                             @else
                                 <span class="cl-estado-badge cl-badge-otro">{{ ucfirst($contrato->estado) }}</span>
                             @endif
-                            @if($contrato->fecha_ingreso)
+                        @else
+                            <span class="cl-sin-contrato">—</span>
+                        @endif
+                    </td>
+
+                    {{-- Columna: Fecha --}}
+                    @php
+                        $mesesEs = [
+                            1=>'enero',2=>'febrero',3=>'marzo',4=>'abril',
+                            5=>'mayo',6=>'junio',7=>'julio',8=>'agosto',
+                            9=>'septiembre',10=>'octubre',11=>'noviembre',12=>'diciembre'
+                        ];
+                    @endphp
+                    <td class="cl-td" style="text-align:center;">
+                        @if($contrato && $contrato->fecha_ingreso)
+                            @php
+                                $fi = sqldate($contrato->fecha_ingreso);
+                                $fechaFmt = $fi->format('d') . '-' . $mesesEs[(int)$fi->format('n')] . '-' . $fi->format('y');
+                            @endphp
                             <div class="cl-contrato-fecha">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5"/></svg>
-                                {{ \Carbon\Carbon::parse($contrato->fecha_ingreso)->format('d/m/Y') }}
-                                @if($contrato->fecha_retiro)
-                                    → {{ \Carbon\Carbon::parse($contrato->fecha_retiro)->format('d/m/Y') }}
-                                @endif
+                                {{ $fechaFmt }}
                             </div>
-                            @endif
-                            @if($contrato->modalidad)
-                            <div class="cl-modalidad">{{ \Illuminate\Support\Str::limit($contrato->modalidad, 22) }}</div>
-                            @endif
                         @else
-                            <span class="cl-sin-contrato">Sin contrato</span>
+                            <span class="cl-sin-contrato">—</span>
+                        @endif
+                    </td>
+
+                    {{-- Columna: Modalidad --}}
+                    <td class="cl-td" style="text-align:center;">
+                        @if($contrato && $contrato->modalidad)
+                            <div class="cl-modalidad" style="font-style:normal;">{{ \Illuminate\Support\Str::limit($contrato->modalidad, 26) }}</div>
+                        @else
+                            <span class="cl-sin-contrato">—</span>
                         @endif
                     </td>
 
                     {{-- Acciones --}}
                     <td class="cl-td">
-                        <a href="{{ route('admin.clientes.edit', $c->id) }}" class="cl-btn-edit" title="Ver / Editar cliente">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125"/></svg>
-                            Editar
+                        <a href="{{ route('admin.clientes.edit', $c->id) }}" class="cl-btn-abrir" title="Abrir ficha del cliente">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"/></svg>
+                            Abrir
                         </a>
-                        @if($c->celular)
-                        <a href="https://wa.me/57{{ preg_replace('/[^0-9]/', '', $c->celular) }}" target="_blank" class="cl-btn-wa" title="WhatsApp {{ $c->celular }}">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-                        </a>
-                        @endif
                     </td>
                 </tr>
                 @empty
                 <tr>
-                    <td colspan="4" class="cl-empty">
+                    <td colspan="6" class="cl-empty">
                         <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" fill="none" viewBox="0 0 24 24" stroke="#cbd5e1" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"/></svg>
                         <p>
                             @if($buscar || $filtroEmpresa)
@@ -446,7 +470,8 @@
 }
 .cl-contrato-fecha {
     display: inline-flex; align-items: center; gap: .25rem;
-    color: #94a3b8; font-size: .7rem; margin-top: .3rem;
+    color: #475569; font-size: .76rem; font-weight: 500;
+    white-space: nowrap;
 }
 .cl-modalidad {
     font-size: .68rem; color: #64748b; margin-top: .2rem; font-style: italic;
@@ -454,22 +479,32 @@
 .cl-sin-contrato { font-size: .76rem; color: #cbd5e1; font-style: italic; }
 
 /* ── Botones acción ── */
-.cl-btn-edit {
-    display: inline-flex; align-items: center; gap: .35rem;
-    background: #eff6ff; color: #2563eb;
-    padding: .32rem .75rem; border-radius: 7px;
-    font-size: .76rem; font-weight: 600; text-decoration: none;
-    transition: all .15s; white-space: nowrap;
+.cl-btn-abrir {
+    display: inline-flex; align-items: center; gap: .38rem;
+    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+    color: #fff;
+    padding: .35rem .85rem; border-radius: 8px;
+    font-size: .76rem; font-weight: 700; text-decoration: none;
+    box-shadow: 0 2px 8px rgba(99,102,241,.35);
+    transition: all .2s; white-space: nowrap;
+    letter-spacing: .01em;
 }
-.cl-btn-edit:hover { background: #dbeafe; transform: translateY(-1px); }
-.cl-btn-wa {
+.cl-btn-abrir:hover {
+    background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+    box-shadow: 0 4px 14px rgba(99,102,241,.45);
+    transform: translateY(-1px);
+    color: #fff;
+}
+
+/* WA inline junto al nombre */
+.cl-wa-inline {
     display: inline-flex; align-items: center; justify-content: center;
+    width: 20px; height: 20px; border-radius: 5px;
     background: #dcfce7; color: #16a34a;
-    width: 30px; height: 30px; border-radius: 7px;
-    margin-left: .35rem; text-decoration: none;
+    text-decoration: none; flex-shrink: 0;
     transition: all .15s;
 }
-.cl-btn-wa:hover { background: #bbf7d0; transform: translateY(-1px); }
+.cl-wa-inline:hover { background: #bbf7d0; transform: scale(1.15); }
 
 /* ── Empty ── */
 .cl-empty {

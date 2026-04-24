@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Traits\HasSqlServerDates;
+
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -11,6 +13,7 @@ use Spatie\Permission\Traits\HasRoles;
 
 class User extends Authenticatable
 {
+    use HasSqlServerDates;
     use Notifiable, HasRoles, SoftDeletes;
 
     protected $fillable = [

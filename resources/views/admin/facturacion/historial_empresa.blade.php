@@ -34,6 +34,55 @@ table.htbl{width:100%;border-collapse:collapse;font-size:.8rem}
 .num{font-family:monospace;text-align:right}
 .badge{padding:.13rem .45rem;border-radius:20px;font-size:.68rem;font-weight:700;white-space:nowrap}
 .cant-badge{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#0f172a;color:#fff;font-size:.65rem;font-weight:800;margin-left:.3rem}
+
+/* ── Columna de saldo ────────────────────────────────────────── */
+.saldo-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    padding: .18rem .55rem;
+    border-radius: 20px;
+    font-size: .68rem;
+    font-weight: 800;
+    font-family: monospace;
+    white-space: nowrap;
+    letter-spacing: .01em;
+}
+/* Verde: generó saldo a favor → sobró dinero */
+.saldo-generado {
+    background: #dcfce7;
+    color: #15803d;
+    border: 1px solid #86efac;
+}
+/* Rojo: consumió saldo previo → gastó el anticipo */
+.saldo-consumido {
+    background: #fee2e2;
+    color: #b91c1c;
+    border: 1px solid #fca5a5;
+}
+/* Gris: sin movimiento de saldo */
+.saldo-neutro {
+    background: #f1f5f9;
+    color: #94a3b8;
+    border: 1px solid #e2e8f0;
+}
+/* Etiqueta explicativa pequeña debajo del pill */
+.saldo-hint {
+    font-size: .58rem;
+    font-weight: 500;
+    font-family: sans-serif;
+    color: #94a3b8;
+    display: block;
+    margin-top: .06rem;
+    letter-spacing: 0;
+}
+/* Resumen en el pie de la tabla */
+.tfoot-saldo {
+    font-size: .72rem;
+    font-weight: 700;
+    text-align: right;
+    padding: .4rem .55rem;
+}
 </style>
 
 {{-- Header --}}
@@ -60,6 +109,9 @@ table.htbl{width:100%;border-collapse:collapse;font-size:.8rem}
     <span class="fil-btn" onclick="filtrarHist(this,'afiliacion')">📋 Afiliación</span>
     <span class="fil-btn" onclick="filtrarHist(this,'otro_ingreso')">💼 Trámites</span>
     <span class="fil-btn" onclick="filtrarHist(this,'anulada')">❌ Anuladas</span>
+    <div style="width:1px;height:20px;background:#e2e8f0;margin:0 .2rem"></div>
+    <span class="fil-btn" onclick="filtrarHist(this,'con_saldo')">🟢 Generó saldo</span>
+    <span class="fil-btn" onclick="filtrarHist(this,'consumio_saldo')">🔴 Consumió saldo</span>
 </div>
 
 {{-- Tabla --}}
@@ -73,11 +125,13 @@ table.htbl{width:100%;border-collapse:collapse;font-size:.8rem}
     <th>Descripción / Info</th>
     <th>Período</th>
     <th class="num">Total</th>
+    <th style="text-align:center">Saldo</th>
     <th>Estado</th>
     <th>Facturó</th>
     <th style="text-align:center">Recibo</th>
 </tr></thead>
 <tbody>
+@php $totalSaldoAcumulado = 0; @endphp
 @forelse($grupos as $g)
 @php
 [$tipoTxt,$tipoBg,$tipoColor] = $tipoLabel($g->tipo);
@@ -88,13 +142,42 @@ if (!$desc) {
         ? $g->cantidad.' trabajadores'
         : ($g->np ? 'NP '.$g->np : '—');
 }
+
+// ── Lógica del saldo ────────────────────────────────────────────
+$sp  = (int)($g->saldo_proximo ?? 0);         // lo que generó/consumió este NP
+$saf = (int)($g->saldo_a_favor_aplicado ?? 0); // saldo previo que traía
+
+if ($sp > 0) {
+    // Sobró dinero → generó anticipo para el siguiente mes
+    $saldoPillClass = 'saldo-generado';
+    $saldoIcono     = '↑';
+    $saldoTexto     = '+' . number_format($sp, 0, ',', '.');
+    $saldoHint      = 'Anticipo → sig. mes';
+    $saldoData      = 'con_saldo';
+} elseif ($sp < 0) {
+    // Consumió saldo previo → descontó anticipo que venía de antes
+    $saldoPillClass = 'saldo-consumido';
+    $saldoIcono     = '↓';
+    $saldoTexto     = number_format($sp, 0, ',', '.');   // ya es negativo
+    $saldoHint      = 'Consumió anticipo';
+    $saldoData      = 'consumio_saldo';
+} else {
+    // Sin movimiento de saldo
+    $saldoPillClass = 'saldo-neutro';
+    $saldoIcono     = '·';
+    $saldoTexto     = '$0';
+    $saldoHint      = 'Sin movimiento';
+    $saldoData      = 'neutro';
+}
 @endphp
-<tr data-tipo="{{ $g->tipo }}" class="{{ $g->estado === 'anulada' ? 'anulada' : '' }}">
+<tr data-tipo="{{ $g->tipo }}"
+    data-saldo="{{ $saldoData }}"
+    class="{{ $g->estado === 'anulada' ? 'anulada' : '' }}">
     <td>
         <strong style="font-family:monospace">{{ str_pad($g->numero_factura,6,'0',STR_PAD_LEFT) }}</strong>
         @if($g->np)<span style="font-size:.65rem;color:#94a3b8;margin-left:.3rem">NP {{ $g->np }}</span>@endif
     </td>
-    <td style="font-size:.75rem">{{ $g->fecha_pago ? \Carbon\Carbon::parse($g->fecha_pago)->format('d/m/Y') : '—' }}</td>
+    <td style="font-size:.75rem">{{ $g->fecha_pago ? sqldate($g->fecha_pago)->format('d/m/Y') : '—' }}</td>
     <td>
         <span class="badge" style="background:{{ $tipoBg }};color:{{ $tipoColor }}">{{ $tipoTxt }}</span>
         @if($g->cantidad > 1)<span class="cant-badge" title="{{ $g->cantidad }} registros">{{ $g->cantidad }}</span>@endif
@@ -102,6 +185,25 @@ if (!$desc) {
     <td style="max-width:240px;white-space:normal;font-size:.76rem">{{ $desc }}</td>
     <td style="font-size:.75rem">{{ $meses[($g->mes ?? 1)-1] ?? '?' }} {{ $g->anio }}</td>
     <td class="num"><strong>{{ $fmt($g->total) }}</strong></td>
+
+    {{-- ── Columna Saldo ────────────────────────────────────────── --}}
+    <td style="text-align:center">
+        @if($g->estado !== 'anulada' && $g->tipo !== 'otro_ingreso')
+        <span class="saldo-pill {{ $saldoPillClass }}"
+              title="{{ $sp > 0 ? 'Generó $'.number_format($sp,0,',','.').' de anticipo para el siguiente período' : ($sp < 0 ? 'Usó $'.number_format(abs($sp),0,',','.').' del saldo a favor acumulado' : 'Sin saldo pendiente ni anticipo') }}">
+            {{ $saldoIcono }} ${{ number_format(abs($sp), 0, ',', '.') }}
+        </span>
+        <span class="saldo-hint">{{ $saldoHint }}</span>
+        @if($saf > 0)
+            <span class="saldo-hint" style="color:#7c3aed" title="Traía este saldo a favor de meses anteriores">
+                traía +${{ number_format($saf,0,',','.') }}
+            </span>
+        @endif
+        @else
+            <span style="color:#e2e8f0;font-size:.8rem">—</span>
+        @endif
+    </td>
+
     <td><span class="badge" style="background:{{ $estBg }};color:{{ $estColor }}">{{ $estTxt }}</span></td>
     <td style="font-size:.72rem;color:#64748b">{{ $g->usuario?->nombre ?? $g->usuario?->name ?? '—' }}</td>
     <td style="text-align:center">
@@ -112,14 +214,47 @@ if (!$desc) {
     </td>
 </tr>
 @empty
-<tr><td colspan="9" style="text-align:center;padding:1.5rem;color:#94a3b8">Sin registros para esta empresa</td></tr>
+<tr><td colspan="10" style="text-align:center;padding:1.5rem;color:#94a3b8">Sin registros para esta empresa</td></tr>
 @endforelse
 </tbody>
+
+{{-- Pie de tabla: saldo neto acumulado de toda la empresa --}}
+@php
+    $saldoNetoTotal = $grupos->where('tipo','!=','otro_ingreso')->where('estado','!=','anulada')->sum('saldo_proximo');
+@endphp
+<tfoot>
+<tr style="background:#0f172a">
+    <td colspan="6" style="padding:.45rem .55rem;font-size:.72rem;color:#94a3b8;font-weight:700">
+        SALDO NETO ACUMULADO EMPRESA
+    </td>
+    <td style="text-align:center;padding:.45rem .55rem">
+        @if($saldoNetoTotal > 0)
+            <span class="saldo-pill saldo-generado">↑ +${{ number_format($saldoNetoTotal,0,',','.') }}</span>
+            <span class="saldo-hint" style="color:#4ade80">A favor</span>
+        @elseif($saldoNetoTotal < 0)
+            <span class="saldo-pill saldo-consumido">↓ ${{ number_format($saldoNetoTotal,0,',','.') }}</span>
+            <span class="saldo-hint" style="color:#fca5a5">Pendiente</span>
+        @else
+            <span class="saldo-pill saldo-neutro">· $0</span>
+            <span class="saldo-hint">Equilibrado</span>
+        @endif
+    </td>
+    <td colspan="3"></td>
+</tr>
+</tfoot>
 </table>
 </div>
 </div>
 
-{{-- Modal Recibo — mismo que empresa.blade.php (sin botones propios, los del iframe manejan todo) --}}
+{{-- Leyenda --}}
+<div style="margin-top:.6rem;display:flex;gap:.6rem;flex-wrap:wrap;font-size:.7rem;color:#64748b;align-items:center">
+    <span style="font-weight:600">Saldo:</span>
+    <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#16a34a;margin-right:.3rem"></span>↑ Generó anticipo — sobró dinero que va al siguiente mes</span>
+    <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#dc2626;margin-right:.3rem"></span>↓ Consumió saldo — descontó anticipo ya acumulado</span>
+    <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#94a3b8;margin-right:.3rem"></span>· Sin movimiento de saldo</span>
+</div>
+
+{{-- Modal Recibo —  mismo que empresa.blade.php --}}
 <div id="recibo-modal-ov"
      onclick="if(event.target.id==='recibo-modal-ov')cerrarRecibo()"
      style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:99999;align-items:center;justify-content:center;">
@@ -147,6 +282,8 @@ function filtrarHist(btn, tipo) {
         if (tipo === 'todos') { tr.style.display = ''; return; }
         if (tipo === 'anulada') {
             tr.style.display = tr.classList.contains('anulada') ? '' : 'none';
+        } else if (tipo === 'con_saldo' || tipo === 'consumio_saldo') {
+            tr.style.display = tr.dataset.saldo === tipo ? '' : 'none';
         } else {
             tr.style.display = tr.dataset.tipo === tipo ? '' : 'none';
         }

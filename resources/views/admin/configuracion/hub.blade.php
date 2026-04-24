@@ -137,6 +137,14 @@
             <div class="c-desc">Configure qué planes de seguridad social son válidos para cada tipo de modalidad y marque sus RS independientes.</div>
         </a>
 
+        <a class="cfg-card" href="{{ route('admin.configuracion.operadores.index') }}"
+           style="--c:#0891b2;--bc:#67e8f9">
+            <span class="c-badge" style="background:#cffafe;color:#0e7490">Planillas SS</span>
+            <div class="c-icon">🏦</div>
+            <div class="c-title">Operadores de Planilla</div>
+            <div class="c-desc">Active o desactive los operadores (Simple, ARUS, SOI, etc.) que aparecen en el selector al descargar la planilla Excel de seguridad social.</div>
+        </a>
+
         {{-- ── PRÓXIMAMENTE ─────────────────────────────────── --}}
         <hr class="cfg-sep">
         <div class="cfg-sep-label">🔜 Próximamente</div>

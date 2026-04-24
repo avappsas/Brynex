@@ -192,7 +192,11 @@ table.tbl-det tfoot .num { color: #34d399; }
             $totAdmon += $item->v_admon;
             $totIva   += $item->v_iva;
             $totTotal += $item->v_total;
-            $totalSaldo += $item->saldo_pendiente - $item->saldo_favor;
+            // saldo_proximo: positivo = a favor, negativo = pendiente
+            $spItem = (int)($item->saldo_proximo ?? 0);
+            $itemAFavor    = $spItem > 0 ? $spItem : 0;
+            $itemPendiente = $spItem < 0 ? abs($spItem) : 0;
+            $totalSaldo += $itemPendiente - $itemAFavor;
             $estadoClass = match($item->estado) {
                 'pagada'      => 'est-vigente',
                 'prestamo'    => 'est-prestamo',
@@ -215,11 +219,11 @@ table.tbl-det tfoot .num { color: #34d399; }
                 <div style="font-weight:700;">{{ $item->nombre }}</div>
                 <div style="font-size:8.5px;color:#dc2626;font-weight:600;">{{ $item->razon_social }}</div>
                 @if($item->es_afil)<span style="font-size:8px;color:#7c3aed;font-weight:700;">📌 Afiliación</span>@endif
-                @if($item->saldo_favor > 0)
-                    <div class="saldo-info saldo-favor">✅ A favor: ${{ number_format($item->saldo_favor,0,',','.') }}</div>
+                @if($itemAFavor > 0)
+                    <div class="saldo-info saldo-favor">✅ A favor: ${{ number_format($itemAFavor,0,',','.') }}</div>
                 @endif
-                @if($item->saldo_pendiente > 0)
-                    <div class="saldo-info saldo-pendiente">⚠️ Pendiente: ${{ number_format($item->saldo_pendiente,0,',','.') }}</div>
+                @if($itemPendiente > 0)
+                    <div class="saldo-info saldo-pendiente">⚠️ Pendiente: ${{ number_format($itemPendiente,0,',','.') }}</div>
                 @endif
             </td>
             <td style="text-align:center;color:#64748b;white-space:nowrap;">

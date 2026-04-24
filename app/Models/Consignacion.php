@@ -2,10 +2,10 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Models\BaseModel;
 use Illuminate\Support\Facades\DB;
 
-class Consignacion extends Model
+class Consignacion extends BaseModel
 {
     protected $table    = 'consignaciones';
     protected $fillable = [

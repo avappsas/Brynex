@@ -2,12 +2,13 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Models\BaseModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\DB;
+use App\Models\ConfiguracionBrynex;
 
-class Contrato extends Model
+class Contrato extends BaseModel
 {
     // ID auto-incremental (IDENTITY en SQL Server)
     public $incrementing = true;
@@ -146,7 +147,11 @@ class Contrato extends Model
      * Retorna un array con: eps, arl, pension, caja, ss, seguro, admon,
      * iva, total, y ibc (base de cotización).
      *
-     * @param int $dias Días cotizados en el mes (1-30). Si < 30, proratea la SS.
+     * Para modalidades de Tiempo Parcial:
+     *   - Cada entidad (ARL, AFP, CAJA) tiene sus propios días fijos.
+     *   - No se usa $dias global para SS; se usan days del tipo_modalidad.
+     *
+     * @param int $dias Días cotizados en el mes (1-30). Ignorado en Tiempo Parcial.
      */
     public function calcularCotizacion(int $dias = 30): array
     {
@@ -154,6 +159,8 @@ class Contrato extends Model
         $alidoId    = $this->aliado_id;
         $nivelArl   = (int) ($this->n_arl ?? 1);
         $esIndep    = $this->esIndependiente();
+        $mod        = $this->tipoModalidad;
+        $esTP       = $mod && $mod->esTiempoParcial();
 
         // Obtener porcentajes
         if ($esIndep) {
@@ -167,21 +174,48 @@ class Contrato extends Model
         }
 
         $pctArl = ArlTarifa::porcentajePara($nivelArl, $alidoId);
-
-        // Calcular aportes según plan (base: 30 días)
         $plan   = $this->plan;
-        $eps    = ($plan && $plan->incluye_eps)     ? round($ibc * $pctEps / 100)  : 0;
-        $arl    = ($plan && $plan->incluye_arl)     ? round($ibc * $pctArl / 100)  : 0;
-        $pen    = ($plan && $plan->incluye_pension)  ? round($ibc * $pctPen / 100)  : 0;
-        $caja   = ($plan && $plan->incluye_caja)    ? round($ibc * $pctCaja / 100) : 0;
+        $r      = fn($v) => (int)(ceil($v / 100) * 100);
 
-        // Prorratear SS si el trabajador no tiene mes completo
-        if ($dias < 30) {
-            $r    = fn($v) => (int)(ceil($v * $dias / 30 / 100) * 100);
-            $eps  = $r($eps);
-            $arl  = $r($arl);
-            $pen  = $r($pen);
-            $caja = $r($caja);
+        if ($esTP) {
+            // ── Tiempo Parcial: IBC diferente por entidad, sin EPS ─────────
+            // Regla confirmada:
+            //   ARL  = SM_completo × tasaArl  (cotiza mes completo)
+            //   AFP  = SM × factor_afp × pctPen  (factor = dias_afp/28 aprox)
+            //   CAJA = SM × factor_caja × pctCaja (puede diferir de AFP)
+            $diasP       = $mod->diasPorEntidad(); // ['arl'=>30, 'afp'=>7, 'caja'=>14, ...]
+            $factorMap   = [7 => 0.25, 14 => 0.50, 21 => 0.75, 30 => 1.00];
+            $factorAfp   = $factorMap[$diasP['afp']]  ?? 1.0;
+            $factorCaja  = $factorMap[$diasP['caja']] ?? 1.0;
+
+            // SM desde ConfiguracionBrynex (fuente correcta del sistema)
+            $sm = (float) ConfiguracionBrynex::obtener('salario_minimo', 1423500);
+
+            $ibcArl  = $sm;                       // ARL siempre SM completo
+            $ibcAfp  = round($sm * $factorAfp);   // AFP según factor dias_afp
+            $ibcCaja = round($sm * $factorCaja);  // CAJA según factor dias_caja
+
+            $eps   = 0;
+            $arl   = ($plan && $plan->incluye_arl)     ? $r($ibcArl  * $pctArl  / 100) : 0;
+            $pen   = ($plan && $plan->incluye_pension)  ? $r($ibcAfp  * $pctPen  / 100) : 0;
+            $caja  = ($plan && $plan->incluye_caja)     ? $r($ibcCaja * $pctCaja / 100) : 0;
+        } else {
+            // ── Normal: calcular por mes completo y prorratear si $dias < 30 ─
+            // Usar $r() = ceil/100 para garantizar múltiplos de 100 (igual que TP).
+            // "En el cobro siempre se redondea a mayor." — esto aplica a la factura real y
+            // a la estimación UI: usamos la misma función para ambas.
+            $eps   = ($plan && $plan->incluye_eps)     ? $r($ibc * $pctEps / 100)  : 0;
+            $arl   = ($plan && $plan->incluye_arl)     ? $r($ibc * $pctArl / 100)  : 0;
+            $pen   = ($plan && $plan->incluye_pension)  ? $r($ibc * $pctPen / 100)  : 0;
+            $caja  = ($plan && $plan->incluye_caja)     ? $r($ibc * $pctCaja / 100) : 0;
+
+            if ($dias < 30) {
+                $r30  = fn($v) => (int)(ceil($v * $dias / 30 / 100) * 100);
+                $eps  = $r30($eps);
+                $arl  = $r30($arl);
+                $pen  = $r30($pen);
+                $caja = $r30($caja);
+            }
         }
 
         $ss = $eps + $arl + $pen + $caja;

@@ -2,10 +2,10 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Models\BaseModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class ConfiguracionAliado extends Model
+class ConfiguracionAliado extends BaseModel
 {
     protected $table = 'configuracion_aliado';
     protected $fillable = [
