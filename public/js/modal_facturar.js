@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ╔══════════════════════════════════════════════════════════════════╗
  * ║  modal_facturar.js — BryNex                                     ║
  * ║                                                                  ║
@@ -99,8 +99,8 @@ const MF = (function () {
         } else {
             // Masivo: siempre planilla por defecto (el backend auto-detecta por contrato)
             _setTipo('planilla');
-            el('mf-aviso-tipo').style.display = 'none';
-            el('mf-indep-opts').style.display = 'none';
+            // Mostrar aviso si hay contratos I ACT primer mes (afiliación + planilla juntas)
+            _mostrarAvisoIndActMasivo();
             // Consultar saldos a favor/pendientes de los contratos seleccionados
             _fetchSaldosMasivo().then(() => recalc());
         }
@@ -120,7 +120,7 @@ const MF = (function () {
                 admon += c.admon || 0;
                 seg += c.seg || 0;
                 iva += c.iva || 0;
-                afil += c.afiliacion || 0;   // ← costo de afiliación por contrato
+                afil += c.afiliacion || 0;   // afiliación (I ACT primer mes + I VENC afil pura)
                 if ((c.arl_nivel || 0) > maxArlNivel) maxArlNivel = c.arl_nivel;
             });
             const ss = eps + arl + afp + caja;
@@ -134,7 +134,7 @@ const MF = (function () {
             setText('mf-v-seg', fmt(ceil(seg)));
             setText('mf-v-iva', fmt(ceil(iva)));
 
-            // Afiliación: mostrar fila solo si hay valor
+            // Afiliación: mostrar fila siempre que haya valor (I ACT o I VENC afil)
             const rowAfil = el('mf-row-afil');
             if (afil > 0) {
                 setText('mf-v-afil', fmt(afil));
@@ -200,10 +200,35 @@ const MF = (function () {
                 setVal('mf-anio', data.anio);
                 if (avisoMes) {
                     avisoMes.style.display = 'block';
+                    avisoMes.style.background = '#fef3c7';
+                    avisoMes.style.borderColor = '#f59e0b';
+                    avisoMes.style.color = '#78350f';
                     avisoMes.textContent = 'El mes ' + meses[mes - 1] + ' ya está facturado. Facturando ' + meses[data.mes - 1] + ' ' + data.anio;
                 }
             } else {
                 if (avisoMes) avisoMes.style.display = 'none';
+            }
+
+            // ── Aviso de gap (mes sin facturar antes del periodo seleccionado)
+            let gapPanel = el('mf-aviso-gap');
+            if (!gapPanel) {
+                // Crear elemento si no existe
+                gapPanel = document.createElement('div');
+                gapPanel.id = 'mf-aviso-gap';
+                gapPanel.style.cssText = 'display:none;margin:.4rem 0;padding:.45rem .7rem;border-radius:8px;font-size:.78rem;font-weight:600;border:1.5px solid #ef4444;background:#fef2f2;color:#991b1b;';
+                // Insertarlo despues del aviso de mes
+                if (avisoMes) avisoMes.parentNode.insertBefore(gapPanel, avisoMes.nextSibling);
+            }
+            if (data.tiene_gap && data.gap_mensaje) {
+                gapPanel.style.display = 'block';
+                gapPanel.innerHTML = '🚫 ' + data.gap_mensaje;
+                // Deshabilitar botón de submit
+                const btn = el('mf-btn-submit');
+                if (btn) { btn.disabled = true; btn.style.opacity = '0.5'; }
+            } else {
+                gapPanel.style.display = 'none';
+                const btn = el('mf-btn-submit');
+                if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
             }
 
             _saldoFavor = parseInt(data.saldo_a_favor || 0);
@@ -261,6 +286,20 @@ const MF = (function () {
                     saldoPanel.style.display = 'none';
                 }
             }
+
+            // ── Autocompletar efectivo sugerido con descuento de anticipo ────
+            // Si hay anticipo a favor, el efectivo a ingresar = totalBruto - saldoFavor.
+            // Esto evita que el usuario ingrese el total bruto completo sin
+            // considerar que el anticipo ya cubre parte del cobro.
+            if (_saldoFavor > 0) {
+                const efInp = el('mf-efectivo');
+                if (efInp && parse(efInp.value) === 0) {
+                    // Solo si el campo aún está en 0 (sin edición manual)
+                    const neto = Math.max(0, _total - _saldoFavor + _saldoPendiente);
+                    setVal('mf-efectivo', neto);
+                    recalc(); // actualizar el saldo a pagar con el nuevo valor
+                }
+            }
         } catch (e) {
             console.warn('MF._fetchSaldosMasivo error:', e);
         }
@@ -301,7 +340,23 @@ const MF = (function () {
 
     function actualizarTipo() {
         const modo = document.querySelector('input[name="mf_indep_modo"]:checked')?.value || 'afiliacion';
-        _setTipo(modo === 'ambos' ? 'planilla' : 'afiliacion');
+
+        if (modo === 'ambos') {
+            // Planilla + Afiliación: mostrar SS normal Y agregar fila afiliación
+            _setTipo('planilla');
+
+            // Agregar la afiliación como ítem adicional en el desglose
+            if (_totalAfil > 0) {
+                const rowAfil = el('mf-row-afil');
+                if (rowAfil) {
+                    rowAfil.style.display = '';
+                    setText('mf-v-afil', fmt(_totalAfil));
+                }
+            }
+            recalc(); // recalc() ya suma mf-v-afil al total
+        } else {
+            _setTipo('afiliacion');
+        }
     }
 
     function _setTipo(tipo) {
@@ -338,10 +393,30 @@ const MF = (function () {
             if (detallesSS) detallesSS.style.display = '';
             if (detallesAfil) detallesAfil.style.display = 'none';
             if (distSec) distSec.style.display = 'none';
+            // En modo masivo: mantener fila afiliación visible si hay I ACT primer mes
+            if (_modo === 'masivo') {
+                _calcularResumenInicial(); // reconstruye con afiliación si aplica
+                return; // _calcularResumenInicial ya llama recalc()
+            }
         }
 
         setText('mf-total', fmt(_total));
         recalc();
+    }
+
+    // ── Aviso I ACT primer mes en modo masivo ─────────────────────
+    function _mostrarAvisoIndActMasivo() {
+        const hayIndAct = _selContratos.some(c => c.esindact);
+        const avisoEl = el('mf-aviso-tipo');
+        if (!avisoEl) return;
+        if (hayIndAct) {
+            avisoEl.style.display = 'block';
+            avisoEl.className = 'mf-alert mf-alert-purple';
+            const cuantos = _selContratos.filter(c => c.esindact).length;
+            avisoEl.innerHTML = '⚡ <strong>' + cuantos + ' independiente(s) I ACT</strong> — pagan Afiliación + Planilla juntas este mes. El pago parcial deja la factura en estado <strong>Abono</strong>.';
+        } else {
+            avisoEl.style.display = 'none';
+        }
     }
 
     // ── Cambio de período (llama a re-detectar tipo en individual) ─
@@ -362,43 +437,46 @@ const MF = (function () {
     // ── Recalcular total y pendiente ──────────────────────────────
     function recalc() {
         const tipo = el('mf-tipo')?.value;
-        let total = _total;
+        let totalBruto = _total;
 
         if (tipo !== 'afiliacion') {
-            const eps = parse(el('mf-v-eps')?.textContent);
-            const arl = parse(el('mf-v-arl')?.textContent);
-            const afp = parse(el('mf-v-afp')?.textContent);
+            const eps  = parse(el('mf-v-eps')?.textContent);
+            const arl  = parse(el('mf-v-arl')?.textContent);
+            const afp  = parse(el('mf-v-afp')?.textContent);
             const caja = parse(el('mf-v-caja')?.textContent);
-            const admon = parse(el('mf-v-admon')?.textContent);
-            const seg = parse(el('mf-v-seg')?.textContent);
-            const iva = parse(el('mf-v-iva')?.textContent);
-            const otros = parse(el('mf-otros')?.value);
+            const admon  = parse(el('mf-v-admon')?.textContent);
+            const seg    = parse(el('mf-v-seg')?.textContent);
+            const iva    = parse(el('mf-v-iva')?.textContent);
+            const otros  = parse(el('mf-otros')?.value);
             const otrosA = parse(el('mf-otros-admon')?.value);
-            const afilVal = parse(el('mf-v-afil')?.textContent); // afiliación (modo masivo mixto)
+            const afilVal = parse(el('mf-v-afil')?.textContent);
             const ss = eps + arl + afp + caja;
 
             setText('mf-v-ss', fmt(ss));
-            // Total bruto: sin aplicar saldo a favor (se muestra en el izquierdo)
-            const totalBruto = ss + admon + seg + iva + otros + otrosA + afilVal + _saldoPendiente;
-            // Total real: con saldo a favor descontado (base para calcular pendiente)
-            total = Math.max(0, totalBruto - _saldoFavor);
+
+            // ── Total BRUTO: lo que se cobra sin aplicar ningún saldo ──────
+            // Se muestra en la columna izquierda para que el usuario vea
+            // cuánto vale la planilla completa antes de cualquier descuento.
+            totalBruto = ss + admon + seg + iva + otros + otrosA + afilVal + _saldoPendiente;
         } else {
-            total = _totalAfil;
+            totalBruto = _totalAfil;
         }
 
-        // Izquierdo: siempre el bruto (sin descuento del anticipo)
-        const totalBrutoDisplay = total + _saldoFavor;
-        setText('mf-total', fmt(totalBrutoDisplay > 0 ? totalBrutoDisplay : total));
+        // ── Columa izquierda: TOTAL BRUTO (sin descontar saldo a favor) ──
+        setText('mf-total', fmt(totalBruto));
 
-        const consigs = [...document.querySelectorAll('.mf-consig-monto')].reduce((s, e) => s + parse(e.value), 0);
-        const efect = parse(el('mf-efectivo')?.value);
-        const prest = parse(el('mf-prestamo')?.value);
-        const pendiente = Math.max(0, total - consigs - efect - prest);
+        // ── Columna derecha: SALDO PENDIENTE ─────────────────────────────
+        // Pendiente = totalBruto - saldoFavor - consignaciones - efectivo - prestamo
+        // El saldo a favor se descuenta AQUÍ (como anticipó ya registrado).
+        const consigs   = [...document.querySelectorAll('.mf-consig-monto')].reduce((s, e) => s + parse(e.value), 0);
+        const efect     = parse(el('mf-efectivo')?.value);
+        const prest     = parse(el('mf-prestamo')?.value);
+        const pendiente = Math.max(0, totalBruto - _saldoFavor - consigs - efect - prest);
 
         const pEl = el('mf-pendiente');
         if (pEl) {
             pEl.textContent = fmt(pendiente);
-            pEl.style.color = pendiente === 0 ? '#15803d' : '#dc2626';
+            pEl.style.color      = pendiente === 0 ? '#15803d' : '#dc2626';
             pEl.style.fontWeight = pendiente === 0 ? '700' : '900';
         }
         return pendiente;
@@ -469,6 +547,9 @@ const MF = (function () {
             }
         });
         el('mf-consig-list').appendChild(row);
+        // Al agregar consignación, limpiar efectivo para que el saldo pendiente
+        // muestre cuánto queda por cubrir con la(s) consignación(es)
+        setVal('mf-efectivo', '0');
         recalc();
     }
 
@@ -477,20 +558,22 @@ const MF = (function () {
         const pendiente = recalc();
         if (pendiente > 0) {
             // Calcular cuánto se ha ingresado
-            const consigs = [...document.querySelectorAll('.mf-consig-monto')].reduce((s, e) => s + parse(e.value), 0);
+            const consigs  = [...document.querySelectorAll('.mf-consig-monto')].reduce((s, e) => s + parse(e.value), 0);
             const efectivo = parse(el('mf-efectivo')?.value);
             const prestamo = parse(el('mf-prestamo')?.value);
             const cubierto = consigs + efectivo + prestamo;
-            const total = cubierto + pendiente;
+            const totalBruto = parse(el('mf-total')?.textContent);
 
             const lineas = [
                 '⚠️  PAGO INCOMPLETO — No se puede facturar',
                 '─'.repeat(44),
-                '💰  Total a cobrar:      ' + fmt(total),
-                '✅  Ya cubierto:         ' + fmt(cubierto) +
-                (consigs > 0 ? '  (consig: ' + fmt(consigs) + ')' : '') +
-                (efectivo > 0 ? '  (efect: ' + fmt(efectivo) + ')' : '') +
-                (prestamo > 0 ? '  (prest: ' + fmt(prestamo) + ')' : ''),
+                '📋  Total bruto:         ' + fmt(totalBruto),
+                ...(_saldoFavor > 0 ? ['✅  Anticipo a favor:    -' + fmt(_saldoFavor)] : []),
+                '💰  Neto a cubrir:       ' + fmt(Math.max(0, totalBruto - _saldoFavor)),
+                '📩  Ya cubierto:         ' + fmt(cubierto) +
+                (consigs  > 0 ? '  (consig: ' + fmt(consigs)  + ')' : '') +
+                (efectivo > 0 ? '  (efect: '  + fmt(efectivo) + ')' : '') +
+                (prestamo > 0 ? '  (prest: '  + fmt(prestamo) + ')' : ''),
                 '🔴  Falta por cubrir:    ' + fmt(pendiente),
                 '',
                 '📋  Para completar el pago puede:',
@@ -552,11 +635,15 @@ const MF = (function () {
         if (btn) { btn.disabled = true; btn.textContent = '⏳ Guardando...'; }
 
         try {
+            // Leer días proporcionales del cotizador
+            const diasFacturar = parseInt(document.getElementById('sel_dias_cotizar')?.value || 30);
+
             const body = {
                 contratos: ids,
                 tipo: tipoActual,
                 mes: el('mf-mes')?.value,
                 anio: el('mf-anio')?.value,
+                dias: diasFacturar,
                 forma_pago: formaPago,
                 estado: el('mf-estado')?.value,
                 consignaciones: consignaciones,   // ← array dinámico
@@ -590,6 +677,23 @@ const MF = (function () {
                 headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': _cfg.csrf },
                 body: JSON.stringify(body),
             });
+
+            // ── Detectar 419 (CSRF expirado) o 401 (sesión caducada) ────────
+            // Ocurre cuando la sesión de BD tarda y el token se invalida.
+            // En lugar de crashear con JSON.parse(), recargamos el token y avisamos.
+            if (res.status === 419 || res.status === 401) {
+                // Intentar refrescar el token CSRF sin recargar la página completa
+                try {
+                    const csrfRes = await fetch('/sanctum/csrf-cookie', { credentials: 'same-origin' });
+                    // Actualizar token en el meta tag y en _cfg
+                    const newToken = document.querySelector('meta[name="csrf-token"]')?.content;
+                    if (newToken) _cfg.csrf = newToken;
+                } catch (_) { /* ignorar */ }
+                if (btn) { btn.disabled = false; btn.textContent = '💾 Guardar Factura'; }
+                alert('⚠️ La sesión de seguridad expiró durante el proceso.\n\nPor favor:\n1. Presiona F5 para refrescar\n2. Vuelve a abrir el modal y guarda de nuevo.\n\nTus datos NO se perdieron — la base de datos está intacta.');
+                return;
+            }
+
             const data = await res.json();
 
             if (data.ok) {
@@ -618,17 +722,41 @@ const MF = (function () {
                     location.reload();
                 }
             } else {
-                // Mostrar mensaje diferenciado si es por duplicados
+                // Mostrar mensaje diferenciado según tipo de error
                 let msg = data.message || data.mensaje || 'Error al facturar.';
-                if (data.omitidos && data.omitidos.length > 0) {
-                    const lista = data.omitidos.map(o => '• ' + o.nombre + ' (' + o.motivo + ')').join('\n');
-                    msg += '\n\n🚫 Ya facturados para este período:\n' + lista;
+                // Gap de facturación: mes sin facturar previo
+                if (data.error && data.mensaje && data.mes_gap) {
+                    msg = '🚫 ' + data.mensaje;
+                    // Mostrar en el panel de gap del modal (si sigue abierto)
+                    let gapPanel = el('mf-aviso-gap');
+                    if (!gapPanel) {
+                        gapPanel = document.createElement('div');
+                        gapPanel.id = 'mf-aviso-gap';
+                        gapPanel.style.cssText = 'margin:.4rem 0;padding:.45rem .7rem;border-radius:8px;font-size:.78rem;font-weight:600;border:1.5px solid #ef4444;background:#fef2f2;color:#991b1b;';
+                        const avisoMes = el('mf-aviso-mes');
+                        if (avisoMes) avisoMes.parentNode.insertBefore(gapPanel, avisoMes.nextSibling);
+                    }
+                    gapPanel.style.display = 'block';
+                    gapPanel.innerHTML = msg;
+                } else {
+                    if (data.omitidos && data.omitidos.length > 0) {
+                        const lista = data.omitidos.map(o => '• ' + o.nombre + ' (' + o.motivo + ')').join('\n');
+                        msg += '\n\n🚫 Ya facturados para este período:\n' + lista;
+                    }
+                    alert(msg);
                 }
-                alert(msg);
             }
         } catch (e) {
             console.error('MF.guardar error:', e);
-            alert('Error de conexión.');
+            // Si el error es JSON parse → casi siempre es 419/sesión expirada
+            // (Laravel devuelve HTML de login en vez de JSON)
+            let msg;
+            if (e && (e.message || '').toLowerCase().includes('json')) {
+                msg = '⚠️ Sesión expirada durante el guardado.\n\nPor favor recarga la página (F5) e intenta de nuevo.\n\nTus datos están seguros — la factura puede o no haberse guardado. Verifica en la lista antes de volver a facturar.';
+            } else {
+                msg = 'Error de conexión: ' + (e.message || 'desconocido') + '\nRecargue la página e intente de nuevo.';
+            }
+            alert(msg);
         } finally {
             if (btn) { btn.disabled = false; btn.textContent = '🧾 Facturar'; }
         }

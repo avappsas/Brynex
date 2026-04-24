@@ -12,7 +12,15 @@
         </h1>
         <p style="color:#64748b; font-size:0.88rem;">
             Empresa activa: <strong style="color:#1e40af;">{{ $alidoActivo->nombre ?? 'BryNex' }}</strong>
-            &nbsp;·&nbsp; {{ now()->isoFormat('dddd D [de] MMMM [de] YYYY') }}
+            &nbsp;·&nbsp;
+            @php
+                \Carbon\Carbon::setLocale('es');
+                $hoy = now();
+                $diasEs = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+                $mesesEs = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+                $fechaEs = $diasEs[$hoy->dayOfWeek] . ' ' . $hoy->day . ' de ' . $mesesEs[$hoy->month - 1] . ' del ' . $hoy->year;
+            @endphp
+            {{ $fechaEs }}
         </p>
     </div>
 

@@ -47,6 +47,20 @@ class ClaveAccesoController extends Controller
         return response()->json($claves);
     }
 
+    // ─── Listar claves de una empresa (por empresa_id directo) ────────
+    public function indexEmpresa(int $empresaId)
+    {
+        $aliadoId = session('aliado_id_activo');
+
+        $claves = ClaveAcceso::where('aliado_id', $aliadoId)
+            ->where('empresa_id', $empresaId)
+            ->orderBy('tipo')
+            ->orderBy('entidad')
+            ->get();
+
+        return response()->json($claves);
+    }
+
     // ─── Crear nueva clave ────────────────────────────────────────────
     public function store(Request $request)
     {
@@ -108,6 +122,7 @@ class ClaveAccesoController extends Controller
         return $request->validate([
             'cedula'           => 'nullable|integer',
             'razon_social_id'  => 'nullable|integer',
+            'empresa_id'       => 'nullable|integer',
             'tipo'             => 'required|string|max:80',
             'entidad'          => 'required|string|max:150',
             'usuario'          => 'nullable|string|max:150',
@@ -124,7 +139,7 @@ class ClaveAccesoController extends Controller
 
     private function limpiarNulos(array $data): array
     {
-        foreach (['cedula', 'razon_social_id', 'usuario', 'contrasena', 'link_acceso', 'correo_entidad', 'observacion'] as $campo) {
+        foreach (['cedula', 'razon_social_id', 'empresa_id', 'usuario', 'contrasena', 'link_acceso', 'correo_entidad', 'observacion'] as $campo) {
             if (isset($data[$campo]) && $data[$campo] === '') {
                 $data[$campo] = null;
             }

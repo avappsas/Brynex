@@ -10,15 +10,31 @@ use Illuminate\Support\Facades\{Auth, DB};
 
 class FacturacionController extends Controller
 {
-    // ─── Buscador de empresa ─────────────────────────────────────────
+    // ─── Listado de empresas ─────────────────────────────────────────
     public function index(Request $request)
     {
         $aliadoId = session('aliado_id_activo');
 
+        // Subquery corroborada como objeto Eloquent/Builder válido para selectSub
+        $subContratos = DB::table('contratos as c')
+            ->join('clientes as cl', 'cl.cedula', '=', 'c.cedula')
+            ->where('c.aliado_id', $aliadoId)
+            ->whereIn('c.estado', ['vigente', 'activo'])
+            ->whereColumn('cl.cod_empresa', 'empresas.id')
+            ->selectRaw('COUNT(DISTINCT c.id)');
+
         $empresas = Empresa::where('aliado_id', $aliadoId)
-            ->where('id', '>', 1)               // excluir "Individual"
-            ->orderBy('empresa')
-            ->get(['id','empresa','nit','contacto','telefono','celular','iva']);
+            ->where('id', '>', 1)
+            ->select(['id','empresa','nit','contacto','telefono','celular','iva'])
+            ->selectSub($subContratos, 'contratos_activos_count')
+            ->get()
+            ->sortBy([
+                // Las que tienen contratos activos van primero
+                fn ($a, $b) => ($b->contratos_activos_count > 0) <=> ($a->contratos_activos_count > 0),
+                // Dentro de cada grupo, A-Z
+                fn ($a, $b) => strcmp($a->empresa, $b->empresa),
+            ])
+            ->values();
 
         return view('admin.facturacion.index', compact('empresas'));
     }
@@ -47,25 +63,43 @@ class FacturacionController extends Controller
             ->get();
 
         // Facturas ya generadas para este periodo (solo planilla/afiliacion, no otro_ingreso)
+        // ⚠️ Se indexa por CONTRATO_ID (no por cédula) para evitar cruzar pagos
+        //    entre contratos distintos del mismo trabajador (ej: BRYGAR vs Independiente)
         $facturasExistentes = Factura::where('aliado_id', $aliadoId)
             ->periodo($mes, $anio)
             ->whereIn('tipo', ['planilla', 'afiliacion'])
             ->whereIn('cedula', $contratos->pluck('cedula'))
+            ->whereNotNull('contrato_id')
             ->get()
-            ->keyBy('cedula');
+            ->keyBy('contrato_id');  // ← clave: por contrato, no por cédula
 
         // Calcular días cotizados para cada contrato según fecha_ingreso
         $hoy       = now();
-        $contratos = $contratos->map(function ($c) use ($mes, $anio, $hoy, $facturasExistentes) {
+        // Mes/año actuales reales (hoy)
+        $mesHoy  = (int) $hoy->month;
+        $anioHoy = (int) $hoy->year;
+
+        $contratos = $contratos->map(function ($c) use ($mes, $anio, $hoy, $facturasExistentes, $aliadoId) {
             $diasCotizar = 30;
+            $esIndActPrimerMes = false; // I Act (id=11) en su mes de ingreso → afiliación + planilla juntas
             if ($c->fecha_ingreso) {
                 $fIng = $c->fecha_ingreso;
                 $mesIngreso  = (int)$fIng->month;
                 $anioIngreso = (int)$fIng->year;
+                // I Act = tipo_modalidad_id 11 (cobra afiliación + planilla el mismo mes)
+                // I Venc = tipo_modalidad_id 10 (solo afiliación el primer mes)
+                $esIndAct = (int)($c->tipo_modalidad_id) === 11;
 
                 if ($mesIngreso === $mes && $anioIngreso === $anio) {
-                    // Mes de ingreso → afiliación, días = 0
-                    $diasCotizar = 0;
+                    if ($esIndAct) {
+                        // I Act: primer mes cobra afiliación + planilla juntas
+                        // → días = días activos del mes de ingreso
+                        $esIndActPrimerMes = true;
+                        $diasCotizar = max(1, 30 - $fIng->day + 1);
+                    } else {
+                        // I Venc, empresa, dependiente: solo afiliación, días = 0
+                        $diasCotizar = 0;
+                    }
                 } else {
                     // Calcular el mes anterior al período actual
                     $mesAnterior  = $mes === 1 ? 12 : $mes - 1;
@@ -78,8 +112,33 @@ class FacturacionController extends Controller
                     // else: mes normal → 30 días
                 }
             }
-            $c->dias_cotizar  = $diasCotizar;
-            $c->factura_exist = $facturasExistentes->get($c->cedula);
+            $c->dias_cotizar          = $diasCotizar;
+            $c->es_ind_act_primer_mes = $esIndActPrimerMes; // flag para la vista y cobros
+            $c->factura_exist = $facturasExistentes->get($c->id);
+
+            // 1a) Saldo para FACTURAR: suma hasta antes del período visualizado
+            //     (se usa en el modal de facturación para aplicar al nuevo cobro)
+            $saldoPrevFac = Factura::saldoClienteMesPrevio($aliadoId, $c->cedula, $mes, $anio, $c->id);
+            $c->saldo_a_favor_facturar   = (int)($saldoPrevFac['a_favor']   ?? 0);
+            $c->saldo_pendiente_facturar = (int)($saldoPrevFac['pendiente'] ?? 0);
+
+            // 1b) Saldo REAL (para mostrar en pantalla): suma TODOS los saldo_proximo
+            //     sin límite de fecha — incluye meses futuros ya registrados en BD.
+            //     Si mayo ya consumió el saldo de abril, aquí aparecerá en 0.
+            $sumaTotalSaldos = (int) Factura::where('aliado_id', $aliadoId)
+                ->where('cedula', $c->cedula)
+                ->where('contrato_id', $c->id)
+                ->whereNotNull('saldo_proximo')
+                ->whereIn('estado', ['pagada', 'prestamo', 'abono'])
+                ->sum('saldo_proximo');
+            $c->saldo_a_favor   = $sumaTotalSaldos > 0 ? $sumaTotalSaldos : 0;
+            $c->saldo_pendiente = $sumaTotalSaldos < 0 ? abs($sumaTotalSaldos) : 0;
+
+            // 2) Saldo generado ESTE periodo (saldo_proximo de la factura actual)
+            $sp = $c->factura_exist ? (int)($c->factura_exist->saldo_proximo ?? 0) : 0;
+            $c->saldo_proximo_favor    = $sp > 0 ? $sp : 0;   // sobró → va al siguiente mes
+            $c->saldo_proximo_pendiente = $sp < 0 ? abs($sp) : 0; // quedó debiendo
+
             return $c;
         });
 
@@ -97,9 +156,23 @@ class FacturacionController extends Controller
             ->groupBy('razon_social')
             ->get()->keyBy('razon_social');
 
+        // ─── Saldo neto de la EMPRESA por empresa_id ─────────────────
+        // Sin límite de fecha: suma TODOS los saldo_proximo (incluyendo meses futuros ya registrados).
+        // Así si mayo ya consumió el saldo de abril, la empresa también lo refleja.
+        $saldoNetoEmpresa = Factura::where('aliado_id', $aliadoId)
+            ->where('empresa_id', $empresa->id)
+            ->whereNotNull('saldo_proximo')
+            ->whereIn('estado', ['pagada', 'prestamo', 'abono'])
+            ->whereNull('deleted_at')
+            ->sum('saldo_proximo');
+
+        $saldoEmpresaFavor    = $saldoNetoEmpresa > 0 ? (int)$saldoNetoEmpresa : 0;
+        $saldoEmpresaPendiente = $saldoNetoEmpresa < 0 ? (int)abs($saldoNetoEmpresa) : 0;
+
         return view('admin.facturacion.empresa', compact(
             'empresa', 'contratos', 'facturasExistentes',
-            'mes', 'anio', 'bancos', 'planosActuales', 'asesores'
+            'mes', 'anio', 'bancos', 'planosActuales', 'asesores',
+            'saldoEmpresaFavor', 'saldoEmpresaPendiente'
         ));
     }
 
@@ -157,6 +230,24 @@ class FacturacionController extends Controller
         $mes  = (int)$validated['mes'];
         $anio = (int)$validated['anio'];
 
+        // ─── Validar orden secuencial de facturación ────────────────────────
+        // Solo para facturas individuales (single contrato); en masivo se omite
+        // la validación por desempeño, ya que empresa gestiona su propio orden.
+        foreach ($validated['contratos'] as $cId) {
+            $cChk = Contrato::where('aliado_id', $aliadoId)->find($cId);
+            if ($cChk) {
+                $gap = $this->verificarOrdenFacturacion($aliadoId, $cChk, $mes, $anio);
+                if ($gap) {
+                    return response()->json([
+                        'error'       => true,
+                        'mensaje'     => $gap['mensaje'],
+                        'mes_gap'     => $gap['mes'],
+                        'anio_gap'    => $gap['anio'],
+                    ], 422);
+                }
+            }
+        }
+
         // ─── Pre-calcular n_plano compartido por razón social ──────────────
         // Todos los contratos de la misma RS en este lote deben tener el MISMO n_plano.
         // Se calcula UNA VEZ por RS antes de entrar al foreach.
@@ -168,6 +259,9 @@ class FacturacionController extends Controller
         $totalPagoConsig    = array_sum(array_column($consignacionesData, 'valor'));
         $totalPagoEfectivo  = (int)($validated['valor_efectivo']  ?? 0);
         $totalPagoPrestamo  = (int)($validated['valor_prestamo']  ?? 0);
+
+        // IVA configurado (se aplica a clientes con IVA=SI, igual que en la factura)
+        $cfgIvaPct = \App\Models\ConfiguracionBrynex::porcentajeIva(); // ej: 19
 
         // Calcular COSTO BRUTO ESTIMADO de cada contrato para proporcionar el pago.
         // Para planilla: SS(30 días) + admon + seguro — no basta con solo admon.
@@ -187,14 +281,25 @@ class FacturacionController extends Controller
             if ($esAfil) {
                 $totalesPorContrato[$cId] = (int)($c->costo_afiliacion ?? 0) + (int)($c->seguro ?? 0);
             } else {
-                // Planilla: SS con días REALES del contrato (mismo cálculo que la factura real)
+                // Planilla: usar calcularCotizacion() del MODELO — mismo método que la UI y
+                // que facturar() usa para SS. Garantiza granTotal = sum(reales) exacto.
                 $diasEst = $this->calcularDias($c, $mes, $anio);
-                $ssEst   = $this->calcularSS($c, $diasEst);
-                $totalSSEst = $ssEst['eps'] + $ssEst['arl'] + $ssEst['afp'] + $ssEst['caja'];
-                $totalesPorContrato[$cId] = $totalSSEst
-                    + (int)($c->administracion ?? 0)
-                    + (int)($c->admon_asesor  ?? 0)
-                    + (int)($c->seguro        ?? 0);
+                $cotiz   = $c->calcularCotizacion($diasEst);
+
+                // Afiliación I ACT primer mes: se cobra junto con planilla (igual que facturar())
+                $esIndActEst = (int)($c->tipo_modalidad_id) === 11;
+                $afilEst = ($esMesIng && $esIndActEst)
+                    ? (int)($c->costo_afiliacion ?? 0)
+                    : 0;
+
+                // calcularCotizacion devuelve ss+admon+seguro+iva (sin admon_asesor)
+                // facturar() suma: ss + admon + admin_asesor + seguro + afil + iva
+                $totalesPorContrato[$cId] = $cotiz['ss']
+                    + $cotiz['admon']
+                    + (int)($c->admon_asesor ?? 0)
+                    + $cotiz['seguro']
+                    + $cotiz['iva']
+                    + $afilEst;
             }
             // Mínimo 1 para evitar peso cero en contratos sin costo
             if ($totalesPorContrato[$cId] <= 0) $totalesPorContrato[$cId] = 1;
@@ -209,11 +314,39 @@ class FacturacionController extends Controller
 
         $facturasCreadas  = [];
         $omitidos         = [];  // contratos ya facturados para ese período
+        // Acumuladores para ajuste de redondeo post-loop en la última factura del batch.
+        // Garantiza sum(ef_i) = ef_total exactamente, eliminando residuos de redondeo.
+$efAcum = $csAcum = $prAcum = $sfAcum = 0;
+        // Saldo empresa a aplicar como credito en este batch (distribuido igualmente)
+        $empresaId = $validated['empresa_id'] ?? null;
+        $saldoEmpresaAplicar = 0;
+        $contratosPendientes = count(array_filter($validated['contratos']));
+        if ($empresaId && $esMasivo) {
+            // ── Saldo neto REAL de la empresa (sin filtro de fecha) ──────────
+            // Se debe sumar TODOS los saldo_proximo de empresa_id, incluyendo
+            // los del mes actual ya facturados. Razón: al facturar un lote
+            // parcial (ej. 9 de 14 contratos ya facturados en Mayo con sp=-87500),
+            // esos negativos deben compensar el saldo positivo de Abril antes de
+            // determinar si queda algún crédito real. Sin este criterio, el sistema
+            // ve el saldo bruto de Abril (+700k) sin ver los -700k de Mayo ya
+            // registrados, y aplica un descuento fantasma.
+            $histSaldo = Factura::where('aliado_id', $aliadoId)
+                ->where('empresa_id', $empresaId)
+                ->whereIn('estado', ['pagada', 'prestamo', 'abono'])
+                ->whereNull('deleted_at')
+                ->sum('saldo_proximo');
+            // Solo aplicar como crédito si el neto es estrictamente positivo
+            $saldoEmpresaAplicar = max(0, (int)$histSaldo);
+        }
+
         DB::transaction(function () use (
             $validated, $aliadoId, $np, $mes, $anio,
+            $esMasivo,
             &$facturasCreadas, &$omitidos, &$nPlanosPorRS,
             $totalPagoConsig, $totalPagoEfectivo, $totalPagoPrestamo,
-            $consignacionesData, $totalesPorContrato, $granTotal, $batchNumeroFactura
+            $consignacionesData, $totalesPorContrato, $granTotal, $batchNumeroFactura,
+            &$efAcum, &$csAcum, &$prAcum, &$sfAcum,
+            $saldoEmpresaAplicar, &$contratosPendientes
         ) {
             foreach ($validated['contratos'] as $contratoId) {
                 $contrato = Contrato::where('aliado_id', $aliadoId)
@@ -222,26 +355,37 @@ class FacturacionController extends Controller
 
 
                 // ─── Validación anti-duplicado ─────────────────────────────
-                // No se permite facturar el mismo cedula+mes+año, sin importar
-                // si fue por empresa o de forma individual.
-                $yaExiste = Factura::where('aliado_id', $aliadoId)
+                // Solo bloquea si ya existe factura para la MISMA cedula+mes+año+razon_social.
+                // Permite facturar al mismo cliente desde distinta Razón Social.
+                $facturasDup = Factura::where('aliado_id', $aliadoId)
                     ->where('cedula', $contrato->cedula)
                     ->where('mes', $mes)
                     ->where('anio', $anio)
                     ->whereNotIn('estado', ['anulada'])
-                    ->exists();
+                    ->get(['id', 'razon_social_id', 'estado']);
+
+                $yaExiste = $facturasDup->contains(function ($f) use ($contrato) {
+                    // Comparar como enteros para evitar fallos int vs string
+                    return (int)$f->razon_social_id === (int)$contrato->razon_social_id;
+                });
 
                 if ($yaExiste) {
+                    $rsNombre = $contrato->razonSocial?->razon_social ?? 'Individual';
                     $omitidos[] = [
                         'cedula'  => $contrato->cedula,
                         'nombre'  => $contrato->cliente?->primer_nombre . ' ' . $contrato->cliente?->primer_apellido,
-                        'motivo'  => 'Ya existe una factura para ' . $mes . '/' . $anio,
+                        'motivo'  => "Ya existe una factura para {$mes}/{$anio} bajo '{$rsNombre}'",
                     ];
+                    $contratosPendientes--; // descontar aunque se omita
                     continue; // saltar este contrato
                 }
 
+
                 $esIndependiente = $contrato->tipoModalidad?->esIndependiente() ?? false;
-                $tipoForzado     = $validated['tipo'];
+                // I Act (id=11): cobra afiliación + planilla el mismo mes de ingreso
+                // I Venc (id=10): solo afiliación el primer mes
+                $esIndAct = (int)($contrato->tipo_modalidad_id) === 11;
+                $tipoForzado = $validated['tipo'];
 
                 if ($contrato->fecha_ingreso) {
                     $mesIngreso  = (int)$contrato->fecha_ingreso->month;
@@ -250,25 +394,46 @@ class FacturacionController extends Controller
 
                     if ($esMesIngreso) {
                         if (!$esIndependiente) {
-                            // Empresa: siempre afiliación en el mes de ingreso
+                            // Empresa / dependiente: siempre afiliación en el mes de ingreso
                             $tipoForzado = 'afiliacion';
-                        } elseif ($esIndependiente && !($contrato->cobra_planilla_primer_mes ?? false)) {
-                            // Independiente normal: solo afiliación el primer mes
+                        } elseif (!$esIndAct) {
+                            // I Venc: solo afiliación el primer mes
                             $tipoForzado = 'afiliacion';
                         }
-                        // Independiente con cobra_planilla_primer_mes=true → puede ser planilla
+                        // I Act: tipo=planilla (afiliación se suma al total, ver abajo)
                     }
                 }
 
+                // ─── Detectar I Act primer mes ─────────────────────────────
+                // I Act (id=11) en mes de ingreso: paga afiliación + planilla juntas
+                $esIndActPrimerMes = $esIndAct && isset($esMesIngreso) && $esMesIngreso;
+
                 // ─── Tipo, días y SS ───────────────────────────────────────
                 $esAfiliacion = $tipoForzado === 'afiliacion';
-                // dias_cotizados = 0 en afiliación, calculado en planilla
-                $diasCotizar  = $esAfiliacion ? 0 : $this->calcularDias($contrato, $mes, $anio);
+                // Para I ACT primer mes: días = activos del mes de ingreso (no 0)
+                if ($esIndActPrimerMes) {
+                    $diasCotizar = max(1, 30 - (int)$contrato->fecha_ingreso->day + 1);
+                } elseif ($esAfiliacion) {
+                    $diasCotizar = 0;
+                } else {
+                    $diasCotizar = $this->calcularDias($contrato, $mes, $anio);
+                }
 
-                // SS = 0 en afiliación (dinero va a distribución interna)
-                $calcSS = $esAfiliacion
-                    ? ['eps' => 0, 'arl' => 0, 'afp' => 0, 'caja' => 0]
-                    : $this->calcularSS($contrato, $diasCotizar);
+                // SS = 0 en afiliación pura (I VENC, empresa);
+                // Para I ACT primer mes se calcula con días reales del mes de ingreso.
+                // ── Fuente de verdad: calcularCotizacion() del modelo ──────────────────────
+                // Usar el mismo método que la UI para que total facturado = estimación exacta.
+                if ($esAfiliacion && !$esIndActPrimerMes) {
+                    $calcSS = ['eps' => 0, 'arl' => 0, 'afp' => 0, 'caja' => 0];
+                } else {
+                    $cotizacion = $contrato->calcularCotizacion($diasCotizar);
+                    $calcSS = [
+                        'eps'  => (int)($cotizacion['eps']  ?? 0),
+                        'arl'  => (int)($cotizacion['arl']  ?? 0),
+                        'afp'  => (int)($cotizacion['pen']  ?? 0),
+                        'caja' => (int)($cotizacion['caja'] ?? 0),
+                    ];
+                }
 
                 // Override manual de SS desde la UI (solo en modo individual — 1 contrato).
                 // En modo masivo el modal muestra TOTALES del lote, no valores individuales.
@@ -285,29 +450,37 @@ class FacturacionController extends Controller
                 // Saldo previo del cliente (auto desde BD)
                 $saldo = Factura::saldoClienteMesPrevio($aliadoId, $contrato->cedula, $mes, $anio);
 
-                $afiliacion  = $esAfiliacion ? (int)($contrato->costo_afiliacion ?? 0) : 0;
-                $seguro      = (int)($contrato->seguro ?? 0);
+                // Afiliación:
+                // • I ACT primer mes: se incluye SIEMPRE junto con SS (pago conjunto)
+                // • Afiliación pura (I VENC, empresa): total = costo_afiliacion + seguro
+                // • Planilla normal: no se incluye afiliación
+                $afiliacion = ($esAfiliacion || $esIndActPrimerMes)
+                    ? (int)($contrato->costo_afiliacion ?? 0)
+                    : 0;
+                $seguro     = (int)($contrato->seguro ?? 0);
 
-                // Si es afiliación: no hay admon mensual ni SS (el total = costo_afiliacion + seguro)
-                // intval() garantiza que no haya decimales que generen $43.003 en vez de $43.000
-                $admon       = $esAfiliacion ? 0 : intval($contrato->administracion ?? 0);
-                $adminAsesor = $esAfiliacion ? 0 : intval($contrato->admon_asesor   ?? 0);
+                // Admon:
+                // • Afiliación pura (I VENC, empresa): sin admon mensual
+                // • I ACT primer mes y planilla normal: con admon completa
+                $admon       = ($esAfiliacion && !$esIndActPrimerMes) ? 0 : intval($contrato->administracion ?? 0);
+                $adminAsesor = ($esAfiliacion && !$esIndActPrimerMes) ? 0 : intval($contrato->admon_asesor   ?? 0);
                 $otrosAdmon  = intval($validated['otros_admon'] ?? 0);
 
                 $totalSS  = $calcSS['eps'] + $calcSS['arl'] + $calcSS['afp'] + $calcSS['caja'];
                 $ivaBase  = $admon + $adminAsesor;
                 $iva      = 0;
 
-                // IVA solo aplica en planilla (sobre admon)
-                if (!$esAfiliacion) {
+                // IVA aplica en planilla (sobre admon) — también para I ACT primer mes
+                // Usar round() igual que calcularCotizacion() del modelo (no ceil)
+                if (!$esAfiliacion || $esIndActPrimerMes) {
                     $clienteIva = DB::table('clientes')->where('cedula', $contrato->cedula)->value('iva');
                     if (strtoupper(trim($clienteIva ?? '')) === 'SI') {
                         $cfgIva = \App\Models\ConfiguracionBrynex::porcentajeIva();
-                        $iva    = (int) ceil($ivaBase * $cfgIva / 100 / 100) * 100;
+                        $iva    = (int) round($ivaBase * $cfgIva / 100);
                     }
                 }
 
-                // total = BRUTO (SS + admon + seguro + IVA + otros).
+                // total = BRUTO (SS + admon + seguro + IVA + afiliacion + otros).
                 // El anticipo (saldo_a_favor) y la deuda previa (saldo_pendiente) se guardan
                 // en columnas separadas y el sistema acumulativo de saldo_proximo los maneja.
                 $total = $totalSS + $admon + $adminAsesor + $otrosAdmon + $seguro + $afiliacion + $iva;
@@ -349,16 +522,30 @@ class FacturacionController extends Controller
                 }
                 $nPlanoFactura = $rsId ? ($nPlanosPorRS[$rsId] ?? null) : null;
 
-                // ─── Distribución proporcional del pago ────────────────────
-                // El total ingresado (consig+efectivo+prestamo) se reparte
-                // proporcionalmente entre todos los contratos del lote.
-                $proporcion = $granTotal > 0
-                    ? (($totalesPorContrato[$contratoId] ?? 0) / $granTotal)
-                    : (1 / max(1, count($validated['contratos'])));
+                // --- Distribucion IGUAL entre contratos del batch ---
+                // Ef, consignacion y saldo a favor en PARTES IGUALES.
+                // El ultimo contrato recibe el residuo (floor) para que sumen exacto.
+                $nContratos = max(1, count($validated['contratos']));
+                $contratosPendientes--;
+                $esUltimoNoOmitido = ($contratosPendientes === 0);
+                $vSaldoFavor = 0; // Inicializar siempre (evita Undefined variable)
 
-                $vConsig   = (int) round($totalPagoConsig   * $proporcion);
-                $vEfectivo = (int) round($totalPagoEfectivo * $proporcion);
-                $vPrestamo = (int) round($totalPagoPrestamo * $proporcion);
+                if ($esUltimoNoOmitido) {
+                    // Ultimo: residuo exacto
+                    $vConsig     = $totalPagoConsig     - $csAcum;
+                    $vEfectivo   = $totalPagoEfectivo   - $efAcum;
+                    $vPrestamo   = $totalPagoPrestamo   - $prAcum;
+                    $vSaldoFavor = $saldoEmpresaAplicar - $sfAcum;
+                } else {
+                    $vConsig     = (int) floor($totalPagoConsig     / $nContratos);
+                    $vEfectivo   = (int) floor($totalPagoEfectivo   / $nContratos);
+                    $vPrestamo   = (int) floor($totalPagoPrestamo   / $nContratos);
+                    $vSaldoFavor = (int) floor($saldoEmpresaAplicar / $nContratos);
+                    $csAcum  += $vConsig;
+                    $efAcum  += $vEfectivo;
+                    $prAcum  += $vPrestamo;
+                    $sfAcum  += $vSaldoFavor;
+                }
 
                 $factura = Factura::create([
                     'aliado_id'        => $aliadoId,
@@ -390,8 +577,6 @@ class FacturacionController extends Controller
                     'afiliacion'       => $afiliacion,
                     'iva'              => $iva,
                     'total'            => max(0, $total),
-                    'saldo_a_favor'    => $saldo['a_favor'],
-                    'saldo_pendiente'  => $saldo['pendiente'],
                     'dist_admon'       => $distAdmon,
                     'dist_asesor'      => $distAsesor,
                     'dist_retiro'      => $distRetiro,
@@ -430,20 +615,32 @@ class FacturacionController extends Controller
                 // su valor_consignado proporcional ya quedó en el campo de la factura.
 
                 // ─── Calcular saldo_proximo ────────────────────────────────
-                // saldo_proximo = -(anticipo consumido) cuando había anticipo.
-                // Con SUM acumulativo en saldoClienteMesPrevio:
-                //   Abril +350k + Mayo -350k = 0 para Junio. ✓
-                $anticipoAplicado = (int)$factura->saldo_a_favor;
+                // saldo_proximo = valor_efectivo + valor_consignado - total_bruto
+                //
+                // El anticipo (saldo_a_favor) ya está acumulado en el historial de
+                // facturas anteriores como saldo_proximo positivo.  Sumarlo aquí
+                // generaría doble conteo → se usa SIEMPRE la misma fórmula base.
+                //
+                // Con SUM acumulativo (SUM saldo_proximo de empresa):
+                //   Mes anterior pagó de más → sp = +X
+                //   Este mes aplica anticipo, paga solo diferencia → sp = ef+cs-total
+                //   Acumulado = +X + (ef+cs-total) → refleja correctamente el neto.
+                $pagadoReal = (int)$factura->valor_consignado + (int)$factura->valor_efectivo;
                 if ($factura->es_prestamo) {
                     // Préstamo: debe el bruto completo al mes siguiente
                     $saldoProximo = -(int)$factura->total;
-                } elseif ($anticipoAplicado > 0) {
-                    // Había anticipo: registra cuánto anticipo se consumió
-                    $saldoProximo = -$anticipoAplicado;
                 } else {
-                    // Pago normal: registra superávit (+) o déficit (-) vs bruto
-                    $pagadoReal   = (int)$factura->valor_consignado + (int)$factura->valor_efectivo;
-                    $saldoProximo = $pagadoReal - (int)$factura->total;
+                    // ─── Saldo proximo según tipo de pago ─────────────────
+                    if ($esMasivo && $saldoEmpresaAplicar > 0) {
+                        // Batch empresa con credito: fijar saldo_proximo = -(credito/n)
+                        // Garantiza: SUM(saldo_proximo) = -saldo_empresa exacto → empresa = 0
+                        // La diferencia de redondeo de ceil() en SS queda absorbida en la
+                        // distribución del efectivo, no en el balance contable de la empresa.
+                        $saldoProximo = -$vSaldoFavor;
+                    } else {
+                        // Pago normal sin credito empresa: pagado - bruto
+                        $saldoProximo = $pagadoReal - (int)$factura->total;
+                    }
                 }
                 $factura->update(['saldo_proximo' => $saldoProximo]);
 
@@ -456,6 +653,7 @@ class FacturacionController extends Controller
                 $facturasCreadas[] = $factura->id;
             }
         });
+
 
         $primera = count($facturasCreadas) === 1 ? $facturasCreadas[0] : null;
 
@@ -581,6 +779,19 @@ class FacturacionController extends Controller
             ->with(['contrato.cliente', 'abonos', 'plano'])
             ->findOrFail($facturaId);
 
+        // ── Protección: factura con planilla pagada solo la puede anular superadmin BryNex ──
+        $numeroPlanillaOp = $factura->plano?->numero_planilla;
+        if ($numeroPlanillaOp) {
+            $esSuperBrynex = $user->es_brynex && $user->hasRole('superadmin');
+            if (!$esSuperBrynex) {
+                return response()->json([
+                    'ok'      => false,
+                    'message' => "Esta factura tiene planilla pagada al operador (Nº {$numeroPlanillaOp}). "
+                               . 'Solo un superadmin de BryNex puede anularla.',
+                ], 403);
+            }
+        }
+
         $motivo = trim($request->input('motivo', ''));
         if (!$motivo) {
             return response()->json(['ok' => false, 'message' => 'Debe indicar el motivo de anulación.'], 422);
@@ -596,6 +807,7 @@ class FacturacionController extends Controller
                 ->with(['abonos', 'plano'])
                 ->get();
         }
+
 
         DB::transaction(function () use ($facturasAnular, $motivo, $aliadoId, $user) {
             foreach ($facturasAnular as $f) {
@@ -750,15 +962,34 @@ class FacturacionController extends Controller
             if ($mesSiguiente > 12) { $mesSiguiente = 1; $anioSiguiente++; }
         }
 
-        // Calcular saldo del cliente para el nuevo mes
-        $saldo = Factura::saldoClienteMesPrevio($aliadoId, $contrato->cedula, $mesSiguiente, $anioSiguiente);
+        // Calcular saldo del cliente para el nuevo mes — SOLO del contrato actual
+        $saldo = Factura::saldoClienteMesPrevio(
+            $aliadoId,
+            $contrato->cedula,
+            $existe ? $mesSiguiente  : $mes,
+            $existe ? $anioSiguiente : $anio,
+            $contrato->id  // ← aislar por contrato, no mezclar con otros contratos de la misma cédula
+        );
+
+        // Verificar si hay meses anteriores sin facturar (orden secuencial)
+        $gap = $this->verificarOrdenFacturacion(
+            $aliadoId,
+            $contrato,
+            $existe ? $mesSiguiente  : $mes,
+            $existe ? $anioSiguiente : $anio
+        );
 
         return response()->json([
-            'pagado'        => $existe,
-            'mes'           => $existe ? $mesSiguiente  : $mes,
-            'anio'          => $existe ? $anioSiguiente : $anio,
-            'saldo_a_favor' => $saldo['a_favor']   ?? 0,
-            'saldo_pendiente'=> $saldo['pendiente'] ?? 0,
+            'pagado'           => $existe,
+            'mes'              => $existe ? $mesSiguiente  : $mes,
+            'anio'             => $existe ? $anioSiguiente : $anio,
+            'saldo_a_favor'    => $saldo['a_favor']   ?? 0,
+            'saldo_pendiente'  => $saldo['pendiente'] ?? 0,
+            // Información de gap para advertencia en UI
+            'tiene_gap'        => !is_null($gap),
+            'gap_mes'          => $gap['mes']     ?? null,
+            'gap_anio'         => $gap['anio']    ?? null,
+            'gap_mensaje'      => $gap['mensaje'] ?? null,
         ]);
     }
 
@@ -780,6 +1011,75 @@ class FacturacionController extends Controller
     }
 
     // ─── Helpers privados ────────────────────────────────────────────
+
+    /**
+     * Verifica que no exista un "gap" (mes sin facturar) antes del período solicitado.
+     *
+     * Regla: el primer mes facturable es el mes de fecha_ingreso.
+     * Cada mes siguiente debe tener al menos una factura registrada antes de permitir
+     * facturar el mes actual.
+     *
+     * @return array|null  null si todo OK; ['mes','anio','mensaje'] si hay gap.
+     */
+    private function verificarOrdenFacturacion(int $aliadoId, Contrato $contrato, int $mes, int $anio): ?array
+    {
+        if (!$contrato->fecha_ingreso) {
+            return null; // Sin fecha de ingreso no podemos validar
+        }
+
+        $mesInicio  = (int) $contrato->fecha_ingreso->month;
+        $anioInicio = (int) $contrato->fecha_ingreso->year;
+
+        // Convertir a enteros YYYYMM para comparación simple
+        $periodoTarget  = $anio * 100 + $mes;
+        $periodoInicio  = $anioInicio * 100 + $mesInicio;
+
+        // Si el período solicitado ES el mes de ingreso o anterior, no hay gap posible
+        if ($periodoTarget <= $periodoInicio) {
+            return null;
+        }
+
+        // Obtener todos los períodos (YYYYMM) que ya tienen factura para este contrato
+        $periodosBilled = Factura::where('aliado_id', $aliadoId)
+            ->where('contrato_id', $contrato->id)
+            ->whereIn('estado', ['pagada', 'pre_factura', 'abono', 'prestamo'])
+            ->get(['mes', 'anio'])
+            ->map(fn($f) => (int)$f->anio * 100 + (int)$f->mes)
+            ->unique()
+            ->values();
+
+        // Recorrer desde el mes de ingreso hasta el mes anterior al solicitado
+        $cursorMes  = $mesInicio;
+        $cursorAnio = $anioInicio;
+
+        while (true) {
+            $periodoCursor = $cursorAnio * 100 + $cursorMes;
+
+            // Llegamos al período solicitado: no hay gap
+            if ($periodoCursor >= $periodoTarget) {
+                break;
+            }
+
+            // Verificar si este mes tiene factura
+            if (!$periodosBilled->contains($periodoCursor)) {
+                $nombreMes = \Carbon\Carbon::create($cursorAnio, $cursorMes, 1)
+                    ->translatedFormat('F Y');
+                return [
+                    'mes'     => $cursorMes,
+                    'anio'    => $cursorAnio,
+                    'mensaje' => "Debe facturar {$nombreMes} antes de continuar con " .
+                                 \Carbon\Carbon::create($anio, $mes, 1)->translatedFormat('F Y') . '.',
+                ];
+            }
+
+            // Avanzar al siguiente mes
+            $cursorMes++;
+            if ($cursorMes > 12) { $cursorMes = 1; $cursorAnio++; }
+        }
+
+        return null;
+    }
+
     /**
      * Calcula el siguiente n_plano para una razón social en un período dado.
      * Siempre retorna 1.
@@ -793,6 +1093,13 @@ class FacturacionController extends Controller
 
     private function calcularDias(Contrato $contrato, int $mes, int $anio): int
     {
+        // Tiempo Parcial: se devuelve 30 porque ARL cotiza mensual completo.
+        // AFP y CAJA usan sus propios días; ver calcularSS().
+        $mod = $contrato->tipoModalidad;
+        if ($mod && $mod->esTiempoParcial()) {
+            return 30;
+        }
+
         if (!$contrato->fecha_ingreso) return 30;
         $fIng        = $contrato->fecha_ingreso;
         $mesIngreso  = (int)$fIng->month;
@@ -817,21 +1124,61 @@ class FacturacionController extends Controller
     private function calcularSS(Contrato $contrato, int $dias): array
     {
         $aliadoId = session('aliado_id_activo');
-        $ibc      = (int)($contrato->salario ?? 0);
+        $ibc      = (int)($contrato->ibc ?? $contrato->salario ?? 0);
         $nArl     = (int)($contrato->n_arl ?? 1);
         $plan     = $contrato->plan;
+        $mod      = $contrato->tipoModalidad;
+        $esTP     = $mod && $mod->esTiempoParcial();
+        $esIndep  = $contrato->esIndependiente(); // detectar modalidad real
 
-        $pctEps = \App\Models\ConfiguracionBrynex::pctSaludDependiente();
-        $pctPen = \App\Models\ConfiguracionBrynex::pctPensionDependiente();
+        // CRÍTICO: usar porcentajes según modalidad.
+        // Antes usaba siempre dependiente → SS incorrecto para I ACT/I VENC.
+        // Eso causaba mismatch entre granTotal y sum(totales_reales) en ~$75k.
+        if ($esIndep) {
+            $pctEps = \App\Models\ConfiguracionBrynex::pctSaludIndependiente();
+            $pctPen = \App\Models\ConfiguracionBrynex::pctPensionIndependiente();
+            $pctCaj = (float)($contrato->porcentaje_caja
+                       ?? \App\Models\ConfiguracionBrynex::pctCajaIndependienteAlto());
+        } else {
+            $pctEps = \App\Models\ConfiguracionBrynex::pctSaludDependiente();
+            $pctPen = \App\Models\ConfiguracionBrynex::pctPensionDependiente();
+            $pctCaj = \App\Models\ConfiguracionBrynex::pctCajaDependiente();
+        }
         $pctArl = \App\Models\ArlTarifa::porcentajePara($nArl, $aliadoId);
-        $pctCaj = \App\Models\ConfiguracionBrynex::pctCajaDependiente();
 
         $r = fn($v) => (int)(ceil($v / 100) * 100);
 
-        $epsMes  = ($plan?->incluye_eps)     ? $r($ibc * $pctEps / 100) : 0;
-        $arlMes  = ($plan?->incluye_arl)     ? $r($ibc * $pctArl / 100) : 0;
-        $afpMes  = ($plan?->incluye_pension) ? $r($ibc * $pctPen / 100) : 0;
-        $cajaMes = ($plan?->incluye_caja)    ? $r($ibc * $pctCaj / 100) : 0;
+        if ($esTP) {
+            // Tiempo Parcial: IBC diferente por entidad
+            // ARL  = SM_completo × tasaArl
+            // AFP  = SM × factor_afp × pctPen
+            // CAJA = SM × factor_caja × pctCaja
+            $diasP      = $mod->diasPorEntidad();
+            $factorMap  = [7 => 0.25, 14 => 0.50, 21 => 0.75, 30 => 1.00];
+            $factorAfp  = $factorMap[$diasP['afp']]  ?? 1.0;
+            $factorCaja = $factorMap[$diasP['caja']] ?? 1.0;
+
+            $sm      = (float) \App\Models\ConfiguracionBrynex::obtener('salario_minimo', 1423500);
+            $ibcArl  = $sm;
+            $ibcAfp  = round($sm * $factorAfp);
+            $ibcCaja = round($sm * $factorCaja);
+
+            return [
+                'eps'  => 0,
+                'arl'  => ($plan?->incluye_arl)     ? $r($ibcArl  * $pctArl / 100) : 0,
+                'afp'  => ($plan?->incluye_pension) ? $r($ibcAfp  * $pctPen / 100) : 0,
+                'caja' => ($plan?->incluye_caja)    ? $r($ibcCaja * $pctCaj / 100) : 0,
+            ];
+        }
+
+        // Normal: mes completo → round() igual que calcularCotizacion() del modelo.
+        // El saldo_proximo en batches empresa se fija directamente a -credit_i,
+        // por lo que el balance de empresa es correcto con round() o ceil().
+        // Usar round() hace que total almacenado = estimación UI → recibo exacto.
+        $epsMes  = ($plan?->incluye_eps)     ? (int) round($ibc * $pctEps / 100) : 0;
+        $arlMes  = ($plan?->incluye_arl)     ? (int) round($ibc * $pctArl / 100) : 0;
+        $afpMes  = ($plan?->incluye_pension) ? (int) round($ibc * $pctPen / 100) : 0;
+        $cajaMes = ($plan?->incluye_caja)    ? (int) round($ibc * $pctCaj / 100) : 0;
 
         if ($dias < 30) {
             return [
@@ -854,37 +1201,62 @@ class FacturacionController extends Controller
         $mes  = (int)($request->mes  ?? now()->month);
         $anio = (int)($request->anio ?? now()->year);
 
-        $totalAFavor   = 0;
-        $totalPendiente = 0;
-        $porContrato   = [];
-
-        foreach ($contratoIds as $cId) {
-            $contrato = Contrato::where('aliado_id', $aliadoId)
+        // ── Obtener empresa_id desde los contratos seleccionados ───────
+        // Todos los contratos del modal masivo pertenecen a la misma empresa.
+        // Calculamos el saldo neto de la empresa (SUM saldo_proximo de TODOS los
+        // contratos de la empresa, no solo los seleccionados) para que el
+        // anticipo de un trabajador compense la cartera de otro.
+        $empresaId = null;
+        if (!empty($contratoIds)) {
+            $primerContrato = Contrato::where('aliado_id', $aliadoId)
+                ->whereIn('id', $contratoIds)
                 ->with('cliente')
-                ->find($cId);
-            if (!$contrato) continue;
-
-            $saldo = Factura::saldoClienteMesPrevio($aliadoId, $contrato->cedula, $mes, $anio);
-            $aFavor    = (int)($saldo['a_favor']   ?? 0);
-            $pendiente = (int)($saldo['pendiente'] ?? 0);
-
-            $cli  = $contrato->cliente;
-            $nom  = trim(($cli?->primer_nombre ?? '').' '.($cli?->primer_apellido ?? ''));
-
-            $porContrato[$cId] = [
-                'cedula'    => $contrato->cedula,
-                'nombre'    => $nom ?: 'CC '.$contrato->cedula,
-                'a_favor'   => $aFavor,
-                'pendiente' => $pendiente,
-            ];
-            $totalAFavor    += $aFavor;
-            $totalPendiente += $pendiente;
+                ->first();
+            if ($primerContrato) {
+                // Buscar empresa_id desde clientes.cod_empresa
+                $empresaId = DB::table('clientes')
+                    ->where('cedula', $primerContrato->cedula)
+                    ->value('cod_empresa');
+            }
         }
+
+        // ── Saldo neto REAL de la empresa ────────────────────────────────
+        // Se suma TODOS los saldo_proximo de empresa_id sin restricción de fecha.
+        // Razón: al facturar un lote parcial (ej. 5 de 14 contratos en Mayo),
+        // los 9 ya facturados de Mayo tienen saldo_proximo negativo que DEBEN
+        // compensar el saldo positivo de Abril. Si filtramos por mes < actual,
+        // excluimos esos negativos de Mayo y el saldo queda inflado.
+        //
+        // Lógica:
+        //   saldoNeto > 0 → empresa tiene anticipo a favor
+        //   saldoNeto < 0 → empresa tiene cartera pendiente
+        //   saldoNeto = 0 → empresa está al día (caso Fabio Arroyave)
+        $saldoNeto = 0;
+        if ($empresaId) {
+            $saldoNeto = (int) Factura::where('aliado_id', $aliadoId)
+                ->where('empresa_id', $empresaId)
+                ->whereIn('estado', ['pagada', 'prestamo', 'abono'])
+                ->whereNotNull('saldo_proximo')
+                ->whereNull('deleted_at')
+                ->sum('saldo_proximo');
+        } else {
+            // Fallback: sumar por contratos individuales si no hay empresa_id
+            foreach ($contratoIds as $cId) {
+                $contrato = Contrato::where('aliado_id', $aliadoId)->find($cId);
+                if (!$contrato) continue;
+                $saldo = Factura::saldoClienteMesPrevio($aliadoId, $contrato->cedula, $mes, $anio, $cId);
+                $saldoNeto += ($saldo['a_favor'] ?? 0) - ($saldo['pendiente'] ?? 0);
+            }
+        }
+
+        // Convertir saldo neto a a_favor / pendiente para compatibilidad con el JS
+        $totalAFavor    = $saldoNeto > 0 ? $saldoNeto : 0;
+        $totalPendiente = $saldoNeto < 0 ? abs($saldoNeto) : 0;
 
         return response()->json([
             'total_a_favor'   => $totalAFavor,
             'total_pendiente' => $totalPendiente,
-            'por_contrato'    => $porContrato,
+            'saldo_neto'      => $saldoNeto,   // neto para debugging
         ]);
     }
 
@@ -1143,9 +1515,6 @@ class FacturacionController extends Controller
                 'afiliacion'          => 0,
                 'mensajeria'          => 0,
                 'otros'               => 0,
-                // Saldos
-                'saldo_a_favor'       => $saldo['a_favor'],
-                'saldo_pendiente'     => $saldo['pendiente'],
                 // Descripción del trámite
                 'descripcion_tramite' => $validated['descripcion_tramite'],
                 'observacion'         => $validated['observacion'] ?? null,
@@ -1206,19 +1575,30 @@ class FacturacionController extends Controller
         // Agrupar por numero_factura (cada NP puede tener varios trabajadores con el mismo número)
         $grupos = $facturas->groupBy('numero_factura')->map(function ($grupo) {
             $primera = $grupo->first();
+
+            // Saldo generado por este NP → positivo = sobró (va al siguiente mes),
+            // negativo = consumió saldo previo, cero = equilibrado.
+            $saldoProximoTotal = $grupo->sum(fn($f) => (int)($f->saldo_proximo ?? 0));
+
             return (object)[
-                'id'                => $primera->id,
-                'np'                => $primera->np,
-                'tipo'              => $primera->tipo,
-                'numero_factura'    => $primera->numero_factura,
-                'fecha_pago'        => $primera->fecha_pago,
-                'mes'               => $primera->mes,
-                'anio'              => $primera->anio,
-                'estado'            => $primera->estado,
+                'id'                  => $primera->id,
+                'np'                  => $primera->np,
+                'tipo'                => $primera->tipo,
+                'numero_factura'      => $primera->numero_factura,
+                'fecha_pago'          => $primera->fecha_pago,
+                'mes'                 => $primera->mes,
+                'anio'                => $primera->anio,
+                'estado'              => $primera->estado,
                 'descripcion_tramite' => $primera->descripcion_tramite,
-                'total'             => $grupo->sum(fn($f) => (int)$f->total),
-                'cantidad'          => $grupo->count(),
-                'usuario'           => $primera->usuario,
+                'total'               => $grupo->sum(fn($f) => (int)$f->total),
+                'cantidad'            => $grupo->count(),
+                'usuario'             => $primera->usuario,
+                // ── Saldo ──────────────────────────────────────────────────
+                // saldo_proximo > 0 → generó anticipo para el siguiente mes
+                // saldo_proximo < 0 → consumió saldo que venía de meses anteriores
+                // saldo_proximo = 0 → equilibrado
+                'saldo_proximo'       => $saldoProximoTotal,
+                'saldo_a_favor_aplicado' => 0, // columna eliminada — ya no disponible
             ];
         })->values();
 
@@ -1290,18 +1670,19 @@ class FacturacionController extends Controller
             ->with(['cliente', 'tipoModalidad', 'razonSocial', 'eps', 'arl', 'pension', 'caja'])
             ->get();
 
-        // Facturas existentes para el período
+        // Facturas existentes para el período — indexadas por contrato_id
         $facturasExistentes = Factura::where('aliado_id', $aliadoId)
             ->periodo($mes, $anio)
             ->whereIn('tipo', ['planilla', 'afiliacion'])
             ->whereIn('cedula', $contratos->pluck('cedula'))
+            ->whereNotNull('contrato_id')
             ->get()
-            ->keyBy('cedula');
+            ->keyBy('contrato_id');  // ← por contrato, no por cédula
 
         $r100 = fn($v) => (int)(ceil(($v ?? 0) / 100) * 100);
 
         $items = $contratos->map(function ($c) use ($mes, $anio, $facturasExistentes, $r100, $aliadoId) {
-            $fact   = $facturasExistentes->get($c->cedula);
+            $fact   = $facturasExistentes->get($c->id);  // ← busca por contrato->id
             $nombre = $c->cliente?->nombre_completo
                       ?? trim(($c->cliente?->primer_nombre ?? '') . ' ' .
                               ($c->cliente?->segundo_nombre ?? '') . ' ' .
@@ -1364,14 +1745,25 @@ class FacturacionController extends Controller
                 'v_iva'          => $vIva,
                 'v_total'        => $vTot,
                 'estado'         => $estado,
-                'saldo_favor'    => $saldo['a_favor'],
-                'saldo_pendiente'=> $saldo['pendiente'],
+                // saldo_proximo: neto acumulado hasta este período por contrato
+                'saldo_proximo'  => (int) Factura::saldoClienteMesPrevio(
+                    $aliadoId, $c->cedula, $mes, $anio, $c->id
+                )['a_favor'] - (int) Factura::saldoClienteMesPrevio(
+                    $aliadoId, $c->cedula, $mes, $anio, $c->id
+                )['pendiente'],
             ];
         });
 
         $totalGeneral   = $items->sum('v_total');
-        $totalFavor     = $items->sum('saldo_favor');
-        $totalPendiente = $items->sum('saldo_pendiente');
+        // Saldo neto de la empresa derivado de saldo_proximo acumulado
+        $saldoNetoEmpresaCC = (int) Factura::where('aliado_id', $aliadoId)
+            ->where('empresa_id', $empresa->id)
+            ->whereIn('estado', ['pagada', 'prestamo', 'abono'])
+            ->whereNotNull('saldo_proximo')
+            ->whereNull('deleted_at')
+            ->sum('saldo_proximo');
+        $totalFavor     = $saldoNetoEmpresaCC > 0 ? $saldoNetoEmpresaCC : 0;
+        $totalPendiente = $saldoNetoEmpresaCC < 0 ? abs($saldoNetoEmpresaCC) : 0;
 
         $meses = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio',
                   'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];

@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\TipoModalidad;
+use App\Models\ConfiguracionBrynex;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -21,9 +23,8 @@ class ModalidadConfigController extends Controller
     {
         $aliadoId = session('aliado_id_activo');
 
-        $modalidades = DB::table('tipo_modalidad')
-            ->where('activo', true)
-            ->where('id', '!=', -100)
+        // Traer TODAS las modalidades (activas e inactivas) para gestionar su estado
+        $modalidades = TipoModalidad::where('id', '!=', -100)
             ->orderBy('orden')
             ->get();
 
@@ -43,7 +44,27 @@ class ModalidadConfigController extends Controller
             ->orderBy('razon_social')
             ->get(['id', 'razon_social', 'es_independiente']);
 
-        return view('admin.configuracion.modalidades', compact('modalidades', 'planes', 'mapa', 'razionesSociales'));
+        // Valor actual de la regla AFP obligatorio
+        $reglaAfpActiva = ConfiguracionBrynex::reglaAfpObligatorio();
+
+        return view('admin.configuracion.modalidades', compact('modalidades', 'planes', 'mapa', 'razionesSociales', 'reglaAfpActiva'));
+    }
+
+    /**
+     * Activar / Inactivar una modalidad via AJAX.
+     * URL: PATCH admin/configuracion/modalidades/{id}/toggle
+     */
+    public function toggleActivo(int $id)
+    {
+        $modalidad = TipoModalidad::findOrFail($id);
+        $modalidad->activo = !$modalidad->activo;
+        $modalidad->save();
+
+        return response()->json([
+            'ok'     => true,
+            'activo' => $modalidad->activo,
+            'label'  => $modalidad->observacion ?: $modalidad->tipo_modalidad,
+        ]);
     }
 
     /**
@@ -87,6 +108,10 @@ class ModalidadConfigController extends Controller
                 ->whereIn('id', array_map('intval', $rsIndependientes))
                 ->update(['es_independiente' => true]);
         }
+
+        // 3. Guardar regla AFP obligatorio
+        $reglaAfp = $request->has('regla_afp_obligatorio') ? '1' : '0';
+        ConfiguracionBrynex::establecer('regla_afp_obligatorio', $reglaAfp);
 
         return redirect()
             ->route('admin.configuracion.modalidades')

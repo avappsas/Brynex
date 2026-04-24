@@ -153,9 +153,32 @@ class ClienteController extends Controller
                                     ->count(),
         ];
 
+        // ¿Tiene al menos un contrato con RS independiente?
+        // Determina si se muestra el selector de operador en el formulario.
+        $tieneContratoIndependiente = false;
+        if ($contratos->count() > 0) {
+            $rsIds = $contratos->pluck('razon_social_id')->filter()->unique()->values()->toArray();
+            if (!empty($rsIds)) {
+                $tieneContratoIndependiente = DB::table('razones_sociales')
+                    ->whereIn('id', $rsIds)
+                    ->where('es_independiente', true)
+                    ->exists();
+            }
+        }
+
+        // Todos los operadores de planilla (sin filtro de activos: el usuario puede asignar cualquiera)
+        $operadoresPlanilla = DB::table('operadores_planilla')
+            ->whereNull('aliado_id')   // solo globales (no del aliado específico)
+            ->orderBy('orden')
+            ->orderBy('nombre')
+            ->get(['id', 'nombre', 'codigo_ni']);
+
         $bancos = \App\Models\BancoCuenta::activas(session('aliado_id_activo'));
 
-        return view('admin.clientes.form', compact('cliente', 'lookups', 'contratos', 'razonesMap', 'resumen', 'bancos'));
+        return view('admin.clientes.form', compact(
+            'cliente', 'lookups', 'contratos', 'razonesMap', 'resumen', 'bancos',
+            'tieneContratoIndependiente', 'operadoresPlanilla'
+        ));
     }
 
     // ─── Actualizar ───────────────────────────────────────────────────
@@ -217,9 +240,9 @@ class ClienteController extends Controller
             'referido'            => 'nullable|string|max:80',
             'eps_id'              => 'nullable|integer',
             'pension_id'          => 'nullable|integer',
+            'operador_planilla_id' => 'nullable|integer',
             'sisben'              => 'nullable|string|max:50',
             'ips'                 => 'nullable|string|max:100',
-            'urgencias'           => 'nullable|string|max:100',
             'iva'                 => 'nullable|string|max:20',
             'observacion'         => 'nullable|string',
         ], [

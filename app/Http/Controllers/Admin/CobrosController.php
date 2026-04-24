@@ -103,13 +103,21 @@ class CobrosController extends Controller
         ) {
             $fact = $facturas->get($c->cedula);
 
-            // ── ¿Es afiliación? ──────────────────────────────────
-            $esAfil = false;
+            // ── ¿Es afiliación / I Act? ──────────────────────────
+            $esAfil          = false;
+            $esIndActPrimerMes = false;
             if ($c->fecha_ingreso) {
-                $fIng = $c->fecha_ingreso;
-                $esIndep = $c->tipoModalidad?->esIndependiente() ?? false;
+                $fIng   = $c->fecha_ingreso;
+                // I Act = tipo_modalidad_id 11 → cobra afiliación + planilla juntas el primer mes
+                // I Venc = tipo_modalidad_id 10 → solo afiliación el primer mes
+                $esIndAct = (int)($c->tipo_modalidad_id) === 11;
+                $esIndep  = $c->tipoModalidad?->esIndependiente() ?? false;
                 if ((int)$fIng->month === $mes && (int)$fIng->year === $anio) {
-                    if (!$esIndep || !($c->cobra_planilla_primer_mes ?? false)) {
+                    if ($esIndAct) {
+                        // I Act primer mes: cobra afiliación + planilla juntas
+                        $esIndActPrimerMes = true;
+                    } else {
+                        // I Venc, empresa, dependiente: afiliación pura
                         $esAfil = true;
                     }
                 }
@@ -120,8 +128,27 @@ class CobrosController extends Controller
             $ibc     = (float)($c->salario ?? 0);
             $plan    = $c->plan;
 
-            if ($esAfil) {
-                // Afiliación: solo costo_afiliacion + seguro
+            if ($esIndActPrimerMes) {
+                // I ACT primer mes: cobra afiliación + planilla (SS + admon) juntas
+                // Días = activos del mes de ingreso
+                $diasAct = max(1, 30 - (int)$c->fecha_ingreso->day + 1);
+                // Calcular SS con días proporcionales al mes de ingreso
+                $pctEps = ConfiguracionBrynex::pctSaludIndependiente();
+                $pctPen = ConfiguracionBrynex::pctPensionIndependiente();
+                $pctCaj = (float)($c->porcentaje_caja ?? ConfiguracionBrynex::pctCajaIndependienteAlto());
+                $pctArl = ArlTarifa::porcentajePara((int)($c->n_arl ?? 1), $aliadoId);
+                // SS proporcional = IBC * pct * (dias / 30)
+                $vEps  = ($plan?->incluye_eps)    ? $r100($ibc * $pctEps / 100 * $diasAct / 30) : 0;
+                $vArl  = ($plan?->incluye_arl)    ? $r100($ibc * $pctArl / 100 * $diasAct / 30) : 0;
+                $vPen  = ($plan?->incluye_pension) ? $r100($ibc * $pctPen / 100 * $diasAct / 30) : 0;
+                $vCaja = ($plan?->incluye_caja)   ? $r100($ibc * $pctCaj / 100 * $diasAct / 30) : 0;
+                $vSS   = $vEps + $vArl + $vPen + $vCaja;
+                $admon = (int)($c->administracion ?? 0);
+                $seguro= (int)($c->seguro ?? 0);
+                $afiliacion = (int)($c->costo_afiliacion ?? 0);
+                $totalEstimado = $vSS + $admon + $seguro + $afiliacion;
+            } elseif ($esAfil) {
+                // Afiliación pura (I VENC, empresa): solo costo_afiliacion + seguro
                 $vEps = $vArl = $vPen = $vCaja = $vSS = 0;
                 $totalEstimado = (int)(($c->costo_afiliacion ?? 0) + ($c->seguro ?? 0));
             } else {
@@ -154,7 +181,7 @@ class CobrosController extends Controller
             $facturaNumero   = $fact?->numero_factura;
             $facturaId       = $fact?->id;
             $facturaNPlano   = $fact?->n_plano;
-            $facturaSaldoPend= $fact ? (int)$fact->saldo_pendiente : 0;
+            $facturaSaldoPend= 0; // saldo_pendiente eliminado — derivar de saldo_proximo si se necesita
 
             // ── Semáforo ─────────────────────────────────────────
             $ultimaLlamada = $ultimasLlamadas->get($c->id);
@@ -169,7 +196,8 @@ class CobrosController extends Controller
                 default                 => 'rojo',
             };
 
-            $c->es_afil          = $esAfil;
+            $c->es_afil             = $esAfil;
+            $c->es_ind_act_primer_mes = $esIndActPrimerMes; // I ACT: afiliación + planilla
             $c->v_eps            = $vEps;
             $c->v_arl            = $vArl;
             $c->v_pen            = $vPen;

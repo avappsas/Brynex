@@ -37,6 +37,7 @@ class Kernel extends HttpKernel
             \App\Http\Middleware\VerifyCsrfToken::class,
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
             \App\Http\Middleware\SetAlidoContext::class,
+            \App\Http\Middleware\ExpireOldSessionCookie::class,  // limpia cookies viejas del browser
         ],
 
         'api' => [

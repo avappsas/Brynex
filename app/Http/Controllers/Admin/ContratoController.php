@@ -63,7 +63,7 @@ class ContratoController extends Controller
         $cliente = $cedula ? Cliente::where('cedula', $cedula)->first() : null;
 
         return view('admin.contratos.form', array_merge(
-            $this->datosFormulario($alidoId, $cliente, null),
+            $this->datosFormulario($alidoId, $cliente, null, null),
             ['contrato' => new Contrato(), 'cliente' => $cliente]
         ));
     }
@@ -92,27 +92,62 @@ class ContratoController extends Controller
             }
         }
 
-        DB::transaction(function () use ($data) {
-            $contrato = Contrato::create($data);
+        DB::transaction(function () use ($data, &$nuevoContrato) {
+            $nuevoContrato = Contrato::create($data);
             // Generar radicados pendientes según el plan
-            $contrato->load('plan');
-            $contrato->crearRadicadosPendientes();
+            $nuevoContrato->load('plan');
+            $nuevoContrato->crearRadicadosPendientes();
         });
 
+        // Si la RS es independiente y viene operador_planilla_id, guardarlo en el cliente
+        $operadorId = $data['operador_planilla_id'] ?? null;
+        if ($operadorId) {
+            $cedStore = $nuevoContrato->cedula ?? ($data['cedula'] ?? null);
+            if ($cedStore) {
+                $rsIdStore = $nuevoContrato->razon_social_id ?? ($data['razon_social_id'] ?? null);
+                $esIndepRS = $rsIdStore && DB::table('razones_sociales')
+                    ->where('id', $rsIdStore)->value('es_independiente');
+                if ($esIndepRS) {
+                    Cliente::where('cedula', $cedStore)
+                        ->update(['operador_planilla_id' => $operadorId]);
+                }
+            }
+        }
+
+        // Redirigir al cliente del contrato creado
+        $cedula  = $nuevoContrato->cedula ?? ($data['cedula'] ?? null);
+        $cliente = $cedula ? \App\Models\Cliente::where('cedula', $cedula)->first() : null;
+        if ($cliente) {
+            return redirect()->route('admin.clientes.edit', $cliente->id)
+                ->with('success', 'Contrato creado correctamente. Se generaron los radicados pendientes.');
+        }
         return redirect()->route('admin.contratos.index')
-            ->with('success', 'Contrato creado correctamente. Se generaron los radicados pendientes.');
+            ->with('success', 'Contrato creado correctamente.');
     }
 
     // ─── Formulario editar ────────────────────────────────────────────
     public function edit(int $id)
     {
         $alidoId  = session('aliado_id_activo');
-        $contrato = Contrato::where('aliado_id', $alidoId)->with(['cliente','radicados.user'])->findOrFail($id);
+        $contrato = Contrato::where('aliado_id', $alidoId)->with(['cliente','radicados.user','plan'])->findOrFail($id);
         $cliente  = $contrato->cliente;
 
+        // URL de retorno: viene como ?back=... o se toma del referrer
+        $backUrl = request('back') ?: url()->previous();
+
+        // ── Radicados indexados por tipo (eps, arl, caja, pension) ──────
+        $radicadosPorTipo = $contrato->radicados->keyBy('tipo');
+
+        // ── ¿La RS está bloqueada por afiliaciones activas? ─────────────
+        // Si algún radicado está en tramite u ok, no se puede cambiar la RS
+        $estadosBloqueantes = ['tramite', 'ok'];
+        $rsBloquedaPorAfiliacion = $contrato->radicados
+            ->whereIn('estado', $estadosBloqueantes)
+            ->isNotEmpty();
+
         return view('admin.contratos.form', array_merge(
-            $this->datosFormulario($alidoId, $cliente, $contrato->razon_social_id),
-            compact('contrato', 'cliente')
+            $this->datosFormulario($alidoId, $cliente, $contrato->razon_social_id, $contrato->id),
+            compact('contrato', 'cliente', 'backUrl', 'radicadosPorTipo', 'rsBloquedaPorAfiliacion')
         ));
     }
 
@@ -120,8 +155,31 @@ class ContratoController extends Controller
     public function update(Request $request, int $id)
     {
         $alidoId  = session('aliado_id_activo');
-        $contrato = Contrato::where('aliado_id', $alidoId)->findOrFail($id);
+        $contrato = Contrato::where('aliado_id', $alidoId)->with('radicados')->findOrFail($id);
         $data     = $this->validar($request, $contrato);
+
+        // ── Protección RS por afiliaciones activas (tramite u ok) ──────
+        // Si la RS ya tiene afiliaciones en proceso o confirmadas, NO se puede cambiar.
+        // La única vía para desligar es marcar retiro del contrato.
+        $estadosBloqueantes = ['tramite', 'ok'];
+        $rsBloquedaPorAfiliacion = $contrato->radicados
+            ->whereIn('estado', $estadosBloqueantes)
+            ->isNotEmpty();
+
+        if ($rsBloquedaPorAfiliacion &&
+            isset($data['razon_social_id']) &&
+            (int)$data['razon_social_id'] !== (int)$contrato->razon_social_id) {
+            return redirect()
+                ->route('admin.contratos.edit', [$id, 'back' => $request->input('back_url')])
+                ->withErrors(['razon_social_id' => 'No se puede cambiar la Razón Social: ya existe una afiliación en trámite u OK. Para cambiarla, marque retiro del contrato.']);
+        }
+
+        // Si hay afiliaciones activas, preservar también modalidad, plan y fecha_ingreso
+        if ($rsBloquedaPorAfiliacion) {
+            $data['tipo_modalidad_id'] = $contrato->tipo_modalidad_id;
+            $data['plan_id']           = $contrato->plan_id;
+            $data['fecha_ingreso']     = $contrato->fecha_ingreso;
+        }
 
         // Protección razón social: solo admin puede cambiarla si está bloqueada
         if ($contrato->razon_social_bloqueada &&
@@ -148,18 +206,52 @@ class ContratoController extends Controller
             }
         }
 
+        // Proteger plan_id: si llega vacío, conservar el plan original del contrato
+        if (empty($data['plan_id']) && $contrato->plan_id) {
+            $data['plan_id'] = $contrato->plan_id;
+        }
+
+        // Limpiar entidades que no aplican según el plan seleccionado
+        // (evita que queden eps_id/pension_id/arl_id/caja_id con valores cuando el plan no los cubre)
+        $planId = $data['plan_id'] ?? $contrato->plan_id;
+        if ($planId) {
+            $plan = \App\Models\PlanContrato::find($planId);
+            if ($plan) {
+                if (!$plan->incluye_eps)     $data['eps_id']     = null;
+                if (!$plan->incluye_pension) $data['pension_id'] = null;
+                if (!$plan->incluye_arl)     $data['arl_id']     = null;
+                if (!$plan->incluye_caja)    $data['caja_id']    = null;
+            }
+        }
+
         DB::transaction(function () use ($contrato, $data) {
             $oldPlanId = $contrato->plan_id;
             $contrato->update($data);
 
-            // Si cambió el plan, agregar nuevos radicados pendientes
+            // Si cambio el plan, agregar nuevos radicados pendientes
             if (isset($data['plan_id']) && $data['plan_id'] != $oldPlanId) {
                 $contrato->load('plan');
                 $contrato->crearRadicadosPendientes();
             }
         });
 
-        return redirect()->route('admin.contratos.edit', $id)
+        // Si la RS es independiente y viene operador_planilla_id, guardarlo en el cliente
+        $operadorIdUpd = $request->input('operador_planilla_id');
+        if ($operadorIdUpd !== null) {
+            $rsIdUpd = $data['razon_social_id'] ?? $contrato->razon_social_id;
+            $esIndepRSUpd = $rsIdUpd && DB::table('razones_sociales')
+                ->where('id', $rsIdUpd)->value('es_independiente');
+            if ($esIndepRSUpd) {
+                $cedUpd = $data['cedula'] ?? $contrato->cedula;
+                if ($cedUpd) {
+                    Cliente::where('cedula', $cedUpd)
+                        ->update(['operador_planilla_id' => $operadorIdUpd ?: null]);
+                }
+            }
+        }
+
+        return redirect()
+            ->route('admin.contratos.edit', [$id, 'back' => $request->input('back_url')])
             ->with('success', 'Contrato actualizado correctamente.');
     }
 
@@ -182,7 +274,8 @@ class ContratoController extends Controller
             'observacion'      => $request->observacion ?? $contrato->observacion,
         ]);
 
-        return redirect()->route('admin.contratos.edit', $id)
+        return redirect()
+            ->route('admin.contratos.edit', [$id, 'back' => $request->input('back_url')])
             ->with('success', 'Contrato retirado correctamente.');
     }
 
@@ -203,6 +296,7 @@ class ContratoController extends Controller
         $cedula        = $request->get('cedula');
 
         $esIndep = $tipoModalidad && $tipoModalidad->esIndependiente();
+        $esTP    = $tipoModalidad && $tipoModalidad->esTiempoParcial();
 
         // Porcentajes
         $pctEps  = $esIndep ? ConfiguracionBrynex::pctSaludIndependiente()  : ConfiguracionBrynex::pctSaludDependiente();
@@ -220,18 +314,52 @@ class ContratoController extends Controller
         // Redondear HACIA ARRIBA al 100 mas cercano (ceil)
         $r = fn($v) => ceil($v / 100) * 100;
 
-        // Calculos por mes completo
-        $epsMes  = ($plan && $plan->incluye_eps)      ? $r($ibc * $pctEps  / 100) : 0;
-        $arlMes  = ($plan && $plan->incluye_arl)      ? $r($ibc * $pctArl  / 100) : 0;
-        $penMes  = ($plan && $plan->incluye_pension)   ? $r($ibc * $pctPen  / 100) : 0;
-        $cajaMes = ($plan && $plan->incluye_caja)     ? $r($ibc * $pctCaja / 100) : 0;
+        if ($esTP) {
+            // ── Tiempo Parcial: IBC diferente por entidad, sin EPS ─────────
+            // ARL  = SM_completo × tasaArl  (cotiza mes completo, 30 días)
+            // AFP  = SM × factor_afp × pctPen
+            // CAJA = SM × factor_caja × pctCaja (factor_caja ≠ factor_afp en 7-14, 7-21, 14-21)
+            $diasP      = $tipoModalidad->diasPorEntidad();
+            $factorMap  = [7 => 0.25, 14 => 0.50, 21 => 0.75, 30 => 1.00];
+            $factorAfp  = $factorMap[$diasP['afp']]  ?? 1.0;
+            $factorCaja = $factorMap[$diasP['caja']] ?? 1.0;
 
-        // Prorratear por dias cotizados (dias/30); admon y seguro siempre completos
-        $eps  = $dias < 30 ? $r($epsMes  * $dias / 30) : $epsMes;
-        $arl  = $dias < 30 ? $r($arlMes  * $dias / 30) : $arlMes;
-        $pen  = $dias < 30 ? $r($penMes  * $dias / 30) : $penMes;
-        $caja = $dias < 30 ? $r($cajaMes * $dias / 30) : $cajaMes;
-        $ss   = $eps + $arl + $pen + $caja;
+            // Salario mínimo desde ConfiguracionBrynex
+            $sm = (float) ConfiguracionBrynex::obtener('salario_minimo', 1423500);
+
+            $ibcArl  = $sm;
+            $ibcAfp  = round($sm * $factorAfp);
+            $ibcCaja = round($sm * $factorCaja);
+
+            $eps      = 0;
+            $arl      = ($plan && $plan->incluye_arl)     ? $r($ibcArl  * $pctArl  / 100) : 0;
+            $pen      = ($plan && $plan->incluye_pension)  ? $r($ibcAfp  * $pctPen  / 100) : 0;
+            $caja     = ($plan && $plan->incluye_caja)     ? $r($ibcCaja * $pctCaja / 100) : 0;
+            $ss       = $eps + $arl + $pen + $caja;
+            $epsMes   = 0;
+            $arlMes   = $arl;
+            $penMes   = $pen;
+            $cajaMes  = $caja;
+            $diasArl  = $diasP['arl'];
+            $diasAfp  = $diasP['afp'];
+            $diasCaja = $diasP['caja'];
+        } else {
+            // ── Normal: calculos por mes completo ──────────────────────
+            $epsMes  = ($plan && $plan->incluye_eps)      ? $r($ibc * $pctEps  / 100) : 0;
+            $arlMes  = ($plan && $plan->incluye_arl)      ? $r($ibc * $pctArl  / 100) : 0;
+            $penMes  = ($plan && $plan->incluye_pension)   ? $r($ibc * $pctPen  / 100) : 0;
+            $cajaMes = ($plan && $plan->incluye_caja)     ? $r($ibc * $pctCaja / 100) : 0;
+
+            // Prorratear por dias cotizados (dias/30); admon y seguro siempre completos
+            $eps  = $dias < 30 ? $r($epsMes  * $dias / 30) : $epsMes;
+            $arl  = $dias < 30 ? $r($arlMes  * $dias / 30) : $arlMes;
+            $pen  = $dias < 30 ? $r($penMes  * $dias / 30) : $penMes;
+            $caja = $dias < 30 ? $r($cajaMes * $dias / 30) : $cajaMes;
+            $ss   = $eps + $arl + $pen + $caja;
+            $diasArl  = $dias;
+            $diasAfp  = $dias;
+            $diasCaja = $dias;
+        }
 
         // Admon total = administracion + admon_asesor
         $admonTotal = $admon + $admonAsesor;
@@ -247,27 +375,32 @@ class ContratoController extends Controller
         $ibcSugerido = $esIndep ? $r($salario * ConfiguracionBrynex::pctIbcIndependienteSugerido() / 100) : null;
 
         return response()->json([
-            'eps'         => $eps,
-            'arl'         => $arl,
-            'pen'         => $pen,
-            'caja'        => $caja,
-            'ss'          => $ss,
-            'seguro'      => $seguro,
-            'admon'       => $admonTotal,
-            'admonBase'   => $admon,
-            'admonAsesor' => $admonAsesor,
-            'iva'         => $iva,
-            'total'       => $total,
-            'dias'        => $dias,
-            'epsMes'      => $epsMes,
-            'arlMes'      => $arlMes,
-            'penMes'      => $penMes,
-            'cajaMes'     => $cajaMes,
-            'ibcSugerido' => $ibcSugerido,
-            'pctEps'      => $pctEps,
-            'pctPen'      => $pctPen,
-            'pctArl'      => $pctArl,
-            'pctCaja'     => $pctCaja,
+            'eps'               => $eps,
+            'arl'               => $arl,
+            'pen'               => $pen,
+            'caja'              => $caja,
+            'ss'                => $ss,
+            'seguro'            => $seguro,
+            'admon'             => $admonTotal,
+            'admonBase'         => $admon,
+            'admonAsesor'       => $admonAsesor,
+            'iva'               => $iva,
+            'total'             => $total,
+            'dias'              => $dias,
+            'epsMes'            => $epsMes,
+            'arlMes'            => $arlMes,
+            'penMes'            => $penMes,
+            'cajaMes'           => $cajaMes,
+            'ibcSugerido'       => $ibcSugerido,
+            'pctEps'            => $pctEps,
+            'pctPen'            => $pctPen,
+            'pctArl'            => $pctArl,
+            'pctCaja'           => $pctCaja,
+            // Tiempo Parcial
+            'es_tiempo_parcial' => $esTP,
+            'dias_arl'          => $esTP ? $diasArl  : null,
+            'dias_afp'          => $esTP ? $diasAfp  : null,
+            'dias_caja'         => $esTP ? $diasCaja : null,
         ]);
     }
 
@@ -315,7 +448,7 @@ class ContratoController extends Controller
     }
 
     // ─── Datos comunes del formulario ─────────────────────────────────
-    private function datosFormulario(int $alidoId, ?object $cliente = null, ?int $razonSocialId = null): array
+    private function datosFormulario(int $alidoId, ?object $cliente = null, ?int $razonSocialId = null, ?int $excludeContratoId = null): array
     {
         // ARL predeterminada de la razón social (por arl_nit)
         $arlIdRazonSocial = null;
@@ -340,13 +473,39 @@ class ContratoController extends Controller
             ->map(fn($rows) => $rows->pluck('plan_id')->values())
             ->toArray();
 
+        // ── RS ya ocupadas por contratos VIGENTES de este cliente ──────
+        // Se excluye el contrato actual (en edición) para no bloquear su propia RS.
+        $rsOcupadasIds = [];
+        if ($cliente) {
+            $query = Contrato::where('aliado_id', $alidoId)
+                ->where('cedula', $cliente->cedula)
+                ->where('estado', 'vigente')
+                ->whereNotNull('razon_social_id');
+            if ($excludeContratoId) {
+                $query->where('id', '!=', $excludeContratoId);
+            }
+            $rsOcupadasIds = $query->pluck('razon_social_id')
+                ->unique()->values()->toArray();
+        }
+
+        // ── Regla AFP obligatorio ───────────────────────────────────────
+        // Modalidades donde AFP es obligatorio (a menos que el cliente esté exento):
+        //   - Dependiente E (0), I Venc (10), I Act (11)
+        //   - Todas las variantes de Tiempo Parcial (1,2,3,4,-6,-7,-8)
+        //     → el plan "ARL+CCF" sin AFP (APTP) solo es válido para clientes exentos
+        $modalidadesAfpObligatorio = [0, 10, 11, 1, 2, 3, 4, -6, -7, -8];
+
         return [
-            'razonesSociales'           => RazonSocial::where('aliado_id', $alidoId)->orderBy('razon_social')->get(),
+            // Razones sociales: activas primero (ordenadas por nombre), inactivas al final
+            'razonesSociales'           => RazonSocial::where('aliado_id', $alidoId)
+                                            ->orderByRaw("CASE WHEN estado = 'Activa' THEN 0 ELSE 1 END")
+                                            ->orderBy('razon_social')
+                                            ->get(),
             'asesores'                  => Asesor::where('aliado_id', $alidoId)->where('activo', true)->orderBy('nombre')->get(),
             'epsList'                   => Eps::orderBy('nombre')->get(),
             'pensiones'                 => Pension::orderBy('razon_social')->get(),
             'arlList'                   => Arl::orderBy('nombre_arl')->get(),
-            'cajas'                     => Caja::orderBy('nombre')->get(),
+            'cajas'                     => $this->cajasOrdenadas($cliente),
             'tiposModalidad'            => TipoModalidad::activos()->get(),
             'planes'                    => PlanContrato::where('activo', true)->get(),
             'actividades'               => ActividadEconomica::where('activo', true)->orderBy('nombre')->get(),
@@ -368,10 +527,62 @@ class ContratoController extends Controller
             'clienteTipoDoc'            => $cliente?->tipo_doc,
             'clienteEdad'               => $cliente?->edad,
             'clienteGenero'             => $cliente?->genero,
+            // Regla AFP obligatorio
+            'reglaAfpActiva'            => ConfiguracionBrynex::reglaAfpObligatorio(),
+            'modalidadesAfpObligatorio' => $modalidadesAfpObligatorio,
             // Defaults de tarifas
             'defaultTarifas'            => Contrato::tarifasParaAliado($alidoId, null),
             'bancos'                    => BancoCuenta::activas($alidoId),
+            // RS ya usadas (para deshabilitar en el select de creación)
+            'rsOcupadasIds'             => $rsOcupadasIds,
+            // Operador de planilla (todos los globales, para RS independiente)
+            'operadoresPlanilla'        => DB::table('operadores_planilla')
+                                            ->whereNull('aliado_id')
+                                            ->orderBy('orden')
+                                            ->orderBy('nombre')
+                                            ->get(['id', 'nombre', 'codigo_ni']),
+            // Valor actual del operador asignado al cliente
+            'clienteOperadorId'         => $cliente?->operador_planilla_id,
         ];
+    }
+
+    // ─── Cajas ordenadas por departamento del cliente ─────────────────
+    /**
+     * Retorna las cajas de compensación ordenadas así:
+     *   1. Las del departamento del cliente (según municipio_id → ciudades.departamento_id)
+     *   2. El resto, alfabéticamente
+     *
+     * Agrega un atributo virtual 'es_local' para que la vista pueda destacarlas.
+     */
+    private function cajasOrdenadas(?object $cliente): \Illuminate\Support\Collection
+    {
+        // Obtener el departamento del cliente según su municipio_id
+        $deptCliente = null;
+        if ($cliente && $cliente->municipio_id) {
+            $deptCliente = DB::table('ciudades')
+                ->where('id', $cliente->municipio_id)
+                ->value('departamento_id');
+        }
+
+        $cajas = Caja::orderBy('nombre')->get();
+
+        if (!$deptCliente) {
+            // Sin departamento conocido: orden alfabético normal
+            return $cajas->each(fn($c) => $c->es_local = false);
+        }
+
+        // Separar cajas del departamento del cliente y el resto
+        $locales  = $cajas->where('id_dept', $deptCliente)->values();
+        $resto    = $cajas->where('id_dept', '!=', $deptCliente)
+                          ->whereNotNull('id_dept')
+                          ->merge($cajas->whereNull('id_dept'))
+                          ->sortBy('nombre')
+                          ->values();
+
+        $locales->each(fn($c) => $c->es_local = true);
+        $resto->each(fn($c)   => $c->es_local = false);
+
+        return $locales->merge($resto);
     }
 
     // ─── Detectar exención de AFP del cliente ─────────────────────────
@@ -434,6 +645,7 @@ class ContratoController extends Controller
             'np'                   => 'nullable|string|max:255',
             'observacion'          => 'nullable|string',
             'observacion_afiliacion' => 'nullable|string',
+            'operador_planilla_id'      => 'nullable|integer',
             'cobra_planilla_primer_mes' => 'boolean',
         ]);
     }

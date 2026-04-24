@@ -106,6 +106,30 @@
             gap: 0.85rem;
         }
 
+        /* ── Dropdown de usuario ────────────────────────────────────────── */
+        .user-dropdown {
+            position: relative;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .user-dropdown-trigger {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            padding: 0.35rem 0.65rem;
+            border-radius: 10px;
+            border: 1px solid rgba(255,255,255,0.1);
+            background: rgba(255,255,255,0.05);
+            transition: background 0.15s, border-color 0.15s;
+        }
+
+        .user-dropdown-trigger:hover,
+        .user-dropdown.open .user-dropdown-trigger {
+            background: rgba(59,130,246,0.15);
+            border-color: rgba(59,130,246,0.35);
+        }
+
         .user-info {
             text-align: right;
         }
@@ -122,23 +146,138 @@
             text-transform: capitalize;
         }
 
-        .btn-salir {
-            background: rgba(239,68,68,0.15);
-            border: 1px solid rgba(239,68,68,0.3);
-            color: #fca5a5;
-            padding: 0.4rem 0.9rem;
-            border-radius: 8px;
-            font-size: 0.78rem;
-            font-weight: 600;
-            cursor: pointer;
-            text-decoration: none;
-            transition: background 0.15s;
-            display: flex;
-            align-items: center;
-            gap: 0.3rem;
+        .user-arrow {
+            font-size: 0.55rem;
+            color: rgba(255,255,255,0.4);
+            transition: transform 0.2s;
         }
 
-        .btn-salir:hover { background: rgba(239,68,68,0.3); }
+        .user-dropdown.open .user-arrow {
+            transform: rotate(180deg);
+            color: #93c5fd;
+        }
+
+        /* Panel desplegable de usuario */
+        .user-dropdown-panel {
+            position: absolute;
+            top: calc(100% + 8px);
+            right: 0;
+            min-width: 200px;
+            background: linear-gradient(135deg, #0d2550 0%, #0a1628 100%);
+            border: 1px solid rgba(59,130,246,0.25);
+            border-radius: 10px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.45), 0 2px 8px rgba(0,0,0,0.3);
+            padding: 0.4rem;
+            z-index: 9999;
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(-6px);
+            transition: opacity 0.18s ease, transform 0.18s ease, visibility 0.18s;
+            pointer-events: none;
+        }
+
+        .user-dropdown.open .user-dropdown-panel {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+            pointer-events: all;
+        }
+
+        /* Flecha decorativa del panel de usuario */
+        .user-dropdown-panel::before {
+            content: '';
+            position: absolute;
+            top: -6px;
+            right: 18px;
+            width: 0;
+            height: 0;
+            border-left: 6px solid transparent;
+            border-right: 6px solid transparent;
+            border-bottom: 6px solid rgba(59,130,246,0.25);
+        }
+
+        .user-dropdown-panel::after {
+            content: '';
+            position: absolute;
+            top: -5px;
+            right: 19px;
+            width: 0;
+            height: 0;
+            border-left: 5px solid transparent;
+            border-right: 5px solid transparent;
+            border-bottom: 5px solid #0d2550;
+        }
+
+        /* Ítem del panel de usuario */
+        .user-panel-item {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            padding: 0.45rem 0.65rem;
+            border-radius: 7px;
+            text-decoration: none;
+            color: rgba(255,255,255,0.75);
+            font-size: 0.78rem;
+            font-weight: 500;
+            transition: background 0.12s, color 0.12s;
+            white-space: nowrap;
+            width: 100%;
+            background: none;
+            border: none;
+            cursor: pointer;
+            text-align: left;
+        }
+
+        .user-panel-item:hover {
+            background: rgba(59,130,246,0.2);
+            color: #93c5fd;
+        }
+
+        .user-panel-item.danger {
+            color: #fca5a5;
+        }
+
+        .user-panel-item.danger:hover {
+            background: rgba(239,68,68,0.2);
+            color: #fca5a5;
+        }
+
+        .user-panel-item .upi {
+            width: 22px;
+            height: 22px;
+            border-radius: 5px;
+            background: rgba(255,255,255,0.06);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.85rem;
+            flex-shrink: 0;
+        }
+
+        .user-panel-sep {
+            height: 1px;
+            background: rgba(255,255,255,0.07);
+            margin: 0.3rem 0;
+        }
+
+        .user-panel-header {
+            padding: 0.3rem 0.65rem 0.25rem;
+            font-size: 0.7rem;
+            color: rgba(255,255,255,0.4);
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .user-panel-header strong {
+            color: #93c5fd;
+            font-size: 0.78rem;
+        }
+
+        /* Mantener btn-salir para compatibilidad si existe en otra parte */
+        .btn-salir {
+            display: none;
+        }
 
         /* ── Menú de iconos (integrado en header) ────────────────────────── */
         .menu-iconos {
@@ -436,6 +575,13 @@
             color: #065f46;
         }
 
+        .flash.warning {
+            background: rgba(245,158,11,0.12);
+            border: 1px solid rgba(245,158,11,0.4);
+            color: #92400e;
+            font-weight: 600;
+        }
+
         /* ── Responsive ─────────────────────────────────────────────────── */
         @media (max-width: 640px) {
             .user-info { display: none; }
@@ -446,13 +592,7 @@
 </head>
 <body>
 
-    {{-- Barra BryNex: solo visible para usuarios BryNex --}}
-    @if (Auth::check() && Auth::user()->es_brynex)
-    <div class="bar-brynex">
-        <span>🔵 Modo BryNex · Operando como: <span class="aliado-actual">{{ $alidoActivo->nombre ?? 'Sin aliado' }}</span></span>
-        <a href="{{ route('aliado.selector') }}" class="btn-cambiar">⇄ Cambiar aliado</a>
-    </div>
-    @endif
+    {{-- Barra BryNex eliminada: opciones movidas al dropdown del usuario --}}
 
     {{-- Header con logo del aliado activo --}}
     <header class="header">
@@ -609,14 +749,33 @@
         </nav>
 
         <div class="header-user">
-            <div class="user-info">
-                <div class="nombre">{{ Auth::user()->nombre }}</div>
-                <div class="rol">{{ Auth::user()->getRoleNames()->first() ?? 'usuario' }}</div>
+            {{-- Dropdown de usuario con opciones Salir y Cambiar Aliado --}}
+            <div class="user-dropdown" id="userDropdown">
+                <div class="user-dropdown-trigger" onclick="toggleUserDropdown()">
+                    <div class="user-info">
+                        <div class="nombre">{{ Auth::user()->nombre }}</div>
+                        <div class="rol">{{ Auth::user()->getRoleNames()->first() ?? 'usuario' }}</div>
+                    </div>
+                    <span class="user-arrow">▼</span>
+                </div>
+                <div class="user-dropdown-panel">
+                    <div class="user-panel-header">
+                        👤 <strong>{{ Auth::user()->nombre }}</strong>
+                    </div>
+                    <div class="user-panel-sep"></div>
+
+                    @if (Auth::check() && Auth::user()->es_brynex)
+                    <a href="{{ route('aliado.selector') }}" class="user-panel-item">
+                        <span class="upi">⇄</span> Cambiar aliado
+                    </a>
+                    <div class="user-panel-sep"></div>
+                    @endif
+
+                    <button type="button" class="user-panel-item danger" onclick="cerrarSesion()">
+                        <span class="upi">⏻</span> Salir del sistema
+                    </button>
+                </div>
             </div>
-            <form method="POST" action="{{ route('logout') }}">
-                @csrf
-                <button type="submit" class="btn-salir">⏻ Salir</button>
-            </form>
         </div>
     </header>
 
@@ -627,10 +786,66 @@
         @if (session('success'))
             <div class="flash success">✅ {{ session('success') }}</div>
         @endif
+        @if (session('warning'))
+            <div class="flash warning">{{ session('warning') }}</div>
+        @endif
 
         @yield('contenido')
     </main>
 
+    <script>
+        // ── Dropdown de usuario ────────────────────────────────────────
+        function toggleUserDropdown() {
+            const dd = document.getElementById('userDropdown');
+            dd.classList.toggle('open');
+        }
+
+        // Cerrar al hacer clic fuera
+        document.addEventListener('click', function(e) {
+            const dd = document.getElementById('userDropdown');
+            if (dd && !dd.contains(e.target)) {
+                dd.classList.remove('open');
+            }
+        });
+
+        // ── Cerrar sesión — usa CSRF del meta-tag, no del form (evita error 419) ──
+        function cerrarSesion() {
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = '{{ route('logout') }}';
+            form.style.display = 'none';
+
+            const csrf = document.createElement('input');
+            csrf.type  = 'hidden';
+            csrf.name  = '_token';
+            csrf.value = document.querySelector('meta[name="csrf-token"]')?.content
+                         || '{{ csrf_token() }}';
+            form.appendChild(csrf);
+
+            document.body.appendChild(form);
+            form.submit();
+        }
+        // ── Refresh automático del CSRF token (evita error 419 en forms largos) ──
+        // Hace un GET liviano cada 20 minutos para mantener el token fresco.
+        (function csrfKeepAlive() {
+            const INTERVAL = 20 * 60 * 1000; // 20 minutos
+            setInterval(async function() {
+                try {
+                    const r = await fetch('/sanctum/csrf-cookie', { credentials: 'same-origin' });
+                    if (!r.ok) return; // silencioso si falla
+                    // Actualizar el meta-tag con el token de la cookie XSRF-TOKEN
+                    const match = document.cookie.match(/XSRF-TOKEN=([^;]+)/);
+                    if (match) {
+                        const token = decodeURIComponent(match[1]);
+                        const meta = document.querySelector('meta[name="csrf-token"]');
+                        if (meta) meta.content = token;
+                        // También actualizar todos los inputs _token en el DOM
+                        document.querySelectorAll('input[name="_token"]').forEach(el => el.value = token);
+                    }
+                } catch(e) { /* silencioso */ }
+            }, INTERVAL);
+        })();
+    </script>
     @stack('scripts')
 </body>
 </html>

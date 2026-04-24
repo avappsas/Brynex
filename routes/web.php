@@ -10,6 +10,15 @@ Route::get('/login', [LoginController::class, 'showLogin']);
 Route::post('/login',  [LoginController::class, 'login'])->name('login.submit');
 Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
 
+// ─── CSRF token fresco (puede llamarse sin auth, pero solo desde session activa) ──
+// El JS lo usa para renovar el token antes de peticiones PATCH/POST críticas.
+Route::get('/csrf-token', function () {
+    return response()->json([
+        'token' => csrf_token(),
+    ]);
+})->name('csrf.token')->middleware('web');
+
+
 // ─── Rutas protegidas ──────────────────────────────────────────────────────
 Route::middleware('auth')->group(function () {
 
@@ -72,6 +81,7 @@ Route::middleware('auth')->group(function () {
         $cac = \App\Http\Controllers\Admin\ClaveAccesoController::class;
         Route::get('clave-accesos',                        [$cac, 'index'])             ->name('clave_accesos.index');
         Route::get('clave-accesos/razon-social/{id}',      [$cac, 'indexRazonSocial'])  ->name('clave_accesos.razon_social');
+        Route::get('clave-accesos/empresa/{id}',           [$cac, 'indexEmpresa'])      ->name('clave_accesos.empresa');
         Route::post('clave-accesos',                       [$cac, 'store'])             ->name('clave_accesos.store');
         Route::put('clave-accesos/{id}',                   [$cac, 'update'])            ->name('clave_accesos.update');
         Route::delete('clave-accesos/{id}',                [$cac, 'destroy'])           ->name('clave_accesos.destroy');
@@ -100,8 +110,15 @@ Route::middleware('auth')->group(function () {
         Route::delete('configuracion/cuentas/{id}',[\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'destroyCuenta'])->name('configuracion.cuentas.destroy');
         // Configuración de modalidades → planes
         $mc = \App\Http\Controllers\Admin\ModalidadConfigController::class;
-        Route::get('configuracion/modalidades',  [$mc, 'index'])   ->name('configuracion.modalidades');
-        Route::post('configuracion/modalidades', [$mc, 'guardar']) ->name('configuracion.modalidades.guardar');
+        Route::get('configuracion/modalidades',          [$mc, 'index'])        ->name('configuracion.modalidades');
+        Route::post('configuracion/modalidades',          [$mc, 'guardar'])      ->name('configuracion.modalidades.guardar');
+        Route::patch('configuracion/modalidades/{id}/toggle', [$mc, 'toggleActivo']) ->name('configuracion.modalidades.toggle');
+
+        // Configuración de operadores de planilla SS por aliado
+        $opc = \App\Http\Controllers\Admin\OperadorPlanillaConfigController::class;
+        Route::get('configuracion/operadores-planilla',              [$opc, 'index'])         ->name('configuracion.operadores.index');
+        Route::patch('configuracion/operadores-planilla/{id}/toggle',[$opc, 'toggle'])        ->name('configuracion.operadores.toggle');
+        Route::post('configuracion/operadores-planilla/orden',       [$opc, 'guardarOrden'])  ->name('configuracion.operadores.orden');
 
         // CRUD de Razones Sociales (empresas de afiliación) por aliado
         $rsc = \App\Http\Controllers\Admin\RazonSocialController::class;
