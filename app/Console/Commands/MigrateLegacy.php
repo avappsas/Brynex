@@ -253,9 +253,20 @@ class MigrateLegacy extends Command
             $aliadoId = $this->ids[$key] ?? null;
             if (!$aliadoId) { $this->warn("  ⚠ Aliado '$key' no encontrado, se omite"); continue; }
 
+            // Cargar id_legacy ya migrados para reanudar
+            $yaExisten = DB::table('users')
+                ->where('aliado_id', $aliadoId)
+                ->pluck('id_legacy')->flip()->all();
+            $existingCount = count($yaExisten);
+            if ($existingCount > 0) {
+                $this->line("  ℹ  $db: $existingCount usuarios ya migrados, insertando faltantes...");
+            }
+
             $rows  = DB::connection('sqlsrv_legacy')->select("SELECT * FROM [$db].dbo.usuarios WHERE Id_usuario IS NOT NULL");
-            $count = 0;
+            $count = 0; $skipped = 0;
             foreach ($rows as $r) {
+                if (isset($yaExisten[$r->Id_usuario])) { $skipped++; continue; }
+
                 $login  = trim($r->Login ?? 'usuario');
                 $cedula = is_numeric($r->Cedula) && $r->Cedula > 0 ? (string)(int)$r->Cedula : null;
                 DB::table('users')->insert([
@@ -272,7 +283,7 @@ class MigrateLegacy extends Command
                 ]);
                 $count++;
             }
-            $this->info("  ✅ $db → $count usuarios");
+            $this->info("  ✅ $db → $count insertados, $skipped omitidos");
         }
         DB::statement('ALTER TABLE users WITH CHECK CHECK CONSTRAINT ALL');
         $this->info('  📊 Total users: ' . DB::table('users')->count());
@@ -290,9 +301,14 @@ class MigrateLegacy extends Command
             $aliadoId = $this->ids[$key] ?? null;
             if (!$aliadoId) { $this->warn("  ⚠ Aliado '$key' no encontrado, se omite"); continue; }
 
+            $yaExisten = DB::table('empresas')->where('aliado_id', $aliadoId)
+                ->pluck('id_legacy')->flip()->all();
+            if (count($yaExisten) > 0) $this->line("  ℹ  $db: " . count($yaExisten) . " empresas ya migradas, insertando faltantes...");
+
             $rows  = DB::connection('sqlsrv_legacy')->select("SELECT * FROM [$db].dbo.Empresas");
-            $count = 0;
+            $count = 0; $skipped = 0;
             foreach ($rows as $r) {
+                if (isset($yaExisten[$r->Id])) { $skipped++; continue; }
                 DB::table('empresas')->insert([
                     'id'                  => $nextId++,
                     'aliado_id'           => $aliadoId,
@@ -314,7 +330,7 @@ class MigrateLegacy extends Command
                 ]);
                 $count++;
             }
-            $this->info("  ✅ $db → $count empresas");
+            $this->info("  ✅ $db → $count insertadas, $skipped omitidas");
         }
         DB::statement('ALTER TABLE empresas WITH CHECK CHECK CONSTRAINT ALL');
         $this->info('  📊 Total empresas: ' . DB::table('empresas')->count());
@@ -331,11 +347,14 @@ class MigrateLegacy extends Command
             if (!$aliadoId) continue;
 
             // Asesores
+            $asesoresExisten = DB::table('asesores')->where('aliado_id', $aliadoId)
+                ->pluck('id_legacy')->flip()->all();
             $rows  = DB::connection('sqlsrv_legacy')->select("SELECT * FROM [$db].dbo.Asesores");
-            $count = 0;
+            $count = 0; $skipped = 0;
             foreach ($rows as $r) {
                 $id = $this->col($r, 'ID');
-                if ($id === null) continue; // saltar filas sin ID
+                if ($id === null) continue;
+                if (isset($asesoresExisten[$id])) { $skipped++; continue; }
                 DB::table('asesores')->insert([
                     'aliado_id'          => $aliadoId,
                     'id_legacy'          => $id,
@@ -354,14 +373,17 @@ class MigrateLegacy extends Command
                 ]);
                 $count++;
             }
-            $this->info("  ✅ $db → $count asesores");
+            $this->info("  ✅ $db → $count asesores, $skipped omitidos");
 
             // Bancos
+            $bancosExisten = DB::table('banco_cuentas')->where('aliado_id', $aliadoId)
+                ->pluck('id_legacy')->flip()->all();
             $rows  = DB::connection('sqlsrv_legacy')->select("SELECT * FROM [$db].dbo.Bancos_cuentas");
-            $count = 0;
+            $count = 0; $skipped = 0;
             foreach ($rows as $r) {
                 $id = $this->col($r, 'ID');
                 if ($id === null) continue;
+                if (isset($bancosExisten[$id])) { $skipped++; continue; }
                 DB::table('banco_cuentas')->insert([
                     'aliado_id'     => $aliadoId,
                     'id_legacy'     => $id,
@@ -376,7 +398,7 @@ class MigrateLegacy extends Command
                 ]);
                 $count++;
             }
-            $this->info("  ✅ $db → $count cuentas bancarias");
+            $this->info("  ✅ $db → $count cuentas bancarias, $skipped omitidas");
         }
 
         DB::statement('ALTER TABLE asesores WITH CHECK CHECK CONSTRAINT ALL');
