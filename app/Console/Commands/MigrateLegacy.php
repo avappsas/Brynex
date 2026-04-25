@@ -1105,42 +1105,65 @@ class MigrateLegacy extends Command
         DB::statement('ALTER TABLE gastos WITH CHECK CHECK CONSTRAINT ALL');
         $this->info('  📊 Total gastos: ' . DB::table('gastos')->count());
     }
-    // ─── FIX-MODALIDAD: actualiza contratos ya migrados sin tipo_modalidad_id ─────
-    // Recorre contratos donde tipo_modalidad_id IS NULL o = 0 y lo infiere por entidades.
+    // ─── FIX-MODALIDAD: copia el campo Tipo del legacy directamente ──────────────
+    // Para TODOS los contratos: busca en la BD legacy por id_legacy y copia Tipo
+    // exactamente tal como viene. Solo usa inferencia como último fallback.
     private function stepFixModalidad(): void
     {
-        $contratos = DB::table('contratos')
-            ->where(function ($q) {
-                $q->whereNull('tipo_modalidad_id')
-                  ->orWhere('tipo_modalidad_id', 0);
-            })
-            ->select('id', 'aliado_id', 'eps_id', 'arl_id', 'pension_id', 'caja_id', 'tipo_modalidad_id')
-            ->get();
+        $validIds = [-100,-8,-7,-6,-4,-1,0,1,2,3,4,5,6,7,8,10,11,12,13];
+        $updated  = 0; $fallback = 0; $sin_dato = 0;
 
-        $nullCount = $contratos->whereNull('tipo_modalidad_id')->count();
-        $zeroCount = $contratos->where('tipo_modalidad_id', 0)->count();
-        $this->line("  ℹ  Contratos NULL: $nullCount | tipo 0 (dependientes): $zeroCount | Total a revisar: {$contratos->count()}");
+        foreach ($this->dbs as $db => $key) {
+            $aliadoId = $this->ids[$key] ?? null;
+            if (!$aliadoId) continue;
 
-        $updated = 0; $sin_modalidad = 0;
-        foreach ($contratos as $c) {
-            $modalidadId = $this->resolveTipoModalidad(
-                null,           // ignorar Tipo legacy, re-inferir siempre por entidades
-                $c->eps_id,
-                $c->arl_id,
-                $c->pension_id,
-                $c->caja_id
-            );
-            if ($modalidadId !== null) {
-                DB::table('contratos')->where('id', $c->id)
-                    ->update(['tipo_modalidad_id' => $modalidadId]);
-                $updated++;
-            } else {
-                $sin_modalidad++;
+            // Cargar todos los Tipo del legacy para esta BD
+            $legacyTipos = DB::connection('sqlsrv_legacy')
+                ->select("SELECT Id, Tipo FROM [$db].dbo.Contratos WHERE Id IS NOT NULL");
+
+            // Indexar por Id
+            $tipoMap = [];
+            foreach ($legacyTipos as $lt) {
+                $tipoMap[$lt->Id] = $lt->Tipo;
             }
+
+            // Cargar todos los contratos BryNex de este aliado con su id_legacy
+            $contratos = DB::table('contratos')
+                ->where('aliado_id', $aliadoId)
+                ->whereNotNull('id_legacy')
+                ->select('id', 'id_legacy', 'eps_id', 'arl_id', 'pension_id', 'caja_id')
+                ->get();
+
+            $this->line("  ⏳ $db: {$contratos->count()} contratos a actualizar...");
+
+            foreach ($contratos as $c) {
+                $tipoLegacy = $tipoMap[$c->id_legacy] ?? null;
+
+                // Prioridad 1: Tipo del legacy si es ID válido del catálogo
+                if ($tipoLegacy !== null && is_numeric($tipoLegacy) && in_array((int)$tipoLegacy, $validIds, true)) {
+                    DB::table('contratos')->where('id', $c->id)
+                        ->update(['tipo_modalidad_id' => (int)$tipoLegacy]);
+                    $updated++;
+                } else {
+                    // Fallback: inferir por entidades
+                    $modalidadId = $this->resolveTipoModalidad(
+                        null, $c->eps_id, $c->arl_id, $c->pension_id, $c->caja_id
+                    );
+                    if ($modalidadId !== null) {
+                        DB::table('contratos')->where('id', $c->id)
+                            ->update(['tipo_modalidad_id' => $modalidadId]);
+                        $fallback++;
+                    } else {
+                        $sin_dato++;
+                    }
+                }
+            }
+            $this->info("  ✅ $db → desde legacy: $updated | fallback inferido: $fallback | sin dato: $sin_dato");
+            $updated = 0; $fallback = 0; $sin_dato = 0;
         }
-        $this->info("  ✅ $updated contratos actualizados | $sin_modalidad sin entidades suficientes para inferir");
+
         $still = DB::table('contratos')->whereNull('tipo_modalidad_id')->count();
-        $this->line("  ℹ  Aún con NULL: $still");
+        $this->line("  ℹ  Total contratos aún sin modalidad: $still");
     }
 
     // ─── FIX-PLAN: asigna plan_id a contratos migrados que no lo tienen ──────────
