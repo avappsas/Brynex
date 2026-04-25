@@ -102,17 +102,26 @@ class Plano extends BaseModel
             $anioPlan = $factura->anio;
         }
 
-        // fecha_ing: en afiliación siempre; en planilla solo si es el primer mes de planilla
-        // (el mes de ingreso fue el mes anterior al facturado → primera vez en planilla).
+        // fecha_ing: en afiliación siempre; en planilla solo el primer mes de cotización.
+        // • Independiente mes actual (tipo 11): fecha_ingreso = mes facturado (paga el mismo mes)
+        // • Dependiente / I Vencido:            fecha_ingreso = mes ANTERIOR al facturado
         $fechaIng = null;
         if ($esAfiliacion) {
             $fechaIng = $contrato->fecha_ingreso;
         } elseif ($contrato->fecha_ingreso) {
-            $fIng     = $contrato->fecha_ingreso;
-            $mesPrev  = $factura->mes > 1 ? $factura->mes - 1 : 12;
-            $anioPrev = $factura->mes > 1 ? $factura->anio    : $factura->anio - 1;
-            if ((int)$fIng->month === $mesPrev && (int)$fIng->year === $anioPrev) {
-                $fechaIng = $fIng; // primer plano del contrato
+            $fIng = $contrato->fecha_ingreso;
+            if ($esIndepMesActual) {
+                // Independiente mes actual: primer plano cuando fecha_ingreso = mes facturado
+                if ((int)$fIng->month === (int)$factura->mes && (int)$fIng->year === (int)$factura->anio) {
+                    $fechaIng = $fIng;
+                }
+            } else {
+                // Dependiente / I Vencido: primer plano cuando fecha_ingreso = mes anterior
+                $mesPrev  = $factura->mes > 1 ? $factura->mes - 1 : 12;
+                $anioPrev = $factura->mes > 1 ? $factura->anio    : $factura->anio - 1;
+                if ((int)$fIng->month === $mesPrev && (int)$fIng->year === $anioPrev) {
+                    $fechaIng = $fIng;
+                }
             }
         }
 

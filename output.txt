@@ -1,0 +1,62 @@
+Error: SQLSTATE[HY000] Unable to connect: TDS server is unavailable or does not exist (207.244.249.160) (severity 9) (Connection: sqlsrv, SQL: -- 1. Limpiar la tabla y reiniciar el autoincremental (IDENTITY)
+-- Nota: Si hay claves foráneas (FK) que dependen de 'empresas',
+-- TRUNCATE fallará. En ese caso usamos DELETE FROM seguido de DBCC CHECKIDENT.
+-- Desactivar FK checks temporalmente
+ALTER TABLE [dbo].[empresas] NOCHECK CONSTRAINT ALL;
+
+DELETE FROM [dbo].[empresas];
+DBCC CHECKIDENT ('[dbo].[empresas]', RESEED, 0);
+
+-- 2. Agregar la columna id_legacy (si no existe)
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('[dbo].[empresas]') AND name = 'id_legacy')
+BEGIN
+    ALTER TABLE [dbo].[empresas] ADD id_legacy INT NULL;
+END;
+
+-- 3 y 4. Migrar los datos desde Brygar_BD a BryNex
+-- El nuevo ID será incremental automáticamente porque no lo incluimos en el INSERT 
+-- Omitimos 'id' para que se genere solo y guardamos el Id original en 'id_legacy'.
+
+-- Reemplazar el valor de @aliado_id con el ID correcto de Brygar en tu tabla 'aliados' (ej: 1).
+DECLARE @aliado_id BIGINT = (SELECT id FROM [dbo].[aliados] WHERE nit = '901918923');
+
+INSERT INTO [dbo].[empresas] (
+     [nit]
+    ,[empresa]
+    ,[contacto]
+    ,[telefono]
+    ,[celular]
+    ,[direccion]
+    ,[observacion]
+    ,[cliente_de]
+    ,[tipo_facturacion]
+    ,[iva]
+    ,[correo]
+    ,[actividad_economica]
+    ,[aliado_id]
+    ,[created_at]
+    ,[updated_at]
+    ,[id_legacy]
+)
+SELECT 
+     TRY_CAST([NIT] AS BIGINT)
+    ,ISNULL([Empresa], '')
+    ,ISNULL([Contacto], '')
+    ,ISNULL([Telefono], '')
+    ,ISNULL([Celular], '')
+    ,ISNULL([Direccion], '')
+    ,ISNULL([Observacion], '')
+    ,ISNULL([Cliente_De], '')
+    ,ISNULL([Tipo_Facturacion], '')
+    ,ISNULL([IVA], '')
+    ,ISNULL([Correo], '')
+    ,CAST([Actividad_economica] AS NVARCHAR(MAX))
+    ,@aliado_id
+    ,GETDATE() -- created_at
+    ,GETDATE() -- updated_at
+    ,[Id]      -- id_legacy
+FROM [Brygar_BD].[dbo].[Empresas];
+
+-- Reactivar FK
+ALTER TABLE [dbo].[empresas] WITH CHECK CHECK CONSTRAINT ALL;
+)

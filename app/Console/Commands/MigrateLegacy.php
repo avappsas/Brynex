@@ -31,13 +31,20 @@ class MigrateLegacy extends Command
         $this->loadAliados();
 
         $steps = [
-            'prep' => fn() => $this->stepPrep(),
-            '01'   => fn() => $this->step01_RazonesSociales(),
-            '02'   => fn() => $this->step02_Usuarios(),
-            '03'   => fn() => $this->step03_Empresas(),
-            '04'   => fn() => $this->step04_AsesoresBancos(),
-            '05'   => fn() => $this->step05_Clientes(),
-            '06'   => fn() => $this->step06_Contratos(),
+            'prep'        => fn() => $this->stepPrep(),
+            'fix-aliados' => fn() => $this->stepFixAliados(),
+            '01'          => fn() => $this->step01_RazonesSociales(),
+            '02'          => fn() => $this->step02_Usuarios(),
+            '03'          => fn() => $this->step03_Empresas(),
+            '04'          => fn() => $this->step04_AsesoresBancos(),
+            '05'          => fn() => $this->step05_Clientes(),
+            '06'          => fn() => $this->step06_Contratos(),
+            '07'          => fn() => $this->step07_Facturas(),
+            '08'          => fn() => $this->step08_Beneficiarios(),
+            '09'          => fn() => $this->step09_Planos(),
+            '10'          => fn() => $this->step10_Abonos(),
+            '11'          => fn() => $this->step11_DocumentosCliente(),
+            '12'          => fn() => $this->step12_Gastos(),
         ];
 
         if ($step === 'all') {
@@ -58,16 +65,31 @@ class MigrateLegacy extends Command
 
     private function loadAliados(): void
     {
-        $aliados = DB::table('aliados')->get(['id', 'nombre', 'nit']);
-        foreach ($aliados as $a) {
-            if ($a->nit === '901918923') $this->ids['brygar']    = $a->id;
-            if ($a->nombre === 'GiMave Integral') $this->ids['gimave']    = $a->id;
-            if ($a->nombre === 'Grupo Fecop')     $this->ids['fecop']     = $a->id;
-            if ($a->nombre === 'Luis Lopez')      $this->ids['luislopez'] = $a->id;
-            if ($a->nombre === 'Mave Anderson')   $this->ids['mave']      = $a->id;
-            if ($a->nombre === 'SS Faga')         $this->ids['faga']      = $a->id;
+        $attempts = 0;
+        $maxAttempts = 5;
+
+        while ($attempts < $maxAttempts) {
+            try {
+                $aliados = DB::table('aliados')->get(['id', 'nombre', 'nit']);
+                foreach ($aliados as $a) {
+                    if ($a->nit === '901918923')      $this->ids['brygar']    = $a->id;
+                    if ($a->nombre === 'GiMave Integral') $this->ids['gimave']    = $a->id;
+                    if ($a->nombre === 'Grupo Fecop')     $this->ids['fecop']     = $a->id;
+                    if ($a->nombre === 'Luis Lopez')      $this->ids['luislopez'] = $a->id;
+                    if ($a->nombre === 'Mave Anderson')   $this->ids['mave']      = $a->id;
+                    if ($a->nombre === 'SS Faga')         $this->ids['faga']      = $a->id;
+                }
+                $this->line('IDs aliados: ' . json_encode($this->ids));
+                return; // éxito
+            } catch (\Exception $e) {
+                $attempts++;
+                if ($attempts >= $maxAttempts) {
+                    throw $e; // falló todos los intentos
+                }
+                $this->warn("  ⚠ Conexión fallida (intento $attempts/$maxAttempts), reintentando en 3s...");
+                sleep(3);
+            }
         }
-        $this->line('IDs aliados: ' . json_encode($this->ids));
     }
 
     // ─── PASO PREP ───────────────────────────────────────────────────────────
@@ -87,26 +109,35 @@ class MigrateLegacy extends Command
             'saldos_banco','cuadres',
         ];
         foreach ($tables as $t) {
-            DB::statement("DELETE FROM $t");
-            $this->line("  🗑  $t vaciada");
+            $exists = DB::select("SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = ?", [$t]);
+            if ($exists[0]->cnt) {
+                DB::statement("DELETE FROM $t");
+                $this->line("  🗑  $t vaciada");
+            } else {
+                $this->warn("  ⚠  $t no existe, se omite");
+            }
         }
 
         DB::statement('EXEC sp_MSforeachtable \'ALTER TABLE ? WITH CHECK CHECK CONSTRAINT ALL\'');
 
         // Insertar aliados si no existen
+        // ⚠ Los aliados sin NIT real usan un NIT ficticio único (LEGACY_XXX)
+        //   para evitar la restricción UNIQUE(nit) con múltiples NULLs en SQL Server
         $aliados = [
-            ['nombre' => 'Brygar',        'nit' => '901918923', 'razon_social' => 'Brygar SAS'],
-            ['nombre' => 'GiMave Integral','nit' => null,        'razon_social' => 'GiMave Integral'],
-            ['nombre' => 'Grupo Fecop',   'nit' => null,        'razon_social' => 'Grupo Fecop'],
-            ['nombre' => 'Luis Lopez',    'nit' => null,        'razon_social' => 'Luis Lopez'],
-            ['nombre' => 'Mave Anderson', 'nit' => null,        'razon_social' => 'Mave Anderson'],
-            ['nombre' => 'SS Faga',       'nit' => null,        'razon_social' => 'SS Faga'],
+            ['nombre' => 'Brygar',         'nit' => '901918923',  'razon_social' => 'Brygar SAS'],
+            ['nombre' => 'GiMave Integral', 'nit' => 'LEGACY_002', 'razon_social' => 'GiMave Integral'],
+            ['nombre' => 'Grupo Fecop',    'nit' => 'LEGACY_003',  'razon_social' => 'Grupo Fecop'],
+            ['nombre' => 'Luis Lopez',     'nit' => 'LEGACY_004',  'razon_social' => 'Luis Lopez'],
+            ['nombre' => 'Mave Anderson',  'nit' => 'LEGACY_005',  'razon_social' => 'Mave Anderson'],
+            ['nombre' => 'SS Faga',        'nit' => 'LEGACY_006',  'razon_social' => 'SS Faga'],
         ];
         foreach ($aliados as $a) {
             $exists = DB::table('aliados')->where('nombre', $a['nombre'])->exists();
             if (!$exists) {
                 DB::table('aliados')->insert(array_merge($a, ['activo' => true, 'created_at' => now(), 'updated_at' => now()]));
                 $this->line("  ✅ Aliado creado: {$a['nombre']}");
+            } else {
+                $this->line("  ℹ  Aliado ya existe: {$a['nombre']}");
             }
         }
 
@@ -127,22 +158,55 @@ class MigrateLegacy extends Command
         $this->info('✅ Preparación completa.');
     }
 
+    // ─── PASO FIX-ALIADOS: Crear aliados faltantes sin borrar datos ──────────
+    private function stepFixAliados(): void
+    {
+        $aliados = [
+            ['nombre' => 'Brygar',          'nit' => '901918923',  'razon_social' => 'Brygar SAS'],
+            ['nombre' => 'GiMave Integral', 'nit' => 'LEGACY_002', 'razon_social' => 'GiMave Integral'],
+            ['nombre' => 'Grupo Fecop',     'nit' => 'LEGACY_003', 'razon_social' => 'Grupo Fecop'],
+            ['nombre' => 'Luis Lopez',      'nit' => 'LEGACY_004', 'razon_social' => 'Luis Lopez'],
+            ['nombre' => 'Mave Anderson',   'nit' => 'LEGACY_005', 'razon_social' => 'Mave Anderson'],
+            ['nombre' => 'SS Faga',         'nit' => 'LEGACY_006', 'razon_social' => 'SS Faga'],
+        ];
+        foreach ($aliados as $a) {
+            $existing = DB::table('aliados')->where('nombre', $a['nombre'])->first();
+            if (!$existing) {
+                DB::table('aliados')->insert(array_merge($a, ['activo' => true, 'created_at' => now(), 'updated_at' => now()]));
+                $id = DB::table('aliados')->where('nombre', $a['nombre'])->value('id');
+                $this->info("  ✅ Creado: {$a['nombre']} (ID=$id)");
+            } else {
+                $this->line("  ℹ  Ya existe: {$a['nombre']} (ID={$existing->id})");
+            }
+        }
+        $this->loadAliados();
+        $this->info('IDs actualizados: ' . json_encode($this->ids));
+    }
+
     // ─── PASO 01: RAZONES SOCIALES ───────────────────────────────────────────
+    // NOTA: razones_sociales.id es PK manual (sin IDENTITY).
+    //       Usamos un contador PHP para asignar IDs secuenciales únicos.
+    //       El ID original del legacy se guarda en id_legacy.
     private function step01_RazonesSociales(): void
     {
         DB::statement('ALTER TABLE razones_sociales NOCHECK CONSTRAINT ALL');
+
+        // Obtener el próximo ID disponible (por si se reinicia el paso)
+        $nextId = (int) DB::table('razones_sociales')->max('id') + 1;
+        $this->line("  ℹ  Iniciando IDs desde: $nextId");
+
         foreach ($this->dbs as $db => $key) {
             $aliadoId = $this->ids[$key] ?? null;
-            if (!$aliadoId) { $this->warn("  ⚠ Aliado '$key' no encontrado"); continue; }
+            if (!$aliadoId) { $this->warn("  ⚠ Aliado '$key' no encontrado, se omite"); continue; }
 
-            $rows = DB::connection('sqlsrv_legacy')
-                ->select("SELECT * FROM [$db].dbo.Razon_Social");
-
+            $rows  = DB::connection('sqlsrv_legacy')->select("SELECT * FROM [$db].dbo.Razon_Social");
             $count = 0;
+
             foreach ($rows as $r) {
                 DB::table('razones_sociales')->insert([
+                    'id'                  => $nextId++,   // PK manual secuencial
                     'aliado_id'           => $aliadoId,
-                    'id_legacy'           => $r->ID,
+                    'id_legacy'           => $r->ID,      // ID original (puede ser negativo)
                     'dv'                  => $r->DV,
                     'razon_social'        => trim($r->Razon_Social ?? ''),
                     'estado'              => trim($r->Estado ?? ''),
@@ -154,7 +218,7 @@ class MigrateLegacy extends Command
                     'objeto_social'       => trim($r->Objeto_Social ?? ''),
                     'observacion'         => trim($r->Observacion ?? ''),
                     'salario_minimo'      => $r->Salario_Minimo ?? 0,
-                    'arl_nit'             => is_numeric($r->ARL) && $r->ARL > 1 ? (int)$r->ARL : null,
+                    'arl_nit'             => is_numeric($r->ARL)  && $r->ARL  > 1 ? (int)$r->ARL  : null,
                     'caja_nit'            => is_numeric($r->CAJA) && $r->CAJA > 1 ? (int)$r->CAJA : null,
                     'mes_pagos'           => $r->MES_PAGOS,
                     'anio_pagos'          => $r->{'AÑO_PAGOS'},
@@ -172,13 +236,13 @@ class MigrateLegacy extends Command
                     'correo_formulario'   => trim($r->Correo_Formulario ?? ''),
                     'cedula_rep'          => is_numeric($r->Cedula_Rep) ? (int)$r->Cedula_Rep : null,
                     'nombre_rep'          => trim($r->Nombre_Rep ?? ''),
-                    // SIN timestamps (la tabla no los tiene)
                 ]);
                 $count++;
             }
             $this->info("  ✅ $db → $count razones sociales");
         }
         DB::statement('ALTER TABLE razones_sociales WITH CHECK CHECK CONSTRAINT ALL');
+        $this->info('  📊 Total razones_sociales: ' . DB::table('razones_sociales')->count());
     }
 
     // ─── PASO 02: USUARIOS ───────────────────────────────────────────────────
@@ -187,19 +251,22 @@ class MigrateLegacy extends Command
         DB::statement('ALTER TABLE users NOCHECK CONSTRAINT ALL');
         foreach ($this->dbs as $db => $key) {
             $aliadoId = $this->ids[$key] ?? null;
-            if (!$aliadoId) continue;
+            if (!$aliadoId) { $this->warn("  ⚠ Aliado '$key' no encontrado, se omite"); continue; }
 
             $rows  = DB::connection('sqlsrv_legacy')->select("SELECT * FROM [$db].dbo.usuarios WHERE Id_usuario IS NOT NULL");
             $count = 0;
             foreach ($rows as $r) {
-                $login = trim($r->Login ?? 'usuario');
+                $login  = trim($r->Login ?? 'usuario');
+                $cedula = is_numeric($r->Cedula) && $r->Cedula > 0 ? (string)(int)$r->Cedula : null;
                 DB::table('users')->insert([
                     'aliado_id'  => $aliadoId,
                     'id_legacy'  => $r->Id_usuario,
-                    'name'       => $login,
+                    'nombre'     => $login,
                     'email'      => strtolower(str_replace(' ', '.', $login)) . "_{$key}_{$r->Id_usuario}@legacy.local",
                     'password'   => bcrypt($r->Password ?? 'changeme123'),
-                    'cedula'     => is_numeric($r->Cedula) ? (int)$r->Cedula : null,
+                    'cedula'     => $cedula,
+                    'activo'     => 1,
+                    'es_brynex'  => 0,
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]);
@@ -208,20 +275,26 @@ class MigrateLegacy extends Command
             $this->info("  ✅ $db → $count usuarios");
         }
         DB::statement('ALTER TABLE users WITH CHECK CHECK CONSTRAINT ALL');
+        $this->info('  📊 Total users: ' . DB::table('users')->count());
     }
 
     // ─── PASO 03: EMPRESAS ───────────────────────────────────────────────────
     private function step03_Empresas(): void
     {
         DB::statement('ALTER TABLE empresas NOCHECK CONSTRAINT ALL');
+
+        $nextId = (int) DB::table('empresas')->max('id') + 1;
+        $this->line("  ℹ  Iniciando IDs desde: $nextId");
+
         foreach ($this->dbs as $db => $key) {
             $aliadoId = $this->ids[$key] ?? null;
-            if (!$aliadoId) continue;
+            if (!$aliadoId) { $this->warn("  ⚠ Aliado '$key' no encontrado, se omite"); continue; }
 
             $rows  = DB::connection('sqlsrv_legacy')->select("SELECT * FROM [$db].dbo.Empresas");
             $count = 0;
             foreach ($rows as $r) {
                 DB::table('empresas')->insert([
+                    'id'                  => $nextId++,
                     'aliado_id'           => $aliadoId,
                     'id_legacy'           => $r->Id,
                     'nit'                 => is_numeric($r->NIT) && $r->NIT > 0 ? (int)$r->NIT : null,
@@ -244,6 +317,7 @@ class MigrateLegacy extends Command
             $this->info("  ✅ $db → $count empresas");
         }
         DB::statement('ALTER TABLE empresas WITH CHECK CHECK CONSTRAINT ALL');
+        $this->info('  📊 Total empresas: ' . DB::table('empresas')->count());
     }
 
     // ─── PASO 04: ASESORES + BANCOS ──────────────────────────────────────────
@@ -257,22 +331,24 @@ class MigrateLegacy extends Command
             if (!$aliadoId) continue;
 
             // Asesores
-            $rows  = DB::connection('sqlsrv_legacy')->select("SELECT * FROM [$db].dbo.Asesores WHERE ID IS NOT NULL");
+            $rows  = DB::connection('sqlsrv_legacy')->select("SELECT * FROM [$db].dbo.Asesores");
             $count = 0;
             foreach ($rows as $r) {
+                $id = $this->col($r, 'ID');
+                if ($id === null) continue; // saltar filas sin ID
                 DB::table('asesores')->insert([
                     'aliado_id'          => $aliadoId,
-                    'id_legacy'          => $r->ID,
-                    'cedula'             => (string)$r->ID,
-                    'nombre'             => trim($r->Nombre ?? 'Sin nombre'),
-                    'telefono'           => trim($r->Telefono ?? ''),
-                    'direccion'          => trim($r->DIreccion ?? ''),
-                    'ciudad'             => trim($r->Ciudad ?? ''),
-                    'departamento'       => trim($r->Departamento ?? ''),
-                    'cuenta_bancaria'    => trim($r->Cuenta_Bancaria ?? ''),
-                    'fecha_ingreso'      => $r->Fecha_Ingreso ? substr($r->Fecha_Ingreso, 0, 10) : null,
-                    'activo'             => strtolower(trim($r->Activo ?? '')) === 'activo' ? 1 : 0,
-                    'id_original_access' => $r->ID,
+                    'id_legacy'          => $id,
+                    'cedula'             => (string)$id,
+                    'nombre'             => trim($this->col($r, 'Nombre') ?? 'Sin nombre'),
+                    'telefono'           => trim($this->col($r, 'Telefono') ?? ''),
+                    'direccion'          => trim($this->col($r, 'DIreccion') ?? ''),
+                    'ciudad'             => trim($this->col($r, 'Ciudad') ?? ''),
+                    'departamento'       => trim($this->col($r, 'Departamento') ?? ''),
+                    'cuenta_bancaria'    => trim($this->col($r, 'Cuenta_Bancaria') ?? ''),
+                    'fecha_ingreso'      => $this->col($r, 'Fecha_Ingreso') ? substr($this->col($r, 'Fecha_Ingreso'), 0, 10) : null,
+                    'activo'             => strtolower(trim($this->col($r, 'Activo') ?? '')) === 'activo' ? 1 : 0,
+                    'id_original_access' => $id,
                     'created_at'         => now(),
                     'updated_at'         => now(),
                 ]);
@@ -281,17 +357,19 @@ class MigrateLegacy extends Command
             $this->info("  ✅ $db → $count asesores");
 
             // Bancos
-            $rows  = DB::connection('sqlsrv_legacy')->select("SELECT * FROM [$db].dbo.Bancos_cuentas WHERE ID IS NOT NULL");
+            $rows  = DB::connection('sqlsrv_legacy')->select("SELECT * FROM [$db].dbo.Bancos_cuentas");
             $count = 0;
             foreach ($rows as $r) {
+                $id = $this->col($r, 'ID');
+                if ($id === null) continue;
                 DB::table('banco_cuentas')->insert([
                     'aliado_id'     => $aliadoId,
-                    'id_legacy'     => $r->ID,
-                    'nombre'        => trim($r->NOMBRE ?? ''),
-                    'nit'           => trim($r->NIT ?? ''),
-                    'banco'         => trim($r->BANCO ?? ''),
-                    'tipo_cuenta'   => trim($r->TIPO ?? ''),
-                    'numero_cuenta' => trim($r->NUMERO ?? ''),
+                    'id_legacy'     => $id,
+                    'nombre'        => trim($this->col($r, 'NOMBRE') ?? ''),
+                    'nit'           => trim($this->col($r, 'NIT') ?? ''),
+                    'banco'         => trim($this->col($r, 'BANCO') ?? ''),
+                    'tipo_cuenta'   => trim($this->col($r, 'TIPO') ?? ''),
+                    'numero_cuenta' => trim($this->col($r, 'NUMERO') ?? ''),
                     'activo'        => 1,
                     'created_at'    => now(),
                     'updated_at'    => now(),
@@ -310,20 +388,44 @@ class MigrateLegacy extends Command
     {
         DB::statement('ALTER TABLE clientes NOCHECK CONSTRAINT ALL');
 
+        $nextId = (int) DB::table('clientes')->max('id') + 1;
+        $this->line("  ℹ  Iniciando IDs desde: $nextId");
+
         foreach ($this->dbs as $db => $key) {
             $aliadoId = $this->ids[$key] ?? null;
-            if (!$aliadoId) continue;
+            if (!$aliadoId) { $this->warn("  ⚠ Aliado '$key' no encontrado, se omite"); continue; }
 
-            $rows  = DB::connection('sqlsrv_legacy')->select("SELECT * FROM [$db].dbo.Base_De_Datos");
-            $count = 0;
+            // Cargar id_legacy ya existentes para este aliado (para reanudar)
+            $yaExisten = DB::table('clientes')
+                ->where('aliado_id', $aliadoId)
+                ->pluck('id_legacy')
+                ->flip()  // convertir a lookup O(1)
+                ->all();
+            $existingCount = count($yaExisten);
+            if ($existingCount > 0) {
+                $this->line("  ℹ  $db: $existingCount ya migrados, insertando faltantes...");
+            }
 
-            foreach ($rows as $r) {
-                $epsId     = $this->lookupByNit('eps',      $r->Eps);
-                $pensionId = $this->lookupByNit('pensiones', $r->Pension);
+            $total = DB::connection('sqlsrv_legacy')
+                ->selectOne("SELECT COUNT(*) as cnt FROM [$db].dbo.Base_De_Datos")->cnt;
+            $this->line("  ⏳ $db: $total total, " . ($total - $existingCount) . " faltantes...");
 
-                DB::table('clientes')->insert([
-                    'aliado_id'           => $aliadoId,
-                    'id_legacy'           => $r->Id,
+            $count = 0; $skipped = 0; $offset = 0; $chunk = 500;
+            while (true) {
+                $rows = DB::connection('sqlsrv_legacy')->select(
+                    "SELECT * FROM [$db].dbo.Base_De_Datos ORDER BY Id OFFSET $offset ROWS FETCH NEXT $chunk ROWS ONLY"
+                );
+                if (empty($rows)) break;
+                foreach ($rows as $r) {
+                    // Saltar si ya existe este id_legacy para este aliado
+                    if (isset($yaExisten[$r->Id])) { $skipped++; continue; }
+
+                    $epsId     = $this->lookupByNit('eps',       $r->Eps);
+                    $pensionId = $this->lookupByNit('pensiones',  $r->Pension);
+                    DB::table('clientes')->insert([
+                        'id'                  => $nextId++,
+                        'aliado_id'           => $aliadoId,
+                        'id_legacy'           => $r->Id,
                     'cod_empresa'         => $r->COD_EMPRESA,  // remap al final
                     'tipo_doc'            => trim($r->TIPO_DOC ?? ''),
                     'cedula'              => $r->Cedula,
@@ -356,103 +458,576 @@ class MigrateLegacy extends Command
                     'deuda'               => $r->DEUDA,
                     'fecha_probable_pago' => trim($r->Fecha_problable_pago ?? ''),
                     'modo_probable_pago'  => trim($r->Modo_propable_pago ?? ''),
-                    'created_at'          => now(),
-                    'updated_at'          => now(),
-                ]);
-                $count++;
+                        'created_at'          => now(),
+                        'updated_at'          => now(),
+                    ]);
+                    $count++;
+                    if ($count % 100 === 0) $this->line("    → $count / $total...");
+                }
+                $offset += $chunk;
+                if (count($rows) < $chunk) break;
             }
-            $this->info("  ✅ $db → $count clientes");
 
-            // Remap cod_empresa al nuevo ID
+            $this->info("  ✅ $db → $count insertados, $skipped omitidos (ya existían)");
             DB::statement("
                 UPDATE c SET c.cod_empresa = e.id
-                FROM clientes c
-                JOIN empresas e ON e.id_legacy = c.cod_empresa AND e.aliado_id = c.aliado_id
+                FROM clientes c JOIN empresas e
+                  ON e.id_legacy = c.cod_empresa AND e.aliado_id = c.aliado_id
                 WHERE c.aliado_id = ? AND c.cod_empresa IS NOT NULL
             ", [$aliadoId]);
+            $this->line("     Remap empresa: OK");
         }
 
         DB::statement('ALTER TABLE clientes WITH CHECK CHECK CONSTRAINT ALL');
+        $this->info('  📊 Total clientes: ' . DB::table('clientes')->count());
     }
 
     // ─── PASO 06: CONTRATOS ──────────────────────────────────────────────────
     private function step06_Contratos(): void
     {
         DB::statement('ALTER TABLE contratos NOCHECK CONSTRAINT ALL');
+        DB::statement('ALTER TABLE radicados NOCHECK CONSTRAINT ALL');
+
+        // Mapa texto legacy → motivo_afiliacion_id en BryNex
+        $mapAfiliacion = [
+            'nueva afiliacion'   => 1, 'nueva afiliación'  => 1,
+            'cambio de plan'     => 2,
+            'cambio razon social'=> 3, 'cambio razón social'=> 3,
+            'recuperado'         => 4,
+            'error'              => 5,
+            'omiso'              => 6,
+        ];
+
+        // Mapa texto legacy → motivo_retiro_id en BryNex
+        $mapRetiro = [
+            'retiro real'            => 1,
+            'retiro-reingreso'       => 2, 'retiro reingreso'  => 2,
+            'fallecimiento'          => 3,
+            'pension'                => 4, 'pensión'           => 4,
+            'traslado empresa'       => 5,
+            'cambio razon social'    => 6, 'cambio razón social'=> 6,
+            'incumplimiento de pago' => 7,
+            'solicitud del cliente'  => 8,
+            'otro'                   => 9,
+        ];
+
+        foreach ($this->dbs as $db => $key) {
+            $aliadoId = $this->ids[$key] ?? null;
+            if (!$aliadoId) { $this->warn("  ⚠ Aliado '$key' no encontrado, se omite"); continue; }
+
+            // Cargar contratos ya migrados para reanudar
+            $yaExisten = DB::table('contratos')
+                ->where('aliado_id', $aliadoId)
+                ->pluck('id_legacy')->flip()->all();
+            $existingCount = count($yaExisten);
+
+            $total = DB::connection('sqlsrv_legacy')
+                ->selectOne("SELECT COUNT(*) as cnt FROM [$db].dbo.Contratos")->cnt;
+            $this->line("  ⏳ $db: $total total, " . ($total - $existingCount) . " faltantes...");
+
+            $count = 0; $skipped = 0; $offset = 0; $chunk = 500;
+            while (true) {
+                $rows = DB::connection('sqlsrv_legacy')->select(
+                    "SELECT * FROM [$db].dbo.Contratos ORDER BY Id OFFSET $offset ROWS FETCH NEXT $chunk ROWS ONLY"
+                );
+                if (empty($rows)) break;
+
+                foreach ($rows as $r) {
+                    if (isset($yaExisten[$r->Id])) { $skipped++; continue; }
+
+                    $razonId        = DB::table('razones_sociales')->where('aliado_id', $aliadoId)->where('id_legacy', $r->COD_RAZON_SOC)->value('id');
+                    $asesorId       = DB::table('asesores')->where('aliado_id', $aliadoId)->where('id_legacy', $r->Asesor)->value('id');
+                    $userId         = DB::table('users')->where('aliado_id', $aliadoId)->where('id_legacy', $r->Encargado_Afiliacion)->value('id');
+                    $epsId          = $this->lookupByNit('eps',       $r->Eps_c);
+                    $pensionId      = $this->lookupByNit('pensiones',  $r->Pension_c);
+                    $arlId          = is_numeric($r->ARL) && $r->ARL > 1 ? $this->lookupByNit('arls', $r->ARL) : null;
+                    $cajaId         = $this->lookupByNit('cajas',     $r->Caja_Comp);
+                    $motivoAfil     = $mapAfiliacion[strtolower(trim($r->Motivo_Afiliacion ?? ''))] ?? null;
+                    $motivoRetiro   = $mapRetiro[strtolower(trim($r->Motivo_Retiro ?? ''))]       ?? null;
+
+                    // Insertar contrato
+                    $contratoId = DB::table('contratos')->insertGetId([
+                        'aliado_id'              => $aliadoId,
+                        'id_legacy'              => $r->Id,
+                        'cedula'                 => $r->Cedula,
+                        'estado'                 => strtolower(trim($r->Estado ?? 'vigente')),
+                        'razon_social_id'        => $razonId,
+                        'asesor_id'              => $asesorId,
+                        'encargado_id'           => $userId,
+                        'eps_id'                 => $epsId,
+                        'pension_id'             => $pensionId,
+                        'arl_id'                 => $arlId,
+                        'caja_id'                => $cajaId,
+                        'n_arl'                  => is_numeric($r->N_ARL) && $r->N_ARL >= 0 && $r->N_ARL <= 5 ? (int)$r->N_ARL : null,
+                        'cargo'                  => trim($r->Cargo ?? ''),
+                        'fecha_ingreso'          => $r->Fecha_Ingreso ? substr($r->Fecha_Ingreso, 0, 10) : null,
+                        'fecha_retiro'           => $r->Fecha_Retiro  ? substr($r->Fecha_Retiro,  0, 10) : null,
+                        'fecha_arl'              => $r->Fecha_ARL     ? substr($r->Fecha_ARL,     0, 10) : null,
+                        'fecha_created'          => $r->Fecha_Created  ? substr($r->Fecha_Created, 0, 10) : null,
+                        'salario'                => is_numeric($r->Salario_M) ? $r->Salario_M : 0,
+                        'administracion'         => is_numeric($r->Administracion) ? $r->Administracion : 0,
+                        'admon_asesor'           => is_numeric($r->admon_asesor) ? $r->admon_asesor : 0,
+                        'costo_afiliacion'       => is_numeric($r->costo_afiliacion) ? $r->costo_afiliacion : 0,
+                        'seguro'                 => is_numeric($r->Seguro) ? $r->Seguro : 0,
+                        'np'                     => trim($r->NP ?? ''),
+                        'envio_planilla'         => trim($r->Envio_Planilla ?? ''),
+                        'fecha_probable_pago'    => trim($r->Fecha_problable_pago ?? ''),
+                        'modo_probable_pago'     => trim($r->Modo_propable_pago ?? ''),
+                        'observacion'            => trim($r->Observacion ?? ''),
+                        'observacion_afiliacion' => trim($r->Observacion_Afiliacion ?? ''),
+                        'observacion_llamada'    => (string)($r->Observacion_llamada ?? ''),
+                        'tipo_modalidad_id'      => is_numeric($r->Tipo) && $r->Tipo > 0 ? (int)$r->Tipo : null,
+                        'actividad_economica_id' => is_numeric($r->Actividad_Economica) && $r->Actividad_Economica > 0 ? (int)$r->Actividad_Economica : null,
+                        'motivo_afiliacion_id'   => $motivoAfil,
+                        'motivo_retiro_id'       => $motivoRetiro,
+                        'created_at'             => now(),
+                        'updated_at'             => now(),
+                    ]);
+
+                    // Insertar radicados legacy en tabla radicados (eps, arl, caja, pension)
+                    $radicadosLegacy = [
+                        'eps'     => trim($r->Radicado_EPS ?? ''),
+                        'arl'     => trim($r->Radicado_ARL ?? ''),
+                        'caja'    => trim($r->Radicado_Caja ?? ''),
+                        'pension' => trim($r->Radicado_Pension ?? ''),
+                    ];
+                    foreach ($radicadosLegacy as $tipo => $numero) {
+                        if ($numero !== '') {
+                            DB::table('radicados')->insert([
+                                'contrato_id'     => $contratoId,
+                                'aliado_id'       => $aliadoId,
+                                'tipo'            => $tipo,
+                                'numero_radicado' => $numero,
+                                'estado'          => 'confirmado',
+                                'created_at'      => now(),
+                                'updated_at'      => now(),
+                            ]);
+                        }
+                    }
+
+                    $count++;
+                    if ($count % 100 === 0) $this->line("    → $count / $total...");
+                }
+                $offset += $chunk;
+                if (count($rows) < $chunk) break;
+            }
+            $this->info("  ✅ $db → $count insertados, $skipped omitidos");
+        }
+
+        DB::statement('ALTER TABLE contratos WITH CHECK CHECK CONSTRAINT ALL');
+        DB::statement('ALTER TABLE radicados WITH CHECK CHECK CONSTRAINT ALL');
+
+        $this->info('  📊 Total contratos: '  . DB::table('contratos')->count());
+        $this->info('  📊 Total radicados: '  . DB::table('radicados')->count());
+        $this->warn('  ⚠  Sin razon_social: ' . DB::table('contratos')->whereNull('razon_social_id')->count());
+    }
+
+    // ─── HELPER: lookup por NIT en tabla global ──────────────────────────────
+    private function lookupByNit(string $tabla, mixed $nit): ?int
+    {
+        if (!is_numeric($nit) || (float)$nit <= 1) return null;
+        return DB::table($tabla)->where('nit', (int)(float)$nit)->value('id');
+    }
+
+    // ─── HELPER: acceso a propiedad case-insensitive en stdClass ───────────────
+    private function col(object $row, string $name): mixed
+    {
+        if (property_exists($row, $name)) return $row->$name;
+        $arr = (array)$row;
+        $lower = strtolower($name);
+        foreach ($arr as $key => $val) {
+            if (strtolower($key) === $lower) return $val;
+        }
+        return null;
+    }
+
+    // ─── PASO 07: FACTURAS + CONSIGNACIONES ──────────────────────────────────
+    // Legacy: FACTURACION  →  BryNex: facturas + consignaciones
+    // tipo legacy "mensualidad" → 'planilla'; resto → 'afiliacion'
+    private function step07_Facturas(): void
+    {
+        DB::statement('ALTER TABLE facturas      NOCHECK CONSTRAINT ALL');
+        DB::statement('ALTER TABLE consignaciones NOCHECK CONSTRAINT ALL');
+
+        foreach ($this->dbs as $db => $key) {
+            $aliadoId = $this->ids[$key] ?? null;
+            if (!$aliadoId) { $this->warn("  ⚠ Aliado '$key' no encontrado, se omite"); continue; }
+
+            $yaExisten = DB::table('facturas')->where('aliado_id', $aliadoId)
+                ->pluck('id_legacy')->flip()->all();
+            $total = DB::connection('sqlsrv_legacy')
+                ->selectOne("SELECT COUNT(*) as cnt FROM [$db].dbo.FACTURACION")->cnt;
+            $this->line("  ⏳ $db: $total facturas, " . ($total - count($yaExisten)) . " faltantes...");
+
+            $count = 0; $skipped = 0; $offset = 0; $chunk = 500;
+            while (true) {
+                $rows = DB::connection('sqlsrv_legacy')->select(
+                    "SELECT * FROM [$db].dbo.FACTURACION ORDER BY Id_Factura OFFSET $offset ROWS FETCH NEXT $chunk ROWS ONLY"
+                );
+                if (empty($rows)) break;
+
+                foreach ($rows as $r) {
+                    if (isset($yaExisten[$r->Id_Factura])) { $skipped++; continue; }
+
+                    $contratoId = DB::table('contratos')
+                        ->where('aliado_id', $aliadoId)
+                        ->where('id_legacy', $r->Id_Contrato)
+                        ->value('id');
+
+                    $tipo = strtolower(trim($r->Tipo ?? '')) === 'mensualidad' ? 'planilla' : 'afiliacion';
+                    $formaPago = strtolower(trim($r->Forma_Pago ?? 'efectivo'));
+                    $valCons   = is_numeric($r->Valor_Consignado) ? (int)$r->Valor_Consignado : 0;
+                    $valTotal  = is_numeric($r->Pago) ? (int)$r->Pago : 0;
+                    $valEfect  = max(0, $valTotal - $valCons);
+
+                    $facturaId = DB::table('facturas')->insertGetId([
+                        'aliado_id'          => $aliadoId,
+                        'id_legacy'          => $r->Id_Factura,
+                        'contrato_id'        => $contratoId,
+                        'cedula'             => is_numeric($r->Cedula) ? (int)$r->Cedula : 0,
+                        'numero_factura'     => is_numeric($r->Factura) ? (int)$r->Factura : 0,
+                        'tipo'               => $tipo,
+                        'mes'                => is_numeric($r->Mes)  ? (int)$r->Mes  : 1,
+                        'anio'               => is_numeric($this->col($r, 'Año')) ? (int)$this->col($r, 'Año') : date('Y'),
+                        'fecha_pago'         => $r->Fecha_Pago ? substr($r->Fecha_Pago, 0, 10) : now()->toDateString(),
+                        'estado'             => 'pagada',
+                        'forma_pago'         => in_array($formaPago, ['efectivo','consignacion','mixto']) ? $formaPago : 'efectivo',
+                        'valor_consignado'   => $valCons,
+                        'valor_efectivo'     => $valEfect,
+                        'v_eps'              => is_numeric($r->V_EPS)  ? (int)$r->V_EPS  : 0,
+                        'v_arl'              => is_numeric($r->V_Arl)  ? (int)$r->V_Arl  : 0,
+                        'v_afp'              => is_numeric($r->V_AFP)  ? (int)$r->V_AFP  : 0,
+                        'v_caja'             => is_numeric($r->V_CAJA) ? (int)$r->V_CAJA : 0,
+                        'total_ss'           => (int)($r->V_EPS ?? 0) + (int)($r->V_Arl ?? 0) + (int)($r->V_AFP ?? 0) + (int)($r->V_CAJA ?? 0),
+                        'admon'              => is_numeric($r->Admon)           ? (int)$r->Admon           : 0,
+                        'admin_asesor'       => is_numeric($r->admin_asesor)    ? (int)$r->admin_asesor    : 0,
+                        'seguro'             => is_numeric($r->seguro)          ? (int)$r->seguro          : 0,
+                        'afiliacion'         => is_numeric($r->Afiliaciones)    ? (int)$r->Afiliaciones    : 0,
+                        'mensajeria'         => is_numeric($r->Mensajeria)      ? (int)$r->Mensajeria      : 0,
+                        'otros'              => is_numeric($r->Otros)           ? (int)$r->Otros           : 0,
+                        'iva'                => is_numeric($r->Iva)             ? (int)$r->Iva             : 0,
+                        'total'              => $valTotal,
+                        'observacion'        => trim(trim($r->Observacion ?? '') . ' ' . trim($r->OBS_FACTURA ?? '')),
+                        'created_at'         => $r->fecha_creacion    ? substr($r->fecha_creacion,    0, 19) : now(),
+                        'updated_at'         => $r->fecha_modificacion ? substr($r->fecha_modificacion, 0, 19) : now(),
+                    ]);
+
+                    // Extraer consignación si aplica
+                    if ($valCons > 0 && $formaPago !== 'efectivo') {
+                        // Resolver banco_cuenta_id: por COD legacy → id_legacy, o primera cuenta del aliado
+                        $bancoCuentaId = DB::table('banco_cuentas')
+                            ->where('aliado_id', $aliadoId)
+                            ->where('id_legacy', $r->COD ?? null)
+                            ->value('id');
+                        if (!$bancoCuentaId) {
+                            $bancoCuentaId = DB::table('banco_cuentas')
+                                ->where('aliado_id', $aliadoId)
+                                ->value('id');
+                        }
+                        if ($bancoCuentaId) {
+                            DB::table('consignaciones')->insert([
+                                'aliado_id'      => $aliadoId,
+                                'banco_cuenta_id'=> $bancoCuentaId,
+                                'fecha'          => $r->Fecha_Pago ? substr($r->Fecha_Pago, 0, 10) : now()->toDateString(),
+                                'valor'          => $valCons,
+                                'referencia'     => trim($r->Consignacion ?? ''),
+                                'confirmado'     => true,
+                                'observacion'    => "Migrada de factura legacy #{$r->Id_Factura}",
+                                'created_at'     => now(),
+                                'updated_at'     => now(),
+                            ]);
+                        }
+                        // Si no se resuelve banco_cuenta_id se omite la consignacion;
+                        // el valor ya quedó en facturas.valor_consignado
+                    }
+
+                    $count++;
+                    if ($count % 200 === 0) $this->line("    → $count / $total...");
+                }
+                $offset += $chunk;
+                if (count($rows) < $chunk) break;
+            }
+            $this->info("  ✅ $db → $count facturas, $skipped omitidas");
+        }
+        DB::statement('ALTER TABLE facturas      WITH CHECK CHECK CONSTRAINT ALL');
+        DB::statement('ALTER TABLE consignaciones WITH CHECK CHECK CONSTRAINT ALL');
+        $this->info('  📊 Total facturas: '      . DB::table('facturas')->count());
+        $this->info('  📊 Total consignaciones: ' . DB::table('consignaciones')->count());
+    }
+
+    // ─── PASO 08: BENEFICIARIOS ──────────────────────────────────────────────
+    private function step08_Beneficiarios(): void
+    {
+        DB::statement('ALTER TABLE beneficiarios NOCHECK CONSTRAINT ALL');
+        foreach ($this->dbs as $db => $key) {
+            $aliadoId = $this->ids[$key] ?? null;
+            if (!$aliadoId) continue;
+
+            // Verificar existencia de tabla
+            $exists = DB::connection('sqlsrv_legacy')
+                ->selectOne("SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_CATALOG=? AND TABLE_NAME='Beneficiarios'", [$db]);
+            if (!$exists || !$exists->cnt) {
+                $this->warn("  ⚠ $db: tabla Beneficiarios no existe, se omite");
+                continue;
+            }
+
+            $rows  = DB::connection('sqlsrv_legacy')->select("SELECT * FROM [$db].dbo.Beneficiarios");
+            $count = 0;
+            foreach ($rows as $r) {
+                // Cedula del titular: puede llamarse Cedula_Titular, Cedula, CC_Titular
+                $cedula = $this->col($r, 'Cedula_Titular')
+                       ?? $this->col($r, 'Cedula')
+                       ?? $this->col($r, 'CC_Titular')
+                       ?? 0;
+
+                // Nombre completo: puede venir junto o separado
+                $nombre = $this->col($r, 'Nombres')
+                       ?? trim(($this->col($r, 'Nombre') ?? '') . ' ' . ($this->col($r, 'Apellido') ?? ''));
+
+                DB::table('beneficiarios')->insert([
+                    'aliado_id'        => $aliadoId,
+                    'cc_cliente'       => is_numeric($cedula) ? (int)$cedula : 0,
+                    'tipo_doc'         => trim($this->col($r, 'Tipo_Doc') ?? 'CC'),
+                    'n_documento'      => trim($this->col($r, 'N_Documento') ?? $this->col($r, 'Documento') ?? ''),
+                    'nombres'          => trim($nombre),
+                    'fecha_expedicion' => $this->col($r, 'Fecha_Expedicion') ? substr($this->col($r, 'Fecha_Expedicion'), 0, 10) : null,
+                    'fecha_nacimiento' => $this->col($r, 'Fecha_Nacimiento') ? substr($this->col($r, 'Fecha_Nacimiento'), 0, 10) : null,
+                    'parentesco'       => trim($this->col($r, 'Parentesco') ?? ''),
+                    'observacion'      => trim($this->col($r, 'Observacion') ?? ''),
+                    'fecha_ingreso'    => $this->col($r, 'Fecha_Ingreso') ? substr($this->col($r, 'Fecha_Ingreso'), 0, 10) : null,
+                    'created_at'       => now(),
+                    'updated_at'       => now(),
+                ]);
+                $count++;
+            }
+            $this->info("  ✅ $db → $count beneficiarios");
+        }
+        DB::statement('ALTER TABLE beneficiarios WITH CHECK CHECK CONSTRAINT ALL');
+        $this->info('  📊 Total beneficiarios: ' . DB::table('beneficiarios')->count());
+    }
+
+    // ─── PASO 09: PLANOS (PLANILLAS PILA) ────────────────────────────────────
+    // id_factura en planos debe remapearse al nuevo ID de facturas
+    private function step09_Planos(): void
+    {
+        DB::statement('ALTER TABLE planos NOCHECK CONSTRAINT ALL');
+        foreach ($this->dbs as $db => $key) {
+            $aliadoId = $this->ids[$key] ?? null;
+            if (!$aliadoId) continue;
+
+            // planos no tiene id_legacy; usamos factura_id migradas para skip
+            $facturasMigradas = DB::table('planos')
+                ->where('aliado_id', $aliadoId)
+                ->pluck('factura_id')->flip()->all();
+            $total = DB::connection('sqlsrv_legacy')
+                ->selectOne("SELECT COUNT(*) as cnt FROM [$db].dbo.PLANOS")->cnt;
+            $this->line("  ⏳ $db: $total planos...");
+
+            $count = 0; $skipped = 0; $offset = 0; $chunk = 500;
+            while (true) {
+                $rows = DB::connection('sqlsrv_legacy')->select(
+                    "SELECT * FROM [$db].dbo.PLANOS ORDER BY Id OFFSET $offset ROWS FETCH NEXT $chunk ROWS ONLY"
+                );
+                if (empty($rows)) break;
+                foreach ($rows as $r) {
+                    // Remap factura_id legacy → nuevo ID
+                    $facturaId = DB::table('facturas')
+                        ->where('aliado_id', $aliadoId)
+                        ->where('id_legacy', $this->col($r, 'Id_Factura'))
+                        ->value('id');
+
+                    // Skip si ya existe este plano para esta factura
+                    if ($facturaId && isset($facturasMigradas[$facturaId])) { $skipped++; continue; }
+
+                    DB::table('planos')->insert([
+                        'aliado_id'       => $aliadoId,
+                        'factura_id'      => $facturaId,
+                        'numero_planilla' => trim($this->col($r, 'Numero_Planilla') ?? $this->col($r, 'N_Planilla') ?? ''),
+                        'numero_factura'  => is_numeric($this->col($r, 'Factura')) ? (int)$this->col($r, 'Factura') : null,
+                        'n_plano'         => trim($this->col($r, 'N_PLANO') ?? $this->col($r, 'N_Plano') ?? ''),
+                        'mes_plano'       => is_numeric($this->col($r, 'Mes')) ? (int)$this->col($r, 'Mes') : null,
+                        'anio_plano'      => is_numeric($this->col($r, 'Año') ?? $this->col($r, 'Anio')) ? (int)($this->col($r, 'Año') ?? $this->col($r, 'Anio')) : null,
+                        'tipo_reg'        => trim($this->col($r, 'TIPO_REG') ?? '01'),
+                        'tipo_doc'        => trim($this->col($r, 'TIPO_DOC') ?? 'CC'),
+                        'no_identifi'     => (string)($this->col($r, 'Cedula') ?? ''),
+                        'primer_ape'      => trim($this->col($r, '1_Apellido') ?? ''),
+                        'segundo_ape'     => trim($this->col($r, '2_Apellido') ?? ''),
+                        'primer_nombre'   => trim($this->col($r, '1_Nombre') ?? ''),
+                        'segundo_nombre'  => trim($this->col($r, '2_Nombre') ?? ''),
+                        'fecha_ing'       => $this->col($r, 'Fecha_Ingreso') ? substr($this->col($r, 'Fecha_Ingreso'), 0, 10) : null,
+                        'fecha_ret'       => $this->col($r, 'Fecha_Retiro')  ? substr($this->col($r, 'Fecha_Retiro'),  0, 10) : null,
+                        'salario_basico'  => is_numeric($this->col($r, 'Salario')) ? (int)$this->col($r, 'Salario') : 0,
+                        'cod_eps'         => trim($this->col($r, 'Cod_EPS') ?? $this->col($r, 'EPS') ?? ''),
+                        'cod_afp'         => trim($this->col($r, 'Cod_AFP') ?? $this->col($r, 'AFP') ?? ''),
+                        'cod_arl'         => trim($this->col($r, 'Cod_ARL') ?? $this->col($r, 'ARL') ?? ''),
+                        'cod_caja'        => trim($this->col($r, 'Cod_Caja') ?? $this->col($r, 'Caja') ?? ''),
+                        'nombre_eps'      => trim($this->col($r, 'Nombre_EPS') ?? $this->col($r, 'Nom_EPS') ?? ''),
+                        'nombre_afp'      => trim($this->col($r, 'Nombre_AFP') ?? $this->col($r, 'Nom_AFP') ?? ''),
+                        'nombre_arl'      => trim($this->col($r, 'Nombre_ARL') ?? $this->col($r, 'Nom_ARL') ?? ''),
+                        'nombre_caja'     => trim($this->col($r, 'Nombre_Caja') ?? $this->col($r, 'Nom_Caja') ?? ''),
+                        'nivel_riesgo'    => is_numeric($this->col($r, 'N_ARL') ?? $this->col($r, 'Nivel_Riesgo')) ? (int)($this->col($r, 'N_ARL') ?? $this->col($r, 'Nivel_Riesgo')) : 1,
+                        'razon_social'    => trim($this->col($r, 'Razon_Social') ?? ''),
+                        'tipo_p'          => trim($this->col($r, 'Tipo_P') ?? $this->col($r, 'Tipo') ?? ''),
+                        'num_dias'        => is_numeric($this->col($r, 'Num_Dias') ?? $this->col($r, 'N_Dias')) ? (int)($this->col($r, 'Num_Dias') ?? $this->col($r, 'N_Dias')) : 30,
+                        'created_at'      => now(),
+                        'updated_at'      => now(),
+                    ]);
+                    $count++;
+                    if ($count % 200 === 0) $this->line("    → $count / $total...");
+                }
+                $offset += $chunk;
+                if (count($rows) < $chunk) break;
+            }
+            $this->info("  ✅ $db → $count planos, $skipped omitidos");
+        }
+        DB::statement('ALTER TABLE planos WITH CHECK CHECK CONSTRAINT ALL');
+        $this->info('  📊 Total planos: ' . DB::table('planos')->count());
+    }
+
+    // ─── PASO 10: ABONOS ─────────────────────────────────────────────────────
+    // Legacy: revisar si existe tabla Abonos; si no, omitir
+    private function step10_Abonos(): void
+    {
+        DB::statement('ALTER TABLE abonos NOCHECK CONSTRAINT ALL');
+        foreach ($this->dbs as $db => $key) {
+            $aliadoId = $this->ids[$key] ?? null;
+            if (!$aliadoId) continue;
+
+            // Verificar si existe la tabla en este legacy
+            $exists = DB::connection('sqlsrv_legacy')
+                ->selectOne("SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_CATALOG=? AND TABLE_NAME='Abonos'", [$db]);
+            if (!$exists || !$exists->cnt) {
+                $this->warn("  ⚠ $db: tabla Abonos no existe, se omite");
+                continue;
+            }
+
+            $rows  = DB::connection('sqlsrv_legacy')->select("SELECT * FROM [$db].dbo.Abonos");
+            $count = 0;
+            foreach ($rows as $r) {
+                $facturaId = DB::table('facturas')
+                    ->where('aliado_id', $aliadoId)
+                    ->where('id_legacy', $this->col($r, 'Id_Factura'))
+                    ->value('id');
+
+                DB::table('abonos')->insert([
+                    'aliado_id'       => $aliadoId,
+                    'factura_id'      => $facturaId,
+                    'valor'           => is_numeric($this->col($r, 'Valor')) ? (int)$this->col($r, 'Valor') : 0,
+                    'forma_pago'      => trim($this->col($r, 'Forma_Pago') ?? 'efectivo'),
+                    'valor_efectivo'  => is_numeric($this->col($r, 'Valor_Efectivo'))   ? (int)$this->col($r, 'Valor_Efectivo')   : 0,
+                    'valor_consignado'=> is_numeric($this->col($r, 'Valor_Consignado')) ? (int)$this->col($r, 'Valor_Consignado') : 0,
+                    'fecha'           => $this->col($r, 'Fecha') ? substr($this->col($r, 'Fecha'), 0, 10) : now()->toDateString(),
+                    'observacion'     => trim($this->col($r, 'Observacion') ?? ''),
+                    'created_at'      => now(),
+                    'updated_at'      => now(),
+                ]);
+                $count++;
+            }
+            $this->info("  ✅ $db → $count abonos");
+        }
+        DB::statement('ALTER TABLE abonos WITH CHECK CHECK CONSTRAINT ALL');
+        $this->info('  📊 Total abonos: ' . DB::table('abonos')->count());
+    }
+
+    // ─── PASO 11: DOCUMENTOS CLIENTE ─────────────────────────────────────────
+    private function step11_DocumentosCliente(): void
+    {
+        DB::statement('ALTER TABLE documentos_cliente NOCHECK CONSTRAINT ALL');
+        foreach ($this->dbs as $db => $key) {
+            $aliadoId = $this->ids[$key] ?? null;
+            if (!$aliadoId) continue;
+
+            $exists = DB::connection('sqlsrv_legacy')
+                ->selectOne("SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_CATALOG=? AND TABLE_NAME='Documentos_Cliente'", [$db]);
+            if (!$exists || !$exists->cnt) {
+                $this->warn("  ⚠ $db: tabla Documentos_Cliente no existe, se omite");
+                continue;
+            }
+
+            $rows  = DB::connection('sqlsrv_legacy')->select("SELECT * FROM [$db].dbo.Documentos_Cliente");
+            $count = 0;
+            foreach ($rows as $r) {
+                $cedula = $this->col($r, 'Cedula') ?? $this->col($r, 'CC');
+                DB::table('documentos_cliente')->insert([
+                    'aliado_id'      => $aliadoId,
+                    'cedula'         => is_numeric($cedula) ? (int)$cedula : null,
+                    'nombre_archivo' => trim($this->col($r, 'Nombre_Archivo') ?? $this->col($r, 'Archivo') ?? 'sin_nombre'),
+                    'tipo'           => trim($this->col($r, 'Tipo') ?? 'otro'),
+                    'ruta'           => trim($this->col($r, 'Ruta') ?? ''),
+                    'observacion'    => trim($this->col($r, 'Observacion') ?? ''),
+                    'created_at'     => now(),
+                    'updated_at'     => now(),
+                ]);
+                $count++;
+            }
+            $this->info("  ✅ $db → $count documentos");
+        }
+        DB::statement('ALTER TABLE documentos_cliente WITH CHECK CHECK CONSTRAINT ALL');
+        $this->info('  📊 Total documentos_cliente: ' . DB::table('documentos_cliente')->count());
+    }
+
+    // ─── PASO 12: GASTOS ─────────────────────────────────────────────────────
+    // Legacy: Gastos  →  BryNex: gastos
+    private function step12_Gastos(): void
+    {
+        DB::statement('ALTER TABLE gastos NOCHECK CONSTRAINT ALL');
 
         foreach ($this->dbs as $db => $key) {
             $aliadoId = $this->ids[$key] ?? null;
             if (!$aliadoId) continue;
 
-            $rows  = DB::connection('sqlsrv_legacy')->select("SELECT * FROM [$db].dbo.Contratos");
+            // Verificar existencia
+            $exists = DB::connection('sqlsrv_legacy')
+                ->selectOne("SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_CATALOG=? AND TABLE_NAME='Gastos'", [$db]);
+            if (!$exists || !$exists->cnt) {
+                $this->warn("  ⚠ $db: tabla Gastos no existe, se omite");
+                continue;
+            }
+
+            // Saltar aliado si ya tiene gastos migrados
+            $existing = DB::table('gastos')->where('aliado_id', $aliadoId)->count();
+            if ($existing > 0) {
+                $this->line("  ℹ  $db: $existing gastos ya migrados, se omite");
+                continue;
+            }
+
+            $rows  = DB::connection('sqlsrv_legacy')->select("SELECT * FROM [$db].dbo.Gastos");
             $count = 0;
 
-            foreach ($rows as $r) {
-                $razonId   = DB::table('razones_sociales')->where('aliado_id', $aliadoId)->where('id_legacy', $r->COD_RAZON_SOC)->value('id');
-                $asesorId  = DB::table('asesores')->where('aliado_id', $aliadoId)->where('id_legacy', $r->Asesor)->value('id');
-                $userId    = DB::table('users')->where('aliado_id', $aliadoId)->where('id_legacy', $r->Encargado_Afiliacion)->value('id');
-                $epsId     = $this->lookupByNit('eps',      $r->Eps_c);
-                $pensionId = $this->lookupByNit('pensiones', $r->Pension_c);
-                $arlId     = is_numeric($r->ARL) && $r->ARL > 1 ? $this->lookupByNit('arls', $r->ARL) : null;
-                $cajaId    = $this->lookupByNit('cajas',    $r->Caja_Comp);
+            // Resolver user_id por defecto (primer usuario del aliado)
+            $defaultUserId = DB::table('users')->where('aliado_id', $aliadoId)->value('id') ?? 1;
 
-                DB::table('contratos')->insert([
-                    'aliado_id'              => $aliadoId,
-                    'id_legacy'              => $r->Id,
-                    'cedula'                 => $r->Cedula,
-                    'estado'                 => strtolower(trim($r->Estado ?? '')),
-                    'razon_social_id'        => $razonId,
-                    'asesor_id'              => $asesorId,
-                    'encargado_id'           => $userId,
-                    'eps_id'                 => $epsId,
-                    'pension_id'             => $pensionId,
-                    'arl_id'                 => $arlId,
-                    'caja_id'                => $cajaId,
-                    'n_arl'                  => $r->N_ARL,
-                    'cargo'                  => trim($r->Cargo ?? ''),
-                    'fecha_ingreso'          => $r->Fecha_Ingreso ? substr($r->Fecha_Ingreso, 0, 10) : null,
-                    'fecha_retiro'           => $r->Fecha_Retiro  ? substr($r->Fecha_Retiro,  0, 10) : null,
-                    'fecha_arl'              => $r->Fecha_ARL     ? substr($r->Fecha_ARL,     0, 10) : null,
-                    'fecha_created'          => $r->Fecha_Created  ? substr($r->Fecha_Created, 0, 10) : null,
-                    'salario'                => $r->Salario_M ?? 0,
-                    'administracion'         => $r->Administracion ?? 0,
-                    'admon_asesor'           => $r->admon_asesor   ?? 0,
-                    'costo_afiliacion'       => $r->costo_afiliacion ?? 0,
-                    'seguro'                 => $r->Seguro ?? 0,
-                    'np'                     => trim($r->NP ?? ''),
-                    'envio_planilla'         => trim($r->Envio_Planilla ?? ''),
-                    'fecha_probable_pago'    => trim($r->Fecha_problable_pago ?? ''),
-                    'modo_probable_pago'     => trim($r->Modo_propable_pago ?? ''),
-                    'observacion'            => trim($r->Observacion ?? ''),
-                    'observacion_afiliacion' => trim($r->Observacion_Afiliacion ?? ''),
-                    'observacion_llamada'    => (string)($r->Observacion_llamada ?? ''),
-                    'motivo_afiliacion'      => trim($r->Motivo_Afiliacion ?? ''),
-                    'motivo_retiro'          => trim($r->Motivo_Retiro ?? ''),
-                    'tipo_modalidad_id'      => $r->Tipo,
-                    'actividad_economica_id' => $r->Actividad_Economica,
-                    'radicado_eps'           => trim($r->Radicado_EPS ?? ''),
-                    'radicado_arl'           => trim($r->Radicado_ARL ?? ''),
-                    'radicado_caja'          => trim($r->Radicado_Caja ?? ''),
-                    'radicado_pension'       => trim($r->Radicado_Pension ?? ''),
-                    'created_at'             => now(),
-                    'updated_at'             => now(),
+            foreach ($rows as $r) {
+                // Intentar resolver usuario por ID/nombre legacy
+                $userId = DB::table('users')
+                    ->where('aliado_id', $aliadoId)
+                    ->where('id_legacy', $this->col($r, 'Usuario') ?? $this->col($r, 'Id_Usuario'))
+                    ->value('id') ?? $defaultUserId;
+
+                $forma = strtolower(trim($this->col($r, 'Forma_Pago') ?? 'efectivo'));
+
+                DB::table('gastos')->insert([
+                    'aliado_id'      => $aliadoId,
+                    'usuario_id'     => $userId,
+                    'fecha'          => $this->col($r, 'Fecha') ? substr($this->col($r, 'Fecha'), 0, 10) : now()->toDateString(),
+                    'tipo'           => trim($this->col($r, 'Tipo') ?? 'otro_oficina'),
+                    'descripcion'    => trim($this->col($r, 'Descripcion') ?? $this->col($r, 'Concepto') ?? 'Sin descripción'),
+                    'pagado_a'       => trim($this->col($r, 'Pagado_A') ?? $this->col($r, 'Beneficiario') ?? ''),
+                    'cc_pagado_a'    => trim($this->col($r, 'CC_Pagado_A') ?? ''),
+                    'forma_pago'     => in_array($forma, ['efectivo','consignacion','transferencia','cheque']) ? $forma : 'efectivo',
+                    'valor'          => is_numeric($this->col($r, 'Valor')) ? (int)$this->col($r, 'Valor') : 0,
+                    'recibo_caja'    => trim($this->col($r, 'Recibo_Caja') ?? $this->col($r, 'Recibo') ?? ''),
+                    'lugar'          => trim($this->col($r, 'Lugar') ?? ''),
+                    'observacion'    => trim($this->col($r, 'Observacion') ?? ''),
+                    'created_at'     => now(),
+                    'updated_at'     => now(),
                 ]);
                 $count++;
             }
-            $this->info("  ✅ $db → $count contratos");
+            $this->info("  ✅ $db → $count gastos");
         }
 
-        DB::statement('ALTER TABLE contratos WITH CHECK CHECK CONSTRAINT ALL');
-
-        // Resumen de FKs nulas
-        $this->warn('Contratos sin razon_social_id: ' .
-            DB::table('contratos')->whereNull('razon_social_id')->count());
-    }
-
-    // ─── HELPER: lookup por NIT en tabla global ───────────────────────────────
-    private function lookupByNit(string $tabla, mixed $nit): ?int
-    {
-        if (!is_numeric($nit) || (float)$nit <= 1) return null;
-        return DB::table($tabla)->where('nit', (int)(float)$nit)->value('id');
+        DB::statement('ALTER TABLE gastos WITH CHECK CHECK CONSTRAINT ALL');
+        $this->info('  📊 Total gastos: ' . DB::table('gastos')->count());
     }
 }
