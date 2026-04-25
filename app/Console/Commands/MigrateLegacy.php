@@ -45,6 +45,7 @@ class MigrateLegacy extends Command
             '10'          => fn() => $this->step10_Abonos(),
             '11'          => fn() => $this->step11_DocumentosCliente(),
             '12'          => fn() => $this->step12_Gastos(),
+            'fix-modalidad' => fn() => $this->stepFixModalidad(),
         ];
 
         if ($step === 'all') {
@@ -598,7 +599,11 @@ class MigrateLegacy extends Command
                         'observacion'            => trim($this->col($r, 'Observacion') ?? ''),
                         'observacion_afiliacion' => trim($this->col($r, 'Observacion_Afiliacion') ?? ''),
                         'observacion_llamada'    => (string)($this->col($r, 'Observacion_llamada') ?? ''),
-                        'tipo_modalidad_id'      => is_numeric($this->col($r, 'Tipo')) && $this->col($r, 'Tipo') > 0 ? (int)$this->col($r, 'Tipo') : null,
+                        // Tipo: el campo legacy es el ID directo del catalogo tipo_modalidad.
+                        // Admitimos 0 (Tipo E) y negativos. Si no existe, inferimos por entidades.
+                        'tipo_modalidad_id'      => $this->resolveTipoModalidad(
+                                                       $this->col($r, 'Tipo'),
+                                                       $epsId, $arlId, $pensionId, $cajaId),
                         'actividad_economica_id' => is_numeric($this->col($r, 'Actividad_Economica')) && $this->col($r, 'Actividad_Economica') > 0 ? (int)$this->col($r, 'Actividad_Economica') : null,
                         'motivo_afiliacion_id'   => $motivoAfil,
                         'motivo_retiro_id'       => $motivoRetiro,
@@ -649,6 +654,48 @@ class MigrateLegacy extends Command
     {
         if (!is_numeric($nit) || (float)$nit <= 1) return null;
         return DB::table($tabla)->where('nit', (int)(float)$nit)->value('id');
+    }
+
+    // ─── HELPER: Resuelve tipo_modalidad_id ────────────────────────────────────
+    // 1) Si el campo Tipo del legacy es un ID válido del catálogo, lo usa.
+    // 2) Si no, infiere la modalidad por combinación de entidades activas.
+    //
+    // Catálogo BryNex (tipo_modalidad):
+    //   0  = E        (Dependiente completo: EPS+ARL+CAJA+PENSION)
+    //   6  = EPS      (Solo EPS)
+    //   7  = EPS+ARL  (EPS + ARL, sin caja ni pension)
+    //   10 = I Venc   (Independiente vencido: EPS+PENSION)
+    //   11 = I Act    (Independiente actual: EPS+PENSION)
+    //   8  = Y        (ARL tipo Y)
+    //   5  = CS       (Contribucion solidaria)
+    private function resolveTipoModalidad(
+        mixed $tipoLegacy,
+        ?int $epsId, ?int $arlId, ?int $pensionId, ?int $cajaId
+    ): ?int {
+        // IDs válidos en el catálogo tipo_modalidad
+        static $validIds = [-100,-8,-7,-6,-4,-1,0,1,2,3,4,5,6,7,8,10,11,12,13];
+
+        // Prioridad 1: usar el campo Tipo si es un ID del catálogo
+        if ($tipoLegacy !== null && is_numeric($tipoLegacy)) {
+            $t = (int)$tipoLegacy;
+            if (in_array($t, $validIds, true)) return $t;
+        }
+
+        // Prioridad 2: inferir por combinación de entidades activas
+        $hasEps     = $epsId     !== null;
+        $hasArl     = $arlId     !== null;
+        $hasPension = $pensionId !== null;
+        $hasCaja    = $cajaId    !== null;
+
+        if ($hasEps && $hasArl && $hasCaja && $hasPension) return 0;   // E completo
+        if ($hasEps && $hasArl && !$hasCaja && !$hasPension) return 7;  // EPS+ARL
+        if ($hasEps && !$hasArl && !$hasPension && !$hasCaja) return 6; // Solo EPS
+        if ($hasEps && $hasPension && !$hasArl && !$hasCaja) return 10; // I Venc
+        if ($hasEps && $hasArl && $hasCaja && !$hasPension) return 7;   // EPS+ARL+CAJA → EPS+ARL
+        if ($hasEps && $hasPension && $hasCaja && !$hasArl) return 10;  // EPS+PENSION+CAJA → I Venc
+        if (!$hasEps && $hasPension) return 10;                          // Solo pension → I Venc
+        if ($hasEps) return 6;                                           // EPS + algo → Solo EPS
+        return null;
     }
 
     // ─── HELPER: acceso a propiedad case-insensitive en stdClass ───────────────
@@ -1056,5 +1103,34 @@ class MigrateLegacy extends Command
 
         DB::statement('ALTER TABLE gastos WITH CHECK CHECK CONSTRAINT ALL');
         $this->info('  📊 Total gastos: ' . DB::table('gastos')->count());
+    }
+    // ─── FIX-MODALIDAD: actualiza contratos ya migrados sin tipo_modalidad_id ─────
+    // Recorre contratos donde tipo_modalidad_id IS NULL y lo infiere por entidades.
+    private function stepFixModalidad(): void
+    {
+        $contratos = DB::table('contratos')
+            ->whereNull('tipo_modalidad_id')
+            ->select('id', 'aliado_id', 'eps_id', 'arl_id', 'pension_id', 'caja_id')
+            ->get();
+
+        $this->line("  ℹ  Contratos sin tipo_modalidad_id: {$contratos->count()}");
+        $updated = 0;
+        foreach ($contratos as $c) {
+            $modalidadId = $this->resolveTipoModalidad(
+                null,
+                $c->eps_id,
+                $c->arl_id,
+                $c->pension_id,
+                $c->caja_id
+            );
+            if ($modalidadId !== null) {
+                DB::table('contratos')->where('id', $c->id)
+                    ->update(['tipo_modalidad_id' => $modalidadId]);
+                $updated++;
+            }
+        }
+        $this->info("  ✅ $updated contratos actualizados");
+        $still = DB::table('contratos')->whereNull('tipo_modalidad_id')->count();
+        $this->line("  ℹ  Aún sin modalidad: $still");
     }
 }
