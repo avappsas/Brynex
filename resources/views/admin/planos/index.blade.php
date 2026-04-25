@@ -315,6 +315,23 @@
 .empty-state .es-icon { font-size:2.5rem; margin-bottom:.5rem; }
 .empty-state p { font-size:.85rem; }
 
+/* ── Planilla icon tooltip ────────────────────────────────────── */
+.pla-ico {
+    cursor:pointer; font-size:1rem; position:relative;
+    display:inline-block; transition:transform .15s;
+}
+.pla-ico:hover { transform:scale(1.25); }
+.pla-ico::after {
+    content:attr(data-num);
+    position:absolute; bottom:calc(100% + 5px); left:50%;
+    transform:translateX(-50%);
+    background:#1e293b; color:#fff;
+    padding:.2rem .5rem; border-radius:5px;
+    font-size:.7rem; white-space:nowrap; font-family:monospace;
+    opacity:0; pointer-events:none; transition:opacity .15s; z-index:10;
+}
+.pla-ico:hover::after { opacity:1; }
+
 /* ── Custom RS Dropdown ────────────────────────────────────────────── */
 .rs-wrap { position:relative; }
 .rs-btn {
@@ -484,13 +501,13 @@
             {{-- N° Plano --}}
             <div class="filtro-inline">
                 <span class="fi-label">Plano</span>
-                <select name="n_plano" id="sel-nplano" onchange="autoSubmit()" style="width:72px">
-                    <option value="">Auto</option>
+                <select name="n_plano" id="sel-nplano" onchange="autoSubmit()" style="width:80px">
+                    <option value="">Todos</option>
                     @php $maxPlano = max(12, (int)($nPlanoFiltro ?? 0), (int)($rsSeleccionada->n_plano ?? 0)); @endphp
                     @for($np = 1; $np <= $maxPlano; $np++)
                     <option value="{{ $np }}"
                         {{ (string)$nPlanoFiltro === (string)$np ? 'selected' : '' }}>
-                        {{ $np }}{{ ($rsSeleccionada && $rsSeleccionada->n_plano == $np) ? ' ⭐' : '' }}
+                        P{{ $np }}{{ ($rsSeleccionada && $rsSeleccionada->n_plano == $np) ? ' ⭐' : '' }}
                     </option>
                     @endfor
                 </select>
@@ -571,6 +588,7 @@
             <th>Planilla</th>
             <th>Empresa</th>
             <th>Envío</th>
+            <th title="Acciones">⋯</th>
             @if($esIndependiente)<th>Operador</th><th>Pago</th>@endif
         </tr>
     </thead>
@@ -608,23 +626,33 @@
             <td>{{ number_format($p->v_eps ?? 0,0,',','.') }}</td>
             <td title="{{ $p->cod_arl }}">{{ $p->nombre_arl ? \Illuminate\Support\Str::limit($p->nombre_arl,18,'…') : ($p->cod_arl ?? '—') }}</td>
             <td>{{ number_format($p->v_arl ?? 0,0,',','.') }}</td>
-            <td title="{{ $p->cod_caja }}">{{ $p->nombre_caja ? \Illuminate\Support\Str::limit($p->nombre_caja,18,'…') : ($p->cod_caja ?? '—') }}</td>
+            <td title="{{ $p->nombre_caja ?? $p->cod_caja }}" style="font-size:.72rem;white-space:nowrap">
+                {{ $p->nombre_caja ? \Illuminate\Support\Str::limit($p->nombre_caja, 9, '…') : ($p->cod_caja ? \Illuminate\Support\Str::limit($p->cod_caja,9,'…') : '—') }}
+            </td>
             <td>{{ number_format($p->v_caja ?? 0,0,',','.') }}</td>
-            <td title="{{ $p->cod_afp }}">{{ $p->nombre_afp ? \Illuminate\Support\Str::limit($p->nombre_afp,18,'…') : ($p->cod_afp ?? '—') }}</td>
+            <td title="{{ $p->nombre_afp ?? $p->cod_afp }}" style="font-size:.72rem;white-space:nowrap">
+                {{ $p->nombre_afp ? \Illuminate\Support\Str::limit($p->nombre_afp, 9, '…') : ($p->cod_afp ?? '—') }}
+            </td>
             <td>{{ number_format($p->v_afp ?? 0,0,',','.') }}</td>
             <td style="font-weight:700;color:var(--azul-vivo)">
                 {{ number_format($p->total_ss ?? 0,0,',','.') }}
             </td>
-            <td id="planilla-{{ $p->id }}">
+            <td id="planilla-{{ $p->id }}" style="text-align:center">
                 @if($p->numero_planilla)
-                <span style="display:inline-flex;align-items:center;gap:.25rem;background:#dcfce7;color:#15803d;border:1px solid #bbf7d0;border-radius:20px;padding:.15rem .55rem;font-size:.67rem;font-weight:700;font-family:monospace;white-space:nowrap"
-                      title="Planilla: {{ $p->numero_planilla }}">✅ {{ $p->numero_planilla }}</span>
+                <span class="pla-ico" data-num="{{ $p->numero_planilla }}"
+                      onclick="copiarPlanilla(this)" title="">✅</span>
                 @else
                 <span style="color:#cbd5e1">—</span>
                 @endif
             </td>
             <td class="td-empresa" title="{{ $p->nombre_empresa }}">{{ $p->nombre_empresa ? \Illuminate\Support\Str::limit($p->nombre_empresa,14,'…') : '—' }}</td>
             <td class="td-envio" title="{{ $p->envio_planilla }}">{{ $p->envio_planilla ? 'Sí' : 'No' }}</td>
+            <td style="text-align:center">
+                <button type="button"
+                    onclick="abrirModalMover({{ $p->id }}, {{ $p->n_plano }})"
+                    style="padding:.18rem .45rem;border-radius:5px;font-size:.75rem;border:1px solid #e2e8f0;background:#f8fafc;color:#475569;cursor:pointer;line-height:1"
+                    title="Mover a otro plano">🔄</button>
+            </td>
             @if($esIndependiente)
             {{-- Columna Operador (texto informativo) --}}
             <td style="font-size:.72rem;color:#374151;white-space:nowrap">
@@ -665,8 +693,8 @@
             <td>{{ number_format($planos->sum('v_caja'),0,',','.') }}</td>
             <td></td>
             <td>{{ number_format($planos->sum('v_afp'),0,',','.') }}</td>
-            <td style="font-size:.88rem">$ {{ number_format($totalSS,0,',','.') }}</td>
-            <td colspan="3"></td>
+            <td></td>{{-- TOTAL SS: se muestra en el resumen inferior --}}
+            <td colspan="4"></td>
             @if($esIndependiente)
             <td></td>
             <td></td>
@@ -770,6 +798,43 @@
                     💾 Guardar N_PLANO
                 </button>
             </div>
+        </div>
+    </div>
+</div>
+{{-- ══════════════════════════════════════════════════════════════════════
+     MODAL: Mover registro a otro n_plano
+════════════════════════════════════════════════════════════════════════ --}}
+<div class="modal-overlay" id="modal-mover">
+    <div class="modal-box" style="max-width:360px">
+        <div class="modal-head">
+            <h3>🔄 Mover a otro Plano</h3>
+            <button class="modal-close" onclick="cerrarModal('modal-mover')">✕</button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="mover-plano-id">
+            <p style="font-size:.82rem;color:#64748b;margin-bottom:.75rem">
+                Cambia el número de plano de este registro. El registro se moverá al nuevo plano al guardar.
+            </p>
+            <div class="form-row">
+                <div class="form-grupo" style="max-width:110px">
+                    <label>Plano actual</label>
+                    <input type="number" id="mover-plano-actual" readonly
+                           style="background:#f1f5f9;color:#64748b;font-weight:700;text-align:center">
+                </div>
+                <div class="form-grupo" style="max-width:110px">
+                    <label>Nuevo plano</label>
+                    <div class="nplano-wrap">
+                        <input type="number" id="mover-plano-nuevo" min="1"
+                               style="width:70px;text-align:center">
+                        <button type="button" class="btn-plus"
+                                onclick="document.getElementById('mover-plano-nuevo').stepUp()">+</button>
+                    </div>
+                </div>
+            </div>
+            <button class="btn-accion btn-pagar" style="width:100%;justify-content:center;margin-top:.5rem"
+                    onclick="guardarMover()">
+                💾 Mover Plano
+            </button>
         </div>
     </div>
 </div>
@@ -1065,7 +1130,52 @@ async function guardarNPlano() {
     }
 }
 
-// ── Soporte (preview de imagen / PDF) ────────────────────────────────
+// ── Mover registro a otro n_plano ─────────────────────────────────────────
+function abrirModalMover(id, nPlanoActual) {
+    document.getElementById('mover-plano-id').value      = id;
+    document.getElementById('mover-plano-actual').value  = nPlanoActual;
+    document.getElementById('mover-plano-nuevo').value   = nPlanoActual + 1;
+    document.getElementById('modal-mover').classList.add('open');
+}
+async function guardarMover() {
+    const id     = document.getElementById('mover-plano-id').value;
+    const nPlano = parseInt(document.getElementById('mover-plano-nuevo').value);
+    if (!nPlano || nPlano < 1) { mostrarToast('N_PLANO inválido.', 'error'); return; }
+    try {
+        const resp = await fetch(`/admin/planos/${id}/mover`, {
+            method : 'PATCH',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CTX.csrfToken },
+            body   : JSON.stringify({ n_plano: nPlano }),
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            mostrarToast(data.mensaje, 'success');
+            cerrarModal('modal-mover');
+            setTimeout(() => location.reload(), 700);
+        } else {
+            mostrarToast(data.mensaje || 'Error al mover.', 'error');
+        }
+    } catch(e) {
+        mostrarToast('Error de conexión.', 'error');
+    }
+}
+
+// ── Copiar número de planilla al portapapeles ────────────────────────
+function copiarPlanilla(el) {
+    const num = el.dataset.num;
+    navigator.clipboard.writeText(num)
+        .then(() => mostrarToast('📋 Planilla ' + num + ' copiada.', 'success'))
+        .catch(() => {
+            // Fallback para navegadores sin clipboard API
+            const ta = document.createElement('textarea');
+            ta.value = num; document.body.appendChild(ta);
+            ta.select(); document.execCommand('copy');
+            document.body.removeChild(ta);
+            mostrarToast('📋 Planilla ' + num + ' copiada.', 'success');
+        });
+}
+
+
 function previewSoporte(file) {
     if (!file) return;
     const label   = document.getElementById('soporte-label');

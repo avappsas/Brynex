@@ -710,38 +710,31 @@
             @role('superadmin')
             <div class="menu-sep"></div>
             <div class="menu-dropdown brynex">
-                <a href="{{ route('admin.aliados.index') }}" class="menu-dropdown-trigger {{ request()->routeIs('admin.aliados*', 'admin.asesores*', 'admin.bitacora*', 'admin.usuarios*', 'admin.configuracion*') ? 'activo' : '' }}">
+                <a href="{{ route('brynex.hub') }}" class="menu-dropdown-trigger {{ request()->routeIs('brynex*', 'admin.aliados*') ? 'activo' : '' }}">
                     <div class="icono">🔵</div>
                     <div class="label">BryNex</div>
                 </a>
                 <div class="menu-dropdown-panel">
                     <div class="panel-header">BryNex Global</div>
 
+                    <a href="{{ route('brynex.hub') }}" class="panel-item {{ request()->routeIs('brynex.hub') ? 'activo' : '' }}">
+                        <div class="pi">🔵</div> Hub BryNex
+                    </a>
                     <a href="{{ route('admin.aliados.index') }}" class="panel-item {{ request()->routeIs('admin.aliados*') ? 'activo' : '' }}">
                         <div class="pi">🏢</div> Aliados
+                    </a>
+                    <a href="{{ route('brynex.accesos') }}" class="panel-item {{ request()->routeIs('brynex.accesos') ? 'activo' : '' }}">
+                        <div class="pi">🔐</div> Accesos de Usuarios
                     </a>
 
                     <div class="panel-sep"></div>
                     <div class="panel-header" style="margin-top:0.2rem">Operaciones</div>
 
-                    <a href="{{ route('admin.asesores.index') }}" class="panel-item {{ request()->routeIs('admin.asesores*') ? 'activo' : '' }}">
-                        <div class="pi">🤝</div> Asesores
-                    </a>
-                    <a href="{{ route('admin.bitacora.index') }}" class="panel-item {{ request()->routeIs('admin.bitacora*') ? 'activo' : '' }}">
-                        <div class="pi">👁️</div> Auditoría
-                    </a>
                     <a href="{{ route('admin.usuarios.index') }}" class="panel-item {{ request()->routeIs('admin.usuarios*') ? 'activo' : '' }}">
                         <div class="pi">👥</div> Usuarios
                     </a>
-
-                    <div class="panel-sep"></div>
-                    <div class="panel-header" style="margin-top:0.2rem">Configuración Global</div>
-
-                    <a href="{{ route('admin.configuracion.hub') }}" class="panel-item {{ request()->routeIs('admin.configuracion*') ? 'activo' : '' }}">
-                        <div class="pi">⚙️</div> Config. General
-                    </a>
-                    <a href="{{ route('admin.configuracion.index') }}" class="panel-item {{ request()->routeIs('admin.configuracion.index') ? 'activo' : '' }}">
-                        <div class="pi">💲</div> Parámetros del Sistema
+                    <a href="{{ route('admin.bitacora.index') }}" class="panel-item {{ request()->routeIs('admin.bitacora*') ? 'activo' : '' }}">
+                        <div class="pi">👁️</div> Auditoría
                     </a>
                 </div>
             </div>

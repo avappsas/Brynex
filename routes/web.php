@@ -179,6 +179,7 @@ Route::middleware('auth')->group(function () {
             Route::get('/',                     [$pp, 'index'])            ->name('index');
             Route::get('/descargar',            [$pp, 'descargar'])        ->name('descargar');
             Route::patch('/n-plano',            [$pp, 'actualizarNPlano']) ->name('n_plano.update');
+            Route::patch('/{id}/mover',         [$pp, 'moverPlano'])       ->name('mover');
             Route::post('/confirmar-pago',      [$pp, 'confirmarPago'])    ->name('confirmar_pago');
             Route::get('/api/razon/{id}',       [$pp, 'apiRazonSocial'])   ->name('api.razon');
         });
@@ -197,6 +198,14 @@ Route::middleware('auth')->group(function () {
             Route::patch('/empresa/{id}/encargado',  [$cb, 'asignarEncargado'])       ->name('empresa.encargado');
         });
 
+    });
+
+    // ── BryNex Global (solo usuarios es_brynex) ──────────────────────────
+    Route::prefix('brynex')->name('brynex.')->group(function () {
+        $bx = \App\Http\Controllers\BrynexController::class;
+        Route::get('/',         [$bx, 'hub'])          ->name('hub');
+        Route::get('/accesos',  [$bx, 'accesos'])       ->name('accesos');
+        Route::post('/accesos', [$bx, 'toggleAcceso'])  ->name('accesos.toggle');
     });
 
 

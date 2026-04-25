@@ -25,17 +25,18 @@ class AlidoSelectorController extends Controller
             return redirect()->route('dashboard');
         }
 
-        // Aliado propio + aliados del pivot activos
-        $aliados = Aliado::where('aliados.activo', true)
-            ->where(function ($q) use ($user) {
-                $q->where('aliados.id', $user->aliado_id)
-                  ->orWhereHas('usuariosBrynex', fn($q2) =>
-                        $q2->where('aliado_user.user_id', $user->id)
-                           ->where('aliado_user.activo', true)
-                  );
-            })
-            ->orderBy('nombre')
-            ->get();
+        // Superadmin BryNex → todos los aliados activos
+        // BryNex regular    → solo los del pivot aliado_user
+        // Otros             → solo su propio aliado
+        if ($user->es_brynex && $user->hasRole('superadmin')) {
+            $aliados = Aliado::where('activo', true)->orderBy('nombre')->get();
+        } elseif ($user->es_brynex) {
+            $propios  = Aliado::where('activo', true)->where('id', $user->aliado_id)->get();
+            $pivotIds = $user->aliados()->where('aliados.activo', true)->wherePivot('activo', true)->pluck('aliados.id');
+            $aliados  = Aliado::where('activo', true)->whereIn('id', $pivotIds->push($user->aliado_id))->orderBy('nombre')->get();
+        } else {
+            $aliados = Aliado::where('activo', true)->where('id', $user->aliado_id)->get();
+        }
 
         return view('auth.selector-aliado', compact('aliados'));
     }

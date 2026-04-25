@@ -56,9 +56,15 @@ class User extends Authenticatable
     // Verifica si el usuario puede acceder a un aliado dado
     public function puedeAccederAliado(int $alidoId): bool
     {
+        // El aliado propio siempre es accesible
         if ($this->aliado_id === $alidoId) {
             return true;
         }
+        // Superadmin BryNex → accede a CUALQUIER aliado activo
+        if ($this->es_brynex && $this->hasRole('superadmin')) {
+            return Aliado::where('id', $alidoId)->where('activo', true)->exists();
+        }
+        // BryNex regular → solo los aliados asignados en el pivot aliado_user
         if ($this->es_brynex) {
             return $this->aliados()
                         ->where('aliados.id', $alidoId)

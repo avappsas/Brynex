@@ -77,7 +77,9 @@ class PlanoPagoController extends Controller
         if ($razonSocialId) {
             $rsSeleccionada = RazonSocial::find($razonSocialId);
             $nPlanoActual   = $rsSeleccionada?->n_plano;
-            if (!$nPlanoFiltro) {
+            // $request->has() = true si el param vino en el form (aunque vacío = "Todos")
+            // $request->has() = false si es primera carga (URL sin n_plano) → usar plano actual
+            if (!$request->has('n_plano')) {
                 $nPlanoFiltro = $nPlanoActual;
             }
         }
@@ -301,6 +303,36 @@ class PlanoPagoController extends Controller
             'ok'      => true,
             'n_plano' => $rs->n_plano,
             'mensaje' => "N_PLANO actualizado a {$rs->n_plano} para {$rs->razon_social}",
+        ]);
+    }
+
+    // ── 3b. Mover un registro de plano a otro n_plano ─────────────────
+    public function moverPlano(Request $request, int $id)
+    {
+        $aliadoId = session('aliado_id_activo');
+
+        if (!$aliadoId) {
+            return response()->json(['ok' => false, 'mensaje' => 'Sesión expirada.'], 401);
+        }
+
+        $nPlano = (int) $request->input('n_plano');
+        if ($nPlano < 1) {
+            return response()->json(['ok' => false, 'mensaje' => 'N_PLANO debe ser ≥ 1.'], 422);
+        }
+
+        $updated = DB::table('planos')
+            ->where('id', $id)
+            ->where('aliado_id', $aliadoId)
+            ->whereNull('deleted_at')
+            ->update(['n_plano' => $nPlano]);
+
+        if (!$updated) {
+            return response()->json(['ok' => false, 'mensaje' => 'Registro no encontrado o sin cambios.'], 404);
+        }
+
+        return response()->json([
+            'ok'      => true,
+            'mensaje' => "Registro movido al plano P{$nPlano}.",
         ]);
     }
 
