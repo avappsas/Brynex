@@ -49,13 +49,12 @@ class PlanoPagoController extends Controller
         };
 
         // ── Conteo de planos por RS para el periodo mixto ────────────────
-        // Usa el n_plano actual de cada RS para el conteo rapido del select.
+        // Cuenta TODOS los planos del periodo sin importar el n_plano actual de la RS.
+        // (Si el n_plano se avanzó, los planos del periodo anterior siguen visibles en el select.)
         $cantPorRs = DB::table('planos AS p')
-            ->join('razones_sociales AS rs2', 'rs2.id', '=', 'p.razon_social_id')
             ->where('p.aliado_id', $aliadoId)
             ->whereNull('p.deleted_at')
             ->where('p.tipo_reg', 'planilla')
-            ->whereColumn('p.n_plano', 'rs2.n_plano')
             ->where($wherePeriodo)
             ->groupBy('p.razon_social_id')
             ->select('p.razon_social_id', DB::raw('COUNT(*) AS cant'))

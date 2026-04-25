@@ -11,6 +11,9 @@ class Beneficiario extends BaseModel
 
     protected $table = 'beneficiarios';
 
+    /** Almacena el diff de auditoría entre updating() y updated() — nunca se persiste en BD */
+    public array $_diffAudit = [];
+
     protected $fillable = [
         'aliado_id',
         'cc_cliente',

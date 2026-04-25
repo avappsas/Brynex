@@ -16,6 +16,9 @@ class Cliente extends BaseModel
     public $incrementing  = false;
     public $timestamps    = true;
 
+    /** Almacena el diff de auditoría entre updating() y updated() — nunca se persiste en BD */
+    public array $_diffAudit = [];
+
     protected $fillable = [
         'id', 'aliado_id', 'cod_empresa', 'tipo_doc', 'cedula',
         'primer_nombre', 'segundo_nombre', 'primer_apellido', 'segundo_apellido',

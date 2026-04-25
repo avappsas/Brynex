@@ -1,4 +1,4 @@
-﻿@extends('layouts.app')
+@extends('layouts.app')
 
 @section('titulo', 'Planos SS')
 @section('modulo', 'Pago Planillas Seguridad Social')
@@ -314,6 +314,60 @@
 }
 .empty-state .es-icon { font-size:2.5rem; margin-bottom:.5rem; }
 .empty-state p { font-size:.85rem; }
+
+/* ── Custom RS Dropdown ────────────────────────────────────────────── */
+.rs-wrap { position:relative; }
+.rs-btn {
+    display:flex; align-items:center; gap:.4rem;
+    min-width:280px; padding:.28rem .6rem;
+    border:1px solid #cbd5e1; border-radius:7px;
+    background:#f8fafc; color:#1e293b;
+    font-size:.8rem; cursor:pointer; text-align:left;
+    white-space:nowrap; overflow:hidden; transition:border .15s;
+}
+.rs-btn:hover { border-color:var(--acento); }
+.rs-btn-txt { flex:1; overflow:hidden; text-overflow:ellipsis; }
+.rs-btn-arr { font-size:.6rem; color:#94a3b8; flex-shrink:0; transition:transform .2s; }
+.rs-wrap.open .rs-btn-arr { transform:rotate(180deg); }
+.rs-panel {
+    position:absolute; top:calc(100% + 5px); left:0; z-index:400;
+    background:#fff; border:1px solid #e2e8f0; border-radius:10px;
+    box-shadow:0 10px 30px rgba(0,0,0,.15);
+    width:440px; max-height:380px;
+    flex-direction:column; display:none;
+}
+.rs-wrap.open .rs-panel { display:flex; }
+.rs-search-box { padding:.4rem .5rem; border-bottom:1px solid #f1f5f9; flex-shrink:0; }
+.rs-search-box input {
+    width:100%; padding:.3rem .65rem; border:1px solid #e2e8f0;
+    border-radius:6px; font-size:.8rem; outline:none; background:#f8fafc;
+    transition:border .15s;
+}
+.rs-search-box input:focus { border-color:var(--acento); background:#fff; }
+.rs-list { overflow-y:auto; flex:1; padding:.15rem 0; }
+.rs-glabel {
+    padding:.3rem .85rem .15rem; font-size:.62rem; font-weight:700;
+    color:#94a3b8; text-transform:uppercase; letter-spacing:.06em;
+    background:#fff; position:sticky; top:0;
+}
+.rs-row {
+    display:grid;
+    grid-template-columns:18px 1fr 38px 58px;
+    align-items:center; gap:0 6px;
+    padding:.3rem .85rem; cursor:pointer;
+    font-size:.79rem; color:#334155; transition:background .1s;
+}
+.rs-row:hover { background:#f1f5f9; }
+.rs-row.sel { background:#eff6ff; }
+.rs-row .ri { font-size:.75rem; text-align:center; }
+.rs-row .ri.g { color:#16a34a; }
+.rs-row .ri.s { color:#94a3b8; }
+.rs-row .rn { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-weight:500; }
+.rs-row.sel .rn { color:#1d4ed8; font-weight:700; }
+.rs-row .rp { text-align:right; font-size:.71rem; color:#64748b; font-weight:600; white-space:nowrap; }
+.rs-row.sel .rp { color:#1d4ed8; }
+.rs-row .rc { text-align:right; font-size:.68rem; color:#16a34a; white-space:nowrap; }
+.rs-row.sel .rc { color:#1d4ed8; }
 </style>
 @endpush
 
@@ -365,57 +419,67 @@
 
             <div class="filtro-sep"></div>
 
-            {{-- Razon Social --}}
+            {{-- Razon Social — Custom Dropdown --}}
             <div class="filtro-inline">
                 <span class="fi-label">RS</span>
-                <select name="razon_social_id" id="sel-rs"
-                        style="min-width:360px;font-family:'Courier New',Courier,monospace;font-size:.77rem;text-align:left"
-                        onchange="onRsChange(this)">
-                    <option value="">— Todas —</option>
-
-                    @php
-                        $rsConPlanos = $razonesSociales->filter(fn($r) => isset($cantPorRs[$r->id]) && $cantPorRs[$r->id] > 0);
-                        $rsSinPlanos = $razonesSociales->filter(fn($r) => !isset($cantPorRs[$r->id]) || $cantPorRs[$r->id] == 0);
-                        $colNom = 28; $colP = 5; $colCant = 3;
-                    @endphp
-
-                    @if($rsConPlanos->count())
-                    <optgroup label="Con planos en este periodo ({{ $rsConPlanos->count() }} RS)">
-                        @foreach($rsConPlanos as $rs)
-                        @php
-                            $cant  = $cantPorRs[$rs->id] ?? 0;
-                            $rNom  = mb_strtoupper(mb_substr($rs->razon_social, 0, $colNom));
-                            $nom   = $rNom . str_repeat(chr(194).chr(160), max(0, $colNom - mb_strlen($rNom)));
-                            $pPad  = max(0, $colP - mb_strlen("P=".$rs->n_plano));
-                            $pStr  = str_repeat(chr(194).chr(160), $pPad)."P=".$rs->n_plano;
-                            $cPad  = max(0, $colCant - mb_strlen((string)$cant));
-                            $cStr  = str_repeat(chr(194).chr(160), $cPad).$cant." pers.";
-                        @endphp
-                        <option value="{{ $rs->id }}" data-nplano="{{ $rs->n_plano }}" {{ $razonSocialId == $rs->id ? "selected" : "" }}>🟢 {{ $nom }}  {{ $pStr }}  {{ $cStr }}</option>
-                        @endforeach
-                    </optgroup>
-                    @endif
-
-                    @if($rsSinPlanos->count())
-                    <optgroup label="Sin planos en este periodo ({{ $rsSinPlanos->count() }} RS)">
-                        @foreach($rsSinPlanos as $rs)
-                        @php
-                            $esA   = in_array(strtolower($rs->estado ?? ""), ["activo","activa","1","si","yes"]);
-                            $rNom  = mb_strtoupper(mb_substr($rs->razon_social, 0, $colNom));
-                            $nom   = $rNom . str_repeat(chr(194).chr(160), max(0, $colNom - mb_strlen($rNom)));
-                            $pPad  = max(0, $colP - mb_strlen("P=".$rs->n_plano));
-                            $pStr  = str_repeat(chr(194).chr(160), $pPad)."P=".$rs->n_plano;
-                            $icono = $esA ? "o" : "-";
-                        @endphp
-                        <option value="{{ $rs->id }}" data-nplano="{{ $rs->n_plano }}" {{ $razonSocialId == $rs->id ? "selected" : "" }} style="color:#94a3b8;">{{ $icono }} {{ $nom }}  {{ $pStr }}</option>
-                        @endforeach
-                    </optgroup>
-                    @endif
-
-                </select>
+                <input type="hidden" name="razon_social_id" id="sel-rs-val" value="{{ $razonSocialId ?? '' }}">
+                <div class="rs-wrap" id="rs-wrap">
+                    <button type="button" class="rs-btn" onclick="toggleRs()">
+                        <span class="rs-btn-txt" id="rs-btn-txt">{{ $rsSeleccionada ? mb_strtoupper($rsSeleccionada->razon_social) : '— Todas —' }}</span>
+                        <span class="rs-btn-arr">▼</span>
+                    </button>
+                    <div class="rs-panel">
+                        <div class="rs-search-box">
+                            <input type="text" id="rs-search" placeholder="🔍 Buscar..." oninput="filtrarRs(this.value)" autocomplete="off">
+                        </div>
+                        <div class="rs-list" id="rs-list">
+                            <div class="rs-row {{ !$razonSocialId ? 'sel':'' }}" data-lbl="" onclick="selRs('','','— Todas —')">
+                                <span class="ri s">—</span>
+                                <span class="rn" style="color:#64748b">— Todas —</span>
+                                <span class="rp"></span><span class="rc"></span>
+                            </div>
+                            @php
+                                $rsConPlanos = $razonesSociales->filter(fn($r) => isset($cantPorRs[$r->id]) && $cantPorRs[$r->id] > 0);
+                                $activas = ['activo','activa','1','si','yes'];
+                                $rsSinPlanosActivas = $razonesSociales
+                                    ->filter(fn($r) => !isset($cantPorRs[$r->id]) || $cantPorRs[$r->id] == 0)
+                                    ->filter(fn($r) => in_array(strtolower($r->estado ?? ''), $activas));
+                            @endphp
+                            @if($rsConPlanos->count())
+                            <div class="rs-glabel">● Con planos — {{ $rsConPlanos->count() }} RS</div>
+                            @foreach($rsConPlanos as $rs)
+                            @php $cant = $cantPorRs[$rs->id] ?? 0; $nom = mb_strtoupper($rs->razon_social); @endphp
+                            <div class="rs-row {{ $razonSocialId == $rs->id ? 'sel':'' }}"
+                                 data-lbl="{{ strtolower($rs->razon_social) }}"
+                                 onclick="selRs('{{ $rs->id }}','{{ $rs->n_plano }}','{{ addslashes($nom) }}')">
+                                <span class="ri g">●</span>
+                                <span class="rn">{{ $nom }}</span>
+                                <span class="rp">P{{ $rs->n_plano }}</span>
+                                <span class="rc">{{ $cant }} p.</span>
+                            </div>
+                            @endforeach
+                            @endif
+                            @if($rsSinPlanosActivas->count())
+                            <div class="rs-glabel" style="margin-top:.2rem">○ Sin planos — {{ $rsSinPlanosActivas->count() }} RS</div>
+                            @foreach($rsSinPlanosActivas as $rs)
+                            @php $nom = mb_strtoupper($rs->razon_social); @endphp
+                            <div class="rs-row {{ $razonSocialId == $rs->id ? 'sel':'' }}"
+                                 data-lbl="{{ strtolower($rs->razon_social) }}"
+                                 onclick="selRs('{{ $rs->id }}','{{ $rs->n_plano }}','{{ addslashes($nom) }}')">
+                                <span class="ri s">○</span>
+                                <span class="rn" style="color:#64748b">{{ $nom }}</span>
+                                <span class="rp">P{{ $rs->n_plano }}</span>
+                                <span class="rc"></span>
+                            </div>
+                            @endforeach
+                            @endif
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <div class="filtro-sep"></div>
+
 
             {{-- N° Plano --}}
             <div class="filtro-inline">
@@ -444,7 +508,14 @@
                     </div>
                     <div class="multiselect-dropdown" id="ms-dropdown">
                         <span class="ms-select-all" onclick="toggleAllMs()">&#9745; Todos</span>
-                        @foreach($tiposModalidad as $tm)
+                        @php
+                            // Si hay RS seleccionada mostramos solo las modalidades presentes en el periodo+RS;
+                            // si no hay RS, mostramos todas las activas.
+                            $modalidadesParaFiltro = $razonSocialId && $modalidadesDispon->count()
+                                ? $modalidadesDispon
+                                : $tiposModalidad;
+                        @endphp
+                        @foreach($modalidadesParaFiltro as $tm)
                         <label class="ms-item">
                             <input type="checkbox" name="tipos_modalidad[]"
                                    value="{{ $tm->id }}"
@@ -638,22 +709,33 @@
 <div class="modal-overlay" id="modal-descarga">
     <div class="modal-box md">
         <div class="modal-head">
-            <h3>📥 Descargar Plano</h3>
+            <h3>📥 Descargar Plano Excel</h3>
             <button class="modal-close" onclick="cerrarModal('modal-descarga')">✕</button>
         </div>
         <div class="modal-body">
-            <div style="display:flex;gap:.75rem;margin-bottom:1rem;flex-wrap:wrap">
-                <button class="btn-accion btn-descargar" style="flex:1"
-                        onclick="ejecutarDescarga('txt')">
-                    📄 Descargar TXT
-                </button>
-                <button class="btn-accion btn-pagar" style="flex:1"
-                        onclick="ejecutarDescarga('xlsx')">
-                    📊 Descargar Excel
-                </button>
-            </div>
 
-            <div style="border-top:1px solid #f1f5f9;padding-top:1rem;margin-top:.25rem">
+            {{-- Operadores activos del aliado --}}
+            @if($operadores->count())
+            <div style="margin-bottom:1rem">
+                <div style="font-size:.7rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.4rem">🏦 Operadores activos del aliado</div>
+                <div style="display:flex;flex-wrap:wrap;gap:.35rem">
+                    @foreach($operadores as $op)
+                    <span style="display:inline-flex;align-items:center;gap:.3rem;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;border-radius:20px;padding:.2rem .65rem;font-size:.75rem;font-weight:600">
+                        🏦 {{ $op->nombre }}
+                    </span>
+                    @endforeach
+                </div>
+                <div style="font-size:.72rem;color:#94a3b8;margin-top:.35rem">Descargue el formato Excel correspondiente al operador con el que realizará el pago.</div>
+            </div>
+            @endif
+
+            {{-- Botón único: Excel --}}
+            <button class="btn-accion btn-pagar" style="width:100%;justify-content:center;padding:.55rem"
+                    onclick="ejecutarDescarga('xlsx')">
+                📊 Descargar Excel
+            </button>
+
+            <div style="border-top:1px solid #f1f5f9;padding-top:1rem;margin-top:1rem">
                 <div class="aviso-modal">
                     <strong>⚠️ Actualizar N° Plano</strong>
                     Si realizará el pago con este plano, actualice el N_PLANO de la razón social para que los pagos siguientes queden en un nuevo número separado.
@@ -666,24 +748,28 @@
                 @endif
 
                 <div class="form-row">
-                    <div class="form-grupo">
+                    {{-- N_PLANO actual (solo lectura) --}}
+                    <div class="form-grupo" style="max-width:110px">
+                        <label>N_PLANO actual</label>
+                        <input type="number" value="{{ $nPlanoActual ?? 0 }}" readonly
+                               style="background:#f1f5f9;color:#64748b;font-weight:700;text-align:center">
+                    </div>
+                    {{-- N_PLANO nuevo --}}
+                    <div class="form-grupo" style="max-width:110px">
                         <label>N_PLANO nuevo</label>
                         <div class="nplano-wrap">
                             <input type="number" id="inp-nplano-modal" min="1"
-                                   value="{{ ($nPlanoActual ?? 0) + 1 }}" style="width:80px">
+                                   value="{{ ($nPlanoActual ?? 0) + 1 }}" style="width:70px;text-align:center">
                             <button type="button" class="btn-plus"
                                     onclick="document.getElementById('inp-nplano-modal').stepUp()">+</button>
                         </div>
                     </div>
                 </div>
-                <button class="btn-accion btn-pagar" onclick="guardarNPlano()"
+                <button class="btn-accion btn-pagar" style="width:100%;justify-content:center" onclick="guardarNPlano()"
                         @if(!$rsSeleccionada) disabled @endif>
                     💾 Guardar N_PLANO
                 </button>
             </div>
-        </div>
-        <div class="modal-foot">
-            <button class="btn-accion btn-cancelar" onclick="cerrarModal('modal-descarga')">Cerrar</button>
         </div>
     </div>
 </div>
@@ -813,9 +899,8 @@ function toggleMs() {
     document.getElementById('ms-wrap').classList.toggle('open');
 }
 document.addEventListener('click', e => {
-    if (!e.target.closest('#ms-wrap')) {
-        document.getElementById('ms-wrap').classList.remove('open');
-    }
+    if (!e.target.closest('#ms-wrap'))  document.getElementById('ms-wrap')?.classList.remove('open');
+    if (!e.target.closest('#rs-wrap'))  document.getElementById('rs-wrap')?.classList.remove('open');
 });
 function updateMsLabel() {
     const checked = document.querySelectorAll('#ms-dropdown input[type=checkbox]:checked');
@@ -829,24 +914,43 @@ function toggleAllMs() {
     updateMsLabel();
 }
 
-// ── RS → N_PLANO automático + submit
-function onRsChange(sel) {
-    const opt = sel.options[sel.selectedIndex];
-    const nplano = opt.dataset.nplano || '';
-    // Actualizar select de n_plano
+// ── RS Custom Dropdown ────────────────────────────────────────────────
+function toggleRs() {
+    const w = document.getElementById('rs-wrap');
+    w.classList.toggle('open');
+    if (w.classList.contains('open')) setTimeout(() => document.getElementById('rs-search')?.focus(), 40);
+}
+function selRs(val, nplano, label) {
+    document.getElementById('sel-rs-val').value = val;
+    document.getElementById('rs-btn-txt').textContent = label || '— Todas —';
+    document.getElementById('rs-wrap').classList.remove('open');
+    document.querySelectorAll('#rs-list .rs-row').forEach(r => r.classList.remove('sel'));
+    const hit = [...document.querySelectorAll('#rs-list .rs-row')].find(r => r.getAttribute('onclick')?.includes("'" + val + "'"));
+    if (hit) hit.classList.add('sel'); else document.querySelector('#rs-list .rs-row')?.classList.add('sel');
     const selNp = document.getElementById('sel-nplano');
     if (selNp && nplano) {
-        // Buscar opción coincidente
         let found = false;
-        for (let o of selNp.options) {
-            if (o.value === nplano) { o.selected = true; found = true; break; }
-        }
-        if (!found) { selNp.value = ''; }
+        for (let o of selNp.options) { if (o.value === String(nplano)) { o.selected = true; found = true; break; } }
+        if (!found) selNp.value = '';
     }
-    // Actualizar modal nplano
-    const modalInp = document.getElementById('inp-nplano-modal');
-    if (modalInp && nplano) modalInp.value = parseInt(nplano) + 1;
+    const mi = document.getElementById('inp-nplano-modal');
+    if (mi && nplano) mi.value = parseInt(nplano) + 1;
     autoSubmit();
+}
+function filtrarRs(q) {
+    q = q.trim().toLowerCase();
+    let grp = null, grpVis = false;
+    document.querySelectorAll('#rs-list .rs-row, #rs-list .rs-glabel').forEach(el => {
+        if (el.classList.contains('rs-glabel')) {
+            if (grp) grp.style.display = grpVis ? '' : 'none';
+            grp = el; grpVis = false;
+        } else {
+            const show = !q || (el.dataset.lbl || '').includes(q);
+            el.style.display = show ? '' : 'none';
+            if (show) grpVis = true;
+        }
+    });
+    if (grp) grp.style.display = grpVis ? '' : 'none';
 }
 
 // Auto-submit en cambio de cualquier filtro
@@ -948,9 +1052,11 @@ async function guardarNPlano() {
         const data = await resp.json();
         if (data.ok) {
             mostrarToast(data.mensaje, 'success');
-            document.getElementById('badge-nplano-val')?.setAttribute('data-val', nPlano);
+            // Actualizar badge visible en la cabecera
             if (document.getElementById('badge-nplano-val'))
                 document.getElementById('badge-nplano-val').textContent = nPlano;
+            // Cerrar el modal al guardar exitosamente
+            cerrarModal('modal-descarga');
         } else {
             mostrarToast(data.mensaje || 'Error al guardar.', 'error');
         }

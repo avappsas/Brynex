@@ -195,16 +195,13 @@
 
             {{-- Footer: Eliminar (izq) | Cancelar + Guardar (der) --}}
             <div class="bmodal-footer">
-                {{-- Botón Eliminar solo en modo edición --}}
+                {{-- Botón Eliminar solo en modo edición (dispara el form externo) --}}
                 <div id="benDeleteWrap" style="display:none;flex:1;">
-                    <form id="benDeleteForm" method="POST" onsubmit="return confirm('¿Eliminar este beneficiario permanentemente?');">
-                        @csrf
-                        <input type="hidden" name="_method" value="DELETE">
-                        <button type="submit" class="ben-btn-del-modal">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg>
-                            Eliminar
-                        </button>
-                    </form>
+                    <button type="button" class="ben-btn-del-modal"
+                        onclick="if(confirm('¿Eliminar este beneficiario permanentemente?')) document.getElementById('benDeleteForm').submit();">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg>
+                        Eliminar
+                    </button>
                 </div>
                 <button type="button" class="bmodal-btn-cancel" onclick="benModalCerrar()">Cancelar</button>
                 <button type="submit" class="bmodal-btn-save">
@@ -212,6 +209,12 @@
                     Guardar
                 </button>
             </div>
+        </form>
+
+        {{-- Formulario DELETE fuera del benForm (HTML no permite forms anidados) --}}
+        <form id="benDeleteForm" method="POST" style="display:none;">
+            @csrf
+            <input type="hidden" name="_method" value="DELETE">
         </form>
     </div>
 </div>
@@ -280,7 +283,10 @@
 </style>
 
 <script>
-const benBaseUrl = "{{ url('/BryNex/public/admin') }}";
+// URLs base generadas por Laravel para evitar problemas de prefijo de ruta
+const benRouteUpdate  = '{{ rtrim(route("admin.beneficiarios.update", ["id" => "__ID__"]), "/") }}';
+const benRouteDestroy = '{{ rtrim(route("admin.beneficiarios.destroy", ["id" => "__ID__"]), "/") }}';
+const benRouteStore   = '{{ route("admin.clientes.beneficiarios.store", $cliente->cedula) }}';
 
 function abrirPanelBeneficiarios() {
     document.getElementById('modalListaBeneficiarios').style.display = 'flex';
@@ -293,14 +299,14 @@ function cerrarPanelBen(event) {
 }
 
 function benModalAbrir(ben) {
-    const form   = document.getElementById('benForm');
+    const form    = document.getElementById('benForm');
     const delWrap = document.getElementById('benDeleteWrap');
     form.reset();
 
     if (ben && ben.id) {
         document.getElementById('benModalTitulo').innerText = 'Editar Beneficiario';
         document.getElementById('benMetodo').value = 'PUT';
-        form.action = benBaseUrl + '/beneficiarios/' + ben.id;
+        form.action = benRouteUpdate.replace('__ID__', ben.id);
 
         document.getElementById('benNombres').value    = ben.nombres || '';
         document.getElementById('benParentesco').value = ben.parentesco || '';
@@ -312,11 +318,11 @@ function benModalAbrir(ben) {
 
         // Mostrar botón Eliminar y configurar su action
         delWrap.style.display = 'block';
-        document.getElementById('benDeleteForm').action = benBaseUrl + '/beneficiarios/' + ben.id;
+        document.getElementById('benDeleteForm').action = benRouteDestroy.replace('__ID__', ben.id);
     } else {
         document.getElementById('benModalTitulo').innerText = 'Nuevo Beneficiario';
         document.getElementById('benMetodo').value = 'POST';
-        form.action = "{{ route('admin.clientes.beneficiarios.store', $cliente->cedula) }}";
+        form.action = benRouteStore;
         delWrap.style.display = 'none';
     }
 

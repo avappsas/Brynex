@@ -6,7 +6,6 @@ use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use PhpOffice\PhpSpreadsheet\Style\NumberFormat;
 use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
 
 /**
  * ExcelPlanoNIService
@@ -410,7 +409,7 @@ class ExcelPlanoNIService
     {
         $edad = null;
         if ($p->fecha_nacimiento) {
-            $edad = Carbon::parse($p->fecha_nacimiento)->age;
+            $edad = sqldate($p->fecha_nacimiento)?->age;
         }
 
         $genero = strtoupper(trim($p->genero ?? ''));
@@ -456,8 +455,8 @@ class ExcelPlanoNIService
         $vCaja = (int)($p->v_caja ?? 0);
 
         // -- Fechas ING / RET → formato YYYY-MM-DD para el Excel PILA ---------------
-        $fechaIng = $p->fecha_ing ? Carbon::parse($p->fecha_ing)->format('Y-m-d') : null;
-        $fechaRet = $p->fecha_ret ? Carbon::parse($p->fecha_ret)->format('Y-m-d') : null;
+        $fechaIng = $p->fecha_ing ? sqldate($p->fecha_ing)?->format('Y-m-d') : null;
+        $fechaRet = $p->fecha_ret ? sqldate($p->fecha_ret)?->format('Y-m-d') : null;
         $esIng    = $p->fecha_ing ? 'X' : null;  // X = ingresó en el período
         $esRet    = $p->fecha_ret ? 'X' : null;  // X = se retiró en el período
 
