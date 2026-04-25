@@ -714,11 +714,16 @@ class MigrateLegacy extends Command
 
                     // Extraer consignación si aplica
                     if ($valCons > 0 && $formaPago !== 'efectivo') {
-                        // Resolver banco_cuenta_id: por COD legacy → id_legacy, o primera cuenta del aliado
-                        $bancoCuentaId = DB::table('banco_cuentas')
-                            ->where('aliado_id', $aliadoId)
-                            ->where('id_legacy', $r->COD ?? null)
-                            ->value('id');
+                        // COD en legacy puede ser texto (ej: '11-2020-779'), solo usar si es numérico
+                        $cod = $r->COD ?? null;
+                        $bancoCuentaId = null;
+                        if (is_numeric($cod)) {
+                            $bancoCuentaId = DB::table('banco_cuentas')
+                                ->where('aliado_id', $aliadoId)
+                                ->where('id_legacy', (int)$cod)
+                                ->value('id');
+                        }
+                        // Fallback: primera cuenta del aliado
                         if (!$bancoCuentaId) {
                             $bancoCuentaId = DB::table('banco_cuentas')
                                 ->where('aliado_id', $aliadoId)
