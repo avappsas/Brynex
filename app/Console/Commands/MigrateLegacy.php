@@ -46,6 +46,7 @@ class MigrateLegacy extends Command
             '11'          => fn() => $this->step11_DocumentosCliente(),
             '12'          => fn() => $this->step12_Gastos(),
             'fix-modalidad' => fn() => $this->stepFixModalidad(),
+            'fix-plan'      => fn() => $this->stepFixPlan(),
         ];
 
         if ($step === 'all') {
@@ -1105,19 +1106,25 @@ class MigrateLegacy extends Command
         $this->info('  📊 Total gastos: ' . DB::table('gastos')->count());
     }
     // ─── FIX-MODALIDAD: actualiza contratos ya migrados sin tipo_modalidad_id ─────
-    // Recorre contratos donde tipo_modalidad_id IS NULL y lo infiere por entidades.
+    // Recorre contratos donde tipo_modalidad_id IS NULL o = 0 y lo infiere por entidades.
     private function stepFixModalidad(): void
     {
         $contratos = DB::table('contratos')
-            ->whereNull('tipo_modalidad_id')
-            ->select('id', 'aliado_id', 'eps_id', 'arl_id', 'pension_id', 'caja_id')
+            ->where(function ($q) {
+                $q->whereNull('tipo_modalidad_id')
+                  ->orWhere('tipo_modalidad_id', 0);
+            })
+            ->select('id', 'aliado_id', 'eps_id', 'arl_id', 'pension_id', 'caja_id', 'tipo_modalidad_id')
             ->get();
 
-        $this->line("  ℹ  Contratos sin tipo_modalidad_id: {$contratos->count()}");
-        $updated = 0;
+        $nullCount = $contratos->whereNull('tipo_modalidad_id')->count();
+        $zeroCount = $contratos->where('tipo_modalidad_id', 0)->count();
+        $this->line("  ℹ  Contratos NULL: $nullCount | tipo 0 (dependientes): $zeroCount | Total a revisar: {$contratos->count()}");
+
+        $updated = 0; $sin_modalidad = 0;
         foreach ($contratos as $c) {
             $modalidadId = $this->resolveTipoModalidad(
-                null,
+                null,           // ignorar Tipo legacy, re-inferir siempre por entidades
                 $c->eps_id,
                 $c->arl_id,
                 $c->pension_id,
@@ -1127,10 +1134,75 @@ class MigrateLegacy extends Command
                 DB::table('contratos')->where('id', $c->id)
                     ->update(['tipo_modalidad_id' => $modalidadId]);
                 $updated++;
+            } else {
+                $sin_modalidad++;
             }
         }
-        $this->info("  ✅ $updated contratos actualizados");
+        $this->info("  ✅ $updated contratos actualizados | $sin_modalidad sin entidades suficientes para inferir");
         $still = DB::table('contratos')->whereNull('tipo_modalidad_id')->count();
-        $this->line("  ℹ  Aún sin modalidad: $still");
+        $this->line("  ℹ  Aún con NULL: $still");
+    }
+
+    // ─── FIX-PLAN: asigna plan_id a contratos migrados que no lo tienen ──────────
+    // Busca el plan cuyas entidades (incluye_eps/arl/pension/caja) coincidan
+    // con las del contrato, dentro de los planes permitidos por su modalidad.
+    private function stepFixPlan(): void
+    {
+        // Precargar todos los planes con sus flags de entidades
+        $planesAll = DB::table('planes_contrato')
+            ->where('activo', true)
+            ->get(['id', 'incluye_eps', 'incluye_arl', 'incluye_pension', 'incluye_caja']);
+
+        // Precargar mapa modalidad_id => [plan_ids permitidos]
+        $modalidadPlanes = DB::table('modalidad_planes')
+            ->get()
+            ->groupBy('tipo_modalidad_id')
+            ->map(fn($rows) => $rows->pluck('plan_id')->all());
+
+        $contratos = DB::table('contratos')
+            ->whereNull('plan_id')
+            ->whereNotNull('tipo_modalidad_id')
+            ->select('id', 'tipo_modalidad_id', 'eps_id', 'arl_id', 'pension_id', 'caja_id')
+            ->get();
+
+        $this->line("  ℹ  Contratos sin plan_id: {$contratos->count()}");
+        $updated = 0; $sin_plan = 0;
+
+        foreach ($contratos as $c) {
+            $planIds = $modalidadPlanes[$c->tipo_modalidad_id] ?? [];
+            if (empty($planIds)) { $sin_plan++; continue; }
+
+            $hasEps     = $c->eps_id     !== null;
+            $hasArl     = $c->arl_id     !== null;
+            $hasPension = $c->pension_id !== null;
+            $hasCaja    = $c->caja_id    !== null;
+
+            // Buscar plan que coincida exactamente con las entidades del contrato
+            $planElegido = $planesAll
+                ->whereIn('id', $planIds)
+                ->first(function ($p) use ($hasEps, $hasArl, $hasPension, $hasCaja) {
+                    return (bool)$p->incluye_eps     === $hasEps
+                        && (bool)$p->incluye_arl     === $hasArl
+                        && (bool)$p->incluye_pension === $hasPension
+                        && (bool)$p->incluye_caja    === $hasCaja;
+                });
+
+            // Si no hay coincidencia exacta, tomar el primer plan disponible para esa modalidad
+            if (!$planElegido) {
+                $planElegido = $planesAll->whereIn('id', $planIds)->first();
+            }
+
+            if ($planElegido) {
+                DB::table('contratos')->where('id', $c->id)
+                    ->update(['plan_id' => $planElegido->id]);
+                $updated++;
+            } else {
+                $sin_plan++;
+            }
+        }
+
+        $this->info("  ✅ $updated contratos con plan asignado | $sin_plan sin plan disponible");
+        $still = DB::table('contratos')->whereNull('plan_id')->whereNotNull('tipo_modalidad_id')->count();
+        $this->line("  ℹ  Aún sin plan: $still");
     }
 }
