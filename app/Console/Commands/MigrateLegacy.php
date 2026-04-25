@@ -557,22 +557,22 @@ class MigrateLegacy extends Command
                 foreach ($rows as $r) {
                     if (isset($yaExisten[$r->Id])) { $skipped++; continue; }
 
-                    $razonId        = DB::table('razones_sociales')->where('aliado_id', $aliadoId)->where('id_legacy', $r->COD_RAZON_SOC)->value('id');
-                    $asesorId       = DB::table('asesores')->where('aliado_id', $aliadoId)->where('id_legacy', $r->Asesor)->value('id');
-                    $userId         = DB::table('users')->where('aliado_id', $aliadoId)->where('id_legacy', $r->Encargado_Afiliacion)->value('id');
-                    $epsId          = $this->lookupByNit('eps',       $r->Eps_c);
-                    $pensionId      = $this->lookupByNit('pensiones',  $r->Pension_c);
-                    $arlId          = is_numeric($r->ARL) && $r->ARL > 1 ? $this->lookupByNit('arls', $r->ARL) : null;
-                    $cajaId         = $this->lookupByNit('cajas',     $r->Caja_Comp);
-                    $motivoAfil     = $mapAfiliacion[strtolower(trim($r->Motivo_Afiliacion ?? ''))] ?? null;
-                    $motivoRetiro   = $mapRetiro[strtolower(trim($r->Motivo_Retiro ?? ''))]       ?? null;
+                    $razonId      = DB::table('razones_sociales')->where('aliado_id', $aliadoId)->where('id_legacy', $this->col($r, 'COD_RAZON_SOC'))->value('id');
+                    $asesorId     = DB::table('asesores')->where('aliado_id', $aliadoId)->where('id_legacy', $this->col($r, 'Asesor'))->value('id');
+                    $userId       = DB::table('users')->where('aliado_id', $aliadoId)->where('id_legacy', $this->col($r, 'Encargado_Afiliacion'))->value('id');
+                    $epsId        = $this->lookupByNit('eps',      $this->col($r, 'Eps_c'));
+                    $pensionId    = $this->lookupByNit('pensiones', $this->col($r, 'Pension_c'));
+                    $arlVal       = $this->col($r, 'ARL');
+                    $arlId        = is_numeric($arlVal) && $arlVal > 1 ? $this->lookupByNit('arls', $arlVal) : null;
+                    $cajaId       = $this->lookupByNit('cajas',    $this->col($r, 'Caja_Comp'));
+                    $motivoAfil   = $mapAfiliacion[strtolower(trim($this->col($r, 'Motivo_Afiliacion') ?? ''))] ?? null;
+                    $motivoRetiro = $mapRetiro[strtolower(trim($this->col($r, 'Motivo_Retiro') ?? ''))]         ?? null;
 
-                    // Insertar contrato
                     $contratoId = DB::table('contratos')->insertGetId([
                         'aliado_id'              => $aliadoId,
                         'id_legacy'              => $r->Id,
-                        'cedula'                 => $r->Cedula,
-                        'estado'                 => strtolower(trim($r->Estado ?? 'vigente')),
+                        'cedula'                 => $this->col($r, 'Cedula'),
+                        'estado'                 => strtolower(trim($this->col($r, 'Estado') ?? 'vigente')),
                         'razon_social_id'        => $razonId,
                         'asesor_id'              => $asesorId,
                         'encargado_id'           => $userId,
@@ -580,26 +580,26 @@ class MigrateLegacy extends Command
                         'pension_id'             => $pensionId,
                         'arl_id'                 => $arlId,
                         'caja_id'                => $cajaId,
-                        'n_arl'                  => is_numeric($r->N_ARL) && $r->N_ARL >= 0 && $r->N_ARL <= 5 ? (int)$r->N_ARL : null,
-                        'cargo'                  => trim($r->Cargo ?? ''),
-                        'fecha_ingreso'          => $r->Fecha_Ingreso ? substr($r->Fecha_Ingreso, 0, 10) : null,
-                        'fecha_retiro'           => $r->Fecha_Retiro  ? substr($r->Fecha_Retiro,  0, 10) : null,
-                        'fecha_arl'              => $r->Fecha_ARL     ? substr($r->Fecha_ARL,     0, 10) : null,
-                        'fecha_created'          => $r->Fecha_Created  ? substr($r->Fecha_Created, 0, 10) : null,
-                        'salario'                => is_numeric($r->Salario_M) ? $r->Salario_M : 0,
-                        'administracion'         => is_numeric($r->Administracion) ? $r->Administracion : 0,
-                        'admon_asesor'           => is_numeric($r->admon_asesor) ? $r->admon_asesor : 0,
-                        'costo_afiliacion'       => is_numeric($r->costo_afiliacion) ? $r->costo_afiliacion : 0,
-                        'seguro'                 => is_numeric($r->Seguro) ? $r->Seguro : 0,
-                        'np'                     => trim($r->NP ?? ''),
-                        'envio_planilla'         => trim($r->Envio_Planilla ?? ''),
-                        'fecha_probable_pago'    => trim($r->Fecha_problable_pago ?? ''),
-                        'modo_probable_pago'     => trim($r->Modo_propable_pago ?? ''),
-                        'observacion'            => trim($r->Observacion ?? ''),
-                        'observacion_afiliacion' => trim($r->Observacion_Afiliacion ?? ''),
-                        'observacion_llamada'    => (string)($r->Observacion_llamada ?? ''),
-                        'tipo_modalidad_id'      => is_numeric($r->Tipo) && $r->Tipo > 0 ? (int)$r->Tipo : null,
-                        'actividad_economica_id' => is_numeric($r->Actividad_Economica) && $r->Actividad_Economica > 0 ? (int)$r->Actividad_Economica : null,
+                        'n_arl'                  => is_numeric($this->col($r, 'N_ARL')) && $this->col($r, 'N_ARL') >= 0 && $this->col($r, 'N_ARL') <= 5 ? (int)$this->col($r, 'N_ARL') : null,
+                        'cargo'                  => substr(trim($this->col($r, 'Cargo') ?? ''), 0, 100),
+                        'fecha_ingreso'          => $this->col($r, 'Fecha_Ingreso')  ? substr($this->col($r, 'Fecha_Ingreso'),  0, 10) : null,
+                        'fecha_retiro'           => $this->col($r, 'Fecha_Retiro')   ? substr($this->col($r, 'Fecha_Retiro'),   0, 10) : null,
+                        'fecha_arl'              => $this->col($r, 'Fecha_ARL')      ? substr($this->col($r, 'Fecha_ARL'),      0, 10) : null,
+                        'fecha_created'          => $this->col($r, 'Fecha_Created')  ? substr($this->col($r, 'Fecha_Created'),  0, 10) : null,
+                        'salario'                => is_numeric($this->col($r, 'Salario_M'))        ? $this->col($r, 'Salario_M')        : 0,
+                        'administracion'         => is_numeric($this->col($r, 'Administracion'))   ? $this->col($r, 'Administracion')   : 0,
+                        'admon_asesor'           => is_numeric($this->col($r, 'admon_asesor'))     ? $this->col($r, 'admon_asesor')     : 0,
+                        'costo_afiliacion'       => is_numeric($this->col($r, 'costo_afiliacion')) ? $this->col($r, 'costo_afiliacion') : 0,
+                        'seguro'                 => is_numeric($this->col($r, 'Seguro'))           ? $this->col($r, 'Seguro')           : 0,
+                        'np'                     => substr(trim($this->col($r, 'NP') ?? ''), 0, 50),
+                        'envio_planilla'         => substr(trim($this->col($r, 'Envio_Planilla') ?? ''), 0, 50),
+                        'fecha_probable_pago'    => substr(trim($this->col($r, 'Fecha_problable_pago') ?? ''), 0, 50),
+                        'modo_probable_pago'     => substr(trim($this->col($r, 'Modo_propable_pago') ?? ''), 0, 50),
+                        'observacion'            => trim($this->col($r, 'Observacion') ?? ''),
+                        'observacion_afiliacion' => trim($this->col($r, 'Observacion_Afiliacion') ?? ''),
+                        'observacion_llamada'    => (string)($this->col($r, 'Observacion_llamada') ?? ''),
+                        'tipo_modalidad_id'      => is_numeric($this->col($r, 'Tipo')) && $this->col($r, 'Tipo') > 0 ? (int)$this->col($r, 'Tipo') : null,
+                        'actividad_economica_id' => is_numeric($this->col($r, 'Actividad_Economica')) && $this->col($r, 'Actividad_Economica') > 0 ? (int)$this->col($r, 'Actividad_Economica') : null,
                         'motivo_afiliacion_id'   => $motivoAfil,
                         'motivo_retiro_id'       => $motivoRetiro,
                         'created_at'             => now(),
