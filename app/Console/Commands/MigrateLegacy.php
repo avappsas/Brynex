@@ -69,17 +69,6 @@ class MigrateLegacy extends Command
         $this->info("\n✅ Migración completada.");
     }
 
-    // ─── PREP: borra todas las tablas y recrea el esquema con seeders ──────────────
-    // Equivalente a: php artisan migrate:fresh --seed
-    // ⚠  DESTRUYE TODOS LOS DATOS. Usar solo antes de una migración limpia.
-    private function stepPrep(): void
-    {
-        $this->warn('  ⚠  Borrando todas las tablas y recreando el esquema...');
-        \Artisan::call('migrate:fresh', ['--seed' => true, '--force' => true]);
-        $this->info(\Artisan::output());
-        $this->info('  ✅ Esquema listo. Ahora puedes ejecutar --step=all');
-    }
-
     private function loadAliados(): void
     {
         $attempts = 0;
