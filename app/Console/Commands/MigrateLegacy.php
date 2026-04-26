@@ -838,8 +838,9 @@ class MigrateLegacy extends Command
                         'forma_pago'         => $formaPago,
                         'valor_consignado'   => $valCons,
                         'valor_efectivo'     => $valEfect,
-                        'np'                 => trim($this->col($r, 'NP') ?? ''),
-                        'n_plano'            => trim($this->col($r, 'n_plano') ?? ''),
+                        // np y n_plano son INT: extraer solo la parte numérica ('1P' → 1, '2A' → 2)
+                        'np'      => ($npVal = preg_replace('/[^0-9]/', '', $this->col($r, 'NP') ?? '')) !== '' ? (int)$npVal : null,
+                        'n_plano' => ($npVal = preg_replace('/[^0-9]/', '', $this->col($r, 'n_plano') ?? '')) !== '' ? (int)$npVal : null,
                         'v_eps'              => is_numeric($r->V_EPS)  ? (int)$r->V_EPS  : 0,
                         'v_arl'              => is_numeric($r->V_Arl)  ? (int)$r->V_Arl  : 0,
                         'v_afp'              => is_numeric($r->V_AFP)  ? (int)$r->V_AFP  : 0,
