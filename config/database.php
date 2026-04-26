@@ -106,6 +106,9 @@ return [
             'prefix_indexes' => true,
             'encrypt'  => 'no',
             'trust_server_certificate' => 'true',
+            'LoginTimeout'             => 120,   // segundos para establecer conexión
+            'MultipleActiveResultSets' => false,
+
         ],
 
     ],

@@ -45,8 +45,11 @@ class MigrateLegacy extends Command
             '10'          => fn() => $this->step10_Abonos(),
             '11'          => fn() => $this->step11_DocumentosCliente(),
             '12'          => fn() => $this->step12_Gastos(),
+            '13'          => fn() => $this->step13_Incapacidades(),
+            '14'          => fn() => $this->step14_GestionesIncapacidad(),
             'fix-modalidad' => fn() => $this->stepFixModalidad(),
             'fix-plan'      => fn() => $this->stepFixPlan(),
+            'fix-narl'      => fn() => $this->stepFixNarl(),
         ];
 
         if ($step === 'all') {
@@ -436,9 +439,7 @@ class MigrateLegacy extends Command
 
             $count = 0; $skipped = 0; $offset = 0; $chunk = 500;
             while (true) {
-                $rows = DB::connection('sqlsrv_legacy')->select(
-                    "SELECT * FROM [$db].dbo.Base_De_Datos ORDER BY Id OFFSET $offset ROWS FETCH NEXT $chunk ROWS ONLY"
-                );
+                $rows = $this->legacySelect("SELECT * FROM [$db].dbo.Base_De_Datos ORDER BY Id OFFSET $offset ROWS FETCH NEXT $chunk ROWS ONLY");
                 if (empty($rows)) break;
                 foreach ($rows as $r) {
                     // Saltar si ya existe este id_legacy para este aliado
@@ -551,9 +552,7 @@ class MigrateLegacy extends Command
 
             $count = 0; $skipped = 0; $offset = 0; $chunk = 500;
             while (true) {
-                $rows = DB::connection('sqlsrv_legacy')->select(
-                    "SELECT * FROM [$db].dbo.Contratos ORDER BY Id OFFSET $offset ROWS FETCH NEXT $chunk ROWS ONLY"
-                );
+                $rows = $this->legacySelect("SELECT * FROM [$db].dbo.Contratos ORDER BY Id OFFSET $offset ROWS FETCH NEXT $chunk ROWS ONLY");
                 if (empty($rows)) break;
 
                 foreach ($rows as $r) {
@@ -711,6 +710,29 @@ class MigrateLegacy extends Command
         return null;
     }
 
+    // ─── HELPER: SELECT legacy con reintentos en timeout ─────────────────────
+    // Reconecta y reintenta hasta $maxTries veces en caso de HYT00 / login timeout.
+    private function legacySelect(string $sql, int $maxTries = 5): array
+    {
+        $try = 0;
+        while (true) {
+            try {
+                DB::connection('sqlsrv_legacy')->reconnect();
+                return DB::connection('sqlsrv_legacy')->select($sql);
+            } catch (\Exception $e) {
+                $try++;
+                $msg = $e->getMessage();
+                $isTimeout = str_contains($msg, 'HYT00')
+                          || str_contains($msg, 'timeout')
+                          || str_contains($msg, 'Login timeout');
+                if (!$isTimeout || $try >= $maxTries) throw $e;
+                $wait = min(30, $try * 5);
+                $this->warn("  ⚠ Timeout legacy (intento $try/$maxTries), reintentando en {$wait}s...");
+                sleep($wait);
+            }
+        }
+    }
+
     // ─── PASO 07: FACTURAS + CONSIGNACIONES ──────────────────────────────────
     // Legacy: FACTURACION  →  BryNex: facturas + consignaciones
     // tipo legacy "mensualidad" → 'planilla'; resto → 'afiliacion'
@@ -731,9 +753,7 @@ class MigrateLegacy extends Command
 
             $count = 0; $skipped = 0; $offset = 0; $chunk = 500;
             while (true) {
-                $rows = DB::connection('sqlsrv_legacy')->select(
-                    "SELECT * FROM [$db].dbo.FACTURACION ORDER BY Id_Factura OFFSET $offset ROWS FETCH NEXT $chunk ROWS ONLY"
-                );
+                $rows = $this->legacySelect("SELECT * FROM [$db].dbo.FACTURACION ORDER BY Id_Factura OFFSET $offset ROWS FETCH NEXT $chunk ROWS ONLY");
                 if (empty($rows)) break;
 
                 foreach ($rows as $r) {
@@ -744,26 +764,75 @@ class MigrateLegacy extends Command
                         ->where('id_legacy', $r->Id_Contrato)
                         ->value('id');
 
-                    $tipo = strtolower(trim($r->Tipo ?? '')) === 'mensualidad' ? 'planilla' : 'afiliacion';
-                    $formaPago = strtolower(trim($r->Forma_Pago ?? 'efectivo'));
+                    // TIPO: mensualidad→planilla, retiro→retiro, resto→afiliacion
+                    $tipoRaw = strtolower(trim($r->Tipo ?? ''));
+                    if ($tipoRaw === 'mensualidad') {
+                        $tipo = 'planilla';
+                    } elseif ($tipoRaw === 'retiro') {
+                        $tipo = 'retiro';
+                    } else {
+                        $tipo = 'afiliacion';
+                    }
+
+                    // FORMA_PAGO: si COD (id_banco_cuenta) > 0 → consignacion; sino efectivo
+                    $codBanco  = $this->col($r, 'Consignacion') ?? $this->col($r, 'COD') ?? null;
                     $valCons   = is_numeric($r->Valor_Consignado) ? (int)$r->Valor_Consignado : 0;
                     $valTotal  = is_numeric($r->Pago) ? (int)$r->Pago : 0;
                     $valEfect  = max(0, $valTotal - $valCons);
+
+                    if ($valCons > 0 && is_numeric($codBanco) && (int)$codBanco > 0) {
+                        $formaPago = $valEfect > 0 ? 'mixto' : 'consignacion';
+                    } else {
+                        $formaPago = 'efectivo';
+                        $valCons   = 0;
+                        $valEfect  = $valTotal;
+                    }
+
+                    // CEDULA y EMPRESA_ID:
+                    // En legacy, si cedula < 100000 es un id_legacy de empresa, no cédula real.
+                    $cedulaLegacy = is_numeric($r->Cedula) ? (int)$r->Cedula : 0;
+                    $empresaId    = null;
+                    $cedulaFinal  = $cedulaLegacy;
+                    if ($cedulaLegacy > 0 && $cedulaLegacy < 100000) {
+                        // Es id_legacy de empresa → buscar el nuevo id en BryNex
+                        $empresaId   = DB::table('empresas')
+                            ->where('aliado_id', $aliadoId)
+                            ->where('id_legacy', $cedulaLegacy)
+                            ->value('id');
+                        // Obtener la cédula real del contrato relacionado
+                        $cedulaFinal = DB::table('contratos')
+                            ->where('id', $contratoId)
+                            ->value('cedula') ?? $cedulaLegacy;
+                    }
+
+                    // USUARIO_ID: buscar el nuevo id en users por id_legacy
+                    $usuarioLegacy = $this->col($r, 'Usuario') ?? $this->col($r, 'usuario_id') ?? null;
+                    $usuarioId     = null;
+                    if (is_numeric($usuarioLegacy) && (int)$usuarioLegacy > 0) {
+                        $usuarioId = DB::table('users')
+                            ->where('aliado_id', $aliadoId)
+                            ->where('id_legacy', (int)$usuarioLegacy)
+                            ->value('id');
+                    }
 
                     $facturaId = DB::table('facturas')->insertGetId([
                         'aliado_id'          => $aliadoId,
                         'id_legacy'          => $r->Id_Factura,
                         'contrato_id'        => $contratoId,
-                        'cedula'             => is_numeric($r->Cedula) ? (int)$r->Cedula : 0,
+                        'cedula'             => $cedulaFinal,
+                        'empresa_id'         => $empresaId,
+                        'usuario_id'         => $usuarioId,
                         'numero_factura'     => is_numeric($r->Factura) ? (int)$r->Factura : 0,
                         'tipo'               => $tipo,
                         'mes'                => is_numeric($r->Mes)  ? (int)$r->Mes  : 1,
                         'anio'               => is_numeric($this->col($r, 'Año')) ? (int)$this->col($r, 'Año') : date('Y'),
                         'fecha_pago'         => $r->Fecha_Pago ? substr($r->Fecha_Pago, 0, 10) : now()->toDateString(),
                         'estado'             => 'pagada',
-                        'forma_pago'         => in_array($formaPago, ['efectivo','consignacion','mixto']) ? $formaPago : 'efectivo',
+                        'forma_pago'         => $formaPago,
                         'valor_consignado'   => $valCons,
                         'valor_efectivo'     => $valEfect,
+                        'np'                 => trim($this->col($r, 'NP') ?? ''),
+                        'n_plano'            => trim($this->col($r, 'n_plano') ?? ''),
                         'v_eps'              => is_numeric($r->V_EPS)  ? (int)$r->V_EPS  : 0,
                         'v_arl'              => is_numeric($r->V_Arl)  ? (int)$r->V_Arl  : 0,
                         'v_afp'              => is_numeric($r->V_AFP)  ? (int)$r->V_AFP  : 0,
@@ -901,7 +970,7 @@ class MigrateLegacy extends Command
             $count = 0; $skipped = 0; $offset = 0; $chunk = 500;
             while (true) {
                 $rows = DB::connection('sqlsrv_legacy')->select(
-                    "SELECT * FROM [$db].dbo.PLANOS ORDER BY Id OFFSET $offset ROWS FETCH NEXT $chunk ROWS ONLY"
+                    $this->legacySelect("SELECT * FROM [$db].dbo.PLANOS ORDER BY Id OFFSET $offset ROWS FETCH NEXT $chunk ROWS ONLY")
                 );
                 if (empty($rows)) break;
                 foreach ($rows as $r) {
@@ -915,37 +984,60 @@ class MigrateLegacy extends Command
                     if ($facturaId && isset($facturasMigradas[$facturaId])) { $skipped++; continue; }
 
                     DB::table('planos')->insert([
-                        'aliado_id'       => $aliadoId,
-                        'factura_id'      => $facturaId,
-                        'numero_planilla' => trim($this->col($r, 'Numero_Planilla') ?? $this->col($r, 'N_Planilla') ?? ''),
-                        'numero_factura'  => is_numeric($this->col($r, 'Factura')) ? (int)$this->col($r, 'Factura') : null,
-                        'n_plano'         => trim($this->col($r, 'N_PLANO') ?? $this->col($r, 'N_Plano') ?? ''),
-                        'mes_plano'       => is_numeric($this->col($r, 'Mes')) ? (int)$this->col($r, 'Mes') : null,
-                        'anio_plano'      => is_numeric($this->col($r, 'Año') ?? $this->col($r, 'Anio')) ? (int)($this->col($r, 'Año') ?? $this->col($r, 'Anio')) : null,
-                        'tipo_reg'        => trim($this->col($r, 'TIPO_REG') ?? '01'),
-                        'tipo_doc'        => trim($this->col($r, 'TIPO_DOC') ?? 'CC'),
-                        'no_identifi'     => (string)($this->col($r, 'Cedula') ?? ''),
-                        'primer_ape'      => trim($this->col($r, '1_Apellido') ?? ''),
-                        'segundo_ape'     => trim($this->col($r, '2_Apellido') ?? ''),
-                        'primer_nombre'   => trim($this->col($r, '1_Nombre') ?? ''),
-                        'segundo_nombre'  => trim($this->col($r, '2_Nombre') ?? ''),
-                        'fecha_ing'       => $this->col($r, 'Fecha_Ingreso') ? substr($this->col($r, 'Fecha_Ingreso'), 0, 10) : null,
-                        'fecha_ret'       => $this->col($r, 'Fecha_Retiro')  ? substr($this->col($r, 'Fecha_Retiro'),  0, 10) : null,
-                        'salario_basico'  => is_numeric($this->col($r, 'Salario')) ? (int)$this->col($r, 'Salario') : 0,
-                        'cod_eps'         => trim($this->col($r, 'Cod_EPS') ?? $this->col($r, 'EPS') ?? ''),
-                        'cod_afp'         => trim($this->col($r, 'Cod_AFP') ?? $this->col($r, 'AFP') ?? ''),
-                        'cod_arl'         => trim($this->col($r, 'Cod_ARL') ?? $this->col($r, 'ARL') ?? ''),
-                        'cod_caja'        => trim($this->col($r, 'Cod_Caja') ?? $this->col($r, 'Caja') ?? ''),
-                        'nombre_eps'      => trim($this->col($r, 'Nombre_EPS') ?? $this->col($r, 'Nom_EPS') ?? ''),
-                        'nombre_afp'      => trim($this->col($r, 'Nombre_AFP') ?? $this->col($r, 'Nom_AFP') ?? ''),
-                        'nombre_arl'      => trim($this->col($r, 'Nombre_ARL') ?? $this->col($r, 'Nom_ARL') ?? ''),
-                        'nombre_caja'     => trim($this->col($r, 'Nombre_Caja') ?? $this->col($r, 'Nom_Caja') ?? ''),
-                        'nivel_riesgo'    => is_numeric($this->col($r, 'N_ARL') ?? $this->col($r, 'Nivel_Riesgo')) ? (int)($this->col($r, 'N_ARL') ?? $this->col($r, 'Nivel_Riesgo')) : 1,
-                        'razon_social'    => trim($this->col($r, 'Razon_Social') ?? ''),
-                        'tipo_p'          => trim($this->col($r, 'Tipo_P') ?? $this->col($r, 'Tipo') ?? ''),
-                        'num_dias'        => is_numeric($this->col($r, 'Num_Dias') ?? $this->col($r, 'N_Dias')) ? (int)($this->col($r, 'Num_Dias') ?? $this->col($r, 'N_Dias')) : 30,
-                        'created_at'      => now(),
-                        'updated_at'      => now(),
+                        'aliado_id'          => $aliadoId,
+                        'factura_id'         => $facturaId,
+                        // contrato_id: buscar por id_legacy del contrato
+                        'contrato_id'        => DB::table('contratos')
+                            ->where('aliado_id', $aliadoId)
+                            ->where('id_legacy', $this->col($r, 'Id_Contrato'))
+                            ->value('id'),
+                        // Numero de planilla: campo "Planilla" del legacy
+                        'numero_planilla'    => trim($this->col($r, 'Planilla') ?? $this->col($r, 'Numero_Planilla') ?? ''),
+                        'numero_factura'     => is_numeric($this->col($r, 'Factura')) ? (int)$this->col($r, 'Factura') : null,
+                        'n_plano'            => trim($this->col($r, 'N_PLANO') ?? $this->col($r, 'N_Plano') ?? ''),
+                        // Mes y año: MES_PLANO y AÑO_PLANO del legacy
+                        'mes_plano'          => is_numeric($this->col($r, 'MES_PLANO') ?? $this->col($r, 'Mes')) ? (int)($this->col($r, 'MES_PLANO') ?? $this->col($r, 'Mes')) : null,
+                        'anio_plano'         => is_numeric($this->col($r, 'AÑO_PLANO') ?? $this->col($r, 'Año') ?? $this->col($r, 'Anio')) ? (int)($this->col($r, 'AÑO_PLANO') ?? $this->col($r, 'Año') ?? $this->col($r, 'Anio')) : null,
+                        'tipo_reg'           => trim($this->col($r, 'TIPO_REG') ?? '01'),
+                        'tipo_doc'           => trim($this->col($r, 'TIPO_DOC') ?? 'CC'),
+                        // Cédula del cliente (no_identifi)
+                        'no_identifi'        => (string)($this->col($r, 'Cedula') ?? ''),
+                        // Apellidos y nombres del legacy
+                        'primer_ape'         => trim($this->col($r, 'PRIMER_APE')      ?? $this->col($r, '1_Apellido')  ?? ''),
+                        'segundo_ape'        => trim($this->col($r, 'SEGUNDO_APELLID')  ?? $this->col($r, '2_Apellido')  ?? ''),
+                        'primer_nombre'      => trim($this->col($r, 'PRIMER_NOMBRE')    ?? $this->col($r, '1_Nombre')    ?? ''),
+                        'segundo_nombre'     => trim($this->col($r, 'SEGUNDO-NOMBRE')   ?? $this->col($r, '2_Nombre')    ?? ''),
+                        // Fechas ingreso y retiro desde planos
+                        'fecha_ing'          => $this->col($r, 'fecha_ing')   ? substr($this->col($r, 'fecha_ing'),   0, 10)
+                                             : ($this->col($r, 'Fecha_Ingreso') ? substr($this->col($r, 'Fecha_Ingreso'), 0, 10) : null),
+                        'fecha_ret'          => $this->col($r, 'fecha_ret')   ? substr($this->col($r, 'fecha_ret'),   0, 10)
+                                             : ($this->col($r, 'Fecha_Retiro')  ? substr($this->col($r, 'Fecha_Retiro'),  0, 10) : null),
+                        // Salario: SALARIO_BASICO del legacy
+                        'salario_basico'     => is_numeric($this->col($r, 'SALARIO_BASICO') ?? $this->col($r, 'Salario')) ? (int)($this->col($r, 'SALARIO_BASICO') ?? $this->col($r, 'Salario')) : 0,
+                        'cod_eps'            => trim($this->col($r, 'Cod_EPS')  ?? $this->col($r, 'EPS') ?? ''),
+                        // cod_afp = COD_ADM_PENS
+                        'cod_afp'            => trim($this->col($r, 'COD_ADM_PENS') ?? $this->col($r, 'Cod_AFP') ?? $this->col($r, 'AFP') ?? ''),
+                        // cod_arl = CODIGO ARL (con espacio)
+                        'cod_arl'            => trim($this->col($r, 'CODIGO ARL') ?? $this->col($r, 'Cod_ARL') ?? $this->col($r, 'ARL') ?? ''),
+                        // cod_caja = COD_CCF
+                        'cod_caja'           => trim($this->col($r, 'COD_CCF') ?? $this->col($r, 'Cod_Caja') ?? $this->col($r, 'Caja') ?? ''),
+                        'nombre_eps'         => trim($this->col($r, 'Nombre_EPS')  ?? $this->col($r, 'Nom_EPS')  ?? ''),
+                        'nombre_afp'         => trim($this->col($r, 'Nombre_AFP')  ?? $this->col($r, 'Nom_AFP')  ?? ''),
+                        'nombre_arl'         => trim($this->col($r, 'Nombre_ARL')  ?? $this->col($r, 'Nom_ARL')  ?? ''),
+                        'nombre_caja'        => trim($this->col($r, 'Nombre_Caja') ?? $this->col($r, 'Nom_Caja') ?? ''),
+                        'nivel_riesgo'       => is_numeric($this->col($r, 'N_ARL') ?? $this->col($r, 'Nivel_Riesgo')) ? (int)($this->col($r, 'N_ARL') ?? $this->col($r, 'Nivel_Riesgo')) : 1,
+                        // razon_social_id: buscar por NIT del campo Nit_Empresa o Razon_Social
+                        'razon_social_id'    => DB::table('razones_sociales')
+                            ->where('aliado_id', $aliadoId)
+                            ->where('nit', $this->col($r, 'Nit_Empresa') ?? $this->col($r, 'NIT') ?? 0)
+                            ->value('id'),
+                        'razon_social'       => trim($this->col($r, 'Razon_Social') ?? ''),
+                        // tipo_modalidad_id: Tipo_P del legacy (ID directo del catálogo)
+                        'tipo_modalidad_id'  => is_numeric($this->col($r, 'Tipo_P')) ? (int)$this->col($r, 'Tipo_P') : null,
+                        'tipo_p'             => trim($this->col($r, 'Tipo_P') ?? $this->col($r, 'Tipo') ?? ''),
+                        'num_dias'           => is_numeric($this->col($r, 'Num_Dias') ?? $this->col($r, 'N_Dias')) ? (int)($this->col($r, 'Num_Dias') ?? $this->col($r, 'N_Dias')) : 30,
+                        'created_at'         => now(),
+                        'updated_at'         => now(),
                     ]);
                     $count++;
                     if ($count % 200 === 0) $this->line("    → $count / $total...");
@@ -1206,19 +1298,32 @@ class MigrateLegacy extends Command
             $hasPension = $c->pension_id !== null ? 1 : 0;
             $hasCaja    = $c->caja_id    !== null ? 1 : 0;
 
-            // Coincidencia exacta
-            $planElegido = $planesAll
-                ->whereIn('id', $planIds)
-                ->first(fn($p) =>
-                    $p->incluye_eps     === $hasEps
-                    && $p->incluye_arl     === $hasArl
-                    && $p->incluye_pension === $hasPension
-                    && $p->incluye_caja    === $hasCaja
-                );
+            $candidatos = $planesAll->whereIn('id', $planIds);
 
-            // Fallback: primer plan de la modalidad
+            // Nivel 1: coincidencia EXACTA de entidades
+            $planElegido = $candidatos->first(fn($p) =>
+                $p->incluye_eps     === $hasEps
+                && $p->incluye_arl     === $hasArl
+                && $p->incluye_pension === $hasPension
+                && $p->incluye_caja    === $hasCaja
+            );
+
+            // Nivel 2: plan que al menos incluya las entidades que el contrato TIENE
+            // (nunca quitar algo que ya tiene; puede tener entidades extra)
             if (!$planElegido) {
-                $planElegido = $planesAll->whereIn('id', $planIds)->first();
+                $planElegido = $candidatos->first(fn($p) =>
+                    ($hasEps     === 0 || $p->incluye_eps     === 1)
+                    && ($hasArl     === 0 || $p->incluye_arl     === 1)
+                    && ($hasPension === 0 || $p->incluye_pension === 1)
+                    && ($hasCaja    === 0 || $p->incluye_caja    === 1)
+                );
+            }
+
+            // Nivel 3: plan con más entidades (preserva datos, nunca elimina)
+            if (!$planElegido) {
+                $planElegido = $candidatos
+                    ->sortByDesc(fn($p) => $p->incluye_eps + $p->incluye_arl + $p->incluye_pension + $p->incluye_caja)
+                    ->first();
             }
 
             if ($planElegido) {
@@ -1233,5 +1338,264 @@ class MigrateLegacy extends Command
         $this->info("  ✅ $updated contratos con plan | $sin_plan sin plan disponible");
         $still = DB::table('contratos')->whereNull('plan_id')->whereNotNull('tipo_modalidad_id')->count();
         $this->line("  ℹ  Aún sin plan: $still");
+    }
+
+    // ─── FIX-NARL: copia N_ARL del legacy directamente ────────────────────────
+    // N_ARL = nivel de riesgo ARL (0-5). En step06 se filtraba con >= 0 <= 5
+    // pero valores como 0.0 o strings no pasaban. Los copiamos directamente.
+    private function stepFixNarl(): void
+    {
+        $updated = 0; $sin_dato = 0;
+
+        foreach ($this->dbs as $db => $key) {
+            $aliadoId = $this->ids[$key] ?? null;
+            if (!$aliadoId) continue;
+
+            // Leer Id + N_ARL del legacy
+            $legacyRows = DB::connection('sqlsrv_legacy')
+                ->select("SELECT Id, N_ARL FROM [$db].dbo.Contratos WHERE Id IS NOT NULL");
+
+            // Indexar por Id
+            $narlMap = [];
+            foreach ($legacyRows as $lr) {
+                $val = $lr->N_ARL ?? null;
+                // Normalizar: aceptar 0-5 inclusive (0 = nivel I, el mas bajo)
+                if ($val !== null && is_numeric($val)) {
+                    $int = (int)round((float)$val);
+                    $narlMap[$lr->Id] = ($int >= 0 && $int <= 5) ? $int : null;
+                } else {
+                    $narlMap[$lr->Id] = null;
+                }
+            }
+
+            // Contratos BryNex de este aliado
+            $contratos = DB::table('contratos')
+                ->where('aliado_id', $aliadoId)
+                ->whereNotNull('id_legacy')
+                ->select('id', 'id_legacy')
+                ->get();
+
+            $this->line("  ⧳ $db: {$contratos->count()} contratos...");
+            $updDb = 0;
+
+            foreach ($contratos as $c) {
+                $narl = $narlMap[$c->id_legacy] ?? null;
+                DB::table('contratos')->where('id', $c->id)
+                    ->update(['n_arl' => $narl]);
+                if ($narl !== null) $updDb++; else $sin_dato++;
+            }
+            $updated += $updDb;
+            $this->info("  ✅ $db → $updDb contratos con n_arl asignado");
+        }
+
+        $this->info("  Total: $updated con n_arl | $sin_dato sin dato en legacy");
+    }
+
+    // ─── PASO 13: INCAPACIDADES ───────────────────────────────────────────────────
+    // Legacy: Incapacidades → BryNex: incapacidades
+    private function step13_Incapacidades(): void
+    {
+        DB::statement('ALTER TABLE incapacidades NOCHECK CONSTRAINT ALL');
+
+        foreach ($this->dbs as $db => $key) {
+            $aliadoId = $this->ids[$key] ?? null;
+            if (!$aliadoId) continue;
+
+            // Verificar si existe la tabla en este legacy
+            $exists = DB::connection('sqlsrv_legacy')
+                ->selectOne("SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_CATALOG=? AND TABLE_NAME='Incapacidades'", [$db]);
+            if (!($exists->cnt ?? 0)) {
+                $this->warn("  ⚠ $db: tabla Incapacidades no existe, se omite");
+                continue;
+            }
+
+            // Re-entrant: saltar los ya migrados por id_legacy
+            $yaExisten = DB::table('incapacidades')
+                ->where('aliado_id', $aliadoId)
+                ->pluck('id_legacy')->filter()->flip()->all();
+
+            $rows = DB::connection('sqlsrv_legacy')
+                ->select("SELECT * FROM [$db].dbo.Incapacidades");
+
+            $this->line("  ⧳ $db: " . count($rows) . " incapacidades...");
+            $count = 0; $skipped = 0;
+
+            foreach ($rows as $r) {
+                $idLeg = $this->col($r, 'Id') ?? $this->col($r, 'Id_Incapacidad');
+                if ($idLeg && isset($yaExisten[$idLeg])) { $skipped++; continue; }
+
+                // Contrato BryNex
+                $contratoId = null;
+                $idContratoLeg = $this->col($r, 'Id_Contrato') ?? $this->col($r, 'contrato_id');
+                if ($idContratoLeg) {
+                    $contratoId = DB::table('contratos')
+                        ->where('aliado_id', $aliadoId)
+                        ->where('id_legacy', $idContratoLeg)
+                        ->value('id');
+                }
+
+                // quien_recibe: usuario BryNex
+                $quienRecibeId = null;
+                $usuLeg = $this->col($r, 'quien_recibe') ?? $this->col($r, 'Usuario') ?? $this->col($r, 'Encargado');
+                if (is_numeric($usuLeg) && $usuLeg > 0) {
+                    $quienRecibeId = DB::table('users')
+                        ->where('aliado_id', $aliadoId)
+                        ->where('id_legacy', (int)$usuLeg)
+                        ->value('id');
+                }
+
+                // Razon social
+                $razonSocialId = null;
+                $nitRs = $this->col($r, 'Nit_Empresa') ?? $this->col($r, 'NIT');
+                if ($nitRs) {
+                    $razonSocialId = DB::table('razones_sociales')
+                        ->where('aliado_id', $aliadoId)
+                        ->where('nit', $nitRs)
+                        ->value('id');
+                }
+
+                // Tipo incapacidad: normalizar al catálogo BryNex
+                $tipoRaw = strtolower(trim($this->col($r, 'Tipo_Incapacidad') ?? $this->col($r, 'Tipo') ?? ''));
+                $tipoMap = [
+                    'enfermedad general'    => 'enfermedad_general',
+                    'enfermedad'            => 'enfermedad_general',
+                    'licencia maternidad'   => 'licencia_maternidad',
+                    'maternidad'            => 'licencia_maternidad',
+                    'licencia paternidad'   => 'licencia_paternidad',
+                    'paternidad'            => 'licencia_paternidad',
+                    'accidente transito'    => 'accidente_transito',
+                    'transito'              => 'accidente_transito',
+                    'accidente laboral'     => 'accidente_laboral',
+                    'laboral'               => 'accidente_laboral',
+                    'arl'                   => 'accidente_laboral',
+                ];
+                $tipo = $tipoMap[$tipoRaw] ?? 'enfermedad_general';
+
+                // Tipo entidad responsable
+                $tipoEntidadRaw = strtolower(trim($this->col($r, 'Tipo_Entidad') ?? 'eps'));
+                $tipoEntidad = in_array($tipoEntidadRaw, ['eps','arl','afp']) ? $tipoEntidadRaw : 'eps';
+
+                // Estado general
+                $estadoRaw = strtolower(trim($this->col($r, 'Estado') ?? 'recibido'));
+                $estadosValidos = ['recibido','radicado','en_tramite','autorizado','liquidado','pagado_afiliado','rechazado','cerrado'];
+                $estado = in_array($estadoRaw, $estadosValidos) ? $estadoRaw : 'recibido';
+
+                DB::table('incapacidades')->insert([
+                    'id_legacy'               => $idLeg,
+                    'aliado_id'               => $aliadoId,
+                    'contrato_id'             => $contratoId,
+                    'cedula_usuario'           => (string)($this->col($r, 'Cedula') ?? $this->col($r, 'cedula_usuario') ?? ''),
+                    'quien_remite'             => trim($this->col($r, 'quien_remite') ?? $this->col($r, 'Empresa') ?? ''),
+                    'quien_recibe_id'          => $quienRecibeId,
+                    'tipo_incapacidad'         => $tipo,
+                    'dias_incapacidad'         => is_numeric($this->col($r, 'Dias') ?? $this->col($r, 'dias_incapacidad')) ? (int)($this->col($r, 'Dias') ?? $this->col($r, 'dias_incapacidad')) : 0,
+                    'fecha_inicio'             => $this->col($r, 'Fecha_Inicio')  ? substr($this->col($r, 'Fecha_Inicio'),  0, 10) : null,
+                    'fecha_terminacion'        => $this->col($r, 'Fecha_Fin')     ? substr($this->col($r, 'Fecha_Fin'),     0, 10)
+                                               : ($this->col($r, 'Fecha_Terminacion') ? substr($this->col($r, 'Fecha_Terminacion'), 0, 10) : null),
+                    'fecha_recibido'           => $this->col($r, 'Fecha_Recibido') ? substr($this->col($r, 'Fecha_Recibido'), 0, 10) : null,
+                    'prorroga'                 => (bool)($this->col($r, 'Prorroga') ?? $this->col($r, 'Es_Prorroga') ?? false),
+                    'numero_proroga'           => is_numeric($this->col($r, 'Numero_Prorroga') ?? $this->col($r, 'N_Prorroga')) ? (int)($this->col($r, 'Numero_Prorroga') ?? $this->col($r, 'N_Prorroga')) : 0,
+                    'tipo_entidad'             => $tipoEntidad,
+                    'entidad_nombre'           => trim($this->col($r, 'Entidad') ?? $this->col($r, 'Nombre_Entidad') ?? ''),
+                    'razon_social_id'          => $razonSocialId,
+                    'razon_social_nombre'      => trim($this->col($r, 'Razon_Social') ?? ''),
+                    'numero_radicado'          => trim($this->col($r, 'Numero_Radicado') ?? $this->col($r, 'Radicado') ?? ''),
+                    'fecha_radicado'           => $this->col($r, 'Fecha_Radicado') ? substr($this->col($r, 'Fecha_Radicado'), 0, 10) : null,
+                    'estado_pago'              => 'pendiente',
+                    'valor_pago'               => is_numeric($this->col($r, 'Valor_Pago') ?? $this->col($r, 'Valor')) ? $this->col($r, 'Valor_Pago') ?? $this->col($r, 'Valor') : null,
+                    'pagado_a'                 => trim($this->col($r, 'Pagado_A') ?? ''),
+                    'diagnostico'              => substr(trim($this->col($r, 'Diagnostico') ?? $this->col($r, 'CIE10') ?? ''), 0, 200),
+                    'observacion'              => trim($this->col($r, 'Observacion') ?? ''),
+                    'estado'                   => $estado,
+                    'created_at'               => now(),
+                    'updated_at'               => now(),
+                ]);
+                $count++;
+            }
+            $this->info("  ✅ $db → $count incapacidades | $skipped omitidas");
+        }
+
+        DB::statement('ALTER TABLE incapacidades WITH CHECK CHECK CONSTRAINT ALL');
+        $this->info('  📊 Total incapacidades: ' . DB::table('incapacidades')->count());
+    }
+
+    // ─── PASO 14: GESTIONES INCAPACIDAD ───────────────────────────────────────
+    // Legacy: GestionesIncapacidad o Gestiones_Incapacidad → gestiones_incapacidad
+    private function step14_GestionesIncapacidad(): void
+    {
+        // Precargar mapa id_legacy → nuevo id de incapacidades por aliado
+        $incapMap = DB::table('incapacidades')
+            ->whereNotNull('id_legacy')
+            ->select('aliado_id', 'id', 'id_legacy')
+            ->get()
+            ->groupBy('aliado_id')
+            ->map(fn($rows) => $rows->pluck('id', 'id_legacy')->all());
+
+        foreach ($this->dbs as $db => $key) {
+            $aliadoId = $this->ids[$key] ?? null;
+            if (!$aliadoId) continue;
+
+            // Buscar nombre real de la tabla (puede variar)
+            $tablaRes = DB::connection('sqlsrv_legacy')
+                ->selectOne("SELECT TOP 1 TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_CATALOG=? AND TABLE_NAME IN ('GestionesIncapacidad','Gestiones_Incapacidad','Gestiones_incapacidad')", [$db]);
+            if (!$tablaRes) {
+                $this->warn("  ⚠ $db: tabla GestionesIncapacidad no existe, se omite");
+                continue;
+            }
+            $tabla = $tablaRes->TABLE_NAME;
+
+            $aliadoIncapMap = $incapMap[$aliadoId] ?? [];
+
+            $rows = DB::connection('sqlsrv_legacy')
+                ->select("SELECT * FROM [$db].dbo.[$tabla]");
+
+            $this->line("  ⧳ $db: " . count($rows) . " gestiones...");
+            $count = 0; $sin_incap = 0;
+
+            foreach ($rows as $r) {
+                $idIncapLeg = $this->col($r, 'Id_Incapacidad') ?? $this->col($r, 'incapacidad_id');
+                $incapacidadId = $aliadoIncapMap[$idIncapLeg] ?? null;
+                if (!$incapacidadId) { $sin_incap++; continue; }
+
+                // Usuario BryNex
+                $usuLeg = $this->col($r, 'Usuario') ?? $this->col($r, 'user_id') ?? $this->col($r, 'Id_Usuario');
+                $userId = null;
+                if (is_numeric($usuLeg) && $usuLeg > 0) {
+                    $userId = DB::table('users')
+                        ->where('aliado_id', $aliadoId)
+                        ->where('id_legacy', (int)$usuLeg)
+                        ->value('id');
+                }
+
+                // Tipo de gestión
+                $tipoRaw = strtolower(trim($this->col($r, 'Tipo') ?? 'otro'));
+                $tiposValidos = ['llamada','correo','whatsapp','portal','radico','tutela',
+                                 'transcripcion_ips','respuesta_entidad','autorizacion',
+                                 'liquidacion','pago_afiliado','otro'];
+                $tipo = in_array($tipoRaw, $tiposValidos) ? $tipoRaw : 'otro';
+
+                // Estado resultado
+                $estadoRaw = strtolower(trim($this->col($r, 'Estado') ?? ''));
+                $estadosValidos = ['recibido','radicado','en_tramite','autorizado','liquidado','pagado_afiliado','rechazado','cerrado'];
+                $estadoRes = in_array($estadoRaw, $estadosValidos) ? $estadoRaw : null;
+
+                DB::table('gestiones_incapacidad')->insert([
+                    'incapacidad_id'   => $incapacidadId,
+                    'user_id'          => $userId ?? 1, // fallback admin si no encontrado
+                    'aplica_a_familia' => false,
+                    'tipo'             => $tipo,
+                    'tramite'          => trim($this->col($r, 'Tramite') ?? $this->col($r, 'Observacion') ?? $this->col($r, 'Gestion') ?? ''),
+                    'respuesta'        => trim($this->col($r, 'Respuesta') ?? ''),
+                    'estado_resultado'  => $estadoRes,
+                    'fecha_recordar'   => $this->col($r, 'Fecha_Recordar') ? substr($this->col($r, 'Fecha_Recordar'), 0, 10) : null,
+                    'created_at'       => $this->col($r, 'Fecha') ? substr($this->col($r, 'Fecha'), 0, 19)
+                                       : ($this->col($r, 'created_at') ? substr($this->col($r, 'created_at'), 0, 19) : now()),
+                ]);
+                $count++;
+            }
+            $this->info("  ✅ $db → $count gestiones | $sin_incap sin incapacidad encontrada");
+        }
+
+        $this->info('  📊 Total gestiones incapacidad: ' . DB::table('gestiones_incapacidad')->count());
     }
 }
