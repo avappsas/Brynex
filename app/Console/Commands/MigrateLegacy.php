@@ -1127,7 +1127,7 @@ class MigrateLegacy extends Command
                 $tipoMap[$lt->Id] = $lt->Tipo;
             }
 
-            // Cargar todos los contratos BryNex de este aliado con su id_legacy
+            // Cargar todos los contratos BryNex de este aliado
             $contratos = DB::table('contratos')
                 ->where('aliado_id', $aliadoId)
                 ->whereNotNull('id_legacy')
@@ -1139,13 +1139,11 @@ class MigrateLegacy extends Command
             foreach ($contratos as $c) {
                 $tipoLegacy = $tipoMap[$c->id_legacy] ?? null;
 
-                // Prioridad 1: Tipo del legacy si es ID válido del catálogo
                 if ($tipoLegacy !== null && is_numeric($tipoLegacy) && in_array((int)$tipoLegacy, $validIds, true)) {
                     DB::table('contratos')->where('id', $c->id)
                         ->update(['tipo_modalidad_id' => (int)$tipoLegacy]);
                     $updated++;
                 } else {
-                    // Fallback: inferir por entidades
                     $modalidadId = $this->resolveTipoModalidad(
                         null, $c->eps_id, $c->arl_id, $c->pension_id, $c->caja_id
                     );
@@ -1158,59 +1156,67 @@ class MigrateLegacy extends Command
                     }
                 }
             }
-            $this->info("  ✅ $db → desde legacy: $updated | fallback inferido: $fallback | sin dato: $sin_dato");
+            $this->info("  ✅ $db → desde legacy: $updated | fallback: $fallback | sin dato: $sin_dato");
             $updated = 0; $fallback = 0; $sin_dato = 0;
         }
 
         $still = DB::table('contratos')->whereNull('tipo_modalidad_id')->count();
-        $this->line("  ℹ  Total contratos aún sin modalidad: $still");
+        $this->line("  ℹ  Total sin modalidad: $still");
     }
 
-    // ─── FIX-PLAN: asigna plan_id a contratos migrados que no lo tienen ──────────
-    // Busca el plan cuyas entidades (incluye_eps/arl/pension/caja) coincidan
-    // con las del contrato, dentro de los planes permitidos por su modalidad.
+    // ─── FIX-PLAN: asigna plan_id a todos los contratos migrados ─────────────────
+    // Regla: eps_id != null → incluye_eps=1, caja_id = null → incluye_caja=0, etc.
     private function stepFixPlan(): void
     {
-        // Precargar todos los planes con sus flags de entidades
+        // Planes normalizados a int (SQL Server devuelve 0/1 no bool)
         $planesAll = DB::table('planes_contrato')
             ->where('activo', true)
-            ->get(['id', 'incluye_eps', 'incluye_arl', 'incluye_pension', 'incluye_caja']);
+            ->get(['id', 'nombre', 'incluye_eps', 'incluye_arl', 'incluye_pension', 'incluye_caja'])
+            ->map(function ($p) {
+                $p->incluye_eps     = (int)$p->incluye_eps;
+                $p->incluye_arl     = (int)$p->incluye_arl;
+                $p->incluye_pension = (int)$p->incluye_pension;
+                $p->incluye_caja    = (int)$p->incluye_caja;
+                return $p;
+            });
 
-        // Precargar mapa modalidad_id => [plan_ids permitidos]
+        // Mapa modalidad_id => [plan_ids permitidos]
         $modalidadPlanes = DB::table('modalidad_planes')
             ->get()
             ->groupBy('tipo_modalidad_id')
             ->map(fn($rows) => $rows->pluck('plan_id')->all());
 
+        // Todos los contratos migrados con modalidad asignada
         $contratos = DB::table('contratos')
-            ->whereNull('plan_id')
             ->whereNotNull('tipo_modalidad_id')
+            ->whereNotNull('id_legacy')
             ->select('id', 'tipo_modalidad_id', 'eps_id', 'arl_id', 'pension_id', 'caja_id')
             ->get();
 
-        $this->line("  ℹ  Contratos sin plan_id: {$contratos->count()}");
+        $this->line("  ℹ  Contratos a asignar plan: {$contratos->count()}");
         $updated = 0; $sin_plan = 0;
 
         foreach ($contratos as $c) {
             $planIds = $modalidadPlanes[$c->tipo_modalidad_id] ?? [];
             if (empty($planIds)) { $sin_plan++; continue; }
 
-            $hasEps     = $c->eps_id     !== null;
-            $hasArl     = $c->arl_id     !== null;
-            $hasPension = $c->pension_id !== null;
-            $hasCaja    = $c->caja_id    !== null;
+            // Entidades: 1 si tiene, 0 si no
+            $hasEps     = $c->eps_id     !== null ? 1 : 0;
+            $hasArl     = $c->arl_id     !== null ? 1 : 0;
+            $hasPension = $c->pension_id !== null ? 1 : 0;
+            $hasCaja    = $c->caja_id    !== null ? 1 : 0;
 
-            // Buscar plan que coincida exactamente con las entidades del contrato
+            // Coincidencia exacta
             $planElegido = $planesAll
                 ->whereIn('id', $planIds)
-                ->first(function ($p) use ($hasEps, $hasArl, $hasPension, $hasCaja) {
-                    return (bool)$p->incluye_eps     === $hasEps
-                        && (bool)$p->incluye_arl     === $hasArl
-                        && (bool)$p->incluye_pension === $hasPension
-                        && (bool)$p->incluye_caja    === $hasCaja;
-                });
+                ->first(fn($p) =>
+                    $p->incluye_eps     === $hasEps
+                    && $p->incluye_arl     === $hasArl
+                    && $p->incluye_pension === $hasPension
+                    && $p->incluye_caja    === $hasCaja
+                );
 
-            // Si no hay coincidencia exacta, tomar el primer plan disponible para esa modalidad
+            // Fallback: primer plan de la modalidad
             if (!$planElegido) {
                 $planElegido = $planesAll->whereIn('id', $planIds)->first();
             }
@@ -1224,7 +1230,7 @@ class MigrateLegacy extends Command
             }
         }
 
-        $this->info("  ✅ $updated contratos con plan asignado | $sin_plan sin plan disponible");
+        $this->info("  ✅ $updated contratos con plan | $sin_plan sin plan disponible");
         $still = DB::table('contratos')->whereNull('plan_id')->whereNotNull('tipo_modalidad_id')->count();
         $this->line("  ℹ  Aún sin plan: $still");
     }
