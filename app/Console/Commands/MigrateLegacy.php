@@ -47,6 +47,7 @@ class MigrateLegacy extends Command
             '12'          => fn() => $this->step12_Gastos(),
             '13'          => fn() => $this->step13_Incapacidades(),
             '14'          => fn() => $this->step14_GestionesIncapacidad(),
+            'prep'          => fn() => $this->stepPrep(),
             'fix-modalidad' => fn() => $this->stepFixModalidad(),
             'fix-plan'      => fn() => $this->stepFixPlan(),
             'fix-narl'      => fn() => $this->stepFixNarl(),
@@ -66,6 +67,17 @@ class MigrateLegacy extends Command
         }
 
         $this->info("\n✅ Migración completada.");
+    }
+
+    // ─── PREP: borra todas las tablas y recrea el esquema con seeders ──────────────
+    // Equivalente a: php artisan migrate:fresh --seed
+    // ⚠  DESTRUYE TODOS LOS DATOS. Usar solo antes de una migración limpia.
+    private function stepPrep(): void
+    {
+        $this->warn('  ⚠  Borrando todas las tablas y recreando el esquema...');
+        \Artisan::call('migrate:fresh', ['--seed' => true, '--force' => true]);
+        $this->info(\Artisan::output());
+        $this->info('  ✅ Esquema listo. Ahora puedes ejecutar --step=all');
     }
 
     private function loadAliados(): void
@@ -641,7 +653,13 @@ class MigrateLegacy extends Command
             $this->info("  ✅ $db → $count insertados, $skipped omitidos");
         }
 
+        // Limpiar FK huérfanos antes de rehabilitar constraints
+        DB::statement("UPDATE contratos SET actividad_economica_id = NULL WHERE actividad_economica_id IS NOT NULL AND actividad_economica_id NOT IN (SELECT id FROM actividades_economicas)");
+        DB::statement("UPDATE contratos SET asesor_id      = NULL WHERE asesor_id      IS NOT NULL AND asesor_id      NOT IN (SELECT id FROM asesores)");
+        DB::statement("UPDATE contratos SET encargado_id   = NULL WHERE encargado_id   IS NOT NULL AND encargado_id   NOT IN (SELECT id FROM users)");
+        DB::statement("UPDATE contratos SET razon_social_id = NULL WHERE razon_social_id IS NOT NULL AND razon_social_id NOT IN (SELECT id FROM razones_sociales)");
         DB::statement('ALTER TABLE contratos WITH CHECK CHECK CONSTRAINT ALL');
+
         DB::statement('ALTER TABLE radicados WITH CHECK CHECK CONSTRAINT ALL');
 
         $this->info('  📊 Total contratos: '  . DB::table('contratos')->count());
