@@ -1032,10 +1032,10 @@ class MigrateLegacy extends Command
                         'nombre_arl'         => trim($this->col($r, 'Nombre_ARL')  ?? $this->col($r, 'Nom_ARL')  ?? ''),
                         'nombre_caja'        => trim($this->col($r, 'Nombre_Caja') ?? $this->col($r, 'Nom_Caja') ?? ''),
                         'nivel_riesgo'       => is_numeric($this->col($r, 'N_ARL') ?? $this->col($r, 'Nivel_Riesgo')) ? (int)($this->col($r, 'N_ARL') ?? $this->col($r, 'Nivel_Riesgo')) : 1,
-                        // razon_social_id: buscar por NIT del campo Nit_Empresa o Razon_Social
+                        // razon_social_id: el id de razones_sociales ES el NIT de la empresa
                         'razon_social_id'    => DB::table('razones_sociales')
                             ->where('aliado_id', $aliadoId)
-                            ->where('nit', $this->col($r, 'Nit_Empresa') ?? $this->col($r, 'NIT') ?? 0)
+                            ->where('id', is_numeric($this->col($r, 'Nit_Empresa') ?? $this->col($r, 'NIT') ?? 0) ? (int)($this->col($r, 'Nit_Empresa') ?? $this->col($r, 'NIT')) : 0)
                             ->value('id'),
                         'razon_social'       => trim($this->col($r, 'Razon_Social') ?? ''),
                         // tipo_modalidad_id: Tipo_P del legacy (ID directo del catálogo)
@@ -1453,10 +1453,11 @@ class MigrateLegacy extends Command
                 // Razon social
                 $razonSocialId = null;
                 $nitRs = $this->col($r, 'Nit_Empresa') ?? $this->col($r, 'NIT');
-                if ($nitRs) {
+                if ($nitRs && is_numeric($nitRs)) {
+                    // id de razones_sociales ES el NIT
                     $razonSocialId = DB::table('razones_sociales')
                         ->where('aliado_id', $aliadoId)
-                        ->where('nit', $nitRs)
+                        ->where('id', (int)$nitRs)
                         ->value('id');
                 }
 
