@@ -977,9 +977,7 @@ class MigrateLegacy extends Command
 
             $count = 0; $skipped = 0; $offset = 0; $chunk = 500;
             while (true) {
-                $rows = DB::connection('sqlsrv_legacy')->select(
-                    $this->legacySelect("SELECT * FROM [$db].dbo.PLANOS ORDER BY Id OFFSET $offset ROWS FETCH NEXT $chunk ROWS ONLY")
-                );
+                $rows = $this->legacySelect("SELECT * FROM [$db].dbo.PLANOS ORDER BY Id OFFSET $offset ROWS FETCH NEXT $chunk ROWS ONLY");
                 if (empty($rows)) break;
                 foreach ($rows as $r) {
                     // Remap factura_id legacy → nuevo ID
