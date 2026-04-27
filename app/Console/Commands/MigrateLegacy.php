@@ -48,9 +48,10 @@ class MigrateLegacy extends Command
             '13'          => fn() => $this->step13_Incapacidades(),
             '14'          => fn() => $this->step14_GestionesIncapacidad(),
             'prep'          => fn() => $this->stepPrep(),
-            'fix-modalidad' => fn() => $this->stepFixModalidad(),
-            'fix-plan'      => fn() => $this->stepFixPlan(),
-            'fix-narl'      => fn() => $this->stepFixNarl(),
+            'fix-modalidad'        => fn() => $this->stepFixModalidad(),
+            'fix-plan'             => fn() => $this->stepFixPlan(),
+            'fix-narl'             => fn() => $this->stepFixNarl(),
+            'fix-valoresfacturas'  => fn() => $this->stepFixValoresFacturas(),
         ];
 
         if ($step === 'all') {
@@ -781,17 +782,28 @@ class MigrateLegacy extends Command
                         $tipo = 'afiliacion';
                     }
 
-                    // FORMA_PAGO: si COD (id_banco_cuenta) > 0 → consignacion; sino efectivo
-                    $codBanco  = $this->col($r, 'Consignacion') ?? $this->col($r, 'COD') ?? null;
-                    $valCons   = is_numeric($r->Valor_Consignado) ? (int)$r->Valor_Consignado : 0;
-                    $valTotal  = is_numeric($r->Pago) ? (int)$r->Pago : 0;
-                    $valEfect  = max(0, $valTotal - $valCons);
+                    // ── VALORES ──────────────────────────────────────────────
+                    // BUG#1 CORREGIDO: Pago=0 en consignaciones puras → usar Valor_Consignado
+                    $valCons  = is_numeric($r->Valor_Consignado) ? (int)$r->Valor_Consignado : 0;
+                    $valTotal = (is_numeric($r->Pago) && (int)$r->Pago > 0)
+                        ? (int)$r->Pago
+                        : $valCons;  // total real = Valor_Consignado cuando Pago está vacío
 
-                    if ($valCons > 0 && is_numeric($codBanco) && (int)$codBanco > 0) {
+                    $valEfect = max(0, $valTotal - $valCons);
+
+                    // ── FORMA_PAGO ────────────────────────────────────────────
+                    // BUG#2 CORREGIDO: 'Consignacion' es la REFERENCIA de texto (ej: 'TRF-123'),
+                    // NO el ID del banco. Solo 'COD' es el ID numérico de la cuenta bancaria.
+                    // La detección de consignación debe basarse en Valor_Consignado > 0.
+                    $refConsignacion = trim($this->col($r, 'Consignacion') ?? ''); // texto referencia
+                    $codBanco        = $this->col($r, 'COD') ?? null;              // ID numérico banco
+
+                    if ($valCons > 0) {
+                        // Hay valor consignado: es consignación o mixto
                         $formaPago = $valEfect > 0 ? 'mixto' : 'consignacion';
                     } else {
+                        // Sin valor consignado: todo en efectivo
                         $formaPago = 'efectivo';
-                        $valCons   = 0;
                         $valEfect  = $valTotal;
                     }
 
@@ -859,15 +871,14 @@ class MigrateLegacy extends Command
                         'updated_at'         => $r->fecha_modificacion ? substr($r->fecha_modificacion, 0, 19) : now(),
                     ]);
 
-                    // Extraer consignación si aplica
+                    // Registrar consignación en tabla consignaciones si aplica
                     if ($valCons > 0 && $formaPago !== 'efectivo') {
-                        // COD en legacy puede ser texto (ej: '11-2020-779'), solo usar si es numérico
-                        $cod = $r->COD ?? null;
                         $bancoCuentaId = null;
-                        if (is_numeric($cod)) {
+                        // COD es el ID numérico de la cuenta bancaria en legacy
+                        if (is_numeric($codBanco) && (int)$codBanco > 0) {
                             $bancoCuentaId = DB::table('banco_cuentas')
                                 ->where('aliado_id', $aliadoId)
-                                ->where('id_legacy', (int)$cod)
+                                ->where('id_legacy', (int)$codBanco)
                                 ->value('id');
                         }
                         // Fallback: primera cuenta del aliado
@@ -882,15 +893,13 @@ class MigrateLegacy extends Command
                                 'banco_cuenta_id'=> $bancoCuentaId,
                                 'fecha'          => $r->Fecha_Pago ? substr($r->Fecha_Pago, 0, 10) : now()->toDateString(),
                                 'valor'          => $valCons,
-                                'referencia'     => trim($r->Consignacion ?? ''),
+                                'referencia'     => $refConsignacion, // texto referencia bancaria
                                 'confirmado'     => true,
                                 'observacion'    => "Migrada de factura legacy #{$r->Id_Factura}",
                                 'created_at'     => now(),
                                 'updated_at'     => now(),
                             ]);
                         }
-                        // Si no se resuelve banco_cuenta_id se omite la consignacion;
-                        // el valor ya quedó en facturas.valor_consignado
                     }
 
                     $count++;
@@ -1613,5 +1622,136 @@ class MigrateLegacy extends Command
         }
 
         $this->info('  📊 Total gestiones incapacidad: ' . DB::table('gestiones_incapacidad')->count());
+    }
+
+    // ─── PASO FIX-VALORESFACTURAS ─────────────────────────────────────────────
+    // Corrige facturas migradas con total = 0 (y/o valores de SS en 0) buscando
+    // los valores reales en la tabla FACTURACION de cada BD legacy.
+    //
+    // Columnas que actualiza en BryNex:
+    //   total, valor_efectivo, valor_consignado, forma_pago,
+    //   v_eps, v_arl, v_afp, v_caja, total_ss,
+    //   admon, admin_asesor, seguro, afiliacion, mensajeria, otros, iva
+    private function stepFixValoresFacturas(): void
+    {
+        $this->info('🔧 fix-valoresfacturas: Corrigiendo facturas con total = 0...');
+
+        $totalActualizadas = 0;
+        $totalSinLegacy    = 0;
+
+        foreach ($this->dbs as $db => $key) {
+            $aliadoId = $this->ids[$key] ?? null;
+            if (!$aliadoId) {
+                $this->warn("  ⚠ Aliado '$key' no encontrado, se omite");
+                continue;
+            }
+
+            // Obtener facturas de este aliado cuyo total sea 0
+            $facturasCero = DB::table('facturas')
+                ->where('aliado_id', $aliadoId)
+                ->where('total', 0)
+                ->whereNotNull('id_legacy')
+                ->select('id', 'id_legacy')
+                ->get();
+
+            if ($facturasCero->isEmpty()) {
+                $this->line("  ℹ  $db: ninguna factura con total=0, se omite.");
+                continue;
+            }
+
+            $this->line("  ⏳ $db: {$facturasCero->count()} facturas con total=0 por corregir...");
+            $actualizadas = 0;
+            $sinLegacy    = 0;
+
+            foreach ($facturasCero as $fac) {
+                // Buscar el registro original en el legacy
+                $rows = $this->legacySelect(
+                    "SELECT TOP 1 * FROM [$db].dbo.FACTURACION WHERE Id_Factura = {$fac->id_legacy}"
+                );
+
+                if (empty($rows)) {
+                    $sinLegacy++;
+                    $this->warn("    ⚠ id_legacy={$fac->id_legacy} no encontrado en legacy.");
+                    continue;
+                }
+
+                $r = $rows[0];
+
+                // ── Recalcular valores ──────────────────────────────────────
+                // BUG ORIGINAL: En legacy, facturas 100% consignación tienen
+                // Pago = 0 y el valor real está en Valor_Consignado.
+                // Regla: total = Pago si Pago > 0, si no = Valor_Consignado.
+                $valCons  = is_numeric($r->Valor_Consignado) ? (int)$r->Valor_Consignado : 0;
+                $valTotal = is_numeric($r->Pago) && (int)$r->Pago > 0
+                    ? (int)$r->Pago
+                    : $valCons;   // ← corrección del bug: Pago=0 → usar Valor_Consignado
+
+                // Si aún sigue en 0, intentar columnas alternativas
+                if ($valTotal === 0) {
+                    foreach (['Total', 'Valor', 'Valor_Factura', 'TOTAL', 'VALOR'] as $alt) {
+                        $v = $this->col($r, $alt);
+                        if (is_numeric($v) && (int)$v > 0) {
+                            $valTotal = (int)$v;
+                            break;
+                        }
+                    }
+                }
+
+                $valEfect = max(0, $valTotal - $valCons);
+
+                $codBanco = $this->col($r, 'Consignacion') ?? $this->col($r, 'COD') ?? null;
+                if ($valCons > 0 && is_numeric($codBanco) && (int)$codBanco > 0) {
+                    $formaPago = $valEfect > 0 ? 'mixto' : 'consignacion';
+                } else {
+                    $formaPago = 'efectivo';
+                    $valCons   = 0;
+                    $valEfect  = $valTotal;
+                }
+
+                $vEps   = is_numeric($r->V_EPS)  ? (int)$r->V_EPS  : 0;
+                $vArl   = is_numeric($r->V_Arl)  ? (int)$r->V_Arl  : 0;
+                $vAfp   = is_numeric($r->V_AFP)  ? (int)$r->V_AFP  : 0;
+                $vCaja  = is_numeric($r->V_CAJA) ? (int)$r->V_CAJA : 0;
+                $totalSS = $vEps + $vArl + $vAfp + $vCaja;
+
+                DB::table('facturas')
+                    ->where('id', $fac->id)
+                    ->update([
+                        'total'              => $valTotal,
+                        'valor_consignado'   => $valCons,
+                        'valor_efectivo'     => $valEfect,
+                        'forma_pago'         => $formaPago,
+                        'v_eps'              => $vEps,
+                        'v_arl'              => $vArl,
+                        'v_afp'              => $vAfp,
+                        'v_caja'             => $vCaja,
+                        'total_ss'           => $totalSS,
+                        'admon'              => is_numeric($r->Admon)        ? (int)$r->Admon        : 0,
+                        'admin_asesor'       => is_numeric($r->admin_asesor) ? (int)$r->admin_asesor : 0,
+                        'seguro'             => is_numeric($r->seguro)       ? (int)$r->seguro       : 0,
+                        'afiliacion'         => is_numeric($r->Afiliaciones) ? (int)$r->Afiliaciones : 0,
+                        'mensajeria'         => is_numeric($r->Mensajeria)   ? (int)$r->Mensajeria   : 0,
+                        'otros'              => is_numeric($r->Otros)        ? (int)$r->Otros        : 0,
+                        'iva'                => is_numeric($r->Iva)          ? (int)$r->Iva          : 0,
+                        'updated_at'         => now(),
+                    ]);
+
+                $actualizadas++;
+                if ($actualizadas % 100 === 0) {
+                    $this->line("    → $actualizadas actualizadas...");
+                }
+            }
+
+            $totalActualizadas += $actualizadas;
+            $totalSinLegacy    += $sinLegacy;
+            $this->info("  ✅ $db → $actualizadas actualizadas | $sinLegacy sin registro en legacy");
+        }
+
+        // Resumen global
+        $aun0 = DB::table('facturas')->where('total', 0)->count();
+        $this->info("\n📊 Resumen fix-valoresfacturas:");
+        $this->info("   Actualizadas  : $totalActualizadas");
+        $this->info("   Sin legacy    : $totalSinLegacy");
+        $this->info("   Aún con total=0: $aun0");
     }
 }
