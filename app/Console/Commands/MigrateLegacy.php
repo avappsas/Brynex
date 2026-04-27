@@ -979,7 +979,7 @@ class MigrateLegacy extends Command
             // planos no tiene id_legacy; usamos factura_id migradas para skip
             $facturasMigradas = DB::table('planos')
                 ->where('aliado_id', $aliadoId)
-                ->pluck('factura_id')->flip()->all();
+                ->pluck('factura_id')->filter()->flip()->all(); // filter() elimina NULLs antes de flip()
             $total = DB::connection('sqlsrv_legacy')
                 ->selectOne("SELECT COUNT(*) as cnt FROM [$db].dbo.PLANOS")->cnt;
             $this->line("  ⏳ $db: $total planos...");
