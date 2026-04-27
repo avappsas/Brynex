@@ -1149,20 +1149,18 @@ class MigrateLegacy extends Command
             $aliadoId = $this->ids[$key] ?? null;
             if (!$aliadoId) continue;
 
-            // Verificar existencia
+            // Verificar existencia usando cross-DB sys.objects
             $exists = DB::connection('sqlsrv_legacy')
-                ->selectOne("SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_CATALOG=? AND TABLE_NAME='Gastos'", [$db]);
+                ->selectOne("SELECT COUNT(*) as cnt FROM [$db].sys.objects WHERE name='Gastos' AND type='U'");
             if (!$exists || !$exists->cnt) {
                 $this->warn("  ⚠ $db: tabla Gastos no existe, se omite");
                 continue;
             }
 
-            // Saltar aliado si ya tiene gastos migrados
-            $existing = DB::table('gastos')->where('aliado_id', $aliadoId)->count();
-            if ($existing > 0) {
-                $this->line("  ℹ  $db: $existing gastos ya migrados, se omite");
-                continue;
-            }
+            // Re-entrant por id_legacy
+            $yaExisten = DB::table('gastos')
+                ->where('aliado_id', $aliadoId)
+                ->pluck('id_legacy')->filter()->flip()->all();
 
             $rows  = DB::connection('sqlsrv_legacy')->select("SELECT * FROM [$db].dbo.Gastos");
             $count = 0;
@@ -1171,6 +1169,9 @@ class MigrateLegacy extends Command
             $defaultUserId = DB::table('users')->where('aliado_id', $aliadoId)->value('id') ?? 1;
 
             foreach ($rows as $r) {
+                $idLeg = $this->col($r, 'Id') ?? $this->col($r, 'Id_Gasto');
+                if ($idLeg && isset($yaExisten[$idLeg])) { continue; }
+
                 // Intentar resolver usuario por ID/nombre legacy
                 $userId = DB::table('users')
                     ->where('aliado_id', $aliadoId)
@@ -1180,6 +1181,7 @@ class MigrateLegacy extends Command
                 $forma = strtolower(trim($this->col($r, 'Forma_Pago') ?? 'efectivo'));
 
                 DB::table('gastos')->insert([
+                    'id_legacy'      => $idLeg,
                     'aliado_id'      => $aliadoId,
                     'usuario_id'     => $userId,
                     'fecha'          => $this->col($r, 'Fecha') ? substr($this->col($r, 'Fecha'), 0, 10) : now()->toDateString(),
@@ -1284,17 +1286,20 @@ class MigrateLegacy extends Command
             ->groupBy('tipo_modalidad_id')
             ->map(fn($rows) => $rows->pluck('plan_id')->all());
 
-        // Todos los contratos migrados con modalidad asignada
+        // Solo contratos migrados SIN plan asignado (los que ya tienen plan se saltan)
         $contratos = DB::table('contratos')
             ->whereNotNull('tipo_modalidad_id')
             ->whereNotNull('id_legacy')
+            ->whereNull('plan_id')
             ->select('id', 'tipo_modalidad_id', 'eps_id', 'arl_id', 'pension_id', 'caja_id')
             ->get();
 
-        $this->line("  ℹ  Contratos a asignar plan: {$contratos->count()}");
-        $updated = 0; $sin_plan = 0;
+        $this->line("  ℹ  Contratos sin plan: {$contratos->count()}");
+        $total = $contratos->count();
+        $updated = 0; $sin_plan = 0; $procesados = 0;
 
         foreach ($contratos as $c) {
+            $procesados++;
             $planIds = $modalidadPlanes[$c->tipo_modalidad_id] ?? [];
             if (empty($planIds)) { $sin_plan++; continue; }
 
@@ -1338,6 +1343,10 @@ class MigrateLegacy extends Command
                 $updated++;
             } else {
                 $sin_plan++;
+            }
+
+            if ($procesados % 200 === 0) {
+                $this->line("    → $procesados / $total procesados ($updated con plan)...");
             }
         }
 
@@ -1407,9 +1416,9 @@ class MigrateLegacy extends Command
             $aliadoId = $this->ids[$key] ?? null;
             if (!$aliadoId) continue;
 
-            // Verificar si existe la tabla en este legacy
+            // Verificar si existe la tabla en este legacy (cross-DB)
             $exists = DB::connection('sqlsrv_legacy')
-                ->selectOne("SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_CATALOG=? AND TABLE_NAME='Incapacidades'", [$db]);
+                ->selectOne("SELECT COUNT(*) as cnt FROM [$db].sys.objects WHERE name='Incapacidades' AND type='U'");
             if (!($exists->cnt ?? 0)) {
                 $this->warn("  ⚠ $db: tabla Incapacidades no existe, se omite");
                 continue;
@@ -1542,9 +1551,9 @@ class MigrateLegacy extends Command
             $aliadoId = $this->ids[$key] ?? null;
             if (!$aliadoId) continue;
 
-            // Buscar nombre real de la tabla (puede variar)
+            // Buscar nombre real de la tabla con cross-DB sys.objects
             $tablaRes = DB::connection('sqlsrv_legacy')
-                ->selectOne("SELECT TOP 1 TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_CATALOG=? AND TABLE_NAME IN ('GestionesIncapacidad','Gestiones_Incapacidad','Gestiones_incapacidad')", [$db]);
+                ->selectOne("SELECT TOP 1 name AS TABLE_NAME FROM [$db].sys.objects WHERE type='U' AND name IN ('GestionesIncapacidad','Gestiones_Incapacidad','Gestiones_incapacidad')");
             if (!$tablaRes) {
                 $this->warn("  ⚠ $db: tabla GestionesIncapacidad no existe, se omite");
                 continue;
