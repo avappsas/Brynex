@@ -9,20 +9,42 @@ class ConfiguracionBrynex extends BaseModel
     protected $table = 'configuracion_brynex';
     protected $fillable = ['clave', 'valor', 'descripcion'];
 
-    /** Obtiene un valor de configuración global por su clave */
-    public static function obtener(string $clave, mixed $default = null): mixed
+    /** Cache en memoria para evitar N+1 queries cuando se llama desde bucles */
+    private static array $cache = [];
+
+    /**
+     * Precarga TODAS las claves de configuración en 1 sola query.
+     * Llamar al inicio de vistas/controllers que consulten múltiples claves en un bucle.
+     */
+    public static function precargar(): void
     {
-        $registro = static::where('clave', $clave)->first();
-        return $registro ? $registro->valor : $default;
+        self::$cache = static::pluck('valor', 'clave')->toArray();
     }
 
-    /** Actualiza o crea una clave de configuración global */
+    /** Limpia el cache en memoria (útil en tests o tras escribir con establecer()) */
+    public static function limpiarCache(): void
+    {
+        self::$cache = [];
+    }
+
+    /** Obtiene un valor de configuración global por su clave (con cache en memoria) */
+    public static function obtener(string $clave, mixed $default = null): mixed
+    {
+        if (!array_key_exists($clave, self::$cache)) {
+            self::$cache[$clave] = static::where('clave', $clave)->value('valor');
+        }
+        return self::$cache[$clave] ?? $default;
+    }
+
+    /** Actualiza o crea una clave de configuración global (e invalida el cache) */
     public static function establecer(string $clave, mixed $valor): void
     {
         static::updateOrCreate(
             ['clave' => $clave],
             ['valor' => (string) $valor]
         );
+        // Invalidar cache para que la próxima lectura refleje el nuevo valor
+        unset(self::$cache[$clave]);
     }
 
     // Helpers rápidos para los porcentajes usados en el cotizador

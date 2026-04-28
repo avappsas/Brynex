@@ -22,6 +22,27 @@ class CobrosController extends Controller
         $mes      = (int) $request->get('mes',  now()->month);
         $anio     = (int) $request->get('anio', now()->year);
 
+        // ── Pre-carga de configuraciones (1 query total en vez de N×6) ──────
+        ConfiguracionBrynex::precargar();
+
+        // ── Pre-carga de tarifas ARL (1 query total en vez de N×2) ──────────
+        $arlTarifasRaw = DB::table('arl_tarifas')
+            ->where(function ($q) use ($aliadoId) {
+                $q->where('aliado_id', $aliadoId)->orWhereNull('aliado_id');
+            })
+            ->get()
+            ->groupBy('nivel');
+
+        // Resuelve pct ARL por nivel sin tocar BD
+        $getArlPct = function (int $nivel) use ($arlTarifasRaw, $aliadoId): float {
+            $grupo = $arlTarifasRaw->get($nivel);
+            if (!$grupo) return 0.0;
+            $porAliado = $grupo->firstWhere('aliado_id', $aliadoId);
+            if ($porAliado) return (float) $porAliado->porcentaje;
+            $global = $grupo->first(fn($t) => $t->aliado_id === null);
+            return (float) ($global?->porcentaje ?? 0.0);
+        };
+
         // ── Filtros opcionales ──────────────────────────────────────
         $rsId     = $request->get('razon_social_id');
         $asesorId = $request->get('asesor_id');
@@ -38,14 +59,16 @@ class CobrosController extends Controller
 
         // Filtro: solo individuales (cod_empresa = 1 = Individual)
         if ($soloInd === 'individual') {
-            $cedulasInd = DB::table('clientes')
-                ->where('aliado_id', $aliadoId)
-                ->where(function ($sq) {
-                    $sq->where('cod_empresa', 1)
-                       ->orWhereNull('cod_empresa');
-                })
-                ->pluck('cedula');
-            $q->whereIn('cedula', $cedulasInd);
+            // Subquery nativa: evita cargar cédulas a PHP y enviar un whereIn masivo
+            $q->whereIn('cedula', function ($sub) use ($aliadoId) {
+                $sub->from('clientes')
+                    ->select('cedula')
+                    ->where('aliado_id', $aliadoId)
+                    ->where(function ($sq) {
+                        $sq->where('cod_empresa', 1)
+                           ->orWhereNull('cod_empresa');
+                    });
+            });
         }
 
         // Filtro: razón social
@@ -99,7 +122,7 @@ class CobrosController extends Controller
         $r100 = fn($v) => (int)(ceil(($v ?? 0) / 100) * 100);
 
         $contratos = $contratos->map(function ($c) use (
-            $mes, $anio, $facturas, $ultimasLlamadas, $r100, $aliadoId
+            $mes, $anio, $facturas, $ultimasLlamadas, $r100, $aliadoId, $getArlPct
         ) {
             $fact = $facturas->get($c->cedula);
 
@@ -136,7 +159,7 @@ class CobrosController extends Controller
                 $pctEps = ConfiguracionBrynex::pctSaludIndependiente();
                 $pctPen = ConfiguracionBrynex::pctPensionIndependiente();
                 $pctCaj = (float)($c->porcentaje_caja ?? ConfiguracionBrynex::pctCajaIndependienteAlto());
-                $pctArl = ArlTarifa::porcentajePara((int)($c->n_arl ?? 1), $aliadoId);
+                $pctArl = $getArlPct((int)($c->n_arl ?? 1));  // ← sin query
                 // SS proporcional = IBC * pct * (dias / 30)
                 $vEps  = ($plan?->incluye_eps)    ? $r100($ibc * $pctEps / 100 * $diasAct / 30) : 0;
                 $vArl  = ($plan?->incluye_arl)    ? $r100($ibc * $pctArl / 100 * $diasAct / 30) : 0;
@@ -162,7 +185,7 @@ class CobrosController extends Controller
                     $pctPen = ConfiguracionBrynex::pctPensionDependiente();
                     $pctCaj = ConfiguracionBrynex::pctCajaDependiente();
                 }
-                $pctArl = ArlTarifa::porcentajePara((int)($c->n_arl ?? 1), $aliadoId);
+                $pctArl = $getArlPct((int)($c->n_arl ?? 1));  // ← sin query
 
                 $vEps  = ($plan?->incluye_eps)     ? $r100($ibc * $pctEps / 100) : 0;
                 $vArl  = ($plan?->incluye_arl)     ? $r100($ibc * $pctArl / 100) : 0;

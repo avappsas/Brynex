@@ -1918,9 +1918,7 @@ class MigrateLegacy extends Command
             $updated = 0; $offset = 0; $chunk = 500;
             while (true) {
                 $rows = $this->legacySelect(
-                    "SELECT Id, Id_Factura, NO_IDENTIFI, [FECHA ING], [FECHA RET], Nit_Empresa, NIT
-                     FROM [$db].dbo.PLANOS
-                     ORDER BY Id OFFSET $offset ROWS FETCH NEXT $chunk ROWS ONLY"
+                    "SELECT * FROM [$db].dbo.PLANOS ORDER BY Id OFFSET $offset ROWS FETCH NEXT $chunk ROWS ONLY"
                 );
                 if (empty($rows)) break;
 
