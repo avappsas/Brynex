@@ -168,7 +168,7 @@ table.fac-tbl{width:100%;border-collapse:collapse;font-size:.78rem}
 <table class="fac-tbl" id="tblTrab">
 <thead><tr>
     <th>TIPO</th><th>CÉDULA</th><th>NOMBRE</th><th>RAZÓN SOCIAL</th>
-    <th style="text-align:center">INGRESO</th><th style="text-align:center">DÍAS</th>
+    <th style="text-align:center">INGRESO / RETIRO</th><th style="text-align:center">DÍAS</th>
     <th class="num-col">EPS</th><th class="num-col">ARL</th>
     <th class="num-col">CAJA</th><th class="num-col">PENSIÓN</th>
     <th class="num-col">ADMON</th><th class="num-col" style="display:none">IVA</th>
@@ -192,11 +192,13 @@ $yaP   = $fact && in_array($fact->estado,['pagada','prestamo']);
 $nombre = trim(($c->cliente?->primer_nombre ?? '') . ' ' . ($c->cliente?->primer_apellido ?? ''));
 if(!$nombre) $nombre = $c->cliente?->nombre_completo ?? '—';
 // Tipo: campo tipo_modalidad directo (ej: 'E', 'I')
-$tipoMod  = $c->tipoModalidad?->tipo_modalidad ?? '—';
-$tipoNom  = $c->tipoModalidad?->nombre ?? '—';  // tooltip
-$rs    = $c->razonSocial?->razon_social ?? '—';
-$fIng  = $c->fecha_ingreso ? $c->fecha_ingreso->format('d/m/Y') : '—';
-$dias  = $c->dias_cotizar ?? 30;
+$tipoMod    = $c->tipoModalidad?->tipo_modalidad ?? '—';
+$tipoNom    = $c->tipoModalidad?->nombre ?? '—';  // tooltip
+$rs         = $c->razonSocial?->razon_social ?? '—';
+$esRetirado = $c->estado === 'retirado';
+$fIng       = $c->fecha_ingreso ? $c->fecha_ingreso->format('d/m/Y') : '—';
+$fRet       = ($esRetirado && $c->fecha_retiro) ? $c->fecha_retiro->format('d/m/Y') : null;
+$dias       = $c->dias_cotizar ?? 30;
 // Detectar si este período debe ser afiliación pura (I VENC, empresa)
 // vs I ACT primer mes (viene del controlador como es_ind_act_primer_mes)
 $esIndep          = $c->tipoModalidad?->esIndependiente() ?? false;
@@ -220,17 +222,21 @@ if ($fact) {
 // Tiempo Parcial: detectar y obtener días por entidad
 $esTP     = $c->tipoModalidad?->esTiempoParcial() ?? false;
 $diasTP   = $esTP ? $c->tipoModalidad->diasPorEntidad() : null;
-// Valores: si hay factura usar los de la factura, si no calcular
+// Valores: si hay factura usar los reales; si es retirado sin factura → 0; si es activo sin factura → estimar
 $vEps  = $fact ? $r100($fact->v_eps)  : 0;
 $vArl  = $fact ? $r100($fact->v_arl)  : 0;
 $vCaja = $fact ? $r100($fact->v_caja) : 0;
 $vPen  = $fact ? $r100($fact->v_afp)  : 0;
-$vAdm  = $fact ? (int)($fact->admon + $fact->admin_asesor) : (int)(($c->administracion??0) + ($c->admon_asesor??0));
+$vAdm  = $fact ? (int)($fact->admon + $fact->admin_asesor) : ($esRetirado ? 0 : (int)(($c->administracion??0) + ($c->admon_asesor??0)));
 $vIva  = $fact ? $r100($fact->iva)    : 0;
-// Total estimado
+// Total y SS
 $cotiz = $c->calcularCotizacion($dias);
 if (!$fact) {
-    if ($esIndActPrimerMes) {
+    if ($esRetirado) {
+        // Retirado sin factura aún → mostrar todo en 0
+        $vEps = $vArl = $vPen = $vCaja = $vIva = $vAdm = $vSS = 0;
+        $vTot = 0;
+    } elseif ($esIndActPrimerMes) {
         // I ACT primer mes: SS reales (días del mes) + afiliación + admon
         $vEps  = $r100($cotiz['eps']??0);
         $vArl  = $r100($cotiz['arl']??0);
@@ -279,15 +285,20 @@ $totAdmon+=$vAdm;$totIva+=$vIva;$totTotal+=$vTot;
     data-afiliacion="{{ $vAfiliacion }}"
     data-tipo="{{ ($esAfil && !$esIndActPrimerMes) ? 'afiliacion' : 'planilla' }}">
 
-    <td style="font-size:.75rem;font-weight:700;text-align:center;white-space:nowrap;" title="{{ $tipoNom }}{{ $esIndActPrimerMes ? ' · Afiliación + Planilla' : '' }}">
-        <span style="display:inline-flex;align-items:center;gap:3px;">
-            {{ $tipoMod }}
-            <a href="{{ route('admin.contratos.edit', $c->id) }}?back={{ urlencode(url()->current()) }}"
-               title="Abrir contrato · {{ $tipoNom }}"
-               style="color:{{ $esIndActPrimerMes ? '#7c3aed' : '#64748b' }};text-decoration:none;line-height:1;font-size:.85rem;"
-               onmouseover="this.style.color='#2563eb'" onmouseout="this.style.color='{{ $esIndActPrimerMes ? '#7c3aed' : '#64748b' }}'">
-                @if($esIndActPrimerMes)&#9889;@elseif($esAfil)&#128204;@else&#9741;@endif
-            </a>
+    <td style="font-size:.75rem;font-weight:700;text-align:center;white-space:nowrap;" title="{{ $tipoNom }}{{ $esIndActPrimerMes ? ' · Afiliación + Planilla' : '' }}{{ $esRetirado ? ' · RETIRADO' : '' }}">
+        <span style="display:inline-flex;align-items:center;gap:3px;flex-direction:column;">
+            <span style="display:inline-flex;align-items:center;gap:3px;">
+                {{ $tipoMod }}
+                <a href="{{ route('admin.contratos.edit', $c->id) }}?back={{ urlencode(url()->current()) }}"
+                   title="Abrir contrato · {{ $tipoNom }}"
+                   style="color:{{ $esIndActPrimerMes ? '#7c3aed' : ($esRetirado ? '#dc2626' : '#64748b') }};text-decoration:none;line-height:1;font-size:.85rem;"
+                   onmouseover="this.style.color='#2563eb'" onmouseout="this.style.color='{{ $esIndActPrimerMes ? '#7c3aed' : ($esRetirado ? '#dc2626' : '#64748b') }}'">
+                    @if($esIndActPrimerMes)&#9889;@elseif($esAfil)&#128204;@elseif($esRetirado)&#128683;@else&#9741;@endif
+                </a>
+            </span>
+            @if($esRetirado)
+            <span style="font-size:.55rem;background:#fee2e2;color:#dc2626;border-radius:4px;padding:.05rem .3rem;font-weight:800;letter-spacing:.03em;">RETIRO</span>
+            @endif
         </span>
     </td>
     <td style="font-family:monospace;font-size:.75rem">{{ number_format($c->cedula,0,'','.') }}</td>
@@ -304,7 +315,13 @@ $totAdmon+=$vAdm;$totIva+=$vIva;$totTotal+=$vTot;
         @endif
     </td>
     <td style="font-size:.7rem;color:#64748b;max-width:130px;overflow:hidden;text-overflow:ellipsis" title="{{ $rs }}">{{ Str::limit($rs,16) }}</td>
-    <td style="text-align:center;font-size:.75rem;color:#64748b">{{ $fIng }}</td>
+    <td style="text-align:center;font-size:.75rem;">
+        @if($esRetirado && $fRet)
+            <span style="color:#dc2626;font-weight:700;">{{ $fRet }}</span>
+        @else
+            <span style="color:#64748b;">{{ $fIng }}</span>
+        @endif
+    </td>
     <td style="text-align:center;font-weight:700;color:{{ $dias===0?'#9333ea':($dias<30?'#d97706':'#0f172a') }}">
         @if($esTP && $diasTP)
             <span title="T. Parcial: ARL {{ $diasTP['arl'] }}d · AFP {{ $diasTP['afp'] }}d · CAJA {{ $diasTP['caja'] }}d"
@@ -356,7 +373,7 @@ $totAdmon+=$vAdm;$totIva+=$vIva;$totTotal+=$vTot;
     </td>
 </tr>
 @empty
-<tr><td colspan="17" style="text-align:center;padding:2rem;color:#94a3b8">No hay contratos activos para esta empresa en este período.</td></tr>
+<tr><td colspan="17" style="text-align:center;padding:2rem;color:#94a3b8">No hay contratos activos ni retiros del mes anterior para esta empresa en este período.</td></tr>
 @endforelse
 </tbody>
 <tfoot>

@@ -55,9 +55,32 @@ class FacturacionController extends Controller
             ->where('cod_empresa', $empresaId)
             ->pluck('cedula');
 
+        // Retirados visibles en este período:
+        //  - fecha_retiro en el mes ANTERIOR (retiro se reporta en planilla del mes siguiente)
+        //  - fecha_retiro en el mes ACTUAL   (retiro en el mismo mes que se consulta)
+        $mesAnterior  = $mes  === 1 ? 12 : $mes  - 1;
+        $anioAnterior = $mes  === 1 ? $anio - 1 : $anio;
+
         $contratos = Contrato::where('aliado_id', $aliadoId)
             ->whereIn('cedula', $cedulasEmpresa)
-            ->whereIn('estado', ['vigente', 'activo'])
+            ->where(function ($q) use ($mes, $anio, $mesAnterior, $anioAnterior) {
+                $q->whereIn('estado', ['vigente', 'activo'])
+                  ->orWhere(function ($q2) use ($mes, $anio, $mesAnterior, $anioAnterior) {
+                      $q2->where('estado', 'retirado')
+                         ->where(function ($q3) use ($mes, $anio, $mesAnterior, $anioAnterior) {
+                             // Retirado en el mes actual
+                             $q3->where(function ($qa) use ($mes, $anio) {
+                                     $qa->whereMonth('fecha_retiro', $mes)
+                                        ->whereYear('fecha_retiro', $anio);
+                                 })
+                                // O retirado el mes anterior
+                                ->orWhere(function ($qb) use ($mesAnterior, $anioAnterior) {
+                                     $qb->whereMonth('fecha_retiro', $mesAnterior)
+                                        ->whereYear('fecha_retiro', $anioAnterior);
+                                 });
+                         });
+                  });
+            })
             ->with(['cliente', 'tipoModalidad', 'razonSocial', 'eps', 'arl', 'pension', 'caja', 'asesor'])
             ->orderBy('cedula')
             ->get();
