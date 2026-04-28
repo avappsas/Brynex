@@ -978,10 +978,17 @@ class MigrateLegacy extends Command
             $aliadoId = $this->ids[$key] ?? null;
             if (!$aliadoId) continue;
 
-            // planos no tiene id_legacy; usamos factura_id migradas para skip
+            // Skip check: por factura_id (cuando existe) O por clave compuesta cedula+mes+año+rs
             $facturasMigradas = DB::table('planos')
                 ->where('aliado_id', $aliadoId)
-                ->pluck('factura_id')->filter()->flip()->all(); // filter() elimina NULLs antes de flip()
+                ->pluck('factura_id')->filter()->flip()->all();
+
+            // Clave compuesta para evitar duplicados cuando factura_id es null
+            $clavesMigradas = DB::table('planos')
+                ->where('aliado_id', $aliadoId)
+                ->selectRaw("CONCAT(no_identifi,'|',ISNULL(mes_plano,''),'|',ISNULL(anio_plano,''),'|',ISNULL(razon_social_id,''),'|',ISNULL(n_plano,'')) AS clave")
+                ->pluck('clave')->flip()->all();
+
             $total = DB::connection('sqlsrv_legacy')
                 ->selectOne("SELECT COUNT(*) as cnt FROM [$db].dbo.PLANOS")->cnt;
             $this->line("  ⏳ $db: $total planos...");
@@ -997,8 +1004,20 @@ class MigrateLegacy extends Command
                         ->where('id_legacy', $this->col($r, 'id_facturacion') ?? $this->col($r, 'Id_Facturacion') ?? $this->col($r, 'ID_FACTURACION'))
                         ->value('id');
 
-                    // Skip si ya existe este plano para esta factura
+                    // Skip por factura_id si ya existe
                     if ($facturaId && isset($facturasMigradas[$facturaId])) { $skipped++; continue; }
+
+                    // Skip por clave compuesta (cedula|mes|año|razon_social|n_plano)
+                    $nit      = $this->col($r, 'Nit_Empresa') ?? $this->col($r, 'NIT');
+                    $rsId     = (is_numeric($nit) && (int)$nit > 0)
+                        ? DB::table('razones_sociales')->where('aliado_id', $aliadoId)->where('id_legacy', (int)$nit)->value('id')
+                        : null;
+                    $cedula   = $this->col($r, 'NO_IDENTIFI') ?? $this->col($r, 'No_Identifi') ?? $this->col($r, 'Cedula') ?? '';
+                    $mes      = $this->col($r, 'MES_PLANO') ?? $this->col($r, 'Mes') ?? '';
+                    $anio     = $this->col($r, 'AÑO_PLANO') ?? $this->col($r, 'Año') ?? $this->col($r, 'Anio') ?? '';
+                    $nPlano   = $this->col($r, 'N_PLANO') ?? $this->col($r, 'N_Plano') ?? '';
+                    $clave    = "{$cedula}|{$mes}|{$anio}|{$rsId}|{$nPlano}";
+                    if (isset($clavesMigradas[$clave])) { $skipped++; continue; }
 
                     DB::table('planos')->insert([
                         'aliado_id'          => $aliadoId,

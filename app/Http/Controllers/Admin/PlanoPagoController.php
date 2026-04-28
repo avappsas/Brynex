@@ -54,7 +54,7 @@ class PlanoPagoController extends Controller
         $cantPorRs = DB::table('planos AS p')
             ->where('p.aliado_id', $aliadoId)
             ->whereNull('p.deleted_at')
-            ->where('p.tipo_reg', 'planilla')
+            ->whereIn('p.tipo_reg', ['planilla', 'retiro'])
             ->where($wherePeriodo)
             ->groupBy('p.razon_social_id')
             ->select('p.razon_social_id', DB::raw('COUNT(*) AS cant'))
@@ -91,9 +91,14 @@ class PlanoPagoController extends Controller
 
         if ($razonSocialId) {
             $query = DB::table('planos AS p')
-                ->join('facturas AS f', 'f.id', '=', 'p.factura_id')
-                ->join('contratos AS c', 'c.id', '=', 'p.contrato_id')
-                ->leftJoin('clientes AS cl', 'cl.cedula', '=', 'p.no_identifi')
+                ->leftJoin('facturas AS f', 'f.id', '=', 'p.factura_id')
+                ->leftJoin('contratos AS c', 'c.id', '=', 'p.contrato_id')
+                // Filtrar clientes por aliado_id para evitar filas duplicadas
+                // cuando el mismo cliente existe en múltiples aliados
+                ->leftJoin('clientes AS cl', function ($join) use ($aliadoId) {
+                    $join->on('cl.cedula', '=', 'p.no_identifi')
+                         ->where('cl.aliado_id', '=', $aliadoId);
+                })
                 ->leftJoin('empresas AS em', 'em.id', '=', 'cl.cod_empresa')
                 ->leftJoin('razones_sociales AS rs', 'rs.id', '=', 'p.razon_social_id')
                 ->leftJoin('tipo_modalidad AS tm', 'tm.id', '=', 'p.tipo_modalidad_id')
@@ -101,7 +106,7 @@ class PlanoPagoController extends Controller
                 ->leftJoin('operadores_planilla AS op_cl', 'op_cl.id', '=', 'cl.operador_planilla_id')
                 ->where('p.aliado_id', $aliadoId)
                 ->whereNull('p.deleted_at')
-                ->where('p.tipo_reg', 'planilla')
+                ->whereIn('p.tipo_reg', ['planilla', 'retiro'])
                 ->where('p.razon_social_id', $razonSocialId)
                 ->where($wherePeriodo)
                 ->select([
@@ -162,7 +167,7 @@ class PlanoPagoController extends Controller
                 ->join('tipo_modalidad AS tm', 'tm.id', '=', 'p.tipo_modalidad_id')
                 ->where('p.aliado_id', $aliadoId)
                 ->whereNull('p.deleted_at')
-                ->where('p.tipo_reg', 'planilla')
+                ->whereIn('p.tipo_reg', ['planilla', 'retiro'])
                 ->where('p.razon_social_id', $razonSocialId)
                 ->where($wherePeriodo)
                 ->distinct()

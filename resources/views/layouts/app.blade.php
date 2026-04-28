@@ -625,21 +625,21 @@
                 <div class="label">Empresas</div>
             </a>
 
-            @role('superadmin|admin')
+            @role('superadmin|admin|usuario')
             <a href="{{ route('admin.afiliaciones.index') }}" class="menu-item {{ request()->routeIs('admin.afiliaciones*') ? 'activo' : '' }}">
                 <div class="icono">🤝</div>
                 <div class="label">Afiliaciones</div>
             </a>
             @endrole
 
-            @can('ver-planos')
+            @role('superadmin|admin|usuario')
             <a href="{{ route('admin.planos.index') }}" class="menu-item {{ request()->routeIs('admin.planos*') ? 'activo' : '' }}">
                 <div class="icono">📄</div>
                 <div class="label">Planos SS</div>
             </a>
-            @endcan
+            @endrole
 
-            @role('superadmin|admin')
+            @role('superadmin|admin|usuario')
             <a href="{{ route('admin.cobros.index') }}" class="menu-item {{ request()->routeIs('admin.cobros*') ? 'activo' : '' }}">
                 <div class="icono">💰</div>
                 <div class="label">Cobros</div>
@@ -656,7 +656,7 @@
                 <div class="label">Incapacidades</div>
             </a>
 
-            @role('superadmin|admin')
+            @role('superadmin|admin|usuario')
             <div class="menu-sep"></div>
 
             <a href="{{ route('admin.cuadre-diario.index') }}"
