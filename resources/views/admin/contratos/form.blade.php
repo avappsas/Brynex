@@ -1352,11 +1352,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     actualizarBloqueoArl();  // incluye actualizarNivelesArl()
-    const planId = selPln?.value;
-    if (planId) bloquearEntidadesPorPlan(planId);
+    // ⚡ Asignar ARL de la RS ANTES de bloquearEntidadesPorPlan para que el
+    //    estilo se calcule con el valor ya presente (evita borde rojo falso).
     if (ARL_ID_RS && !document.getElementById('sel_arl').value) {
         document.getElementById('sel_arl').value = ARL_ID_RS;
     }
+    const planId = selPln?.value;
+    if (planId) bloquearEntidadesPorPlan(planId);
 
     // Nota inicial si no hay modalidad seleccionada
     if (!selMod?.value && document.getElementById('nota-plan-modalidad')) {

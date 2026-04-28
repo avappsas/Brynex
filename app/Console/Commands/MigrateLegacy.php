@@ -52,6 +52,7 @@ class MigrateLegacy extends Command
             'fix-plan'             => fn() => $this->stepFixPlan(),
             'fix-narl'             => fn() => $this->stepFixNarl(),
             'fix-valoresfacturas'  => fn() => $this->stepFixValoresFacturas(),
+            'fix-independiente'    => fn() => $this->stepFixIndependiente(),
         ];
 
         if ($step === 'all') {
@@ -583,7 +584,7 @@ class MigrateLegacy extends Command
                         'pension_id'             => $pensionId,
                         'arl_id'                 => $arlId,
                         'caja_id'                => $cajaId,
-                        'n_arl'                  => is_numeric($this->col($r, 'N_ARL')) && $this->col($r, 'N_ARL') >= 0 && $this->col($r, 'N_ARL') <= 5 ? (int)$this->col($r, 'N_ARL') : null,
+                        'n_arl'                  => is_numeric($this->col($r, 'N_ARL')) && $this->col($r, 'N_ARL') >= 1 && $this->col($r, 'N_ARL') <= 5 ? (int)$this->col($r, 'N_ARL') : null,
                         'cargo'                  => substr(trim($this->col($r, 'Cargo') ?? ''), 0, 100),
                         'fecha_ingreso'          => $this->col($r, 'Fecha_Ingreso')  ? substr($this->col($r, 'Fecha_Ingreso'),  0, 10) : null,
                         'fecha_retiro'           => $this->col($r, 'Fecha_Retiro')   ? substr($this->col($r, 'Fecha_Retiro'),   0, 10) : null,
@@ -1753,5 +1754,27 @@ class MigrateLegacy extends Command
         $this->info("   Actualizadas  : $totalActualizadas");
         $this->info("   Sin legacy    : $totalSinLegacy");
         $this->info("   Aún con total=0: $aun0");
+    }
+
+    // ─── PASO FIX-INDEPENDIENTE ──────────────────────────────────────────────
+    // Corrige contratos de RS con es_independiente=true:
+    //   1. Vincula planes con ARL a modalidades independientes en modalidad_planes
+    //   2. Actualiza plan_id a un plan que incluye ARL (si el actual no lo tiene)
+    //   3. Sincroniza arl_id y n_arl desde la BD legacy
+    //
+    // Uso: php artisan legacy:migrate --step=fix-independiente
+    private function stepFixIndependiente(): void
+    {
+        $this->info('Ejecutando fix de contratos independientes (arl_id, n_arl, plan_id)…');
+        $exitCode = \Illuminate\Support\Facades\Artisan::call(
+            'brynex:fix-independiente-planes',
+            ['--ejecutar' => true],
+            $this->output
+        );
+        if ($exitCode === 0) {
+            $this->info('✅ fix-independiente completado.');
+        } else {
+            $this->error("❌ fix-independiente terminó con código: $exitCode");
+        }
     }
 }
