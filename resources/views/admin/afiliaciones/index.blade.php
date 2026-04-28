@@ -1,10 +1,40 @@
 @extends('layouts.app')
 @section('modulo', 'Afiliaciones')
 
+@push('styles')
+<style>
+/* ── Afiliaciones: layout de altura completa, solo tbody scrollea ── */
+html, body {
+    height: 100%;
+    overflow: hidden;
+}
+body {
+    display: flex;
+    flex-direction: column;
+}
+.header {
+    flex-shrink: 0;
+}
+.contenido {
+    flex: 1 !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    display: flex !important;
+    flex-direction: column !important;
+    padding: 0.75rem 1rem !important;
+    gap: 0.5rem;
+}
+/* Los flash messages no deben comprimir la tabla */
+.contenido > .flash {
+    flex-shrink: 0;
+}
+</style>
+@endpush
+
 @section('contenido')
 <style>
 /* ── Layout ── */
-.afil-header { background:linear-gradient(135deg,#0f172a 0%,#1e3a5f 100%);padding:1.2rem 1.6rem;border-radius:14px;color:#fff;margin-bottom:1rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.8rem; }
+.afil-header { background:linear-gradient(135deg,#0f172a 0%,#1e3a5f 100%);padding:0.8rem 1.2rem;border-radius:12px;color:#fff;margin-bottom:0;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;flex-shrink:0; }
 .afil-title  { font-size:1.3rem;font-weight:800;letter-spacing:0.02em; }
 .afil-sub    { font-size:0.78rem;color:#94a3b8;margin-top:0.15rem; }
 
@@ -18,7 +48,7 @@
 .filtros-sep { width:100%;height:0;border-bottom:1px dashed #e2e8f0;margin:0.2rem 0; }
 
 /* ── Tabla ── */
-.tbl-wrap { overflow-x:auto;border-radius:12px;border:1px solid #e2e8f0;background:#fff; }
+.tbl-wrap { overflow-x:auto;overflow-y:auto;border-radius:12px;border:1px solid #e2e8f0;background:#fff;flex:1;min-height:0; }
 .tbl-afil { width:100%;border-collapse:collapse;font-size:0.78rem;white-space:nowrap; }
 .tbl-afil thead th { background:#0f172a;color:#fff;padding:0.55rem 0.6rem;font-weight:600;font-size:0.72rem;text-transform:uppercase;letter-spacing:0.04em;position:sticky;top:0;z-index:2; }
 .tbl-afil thead th a { color:#cbd5e1;text-decoration:none;display:flex;align-items:center;gap:0.2rem;justify-content:center; }
@@ -119,7 +149,7 @@
 </style>
 
 {{-- ══ HEADER + FILTROS UNIFICADOS ══ --}}
-<form method="GET" action="{{ route('admin.afiliaciones.index') }}" id="formFiltros">
+<form method="GET" action="{{ route('admin.afiliaciones.index') }}" id="formFiltros" style="flex-shrink:0;">
 <div class="afil-header" style="flex-wrap:wrap;gap:0.5rem;">
     <div>
         <div class="afil-title">📋 Módulo de Afiliaciones</div>
@@ -150,7 +180,7 @@
         @endif
 
         {{-- Encargado --}}
-        <select name="encargado_id" style="font-size:0.78rem;padding:0.3rem 0.5rem;border:1px solid #334155;background:#1e3a5f;color:#e2e8f0;border-radius:6px;">
+        <select name="encargado_id" onchange="this.form.submit()" style="font-size:0.78rem;padding:0.3rem 0.5rem;border:1px solid #334155;background:#1e3a5f;color:#e2e8f0;border-radius:6px;">
             <option value="">— Todos —</option>
             @foreach($encargados as $enc)
             <option value="{{ $enc->id }}" {{ $encId == $enc->id ? 'selected' : '' }}>{{ $enc->nombre }}</option>
@@ -184,10 +214,12 @@
 
 {{-- ══ TABLA PRINCIPAL ══ --}}
 @if($contratos->isEmpty())
-<div style="text-align:center;padding:3rem;color:#94a3b8;background:#fff;border-radius:12px;border:1px solid #e2e8f0;">
+<div style="flex:1;display:flex;align-items:center;justify-content:center;">
+<div style="text-align:center;padding:3rem;color:#94a3b8;background:#fff;border-radius:12px;border:1px solid #e2e8f0;width:100%;max-width:420px;">
     <div style="font-size:3rem;">📋</div>
     <div style="font-size:1rem;font-weight:600;margin-top:0.5rem;">Sin contratos para este período</div>
     <div style="font-size:0.8rem;margin-top:0.25rem;">No hay ingresos en el mes/año seleccionado.</div>
+</div>
 </div>
 @else
 @php
@@ -305,9 +337,16 @@ function sortClass($col, $currSort, $currDir) {
     <tr>
         {{-- Empresa --}}
         <td>
-            <span class="razon-badge" title="{{ $c->razonSocial?->razon_social }}">
-                {{ $c->razonSocial?->razon_social ?? '—' }}
+            @if($c->razonSocial)
+            <span class="razon-badge razon-badge-link"
+                  title="Ver claves de {{ $c->razonSocial->razon_social }}"
+                  onclick="abrirClavesRS({{ $c->razonSocial->id }}, '{{ addslashes($c->razonSocial->razon_social) }}')"
+                  style="cursor:pointer;">
+                {{ $c->razonSocial->razon_social }}
             </span>
+            @else
+            <span class="razon-badge">—</span>
+            @endif
         </td>
 
         {{-- Día ingreso --}}
@@ -627,6 +666,62 @@ function sortClass($col, $currSort, $currDir) {
         </div>
     </div>
 </div>
+
+{{-- ══ DRAWER CLAVES RAZÓN SOCIAL ══ --}}
+<div id="rs-claves-overlay"
+     style="display:none;position:fixed;inset:0;background:rgba(15,23,42,0.45);z-index:1050;backdrop-filter:blur(2px);"
+     onclick="cerrarClavesRS()"></div>
+
+<div id="rs-claves-panel"
+     style="display:none;position:fixed;top:0;right:0;width:860px;max-width:97vw;height:100vh;
+            background:#f8fafc;box-shadow:-8px 0 32px rgba(0,0,0,0.18);z-index:1051;
+            flex-direction:column;transform:translateX(100%);transition:transform 0.28s cubic-bezier(.4,0,0.2,1);">
+
+    {{-- Header --}}
+    <div style="background:linear-gradient(135deg,#fbbf24,#f59e0b);padding:1rem 1.25rem;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+        <div style="display:flex;align-items:center;gap:0.6rem;">
+            <span style="font-size:1.4rem;">🔑</span>
+            <div>
+                <div style="font-size:0.95rem;font-weight:800;color:#1c1917;">Claves y Accesos</div>
+                <div id="rs-claves-subtitulo" style="font-size:0.72rem;color:rgba(28,25,23,0.7);font-weight:500;">Razón Social</div>
+            </div>
+        </div>
+        <button onclick="cerrarClavesRS()"
+                style="background:rgba(255,255,255,0.2);border:none;border-radius:8px;width:34px;height:34px;color:#1c1917;font-size:1.1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:700;">✕</button>
+    </div>
+
+    {{-- Notif --}}
+    <div id="rs-claves-notif" style="display:none;margin:0.5rem 1rem 0;padding:0.45rem 0.85rem;border-radius:7px;font-size:0.8rem;font-weight:600;"></div>
+
+    {{-- Loading --}}
+    <div id="rs-claves-loading" style="display:none;text-align:center;padding:2rem;color:#94a3b8;font-size:0.85rem;">⏳ Cargando claves...</div>
+
+    {{-- Tabla --}}
+    <div style="flex:1;overflow-y:auto;padding:1rem 1.25rem;" id="rs-claves-body">
+        <table style="width:100%;border-collapse:collapse;font-size:0.8rem;">
+            <thead>
+                <tr style="background:#fef9c3;border-bottom:2px solid #fde68a;">
+                    <th class="ca-th">Tipo</th>
+                    <th class="ca-th">Entidad / Portal</th>
+                    <th class="ca-th">Usuario</th>
+                    <th class="ca-th">Contraseña</th>
+                    <th class="ca-th" style="text-align:center;">Link</th>
+                    <th class="ca-th">Correo</th>
+                    <th class="ca-th">Observación</th>
+                    <th class="ca-th" style="text-align:center;">Estado</th>
+                </tr>
+            </thead>
+            <tbody id="rs-claves-tbody">
+                <tr><td colspan="8" style="text-align:center;padding:2rem;color:#94a3b8;font-size:0.85rem;">Selecciona una razón social.</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<style>
+.razon-badge-link:hover { background:#bfdbfe !important; color:#1e3a8a !important; box-shadow:0 2px 8px rgba(37,99,235,0.15); transition:all .15s; }
+.ca-th { padding:0.5rem 0.65rem;font-size:0.72rem;font-weight:700;color:#92400e;white-space:nowrap;text-align:left; }
+</style>
 
 @push('scripts')
 <script>
@@ -968,6 +1063,90 @@ async function subirDocumento() {
     } finally {
         btn.disabled = false; btn.textContent = '⬆ Subir';
     }
+}
+
+// ══ CLAVES RAZÓN SOCIAL ══
+function abrirClavesRS(rsId, rsNombre) {
+    var panel   = document.getElementById('rs-claves-panel');
+    var overlay = document.getElementById('rs-claves-overlay');
+    document.getElementById('rs-claves-subtitulo').textContent = rsNombre;
+    document.getElementById('rs-claves-notif').style.display = 'none';
+    overlay.style.display = 'block';
+    panel.style.display   = 'flex';
+    setTimeout(function(){ panel.style.transform = 'translateX(0)'; }, 10);
+
+    // Cargar claves
+    var loading = document.getElementById('rs-claves-loading');
+    var body    = document.getElementById('rs-claves-body');
+    var tbody   = document.getElementById('rs-claves-tbody');
+    loading.style.display = 'block';
+    body.style.display    = 'none';
+
+    fetch('/admin/clave-accesos/razon-social/' + rsId, {
+        headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': CSRF }
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(claves) {
+        loading.style.display = 'none';
+        body.style.display    = 'block';
+        tbody.innerHTML = '';
+        if (!claves || claves.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:2rem;color:#94a3b8;font-size:0.85rem;">No hay claves registradas para esta razón social.</td></tr>';
+            return;
+        }
+        var colores = {
+            'Portal':['#eff6ff','#1d4ed8'],'Correo':['#fef3c7','#92400e'],
+            'EPS':['#dcfce7','#15803d'],'ARL':['#fce7f3','#9d174d'],
+            'AFP':['#e0e7ff','#3730a3'],'CAJA':['#fff7ed','#c2410c'],
+            'DIAN':['#fef9c3','#713f12'],'MinTrabajo':['#f0fdf4','#166534'],
+            'Banco':['#f5f3ff','#6d28d9'],'Otro':['#f1f5f9','#475569']
+        };
+        claves.forEach(function(c) {
+            var col = colores[c.tipo] || ['#f1f5f9','#475569'];
+            var tipoBadge = '<span style="background:'+col[0]+';color:'+col[1]+';padding:0.15rem 0.5rem;border-radius:999px;font-size:0.68rem;font-weight:700;">'+(c.tipo||'—')+'</span>';
+            var linkBtn = c.link_acceso
+                ? '<a href="'+c.link_acceso+'" target="_blank" style="background:#eff6ff;color:#2563eb;padding:0.18rem 0.5rem;border-radius:5px;font-size:0.7rem;font-weight:600;border:1px solid #bfdbfe;text-decoration:none;">🔗 Abrir</a>'
+                : '<span style="color:#cbd5e1;">—</span>';
+            var estadoBadge = c.activo
+                ? '<span style="background:#dcfce7;color:#16a34a;padding:0.12rem 0.45rem;border-radius:999px;font-size:0.65rem;font-weight:700;">ACTIVO</span>'
+                : '<span style="background:#fee2e2;color:#dc2626;padding:0.12rem 0.45rem;border-radius:999px;font-size:0.65rem;font-weight:700;">INACTIVO</span>';
+            var masked = c.contrasena ? '•'.repeat(Math.min(c.contrasena.length,8))+' 👁' : '<span style="color:#cbd5e1;">—</span>';
+            var passHtml = c.contrasena
+                ? '<span style="font-family:monospace;font-size:0.77rem;cursor:pointer;" onclick="this.textContent=this.dataset.show==\'1\'?\''+('•'.repeat(8))+' 👁\':\''+c.contrasena+' 👁\';this.dataset.show=this.dataset.show==\'1\'?\'0\':\'1\';" data-show="0">'+masked+'</span>'
+                : masked;
+            var tr = document.createElement('tr');
+            tr.style.cssText = 'border-bottom:1px solid #fef3c7;';
+            tr.onmouseover = function(){ this.style.background='#fffbeb'; };
+            tr.onmouseout  = function(){ this.style.background='transparent'; };
+            tr.innerHTML =
+                '<td style="padding:0.38rem 0.65rem;">'+tipoBadge+'</td>'+
+                '<td style="padding:0.38rem 0.65rem;font-weight:600;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+(c.entidad||'')+'">'+(c.entidad||'—')+'</td>'+
+                '<td style="padding:0.38rem 0.65rem;font-family:monospace;font-size:0.77rem;">'+(c.usuario||'<span style="color:#cbd5e1;">—</span>')+'</td>'+
+                '<td style="padding:0.38rem 0.65rem;">'+passHtml+'</td>'+
+                '<td style="padding:0.38rem 0.65rem;text-align:center;">'+linkBtn+'</td>'+
+                '<td style="padding:0.38rem 0.65rem;font-size:0.75rem;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+(c.correo_entidad||'')+'">'+(c.correo_entidad||'<span style="color:#cbd5e1;">—</span>')+'</td>'+
+                '<td style="padding:0.38rem 0.65rem;font-size:0.73rem;color:#64748b;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+(c.observacion||'')+'">'+(c.observacion||'')+'</td>'+
+                '<td style="padding:0.38rem 0.65rem;text-align:center;">'+estadoBadge+'</td>';
+            tbody.appendChild(tr);
+        });
+    })
+    .catch(function() {
+        loading.style.display = 'none';
+        body.style.display    = 'block';
+        var notif = document.getElementById('rs-claves-notif');
+        notif.style.cssText = 'display:block;margin:0.5rem 1rem 0;padding:0.45rem 0.85rem;border-radius:7px;font-size:0.8rem;font-weight:600;background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;';
+        notif.textContent = '❌ Error al cargar las claves.';
+    });
+}
+
+function cerrarClavesRS() {
+    var panel   = document.getElementById('rs-claves-panel');
+    var overlay = document.getElementById('rs-claves-overlay');
+    panel.style.transform = 'translateX(100%)';
+    setTimeout(function(){
+        panel.style.display   = 'none';
+        overlay.style.display = 'none';
+    }, 300);
 }
 
 // ── Toast ──

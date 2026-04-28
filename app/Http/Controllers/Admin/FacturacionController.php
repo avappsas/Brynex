@@ -239,6 +239,10 @@ class FacturacionController extends Controller
             'dist_retiro'          => 'nullable|integer|min:0',
             'dist_encargado'       => 'nullable|integer|min:0',
             'dist_admon'           => 'nullable|integer|min:0',
+            // Retiro en el período
+            'es_retiro'            => 'boolean',
+            'fecha_retiro'         => 'nullable|date',
+            'dias_retiro'          => 'nullable|integer|min:1|max:30',
         ]);
 
         $np = $validated['np'] ?? null;
@@ -444,6 +448,16 @@ $efAcum = $csAcum = $prAcum = $sfAcum = 0;
 
                 // SS = 0 en afiliación pura (I VENC, empresa);
                 // Para I ACT primer mes se calcula con días reales del mes de ingreso.
+                // Si hay retiro, sobreescribir los días con los del retiro.
+                $esRetiro    = !empty($validated['es_retiro']);
+                $fechaRetiro = $esRetiro ? ($validated['fecha_retiro'] ?? null) : null;
+                $diasRetiro  = $esRetiro ? (int)($validated['dias_retiro'] ?? $diasCotizar) : null;
+
+                if ($esRetiro && $diasRetiro !== null && !$esAfiliacion) {
+                    // Retiro: usar los días proporcionales indicados por el usuario
+                    $diasCotizar = $diasRetiro;
+                }
+
                 // ── Fuente de verdad: calcularCotizacion() del modelo ──────────────────────
                 // Usar el mismo método que la UI para que total facturado = estimación exacta.
                 if ($esAfiliacion && !$esIndActPrimerMes) {
@@ -670,7 +684,7 @@ $efAcum = $csAcum = $prAcum = $sfAcum = 0;
                 // Si está pagada o en préstamo, generar plano
                 if (in_array($factura->estado, [Factura::ESTADO_PAGADA, Factura::ESTADO_PRESTAMO])) {
                     $factura->load('contrato.eps', 'contrato.arl', 'contrato.pension', 'contrato.caja', 'contrato.razonSocial');
-                    Plano::generarDesdeContrato($contrato, $factura);
+                    Plano::generarDesdeContrato($contrato, $factura, $fechaRetiro ?? null);
                 }
 
                 $facturasCreadas[] = $factura->id;

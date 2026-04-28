@@ -58,7 +58,7 @@ class Plano extends BaseModel
      * Genera el registro de plano a partir de un contrato y factura.
      * Snapshot de los datos al momento de facturar.
      */
-    public static function generarDesdeContrato(Contrato $contrato, Factura $factura): static
+    public static function generarDesdeContrato(Contrato $contrato, Factura $factura, ?string $fechaRetiro = null): static
     {
         $cliente = $contrato->cliente;
         $eps     = $contrato->eps;
@@ -141,7 +141,7 @@ class Plano extends BaseModel
             'segundo_nombre'    => strtoupper($segundoNom),
             // Novedades
             'fecha_ing'         => $fechaIng,
-            'fecha_ret'         => null,
+            'fecha_ret'         => $fechaRetiro ? \Carbon\Carbon::parse($fechaRetiro)->toDateString() : null,
             // Días
             'num_dias'          => $esAfiliacion ? 0 : ($factura->dias_cotizados ?? 30),
             // Entidades (NIT snapshot)

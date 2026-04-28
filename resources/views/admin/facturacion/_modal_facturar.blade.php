@@ -291,6 +291,67 @@
 }
 .mf-np-inp:focus { border-color: #3b82f6; }
 
+/* ── Retiro ── */
+#mf-retiro-card {
+    background: linear-gradient(135deg, #fff5f5, #fef2f2);
+    border: 1.5px solid #fecaca;
+    border-radius: 11px; overflow: hidden;
+    transition: border-color .18s;
+}
+#mf-retiro-card.activo {
+    border-color: #ef4444;
+    box-shadow: 0 2px 10px rgba(239,68,68,.12);
+}
+#mf-retiro-hdr {
+    display: flex; align-items: center; gap: .5rem;
+    padding: .42rem .72rem;
+    cursor: pointer; user-select: none;
+    background: transparent;
+    border: none; width: 100%; text-align: left;
+}
+#mf-retiro-hdr:hover { background: rgba(239,68,68,.05); }
+.mf-retiro-check {
+    width: 15px; height: 15px; accent-color: #ef4444; cursor: pointer; flex-shrink: 0;
+}
+#mf-retiro-hdr-label {
+    font-size: .75rem; font-weight: 700; color: #dc2626;
+    display: flex; align-items: center; gap: .35rem;
+}
+#mf-retiro-body {
+    display: none;
+    padding: .45rem .72rem .6rem;
+    border-top: 1px solid #fecaca;
+    flex-direction: column; gap: .4rem;
+}
+#mf-retiro-body.visible { display: flex; }
+.mf-retiro-row {
+    display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; align-items: end;
+}
+.mf-retiro-lbl {
+    font-size: .57rem; font-weight: 800; color: #991b1b;
+    text-transform: uppercase; letter-spacing: .05em;
+    display: block; margin-bottom: .18rem;
+}
+.mf-retiro-date {
+    padding: .3rem .5rem; border: 1.5px solid #fca5a5; border-radius: 7px;
+    font-size: .78rem; font-family: inherit; outline: none;
+    background: #fff; width: 100%; box-sizing: border-box;
+    transition: border-color .15s;
+}
+.mf-retiro-date:focus { border-color: #ef4444; }
+#mf-retiro-dias-box {
+    background: #fff; border: 1.5px solid #fca5a5; border-radius: 7px;
+    padding: .3rem .55rem;
+    display: flex; align-items: center; justify-content: space-between;
+}
+#mf-retiro-dias-num {
+    font-size: 1.05rem; font-weight: 900; color: #dc2626; font-family: monospace;
+}
+.mf-retiro-aviso {
+    font-size: .67rem; color: #92400e; background: #fef3c7;
+    border-radius: 5px; padding: .25rem .5rem; border: 1px solid #fde68a;
+}
+
 /* ── FOOTER ── */
 #mf-footer {
     background: #f8fafc; border-top: 1px solid #e2e8f0;
@@ -565,6 +626,34 @@
                 <div class="mf-pago-row">
                     <span class="mf-pago-lbl">Monto del préstamo</span>
                     <input type="text" id="mf-prestamo" value="0" oninput="MF.recalc()" class="mf-pago-inp">
+                </div>
+            </div>
+
+            {{-- Retiro --}}
+            <div id="mf-retiro-card">
+                <button type="button" id="mf-retiro-hdr" onclick="MF.toggleRetiro()">
+                    <input type="checkbox" id="mf-retiro-check" class="mf-retiro-check"
+                           onclick="event.stopPropagation();MF.toggleRetiro()">
+                    <span id="mf-retiro-hdr-label">🚪 Marcar Retiro en este período</span>
+                </button>
+                <div id="mf-retiro-body" style="display:none;">
+                    <div class="mf-retiro-row">
+                        <div>
+                            <label class="mf-retiro-lbl" for="mf-retiro-fecha">Fecha de Retiro</label>
+                            <input type="date" id="mf-retiro-fecha" class="mf-retiro-date"
+                                   oninput="MF.onRetiroFecha()">
+                        </div>
+                        <div>
+                            <label class="mf-retiro-lbl">Días a pagar</label>
+                            <div id="mf-retiro-dias-box">
+                                <span style="font-size:.67rem;color:#991b1b;font-weight:600;">días</span>
+                                <span id="mf-retiro-dias-num">—</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mf-retiro-aviso">
+                        ⚠️ Los días calculados actualizan el cotizador para que el SS sea proporcional al retiro.
+                    </div>
                 </div>
             </div>
 

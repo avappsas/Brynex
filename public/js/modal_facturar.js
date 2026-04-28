@@ -36,6 +36,7 @@ const MF = (function () {
     let _saldoFavor = 0;
     let _saldoPendiente = 0;
     let _modo = 'individual';      // 'individual' | 'masivo'
+    let _esRetiro = false;         // si el usuario marcó retiro en este período
 
     // ── Helpers ───────────────────────────────────────────────────
     const fmt = v => '$' + Math.ceil(v || 0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
@@ -80,6 +81,17 @@ const MF = (function () {
         setVal('mf-nplano', '');
         document.querySelectorAll('input[name="mf_indep_modo"]').forEach(r => { if (r.value === 'afiliacion') r.checked = true; });
         _saldoFavor = 0; _saldoPendiente = 0;
+
+        // Reset retiro
+        _esRetiro = false;
+        const retiroCheck = el('mf-retiro-check');
+        const retiroCard  = el('mf-retiro-card');
+        const retiroBody  = el('mf-retiro-body');
+        if (retiroCheck) retiroCheck.checked = false;
+        if (retiroCard)  retiroCard.classList.remove('activo');
+        if (retiroBody)  retiroBody.style.display = 'none';
+        setVal('mf-retiro-fecha', '');
+        setText('mf-retiro-dias-num', '—');
 
         // N° Plano visible solo en masivo
         const npWrap = el('mf-nplano-wrap');
@@ -515,6 +527,73 @@ const MF = (function () {
         }
     }
 
+    // ── Retiro en el período ────────────────────────────────────────
+
+    /**
+     * Activa/desactiva el card de retiro.
+     * Al activar precarga la fecha = último día del mes anterior al período.
+     */
+    function toggleRetiro() {
+        _esRetiro = !_esRetiro;
+        const check = el('mf-retiro-check');
+        const card  = el('mf-retiro-card');
+        const body  = el('mf-retiro-body');
+        if (check) check.checked = _esRetiro;
+        if (card)  card.classList.toggle('activo', _esRetiro);
+        if (body)  body.style.display = _esRetiro ? 'flex' : 'none';
+
+        if (_esRetiro) {
+            // Prellenar con el último día del mes anterior al período
+            const mes  = parseInt(el('mf-mes')?.value  || new Date().getMonth() + 1);
+            const anio = parseInt(el('mf-anio')?.value || new Date().getFullYear());
+            const mesPrev  = mes > 1 ? mes - 1 : 12;
+            const anioPrev = mes > 1 ? anio    : anio - 1;
+            // Día 0 del mes actual = último día del mes anterior
+            const lastDay  = new Date(anioPrev, mesPrev, 0).getDate();
+            const fechaStr = anioPrev + '-' + String(mesPrev).padStart(2,'0') + '-' + String(lastDay).padStart(2,'0');
+            setVal('mf-retiro-fecha', fechaStr);
+            onRetiroFecha();
+        } else {
+            // Restaurar dias del cotizador a 30
+            const diasSel = document.getElementById('sel_dias_cotizar');
+            if (diasSel) {
+                diasSel.value = 30;
+                diasSel.dispatchEvent(new Event('change'));
+            }
+            setText('mf-retiro-dias-num', '—');
+        }
+    }
+
+    /**
+     * Calcula los días a pagar desde la fecha de retiro y los sincroniza
+     * con el selector de días del cotizador Alpine.
+     * Días = día del mes de retiro (ej: retiro el 15 → 15 días).
+     */
+    function onRetiroFecha() {
+        const fechaVal = el('mf-retiro-fecha')?.value;
+        if (!fechaVal) {
+            setText('mf-retiro-dias-num', '—');
+            return;
+        }
+        const [, , diaStr] = fechaVal.split('-');
+        const diasRaw = parseInt(diaStr, 10);
+        if (!diasRaw || diasRaw < 1 || diasRaw > 31) {
+            setText('mf-retiro-dias-num', '—');
+            return;
+        }
+        // Máximo 30 días (día 31 del mes → 30 en PILA)
+        const dias = Math.min(diasRaw, 30);
+        setText('mf-retiro-dias-num', dias);
+
+        // Actualizar selector de días del cotizador Alpine para SS proporcional
+        const diasSel = document.getElementById('sel_dias_cotizar');
+        if (diasSel) {
+            diasSel.value = Math.min(dias, 30);
+            diasSel.dispatchEvent(new Event('change'));
+        }
+        recalc();
+    }
+
     // ── Consignaciones dinámicas ────────────────────────────
     function addConsig(banco, monto, fecha, referencia) {
         const today = new Date().toISOString().split('T')[0];
@@ -655,6 +734,10 @@ const MF = (function () {
                 observacion: obs,
                 np: parse(el('mf-nplano')?.value) || null,
                 empresa_id: _cfg.empresaId || null,
+                // Retiro
+                es_retiro:    _esRetiro,
+                fecha_retiro: _esRetiro ? (el('mf-retiro-fecha')?.value || null) : null,
+                dias_retiro:  _esRetiro ? parseInt(el('mf-retiro-dias-num')?.textContent || '0') || null : null,
                 // SS manual — SOLO en modo individual (1 contrato).
                 // En masivo, el modal muestra TOTALES del batch, no valores individuales.
                 // El servidor calcula SS por contrato individualmente con los días reales.
@@ -769,7 +852,7 @@ const MF = (function () {
     }
 
     // ── API pública ───────────────────────────────────────────────
-    return { init, abrir, cerrar, detectarTipo, actualizarTipo, cambiarPeriodo, onEstado, recalc, distRecalc, addConsig, guardar };
+    return { init, abrir, cerrar, detectarTipo, actualizarTipo, cambiarPeriodo, onEstado, recalc, distRecalc, addConsig, guardar, toggleRetiro, onRetiroFecha };
 
 })();
 
