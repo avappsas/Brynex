@@ -554,7 +554,24 @@ class MigrateLegacy extends Command
                 ->selectOne("SELECT COUNT(*) as cnt FROM [$db].dbo.Contratos")->cnt;
             $this->line("  ⏳ $db: $total total, " . ($total - $existingCount) . " faltantes...");
 
+            // Precargar arl_nit de las RS del aliado (para lookup eficiente de arl_id)
+            $rsArlNitMap = DB::table('razones_sociales')
+                ->where('aliado_id', $aliadoId)
+                ->whereNotNull('arl_nit')
+                ->pluck('arl_nit', 'id');  // [rs_id => arl_nit]
+
+            // Cache NIT → arl_id (evita lookups repetidos)
+            $arlIdCache   = [];
+            $lookupArlId06 = function (?int $nit) use (&$arlIdCache): ?int {
+                if (!$nit) return null;
+                if (!isset($arlIdCache[$nit])) {
+                    $arlIdCache[$nit] = DB::table('arls')->where('nit', $nit)->value('id');
+                }
+                return $arlIdCache[$nit];
+            };
+
             $count = 0; $skipped = 0; $offset = 0; $chunk = 500;
+
             while (true) {
                 $rows = $this->legacySelect("SELECT * FROM [$db].dbo.Contratos ORDER BY Id OFFSET $offset ROWS FETCH NEXT $chunk ROWS ONLY");
                 if (empty($rows)) break;
@@ -567,8 +584,11 @@ class MigrateLegacy extends Command
                     $userId       = DB::table('users')->where('aliado_id', $aliadoId)->where('id_legacy', $this->col($r, 'Encargado_Afiliacion'))->value('id');
                     $epsId        = $this->lookupByNit('eps',      $this->col($r, 'Eps_c'));
                     $pensionId    = $this->lookupByNit('pensiones', $this->col($r, 'Pension_c'));
-                    $arlVal       = $this->col($r, 'ARL');
-                    $arlId        = is_numeric($arlVal) && $arlVal > 1 ? $this->lookupByNit('arls', $arlVal) : null;
+                    // ARL: el campo ARL en legacy Contratos es el NIVEL de riesgo (1-5),
+                    //      NO el NIT. El arl_id viene del arl_nit de la Razón Social.
+                    $arlNivel     = $this->col($r, 'ARL');
+                    $arlRsNit     = $razonId ? ($rsArlNitMap[$razonId] ?? null) : null;
+                    $arlId        = $lookupArlId06($arlRsNit ? (int)$arlRsNit : null);
                     $cajaId       = $this->lookupByNit('cajas',    $this->col($r, 'Caja_Comp'));
                     $motivoAfil   = $mapAfiliacion[strtolower(trim($this->col($r, 'Motivo_Afiliacion') ?? ''))] ?? null;
                     $motivoRetiro = $mapRetiro[strtolower(trim($this->col($r, 'Motivo_Retiro') ?? ''))]         ?? null;
@@ -585,7 +605,8 @@ class MigrateLegacy extends Command
                         'pension_id'             => $pensionId,
                         'arl_id'                 => $arlId,
                         'caja_id'                => $cajaId,
-                        'n_arl'                  => is_numeric($this->col($r, 'N_ARL')) && $this->col($r, 'N_ARL') >= 1 && $this->col($r, 'N_ARL') <= 5 ? (int)$this->col($r, 'N_ARL') : null,
+                        // ARL nivel: campo ARL del legacy (1-5). N_ARL no existe o es otro dato.
+                        'n_arl'                  => is_numeric($arlNivel) && $arlNivel >= 1 && $arlNivel <= 5 ? (int)$arlNivel : null,
                         'cargo'                  => substr(trim($this->col($r, 'Cargo') ?? ''), 0, 100),
                         'fecha_ingreso'          => $this->col($r, 'Fecha_Ingreso')  ? substr($this->col($r, 'Fecha_Ingreso'),  0, 10) : null,
                         'fecha_retiro'           => $this->col($r, 'Fecha_Retiro')   ? substr($this->col($r, 'Fecha_Retiro'),   0, 10) : null,
@@ -1440,44 +1461,66 @@ class MigrateLegacy extends Command
             $aliadoId = $this->ids[$key] ?? null;
             if (!$aliadoId) continue;
 
-            // Leer Id + N_ARL del legacy
+            // Leer Id + ARL (nivel) del legacy
+            // NOTA: en legacy Contratos, el campo ARL es el NIVEL de riesgo (1-5),
+            //       NO el NIT de la ARL. El arl_id proviene del arl_nit de la RS.
             $legacyRows = DB::connection('sqlsrv_legacy')
-                ->select("SELECT Id, N_ARL FROM [$db].dbo.Contratos WHERE Id IS NOT NULL");
+                ->select("SELECT Id, ARL FROM [$db].dbo.Contratos WHERE Id IS NOT NULL");
 
-            // Indexar por Id
+            // Indexar nivel ARL por Id legacy
             $narlMap = [];
             foreach ($legacyRows as $lr) {
-                $val = $lr->N_ARL ?? null;
-                // Normalizar: aceptar 0-5 inclusive (0 = nivel I, el mas bajo)
+                $val = $lr->ARL ?? null;
                 if ($val !== null && is_numeric($val)) {
                     $int = (int)round((float)$val);
-                    $narlMap[$lr->Id] = ($int >= 0 && $int <= 5) ? $int : null;
+                    $narlMap[$lr->Id] = ($int >= 1 && $int <= 5) ? $int : null;
                 } else {
                     $narlMap[$lr->Id] = null;
                 }
             }
 
+            // Precargar arl_nit de todas las RS del aliado (para resolver arl_id sin N+1 queries)
+            $rsArlNitMap = DB::table('razones_sociales')
+                ->where('aliado_id', $aliadoId)
+                ->whereNotNull('arl_nit')
+                ->pluck('arl_nit', 'id');
+
+            // Cache NIT→arl_id para no repetir lookups
+            $arlIdCache = [];
+            $lookupArlId = function (int $nit) use (&$arlIdCache): ?int {
+                if (!isset($arlIdCache[$nit])) {
+                    $arlIdCache[$nit] = DB::table('arls')->where('nit', $nit)->value('id');
+                }
+                return $arlIdCache[$nit];
+            };
+
             // Contratos BryNex de este aliado
             $contratos = DB::table('contratos')
                 ->where('aliado_id', $aliadoId)
                 ->whereNotNull('id_legacy')
-                ->select('id', 'id_legacy')
+                ->select('id', 'id_legacy', 'razon_social_id')
                 ->get();
 
             $this->line("  ⧳ $db: {$contratos->count()} contratos...");
             $updDb = 0;
 
             foreach ($contratos as $c) {
-                $narl = $narlMap[$c->id_legacy] ?? null;
+                $narl   = $narlMap[$c->id_legacy] ?? null;
+                $arlNit = $rsArlNitMap[$c->razon_social_id] ?? null;
+                $arlId  = $arlNit ? $lookupArlId((int)$arlNit) : null;
+
                 DB::table('contratos')->where('id', $c->id)
-                    ->update(['n_arl' => $narl]);
-                if ($narl !== null) $updDb++; else $sin_dato++;
+                    ->update([
+                        'n_arl'  => $narl,
+                        'arl_id' => $arlId,
+                    ]);
+                if ($narl !== null || $arlId !== null) $updDb++; else $sin_dato++;
             }
             $updated += $updDb;
-            $this->info("  ✅ $db → $updDb contratos con n_arl asignado");
+            $this->info("  ✅ $db → $updDb contratos actualizados (n_arl + arl_id)");
         }
 
-        $this->info("  Total: $updated con n_arl | $sin_dato sin dato en legacy");
+        $this->info("  Total: $updated actualizados | $sin_dato sin dato en legacy");
     }
 
     // ─── PASO 13: INCAPACIDADES ───────────────────────────────────────────────────
