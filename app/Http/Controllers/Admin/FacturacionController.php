@@ -1055,21 +1055,8 @@ $efAcum = $csAcum = $prAcum = $sfAcum = 0;
      */
     private function verificarOrdenFacturacion(int $aliadoId, Contrato $contrato, int $mes, int $anio): ?array
     {
-        if (!$contrato->fecha_ingreso) {
-            return null; // Sin fecha de ingreso no podemos validar
-        }
-
-        $mesInicio  = (int) $contrato->fecha_ingreso->month;
-        $anioInicio = (int) $contrato->fecha_ingreso->year;
-
-        // Convertir a enteros YYYYMM para comparación simple
-        $periodoTarget  = $anio * 100 + $mes;
-        $periodoInicio  = $anioInicio * 100 + $mesInicio;
-
-        // Si el período solicitado ES el mes de ingreso o anterior, no hay gap posible
-        if ($periodoTarget <= $periodoInicio) {
-            return null;
-        }
+        // Convertir a entero YYYYMM para comparación simple
+        $periodoTarget = $anio * 100 + $mes;
 
         // Obtener todos los períodos (YYYYMM) que ya tienen factura para este contrato
         $periodosBilled = Factura::where('aliado_id', $aliadoId)
@@ -1078,39 +1065,51 @@ $efAcum = $csAcum = $prAcum = $sfAcum = 0;
             ->get(['mes', 'anio'])
             ->map(fn($f) => (int)$f->anio * 100 + (int)$f->mes)
             ->unique()
+            ->sort()
             ->values();
 
-        // Recorrer desde el mes de ingreso hasta el mes anterior al solicitado
-        $cursorMes  = $mesInicio;
-        $cursorAnio = $anioInicio;
-
-        while (true) {
-            $periodoCursor = $cursorAnio * 100 + $cursorMes;
-
-            // Llegamos al período solicitado: no hay gap
-            if ($periodoCursor >= $periodoTarget) {
-                break;
-            }
-
-            // Verificar si este mes tiene factura
-            if (!$periodosBilled->contains($periodoCursor)) {
-                $nombreMes = \Carbon\Carbon::create($cursorAnio, $cursorMes, 1)
-                    ->translatedFormat('F Y');
-                return [
-                    'mes'     => $cursorMes,
-                    'anio'    => $cursorAnio,
-                    'mensaje' => "Debe facturar {$nombreMes} antes de continuar con " .
-                                 \Carbon\Carbon::create($anio, $mes, 1)->translatedFormat('F Y') . '.',
-                ];
-            }
-
-            // Avanzar al siguiente mes
-            $cursorMes++;
-            if ($cursorMes > 12) { $cursorMes = 1; $cursorAnio++; }
+        // Si no hay ninguna factura previa, permitir facturar libremente
+        if ($periodosBilled->isEmpty()) {
+            return null;
         }
 
-        return null;
+        // El período máximo ya facturado
+        $ultimoPeriodo = $periodosBilled->max();
+
+        // Si el período solicitado ya existe o es el siguiente natural, OK
+        if ($periodosBilled->contains($periodoTarget)) {
+            return null; // ya facturado (anti-duplicado lo manejará después)
+        }
+
+        // Calcular el "siguiente esperado" al último facturado
+        $ultimoMes  = $ultimoPeriodo % 100;
+        $ultimoAnio = (int)($ultimoPeriodo / 100);
+        $sigMes     = $ultimoMes  === 12 ? 1  : $ultimoMes  + 1;
+        $sigAnio    = $ultimoMes  === 12 ? $ultimoAnio + 1 : $ultimoAnio;
+        $siguientePeriodo = $sigAnio * 100 + $sigMes;
+
+        // Si el target ES el siguiente esperado, está perfecto
+        if ($periodoTarget === $siguientePeriodo) {
+            return null;
+        }
+
+        // Si el target es MENOR al último, puede ser retro-facturación de un hueco puntual — permitir
+        if ($periodoTarget < $ultimoPeriodo) {
+            return null;
+        }
+
+        // Hay un salto: el período solicitado está más de 1 mes adelante del último facturado
+        // Exigir que se facture el mes inmediatamente siguiente al último
+        $nombreFaltante = \Carbon\Carbon::create($sigAnio, $sigMes, 1)->translatedFormat('F Y');
+        $nombreTarget   = \Carbon\Carbon::create($anio, $mes, 1)->translatedFormat('F Y');
+
+        return [
+            'mes'     => $sigMes,
+            'anio'    => $sigAnio,
+            'mensaje' => "Debe facturar {$nombreFaltante} antes de continuar con {$nombreTarget}.",
+        ];
     }
+
 
     /**
      * Calcula el siguiente n_plano para una razón social en un período dado.
