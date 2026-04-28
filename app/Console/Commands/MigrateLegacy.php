@@ -1014,7 +1014,18 @@ class MigrateLegacy extends Command
                         // Mes y año: MES_PLANO y AÑO_PLANO del legacy
                         'mes_plano'          => is_numeric($this->col($r, 'MES_PLANO') ?? $this->col($r, 'Mes')) ? (int)($this->col($r, 'MES_PLANO') ?? $this->col($r, 'Mes')) : null,
                         'anio_plano'         => is_numeric($this->col($r, 'AÑO_PLANO') ?? $this->col($r, 'Año') ?? $this->col($r, 'Anio')) ? (int)($this->col($r, 'AÑO_PLANO') ?? $this->col($r, 'Año') ?? $this->col($r, 'Anio')) : null,
-                        'tipo_reg'           => trim($this->col($r, 'TIPO_REG') ?? '01'),
+                        // Normalizar tipo_reg: PILA usa '01'=activo/planilla, '02'=retiro, '03'=novedad
+                        // BryNex usa 'planilla' | 'afiliacion'
+                        'tipo_reg'           => (function () use ($r) {
+                            $raw = strtolower(trim($this->col($r, 'TIPO_REG') ?? '01'));
+                            if (in_array($raw, ['planilla', 'afiliacion', 'retiro'])) return $raw;
+                            // Códigos PILA estándar
+                            return match($raw) {
+                                '02', '2', 'retiro'     => 'retiro',
+                                '03', '3', 'afiliacion' => 'afiliacion',
+                                default                  => 'planilla', // '01', '1', vacío → planilla
+                            };
+                        })(),
                         'tipo_doc'           => trim($this->col($r, 'TIPO_DOC') ?? 'CC'),
                         // Cédula del cliente (no_identifi)
                         'no_identifi'        => (string)($this->col($r, 'Cedula') ?? ''),
@@ -1042,12 +1053,24 @@ class MigrateLegacy extends Command
                         'nombre_arl'         => trim($this->col($r, 'Nombre_ARL')  ?? $this->col($r, 'Nom_ARL')  ?? ''),
                         'nombre_caja'        => trim($this->col($r, 'Nombre_Caja') ?? $this->col($r, 'Nom_Caja') ?? ''),
                         'nivel_riesgo'       => is_numeric($this->col($r, 'N_ARL') ?? $this->col($r, 'Nivel_Riesgo')) ? (int)($this->col($r, 'N_ARL') ?? $this->col($r, 'Nivel_Riesgo')) : 1,
-                        // razon_social_id: el id de razones_sociales ES el NIT de la empresa
-                        'razon_social_id'    => DB::table('razones_sociales')
-                            ->where('aliado_id', $aliadoId)
-                            ->where('id', is_numeric($this->col($r, 'Nit_Empresa') ?? $this->col($r, 'NIT') ?? 0) ? (int)($this->col($r, 'Nit_Empresa') ?? $this->col($r, 'NIT')) : 0)
-                            ->value('id'),
-                        'razon_social'       => trim($this->col($r, 'Razon_Social') ?? ''),
+                        // razon_social_id: razones_sociales.id = NIT legacy.
+                        // El NIT del plano viene en Nit_Empresa o NIT.
+                        // razon_social guarda el NIT como string (para referencia legible).
+                        'razon_social_id'    => (function () use ($r, $aliadoId) {
+                            $nit = $this->col($r, 'Nit_Empresa') ?? $this->col($r, 'NIT') ?? null;
+                            if (!is_numeric($nit) || (int)$nit <= 0) return null;
+                            // razones_sociales.id ES el NIT
+                            return DB::table('razones_sociales')
+                                ->where('aliado_id', $aliadoId)
+                                ->where('id', (int)$nit)
+                                ->value('id');
+                        })(),
+                        // Guardar el NIT como string en razon_social (referencia legible)
+                        'razon_social'       => (function () use ($r) {
+                            $nit = $this->col($r, 'Nit_Empresa') ?? $this->col($r, 'NIT');
+                            if (is_numeric($nit) && (int)$nit > 0) return (string)(int)$nit;
+                            return trim($this->col($r, 'Razon_Social') ?? '');
+                        })(),
                         // tipo_modalidad_id: Tipo_P del legacy (ID directo del catálogo)
                         'tipo_modalidad_id'  => is_numeric($this->col($r, 'Tipo_P')) ? (int)$this->col($r, 'Tipo_P') : null,
                         'tipo_p'             => trim($this->col($r, 'Tipo_P') ?? $this->col($r, 'Tipo') ?? ''),
