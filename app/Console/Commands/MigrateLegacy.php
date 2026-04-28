@@ -1014,25 +1014,40 @@ class MigrateLegacy extends Command
                 ->selectOne("SELECT COUNT(*) as cnt FROM [$db].dbo.PLANOS")->cnt;
             $this->line("  ⏳ $db: $total planos...");
 
+            // ── Precargar mapas id_legacy → id (evita N+1 queries en el loop) ──
+            $facturasMap = DB::table('facturas')
+                ->where('aliado_id', $aliadoId)
+                ->whereNotNull('id_legacy')
+                ->pluck('id', 'id_legacy');   // [id_legacy => id]
+
+            $rsMap = DB::table('razones_sociales')
+                ->where('aliado_id', $aliadoId)
+                ->whereNotNull('id_legacy')
+                ->pluck('id', 'id_legacy');   // [id_legacy => id]
+
+            $contratosMap = DB::table('contratos')
+                ->where('aliado_id', $aliadoId)
+                ->whereNotNull('id_legacy')
+                ->pluck('id', 'id_legacy');   // [id_legacy => id]
+
+            $this->line("  📦 Maps: {$facturasMap->count()} facturas | {$rsMap->count()} RS | {$contratosMap->count()} contratos");
+
             $count = 0; $skipped = 0; $offset = 0; $chunk = 500;
+
             while (true) {
                 $rows = $this->legacySelect("SELECT * FROM [$db].dbo.PLANOS ORDER BY Id OFFSET $offset ROWS FETCH NEXT $chunk ROWS ONLY");
                 if (empty($rows)) break;
                 foreach ($rows as $r) {
-                    // factura_id: PLANOS.id_facturacion → FACTURACION.Id = facturas.id_legacy
-                    $facturaId = DB::table('facturas')
-                        ->where('aliado_id', $aliadoId)
-                        ->where('id_legacy', $this->col($r, 'id_facturacion') ?? $this->col($r, 'Id_Facturacion') ?? $this->col($r, 'ID_FACTURACION'))
-                        ->value('id');
+                    // ── Lookup O(1) desde mapas precargados (sin queries extra) ──
+                    $factLegacyId = $this->col($r, 'id_facturacion') ?? $this->col($r, 'Id_Facturacion') ?? $this->col($r, 'ID_FACTURACION');
+                    $facturaId    = $factLegacyId ? ($facturasMap[$factLegacyId] ?? null) : null;
 
                     // Skip por factura_id si ya existe
                     if ($facturaId && isset($facturasMigradas[$facturaId])) { $skipped++; continue; }
 
                     // Skip por clave compuesta (cedula|mes|año|razon_social|n_plano)
                     $nit      = $this->col($r, 'Nit_Empresa') ?? $this->col($r, 'NIT');
-                    $rsId     = (is_numeric($nit) && (int)$nit > 0)
-                        ? DB::table('razones_sociales')->where('aliado_id', $aliadoId)->where('id_legacy', (int)$nit)->value('id')
-                        : null;
+                    $rsId     = (is_numeric($nit) && (int)$nit > 0) ? ($rsMap[(int)$nit] ?? null) : null;
                     $cedula   = $this->col($r, 'NO_IDENTIFI') ?? $this->col($r, 'No_Identifi') ?? $this->col($r, 'Cedula') ?? '';
                     $mes      = $this->col($r, 'MES_PLANO') ?? $this->col($r, 'Mes') ?? '';
                     $anio     = $this->col($r, 'AÑO_PLANO') ?? $this->col($r, 'Año') ?? $this->col($r, 'Anio') ?? '';
@@ -1040,14 +1055,15 @@ class MigrateLegacy extends Command
                     $clave    = "{$cedula}|{$mes}|{$anio}|{$rsId}|{$nPlano}";
                     if (isset($clavesMigradas[$clave])) { $skipped++; continue; }
 
+                    // contrato_id desde mapa precargado
+                    $contratoLegacyId = $this->col($r, 'Id_Contrato');
+                    $contratoId       = $contratoLegacyId ? ($contratosMap[$contratoLegacyId] ?? null) : null;
+
                     DB::table('planos')->insert([
                         'aliado_id'          => $aliadoId,
                         'factura_id'         => $facturaId,
-                        // contrato_id: buscar por id_legacy del contrato
-                        'contrato_id'        => DB::table('contratos')
-                            ->where('aliado_id', $aliadoId)
-                            ->where('id_legacy', $this->col($r, 'Id_Contrato'))
-                            ->value('id'),
+                        'contrato_id'        => $contratoId,
+
                         // Numero de planilla: campo "Planilla" del legacy
                         'numero_planilla'    => trim($this->col($r, 'Planilla') ?? $this->col($r, 'Numero_Planilla') ?? ''),
                         'numero_factura'     => is_numeric($this->col($r, 'Factura')) ? (int)$this->col($r, 'Factura') : null,
