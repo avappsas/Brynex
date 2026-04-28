@@ -775,7 +775,8 @@ $tSS = $tEps + $tArl + $tPen + $tCaj;
 @php
 $cli1   = $factura->contrato?->cliente;
 if (!$cli1 && $factura->tipo === 'otro_ingreso') {
-    $cli1 = \App\Models\Cliente::where('cedula', $factura->cedula)->first();
+    $cli1 = \App\Models\Cliente::where('aliado_id', $factura->aliado_id)
+        ->where('cedula', $factura->cedula)->first();
 }
 $nom1     = trim(($cli1?->primer_nombre ?? '').' '.($cli1?->segundo_nombre ?? '').' '.($cli1?->primer_apellido ?? '').' '.($cli1?->segundo_apellido ?? ''));
 $rs1      = $factura->contrato?->razonSocial?->razon_social ?? $factura->razonSocial?->razon_social ?? null;

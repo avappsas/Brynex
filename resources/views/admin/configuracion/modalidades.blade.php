@@ -3,9 +3,8 @@
 
 @section('contenido')
 @php
-// Clasificar planes por tipo
-$planesIndep = $planes->filter(fn($p) => !$p->incluye_arl);   // Sin ARL → para independientes
-$planesDep   = $planes->filter(fn($p) =>  $p->incluye_arl);   // Con ARL → para dependientes
+// Todos los planes activos (independientes y dependientes pueden usar cualquier plan)
+$todosLosPlanes = $planes;  // sin filtrar — la tabla muestra todos
 
 // Clasificar modalidades (todas — activas e inactivas)
 $modsTP    = $modalidades->filter(fn($m) => $m->esTiempoParcial());
@@ -147,25 +146,25 @@ $modsDep   = $modalidades->filter(fn($m) => !$m->esTiempoParcial() && !in_array(
     </div>
 
     {{-- ══════════════════════════════════════════════════════
-         SECCIÓN 2: INDEPENDIENTES (planes sin ARL)
+         SECCIÓN 2: INDEPENDIENTES (todos los planes)
     ══════════════════════════════════════════════════════ --}}
     <div class="mc-wrap">
         <div class="mc-sec-hdr" style="background:#f5f3ff;">
             <span style="font-size:1.1rem;">👤</span>
             <span class="mc-sec-ttl" style="color:#6d28d9;">Independientes</span>
             <span class="mc-sec-sub" style="color:#7c3aed;">
-                Planes disponibles: EPS+AFP, EPS+AFP+CCF, Solo AFP, etc.
+                Planes disponibles: EPS+AFP, EPS+ARL+AFP, EPS+ARL+AFP+CCF, Solo AFP, etc.
             </span>
         </div>
         <table class="mc-tbl">
             <thead>
                 <tr>
                     <th>Modalidad</th>
-                    @foreach($planesIndep as $plan)
+                    @foreach($todosLosPlanes as $plan)
                     <th>
-                        <div class="plan-hdr" style="color:#6d28d9;">{{ $plan->nombre }}</div>
+                        <div class="plan-hdr" style="color:{{ $plan->incluye_arl ? '#1d4ed8' : '#6d28d9' }};">{{ $plan->nombre }}</div>
                         <div class="plan-sub">
-                            {{ $plan->incluye_eps ? 'EPS ' : '' }}{{ $plan->incluye_pension ? 'AFP ' : '' }}{{ $plan->incluye_caja ? 'CCF' : '' }}
+                            {{ $plan->incluye_eps ? 'EPS ' : '' }}{!! $plan->incluye_arl ? '<span style="color:#1d4ed8;font-weight:700;">ARL</span> ' : '' !!}{{ $plan->incluye_pension ? 'AFP ' : '' }}{{ $plan->incluye_caja ? 'CCF' : '' }}
                         </div>
                     </th>
                     @endforeach
@@ -180,7 +179,7 @@ $modsDep   = $modalidades->filter(fn($m) => !$m->esTiempoParcial() && !in_array(
                         {{ $nombre }}
                         <span class="badge-indep">Indep.</span>
                     </td>
-                    @foreach($planesIndep as $plan)
+                    @foreach($todosLosPlanes as $plan)
                     <td>
                         <input type="checkbox"
                                class="chk"
@@ -205,7 +204,7 @@ $modsDep   = $modalidades->filter(fn($m) => !$m->esTiempoParcial() && !in_array(
     </div>
 
     {{-- ══════════════════════════════════════════════════════
-         SECCIÓN 3: DEPENDIENTES / OTROS (planes con ARL)
+         SECCIÓN 3: DEPENDIENTES / OTROS (todos los planes)
     ══════════════════════════════════════════════════════ --}}
     <div class="mc-wrap">
         <div class="mc-sec-hdr" style="background:#eff6ff;">
@@ -219,7 +218,7 @@ $modsDep   = $modalidades->filter(fn($m) => !$m->esTiempoParcial() && !in_array(
             <thead>
                 <tr>
                     <th>Modalidad</th>
-                    @foreach($planesDep as $plan)
+                    @foreach($todosLosPlanes as $plan)
                     <th>
                         <div class="plan-hdr" style="color:#1d4ed8;">{{ $plan->nombre }}</div>
                         <div class="plan-sub">
@@ -235,7 +234,7 @@ $modsDep   = $modalidades->filter(fn($m) => !$m->esTiempoParcial() && !in_array(
                 @php $nombre = $mod->observacion ?: $mod->tipo_modalidad; @endphp
                 <tr class="{{ $mod->activo ? '' : 'mod-inactiva' }}" id="row-mod-{{ $mod->id }}">
                     <td>{{ $nombre }}</td>
-                    @foreach($planesDep as $plan)
+                    @foreach($todosLosPlanes as $plan)
                     <td>
                         <input type="checkbox"
                                class="chk"

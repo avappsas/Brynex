@@ -1092,12 +1092,19 @@ function filtrarPlanes(modalidadId) {
 }
 
 function actualizarBloqueoArl() {
-    const midId  = parseInt(document.querySelector('select[name=tipo_modalidad_id]')?.value || 0);
-    const arlSel = document.getElementById('sel_arl');
-    const lbl    = document.getElementById('lbl_arl_lock');
-    const libre  = MODALIDADES_ARL_LIBRE.includes(midId);
-    arlSel.disabled          = !libre;
-    arlSel.style.background  = libre ? '#fff' : '#f8fafc';
+    const midId   = parseInt(document.querySelector('select[name=tipo_modalidad_id]')?.value || 0);
+    const selRS   = document.getElementById('sel_rs');
+    const arlSel  = document.getElementById('sel_arl');
+    const lbl     = document.getElementById('lbl_arl_lock');
+
+    // Libre por modalidad (Independiente Activo, Independiente Vencido, etc.)
+    const libreParaModalidad = MODALIDADES_ARL_LIBRE.includes(midId);
+    // Libre también cuando la Razón Social es del tipo Independiente (es_independiente=1)
+    const esIndepRS = selRS?.options[selRS.selectedIndex]?.dataset?.independiente === '1';
+    const libre = libreParaModalidad || esIndepRS;
+
+    arlSel.disabled         = !libre;
+    arlSel.style.background = libre ? '#fff' : '#f8fafc';
     if (lbl) lbl.textContent = libre ? '(editable)' : '(de la R.Social)';
     // Restricción de niveles ARL para modalidad id=8 con RS no-independiente
     actualizarNivelesArl();

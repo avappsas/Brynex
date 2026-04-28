@@ -748,13 +748,22 @@ $efAcum = $csAcum = $prAcum = $sfAcum = 0;
                     'consignaciones.bancoCuenta'])   // ← todas las cuentas consignadas
             ->findOrFail($facturaId);
 
-        // Grupo NP: todas las facturas del mismo NP/mes/año
+        // Grupo NP: todas las facturas del mismo NP/mes/año/empresa
+        // IMPORTANTE: filtrar también por empresa_id para no mezclar trabajadores
+        // de diferentes empresas que coincidan en NP+mes+año dentro del mismo aliado.
         $grupoNp = null;
         if ($factura->np) {
-            $grupoNp = Factura::where('aliado_id', $aliadoId)
+            $qGrupo = Factura::where('aliado_id', $aliadoId)
                 ->where('np', $factura->np)
                 ->where('mes',  $factura->mes)
-                ->where('anio', $factura->anio)
+                ->where('anio', $factura->anio);
+
+            // Si la factura tiene empresa_id, restringir al mismo grupo empresa
+            if ($factura->empresa_id) {
+                $qGrupo->where('empresa_id', $factura->empresa_id);
+            }
+
+            $grupoNp = $qGrupo
                 ->with(['contrato.cliente','contrato.eps','contrato.arl',
                         'contrato.pension','contrato.caja','contrato.razonSocial',
                         'abonos','consignaciones.bancoCuenta'])
