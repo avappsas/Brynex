@@ -53,6 +53,7 @@ class MigrateLegacy extends Command
             'fix-narl'             => fn() => $this->stepFixNarl(),
             'fix-valoresfacturas'  => fn() => $this->stepFixValoresFacturas(),
             'fix-independiente'    => fn() => $this->stepFixIndependiente(),
+            'fix-planos'           => fn() => $this->stepFixPlanos(),
         ];
 
         if ($step === 'all') {
@@ -990,10 +991,10 @@ class MigrateLegacy extends Command
                 $rows = $this->legacySelect("SELECT * FROM [$db].dbo.PLANOS ORDER BY Id OFFSET $offset ROWS FETCH NEXT $chunk ROWS ONLY");
                 if (empty($rows)) break;
                 foreach ($rows as $r) {
-                    // Remap factura_id legacy → nuevo ID
+                    // factura_id: PLANOS.id_facturacion → FACTURACION.Id = facturas.id_legacy
                     $facturaId = DB::table('facturas')
                         ->where('aliado_id', $aliadoId)
-                        ->where('id_legacy', $this->col($r, 'Id_Factura'))
+                        ->where('id_legacy', $this->col($r, 'id_facturacion') ?? $this->col($r, 'Id_Facturacion') ?? $this->col($r, 'ID_FACTURACION'))
                         ->value('id');
 
                     // Skip si ya existe este plano para esta factura
@@ -1027,18 +1028,31 @@ class MigrateLegacy extends Command
                             };
                         })(),
                         'tipo_doc'           => trim($this->col($r, 'TIPO_DOC') ?? 'CC'),
-                        // Cédula del cliente (no_identifi)
-                        'no_identifi'        => (string)($this->col($r, 'Cedula') ?? ''),
+                        // Cédula del cliente: NO_IDENTIFI es el campo estándar PILA
+                        'no_identifi'        => (string)(  $this->col($r, 'NO_IDENTIFI')
+                                                         ?? $this->col($r, 'No_Identifi')
+                                                         ?? $this->col($r, 'Cedula')
+                                                         ?? ''),
                         // Apellidos y nombres del legacy
                         'primer_ape'         => trim($this->col($r, 'PRIMER_APE')      ?? $this->col($r, '1_Apellido')  ?? ''),
                         'segundo_ape'        => trim($this->col($r, 'SEGUNDO_APELLID')  ?? $this->col($r, '2_Apellido')  ?? ''),
                         'primer_nombre'      => trim($this->col($r, 'PRIMER_NOMBRE')    ?? $this->col($r, '1_Nombre')    ?? ''),
                         'segundo_nombre'     => trim($this->col($r, 'SEGUNDO-NOMBRE')   ?? $this->col($r, '2_Nombre')    ?? ''),
-                        // Fechas ingreso y retiro desde planos
-                        'fecha_ing'          => $this->col($r, 'fecha_ing')   ? substr($this->col($r, 'fecha_ing'),   0, 10)
-                                             : ($this->col($r, 'Fecha_Ingreso') ? substr($this->col($r, 'Fecha_Ingreso'), 0, 10) : null),
-                        'fecha_ret'          => $this->col($r, 'fecha_ret')   ? substr($this->col($r, 'fecha_ret'),   0, 10)
-                                             : ($this->col($r, 'Fecha_Retiro')  ? substr($this->col($r, 'Fecha_Retiro'),  0, 10) : null),
+                        // Fechas ingreso y retiro: columnas con espacio 'FECHA ING' / 'FECHA RET'
+                        'fecha_ing'          => (function () use ($r) {
+                            $v = $this->col($r, 'FECHA ING')
+                              ?? $this->col($r, 'fecha_ing')
+                              ?? $this->col($r, 'Fecha_Ingreso')
+                              ?? $this->col($r, 'FECHA_ING');
+                            return $v ? substr($v, 0, 10) : null;
+                        })(),
+                        'fecha_ret'          => (function () use ($r) {
+                            $v = $this->col($r, 'FECHA RET')
+                              ?? $this->col($r, 'fecha_ret')
+                              ?? $this->col($r, 'Fecha_Retiro')
+                              ?? $this->col($r, 'FECHA_RET');
+                            return $v ? substr($v, 0, 10) : null;
+                        })(),
                         // Salario: SALARIO_BASICO del legacy
                         'salario_basico'     => is_numeric($this->col($r, 'SALARIO_BASICO') ?? $this->col($r, 'Salario')) ? (int)($this->col($r, 'SALARIO_BASICO') ?? $this->col($r, 'Salario')) : 0,
                         'cod_eps'            => trim($this->col($r, 'Cod_EPS')  ?? $this->col($r, 'EPS') ?? ''),
@@ -1053,23 +1067,31 @@ class MigrateLegacy extends Command
                         'nombre_arl'         => trim($this->col($r, 'Nombre_ARL')  ?? $this->col($r, 'Nom_ARL')  ?? ''),
                         'nombre_caja'        => trim($this->col($r, 'Nombre_Caja') ?? $this->col($r, 'Nom_Caja') ?? ''),
                         'nivel_riesgo'       => is_numeric($this->col($r, 'N_ARL') ?? $this->col($r, 'Nivel_Riesgo')) ? (int)($this->col($r, 'N_ARL') ?? $this->col($r, 'Nivel_Riesgo')) : 1,
-                        // razon_social_id: razones_sociales.id = NIT legacy.
-                        // El NIT del plano viene en Nit_Empresa o NIT.
-                        // razon_social guarda el NIT como string (para referencia legible).
+                        // razon_social_id: buscar por id_legacy = NIT del plano → retorna el id BryNex
+                        // razon_social guarda el NIT como string (referencia legible)
                         'razon_social_id'    => (function () use ($r, $aliadoId) {
                             $nit = $this->col($r, 'Nit_Empresa') ?? $this->col($r, 'NIT') ?? null;
                             if (!is_numeric($nit) || (int)$nit <= 0) return null;
-                            // razones_sociales.id ES el NIT
                             return DB::table('razones_sociales')
                                 ->where('aliado_id', $aliadoId)
-                                ->where('id', (int)$nit)
-                                ->value('id');
+                                ->where('id_legacy', (int)$nit)
+                                ->value('id');  // id BryNex (auto-increment)
                         })(),
-                        // Guardar el NIT como string en razon_social (referencia legible)
                         'razon_social'       => (function () use ($r) {
                             $nit = $this->col($r, 'Nit_Empresa') ?? $this->col($r, 'NIT');
                             if (is_numeric($nit) && (int)$nit > 0) return (string)(int)$nit;
                             return trim($this->col($r, 'Razon_Social') ?? '');
+                        })(),
+                        // Normalizar tipo_reg: PILA usa '01'=planilla, '02'=retiro, '03'=afiliacion
+                        // BryNex usa 'planilla' | 'afiliacion' | 'retiro'
+                        'tipo_reg'           => (function () use ($r) {
+                            $raw = strtolower(trim($this->col($r, 'TIPO_REG') ?? '01'));
+                            if (in_array($raw, ['planilla', 'afiliacion', 'retiro'])) return $raw;
+                            return match($raw) {
+                                '02', '2' => 'retiro',
+                                '03', '3' => 'afiliacion',
+                                default   => 'planilla',
+                            };
                         })(),
                         // tipo_modalidad_id: Tipo_P del legacy (ID directo del catálogo)
                         'tipo_modalidad_id'  => is_numeric($this->col($r, 'Tipo_P')) ? (int)$this->col($r, 'Tipo_P') : null,
@@ -1799,5 +1821,100 @@ class MigrateLegacy extends Command
         } else {
             $this->error("❌ fix-independiente terminó con código: $exitCode");
         }
+    }
+
+    // ─── FIX-PLANOS: actualiza campos de planos ya migrados desde el legacy ────────────────────
+    // Corrige: no_identifi (NO_IDENTIFI), fecha_ing (FECHA ING), fecha_ret (FECHA RET),
+    //          razon_social_id (id_legacy del NIT), tipo_reg (normalizar códigos PILA).
+    // Match: plano ↔ legacy por factura_id (vía facturas.id_legacy = Id_Factura del plano).
+    private function stepFixPlanos(): void
+    {
+        foreach ($this->dbs as $db => $key) {
+            $aliadoId = $this->ids[$key] ?? null;
+            if (!$aliadoId) { $this->warn("  ⚠ Aliado '$key' no encontrado, se omite"); continue; }
+
+            $total = DB::connection('sqlsrv_legacy')
+                ->selectOne("SELECT COUNT(*) as cnt FROM [$db].dbo.PLANOS")->cnt;
+            $this->line("  ⏳ $db: $total planos a revisar...");
+
+            $updated = 0; $offset = 0; $chunk = 500;
+            while (true) {
+                $rows = $this->legacySelect(
+                    "SELECT Id, Id_Factura, NO_IDENTIFI, [FECHA ING], [FECHA RET], Nit_Empresa, NIT
+                     FROM [$db].dbo.PLANOS
+                     ORDER BY Id OFFSET $offset ROWS FETCH NEXT $chunk ROWS ONLY"
+                );
+                if (empty($rows)) break;
+
+                foreach ($rows as $r) {
+                    // factura_id: PLANOS.id_facturacion → FACTURACION.Id = facturas.id_legacy → id BryNex
+                    $facturaId = DB::table('facturas')
+                        ->where('aliado_id', $aliadoId)
+                        ->where('id_legacy', $this->col($r, 'id_facturacion') ?? $this->col($r, 'Id_Facturacion') ?? $this->col($r, 'ID_FACTURACION'))
+                        ->value('id');
+
+                    if (!$facturaId) continue; // Sin factura migrada → saltar
+
+                    // Resolver razon_social_id: id_legacy = NIT del plano → id BryNex
+                    $nit = $this->col($r, 'Nit_Empresa') ?? $this->col($r, 'NIT');
+                    $razonSocialId = (is_numeric($nit) && (int)$nit > 0)
+                        ? DB::table('razones_sociales')
+                            ->where('aliado_id', $aliadoId)
+                            ->where('id_legacy', (int)$nit)
+                            ->value('id')
+                        : null;
+
+                    // no_identifi: NO_IDENTIFI es el campo estándar PILA
+                    $noIdentifi = (string)(
+                        $this->col($r, 'NO_IDENTIFI')
+                        ?? $this->col($r, 'No_Identifi')
+                        ?? $this->col($r, 'Cedula')
+                        ?? ''
+                    );
+
+                    // fecha_ing: 'FECHA ING' con espacio
+                    $fIngRaw = $this->col($r, 'FECHA ING')
+                            ?? $this->col($r, 'fecha_ing')
+                            ?? $this->col($r, 'Fecha_Ingreso');
+                    $fechaIng = $fIngRaw ? substr($fIngRaw, 0, 10) : null;
+
+                    // fecha_ret: 'FECHA RET' con espacio
+                    $fRetRaw = $this->col($r, 'FECHA RET')
+                            ?? $this->col($r, 'fecha_ret')
+                            ?? $this->col($r, 'Fecha_Retiro');
+                    $fechaRet = $fRetRaw ? substr($fRetRaw, 0, 10) : null;
+
+                    // Construir datos a actualizar (solo los que tengan valor)
+                    $data = ['updated_at' => now()];
+                    if ($noIdentifi !== '')  $data['no_identifi']     = $noIdentifi;
+                    if ($fechaIng)           $data['fecha_ing']       = $fechaIng;
+                    if ($fechaRet)           $data['fecha_ret']       = $fechaRet;
+                    if ($razonSocialId)      $data['razon_social_id'] = $razonSocialId;
+                    // razon_social = NIT como string
+                    if (is_numeric($nit) && (int)$nit > 0) {
+                        $data['razon_social'] = (string)(int)$nit;
+                    }
+
+                    $affected = DB::table('planos')
+                        ->where('aliado_id', $aliadoId)
+                        ->where('factura_id', $facturaId)
+                        ->update($data);
+
+                    $updated += $affected;
+                }
+
+                $offset += $chunk;
+                if (count($rows) < $chunk) break;
+            }
+            $this->info("  ✅ $db → $updated planos actualizados");
+        }
+
+        // Normalizar tipo_reg en toda la tabla (códigos PILA → BryNex)
+        DB::statement("
+            UPDATE planos SET tipo_reg = 'planilla'
+            WHERE tipo_reg NOT IN ('planilla', 'afiliacion', 'retiro')
+               OR tipo_reg IS NULL
+        ");
+        $this->info('  ✅ tipo_reg normalizado (planilla/afiliacion/retiro)');
     }
 }

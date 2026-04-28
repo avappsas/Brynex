@@ -9,45 +9,29 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // ── 1. Agregar columna nit a razones_sociales ──────────────────────────
-        // razones_sociales.id YA ES el NIT legacy (primary key = NIT del legacy).
-        // La columna nit es un alias explícito para búsquedas y futuros usos.
+        // ── 1. Agregar columna nit a razones_sociales si no existe ─────────────
+        // nit = id_legacy (el NIT real de la empresa en el legacy)
         if (!Schema::hasColumn('razones_sociales', 'nit')) {
             Schema::table('razones_sociales', function (Blueprint $table) {
                 $table->bigInteger('nit')->nullable()->index()->after('id')
-                      ->comment('NIT legacy = mismo valor que id (heredado del sistema anterior)');
+                      ->comment('NIT de la razón social = id_legacy del sistema anterior');
             });
         }
 
-        // Popular nit = id para todos los registros existentes
-        DB::statement('UPDATE razones_sociales SET nit = id WHERE nit IS NULL');
+        // Popular nit = id_legacy
+        DB::statement('UPDATE razones_sociales SET nit = id_legacy WHERE nit IS NULL');
 
         // ── 2. Corregir planos.razon_social_id ────────────────────────────────
-        // planos.razon_social tiene el NIT como string (ej: "900123456").
-        // razones_sociales.id == ese NIT (PK = NIT legacy).
-        // → razon_social_id = CAST(razon_social) donde exista en razones_sociales.
+        // planos.razon_social guarda el NIT como string (heredado del legacy).
+        // razones_sociales.id_legacy = ese NIT → razon_social_id = razones_sociales.id (BryNex)
         DB::statement("
             UPDATE p
-            SET    p.razon_social_id = TRY_CAST(p.razon_social AS BIGINT)
+            SET    p.razon_social_id = rs.id
             FROM   planos p
+            JOIN   razones_sociales rs
+                   ON rs.id_legacy = TRY_CAST(p.razon_social AS BIGINT)
             WHERE  p.razon_social_id IS NULL
               AND  p.razon_social IS NOT NULL
-              AND  TRY_CAST(p.razon_social AS BIGINT) IS NOT NULL
-              AND  EXISTS (
-                       SELECT 1
-                       FROM   razones_sociales rs
-                       WHERE  rs.id = TRY_CAST(p.razon_social AS BIGINT)
-                   )
-        ");
-
-        // ── 3. Normalizar planos.tipo_reg ─────────────────────────────────────
-        // La migración legacy guardó códigos PILA crudos ('01', '02', '03', etc.).
-        // BryNex necesita: 'planilla' | 'afiliacion' | 'retiro'.
-        // Todo lo que no sea uno de esos valores válidos → 'planilla' (caso más común).
-        DB::statement("
-            UPDATE planos SET tipo_reg = 'planilla'
-            WHERE tipo_reg NOT IN ('planilla', 'afiliacion', 'retiro')
-               OR tipo_reg IS NULL
         ");
     }
 
@@ -56,6 +40,5 @@ return new class extends Migration
         Schema::table('razones_sociales', function (Blueprint $table) {
             $table->dropColumn('nit');
         });
-        // No se revierte razon_social_id ni tipo_reg
     }
 };
