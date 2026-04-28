@@ -111,19 +111,21 @@ class FixIndependientePlanes extends Command
             }
         }
 
-        // Obtener contratos independientes con sus entidades
+        // Obtener contratos cuya Razón Social tiene es_independiente = true
         $contratos = DB::table('contratos as c')
-            ->join('planes_contrato as p', 'p.id', '=', 'c.plan_id')
-            ->whereIn('c.tipo_modalidad_id', self::MODS_INDEP)
+            ->join('planes_contrato as p',    'p.id',  '=', 'c.plan_id')
+            ->join('razones_sociales as rs',  'rs.id', '=', 'c.razon_social_id')
+            ->where('rs.es_independiente', true)
             ->whereNotNull('c.plan_id')
             ->get([
                 'c.id', 'c.cedula', 'c.tipo_modalidad_id', 'c.plan_id',
                 'c.eps_id', 'c.arl_id', 'c.pension_id', 'c.caja_id',
+                'rs.razon_social',
                 'p.nombre as plan_nombre',
                 'p.incluye_eps', 'p.incluye_arl', 'p.incluye_pension', 'p.incluye_caja',
             ]);
 
-        $this->info("   Contratos independientes con plan: {$contratos->count()}");
+        $this->info("   Contratos con RS independiente y plan asignado: {$contratos->count()}");
 
         $actualizados   = 0;
         $sinCambio      = 0;
@@ -157,7 +159,7 @@ class FixIndependientePlanes extends Command
             if (!$planCorrecto) {
                 $sinPlanMatch++;
                 $reporteFilas[] = [
-                    $c->id, $c->cedula, $c->plan_nombre,
+                    $c->id, $c->cedula, $c->razon_social, $c->plan_nombre,
                     '❌ Sin plan para: EPS='.$tieneEps.' ARL='.$tieneArl.' AFP='.$tienePen.' CCF='.$tieneCaj,
                     '—',
                 ];
@@ -167,6 +169,7 @@ class FixIndependientePlanes extends Command
             $reporteFilas[] = [
                 $c->id,
                 $c->cedula,
+                $c->razon_social,
                 $c->plan_nombre . ' → ' . $planCorrecto->nombre,
                 'EPS='.$tieneEps.' ARL='.$tieneArl.' AFP='.$tienePen.' CCF='.$tieneCaj,
                 $ejecutar ? '✅ Actualizado' : '[DRY-RUN]',
@@ -182,7 +185,7 @@ class FixIndependientePlanes extends Command
 
         if (!empty($reporteFilas)) {
             $this->table(
-                ['Contrato ID', 'Cédula', 'Plan', 'Combinación Real', 'Estado'],
+                ['Contrato ID', 'Cédula', 'Razón Social', 'Plan', 'Combinación Real', 'Estado'],
                 $reporteFilas
             );
         }
