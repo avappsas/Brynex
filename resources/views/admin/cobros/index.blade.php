@@ -686,7 +686,10 @@ function cerrarModalContrato() {
     const ov = document.getElementById('modalContratoOverlay');
     const fr = document.getElementById('iframeContrato');
     ov.style.display = 'none';
-    fr.src = '';   // liberar recursos
+    // Resetear antes de limpiar src para que el onload de la página vacía
+    // NO sea interpretado como "segunda carga = acción completada"
+    _iframeFirstLoad = false;
+    fr.src = '';
 }
 document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
