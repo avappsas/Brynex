@@ -594,7 +594,8 @@
 
     {{-- Barra BryNex eliminada: opciones movidas al dropdown del usuario --}}
 
-    {{-- Header con logo del aliado activo --}}
+    {{-- Header con logo del aliado activo (oculto en modo iframe) --}}
+    @unless(request()->has('iframe'))
     <header class="header">
         <div class="header-logo">
             @if (!empty($alidoActivo?->logo))
@@ -778,11 +779,11 @@
             </div>
         </div>
     </header>
-
+    @endunless
 
 
     {{-- Contenido de la página --}}
-    <main class="contenido">
+    <main class="contenido" style="{{ request()->has('iframe') ? 'padding:.75rem 1rem;' : '' }}">
         @if (session('success'))
             <div class="flash success">✅ {{ session('success') }}</div>
         @endif

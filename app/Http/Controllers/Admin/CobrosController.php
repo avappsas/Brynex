@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\{Contrato, Factura, BitacoraCobro, ConfiguracionBrynex, ArlTarifa, Empresa};
+use App\Models\{Contrato, Factura, BitacoraCobro, ConfiguracionBrynex, ArlTarifa, Empresa, BancoCuenta};
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\{Auth, DB};
 
@@ -281,11 +281,14 @@ class CobrosController extends Controller
             ->orderBy('nombre')
             ->get(['id', 'nombre']);
 
+        $bancos = BancoCuenta::where('aliado_id', $aliadoId)->where('activo', true)->orderBy('nombre')->get();
+
         return view('admin.cobros.index', compact(
             'contratos', 'mes', 'anio',
             'totalAdmon', 'totalPendientes', 'sinLlamar', 'prometieronPago', 'totalSS',
             'razonesDisponibles', 'asesoresDisponibles',
-            'rsId', 'asesorId', 'buscar', 'soloInd', 'soloPend', 'sort', 'dir'
+            'rsId', 'asesorId', 'buscar', 'soloInd', 'soloPend', 'sort', 'dir',
+            'bancos'
         ));
     }
 

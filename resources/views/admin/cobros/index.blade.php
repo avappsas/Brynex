@@ -373,17 +373,29 @@ $celular    = $c->cliente?->celular ?? '—';
 $fIng       = $c->fecha_ingreso?->format('d/m/Y') ?? '—';
 $tipoMod    = $c->tipoModalidad?->tipo_modalidad ?? '?';
 $tipoNom    = $c->tipoModalidad?->nombre ?? '—';
+$esIndep    = $c->tipoModalidad?->esIndependiente() ? 'true' : 'false';
+$costoAfil  = (int)($c->costo_afiliacion ?? 0);
+$arlNivel   = $c->n_arl ?? 1;
+$distAsesor = (int)($c->asesor?->comision_afil_valor ?? 0);
+$fIngMes    = $c->fecha_ingreso?->month ?? 0;
+$fIngAnio   = $c->fecha_ingreso?->year ?? 0;
 [$semIco, $semColor, $semBg, $semTip] = $semLabel($c->semaforo);
 @endphp
 <tr>
     {{-- N° Contrato --}}
     <td style="text-align:center;font-weight:700;color:#1e40af;font-size:.72rem;">{{ $c->id }}</td>
 
-    {{-- Cédula (enlace al contrato) sin puntos --}}
+    {{-- Cédula → abre contrato en modal iframe --}}
     <td>
-        <a href="{{ route('admin.contratos.edit', $c->id) }}" class="num-mono" style="color:#3b82f6;font-weight:600;text-decoration:none;" target="_blank">
+        <button type="button"
+            class="btn-facturar-cedula num-mono"
+            data-contrato-id="{{ $c->id }}"
+            data-nombre="{{ $nombre }}"
+            data-cedula="{{ $c->cedula }}"
+            title="Clic para abrir contrato"
+            style="background:none;border:none;color:#3b82f6;font-weight:700;cursor:pointer;padding:0;font-family:monospace;font-size:.77rem;text-decoration:underline dotted;">
             {{ $c->cedula }}
-        </a>
+        </button>
     </td>
 
     {{-- Nombre --}}
@@ -591,15 +603,116 @@ $tipoNom    = $c->tipoModalidad?->nombre ?? '—';
 </div>
 </div>
 
+{{-- ═══ Modal iframe: Contrato ═══ --}}
+<div id="modalContratoOverlay" style="
+    display:none; position:fixed; inset:0; z-index:3000;
+    background:rgba(10,10,20,.7); backdrop-filter:blur(4px);
+    align-items:center; justify-content:center; padding:.75rem;
+" onclick="if(event.target===this)cerrarModalContrato()">
+    <div style="
+        background:#fff; border-radius:16px; width:min(1180px,97vw);
+        height:94vh; display:flex; flex-direction:column;
+        box-shadow:0 32px 100px rgba(0,0,0,.5);
+        overflow:hidden;
+    ">
+        {{-- Header del modal --}}
+        <div style="
+            background:linear-gradient(135deg,#0f172a 0%,#1e3a5f 100%);
+            padding:.65rem 1.2rem; display:flex; align-items:center;
+            justify-content:space-between; flex-shrink:0;
+        ">
+            <div style="display:flex;align-items:center;gap:.6rem;">
+                <span style="font-size:1.1rem;">📋</span>
+                <div>
+                    <div style="font-size:.9rem;font-weight:800;color:#fff;" id="iframeContratoTitulo">Contrato</div>
+                    <div style="font-size:.62rem;color:rgba(255,255,255,.5);">Puede facturar o marcar retiro desde esta ventana</div>
+                </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:.5rem;">
+                <a id="iframeContratoLink" href="#" target="_blank"
+                   style="font-size:.72rem;font-weight:600;color:rgba(255,255,255,.6);text-decoration:none;padding:.3rem .7rem;border:1px solid rgba(255,255,255,.2);border-radius:6px;transition:all .15s;"
+                   onmouseover="this.style.color='#fff'" onmouseout="this.style.color='rgba(255,255,255,.6)'">
+                   &#x2197; Abrir pestaña
+                </a>
+                <button onclick="cerrarModalContrato()" style="
+                    width:30px;height:30px;border-radius:7px;border:none;cursor:pointer;
+                    background:rgba(255,255,255,.1);color:rgba(255,255,255,.7);
+                    font-size:1rem;display:flex;align-items:center;justify-content:center;
+                    transition:background .15s;
+                " onmouseover="this.style.background='rgba(255,255,255,.22)'" onmouseout="this.style.background='rgba(255,255,255,.1)'">
+                    ✕
+                </button>
+            </div>
+        </div>
+        {{-- iframe container con spinner --}}
+        <div style="position:relative;flex:1;overflow:hidden;">
+            {{-- Spinner de carga --}}
+            <div id="iframeLoading" style="
+                position:absolute;inset:0;background:#f8fafc;
+                display:flex;flex-direction:column;align-items:center;justify-content:center;
+                gap:1rem;z-index:10;
+            ">
+                <div style="
+                    width:44px;height:44px;border-radius:50%;
+                    border:4px solid #e2e8f0;border-top-color:#3b82f6;
+                    animation:spinIframe .7s linear infinite;
+                "></div>
+                <div style="font-size:.82rem;color:#64748b;font-weight:600;">Cargando contrato...</div>
+            </div>
+            <iframe id="iframeContrato" src=""
+                style="width:100%;height:100%;border:none;display:block;"
+                onload="document.getElementById('iframeLoading').style.display='none'">
+            </iframe>
+        </div>
+    </div>
+</div>
+
 {{-- Toast --}}
 <div class="toast" id="toastMsg"></div>
 
 @push('scripts')
+<style>
+@keyframes spinIframe { to { transform: rotate(360deg); } }
+</style>
 <script>
-const CSRF = document.querySelector('meta[name="csrf-token"]')?.content;
+const CSRF        = document.querySelector('meta[name="csrf-token"]')?.content;
 const URL_LLAMADA  = '{{ route("admin.cobros.llamada.store", ["contratoId" => "__ID__"]) }}';
 const URL_LLAMADAS = '{{ route("admin.cobros.llamadas",     ["contratoId" => "__ID__"]) }}';
+const BASE_CONTRATO = '{{ url("admin/contratos") }}';
 let contratoActivo = null;
+
+// ── Modal iframe: contrato ──────────────────────────────────────────────
+function cerrarModalContrato() {
+    const ov = document.getElementById('modalContratoOverlay');
+    const fr = document.getElementById('iframeContrato');
+    ov.style.display = 'none';
+    fr.src = '';   // liberar recursos
+}
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+        cerrarModalContrato();
+        document.querySelectorAll('.modal-bg.open').forEach(m => m.classList.remove('open'));
+    }
+});
+
+// Click en cédula → abrir iframe
+document.addEventListener('click', function(e) {
+    const btn = e.target.closest('.btn-facturar-cedula');
+    if (!btn) return;
+
+    const cid     = btn.dataset.contratoId;
+    const nombre  = btn.dataset.nombre || btn.dataset.cedula;
+    const fullUrl = `${BASE_CONTRATO}/${cid}/edit`;
+    const url     = `${fullUrl}?iframe=1`;
+
+    document.getElementById('iframeContratoTitulo').textContent = nombre;
+    document.getElementById('iframeContratoLink').href = fullUrl;
+    // Mostrar spinner antes de asignar src (por si se abre 2do contrato)
+    document.getElementById('iframeLoading').style.display = 'flex';
+    document.getElementById('iframeContrato').src = url;
+    const ov = document.getElementById('modalContratoOverlay');
+    ov.style.display = 'flex';
+});
 
 // ── Helpers ──
 function cerrarModal(id) { document.getElementById(id).classList.remove('open'); }
