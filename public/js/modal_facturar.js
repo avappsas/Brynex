@@ -259,6 +259,53 @@ const MF = (function () {
                 }
             }
 
+            // ── Aviso de préstamo pendiente ──────────────────────────────
+            // Si el cliente tiene facturas en estado=prestamo, mostrar un banner
+            // informativo (NO suma automáticamente al total — el cobro es opcional).
+            let prestPanel = document.getElementById('mf-aviso-prestamo');
+            if (!prestPanel) {
+                prestPanel = document.createElement('div');
+                prestPanel.id = 'mf-aviso-prestamo';
+                prestPanel.style.cssText = [
+                    'display:none',
+                    'margin:.35rem 0',
+                    'padding:.5rem .8rem',
+                    'border-radius:9px',
+                    'font-size:.77rem',
+                    'font-weight:700',
+                    'border:1.5px solid #c4b5fd',
+                    'background:#faf5ff',
+                    'color:#6d28d9',
+                    'flex-direction:column',
+                    'gap:.35rem',
+                ].join(';');
+                // Insertarlo arriba del panel de saldos
+                if (saldoPanel) saldoPanel.parentNode.insertBefore(prestPanel, saldoPanel);
+            }
+            if (data.tiene_prestamo_pendiente && data.prestamos_pendientes && data.prestamos_pendientes.length > 0) {
+                const meses = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+                const totalDeuda = data.prestamos_pendientes.reduce((s, p) => s + p.saldo, 0);
+                const detalle = data.prestamos_pendientes.map(p =>
+                    meses[p.mes - 1] + ' ' + p.anio + ': ' + fmt(p.saldo)
+                ).join(' · ');
+                prestPanel.style.display = 'flex';
+                prestPanel.innerHTML = `
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:.5rem;flex-wrap:wrap;">
+                        <span>💳 <strong>Préstamo pendiente:</strong> ${fmt(totalDeuda)}</span>
+                        <a href="/admin/prestamos?buscar=&tab=individuales" target="_blank"
+                           style="font-size:.68rem;padding:.18rem .55rem;border-radius:6px;background:#ede9fe;color:#6d28d9;border:1px solid #c4b5fd;text-decoration:none;font-weight:700;">
+                            Ver en Cartera →
+                        </a>
+                    </div>
+                    <div style="font-size:.68rem;opacity:.75;font-weight:500;">${detalle}</div>
+                    <div style="font-size:.7rem;color:#4c1d95;background:#f3e8ff;padding:.28rem .55rem;border-radius:6px;margin-top:.1rem;">
+                        ℹ️ Para cobrar el préstamo, usa el módulo <strong>Préstamos</strong>. El cobro del servicio actual es independiente.
+                    </div>
+                `;
+            } else {
+                prestPanel.style.display = 'none';
+            }
+
             recalc();
         } catch (e) {
             console.warn('MF.verificarMesPagado error:', e);

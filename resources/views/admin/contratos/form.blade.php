@@ -719,7 +719,7 @@
       </label>
     </div>
 
-    <form method="POST" action="{{ route('admin.contratos.retirar', $contrato->id) }}" onsubmit="return mrValidarMes()">
+    <form method="POST" action="{{ route('admin.contratos.retirar', $contrato->id) }}" onsubmit="return mrOnSubmit()">
       @csrf @method('PATCH')
       <input type="hidden" name="back_url" value="{{ $backUrl ?? '' }}">
       <input type="hidden" name="tipo_retiro" id="mr-tipo-hidden" value="real">
@@ -777,7 +777,7 @@
         <div id="mr-dias-wrap">
           <label class="lb">Días a pagar</label>
           <div style="display:flex;align-items:center;gap:0.4rem;">
-            <input type="number" name="num_dias" id="mr-num-dias" min="1" max="30"
+            <input type="number" name="num_dias" id="mr-num-dias"
                    value="1" oninput="mrCalcFecha()" style="{{ $I }};width:70px;font-weight:700;">
             <span style="font-size:0.7rem;color:#6b7280;">/30</span>
           </div>
@@ -792,8 +792,8 @@
       <div style="display:flex;gap:0.6rem;justify-content:flex-end;">
         <button type="button" onclick="document.getElementById('modal-retiro').style.display='none'"
             style="padding:0.45rem 1rem;border:1px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer;font-size:0.82rem;">Cancelar</button>
-        <button type="submit"
-            style="padding:0.45rem 1.1rem;background:#dc2626;border:none;border-radius:7px;color:#fff;font-size:0.82rem;font-weight:700;cursor:pointer;">Confirmar Retiro</button>
+        <button type="submit" id="mr-submit-btn"
+            style="padding:0.45rem 1.1rem;background:#dc2626;border:none;border-radius:7px;color:#fff;font-size:0.82rem;font-weight:700;cursor:pointer;min-width:130px;display:flex;align-items:center;justify-content:center;gap:0.4rem;">Confirmar Retiro</button>
       </div>
     </form>
   </div>
@@ -936,7 +936,9 @@ function mrTipo(tipo) {
         lblInfo.style.borderColor = '#e2e8f0';
         lblInfo.style.background  = '#f8fafc';
         diasWrap.style.display    = 'block';
+        numDias.disabled = false;
         numDias.required = true;
+        if (!numDias.value || numDias.value == 0) numDias.value = 1;
         mrSetDefault();
     } else {
         lblInfo.style.borderColor = '#3b82f6';
@@ -944,6 +946,8 @@ function mrTipo(tipo) {
         lblReal.style.borderColor = '#e2e8f0';
         lblReal.style.background  = '#f8fafc';
         diasWrap.style.display    = 'none';
+        // Deshabilitar: el browser ignora campos disabled en la validación nativa
+        numDias.disabled = true;
         numDias.required = false;
         numDias.value    = 0;
     }
@@ -951,7 +955,24 @@ function mrTipo(tipo) {
 
 // ── Init: establecer defaults al cargar ──────────────────────────────────
 document.addEventListener('DOMContentLoaded', function() { mrSetDefault(); });
+
+// ── Submit con loading state ──────────────────────────────────────────────
+function mrOnSubmit() {
+    if (!mrValidarMes()) return false; // bloquea si mes inválido
+    const btn = document.getElementById('mr-submit-btn');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<svg style="width:14px;height:14px;animation:mr-spin 0.8s linear infinite;flex-shrink:0;" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.35)" stroke-width="3"/><path d="M12 2a10 10 0 0 1 10 10" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg> Procesando...';
+        btn.style.background = '#b91c1c';
+        btn.style.cursor = 'not-allowed';
+    }
+    return true;
+}
 </script>
+
+<style>
+@keyframes mr-spin { to { transform: rotate(360deg); } }
+</style>
 
 @endif
 

@@ -1025,17 +1025,39 @@ $efAcum = $csAcum = $prAcum = $sfAcum = 0;
             $existe ? $anioSiguiente : $anio
         );
 
+        // ── Préstamos pendientes del cliente ──────────────────────────
+        // Retorna facturas en estado=prestamo con saldo restante > 0.
+        // El JS del modal usa esto para ofrecer cobrar el préstamo junto a la nueva factura.
+        $prestamosRaw = Factura::where('aliado_id', $aliadoId)
+            ->where('cedula', $contrato->cedula)
+            ->prestamoPendiente()
+            ->with('abonos')
+            ->get();
+
+        $prestamosPendientes = $prestamosRaw
+            ->filter(fn($f) => $f->saldo_pendiente_prestamo > 0)
+            ->map(fn($f) => [
+                'id'     => $f->id,
+                'mes'    => $f->mes,
+                'anio'   => $f->anio,
+                'total'  => (int)$f->total,
+                'saldo'  => $f->saldo_pendiente_prestamo,
+            ])->values();
+
         return response()->json([
-            'pagado'           => $existe,
-            'mes'              => $existe ? $mesSiguiente  : $mes,
-            'anio'             => $existe ? $anioSiguiente : $anio,
-            'saldo_a_favor'    => $saldo['a_favor']   ?? 0,
-            'saldo_pendiente'  => $saldo['pendiente'] ?? 0,
+            'pagado'                   => $existe,
+            'mes'                      => $existe ? $mesSiguiente  : $mes,
+            'anio'                     => $existe ? $anioSiguiente : $anio,
+            'saldo_a_favor'            => $saldo['a_favor']   ?? 0,
+            'saldo_pendiente'          => $saldo['pendiente'] ?? 0,
             // Información de gap para advertencia en UI
-            'tiene_gap'        => !is_null($gap),
-            'gap_mes'          => $gap['mes']     ?? null,
-            'gap_anio'         => $gap['anio']    ?? null,
-            'gap_mensaje'      => $gap['mensaje'] ?? null,
+            'tiene_gap'                => !is_null($gap),
+            'gap_mes'                  => $gap['mes']     ?? null,
+            'gap_anio'                 => $gap['anio']    ?? null,
+            'gap_mensaje'              => $gap['mensaje'] ?? null,
+            // Préstamos pendientes del cliente
+            'tiene_prestamo_pendiente' => $prestamosPendientes->isNotEmpty(),
+            'prestamos_pendientes'     => $prestamosPendientes,
         ]);
     }
 

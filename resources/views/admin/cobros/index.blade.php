@@ -128,7 +128,7 @@ function sortClassC($col, $cs, $cd) {
 
 .razon-badge {
     font-weight:700; font-size:.68rem; padding:.16rem .48rem; border-radius:6px;
-    background:#dbeafe; color:#1e40af; display:inline-block; max-width:105px;
+    background:#dbeafe; color:#1e40af; display:inline-block; max-width:120px;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
 }
 .num-mono { font-family:monospace; font-size:.77rem; }
@@ -309,20 +309,26 @@ function sortClassC($col, $cs, $cd) {
 <table class="tbl-cob">
 <thead>
 <tr>
+    {{-- N° Contrato --}}
+    <th><a href="{{ sortUrlC('contrato', $sort, $dir) }}" class="{{ sortClassC('contrato', $sort, $dir) }}">N°</a></th>
+    {{-- Cédula --}}
+    <th><a href="{{ sortUrlC('cedula', $sort, $dir) }}"   class="{{ sortClassC('cedula', $sort, $dir) }}">Cédula</a></th>
+    {{-- Nombre --}}
+    <th>Nombre</th>
+    {{-- Celular --}}
+    <th style="text-align:center;" title="Celular">Celular</th>
     {{-- Razón Social --}}
     <th>
         <form method="GET" action="{{ route('admin.cobros.index') }}" style="margin:0">
             @foreach(request()->except(['razon_social_id','page']) as $k => $v)<input type="hidden" name="{{ $k }}" value="{{ $v }}">@endforeach
             <select name="razon_social_id" onchange="this.form.submit()" class="th-select {{ $rsId ? 'activo' : '' }}">
                 <option value="">↓ Razón Social</option>
-                @foreach($razonesDisponibles as $rs)<option value="{{ $rs->id }}" {{ $rsId==$rs->id?'selected':'' }}>{{ $rs->razon_social }}</option>@endforeach
+                @foreach($razonesDisponibles as $rs)<option value="{{ $rs->id }}" {{ $rsId==$rs->id?'selected':'' }}>{{ \Illuminate\Support\Str::limit($rs->razon_social, 20, '…') }}</option>@endforeach
             </select>
         </form>
     </th>
-    <th><a href="{{ sortUrlC('contrato', $sort, $dir) }}" class="{{ sortClassC('contrato', $sort, $dir) }}">N°</a></th>
+    {{-- Ingreso --}}
     <th><a href="{{ sortUrlC('ingreso', $sort, $dir) }}"  class="{{ sortClassC('ingreso', $sort, $dir) }}">Ingreso</a></th>
-    <th><a href="{{ sortUrlC('cedula', $sort, $dir) }}"   class="{{ sortClassC('cedula', $sort, $dir) }}">Cédula</a></th>
-    <th>Nombre &amp; Celular</th>
     {{-- Tipo Modalidad --}}
     <th>
         <form method="GET" action="{{ route('admin.cobros.index') }}" style="margin:0">
@@ -335,13 +341,27 @@ function sortClassC($col, $cs, $cd) {
         </form>
     </th>
     <th title="Afiliación o Planilla">AFIL/PLAN</th>
+    {{-- Empresa/Cliente: solo cuando tipo = todos --}}
+    @if($soloInd === 'todos')
+    <th style="text-align:center">Empresa/Cliente</th>
+    @endif
+    {{-- Admon: solo cuando tipo = individual --}}
+    @if($soloInd !== 'todos')
     <th class="num-col" title="Administración (solo empresa)">Admon</th>
+    @endif
     <th class="num-col" title="Total estimado (SS+Admon+Seguro)">Total</th>
+    {{-- Factura: solo cuando filtro = todos --}}
+    @if($soloPend === 'todos')
     <th style="text-align:center">Factura</th>
+    <th title="N° Planilla">N° Planilla</th>
+    @endif
+    {{-- Semáforo siempre --}}
     <th style="text-align:center;min-width:90px">Semáforo</th>
+    {{-- Gestión: solo cuando filtro = pendientes --}}
+    @if($soloPend === 'pendiente')
     <th style="min-width:120px">Última gestión</th>
+    @endif
     <th style="text-align:center">📞</th>
-    <th title="N° Plano planilla">Plano</th>
 </tr>
 </thead>
 <tbody>
@@ -356,35 +376,49 @@ $tipoNom    = $c->tipoModalidad?->nombre ?? '—';
 [$semIco, $semColor, $semBg, $semTip] = $semLabel($c->semaforo);
 @endphp
 <tr>
-    {{-- Razón Social --}}
-    <td><span class="razon-badge" title="{{ $rs }}">{{ $rs }}</span></td>
-
     {{-- N° Contrato --}}
     <td style="text-align:center;font-weight:700;color:#1e40af;font-size:.72rem;">{{ $c->id }}</td>
 
-    {{-- Ingreso --}}
-    <td style="text-align:center;font-size:.72rem;color:#64748b;">{{ $fIng }}</td>
-
-    {{-- Cédula (enlace al contrato) --}}
+    {{-- Cédula (enlace al contrato) sin puntos --}}
     <td>
         <a href="{{ route('admin.contratos.edit', $c->id) }}" class="num-mono" style="color:#3b82f6;font-weight:600;text-decoration:none;" target="_blank">
-            {{ number_format($c->cedula, 0, '', '.') }}
+            {{ $c->cedula }}
         </a>
     </td>
 
-    {{-- Nombre + Celular --}}
+    {{-- Nombre --}}
     <td>
-        <div style="font-weight:600;color:#1e3a5f;max-width:150px;overflow:hidden;text-overflow:ellipsis;" title="{{ $nombre }}">{{ $nombre ?: '—' }}</div>
-        <div style="font-size:.68rem;color:#64748b;display:flex;align-items:center;gap:.3rem;">
-            📞 {{ $celular }}
-            @if($celular && $celular !== '—')
-            <a href="https://wa.me/57{{ preg_replace('/\D/', '', $celular) }}" target="_blank"
-               title="WhatsApp" style="text-decoration:none;line-height:1;">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#25d366" width="13" height="13"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-            </a>
-            @endif
-        </div>
+        <div style="font-weight:600;color:#1e3a5f;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ $nombre }}">{{ $nombre ?: '—' }}</div>
+        {{-- Badge préstamo pendiente --}}
+        @if($c->tiene_prestamo ?? false)
+        <a href="{{ route('admin.prestamos.index', ['buscar' => $c->cedula, 'tab' => 'individuales']) }}"
+           style="display:inline-block;margin-top:.15rem;padding:.08rem .35rem;border-radius:20px;font-size:.58rem;font-weight:700;background:#ede9fe;color:#6d28d9;text-decoration:none;"
+           title="Tiene préstamo pendiente — clic para ver">
+            💳 Préstamo
+        </a>
+        @endif
     </td>
+
+    {{-- Celular + WhatsApp --}}
+    <td style="white-space:nowrap;">
+        @if($celular && $celular !== '—')
+        <div style="display:inline-flex;align-items:center;gap:.3rem;font-size:.72rem;color:#334155;font-family:monospace;font-weight:600;">
+            {{ $celular }}
+            <a href="https://wa.me/57{{ preg_replace('/\D/', '', $celular) }}" target="_blank"
+               title="Abrir WhatsApp" style="text-decoration:none;line-height:1;display:inline-flex;">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#25d366" width="14" height="14"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+            </a>
+        </div>
+        @else
+        <span style="color:#cbd5e1;font-size:.7rem;">—</span>
+        @endif
+    </td>
+
+    {{-- Razón Social --}}
+    <td><span class="razon-badge" title="{{ $rs }}">{{ \Illuminate\Support\Str::limit($rs, 20, '…') }}</span></td>
+
+    {{-- Ingreso --}}
+    <td style="text-align:center;font-size:.72rem;color:#64748b;">{{ $fIng }}</td>
 
     {{-- Tipo Modalidad --}}
     <td style="text-align:center;font-size:.72rem;font-weight:700;" title="{{ $tipoNom }}">{{ $tipoMod }}</td>
@@ -400,17 +434,31 @@ $tipoNom    = $c->tipoModalidad?->nombre ?? '—';
         @endif
     </td>
 
-    {{-- Admon --}}
+    {{-- Empresa/Cliente: solo cuando tipo = todos --}}
+    @if($soloInd === 'todos')
+    <td style="text-align:center;font-size:.72rem;">
+        @if($c->es_empresa ?? false)
+            <span style="display:inline-block;padding:.15rem .45rem;border-radius:20px;font-size:.62rem;font-weight:700;background:#dbeafe;color:#1e40af;">🏢 Empresa</span>
+        @else
+            <span style="display:inline-block;padding:.15rem .45rem;border-radius:20px;font-size:.62rem;font-weight:700;background:#f0fdf4;color:#15803d;">👤 Cliente</span>
+        @endif
+    </td>
+    @endif
+
+    {{-- Admon: solo cuando tipo = individual --}}
+    @if($soloInd !== 'todos')
     <td class="num-col" style="font-weight:600;color:#0f172a;">
         {{ $fmt($c->administracion ?? 0) }}
     </td>
+    @endif
 
     {{-- Total estimado --}}
     <td class="num-col" style="font-weight:700;color:#1e40af;" title="SS: {{ $fmt($c->v_ss) }}">
         {{ $fmt($c->total_estimado) }}
     </td>
 
-    {{-- Estado factura --}}
+    {{-- Factura y N° Planilla: solo cuando filtro = todos --}}
+    @if($soloPend === 'todos')
     <td style="text-align:center;">
         @if($c->fact_id)
             @php [$fl, $fc, $fb] = $estadoFact($c->fact_estado); @endphp
@@ -423,8 +471,12 @@ $tipoNom    = $c->tipoModalidad?->nombre ?? '—';
             <span style="color:#cbd5e1;font-size:.7rem;">Sin factura</span>
         @endif
     </td>
+    <td style="text-align:center;font-size:.72rem;color:#64748b;font-weight:700;">
+        {{ $c->fact_n_plano ?? '—' }}
+    </td>
+    @endif
 
-    {{-- Semáforo --}}
+    {{-- Semáforo (siempre) --}}
     <td style="text-align:center;">
         <span class="sem-dot" style="color:{{ $semColor }};" title="{{ $semTip }}">
             {{ $semIco }}
@@ -434,7 +486,8 @@ $tipoNom    = $c->tipoModalidad?->nombre ?? '—';
         </span>
     </td>
 
-    {{-- Última gestión --}}
+    {{-- Gestión: solo cuando filtro = pendientes --}}
+    @if($soloPend === 'pendiente')
     <td>
         @if($c->ultima_llamada)
             <div style="font-size:.7rem;font-weight:600;color:#334155;">
@@ -449,8 +502,9 @@ $tipoNom    = $c->tipoModalidad?->nombre ?? '—';
             <span style="color:#cbd5e1;font-size:.7rem;">Sin gestiones</span>
         @endif
     </td>
+    @endif
 
-    {{-- Botón llamar --}}
+    {{-- Botón llamar (siempre) --}}
     <td style="text-align:center;">
         <button class="btn-llamar btn-abrir-modal"
             data-contrato-id="{{ $c->id }}"
@@ -465,20 +519,15 @@ $tipoNom    = $c->tipoModalidad?->nombre ?? '—';
             📞
         </button>
     </td>
-
-    {{-- N° Plano --}}
-    <td style="text-align:center;font-size:.72rem;color:#64748b;font-weight:700;">
-        {{ $c->fact_n_plano ?? '—' }}
-    </td>
 </tr>
 @endforeach
 </tbody>
 <tfoot>
 <tr style="background:#0f172a;color:#fff;font-weight:700;">
-    <td colspan="7" style="padding:.5rem .55rem;font-size:.72rem;">TOTALES ({{ $contratos->count() }} registros)</td>
+    <td colspan="8" style="padding:.5rem .55rem;font-size:.72rem;">TOTALES ({{ $contratos->count() }} registros)</td>
     <td class="num-col" style="color:#34d399;padding:.5rem .55rem;">{{ $fmt($totalAdmon) }}</td>
     <td class="num-col" style="color:#34d399;padding:.5rem .55rem;">{{ $fmt($contratos->sum('total_estimado')) }}</td>
-    <td colspan="5"></td>
+    <td colspan="{{ $soloPend === 'todos' ? 4 : ($soloPend === 'pendiente' ? 3 : 3) }}"></td>
 </tr>
 </tfoot>
 </table>

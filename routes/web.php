@@ -198,6 +198,18 @@ Route::middleware('auth')->group(function () {
             Route::patch('/empresa/{id}/encargado',  [$cb, 'asignarEncargado'])       ->name('empresa.encargado');
         });
 
+        // ── Préstamos / Cartera ──────────────────────────────────────────
+        Route::prefix('prestamos')->name('prestamos.')->group(function () {
+            $pc = \App\Http\Controllers\Admin\PrestamosController::class;
+            Route::get('/',                  [$pc, 'index'])              ->name('index');
+            Route::get('/api/pendientes',    [$pc, 'apiPendientes'])      ->name('api.pendientes');
+            Route::get('/{id}',              [$pc, 'show'])               ->name('show');
+            Route::post('/{id}/abonar',      [$pc, 'abonar'])             ->name('abonar');
+            Route::post('/{id}/condonar',    [$pc, 'condonar'])           ->name('condonar');
+            Route::post('/{id}/gestion',     [$pc, 'registrarGestion'])   ->name('gestion.store');
+            Route::get('/{id}/gestiones',    [$pc, 'historialGestiones']) ->name('gestiones');
+        });
+
     });
 
     // ── BryNex Global (solo usuarios es_brynex) ──────────────────────────

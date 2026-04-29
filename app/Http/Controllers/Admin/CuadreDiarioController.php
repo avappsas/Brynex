@@ -456,12 +456,32 @@ class CuadreDiarioController extends Controller
         $inicio = $cuadre->fecha_inicio->toDateString();
         $fin    = ($cuadre->fecha_fin ?? today())->toDateString();
 
-        // Ingresos en efectivo del período (facturas)
+        // Ingresos en efectivo del período (facturas normales — excluye préstamos)
+        // Los préstamos tienen valor_efectivo=0 → ya quedan excluidos naturalmente,
+        // pero filtramos explícitamente para mayor claridad.
         $ingresosEfectivo = (int) Factura::where('aliado_id', $aliadoId)
             ->where('usuario_id', $usuarioId)
             ->whereBetween('fecha_pago', [$inicio, $fin])
+            ->where('es_prestamo', false)
             ->whereNotNull('valor_efectivo')
             ->sum('valor_efectivo');
+
+        // ── Cobros de cartera: efectivo de abonos a préstamos del período ──
+        // La fecha del abono (cuando entró la plata) puede ser diferente al mes del servicio.
+        $cobrosCartera = (int) DB::table('abonos')
+            ->join('facturas', 'abonos.factura_id', '=', 'facturas.id')
+            ->where('facturas.aliado_id', $aliadoId)
+            ->where('facturas.es_prestamo', true)
+            ->where('abonos.usuario_id', $usuarioId)
+            ->whereBetween('abonos.fecha', [$inicio, $fin])
+            ->sum('abonos.valor_efectivo');
+
+        // ── Total prestado en el período (informativo, no es ingreso real) ──
+        $totalPrestado = (int) Factura::where('aliado_id', $aliadoId)
+            ->where('usuario_id', $usuarioId)
+            ->where('es_prestamo', true)
+            ->whereBetween('fecha_pago', [$inicio, $fin])
+            ->sum('total');
 
         // Gastos en efectivo del período
         $gastosEfectivo = (int) Gasto::where('cuadre_id', $cuadre->id)
@@ -470,7 +490,8 @@ class CuadreDiarioController extends Controller
             ->sum('valor');
 
         $saldoInicial = $cuadre->saldo_apertura;
-        $saldoFinal   = $saldoInicial + $ingresosEfectivo - $gastosEfectivo;
+        // El saldo real incluye tanto ingresos normales como cobros de cartera
+        $saldoFinal   = $saldoInicial + $ingresosEfectivo + $cobrosCartera - $gastosEfectivo;
 
         // Por día
         $dias = $cuadre->diasDelPeriodo();
@@ -481,7 +502,17 @@ class CuadreDiarioController extends Controller
             $ingDia = (int) Factura::where('aliado_id', $aliadoId)
                 ->where('usuario_id', $usuarioId)
                 ->whereDate('fecha_pago', $fechaDia)
+                ->where('es_prestamo', false)
                 ->sum('valor_efectivo');
+
+            // Cobros de cartera del día
+            $carteraDia = (int) DB::table('abonos')
+                ->join('facturas', 'abonos.factura_id', '=', 'facturas.id')
+                ->where('facturas.aliado_id', $aliadoId)
+                ->where('facturas.es_prestamo', true)
+                ->where('abonos.usuario_id', $usuarioId)
+                ->whereDate('abonos.fecha', $fechaDia)
+                ->sum('abonos.valor_efectivo');
 
             $gastoDia = (int) Gasto::where('cuadre_id', $cuadre->id)
                 ->whereDate('fecha', $fechaDia)
@@ -489,11 +520,12 @@ class CuadreDiarioController extends Controller
                     ->orWhere('tipo', 'efectivo_banco'))
                 ->sum('valor');
 
-            $saldoAcum += $ingDia - $gastoDia;
+            $saldoAcum += $ingDia + $carteraDia - $gastoDia;
 
             return [
                 'fecha'        => $dia,
                 'ingresos'     => $ingDia,
+                'cartera'      => $carteraDia,
                 'gastos'       => $gastoDia,
                 'saldo'        => $saldoAcum,
             ];
@@ -501,12 +533,15 @@ class CuadreDiarioController extends Controller
 
         return [
             'efectivo_total'  => $ingresosEfectivo,
+            'cobros_cartera'  => $cobrosCartera,   // ← nuevo: abonos a préstamos
+            'total_prestado'  => $totalPrestado,   // ← nuevo: informativo (no ingreso real)
             'gastos_efectivo' => $gastosEfectivo,
             'saldo_inicial'   => $saldoInicial,
             'saldo_final'     => $saldoFinal,
             'por_dia'         => $porDia,
         ];
     }
+
 
     /** Facturas del período del cuadre */
     private function facturasPeriodo(Cuadre $cuadre, int $aliadoId, int $usuarioId): \Illuminate\Support\Collection

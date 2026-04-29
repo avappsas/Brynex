@@ -81,6 +81,12 @@ class Factura extends BaseModel
         return $q->where('aliado_id', $aliadoId);
     }
 
+    /** Préstamos con saldo pendiente (no anulados) */
+    public function scopePrestamoPendiente(Builder $q): Builder
+    {
+        return $q->where('estado', self::ESTADO_PRESTAMO)->whereNull('deleted_at');
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────
     /** Total ya abonado a esta factura */
     public function getTotalAbonadoAttribute(): int
@@ -98,6 +104,17 @@ class Factura extends BaseModel
     public function estaCompletamentePagada(): bool
     {
         return $this->total_abonado >= (int)$this->total;
+    }
+
+    /**
+     * Saldo pendiente del préstamo = total original - sum(abonos).
+     * Solo relevante cuando estado = 'prestamo'.
+     * Difiere de saldo_restante en que saldo_restante usa total_abonado (abonos),
+     * mientras que saldo_pendiente_prestamo es el mismo concepto con nombre semánticamente claro.
+     */
+    public function getSaldoPendientePrestamoAttribute(): int
+    {
+        return $this->saldo_restante; // alias semántico para el módulo préstamos
     }
 
     /** Genera el siguiente número de factura para un aliado */

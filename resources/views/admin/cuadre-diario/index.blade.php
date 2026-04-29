@@ -99,7 +99,7 @@ $esSuperAdmin = auth()->user()->hasRole('superadmin');
 @php
 $totalBancos = $bancos->sum(fn($bc) => \App\Models\Consignacion::saldoBanco(session('aliado_id_activo'), $bc->id));
 @endphp
-<div class="cd-cards" style="grid-template-columns:repeat(4,1fr)">
+<div class="cd-cards" style="grid-template-columns:repeat(5,1fr)">
     <div class="cd-card efectivo">
         <div class="cd-card-title">💵 Efectivo cobrado</div>
         <div class="cd-card-val">{{ $fmt($datosPeriodo['efectivo_total']) }}</div>
@@ -107,6 +107,22 @@ $totalBancos = $bancos->sum(fn($bc) => \App\Models\Consignacion::saldoBanco(sess
             {{ $facturasPeriodo->count() }} facturas
         </div>
     </div>
+    {{-- Cobros de cartera: abonos a préstamos cuya plata entró en este período --}}
+    @if(($datosPeriodo['cobros_cartera'] ?? 0) > 0)
+    <div class="cd-card" style="border-color:#d1fae5">
+        <div class="cd-card-title" style="color:#065f46">📋 Cobros cartera</div>
+        <div class="cd-card-val" style="color:#065f46">{{ $fmt($datosPeriodo['cobros_cartera']) }}</div>
+        <div style="font-size:.72rem;color:#6b7280;margin-top:.3rem">Préstamos recuperados</div>
+    </div>
+    @endif
+    {{-- Total prestado: informativo, no es ingreso real --}}
+    @if(($datosPeriodo['total_prestado'] ?? 0) > 0)
+    <div class="cd-card" style="border-color:#fde68a">
+        <div class="cd-card-title" style="color:#92400e">⚠️ Total prestado</div>
+        <div class="cd-card-val" style="color:#b45309">{{ $fmt($datosPeriodo['total_prestado']) }}</div>
+        <div style="font-size:.72rem;color:#6b7280;margin-top:.3rem">Cartera por cobrar</div>
+    </div>
+    @endif
     {{-- Bancos: una sola tarjeta clickeable --}}
     <div class="cd-card" onclick="document.getElementById('modal-bancos').style.display='flex'"
          style="cursor:pointer;border-color:#bfdbfe;transition:box-shadow .15s"
@@ -190,14 +206,18 @@ $totalBancos = $bancos->sum(fn($bc) => \App\Models\Consignacion::saldoBanco(sess
         <thead><tr>
             <th>Día</th>
             <th class="num">+ Ingresos efectivo</th>
+            <th class="num" style="color:#6ee7b7">+ Cobros cartera</th>
             <th class="num">- Gastos efectivo</th>
             <th class="num">Saldo acumulado</th>
         </tr></thead>
         <tbody>
         @foreach($datosPeriodo['por_dia'] as $dia)
-        <tr class="{{ ($dia['ingresos'] > 0 || $dia['gastos'] > 0) ? '' : 'opacity-40' }}">
+        <tr class="{{ ($dia['ingresos'] > 0 || ($dia['cartera'] ?? 0) > 0 || $dia['gastos'] > 0) ? '' : 'opacity-40' }}">
             <td>{{ sqldate($dia['fecha'])->locale('es')->isoFormat('ddd DD MMM') }}</td>
             <td class="num" style="color:#15803d">{{ $dia['ingresos'] ? '+'.$fmt($dia['ingresos']) : '—' }}</td>
+            <td class="num" style="color:#065f46;font-size:.75rem">
+                {{ ($dia['cartera'] ?? 0) > 0 ? '+'.$fmt($dia['cartera']) : '' }}
+            </td>
             <td class="num" style="color:#dc2626">{{ $dia['gastos'] ? '-'.$fmt($dia['gastos']) : '—' }}</td>
             <td class="num" style="font-weight:700;color:{{ $dia['saldo'] >= 0 ? '#1d4ed8' : '#dc2626' }}">
                 {{ $fmt($dia['saldo']) }}
@@ -207,6 +227,7 @@ $totalBancos = $bancos->sum(fn($bc) => \App\Models\Consignacion::saldoBanco(sess
         <tr style="background:#0f172a">
             <td style="color:#94a3b8;font-weight:600;font-size:.75rem">SALDO FINAL ESPERADO</td>
             <td class="num" style="color:#4ade80;font-weight:800;font-size:.9rem">{{ $fmt($datosPeriodo['efectivo_total']) }}</td>
+            <td class="num" style="color:#6ee7b7;font-weight:700;font-size:.85rem">{{ ($datosPeriodo['cobros_cartera'] ?? 0) > 0 ? '+'.$fmt($datosPeriodo['cobros_cartera']) : '—' }}</td>
             <td class="num" style="color:#f87171;font-weight:800;font-size:.9rem">-{{ $fmt($datosPeriodo['gastos_efectivo']) }}</td>
             <td class="num" style="color:#fbbf24;font-weight:800;font-size:.95rem">{{ $fmt($datosPeriodo['saldo_final']) }}</td>
         </tr>

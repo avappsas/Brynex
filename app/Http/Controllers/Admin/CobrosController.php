@@ -118,11 +118,22 @@ class CobrosController extends Controller
             ->groupBy('contrato_id')
             ->map(fn($g) => $g->first()); // solo la más reciente por contrato
 
+        // ── Préstamos pendientes — 1 query para badge ligero ───────────
+        // Un Set PHP con las cédulas que tienen facturas en estado=prestamo.
+        // El map() hace contains() O(1), sin N queries adicionales.
+        $cedulasConPrestamo = DB::table('facturas')
+            ->where('aliado_id', $aliadoId)
+            ->where('estado', 'prestamo')
+            ->whereNull('deleted_at')
+            ->pluck('cedula')
+            ->flip(); // convierte a [cedula => index] para búsqueda O(1)
+
         // ── Procesar cada contrato ──────────────────────────────────
+
         $r100 = fn($v) => (int)(ceil(($v ?? 0) / 100) * 100);
 
         $contratos = $contratos->map(function ($c) use (
-            $mes, $anio, $facturas, $ultimasLlamadas, $r100, $aliadoId, $getArlPct
+            $mes, $anio, $facturas, $ultimasLlamadas, $r100, $aliadoId, $getArlPct, $cedulasConPrestamo
         ) {
             $fact = $facturas->get($c->cedula);
 
@@ -236,6 +247,8 @@ class CobrosController extends Controller
             $c->ultima_llamada   = $ultimaLlamada;
             $c->dias_sin_llamar  = $diasSinLlamar;
             $c->semaforo         = $semaforo;
+            // Badge ligero: solo true/false usando el Set pre-cargado (O(1))
+            $c->tiene_prestamo   = isset($cedulasConPrestamo[$c->cedula]);
 
             return $c;
         });

@@ -646,6 +646,13 @@
             </a>
             @endrole
 
+            @role('superadmin|admin|usuario|contador')
+            <a href="{{ route('admin.prestamos.index') }}" class="menu-item {{ request()->routeIs('admin.prestamos*') ? 'activo' : '' }}">
+                <div class="icono">📋</div>
+                <div class="label">Préstamos</div>
+            </a>
+            @endrole
+
             <a href="{{ route('admin.tareas.index') }}" class="menu-item {{ request()->routeIs('admin.tareas*') ? 'activo' : '' }}">
                 <div class="icono">📌</div>
                 <div class="label">Tareas</div>

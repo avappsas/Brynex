@@ -18,7 +18,12 @@ class BitacoraCobro extends BaseModel
         'fecha_llamada',
         'resultado',
         'observacion',
+        'tipo',
     ];
+
+    // ── Tipos de gestión ──
+    const TIPO_COBRO    = 'cobro';    // gestión cobro mensual normal
+    const TIPO_PRESTAMO = 'prestamo'; // gestión cobro de cartera/préstamo
 
 
     protected $casts = [
