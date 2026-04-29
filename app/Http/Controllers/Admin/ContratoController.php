@@ -259,20 +259,144 @@ class ContratoController extends Controller
     public function retirar(Request $request, int $id)
     {
         $alidoId  = session('aliado_id_activo');
-        $contrato = Contrato::where('aliado_id', $alidoId)->findOrFail($id);
+        $contrato = Contrato::where('aliado_id', $alidoId)
+            ->with(['eps','arl','pension','caja','tipoModalidad','razonSocial','cliente'])
+            ->findOrFail($id);
 
-        $request->validate([
+        $validated = $request->validate([
             'motivo_retiro_id' => 'required|exists:motivos_retiro,id',
             'fecha_retiro'     => 'required|date',
+            'tipo_retiro'      => 'required|in:real,informativo',
+            'num_dias'         => 'nullable|integer|min:0|max:30',
+            'mes_plano'        => 'required|integer|between:1,12',
+            'anio_plano'       => 'required|integer|min:2020|max:2099',
             'observacion'      => 'nullable|string|max:500',
         ]);
 
-        $contrato->update([
-            'estado'           => 'retirado',
-            'motivo_retiro_id' => $request->motivo_retiro_id,
-            'fecha_retiro'     => $request->fecha_retiro,
-            'observacion'      => $request->observacion ?? $contrato->observacion,
-        ]);
+        $tipoRetiro  = $validated['tipo_retiro'];
+        $fechaRetiro = $validated['fecha_retiro'];
+        $numDias = $tipoRetiro === 'real'
+            ? max(1, min(30, (int)($validated['num_dias'] ?? 1)))
+            : 0;
+
+        // Validar que mes_plano no sea anterior al mes de ingreso
+        if ($contrato->fecha_ingreso) {
+            $ingreso = \Carbon\Carbon::parse($contrato->fecha_ingreso);
+            $planoPeriodo = \Carbon\Carbon::createFromDate($validated['anio_plano'], $validated['mes_plano'], 1);
+            if ($planoPeriodo->lt($ingreso->startOfMonth())) {
+                return redirect()
+                    ->route('admin.contratos.edit', [$id, 'back' => $request->input('back_url')])
+                    ->withErrors(['mes_plano' => 'El mes del plano no puede ser anterior al mes de ingreso del contrato.']);
+            }
+        }
+
+        DB::transaction(function () use ($contrato, $validated, $alidoId, $tipoRetiro, $fechaRetiro, $numDias) {
+            // 1) Actualizar contrato → retirado
+            $contrato->update([
+                'estado'           => 'retirado',
+                'motivo_retiro_id' => $validated['motivo_retiro_id'],
+                'fecha_retiro'     => $fechaRetiro,
+                'observacion'      => $validated['observacion'] ?? $contrato->observacion,
+            ]);
+
+            // 2) Crear factura $0 (sin número, enlazada al plano)
+            $factura = \App\Models\Factura::create([
+                'aliado_id'        => $alidoId,
+                'numero_factura'   => 0,
+                'tipo'             => 'planilla',
+                'cedula'           => $contrato->cedula,
+                'contrato_id'      => $contrato->id,
+                'razon_social_id'  => $contrato->razon_social_id,
+                'empresa_id'       => null,
+                'mes'              => now()->month,
+                'anio'             => now()->year,
+                'fecha_pago'       => now()->toDateString(),
+                'estado'           => 'pagada',
+                'forma_pago'       => 'efectivo',
+                'valor_efectivo'   => 0,
+                'valor_consignado' => 0,
+                'valor_prestamo'   => 0,
+                'otros'            => 0,
+                'otros_admon'      => 0,
+                'mensajeria'       => 0,
+                'dias_cotizados'   => $numDias,
+                'v_eps'  => 0, 'v_arl' => 0, 'v_afp' => 0, 'v_caja' => 0,
+                'total_ss'  => 0,
+                'admon'     => 0,
+                'admin_asesor' => 0,
+                'seguro'    => 0,
+                'afiliacion'=> 0,
+                'iva'       => 0,
+                'total'     => 0,
+                'saldo_proximo' => 0,
+                'usuario_id'    => Auth::id(),
+                'observacion'   => $validated['observacion'] ?? null,
+            ]);
+
+            // 3) Mes/año del plano: viene del select del modal (controlado por el usuario)
+            $mesPlan  = (int) $validated['mes_plano'];
+            $anioPlan = (int) $validated['anio_plano'];
+
+            // Último n_plano de la RS o 1
+            $nPlano = $contrato->razon_social_id
+                ? (\App\Models\RazonSocial::find($contrato->razon_social_id)?->n_plano ?? 1)
+                : 1;
+
+            // 4) Crear plano con fecha_ret y num_dias
+            $cliente = $contrato->cliente;
+            $eps     = $contrato->eps;
+            $afp     = $contrato->pension;
+            $arl     = $contrato->arl;
+            $caja    = $contrato->caja;
+            $rs      = $contrato->razonSocial;
+
+            $codArl    = $rs?->arl_nit ?? $arl?->nit ?? $arl?->codigo_arl ?? null;
+            $nombreArl = null;
+            if ($rs?->arl_nit) {
+                $nombreArl = DB::table('arls')->where('nit', $rs->arl_nit)->value('nombre_arl');
+            }
+            if (!$nombreArl) $nombreArl = $arl?->nombre_arl ?? null;
+
+            $apellidos = $cliente?->apellidos ?? trim(($cliente?->primer_apellido ?? '') . ' ' . ($cliente?->segundo_apellido ?? ''));
+            $nombres   = $cliente?->nombres   ?? trim(($cliente?->primer_nombre   ?? '') . ' ' . ($cliente?->segundo_nombre   ?? ''));
+            $partsApe  = preg_split('/\s+/', trim($apellidos), 2);
+            $partsNom  = preg_split('/\s+/', trim($nombres),   2);
+
+            \App\Models\Plano::create([
+                'factura_id'        => $factura->id,
+                'contrato_id'       => $contrato->id,
+                'aliado_id'         => $alidoId,
+                'numero_factura'    => 0,
+                'tipo_reg'          => 'retiro',
+                'tipo_doc'          => 'CC',
+                'no_identifi'       => $contrato->cedula,
+                'primer_ape'        => strtoupper($partsApe[0] ?? ''),
+                'segundo_ape'       => strtoupper($partsApe[1] ?? ''),
+                'primer_nombre'     => strtoupper($partsNom[0] ?? ''),
+                'segundo_nombre'    => strtoupper($partsNom[1] ?? ''),
+                'fecha_ing'         => null,
+                'fecha_ret'         => \Carbon\Carbon::parse($fechaRetiro)->toDateString(),
+                'num_dias'          => $numDias,
+                'cod_eps'           => $eps?->nit  ?? $eps?->cod_eps  ?? null,
+                'nombre_eps'        => $eps?->nombre ?? null,
+                'cod_afp'           => $afp?->nit  ?? $afp?->cod_afp  ?? null,
+                'nombre_afp'        => $afp?->razon_social ?? null,
+                'cod_arl'           => $codArl,
+                'nombre_arl'        => $nombreArl,
+                'cod_caja'          => $caja?->nit ?? $caja?->cod_caja ?? null,
+                'nombre_caja'       => $caja?->nombre ?? null,
+                'nivel_riesgo'      => $contrato->n_arl ?? 1,
+                'salario_basico'    => $contrato->salario ?? 0,
+                'n_plano'           => $nPlano,
+                'mes_plano'         => $mesPlan,
+                'anio_plano'        => $anioPlan,
+                'razon_social'      => $rs?->razon_social ?? null,
+                'razon_social_id'   => $contrato->razon_social_id,
+                'tipo_p'            => $contrato->tipo_modalidad_id,
+                'tipo_modalidad_id' => $contrato->tipo_modalidad_id,
+                'usuario_id'        => Auth::id(),
+            ]);
+        });
 
         return redirect()
             ->route('admin.contratos.edit', [$id, 'back' => $request->input('back_url')])

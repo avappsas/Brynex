@@ -622,9 +622,13 @@
             <td>{{ $p->fecha_ing ? sqldate($p->fecha_ing)->format('d-') . strtolower(sqldate($p->fecha_ing)->locale('es')->isoFormat('MMM')) : '—' }}</td>
             <td>{{ $p->fecha_ret ? sqldate($p->fecha_ret)->format('d-') . strtolower(sqldate($p->fecha_ret)->locale('es')->isoFormat('MMM')) : '—' }}</td>
             <td>{{ $p->num_dias }}</td>
-            <td title="{{ $p->cod_eps }}">{{ $p->nombre_eps ? \Illuminate\Support\Str::limit($p->nombre_eps,18,'…') : ($p->cod_eps ?? '—') }}</td>
+            <td title="{{ $p->nombre_eps ?? $p->cod_eps }}" style="font-size:.72rem;white-space:nowrap">
+                {{ $p->nombre_eps ? \Illuminate\Support\Str::limit($p->nombre_eps, 9, '…') : ($p->cod_eps ?? '—') }}
+            </td>
             <td>{{ number_format($p->v_eps ?? 0,0,',','.') }}</td>
-            <td title="{{ $p->cod_arl }}">{{ $p->nombre_arl ? \Illuminate\Support\Str::limit($p->nombre_arl,18,'…') : ($p->cod_arl ?? '—') }}</td>
+            <td title="{{ $p->nombre_arl ?? $p->cod_arl }}" style="font-size:.72rem;white-space:nowrap">
+                {{ $p->nombre_arl ? \Illuminate\Support\Str::limit($p->nombre_arl, 9, '…') : ($p->cod_arl ?? '—') }}
+            </td>
             <td>{{ number_format($p->v_arl ?? 0,0,',','.') }}</td>
             <td title="{{ $p->nombre_caja ?? $p->cod_caja }}" style="font-size:.72rem;white-space:nowrap">
                 {{ $p->nombre_caja ? \Illuminate\Support\Str::limit($p->nombre_caja, 9, '…') : ($p->cod_caja ? \Illuminate\Support\Str::limit($p->cod_caja,9,'…') : '—') }}

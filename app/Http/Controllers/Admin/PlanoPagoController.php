@@ -55,6 +55,7 @@ class PlanoPagoController extends Controller
             ->where('p.aliado_id', $aliadoId)
             ->whereNull('p.deleted_at')
             ->whereIn('p.tipo_reg', ['planilla', 'retiro'])
+            ->where(fn($q) => $q->where('p.num_dias', '>=', 1)->orWhere('p.tipo_reg', '!=', 'retiro'))
             ->where($wherePeriodo)
             ->groupBy('p.razon_social_id')
             ->select('p.razon_social_id', DB::raw('COUNT(*) AS cant'))
@@ -107,6 +108,7 @@ class PlanoPagoController extends Controller
                 ->where('p.aliado_id', $aliadoId)
                 ->whereNull('p.deleted_at')
                 ->whereIn('p.tipo_reg', ['planilla', 'retiro'])
+                ->where(fn($q) => $q->where('p.num_dias', '>=', 1)->orWhere('p.tipo_reg', '!=', 'retiro'))
                 ->where('p.razon_social_id', $razonSocialId)
                 ->where($wherePeriodo)
                 ->select([
@@ -120,10 +122,19 @@ class PlanoPagoController extends Controller
                     'p.mes_plano', 'p.anio_plano',
                     'p.num_dias',
                     'p.fecha_ing', 'p.fecha_ret',
-                    'p.cod_eps', 'p.nombre_eps',
-                    'p.cod_afp', 'p.nombre_afp',
-                    'p.cod_arl', 'p.nombre_arl',
-                    'p.cod_caja', 'p.nombre_caja',
+                    'p.cod_eps',
+                    // Nombre EPS: preferir el guardado en plano, fallback subconsulta al catálogo
+                    // (subconsulta TOP 1 evita multiplicar filas si hay códigos duplicados en eps)
+                    DB::raw("COALESCE(NULLIF(p.nombre_eps, ''), (SELECT TOP 1 e.nombre FROM eps e WHERE e.codigo = p.cod_eps)) AS nombre_eps"),
+                    'p.cod_afp',
+                    // Nombre AFP/Pensión
+                    DB::raw("COALESCE(NULLIF(p.nombre_afp, ''), (SELECT TOP 1 pn.razon_social FROM pensiones pn WHERE pn.codigo = p.cod_afp)) AS nombre_afp"),
+                    'p.cod_arl',
+                    // Nombre ARL
+                    DB::raw("COALESCE(NULLIF(p.nombre_arl, ''), (SELECT TOP 1 a.nombre_arl FROM arls a WHERE a.codigo = p.cod_arl)) AS nombre_arl"),
+                    'p.cod_caja',
+                    // Nombre Caja
+                    DB::raw("COALESCE(NULLIF(p.nombre_caja, ''), (SELECT TOP 1 cj.nombre FROM cajas cj WHERE cj.codigo = p.cod_caja)) AS nombre_caja"),
                     'p.nivel_riesgo',
                     'p.razon_social_id',
                     'p.razon_social',
@@ -168,6 +179,7 @@ class PlanoPagoController extends Controller
                 ->where('p.aliado_id', $aliadoId)
                 ->whereNull('p.deleted_at')
                 ->whereIn('p.tipo_reg', ['planilla', 'retiro'])
+                ->where(fn($q) => $q->where('p.num_dias', '>=', 1)->orWhere('p.tipo_reg', '!=', 'retiro'))
                 ->where('p.razon_social_id', $razonSocialId)
                 ->where($wherePeriodo)
                 ->distinct()

@@ -373,9 +373,10 @@ const MF = (function () {
 
     function _setTipo(tipo) {
         setVal('mf-tipo', tipo);
-        const detallesSS = el('mf-detalle-ss');
+        const detallesSS  = el('mf-detalle-ss');
         const detallesAfil = el('mf-detalle-afil');
-        const distSec = el('mf-dist-sec');
+        const distSec     = el('mf-dist-sec');
+        const retiroCard  = el('mf-retiro-card');
 
         if (tipo === 'afiliacion') {
             _total = _totalAfil;
@@ -388,6 +389,9 @@ const MF = (function () {
                 distSec.style.display = 'block';
                 _distInicial();
             }
+            // Afiliación: ocultar y resetear card retiro
+            if (retiroCard) retiroCard.style.display = 'none';
+            if (_esRetiro) toggleRetiro(); // desactivar si estaba activo
         } else {
             // Planilla: restaurar SS desde Alpine (individual) o de los datos (masivo)
             if (_modo === 'individual') {
@@ -405,6 +409,8 @@ const MF = (function () {
             if (detallesSS) detallesSS.style.display = '';
             if (detallesAfil) detallesAfil.style.display = 'none';
             if (distSec) distSec.style.display = 'none';
+            // Planilla: mostrar card retiro
+            if (retiroCard) retiroCard.style.display = '';
             // En modo masivo: mantener fila afiliación visible si hay I ACT primer mes
             if (_modo === 'masivo') {
                 _calcularResumenInicial(); // reconstruye con afiliación si aplica

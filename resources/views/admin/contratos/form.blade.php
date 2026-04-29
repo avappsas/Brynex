@@ -582,7 +582,8 @@
         @endif
       </button>
       @if($contrato->estaVigente())
-      <button type="button" onclick="document.getElementById('modal-retiro').style.display='flex'"
+      <button type="button"
+          onclick="document.getElementById('modal-retiro').style.display='flex';mrInitSelects();mrSetDefault();"
           style="display:flex;align-items:center;gap:0.55rem;padding:0.5rem 0.75rem;background:#fff5f5;border:1px solid #fecaca;border-radius:8px;color:#dc2626;font-size:0.8rem;font-weight:600;cursor:pointer;width:100%;text-align:left;">
         &#128683; Marcar Retiro
       </button>
@@ -691,11 +692,38 @@
 {{-- MODAL RETIRO --}}
 @if($esEdicion && $contrato->estaVigente())
 <div id="modal-retiro" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:999;align-items:center;justify-content:center;">
-  <div style="background:#fff;border-radius:14px;padding:1.5rem;max-width:420px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+  <div style="background:#fff;border-radius:14px;padding:1.5rem;max-width:460px;width:92%;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
     <h3 style="margin:0 0 1rem;color:#dc2626;font-size:0.95rem;">&#128683; Retirar Contrato #{{ $contrato->id }}</h3>
-    <form method="POST" action="{{ route('admin.contratos.retirar', $contrato->id) }}">
+
+    {{-- Selector de tipo de retiro --}}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-bottom:1rem;">
+      <label id="mr-lbl-real" onclick="mrTipo('real')"
+        style="cursor:pointer;border:2px solid #ef4444;border-radius:10px;padding:0.6rem 0.8rem;background:#fff5f5;transition:.15s;">
+        <div style="display:flex;align-items:center;gap:0.4rem;">
+          <input type="radio" name="_tipo_retiro_ui" value="real" checked onclick="event.stopPropagation();mrTipo('real')">
+          <strong style="font-size:0.78rem;color:#dc2626;">Retiro Real</strong>
+        </div>
+        <p style="font-size:0.65rem;color:#6b7280;margin:.25rem 0 0 1.2rem;line-height:1.3;">
+          Genera plano con días cotizados. Aparece en Planos SS.
+        </p>
+      </label>
+      <label id="mr-lbl-info" onclick="mrTipo('informativo')"
+        style="cursor:pointer;border:2px solid #e2e8f0;border-radius:10px;padding:0.6rem 0.8rem;background:#f8fafc;transition:.15s;">
+        <div style="display:flex;align-items:center;gap:0.4rem;">
+          <input type="radio" name="_tipo_retiro_ui" value="informativo" onclick="event.stopPropagation();mrTipo('informativo')">
+          <strong style="font-size:0.78rem;color:#475569;">Retiro Informativo</strong>
+        </div>
+        <p style="font-size:0.65rem;color:#6b7280;margin:.25rem 0 0 1.2rem;line-height:1.3;">
+          Solo marca el retiro (0 días). El cliente paga por sus propios medios.
+        </p>
+      </label>
+    </div>
+
+    <form method="POST" action="{{ route('admin.contratos.retirar', $contrato->id) }}" onsubmit="return mrValidarMes()">
       @csrf @method('PATCH')
       <input type="hidden" name="back_url" value="{{ $backUrl ?? '' }}">
+      <input type="hidden" name="tipo_retiro" id="mr-tipo-hidden" value="real">
+
       <div style="margin-bottom:0.7rem;">
         <label class="lb">Motivo *</label>
         <select name="motivo_retiro_id" required style="{{ $S }}">
@@ -705,23 +733,226 @@
           @endforeach
         </select>
       </div>
-      <div style="margin-bottom:0.7rem;">
-        <label class="lb">Fecha Retiro *</label>
-        <input type="date" name="fecha_retiro" required value="{{ now()->format('Y-m-d') }}" style="{{ $I }}">
+
+      {{-- Mes/Año del plano --}}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-bottom:0.5rem;">
+        <div>
+          <label class="lb">Mes del Plano *</label>
+          <select name="mes_plano" id="mr-mes" onchange="mrSetDefault()" style="{{ $S }}">
+            <option value="1">Enero</option>
+            <option value="2">Febrero</option>
+            <option value="3">Marzo</option>
+            <option value="4">Abril</option>
+            <option value="5">Mayo</option>
+            <option value="6">Junio</option>
+            <option value="7">Julio</option>
+            <option value="8">Agosto</option>
+            <option value="9">Septiembre</option>
+            <option value="10">Octubre</option>
+            <option value="11">Noviembre</option>
+            <option value="12">Diciembre</option>
+          </select>
+        </div>
+        <div>
+          <label class="lb">Año del Plano *</label>
+          <select name="anio_plano" id="mr-anio" onchange="mrSetDefault()" style="{{ $S }}">
+            @for($y = now()->year - 2; $y <= now()->year + 1; $y++)
+            <option value="{{ $y }}">{{ $y }}</option>
+            @endfor
+          </select>
+        </div>
       </div>
+      {{-- Error inline: mes anterior al ingreso --}}
+      <div id="mr-mes-error" style="display:none;background:#fef2f2;border:1px solid #fecaca;border-radius:7px;padding:0.35rem 0.65rem;font-size:0.72rem;color:#dc2626;margin-bottom:0.4rem;">
+        &#9888; El mes del plano no puede ser anterior al mes de ingreso del contrato.
+      </div>
+
+      {{-- Fecha + Días (bidireccional) --}}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-bottom:0.7rem;">
+        <div>
+          <label class="lb">Fecha Retiro *</label>
+          <input type="date" name="fecha_retiro" id="mr-fecha" required
+                 oninput="mrCalcDias()" style="{{ $I }}">
+        </div>
+        <div id="mr-dias-wrap">
+          <label class="lb">Días a pagar</label>
+          <div style="display:flex;align-items:center;gap:0.4rem;">
+            <input type="number" name="num_dias" id="mr-num-dias" min="1" max="30"
+                   value="1" oninput="mrCalcFecha()" style="{{ $I }};width:70px;font-weight:700;">
+            <span style="font-size:0.7rem;color:#6b7280;">/30</span>
+          </div>
+        </div>
+      </div>
+
       <div style="margin-bottom:1rem;">
         <label class="lb">Observacion</label>
         <textarea name="observacion" rows="2" style="width:100%;padding:0.5rem;border:1px solid #cbd5e1;border-radius:7px;font-size:0.8rem;resize:none;box-sizing:border-box;"></textarea>
       </div>
+
       <div style="display:flex;gap:0.6rem;justify-content:flex-end;">
         <button type="button" onclick="document.getElementById('modal-retiro').style.display='none'"
             style="padding:0.45rem 1rem;border:1px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer;font-size:0.82rem;">Cancelar</button>
         <button type="submit"
-            style="padding:0.45rem 1.1rem;background:#dc2626;border:none;border-radius:7px;color:#fff;font-size:0.82rem;font-weight:700;cursor:pointer;">Confirmar</button>
+            style="padding:0.45rem 1.1rem;background:#dc2626;border:none;border-radius:7px;color:#fff;font-size:0.82rem;font-weight:700;cursor:pointer;">Confirmar Retiro</button>
       </div>
     </form>
   </div>
 </div>
+
+<script>
+// ── Modal Retiro: datos del contrato ──────────────────────────────────────
+const MR = {
+    // Fecha ingreso del contrato (ISO string o null)
+    fechaIngreso: @if($contrato->fecha_ingreso)'{{ sqldate($contrato->fecha_ingreso)->format('Y-m-d') }}'@else null @endif,
+    // ¿Es independiente mes actual? (tipo_modalidad_id = 11)
+    esMesActual: {{ (int)($contrato->tipo_modalidad_id) === 11 ? 'true' : 'false' }},
+};
+
+// ── Leer mes/año seleccionados (fuente de verdad) ─────────────────────────
+function mrMesPlan() {
+    const mesEl  = document.getElementById('mr-mes');
+    const anioEl = document.getElementById('mr-anio');
+    if (mesEl && anioEl && mesEl.value && anioEl.value) {
+        return { anio: parseInt(anioEl.value, 10), mes: parseInt(mesEl.value, 10) };
+    }
+    // Fallback si los selects no existen todavía
+    const hoy = new Date();
+    if (MR.esMesActual) return { anio: hoy.getFullYear(), mes: hoy.getMonth() + 1 };
+    const m = hoy.getMonth(); // 0-based; 0 = enero
+    return { anio: m === 0 ? hoy.getFullYear() - 1 : hoy.getFullYear(), mes: m === 0 ? 12 : m };
+}
+
+// ── Inicializar selects al abrir el modal ────────────────────────────────
+function mrInitSelects() {
+    const hoy = new Date();
+    let mesDef, anioDef;
+    if (MR.esMesActual) {
+        mesDef  = hoy.getMonth() + 1;
+        anioDef = hoy.getFullYear();
+    } else {
+        const m = hoy.getMonth(); // 0-based
+        mesDef  = m === 0 ? 12 : m;
+        anioDef = m === 0 ? hoy.getFullYear() - 1 : hoy.getFullYear();
+    }
+
+    // Si el mes vencido calculado es ANTERIOR a fecha_ingreso, avanzar al mes de ingreso
+    if (MR.fechaIngreso) {
+        const [fAnio, fMes] = MR.fechaIngreso.split('-').map(Number);
+        const defVal  = anioDef * 100 + mesDef;
+        const ingrVal = fAnio   * 100 + fMes;
+        if (defVal < ingrVal) {
+            mesDef  = fMes;
+            anioDef = fAnio;
+        }
+    }
+
+    const mesEl  = document.getElementById('mr-mes');
+    const anioEl = document.getElementById('mr-anio');
+    if (mesEl)  mesEl.value  = mesDef;
+    if (anioEl) anioEl.value = anioDef;
+}
+
+// ── Validar que mes_plano no sea anterior al mes de ingreso ───────────────
+function mrValidarMes() {
+    if (!MR.fechaIngreso) return true; // sin ingreso: siempre válido
+    const { anio, mes } = mrMesPlan();
+    const [fAnio, fMes] = MR.fechaIngreso.split('-').map(Number);
+    const errEl = document.getElementById('mr-mes-error');
+    const esInvalido = (anio * 100 + mes) < (fAnio * 100 + fMes);
+    if (errEl) errEl.style.display = esInvalido ? 'block' : 'none';
+    if (esInvalido) return false; // bloquea el submit
+    return true;
+}
+
+// ── Establecer fecha/días según mes/año seleccionado ─────────────────────
+function mrSetDefault() {
+    // Ocultar error previo al cambiar el select
+    const errEl = document.getElementById('mr-mes-error');
+    if (errEl) errEl.style.display = 'none';
+
+    const { anio, mes } = mrMesPlan();
+    const mesStr = String(mes).padStart(2, '0');
+    let fechaDefault, diasDefault = 1;
+
+    if (MR.fechaIngreso) {
+        const [fAnio, fMes] = MR.fechaIngreso.split('-').map(Number);
+        if (fAnio === anio && fMes === mes) {
+            // Se afilió exactamente en el mes seleccionado → usar fecha_ingreso, 1 día
+            fechaDefault = MR.fechaIngreso;
+            diasDefault  = 1;
+        } else {
+            // Otro mes → día 1 del mes seleccionado, 1 día
+            fechaDefault = `${anio}-${mesStr}-01`;
+            diasDefault  = 1;
+        }
+    } else {
+        fechaDefault = `${anio}-${mesStr}-01`;
+        diasDefault  = 1;
+    }
+
+    const fechaEl = document.getElementById('mr-fecha');
+    const diasEl  = document.getElementById('mr-num-dias');
+    if (fechaEl) fechaEl.value = fechaDefault;
+    if (diasEl)  diasEl.value  = diasDefault;
+}
+
+// ── Fecha → Días (día del mes, máx 30) ───────────────────────────────────
+function mrCalcDias() {
+    const val = document.getElementById('mr-fecha')?.value;
+    if (!val) return;
+    const dia  = parseInt(val.split('-')[2], 10);
+    const dias = Math.min(dia, 30);
+    const input = document.getElementById('mr-num-dias');
+    if (input) input.value = dias;
+}
+
+// ── Días → Fecha (coloca el día en el mes seleccionado) ──────────────────
+function mrCalcFecha() {
+    const diasInput = document.getElementById('mr-num-dias');
+    const fechaEl   = document.getElementById('mr-fecha');
+    if (!diasInput || !fechaEl) return;
+    let dias = parseInt(diasInput.value, 10);
+    if (isNaN(dias) || dias < 1) { dias = 1; diasInput.value = 1; }
+    if (dias > 30)               { dias = 30; diasInput.value = 30; }
+
+    const { anio, mes } = mrMesPlan();
+    // Último día real del mes (para no poner 31 en febrero)
+    const ultimoDia = new Date(anio, mes, 0).getDate();
+    const dia = Math.min(dias, ultimoDia);
+    fechaEl.value = `${anio}-${String(mes).padStart(2,'0')}-${String(dia).padStart(2,'0')}`;
+}
+
+// ── Toggle tipo retiro ────────────────────────────────────────────────────
+function mrTipo(tipo) {
+    document.getElementById('mr-tipo-hidden').value = tipo;
+    const lblReal  = document.getElementById('mr-lbl-real');
+    const lblInfo  = document.getElementById('mr-lbl-info');
+    const diasWrap = document.getElementById('mr-dias-wrap');
+    const numDias  = document.getElementById('mr-num-dias');
+
+    if (tipo === 'real') {
+        lblReal.style.borderColor = '#ef4444';
+        lblReal.style.background  = '#fff5f5';
+        lblInfo.style.borderColor = '#e2e8f0';
+        lblInfo.style.background  = '#f8fafc';
+        diasWrap.style.display    = 'block';
+        numDias.required = true;
+        mrSetDefault();
+    } else {
+        lblInfo.style.borderColor = '#3b82f6';
+        lblInfo.style.background  = '#eff6ff';
+        lblReal.style.borderColor = '#e2e8f0';
+        lblReal.style.background  = '#f8fafc';
+        diasWrap.style.display    = 'none';
+        numDias.required = false;
+        numDias.value    = 0;
+    }
+}
+
+// ── Init: establecer defaults al cargar ──────────────────────────────────
+document.addEventListener('DOMContentLoaded', function() { mrSetDefault(); });
+</script>
+
 @endif
 
 </div>{{-- /x-data --}}
