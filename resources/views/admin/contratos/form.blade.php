@@ -575,9 +575,9 @@
       <a onclick="abrirModalFacturarContrato()" style="display:flex;align-items:center;gap:0.55rem;padding:0.5rem 0.75rem;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;color:#15803d;text-decoration:none;font-size:0.8rem;font-weight:600;cursor:pointer;">
         &#129534; Facturar
       </a>
-      <a href="{{ route('admin.facturacion.historial', $contrato->cedula) }}" style="display:flex;align-items:center;gap:0.55rem;padding:0.5rem 0.75rem;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:8px;color:#6d28d9;text-decoration:none;font-size:0.8rem;font-weight:600;">
+      <button type="button" onclick="abrirHistorialPagos()" style="display:flex;align-items:center;gap:0.55rem;padding:0.5rem 0.75rem;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:8px;color:#6d28d9;text-decoration:none;font-size:0.8rem;font-weight:600;cursor:pointer;width:100%;text-align:left;">
         &#128202; Historial Pagos
-      </a>
+      </button>
       <button type="button" onclick="document.getElementById('modal-radicados').style.display='flex'"
           style="display:flex;align-items:center;gap:0.55rem;padding:0.5rem 0.75rem;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;color:#0369a1;font-size:0.8rem;font-weight:600;cursor:pointer;width:100%;text-align:left;">
         &#128193; Ver Radicados
@@ -988,6 +988,31 @@ function mrOnSubmit() {
 {{-- ══ MODAL FACTURAR PLANILLA (unificado, individual) ══ --}}
 @if($esEdicion)
 @include('admin.facturacion._modal_facturar', ['bancos' => $bancos])
+@endif
+
+{{-- ══ MODAL HISTORIAL DE PAGOS (iframe, sin layout) ══ --}}
+@if($esEdicion)
+<div id="modal-historial"
+     onclick="if(event.target.id==='modal-historial')cerrarHistorial()"
+     style="display:none;position:fixed;inset:0;background:rgba(10,16,30,.72);backdrop-filter:blur(5px);z-index:10500;align-items:center;justify-content:center;padding:.5rem">
+  <div style="position:relative;width:min(1180px,97vw);height:94vh;background:#f0f4f8;border-radius:14px;overflow:hidden;box-shadow:0 28px 80px rgba(0,0,0,.55);display:flex;flex-direction:column">
+    {{-- Header --}}
+    <div style="background:linear-gradient(135deg,#0f172a,#4c1d95);padding:.55rem 1rem;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+      <div style="display:flex;align-items:center;gap:.55rem">
+        <span style="font-size:1.1rem">📊</span>
+        <span style="color:#fff;font-size:.92rem;font-weight:700;letter-spacing:.02em">Historial de Pagos</span>
+        <span style="color:rgba(255,255,255,.55);font-size:.78rem">— CC {{ number_format($contrato->cedula, 0, '', '.') }}</span>
+      </div>
+      <button type="button" onclick="cerrarHistorial()"
+              style="background:rgba(255,255,255,.15);color:#fff;border:none;border-radius:7px;width:30px;height:30px;font-size:1rem;cursor:pointer;font-weight:700;line-height:1;transition:background .15s"
+              onmouseover="this.style.background='rgba(255,255,255,.28)'" onmouseout="this.style.background='rgba(255,255,255,.15)'">&#x2715;</button>
+    </div>
+    {{-- iframe --}}
+    <div style="flex:1;overflow:hidden">
+      <iframe id="historial-frame" src="" style="width:100%;height:100%;border:none;display:block"></iframe>
+    </div>
+  </div>
+</div>
 @endif
 
 <style>
@@ -2101,6 +2126,28 @@ if (window.parent !== window) {
         txt.textContent = 'Guardando…';
     });
 })();
+
+// ── Modal Historial de Pagos ───────────────────────────────────────────────
+@if($esEdicion)
+const HISTORIAL_URL = '{{ route('admin.facturacion.historial', $contrato->cedula) }}';
+
+function abrirHistorialPagos() {
+    const modal  = document.getElementById('modal-historial');
+    const iframe = document.getElementById('historial-frame');
+    if (!modal || !iframe) return;
+    iframe.src = HISTORIAL_URL + '?iframe=1';
+    modal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+}
+
+function cerrarHistorial() {
+    const modal  = document.getElementById('modal-historial');
+    const iframe = document.getElementById('historial-frame');
+    if (modal)  modal.style.display = 'none';
+    if (iframe) iframe.src = '';
+    document.body.style.overflow = '';
+}
+@endif
 </script>
 @endpush
 
