@@ -2023,10 +2023,10 @@ if (typeof MF !== 'undefined' && FC_CONTRATO_ID) {
         onExito: (data) => {
             if (data.recibo_url) window.open(data.recibo_url, '_blank');
             @if(request()->has('iframe'))
-            // Modo iframe: notificar al padre para cerrar modal y refrescar tabla
+            // Modo iframe: notificar al padre para actualizar solo esta fila
             if (window.parent !== window) {
                 window.parent.postMessage(
-                    { type: 'brynex:iframe_done', accion: 'facturacion', mensaje: data.mensaje },
+                    { type: 'brynex:iframe_done', accion: 'facturacion', contratoId: FC_CONTRATO_ID, mensaje: data.mensaje },
                     window.location.origin
                 );
             }

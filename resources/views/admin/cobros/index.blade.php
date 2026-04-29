@@ -381,7 +381,7 @@ $fIngMes    = $c->fecha_ingreso?->month ?? 0;
 $fIngAnio   = $c->fecha_ingreso?->year ?? 0;
 [$semIco, $semColor, $semBg, $semTip] = $semLabel($c->semaforo);
 @endphp
-<tr>
+<tr data-cid="{{ $c->id }}">
     {{-- N° Contrato --}}
     <td style="text-align:center;font-weight:700;color:#1e40af;font-size:.72rem;">{{ $c->id }}</td>
 
@@ -696,50 +696,71 @@ document.addEventListener('keydown', e => {
 });
 
 // Click en cédula → abrir iframe
-let _iframeFirstLoad = false; // evitar trigger en carga inicial
+let _iframeFirstLoad  = false; // flag para detectar solo la 1era carga
+let _iframeContratoId = null;  // ID del contrato activo en el iframe
 
 document.addEventListener('click', function(e) {
     const btn = e.target.closest('.btn-facturar-cedula');
     if (!btn) return;
 
-    const cid     = btn.dataset.contratoId;
+    _iframeContratoId = btn.dataset.contratoId;
+    _iframeFirstLoad  = false; // reset para este contrato
+
+    const cid     = _iframeContratoId;
     const nombre  = btn.dataset.nombre || btn.dataset.cedula;
     const fullUrl = `${BASE_CONTRATO}/${cid}/edit`;
     const url     = `${fullUrl}?iframe=1`;
 
-    _iframeFirstLoad = false; // reset para detectar solo la 1era carga
     document.getElementById('iframeContratoTitulo').textContent = nombre;
     document.getElementById('iframeContratoLink').href = fullUrl;
-    // Mostrar spinner antes de asignar src (por si se abre 2do contrato)
     document.getElementById('iframeLoading').style.display = 'flex';
     document.getElementById('iframeContrato').src = url;
-    const ov = document.getElementById('modalContratoOverlay');
-    ov.style.display = 'flex';
+    document.getElementById('modalContratoOverlay').style.display = 'flex';
 });
 
-// ── Detectar acción completada en el iframe ──────────────────────────────
+// ── Acción completada: quitar solo la fila afectada ──────────────────────
+function onAccionCompletada(contratoId, accion, mensaje) {
+    cerrarModalContrato();
+
+    const cid = contratoId || _iframeContratoId;
+    if (!cid) return;
+
+    const tr = document.querySelector(`tr[data-cid="${cid}"]`);
+    if (tr) {
+        // Animación de salida
+        tr.style.transition = 'opacity .35s ease, transform .35s ease';
+        tr.style.opacity    = '0';
+        tr.style.transform  = 'translateX(50px)';
+        setTimeout(() => {
+            tr.remove();
+            // Actualizar contador en el footer
+            const rows = document.querySelectorAll('tbody tr').length;
+            const footerTd = document.querySelector('tfoot tr td:first-child');
+            if (footerTd) footerTd.textContent = `TOTALES (${rows} registros)`;
+        }, 380);
+    }
+
+    mostrarToast('✅ ' + (mensaje || 'Acción completada'), 'success');
+    _iframeContratoId = null;
+}
+
+// ── Detectar acción desde iframe ──────────────────────────────────────────
 
 // 1) postMessage: enviado por form.blade.php al facturar
 window.addEventListener('message', function(e) {
     if (e.data && e.data.type === 'brynex:iframe_done') {
-        const msg = e.data.mensaje || '✅ Acción completada';
-        cerrarModalContrato();
-        mostrarToast('✅ ' + msg, 'success');
-        // Pequeño delay para que el toast sea visible antes del reload
-        setTimeout(() => location.reload(), 900);
+        onAccionCompletada(e.data.contratoId, e.data.accion, e.data.mensaje);
     }
 });
 
-// 2) segundo onload del iframe: ocurre cuando el retiro hace redirect
+// 2) Segundo onload del iframe = redirect tras retiro exitoso
 document.getElementById('iframeContrato').addEventListener('load', function() {
     if (!_iframeFirstLoad) {
-        _iframeFirstLoad = true; // primera carga normal
+        _iframeFirstLoad = true; // primera carga normal → no hacer nada
         return;
     }
-    // Segunda carga = redirect tras retiro exitoso
-    cerrarModalContrato();
-    mostrarToast('✅ Retiro procesado correctamente', 'success');
-    setTimeout(() => location.reload(), 900);
+    // Segunda carga = el retiro redirigió → actualizar fila
+    onAccionCompletada(_iframeContratoId, 'retiro', 'Retiro registrado correctamente');
 });
 
 // ── Helpers ──
