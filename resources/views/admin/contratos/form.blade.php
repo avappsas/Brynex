@@ -67,6 +67,9 @@
   @if($esEdicion) @method('PUT') @endif
   <input type="hidden" name="cedula" value="{{ old('cedula', $cliente->cedula ?? $contrato->cedula ?? '') }}">
   <input type="hidden" name="back_url" value="{{ $backUrl ?? '' }}">
+  @if(request()->has('iframe'))
+  <input type="hidden" name="iframe" value="1">
+  @endif
 
 <div style="display:grid;grid-template-columns:1fr 300px;gap:1.1rem;align-items:start;">
 
@@ -484,9 +487,10 @@
 
   {{-- Guardar --}}
   <div style="display:flex;justify-content:flex-end;">
-    <button type="submit"
-        style="padding:0.6rem 2.2rem;background:linear-gradient(135deg,#2563eb,#1d4ed8);border:none;border-radius:9px;color:#fff;font-size:0.9rem;font-weight:700;cursor:pointer;box-shadow:0 4px 14px rgba(37,99,235,0.4);">
-        &#128190; {{ $esEdicion ? 'Actualizar Contrato' : 'Crear Contrato' }}
+    <button type="submit" id="btn-guardar-contrato"
+        style="padding:0.6rem 2.2rem;background:linear-gradient(135deg,#2563eb,#1d4ed8);border:none;border-radius:9px;color:#fff;font-size:0.9rem;font-weight:700;cursor:pointer;box-shadow:0 4px 14px rgba(37,99,235,0.4);transition:opacity .2s;display:inline-flex;align-items:center;gap:.5rem;">
+        <span id="btn-guardar-ico">&#128190;</span>
+        <span id="btn-guardar-txt">{{ $esEdicion ? 'Actualizar Contrato' : 'Crear Contrato' }}</span>
     </button>
   </div>
 
@@ -723,6 +727,9 @@
       @csrf @method('PATCH')
       <input type="hidden" name="back_url" value="{{ $backUrl ?? '' }}">
       <input type="hidden" name="tipo_retiro" id="mr-tipo-hidden" value="real">
+      @if(request()->has('iframe'))
+      <input type="hidden" name="iframe" value="1">
+      @endif
 
       <div style="margin-bottom:0.7rem;">
         <label class="lb">Motivo *</label>
@@ -1003,7 +1010,9 @@ select:disabled { background:#f1f5f9;color:#1e293b;cursor:not-allowed;opacity:1;
   z-index:9999; box-shadow:0 4px 12px rgba(0,0,0,0.25);
 }
 .tip-lock:hover::after { opacity:1; }
+@keyframes spin-btn { to { transform: rotate(360deg); } }
 </style>
+
 
 @push('scripts')
 <script src="{{ asset('js/modal_facturar.js') }}"></script>
@@ -2060,6 +2069,38 @@ function abrirModalFacturarContrato() {
 
 
 
+@if(request()->has('iframe') && session('success') === 'Contrato retirado correctamente.')
+// Modo iframe: retiro completado → notificar al padre
+if (window.parent !== window) {
+    window.parent.postMessage(
+        { type: 'brynex:iframe_done', accion: 'retiro', contratoId: {{ $contrato->id ?? 'null' }}, mensaje: 'Contrato retirado correctamente.' },
+        window.location.origin
+    );
+}
+@endif
+
+// ── Loading state en botón Guardar ──────────────────────────────────────
+(function () {
+    const btn  = document.getElementById('btn-guardar-contrato');
+    const ico  = document.getElementById('btn-guardar-ico');
+    const txt  = document.getElementById('btn-guardar-txt');
+    if (!btn) return;
+
+    // Detectar el form padre del botón
+    const form = btn.closest('form');
+    if (!form) return;
+
+    form.addEventListener('submit', function () {
+        // Evitar doble clic
+        btn.disabled = true;
+        btn.style.opacity = '0.75';
+        btn.style.cursor  = 'not-allowed';
+
+        // Spinner SVG inline
+        ico.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="animation:spin-btn .7s linear infinite"><path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"/></svg>';
+        txt.textContent = 'Guardando…';
+    });
+})();
 </script>
 @endpush
 

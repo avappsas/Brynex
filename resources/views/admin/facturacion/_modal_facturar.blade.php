@@ -670,8 +670,8 @@
 
     {{-- ── FOOTER ── --}}
     <div id="mf-footer">
-        <button class="mf-btn-cancel" onclick="MF.cerrar()">Cancelar</button>
-        <button class="mf-btn-guardar" id="mf-btn-guardar" onclick="MF.guardar()">🧾 Facturar ahora</button>
+        <button type="button" class="mf-btn-cancel" onclick="MF.cerrar()">Cancelar</button>
+        <button type="button" class="mf-btn-guardar" id="mf-btn-guardar" onclick="MF.guardar()">🧾 Facturar ahora</button>
     </div>
 
 </div>

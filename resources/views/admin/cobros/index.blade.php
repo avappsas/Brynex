@@ -449,10 +449,15 @@ $fIngAnio   = $c->fecha_ingreso?->year ?? 0;
     {{-- Empresa/Cliente: solo cuando tipo = todos --}}
     @if($soloInd === 'todos')
     <td style="text-align:center;font-size:.72rem;">
-        @if($c->es_empresa ?? false)
-            <span style="display:inline-block;padding:.15rem .45rem;border-radius:20px;font-size:.62rem;font-weight:700;background:#dbeafe;color:#1e40af;">🏢 Empresa</span>
+        @if($c->es_empresa)
+            <span style="display:inline-block;padding:.15rem .45rem;border-radius:20px;font-size:.62rem;font-weight:700;background:#dbeafe;color:#1e40af;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle;"
+                  title="{{ $c->nombre_empresa }}">
+                🏢 {{ \Illuminate\Support\Str::limit($c->nombre_empresa, 12, '…') }}
+            </span>
         @else
-            <span style="display:inline-block;padding:.15rem .45rem;border-radius:20px;font-size:.62rem;font-weight:700;background:#f0fdf4;color:#15803d;">👤 Cliente</span>
+            <span style="display:inline-block;padding:.15rem .45rem;border-radius:20px;font-size:.62rem;font-weight:700;background:#f0fdf4;color:#15803d;">
+                👤 Individual
+            </span>
         @endif
     </td>
     @endif
@@ -754,16 +759,6 @@ window.addEventListener('message', function(e) {
     if (e.data && e.data.type === 'brynex:iframe_done') {
         onAccionCompletada(e.data.contratoId, e.data.accion, e.data.mensaje);
     }
-});
-
-// 2) Segundo onload del iframe = redirect tras retiro exitoso
-document.getElementById('iframeContrato').addEventListener('load', function() {
-    if (!_iframeFirstLoad) {
-        _iframeFirstLoad = true; // primera carga normal → no hacer nada
-        return;
-    }
-    // Segunda carga = el retiro redirigió → actualizar fila
-    onAccionCompletada(_iframeContratoId, 'retiro', 'Retiro registrado correctamente');
 });
 
 // ── Helpers ──

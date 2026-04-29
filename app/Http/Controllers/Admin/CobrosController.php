@@ -55,7 +55,7 @@ class CobrosController extends Controller
         // ── Contratos vigentes del aliado ───────────────────────────
         $q = Contrato::where('aliado_id', $aliadoId)
             ->whereIn('estado', ['vigente', 'activo'])
-            ->with(['cliente', 'tipoModalidad', 'razonSocial', 'asesor', 'plan']);
+            ->with(['cliente.empresa', 'tipoModalidad', 'razonSocial', 'asesor', 'plan']);
 
         // Filtro: solo individuales (cod_empresa = 1 = Individual)
         if ($soloInd === 'individual') {
@@ -107,7 +107,7 @@ class CobrosController extends Controller
             ->whereIn('cedula', $cedulas)
             ->whereNull('deleted_at')
             ->get()
-            ->keyBy('cedula');
+            ->keyBy(fn($f) => (string) $f->cedula);  // cast string: evita mismatch int/string en SQL Server
 
         // ── Última llamada de cobro por contrato ────────────────────
         $contratoIds  = $contratos->pluck('id')->toArray();
@@ -135,7 +135,7 @@ class CobrosController extends Controller
         $contratos = $contratos->map(function ($c) use (
             $mes, $anio, $facturas, $ultimasLlamadas, $r100, $aliadoId, $getArlPct, $cedulasConPrestamo
         ) {
-            $fact = $facturas->get($c->cedula);
+            $fact = $facturas->get((string) $c->cedula);  // cast string: evita mismatch tipo int/string
 
             // ── ¿Es afiliación / I Act? ──────────────────────────
             $esAfil          = false;
@@ -249,6 +249,10 @@ class CobrosController extends Controller
             $c->semaforo         = $semaforo;
             // Badge ligero: solo true/false usando el Set pre-cargado (O(1))
             $c->tiene_prestamo   = isset($cedulasConPrestamo[$c->cedula]);
+            // Empresa vinculada: cod_empresa > 1 y existe en tabla empresas
+            $empresa = $c->cliente?->empresa;
+            $c->es_empresa    = $empresa && $empresa->id != 1;
+            $c->nombre_empresa = $c->es_empresa ? $empresa->empresa : null;
 
             return $c;
         });
@@ -368,34 +372,38 @@ class CobrosController extends Controller
         $soloPlant      = $request->get('solo_plant');
         $soloPend       = $request->get('solo_pend');
 
-        // ── Empresas del aliado (excluir id=1 = Individual) ──────────
-        $q = Empresa::where('aliado_id', $aliadoId)
+        // ── Empresas: descubrir vía cod_empresa de los clientes del aliado ──
+        // Más robusto que filtrar por aliado_id en empresas (puede estar mal tras migraciones)
+        $empresaIdsClientes = DB::table('clientes')
+            ->where('aliado_id', $aliadoId)
+            ->where('cod_empresa', '>', 1)
+            ->whereNotNull('cod_empresa')
+            ->pluck('cod_empresa')
+            ->unique()
+            ->toArray();
+
+        $q = Empresa::whereIn('id', $empresaIdsClientes)
             ->where('id', '!=', 1);
 
-        // Filtro: trabajador logueado solo ve sus empresas asignadas
-        // Admins y superadmin ven todas
-        $esAdmin = $user->hasRole('admin') || $user->hasRole('superadmin');
+        $esAdmin = $user->hasRole('admin') || $user->hasRole('superadmin') || $user->hasRole('usuario');
         if (!$esAdmin) {
             $q->where('encargado_id', $user->id);
         }
 
-        // Filtro búsqueda
         if ($buscar) {
             $q->where('empresa', 'like', "%$buscar%");
         }
 
-        // Filtro encargado (para admins)
         $encargadoFiltro = $request->get('encargado_id');
         if ($encargadoFiltro && $esAdmin) {
             $q->where('encargado_id', $encargadoFiltro);
         }
 
-        // Ordenamiento
         if (in_array($sort, ['empresa', 'contacto'])) {
             $q->orderBy($sort, $dir);
         }
 
-        $empresas = $q->get();
+        $empresas   = $q->get();
         $empresaIds = $empresas->pluck('id')->toArray();
 
         // ── Para cada empresa: obtener cédulas de sus clientes ──────
@@ -410,7 +418,7 @@ class CobrosController extends Controller
         // clientesPorEmpresa: agrupado en PHP (solo IDs de empresa, pocos)
         $clientesPorEmpresa = (clone $cedulasSubquery)->get()->groupBy('cod_empresa');
 
-        // Contratos vigentes usando subquery nativo — evita 2100 params
+        // Contratos vigentes/activos usando subquery nativo
         $contratosActivos = Contrato::where('aliado_id', $aliadoId)
             ->whereIn('cedula', function ($sub) use ($aliadoId, $empresaIds) {
                 $sub->from('clientes')
@@ -418,8 +426,7 @@ class CobrosController extends Controller
                     ->where('aliado_id', $aliadoId)
                     ->whereIn('cod_empresa', $empresaIds);
             })
-            ->where('estado', 'vigente')
-            ->where('fecha_ingreso', '<=', $finMes)
+            ->whereIn('estado', ['vigente', 'activo'])  // igual que index()
             ->with('tipoModalidad')
             ->get();
 
@@ -442,7 +449,7 @@ class CobrosController extends Controller
             $factQuery->whereIn('cedula', $cedulasActivas);
         }
 
-        $facturasMes = $factQuery->get()->keyBy('cedula');
+        $facturasMes = $factQuery->get()->keyBy(fn($f) => (string) $f->cedula);  // cast string: evita mismatch SQL Server
 
 
         // Última llamada por empresa (agrupado por empresa_id)
@@ -468,8 +475,8 @@ class CobrosController extends Controller
             $pagados = 0; $afil_pend = 0; $indep_pend = 0; $plan_pend = 0; $admon_pend = 0;
 
             foreach ($contrEmp as $c) {
-                $fact = $facturasMes->get($c->cedula);
-                $pagada = $fact && in_array($fact->estado, ['pagada']);
+                $fact = $facturasMes->get((string) $c->cedula);  // cast string: evita mismatch SQL Server
+                $pagada = $fact && in_array($fact->estado, ['pagada', 'abono', 'prestamo']);
 
                 // ¿Es afiliación?
                 $esAfil = false;

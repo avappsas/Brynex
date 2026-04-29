@@ -170,7 +170,11 @@ class ContratoController extends Controller
             isset($data['razon_social_id']) &&
             (int)$data['razon_social_id'] !== (int)$contrato->razon_social_id) {
             return redirect()
-                ->route('admin.contratos.edit', [$id, 'back' => $request->input('back_url')])
+                ->route('admin.contratos.edit', array_filter([
+                    $id,
+                    'back'   => $request->input('back_url'),
+                    'iframe' => $request->input('iframe') ? '1' : null,
+                ]))
                 ->withErrors(['razon_social_id' => 'No se puede cambiar la Razón Social: ya existe una afiliación en trámite u OK. Para cambiarla, marque retiro del contrato.']);
         }
 
@@ -250,8 +254,13 @@ class ContratoController extends Controller
             }
         }
 
+        $redirectParams = [$id, 'back' => $request->input('back_url')];
+        if ($request->input('iframe')) {
+            $redirectParams['iframe'] = '1';
+        }
+
         return redirect()
-            ->route('admin.contratos.edit', [$id, 'back' => $request->input('back_url')])
+            ->route('admin.contratos.edit', $redirectParams)
             ->with('success', 'Contrato actualizado correctamente.');
     }
 
@@ -398,8 +407,13 @@ class ContratoController extends Controller
             ]);
         });
 
+        $retiroParams = [$id, 'back' => $request->input('back_url')];
+        if ($request->input('iframe')) {
+            $retiroParams['iframe'] = '1';
+        }
+
         return redirect()
-            ->route('admin.contratos.edit', [$id, 'back' => $request->input('back_url')])
+            ->route('admin.contratos.edit', $retiroParams)
             ->with('success', 'Contrato retirado correctamente.');
     }
 

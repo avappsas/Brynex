@@ -689,34 +689,59 @@ const MF = (function () {
     async function guardar() {
         const pendiente = recalc();
         if (pendiente > 0) {
-            // Calcular cuánto se ha ingresado
-            const consigs  = [...document.querySelectorAll('.mf-consig-monto')].reduce((s, e) => s + parse(e.value), 0);
-            const efectivo = parse(el('mf-efectivo')?.value);
-            const prestamo = parse(el('mf-prestamo')?.value);
-            const cubierto = consigs + efectivo + prestamo;
             const totalBruto = parse(el('mf-total')?.textContent);
+            const neto = Math.max(0, totalBruto - _saldoFavor);
 
-            const lineas = [
-                '⚠️  PAGO INCOMPLETO — No se puede facturar',
-                '─'.repeat(44),
-                '📋  Total bruto:         ' + fmt(totalBruto),
-                ...(_saldoFavor > 0 ? ['✅  Anticipo a favor:    -' + fmt(_saldoFavor)] : []),
-                '💰  Neto a cubrir:       ' + fmt(Math.max(0, totalBruto - _saldoFavor)),
-                '📩  Ya cubierto:         ' + fmt(cubierto) +
-                (consigs  > 0 ? '  (consig: ' + fmt(consigs)  + ')' : '') +
-                (efectivo > 0 ? '  (efect: '  + fmt(efectivo) + ')' : '') +
-                (prestamo > 0 ? '  (prest: '  + fmt(prestamo) + ')' : ''),
-                '🔴  Falta por cubrir:    ' + fmt(pendiente),
-                '',
-                '📋  Para completar el pago puede:',
-                '   • Agregar una o más consignaciones bancarias',
-                '   • Ingresar el monto en "Valor en efectivo"',
-                '   • Activar "Préstamo" y registrar el valor',
-                '   • Combinar cualquiera de las opciones anteriores',
-            ];
-            alert(lineas.join('\n'));
+            // Mostrar banner de error DENTRO del modal (no alert, no desaparece)
+            let banner = el('mf-aviso-pago');
+            if (!banner) {
+                banner = document.createElement('div');
+                banner.id = 'mf-aviso-pago';
+                banner.style.cssText = [
+                    'display:none',
+                    'margin:.5rem 0',
+                    'padding:.6rem .9rem',
+                    'border-radius:9px',
+                    'border:2px solid #dc2626',
+                    'background:#fff1f2',
+                    'color:#991b1b',
+                    'font-size:.78rem',
+                    'font-weight:700',
+                    'line-height:1.6',
+                ].join(';');
+                // Insertar antes del footer del modal
+                const footer = el('mf-footer');
+                if (footer) footer.parentNode.insertBefore(banner, footer);
+            }
+
+            banner.innerHTML =
+                '⚠️ <strong>Pago incompleto</strong> — ingresa el valor antes de facturar<br>' +
+                '<span style="font-weight:500;font-size:.74rem;">' +
+                '💰 Total a cobrar: <strong>' + fmt(neto) + '</strong>' +
+                (_saldoFavor > 0 ? ' (anticipo a favor: ' + fmt(_saldoFavor) + ')' : '') +
+                ' · 🔴 Falta: <strong style="color:#dc2626">' + fmt(pendiente) + '</strong>' +
+                '</span>';
+            banner.style.display = 'block';
+
+            // Enfocar el campo de efectivo para guiar al usuario
+            const efCampo = el('mf-efectivo');
+            if (efCampo) {
+                efCampo.focus();
+                efCampo.style.borderColor = '#dc2626';
+                efCampo.style.boxShadow   = '0 0 0 2px rgba(220,38,38,.2)';
+                efCampo.addEventListener('input', function once() {
+                    efCampo.style.borderColor = '';
+                    efCampo.style.boxShadow   = '';
+                    if (banner) banner.style.display = 'none';
+                    efCampo.removeEventListener('input', once);
+                });
+            }
             return;
         }
+
+        // Ocultar banner de error si existía de un intento previo
+        const bannerPrev = el('mf-aviso-pago');
+        if (bannerPrev) bannerPrev.style.display = 'none';
 
         const tipoActual = el('mf-tipo')?.value;
 
