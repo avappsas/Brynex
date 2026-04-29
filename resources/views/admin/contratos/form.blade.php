@@ -2022,7 +2022,17 @@ if (typeof MF !== 'undefined' && FC_CONTRATO_ID) {
         getAlpineResult:   () => document.querySelector('[x-data]')?._x_dataStack?.[0]?.result || {},
         onExito: (data) => {
             if (data.recibo_url) window.open(data.recibo_url, '_blank');
+            @if(request()->has('iframe'))
+            // Modo iframe: notificar al padre para cerrar modal y refrescar tabla
+            if (window.parent !== window) {
+                window.parent.postMessage(
+                    { type: 'brynex:iframe_done', accion: 'facturacion', mensaje: data.mensaje },
+                    window.location.origin
+                );
+            }
+            @else
             alert(data.mensaje || 'Factura generada correctamente.');
+            @endif
         }
     });
 }

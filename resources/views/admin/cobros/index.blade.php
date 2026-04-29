@@ -696,6 +696,8 @@ document.addEventListener('keydown', e => {
 });
 
 // Click en cédula → abrir iframe
+let _iframeFirstLoad = false; // evitar trigger en carga inicial
+
 document.addEventListener('click', function(e) {
     const btn = e.target.closest('.btn-facturar-cedula');
     if (!btn) return;
@@ -705,6 +707,7 @@ document.addEventListener('click', function(e) {
     const fullUrl = `${BASE_CONTRATO}/${cid}/edit`;
     const url     = `${fullUrl}?iframe=1`;
 
+    _iframeFirstLoad = false; // reset para detectar solo la 1era carga
     document.getElementById('iframeContratoTitulo').textContent = nombre;
     document.getElementById('iframeContratoLink').href = fullUrl;
     // Mostrar spinner antes de asignar src (por si se abre 2do contrato)
@@ -712,6 +715,31 @@ document.addEventListener('click', function(e) {
     document.getElementById('iframeContrato').src = url;
     const ov = document.getElementById('modalContratoOverlay');
     ov.style.display = 'flex';
+});
+
+// ── Detectar acción completada en el iframe ──────────────────────────────
+
+// 1) postMessage: enviado por form.blade.php al facturar
+window.addEventListener('message', function(e) {
+    if (e.data && e.data.type === 'brynex:iframe_done') {
+        const msg = e.data.mensaje || '✅ Acción completada';
+        cerrarModalContrato();
+        mostrarToast('✅ ' + msg, 'success');
+        // Pequeño delay para que el toast sea visible antes del reload
+        setTimeout(() => location.reload(), 900);
+    }
+});
+
+// 2) segundo onload del iframe: ocurre cuando el retiro hace redirect
+document.getElementById('iframeContrato').addEventListener('load', function() {
+    if (!_iframeFirstLoad) {
+        _iframeFirstLoad = true; // primera carga normal
+        return;
+    }
+    // Segunda carga = redirect tras retiro exitoso
+    cerrarModalContrato();
+    mostrarToast('✅ Retiro procesado correctamente', 'success');
+    setTimeout(() => location.reload(), 900);
 });
 
 // ── Helpers ──
