@@ -597,7 +597,7 @@
     {{-- Header con logo del aliado activo (oculto en modo iframe) --}}
     @unless(request()->has('iframe'))
     <header class="header">
-        <div class="header-logo">
+        <a href="{{ route('dashboard') }}" class="header-logo" style="text-decoration:none;cursor:pointer;">
             @if (!empty($alidoActivo?->logo))
                 <img class="logo-aliado" src="{{ asset('storage/' . $alidoActivo->logo) }}" alt="{{ $alidoActivo->nombre }}">
             @else
@@ -607,7 +607,7 @@
                 <h2>{{ $alidoActivo->nombre ?? 'BryNex' }}</h2>
                 <small>{{ $alidoActivo->razon_social ?? 'Asesores en Seguridad Social' }}</small>
             </div>
-        </div>
+        </a>
 
         {{-- Menú de iconos integrado en el header --}}
         <nav class="menu-iconos">
@@ -674,7 +674,17 @@
             </a>
             @endrole
 
+            @role('superadmin|admin|contador')
+            <div class="menu-sep"></div>
+            <a href="{{ route('admin.informes.hub') }}"
+               class="menu-item {{ request()->routeIs('admin.informes*') ? 'activo' : '' }}">
+                <div class="icono">📊</div>
+                <div class="label">Informes</div>
+            </a>
+            @endrole
+
             {{-- ───────────────────────────────────────────────────────────── --}}
+
             {{-- DROPDOWN ADMIN: visible para admin y superadmin              --}}
             {{-- ───────────────────────────────────────────────────────────── --}}
             @role('admin|superadmin')

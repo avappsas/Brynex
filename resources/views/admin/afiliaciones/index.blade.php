@@ -157,12 +157,12 @@ body {
     </div>
     <div style="display:flex;align-items:center;gap:0.4rem;flex-wrap:wrap;margin-left:auto;">
         {{-- Período --}}
-        <select name="mes" style="font-size:0.8rem;padding:0.3rem 0.5rem;border:1px solid #334155;background:#1e3a5f;color:#e2e8f0;border-radius:6px;">
+        <select name="mes" onchange="this.form.submit()" style="font-size:0.8rem;padding:0.3rem 0.5rem;border:1px solid #334155;background:#1e3a5f;color:#e2e8f0;border-radius:6px;">
             @foreach(['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'] as $i => $m)
             @if($i) <option value="{{ $i }}" {{ $mes == $i ? 'selected' : '' }}>{{ $m }}</option> @endif
             @endforeach
         </select>
-        <select name="anio" style="font-size:0.8rem;padding:0.3rem 0.5rem;border:1px solid #334155;background:#1e3a5f;color:#e2e8f0;border-radius:6px;">
+        <select name="anio" onchange="this.form.submit()" style="font-size:0.8rem;padding:0.3rem 0.5rem;border:1px solid #334155;background:#1e3a5f;color:#e2e8f0;border-radius:6px;">
             @for($y = date('Y'); $y >= 2023; $y--)
             <option value="{{ $y }}" {{ $anio == $y ? 'selected' : '' }}>{{ $y }}</option>
             @endfor

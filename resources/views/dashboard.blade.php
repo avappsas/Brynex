@@ -38,6 +38,11 @@
                 ['icono'=>'🏥', 'nombre'=>'Incapacidades', 'color'=>'#ef4444', 'url'=>route('admin.incapacidades.index')],
                 ['icono'=>'🧾', 'nombre'=>'Cuadre Caja',  'color'=>'#14b8a6', 'url'=>route('admin.cuadre-diario.index')],
             ];
+            // Informes solo para admin, superadmin y contador
+            if(auth()->user()?->hasRole(['admin','superadmin','contador'])){
+                $modulos[] = ['icono'=>'📊', 'nombre'=>'Informes', 'color'=>'#6366f1', 'url'=>route('admin.informes.hub')];
+            }
+
         @endphp
 
         @foreach ($modulos as $mod)

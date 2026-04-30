@@ -198,6 +198,22 @@ Route::middleware('auth')->group(function () {
             Route::patch('/empresa/{id}/encargado',  [$cb, 'asignarEncargado'])       ->name('empresa.encargado');
         });
 
+        // ── Informes (admin + superadmin; financiero también para contador) ──
+        Route::prefix('informes')->name('informes.')->group(function () {
+            $ic = \App\Http\Controllers\Admin\InformeController::class;
+            Route::get('/',                       [$ic, 'hub'])                  ->name('hub');
+            Route::get('/clientes-activos',       [$ic, 'clientesActivos'])      ->name('clientes_activos');
+            Route::get('/por-razon-social',       [$ic, 'porRazonSocial'])       ->name('por_razon_social');
+            Route::get('/afiliaciones-retiros',   [$ic, 'afiliacionesRetiros'])  ->name('afiliaciones_retiros');
+            Route::get('/empresas-clientes',      [$ic, 'empresasClientes'])     ->name('empresas_clientes');
+            Route::get('/por-entidades',          [$ic, 'porEntidades'])         ->name('por_entidades');
+            Route::get('/retirados-mes',          [$ic, 'retiradosMes'])         ->name('retirados_mes');
+            Route::get('/incapacidades',          [$ic, 'resumenIncapacidades']) ->name('incapacidades');
+            Route::get('/tareas',                 [$ic, 'resumenTareas'])        ->name('tareas');
+            Route::get('/financiero',             [$ic, 'estadoFinanciero'])     ->name('financiero');
+            Route::get('/financiero/bancos',      [$ic, 'financieroBancos'])     ->name('financiero.bancos');
+        });
+
         // ── Préstamos / Cartera ──────────────────────────────────────────
         Route::prefix('prestamos')->name('prestamos.')->group(function () {
             $pc = \App\Http\Controllers\Admin\PrestamosController::class;

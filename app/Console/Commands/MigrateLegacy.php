@@ -1296,7 +1296,18 @@ class MigrateLegacy extends Command
                     'aliado_id'      => $aliadoId,
                     'usuario_id'     => $userId,
                     'fecha'          => $this->col($r, 'Fecha') ? substr($this->col($r, 'Fecha'), 0, 10) : now()->toDateString(),
-                    'tipo'           => trim($this->col($r, 'Tipo') ?? 'otro_oficina'),
+                    'tipo'           => (function() use ($r) {
+                        $raw = strtolower(trim($this->col($r, 'Tipo') ?? ''));
+                        // Normalizar tipos legacy → tipos BryNex
+                        if (str_contains($raw, 'planilla') || str_contains($raw, 'pago ss') || str_contains($raw, 'seguridad social')) return 'pago_planilla';
+                        if (str_contains($raw, 'prest'))   return 'otro_admin';  // PRESTAMO no es gasto; se migra a facturas. Aquí lo marcamos como admin para revisión.
+                        if (str_contains($raw, 'nomina') || str_contains($raw, 'nómina')) return 'nomina';
+                        if (str_contains($raw, 'papeleria') || str_contains($raw, 'papelería') || str_contains($raw, 'util')) return 'papeleria';
+                        if (str_contains($raw, 'viatico') || str_contains($raw, 'transporte')) return 'viaticos';
+                        if (str_contains($raw, 'servicio')) return 'servicios';
+                        $validos = ['papeleria','servicios','viaticos','efectivo_banco','banco_banco','nomina','transferencia_banco','otro_oficina','otro_admin','pago_planilla'];
+                        return in_array($raw, $validos) ? $raw : 'otro_oficina';
+                    })(),
                     'descripcion'    => trim($this->col($r, 'Descripcion') ?? $this->col($r, 'Concepto') ?? 'Sin descripción'),
                     'pagado_a'       => trim($this->col($r, 'Pagado_A') ?? $this->col($r, 'Beneficiario') ?? ''),
                     'cc_pagado_a'    => trim($this->col($r, 'CC_Pagado_A') ?? ''),

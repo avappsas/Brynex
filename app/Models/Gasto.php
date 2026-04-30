@@ -31,6 +31,7 @@ class Gasto extends BaseModel
         'transferencia_banco'  => 'Pago desde banco',
         'otro_oficina'         => 'Otro gasto oficina',
         'otro_admin'           => 'Otro gasto admin',
+        'pago_planilla'        => 'Pago Planilla SS',
     ];
 
     // Tipos que solo puede usar admin/superadmin
