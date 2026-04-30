@@ -1312,7 +1312,13 @@ class MigrateLegacy extends Command
                     'pagado_a'       => trim($this->col($r, 'Pagado_A') ?? $this->col($r, 'Beneficiario') ?? ''),
                     'cc_pagado_a'    => trim($this->col($r, 'CC_Pagado_A') ?? ''),
                     'forma_pago'     => in_array($forma, ['efectivo','consignacion','transferencia','cheque']) ? $forma : 'efectivo',
-                    'valor'          => is_numeric($this->col($r, 'Valor')) ? (int)$this->col($r, 'Valor') : 0,
+                    'valor'          => (function() use ($r) {
+                        $v = $this->col($r, 'Valor');
+                        if (!is_numeric($v)) return 0;
+                        $int = (int) $v;
+                        // Guard against int overflow (SQL Server INT max = 2,147,483,647)
+                        return ($int < 0 || $int > 2_147_483_647) ? 0 : $int;
+                    })(),
                     'recibo_caja'    => trim($this->col($r, 'Recibo_Caja') ?? $this->col($r, 'Recibo') ?? ''),
                     'lugar'          => trim($this->col($r, 'Lugar') ?? ''),
                     'observacion'    => trim($this->col($r, 'Observacion') ?? ''),
