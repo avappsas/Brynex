@@ -69,19 +69,17 @@ class FixPlanosPlanilla extends Command
                 continue;
             }
 
-            // Cargar PLANOS del legacy en chunks para cruzar en memoria
-            // Índice: "no_identifi|mes|anio|n_plano|nit" => numero_planilla
-            $legacyMap = [];
-            $legacyById = []; // id_legacy => numero_planilla
+            // ── A. Intentar con legacy (solo para planos migrados con id_legacy) ──────
+            $legacyMap  = [];  // clave compuesta => planilla
+            $legacyById = [];  // id_legacy => planilla
 
             $offset = 0; $chunk = 2000;
             $this->line("  Cargando legacy PLANOS...");
             while (true) {
                 try {
+                    // SELECT * para tolerar diferentes nombres de columnas entre aliados
                     $rows = DB::connection('sqlsrv_legacy')
-                        ->select("SELECT Id, Planilla, NO_IDENTIFI, MES_PLANO, AÑO_PLANO, N_PLANO, Nit_Empresa
-                                  FROM [{$db}].dbo.PLANOS
-                                  ORDER BY Id OFFSET {$offset} ROWS FETCH NEXT {$chunk} ROWS ONLY");
+                        ->select("SELECT * FROM [{$db}].dbo.PLANOS ORDER BY Id OFFSET {$offset} ROWS FETCH NEXT {$chunk} ROWS ONLY");
                 } catch (\Exception $e) {
                     $this->error("  Error legacy: " . $e->getMessage());
                     break;
@@ -89,21 +87,46 @@ class FixPlanosPlanilla extends Command
                 if (empty($rows)) break;
 
                 foreach ($rows as $row) {
-                    $planilla = $row->Planilla ?? null;
-                    if (!$planilla || !is_numeric($planilla)) { $offset++; continue; }
-                    $numPlan = (string)(int)((float)$planilla);
+                    $row = (array)$row;
+                    // Tolerancia a nombres de columna (uppercase/lowercase/alias)
+                    $planillaRaw = $row['Planilla'] ?? $row['PLANILLA'] ?? $row['planilla'] ?? null;
+                    $id          = $row['Id']       ?? $row['ID']       ?? $row['id']       ?? null;
+                    $cedula      = $row['NO_IDENTIFI'] ?? $row['No_Identifi'] ?? $row['CEDULA'] ?? null;
+                    $mes         = $row['MES_PLANO']   ?? $row['Mes']        ?? null;
+                    $anio        = $row['AÑO_PLANO']   ?? $row['Año']        ?? $row['Anio']   ?? null;
+                    $nPlano      = $row['N_PLANO']      ?? $row['N_Plano']   ?? null;
+                    // En Brygar_BD el NIT está en la col RAZON_SOCIAL (confusamente nombrada)
+                    $nit         = $row['Nit_Empresa'] ?? $row['NIT'] ?? $row['Nit']
+                                ?? $row['RAZON_SOCIAL'] ?? $row['Razon_Social'] ?? null;
 
-                    // Por ID legacy (más exacto)
-                    if ($row->Id) $legacyById[$row->Id] = $numPlan;
+                    if (!$planillaRaw || !is_numeric($planillaRaw)) continue;
+                    $numPlan = (string)(int)((float)$planillaRaw);
 
-                    // Por clave compuesta (fallback)
-                    $clave = "{$row->NO_IDENTIFI}|{$row->MES_PLANO}|{$row->AÑO_PLANO}|{$row->N_PLANO}|{$row->Nit_Empresa}";
+                    if ($id) $legacyById[$id] = $numPlan;
+
+                    // Normalizar NIT (puede venir como float '901716074.0')
+                    $nitClean = is_numeric($nit) ? (string)(int)((float)$nit) : $nit;
+                    $clave = "{$cedula}|{$mes}|{$anio}|{$nPlano}|{$nitClean}";
                     $legacyMap[$clave] = $numPlan;
                 }
                 $offset += $chunk;
                 if (count($rows) < $chunk) break;
             }
             $this->line("  Registros legacy cargados: " . count($legacyMap));
+
+            // ── B. Para planos BryNex-native (sin id_legacy): buscar en gastos ──────
+            // gastos pago_planilla agrupado por aliado+razon_social_id+mes+anio → numero_planilla
+            $gastosMap = DB::table('gastos')
+                ->where('aliado_id', $aliadoId)
+                ->where('tipo', 'pago_planilla')
+                ->whereNotNull('numero_planilla')
+                ->select('razon_social_id', 'numero_planilla',
+                    DB::raw('MONTH(fecha) AS mes_g'),
+                    DB::raw('YEAR(fecha) AS anio_g'))
+                ->get()
+                ->keyBy(fn($g) => "{$g->razon_social_id}|{$g->mes_g}|{$g->anio_g}");
+
+            $this->line("  Gastos planilla cargados: " . $gastosMap->count());
 
             // Cruzar y actualizar
             $fixedRows = []; $noMatch = [];
@@ -115,10 +138,16 @@ class FixPlanosPlanilla extends Command
                     $numPlan = $legacyById[$p->id_legacy];
                 }
 
-                // 2. Por clave compuesta
+                // 2. Por clave compuesta (razon_social_id = NIT en BryNex)
                 if (!$numPlan) {
                     $clave = "{$p->no_identifi}|{$p->mes_plano}|{$p->anio_plano}|{$p->n_plano}|{$p->razon_social_id}";
                     $numPlan = $legacyMap[$clave] ?? null;
+                }
+
+                // 3. Fallback gastos: planos BryNex-native sin legacy
+                if (!$numPlan && $p->razon_social_id) {
+                    $gKey = "{$p->razon_social_id}|{$p->mes_plano}|{$p->anio_plano}";
+                    $numPlan = $gastosMap[$gKey]->numero_planilla ?? null;
                 }
 
                 if ($numPlan) {
