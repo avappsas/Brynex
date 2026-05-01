@@ -27,10 +27,15 @@ class FixPlanosPlanilla extends Command
 
     public function handle(): int
     {
-        // Cargar aliados (igual que MigrateLegacy::loadAliados)
-        $aliados = DB::table('aliados')->get(['id', 'slug']);
+        // Cargar aliados igual que MigrateLegacy::loadAliados
+        $aliados = DB::table('aliados')->get(['id', 'nombre', 'nit']);
         foreach ($aliados as $a) {
-            $this->ids[$a->slug] = $a->id;
+            if ($a->nit   === '901918923')        $this->ids['brygar']    = $a->id;
+            if ($a->nombre === 'GiMave Integral') $this->ids['gimave']    = $a->id;
+            if ($a->nombre === 'Grupo Fecop')     $this->ids['fecop']     = $a->id;
+            if ($a->nombre === 'Luis Lopez')      $this->ids['luislopez'] = $a->id;
+            if ($a->nombre === 'Mave Anderson')   $this->ids['mave']      = $a->id;
+            if ($a->nombre === 'SS Faga')         $this->ids['faga']      = $a->id;
         }
 
         $dryRun    = $this->option('dry-run');
