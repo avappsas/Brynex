@@ -47,125 +47,129 @@ return new class extends Migration
         // 1. CLIENTES  → id IDENTITY + cedula bigInteger indexada
         // ════════════════════════════════════════════════════════
         DB::statement("IF OBJECT_ID('clientes', 'U') IS NOT NULL DROP TABLE clientes");
-
-        Schema::create('clientes', function (Blueprint $table) {
-            $table->id();                                    // IDENTITY auto-increment
-            $table->bigInteger('cedula')->index();           // número doc (bigInt)
-            $table->integer('id_legacy')->nullable()->index(); // trazabilidad
-            $table->integer('cod_empresa')->nullable();
-            $table->string('tipo_doc', 10)->nullable();
-            $table->string('primer_nombre', 55)->nullable();
-            $table->string('segundo_nombre', 55)->nullable();
-            $table->string('primer_apellido', 55)->nullable();
-            $table->string('segundo_apellido', 55)->nullable();
-            $table->string('genero', 10)->nullable();
-            $table->string('sisben', 50)->nullable();
-            $table->date('fecha_nacimiento')->nullable();
-            $table->date('fecha_expedicion')->nullable();
-            $table->string('rh', 10)->nullable();
-            $table->string('telefono', 20)->nullable();
-            $table->bigInteger('celular')->nullable();
-            $table->string('correo', 100)->nullable();
-            $table->unsignedSmallInteger('departamento_id')->nullable();
-            $table->unsignedInteger('municipio_id')->nullable();
-            $table->string('direccion_vivienda', 150)->nullable();
-            $table->string('direccion_cobro', 150)->nullable();
-            $table->string('barrio', 80)->nullable();
-            $table->unsignedBigInteger('eps_id')->nullable();
-            $table->unsignedBigInteger('pension_id')->nullable();
-            $table->string('ips', 100)->nullable();
-            $table->string('urgencias', 100)->nullable();
-            $table->string('iva', 20)->nullable();
-            $table->string('ocupacion', 80)->nullable();
-            $table->string('referido', 80)->nullable();
-            $table->text('observacion')->nullable();
-            $table->text('observacion_llamada')->nullable();
-            $table->string('claves', 255)->nullable();
-            $table->string('datos', 255)->nullable();
-            $table->integer('deuda')->nullable();
-            $table->string('fecha_probable_pago', 50)->nullable();
-            $table->string('modo_probable_pago', 50)->nullable();
-            $table->timestamps();
-
-            $table->foreign('departamento_id')->references('id')->on('departamentos')->nullOnDelete();
-            $table->foreign('municipio_id')->references('id')->on('ciudades')->nullOnDelete();
-            $table->foreign('eps_id')->references('id')->on('eps')->nullOnDelete();
-            $table->foreign('pension_id')->references('id')->on('pensiones')->nullOnDelete();
-        });
+        DB::statement("
+            CREATE TABLE clientes (
+                id          BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                cedula      BIGINT      NOT NULL,
+                id_legacy   INT         NULL,
+                cod_empresa INT         NULL,
+                tipo_doc    NVARCHAR(10) NULL,
+                primer_nombre       NVARCHAR(55) NULL,
+                segundo_nombre      NVARCHAR(55) NULL,
+                primer_apellido     NVARCHAR(55) NULL,
+                segundo_apellido    NVARCHAR(55) NULL,
+                genero              NVARCHAR(10) NULL,
+                sisben              NVARCHAR(50) NULL,
+                fecha_nacimiento    DATE NULL,
+                fecha_expedicion    DATE NULL,
+                rh                  NVARCHAR(10) NULL,
+                telefono            NVARCHAR(20) NULL,
+                celular             BIGINT NULL,
+                correo              NVARCHAR(100) NULL,
+                departamento_id     SMALLINT NULL,
+                municipio_id        INT NULL,
+                direccion_vivienda  NVARCHAR(150) NULL,
+                direccion_cobro     NVARCHAR(150) NULL,
+                barrio              NVARCHAR(80) NULL,
+                eps_id              BIGINT NULL,
+                pension_id          BIGINT NULL,
+                ips                 NVARCHAR(100) NULL,
+                urgencias           NVARCHAR(100) NULL,
+                iva                 NVARCHAR(20) NULL,
+                ocupacion           NVARCHAR(80) NULL,
+                referido            NVARCHAR(80) NULL,
+                observacion         NVARCHAR(MAX) NULL,
+                observacion_llamada NVARCHAR(MAX) NULL,
+                claves              NVARCHAR(255) NULL,
+                datos               NVARCHAR(255) NULL,
+                deuda               INT NULL,
+                fecha_probable_pago NVARCHAR(50) NULL,
+                modo_probable_pago  NVARCHAR(50) NULL,
+                created_at          DATETIME2 NULL,
+                updated_at          DATETIME2 NULL
+            )
+        ");
+        DB::statement("CREATE INDEX clientes_cedula_index ON clientes (cedula)");
+        DB::statement("CREATE INDEX clientes_id_legacy_index ON clientes (id_legacy)");
 
         // ════════════════════════════════════════════════════════
         // 2. RAZONES SOCIALES → id IDENTITY + nit bigInteger
         // ════════════════════════════════════════════════════════
         DB::statement("IF OBJECT_ID('razones_sociales', 'U') IS NOT NULL DROP TABLE razones_sociales");
-
-        Schema::create('razones_sociales', function (Blueprint $table) {
-            $table->id();                                     // IDENTITY auto-increment
-            $table->bigInteger('nit')->nullable()->index();   // NIT real de la empresa
-            $table->integer('dv')->nullable();
-            $table->integer('id_legacy')->nullable()->index(); // legacy COD_RAZON_SOC
-            $table->unsignedBigInteger('aliado_id')->nullable()->index();
-            $table->string('razon_social', 255)->nullable();
-            $table->string('estado', 50)->nullable();
-            $table->string('plan', 255)->nullable();
-            $table->string('direccion', 255)->nullable();
-            $table->string('telefonos', 255)->nullable();
-            $table->string('correos', 255)->nullable();
-            $table->string('actividad_economica', 255)->nullable();
-            $table->string('objeto_social', 255)->nullable();
-            $table->string('observacion', 255)->nullable();
-            $table->decimal('salario_minimo', 18, 2)->nullable();
-            $table->bigInteger('arl_nit')->nullable();
-            $table->bigInteger('caja_nit')->nullable();
-            $table->integer('mes_pagos')->nullable();
-            $table->integer('anio_pagos')->nullable();
-            $table->integer('n_plano')->nullable();
-            $table->datetime('fecha_constitucion')->nullable();
-            $table->datetime('fecha_limite_pago')->nullable();
-            $table->integer('dia_habil')->nullable();
-            $table->string('forma_presentacion', 50)->nullable();
-            $table->string('codigo_sucursal', 50)->nullable();
-            $table->string('nombre_sucursal', 100)->nullable();
-            $table->string('notas_factura1', 255)->nullable();
-            $table->string('notas_factura2', 255)->nullable();
-            $table->string('dir_formulario', 100)->nullable();
-            $table->string('tel_formulario', 20)->nullable();
-            $table->string('correo_formulario', 100)->nullable();
-            $table->bigInteger('cedula_rep')->nullable();
-            $table->string('nombre_rep', 100)->nullable();
-            $table->boolean('es_independiente')->default(false);
-            $table->unsignedBigInteger('encargado_id')->nullable();
-            $table->timestamps();
-
-            $table->foreign('aliado_id')->references('id')->on('aliados')->nullOnDelete();
-        });
+        DB::statement("
+            CREATE TABLE razones_sociales (
+                id                  BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                nit                 BIGINT NULL,
+                dv                  INT NULL,
+                id_legacy           INT NULL,
+                aliado_id           BIGINT NULL,
+                razon_social        NVARCHAR(255) NULL,
+                estado              NVARCHAR(50) NULL,
+                plan                NVARCHAR(255) NULL,
+                direccion           NVARCHAR(255) NULL,
+                telefonos           NVARCHAR(255) NULL,
+                correos             NVARCHAR(255) NULL,
+                actividad_economica NVARCHAR(255) NULL,
+                objeto_social       NVARCHAR(255) NULL,
+                observacion         NVARCHAR(255) NULL,
+                salario_minimo      DECIMAL(18,2) NULL,
+                arl_nit             BIGINT NULL,
+                caja_nit            BIGINT NULL,
+                mes_pagos           INT NULL,
+                anio_pagos          INT NULL,
+                n_plano             INT NULL,
+                fecha_constitucion  DATETIME2 NULL,
+                fecha_limite_pago   DATETIME2 NULL,
+                dia_habil           INT NULL,
+                forma_presentacion  NVARCHAR(50) NULL,
+                codigo_sucursal     NVARCHAR(50) NULL,
+                nombre_sucursal     NVARCHAR(100) NULL,
+                notas_factura1      NVARCHAR(255) NULL,
+                notas_factura2      NVARCHAR(255) NULL,
+                dir_formulario      NVARCHAR(100) NULL,
+                tel_formulario      NVARCHAR(20) NULL,
+                correo_formulario   NVARCHAR(100) NULL,
+                cedula_rep          BIGINT NULL,
+                nombre_rep          NVARCHAR(100) NULL,
+                es_independiente    BIT NOT NULL DEFAULT 0,
+                encargado_id        BIGINT NULL,
+                created_at          DATETIME2 NULL,
+                updated_at          DATETIME2 NULL
+            )
+        ");
+        DB::statement("CREATE INDEX razones_sociales_nit_index ON razones_sociales (nit)");
+        DB::statement("CREATE INDEX razones_sociales_id_legacy_index ON razones_sociales (id_legacy)");
+        DB::statement("CREATE INDEX razones_sociales_aliado_id_index ON razones_sociales (aliado_id)");
 
         // ════════════════════════════════════════════════════════
         // 3. EMPRESAS → id IDENTITY + nit bigInteger
         // ════════════════════════════════════════════════════════
         DB::statement("IF OBJECT_ID('empresas', 'U') IS NOT NULL DROP TABLE empresas");
-
-        Schema::create('empresas', function (Blueprint $table) {
-            $table->id();                                     // IDENTITY auto-increment
-            $table->integer('id_legacy')->nullable()->index(); // ID original de legacy
-            $table->bigInteger('nit')->nullable()->index();
-            $table->string('empresa', 255)->nullable();
-            $table->string('contacto', 255)->nullable();
-            $table->string('telefono', 50)->nullable();
-            $table->string('celular', 50)->nullable();
-            $table->string('direccion', 255)->nullable();
-            $table->string('observacion', 500)->nullable();
-            $table->string('cliente_de', 255)->nullable();
-            $table->string('tipo_facturacion', 30)->nullable();
-            $table->string('iva', 20)->nullable();
-            $table->string('correo', 150)->nullable();
-            $table->string('actividad_economica', 1000)->nullable();
-            $table->unsignedBigInteger('aliado_id')->nullable();
-            $table->unsignedBigInteger('asesor_id')->nullable();
-            $table->unsignedBigInteger('encargado_id')->nullable();
-            $table->timestamps();
-
-            $table->foreign('aliado_id')->references('id')->on('aliados')->nullOnDelete();
-        });
+        DB::statement("
+            CREATE TABLE empresas (
+                id                  BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                id_legacy           INT NULL,
+                nit                 BIGINT NULL,
+                empresa             NVARCHAR(255) NULL,
+                contacto            NVARCHAR(255) NULL,
+                telefono            NVARCHAR(50) NULL,
+                celular             NVARCHAR(50) NULL,
+                direccion           NVARCHAR(255) NULL,
+                observacion         NVARCHAR(500) NULL,
+                cliente_de          NVARCHAR(255) NULL,
+                tipo_facturacion    NVARCHAR(30) NULL,
+                iva                 NVARCHAR(20) NULL,
+                correo              NVARCHAR(150) NULL,
+                actividad_economica NVARCHAR(1000) NULL,
+                aliado_id           BIGINT NULL,
+                asesor_id           BIGINT NULL,
+                encargado_id        BIGINT NULL,
+                created_at          DATETIME2 NULL,
+                updated_at          DATETIME2 NULL
+            )
+        ");
+        DB::statement("CREATE INDEX empresas_nit_index ON empresas (nit)");
+        DB::statement("CREATE INDEX empresas_id_legacy_index ON empresas (id_legacy)");
 
         // ── Recrear las FKs que dropeamos (ahora apuntan a los nuevos ids IDENTITY) ──
         // Sólo si las tablas padre existen y tienen datos o son para integridad futura
