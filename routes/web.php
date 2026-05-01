@@ -212,6 +212,7 @@ Route::middleware('auth')->group(function () {
             Route::get('/tareas',                 [$ic, 'resumenTareas'])        ->name('tareas');
             Route::get('/financiero',             [$ic, 'estadoFinanciero'])     ->name('financiero');
             Route::get('/financiero/bancos',      [$ic, 'financieroBancos'])     ->name('financiero.bancos');
+            Route::get('/financiero/auditar-planilla', [$ic, 'auditarPlanilla']) ->name('financiero.auditar_planilla');
         });
 
         // ── Préstamos / Cartera ──────────────────────────────────────────

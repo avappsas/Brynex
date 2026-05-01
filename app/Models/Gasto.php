@@ -9,7 +9,7 @@ class Gasto extends BaseModel
     protected $table    = 'gastos';
     protected $fillable = [
         'aliado_id', 'usuario_id', 'cuadre_id',
-        'fecha', 'tipo', 'descripcion', 'pagado_a', 'cc_pagado_a',
+        'fecha', 'tipo', 'numero_planilla', 'descripcion', 'pagado_a', 'cc_pagado_a',
         'forma_pago', 'banco_origen_id', 'banco_destino_id',
         'valor', 'recibo_caja', 'lugar', 'observacion',
         'imagen_path',  // soporte / comprobante de pago

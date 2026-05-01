@@ -309,17 +309,27 @@ class InformeController extends Controller
             'retiro_ss'=> (float)$retiroSS,
         ];
 
-        // Egresos SS: gastos pago_planilla agrupados por descripcion
-        $egresosSSDetalle = DB::table('gastos')
-            ->where('aliado_id',$aid)->where('tipo','pago_planilla')
-            ->whereMonth('fecha',$mes)->whereYear('fecha',$anio)
-            ->selectRaw('descripcion, pagado_a, SUM(valor) AS total, COUNT(*) AS cantidad')
-            ->groupBy('descripcion','pagado_a')
+        // Egresos SS: gastos pago_planilla con cuenta bancaria de origen
+        $egresosSSDetalle = DB::table('gastos AS g')
+            ->leftJoin('banco_cuentas AS bc', 'bc.id', '=', 'g.banco_origen_id')
+            ->where('g.aliado_id',$aid)->where('g.tipo','pago_planilla')
+            ->whereMonth('g.fecha',$mes)->whereYear('g.fecha',$anio)
+            ->selectRaw("
+                g.numero_planilla, g.descripcion, g.pagado_a,
+                MAX(g.fecha) AS fecha,
+                SUM(g.valor) AS total,
+                COUNT(*) AS cantidad,
+                MAX(bc.banco) AS banco_nombre,
+                MAX(bc.nombre) AS banco_titular
+            ")
+            ->groupBy('g.numero_planilla','g.descripcion','g.pagado_a')
             ->orderByDesc('total')
             ->get();
 
         $pagadoSS = $egresosSSDetalle->sum('total');
-        $saldoSS  = $recaudoSS - $pagadoSS;
+        // saldoSS incluye los anticipos: SS de facturas futuras cobradas este mes
+        // ese dinero ya está en caja aunque el gasto ocurra el próximo mes
+        $saldoSS  = ($recaudoSS + $anticipos['ss']) - $pagadoSS;
 
         // Comisiones asesor (acumuladas en facturas del mes)
         $comisionesAsesor = (clone $facturasBase)->sum('c_asesor');
@@ -348,6 +358,46 @@ class InformeController extends Controller
             return $b;
         });
 
+        // ── Anticipos: facturas de período FUTURO cobradas en este mes ──
+        // Ej: factura de Mayo pagada en Abril → aparece en Abril como anticipo
+        $anticiposQ = DB::table('facturas')
+            ->where('aliado_id', $aid)->whereNull('deleted_at')
+            ->whereNotNull('fecha_pago')
+            ->whereMonth('fecha_pago', $mes)->whereYear('fecha_pago', $anio)
+            ->whereIn('estado', ['pagada','abono'])
+            ->where('numero_factura', '>', 0)
+            ->where(function($q) use ($mes, $anio) {
+                $q->where('anio', '>', $anio)
+                  ->orWhere(function($i) use ($mes, $anio) {
+                      $i->where('anio', $anio)->where('mes', '>', $mes);
+                  });
+            });
+
+        $anticipos = [
+            'admon'  => (float)(clone $anticiposQ)->sum(DB::raw('admon + seguro + mensajeria + otros + iva + retiro')),
+            'ss'     => (float)(clone $anticiposQ)->sum('total_ss'),
+            'cant'   => (int)(clone $anticiposQ)->count(),
+        ];
+        $anticipos['total'] = $anticipos['admon'] + $anticipos['ss'];
+
+        // ── Facturas del período actual ya cobradas en meses anteriores ─
+        // Ej: factura de Mayo pagada en Abril → en Mayo, ese ingreso ya está cobrado
+        $cobradosAntesQ = (clone $facturasBase)
+            ->whereNotNull('fecha_pago')
+            ->where(function($q) use ($mes, $anio) {
+                $q->where('anio', '<', $anio)
+                  ->orWhere(function($i) use ($mes, $anio) {
+                      $i->where('anio', $anio)->where('mes', '<', $mes);
+                  });
+            });
+
+        $cobradosAntes = [
+            'admon' => (float)(clone $cobradosAntesQ)->sum(DB::raw('admon + seguro + mensajeria + otros + iva + retiro')),
+            'ss'    => (float)(clone $cobradosAntesQ)->sum('total_ss'),
+            'cant'  => (int)(clone $cobradosAntesQ)->count(),
+        ];
+        $cobradosAntes['total'] = $cobradosAntes['admon'] + $cobradosAntes['ss'];
+
         // Desglose diario
         $diario = $this->desgloseDiario($aid, $mes, $anio);
 
@@ -359,7 +409,8 @@ class InformeController extends Controller
             'mes','anio','ingresos','egresos','utilidad',
             'recaudoSS','pagadoSS','saldoSS',
             'ingresosSS','egresosSSDetalle',
-            'comisionesAsesor','gastosOp','tendencia','anterior','bancos','diario'
+            'comisionesAsesor','gastosOp','tendencia','anterior','bancos','diario',
+            'anticipos','cobradosAntes'
         ));
     }
 
@@ -386,6 +437,85 @@ class InformeController extends Controller
             ->orderBy('fecha')->get();
 
         return response()->json(['entradas'=>$entradas,'salidas'=>$salidas]);
+    }
+
+    // ── JSON: auditoría de un número de planilla ─────────────────────
+    public function auditarPlanilla(Request $request)
+    {
+        $this->checkFinanciero();
+        $aid          = $this->aliadoId();
+        $numPlanilla  = trim($request->input('numero_planilla', ''));
+
+        if (!$numPlanilla) {
+            return response()->json(['error' => 'Número de planilla requerido.'], 422);
+        }
+
+        // ── 1. Gastos registrados para este número de planilla ────────
+        // Busca TODOS los gastos (detectar pago duplicado si hay más de 1)
+        $gastosAll = DB::table('gastos')
+            ->where('aliado_id', $aid)
+            ->where('tipo', 'pago_planilla')
+            ->where('numero_planilla', $numPlanilla)
+            ->orderBy('fecha')
+            ->get();
+
+        $cantGastos  = $gastosAll->count();
+        $gasto       = $gastosAll->first();          // registro principal
+        $gastoValor  = (float)$gastosAll->sum('valor'); // suma total (detecta dobles)
+        $esDuplicado = $cantGastos > 1;
+
+        // ── 2. Planos con ese numero_planilla (un plano = un empleado) ─
+        $planos = DB::table('planos AS p')
+            ->leftJoin('facturas AS f', 'f.id', '=', 'p.factura_id')
+            ->where('p.aliado_id', $aid)
+            ->whereNull('p.deleted_at')
+            ->where('p.numero_planilla', $numPlanilla)
+            ->select([
+                'p.id',
+                'p.no_identifi',
+                DB::raw("LTRIM(RTRIM(ISNULL(p.primer_nombre,'')+' '+ISNULL(p.segundo_nombre,'')+' '+ISNULL(p.primer_ape,'')+' '+ISNULL(p.segundo_ape,''))) AS nombre_completo"),
+                'p.razon_social',
+                'p.n_plano',
+                'p.mes_plano',
+                'p.anio_plano',
+                'p.num_dias',
+                'p.tipo_reg',
+                // SS de factura (lo que se cobró al cliente)
+                'f.id AS factura_id',
+                'f.numero_factura',
+                'f.v_eps',
+                'f.v_afp',
+                'f.v_arl',
+                'f.v_caja',
+                'f.total_ss',
+            ])
+            ->orderBy('p.primer_ape')
+            ->get();
+
+        // ── 3. Totales SS cobrados a clientes (desde facturas) ────────
+        $totalSSFacturas = (float)$planos->sum('total_ss');
+        $totalEPS        = (float)$planos->sum('v_eps');
+        $totalAFP        = (float)$planos->sum('v_afp');
+        $totalARL        = (float)$planos->sum('v_arl');
+        $totalCaja       = (float)$planos->sum('v_caja');
+        $diferencia      = $totalSSFacturas - $gastoValor;
+
+        return response()->json([
+            'numero_planilla'   => $numPlanilla,
+            'es_duplicado'      => $esDuplicado,
+            'cant_gastos'       => $cantGastos,
+            'gastos_detalle'    => $gastosAll,   // lista completa (para mostrar duplicados)
+            'gasto'             => $gasto,
+            'gasto_valor'       => $gastoValor,
+            'total_ss_facturas' => $totalSSFacturas,
+            'total_eps'         => $totalEPS,
+            'total_afp'         => $totalAFP,
+            'total_arl'         => $totalARL,
+            'total_caja'        => $totalCaja,
+            'diferencia'        => $diferencia,
+            'cant_empleados'    => $planos->count(),
+            'planos'            => $planos,
+        ]);
     }
 
     // ── Helper: desglose diario ──────────────────────────────────────

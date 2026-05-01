@@ -11,6 +11,9 @@
 .dia-row.dia-head{background:#f8fafc;border-bottom:2px solid #e2e8f0;font-size:.7rem;text-transform:uppercase;color:#64748b;font-weight:700;cursor:default;}
 .bank-card{background:#fff;border-radius:12px;padding:1rem 1.25rem;box-shadow:0 1px 6px rgba(0,0,0,.06);border-top:3px solid #3b82f6;cursor:pointer;transition:all .18s;}
 .bank-card:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(0,0,0,.1);}
+.audit-row{cursor:pointer;transition:background .12s;}
+.audit-row:hover{background:#faf5ff !important;}
+.audit-row .audit-hint{font-size:.68rem;color:#a78bfa;margin-top:.15rem;}
 </style>
 @endpush
 @section('contenido')
@@ -121,7 +124,7 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
             <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;color:#94a3b8;margin-bottom:.85rem;">Cuentas Bancarias</div>
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.75rem;">
                 @foreach($bancos as $b)
-                <div class="bank-card" onclick="verMovimientosBanco({{ $b->id }},'{{ addslashes($b->etiqueta) }}')" title="Clic para ver movimientos">
+                <div class="bank-card" onclick="verMovimientosBanco({{ $b->id }},'{{ addslashes($b->nombre) }}')" title="Clic para ver movimientos">
                     <div style="font-size:.72rem;color:#64748b;margin-bottom:.25rem;">{{ $b->banco }}</div>
                     <div style="font-size:.82rem;font-weight:600;color:#0d2550;margin-bottom:.5rem;">{{ $b->nombre }}</div>
                     <div style="font-size:1rem;font-weight:800;color:#2563eb;">{{ $fmt($b->saldo_actual) }}</div>
@@ -134,6 +137,73 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
             </div>
         </div>
     </div>
+
+    {{-- Banner Anticipos / Cobros adelantados --}}
+    @if($anticipos['cant'] > 0 || $cobradosAntes['cant'] > 0)
+    <div style="display:grid;grid-template-columns:{{ ($anticipos['cant']>0 && $cobradosAntes['cant']>0) ? '1fr 1fr' : '1fr' }};gap:1rem;margin-bottom:1.25rem;">
+
+        {{-- Anticipos cobrados este mes para períodos futuros --}}
+        @if($anticipos['cant'] > 0)
+        <div style="background:linear-gradient(135deg,#fff7ed,#ffedd5);border-radius:14px;padding:1rem 1.25rem;border-left:4px solid #f59e0b;box-shadow:0 1px 6px rgba(0,0,0,.05);">
+            <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.65rem;">
+                <span style="font-size:1.1rem;">📥</span>
+                <div>
+                    <div style="font-size:.82rem;font-weight:700;color:#92400e;">Anticipos cobrados este mes</div>
+                    <div style="font-size:.7rem;color:#b45309;">{{ $anticipos['cant'] }} factura(s) de períodos futuros pagadas en {{ $mesesEs[$mes] }}</div>
+                </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.5rem;">
+                <div style="background:rgba(255,255,255,.7);border-radius:8px;padding:.5rem .75rem;text-align:center;">
+                    <div style="font-size:.68rem;font-weight:600;color:#92400e;margin-bottom:.15rem;">Admon (ingreso)</div>
+                    <div style="font-size:.88rem;font-weight:800;color:#d97706;">{{ $fmt($anticipos['admon']) }}</div>
+                </div>
+                <div style="background:rgba(255,255,255,.7);border-radius:8px;padding:.5rem .75rem;text-align:center;">
+                    <div style="font-size:.68rem;font-weight:600;color:#92400e;margin-bottom:.15rem;">SS (reservar)</div>
+                    <div style="font-size:.88rem;font-weight:800;color:#d97706;">{{ $fmt($anticipos['ss']) }}</div>
+                </div>
+                <div style="background:rgba(245,158,11,.15);border-radius:8px;padding:.5rem .75rem;text-align:center;">
+                    <div style="font-size:.68rem;font-weight:600;color:#92400e;margin-bottom:.15rem;">Total recibido</div>
+                    <div style="font-size:.88rem;font-weight:800;color:#b45309;">{{ $fmt($anticipos['total']) }}</div>
+                </div>
+            </div>
+            <div style="margin-top:.6rem;font-size:.68rem;color:#b45309;background:rgba(255,255,255,.5);border-radius:6px;padding:.35rem .65rem;">
+                ⚠️ La SS de estos anticipos debe guardarse — se pagará cuando corresponda el período facturado.
+            </div>
+        </div>
+        @endif
+
+        {{-- Facturas del período cobradas en meses anteriores --}}
+        @if($cobradosAntes['cant'] > 0)
+        <div style="background:linear-gradient(135deg,#f0f9ff,#e0f2fe);border-radius:14px;padding:1rem 1.25rem;border-left:4px solid #0ea5e9;box-shadow:0 1px 6px rgba(0,0,0,.05);">
+            <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.65rem;">
+                <span style="font-size:1.1rem;">📤</span>
+                <div>
+                    <div style="font-size:.82rem;font-weight:700;color:#0c4a6e;">Ingresos del período cobrados antes</div>
+                    <div style="font-size:.7rem;color:#0369a1;">{{ $cobradosAntes['cant'] }} factura(s) de {{ $mesesEs[$mes] }} pagadas en meses anteriores</div>
+                </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.5rem;">
+                <div style="background:rgba(255,255,255,.7);border-radius:8px;padding:.5rem .75rem;text-align:center;">
+                    <div style="font-size:.68rem;font-weight:600;color:#0c4a6e;margin-bottom:.15rem;">Admon cobrado</div>
+                    <div style="font-size:.88rem;font-weight:800;color:#0369a1;">{{ $fmt($cobradosAntes['admon']) }}</div>
+                </div>
+                <div style="background:rgba(255,255,255,.7);border-radius:8px;padding:.5rem .75rem;text-align:center;">
+                    <div style="font-size:.68rem;font-weight:600;color:#0c4a6e;margin-bottom:.15rem;">SS cobrada</div>
+                    <div style="font-size:.88rem;font-weight:800;color:#0369a1;">{{ $fmt($cobradosAntes['ss']) }}</div>
+                </div>
+                <div style="background:rgba(14,165,233,.1);border-radius:8px;padding:.5rem .75rem;text-align:center;">
+                    <div style="font-size:.68rem;font-weight:600;color:#0c4a6e;margin-bottom:.15rem;">Total anticipado</div>
+                    <div style="font-size:.88rem;font-weight:800;color:#0c4a6e;">{{ $fmt($cobradosAntes['total']) }}</div>
+                </div>
+            </div>
+            <div style="margin-top:.6rem;font-size:.68rem;color:#0369a1;background:rgba(255,255,255,.5);border-radius:6px;padding:.35rem .65rem;">
+                ℹ️ Este dinero ya entró en caja en meses anteriores — incluido aquí por devengado del período.
+            </div>
+        </div>
+        @endif
+
+    </div>
+    @endif
 
     {{-- ══ SEGURIDAD SOCIAL ══ --}}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;margin-bottom:1.5rem;">
@@ -166,6 +236,32 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
                     </div>
                     <span style="font-weight:700;color:#94a3b8;">{{ $fmt($ingresosSS['retiro_ss']) }}</span>
                 </div>
+                {{-- SS de anticipos (próximo período cobrada este mes) --}}
+                @if($anticipos['ss'] > 0)
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:.55rem 1.25rem;border-bottom:1px solid #fef3c7;background:#fffbeb;">
+                    <div style="display:flex;align-items:center;gap:.5rem;">
+                        <div style="width:8px;height:8px;border-radius:50%;background:#f59e0b;"></div>
+                        <div>
+                            <div style="font-size:.83rem;color:#92400e;font-weight:600;">SS anticipada (próx. período)</div>
+                            <div style="font-size:.68rem;color:#b45309;">{{ $anticipos['cant'] }} factura(s) — guardar para pagar en su mes</div>
+                        </div>
+                    </div>
+                    <span style="font-weight:700;color:#d97706;">{{ $fmt($anticipos['ss']) }}</span>
+                </div>
+                @endif
+                {{-- SS cobrada por anticipos de este período (pagada meses anteriores) --}}
+                @if($cobradosAntes['ss'] > 0)
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:.55rem 1.25rem;border-bottom:1px solid #e0f2fe;background:#f0f9ff;">
+                    <div style="display:flex;align-items:center;gap:.5rem;">
+                        <div style="width:8px;height:8px;border-radius:50%;background:#0ea5e9;"></div>
+                        <div>
+                            <div style="font-size:.83rem;color:#0c4a6e;font-weight:600;">SS cobrada en meses ant.</div>
+                            <div style="font-size:.68rem;color:#0369a1;">{{ $cobradosAntes['cant'] }} factura(s) del período pagadas antes</div>
+                        </div>
+                    </div>
+                    <span style="font-weight:700;color:#0369a1;">{{ $fmt($cobradosAntes['ss']) }}</span>
+                </div>
+                @endif
                 <div style="display:flex;justify-content:space-between;align-items:center;padding:.6rem 1.25rem;background:#f0f9ff;">
                     <span style="font-size:.82rem;font-weight:700;color:#0e7490;">Total Recaudado</span>
                     <span style="font-size:.95rem;font-weight:800;color:#0e7490;">{{ $fmt($recaudoSS) }}</span>
@@ -181,26 +277,83 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
                     <div style="color:#fff;font-weight:700;font-size:.9rem;">Desglose Egresos SS</div>
                     <div style="color:rgba(255,255,255,.7);font-size:.75rem;">Pagos planillas realizados</div>
                 </div>
-                <div style="margin-left:auto;text-align:right;">
-                    <div style="font-weight:800;color:#fff;font-size:1.1rem;">{{ $fmt($pagadoSS) }}</div>
-                    <div style="font-size:.7rem;color:rgba(255,255,255,.6);">Saldo: {{ $fmt($saldoSS) }}</div>
+                <div style="margin-left:auto;display:flex;align-items:center;gap:1rem;">
+                    {{-- Ordenar --}}
+                    <div style="display:flex;gap:.4rem;">
+                        <button onclick="sortEgresos('fecha')" id="sortFecha"
+                            style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:7px;padding:.25rem .65rem;font-size:.72rem;cursor:pointer;font-weight:600;transition:background .15s;">
+                            📅 Fecha
+                        </button>
+                        <button onclick="sortEgresos('valor')" id="sortValor"
+                            style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:7px;padding:.25rem .65rem;font-size:.72rem;cursor:pointer;font-weight:600;transition:background .15s;">
+                            💰 Valor
+                        </button>
+                    </div>
+                    <div style="text-align:right;">
+                        <div style="font-weight:800;color:#fff;font-size:1.1rem;">{{ $fmt($pagadoSS) }}</div>
+                        <div style="font-size:.7rem;color:rgba(255,255,255,.6);">Saldo: {{ $fmt($saldoSS) }}</div>
+                    </div>
                 </div>
             </div>
             @if($egresosSSDetalle->isEmpty())
             <div style="padding:2rem;text-align:center;color:#94a3b8;font-size:.84rem;">Sin pagos de planilla este mes</div>
             @else
-            <div style="max-height:260px;overflow-y:auto;">
+            {{-- Cabecera tabla --}}
+            <div style="display:grid;grid-template-columns:90px 1fr 140px 110px;gap:.4rem;padding:.4rem 1rem;background:#f8fafc;border-bottom:2px solid #e2e8f0;font-size:.67rem;font-weight:700;text-transform:uppercase;color:#64748b;">
+                <span>Fecha</span>
+                <span>Descripción / Planilla</span>
+                <span>Banco / Cuenta</span>
+                <span style="text-align:right;">Valor</span>
+            </div>
+            <div id="egresosSSList" style="max-height:320px;overflow-y:auto;">
                 @foreach($egresosSSDetalle as $eg)
-                <div style="display:flex;justify-content:space-between;align-items:center;padding:.55rem 1.25rem;border-bottom:1px solid #f1f5f9;" onmouseover="this.style.background='#faf5ff'" onmouseout="this.style.background=''">
-                    <div style="min-width:0;">
-                        <div style="font-size:.82rem;font-weight:600;color:#334155;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px;">{{ $eg->descripcion ?: $eg->pagado_a }}</div>
-                        @if($eg->pagado_a && $eg->descripcion)
-                        <div style="font-size:.72rem;color:#94a3b8;">{{ $eg->pagado_a }}</div>
+                @php
+                    $numPlan  = $eg->numero_planilla ?? null;
+                    $fechaEg  = sqldate($eg->fecha);
+                    $fechaStr = $fechaEg ? $fechaEg->format('d/m/Y') : '—';
+                    $fechaIso = $fechaEg ? $fechaEg->format('Y-m-d') : '';
+                @endphp
+                <div class="audit-row egreso-ss-row"
+                    data-fecha="{{ $fechaIso }}"
+                    data-valor="{{ $eg->total }}"
+                    style="display:grid;grid-template-columns:90px 1fr 140px 110px;gap:.4rem;padding:.55rem 1rem;border-bottom:1px solid #f1f5f9;align-items:start;"
+                    @if($numPlan)
+                        onclick="auditarPlanilla('{{ addslashes($numPlan) }}','{{ addslashes($eg->descripcion ?? $eg->pagado_a) }}')"
+                        title="🔍 Clic para auditar planilla {{ $numPlan }}"
+                    @endif>
+                    {{-- Fecha --}}
+                    <div>
+                        <div style="font-size:.8rem;font-weight:700;color:#0d2550;">{{ $fechaStr }}</div>
+                        @if($numPlan)
+                        <div style="font-size:.67rem;color:#a78bfa;margin-top:.1rem;">🔍 {{ $numPlan }}</div>
                         @endif
                     </div>
-                    <div style="text-align:right;flex-shrink:0;margin-left:.75rem;">
-                        <div style="font-weight:700;color:#7c3aed;">{{ $fmt($eg->total) }}</div>
-                        <div style="font-size:.7rem;color:#94a3b8;">{{ $eg->cantidad }} reg.</div>
+                    {{-- Descripción completa --}}
+                    <div>
+                        <div style="font-size:.78rem;color:#334155;line-height:1.4;word-break:break-word;">{{ $eg->descripcion ?: $eg->pagado_a }}</div>
+                        @if($numPlan)
+                        <div style="font-size:.67rem;color:#94a3b8;margin-top:.15rem;">clic para ver auditoría ↗</div>
+                        @endif
+                    </div>
+                    {{-- Banco / Cuenta --}}
+                    @php
+                        $bancoLabel = $eg->banco_nombre
+                            ? $eg->banco_nombre . ($eg->banco_titular ? ' — ' . $eg->banco_titular : '')
+                            : null;
+                    @endphp
+                    <div>
+                        @if($bancoLabel)
+                            <div style="font-size:.76rem;font-weight:600;color:#1e40af;">{{ $bancoLabel }}</div>
+                        @else
+                            <div style="font-size:.76rem;color:#94a3b8;">Efectivo</div>
+                        @endif
+                    </div>
+                    {{-- Valor --}}
+                    <div style="text-align:right;">
+                        <div style="font-weight:700;color:#7c3aed;font-size:.88rem;">{{ $fmt($eg->total) }}</div>
+                        @if($eg->cantidad > 1)
+                        <div style="font-size:.67rem;color:#94a3b8;">{{ $eg->cantidad }} reg.</div>
+                        @endif
                     </div>
                 </div>
                 @endforeach
@@ -285,6 +438,25 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
             <button onclick="document.getElementById('modalBanco').style.display='none'" style="background:none;border:none;font-size:1.2rem;cursor:pointer;color:#64748b;">✕</button>
         </div>
         <div id="modalBancoBody" style="font-size:.84rem;color:#475569;">Cargando…</div>
+    </div>
+</div>
+
+{{-- Modal Auditoría Planilla --}}
+<div id="modalAudit" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;align-items:flex-start;justify-content:center;padding-top:3vh;overflow-y:auto;">
+    <div style="background:#fff;border-radius:18px;min-width:660px;max-width:920px;width:94%;box-shadow:0 25px 60px rgba(0,0,0,.22);">
+        {{-- Header --}}
+        <div style="background:linear-gradient(135deg,#4f46e5,#7c3aed);border-radius:18px 18px 0 0;padding:1.1rem 1.5rem;display:flex;align-items:center;gap:.85rem;">
+            <span style="font-size:1.4rem;">🔍</span>
+            <div style="flex:1;">
+                <div style="color:#fff;font-weight:700;font-size:1rem;" id="auditTitulo">Auditoría Planilla</div>
+                <div style="color:rgba(255,255,255,.7);font-size:.74rem;" id="auditSubtitulo">Comparativa SS cobrado vs pagado</div>
+            </div>
+            <button onclick="document.getElementById('modalAudit').style.display='none'" style="background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:8px;width:32px;height:32px;cursor:pointer;font-size:1.1rem;display:flex;align-items:center;justify-content:center;">✕</button>
+        </div>
+        {{-- Body --}}
+        <div id="auditBody" style="padding:1.25rem 1.5rem 1.5rem;">
+            <div style="text-align:center;padding:2rem;color:#94a3b8;">Cargando auditoría…</div>
+        </div>
     </div>
 </div>
 
@@ -387,11 +559,208 @@ function verMovimientosBanco(bancoId, label) {
 }
 
 // Cerrar modales al clic fuera
-['modalDia','modalBanco'].forEach(id=>{
+['modalDia','modalBanco','modalAudit'].forEach(id=>{
     document.getElementById(id).addEventListener('click',function(e){
         if(e.target===this) this.style.display='none';
     });
 });
+
+// ── Ordenar Egresos SS ──────────────────────────────────────────────
+let egresosSort = { campo: 'valor', asc: false }; // default: valor desc
+function sortEgresos(campo) {
+    const list = document.getElementById('egresosSSList');
+    if (!list) return;
+    // Alternar dirección si mismo campo
+    if (egresosSort.campo === campo) {
+        egresosSort.asc = !egresosSort.asc;
+    } else {
+        egresosSort.campo = campo;
+        egresosSort.asc = campo === 'fecha'; // fecha: asc por defecto, valor: desc
+    }
+    // Resaltar botón activo
+    ['sortFecha','sortValor'].forEach(id => {
+        const btn = document.getElementById(id);
+        if (!btn) return;
+        btn.style.background = 'rgba(255,255,255,.15)';
+        btn.style.borderColor = 'rgba(255,255,255,.3)';
+    });
+    const activeId = campo === 'fecha' ? 'sortFecha' : 'sortValor';
+    const activeBtn = document.getElementById(activeId);
+    if (activeBtn) {
+        activeBtn.style.background = 'rgba(255,255,255,.35)';
+        activeBtn.style.borderColor = 'rgba(255,255,255,.8)';
+        activeBtn.textContent = (campo === 'fecha' ? '📅 Fecha' : '💰 Valor')
+            + (egresosSort.asc ? ' ↑' : ' ↓');
+    }
+    // Ordenar filas
+    const rows = Array.from(list.querySelectorAll('.egreso-ss-row'));
+    rows.sort((a, b) => {
+        let va = a.dataset[campo] ?? '';
+        let vb = b.dataset[campo] ?? '';
+        if (campo === 'valor') { va = parseFloat(va) || 0; vb = parseFloat(vb) || 0; }
+        if (va < vb) return egresosSort.asc ? -1 : 1;
+        if (va > vb) return egresosSort.asc ? 1 : -1;
+        return 0;
+    });
+    rows.forEach(r => list.appendChild(r));
+}
+
+// ── Auditoría de número de planilla ──
+function auditarPlanilla(numPlanilla, descripcion) {
+    const m = document.getElementById('modalAudit');
+    document.getElementById('auditTitulo').textContent = 'Auditoría Planilla ' + numPlanilla;
+    document.getElementById('auditSubtitulo').textContent = descripcion || 'SS cobrado a clientes vs pago registrado';
+    document.getElementById('auditBody').innerHTML = '<div style="text-align:center;padding:2.5rem;color:#94a3b8;"><div style="font-size:1.6rem;margin-bottom:.5rem;">⏳</div>Consultando datos…</div>';
+    m.style.display = 'flex';
+
+    fetch(`{{ route('admin.informes.financiero.auditar_planilla') }}?numero_planilla=${encodeURIComponent(numPlanilla)}`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) { document.getElementById('auditBody').innerHTML = `<div style="color:#ef4444;padding:1.5rem;text-align:center;">${data.error}</div>`; return; }
+
+            const fmtN = v => '$ ' + Math.round(v || 0).toLocaleString('es-CO');
+            const dif  = data.diferencia;
+            const difColor  = dif >= 0 ? '#10b981' : '#ef4444';
+            const difBg     = dif >= 0 ? '#f0fdf4' : '#fef2f2';
+            const difLabel  = dif >= 0 ? '✅ A favor (exceso cobrado)' : '⚠️ Déficit (cobrado menos de lo pagado)';
+
+            let html = '';
+
+            // ── Alerta pago duplicado ──────────────────────────────────
+            if (data.es_duplicado) {
+                html += `
+                <div style="background:#fef2f2;border:2px solid #fca5a5;border-radius:12px;padding:.85rem 1rem;margin-bottom:1rem;">
+                    <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.65rem;">
+                        <span style="font-size:1.3rem;">🚨</span>
+                        <div>
+                            <div style="font-size:.88rem;font-weight:800;color:#dc2626;">PAGO DUPLICADO — ${data.cant_gastos} registros encontrados</div>
+                            <div style="font-size:.72rem;color:#b91c1c;">La planilla ${data.numero_planilla} tiene más de un gasto registrado. Revisar posible pago doble.</div>
+                        </div>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:.35rem;">`;
+                (data.gastos_detalle || []).forEach((g, i) => {
+                    const fecha = g.fecha ? new Date(g.fecha).toLocaleDateString('es-CO') : '—';
+                    html += `
+                        <div style="background:#fff;border-radius:8px;padding:.45rem .75rem;display:flex;justify-content:space-between;align-items:center;border-left:3px solid #ef4444;">
+                            <div>
+                                <span style="font-size:.75rem;font-weight:700;color:#dc2626;">#${i+1}</span>
+                                <span style="font-size:.75rem;color:#475569;margin-left:.5rem;">${fecha}</span>
+                                <span style="font-size:.72rem;color:#94a3b8;margin-left:.5rem;">${g.forma_pago || ''}</span>
+                            </div>
+                            <span style="font-weight:800;color:#dc2626;font-size:.85rem;">${fmtN(g.valor)}</span>
+                        </div>`;
+                });
+                html += `</div></div>`;
+            }
+
+            // ── Resumen top 3 tarjetas ─────────────────────────────────
+            html += `
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.85rem;margin-bottom:1.25rem;">
+                <div style="background:#ede9fe;border-radius:12px;padding:.9rem;text-align:center;">
+                    <div style="font-size:1.1rem;font-weight:800;color:#7c3aed;">${fmtN(data.total_ss_facturas)}</div>
+                    <div style="font-size:.72rem;color:#6d28d9;font-weight:600;margin-top:.2rem;">SS Cobrado (facturas)</div>
+                    <div style="font-size:.68rem;color:#94a3b8;margin-top:.1rem;">${data.cant_empleados} empleado(s)</div>
+                </div>
+                <div style="background:${data.es_duplicado ? '#fef2f2' : '#fef3c7'};border-radius:12px;padding:.9rem;text-align:center;${data.es_duplicado ? 'border:2px solid #fca5a5;' : ''}">
+                    <div style="font-size:1.1rem;font-weight:800;color:${data.es_duplicado ? '#dc2626' : '#d97706'};">${fmtN(data.gasto_valor)}</div>
+                    <div style="font-size:.72rem;color:${data.es_duplicado ? '#b91c1c' : '#b45309'};font-weight:600;margin-top:.2rem;">
+                        Pagado ${data.cant_gastos > 1 ? '('+data.cant_gastos+' registros ⚠️)' : '(gasto registrado)'}
+                    </div>
+                    <div style="font-size:.68rem;color:#94a3b8;margin-top:.1rem;">${data.gasto ? new Date(data.gasto.fecha).toLocaleDateString('es-CO') : '—'}</div>
+                </div>
+                <div style="background:${difBg};border-radius:12px;padding:.9rem;text-align:center;">
+                    <div style="font-size:1.1rem;font-weight:800;color:${difColor};">${fmtN(dif)}</div>
+                    <div style="font-size:.72rem;color:${difColor};font-weight:600;margin-top:.2rem;">Diferencia</div>
+                    <div style="font-size:.65rem;color:${difColor};margin-top:.1rem;">${difLabel}</div>
+                </div>
+            </div>`;
+
+            // Desglose por componente SS
+            html += `
+            <div style="background:#f8fafc;border-radius:10px;padding:.75rem 1rem;margin-bottom:1rem;display:flex;gap:1rem;flex-wrap:wrap;">
+                <div style="flex:1;min-width:90px;text-align:center;">
+                    <div style="font-size:.78rem;font-weight:700;color:#0ea5e9;">EPS</div>
+                    <div style="font-size:.9rem;font-weight:700;color:#0284c7;">${fmtN(data.total_eps)}</div>
+                </div>
+                <div style="flex:1;min-width:90px;text-align:center;">
+                    <div style="font-size:.78rem;font-weight:700;color:#10b981;">Pensión AFP</div>
+                    <div style="font-size:.9rem;font-weight:700;color:#059669;">${fmtN(data.total_afp)}</div>
+                </div>
+                <div style="flex:1;min-width:90px;text-align:center;">
+                    <div style="font-size:.78rem;font-weight:700;color:#8b5cf6;">ARL</div>
+                    <div style="font-size:.9rem;font-weight:700;color:#7c3aed;">${fmtN(data.total_arl)}</div>
+                </div>
+                <div style="flex:1;min-width:90px;text-align:center;">
+                    <div style="font-size:.78rem;font-weight:700;color:#f59e0b;">Caja Comp.</div>
+                    <div style="font-size:.9rem;font-weight:700;color:#d97706;">${fmtN(data.total_caja)}</div>
+                </div>
+            </div>`;
+
+            // Tabla de empleados
+            if (!data.planos || data.planos.length === 0) {
+                html += '<div style="text-align:center;color:#94a3b8;padding:1.5rem;font-size:.84rem;">No se encontraron registros de planos para esta planilla.</div>';
+            } else {
+                html += `
+                <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:.5rem;">Detalle por empleado — ${data.planos.length} registro(s)</div>
+                <div style="border-radius:10px;overflow:hidden;border:1px solid #e2e8f0;">
+                    <div style="display:grid;grid-template-columns:30px 1fr 60px 70px 70px 70px 70px 80px;gap:.3rem;padding:.45rem .75rem;background:#f8fafc;font-size:.65rem;font-weight:700;text-transform:uppercase;color:#64748b;border-bottom:2px solid #e2e8f0;">
+                        <span>#</span>
+                        <span>Empleado</span>
+                        <span style="text-align:right;">Días</span>
+                        <span style="text-align:right;color:#0ea5e9;">EPS</span>
+                        <span style="text-align:right;color:#10b981;">AFP</span>
+                        <span style="text-align:right;color:#8b5cf6;">ARL</span>
+                        <span style="text-align:right;color:#f59e0b;">Caja</span>
+                        <span style="text-align:right;color:#7c3aed;">Total SS</span>
+                    </div>
+                    <div style="max-height:280px;overflow-y:auto;">`;
+
+                data.planos.forEach((p, i) => {
+                    const bg = i % 2 === 0 ? '#fff' : '#fafafa';
+                    const tipoIcon = p.tipo_reg === 'retiro' ? '🔴' : '🟢';
+                    html += `
+                    <div style="display:grid;grid-template-columns:30px 1fr 60px 70px 70px 70px 70px 80px;gap:.3rem;padding:.42rem .75rem;background:${bg};font-size:.73rem;border-bottom:1px solid #f1f5f9;align-items:center;">
+                        <span style="color:#94a3b8;font-size:.65rem;">${i+1}</span>
+                        <div>
+                            <div style="font-weight:600;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;" title="${p.nombre_completo}">${tipoIcon} ${p.nombre_completo || p.no_identifi}</div>
+                            <div style="font-size:.65rem;color:#94a3b8;">${p.no_identifi}${p.numero_factura ? ' · Fact. #'+p.numero_factura : ''}</div>
+                        </div>
+                        <span style="text-align:right;color:#64748b;">${p.num_dias ?? '—'}</span>
+                        <span style="text-align:right;color:#0ea5e9;font-weight:600;">${p.v_eps != null ? fmtN(p.v_eps) : '—'}</span>
+                        <span style="text-align:right;color:#10b981;font-weight:600;">${p.v_afp != null ? fmtN(p.v_afp) : '—'}</span>
+                        <span style="text-align:right;color:#8b5cf6;font-weight:600;">${p.v_arl != null ? fmtN(p.v_arl) : '—'}</span>
+                        <span style="text-align:right;color:#f59e0b;font-weight:600;">${p.v_caja != null ? fmtN(p.v_caja) : '—'}</span>
+                        <span style="text-align:right;color:#7c3aed;font-weight:700;">${p.total_ss != null ? fmtN(p.total_ss) : '—'}</span>
+                    </div>`;
+                });
+
+                // Fila total
+                html += `
+                    <div style="display:grid;grid-template-columns:30px 1fr 60px 70px 70px 70px 70px 80px;gap:.3rem;padding:.5rem .75rem;background:#f5f3ff;font-size:.73rem;border-top:2px solid #e2e8f0;font-weight:700;">
+                        <span></span>
+                        <span style="color:#7c3aed;">TOTAL</span>
+                        <span></span>
+                        <span style="text-align:right;color:#0ea5e9;">${fmtN(data.total_eps)}</span>
+                        <span style="text-align:right;color:#10b981;">${fmtN(data.total_afp)}</span>
+                        <span style="text-align:right;color:#8b5cf6;">${fmtN(data.total_arl)}</span>
+                        <span style="text-align:right;color:#f59e0b;">${fmtN(data.total_caja)}</span>
+                        <span style="text-align:right;color:#7c3aed;font-size:.82rem;">${fmtN(data.total_ss_facturas)}</span>
+                    </div>
+                    </div>
+                </div>`;
+            }
+
+            // Nota si no hay gasto
+            if (!data.gasto) {
+                html += '<div style="margin-top:.85rem;background:#fff7ed;border-left:3px solid #f59e0b;padding:.65rem 1rem;border-radius:0 8px 8px 0;font-size:.78rem;color:#92400e;">⚠️ No se encontró un gasto <code>pago_planilla</code> asociado a esta planilla. El valor pagado puede estar en otro registro.</div>';
+            }
+
+            document.getElementById('auditBody').innerHTML = html;
+        })
+        .catch(() => {
+            document.getElementById('auditBody').innerHTML = '<div style="color:#ef4444;padding:1.5rem;text-align:center;">Error al cargar la auditoría. Intente de nuevo.</div>';
+        });
+}
 </script>
 @endpush
 @endsection

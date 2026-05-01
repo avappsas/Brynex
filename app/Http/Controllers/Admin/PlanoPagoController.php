@@ -463,19 +463,20 @@ class PlanoPagoController extends Controller
                 . "Planilla: {$validated['numero_planilla']}";
 
             $gasto = Gasto::create([
-                'aliado_id'       => $aliadoId,
-                'usuario_id'      => $usuarioId,
-                'cuadre_id'       => null,
-                'fecha'           => today(),
-                'tipo'            => 'pago_planilla',
-                'descripcion'     => $descripcion,
-                'pagado_a'        => $validated['operador'],
-                'forma_pago'      => $validated['forma_pago'],
-                'banco_origen_id' => $validated['forma_pago'] !== 'efectivo'
+                'aliado_id'         => $aliadoId,
+                'usuario_id'        => $usuarioId,
+                'cuadre_id'         => null,
+                'fecha'             => today(),
+                'tipo'              => 'pago_planilla',
+                'numero_planilla'   => $validated['numero_planilla'],   // ← campo dedicado
+                'descripcion'       => $descripcion,
+                'pagado_a'          => $validated['operador'],
+                'forma_pago'        => $validated['forma_pago'],
+                'banco_origen_id'   => $validated['forma_pago'] !== 'efectivo'
                     ? ($validated['banco_id'] ?? null)
                     : null,
-                'valor'           => $validated['valor'],
-                'observacion'     => $validated['observacion'],
+                'valor'             => $validated['valor'],
+                'observacion'       => $validated['observacion'],
             ]);
 
             // ── Guardar imagen de soporte si viene adjunta ─────────────
