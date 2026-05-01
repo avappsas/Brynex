@@ -447,6 +447,12 @@ class MigrateLegacy extends Command
                 $this->line("  ℹ  $db: $existingCount ya migrados, insertando faltantes...");
             }
 
+            // Mapa empresas: id_legacy (COD_EMPRESA del legacy) → nuevo id de BryNex
+            $empresasMap = DB::table('empresas')
+                ->where('aliado_id', $aliadoId)
+                ->whereNotNull('id_legacy')
+                ->pluck('id', 'id_legacy');  // [legacy_id => brynex_id]
+
             $total = DB::connection('sqlsrv_legacy')
                 ->selectOne("SELECT COUNT(*) as cnt FROM [$db].dbo.Base_De_Datos")->cnt;
             $this->line("  ⏳ $db: $total total, " . ($total - $existingCount) . " faltantes...");
@@ -459,13 +465,15 @@ class MigrateLegacy extends Command
                     // Saltar si ya existe este id_legacy para este aliado
                     if (isset($yaExisten[$r->Id])) { $skipped++; continue; }
 
-                    $epsId     = $this->lookupByNit('eps',       $r->Eps);
-                    $pensionId = $this->lookupByNit('pensiones',  $r->Pension);
+                    $epsId     = $this->lookupByNit('eps',      $r->Eps);
+                    $pensionId = $this->lookupByNit('pensiones', $r->Pension);
+                    // Mapear COD_EMPRESA (legacy id) al nuevo id de empresas en BryNex
+                    $empresaId = $r->COD_EMPRESA ? ($empresasMap->get((int)$r->COD_EMPRESA) ?? null) : null;
                     DB::table('clientes')->insert([
                         'id'                  => $nextId++,
                         'aliado_id'           => $aliadoId,
                         'id_legacy'           => $r->Id,
-                    'cod_empresa'         => $r->COD_EMPRESA,  // remap al final
+                        'cod_empresa'         => $empresaId,   // nuevo id de empresas
                     'tipo_doc'            => substr(trim($r->TIPO_DOC ?? ''), 0, 10),
                     'cedula'              => $r->Cedula,
                     'primer_nombre'       => substr(trim($r->{'1_NOMBRE'} ?? ''), 0, 55),
