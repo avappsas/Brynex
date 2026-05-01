@@ -2085,44 +2085,52 @@ class MigrateLegacy extends Command
                 }
                 $this->line("  ⏳ $db → " . count($rows) . " registros recibidos, insertando en temp table...");
 
-                // 2) Crear tabla temporal en BryNex (misma conexión por defecto)
-                DB::statement("IF OBJECT_ID('tempdb..#ss_retiro') IS NOT NULL DROP TABLE #ss_retiro");
-                DB::statement("CREATE TABLE #ss_retiro (
-                    id_legacy  INT NOT NULL PRIMARY KEY,
-                    v_eps      INT NOT NULL DEFAULT 0,
-                    v_arl      INT NOT NULL DEFAULT 0,
-                    v_afp      INT NOT NULL DEFAULT 0,
-                    v_caja     INT NOT NULL DEFAULT 0,
-                    total_ss   INT NOT NULL DEFAULT 0
-                )");
+                // 2-4) Todo dentro de una transacción para forzar la MISMA sesión PDO.
+                // Las tablas temporales de SQL Server (#temp) son session-scoped:
+                // sin transacción, cada DB::statement() puede usar una conexión distinta
+                // y la tabla desaparece entre llamadas.
+                $affected = 0;
+                DB::transaction(function () use ($rows, $aliadoId, &$affected) {
 
-                // 3) INSERT masivo en lotes de 1000 filas (VALUES multi-row)
-                foreach (array_chunk($rows, 1000) as $chunk) {
-                    $vals = implode(',', array_map(function ($r) {
-                        $ts = (int)$r->v_eps + (int)$r->v_arl + (int)$r->v_afp + (int)$r->v_caja;
-                        return "({$r->Id_Factura},{$r->v_eps},{$r->v_arl},{$r->v_afp},{$r->v_caja},{$ts})";
-                    }, $chunk));
-                    DB::statement("INSERT INTO #ss_retiro (id_legacy,v_eps,v_arl,v_afp,v_caja,total_ss) VALUES $vals");
-                }
+                    // 2) Crear tabla temporal (session-scoped, visible solo en esta transacción)
+                    DB::statement("IF OBJECT_ID('tempdb..#ss_retiro') IS NOT NULL DROP TABLE #ss_retiro");
+                    DB::statement("CREATE TABLE #ss_retiro (
+                        id_legacy  INT NOT NULL PRIMARY KEY,
+                        v_eps      INT NOT NULL DEFAULT 0,
+                        v_arl      INT NOT NULL DEFAULT 0,
+                        v_afp      INT NOT NULL DEFAULT 0,
+                        v_caja     INT NOT NULL DEFAULT 0,
+                        total_ss   INT NOT NULL DEFAULT 0
+                    )");
 
-                // 4) UPDATE JOIN en BryNex (local, sin cross-BD)
-                //    Solo actualiza filas donde total_ss=0 (re-entrant)
-                $affected = DB::affectingStatement("
-                    UPDATE f SET
-                        f.v_eps      = t.v_eps,
-                        f.v_arl      = t.v_arl,
-                        f.v_afp      = t.v_afp,
-                        f.v_caja     = t.v_caja,
-                        f.total_ss   = t.total_ss,
-                        f.updated_at = GETDATE()
-                    FROM facturas f
-                    JOIN #ss_retiro t ON t.id_legacy = f.id_legacy
-                    WHERE f.aliado_id    = ?
-                      AND f.total_ss     = 0
-                      AND f.numero_factura = 0
-                ", [$aliadoId]);
+                    // 3) INSERT masivo en lotes de 500 filas (VALUES multi-row)
+                    foreach (array_chunk($rows, 500) as $chunk) {
+                        $vals = implode(',', array_map(function ($r) {
+                            $ts = (int)$r->v_eps + (int)$r->v_arl + (int)$r->v_afp + (int)$r->v_caja;
+                            return "({$r->Id_Factura},{$r->v_eps},{$r->v_arl},{$r->v_afp},{$r->v_caja},{$ts})";
+                        }, $chunk));
+                        DB::statement("INSERT INTO #ss_retiro (id_legacy,v_eps,v_arl,v_afp,v_caja,total_ss) VALUES $vals");
+                    }
 
-                DB::statement("DROP TABLE IF EXISTS #ss_retiro");
+                    // 4) UPDATE JOIN local en BryNex (sin cross-BD)
+                    //    Solo actualiza total_ss=0 → re-entrant seguro
+                    $affected = DB::affectingStatement("
+                        UPDATE f SET
+                            f.v_eps      = t.v_eps,
+                            f.v_arl      = t.v_arl,
+                            f.v_afp      = t.v_afp,
+                            f.v_caja     = t.v_caja,
+                            f.total_ss   = t.total_ss,
+                            f.updated_at = GETDATE()
+                        FROM facturas f
+                        JOIN #ss_retiro t ON t.id_legacy = f.id_legacy
+                        WHERE f.aliado_id     = ?
+                          AND f.total_ss      = 0
+                          AND f.numero_factura = 0
+                    ", [$aliadoId]);
+
+                    DB::statement("DROP TABLE IF EXISTS #ss_retiro");
+                });
 
                 $this->info("  ✅ $db → $affected facturas con SS recalculado");
 
