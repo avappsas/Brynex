@@ -17,8 +17,31 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // ── Deshabilitar FKs que apunten a estas tablas ──────────────────────────
-        DB::statement('EXEC sp_MSforeachtable \'ALTER TABLE ? NOCHECK CONSTRAINT ALL\'');
+        // ── Dropear FKs externas que apuntan a razones_sociales y empresas ────────
+        // (SQL Server no permite DROP TABLE si hay FK constraints referenciando la tabla)
+        $fksToDrop = [
+            ['tabla' => 'contratos',     'fk' => 'razon_social_id'],
+            ['tabla' => 'incapacidades', 'fk' => 'razon_social_id'],
+            ['tabla' => 'planos',        'fk' => 'razon_social_id'],
+            ['tabla' => 'bitacora_cobros', 'fk' => 'empresa_id'],
+        ];
+
+        foreach ($fksToDrop as $item) {
+            // Buscar el nombre exacto del constraint en sys.foreign_keys
+            $constraintName = DB::selectOne("
+                SELECT fk.name AS constraint_name
+                FROM sys.foreign_keys fk
+                JOIN sys.foreign_key_columns fkc ON fk.object_id = fkc.constraint_object_id
+                JOIN sys.columns c ON fkc.parent_object_id = c.object_id
+                                   AND fkc.parent_column_id = c.column_id
+                WHERE OBJECT_NAME(fk.parent_object_id) = '{$item['tabla']}'
+                  AND c.name = '{$item['fk']}'
+            ")?->constraint_name;
+
+            if ($constraintName) {
+                DB::statement("ALTER TABLE [{$item['tabla']}] DROP CONSTRAINT [{$constraintName}]");
+            }
+        }
 
         // ════════════════════════════════════════════════════════
         // 1. CLIENTES  → id IDENTITY + cedula bigInteger indexada
@@ -144,8 +167,31 @@ return new class extends Migration
             $table->foreign('aliado_id')->references('id')->on('aliados')->nullOnDelete();
         });
 
-        // ── Re-habilitar FKs ─────────────────────────────────────────────────────
-        DB::statement('EXEC sp_MSforeachtable \'ALTER TABLE ? WITH CHECK CHECK CONSTRAINT ALL\'');
+        // ── Recrear las FKs que dropeamos (ahora apuntan a los nuevos ids IDENTITY) ──
+        // Sólo si las tablas padre existen y tienen datos o son para integridad futura
+        $fksTables = ['contratos', 'incapacidades', 'planos'];
+        foreach ($fksTables as $tabla) {
+            if (Schema::hasTable($tabla) && Schema::hasColumn($tabla, 'razon_social_id')) {
+                try {
+                    Schema::table($tabla, function (Blueprint $table) {
+                        $table->foreign('razon_social_id')
+                              ->references('id')->on('razones_sociales')
+                              ->nullOnDelete();
+                    });
+                } catch (\Exception $e) {
+                    // FK puede ya existir si la migración se reintenta
+                }
+            }
+        }
+        if (Schema::hasTable('bitacora_cobros') && Schema::hasColumn('bitacora_cobros', 'empresa_id')) {
+            try {
+                Schema::table('bitacora_cobros', function (Blueprint $table) {
+                    $table->foreign('empresa_id')
+                          ->references('id')->on('empresas')
+                          ->nullOnDelete();
+                });
+            } catch (\Exception $e) { /* ya existe */ }
+        }
     }
 
     public function down(): void
