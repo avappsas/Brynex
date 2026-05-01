@@ -308,15 +308,19 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
             <div id="egresosSSList" style="max-height:320px;overflow-y:auto;">
                 @foreach($egresosSSDetalle as $eg)
                 @php
-                    $numPlan  = $eg->numero_planilla ?? null;
-                    $fechaEg  = sqldate($eg->fecha);
-                    $fechaStr = $fechaEg ? $fechaEg->format('d/m/Y') : '—';
-                    $fechaIso = $fechaEg ? $fechaEg->format('Y-m-d') : '';
+                    $numPlan     = $eg->numero_planilla ?? null;
+                    $fechaEg     = sqldate($eg->fecha);
+                    $fechaStr    = $fechaEg ? $fechaEg->format('d/m/Y') : '—';
+                    $fechaIso    = $fechaEg ? $fechaEg->format('Y-m-d') : '';
+                    $ssCobrado   = (float)($eg->ss_cobrado_facturas ?? 0);
+                    $ssPagado    = (float)($eg->total ?? 0);
+                    $ssDiff      = abs($ssCobrado - $ssPagado);
+                    $esAdvertencia = $numPlan && $ssCobrado > 0 && $ssDiff > 50000;
                 @endphp
                 <div class="audit-row egreso-ss-row"
                     data-fecha="{{ $fechaIso }}"
                     data-valor="{{ $eg->total }}"
-                    style="display:grid;grid-template-columns:90px 1fr 140px 110px;gap:.4rem;padding:.55rem 1rem;border-bottom:1px solid #f1f5f9;align-items:start;"
+                    style="display:grid;grid-template-columns:90px 1fr 140px 110px;gap:.4rem;padding:.55rem 1rem;border-bottom:1px solid #f1f5f9;align-items:start;{{ $esAdvertencia ? 'background:#fff7ed;border-left:3px solid #f59e0b;' : '' }}"
                     @if($numPlan)
                         onclick="auditarPlanilla('{{ addslashes($numPlan) }}','{{ addslashes($eg->descripcion ?? $eg->pagado_a) }}')"
                         title="🔍 Clic para auditar planilla {{ $numPlan }}"
@@ -331,8 +335,10 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
                     {{-- Descripción completa --}}
                     <div>
                         <div style="font-size:.78rem;color:#334155;line-height:1.4;word-break:break-word;">{{ $eg->descripcion ?: $eg->pagado_a }}</div>
-                        @if($numPlan)
-                        <div style="font-size:.67rem;color:#94a3b8;margin-top:.15rem;">clic para ver auditoría ↗</div>
+                        @if($esAdvertencia)
+                        <div style="font-size:.67rem;color:#b45309;font-weight:600;margin-top:.2rem;">
+                            ⚠️ Dif. SS: {{ $fmt($ssDiff) }} (cobrado {{ $fmt($ssCobrado) }})
+                        </div>
                         @endif
                     </div>
                     {{-- Banco / Cuenta --}}
@@ -350,7 +356,7 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
                     </div>
                     {{-- Valor --}}
                     <div style="text-align:right;">
-                        <div style="font-weight:700;color:#7c3aed;font-size:.88rem;">{{ $fmt($eg->total) }}</div>
+                        <div style="font-weight:700;color:{{ $esAdvertencia ? '#d97706' : '#7c3aed' }};font-size:.88rem;">{{ $fmt($eg->total) }}</div>
                         @if($eg->cantidad > 1)
                         <div style="font-size:.67rem;color:#94a3b8;">{{ $eg->cantidad }} reg.</div>
                         @endif
@@ -715,9 +721,22 @@ function auditarPlanilla(numPlanilla, descripcion) {
                     </div>
                     <div style="max-height:280px;overflow-y:auto;">`;
 
+                let lastEmpresa = null;
                 data.planos.forEach((p, i) => {
                     const bg = i % 2 === 0 ? '#fff' : '#fafafa';
                     const tipoIcon = p.tipo_reg === 'retiro' ? '🔴' : '🟢';
+                    const empresa  = p.empresa_nombre || '—';
+                    const nit      = p.empresa_nit ? ` <span style="color:#94a3b8;font-size:.63rem;">(${p.empresa_nit})</span>` : '';
+
+                    // Separador de empresa cuando cambia
+                    if (empresa !== lastEmpresa) {
+                        html += `
+                        <div style="background:#e0f2fe;padding:.3rem .75rem;font-size:.68rem;font-weight:700;color:#0c4a6e;border-bottom:1px solid #bae6fd;">
+                            🏢 ${empresa}${nit}
+                        </div>`;
+                        lastEmpresa = empresa;
+                    }
+
                     html += `
                     <div style="display:grid;grid-template-columns:30px 1fr 60px 70px 70px 70px 70px 80px;gap:.3rem;padding:.42rem .75rem;background:${bg};font-size:.73rem;border-bottom:1px solid #f1f5f9;align-items:center;">
                         <span style="color:#94a3b8;font-size:.65rem;">${i+1}</span>

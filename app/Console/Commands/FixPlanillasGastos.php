@@ -7,31 +7,42 @@ use Illuminate\Support\Facades\DB;
 
 class FixPlanillasGastos extends Command
 {
-    protected $signature   = 'gastos:fix-planillas {--dry-run : Solo muestra qué se actualizaría sin hacer cambios}';
+    protected $signature   = 'gastos:fix-planillas {--dry-run : Solo muestra qué se actualizaría sin hacer cambios} {--aliado= : ID del aliado (omitir = todos)}';
     protected $description = 'Extrae el numero_planilla de la descripción de gastos pago_planilla y lo guarda en el campo dedicado';
 
     public function handle(): int
     {
         $dryRun = $this->option('dry-run');
-        $aid    = DB::table('aliados')->orderBy('id')->value('id');
 
-        if (!$aid) {
-            $this->error('No se encontró ningún aliado.');
+        // Aliados a procesar
+        $aliadoOpt = $this->option('aliado');
+        $aliados   = $aliadoOpt
+            ? collect([(object)['id' => (int)$aliadoOpt]])
+            : DB::table('aliados')->orderBy('id')->get(['id']);
+
+        if ($aliados->isEmpty()) {
+            $this->error('No se encontraron aliados.');
             return 1;
         }
 
-        $this->info("Aliado ID: {$aid}");
         $this->info($dryRun ? '🔍 Modo DRY-RUN (sin cambios)' : '⚙️  Ejecutando actualización...');
         $this->newLine();
 
-        // ── Paso 1: Formato NUEVO  "... | Planilla: {numero}" ─────────────
-        // Ya cubierto por la migración inicial, pero ejecutamos por si quedaron
-        $format1 = $this->fixFormato1($aid, $dryRun);
+        foreach ($aliados as $aliado) {
+            $aid = $aliado->id;
+            $this->line("<fg=cyan>── Aliado ID: {$aid} ──</>");
+            $this->procesarAliado($aid, $dryRun);
+            $this->newLine();
+        }
 
-        // ── Paso 2: Formato LEGACY "Pago Planillas: {numero} / {empresa}" ─
+        return 0;
+    }
+
+    private function procesarAliado(int $aid, bool $dryRun): void
+    {
+        $format1 = $this->fixFormato1($aid, $dryRun);
         $format2 = $this->fixFormato2($aid, $dryRun);
 
-        // ── Paso 3: Preview de los que quedaron sin resolver ───────────────
         $sinResolver = DB::table('gastos')
             ->where('aliado_id', $aid)
             ->where('tipo', 'pago_planilla')
@@ -39,18 +50,16 @@ class FixPlanillasGastos extends Command
             ->select('id', 'descripcion', 'fecha', 'valor')
             ->get();
 
-        $this->newLine();
         $this->table(['Formato', 'Registros actualizados'], [
-            ['Nuevo  (... | Planilla: {num})',         $format1],
-            ['Legacy (Pago Planillas: {num} / ...)',   $format2],
+            ['Nuevo  (... | Planilla: {num})',       $format1],
+            ['Legacy (Pago Planillas: {num} / ...)', $format2],
         ]);
 
         if ($sinResolver->isNotEmpty()) {
-            $this->newLine();
-            $this->warn("⚠️  {$sinResolver->count()} registro(s) NO resueltos (descripción no reconocida):");
+            $this->warn("⚠️  {$sinResolver->count()} registro(s) sin resolver:");
             $rows = $sinResolver->map(fn($g) => [
                 $g->id,
-                substr($g->descripcion, 0, 80),
+                substr($g->descripcion ?? '', 0, 70),
                 $g->fecha,
                 number_format($g->valor),
             ])->toArray();
@@ -58,10 +67,7 @@ class FixPlanillasGastos extends Command
         } else {
             $this->info('✅ Todos los registros tienen numero_planilla asignado.');
         }
-
-        return 0;
     }
-
     // ── Formato nuevo: "... | Planilla: {numero}" ─────────────────────────
     private function fixFormato1(int $aid, bool $dryRun): int
     {

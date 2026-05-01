@@ -1049,38 +1049,57 @@ class MigrateLegacy extends Command
 
             $count = 0; $skipped = 0; $offset = 0; $chunk = 500;
 
+            // Pre-cargar id_legacy ya migrados para skip check rápido
+            $idLegacyMigrados = DB::table('planos')
+                ->where('aliado_id', $aliadoId)
+                ->whereNotNull('id_legacy')
+                ->pluck('id_legacy')->flip()->all();
+
             while (true) {
                 $rows = $this->legacySelect("SELECT * FROM [$db].dbo.PLANOS ORDER BY Id OFFSET $offset ROWS FETCH NEXT $chunk ROWS ONLY");
                 if (empty($rows)) break;
                 foreach ($rows as $r) {
+                    // ── Skip por id_legacy (más confiable que clave compuesta) ──
+                    $idLeg = $this->col($r, 'Id') ?? $this->col($r, 'id');
+                    if ($idLeg && isset($idLegacyMigrados[$idLeg])) { $skipped++; continue; }
+
                     // ── Lookup O(1) desde mapas precargados (sin queries extra) ──
                     $factLegacyId = $this->col($r, 'id_facturacion') ?? $this->col($r, 'Id_Facturacion') ?? $this->col($r, 'ID_FACTURACION');
                     $facturaId    = $factLegacyId ? ($facturasMap[$factLegacyId] ?? null) : null;
 
-                    // Skip por factura_id si ya existe
-                    if ($facturaId && isset($facturasMigradas[$facturaId])) { $skipped++; continue; }
+                    // Skip por factura_id si ya existe (fallback si no hay id_legacy)
+                    if (!$idLeg && $facturaId && isset($facturasMigradas[$facturaId])) { $skipped++; continue; }
 
-                    // Skip por clave compuesta (cedula|mes|año|razon_social|n_plano)
+                    // Skip por clave compuesta (solo si no hay id_legacy)
                     $nit      = $this->col($r, 'Nit_Empresa') ?? $this->col($r, 'NIT');
                     $rsId     = (is_numeric($nit) && (int)$nit > 0) ? ($rsMap[(int)$nit] ?? null) : null;
                     $cedula   = $this->col($r, 'NO_IDENTIFI') ?? $this->col($r, 'No_Identifi') ?? $this->col($r, 'Cedula') ?? '';
                     $mes      = $this->col($r, 'MES_PLANO') ?? $this->col($r, 'Mes') ?? '';
                     $anio     = $this->col($r, 'AÑO_PLANO') ?? $this->col($r, 'Año') ?? $this->col($r, 'Anio') ?? '';
                     $nPlano   = $this->col($r, 'N_PLANO') ?? $this->col($r, 'N_Plano') ?? '';
-                    $clave    = "{$cedula}|{$mes}|{$anio}|{$rsId}|{$nPlano}";
-                    if (isset($clavesMigradas[$clave])) { $skipped++; continue; }
+                    if (!$idLeg) {
+                        $clave = "{$cedula}|{$mes}|{$anio}|{$rsId}|{$nPlano}";
+                        if (isset($clavesMigradas[$clave])) { $skipped++; continue; }
+                    }
 
                     // contrato_id desde mapa precargado
                     $contratoLegacyId = $this->col($r, 'Id_Contrato');
                     $contratoId       = $contratoLegacyId ? ($contratosMap[$contratoLegacyId] ?? null) : null;
 
                     DB::table('planos')->insert([
+                        'id_legacy'          => $idLeg,        // PLANOS.Id del legacy
                         'aliado_id'          => $aliadoId,
                         'factura_id'         => $facturaId,
                         'contrato_id'        => $contratoId,
 
                         // Numero de planilla: campo "Planilla" del legacy
-                        'numero_planilla'    => trim($this->col($r, 'Planilla') ?? $this->col($r, 'Numero_Planilla') ?? ''),
+                        // Legacy lo guarda como float '84964187.0' → limpiamos a '84964187'
+                        'numero_planilla'    => (function() use ($r) {
+                            $val = trim($this->col($r, 'Planilla') ?? $this->col($r, 'Numero_Planilla') ?? '');
+                            if ($val === '' || $val === null) return null;
+                            if (is_numeric($val)) return (string)(int)((float)$val);
+                            return $val;
+                        })(),
                         'numero_factura'     => is_numeric($this->col($r, 'Factura')) ? (int)$this->col($r, 'Factura') : null,
                         'n_plano'            => trim($this->col($r, 'N_PLANO') ?? $this->col($r, 'N_Plano') ?? ''),
                         // Mes y año: MES_PLANO y AÑO_PLANO del legacy
@@ -1138,16 +1157,9 @@ class MigrateLegacy extends Command
                         'nombre_arl'         => trim($this->col($r, 'Nombre_ARL')  ?? $this->col($r, 'Nom_ARL')  ?? ''),
                         'nombre_caja'        => trim($this->col($r, 'Nombre_Caja') ?? $this->col($r, 'Nom_Caja') ?? ''),
                         'nivel_riesgo'       => is_numeric($this->col($r, 'N_ARL') ?? $this->col($r, 'Nivel_Riesgo')) ? (int)($this->col($r, 'N_ARL') ?? $this->col($r, 'Nivel_Riesgo')) : 1,
-                        // razon_social_id: buscar por id_legacy = NIT del plano → retorna el id BryNex
-                        // razon_social guarda el NIT como string (referencia legible)
-                        'razon_social_id'    => (function () use ($r, $aliadoId) {
-                            $nit = $this->col($r, 'Nit_Empresa') ?? $this->col($r, 'NIT') ?? null;
-                            if (!is_numeric($nit) || (int)$nit <= 0) return null;
-                            return DB::table('razones_sociales')
-                                ->where('aliado_id', $aliadoId)
-                                ->where('id_legacy', (int)$nit)
-                                ->value('id');  // id BryNex (auto-increment)
-                        })(),
+                        // razon_social_id: usar el mapa precargado (O(1), sin N+1 queries)
+                        // rsMap está indexado por id_legacy = NIT de la empresa
+                        'razon_social_id'    => $rsId,  // ya resuelto arriba desde $rsMap[(int)$nit]
                         'razon_social'       => (function () use ($r) {
                             $nit = $this->col($r, 'Nit_Empresa') ?? $this->col($r, 'NIT');
                             if (is_numeric($nit) && (int)$nit > 0) return (string)(int)$nit;
@@ -1337,6 +1349,15 @@ class MigrateLegacy extends Command
                     'recibo_caja'    => trim($this->col($r, 'Recibo_Caja') ?? $this->col($r, 'Recibo') ?? ''),
                     'lugar'          => trim($this->col($r, 'Lugar') ?? ''),
                     'observacion'    => trim($this->col($r, 'Observacion') ?? ''),
+                    // Extraer numero_planilla de la descripcion (para gastos tipo pago_planilla)
+                    'numero_planilla'=> (function() use ($r) {
+                        $desc = trim($this->col($r, 'Descripcion') ?? $this->col($r, 'Concepto') ?? '');
+                        // Formato nuevo: "... | Planilla: {numero}"
+                        if (preg_match('/Planilla:\s*(\S+)\s*$/i', $desc, $m)) return $m[1];
+                        // Formato legacy: "Pago Planillas: {numero} / ..."
+                        if (preg_match('/Planillas[:\s]+(\d+)/i', $desc, $m)) return $m[1];
+                        return null;
+                    })(),
                     'created_at'     => now(),
                     'updated_at'     => now(),
                 ]);

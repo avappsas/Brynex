@@ -309,22 +309,73 @@ class InformeController extends Controller
             'retiro_ss'=> (float)$retiroSS,
         ];
 
-        // Egresos SS: gastos pago_planilla con cuenta bancaria de origen
+        // Egresos SS: gastos pago_planilla del mes seleccionado
         $egresosSSDetalle = DB::table('gastos AS g')
             ->leftJoin('banco_cuentas AS bc', 'bc.id', '=', 'g.banco_origen_id')
-            ->where('g.aliado_id',$aid)->where('g.tipo','pago_planilla')
-            ->whereMonth('g.fecha',$mes)->whereYear('g.fecha',$anio)
+            ->where('g.aliado_id', $aid)
+            ->where('g.tipo', 'pago_planilla')
+            ->whereMonth('g.fecha', $mes)
+            ->whereYear('g.fecha', $anio)
             ->selectRaw("
                 g.numero_planilla, g.descripcion, g.pagado_a,
                 MAX(g.fecha) AS fecha,
                 SUM(g.valor) AS total,
                 COUNT(*) AS cantidad,
                 MAX(bc.banco) AS banco_nombre,
-                MAX(bc.nombre) AS banco_titular
+                MAX(bc.nombre) AS banco_titular,
+                ISNULL((
+                    SELECT SUM(f.total_ss)
+                    FROM planos p2
+                    INNER JOIN facturas f ON f.id = p2.factura_id
+                    WHERE p2.aliado_id = {$aid}
+                      AND p2.numero_planilla = g.numero_planilla
+                      AND p2.deleted_at IS NULL
+                      AND f.deleted_at IS NULL
+                ), 0) AS ss_cobrado_facturas
             ")
-            ->groupBy('g.numero_planilla','g.descripcion','g.pagado_a')
+            ->groupBy('g.numero_planilla', 'g.descripcion', 'g.pagado_a')
             ->orderByDesc('total')
             ->get();
+
+        // ── Anticipos: facturas de período FUTURO cobradas en este mes ──
+        // Ej: factura de Mayo pagada en Abril → aparece en Abril como anticipo
+        // (se calcula aquí para incluir $anticipos['ss'] en $saldoSS)
+        $anticiposQ = DB::table('facturas')
+            ->where('aliado_id', $aid)->whereNull('deleted_at')
+            ->whereNotNull('fecha_pago')
+            ->whereMonth('fecha_pago', $mes)->whereYear('fecha_pago', $anio)
+            ->whereIn('estado', ['pagada','abono'])
+            ->where('numero_factura', '>', 0)
+            ->where(function($q) use ($mes, $anio) {
+                $q->where('anio', '>', $anio)
+                  ->orWhere(function($i) use ($mes, $anio) {
+                      $i->where('anio', $anio)->where('mes', '>', $mes);
+                  });
+            });
+
+        $anticipos = [
+            'admon'  => (float)(clone $anticiposQ)->sum(DB::raw('admon + seguro + mensajeria + otros + iva + retiro')),
+            'ss'     => (float)(clone $anticiposQ)->sum('total_ss'),
+            'cant'   => (int)(clone $anticiposQ)->count(),
+        ];
+        $anticipos['total'] = $anticipos['admon'] + $anticipos['ss'];
+
+        // ── Facturas del período actual ya cobradas en meses anteriores ─
+        $cobradosAntesQ = (clone $facturasBase)
+            ->whereNotNull('fecha_pago')
+            ->where(function($q) use ($mes, $anio) {
+                $q->where('anio', '<', $anio)
+                  ->orWhere(function($i) use ($mes, $anio) {
+                      $i->where('anio', $anio)->where('mes', '<', $mes);
+                  });
+            });
+
+        $cobradosAntes = [
+            'admon' => (float)(clone $cobradosAntesQ)->sum(DB::raw('admon + seguro + mensajeria + otros + iva + retiro')),
+            'ss'    => (float)(clone $cobradosAntesQ)->sum('total_ss'),
+            'cant'  => (int)(clone $cobradosAntesQ)->count(),
+        ];
+        $cobradosAntes['total'] = $cobradosAntes['admon'] + $cobradosAntes['ss'];
 
         $pagadoSS = $egresosSSDetalle->sum('total');
         // saldoSS incluye los anticipos: SS de facturas futuras cobradas este mes
@@ -357,46 +408,6 @@ class InformeController extends Controller
             $b->saldo_actual = \App\Models\Consignacion::saldoBanco($aid,$b->id);
             return $b;
         });
-
-        // ── Anticipos: facturas de período FUTURO cobradas en este mes ──
-        // Ej: factura de Mayo pagada en Abril → aparece en Abril como anticipo
-        $anticiposQ = DB::table('facturas')
-            ->where('aliado_id', $aid)->whereNull('deleted_at')
-            ->whereNotNull('fecha_pago')
-            ->whereMonth('fecha_pago', $mes)->whereYear('fecha_pago', $anio)
-            ->whereIn('estado', ['pagada','abono'])
-            ->where('numero_factura', '>', 0)
-            ->where(function($q) use ($mes, $anio) {
-                $q->where('anio', '>', $anio)
-                  ->orWhere(function($i) use ($mes, $anio) {
-                      $i->where('anio', $anio)->where('mes', '>', $mes);
-                  });
-            });
-
-        $anticipos = [
-            'admon'  => (float)(clone $anticiposQ)->sum(DB::raw('admon + seguro + mensajeria + otros + iva + retiro')),
-            'ss'     => (float)(clone $anticiposQ)->sum('total_ss'),
-            'cant'   => (int)(clone $anticiposQ)->count(),
-        ];
-        $anticipos['total'] = $anticipos['admon'] + $anticipos['ss'];
-
-        // ── Facturas del período actual ya cobradas en meses anteriores ─
-        // Ej: factura de Mayo pagada en Abril → en Mayo, ese ingreso ya está cobrado
-        $cobradosAntesQ = (clone $facturasBase)
-            ->whereNotNull('fecha_pago')
-            ->where(function($q) use ($mes, $anio) {
-                $q->where('anio', '<', $anio)
-                  ->orWhere(function($i) use ($mes, $anio) {
-                      $i->where('anio', $anio)->where('mes', '<', $mes);
-                  });
-            });
-
-        $cobradosAntes = [
-            'admon' => (float)(clone $cobradosAntesQ)->sum(DB::raw('admon + seguro + mensajeria + otros + iva + retiro')),
-            'ss'    => (float)(clone $cobradosAntesQ)->sum('total_ss'),
-            'cant'  => (int)(clone $cobradosAntesQ)->count(),
-        ];
-        $cobradosAntes['total'] = $cobradosAntes['admon'] + $cobradosAntes['ss'];
 
         // Desglose diario
         $diario = $this->desgloseDiario($aid, $mes, $anio);
@@ -466,7 +477,8 @@ class InformeController extends Controller
 
         // ── 2. Planos con ese numero_planilla (un plano = un empleado) ─
         $planos = DB::table('planos AS p')
-            ->leftJoin('facturas AS f', 'f.id', '=', 'p.factura_id')
+            ->leftJoin('facturas AS f',         'f.id',  '=', 'p.factura_id')
+            ->leftJoin('razones_sociales AS rs', 'rs.id', '=', 'p.razon_social_id')
             ->where('p.aliado_id', $aid)
             ->whereNull('p.deleted_at')
             ->where('p.numero_planilla', $numPlanilla)
@@ -474,21 +486,19 @@ class InformeController extends Controller
                 'p.id',
                 'p.no_identifi',
                 DB::raw("LTRIM(RTRIM(ISNULL(p.primer_nombre,'')+' '+ISNULL(p.segundo_nombre,'')+' '+ISNULL(p.primer_ape,'')+' '+ISNULL(p.segundo_ape,''))) AS nombre_completo"),
-                'p.razon_social',
+                'p.razon_social_id',
+                DB::raw("ISNULL(rs.razon_social, p.razon_social) AS empresa_nombre"),
+                'rs.nit AS empresa_nit',
                 'p.n_plano',
                 'p.mes_plano',
                 'p.anio_plano',
                 'p.num_dias',
                 'p.tipo_reg',
-                // SS de factura (lo que se cobró al cliente)
                 'f.id AS factura_id',
                 'f.numero_factura',
-                'f.v_eps',
-                'f.v_afp',
-                'f.v_arl',
-                'f.v_caja',
-                'f.total_ss',
+                'f.v_eps', 'f.v_afp', 'f.v_arl', 'f.v_caja', 'f.total_ss',
             ])
+            ->orderBy('rs.razon_social')
             ->orderBy('p.primer_ape')
             ->get();
 
