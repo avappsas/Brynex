@@ -835,14 +835,14 @@ class MigrateLegacy extends Command
             $yaExisten = DB::table('facturas')->where('aliado_id', $aliadoId)
                 ->pluck('id_legacy')->filter()->flip()->all();
             $total = DB::connection('sqlsrv_legacy')
-                ->selectOne("SELECT COUNT(*) as cnt FROM [$db].dbo.FACTURACION")->cnt;
-            $this->line("  ⏳ $db: $total facturas, " . ($total - count($yaExisten)) . " faltantes...");
+                ->selectOne("SELECT COUNT(*) as cnt FROM [$db].dbo.FACTURACION WHERE AÑO >= 2026")->cnt;
+            $this->line("  ⏳ $db: $total facturas (2026+), " . ($total - count($yaExisten)) . " faltantes...");
 
             $count = 0; $skipped = 0; $offset = 0; $chunk = 500;
             while (true) {
-                // Filtro: solo facturas del año 2026 (después expandir a todos los años)
+                // Filtro: solo facturas del año 2026+ (columna AÑO en FACTURACION)
                 $rows = $this->legacySelect("SELECT * FROM [$db].dbo.FACTURACION
-                    WHERE YEAR(FECHA) >= 2026
+                    WHERE AÑO >= 2026
                     ORDER BY Id_Factura OFFSET $offset ROWS FETCH NEXT $chunk ROWS ONLY");
                 if (empty($rows)) break;
 
