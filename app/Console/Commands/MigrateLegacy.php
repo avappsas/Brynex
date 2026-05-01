@@ -1153,8 +1153,9 @@ class MigrateLegacy extends Command
                     $factLegacyId = $this->col($r, 'id_facturacion') ?? $this->col($r, 'Id_Facturacion') ?? $this->col($r, 'ID_FACTURACION');
                     $facturaId    = $factLegacyId ? ($facturasMap[$factLegacyId] ?? null) : null;
 
-                    // Skip por factura_id si ya existe (fallback si no hay id_legacy)
-                    if (!$idLeg && $facturaId && isset($facturasMigradas[$facturaId])) { $skipped++; continue; }
+                    // Si la factura no fue migrada a BryNex, saltar este plano
+                    // (evita planos con factura_id=null que no tienen sentido sin su factura)
+                    if (!$facturaId) { $skipped++; continue; }
 
                     // Skip por clave compuesta (solo si no hay id_legacy)
                     $nit      = $this->col($r, 'Nit_Empresa') ?? $this->col($r, 'NIT');
