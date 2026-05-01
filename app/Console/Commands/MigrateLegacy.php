@@ -1103,9 +1103,9 @@ class MigrateLegacy extends Command
                 ->pluck('id_legacy')->flip()->all();
 
             while (true) {
-                // Filtro: solo planos del año 2026 (después expandir a todos los años)
+                // Filtro: solo planos de 2026 exacto (después expandir a todos los años)
                 $rows = $this->legacySelect("SELECT * FROM [$db].dbo.PLANOS
-                    WHERE AÑO_PLANO >= 2026
+                    WHERE AÑO_PLANO = 2026
                     ORDER BY Id OFFSET $offset ROWS FETCH NEXT $chunk ROWS ONLY");
                 if (empty($rows)) break;
                 foreach ($rows as $r) {
