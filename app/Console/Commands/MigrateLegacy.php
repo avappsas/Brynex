@@ -604,6 +604,15 @@ class MigrateLegacy extends Command
                 return $arlIdCache[$nit];
             };
 
+            // Set de RS independientes: es_independiente=true O nombre contiene 'independiente'
+            $rsIndependienteIds = DB::table('razones_sociales')
+                ->where('aliado_id', $aliadoId)
+                ->where(function ($q) {
+                    $q->where('es_independiente', true)
+                      ->orWhere('razon_social', 'LIKE', '%independiente%');
+                })
+                ->pluck('id')->flip()->all(); // [rs_id => index] para lookup O(1)
+
             $count = 0; $skipped = 0; $offset = 0; $chunk = 500;
 
             while (true) {
@@ -658,11 +667,12 @@ class MigrateLegacy extends Command
                         'observacion'            => trim($this->col($r, 'Observacion') ?? ''),
                         'observacion_afiliacion' => trim($this->col($r, 'Observacion_Afiliacion') ?? ''),
                         'observacion_llamada'    => (string)($this->col($r, 'Observacion_llamada') ?? ''),
-                        // Tipo: el campo legacy es el ID directo del catalogo tipo_modalidad.
-                        // Admitimos 0 (Tipo E) y negativos. Si no existe, inferimos por entidades.
-                        'tipo_modalidad_id'      => $this->resolveTipoModalidad(
-                                                       $this->col($r, 'Tipo'),
-                                                       $epsId, $arlId, $pensionId, $cajaId),
+                        // tipo_modalidad_id: si la RS es independiente → forzar id=10 (I Act)
+                        'tipo_modalidad_id'      => ($razonId && isset($rsIndependienteIds[$razonId]))
+                                                    ? 10
+                                                    : $this->resolveTipoModalidad(
+                                                        $this->col($r, 'Tipo'),
+                                                        $epsId, $arlId, $pensionId, $cajaId),
                         'actividad_economica_id' => is_numeric($this->col($r, 'Actividad_Economica')) && $this->col($r, 'Actividad_Economica') > 0 ? (int)$this->col($r, 'Actividad_Economica') : null,
                         'motivo_afiliacion_id'   => $motivoAfil,
                         'motivo_retiro_id'       => $motivoRetiro,
@@ -670,8 +680,10 @@ class MigrateLegacy extends Command
                         'updated_at'             => now(),
                     ]);
 
-                    // ── plan_id inline (fix-plan integrado) ──────────────────
-                    $tipoMod  = $this->resolveTipoModalidad($this->col($r,'Tipo'), $epsId, $arlId, $pensionId, $cajaId);
+                    // plan_id: misma lógica de modalidad (forzar 10 si RS es independiente)
+                    $tipoMod  = ($razonId && isset($rsIndependienteIds[$razonId]))
+                                ? 10
+                                : $this->resolveTipoModalidad($this->col($r,'Tipo'), $epsId, $arlId, $pensionId, $cajaId);
                     $planIds  = $tipoMod !== null ? ($modalidadPlanes[$tipoMod] ?? []) : [];
                     $hasEps   = $epsId     !== null ? 1 : 0;
                     $hasArl   = $arlId     !== null ? 1 : 0;
