@@ -27,7 +27,10 @@ class FixPlanosPlanilla extends Command
 
         // ── 1. Cargar TODOS los planos de BryNex sin numero_planilla ─────────────
         $sinPlanilla = DB::table('planos')
-            ->whereNull('numero_planilla')
+            ->where(function($q) {
+                $q->whereNull('numero_planilla')
+                  ->orWhere('numero_planilla', '');
+            })
             ->select('id', 'no_identifi', 'mes_plano', 'anio_plano', 'n_plano',
                      'razon_social_id', 'aliado_id', 'id_legacy')
             ->get();
