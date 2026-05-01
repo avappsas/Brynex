@@ -19,7 +19,10 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('planos', function (Blueprint $table) {
-            $table->dropColumn('id_legacy');
+            Schema::table('planos', function (Blueprint $table) {
+                $table->dropIndex('planos_id_legacy_index');
+                $table->dropColumn('id_legacy');
+            });
         });
     }
 };
