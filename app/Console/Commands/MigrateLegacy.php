@@ -202,7 +202,10 @@ class MigrateLegacy extends Command
     {
         DB::statement('ALTER TABLE razones_sociales NOCHECK CONSTRAINT ALL');
 
-        // Con auto-increment IDENTITY, el id lo genera SQL Server
+        // ID secuencial empezando desde el máximo actual + 1 (garantiza IDs limpios)
+        $nextId = (int) DB::table('razones_sociales')->max('id') + 1;
+        $this->line("  ℹ  Iniciando IDs desde: $nextId");
+
         foreach ($this->dbs as $db => $key) {
             $aliadoId = $this->ids[$key] ?? null;
             if (!$aliadoId) { $this->warn("  ⚠ Aliado '$key' no encontrado, se omite"); continue; }
@@ -218,7 +221,7 @@ class MigrateLegacy extends Command
             foreach ($rows as $r) {
                 if (isset($yaExisten[$r->ID])) { $skipped++; continue; }
                 DB::table('razones_sociales')->insert([
-                    // sin 'id' → IDENTITY lo genera
+                    'id'                  => $nextId++,  // secuencial, empieza en 1
                     'aliado_id'           => $aliadoId,
                     'id_legacy'           => $r->ID,
                     'nit'                 => is_numeric($r->NIT ?? $r->ID) && ($r->NIT ?? $r->ID) > 1 ? (int)($r->NIT ?? $r->ID) : null,
@@ -309,7 +312,10 @@ class MigrateLegacy extends Command
     {
         DB::statement('ALTER TABLE empresas NOCHECK CONSTRAINT ALL');
 
-        // Con auto-increment IDENTITY, sin $nextId manual
+        // ID secuencial empezando desde el máximo actual + 1
+        $nextId = (int) DB::table('empresas')->max('id') + 1;
+        $this->line("  ℹ  Iniciando IDs desde: $nextId");
+
         foreach ($this->dbs as $db => $key) {
             $aliadoId = $this->ids[$key] ?? null;
             if (!$aliadoId) { $this->warn("  ⚠ Aliado '$key' no encontrado, se omite"); continue; }
@@ -323,7 +329,7 @@ class MigrateLegacy extends Command
             foreach ($rows as $r) {
                 if (isset($yaExisten[$r->Id])) { $skipped++; continue; }
                 DB::table('empresas')->insert([
-                    // sin 'id' → IDENTITY lo genera
+                    'id'       => $nextId++,  // secuencial, empieza en 1
                     'aliado_id'           => $aliadoId,
                     'id_legacy'           => $r->Id,
                     'nit'                 => is_numeric($r->NIT) && $r->NIT > 0 ? (int)$r->NIT : null,
