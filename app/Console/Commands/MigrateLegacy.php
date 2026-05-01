@@ -202,22 +202,26 @@ class MigrateLegacy extends Command
     {
         DB::statement('ALTER TABLE razones_sociales NOCHECK CONSTRAINT ALL');
 
-        // Obtener el próximo ID disponible (por si se reinicia el paso)
-        $nextId = (int) DB::table('razones_sociales')->max('id') + 1;
-        $this->line("  ℹ  Iniciando IDs desde: $nextId");
-
+        // Con auto-increment IDENTITY, el id lo genera SQL Server
         foreach ($this->dbs as $db => $key) {
             $aliadoId = $this->ids[$key] ?? null;
             if (!$aliadoId) { $this->warn("  ⚠ Aliado '$key' no encontrado, se omite"); continue; }
 
+            // Skip check por id_legacy
+            $yaExisten = DB::table('razones_sociales')
+                ->where('aliado_id', $aliadoId)
+                ->pluck('id_legacy')->filter()->flip()->all();
+
             $rows  = DB::connection('sqlsrv_legacy')->select("SELECT * FROM [$db].dbo.Razon_Social");
-            $count = 0;
+            $count = 0; $skipped = 0;
 
             foreach ($rows as $r) {
+                if (isset($yaExisten[$r->ID])) { $skipped++; continue; }
                 DB::table('razones_sociales')->insert([
-                    'id'                  => $nextId++,   // PK manual secuencial
+                    // sin 'id' → IDENTITY lo genera
                     'aliado_id'           => $aliadoId,
-                    'id_legacy'           => $r->ID,      // ID original (puede ser negativo)
+                    'id_legacy'           => $r->ID,
+                    'nit'                 => is_numeric($r->NIT ?? $r->ID) && ($r->NIT ?? $r->ID) > 1 ? (int)($r->NIT ?? $r->ID) : null,
                     'dv'                  => $r->DV,
                     'razon_social'        => trim($r->Razon_Social ?? ''),
                     'estado'              => trim($r->Estado ?? ''),
@@ -250,7 +254,7 @@ class MigrateLegacy extends Command
                 ]);
                 $count++;
             }
-            $this->info("  ✅ $db → $count razones sociales");
+            $this->info("  ✅ $db → $count razones sociales, $skipped omitidas");
         }
         DB::statement('ALTER TABLE razones_sociales WITH CHECK CHECK CONSTRAINT ALL');
         $this->info('  📊 Total razones_sociales: ' . DB::table('razones_sociales')->count());
@@ -305,9 +309,7 @@ class MigrateLegacy extends Command
     {
         DB::statement('ALTER TABLE empresas NOCHECK CONSTRAINT ALL');
 
-        $nextId = (int) DB::table('empresas')->max('id') + 1;
-        $this->line("  ℹ  Iniciando IDs desde: $nextId");
-
+        // Con auto-increment IDENTITY, sin $nextId manual
         foreach ($this->dbs as $db => $key) {
             $aliadoId = $this->ids[$key] ?? null;
             if (!$aliadoId) { $this->warn("  ⚠ Aliado '$key' no encontrado, se omite"); continue; }
@@ -321,7 +323,7 @@ class MigrateLegacy extends Command
             foreach ($rows as $r) {
                 if (isset($yaExisten[$r->Id])) { $skipped++; continue; }
                 DB::table('empresas')->insert([
-                    'id'                  => $nextId++,
+                    // sin 'id' → IDENTITY lo genera
                     'aliado_id'           => $aliadoId,
                     'id_legacy'           => $r->Id,
                     'nit'                 => is_numeric($r->NIT) && $r->NIT > 0 ? (int)$r->NIT : null,
