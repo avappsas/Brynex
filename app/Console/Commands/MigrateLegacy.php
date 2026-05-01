@@ -16,11 +16,12 @@ class MigrateLegacy extends Command
     // Bases de datos legacy → clave de aliado
     private array $dbs = [
         'Brygar_BD'       => 'brygar',
-        'GiMave_Integral' => 'gimave',
-        'Grupo_Fecop'     => 'fecop',
-        'LuisLopez'       => 'luislopez',
-        'Mave_Anderson'   => 'mave',
-        'SS_Faga'         => 'faga',
+        // ─── otros aliados comentados: migrar solo Brygar por ahora ───
+        // 'GiMave_Integral' => 'gimave',
+        // 'Grupo_Fecop'     => 'fecop',
+        // 'LuisLopez'       => 'luislopez',
+        // 'Mave_Anderson'   => 'mave',
+        // 'SS_Faga'         => 'faga',
     ];
 
     public function handle(): void
@@ -551,6 +552,22 @@ class MigrateLegacy extends Command
                 ->pluck('id_legacy')->filter()->flip()->all();
             $existingCount = count($yaExisten);
 
+            // ── Precargar planes para asignar plan_id inline (fix-plan integrado) ────
+            $planesAll = DB::table('planes_contrato')
+                ->where('activo', true)
+                ->get(['id', 'incluye_eps', 'incluye_arl', 'incluye_pension', 'incluye_caja'])
+                ->map(function ($p) {
+                    $p->incluye_eps     = (int)$p->incluye_eps;
+                    $p->incluye_arl     = (int)$p->incluye_arl;
+                    $p->incluye_pension = (int)$p->incluye_pension;
+                    $p->incluye_caja    = (int)$p->incluye_caja;
+                    return $p;
+                });
+            $modalidadPlanes = DB::table('modalidad_planes')
+                ->get()
+                ->groupBy('tipo_modalidad_id')
+                ->map(fn($rows) => $rows->pluck('plan_id')->all());
+
             $total = DB::connection('sqlsrv_legacy')
                 ->selectOne("SELECT COUNT(*) as cnt FROM [$db].dbo.Contratos")->cnt;
             $this->line("  ⏳ $db: $total total, " . ($total - $existingCount) . " faltantes...");
@@ -636,6 +653,25 @@ class MigrateLegacy extends Command
                         'created_at'             => now(),
                         'updated_at'             => now(),
                     ]);
+
+                    // ── plan_id inline (fix-plan integrado) ──────────────────
+                    $tipoMod  = $this->resolveTipoModalidad($this->col($r,'Tipo'), $epsId, $arlId, $pensionId, $cajaId);
+                    $planIds  = $tipoMod !== null ? ($modalidadPlanes[$tipoMod] ?? []) : [];
+                    $hasEps   = $epsId     !== null ? 1 : 0;
+                    $hasArl   = $arlId     !== null ? 1 : 0;
+                    $hasPen   = $pensionId !== null ? 1 : 0;
+                    $hasCaja  = $cajaId    !== null ? 1 : 0;
+                    $cands    = $planesAll->whereIn('id', $planIds);
+                    $planEl   = $cands->first(fn($p) =>
+                        $p->incluye_eps === $hasEps && $p->incluye_arl === $hasArl
+                        && $p->incluye_pension === $hasPen && $p->incluye_caja === $hasCaja
+                    ) ?? $cands->first(fn($p) =>
+                        ($hasEps===0||$p->incluye_eps===1) && ($hasArl===0||$p->incluye_arl===1)
+                        && ($hasPen===0||$p->incluye_pension===1) && ($hasCaja===0||$p->incluye_caja===1)
+                    ) ?? $cands->sortByDesc(fn($p) => $p->incluye_eps+$p->incluye_arl+$p->incluye_pension+$p->incluye_caja)->first();
+                    if ($planEl && $contratoId) {
+                        DB::table('contratos')->where('id', $contratoId)->update(['plan_id' => $planEl->id]);
+                    }
 
                     // Insertar radicados legacy en tabla radicados (eps, arl, caja, pension)
                     $radicadosLegacy = [
@@ -796,7 +832,10 @@ class MigrateLegacy extends Command
 
             $count = 0; $skipped = 0; $offset = 0; $chunk = 500;
             while (true) {
-                $rows = $this->legacySelect("SELECT * FROM [$db].dbo.FACTURACION ORDER BY Id_Factura OFFSET $offset ROWS FETCH NEXT $chunk ROWS ONLY");
+                // Filtro: solo facturas del año 2026 (después expandir a todos los años)
+                $rows = $this->legacySelect("SELECT * FROM [$db].dbo.FACTURACION
+                    WHERE YEAR(FECHA) >= 2026
+                    ORDER BY Id_Factura OFFSET $offset ROWS FETCH NEXT $chunk ROWS ONLY");
                 if (empty($rows)) break;
 
                 foreach ($rows as $r) {
@@ -1056,7 +1095,10 @@ class MigrateLegacy extends Command
                 ->pluck('id_legacy')->flip()->all();
 
             while (true) {
-                $rows = $this->legacySelect("SELECT * FROM [$db].dbo.PLANOS ORDER BY Id OFFSET $offset ROWS FETCH NEXT $chunk ROWS ONLY");
+                // Filtro: solo planos del año 2026 (después expandir a todos los años)
+                $rows = $this->legacySelect("SELECT * FROM [$db].dbo.PLANOS
+                    WHERE AÑO_PLANO >= 2026
+                    ORDER BY Id OFFSET $offset ROWS FETCH NEXT $chunk ROWS ONLY");
                 if (empty($rows)) break;
                 foreach ($rows as $r) {
                     // ── Skip por id_legacy (más confiable que clave compuesta) ──
