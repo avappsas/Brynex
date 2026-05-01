@@ -1098,8 +1098,11 @@ class MigrateLegacy extends Command
                 ->pluck('clave')->flip()->all();
 
             $total = DB::connection('sqlsrv_legacy')
-                ->selectOne("SELECT COUNT(*) as cnt FROM [$db].dbo.PLANOS WHERE AÑO_PLANO = 2026")->cnt;
-            $this->line("  ⏳ $db: $total planos (año 2026)...");
+                ->selectOne("SELECT COUNT(*) as cnt FROM [$db].dbo.PLANOS
+                    WHERE AÑO_PLANO = 2026
+                      AND Id_Facturacion IS NOT NULL
+                      AND Id_Facturacion > 0")->cnt;
+            $this->line("  ⏳ $db: $total planos (año 2026 con factura)...");
 
             // ── Precargar mapas id_legacy → id (evita N+1 queries en el loop) ──
             $facturasMap = DB::table('facturas')
@@ -1134,9 +1137,11 @@ class MigrateLegacy extends Command
                 ->pluck('id_legacy')->flip()->all();
 
             while (true) {
-                // Filtro: solo planos de 2026 exacto (después expandir a todos los años)
+                // Solo planos de 2026 CON factura asociada en legacy (sin Id_Facturacion = basura/duplicado)
                 $rows = $this->legacySelect("SELECT * FROM [$db].dbo.PLANOS
                     WHERE AÑO_PLANO = 2026
+                      AND Id_Facturacion IS NOT NULL
+                      AND Id_Facturacion > 0
                     ORDER BY Id OFFSET $offset ROWS FETCH NEXT $chunk ROWS ONLY");
                 if (empty($rows)) break;
                 foreach ($rows as $r) {
