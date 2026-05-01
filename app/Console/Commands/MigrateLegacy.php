@@ -2026,67 +2026,72 @@ class MigrateLegacy extends Command
         $this->info('  ✅ tipo_reg normalizado (planilla/afiliacion/retiro)');
     }
 
-    // ─── FIX-FACTURAS-RETIRO: corrige facturas legacy ya migradas con tipo='retiro' ──
-    // Problema: en el step07 anterior, Tipo='Retiro' en legacy se mapeaba a tipo='retiro'
-    // en BryNex. Ese valor NO existe en el schema (solo 'planilla','afiliacion','otro_ingreso').
-    // Además, los valores V_EPS/V_Arl/V_AFP/V_CAJA venían con coma decimal ('2426,6667')
-    // y quedaban en 0 al fallar is_numeric().
-    // Este fix: 1) actualiza tipo='retiro'→'planilla', 2) recalcula los valores SS
-    // directamente desde el legacy usando parseDecimalLegacy().
+    // ─── FIX-FACTURAS-RETIRO ──────────────────────────────────────────────────
+    // Fase 1: tipo='retiro' → 'planilla' (campo inválido en BryNex, idempotente).
+    // Fase 2: Recalcula V_EPS/V_Arl/V_AFP/V_CAJA con un UPDATE JOIN cross-database
+    //         en un SOLO query por aliado. SQL Server hace el REPLACE(',','.')
+    //         internamente → no hay loop PHP → resistente a timeouts intermitentes.
     private function stepFixFacturasRetiro(): void
     {
-        // 1) Corregir tipo='retiro' → 'planilla' para las que ya están en BryNex
+        // ── Fase 1: tipo fix (idempotente) ────────────────────────────────────
         $updatedTipo = DB::table('facturas')
             ->where('tipo', 'retiro')
             ->update(['tipo' => 'planilla', 'updated_at' => now()]);
+        $this->info("  ✅ Fase 1 — tipo='retiro'→'planilla': $updatedTipo corregidas");
 
-        $this->info("  ✅ tipo='retiro'→'planilla': $updatedTipo facturas corregidas");
+        // ── Fase 2: SS recalc via cross-DB UPDATE JOIN ────────────────────────
+        // Ambas BDs están en la misma instancia SQL Server (mismo host/usuario SA).
+        // Un solo UPDATE JOIN por aliado, sin transferir datos a PHP.
+        $brynexDb = DB::getDatabaseName();  // Nombre de la BD BryNex en SQL Server
 
-        // 2) Recalcular V_EPS/V_Arl/V_AFP/V_CAJA desde legacy (venían con coma decimal)
-        $updatedSS = 0;
         foreach ($this->dbs as $db => $key) {
-            $aliadoId = $this->ids[$key] ?? null;
-            if (!$aliadoId) continue;
+            $aliadoId = (int)($this->ids[$key] ?? 0);
+            if (!$aliadoId) { $this->warn("  ⚠ Aliado '$key' no encontrado, se omite"); continue; }
 
-            // Traer facturas legacy con Tipo='Retiro' que tienen valores SS > 0
-            $rows = $this->legacySelect(
-                "SELECT Id_Factura, V_EPS, V_Arl, V_AFP, V_CAJA
-                 FROM [$db].dbo.FACTURACION
-                 WHERE Tipo = 'Retiro'
-                   AND (V_EPS IS NOT NULL AND V_EPS != '0' AND V_EPS != '0,00'
-                     OR V_Arl IS NOT NULL AND V_Arl != '0' AND V_Arl != '0,00'
-                     OR V_AFP IS NOT NULL AND V_AFP != '0' AND V_AFP != '0,00'
-                     OR V_CAJA IS NOT NULL AND V_CAJA != '0' AND V_CAJA != '0,00')"
-            );
+            $this->line("  ⏳ $db (aliado $aliadoId): ejecutando UPDATE JOIN cross-DB...");
 
-            foreach ($rows as $r) {
-                $vEps   = $this->parseDecimalLegacy($r->V_EPS);
-                $vArl   = $this->parseDecimalLegacy($r->V_Arl);
-                $vAfp   = $this->parseDecimalLegacy($r->V_AFP);
-                $vCaja  = $this->parseDecimalLegacy($r->V_CAJA);
-                $totalSS = $vEps + $vArl + $vAfp + $vCaja;
+            // Cross-database UPDATE: BryNex.facturas ← legacy.FACTURACION
+            // TRY_CAST + REPLACE(',','.') maneja decimales con coma del locale CO/SQL Server.
+            // Solo actualiza filas donde total_ss=0 (evita pisar datos ya correctos).
+            $sql = "
+                UPDATE f
+                SET
+                    f.v_eps    = CAST(ROUND(ISNULL(TRY_CAST(REPLACE(CAST(leg.V_EPS  AS NVARCHAR), ',', '.') AS FLOAT), 0), 0) AS INT),
+                    f.v_arl    = CAST(ROUND(ISNULL(TRY_CAST(REPLACE(CAST(leg.V_Arl  AS NVARCHAR), ',', '.') AS FLOAT), 0), 0) AS INT),
+                    f.v_afp    = CAST(ROUND(ISNULL(TRY_CAST(REPLACE(CAST(leg.V_AFP  AS NVARCHAR), ',', '.') AS FLOAT), 0), 0) AS INT),
+                    f.v_caja   = CAST(ROUND(ISNULL(TRY_CAST(REPLACE(CAST(leg.V_CAJA AS NVARCHAR), ',', '.') AS FLOAT), 0), 0) AS INT),
+                    f.total_ss = CAST(ROUND(ISNULL(TRY_CAST(REPLACE(CAST(leg.V_EPS  AS NVARCHAR), ',', '.') AS FLOAT), 0), 0) AS INT)
+                               + CAST(ROUND(ISNULL(TRY_CAST(REPLACE(CAST(leg.V_Arl  AS NVARCHAR), ',', '.') AS FLOAT), 0), 0) AS INT)
+                               + CAST(ROUND(ISNULL(TRY_CAST(REPLACE(CAST(leg.V_AFP  AS NVARCHAR), ',', '.') AS FLOAT), 0), 0) AS INT)
+                               + CAST(ROUND(ISNULL(TRY_CAST(REPLACE(CAST(leg.V_CAJA AS NVARCHAR), ',', '.') AS FLOAT), 0), 0) AS INT),
+                    f.updated_at = GETDATE()
+                FROM [{$brynexDb}].[dbo].[facturas] f
+                JOIN [{$db}].[dbo].[FACTURACION] leg
+                  ON leg.Id_Factura = f.id_legacy
+                WHERE f.aliado_id    = {$aliadoId}
+                  AND f.total_ss     = 0
+                  AND f.numero_factura = 0
+                  AND (
+                        ISNULL(TRY_CAST(REPLACE(CAST(leg.V_EPS  AS NVARCHAR), ',', '.') AS FLOAT), 0) > 0
+                     OR ISNULL(TRY_CAST(REPLACE(CAST(leg.V_Arl  AS NVARCHAR), ',', '.') AS FLOAT), 0) > 0
+                     OR ISNULL(TRY_CAST(REPLACE(CAST(leg.V_AFP  AS NVARCHAR), ',', '.') AS FLOAT), 0) > 0
+                     OR ISNULL(TRY_CAST(REPLACE(CAST(leg.V_CAJA AS NVARCHAR), ',', '.') AS FLOAT), 0) > 0
+                  )
+            ";
 
-                if ($totalSS === 0) continue;  // no hay nada que corregir
-
-                $affected = DB::table('facturas')
-                    ->where('aliado_id', $aliadoId)
-                    ->where('id_legacy', $r->Id_Factura)
-                    ->where('total_ss', 0)      // solo si todavía tiene 0 (evita sobreescribir)
-                    ->update([
-                        'v_eps'      => $vEps,
-                        'v_arl'      => $vArl,
-                        'v_afp'      => $vAfp,
-                        'v_caja'     => $vCaja,
-                        'total_ss'   => $totalSS,
-                        'updated_at' => now(),
-                    ]);
-                $updatedSS += $affected;
+            try {
+                // affectingStatement ejecuta y retorna filas afectadas
+                $affected = DB::connection('sqlsrv_legacy')->affectingStatement($sql);
+                $this->info("  ✅ $db → $affected facturas con SS recalculado");
+            } catch (\Exception $e) {
+                $this->error("  ❌ $db → " . $e->getMessage());
             }
-            $this->info("  ✅ $db → $updatedSS facturas con SS recalculado");
-            $updatedSS = 0;
         }
 
-        $this->info('  📊 Total facturas tipo retiro en BryNex: '
-            . DB::table('facturas')->where('tipo', 'planilla')->where('numero_factura', 0)->count());
+        // Resumen final
+        $total   = DB::table('facturas')->where('numero_factura', 0)->count();
+        $conSS   = DB::table('facturas')->where('numero_factura', 0)->where('total_ss', '>', 0)->count();
+        $sinSS   = $total - $conSS;
+        $this->info("  📊 Facturas retiro (numero_factura=0): $total total | $conSS con SS | $sinSS sin SS (valor real $0)");
     }
 }
