@@ -2027,10 +2027,12 @@ class MigrateLegacy extends Command
     }
 
     // ─── FIX-FACTURAS-RETIRO ──────────────────────────────────────────────────
-    // Fase 1: tipo='retiro' → 'planilla' (campo inválido en BryNex, idempotente).
-    // Fase 2: Recalcula V_EPS/V_Arl/V_AFP/V_CAJA con un UPDATE JOIN cross-database
-    //         en un SOLO query por aliado. SQL Server hace el REPLACE(',','.')
-    //         internamente → no hay loop PHP → resistente a timeouts intermitentes.
+    // Fase 1 (idempotente): tipo='retiro' → 'planilla'.
+    // Fase 2 (idempotente): recalcula SS via tabla temporal en BryNex.
+    //   - 1 query a legacy (con retry) para traer todos los valores SS
+    //   - INSERT masivo en #ss_retiro (BryNex, sin cross-DB)
+    //   - 1 UPDATE JOIN local en BryNex
+    //   Solo toca filas donde total_ss = 0, seguro de re-ejecutar.
     private function stepFixFacturasRetiro(): void
     {
         // ── Fase 1: tipo fix (idempotente) ────────────────────────────────────
@@ -2039,59 +2041,101 @@ class MigrateLegacy extends Command
             ->update(['tipo' => 'planilla', 'updated_at' => now()]);
         $this->info("  ✅ Fase 1 — tipo='retiro'→'planilla': $updatedTipo corregidas");
 
-        // ── Fase 2: SS recalc via cross-DB UPDATE JOIN ────────────────────────
-        // Ambas BDs están en la misma instancia SQL Server (mismo host/usuario SA).
-        // Un solo UPDATE JOIN por aliado, sin transferir datos a PHP.
-        $brynexDb = DB::getDatabaseName();  // Nombre de la BD BryNex en SQL Server
-
+        // ── Fase 2: SS recalc via tabla temporal en BryNex ───────────────────
         foreach ($this->dbs as $db => $key) {
             $aliadoId = (int)($this->ids[$key] ?? 0);
             if (!$aliadoId) { $this->warn("  ⚠ Aliado '$key' no encontrado, se omite"); continue; }
 
-            $this->line("  ⏳ $db (aliado $aliadoId): ejecutando UPDATE JOIN cross-DB...");
+            // ¿Hay facturas pendientes de SS para este aliado?
+            $pendientes = DB::table('facturas')
+                ->where('aliado_id', $aliadoId)
+                ->where('numero_factura', 0)
+                ->where('total_ss', 0)
+                ->count();
 
-            // Cross-database UPDATE: BryNex.facturas ← legacy.FACTURACION
-            // TRY_CAST + REPLACE(',','.') maneja decimales con coma del locale CO/SQL Server.
-            // Solo actualiza filas donde total_ss=0 (evita pisar datos ya correctos).
-            $sql = "
-                UPDATE f
-                SET
-                    f.v_eps    = CAST(ROUND(ISNULL(TRY_CAST(REPLACE(CAST(leg.V_EPS  AS NVARCHAR), ',', '.') AS FLOAT), 0), 0) AS INT),
-                    f.v_arl    = CAST(ROUND(ISNULL(TRY_CAST(REPLACE(CAST(leg.V_Arl  AS NVARCHAR), ',', '.') AS FLOAT), 0), 0) AS INT),
-                    f.v_afp    = CAST(ROUND(ISNULL(TRY_CAST(REPLACE(CAST(leg.V_AFP  AS NVARCHAR), ',', '.') AS FLOAT), 0), 0) AS INT),
-                    f.v_caja   = CAST(ROUND(ISNULL(TRY_CAST(REPLACE(CAST(leg.V_CAJA AS NVARCHAR), ',', '.') AS FLOAT), 0), 0) AS INT),
-                    f.total_ss = CAST(ROUND(ISNULL(TRY_CAST(REPLACE(CAST(leg.V_EPS  AS NVARCHAR), ',', '.') AS FLOAT), 0), 0) AS INT)
-                               + CAST(ROUND(ISNULL(TRY_CAST(REPLACE(CAST(leg.V_Arl  AS NVARCHAR), ',', '.') AS FLOAT), 0), 0) AS INT)
-                               + CAST(ROUND(ISNULL(TRY_CAST(REPLACE(CAST(leg.V_AFP  AS NVARCHAR), ',', '.') AS FLOAT), 0), 0) AS INT)
-                               + CAST(ROUND(ISNULL(TRY_CAST(REPLACE(CAST(leg.V_CAJA AS NVARCHAR), ',', '.') AS FLOAT), 0), 0) AS INT),
-                    f.updated_at = GETDATE()
-                FROM [{$brynexDb}].[dbo].[facturas] f
-                JOIN [{$db}].[dbo].[FACTURACION] leg
-                  ON leg.Id_Factura = f.id_legacy
-                WHERE f.aliado_id    = {$aliadoId}
-                  AND f.total_ss     = 0
-                  AND f.numero_factura = 0
-                  AND (
-                        ISNULL(TRY_CAST(REPLACE(CAST(leg.V_EPS  AS NVARCHAR), ',', '.') AS FLOAT), 0) > 0
-                     OR ISNULL(TRY_CAST(REPLACE(CAST(leg.V_Arl  AS NVARCHAR), ',', '.') AS FLOAT), 0) > 0
-                     OR ISNULL(TRY_CAST(REPLACE(CAST(leg.V_AFP  AS NVARCHAR), ',', '.') AS FLOAT), 0) > 0
-                     OR ISNULL(TRY_CAST(REPLACE(CAST(leg.V_CAJA AS NVARCHAR), ',', '.') AS FLOAT), 0) > 0
-                  )
-            ";
+            if ($pendientes === 0) {
+                $this->line("  ✔ $db → sin pendientes de SS, se omite");
+                continue;
+            }
+
+            $this->line("  ⏳ $db (aliado $aliadoId): $pendientes facturas pendientes — leyendo SS desde legacy...");
 
             try {
-                // affectingStatement ejecuta y retorna filas afectadas
-                $affected = DB::connection('sqlsrv_legacy')->affectingStatement($sql);
+                // 1) Un solo SELECT a legacy con TRY_CAST para manejar coma decimal
+                $rows = $this->legacySelect(
+                    "SELECT
+                        Id_Factura,
+                        CAST(ROUND(ISNULL(TRY_CAST(REPLACE(CAST(V_EPS  AS NVARCHAR),',','.') AS FLOAT),0),0) AS INT) AS v_eps,
+                        CAST(ROUND(ISNULL(TRY_CAST(REPLACE(CAST(V_Arl  AS NVARCHAR),',','.') AS FLOAT),0),0) AS INT) AS v_arl,
+                        CAST(ROUND(ISNULL(TRY_CAST(REPLACE(CAST(V_AFP  AS NVARCHAR),',','.') AS FLOAT),0),0) AS INT) AS v_afp,
+                        CAST(ROUND(ISNULL(TRY_CAST(REPLACE(CAST(V_CAJA AS NVARCHAR),',','.') AS FLOAT),0),0) AS INT) AS v_caja
+                     FROM [$db].dbo.FACTURACION
+                     WHERE Tipo = 'Retiro'
+                       AND (
+                             ISNULL(TRY_CAST(REPLACE(CAST(V_EPS  AS NVARCHAR),',','.') AS FLOAT),0) > 0
+                          OR ISNULL(TRY_CAST(REPLACE(CAST(V_Arl  AS NVARCHAR),',','.') AS FLOAT),0) > 0
+                          OR ISNULL(TRY_CAST(REPLACE(CAST(V_AFP  AS NVARCHAR),',','.') AS FLOAT),0) > 0
+                          OR ISNULL(TRY_CAST(REPLACE(CAST(V_CAJA AS NVARCHAR),',','.') AS FLOAT),0) > 0
+                       )"
+                );
+
+                if (empty($rows)) {
+                    $this->line("  ℹ  $db → sin retiros con SS > 0 en legacy");
+                    continue;
+                }
+                $this->line("  ⏳ $db → " . count($rows) . " registros recibidos, insertando en temp table...");
+
+                // 2) Crear tabla temporal en BryNex (misma conexión por defecto)
+                DB::statement("IF OBJECT_ID('tempdb..#ss_retiro') IS NOT NULL DROP TABLE #ss_retiro");
+                DB::statement("CREATE TABLE #ss_retiro (
+                    id_legacy  INT NOT NULL PRIMARY KEY,
+                    v_eps      INT NOT NULL DEFAULT 0,
+                    v_arl      INT NOT NULL DEFAULT 0,
+                    v_afp      INT NOT NULL DEFAULT 0,
+                    v_caja     INT NOT NULL DEFAULT 0,
+                    total_ss   INT NOT NULL DEFAULT 0
+                )");
+
+                // 3) INSERT masivo en lotes de 1000 filas (VALUES multi-row)
+                foreach (array_chunk($rows, 1000) as $chunk) {
+                    $vals = implode(',', array_map(function ($r) {
+                        $ts = (int)$r->v_eps + (int)$r->v_arl + (int)$r->v_afp + (int)$r->v_caja;
+                        return "({$r->Id_Factura},{$r->v_eps},{$r->v_arl},{$r->v_afp},{$r->v_caja},{$ts})";
+                    }, $chunk));
+                    DB::statement("INSERT INTO #ss_retiro (id_legacy,v_eps,v_arl,v_afp,v_caja,total_ss) VALUES $vals");
+                }
+
+                // 4) UPDATE JOIN en BryNex (local, sin cross-BD)
+                //    Solo actualiza filas donde total_ss=0 (re-entrant)
+                $affected = DB::affectingStatement("
+                    UPDATE f SET
+                        f.v_eps      = t.v_eps,
+                        f.v_arl      = t.v_arl,
+                        f.v_afp      = t.v_afp,
+                        f.v_caja     = t.v_caja,
+                        f.total_ss   = t.total_ss,
+                        f.updated_at = GETDATE()
+                    FROM facturas f
+                    JOIN #ss_retiro t ON t.id_legacy = f.id_legacy
+                    WHERE f.aliado_id    = ?
+                      AND f.total_ss     = 0
+                      AND f.numero_factura = 0
+                ", [$aliadoId]);
+
+                DB::statement("DROP TABLE IF EXISTS #ss_retiro");
+
                 $this->info("  ✅ $db → $affected facturas con SS recalculado");
+
             } catch (\Exception $e) {
+                DB::statement("IF OBJECT_ID('tempdb..#ss_retiro') IS NOT NULL DROP TABLE #ss_retiro");
                 $this->error("  ❌ $db → " . $e->getMessage());
             }
         }
 
         // Resumen final
-        $total   = DB::table('facturas')->where('numero_factura', 0)->count();
-        $conSS   = DB::table('facturas')->where('numero_factura', 0)->where('total_ss', '>', 0)->count();
-        $sinSS   = $total - $conSS;
-        $this->info("  📊 Facturas retiro (numero_factura=0): $total total | $conSS con SS | $sinSS sin SS (valor real $0)");
+        $total = DB::table('facturas')->where('numero_factura', 0)->count();
+        $conSS = DB::table('facturas')->where('numero_factura', 0)->where('total_ss', '>', 0)->count();
+        $sinSS = $total - $conSS;
+        $this->info("  📊 Facturas retiro (numero_factura=0): $total total | $conSS con SS | $sinSS sin SS (genuinamente \$0)");
     }
 }
