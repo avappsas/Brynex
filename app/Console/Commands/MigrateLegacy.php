@@ -1109,13 +1109,19 @@ class MigrateLegacy extends Command
 
             $rsMap = DB::table('razones_sociales')
                 ->where('aliado_id', $aliadoId)
-                ->whereNotNull('id_legacy')
-                ->pluck('id', 'id_legacy');   // [id_legacy => id]
+                ->whereNotNull('nit')
+                ->pluck('id', 'nit');   // [nit => brynex_id]  ← PLANOS usa NIT de empresa
 
             $contratosMap = DB::table('contratos')
                 ->where('aliado_id', $aliadoId)
                 ->whereNotNull('id_legacy')
-                ->pluck('id', 'id_legacy');   // [id_legacy => id]
+                ->pluck('id', 'id_legacy');   // [id_legacy => brynex_id]
+
+            // Mapa contrato_brynex_id => razon_social_id (para fallback cuando NIT no está en plano)
+            $contratosRsMap = DB::table('contratos')
+                ->where('aliado_id', $aliadoId)
+                ->whereNotNull('razon_social_id')
+                ->pluck('razon_social_id', 'id');  // [contrato_id => razon_social_id]
 
             $this->line("  📦 Maps: {$facturasMap->count()} facturas | {$rsMap->count()} RS | {$contratosMap->count()} contratos");
 
@@ -1160,6 +1166,9 @@ class MigrateLegacy extends Command
                     // contrato_id desde mapa precargado
                     $contratoLegacyId = $this->col($r, 'Id_Contrato');
                     $contratoId       = $contratoLegacyId ? ($contratosMap[$contratoLegacyId] ?? null) : null;
+
+                    // razon_social_id: por NIT del plano, con fallback al contrato
+                    $rsIdFinal = $rsId ?? ($contratoId ? ($contratosRsMap[$contratoId] ?? null) : null);
 
                     DB::table('planos')->insert([
                         'id_legacy'          => $idLeg,        // PLANOS.Id del legacy
@@ -1215,28 +1224,28 @@ class MigrateLegacy extends Command
                         })(),
                         // Salario: SALARIO_BASICO del legacy
                         'salario_basico'     => is_numeric($this->col($r, 'SALARIO_BASICO') ?? $this->col($r, 'Salario')) ? (int)($this->col($r, 'SALARIO_BASICO') ?? $this->col($r, 'Salario')) : 0,
-                        'cod_eps'            => trim($this->col($r, 'Cod_EPS')  ?? $this->col($r, 'EPS') ?? ''),
-                        // cod_afp = COD_ADM_PENS
-                        'cod_afp'            => trim($this->col($r, 'COD_ADM_PENS') ?? $this->col($r, 'Cod_AFP') ?? $this->col($r, 'AFP') ?? ''),
-                        // cod_arl = CODIGO ARL (con espacio)
-                        'cod_arl'            => trim($this->col($r, 'CODIGO ARL') ?? $this->col($r, 'Cod_ARL') ?? $this->col($r, 'ARL') ?? ''),
-                        // cod_caja = COD_CCF
-                        'cod_caja'           => trim($this->col($r, 'COD_CCF') ?? $this->col($r, 'Cod_Caja') ?? $this->col($r, 'Caja') ?? ''),
+                        // cod_eps = EPS NIT (legacy.EPS)
+                        'cod_eps'            => trim($this->col($r, 'EPS') ?? $this->col($r, 'Cod_EPS') ?? ''),
+                        // cod_afp = Pension NIT (legacy.PENSION)
+                        'cod_afp'            => trim($this->col($r, 'PENSION') ?? $this->col($r, 'COD_ADM_PENS') ?? $this->col($r, 'AFP') ?? ''),
+                        // cod_arl = CODIGO ARL (con espacio en el legacy)
+                        'cod_arl'            => trim($this->col($r, 'CODIGO ARL') ?? $this->col($r, 'ARL') ?? ''),
+                        // cod_caja = Caja NIT (legacy.CAJA)
+                        'cod_caja'           => trim($this->col($r, 'CAJA') ?? $this->col($r, 'COD_CCF') ?? ''),
                         'nombre_eps'         => trim($this->col($r, 'Nombre_EPS')  ?? $this->col($r, 'Nom_EPS')  ?? ''),
                         'nombre_afp'         => trim($this->col($r, 'Nombre_AFP')  ?? $this->col($r, 'Nom_AFP')  ?? ''),
                         'nombre_arl'         => trim($this->col($r, 'Nombre_ARL')  ?? $this->col($r, 'Nom_ARL')  ?? ''),
                         'nombre_caja'        => trim($this->col($r, 'Nombre_Caja') ?? $this->col($r, 'Nom_Caja') ?? ''),
                         // nivel_riesgo: campo 'NIVEL RIESGO' (con espacio) del legacy
                         'nivel_riesgo'       => is_numeric($this->col($r, 'NIVEL RIESGO') ?? $this->col($r, 'N_ARL') ?? $this->col($r, 'Nivel_Riesgo')) ? (int)($this->col($r, 'NIVEL RIESGO') ?? $this->col($r, 'N_ARL') ?? $this->col($r, 'Nivel_Riesgo')) : 1,
-                        // razon_social_id: usar el mapa precargado (O(1), sin N+1 queries)
-                        // rsMap está indexado por id_legacy = NIT de la empresa
-                        'razon_social_id'    => $rsId,  // ya resuelto arriba desde $rsMap[(int)$nit]
+                        // razon_social_id: NIT del plano → rsMap, fallback al contrato
+                        'razon_social_id'    => $rsIdFinal,
                         'razon_social'       => (function () use ($r) {
                             $nit = $this->col($r, 'Nit_Empresa') ?? $this->col($r, 'NIT');
                             if (is_numeric($nit) && (int)$nit > 0) return (string)(int)$nit;
                             return trim($this->col($r, 'Razon_Social') ?? '');
                         })(),
-                        // tipo_reg: igual que arriba (2do mapping en tabla planos)
+                        // tipo_reg y tipo_modalidad_id
                         'tipo_reg'           => (function () use ($r) {
                             $raw = strtolower(trim($this->col($r, 'TIPO_REG') ?? '01'));
                             if ($raw === 'afiliacion' || $raw === '03' || $raw === '3') return 'afiliacion';
