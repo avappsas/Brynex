@@ -278,11 +278,48 @@ class InformeController extends Controller
         ];
         $ingresos['total'] = $ingresos['planillas'] + $ingresos['afiliaciones'] + $ingresos['tramites'];
 
-        // SS de terceros
-        $recaudoSS   = (clone $facturasBase)->sum('total_ss');
-        $pagadoSS    = DB::table('gastos')->where('aliado_id',$aid)->where('tipo','pago_planilla')
-            ->whereMonth('fecha',$mes)->whereYear('fecha',$anio)->sum('valor');
-        $saldoSS     = $recaudoSS - $pagadoSS;
+        // ── SS de terceros ────────────────────────────────────────────
+        // Recaudo SS real: excluye facturas de retiro (numero_factura=0),
+        // porque ese SS no entró como ingreso — es sólo un registro de costo.
+        // Las facturas de retiro tienen numero_factura=0 por diseño.
+        $facturasSSBase = (clone $facturasBase)->where('numero_factura', '>', 0);
+
+        $recaudoSS = (clone $facturasSSBase)->sum('total_ss');
+
+        // Desglose ingresos SS por componente (EPS, ARL, AFP, Caja) — sin retiros
+        $ingresosSSRaw = (clone $facturasSSBase)
+            ->where('tipo','planilla')
+            ->selectRaw('SUM(v_eps) AS eps, SUM(v_arl) AS arl, SUM(v_afp) AS afp, SUM(v_caja) AS caja,
+                         SUM(total_ss) AS total_ss')
+            ->first();
+
+        // Costo SS de retiros reales del mes (numero_factura=0, tipo planilla)
+        // Informativo: cuánto costó en SS el conjunto de retiros del mes.
+        $retiroSS = (clone $facturasBase)
+            ->where('tipo','planilla')
+            ->where('numero_factura', 0)
+            ->sum(DB::raw('v_eps + v_arl + v_afp + v_caja'));
+
+        $ingresosSS = [
+            'eps'      => (float)($ingresosSSRaw->eps   ?? 0),
+            'arl'      => (float)($ingresosSSRaw->arl   ?? 0),
+            'afp'      => (float)($ingresosSSRaw->afp   ?? 0),
+            'caja'     => (float)($ingresosSSRaw->caja  ?? 0),
+            'total_ss' => (float)($ingresosSSRaw->total_ss ?? 0),
+            'retiro_ss'=> (float)$retiroSS,
+        ];
+
+        // Egresos SS: gastos pago_planilla agrupados por descripcion
+        $egresosSSDetalle = DB::table('gastos')
+            ->where('aliado_id',$aid)->where('tipo','pago_planilla')
+            ->whereMonth('fecha',$mes)->whereYear('fecha',$anio)
+            ->selectRaw('descripcion, pagado_a, SUM(valor) AS total, COUNT(*) AS cantidad')
+            ->groupBy('descripcion','pagado_a')
+            ->orderByDesc('total')
+            ->get();
+
+        $pagadoSS = $egresosSSDetalle->sum('total');
+        $saldoSS  = $recaudoSS - $pagadoSS;
 
         // Comisiones asesor (acumuladas en facturas del mes)
         $comisionesAsesor = (clone $facturasBase)->sum('c_asesor');
@@ -315,12 +352,13 @@ class InformeController extends Controller
         $diario = $this->desgloseDiario($aid, $mes, $anio);
 
         if ($request->input('excel')) return $this->exportCsv(collect($diario),'estado_financiero',
-            ['Día','Planillas','Trámites','Afiliaciones','Gastos','Utilidad'],
-            fn($r)=>[$r['dia'],number_format($r['planillas']),number_format($r['tramites']),number_format($r['afiliaciones']),number_format($r['gastos']),number_format($r['utilidad'])]);
+            ['Día','# Plan','Planillas','# Afil','Afiliaciones','Trámites','Gastos','Utilidad'],
+            fn($r)=>[$r['dia'],$r['cant_planillas'],number_format($r['planillas']),$r['cant_afiliaciones'],number_format($r['afiliaciones']),number_format($r['tramites']),number_format($r['gastos']),number_format($r['utilidad'])]);
 
         return view('admin.informes.financiero', compact(
             'mes','anio','ingresos','egresos','utilidad',
             'recaudoSS','pagadoSS','saldoSS',
+            'ingresosSS','egresosSSDetalle',
             'comisionesAsesor','gastosOp','tendencia','anterior','bancos','diario'
         ));
     }
@@ -358,6 +396,7 @@ class InformeController extends Controller
             ->where('mes',$mes)->where('anio',$anio)
             ->whereIn('estado',['pagada','abono'])
             ->selectRaw('DAY(fecha_pago) AS dia, tipo,
+                COUNT(*) AS cant_filas,
                 SUM(admon+seguro+mensajeria+otros+iva+retiro) AS ing_planilla,
                 SUM(afiliacion+admon+seguro+iva) AS ing_afil,
                 SUM(admon+otros) AS ing_tramite')
@@ -376,12 +415,26 @@ class InformeController extends Controller
         $diasEnMes = now()->setDate($anio,$mes,1)->daysInMonth;
         $resultado = [];
         for($d=1;$d<=$diasEnMes;$d++){
-            $filas     = $factDia->get($d, collect());
-            $planillas = $filas->where('tipo','planilla')->sum('ing_planilla');
-            $afil      = $filas->where('tipo','afiliacion')->sum('ing_afil');
-            $tramites  = $filas->where('tipo','otro_ingreso')->sum('ing_tramite');
-            $gastos    = (int)($gastosDia[$d] ?? 0);
-            $resultado[] = ['dia'=>$d,'planillas'=>$planillas,'afiliaciones'=>$afil,'tramites'=>$tramites,'gastos'=>$gastos,'utilidad'=>$planillas+$afil+$tramites-$gastos];
+            $filas           = $factDia->get($d, collect());
+            $filaPlan        = $filas->where('tipo','planilla')->first();
+            $filaAfil        = $filas->where('tipo','afiliacion')->first();
+            $filaTramite     = $filas->where('tipo','otro_ingreso')->first();
+            $planillas       = (float)($filaPlan->ing_planilla    ?? 0);
+            $afil            = (float)($filaAfil->ing_afil        ?? 0);
+            $tramites        = (float)($filaTramite->ing_tramite  ?? 0);
+            $cantPlanillas   = (int)($filaPlan->cant_filas        ?? 0);
+            $cantAfiliaciones= (int)($filaAfil->cant_filas        ?? 0);
+            $gastos          = (int)($gastosDia[$d] ?? 0);
+            $resultado[] = [
+                'dia'               => $d,
+                'cant_planillas'    => $cantPlanillas,
+                'planillas'         => $planillas,
+                'cant_afiliaciones' => $cantAfiliaciones,
+                'afiliaciones'      => $afil,
+                'tramites'          => $tramites,
+                'gastos'            => $gastos,
+                'utilidad'          => $planillas + $afil + $tramites - $gastos,
+            ];
         }
         return $resultado;
     }

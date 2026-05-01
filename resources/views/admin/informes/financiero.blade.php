@@ -135,30 +135,129 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
         </div>
     </div>
 
+    {{-- ══ SEGURIDAD SOCIAL ══ --}}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;margin-bottom:1.5rem;">
+
+        {{-- Ingresos SS --}}
+        <div style="background:#fff;border-radius:14px;box-shadow:0 1px 8px rgba(0,0,0,.06);overflow:hidden;">
+            <div style="background:linear-gradient(135deg,#0e7490,#06b6d4);padding:.85rem 1.25rem;display:flex;align-items:center;gap:.75rem;">
+                <span style="font-size:1.2rem;">🏥</span>
+                <div>
+                    <div style="color:#fff;font-weight:700;font-size:.9rem;">Ingresos SS</div>
+                    <div style="color:rgba(255,255,255,.7);font-size:.75rem;">Seguridad Social Recaudada</div>
+                </div>
+                <div style="margin-left:auto;font-weight:800;color:#fff;font-size:1.1rem;">{{ $fmt($ingresosSS['total_ss']) }}</div>
+            </div>
+            <div style="padding:.5rem 0;">
+                @foreach(['eps'=>['EPS','#0ea5e9'],'arl'=>['ARL','#8b5cf6'],'afp'=>['Pensión AFP','#10b981'],'caja'=>['Caja Comp.','#f59e0b']] as $k=>[$label,$color])
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:.55rem 1.25rem;border-bottom:1px solid #f1f5f9;">
+                    <div style="display:flex;align-items:center;gap:.5rem;">
+                        <div style="width:8px;height:8px;border-radius:50%;background:{{ $color }};"></div>
+                        <span style="font-size:.83rem;color:#334155;">{{ $label }}</span>
+                    </div>
+                    <span style="font-weight:700;color:{{ $color }};">{{ $fmt($ingresosSS[$k]) }}</span>
+                </div>
+                @endforeach
+                {{-- Retiro SS (numero_factura = 0) --}}
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:.55rem 1.25rem;border-bottom:1px solid #f1f5f9;">
+                    <div style="display:flex;align-items:center;gap:.5rem;">
+                        <div style="width:8px;height:8px;border-radius:50%;background:#94a3b8;"></div>
+                        <span style="font-size:.83rem;color:#334155;">Retiro SS (sin factura)</span>
+                    </div>
+                    <span style="font-weight:700;color:#94a3b8;">{{ $fmt($ingresosSS['retiro_ss']) }}</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:.6rem 1.25rem;background:#f0f9ff;">
+                    <span style="font-size:.82rem;font-weight:700;color:#0e7490;">Total Recaudado</span>
+                    <span style="font-size:.95rem;font-weight:800;color:#0e7490;">{{ $fmt($recaudoSS) }}</span>
+                </div>
+            </div>
+        </div>
+
+        {{-- Desglose Egresos SS --}}
+        <div style="background:#fff;border-radius:14px;box-shadow:0 1px 8px rgba(0,0,0,.06);overflow:hidden;">
+            <div style="background:linear-gradient(135deg,#7c3aed,#8b5cf6);padding:.85rem 1.25rem;display:flex;align-items:center;gap:.75rem;">
+                <span style="font-size:1.2rem;">💸</span>
+                <div>
+                    <div style="color:#fff;font-weight:700;font-size:.9rem;">Desglose Egresos SS</div>
+                    <div style="color:rgba(255,255,255,.7);font-size:.75rem;">Pagos planillas realizados</div>
+                </div>
+                <div style="margin-left:auto;text-align:right;">
+                    <div style="font-weight:800;color:#fff;font-size:1.1rem;">{{ $fmt($pagadoSS) }}</div>
+                    <div style="font-size:.7rem;color:rgba(255,255,255,.6);">Saldo: {{ $fmt($saldoSS) }}</div>
+                </div>
+            </div>
+            @if($egresosSSDetalle->isEmpty())
+            <div style="padding:2rem;text-align:center;color:#94a3b8;font-size:.84rem;">Sin pagos de planilla este mes</div>
+            @else
+            <div style="max-height:260px;overflow-y:auto;">
+                @foreach($egresosSSDetalle as $eg)
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:.55rem 1.25rem;border-bottom:1px solid #f1f5f9;" onmouseover="this.style.background='#faf5ff'" onmouseout="this.style.background=''">
+                    <div style="min-width:0;">
+                        <div style="font-size:.82rem;font-weight:600;color:#334155;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px;">{{ $eg->descripcion ?: $eg->pagado_a }}</div>
+                        @if($eg->pagado_a && $eg->descripcion)
+                        <div style="font-size:.72rem;color:#94a3b8;">{{ $eg->pagado_a }}</div>
+                        @endif
+                    </div>
+                    <div style="text-align:right;flex-shrink:0;margin-left:.75rem;">
+                        <div style="font-weight:700;color:#7c3aed;">{{ $fmt($eg->total) }}</div>
+                        <div style="font-size:.7rem;color:#94a3b8;">{{ $eg->cantidad }} reg.</div>
+                    </div>
+                </div>
+                @endforeach
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:.6rem 1.25rem;background:#f5f3ff;">
+                <span style="font-size:.82rem;font-weight:700;color:#7c3aed;">Total Pagado SS</span>
+                <span style="font-size:.95rem;font-weight:800;color:#7c3aed;">{{ $fmt($pagadoSS) }}</span>
+            </div>
+            @endif
+        </div>
+    </div>
+
     {{-- Tabla diaria --}}
     <div style="background:#fff;border-radius:14px;box-shadow:0 1px 8px rgba(0,0,0,.06);overflow:hidden;margin-bottom:1.5rem;">
         <div style="padding:.85rem 1.25rem;background:#f8fafc;border-bottom:2px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;">
             <span style="font-size:.72rem;font-weight:700;text-transform:uppercase;color:#64748b;">Desglose Diario — {{ $mesesEs[$mes] }} {{ $anio }}</span>
             <span style="font-size:.72rem;color:#94a3b8;">Clic en un día para ver detalle</span>
         </div>
-        <div class="dia-row dia-head">
-            <span>Día</span><span>Planillas</span><span>Afiliaciones</span><span>Trámites</span><span>Gastos</span><span>Utilidad</span>
+        {{-- Cabecera --}}
+        <div style="display:grid;grid-template-columns:40px 48px 1fr 48px 1fr 1fr 1fr 1fr;gap:.4rem;padding:.5rem .75rem;background:#f8fafc;border-bottom:2px solid #e2e8f0;font-size:.68rem;text-transform:uppercase;color:#64748b;font-weight:700;">
+            <span>Día</span>
+            <span style="color:#3b82f6;text-align:center;">#</span>
+            <span style="color:#3b82f6;">Planillas</span>
+            <span style="color:#8b5cf6;text-align:center;">#</span>
+            <span style="color:#8b5cf6;">Afiliaciones</span>
+            <span style="color:#10b981;">Trámites</span>
+            <span style="color:#ef4444;">Gastos</span>
+            <span>Utilidad</span>
         </div>
-        @php $totDia=['planillas'=>0,'afiliaciones'=>0,'tramites'=>0,'gastos'=>0,'utilidad'=>0]; @endphp
+        @php $totDia=['planillas'=>0,'afiliaciones'=>0,'tramites'=>0,'gastos'=>0,'utilidad'=>0,'cant_planillas'=>0,'cant_afiliaciones'=>0]; @endphp
         @foreach($diario as $d)
-        @php foreach(['planillas','afiliaciones','tramites','gastos','utilidad'] as $k) $totDia[$k]+=$d[$k]; @endphp
-        <div class="dia-row" onclick="verDetalleDia({{ $d['dia'] }},{{ $mes }},{{ $anio }})">
+        @php
+            foreach(['planillas','afiliaciones','tramites','gastos','utilidad'] as $k) $totDia[$k]+=$d[$k];
+            $totDia['cant_planillas']+=$d['cant_planillas'];
+            $totDia['cant_afiliaciones']+=$d['cant_afiliaciones'];
+            $hayData = $d['planillas']>0 || $d['afiliaciones']>0 || $d['tramites']>0 || $d['gastos']>0;
+        @endphp
+        @if($hayData)
+        <div style="display:grid;grid-template-columns:40px 48px 1fr 48px 1fr 1fr 1fr 1fr;gap:.4rem;padding:.48rem .75rem;border-bottom:1px solid #f1f5f9;font-size:.8rem;align-items:center;cursor:pointer;transition:background .12s;"
+             onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''" onclick="verDetalleDia({{ $d['dia'] }},{{ $mes }},{{ $anio }})">
             <span style="font-weight:700;color:#0d2550;">{{ str_pad($d['dia'],2,'0',STR_PAD_LEFT) }}</span>
+            <span style="text-align:center;background:#dbeafe;color:#1e40af;border-radius:6px;padding:.1rem .3rem;font-size:.72rem;font-weight:700;">{{ $d['cant_planillas']>0?$d['cant_planillas']:'' }}</span>
             <span style="color:#3b82f6;">{{ $d['planillas']>0?$fmt($d['planillas']):'—' }}</span>
+            <span style="text-align:center;background:#ede9fe;color:#7c3aed;border-radius:6px;padding:.1rem .3rem;font-size:.72rem;font-weight:700;">{{ $d['cant_afiliaciones']>0?$d['cant_afiliaciones']:'' }}</span>
             <span style="color:#8b5cf6;">{{ $d['afiliaciones']>0?$fmt($d['afiliaciones']):'—' }}</span>
             <span style="color:#10b981;">{{ $d['tramites']>0?$fmt($d['tramites']):'—' }}</span>
             <span style="color:#ef4444;">{{ $d['gastos']>0?'- '.$fmt($d['gastos']):'—' }}</span>
             <span style="font-weight:700;color:{{ $d['utilidad']>=0?'#10b981':'#ef4444' }};">{{ $fmt($d['utilidad']) }}</span>
         </div>
+        @endif
         @endforeach
-        <div class="dia-row" style="background:#f8fafc;font-weight:700;border-top:2px solid #e2e8f0;">
-            <span style="color:#0d2550;">TOTAL</span>
+        {{-- Totales --}}
+        <div style="display:grid;grid-template-columns:40px 48px 1fr 48px 1fr 1fr 1fr 1fr;gap:.4rem;padding:.6rem .75rem;background:#f8fafc;font-weight:700;border-top:2px solid #e2e8f0;font-size:.8rem;">
+            <span style="color:#0d2550;">TOT</span>
+            <span style="text-align:center;background:#dbeafe;color:#1e40af;border-radius:6px;padding:.1rem .3rem;font-size:.72rem;">{{ $totDia['cant_planillas'] }}</span>
             <span style="color:#2563eb;">{{ $fmt($totDia['planillas']) }}</span>
+            <span style="text-align:center;background:#ede9fe;color:#7c3aed;border-radius:6px;padding:.1rem .3rem;font-size:.72rem;">{{ $totDia['cant_afiliaciones'] }}</span>
             <span style="color:#8b5cf6;">{{ $fmt($totDia['afiliaciones']) }}</span>
             <span style="color:#10b981;">{{ $fmt($totDia['tramites']) }}</span>
             <span style="color:#ef4444;">- {{ $fmt($totDia['gastos']) }}</span>

@@ -708,7 +708,7 @@
           <strong style="font-size:0.78rem;color:#dc2626;">Retiro Real</strong>
         </div>
         <p style="font-size:0.65rem;color:#6b7280;margin:.25rem 0 0 1.2rem;line-height:1.3;">
-          Genera plano con días cotizados. Aparece en Planos SS.
+          Genera plano con días cotizados. EPS, ARL, Pensión y Caja se calculan automáticamente (registro de costo, no ingreso).
         </p>
       </label>
       <label id="mr-lbl-info" onclick="mrTipo('informativo')"

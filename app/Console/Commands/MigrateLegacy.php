@@ -54,6 +54,7 @@ class MigrateLegacy extends Command
             'fix-valoresfacturas'  => fn() => $this->stepFixValoresFacturas(),
             'fix-independiente'    => fn() => $this->stepFixIndependiente(),
             'fix-planos'           => fn() => $this->stepFixPlanos(),
+            'fix-facturas-retiro'  => fn() => $this->stepFixFacturasRetiro(),
         ];
 
         if ($step === 'all') {
@@ -741,6 +742,17 @@ class MigrateLegacy extends Command
         return null;
     }
 
+    // ─── HELPER: parsea decimal legacy con coma como separador ────────────────
+    // SQL Server en locale CO puede devolver '2426,6667' en vez de '2426.6667'.
+    // is_numeric('2426,6667') → false en PHP → el valor se pierde como 0.
+    // Este helper reemplaza la coma por punto y redondea al entero más cercano.
+    private function parseDecimalLegacy(mixed $val): int
+    {
+        if ($val === null || $val === '') return 0;
+        $clean = str_replace(',', '.', (string)$val);
+        return is_numeric($clean) ? (int)round((float)$clean) : 0;
+    }
+
     // ─── HELPER: SELECT legacy con reintentos en timeout ─────────────────────
     // Reconecta y reintenta hasta $maxTries veces en caso de HYT00 / login timeout.
     private function legacySelect(string $sql, int $maxTries = 5): array
@@ -795,22 +807,22 @@ class MigrateLegacy extends Command
                         ->where('id_legacy', $r->Id_Contrato)
                         ->value('id');
 
-                    // TIPO: mensualidad→planilla, retiro→retiro, resto→afiliacion
+                    // TIPO: mensualidad→planilla, retiro→planilla (numero_factura=0 los diferencia),
+                    // resto→afiliacion. NOTA: 'retiro' NO es un tipo válido en BryNex facturas;
+                    // el campo numero_factura=0 es quien identifica las facturas de retiro.
                     $tipoRaw = strtolower(trim($r->Tipo ?? ''));
-                    if ($tipoRaw === 'mensualidad') {
-                        $tipo = 'planilla';
-                    } elseif ($tipoRaw === 'retiro') {
-                        $tipo = 'retiro';
+                    if ($tipoRaw === 'mensualidad' || $tipoRaw === 'retiro') {
+                        $tipo = 'planilla';   // retiro: planilla con numero_factura=0
                     } else {
                         $tipo = 'afiliacion';
                     }
 
                     // ── VALORES ──────────────────────────────────────────────
                     // BUG#1 CORREGIDO: Pago=0 en consignaciones puras → usar Valor_Consignado
-                    $valCons  = is_numeric($r->Valor_Consignado) ? (int)$r->Valor_Consignado : 0;
-                    $valTotal = (is_numeric($r->Pago) && (int)$r->Pago > 0)
-                        ? (int)$r->Pago
-                        : $valCons;  // total real = Valor_Consignado cuando Pago está vacío
+                    // BUG#3: SQL Server devuelve decimales con coma ('0,00') → usar parseDecimalLegacy()
+                    $valCons  = $this->parseDecimalLegacy($r->Valor_Consignado);
+                    $valPago  = $this->parseDecimalLegacy($r->Pago);
+                    $valTotal = $valPago > 0 ? $valPago : $valCons;  // total real
 
                     $valEfect = max(0, $valTotal - $valCons);
 
@@ -876,11 +888,14 @@ class MigrateLegacy extends Command
                         // np y n_plano son INT: extraer solo la parte numérica ('1P' → 1, '2A' → 2)
                         'np'      => ($npVal = preg_replace('/[^0-9]/', '', $this->col($r, 'NP') ?? '')) !== '' ? (int)$npVal : null,
                         'n_plano' => ($npVal = preg_replace('/[^0-9]/', '', $this->col($r, 'n_plano') ?? '')) !== '' ? (int)$npVal : null,
-                        'v_eps'              => is_numeric($r->V_EPS)  ? (int)$r->V_EPS  : 0,
-                        'v_arl'              => is_numeric($r->V_Arl)  ? (int)$r->V_Arl  : 0,
-                        'v_afp'              => is_numeric($r->V_AFP)  ? (int)$r->V_AFP  : 0,
-                        'v_caja'             => is_numeric($r->V_CAJA) ? (int)$r->V_CAJA : 0,
-                        'total_ss'           => (int)($r->V_EPS ?? 0) + (int)($r->V_Arl ?? 0) + (int)($r->V_AFP ?? 0) + (int)($r->V_CAJA ?? 0),
+                        'v_eps'              => $this->parseDecimalLegacy($r->V_EPS),
+                        'v_arl'              => $this->parseDecimalLegacy($r->V_Arl),
+                        'v_afp'              => $this->parseDecimalLegacy($r->V_AFP),
+                        'v_caja'             => $this->parseDecimalLegacy($r->V_CAJA),
+                        'total_ss'           => $this->parseDecimalLegacy($r->V_EPS)
+                                             + $this->parseDecimalLegacy($r->V_Arl)
+                                             + $this->parseDecimalLegacy($r->V_AFP)
+                                             + $this->parseDecimalLegacy($r->V_CAJA),
                         'admon'              => is_numeric($r->Admon)           ? (int)$r->Admon           : 0,
                         'admin_asesor'       => is_numeric($r->admin_asesor)    ? (int)$r->admin_asesor    : 0,
                         'seguro'             => is_numeric($r->seguro)          ? (int)$r->seguro          : 0,
@@ -2009,5 +2024,69 @@ class MigrateLegacy extends Command
                OR tipo_reg IS NULL
         ");
         $this->info('  ✅ tipo_reg normalizado (planilla/afiliacion/retiro)');
+    }
+
+    // ─── FIX-FACTURAS-RETIRO: corrige facturas legacy ya migradas con tipo='retiro' ──
+    // Problema: en el step07 anterior, Tipo='Retiro' en legacy se mapeaba a tipo='retiro'
+    // en BryNex. Ese valor NO existe en el schema (solo 'planilla','afiliacion','otro_ingreso').
+    // Además, los valores V_EPS/V_Arl/V_AFP/V_CAJA venían con coma decimal ('2426,6667')
+    // y quedaban en 0 al fallar is_numeric().
+    // Este fix: 1) actualiza tipo='retiro'→'planilla', 2) recalcula los valores SS
+    // directamente desde el legacy usando parseDecimalLegacy().
+    private function stepFixFacturasRetiro(): void
+    {
+        // 1) Corregir tipo='retiro' → 'planilla' para las que ya están en BryNex
+        $updatedTipo = DB::table('facturas')
+            ->where('tipo', 'retiro')
+            ->update(['tipo' => 'planilla', 'updated_at' => now()]);
+
+        $this->info("  ✅ tipo='retiro'→'planilla': $updatedTipo facturas corregidas");
+
+        // 2) Recalcular V_EPS/V_Arl/V_AFP/V_CAJA desde legacy (venían con coma decimal)
+        $updatedSS = 0;
+        foreach ($this->dbs as $db => $key) {
+            $aliadoId = $this->ids[$key] ?? null;
+            if (!$aliadoId) continue;
+
+            // Traer facturas legacy con Tipo='Retiro' que tienen valores SS > 0
+            $rows = $this->legacySelect(
+                "SELECT Id_Factura, V_EPS, V_Arl, V_AFP, V_CAJA
+                 FROM [$db].dbo.FACTURACION
+                 WHERE Tipo = 'Retiro'
+                   AND (V_EPS IS NOT NULL AND V_EPS != '0' AND V_EPS != '0,00'
+                     OR V_Arl IS NOT NULL AND V_Arl != '0' AND V_Arl != '0,00'
+                     OR V_AFP IS NOT NULL AND V_AFP != '0' AND V_AFP != '0,00'
+                     OR V_CAJA IS NOT NULL AND V_CAJA != '0' AND V_CAJA != '0,00')"
+            );
+
+            foreach ($rows as $r) {
+                $vEps   = $this->parseDecimalLegacy($r->V_EPS);
+                $vArl   = $this->parseDecimalLegacy($r->V_Arl);
+                $vAfp   = $this->parseDecimalLegacy($r->V_AFP);
+                $vCaja  = $this->parseDecimalLegacy($r->V_CAJA);
+                $totalSS = $vEps + $vArl + $vAfp + $vCaja;
+
+                if ($totalSS === 0) continue;  // no hay nada que corregir
+
+                $affected = DB::table('facturas')
+                    ->where('aliado_id', $aliadoId)
+                    ->where('id_legacy', $r->Id_Factura)
+                    ->where('total_ss', 0)      // solo si todavía tiene 0 (evita sobreescribir)
+                    ->update([
+                        'v_eps'      => $vEps,
+                        'v_arl'      => $vArl,
+                        'v_afp'      => $vAfp,
+                        'v_caja'     => $vCaja,
+                        'total_ss'   => $totalSS,
+                        'updated_at' => now(),
+                    ]);
+                $updatedSS += $affected;
+            }
+            $this->info("  ✅ $db → $updatedSS facturas con SS recalculado");
+            $updatedSS = 0;
+        }
+
+        $this->info('  📊 Total facturas tipo retiro en BryNex: '
+            . DB::table('facturas')->where('tipo', 'planilla')->where('numero_factura', 0)->count());
     }
 }

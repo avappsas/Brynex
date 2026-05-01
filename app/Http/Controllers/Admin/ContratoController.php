@@ -269,7 +269,7 @@ class ContratoController extends Controller
     {
         $alidoId  = session('aliado_id_activo');
         $contrato = Contrato::where('aliado_id', $alidoId)
-            ->with(['eps','arl','pension','caja','tipoModalidad','razonSocial','cliente'])
+            ->with(['eps','arl','pension','caja','tipoModalidad','razonSocial','cliente','plan'])
             ->findOrFail($id);
 
         $validated = $request->validate([
@@ -299,7 +299,63 @@ class ContratoController extends Controller
             }
         }
 
-        DB::transaction(function () use ($contrato, $validated, $alidoId, $tipoRetiro, $fechaRetiro, $numDias) {
+        // ── Calcular SS del retiro real (misma lógica que cotizar()) ──────────
+        // Solo aplica para retiro real y cuando hay días cotizados
+        $vEpsRetiro = 0; $vArlRetiro = 0; $vAfpRetiro = 0; $vCajaRetiro = 0; $totalSsRetiro = 0;
+
+        if ($tipoRetiro === 'real' && $numDias > 0) {
+            $modal   = $contrato->tipoModalidad;
+            $plan    = $contrato->plan;
+            $nivelArl = (int)($contrato->n_arl ?? 1);
+            $salario  = (float)($contrato->salario ?? 0);
+            $ibc      = (float)($contrato->ibc ?? $salario) ?: $salario;
+
+            $esIndep = $modal && $modal->esIndependiente();
+            $esTP    = $modal && $modal->esTiempoParcial();
+
+            $pctEps  = $esIndep ? ConfiguracionBrynex::pctSaludIndependiente()  : ConfiguracionBrynex::pctSaludDependiente();
+            $pctPen  = $esIndep ? ConfiguracionBrynex::pctPensionIndependiente() : ConfiguracionBrynex::pctPensionDependiente();
+            $pctArl  = ArlTarifa::porcentajePara($nivelArl, $alidoId);
+
+            if ($esIndep) {
+                $pctCaja = ConfiguracionBrynex::pctCajaIndependienteAlto();
+            } else {
+                $pctCaja = ConfiguracionBrynex::pctCajaDependiente();
+            }
+
+            // Redondear hacia arriba al 100 más cercano
+            $r = fn($v) => ceil($v / 100) * 100;
+
+            if ($esTP) {
+                // Tiempo Parcial: usar días y factor del tipo de modalidad
+                $diasP     = $modal->diasPorEntidad();
+                $factorMap = [7 => 0.25, 14 => 0.50, 21 => 0.75, 30 => 1.00];
+                $factorAfp  = $factorMap[$diasP['afp']]  ?? 1.0;
+                $factorCaja = $factorMap[$diasP['caja']] ?? 1.0;
+                $sm = (float) ConfiguracionBrynex::obtener('salario_minimo', 1423500);
+
+                $vEpsRetiro  = 0;
+                $vArlRetiro  = ($plan && $plan->incluye_arl)     ? (int)$r($sm * $pctArl / 100)                     : 0;
+                $vAfpRetiro  = ($plan && $plan->incluye_pension)  ? (int)$r($sm * $factorAfp  * $pctPen / 100)       : 0;
+                $vCajaRetiro = ($plan && $plan->incluye_caja)     ? (int)$r($sm * $factorCaja * $pctCaja / 100)      : 0;
+            } else {
+                // Normal: proporcional a num_dias / 30
+                $epsMes  = ($plan && $plan->incluye_eps)     ? $r($ibc * $pctEps  / 100) : 0;
+                $arlMes  = ($plan && $plan->incluye_arl)     ? $r($ibc * $pctArl  / 100) : 0;
+                $penMes  = ($plan && $plan->incluye_pension)  ? $r($ibc * $pctPen  / 100) : 0;
+                $cajaMes = ($plan && $plan->incluye_caja)    ? $r($ibc * $pctCaja / 100) : 0;
+
+                $vEpsRetiro  = $numDias < 30 ? (int)$r($epsMes  * $numDias / 30) : (int)$epsMes;
+                $vArlRetiro  = $numDias < 30 ? (int)$r($arlMes  * $numDias / 30) : (int)$arlMes;
+                $vAfpRetiro  = $numDias < 30 ? (int)$r($penMes  * $numDias / 30) : (int)$penMes;
+                $vCajaRetiro = $numDias < 30 ? (int)$r($cajaMes * $numDias / 30) : (int)$cajaMes;
+            }
+
+            $totalSsRetiro = $vEpsRetiro + $vArlRetiro + $vAfpRetiro + $vCajaRetiro;
+        }
+
+        DB::transaction(function () use ($contrato, $validated, $alidoId, $tipoRetiro, $fechaRetiro, $numDias,
+                                         $vEpsRetiro, $vArlRetiro, $vAfpRetiro, $vCajaRetiro, $totalSsRetiro) {
             // 1) Actualizar contrato → retirado
             $contrato->update([
                 'estado'           => 'retirado',
@@ -308,7 +364,10 @@ class ContratoController extends Controller
                 'observacion'      => $validated['observacion'] ?? $contrato->observacion,
             ]);
 
-            // 2) Crear factura $0 (sin número, enlazada al plano)
+            // 2) Crear factura de retiro (numero_factura=0, total=$0, pero SS calculado)
+            //    El total sigue en $0 porque el dinero no entró como ingreso.
+            //    Los campos v_eps/v_arl/v_afp/v_caja reflejan el COSTO del retiro en SS.
+            //    Se excluyen de ingresos en informes filtrando WHERE numero_factura = 0.
             $factura = \App\Models\Factura::create([
                 'aliado_id'        => $alidoId,
                 'numero_factura'   => 0,
@@ -329,17 +388,20 @@ class ContratoController extends Controller
                 'otros_admon'      => 0,
                 'mensajeria'       => 0,
                 'dias_cotizados'   => $numDias,
-                'v_eps'  => 0, 'v_arl' => 0, 'v_afp' => 0, 'v_caja' => 0,
-                'total_ss'  => 0,
-                'admon'     => 0,
-                'admin_asesor' => 0,
-                'seguro'    => 0,
-                'afiliacion'=> 0,
-                'iva'       => 0,
-                'total'     => 0,
-                'saldo_proximo' => 0,
-                'usuario_id'    => Auth::id(),
-                'observacion'   => $validated['observacion'] ?? null,
+                'v_eps'       => $vEpsRetiro,
+                'v_arl'       => $vArlRetiro,
+                'v_afp'       => $vAfpRetiro,
+                'v_caja'      => $vCajaRetiro,
+                'total_ss'    => $totalSsRetiro,
+                'admon'       => 0,
+                'admin_asesor'=> 0,
+                'seguro'      => 0,
+                'afiliacion'  => 0,
+                'iva'         => 0,
+                'total'       => 0,
+                'saldo_proximo'=> 0,
+                'usuario_id'  => Auth::id(),
+                'observacion' => $validated['observacion'] ?? null,
             ]);
 
             // 3) Mes/año del plano: viene del select del modal (controlado por el usuario)
