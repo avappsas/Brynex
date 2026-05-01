@@ -1180,17 +1180,12 @@ class MigrateLegacy extends Command
                         // Mes y año: MES_PLANO y AÑO_PLANO del legacy
                         'mes_plano'          => is_numeric($this->col($r, 'MES_PLANO') ?? $this->col($r, 'Mes')) ? (int)($this->col($r, 'MES_PLANO') ?? $this->col($r, 'Mes')) : null,
                         'anio_plano'         => is_numeric($this->col($r, 'AÑO_PLANO') ?? $this->col($r, 'Año') ?? $this->col($r, 'Anio')) ? (int)($this->col($r, 'AÑO_PLANO') ?? $this->col($r, 'Año') ?? $this->col($r, 'Anio')) : null,
-                        // Normalizar tipo_reg: PILA usa '01'=activo/planilla, '02'=retiro, '03'=novedad
-                        // BryNex usa 'planilla' | 'afiliacion'
+                        // tipo_reg: PILA '01'=planilla, '02'=retiro (pero en BryNex no usamos retiro)
+                        // Mapear todo a 'planilla' o 'afiliacion'
                         'tipo_reg'           => (function () use ($r) {
                             $raw = strtolower(trim($this->col($r, 'TIPO_REG') ?? '01'));
-                            if (in_array($raw, ['planilla', 'afiliacion', 'retiro'])) return $raw;
-                            // Códigos PILA estándar
-                            return match($raw) {
-                                '02', '2', 'retiro'     => 'retiro',
-                                '03', '3', 'afiliacion' => 'afiliacion',
-                                default                  => 'planilla', // '01', '1', vacío → planilla
-                            };
+                            if ($raw === 'afiliacion' || $raw === '03' || $raw === '3') return 'afiliacion';
+                            return 'planilla'; // '01', '02', '1', '2', retiro, vacío → planilla
                         })(),
                         'tipo_doc'           => trim($this->col($r, 'TIPO_DOC') ?? 'CC'),
                         // Cédula del cliente: NO_IDENTIFI es el campo estándar PILA
@@ -1231,7 +1226,8 @@ class MigrateLegacy extends Command
                         'nombre_afp'         => trim($this->col($r, 'Nombre_AFP')  ?? $this->col($r, 'Nom_AFP')  ?? ''),
                         'nombre_arl'         => trim($this->col($r, 'Nombre_ARL')  ?? $this->col($r, 'Nom_ARL')  ?? ''),
                         'nombre_caja'        => trim($this->col($r, 'Nombre_Caja') ?? $this->col($r, 'Nom_Caja') ?? ''),
-                        'nivel_riesgo'       => is_numeric($this->col($r, 'N_ARL') ?? $this->col($r, 'Nivel_Riesgo')) ? (int)($this->col($r, 'N_ARL') ?? $this->col($r, 'Nivel_Riesgo')) : 1,
+                        // nivel_riesgo: campo 'NIVEL RIESGO' (con espacio) del legacy
+                        'nivel_riesgo'       => is_numeric($this->col($r, 'NIVEL RIESGO') ?? $this->col($r, 'N_ARL') ?? $this->col($r, 'Nivel_Riesgo')) ? (int)($this->col($r, 'NIVEL RIESGO') ?? $this->col($r, 'N_ARL') ?? $this->col($r, 'Nivel_Riesgo')) : 1,
                         // razon_social_id: usar el mapa precargado (O(1), sin N+1 queries)
                         // rsMap está indexado por id_legacy = NIT de la empresa
                         'razon_social_id'    => $rsId,  // ya resuelto arriba desde $rsMap[(int)$nit]
@@ -1240,25 +1236,23 @@ class MigrateLegacy extends Command
                             if (is_numeric($nit) && (int)$nit > 0) return (string)(int)$nit;
                             return trim($this->col($r, 'Razon_Social') ?? '');
                         })(),
-                        // Normalizar tipo_reg: PILA usa '01'=planilla, '02'=retiro, '03'=afiliacion
-                        // BryNex usa 'planilla' | 'afiliacion' | 'retiro'
+                        // tipo_reg: igual que arriba (2do mapping en tabla planos)
                         'tipo_reg'           => (function () use ($r) {
                             $raw = strtolower(trim($this->col($r, 'TIPO_REG') ?? '01'));
-                            if (in_array($raw, ['planilla', 'afiliacion', 'retiro'])) return $raw;
-                            return match($raw) {
-                                '02', '2' => 'retiro',
-                                '03', '3' => 'afiliacion',
-                                default   => 'planilla',
-                            };
+                            if ($raw === 'afiliacion' || $raw === '03' || $raw === '3') return 'afiliacion';
+                            return 'planilla';
                         })(),
                         // tipo_modalidad_id: Tipo_P del legacy (ID directo del catálogo)
                         'tipo_modalidad_id'  => is_numeric($this->col($r, 'Tipo_P')) ? (int)$this->col($r, 'Tipo_P') : null,
                         'tipo_p'             => trim($this->col($r, 'Tipo_P') ?? $this->col($r, 'Tipo') ?? ''),
-                        'num_dias'           => is_numeric($this->col($r, 'Num_Dias') ?? $this->col($r, 'N_Dias')) ? (int)($this->col($r, 'Num_Dias') ?? $this->col($r, 'N_Dias')) : 30,
+                        // num_dias: campo 'D' del legacy (días trabajados)
+                        'num_dias'           => is_numeric($this->col($r, 'D') ?? $this->col($r, 'Num_Dias') ?? $this->col($r, 'N_Dias')) ? (int)($this->col($r, 'D') ?? $this->col($r, 'Num_Dias') ?? $this->col($r, 'N_Dias')) : 30,
                         'created_at'         => now(),
                         'updated_at'         => now(),
                     ]);
                     $count++;
+                    // Actualizar set en memoria para evitar duplicados dentro del mismo run
+                    if ($idLeg) $idLegacyMigrados[$idLeg] = true;
                     if ($count % 200 === 0) $this->line("    → $count / $total...");
                 }
                 $offset += $chunk;
