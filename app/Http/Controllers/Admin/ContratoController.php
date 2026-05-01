@@ -309,6 +309,12 @@ class ContratoController extends Controller
             $nivelArl = (int)($contrato->n_arl ?? 1);
             $salario  = (float)($contrato->salario ?? 0);
             $ibc      = (float)($contrato->ibc ?? $salario) ?: $salario;
+            $sm       = (float) ConfiguracionBrynex::obtener('salario_minimo', 1423500);
+
+            // ── Fallback IBC: si salario/ibc = 0 (común en contratos legacy), usar salario mínimo
+            if ($ibc <= 0) {
+                $ibc = $sm;
+            }
 
             $esIndep = $modal && $modal->esIndependiente();
             $esTP    = $modal && $modal->esTiempoParcial();
@@ -323,6 +329,14 @@ class ContratoController extends Controller
                 $pctCaja = ConfiguracionBrynex::pctCajaDependiente();
             }
 
+            // ── Fallback plan: si el contrato no tiene plan asignado,
+            //    inferir entidades directamente desde los IDs del contrato.
+            //    Esto aplica a contratos migrados del legacy que no tienen plan_id.
+            $incluyeEps     = $plan ? (bool)$plan->incluye_eps     : ($contrato->eps_id     !== null);
+            $incluyeArl     = $plan ? (bool)$plan->incluye_arl     : ($contrato->arl_id     !== null);
+            $incluyePension = $plan ? (bool)$plan->incluye_pension  : ($contrato->pension_id  !== null);
+            $incluyeCaja    = $plan ? (bool)$plan->incluye_caja     : ($contrato->caja_id     !== null);
+
             // Redondear hacia arriba al 100 más cercano
             $r = fn($v) => ceil($v / 100) * 100;
 
@@ -332,18 +346,17 @@ class ContratoController extends Controller
                 $factorMap = [7 => 0.25, 14 => 0.50, 21 => 0.75, 30 => 1.00];
                 $factorAfp  = $factorMap[$diasP['afp']]  ?? 1.0;
                 $factorCaja = $factorMap[$diasP['caja']] ?? 1.0;
-                $sm = (float) ConfiguracionBrynex::obtener('salario_minimo', 1423500);
 
                 $vEpsRetiro  = 0;
-                $vArlRetiro  = ($plan && $plan->incluye_arl)     ? (int)$r($sm * $pctArl / 100)                     : 0;
-                $vAfpRetiro  = ($plan && $plan->incluye_pension)  ? (int)$r($sm * $factorAfp  * $pctPen / 100)       : 0;
-                $vCajaRetiro = ($plan && $plan->incluye_caja)     ? (int)$r($sm * $factorCaja * $pctCaja / 100)      : 0;
+                $vArlRetiro  = $incluyeArl     ? (int)$r($sm * $pctArl / 100)                     : 0;
+                $vAfpRetiro  = $incluyePension  ? (int)$r($sm * $factorAfp  * $pctPen / 100)       : 0;
+                $vCajaRetiro = $incluyeCaja     ? (int)$r($sm * $factorCaja * $pctCaja / 100)      : 0;
             } else {
                 // Normal: proporcional a num_dias / 30
-                $epsMes  = ($plan && $plan->incluye_eps)     ? $r($ibc * $pctEps  / 100) : 0;
-                $arlMes  = ($plan && $plan->incluye_arl)     ? $r($ibc * $pctArl  / 100) : 0;
-                $penMes  = ($plan && $plan->incluye_pension)  ? $r($ibc * $pctPen  / 100) : 0;
-                $cajaMes = ($plan && $plan->incluye_caja)    ? $r($ibc * $pctCaja / 100) : 0;
+                $epsMes  = $incluyeEps     ? $r($ibc * $pctEps  / 100) : 0;
+                $arlMes  = $incluyeArl     ? $r($ibc * $pctArl  / 100) : 0;
+                $penMes  = $incluyePension  ? $r($ibc * $pctPen  / 100) : 0;
+                $cajaMes = $incluyeCaja     ? $r($ibc * $pctCaja / 100) : 0;
 
                 $vEpsRetiro  = $numDias < 30 ? (int)$r($epsMes  * $numDias / 30) : (int)$epsMes;
                 $vArlRetiro  = $numDias < 30 ? (int)$r($arlMes  * $numDias / 30) : (int)$arlMes;
