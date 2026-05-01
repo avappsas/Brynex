@@ -1073,8 +1073,8 @@ class MigrateLegacy extends Command
                 ->pluck('clave')->flip()->all();
 
             $total = DB::connection('sqlsrv_legacy')
-                ->selectOne("SELECT COUNT(*) as cnt FROM [$db].dbo.PLANOS")->cnt;
-            $this->line("  ⏳ $db: $total planos...");
+                ->selectOne("SELECT COUNT(*) as cnt FROM [$db].dbo.PLANOS WHERE A\u00d1O_PLANO = 2026")->cnt;
+            $this->line("  ⏳ $db: $total planos (año 2026)...");
 
             // ── Precargar mapas id_legacy → id (evita N+1 queries en el loop) ──
             $facturasMap = DB::table('facturas')
