@@ -59,7 +59,9 @@ class FixPlanosPlanilla extends Command
         foreach ($this->dbs as $db => $key) {
             $this->line("\n<fg=cyan>── Legacy: {$db} ──</>");
 
-            $legCount = 0; $offset = 0; $chunk = 2000;
+            $legCount = 0; $offset = 0; $chunk = 5000;
+            $this->line("  Cargando...");
+            $legRows = 0;
             while (true) {
                 try {
                     $rows = DB::connection('sqlsrv_legacy')
@@ -109,7 +111,11 @@ class FixPlanosPlanilla extends Command
                         }
                     }
                 }
-                $offset += $chunk;
+                $legRows += count($rows);
+                $offset  += $chunk;
+                if ($legRows % 20000 === 0) {
+                    $this->line("  ... {$legRows} filas legacy procesadas");
+                }
                 if (count($rows) < $chunk) break;
             }
             $this->line("  Matches encontrados en {$db}: {$legCount}");
@@ -148,11 +154,20 @@ class FixPlanosPlanilla extends Command
         $this->info("Total con match: " . count($fixes) . " | Sin match: " . count($noMatch));
 
         if (!$dryRun && !empty($fixes)) {
+            $chunks = array_chunk($fixes, 500, true);
             $bar = $this->output->createProgressBar(count($fixes));
             $bar->start();
-            foreach ($fixes as $pid => $planilla) {
-                DB::table('planos')->where('id', $pid)->update(['numero_planilla' => $planilla]);
-                $bar->advance();
+            foreach ($chunks as $chunk) {
+                // Una sola query por lote usando CASE WHEN
+                $ids   = array_keys($chunk);
+                $cases = '';
+                foreach ($chunk as $pid => $planilla) {
+                    $safe  = addslashes($planilla);
+                    $cases .= " WHEN {$pid} THEN '{$safe}'";
+                }
+                $idList = implode(',', $ids);
+                DB::statement("UPDATE planos SET numero_planilla = CASE id {$cases} END WHERE id IN ({$idList})");
+                $bar->advance(count($chunk));
             }
             $bar->finish();
             $this->newLine();
