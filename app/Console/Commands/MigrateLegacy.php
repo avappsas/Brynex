@@ -640,7 +640,12 @@ class MigrateLegacy extends Command
                         'aliado_id'              => $aliadoId,
                         'id_legacy'              => $r->Id,
                         'cedula'                 => $this->col($r, 'Cedula'),
-                        'estado'                 => strtolower(trim($this->col($r, 'Estado') ?? '')) ?: null,
+                        'estado'                 => (function() use ($r) {
+                            $e = strtolower(trim($this->col($r, 'Estado') ?? ''));
+                            if ($e !== '') return $e;
+                            // Estado vacío: inferir por fecha_retiro
+                            return $this->col($r, 'Fecha_Retiro') ? 'retirado' : 'vigente';
+                        })(),
                         'razon_social_id'        => $razonId,
                         'asesor_id'              => $asesorId,
                         'encargado_id'           => $userId,
