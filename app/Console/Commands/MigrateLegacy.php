@@ -631,7 +631,7 @@ class MigrateLegacy extends Command
                         'aliado_id'              => $aliadoId,
                         'id_legacy'              => $r->Id,
                         'cedula'                 => $this->col($r, 'Cedula'),
-                        'estado'                 => strtolower(trim($this->col($r, 'Estado') ?? 'vigente')),
+                        'estado'                 => strtolower(trim($this->col($r, 'Estado') ?? '')) ?: null,
                         'razon_social_id'        => $razonId,
                         'asesor_id'              => $asesorId,
                         'encargado_id'           => $userId,
