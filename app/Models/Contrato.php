@@ -140,6 +140,24 @@ class Contrato extends BaseModel
         return $this->tipoModalidad && $this->tipoModalidad->esIndependiente();
     }
 
+    /**
+     * Cargo fijo de $100 cuando el cliente es dependiente E o Ingreso-Retiro
+     * y su plan NO incluye Caja de Compensación (sin CCF).
+     * Estos $100 se pagan a la caja y van en v_caja de la factura.
+     * Solo aplica en planilla (no en afiliación pura).
+     */
+    const CARGO_SIN_CCF = 100;
+
+    /** IDs de modalidades que generan el cargo sin-CCF (dependiente, no independiente) */
+    const IDS_SIN_CCF = [0, 12]; // 0 = Dependiente E, 12 = Ingreso-Retiro
+
+    public function aplicaCargoSinCcf(): bool
+    {
+        $esDependienteTarget = in_array((int)$this->tipo_modalidad_id, self::IDS_SIN_CCF);
+        $sinCaja = $this->plan && !$this->plan->incluye_caja;
+        return $esDependienteTarget && $sinCaja;
+    }
+
     // ── COTIZADOR ──
 
     /**
@@ -215,6 +233,13 @@ class Contrato extends BaseModel
                 $arl  = $r30($arl);
                 $pen  = $r30($pen);
                 $caja = $r30($caja);
+            }
+
+            // ── Cargo sin-CCF: dependiente E o Ingreso-Retiro sin caja ─────
+            // Se cobra $100 fijos a la caja cuando el plan no incluye CCF.
+            // Solo aplica en planilla (dias > 0), no en afiliación pura.
+            if ($caja === 0 && $dias > 0 && $this->aplicaCargoSinCcf()) {
+                $caja = self::CARGO_SIN_CCF;
             }
         }
 

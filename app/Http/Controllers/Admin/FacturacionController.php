@@ -1256,6 +1256,13 @@ $efAcum = $csAcum = $prAcum = $sfAcum = 0;
             ];
         }
 
+        // ── Cargo sin-CCF: dependiente E o Ingreso-Retiro sin caja ───────
+        // Se cobra $100 fijos a la caja cuando el plan no incluye CCF.
+        // Solo aplica en planilla (dias > 0, garantizado porque dias=30 aqui).
+        if ($cajaMes === 0 && $contrato->aplicaCargoSinCcf()) {
+            $cajaMes = \App\Models\Contrato::CARGO_SIN_CCF;
+        }
+
         return ['eps' => $epsMes, 'arl' => $arlMes, 'afp' => $afpMes, 'caja' => $cajaMes];
     }
 

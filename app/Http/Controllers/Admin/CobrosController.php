@@ -202,6 +202,13 @@ class CobrosController extends Controller
                 $vArl  = ($plan?->incluye_arl)     ? $r100($ibc * $pctArl / 100) : 0;
                 $vPen  = ($plan?->incluye_pension)  ? $r100($ibc * $pctPen / 100) : 0;
                 $vCaja = ($plan?->incluye_caja)    ? $r100($ibc * $pctCaj / 100) : 0;
+
+                // ── Cargo sin-CCF: dependiente E o Ingreso-Retiro sin caja ──
+                // Se cobra $100 fijos a la caja cuando el plan no incluye CCF.
+                if ($vCaja === 0 && $c->aplicaCargoSinCcf()) {
+                    $vCaja = \App\Models\Contrato::CARGO_SIN_CCF;
+                }
+
                 $vSS   = $vEps + $vArl + $vPen + $vCaja;
 
                 $admon = (int)($c->administracion ?? 0);
