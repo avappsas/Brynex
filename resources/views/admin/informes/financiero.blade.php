@@ -45,7 +45,7 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
         <div class="fin-kpi" style="--c:#2563eb;">
             <div class="val">{{ $fmt($ingresos['total']) }}</div>
             <div class="lab">Ingresos Totales</div>
-            <div class="sub">Planillas + Afil. + Trámites</div>
+            <div class="sub">Cobrado en {{ $mesesEs[$mes] }} (base caja)</div>
         </div>
         <div class="fin-kpi" style="--c:#ef4444;">
             <div class="val">{{ $fmt($egresos['total']) }}</div>
@@ -60,15 +60,15 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
         <div class="fin-kpi" style="--c:#8b5cf6;">
             <div class="val">{{ $fmt($saldoSS) }}</div>
             <div class="lab">Saldo SS Terceros</div>
-            <div class="sub">Recaudado − Pagado planillas</div>
+            <div class="sub">Recaudado en mes − Pagado planillas</div>
         </div>
     </div>
 
     {{-- Desglose ingresos --}}
     <div style="display:grid;grid-template-columns:2fr 1fr;gap:1.25rem;margin-bottom:1.5rem;">
         <div style="background:#fff;border-radius:14px;padding:1.25rem;box-shadow:0 1px 8px rgba(0,0,0,.06);">
-            <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;color:#94a3b8;margin-bottom:.85rem;">Desglose de Ingresos</div>
-            @foreach([['Planillas SS (admon, seguro, otros)',$ingresos['planillas'],'#3b82f6'],['Afiliaciones',$ingresos['afiliaciones'],'#8b5cf6'],['Trámites',$ingresos['tramites'],'#10b981']] as [$l,$v,$c])
+            <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;color:#94a3b8;margin-bottom:.85rem;">Desglose de Ingresos <span style="color:#0ea5e9;font-weight:400;">(cobrados en {{ $mesesEs[$mes] }})</span></div>
+            @foreach([['Planillas (admon, seguro, otros)',$ingresos['planillas'],'#3b82f6'],['Afiliaciones',$ingresos['afiliaciones'],'#8b5cf6'],['Trámites',$ingresos['tramites'],'#10b981']] as [$l,$v,$c])
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.6rem;">
                 <div>
                     <div style="font-size:.83rem;font-weight:600;color:#334155;">{{ $l }}</div>
@@ -206,68 +206,47 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
     @endif
 
     {{-- ══ SEGURIDAD SOCIAL ══ --}}
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;margin-bottom:1.5rem;">
+    <div style="display:grid;grid-template-columns:1fr 2fr;gap:1.25rem;margin-bottom:1.5rem;">
 
         {{-- Ingresos SS --}}
         <div style="background:#fff;border-radius:14px;box-shadow:0 1px 8px rgba(0,0,0,.06);overflow:hidden;">
             <div style="background:linear-gradient(135deg,#0e7490,#06b6d4);padding:.85rem 1.25rem;display:flex;align-items:center;gap:.75rem;">
                 <span style="font-size:1.2rem;">🏥</span>
-                <div>
+                <div style="flex:1;">
                     <div style="color:#fff;font-weight:700;font-size:.9rem;">Ingresos SS</div>
-                    <div style="color:rgba(255,255,255,.7);font-size:.75rem;">Seguridad Social Recaudada</div>
+                    <div style="color:rgba(255,255,255,.7);font-size:.75rem;">Seguridad Social — cobrado en {{ $mesesEs[$mes] }} {{ $anio }}</div>
                 </div>
-                <div style="margin-left:auto;font-weight:800;color:#fff;font-size:1.1rem;">{{ $fmt($ingresosSS['total_ss']) }}</div>
+                <div style="font-weight:800;color:#fff;font-size:1.1rem;">{{ $fmt($ingresosSS['total_ss']) }}</div>
             </div>
-            <div style="padding:.5rem 0;">
-                @foreach(['eps'=>['EPS','#0ea5e9'],'arl'=>['ARL','#8b5cf6'],'afp'=>['Pensión AFP','#10b981'],'caja'=>['Caja Comp.','#f59e0b']] as $k=>[$label,$color])
-                <div style="display:flex;justify-content:space-between;align-items:center;padding:.55rem 1.25rem;border-bottom:1px solid #f1f5f9;">
-                    <div style="display:flex;align-items:center;gap:.5rem;">
-                        <div style="width:8px;height:8px;border-radius:50%;background:{{ $color }};"></div>
-                        <span style="font-size:.83rem;color:#334155;">{{ $label }}</span>
-                    </div>
-                    <span style="font-weight:700;color:{{ $color }};">{{ $fmt($ingresosSS[$k]) }}</span>
+
+            {{-- Lista simple --}}
+            @php
+                $filas = [
+                    ['EPS',              $ingresosSS['eps'],           '#0ea5e9'],
+                    ['ARL',              $ingresosSS['arl'],           '#8b5cf6'],
+                    ['Caja',             $ingresosSS['caja'],          '#f59e0b'],
+                    ['Pensión',          $ingresosSS['afp'],           '#10b981'],
+                    ['SS meses anteriores', $ingresosSS['ss_anteriores'], '#64748b'],
+                    ['Retiro (fee afiliación)', $ingresosSS['retiro_campo'], '#ef4444'],
+                ];
+            @endphp
+            @foreach($filas as [$lbl, $val, $color])
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:.55rem 1.25rem;border-bottom:1px solid #f1f5f9;">
+                <div style="display:flex;align-items:center;gap:.5rem;">
+                    <div style="width:7px;height:7px;border-radius:50%;background:{{ $color }};flex-shrink:0;"></div>
+                    <span style="font-size:.82rem;color:#334155;">{{ $lbl }}</span>
                 </div>
-                @endforeach
-                {{-- Retiro SS (numero_factura = 0) --}}
-                <div style="display:flex;justify-content:space-between;align-items:center;padding:.55rem 1.25rem;border-bottom:1px solid #f1f5f9;">
-                    <div style="display:flex;align-items:center;gap:.5rem;">
-                        <div style="width:8px;height:8px;border-radius:50%;background:#94a3b8;"></div>
-                        <span style="font-size:.83rem;color:#334155;">Retiro SS (sin factura)</span>
-                    </div>
-                    <span style="font-weight:700;color:#94a3b8;">{{ $fmt($ingresosSS['retiro_ss']) }}</span>
-                </div>
-                {{-- SS de anticipos (próximo período cobrada este mes) --}}
-                @if($anticipos['ss'] > 0)
-                <div style="display:flex;justify-content:space-between;align-items:center;padding:.55rem 1.25rem;border-bottom:1px solid #fef3c7;background:#fffbeb;">
-                    <div style="display:flex;align-items:center;gap:.5rem;">
-                        <div style="width:8px;height:8px;border-radius:50%;background:#f59e0b;"></div>
-                        <div>
-                            <div style="font-size:.83rem;color:#92400e;font-weight:600;">SS anticipada (próx. período)</div>
-                            <div style="font-size:.68rem;color:#b45309;">{{ $anticipos['cant'] }} factura(s) — guardar para pagar en su mes</div>
-                        </div>
-                    </div>
-                    <span style="font-weight:700;color:#d97706;">{{ $fmt($anticipos['ss']) }}</span>
-                </div>
-                @endif
-                {{-- SS cobrada por anticipos de este período (pagada meses anteriores) --}}
-                @if($cobradosAntes['ss'] > 0)
-                <div style="display:flex;justify-content:space-between;align-items:center;padding:.55rem 1.25rem;border-bottom:1px solid #e0f2fe;background:#f0f9ff;">
-                    <div style="display:flex;align-items:center;gap:.5rem;">
-                        <div style="width:8px;height:8px;border-radius:50%;background:#0ea5e9;"></div>
-                        <div>
-                            <div style="font-size:.83rem;color:#0c4a6e;font-weight:600;">SS cobrada en meses ant.</div>
-                            <div style="font-size:.68rem;color:#0369a1;">{{ $cobradosAntes['cant'] }} factura(s) del período pagadas antes</div>
-                        </div>
-                    </div>
-                    <span style="font-weight:700;color:#0369a1;">{{ $fmt($cobradosAntes['ss']) }}</span>
-                </div>
-                @endif
-                <div style="display:flex;justify-content:space-between;align-items:center;padding:.6rem 1.25rem;background:#f0f9ff;">
-                    <span style="font-size:.82rem;font-weight:700;color:#0e7490;">Total Recaudado</span>
-                    <span style="font-size:.95rem;font-weight:800;color:#0e7490;">{{ $fmt($recaudoSS) }}</span>
-                </div>
+                <span style="font-weight:700;color:{{ $color }};font-size:.85rem;">{{ $fmt($val) }}</span>
+            </div>
+            @endforeach
+
+            {{-- Total --}}
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:.65rem 1.25rem;background:#ecfeff;">
+                <span style="font-size:.83rem;font-weight:700;color:#0e7490;">Total recogido</span>
+                <span style="font-size:.95rem;font-weight:800;color:#0e7490;">{{ $fmt($ingresosSS['total_ss']) }}</span>
             </div>
         </div>
+
 
         {{-- Desglose Egresos SS --}}
         <div style="background:#fff;border-radius:14px;box-shadow:0 1px 8px rgba(0,0,0,.06);overflow:hidden;">
@@ -277,7 +256,13 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
                     <div style="color:#fff;font-weight:700;font-size:.9rem;">Desglose Egresos SS</div>
                     <div style="color:rgba(255,255,255,.7);font-size:.75rem;">Pagos planillas realizados</div>
                 </div>
-                <div style="margin-left:auto;display:flex;align-items:center;gap:1rem;">
+                <div style="margin-left:auto;display:flex;align-items:center;gap:.75rem;">
+                    {{-- Botón nuevo: ver todas las facturas por planilla --}}
+                    <a href="{{ route('admin.informes.financiero.ss_planillas', ['mes'=>$mes,'anio'=>$anio]) }}"
+                       style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.5);color:#fff;border-radius:8px;padding:.3rem .75rem;font-size:.72rem;font-weight:700;text-decoration:none;white-space:nowrap;"
+                       title="Ver todas las facturas vinculadas a cada planilla del mes">
+                        📋 Facturas por planilla
+                    </a>
                     {{-- Ordenar --}}
                     <div style="display:flex;gap:.4rem;">
                         <button onclick="sortEgresos('fecha')" id="sortFecha"
@@ -299,10 +284,11 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
             <div style="padding:2rem;text-align:center;color:#94a3b8;font-size:.84rem;">Sin pagos de planilla este mes</div>
             @else
             {{-- Cabecera tabla --}}
-            <div style="display:grid;grid-template-columns:90px 1fr 140px 110px;gap:.4rem;padding:.4rem 1rem;background:#f8fafc;border-bottom:2px solid #e2e8f0;font-size:.67rem;font-weight:700;text-transform:uppercase;color:#64748b;">
+            <div style="display:grid;grid-template-columns:90px 1fr 130px 120px 110px;gap:.4rem;padding:.4rem 1rem;background:#f8fafc;border-bottom:2px solid #e2e8f0;font-size:.67rem;font-weight:700;text-transform:uppercase;color:#64748b;">
                 <span>Fecha</span>
                 <span>Descripción / Planilla</span>
                 <span>Banco / Cuenta</span>
+                <span style="text-align:right;color:#10b981;">SS Cobrado</span>
                 <span style="text-align:right;">Valor</span>
             </div>
             <div id="egresosSSList" style="max-height:320px;overflow-y:auto;">
@@ -317,10 +303,11 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
                     $ssDiff      = abs($ssCobrado - $ssPagado);
                     $esAdvertencia = $numPlan && $ssCobrado > 0 && $ssDiff > 50000;
                 @endphp
+                @php $saldoFila = $ssCobrado - $ssPagado; @endphp
                 <div class="audit-row egreso-ss-row"
                     data-fecha="{{ $fechaIso }}"
                     data-valor="{{ $eg->total }}"
-                    style="display:grid;grid-template-columns:90px 1fr 140px 110px;gap:.4rem;padding:.55rem 1rem;border-bottom:1px solid #f1f5f9;align-items:start;{{ $esAdvertencia ? 'background:#fff7ed;border-left:3px solid #f59e0b;' : '' }}"
+                    style="display:grid;grid-template-columns:90px 1fr 130px 120px 110px;gap:.4rem;padding:.55rem 1rem;border-bottom:1px solid #f1f5f9;align-items:start;{{ $saldoFila < -1000 ? 'background:#fff7ed;border-left:3px solid #f59e0b;' : '' }}"
                     @if($numPlan)
                         onclick="auditarPlanilla('{{ addslashes($numPlan) }}','{{ addslashes($eg->descripcion ?? $eg->pagado_a) }}')"
                         title="🔍 Clic para auditar planilla {{ $numPlan }}"
@@ -328,18 +315,10 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
                     {{-- Fecha --}}
                     <div>
                         <div style="font-size:.8rem;font-weight:700;color:#0d2550;">{{ $fechaStr }}</div>
-                        @if($numPlan)
-                        <div style="font-size:.67rem;color:#a78bfa;margin-top:.1rem;">🔍 {{ $numPlan }}</div>
-                        @endif
                     </div>
-                    {{-- Descripción completa --}}
+                    {{-- Descripción --}}
                     <div>
                         <div style="font-size:.78rem;color:#334155;line-height:1.4;word-break:break-word;">{{ $eg->descripcion ?: $eg->pagado_a }}</div>
-                        @if($esAdvertencia)
-                        <div style="font-size:.67rem;color:#b45309;font-weight:600;margin-top:.2rem;">
-                            ⚠️ Dif. SS: {{ $fmt($ssDiff) }} (cobrado {{ $fmt($ssCobrado) }})
-                        </div>
-                        @endif
                     </div>
                     {{-- Banco / Cuenta --}}
                     @php
@@ -354,9 +333,13 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
                             <div style="font-size:.76rem;color:#94a3b8;">Efectivo</div>
                         @endif
                     </div>
-                    {{-- Valor --}}
+                    {{-- SS Cobrado --}}
                     <div style="text-align:right;">
-                        <div style="font-weight:700;color:{{ $esAdvertencia ? '#d97706' : '#7c3aed' }};font-size:.88rem;">{{ $fmt($eg->total) }}</div>
+                        <div style="font-weight:600;color:{{ $ssCobrado > 0 ? '#10b981' : '#94a3b8' }};font-size:.85rem;">{{ $ssCobrado > 0 ? $fmt($ssCobrado) : '—' }}</div>
+                    </div>
+                    {{-- Valor pagado --}}
+                    <div style="text-align:right;">
+                        <div style="font-weight:700;color:#7c3aed;font-size:.88rem;">{{ $fmt($eg->total) }}</div>
                         @if($eg->cantidad > 1)
                         <div style="font-size:.67rem;color:#94a3b8;">{{ $eg->cantidad }} reg.</div>
                         @endif
@@ -364,15 +347,32 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
                 </div>
                 @endforeach
             </div>
-            <div style="display:flex;justify-content:space-between;align-items:center;padding:.6rem 1.25rem;background:#f5f3ff;">
-                <span style="font-size:.82rem;font-weight:700;color:#7c3aed;">Total Pagado SS</span>
-                <span style="font-size:.95rem;font-weight:800;color:#7c3aed;">{{ $fmt($pagadoSS) }}</span>
+            {{-- Fila de totales y saldo --}}
+            @php
+                $totalSsCobradoEgresos = $egresosSSDetalle->sum('ss_cobrado_facturas');
+                $saldoEgresos = $totalSsCobradoEgresos - $pagadoSS;
+            @endphp
+            <div style="display:grid;grid-template-columns:90px 1fr 130px 120px 110px;gap:.4rem;padding:.55rem 1rem;background:#f5f3ff;border-top:2px solid #ddd6fe;font-size:.78rem;font-weight:700;">
+                <span></span>
+                <span style="color:#7c3aed;">{{ $egresosSSDetalle->count() }} planilla(s)</span>
+                <span></span>
+                <span style="text-align:right;color:#10b981;">{{ $fmt($totalSsCobradoEgresos) }}</span>
+                <span style="text-align:right;color:#7c3aed;">{{ $fmt($pagadoSS) }}</span>
+            </div>
+            <div style="display:grid;grid-template-columns:90px 1fr 130px 120px 110px;gap:.4rem;padding:.5rem 1rem;background:{{ $saldoEgresos >= 0 ? '#f0fdf4' : '#fef2f2' }};border-top:1px solid {{ $saldoEgresos >= 0 ? '#bbf7d0' : '#fecaca' }};">
+                <span></span>
+                <span style="font-size:.75rem;color:#64748b;">SS Cobrado − Valor Pagado</span>
+                <span></span>
+                <span></span>
+                <span style="text-align:right;font-size:.9rem;font-weight:800;color:{{ $saldoEgresos >= 0 ? '#15803d' : '#dc2626' }};">{{ $saldoEgresos >= 0 ? '+' : '' }}{{ $fmt($saldoEgresos) }}</span>
             </div>
             @endif
         </div>
     </div>
 
     {{-- Tabla diaria --}}
+
+
     <div style="background:#fff;border-radius:14px;box-shadow:0 1px 8px rgba(0,0,0,.06);overflow:hidden;margin-bottom:1.5rem;">
         <div style="padding:.85rem 1.25rem;background:#f8fafc;border-bottom:2px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;">
             <span style="font-size:.72rem;font-weight:700;text-transform:uppercase;color:#64748b;">Desglose Diario — {{ $mesesEs[$mes] }} {{ $anio }}</span>

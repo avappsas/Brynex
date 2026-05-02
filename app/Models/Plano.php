@@ -51,8 +51,9 @@ class Plano extends BaseModel
         'fecha_ret' => 'date',
     ];
 
-    public function factura()  { return $this->belongsTo(Factura::class); }
-    public function contrato() { return $this->belongsTo(Contrato::class); }
+    public function factura()      { return $this->belongsTo(Factura::class); }
+    public function contrato()     { return $this->belongsTo(Contrato::class); }
+    public function razonSocial()  { return $this->belongsTo(RazonSocial::class, 'razon_social_id'); }
 
     /**
      * Genera el registro de plano a partir de un contrato y factura.

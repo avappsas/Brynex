@@ -1364,7 +1364,7 @@ $efAcum = $csAcum = $prAcum = $sfAcum = 0;
         // Query principal
         $query = Factura::where('aliado_id', $aliadoId)
             ->where('cedula', $cedula)
-            ->with(['razonSocial', 'empresa', 'plano', 'usuario'])
+            ->with(['razonSocial', 'empresa', 'plano.razonSocial', 'usuario'])
             ->orderByDesc('anio')
             ->orderByDesc('mes');
 
@@ -1384,9 +1384,12 @@ $efAcum = $csAcum = $prAcum = $sfAcum = 0;
         }
 
         // Agrupar: [razon_social → [anio → [facturas]]]
+        // Prioridad por FK: factura.razon_social_id → plano.razon_social_id (via relación)
         $agrupado = [];
         foreach ($facturas as $f) {
-            $rs   = $f->razonSocial?->razon_social ?? 'Sin razón social';
+            $rs = $f->razonSocial?->razon_social
+               ?? $f->plano?->razonSocial?->razon_social
+               ?? 'Sin razón social';
             $anio = $f->anio;
             $agrupado[$rs][$anio][] = $f;
         }
