@@ -12,7 +12,16 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule): void
     {
-        // $schedule->command('inspire')->hourly();
+        // ── Reset mensual de n_plano ──────────────────────────────────
+        // El día 1 de cada mes a las 00:01 (hora Colombia) resetea n_plano=1
+        // y avanza mes_pagos/anio_pagos en todas las razones sociales.
+        // Ejecución manual: php artisan planos:reset-mensual
+        $schedule->command('planos:reset-mensual')
+            ->monthlyOn(1, '00:01')
+            ->timezone('America/Bogota')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo(storage_path('logs/reset-n-plano.log'));
     }
 
     /**
