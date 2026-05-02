@@ -1025,6 +1025,27 @@ class MigrateLegacy extends Command
         DB::statement('ALTER TABLE consignaciones WITH CHECK CHECK CONSTRAINT ALL');
         $this->info('  📊 Total facturas: '      . DB::table('facturas')->count());
         $this->info('  📊 Total consignaciones: ' . DB::table('consignaciones')->count());
+
+        // ── Actualizar factura_secuencias ─────────────────────────────────────
+        // Después de migrar, el ultimo_numero debe reflejar el MAX numero_factura
+        // migrado por aliado, para que la próxima factura real no colisione.
+        $this->info('  🔢 Actualizando factura_secuencias...');
+        $maxPorAliado = DB::table('facturas')
+            ->whereNotNull('numero_factura')
+            ->where('numero_factura', '>', 0)
+            ->groupBy('aliado_id')
+            ->selectRaw('aliado_id, MAX(numero_factura) AS max_num')
+            ->get();
+
+        foreach ($maxPorAliado as $row) {
+            DB::table('factura_secuencias')
+                ->updateOrInsert(
+                    ['aliado_id' => $row->aliado_id],
+                    ['ultimo_numero' => $row->max_num, 'updated_at' => now()]
+                );
+            $this->line("    → aliado_id={$row->aliado_id}: ultimo_numero={$row->max_num}");
+        }
+        $this->info('  ✅ factura_secuencias actualizado');
     }
 
     // ─── PASO 08: BENEFICIARIOS ──────────────────────────────────────────────
