@@ -563,11 +563,23 @@ class ContratoController extends Controller
             $penMes  = ($plan && $plan->incluye_pension)   ? $r($ibc * $pctPen  / 100) : 0;
             $cajaMes = ($plan && $plan->incluye_caja)     ? $r($ibc * $pctCaja / 100) : 0;
 
+            // ── Cargo sin-CCF: dependiente E (id=0) o Ingreso-Retiro (id=12) sin caja ──
+            // Aplica cuando el plan NO incluye CCF y la modalidad es de ese tipo.
+            // Se cobra $100 fijos, igual que si cotizara caja normalmente.
+            $tipoModalidadIdInt = (int) $request->get('tipo_modalidad_id', -99);
+            if ($cajaMes === 0 && in_array($tipoModalidadIdInt, \App\Models\Contrato::IDS_SIN_CCF)
+                && $plan && !$plan->incluye_caja) {
+                $cajaMes = \App\Models\Contrato::CARGO_SIN_CCF;
+            }
+
             // Prorratear por dias cotizados (dias/30); admon y seguro siempre completos
             $eps  = $dias < 30 ? $r($epsMes  * $dias / 30) : $epsMes;
             $arl  = $dias < 30 ? $r($arlMes  * $dias / 30) : $arlMes;
             $pen  = $dias < 30 ? $r($penMes  * $dias / 30) : $penMes;
-            $caja = $dias < 30 ? $r($cajaMes * $dias / 30) : $cajaMes;
+            // Cargo sin-CCF es fijo: NO se prorratea por días
+            $caja = ($cajaMes === \App\Models\Contrato::CARGO_SIN_CCF)
+                ? $cajaMes
+                : ($dias < 30 ? $r($cajaMes * $dias / 30) : $cajaMes);
             $ss   = $eps + $arl + $pen + $caja;
             $diasArl  = $dias;
             $diasAfp  = $dias;
