@@ -59,11 +59,14 @@ class MigrateLegacy extends Command
         ];
 
         if ($step === 'all') {
-            foreach ($steps as $key => $fn) {
+            // Secuencia canónica de migración: solo los 14 pasos de datos, en orden
+            $migracionOrder = ['01','02','03','04','05','06','07','08','09','10','11','12','13','14'];
+            foreach ($migracionOrder as $key) {
+                if (!isset($steps[$key])) continue;
                 $this->info("\n" . str_repeat('─', 60));
-                $this->info("PASO: $key");
+                $this->info("PASO $key");
                 $this->info(str_repeat('─', 60));
-                $fn();
+                $steps[$key]();
             }
         } elseif (isset($steps[$step])) {
             $steps[$step]();
@@ -860,14 +863,12 @@ class MigrateLegacy extends Command
             $yaExisten = DB::table('facturas')->where('aliado_id', $aliadoId)
                 ->pluck('id_legacy')->filter()->flip()->all();
             $total = DB::connection('sqlsrv_legacy')
-                ->selectOne("SELECT COUNT(*) as cnt FROM [$db].dbo.FACTURACION WHERE AÑO >= 2026")->cnt;
-            $this->line("  ⏳ $db: $total facturas (2026+), " . ($total - count($yaExisten)) . " faltantes...");
+                ->selectOne("SELECT COUNT(*) as cnt FROM [$db].dbo.FACTURACION")->cnt;
+            $this->line("  ⏳ $db: $total facturas, " . ($total - count($yaExisten)) . " faltantes...");
 
             $count = 0; $skipped = 0; $offset = 0; $chunk = 500;
             while (true) {
-                // Filtro: solo facturas del año 2026+ (columna AÑO en FACTURACION)
                 $rows = $this->legacySelect("SELECT * FROM [$db].dbo.FACTURACION
-                    WHERE AÑO >= 2026
                     ORDER BY Id_Factura OFFSET $offset ROWS FETCH NEXT $chunk ROWS ONLY");
                 if (empty($rows)) break;
 
@@ -1099,10 +1100,9 @@ class MigrateLegacy extends Command
 
             $total = DB::connection('sqlsrv_legacy')
                 ->selectOne("SELECT COUNT(*) as cnt FROM [$db].dbo.PLANOS
-                    WHERE AÑO_PLANO = 2026
-                      AND Id_Facturacion IS NOT NULL
+                    WHERE Id_Facturacion IS NOT NULL
                       AND Id_Facturacion > 0")->cnt;
-            $this->line("  ⏳ $db: $total planos (año 2026 con factura)...");
+            $this->line("  ⏳ $db: $total planos (con factura)...");
 
             // ── Precargar mapas id_legacy → id (evita N+1 queries en el loop) ──
             $facturasMap = DB::table('facturas')
@@ -1113,7 +1113,7 @@ class MigrateLegacy extends Command
             $rsMap = DB::table('razones_sociales')
                 ->where('aliado_id', $aliadoId)
                 ->whereNotNull('nit')
-                ->pluck('id', 'nit');   // [nit => brynex_id]  ← PLANOS usa NIT de empresa
+                ->pluck('id', 'nit');   // [nit => brynex_id]
 
             $contratosMap = DB::table('contratos')
                 ->where('aliado_id', $aliadoId)
@@ -1137,10 +1137,9 @@ class MigrateLegacy extends Command
                 ->pluck('id_legacy')->flip()->all();
 
             while (true) {
-                // Solo planos de 2026 CON factura asociada en legacy (sin Id_Facturacion = basura/duplicado)
+                // Solo planos CON factura asociada en legacy (sin Id_Facturacion = basura/duplicado)
                 $rows = $this->legacySelect("SELECT * FROM [$db].dbo.PLANOS
-                    WHERE AÑO_PLANO = 2026
-                      AND Id_Facturacion IS NOT NULL
+                    WHERE Id_Facturacion IS NOT NULL
                       AND Id_Facturacion > 0
                     ORDER BY Id OFFSET $offset ROWS FETCH NEXT $chunk ROWS ONLY");
                 if (empty($rows)) break;
