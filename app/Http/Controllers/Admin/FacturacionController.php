@@ -246,10 +246,16 @@ class FacturacionController extends Controller
         ]);
 
         $np = $validated['np'] ?? null;
-        // Si es pago masivo y no tiene NP, generar uno nuevo
+        // Si es pago masivo y no tiene NP, generar uno nuevo.
+        // El NP se reinicia cada mes: se toma el MAX del mes/año actual.
+        // Así el primer pago de mayo = NP 1, segundo = NP 2, en junio vuelve a 1.
         if (!$np && count($validated['contratos']) > 1) {
+            $mes  = (int)($validated['mes']  ?? now()->month);
+            $anio = (int)($validated['anio'] ?? now()->year);
             $np = (DB::table('facturas')
                 ->where('aliado_id', $aliadoId)
+                ->where('mes',  $mes)
+                ->where('anio', $anio)
                 ->whereNull('deleted_at')
                 ->max('np') ?? 0) + 1;
         }
