@@ -66,15 +66,19 @@ class ConfiguracionAliadoController extends Controller
         $alidoId = session('aliado_id_activo');
 
         $request->validate([
-            'configs.*.administracion'       => 'nullable|numeric|min:0',
-            'configs.*.admon_asesor'         => 'nullable|numeric|min:0',
-            'configs.*.costo_afiliacion'     => 'nullable|numeric|min:0',
-            'configs.*.dist_admon_pct'       => 'nullable|numeric|min:0|max:100',
-            'configs.*.dist_retiro_pct'      => 'nullable|numeric|min:0|max:100',
-            'configs.*.seguro_valor'         => 'nullable|numeric|min:0',
-            'configs.*.encargado_default_id' => 'nullable|exists:users,id',
-            'arl.*.porcentaje'               => 'nullable|numeric|min:0|max:100',
-            'brynex.*'                       => 'nullable|numeric|min:0',
+            'configs.*.administracion'          => 'nullable|numeric|min:0',
+            'configs.*.admon_asesor'            => 'nullable|numeric|min:0',
+            'configs.*.costo_afiliacion'        => 'nullable|numeric|min:0',
+            'configs.*.dist_admon_pct'          => 'nullable|numeric|min:0|max:100',
+            'configs.*.dist_retiro_pct'         => 'nullable|numeric|min:0|max:100',
+            'configs.*.seguro_valor'            => 'nullable|numeric|min:0',
+            'configs.*.encargado_default_id'    => 'nullable|exists:users,id',
+            // Mora al cliente
+            'configs.*.mora_dia_habil_inicio'   => 'nullable|integer|min:2|max:16',
+            'configs.*.mora_minimo'             => 'nullable|numeric|min:0',
+            'configs.*.mora_segundo'            => 'nullable|numeric|min:0',
+            'arl.*.porcentaje'                  => 'nullable|numeric|min:0|max:100',
+            'brynex.*'                          => 'nullable|numeric|min:0',
         ]);
 
         DB::transaction(function () use ($request, $alidoId) {
@@ -94,14 +98,19 @@ class ConfiguracionAliadoController extends Controller
                 ConfiguracionAliado::updateOrCreate(
                     ['aliado_id' => $alidoId, 'plan_id' => $planId],
                     [
-                        'administracion'       => $data['administracion']        ?? 0,
-                        'admon_asesor'         => $data['admon_asesor']          ?? 0,
-                        'costo_afiliacion'     => $data['costo_afiliacion']      ?? 0,
-                        'dist_admon_pct'       => $data['dist_admon_pct']        ?? 0,
-                        'dist_retiro_pct'      => $data['dist_retiro_pct']       ?? 0,
-                        'seguro_valor'         => $data['seguro_valor']          ?? 0,
-                        'encargado_default_id' => $data['encargado_default_id'] ?: null,
-                        'activo'               => true,
+                        'administracion'          => $data['administracion']        ?? 0,
+                        'admon_asesor'            => $data['admon_asesor']          ?? 0,
+                        'costo_afiliacion'        => $data['costo_afiliacion']      ?? 0,
+                        'dist_admon_pct'          => $data['dist_admon_pct']        ?? 0,
+                        'dist_retiro_pct'         => $data['dist_retiro_pct']       ?? 0,
+                        'seguro_valor'            => $data['seguro_valor']          ?? 0,
+                        'encargado_default_id'    => $data['encargado_default_id'] ?: null,
+                        // Mora al cliente
+                        'mora_dia_habil_inicio'   => ($data['mora_dia_habil_inicio'] !== '' && $data['mora_dia_habil_inicio'] !== null)
+                                                     ? (int) $data['mora_dia_habil_inicio'] : null,
+                        'mora_minimo'             => $data['mora_minimo']  ?? 2000,
+                        'mora_segundo'            => $data['mora_segundo'] ?? 5000,
+                        'activo'                  => true,
                     ]
                 );
             }

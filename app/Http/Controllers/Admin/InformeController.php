@@ -287,6 +287,11 @@ class InformeController extends Controller
 
         $recaudoSS = (clone $facturasSSBase)->sum('total_ss');
 
+        // ── Mora recogida (NO es ingreso — es multa al cliente por pago tardío) ──
+        // Se separa del recaudoSS para que el informe muestre cuánto fue cargo
+        // real de SS vs cuánto fue por penalización de mora.
+        $moraRecogida = (clone $facturasBase)->sum('mora');
+
         // Desglose ingresos SS por componente (EPS, ARL, AFP, Caja)
         // $facturasSSBase filtra por fecha_pago (caja) y numero_factura > 0
         $ingresosSSRaw = (clone $facturasSSBase)
@@ -476,8 +481,8 @@ class InformeController extends Controller
         $diario = $this->desgloseDiario($aid, $mes, $anio);
 
         if ($request->input('excel')) return $this->exportCsv(collect($diario),'estado_financiero',
-            ['Día','# Plan','Planillas','# Afil','Afiliaciones','Trámites','Gastos','Utilidad'],
-            fn($r)=>[$r['dia'],$r['cant_planillas'],number_format($r['planillas']),$r['cant_afiliaciones'],number_format($r['afiliaciones']),number_format($r['tramites']),number_format($r['gastos']),number_format($r['utilidad'])]);
+            ['Día','# Plan','Planillas','# Afil','Afiliaciones','Trámites','SS','Gastos','Utilidad'],
+            fn($r)=>[$r['dia'],$r['cant_planillas'],number_format($r['planillas']),$r['cant_afiliaciones'],number_format($r['afiliaciones']),number_format($r['tramites']),number_format($r['ss']),number_format($r['gastos']),number_format($r['utilidad'])]);
 
         return view('admin.informes.financiero', compact(
             'mes','anio','ingresos','egresos','utilidad',
@@ -486,7 +491,8 @@ class InformeController extends Controller
             'ingresosSS','egresosSSDetalle',
             'gapSS','gapResumen',
             'comisionesAsesor','gastosOp','tendencia','anterior','bancos','diario',
-            'anticipos','cobradosAntes'
+            'anticipos','cobradosAntes',
+            'moraRecogida'
         ));
     }
 
@@ -751,7 +757,8 @@ class InformeController extends Controller
                 COUNT(*) AS cant_filas,
                 SUM(admon+seguro+mensajeria+otros+iva+retiro) AS ing_planilla,
                 SUM(afiliacion+admon+seguro+iva) AS ing_afil,
-                SUM(admon+otros) AS ing_tramite')
+                SUM(admon+otros) AS ing_tramite,
+                SUM(CASE WHEN numero_factura > 0 THEN total_ss ELSE 0 END) AS ss_dia')
             ->groupByRaw('DAY(fecha_pago), tipo')
             ->get()->groupBy('dia');
 
@@ -775,6 +782,7 @@ class InformeController extends Controller
             $tramites        = (float)($filaTramite->ing_tramite  ?? 0);
             $cantPlanillas   = (int)($filaPlan->cant_filas        ?? 0);
             $cantAfiliaciones= (int)($filaAfil->cant_filas        ?? 0);
+            $ssDia           = (float)($filaPlan->ss_dia          ?? 0);
             $gastos          = (int)($gastosDia[$d] ?? 0);
             $resultado[] = [
                 'dia'               => $d,
@@ -783,6 +791,7 @@ class InformeController extends Controller
                 'cant_afiliaciones' => $cantAfiliaciones,
                 'afiliaciones'      => $afil,
                 'tramites'          => $tramites,
+                'ss'                => $ssDia,
                 'gastos'            => $gastos,
                 'utilidad'          => $planillas + $afil + $tramites - $gastos,
             ];

@@ -796,6 +796,38 @@
         <textarea name="observacion" rows="2" style="width:100%;padding:0.5rem;border:1px solid #cbd5e1;border-radius:7px;font-size:0.8rem;resize:none;box-sizing:border-box;"></textarea>
       </div>
 
+      {{-- ⚠️ Mora real informativa — solo si aplica mora en el período actual --}}
+      @php
+        $mrMoraInfo = null;
+        try {
+            if ($esEdicion && $contrato->razonSocial && $contrato->estaVigente()) {
+                $mrAliadoId = session('aliado_id_activo');
+                $mrRs       = $contrato->razonSocial;
+                $mrNit      = (int)($mrRs->nit ?: $mrRs->id);
+                $mrDiaH     = $mrRs->dia_habil ?? null;
+                // Estimación SS mes actual con salario del contrato
+                $mrSalario  = (float)($contrato->salario ?? 0);
+                $mrSS       = round($mrSalario * 0.285);
+                if ($mrNit && $mrSS > 0) {
+                    $mrCalc = \App\Services\MoraClienteService::calcular($mrAliadoId, $mrNit, $mrDiaH, $mrSS, now()->month, now()->year);
+                    if ($mrCalc['aplica'] && ($mrCalc['mora_real'] ?? 0) > 0) {
+                        $mrMoraInfo = ['dias' => $mrCalc['dias_mora'], 'mora_real' => (int)round($mrCalc['mora_real'])];
+                    }
+                }
+            }
+        } catch (\Throwable) {}
+      @endphp
+      @if($mrMoraInfo)
+      <div style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:9px;padding:0.55rem 0.8rem;margin-bottom:0.85rem;font-size:0.75rem;color:#92400e;display:flex;align-items:center;gap:0.5rem;">
+        <span style="font-size:1rem;">⚠️</span>
+        <div>
+          <strong>Mora real estimada: ${{ number_format($mrMoraInfo['mora_real'], 0, '', '.') }}</strong>
+          <span style="color:#b45309;"> · {{ $mrMoraInfo['dias'] }} días de mora</span>
+          <div style="font-size:0.65rem;color:#a16207;margin-top:0.1rem;">Interés real sin mínimos · Se registrará en "Otros" de la factura. El aliado asume este costo.</div>
+        </div>
+      </div>
+      @endif
+
       <div style="display:flex;gap:0.6rem;justify-content:flex-end;">
         <button type="button" onclick="document.getElementById('modal-retiro').style.display='none'"
             style="padding:0.45rem 1rem;border:1px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer;font-size:0.82rem;">Cancelar</button>
@@ -2099,6 +2131,16 @@ function abrirModalFacturarContrato() {
 if (window.parent !== window) {
     window.parent.postMessage(
         { type: 'brynex:iframe_done', accion: 'retiro', contratoId: {{ $contrato->id ?? 'null' }}, mensaje: 'Contrato retirado correctamente.' },
+        window.location.origin
+    );
+}
+@endif
+
+@if(request()->has('iframe') && session('success') && session('success') !== 'Contrato retirado correctamente.')
+// Modo iframe: actualización normal del contrato → notificar al padre
+if (window.parent !== window) {
+    window.parent.postMessage(
+        { type: 'brynex:iframe_done', accion: 'update', contratoId: {{ $contrato->id ?? 'null' }}, mensaje: {!! json_encode(session('success')) !!} },
         window.location.origin
     );
 }

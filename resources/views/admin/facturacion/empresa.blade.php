@@ -173,6 +173,7 @@ table.fac-tbl{width:100%;border-collapse:collapse;font-size:.78rem}
     <th class="num-col">CAJA</th><th class="num-col">PENSIÓN</th>
     <th class="num-col">ADMON</th><th class="num-col" style="display:none">IVA</th>
     <th class="num-col" style="color:#34d399">TOTAL</th>
+    <th class="num-col" title="Mora estimada al cliente" style="color:#fbbf24">⚠️ MORA</th>
     <th style="text-align:center">ESTADO</th><th style="text-align:center">NP</th>
     <th style="text-align:center">
         <input type="checkbox" id="chkAll" onchange="toggleAll(this)" title="Seleccionar todos"
@@ -181,7 +182,7 @@ table.fac-tbl{width:100%;border-collapse:collapse;font-size:.78rem}
 </tr></thead>
 <tbody>
 @php
-$totEps=$totArl=$totCaja=$totPen=$totAdmon=$totIva=$totTotal=0;
+$totEps=$totArl=$totCaja=$totPen=$totAdmon=$totIva=$totTotal=$totMora=0;
 $totAFavor=$totPendiente=0;
 @endphp
 @forelse($contratos as $c)
@@ -264,10 +265,26 @@ if (!$fact) {
     $vSS = $r100($fact->total_ss);
     $vTot = (int)$fact->total;
 }
+// Mora: si ya tiene factura usar facturas.mora; si no, estimar
+$vMora = 0;
+try {
+    $aliadoIdEmp = session('aliado_id_activo');
+    if ($fact && ($fact->mora ?? 0) > 0) {
+        $vMora = (int)$fact->mora;
+    } elseif (!$fact && !$esRetirado && !$esAfil && $vSS > 0) {
+        $rsEmp   = $c->razonSocial;
+        $rsNitE  = $rsEmp ? (int)($rsEmp->nit ?: $rsEmp->id) : 0;
+        $rsDiaHE = $rsEmp ? ($rsEmp->dia_habil ?? null) : null;
+        if ($rsNitE) {
+            $mi = \App\Services\MoraClienteService::calcular($aliadoIdEmp, $rsNitE, $rsDiaHE, $vSS, $mes, $anio);
+            $vMora = $mi['mora'];
+        }
+    }
+} catch (\Throwable) {}
 // Costo de afiliación para data-* (lo necesita el modal)
 $vAfiliacion = ($esAfil || $esIndActPrimerMes) ? (int)($c->costo_afiliacion ?? 0) : 0;
 $totEps+=$vEps;$totArl+=$vArl;$totCaja+=$vCaja;$totPen+=$vPen;
-$totAdmon+=$vAdm;$totIva+=$vIva;$totTotal+=$vTot;
+$totAdmon+=$vAdm;$totIva+=$vIva;$totTotal+=$vTot;$totMora+=$vMora;
 @endphp
 <tr class="{{ $yaP?'ya-pago':'' }}"
     data-estado="{{ $fact?->estado ?? 'sin_factura' }}"
@@ -341,6 +358,17 @@ $totAdmon+=$vAdm;$totIva+=$vIva;$totTotal+=$vTot;
     <td class="num-col" style="font-weight:700;color:{{ $yaP?'#16a34a':'#0f172a' }}">
         ${{ number_format($vTot,0,',','.') }}
     </td>
+    {{-- Mora: real si ya facturada, estimada si no --}}
+    <td class="num-col">
+        @if($vMora > 0)
+            <span style="display:inline-block;padding:.1rem .4rem;border-radius:20px;font-size:.62rem;font-weight:700;background:#fef3c7;color:#92400e;"
+                  title="{{ $fact && ($fact->mora??0)>0 ? 'Mora cobrada en factura' : 'Mora estimada (aún sin facturar)' }}">
+                ${{ number_format($vMora,0,',','.') }}
+            </span>
+        @else
+            <span style="color:#cbd5e1;font-size:.7rem">—</span>
+        @endif
+    </td>
     @php
         $totAFavor    += $c->saldo_a_favor;
         $totPendiente += $c->saldo_pendiente;
@@ -373,7 +401,7 @@ $totAdmon+=$vAdm;$totIva+=$vIva;$totTotal+=$vTot;
     </td>
 </tr>
 @empty
-<tr><td colspan="17" style="text-align:center;padding:2rem;color:#94a3b8">No hay contratos activos ni retiros del mes anterior para esta empresa en este período.</td></tr>
+<tr><td colspan="18" style="text-align:center;padding:2rem;color:#94a3b8">No hay contratos activos ni retiros del mes anterior para esta empresa en este período.</td></tr>
 @endforelse
 </tbody>
 <tfoot>
@@ -386,6 +414,9 @@ $totAdmon+=$vAdm;$totIva+=$vIva;$totTotal+=$vTot;
     <td class="num-col tot-val">${{ number_format($totAdmon,0,',','.') }}</td>
     <td class="num-col tot-val" style="display:none">${{ number_format($totIva,  0,',','.') }}</td>
     <td class="num-col tot-val" style="font-size:.9rem">${{ number_format($totTotal,0,',','.') }}</td>
+    <td class="num-col tot-val" style="color:#fbbf24;font-weight:800;">
+        {{ $totMora > 0 ? '$'.number_format($totMora,0,',','.') : '—' }}
+    </td>
     <td colspan="3"></td>
 </tr>
 </tfoot>

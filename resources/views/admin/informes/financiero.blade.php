@@ -251,6 +251,19 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
                 <span style="font-size:.83rem;font-weight:700;color:#0e7490;">Total recogido</span>
                 <span style="font-size:.95rem;font-weight:800;color:#0e7490;">{{ $fmt($ingresosSS['total_ss']) }}</span>
             </div>
+            {{-- Mora recogida — separada (NO es ingreso operativo) --}}
+            @if($moraRecogida > 0)
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:.55rem 1.25rem;background:#fffbeb;border-top:1.5px dashed #fde68a;" title="Multa cobrada al cliente por pago tardío. No se contabiliza como ingreso operativo.">
+                <div style="display:flex;align-items:center;gap:.5rem;">
+                    <div style="width:7px;height:7px;border-radius:50%;background:#f59e0b;flex-shrink:0;"></div>
+                    <div>
+                        <span style="font-size:.82rem;color:#92400e;font-weight:700;">⚠️ Mora recogida</span>
+                        <div style="font-size:.62rem;color:#b45309;">No es ingreso operativo — multa al cliente</div>
+                    </div>
+                </div>
+                <span style="font-weight:800;color:#d97706;font-size:.88rem;">{{ $fmt($moraRecogida) }}</span>
+            </div>
+            @endif
         </div>
 
 
@@ -385,26 +398,27 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
             <span style="font-size:.72rem;color:#94a3b8;">Clic en un día para ver detalle</span>
         </div>
         {{-- Cabecera --}}
-        <div style="display:grid;grid-template-columns:40px 48px 1fr 48px 1fr 1fr 1fr 1fr;gap:.4rem;padding:.5rem .75rem;background:#f8fafc;border-bottom:2px solid #e2e8f0;font-size:.68rem;text-transform:uppercase;color:#64748b;font-weight:700;">
+        <div style="display:grid;grid-template-columns:40px 48px 1fr 48px 1fr 1fr 1fr 1fr 1fr;gap:.4rem;padding:.5rem .75rem;background:#f8fafc;border-bottom:2px solid #e2e8f0;font-size:.68rem;text-transform:uppercase;color:#64748b;font-weight:700;">
             <span>Día</span>
             <span style="color:#3b82f6;text-align:center;">#</span>
             <span style="color:#3b82f6;">Planillas</span>
             <span style="color:#8b5cf6;text-align:center;">#</span>
             <span style="color:#8b5cf6;">Afiliaciones</span>
             <span style="color:#10b981;">Trámites</span>
+            <span style="color:#0e7490;">SS</span>
             <span style="color:#ef4444;">Gastos</span>
             <span>Utilidad</span>
         </div>
-        @php $totDia=['planillas'=>0,'afiliaciones'=>0,'tramites'=>0,'gastos'=>0,'utilidad'=>0,'cant_planillas'=>0,'cant_afiliaciones'=>0]; @endphp
+        @php $totDia=['planillas'=>0,'afiliaciones'=>0,'tramites'=>0,'ss'=>0,'gastos'=>0,'utilidad'=>0,'cant_planillas'=>0,'cant_afiliaciones'=>0]; @endphp
         @foreach($diario as $d)
         @php
-            foreach(['planillas','afiliaciones','tramites','gastos','utilidad'] as $k) $totDia[$k]+=$d[$k];
+            foreach(['planillas','afiliaciones','tramites','ss','gastos','utilidad'] as $k) $totDia[$k]+=$d[$k];
             $totDia['cant_planillas']+=$d['cant_planillas'];
             $totDia['cant_afiliaciones']+=$d['cant_afiliaciones'];
             $hayData = $d['planillas']>0 || $d['afiliaciones']>0 || $d['tramites']>0 || $d['gastos']>0;
         @endphp
         @if($hayData)
-        <div style="display:grid;grid-template-columns:40px 48px 1fr 48px 1fr 1fr 1fr 1fr;gap:.4rem;padding:.48rem .75rem;border-bottom:1px solid #f1f5f9;font-size:.8rem;align-items:center;cursor:pointer;transition:background .12s;"
+        <div style="display:grid;grid-template-columns:40px 48px 1fr 48px 1fr 1fr 1fr 1fr 1fr;gap:.4rem;padding:.48rem .75rem;border-bottom:1px solid #f1f5f9;font-size:.8rem;align-items:center;cursor:pointer;transition:background .12s;"
              onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''" onclick="verDetalleDia({{ $d['dia'] }},{{ $mes }},{{ $anio }})">
             <span style="font-weight:700;color:#0d2550;">{{ str_pad($d['dia'],2,'0',STR_PAD_LEFT) }}</span>
             <span style="text-align:center;background:#dbeafe;color:#1e40af;border-radius:6px;padding:.1rem .3rem;font-size:.72rem;font-weight:700;">{{ $d['cant_planillas']>0?$d['cant_planillas']:'' }}</span>
@@ -412,19 +426,21 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
             <span style="text-align:center;background:#ede9fe;color:#7c3aed;border-radius:6px;padding:.1rem .3rem;font-size:.72rem;font-weight:700;">{{ $d['cant_afiliaciones']>0?$d['cant_afiliaciones']:'' }}</span>
             <span style="color:#8b5cf6;">{{ $d['afiliaciones']>0?$fmt($d['afiliaciones']):'—' }}</span>
             <span style="color:#10b981;">{{ $d['tramites']>0?$fmt($d['tramites']):'—' }}</span>
+            <span style="color:#0e7490;font-weight:600;">{{ $d['ss']>0?$fmt($d['ss']):'—' }}</span>
             <span style="color:#ef4444;">{{ $d['gastos']>0?'- '.$fmt($d['gastos']):'—' }}</span>
             <span style="font-weight:700;color:{{ $d['utilidad']>=0?'#10b981':'#ef4444' }};">{{ $fmt($d['utilidad']) }}</span>
         </div>
         @endif
         @endforeach
         {{-- Totales --}}
-        <div style="display:grid;grid-template-columns:40px 48px 1fr 48px 1fr 1fr 1fr 1fr;gap:.4rem;padding:.6rem .75rem;background:#f8fafc;font-weight:700;border-top:2px solid #e2e8f0;font-size:.8rem;">
+        <div style="display:grid;grid-template-columns:40px 48px 1fr 48px 1fr 1fr 1fr 1fr 1fr;gap:.4rem;padding:.6rem .75rem;background:#f8fafc;font-weight:700;border-top:2px solid #e2e8f0;font-size:.8rem;">
             <span style="color:#0d2550;">TOT</span>
             <span style="text-align:center;background:#dbeafe;color:#1e40af;border-radius:6px;padding:.1rem .3rem;font-size:.72rem;">{{ $totDia['cant_planillas'] }}</span>
             <span style="color:#2563eb;">{{ $fmt($totDia['planillas']) }}</span>
             <span style="text-align:center;background:#ede9fe;color:#7c3aed;border-radius:6px;padding:.1rem .3rem;font-size:.72rem;">{{ $totDia['cant_afiliaciones'] }}</span>
             <span style="color:#8b5cf6;">{{ $fmt($totDia['afiliaciones']) }}</span>
             <span style="color:#10b981;">{{ $fmt($totDia['tramites']) }}</span>
+            <span style="color:#0e7490;">{{ $fmt($totDia['ss']) }}</span>
             <span style="color:#ef4444;">- {{ $fmt($totDia['gastos']) }}</span>
             <span style="color:{{ $totDia['utilidad']>=0?'#10b981':'#ef4444' }};">{{ $fmt($totDia['utilidad']) }}</span>
         </div>
@@ -451,7 +467,7 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
             </div>
         </div>
         {{-- Resumen cards --}}
-        <div id="modalDiaSummary" style="display:grid;grid-template-columns:repeat(5,1fr);gap:.5rem;padding:.85rem 1.25rem;background:#f8fafc;border-bottom:1px solid #e2e8f0;"></div>
+        <div id="modalDiaSummary" style="display:grid;grid-template-columns:repeat(6,1fr);gap:.5rem;padding:.85rem 1.25rem;background:#f8fafc;border-bottom:1px solid #e2e8f0;"></div>
         {{-- Tabla --}}
         <div id="modalDiaBody" style="padding:1rem 1.25rem;max-height:55vh;overflow-y:auto;font-size:.82rem;color:#475569;">Cargando…</div>
     </div>
@@ -574,27 +590,56 @@ function cargarDetalleDia() {
                 <div style="background:#eff6ff;border-radius:9px;padding:.6rem;text-align:center;"><div style="font-weight:800;color:#2563eb;font-size:.92rem;">${fmtN(t.planillas)}</div><div style="font-size:.65rem;color:#64748b;">Planillas</div></div>
                 <div style="background:#f5f3ff;border-radius:9px;padding:.6rem;text-align:center;"><div style="font-weight:800;color:#7c3aed;font-size:.92rem;">${fmtN(t.afiliaciones)}</div><div style="font-size:.65rem;color:#64748b;">Afiliaciones</div></div>
                 <div style="background:#f0fdf4;border-radius:9px;padding:.6rem;text-align:center;"><div style="font-weight:800;color:#16a34a;font-size:.92rem;">${fmtN(t.tramites)}</div><div style="font-size:.65rem;color:#64748b;">Trámites</div></div>
+                <div style="background:#ecfeff;border-radius:9px;padding:.6rem;text-align:center;"><div style="font-weight:800;color:#0e7490;font-size:.92rem;">${fmtN(t.ss||0)}</div><div style="font-size:.65rem;color:#64748b;">SS</div></div>
                 <div style="background:#fef2f2;border-radius:9px;padding:.6rem;text-align:center;"><div style="font-weight:800;color:#dc2626;font-size:.92rem;">-${fmtN(t.gastos)}</div><div style="font-size:.65rem;color:#64748b;">Gastos</div></div>
                 <div style="background:${t.utilidad>=0?'#f0fdf4':'#fef2f2'};border-radius:9px;padding:.6rem;text-align:center;"><div style="font-weight:800;color:${t.utilidad>=0?'#16a34a':'#dc2626'};font-size:.92rem;">${fmtN(t.utilidad)}</div><div style="font-size:.65rem;color:#64748b;">Utilidad</div></div>`;
-            // Tabla facturas
+            // Tabla facturas — agrupadas por numero_factura
             const tipoLabel = {'planilla':'Planilla','afiliacion':'Afiliación','otro_ingreso':'Trámite'};
             const tipoColor = {'planilla':'#2563eb','afiliacion':'#7c3aed','otro_ingreso':'#16a34a'};
             let html = '';
             if (data.facturas.length) {
-                html += `<div style="font-size:.68rem;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:.45rem;">📋 Facturas (${data.facturas.length})</div>`;
-                html += `<div style="border-radius:10px;overflow:hidden;border:1px solid #e2e8f0;margin-bottom:1rem;">`;
-                html += `<div style="display:grid;grid-template-columns:60px 1fr 110px 100px;gap:.3rem;padding:.4rem .75rem;background:#f8fafc;font-size:.65rem;font-weight:700;text-transform:uppercase;color:#64748b;border-bottom:2px solid #e2e8f0;">
-                    <span>#Fact</span><span>Cliente / Empresa</span><span>Tipo</span><span style="text-align:right;">Ingreso</span></div>`;
+                // Agrupar por numero_factura
+                const grupos = {};
                 data.facturas.forEach(f => {
-                    const tl = tipoLabel[f.tipo] || f.tipo;
-                    const tc = tipoColor[f.tipo] || '#64748b';
-                    html += `<div style="display:grid;grid-template-columns:60px 1fr 110px 100px;gap:.3rem;padding:.42rem .75rem;border-bottom:1px solid #f1f5f9;font-size:.78rem;align-items:center;">
-                        <span style="font-weight:700;color:#64748b;font-family:monospace;">#${f.numero_factura||'—'}</span>
-                        <span style="color:#1e293b;font-weight:600;">${f.nombre}</span>
+                    const key = f.numero_factura || '__sin__';
+                    if (!grupos[key]) grupos[key] = { numero_factura: f.numero_factura, tipo: f.tipo, nombres: [], ingreso: 0, ss: 0, total: 0 };
+                    grupos[key].nombres.push(f.nombre);
+                    grupos[key].ingreso += (f.ingreso || 0);
+                    grupos[key].ss      += (f.total_ss || 0);
+                    grupos[key].total   += (f.ingreso || 0) + (f.total_ss || 0);
+                });
+                const listaGrupos = Object.values(grupos);
+                html += `<div style="font-size:.68rem;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:.45rem;">📋 Facturas agrupadas (${listaGrupos.length} factura${listaGrupos.length!==1?'s':''})</div>`;
+                html += `<div style="border-radius:10px;overflow:hidden;border:1px solid #e2e8f0;margin-bottom:1rem;">`;
+                html += `<div style="display:grid;grid-template-columns:70px 1fr 90px 110px 100px 110px;gap:.3rem;padding:.4rem .75rem;background:#f8fafc;font-size:.65rem;font-weight:700;text-transform:uppercase;color:#64748b;border-bottom:2px solid #e2e8f0;">
+                    <span>#Fact</span><span>Cliente / Empresa</span><span>Tipo</span>
+                    <span style="text-align:right;color:#2563eb;">Ingreso</span>
+                    <span style="text-align:right;color:#0e7490;">SS</span>
+                    <span style="text-align:right;color:#0d2550;">Total</span></div>`;
+                listaGrupos.forEach(g => {
+                    const tl = tipoLabel[g.tipo] || g.tipo;
+                    const tc = tipoColor[g.tipo] || '#64748b';
+                    const nombreResumen = g.nombres.length === 1 ? g.nombres[0] : `${g.nombres[0]} <span style="color:#94a3b8;font-size:.68rem;">(+${g.nombres.length-1} más)</span>`;
+                    html += `<div style="display:grid;grid-template-columns:70px 1fr 90px 110px 100px 110px;gap:.3rem;padding:.42rem .75rem;border-bottom:1px solid #f1f5f9;font-size:.78rem;align-items:center;cursor:pointer;"
+                        title="${g.nombres.join(', ')}">
+                        <span style="font-weight:700;color:#64748b;font-family:monospace;">#${g.numero_factura||'—'}</span>
+                        <span style="color:#1e293b;font-weight:600;">${nombreResumen}</span>
                         <span style="background:${tc}18;color:${tc};border-radius:6px;padding:.1rem .4rem;font-size:.68rem;font-weight:700;">${tl}</span>
-                        <span style="text-align:right;font-weight:700;color:#0d2550;font-family:monospace;">${fmtN(f.ingreso)}</span>
+                        <span style="text-align:right;font-weight:700;color:#2563eb;font-family:monospace;">${fmtN(g.ingreso)}</span>
+                        <span style="text-align:right;font-weight:700;color:#0e7490;font-family:monospace;">${g.ss>0?fmtN(g.ss):'—'}</span>
+                        <span style="text-align:right;font-weight:800;color:#0d2550;font-family:monospace;">${fmtN(g.total)}</span>
                     </div>`;
                 });
+                // Fila de totales agrupados
+                const totIng = listaGrupos.reduce((s,g)=>s+g.ingreso,0);
+                const totSS  = listaGrupos.reduce((s,g)=>s+g.ss,0);
+                const totTot = listaGrupos.reduce((s,g)=>s+g.total,0);
+                html += `<div style="display:grid;grid-template-columns:70px 1fr 90px 110px 100px 110px;gap:.3rem;padding:.45rem .75rem;background:#f8fafc;font-size:.75rem;font-weight:700;border-top:2px solid #e2e8f0;">
+                    <span></span><span style="color:#64748b;">TOTAL</span><span></span>
+                    <span style="text-align:right;color:#2563eb;">${fmtN(totIng)}</span>
+                    <span style="text-align:right;color:#0e7490;">${fmtN(totSS)}</span>
+                    <span style="text-align:right;color:#0d2550;">${fmtN(totTot)}</span>
+                </div>`;
                 html += `</div>`;
             }
             if (data.gastos.length) {

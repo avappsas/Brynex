@@ -365,21 +365,48 @@ function sortClass($col, $currSort, $currDir) {
 
         {{-- Cédula --}}
         <td>
-            <a href="{{ route('admin.contratos.edit', $c->id) }}" class="cedula-link" target="_blank">
+            <button type="button"
+                class="btn-afil-contrato"
+                data-contrato-id="{{ $c->id }}"
+                data-nombre="{{ $ctxNombre }}"
+                data-row-id="{{ $c->id }}"
+                title="Clic para abrir contrato"
+                style="background:none;border:none;padding:0;font-family:monospace;font-size:.77rem;font-weight:700;color:#3b82f6;cursor:pointer;text-decoration:underline dotted;">
                 {{ $c->cedula }}
-            </a>
+            </button>
         </td>
 
         {{-- Nombres --}}
         <td style="font-weight:600;color:#1e3a5f;max-width:130px;overflow:hidden;text-overflow:ellipsis;" title="{{ $c->cliente?->primer_nombre }} {{ $c->cliente?->segundo_nombre }} {{ $c->cliente?->primer_apellido }} {{ $c->cliente?->segundo_apellido }}">
+            @if($c->cliente?->id)
+            <button type="button"
+                class="btn-afil-cliente"
+                data-cliente-id="{{ $c->cliente->id }}"
+                data-nombre="{{ $ctxNombre }}"
+                data-row-id="{{ $c->id }}"
+                title="Clic para editar cliente"
+                style="background:none;border:none;padding:0;font:inherit;font-weight:600;color:#1e3a5f;cursor:pointer;text-decoration:underline dotted;text-align:left;max-width:128px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;">
+                {{ $c->cliente?->primer_nombre }} {{ $c->cliente?->primer_apellido }}
+            </button>
+            @else
             {{ $c->cliente?->primer_nombre }} {{ $c->cliente?->primer_apellido }}
+            @endif
         </td>
 
         {{-- Tipo Modalidad --}}
         <td style="font-size:0.68rem;color:#475569;white-space:nowrap;" title="{{ $c->tipoModalidad?->nombre ?? '' }}">
-            <span style="background:#f1f5f9;color:#334155;padding:0.12rem 0.4rem;border-radius:5px;font-weight:700;font-size:0.67rem;">
+            <button type="button"
+                class="btn-afil-contrato"
+                data-contrato-id="{{ $c->id }}"
+                data-nombre="{{ $ctxNombre }}"
+                data-row-id="{{ $c->id }}"
+                title="Clic para editar contrato"
+                style="background:#f1f5f9;color:#334155;padding:0.12rem 0.4rem;border-radius:5px;font-weight:700;font-size:0.67rem;border:none;cursor:pointer;transition:background .15s;"
+                onmouseover="this.style.background='#dbeafe';this.style.color='#1e40af'"
+                onmouseout="this.style.background='#f1f5f9';this.style.color='#334155'"
+                id="modal-label-{{ $c->id }}">
                 {{ $c->tipoModalidad?->tipo_modalidad ?? '—' }}
-            </span>
+            </button>
         </td>
 
 
@@ -723,6 +750,94 @@ function sortClass($col, $currSort, $currDir) {
 .ca-th { padding:0.5rem 0.65rem;font-size:0.72rem;font-weight:700;color:#92400e;white-space:nowrap;text-align:left; }
 </style>
 
+{{-- ═══ Modal iframe: Cliente ═══ --}}
+<div id="modalClienteOverlay" style="
+    display:none; position:fixed; inset:0; z-index:3000;
+    background:rgba(10,10,20,.7); backdrop-filter:blur(4px);
+    align-items:center; justify-content:center; padding:.75rem;
+" onclick="if(event.target===this)cerrarModalCliente()">
+    <div style="
+        background:#fff; border-radius:16px; width:min(1140px,97vw);
+        height:94vh; display:flex; flex-direction:column;
+        box-shadow:0 32px 100px rgba(0,0,0,.5); overflow:hidden;
+    ">
+        <div style="background:linear-gradient(135deg,#1e3a5f 0%,#1e40af 100%);padding:.65rem 1.2rem;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+            <div style="display:flex;align-items:center;gap:.6rem;">
+                <span style="font-size:1.1rem;">👤</span>
+                <div>
+                    <div style="font-size:.9rem;font-weight:800;color:#fff;" id="iframeClienteTitulo">Cliente</div>
+                    <div style="font-size:.62rem;color:rgba(255,255,255,.5);">Editar datos personales del cotizante</div>
+                </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:.5rem;">
+                <a id="iframeClienteLink" href="#" target="_blank"
+                   style="font-size:.72rem;font-weight:600;color:rgba(255,255,255,.6);text-decoration:none;padding:.3rem .7rem;border:1px solid rgba(255,255,255,.2);border-radius:6px;transition:all .15s;"
+                   onmouseover="this.style.color='#fff'" onmouseout="this.style.color='rgba(255,255,255,.6)'">
+                   &#x2197; Abrir pestaña
+                </a>
+                <button onclick="cerrarModalCliente()" style="width:30px;height:30px;border-radius:7px;border:none;cursor:pointer;background:rgba(255,255,255,.1);color:rgba(255,255,255,.7);font-size:1rem;display:flex;align-items:center;justify-content:center;"
+                    onmouseover="this.style.background='rgba(255,255,255,.22)'" onmouseout="this.style.background='rgba(255,255,255,.1)'">✕</button>
+            </div>
+        </div>
+        <div style="position:relative;flex:1;overflow:hidden;">
+            <div id="iframeClienteLoading" style="position:absolute;inset:0;background:#f8fafc;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1rem;z-index:10;">
+                <div style="width:44px;height:44px;border-radius:50%;border:4px solid #e2e8f0;border-top-color:#3b82f6;animation:spinIframe .7s linear infinite;"></div>
+                <div style="font-size:.82rem;color:#64748b;font-weight:600;">Cargando cliente...</div>
+            </div>
+            <iframe id="iframeCliente" src=""
+                style="width:100%;height:100%;border:none;display:block;"
+                onload="document.getElementById('iframeClienteLoading').style.display='none'">
+            </iframe>
+        </div>
+    </div>
+</div>
+
+{{-- ═══ Modal iframe: Contrato ═══ --}}
+<div id="modalContratoOverlay" style="
+    display:none; position:fixed; inset:0; z-index:3000;
+    background:rgba(10,10,20,.7); backdrop-filter:blur(4px);
+    align-items:center; justify-content:center; padding:.75rem;
+" onclick="if(event.target===this)cerrarModalContrato()">
+    <div style="
+        background:#fff; border-radius:16px; width:min(1180px,97vw);
+        height:94vh; display:flex; flex-direction:column;
+        box-shadow:0 32px 100px rgba(0,0,0,.5); overflow:hidden;
+    ">
+        <div style="background:linear-gradient(135deg,#0f172a 0%,#1e3a5f 100%);padding:.65rem 1.2rem;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+            <div style="display:flex;align-items:center;gap:.6rem;">
+                <span style="font-size:1.1rem;">📋</span>
+                <div>
+                    <div style="font-size:.9rem;font-weight:800;color:#fff;" id="iframeContratoTitulo">Contrato</div>
+                    <div style="font-size:.62rem;color:rgba(255,255,255,.5);">Editar datos del contrato y modalidad</div>
+                </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:.5rem;">
+                <a id="iframeContratoLink" href="#" target="_blank"
+                   style="font-size:.72rem;font-weight:600;color:rgba(255,255,255,.6);text-decoration:none;padding:.3rem .7rem;border:1px solid rgba(255,255,255,.2);border-radius:6px;transition:all .15s;"
+                   onmouseover="this.style.color='#fff'" onmouseout="this.style.color='rgba(255,255,255,.6)'">
+                   &#x2197; Abrir pestaña
+                </a>
+                <button onclick="cerrarModalContrato()" style="width:30px;height:30px;border-radius:7px;border:none;cursor:pointer;background:rgba(255,255,255,.1);color:rgba(255,255,255,.7);font-size:1rem;display:flex;align-items:center;justify-content:center;"
+                    onmouseover="this.style.background='rgba(255,255,255,.22)'" onmouseout="this.style.background='rgba(255,255,255,.1)'">✕</button>
+            </div>
+        </div>
+        <div style="position:relative;flex:1;overflow:hidden;">
+            <div id="iframeContratoLoading" style="position:absolute;inset:0;background:#f8fafc;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1rem;z-index:10;">
+                <div style="width:44px;height:44px;border-radius:50%;border:4px solid #e2e8f0;border-top-color:#3b82f6;animation:spinIframe .7s linear infinite;"></div>
+                <div style="font-size:.82rem;color:#64748b;font-weight:600;">Cargando contrato...</div>
+            </div>
+            <iframe id="iframeContrato" src=""
+                style="width:100%;height:100%;border:none;display:block;"
+                onload="document.getElementById('iframeContratoLoading').style.display='none'">
+            </iframe>
+        </div>
+    </div>
+</div>
+
+<style>
+@keyframes spinIframe { to { transform: rotate(360deg); } }
+</style>
+
 @push('scripts')
 <script>
 // ── Variables globales ──
@@ -737,8 +852,121 @@ document.querySelectorAll('.modal-bg').forEach(m => {
     m.addEventListener('click', e => { if(e.target === m) m.classList.remove('open'); });
 });
 document.addEventListener('keydown', e => {
-    if(e.key === 'Escape') document.querySelectorAll('.modal-bg.open').forEach(m => m.classList.remove('open'));
+    if(e.key === 'Escape') {
+        cerrarModalCliente();
+        cerrarModalContrato();
+        document.querySelectorAll('.modal-bg.open').forEach(m => m.classList.remove('open'));
+    }
 });
+
+// ═══════════════════════════════════════════════════════
+// ── Modal iframe: CLIENTE ──────────────────────────────
+// ═══════════════════════════════════════════════════════
+const BASE_CLIENTE  = '{{ url("admin/clientes") }}';
+const BASE_CONTRATO = '{{ url("admin/contratos") }}';
+
+let _clienteActivo  = null; // { clienteId, rowId }
+let _contratoActivo = null; // { contratoId, rowId }
+
+function cerrarModalCliente() {
+    const ov = document.getElementById('modalClienteOverlay');
+    const fr = document.getElementById('iframeCliente');
+    ov.style.display = 'none';
+    fr.src = '';
+    _clienteActivo = null;
+}
+
+function cerrarModalContrato() {
+    const ov = document.getElementById('modalContratoOverlay');
+    const fr = document.getElementById('iframeContrato');
+    ov.style.display = 'none';
+    fr.src = '';
+    _contratoActivo = null;
+}
+
+// Click en nombre → abre modal cliente
+document.addEventListener('click', function(e) {
+    const btn = e.target.closest('.btn-afil-cliente');
+    if (!btn) return;
+
+    const clienteId = btn.dataset.clienteId;
+    const nombre    = btn.dataset.nombre || 'Cliente';
+    const rowId     = btn.dataset.rowId;
+
+    _clienteActivo = { clienteId, rowId };
+
+    const fullUrl = `${BASE_CLIENTE}/${clienteId}/edit`;
+    const url     = `${fullUrl}?iframe=1`;
+
+    document.getElementById('iframeClienteTitulo').textContent = nombre;
+    document.getElementById('iframeClienteLink').href          = fullUrl;
+    document.getElementById('iframeClienteLoading').style.display = 'flex';
+    document.getElementById('iframeCliente').src               = url;
+    document.getElementById('modalClienteOverlay').style.display = 'flex';
+});
+
+// Click en modalidad → abre modal contrato
+document.addEventListener('click', function(e) {
+    const btn = e.target.closest('.btn-afil-contrato');
+    if (!btn) return;
+
+    const contratoId = btn.dataset.contratoId;
+    const nombre     = btn.dataset.nombre || 'Contrato';
+    const rowId      = btn.dataset.rowId;
+
+    _contratoActivo = { contratoId, rowId };
+
+    const fullUrl = `${BASE_CONTRATO}/${contratoId}/edit`;
+    const url     = `${fullUrl}?iframe=1`;
+
+    document.getElementById('iframeContratoTitulo').textContent = nombre;
+    document.getElementById('iframeContratoLink').href          = fullUrl;
+    document.getElementById('iframeContratoLoading').style.display = 'flex';
+    document.getElementById('iframeContrato').src               = url;
+    document.getElementById('modalContratoOverlay').style.display = 'flex';
+});
+
+// ── Escuchar postMessage de ambos iframes ──────────────
+window.addEventListener('message', function(e) {
+    if (!e.data || !e.data.type) return;
+
+    // Contrato actualizado (igual que cobros: brynex:iframe_done)
+    if (e.data.type === 'brynex:iframe_done') {
+        const ctx = _contratoActivo;
+        cerrarModalContrato();
+        if (!ctx) return;
+
+        // Actualizar label de modalidad en la celda si viene el mensaje
+        // (el contrato enviará el accion y mensaje, pero no siempre la modalidad nueva)
+        // Simplemente mostrar toast — el reload es opcional si solo cambia la modalidad
+        mostrarToast('✅ ' + (e.data.mensaje || 'Contrato actualizado'), 'success');
+    }
+
+    // Cliente actualizado (brynex:cliente_updated)
+    if (e.data.type === 'brynex:cliente_updated') {
+        const ctx = _clienteActivo;
+        cerrarModalCliente();
+        if (!ctx) return;
+
+        // Actualizar el botón de nombre en la fila
+        const nombreNuevo = e.data.nombre || '';
+        if (nombreNuevo) {
+            // Buscar el botón en la fila del contrato
+            const btnNombre = document.querySelector(`.btn-afil-cliente[data-row-id="${ctx.rowId}"]`);
+            if (btnNombre) {
+                btnNombre.textContent = nombreNuevo;
+                btnNombre.dataset.nombre = nombreNuevo;
+                // Micro-animación
+                btnNombre.style.transition = 'background .3s';
+                btnNombre.style.background = '#dcfce7';
+                btnNombre.style.borderRadius = '4px';
+                setTimeout(() => { btnNombre.style.background = 'none'; }, 1200);
+            }
+        }
+        mostrarToast('✅ Cliente actualizado correctamente', 'success');
+    }
+});
+
 
 // ── Event delegation para badges de radicado ──
 let docContextCedula  = null;

@@ -261,7 +261,12 @@ class PlanoPagoController extends Controller
             // Indica si la RS seleccionada es de tipo independiente:
             // en ese caso el pago se confirma POR PERSONA, no por planilla completa.
             'esIndependiente' => (bool) ($rsSeleccionada?->es_independiente),
+            // NIT real de la RS (columna nit; fallback al id cuando coinciden)
+            'rsNit'           => $rsSeleccionada ? ($rsSeleccionada->nit ?? $rsSeleccionada->id) : null,
+            // Día hábil de vencimiento guardado en la RS (null = calcular por tabla)
+            'rsDiaHabil'      => $rsSeleccionada?->dia_habil,
         ]);
+
 
     }
 

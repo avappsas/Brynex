@@ -68,7 +68,7 @@ class AfiliacionController extends Controller
 
         // ── Contratos base (con eager loading) ──
         $query = Contrato::with([
-            'cliente:cedula,primer_nombre,segundo_nombre,primer_apellido,segundo_apellido,iva,cod_empresa',
+            'cliente:id,cedula,primer_nombre,segundo_nombre,primer_apellido,segundo_apellido,iva,cod_empresa',
             'cliente.empresa:id,empresa',
             'razonSocial:id,razon_social,arl_nit',
             'eps:id,nombre,formulario_pdf',

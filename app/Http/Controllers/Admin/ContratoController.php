@@ -23,6 +23,7 @@ use App\Models\BancoCuenta;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use App\Services\MoraClienteService;
 
 class ContratoController extends Controller
 {
@@ -367,8 +368,24 @@ class ContratoController extends Controller
             $totalSsRetiro = $vEpsRetiro + $vArlRetiro + $vAfpRetiro + $vCajaRetiro;
         }
 
+        // ── Mora real del retiro (sin tramos mínimos) ─────────────────────────
+        // En retiro NO se cobra al cliente el mínimo: solo el interés real calculado.
+        // Se guarda en facturas.mora para conciliación. El aliado la recibe como 'otros'.
+        $moraRetiro = 0;
+        try {
+            $rsRetiro   = $contrato->razonSocial;
+            $rsNitRet   = $rsRetiro ? (int)($rsRetiro->nit ?: $rsRetiro->id) : 0;
+            $rsDiaHRet  = $rsRetiro ? ($rsRetiro->dia_habil ?? null) : null;
+            $mesRet     = (int)($validated['mes_plano']  ?? now()->month);
+            $anioRet    = (int)($validated['anio_plano'] ?? now()->year);
+            if ($rsNitRet && $totalSsRetiro > 0) {
+                $moraInfo   = MoraClienteService::calcular($alidoId, $rsNitRet, $rsDiaHRet, $totalSsRetiro, $mesRet, $anioRet);
+                $moraRetiro = (int) round($moraInfo['mora_real'] ?? 0); // solo el interés real
+            }
+        } catch (\Throwable) {}
+
         DB::transaction(function () use ($contrato, $validated, $alidoId, $tipoRetiro, $fechaRetiro, $numDias,
-                                         $vEpsRetiro, $vArlRetiro, $vAfpRetiro, $vCajaRetiro, $totalSsRetiro) {
+                                         $vEpsRetiro, $vArlRetiro, $vAfpRetiro, $vCajaRetiro, $totalSsRetiro, $moraRetiro) {
             // 1) Actualizar contrato → retirado
             $contrato->update([
                 'estado'           => 'retirado',
@@ -397,7 +414,7 @@ class ContratoController extends Controller
                 'valor_efectivo'   => 0,
                 'valor_consignado' => 0,
                 'valor_prestamo'   => 0,
-                'otros'            => 0,
+                'otros'            => $moraRetiro,  // mora real informativa para el aliado
                 'otros_admon'      => 0,
                 'mensajeria'       => 0,
                 'dias_cotizados'   => $numDias,
@@ -406,12 +423,13 @@ class ContratoController extends Controller
                 'v_afp'       => $vAfpRetiro,
                 'v_caja'      => $vCajaRetiro,
                 'total_ss'    => $totalSsRetiro,
+                'mora'        => $moraRetiro,  // campo dedicado mora (no es ingreso)
                 'admon'       => 0,
                 'admin_asesor'=> 0,
                 'seguro'      => 0,
                 'afiliacion'  => 0,
                 'iva'         => 0,
-                'total'       => 0,
+                'total'       => 0,   // el cliente no paga
                 'saldo_proximo'=> 0,
                 'usuario_id'  => Auth::id(),
                 'observacion' => $validated['observacion'] ?? null,

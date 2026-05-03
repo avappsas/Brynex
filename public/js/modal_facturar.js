@@ -37,6 +37,8 @@ const MF = (function () {
     let _saldoPendiente = 0;
     let _modo = 'individual';      // 'individual' | 'masivo'
     let _esRetiro = false;         // si el usuario marcó retiro en este período
+    let _mora = 0;                 // mora pre-calculada por el servidor (editable)
+    let _moraReal = 0;             // mora REAL (sin tramos) — solo para Retiro → Otros planilla
 
     // ── Helpers ───────────────────────────────────────────────────
     const fmt = v => '$' + Math.ceil(v || 0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
@@ -79,6 +81,9 @@ const MF = (function () {
         setVal('mf-otros-admon', '0');
         setVal('mf-estado', 'pagada');
         setVal('mf-nplano', '');
+        // Mora: pre-cargar desde _cfg si viene del servidor, si no 0
+        _mora = parseInt(_cfg.moraCalculada || 0);
+        setVal('mf-mora', _mora);
         document.querySelectorAll('input[name="mf_indep_modo"]').forEach(r => { if (r.value === 'afiliacion') r.checked = true; });
         _saldoFavor = 0; _saldoPendiente = 0;
 
@@ -245,6 +250,13 @@ const MF = (function () {
 
             _saldoFavor = parseInt(data.saldo_a_favor || 0);
             _saldoPendiente = parseInt(data.saldo_pendiente || 0);
+
+            // ── Mora pre-calculada por el servidor ─────────────────────────
+            // mora_cliente = tramos (normal), mora_real = interés real sin mínimos (retiro)
+            if (data.mora_cliente !== undefined) {
+                _moraReal = parseInt(data.mora_real || 0);
+                MF.setMora(data.mora_cliente, data.mora_info || '');
+            }
 
             if (saldoPanel) {
                 if (_saldoFavor > 0 || _saldoPendiente > 0) {
@@ -514,6 +526,7 @@ const MF = (function () {
             const iva    = parse(el('mf-v-iva')?.textContent);
             const otros  = parse(el('mf-otros')?.value);
             const otrosA = parse(el('mf-otros-admon')?.value);
+            const mora   = parse(el('mf-mora')?.value);   // mora editable por usuario
             const afilVal = parse(el('mf-v-afil')?.textContent);
             const ss = eps + arl + afp + caja;
 
@@ -522,7 +535,14 @@ const MF = (function () {
             // ── Total BRUTO: lo que se cobra sin aplicar ningún saldo ──────
             // Se muestra en la columna izquierda para que el usuario vea
             // cuánto vale la planilla completa antes de cualquier descuento.
-            totalBruto = ss + admon + seg + iva + otros + otrosA + afilVal + _saldoPendiente;
+            totalBruto = ss + admon + seg + iva + otros + otrosA + mora + afilVal + _saldoPendiente;
+
+            // Actualizar _mora para el envío al servidor
+            _mora = mora;
+
+            // Mostrar/ocultar fila de mora según valor
+            const rowMora = el('mf-row-mora');
+            if (rowMora) rowMora.style.display = mora > 0 ? '' : 'none';
         } else {
             totalBruto = _totalAfil;
         }
@@ -808,6 +828,7 @@ const MF = (function () {
                 valor_prestamo: prest,
                 otros: parse(el('mf-otros')?.value),
                 otros_admon: parse(el('mf-otros-admon')?.value),
+                mora: _mora,  // mora cobrada al cliente (NO es ingreso)
                 mensajeria: 0,
                 observacion: obs,
                 np: parse(el('mf-nplano')?.value) || null,
@@ -929,8 +950,20 @@ const MF = (function () {
         if (ov) ov.style.display = 'none';
     }
 
+    // ── Establecer mora desde fuera (llamado por el servidor al pre-calcular) ─
+    function setMora(valor, info) {
+        _mora = parseInt(valor || 0);
+        setVal('mf-mora', _mora);
+        const rowMora = el('mf-row-mora');
+        if (rowMora) rowMora.style.display = _mora > 0 ? '' : 'none';
+        // Mostrar tooltip informativo si viene texto de explicación
+        const infoEl = el('mf-mora-info');
+        if (infoEl && info) { infoEl.textContent = info; infoEl.style.display = 'block'; }
+        recalc();
+    }
+
     // ── API pública ───────────────────────────────────────────────
-    return { init, abrir, cerrar, detectarTipo, actualizarTipo, cambiarPeriodo, onEstado, recalc, distRecalc, addConsig, guardar, toggleRetiro, onRetiroFecha };
+    return { init, abrir, cerrar, detectarTipo, actualizarTipo, cambiarPeriodo, onEstado, recalc, distRecalc, addConsig, guardar, toggleRetiro, onRetiroFecha, setMora };
 
 })();
 

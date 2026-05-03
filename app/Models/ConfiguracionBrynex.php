@@ -109,4 +109,14 @@ class ConfiguracionBrynex extends BaseModel
     {
         return (bool)(int) static::obtener('regla_afp_obligatorio', 0);
     }
+
+    /**
+     * Tasa de mora PILA vigente (% efectivo anual).
+     * Art. 635 ET: tasa usura consumo Superfinanciera menos 2 pp.
+     * Configurable desde el panel BryNex sin necesidad de deploy.
+     */
+    public static function tasaMoraPila(): float
+    {
+        return (float) static::obtener('tasa_mora_pila', 26.17);
+    }
 }

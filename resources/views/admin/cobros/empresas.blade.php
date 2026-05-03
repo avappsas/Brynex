@@ -291,6 +291,7 @@ $waUrl = fn($tel) => $tel ? 'https://wa.me/57' . preg_replace('/\D/', '', $tel) 
         </form>
     </th>
     <th title="$ Administración de pendientes" style="color:#fbbf24;">Admon $</th>
+    <th title="Mora estimada por pago tardío" style="color:#fde68a;">⚠️ Mora</th>
     {{-- Semáforo: filtro en th --}}
     <th style="min-width:100px;text-align:center;">
         <form method="GET" action="{{ route('admin.cobros.empresas') }}" style="margin:0">
@@ -380,6 +381,17 @@ $nombreEnc = $emp->encargado_id ? ($usuariosDisponibles->firstWhere('id', $emp->
         ${{ number_format($emp->admon_pend, 0, '', '.') }}
     </td>
 
+    {{-- Mora estimada empresa --}}
+    <td class="num-cell">
+        @if(($emp->mora_estimada ?? 0) > 0)
+            <span style="display:inline-block;padding:.1rem .4rem;border-radius:20px;font-size:.62rem;font-weight:700;background:#fef3c7;color:#92400e;" title="Mora estimada total de contratos pendientes">
+                ${{ number_format($emp->mora_estimada, 0, '', '.') }}
+            </span>
+        @else
+            <span style="color:#64748b;font-size:.7rem;">—</span>
+        @endif
+    </td>
+
     {{-- Semáforo --}}
     <td style="text-align:center;">
         <span class="sem-dot" style="color:{{ $semColor }};" title="{{ $semTip }}">
@@ -442,6 +454,13 @@ $nombreEnc = $emp->encargado_id ? ($usuariosDisponibles->firstWhere('id', $emp->
     <td class="num-cell" style="color:#93c5fd;">{{ $fmt($empresas->sum('plan_pend')) }}</td>
     <td class="num-cell" style="color:#fca5a5;">{{ $fmt($totalPendientes) }}</td>
     <td class="num-cell" style="color:#fbbf24;font-weight:800;">${{ number_format($empresas->sum('admon_pend'), 0, '', '.') }}</td>
+    <td class="num-cell" style="color:#fde68a;font-weight:800;">
+        @if($empresas->sum('mora_estimada') > 0)
+            ${{ number_format($empresas->sum('mora_estimada'), 0, '', '.') }}
+        @else
+            —
+        @endif
+    </td>
     <td colspan="4"></td>
 </tr>
 </tfoot>

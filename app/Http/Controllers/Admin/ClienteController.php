@@ -114,8 +114,9 @@ class ClienteController extends Controller
     }
 
     // ─── Editar cliente existente ─────────────────────────────────────
-    public function edit(int $id)
+    public function edit(int $id, Request $request)
     {
+        $isIframe = $request->boolean('iframe');
         $cliente = Cliente::findOrFail($id);
         $lookups = $this->getLookups();
         $contratos = DB::table('contratos as ct')
@@ -177,7 +178,7 @@ class ClienteController extends Controller
 
         return view('admin.clientes.form', compact(
             'cliente', 'lookups', 'contratos', 'razonesMap', 'resumen', 'bancos',
-            'tieneContratoIndependiente', 'operadoresPlanilla'
+            'tieneContratoIndependiente', 'operadoresPlanilla', 'isIframe'
         ));
     }
 
@@ -190,7 +191,12 @@ class ClienteController extends Controller
 
         $cliente->update($data);
 
-        return redirect()->route('admin.clientes.edit', $id)
+        $redirectUrl = route('admin.clientes.edit', $id);
+        if ($request->input('iframe')) {
+            $redirectUrl .= '?iframe=1';
+        }
+
+        return redirect($redirectUrl)
             ->with('success', 'Cliente actualizado correctamente.');
     }
 

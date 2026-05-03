@@ -51,6 +51,7 @@
       'pct_caja_independiente_bajo'   => ['label'=>'Caja Indep. Baj.', 'prefix'=>'',   'suffix'=>'%', 'step'=>'0.01', 'decimals'=>2],
       'pct_ibc_independiente_sugerido'=> ['label'=>'% IBC Sugerido',   'prefix'=>'',   'suffix'=>'%', 'step'=>'1',    'decimals'=>2],
       'porcentaje_iva'                => ['label'=>'IVA Admin',         'prefix'=>'',   'suffix'=>'%', 'step'=>'0.01', 'decimals'=>2],
+      'tasa_mora_pila'                => ['label'=>'Tasa Mora PILA (Art.635 ET)', 'prefix'=>'', 'suffix'=>'% E.A.', 'step'=>'0.01', 'decimals'=>2],
     ] as $clave => $cfg)
     @php $valor = $configBrynex[$clave]->valor ?? null; @endphp
     <div style="background:#f8fafc;border-radius:8px;padding:0.65rem 0.75rem;border:1px solid {{ $esSuperadmin ? '#bfdbfe' : '#e2e8f0' }};overflow:hidden;">
@@ -108,6 +109,75 @@
       <input type="hidden" name="arl[{{ $nivel }}][descripcion]" value="{{ $personalizada?->descripcion ?? $global->descripcion }}">
     </div>
     @endforeach
+  </div>
+</div>
+
+{{-- ══ SECCIÓN 2.5: Configuración de Mora al Cliente ══ --}}
+<div style="background:#fffbeb;border-radius:12px;border:2px solid #fde68a;padding:1rem 1.25rem;margin-bottom:1rem;">
+  <div style="font-size:0.72rem;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.35rem;">
+    ⚠️ Configuración de Mora al Cliente
+  </div>
+  <div style="font-size:0.72rem;color:#78350f;margin-bottom:0.85rem;line-height:1.5;">
+    Define cuándo y cuánto se cobra de mora a los clientes por pago tardío de su factura SS.
+    La <strong>tasa de cálculo</strong> (Art. 635 ET) la configura BryNex globalmente.
+    Aquí configuras el <strong>día de inicio</strong> y los <strong>montos mínimos</strong> de tu operación.
+  </div>
+  @php
+    $globalMoraCfg = $configs['global'] ?? null;
+  @endphp
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;">
+    {{-- Campo 1: Día hábil de inicio --}}
+    <div style="background:#fff;border-radius:9px;padding:0.85rem;border:1.5px solid #fde68a;">
+      <div style="font-size:0.62rem;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:0.55rem;">🗓 Día Hábil de Inicio</div>
+      <div style="font-size:0.72rem;color:#78350f;margin-bottom:0.5rem;line-height:1.4;">
+        A partir de qué día hábil del mes se cobra mora a <strong>TODOS</strong> los clientes.<br>
+        <em>Si lo dejas vacío, cada cliente usa el día según los 2 últimos dígitos de su RS (Decreto 1990/2016).</em>
+      </div>
+      <div style="display:flex;align-items:center;gap:0.35rem;">
+        <input type="number" step="1" min="2" max="16"
+            name="configs[global][mora_dia_habil_inicio]"
+            value="{{ $globalMoraCfg?->mora_dia_habil_inicio ?? '' }}"
+            placeholder="Ej: 5 (día hábil 5)"
+            style="flex:1;padding:0.45rem 0.6rem;border:2px solid #fde68a;border-radius:7px;font-size:0.9rem;font-family:monospace;font-weight:700;color:#92400e;background:#fffbeb;">
+        <span style="color:#92400e;font-size:0.75rem;white-space:nowrap;">d. hábil</span>
+      </div>
+    </div>
+    {{-- Campo 2: Mora mínima --}}
+    <div style="background:#fff;border-radius:9px;padding:0.85rem;border:1.5px solid #fde68a;">
+      <div style="font-size:0.62rem;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:0.55rem;">💰 Mora Mínima (Tramo 1)</div>
+      <div style="font-size:0.72rem;color:#78350f;margin-bottom:0.5rem;line-height:1.4;">
+        Si la mora real calculada es <strong>menor</strong> a este valor, se cobra este monto fijo.
+        <br><em>Ejemplo: mora real = $1.200 → se cobra $2.000</em>
+      </div>
+      <div style="display:flex;align-items:center;gap:0.25rem;">
+        <span style="color:#92400e;font-size:0.82rem;">$</span>
+        <input type="number" step="500" min="0"
+            name="configs[global][mora_minimo]"
+            value="{{ $globalMoraCfg?->mora_minimo ?? 2000 }}"
+            style="flex:1;padding:0.45rem 0.6rem;border:2px solid #fde68a;border-radius:7px;font-size:0.9rem;font-family:monospace;font-weight:700;color:#92400e;background:#fffbeb;text-align:right;">
+      </div>
+    </div>
+    {{-- Campo 3: Mora segundo tramo --}}
+    <div style="background:#fff;border-radius:9px;padding:0.85rem;border:1.5px solid #fde68a;">
+      <div style="font-size:0.62rem;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:0.55rem;">💰 Mora Segundo Tramo</div>
+      <div style="font-size:0.72rem;color:#78350f;margin-bottom:0.5rem;line-height:1.4;">
+        Si mora real &ge; mínima pero es <strong>menor</strong> a este valor, se cobra este monto fijo.
+        <br><em>Si mora real &ge; este valor, se cobra la mora real.</em>
+      </div>
+      <div style="display:flex;align-items:center;gap:0.25rem;">
+        <span style="color:#92400e;font-size:0.82rem;">$</span>
+        <input type="number" step="500" min="0"
+            name="configs[global][mora_segundo]"
+            value="{{ $globalMoraCfg?->mora_segundo ?? 5000 }}"
+            style="flex:1;padding:0.45rem 0.6rem;border:2px solid #fde68a;border-radius:7px;font-size:0.9rem;font-family:monospace;font-weight:700;color:#92400e;background:#fffbeb;text-align:right;">
+      </div>
+    </div>
+  </div>
+  <div style="font-size:0.7rem;color:#92400e;margin-top:0.65rem;background:#fef3c7;border-radius:6px;padding:0.4rem 0.75rem;">
+    💡 <strong>Lógica de tramos:</strong>
+    mora_real &lt; mínima (${{ number_format($globalMoraCfg?->mora_minimo ?? 2000, 0, ',', '.') }}) → cobrar mínima ·
+    mora_real &lt; segundo (${{ number_format($globalMoraCfg?->mora_segundo ?? 5000, 0, ',', '.') }}) → cobrar segundo ·
+    mora_real &ge; segundo → cobrar mora real
   </div>
 </div>
 

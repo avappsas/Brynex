@@ -45,7 +45,7 @@ function sortClassC($col, $cs, $cd) {
 .cob-sub   { font-size:.77rem; color:#94a3b8; margin-top:.15rem; }
 
 /* ── Cards ── */
-.cards-row { display:grid; grid-template-columns: repeat(5, 1fr); gap:.7rem; }
+.cards-row { display:grid; grid-template-columns: repeat(6, 1fr); gap:.7rem; }
 .card-item {
     background:#fff; border:1px solid #e2e8f0; border-radius:12px;
     padding:.8rem 1rem; display:flex; flex-direction:column; gap:.2rem;
@@ -189,6 +189,9 @@ function sortClassC($col, $cs, $cd) {
 @media(max-width:768px) {
     .cards-row { grid-template-columns:1fr 1fr; }
 }
+@media(max-width:1100px) {
+    .cards-row { grid-template-columns:repeat(3,1fr); }
+}
 </style>
 
 <div class="cob-wrap">
@@ -266,6 +269,19 @@ function sortClassC($col, $cs, $cd) {
         <div class="ci-val" style="color:#7c3aed; font-size:1.1rem;">{{ $fmt($totalSS) }}</div>
         <div class="ci-sub">EPS+ARL+AFP+Caja</div>
     </div>
+    {{-- Tarjeta Préstamos --}}
+    <a href="{{ route('admin.prestamos.index') }}" id="card-prestamos"
+       style="text-decoration:none;"
+       title="Ver módulo Préstamos">
+        <div class="card-item" style="border-top:3px solid #4f46e5;cursor:pointer;transition:transform .15s,box-shadow .15s;"
+             onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 20px rgba(79,70,229,.15)'"
+             onmouseout="this.style.transform='';this.style.boxShadow=''">
+            <div class="ci-label" style="color:#4f46e5;">💳 Préstamos del Mes</div>
+            <div class="ci-val" id="kpi-prest-val" style="color:#4f46e5;font-size:1.1rem;">—</div>
+            <div class="ci-sub" id="kpi-prest-sub">Cargando…</div>
+            <div style="margin-top:.35rem;font-size:.65rem;font-weight:700;color:#6d28d9;">→ Ver módulo Préstamos</div>
+        </div>
+    </a>
 </div>
 
 {{-- ══ FILTROS SECUNDARIOS ══ --}}
@@ -350,6 +366,8 @@ function sortClassC($col, $cs, $cd) {
     <th class="num-col" title="Administración (solo empresa)">Admon</th>
     @endif
     <th class="num-col" title="Total estimado (SS+Admon+Seguro)">Total</th>
+    {{-- Mora estimada al cliente --}}
+    <th class="num-col" title="Mora estimada por pago tardío" style="color:#fbbf24;">⚠️ Mora</th>
     {{-- Factura: solo cuando filtro = todos --}}
     @if($soloPend === 'todos')
     <th style="text-align:center">Factura</th>
@@ -474,6 +492,17 @@ $fIngAnio   = $c->fecha_ingreso?->year ?? 0;
         {{ $fmt($c->total_estimado) }}
     </td>
 
+    {{-- Mora estimada --}}
+    <td class="num-col">
+        @if(($c->mora_estimada ?? 0) > 0)
+            <span style="display:inline-block;padding:.12rem .42rem;border-radius:20px;font-size:.62rem;font-weight:700;background:#fef3c7;color:#92400e;" title="Mora estimada por pago tardío">
+                {{ $fmt($c->mora_estimada) }}
+            </span>
+        @else
+            <span style="color:#cbd5e1;font-size:.7rem;">—</span>
+        @endif
+    </td>
+
     {{-- Factura y N° Planilla: solo cuando filtro = todos --}}
     @if($soloPend === 'todos')
     <td style="text-align:center;">
@@ -544,6 +573,9 @@ $fIngAnio   = $c->fecha_ingreso?->year ?? 0;
     <td colspan="8" style="padding:.5rem .55rem;font-size:.72rem;">TOTALES ({{ $contratos->count() }} registros)</td>
     <td class="num-col" style="color:#34d399;padding:.5rem .55rem;">{{ $fmt($totalAdmon) }}</td>
     <td class="num-col" style="color:#34d399;padding:.5rem .55rem;">{{ $fmt($contratos->sum('total_estimado')) }}</td>
+    <td class="num-col" style="color:#fbbf24;padding:.5rem .55rem;" title="Mora total estimada">
+        {{ $contratos->sum('mora_estimada') > 0 ? $fmt($contratos->sum('mora_estimada')) : '—' }}
+    </td>
     <td colspan="{{ $soloPend === 'todos' ? 4 : ($soloPend === 'pendiente' ? 3 : 3) }}"></td>
 </tr>
 </tfoot>
@@ -867,6 +899,25 @@ function actualizarFilaSemaforo(contratoId, data) {
     // Recargar para reflejar cambios
     setTimeout(() => location.reload(), 600);
 }
+
+// ── KPI Préstamos del mes (carga asíncrona) ──────────────────────────
+(function() {
+    const valEl = document.getElementById('kpi-prest-val');
+    const subEl = document.getElementById('kpi-prest-sub');
+    if (!valEl) return;
+    const fmtP = v => '$' + Math.round(v||0).toLocaleString('es-CO');
+    fetch(`{{ route('admin.informes.financiero.prestamos_mes') }}?mes={{ $mes }}&anio={{ $anio }}`)
+        .then(r => r.json())
+        .then(data => {
+            const t = data.totales || {};
+            valEl.textContent = fmtP(t.saldo_pendiente || 0);
+            subEl.textContent = (t.cant || 0) + ' préstamo(s) — saldo pendiente';
+        })
+        .catch(() => {
+            valEl.textContent = '—';
+            subEl.textContent = 'No disponible';
+        });
+})();
 </script>
 @endpush
 @endsection

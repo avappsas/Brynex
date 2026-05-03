@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\{Factura, Abono, Plano, Contrato, Empresa, RazonSocial, User, BancoCuenta};
 use App\Models\Bitacora;
+use App\Services\MoraClienteService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\{Auth, DB};
 
@@ -243,6 +244,8 @@ class FacturacionController extends Controller
             'es_retiro'            => 'boolean',
             'fecha_retiro'         => 'nullable|date',
             'dias_retiro'          => 'nullable|integer|min:1|max:30',
+            // Mora al cliente (cobrada en la factura, no es ingreso)
+            'mora'                 => 'nullable|integer|min:0',
         ]);
 
         $np = $validated['np'] ?? null;
@@ -533,6 +536,29 @@ $efAcum = $csAcum = $prAcum = $sfAcum = 0;
                 // en columnas separadas y el sistema acumulativo de saldo_proximo los maneja.
                 $total = $totalSS + $admon + $adminAsesor + $otrosAdmon + $seguro + $afiliacion + $iva;
 
+                // ─── Mora al cliente ────────────────────────────────────────
+                // La mora viene del modal (pre-calculada + editable por el usuario).
+                // En modo masivo: se distribuye SOLO en facturación individual (1 contrato);
+                // en modo masivo NO dividimos la mora entre todos los clientes porque
+                // cada RS tiene su propio vencimiento y su propio cálculo.
+                // Por diseño: en masivo el frontend envía mora=0 (pendiente de impl. por RS).
+                $moraCliente = 0;
+                if ($esModoIndividual) {
+                    // Modo individual: usar el valor del modal (puede ser 0 o el calculado)
+                    $moraCliente = (int)($validated['mora'] ?? 0);
+                } else {
+                    // Modo masivo (empresa): calcular mora por contrato si aplica
+                    $rs       = $contrato->razonSocial;
+                    $rsNit    = $rs ? (int)($rs->nit ?: $rs->id) : 0;
+                    $rsDiaH   = $rs ? ($rs->dia_habil ?? null) : null;
+                    if ($rsNit && $totalSS > 0) {
+                        $moraInfo   = MoraClienteService::calcular($aliadoId, $rsNit, $rsDiaH, $totalSS, $mes, $anio);
+                        $moraCliente = $moraInfo['mora']; // aplicar tramos automáticamente
+                    }
+                }
+
+                $total += $moraCliente;
+
                 // ─── Calcular distribución de afiliación ───────────────────
                 $distAdmon = $distAsesor = $distRetiro = $distUtilidad = 0;
                 if ($esAfiliacion && $afiliacion > 0) {
@@ -635,6 +661,8 @@ $efAcum = $csAcum = $prAcum = $sfAcum = 0;
                     'razon_social_id'  => $contrato->razon_social_id,
                     'usuario_id'       => Auth::id(),
                     'observacion'      => $validated['observacion'] ?? null,
+                    // Mora al cliente (no es ingreso — se reporta separado en SS)
+                    'mora'             => $moraCliente,
                 ]);
 
                 // ─── Guardar consignaciones bancarias ──────────────────────
@@ -1069,6 +1097,9 @@ $efAcum = $csAcum = $prAcum = $sfAcum = 0;
             // Préstamos pendientes del cliente
             'tiene_prestamo_pendiente' => $prestamosPendientes->isNotEmpty(),
             'prestamos_pendientes'     => $prestamosPendientes,
+            // ── Mora pre-calculada para el modal ─────────────────────────
+            // El JS la inyecta en el campo editable con MF.setMora()
+            ...$this->_calcularMoraParaModal($aliadoId, $contrato, $mesSiguiente ?? $mes, $anioSiguiente ?? $anio),
         ]);
     }
 
@@ -1167,6 +1198,68 @@ $efAcum = $csAcum = $prAcum = $sfAcum = 0;
         // Siempre inicia en 1. El aliado actualiza manualmente a 2, 3...
         // cuando hace el pago ante el operador PILA, para separar lotes enviados.
         return 1;
+    }
+
+    /**
+     * Pre-calcula la mora al cliente para inyectarla en el modal individual.
+     * Se llama desde mesPagado() y los datos se incluyen en la respuesta JSON.
+     *
+     * El JS usa MF.setMora(mora, infoTexto) para rellenar el campo editable.
+     *
+     * @return array{mora_cliente: int, mora_dias: int, mora_fecha_vence: string|null, mora_dia_habil: int, mora_info: string}
+     */
+    private function _calcularMoraParaModal(int $aliadoId, Contrato $contrato, int $mes, int $anio): array
+    {
+        try {
+            $rs      = $contrato->razonSocial;
+            $rsNit   = $rs ? (int)($rs->nit ?: $rs->id) : 0;
+            $rsDiaH  = $rs ? ($rs->dia_habil ?? null) : null;
+
+            if (!$rsNit) {
+                return ['mora_cliente' => 0, 'mora_dias' => 0, 'mora_fecha_vence' => null, 'mora_dia_habil' => 0, 'mora_info' => ''];
+            }
+
+            // Usar la última factura de este contrato para obtener el total_ss real
+            // Si aún no hay factura (estamos creando la primera), calcular desde cotización
+            $ultimaFact = Factura::where('aliado_id', $aliadoId)
+                ->where('contrato_id', $contrato->id)
+                ->where('mes', $mes)->where('anio', $anio)
+                ->whereNotIn('estado', ['anulada'])
+                ->first();
+
+            if ($ultimaFact) {
+                $totalSS = (float) $ultimaFact->total_ss;
+            } else {
+                // Estimar total SS desde cotización (30 días)
+                $cotiz   = $contrato->calcularCotizacion(30);
+                $totalSS = (float)($cotiz['ss'] ?? 0);
+            }
+
+            if ($totalSS <= 0) {
+                return ['mora_cliente' => 0, 'mora_dias' => 0, 'mora_fecha_vence' => null, 'mora_dia_habil' => 0, 'mora_info' => ''];
+            }
+
+            $info = MoraClienteService::calcular($aliadoId, $rsNit, $rsDiaH, $totalSS, $mes, $anio);
+
+            $meses = ['', 'ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+            $vence = $info['fecha_vence'] ? $info['fecha_vence']->format('d') . ' ' . ($meses[$info['fecha_vence']->month] ?? '') . ' ' . $info['fecha_vence']->year : null;
+            $infoTexto = $info['aplica']
+                ? "⚠️ {$info['dias_mora']} días mora · día hábil {$info['dia_habil']} · vence {$vence}"
+                : "✅ Sin mora hasta día hábil {$info['dia_habil']}" . ($vence ? " ($vence)" : '');
+
+            return [
+                'mora_cliente'      => $info['mora'],
+                'mora_real'         => (int) round($info['mora_real'] ?? 0),  // sin tramos: solo para Retiro
+                'mora_dias'         => $info['dias_mora'],
+                'mora_fecha_vence'  => $info['fecha_vence'] ? $info['fecha_vence']->toDateString() : null,
+                'mora_dia_habil'    => $info['dia_habil'],
+                'mora_info'         => $infoTexto,
+                'mora_aplica'       => $info['aplica'],
+            ];
+        } catch (\Throwable $e) {
+            // No interrumpir la carga del modal por error en mora
+            return ['mora_cliente' => 0, 'mora_real' => 0, 'mora_dias' => 0, 'mora_fecha_vence' => null, 'mora_dia_habil' => 0, 'mora_info' => '', 'mora_aplica' => false];
+        }
     }
 
     private function calcularDias(Contrato $contrato, int $mes, int $anio): int

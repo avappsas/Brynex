@@ -20,7 +20,7 @@ class Factura extends BaseModel
         'valor_consignado','valor_efectivo','valor_prestamo',
         'dias_cotizados',
         'v_eps','v_arl','v_afp','v_caja','total_ss',
-        'admon','admin_asesor','seguro','afiliacion','mensajeria','otros','iva','total',
+        'admon','admin_asesor','seguro','afiliacion','mensajeria','otros','mora','iva','total',
         'saldo_proximo',
         'c_asesor','c_utilidad','retiro',
         'dist_admon','dist_asesor','dist_retiro','dist_utilidad',

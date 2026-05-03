@@ -217,6 +217,37 @@
     font-size:.9rem; font-weight:700; color:var(--azul-oscuro);
 }
 
+/* ── Mora ──────────────────────────────────────────────────────────── */
+.mora-bloque {
+    display:flex; align-items:center; gap:1rem; flex-wrap:wrap;
+    background:linear-gradient(135deg,#fff7ed,#fef3c7);
+    border:1px solid #fde68a; border-radius:10px;
+    padding:.55rem 1rem; margin-top:.6rem;
+    font-size:.8rem; animation:moraPulse 2.5s ease-in-out infinite;
+}
+@keyframes moraPulse {
+    0%,100% { box-shadow:0 0 0 0 rgba(245,158,11,.15); }
+    50%      { box-shadow:0 0 0 6px rgba(245,158,11,.0); }
+}
+.mora-item { display:flex; flex-direction:column; }
+.mora-item .ml { font-size:.62rem; font-weight:700; color:#92400e;
+    text-transform:uppercase; letter-spacing:.05em; }
+.mora-item .mv { font-size:.9rem; font-weight:800; }
+.mora-item .mv.rojo  { color:#dc2626; }
+.mora-item .mv.azul  { color:var(--azul-vivo); }
+.mora-item .mv.verde { color:#059669; }
+.mora-sep { width:1px; height:32px; background:#fde68a; flex-shrink:0; }
+.mora-badge {
+    display:inline-flex; align-items:center; gap:.3rem;
+    background:#fef3c7; border:1px solid #fde68a;
+    border-radius:20px; padding:.2rem .7rem;
+    font-size:.72rem; font-weight:700; color:#92400e;
+}
+.mora-info {
+    font-size:.68rem; color:#b45309; line-height:1.4;
+    border-left:3px solid #fcd34d; padding-left:.5rem;
+}
+
 /* ── Modales ─────────────────────────────────────────────────────────── */
 .modal-overlay {
     display:none; position:fixed; inset:0;
@@ -715,23 +746,61 @@
 @endif
 </div>
 
-{{-- ── Resumen pie ────────────────────────────────────────── --}}
+{{-- ── Resumen unificado: siempre visible cuando hay planos ──────── --}}
 @if($planos->count() > 0)
-<div class="resumen-pie" style="justify-content:flex-end">
+<div class="mora-bloque" id="mora-bloque"
+     style="background:linear-gradient(135deg,#f0f9ff,#e0f2fe);border-color:#7dd3fc;animation:none;margin-top:.75rem">
+    {{-- Datos fijos del servidor --}}
     @if($rsSeleccionada)
-    <div class="resumen-item">
-        <span class="ri-label">N_Plano</span>
-        <span class="ri-valor" style="color:var(--amarillo)">{{ $nPlanoActual }}</span>
+    <div class="mora-item">
+        <span class="ml">N° Plano</span>
+        <span class="mv" style="color:var(--amarillo)">{{ $nPlanoActual }}</span>
+    </div>
+    <div class="mora-sep" style="background:#7dd3fc"></div>
+    @endif
+    <div class="mora-item">
+        <span class="ml">Personas</span>
+        <span class="mv" style="color:var(--azul-oscuro)">{{ $totalPersonas }}</span>
+    </div>
+    <div class="mora-sep" style="background:#7dd3fc"></div>
+    <div class="mora-item">
+        <span class="ml">Total SS</span>
+        <span class="mv azul">$ {{ number_format($totalSS,0,',','.') }}</span>
+    </div>
+
+    {{-- Sección mora: se inyecta por JS cuando aplica --}}
+    @if(!$planoPagado && $rsSeleccionada)
+    <div id="mora-extra" style="display:contents">
+        {{-- Los siguientes nodos se muestran/ocultan por JS --}}
+        <div class="mora-sep" style="background:#7dd3fc" id="mora-sep1" hidden></div>
+        <div class="mora-item" id="mora-item-vence" hidden>
+            <span class="ml">⚠️ Vencimiento PILA</span>
+            <span class="mv azul" id="mora-fecha-vence">—</span>
+        </div>
+        <div class="mora-sep" style="background:#fde68a" id="mora-sep2" hidden></div>
+        <div class="mora-item" id="mora-item-dias" hidden>
+            <span class="ml">Días mora</span>
+            <span class="mv rojo" id="mora-dias">—</span>
+        </div>
+        <div class="mora-sep" style="background:#fde68a" id="mora-sep3" hidden></div>
+        <div class="mora-item" id="mora-item-valor" hidden>
+            <span class="ml">Mora estimada</span>
+            <span class="mv rojo" id="mora-valor">—</span>
+        </div>
+        <div class="mora-sep" style="background:#c4b5fd" id="mora-sep4" hidden></div>
+        <div class="mora-item" id="mora-item-total" hidden>
+            <span class="ml">Total a pagar</span>
+            <span class="mv" style="color:#7c3aed" id="mora-total">—</span>
+        </div>
+        <div class="mora-info" id="mora-info-txt" style="display:none"></div>
+    </div>
+    @elseif($planoPagado && $rsSeleccionada)
+    <div class="mora-sep" style="background:#86efac"></div>
+    <div class="mora-item">
+        <span class="ml">Estado</span>
+        <span class="mv verde">✅ Pagado</span>
     </div>
     @endif
-    <div class="resumen-item">
-        <span class="ri-label">Personas</span>
-        <span class="ri-valor">{{ $totalPersonas }}</span>
-    </div>
-    <div class="resumen-item">
-        <span class="ri-label">Total SS</span>
-        <span class="ri-valor" style="color:var(--azul-vivo)">$ {{ number_format($totalSS,0,',','.') }}</span>
-    </div>
 </div>
 @endif
 
@@ -952,6 +1021,9 @@ const CTX = {
     modalidadesIds: {!! json_encode(array_map('intval', $modalidadesIds)) !!},
     totalSS       : {{ $totalSS }},
     esIndependiente: {{ $esIndependiente ? 'true' : 'false' }},
+    planoPagado   : {{ $planoPagado ? 'true' : 'false' }},
+    rsNit         : {{ $rsNit ?? 'null' }},
+    rsDiaHabil    : {{ $rsDiaHabil ?? 'null' }},
     csrfToken     : '{{ csrf_token() }}',
     routes: {
         descargar    : '{{ route('admin.planos.descargar') }}',
@@ -960,6 +1032,158 @@ const CTX = {
         apiRazon     : '/admin/planos/api/razon/',
     }
 };
+
+// ── Cálculo de Mora PILA Colombia ────────────────────────────────────
+// Decreto 1990/2016 | Art. 635 ET | Tasa usura Superfinanciera
+(function calcularMora() {
+    if (CTX.planoPagado || !CTX.rsNit || CTX.totalSS <= 0) return;
+
+    // 1) Tabla legal: últimos 2 dígitos NIT → día hábil de vencimiento
+    const TABLA = [
+        [0,  7,  2],  // 00-07 → 2.° día hábil
+        [8,  14, 3],
+        [15, 21, 4],
+        [22, 28, 5],
+        [29, 35, 6],
+        [36, 42, 7],
+        [43, 49, 8],
+        [50, 56, 9],
+        [57, 63, 10],
+        [64, 69, 11],
+        [70, 75, 12],
+        [76, 81, 13],
+        [82, 87, 14],
+        [88, 93, 15],
+        [94, 99, 16],
+    ];
+
+    // Día hábil: preferir el guardado en la RS (dia_habil), si no → calcular por tabla + NIT
+    let diaHabil = CTX.rsDiaHabil || null;
+    let ultDos   = null;
+
+    if (!diaHabil) {
+        // Usar los últimos 2 dígitos del NIT real (columna nit de razones_sociales)
+        const nit = Math.abs(CTX.rsNit);
+        ultDos    = nit % 100;
+        for (const [desde, hasta, dia] of TABLA) {
+            if (ultDos >= desde && ultDos <= hasta) { diaHabil = dia; break; }
+        }
+        if (!diaHabil) diaHabil = 2; // fallback
+    }
+
+    // 2) Calcular fecha de vencimiento en el mes de PAGO (mes del filtro UI)
+    const mesPago  = CTX.mes;
+    const anioPago = CTX.anio;
+    const festivosCo = getFestivosColombia(anioPago);
+    const fechaVence = getNthDiaHabil(anioPago, mesPago, diaHabil, festivosCo);
+
+    if (!fechaVence) return;
+
+    // 3) Días calendario de mora desde el vencimiento hasta hoy
+    const hoy = new Date();
+    hoy.setHours(0,0,0,0);
+    const venceMs = fechaVence.getTime();
+    const hoyMs   = hoy.getTime();
+    const diasMora = Math.floor((hoyMs - venceMs) / 86400000);
+
+    // ── Mostrar sección mora en el bloque unificado ───────────────────
+    function mostrarNodo(id) { const el = document.getElementById(id); if (el) el.hidden = false; }
+    function mostrarEl(id)   { const el = document.getElementById(id); if (el) el.style.display = ''; }
+
+    // Siempre mostrar al menos la fecha de vencimiento
+    mostrarNodo('mora-sep1');
+    mostrarNodo('mora-item-vence');
+    document.getElementById('mora-fecha-vence').textContent =
+        fechaVence.toLocaleDateString('es-CO', {day:'2-digit',month:'short',year:'numeric'});
+
+    const infoSufijo = CTX.rsDiaHabil
+        ? `Día hábil ${diaHabil} (configurado en RS)`
+        : `Día hábil ${diaHabil} · NIT termina en ${String(ultDos ?? '??').padStart(2,'0')}`;
+
+    if (diasMora <= 0) {
+        // Sin mora: bloque verde — mostrar todos los campos con valores 0
+        document.getElementById('mora-bloque').style.background = 'linear-gradient(135deg,#f0fdf4,#dcfce7)';
+        document.getElementById('mora-bloque').style.borderColor = '#86efac';
+        document.getElementById('mora-fecha-vence').className = 'mv verde';
+
+        mostrarNodo('mora-sep2'); mostrarNodo('mora-item-dias');
+        mostrarNodo('mora-sep3'); mostrarNodo('mora-item-valor');
+        mostrarNodo('mora-sep4'); mostrarNodo('mora-item-total');
+
+        document.getElementById('mora-dias').textContent  = '0 días';
+        document.getElementById('mora-dias').className    = 'mv verde';
+        document.getElementById('mora-valor').textContent = '$ 0';
+        document.getElementById('mora-valor').className   = 'mv verde';
+        document.getElementById('mora-total').textContent = '$ ' + fmtNum(CTX.totalSS);
+
+        mostrarEl('mora-info-txt');
+        document.getElementById('mora-info-txt').textContent =
+            `${infoSufijo} · Sin mora hasta ${fechaVence.toLocaleDateString('es-CO',{weekday:'long',day:'2-digit',month:'long'})}`;
+        return;
+    }
+
+    // Con mora: fondo ámbar
+    document.getElementById('mora-bloque').style.background = 'linear-gradient(135deg,#fff7ed,#fef3c7)';
+    document.getElementById('mora-bloque').style.borderColor = '#fde68a';
+
+    // 4) Tasa mora: 26.17% EA (usura 28.17% – 2 pp) | Art. 635 ET
+    //    Interés simple: valor × tasa_anual / diasAnio × días
+    const tasaAnual = 0.2617;
+    const bisiesto  = (anioPago % 4 === 0 && (anioPago % 100 !== 0 || anioPago % 400 === 0));
+    const diasAnio  = bisiesto ? 366 : 365;
+    const mora      = Math.round(CTX.totalSS * tasaAnual / diasAnio * diasMora);
+    const total     = CTX.totalSS + mora;
+
+    mostrarNodo('mora-sep2'); mostrarNodo('mora-item-dias');
+    mostrarNodo('mora-sep3'); mostrarNodo('mora-item-valor');
+    mostrarNodo('mora-sep4'); mostrarNodo('mora-item-total');
+
+    document.getElementById('mora-dias').textContent  = diasMora + ' días';
+    document.getElementById('mora-valor').textContent = '$ ' + fmtNum(mora);
+    document.getElementById('mora-total').textContent = '$ ' + fmtNum(total);
+
+    mostrarEl('mora-info-txt');
+    document.getElementById('mora-info-txt').textContent =
+        `${infoSufijo} · Tasa mora: 26.17% E.A. (usura 28.17% – 2 pp) · ${(tasaAnual/diasAnio*100).toFixed(4)}% diario`;
+})();
+
+// Devuelve la fecha del N-ésimo día hábil del mes (lun-vie, sin festivos)
+function getNthDiaHabil(anio, mes, n, festivos) {
+    const fecha = new Date(anio, mes - 1, 1);
+    let cont = 0;
+    while (true) {
+        const dow = fecha.getDay(); // 0=dom,6=sáb
+        const key = `${fecha.getFullYear()}-${String(fecha.getMonth()+1).padStart(2,'0')}-${String(fecha.getDate()).padStart(2,'0')}`;
+        if (dow !== 0 && dow !== 6 && !festivos.has(key)) {
+            cont++;
+            if (cont === n) return new Date(fecha);
+        }
+        fecha.setDate(fecha.getDate() + 1);
+        if (fecha.getMonth() !== mes - 1) break; // pasó el mes
+    }
+    return null;
+}
+
+// Festivos Colombia fijos + móviles aproximados
+function getFestivosColombia(anio) {
+    const fijos = [
+        `${anio}-01-01`, `${anio}-05-01`, `${anio}-07-04`,
+        `${anio}-07-20`, `${anio}-08-07`, `${anio}-12-08`, `${anio}-12-25`,
+    ];
+    // Festivos que se trasladan al siguiente lunes (Ley Emiliani)
+    // Aproximaciones; para exactitud se requeriría un calendario externo
+    const mobiles = [
+        `${anio}-01-06`, `${anio}-03-23`, `${anio}-03-24`,
+        `${anio}-05-29`, `${anio}-06-19`, `${anio}-06-23`,
+        `${anio}-06-30`, `${anio}-08-18`, `${anio}-10-13`,
+        `${anio}-11-03`, `${anio}-11-17`,
+    ];
+    return new Set([...fijos, ...mobiles]);
+}
+
+function fmtNum(n) {
+    return Math.round(n).toLocaleString('es-CO');
+}
 let _planoIdActual    = null;
 let _operadorClienteId = null;
 

@@ -541,6 +541,22 @@
                     <label class="mf-edit-lbl" for="mf-otros-admon">Otros admon</label>
                     <input type="text" id="mf-otros-admon" class="mf-edit-inp" value="0" oninput="MF.recalc()">
                 </div>
+                {{-- ⚠️ MORA AL CLIENTE — solo visible si aplica mora --}}
+                <div class="mf-edit-row" id="mf-row-mora" style="display:none;margin-top:.18rem;
+                     background:linear-gradient(135deg,#fffbeb,#fef3c7);
+                     border:1.5px solid #fde68a;border-radius:7px;padding:.28rem .45rem;">
+                    <label class="mf-edit-lbl" for="mf-mora"
+                           style="color:#92400e;font-weight:800;display:flex;align-items:center;gap:.28rem;">
+                        ⚠️ Mora cliente
+                    </label>
+                    <input type="text" id="mf-mora" class="mf-edit-inp" value="0"
+                           oninput="MF.recalc()"
+                           style="border-color:#f59e0b;background:#fffbeb;color:#92400e;"
+                           title="Mora por pago tardío. Editable. No se contabiliza como ingreso.">
+                </div>
+                <div id="mf-mora-info" style="display:none;font-size:.62rem;color:#78350f;
+                     background:#fef3c7;border-radius:5px;padding:.2rem .45rem;margin-top:.15rem;
+                     border:1px solid #fde68a;line-height:1.4;"></div>
             </div>
             {{-- Detalle afiliación (legacy) --}}
             <div id="mf-detalle-afil" style="display:none;"></div>

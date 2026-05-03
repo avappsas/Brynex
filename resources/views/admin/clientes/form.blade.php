@@ -5,9 +5,11 @@
 <div style="margin:0 auto;">
 
     @if(session('success'))
+        @if(!($isIframe ?? false))
         <div style="background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);border-radius:8px;color:#065f46;padding:0.6rem 1rem;margin-bottom:1rem;font-size:0.83rem;">
             ✅ {{ session('success') }}
         </div>
+        @endif
     @endif
     @if($errors->any())
         <div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;color:#991b1b;padding:0.6rem 1rem;margin-bottom:1rem;font-size:0.83rem;">
@@ -20,6 +22,7 @@
         action="{{ isset($cliente->id) && $cliente->id ? route('admin.clientes.update', $cliente->id) : route('admin.clientes.store') }}">
         @csrf
         @if(isset($cliente->id) && $cliente->id) @method('PUT') @endif
+        @if($isIframe ?? false)<input type="hidden" name="iframe" value="1">@endif
 
         {{-- ═══════════ LAYOUT: Iconos (izq) + Datos (centro) + SS/Obs (der) ═══════════ --}}
         <div style="display:grid;grid-template-columns:65px 1fr 290px;gap:1rem;margin-bottom:1.25rem;align-items:stretch;">
@@ -565,4 +568,19 @@ function OI_abrirCliente() {
 }
 @endif
 </script>
+
+@if(($isIframe ?? false) && session('success'))
+<script>
+// Notificar al padre que el cliente fue actualizado
+(function(){
+    try {
+        window.parent.postMessage({
+            type: 'brynex:cliente_updated',
+            clienteId: {{ $cliente->id ?? 'null' }},
+            nombre: {!! json_encode(trim(($cliente->primer_nombre ?? '') . ' ' . ($cliente->primer_apellido ?? ''))) !!}
+        }, '*');
+    } catch(e) {}
+})();
+</script>
+@endif
 @endsection

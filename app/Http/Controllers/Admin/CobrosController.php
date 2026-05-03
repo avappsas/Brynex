@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\{Contrato, Factura, BitacoraCobro, ConfiguracionBrynex, ArlTarifa, Empresa, BancoCuenta};
+use App\Services\MoraClienteService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\{Auth, DB};
 
@@ -237,6 +238,18 @@ class CobrosController extends Controller
                 default                 => 'rojo',
             };
 
+            // ── Mora estimada al cliente ──────────────────────────
+            $moraEst = 0;
+            try {
+                $rsObj  = $c->razonSocial;
+                $rsNit  = $rsObj ? (int)($rsObj->nit ?: $rsObj->id) : 0;
+                $rsDiaH = $rsObj ? ($rsObj->dia_habil ?? null) : null;
+                if ($rsNit && ($vSS ?? 0) > 0) {
+                    $mi = MoraClienteService::calcular($aliadoId, $rsNit, $rsDiaH, $vSS, $mes, $anio);
+                    $moraEst = $mi['mora'];
+                }
+            } catch (\Throwable) {}
+
             $c->es_afil             = $esAfil;
             $c->es_ind_act_primer_mes = $esIndActPrimerMes; // I ACT: afiliación + planilla
             $c->v_eps            = $vEps;
@@ -245,6 +258,7 @@ class CobrosController extends Controller
             $c->v_caja           = $vCaja;
             $c->v_ss             = $vSS ?? 0;
             $c->total_estimado   = $totalEstimado;
+            $c->mora_estimada    = $moraEst;
             $c->fact_pagada      = $facturaPagada;
             $c->fact_estado      = $facturaEstado;
             $c->fact_numero      = $facturaNumero;
@@ -528,6 +542,21 @@ class CobrosController extends Controller
                 default                 => 'rojo',
             };
 
+            // ── Mora estimada empresa (suma de mora por cada contrato pendiente) ──
+            $moraEmpEst = 0;
+            foreach ($contrEmp->whereNotIn('cedula', array_keys($facturasMes->filter(fn($f) => in_array($f->estado, ['pagada', 'abono', 'prestamo']))->all()))->all() as $cMora) {
+                try {
+                    $rsObj  = $cMora->razonSocial;
+                    $rsNit  = $rsObj ? (int)($rsObj->nit ?: $rsObj->id) : 0;
+                    $rsDiaH = $rsObj ? ($rsObj->dia_habil ?? null) : null;
+                    $vSsCont = (float)($cMora->salario ?? 0) * 0.285; // estimación rápida ~28.5% SS total
+                    if ($rsNit && $vSsCont > 0) {
+                        $mi = MoraClienteService::calcular($aliadoId, $rsNit, $rsDiaH, $vSsCont, $mes, $anio);
+                        $moraEmpEst += $mi['mora'];
+                    }
+                } catch (\Throwable) {}
+            }
+
             $emp->cant         = $cant;
             $emp->pagados      = $pagados;
             $emp->afil_pend    = $afil_pend;
@@ -535,6 +564,7 @@ class CobrosController extends Controller
             $emp->plan_pend    = $plan_pend;
             $emp->total_pend   = $totalPend;
             $emp->admon_pend   = $admon_pend;
+            $emp->mora_estimada = $moraEmpEst;
             $emp->ultima_llamada = $ultimaLlamada;
             $emp->dias_sin_llamar = $diasSinLlamar;
             $emp->semaforo     = $semaforo;
