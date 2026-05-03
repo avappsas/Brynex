@@ -297,9 +297,12 @@ $meses = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','
             </td>
             <td style="text-align:center;">
                 <div style="display:flex;gap:.25rem;justify-content:center;flex-wrap:wrap;">
-                @foreach($grupo->facturas as $f)
-                    <a href="{{ route('admin.prestamos.show', $f->id) }}" class="btn-sm btn-ver" style="font-size:.68rem;">
-                        {{ $meses[$f->mes] }}/{{ $f->anio }}
+                @foreach($grupo->lotes as $lote)
+                    <a href="{{ route('admin.prestamos.show', $lote->factura_id) }}"
+                       class="btn-sm btn-ver"
+                       style="font-size:.68rem;"
+                       title="Factura #{{ $lote->numero_factura }} &mdash; {{ $lote->facturas->count() }} cliente(s)">
+                        #{{ $lote->numero_factura }}&nbsp;{{ $meses[$lote->mes] }}/{{ $lote->anio }}
                     </a>
                 @endforeach
                 </div>

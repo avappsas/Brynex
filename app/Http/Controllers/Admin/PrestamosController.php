@@ -56,6 +56,23 @@ class PrestamosController extends Controller
             $totalOrig   = $facturas->sum('total');
             $totalAbonado= $facturas->sum(fn($f) => (int)$f->abonos->sum('valor'));
 
+            // Agrupar por numero_factura para que un lote empresa (mismo numero_factura)
+            // cuente como 1 solo préstamo, independientemente de cuántos clientes tenga
+            $lotes = $facturas->groupBy('numero_factura')->map(function ($lote) {
+                $primera = $lote->first();
+                return (object)[
+                    'numero_factura'  => $primera->numero_factura,
+                    'mes'             => $primera->mes,
+                    'anio'            => $primera->anio,
+                    'facturas'        => $lote,          // registros individuales del lote
+                    'total'           => $lote->sum('total'),
+                    'total_abonado'   => $lote->sum(fn($f) => (int)$f->abonos->sum('valor')),
+                    'saldo_pendiente' => $lote->sum('saldo_pendiente_prestamo'),
+                    // ID representativo para rutas (usar el primer registro del lote)
+                    'factura_id'      => $primera->id,
+                ];
+            })->values();
+
             // Última gestión de cobro de esta empresa
             $ultimaGestion = BitacoraCobro::where('empresa_id', $empresa?->id)
                 ->where('tipo', BitacoraCobro::TIPO_PRESTAMO)
@@ -68,14 +85,15 @@ class PrestamosController extends Controller
 
             return (object)[
                 'empresa'         => $empresa,
-                'facturas'        => $facturas,
+                'facturas'        => $facturas,   // todos los registros individuales
+                'lotes'           => $lotes,       // agrupados por numero_factura
                 'total_deuda'     => $totalDeuda,
                 'total_original'  => $totalOrig,
                 'total_abonado'   => $totalAbonado,
                 'ultima_gestion'  => $ultimaGestion,
                 'dias_sin_gestion'=> $diasSinGestion,
                 'semaforo'        => $this->calcularSemaforo($diasSinGestion),
-                'cant_facturas'   => $facturas->count(),
+                'cant_facturas'   => $lotes->count(), // 1 lote = 1 préstamo
             ];
         })->sortByDesc('total_deuda')->values();
 
@@ -124,15 +142,59 @@ class PrestamosController extends Controller
             ])
             ->findOrFail($facturaId);
 
+        $bancos = BancoCuenta::activas($aliadoId);
+
+        // ── Detectar si es un lote empresarial ────────────────────────
+        $esLoteEmpresa = $factura->empresa_id && $factura->empresa_id != 1;
+
+        if ($esLoteEmpresa) {
+            // Cargar todo el lote: misma factura # + misma empresa
+            $lote = Factura::where('aliado_id', $aliadoId)
+                ->where('numero_factura', $factura->numero_factura)
+                ->where('empresa_id', $factura->empresa_id)
+                ->whereNull('deleted_at')
+                ->with([
+                    'contrato.cliente',
+                    'contrato.asesor',
+                    'abonos.usuario',
+                    'usuario',
+                ])
+                ->get();
+
+            // Totales del lote completo
+            $lote_total          = $lote->sum('total');
+            $lote_total_abonado  = $lote->sum(fn($f) => (int)$f->abonos->sum('valor'));
+            $lote_saldo_pendiente= $lote->sum('saldo_pendiente_prestamo');
+            $lote_estado         = $lote_saldo_pendiente > 0 ? Factura::ESTADO_PRESTAMO : Factura::ESTADO_PAGADA;
+
+            // Gestiones por empresa_id (no por factura_id individual)
+            $gestiones = BitacoraCobro::where('empresa_id', $factura->empresa_id)
+                ->where('tipo', BitacoraCobro::TIPO_PRESTAMO)
+                ->with('usuario')
+                ->orderByDesc('fecha_llamada')
+                ->get();
+
+            // Todos los abonos del lote (de todos los registros)
+            $lote_abonos = $lote->flatMap(fn($f) => $f->abonos)->sortByDesc('fecha');
+
+            return view('admin.prestamos.show', compact(
+                'factura', 'gestiones', 'bancos',
+                'esLoteEmpresa', 'lote',
+                'lote_total', 'lote_total_abonado', 'lote_saldo_pendiente',
+                'lote_estado', 'lote_abonos'
+            ));
+        }
+
+        // ── Préstamo individual ───────────────────────────────────────
         $gestiones = BitacoraCobro::where('factura_id', $facturaId)
             ->where('tipo', BitacoraCobro::TIPO_PRESTAMO)
             ->with('usuario')
             ->orderByDesc('fecha_llamada')
             ->get();
 
-        $bancos = BancoCuenta::activas($aliadoId);
+        $esLoteEmpresa = false;
 
-        return view('admin.prestamos.show', compact('factura', 'gestiones', 'bancos'));
+        return view('admin.prestamos.show', compact('factura', 'gestiones', 'bancos', 'esLoteEmpresa'));
     }
 
     // ─── Registrar abono al préstamo ─────────────────────────────────
@@ -153,8 +215,12 @@ class PrestamosController extends Controller
             'observacion'      => 'nullable|string|max:500',
         ]);
 
-        DB::transaction(function () use ($factura, $validated) {
-            $abono = Abono::create([
+        // Detectar si es un lote de empresa (mismo numero_factura, varios clientes)
+        $esLote = $factura->empresa_id && $factura->empresa_id != 1;
+
+        DB::transaction(function () use ($factura, $validated, $esLote, $aliadoId) {
+            // El abono se registra siempre en la factura de referencia del lote
+            Abono::create([
                 'factura_id'       => $factura->id,
                 'valor'            => (int)$validated['valor'],
                 'forma_pago'       => $validated['forma_pago'],
@@ -166,24 +232,64 @@ class PrestamosController extends Controller
                 'usuario_id'       => Auth::id(),
             ]);
 
-            // Refrescar para recalcular total_abonado
-            $factura->refresh();
+            if ($esLote) {
+                // Recargar todo el lote con abonos frescos para calcular saldo real
+                $lote = Factura::where('aliado_id', $aliadoId)
+                    ->where('numero_factura', $factura->numero_factura)
+                    ->where('empresa_id', $factura->empresa_id)
+                    ->whereNull('deleted_at')
+                    ->with('abonos')
+                    ->get();
 
-            if ($factura->estaCompletamentePagada()) {
-                // El préstamo quedó saldado: marcar como pagada y actualizar saldo_proximo
-                $factura->update([
-                    'estado'        => Factura::ESTADO_PAGADA,
-                    'saldo_proximo' => 0, // la deuda ya se cobró, neutralizar
-                ]);
+                $totalLote        = $lote->sum('total');
+                $totalAbonadoLote = $lote->sum(fn($f) => (int)$f->abonos->sum('valor'));
+                $loteCompleto     = $totalAbonadoLote >= $totalLote;
+
+                foreach ($lote as $f) {
+                    $f->update([
+                        'estado'        => $loteCompleto ? Factura::ESTADO_PAGADA : Factura::ESTADO_PRESTAMO,
+                        'saldo_proximo' => $loteCompleto ? 0 : -$f->saldo_pendiente_prestamo,
+                    ]);
+                }
             } else {
-                // Ajustar saldo_proximo: era -(total), ahora es -(saldo restante)
-                $factura->update([
-                    'saldo_proximo' => -$factura->saldo_pendiente_prestamo,
-                ]);
+                // Préstamo individual: lógica original
+                $factura->refresh();
+                if ($factura->estaCompletamentePagada()) {
+                    $factura->update([
+                        'estado'        => Factura::ESTADO_PAGADA,
+                        'saldo_proximo' => 0,
+                    ]);
+                } else {
+                    $factura->update([
+                        'saldo_proximo' => -$factura->saldo_pendiente_prestamo,
+                    ]);
+                }
             }
         });
 
-        $factura->refresh();
+        $factura->refresh()->load('abonos');
+
+        if ($esLote) {
+            $loteActualizado = Factura::where('aliado_id', $aliadoId)
+                ->where('numero_factura', $factura->numero_factura)
+                ->where('empresa_id', $factura->empresa_id)
+                ->whereNull('deleted_at')
+                ->with('abonos')
+                ->get();
+
+            $saldoLote    = $loteActualizado->sum('saldo_pendiente_prestamo');
+            $loteCompleto = $saldoLote <= 0;
+
+            return response()->json([
+                'ok'             => true,
+                'mensaje'        => $loteCompleto
+                    ? '✅ Préstamo de empresa saldado completamente.'
+                    : '💰 Abono registrado. Saldo pendiente del lote: $' . number_format($saldoLote, 0, ',', '.'),
+                'saldo_restante' => $saldoLote,
+                'pagado'         => $loteCompleto,
+                'estado'         => $loteCompleto ? Factura::ESTADO_PAGADA : Factura::ESTADO_PRESTAMO,
+            ]);
+        }
 
         return response()->json([
             'ok'             => true,

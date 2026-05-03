@@ -829,4 +829,184 @@ class InformeController extends Controller
             fclose($out);
         },$filename,['Content-Type'=>'text/csv; charset=UTF-8']);
     }
+
+    // ── JSON: facturas y gastos de un día específico ──────────────────
+    public function detalleDia(Request $request)
+    {
+        $this->checkFinanciero();
+        $aid  = $this->aliadoId();
+        $dia  = (int)$request->input('dia');
+        $mes  = (int)$request->input('mes', now()->month);
+        $anio = (int)$request->input('anio', now()->year);
+        $tipo = $request->input('tipo', 'todos'); // todos|planilla|afiliacion|otro_ingreso|gastos
+
+        // ── Facturas del día ──────────────────────────────────────────
+        $qFact = DB::table('facturas AS f')
+            ->where('f.aliado_id', $aid)
+            ->whereNull('f.deleted_at')
+            ->whereNotNull('f.fecha_pago')
+            ->whereRaw('DAY(f.fecha_pago) = ?', [$dia])
+            ->whereMonth('f.fecha_pago', $mes)
+            ->whereYear('f.fecha_pago', $anio)
+            ->whereIn('f.estado', ['pagada', 'abono'])
+            ->leftJoin('clientes AS cl', function($j) use($aid) {
+                $j->on('cl.cedula', '=', 'f.cedula')->where('cl.aliado_id', $aid);
+            })
+            ->leftJoin('empresas AS em', 'em.id', '=', 'f.empresa_id');
+
+        if ($tipo !== 'todos' && $tipo !== 'gastos') {
+            $qFact->where('f.tipo', $tipo);
+        }
+
+        $facturas = $qFact->select([
+            'f.id', 'f.numero_factura', 'f.tipo', 'f.mes', 'f.anio',
+            'f.cedula', 'f.empresa_id', 'f.estado', 'f.fecha_pago',
+            DB::raw("ISNULL(LTRIM(RTRIM(cl.primer_nombre+' '+cl.primer_apellido)), '—') AS nombre_cliente"),
+            DB::raw("ISNULL(em.empresa, '—') AS nombre_empresa"),
+            DB::raw('(f.admon + f.seguro + f.mensajeria + f.otros + f.iva + f.retiro) AS ing_planilla'),
+            DB::raw('(f.afiliacion + f.admon + f.seguro + f.iva) AS ing_afil'),
+            DB::raw('(f.admon + f.otros) AS ing_tramite'),
+            'f.total_ss',
+        ])
+        ->orderBy('f.tipo')
+        ->orderBy('f.numero_factura')
+        ->get()
+        ->map(function($r) {
+            $ingreso = match($r->tipo) {
+                'planilla'     => (float)$r->ing_planilla,
+                'afiliacion'   => (float)$r->ing_afil,
+                'otro_ingreso' => (float)$r->ing_tramite,
+                default        => 0,
+            };
+            $nombre = $r->empresa_id && $r->empresa_id != 1
+                ? '🏢 '.$r->nombre_empresa
+                : '👤 '.$r->nombre_cliente;
+
+            return [
+                'id'             => $r->id,
+                'numero_factura' => $r->numero_factura,
+                'tipo'           => $r->tipo,
+                'nombre'         => $nombre,
+                'cedula'         => $r->cedula,
+                'ingreso'        => $ingreso,
+                'total_ss'       => (float)$r->total_ss,
+                'estado'         => $r->estado,
+                'fecha_pago'     => $r->fecha_pago,
+            ];
+        });
+
+        // ── Gastos del día (no pago_planilla) ─────────────────────────
+        $gastos = [];
+        if ($tipo === 'todos' || $tipo === 'gastos') {
+            $gastos = DB::table('gastos AS g')
+                ->where('g.aliado_id', $aid)
+                ->where('g.tipo', '!=', 'pago_planilla')
+                ->whereRaw('DAY(g.fecha) = ?', [$dia])
+                ->whereMonth('g.fecha', $mes)
+                ->whereYear('g.fecha', $anio)
+                ->select(['g.id', 'g.tipo', 'g.descripcion', 'g.pagado_a', 'g.valor', 'g.fecha'])
+                ->orderBy('g.tipo')
+                ->get()
+                ->map(fn($g) => [
+                    'id'          => $g->id,
+                    'tipo'        => $g->tipo,
+                    'descripcion' => $g->descripcion ?: $g->pagado_a,
+                    'valor'       => (float)$g->valor,
+                ]);
+        }
+
+        // ── Totales ───────────────────────────────────────────────────
+        $planillas   = $facturas->where('tipo','planilla')->sum('ingreso');
+        $afiliaciones= $facturas->where('tipo','afiliacion')->sum('ingreso');
+        $tramites    = $facturas->where('tipo','otro_ingreso')->sum('ingreso');
+        $totalGastos = collect($gastos)->sum('valor');
+        $totalSS     = $facturas->where('tipo','planilla')->sum('total_ss');
+
+        return response()->json([
+            'ok'          => true,
+            'dia'         => $dia,
+            'mes'         => $mes,
+            'anio'        => $anio,
+            'facturas'    => $facturas->values(),
+            'gastos'      => array_values($gastos->toArray()),
+            'totales'     => [
+                'planillas'    => $planillas,
+                'afiliaciones' => $afiliaciones,
+                'tramites'     => $tramites,
+                'gastos'       => $totalGastos,
+                'ss'           => $totalSS,
+                'utilidad'     => $planillas + $afiliaciones + $tramites - $totalGastos,
+            ],
+        ]);
+    }
+
+    // ── JSON: resumen préstamos pendientes del mes ────────────────────
+    public function prestamesMes(Request $request)
+    {
+        $this->checkFinanciero();
+        $aid  = $this->aliadoId();
+        $mes  = (int)$request->input('mes', now()->month);
+        $anio = (int)$request->input('anio', now()->year);
+
+        // Préstamos pendientes generados en ese mes/año
+        $prestamos = DB::table('facturas AS f')
+            ->where('f.aliado_id', $aid)
+            ->whereNull('f.deleted_at')
+            ->where('f.estado', 'prestamo')
+            ->where('f.mes', $mes)
+            ->where('f.anio', $anio)
+            ->leftJoin('clientes AS cl', function($j) use($aid) {
+                $j->on('cl.cedula', '=', 'f.cedula')->where('cl.aliado_id', $aid);
+            })
+            ->leftJoin('empresas AS em', 'em.id', '=', 'f.empresa_id')
+            ->select([
+                'f.id', 'f.numero_factura', 'f.cedula', 'f.empresa_id',
+                'f.total', 'f.saldo_proximo',
+                DB::raw("ISNULL(LTRIM(RTRIM(cl.primer_nombre+' '+cl.primer_apellido)),'—') AS nombre_cliente"),
+                DB::raw("ISNULL(em.empresa,'—') AS nombre_empresa"),
+            ])
+            ->get()
+            ->map(function($r) {
+                $saldo = abs((float)$r->saldo_proximo);
+                $esEmpresa = $r->empresa_id && $r->empresa_id != 1;
+                return [
+                    'id'             => $r->id,
+                    'numero_factura' => $r->numero_factura,
+                    'nombre'         => $esEmpresa ? '🏢 '.$r->nombre_empresa : '👤 '.$r->nombre_cliente,
+                    'cedula'         => $r->cedula,
+                    'total_prestado' => (float)$r->total,
+                    'saldo_pendiente'=> $saldo,
+                    'es_empresa'     => $esEmpresa,
+                    'empresa_id'     => $r->empresa_id,
+                ];
+            });
+
+        // Agrupar empresas por numero_factura para no duplicar lotes
+        $individuales = $prestamos->where('es_empresa', false)->values();
+        $empresasLotes = $prestamos->where('es_empresa', true)
+            ->groupBy('numero_factura')
+            ->map(function($lote) {
+                $first = $lote->first();
+                return [
+                    'numero_factura' => $first['numero_factura'],
+                    'nombre'         => $first['nombre'],
+                    'empresa_id'     => $first['empresa_id'],
+                    'total_prestado' => $lote->sum('total_prestado'),
+                    'saldo_pendiente'=> $lote->sum('saldo_pendiente'),
+                    'cant_clientes'  => $lote->count(),
+                    'factura_id'     => $first['id'],
+                ];
+            })->values();
+
+        return response()->json([
+            'ok'          => true,
+            'individuales'=> $individuales,
+            'empresas'    => $empresasLotes,
+            'totales'     => [
+                'total_prestado'  => $prestamos->sum('total_prestado'),
+                'saldo_pendiente' => $prestamos->sum('saldo_pendiente'),
+                'cant'            => $individuales->count() + $empresasLotes->count(),
+            ],
+        ]);
+    }
 }

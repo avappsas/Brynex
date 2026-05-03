@@ -102,9 +102,107 @@ $meses = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','
 <div class="show-wrap">
 
 {{-- Back --}}
-<a href="{{ route('admin.prestamos.index') }}" class="back-link">← Volver a Préstamos</a>
+<a href="{{ route('admin.prestamos.index') }}?tab={{ $esLoteEmpresa ? 'empresas' : 'individuales' }}" class="back-link">← Volver a Préstamos</a>
 
-{{-- Header --}}
+@if($esLoteEmpresa)
+{{-- ══ HEADER LOTE EMPRESA ══ --}}
+<div class="show-header">
+    <div>
+        <div class="show-title">
+            🏢 {{ $factura->empresa->empresa }} — Factura #{{ $factura->numero_factura }}
+            <span class="badge-estado {{ $lote_estado === 'prestamo' ? 'badge-prestamo' : 'badge-pagada' }}">
+                {{ $lote_estado === 'prestamo' ? 'Préstamo pendiente' : 'Saldado' }}
+            </span>
+        </div>
+        <div class="show-sub">
+            {{ $lote->count() }} cliente(s) — {{ \Carbon\Carbon::createFromDate($factura->anio, $factura->mes, 1)->translatedFormat('F Y') }}
+        </div>
+    </div>
+</div>
+
+{{-- ══ TABLA DE CLIENTES DEL LOTE ══ --}}
+<div class="panel" style="margin-bottom:0;">
+    <div class="panel-hdr">👥 Clientes incluidos en esta factura ({{ $lote->count() }})</div>
+    <div class="panel-body" style="padding:0;">
+        <table style="width:100%;border-collapse:collapse;font-size:.8rem;">
+            <thead>
+                <tr style="background:#f8fafc;">
+                    <th style="padding:.45rem .7rem;text-align:left;color:#64748b;font-size:.68rem;text-transform:uppercase;">Cliente</th>
+                    <th style="padding:.45rem .7rem;text-align:left;color:#64748b;font-size:.68rem;text-transform:uppercase;">Cédula</th>
+                    <th style="padding:.45rem .7rem;text-align:right;color:#64748b;font-size:.68rem;text-transform:uppercase;">Valor</th>
+                    <th style="padding:.45rem .7rem;text-align:right;color:#64748b;font-size:.68rem;text-transform:uppercase;">Asesor</th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach($lote as $lf)
+            <tr style="border-top:1px solid #f1f5f9;">
+                <td style="padding:.45rem .7rem;font-weight:600;color:#1e3a5f;">
+                    {{ $lf->contrato?->cliente?->primer_nombre }} {{ $lf->contrato?->cliente?->primer_apellido }}
+                </td>
+                <td style="padding:.45rem .7rem;font-family:monospace;color:#64748b;">
+                    {{ number_format($lf->cedula, 0, '', '.') }}
+                </td>
+                <td style="padding:.45rem .7rem;text-align:right;font-family:monospace;font-weight:700;">
+                    {{ $fmt($lf->total) }}
+                </td>
+                <td style="padding:.45rem .7rem;text-align:right;color:#64748b;font-size:.75rem;">
+                    {{ $lf->contrato?->asesor?->nombre ?? '—' }}
+                </td>
+            </tr>
+            @endforeach
+            </tbody>
+            <tfoot>
+                <tr style="background:#0f172a;color:#fff;">
+                    <td colspan="2" style="padding:.45rem .7rem;font-size:.72rem;font-weight:700;">TOTAL LOTE</td>
+                    <td style="padding:.45rem .7rem;text-align:right;font-family:monospace;font-weight:800;">{{ $fmt($lote_total) }}</td>
+                    <td></td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+</div>
+
+{{-- ══ GRID 3 COL PARA LOTE ══ --}}
+<div class="show-grid">
+    {{-- Panel estado lote --}}
+    <div class="panel">
+        <div class="panel-hdr">💸 Estado del Lote</div>
+        <div class="panel-body">
+            <div class="monto-big">{{ $fmt($lote_saldo_pendiente) }}</div>
+            <div class="monto-sub">Saldo pendiente total del lote</div>
+            <div class="info-row">
+                <span class="info-lbl">Valor original lote</span>
+                <span class="info-val">{{ $fmt($lote_total) }}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-lbl">Total abonado</span>
+                <span class="info-val" style="color:#15803d;">{{ $fmt($lote_total_abonado) }}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-lbl">Clientes</span>
+                <span class="info-val">{{ $lote->count() }}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-lbl">Empresa</span>
+                <span class="info-val">{{ $factura->empresa->empresa }}</span>
+            </div>
+            @if($lote_estado === 'prestamo')
+                <button class="btn-abonar" onclick="abrirAbonar({{ $factura->id }}, {{ $lote_saldo_pendiente }})">
+                    💰 Registrar Abono al Lote
+                </button>
+                @role('superadmin')
+                <button class="btn-condonar" onclick="abrirCondonar({{ $factura->id }})">
+                    🗑 Condonar Deuda
+                </button>
+                @endrole
+            @else
+                <div class="saldado-box">✅ Lote completamente saldado</div>
+            @endif
+        </div>
+    </div>
+
+@else
+{{-- ══ HEADER INDIVIDUAL ══ --}}
 <div class="show-header">
     <div>
         <div class="show-title">
@@ -173,12 +271,14 @@ $meses = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','
             @endif
         </div>
     </div>
+@endif
 
     {{-- ══ Panel 2: Historial de abonos ══ --}}
     <div class="panel">
-        <div class="panel-hdr">📥 Historial de Abonos ({{ $factura->abonos->count() }})</div>
+        @php $abonos_display = $esLoteEmpresa ? $lote_abonos : $factura->abonos->sortByDesc('fecha'); @endphp
+        <div class="panel-hdr">📥 Historial de Abonos ({{ $abonos_display->count() }})</div>
         <div class="panel-body">
-            @forelse($factura->abonos->sortByDesc('fecha') as $abono)
+            @forelse($abonos_display as $abono)
             <div class="abono-item">
                 <div class="abono-row">
                     <span class="abono-val">{{ $fmt($abono->valor) }}</span>
@@ -223,7 +323,8 @@ $meses = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','
             <div class="empty-list">Sin gestiones registradas</div>
             @endif
 
-            @if($factura->estado === 'prestamo')
+            @php $estadoActivo = $esLoteEmpresa ? $lote_estado : $factura->estado; @endphp
+            @if($estadoActivo === 'prestamo')
             <button class="btn-gestion" onclick="abrirGestion({{ $factura->id }})">
                 📞 Registrar Gestión
             </button>

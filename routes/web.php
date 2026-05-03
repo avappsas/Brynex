@@ -214,6 +214,8 @@ Route::middleware('auth')->group(function () {
             Route::get('/financiero/bancos',      [$ic, 'financieroBancos'])     ->name('financiero.bancos');
             Route::get('/financiero/auditar-planilla', [$ic, 'auditarPlanilla']) ->name('financiero.auditar_planilla');
             Route::get('/financiero/ss-planillas',     [$ic, 'ssPlanillas'])     ->name('financiero.ss_planillas');
+            Route::get('/financiero/detalle-dia',      [$ic, 'detalleDia'])      ->name('financiero.detalle_dia');
+            Route::get('/financiero/prestamos-mes',    [$ic, 'prestamesMes'])    ->name('financiero.prestamos_mes');
         });
 
         // ── Préstamos / Cartera ──────────────────────────────────────────

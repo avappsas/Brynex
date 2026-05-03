@@ -41,7 +41,7 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
     </div>
 
     {{-- KPIs principales --}}
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:1.5rem;">
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:1rem;margin-bottom:1.5rem;">
         <div class="fin-kpi" style="--c:#2563eb;">
             <div class="val">{{ $fmt($ingresos['total']) }}</div>
             <div class="lab">Ingresos Totales</div>
@@ -61,6 +61,12 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
             <div class="val">{{ $fmt($saldoSS) }}</div>
             <div class="lab">Saldo SS Terceros</div>
             <div class="sub">Recaudado en mes − Pagado planillas</div>
+        </div>
+        <div class="fin-kpi" style="--c:#7c3aed;cursor:pointer;" onclick="verPrestamos()" title="Ver detalle en módulo Préstamos">
+            <div class="val" id="kpi-prestamos-val" style="font-size:1.1rem;">—</div>
+            <div class="lab">💳 Préstamos del Mes</div>
+            <div class="sub" id="kpi-prestamos-sub">Cargando…</div>
+            <a href="{{ route('admin.prestamos.index') }}?tab=empresas" style="display:inline-block;margin-top:.4rem;font-size:.68rem;color:#7c3aed;font-weight:700;">→ Ver módulo Préstamos</a>
         </div>
     </div>
 
@@ -425,14 +431,46 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
     </div>
 </div>
 
-{{-- Modal detalle día --}}
-<div id="modalDia" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;">
-    <div style="background:#fff;border-radius:16px;padding:1.5rem;min-width:420px;max-width:600px;max-height:80vh;overflow-y:auto;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
-            <h3 id="modalDiaTitulo" style="font-size:1rem;font-weight:700;color:#0d2550;"></h3>
-            <button onclick="document.getElementById('modalDia').style.display='none'" style="background:none;border:none;font-size:1.2rem;cursor:pointer;color:#64748b;">✕</button>
+{{-- Modal detalle día (mejorado con fetch) --}}
+<div id="modalDia" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:flex-start;justify-content:center;padding-top:3vh;overflow-y:auto;">
+    <div style="background:#fff;border-radius:18px;width:min(860px,96vw);box-shadow:0 25px 60px rgba(0,0,0,.22);">
+        <div style="background:linear-gradient(135deg,#0d2550,#1e40af);border-radius:18px 18px 0 0;padding:1rem 1.5rem;display:flex;align-items:center;justify-content:space-between;">
+            <div>
+                <div id="modalDiaTitulo" style="color:#fff;font-weight:800;font-size:1rem;"></div>
+                <div id="modalDiaSub" style="color:rgba(255,255,255,.6);font-size:.74rem;margin-top:.15rem;"></div>
+            </div>
+            <div style="display:flex;gap:.5rem;align-items:center;">
+                <select id="diaFiltroTipo" onchange="aplicarFiltroDia()" style="padding:.3rem .6rem;border-radius:7px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.15);color:#fff;font-size:.75rem;cursor:pointer;">
+                    <option value="todos">Todos</option>
+                    <option value="planilla">Planillas</option>
+                    <option value="afiliacion">Afiliaciones</option>
+                    <option value="otro_ingreso">Trámites</option>
+                    <option value="gastos">Gastos</option>
+                </select>
+                <button onclick="document.getElementById('modalDia').style.display='none'" style="background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:8px;width:32px;height:32px;cursor:pointer;font-size:1.1rem;">✕</button>
+            </div>
         </div>
-        <div id="modalDiaBody" style="font-size:.84rem;color:#475569;">Cargando…</div>
+        {{-- Resumen cards --}}
+        <div id="modalDiaSummary" style="display:grid;grid-template-columns:repeat(5,1fr);gap:.5rem;padding:.85rem 1.25rem;background:#f8fafc;border-bottom:1px solid #e2e8f0;"></div>
+        {{-- Tabla --}}
+        <div id="modalDiaBody" style="padding:1rem 1.25rem;max-height:55vh;overflow-y:auto;font-size:.82rem;color:#475569;">Cargando…</div>
+    </div>
+</div>
+
+{{-- Modal préstamos del mes --}}
+<div id="modalPrestamos" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:flex-start;justify-content:center;padding-top:4vh;overflow-y:auto;">
+    <div style="background:#fff;border-radius:18px;width:min(720px,96vw);box-shadow:0 25px 60px rgba(0,0,0,.22);">
+        <div style="background:linear-gradient(135deg,#4f46e5,#7c3aed);border-radius:18px 18px 0 0;padding:1rem 1.5rem;display:flex;align-items:center;justify-content:space-between;">
+            <div>
+                <div style="color:#fff;font-weight:800;font-size:1rem;">💳 Préstamos del Mes</div>
+                <div style="color:rgba(255,255,255,.6);font-size:.74rem;">Servicios facturados como préstamo pendientes de cobro</div>
+            </div>
+            <div style="display:flex;gap:.5rem;">
+                <a href="{{ route('admin.prestamos.index') }}" target="_blank" style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);color:#fff;border-radius:8px;padding:.3rem .8rem;font-size:.75rem;font-weight:700;text-decoration:none;">→ Módulo Préstamos</a>
+                <button onclick="document.getElementById('modalPrestamos').style.display='none'" style="background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:8px;width:32px;height:32px;cursor:pointer;font-size:1.1rem;">✕</button>
+            </div>
+        </div>
+        <div id="modalPrestamosBody" style="padding:1.25rem;max-height:60vh;overflow-y:auto;font-size:.82rem;">Cargando…</div>
     </div>
 </div>
 
@@ -512,29 +550,105 @@ new Chart(document.getElementById('chartDona'), {
     options:{responsive:true,cutout:'60%',plugins:{legend:{labels:{font:{size:11}}}}}
 });
 
-// Modal detalle día
+// ── Modal detalle día (con fetch) ──
+let _diaCtx = {dia:0,mes:0,anio:0};
 function verDetalleDia(dia,mes,anio) {
-    const m = document.getElementById('modalDia');
+    _diaCtx = {dia,mes,anio};
     const meses=['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-    document.getElementById('modalDiaTitulo').textContent = 'Detalle Día '+dia+' — '+meses[mes]+' '+anio;
-    document.getElementById('modalDiaBody').innerHTML = 'Cargando…';
-    m.style.display = 'flex';
+    document.getElementById('modalDiaTitulo').textContent = 'Detalle — '+String(dia).padStart(2,'0')+' '+meses[mes]+' '+anio;
+    document.getElementById('diaFiltroTipo').value = 'todos';
+    document.getElementById('modalDia').style.display = 'flex';
+    cargarDetalleDia();
+}
+function aplicarFiltroDia() { cargarDetalleDia(); }
+function cargarDetalleDia() {
+    const {dia,mes,anio} = _diaCtx;
+    const tipo = document.getElementById('diaFiltroTipo').value;
+    document.getElementById('modalDiaBody').innerHTML = '<div style="text-align:center;padding:2rem;color:#94a3b8;">⏳ Cargando…</div>';
+    fetch(`{{ route('admin.informes.financiero.detalle_dia') }}?dia=${dia}&mes=${mes}&anio=${anio}&tipo=${tipo}`)
+        .then(r=>r.json()).then(data=>{
+            const t = data.totales;
+            const fmtN = v => '$ '+Math.round(v||0).toLocaleString('es-CO');
+            // Cards resumen
+            document.getElementById('modalDiaSummary').innerHTML = `
+                <div style="background:#eff6ff;border-radius:9px;padding:.6rem;text-align:center;"><div style="font-weight:800;color:#2563eb;font-size:.92rem;">${fmtN(t.planillas)}</div><div style="font-size:.65rem;color:#64748b;">Planillas</div></div>
+                <div style="background:#f5f3ff;border-radius:9px;padding:.6rem;text-align:center;"><div style="font-weight:800;color:#7c3aed;font-size:.92rem;">${fmtN(t.afiliaciones)}</div><div style="font-size:.65rem;color:#64748b;">Afiliaciones</div></div>
+                <div style="background:#f0fdf4;border-radius:9px;padding:.6rem;text-align:center;"><div style="font-weight:800;color:#16a34a;font-size:.92rem;">${fmtN(t.tramites)}</div><div style="font-size:.65rem;color:#64748b;">Trámites</div></div>
+                <div style="background:#fef2f2;border-radius:9px;padding:.6rem;text-align:center;"><div style="font-weight:800;color:#dc2626;font-size:.92rem;">-${fmtN(t.gastos)}</div><div style="font-size:.65rem;color:#64748b;">Gastos</div></div>
+                <div style="background:${t.utilidad>=0?'#f0fdf4':'#fef2f2'};border-radius:9px;padding:.6rem;text-align:center;"><div style="font-weight:800;color:${t.utilidad>=0?'#16a34a':'#dc2626'};font-size:.92rem;">${fmtN(t.utilidad)}</div><div style="font-size:.65rem;color:#64748b;">Utilidad</div></div>`;
+            // Tabla facturas
+            const tipoLabel = {'planilla':'Planilla','afiliacion':'Afiliación','otro_ingreso':'Trámite'};
+            const tipoColor = {'planilla':'#2563eb','afiliacion':'#7c3aed','otro_ingreso':'#16a34a'};
+            let html = '';
+            if (data.facturas.length) {
+                html += `<div style="font-size:.68rem;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:.45rem;">📋 Facturas (${data.facturas.length})</div>`;
+                html += `<div style="border-radius:10px;overflow:hidden;border:1px solid #e2e8f0;margin-bottom:1rem;">`;
+                html += `<div style="display:grid;grid-template-columns:60px 1fr 110px 100px;gap:.3rem;padding:.4rem .75rem;background:#f8fafc;font-size:.65rem;font-weight:700;text-transform:uppercase;color:#64748b;border-bottom:2px solid #e2e8f0;">
+                    <span>#Fact</span><span>Cliente / Empresa</span><span>Tipo</span><span style="text-align:right;">Ingreso</span></div>`;
+                data.facturas.forEach(f => {
+                    const tl = tipoLabel[f.tipo] || f.tipo;
+                    const tc = tipoColor[f.tipo] || '#64748b';
+                    html += `<div style="display:grid;grid-template-columns:60px 1fr 110px 100px;gap:.3rem;padding:.42rem .75rem;border-bottom:1px solid #f1f5f9;font-size:.78rem;align-items:center;">
+                        <span style="font-weight:700;color:#64748b;font-family:monospace;">#${f.numero_factura||'—'}</span>
+                        <span style="color:#1e293b;font-weight:600;">${f.nombre}</span>
+                        <span style="background:${tc}18;color:${tc};border-radius:6px;padding:.1rem .4rem;font-size:.68rem;font-weight:700;">${tl}</span>
+                        <span style="text-align:right;font-weight:700;color:#0d2550;font-family:monospace;">${fmtN(f.ingreso)}</span>
+                    </div>`;
+                });
+                html += `</div>`;
+            }
+            if (data.gastos.length) {
+                html += `<div style="font-size:.68rem;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:.45rem;">💸 Gastos (${data.gastos.length})</div>`;
+                html += `<div style="border-radius:10px;overflow:hidden;border:1px solid #fecaca;">`;
+                data.gastos.forEach(g => {
+                    html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:.42rem .75rem;border-bottom:1px solid #fff1f2;font-size:.78rem;">
+                        <span style="color:#334155;">${g.descripcion||g.tipo}</span>
+                        <span style="font-weight:700;color:#dc2626;font-family:monospace;">-${fmtN(g.valor)}</span>
+                    </div>`;
+                });
+                html += `</div>`;
+            }
+            if (!data.facturas.length && !data.gastos.length) html = '<div style="text-align:center;padding:2rem;color:#94a3b8;">Sin movimientos para este filtro</div>';
+            document.getElementById('modalDiaBody').innerHTML = html;
+        }).catch(()=>{ document.getElementById('modalDiaBody').innerHTML='<div style="color:#ef4444;padding:1.5rem;text-align:center;">Error al cargar detalle.</div>'; });
+}
 
-    const diario = @json($diario);
-    const d = diario.find(x=>x.dia===dia);
-    if (!d) { document.getElementById('modalDiaBody').innerHTML='Sin movimientos'; return; }
-
-    document.getElementById('modalDiaBody').innerHTML = `
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;">
-            <div style="background:#eff6ff;border-radius:10px;padding:.85rem;text-align:center;"><div style="font-weight:800;color:#2563eb;font-size:1.1rem;">${fmt(d.planillas)}</div><div style="font-size:.75rem;color:#64748b;">Planillas</div></div>
-            <div style="background:#f5f3ff;border-radius:10px;padding:.85rem;text-align:center;"><div style="font-weight:800;color:#7c3aed;font-size:1.1rem;">${fmt(d.afiliaciones)}</div><div style="font-size:.75rem;color:#64748b;">Afiliaciones</div></div>
-            <div style="background:#f0fdf4;border-radius:10px;padding:.85rem;text-align:center;"><div style="font-weight:800;color:#16a34a;font-size:1.1rem;">${fmt(d.tramites)}</div><div style="font-size:.75rem;color:#64748b;">Trámites</div></div>
-            <div style="background:#fef2f2;border-radius:10px;padding:.85rem;text-align:center;"><div style="font-weight:800;color:#dc2626;font-size:1.1rem;">- ${fmt(d.gastos)}</div><div style="font-size:.75rem;color:#64748b;">Gastos</div></div>
-        </div>
-        <div style="margin-top:1rem;background:${d.utilidad>=0?'#f0fdf4':'#fef2f2'};border-radius:10px;padding:.85rem;text-align:center;">
-            <div style="font-weight:800;color:${d.utilidad>=0?'#16a34a':'#dc2626'};font-size:1.25rem;">${fmt(d.utilidad)}</div>
-            <div style="font-size:.78rem;color:#64748b;">Utilidad del día</div>
-        </div>`;
+// ── Modal Préstamos del mes ──
+function verPrestamos() {
+    document.getElementById('modalPrestamos').style.display = 'flex';
+    document.getElementById('modalPrestamosBody').innerHTML = '<div style="text-align:center;padding:2rem;color:#94a3b8;">⏳ Cargando…</div>';
+    fetch(`{{ route('admin.informes.financiero.prestamos_mes') }}?mes={{ $mes }}&anio={{ $anio }}`)
+        .then(r=>r.json()).then(data=>{
+            const fmtN = v => '$ '+Math.round(v||0).toLocaleString('es-CO');
+            const t = data.totales;
+            let html = `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.75rem;margin-bottom:1.25rem;">
+                <div style="background:#ede9fe;border-radius:12px;padding:.85rem;text-align:center;"><div style="font-size:1.1rem;font-weight:800;color:#7c3aed;">${t.cant}</div><div style="font-size:.72rem;color:#6d28d9;">Préstamos activos</div></div>
+                <div style="background:#fef3c7;border-radius:12px;padding:.85rem;text-align:center;"><div style="font-size:1.1rem;font-weight:800;color:#d97706;">${fmtN(t.total_prestado)}</div><div style="font-size:.72rem;color:#b45309;">Total facturado</div></div>
+                <div style="background:#fef2f2;border-radius:12px;padding:.85rem;text-align:center;"><div style="font-size:1.1rem;font-weight:800;color:#dc2626;">${fmtN(t.saldo_pendiente)}</div><div style="font-size:.72rem;color:#b91c1c;">Saldo pendiente</div></div>
+            </div>`;
+            const renderLista = (lista, titulo) => {
+                if (!lista.length) return '';
+                let h = `<div style="font-size:.68rem;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:.4rem;">${titulo} (${lista.length})</div>`;
+                h += `<div style="border-radius:10px;overflow:hidden;border:1px solid #e2e8f0;margin-bottom:1rem;">`;
+                h += `<div style="display:grid;grid-template-columns:1fr 100px 100px 80px;gap:.3rem;padding:.38rem .75rem;background:#f8fafc;font-size:.64rem;font-weight:700;text-transform:uppercase;color:#64748b;border-bottom:2px solid #e2e8f0;">
+                    <span>Nombre</span><span style="text-align:right;">Prestado</span><span style="text-align:right;">Saldo</span><span style="text-align:center;">Ver</span></div>`;
+                lista.forEach(p => {
+                    const url = p.factura_id ? `/admin/prestamos/${p.factura_id}` : `/admin/prestamos?tab=${p.es_empresa?'empresas':'individuales'}`;
+                    const sub = p.cant_clientes ? ` <span style="color:#94a3b8;font-size:.65rem;">(${p.cant_clientes} clientes)</span>` : '';
+                    h += `<div style="display:grid;grid-template-columns:1fr 100px 100px 80px;gap:.3rem;padding:.42rem .75rem;border-bottom:1px solid #f1f5f9;font-size:.78rem;align-items:center;">
+                        <span style="font-weight:600;color:#1e293b;">${p.nombre}${sub}</span>
+                        <span style="text-align:right;font-family:monospace;color:#64748b;">${fmtN(p.total_prestado)}</span>
+                        <span style="text-align:right;font-family:monospace;font-weight:700;color:#dc2626;">${fmtN(p.saldo_pendiente)}</span>
+                        <a href="${url}" style="display:block;text-align:center;background:#ede9fe;color:#7c3aed;border-radius:6px;padding:.2rem .5rem;font-size:.7rem;font-weight:700;text-decoration:none;">Ver</a>
+                    </div>`;
+                });
+                return h + `</div>`;
+            };
+            html += renderLista(data.empresas, '🏢 Empresas');
+            html += renderLista(data.individuales, '👤 Individuales');
+            if (!data.empresas.length && !data.individuales.length) html += '<div style="text-align:center;padding:2rem;color:#94a3b8;">Sin préstamos registrados para este mes ✅</div>';
+            document.getElementById('modalPrestamosBody').innerHTML = html;
+        }).catch(()=>{ document.getElementById('modalPrestamosBody').innerHTML='<div style="color:#ef4444;padding:1.5rem;">Error al cargar.</div>'; });
 }
 
 // Modal movimientos banco
@@ -565,11 +679,24 @@ function verMovimientosBanco(bancoId, label) {
 }
 
 // Cerrar modales al clic fuera
-['modalDia','modalBanco','modalAudit'].forEach(id=>{
+['modalDia','modalBanco','modalAudit','modalPrestamos'].forEach(id=>{
     document.getElementById(id).addEventListener('click',function(e){
         if(e.target===this) this.style.display='none';
     });
 });
+
+// ── Cargar KPI préstamos al init ──
+(function() {
+    fetch(`{{ route('admin.informes.financiero.prestamos_mes') }}?mes={{ $mes }}&anio={{ $anio }}`)
+        .then(r=>r.json()).then(data=>{
+            const fmtN = v => '$ '+Math.round(v||0).toLocaleString('es-CO');
+            const t = data.totales;
+            document.getElementById('kpi-prestamos-val').textContent = fmtN(t.saldo_pendiente);
+            document.getElementById('kpi-prestamos-sub').textContent = t.cant+' préstamo(s) — saldo pendiente';
+        }).catch(()=>{
+            document.getElementById('kpi-prestamos-sub').textContent = 'Error al cargar';
+        });
+})();
 
 // ── Ordenar Egresos SS ──────────────────────────────────────────────
 let egresosSort = { campo: 'valor', asc: false }; // default: valor desc
