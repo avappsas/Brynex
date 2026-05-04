@@ -26,6 +26,14 @@
 .campo-item.activo { background:#1e40af;color:#fff;border-color:#3b82f6;font-weight:700; }
 .campo-item.mapeado { border-color:#16a34a;color:#86efac; }
 .campo-item.mapeado.activo { background:#14532d;border-color:#4ade80; }
+.campo-item.es-x { border-color:#f59e0b;color:#fcd34d; }
+.campo-item.es-x.activo { background:#78350f;border-color:#fbbf24; }
+
+/* ── Botón Agregar X ─────────────────────────────────── */
+.btn-add-x { width:100%;background:linear-gradient(135deg,#b45309,#d97706);color:#fff;
+             border:none;border-radius:8px;padding:0.45rem;font-size:0.78rem;font-weight:700;
+             cursor:pointer;display:flex;align-items:center;justify-content:center;gap:0.4rem; }
+.btn-add-x:hover { filter:brightness(1.12); }
 .campo-dot   { width:8px;height:8px;border-radius:50%;background:currentColor;flex-shrink:0; }
 
 /* ── Toolbar visor ───────────────────────────────────── */
@@ -125,6 +133,12 @@
         </div>
         @endforeach
     </div>
+
+    <button class="btn-add-x" onclick="agregarX()" id="btnAgregarX">✖ Agregar X al formulario</button>
+    <button class="btn-add-x" onclick="agregarFirmaExtra()"
+        style="background:linear-gradient(135deg,#1e3a8a,#2563eb);margin-top:2px;">
+        ✍️ Agregar firma adicional
+    </button>
 
     <button class="btn-guardar" onclick="guardarMapeo()" style="margin-top:auto">💾 Guardar mapeo</button>
     <button class="btn-guardar" onclick="limpiarObsoletos()"
@@ -311,7 +325,8 @@ canvasWrap.addEventListener('mouseup', e => {
     const ptW = Math.round((pxW / zoom) * 10) / 10;
     const ptH = Math.round((pxH / zoom) * 10) / 10;
 
-    const esImagen = (campoActivo === 'empresa.sello' || campoActivo === 'cliente.firma');
+    const esImagen = (campoActivo === 'empresa.sello' || campoActivo === 'cliente.firma'
+                    || campoActivo.startsWith('cliente.firma_'));
 
     const obj = {
         dato      : campoActivo,
@@ -326,13 +341,16 @@ canvasWrap.addEventListener('mouseup', e => {
         tipo      : esImagen ? 'imagen' : 'texto',
     };
 
+    // Las X pueden tener múltiples instancias — solo reemplazar si es el mismo ID exacto
     const idx = mapeo.findIndex(m => m.dato === campoActivo);
     if (idx >= 0) mapeo[idx] = obj;
-    else           mapeo.push(obj);
+    else          mapeo.push(obj);
 
     marcarMapeado(campoActivo);
     dibujarRectangulos();
     actualizarContador();
+    renderizarPanelX();
+    renderizarPanelFirmas();
 });
 
 // Cancelar drag si sale del área
@@ -350,9 +368,13 @@ function seleccionarCampo(clave, etiqueta) {
         return;
     }
     campoActivo = clave;
-    document.getElementById('ci-' + clave.replace('.', '-')).classList.add('activo');
+    // IDs de items dinámicos usan guiones en lugar de puntos y underscores
+    const elId = 'ci-' + clave.replace(/\./g, '-').replace(/_/g, '-');
+    const elActivo = document.getElementById(elId);
+    if (elActivo) elActivo.classList.add('activo');
 
-    const esImagen = (clave === 'empresa.sello' || clave === 'cliente.firma');
+    const esImagen = (clave === 'empresa.sello' || clave === 'cliente.firma'
+                    || clave.startsWith('cliente.firma_'));
     // Ocultar/mostrar controles de fuente para campos imagen
     document.querySelectorAll('#campoConfig label:not(:last-of-type), #cfgFontSize, #cfgStyle, #cfgAlign')
         .forEach(el => el.style.display = esImagen ? 'none' : '');
@@ -374,8 +396,14 @@ function seleccionarCampo(clave, etiqueta) {
 function eliminarCampoActivo() {
     if (!campoActivo) return;
     mapeo = mapeo.filter(m => m.dato !== campoActivo);
-    const el = document.getElementById('ci-' + campoActivo.replace('.', '-'));
+    const el = document.getElementById('ci-' + campoActivo.replace(/\./g, '-').replace(/_/g, '-'));
     if (el) el.classList.remove('mapeado');
+    // Actualizar paneles dinámicos
+    if (campoActivo.startsWith('static.X_'))       renderizarPanelX();
+    if (campoActivo.startsWith('cliente.firma_'))   renderizarPanelFirmas();
+    campoActivo = null;
+    document.getElementById('campoConfig').classList.remove('visible');
+    document.getElementById('statusCampo').textContent = '👆 Selecciona un campo y arrastra en el PDF';
     dibujarRectangulos();
     actualizarContador();
 }
@@ -438,23 +466,85 @@ function actualizarContador() {
 // Inicializar mapeados
 mapeo.forEach(m => marcarMapeado(m.dato));
 
-// Contar obsoletos al cargar
-const obsoletos = mapeo.filter(m => !camposKeys.includes(m.dato));
+// Contar obsoletos al cargar (excluir X estáticas que son válidas)
+const obsoletos = mapeo.filter(m => !camposKeys.includes(m.dato) && !m.dato.startsWith('static.X_'));
 if (obsoletos.length > 0) {
     document.getElementById('statusCampo').textContent =
         `⚠️ ${obsoletos.length} campo(s) obsoleto(s) en el mapeo — usa 🧹 Limpiar`;
 }
 
-// Limpiar campos que ya no existen en la lista
+// Renderizar elementos dinámicos existentes
+renderizarPanelX();
+renderizarPanelFirmas();
+
+// ── Funciones para X estáticas ───────────────────────────────
+function agregarX() {
+    if (!pdfDoc) { alert('Sube el PDF primero.'); return; }
+    const existentesX = mapeo.filter(m => m.dato.startsWith('static.X_'));
+    const nums = existentesX.map(m => parseInt(m.dato.split('_')[1])).filter(n => !isNaN(n));
+    const siguiente = nums.length ? Math.max(...nums) + 1 : 1;
+    const clave = `static.X_${siguiente}`;
+    seleccionarCampo(clave, `✖ X #${siguiente}`);
+    document.getElementById('statusCampo').textContent = `✖ Arrastra en el PDF para colocar X #${siguiente}`;
+}
+
+function agregarFirmaExtra() {
+    if (!pdfDoc) { alert('Sube el PDF primero.'); return; }
+    // Las instancias extra empiezan en _2 (la original cliente.firma es la #1)
+    const existentes = mapeo.filter(m => m.dato.startsWith('cliente.firma_'));
+    const nums = existentes.map(m => parseInt(m.dato.split('_').pop())).filter(n => !isNaN(n));
+    const siguiente = nums.length ? Math.max(...nums) + 1 : 2;
+    const clave = `cliente.firma_${siguiente}`;
+    seleccionarCampo(clave, `✍️ Firma #${siguiente}`);
+    document.getElementById('statusCampo').textContent = `✍️ Arrastra en el PDF para colocar Firma #${siguiente}`;
+}
+
+function renderizarPanelX() {
+    document.querySelectorAll('.campo-item-x-dinamico').forEach(el => el.remove());
+    const lista = document.getElementById('listaCampos');
+    mapeo.filter(m => m.dato.startsWith('static.X_')).forEach(m => {
+        const num = m.dato.split('_')[1];
+        const div = document.createElement('div');
+        div.className = `campo-item es-x campo-item-x-dinamico ${campoActivo === m.dato ? 'activo' : ''}`;
+        div.dataset.clave = m.dato;
+        div.id = 'ci-' + m.dato.replace(/\./g, '-').replace(/_/g, '-');
+        div.innerHTML = `<div class="campo-dot"></div><span>✖ X #${num} (pág. ${m.pagina})</span>`;
+        div.onclick = () => seleccionarCampo(m.dato, `✖ X #${num}`);
+        lista.appendChild(div);
+    });
+}
+
+function renderizarPanelFirmas() {
+    document.querySelectorAll('.campo-item-firma-dinamico').forEach(el => el.remove());
+    const lista = document.getElementById('listaCampos');
+    mapeo.filter(m => m.dato.startsWith('cliente.firma_')).forEach(m => {
+        const num = m.dato.split('_').pop();
+        const div = document.createElement('div');
+        div.className = `campo-item es-x campo-item-firma-dinamico ${campoActivo === m.dato ? 'activo' : ''}`;
+        div.style.borderColor = '#2563eb'; div.style.color = '#93c5fd';
+        div.dataset.clave = m.dato;
+        div.id = 'ci-' + m.dato.replace(/\./g, '-').replace(/_/g, '-');
+        div.innerHTML = `<div class="campo-dot"></div><span>✍️ Firma #${num} (pág. ${m.pagina})</span>`;
+        div.onclick = () => seleccionarCampo(m.dato, `✍️ Firma #${num}`);
+        lista.appendChild(div);
+    });
+}
+
+// Limpiar campos que ya no existen en la lista (conservar X estáticas)
 function limpiarObsoletos() {
     const antes = mapeo.length;
-    mapeo = mapeo.filter(m => camposKeys.includes(m.dato));
+    mapeo = mapeo.filter(m =>
+        camposKeys.includes(m.dato) ||
+        m.dato.startsWith('static.X_') ||
+        m.dato.startsWith('cliente.firma_')
+    );
     const eliminados = antes - mapeo.length;
-    // Quitar clase mapeado de items que ya no existen
     document.querySelectorAll('.campo-item.mapeado').forEach(el => {
         const clave = el.dataset.clave;
         if (!mapeo.find(m => m.dato === clave)) el.classList.remove('mapeado');
     });
+    renderizarPanelX();
+    renderizarPanelFirmas();
     dibujarRectangulos();
     actualizarContador();
     // Guardar inmediatamente

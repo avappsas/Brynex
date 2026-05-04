@@ -150,7 +150,15 @@ class FormularioEpsService
             foreach ($campos as $campo) {
                 if ((int)($campo['pagina'] ?? 1) !== $p) continue;
 
-                $valor = $datos[$campo['dato'] ?? ''] ?? ($campo['default'] ?? '');
+                // Marcas X estáticas (static.X_1, static.X_2, …) → siempre 'X'
+                if (str_starts_with($campo['dato'] ?? '', 'static.X_')) {
+                    $valor = 'X';
+                // Firmas adicionales (cliente.firma_2, …) → misma imagen que cliente.firma
+                } elseif (str_starts_with($campo['dato'] ?? '', 'cliente.firma_')) {
+                    $valor = $datos['cliente.firma'] ?? '';
+                } else {
+                    $valor = $datos[$campo['dato'] ?? ''] ?? ($campo['default'] ?? '');
+                }
                 if ($valor === '') continue;
 
                 $fontSize = (float)($campo['font_size'] ?? 8);
