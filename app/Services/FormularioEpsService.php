@@ -204,7 +204,8 @@ class FormularioEpsService
                 // ── Campo imagen (sello/firma) ───────────────────────
                 if (($campo['tipo'] ?? '') === 'imagen'
                     || $campo['dato'] === 'empresa.sello'
-                    || $campo['dato'] === 'cliente.firma') {
+                    || $campo['dato'] === 'cliente.firma'
+                    || str_starts_with($campo['dato'] ?? '', 'cliente.firma_')) {
                     if ($valor && file_exists($valor) && $w > 0 && $h > 0) {
                         // Contener la imagen proporcionalmente (no estirar)
                         [$imgW, $imgH] = @getimagesize($valor) ?: [0, 0];
@@ -221,13 +222,20 @@ class FormularioEpsService
                     continue;
                 }
 
-                $pdf->SetXY($x, $y);
+                // ── Campo texto ────────────────────────────────────────
+                // El usuario dibuja el rect con el borde INFERIOR pegado a la línea del formulario.
+                // SetXY pone el cursor en la esquina SUPERIOR del cell, y la fuente ocupa
+                // ~fontSize pt desde esa Y. Para que el texto quede en la línea visible
+                // ajustamos Y al borde inferior menos la altura de la fuente + margen mínimo.
+                $cellH  = $fontSize + 1;               // celda justa alrededor del texto
+                $textY  = $y + $h - $cellH;            // anclar al fondo del rect
+
+                $pdf->SetXY($x, $textY);
 
                 if ($w > 0) {
-                    // Texto dentro del cuadro definido — centrado por defecto
-                    $pdf->Cell($w, $h, $valor, 0, 0, $align);
+                    $pdf->Cell($w, $cellH, $valor, 0, 0, $align);
                 } else {
-                    $pdf->Write($h, $valor);
+                    $pdf->Write($cellH, $valor);
                 }
             }
         }

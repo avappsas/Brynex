@@ -49,14 +49,14 @@
 
 /* ── Rectángulos mapeados ────────────────────────────── */
 .rect-overlay { position:absolute;border:2px solid;border-radius:2px;pointer-events:auto;
-               box-sizing:border-box;overflow:hidden;display:flex;align-items:center;
-               justify-content:center; }
+               box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column;
+               align-items:center;justify-content:flex-end; }
 .rect-overlay:hover { cursor:grab; }
 .rect-overlay.moviendo { cursor:grabbing !important; }
-.rect-preview-text { font-size:7.5px;color:rgba(255,255,255,0.90);font-weight:700;
-                     text-align:center;pointer-events:none;line-height:1.1;
-                     padding:1px 2px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;
-                     width:100%;text-shadow:0 1px 3px rgba(0,0,0,.7); }
+.rect-preview-text { font-size:7.5px;color:rgba(255,255,255,0.95);font-weight:700;
+                     text-align:center;pointer-events:none;line-height:1;
+                     padding:1px 2px 2px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;
+                     width:100%;text-shadow:0 1px 3px rgba(0,0,0,.8); }
 .rect-label   { position:absolute;top:-1.2em;left:0;font-size:0.55rem;font-weight:700;
                 color:#fff;padding:0 3px;border-radius:2px;white-space:nowrap; }
 /* Rectángulo de preview mientras arrastra */
