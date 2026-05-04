@@ -104,9 +104,9 @@ class FormularioEpsService
                 ? 'Dependiente' : 'Independiente',
             // ── Empresa / Razón Social ──────────────────────────────
             // Columnas reales en razones_sociales: direccion, telefonos, correos
-            'empresa.nit'              => $rs?->id            ?? '',
-            'empresa.dv'               => $rs?->dv            ?? '',
-            'empresa.nit_dv'           => ($rs?->id ?? '') . ($rs?->dv ? '-' . $rs->dv : ''),
+            'empresa.nit'              => $rs?->nit            ?? $rs?->id ?? '',
+            'empresa.dv'               => $rs?->dv             ?? '',
+            'empresa.nit_dv'           => ($rs?->nit ?? $rs?->id ?? '') . ($rs?->dv ? '-' . $rs->dv : ''),
             'empresa.tipo_doc'         => 'NIT',
             'empresa.razon_social'     => strtoupper($rs?->razon_social ?? ''),
             'empresa.direccion'        => strtoupper($rs?->direccion   ?? ''),
@@ -115,10 +115,14 @@ class FormularioEpsService
             // Departamento y municipio de la empresa: QUEMADOS (Valle del Cauca / Cali)
             'empresa.departamento'     => 'VALLE DEL CAUCA',
             'empresa.municipio'        => 'CALI',
-            // Sello / firma de la razón social (PNG por ID)
-            'empresa.sello'            => $rs?->id
-                ? storage_path('app/sellos/' . $rs->id . '.png')
-                : '',
+            // Sello / firma de la razón social — archivo: {nit}.png (fallback: {id}.png)
+            'empresa.sello'            => (function() use ($rs) {
+                if (!$rs) return '';
+                $nit = $rs->nit ?? $rs->id;
+                $porNit = storage_path('app/sellos/' . $nit . '.png');
+                $porId  = storage_path('app/sellos/' . $rs->id . '.png');
+                return file_exists($porNit) ? $porNit : (file_exists($porId) ? $porId : '');
+            })(),
             // Firma del cliente (PNG guardado en firma modal — clave: cedula)
             'cliente.firma'            => $c?->cedula
                 ? storage_path('app/firmas/' . $c->cedula . '.png')

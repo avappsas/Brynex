@@ -152,6 +152,56 @@ class RazonSocialController extends Controller
             ->with('success', '🗑️ Razón Social eliminada.');
     }
 
+    // ─── Subir sello ──────────────────────────────────────────────
+    public function subirSello(Request $request, int $id)
+    {
+        $aliadoId = session('aliado_id_activo');
+        $rs = DB::table('razones_sociales')
+            ->where('id', $id)
+            ->where('aliado_id', $aliadoId)
+            ->first();
+
+        abort_if(!$rs, 404);
+
+        $request->validate([
+            'sello' => 'required|file|mimes:png,jpg,jpeg,webp|max:5120',
+        ], [
+            'sello.required' => 'Selecciona una imagen para el sello.',
+            'sello.mimes'    => 'El sello debe ser PNG, JPG o WEBP.',
+            'sello.max'      => 'El sello no puede pesar más de 5 MB.',
+        ]);
+
+        // Nombre de archivo: usar nit si existe, si no el id
+        $nit      = $rs->nit ?? $rs->id;
+        $destDir  = storage_path('app/sellos');
+        $destFile = $destDir . '/' . $nit . '.png';
+
+        if (!is_dir($destDir)) {
+            mkdir($destDir, 0755, true);
+        }
+
+        // Convertir a PNG usando GD (independiente del formato de entrada)
+        $archivo = $request->file('sello');
+        $mime    = $archivo->getMimeType();
+
+        $img = match (true) {
+            str_contains($mime, 'jpeg') => imagecreatefromjpeg($archivo->getRealPath()),
+            str_contains($mime, 'webp') => imagecreatefromwebp($archivo->getRealPath()),
+            default                     => imagecreatefrompng($archivo->getRealPath()),
+        };
+
+        if (!$img) {
+            return back()->withErrors(['sello' => 'No se pudo procesar la imagen.']);
+        }
+
+        // Preservar transparencia PNG
+        imagesavealpha($img, true);
+        imagepng($img, $destFile, 6); // compresión 6
+        imagedestroy($img);
+
+        return back()->with('success', "✅ Sello guardado como {$nit}.png");
+    }
+
     // ─── Toggle estado rápido (AJAX) ─────────────────────────────
     public function toggleEstado(int $id)
     {
@@ -175,14 +225,33 @@ class RazonSocialController extends Controller
     private function validar(Request $request, ?int $editId = null): array
     {
         return $request->validate([
-            'id'          => 'required|integer|min:1',
-            'razon_social' => 'required|string|max:255',
-            'estado'      => 'nullable|in:Activa,Inactiva',
-            'arl_nit'     => 'nullable|integer',
-            'caja_nit'    => 'nullable|integer',
-            'observacion' => 'nullable|string|max:500',
+            'id'                   => 'required|integer|min:1',
+            'nit'                  => 'nullable|integer|min:1',
+            'dv'                   => 'nullable|integer|min:0|max:9',
+            'razon_social'         => 'required|string|max:255',
+            'estado'               => 'nullable|in:Activa,Inactiva',
+            'plan'                 => 'nullable|string|max:100',
+            'direccion'            => 'nullable|string|max:255',
+            'telefonos'            => 'nullable|string|max:255',
+            'correos'              => 'nullable|string|max:255',
+            'actividad_economica'  => 'nullable|string|max:255',
+            'objeto_social'        => 'nullable|string|max:500',
+            'observacion'          => 'nullable|string|max:500',
+            'salario_minimo'       => 'nullable|numeric|min:0',
+            'arl_nit'              => 'nullable|integer',
+            'caja_nit'             => 'nullable|integer',
+            'fecha_constitucion'   => 'nullable|date',
+            'fecha_limite_pago'    => 'nullable|integer|min:1|max:31',
+            'dia_habil'            => 'nullable|boolean',
+            'forma_presentacion'   => 'nullable|string|max:100',
+            'codigo_sucursal'      => 'nullable|string|max:50',
+            'nombre_sucursal'      => 'nullable|string|max:150',
+            'tel_formulario'       => 'nullable|string|max:100',
+            'correo_formulario'    => 'nullable|string|max:255',
+            'cedula_rep'           => 'nullable|string|max:30',
+            'nombre_rep'           => 'nullable|string|max:255',
         ], [
-            'id.required'          => 'El NIT es obligatorio.',
+            'id.required'          => 'El ID es obligatorio.',
             'razon_social.required' => 'El nombre es obligatorio.',
         ]);
     }

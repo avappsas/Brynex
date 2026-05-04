@@ -12,7 +12,7 @@ class RazonSocial extends BaseModel
     public $timestamps = false;
 
     protected $fillable = [
-        'id', 'dv', 'razon_social', 'estado', 'plan',
+        'id', 'nit', 'dv', 'razon_social', 'estado', 'plan',
         'direccion', 'telefonos', 'correos',
         'actividad_economica', 'objeto_social', 'observacion',
         'salario_minimo', 'arl_nit', 'caja_nit',
@@ -22,7 +22,7 @@ class RazonSocial extends BaseModel
         'notas_factura1', 'notas_factura2',
         'dir_formulario', 'tel_formulario', 'correo_formulario',
         'cedula_rep', 'nombre_rep',
-        'es_independiente',  // true = solo modalidades independientes (I Act, I Venc, Ext)
+        'es_independiente',
         'aliado_id', 'encargado_id',
     ];
 

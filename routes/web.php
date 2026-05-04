@@ -129,6 +129,7 @@ Route::middleware('auth')->group(function () {
         Route::put( 'configuracion/razones-sociales/{id}',         [$rsc, 'update'])      ->name('configuracion.razones.update');
         Route::delete('configuracion/razones-sociales/{id}',       [$rsc, 'destroy'])     ->name('configuracion.razones.destroy');
         Route::patch('configuracion/razones-sociales/{id}/estado', [$rsc, 'toggleEstado'])->name('configuracion.razones.estado');
+        Route::post('configuracion/razones-sociales/{id}/sello',   [$rsc, 'subirSello']) ->name('configuracion.razones.sello');
 
         // Formularios EPS — mapeo visual de coordenadas
         $ef = \App\Http\Controllers\Admin\EpsFormularioController::class;
