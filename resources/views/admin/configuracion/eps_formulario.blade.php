@@ -48,7 +48,15 @@
 #pdfCanvas   { display:block; }
 
 /* ── Rectángulos mapeados ────────────────────────────── */
-.rect-overlay { position:absolute;border:2px solid;border-radius:2px;pointer-events:none;box-sizing:border-box; }
+.rect-overlay { position:absolute;border:2px solid;border-radius:2px;pointer-events:auto;
+               box-sizing:border-box;overflow:hidden;display:flex;align-items:center;
+               justify-content:center; }
+.rect-overlay:hover { cursor:grab; }
+.rect-overlay.moviendo { cursor:grabbing !important; }
+.rect-preview-text { font-size:7.5px;color:rgba(255,255,255,0.90);font-weight:700;
+                     text-align:center;pointer-events:none;line-height:1.1;
+                     padding:1px 2px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;
+                     width:100%;text-shadow:0 1px 3px rgba(0,0,0,.7); }
 .rect-label   { position:absolute;top:-1.2em;left:0;font-size:0.55rem;font-weight:700;
                 color:#fff;padding:0 3px;border-radius:2px;white-space:nowrap; }
 /* Rectángulo de preview mientras arrastra */
@@ -215,6 +223,74 @@ const COLORES = ['#ef4444','#f97316','#eab308','#22c55e','#14b8a6','#3b82f6',
                  '#15803d','#c2410c','#1d4ed8','#6d28d9','#9f1239','#047857',
                  '#92400e','#1e3a8a','#0c4a6e'];
 
+// ── Textos de muestra por campo ─────────────────────────────
+const PREVIEWS = {
+    'cliente.primer_apellido'        : 'GARCÍA',
+    'cliente.segundo_apellido'       : 'LÓPEZ',
+    'cliente.primer_nombre'          : 'CARLOS',
+    'cliente.segundo_nombre'         : 'ANDRÉS',
+    'cliente.tipo_doc'               : 'CC',
+    'cliente.cedula'                 : '1234567890',
+    'cliente.genero'                 : 'M',
+    'cliente.genero_m'               : 'X',
+    'cliente.genero_f'               : '',
+    'cliente.firma'                  : '✍ firma',
+    'cliente.fecha_nacimiento'       : '05/02/1990',
+    'cliente.fecha_nacimiento_d_esp' : '0 5',
+    'cliente.fecha_nacimiento_m_esp' : '0 2',
+    'cliente.fecha_nacimiento_a_esp' : '1 9 9 0',
+    'cliente.fecha_nacimiento_d1'    : '0',
+    'cliente.fecha_nacimiento_d2'    : '5',
+    'cliente.fecha_nacimiento_m1'    : '0',
+    'cliente.fecha_nacimiento_m2'    : '2',
+    'cliente.fecha_nacimiento_a1'    : '1',
+    'cliente.fecha_nacimiento_a2'    : '9',
+    'cliente.fecha_nacimiento_a3'    : '9',
+    'cliente.fecha_nacimiento_a4'    : '0',
+    'cliente.direccion'              : 'CRA 10 # 25-30',
+    'cliente.telefono'               : '6023456789',
+    'cliente.celular'                : '3001234567',
+    'cliente.correo'                 : 'cliente@email.com',
+    'cliente.departamento'           : 'VALLE DEL CAUCA',
+    'cliente.municipio'              : 'CALI',
+    'cliente.barrio'                 : 'SAN FERNANDO',
+    'cliente.sisben'                 : 'A1',
+    'cliente.ips'                    : 'IPS SALUD TOTAL',
+    'cliente.ocupacion'              : 'OPERARIO',
+    'static.COLOMBIANA'              : 'COLOMBIANA',
+    'arl.nombre'                     : 'SURA ARL',
+    'pension.nombre'                 : 'PORVENIR',
+    'contrato.salario'               : '1.300.000',
+    'empresa.razon_social'           : 'EMPRESA S.A.S.',
+    'empresa.tipo_doc'               : 'NIT',
+    'empresa.nit'                    : '900123456',
+    'empresa.nit_dv'                 : '900123456-1',
+    'empresa.direccion'              : 'CLL 15 # 5-20',
+    'empresa.telefono'               : '6024567890',
+    'empresa.correo'                 : 'empresa@mail.com',
+    'empresa.departamento'           : 'VALLE DEL CAUCA',
+    'empresa.municipio'              : 'CALI',
+    'empresa.sello'                  : '🖼 sello',
+    'contrato.cargo'                 : 'AUXILIAR ADMIN.',
+    'contrato.fecha_ingreso'         : '01/03/2026',
+    'contrato.fecha_ingreso_d_esp'   : '0 1',
+    'contrato.fecha_ingreso_m_esp'   : '0 3',
+    'contrato.fecha_ingreso_a_esp'   : '2 0 2 6',
+    'contrato.fecha_ingreso_d1'      : '0',
+    'contrato.fecha_ingreso_d2'      : '1',
+    'contrato.fecha_ingreso_m1'      : '0',
+    'contrato.fecha_ingreso_m2'      : '3',
+    'contrato.fecha_ingreso_a1'      : '2',
+    'contrato.fecha_ingreso_a2'      : '0',
+    'contrato.fecha_ingreso_a3'      : '2',
+    'contrato.fecha_ingreso_a4'      : '6',
+};
+function previewDe(clave) {
+    if (clave.startsWith('static.X_'))     return 'X';
+    if (clave.startsWith('cliente.firma_')) return '✍ firma';
+    return PREVIEWS[clave] ?? '';
+}
+
 function colorDe(clave) {
     const idx = camposKeys.indexOf(clave);
     return COLORES[idx % COLORES.length] ?? '#64748b';
@@ -268,58 +344,101 @@ function cambiarZoom(d) {
     renderizarPagina();
 }
 
-// ── Drag-to-draw rectangulo ──────────────────────────────────
-let drag = { active: false, startX: 0, startY: 0 };
+// ── Drag-to-draw / drag-to-move ─────────────────────────────
+let drag = { active: false, startX: 0, startY: 0, mode: 'draw', movingDato: null, offX: 0, offY: 0 };
 
 const canvasWrap = document.getElementById('canvasWrap');
 const preview    = document.getElementById('rectPreview');
 
-canvasWrap.addEventListener('mousedown', e => {
-    if (!campoActivo || !pdfDoc) return;
-    e.preventDefault();
-    const rect = canvasWrap.getBoundingClientRect();
-    drag.active = true;
-    drag.startX = e.clientX - rect.left + canvasWrap.scrollLeft;
-    drag.startY = e.clientY - rect.top  + canvasWrap.scrollTop;
-    preview.style.left    = drag.startX + 'px';
-    preview.style.top     = drag.startY + 'px';
-    preview.style.width   = '0';
-    preview.style.height  = '0';
-    preview.style.display = 'block';
+/** Detecta si (px, py) está dentro de un rectángulo del mapeo en la página actual */
+function rectEnPunto(px, py) {
+    return mapeo.find(m =>
+        m.pagina === pageNum &&
+        px >= m.x * zoom && px <= (m.x + m.width)  * zoom &&
+        py >= m.y * zoom && py <= (m.y + m.height) * zoom
+    ) ?? null;
+}
+
+// Cursor: detectar si el mouse está sobre un rect para mostrar manito
+canvasWrap.addEventListener('mousemove', e => {
+    const wr = canvasWrap.getBoundingClientRect();
+    const mx = e.clientX - wr.left + canvasWrap.scrollLeft;
+    const my = e.clientY - wr.top  + canvasWrap.scrollTop;
+
+    if (drag.active) {
+        if (drag.mode === 'draw') {
+            const x = Math.min(drag.startX, mx), y = Math.min(drag.startY, my);
+            preview.style.left   = x + 'px'; preview.style.top    = y + 'px';
+            preview.style.width  = Math.abs(mx - drag.startX) + 'px';
+            preview.style.height = Math.abs(my - drag.startY) + 'px';
+        } else {
+            // mover rect
+            const m = mapeo.find(r => r.dato === drag.movingDato);
+            if (m) {
+                m.x = Math.max(0, Math.round(((mx - drag.offX) / zoom) * 10) / 10);
+                m.y = Math.max(0, Math.round(((my - drag.offY) / zoom) * 10) / 10);
+                dibujarRectangulos();
+            }
+        }
+        return;
+    }
+    // Sin arrastre: cambiar cursor si hay rect debajo
+    const bajo = rectEnPunto(mx, my);
+    canvasWrap.style.cursor = bajo ? 'grab' : (campoActivo ? 'crosshair' : 'default');
 });
 
-canvasWrap.addEventListener('mousemove', e => {
-    if (!drag.active) return;
-    const rect  = canvasWrap.getBoundingClientRect();
-    const curX  = e.clientX - rect.left + canvasWrap.scrollLeft;
-    const curY  = e.clientY - rect.top  + canvasWrap.scrollTop;
-    const x     = Math.min(drag.startX, curX);
-    const y     = Math.min(drag.startY, curY);
-    const w     = Math.abs(curX - drag.startX);
-    const h     = Math.abs(curY - drag.startY);
-    preview.style.left   = x + 'px';
-    preview.style.top    = y + 'px';
-    preview.style.width  = w + 'px';
-    preview.style.height = h + 'px';
+canvasWrap.addEventListener('mousedown', e => {
+    if (!pdfDoc) return;
+    e.preventDefault();
+    const wr = canvasWrap.getBoundingClientRect();
+    const mx = e.clientX - wr.left + canvasWrap.scrollLeft;
+    const my = e.clientY - wr.top  + canvasWrap.scrollTop;
+
+    const bajo = rectEnPunto(mx, my);
+    if (bajo) {
+        // ── modo mover ──
+        drag.active      = true;
+        drag.mode        = 'move';
+        drag.movingDato  = bajo.dato;
+        drag.offX        = mx - bajo.x * zoom;
+        drag.offY        = my - bajo.y * zoom;
+        canvasWrap.style.cursor = 'grabbing';
+        // También seleccionar el campo
+        seleccionarCampo(bajo.dato, previewDe(bajo.dato));
+        return;
+    }
+    if (!campoActivo) return;
+    // ── modo dibujar ──
+    drag.active = true;
+    drag.mode   = 'draw';
+    drag.startX = mx; drag.startY = my;
+    preview.style.left = mx + 'px'; preview.style.top = my + 'px';
+    preview.style.width = '0'; preview.style.height = '0';
+    preview.style.display = 'block';
 });
 
 canvasWrap.addEventListener('mouseup', e => {
     if (!drag.active) return;
     drag.active = false;
+    canvasWrap.style.cursor = campoActivo ? 'crosshair' : 'default';
+
+    if (drag.mode === 'move') {
+        // Guardar nueva posición (ya se actualizó en mousemove)
+        renderizarPanelX(); renderizarPanelFirmas();
+        return;
+    }
+
+    // ── fin de dibujo ──
     preview.style.display = 'none';
+    const wr   = canvasWrap.getBoundingClientRect();
+    const curX = e.clientX - wr.left + canvasWrap.scrollLeft;
+    const curY = e.clientY - wr.top  + canvasWrap.scrollTop;
+    const pxX  = Math.min(drag.startX, curX);
+    const pxY  = Math.min(drag.startY, curY);
+    const pxW  = Math.abs(curX - drag.startX);
+    const pxH  = Math.abs(curY - drag.startY);
+    if (pxW < 5 || pxH < 5) return;
 
-    const rect  = canvasWrap.getBoundingClientRect();
-    const curX  = e.clientX - rect.left + canvasWrap.scrollLeft;
-    const curY  = e.clientY - rect.top  + canvasWrap.scrollTop;
-
-    const pxX = Math.min(drag.startX, curX);
-    const pxY = Math.min(drag.startY, curY);
-    const pxW = Math.abs(curX - drag.startX);
-    const pxH = Math.abs(curY - drag.startY);
-
-    if (pxW < 5 || pxH < 5) return; // demasiado pequeño
-
-    // Convertir px → pt PDF (dividir por zoom)
     const ptX = Math.round((pxX / zoom) * 10) / 10;
     const ptY = Math.round((pxY / zoom) * 10) / 10;
     const ptW = Math.round((pxW / zoom) * 10) / 10;
@@ -331,17 +450,13 @@ canvasWrap.addEventListener('mouseup', e => {
     const obj = {
         dato      : campoActivo,
         pagina    : pageNum,
-        x         : ptX,
-        y         : ptY,
-        width     : ptW,
-        height    : ptH,
+        x         : ptX, y : ptY, width : ptW, height : ptH,
         font_size : parseFloat(document.getElementById('cfgFontSize').value) || 9,
         style     : document.getElementById('cfgStyle').value,
         align     : document.getElementById('cfgAlign').value,
         tipo      : esImagen ? 'imagen' : 'texto',
     };
 
-    // Las X pueden tener múltiples instancias — solo reemplazar si es el mismo ID exacto
     const idx = mapeo.findIndex(m => m.dato === campoActivo);
     if (idx >= 0) mapeo[idx] = obj;
     else          mapeo.push(obj);
@@ -355,7 +470,12 @@ canvasWrap.addEventListener('mouseup', e => {
 
 // Cancelar drag si sale del área
 canvasWrap.addEventListener('mouseleave', () => {
-    if (drag.active) { drag.active = false; preview.style.display = 'none'; }
+    if (drag.active) {
+        drag.active = false;
+        preview.style.display = 'none';
+        canvasWrap.style.cursor = 'default';
+        if (drag.mode === 'move') { renderizarPanelX(); renderizarPanelFirmas(); }
+    }
 });
 
 // ── Selección de campo ───────────────────────────────────────
@@ -415,31 +535,46 @@ function marcarMapeado(clave) {
 
 // ── Dibujar rectángulos en el PDF ────────────────────────────
 function dibujarRectangulos() {
-    const layer  = document.getElementById('pinLayer');
+    const layer = document.getElementById('pinLayer');
     layer.innerHTML = '';
 
     mapeo.filter(m => m.pagina === pageNum).forEach(m => {
-        const esObsoleto = !camposKeys.includes(m.dato);
-        const color = esObsoleto ? '#ef4444' : colorDe(m.dato);
-        const label = esObsoleto
-            ? `⚠️ OBSOLETO: ${m.dato}`
-            : (@json($campos)[m.dato] ?? m.dato);
+        const esObsoleto = !camposKeys.includes(m.dato)
+                         && !m.dato.startsWith('static.X_')
+                         && !m.dato.startsWith('cliente.firma_');
+        const color  = esObsoleto ? '#ef4444' : colorDe(m.dato);
+        const label  = esObsoleto ? `⚠️ OBSOLETO: ${m.dato}` : (@json($campos)[m.dato] ?? m.dato);
+        const sample = previewDe(m.dato);
 
         const div = document.createElement('div');
         div.className = 'rect-overlay';
+        div.dataset.dato = m.dato;
         div.style.left        = (m.x * zoom) + 'px';
         div.style.top         = (m.y * zoom) + 'px';
-        div.style.width       = (m.width * zoom) + 'px';
+        div.style.width       = (m.width  * zoom) + 'px';
         div.style.height      = (m.height * zoom) + 'px';
         div.style.borderColor = color;
-        div.style.background  = color + (esObsoleto ? '44' : '22');
+        div.style.background  = color + (esObsoleto ? '44' : '33');
         if (esObsoleto) div.style.borderStyle = 'dashed';
 
+        // Etiqueta (nombre del campo)
         const lbl = document.createElement('div');
         lbl.className   = 'rect-label';
         lbl.textContent = label.length > 28 ? label.slice(0, 28) + '…' : label;
         lbl.style.background = color;
         div.appendChild(lbl);
+
+        // Texto de muestra centrado dentro del rect
+        if (sample) {
+            const prev = document.createElement('div');
+            prev.className   = 'rect-preview-text';
+            prev.textContent = sample;
+            // Escalar fuente según alto del rect para que quepa
+            const pxH = m.height * zoom;
+            prev.style.fontSize = Math.min(Math.max(pxH * 0.55, 7), 13) + 'px';
+            div.appendChild(prev);
+        }
+
         layer.appendChild(div);
     });
 }
