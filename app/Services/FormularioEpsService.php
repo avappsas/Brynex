@@ -46,13 +46,22 @@ class FormularioEpsService
             'cliente.genero'           => $genero,
             'cliente.genero_m'         => $esM ? 'X' : '',  // Cuadro Masculino
             'cliente.genero_f'         => $esF ? 'X' : '',  // Cuadro Femenino
-            'cliente.fecha_nacimiento'       => $c?->fecha_nacimiento?->format('d/m/Y') ?? '',
-            'cliente.fecha_nacimiento_d'     => $c?->fecha_nacimiento?->format('d')     ?? '',
-            'cliente.fecha_nacimiento_m'     => $c?->fecha_nacimiento?->format('m')     ?? '',
-            'cliente.fecha_nacimiento_a'     => $c?->fecha_nacimiento?->format('Y')     ?? '',
-            'cliente.fecha_nacimiento_d_esp' => $this->digs($c?->fecha_nacimiento?->format('d')),
-            'cliente.fecha_nacimiento_m_esp' => $this->digs($c?->fecha_nacimiento?->format('m')),
-            'cliente.fecha_nacimiento_a_esp' => $this->digs($c?->fecha_nacimiento?->format('Y')),
+            'cliente.fecha_nacimiento'         => $c?->fecha_nacimiento?->format('d/m/Y') ?? '',
+            'cliente.fecha_nacimiento_d'        => $c?->fecha_nacimiento?->format('d')     ?? '',
+            'cliente.fecha_nacimiento_m'        => $c?->fecha_nacimiento?->format('m')     ?? '',
+            'cliente.fecha_nacimiento_a'        => $c?->fecha_nacimiento?->format('Y')     ?? '',
+            'cliente.fecha_nacimiento_d_esp'    => $this->digs($c?->fecha_nacimiento?->format('d')),
+            'cliente.fecha_nacimiento_m_esp'    => $this->digs($c?->fecha_nacimiento?->format('m')),
+            'cliente.fecha_nacimiento_a_esp'    => $this->digs($c?->fecha_nacimiento?->format('Y')),
+            // Dígitos individuales — nacimiento
+            'cliente.fecha_nacimiento_d1'       => $this->dig($c?->fecha_nacimiento?->format('d'), 0),
+            'cliente.fecha_nacimiento_d2'       => $this->dig($c?->fecha_nacimiento?->format('d'), 1),
+            'cliente.fecha_nacimiento_m1'       => $this->dig($c?->fecha_nacimiento?->format('m'), 0),
+            'cliente.fecha_nacimiento_m2'       => $this->dig($c?->fecha_nacimiento?->format('m'), 1),
+            'cliente.fecha_nacimiento_a1'       => $this->dig($c?->fecha_nacimiento?->format('Y'), 0),
+            'cliente.fecha_nacimiento_a2'       => $this->dig($c?->fecha_nacimiento?->format('Y'), 1),
+            'cliente.fecha_nacimiento_a3'       => $this->dig($c?->fecha_nacimiento?->format('Y'), 2),
+            'cliente.fecha_nacimiento_a4'       => $this->dig($c?->fecha_nacimiento?->format('Y'), 3),
             'cliente.rh'               => $c?->rh       ?? '',
             'cliente.telefono'         => $c?->telefono  ?? '',
             'cliente.celular'          => $c?->celular   ?? '',
@@ -70,13 +79,22 @@ class FormularioEpsService
             'arl.nombre'               => strtoupper($contrato->arl?->nombre_arl ?? $contrato->arl?->razon_social ?? ''),
             'pension.nombre'           => strtoupper($contrato->pension?->razon_social ?? ''),
             // ── Contrato ───────────────────────────────────────────
-            'contrato.fecha_ingreso'       => $contrato->fecha_ingreso?->format('d/m/Y') ?? '',
-            'contrato.fecha_ingreso_d'     => $contrato->fecha_ingreso?->format('d')     ?? '',
-            'contrato.fecha_ingreso_m'     => $contrato->fecha_ingreso?->format('m')     ?? '',
-            'contrato.fecha_ingreso_a'     => $contrato->fecha_ingreso?->format('Y')     ?? '',
-            'contrato.fecha_ingreso_d_esp' => $this->digs($contrato->fecha_ingreso?->format('d')),
-            'contrato.fecha_ingreso_m_esp' => $this->digs($contrato->fecha_ingreso?->format('m')),
-            'contrato.fecha_ingreso_a_esp' => $this->digs($contrato->fecha_ingreso?->format('Y')),
+            'contrato.fecha_ingreso'           => $contrato->fecha_ingreso?->format('d/m/Y') ?? '',
+            'contrato.fecha_ingreso_d'         => $contrato->fecha_ingreso?->format('d')     ?? '',
+            'contrato.fecha_ingreso_m'         => $contrato->fecha_ingreso?->format('m')     ?? '',
+            'contrato.fecha_ingreso_a'         => $contrato->fecha_ingreso?->format('Y')     ?? '',
+            'contrato.fecha_ingreso_d_esp'     => $this->digs($contrato->fecha_ingreso?->format('d')),
+            'contrato.fecha_ingreso_m_esp'     => $this->digs($contrato->fecha_ingreso?->format('m')),
+            'contrato.fecha_ingreso_a_esp'     => $this->digs($contrato->fecha_ingreso?->format('Y')),
+            // Dígitos individuales — ingreso
+            'contrato.fecha_ingreso_d1'        => $this->dig($contrato->fecha_ingreso?->format('d'), 0),
+            'contrato.fecha_ingreso_d2'        => $this->dig($contrato->fecha_ingreso?->format('d'), 1),
+            'contrato.fecha_ingreso_m1'        => $this->dig($contrato->fecha_ingreso?->format('m'), 0),
+            'contrato.fecha_ingreso_m2'        => $this->dig($contrato->fecha_ingreso?->format('m'), 1),
+            'contrato.fecha_ingreso_a1'        => $this->dig($contrato->fecha_ingreso?->format('Y'), 0),
+            'contrato.fecha_ingreso_a2'        => $this->dig($contrato->fecha_ingreso?->format('Y'), 1),
+            'contrato.fecha_ingreso_a3'        => $this->dig($contrato->fecha_ingreso?->format('Y'), 2),
+            'contrato.fecha_ingreso_a4'        => $this->dig($contrato->fecha_ingreso?->format('Y'), 3),
             'contrato.salario'         => $contrato->salario
                 ? number_format((float)$contrato->salario, 0, ',', '.') : '',
             'contrato.ibc'             => $contrato->ibc
@@ -128,6 +146,13 @@ class FormularioEpsService
     {
         if (!$valor) return '';
         return implode(' ', str_split($valor));
+    }
+
+    /** Extrae un dígito individual en la posición $pos (0-based): dig('05', 0) → '0' */
+    protected function dig(?string $valor, int $pos): string
+    {
+        if (!$valor) return '';
+        return $valor[$pos] ?? '';
     }
 
     protected function rellenarPdf(string $rutaPdf, array $campos, array $datos): string

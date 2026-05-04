@@ -23,10 +23,6 @@ class EpsFormularioController extends Controller
             'cliente.genero_m'         => 'Género — cuadro MASCULINO (X si es M)',
             'cliente.genero_f'         => 'Género — cuadro FEMENINO (X si es F)',
             'cliente.firma'            => '✍️ FIRMA del cliente (imagen PNG)',
-            'cliente.fecha_nacimiento'       => 'Fecha de nacimiento (dd/mm/aaaa)',
-            'cliente.fecha_nacimiento_d_esp' => 'Fecha nacimiento — DÍA espaciado (0 5)',
-            'cliente.fecha_nacimiento_m_esp' => 'Fecha nacimiento — MES espaciado (0 2)',
-            'cliente.fecha_nacimiento_a_esp' => 'Fecha nacimiento — AÑO espaciado (1 9 9 0)',
             'static.COLOMBIANA'        => 'Nacionalidad (predeterminada: COLOMBIANA)',
             'arl.nombre'               => 'Nombre ARL',
             'pension.nombre'           => 'Nombre Pensión',
@@ -52,12 +48,42 @@ class EpsFormularioController extends Controller
             'empresa.departamento'     => 'Departamento de la empresa',
             'empresa.municipio'        => 'Municipio de la empresa',
             'empresa.sello'            => '🖼️ SELLO / FIRMA (imagen PNG)',
-            // ── Contrato ───────────────────────────────────────────
-            'contrato.fecha_ingreso'       => 'Fecha de ingreso (dd/mm/aaaa)',
-            'contrato.fecha_ingreso_d_esp' => 'Fecha ingreso — DÍA espaciado (0 5)',
-            'contrato.fecha_ingreso_m_esp' => 'Fecha ingreso — MES espaciado (0 2)',
-            'contrato.fecha_ingreso_a_esp' => 'Fecha ingreso — AÑO espaciado (2 0 2 6)',
             'contrato.cargo'           => 'Cargo / Ocupación contrato',
+
+            // ══ FECHAS ════════════════════════════════════════════
+            // ── Fecha de nacimiento ────────────────────────────────
+            'cliente.fecha_nacimiento'         => '📅 Nac. — Fecha completa (dd/mm/aaaa)',
+            'cliente.fecha_nacimiento_d_esp'   => '📅 Nac. — DÍA espaciado (0 5)',
+            'cliente.fecha_nacimiento_m_esp'   => '📅 Nac. — MES espaciado (0 2)',
+            'cliente.fecha_nacimiento_a_esp'   => '📅 Nac. — AÑO espaciado (1 9 9 0)',
+            // Día individual
+            'cliente.fecha_nacimiento_d1'      => '📅 Nac. — DÍA dígito 1  (ej: 0)',
+            'cliente.fecha_nacimiento_d2'      => '📅 Nac. — DÍA dígito 2  (ej: 5)',
+            // Mes individual
+            'cliente.fecha_nacimiento_m1'      => '📅 Nac. — MES dígito 1  (ej: 0)',
+            'cliente.fecha_nacimiento_m2'      => '📅 Nac. — MES dígito 2  (ej: 2)',
+            // Año individual
+            'cliente.fecha_nacimiento_a1'      => '📅 Nac. — AÑO dígito 1  (ej: 1)',
+            'cliente.fecha_nacimiento_a2'      => '📅 Nac. — AÑO dígito 2  (ej: 9)',
+            'cliente.fecha_nacimiento_a3'      => '📅 Nac. — AÑO dígito 3  (ej: 9)',
+            'cliente.fecha_nacimiento_a4'      => '📅 Nac. — AÑO dígito 4  (ej: 0)',
+
+            // ── Fecha de ingreso ───────────────────────────────────
+            'contrato.fecha_ingreso'           => '📅 Ing. — Fecha completa (dd/mm/aaaa)',
+            'contrato.fecha_ingreso_d_esp'     => '📅 Ing. — DÍA espaciado (0 5)',
+            'contrato.fecha_ingreso_m_esp'     => '📅 Ing. — MES espaciado (0 2)',
+            'contrato.fecha_ingreso_a_esp'     => '📅 Ing. — AÑO espaciado (2 0 2 6)',
+            // Día individual
+            'contrato.fecha_ingreso_d1'        => '📅 Ing. — DÍA dígito 1  (ej: 0)',
+            'contrato.fecha_ingreso_d2'        => '📅 Ing. — DÍA dígito 2  (ej: 5)',
+            // Mes individual
+            'contrato.fecha_ingreso_m1'        => '📅 Ing. — MES dígito 1  (ej: 0)',
+            'contrato.fecha_ingreso_m2'        => '📅 Ing. — MES dígito 2  (ej: 2)',
+            // Año individual
+            'contrato.fecha_ingreso_a1'        => '📅 Ing. — AÑO dígito 1  (ej: 2)',
+            'contrato.fecha_ingreso_a2'        => '📅 Ing. — AÑO dígito 2  (ej: 0)',
+            'contrato.fecha_ingreso_a3'        => '📅 Ing. — AÑO dígito 3  (ej: 2)',
+            'contrato.fecha_ingreso_a4'        => '📅 Ing. — AÑO dígito 4  (ej: 6)',
         ];
     }
 
