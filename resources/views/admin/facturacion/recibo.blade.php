@@ -1285,6 +1285,76 @@ $nomAliado  = $aliadoObj?->nombre ?? $aliadoObj?->razon_social ?? 'BryNex';
 
 </div>{{-- /fact-body --}}
 
+{{-- ══ FORMA DE PAGO — siempre visible (vista simple y detallada) ══ --}}
+@php
+$fpLabel = match($factura->forma_pago ?? '') {
+    'consignacion' => '🏦 Consignación',
+    'efectivo'     => '💵 Efectivo',
+    'mixto'        => '💰 Mixto (efectivo + consignación)',
+    'prestamo'     => '💳 Préstamo',
+    default        => ucfirst(str_replace('_',' ', $factura->forma_pago ?? '—')),
+};
+@endphp
+<div style="border-top:1.5px solid #e2e8f0;padding:.55rem 1.2rem;background:#f8fafc;">
+    <div style="font-size:.6rem;font-weight:800;color:#1e3a5f;text-transform:uppercase;letter-spacing:.08em;margin-bottom:.35rem;padding-bottom:.2rem;border-bottom:1.5px solid #bfdbfe;">
+        Forma de Pago
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:.5rem 1.5rem;align-items:flex-start;">
+
+        {{-- Tipo --}}
+        <div style="display:flex;align-items:center;gap:.35rem;font-size:.77rem;">
+            <span style="color:#64748b;font-weight:600;">Tipo:</span>
+            <span style="font-weight:800;color:#0f172a;">{{ $fpLabel }}</span>
+        </div>
+
+        {{-- Efectivo --}}
+        @if($totEfect > 0)
+        <div style="display:flex;align-items:center;gap:.35rem;font-size:.77rem;color:#15803d;">
+            <span style="font-weight:600;">💵 Efectivo:</span>
+            <strong>{{ $fmt($totEfect) }}</strong>
+        </div>
+        @endif
+
+        {{-- Consignaciones --}}
+        @foreach($factura->consignaciones as $csg)
+        <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:7px;padding:.3rem .65rem;font-size:.75rem;display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;">
+            <span style="color:#1d4ed8;font-weight:700;">
+                🏦 {{ $csg->bancoCuenta?->nombre ?? 'Banco' }}
+                @if($csg->confirmado) <span style="color:#15803d;font-size:.65rem;">✓ Confirmado</span> @endif
+            </span>
+            <span style="color:#475569;font-weight:800;">{{ $fmt($csg->valor) }}</span>
+            <span style="color:#94a3b8;font-size:.68rem;">
+                {{ sqldate($csg->fecha)->format('d/m/Y') }}
+                @if($csg->referencia) · Ref: {{ $csg->referencia }} @endif
+                @if($csg->bancoCuenta?->tipo_cuenta) · {{ $csg->bancoCuenta->tipo_cuenta }} @endif
+            </span>
+            @if($csg->imagen_path)
+            <a href="#"
+               onclick="verSoporte('{{ route('admin.facturacion.consignacion.imagen.ver', $csg->id) }}');return false;"
+               style="background:#e0f2fe;color:#0369a1;border:1px solid #bae6fd;border-radius:4px;padding:0 6px;font-size:.62rem;text-decoration:none;font-weight:700;">
+                🖼️ Ver soporte
+            </a>
+            @endif
+        </div>
+        @endforeach
+
+        {{-- Préstamo --}}
+        @if($totPrest > 0)
+        <div style="display:flex;align-items:center;gap:.35rem;font-size:.77rem;color:#7c3aed;">
+            <span style="font-weight:600;">💳 Préstamo pendiente:</span>
+            <strong>{{ $fmt($totPrest) }}</strong>
+        </div>
+        @endif
+
+    </div>
+    {{-- Observación --}}
+    @if($factura->observacion)
+    <div style="margin-top:.35rem;font-size:.68rem;color:#94a3b8;font-style:italic;">
+        📝 {{ $factura->observacion }}
+    </div>
+    @endif
+</div>
+
 {{-- PIE: Nota Legal + Total --}}
 <div class="fact-footer-area">
     <div class="fact-nota">
