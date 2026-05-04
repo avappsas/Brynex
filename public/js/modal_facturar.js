@@ -60,6 +60,317 @@ const MF = (function () {
         _totalAfil = cfg.costoAfiliacion || 0;
     }
 
+    // ── Helper: asignar un File a una fila de consignación ────────
+    function _applyFileToConsig(row, file) {
+        if (!row || !file) return;
+        const inp  = row.querySelector('.mf-consig-img-inp');
+        const icon = row.querySelector('.mf-consig-img-icon');
+        const lbl  = row.querySelector('.mf-consig-img-lbl');
+        if (!inp) return;
+        try {
+            const dt = new DataTransfer();
+            dt.items.add(file);
+            inp.files = dt.files;
+        } catch (_) {
+            inp._pastedFile = file;
+        }
+        if (icon) { icon.textContent = '\uD83D\uDDBC\uFE0F'; icon.style.color = '#22c55e'; }
+        if (lbl)  lbl.title = '\u2705 ' + file.name + ' \u2014 Click para cambiar';
+    }
+
+    // ── Helper: obtener el archivo de una fila (input o _pastedFile) ──
+    function _getConsigFile(row) {
+        const inp = row ? row.querySelector('.mf-consig-img-inp') : null;
+        if (!inp) return null;
+        if (inp.files && inp.files[0]) return inp.files[0];
+        return inp._pastedFile || null;
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    //  MINI-MODAL DE ADJUNTO: click en 📎 abre preview + confirmar
+    // ══════════════════════════════════════════════════════════════
+    let _adjTargetRow  = null;   // fila de consig activa
+    let _adjPendFile   = null;   // archivo pendiente de confirmar
+
+    function _initAdjuntoModal() {
+        if (document.getElementById('mfadj-overlay')) return; // ya existe
+
+        // ── CSS ──
+        const style = document.createElement('style');
+        style.textContent = `
+        #mfadj-overlay {
+            position:fixed;inset:0;z-index:4000;
+            background:rgba(0,0,0,.55);backdrop-filter:blur(4px);
+            display:flex;align-items:center;justify-content:center;padding:1rem;
+        }
+        #mfadj-box {
+            background:#fff;border-radius:16px;width:min(440px,96vw);
+            box-shadow:0 24px 80px rgba(0,0,0,.4),0 0 0 1px rgba(255,255,255,.08);
+            overflow:hidden;display:flex;flex-direction:column;
+        }
+        #mfadj-hdr {
+            background:linear-gradient(135deg,#0f172a,#1e3a5f);
+            padding:.7rem 1.1rem;display:flex;align-items:center;gap:.6rem;
+            justify-content:space-between;
+        }
+        #mfadj-hdr-title {
+            font-size:.88rem;font-weight:800;color:#fff;
+            display:flex;align-items:center;gap:.45rem;
+        }
+        #mfadj-close {
+            background:rgba(255,255,255,.12);border:none;color:rgba(255,255,255,.7);
+            width:26px;height:26px;border-radius:6px;cursor:pointer;font-size:.9rem;
+            display:flex;align-items:center;justify-content:center;
+            transition:background .15s;
+        }
+        #mfadj-close:hover{background:rgba(255,255,255,.22);color:#fff;}
+        #mfadj-body{padding:1rem 1.1rem;display:flex;flex-direction:column;gap:.8rem;}
+        /* Zona de paste */
+        #mfadj-paste-zone {
+            border:2.5px dashed #bfdbfe;border-radius:12px;
+            background:#f0f9ff;padding:1.4rem 1rem;
+            display:flex;flex-direction:column;align-items:center;gap:.55rem;
+            cursor:pointer;transition:border-color .2s,background .2s;
+            outline:none;
+        }
+        #mfadj-paste-zone:focus,#mfadj-paste-zone.drag-over {
+            border-color:#3b82f6;background:#dbeafe;
+        }
+        #mfadj-paste-icon{font-size:2.2rem;line-height:1;}
+        #mfadj-paste-msg{
+            font-size:.82rem;font-weight:700;color:#1e40af;text-align:center;line-height:1.5;
+        }
+        #mfadj-paste-sub{
+            font-size:.71rem;color:#64748b;text-align:center;
+        }
+        #mfadj-or{
+            font-size:.72rem;color:#94a3b8;font-weight:700;
+            display:flex;align-items:center;gap:.6rem;
+        }
+        #mfadj-or::before,#mfadj-or::after{
+            content:'';flex:1;height:1px;background:#e2e8f0;
+        }
+        #mfadj-file-btn {
+            padding:.38rem 1rem;border:1.5px solid #3b82f6;
+            background:#eff6ff;color:#1d4ed8;border-radius:7px;
+            font-size:.78rem;font-weight:700;cursor:pointer;
+            transition:background .15s;display:flex;align-items:center;gap:.4rem;
+        }
+        #mfadj-file-btn:hover{background:#dbeafe;}
+        /* Preview */
+        #mfadj-preview {
+            display:none;border:1.5px solid #bbf7d0;border-radius:12px;
+            background:#f0fdf4;padding:.75rem;flex-direction:column;gap:.5rem;align-items:center;
+        }
+        #mfadj-preview.visible{display:flex;}
+        #mfadj-preview-img {
+            max-width:100%;max-height:200px;border-radius:8px;
+            box-shadow:0 4px 16px rgba(0,0,0,.12);object-fit:contain;
+        }
+        #mfadj-preview-name {
+            font-size:.72rem;color:#15803d;font-weight:700;
+            display:flex;align-items:center;gap:.3rem;
+        }
+        #mfadj-preview-change {
+            font-size:.68rem;color:#64748b;cursor:pointer;text-decoration:underline;
+            background:none;border:none;padding:0;
+        }
+        /* Footer */
+        #mfadj-footer {
+            background:#f8fafc;border-top:1px solid #e2e8f0;
+            padding:.6rem 1.1rem;display:flex;gap:.5rem;justify-content:flex-end;
+        }
+        #mfadj-btn-cancel {
+            padding:.38rem 1rem;background:#fff;color:#64748b;
+            border:1.5px solid #e2e8f0;border-radius:7px;
+            font-size:.78rem;font-weight:600;cursor:pointer;transition:all .15s;
+        }
+        #mfadj-btn-cancel:hover{background:#f1f5f9;}
+        #mfadj-btn-confirm {
+            padding:.4rem 1.2rem;
+            background:linear-gradient(135deg,#166534,#15803d);
+            color:#fff;border:none;border-radius:7px;
+            font-size:.8rem;font-weight:800;cursor:pointer;
+            box-shadow:0 2px 8px rgba(21,128,61,.3);
+            transition:all .18s;display:flex;align-items:center;gap:.35rem;
+        }
+        #mfadj-btn-confirm:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(21,128,61,.35);}
+        #mfadj-btn-confirm:disabled{opacity:.45;transform:none;cursor:not-allowed;}
+        `;
+        document.head.appendChild(style);
+
+        // ── HTML ──
+        const ov = document.createElement('div');
+        ov.id = 'mfadj-overlay';
+        ov.style.display = 'none';
+        ov.innerHTML = `
+        <div id="mfadj-box" onclick="event.stopPropagation()">
+            <div id="mfadj-hdr">
+                <span id="mfadj-hdr-title">📎 Adjuntar soporte de pago</span>
+                <button id="mfadj-close" title="Cerrar">✕</button>
+            </div>
+            <div id="mfadj-body">
+                <div id="mfadj-paste-zone" tabindex="0">
+                    <span id="mfadj-paste-icon">📋</span>
+                    <div id="mfadj-paste-msg">Pega aquí tu captura de WhatsApp<br><kbd style="background:#dbeafe;padding:.1rem .4rem;border-radius:4px;font-size:.75rem;font-family:monospace;">Ctrl+V</kbd></div>
+                    <div id="mfadj-paste-sub">Haz clic en esta zona y luego presiona Ctrl+V</div>
+                </div>
+                <div id="mfadj-or">o</div>
+                <button id="mfadj-file-btn" type="button">📁 Seleccionar archivo del dispositivo</button>
+                <input id="mfadj-file-inp" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" style="display:none">
+                <div id="mfadj-preview">
+                    <img id="mfadj-preview-img" src="" alt="Preview">
+                    <span id="mfadj-preview-name"></span>
+                    <button id="mfadj-preview-change" type="button">Cambiar imagen</button>
+                </div>
+            </div>
+            <div id="mfadj-footer">
+                <button id="mfadj-btn-cancel" type="button">Cancelar</button>
+                <button id="mfadj-btn-confirm" type="button" disabled>✅ Confirmar soporte</button>
+            </div>
+        </div>
+        `;
+        document.body.appendChild(ov);
+
+        // ── Eventos internos del mini-modal ──
+        const pasteZone  = document.getElementById('mfadj-paste-zone');
+        const fileInp    = document.getElementById('mfadj-file-inp');
+        const fileBtn    = document.getElementById('mfadj-file-btn');
+        const preview    = document.getElementById('mfadj-preview');
+        const previewImg = document.getElementById('mfadj-preview-img');
+        const previewNm  = document.getElementById('mfadj-preview-name');
+        const changeBtn  = document.getElementById('mfadj-preview-change');
+        const confirmBtn = document.getElementById('mfadj-btn-confirm');
+        const cancelBtn  = document.getElementById('mfadj-btn-cancel');
+        const closeBtn   = document.getElementById('mfadj-close');
+
+        function showPreview(file) {
+            _adjPendFile = file;
+            const isPdf = file.type === 'application/pdf';
+            if (isPdf) {
+                previewImg.style.display = 'none';
+                previewNm.innerHTML = '📄 ' + file.name;
+            } else {
+                const url = URL.createObjectURL(file);
+                previewImg.src = url;
+                previewImg.style.display = 'block';
+                previewNm.innerHTML = '\u2705 ' + (file.name || 'imagen_pegada.png');
+            }
+            preview.classList.add('visible');
+            pasteZone.style.display  = 'none';
+            document.getElementById('mfadj-or').style.display   = 'none';
+            fileBtn.style.display    = 'none';
+            confirmBtn.disabled = false;
+        }
+
+        function resetPreview() {
+            _adjPendFile = null;
+            previewImg.src = '';
+            previewImg.style.display = 'block';
+            previewNm.innerHTML = '';
+            preview.classList.remove('visible');
+            pasteZone.style.display  = 'flex';
+            document.getElementById('mfadj-or').style.display   = '';
+            fileBtn.style.display    = '';
+            confirmBtn.disabled = true;
+            // Auto-focus en la zona de paste para Ctrl+V inmediato
+            setTimeout(() => pasteZone.focus(), 80);
+        }
+
+        // Paste en la zona de paste (foco manual)
+        pasteZone.addEventListener('paste', (e) => {
+            const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/'));
+            if (item) { e.preventDefault(); showPreview(item.getAsFile()); }
+        });
+        // Click en zona = hacer focus para habilitar Ctrl+V
+        pasteZone.addEventListener('click', () => pasteZone.focus());
+
+        // Drag & drop sobre la zona
+        pasteZone.addEventListener('dragover', (e) => { e.preventDefault(); pasteZone.classList.add('drag-over'); });
+        pasteZone.addEventListener('dragleave', () => pasteZone.classList.remove('drag-over'));
+        pasteZone.addEventListener('drop', (e) => {
+            e.preventDefault(); pasteZone.classList.remove('drag-over');
+            const f = e.dataTransfer?.files?.[0];
+            if (f) showPreview(f);
+        });
+
+        // Seleccionar archivo
+        fileBtn.addEventListener('click', () => fileInp.click());
+        fileInp.addEventListener('change', function () {
+            if (this.files && this.files[0]) showPreview(this.files[0]);
+        });
+
+        // Cambiar imagen (volver al estado inicial)
+        changeBtn.addEventListener('click', resetPreview);
+
+        // Confirmar: asignar a la fila y cerrar
+        confirmBtn.addEventListener('click', () => {
+            if (_adjPendFile && _adjTargetRow) {
+                _applyFileToConsig(_adjTargetRow, _adjPendFile);
+            }
+            ov.style.display = 'none';
+            _adjTargetRow = null;
+            _adjPendFile  = null;
+        });
+
+        // Cancelar / cerrar
+        const cerrarAdj = () => {
+            ov.style.display = 'none';
+            _adjTargetRow = null;
+            _adjPendFile  = null;
+        };
+        cancelBtn.addEventListener('click', cerrarAdj);
+        closeBtn.addEventListener('click',  cerrarAdj);
+        ov.addEventListener('click', cerrarAdj); // click fuera cierra
+    }
+
+    function _openAdjuntoModal(row) {
+        _initAdjuntoModal(); // crear si no existe
+        _adjTargetRow = row;
+        _adjPendFile  = null;
+
+        // Resetear vista
+        const pasteZone  = document.getElementById('mfadj-paste-zone');
+        const preview    = document.getElementById('mfadj-preview');
+        const previewImg = document.getElementById('mfadj-preview-img');
+        const previewNm  = document.getElementById('mfadj-preview-name');
+        const confirmBtn = document.getElementById('mfadj-btn-confirm');
+        const fileBtn    = document.getElementById('mfadj-file-btn');
+        const orDiv      = document.getElementById('mfadj-or');
+        if (previewImg) { previewImg.src = ''; previewImg.style.display = 'block'; }
+        if (previewNm)  previewNm.innerHTML = '';
+        if (preview)    preview.classList.remove('visible');
+        if (pasteZone)  pasteZone.style.display = 'flex';
+        if (orDiv)      orDiv.style.display = '';
+        if (fileBtn)    fileBtn.style.display = '';
+        if (confirmBtn) confirmBtn.disabled = true;
+
+        // Si la fila ya tiene un archivo, pre-cargarlo en el preview
+        const existingFile = _getConsigFile(row);
+        if (existingFile) {
+            // re-llamar showPreview a través del evento del fileInp
+            const fakeShowPreview = (file) => {
+                _adjPendFile = file;
+                const isPdf = file.type === 'application/pdf';
+                if (!isPdf && previewImg) {
+                    previewImg.src = URL.createObjectURL(file);
+                    previewImg.style.display = 'block';
+                }
+                if (previewNm) previewNm.innerHTML = '\u2705 ' + (file.name || 'soporte');
+                if (preview)   preview.classList.add('visible');
+                if (pasteZone) pasteZone.style.display = 'none';
+                if (orDiv)     orDiv.style.display = 'none';
+                if (fileBtn)   fileBtn.style.display = 'none';
+                if (confirmBtn) confirmBtn.disabled = false;
+            };
+            fakeShowPreview(existingFile);
+        }
+
+        document.getElementById('mfadj-overlay').style.display = 'flex';
+        // Dar foco a la zona de paste para Ctrl+V inmediato
+        setTimeout(() => { if (pasteZone && !existingFile) pasteZone.focus(); }, 100);
+    }
+
     // ── Abrir modal ───────────────────────────────────────────────
     /**
      * @param {Array} contratos  - en modo masivo: array de objetos {id, eps, arl, afp, caja, admon, seg, iva, tot, arl_nivel, dias, nombre, costoAfil}
@@ -107,6 +418,46 @@ const MF = (function () {
 
         // Mostrar overlay
         el('mf-overlay').style.display = 'flex';
+
+        // ── Listener global de PASTE en el modal (Ctrl+V / ⌘+V) ──────────────
+        // Permite pegar capturas de WhatsApp/galería directamente sin hacer click
+        // en el botón 📎. La imagen va a la última consignación activa.
+        // Se registra en `document` (el paste no bubbles en divs sin tabindex).
+        if (document._mfPasteHandler) {
+            document.removeEventListener('paste', document._mfPasteHandler);
+        }
+        document._mfPasteHandler = function (e) {
+            // Solo actuar si el modal está visible
+            const ov = el('mf-overlay');
+            if (!ov || ov.style.display === 'none') return;
+
+            // No interferir si el foco está en un campo de texto/fecha/select
+            const tag  = document.activeElement?.tagName?.toLowerCase();
+            const tipo = document.activeElement?.type?.toLowerCase();
+            const esTexto = (tag === 'input' && tipo !== 'file') || tag === 'textarea' || tag === 'select';
+            if (esTexto) return;
+
+            const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/'));
+            if (!item) return;
+            e.preventDefault();
+
+            // Buscar la última fila de consignación visible
+            const rows = [...document.querySelectorAll('.mf-consig-row')];
+            let targetRow = rows[rows.length - 1] || null;
+
+            // Si no hay ninguna, crear una automáticamente
+            if (!targetRow) {
+                addConsig();
+                targetRow = document.querySelectorAll('.mf-consig-row')[0] || null;
+            }
+            if (!targetRow) return;
+
+            _applyFileToConsig(targetRow, item.getAsFile());
+
+            // Scroll hasta la fila para que el usuario vea la confirmación visual
+            targetRow.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        };
+        document.addEventListener('paste', document._mfPasteHandler);
 
         onEstado(true);
 
@@ -679,24 +1030,17 @@ const MF = (function () {
             <input type="text" class="mf-consig-monto-inp mf-consig-monto" value="${monto || '0'}" placeholder="$0" oninput="MF.recalc()">
             <input type="date" class="mf-consig-fecha-inp mf-consig-fecha" value="${fecha || today}">
             <input type="text" class="mf-consig-fecha-inp mf-consig-ref" placeholder="Referencia" value="${referencia || ''}" style="font-size:.67rem">
-            <label class="mf-consig-img-lbl" title="Adjuntar soporte (imagen/PDF)">
-                <span class="mf-consig-img-icon">📎</span>
+            <label class="mf-consig-img-lbl" tabindex="0" title="\uD83D\uDCCE Adjuntar soporte">
+                <span class="mf-consig-img-icon">\uD83D\uDCCE</span>
                 <input type="file" class="mf-consig-img-inp" accept="image/jpeg,image/png,image/webp,application/pdf" style="display:none">
             </label>
             <button type="button" class="mf-consig-del" onclick="this.closest('.mf-consig-row').remove();MF.recalc();">\xD7</button>
         `;
-        // Actualizar icono al seleccionar archivo
-        row.querySelector('.mf-consig-img-inp').addEventListener('change', function () {
-            const icon = this.closest('.mf-consig-img-lbl').querySelector('.mf-consig-img-icon');
-            if (this.files && this.files[0]) {
-                icon.textContent = '\uD83D\uDDBC\uFE0F';
-                icon.style.color = '#22c55e';
-                this.closest('.mf-consig-img-lbl').title = this.files[0].name;
-            } else {
-                icon.textContent = '\uD83D\uDCCE';
-                icon.style.color = '';
-                this.closest('.mf-consig-img-lbl').title = 'Adjuntar soporte';
-            }
+        // Click en el label → abrir mini-modal de adjunto (NO el file picker nativo)
+        const lbl = row.querySelector('.mf-consig-img-lbl');
+        lbl.addEventListener('click', function (e) {
+            e.preventDefault();
+            _openAdjuntoModal(row);
         });
         el('mf-consig-list').appendChild(row);
         // Al agregar consignación, limpiar efectivo para que el saldo pendiente
@@ -883,11 +1227,11 @@ const MF = (function () {
                 const rows = [...document.querySelectorAll('.mf-consig-row')];
                 const uploads = [];
                 rows.forEach((row, idx) => {
-                    const inp = row.querySelector('.mf-consig-img-inp');
+                    const file = _getConsigFile(row);   // soporta input[file] Y paste
                     const consigId = data.consignacion_ids && data.consignacion_ids[idx];
-                    if (inp && inp.files && inp.files[0] && consigId) {
+                    if (file && consigId) {
                         const fd = new FormData();
-                        fd.append('imagen', inp.files[0]);
+                        fd.append('imagen', file);
                         fd.append('_token', _cfg.csrf);
                         const url = (_cfg.urlConsignacionImagen || '').replace('__ID__', consigId);
                         uploads.push(fetch(url, { method: 'POST', body: fd }));
