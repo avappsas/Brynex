@@ -443,7 +443,8 @@ class MigrateLegacy extends Command
             $yaExisten = DB::table('clientes')
                 ->where('aliado_id', $aliadoId)
                 ->pluck('id_legacy')
-                ->flip()  // convertir a lookup O(1)
+                ->filter()  // eliminar nulls antes de flip (array_flip no acepta null)
+                ->flip()    // convertir a lookup O(1)
                 ->all();
             $existingCount = count($yaExisten);
             if ($existingCount > 0) {
