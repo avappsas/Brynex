@@ -410,8 +410,8 @@
       <div x-show="esIndependiente" id="div-pct-caja" style="display:none;">
         <label class="lb">% Caja</label>
         <select name="porcentaje_caja" x-model="pctCaja" @change="recalcular" style="{{ $S }}">
-          <option value="2">2% Normal</option>
-          <option value="0.6" {{ old('porcentaje_caja', $contrato->porcentaje_caja ?? '') == 0.6 ? 'selected' : '' }}>0.6% Reducido</option>
+          <option value="2" {{ old('porcentaje_caja', $contrato->porcentaje_caja ?? 2) == 2 ? 'selected' : '' }}>2% Normal</option>
+          <option value="0.6" {{ old('porcentaje_caja', $contrato->porcentaje_caja ?? 2) == 0.6 ? 'selected' : '' }}>0.6% Reducido</option>
         </select>
       </div>
       <div>
@@ -1712,7 +1712,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const admon       = parseInt(document.getElementById('inp_admon')?.dataset.raw || 0);
         const admonAse    = parseInt(document.getElementById('inp_admon_asesor')?.dataset.raw || 0);
         const seguro      = parseInt(document.getElementById('inp_seguro')?.dataset.raw || 0);
-        const pctCaja     = parseFloat(document.querySelector('select[name=porcentaje_caja]')?.value || 4);
+        const pctCaja     = parseFloat(document.querySelector('select[name=porcentaje_caja]')?.value || 2);
         const cedula      = document.querySelector('input[name=cedula]')?.value || '';
 
         if (!salario || !planIdVal) return;
@@ -1744,7 +1744,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 administracion:    admon,
                 admon_asesor:      admonAse,
                 seguro:            seguro,
-                porcentaje_caja:   pctCaja || 4,
+                porcentaje_caja:   pctCaja || 2,
                 dias:              diasInit,
                 cedula
             }),
@@ -1783,7 +1783,7 @@ function cotizador() {
         admon:           {{ $defAdmon }},
         seguro:          {{ $defSeguro }},
         nivelArl:        {{ (int)old('n_arl', $contrato->n_arl ?? 1) }},
-        pctCaja:         {{ (float)old('porcentaje_caja', $contrato->porcentaje_caja ?? 4) }},
+        pctCaja:         {{ (float)old('porcentaje_caja', $contrato->porcentaje_caja ?? 2) }},
         planId:          '{{ $esEdicion ? old('plan_id', $contrato->plan_id ?? '') : '' }}',
         planNombre:      '',
         tipoModalidadId: '{{ old('tipo_modalidad_id', $contrato->tipo_modalidad_id ?? '') }}',
@@ -2018,7 +2018,7 @@ function cotizador() {
                     administracion:    this.admon || 0,
                     admon_asesor:      parseInt(document.getElementById('inp_admon_asesor')?.dataset?.raw || document.getElementById('inp_admon_asesor')?.value?.replace(/\./g,'') || 0),
                     seguro:            this.seguro || 0,
-                    porcentaje_caja:   this.pctCaja || 4,
+                    porcentaje_caja:   this.pctCaja || 2,
                     dias:              parseInt(this.diasCotizar) || 30,
                     cedula
                 }),
