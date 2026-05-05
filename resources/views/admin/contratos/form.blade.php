@@ -142,7 +142,7 @@
           {{-- Badge AFP cuando el cliente puede omitirlo --}}
           @if(!empty($clienteExentoAfp))
           <span id="badge-exento-afp"
-              title="{{ $clienteTipoDoc && in_array($clienteTipoDoc,['CE','PP','PE','PA']) ? 'Documento: '.$clienteTipoDoc : 'Edad: '.$clienteEdad.' años ('.($clienteGenero==='M'?'hombre':'mujer').')' }}"
+              title="{{ $clienteTipoDoc && in_array($clienteTipoDoc,['CE','PT','PE','PA']) ? 'Documento: '.$clienteTipoDoc : 'Edad: '.$clienteEdad.' años ('.($clienteGenero==='M'?'hombre':'mujer').')' }}"
               style="background:#ede9fe;color:#7c3aed;font-size:.6rem;font-weight:700;padding:.12rem .45rem;border-radius:20px;margin-left:.4rem;cursor:help;letter-spacing:.02em;">
             📌 Puede omitir AFP
           </span>

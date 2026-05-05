@@ -831,7 +831,7 @@ class ContratoController extends Controller
     // ─── Detectar exención de AFP del cliente ─────────────────────────
     /**
      * Un cliente puede omitir AFP si:
-     * - doc: CE (Cédula Extranjería), PP (Permiso Prot. Temporal), PE (Permiso Especial), PA (Pasaporte)
+     * - doc: CE (Cédula Extranjería), PT (Permiso Prot. Temporal), PE (Permiso Especial), PA (Pasaporte)
      * - Hombre ≥ 55 años  |  Mujer ≥ 50 años
      */
     private function detectarExencionAfp(?object $cliente): bool
@@ -839,7 +839,7 @@ class ContratoController extends Controller
         if (!$cliente) return false;
 
         // Por tipo de documento
-        $docExentos = ['CE', 'PP', 'PE', 'PA'];
+        $docExentos = ['CE', 'PT', 'PE', 'PA'];
         if (in_array(strtoupper(trim($cliente->tipo_doc ?? '')), $docExentos)) {
             return true;
         }
