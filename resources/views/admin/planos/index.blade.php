@@ -616,8 +616,8 @@
             <th>PENSION</th>
             <th title="Valor Pensión">V.AFP</th>
             <th title="Total Seguridad Social"><b>TOTAL SS</b></th>
-            <th>Planilla</th>
-            <th>Empresa</th>
+            @if(!$esIndependiente)<th>Planilla</th>@endif
+            @if(!$esIndependiente)<th>Empresa</th>@endif
             <th>Envío</th>
             <th title="Acciones">⋯</th>
             @if($esIndependiente)<th>Operador</th><th>Pago</th>@endif
@@ -646,7 +646,8 @@
             <td>{{ $p->no_identifi }}</td>
             <td class="td-nombre" title="{{ $p->nombre_completo ?? $clienteNombre }}">
                 <a href="{{ ($p->cliente_id ?? null) ? url('/admin/clientes/'.$p->cliente_id.'/edit') : '#' }}"
-                   style="color:#1d4ed8;text-decoration:none;font-weight:600" title="Ver cliente">
+                   style="color:#1d4ed8;text-decoration:none;font-weight:600"
+                   title="{{ $p->nombre_completo ?? $clienteNombre }}">
                     {{ $p->primer_nombre }} {{ $p->primer_ape }}
                 </a>
             </td>
@@ -672,6 +673,7 @@
             <td style="font-weight:700;color:var(--azul-vivo)">
                 {{ number_format($p->total_ss ?? 0,0,',','.') }}
             </td>
+            @if(!$esIndependiente)
             <td id="planilla-{{ $p->id }}" style="text-align:center">
                 @if($p->numero_planilla)
                 @php
@@ -684,7 +686,8 @@
                 <span style="color:#cbd5e1">—</span>
                 @endif
             </td>
-            <td class="td-empresa" title="{{ $p->nombre_empresa }}">{{ $p->nombre_empresa ? \Illuminate\Support\Str::limit($p->nombre_empresa,14,'…') : '—' }}</td>
+            @endif
+            @if(!$esIndependiente)<td class="td-empresa" title="{{ $p->nombre_empresa }}">{{ $p->nombre_empresa ? \Illuminate\Support\Str::limit($p->nombre_empresa,14,'…') : '—' }}</td>@endif
             <td class="td-envio" title="{{ $p->envio_planilla }}">{{ $p->envio_planilla ? 'Sí' : 'No' }}</td>
             <td style="text-align:center">
                 <button type="button"
@@ -733,7 +736,7 @@
             <td></td>
             <td>{{ number_format($planos->sum('v_afp'),0,',','.') }}</td>
             <td></td>{{-- TOTAL SS: se muestra en el resumen inferior --}}
-            <td colspan="4"></td>
+            <td colspan="{{ $esIndependiente ? 2 : 4 }}"></td>
             @if($esIndependiente)
             <td></td>
             <td></td>
@@ -954,18 +957,7 @@
                            value="{{ $totalSS }}" min="1" step="100">
                 </div>
                 <div class="form-grupo">
-                    <label>Forma de Pago <span style="color:#ef4444">*</span></label>
-                    <select id="pago-forma" onchange="toggleBanco()">
-                        <option value="">— Seleccione —</option>
-                        <option value="transferencia">🏦 Banco (transferencia/consignación)</option>
-                        <option value="efectivo">💵 Efectivo</option>
-                    </select>
-                </div>
-            </div>
-
-            <div class="form-row" id="fila-banco">
-                <div class="form-grupo">
-                    <label>Cuenta Bancaria que Realizó el Pago <span style="color:#ef4444">*</span></label>
+                    <label>Cuenta Bancaria <span style="color:#ef4444">*</span></label>
                     <select id="pago-banco">
                         <option value="">— Seleccione banco —</option>
                         @foreach($bancos as $b)
@@ -982,20 +974,63 @@
                 </div>
             </div>
 
-            {{-- Soporte del pago (imagen o PDF) --}}
+            {{-- Soporte del pago: layout 2 columnas --}}
             <div class="form-row">
                 <div class="form-grupo">
                     <label>📎 Soporte del Pago <span style="font-weight:400;color:#94a3b8">(imagen o PDF, máx. 5 MB)</span></label>
-                    <div id="soporte-drop-area" style="border:2px dashed #cbd5e1;border-radius:10px;padding:.85rem 1rem;background:#f8fafc;cursor:pointer;transition:border-color .15s;text-align:center;color:#64748b;font-size:.8rem"
-                         onclick="document.getElementById('pago-soporte').click()"
-                         ondragover="event.preventDefault();this.style.borderColor='var(--acento)'"
-                         ondragleave="this.style.borderColor='#cbd5e1'"
-                         ondrop="handleSoporteDrop(event)">
-                        <span id="soporte-label">🖼️ Haz clic o arrastra aquí el comprobante de pago</span>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;align-items:start">
+
+                        {{-- Columna izquierda: acciones --}}
+                        <div style="display:flex;flex-direction:column;gap:.5rem">
+
+                            {{-- Botón pegar --}}
+                            <button type="button" id="btn-pegar-soporte"
+                                onclick="pegarSoportePortapapeles()"
+                                style="width:100%;padding:.6rem .8rem;border:2px dashed #93c5fd;border-radius:10px;
+                                       background:#eff6ff;color:#1d4ed8;font-size:.82rem;font-weight:600;
+                                       cursor:pointer;display:flex;align-items:center;justify-content:center;
+                                       gap:.45rem;transition:all .2s"
+                                onmouseover="this.style.background='#dbeafe';this.style.borderColor='#3b82f6'"
+                                onmouseout="this.style.background='#eff6ff';this.style.borderColor='#93c5fd'">
+                                📋 Pegar del portapapeles
+                            </button>
+
+                            {{-- Estado (vacío inicialmente, se llena por JS) --}}
+                            <div id="soporte-estado" style="display:none;border:2px dashed #86efac;border-radius:10px;
+                                 background:#f0fdf4;padding:.5rem .75rem;font-size:.78rem;font-weight:600;
+                                 color:#15803d;display:none;align-items:center;gap:.4rem">
+                            </div>
+
+                            {{-- Botón seleccionar archivo --}}
+                            <button type="button"
+                                onclick="document.getElementById('pago-soporte').click()"
+                                style="width:100%;padding:.5rem .8rem;border:1.5px solid #e2e8f0;border-radius:10px;
+                                       background:#f8fafc;color:#475569;font-size:.78rem;font-weight:500;
+                                       cursor:pointer;display:flex;align-items:center;justify-content:center;
+                                       gap:.45rem;transition:all .2s"
+                                onmouseover="this.style.background='#f1f5f9'"
+                                onmouseout="this.style.background='#f8fafc'">
+                                📂 Seleccionar archivo
+                            </button>
+
+                            <input type="file" id="pago-soporte" accept="image/*,.pdf" style="display:none"
+                                   onchange="previewSoporte(this.files[0])">
+                        </div>
+
+                        {{-- Columna derecha: preview --}}
+                        <div id="soporte-panel-img"
+                             style="border:2px dashed #e2e8f0;border-radius:10px;background:#f8fafc;
+                                    min-height:110px;display:flex;align-items:center;justify-content:center;
+                                    overflow:hidden;transition:border-color .2s"
+                             ondragover="event.preventDefault();this.style.borderColor='var(--acento)'"
+                             ondragleave="this.style.borderColor='#e2e8f0'"
+                             ondrop="handleSoporteDrop(event)">
+                            <span id="soporte-placeholder" style="font-size:.75rem;color:#94a3b8;text-align:center;padding:.5rem">
+                                🖼️ La imagen aparece aquí
+                            </span>
+                        </div>
+
                     </div>
-                    <input type="file" id="pago-soporte" accept="image/*,.pdf" style="display:none"
-                           onchange="previewSoporte(this.files[0])">
-                    <div id="soporte-preview" style="display:none;margin-top:.5rem"></div>
                 </div>
             </div>
 
@@ -1260,24 +1295,12 @@ function abrirModalDescarga() {
     document.getElementById('modal-descarga').classList.add('open');
 }
 function resetModalPago() {
-    document.getElementById('pago-numero').value  = '';
-    document.getElementById('pago-obs').value     = '';
-    document.getElementById('pago-banco').value   = '';
-    document.getElementById('pago-forma').value   = '';
+    document.getElementById('pago-numero').value   = '';
+    document.getElementById('pago-obs').value      = '';
+    document.getElementById('pago-banco').value    = '';
     document.getElementById('pago-operador').value = '';
     document.getElementById('pago-resultado').style.display = 'none';
     limpiarSoporte();
-    toggleBanco();
-}
-function toggleBanco() {
-    const forma  = document.getElementById('pago-forma').value;
-    const filaBanco = document.getElementById('fila-banco');
-    if (forma === 'efectivo') {
-        filaBanco.style.display = 'none';
-        document.getElementById('pago-banco').value = ''; // limpiar selección
-    } else {
-        filaBanco.style.display = '';
-    }
 }
 function abrirModalPago() {
     _planoIdActual    = null;
@@ -1410,24 +1433,39 @@ function copiarPlanilla(el) {
 
 function previewSoporte(file) {
     if (!file) return;
-    const label   = document.getElementById('soporte-label');
-    const preview = document.getElementById('soporte-preview');
-    const drop    = document.getElementById('soporte-drop-area');
-    label.textContent = '✅ ' + file.name;
-    drop.style.borderColor = 'var(--verde)';
-    drop.style.background  = '#f0fdf4';
+    const panel   = document.getElementById('soporte-panel-img');
+    const estado  = document.getElementById('soporte-estado');
+    const ph      = document.getElementById('soporte-placeholder');
 
-    if (file.type === 'application/pdf') {
-        preview.innerHTML = `<div style="background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:.55rem .9rem;font-size:.78rem;color:#92400e;display:flex;align-items:center;gap:.5rem">📄 <strong>${file.name}</strong> — PDF adjunto (${(file.size/1024).toFixed(0)} KB)</div>`;
-    } else {
-        const url = URL.createObjectURL(file);
-        preview.innerHTML = `<img src="${url}" alt="preview soporte" style="max-height:140px;border-radius:8px;border:1px solid #e2e8f0;object-fit:contain;display:block">`;
+    // Estado confirmado (izquierda)
+    if (estado) {
+        estado.style.display = 'flex';
+        estado.innerHTML = '✅ ' + file.name + ' <span style="font-weight:400;color:#16a34a;margin-left:.3rem">(' + (file.size/1024).toFixed(0) + ' KB)</span>';
     }
-    preview.style.display = 'block';
+
+    // Preview (derecha)
+    if (ph) ph.style.display = 'none';
+    if (panel) {
+        panel.style.borderColor = '#86efac';
+        panel.style.background  = '#f0fdf4';
+        if (file.type === 'application/pdf') {
+            panel.innerHTML = `<div style="padding:.75rem;text-align:center;font-size:.78rem;color:#92400e">
+                <div style="font-size:2rem">📄</div>
+                <strong>${file.name}</strong><br>
+                <span style="color:#94a3b8">${(file.size/1024).toFixed(0)} KB</span>
+            </div>`;
+        } else {
+            const url = URL.createObjectURL(file);
+            panel.innerHTML = `<img src="${url}" alt="preview soporte"
+                style="max-height:160px;max-width:100%;border-radius:8px;object-fit:contain;display:block;cursor:zoom-in"
+                onclick="window.open(this.src,'_blank')" title="Clic para ampliar">`;
+        }
+    }
 }
 function handleSoporteDrop(e) {
     e.preventDefault();
-    document.getElementById('soporte-drop-area').style.borderColor = '#cbd5e1';
+    const panel = document.getElementById('soporte-panel-img');
+    if (panel) panel.style.borderColor = '#e2e8f0';
     const file = e.dataTransfer.files[0];
     if (file) {
         document.getElementById('pago-soporte').files = e.dataTransfer.files;
@@ -1436,32 +1474,99 @@ function handleSoporteDrop(e) {
 }
 function limpiarSoporte() {
     document.getElementById('pago-soporte').value = '';
-    document.getElementById('soporte-label').textContent = '🖼️ Haz clic o arrastra aquí el comprobante de pago';
-    document.getElementById('soporte-preview').style.display = 'none';
-    document.getElementById('soporte-preview').innerHTML = '';
-    const drop = document.getElementById('soporte-drop-area');
-    drop.style.borderColor = '#cbd5e1';
-    drop.style.background  = '#f8fafc';
+    const estado = document.getElementById('soporte-estado');
+    if (estado) { estado.style.display = 'none'; estado.innerHTML = ''; }
+    const panel  = document.getElementById('soporte-panel-img');
+    if (panel) {
+        panel.style.borderColor = '#e2e8f0';
+        panel.style.background  = '#f8fafc';
+        panel.innerHTML = '<span id="soporte-placeholder" style="font-size:.75rem;color:#94a3b8;text-align:center;padding:.5rem">🖼️ La imagen aparece aquí</span>';
+    }
+    window._soportePasteBlob = null;
 }
 
-// ── Confirmar Pago ────────────────────────────────────────────────────
+// ── Paste de imagen desde el portapapeles ─────────────────────────────
+// Botón explícito: usa Clipboard API (más confiable que el evento paste)
+async function pegarSoportePortapapeles() {
+    const btn = document.getElementById('btn-pegar-soporte');
+    const textoOrig = btn ? btn.innerHTML : '';
+    try {
+        if (!navigator.clipboard || !navigator.clipboard.read) {
+            mostrarToast('Tu navegador no soporta lectura del portapapeles. Usa Ctrl+V dentro de la zona o arrastra la imagen.', 'error');
+            return;
+        }
+        if (btn) { btn.innerHTML = '⏳ Leyendo portapapeles...'; btn.disabled = true; }
+        const items = await navigator.clipboard.read();
+        let encontrada = false;
+        for (const item of items) {
+            const imgType = item.types.find(t => t.startsWith('image/'));
+            if (imgType) {
+                const blob = await item.getType(imgType);
+                const file = new File([blob], 'comprobante.' + imgType.split('/')[1], { type: imgType });
+                // Inyectar en input file
+                try {
+                    const dt = new DataTransfer();
+                    dt.items.add(file);
+                    document.getElementById('pago-soporte').files = dt.files;
+                } catch (_) {
+                    window._soportePasteBlob = file;
+                }
+                previewSoporte(file);
+                mostrarToast('✅ Imagen pegada correctamente.', 'success');
+                encontrada = true;
+                break;
+            }
+        }
+        if (!encontrada) {
+            mostrarToast('No se encontró una imagen en el portapapeles. Copia una imagen primero.', 'error');
+        }
+    } catch (err) {
+        // El usuario negó el permiso o el navegador lo bloqueó
+        mostrarToast('No se pudo leer el portapapeles: ' + (err.message || err), 'error');
+    } finally {
+        if (btn) { btn.innerHTML = textoOrig; btn.disabled = false; }
+    }
+}
+
+// Listener Ctrl+V como alternativa (requiere foco dentro del modal)
+document.addEventListener('paste', function(e) {
+    const modal = document.getElementById('modal-pago');
+    if (!modal || !modal.classList.contains('open')) return;
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (let item of items) {
+        if (item.type.startsWith('image/')) {
+            const file = item.getAsFile();
+            if (!file) break;
+            try {
+                const dt = new DataTransfer();
+                dt.items.add(file);
+                document.getElementById('pago-soporte').files = dt.files;
+            } catch (_) {
+                window._soportePasteBlob = file;
+            }
+            previewSoporte(file);
+            mostrarToast('✅ Imagen pegada (Ctrl+V).', 'success');
+            break;
+        }
+    }
+});
+
+
 async function ejecutarConfirmarPago() {
     const operador = document.getElementById('pago-operador').value;
     const numero   = document.getElementById('pago-numero').value.trim();
     const valor    = parseInt(document.getElementById('pago-valor').value);
-    const forma    = document.getElementById('pago-forma').value;
     const banco    = document.getElementById('pago-banco').value;
     const obs      = document.getElementById('pago-obs').value.trim();
     const soporteInput = document.getElementById('pago-soporte');
-    const soporteFile  = soporteInput.files[0] || null;
-    const esEfectivo   = forma === 'efectivo';
+    const soporteFile  = soporteInput.files[0] || window._soportePasteBlob || null;
 
     // Validaciones obligatorias
     if (!operador) { resaltarError('pago-operador', 'Seleccione el operador.'); return; }
     if (!numero)   { resaltarError('pago-numero',   'Ingrese el número de planilla.'); return; }
     if (!valor || valor < 1) { resaltarError('pago-valor', 'Ingrese un valor pagado válido.'); return; }
-    if (!forma)    { resaltarError('pago-forma',    'Seleccione la forma de pago.'); return; }
-    if (!esEfectivo && !banco) { resaltarError('pago-banco', 'Seleccione la cuenta bancaria.'); return; }
+    if (!banco)    { resaltarError('pago-banco',    'Seleccione la cuenta bancaria.'); return; }
     if (!_planoIdActual && !CTX.razonSocialId) { mostrarToast('Seleccione una razón social.','error'); return; }
 
     const btn = document.getElementById('btn-confirmar-pago');
@@ -1474,8 +1579,8 @@ async function ejecutarConfirmarPago() {
     fd.append('operador', operador);
     fd.append('numero_planilla', numero);
     fd.append('valor', valor);
-    fd.append('forma_pago', forma);
-    if (!esEfectivo && banco) fd.append('banco_id', banco);
+    fd.append('forma_pago', 'transferencia');
+    fd.append('banco_id', banco);
     fd.append('observacion', obs);
     if (soporteFile) fd.append('soporte', soporteFile);
 
