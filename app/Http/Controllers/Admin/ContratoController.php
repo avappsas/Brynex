@@ -838,9 +838,11 @@ class ContratoController extends Controller
     {
         if (!$cliente) return false;
 
-        // Por tipo de documento
-        $docExentos = ['CE', 'PT', 'PE', 'PA'];
-        if (in_array(strtoupper(trim($cliente->tipo_doc ?? '')), $docExentos)) {
+        $tipoDoc = strtoupper(trim($cliente->tipo_doc ?? ''));
+
+        // PT = Permiso de Protección Temporal (antes llamado PP — ambos exentos)
+        $docExentos = ['CE', 'PT', 'PP', 'PE', 'PA'];
+        if (in_array($tipoDoc, $docExentos)) {
             return true;
         }
 

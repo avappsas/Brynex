@@ -1090,7 +1090,10 @@ const CLIENTE_PENSION_ID = {{ $clientePensionId ?? 'null' }};
 const MODALIDAD_PLANES   = @json($planesPermitidos ?? []);
 const MODALIDADES_INDEP          = @json($modalidadesIndependientes ?? [10,11,14]);
 const CLIENTE_EXENTO_AFP         = {{ ($clienteExentoAfp ?? false) ? 'true' : 'false' }};
+const CLIENTE_TIPO_DOC           = @json($clienteTipoDoc ?? null);
 const ES_EDICION                 = {{ ($esEdicion ?? false) ? 'true' : 'false' }};
+// 🔍 Debug AFP — revisar en consola del navegador
+console.log('[AFP] tipo_doc en BD:', CLIENTE_TIPO_DOC, '| exento AFP:', CLIENTE_EXENTO_AFP);
 // ── Regla AFP obligatorio ──────────────────────────────────────────────────
 // Activa: planes sin AFP quedan deshabilitados para las modalidades indicadas
 // (a menos que el cliente esté exento por tipo_doc o edad)
