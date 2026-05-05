@@ -328,11 +328,44 @@ function sortClass($col, $currSort, $currDir) {
     @php
         $radicados         = $c->radicados->keyBy('tipo');
         $plan              = $c->plan;
-        $ctxNombre         = trim($c->cliente?->primer_nombre . ' ' . $c->cliente?->primer_apellido);
+        $ctxNombre         = trim(collect([$c->cliente?->primer_nombre,$c->cliente?->segundo_nombre,$c->cliente?->primer_apellido,$c->cliente?->segundo_apellido])->filter()->implode(' '));
+        $ctxNombreCorto    = trim($c->cliente?->primer_nombre . ' ' . $c->cliente?->primer_apellido);
         $ctxRazonSocial    = $c->razonSocial?->razon_social ?? '—';
+        $ctxNit            = $c->razonSocial?->nit ?? '—';
         $ctxTipoModalidad  = $c->tipo_modalidad_label ?? ($c->es_dependiente ? 'Dependiente' : 'Independiente');
         $ctxEmpresaCliente = $c->aliado?->nombre ?? '—';
-        $contexto          = json_encode(['nombre'=>$ctxNombre,'razon_social'=>$ctxRazonSocial,'tipo_modalidad'=>$ctxTipoModalidad,'empresa_cliente'=>$ctxEmpresaCliente]);
+        $ctxCedula         = $c->cedula ?? '—';
+        $ctxArl            = $c->arl_efectiva_nombre ?? ($c->cliente?->arl?->nombre_arl ?? '—');
+        $ctxPension        = $c->pension?->razon_social ?? ($c->cliente?->pension?->razon_social ?? '—');
+        $ctxEps            = $c->eps?->nombre ?? ($c->cliente?->eps?->nombre ?? '—');
+        $ctxSalario        = $c->salario ?? '';
+        $ctxFechaIngreso   = $c->fecha_ingreso ? $c->fecha_ingreso->format('d/m/Y') : '—';
+        $ctxCargo          = $c->cargo ?? '';
+        $ctxDireccion      = $c->cliente?->direccion_vivienda ?? '';
+        $ctxBarrio         = $c->cliente?->barrio ?? '';
+        $ctxCiudad         = $c->cliente?->municipio?->nombre ?? '';
+        $ctxCelular        = $c->cliente?->celular ?? '';
+        $ctxCorreo         = $c->cliente?->correo ?? '';
+        $contexto          = json_encode([
+            'nombre'          => $ctxNombreCorto,
+            'nombre_completo' => $ctxNombre,
+            'razon_social'    => $ctxRazonSocial,
+            'nit'             => $ctxNit,
+            'tipo_modalidad'  => $ctxTipoModalidad,
+            'empresa_cliente' => $ctxEmpresaCliente,
+            'cedula'          => $ctxCedula,
+            'arl'             => $ctxArl,
+            'pension'         => $ctxPension,
+            'eps'             => $ctxEps,
+            'salario'         => $ctxSalario,
+            'fecha_ingreso'   => $ctxFechaIngreso,
+            'cargo'           => $ctxCargo,
+            'direccion'       => $ctxDireccion,
+            'barrio'          => $ctxBarrio,
+            'ciudad'          => $ctxCiudad,
+            'celular'         => $ctxCelular,
+            'correo'          => $ctxCorreo,
+        ]);
     @endphp
     <tr>
         {{-- Empresa --}}
@@ -548,6 +581,12 @@ function sortClass($col, $currSort, $currDir) {
                     📄 Formulario
                 </a>
             </div>
+            {{-- Botón Ver Datos (cuando no hay formulario PDF) --}}
+            <button id="btnVerDatosCotizante" type="button"
+                style="display:none;margin-left:auto;align-items:center;gap:0.35rem;padding:0.3rem 0.85rem;background:linear-gradient(135deg,#0f172a,#1e40af);color:#fff;border:none;border-radius:7px;font-size:0.75rem;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(30,64,175,0.25);"
+                onclick="abrirVerDatos(this._ctx, this._tipo)">
+                📋 Ver Datos
+            </button>
         </div>
 
         <form id="formRadicado" onsubmit="guardarRadicado(event)">
@@ -556,7 +595,7 @@ function sortClass($col, $currSort, $currDir) {
             <div class="form-row">
                 <div class="form-group">
                     <label>Estado *</label>
-                    <select id="mrad-estado">
+                    <select id="mrad-estado" onchange="actualizarColorEstadoSelect(this)" style="font-weight:700;border-radius:8px;transition:background .2s,color .2s;">
                         <option value="pendiente">⏳ Pendiente</option>
                         <option value="tramite">🔵 En Trámite</option>
                         <option value="traslado">🔄 Traslado</option>
@@ -633,6 +672,23 @@ function sortClass($col, $currSort, $currDir) {
                 <button onclick="abrirBitacora()" style="background:none;border:none;color:#3b82f6;font-size:0.72rem;cursor:pointer;font-weight:600;">Ver todos →</button>
             </div>
             <div id="minibitacora" style="font-size:0.75rem;color:#64748b;">Cargando...</div>
+        </div>
+    </div>
+</div>
+
+{{-- ══ MODAL VER DATOS DEL COTIZANTE ══ --}}
+<div class="modal-bg" id="modalVerDatos">
+    <div class="modal-box" style="max-width:480px;">
+        <div class="modal-title">
+            <span id="mvd-titulo">📋 Datos del Cotizante</span>
+            <button class="modal-close" onclick="cerrarModal('modalVerDatos')">✕</button>
+        </div>
+        <div id="mvd-contenido" style="font-size:0.82rem;line-height:1.8;">
+            {{-- Se llena por JS --}}
+        </div>
+        <div style="margin-top:1rem;display:flex;gap:0.6rem;justify-content:flex-end;">
+            <button onclick="cerrarModal('modalVerDatos')" style="padding:0.4rem 1rem;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;color:#475569;font-size:0.82rem;font-weight:500;cursor:pointer;">Cerrar</button>
+            <button id="btnCopiarDatos" onclick="copiarDatosCotizante()" style="padding:0.4rem 1.1rem;background:linear-gradient(135deg,#0f172a,#1e40af);color:#fff;border:none;border-radius:8px;font-size:0.82rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:0.4rem;">📋 Copiar</button>
         </div>
     </div>
 </div>
@@ -1014,10 +1070,11 @@ function abrirModalRadicado(radId, radData, ctx = {}, contratoId = null, epsForm
     document.getElementById('mrad-enviado').checked = !!radData.enviado_al_cliente;
     document.getElementById('mrad-canal-cliente').value = radData.canal_envio_cliente || '';
 
-    // ── Botón PDF Formulario EPS ──
+    // ── Botón PDF Formulario EPS / Ver Datos ──
     const secFormulario = document.getElementById('seccionFormularioEps');
     const btnPdf        = document.getElementById('btnFormularioPdf');
     const chkBen        = document.getElementById('chkBeneficiarios');
+    const btnVerDatos   = document.getElementById('btnVerDatosCotizante');
     const esEps = (radData.tipo === 'eps');
 
     if (esEps && epsFormulario && contratoId) {
@@ -1030,9 +1087,19 @@ function abrirModalRadicado(radId, radData, ctx = {}, contratoId = null, epsForm
         actualizarHref();
         secFormulario.style.display = 'flex';
         secFormulario.style.alignItems = 'center';
+        if (btnVerDatos) btnVerDatos.style.display = 'none';
     } else {
         secFormulario.style.display = 'none';
+        // Mostrar botón "Ver Datos" si hay contexto
+        if (btnVerDatos) {
+            btnVerDatos.style.display = 'inline-flex';
+            btnVerDatos._ctx = ctx;
+            btnVerDatos._tipo = (radData.tipo || 'eps').toUpperCase();
+        }
     }
+
+    // Colorear select de estado
+    actualizarColorEstadoSelect(document.getElementById('mrad-estado'));
 
     togglePdfSection(radData.estado);
     document.getElementById('mrad-estado').addEventListener('change', function() {
@@ -1041,6 +1108,97 @@ function abrirModalRadicado(radId, radData, ctx = {}, contratoId = null, epsForm
 
     cargarMiniBitacora(radId);
     document.getElementById('modalRadicado').classList.add('open');
+}
+
+// ── Colores para el select de estado (igual que la vista) ──
+function actualizarColorEstadoSelect(sel) {
+    const paleta = {
+        pendiente : { bg:'#b45309', color:'#fff' },
+        tramite   : { bg:'#1e40af', color:'#fff' },
+        traslado  : { bg:'#c2410c', color:'#fff' },
+        error     : { bg:'#b91c1c', color:'#fff' },
+        ok        : { bg:'#15803d', color:'#fff' },
+    };
+    const p = paleta[sel.value] || { bg:'#f1f5f9', color:'#334155' };
+    sel.style.background = p.bg;
+    sel.style.color      = p.color;
+    sel.style.borderColor = p.bg;
+}
+
+// ── Modal Ver Datos Cotizante ──
+let _datosCotizanteTexto = '';
+
+function abrirVerDatos(ctx, tipoEntidad) {
+    const entidad = {
+        eps     : ctx.eps,
+        arl     : ctx.arl,
+        pension : ctx.pension,
+        caja    : '',
+    };
+    const nombreEntidad = entidad[tipoEntidad?.toLowerCase()] || '';
+    const tituloEntidad = tipoEntidad ? `AFILIACIÓN ${tipoEntidad.toUpperCase()}` + (nombreEntidad ? ` "${nombreEntidad}"` : '') : 'DATOS DEL COTIZANTE';
+
+    document.getElementById('mvd-titulo').textContent = '📋 ' + tituloEntidad;
+
+    const salarioFmt = ctx.salario ? '$ ' + Number(ctx.salario).toLocaleString('es-CO') : '—';
+
+    const filas = [
+        { lbl: 'RAZÓN SOCIAL', val: ctx.razon_social },
+        { lbl: 'NIT',          val: ctx.nit },
+        { lbl: 'NOMBRE',       val: ctx.nombre_completo || ctx.nombre },
+        { lbl: 'CÉDULA',       val: ctx.cedula },
+        { lbl: 'ARL',          val: ctx.arl },
+        { lbl: 'PENSIÓN',      val: ctx.pension },
+        { lbl: 'SALARIO',      val: salarioFmt },
+        { lbl: 'FECHA_INGRESO',val: ctx.fecha_ingreso },
+        { lbl: 'CARGO',        val: ctx.cargo || 'x' },
+        { lbl: 'DIRECCIÓN',    val: ctx.direccion },
+        { lbl: 'BARRIO',       val: ctx.barrio },
+        { lbl: 'CIUDAD',       val: ctx.ciudad },
+        { lbl: 'CELULAR',      val: ctx.celular },
+        { lbl: 'CORREO',       val: ctx.correo },
+    ];
+
+    let html = `<div style="background:#f0f9ff;border-radius:8px;padding:0.6rem 0.85rem;margin-bottom:0.75rem;font-size:0.78rem;font-weight:700;color:#1e40af;letter-spacing:0.03em;">${tituloEntidad}</div>`;
+    html += '<table style="width:100%;border-collapse:collapse;">';
+    filas.forEach(f => {
+        html += `<tr style="border-bottom:1px solid #f1f5f9;">
+            <td style="padding:0.28rem 0.5rem;font-size:0.7rem;font-weight:700;color:#64748b;text-transform:uppercase;white-space:nowrap;width:38%;">${f.lbl}</td>
+            <td style="padding:0.28rem 0.5rem;font-size:0.82rem;color:#0f172a;font-weight:600;">${f.val || '<span style="color:#cbd5e1;">—</span>'}</td>
+        </tr>`;
+    });
+    html += '</table>';
+
+    document.getElementById('mvd-contenido').innerHTML = html;
+
+    // Texto plano para copiar
+    _datosCotizanteTexto = tituloEntidad + '\n\n' +
+        filas.map(f => `${f.lbl}: ${f.val || ''}`).join('\n');
+
+    document.getElementById('modalVerDatos').classList.add('open');
+}
+
+function copiarDatosCotizante() {
+    if (!_datosCotizanteTexto) return;
+    navigator.clipboard.writeText(_datosCotizanteTexto).then(() => {
+        const btn = document.getElementById('btnCopiarDatos');
+        const orig = btn.innerHTML;
+        btn.innerHTML = '✅ Copiado';
+        btn.style.background = '#15803d';
+        setTimeout(() => { btn.innerHTML = orig; btn.style.background = ''; }, 1800);
+    }).catch(() => {
+        // fallback
+        const ta = document.createElement('textarea');
+        ta.value = _datosCotizanteTexto;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        const btn = document.getElementById('btnCopiarDatos');
+        const orig = btn.innerHTML;
+        btn.innerHTML = '✅ Copiado';
+        setTimeout(() => { btn.innerHTML = orig; }, 1800);
+    });
 }
 
 function togglePdfSection(estado) {
