@@ -140,6 +140,7 @@ class PlanoPagoController extends Controller
                     'p.razon_social',
                     'p.tipo_modalidad_id',
                     'p.tipo_p',
+                    'p.updated_at',
                     // Desde factura (snapshot)
                     'f.id AS factura_id',
                     'f.numero_factura AS numero_envio',

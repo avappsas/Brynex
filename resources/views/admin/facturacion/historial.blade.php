@@ -159,14 +159,11 @@ table.hi-tbl{width:100%;border-collapse:collapse;font-size:.77rem}
                 <th>Fecha</th>
                 <th>Período</th>
                 <th>Tipo</th>
-                <th>N° Plano</th>
-                <th class="num">EPS</th>
-                <th class="num">Pensión</th>
-                <th class="num">ARL</th>
-                <th class="num">Caja</th>
+                <th class="num">SS</th>
                 <th class="num">Admon</th>
                 <th class="num">Total</th>
                 <th>Estado</th>
+                <th>NP</th>
                 <th>N° Planilla</th>
                 <th>Origen</th>
                 <th>Acciones</th>
@@ -190,20 +187,24 @@ table.hi-tbl{width:100%;border-collapse:collapse;font-size:.77rem}
             // Puede anular: admin/superadmin + si tiene planilla solo superadmin BryNex
             $puedeAnular = $esAdmin && (!$numeroPlanillaOp || $esSuperBrynex);
             @endphp
+            @php
+            $vSS = ($f->v_eps ?? 0) + ($f->v_afp ?? 0) + ($f->v_arl ?? 0) + ($f->v_caja ?? 0);
+            @endphp
             <tr>
                 <td style="font-family:monospace;font-weight:800;color:#1d4ed8;font-size:.76rem">#{{ $f->numero_factura ?? '—' }}</td>
                 <td style="color:#64748b;font-size:.72rem">{{ $f->fecha_pago?->format('d/m/Y') ?? '—' }}</td>
                 <td style="font-weight:600;color:#0f172a">{{ $meses[$f->mes] ?? '' }} {{ $f->anio }}</td>
                 <td><span class="badge {{ $tipoBadge[0] }}">{{ $tipoBadge[1] }}</span></td>
-                <td style="font-weight:700;color:#1d4ed8;font-family:monospace">{{ $f->n_plano ?? '—' }}</td>
-                <td class="num">{{ $f->v_eps > 0 ? $fmt($f->v_eps) : '—' }}</td>
-                <td class="num">{{ $f->v_afp > 0 ? $fmt($f->v_afp) : '—' }}</td>
-                <td class="num">{{ $f->v_arl > 0 ? $fmt($f->v_arl) : '—' }}</td>
-                <td class="num">{{ $f->v_caja > 0 ? $fmt($f->v_caja) : '—' }}</td>
+                {{-- SS = EPS + Pensión + ARL + Caja agrupado --}}
+                <td class="num" title="EPS: {{ $fmt($f->v_eps??0) }} · Pensión: {{ $fmt($f->v_afp??0) }} · ARL: {{ $fmt($f->v_arl??0) }} · Caja: {{ $fmt($f->v_caja??0) }}">
+                    {{ $vSS > 0 ? $fmt($vSS) : '—' }}
+                </td>
                 <td class="num">{{ $fmt(($f->admon ?? 0) + ($f->admin_asesor ?? 0)) }}</td>
                 <td class="num" style="font-weight:900;color:{{ $f->estado==='pagada'?'#16a34a':'#0f172a' }}">{{ $fmt($f->total) }}</td>
                 <td><span class="badge {{ $estadoBadge[0] }}">{{ $estadoBadge[1] }}</span></td>
-                {{-- Nº Planilla operador — junto a Estado --}}
+                {{-- NP — al lado de Estado --}}
+                <td style="font-weight:700;color:#1d4ed8;font-family:monospace;font-size:.76rem">{{ $f->n_plano ?? '—' }}</td>
+                {{-- Nº Planilla operador --}}
                 <td>
                     @if($numeroPlanillaOp)
                     <span class="badge-planilla" title="Planilla pagada al operador">
@@ -224,16 +225,21 @@ table.hi-tbl{width:100%;border-collapse:collapse;font-size:.77rem}
                 </td>
                 <td>
                     <div style="display:flex;gap:.3rem;align-items:center;flex-wrap:wrap">
-                        {{-- Recibo --}}
-                        <button onclick="abrirRecibo('{{ route('admin.facturacion.recibo', $f->id) }}?modal=1')" class="btn-act-sm btn-recibo" title="Ver recibo">
+                        {{-- Recibo — pasa datos del plano para mostrarlo en el header del modal --}}
+                        <button onclick="abrirRecibo(
+                                    '{{ route('admin.facturacion.recibo', $f->id) }}?modal=1',
+                                    {{ $f->plano ? json_encode($f->plano) : 'null' }},
+                                    '{{ ($meses[$f->mes] ?? '') . ' ' . $f->anio }}'
+                                )"
+                                class="btn-act-sm btn-recibo" title="Ver recibo">
                             📄 Recibo
                         </button>
-                        {{-- Plano --}}
+                        {{-- Plano — movido DENTRO del modal recibo; aquí queda como acceso rápido secundario --}}
                         @if($f->plano)
                         <button type="button" class="btn-act-sm btn-plano"
                             onclick="verPlano({{ json_encode($f->plano) }}, '{{ $meses[$f->mes] ?? '' }} {{ $f->anio }}')"
-                            title="Ver datos del plano">
-                            📋 Plano
+                            title="Ver datos del plano — también disponible dentro del recibo">
+                            📋
                         </button>
                         @endif
                         {{-- Anular --}}
@@ -356,14 +362,26 @@ function verPlano(p, periodo) {
     document.getElementById('mp-total-cot').textContent = HI_FMT(p.total_cot);
     document.getElementById('modal-plano-overlay').style.display = 'flex';
 }
-// ── Modal Recibo ─────────────────────────────────────
-function abrirRecibo(url) {
+// ── Modal Recibo ──────────────────────────────────
+let _planoDatos = null, _planoPeriodo = '';
+function abrirRecibo(url, planoJson, periodo) {
     document.getElementById('recibo-frame').src = url;
     document.getElementById('recibo-modal-ov').style.display = 'flex';
+    // Botón plano en el header del recibo
+    _planoDatos  = planoJson || null;
+    _planoPeriodo = periodo || '';
+    const btnP = document.getElementById('btn-plano-recibo');
+    if (btnP) btnP.style.display = _planoDatos ? 'inline-flex' : 'none';
+}
+function _verPlanoDesdeRecibo() {
+    if (_planoDatos) verPlano(_planoDatos, _planoPeriodo);
 }
 function cerrarRecibo() {
     document.getElementById('recibo-modal-ov').style.display = 'none';
     document.getElementById('recibo-frame').src = '';
+    _planoDatos = null;
+    const btnP = document.getElementById('btn-plano-recibo');
+    if (btnP) btnP.style.display = 'none';
 }
 
 // ── Modal Anular ─────────────────────────────────────
@@ -422,9 +440,17 @@ async function confirmarAnular() {
     <div style="position:relative;width:96vw;max-width:1100px;height:93vh;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 25px 60px rgba(0,0,0,.5);display:flex;flex-direction:column;">
         {{-- Header del modal --}}
         <div style="background:linear-gradient(135deg,#0f172a,#1e3a5f);padding:.6rem 1rem;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
-            <div style="display:flex;align-items:center;gap:.5rem;">
+            <div style="display:flex;align-items:center;gap:.65rem;">
                 <span style="font-size:1.1rem;">🧾</span>
                 <span style="color:#fff;font-size:.9rem;font-weight:700;letter-spacing:.02em;">Recibo de Pago</span>
+                {{-- Botón Plano dentro del recibo --}}
+                <button id="btn-plano-recibo"
+                        style="display:none;background:rgba(255,255,255,.14);color:#a7f3d0;border:1px solid rgba(167,243,208,.3);border-radius:6px;padding:.2rem .6rem;font-size:.72rem;font-weight:700;cursor:pointer;transition:background .15s;"
+                        onmouseover="this.style.background='rgba(255,255,255,.24)'"
+                        onmouseout="this.style.background='rgba(255,255,255,.14)'"
+                        onclick="_verPlanoDesdeRecibo()">
+                    📋 Ver Plano
+                </button>
             </div>
             <button onclick="cerrarRecibo()"
                     style="background:rgba(255,255,255,.15);color:#fff;border:none;border-radius:6px;width:28px;height:28px;font-size:1rem;cursor:pointer;line-height:1;font-weight:700;transition:background .15s;"

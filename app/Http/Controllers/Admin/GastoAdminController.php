@@ -1,0 +1,240 @@
+<?php
+
+namespace App\Http\Controllers\Admin;
+
+use App\Http\Controllers\Controller;
+use App\Models\{Gasto, BancoCuenta, User};
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\{Auth, DB, Storage};
+
+class GastoAdminController extends Controller
+{
+    private function aliadoId(): int
+    {
+        return (int) session('aliado_id_activo');
+    }
+
+    private function checkAcceso(): void
+    {
+        if (!Auth::user()->hasRole(['superadmin', 'contador'])) {
+            abort(403, 'Acceso restringido.');
+        }
+    }
+
+    private function checkSuperAdmin(): void
+    {
+        if (!Auth::user()->hasRole('superadmin')) {
+            abort(403, 'Solo el superadmin puede realizar esta acción.');
+        }
+    }
+
+    // ── Index ─────────────────────────────────────────────────────────
+    public function index(Request $request)
+    {
+        $this->checkAcceso();
+        $aid   = $this->aliadoId();
+        $mes   = (int) $request->input('mes',  now()->month);
+        $anio  = (int) $request->input('anio', now()->year);
+        $tab   = $request->input('tab', 'general');
+
+        // ── Tab: Gastos Generales (todos excepto pago_planilla) ────────
+        $generales = DB::table('gastos AS g')
+            ->leftJoin('users AS u',         'u.id',  '=', 'g.usuario_id')
+            ->leftJoin('banco_cuentas AS bc', 'bc.id', '=', 'g.banco_origen_id')
+            ->where('g.aliado_id', $aid)
+            ->where('g.tipo', '!=', 'pago_planilla')
+            ->whereMonth('g.fecha', $mes)
+            ->whereYear('g.fecha',  $anio)
+            ->select([
+                'g.id', 'g.fecha', 'g.tipo', 'g.descripcion',
+                'g.pagado_a', 'g.forma_pago', 'g.valor',
+                'g.observacion', 'g.recibo_caja', 'g.imagen_path',
+                'g.created_at',
+                'u.nombre AS usuario_nombre',
+                'bc.banco AS banco_nombre',
+                'bc.nombre AS banco_titular',
+            ])
+            ->orderBy('g.fecha')
+            ->orderBy('g.id')
+            ->get();
+
+        // ── Tab: Pagos Planilla agrupados por razón social ─────────────
+        $planillas = DB::table('gastos AS g')
+            ->leftJoin('users AS u',            'u.id',  '=', 'g.usuario_id')
+            ->leftJoin('banco_cuentas AS bc',   'bc.id', '=', 'g.banco_origen_id')
+            ->leftJoin('planos AS pl',          'pl.numero_planilla', '=', 'g.numero_planilla')
+            ->leftJoin('razones_sociales AS rs','rs.id', '=', 'pl.razon_social_id')
+            ->where('g.aliado_id', $aid)
+            ->where('g.tipo', 'pago_planilla')
+            ->whereMonth('g.fecha', $mes)
+            ->whereYear('g.fecha',  $anio)
+            ->select([
+                'g.id', 'g.fecha', 'g.numero_planilla', 'g.descripcion',
+                'g.pagado_a', 'g.valor', 'g.imagen_path',
+                'g.created_at',
+                'u.nombre AS usuario_nombre',
+                'bc.banco AS banco_nombre',
+                'bc.nombre AS banco_titular',
+                DB::raw('MAX(ISNULL(rs.razon_social, g.pagado_a)) AS razon_social'),
+            ])
+            ->groupBy(
+                'g.id','g.fecha','g.numero_planilla','g.descripcion',
+                'g.pagado_a','g.valor','g.imagen_path','g.created_at',
+                'u.nombre','bc.banco','bc.nombre'
+            )
+            ->orderByRaw('MAX(ISNULL(rs.razon_social, g.pagado_a))')
+            ->orderBy('g.fecha')
+            ->get()
+            ->groupBy('razon_social');
+
+        $totalGeneral  = $generales->sum('valor');
+        $totalPlanilla = DB::table('gastos')
+            ->where('aliado_id', $aid)
+            ->where('tipo', 'pago_planilla')
+            ->whereMonth('fecha', $mes)
+            ->whereYear('fecha',  $anio)
+            ->selectRaw('ISNULL(SUM(CAST(valor AS BIGINT)),0) AS total')
+            ->value('total');
+
+        $bancos      = BancoCuenta::where('aliado_id', $aid)->where('activo', true)->get();
+        $usuarios    = User::where('aliado_id', $aid)->where('activo', true)->orderBy('nombre')->get(['id','nombre']);
+        $esSuperAdmin = Auth::user()->hasRole('superadmin');
+        $tiposGasto   = collect(Gasto::TIPOS)
+                            ->filter(fn($l,$k) => $k !== 'pago_planilla');
+        $tiposGrupos  = Gasto::TIPOS_GRUPOS;
+        $tiposNomina  = Gasto::TIPOS_NOMINA;
+
+        $mesesNombres = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio',
+                         'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+        return view('admin.informes.gastos', compact(
+            'mes','anio','tab','generales','planillas',
+            'totalGeneral','totalPlanilla',
+            'bancos','usuarios','esSuperAdmin','tiposGasto','tiposGrupos','tiposNomina','mesesNombres'
+        ));
+    }
+
+    // ── Crear gasto ───────────────────────────────────────────────────
+    public function store(Request $request)
+    {
+        $this->checkSuperAdmin();
+        $aid = $this->aliadoId();
+
+        $data = $request->validate([
+            'fecha'           => 'required|date',
+            'tipo'            => 'required|string',
+            'descripcion'     => 'required|string|max:500',
+            'pagado_a'        => 'nullable|string|max:255',
+            'forma_pago'      => 'required|in:efectivo,transferencia_bancaria,banco_banco',
+            'banco_origen_id' => 'nullable|integer',
+            'valor'           => 'required|integer|min:1',
+            'recibo_caja'     => 'nullable|string|max:100',
+            'observacion'     => 'nullable|string|max:1000',
+            'imagen_base64'   => 'nullable|string',   // paste Ctrl+V
+            'imagen'          => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:5120',
+        ]);
+
+        $gasto = Gasto::create(array_merge($data, [
+            'aliado_id'  => $aid,
+            'usuario_id' => Auth::id(),
+            'cuadre_id'  => null,
+        ]));
+
+        // Imagen pegada (base64)
+        if (!empty($data['imagen_base64'])) {
+            $path = $this->guardarBase64($data['imagen_base64'], $gasto->id);
+            if ($path) $gasto->update(['imagen_path' => $path]);
+        }
+        // Imagen subida como archivo
+        elseif ($request->hasFile('imagen')) {
+            $path = $request->file('imagen')->store("gastos/{$aid}", 'public');
+            $gasto->update(['imagen_path' => $path]);
+        }
+
+        return redirect()->back()->with('success', 'Gasto registrado correctamente.');
+    }
+
+    // ── Actualizar gasto ──────────────────────────────────────────────
+    public function update(Request $request, int $id)
+    {
+        $this->checkSuperAdmin();
+        $aid   = $this->aliadoId();
+        $gasto = Gasto::where('aliado_id', $aid)->findOrFail($id);
+
+        $data = $request->validate([
+            'fecha'           => 'required|date',
+            'tipo'            => 'required|string',
+            'descripcion'     => 'required|string|max:500',
+            'pagado_a'        => 'nullable|string|max:255',
+            'forma_pago'      => 'required|in:efectivo,transferencia_bancaria,banco_banco',
+            'banco_origen_id' => 'nullable|integer',
+            'valor'           => 'required|integer|min:1',
+            'recibo_caja'     => 'nullable|string|max:100',
+            'observacion'     => 'nullable|string|max:1000',
+            'imagen_base64'   => 'nullable|string',
+            'imagen'          => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:5120',
+        ]);
+
+        $gasto->update($data);
+
+        // Actualizar imagen si se proporcionó
+        if (!empty($data['imagen_base64'])) {
+            $path = $this->guardarBase64($data['imagen_base64'], $gasto->id);
+            if ($path) $gasto->update(['imagen_path' => $path]);
+        } elseif ($request->hasFile('imagen')) {
+            if ($gasto->imagen_path) Storage::disk('public')->delete($gasto->imagen_path);
+            $path = $request->file('imagen')->store("gastos/{$aid}", 'public');
+            $gasto->update(['imagen_path' => $path]);
+        }
+
+        return redirect()->back()->with('success', 'Gasto actualizado.');
+    }
+
+    // ── Eliminar gasto ────────────────────────────────────────────────
+    public function destroy(int $id)
+    {
+        $this->checkSuperAdmin();
+        $aid   = $this->aliadoId();
+        $gasto = Gasto::where('aliado_id', $aid)->findOrFail($id);
+
+        if ($gasto->imagen_path) {
+            Storage::disk('public')->delete($gasto->imagen_path);
+        }
+        $gasto->delete();
+
+        return redirect()->back()->with('success', 'Gasto eliminado.');
+    }
+
+    // ── Subir imagen individual ───────────────────────────────────────
+    public function imagen(Request $request, int $id)
+    {
+        $this->checkSuperAdmin();
+        $aid   = $this->aliadoId();
+        $gasto = Gasto::where('aliado_id', $aid)->findOrFail($id);
+
+        $request->validate(['imagen' => 'required|file|mimes:jpg,jpeg,png,pdf|max:5120']);
+
+        if ($gasto->imagen_path) Storage::disk('public')->delete($gasto->imagen_path);
+        $path = $request->file('imagen')->store("gastos/{$aid}", 'public');
+        $gasto->update(['imagen_path' => $path]);
+
+        return redirect()->back()->with('success', 'Imagen guardada.');
+    }
+
+    // ── Helper: guardar imagen base64 ─────────────────────────────────
+    private function guardarBase64(string $base64, int $gastoId): ?string
+    {
+        if (!preg_match('/^data:image\/(\w+);base64,/', $base64, $matches)) {
+            return null;
+        }
+        $ext      = strtolower($matches[1]) === 'jpeg' ? 'jpg' : strtolower($matches[1]);
+        $data     = substr($base64, strpos($base64, ',') + 1);
+        $decoded  = base64_decode($data);
+        if (!$decoded) return null;
+
+        $aid      = $this->aliadoId();
+        $filename = "gastos/{$aid}/gasto_{$gastoId}_" . time() . ".{$ext}";
+        Storage::disk('public')->put($filename, $decoded);
+        return $filename;
+    }
+}

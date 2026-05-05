@@ -7,6 +7,7 @@ use App\Models\Aliado;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rule;
 use Spatie\Permission\Models\Role;
 
 class UsuarioController extends Controller
@@ -53,14 +54,17 @@ class UsuarioController extends Controller
     {
         $data = $request->validate([
             'nombre'    => 'required|string|max:150',
-            'cedula'    => 'required|string|max:20|unique:users,cedula',
-            'email'     => 'nullable|email|max:150|unique:users,email',
+            'cedula'    => ['required','string','max:20', Rule::unique('users','cedula')->whereNull('deleted_at')],
+            'email'     => ['nullable','email','max:150', Rule::unique('users','email')->whereNull('deleted_at')],
             'telefono'  => 'nullable|string|max:30',
             'aliado_id' => 'required|integer|exists:aliados,id',
             'rol'       => 'required|string|exists:roles,name',
             'es_brynex' => 'boolean',
             'activo'    => 'boolean',
             'password'  => 'required|string|min:8|confirmed',
+        ], [
+            'cedula.unique' => 'Ya existe un usuario activo con esa cédula.',
+            'email.unique'  => 'Ya existe un usuario activo con ese correo.',
         ]);
 
         $usuario = User::create([
@@ -98,14 +102,17 @@ class UsuarioController extends Controller
     {
         $data = $request->validate([
             'nombre'    => 'required|string|max:150',
-            'cedula'    => "required|string|max:20|unique:users,cedula,{$usuario->id}",
-            'email'     => "nullable|email|max:150|unique:users,email,{$usuario->id}",
+            'cedula'    => ['required','string','max:20', Rule::unique('users','cedula')->ignore($usuario->id)->whereNull('deleted_at')],
+            'email'     => ['nullable','email','max:150', Rule::unique('users','email')->ignore($usuario->id)->whereNull('deleted_at')],
             'telefono'  => 'nullable|string|max:30',
             'aliado_id' => 'required|integer|exists:aliados,id',
             'rol'       => 'required|string|exists:roles,name',
             'es_brynex' => 'boolean',
             'activo'    => 'boolean',
             'password'  => 'nullable|string|min:8|confirmed',
+        ], [
+            'cedula.unique' => 'Ya existe un usuario activo con esa cédula.',
+            'email.unique'  => 'Ya existe un usuario activo con ese correo.',
         ]);
 
         $usuario->update([

@@ -353,95 +353,13 @@ $totalBancos = $bancos->sum(fn($bc) => \App\Models\Consignacion::saldoBanco(sess
 </div>
 @endif
 
-{{-- Modal: Registrar Gasto --}}
-@if($cuadre)
-<div id="modal-gasto"
-     onclick="if(event.target.id==='modal-gasto')this.style.display='none'"
-     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center">
-    <div style="background:#fff;border-radius:14px;width:min(520px,96vw);max-height:92vh;overflow-y:auto;box-shadow:0 20px 50px rgba(0,0,0,.3)">
-        <div style="background:#0f172a;padding:.8rem 1.1rem;border-radius:14px 14px 0 0;display:flex;justify-content:space-between;align-items:center">
-            <span style="color:#fff;font-weight:700">💼 Registrar Gasto</span>
-            <button onclick="document.getElementById('modal-gasto').style.display='none'"
-                    style="background:rgba(255,255,255,.15);color:#fff;border:none;border-radius:5px;width:26px;height:26px;cursor:pointer;font-weight:700">×</button>
-        </div>
-        <form method="POST" action="{{ route('admin.cuadre-diario.gasto.store', $cuadre->id) }}" style="padding:1.2rem;display:flex;flex-direction:column;gap:.9rem">
-            @csrf
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:.7rem">
-                <div>
-                    <label style="font-size:.76rem;font-weight:600;color:#374151;display:block;margin-bottom:.3rem">Fecha *</label>
-                    <input type="date" name="fecha" value="{{ today()->toDateString() }}" required
-                           style="width:100%;padding:.4rem .6rem;border:1.5px solid #e2e8f0;border-radius:7px;font-size:.82rem">
-                </div>
-                <div>
-                    <label style="font-size:.76rem;font-weight:600;color:#374151;display:block;margin-bottom:.3rem">Tipo *</label>
-                    <select name="tipo" id="sTipo" onchange="actualizarFormPago()" required
-                            style="width:100%;padding:.4rem .6rem;border:1.5px solid #e2e8f0;border-radius:7px;font-size:.82rem">
-                        @foreach($tiposGasto as $k => $v)
-                            @if(!in_array($k, $tiposAdmin) || $esAdmin)
-                            <option value="{{ $k }}">{{ $v }}</option>
-                            @endif
-                        @endforeach
-                    </select>
-                </div>
-            </div>
-            <div>
-                <label style="font-size:.76rem;font-weight:600;color:#374151;display:block;margin-bottom:.3rem">Descripción *</label>
-                <input type="text" name="descripcion" required placeholder="Ej: Compra resma de papel"
-                       style="width:100%;padding:.4rem .6rem;border:1.5px solid #e2e8f0;border-radius:7px;font-size:.82rem">
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:.7rem">
-                <div>
-                    <label style="font-size:.76rem;font-weight:600;color:#374151;display:block;margin-bottom:.3rem">Pagado a</label>
-                    <input type="text" name="pagado_a" placeholder="Nombre proveedor"
-                           style="width:100%;padding:.4rem .6rem;border:1.5px solid #e2e8f0;border-radius:7px;font-size:.82rem">
-                </div>
-                <div>
-                    <label style="font-size:.76rem;font-weight:600;color:#374151;display:block;margin-bottom:.3rem">Valor *</label>
-                    <input type="number" name="valor" required min="1" placeholder="0"
-                           style="width:100%;padding:.4rem .6rem;border:1.5px solid #e2e8f0;border-radius:7px;font-size:.82rem">
-                </div>
-            </div>
-            <div>
-                <label style="font-size:.76rem;font-weight:600;color:#374151;display:block;margin-bottom:.3rem">Forma de Pago *</label>
-                <select name="forma_pago" id="sFormaPago" onchange="actualizarBancos()" required
-                        style="width:100%;padding:.4rem .6rem;border:1.5px solid #e2e8f0;border-radius:7px;font-size:.82rem">
-                    <option value="efectivo">💵 Efectivo</option>
-                    @if($esAdmin)
-                    <option value="transferencia_bancaria">🏦 Transferencia Bancaria</option>
-                    <option value="banco_banco">🔄 Banco → Banco</option>
-                    @endif
-                </select>
-            </div>
-            <div id="bloqBancoOrigen" style="display:none">
-                <label style="font-size:.76rem;font-weight:600;color:#374151;display:block;margin-bottom:.3rem">Banco Origen</label>
-                <select name="banco_origen_id" style="width:100%;padding:.4rem .6rem;border:1.5px solid #e2e8f0;border-radius:7px;font-size:.82rem">
-                    <option value="">— Seleccionar —</option>
-                    @foreach($bancos as $bc)
-                    <option value="{{ $bc->id }}">{{ $bc->banco }} {{ $bc->numero_cuenta ? '- '.$bc->numero_cuenta : '' }}</option>
-                    @endforeach
-                </select>
-            </div>
-            <div id="bloqBancoDestino" style="display:none">
-                <label style="font-size:.76rem;font-weight:600;color:#374151;display:block;margin-bottom:.3rem">Banco Destino</label>
-                <select name="banco_destino_id" style="width:100%;padding:.4rem .6rem;border:1.5px solid #e2e8f0;border-radius:7px;font-size:.82rem">
-                    <option value="">— Seleccionar —</option>
-                    @foreach($bancos as $bc)
-                    <option value="{{ $bc->id }}">{{ $bc->banco }} {{ $bc->numero_cuenta ? '- '.$bc->numero_cuenta : '' }}</option>
-                    @endforeach
-                </select>
-            </div>
-            <div>
-                <label style="font-size:.76rem;font-weight:600;color:#374151;display:block;margin-bottom:.3rem">Observación</label>
-                <textarea name="observacion" rows="2" placeholder="Opcional"
-                          style="width:100%;padding:.4rem .6rem;border:1.5px solid #e2e8f0;border-radius:7px;font-size:.82rem;resize:vertical"></textarea>
-            </div>
-            <button type="submit"
-                    style="background:#065f46;color:#fff;border:none;border-radius:8px;padding:.6rem;font-size:.88rem;font-weight:700;cursor:pointer">
-                ✅ Registrar Gasto
-            </button>
-        </form>
-    </div>
-</div>
+@include('admin.partials.modal_gasto', [
+    'formAction'  => route('admin.cuadre-diario.gasto.store', $cuadre->id),
+    'bancos'      => $bancos,
+    'esAdmin'     => $esAdmin,
+    'modalId'     => 'modal-gasto',
+    'imagenPaste' => true,
+])
 
 {{-- Modal: Cerrar Cuadre --}}
 @if($esSuperAdmin)
@@ -478,27 +396,7 @@ $totalBancos = $bancos->sum(fn($bc) => \App\Models\Consignacion::saldoBanco(sess
 @endif
 
 <script>
-function actualizarBancos() {
-    const fp = document.getElementById('sFormaPago').value;
-    document.getElementById('bloqBancoOrigen').style.display =
-        (fp === 'transferencia_bancaria' || fp === 'banco_banco') ? 'block' : 'none';
-    document.getElementById('bloqBancoDestino').style.display =
-        fp === 'banco_banco' ? 'block' : 'none';
-}
-function actualizarFormPago() {
-    const tipo = document.getElementById('sTipo').value;
-    const sel = document.getElementById('sFormaPago');
-    if (tipo === 'efectivo_banco') {
-        sel.value = 'efectivo';
-        actualizarBancos();
-        // Mostrar banco origen para saber dónde llega
-        document.getElementById('bloqBancoOrigen').style.display = 'block';
-    }
-    if (tipo === 'banco_banco') {
-        sel.value = 'banco_banco';
-        actualizarBancos();
-    }
-}
+// Los aliases actualizarBancos/actualizarFormPago ya están definidos en el partial modal_gasto
 </script>
 @endif
 

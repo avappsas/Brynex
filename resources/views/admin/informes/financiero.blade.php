@@ -37,6 +37,7 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
             </select>
             <button type="submit" style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:.4rem 1rem;font-size:.82rem;cursor:pointer;">Ver</button>
             <a href="?mes={{ $mes }}&anio={{ $anio }}&excel=1" style="background:#16a34a;color:#fff;border-radius:8px;padding:.4rem .9rem;font-size:.78rem;font-weight:600;text-decoration:none;">📥 Excel</a>
+            <a href="{{ route('admin.informes.gastos.index', ['mes'=>$mes,'anio'=>$anio]) }}" style="background:#7c3aed;color:#fff;border-radius:8px;padding:.4rem .9rem;font-size:.78rem;font-weight:600;text-decoration:none;">💸 Ver Gastos</a>
         </form>
     </div>
 
@@ -134,10 +135,7 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
                     <div style="font-size:.72rem;color:#64748b;margin-bottom:.25rem;">{{ $b->banco }}</div>
                     <div style="font-size:.82rem;font-weight:600;color:#0d2550;margin-bottom:.5rem;">{{ $b->nombre }}</div>
                     <div style="font-size:1rem;font-weight:800;color:#2563eb;">{{ $fmt($b->saldo_actual) }}</div>
-                    <div style="display:flex;justify-content:space-between;margin-top:.35rem;font-size:.72rem;color:#94a3b8;">
-                        <span>↑ {{ $fmt($b->entradas_mes) }}</span>
-                        <span>↓ {{ $fmt($b->salidas_mes) }}</span>
-                    </div>
+                    <div style="font-size:.68rem;color:#94a3b8;margin-top:.2rem;">{{ $b->label_saldo }}</div>
                 </div>
                 @endforeach
             </div>

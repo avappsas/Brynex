@@ -20,22 +20,44 @@ class Gasto extends BaseModel
         'valor'  => 'integer',
     ];
 
-    // Etiquetas legibles para el frontend
+    // ── Etiquetas legibles para el frontend ─────────────────────────
     const TIPOS = [
-        'papeleria'            => 'Papelería / útiles',
-        'servicios'            => 'Pago servicios',
-        'viaticos'             => 'Viáticos / transporte',
+        // MOVIMIENTOS
         'efectivo_banco'       => 'Efectivo → Banco',
         'banco_banco'          => 'Banco → Banco',
-        'nomina'               => 'Pago nómina',
+        // GASTOS SEDE
+        'facturas'             => 'Facturas',
+        'arriendo'             => 'Arriendo',
+        'papeleria'            => 'Papelería / útiles',
+        'viaticos'             => 'Viáticos / transporte',
+        'servicios'            => 'Pago servicios',
+        // NÓMINA
+        'salarios'             => 'Salarios',
+        'vales'                => 'Vales',
+        'comisiones_nomina'    => 'Comisiones',
+        'nomina'               => 'Pago nómina',       // legacy
+        // OTROS
+        'otros'                => 'Otros',
+        'otro_oficina'         => 'Otro gasto oficina', // legacy
+        'otro_admin'           => 'Otro gasto admin',   // legacy
+        // ADMIN (ocultos del select normal)
         'transferencia_banco'  => 'Pago desde banco',
-        'otro_oficina'         => 'Otro gasto oficina',
-        'otro_admin'           => 'Otro gasto admin',
         'pago_planilla'        => 'Pago Planilla SS',
     ];
 
-    // Tipos que solo puede usar admin/superadmin
-    const TIPOS_ADMIN = ['banco_banco', 'nomina', 'transferencia_banco', 'otro_admin'];
+    // ── Agrupación para <optgroup> en el select ──────────────────────
+    const TIPOS_GRUPOS = [
+        '💱 Movimientos' => ['efectivo_banco', 'banco_banco'],
+        '🏢 Gastos Sede' => ['facturas', 'arriendo', 'papeleria', 'viaticos', 'servicios'],
+        '👥 Nómina'      => ['salarios', 'vales', 'comisiones_nomina', 'nomina'],
+        '📦 Otros'       => ['otros', 'otro_oficina', 'otro_admin'],
+    ];
+
+    // ── Tipos de Nómina (muestran select de usuario) ─────────────────
+    const TIPOS_NOMINA = ['salarios', 'vales', 'comisiones_nomina', 'nomina'];
+
+    // ── Tipos que solo puede usar admin/superadmin ───────────────────
+    const TIPOS_ADMIN = ['banco_banco', 'efectivo_banco', 'nomina', 'transferencia_banco', 'otro_admin'];
 
     // ── Relaciones ────────────────────────────────────────────────────
     public function cuadre()

@@ -217,6 +217,14 @@ Route::middleware('auth')->group(function () {
             Route::get('/financiero/ss-planillas',     [$ic, 'ssPlanillas'])     ->name('financiero.ss_planillas');
             Route::get('/financiero/detalle-dia',      [$ic, 'detalleDia'])      ->name('financiero.detalle_dia');
             Route::get('/financiero/prestamos-mes',    [$ic, 'prestamesMes'])    ->name('financiero.prestamos_mes');
+
+            // ── Gestión de gastos ──────────────────────────────────────────
+            $ga = \App\Http\Controllers\Admin\GastoAdminController::class;
+            Route::get('/gastos',              [$ga, 'index'])   ->name('gastos.index');
+            Route::post('/gastos',             [$ga, 'store'])   ->name('gastos.store');
+            Route::put('/gastos/{id}',         [$ga, 'update'])  ->name('gastos.update');
+            Route::delete('/gastos/{id}',      [$ga, 'destroy']) ->name('gastos.destroy');
+            Route::post('/gastos/{id}/imagen', [$ga, 'imagen'])  ->name('gastos.imagen');
         });
 
         // ── Préstamos / Cartera ──────────────────────────────────────────

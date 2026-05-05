@@ -701,10 +701,15 @@ $efAcum = $csAcum = $prAcum = $sfAcum = 0;
                 //   Mes anterior pagó de más → sp = +X
                 //   Este mes aplica anticipo, paga solo diferencia → sp = ef+cs-total
                 //   Acumulado = +X + (ef+cs-total) → refleja correctamente el neto.
+                //
+                // PRÉSTAMO CON PAGO PARCIAL: si la persona consignó $587k sobre $587.8k,
+                // el saldo real pendiente es solo $800, no el total bruto completo.
+                // Se usa la misma fórmula (pagadoReal - total) en todos los casos.
                 $pagadoReal = (int)$factura->valor_consignado + (int)$factura->valor_efectivo;
                 if ($factura->es_prestamo) {
-                    // Préstamo: debe el bruto completo al mes siguiente
-                    $saldoProximo = -(int)$factura->total;
+                    // Préstamo: graba el saldo REAL pendiente (puede ser pago parcial o $0).
+                    // pagadoReal - total: negativo = debe, 0 = saldado.
+                    $saldoProximo = $pagadoReal - (int)$factura->total;
                 } else {
                     // ─── Saldo proximo según tipo de pago ─────────────────
                     if ($esMasivo && $saldoEmpresaAplicar > 0) {
@@ -1703,12 +1708,11 @@ $efAcum = $csAcum = $prAcum = $sfAcum = 0;
             ]);
 
             // ── saldo_proximo ──────────────────────────────────────────
-            if ($factura->es_prestamo) {
-                $saldoProximo = -(int)$factura->total;
-            } else {
-                $pagadoReal   = (int)$factura->valor_consignado + (int)$factura->valor_efectivo;
-                $saldoProximo = $pagadoReal - (int)$factura->total;
-            }
+            // Siempre: pagadoReal - total. Negativo = saldo pendiente.
+            // Para préstamos con pago parcial esto refleja el saldo real
+            // adeudado (no el total bruto completo).
+            $pagadoReal   = (int)$factura->valor_consignado + (int)$factura->valor_efectivo;
+            $saldoProximo = $pagadoReal - (int)$factura->total;
             $factura->update(['saldo_proximo' => $saldoProximo]);
 
             // ── Consignaciones ─────────────────────────────────────────

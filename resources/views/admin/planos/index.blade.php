@@ -674,8 +674,12 @@
             </td>
             <td id="planilla-{{ $p->id }}" style="text-align:center">
                 @if($p->numero_planilla)
+                @php
+                    $horaConf = $p->updated_at ? sqldate($p->updated_at, 'd/m/y H:i') : '';
+                @endphp
                 <span class="pla-ico" data-num="{{ $p->numero_planilla }}"
-                      onclick="copiarPlanilla(this)" title="">✅</span>
+                      onclick="copiarPlanilla(this)"
+                      title="{{ $p->numero_planilla }}{{ $horaConf ? ' · '.$horaConf : '' }}">✅</span>
                 @else
                 <span style="color:#cbd5e1">—</span>
                 @endif

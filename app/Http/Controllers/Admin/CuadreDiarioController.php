@@ -27,6 +27,7 @@ class CuadreDiarioController extends Controller
 
         $cajaMenor = CajaMenor::montoActivo($aliadoId, $usuarioId);
         $bancos    = BancoCuenta::where('aliado_id', $aliadoId)->where('activo', true)->get();
+        $usuarios  = User::where('aliado_id', $aliadoId)->where('activo', true)->orderBy('nombre')->get(['id','nombre']);
 
         // Datos para el cuadre activo
         $datosPeriodo = $cuadre ? $this->calcularPeriodo($cuadre, $aliadoId, $usuarioId) : null;
@@ -52,7 +53,7 @@ class CuadreDiarioController extends Controller
             ->get();
 
         return view('admin.cuadre-diario.index', compact(
-            'cuadre', 'cajaMenor', 'bancos', 'datosPeriodo',
+            'cuadre', 'cajaMenor', 'bancos', 'usuarios', 'datosPeriodo',
             'gastos', 'facturasPeriodo', 'cuadresAnteriores'
         ));
     }
@@ -106,10 +107,11 @@ class CuadreDiarioController extends Controller
         $facturasPeriodo = $this->facturasPeriodo($cuadre, $aliadoId, $cuadre->usuario_id);
         $datosPeriodo    = $this->calcularPeriodo($cuadre, $aliadoId, $cuadre->usuario_id);
         $bancos          = BancoCuenta::where('aliado_id', $aliadoId)->where('activo', true)->get();
+        $usuarios        = User::where('aliado_id', $aliadoId)->where('activo', true)->orderBy('nombre')->get(['id','nombre']);
         $cajaMenor       = $cuadre->saldo_apertura;
 
         return view('admin.cuadre-diario.index', compact(
-            'cuadre', 'cajaMenor', 'bancos', 'datosPeriodo',
+            'cuadre', 'cajaMenor', 'bancos', 'usuarios', 'datosPeriodo',
             'gastos', 'facturasPeriodo'
         ));
     }

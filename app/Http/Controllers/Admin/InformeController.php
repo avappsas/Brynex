@@ -431,7 +431,9 @@ class InformeController extends Controller
         // Gastos operativos (sin planillas SS)
         $gastosOp = DB::table('gastos')->where('aliado_id',$aid)
             ->where('tipo','!=','pago_planilla')
-            ->whereMonth('fecha',$mes)->whereYear('fecha',$anio)->sum('valor');
+            ->whereMonth('fecha',$mes)->whereYear('fecha',$anio)
+            ->selectRaw('ISNULL(SUM(CAST(valor AS BIGINT)), 0) AS total')
+            ->value('total');
 
         $egresos = ['comisiones' => $comisionesAsesor, 'operativos' => $gastosOp, 'total' => $comisionesAsesor + $gastosOp];
         $utilidad = $ingresos['total'] - $egresos['total'];
@@ -469,11 +471,13 @@ class InformeController extends Controller
         // Recalcular saldoSS incluyendo el saldo arrastrado del mes anterior
         $saldoSS = $recaudoSS + $saldoSSMesAnterior - $pagadoSS;
 
-        // Bancos
-        $bancos = BancoCuenta::where('aliado_id',$aid)->where('activo',true)->get()->map(function($b) use($aid,$mes,$anio){
-            $b->entradas_mes = DB::table('consignaciones')->where('aliado_id',$aid)->where('banco_cuenta_id',$b->id)->whereMonth('fecha',$mes)->whereYear('fecha',$anio)->sum('valor');
-            $b->salidas_mes  = DB::table('gastos')->where('aliado_id',$aid)->where('banco_origen_id',$b->id)->whereMonth('fecha',$mes)->whereYear('fecha',$anio)->sum('valor');
-            $b->saldo_actual = \App\Models\Consignacion::saldoBanco($aid,$b->id);
+        // Bancos: saldo al cierre del mes filtrado (si es mes pasado) o saldo actual (mes en curso)
+        $esMesActual = ($mes == now()->month && $anio == now()->year);
+        $bancos = BancoCuenta::where('aliado_id',$aid)->where('activo',true)->get()->map(function($b) use($aid,$mes,$anio,$esMesActual){
+            $b->saldo_actual = $esMesActual
+                ? \App\Models\Consignacion::saldoBanco($aid, $b->id)
+                : \App\Models\Consignacion::saldoBancoAlFin($aid, $b->id, $mes, $anio);
+            $b->label_saldo  = $esMesActual ? 'Saldo actual' : 'Saldo al ' . \Carbon\Carbon::createFromDate($anio,$mes,1)->endOfMonth()->format('d/m/y');
             return $b;
         });
 
@@ -766,7 +770,7 @@ class InformeController extends Controller
             ->where('aliado_id',$aid)
             ->where('tipo','!=','pago_planilla')
             ->whereMonth('fecha',$mes)->whereYear('fecha',$anio)
-            ->selectRaw('DAY(fecha) AS dia, SUM(valor) AS total')
+            ->selectRaw('DAY(fecha) AS dia, ISNULL(SUM(CAST(valor AS BIGINT)), 0) AS total')
             ->groupByRaw('DAY(fecha)')
             ->pluck('total','dia');
 
