@@ -103,18 +103,25 @@ class Factura extends BaseModel
     /** ¿Está completamente pagada? */
     public function estaCompletamentePagada(): bool
     {
-        return $this->total_abonado >= (int)$this->total;
+        // Considera tanto el pago inicial (valor_consignado/efectivo al facturar)
+        // como los abonos posteriores registrados en la tabla abonos.
+        $pagadoAlFacturar = (int)$this->valor_consignado + (int)$this->valor_efectivo;
+        return ($pagadoAlFacturar + $this->total_abonado) >= (int)$this->total;
     }
 
     /**
-     * Saldo pendiente del préstamo = total original - sum(abonos).
+     * Saldo pendiente del préstamo = total - pago_inicial - sum(abonos_posteriores).
      * Solo relevante cuando estado = 'prestamo'.
-     * Difiere de saldo_restante en que saldo_restante usa total_abonado (abonos),
-     * mientras que saldo_pendiente_prestamo es el mismo concepto con nombre semánticamente claro.
+     *
+     * El pago inicial (valor_consignado + valor_efectivo) ocurre al momento de
+     * facturar y NO se registra en la tabla abonos. Los abonos posteriores
+     * (registrados desde el módulo Préstamos) sí van en la tabla abonos.
+     * Ambos deben descontarse del total para obtener el saldo real adeudado.
      */
     public function getSaldoPendientePrestamoAttribute(): int
     {
-        return $this->saldo_restante; // alias semántico para el módulo préstamos
+        $pagadoAlFacturar = (int)$this->valor_consignado + (int)$this->valor_efectivo;
+        return max(0, (int)$this->total - $pagadoAlFacturar - $this->total_abonado);
     }
 
     /** Genera el siguiente número de factura para un aliado */
