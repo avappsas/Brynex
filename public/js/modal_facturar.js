@@ -397,6 +397,9 @@ const MF = (function () {
         setVal('mf-mora', _mora);
         document.querySelectorAll('input[name="mf_indep_modo"]').forEach(r => { if (r.value === 'afiliacion') r.checked = true; });
         _saldoFavor = 0; _saldoPendiente = 0;
+        // Reset checkbox cartera
+        const chkCart = document.getElementById('mf-chk-cartera');
+        if (chkCart) chkCart.checked = false;
 
         // Reset retiro
         _esRetiro = false;
@@ -615,7 +618,7 @@ const MF = (function () {
                     saldoPanel.style.flexDirection = 'column';
                     let html = '';
                     if (_saldoFavor > 0) html += '<span class="mf-badge-favor">✅ Saldo a favor: ' + fmt(_saldoFavor) + ' (se descuenta del total)</span>';
-                    if (_saldoPendiente > 0) html += '<span class="mf-badge-pendiente">⚠️ Saldo pendiente: ' + fmt(_saldoPendiente) + ' (se suma al total)</span>';
+                    if (_saldoPendiente > 0) html += '<label class="mf-badge-pendiente" style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:.5rem;"><input type="checkbox" id="mf-chk-cartera" onchange="MF.recalc()" style="accent-color:#dc2626;width:14px;height:14px;flex-shrink:0;"><span>⚠️ Cartera pendiente: ' + fmt(_saldoPendiente) + ' <span style="font-weight:500;font-size:.65rem;">(marcar para incluir en esta factura)</span></span></label>';
                     saldoPanel.innerHTML = html;
                 } else {
                     saldoPanel.style.display = 'none';
@@ -702,7 +705,7 @@ const MF = (function () {
                     let html = '';
                     // Anticipo arriba — solo el total, sin desglose por persona
                     if (_saldoFavor > 0) html += '<span class="mf-badge-favor">✅ Anticipo a favor: ' + fmt(_saldoFavor) + ' (se descuenta del pendiente)</span>';
-                    if (_saldoPendiente > 0) html += '<span class="mf-badge-pendiente">⚠️ Cartera pendiente: ' + fmt(_saldoPendiente) + ' (se suma al total)</span>';
+                    if (_saldoPendiente > 0) html += '<label class="mf-badge-pendiente" style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:.5rem;"><input type="checkbox" id="mf-chk-cartera" onchange="MF.recalc()" style="accent-color:#dc2626;width:14px;height:14px;flex-shrink:0;"><span>⚠️ Cartera pendiente: ' + fmt(_saldoPendiente) + ' <span style="font-weight:500;font-size:.65rem;">(marcar para incluir en esta factura)</span></span></label>';
                     saldoPanel.innerHTML = html;
                 } else {
                     saldoPanel.style.display = 'none';
@@ -886,7 +889,11 @@ const MF = (function () {
             // ── Total BRUTO: lo que se cobra sin aplicar ningún saldo ──────
             // Se muestra en la columna izquierda para que el usuario vea
             // cuánto vale la planilla completa antes de cualquier descuento.
-            totalBruto = ss + admon + seg + iva + otros + otrosA + mora + afilVal + _saldoPendiente;
+            // Solo incluir cartera pendiente si el checkbox está marcado
+            const chkCartera = document.getElementById('mf-chk-cartera');
+            const incluirCartera = chkCartera ? chkCartera.checked : true; // legacy: true si no existe
+            const cartValue = incluirCartera ? _saldoPendiente : 0;
+            totalBruto = ss + admon + seg + iva + otros + otrosA + mora + afilVal + cartValue;
 
             // Actualizar _mora para el envío al servidor
             _mora = mora;

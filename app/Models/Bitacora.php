@@ -12,6 +12,10 @@ class Bitacora extends BaseModel
 
     protected $table = 'bitacora';
 
+    protected $casts = [
+        'created_at' => 'datetime',
+    ];
+
     protected $fillable = [
         'aliado_id',
         'user_id',
