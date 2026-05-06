@@ -28,16 +28,13 @@
 <form method="POST" action="{{ route('admin.configuracion.store') }}">
 @csrf
 
-{{-- ══ SECCIÓN 1: Porcentajes Seguridad Social ══ --}}
+{{-- ══ SECCIÓN 1: Porcentajes Seguridad Social — Solo Superadmin BryNex ══ --}}
+@role('superadmin')
 <div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:1rem 1.25rem;margin-bottom:1rem;">
-  @php $esSuperadmin = auth()->user()->hasRole('superadmin'); @endphp
+  @php $esSuperadmin = true; @endphp
   <div style="font-size:0.72rem;font-weight:700;color:#0891b2;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.85rem;">
     🔒 Parámetros Globales BryNex
-    @if(!$esSuperadmin)
-    <span style="font-size:0.65rem;color:#94a3b8;text-transform:none;font-weight:400;margin-left:0.5rem;">Solo superadmin puede modificarlos</span>
-    @else
     <span style="background:#dcfce7;color:#166534;font-size:0.65rem;font-weight:600;padding:0.1rem 0.5rem;border-radius:999px;text-transform:none;margin-left:0.5rem;">✏️ Editables como Superadmin</span>
-    @endif
   </div>
   <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:0.75rem;">
     @foreach([
@@ -54,9 +51,8 @@
       'tasa_mora_pila'                => ['label'=>'Tasa Mora PILA (Art.635 ET)', 'prefix'=>'', 'suffix'=>'% E.A.', 'step'=>'0.01', 'decimals'=>2],
     ] as $clave => $cfg)
     @php $valor = $configBrynex[$clave]->valor ?? null; @endphp
-    <div style="background:#f8fafc;border-radius:8px;padding:0.65rem 0.75rem;border:1px solid {{ $esSuperadmin ? '#bfdbfe' : '#e2e8f0' }};overflow:hidden;">
+    <div style="background:#f8fafc;border-radius:8px;padding:0.65rem 0.75rem;border:1px solid #bfdbfe;overflow:hidden;">
       <div style="font-size:0.6rem;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:0.3rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ $cfg['label'] }}</div>
-      @if($esSuperadmin)
       <div style="display:flex;align-items:center;gap:0.2rem;">
         @if($cfg['prefix']) <span style="color:#64748b;font-size:0.72rem;flex-shrink:0;">{{ $cfg['prefix'] }}</span> @endif
         <input type="number" step="{{ $cfg['step'] }}" min="0"
@@ -65,17 +61,14 @@
             style="width:100%;padding:0.28rem 0.35rem;border:1px solid #93c5fd;border-radius:5px;font-size:0.82rem;font-family:monospace;font-weight:700;background:#fff;min-width:0;color:#0f172a;box-sizing:border-box;">
         @if($cfg['suffix']) <span style="color:#64748b;font-size:0.72rem;flex-shrink:0;">{{ $cfg['suffix'] }}</span> @endif
       </div>
-      @else
-      <div style="font-size:0.95rem;font-weight:700;color:#0f172a;">
-        {{ $cfg['prefix'] }}{{ $valor !== null ? number_format($valor, $cfg['decimals'], ',', '.') : '—' }}{{ $cfg['suffix'] }}
-      </div>
-      @endif
     </div>
     @endforeach
   </div>
 </div>
+@endrole
 
-{{-- ══ SECCIÓN 2: Tarifas ARL ══ --}}
+{{-- ══ SECCIÓN 2: Tarifas ARL — Solo Superadmin BryNex ══ --}}
+@role('superadmin')
 <div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:1rem 1.25rem;margin-bottom:1rem;">
   <div style="font-size:0.72rem;font-weight:700;color:#16a34a;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.85rem;">
     🦺 Tarifas ARL por Nivel de Riesgo
@@ -111,6 +104,7 @@
     @endforeach
   </div>
 </div>
+@endrole
 
 {{-- ══ SECCIÓN 2.5: Configuración de Mora al Cliente ══ --}}
 <div style="background:#fffbeb;border-radius:12px;border:2px solid #fde68a;padding:1rem 1.25rem;margin-bottom:1rem;">

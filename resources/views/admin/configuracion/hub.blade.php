@@ -101,21 +101,17 @@
             <div class="c-title">Bitácora de Auditoría</div>
             <div class="c-desc">Registro completo de todas las acciones realizadas: creaciones, ediciones, eliminaciones y restauraciones.</div>
         </a>
-        @endrole
-
-        {{-- ── AFILIACIONES ────────────────────────────────── --}}
-        <hr class="cfg-sep">
-        <div class="cfg-sep-label">📋 Afiliaciones</div>
 
         @if($primeraEps ?? null)
         <a class="cfg-card" href="{{ route('admin.configuracion.eps.formulario', $primeraEps) }}"
-           style="--c:#7c3aed;--bc:#c4b5fd">
-            <span class="c-badge" style="background:#ede9fe;color:#6d28d9">Formularios</span>
+           style="--c:#0891b2;--bc:#67e8f9">
+            <span class="c-badge" style="background:#cffafe;color:#0e7490">Solo Superadmin</span>
             <div class="c-icon">🗺️</div>
             <div class="c-title">Editor de Formularios EPS</div>
             <div class="c-desc">Sube el PDF de cada EPS y arrastra los campos para definir dónde se escriben los datos del cotizante automáticamente.</div>
         </a>
         @endif
+        @endrole
 
         {{-- ── CONTRATOS ────────────────────────────────────── --}}
         <hr class="cfg-sep">
@@ -145,23 +141,7 @@
             <div class="c-desc">Active o desactive los operadores (Simple, ARUS, SOI, etc.) que aparecen en el selector al descargar la planilla Excel de seguridad social.</div>
         </a>
 
-        {{-- ── PRÓXIMAMENTE ─────────────────────────────────── --}}
-        <hr class="cfg-sep">
-        <div class="cfg-sep-label">🔜 Próximamente</div>
 
-        <div class="cfg-card" style="--c:#64748b;--bc:#cbd5e1;cursor:default;opacity:.65">
-            <span class="c-badge" style="background:#f1f5f9;color:#64748b">Próximamente</span>
-            <div class="c-icon">📊</div>
-            <div class="c-title">Reportes y Contabilidad</div>
-            <div class="c-desc">Informes financieros, cuadre de caja, exportaciones contables y conciliaciones.</div>
-        </div>
-
-        <div class="cfg-card" style="--c:#64748b;--bc:#cbd5e1;cursor:default;opacity:.65">
-            <span class="c-badge" style="background:#f1f5f9;color:#64748b">Próximamente</span>
-            <div class="c-icon">📬</div>
-            <div class="c-title">Notificaciones</div>
-            <div class="c-desc">Configurar alertas automáticas por vencimientos, pagos pendientes e incapacidades.</div>
-        </div>
 
     </div>
 </div>
