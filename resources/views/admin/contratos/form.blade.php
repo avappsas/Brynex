@@ -1199,6 +1199,27 @@ function onRazonSocialChange(sel) {
     const esIndep = opt?.dataset?.independiente === '1';
     filtrarModalidades(esIndep);
     actualizarBloqueoArl();
+    // Mostrar/ocultar panel Modo ARL según RS independiente o modalidad
+    const alpineComp = document.querySelector('[x-data]')?._x_dataStack?.[0];
+    if (alpineComp) {
+        const midId = parseInt(document.querySelector('select[name=tipo_modalidad_id]')?.value || 0);
+        alpineComp.mostrarModoArl = MODALIDADES_MODO_ARL.includes(midId) || esIndep;
+    }
+    // Si la RS es independiente, auto-seleccionar "independiente" en Modo ARL y mostrar sub-panel
+    if (esIndep) {
+        const selModo = document.getElementById('sel_arl_modo');
+        if (selModo && !selModo.value) {
+            selModo.value = 'independiente';
+        }
+        mostrarPanelArlSegunModo('independiente');
+    } else {
+        // Si se cambia a RS no-independiente, ocultar sub-panel de cédula si el modo era independiente
+        const selModo = document.getElementById('sel_arl_modo');
+        if (selModo && selModo.value === 'independiente') {
+            selModo.value = '';
+            mostrarPanelArlSegunModo('');
+        }
+    }
     // Actualizar NIT cotizante si ya hay un modo ARL seleccionado
     const modoSel = document.getElementById('sel_arl_modo');
     if (modoSel) sincronizarNitCotizante(modoSel.value, opt?.value || '');
@@ -1808,7 +1829,22 @@ function cotizador() {
         init() {
             const opt = document.querySelector(`select[name=tipo_modalidad_id] option[value="${this.tipoModalidadId}"]`);
             this.esIndependiente = opt?.dataset.independiente === '1';
-            this.mostrarModoArl  = MODALIDADES_MODO_ARL.includes(parseInt(this.tipoModalidadId));
+            // Mostrar panel Modo ARL si la modalidad lo requiere O si la RS es independiente
+            const rsSelInit = document.getElementById('sel_rs');
+            const rsEsIndepInit = rsSelInit?.options[rsSelInit.selectedIndex]?.dataset?.independiente === '1';
+            this.mostrarModoArl  = MODALIDADES_MODO_ARL.includes(parseInt(this.tipoModalidadId)) || rsEsIndepInit;
+            // Si la RS es independiente y no hay modo ARL guardado, auto-seleccionar "independiente"
+            // Usar setTimeout para esperar que Alpine haya montado el panel en el DOM
+            if (rsEsIndepInit) {
+                setTimeout(() => {
+                    const selModo = document.getElementById('sel_arl_modo');
+                    if (selModo && !selModo.value) {
+                        selModo.value = 'independiente';
+                    }
+                    // Siempre mostrar el sub-panel de cédula cuando RS es independiente
+                    mostrarPanelArlSegunModo('independiente');
+                }, 50);
+            }
             this.planNombre      = document.querySelector(`#sel_plan option[value="${this.planId}"]`)?.textContent?.trim() || '';
             // Inicializar Tiempo Parcial al cargar
             const tpData = MODALIDADES_TP[parseInt(this.tipoModalidadId)] || null;
@@ -1909,7 +1945,10 @@ function cotizador() {
             const opt = e.target.options[e.target.selectedIndex];
             const id  = parseInt(e.target.value || 0);
             this.esIndependiente = MODALIDADES_INDEP.includes(id);
-            this.mostrarModoArl  = MODALIDADES_MODO_ARL.includes(id);
+            // Mostrar panel Modo ARL si la modalidad lo requiere O si la RS es independiente
+            const rsSelMC = document.getElementById('sel_rs');
+            const rsEsIndepMC = rsSelMC?.options[rsSelMC.selectedIndex]?.dataset?.independiente === '1';
+            this.mostrarModoArl  = MODALIDADES_MODO_ARL.includes(id) || rsEsIndepMC;
             this.pctCaja = this.esIndependiente ? 2 : 4;
             // Tiempo Parcial
             const tpData = MODALIDADES_TP[id] || null;

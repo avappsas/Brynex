@@ -106,7 +106,7 @@ class ConfiguracionAliadoController extends Controller
                         'seguro_valor'            => $data['seguro_valor']          ?? 0,
                         'encargado_default_id'    => $data['encargado_default_id'] ?: null,
                         // Mora al cliente
-                        'mora_dia_habil_inicio'   => ($data['mora_dia_habil_inicio'] !== '' && $data['mora_dia_habil_inicio'] !== null)
+                        'mora_dia_habil_inicio'   => (($data['mora_dia_habil_inicio'] ?? null) !== '' && ($data['mora_dia_habil_inicio'] ?? null) !== null)
                                                      ? (int) $data['mora_dia_habil_inicio'] : null,
                         'mora_minimo'             => $data['mora_minimo']  ?? 2000,
                         'mora_segundo'            => $data['mora_segundo'] ?? 5000,
