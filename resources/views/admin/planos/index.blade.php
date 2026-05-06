@@ -590,11 +590,6 @@
                     @if($planos->count()==0) disabled style="opacity:.4;cursor:not-allowed" @endif>
                     📥 Descargar Plano
                 </button>
-                <button type="button" class="btn-asopagos" onclick="ejecutarDescargaAsopagos()"
-                    @if($planos->count()==0) disabled style="opacity:.4;cursor:not-allowed" @endif
-                    title="Descargar formato Excel para Asopagos">
-                    📌 Asopagos
-                </button>
                 @if(!$esIndependiente)
                 <button type="button" class="btn-accion btn-pagar" onclick="abrirModalPago()"
                     @if($planos->count()==0) disabled style="opacity:.4;cursor:not-allowed" @endif>

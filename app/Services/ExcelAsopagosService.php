@@ -92,6 +92,14 @@ class ExcelAsopagosService
             throw new \RuntimeException("Razón social {$razonSocialId} no encontrada.");
         }
 
+        // Código ARL de la razón social como fallback
+        $codigoArlRs = null;
+        if (!empty($rs->arl_nit)) {
+            $codigoArlRs = DB::table('arls')
+                ->where(DB::raw('CAST(nit AS VARCHAR(20))'), (string)$rs->arl_nit)
+                ->value('codigo');
+        }
+
         $query = DB::table('planos AS p')
             ->leftJoin('facturas AS f',      'f.id',          '=', 'p.factura_id')
             ->leftJoin('clientes AS cl',     'cl.cedula',     '=', 'p.no_identifi')
@@ -129,6 +137,11 @@ class ExcelAsopagosService
                 DB::raw('COALESCE(afp_t.nombre_asopagos, p.cod_afp) AS nombre_asopagos_afp'),
                 DB::raw('COALESCE(arl_m.nombre_asopagos, p.cod_arl) AS nombre_asopagos_arl'),
                 DB::raw('COALESCE(caj_t.nombre_asopagos, p.cod_caja) AS nombre_asopagos_caj'),
+                // Códigos tipo EPS010 de las tablas maestras
+                DB::raw('eps_t.codigo  AS codigo_eps'),
+                DB::raw('afp_t.codigo  AS codigo_afp'),
+                DB::raw('arl_m.codigo  AS codigo_arl'),
+                DB::raw('caj_t.codigo  AS codigo_caj'),
                 DB::raw('arl_t.porcentaje AS tarifa_arl'),
                 'f.v_eps', 'f.v_afp', 'f.v_arl', 'f.v_caja', 'f.total_ss', 'f.dias_cotizados',
                 'cl.genero', 'cl.fecha_nacimiento',
@@ -200,7 +213,7 @@ class ExcelAsopagosService
 
         $fila = 3;
         foreach ($planos as $p) {
-            $this->escribirFila($sheet, $fila, $p);
+            $this->escribirFila($sheet, $fila, $p, $codigoArlRs);
             $fila++;
         }
 
@@ -208,7 +221,7 @@ class ExcelAsopagosService
         return $spreadsheet;
     }
 
-    private function escribirFila($sheet, int $fila, object $p): void
+    private function escribirFila($sheet, int $fila, object $p, ?string $codigoArlRs = null): void
     {
         // ── Edad y género ───────────────────────────────────────────────────
         $edad   = null;
@@ -264,11 +277,12 @@ class ExcelAsopagosService
         $esIng = $fechaIng ? 'X' : null;
         $esRet = $fechaRet ? 'X' : null;
 
-        // ── Nombres Asopagos ────────────────────────────────────────────────
-        $nomEps = $p->nombre_asopagos_eps ?? null;
-        $nomAfp = $p->nombre_asopagos_afp ?? null;
-        $nomArl = $p->nombre_asopagos_arl ?? null;
-        $nomCaj = $p->nombre_asopagos_caj ?? null;
+        // ── Códigos de entidades tipo EPS010 (blank si no tiene) ─────────────────
+        $codEps = !empty($p->codigo_eps) ? trim($p->codigo_eps) : null;
+        $codAfp = ($tienePension && !empty($p->codigo_afp)) ? trim($p->codigo_afp) : null;
+        // ARL: usar la del plano; si no tiene, usar la de la razón social
+        $codArl = !empty($p->codigo_arl) ? trim($p->codigo_arl) : $codigoArlRs;
+        $codCaj = !empty($p->codigo_caj) ? trim($p->codigo_caj) : 'CCF68';
 
         // ── Clase de riesgo ─────────────────────────────────────────────────
         $nivelRiesgo = (int)($p->nivel_riesgo ?? 1);
@@ -308,10 +322,10 @@ class ExcelAsopagosService
             null, null, null,                // 46-48 IRL, F_INI, F_FIN
 
             // SALUD (8) ────────────────────────────────────────────────── 49-56
-            $nomEps,                         // 49 EPS
+            $codEps,                         // 49 EPS
             $dias,                           // 50 DÍAS COTIZADOS SALUD
             $ibc,                            // 51 IBC SALUD
-            0.125,                           // 52 TARIFA SALUD (12.5%)
+            0.04,                            // 52 TARIFA SALUD (4%)
             $vEps ?: null,                   // 53 COTIZACIÓN EPS ★ (cien superior)
             0,                               // 54 VALOR UPC
             null,                            // 55 TIPO DOC UPC
@@ -319,7 +333,7 @@ class ExcelAsopagosService
 
             // PENSIÓN (9) ─────────────────────────────────────────────── 57-65
             null,                            // 57 INDICADOR TARIFA ESPECIAL
-            $nomAfp,                         // 58 AFP
+            $codAfp,                         // 58 AFP
             $tienePension ? $dias : 0,       // 59 DÍAS COTIZADOS PENSIÓN
             $tienePension ? $ibc  : 0,       // 60 IBC PENSIÓN
             0.16,                            // 61 TARIFA PENSIÓN (16%)
@@ -329,7 +343,7 @@ class ExcelAsopagosService
             null,                            // 65 VALOR NO RETENIDO
 
             // RIESGOS (7) ──────────────────────────────────────────────── 66-72
-            $nomArl,                         // 66 ARL AFILIADO
+            $codArl,                         // 66 ARL AFILIADO
             $dias,                           // 67 DÍAS COTIZADOS RIESGOS
             $ibc,                            // 68 IBC RIESGOS
             $nivelRiesgo,                    // 69 CENTRO DE TRABAJO
@@ -338,7 +352,7 @@ class ExcelAsopagosService
             $vArl ?: null,                   // 72 COTIZACIÓN ARL ★ (cien superior)
 
             // CCF (4) ──────────────────────────────────────────────────── 73-76
-            $nomCaj,                         // 73 CCF
+            $codCaj,                         // 73 CCF
             $ibc,                            // 74 IBC CCF
             0.04,                            // 75 TARIFA CCF (4%)
             $vCaj ?: null,                   // 76 COTIZACIÓN CCF ★ (cien superior)
