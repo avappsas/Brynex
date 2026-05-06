@@ -27,29 +27,33 @@ class ClienteController extends Controller
                      'primer_apellido', 'segundo_apellido',
                      'celular', 'telefono', 'correo', 'municipio_id', 'eps_id', 'pension_id');
 
-        // Búsqueda inteligente: cada palabra del término debe aparecer en algún campo de nombre
+        // Búsqueda inteligente: toda la lógica de búsqueda se envuelve en UN SOLO where()
+        // para que el orWhere de nombre NO escape el filtro aliado_id de la query raíz.
+        // SQL resultante: WHERE aliado_id = X AND (cedula LIKE... OR (nombre1... AND nombre2...))
         if ($buscar) {
-            // Coincidencia directa en cédula o celular
             $query->where(function ($q) use ($buscar) {
-                $q->where('cedula', 'LIKE', "%{$buscar}%")
-                  ->orWhere('celular', 'LIKE', "%{$buscar}%");
-            });
-
-            // Si no es puramente numérico, también buscar por nombre tokenizado
-            if (!ctype_digit(str_replace(' ', '', $buscar))) {
-                $palabras = array_filter(explode(' ', trim($buscar)));
-                $query->orWhere(function ($q) use ($palabras) {
-                    foreach ($palabras as $palabra) {
-                        // Cada palabra debe matchear en ALGUNO de los 4 campos de nombre
-                        $q->where(function ($sub) use ($palabra) {
-                            $sub->where('primer_nombre',    'LIKE', "%{$palabra}%")
-                                ->orWhere('segundo_nombre',  'LIKE', "%{$palabra}%")
-                                ->orWhere('primer_apellido', 'LIKE', "%{$palabra}%")
-                                ->orWhere('segundo_apellido','LIKE', "%{$palabra}%");
-                        });
-                    }
+                // Coincidencia directa en cédula o celular
+                $q->where(function ($inner) use ($buscar) {
+                    $inner->where('cedula',  'LIKE', "%{$buscar}%")
+                          ->orWhere('celular', 'LIKE', "%{$buscar}%");
                 });
-            }
+
+                // Si no es puramente numérico, también buscar por nombre tokenizado
+                if (!ctype_digit(str_replace(' ', '', $buscar))) {
+                    $palabras = array_filter(explode(' ', trim($buscar)));
+                    $q->orWhere(function ($inner) use ($palabras) {
+                        foreach ($palabras as $palabra) {
+                            // Cada palabra debe matchear en ALGUNO de los 4 campos de nombre
+                            $inner->where(function ($sub) use ($palabra) {
+                                $sub->where('primer_nombre',    'LIKE', "%{$palabra}%")
+                                    ->orWhere('segundo_nombre',  'LIKE', "%{$palabra}%")
+                                    ->orWhere('primer_apellido', 'LIKE', "%{$palabra}%")
+                                    ->orWhere('segundo_apellido','LIKE', "%{$palabra}%");
+                            });
+                        }
+                    });
+                }
+            });
         }
 
         // Filtro por empresa
