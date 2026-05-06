@@ -541,10 +541,10 @@ const MF = (function () {
             const arlBadge = el('mf-arl-badge');
             if (arlBadge) arlBadge.textContent = _cfg.arlNivel ? 'Nivel ' + _cfg.arlNivel : '';
 
-            // Días del cotizador
+            // Días del cotizador — leer valor real (ya calculado por calcularDiasDesde)
             const diasEl = document.getElementById('sel_dias_cotizar');
-            const dias = parseInt(diasEl?.value || 30);
-            setText('mf-badge-dias', '📅 ' + dias + ' días');
+            const dias = parseInt(diasEl?.value) || 30;
+            setText('mf-badge-dias', '📅 ' + dias + ' día' + (dias === 1 ? '' : 's'));
 
             _total = Math.ceil((r.eps || 0) + (r.arl || 0) + (r.pen || 0) + (r.caja || 0))
                 + ceil(r.admon || 0) + ceil(r.seguro || 0) + ceil(r.iva || 0);
@@ -867,6 +867,12 @@ const MF = (function () {
 
     // ── Recalcular total y pendiente ──────────────────────────────
     function recalc() {
+        // Actualizar badge de días con el valor real del selector (individual)
+        if (_modo === 'individual') {
+            const diasEl = document.getElementById('sel_dias_cotizar');
+            const dias   = parseInt(diasEl?.value) || 30;
+            setText('mf-badge-dias', '📅 ' + dias + ' día' + (dias === 1 ? '' : 's'));
+        }
         const tipo = el('mf-tipo')?.value;
         let totalBruto = _total;
 
