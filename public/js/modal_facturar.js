@@ -541,9 +541,8 @@ const MF = (function () {
             const arlBadge = el('mf-arl-badge');
             if (arlBadge) arlBadge.textContent = _cfg.arlNivel ? 'Nivel ' + _cfg.arlNivel : '';
 
-            // Días del cotizador — leer valor real (ya calculado por calcularDiasDesde)
-            const diasEl = document.getElementById('sel_dias_cotizar');
-            const dias = parseInt(diasEl?.value) || 30;
+            // Días: leer directamente de Alpine (síncrono) antes de que el DOM se actualice
+            const dias = (_cfg.getDias && _cfg.getDias()) || parseInt(document.getElementById('sel_dias_cotizar')?.value) || 30;
             setText('mf-badge-dias', '📅 ' + dias + ' día' + (dias === 1 ? '' : 's'));
 
             _total = Math.ceil((r.eps || 0) + (r.arl || 0) + (r.pen || 0) + (r.caja || 0))
@@ -867,10 +866,9 @@ const MF = (function () {
 
     // ── Recalcular total y pendiente ──────────────────────────────
     function recalc() {
-        // Actualizar badge de días con el valor real del selector (individual)
+        // Actualizar badge de días con el valor real de Alpine (individual)
         if (_modo === 'individual') {
-            const diasEl = document.getElementById('sel_dias_cotizar');
-            const dias   = parseInt(diasEl?.value) || 30;
+            const dias = (_cfg.getDias && _cfg.getDias()) || parseInt(document.getElementById('sel_dias_cotizar')?.value) || 30;
             setText('mf-badge-dias', '📅 ' + dias + ' día' + (dias === 1 ? '' : 's'));
         }
         const tipo = el('mf-tipo')?.value;

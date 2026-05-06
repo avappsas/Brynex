@@ -2154,6 +2154,7 @@ if (typeof MF !== 'undefined' && FC_CONTRATO_ID) {
         arlNivel:          FC_ARL_NIVEL,
         distDefaults:      FC_DIST_DEFAULTS,
         getAlpineResult:   () => document.querySelector('[x-data]')?._x_dataStack?.[0]?.result || {},
+        getDias:           () => parseInt(document.querySelector('[x-data]')?._x_dataStack?.[0]?.diasCotizar) || 30,
         onExito: (data) => {
             if (data.recibo_url) window.open(data.recibo_url, '_blank');
             @if(request()->has('iframe'))
