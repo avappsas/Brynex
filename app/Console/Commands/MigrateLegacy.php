@@ -15,10 +15,9 @@ class MigrateLegacy extends Command
 
     // Bases de datos legacy → clave de aliado
     private array $dbs = [
-        'Brygar_BD'       => 'brygar',
-        // ─── otros aliados comentados: migrar solo Brygar por ahora ───
+        // 'Brygar_BD'       => 'brygar',
+        'Grupo_Fecop'     => 'fecop',
         // 'GiMave_Integral' => 'gimave',
-        // 'Grupo_Fecop'     => 'fecop',
         // 'LuisLopez'       => 'luislopez',
         // 'Mave_Anderson'   => 'mave',
         // 'SS_Faga'         => 'faga',
