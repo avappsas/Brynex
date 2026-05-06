@@ -1088,7 +1088,7 @@ const CLIENTE_EPS_ID     = {{ $clienteEpsId ?? 'null' }};
 const CLIENTE_PENSION_ID = {{ $clientePensionId ?? 'null' }};
 // ── Filtrado inteligente: modalidades → planes ─────────────────────
 const MODALIDAD_PLANES   = @json($planesPermitidos ?? []);
-const MODALIDADES_INDEP          = @json($modalidadesIndependientes ?? [10,11,14]);
+const MODALIDADES_INDEP          = @json($modalidadesIndependientes ?? [10,11]);
 const CLIENTE_EXENTO_AFP         = {{ ($clienteExentoAfp ?? false) ? 'true' : 'false' }};
 const CLIENTE_TIPO_DOC           = @json($clienteTipoDoc ?? null);
 const ES_EDICION                 = {{ ($esEdicion ?? false) ? 'true' : 'false' }};

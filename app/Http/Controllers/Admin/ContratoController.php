@@ -710,8 +710,10 @@ class ContratoController extends Controller
         $modalidadesArlLibre = \App\Models\TipoModalidad::IDS_ARL_LIBRE;  // [10, 11, -1, 8]
         $modalidadesModoArl  = \App\Models\TipoModalidad::IDS_MODO_ARL;   // [10, 11, -1]
 
-        // IDs de modalidades independientes (I Act, I Venc, En el Exterior)
-        $modalidadesIndependientes = [10, 11, 14];
+        // IDs de modalidades independientes (I Act=11, I Venc=10)
+        // NOTA: Las modalidades TP NO son "independientes" a efectos del filtro de RS;
+        // se manejan por su propia lógica (es_tiempo_parcial=1 en la BD).
+        $modalidadesIndependientes = [10, 11];
 
         // Mapa: tipo_modalidad_id => [plan_ids] — para filtrado dinámico en el JS
         $planesPermitidos = DB::table('modalidad_planes')
@@ -738,9 +740,10 @@ class ContratoController extends Controller
         // ── Regla AFP obligatorio ───────────────────────────────────────
         // Modalidades donde AFP es obligatorio (a menos que el cliente esté exento):
         //   - Dependiente E (0), I Venc (10), I Act (11)
-        //   - Todas las variantes de Tiempo Parcial (1,2,3,4,-6,-7,-8)
+        //   - TODAS las modalidades con es_tiempo_parcial=1 (independiente del ID)
         //     → el plan "ARL+CCF" sin AFP (APTP) solo es válido para clientes exentos
-        $modalidadesAfpObligatorio = [0, 10, 11, 1, 2, 3, 4, -6, -7, -8];
+        $idsTP = TipoModalidad::where('es_tiempo_parcial', true)->pluck('id')->toArray();
+        $modalidadesAfpObligatorio = array_values(array_unique(array_merge([0, 10, 11], $idsTP)));
 
         return [
             // Razones sociales: activas primero (ordenadas por nombre), inactivas al final
