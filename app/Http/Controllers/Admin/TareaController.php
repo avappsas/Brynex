@@ -160,7 +160,8 @@ class TareaController extends Controller
             'encargado_id' => 'required|exists:users,id',
         ]);
 
-        $tarea = Tarea::findOrFail($id);
+        $alidoId = session('aliado_id_activo') ?? Auth::user()->aliado_id;
+        $tarea = Tarea::where('aliado_id', $alidoId)->findOrFail($id);
         $tarea->update([
             'tipo'           => $request->tipo,
             'cedula'         => $request->cedula,
@@ -181,7 +182,8 @@ class TareaController extends Controller
     // ── DESTROY ─────────────────────────────────────────────────────────────
     public function destroy(int $id)
     {
-        $tarea = Tarea::findOrFail($id);
+        $alidoId = session('aliado_id_activo') ?? Auth::user()->aliado_id;
+        $tarea = Tarea::where('aliado_id', $alidoId)->findOrFail($id);
         $tarea->delete();
         return redirect()->route('admin.tareas.index')->with('success', 'Tarea eliminada.');
     }
@@ -189,14 +191,17 @@ class TareaController extends Controller
     // ── SHOW (JSON para modal) ───────────────────────────────────────────────
     public function show(int $id)
     {
+        $alidoId = session('aliado_id_activo') ?? Auth::user()->aliado_id;
         $tarea = Tarea::with([
             'encargado', 'creadoPor', 'razonSocial',
             'gestiones.user', 'gestiones.encargadoAnterior', 'gestiones.encargadoNuevo',
             'documentos.user',
-        ])->findOrFail($id);
+        ])->where('aliado_id', $alidoId)->findOrFail($id);
 
         // Enriquecer con datos del cliente
-        $cliente = DB::table('clientes')->where('cedula', $tarea->cedula)
+        $cliente = DB::table('clientes')
+            ->where('aliado_id', $alidoId)
+            ->where('cedula', $tarea->cedula)
             ->select('cedula', 'primer_nombre', 'segundo_nombre', 'primer_apellido', 'segundo_apellido', 'celular', 'correo')
             ->first();
 
@@ -217,7 +222,9 @@ class TareaController extends Controller
             'observacion'  => 'required|string',
         ]);
 
+        $alidoId = session('aliado_id_activo') ?? Auth::user()->aliado_id;
         $tarea = Tarea::findOrFail($id);
+        abort_if((int)$tarea->aliado_id !== (int)$alidoId, 403);
 
         // Calcular fecha_alerta si pide recordatorio
         $fechaAlerta = null;
@@ -273,7 +280,8 @@ class TareaController extends Controller
             'observacion'  => 'required|string',
         ]);
 
-        $tarea = Tarea::findOrFail($id);
+        $alidoId = session('aliado_id_activo') ?? Auth::user()->aliado_id;
+        $tarea = Tarea::where('aliado_id', $alidoId)->findOrFail($id);
         $anterior = $tarea->encargado_id;
 
         // Bitácora de traslado
@@ -301,7 +309,8 @@ class TareaController extends Controller
             'observacion' => 'required|string',
         ]);
 
-        $tarea = Tarea::findOrFail($id);
+        $alidoId = session('aliado_id_activo') ?? Auth::user()->aliado_id;
+        $tarea = Tarea::where('aliado_id', $alidoId)->findOrFail($id);
 
         TareaGestion::create([
             'tarea_id'    => $tarea->id,
@@ -328,7 +337,8 @@ class TareaController extends Controller
             'nombre'  => 'required|string|max:200',
         ]);
 
-        $tarea = Tarea::findOrFail($id);
+        $alidoId = session('aliado_id_activo') ?? Auth::user()->aliado_id;
+        $tarea = Tarea::where('aliado_id', $alidoId)->findOrFail($id);
         $file  = $request->file('archivo');
         $ext   = strtolower($file->getClientOriginalExtension());
         $ruta  = $file->store("tareas/{$tarea->id}", 'public');
@@ -358,7 +368,9 @@ class TareaController extends Controller
     // ── DESCARGAR DOCUMENTO ──────────────────────────────────────────────────
     public function descargarDocumento(int $docId)
     {
-        $doc = TareaDocumento::findOrFail($docId);
+        $alidoId = session('aliado_id_activo') ?? Auth::user()->aliado_id;
+        $doc = TareaDocumento::whereHas('tarea', fn($q) => $q->where('aliado_id', $alidoId))
+            ->findOrFail($docId);
         return Storage::disk('public')->download($doc->ruta, $doc->nombre . '.' . $doc->tipo_archivo);
     }
 
@@ -461,8 +473,10 @@ class TareaController extends Controller
     // ── API: buscar cliente por cédula ───────────────────────────────────────
     public function buscarCliente(Request $request)
     {
+        $alidoId = session('aliado_id_activo') ?? Auth::user()->aliado_id;
         $cedula = $request->get('cedula');
         $cliente = DB::table('clientes')
+            ->where('aliado_id', $alidoId)
             ->where('cedula', 'like', '%' . $cedula . '%')
             ->limit(10)
             ->get(['cedula', 'primer_nombre', 'segundo_nombre', 'primer_apellido', 'segundo_apellido', 'celular']);

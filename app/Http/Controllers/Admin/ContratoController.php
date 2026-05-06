@@ -61,7 +61,8 @@ class ContratoController extends Controller
     {
         $alidoId = session('aliado_id_activo');
         $cedula  = $request->get('cedula');
-        $cliente = $cedula ? Cliente::where('cedula', $cedula)->first() : null;
+        $cliente = $cedula ? Cliente::where('cedula', $cedula)
+            ->where('aliado_id', $alidoId)->first() : null;
 
         return view('admin.contratos.form', array_merge(
             $this->datosFormulario($alidoId, $cliente, null, null),
@@ -110,6 +111,7 @@ class ContratoController extends Controller
                     ->where('id', $rsIdStore)->value('es_independiente');
                 if ($esIndepRS) {
                     Cliente::where('cedula', $cedStore)
+                        ->where('aliado_id', $alidoId)
                         ->update(['operador_planilla_id' => $operadorId]);
                 }
             }
@@ -117,7 +119,8 @@ class ContratoController extends Controller
 
         // Redirigir al cliente del contrato creado
         $cedula  = $nuevoContrato->cedula ?? ($data['cedula'] ?? null);
-        $cliente = $cedula ? \App\Models\Cliente::where('cedula', $cedula)->first() : null;
+        $cliente = $cedula ? \App\Models\Cliente::where('cedula', $cedula)
+            ->where('aliado_id', $alidoId)->first() : null;
         if ($cliente) {
             return redirect()->route('admin.clientes.edit', $cliente->id)
                 ->with('success', 'Contrato creado correctamente. Se generaron los radicados pendientes.');
@@ -250,6 +253,7 @@ class ContratoController extends Controller
                 $cedUpd = $data['cedula'] ?? $contrato->cedula;
                 if ($cedUpd) {
                     Cliente::where('cedula', $cedUpd)
+                        ->where('aliado_id', $alidoId)
                         ->update(['operador_planilla_id' => $operadorIdUpd ?: null]);
                 }
             }

@@ -25,7 +25,8 @@ class RadicadoController extends Controller
      */
     public function update(Request $request, $id)
     {
-        $radicado = Radicado::findOrFail($id);
+        $alidoId  = session('aliado_id_activo');
+        $radicado = Radicado::where('aliado_id', $alidoId)->findOrFail($id);
 
         $data = $request->validate([
             'estado'             => 'required|in:pendiente,tramite,traslado,error,ok',
@@ -81,7 +82,8 @@ class RadicadoController extends Controller
      */
     public function subirPdf(Request $request, $id)
     {
-        $radicado = Radicado::with('contrato')->findOrFail($id);
+        $alidoId  = session('aliado_id_activo');
+        $radicado = Radicado::with('contrato')->where('aliado_id', $alidoId)->findOrFail($id);
         $contrato = $radicado->contrato;
 
         $request->validate([
@@ -123,7 +125,8 @@ class RadicadoController extends Controller
      */
     public function descargarPdf($id)
     {
-        $radicado = Radicado::findOrFail($id);
+        $alidoId  = session('aliado_id_activo');
+        $radicado = Radicado::where('aliado_id', $alidoId)->findOrFail($id);
 
         if (!$radicado->ruta_pdf || !Storage::disk('local')->exists($radicado->ruta_pdf)) {
             abort(404, 'PDF no encontrado.');
@@ -138,7 +141,8 @@ class RadicadoController extends Controller
      */
     public function marcarEnviado(Request $request, $id)
     {
-        $radicado = Radicado::findOrFail($id);
+        $alidoId  = session('aliado_id_activo');
+        $radicado = Radicado::where('aliado_id', $alidoId)->findOrFail($id);
 
         $data = $request->validate([
             'enviado_al_cliente'   => 'required|boolean',
@@ -175,9 +179,10 @@ class RadicadoController extends Controller
      */
     public function bitacora($id)
     {
+        $alidoId  = session('aliado_id_activo');
         $radicado = Radicado::with([
             'movimientos.user:id,nombre',
-        ])->findOrFail($id);
+        ])->where('aliado_id', $alidoId)->findOrFail($id);
 
         $movimientos = $radicado->movimientos->map(function ($m, $i) use ($radicado) {
             // Calcular días entre este movimiento y el anterior
@@ -215,7 +220,8 @@ class RadicadoController extends Controller
      */
     public function documentosCotizante($id)
     {
-        $radicado = Radicado::with('contrato')->findOrFail($id);
+        $alidoId  = session('aliado_id_activo');
+        $radicado = Radicado::with('contrato')->where('aliado_id', $alidoId)->findOrFail($id);
         $contrato = $radicado->contrato;
         $alidoId  = $contrato->aliado_id;
         $cedula   = $contrato->cedula;

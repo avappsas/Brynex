@@ -117,7 +117,8 @@ class ClienteController extends Controller
     public function edit(int $id, Request $request)
     {
         $isIframe = $request->boolean('iframe');
-        $cliente = Cliente::findOrFail($id);
+        $aliadoId = session('aliado_id_activo');
+        $cliente = Cliente::where('aliado_id', $aliadoId)->findOrFail($id);
         $lookups = $this->getLookups();
         $contratos = DB::table('contratos as ct')
             ->leftJoin('tipo_modalidad as tm', 'tm.id', '=', 'ct.tipo_modalidad_id')
@@ -185,7 +186,8 @@ class ClienteController extends Controller
     // ─── Actualizar ───────────────────────────────────────────────────
     public function update(Request $request, int $id)
     {
-        $cliente = Cliente::findOrFail($id);
+        $aliadoId = session('aliado_id_activo');
+        $cliente = Cliente::where('aliado_id', $aliadoId)->findOrFail($id);
         $data = $this->validarCliente($request, $id);
         $data = $this->limpiarDatos($data);
 
@@ -203,10 +205,13 @@ class ClienteController extends Controller
     // ─── Buscar cliente por cédula (AJAX) ─────────────────────────────
     public function buscarPorCedula(Request $request)
     {
-        $cedula = $request->get('cedula');
+        $cedula    = $request->get('cedula');
+        $aliadoId  = session('aliado_id_activo');
         if (!$cedula) return response()->json(null);
 
-        $cliente = Cliente::where('cedula', $cedula)->first();
+        $cliente = Cliente::where('cedula', $cedula)
+            ->where('aliado_id', $aliadoId)
+            ->first();
 
         if ($cliente) {
             return response()->json([
