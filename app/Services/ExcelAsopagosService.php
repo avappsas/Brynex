@@ -279,7 +279,7 @@ class ExcelAsopagosService
 
         // ── Códigos de entidades tipo EPS010 (blank si no tiene) ─────────────────
         $codEps = !empty($p->codigo_eps) ? trim($p->codigo_eps) : null;
-        $codAfp = ($tienePension && !empty($p->codigo_afp)) ? trim($p->codigo_afp) : null;
+        $codAfp = !empty($p->codigo_afp) ? trim($p->codigo_afp) : 'SINAFP';
         // ARL: usar la del plano; si no tiene, usar la de la razón social
         $codArl = !empty($p->codigo_arl) ? trim($p->codigo_arl) : $codigoArlRs;
         $codCaj = !empty($p->codigo_caj) ? trim($p->codigo_caj) : 'CCF68';
@@ -337,7 +337,7 @@ class ExcelAsopagosService
             $tienePension ? $dias : 0,       // 59 DÍAS COTIZADOS PENSIÓN
             $tienePension ? $ibc  : 0,       // 60 IBC PENSIÓN
             0.16,                            // 61 TARIFA PENSIÓN (16%)
-            $vAfp ?: null,                   // 62 COTIZACIÓN AFP ★ (cien superior)
+            $vAfp ?: 0,                      // 62 COTIZACIÓN AFP ★ (cien superior)
             null,                            // 63 APORTE VOLUNTARIO AFILIADO
             null,                            // 64 APORTE VOLUNTARIO APORTANTE
             null,                            // 65 VALOR NO RETENIDO
