@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\Aliado;
 use App\Models\User;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 
 class AlidoController extends Controller
 {
@@ -50,7 +49,10 @@ class AlidoController extends Controller
         ]);
 
         if ($request->hasFile('logo')) {
-            $data['logo'] = $request->file('logo')->store('logos', 'public');
+            $file      = $request->file('logo');
+            $filename  = time() . '_' . $file->getClientOriginalName();
+            $file->move(public_path('storage/logos'), $filename);
+            $data['logo'] = 'logos/' . $filename;
         }
 
         $data['activo'] = $request->boolean('activo', true);
@@ -89,8 +91,18 @@ class AlidoController extends Controller
         ]);
 
         if ($request->hasFile('logo')) {
-            if ($aliado->logo) Storage::disk('public')->delete($aliado->logo);
-            $data['logo'] = $request->file('logo')->store('logos', 'public');
+            // Eliminar logo anterior si existe
+            if ($aliado->logo) {
+                $oldPath = public_path('storage/' . $aliado->logo);
+                if (file_exists($oldPath)) @unlink($oldPath);
+            }
+            $file      = $request->file('logo');
+            $filename  = time() . '_' . $file->getClientOriginalName();
+            $file->move(public_path('storage/logos'), $filename);
+            $data['logo'] = 'logos/' . $filename;
+        } else {
+            // Preservar el logo existente si no se sube uno nuevo
+            $data['logo'] = $aliado->logo;
         }
 
         $data['activo'] = $request->boolean('activo');
@@ -99,8 +111,8 @@ class AlidoController extends Controller
 
         $aliado->update($data);
 
-        return redirect()->route('admin.aliados.index')
-            ->with('success', "Aliado '{$aliado->nombre}' actualizado.");
+        return redirect()->route('admin.aliados.edit', $aliado)
+            ->with('success', "Aliado '{$aliado->nombre}' actualizado correctamente.");
     }
 
     public function destroy(Aliado $aliado)

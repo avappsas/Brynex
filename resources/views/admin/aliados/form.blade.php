@@ -9,6 +9,12 @@
         'titulo' => isset($aliado->id) ? '✏️ Editar Aliado' : '🏢 Nuevo Aliado',
     ])
 
+    @if(session('success'))
+        <div style="background:#dcfce7;border:1px solid #86efac;border-radius:8px;color:#166534;padding:0.75rem 1rem;margin-bottom:1rem;font-size:0.83rem;display:flex;align-items:center;gap:0.5rem;">
+            ✅ {{ session('success') }}
+        </div>
+    @endif
+
     @if($errors->any())
         <div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;color:#991b1b;padding:0.75rem 1rem;margin-bottom:1rem;font-size:0.83rem;">
             <strong>Corrige los siguientes errores:</strong>
@@ -99,8 +105,15 @@
             <div>
                 <label style="display:block;font-size:0.78rem;font-weight:600;color:#475569;margin-bottom:0.3rem;text-transform:uppercase;letter-spacing:0.04em;">Logo (PNG/JPG)</label>
                 @if(isset($aliado->id) && $aliado->logo)
-                    <div style="margin-bottom:0.4rem;">
-                        <img src="{{ asset('storage/'.$aliado->logo) }}" style="height:40px;border-radius:6px;border:1px solid #e2e8f0;">
+                    <div style="margin-bottom:0.4rem;display:flex;align-items:center;gap:0.5rem;">
+                        <img id="logo-preview"
+                             src="{{ asset('storage/'.$aliado->logo) }}"
+                             style="height:48px;border-radius:6px;border:1px solid #e2e8f0;object-fit:contain;"
+                             onerror="this.style.display='none';document.getElementById('logo-error').style.display='flex';"
+                        >
+                        <span id="logo-error" style="display:none;align-items:center;gap:0.4rem;font-size:0.75rem;color:#dc2626;background:#fee2e2;border:1px solid #fca5a5;border-radius:6px;padding:0.3rem 0.6rem;">
+                            ⚠️ Imagen no encontrada en el servidor — sube una nueva
+                        </span>
                     </div>
                 @endif
                 <input type="file" name="logo" accept="image/*"
