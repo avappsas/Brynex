@@ -1925,7 +1925,9 @@ function cotizador() {
         // Calcula dias a cotizar segun fecha_ingreso.
         // Replica la lógica del backend (FacturacionController::calcularDias):
         //   ① Mes de ingreso = mes actual → dias = 30 - dia + 1  (prop. mes actual)
-        //   ② Mes de ingreso = mes anterior → dias = 30 - dia + 1 (primera planilla)
+        //   ② Mes de ingreso = mes anterior → dias = 30 - dia + 1 (primera planilla mes vencido)
+        //      EXCEPCIÓN: I Act (id=11) ya cobró su primera planilla en el mes de ingreso,
+        //      así que en el mes siguiente siempre son 30 días.
         //   ③ Cualquier otro mes → 30 (mes completo)
         // Esto permite que al facturar en mayo un contrato que ingresó el 24-abril,
         // se pre-seleccionen 7 días en lugar de 30.
@@ -1938,20 +1940,24 @@ function cotizador() {
             const hAnio  = hoy.getFullYear();
             const hMes   = hoy.getMonth();   // 0-based
 
-            // ① Ingresó en el mes actual
+            // ① Ingresó en el mes actual (I Act mes actual, creación en el mismo mes, etc.)
             if (fAnio === hAnio && fMes === hMes) {
                 const dia = fecha.getDate();
                 this.diasCotizar = Math.max(1, 30 - dia + 1);
             }
-            // ② Ingresó en el mes anterior (primera planilla — mes vencido)
+            // ② Ingresó en el mes anterior → primera planilla (mes vencido)
+            // Aplica a: empresa, dependiente, I Venc (id=10)
+            // NO aplica a I Act (id=11): su primera planilla es el mismo mes de ingreso,
+            // así que el mes siguiente ya es una planilla normal de 30 días.
             else {
+                const esIndAct   = parseInt(this.tipoModalidadId || 0) === 11;
                 const mesAntMes  = hMes === 0 ? 11 : hMes - 1;
                 const mesAntAnio = hMes === 0 ? hAnio - 1 : hAnio;
-                if (fAnio === mesAntAnio && fMes === mesAntMes) {
+                if (!esIndAct && fAnio === mesAntAnio && fMes === mesAntMes) {
                     const dia = fecha.getDate();
                     this.diasCotizar = Math.max(1, 30 - dia + 1);
                 } else {
-                    // ③ Mes normal (lleva pagando más de 1 mes)
+                    // ③ Mes normal (≥ 2 meses activo, o I Act en su 2do+ mes)
                     this.diasCotizar = 30;
                 }
             }
