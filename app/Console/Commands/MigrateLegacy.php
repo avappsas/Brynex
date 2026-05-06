@@ -1041,7 +1041,7 @@ class MigrateLegacy extends Command
             DB::table('factura_secuencias')
                 ->updateOrInsert(
                     ['aliado_id' => $row->aliado_id],
-                    ['ultimo_numero' => $row->max_num, 'updated_at' => now()]
+                    ['ultimo_numero' => $row->max_num]
                 );
             $this->line("    → aliado_id={$row->aliado_id}: ultimo_numero={$row->max_num}");
         }
