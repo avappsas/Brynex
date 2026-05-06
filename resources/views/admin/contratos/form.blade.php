@@ -1922,18 +1922,38 @@ function cotizador() {
             }
             this.recalcular();
         },
-        // Calcula dias a cotizar segun fecha_ingreso
-        // Si es el mes actual: dias = 30 - dia + 1
-        // Si es otro mes: 30 (mes completo)
+        // Calcula dias a cotizar segun fecha_ingreso.
+        // Replica la lógica del backend (FacturacionController::calcularDias):
+        //   ① Mes de ingreso = mes actual → dias = 30 - dia + 1  (prop. mes actual)
+        //   ② Mes de ingreso = mes anterior → dias = 30 - dia + 1 (primera planilla)
+        //   ③ Cualquier otro mes → 30 (mes completo)
+        // Esto permite que al facturar en mayo un contrato que ingresó el 24-abril,
+        // se pre-seleccionen 7 días en lugar de 30.
         calcularDiasDesde(fechaStr) {
             if (!fechaStr) { this.diasCotizar = 30; return; }
             const fecha  = new Date(fechaStr + 'T00:00:00'); // evitar timezone
             const hoy    = new Date();
-            if (fecha.getFullYear() === hoy.getFullYear() && fecha.getMonth() === hoy.getMonth()) {
+            const fAnio  = fecha.getFullYear();
+            const fMes   = fecha.getMonth(); // 0-based
+            const hAnio  = hoy.getFullYear();
+            const hMes   = hoy.getMonth();   // 0-based
+
+            // ① Ingresó en el mes actual
+            if (fAnio === hAnio && fMes === hMes) {
                 const dia = fecha.getDate();
                 this.diasCotizar = Math.max(1, 30 - dia + 1);
-            } else {
-                this.diasCotizar = 30;
+            }
+            // ② Ingresó en el mes anterior (primera planilla — mes vencido)
+            else {
+                const mesAntMes  = hMes === 0 ? 11 : hMes - 1;
+                const mesAntAnio = hMes === 0 ? hAnio - 1 : hAnio;
+                if (fAnio === mesAntAnio && fMes === mesAntMes) {
+                    const dia = fecha.getDate();
+                    this.diasCotizar = Math.max(1, 30 - dia + 1);
+                } else {
+                    // ③ Mes normal (lleva pagando más de 1 mes)
+                    this.diasCotizar = 30;
+                }
             }
             // Sincronizar el select
             const sel = document.getElementById('sel_dias_cotizar');
