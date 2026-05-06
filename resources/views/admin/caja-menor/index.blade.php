@@ -31,12 +31,6 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.8rem}
     </div>
 </div>
 
-@if(session('success'))
-<div style="background:#dcfce7;border:1px solid #86efac;color:#166534;padding:.6rem 1rem;border-radius:8px;margin-bottom:.8rem;font-size:.83rem">
-    ✅ {{ session('success') }}
-</div>
-@endif
-
 <div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden">
     @if($asignaciones->isEmpty())
     <div style="padding:2rem;text-align:center;color:#94a3b8">Sin asignaciones de caja menor</div>

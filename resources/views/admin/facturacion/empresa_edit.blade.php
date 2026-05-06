@@ -42,12 +42,6 @@
     </div>
 </div>
 
-@if(session('success'))
-<div style="background:#dcfce7;border:1px solid #86efac;border-radius:8px;padding:.65rem 1rem;margin-bottom:1rem;font-size:.84rem;color:#15803d">
-    ✅ {{ session('success') }}
-</div>
-@endif
-
 @if($errors->any())
 <div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;padding:.65rem 1rem;margin-bottom:1rem;font-size:.84rem;color:#dc2626">
     @foreach($errors->all() as $e) <div>• {{ $e }}</div> @endforeach

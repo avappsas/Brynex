@@ -48,11 +48,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.78rem}
     </div>
 </div>
 
-@if(session('success'))
-<div style="background:#dcfce7;border-radius:8px;padding:.55rem 1rem;margin-bottom:.7rem;font-size:.82rem;color:#15803d;font-weight:600">
-    {{ session('success') }}
-</div>
-@endif
+
 
 @if($saldosConMov->isEmpty())
 <div style="background:#fff;border-radius:12px;border:2px dashed #e2e8f0;padding:2rem;text-align:center;color:#94a3b8">

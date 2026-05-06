@@ -135,6 +135,14 @@
     box-shadow:0 2px 6px rgba(13,148,136,.3);
 }
 .btn-descargar:hover { background:linear-gradient(135deg,#0f766e,#134e4a); }
+.btn-asopagos {
+    background:linear-gradient(135deg,#7c3aed,#5b21b6);
+    color:#fff; padding:.32rem .75rem; font-size:.78rem;
+    border-radius:8px; border:none; cursor:pointer;
+    font-weight:700; display:flex; align-items:center; gap:.35rem;
+    transition:all .2s; white-space:nowrap;
+}
+.btn-asopagos:hover { background:linear-gradient(135deg,#6d28d9,#4c1d95); }
 .btn-pagar {
     background:linear-gradient(135deg,#1d4ed8,#1e40af);
     color:#fff;
@@ -582,6 +590,11 @@
                     @if($planos->count()==0) disabled style="opacity:.4;cursor:not-allowed" @endif>
                     📥 Descargar Plano
                 </button>
+                <button type="button" class="btn-asopagos" onclick="ejecutarDescargaAsopagos()"
+                    @if($planos->count()==0) disabled style="opacity:.4;cursor:not-allowed" @endif
+                    title="Descargar formato Excel para Asopagos">
+                    📌 Asopagos
+                </button>
                 @if(!$esIndependiente)
                 <button type="button" class="btn-accion btn-pagar" onclick="abrirModalPago()"
                     @if($planos->count()==0) disabled style="opacity:.4;cursor:not-allowed" @endif>
@@ -840,7 +853,11 @@
             {{-- Botón único: Excel --}}
             <button class="btn-accion btn-pagar" style="width:100%;justify-content:center;padding:.55rem"
                     onclick="ejecutarDescarga('xlsx')">
-                📊 Descargar Excel
+                📊 Descargar Excel (NI)
+            </button>
+            <button class="btn-asopagos" style="width:100%;justify-content:center;padding:.55rem;margin-top:.5rem"
+                    onclick="ejecutarDescargaAsopagos()">
+                📌 Descargar Excel Asopagos
             </button>
 
             <div style="border-top:1px solid #f1f5f9;padding-top:1rem;margin-top:1rem">
@@ -1065,7 +1082,8 @@ const CTX = {
     rsDiaHabil    : {{ $rsDiaHabil ?? 'null' }},
     csrfToken     : '{{ csrf_token() }}',
     routes: {
-        descargar    : '{{ route('admin.planos.descargar') }}',
+        descargar        : '{{ route('admin.planos.descargar') }}',
+        descargarAsopagos: '{{ route('admin.planos.descargar_asopagos') }}',
         nPlanoUpdate : '{{ route('admin.planos.n_plano.update') }}',
         confirmarPago: '{{ route('admin.planos.confirmar_pago') }}',
         apiRazon     : '/admin/planos/api/razon/',
@@ -1355,6 +1373,21 @@ function ejecutarDescarga(formato) {
         n_plano: CTX.nPlanoFiltro ?? '',
     });
     window.location.href = CTX.routes.descargar + '?' + params.toString();
+}
+
+// ── Descargar formato Asopagos ─────────────────────────────────────────
+function ejecutarDescargaAsopagos() {
+    if (!CTX.razonSocialId) {
+        mostrarToast('Seleccione una Razón Social primero.', 'error');
+        return;
+    }
+    const params = new URLSearchParams({
+        razon_social_id: CTX.razonSocialId,
+        mes    : CTX.mes,
+        anio   : CTX.anio,
+        n_plano: CTX.nPlanoFiltro ?? '',
+    });
+    window.location.href = CTX.routes.descargarAsopagos + '?' + params.toString();
 }
 
 // ── Guardar N_PLANO ────────────────────────────────────────────────────

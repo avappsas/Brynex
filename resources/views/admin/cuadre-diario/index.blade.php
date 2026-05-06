@@ -65,11 +65,6 @@ $esSuperAdmin = auth()->user()->hasRole('superadmin');
     </div>
 </div>
 
-@if(session('success'))
-<div style="background:#dcfce7;border:1px solid #86efac;color:#166534;padding:.6rem 1rem;border-radius:8px;margin-bottom:.8rem;font-size:.83rem">
-    ✅ {{ session('success') }}
-</div>
-@endif
 @if(session('error'))
 <div style="background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;padding:.6rem 1rem;border-radius:8px;margin-bottom:.8rem;font-size:.83rem">
     ❌ {{ session('error') }}

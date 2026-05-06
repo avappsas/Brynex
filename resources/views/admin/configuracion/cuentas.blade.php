@@ -35,12 +35,6 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.8rem}
     </div>
 </div>
 
-@if(session('success'))
-<div style="background:#dcfce7;border-radius:8px;padding:.55rem 1rem;margin-bottom:.7rem;font-size:.82rem;color:#15803d;font-weight:600">
-    ✅ {{ session('success') }}
-</div>
-@endif
-
 {{-- Tabla de cuentas --}}
 <div class="card">
     <div class="card-head">

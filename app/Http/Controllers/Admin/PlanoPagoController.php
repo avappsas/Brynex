@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\{Plano, RazonSocial, TipoModalidad, BancoCuenta, Gasto, OperadorPlanilla, User};
 use App\Services\ExcelPlanoNIService;
+use App\Services\ExcelAsopagosService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -425,6 +426,53 @@ class PlanoPagoController extends Controller
             'Content-Type'        => 'text/plain',
             'Content-Disposition' => "attachment; filename=\"{$nombreBase}.txt\"",
         ]);
+    }
+
+    // ── 4b. Descargar XLSX formato Asopagos ────────────────────────────
+    public function descargarAsopagos(Request $request)
+    {
+        $aliadoId      = session('aliado_id_activo');
+        $razonSocialId = $request->input('razon_social_id');
+        $mes           = (int) $request->input('mes',  now()->month);
+        $anio          = (int) $request->input('anio', now()->year);
+        $nPlano        = (int) $request->input('n_plano', 1);
+        $tiposModalidad = (array) $request->input('tipos_modalidad', []);
+
+        if (!$razonSocialId) {
+            abort(400, 'Debe seleccionar una Razón Social para descargar el formato Asopagos.');
+        }
+
+        $rsNombre = 'SIN_RS';
+        $rs = RazonSocial::find($razonSocialId);
+        if ($rs) {
+            $rsNombre = preg_replace('/[^A-Za-z0-9_\-]/', '_', $rs->razon_social);
+        }
+
+        $nombreBase = "ASOPAGOS_{$rsNombre}_{$mes}_{$anio}_P{$nPlano}";
+
+        try {
+            $service     = new ExcelAsopagosService();
+            $spreadsheet = $service->generar([
+                'aliado_id'       => $aliadoId,
+                'razon_social_id' => $razonSocialId,
+                'mes'             => $mes,
+                'anio'            => $anio,
+                'n_plano'         => $nPlano,
+                'tipos_modalidad' => $tiposModalidad,
+            ]);
+
+            return $service->respuesta($spreadsheet, "{$nombreBase}.xlsx");
+
+        } catch (\Illuminate\Database\QueryException $e) {
+            \Illuminate\Support\Facades\Log::error('AsopagosExcel QueryException', [
+                'sql' => $e->getSql(), 'msg' => $e->getMessage(),
+            ]);
+            abort(500, 'Error de base de datos al generar el archivo Asopagos.');
+        } catch (\RuntimeException $e) {
+            abort(422, $e->getMessage());
+        } catch (\Exception $e) {
+            abort(500, 'Error al generar el archivo Asopagos: ' . $e->getMessage());
+        }
     }
 
     // ── 5. Confirmar Pago ─────────────────────────────────────────────

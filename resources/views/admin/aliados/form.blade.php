@@ -9,13 +9,7 @@
         'titulo' => isset($aliado->id) ? '✏️ Editar Aliado' : '🏢 Nuevo Aliado',
     ])
 
-    @if(session('success'))
-        <div style="background:#dcfce7;border:1px solid #86efac;border-radius:8px;color:#166534;padding:0.75rem 1rem;margin-bottom:1rem;font-size:0.83rem;display:flex;align-items:center;gap:0.5rem;">
-            ✅ {{ session('success') }}
-        </div>
-    @endif
-
-    @if($errors->any())
+@if($errors->any())
         <div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;color:#991b1b;padding:0.75rem 1rem;margin-bottom:1rem;font-size:0.83rem;">
             <strong>Corrige los siguientes errores:</strong>
             <ul style="margin:0.4rem 0 0 1rem;">

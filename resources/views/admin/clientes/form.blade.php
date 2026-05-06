@@ -4,13 +4,6 @@
 @section('contenido')
 <div style="margin:0 auto;">
 
-    @if(session('success'))
-        @if(!($isIframe ?? false))
-        <div style="background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);border-radius:8px;color:#065f46;padding:0.6rem 1rem;margin-bottom:1rem;font-size:0.83rem;">
-            ✅ {{ session('success') }}
-        </div>
-        @endif
-    @endif
     @if($errors->any())
         <div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;color:#991b1b;padding:0.6rem 1rem;margin-bottom:1rem;font-size:0.83rem;">
             <strong>Corrige los errores:</strong>

@@ -56,13 +56,7 @@
 
     {{-- Columna Derecha: Historial Comisiones y Formulario Manual --}}
     <div>
-        @if(session('success'))
-            <div style="background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);border-radius:8px;color:#065f46;padding:0.6rem 1rem;margin-bottom:1rem;font-size:0.83rem;">
-                ✅ {{ session('success') }}
-            </div>
-        @endif
-
-        {{-- Formulario Registro Manual --}}
+{{-- Formulario Registro Manual --}}
         <div style="background:#fff;border-radius:14px;padding:1.5rem;box-shadow:0 1px 8px rgba(0,0,0,0.06);margin-bottom:1.5rem;">
             <h3 style="font-size:1rem;font-weight:700;color:#0f172a;margin-bottom:1rem;">➕ Registrar Comisión Manual</h3>
             <form method="POST" action="{{ route('admin.asesores.comisiones.store', $asesor) }}">

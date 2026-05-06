@@ -204,18 +204,18 @@ class ExcelPlanoNIService
 
         // -- 2. Planos del periodo (logica mes vencido) ----------------------------
         $query = DB::table('planos AS p')
-            ->join('facturas AS f',   'f.id',          '=', 'p.factura_id')
+            ->leftJoin('facturas AS f',   'f.id',          '=', 'p.factura_id')
             ->leftJoin('clientes AS cl',  'cl.cedula',     '=', 'p.no_identifi')
             ->leftJoin('ciudades AS c',      'c.id_ciudad_t', '=', 'cl.municipio_id')
             ->leftJoin('departamentos AS d', 'd.id',          '=', 'cl.departamento_id')
             // Códigos PILA de entidades (NIT del plano → codigo en tabla maestra)
-            ->leftJoin('pensiones AS afp_t', 'afp_t.nit', '=', 'p.cod_afp')
-            ->leftJoin('eps AS eps_t',       'eps_t.nit', '=', 'p.cod_eps')
-            ->leftJoin('cajas AS caj_t',     'caj_t.nit', '=', 'p.cod_caja')
+            ->leftJoin('pensiones AS afp_t', DB::raw('CAST(afp_t.nit AS VARCHAR(20))'), '=', DB::raw('p.cod_afp'))
+            ->leftJoin('eps AS eps_t',       DB::raw('CAST(eps_t.nit AS VARCHAR(20))'), '=', DB::raw('p.cod_eps'))
+            ->leftJoin('cajas AS caj_t',     DB::raw('CAST(caj_t.nit AS VARCHAR(20))'), '=', DB::raw('p.cod_caja'))
             // Tarifa ARL según nivel de riesgo del plano
             ->leftJoin('arl_tarifas AS arl_t', 'arl_t.nivel', '=', 'p.nivel_riesgo')
             // Código PILA de la ARL (NIT del plano → codigo en tabla arls)
-            ->leftJoin('arls AS arl_m', 'arl_m.nit', '=', 'p.cod_arl')
+            ->leftJoin('arls AS arl_m', DB::raw('CAST(arl_m.nit AS VARCHAR(20))'), '=', DB::raw('p.cod_arl'))
             ->where('p.aliado_id',       $aliadoId)
             ->where('p.razon_social_id', $razonSocialId)
             ->where('p.n_plano',         $nPlano)

@@ -112,10 +112,7 @@ td{padding:.55rem .8rem;color:#334155;vertical-align:middle}
 
 <div class="content">
     {{-- Alertas --}}
-    @if(session('success'))
-    <div class="alert alert-success">✅ {{ session('success') }}</div>
-    @endif
-    @if(session('error'))
+@if(session('error'))
     <div class="alert alert-error">❌ {{ session('error') }}</div>
     @endif
 

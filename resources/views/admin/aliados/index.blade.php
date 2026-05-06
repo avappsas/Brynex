@@ -11,13 +11,7 @@
         'btnRuta'   => route('admin.aliados.create'),
     ])
 
-    @if(session('success'))
-        <div style="background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);border-radius:8px;color:#065f46;padding:0.6rem 1rem;margin-bottom:1rem;font-size:0.83rem;">
-            ✅ {{ session('success') }}
-        </div>
-    @endif
-
-    <div style="overflow-x:auto;">
+<div style="overflow-x:auto;">
         <table style="width:100%;border-collapse:collapse;font-size:0.85rem;">
             <thead>
                 <tr style="background:#f1f5f9;border-radius:8px;">

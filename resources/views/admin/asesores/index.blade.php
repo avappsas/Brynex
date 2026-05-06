@@ -11,13 +11,7 @@
         'btnRuta'   => route('admin.asesores.create'),
     ])
 
-    @if(session('success'))
-        <div style="background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);border-radius:8px;color:#065f46;padding:0.6rem 1rem;margin-bottom:1rem;font-size:0.83rem;">
-            ✅ {{ session('success') }}
-        </div>
-    @endif
-
-    <div style="margin-bottom:1.5rem;display:flex;gap:1rem;">
+<div style="margin-bottom:1.5rem;display:flex;gap:1rem;">
         <a href="{{ route('admin.asesores.reporte_mensual') }}"
             style="background:#f8fafc;border:1px solid #cbd5e1;padding:0.6rem 1.25rem;border-radius:8px;color:#334155;text-decoration:none;font-size:0.85rem;font-weight:600;display:inline-flex;align-items:center;gap:0.4rem;transition:background 0.2s;"
             onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='#f8fafc'">

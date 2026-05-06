@@ -78,15 +78,32 @@
                         <p style="margin:0;font-size:.72rem;color:#94a3b8;">⬆️ {{ $doc->subidor?->nombre ?? 'Sistema' }} · {{ $doc->created_at->format('d/m/Y H:i') }}</p>
                     </div>
                     <div style="display:flex;gap:.4rem;flex-shrink:0;">
+                        {{-- Botón VER --}}
+                        <button type="button"
+                            class="doc-btn-ico doc-btn-view"
+                            title="Ver documento"
+                            onclick="docVerArchivo(
+                                '{{ route('admin.documentos.download', $doc->id) }}',
+                                '{{ addslashes(\Illuminate\Support\Str::limit($doc->nombre_archivo, 60)) }}',
+                                '{{ strtolower(pathinfo($doc->nombre_archivo, PATHINFO_EXTENSION)) }}'
+                            )">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                        </button>
+                        {{-- Botón Descargar --}}
                         <a href="{{ route('admin.documentos.download', $doc->id) }}" target="_blank" class="doc-btn-ico doc-btn-download" title="Descargar">
                             <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
                         </a>
-                        <form action="{{ route('admin.documentos.destroy', $doc->id) }}" method="POST" onsubmit="return confirm('¿Eliminar permanentemente?');" style="display:inline;">
-                            @csrf @method('DELETE')
-                            <button type="submit" class="doc-btn-ico doc-btn-del" title="Eliminar">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg>
-                            </button>
-                        </form>
+                        {{-- Botón Eliminar con confirm modal --}}
+                        <button type="button"
+                            class="doc-btn-ico doc-btn-del"
+                            title="Eliminar"
+                            onclick="docConfirmarEliminar(
+                                {{ $doc->id }},
+                                '{{ addslashes(\Illuminate\Support\Str::limit($doc->nombre_archivo, 50)) }}',
+                                '{{ route('admin.documentos.destroy', $doc->id) }}'
+                            )">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg>
+                        </button>
                     </div>
                 </div>
                 @endforeach
@@ -183,6 +200,59 @@
     </div>
 </div>
 
+{{-- ══════════════════════════════════════════════════════
+     MODAL CONFIRMACIÓN ELIMINAR DOCUMENTO
+══════════════════════════════════════════════════════ --}}
+<div id="docDeleteModal" style="display:none;position:fixed;inset:0;z-index:1090;background:rgba(15,23,42,.6);backdrop-filter:blur(4px);align-items:center;justify-content:center;animation:bmodal-fade-in .2s ease;">
+    <div style="background:#fff;border-radius:18px;width:90%;max-width:420px;box-shadow:0 25px 60px rgba(0,0,0,.3);overflow:hidden;animation:bmodal-slide-up .25s cubic-bezier(.16,1,.3,1);">
+        <div style="background:linear-gradient(135deg,#dc2626,#991b1b);padding:1.1rem 1.4rem;display:flex;align-items:center;gap:.75rem;">
+            <div style="width:36px;height:36px;background:rgba(255,255,255,.18);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:1.1rem;">🗑️</div>
+            <div>
+                <h4 style="margin:0;font-size:.95rem;font-weight:700;color:#fff;">Eliminar Documento</h4>
+                <p style="margin:0;font-size:.72rem;color:rgba(255,255,255,.75);">Esta acción no se puede deshacer</p>
+            </div>
+        </div>
+        <div style="padding:1.4rem 1.5rem;">
+            <p style="margin:0 0 .5rem;font-size:.87rem;color:#374151;">¿Está seguro que desea eliminar permanentemente este documento?</p>
+            <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:.65rem .9rem;display:flex;align-items:flex-start;gap:.5rem;">
+                <span style="font-size:.9rem;flex-shrink:0;margin-top:.05rem;">📄</span>
+                <p id="docDeleteNombre" style="margin:0;font-size:.82rem;font-weight:600;color:#991b1b;word-break:break-all;"></p>
+            </div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:.65rem;padding:.9rem 1.4rem;background:#f8fafc;border-top:1px solid #e2e8f0;">
+            <button type="button" onclick="docDeleteCerrar()" style="padding:.45rem 1.1rem;border:1.5px solid #cbd5e1;border-radius:8px;background:#fff;color:#374151;font-size:.83rem;font-weight:600;cursor:pointer;">Cancelar</button>
+            <form id="docDeleteForm" method="POST" style="margin:0;">
+                @csrf @method('DELETE')
+                <button type="submit" style="padding:.45rem 1.2rem;background:linear-gradient(135deg,#dc2626,#991b1b);color:#fff;border:none;border-radius:8px;font-size:.83rem;font-weight:700;cursor:pointer;box-shadow:0 3px 10px rgba(220,38,38,.3);">🗑️ Sí, eliminar</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+{{-- ══════════════════════════════════════════════════════
+     MODAL VISOR DE DOCUMENTO (VER)
+══════════════════════════════════════════════════════ --}}
+<div id="docViewerModal" style="display:none;position:fixed;inset:0;z-index:1090;background:rgba(15,23,42,.75);backdrop-filter:blur(6px);align-items:center;justify-content:center;animation:bmodal-fade-in .2s ease;">
+    <div style="background:#fff;border-radius:18px;width:95%;max-width:860px;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 25px 60px rgba(0,0,0,.35);overflow:hidden;animation:bmodal-slide-up .25s cubic-bezier(.16,1,.3,1);">
+        <div style="background:linear-gradient(135deg,#1e40af,#2563eb);padding:.9rem 1.4rem;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+            <div style="display:flex;align-items:center;gap:.7rem;">
+                <div style="width:34px;height:34px;background:rgba(255,255,255,.18);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:1rem;">👁️</div>
+                <div>
+                    <h4 style="margin:0;font-size:.9rem;font-weight:700;color:#fff;">Ver Documento</h4>
+                    <p id="docViewerNombre" style="margin:0;font-size:.7rem;color:rgba(255,255,255,.75);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:500px;"></p>
+                </div>
+            </div>
+            <div style="display:flex;gap:.5rem;align-items:center;">
+                <a id="docViewerDescargar" href="#" target="_blank" style="display:inline-flex;align-items:center;gap:.35rem;padding:.4rem .9rem;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.35);color:#fff;border-radius:8px;font-size:.77rem;font-weight:600;text-decoration:none;">
+                    ⬇️ Descargar
+                </a>
+                <button type="button" onclick="docViewerCerrar()" style="background:rgba(255,255,255,.15);border:none;border-radius:8px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#fff;font-size:1.1rem;">✕</button>
+            </div>
+        </div>
+        <div id="docViewerCuerpo" style="flex:1;overflow:auto;background:#1e293b;display:flex;align-items:center;justify-content:center;min-height:300px;"></div>
+    </div>
+</div>
+
 {{-- ESTILOS --}}
 <style>
 .dmodal-backdrop { display:none;position:fixed;inset:0;z-index:1060;background:rgba(15,23,42,.55);backdrop-filter:blur(4px);align-items:center;justify-content:center;animation:bmodal-fade-in .2s ease; }
@@ -197,6 +267,7 @@
 .doc-card:hover { transform:translateX(3px);box-shadow:0 4px 14px rgba(0,0,0,.08); }
 .doc-badge { padding:.12rem .5rem;border-radius:99px;font-size:.67rem;font-weight:700;background:#f1f5f9;color:#475569; }
 .doc-btn-ico { width:32px;height:32px;border-radius:8px;border:1.5px solid #e2e8f0;background:#f8fafc;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#64748b;transition:all .15s;text-decoration:none; }
+.doc-btn-view:hover { background:#f0fdf4;border-color:#86efac;color:#16a34a; }
 .doc-btn-download:hover { background:#eff6ff;border-color:#bfdbfe;color:#2563eb; }
 .doc-btn-del:hover { background:#fee2e2;border-color:#fca5a5;color:#dc2626; }
 
@@ -285,4 +356,61 @@ if (dz) {
         if (f) { const dt = new DataTransfer(); dt.items.add(f); document.getElementById('docFileInput').files = dt.files; docMostrarArchivo(document.getElementById('docFileInput')); }
     });
 }
+
+// ── Modal confirmación eliminar ───────────────────────────────────────
+function docConfirmarEliminar(id, nombre, actionUrl) {
+    document.getElementById('docDeleteNombre').textContent = nombre;
+    document.getElementById('docDeleteForm').action = actionUrl;
+    document.getElementById('docDeleteModal').style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+}
+function docDeleteCerrar() {
+    document.getElementById('docDeleteModal').style.display = 'none';
+    document.body.style.overflow = '';
+}
+document.getElementById('docDeleteModal')?.addEventListener('click', function(e) {
+    if (e.target === this) docDeleteCerrar();
+});
+
+// ── Modal visor de documento ──────────────────────────────────────────
+function docVerArchivo(url, nombre, ext) {
+    const cuerpo = document.getElementById('docViewerCuerpo');
+    document.getElementById('docViewerNombre').textContent = nombre;
+    document.getElementById('docViewerDescargar').href = url;
+    cuerpo.innerHTML = '';
+
+    const imgs = ['jpg','jpeg','png','webp','gif','bmp','svg'];
+    if (imgs.includes(ext)) {
+        const img = document.createElement('img');
+        img.src = url;
+        img.style.cssText = 'max-width:100%;max-height:80vh;object-fit:contain;border-radius:8px;padding:1rem;';
+        img.onerror = () => { cuerpo.innerHTML = '<p style="color:#94a3b8;font-size:.9rem;padding:2rem;">No se pudo cargar la imagen.</p>'; };
+        cuerpo.appendChild(img);
+    } else if (ext === 'pdf') {
+        const iframe = document.createElement('iframe');
+        iframe.src = url;
+        iframe.style.cssText = 'width:100%;height:75vh;border:none;';
+        cuerpo.appendChild(iframe);
+    } else {
+        cuerpo.innerHTML = `
+            <div style="text-align:center;padding:3rem;">
+                <div style="font-size:3rem;margin-bottom:1rem;">📎</div>
+                <p style="color:#cbd5e1;font-size:.9rem;margin-bottom:1.2rem;">${nombre}</p>
+                <a href="${url}" target="_blank" style="display:inline-flex;align-items:center;gap:.4rem;padding:.55rem 1.3rem;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;border-radius:10px;text-decoration:none;font-size:.85rem;font-weight:600;">
+                    ⬇️ Descargar archivo
+                </a>
+            </div>`;
+    }
+
+    document.getElementById('docViewerModal').style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+}
+function docViewerCerrar() {
+    document.getElementById('docViewerModal').style.display = 'none';
+    document.getElementById('docViewerCuerpo').innerHTML = '';
+    document.body.style.overflow = '';
+}
+document.getElementById('docViewerModal')?.addEventListener('click', function(e) {
+    if (e.target === this) docViewerCerrar();
+});
 </script>
