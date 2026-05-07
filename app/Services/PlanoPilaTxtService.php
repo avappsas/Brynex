@@ -217,9 +217,9 @@ class PlanoPilaTxtService
             . $this->A('E', 1)                                     // 8  tipo_planilla        A 1   pos 227 (E=empresa)
             . $this->A('', 10)                                     // 9  num_planilla_asoc    N 10  pos 228-237 (vacío si no es corrección)
             . $this->A('', 10)                                     // 10 fecha_pago_asoc      A 10  pos 238-247
-            . $this->A('U', 1)                                     // 11 forma_presentacion   A 1   pos 248 (U=única)
-            . $this->A('', 10)                                     // 12 codigo_sucursal      A 10  pos 249-258
-            . $this->A('', 40)                                     // 13 nombre_sucursal      A 40  pos 259-298
+            . $this->A('S', 1)                                     // 11 forma_presentacion   A 1   pos 248 (S=sucursal)
+            . $this->A($rs->codigo_sucursal ?? '', 10)             // 12 codigo_sucursal      A 10  pos 249-258
+            . $this->A($rs->nombre_sucursal ?? '', 40)             // 13 nombre_sucursal      A 40  pos 259-298
             . $this->A($codigoArlRs ?? '', 6)                      // 14 codigo_arl           A 6   pos 299-304
             . $this->A($periodoNoSalud, 7)                         // 15 periodo_no_salud     A 7   pos 305-311
             . $this->A($periodoSalud, 7)                           // 16 periodo_salud        A 7   pos 312-318
