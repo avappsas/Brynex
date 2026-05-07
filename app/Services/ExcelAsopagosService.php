@@ -170,23 +170,7 @@ class ExcelAsopagosService
             'OTROS PARAFISCALES DIFERENTES A CAJA' => self::SECCION_PARAFISCALES,
         ];
 
-        // Fila 1: secciones
-        $colStart = 1;
-        foreach ($secciones as $titulo => $cols) {
-            $colEnd = $colStart + count($cols) - 1;
-            $sL = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($colStart);
-            $eL = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($colEnd);
-            $sheet->mergeCells("{$sL}1:{$eL}1");
-            $sheet->getCell("{$sL}1")->setValue($titulo);
-            $sheet->getStyle("{$sL}1:{$eL}1")->applyFromArray([
-                'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => self::COLOR_SECCION]],
-                'font'      => ['bold' => true, 'color' => ['rgb' => 'FFFFFF'], 'size' => 9],
-                'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
-            ]);
-            $colStart = $colEnd + 1;
-        }
-
-        // Fila 2: encabezados
+        // Fila 1: encabezados de columnas (sin fila de secciones)
         $allHeaders = array_merge(
             self::SECCION_INFO, self::SECCION_NOVEDADES,
             self::SECCION_SALUD, self::SECCION_PENSION,
@@ -197,8 +181,8 @@ class ExcelAsopagosService
             $col    = $idx + 1;
             $cL     = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col);
             $amarillo = in_array($col, self::COLS_AMARILLO);
-            $sheet->getCell("{$cL}2")->setValue($header);
-            $sheet->getStyle("{$cL}2")->applyFromArray([
+            $sheet->getCell("{$cL}1")->setValue($header);
+            $sheet->getStyle("{$cL}1")->applyFromArray([
                 'fill'      => ['fillType' => Fill::FILL_SOLID,
                                 'startColor' => ['rgb' => $amarillo ? self::COLOR_AMARILLO : self::COLOR_HEADER]],
                 'font'      => ['bold' => true, 'size' => 8,
@@ -208,16 +192,15 @@ class ExcelAsopagosService
             ]);
             $sheet->getColumnDimensionByColumn($col)->setWidth(15);
         }
-        $sheet->getRowDimension(1)->setRowHeight(18);
-        $sheet->getRowDimension(2)->setRowHeight(36);
+        $sheet->getRowDimension(1)->setRowHeight(36);
 
-        $fila = 3;
+        $fila = 2;
         foreach ($planos as $p) {
             $this->escribirFila($sheet, $fila, $p, $codigoArlRs);
             $fila++;
         }
 
-        $sheet->freezePane('A3');
+        $sheet->freezePane('A2');
         return $spreadsheet;
     }
 
@@ -266,8 +249,8 @@ class ExcelAsopagosService
         $vArl = $this->cienSuperior((int)($p->v_arl ?? 0));
         $vCaj = $this->cienSuperior((int)($p->v_caja ?? 0));
 
-        // ── Tarifa ARL decimal ──────────────────────────────────────────────
-        $tarifaArl = $p->tarifa_arl !== null ? round((float)$p->tarifa_arl / 100, 6) : null;
+        // ── Tarifa ARL decimal (0 si no hay tarifa) ────────────────────────────────
+        $tarifaArl = ($p->tarifa_arl !== null) ? round((float)$p->tarifa_arl / 100, 6) : 0;
 
         // ── Fechas ingreso / retiro ─────────────────────────────────────────
         $fechaIng = null; $fechaRet = null;
@@ -288,24 +271,23 @@ class ExcelAsopagosService
         $nivelRiesgo = (int)($p->nivel_riesgo ?? 1);
         $claseRiesgo = (string)$nivelRiesgo; // 1-5
 
-        // ── 87 valores en orden ─────────────────────────────────────────────
+        // ── INFORMACIÓN BÁSICA (16) ──────────────────────────────────────── 1-16
         $valores = [
-            // INFORMACIÓN BÁSICA (16) ─────────────────────────────────── 1-16
-            $tipoDoc,                        //  1 TIPO DOCUMENTO
-            (string)$p->no_identifi,         //  2 NUMERO DOCUMENTO
+            substr($tipoDoc, 0, 2),           //  1 TIPO DOCUMENTO (max 2)
+            substr((string)$p->no_identifi, 0, 16), //  2 NUMERO DOCUMENTO (max 16)
             $tipoCot,                        //  3 TIPO COTIZANTE
             $subtipo,                        //  4 SUBTIPO COTIZANTE
             $esExtranjero,                   //  5 EXTRANJERO
             null,                            //  6 COLOMBIANO EXTERIOR
             null,                            //  7 FECHA RADICACIÓN EXTERIOR
             $exonerado,                      //  8 EXONERADO (S/N)
-            $p->cod_departamento,            //  9 CÓDIGO DEPARTAMENTO
-            $p->cod_municipio,               // 10 CÓDIGO MUNICIPIO
-            $p->primer_ape,                  // 11 PRIMER APELLIDO
-            $p->segundo_ape,                 // 12 SEGUNDO APELLIDO
-            $p->primer_nombre,               // 13 PRIMER NOMBRE
-            $p->segundo_nombre,              // 14 SEGUNDO NOMBRE
-            $ibc,                            // 15 SALARIO BÁSICO
+            $p->cod_departamento,            //  9 CÓDIGO DEPARTAMENTO (max 2)
+            $p->cod_municipio,               // 10 CÓDIGO MUNICIPIO (max 3)
+            substr((string)($p->primer_ape   ?? ''), 0, 20), // 11 PRIMER APELLIDO (max 20)
+            substr((string)($p->segundo_ape  ?? ''), 0, 30), // 12 SEGUNDO APELLIDO (max 30)
+            substr((string)($p->primer_nombre?? ''), 0, 20), // 13 PRIMER NOMBRE (max 20)
+            substr((string)($p->segundo_nombre??''), 0, 30), // 14 SEGUNDO NOMBRE (max 30)
+            $ibc,                            // 15 SALARIO BÁSICO (max 9 dígitos)
             $esIntegral,                     // 16 SALARIO INTEGRAL (X o blank)
 
             // NOVEDADES (32) ──────────────────────────────────────────── 17-48
@@ -326,7 +308,7 @@ class ExcelAsopagosService
             $dias,                           // 50 DÍAS COTIZADOS SALUD
             $ibc,                            // 51 IBC SALUD
             0.04,                            // 52 TARIFA SALUD (4%)
-            $vEps ?: null,                   // 53 COTIZACIÓN EPS ★ (cien superior)
+            $vEps > 0 ? $vEps : 0,           // 53 COTIZACIÓN EPS ★ (cien superior)
             0,                               // 54 VALOR UPC
             null,                            // 55 TIPO DOC UPC
             null,                            // 56 NUM DOC UPC
@@ -349,13 +331,13 @@ class ExcelAsopagosService
             $nivelRiesgo,                    // 69 CENTRO DE TRABAJO
             $claseRiesgo,                    // 70 CLASE DE RIESGO
             $tarifaArl,                      // 71 TARIFA RIESGOS
-            $vArl ?: null,                   // 72 COTIZACIÓN ARL ★ (cien superior)
+            $vArl > 0 ? $vArl : 0,           // 72 COTIZACIÓN ARL ★ (cien superior)
 
             // CCF (4) ──────────────────────────────────────────────────── 73-76
             $codCaj,                         // 73 CCF
             $ibc,                            // 74 IBC CCF
             0.04,                            // 75 TARIFA CCF (4%)
-            $vCaj ?: null,                   // 76 COTIZACIÓN CCF ★ (cien superior)
+            $vCaj > 0 ? $vCaj : 0,           // 76 COTIZACIÓN CCF ★ (cien superior)
 
             // OTROS PARAFISCALES (11) ─────────────────────────────────── 77-87
             0,                               // 77 IBC OTROS PARAFISCALES

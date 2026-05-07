@@ -854,6 +854,10 @@
                     onclick="ejecutarDescargaAsopagos()">
                 📌 Descargar Excel Asopagos
             </button>
+            <button class="btn-accion" style="width:100%;justify-content:center;padding:.55rem;margin-top:.5rem;background:linear-gradient(135deg,#059669,#047857);color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:.85rem;display:flex;align-items:center;gap:.4rem"
+                    onclick="ejecutarDescargaMiPlanilla()">
+                📄 Descargar TXT MiPlanilla
+            </button>
 
             <div style="border-top:1px solid #f1f5f9;padding-top:1rem;margin-top:1rem">
                 <div class="aviso-modal">
@@ -1078,7 +1082,8 @@ const CTX = {
     csrfToken     : '{{ csrf_token() }}',
     routes: {
         descargar        : '{{ route('admin.planos.descargar') }}',
-        descargarAsopagos: '{{ route('admin.planos.descargar_asopagos') }}',
+        descargarAsopagos  : '{{ route('admin.planos.descargar_asopagos') }}',
+        descargarMiPlanilla: '{{ route('admin.planos.descargar_miplanilla') }}',
         nPlanoUpdate : '{{ route('admin.planos.n_plano.update') }}',
         confirmarPago: '{{ route('admin.planos.confirmar_pago') }}',
         apiRazon     : '/admin/planos/api/razon/',
@@ -1383,6 +1388,20 @@ function ejecutarDescargaAsopagos() {
         n_plano: CTX.nPlanoFiltro ?? '',
     });
     window.location.href = CTX.routes.descargarAsopagos + '?' + params.toString();
+}
+
+function ejecutarDescargaMiPlanilla() {
+    if (!CTX.razonSocialId) {
+        mostrarToast('Seleccione una Razón Social primero.', 'error');
+        return;
+    }
+    const params = new URLSearchParams({
+        razon_social_id: CTX.razonSocialId,
+        mes    : CTX.mes,
+        anio   : CTX.anio,
+        n_plano: CTX.nPlanoFiltro ?? '',
+    });
+    window.location.href = CTX.routes.descargarMiPlanilla + '?' + params.toString();
 }
 
 // ── Guardar N_PLANO ────────────────────────────────────────────────────

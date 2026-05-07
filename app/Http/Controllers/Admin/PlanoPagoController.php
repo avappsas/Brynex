@@ -475,6 +475,42 @@ class PlanoPagoController extends Controller
         }
     }
 
+    // ── 4b. Descargar TXT MiPlanilla (PILA 693 chars) ────────────────────
+    public function descargarMiPlanilla(Request $request)
+    {
+        $aliadoId      = session('aliado_id_activo');
+        $razonSocialId = $request->input('razon_social_id');
+        $mes           = (int) $request->input('mes',  now()->month);
+        $anio          = (int) $request->input('anio', now()->year);
+        $nPlano        = (int) $request->input('n_plano', 1);
+        $tiposModalidad = (array) $request->input('tipos_modalidad', []);
+
+        if (!$razonSocialId) {
+            abort(400, 'Debe seleccionar una Razón Social.');
+        }
+
+        try {
+            $service = new \App\Services\PlanoPilaTxtService();
+            return $service->generar([
+                'aliado_id'       => $aliadoId,
+                'razon_social_id' => $razonSocialId,
+                'mes'             => $mes,
+                'anio'            => $anio,
+                'n_plano'         => $nPlano,
+                'tipos_modalidad' => $tiposModalidad,
+            ]);
+        } catch (\Illuminate\Database\QueryException $e) {
+            \Illuminate\Support\Facades\Log::error('MiPlanillaTXT QueryException', [
+                'sql' => $e->getSql(), 'msg' => $e->getMessage(),
+            ]);
+            abort(500, 'Error de base de datos al generar el TXT MiPlanilla.');
+        } catch (\RuntimeException $e) {
+            abort(422, $e->getMessage());
+        } catch (\Exception $e) {
+            abort(500, 'Error al generar TXT MiPlanilla: ' . $e->getMessage());
+        }
+    }
+
     // ── 5. Confirmar Pago ─────────────────────────────────────────────
     public function confirmarPago(Request $request)
     {

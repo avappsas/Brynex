@@ -180,6 +180,7 @@ Route::middleware('auth')->group(function () {
             Route::get('/',                     [$pp, 'index'])            ->name('index');
             Route::get('/descargar',            [$pp, 'descargar'])         ->name('descargar');
             Route::get('/descargar-asopagos',   [$pp, 'descargarAsopagos'])->name('descargar_asopagos');
+            Route::get('/descargar-miplanilla',  [$pp, 'descargarMiPlanilla'])->name('descargar_miplanilla');
             Route::patch('/n-plano',            [$pp, 'actualizarNPlano']) ->name('n_plano.update');
             Route::patch('/{id}/mover',         [$pp, 'moverPlano'])       ->name('mover');
             Route::post('/confirmar-pago',      [$pp, 'confirmarPago'])    ->name('confirmar_pago');
