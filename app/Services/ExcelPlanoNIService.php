@@ -219,7 +219,9 @@ class ExcelPlanoNIService
             ->where('p.aliado_id',       $aliadoId)
             ->where('p.razon_social_id', $razonSocialId)
             ->where('p.n_plano',         $nPlano)
-            ->where('p.tipo_reg',        'planilla')
+            ->whereIn('p.tipo_reg',       ['planilla', 'retiro'])
+            ->where('p.num_dias',         '>', 0)                 // excluir planos sin días
+            ->where(fn($q) => $q->where('p.num_dias', '>=', 1)->orWhere('p.tipo_reg', '!=', 'retiro'))
             ->whereNull('p.deleted_at')
             ->where(function ($q) use ($mesPago, $anioPago, $mesVencido, $anioVencido) {
                 $q->where(function ($i) use ($mesPago, $anioPago) {
@@ -260,9 +262,9 @@ class ExcelPlanoNIService
                 'p.salario_basico',
                 'p.num_dias',
                 'p.nivel_riesgo',
-                // Fechas ING/RET
-                'p.fecha_ing',
-                'p.fecha_ret',
+                // Fechas ING/RET como string YYYY-MM-DD desde SQL Server
+                DB::raw("CONVERT(VARCHAR(10), p.fecha_ing, 23) AS fecha_ing"),
+                DB::raw("CONVERT(VARCHAR(10), p.fecha_ret, 23) AS fecha_ret"),
                 // Factura: valores reales de aporte
                 'f.v_eps',
                 'f.v_afp',
@@ -272,7 +274,9 @@ class ExcelPlanoNIService
                 'f.dias_cotizados',
                 // Cliente: datos demográficos
                 'cl.genero',
-                'cl.fecha_nacimiento',
+                DB::raw("DATEDIFF(YEAR, cl.fecha_nacimiento, GETDATE()) AS edad_calculada"),
+                DB::raw("CONVERT(VARCHAR(10), p.fecha_ing, 23) AS fecha_ing"),
+                DB::raw("CONVERT(VARCHAR(10), p.fecha_ret, 23) AS fecha_ret"),
                 DB::raw('d.id                          AS cod_departamento'),
                 DB::raw('CAST(c.Municipio AS INT)       AS cod_municipio'),
             ]);
@@ -322,7 +326,7 @@ class ExcelPlanoNIService
             'secuencia'          => 1,
             'razon_social'       => $rs->razon_social,
             'tipo_doc_ap'        => 'NI',        // NI = NIT para aportante empresa
-            'nit'                => (string) $rs->id,
+            'nit'                => preg_replace('/[^0-9]/', '', (string)($rs->nit ?? $rs->id)),
             'dv'                 => $rs->dv,
             'tipo_planilla'      => 'E',         // E = Ordinaria
             'nro_pi_factura'     => null,
@@ -407,32 +411,33 @@ class ExcelPlanoNIService
     // --- Escribe una fila de trabajador -------------------------------------------
     private function escribirFilaTrabajador($sheet, int $fila, object $p, int $seq): void
     {
-        $edad = null;
-        if ($p->fecha_nacimiento) {
-            $edad = sqldate($p->fecha_nacimiento)?->age;
-        }
+        $edad = isset($p->edad_calculada) ? (int)$p->edad_calculada : null;
 
         $genero = strtoupper(trim($p->genero ?? ''));
 
-        // -- Determinar si el plan incluye pensión (AFP) ----------------------------
-        // El plan incluye AFP si tiene cod_afp registrado Y el valor v_afp > 0.
-        // Si no tiene AFP en el plan → omitePension = true → subtipo 3 (vejez) o 4.
-        $tienePension = !empty($p->cod_afp) && (int)($p->v_afp ?? 0) > 0;
+        // -- Normalizar: cod '0' equivale a null (sin entidad asignada) ---------------
+        $codAfpRaw = (trim((string)($p->cod_afp  ?? '')) === '0') ? null : ($p->cod_afp  ?? null);
+        $codEpsRaw = (trim((string)($p->cod_eps  ?? '')) === '0') ? null : ($p->cod_eps  ?? null);
+        $codCajRaw = (trim((string)($p->cod_caja ?? '')) === '0') ? null : ($p->cod_caja ?? null);
+
+        // -- Exención por edad (mismos umbrales que TXT) ----------------------------
+        $isExento = $edad !== null
+            && (($genero === 'M' && $edad >= 55) || ($genero === 'F' && $edad >= 50));
+
+        $vAfpFactura = (int)($p->v_afp ?? 0);
+
+        // -- Reglas tienePension (idénticas al TXT) ---------------------------------
+        // 1) Sin cod_afp (null/'0')               → false
+        // 2) Con cod_afp, cualquier edad, v_afp>0  → true  (sigue pagando)
+        // 3) Con cod_afp, exento por edad, v_afp=0 → false (subtipo 03)
+        // 4) Con cod_afp, joven, v_afp=0           → true  (calcula igual)
+        $tienePension = !empty($codAfpRaw) && (!$isExento || $vAfpFactura > 0);
         $omitePension = !$tienePension;
 
-        // -- Subtipo cotizante PILA -------------------------------------------------
-        // 0 = estándar (tiene pensión incluida en el plan)
-        // 3 = pensionado por vejez (sin AFP: hombre ≥55 o mujer ≥50)
-        // 4 = pensionado por otra causa (sin AFP, pero no alcanzó edad de vejez)
-        if ($tienePension) {
-            $subtipoCotizante = 0;
-        } else {
-            // Sin AFP: determinar si es subtipo 3 (vejez) o 4 (otro pensionado)
-            if ($edad !== null && (($genero === 'M' && $edad >= 55) || ($genero === 'F' && $edad >= 50))) {
-                $subtipoCotizante = 3; // pensionado por vejez
-            } else {
-                $subtipoCotizante = 4; // pensionado por otra causa
-            }
+        // -- Subtipo cotizante -------------------------------------------------------
+        $subtipoCotizante = 0;
+        if (!$tienePension && $edad !== null) {
+            $subtipoCotizante = $isExento ? 3 : 4;
         }
 
         // -- Extranjero: 'X' si el tipo de documento NO es colombiano ---------------
@@ -446,43 +451,39 @@ class ExcelPlanoNIService
         $esIndependiente = in_array((int)$p->tipo_modalidad_id, [10, 11]);
         $tipoCotizante   = $esIndependiente ? 2 : 1;
 
-        // -- IBC y valores SS -------------------------------------------------------
-        $ibc   = (int)($p->salario_basico ?? 0);
-        $dias  = (int)($p->dias_cotizados ?? $p->num_dias ?? 30);
+        // p.num_dias es la fuente de verdad; f.dias_cotizados puede estar incorrecta por migración
+        $ibcFull = (int)($p->salario_basico ?? 0);
+        $dias    = (int)($p->num_dias ?? $p->dias_cotizados ?? 30);
+        // round() estándar para IBC proporcional (no ceil/100 — eso es solo para cotizaciones)
+        $ibcProp = $dias < 30 ? (int)round($ibcFull * $dias / 30) : $ibcFull;
+
         $vEps  = (int)($p->v_eps  ?? 0);
         $vAfp  = $omitePension ? 0 : (int)($p->v_afp  ?? 0);
         $vArl  = (int)($p->v_arl  ?? 0);
         $vCaja = (int)($p->v_caja ?? 0);
 
-        // -- Fechas ING / RET → formato YYYY-MM-DD para el Excel PILA ---------------
-        $fechaIng = $p->fecha_ing ? sqldate($p->fecha_ing)?->format('Y-m-d') : null;
-        $fechaRet = $p->fecha_ret ? sqldate($p->fecha_ret)?->format('Y-m-d') : null;
-        $esIng    = $p->fecha_ing ? 'X' : null;  // X = ingresó en el período
-        $esRet    = $p->fecha_ret ? 'X' : null;  // X = se retiró en el período
-
-        // -- Tipo documento ---------------------------------------------------------
-        $tipoDoc = $tipoDocNorm; // ya calculado arriba
-
-        // -- NITs de entidades (del plano, como texto) --------------------------------
-        $nitAfp  = (string)($p->cod_afp  ?? '');
-        $nitEps  = (string)($p->cod_eps  ?? '');
-        $nitArl  = (string)($p->cod_arl  ?? '');
-        $nitCaja = (string)($p->cod_caja ?? '');
-
-        // -- Códigos PILA de la entidad (de las tablas maestras) ----------------------
-        $codAfp    = $p->codigo_afp      ?? null;
-        $codEps    = $p->codigo_eps      ?? null;
-        $codCaj    = $p->codigo_caj      ?? null;  // null si sin caja
-        $codCajFin = $codCaj ?: 'CCF68';           // 'CCF68' cuando no tiene caja
+        // -- Códigos, fechas y tarifa ARL -----------------------------------------
+        $tipoDoc    = $tipoDocNorm;
+        $nitAfp     = (string)($codAfpRaw ?? '');
+        $nitEps     = (string)($codEpsRaw ?? '');
+        $nitArl     = (string)($p->cod_arl ?? '');
+        $nitCaja    = (string)($codCajRaw ?? '');
+        $codAfp     = $p->codigo_afp      ?? null;
+        $codEps     = $p->codigo_eps      ?? null;
+        $codCaj     = $p->codigo_caj      ?? null;
+        $codCajFin  = $codCaj ?: 'CCF68';
         $codArlPila = $p->codigo_arl_pila ?? null;
+        $tarifaArl  = $p->tarifa_arl !== null ? round((float)$p->tarifa_arl / 100, 6) : null;
 
-        // -- Tarifa ARL: la BD guarda porcentaje en 0-100 → dividir entre 100 ----------
-        // Ejemplo: nivel 1 = 0.5220 en BD → 0.5220/100 = 0.00522 en el Excel
-        $tarifaArl = $p->tarifa_arl !== null ? round((float)$p->tarifa_arl / 100, 6) : null;
+        // Fechas: CONVERT ya retorna 'YYYY-MM-DD' directamente
+        $fechaIng = !empty($p->fecha_ing) ? $p->fecha_ing : null;
+        $fechaRet = !empty($p->fecha_ret) ? $p->fecha_ret : null;
+        $esIng    = $fechaIng ? 'X' : null;
+        $esRet    = $fechaRet ? 'X' : null;
 
-        // -- IBC / Aporte CCF: 100 si no hay caja asociada ---------------------------
-        $ibcCcf    = $nitCaja ? $ibc  : 100;
-        $aporteCcf = $vCaja   ? $vCaja : 100;
+        // IBC CCF recalculado con $nitCaja ya disponible
+        $ibcCcf    = $nitCaja ? $ibcProp : 100;
+        $aporteCcf = $vCaja   ? $vCaja   : 100;
 
         // -- Número de horas laboradas: (240 / 30) * dias = 8 * dias ------------------
         $horasLaboradas = 8 * $dias;
@@ -498,7 +499,7 @@ class ExcelPlanoNIService
             /*  6 */ $subtipoCotizante ?: null,        // Subtipo: 0=estándar, 3=vejez, 4=otro pensionado
             /*  7 */ $esExtranjero,                    // Extranjero: 'X' si doc no colombiano
             /*  8 */ null,                             // Colombiano en el exterior
-            /*  9 */ $p->cod_departamento ?? null,     // Departamento (cód. DANE)
+            /*  9 */ ($codCaj === null || $codCajFin === 'CCF68') ? 99 : ($p->cod_departamento ?? null), // Depto 99 si sin caja
             /* 10 */ $p->cod_municipio    ?? null,     // Municipio (Municipio_No PILA)
             /* 11 */ $p->primer_ape,                   // Primer apellido
             /* 12 */ $p->segundo_ape,                  // Segundo apellido
@@ -529,11 +530,11 @@ class ExcelPlanoNIService
             /* 37 */ $dias,                            // Días EPS
             /* 38 */ $dias,                            // Días ARL
             /* 39 */ $dias,                            // Días CCF
-            /* 40 */ $ibc,                             // Salario básico
+            /* 40 */ $ibcFull,                          // Salario básico completo
             /* 41 */ 'F',                              // Tipo salario: F = fijo
-            /* 42 */ $omitePension ? 0 : $ibc,         // IBC AFP (0 si omite pensión)
-            /* 43 */ $ibc,                             // IBC EPS
-            /* 44 */ $ibc,                             // IBC ARL
+            /* 42 */ $omitePension ? 0 : $ibcProp,     // IBC AFP (proporcional)
+            /* 43 */ $ibcProp,                         // IBC EPS (proporcional)
+            /* 44 */ $ibcProp,                         // IBC ARL (proporcional)
             /* 45 */ $ibcCcf,                          // IBC CCF (100 si no tiene caja)
             /* 46 */ 0.16,                             // Tarifa AFP = 0,16
             /* 47 */ $vAfp ?: null,                    // Cotización AFP

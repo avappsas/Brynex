@@ -163,7 +163,7 @@ class PlanoPilaTxtService
         $valorNomina = 0;
         foreach ($planos as $_p) {
             $ibcF  = (int)($_p->salario_basico ?? 0);
-            $dias_ = (int)($_p->dias_cotizados ?? $_p->num_dias ?? 30);
+            $dias_ = (int)($_p->num_dias ?? $_p->dias_cotizados ?? 30);
             $ibcP  = $dias_ < 30 ? (int)(ceil($ibcF * $dias_ / 30 / 100) * 100) : $ibcF;
             $cajP  = !empty($_p->cod_caj_pila) ? $_p->cod_caj_pila : 'CCF68';
             $valorNomina += ($cajP === 'CCF68') ? 100 : $ibcP;
@@ -275,7 +275,8 @@ class PlanoPilaTxtService
         $esExtranjero = !in_array($tipoDoc, ['CC', 'TI', 'RC', 'SC']) ? 'X' : ' ';
 
         $ibcFull = (int)($p->salario_basico ?? 0);
-        $dias    = (int)($p->dias_cotizados ?? $p->num_dias ?? 30);
+        // p.num_dias = fuente de verdad; f.dias_cotizados puede venir erróneo de la migración
+        $dias    = (int)($p->num_dias ?? $p->dias_cotizados ?? 30);
         $esIntegral = strtoupper(trim($p->tipo_p ?? '')) === 'I' ? 'X' : 'F';
 
         // Campo 40 = salario completo (MiPlanilla lo muestra como salario base)

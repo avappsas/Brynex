@@ -25,6 +25,7 @@ class PlanoPagoController extends Controller
         $razonSocialId  = $request->input('razon_social_id');
         $nPlanoFiltro   = $request->input('n_plano');
         $modalidadesIds = $request->input('tipos_modalidad', []);
+        $estadoPago     = $request->input('estado_pago', 'todas'); // 'todas' | 'pendientes' | 'pagadas'
 
         // ── Logica de mes vencido ────────────────────────────────────────
         // El filtro MES muestra el mes de PAGO (mes seleccionado por el usuario).
@@ -173,6 +174,17 @@ class PlanoPagoController extends Controller
                 $query->whereIn('p.tipo_modalidad_id', $modalidadesIds);
             }
 
+            // Filtro por estado de pago
+            if ($estadoPago === 'pendientes') {
+                $query->where(function ($q) {
+                    $q->whereNull('p.numero_planilla')
+                      ->orWhere('p.numero_planilla', '');
+                });
+            } elseif ($estadoPago === 'pagadas') {
+                $query->whereNotNull('p.numero_planilla')
+                      ->where('p.numero_planilla', '!=', '');
+            }
+
             $planos = $query->orderBy('rs.razon_social')->orderBy('p.primer_ape')->get();
 
             // ── Modalidades disponibles en periodo+RS ──────────────────────
@@ -259,6 +271,7 @@ class PlanoPagoController extends Controller
             'totalSS', 'totalAdmon', 'totalPersonas',
             'bancos', 'operadores',
             'planoPagado', 'numeroPlanillaPagado',
+            'estadoPago',
         ) + [
             // Indica si la RS seleccionada es de tipo independiente:
             // en ese caso el pago se confirma POR PERSONA, no por planilla completa.

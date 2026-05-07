@@ -576,12 +576,27 @@
                             <input type="checkbox" name="tipos_modalidad[]"
                                    value="{{ $tm->id }}"
                                    {{ in_array($tm->id, $modalidadesIds) ? 'checked' : '' }}
-                                   onchange="updateMsLabel()">
+                                   onchange="updateMsLabel(); autoSubmit()">
                             {{ $tm->tipo_modalidad }}
                         </label>
                         @endforeach
                     </div>
                 </div>
+            </div>
+
+            <div class="filtro-sep"></div>
+
+            {{-- Estado de Pago --}}
+            <div class="filtro-inline">
+                <span class="fi-label">Pago</span>
+                <select name="estado_pago" onchange="autoSubmit()"
+                    style="padding-right:.9rem;min-width:105px;
+                           {{ $estadoPago === 'pendientes' ? 'border-color:#f59e0b;background:#fffbeb;color:#92400e;font-weight:700' :
+                              ($estadoPago === 'pagadas'    ? 'border-color:#10b981;background:#f0fdf4;color:#065f46;font-weight:700' : '') }}">
+                    <option value="todas"      {{ $estadoPago === 'todas'      ? 'selected' : '' }}>🔘 Todas</option>
+                    <option value="pendientes" {{ $estadoPago === 'pendientes' ? 'selected' : '' }}>⏳ Pendientes</option>
+                    <option value="pagadas"    {{ $estadoPago === 'pagadas'    ? 'selected' : '' }}>✅ Pagadas</option>
+                </select>
             </div>
 
             {{-- Botones --}}
@@ -848,7 +863,7 @@
             {{-- Botón único: Excel --}}
             <button class="btn-accion btn-pagar" style="width:100%;justify-content:center;padding:.55rem"
                     onclick="ejecutarDescarga('xlsx')">
-                📊 Descargar Excel (NI)
+                📊 Descargar Excel (Simple,Arus)
             </button>
             <button class="btn-asopagos" style="width:100%;justify-content:center;padding:.55rem;margin-top:.5rem"
                     onclick="ejecutarDescargaAsopagos()">
