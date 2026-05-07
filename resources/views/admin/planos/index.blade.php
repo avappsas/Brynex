@@ -601,12 +601,12 @@
 
             {{-- Botones --}}
             <div style="margin-left:auto;display:flex;gap:.4rem;align-items:center">
-                <button type="button" class="btn-accion btn-descargar" onclick="abrirModalDescarga()"
+                <button type="button" class="btn-accion btn-descargar" onclick="validarCompatibilidadYAbrir('descarga')"
                     @if($planos->count()==0) disabled style="opacity:.4;cursor:not-allowed" @endif>
                     📥 Descargar Plano
                 </button>
                 @if(!$esIndependiente)
-                <button type="button" class="btn-accion btn-pagar" onclick="abrirModalPago()"
+                <button type="button" class="btn-accion btn-pagar" onclick="validarCompatibilidadYAbrir('pago')"
                     @if($planos->count()==0) disabled style="opacity:.4;cursor:not-allowed" @endif>
                     ✅ Confirmar Pago
                 </button>
@@ -1078,6 +1078,69 @@
 
 {{-- Toast global --}}
 <div class="toast" id="toast-msg"></div>
+
+{{-- ══════════════════════════════════════════════════════════════════════
+     MODAL: Incompatibilidad de Modalidades
+═══════════════════════════════════════════════════════════════════════ --}}
+<div class="modal-overlay" id="modal-incompatibilidad">
+    <div class="modal-box" style="max-width:560px">
+        <div class="modal-head" style="background:linear-gradient(135deg,#7f1d1d,#991b1b);border-radius:16px 16px 0 0">
+            <h3 style="color:#fff;display:flex;align-items:center;gap:.5rem">⚠️ Modalidades Incompatibles en el Filtro</h3>
+            <button class="modal-close" onclick="cerrarModal('modal-incompatibilidad')" style="color:#fca5a5">✕</button>
+        </div>
+        <div class="modal-body">
+            <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:.85rem 1rem;margin-bottom:1rem">
+                <p style="font-size:.82rem;color:#991b1b;font-weight:600;margin-bottom:.4rem">El filtro actual contiene tipos de modalidad que <strong>no son compatibles entre sí</strong> y no pueden descargarse ni pagarse juntos.</p>
+                <p style="font-size:.78rem;color:#b91c1c">Debe filtrar por modalidades compatibles antes de continuar.</p>
+            </div>
+
+            {{-- Tipos incompatibles detectados --}}
+            <div style="margin-bottom:1rem">
+                <div style="font-size:.72rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.5rem">⚡ Tipos detectados en el filtro actual</div>
+                <div id="incompat-tipos-detectados" style="display:flex;flex-wrap:wrap;gap:.35rem"></div>
+            </div>
+
+            {{-- Reglas de compatibilidad --}}
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:.85rem 1rem">
+                <div style="font-size:.72rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.65rem">📋 Reglas de Compatibilidad</div>
+                <div style="display:flex;flex-direction:column;gap:.5rem;font-size:.78rem">
+                    <div style="display:flex;align-items:flex-start;gap:.6rem;padding:.45rem .6rem;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px">
+                        <span style="font-size:1rem;flex-shrink:0">✅</span>
+                        <div><strong style="color:#15803d">Grupo A — Dependientes + Tiempo Parcial estándar:</strong> <span style="color:#374151">Tipos <code>E(0), TP7(1), TP14(2), TP21(3), TP30(4), EPS+ARL(12)</code> pueden ir juntos.</span></div>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:.6rem;padding:.45rem .6rem;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px">
+                        <span style="font-size:1rem;flex-shrink:0">✅</span>
+                        <div><strong style="color:#15803d">Grupo B — Tiempo Parcial combinado:</strong> <span style="color:#374151">Tipos <code>TP(7-14)(-6), TP(7-21)(-7), TP(14-21)(-8)</code> pueden ir juntos.</span></div>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:.6rem;padding:.45rem .6rem;background:#fef9c3;border:1px solid #fde68a;border-radius:8px">
+                        <span style="font-size:1rem;flex-shrink:0">🔒</span>
+                        <div><strong style="color:#92400e">Grupo C — Estudiante K (-1):</strong> <span style="color:#374151">Debe ir <strong>solo</strong>, no puede mezclarse con otros grupos.</span></div>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:.6rem;padding:.45rem .6rem;background:#fef9c3;border:1px solid #fde68a;border-radius:8px">
+                        <span style="font-size:1rem;flex-shrink:0">🔒</span>
+                        <div><strong style="color:#92400e">Grupo D — ARL Planilla Y (8):</strong> <span style="color:#374151">Debe ir <strong>solo</strong>, no puede mezclarse con otros grupos.</span></div>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:.6rem;padding:.45rem .6rem;background:#fef9c3;border:1px solid #fde68a;border-radius:8px">
+                        <span style="font-size:1rem;flex-shrink:0">🔒</span>
+                        <div><strong style="color:#92400e">Grupo E — Tipo 13:</strong> <span style="color:#374151">Debe ir <strong>solo</strong>, no puede mezclarse con otros grupos.</span></div>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:.6rem;padding:.45rem .6rem;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px">
+                        <span style="font-size:1rem;flex-shrink:0">💳</span>
+                        <div><strong style="color:#1d4ed8">Grupo F — Independientes (10, 11, 14):</strong> <span style="color:#374151">Se pagan de forma <strong>individual</strong> por persona, no como planilla grupal.</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-top:1rem;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:.65rem .9rem;font-size:.78rem;color:#1e40af">
+                💡 <strong>¿Cómo solucionarlo?</strong> Use el filtro <strong>Modalidad</strong> para seleccionar solo los tipos compatibles del mismo grupo antes de descargar o confirmar el pago.
+            </div>
+        </div>
+        <div class="modal-foot">
+            <button class="btn-accion btn-cancelar" onclick="cerrarModal('modal-incompatibilidad')">Entendido</button>
+        </div>
+    </div>
+</div>
+
 @endsection
 
 @push('scripts')
@@ -1102,7 +1165,14 @@ const CTX = {
         nPlanoUpdate : '{{ route('admin.planos.n_plano.update') }}',
         confirmarPago: '{{ route('admin.planos.confirmar_pago') }}',
         apiRazon     : '/admin/planos/api/razon/',
-    }
+    },
+    // Tipos de modalidad presentes en los planos cargados actualmente
+    // Array de objetos: { id: int, nombre: string }
+    tiposEnPlanos: {!! json_encode(
+        $planos->map(fn($p) => ['id' => (int)$p->tipo_modalidad_id, 'nombre' => $p->tipo_modal_nombre ?? ('Tipo '.$p->tipo_modalidad_id)])
+               ->unique('id')
+               ->values()
+    ) !!},
 };
 
 // ── Cálculo de Mora PILA Colombia ────────────────────────────────────
@@ -1321,6 +1391,102 @@ function filtrarRs(q) {
 // Auto-submit en cambio de cualquier filtro
 function autoSubmit() {
     document.getElementById('frm-filtros').submit();
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// VALIDACIÓN DE COMPATIBILIDAD DE MODALIDADES
+// ══════════════════════════════════════════════════════════════════════
+
+/**
+ * Grupos de compatibilidad:
+ * A: [0,1,2,3,4,12]  → Dependientes + Tiempo Parcial estándar (van juntos)
+ * B: [-6,-7,-8]       → Tiempo Parcial combinado (van juntos entre sí)
+ * C: [-1]             → Estudiante K (solo)
+ * D: [8]              → ARL Planilla Y (solo)
+ * E: [13]             → Tipo 13 (solo)
+ * F: [10,11,14]       → Independientes (se pagan individual)
+ */
+const GRUPOS_COMPATIBILIDAD = [
+    { id: 'A', nombre: 'Dependientes + TP estándar',    tipos: [0, 1, 2, 3, 4, 12],  modo: 'grupo' },
+    { id: 'B', nombre: 'Tiempo Parcial combinado',       tipos: [-6, -7, -8],          modo: 'grupo' },
+    { id: 'C', nombre: 'Estudiante K',                  tipos: [-1],                  modo: 'solo'  },
+    { id: 'D', nombre: 'ARL Planilla Y',                tipos: [8],                   modo: 'solo'  },
+    { id: 'E', nombre: 'Tipo 13',                       tipos: [13],                  modo: 'solo'  },
+    { id: 'F', nombre: 'Independientes (pago individual)', tipos: [10, 11, 14],       modo: 'individual' },
+];
+
+/**
+ * Dado un tipo_modalidad_id, devuelve el grupo al que pertenece.
+ * Retorna null si no está mapeado (tipo desconocido, se permite pasar).
+ */
+function obtenerGrupo(tipoId) {
+    for (const g of GRUPOS_COMPATIBILIDAD) {
+        if (g.tipos.includes(tipoId)) return g;
+    }
+    return null;
+}
+
+/**
+ * Valida que los tipos de modalidad en los planos actuales
+ * sean todos del mismo grupo de compatibilidad.
+ *
+ * Retorna: { ok: true } si compatible
+ *          { ok: false, tiposIncompat: [{id, nombre, grupo}], gruposDistintos: [grupoid] } si no
+ */
+function validarCompatibilidadModalidades() {
+    const tipos = CTX.tiposEnPlanos; // [{id, nombre}, ...]
+    if (!tipos || tipos.length === 0) return { ok: true };
+
+    const gruposEncontrados = new Map(); // grupoId → grupo
+    const tiposConGrupo = [];
+
+    for (const t of tipos) {
+        const g = obtenerGrupo(t.id);
+        if (g) {
+            gruposEncontrados.set(g.id, g);
+            tiposConGrupo.push({ ...t, grupo: g });
+        }
+        // tipos sin grupo definido: no se bloquean
+    }
+
+    if (gruposEncontrados.size <= 1) return { ok: true }; // todos del mismo grupo o ninguno
+
+    return {
+        ok: false,
+        tiposConGrupo,
+        gruposDistintos: [...gruposEncontrados.values()],
+    };
+}
+
+/**
+ * Punto de entrada: valida compatibilidad y, si hay problema, muestra el
+ * modal de error. Si no hay problema, abre el modal solicitado.
+ * @param {'descarga'|'pago'} accion
+ */
+function validarCompatibilidadYAbrir(accion) {
+    const result = validarCompatibilidadModalidades();
+
+    if (!result.ok) {
+        // Rellenar el panel de tipos detectados
+        const contenedor = document.getElementById('incompat-tipos-detectados');
+        if (contenedor) {
+            const coloresGrupo = { A:'#dcfce7|#15803d', B:'#e0f2fe|#0369a1', C:'#fef9c3|#92400e', D:'#ffe4e6|#be123c', E:'#f3e8ff|#7e22ce', F:'#dbeafe|#1d4ed8' };
+            contenedor.innerHTML = result.tiposConGrupo.map(t => {
+                const [bg, fg] = (coloresGrupo[t.grupo.id] || '#f1f5f9|#475569').split('|');
+                const modoLabel = t.grupo.modo === 'solo' ? '🔒 Solo' : (t.grupo.modo === 'individual' ? '💳 Individual' : '✅ Grupo ' + t.grupo.id);
+                return `<span style="display:inline-flex;align-items:center;gap:.3rem;background:${bg};color:${fg};border:1px solid ${fg}40;border-radius:20px;padding:.2rem .7rem;font-size:.75rem;font-weight:600">${modoLabel}: <code style="font-weight:700">${t.nombre}</code></span>`;
+            }).join('');
+        }
+        document.getElementById('modal-incompatibilidad').classList.add('open');
+        return;
+    }
+
+    // Compatible: abrir el modal correspondiente
+    if (accion === 'descarga') {
+        abrirModalDescarga();
+    } else {
+        abrirModalPago();
+    }
 }
 
 // ── Modales ───────────────────────────────────────────────────────────

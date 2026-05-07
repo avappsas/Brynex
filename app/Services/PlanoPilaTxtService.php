@@ -4,6 +4,7 @@ namespace App\Services;
 
 use Illuminate\Support\Facades\DB;
 
+
 class PlanoPilaTxtService
 {
     // Tarifa ARL por nivel: formato decimal 0.XXXXXXX (9 chars, campo 61)
@@ -116,6 +117,7 @@ class PlanoPilaTxtService
             ->leftJoin('cajas AS caj_t',      DB::raw('CAST(caj_t.nit AS VARCHAR(20))'), '=', DB::raw('p.cod_caja'))
             ->leftJoin('arl_tarifas AS arl_t','arl_t.nivel',  '=', 'p.nivel_riesgo')
             ->leftJoin('arls AS arl_m',       DB::raw('CAST(arl_m.nit AS VARCHAR(20))'), '=', DB::raw('p.cod_arl'))
+            ->leftJoin('tipo_modalidad AS tm', 'tm.id', '=', 'p.tipo_modalidad_id')
             ->where('p.aliado_id',       $aliadoId)
             ->where('p.razon_social_id', $razonSocialId)
             ->where('p.n_plano',         $nPlano)
@@ -149,6 +151,10 @@ class PlanoPilaTxtService
                 DB::raw("DATEDIFF(YEAR, cl.fecha_nacimiento, GETDATE()) AS edad_calculada"),
                 DB::raw('d.id                    AS dep_id'),
                 DB::raw('CAST(c.Municipio AS INT) AS mun_id'),
+                // Tiempo parcial: flag y días por subsistema (ARL siempre 30)
+                DB::raw('tm.es_tiempo_parcial   AS es_tiempo_parcial'),
+                DB::raw('ISNULL(tm.dias_afp, 30) AS dias_afp'),
+                DB::raw('ISNULL(tm.dias_caja,30) AS dias_caja'),
             ]);
 
         if (!empty($tiposModal)) $query->whereIn('p.tipo_modalidad_id', $tiposModal);
@@ -239,111 +245,71 @@ class PlanoPilaTxtService
     // ── Registro Tipo 2 — 693 chars, 98 campos ───────────────────────────────
     private function tipo2(object $p, int $seq, string $actEco, ?string $codigoArlRs, string $periodoLiq = ''): string
     {
-        $esIndep   = in_array((int)$p->tipo_modalidad_id, [10, 11]);
-        $tipoCot   = $esIndep ? '2' : '1';
-        $exonerado = $esIndep ? 'N' : 'S';
+        // ── Calculador centralizado (todas las reglas de negocio PILA) ────────
+        $c = PilaCotizanteCalculator::calcular($p);
 
-        // Normalizar: valor '0' equivale a null (sin entidad asignada)
-        $codAfpRaw = (trim((string)($p->cod_afp  ?? '')) === '0') ? null : ($p->cod_afp  ?? null);
-        $codEpsRaw = (trim((string)($p->cod_eps  ?? '')) === '0') ? null : ($p->cod_eps  ?? null);
-        $codCajRaw = (trim((string)($p->cod_caja ?? '')) === '0') ? null : ($p->cod_caja ?? null);
+        $tipoCot   = str_pad((string)$c['tipoCotizante'], 2, '0', STR_PAD_LEFT); // '01','02','23'
+        $subtipo   = str_pad((string)$c['subtipoCotizante'], 2, '0', STR_PAD_LEFT);
+        $exonerado = $c['exonerado'];
+        $tienePension = $c['tienePension'];
 
-        $edad   = isset($p->edad_calculada) ? (int)$p->edad_calculada : null;
-        $genero = strtoupper(trim($p->genero ?? ''));
-
-        // Exención por edad (sin obligación de cotizar pensión)
-        $isExento = $edad !== null
-            && (($genero === 'M' && $edad >= 55) || ($genero === 'F' && $edad >= 50));
-
-        $vAfpFactura = (int)($p->v_afp ?? 0);
-
-        // Reglas tienePension:
-        // 1) Sin cod_afp (null/'0')               → false
-        // 2) Con cod_afp, cualquier edad, v_afp>0  → true  (sigue pagando)
-        // 3) Con cod_afp, exento por edad, v_afp=0 → false (subtipo 03)
-        // 4) Con cod_afp, joven, v_afp=0           → true  (calcula igual)
-        $tienePension = !empty($codAfpRaw) && (!$isExento || $vAfpFactura > 0);
-
-        $subtipo = '00';
-        if (!$tienePension && $edad !== null) {
-            $subtipo = $isExento ? '03' : '04';
-        }
-
+        // ── Tipo documento ────────────────────────────────────────────────────
         $tipoDoc = strtoupper(trim($p->tipo_doc ?? 'CC'));
         $mapaDoc = ['C' => 'CC', 'NIT' => 'CC', 'PT' => 'CE', 'NUIP' => 'CC'];
         $tipoDoc = $mapaDoc[$tipoDoc] ?? $tipoDoc;
         $esExtranjero = !in_array($tipoDoc, ['CC', 'TI', 'RC', 'SC']) ? 'X' : ' ';
 
-        $ibcFull = (int)($p->salario_basico ?? 0);
-        // p.num_dias = fuente de verdad; f.dias_cotizados puede venir erróneo de la migración
-        $dias    = (int)($p->num_dias ?? $p->dias_cotizados ?? 30);
+        // ── IBC y días (del calculador) ───────────────────────────────────────
+        $ibcFull   = $c['ibcFull'];
+        $ibcProp   = $c['ibcProp'];
+        $dias      = $c['dias'];
         $esIntegral = strtoupper(trim($p->tipo_p ?? '')) === 'I' ? 'X' : 'F';
 
-        // Campo 40 = salario completo (MiPlanilla lo muestra como salario base)
-        // Campos 42-44 = IBC proporcional con round() estándar (no ceil/100)
-        // round(1,750,905 × 5/30) = 291,818 ← lo que MiPlanilla espera
-        $ibcProp = $dias < 30
-            ? (int)round($ibcFull * $dias / 30)
-            : $ibcFull;
+        // ── Cotizaciones (del calculador) ──────────────────────────────────────
+        $vAfp = $c['vAfp'];
+        $vEps = $c['vEps'];
+        $vArl = $c['vArl'];
+        $vCaj = $c['vCcf'];
 
-        // Cotizaciones desde IBC proporcional con ceil al 100 superior
-        $nivel = max(1, min(5, (int)($p->nivel_riesgo ?? 1)));
-        static $tasasArl = [
-            1 => 0.00522, 2 => 0.01044, 3 => 0.02436,
-            4 => 0.04350, 5 => 0.06960,
-        ];
-        $vAfp = $tienePension ? $this->roundPila($ibcProp * 0.16) : 0;
-        $vEps = $this->roundPila($ibcProp * ($exonerado === 'S' ? 0.04 : 0.125));
-        $vArl = $this->roundPila($ibcProp * $tasasArl[$nivel]);
-
-        // Códigos entidades
-        $codCajTmp = !empty($p->cod_caj_pila) ? $p->cod_caj_pila : (empty($codCajRaw) ? 'CCF68' : $codCajRaw);
-
-        // Sin caja propia (CCF68): IBC caja = $100, aporte = $100
-        $ibcCaj = ($codCajTmp === 'CCF68') ? 100 : $ibcProp;
-        $vCaj   = ($codCajTmp === 'CCF68') ? 100 : $this->roundPila($ibcProp * 0.04);
-
-        $codEps = !empty($p->cod_eps_pila) ? $p->cod_eps_pila : ($codEpsRaw ?? '');
-        $nitAfp   = preg_replace('/[^0-9]/', '', (string)($codAfpRaw ?? ''));
-        $codAfpDb = $p->cod_afp_pila ?? null;
+        // ── Código AFP PILA (lookup en tabla AFP_PILA del TXT) ─────────────────
         if ($tienePension) {
-            $codAfp = self::AFP_PILA[$nitAfp]
-                ?? ((!empty($codAfpDb)) ? $codAfpDb : '');
+            $nitAfp   = preg_replace('/[^0-9]/', '', (string)($p->cod_afp ?? ''));
+            $codAfpDb = $p->cod_afp_pila ?? null;
+            $codAfp   = self::AFP_PILA[$nitAfp] ?? ((!empty($codAfpDb)) ? $codAfpDb : '');
         } else {
-            $codAfp = ''; // sin pensión → campo AFP en blanco
+            $codAfp = '';
         }
 
+        // ── Códigos EPS / ARL / CCF ────────────────────────────────────────────
+        $codEps = !empty($p->cod_eps_pila) ? $p->cod_eps_pila : $c['codEpsPila'];
         $codArl = !empty($p->cod_arl_pila) ? $p->cod_arl_pila : ($codigoArlRs ?? '');
-        $codCaj = !empty($p->cod_caj_pila) ? $p->cod_caj_pila : (empty($codCajRaw) ? 'CCF68' : $codCajRaw);
+        $codCaj = $c['codCcfPila'];
 
-        $depId = str_pad((string)($p->dep_id ?? ''), 2, '0', STR_PAD_LEFT);
-        $munId = str_pad((string)($p->mun_id ?? ''), 3, '0', STR_PAD_LEFT);
-        if ($codCaj === 'CCF68') {
-            $depId = '94';
-            $munId = '001';
-        }
+        // ── IBC por subsistema ─────────────────────────────────────────────────
+        $ibcCaj = $c['ibcCcf'];
 
-        $tarifaArl   = self::TARIFA_ARL[$nivel];
-        $tarifaSalud = $exonerado === 'S' ? '0.04000' : '0.12500';
-        $tarifaSENA  = $exonerado === 'S' ? '0.00000' : '0.02000';
-        $tarifaICBF  = $exonerado === 'S' ? '0.00000' : '0.03000';
+        // ── Depto / Municipio (del calculador: 99 si CCF68/K) ────────────────────
+        $depId = $c['depCod'];
+        $munId = $c['munCod'];
 
-        $ibcOtros = $exonerado === 'S' ? 0 : $ibcProp;
-        $vSENA    = $exonerado === 'S' ? 0 : $this->roundPila($ibcProp * 0.02);
-        $vICBF    = $exonerado === 'S' ? 0 : $this->roundPila($ibcProp * 0.03);
+        // ── Tarifas (del calculador) ────────────────────────────────────────────
+        $tarifaSalud = $c['tarifaEpsStr'];
+        $tarifaArl   = $c['tarifaArlStr'];
+        $tarifaSENA  = $c['tarifaSenaStr'];
+        $tarifaICBF  = $c['tarifaIcbfStr'];
+        $nivel       = $c['nivelRiesgo'];
+        $ibcOtros    = $c['ibcOtros'];
+        $vSENA       = $c['vSena'];
+        $vICBF       = $c['vIcbf'];
 
-        // ING/RET: 'X' solo si la fecha está dentro del período liquidado
-        // No marcar novedad si el ingreso/retiro fue en un período anterior
+        // ── ING / RET ──────────────────────────────────────────────────────────
         $fechaIng  = $this->fecha($p->fecha_ing ?? null);
         $fechaRet  = $this->fecha($p->fecha_ret ?? null);
         $blanco10  = str_repeat(' ', 10);
-        $periodoYm = substr($fechaIng, 0, 7); // 'YYYY-MM'
+        $periodoYm = substr($fechaIng, 0, 7);
         $ing = ($fechaIng !== $blanco10 && $periodoYm >= $periodoLiq) ? 'X' : ' ';
         $periodoYmR = substr($fechaRet, 0, 7);
         $ret = ($fechaRet !== $blanco10 && $periodoYmR >= $periodoLiq) ? 'X' : ' ';
-
-
-
 
         $linea =
             $this->N('02', 2)                                   // 1  pos 1-2
@@ -381,24 +347,24 @@ class PlanoPilaTxtService
             . $this->A($codEps, 6)                              // 33 pos 166-171
             . $this->A('', 6)                                   // 34 EPS traslada pos 172-177
             . $this->A($codCaj, 6)                              // 35 pos 178-183
-            . $this->N((string)($tienePension ? $dias : 0), 2) // 36 días pensión 184-185
-            . $this->N((string)$dias, 2)                        // 37 días salud 186-187
-            . $this->N((string)$dias, 2)                        // 38 días riesgos 188-189
-            . $this->N((string)$dias, 2)                        // 39 días CCF 190-191
-            . $this->N((string)$ibcFull, 9)                      // 40 salario completo 192-200
+            . $this->N((string)$c['diasPension'], 2)            // 36 días pensión 184-185
+            . $this->N((string)$c['diasSalud'], 2)              // 37 días salud 186-187
+            . $this->N((string)$c['diasArl'], 2)                // 38 días riesgos 188-189
+            . $this->N((string)$c['diasCcf'], 2)                // 39 días CCF 190-191
+            . $this->N((string)$ibcFull, 9)                     // 40 salario completo 192-200
             . $this->A($esIntegral, 1)                          // 41 tipo salario 201
-            . ($tienePension ? $this->N((string)$ibcProp, 9) : $this->N('0', 9)) // 42 IBC pensión 202-210
-            . $this->N((string)$ibcProp, 9)                       // 43 IBC salud 211-219
-            . $this->N((string)$ibcProp, 9)                       // 44 IBC riesgos 220-228
-            . $this->N((string)$ibcCaj, 9)                        // 45 IBC CCF 229-237 (100 si CCF68)
-            . ($tienePension ? '0.16000' : '0000000')             // 46 tarifa pensión 238-244
-            . ($tienePension ? $this->N((string)$vAfp, 9) : $this->N('0', 9)) // 47 cotización pensión 245-253
-            . $this->N('0', 9)                                    // 48 aporte vol afiliado 254-262 (siempre 0)
-            . $this->N('0', 9)                                    // 49 aporte vol aportante 263-271 (siempre 0)
-            . ($tienePension ? $this->N((string)$vAfp, 9) : $this->N('0', 9)) // 50 total pensión 272-280
-            . $this->N('0', 9)                                    // 51 FSP solidaridad 281-289 (siempre 0)
-            . $this->N('0', 9)                                    // 52 FSP subsistencia 290-298 (siempre 0)
-            . $this->N('0', 9)                                    // 53 valor no retenido 299-307 (siempre 0)
+            . $this->N((string)$c['ibcAfp'], 9)                 // 42 IBC pensión 202-210
+            . $this->N((string)$c['ibcEps'], 9)                 // 43 IBC salud 211-219
+            . $this->N((string)$c['ibcArl'], 9)                 // 44 IBC riesgos 220-228
+            . $this->N((string)$ibcCaj, 9)                      // 45 IBC CCF 229-237
+            . ($tienePension ? '0.16000' : '0000000')           // 46 tarifa pensión 238-244
+            . $this->N((string)$vAfp, 9)                        // 47 cotización pensión 245-253
+            . $this->N('0', 9)                                  // 48 aporte vol afiliado 254-262
+            . $this->N('0', 9)                                  // 49 aporte vol aportante 263-271
+            . $this->N((string)$vAfp, 9)                        // 50 total pensión 272-280
+            . $this->N('0', 9)                                  // 51 FSP solidaridad 281-289
+            . $this->N('0', 9)                                  // 52 FSP subsistencia 290-298
+            . $this->N('0', 9)                                  // 53 valor no retenido 299-307
             . $tarifaSalud                                       // 54 tarifa salud 308-314
             . $this->N((string)$vEps, 9)                        // 55 cotización salud 315-323
             . $this->N('0', 9)                                  // 56 ADRES/UPC 324-332
@@ -409,7 +375,7 @@ class PlanoPilaTxtService
             . $tarifaArl                                         // 61 tarifa riesgos 381-389
             . $this->N('1', 9)                                  // 62 centro de trabajo 390-398
             . $this->N((string)$vArl, 9)                        // 63 cotización ARL 399-407
-            . '0.04000'                                          // 64 tarifa CCF 408-414 (formato decimal)
+            . ($c['esKMatriz'] ? '0.00000' : '0.04000')         // 64 tarifa CCF 408-414
             . $this->N((string)$vCaj, 9)                        // 65 valor CCF 415-423
             . $tarifaSENA                                        // 66 tarifa SENA 424-430
             . $this->N((string)$vSENA, 9)                       // 67 valor SENA 431-439
@@ -424,7 +390,7 @@ class PlanoPilaTxtService
             . $this->A($exonerado, 1)                           // 76 exonerado 506
             . $this->A($codArl, 6)                              // 77 código ARL 507-512
             . $this->A((string)$nivel, 1)                       // 78 clase de riesgo 513
-            . ' '                                                // 79 ind tarifa especial 514 (blanco=normal 16%)
+            . ' '                                                // 79 ind tarifa especial 514
             . $this->A($fechaIng, 10)                           // 80 fecha ingreso 515-524
             . $this->A($fechaRet, 10)                           // 81 fecha retiro 525-534
             . str_repeat(' ', 10)                               // 82 fecha VSP 535-544
@@ -443,7 +409,7 @@ class PlanoPilaTxtService
             . $this->N((string)$ibcOtros, 9)                    // 95 IBC otros paraf 665-673
             . $this->N((string)(8 * $dias), 3)                  // 96 horas laboradas 674-676
             . str_repeat(' ', 10)                               // 97 fecha radicación 677-686
-            . self::ACTECO_ARL[$nivel];                          // 98 actividad económica 687-693 (Decreto 768/2022)
+            . self::ACTECO_ARL[$nivel];                          // 98 actividad económica 687-693
 
         if (strlen($linea) !== 693) {
             throw new \RuntimeException(

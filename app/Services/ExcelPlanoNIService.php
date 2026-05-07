@@ -216,6 +216,7 @@ class ExcelPlanoNIService
             ->leftJoin('arl_tarifas AS arl_t', 'arl_t.nivel', '=', 'p.nivel_riesgo')
             // Código PILA de la ARL (NIT del plano → codigo en tabla arls)
             ->leftJoin('arls AS arl_m', DB::raw('CAST(arl_m.nit AS VARCHAR(20))'), '=', DB::raw('p.cod_arl'))
+            ->leftJoin('tipo_modalidad AS tm', 'tm.id', '=', 'p.tipo_modalidad_id')
             ->where('p.aliado_id',       $aliadoId)
             ->where('p.razon_social_id', $razonSocialId)
             ->where('p.n_plano',         $nPlano)
@@ -277,6 +278,12 @@ class ExcelPlanoNIService
                 DB::raw("DATEDIFF(YEAR, cl.fecha_nacimiento, GETDATE()) AS edad_calculada"),
                 DB::raw("CONVERT(VARCHAR(10), p.fecha_ing, 23) AS fecha_ing"),
                 DB::raw("CONVERT(VARCHAR(10), p.fecha_ret, 23) AS fecha_ret"),
+                // Tipo modalidad (para tiempo parcial)
+                // es_tiempo_parcial: flag en tipo_modalidad
+                // dias de cotización por subsistema: definidos en tipo_modalidad (ARL siempre 30)
+                DB::raw('tm.es_tiempo_parcial    AS es_tiempo_parcial'),
+                DB::raw('ISNULL(tm.dias_afp,  30) AS dias_afp'),
+                DB::raw('ISNULL(tm.dias_caja, 30) AS dias_caja'),
                 DB::raw('d.id                          AS cod_departamento'),
                 DB::raw('CAST(c.Municipio AS INT)       AS cod_municipio'),
             ]);
@@ -411,206 +418,132 @@ class ExcelPlanoNIService
     // --- Escribe una fila de trabajador -------------------------------------------
     private function escribirFilaTrabajador($sheet, int $fila, object $p, int $seq): void
     {
-        $edad = isset($p->edad_calculada) ? (int)$p->edad_calculada : null;
+        // ── Calculador centralizado (todas las reglas PILA) ───────────────────
+        $c = PilaCotizanteCalculator::calcular($p);
 
-        $genero = strtoupper(trim($p->genero ?? ''));
-
-        // -- Normalizar: cod '0' equivale a null (sin entidad asignada) ---------------
-        $codAfpRaw = (trim((string)($p->cod_afp  ?? '')) === '0') ? null : ($p->cod_afp  ?? null);
-        $codEpsRaw = (trim((string)($p->cod_eps  ?? '')) === '0') ? null : ($p->cod_eps  ?? null);
-        $codCajRaw = (trim((string)($p->cod_caja ?? '')) === '0') ? null : ($p->cod_caja ?? null);
-
-        // -- Exención por edad (mismos umbrales que TXT) ----------------------------
-        $isExento = $edad !== null
-            && (($genero === 'M' && $edad >= 55) || ($genero === 'F' && $edad >= 50));
-
-        $vAfpFactura = (int)($p->v_afp ?? 0);
-
-        // -- Reglas tienePension (idénticas al TXT) ---------------------------------
-        // 1) Sin cod_afp (null/'0')               → false
-        // 2) Con cod_afp, cualquier edad, v_afp>0  → true  (sigue pagando)
-        // 3) Con cod_afp, exento por edad, v_afp=0 → false (subtipo 03)
-        // 4) Con cod_afp, joven, v_afp=0           → true  (calcula igual)
-        $tienePension = !empty($codAfpRaw) && (!$isExento || $vAfpFactura > 0);
-        $omitePension = !$tienePension;
-
-        // -- Subtipo cotizante -------------------------------------------------------
-        $subtipoCotizante = 0;
-        if (!$tienePension && $edad !== null) {
-            $subtipoCotizante = $isExento ? 3 : 4;
-        }
-
-        // -- Extranjero: 'X' si el tipo de documento NO es colombiano ---------------
-        // Documentos colombianos: CC (Cédula), TI (Tarjeta Identidad), NUIP
-        // Documentos extranjeros: CE, PA, PE, PT, AS, MS, CD, SC → X
+        // ── Tipo documento ────────────────────────────────────────────────────
         $tipoDocNorm    = strtoupper(trim($p->tipo_doc ?? 'CC'));
         $docsColombiano = ['CC', 'TI', 'NUIP', 'RC'];
         $esExtranjero   = !in_array($tipoDocNorm, $docsColombiano) ? 'X' : null;
 
-        // Tipo cotizante PILA: 1 = Dependiente, 2 = Independiente
-        $esIndependiente = in_array((int)$p->tipo_modalidad_id, [10, 11]);
-        $tipoCotizante   = $esIndependiente ? 2 : 1;
-
-        // p.num_dias es la fuente de verdad; f.dias_cotizados puede estar incorrecta por migración
-        $ibcFull = (int)($p->salario_basico ?? 0);
-        $dias    = (int)($p->num_dias ?? $p->dias_cotizados ?? 30);
-        // round() estándar para IBC proporcional (no ceil/100 — eso es solo para cotizaciones)
-        $ibcProp = $dias < 30 ? (int)round($ibcFull * $dias / 30) : $ibcFull;
-
-        $vEps  = (int)($p->v_eps  ?? 0);
-        $vAfp  = $omitePension ? 0 : (int)($p->v_afp  ?? 0);
-        $vArl  = (int)($p->v_arl  ?? 0);
-        $vCaja = (int)($p->v_caja ?? 0);
-
-        // -- Códigos, fechas y tarifa ARL -----------------------------------------
-        $tipoDoc    = $tipoDocNorm;
-        $nitAfp     = (string)($codAfpRaw ?? '');
-        $nitEps     = (string)($codEpsRaw ?? '');
-        $nitArl     = (string)($p->cod_arl ?? '');
-        $nitCaja    = (string)($codCajRaw ?? '');
-        $codAfp     = $p->codigo_afp      ?? null;
-        $codEps     = $p->codigo_eps      ?? null;
-        $codCaj     = $p->codigo_caj      ?? null;
-        $codCajFin  = $codCaj ?: 'CCF68';
-        $codArlPila = $p->codigo_arl_pila ?? null;
-        $tarifaArl  = $p->tarifa_arl !== null ? round((float)$p->tarifa_arl / 100, 6) : null;
-
-        // Fechas: CONVERT ya retorna 'YYYY-MM-DD' directamente
+        // ── Fechas ING / RET ──────────────────────────────────────────────────
         $fechaIng = !empty($p->fecha_ing) ? $p->fecha_ing : null;
         $fechaRet = !empty($p->fecha_ret) ? $p->fecha_ret : null;
         $esIng    = $fechaIng ? 'X' : null;
         $esRet    = $fechaRet ? 'X' : null;
 
-        // IBC CCF recalculado con $nitCaja ya disponible
-        $ibcCcf    = $nitCaja ? $ibcProp : 100;
-        $aporteCcf = $vCaja   ? $vCaja   : 100;
+        // ── Departamento: del calculador (99 si sin caja/K, real si tiene caja) ─
+        $depExcel = $c['depCod'];
 
-        // -- Número de horas laboradas: (240 / 30) * dias = 8 * dias ------------------
-        $horasLaboradas = 8 * $dias;
+        // ── Horas laboradas ────────────────────────────────────────────────────
+        $horasLaboradas = 8 * $c['dias'];
 
-        // -- 98 campos del trabajador (orden exacto del formato operadores SS) ---------
-        // Regla: lo que no sabemos o no aplica → null (celda vacía)
         $valores = [
-            /*  1 */ 2,                                // Tipo de registro (siempre 2)
-            /*  2 */ $seq,                             // Secuencia
-            /*  3 */ $tipoDoc,                         // Tipo documento cotizante
-            /*  4 */ (string)$p->no_identifi,          // Documento cotizante
-            /*  5 */ $tipoCotizante,                   // Tipo de cotizante (1=dep, 2=indep)
-            /*  6 */ $subtipoCotizante ?: null,        // Subtipo: 0=estándar, 3=vejez, 4=otro pensionado
-            /*  7 */ $esExtranjero,                    // Extranjero: 'X' si doc no colombiano
-            /*  8 */ null,                             // Colombiano en el exterior
-            /*  9 */ ($codCaj === null || $codCajFin === 'CCF68') ? 99 : ($p->cod_departamento ?? null), // Depto 99 si sin caja
-            /* 10 */ $p->cod_municipio    ?? null,     // Municipio (Municipio_No PILA)
-            /* 11 */ $p->primer_ape,                   // Primer apellido
-            /* 12 */ $p->segundo_ape,                  // Segundo apellido
-            /* 13 */ $p->primer_nombre,                // Primer nombre
-            /* 14 */ $p->segundo_nombre,               // Segundo nombre
-            /* 15 */ $esIng,                           // ING → 'X' o vacío
-            /* 16 */ $esRet,                           // RET → 'X' o vacío
-            /* 17 */ null,                             // TDE (Traslado Desde EPS)
-            /* 18 */ null,                             // TAE (Traslado A EPS)
-            /* 19 */ null,                             // TDP (Traslado Desde AFP)
-            /* 20 */ null,                             // TAP (Traslado A AFP)
-            /* 21 */ null,                             // VSP (Variación Salario Permanente)
-            /* 22 */ null,                             // Línea
-            /* 23 */ null,                             // VST (Variación Salario Transitoria)
-            /* 24 */ null,                             // SLN (Licencia No Remunerada)
-            /* 25 */ null,                             // IGE (Incapacidad General)
-            /* 26 */ null,                             // LMA (Licencia Maternidad)
-            /* 27 */ null,                             // VAC-LR (Vacaciones / Lic. Remunerada)
-            /* 28 */ null,                             // AVP (Aporte Voluntario Pens.)
-            /* 29 */ null,                             // VCT (Variación Centro Trabajo)
-            /* 30 */ 0,                                // IRL = 0
-            /* 31 */ $codAfp,                          // AFP → codigo PILA (pensiones.codigo)
-            /* 32 */ null,                             // AFP Traslado
-            /* 33 */ $codEps,                          // EPS → codigo PILA (EPS.codigo)
-            /* 34 */ null,                             // EPS Traslado
-            /* 35 */ $codCajFin,                       // CCF → codigo PILA ('CCF68' si sin caja)
-            /* 36 */ $omitePension ? 0 : $dias,        // Días AFP (0 si omite pensión)
-            /* 37 */ $dias,                            // Días EPS
-            /* 38 */ $dias,                            // Días ARL
-            /* 39 */ $dias,                            // Días CCF
-            /* 40 */ $ibcFull,                          // Salario básico completo
-            /* 41 */ 'F',                              // Tipo salario: F = fijo
-            /* 42 */ $omitePension ? 0 : $ibcProp,     // IBC AFP (proporcional)
-            /* 43 */ $ibcProp,                         // IBC EPS (proporcional)
-            /* 44 */ $ibcProp,                         // IBC ARL (proporcional)
-            /* 45 */ $ibcCcf,                          // IBC CCF (100 si no tiene caja)
-            /* 46 */ 0.16,                             // Tarifa AFP = 0,16
-            /* 47 */ $vAfp ?: null,                    // Cotización AFP
-            /* 48 */ 0,                                // AVP afiliado = 0
-            /* 49 */ 0,                                // AVP aportante = 0
-            /* 50 */ $vAfp ?: null,                    // Total AFP
-            /* 51 */ 0,                                // Aporte FSP = 0
-            /* 52 */ 0,                                // Aporte FSPS = 0
-            /* 53 */ 0,                                // Valor no retenido = 0
-            /* 54 */ 0.04,                             // Tarifa EPS = 0,04
-            /* 55 */ $vEps ?: null,                    // Cotización EPS
-            /* 56 */ 0,                                // Valor UPC = 0
-            /* 57 */ null,                             // Número IGE
-            /* 58 */ 0,                                // Valor IGE = 0
-            /* 59 */ null,                             // Número LMA
-            /* 60 */ 0,                                // Valor LMA = 0
-            /* 61 */ $tarifaArl,                       // Tarifa ARL (porcentaje/100)
-            /* 62 */ (int)($p->nivel_riesgo ?? 1),     // Centro de trabajo = nivel ARL (1-5)
-            /* 63 */ $vArl ?: null,                    // Cotización ARL
-            /* 64 */ 0.04,                             // Tarifa CCF = 0,04
-            /* 65 */ $aporteCcf,                       // Aporte CCF ($vCaja o 100 si sin caja)
-            /* 66 */ 0,                                // Tarifa SENA = 0
-            /* 67 */ 0,                                // Aporte SENA = 0
-            /* 68 */ 0,                                // Tarifa ICBF = 0
-            /* 69 */ 0,                                // Aporte ICBF = 0
-            /* 70 */ 0,                                // Tarifa ESAP = 0
-            /* 71 */ 0,                                // Aporte ESAP = 0
-            /* 72 */ 0,                                // Tarifa MEN = 0
-            /* 73 */ 0,                                // Aporte MEN = 0
-            /* 74 */ null,                             // Tipo documento UPC
-            /* 75 */ null,                             // Documento UPC
-            /* 76 */ 'S',                              // Exonerado = S
-            /* 77 */ $codArlPila,                      // ARL → codigo PILA (arls.codigo)
-            /* 78 */ (int)($p->nivel_riesgo ?? 1),     // Clase riesgo
-            /* 79 */ null,                             // Tarifa especial AFP
-            /* 80 */ $fechaIng,                        // Fecha ING (YYYY-MM-DD)
-            /* 81 */ $fechaRet,                        // Fecha RET (YYYY-MM-DD)
-            /* 82 */ null,                             // Fecha inicio VSP
-            /* 83 */ null,                             // Fecha inicio SLN
-            /* 84 */ null,                             // Fecha final SLN
-            /* 85 */ null,                             // Fecha inicio IGE
-            /* 86 */ null,                             // Fecha final IGE
-            /* 87 */ null,                             // Fecha inicio LMA
-            /* 88 */ null,                             // Fecha final LMA
-            /* 89 */ null,                             // Fecha inicio VAC-LR
-            /* 90 */ null,                             // Fecha final VAC-LR
-            /* 91 */ null,                             // Fecha inicio VCT
-            /* 92 */ null,                             // Fecha final VCT
-            /* 93 */ null,                             // Fecha inicio IRL
-            /* 94 */ null,                             // Fecha final IRL
-            /* 95 */ 0,                                // IBC otros parafiscales = 0
-            /* 96 */ $horasLaboradas,                  // Horas laboradas: (240/30)*dias
-            /* 97 */ null,                             // Fecha radicación exterior
-            /* 98 */ null,                             // Actividad económica ARL
+            /*  1 */ 2,                                                // Tipo de registro
+            /*  2 */ $seq,                                             // Secuencia
+            /*  3 */ $tipoDocNorm,                                     // Tipo documento
+            /*  4 */ (string)$p->no_identifi,                          // Documento
+            /*  5 */ $c['tipoCotizante'],                              // Tipo cotizante (1/2/23)
+            /*  6 */ (int)$c['subtipoCotizante'],                        // Subtipo (0/3/4) — 0 cuando no aplica excepción
+            /*  7 */ $esExtranjero,                                    // Extranjero
+            /*  8 */ null,                                             // Colombiano exterior
+            /*  9 */ $depExcel,                                        // Departamento
+            /* 10 */ $p->cod_municipio ?? null,                        // Municipio
+            /* 11 */ $p->primer_ape,                                   // Primer apellido
+            /* 12 */ $p->segundo_ape,                                  // Segundo apellido
+            /* 13 */ $p->primer_nombre,                                // Primer nombre
+            /* 14 */ $p->segundo_nombre,                               // Segundo nombre
+            /* 15 */ $esIng,                                           // ING
+            /* 16 */ $esRet,                                           // RET
+            /* 17 */ null,                                             // TDE
+            /* 18 */ null,                                             // TAE
+            /* 19 */ null,                                             // TDP
+            /* 20 */ null,                                             // TAP
+            /* 21 */ null,                                             // VSP
+            /* 22 */ null,                                             // Línea
+            /* 23 */ null,                                             // VST
+            /* 24 */ null,                                             // SLN
+            /* 25 */ null,                                             // IGE
+            /* 26 */ null,                                             // LMA
+            /* 27 */ null,                                             // VAC-LR
+            /* 28 */ null,                                             // AVP
+            /* 29 */ null,                                             // VCT
+            /* 30 */ 0,                                                // IRL
+            /* 31 */ $c['codAfpPila'] ?: null,                         // AFP
+            /* 32 */ null,                                             // AFP Traslado
+            /* 33 */ $c['codEpsPila'] ?: null,                         // EPS
+            /* 34 */ null,                                             // EPS Traslado
+            /* 35 */ $c['codCcfPila'] ?: null,                         // CCF
+            /* 36 */ $c['diasPension'] ?: null,                        // Días AFP
+            /* 37 */ $c['diasSalud']   ?: null,                        // Días EPS
+            /* 38 */ $c['diasArl'],                                    // Días ARL (30 si K)
+            /* 39 */ $c['diasCcf']     ?: null,                        // Días CCF
+            /* 40 */ $c['ibcFull'],                                    // Salario básico
+            /* 41 */ 'F',                                              // Tipo salario
+            /* 42 */ $c['ibcAfp']      ?: null,                        // IBC AFP
+            /* 43 */ $c['ibcEps']      ?: null,                        // IBC EPS
+            /* 44 */ $c['ibcArl'],                                     // IBC ARL
+            /* 45 */ $c['ibcCcf']      ?: null,                        // IBC CCF
+            /* 46 */ $c['tienePension'] ? 0.16 : null,                 // Tarifa AFP
+            /* 47 */ $c['vAfp']        ?: null,                        // Cotización AFP
+            /* 48 */ 0,                                                // AVP afiliado
+            /* 49 */ 0,                                                // AVP aportante
+            /* 50 */ $c['vAfp']        ?: null,                        // Total AFP
+            /* 51 */ 0,                                                // FSP solidaridad
+            /* 52 */ 0,                                                // FSP subsistencia
+            /* 53 */ 0,                                                // Valor no retenido
+            /* 54 */ ($c['esKMatriz'] || $c['esTiempoParcial']) ? null : ($c['exonerado'] === 'S' ? 0.04 : 0.125), // Tarifa EPS (vacía en K y TP)
+            /* 55 */ $c['vEps']        ?: null,                        // Cotización EPS
+            /* 56 */ 0,                                                // UPC
+            /* 57 */ null,                                             // Número IGE
+            /* 58 */ 0,                                                // Valor IGE
+            /* 59 */ null,                                             // Número LMA
+            /* 60 */ 0,                                                // Valor LMA
+            /* 61 */ $c['tarifaArlDecimal'],                           // Tarifa ARL
+            /* 62 */ $c['nivelRiesgo'],                                // Centro trabajo
+            /* 63 */ $c['vArl']        ?: null,                        // Cotización ARL
+            /* 64 */ $c['esKMatriz'] ? null : 0.04,                    // Tarifa CCF
+            /* 65 */ $c['vCcf']        ?: null,                        // Aporte CCF
+            /* 66 */ $c['esKMatriz'] ? null : (float)str_replace('0.0', '0.', $c['tarifaSenaStr']), // Tarifa SENA
+            /* 67 */ $c['vSena']       ?: null,                        // Aporte SENA
+            /* 68 */ $c['esKMatriz'] ? null : (float)str_replace('0.0', '0.', $c['tarifaIcbfStr']), // Tarifa ICBF
+            /* 69 */ $c['vIcbf']       ?: null,                        // Aporte ICBF
+            /* 70 */ 0,                                                // Tarifa ESAP
+            /* 71 */ 0,                                                // Aporte ESAP
+            /* 72 */ 0,                                                // Tarifa MEN
+            /* 73 */ 0,                                                // Aporte MEN
+            /* 74 */ null,                                             // Tipo doc UPC
+            /* 75 */ null,                                             // Doc UPC
+            /* 76 */ $c['exonerado'],                                  // Exonerado
+            /* 77 */ $c['codArlPila']  ?: null,                        // ARL
+            /* 78 */ $c['nivelRiesgo'],                                // Clase riesgo
+            /* 79 */ null,                                             // Tarifa especial AFP
+            /* 80 */ $fechaIng,                                        // Fecha ING
+            /* 81 */ $fechaRet,                                        // Fecha RET
+            /* 82 */ null, /* 83 */ null, /* 84 */ null,               // VSP/SLN
+            /* 85 */ null, /* 86 */ null,                              // IGE
+            /* 87 */ null, /* 88 */ null,                              // LMA
+            /* 89 */ null, /* 90 */ null,                              // VAC-LR
+            /* 91 */ null, /* 92 */ null,                              // VCT
+            /* 93 */ null, /* 94 */ null,                              // IRL
+            /* 95 */ $c['ibcOtros']    ?: null,                        // IBC parafiscales
+            /* 96 */ $horasLaboradas,                                  // Horas laboradas
+            /* 97 */ null,                                             // Fecha radicación
+            /* 98 */ null,                                             // Actividad económica ARL
         ];
 
-        // Columnas que deben ser texto para evitar notación científica en NITs y documentos
-        // col 4=doc cotizante, col 31=NIT AFP, col 33=NIT EPS, col 35=NIT CCF, col 77=NIT ARL
         $colTexto = [4, 31, 33, 35, 77];
-
         $col = 1;
         foreach ($valores as $v) {
             $cell = $sheet->getCell([$col, $fila]);
             $cell->setValue($v ?? '');
-
             if (in_array($col, $colTexto)) {
                 $cell->getStyle()->getNumberFormat()->setFormatCode(NumberFormat::FORMAT_TEXT);
             }
-
             $col++;
         }
     }
 
-    /**
-     * Devuelve un StreamedResponse listo para descargar.
-     */
     public function respuesta(Spreadsheet $spreadsheet, string $filename): \Symfony\Component\HttpFoundation\StreamedResponse
     {
         $writer = new Xlsx($spreadsheet);
