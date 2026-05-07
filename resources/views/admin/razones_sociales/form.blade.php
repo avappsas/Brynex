@@ -286,102 +286,8 @@
                   placeholder="Información adicional sobre esta razón social...">{{ old('observacion', $rs?->observacion) }}</textarea>
     </div>
 
-    {{-- ── Sello / Firma de la empresa ── (solo al editar) --}}
-    @if($rs)
-    @php
-        $nitSello   = $rs->nit ?? $rs->id;
-        $rutaSello  = storage_path('app/sellos/' . $nitSello . '.png');
-        $tieneSello = file_exists($rutaSello);
-    @endphp
-    <div class="card" id="cardSello">
-        <div class="card-title">🖼️ Sello / Firma de la empresa</div>
-
-
-        {{-- Preview actual --}}
-        @if($tieneSello)
-        @php $selloSrc = 'data:image/png;base64,' . base64_encode(file_get_contents($rutaSello)); @endphp
-        <div id="selloPreviewWrap" style="margin-bottom:.75rem;text-align:center">
-            <p style="font-size:.65rem;color:#64748b;margin:0 0 .35rem">Sello actual:</p>
-            <img id="selloImgActual"
-                 src="{{ $selloSrc }}"
-                 style="max-height:80px;max-width:220px;border:1px solid #e2e8f0;border-radius:8px;padding:4px;background:#f8fafc;object-fit:contain">
-        </div>
-        @endif
-
-        {{-- Zona de drop --}}
-        <div id="selloDropZone"
-             style="border:2px dashed #cbd5e1;border-radius:10px;padding:1.2rem;text-align:center;cursor:pointer;transition:all .15s;background:#f8fafc"
-             onclick="document.getElementById('inputSello').click()"
-             ondragover="event.preventDefault();this.style.borderColor='#3b82f6';this.style.background='#eff6ff'"
-             ondragleave="this.style.borderColor='#cbd5e1';this.style.background='#f8fafc'"
-             ondrop="handleSelloDrop(event)">
-            <div style="font-size:2rem">🖼️</div>
-            <div style="font-size:.8rem;font-weight:700;color:#475569;margin:.3rem 0 .1rem">
-                Arrastra la imagen aquí o haz clic para seleccionar
-            </div>
-            <div style="font-size:.65rem;color:#94a3b8">PNG, JPG o WEBP — máx. 5 MB</div>
-        </div>
-
-        {{-- Preview nuevo antes de subir --}}
-        <div id="selloNuevoWrap" style="display:none;margin:.6rem 0;text-align:center">
-            <p style="font-size:.65rem;color:#64748b;margin:0 0 .3rem">Vista previa del nuevo sello:</p>
-            <img id="selloImgNuevo" src="" style="max-height:80px;max-width:220px;border:1px solid #3b82f6;border-radius:8px;padding:4px;object-fit:contain">
-        </div>
-
-        {{-- Formulario de subida separado --}}
-        <form id="formSello" method="POST"
-              action="{{ route('admin.configuracion.razones.sello', $rs->id) }}"
-              enctype="multipart/form-data" style="margin-top:.6rem">
-            @csrf
-            <input type="file" id="inputSello" name="sello" accept=".png,.jpg,.jpeg,.webp"
-                   style="display:none" onchange="previewSello(this)">
-            <button type="submit" id="btnSubirSello"
-                    style="display:none;width:100%;padding:.5rem;background:linear-gradient(135deg,#0369a1,#0284c7);
-                           color:#fff;border:none;border-radius:8px;font-size:.82rem;font-weight:700;cursor:pointer">
-                💾 Guardar sello
-            </button>
-        </form>
-
-        @if(session('success') && str_contains(session('success'), 'Sello'))
-        <div style="margin-top:.5rem;font-size:.72rem;color:#15803d;font-weight:700;text-align:center">
-            ✅ {{ session('success') }}
-        </div>
-        @endif
-
-        @error('sello')
-        <div style="margin-top:.4rem;font-size:.72rem;color:#dc2626">⚠️ {{ $message }}</div>
-        @enderror
-    </div>
-
-    <script>
-    function previewSello(input) {
-        if (!input.files || !input.files[0]) return;
-        const reader = new FileReader();
-        reader.onload = e => {
-            document.getElementById('selloImgNuevo').src = e.target.result;
-            document.getElementById('selloNuevoWrap').style.display = 'block';
-            document.getElementById('btnSubirSello').style.display = 'block';
-        };
-        reader.readAsDataURL(input.files[0]);
-    }
-    function handleSelloDrop(e) {
-        e.preventDefault();
-        document.getElementById('selloDropZone').style.borderColor = '#cbd5e1';
-        document.getElementById('selloDropZone').style.background  = '#f8fafc';
-        const file = e.dataTransfer.files[0];
-        if (!file) return;
-        const input = document.getElementById('inputSello');
-        const dt    = new DataTransfer();
-        dt.items.add(file);
-        input.files = dt.files;
-        previewSello(input);
-    }
-    </script>
-    @endif
-
     {{-- Botones --}}
-
-    <div style="display:flex;justify-content:flex-end;gap:.7rem;margin-bottom:2rem">
+    <div style="display:flex;justify-content:flex-end;gap:.7rem;margin-bottom:1rem">
         <a href="{{ route('admin.configuracion.razones.index') }}" class="btn-cancel">Cancelar</a>
         <button type="submit" class="btn-save">
             {{ $rs ? '💾 Guardar cambios' : '✅ Crear Razón Social' }}
@@ -389,5 +295,97 @@
     </div>
 
 </form>
+
+{{-- ── Sello / Firma de la empresa ── (solo al editar, fuera del form principal) --}}
+@if($rs)
+@php
+    $nitSello   = $rs->nit ?? $rs->id;
+    $rutaSello  = storage_path('app/sellos/' . $nitSello . '.png');
+    $tieneSello = file_exists($rutaSello);
+@endphp
+<div class="card" id="cardSello">
+    <div class="card-title">🖼️ Sello / Firma de la empresa</div>
+
+    {{-- Preview actual --}}
+    @if($tieneSello)
+    @php $selloSrc = 'data:image/png;base64,' . base64_encode(file_get_contents($rutaSello)); @endphp
+    <div id="selloPreviewWrap" style="margin-bottom:.75rem;text-align:center">
+        <p style="font-size:.65rem;color:#64748b;margin:0 0 .35rem">Sello actual:</p>
+        <img id="selloImgActual"
+             src="{{ $selloSrc }}"
+             style="max-height:80px;max-width:220px;border:1px solid #e2e8f0;border-radius:8px;padding:4px;background:#f8fafc;object-fit:contain">
+    </div>
+    @endif
+
+    {{-- Zona de drop --}}
+    <div id="selloDropZone"
+         style="border:2px dashed #cbd5e1;border-radius:10px;padding:1.2rem;text-align:center;cursor:pointer;transition:all .15s;background:#f8fafc"
+         onclick="document.getElementById('inputSello').click()"
+         ondragover="event.preventDefault();this.style.borderColor='#3b82f6';this.style.background='#eff6ff'"
+         ondragleave="this.style.borderColor='#cbd5e1';this.style.background='#f8fafc'"
+         ondrop="handleSelloDrop(event)">
+        <div style="font-size:2rem">🖼️</div>
+        <div style="font-size:.8rem;font-weight:700;color:#475569;margin:.3rem 0 .1rem">
+            Arrastra la imagen aquí o haz clic para seleccionar
+        </div>
+        <div style="font-size:.65rem;color:#94a3b8">PNG, JPG o WEBP — máx. 5 MB</div>
+    </div>
+
+    {{-- Preview nuevo antes de subir --}}
+    <div id="selloNuevoWrap" style="display:none;margin:.6rem 0;text-align:center">
+        <p style="font-size:.65rem;color:#64748b;margin:0 0 .3rem">Vista previa del nuevo sello:</p>
+        <img id="selloImgNuevo" src="" style="max-height:80px;max-width:220px;border:1px solid #3b82f6;border-radius:8px;padding:4px;object-fit:contain">
+    </div>
+
+    {{-- Formulario de subida (independiente del form principal) --}}
+    <form id="formSello" method="POST"
+          action="{{ route('admin.configuracion.razones.sello', $rs->id) }}"
+          enctype="multipart/form-data" style="margin-top:.6rem">
+        @csrf
+        <input type="file" id="inputSello" name="sello" accept=".png,.jpg,.jpeg,.webp"
+               style="display:none" onchange="previewSello(this)">
+        <button type="submit" id="btnSubirSello"
+                style="display:none;width:100%;padding:.5rem;background:linear-gradient(135deg,#0369a1,#0284c7);
+                       color:#fff;border:none;border-radius:8px;font-size:.82rem;font-weight:700;cursor:pointer">
+            💾 Guardar sello
+        </button>
+    </form>
+
+    @if(session('success') && str_contains(session('success'), 'Sello'))
+    <div style="margin-top:.5rem;font-size:.72rem;color:#15803d;font-weight:700;text-align:center">
+        ✅ {{ session('success') }}
+    </div>
+    @endif
+
+    @error('sello')
+    <div style="margin-top:.4rem;font-size:.72rem;color:#dc2626">⚠️ {{ $message }}</div>
+    @enderror
+</div>
+
+<script>
+function previewSello(input) {
+    if (!input.files || !input.files[0]) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+        document.getElementById('selloImgNuevo').src = e.target.result;
+        document.getElementById('selloNuevoWrap').style.display = 'block';
+        document.getElementById('btnSubirSello').style.display = 'block';
+    };
+    reader.readAsDataURL(input.files[0]);
+}
+function handleSelloDrop(e) {
+    e.preventDefault();
+    document.getElementById('selloDropZone').style.borderColor = '#cbd5e1';
+    document.getElementById('selloDropZone').style.background  = '#f8fafc';
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+    const input = document.getElementById('inputSello');
+    const dt    = new DataTransfer();
+    dt.items.add(file);
+    input.files = dt.files;
+    previewSello(input);
+}
+</script>
+@endif
 </div>
 @endsection
