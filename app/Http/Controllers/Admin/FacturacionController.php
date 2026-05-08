@@ -1133,6 +1133,31 @@ $efAcum = $csAcum = $prAcum = $sfAcum = 0;
                     $f->plano->delete();
                 }
 
+                // ── Reversar retiro si la factura es de retiro ──────────────
+                // Las facturas de retiro se identifican por numero_factura = 0.
+                // Al anularlas, el contrato debe volver a estado "vigente",
+                // sin fecha de retiro ni motivo de retiro.
+                if ((int)$f->numero_factura === 0 && $f->contrato_id) {
+                    $contratoRetiro = \App\Models\Contrato::find($f->contrato_id);
+                    if ($contratoRetiro && $contratoRetiro->estado === 'retirado') {
+                        $contratoRetiro->update([
+                            'estado'           => 'vigente',
+                            'fecha_retiro'     => null,
+                            'motivo_retiro_id' => null,
+                        ]);
+
+                        // Registrar reversión en bitácora
+                        Bitacora::registrar(
+                            accion: 'updated',
+                            modelo: 'Contrato',
+                            registroId: $contratoRetiro->id,
+                            descripcion: "Contrato revertido a vigente por anulación de factura de retiro #{$f->id}. Motivo: {$motivo}",
+                            detalle: ['revertido_por_anulacion_factura_id' => $f->id],
+                            alidoId: $aliadoId
+                        );
+                    }
+                }
+
                 // Las consignaciones se eliminan físicamente (quedan en el snapshot de la bitácora)
                 DB::table('consignaciones')->where('factura_id', $f->id)->delete();
                 DB::table('abonos')->where('factura_id', $f->id)->delete();

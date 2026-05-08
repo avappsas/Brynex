@@ -1328,6 +1328,19 @@ class MigrateLegacy extends Command
 
             $this->info("  📊 $db: $totalLegacy en legacy | $migradas migradas | $faltantes pendientes");
 
+            // ── PRE-CHECK: verificar que los pasos previos se corrieron para este aliado ──
+            $nContratos = DB::table('contratos')->where('aliado_id', $aliadoId)->count();
+            $nUsers     = DB::table('users')->where('aliado_id', $aliadoId)->count();
+            $nEmpresas  = DB::table('empresas')->where('aliado_id', $aliadoId)->count();
+            $this->line("  🔍 Pre-check aliado '$key' (id=$aliadoId):");
+            $this->line("     contratos: $nContratos | users: $nUsers | empresas: $nEmpresas");
+
+            if ($nContratos === 0) {
+                $this->error("  ❌ $db: 0 contratos en BryNex para este aliado.");
+                $this->error("     Debes correr primero: php artisan legacy:migrate --step=06");
+                $this->error("     Las facturas se insertarán sin contrato_id (quedarán huérfanas).");
+            }
+
             if ($faltantes <= 0) {
                 $this->line("  ✔ $db → todas las facturas ya migradas");
                 continue;
@@ -1463,7 +1476,22 @@ class MigrateLegacy extends Command
                         $count++;
                         if ($count % 100 === 0) $this->line("    → $count insertadas...");
                     } catch (\Exception $e) {
-                        $this->warn("    ⚠ Id_Factura={$r->Id_Factura} error: " . $e->getMessage());
+                        // Mostrar el error completo: mensaje + código SQL si disponible
+                        $msg = $e->getMessage();
+                        // Extraer información clave: columna que falla, violación de constraint
+                        $hint = '';
+                        if (str_contains($msg, 'Cannot insert the value NULL')) {
+                            preg_match("/column '([^']+)'/", $msg, $m);
+                            $hint = " [NULL en columna: " . ($m[1] ?? '?') . "]";
+                        } elseif (str_contains($msg, 'String or binary data would be truncated')) {
+                            $hint = " [Dato demasiado largo para la columna]";
+                        } elseif (str_contains($msg, 'Violation of UNIQUE KEY') || str_contains($msg, 'duplicate key')) {
+                            $hint = " [Duplicado: ya existe un registro con esa clave]";
+                        } elseif (str_contains($msg, 'Invalid column name')) {
+                            preg_match("/Invalid column name '([^']+)'/", $msg, $m);
+                            $hint = " [Columna inexistente: " . ($m[1] ?? '?') . "]";
+                        }
+                        $this->warn("    ⚠ Id_Factura={$r->Id_Factura}$hint: " . substr($msg, 0, 200));
                     }
                 }
                 $offset += $chunk;
