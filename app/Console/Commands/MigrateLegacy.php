@@ -55,6 +55,7 @@ class MigrateLegacy extends Command
             'fix-independiente'    => fn() => $this->stepFixIndependiente(),
             'fix-planos'           => fn() => $this->stepFixPlanos(),
             'fix-facturas-retiro'  => fn() => $this->stepFixFacturasRetiro(),
+            'fix-facturas-pendientes' => fn() => $this->stepFixFacturasPendientes(),
         ];
 
         if ($step === 'all') {
@@ -900,11 +901,14 @@ class MigrateLegacy extends Command
                     $valEfect = max(0, $valTotal - $valCons);
 
                     // ── FORMA_PAGO ────────────────────────────────────────────
-                    // BUG#2 CORREGIDO: 'Consignacion' es la REFERENCIA de texto (ej: 'TRF-123'),
-                    // NO el ID del banco. Solo 'COD' es el ID numérico de la cuenta bancaria.
-                    // La detección de consignación debe basarse en Valor_Consignado > 0.
-                    $refConsignacion = trim($this->col($r, 'Consignacion') ?? ''); // texto referencia
-                    $codBanco        = $this->col($r, 'COD') ?? null;              // ID numérico banco
+                    // NOTA IMPORTANTE sobre los campos del legacy:
+                    //   COD       = Código compuesto del periodo (ej: '4-2026-67709') → NO es el banco
+                    //   Consignacion = ID numérico de la cuenta bancaria (ej: 8)       → ES el banco
+                    // La referencia bancaria textual no existe en el legacy como campo separado;
+                    // usamos COD como referencia descriptiva del pago.
+                    $codPeriodo      = trim($this->col($r, 'COD') ?? '');          // código periodo (texto referencia)
+                    $refConsignacion = $codPeriodo;                                 // usar COD como referencia bancaria
+                    $codBanco        = $this->col($r, 'Consignacion') ?? null;      // ID numérico banco (campo Consignacion)
 
                     if ($valCons > 0) {
                         // Hay valor consignado: es consignación o mixto
@@ -985,7 +989,8 @@ class MigrateLegacy extends Command
                     // Registrar consignación en tabla consignaciones si aplica
                     if ($valCons > 0 && $formaPago !== 'efectivo') {
                         $bancoCuentaId = null;
-                        // COD es el ID numérico de la cuenta bancaria en legacy
+                        // Consignacion es el ID numérico de la cuenta bancaria en el legacy
+                        // (COD es el código de periodo, NO el banco)
                         if (is_numeric($codBanco) && (int)$codBanco > 0) {
                             $bancoCuentaId = DB::table('banco_cuentas')
                                 ->where('aliado_id', $aliadoId)
@@ -1297,6 +1302,196 @@ class MigrateLegacy extends Command
         }
         DB::statement('ALTER TABLE planos WITH CHECK CHECK CONSTRAINT ALL');
         $this->info('  📊 Total planos: ' . DB::table('planos')->count());
+    }
+
+    // ─── PASO FIX-FACTURAS-PENDIENTES ────────────────────────────────────────
+    // Detecta facturas legacy que no fueron migradas (por error en COD/Consignacion
+    // u otro fallo) y las inserta en BryNex. Es idempotente (usa id_legacy como guard).
+    private function stepFixFacturasPendientes(): void
+    {
+        DB::statement('ALTER TABLE facturas      NOCHECK CONSTRAINT ALL');
+        DB::statement('ALTER TABLE consignaciones NOCHECK CONSTRAINT ALL');
+
+        foreach ($this->dbs as $db => $key) {
+            $aliadoId = $this->ids[$key] ?? null;
+            if (!$aliadoId) { $this->warn("  ⚠ Aliado '$key' no encontrado, se omite"); continue; }
+
+            // Cargar los id_legacy ya migrados (para skip eficiente O(1))
+            $yaExisten = DB::table('facturas')->where('aliado_id', $aliadoId)
+                ->pluck('id_legacy')->filter()->flip()->all();
+
+            // Contar cuántas hay en legacy
+            $totalLegacy = DB::connection('sqlsrv_legacy')
+                ->selectOne("SELECT COUNT(*) as cnt FROM [$db].dbo.FACTURACION")->cnt;
+            $migradas    = count($yaExisten);
+            $faltantes   = $totalLegacy - $migradas;
+
+            $this->info("  📊 $db: $totalLegacy en legacy | $migradas migradas | $faltantes pendientes");
+
+            if ($faltantes <= 0) {
+                $this->line("  ✔ $db → todas las facturas ya migradas");
+                continue;
+            }
+
+            $count = 0; $skipped = 0; $offset = 0; $chunk = 500;
+
+            while (true) {
+                $rows = $this->legacySelect("SELECT * FROM [$db].dbo.FACTURACION
+                    ORDER BY Id_Factura OFFSET $offset ROWS FETCH NEXT $chunk ROWS ONLY");
+                if (empty($rows)) break;
+
+                foreach ($rows as $r) {
+                    if (isset($yaExisten[$r->Id_Factura])) { $skipped++; continue; }
+
+                    $contratoId = DB::table('contratos')
+                        ->where('aliado_id', $aliadoId)
+                        ->where('id_legacy', $r->Id_Contrato)
+                        ->value('id');
+
+                    $tipoRaw = strtolower(trim($r->Tipo ?? ''));
+                    $tipo    = ($tipoRaw === 'mensualidad' || $tipoRaw === 'retiro') ? 'planilla' : 'afiliacion';
+
+                    $valCons  = $this->parseDecimalLegacy($r->Valor_Consignado);
+                    $valPago  = $this->parseDecimalLegacy($r->Pago);
+                    $valTotal = $valPago > 0 ? $valPago : $valCons;
+                    $valEfect = max(0, $valTotal - $valCons);
+
+                    // CORRECCIÓN: COD = código periodo (texto), Consignacion = ID banco (numérico)
+                    $codPeriodo      = trim($this->col($r, 'COD') ?? '');
+                    $refConsignacion = $codPeriodo;
+                    $codBanco        = $this->col($r, 'Consignacion') ?? null;
+
+                    if ($valCons > 0) {
+                        $formaPago = $valEfect > 0 ? 'mixto' : 'consignacion';
+                    } else {
+                        $formaPago = 'efectivo';
+                        $valEfect  = $valTotal;
+                    }
+
+                    $cedulaLegacy = is_numeric($r->Cedula) ? (int)$r->Cedula : 0;
+                    $empresaId    = null;
+                    $cedulaFinal  = $cedulaLegacy;
+                    if ($cedulaLegacy > 0 && $cedulaLegacy < 100000) {
+                        $empresaId   = DB::table('empresas')
+                            ->where('aliado_id', $aliadoId)
+                            ->where('id_legacy', $cedulaLegacy)
+                            ->value('id');
+                        $cedulaFinal = DB::table('contratos')
+                            ->where('id', $contratoId)
+                            ->value('cedula') ?? $cedulaLegacy;
+                    }
+
+                    $usuarioLegacy = $this->col($r, 'Usuario') ?? $this->col($r, 'usuario_id') ?? null;
+                    $usuarioId     = null;
+                    if (is_numeric($usuarioLegacy) && (int)$usuarioLegacy > 0) {
+                        $usuarioId = DB::table('users')
+                            ->where('aliado_id', $aliadoId)
+                            ->where('id_legacy', (int)$usuarioLegacy)
+                            ->value('id');
+                    }
+
+                    try {
+                        $facturaId = DB::table('facturas')->insertGetId([
+                            'aliado_id'          => $aliadoId,
+                            'id_legacy'          => $r->Id_Factura,
+                            'contrato_id'        => $contratoId,
+                            'cedula'             => $cedulaFinal,
+                            'empresa_id'         => $empresaId,
+                            'usuario_id'         => $usuarioId,
+                            'numero_factura'     => is_numeric($r->Factura) ? (int)$r->Factura : 0,
+                            'tipo'               => $tipo,
+                            'mes'                => is_numeric($r->Mes)  ? (int)$r->Mes  : 1,
+                            'anio'               => is_numeric($this->col($r, 'Año')) ? (int)$this->col($r, 'Año') : date('Y'),
+                            'fecha_pago'         => $r->Fecha_Pago ? substr($r->Fecha_Pago, 0, 10) : now()->toDateString(),
+                            'estado'             => 'pagada',
+                            'forma_pago'         => $formaPago,
+                            'valor_consignado'   => $valCons,
+                            'valor_efectivo'     => $valEfect,
+                            'np'      => ($npVal = preg_replace('/[^0-9]/', '', $this->col($r, 'NP') ?? '')) !== '' ? (int)$npVal : null,
+                            'n_plano' => ($npVal = preg_replace('/[^0-9]/', '', $this->col($r, 'n_plano') ?? '')) !== '' ? (int)$npVal : null,
+                            'v_eps'              => $this->parseDecimalLegacy($r->V_EPS),
+                            'v_arl'              => $this->parseDecimalLegacy($r->V_Arl),
+                            'v_afp'              => $this->parseDecimalLegacy($r->V_AFP),
+                            'v_caja'             => $this->parseDecimalLegacy($r->V_CAJA),
+                            'total_ss'           => $this->parseDecimalLegacy($r->V_EPS)
+                                                 + $this->parseDecimalLegacy($r->V_Arl)
+                                                 + $this->parseDecimalLegacy($r->V_AFP)
+                                                 + $this->parseDecimalLegacy($r->V_CAJA),
+                            'admon'              => is_numeric($r->Admon)           ? (int)$r->Admon           : 0,
+                            'admin_asesor'       => is_numeric($r->admin_asesor)    ? (int)$r->admin_asesor    : 0,
+                            'seguro'             => is_numeric($r->seguro)          ? (int)$r->seguro          : 0,
+                            'afiliacion'         => is_numeric($r->Afiliaciones)    ? (int)$r->Afiliaciones    : 0,
+                            'mensajeria'         => is_numeric($r->Mensajeria)      ? (int)$r->Mensajeria      : 0,
+                            'otros'              => is_numeric($r->Otros)           ? (int)$r->Otros           : 0,
+                            'iva'                => is_numeric($r->Iva)             ? (int)$r->Iva             : 0,
+                            'total'              => $valTotal,
+                            'observacion'        => trim(trim($r->Observacion ?? '') . ' ' . trim($r->OBS_FACTURA ?? '')),
+                            'created_at'         => $r->fecha_creacion    ? substr($r->fecha_creacion,    0, 19) : now(),
+                            'updated_at'         => $r->fecha_modificacion ? substr($r->fecha_modificacion, 0, 19) : now(),
+                        ]);
+
+                        // Registrar consignación
+                        if ($valCons > 0 && $formaPago !== 'efectivo') {
+                            $bancoCuentaId = null;
+                            if (is_numeric($codBanco) && (int)$codBanco > 0) {
+                                $bancoCuentaId = DB::table('banco_cuentas')
+                                    ->where('aliado_id', $aliadoId)
+                                    ->where('id_legacy', (int)$codBanco)
+                                    ->value('id');
+                            }
+                            if (!$bancoCuentaId) {
+                                $bancoCuentaId = DB::table('banco_cuentas')
+                                    ->where('aliado_id', $aliadoId)
+                                    ->value('id');
+                            }
+                            if ($bancoCuentaId) {
+                                DB::table('consignaciones')->insert([
+                                    'aliado_id'       => $aliadoId,
+                                    'banco_cuenta_id' => $bancoCuentaId,
+                                    'fecha'           => $r->Fecha_Pago ? substr($r->Fecha_Pago, 0, 10) : now()->toDateString(),
+                                    'valor'           => $valCons,
+                                    'referencia'      => $refConsignacion,
+                                    'confirmado'      => true,
+                                    'observacion'     => "Migrada (fix) de factura legacy #{$r->Id_Factura}",
+                                    'created_at'      => now(),
+                                    'updated_at'      => now(),
+                                ]);
+                            }
+                        }
+
+                        $yaExisten[$r->Id_Factura] = true; // actualizar lookup en memoria
+                        $count++;
+                        if ($count % 100 === 0) $this->line("    → $count insertadas...");
+                    } catch (\Exception $e) {
+                        $this->warn("    ⚠ Id_Factura={$r->Id_Factura} error: " . $e->getMessage());
+                    }
+                }
+                $offset += $chunk;
+                if (count($rows) < $chunk) break;
+            }
+
+            $this->info("  ✅ $db → $count facturas recuperadas, $skipped omitidas (ya existían)");
+        }
+
+        DB::statement('ALTER TABLE facturas      WITH CHECK CHECK CONSTRAINT ALL');
+        DB::statement('ALTER TABLE consignaciones WITH CHECK CHECK CONSTRAINT ALL');
+        $this->info('  📊 Total facturas ahora: ' . DB::table('facturas')->count());
+
+        // Actualizar factura_secuencias
+        $this->info('  🔢 Actualizando factura_secuencias...');
+        $maxPorAliado = DB::table('facturas')
+            ->whereNotNull('numero_factura')->where('numero_factura', '>', 0)
+            ->groupBy('aliado_id')
+            ->selectRaw('aliado_id, MAX(numero_factura) AS max_num')
+            ->get();
+        foreach ($maxPorAliado as $row) {
+            DB::table('factura_secuencias')->updateOrInsert(
+                ['aliado_id' => $row->aliado_id],
+                ['ultimo_numero' => $row->max_num]
+            );
+            $this->line("    → aliado_id={$row->aliado_id}: ultimo_numero={$row->max_num}");
+        }
+        $this->info('  💡 Ahora corre: php artisan legacy:migrate --step=09 para recuperar los planos faltantes.');
     }
 
     // ─── PASO 10: ABONOS ─────────────────────────────────────────────────────
