@@ -15,8 +15,8 @@ class MigrateLegacy extends Command
 
     // Bases de datos legacy → clave de aliado
     private array $dbs = [
-        // 'Brygar_BD'       => 'brygar',
-        // 'Grupo_Fecop'     => 'fecop',
+        'Brygar_BD'       => 'brygar',
+        'Grupo_Fecop'     => 'fecop',
         // 'GiMave_Integral' => 'gimave',
         'LuisLopez'       => 'luislopez',
         // 'Mave_Anderson'   => 'mave',
