@@ -29,12 +29,12 @@
 @csrf
 
 {{-- ══ SECCIÓN 1: Porcentajes Seguridad Social — Solo Superadmin BryNex ══ --}}
-@role('superadmin')
+@if(Auth::user()->hasRole('superadmin') && Auth::user()->es_brynex)
 <div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:1rem 1.25rem;margin-bottom:1rem;">
   @php $esSuperadmin = true; @endphp
   <div style="font-size:0.72rem;font-weight:700;color:#0891b2;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.85rem;">
     🔒 Parámetros Globales BryNex
-    <span style="background:#dcfce7;color:#166534;font-size:0.65rem;font-weight:600;padding:0.1rem 0.5rem;border-radius:999px;text-transform:none;margin-left:0.5rem;">✏️ Editables como Superadmin</span>
+    <span style="background:#dcfce7;color:#166534;font-size:0.65rem;font-weight:600;padding:0.1rem 0.5rem;border-radius:999px;text-transform:none;margin-left:0.5rem;">✏️ Editables como Superadmin BryNex</span>
   </div>
   <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:0.75rem;">
     @foreach([
@@ -65,10 +65,10 @@
     @endforeach
   </div>
 </div>
-@endrole
+@endif
 
 {{-- ══ SECCIÓN 2: Tarifas ARL — Solo Superadmin BryNex ══ --}}
-@role('superadmin')
+@if(Auth::user()->hasRole('superadmin') && Auth::user()->es_brynex)
 <div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:1rem 1.25rem;margin-bottom:1rem;">
   <div style="font-size:0.72rem;font-weight:700;color:#16a34a;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.85rem;">
     🦺 Tarifas ARL por Nivel de Riesgo
@@ -104,7 +104,7 @@
     @endforeach
   </div>
 </div>
-@endrole
+@endif
 
 {{-- ══ SECCIÓN 2.5: Configuración de Mora al Cliente ══ --}}
 <div style="background:#fffbeb;border-radius:12px;border:2px solid #fde68a;padding:1rem 1.25rem;margin-bottom:1rem;">

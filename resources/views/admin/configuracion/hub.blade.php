@@ -79,24 +79,24 @@
             <div class="c-desc">Crear, editar y controlar el acceso de los usuarios al sistema según roles.</div>
         </a>
 
-        @role('superadmin')
+        @if(Auth::user()->hasRole('superadmin') && Auth::user()->es_brynex)
         <a class="cfg-card" href="{{ route('admin.aliados.index') }}"
            style="--c:#0f172a;--bc:#94a3b8">
-            <span class="c-badge" style="background:#f1f5f9;color:#475569">Solo Superadmin</span>
+            <span class="c-badge" style="background:#f1f5f9;color:#475569">Solo BryNex</span>
             <div class="c-icon">🏢</div>
             <div class="c-title">Aliados</div>
             <div class="c-desc">Gestionar aliados/franquicias que operan en la plataforma BryNex.</div>
         </a>
-        @endrole
+        @endif
 
-        {{-- ── AUDITORÍA ────────────────────────────────────── --}}
-        @role('superadmin')
+        {{-- ── AUDITORÍA — solo BryNex superadmin ────────────── --}}
+        @if(Auth::user()->hasRole('superadmin') && Auth::user()->es_brynex)
         <hr class="cfg-sep">
         <div class="cfg-sep-label">🔍 Auditoría</div>
 
         <a class="cfg-card" href="{{ route('admin.bitacora.index') }}"
            style="--c:#7c3aed;--bc:#a78bfa">
-            <span class="c-badge" style="background:#ede9fe;color:#6d28d9">Solo Superadmin</span>
+            <span class="c-badge" style="background:#ede9fe;color:#6d28d9">Solo BryNex</span>
             <div class="c-icon">👁️</div>
             <div class="c-title">Bitácora de Auditoría</div>
             <div class="c-desc">Registro completo de todas las acciones realizadas: creaciones, ediciones, eliminaciones y restauraciones.</div>
@@ -105,13 +105,13 @@
         @if($primeraEps ?? null)
         <a class="cfg-card" href="{{ route('admin.configuracion.eps.formulario', $primeraEps) }}"
            style="--c:#0891b2;--bc:#67e8f9">
-            <span class="c-badge" style="background:#cffafe;color:#0e7490">Solo Superadmin</span>
+            <span class="c-badge" style="background:#cffafe;color:#0e7490">Solo BryNex</span>
             <div class="c-icon">🗺️</div>
             <div class="c-title">Editor de Formularios EPS</div>
             <div class="c-desc">Sube el PDF de cada EPS y arrastra los campos para definir dónde se escriben los datos del cotizante automáticamente.</div>
         </a>
         @endif
-        @endrole
+        @endif
 
         {{-- ── CONTRATOS ────────────────────────────────────── --}}
         <hr class="cfg-sep">

@@ -82,8 +82,8 @@ class ConfiguracionAliadoController extends Controller
         ]);
 
         DB::transaction(function () use ($request, $alidoId) {
-            // ── 1. Parámetros globales BryNex (solo superadmin) ──
-            if (auth()->user()->hasRole('superadmin') && $request->has('brynex')) {
+            // ── 1. Parámetros globales BryNex (solo superadmin + es_brynex) ──
+            if (auth()->user()->hasRole('superadmin') && auth()->user()->es_brynex && $request->has('brynex')) {
                 foreach ($request->input('brynex', []) as $clave => $valor) {
                     if ($valor !== null && $valor !== '') {
                         ConfiguracionBrynex::establecer($clave, $valor);
@@ -115,16 +115,18 @@ class ConfiguracionAliadoController extends Controller
                 );
             }
 
-            // ── 3. Tarifas ARL personalizadas ──
-            foreach ($request->input('arl', []) as $nivel => $data) {
-                $pct = $data['porcentaje'] ?? null;
-                if ($pct === null || $pct === '') {
-                    ArlTarifa::where('aliado_id', $alidoId)->where('nivel', $nivel)->delete();
-                } else {
-                    ArlTarifa::updateOrCreate(
-                        ['aliado_id' => $alidoId, 'nivel' => $nivel],
-                        ['porcentaje' => $pct, 'descripcion' => $data['descripcion'] ?? null]
-                    );
+            // ── 3. Tarifas ARL personalizadas (solo superadmin + es_brynex) ──
+            if (auth()->user()->hasRole('superadmin') && auth()->user()->es_brynex) {
+                foreach ($request->input('arl', []) as $nivel => $data) {
+                    $pct = $data['porcentaje'] ?? null;
+                    if ($pct === null || $pct === '') {
+                        ArlTarifa::where('aliado_id', $alidoId)->where('nivel', $nivel)->delete();
+                    } else {
+                        ArlTarifa::updateOrCreate(
+                            ['aliado_id' => $alidoId, 'nivel' => $nivel],
+                            ['porcentaje' => $pct, 'descripcion' => $data['descripcion'] ?? null]
+                        );
+                    }
                 }
             }
         });
