@@ -723,9 +723,9 @@
             @endrole
 
             {{-- ───────────────────────────────────────────────────────────── --}}
-            {{-- DROPDOWN BRYNEX: solo para superadmin                        --}}
+            {{-- DROPDOWN BRYNEX: solo para superadmin es_brynex              --}}
             {{-- ───────────────────────────────────────────────────────────── --}}
-            @role('superadmin')
+            @if(Auth::user()->hasRole('superadmin') && Auth::user()->es_brynex)
             <div class="menu-sep"></div>
             <div class="menu-dropdown brynex">
                 <a href="{{ route('brynex.hub') }}" class="menu-dropdown-trigger {{ request()->routeIs('brynex*', 'admin.aliados*') ? 'activo' : '' }}">
@@ -756,7 +756,7 @@
                     </a>
                 </div>
             </div>
-            @endrole
+            @endif
         </nav>
 
         <div class="header-user">

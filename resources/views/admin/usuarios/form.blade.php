@@ -58,20 +58,31 @@
         </div>
 
         {{-- Fila 3: Aliado + Rol --}}
+        @php $esBrynexUser = Auth::user()->es_brynex; @endphp
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem;">
             <div>
-                <label style="display:block;font-size:0.78rem;font-weight:600;color:#475569;margin-bottom:0.3rem;text-transform:uppercase;letter-spacing:0.04em;">Aliado *</label>
-                <select name="aliado_id" required
-                    style="width:100%;padding:0.6rem 0.85rem;border:1px solid #cbd5e1;border-radius:8px;font-size:0.9rem;outline:none;font-family:inherit;background:#fff;"
-                    onfocus="this.style.borderColor='#3b82f6'" onblur="this.style.borderColor='#cbd5e1'">
-                    <option value="">— Seleccionar —</option>
-                    @foreach($aliados as $aliado)
-                        <option value="{{ $aliado->id }}"
-                            {{ old('aliado_id', $usuario->aliado_id) == $aliado->id ? 'selected' : '' }}>
-                            {{ $aliado->nombre }}
-                        </option>
-                    @endforeach
-                </select>
+                @if($esBrynexUser)
+                    {{-- BryNex: puede elegir cualquier aliado --}}
+                    <label style="display:block;font-size:0.78rem;font-weight:600;color:#475569;margin-bottom:0.3rem;text-transform:uppercase;letter-spacing:0.04em;">Aliado *</label>
+                    <select name="aliado_id" required
+                        style="width:100%;padding:0.6rem 0.85rem;border:1px solid #cbd5e1;border-radius:8px;font-size:0.9rem;outline:none;font-family:inherit;background:#fff;"
+                        onfocus="this.style.borderColor='#3b82f6'" onblur="this.style.borderColor='#cbd5e1'">
+                        <option value="">— Seleccionar —</option>
+                        @foreach($aliados as $aliado)
+                            <option value="{{ $aliado->id }}"
+                                {{ old('aliado_id', $usuario->aliado_id) == $aliado->id ? 'selected' : '' }}>
+                                {{ $aliado->nombre }}
+                            </option>
+                        @endforeach
+                    </select>
+                @else
+                    {{-- Aliado normal: solo ve su propio aliado, no puede cambiarlo --}}
+                    <label style="display:block;font-size:0.78rem;font-weight:600;color:#475569;margin-bottom:0.3rem;text-transform:uppercase;letter-spacing:0.04em;">Aliado</label>
+                    <div style="width:100%;padding:0.6rem 0.85rem;border:1px solid #e2e8f0;border-radius:8px;font-size:0.9rem;background:#f8fafc;color:#64748b;">
+                        {{ $aliados->firstWhere('id', session('aliado_id_activo'))?->nombre ?? '—' }}
+                    </div>
+                    <input type="hidden" name="aliado_id" value="{{ session('aliado_id_activo') }}">
+                @endif
             </div>
             <div>
                 <label style="display:block;font-size:0.78rem;font-weight:600;color:#475569;margin-bottom:0.3rem;text-transform:uppercase;letter-spacing:0.04em;">Rol *</label>
@@ -109,6 +120,7 @@
 
         {{-- Flags: es_brynex + activo --}}
         <div style="display:flex;gap:2rem;margin-bottom:1.5rem;padding:1rem;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;">
+            @if(Auth::user()->hasRole('superadmin') && Auth::user()->es_brynex)
             <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;">
                 <input type="checkbox" name="es_brynex" value="1"
                     {{ old('es_brynex', $usuario->es_brynex ?? false) ? 'checked' : '' }}
@@ -118,6 +130,7 @@
                     <div style="font-size:0.72rem;color:#64748b;">Puede cambiar de aliado sin cambiar sesión</div>
                 </div>
             </label>
+            @endif
             <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;">
                 <input type="checkbox" name="activo" value="1"
                     {{ old('activo', $usuario->activo ?? true) ? 'checked' : '' }}

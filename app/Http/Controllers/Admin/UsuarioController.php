@@ -52,6 +52,15 @@ class UsuarioController extends Controller
 
     public function store(Request $request)
     {
+        $authUser = auth()->user();
+        $esBrynexAdmin = $authUser->es_brynex; // puede elegir aliado
+        $esSuperBrynex = $authUser->hasRole('superadmin') && $authUser->es_brynex; // puede marcar es_brynex
+
+        // Si no es BryNex, forzar aliado_id desde la sesión (ignorar el del request)
+        if (!$esBrynexAdmin) {
+            $request->merge(['aliado_id' => session('aliado_id_activo')]);
+        }
+
         $data = $request->validate([
             'nombre'    => 'required|string|max:150',
             'cedula'    => ['required','string','max:20', Rule::unique('users','cedula')->whereNull('deleted_at')],
@@ -73,7 +82,8 @@ class UsuarioController extends Controller
             'email'     => $data['email'] ?? $data['cedula'] . '@brynex.local',
             'telefono'  => $data['telefono'] ?? null,
             'aliado_id' => $data['aliado_id'],
-            'es_brynex' => $request->boolean('es_brynex'),
+            // es_brynex solo lo puede asignar superadmin BryNex
+            'es_brynex' => $esSuperBrynex ? $request->boolean('es_brynex') : false,
             'activo'    => $request->boolean('activo', true),
             'password'  => Hash::make($data['password']),
         ]);
@@ -100,6 +110,15 @@ class UsuarioController extends Controller
 
     public function update(Request $request, User $usuario)
     {
+        $authUser = auth()->user();
+        $esBrynexAdmin = $authUser->es_brynex;
+        $esSuperBrynex = $authUser->hasRole('superadmin') && $authUser->es_brynex;
+
+        // Si no es BryNex, forzar aliado_id desde la sesión
+        if (!$esBrynexAdmin) {
+            $request->merge(['aliado_id' => session('aliado_id_activo')]);
+        }
+
         $data = $request->validate([
             'nombre'    => 'required|string|max:150',
             'cedula'    => ['required','string','max:20', Rule::unique('users','cedula')->ignore($usuario->id)->whereNull('deleted_at')],
@@ -121,7 +140,8 @@ class UsuarioController extends Controller
             'email'     => $data['email'] ?? $usuario->email,
             'telefono'  => $data['telefono'] ?? null,
             'aliado_id' => $data['aliado_id'],
-            'es_brynex' => $request->boolean('es_brynex'),
+            // es_brynex solo lo puede cambiar superadmin BryNex; de lo contrario se preserva el valor actual
+            'es_brynex' => $esSuperBrynex ? $request->boolean('es_brynex') : $usuario->es_brynex,
             'activo'    => $request->boolean('activo'),
             'password'  => $data['password'] ? Hash::make($data['password']) : $usuario->password,
         ]);

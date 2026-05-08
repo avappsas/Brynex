@@ -125,13 +125,15 @@
             <div class="c-desc">Administre las empresas a través de las cuales afilia trabajadores. Configure ARL, Caja y si son de tipo independiente.</div>
         </a>
 
+        @if(Auth::user()->hasRole('superadmin') && Auth::user()->es_brynex)
         <a class="cfg-card" href="{{ route('admin.configuracion.modalidades') }}"
            style="--c:#0369a1;--bc:#7dd3fc">
-            <span class="c-badge" style="background:#e0f2fe;color:#0369a1">Planes</span>
+            <span class="c-badge" style="background:#e0f2fe;color:#0369a1">Solo BryNex</span>
             <div class="c-icon">🎛️</div>
             <div class="c-title">Modalidades y Planes</div>
             <div class="c-desc">Configure qué planes de seguridad social son válidos para cada tipo de modalidad y marque sus RS independientes.</div>
         </a>
+        @endif
 
         <a class="cfg-card" href="{{ route('admin.configuracion.operadores.index') }}"
            style="--c:#0891b2;--bc:#67e8f9">
