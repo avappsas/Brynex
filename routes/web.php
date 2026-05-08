@@ -94,6 +94,7 @@ Route::middleware('auth')->group(function () {
              ->parameters(['contratos' => 'contrato'])
              ->except(['show', 'destroy']);
         Route::patch('contratos/{contrato}/retirar',     [\App\Http\Controllers\Admin\ContratoController::class, 'retirar'])->name('contratos.retirar');
+        Route::post('contratos/{contrato}/duplicar-ir',  [\App\Http\Controllers\Admin\ContratoController::class, 'duplicarIngresoRetiro'])->name('contratos.duplicar-ir');
         // APIs reactivas del cotizador
         Route::post('contratos/api/cotizar',             [\App\Http\Controllers\Admin\ContratoController::class, 'cotizar'])->name('contratos.cotizar');
         Route::get('contratos/api/tarifas',              [\App\Http\Controllers\Admin\ContratoController::class, 'tarifasPorPlan'])->name('contratos.tarifas');

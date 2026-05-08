@@ -835,6 +835,289 @@ class ContratoController extends Controller
         return $locales->merge($resto);
     }
 
+    // ─── Duplicar contrato Plan Ingreso-Retiro (id=12) ───────────────
+    /**
+     * Marca retiro en el contrato actual (n_plano=0, num_dias 1-3)
+     * y crea un nuevo contrato con la siguiente RS disponible,
+     * fecha_ingreso = 26 del mes actual y estado = vigente.
+     */
+    public function duplicarIngresoRetiro(Request $request, int $contrato)
+    {
+        $alidoId  = session('aliado_id_activo');
+        $original = Contrato::where('aliado_id', $alidoId)
+            ->with(['eps', 'arl', 'pension', 'caja', 'tipoModalidad', 'razonSocial', 'cliente', 'plan'])
+            ->findOrFail($contrato);
+
+        // Validar que sea plan Ingreso-Retiro vigente
+        if ((int)$original->tipo_modalidad_id !== 12 || !$original->estaVigente()) {
+            return response()->json(['error' => true, 'mensaje' => 'Este contrato no aplica para duplicación Ingreso-Retiro.'], 422);
+        }
+
+        $validated = $request->validate([
+            'num_dias'         => 'required|integer|min:1|max:3',
+            'motivo_retiro_id' => 'required|exists:motivos_retiro,id',
+            'observacion'      => 'nullable|string|max:500',
+            'nueva_rs_id'      => 'nullable|integer',
+        ]);
+
+        // Seleccionar nueva RS: usar la del usuario si vino y es válida, sino el algoritmo automático
+        $nuevaRsId = null;
+        if (!empty($validated['nueva_rs_id'])) {
+            // Verificar que sea una RS válida (dependiente, activa, del aliado, distinta a la actual)
+            $rsManual = DB::table('razones_sociales')
+                ->where('id', $validated['nueva_rs_id'])
+                ->where('aliado_id', $alidoId)
+                ->where('es_independiente', false)
+                ->where('estado', 'Activa')
+                ->where('id', '!=', $original->razon_social_id)
+                ->whereRaw("UPPER(razon_social) NOT LIKE '%RAZON SOCIAL%'")
+                ->exists();
+            if ($rsManual) {
+                $nuevaRsId = (int)$validated['nueva_rs_id'];
+            }
+        }
+        if (!$nuevaRsId) {
+            $nuevaRsId = $this->seleccionarRsParaIR($alidoId, $original->cedula, (int)$original->razon_social_id);
+        }
+        if (!$nuevaRsId) {
+            return response()->json(['error' => true, 'mensaje' => 'No se encontró una Razón Social disponible para asignar. Verifique que existan RS dependientes activas.'], 422);
+        }
+
+
+        $nuevoContrato = null;
+
+        DB::transaction(function () use ($original, $validated, $alidoId, $nuevaRsId, &$nuevoContrato) {
+            $numDias     = (int)$validated['num_dias'];
+            $fechaRetiro = \Carbon\Carbon::parse($original->fecha_ingreso)
+                ->addDays($numDias - 1)
+                ->toDateString();
+
+            // ── 1. Marcar retiro en contrato original ─────────────────────
+            $original->update([
+                'estado'           => 'retirado',
+                'motivo_retiro_id' => $validated['motivo_retiro_id'],
+                'fecha_retiro'     => $fechaRetiro,
+                'observacion'      => $validated['observacion'] ?? $original->observacion,
+            ]);
+
+            // ── 2. Crear plano de retiro con n_plano = 0 ─────────────────
+            $cliente = $original->cliente;
+            $eps     = $original->eps;
+            $afp     = $original->pension;
+            $arl     = $original->arl;
+            $caja    = $original->caja;
+            $rs      = $original->razonSocial;
+
+            $codArl    = $rs?->arl_nit ?? $arl?->nit ?? $arl?->codigo_arl ?? null;
+            $nombreArl = null;
+            if ($rs?->arl_nit) {
+                $nombreArl = DB::table('arls')->where('nit', $rs->arl_nit)->value('nombre_arl');
+            }
+            if (!$nombreArl) $nombreArl = $arl?->nombre_arl ?? null;
+
+            $apellidos = $cliente?->apellidos ?? trim(($cliente?->primer_apellido ?? '') . ' ' . ($cliente?->segundo_apellido ?? ''));
+            $nombres   = $cliente?->nombres   ?? trim(($cliente?->primer_nombre   ?? '') . ' ' . ($cliente?->segundo_nombre   ?? ''));
+            $partsApe  = preg_split('/\s+/', trim($apellidos), 2);
+            $partsNom  = preg_split('/\s+/', trim($nombres),   2);
+
+            // Crear factura de retiro (costo interno, no ingreso)
+            $facRetiro = \App\Models\Factura::create([
+                'aliado_id'        => $alidoId,
+                'numero_factura'   => 0,
+                'tipo'             => 'planilla',
+                'cedula'           => $original->cedula,
+                'contrato_id'      => $original->id,
+                'razon_social_id'  => $original->razon_social_id,
+                'empresa_id'       => null,
+                'mes'              => now()->month,
+                'anio'             => now()->year,
+                'fecha_pago'       => now()->toDateString(),
+                'estado'           => 'pagada',
+                'forma_pago'       => 'efectivo',
+                'valor_efectivo'   => 0,
+                'valor_consignado' => 0,
+                'valor_prestamo'   => 0,
+                'otros'            => 0,
+                'otros_admon'      => 0,
+                'mensajeria'       => 0,
+                'dias_cotizados'   => $numDias,
+                'v_eps'  => 0, 'v_arl'  => 0, 'v_afp'  => 0, 'v_caja' => 0,
+                'total_ss' => 0, 'admon' => 0, 'admin_asesor' => 0,
+                'seguro' => 0, 'afiliacion' => 0, 'iva' => 0, 'total' => 0,
+                'saldo_proximo' => 0,
+                'usuario_id' => \Illuminate\Support\Facades\Auth::id(),
+                'observacion' => $validated['observacion'] ?? null,
+            ]);
+
+            \App\Models\Plano::create([
+                'factura_id'        => $facRetiro->id,
+                'contrato_id'       => $original->id,
+                'aliado_id'         => $alidoId,
+                'numero_factura'    => 0,
+                'tipo_reg'          => 'retiro',
+                'tipo_doc'          => 'CC',
+                'no_identifi'       => $original->cedula,
+                'primer_ape'        => strtoupper($partsApe[0] ?? ''),
+                'segundo_ape'       => strtoupper($partsApe[1] ?? ''),
+                'primer_nombre'     => strtoupper($partsNom[0] ?? ''),
+                'segundo_nombre'    => strtoupper($partsNom[1] ?? ''),
+                'fecha_ing'         => null,
+                'fecha_ret'         => $fechaRetiro,
+                'num_dias'          => $numDias,
+                'cod_eps'           => $eps?->nit  ?? $eps?->cod_eps  ?? null,
+                'nombre_eps'        => $eps?->nombre ?? null,
+                'cod_afp'           => $afp?->nit  ?? $afp?->cod_afp  ?? null,
+                'nombre_afp'        => $afp?->razon_social ?? null,
+                'cod_arl'           => $codArl,
+                'nombre_arl'        => $nombreArl,
+                'cod_caja'          => $caja?->nit ?? $caja?->cod_caja ?? null,
+                'nombre_caja'       => $caja?->nombre ?? null,
+                'nivel_riesgo'      => $original->n_arl ?? 1,
+                'salario_basico'    => $original->salario ?? 0,
+                'n_plano'           => 0,   // ← siempre 0 en Ingreso-Retiro
+                'mes_plano'         => now()->month,
+                'anio_plano'        => now()->year,
+                'razon_social'      => $rs?->razon_social ?? null,
+                'razon_social_id'   => $original->razon_social_id,
+                'tipo_p'            => $original->tipo_modalidad_id,
+                'tipo_modalidad_id' => $original->tipo_modalidad_id,
+                'usuario_id'        => \Illuminate\Support\Facades\Auth::id(),
+            ]);
+
+            // ── 3. Crear nuevo contrato (fecha_ingreso = 26 del mes actual) ──
+            $nuevaFechaIngreso = now()->startOfMonth()->addDays(25)->toDateString(); // día 26
+
+            // Derivar arl_nit_cotizante de la nueva RS
+            $nuevaRsRow = DB::table('razones_sociales')->where('id', $nuevaRsId)->first();
+            $nuevoArlNitCotizante = $nuevaRsRow ? (int)$nuevaRsId : null; // RS dependiente → cotiza por RS
+
+            $nuevoContrato = Contrato::create([
+                'aliado_id'               => $alidoId,
+                'cedula'                  => $original->cedula,
+                'razon_social_id'         => $nuevaRsId,
+                'plan_id'                 => $original->plan_id,
+                'tipo_modalidad_id'       => $original->tipo_modalidad_id, // 12
+                'eps_id'                  => $original->eps_id,
+                'pension_id'              => $original->pension_id,
+                'arl_id'                  => $original->arl_id,
+                'n_arl'                   => $original->n_arl,
+                'arl_modo'                => $original->arl_modo ?? 'razon_social',
+                'arl_nit_cotizante'       => $nuevoArlNitCotizante,
+                'caja_id'                 => $original->caja_id,
+                'cargo'                   => $original->cargo,
+                'actividad_economica_id'  => $original->actividad_economica_id,
+                'salario'                 => $original->salario,
+                'ibc'                     => $original->ibc,
+                'porcentaje_caja'         => $original->porcentaje_caja,
+                'administracion'          => $original->administracion,
+                'admon_asesor'            => $original->admon_asesor,
+                'costo_afiliacion'        => $original->costo_afiliacion,
+                'seguro'                  => $original->seguro,
+                'asesor_id'               => $original->asesor_id,
+                'encargado_id'            => $original->encargado_id,
+                'motivo_afiliacion_id'    => 8, // Ingreso-Retiro (rotación automática)
+                'envio_planilla'          => $original->envio_planilla,
+                'observacion'             => $original->observacion,
+                'observacion_afiliacion'  => $original->observacion_afiliacion,
+                'np'                      => $original->np,
+                // Campos modificados para el nuevo contrato:
+                'fecha_ingreso'           => $nuevaFechaIngreso,
+                'estado'                  => 'vigente',
+                'fecha_created'           => now(),
+                'razon_social_bloqueada'  => false,
+                'cobra_planilla_primer_mes' => false,
+                // NO se copian: fecha_retiro, motivo_retiro_id
+            ]);
+
+            // ── 4. Crear radicados pendientes en el nuevo contrato ────────
+            $nuevoContrato->load('plan');
+            $nuevoContrato->crearRadicadosPendientes();
+        });
+
+        // Si es request AJAX (desde el modal) devolver JSON
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json([
+                'ok'          => true,
+                'nuevo_id'    => $nuevoContrato->id,
+                'redirect_url'=> route('admin.contratos.edit', $nuevoContrato->id),
+                'mensaje'     => 'Retiro marcado y contrato duplicado correctamente.',
+            ]);
+        }
+
+        $redirectParams = [$nuevoContrato->id];
+        if ($request->input('back_url')) {
+            $redirectParams['back'] = $request->input('back_url');
+        }
+
+        return redirect()
+            ->route('admin.contratos.edit', $redirectParams)
+            ->with('success', '✅ Retiro marcado y contrato duplicado. Nueva RS: #' . $nuevoContrato->razon_social_id . ' · Ingreso: ' . \Carbon\Carbon::parse($nuevoContrato->fecha_ingreso)->format('d/m/Y'));
+    }
+
+    /**
+     * Selecciona la mejor RS para el plan Ingreso-Retiro:
+     * 1. RS donde el cliente NUNCA ha estado (sin contratos previos)
+     * 2. Si ya estuvo en todas → la que tenga fecha_retiro más antigua
+     *
+     * Excluye: RS actuales (vigente), RS con "RAZON SOCIAL" en nombre, RS independientes.
+     */
+    private function seleccionarRsParaIR(int $alidoId, string $cedula, int $rsActualId): ?int
+    {
+        // Candidatas: dependientes, activas, sin "RAZON SOCIAL" en nombre, excluyendo la actual
+        $candidatas = DB::table('razones_sociales')
+            ->where('aliado_id', $alidoId)
+            ->where('es_independiente', false)
+            ->where('estado', 'Activa')
+            ->where('id', '!=', $rsActualId)
+            ->whereRaw("UPPER(razon_social) NOT LIKE '%RAZON SOCIAL%'")
+            ->pluck('id');
+
+        if ($candidatas->isEmpty()) {
+            return null;
+        }
+
+        // RS donde el cliente tiene contrato VIGENTE (excluir — ya ocupada)
+        $rsVigentes = DB::table('contratos')
+            ->where('cedula', $cedula)
+            ->where('aliado_id', $alidoId)
+            ->where('estado', 'vigente')
+            ->whereIn('razon_social_id', $candidatas)
+            ->pluck('razon_social_id');
+
+        $candidatasLibres = $candidatas->diff($rsVigentes);
+
+        if ($candidatasLibres->isEmpty()) {
+            return null;
+        }
+
+        // RS donde el cliente NUNCA ha estado (sin contratos históricos)
+        $rsConHistorial = DB::table('contratos')
+            ->where('cedula', $cedula)
+            ->where('aliado_id', $alidoId)
+            ->whereIn('razon_social_id', $candidatasLibres)
+            ->pluck('razon_social_id')
+            ->unique();
+
+        $sinHistorial = $candidatasLibres->diff($rsConHistorial);
+
+        if ($sinHistorial->isNotEmpty()) {
+            // Prioridad 1: RS nunca usada → tomar la primera
+            return $sinHistorial->first();
+        }
+
+        // Prioridad 2: ya estuvo en todas → la con fecha_retiro más antigua
+        $rsOrdenada = DB::table('contratos')
+            ->where('cedula', $cedula)
+            ->where('aliado_id', $alidoId)
+            ->where('estado', 'retirado')
+            ->whereIn('razon_social_id', $candidatasLibres)
+            ->whereNotNull('fecha_retiro')
+            ->orderBy('fecha_retiro', 'asc') // más antigua = más tiempo sin usar
+            ->value('razon_social_id');
+
+        return $rsOrdenada ?: $candidatasLibres->first();
+    }
+
     // ─── Detectar exención de AFP del cliente ─────────────────────────
     /**
      * Un cliente puede omitir AFP si:

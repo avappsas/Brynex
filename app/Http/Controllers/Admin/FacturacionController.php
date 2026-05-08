@@ -82,7 +82,10 @@ class FacturacionController extends Controller
                          });
                   });
             })
-            ->with(['cliente', 'tipoModalidad', 'razonSocial', 'eps', 'arl', 'pension', 'caja', 'asesor'])
+            ->with([
+                'cliente'      => fn($q) => $q->where('aliado_id', $aliadoId),
+                'tipoModalidad', 'razonSocial', 'eps', 'arl', 'pension', 'caja', 'asesor',
+            ])
             ->orderBy('cedula')
             ->get();
 
@@ -97,13 +100,39 @@ class FacturacionController extends Controller
             ->get()
             ->keyBy('contrato_id');  // ← clave: por contrato, no por cédula
 
-        // Calcular días cotizados para cada contrato según fecha_ingreso
-        $hoy       = now();
-        // Mes/año actuales reales (hoy)
-        $mesHoy  = (int) $hoy->month;
-        $anioHoy = (int) $hoy->year;
+        $contratoIds = $contratos->pluck('id')->all();
 
-        $contratos = $contratos->map(function ($c) use ($mes, $anio, $hoy, $facturasExistentes, $aliadoId) {
+        // ── BATCH 1: saldo_proximo acumulado por contrato (1 query) ──────────
+        // Sustituye el sum() individual dentro del map() (era N queries).
+        $saldosTotales = DB::table('facturas')
+            ->where('aliado_id', $aliadoId)
+            ->whereIn('contrato_id', $contratoIds)
+            ->whereNotNull('saldo_proximo')
+            ->whereIn('estado', ['pagada', 'prestamo', 'abono'])
+            ->whereNull('deleted_at')
+            ->groupBy('contrato_id')
+            ->select('contrato_id', DB::raw('SUM(saldo_proximo) as suma'))
+            ->pluck('suma', 'contrato_id');
+
+        // ── BATCH 2: saldo previo al período actual por contrato (1 query) ───
+        // Sustituye Factura::saldoClienteMesPrevio() individual (era N queries).
+        $saldosPrevios = DB::table('facturas')
+            ->where('aliado_id', $aliadoId)
+            ->whereIn('contrato_id', $contratoIds)
+            ->whereNull('empresa_id')
+            ->whereNotNull('saldo_proximo')
+            ->whereIn('estado', ['pagada', 'prestamo', 'abono'])
+            ->whereNull('deleted_at')
+            ->where(fn($q) => $q->where('anio', '<', $anio)
+                ->orWhere(fn($q2) => $q2->where('anio', $anio)->where('mes', '<', $mes)))
+            ->groupBy('contrato_id')
+            ->select('contrato_id', DB::raw('SUM(saldo_proximo) as suma'))
+            ->pluck('suma', 'contrato_id');
+
+        // Calcular días cotizados para cada contrato según fecha_ingreso
+        $hoy = now();
+
+        $contratos = $contratos->map(function ($c) use ($mes, $anio, $hoy, $facturasExistentes, $saldosTotales, $saldosPrevios) {
             $diasCotizar = 30;
             $esIndActPrimerMes = false; // I Act (id=11) en su mes de ingreso → afiliación + planilla juntas
             if ($c->fecha_ingreso) {
@@ -137,34 +166,57 @@ class FacturacionController extends Controller
                 }
             }
             $c->dias_cotizar          = $diasCotizar;
-            $c->es_ind_act_primer_mes = $esIndActPrimerMes; // flag para la vista y cobros
-            $c->factura_exist = $facturasExistentes->get($c->id);
+            $c->es_ind_act_primer_mes = $esIndActPrimerMes;
+            $c->factura_exist         = $facturasExistentes->get($c->id);
 
-            // 1a) Saldo para FACTURAR: suma hasta antes del período visualizado
-            //     (se usa en el modal de facturación para aplicar al nuevo cobro)
-            $saldoPrevFac = Factura::saldoClienteMesPrevio($aliadoId, $c->cedula, $mes, $anio, $c->id);
-            $c->saldo_a_favor_facturar   = (int)($saldoPrevFac['a_favor']   ?? 0);
-            $c->saldo_pendiente_facturar = (int)($saldoPrevFac['pendiente'] ?? 0);
+            // 1a) Saldo para FACTURAR (batch pre-calculado)
+            $sumaPrev = (int)($saldosPrevios[$c->id] ?? 0);
+            $c->saldo_a_favor_facturar   = $sumaPrev > 0 ? $sumaPrev : 0;
+            $c->saldo_pendiente_facturar = $sumaPrev < 0 ? abs($sumaPrev) : 0;
 
-            // 1b) Saldo REAL (para mostrar en pantalla): suma TODOS los saldo_proximo
-            //     sin límite de fecha — incluye meses futuros ya registrados en BD.
-            //     Si mayo ya consumió el saldo de abril, aquí aparecerá en 0.
-            $sumaTotalSaldos = (int) Factura::where('aliado_id', $aliadoId)
-                ->where('cedula', $c->cedula)
-                ->where('contrato_id', $c->id)
-                ->whereNotNull('saldo_proximo')
-                ->whereIn('estado', ['pagada', 'prestamo', 'abono'])
-                ->sum('saldo_proximo');
-            $c->saldo_a_favor   = $sumaTotalSaldos > 0 ? $sumaTotalSaldos : 0;
-            $c->saldo_pendiente = $sumaTotalSaldos < 0 ? abs($sumaTotalSaldos) : 0;
+            // 1b) Saldo REAL (batch pre-calculado)
+            $sumaTotal = (int)($saldosTotales[$c->id] ?? 0);
+            $c->saldo_a_favor   = $sumaTotal > 0 ? $sumaTotal : 0;
+            $c->saldo_pendiente = $sumaTotal < 0 ? abs($sumaTotal) : 0;
 
-            // 2) Saldo generado ESTE periodo (saldo_proximo de la factura actual)
+            // 2) Saldo generado ESTE periodo
             $sp = $c->factura_exist ? (int)($c->factura_exist->saldo_proximo ?? 0) : 0;
-            $c->saldo_proximo_favor    = $sp > 0 ? $sp : 0;   // sobró → va al siguiente mes
-            $c->saldo_proximo_pendiente = $sp < 0 ? abs($sp) : 0; // quedó debiendo
+            $c->saldo_proximo_favor     = $sp > 0 ? $sp : 0;
+            $c->saldo_proximo_pendiente = $sp < 0 ? abs($sp) : 0;
 
             return $c;
         });
+
+        // ── BATCH 3: mora pre-calculada para contratos SIN factura (1 call) ──
+        // Evita que la vista llame MoraClienteService::calcular() por fila.
+        $filasMora = [];
+        foreach ($contratos as $c) {
+            if ($c->factura_exist) continue; // si ya tiene factura, la mora viene de ella
+            if ($c->estado === 'retirado') continue;
+            $rs = $c->razonSocial;
+            if (!$rs) continue;
+            $rsNit = (int)($rs->nit ?: $rs->id);
+            if (!$rsNit) continue;
+            // Estimar SS para mora (usamos calcularCotizacion con días del contrato)
+            $cotiz = $c->calcularCotizacion($c->dias_cotizar ?? 30);
+            $vSS   = (int)($cotiz['ss'] ?? 0);
+            if ($vSS <= 0) continue;
+            $filasMora[$c->id] = [
+                'contrato_id'  => $c->id,
+                'rs_nit'       => $rsNit,
+                'rs_dia_habil' => $rs->dia_habil ?? null,
+                'total_ss'     => $vSS,
+                'mes'          => $mes,
+                'anio'         => $anio,
+            ];
+        }
+        $moraPorContrato = [];
+        if (!empty($filasMora)) {
+            $resultadosMora = \App\Services\MoraClienteService::calcularLote($aliadoId, array_values($filasMora));
+            foreach ($resultadosMora as $fila) {
+                $moraPorContrato[$fila['contrato_id']] = (int)($fila['mora'] ?? 0);
+            }
+        }
 
         // Cuentas bancarias + asesores
         $bancos   = BancoCuenta::activas($aliadoId);
@@ -196,7 +248,8 @@ class FacturacionController extends Controller
         return view('admin.facturacion.empresa', compact(
             'empresa', 'contratos', 'facturasExistentes',
             'mes', 'anio', 'bancos', 'planosActuales', 'asesores',
-            'saldoEmpresaFavor', 'saldoEmpresaPendiente'
+            'saldoEmpresaFavor', 'saldoEmpresaPendiente',
+            'moraPorContrato'
         ));
     }
 

@@ -398,8 +398,14 @@ $distAsesor = (int)($c->asesor?->comision_afil_valor ?? 0);
 $fIngMes    = $c->fecha_ingreso?->month ?? 0;
 $fIngAnio   = $c->fecha_ingreso?->year ?? 0;
 [$semIco, $semColor, $semBg, $semTip] = $semLabel($c->semaforo);
+// Ingreso-Retiro: alerta si planilla > 5 días
+$esIrAlerta  = $c->es_ir_alerta ?? false;
+$diasIrEstim = $c->dias_cotiz_estim ?? 30;
+$rowStyle    = $esIrAlerta
+    ? 'background:linear-gradient(90deg,#fff7ed 0%,#fffbf7 100%);border-left:3px solid #f97316;'
+    : '';
 @endphp
-<tr data-cid="{{ $c->id }}">
+<tr data-cid="{{ $c->id }}" style="{{ $rowStyle }}">
     {{-- N° Contrato --}}
     <td style="text-align:center;font-weight:700;color:#1e40af;font-size:.72rem;">{{ $c->id }}</td>
 
@@ -445,7 +451,24 @@ $fIngAnio   = $c->fecha_ingreso?->year ?? 0;
     </td>
 
     {{-- Razón Social --}}
-    <td><span class="razon-badge" title="{{ $rs }}">{{ \Illuminate\Support\Str::limit($rs, 20, '…') }}</span></td>
+    <td>
+        @if($esIrAlerta)
+            <div style="display:flex;flex-direction:column;gap:2px;">
+                <a href="{{ route('admin.contratos.edit', $c->id) }}"
+                   style="display:inline-flex;align-items:center;gap:.28rem;padding:.2rem .5rem;
+                          border-radius:6px;background:#fff7ed;border:1px solid #fed7aa;
+                          color:#c2410c;font-size:.63rem;font-weight:700;white-space:nowrap;text-decoration:none;"
+                   title="Plan Ingreso-Retiro: planilla tendría {{ $diasIrEstim }} días. Debe rotar RS.">
+                    &#128260; ¡Rotar RS! ({{ $diasIrEstim }}d)
+                </a>
+                <span class="razon-badge" title="{{ $rs }}" style="font-size:.58rem;opacity:.65;">
+                    {{ \Illuminate\Support\Str::limit($rs, 18, '…') }}
+                </span>
+            </div>
+        @else
+            <span class="razon-badge" title="{{ $rs }}">{{ \Illuminate\Support\Str::limit($rs, 20, '…') }}</span>
+        @endif
+    </td>
 
     {{-- Ingreso --}}
     <td style="text-align:center;font-size:.72rem;color:#64748b;">{{ $fIng }}</td>

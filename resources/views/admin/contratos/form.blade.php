@@ -575,6 +575,18 @@
       <a onclick="abrirModalFacturarContrato()" style="display:flex;align-items:center;gap:0.55rem;padding:0.5rem 0.75rem;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;color:#15803d;text-decoration:none;font-size:0.8rem;font-weight:600;cursor:pointer;">
         &#129534; Facturar
       </a>
+      {{-- Botón Ingreso-Retiro: solo para tipo_modalidad_id=12, vigente, y fecha_ingreso del MES ANTERIOR --}}
+      @php
+        $esMesAnteriorIR = $contrato->fecha_ingreso &&
+            !($contrato->fecha_ingreso->month === now()->month && $contrato->fecha_ingreso->year === now()->year);
+      @endphp
+      @if($contrato->estaVigente() && (int)$contrato->tipo_modalidad_id === 12 && $esMesAnteriorIR)
+      <button type="button" onclick="abrirModalDuplicarIR()"
+          id="btn-duplicar-ir"
+          style="display:flex;align-items:center;gap:0.55rem;padding:0.5rem 0.75rem;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;color:#c2410c;font-size:0.8rem;font-weight:600;cursor:pointer;width:100%;text-align:left;">
+        &#128260; Duplicar Contrato (I.Retiro)
+      </button>
+      @endif
       <button type="button" onclick="abrirHistorialPagos()" style="display:flex;align-items:center;gap:0.55rem;padding:0.5rem 0.75rem;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:8px;color:#6d28d9;text-decoration:none;font-size:0.8rem;font-weight:600;cursor:pointer;width:100%;text-align:left;">
         &#128202; Historial Pagos
       </button>
@@ -2263,3 +2275,394 @@ function cerrarHistorial() {
 @endpush
 
 @endsection
+
+{{-- ═══════════════════════════════════════════════════════════════════════
+     MODAL INGRESO-RETIRO: Duplicar Contrato
+     Solo se renderiza cuando tipo_modalidad_id = 12 y está vigente
+════════════════════════════════════════════════════════════════════════ --}}
+@if($esEdicion && $contrato->estaVigente() && (int)$contrato->tipo_modalidad_id === 12)
+@php
+    // ── Construir lista completa de RS candidatas con estado, prioridad y tiempo ──
+    $rsIrOpciones   = [];  // array de opciones para el select
+    $rsIrPreviewId  = null; // ID de la RS sugerida automáticamente
+    $ahora = \Carbon\Carbon::now();
+    try {
+        $alidoIdIr = session('aliado_id_activo');
+        // Todas las RS dependientes activas del aliado (incluso la actual para mostrar)
+        $todasRsIr = \App\Models\RazonSocial::where('aliado_id', $alidoIdIr)
+            ->where('es_independiente', false)
+            ->where('estado', 'Activa')
+            ->whereRaw("UPPER(razon_social) NOT LIKE '%RAZON SOCIAL%'")
+            ->get(['id', 'razon_social']);
+
+        // RS vigentes del cliente (no se pueden asignar)
+        $rsVigentesIrSet = \Illuminate\Support\Facades\DB::table('contratos')
+            ->where('cedula', $contrato->cedula)
+            ->where('aliado_id', $alidoIdIr)
+            ->where('estado', 'vigente')
+            ->pluck('razon_social_id')
+            ->flip(); // O(1) lookup
+
+        // Último retiro de este cliente por RS (para saber tiempo transcurrido)
+        $ultimosRetiros = \Illuminate\Support\Facades\DB::table('contratos')
+            ->where('cedula', $contrato->cedula)
+            ->where('aliado_id', $alidoIdIr)
+            ->where('estado', 'retirado')
+            ->whereNotNull('fecha_retiro')
+            ->select('razon_social_id', \Illuminate\Support\Facades\DB::raw('MAX(fecha_retiro) as ultimo_retiro'))
+            ->groupBy('razon_social_id')
+            ->get()
+            ->keyBy('razon_social_id');
+
+        // RS donde cliente tiene historial (vigente o retirado)
+        $rsConHistIr = \Illuminate\Support\Facades\DB::table('contratos')
+            ->where('cedula', $contrato->cedula)
+            ->where('aliado_id', $alidoIdIr)
+            ->pluck('razon_social_id')
+            ->unique()
+            ->flip();
+
+        foreach ($todasRsIr as $rsItem) {
+            $esActual   = (int)$rsItem->id === (int)$contrato->razon_social_id;
+            $esVigente  = isset($rsVigentesIrSet[$rsItem->id]);
+            $bloqueada  = $esActual || $esVigente;
+
+            // Calcular tiempo desde último retiro
+            $tiempoTexto = null;
+            $ultimoRet   = $ultimosRetiros->get($rsItem->id);
+            if ($ultimoRet && $ultimoRet->ultimo_retiro) {
+                $fechaRet    = \Carbon\Carbon::parse($ultimoRet->ultimo_retiro);
+                $meses       = (int)$fechaRet->diffInMonths($ahora);
+                $anios       = (int)floor($meses / 12);
+                $mesesRest   = $meses % 12;
+                if ($anios > 0 && $mesesRest > 0)  $tiempoTexto = "Retirado hace {$anios}a {$mesesRest}m";
+                elseif ($anios > 0)                  $tiempoTexto = "Retirado hace {$anios} año" . ($anios > 1 ? 's' : '');
+                elseif ($meses > 0)                  $tiempoTexto = "Retirado hace {$meses} mes" . ($meses > 1 ? 'es' : '');
+                else                                  $tiempoTexto = 'Retirado este mes';
+            }
+
+            // Determinar prioridad (menor = mejor)
+            if ($bloqueada) {
+                $prioridad = 99; // no seleccionable
+            } elseif (!isset($rsConHistIr[$rsItem->id])) {
+                $prioridad = 0;  // nunca usada → mejor opción
+            } else {
+                // Entre las ya usadas: menor fecha_retiro = más tiempo sin usar = mejor
+                $prioridad = $ultimoRet
+                    ? \Carbon\Carbon::parse($ultimoRet->ultimo_retiro)->timestamp
+                    : 50;
+            }
+
+            $rsIrOpciones[] = [
+                'id'          => $rsItem->id,
+                'nombre'      => $rsItem->razon_social,
+                'bloqueada'   => $bloqueada,
+                'es_actual'   => $esActual,
+                'es_vigente'  => $esVigente,
+                'nunca_usada' => !isset($rsConHistIr[$rsItem->id]),
+                'tiempo'      => $tiempoTexto,
+                'prioridad'   => $prioridad,
+            ];
+        }
+
+        // Ordenar: bloqueadas al final, luego por prioridad ASC
+        usort($rsIrOpciones, fn($a, $b) =>
+            $a['bloqueada'] <=> $b['bloqueada'] ?: $a['prioridad'] <=> $b['prioridad']
+        );
+
+        // La primera no-bloqueada es la sugerida automáticamente
+        foreach ($rsIrOpciones as $op) {
+            if (!$op['bloqueada']) { $rsIrPreviewId = $op['id']; break; }
+        }
+    } catch (\Throwable $e) {}
+
+    $rsIrHayDisponible = $rsIrPreviewId !== null;
+    $fIngresoDia = $contrato->fecha_ingreso ? $contrato->fecha_ingreso->format('d/m/Y') : '—';
+    $fIngresoCO  = $contrato->fecha_ingreso ? $contrato->fecha_ingreso->toDateString() : null;
+@endphp
+
+<div id="modal-duplicar-ir" style="
+    display:none; position:fixed; inset:0; z-index:4500;
+    background:rgba(10,10,20,.72); backdrop-filter:blur(4px);
+    align-items:center; justify-content:center; padding:1rem;
+" onclick="if(event.target===this)cerrarModalDuplicarIR()">
+<div style="
+    background:#fff; border-radius:18px; width:min(520px,96vw);
+    box-shadow:0 28px 80px rgba(0,0,0,.35); overflow:hidden;
+    animation:mdirIn .22s cubic-bezier(.22,.68,0,1.2);
+">
+<style>
+@@keyframes mdirIn { from{transform:translateY(-22px) scale(.97);opacity:0} to{transform:none;opacity:1} }
+#modal-duplicar-ir .mir-header {
+    background:linear-gradient(135deg,#7c2d12 0%,#c2410c 100%);
+    padding:1rem 1.3rem; display:flex; align-items:center; justify-content:space-between;
+}
+#modal-duplicar-ir .mir-title { color:#fff; font-size:1rem; font-weight:800; display:flex; align-items:center; gap:.5rem; }
+#modal-duplicar-ir .mir-close { background:rgba(255,255,255,.15); border:none; border-radius:7px; width:28px; height:28px; cursor:pointer; color:#fff; font-size:1rem; display:flex; align-items:center; justify-content:center; transition:background .15s; }
+#modal-duplicar-ir .mir-close:hover { background:rgba(255,255,255,.3); }
+#modal-duplicar-ir .mir-body { padding:1.2rem 1.4rem; }
+#modal-duplicar-ir .mir-alert {
+    background:#fff7ed; border:1px solid #fed7aa; border-radius:10px;
+    padding:.75rem 1rem; margin-bottom:1rem; font-size:.78rem; color:#92400e; line-height:1.5;
+}
+#modal-duplicar-ir .mir-rs-badge {
+    display:inline-flex; align-items:center; gap:.4rem; padding:.35rem .75rem;
+    background:#f0fdf4; border:1px solid #86efac; border-radius:8px;
+    color:#15803d; font-size:.82rem; font-weight:700; margin-top:.5rem;
+}
+#modal-duplicar-ir .mir-no-rs {
+    display:inline-flex; align-items:center; gap:.4rem; padding:.35rem .75rem;
+    background:#fef2f2; border:1px solid #fca5a5; border-radius:8px;
+    color:#dc2626; font-size:.82rem; font-weight:700; margin-top:.5rem;
+}
+#modal-duplicar-ir .mir-fg { display:flex; flex-direction:column; gap:.22rem; margin-bottom:.75rem; }
+#modal-duplicar-ir .mir-label { font-size:.7rem; font-weight:700; color:#475569; text-transform:uppercase; letter-spacing:.04em; }
+#modal-duplicar-ir .mir-input, #modal-duplicar-ir .mir-select, #modal-duplicar-ir .mir-ta {
+    padding:.46rem .65rem; border:1px solid #cbd5e1; border-radius:8px;
+    font-size:.85rem; outline:none; font-family:inherit; color:#0f172a; background:#fff;
+}
+#modal-duplicar-ir .mir-input:focus, #modal-duplicar-ir .mir-select:focus { border-color:#f97316; box-shadow:0 0 0 2px rgba(249,115,22,.12); }
+#modal-duplicar-ir .mir-ta { resize:vertical; min-height:70px; width:100%; box-sizing:border-box; }
+#modal-duplicar-ir .mir-fecha-display {
+    background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px;
+    padding:.42rem .65rem; font-size:.83rem; color:#334155; font-weight:600;
+}
+#modal-duplicar-ir .mir-row { display:grid; grid-template-columns:1fr 1fr; gap:.8rem; }
+#modal-duplicar-ir .mir-btn-cancel {
+    flex:1; padding:.58rem; border:1px solid #e2e8f0; background:#f8fafc; color:#64748b;
+    border-radius:10px; font-size:.85rem; font-weight:600; cursor:pointer; transition:background .15s;
+}
+#modal-duplicar-ir .mir-btn-cancel:hover { background:#f1f5f9; }
+#modal-duplicar-ir .mir-btn-confirm {
+    flex:1; padding:.58rem; border:none;
+    background:linear-gradient(135deg,#c2410c,#ea580c); color:#fff;
+    border-radius:10px; font-size:.85rem; font-weight:700; cursor:pointer;
+    box-shadow:0 3px 10px rgba(194,65,12,.3); transition:all .15s;
+}
+#modal-duplicar-ir .mir-btn-confirm:hover { transform:translateY(-1px); box-shadow:0 5px 16px rgba(194,65,12,.4); }
+#modal-duplicar-ir .mir-btn-confirm:disabled { opacity:.6; cursor:not-allowed; transform:none; }
+</style>
+
+    {{-- Header --}}
+    <div class="mir-header">
+        <div class="mir-title">&#128260; Plan Ingreso-Retiro — Rotación de RS</div>
+        <button class="mir-close" onclick="cerrarModalDuplicarIR()">&#x2715;</button>
+    </div>
+
+    {{-- Body --}}
+    <div class="mir-body">
+        {{-- Alerta informativa --}}
+        <div class="mir-alert">
+            ℹ️ Se marcará <strong>retiro</strong> en la RS actual y se creará un <strong>nuevo contrato</strong>
+            con fecha de ingreso <strong>26 del mes actual</strong>, asignando automáticamente la siguiente RS disponible.
+        </div>
+
+        {{-- RS actual --}}
+        <div class="mir-fg">
+            <div class="mir-label">RS Actual (se retirará)</div>
+            <div class="mir-fecha-display" style="color:#dc2626;">&#128683; {{ $contrato->razonSocial?->razon_social ?? '—' }}</div>
+        </div>
+
+        {{-- Select de nueva RS con todas las opciones coloreadas --}}
+        <div class="mir-fg">
+            <div class="mir-label">Nueva Razón Social *
+                <span style="font-size:.6rem;font-weight:400;color:#94a3b8;text-transform:none;letter-spacing:0;"
+                      title="Verde = nunca usada · Azul = disponible (con tiempo) · Rojo = bloqueada (vigente o actual)">
+                    ● verde=nueva &nbsp;● azul=disponible &nbsp;● rojo=bloqueada
+                </span>
+            </div>
+            @if(!empty($rsIrOpciones))
+            <select id="mir-rs-id" class="mir-select" style="width:100%;">
+                @foreach($rsIrOpciones as $op)
+                @php
+                    $sel     = $op['id'] == $rsIrPreviewId ? 'selected' : '';
+                    if ($op['bloqueada']) {
+                        $optStyle = 'color:#b91c1c;background:#fef2f2;';
+                        $prefijo  = '🔴 ';
+                        $sufijo   = $op['es_actual'] ? ' (RS actual)' : ' (cliente vigente aquí)';
+                    } elseif ($op['nunca_usada']) {
+                        $optStyle = 'color:#15803d;background:#f0fdf4;font-weight:700;';
+                        $prefijo  = '🟢 ';
+                        $sufijo   = ' — Nunca usada';
+                    } else {
+                        $optStyle = 'color:#1e40af;background:#eff6ff;';
+                        $prefijo  = '🔵 ';
+                        $sufijo   = $op['tiempo'] ? ' — ' . $op['tiempo'] : '';
+                    }
+                @endphp
+                <option value="{{ $op['id'] }}"
+                    {{ $sel }}
+                    {{ $op['bloqueada'] ? 'disabled' : '' }}
+                    style="{{ $optStyle }}">
+                    {{ $prefijo }}{{ $op['nombre'] }}{{ $sufijo }}
+                </option>
+                @endforeach
+            </select>
+            <div style="font-size:.66rem;color:#94a3b8;margin-top:.25rem;">
+                La primera opción verde/azul es la sugerida por el sistema. Puede cambiarla si lo desea.
+            </div>
+            @else
+                <div class="mir-no-rs">&#9888; Sin RS disponibles — verifique configuración</div>
+            @endif
+        </div>
+
+        <hr style="border:none;border-top:1px solid #f1f5f9;margin:.8rem 0;">
+
+        {{-- Días y Fecha de retiro --}}
+        <div class="mir-row">
+            <div class="mir-fg" style="margin-bottom:0;">
+                <label class="mir-label">Días cotizados en retiro (1–3) *</label>
+                <input type="number" id="mir-num-dias" class="mir-input"
+                    min="1" max="3" value="1"
+                    oninput="mirActualizarFecha()"
+                    style="width:100%;box-sizing:border-box;">
+            </div>
+            <div class="mir-fg" style="margin-bottom:0;">
+                <label class="mir-label">Fecha de retiro (calculada)</label>
+                <div class="mir-fecha-display" id="mir-fecha-display">{{ $fIngresoDia }}</div>
+            </div>
+        </div>
+        <div style="font-size:.68rem;color:#94a3b8;margin-top:.2rem;margin-bottom:.75rem;">
+            1 día = fecha ingreso · 2 días = fecha ingreso +1 día · 3 días = fecha ingreso +2 días
+        </div>
+
+        {{-- Motivo retiro (pre-selecciona id=2) --}}
+        <div class="mir-fg">
+            <label class="mir-label">Motivo de retiro *</label>
+            <select id="mir-motivo" class="mir-select" style="width:100%;">
+                <option value="">— Seleccione motivo —</option>
+                @foreach($motivosRetiro as $mr)
+                <option value="{{ $mr->id }}" {{ $mr->id == 2 ? 'selected' : '' }}>{{ $mr->nombre }}</option>
+                @endforeach
+            </select>
+        </div>
+
+        {{-- Observación --}}
+        <div class="mir-fg">
+            <label class="mir-label">Observación (opcional)</label>
+            <textarea id="mir-obs" class="mir-ta" placeholder="Ingrese una observación..."></textarea>
+        </div>
+
+        {{-- Error --}}
+        <div id="mir-error" style="display:none;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:.6rem .9rem;font-size:.78rem;color:#dc2626;margin-bottom:.75rem;"></div>
+
+        {{-- Botones --}}
+        <div style="display:flex;gap:.7rem;margin-top:.5rem;">
+            <button class="mir-btn-cancel" onclick="cerrarModalDuplicarIR()">Cancelar</button>
+            @if($rsIrHayDisponible)
+            <button class="mir-btn-confirm" id="mir-btn-confirmar" onclick="confirmarDuplicarIR()">
+                &#128260; Confirmar Retiro y Duplicar
+            </button>
+            @else
+            <button class="mir-btn-confirm" disabled>Sin RS disponibles</button>
+            @endif
+        </div>
+    </div>
+</div>
+</div>
+
+@push('scripts')
+<script>
+// ─── Datos para el modal IR ───────────────────────────────────────────────
+const MIR_URL_DUPLICAR  = '{{ route("admin.contratos.duplicar-ir", $contrato->id) }}';
+const MIR_CSRF          = document.querySelector('meta[name="csrf-token"]')?.content;
+const MIR_FECHA_INGRESO = '{{ $fIngresoCO }}'; // YYYY-MM-DD
+
+function abrirModalDuplicarIR() {
+    mirActualizarFecha();
+    document.getElementById('modal-duplicar-ir').style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+}
+
+function cerrarModalDuplicarIR() {
+    document.getElementById('modal-duplicar-ir').style.display = 'none';
+    document.body.style.overflow = '';
+    document.getElementById('mir-error').style.display = 'none';
+    const btn = document.getElementById('mir-btn-confirmar');
+    if (btn) { btn.disabled = false; btn.textContent = '🔄 Confirmar Retiro y Duplicar'; }
+}
+
+function mirActualizarFecha() {
+    const dias   = parseInt(document.getElementById('mir-num-dias').value) || 1;
+    const diaClamped = Math.min(3, Math.max(1, dias));
+    document.getElementById('mir-num-dias').value = diaClamped;
+
+    if (!MIR_FECHA_INGRESO) return;
+    const base = new Date(MIR_FECHA_INGRESO + 'T00:00:00');
+    base.setDate(base.getDate() + (diaClamped - 1));
+    const dd   = String(base.getDate()).padStart(2,'0');
+    const mm   = String(base.getMonth()+1).padStart(2,'0');
+    const yyyy = base.getFullYear();
+    document.getElementById('mir-fecha-display').textContent = `${dd}/${mm}/${yyyy}`;
+}
+
+async function confirmarDuplicarIR() {
+    const numDias  = parseInt(document.getElementById('mir-num-dias').value) || 1;
+    const motivoId = document.getElementById('mir-motivo').value;
+    const obs      = document.getElementById('mir-obs').value;
+    const rsSelEl  = document.getElementById('mir-rs-id');
+    const rsSelId  = rsSelEl ? rsSelEl.value : '';
+    const errEl    = document.getElementById('mir-error');
+    const btn      = document.getElementById('mir-btn-confirmar');
+
+    errEl.style.display = 'none';
+
+    if (numDias < 1 || numDias > 3) {
+        errEl.textContent = 'Los días deben estar entre 1 y 3.';
+        errEl.style.display = 'block';
+        return;
+    }
+    if (!motivoId) {
+        errEl.textContent = 'Debe seleccionar un motivo de retiro.';
+        errEl.style.display = 'block';
+        return;
+    }
+    if (rsSelEl && !rsSelId) {
+        errEl.textContent = 'Debe seleccionar una Razón Social de destino.';
+        errEl.style.display = 'block';
+        return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = '⏳ Procesando...';
+
+    try {
+        const res  = await fetch(MIR_URL_DUPLICAR, {
+            method : 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': MIR_CSRF, 'Accept': 'application/json' },
+            body   : JSON.stringify({ num_dias: numDias, motivo_retiro_id: motivoId, observacion: obs, nueva_rs_id: rsSelId || null }),
+        });
+        const data = await res.json();
+
+        if (!res.ok || data.error) {
+            errEl.textContent = data.mensaje || data.message || 'Error desconocido.';
+            errEl.style.display = 'block';
+            btn.disabled = false;
+            btn.textContent = '🔄 Confirmar Retiro y Duplicar';
+            return;
+        }
+
+        // Éxito → redirigir al nuevo contrato
+        cerrarModalDuplicarIR();
+        // Si estamos dentro de un iframe (cobros), preservar ?iframe=1
+        const esIframe = new URLSearchParams(window.location.search).get('iframe') === '1';
+        const iframeSuffix = esIframe ? '?iframe=1' : '';
+        if (data.redirect_url) {
+            window.location.href = data.redirect_url + iframeSuffix;
+        } else if (data.nuevo_id) {
+            window.location.href = `/admin/contratos/${data.nuevo_id}/edit${iframeSuffix}`;
+        }
+    } catch (err) {
+        errEl.textContent = 'Error de conexión. Intente de nuevo.';
+        errEl.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = '🔄 Confirmar Retiro y Duplicar';
+    }
+}
+
+// Inicializar fecha al cargar
+document.addEventListener('DOMContentLoaded', mirActualizarFecha);
+</script>
+@endpush
+@endif
+

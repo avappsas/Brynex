@@ -101,14 +101,26 @@ class CobrosController extends Controller
         $contratos = $q->get();
 
         // ── Facturas del mes para estos contratos ───────────────────
-        $cedulas  = $contratos->pluck('cedula')->toArray();
-        $facturas = Factura::where('aliado_id', $aliadoId)
+        // Indexamos por contrato_id (primario) para soportar múltiples contratos
+        // vigentes del mismo cliente (caso Ingreso-Retiro con nuevo contrato).
+        $contratoIds = $contratos->pluck('id')->toArray();
+        $cedulas     = $contratos->pluck('cedula')->toArray();
+        $facturasBruto = Factura::where('aliado_id', $aliadoId)
             ->periodo($mes, $anio)
             ->whereIn('tipo', ['planilla', 'afiliacion'])
             ->whereIn('cedula', $cedulas)
             ->whereNull('deleted_at')
-            ->get()
-            ->keyBy(fn($f) => (string) $f->cedula);  // cast string: evita mismatch int/string en SQL Server
+            ->get();
+
+        // Índice principal: contrato_id → factura (1 factura por contrato)
+        $facturasPorContrato = $facturasBruto
+            ->filter(fn($f) => !empty($f->contrato_id))
+            ->keyBy(fn($f) => (int) $f->contrato_id);
+
+        // Índice secundario: cedula → factura (para facturas sin contrato_id)
+        $facturasPorCedula = $facturasBruto
+            ->filter(fn($f) => empty($f->contrato_id))
+            ->keyBy(fn($f) => (string) $f->cedula);
 
         // ── Última llamada de cobro por contrato ────────────────────
         $contratoIds  = $contratos->pluck('id')->toArray();
@@ -120,8 +132,6 @@ class CobrosController extends Controller
             ->map(fn($g) => $g->first()); // solo la más reciente por contrato
 
         // ── Préstamos pendientes — 1 query para badge ligero ───────────
-        // Un Set PHP con las cédulas que tienen facturas en estado=prestamo.
-        // El map() hace contains() O(1), sin N queries adicionales.
         $cedulasConPrestamo = DB::table('facturas')
             ->where('aliado_id', $aliadoId)
             ->where('estado', 'prestamo')
@@ -129,65 +139,45 @@ class CobrosController extends Controller
             ->pluck('cedula')
             ->flip(); // convierte a [cedula => index] para búsqueda O(1)
 
-        // ── Procesar cada contrato ──────────────────────────────────
-
+        // ── Pre-calcular SS por contrato (necesario antes del lote de mora) ──
         $r100 = fn($v) => (int)(ceil(($v ?? 0) / 100) * 100);
 
-        $contratos = $contratos->map(function ($c) use (
-            $mes, $anio, $facturas, $ultimasLlamadas, $r100, $aliadoId, $getArlPct, $cedulasConPrestamo
-        ) {
-            $fact = $facturas->get((string) $c->cedula);  // cast string: evita mismatch tipo int/string
+        // Primera pasada: calcular vSS y flags por contrato sin tocar BD
+        $vSsPorContrato = [];
+        $flagsPorContrato = []; // [esAfil, esIndActPrimerMes, totalEstimado, ...]
 
-            // ── ¿Es afiliación / I Act? ──────────────────────────
-            $esAfil          = false;
+        foreach ($contratos as $c) {
+            $esAfil = false;
             $esIndActPrimerMes = false;
             if ($c->fecha_ingreso) {
-                $fIng   = $c->fecha_ingreso;
-                // I Act = tipo_modalidad_id 11 → cobra afiliación + planilla juntas el primer mes
-                // I Venc = tipo_modalidad_id 10 → solo afiliación el primer mes
+                $fIng     = $c->fecha_ingreso;
                 $esIndAct = (int)($c->tipo_modalidad_id) === 11;
-                $esIndep  = $c->tipoModalidad?->esIndependiente() ?? false;
                 if ((int)$fIng->month === $mes && (int)$fIng->year === $anio) {
-                    if ($esIndAct) {
-                        // I Act primer mes: cobra afiliación + planilla juntas
-                        $esIndActPrimerMes = true;
-                    } else {
-                        // I Venc, empresa, dependiente: afiliación pura
-                        $esAfil = true;
-                    }
+                    $esIndActPrimerMes = $esIndAct;
+                    $esAfil            = !$esIndAct;
                 }
             }
 
-            // ── Calcular SS por porcentajes directos ─────────────
             $esIndep = $c->tipoModalidad?->esIndependiente() ?? false;
             $ibc     = (float)($c->salario ?? 0);
             $plan    = $c->plan;
 
             if ($esIndActPrimerMes) {
-                // I ACT primer mes: cobra afiliación + planilla (SS + admon) juntas
-                // Días = activos del mes de ingreso
                 $diasAct = max(1, 30 - (int)$c->fecha_ingreso->day + 1);
-                // Calcular SS con días proporcionales al mes de ingreso
                 $pctEps = ConfiguracionBrynex::pctSaludIndependiente();
                 $pctPen = ConfiguracionBrynex::pctPensionIndependiente();
                 $pctCaj = (float)($c->porcentaje_caja ?? ConfiguracionBrynex::pctCajaIndependienteAlto());
-                $pctArl = $getArlPct((int)($c->n_arl ?? 1));  // ← sin query
-                // SS proporcional = IBC * pct * (dias / 30)
+                $pctArl = $getArlPct((int)($c->n_arl ?? 1));
                 $vEps  = ($plan?->incluye_eps)    ? $r100($ibc * $pctEps / 100 * $diasAct / 30) : 0;
                 $vArl  = ($plan?->incluye_arl)    ? $r100($ibc * $pctArl / 100 * $diasAct / 30) : 0;
                 $vPen  = ($plan?->incluye_pension) ? $r100($ibc * $pctPen / 100 * $diasAct / 30) : 0;
                 $vCaja = ($plan?->incluye_caja)   ? $r100($ibc * $pctCaj / 100 * $diasAct / 30) : 0;
                 $vSS   = $vEps + $vArl + $vPen + $vCaja;
-                $admon = (int)($c->administracion ?? 0);
-                $seguro= (int)($c->seguro ?? 0);
-                $afiliacion = (int)($c->costo_afiliacion ?? 0);
-                $totalEstimado = $vSS + $admon + $seguro + $afiliacion;
+                $totalEstimado = $vSS + (int)($c->administracion ?? 0) + (int)($c->seguro ?? 0) + (int)($c->costo_afiliacion ?? 0);
             } elseif ($esAfil) {
-                // Afiliación pura (I VENC, empresa): solo costo_afiliacion + seguro
                 $vEps = $vArl = $vPen = $vCaja = $vSS = 0;
                 $totalEstimado = (int)(($c->costo_afiliacion ?? 0) + ($c->seguro ?? 0));
             } else {
-                // Porcentajes según tipo de contrato
                 if ($esIndep) {
                     $pctEps = ConfiguracionBrynex::pctSaludIndependiente();
                     $pctPen = ConfiguracionBrynex::pctPensionIndependiente();
@@ -197,25 +187,70 @@ class CobrosController extends Controller
                     $pctPen = ConfiguracionBrynex::pctPensionDependiente();
                     $pctCaj = ConfiguracionBrynex::pctCajaDependiente();
                 }
-                $pctArl = $getArlPct((int)($c->n_arl ?? 1));  // ← sin query
-
-                $vEps  = ($plan?->incluye_eps)     ? $r100($ibc * $pctEps / 100) : 0;
-                $vArl  = ($plan?->incluye_arl)     ? $r100($ibc * $pctArl / 100) : 0;
-                $vPen  = ($plan?->incluye_pension)  ? $r100($ibc * $pctPen / 100) : 0;
-                $vCaja = ($plan?->incluye_caja)    ? $r100($ibc * $pctCaj / 100) : 0;
-
-                // ── Cargo sin-CCF: dependiente E o Ingreso-Retiro sin caja ──
-                // Se cobra $100 fijos a la caja cuando el plan no incluye CCF.
+                $pctArl = $getArlPct((int)($c->n_arl ?? 1));
+                $vEps  = ($plan?->incluye_eps)    ? $r100($ibc * $pctEps / 100) : 0;
+                $vArl  = ($plan?->incluye_arl)    ? $r100($ibc * $pctArl / 100) : 0;
+                $vPen  = ($plan?->incluye_pension) ? $r100($ibc * $pctPen / 100) : 0;
+                $vCaja = ($plan?->incluye_caja)   ? $r100($ibc * $pctCaj / 100) : 0;
                 if ($vCaja === 0 && $c->aplicaCargoSinCcf()) {
                     $vCaja = \App\Models\Contrato::CARGO_SIN_CCF;
                 }
-
                 $vSS   = $vEps + $vArl + $vPen + $vCaja;
-
-                $admon = (int)($c->administracion ?? 0);
-                $seguro= (int)($c->seguro ?? 0);
-                $totalEstimado = $vSS + $admon + $seguro;
+                $totalEstimado = $vSS + (int)($c->administracion ?? 0) + (int)($c->seguro ?? 0);
             }
+
+            $vSsPorContrato[$c->id]   = $vSS;
+            $flagsPorContrato[$c->id] = compact(
+                'esAfil', 'esIndActPrimerMes', 'esIndep',
+                'vEps', 'vArl', 'vPen', 'vCaja', 'vSS', 'totalEstimado'
+            );
+        }
+
+        // ── Calcular mora en lote — 1 query BD para toda la lista ───────
+        // Agrupa por RS para reutilizar fecha_vence: si hay dia_habil_global
+        // todos comparten la misma fecha → O(1) en vez de O(N) queries.
+        $moraLoteInput = [];
+        foreach ($contratos as $c) {
+            $rsObj  = $c->razonSocial;
+            $rsNit  = $rsObj ? (int)($rsObj->nit ?: $rsObj->id) : 0;
+            $rsDiaH = $rsObj ? ($rsObj->dia_habil ?? null) : null;
+            $vSS    = $vSsPorContrato[$c->id] ?? 0;
+            $moraLoteInput[] = [
+                '_contrato_id' => $c->id,
+                'rs_nit'       => $rsNit,
+                'rs_dia_habil' => $rsDiaH,
+                'total_ss'     => $vSS,
+                'mes'          => $mes,
+                'anio'         => $anio,
+            ];
+        }
+
+        $moraLoteOutput = MoraClienteService::calcularLote($aliadoId, $moraLoteInput);
+
+        // Indexar resultado de mora por contrato_id para O(1) en el map()
+        $moraPorContrato = [];
+        foreach ($moraLoteOutput as $fila) {
+            $moraPorContrato[$fila['_contrato_id']] = (int)($fila['mora'] ?? 0);
+        }
+
+        // ── Segunda pasada: enriquecer modelos con datos calculados ─────
+        $contratos = $contratos->map(function ($c) use (
+            $mes, $anio, $facturasPorContrato, $facturasPorCedula, $ultimasLlamadas, $flagsPorContrato,
+            $moraPorContrato, $cedulasConPrestamo
+        ) {
+            // Buscar factura: primero por contrato_id, fallback por cédula
+            $fact = $facturasPorContrato->get((int) $c->id)
+                 ?? $facturasPorCedula->get((string) $c->cedula);
+            $flags  = $flagsPorContrato[$c->id];
+
+            $esAfil            = $flags['esAfil'];
+            $esIndActPrimerMes = $flags['esIndActPrimerMes'];
+            $vEps              = $flags['vEps'];
+            $vArl              = $flags['vArl'];
+            $vPen              = $flags['vPen'];
+            $vCaja             = $flags['vCaja'];
+            $vSS               = $flags['vSS'];
+            $totalEstimado     = $flags['totalEstimado'];
 
             // ── Datos de la factura (solo estado y número) ───────
             $facturaPagada   = $fact && in_array($fact->estado, ['pagada', 'abono', 'prestamo']);
@@ -238,17 +273,8 @@ class CobrosController extends Controller
                 default                 => 'rojo',
             };
 
-            // ── Mora estimada al cliente ──────────────────────────
-            $moraEst = 0;
-            try {
-                $rsObj  = $c->razonSocial;
-                $rsNit  = $rsObj ? (int)($rsObj->nit ?: $rsObj->id) : 0;
-                $rsDiaH = $rsObj ? ($rsObj->dia_habil ?? null) : null;
-                if ($rsNit && ($vSS ?? 0) > 0) {
-                    $mi = MoraClienteService::calcular($aliadoId, $rsNit, $rsDiaH, $vSS, $mes, $anio);
-                    $moraEst = $mi['mora'];
-                }
-            } catch (\Throwable) {}
+            // ── Mora estimada (ya calculada en lote, O(1) aquí) ──────────
+            $moraEst = $moraPorContrato[$c->id] ?? 0;
 
             $c->es_afil             = $esAfil;
             $c->es_ind_act_primer_mes = $esIndActPrimerMes; // I ACT: afiliación + planilla
@@ -274,6 +300,33 @@ class CobrosController extends Controller
             $empresa = $c->cliente?->empresa;
             $c->es_empresa    = $empresa && $empresa->id != 1;
             $c->nombre_empresa = $c->es_empresa ? $empresa->empresa : null;
+
+            // ── Detección Plan Ingreso-Retiro: planilla > 5 días ──────────
+            // Si tipo_modalidad=12 y no es mes de afiliación y diasCotizar>5
+            // → el sistema debe advertir que hay que rotar Razón Social.
+            $esIngresoRetiro  = (int)($c->tipo_modalidad_id) === 12;
+            $diasCotizEstim   = 30; // default: mes completo
+            if ($esIngresoRetiro && !$esAfil && !$esIndActPrimerMes && $c->fecha_ingreso) {
+                $fIng2        = $c->fecha_ingreso;
+                $mesAnt       = $mes === 1 ? 12 : $mes - 1;
+                $anioAnt      = $mes === 1 ? $anio - 1 : $anio;
+                // Si ingresó el mes anterior → días = activos de ese mes
+                if ((int)$fIng2->month === $mesAnt && (int)$fIng2->year === $anioAnt) {
+                    $diasCotizEstim = max(1, 30 - $fIng2->day + 1);
+                }
+                // Si ingresó antes del mes anterior → 30 días (mes completo)
+            }
+            $c->es_ir_alerta     = $esIngresoRetiro && !$esAfil && !$esIndActPrimerMes && ($diasCotizEstim > 5);
+            $c->dias_cotiz_estim = $diasCotizEstim;
+
+            // ── Cuando debe rotar RS: el cobro es AFILIACIÓN del nuevo contrato ──
+            // No se factura la planilla larga → se muestra costo_afiliacion en su lugar.
+            if ($c->es_ir_alerta) {
+                $c->total_estimado = (int)($c->costo_afiliacion ?? 0);
+                $c->v_ss           = 0;
+                $c->mora_estimada  = 0;
+                $c->es_afil        = true; // mostrar badge AFIL en la columna
+            }
 
             return $c;
         });
@@ -472,7 +525,6 @@ class CobrosController extends Controller
 
         $facturasMes = $factQuery->get()->keyBy(fn($f) => (string) $f->cedula);  // cast string: evita mismatch SQL Server
 
-
         // Última llamada por empresa (agrupado por empresa_id)
         $ultimasLlamadasEmp = BitacoraCobro::where('aliado_id', $aliadoId)
             ->whereIn('empresa_id', $empresaIds)
@@ -482,12 +534,46 @@ class CobrosController extends Controller
             ->groupBy('empresa_id')
             ->map(fn($g) => $g->first());
 
+        // ── Mora en lote para contratos de empresas (1 query BD) ────────
+        // Pre-calcular SS estimado + mora para todos los contratos de empresa
+        // antes del map(), evitando N×2 queries dentro del foreach por empresa.
+        $cedulasPagadasEmp = $facturasMes
+            ->filter(fn($f) => in_array($f->estado, ['pagada', 'abono', 'prestamo']))
+            ->keys()
+            ->flip()
+            ->all(); // Set O(1) de cédulas pagadas
+
+        $moraEmpLoteInput = [];
+        foreach ($contratosActivos as $c) {
+            if (isset($cedulasPagadasEmp[(string)$c->cedula])) continue; // ya pagó
+            $rsObj   = $c->razonSocial;
+            $rsNit   = $rsObj ? (int)($rsObj->nit ?: $rsObj->id) : 0;
+            $rsDiaH  = $rsObj ? ($rsObj->dia_habil ?? null) : null;
+            $vSsCont = (float)($c->salario ?? 0) * 0.285; // estimación ~28.5%
+            if ($rsNit && $vSsCont > 0) {
+                $moraEmpLoteInput[] = [
+                    '_contrato_id' => $c->id,
+                    'rs_nit'       => $rsNit,
+                    'rs_dia_habil' => $rsDiaH,
+                    'total_ss'     => $vSsCont,
+                    'mes'          => $mes,
+                    'anio'         => $anio,
+                ];
+            }
+        }
+
+        $moraEmpLoteOutput = MoraClienteService::calcularLote($aliadoId, $moraEmpLoteInput);
+        $moraEmpPorContrato = [];
+        foreach ($moraEmpLoteOutput as $fila) {
+            $moraEmpPorContrato[$fila['_contrato_id']] = (int)($fila['mora'] ?? 0);
+        }
+
         // ── Procesar cada empresa ────────────────────────────────────
         $empresas = $empresas->map(function ($emp) use (
             $mes, $anio, $clientesPorEmpresa, $contratosActivos,
-            $facturasMes, $ultimasLlamadasEmp
+            $facturasMes, $ultimasLlamadasEmp, $cedulasPagadasEmp, $moraEmpPorContrato
         ) {
-            $cedulas = $clientesPorEmpresa->get($emp->id)?->pluck('cedula')->toArray() ?? [];
+            $cedulas  = $clientesPorEmpresa->get($emp->id)?->pluck('cedula')->toArray() ?? [];
             $contrEmp = $contratosActivos->whereIn('cedula', $cedulas);
 
             $cant = $contrEmp->count();
@@ -502,10 +588,10 @@ class CobrosController extends Controller
                 // ¿Es afiliación?
                 $esAfil = false;
                 if ($c->fecha_ingreso) {
-                    $fIng = $c->fecha_ingreso;
+                    $fIng    = $c->fecha_ingreso;
                     $esIndep = $c->tipoModalidad?->esIndependiente() ?? false;
                     if ((int)$fIng->month === $mes && (int)$fIng->year === $anio) {
-                        if (!$esIndep || !($c->cobra_planilla_primer_mes ?? false)) {
+                        if (!$esIndep || !($c->cobrar_planilla_primer_mes ?? false)) {
                             $esAfil = true;
                         }
                     }
@@ -542,32 +628,25 @@ class CobrosController extends Controller
                 default                 => 'rojo',
             };
 
-            // ── Mora estimada empresa (suma de mora por cada contrato pendiente) ──
+            // ── Mora estimada empresa — suma desde el lote pre-calculado (O(1) por contrato)
             $moraEmpEst = 0;
-            foreach ($contrEmp->whereNotIn('cedula', array_keys($facturasMes->filter(fn($f) => in_array($f->estado, ['pagada', 'abono', 'prestamo']))->all()))->all() as $cMora) {
-                try {
-                    $rsObj  = $cMora->razonSocial;
-                    $rsNit  = $rsObj ? (int)($rsObj->nit ?: $rsObj->id) : 0;
-                    $rsDiaH = $rsObj ? ($rsObj->dia_habil ?? null) : null;
-                    $vSsCont = (float)($cMora->salario ?? 0) * 0.285; // estimación rápida ~28.5% SS total
-                    if ($rsNit && $vSsCont > 0) {
-                        $mi = MoraClienteService::calcular($aliadoId, $rsNit, $rsDiaH, $vSsCont, $mes, $anio);
-                        $moraEmpEst += $mi['mora'];
-                    }
-                } catch (\Throwable) {}
+            foreach ($contrEmp->all() as $cMora) {
+                if (!isset($cedulasPagadasEmp[(string)$cMora->cedula])) {
+                    $moraEmpEst += $moraEmpPorContrato[$cMora->id] ?? 0;
+                }
             }
 
-            $emp->cant         = $cant;
-            $emp->pagados      = $pagados;
-            $emp->afil_pend    = $afil_pend;
-            $emp->indep_pend   = $indep_pend;
-            $emp->plan_pend    = $plan_pend;
-            $emp->total_pend   = $totalPend;
-            $emp->admon_pend   = $admon_pend;
+            $emp->cant          = $cant;
+            $emp->pagados       = $pagados;
+            $emp->afil_pend     = $afil_pend;
+            $emp->indep_pend    = $indep_pend;
+            $emp->plan_pend     = $plan_pend;
+            $emp->total_pend    = $totalPend;
+            $emp->admon_pend    = $admon_pend;
             $emp->mora_estimada = $moraEmpEst;
             $emp->ultima_llamada = $ultimaLlamada;
             $emp->dias_sin_llamar = $diasSinLlamar;
-            $emp->semaforo     = $semaforo;
+            $emp->semaforo      = $semaforo;
 
             return $emp;
         })->filter(fn($emp) => $emp->cant > 0)

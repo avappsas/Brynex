@@ -197,6 +197,7 @@ $tipoMod    = $c->tipoModalidad?->tipo_modalidad ?? '—';
 $tipoNom    = $c->tipoModalidad?->nombre ?? '—';  // tooltip
 $rs         = $c->razonSocial?->razon_social ?? '—';
 $esRetirado = $c->estado === 'retirado';
+$esIngRet   = (int)($c->tipo_modalidad_id) === 12;
 $fIng       = $c->fecha_ingreso ? $c->fecha_ingreso->format('d/m/Y') : '—';
 $fRet       = ($esRetirado && $c->fecha_retiro) ? $c->fecha_retiro->format('d/m/Y') : null;
 $dias       = $c->dias_cotizar ?? 30;
@@ -265,22 +266,13 @@ if (!$fact) {
     $vSS = $r100($fact->total_ss);
     $vTot = (int)$fact->total;
 }
-// Mora: si ya tiene factura usar facturas.mora; si no, estimar
+// Mora: si ya tiene factura usar facturas.mora; si no, usar el batch pre-calculado
 $vMora = 0;
-try {
-    $aliadoIdEmp = session('aliado_id_activo');
-    if ($fact && ($fact->mora ?? 0) > 0) {
-        $vMora = (int)$fact->mora;
-    } elseif (!$fact && !$esRetirado && !$esAfil && $vSS > 0) {
-        $rsEmp   = $c->razonSocial;
-        $rsNitE  = $rsEmp ? (int)($rsEmp->nit ?: $rsEmp->id) : 0;
-        $rsDiaHE = $rsEmp ? ($rsEmp->dia_habil ?? null) : null;
-        if ($rsNitE) {
-            $mi = \App\Services\MoraClienteService::calcular($aliadoIdEmp, $rsNitE, $rsDiaHE, $vSS, $mes, $anio);
-            $vMora = $mi['mora'];
-        }
-    }
-} catch (\Throwable) {}
+if ($fact && ($fact->mora ?? 0) > 0) {
+    $vMora = (int)$fact->mora;
+} elseif (!$fact) {
+    $vMora = (int)($moraPorContrato[$c->id] ?? 0);
+}
 // Costo de afiliación para data-* (lo necesita el modal)
 $vAfiliacion = ($esAfil || $esIndActPrimerMes) ? (int)($c->costo_afiliacion ?? 0) : 0;
 $totEps+=$vEps;$totArl+=$vArl;$totCaja+=$vCaja;$totPen+=$vPen;
@@ -313,7 +305,7 @@ $totAdmon+=$vAdm;$totIva+=$vIva;$totTotal+=$vTot;$totMora+=$vMora;
                     @if($esIndActPrimerMes)&#9889;@elseif($esAfil)&#128204;@elseif($esRetirado)&#128683;@else&#9741;@endif
                 </a>
             </span>
-            @if($esRetirado)
+            @if($esRetirado && !$esIngRet)
             <span style="font-size:.55rem;background:#fee2e2;color:#dc2626;border-radius:4px;padding:.05rem .3rem;font-weight:800;letter-spacing:.03em;">RETIRO</span>
             @endif
         </span>
@@ -378,9 +370,15 @@ $totAdmon+=$vAdm;$totIva+=$vIva;$totTotal+=$vTot;$totMora+=$vMora;
     <td style="text-align:center">
         @if($fact)
         @php $colores=$estadoBg($fact->estado); @endphp
+        @if($esIngRet && $esRetirado)
+        <span style="display:inline-block;padding:.16rem .5rem;border-radius:20px;font-size:.63rem;font-weight:800;background:#fee2e2;color:#dc2626">
+            RETIRO
+        </span>
+        @else
         <span style="display:inline-block;padding:.16rem .5rem;border-radius:20px;font-size:.63rem;font-weight:700;background:{{ $colores[0] }};color:{{ $colores[1] }}">
             {{ $estadoLabel($fact->estado) }}
         </span>
+        @endif
         @else<span style="color:#94a3b8;font-size:.7rem">Sin factura</span>@endif
     </td>
     <td style="text-align:center;font-weight:700;color:#2563eb;font-size:.8rem">{{ $fact?->np ?? '—' }}</td>
@@ -388,10 +386,6 @@ $totAdmon+=$vAdm;$totIva+=$vIva;$totTotal+=$vTot;$totMora+=$vMora;
         @if($fact)
             <button onclick="abrirRecibo('{{ route('admin.facturacion.recibo',$fact->id) }}?modal=1')"
                class="btn-sm" style="background:#eff6ff;color:#1d4ed8;" title="Ver recibo">🖨</button>
-            @if(!in_array($fact->estado,['pagada']))
-            <button class="btn-sm" style="background:#fef3c7;color:#92400e;margin-left:2px;"
-                onclick="abrirAbono({{ $fact->id }},{{ $fact->total }},{{ $fact->total_abonado??0 }})">💵</button>
-            @endif
         @else
             <input type="checkbox" class="chk-row" value="{{ $c->id }}"
                    onchange="onCheckChange()"
