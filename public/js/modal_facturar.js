@@ -1251,11 +1251,14 @@ const MF = (function () {
                 if (uploads.length) await Promise.all(uploads);
 
                 cerrar();
-                if (data.recibo_url) window.open(data.recibo_url, '_blank');
-                // Notificar al contexto padre
+                // Notificar al contexto padre (onExito maneja cómo mostrar el recibo).
+                // No abrir window.open aquí: cada vista define su propia forma de
+                // mostrar el recibo (modal iframe en empresa.blade.php, etc.).
                 if (typeof _cfg.onExito === 'function') {
                     _cfg.onExito(data);
                 } else {
+                    // Fallback si no hay onExito: abrir en pestaña nueva
+                    if (data.recibo_url) window.open(data.recibo_url, '_blank');
                     location.reload();
                 }
             } else {

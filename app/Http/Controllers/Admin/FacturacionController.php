@@ -1195,13 +1195,32 @@ $efAcum = $csAcum = $prAcum = $sfAcum = 0;
 
 
     /**
-     * Calcula el siguiente n_plano para una razón social en un período dado.
-     * Siempre retorna 1.
+     * Calcula el n_plano para una razón social en un período dado.
+     *
+     * Regla de negocio:
+     * - Si el período facturado (mes/anio) coincide con el mes activo de la RS
+     *   (rs.mes_pagos / rs.anio_pagos), se usa rs.n_plano (ej: P3).
+     * - Para cualquier otro mes —futuro (junio, julio…) o pasado (abril)—
+     *   siempre retorna 1: las facturas se acumulan en el primer lote del período
+     *   hasta que ese mes se convierta en el mes activo y el aliado avance el contador.
      */
     private static function _nPlanoParaRS(int $aliadoId, ?int $razonSocialId, int $mes, int $anio): int
     {
-        // Siempre inicia en 1. El aliado actualiza manualmente a 2, 3...
-        // cuando hace el pago ante el operador PILA, para separar lotes enviados.
+        if (!$razonSocialId) {
+            return 1;
+        }
+
+        $rs = \App\Models\RazonSocial::find($razonSocialId);
+        if (!$rs) {
+            return 1;
+        }
+
+        // Solo el mes activo de la RS usa su n_plano actual.
+        // Cualquier otro mes (pasado o futuro) siempre empieza en 1.
+        if ((int)$rs->mes_pagos === $mes && (int)$rs->anio_pagos === $anio) {
+            return (int)($rs->n_plano ?? 1);
+        }
+
         return 1;
     }
 

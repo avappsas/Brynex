@@ -185,7 +185,11 @@ class PlanoPilaTxtService
             $lineas[] = $this->tipo2($p, $i + 1, $actEco, $codigoArlRs, $periodoLiq);
         }
 
-        $filename  = "miplanilla_{$periodo}_RS{$razonSocialId}.txt";
+        // Nombre del archivo: NOMBRE_RS_MES_ANIO_Pn_plano.txt
+        // Ej: AML_CONTACT_CENTER_5_2026_P2.txt
+        $nombreRs   = preg_replace('/[^A-Z0-9]+/', '_', strtoupper(trim($rs->razon_social ?? 'RS')));
+        $nombreRs   = trim($nombreRs, '_');
+        $filename   = "{$nombreRs}_{$mesPago}_{$anioPago}_P{$nPlano}.txt";
         $contenido = implode("\r\n", $lineas);
 
         return response()->streamDownload(function () use ($contenido) {
@@ -372,7 +376,7 @@ class PlanoPilaTxtService
             . $this->N('0', 9)                                  // 58 valor incapacidad 348-356
             . $this->A('', 15)                                  // 59 auth licencia 357-371
             . $this->N('0', 9)                                  // 60 valor licencia 372-380
-            . $tarifaArl                                         // 61 tarifa riesgos 381-389
+            . str_pad($tarifaArl, 9)                               // 61 tarifa riesgos 381-389 (9 chars)
             . $this->N('1', 9)                                  // 62 centro de trabajo 390-398
             . $this->N((string)$vArl, 9)                        // 63 cotización ARL 399-407
             . ($c['esKMatriz'] ? '0.00000' : '0.04000')         // 64 tarifa CCF 408-414
