@@ -2151,6 +2151,9 @@ const FC_DIST_DEFAULTS = {
     retiro:    0,
     encargado: 0,
 };
+// Otros contratos vigentes del mismo cliente (para modal multi-contrato)
+const FC_OTROS_CONTRATOS  = @json($otrosContratosVigentes ?? []);
+const FC_URL_COTIZACION   = '{{ url('admin/facturacion/api/cotizacion-contrato') }}'; // + '/{id}?mes=X&anio=Y'
 
 if (typeof MF !== 'undefined' && FC_CONTRATO_ID) {
     MF.init({
@@ -2167,6 +2170,9 @@ if (typeof MF !== 'undefined' && FC_CONTRATO_ID) {
         distDefaults:      FC_DIST_DEFAULTS,
         getAlpineResult:   () => document.querySelector('[x-data]')?._x_dataStack?.[0]?.result || {},
         getDias:           () => parseInt(document.querySelector('[x-data]')?._x_dataStack?.[0]?.diasCotizar) || 30,
+        // Multi-contrato
+        otrosContratos:         FC_OTROS_CONTRATOS,
+        urlCotizacionContrato:  FC_URL_COTIZACION,
         onExito: (data) => {
             if (data.recibo_url) window.open(data.recibo_url, '_blank');
             @if(request()->has('iframe'))

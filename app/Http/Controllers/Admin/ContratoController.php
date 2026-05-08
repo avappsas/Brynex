@@ -149,9 +149,22 @@ class ContratoController extends Controller
             ->whereIn('estado', $estadosBloqueantes)
             ->isNotEmpty();
 
+        // ── Otros contratos vigentes del mismo cliente (para modal multi-contrato) ──
+        // Se excluye el contrato actual. Solo se muestran vigentes (no activo, no retirado).
+        $otrosContratosVigentes = Contrato::where('aliado_id', $alidoId)
+            ->where('cedula', $contrato->cedula)
+            ->where('estado', 'vigente')
+            ->where('id', '!=', $id)
+            ->with('razonSocial')
+            ->get()
+            ->map(fn($c) => [
+                'id'           => $c->id,
+                'razon_social' => $c->razonSocial?->razon_social ?? 'Sin RS',
+            ]);
+
         return view('admin.contratos.form', array_merge(
             $this->datosFormulario($alidoId, $cliente, $contrato->razon_social_id, $contrato->id),
-            compact('contrato', 'cliente', 'backUrl', 'radicadosPorTipo', 'rsBloquedaPorAfiliacion')
+            compact('contrato', 'cliente', 'backUrl', 'radicadosPorTipo', 'rsBloquedaPorAfiliacion', 'otrosContratosVigentes')
         ));
     }
 

@@ -162,6 +162,7 @@ Route::middleware('auth')->group(function () {
             Route::get('api/mes-pagado/{contratoId}',   [$fc, 'mesPagado'])         ->name('api.mes_pagado');
             Route::get('api/plano/{razon_social_id}',   [$fc, 'planoActual'])       ->name('api.plano');
             Route::get('api/saldos-contratos',          [$fc, 'saldosContratos'])   ->name('api.saldos_contratos');
+            Route::get('api/cotizacion-contrato/{id}',  [$fc, 'cotizacionContrato'])->name('api.cotizacion_contrato');
             Route::delete('{id}/anular',                [$fc, 'anular'])            ->name('anular');
             Route::get('historial/{cedula}',            [$fc, 'historial'])         ->name('historial');
             Route::get('anuladas',                      [$fc, 'anuladas'])          ->name('anuladas');

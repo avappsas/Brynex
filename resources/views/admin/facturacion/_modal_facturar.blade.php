@@ -390,6 +390,74 @@
 #mf-col-pagos::-webkit-scrollbar-thumb,
 #mf-consig-list::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
 
+/* ── 2do Contrato (multi-contrato desde form individual) ── */
+#mf-c2-wrap {
+    margin-top: .65rem;
+    border-top: 2px dashed #e2e8f0;
+    padding-top: .6rem;
+    display: none; /* visible via JS cuando hay otros contratos vigentes */
+}
+#mf-c2-header {
+    display: flex; align-items: center; gap: .45rem;
+    font-size: .62rem; font-weight: 800; color: #7c3aed;
+    text-transform: uppercase; letter-spacing: .06em;
+    margin-bottom: .4rem;
+}
+#mf-c2-select {
+    width: 100%; padding: .32rem .5rem;
+    border: 1.5px solid #e2e8f0; border-radius: 8px;
+    font-size: .78rem; background: #fff; outline: none;
+    color: #0f172a; cursor: pointer; transition: border-color .15s;
+    margin-bottom: .4rem;
+}
+#mf-c2-select:focus { border-color: #7c3aed; }
+#mf-c2-spinner {
+    display: none;
+    flex-direction: column; align-items: center; justify-content: center;
+    padding: 1.2rem; gap: .4rem;
+    font-size: .75rem; color: #7c3aed; font-weight: 600;
+}
+.mf-c2-spin {
+    width: 22px; height: 22px;
+    border: 3px solid #e9d5ff; border-top-color: #7c3aed;
+    border-radius: 50%;
+    animation: mf-spin .7s linear infinite;
+}
+@keyframes mf-spin { to { transform: rotate(360deg); } }
+#mf-c2-detalle {
+    display: none;
+    background: linear-gradient(135deg, #faf5ff, #f5f3ff);
+    border: 1.5px solid #ddd6fe;
+    border-radius: 10px; padding: .55rem .75rem;
+}
+.mf-c2-rs-title {
+    font-size: .72rem; font-weight: 800; color: #6d28d9;
+    margin-bottom: .35rem;
+    display: flex; align-items: center; gap: .3rem;
+}
+.mf-c2-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: .18rem 0; border-bottom: 1px solid rgba(167,139,250,.15);
+    font-size: .73rem;
+}
+.mf-c2-row:last-child { border-bottom: none; }
+.mf-c2-lbl { color: #5b21b6; font-weight: 600; }
+.mf-c2-val { font-family: monospace; font-weight: 700; color: #4c1d95; }
+.mf-c2-total-row {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-top: .28rem; padding-top: .28rem; border-top: 1.5px solid #c4b5fd;
+    font-size: .78rem; font-weight: 800;
+}
+.mf-c2-total-lbl { color: #4c1d95; }
+.mf-c2-total-val { color: #6d28d9; font-family: monospace; font-size: .9rem; }
+#mf-c2-aviso {
+    display: none;
+    background: #fef3c7; border: 1px solid #fde68a;
+    border-radius: 6px; padding: .3rem .55rem;
+    font-size: .68rem; font-weight: 600; color: #92400e;
+    margin-top: .3rem;
+}
+
 /* ── Responsive (< 600px → 1 col) ── */
 @media (max-width: 600px) {
     #mf-body { grid-template-columns: 1fr; }
@@ -418,9 +486,19 @@
         </div>
     </div>
 
-    {{-- ── CONTROLES: indep-opts a la izquierda | Tipo/Mes/Año a la derecha ── --}}
+    {{-- ── CONTROLES: 2do contrato a la izquierda | Tipo/Mes/Año a la derecha ── --}}
     <div id="mf-controls">
-        {{-- IZQUIERDA: opciones independiente (primer mes) --}}
+        {{-- IZQUIERDA: select 2do contrato (solo modo individual con otros vigentes) --}}
+        <div id="mf-c2-ctrl" style="display:none;">
+            <div class="mf-ctrl-label" style="color:#7c3aed;">📋 2do Contrato</div>
+            <select id="mf-c2-select" class="mf-ctrl-sel" style="min-width:190px;border-color:#ddd6fe;color:#5b21b6;"
+                    onchange="MF.seleccionarSegundoContrato(this.value)">
+                <option value="">— Sin segundo contrato —</option>
+                {{-- Opciones inyectadas por JS --}}
+            </select>
+        </div>
+
+        {{-- IZQUIERDA (alternativa): opciones independiente (primer mes) --}}
         <div id="mf-indep-opts" style="display:none;">
             <div style="font-size:.57rem;font-weight:800;color:#7c3aed;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.3rem;">⚡ Primer mes — ¿Qué se cobra?</div>
             <div style="display:flex;gap:.75rem;align-items:center;">
@@ -586,6 +664,56 @@
                 </div>
                 <div id="mf-dist-aviso" style="display:none;margin-top:.3rem;font-size:.67rem;color:#dc2626;font-weight:700;"></div>
             </div>
+
+        {{-- ═══════════════════════════════════════════════════════════════════
+             SECCIÓN 2DO CONTRATO — spinner + detalle (el select está arriba en #mf-controls)
+             Visible cuando el usuario escoge un 2do contrato en el select.
+        ═══════════════════════════════════════════════════════════════════ --}}
+        <div id="mf-c2-wrap" style="display:none;">
+            {{-- Aviso si ya fue facturado en el período seleccionado --}}
+            <div id="mf-c2-aviso">⚠️ <span id="mf-c2-aviso-txt"></span></div>
+
+            {{-- Spinner de carga --}}
+            <div id="mf-c2-spinner">
+                <div class="mf-c2-spin"></div>
+                <span>Cargando datos del contrato…</span>
+            </div>
+
+            {{-- Detalle del 2do contrato (read-only) --}}
+            <div id="mf-c2-detalle">
+                <div class="mf-c2-rs-title">
+                    🏢 <span id="mf-c2-rs">—</span>
+                </div>
+                <div class="mf-c2-row">
+                    <span class="mf-c2-lbl">Seg. Social</span>
+                    <span class="mf-c2-val" id="mf-c2-ss">$0</span>
+                </div>
+                <div class="mf-c2-row">
+                    <span class="mf-c2-lbl">Admon</span>
+                    <span class="mf-c2-val" id="mf-c2-admon">$0</span>
+                </div>
+                <div class="mf-c2-row">
+                    <span class="mf-c2-lbl">Seguro</span>
+                    <span class="mf-c2-val" id="mf-c2-seguro">$0</span>
+                </div>
+                <div class="mf-c2-row" id="mf-c2-row-afil" style="display:none">
+                    <span class="mf-c2-lbl" style="color:#16a34a;">📌 Afiliación</span>
+                    <span class="mf-c2-val" id="mf-c2-afil" style="color:#16a34a;">$0</span>
+                </div>
+                <div class="mf-c2-row" id="mf-c2-row-iva" style="display:none">
+                    <span class="mf-c2-lbl">IVA</span>
+                    <span class="mf-c2-val" id="mf-c2-iva">$0</span>
+                </div>
+                <div class="mf-c2-row" id="mf-c2-row-mora" style="display:none">
+                    <span class="mf-c2-lbl" style="color:#92400e;">⚠️ Mora</span>
+                    <span class="mf-c2-val" id="mf-c2-mora" style="color:#92400e;">$0</span>
+                </div>
+                <div class="mf-c2-total-row">
+                    <span class="mf-c2-total-lbl">Total C2</span>
+                    <span class="mf-c2-total-val" id="mf-c2-total">$0</span>
+                </div>
+            </div>
+        </div>{{-- /mf-c2-wrap --}}
 
         </div>{{-- /mf-col-desglose --}}
 

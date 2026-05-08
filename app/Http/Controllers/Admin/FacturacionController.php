@@ -283,11 +283,14 @@ class FacturacionController extends Controller
             'empresa_id'           => 'nullable|integer',
             'aplicar_saldo'        => 'boolean',
             'observacion'          => 'nullable|string|max:500',
-            // SS editables desde la UI (override manual)
+            // SS editables desde la UI (override manual — solo 1 contrato)
             'v_eps_manual'         => 'nullable|integer|min:0',
             'v_arl_manual'         => 'nullable|integer|min:0',
             'v_afp_manual'         => 'nullable|integer|min:0',
             'v_caja_manual'        => 'nullable|integer|min:0',
+            // SS manuales por contrato (multi-contrato desde form individual)
+            // JSON: { "<contrato_id>": { "eps": X, "arl": X, "afp": X, "caja": X } }
+            'manual_ss_por_contrato' => 'nullable|string',
             // Distribución de afiliación (override manual desde la UI)
             'dist_asesor'          => 'nullable|integer|min:0',
             'dist_retiro'          => 'nullable|integer|min:0',
@@ -300,6 +303,15 @@ class FacturacionController extends Controller
             // Mora al cliente (cobrada en la factura, no es ingreso)
             'mora'                 => 'nullable|integer|min:0',
         ]);
+
+        // Decodificar manual_ss_por_contrato si viene como JSON string
+        $manualSsPorContrato = [];
+        if (!empty($validated['manual_ss_por_contrato'])) {
+            $decoded = json_decode($validated['manual_ss_por_contrato'], true);
+            if (is_array($decoded)) {
+                $manualSsPorContrato = $decoded;
+            }
+        }
 
         $np = $validated['np'] ?? null;
         // Si es pago masivo y no tiene NP, generar uno nuevo.
@@ -539,16 +551,27 @@ $efAcum = $csAcum = $prAcum = $sfAcum = 0;
                     ];
                 }
 
-                // Override manual de SS desde la UI (solo en modo individual — 1 contrato).
-                // En modo masivo el modal muestra TOTALES del lote, no valores individuales.
-                // Si se aplicaran aquí, cada factura individual recibiría el total de TODOS,
-                // multiplicando el SS por la cantidad de personas. ← bug original.
+                // Override manual de SS desde la UI:
+                // 1) Modo individual (1 contrato): usa v_*_manual directamente.
+                // 2) Multi-contrato desde form individual: usa manual_ss_por_contrato[id].
+                //    Solo se aplica al contrato que tiene la entrada; el otro auto-calcula.
+                // 3) Modo masivo empresa: sin override (totales del lote).
                 $esModoIndividual = count($validated['contratos']) === 1;
-                if (!$esAfiliacion && $esModoIndividual) {
-                    if (isset($validated['v_eps_manual']))  $calcSS['eps']  = intval($validated['v_eps_manual']);
-                    if (isset($validated['v_arl_manual']))  $calcSS['arl']  = intval($validated['v_arl_manual']);
-                    if (isset($validated['v_afp_manual']))  $calcSS['afp']  = intval($validated['v_afp_manual']);
-                    if (isset($validated['v_caja_manual'])) $calcSS['caja'] = intval($validated['v_caja_manual']);
+                if (!$esAfiliacion) {
+                    if ($esModoIndividual) {
+                        // Modo individual clásico
+                        if (isset($validated['v_eps_manual']))  $calcSS['eps']  = intval($validated['v_eps_manual']);
+                        if (isset($validated['v_arl_manual']))  $calcSS['arl']  = intval($validated['v_arl_manual']);
+                        if (isset($validated['v_afp_manual']))  $calcSS['afp']  = intval($validated['v_afp_manual']);
+                        if (isset($validated['v_caja_manual'])) $calcSS['caja'] = intval($validated['v_caja_manual']);
+                    } elseif (!empty($manualSsPorContrato[(string)$contratoId])) {
+                        // Multi-contrato desde form individual: override específico por contrato
+                        $ssMap = $manualSsPorContrato[(string)$contratoId];
+                        if (isset($ssMap['eps']))  $calcSS['eps']  = intval($ssMap['eps']);
+                        if (isset($ssMap['arl']))  $calcSS['arl']  = intval($ssMap['arl']);
+                        if (isset($ssMap['afp']))  $calcSS['afp']  = intval($ssMap['afp']);
+                        if (isset($ssMap['caja'])) $calcSS['caja'] = intval($ssMap['caja']);
+                    }
                 }
 
                 // Saldo previo del cliente (auto desde BD)
@@ -868,6 +891,135 @@ $efAcum = $csAcum = $prAcum = $sfAcum = 0;
             'saldo_restante' => $factura->saldo_restante,
             'estado'         => $factura->estado,
             'recibo_url'     => route('admin.facturacion.recibo-abono', $abono->id),
+        ]);
+    }
+
+    // ─── API: Cotización de un contrato individual (para modal multi-contrato) ──
+    /**
+     * GET /admin/facturacion/api/cotizacion-contrato/{id}?mes=X&anio=Y
+     * Devuelve los valores calculados de un contrato para el período dado.
+     * Usado por el modal de facturación cuando el usuario selecciona un 2do contrato.
+     */
+    public function cotizacionContrato(Request $request, int $contratoId)
+    {
+        $aliadoId = session('aliado_id_activo');
+        $mes  = (int) $request->get('mes',  now()->month);
+        $anio = (int) $request->get('anio', now()->year);
+
+        $contrato = Contrato::where('aliado_id', $aliadoId)
+            ->with(['eps','arl','pension','caja','tipoModalidad','razonSocial','cliente'])
+            ->find($contratoId);
+
+        if (!$contrato) {
+            return response()->json(['ok' => false, 'mensaje' => 'Contrato no encontrado.'], 404);
+        }
+
+        // Verificar si ya fue facturado para ese período
+        $yaFacturado = Factura::where('aliado_id', $aliadoId)
+            ->where('cedula', $contrato->cedula)
+            ->where('razon_social_id', $contrato->razon_social_id)
+            ->where('mes', $mes)
+            ->where('anio', $anio)
+            ->whereNotIn('estado', ['anulada'])
+            ->exists();
+
+        if ($yaFacturado) {
+            return response()->json([
+                'ok'           => false,
+                'ya_facturado' => true,
+                'mensaje'      => 'Este contrato ya fue facturado para ' . $mes . '/' . $anio . '.',
+            ]);
+        }
+
+        // Detectar tipo
+        $esIndependiente = $contrato->tipoModalidad?->esIndependiente() ?? false;
+        $esIndAct        = (int)($contrato->tipo_modalidad_id) === 11;
+        $esMesIngreso    = $contrato->fecha_ingreso
+            && (int)$contrato->fecha_ingreso->month === $mes
+            && (int)$contrato->fecha_ingreso->year  === $anio;
+
+        $esAfiliacion = false;
+        if ($esMesIngreso) {
+            if (!$esIndependiente) {
+                $esAfiliacion = true; // empresa: afiliación pura
+            } elseif (!$esIndAct) {
+                $esAfiliacion = true; // I Venc: afiliación pura
+            }
+        }
+        $esIndActPrimerMes = $esIndAct && $esMesIngreso;
+
+        // Calcular días
+        if ($esIndActPrimerMes) {
+            $diasCotizar = max(1, 30 - (int)$contrato->fecha_ingreso->day + 1);
+        } elseif ($esAfiliacion) {
+            $diasCotizar = 0;
+        } else {
+            $diasCotizar = $this->calcularDias($contrato, $mes, $anio);
+        }
+
+        // Calcular SS
+        if ($esAfiliacion && !$esIndActPrimerMes) {
+            $calcSS = ['eps' => 0, 'arl' => 0, 'afp' => 0, 'caja' => 0, 'ss' => 0];
+        } else {
+            $cotizacion = $contrato->calcularCotizacion($diasCotizar);
+            $calcSS = [
+                'eps'  => (int)($cotizacion['eps']  ?? 0),
+                'arl'  => (int)($cotizacion['arl']  ?? 0),
+                'afp'  => (int)($cotizacion['pen']  ?? 0),
+                'caja' => (int)($cotizacion['caja'] ?? 0),
+                'ss'   => (int)($cotizacion['ss']   ?? 0),
+            ];
+        }
+
+        $afiliacion  = ($esAfiliacion || $esIndActPrimerMes) ? (int)($contrato->costo_afiliacion ?? 0) : 0;
+        $seguro      = (int)($contrato->seguro ?? 0);
+        $admon       = ($esAfiliacion && !$esIndActPrimerMes) ? 0 : (int)($contrato->administracion ?? 0);
+        $admonAsesor = ($esAfiliacion && !$esIndActPrimerMes) ? 0 : (int)($contrato->admon_asesor   ?? 0);
+
+        // IVA
+        $iva = 0;
+        if (!$esAfiliacion || $esIndActPrimerMes) {
+            $clienteIva = DB::table('clientes')->where('cedula', $contrato->cedula)->value('iva');
+            if (strtoupper(trim($clienteIva ?? '')) === 'SI') {
+                $cfgIva = \App\Models\ConfiguracionBrynex::porcentajeIva();
+                $iva    = (int) round(($admon + $admonAsesor) * $cfgIva / 100);
+            }
+        }
+
+        $total = $calcSS['ss'] + $admon + $admonAsesor + $seguro + $afiliacion + $iva;
+
+        // Mora estimada
+        $mora = 0;
+        try {
+            $rs    = $contrato->razonSocial;
+            $rsNit = $rs ? (int)($rs->nit ?: $rs->id) : 0;
+            $rsDia = $rs ? ($rs->dia_habil ?? null) : null;
+            if ($rsNit && $calcSS['ss'] > 0) {
+                $moraInfo = MoraClienteService::calcular($aliadoId, $rsNit, $rsDia, $calcSS['ss'], $mes, $anio);
+                $mora = (int)($moraInfo['mora'] ?? 0);
+            }
+        } catch (\Throwable) {}
+
+        $tipo = $esAfiliacion ? 'afiliacion' : 'planilla';
+
+        return response()->json([
+            'ok'           => true,
+            'ya_facturado' => false,
+            'contrato_id'  => $contrato->id,
+            'razon_social' => $contrato->razonSocial?->razon_social ?? '—',
+            'tipo'         => $tipo,
+            'eps'          => $calcSS['eps'],
+            'arl'          => $calcSS['arl'],
+            'afp'          => $calcSS['afp'],
+            'caja'         => $calcSS['caja'],
+            'ss'           => $calcSS['ss'],
+            'admon'        => $admon + $admonAsesor,
+            'seguro'       => $seguro,
+            'afiliacion'   => $afiliacion,
+            'iva'          => $iva,
+            'mora'         => $mora,
+            'total'        => $total + $mora,
+            'dias'         => $diasCotizar,
         ]);
     }
 

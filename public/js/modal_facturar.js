@@ -39,6 +39,8 @@ const MF = (function () {
     let _esRetiro = false;         // si el usuario marcó retiro en este período
     let _mora = 0;                 // mora pre-calculada por el servidor (editable)
     let _moraReal = 0;             // mora REAL (sin tramos) — solo para Retiro → Otros planilla
+    // ── Estado 2do contrato (multi-contrato desde form individual) ──
+    let _segundoContrato = null;   // null | { id, razon_social, ss, admon, seguro, afiliacion, iva, mora, total }
 
     // ── Helpers ───────────────────────────────────────────────────
     const fmt = v => '$' + Math.ceil(v || 0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
@@ -467,6 +469,8 @@ const MF = (function () {
         // Según modo: detectar tipo o verificar mes pagado
         if (_modo === 'individual') {
             _verificarMesPagado().then(() => { detectarTipo(); recalc(); });
+            // Inicializar sección de 2do contrato si hay otros vigentes
+            _iniciarSegundoContrato();
         } else {
             // Masivo: siempre planilla por defecto (el backend auto-detecta por contrato)
             _setTipo('planilla');
@@ -477,7 +481,124 @@ const MF = (function () {
         }
     }
 
-    // ── Cálculo de resumen según modo ────────────────────────────
+    // ── Inicializar sección 2do contrato ─────────────────────────
+    function _iniciarSegundoContrato() {
+        const otros   = _cfg.otrosContratos || [];
+        const ctrl    = el('mf-c2-ctrl');   // grupo en la barra de controles
+        const sel     = el('mf-c2-select');
+        const wrap    = el('mf-c2-wrap');   // spinner + detalle en col izquierda
+        if (!ctrl || !sel) return;
+
+        // Resetear estado previo
+        _segundoContrato = null;
+        _ocultarDetallec2();
+        if (wrap) wrap.style.display = 'none';
+
+        if (!otros.length) {
+            ctrl.style.display = 'none';
+            return;
+        }
+
+        // Poblar el select con los otros contratos
+        sel.innerHTML = '<option value="">— Sin segundo contrato —</option>';
+        otros.forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c.id;
+            opt.textContent = '📋 #' + c.id + ' — ' + c.razon_social;
+            sel.appendChild(opt);
+        });
+
+        ctrl.style.display = 'block';
+    }
+
+    function _ocultarDetallec2() {
+        const spinner  = el('mf-c2-spinner');
+        const detalle  = el('mf-c2-detalle');
+        const aviso    = el('mf-c2-aviso');
+        if (spinner) spinner.style.display = 'none';
+        if (detalle) detalle.style.display = 'none';
+        if (aviso)   aviso.style.display   = 'none';
+    }
+
+    // ── Seleccionar 2do contrato (llamado por el <select>) ────────
+    async function seleccionarSegundoContrato(contratoId) {
+        const wrap    = el('mf-c2-wrap');   // spinner + detalle
+        const spinner = el('mf-c2-spinner');
+        const detalle = el('mf-c2-detalle');
+        const aviso   = el('mf-c2-aviso');
+        const avisoTxt= el('mf-c2-aviso-txt');
+
+        _ocultarDetallec2();
+        _segundoContrato = null;
+
+        if (!contratoId) {
+            // Sin selección: ocultar el wrap
+            if (wrap) wrap.style.display = 'none';
+            recalc();
+            return;
+        }
+
+        const mes  = parseInt(el('mf-mes')?.value  || new Date().getMonth() + 1);
+        const anio = parseInt(el('mf-anio')?.value || new Date().getFullYear());
+
+        // Mostrar wrap y spinner
+        if (wrap)    wrap.style.display = 'block';
+        if (spinner) spinner.style.display = 'flex';
+
+        try {
+            const url = _cfg.urlCotizacionContrato + '/' + contratoId + '?mes=' + mes + '&anio=' + anio;
+            const data = await fetch(url, { headers: { 'X-CSRF-TOKEN': _cfg.csrf } }).then(r => r.json());
+
+            if (spinner) spinner.style.display = 'none';
+
+            if (!data.ok || data.ya_facturado) {
+                // Ya fue facturado: mostrar aviso, ocultar detalle
+                if (aviso && avisoTxt) {
+                    avisoTxt.textContent = data.mensaje || 'Este contrato ya fue facturado para este período.';
+                    aviso.style.display = 'block';
+                }
+                // Reset select
+                const sel = el('mf-c2-select');
+                if (sel) sel.value = '';
+                if (wrap) wrap.style.display = 'none';
+                recalc();
+                return;
+            }
+
+            // Guardar datos del 2do contrato
+            _segundoContrato = data;
+
+            // Rellenar detalle en el DOM
+            const txt = v => '$' + Math.round(v||0).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'.');
+            setText('mf-c2-rs',     data.razon_social || '—');
+            setText('mf-c2-ss',     txt(data.ss));
+            setText('mf-c2-admon',  txt(data.admon));
+            setText('mf-c2-seguro', txt(data.seguro));
+            setText('mf-c2-total',  txt(data.total));
+
+            const rowAfil = el('mf-c2-row-afil');
+            if (rowAfil) rowAfil.style.display = (data.afiliacion > 0) ? '' : 'none';
+            if (data.afiliacion > 0) setText('mf-c2-afil', txt(data.afiliacion));
+
+            const rowIva = el('mf-c2-row-iva');
+            if (rowIva) rowIva.style.display = (data.iva > 0) ? '' : 'none';
+            if (data.iva > 0) setText('mf-c2-iva', txt(data.iva));
+
+            const rowMora = el('mf-c2-row-mora');
+            if (rowMora) rowMora.style.display = (data.mora > 0) ? '' : 'none';
+            if (data.mora > 0) setText('mf-c2-mora', txt(data.mora));
+
+            if (detalle) detalle.style.display = 'block';
+
+            recalc();
+        } catch (e) {
+            if (spinner) spinner.style.display = 'none';
+            if (wrap) wrap.style.display = 'none';
+            console.warn('MF.seleccionarSegundoContrato error:', e);
+        }
+    }
+
+
     function _calcularResumenInicial() {
         if (_modo === 'masivo') {
             // Sumar todos los contratos seleccionados
@@ -926,6 +1047,22 @@ const MF = (function () {
             pEl.style.color      = pendiente === 0 ? '#15803d' : '#dc2626';
             pEl.style.fontWeight = pendiente === 0 ? '700' : '900';
         }
+
+        // ── Actualizar total del 2do contrato en la columna izquierda ──
+        // El label "Total bruto" en el total-box de la col izquierda ya muestra el C1.
+        // Si hay C2, actualizamos su card (ya lo hace seleccionarSegundoContrato).
+        // El pendiente de la derecha = (C1 total + C2 total) - pagos ingresados.
+        if (_segundoContrato) {
+            const totalC1C2 = totalBruto + (_segundoContrato.total || 0);
+            const pendienteTotal = Math.max(0, totalC1C2 - _saldoFavor - consigs - efect - prest);
+            if (pEl) {
+                pEl.textContent = fmt(pendienteTotal);
+                pEl.style.color      = pendienteTotal === 0 ? '#15803d' : '#dc2626';
+                pEl.style.fontWeight = pendienteTotal === 0 ? '700' : '900';
+            }
+            return pendienteTotal;
+        }
+
         return pendiente;
     }
 
@@ -1133,8 +1270,10 @@ const MF = (function () {
             }
         }
 
-        // IDs de contratos
-        const ids = _selContratos.map(c => String(c.id || c));
+        // IDs de contratos (incluir 2do contrato si fue seleccionado)
+        const ids = _segundoContrato
+            ? [String(_cfg.contratoId || (_selContratos[0]?.id || _selContratos[0])), String(_segundoContrato.contrato_id)]
+            : _selContratos.map(c => String(c.id || c));
 
         // Armar array dinámico de consignaciones
         const consigRows = [...document.querySelectorAll('.mf-consig-row')];
@@ -1195,11 +1334,23 @@ const MF = (function () {
                 // SS manual — SOLO en modo individual (1 contrato).
                 // En masivo, el modal muestra TOTALES del batch, no valores individuales.
                 // El servidor calcula SS por contrato individualmente con los días reales.
+                // Multi-contrato: enviamos manual_ss_por_contrato para C1; C2 auto-calcula.
                 ...(ids.length === 1 ? {
                     v_eps_manual: parse(el('mf-v-eps')?.textContent),
                     v_arl_manual: parse(el('mf-v-arl')?.textContent),
                     v_afp_manual: parse(el('mf-v-afp')?.textContent),
                     v_caja_manual: parse(el('mf-v-caja')?.textContent),
+                } : {}),
+                // Multi-contrato (2 contratos desde form individual): SS manuales solo para C1
+                ...(ids.length === 2 && _cfg.contratoId ? {
+                    manual_ss_por_contrato: JSON.stringify({
+                        [String(_cfg.contratoId)]: {
+                            eps:  parse(el('mf-v-eps')?.textContent),
+                            arl:  parse(el('mf-v-arl')?.textContent),
+                            afp:  parse(el('mf-v-afp')?.textContent),
+                            caja: parse(el('mf-v-caja')?.textContent),
+                        }
+                    })
                 } : {}),
                 // Distribución afiliación
                 dist_asesor: distAsesor,
@@ -1306,6 +1457,15 @@ const MF = (function () {
     function cerrar() {
         const ov = el('mf-overlay');
         if (ov) ov.style.display = 'none';
+        // Reset 2do contrato
+        _segundoContrato = null;
+        _ocultarDetallec2();
+        // Ocultar el wrap (spinner+detalle) y resetear el select en la barra
+        const wrap = el('mf-c2-wrap');
+        if (wrap) wrap.style.display = 'none';
+        const sel = el('mf-c2-select');
+        if (sel) sel.value = '';
+        // La barra de controles (mf-c2-ctrl) se re-evaluará al abrir de nuevo
     }
 
     // ── Establecer mora desde fuera (llamado por el servidor al pre-calcular) ─
@@ -1321,7 +1481,7 @@ const MF = (function () {
     }
 
     // ── API pública ───────────────────────────────────────────────
-    return { init, abrir, cerrar, detectarTipo, actualizarTipo, cambiarPeriodo, onEstado, recalc, distRecalc, addConsig, guardar, toggleRetiro, onRetiroFecha, setMora };
+    return { init, abrir, cerrar, detectarTipo, actualizarTipo, cambiarPeriodo, onEstado, recalc, distRecalc, addConsig, guardar, toggleRetiro, onRetiroFecha, setMora, seleccionarSegundoContrato };
 
 })();
 

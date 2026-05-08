@@ -129,6 +129,7 @@ class ClienteController extends Controller
             ->leftJoin('planes_contrato as pc', 'pc.id', '=', 'ct.plan_id')
             ->where('ct.cedula', $cliente->cedula)
             ->where('ct.aliado_id', session('aliado_id_activo'))
+            ->orderByRaw("CASE WHEN ct.estado = 'vigente' THEN 0 ELSE 1 END")
             ->orderByDesc('ct.id')
             ->select(
                 'ct.*',
