@@ -20,7 +20,11 @@ class IncapacidadController extends Controller
         $alidoId = session('aliado_id_activo') ?? Auth::user()->aliado_id;
 
         // Solo mostramos las incapacidades PADRE (raíz) en la lista principal
-        $query = Incapacidad::with(['quienRecibe', 'prorrogas'])
+        $query = Incapacidad::with([
+                'quienRecibe:id,nombre',   // solo columnas necesarias
+                'latestGestion',            // eager: una sola query para semáforo
+            ])
+            ->withCount('prorrogas')
             ->where('aliado_id', $alidoId)
             ->whereNull('incapacidad_padre_id');
 
@@ -65,7 +69,57 @@ class IncapacidadController extends Controller
 
         $incapacidades = $query->paginate(40)->withQueryString();
 
-        // ── Resúmenes ────────────────────────────────────────────────────────
+        // ── Usar la colección interna del paginador para operaciones batch ────
+        $items = $incapacidades->getCollection();
+
+        // ── Cargar nombres de clientes en BATCH (una sola consulta) ──────────
+        $cedulas = $items->pluck('cedula_usuario')->unique()->filter()->values();
+        $clientesMap = $cedulas->isNotEmpty()
+            ? DB::table('clientes')
+                ->whereIn('cedula', $cedulas)
+                ->select('cedula', 'primer_nombre', 'segundo_nombre', 'primer_apellido', 'segundo_apellido')
+                ->get()
+                ->keyBy('cedula')
+            : collect();
+
+        // ── Cargar total_dias_familia en BATCH ───────────────────────────────
+        // Subquery compatible con SQL Server: agrupa por el padre calculado
+        $padreIds = $items->pluck('id')->filter()->values()->toArray();
+        $diasFamiliaMap = collect();
+        if (!empty($padreIds)) {
+            $diasFamiliaMap = DB::table('incapacidades as i')
+                ->whereNull('i.deleted_at')
+                ->where(function ($q) use ($padreIds) {
+                    $q->whereIn('i.id', $padreIds)
+                      ->orWhereIn('i.incapacidad_padre_id', $padreIds);
+                })
+                ->select(
+                    DB::raw('CASE WHEN i.incapacidad_padre_id IS NULL THEN i.id ELSE i.incapacidad_padre_id END AS padre_id'),
+                    DB::raw('SUM(i.dias_incapacidad) AS total_dias')
+                )
+                ->groupBy(DB::raw('CASE WHEN i.incapacidad_padre_id IS NULL THEN i.id ELSE i.incapacidad_padre_id END'))
+                ->pluck('total_dias', 'padre_id');
+        }
+
+        // ── Inyectar datos pre-calculados en la colección del paginador ───────
+        $items->transform(function ($inc) use ($clientesMap, $diasFamiliaMap) {
+            $cl = $clientesMap->get($inc->cedula_usuario);
+            $inc->_nombre_cliente_cache = $cl
+                ? trim(($cl->primer_nombre ?? '') . ' ' . ($cl->segundo_nombre ?? '') . ' ' .
+                       ($cl->primer_apellido ?? '') . ' ' . ($cl->segundo_apellido ?? ''))
+                : $inc->cedula_usuario;
+            $inc->_total_dias_familia_cache = (int) ($diasFamiliaMap->get($inc->id) ?? $inc->dias_incapacidad);
+            $inc->_num_prorrogas_cache = $inc->prorrogas_count ?? 0;
+            // Pre-calcular semáforo (PHP-only, sin DB gracias al eager-load)
+            $inc->_dias_gestion_cache = $inc->diasDesdeUltimaGestion();
+            $inc->_color_semaforo_cache = $inc->colorSemaforo();
+            return $inc;
+        });
+
+        // Devolver la colección transformada al paginador
+        $incapacidades->setCollection($items);
+
+        // ── KPIs: una sola consulta GROUP BY en vez de tres queries ───────
         $resumen = DB::table('incapacidades')
             ->where('aliado_id', $alidoId)
             ->whereNull('deleted_at')
@@ -74,12 +128,9 @@ class IncapacidadController extends Controller
             ->groupBy('estado')
             ->pluck('total', 'estado');
 
-        $totalActivas = DB::table('incapacidades')
-            ->where('aliado_id', $alidoId)
-            ->whereNull('deleted_at')
-            ->whereNull('incapacidad_padre_id')
-            ->whereNotIn('estado', ['cerrado', 'rechazado'])
-            ->count();
+        $totalActivas = $resumen->filter(fn($v, $k) =>
+            !in_array($k, ['cerrado', 'rechazado'])
+        )->sum();
 
         $sinGestion10dias = DB::table('incapacidades as i')
             ->where('i.aliado_id', $alidoId)
@@ -93,12 +144,12 @@ class IncapacidadController extends Controller
             })
             ->count();
 
-        // ── Datos para filtros / formularios ────────────────────────────────
-        $trabajadores   = User::where('aliado_id', $alidoId)->where('activo', true)->orderBy('nombre')->get();
-        $epsList        = DB::table('eps')->orderBy('nombre')->get(['id', 'nombre']);
-        $arlList        = DB::table('arls')->orderBy('nombre_arl')->get(['id', 'nombre_arl']);
-        $pensionList    = DB::table('pensiones')->orderBy('razon_social')->get(['id', 'razon_social']);
-        $razonesSociales= DB::table('razones_sociales')
+        // ── Listas estáticas cacheadas (cambian rara vez) ──────────────────
+        $trabajadores    = User::where('aliado_id', $alidoId)->where('activo', true)->orderBy('nombre')->get(['id', 'nombre']);
+        $epsList         = cache()->remember('eps_list', 3600, fn() => DB::table('eps')->orderBy('nombre')->get(['id', 'nombre']));
+        $arlList         = cache()->remember('arl_list', 3600, fn() => DB::table('arls')->orderBy('nombre_arl')->get(['id', 'nombre_arl']));
+        $pensionList     = cache()->remember('pension_list', 3600, fn() => DB::table('pensiones')->orderBy('razon_social')->get(['id', 'razon_social']));
+        $razonesSociales = DB::table('razones_sociales')
                             ->where('aliado_id', $alidoId)
                             ->where('estado', 'Activa')
                             ->orderBy('razon_social')

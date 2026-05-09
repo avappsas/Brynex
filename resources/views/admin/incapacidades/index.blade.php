@@ -168,23 +168,24 @@ tbody td{padding:.6rem .85rem;vertical-align:middle;}
             <tbody>
             @forelse($incapacidades as $inc)
             @php
-                $color = $inc->colorSemaforo();
-                $diasGestion = $inc->diasDesdeUltimaGestion();
-                $alert180 = $inc->alertaDias180();
-                $totalDias = $inc->totalDiasFamilia();
-                $numPrr = $inc->numeroProrrogas();
+                $color       = $inc->_color_semaforo_cache;
+                $diasGestion = $inc->_dias_gestion_cache;
+                $alert180    = ($inc->tipo_entidad === 'eps') && ($inc->_total_dias_familia_cache >= 180);
+                $totalDias   = $inc->_total_dias_familia_cache;
+                $numPrr      = $inc->_num_prorrogas_cache;
+                $icono       = match($color) { 'verde'=>'🟢', 'amarillo'=>'🟡', 'rojo'=>'🔴', default=>'⚫' };
             @endphp
             <tr>
                 <td>
                     <span class="semaforo sem-{{ $color }}">
-                        {{ $inc->iconoSemaforo() }} {{ $diasGestion }}d
+                        {{ $icono }} {{ $diasGestion }}d
                     </span>
                     @if($alert180)
                     <br><span class="alerta-180">⚠️ +180 días EPS</span>
                     @endif
                 </td>
                 <td>
-                    <div style="font-weight:600;font-size:.82rem">{{ $inc->nombre_cliente ?? $inc->cedula_usuario }}</div>
+                    <div style="font-weight:600;font-size:.82rem">{{ $inc->_nombre_cliente_cache ?? $inc->cedula_usuario }}</div>
                     <div style="font-size:.72rem;color:#64748b">{{ $inc->cedula_usuario }}</div>
                     <div style="font-size:.7rem;color:#94a3b8">{{ $inc->quien_remite }}</div>
                 </td>
@@ -226,7 +227,7 @@ tbody td{padding:.6rem .85rem;vertical-align:middle;}
                 </td>
                 <td style="font-size:.78rem">{{ $inc->quienRecibe?->nombre ?? '—' }}</td>
                 <td>
-                    @php $ult = $inc->gestiones()->first(); @endphp
+                    @php $ult = $inc->latestGestion; @endphp
                     @if($ult)
                     <div style="font-size:.72rem;font-weight:600;color:#2563eb">{{ \App\Models\Incapacidad::TIPOS_GESTION[$ult->tipo]??$ult->tipo }}</div>
                     <div style="font-size:.7rem;color:#64748b">{{ $ult->created_at->format('d/m/y H:i') }}</div>
@@ -248,7 +249,7 @@ tbody td{padding:.6rem .85rem;vertical-align:middle;}
             </tbody>
         </table>
     </div>
-    <div style="padding:.75rem 1rem;border-top:1px solid #f1f5f9">
+    <div style="padding:.85rem 1.1rem;border-top:1px solid #f1f5f9;background:#fafbfc;border-radius:0 0 14px 14px;">
         {{ $incapacidades->links() }}
     </div>
 </div>

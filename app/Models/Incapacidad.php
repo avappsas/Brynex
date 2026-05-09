@@ -134,6 +134,14 @@ class Incapacidad extends BaseModel
         return $this->hasMany(GestionIncapacidad::class)->orderByDesc('id');
     }
 
+    /**
+     * Relación eager-loadable para obtener SOLO la última gestión (evita N+1 en index).
+     */
+    public function latestGestion(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(GestionIncapacidad::class)->latestOfMany('id');
+    }
+
     public function documentos(): HasMany
     {
         // Reutilizamos tabla radicados filtrando por incapacidad_id
@@ -228,9 +236,14 @@ class Incapacidad extends BaseModel
 
     public function diasDesdeUltimaGestion(): int
     {
-        $ultima = $this->ultimaGestion();
+        // Si ya fue eager-loaded vía latestGestion, úsala directamente (evita N+1)
+        if ($this->relationLoaded('latestGestion')) {
+            $ultima = $this->latestGestion;
+        } else {
+            $ultima = $this->ultimaGestion();
+        }
+
         if (!$ultima) {
-            // Sin gestiones: usar días desde que se recibió
             return max(0, (int) now()->diffInDays($this->created_at));
         }
         return max(0, (int) now()->diffInDays($ultima->created_at));

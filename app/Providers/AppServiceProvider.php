@@ -4,6 +4,8 @@ namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Pagination\Paginator;
+
 use App\Auth\BrynexUserProvider;
 use App\Models\Beneficiario;
 use App\Models\DocumentoCliente;
@@ -34,5 +36,9 @@ class AppServiceProvider extends ServiceProvider
         Beneficiario::observe(BeneficiarioObserver::class);
         DocumentoCliente::observe(DocumentoObserver::class);
         Cliente::observe(ClienteObserver::class);
+
+        // Paginación con vista personalizada (compatible con el diseño del sistema)
+        Paginator::defaultView('vendor.pagination.custom');
+        Paginator::defaultSimpleView('vendor.pagination.custom');
     }
 }
