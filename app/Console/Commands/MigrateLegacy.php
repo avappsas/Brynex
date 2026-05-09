@@ -56,7 +56,8 @@ class MigrateLegacy extends Command
             'fix-independiente'    => fn() => $this->stepFixIndependiente(),
             'fix-planos'           => fn() => $this->stepFixPlanos(),
             'fix-facturas-retiro'  => fn() => $this->stepFixFacturasRetiro(),
-            'fix-facturas-pendientes' => fn() => $this->stepFixFacturasPendientes(),
+            'fix-facturas-pendientes'    => fn() => $this->stepFixFacturasPendientes(),
+            'fix-incapacidades-pago'     => fn() => $this->stepFixIncapacidadesPago(),
         ];
 
         if ($step === 'all') {
@@ -2307,6 +2308,143 @@ class MigrateLegacy extends Command
 
         DB::statement('ALTER TABLE incapacidades WITH CHECK CHECK CONSTRAINT ALL');
         $this->info('  📊 Total incapacidades: ' . DB::table('incapacidades')->count());
+    }
+
+    // ─── FIX-INCAPACIDADES-PAGO ────────────────────────────────────────────────
+    // Corrige incapacidades ya migradas que quedaron con estado_pago='pendiente'
+    // pero en el legacy tienen Pagado='si' (u otro valor de pago/rechazo).
+    //
+    // Uso: php artisan legacy:migrate --step=fix-incapacidades-pago
+    private function stepFixIncapacidadesPago(): void
+    {
+        $this->info('🔧 fix-incapacidades-pago: corrigiendo estado_pago de incapacidades migradas...');
+
+        $totalActualizadas = 0;
+
+        foreach ($this->dbs as $db => $key) {
+            $aliadoId = $this->ids[$key] ?? null;
+            if (!$aliadoId) {
+                $this->warn("  ⚠ Aliado '$key' no encontrado, se omite");
+                continue;
+            }
+
+            // Verificar que existe la tabla en este legacy
+            $exists = DB::connection('sqlsrv_legacy')
+                ->selectOne("SELECT COUNT(*) as cnt FROM [$db].sys.objects WHERE name='Incapacidades' AND type='U'");
+            if (!($exists->cnt ?? 0)) {
+                $this->warn("  ⚠ $db: tabla Incapacidades no existe, se omite");
+                continue;
+            }
+
+            // Leer campos de pago del legacy para TODAS las incapacidades de esta BD
+            $legacyRows = DB::connection('sqlsrv_legacy')->select(
+                "SELECT
+                    Id,
+                    LOWER(LTRIM(RTRIM(ISNULL(Pagado, ISNULL(Pagado_Si, ISNULL(Estado_Pago, '')))))) AS pagado_raw,
+                    CASE WHEN ISNUMERIC(ISNULL(Valor_Pago, ISNULL(Valor_Pagado, Valor))) = 1
+                         THEN CAST(ISNULL(Valor_Pago, ISNULL(Valor_Pagado, Valor)) AS DECIMAL(14,2))
+                         ELSE NULL END AS valor_pago_raw,
+                    CASE WHEN ISDATE(ISNULL(Fecha_Pago, Fecha_Pagado)) = 1
+                         THEN CAST(ISNULL(Fecha_Pago, Fecha_Pagado) AS DATE)
+                         ELSE NULL END AS fecha_pago_raw
+                FROM [$db].dbo.Incapacidades
+                WHERE Id IS NOT NULL"
+            );
+
+            if (empty($legacyRows)) {
+                $this->line("  ℹ  $db: sin filas en legacy, se omite");
+                continue;
+            }
+
+            $this->line("  ⧳ $db: " . count($legacyRows) . " filas legacy leídas...");
+
+            // Indexar por id_legacy para lookup rápido
+            $legacyMap = [];
+            foreach ($legacyRows as $lr) {
+                $legacyMap[$lr->Id] = $lr;
+            }
+
+            // Cargar incapacidades migradas de este aliado (solo las que tienen id_legacy)
+            $brynexRows = DB::table('incapacidades')
+                ->where('aliado_id', $aliadoId)
+                ->whereNotNull('id_legacy')
+                ->whereNull('deleted_at')
+                ->select('id', 'id_legacy', 'estado', 'estado_pago', 'valor_pago', 'fecha_pago')
+                ->get();
+
+            $this->line("  ⧳ $db: " . $brynexRows->count() . " incapacidades BryNex a revisar...");
+
+            $actualizadas = 0;
+
+            foreach ($brynexRows as $inc) {
+                $lr = $legacyMap[$inc->id_legacy] ?? null;
+                if (!$lr) continue;
+
+                $pagadoRaw = strtolower(trim($lr->pagado_raw ?? ''));
+
+                // Calcular nuevo estado_pago
+                $nuevoEstadoPago = match(true) {
+                    in_array($pagadoRaw, ['si','1','true','pagado','pagado_afiliado','paid']) => 'pagado_afiliado',
+                    in_array($pagadoRaw, ['autorizado','autorized'])                          => 'autorizado',
+                    in_array($pagadoRaw, ['liquidado','liquidated'])                          => 'liquidado',
+                    in_array($pagadoRaw, ['rechazado','rejected','negado'])                   => 'rechazado',
+                    default                                                                   => null, // sin cambio
+                };
+
+                // Si no hay cambio que aplicar, saltar
+                $necesitaCambio = (
+                    ($nuevoEstadoPago !== null && $inc->estado_pago !== $nuevoEstadoPago)
+                    || ($lr->valor_pago_raw > 0 && $inc->valor_pago === null)
+                    || ($lr->fecha_pago_raw !== null && $inc->fecha_pago === null)
+                );
+
+                if (!$necesitaCambio) continue;
+
+                // Sincronizar estado general si el pago implica un estado concreto
+                $nuevoEstado = $inc->estado;
+                if ($nuevoEstadoPago === 'pagado_afiliado' && !in_array($inc->estado, ['pagado_afiliado','cerrado'])) {
+                    $nuevoEstado = 'pagado_afiliado';
+                } elseif ($nuevoEstadoPago === 'rechazado' && $inc->estado === 'recibido') {
+                    $nuevoEstado = 'rechazado';
+                }
+
+                $data = ['updated_at' => now()];
+
+                if ($nuevoEstadoPago !== null)
+                    $data['estado_pago'] = $nuevoEstadoPago;
+
+                if ($nuevoEstado !== $inc->estado)
+                    $data['estado'] = $nuevoEstado;
+
+                if ($lr->valor_pago_raw > 0 && $inc->valor_pago === null)
+                    $data['valor_pago'] = $lr->valor_pago_raw;
+
+                if ($lr->fecha_pago_raw !== null && $inc->fecha_pago === null)
+                    $data['fecha_pago'] = $lr->fecha_pago_raw;
+
+                DB::table('incapacidades')->where('id', $inc->id)->update($data);
+                $actualizadas++;
+            }
+
+            $totalActualizadas += $actualizadas;
+            $this->info("  ✅ $db → $actualizadas incapacidades corregidas");
+        }
+
+        // Resumen global
+        $this->info("\n📊 Resumen fix-incapacidades-pago:");
+        $this->info("   Total actualizadas : $totalActualizadas");
+
+        $resumen = DB::table('incapacidades')
+            ->whereNotNull('id_legacy')
+            ->whereNull('deleted_at')
+            ->select('estado_pago', DB::raw('COUNT(*) as total'))
+            ->groupBy('estado_pago')
+            ->orderByDesc('total')
+            ->get();
+
+        foreach ($resumen as $r) {
+            $this->line("   {$r->estado_pago}: {$r->total}");
+        }
     }
 
     // ─── PASO 14: GESTIONES INCAPACIDAD ───────────────────────────────────────
