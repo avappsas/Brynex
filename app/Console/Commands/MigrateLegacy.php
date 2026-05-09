@@ -2229,6 +2229,46 @@ class MigrateLegacy extends Command
                 $estadosValidos = ['recibido','radicado','en_tramite','autorizado','liquidado','pagado_afiliado','rechazado','cerrado'];
                 $estado = in_array($estadoRaw, $estadosValidos) ? $estadoRaw : 'recibido';
 
+                // ── Estado de pago: leer campo Pagado del legacy ─────────────
+                // Legacy usa: Pagado='si'/'no' o Pagado_Si=1/0 o Estado_Pago=string
+                $pagadoRaw = strtolower(trim(
+                    $this->col($r, 'Pagado')
+                    ?? $this->col($r, 'Pagado_Si')
+                    ?? $this->col($r, 'Estado_Pago')
+                    ?? ''
+                ));
+
+                // Mapear al catálogo BryNex
+                $estadoPago = match(true) {
+                    in_array($pagadoRaw, ['si', '1', 'true', 'pagado', 'pagado_afiliado', 'paid']) => 'pagado_afiliado',
+                    in_array($pagadoRaw, ['autorizado', 'autorized'])                              => 'autorizado',
+                    in_array($pagadoRaw, ['liquidado', 'liquidated'])                              => 'liquidado',
+                    in_array($pagadoRaw, ['rechazado', 'rejected', 'negado'])                      => 'rechazado',
+                    default                                                                        => 'pendiente',
+                };
+
+                // Si el legacy ya marca como pagado pero el estado general no lo refleja,
+                // forzamos el estado general al valor correcto
+                if ($estadoPago === 'pagado_afiliado' && !in_array($estado, ['pagado_afiliado', 'cerrado'])) {
+                    $estado = 'pagado_afiliado';
+                } elseif ($estadoPago === 'rechazado' && $estado === 'recibido') {
+                    $estado = 'rechazado';
+                }
+
+                // Valor pagado
+                $valorPago = null;
+                $rawValorPago = $this->col($r, 'Valor_Pago') ?? $this->col($r, 'Valor_Pagado') ?? $this->col($r, 'Valor');
+                if (is_numeric($rawValorPago) && (float)$rawValorPago > 0) {
+                    $valorPago = (float)$rawValorPago;
+                }
+
+                // Fecha de pago
+                $fechaPago = null;
+                $rawFechaPago = $this->col($r, 'Fecha_Pago') ?? $this->col($r, 'Fecha_Pagado');
+                if ($rawFechaPago) {
+                    $fechaPago = substr($rawFechaPago, 0, 10);
+                }
+
                 DB::table('incapacidades')->insert([
                     'id_legacy'               => $idLeg,
                     'aliado_id'               => $aliadoId,
@@ -2250,8 +2290,9 @@ class MigrateLegacy extends Command
                     'razon_social_nombre'      => trim($this->col($r, 'Razon_Social') ?? ''),
                     'numero_radicado'          => trim($this->col($r, 'Numero_Radicado') ?? $this->col($r, 'Radicado') ?? ''),
                     'fecha_radicado'           => $this->col($r, 'Fecha_Radicado') ? substr($this->col($r, 'Fecha_Radicado'), 0, 10) : null,
-                    'estado_pago'              => 'pendiente',
-                    'valor_pago'               => is_numeric($this->col($r, 'Valor_Pago') ?? $this->col($r, 'Valor')) ? $this->col($r, 'Valor_Pago') ?? $this->col($r, 'Valor') : null,
+                    'estado_pago'              => $estadoPago,
+                    'valor_pago'               => $valorPago,
+                    'fecha_pago'               => $fechaPago,
                     'pagado_a'                 => trim($this->col($r, 'Pagado_A') ?? ''),
                     'diagnostico'              => substr(trim($this->col($r, 'Diagnostico') ?? $this->col($r, 'CIE10') ?? ''), 0, 200),
                     'observacion'              => trim($this->col($r, 'Observacion') ?? ''),
