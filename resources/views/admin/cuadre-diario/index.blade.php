@@ -393,6 +393,5 @@ $totalBancos = $bancos->sum(fn($bc) => \App\Models\Consignacion::saldoBanco(sess
 <script>
 // Los aliases actualizarBancos/actualizarFormPago ya están definidos en el partial modal_gasto
 </script>
-@endif
 
 @endsection

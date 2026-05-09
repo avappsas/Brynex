@@ -47,6 +47,7 @@ class MigrateLegacy extends Command
             '12'          => fn() => $this->step12_Gastos(),
             '13'          => fn() => $this->step13_Incapacidades(),
             '14'          => fn() => $this->step14_GestionesIncapacidad(),
+            '15'          => fn() => $this->step15_Tareas(),
             'prep'          => fn() => $this->stepPrep(),
             'fix-modalidad'        => fn() => $this->stepFixModalidad(),
             'fix-plan'             => fn() => $this->stepFixPlan(),
@@ -60,7 +61,7 @@ class MigrateLegacy extends Command
 
         if ($step === 'all') {
             // Secuencia canónica de migración: solo los 14 pasos de datos, en orden
-            $migracionOrder = ['01','02','03','04','05','06','07','08','09','10','11','12','13','14'];
+            $migracionOrder = ['01','02','03','04','05','06','07','08','09','10','11','12','13','14','15'];
             foreach ($migracionOrder as $key) {
                 if (!isset($steps[$key])) continue;
                 $this->info("\n" . str_repeat('─', 60));
@@ -1302,6 +1303,224 @@ class MigrateLegacy extends Command
         }
         DB::statement('ALTER TABLE planos WITH CHECK CHECK CONSTRAINT ALL');
         $this->info('  📊 Total planos: ' . DB::table('planos')->count());
+    }
+
+    // ─── PASO 15: TAREAS ──────────────────────────────────────────────────
+    // Legacy: Tareas  →  BryNex: tareas + tarea_gestiones (gestión inicial)
+    //
+    // Mapeo de campos:
+    //   Id           → id_legacy
+    //   Fecha        → created_at / fecha_limite (referencia temporal)
+    //   Tipo         → tipo (normalizado al catálogo BryNex)
+    //   Cedula       → cedula + lookup contrato_id
+    //   Tarea        → tarea
+    //   Fecha_Radicado → fecha_radicado
+    //   Radicado     → numero_radicado
+    //   Observacion  → gestión inicial en tarea_gestiones
+    //   Encargado    → encargado_id (id_legacy en users)
+    //   Finalizo     → estado: 0=pendiente, 1=cerrada
+    //   correo       → correo
+    //   MS           → ignorado
+    private function step15_Tareas(): void
+    {
+        DB::statement('ALTER TABLE tareas          NOCHECK CONSTRAINT ALL');
+        DB::statement('ALTER TABLE tarea_gestiones NOCHECK CONSTRAINT ALL');
+
+        // Agregar id_legacy a tareas si no existe
+        $existe = DB::select("SELECT COUNT(*) as cnt FROM sys.columns WHERE object_id=OBJECT_ID('tareas') AND name='id_legacy'");
+        if (!$existe[0]->cnt) {
+            DB::statement('ALTER TABLE tareas ADD id_legacy INT NULL');
+            $this->line('  ✅ id_legacy agregado a tareas');
+        }
+
+        // Catálogo de tipos válidos en BryNex
+        // (tipo_modalidad no aplica aqui; son tipos de gestión de tarea)
+        // Nota: se usa mb_strtolower para manejar correctamente acentos UTF-8
+        // (ej: 'INCLUSIÓN' → 'inclusión', 'EXCLUSIÓN' → 'exclusión')
+        $mapTipo = [
+            // Traslado EPS
+            'traslado'                  => 'traslado_eps',
+            'traslado eps'              => 'traslado_eps',
+            // Inclusión beneficiarios
+            'inclusion'                 => 'inclusion_beneficiarios',
+            'inclusión'                => 'inclusion_beneficiarios',
+            'inclusion beneficiarios'   => 'inclusion_beneficiarios',
+            'inclusión beneficiarios'  => 'inclusion_beneficiarios',
+            // Exclusión beneficiarios
+            'exclusion'                 => 'exclusion',
+            'exclusión'                => 'exclusion',
+            'exclusion beneficiarios'   => 'exclusion',
+            'exclusión beneficiarios'  => 'exclusion',
+            // Subsidios
+            'subsidio'                  => 'subsidios',
+            'subsidios'                 => 'subsidios',
+            // Actualizar documentos (legacy usa singular Y plural)
+            'documentos'                => 'actualizar_documentos',
+            'actualizar documento'      => 'actualizar_documentos',
+            'actualizar documentos'     => 'actualizar_documentos',
+            // Solicitud documentos
+            'solicitud documentos'      => 'solicitud_documentos',
+            'solicitud de documentos'   => 'solicitud_documentos',
+            // Devolución aportes
+            'devolucion'                => 'devolucion_aportes',
+            'devolución'               => 'devolucion_aportes',
+            'devolucion aportes'        => 'devolucion_aportes',
+            'devolución aportes'       => 'devolucion_aportes',
+            // Otros (explícito para que no caiga en null)
+            'otros'                     => 'otros',
+        ];
+
+        foreach ($this->dbs as $db => $key) {
+            $aliadoId = $this->ids[$key] ?? null;
+            if (!$aliadoId) { $this->warn("  ⚠ Aliado '$key' no encontrado, se omite"); continue; }
+
+            // Verificar si existe la tabla Tareas en este legacy
+            $existe = DB::connection('sqlsrv_legacy')
+                ->selectOne("SELECT COUNT(*) as cnt FROM [$db].INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='Tareas'");
+            if (!$existe || !$existe->cnt) {
+                $this->warn("  ⚠ $db: tabla Tareas no existe, se omite");
+                continue;
+            }
+
+            // Skip check por id_legacy
+            $yaExisten = DB::table('tareas')
+                ->where('aliado_id', $aliadoId)
+                ->whereNotNull('id_legacy')
+                ->pluck('id_legacy')->flip()->all();
+
+            $total = DB::connection('sqlsrv_legacy')
+                ->selectOne("SELECT COUNT(*) as cnt FROM [$db].dbo.Tareas")->cnt;
+            $this->line("  ⏳ $db: $total tareas, " . ($total - count($yaExisten)) . " faltantes...");
+
+            // Mapa encargado: id_legacy → nuevo user.id
+            $usersMap = DB::table('users')
+                ->where('aliado_id', $aliadoId)
+                ->whereNotNull('id_legacy')
+                ->pluck('id', 'id_legacy');  // [legacy_id => brynex_id]
+
+            // Mapa cédula → contrato_id (primer contrato vigente del cliente)
+            // Usamos el contrato_id más reciente por cédula para el aliado
+            $contratosMap = DB::table('contratos')
+                ->where('aliado_id', $aliadoId)
+                ->whereNotNull('cedula')
+                ->orderByDesc('id')
+                ->pluck('id', 'cedula');  // [cedula => contrato_id]
+
+            // Usuario sistema (fallback si no hay encargado mapeado):
+            // buscar el primer superadmin del aliado
+            $userFallback = DB::table('users')
+                ->where('aliado_id', $aliadoId)
+                ->value('id') ?? 1;
+
+            $count = 0; $skipped = 0; $offset = 0; $chunk = 500;
+
+            while (true) {
+                $rows = $this->legacySelect("SELECT * FROM [$db].dbo.Tareas
+                    ORDER BY Id OFFSET $offset ROWS FETCH NEXT $chunk ROWS ONLY");
+                if (empty($rows)) break;
+
+                foreach ($rows as $r) {
+                    $idLeg = $this->col($r, 'Id');
+                    if ($idLeg && isset($yaExisten[$idLeg])) { $skipped++; continue; }
+
+                    // ── Tipo: normalizar texto libre al catálogo BryNex ──
+                    // mb_strtolower maneja acentos UTF-8 correctamente (INCLUSIÓN→inclusión)
+                    $tipoRaw  = mb_strtolower(trim($this->col($r, 'Tipo') ?? ''), 'UTF-8');
+                    $tipo     = $mapTipo[$tipoRaw] ?? 'otros';
+
+                    // ── Estado: Finalizo=1 → cerrada, 0/null → pendiente ──
+                    $finalizo = $this->col($r, 'Finalizo');
+                    $estado   = ($finalizo == 1 || strtolower((string)$finalizo) === 'si' || $finalizo === true)
+                                ? 'cerrada' : 'pendiente';
+                    $resultado = ($estado === 'cerrada') ? 'positivo' : null;
+
+                    // ── Encargado ──
+                    $encLegacy  = $this->col($r, 'Encargado');
+                    $encargadoId = (is_numeric($encLegacy) && (int)$encLegacy > 0)
+                        ? ($usersMap[(int)$encLegacy] ?? $userFallback)
+                        : $userFallback;
+
+                    // ── Cédula y contrato ──
+                    $cedulaRaw  = (string)($this->col($r, 'Cedula') ?? '');
+                    $cedula     = trim($cedulaRaw);
+                    $contratoId = $cedula !== '' ? ($contratosMap[$cedula] ?? null) : null;
+
+                    // ── Fechas ──
+                    $fechaCreacion  = $this->col($r, 'Fecha');
+                    $fechaRadicado  = $this->col($r, 'Fecha_Radicado');
+                    $createdAt      = $fechaCreacion ? substr($fechaCreacion, 0, 19) : now();
+                    $fechaRadFinal  = $fechaRadicado ? substr($fechaRadicado, 0, 10) : null;
+
+                    // ── Radicado y correo ──
+                    $radicado = trim($this->col($r, 'Radicado') ?? '');
+                    $correo   = trim($this->col($r, 'correo')   ?? '');
+
+                    // ── Tarea y observación ──
+                    $tareaTexto = trim($this->col($r, 'Tarea')       ?? '');
+                    $obsTexto   = trim($this->col($r, 'Observacion') ?? '');
+
+                    try {
+                        $tareaId = DB::table('tareas')->insertGetId([
+                            'id_legacy'       => $idLeg,
+                            'aliado_id'       => $aliadoId,
+                            'tipo'            => $tipo,
+                            'estado'          => $estado,
+                            'resultado'       => $resultado,
+                            'cedula'          => $cedula,
+                            'contrato_id'     => $contratoId,
+                            'razon_social_id' => null,  // no existe en el legacy
+                            'entidad'         => null,
+                            'tarea'           => $tareaTexto ?: '(sin descripción)',
+                            'observacion'     => null,  // va en tarea_gestiones
+                            'encargado_id'    => $encargadoId,
+                            'creado_por'      => $encargadoId,  // legacy no tiene campo separado
+                            'fecha_limite'    => null,
+                            'fecha_alerta'    => null,
+                            'fecha_radicado'  => $fechaRadFinal,
+                            'numero_radicado' => $radicado !== '' ? $radicado : null,
+                            'correo'          => $correo !== '' ? $correo : null,
+                            'created_at'      => $createdAt,
+                            'updated_at'      => $createdAt,
+                        ]);
+
+                        // Insertar gestión inicial si hay observación
+                        if ($obsTexto !== '' && $tareaId) {
+                            DB::table('tarea_gestiones')->insert([
+                                'tarea_id'         => $tareaId,
+                                'user_id'          => $encargadoId,
+                                'tipo_accion'      => 'tramite_realizado',
+                                'observacion'      => $obsTexto,
+                                'recordar_dias'    => null,
+                                'fecha_alerta'     => null,
+                                'encargado_anterior'=> null,
+                                'encargado_nuevo'  => null,
+                                'estado_tarea'     => $estado,
+                                'created_at'       => $createdAt,
+                            ]);
+                        }
+
+                        if ($idLeg) $yaExisten[$idLeg] = true;
+                        $count++;
+                        if ($count % 200 === 0) $this->line("    → $count / $total...");
+
+                    } catch (\Exception $e) {
+                        $msg  = $e->getMessage();
+                        $hint = str_contains($msg, 'Invalid column name')
+                            ? ' [columna inexistente]' : '';
+                        $this->warn("    ⚠ Id={$idLeg}{$hint}: " . substr($msg, 0, 200));
+                    }
+                }
+                $offset += $chunk;
+                if (count($rows) < $chunk) break;
+            }
+
+            $this->info("  ✅ $db → $count tareas, $skipped omitidas");
+        }
+
+        DB::statement('ALTER TABLE tareas          WITH CHECK CHECK CONSTRAINT ALL');
+        DB::statement('ALTER TABLE tarea_gestiones WITH CHECK CHECK CONSTRAINT ALL');
+        $this->info('  📊 Total tareas: '          . DB::table('tareas')->count());
+        $this->info('  📊 Total tarea_gestiones: ' . DB::table('tarea_gestiones')->count());
     }
 
     // ─── PASO FIX-FACTURAS-PENDIENTES ────────────────────────────────────────
