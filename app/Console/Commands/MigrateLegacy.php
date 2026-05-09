@@ -58,6 +58,7 @@ class MigrateLegacy extends Command
             'fix-facturas-retiro'  => fn() => $this->stepFixFacturasRetiro(),
             'fix-facturas-pendientes'    => fn() => $this->stepFixFacturasPendientes(),
             'fix-incapacidades-pago'     => fn() => $this->stepFixIncapacidadesPago(),
+            'fix-gestiones-pagadas'      => fn() => $this->stepFixGestionesPagadas(),
         ];
 
         if ($step === 'all') {
@@ -2500,11 +2501,18 @@ class MigrateLegacy extends Command
             $aliadoId = $this->ids[$key] ?? null;
             if (!$aliadoId) continue;
 
-            // Buscar nombre real de la tabla con cross-DB sys.objects
+            // Buscar nombre real de la tabla — legacy usa varios nombres posibles
             $tablaRes = DB::connection('sqlsrv_legacy')
-                ->selectOne("SELECT TOP 1 name AS TABLE_NAME FROM [$db].sys.objects WHERE type='U' AND name IN ('GestionesIncapacidad','Gestiones_Incapacidad','Gestiones_incapacidad')");
+                ->selectOne("SELECT TOP 1 name AS TABLE_NAME FROM [$db].sys.objects
+                             WHERE type='U' AND LOWER(name) IN (
+                                 'gestionesincapacidad',
+                                 'gestiones_incapacidad',
+                                 'gestiones_incapacidades',
+                                 'gestion_incapacidades',
+                                 'gestion_incapacidad'
+                             )");
             if (!$tablaRes) {
-                $this->warn("  ⚠ $db: tabla GestionesIncapacidad no existe, se omite");
+                $this->warn("  ⚠ $db: tabla de gestiones incapacidad no existe, se omite");
                 continue;
             }
             $tabla = $tablaRes->TABLE_NAME;
@@ -2518,7 +2526,11 @@ class MigrateLegacy extends Command
             $count = 0; $sin_incap = 0;
 
             foreach ($rows as $r) {
-                $idIncapLeg = $this->col($r, 'Id_Incapacidad') ?? $this->col($r, 'incapacidad_id');
+                // Columna del ID de incapacidad: cada BD legacy usa nombre distinto
+                $idIncapLeg = $this->col($r, 'Id_Incapacidad')
+                           ?? $this->col($r, 'Incapacidad')      // Brygar_BD usa este
+                           ?? $this->col($r, 'incapacidad_id')
+                           ?? $this->col($r, 'Id_Incapacidades');
                 $incapacidadId = $aliadoIncapMap[$idIncapLeg] ?? null;
                 if (!$incapacidadId) { $sin_incap++; continue; }
 
@@ -2562,6 +2574,79 @@ class MigrateLegacy extends Command
         }
 
         $this->info('  📊 Total gestiones incapacidad: ' . DB::table('gestiones_incapacidad')->count());
+    }
+
+    // ─── FIX-GESTIONES-PAGADAS ──────────────────────────────────────────────────
+    // Para incapacidades migradas con estado_pago='pagado_afiliado' que no tienen
+    // ninguna gestión registrada, inserta una gestión sintética de tipo 'pago_afiliado'
+    // para que no aparezcan en rojo en el semáforo de "sin gestión".
+    //
+    // Uso: php artisan legacy:migrate --step=fix-gestiones-pagadas
+    private function stepFixGestionesPagadas(): void
+    {
+        $this->info('🔧 fix-gestiones-pagadas: insertando gestión sintética para incapacidades pagadas sin gestión...');
+
+        // Usuario admin por defecto (fallback global)
+        $adminGlobalId = DB::table('users')->orderBy('id')->value('id') ?? 1;
+
+        $totalInsertadas = 0;
+
+        foreach ($this->ids as $key => $aliadoId) {
+            // Incapacidades de este aliado: pagadas, migradas del legacy, SIN ninguna gestión
+            $sinGestion = DB::table('incapacidades as i')
+                ->where('i.aliado_id', $aliadoId)
+                ->where('i.estado_pago', 'pagado_afiliado')
+                ->whereNotNull('i.id_legacy')
+                ->whereNull('i.deleted_at')
+                ->whereNotExists(function ($sub) {
+                    $sub->from('gestiones_incapacidad as g')
+                        ->whereColumn('g.incapacidad_id', 'i.id');
+                })
+                ->select('i.id', 'i.aliado_id', 'i.fecha_pago', 'i.valor_pago', 'i.pagado_a')
+                ->get();
+
+            if ($sinGestion->isEmpty()) {
+                $this->line("  ℹ  aliado $aliadoId: ninguna incapacidad pagada sin gestión");
+                continue;
+            }
+
+            $this->line("  ⧳ aliado $aliadoId: {$sinGestion->count()} incapacidades a procesar...");
+
+            // Usuario admin de este aliado (para firmar la gestión)
+            $adminId = DB::table('users')
+                ->where('aliado_id', $aliadoId)
+                ->orderBy('id')
+                ->value('id') ?? $adminGlobalId;
+
+            $insertadas = 0;
+            foreach ($sinGestion as $inc) {
+                $tramite = 'Pago registrado en sistema legacy (migrado)';
+                if ($inc->valor_pago) {
+                    $tramite .= ' | Valor: $' . number_format($inc->valor_pago, 0, ',', '.');
+                }
+                if ($inc->pagado_a) {
+                    $tramite .= ' | Pagado a: ' . $inc->pagado_a;
+                }
+
+                DB::table('gestiones_incapacidad')->insert([
+                    'incapacidad_id'   => $inc->id,
+                    'user_id'          => $adminId,
+                    'aplica_a_familia' => false,
+                    'tipo'             => 'pago_afiliado',
+                    'tramite'          => $tramite,
+                    'respuesta'        => 'Registro migrado del sistema anterior.',
+                    'estado_resultado' => 'pagado_afiliado',
+                    'fecha_recordar'   => null,
+                    'created_at'       => $inc->fecha_pago ?? now(),
+                ]);
+                $insertadas++;
+            }
+
+            $totalInsertadas += $insertadas;
+            $this->info("  ✅ aliado $aliadoId → $insertadas gestiones sintéticas insertadas");
+        }
+
+        $this->info("\n📊 Total gestiones sintéticas insertadas: $totalInsertadas");
     }
 
     // ─── PASO FIX-VALORESFACTURAS ─────────────────────────────────────────────
