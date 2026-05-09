@@ -2336,17 +2336,54 @@ class MigrateLegacy extends Command
                 continue;
             }
 
-            // Leer campos de pago del legacy para TODAS las incapacidades de esta BD
+            // ── Descubrir columnas reales de la tabla legacy ─────────────────
+            $colsResult = DB::connection('sqlsrv_legacy')->select(
+                "SELECT LOWER(name) as col FROM [$db].sys.columns
+                 WHERE object_id = OBJECT_ID('[$db].dbo.Incapacidades')"
+            );
+            $cols = collect($colsResult)->pluck('col')->flip()->all(); // set para O(1) lookup
+
+            // ── Construir expr. de pago de forma segura (solo columnas existentes) ──
+            // Campo pagado_raw: buscar el primer campo disponible
+            $pagadoCandidatos = ['pagado', 'pagado_si', 'estado_pago'];
+            $pagadoExpr = "''";
+            foreach ($pagadoCandidatos as $c) {
+                if (isset($cols[$c])) {
+                    $col = $c; // nombre en minúsculas; SQL Server es case-insensitive
+                    $pagadoExpr = "LOWER(LTRIM(RTRIM(ISNULL($col, ''))))";
+                    break;
+                }
+            }
+
+            // Campo valor_pago_raw: buscar el primer campo numérico disponible
+            $valorCandidatos = ['valor_pago', 'valor_pagado', 'valor'];
+            $valorExpr = 'NULL';
+            foreach ($valorCandidatos as $c) {
+                if (isset($cols[$c])) {
+                    $valorExpr = "CASE WHEN ISNUMERIC($c) = 1 THEN CAST($c AS DECIMAL(14,2)) ELSE NULL END";
+                    break;
+                }
+            }
+
+            // Campo fecha_pago_raw: buscar el primer campo de fecha disponible
+            $fechaCandidatos = ['fecha_pago', 'fecha_pagado'];
+            $fechaExpr = 'NULL';
+            foreach ($fechaCandidatos as $c) {
+                if (isset($cols[$c])) {
+                    $fechaExpr = "CASE WHEN ISDATE($c) = 1 THEN CAST($c AS DATE) ELSE NULL END";
+                    break;
+                }
+            }
+
+            $this->line("  ℹ  $db: pagado=[$pagadoExpr] valor=[$valorExpr] fecha=[$fechaExpr]");
+
+            // ── Leer datos de pago del legacy ─────────────────────────────────
             $legacyRows = DB::connection('sqlsrv_legacy')->select(
                 "SELECT
                     Id,
-                    LOWER(LTRIM(RTRIM(ISNULL(Pagado, ISNULL(Pagado_Si, ISNULL(Estado_Pago, '')))))) AS pagado_raw,
-                    CASE WHEN ISNUMERIC(ISNULL(Valor_Pago, ISNULL(Valor_Pagado, Valor))) = 1
-                         THEN CAST(ISNULL(Valor_Pago, ISNULL(Valor_Pagado, Valor)) AS DECIMAL(14,2))
-                         ELSE NULL END AS valor_pago_raw,
-                    CASE WHEN ISDATE(ISNULL(Fecha_Pago, Fecha_Pagado)) = 1
-                         THEN CAST(ISNULL(Fecha_Pago, Fecha_Pagado) AS DATE)
-                         ELSE NULL END AS fecha_pago_raw
+                    $pagadoExpr AS pagado_raw,
+                    $valorExpr  AS valor_pago_raw,
+                    $fechaExpr  AS fecha_pago_raw
                 FROM [$db].dbo.Incapacidades
                 WHERE Id IS NOT NULL"
             );
