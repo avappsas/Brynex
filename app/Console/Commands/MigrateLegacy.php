@@ -2508,69 +2508,121 @@ class MigrateLegacy extends Command
         // ── FASE 2: Resolver salario_base faltante ─────────────────────────────
         $this->info("\n🔧 Fase 2: resolviendo salario_base faltante...");
 
-        $sinSalario = \App\Models\Incapacidad::whereNull('salario_base')
+        // Todos sin salario_base (con o sin contrato_id)
+        $sinSalario = DB::table('incapacidades')
+            ->whereNull('salario_base')
             ->whereNull('deleted_at')
-            ->whereNotNull('contrato_id')
             ->where('dias_incapacidad', '>', 0)
-            ->get(['id', 'contrato_id', 'salario_base', 'fecha_inicio']);
+            ->get(['id', 'aliado_id', 'contrato_id', 'cedula_usuario', 'fecha_inicio']);
 
-        $this->line("   Sin salario_base con contrato: {$sinSalario->count()}");
+        $this->line("   Sin salario_base: {$sinSalario->count()}");
 
-        $salOk = 0;
+        $salOk = 0; $salFail = 0;
+
         foreach ($sinSalario as $inc) {
-            try {
-                $inc->resolverYGuardarSalario();
-                if ($inc->salario_base > 0) $salOk++;
-            } catch (\Throwable $e) {
-                // Silenciar errores individuales
+            $salario = null;
+
+            // Opción A: tiene contrato_id → buscar directo
+            if ($inc->contrato_id) {
+                $salario = DB::table('contratos')
+                    ->where('id', $inc->contrato_id)
+                    ->value('salario');
+            }
+
+            // Opción B: sin contrato_id → buscar por cedula+aliado
+            // Tomar el contrato vigente más cercano a fecha_inicio
+            if (!$salario && $inc->cedula_usuario) {
+                $contrato = DB::table('contratos')
+                    ->where('aliado_id', $inc->aliado_id)
+                    ->where('cedula', $inc->cedula_usuario)
+                    ->when($inc->fecha_inicio, function ($q) use ($inc) {
+                        $q->where('fecha_inicio', '<=', $inc->fecha_inicio);
+                    })
+                    ->orderByDesc('fecha_inicio')
+                    ->first(['id', 'salario']);
+
+                if ($contrato) {
+                    $salario = $contrato->salario;
+
+                    // También actualizar contrato_id si estaba vacío
+                    if (!$inc->contrato_id) {
+                        DB::table('incapacidades')
+                            ->where('id', $inc->id)
+                            ->update(['contrato_id' => $contrato->id]);
+                    }
+                }
+            }
+
+            if (is_numeric($salario) && $salario > 0) {
+                DB::table('incapacidades')
+                    ->where('id', $inc->id)
+                    ->update([
+                        'salario_base' => (float) $salario,
+                        'updated_at'   => now(),
+                    ]);
+                $salOk++;
+            } else {
+                $salFail++;
             }
         }
-        $this->info("   ✅ salario_base resueltos: $salOk");
 
-        // ── FASE 3: Calcular valor_esperado faltante ───────────────────────────
+        $this->info("   ✅ salario_base resueltos: $salOk | sin contrato/salario: $salFail");
+
+        // ── FASE 3: Calcular valor_esperado ────────────────────────────────────
         $this->info("\n🔧 Fase 3: calculando valor_esperado faltante...");
 
-        // Refrescar: puede haber más con salario ahora
-        $sinValor = \App\Models\Incapacidad::whereNull('valor_esperado')
+        $sinValor = DB::table('incapacidades')
+            ->whereNull('valor_esperado')
             ->whereNull('deleted_at')
             ->where('dias_incapacidad', '>', 0)
             ->whereNotNull('salario_base')
-            ->get();
+            ->where('salario_base', '>', 0)
+            ->get(['id', 'tipo_entidad', 'dias_incapacidad', 'salario_base', 'incapacidad_padre_id', 'prorroga']);
 
         $this->line("   Sin valor_esperado con salario_base: {$sinValor->count()}");
 
         $valOk = 0; $valFail = 0;
         foreach ($sinValor as $inc) {
-            try {
-                $val = $inc->calcularValorEsperado(persistir: true);
-                if ($val > 0) $valOk++;
-                else $valFail++;
-            } catch (\Throwable $e) {
+            $salario     = (float) $inc->salario_base;
+            $dias        = (int)   $inc->dias_incapacidad;
+            $esProrroga  = $inc->prorroga || $inc->incapacidad_padre_id;
+            $valorDiario = $salario / 30;
+
+            $valor = match($inc->tipo_entidad) {
+                'eps'   => $dias < 3 ? 0.0 : round(max(0, ($esProrroga ? $dias : $dias - 2)) * $valorDiario, 2),
+                'arl',
+                'afp'   => round($dias * $valorDiario, 2),
+                default => 0.0,
+            };
+
+            if ($valor > 0) {
+                DB::table('incapacidades')
+                    ->where('id', $inc->id)
+                    ->update(['valor_esperado' => $valor, 'updated_at' => now()]);
+                $valOk++;
+            } else {
                 $valFail++;
             }
         }
-        $this->info("   ✅ valor_esperado calculados: $valOk | sin resultado: $valFail");
+        $this->info("   ✅ valor_esperado calculados: $valOk | resultado cero: $valFail");
 
-        // Usar valor_pago como fallback para los pagados que no tienen valor_esperado
+        // Fallback: para pagados que aún no tienen valor_esperado, usar valor_pago
         $fallback = DB::table('incapacidades')
             ->whereNull('valor_esperado')
             ->whereNull('deleted_at')
             ->where('valor_pago', '>', 0)
-            ->update([
-                'valor_esperado' => DB::raw('valor_pago'),
-                'updated_at'     => now(),
-            ]);
-        $this->info("   ✅ valor_esperado desde valor_pago (fallback): $fallback");
+            ->update(['valor_esperado' => DB::raw('valor_pago'), 'updated_at' => now()]);
+        $this->info("   ✅ fallback valor_pago→valor_esperado: $fallback");
 
         // ── RESUMEN FINAL ──────────────────────────────────────────────────────
         $this->info("\n📊 Cobertura final:");
-        $total   = DB::table('incapacidades')->whereNull('deleted_at')->count();
-        $conVal  = DB::table('incapacidades')->whereNull('deleted_at')->whereNotNull('valor_esperado')->where('valor_esperado', '>', 0)->count();
-        $conSal  = DB::table('incapacidades')->whereNull('deleted_at')->whereNotNull('salario_base')->where('salario_base', '>', 0)->count();
-        $this->line("   Total incapacidades : $total");
-        $this->line("   Con salario_base    : $conSal (" . round($conSal/$total*100, 1) . "%)");
-        $this->line("   Con valor_esperado  : $conVal (" . round($conVal/$total*100, 1) . "%)");
-        $this->line("   Sin valor (necesitan contrato manual): " . ($total - $conVal));
+        $total  = DB::table('incapacidades')->whereNull('deleted_at')->count();
+        $conVal = DB::table('incapacidades')->whereNull('deleted_at')->whereNotNull('valor_esperado')->where('valor_esperado', '>', 0)->count();
+        $conSal = DB::table('incapacidades')->whereNull('deleted_at')->whereNotNull('salario_base')->where('salario_base', '>', 0)->count();
+        $this->line("   Total              : $total");
+        $this->line("   Con salario_base   : $conSal (" . ($total ? round($conSal/$total*100,1) : 0) . "%)");
+        $this->line("   Con valor_esperado : $conVal (" . ($total ? round($conVal/$total*100,1) : 0) . "%)");
+        $this->line("   Sin valor (sin contrato activo): " . ($total - $conVal));
     }
 
     // ─── PASO 14: GESTIONES INCAPACIDAD ───────────────────────────────────────
