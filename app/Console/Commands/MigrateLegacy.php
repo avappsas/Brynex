@@ -2286,7 +2286,9 @@ class MigrateLegacy extends Command
                     'fecha_terminacion'        => $this->col($r, 'Fecha_Fin')     ? substr($this->col($r, 'Fecha_Fin'),     0, 10)
                                                : ($this->col($r, 'Fecha_Terminacion') ? substr($this->col($r, 'Fecha_Terminacion'), 0, 10) : null),
                     'fecha_recibido'           => $this->col($r, 'Fecha_Recibido') ? substr($this->col($r, 'Fecha_Recibido'), 0, 10) : null,
-                    'prorroga'                 => (bool)($this->col($r, 'Prorroga') ?? $this->col($r, 'Es_Prorroga') ?? false),
+                    // prorroga: solo es prórroga si el legacy lo indica Y tiene padre ligado.
+                    // Si viene como prórroga del legacy pero sin padre, se trata como original.
+                    'prorroga'                 => false, // se recalcula al ligar incapacidad_padre_id
                     'numero_proroga'           => is_numeric($this->col($r, 'Numero_Prorroga') ?? $this->col($r, 'N_Prorroga')) ? (int)($this->col($r, 'Numero_Prorroga') ?? $this->col($r, 'N_Prorroga')) : 0,
                     'tipo_entidad'             => $tipoEntidad,
                     'entidad_nombre'           => trim($this->col($r, 'Entidad') ?? $this->col($r, 'Nombre_Entidad') ?? ''),
@@ -2635,7 +2637,8 @@ class MigrateLegacy extends Command
         foreach ($todos as $inc) {
             $salario     = (float) $inc->salario_base;
             $dias        = (int)   $inc->dias_incapacidad;
-            $esProrroga  = (bool)  $inc->prorroga || !is_null($inc->incapacidad_padre_id);
+            // Prorroga real = tiene padre confirmado en el sistema
+            $esProrroga  = !is_null($inc->incapacidad_padre_id);
             $valorDiario = $salario / 30;
 
             $valor = match($inc->tipo_entidad) {
