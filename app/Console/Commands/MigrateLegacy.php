@@ -59,6 +59,7 @@ class MigrateLegacy extends Command
             'fix-facturas-pendientes'    => fn() => $this->stepFixFacturasPendientes(),
             'fix-incapacidades-pago'     => fn() => $this->stepFixIncapacidadesPago(),
             'fix-gestiones-pagadas'      => fn() => $this->stepFixGestionesPagadas(),
+            'fix-prorrogas'              => fn() => $this->stepFixProrrogas(),
         ];
 
         if ($step === 'all') {
@@ -3203,5 +3204,123 @@ class MigrateLegacy extends Command
         $conSS = DB::table('facturas')->where('numero_factura', 0)->where('total_ss', '>', 0)->count();
         $sinSS = $total - $conSS;
         $this->info("  📊 Facturas retiro (numero_factura=0): $total total | $conSS con SS | $sinSS sin SS (genuinamente \$0)");
+    }
+
+    // ─── FIX-PRORROGAS ────────────────────────────────────────────────────────
+    // Encadena incapacidades consecutivas por cédula+entidad como prórrogas.
+    // Una incapacidad es prórroga de la anterior si su fecha_inicio <= fecha_fin_anterior + 2 días.
+    // La primera de cada cadena queda como original (prorroga=0, padre=null).
+    //
+    // Uso: php artisan legacy:migrate --step=fix-prorrogas
+    //   Opcional filtrar por cédula: --step=fix-prorrogas (modifica $cedulaFiltro abajo)
+    private function stepFixProrrogas(): void
+    {
+        $this->info('🔧 fix-prorrogas: encadenando incapacidades consecutivas...');
+
+        $GAP_MAX      = 2;   // días de tolerancia entre registros
+        $cedulaFiltro = null; // null = TODOS los registros; '94351399' = solo esa cédula
+
+        $query = DB::table('incapacidades')
+            ->whereNull('deleted_at')
+            ->orderBy('cedula_usuario')
+            ->orderBy('aliado_id')
+            ->orderBy('tipo_entidad')
+            ->orderBy('fecha_inicio');
+
+        if ($cedulaFiltro) {
+            $query->where('cedula_usuario', $cedulaFiltro);
+        }
+
+        $todos = $query->get(['id','cedula_usuario','aliado_id','tipo_entidad',
+                              'dias_incapacidad','fecha_inicio','salario_base',
+                              'incapacidad_padre_id']);
+
+        $this->line("   Total registros: {$todos->count()}");
+
+        // Agrupar por cedula+aliado+entidad
+        $grupos = $todos->groupBy(fn($r) => $r->cedula_usuario.'|'.$r->aliado_id.'|'.$r->tipo_entidad);
+
+        $totalOriginales = 0; $totalProrrogas = 0;
+
+        foreach ($grupos as $clave => $recs) {
+            $origId  = null;
+            $prevFin = null;
+            $chain   = [];
+
+            foreach ($recs as $inc) {
+                $fi = \Carbon\Carbon::parse($inc->fecha_inicio);
+                $ff = $fi->copy()->addDays((int)$inc->dias_incapacidad);
+
+                $esConsecutivo = $prevFin !== null
+                    && $fi->diffInDays($prevFin, false) <= $GAP_MAX;
+
+                if (!$esConsecutivo) {
+                    // Nueva cadena → ORIGINAL
+                    $chain  = [$inc->id];
+                    $origId = $inc->id;
+
+                    DB::table('incapacidades')->where('id', $inc->id)->update([
+                        'prorroga'             => 0,
+                        'incapacidad_padre_id' => null,
+                        'numero_proroga'       => 0,
+                        'updated_at'           => now(),
+                    ]);
+                    $totalOriginales++;
+                } else {
+                    // Continuación → PRÓRROGA
+                    $numPrr = count($chain);
+                    $chain[] = $inc->id;
+
+                    DB::table('incapacidades')->where('id', $inc->id)->update([
+                        'prorroga'             => 1,
+                        'incapacidad_padre_id' => $origId,
+                        'numero_proroga'       => $numPrr,
+                        'updated_at'           => now(),
+                    ]);
+                    $totalProrrogas++;
+                }
+
+                $prevFin = $ff;
+            }
+        }
+
+        $this->info("   ✅ Originales: $totalOriginales | Prórrogas: $totalProrrogas");
+
+        // ── Recalcular valor_esperado con fórmula correcta ─────────────────────
+        $this->info("\n🔧 Recalculando valor_esperado...");
+
+        $conSalario = DB::table('incapacidades')
+            ->whereNull('deleted_at')
+            ->where('dias_incapacidad', '>', 0)
+            ->whereNotNull('salario_base')
+            ->where('salario_base', '>', 0)
+            ->when($cedulaFiltro, fn($q) => $q->where('cedula_usuario', $cedulaFiltro))
+            ->get(['id','tipo_entidad','dias_incapacidad','salario_base','incapacidad_padre_id']);
+
+        $recalc = 0;
+        foreach ($conSalario as $inc) {
+            $sal        = (float) $inc->salario_base;
+            $dias       = (int)   $inc->dias_incapacidad;
+            $esProrroga = !is_null($inc->incapacidad_padre_id);
+            $diario     = $sal / 30;
+
+            $valor = match($inc->tipo_entidad) {
+                'eps'   => $dias < 3 ? 0.0
+                         : round(max(0, ($esProrroga ? $dias : $dias - 2)) * $diario, 2),
+                'arl',
+                'afp'   => round($dias * $diario, 2),
+                default => round($dias * $diario, 2),
+            };
+
+            DB::table('incapacidades')->where('id', $inc->id)->update([
+                'valor_esperado' => $valor > 0 ? $valor : null,
+                'updated_at'     => now(),
+            ]);
+            $recalc++;
+        }
+
+        $this->info("   ✅ valor_esperado recalculados: $recalc");
+        $this->info("\n📊 Resumen por cédula filtrada" . ($cedulaFiltro ? " ($cedulaFiltro)" : ' (todos)') . ':');
+        $this->line("   Originales: $totalOriginales | Prórrogas: $totalProrrogas");
     }
 }
