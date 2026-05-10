@@ -2619,6 +2619,41 @@ class MigrateLegacy extends Command
             ->update(['valor_esperado' => DB::raw('valor_pago'), 'updated_at' => now()]);
         $this->info("   ✅ fallback valor_pago→valor_esperado: $fallback");
 
+        // ── FASE 4: Forzar recálculo correcto (aplica regla 2 días EPS) ────────
+        // Recalcula TODOS los registros con salario_base, sobrescribiendo valores
+        // previos incorrectos (ej: valor_esperado = salario_base sin descuento).
+        $this->info("\n🔧 Fase 4: forzando recálculo con regla EPS (resta 2 días originales)...");
+
+        $todos = DB::table('incapacidades')
+            ->whereNull('deleted_at')
+            ->where('dias_incapacidad', '>', 0)
+            ->whereNotNull('salario_base')
+            ->where('salario_base', '>', 0)
+            ->get(['id', 'tipo_entidad', 'dias_incapacidad', 'salario_base', 'incapacidad_padre_id', 'prorroga']);
+
+        $recalcOk = 0; $recalcCero = 0;
+        foreach ($todos as $inc) {
+            $salario     = (float) $inc->salario_base;
+            $dias        = (int)   $inc->dias_incapacidad;
+            $esProrroga  = (bool)  $inc->prorroga || !is_null($inc->incapacidad_padre_id);
+            $valorDiario = $salario / 30;
+
+            $valor = match($inc->tipo_entidad) {
+                'eps'   => $dias < 3 ? 0.0
+                         : round(max(0, ($esProrroga ? $dias : $dias - 2)) * $valorDiario, 2),
+                'arl',
+                'afp'   => round($dias * $valorDiario, 2),
+                default => round(max(0, $dias - 2) * $valorDiario, 2),
+            };
+
+            DB::table('incapacidades')
+                ->where('id', $inc->id)
+                ->update(['valor_esperado' => $valor > 0 ? $valor : null, 'updated_at' => now()]);
+
+            $valor > 0 ? $recalcOk++ : $recalcCero++;
+        }
+        $this->info("   ✅ Recalculados: $recalcOk | resultado cero (< 3 días): $recalcCero");
+
         // ── RESUMEN FINAL ──────────────────────────────────────────────────────
         $this->info("\n📊 Cobertura final:");
         $total  = DB::table('incapacidades')->whereNull('deleted_at')->count();
@@ -2627,7 +2662,7 @@ class MigrateLegacy extends Command
         $this->line("   Total              : $total");
         $this->line("   Con salario_base   : $conSal (" . ($total ? round($conSal/$total*100,1) : 0) . "%)");
         $this->line("   Con valor_esperado : $conVal (" . ($total ? round($conVal/$total*100,1) : 0) . "%)");
-        $this->line("   Sin valor (sin contrato activo): " . ($total - $conVal));
+        $this->line("   Sin valor          : " . ($total - $conVal));
     }
 
     // ─── PASO 14: GESTIONES INCAPACIDAD ───────────────────────────────────────
