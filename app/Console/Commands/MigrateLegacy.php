@@ -2296,8 +2296,27 @@ class MigrateLegacy extends Command
                     'valor_pago'               => $valorPago,
                     'fecha_pago'               => $fechaPago,
                     'pagado_a'                 => trim($this->col($r, 'Pagado_A') ?? ''),
+                    'pagado_a_tipo'            => null, // se asigna manualmente en el módulo
                     'diagnostico'              => substr(trim($this->col($r, 'Diagnostico') ?? $this->col($r, 'CIE10') ?? ''), 0, 200),
                     'observacion'              => trim($this->col($r, 'Observacion') ?? ''),
+                    'descripcion_cliente'      => null, // campo nuevo, no existe en legacy
+                    // ── Salario base: guardar el salario del contrato al momento de migrar ─
+                    'salario_base'             => (function() use ($contratoId) {
+                        if (!$contratoId) return null;
+                        $sal = DB::table('contratos')->where('id', $contratoId)->value('salario');
+                        return is_numeric($sal) && $sal > 0 ? (float)$sal : null;
+                    })(),
+                    // ── Valor esperado: calculado con la misma fórmula del modelo ──────────
+                    'valor_esperado'           => (function() use ($r, $tipoEntidad, $valorPago) {
+                        // Si ya tiene valor_pago registrado del legacy, usarlo como referencia
+                        if ($valorPago > 0) return $valorPago;
+                        // Si tiene Valor_Esperado en el legacy, tomarlo
+                        $legVal = $this->col($r, 'Valor_Esperado') ?? $this->col($r, 'Valor_Incapacidad');
+                        if (is_numeric($legVal) && $legVal > 0) return (float)$legVal;
+                        return null; // se recalcula cuando el usuario abra el registro
+                    })(),
+                    // ── Token de subida: null para registros legacy (se genera on-demand) ──
+                    'token_subida'             => null,
                     'estado'                   => $estado,
                     'created_at'               => now(),
                     'updated_at'               => now(),

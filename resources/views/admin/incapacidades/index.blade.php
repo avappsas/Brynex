@@ -136,7 +136,7 @@ tbody td{padding:.6rem .85rem;vertical-align:middle;}
         <div><label>Hasta</label><input type="date" name="fecha_hasta" value="{{ request('fecha_hasta') }}"></div>
         <div style="display:flex;align-items:flex-end;gap:.4rem">
             <label style="display:flex;align-items:center;gap:.3rem;font-size:.78rem;cursor:pointer">
-                <input type="checkbox" name="con_cerradas" value="1" @checked(request('con_cerradas'))> Ver cerradas
+                <input type="checkbox" name="con_cerradas" value="1" @checked(request('con_cerradas'))> Ver cerradas / pagadas
             </label>
         </div>
         <div style="display:flex;align-items:flex-end;gap:.4rem">

@@ -54,9 +54,9 @@ class IncapacidadController extends Controller
             $query->where('fecha_recibido', '<=', $request->fecha_hasta);
         }
 
-        // No mostrar cerradas por defecto
+        // No mostrar cerradas ni pagadas por defecto (solo activas en trámite)
         if (!$request->boolean('con_cerradas')) {
-            $query->whereNotIn('estado', ['cerrado', 'rechazado']);
+            $query->whereNotIn('estado', ['cerrado', 'rechazado', 'pagado_afiliado']);
         }
 
         // Ordenar por urgencia del semáforo: más días sin gestión primero
@@ -128,15 +128,18 @@ class IncapacidadController extends Controller
             ->groupBy('estado')
             ->pluck('total', 'estado');
 
+        // Activas = en trámite real (excluye cerradas, rechazadas Y pagadas)
+        $estadosInactivos = ['cerrado', 'rechazado', 'pagado_afiliado'];
         $totalActivas = $resumen->filter(fn($v, $k) =>
-            !in_array($k, ['cerrado', 'rechazado'])
+            !in_array($k, $estadosInactivos)
         )->sum();
 
+        // Sin gestión = solo las que siguen en trámite (excluye pagadas)
         $sinGestion10dias = DB::table('incapacidades as i')
             ->where('i.aliado_id', $alidoId)
             ->whereNull('i.deleted_at')
             ->whereNull('i.incapacidad_padre_id')
-            ->whereNotIn('i.estado', ['cerrado', 'rechazado'])
+            ->whereNotIn('i.estado', ['cerrado', 'rechazado', 'pagado_afiliado'])
             ->whereNotExists(function ($sub) {
                 $sub->from('gestiones_incapacidad as g')
                     ->whereColumn('g.incapacidad_id', 'i.id')
