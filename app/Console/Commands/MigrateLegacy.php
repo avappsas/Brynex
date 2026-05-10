@@ -2226,13 +2226,18 @@ class MigrateLegacy extends Command
                 $tipoEntidadRaw = strtolower(trim($this->col($r, 'Tipo_Entidad') ?? 'eps'));
                 $tipoEntidad = in_array($tipoEntidadRaw, ['eps','arl','afp']) ? $tipoEntidadRaw : 'eps';
 
-                // Estado general
+                // Estado general — mapeado al catálogo NUEVO de BryNex
                 $estadoRaw = strtolower(trim($this->col($r, 'Estado') ?? 'recibido'));
-                $estadosValidos = ['recibido','radicado','en_tramite','autorizado','liquidado','pagado_afiliado','rechazado','cerrado'];
-                $estado = in_array($estadoRaw, $estadosValidos) ? $estadoRaw : 'recibido';
+                $estado = match($estadoRaw) {
+                    'pagado_afiliado','cerrado','pagado'  => 'pagada',
+                    'autorizado','liquidado'              => 'liquidacion',
+                    'radicado','en_tramite'               => 'radicada',
+                    'rechazado','negado'                  => 'rechazado',
+                    'recibido'                            => 'recibido',
+                    default                               => 'recibido',
+                };
 
                 // ── Estado de pago: leer campo Pagado del legacy ─────────────
-                // Legacy usa: Pagado='si'/'no' o Pagado_Si=1/0 o Estado_Pago=string
                 $pagadoRaw = strtolower(trim(
                     $this->col($r, 'Pagado')
                     ?? $this->col($r, 'Pagado_Si')
@@ -2240,19 +2245,16 @@ class MigrateLegacy extends Command
                     ?? ''
                 ));
 
-                // Mapear al catálogo BryNex
+                // Mapear al catálogo BryNex (solo 3 valores válidos en estado_pago)
                 $estadoPago = match(true) {
-                    in_array($pagadoRaw, ['si', '1', 'true', 'pagado', 'pagado_afiliado', 'paid']) => 'pagado_afiliado',
-                    in_array($pagadoRaw, ['autorizado', 'autorized'])                              => 'autorizado',
-                    in_array($pagadoRaw, ['liquidado', 'liquidated'])                              => 'liquidado',
-                    in_array($pagadoRaw, ['rechazado', 'rejected', 'negado'])                      => 'rechazado',
-                    default                                                                        => 'pendiente',
+                    in_array($pagadoRaw, ['si','1','true','pagado','pagado_afiliado','paid']) => 'pagado_afiliado',
+                    in_array($pagadoRaw, ['rechazado','rejected','negado'])                   => 'rechazado',
+                    default                                                                   => 'pendiente',
                 };
 
-                // Si el legacy ya marca como pagado pero el estado general no lo refleja,
-                // forzamos el estado general al valor correcto
-                if ($estadoPago === 'pagado_afiliado' && !in_array($estado, ['pagado_afiliado', 'cerrado'])) {
-                    $estado = 'pagado_afiliado';
+                // Si el legacy marca como pagado → forzar estado='pagada'
+                if ($estadoPago === 'pagado_afiliado' && $estado !== 'pagada') {
+                    $estado = 'pagada';
                 } elseif ($estadoPago === 'rechazado' && $estado === 'recibido') {
                     $estado = 'rechazado';
                 }
@@ -2459,8 +2461,8 @@ class MigrateLegacy extends Command
 
                 // Sincronizar estado general si el pago implica un estado concreto
                 $nuevoEstado = $inc->estado;
-                if ($nuevoEstadoPago === 'pagado_afiliado' && !in_array($inc->estado, ['pagado_afiliado','cerrado'])) {
-                    $nuevoEstado = 'pagado_afiliado';
+                if ($nuevoEstadoPago === 'pagado_afiliado' && $inc->estado !== 'pagada') {
+                    $nuevoEstado = 'pagada';
                 } elseif ($nuevoEstadoPago === 'rechazado' && $inc->estado === 'recibido') {
                     $nuevoEstado = 'rechazado';
                 }

@@ -10,6 +10,11 @@ Route::get('/login', [LoginController::class, 'showLogin']);
 Route::post('/login',  [LoginController::class, 'login'])->name('login.submit');
 Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
 
+// ─── Ruta pública: subida de documentos por token (cliente) ───────────────
+// No requiere auth — solo verificación de cédula dentro del controller
+Route::get( '/incapacidades/subir/{token}',  [\App\Http\Controllers\IncapacidadUploadController::class, 'show'])  ->name('incapacidades.subir');
+Route::post('/incapacidades/subir/{token}',  [\App\Http\Controllers\IncapacidadUploadController::class, 'upload'])->name('incapacidades.subir.post');
+
 // ─── CSRF token fresco (puede llamarse sin auth, pero solo desde session activa) ──
 // El JS lo usa para renovar el token antes de peticiones PATCH/POST críticas.
 Route::get('/csrf-token', function () {
@@ -323,6 +328,10 @@ Route::middleware('auth')->group(function () {
         Route::get('/api/calcular/{id}',       [$ic, 'calcularValor'])     ->name('api.calcular');
         Route::get('/api/clientes',            [$ic, 'apiClientes'])       ->name('api.clientes');
         Route::get('/api/contratos',           [$ic, 'apiContratos'])      ->name('api.contratos');
+        // Nuevas rutas
+        Route::post('/{id}/link',              [$ic, 'generarLink'])       ->name('link.generar');
+        Route::post('/{id}/abono',             [$ic, 'storeAbono'])        ->name('abono.store');
+        Route::post('/{id}/prorroga',          [$ic, 'storeProrroga'])     ->name('prorroga.store');
     });
 
     // -- Radicados

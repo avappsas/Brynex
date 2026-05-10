@@ -86,28 +86,24 @@ tbody td{padding:.6rem .85rem;vertical-align:middle;}
 {{-- KPIs --}}
 <div class="kpi-bar">
     <div class="kpi ok"><div class="num">{{ $totalActivas }}</div><div class="lbl">Activas</div></div>
-    <div class="kpi danger"><div class="num">{{ $sinGestion10dias }}</div><div class="lbl">Sin gestión +10 días</div></div>
+    <div class="kpi danger"><div class="num">{{ $sinGestion7dias }}</div><div class="lbl">Sin gestión +7 días</div></div>
     <div class="kpi"><div class="num">{{ $resumen->get('recibido',0) }}</div><div class="lbl">Recibidas</div></div>
-    <div class="kpi warn"><div class="num">{{ $resumen->get('en_tramite',0) }}</div><div class="lbl">En Trámite</div></div>
-    <div class="kpi ok"><div class="num">{{ $resumen->get('pagado_afiliado',0) }}</div><div class="lbl">Pagadas</div></div>
+    <div class="kpi warn"><div class="num">{{ $resumen->get('radicada',0) }}</div><div class="lbl">Radicadas</div></div>
+    <div class="kpi ok"><div class="num">{{ $resumen->get('pagada',0) }}</div><div class="lbl">Pagadas</div></div>
 </div>
 
-{{-- Filtros --}}
-<div class="filter-bar">
-    <form method="GET" style="display:contents">
-        <div><label>Cédula</label><input name="cedula" value="{{ request('cedula') }}" placeholder="Buscar..."></div>
-        <div>
-            <label>Tipo</label>
-            <select name="tipo_incapacidad">
-                <option value="">Todos</option>
-                @foreach(\App\Models\Incapacidad::TIPOS_INCAPACIDAD as $k=>$v)
-                <option value="{{ $k }}" @selected(request('tipo_incapacidad')==$k)>{{ $v }}</option>
-                @endforeach
-            </select>
+{{-- Filtros Alpine.js auto-submit --}}
+<div class="filter-bar" x-data="filtrosInc()" x-init="init()">
+    <form id="filtro-form" method="GET" style="display:contents">
+        <div style="flex:1;min-width:220px">
+            <label>🔍 Nombre o cédula</label>
+            <input id="inp-busqueda" name="busqueda" value="{{ $busqueda }}"
+                   placeholder="Buscar..." x-model="busqueda"
+                   @input="debouncedSubmit()" autocomplete="off">
         </div>
         <div>
             <label>Entidad</label>
-            <select name="tipo_entidad">
+            <select name="tipo_entidad" @change="$el.form.submit()">
                 <option value="">Todas</option>
                 @foreach(\App\Models\Incapacidad::TIPOS_ENTIDAD as $k=>$v)
                 <option value="{{ $k }}" @selected(request('tipo_entidad')==$k)>{{ $v }}</option>
@@ -116,143 +112,184 @@ tbody td{padding:.6rem .85rem;vertical-align:middle;}
         </div>
         <div>
             <label>Estado</label>
-            <select name="estado">
+            <select name="estado" @change="$el.form.submit()">
                 <option value="">Todos</option>
-                @foreach(\App\Models\Incapacidad::ESTADOS as $k=>$v)
-                <option value="{{ $k }}" @selected(request('estado')==$k)>{{ $v }}</option>
+                @foreach(\App\Models\Incapacidad::ESTADOS as $k=>$cfg)
+                <option value="{{ $k }}" @selected(request('estado')==$k)>{{ $cfg['label'] }}</option>
                 @endforeach
             </select>
         </div>
         <div>
-            <label>Encargado</label>
-            <select name="quien_recibe_id">
-                <option value="">Todos</option>
-                @foreach($trabajadores as $t)
-                <option value="{{ $t->id }}" @selected(request('quien_recibe_id')==$t->id)>{{ $t->nombre }}</option>
-                @endforeach
+            <label>Vista</label>
+            <select name="vista" @change="$el.form.submit()">
+                <option value="agrupada" @selected($vista=='agrupada')>📁 Agrupada</option>
+                <option value="plana"    @selected($vista=='plana')>📋 Plana</option>
             </select>
         </div>
-        <div><label>Desde</label><input type="date" name="fecha_desde" value="{{ request('fecha_desde') }}"></div>
-        <div><label>Hasta</label><input type="date" name="fecha_hasta" value="{{ request('fecha_hasta') }}"></div>
-        <div style="display:flex;align-items:flex-end;gap:.4rem">
+        <div style="display:flex;align-items:flex-end">
             <label style="display:flex;align-items:center;gap:.3rem;font-size:.78rem;cursor:pointer">
-                <input type="checkbox" name="con_cerradas" value="1" @checked(request('con_cerradas'))> Ver cerradas / pagadas
+                <input type="checkbox" name="con_cerradas" value="1"
+                       @checked(request('con_cerradas')) @change="$el.form.submit()"> Ver pagadas
             </label>
         </div>
-        <div style="display:flex;align-items:flex-end;gap:.4rem">
-            <button type="submit" class="btn btn-primary btn-sm">🔍 Filtrar</button>
+        <div style="display:flex;align-items:flex-end">
             <a href="{{ route('admin.incapacidades.index') }}" class="btn btn-secondary btn-sm">✕</a>
         </div>
     </form>
 </div>
 
-{{-- Tabla principal --}}
+@if($busqueda)
+<div style="background:#dbeafe;border:1px solid #93c5fd;border-radius:8px;padding:.5rem .9rem;font-size:.8rem;color:#1e40af;margin-bottom:.75rem">
+    🔍 Mostrando <strong>todos</strong> los resultados para "<strong>{{ $busqueda }}</strong>"
+    — <a href="{{ route('admin.incapacidades.index') }}" style="color:#1d4ed8;font-weight:600">Limpiar</a>
+</div>
+@endif
+
+{{-- VISTA AGRUPADA --}}
+@if($vista === 'agrupada')
 <div class="card">
     <div class="table-wrap">
         <table>
-            <thead>
-                <tr>
-                    <th>Semáforo</th>
-                    <th>Cliente</th>
-                    <th>Tipo</th>
-                    <th>Entidad</th>
-                    <th>Días</th>
-                    <th>Prórrogas</th>
-                    <th>Estado</th>
-                    <th>Pago</th>
-                    <th>Encargado</th>
-                    <th>Última Gestión</th>
-                    <th>Acciones</th>
-                </tr>
-            </thead>
+            <thead><tr>
+                <th>🚦</th>
+                <th>Cliente</th>
+                <th>Entidad</th>
+                <th>Estado</th>
+                <th style="text-align:center">Días</th>
+                <th style="text-align:right">Valor Esperado</th>
+                <th style="text-align:center">Familia</th>
+                <th>Última Gestión</th>
+                <th>Acciones</th>
+            </tr></thead>
             <tbody>
             @forelse($incapacidades as $inc)
             @php
                 $color       = $inc->_color_semaforo_cache;
                 $diasGestion = $inc->_dias_gestion_cache;
-                $alert180    = ($inc->tipo_entidad === 'eps') && ($inc->_total_dias_familia_cache >= 180);
                 $totalDias   = $inc->_total_dias_familia_cache;
                 $numPrr      = $inc->_num_prorrogas_cache;
-                $icono       = match($color) { 'verde'=>'🟢', 'amarillo'=>'🟡', 'rojo'=>'🔴', default=>'⚫' };
+                $alert180    = ($inc->tipo_entidad === 'eps') && ($totalDias >= 180);
+                $icono       = match($color) { 'verde'=>'🟢','amarillo'=>'🟡','rojo'=>'🔴',default=>'⚫' };
+                $estadoGrupo = $inc->estado_grupo;
+                $estadoCfg   = \App\Models\Incapacidad::ESTADOS[$estadoGrupo] ?? ['label'=>$estadoGrupo,'color'=>'secondary'];
+                $ult         = $inc->latestGestion;
+            @endphp
+            <tr style="{{ $estadoGrupo === 'pagada' ? 'opacity:.65' : '' }}">
+                <td>
+                    <span class="semaforo sem-{{ $color }}" title="{{ $diasGestion }} días sin gestión">
+                        {{ $icono }}
+                    </span>
+                    @if($alert180)<br><span class="alerta-180" title="Más de 180 días en EPS">⚠️180d</span>@endif
+                </td>
+                <td>
+                    <div style="font-weight:600;font-size:.83rem">{{ $inc->_nombre_cliente_cache ?? $inc->cedula_usuario }}</div>
+                    <div style="font-size:.72rem;color:#64748b">{{ $inc->cedula_usuario }}</div>
+                    @if($inc->quien_remite)<div style="font-size:.68rem;color:#94a3b8">{{ Str::limit($inc->quien_remite,25) }}</div>@endif
+                </td>
+                <td>
+                    <span class="badge badge-secondary">{{ strtoupper($inc->entidad_grupo) }}</span>
+                    <div style="font-size:.7rem;color:#64748b;margin-top:.2rem">{{ Str::limit($inc->entidad_nombre,22) }}</div>
+                </td>
+                <td><span class="badge badge-{{ $estadoCfg['color'] }}">{{ $estadoCfg['label'] }}</span></td>
+                <td style="text-align:center">
+                    <strong>{{ $totalDias }}</strong><span style="color:#94a3b8;font-size:.7rem">d</span>
+                    <div style="font-size:.68rem;color:#64748b">{{ $inc->fecha_inicio?->format('d/m/y') }}</div>
+                </td>
+                <td style="text-align:right">
+                    @if($inc->valor_esperado)
+                    <span style="font-weight:700;color:#059669;font-size:.83rem">${{ number_format($inc->valor_esperado,0,',','.') }}</span>
+                    @else<span style="color:#94a3b8;font-size:.75rem">—</span>@endif
+                </td>
+                <td style="text-align:center">
+                    @if($numPrr > 0)
+                    <span class="badge badge-primary">+{{ $numPrr }} prórr.</span>
+                    @else<span style="color:#94a3b8;font-size:.72rem">Original</span>@endif
+                </td>
+                <td>
+                    @if($ult)
+                    <div style="font-size:.72rem;font-weight:600;color:#2563eb">{{ $ult->tipoIcono() }} {{ $ult->tipoLabel() }}</div>
+                    <div style="font-size:.68rem;color:#94a3b8">{{ $ult->created_at->format('d/m/y H:i') }}</div>
+                    @else<span style="color:#ef4444;font-size:.72rem">Sin gestión</span>@endif
+                </td>
+                <td>
+                    <div style="display:flex;gap:.3rem;flex-wrap:wrap">
+                        <button class="btn btn-info btn-sm" onclick="verDetalle({{ $inc->id }})">👁 Ver</button>
+                        <button class="btn btn-success btn-sm" onclick="abrirModalGestion({{ $inc->id }},true)"
+                                title="Gestión de seguimiento (llamada, correo, etc.)">📞</button>
+                        <button class="btn btn-warning btn-sm" onclick="abrirModalEditar({{ $inc->id }})"
+                                title="Editar">✏️</button>
+                    </div>
+                </td>
+            </tr>
+            @empty
+            <tr><td colspan="9" style="text-align:center;padding:2.5rem;color:#94a3b8">
+                No hay incapacidades. @if($busqueda)<a href="{{ route('admin.incapacidades.index') }}">Limpiar búsqueda</a>@endif
+            </td></tr>
+            @endforelse
+            </tbody>
+        </table>
+    </div>
+    <div style="padding:.85rem 1.1rem;border-top:1px solid #f1f5f9">{{ $incapacidades->links() }}</div>
+</div>
+
+{{-- VISTA PLANA --}}
+@else
+<div class="card">
+    <div class="table-wrap">
+        <table>
+            <thead><tr>
+                <th>🚦</th><th>Cliente</th><th>Tipo</th><th>Entidad</th>
+                <th>Días</th><th>Estado</th><th>Valor</th><th>Última Gestión</th><th>Acciones</th>
+            </tr></thead>
+            <tbody>
+            @forelse($incapacidades as $inc)
+            @php
+                $color       = $inc->_color_semaforo_cache;
+                $diasGestion = $inc->_dias_gestion_cache;
+                $totalDias   = $inc->_total_dias_familia_cache;
+                $numPrr      = $inc->_num_prorrogas_cache;
+                $icono       = match($color) { 'verde'=>'🟢','amarillo'=>'🟡','rojo'=>'🔴',default=>'⚫' };
+                $estadoCfg   = \App\Models\Incapacidad::ESTADOS[$inc->estado] ?? ['label'=>$inc->estado,'color'=>'secondary'];
+                $ult         = $inc->latestGestion;
             @endphp
             <tr>
-                <td>
-                    <span class="semaforo sem-{{ $color }}">
-                        {{ $icono }} {{ $diasGestion }}d
-                    </span>
-                    @if($alert180)
-                    <br><span class="alerta-180">⚠️ +180 días EPS</span>
-                    @endif
-                </td>
+                <td><span class="semaforo sem-{{ $color }}" title="{{ $diasGestion }}d sin gestión">{{ $icono }} {{ $diasGestion }}d</span></td>
                 <td>
                     <div style="font-weight:600;font-size:.82rem">{{ $inc->_nombre_cliente_cache ?? $inc->cedula_usuario }}</div>
                     <div style="font-size:.72rem;color:#64748b">{{ $inc->cedula_usuario }}</div>
-                    <div style="font-size:.7rem;color:#94a3b8">{{ $inc->quien_remite }}</div>
                 </td>
-                <td>
-                    <span style="font-size:.78rem">{{ $inc->tipoIncapacidadLabel() }}</span>
-                    @if($inc->prorroga)<br><span class="badge badge-info">Prórroga doc.</span>@endif
-                    @if($inc->transcripcion_requerida && !$inc->transcripcion_completada)
-                    <br><span class="badge badge-warning">⚕️ Transcripción Pdte.</span>
-                    @endif
+                <td style="font-size:.78rem">{{ $inc->tipoIncapacidadLabel() }}<br>
+                    @if($inc->incapacidad_padre_id)<span class="badge badge-info">Prórroga {{ $inc->numero_proroga }}</span>@endif
                 </td>
-                <td>
-                    <span class="badge badge-secondary">{{ strtoupper($inc->tipo_entidad) }}</span>
-                    <div style="font-size:.72rem;color:#64748b;margin-top:.2rem">{{ Str::limit($inc->entidad_nombre,20) }}</div>
+                <td><span class="badge badge-secondary">{{ strtoupper($inc->tipo_entidad) }}</span>
+                    <div style="font-size:.7rem;color:#64748b">{{ Str::limit($inc->entidad_nombre,20) }}</div>
                 </td>
-                <td style="text-align:center">
-                    <strong>{{ $inc->dias_incapacidad }}</strong>
-                    @if($numPrr>0)
-                    <div style="font-size:.7rem;color:#2563eb">Total: {{ $totalDias }}d</div>
-                    @endif
-                    <div style="font-size:.7rem;color:#94a3b8">
-                        {{ $inc->fecha_inicio?->format('d/m/y') }}
-                    </div>
+                <td style="text-align:center"><strong>{{ $inc->dias_incapacidad }}</strong>d<br>
+                    @if($numPrr>0)<span style="font-size:.68rem;color:#2563eb">Total:{{ $totalDias }}d</span>@endif
                 </td>
-                <td style="text-align:center">
-                    @if($numPrr>0)
-                    <span class="badge badge-primary">{{ $numPrr }} prórroga{{ $numPrr>1?'s':'' }}</span>
-                    @else
-                    <span style="color:#94a3b8;font-size:.75rem">—</span>
-                    @endif
-                </td>
-                <td><span class="badge badge-{{ match($inc->estado){
-                    'recibido'=>'secondary','radicado'=>'info','en_tramite'=>'warning',
-                    'autorizado'=>'success','liquidado'=>'primary',
-                    'pagado_afiliado'=>'success','rechazado'=>'danger',default=>'secondary'} }}">{{ $inc->estadoLabel() }}</span></td>
-                <td><span class="badge badge-{{ $inc->estadoPagoColor() }}">{{ $inc->estadoPagoLabel() }}</span>
-                @if($inc->valor_esperado)
-                <div style="font-size:.7rem;color:#059669;font-weight:600">${{ number_format($inc->valor_esperado,0,',','.') }}</div>
-                @endif
-                </td>
-                <td style="font-size:.78rem">{{ $inc->quienRecibe?->nombre ?? '—' }}</td>
-                <td>
-                    @php $ult = $inc->latestGestion; @endphp
-                    @if($ult)
-                    <div style="font-size:.72rem;font-weight:600;color:#2563eb">{{ \App\Models\Incapacidad::TIPOS_GESTION[$ult->tipo]??$ult->tipo }}</div>
-                    <div style="font-size:.7rem;color:#64748b">{{ $ult->created_at->format('d/m/y H:i') }}</div>
-                    @else
-                    <span style="color:#ef4444;font-size:.75rem">Sin gestión</span>
-                    @endif
+                <td><span class="badge badge-{{ $estadoCfg['color'] }}">{{ $estadoCfg['label'] }}</span></td>
+                <td>@if($inc->valor_esperado)<span style="font-weight:700;color:#059669">${{ number_format($inc->valor_esperado,0,',','.') }}</span>@else—@endif</td>
+                <td>@if($ult)<div style="font-size:.72rem;font-weight:600;color:#2563eb">{{ $ult->tipoLabel() }}</div>
+                    <div style="font-size:.68rem;color:#94a3b8">{{ $ult->created_at->format('d/m/y') }}</div>
+                    @else<span style="color:#ef4444;font-size:.72rem">Sin gestión</span>@endif
                 </td>
                 <td>
                     <div style="display:flex;gap:.3rem;flex-wrap:wrap">
                         <button class="btn btn-info btn-sm" onclick="verDetalle({{ $inc->id }})">👁 Ver</button>
                         <button class="btn btn-warning btn-sm" onclick="abrirModalEditar({{ $inc->id }})">✏️</button>
-                        <button class="btn btn-success btn-sm" onclick="abrirModalProroga({{ $inc->id }})">➕ Prórr.</button>
                     </div>
                 </td>
             </tr>
             @empty
-            <tr><td colspan="11" style="text-align:center;padding:2rem;color:#94a3b8">No hay incapacidades registradas.</td></tr>
+            <tr><td colspan="9" style="text-align:center;padding:2rem;color:#94a3b8">No hay incapacidades.</td></tr>
             @endforelse
             </tbody>
         </table>
     </div>
-    <div style="padding:.85rem 1.1rem;border-top:1px solid #f1f5f9;background:#fafbfc;border-radius:0 0 14px 14px;">
-        {{ $incapacidades->links() }}
-    </div>
+    <div style="padding:.85rem 1.1rem;border-top:1px solid #f1f5f9">{{ $incapacidades->links() }}</div>
 </div>
+@endif
+
 
 {{-- ═══════════════════════════════════════════════════════════ --}}
 {{-- MODAL CREAR/EDITAR INCAPACIDAD --}}
@@ -833,5 +870,25 @@ function calcularFechaFin(){
 document.addEventListener('click', e=>{
     if(!e.target.closest('#cedulaInput')) document.getElementById('clienteSugerencias').style.display='none';
 });
+
+// ── Alpine.js: filtros con debounce ─────────────────────────────────────────
+function filtrosInc(){
+    return {
+        busqueda: document.getElementById('inp-busqueda')?.value || '',
+        timer: null,
+        init(){},
+        debouncedSubmit(){
+            clearTimeout(this.timer);
+            this.timer = setTimeout(() => {
+                document.getElementById('filtro-form').submit();
+            }, 400);
+        }
+    };
+}
+
+// ── Gestión rápida desde lista ───────────────────────────────────────────────
+function abrirModalGestion(id, solo_seguimiento = false){
+    verDetalle(id); // Abre el detalle y dentro se puede registrar gestión
+}
 </script>
 @endpush

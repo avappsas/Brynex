@@ -6,7 +6,9 @@ use App\Models\BaseModel;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class Incapacidad extends BaseModel
 {
@@ -41,13 +43,19 @@ class Incapacidad extends BaseModel
         'fecha_pago',
         'valor_pago',
         'valor_esperado',
+        'salario_base',
         'detalle_pago',
         'pagado_a',
+        'pagado_a_tipo',
+        'pagado_a_cliente_id',
+        'pagado_a_empresa_id',
         'ruta_soporte_pago',
         'diagnostico',
         'concepto_rehabilitacion',
         'observacion',
+        'descripcion_cliente',
         'estado',
+        'token_subida',
         'created_by',
     ];
 
@@ -62,9 +70,13 @@ class Incapacidad extends BaseModel
         'transcripcion_completada' => 'boolean',
         'valor_pago'               => 'decimal:2',
         'valor_esperado'           => 'decimal:2',
+        'salario_base'             => 'decimal:2',
     ];
 
-    // ── Tipos de incapacidad ─────────────────────────────────────────────────
+    // ════════════════════════════════════════════════════════════════════════
+    // CATÁLOGOS
+    // ════════════════════════════════════════════════════════════════════════
+
     const TIPOS_INCAPACIDAD = [
         'enfermedad_general'   => '🤒 Enfermedad General',
         'licencia_maternidad'  => '🤱 Licencia Maternidad',
@@ -73,79 +85,110 @@ class Incapacidad extends BaseModel
         'accidente_laboral'    => '⚠️ Accidente Laboral',
     ];
 
-    // ── Tipos de entidad ─────────────────────────────────────────────────────
     const TIPOS_ENTIDAD = [
         'eps' => 'EPS',
         'arl' => 'ARL',
         'afp' => 'AFP / Pensión',
     ];
 
-    // ── Estados de pago ──────────────────────────────────────────────────────
-    const ESTADOS_PAGO = [
-        'pendiente'       => '⏳ Pendiente',
-        'autorizado'      => '✅ Autorizado',
-        'liquidado'       => '💰 Liquidado',
-        'pagado_afiliado' => '🏦 Pagado al Afiliado',
-        'rechazado'       => '❌ Rechazado',
-    ];
-
-    // ── Estados generales ────────────────────────────────────────────────────
+    /**
+     * Estados del proceso de gestión de la incapacidad.
+     * Flujo: recibido → transcripcion → radicada → liquidacion → pagada
+     *                                      ↓
+     *                                   negada → tutela → tutela_radicada → liquidacion → pagada
+     *                                      ↓
+     *                                  rechazado (final)
+     *
+     * Solo cambian estado las gestiones de tipo:
+     *   radico, negada, tutela, tutela_radicada, liquidacion, pago, rechazado
+     * El estado 'negada' se asigna manualmente desde la vista de detalle.
+     */
     const ESTADOS = [
-        'recibido'        => '📬 Recibido',
-        'radicado'        => '📄 Radicado',
-        'en_tramite'      => '🔵 En Trámite',
-        'autorizado'      => '✅ Autorizado',
-        'liquidado'       => '💰 Liquidado',
-        'pagado_afiliado' => '🏦 Pagado al Afiliado',
-        'rechazado'       => '❌ Rechazado',
-        'cerrado'         => '⚫ Cerrado',
+        'recibido'        => ['label' => '📬 Recibido',          'color' => 'secondary'],
+        'transcripcion'   => ['label' => '🏥 Transcripción',      'color' => 'info'],
+        'radicada'        => ['label' => '📋 Radicada',           'color' => 'primary'],
+        'negada'          => ['label' => '🚫 Negada',             'color' => 'danger'],
+        'tutela'          => ['label' => '⚖️ Tutela',             'color' => 'warning'],
+        'tutela_radicada' => ['label' => '📜 Tutela Radicada',    'color' => 'warning'],
+        'liquidacion'     => ['label' => '💰 En Liquidación',     'color' => 'info'],
+        'pagada'          => ['label' => '✅ Pagada',             'color' => 'success'],
+        'rechazado'       => ['label' => '❌ Rechazado',          'color' => 'danger'],
     ];
 
-    // ── Tipos de gestión ─────────────────────────────────────────────────────
+    /**
+     * Estados de pago del valor de la incapacidad.
+     * Independiente del estado del proceso.
+     */
+    const ESTADOS_PAGO = [
+        'pendiente'       => ['label' => '⏳ Pendiente',          'color' => 'warning'],
+        'pagado_afiliado' => ['label' => '🏦 Pagado al Afiliado', 'color' => 'success'],
+        'rechazado'       => ['label' => '❌ Rechazado',          'color' => 'danger'],
+    ];
+
+    /**
+     * Tipos de gestión y si cambian el estado.
+     * cambia_estado: bool — true = actualiza incapacidad.estado al guardar.
+     * nuevo_estado: string|null — estado al que pasa la incapacidad.
+     */
     const TIPOS_GESTION = [
-        'llamada'            => '📞 Llamada',
-        'correo'             => '📧 Correo',
-        'whatsapp'           => '💬 WhatsApp',
-        'portal'             => '🌐 Portal',
-        'radico'             => '📋 Radicó en Entidad',
-        'tutela'             => '⚖️ Tutela',
-        'transcripcion_ips'  => '🏥 Transcripción IPS',
-        'respuesta_entidad'  => '📩 Respuesta Entidad',
-        'autorizacion'       => '✅ Autorización',
-        'liquidacion'        => '💰 Liquidación',
-        'pago_afiliado'      => '🏦 Pago al Afiliado',
-        'otro'               => '📝 Otro',
+        // ── Solo seguimiento (NO cambian estado) ─────────────────────────────
+        'llamada'          => ['label' => '📞 Llamada',              'cambia_estado' => false, 'nuevo_estado' => null],
+        'correo'           => ['label' => '📧 Correo',               'cambia_estado' => false, 'nuevo_estado' => null],
+        'whatsapp'         => ['label' => '💬 WhatsApp',             'cambia_estado' => false, 'nuevo_estado' => null],
+        'portal'           => ['label' => '🌐 Consulta Portal',      'cambia_estado' => false, 'nuevo_estado' => null],
+        'otro'             => ['label' => '📝 Otro',                 'cambia_estado' => false, 'nuevo_estado' => null],
+        // ── Con cambio de estado ──────────────────────────────────────────────
+        'transcripcion'    => ['label' => '🏥 Transcripción IPS',    'cambia_estado' => true,  'nuevo_estado' => 'transcripcion'],
+        'radico'           => ['label' => '📋 Radicó en Entidad',    'cambia_estado' => true,  'nuevo_estado' => 'radicada'],
+        'tutela'           => ['label' => '⚖️ Interpuso Tutela',     'cambia_estado' => true,  'nuevo_estado' => 'tutela'],
+        'tutela_radicada'  => ['label' => '📜 Tutela Radicada',      'cambia_estado' => true,  'nuevo_estado' => 'tutela_radicada'],
+        'liquidacion'      => ['label' => '💰 Liquidación',          'cambia_estado' => true,  'nuevo_estado' => 'liquidacion'],
+        'pago'             => ['label' => '✅ Pago al Afiliado',     'cambia_estado' => true,  'nuevo_estado' => 'pagada'],
+        'rechazado'        => ['label' => '❌ Rechazado (final)',     'cambia_estado' => true,  'nuevo_estado' => 'rechazado'],
     ];
 
-    // ── Relaciones ───────────────────────────────────────────────────────────
+    // ════════════════════════════════════════════════════════════════════════
+    // RELACIONES
+    // ════════════════════════════════════════════════════════════════════════
 
+    /** Incapacidad padre (si esta es una prórroga) */
     public function padre(): BelongsTo
     {
         return $this->belongsTo(Incapacidad::class, 'incapacidad_padre_id');
     }
 
+    /** Prórrogas de esta incapacidad (solo hijas directas) */
     public function prorrogas(): HasMany
     {
-        return $this->hasMany(Incapacidad::class, 'incapacidad_padre_id')->orderBy('numero_proroga');
+        return $this->hasMany(Incapacidad::class, 'incapacidad_padre_id')
+                    ->orderBy('numero_proroga');
     }
 
+    /** Todas las gestiones (con cambio de estado y seguimiento) */
     public function gestiones(): HasMany
     {
         return $this->hasMany(GestionIncapacidad::class)->orderByDesc('id');
     }
 
     /**
-     * Relación eager-loadable para obtener SOLO la última gestión (evita N+1 en index).
+     * Solo la última gestión — eager-loadable para evitar N+1 en el index.
+     * Usar: $query->with('latestGestion')
      */
-    public function latestGestion(): \Illuminate\Database\Eloquent\Relations\HasOne
+    public function latestGestion(): HasOne
     {
         return $this->hasOne(GestionIncapacidad::class)->latestOfMany('id');
     }
 
+    /** Documentos del cliente (radicados con incapacidad_id) */
     public function documentos(): HasMany
     {
-        // Reutilizamos tabla radicados filtrando por incapacidad_id
         return $this->hasMany(Radicado::class, 'incapacidad_id')->orderByDesc('id');
+    }
+
+    /** Abonos, préstamos y pagos ligados a esta incapacidad */
+    public function abonos(): HasMany
+    {
+        return $this->hasMany(AbonoIncapacidad::class)->orderBy('fecha')->orderBy('id');
     }
 
     public function contrato(): BelongsTo
@@ -168,7 +211,154 @@ class Incapacidad extends BaseModel
         return $this->belongsTo(User::class, 'created_by');
     }
 
-    // ── Helpers del cliente ──────────────────────────────────────────────────
+    // ════════════════════════════════════════════════════════════════════════
+    // CÁLCULO DE VALOR ESPERADO
+    // ════════════════════════════════════════════════════════════════════════
+
+    /**
+     * Calcula y persiste el valor_esperado usando el salario_base guardado.
+     *
+     * Reglas:
+     *  - EPS original (prorroga=false): (salario/30) × (días - 2)  — mínimo 3 días para pagar
+     *  - EPS prórroga  (prorroga=true) : (salario/30) × días       — sin descuento
+     *  - ARL / AFP                     : (salario/30) × días       — 100%, desde día 1
+     *
+     * El salario_base se guarda al crear la incapacidad (de contratos.salario).
+     * Si no hay salario_base se retorna null sin persistir.
+     *
+     * @param bool $persistir  Si true guarda el resultado en valor_esperado.
+     * @return float|null
+     */
+    public function calcularValorEsperado(bool $persistir = false): ?float
+    {
+        $salario = (float) ($this->salario_base ?? 0);
+        $dias    = (int)   ($this->dias_incapacidad ?? 0);
+
+        if ($salario <= 0 || $dias <= 0) {
+            return null;
+        }
+
+        $valorDiario = $salario / 30;
+        $esProrroga  = (bool) $this->prorroga || ($this->incapacidad_padre_id !== null);
+
+        $valor = match($this->tipo_entidad) {
+            'eps' => $dias < 3 ? 0.0
+                               : round(max(0, ($esProrroga ? $dias : $dias - 2)) * $valorDiario, 2),
+            'arl',
+            'afp' => round($dias * $valorDiario, 2),
+            default => 0.0,
+        };
+
+        if ($persistir) {
+            $this->valor_esperado = $valor;
+            $this->saveQuietly();
+        }
+
+        return $valor;
+    }
+
+    /**
+     * Retorna el salario del contrato activo al momento de la fecha_inicio.
+     * Lo guarda en salario_base si aún está vacío.
+     */
+    public function resolverYGuardarSalario(): ?float
+    {
+        if ($this->salario_base > 0) {
+            return (float) $this->salario_base;
+        }
+
+        if (!$this->contrato_id) return null;
+
+        $salario = DB::table('contratos')
+            ->where('id', $this->contrato_id)
+            ->value('salario');
+
+        if (!is_numeric($salario) || $salario <= 0) return null;
+
+        $this->salario_base = (float) $salario;
+        $this->saveQuietly();
+
+        return (float) $salario;
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // FINANCIERO (ABONOS)
+    // ════════════════════════════════════════════════════════════════════════
+
+    /**
+     * Saldo pendiente de cobro a la EPS/ARL/AFP.
+     * saldo = valor_esperado - SUM(pago_eps) - SUM(pago_cliente)
+     *
+     * Los préstamos del aliado (tipo='abono') NO descuentan este saldo,
+     * son solo informativos para que el aliado sepa cuánto recuperar.
+     *
+     * Requiere: $this->abonos ya cargado (eager-load) para evitar N+1.
+     */
+    public function getSaldoPendienteAttribute(): float
+    {
+        $esperado = (float) ($this->valor_esperado ?? 0);
+
+        if ($this->relationLoaded('abonos')) {
+            $pagado = $this->abonos
+                ->whereIn('tipo', ['pago_eps', 'pago_cliente'])
+                ->sum('valor');
+        } else {
+            $pagado = DB::table('abonos_incapacidades')
+                ->where('incapacidad_id', $this->id)
+                ->whereIn('tipo', ['pago_eps', 'pago_cliente'])
+                ->sum('valor');
+        }
+
+        return max(0, $esperado - (float) $pagado);
+    }
+
+    /**
+     * Total prestado/adelantado por el aliado al cliente.
+     * Es informativo: le recuerda al aliado cuánto dinero personal tiene comprometido
+     * y cuánto debe recuperar cuando la EPS pague.
+     */
+    public function getTotalPrestadoAttribute(): float
+    {
+        if ($this->relationLoaded('abonos')) {
+            return (float) $this->abonos->where('tipo', 'abono')->sum('valor');
+        }
+        return (float) DB::table('abonos_incapacidades')
+            ->where('incapacidad_id', $this->id)
+            ->where('tipo', 'abono')
+            ->sum('valor');
+    }
+
+    /**
+     * Total recibido de la EPS/ARL.
+     */
+    public function getTotalPagoEpsAttribute(): float
+    {
+        if ($this->relationLoaded('abonos')) {
+            return (float) $this->abonos->where('tipo', 'pago_eps')->sum('valor');
+        }
+        return (float) DB::table('abonos_incapacidades')
+            ->where('incapacidad_id', $this->id)
+            ->where('tipo', 'pago_eps')
+            ->sum('valor');
+    }
+
+    /**
+     * Total pagado al cliente/empresa.
+     */
+    public function getTotalPagoClienteAttribute(): float
+    {
+        if ($this->relationLoaded('abonos')) {
+            return (float) $this->abonos->where('tipo', 'pago_cliente')->sum('valor');
+        }
+        return (float) DB::table('abonos_incapacidades')
+            ->where('incapacidad_id', $this->id)
+            ->where('tipo', 'pago_cliente')
+            ->sum('valor');
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // HELPERS DEL CLIENTE
+    // ════════════════════════════════════════════════════════════════════════
 
     public function getClienteAttribute()
     {
@@ -187,10 +377,12 @@ class Incapacidad extends BaseModel
                     ($c->primer_apellido ?? '') . ' ' . ($c->segundo_apellido ?? ''));
     }
 
-    // ── Familia (padre + prórrogas) ──────────────────────────────────────────
+    // ════════════════════════════════════════════════════════════════════════
+    // FAMILIA (PADRE + PRÓRROGAS)
+    // ════════════════════════════════════════════════════════════════════════
 
     /**
-     * Retorna el total de días de toda la familia (padre + prórrogas).
+     * Retorna el total de días de toda la familia (original + prórrogas).
      * Si $this es una prórroga, sube al padre primero.
      */
     public function totalDiasFamilia(): int
@@ -206,7 +398,7 @@ class Incapacidad extends BaseModel
     }
 
     /**
-     * Cantidad de prórrogas de esta incapacidad.
+     * Cantidad de prórrogas de este grupo.
      */
     public function numeroProrrogas(): int
     {
@@ -218,29 +410,72 @@ class Incapacidad extends BaseModel
     }
 
     /**
+     * Estado del grupo: siempre refleja el estado de la incapacidad más reciente
+     * (la última prórroga, o la original si no hay prórrogas).
+     * Útil para el encabezado de la familia en la vista agrupada.
+     */
+    public function getEstadoGrupoAttribute(): string
+    {
+        $padreId = $this->incapacidad_padre_id ?? $this->id;
+        $ultimaEstado = DB::table('incapacidades')
+            ->where(function ($q) use ($padreId) {
+                $q->where('id', $padreId)
+                  ->orWhere('incapacidad_padre_id', $padreId);
+            })
+            ->whereNull('deleted_at')
+            ->orderByDesc('numero_proroga')
+            ->value('estado');
+        return $ultimaEstado ?? $this->estado;
+    }
+
+    /**
+     * Entidad del grupo: la de la incapacidad más reciente (puede haber pasado de EPS a AFP).
+     */
+    public function getEntidadGrupoAttribute(): string
+    {
+        $padreId = $this->incapacidad_padre_id ?? $this->id;
+        $ultimaEntidad = DB::table('incapacidades')
+            ->where(function ($q) use ($padreId) {
+                $q->where('id', $padreId)
+                  ->orWhere('incapacidad_padre_id', $padreId);
+            })
+            ->whereNull('deleted_at')
+            ->orderByDesc('numero_proroga')
+            ->value('tipo_entidad');
+        return $ultimaEntidad ?? $this->tipo_entidad;
+    }
+
+    /**
      * ¿La familia supera los 180 días de EPS?
-     * Si es así se debe radicar al AFP/Pensión.
+     * Alerta para indicar que se debe trasladar a AFP.
      */
     public function alertaDias180(): bool
     {
-        if ($this->tipo_entidad !== 'eps') return false;
-        return $this->totalDiasFamilia() >= 180;
+        return $this->tipo_entidad === 'eps' && $this->totalDiasFamilia() >= 180;
     }
 
-    // ── Semáforo (basado en días desde la última gestión) ────────────────────
-
-    public function ultimaGestion(): ?GestionIncapacidad
+    /**
+     * Porcentaje de progreso hacia los 180 días de EPS (para barra visual).
+     */
+    public function progreso180(): int
     {
-        return $this->gestiones()->first();
+        return min(100, (int) round(($this->totalDiasFamilia() / 180) * 100));
     }
 
+    // ════════════════════════════════════════════════════════════════════════
+    // SEMÁFORO (basado en días desde la última gestión del grupo)
+    // ════════════════════════════════════════════════════════════════════════
+
+    /**
+     * Días desde la última gestión (en cualquier miembro de la familia).
+     * Usa eager-load 'latestGestion' si está disponible (evita N+1 en index).
+     */
     public function diasDesdeUltimaGestion(): int
     {
-        // Si ya fue eager-loaded vía latestGestion, úsala directamente (evita N+1)
         if ($this->relationLoaded('latestGestion')) {
             $ultima = $this->latestGestion;
         } else {
-            $ultima = $this->ultimaGestion();
+            $ultima = $this->gestiones()->first();
         }
 
         if (!$ultima) {
@@ -250,22 +485,22 @@ class Incapacidad extends BaseModel
     }
 
     /**
-     * Color semáforo:
-     *  verde   → <5 días sin gestión
-     *  amarillo→ 5–10 días
-     *  rojo    → >10 días
-     *  gris    → cerrado / pagado al afiliado
+     * Color del semáforo.
+     * 🟢 verde    < 7 días sin gestión
+     * 🟡 amarillo  7–14 días
+     * 🔴 rojo     > 14 días
+     * ⚫ gris      pagada / rechazada (ya no requiere gestión)
      */
     public function colorSemaforo(): string
     {
-        if (in_array($this->estado, ['cerrado', 'pagado_afiliado', 'rechazado'])) {
+        if (in_array($this->estado, ['pagada', 'rechazado'])) {
             return 'gris';
         }
 
         $dias = $this->diasDesdeUltimaGestion();
 
-        if ($dias <= 4) return 'verde';
-        if ($dias <= 10) return 'amarillo';
+        if ($dias < 7)  return 'verde';
+        if ($dias <= 14) return 'amarillo';
         return 'rojo';
     }
 
@@ -279,53 +514,51 @@ class Incapacidad extends BaseModel
         };
     }
 
-    // ── Cálculo de valor esperado ────────────────────────────────────────────
+    // ════════════════════════════════════════════════════════════════════════
+    // LINK DE SUBIDA DE DOCUMENTOS
+    // ════════════════════════════════════════════════════════════════════════
 
     /**
-     * Calcula el valor esperado según la entidad y los días.
-     *
-     * EPS:
-     *   - Solo paga si la incapacidad es >= 3 días
-     *   - Si NO es prórroga: descuenta los 2 primeros días
-     *   - Si ES prórroga: paga todos los días
-     *   - Base: salario mínimo mensual → diario = smmlv / 30
-     *
-     * ARL:
-     *   - Paga desde el día 1, todos los días
-     *   - Base: salario mínimo mensual / 30
-     *
-     * AFP:
-     *   - El sistema solo genera alerta; no calcula pago directamente
-     *
-     * @param float $smmlv  Salario Mínimo Mensual Legal Vigente
+     * Genera (o retorna el existente) token de subida para el cliente.
+     * El token es un UUID único guardado en incapacidades.token_subida.
      */
-    public function calcularValorEsperado(float $smmlv = 1423500): float
+    public function generarTokenSubida(): string
     {
-        $dias = (int) $this->dias_incapacidad;
-
-        if ($dias <= 0) return 0;
-
-        $valorDiario = $smmlv / 30;
-
-        switch ($this->tipo_entidad) {
-            case 'eps':
-                if ($dias < 3) return 0; // EPS no paga menos de 3 días
-                $diasPagados = $this->prorroga ? $dias : ($dias - 2);
-                return round(max(0, $diasPagados) * $valorDiario, 2);
-
-            case 'arl':
-                return round($dias * $valorDiario, 2);
-
-            case 'afp':
-                // El afp continúa pagando; aquí se muestra el valor referencial
-                return round($dias * $valorDiario, 2);
-
-            default:
-                return 0;
+        if (!$this->token_subida) {
+            $this->token_subida = Str::uuid()->toString();
+            $this->saveQuietly();
         }
+        return $this->token_subida;
     }
 
-    // ── Labels ───────────────────────────────────────────────────────────────
+    /**
+     * URL pública para que el cliente suba sus documentos.
+     */
+    public function getLinkSubidaAttribute(): string
+    {
+        return route('incapacidades.subir', ['token' => $this->generarTokenSubida()]);
+    }
+
+    /**
+     * Texto pre-armado para WhatsApp.
+     * Incluye saludo personalizado y el link de subida.
+     */
+    public function getMensajeWhatsappSubidaAttribute(): string
+    {
+        $nombre = $this->getNombreClienteAttribute();
+        $aliado = DB::table('aliados')->where('id', $this->aliado_id)->value('nombre') ?? 'nuestra empresa';
+        $link   = $this->link_subida;
+
+        $texto = "Hola {$nombre}, desde {$aliado} le informamos que necesitamos que suba "
+               . "los documentos requeridos para gestionar su incapacidad. "
+               . "Por favor ingrese al siguiente link y cargue los archivos: {$link}";
+
+        return 'https://wa.me/' . '?text=' . urlencode($texto);
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // LABELS Y HELPERS UI
+    // ════════════════════════════════════════════════════════════════════════
 
     public function tipoIncapacidadLabel(): string
     {
@@ -339,23 +572,30 @@ class Incapacidad extends BaseModel
 
     public function estadoLabel(): string
     {
-        return self::ESTADOS[$this->estado] ?? ucfirst($this->estado);
+        return self::ESTADOS[$this->estado]['label'] ?? ucfirst($this->estado);
+    }
+
+    public function estadoColor(): string
+    {
+        return self::ESTADOS[$this->estado]['color'] ?? 'secondary';
     }
 
     public function estadoPagoLabel(): string
     {
-        return self::ESTADOS_PAGO[$this->estado_pago] ?? ucfirst($this->estado_pago);
+        return self::ESTADOS_PAGO[$this->estado_pago]['label'] ?? ucfirst($this->estado_pago);
     }
 
     public function estadoPagoColor(): string
     {
-        return match($this->estado_pago) {
-            'pendiente'       => 'warning',
-            'autorizado'      => 'info',
-            'liquidado'       => 'primary',
-            'pagado_afiliado' => 'success',
-            'rechazado'       => 'danger',
-            default           => 'secondary',
-        };
+        return self::ESTADOS_PAGO[$this->estado_pago]['color'] ?? 'secondary';
+    }
+
+    /**
+     * Número de serie en el grupo: "Original", "Prórroga 1", "Prórroga 2"...
+     */
+    public function getLabelFamiliaAttribute(): string
+    {
+        if (!$this->incapacidad_padre_id) return 'Original';
+        return 'Prórroga ' . $this->numero_proroga;
     }
 }

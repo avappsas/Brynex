@@ -29,12 +29,24 @@ class IncapacidadController extends Controller
             ->whereNull('incapacidad_padre_id');
 
         // ── Filtros ─────────────────────────────────────────────────────────
-        if ($request->filled('cedula')) {
-            $query->where('cedula_usuario', 'like', '%' . $request->cedula . '%');
+        $busqueda = trim($request->busqueda ?? $request->cedula ?? '');
+        $hayBusqueda = strlen($busqueda) > 0;
+
+        if ($hayBusqueda) {
+            // Buscar por cédula directa o por nombre en tabla clientes
+            $cedulasPorNombre = DB::table('clientes')
+                ->where(function($q) use ($busqueda) {
+                    $q->where('cedula', 'like', '%'.$busqueda.'%')
+                      ->orWhere(DB::raw("CONCAT(primer_nombre,' ',primer_apellido)"), 'like', '%'.$busqueda.'%')
+                      ->orWhere(DB::raw("CONCAT(primer_nombre,' ',segundo_nombre,' ',primer_apellido,' ',segundo_apellido)"), 'like', '%'.$busqueda.'%');
+                })->pluck('cedula');
+
+            $query->where(function($q) use ($busqueda, $cedulasPorNombre) {
+                $q->where('cedula_usuario', 'like', '%'.$busqueda.'%')
+                  ->orWhereIn('cedula_usuario', $cedulasPorNombre);
+            });
         }
-        if ($request->filled('tipo_incapacidad')) {
-            $query->where('tipo_incapacidad', $request->tipo_incapacidad);
-        }
+
         if ($request->filled('tipo_entidad')) {
             $query->where('tipo_entidad', $request->tipo_entidad);
         }
@@ -44,9 +56,6 @@ class IncapacidadController extends Controller
         if ($request->filled('estado_pago')) {
             $query->where('estado_pago', $request->estado_pago);
         }
-        if ($request->filled('quien_recibe_id')) {
-            $query->where('quien_recibe_id', $request->quien_recibe_id);
-        }
         if ($request->filled('fecha_desde')) {
             $query->where('fecha_recibido', '>=', $request->fecha_desde);
         }
@@ -54,17 +63,17 @@ class IncapacidadController extends Controller
             $query->where('fecha_recibido', '<=', $request->fecha_hasta);
         }
 
-        // No mostrar cerradas ni pagadas por defecto (solo activas en trámite)
-        if (!$request->boolean('con_cerradas')) {
-            $query->whereNotIn('estado', ['cerrado', 'rechazado', 'pagado_afiliado']);
+        // Si hay búsqueda: mostrar TODAS (pagadas, rechazadas, activas)
+        // Sin búsqueda: ocultar pagadas/cerradas por defecto
+        $estadosInactivosDefault = ['pagada', 'rechazado'];
+        if (!$hayBusqueda && !$request->boolean('con_cerradas')) {
+            $query->whereNotIn('estado', $estadosInactivosDefault);
         }
 
-        // Ordenar por urgencia del semáforo: más días sin gestión primero
+        $vista = $request->get('vista', 'agrupada'); // agrupada | plana
+
         $query->orderByRaw("
-            CASE
-                WHEN estado IN ('cerrado','rechazado','pagado_afiliado') THEN 99
-                ELSE 0
-            END ASC
+            CASE WHEN estado IN ('pagada','rechazado') THEN 99 ELSE 0 END ASC
         ")->orderByDesc('fecha_recibido');
 
         $incapacidades = $query->paginate(40)->withQueryString();
@@ -128,24 +137,21 @@ class IncapacidadController extends Controller
             ->groupBy('estado')
             ->pluck('total', 'estado');
 
-        // Activas = en trámite real (excluye cerradas, rechazadas Y pagadas)
-        $estadosInactivos = ['cerrado', 'rechazado', 'pagado_afiliado'];
-        $totalActivas = $resumen->filter(fn($v, $k) =>
-            !in_array($k, $estadosInactivos)
-        )->sum();
+        $estadosInactivos = ['pagada', 'rechazado'];
+        $totalActivas = $resumen->filter(fn($v, $k) => !in_array($k, $estadosInactivos))->sum();
 
-        // Sin gestión = solo las que siguen en trámite (excluye pagadas)
-        $sinGestion10dias = DB::table('incapacidades as i')
+        $sinGestion7dias = DB::table('incapacidades as i')
             ->where('i.aliado_id', $alidoId)
             ->whereNull('i.deleted_at')
             ->whereNull('i.incapacidad_padre_id')
-            ->whereNotIn('i.estado', ['cerrado', 'rechazado', 'pagado_afiliado'])
+            ->whereNotIn('i.estado', ['pagada', 'rechazado'])
             ->whereNotExists(function ($sub) {
                 $sub->from('gestiones_incapacidad as g')
                     ->whereColumn('g.incapacidad_id', 'i.id')
-                    ->whereRaw("g.created_at >= DATEADD(day, -10, GETDATE())");
+                    ->whereRaw("g.created_at >= DATEADD(day, -7, GETDATE())");
             })
             ->count();
+        $sinGestion10dias = $sinGestion7dias; // backward compat alias
 
         // ── Listas estáticas cacheadas (cambian rara vez) ──────────────────
         $trabajadores    = User::where('aliado_id', $alidoId)->where('activo', true)->orderBy('nombre')->get(['id', 'nombre']);
@@ -160,8 +166,9 @@ class IncapacidadController extends Controller
         $smmlv = $this->getSmmlv();
 
         return view('admin.incapacidades.index', compact(
-            'incapacidades', 'resumen', 'totalActivas', 'sinGestion10dias',
-            'trabajadores', 'epsList', 'arlList', 'pensionList', 'razonesSociales', 'smmlv'
+            'incapacidades', 'resumen', 'totalActivas', 'sinGestion10dias', 'sinGestion7dias',
+            'trabajadores', 'epsList', 'arlList', 'pensionList', 'razonesSociales',
+            'smmlv', 'vista', 'busqueda'
         ));
     }
 
@@ -212,11 +219,19 @@ class IncapacidadController extends Controller
         // Calcular quien_remite: empresa del cliente o cedula_usuario
         $quienRemite = $this->resolverQuienRemite($request->cedula_usuario, $request->quien_remite);
 
+        // Resolver salario_base del contrato activo al momento de la incapacidad
+        $salarioBase = null;
+        $contratoId  = $request->contrato_id ?: null;
+        if ($contratoId) {
+            $sal = DB::table('contratos')->where('id', $contratoId)->value('salario');
+            $salarioBase = is_numeric($sal) && $sal > 0 ? (float)$sal : null;
+        }
+
         $incapacidad = Incapacidad::create([
             'aliado_id'               => $alidoId,
             'incapacidad_padre_id'    => $padreId,
             'numero_proroga'          => $numProroga,
-            'contrato_id'             => $request->contrato_id ?: null,
+            'contrato_id'             => $contratoId,
             'cedula_usuario'          => $request->cedula_usuario,
             'quien_remite'            => $quienRemite,
             'quien_recibe_id'         => $request->quien_recibe_id,
@@ -237,15 +252,15 @@ class IncapacidadController extends Controller
             'diagnostico'             => $request->diagnostico,
             'concepto_rehabilitacion' => $request->concepto_rehabilitacion,
             'observacion'             => $request->observacion,
+            'descripcion_cliente'     => $request->descripcion_cliente,
+            'salario_base'            => $salarioBase,
             'estado'                  => 'recibido',
             'estado_pago'             => 'pendiente',
-            'valor_esperado'          => null, // se calcula via API
             'created_by'              => Auth::id(),
         ]);
 
-        // Calcular valor esperado
-        $smmlv = $this->getSmmlv();
-        $incapacidad->update(['valor_esperado' => $incapacidad->calcularValorEsperado($smmlv)]);
+        // Calcular y guardar valor_esperado usando salario_base
+        $incapacidad->calcularValorEsperado(persistir: true);
 
         // Gestión inicial automática
         GestionIncapacidad::create([
@@ -362,73 +377,199 @@ class IncapacidadController extends Controller
     public function storeGestion(Request $request, int $id)
     {
         $request->validate([
-            'tipo'     => 'required|string',
-            'tramite'  => 'required|string',
-            'estado_resultado' => 'nullable|string',
+            'tipo'    => 'required|string',
+            'tramite' => 'required|string',
         ]);
 
         $inc = Incapacidad::findOrFail($id);
+        $cfg = Incapacidad::TIPOS_GESTION[$request->tipo] ?? null;
+        $cambia = $cfg['cambia_estado'] ?? false;
 
-        GestionIncapacidad::create([
+        $gestion = GestionIncapacidad::create([
             'incapacidad_id'   => $inc->id,
             'user_id'          => Auth::id(),
             'aplica_a_familia' => $request->boolean('aplica_a_familia'),
             'tipo'             => $request->tipo,
             'tramite'          => $request->tramite,
             'respuesta'        => $request->respuesta,
-            'estado_resultado' => $request->estado_resultado ?: null,
+            'estado_resultado' => $cfg['nuevo_estado'] ?? null,
             'fecha_recordar'   => $request->fecha_recordar ?: null,
+            'cambia_estado'    => $cambia,
+            'estado_nuevo'     => $cfg['nuevo_estado'] ?? null,
             'created_at'       => now(),
         ]);
 
-        // Si aplica a familia → crear gestión en todas las prórrogas también
-        if ($request->boolean('aplica_a_familia')) {
-            $padreId = $inc->incapacidad_padre_id ?? $inc->id;
-            $familia = Incapacidad::where(function ($q) use ($padreId, $id) {
-                $q->where('id', $padreId)
-                  ->orWhere('incapacidad_padre_id', $padreId);
-            })->where('id', '!=', $id)->get();
+        // Aplicar cambio de estado si corresponde
+        if ($cambia) {
+            $gestion->aplicarCambioEstado();
+        }
 
-            foreach ($familia as $miembro) {
+        // Si aplica a familia → registrar en todas las prórrogas (solo seguimiento)
+        if ($request->boolean('aplica_a_familia') && !$cambia) {
+            $padreId = $inc->incapacidad_padre_id ?? $inc->id;
+            Incapacidad::where(function ($q) use ($padreId, $id) {
+                $q->where('id', $padreId)->orWhere('incapacidad_padre_id', $padreId);
+            })->where('id', '!=', $id)->each(function($miembro) use ($request, $cfg) {
                 GestionIncapacidad::create([
                     'incapacidad_id'   => $miembro->id,
                     'user_id'          => Auth::id(),
                     'aplica_a_familia' => true,
                     'tipo'             => $request->tipo,
-                    'tramite'          => '[Familia] ' . $request->tramite,
+                    'tramite'          => '[Grupo] ' . $request->tramite,
                     'respuesta'        => $request->respuesta,
-                    'estado_resultado' => $request->estado_resultado ?: null,
-                    'fecha_recordar'   => $request->fecha_recordar ?: null,
+                    'cambia_estado'    => false,
                     'created_at'       => now(),
                 ]);
-                // Actualizar estado de cada miembro
-                if ($request->filled('estado_resultado')) {
-                    $miembro->update(['estado' => $request->estado_resultado]);
-                }
-            }
-        }
-
-        // Actualizar estado de la incapacidad principal según la gestión
-        if ($request->filled('estado_resultado')) {
-            $nuevoEstado = $request->estado_resultado;
-            $inc->update(['estado' => $nuevoEstado]);
-
-            // Sincronizar estado_pago si corresponde
-            if ($nuevoEstado === 'autorizado') {
-                $inc->update(['estado_pago' => 'autorizado']);
-            } elseif ($nuevoEstado === 'liquidado') {
-                $inc->update(['estado_pago' => 'liquidado']);
-            } elseif ($nuevoEstado === 'pagado_afiliado') {
-                $inc->update(['estado_pago' => 'pagado_afiliado']);
-            } elseif ($nuevoEstado === 'rechazado') {
-                $inc->update(['estado_pago' => 'rechazado']);
-            }
+            });
         }
 
         return response()->json([
-            'ok'      => true,
-            'message' => 'Gestión registrada correctamente.',
-            'estado'  => $inc->fresh()->estado,
+            'ok'           => true,
+            'message'      => 'Gestión registrada.',
+            'estado'       => $inc->fresh()->estado,
+            'cambia_estado'=> $cambia,
+        ]);
+    }
+
+    // ── GENERAR LINK DE SUBIDA ───────────────────────────────────────────────
+    public function generarLink(int $id)
+    {
+        $inc  = Incapacidad::findOrFail($id);
+        $link = $inc->link_subida; // genera token si no existe
+        $wa   = $inc->mensaje_whatsapp_subida;
+        return response()->json(['ok' => true, 'link' => $link, 'whatsapp' => $wa]);
+    }
+
+    // ── STORE ABONO (préstamo / pago EPS / pago cliente) ────────────────────
+    public function storeAbono(Request $request, int $id)
+    {
+        $request->validate([
+            'tipo'  => 'required|in:abono,pago_eps,pago_cliente',
+            'valor' => 'required|numeric|min:1',
+            'fecha' => 'required|date',
+        ]);
+
+        $inc     = Incapacidad::findOrFail($id);
+        $alidoId = session('aliado_id_activo') ?? Auth::user()->aliado_id;
+
+        // Si es pago_eps → crear también en consignaciones
+        $consignacionId = null;
+        if ($request->tipo === 'pago_eps' && $request->banco_cuenta_id) {
+            $cons = DB::table('consignaciones')->insertGetId([
+                'aliado_id'      => $alidoId,
+                'incapacidad_id' => $inc->id,
+                'banco_cuenta_id'=> $request->banco_cuenta_id,
+                'fecha'          => $request->fecha,
+                'valor'          => $request->valor,
+                'referencia'     => $request->referencia,
+                'confirmado'     => true,
+                'observacion'    => $request->observacion,
+                'usuario_id'     => Auth::id(),
+                'tipo'           => 'ingreso',
+                'created_at'     => now(),
+                'updated_at'     => now(),
+            ]);
+            $consignacionId = $cons;
+        }
+
+        // Guardar imagen si viene
+        $imagenPath = null;
+        if ($request->hasFile('imagen')) {
+            $imagenPath = $request->file('imagen')->store(
+                "incapacidades/{$alidoId}/{$inc->cedula_usuario}/{$id}/pagos", 'public'
+            );
+        }
+
+        \App\Models\AbonoIncapacidad::create([
+            'aliado_id'       => $alidoId,
+            'incapacidad_id'  => $inc->id,
+            'razon_social_id' => $request->razon_social_id ?: $inc->razon_social_id,
+            'tipo'            => $request->tipo,
+            'valor'           => $request->valor,
+            'fecha'           => $request->fecha,
+            'banco_cuenta_id' => $request->banco_cuenta_id ?: null,
+            'consignacion_id' => $consignacionId,
+            'usuario_id'      => Auth::id(),
+            'observacion'     => $request->observacion,
+            'imagen_path'     => $imagenPath,
+        ]);
+
+        // Si es pago al cliente → marcar estado_pago
+        if ($request->tipo === 'pago_cliente') {
+            $saldo = $inc->fresh()->saldo_pendiente;
+            if ($saldo <= 0) {
+                $inc->update(['estado_pago' => 'pagado_afiliado', 'estado' => 'pagada']);
+            }
+        }
+
+        $inc->refresh()->load('abonos');
+        return response()->json([
+            'ok'              => true,
+            'message'         => 'Registrado correctamente.',
+            'saldo_pendiente' => $inc->saldo_pendiente,
+            'total_prestado'  => $inc->total_prestado,
+        ]);
+    }
+
+    // ── CREAR PRÓRROGA ───────────────────────────────────────────────────────
+    public function storeProrroga(Request $request, int $padreId)
+    {
+        $request->validate([
+            'dias_incapacidad' => 'required|integer|min:1',
+            'fecha_inicio'     => 'required|date',
+            'tipo_entidad'     => 'required|in:eps,arl,afp',
+        ]);
+
+        $padre   = Incapacidad::findOrFail($padreId);
+        $alidoId = session('aliado_id_activo') ?? Auth::user()->aliado_id;
+        $numProrroga = Incapacidad::where('incapacidad_padre_id', $padreId)->count() + 1;
+
+        $fechaTerminacion = $request->fecha_terminacion
+            ?: \Carbon\Carbon::parse($request->fecha_inicio)
+                ->addDays($request->dias_incapacidad - 1)->toDateString();
+
+        $entidadNombre = $this->resolverNombreEntidad($request->tipo_entidad, $request->entidad_responsable_id);
+
+        // Salario base: heredar del padre o releer del contrato
+        $salarioBase = $padre->salario_base;
+        if (!$salarioBase && $padre->contrato_id) {
+            $sal = DB::table('contratos')->where('id', $padre->contrato_id)->value('salario');
+            $salarioBase = is_numeric($sal) && $sal > 0 ? (float)$sal : null;
+        }
+
+        $prorroga = Incapacidad::create([
+            'aliado_id'            => $alidoId,
+            'incapacidad_padre_id' => $padreId,
+            'numero_proroga'       => $numProrroga,
+            'contrato_id'          => $padre->contrato_id,
+            'cedula_usuario'       => $padre->cedula_usuario,
+            'quien_remite'         => $padre->quien_remite,
+            'quien_recibe_id'      => $padre->quien_recibe_id,
+            'tipo_incapacidad'     => $padre->tipo_incapacidad,
+            'dias_incapacidad'     => $request->dias_incapacidad,
+            'fecha_inicio'         => $request->fecha_inicio,
+            'fecha_terminacion'    => $fechaTerminacion,
+            'fecha_recibido'       => $request->fecha_recibido ?? now()->toDateString(),
+            'prorroga'             => true,
+            'tipo_entidad'         => $request->tipo_entidad,
+            'entidad_responsable_id' => $request->entidad_responsable_id ?: $padre->entidad_responsable_id,
+            'entidad_nombre'       => $entidadNombre ?: $padre->entidad_nombre,
+            'razon_social_id'      => $padre->razon_social_id,
+            'razon_social_nombre'  => $padre->razon_social_nombre,
+            'salario_base'         => $salarioBase,
+            'diagnostico'          => $padre->diagnostico,
+            'observacion'          => $request->observacion,
+            'estado'               => 'recibido',
+            'estado_pago'          => 'pendiente',
+            'created_by'           => Auth::id(),
+        ]);
+
+        $prorroga->calcularValorEsperado(persistir: true);
+
+        return response()->json([
+            'ok'        => true,
+            'message'   => "Prórroga {$numProrroga} creada.",
+            'prorroga'  => $prorroga->only(['id','numero_proroga','dias_incapacidad','fecha_inicio','fecha_terminacion','estado','valor_esperado']),
         ]);
     }
 
