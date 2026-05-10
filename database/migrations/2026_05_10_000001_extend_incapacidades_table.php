@@ -27,8 +27,11 @@ return new class extends Migration
 
             // ── Token para link de subida de documentos (cliente) ───────────────
             // Se genera con Str::uuid() y se usa en ruta pública /incapacidades/subir/{token}
+            // NOTA: SQL Server no permite UNIQUE index con múltiples NULLs.
+            // Usamos un filtered unique index (WHERE token_subida IS NOT NULL).
             if (!Schema::hasColumn('incapacidades', 'token_subida')) {
-                $table->string('token_subida', 64)->nullable()->unique()->after('salario_base');
+                $table->string('token_subida', 64)->nullable()->after('salario_base');
+                // El índice se crea fuera del Blueprint (ver abajo)
             }
 
             // ── A quién se paga: 'cliente' | 'empresa' (manual, case by case) ───
@@ -51,6 +54,18 @@ return new class extends Migration
                 $table->text('descripcion_cliente')->nullable()->after('observacion');
             }
         });
+
+        // ── Filtered unique index para token_subida (SQL Server compatible) ─────
+        // SQL Server no permite UNIQUE index con múltiples filas NULL.
+        // WHERE token_subida IS NOT NULL garantiza unicidad solo en tokens reales.
+        \DB::statement("IF NOT EXISTS (
+            SELECT 1 FROM sys.indexes
+            WHERE name = 'incapacidades_token_subida_unique'
+            AND object_id = OBJECT_ID('incapacidades')
+        )
+        CREATE UNIQUE INDEX incapacidades_token_subida_unique
+        ON incapacidades (token_subida)
+        WHERE token_subida IS NOT NULL");
     }
 
     public function down(): void
@@ -65,5 +80,12 @@ return new class extends Migration
                 Schema::hasColumn('incapacidades', 'descripcion_cliente') ? 'descripcion_cliente' : null,
             ]));
         });
+
+        // Eliminar el filtered index
+        \DB::statement("IF EXISTS (
+            SELECT 1 FROM sys.indexes
+            WHERE name = 'incapacidades_token_subida_unique'
+            AND object_id = OBJECT_ID('incapacidades')
+        ) DROP INDEX incapacidades_token_subida_unique ON incapacidades");
     }
 };
