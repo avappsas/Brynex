@@ -2530,27 +2530,32 @@ class MigrateLegacy extends Command
             }
 
             // Opción B: sin contrato_id → buscar por cedula+aliado
-            // Tomar el contrato vigente más cercano a fecha_inicio
+            // Tomar el contrato más cercano a fecha_inicio de la incapacidad
             if (!$salario && $inc->cedula_usuario) {
                 $contrato = DB::table('contratos')
                     ->where('aliado_id', $inc->aliado_id)
                     ->where('cedula', $inc->cedula_usuario)
                     ->when($inc->fecha_inicio, function ($q) use ($inc) {
-                        $q->where('fecha_inicio', '<=', $inc->fecha_inicio);
+                        $q->where('fecha_ingreso', '<=', $inc->fecha_inicio);
                     })
-                    ->orderByDesc('fecha_inicio')
+                    ->orderByDesc('fecha_ingreso')
                     ->first(['id', 'salario']);
 
                 if ($contrato) {
                     $salario = $contrato->salario;
 
-                    // También actualizar contrato_id si estaba vacío
+                    // Linkear contrato_id si estaba vacío
                     if (!$inc->contrato_id) {
                         DB::table('incapacidades')
                             ->where('id', $inc->id)
                             ->update(['contrato_id' => $contrato->id]);
                     }
                 }
+            }
+
+            // Opción C: fallback → SMMLV del sistema (2025: $1.750.905)
+            if (!$salario || $salario <= 0) {
+                $salario = \App\Models\ConfiguracionBrynex::obtener('salario_minimo', 1750905);
             }
 
             if (is_numeric($salario) && $salario > 0) {
