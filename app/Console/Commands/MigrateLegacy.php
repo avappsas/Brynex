@@ -2278,7 +2278,7 @@ class MigrateLegacy extends Command
                     'aliado_id'               => $aliadoId,
                     'contrato_id'             => $contratoId,
                     'cedula_usuario'           => (string)($this->col($r, 'Cedula') ?? $this->col($r, 'cedula_usuario') ?? ''),
-                    'quien_remite'             => trim($this->col($r, 'quien_remite') ?? $this->col($r, 'Empresa') ?? ''),
+                    'quien_remite'             => null, // campo descartado — no se muestra en la UI
                     'quien_recibe_id'          => $quienRecibeId,
                     'tipo_incapacidad'         => $tipo,
                     'dias_incapacidad'         => is_numeric($this->col($r, 'Dias') ?? $this->col($r, 'dias_incapacidad')) ? (int)($this->col($r, 'Dias') ?? $this->col($r, 'dias_incapacidad')) : 0,
@@ -2504,6 +2504,73 @@ class MigrateLegacy extends Command
         foreach ($resumen as $r) {
             $this->line("   {$r->estado_pago}: {$r->total}");
         }
+
+        // ── FASE 2: Resolver salario_base faltante ─────────────────────────────
+        $this->info("\n🔧 Fase 2: resolviendo salario_base faltante...");
+
+        $sinSalario = \App\Models\Incapacidad::whereNull('salario_base')
+            ->whereNull('deleted_at')
+            ->whereNotNull('contrato_id')
+            ->where('dias_incapacidad', '>', 0)
+            ->get(['id', 'contrato_id', 'salario_base', 'fecha_inicio']);
+
+        $this->line("   Sin salario_base con contrato: {$sinSalario->count()}");
+
+        $salOk = 0;
+        foreach ($sinSalario as $inc) {
+            try {
+                $inc->resolverYGuardarSalario();
+                if ($inc->salario_base > 0) $salOk++;
+            } catch (\Throwable $e) {
+                // Silenciar errores individuales
+            }
+        }
+        $this->info("   ✅ salario_base resueltos: $salOk");
+
+        // ── FASE 3: Calcular valor_esperado faltante ───────────────────────────
+        $this->info("\n🔧 Fase 3: calculando valor_esperado faltante...");
+
+        // Refrescar: puede haber más con salario ahora
+        $sinValor = \App\Models\Incapacidad::whereNull('valor_esperado')
+            ->whereNull('deleted_at')
+            ->where('dias_incapacidad', '>', 0)
+            ->whereNotNull('salario_base')
+            ->get();
+
+        $this->line("   Sin valor_esperado con salario_base: {$sinValor->count()}");
+
+        $valOk = 0; $valFail = 0;
+        foreach ($sinValor as $inc) {
+            try {
+                $val = $inc->calcularValorEsperado(persistir: true);
+                if ($val > 0) $valOk++;
+                else $valFail++;
+            } catch (\Throwable $e) {
+                $valFail++;
+            }
+        }
+        $this->info("   ✅ valor_esperado calculados: $valOk | sin resultado: $valFail");
+
+        // Usar valor_pago como fallback para los pagados que no tienen valor_esperado
+        $fallback = DB::table('incapacidades')
+            ->whereNull('valor_esperado')
+            ->whereNull('deleted_at')
+            ->where('valor_pago', '>', 0)
+            ->update([
+                'valor_esperado' => DB::raw('valor_pago'),
+                'updated_at'     => now(),
+            ]);
+        $this->info("   ✅ valor_esperado desde valor_pago (fallback): $fallback");
+
+        // ── RESUMEN FINAL ──────────────────────────────────────────────────────
+        $this->info("\n📊 Cobertura final:");
+        $total   = DB::table('incapacidades')->whereNull('deleted_at')->count();
+        $conVal  = DB::table('incapacidades')->whereNull('deleted_at')->whereNotNull('valor_esperado')->where('valor_esperado', '>', 0)->count();
+        $conSal  = DB::table('incapacidades')->whereNull('deleted_at')->whereNotNull('salario_base')->where('salario_base', '>', 0)->count();
+        $this->line("   Total incapacidades : $total");
+        $this->line("   Con salario_base    : $conSal (" . round($conSal/$total*100, 1) . "%)");
+        $this->line("   Con valor_esperado  : $conVal (" . round($conVal/$total*100, 1) . "%)");
+        $this->line("   Sin valor (necesitan contrato manual): " . ($total - $conVal));
     }
 
     // ─── PASO 14: GESTIONES INCAPACIDAD ───────────────────────────────────────

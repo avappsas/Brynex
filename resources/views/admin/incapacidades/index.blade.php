@@ -184,7 +184,6 @@ tbody td{padding:.6rem .85rem;vertical-align:middle;}
                 <td>
                     <div style="font-weight:600;font-size:.83rem">{{ $inc->_nombre_cliente_cache ?? $inc->cedula_usuario }}</div>
                     <div style="font-size:.72rem;color:#64748b">{{ $inc->cedula_usuario }}</div>
-                    @if($inc->quien_remite)<div style="font-size:.68rem;color:#94a3b8">{{ Str::limit($inc->quien_remite,25) }}</div>@endif
                 </td>
                 <td>
                     <span class="badge badge-secondary">{{ strtoupper($inc->entidad_grupo) }}</span>
