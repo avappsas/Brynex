@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Pagination\Paginator;
 
 use App\Auth\BrynexUserProvider;
@@ -40,5 +41,20 @@ class AppServiceProvider extends ServiceProvider
         // Paginación con vista personalizada (compatible con el diseño del sistema)
         Paginator::defaultView('vendor.pagination.custom');
         Paginator::defaultSimpleView('vendor.pagination.custom');
+
+        // SQL Server: forzar SET options requeridos por columnas computadas / índices filtrados.
+        // Usa evento lazy para no crashear en entornos locales sin driver sqlsrv.
+        \Illuminate\Support\Facades\Event::listen(
+            \Illuminate\Database\Events\ConnectionEstablished::class,
+            function ($event) {
+                if (str_contains((string)($event->connectionName ?? ''), 'sqlsrv')) {
+                    try {
+                        \Illuminate\Support\Facades\DB::connection($event->connectionName)->unprepared(
+                            'SET ANSI_NULLS ON; SET ANSI_WARNINGS ON; SET ANSI_PADDING ON; SET CONCAT_NULL_YIELDS_NULL ON; SET QUOTED_IDENTIFIER ON;'
+                        );
+                    } catch (\Throwable $e) { /* silencioso en dev sin SQL Server */ }
+                }
+            }
+        );
     }
 }

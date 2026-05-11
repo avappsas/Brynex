@@ -43,37 +43,89 @@ tbody td{padding:.6rem .85rem;vertical-align:middle;}
 .badge-secondary{background:#f1f5f9;color:#475569;}
 .badge-primary{background:#eff6ff;color:#1d4ed8;}
 .alerta-180{background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;padding:.3rem .6rem;font-size:.72rem;color:#991b1b;font-weight:600;}
-/* Modal */
-.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;align-items:flex-start;justify-content:center;padding:1.5rem;overflow-y:auto;}
-.modal-overlay.open{display:flex;}
-.modal{background:#fff;border-radius:16px;width:100%;max-width:820px;box-shadow:0 20px 60px rgba(0,0,0,.2);margin:auto;}
-.modal-header{display:flex;align-items:center;justify-content:space-between;padding:1rem 1.25rem;border-bottom:1px solid #e2e8f0;}
-.modal-header h3{font-size:1.05rem;font-weight:700;color:#1e293b;}
-.modal-body{padding:1.25rem;}
-.modal-footer{padding:.9rem 1.25rem;border-top:1px solid #e2e8f0;display:flex;gap:.6rem;justify-content:flex-end;}
-.btn-close-modal{background:none;border:none;font-size:1.3rem;cursor:pointer;color:#94a3b8;padding:.2rem;}
+
+/* ── Modal profesional ──────────────────────────────────────── */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);backdrop-filter:blur(4px);z-index:1000;align-items:flex-start;justify-content:center;padding:1.5rem;overflow-y:auto;}
+.modal-overlay.open{display:flex;animation:fadeInOverlay .18s ease;}
+@keyframes fadeInOverlay{from{opacity:0}to{opacity:1}}
+.modal{background:#fff;border-radius:20px;width:100%;max-width:820px;box-shadow:0 32px 80px rgba(15,23,42,.22),0 0 0 1px rgba(0,0,0,.06);margin:auto;animation:slideUpModal .22s cubic-bezier(.16,1,.3,1);}
+@keyframes slideUpModal{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+.modal-header{display:flex;align-items:center;justify-content:space-between;padding:1.1rem 1.4rem;border-bottom:1px solid #f1f5f9;background:linear-gradient(135deg,#1e40af 0%,#2563eb 60%,#0891b2 100%);border-radius:20px 20px 0 0;}
+.modal-header h3{font-size:1.05rem;font-weight:700;color:#fff;}
+.modal-header .modal-subtitle{font-size:.75rem;color:rgba(255,255,255,.75);margin-top:.2rem;}
+.modal-body{padding:1.35rem;}
+.modal-footer{padding:.9rem 1.35rem;border-top:1px solid #f1f5f9;display:flex;gap:.6rem;justify-content:flex-end;background:#f8fafc;border-radius:0 0 20px 20px;}
+.btn-close-modal{background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.3);font-size:1rem;cursor:pointer;color:#fff;padding:.25rem .55rem;border-radius:8px;line-height:1;transition:background .15s;}
+.btn-close-modal:hover{background:rgba(255,255,255,.32);}
+
+/* Header del modal detalle (color azul) */
+#modalDetalle .modal-header{background:linear-gradient(135deg,#1e293b 0%,#334155 100%);}
+
 .form-group{margin-bottom:.85rem;}
 .form-group label{display:block;font-size:.78rem;font-weight:600;color:#374151;margin-bottom:.3rem;}
-.form-group input,.form-group select,.form-group textarea{width:100%;border:1px solid #d1d5db;border-radius:8px;padding:.45rem .7rem;font-size:.83rem;font-family:inherit;}
+.form-group input,.form-group select,.form-group textarea{width:100%;border:1px solid #d1d5db;border-radius:8px;padding:.45rem .7rem;font-size:.83rem;font-family:inherit;transition:border-color .15s,box-shadow .15s;}
+.form-group input:focus,.form-group select:focus,.form-group textarea:focus{outline:none;border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.12);}
 .form-group textarea{min-height:70px;resize:vertical;}
+.form-control{width:100%;border:1px solid #d1d5db;border-radius:8px;padding:.45rem .7rem;font-size:.83rem;font-family:inherit;transition:border-color .15s,box-shadow .15s;}
+.form-control:focus{outline:none;border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.12);}
 .form-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:.75rem;}
-.section-title{font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#64748b;border-bottom:1px solid #e2e8f0;padding-bottom:.4rem;margin-bottom:.8rem;margin-top:.5rem;}
+.section-title{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8;border-bottom:1px solid #f1f5f9;padding-bottom:.4rem;margin-bottom:.85rem;margin-top:.6rem;}
+
 /* Timeline gestiones */
-.timeline{display:flex;flex-direction:column;gap:.6rem;max-height:280px;overflow-y:auto;padding-right:.25rem;}
+.timeline{display:flex;flex-direction:column;gap:.6rem;max-height:300px;overflow-y:auto;padding-right:.25rem;}
 .timeline-item{display:flex;gap:.75rem;align-items:flex-start;}
-.tl-dot{width:32px;height:32px;border-radius:50%;background:#eff6ff;border:2px solid #bfdbfe;display:flex;align-items:center;justify-content:center;font-size:.85rem;flex-shrink:0;}
-.tl-content{flex:1;background:#f8fafc;border-radius:10px;padding:.55rem .75rem;border:1px solid #e2e8f0;}
-.tl-content .tl-tipo{font-size:.72rem;font-weight:700;color:#2563eb;}
-.tl-content .tl-tramite{font-size:.8rem;color:#374151;margin:.2rem 0;}
+.tl-dot{width:34px;height:34px;border-radius:50%;background:#eff6ff;border:2px solid #bfdbfe;display:flex;align-items:center;justify-content:center;font-size:.9rem;flex-shrink:0;}
+.tl-content{flex:1;background:#f8fafc;border-radius:10px;padding:.6rem .85rem;border:1px solid #e2e8f0;}
+.tl-content .tl-tipo{font-size:.7rem;font-weight:700;color:#2563eb;text-transform:uppercase;letter-spacing:.04em;}
+.tl-content .tl-tramite{font-size:.82rem;color:#374151;margin:.25rem 0;}
 .tl-content .tl-meta{font-size:.68rem;color:#94a3b8;}
+
 /* Tabs */
-.tabs{display:flex;gap:0;border-bottom:2px solid #e2e8f0;margin-bottom:1rem;}
-.tab-btn{padding:.5rem 1rem;font-size:.82rem;font-weight:600;background:none;border:none;cursor:pointer;color:#64748b;border-bottom:2px solid transparent;margin-bottom:-2px;transition:color .15s;}
-.tab-btn.active{color:#2563eb;border-bottom-color:#2563eb;}
+.tabs{display:flex;gap:0;border-bottom:2px solid #e2e8f0;margin-bottom:1.1rem;}
+.tab-btn{padding:.55rem 1.1rem;font-size:.82rem;font-weight:600;background:none;border:none;cursor:pointer;color:#64748b;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .15s;border-radius:6px 6px 0 0;}
+.tab-btn:hover{color:#2563eb;background:#f8fafc;}
+.tab-btn.active{color:#2563eb;border-bottom-color:#2563eb;background:#eff6ff;}
 .tab-pane{display:none;} .tab-pane.active{display:block;}
-/* Prórrogas */
 .proroga-card{background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:.85rem 1rem;margin-bottom:.6rem;}
-.proroga-card h5{font-size:.82rem;font-weight:700;color:#1e293b;margin-bottom:.5rem;}
+.page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.2rem;flex-wrap:wrap;gap:.6rem;}
+.page-header h1{font-size:1.35rem;font-weight:700;color:#1e293b;}
+.kpi-bar{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:.75rem;margin-bottom:1.2rem;}
+.kpi{background:#fff;border-radius:12px;padding:.9rem 1.1rem;border:1px solid #e2e8f0;box-shadow:0 1px 4px rgba(0,0,0,.05);}
+.kpi .num{font-size:1.7rem;font-weight:700;line-height:1;}
+.kpi .lbl{font-size:.72rem;color:#64748b;margin-top:.25rem;}
+.kpi.warn .num{color:#d97706;} .kpi.danger .num{color:#dc2626;} .kpi.ok .num{color:#059669;}
+.filter-bar{background:#fff;border-radius:12px;padding:.85rem 1rem;margin-bottom:1rem;border:1px solid #e2e8f0;display:flex;flex-wrap:wrap;gap:.6rem;align-items:flex-end;}
+.filter-bar select,.filter-bar input{border:1px solid #cbd5e1;border-radius:8px;padding:.38rem .65rem;font-size:.8rem;background:#f8fafc;}
+.filter-bar label{font-size:.72rem;color:#64748b;display:block;margin-bottom:.2rem;}
+.btn{display:inline-flex;align-items:center;gap:.35rem;padding:.42rem .9rem;border-radius:8px;font-size:.8rem;font-weight:600;border:none;cursor:pointer;text-decoration:none;transition:all .15s;}
+.btn-primary{background:#2563eb;color:#fff;} .btn-primary:hover{background:#1d4ed8;}
+.btn-sm{padding:.3rem .65rem;font-size:.75rem;}
+.btn-success{background:#059669;color:#fff;} .btn-success:hover{background:#047857;}
+.btn-warning{background:#d97706;color:#fff;}
+.btn-danger{background:#dc2626;color:#fff;}
+.btn-secondary{background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;}
+.btn-info{background:#0891b2;color:#fff;}
+.card{background:#fff;border-radius:14px;box-shadow:0 1px 6px rgba(0,0,0,.07);border:1px solid #e2e8f0;overflow:hidden;}
+.table-wrap{overflow-x:auto;}
+table{width:100%;border-collapse:collapse;font-size:.82rem;}
+thead th{background:#f8fafc;color:#475569;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:.65rem .85rem;border-bottom:2px solid #e2e8f0;white-space:nowrap;}
+tbody tr{border-bottom:1px solid #f1f5f9;transition:background .1s;}
+tbody tr:hover{background:#f8fafc;}
+tbody td{padding:.6rem .85rem;vertical-align:middle;}
+.semaforo{display:inline-flex;align-items:center;gap:.3rem;font-size:.78rem;font-weight:600;padding:.25rem .6rem;border-radius:999px;}
+.sem-verde{background:rgba(16,185,129,.12);color:#059669;}
+.sem-amarillo{background:rgba(245,158,11,.12);color:#d97706;}
+.sem-rojo{background:rgba(239,68,68,.12);color:#dc2626;}
+.sem-gris{background:rgba(107,114,128,.12);color:#6b7280;}
+.badge{display:inline-block;padding:.2rem .55rem;border-radius:999px;font-size:.7rem;font-weight:600;}
+.badge-warning{background:#fef3c7;color:#92400e;}
+.badge-success{background:#d1fae5;color:#065f46;}
+.badge-info{background:#dbeafe;color:#1e40af;}
+.badge-danger{background:#fee2e2;color:#991b1b;}
+.badge-secondary{background:#f1f5f9;color:#475569;}
+.badge-primary{background:#eff6ff;color:#1d4ed8;}
+.alerta-180{background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;padding:.3rem .6rem;font-size:.72rem;color:#991b1b;font-weight:600;}
+
 </style>
 @endpush
 
@@ -214,9 +266,7 @@ tbody td{padding:.6rem .85rem;vertical-align:middle;}
                     <div style="display:flex;gap:.3rem;flex-wrap:wrap">
                         <button class="btn btn-info btn-sm" onclick="verDetalle({{ $inc->id }})">👁 Ver</button>
                         <button class="btn btn-success btn-sm" onclick="abrirModalGestion({{ $inc->id }},true)"
-                                title="Gestión de seguimiento (llamada, correo, etc.)">📞</button>
-                        <button class="btn btn-warning btn-sm" onclick="abrirModalEditar({{ $inc->id }})"
-                                title="Editar">✏️</button>
+                                title="Gestión de seguimiento">📞</button>
                     </div>
                 </td>
             </tr>
@@ -252,7 +302,7 @@ tbody td{padding:.6rem .85rem;vertical-align:middle;}
                 $ult         = $inc->latestGestion;
             @endphp
             <tr>
-                <td><span class="semaforo sem-{{ $color }}" title="{{ $diasGestion }}d sin gestión">{{ $icono }} {{ $diasGestion }}d</span></td>
+                <td><span class="semaforo sem-{{ $color }}" title="{{ $diasGestion }} días sin gestión">{{ $icono }} {{ $diasGestion }} días</span></td>
                 <td>
                     <div style="font-weight:600;font-size:.82rem">{{ $inc->_nombre_cliente_cache ?? $inc->cedula_usuario }}</div>
                     <div style="font-size:.72rem;color:#64748b">{{ $inc->cedula_usuario }}</div>
@@ -275,7 +325,6 @@ tbody td{padding:.6rem .85rem;vertical-align:middle;}
                 <td>
                     <div style="display:flex;gap:.3rem;flex-wrap:wrap">
                         <button class="btn btn-info btn-sm" onclick="verDetalle({{ $inc->id }})">👁 Ver</button>
-                        <button class="btn btn-warning btn-sm" onclick="abrirModalEditar({{ $inc->id }})">✏️</button>
                     </div>
                 </td>
             </tr>
@@ -291,169 +340,10 @@ tbody td{padding:.6rem .85rem;vertical-align:middle;}
 
 
 {{-- ═══════════════════════════════════════════════════════════ --}}
-{{-- MODAL CREAR/EDITAR INCAPACIDAD --}}
+{{-- MODALES (partials reutilizables)                           --}}
 {{-- ═══════════════════════════════════════════════════════════ --}}
-<div class="modal-overlay" id="modalCrear">
-<div class="modal">
-    <div class="modal-header">
-        <h3 id="modalCrearTitle">➕ Nueva Incapacidad</h3>
-        <button class="btn-close-modal" onclick="cerrarModal('modalCrear')">✕</button>
-    </div>
-    <form id="formCrear" method="POST" action="{{ route('admin.incapacidades.store') }}">
-    @csrf
-    <input type="hidden" name="_method" id="formMethod" value="POST">
-    <input type="hidden" name="_id" id="formId">
-    <input type="hidden" name="incapacidad_padre_id" id="padreId">
-    <div class="modal-body">
-
-        <div class="section-title">Datos del Afiliado</div>
-        <div class="form-row">
-            <div class="form-group">
-                <label>Cédula *</label>
-                <input type="text" name="cedula_usuario" id="cedulaInput" required placeholder="Buscar cédula..."
-                       oninput="buscarCliente(this.value)">
-                <div id="clienteSugerencias" style="display:none;background:#fff;border:1px solid #e2e8f0;border-radius:8px;position:absolute;z-index:100;width:280px;box-shadow:0 4px 12px rgba(0,0,0,.1)"></div>
-            </div>
-            <div class="form-group">
-                <label>Nombre del Cliente</label>
-                <input type="text" id="nombreCliente" readonly style="background:#f8fafc">
-            </div>
-        </div>
-        <div class="form-row">
-            <div class="form-group">
-                <label>Contrato</label>
-                <select name="contrato_id" id="contratoSelect">
-                    <option value="">Seleccionar...</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label>Encargado *</label>
-                <select name="quien_recibe_id" required>
-                    <option value="">Seleccionar...</option>
-                    @foreach($trabajadores as $t)
-                    <option value="{{ $t->id }}">{{ $t->nombre }}</option>
-                    @endforeach
-                </select>
-            </div>
-        </div>
-        <div class="form-row">
-            <div class="form-group">
-                <label>Quien Remite</label>
-                <input type="text" name="quien_remite" id="quienRemiteInput" placeholder="Empresa o cliente (auto)">
-            </div>
-            <div class="form-group">
-                <label>Fecha Recibido *</label>
-                <input type="date" name="fecha_recibido" required value="{{ date('Y-m-d') }}">
-            </div>
-        </div>
-
-        <div class="section-title">Datos de la Incapacidad</div>
-        <div class="form-row">
-            <div class="form-group">
-                <label>Tipo de Incapacidad *</label>
-                <select name="tipo_incapacidad" required>
-                    <option value="">Seleccionar...</option>
-                    @foreach(\App\Models\Incapacidad::TIPOS_INCAPACIDAD as $k=>$v)
-                    <option value="{{ $k }}">{{ $v }}</option>
-                    @endforeach
-                </select>
-            </div>
-            <div class="form-group">
-                <label>Días *</label>
-                <input type="number" name="dias_incapacidad" min="1" required oninput="calcularFechaFin()">
-            </div>
-        </div>
-        <div class="form-row">
-            <div class="form-group">
-                <label>Fecha Inicio *</label>
-                <input type="date" name="fecha_inicio" id="fechaInicioInput" required oninput="calcularFechaFin()">
-            </div>
-            <div class="form-group">
-                <label>Fecha Terminación</label>
-                <input type="date" name="fecha_terminacion" id="fechaFinInput">
-            </div>
-        </div>
-        <div class="form-row">
-            <div class="form-group">
-                <label style="display:flex;align-items:center;gap:.4rem">
-                    <input type="checkbox" name="prorroga" value="1" id="chkProroga"> ¿Viene marcada como prórroga en el documento?
-                </label>
-                <small style="color:#64748b;font-size:.72rem">Si es prórroga, la EPS no descuenta los 2 primeros días.</small>
-            </div>
-            <div class="form-group">
-                <label style="display:flex;align-items:center;gap:.4rem">
-                    <input type="checkbox" name="transcripcion_requerida" value="1"> ¿Requiere transcripción IPS → Entidad?
-                </label>
-            </div>
-        </div>
-        <div class="form-group">
-            <label>Diagnóstico (CIE-10 o descripción)</label>
-            <input type="text" name="diagnostico">
-        </div>
-
-        <div class="section-title">Entidad Responsable</div>
-        <div class="form-row">
-            <div class="form-group">
-                <label>Tipo Entidad *</label>
-                <select name="tipo_entidad" required onchange="actualizarListaEntidades(this.value)">
-                    <option value="">Seleccionar...</option>
-                    @foreach(\App\Models\Incapacidad::TIPOS_ENTIDAD as $k=>$v)
-                    <option value="{{ $k }}">{{ $v }}</option>
-                    @endforeach
-                </select>
-            </div>
-            <div class="form-group">
-                <label>Entidad Responsable</label>
-                <select name="entidad_responsable_id" id="entidadSelect">
-                    <option value="">Seleccionar tipo primero...</option>
-                </select>
-            </div>
-        </div>
-        <div class="form-row">
-            <div class="form-group">
-                <label>Razón Social (NIT al radicar)</label>
-                <select name="razon_social_id">
-                    <option value="">No aplica</option>
-                    @foreach($razonesSociales as $rs)
-                    <option value="{{ $rs->id }}">{{ $rs->razon_social }} ({{ $rs->id }})</option>
-                    @endforeach
-                </select>
-            </div>
-        </div>
-
-        <div class="form-group">
-            <label>Observación</label>
-            <textarea name="observacion"></textarea>
-        </div>
-    </div>
-    <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" onclick="cerrarModal('modalCrear')">Cancelar</button>
-        <button type="submit" class="btn btn-primary">💾 Guardar</button>
-    </div>
-    </form>
-</div>
-</div>
-
-{{-- ═══════════════════════════════════════════════════════════ --}}
-{{-- MODAL DETALLE + GESTIONES --}}
-{{-- ═══════════════════════════════════════════════════════════ --}}
-<div class="modal-overlay" id="modalDetalle">
-<div class="modal" style="max-width:920px">
-    <div class="modal-header">
-        <div>
-            <h3 id="detalleTitle">Detalle de Incapacidad</h3>
-            <div id="detalleSubtitle" style="font-size:.78rem;color:#64748b;margin-top:.2rem"></div>
-        </div>
-        <div style="display:flex;gap:.5rem;align-items:center">
-            <div id="detalleSemaforo"></div>
-            <button class="btn-close-modal" onclick="cerrarModal('modalDetalle')">✕</button>
-        </div>
-    </div>
-    <div class="modal-body" id="detalleCuerpo">
-        <div style="text-align:center;padding:2rem;color:#94a3b8">Cargando...</div>
-    </div>
-</div>
-</div>
+@include('admin.incapacidades.partials._modal_crear', ['trabajadores' => $trabajadores, 'razonesSociales' => $razonesSociales])
+@include('admin.incapacidades.partials._modal_detalle')
 
 @endsection
 
@@ -471,9 +361,17 @@ const ESTADOS_INC       = @json(\App\Models\Incapacidad::ESTADOS);
 const ESTADOS_PAGO_INC  = @json(\App\Models\Incapacidad::ESTADOS_PAGO);
 
 function labelTipo(key){ return TIPOS_INCAPACIDAD[key] || key; }
-function labelEstado(key){ return ESTADOS_INC[key] || key; }
-function labelEstadoPago(key){ return ESTADOS_PAGO_INC[key] || key; }
+function labelEstado(key){ const v = ESTADOS_INC[key]; return (v && v.label) ? v.label : (key || '—'); }
+function labelEstadoPago(key){ const v = ESTADOS_PAGO_INC[key]; return (v && v.label) ? v.label : (key || '—'); }
+function colorEstado(key){ const v = ESTADOS_INC[key]; return (v && v.color) ? v.color : 'secondary'; }
+function colorEstadoPago(key){ const v = ESTADOS_PAGO_INC[key]; return (v && v.color) ? v.color : 'secondary'; }
 function formatFecha(str){ return str ? str.substring(0,10) : '—'; }
+function formatFechaLarga(str){
+    if(!str) return '—';
+    const meses = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+    const d = new Date(str.substring(0,10)+'T12:00:00');
+    return `${d.getDate()}-${meses[d.getMonth()]}-${d.getFullYear()}`;
+}
 
 // ── Modales ──────────────────────────────────────────────────────────────────
 function cerrarModal(id){ document.getElementById(id).classList.remove('open'); }
@@ -481,19 +379,30 @@ function abrirModal(id) { document.getElementById(id).classList.add('open'); }
 
 function abrirModalCrear(){
     document.getElementById('modalCrearTitle').textContent = '➕ Nueva Incapacidad';
-    document.getElementById('formCrear').action = "{{ route('admin.incapacidades.store') }}";
     document.getElementById('formMethod').value = 'POST';
     document.getElementById('formId').value = '';
     document.getElementById('padreId').value = '';
+    document.getElementById('razonSocialHidden').value = '';
     document.getElementById('formCrear').reset();
+    // Restaurar valores que reset() borra
+    const qrs = document.getElementById('quienRecibeSelect');
+    if(qrs) qrs.value = qrs.dataset.authId || '';
+    const fr = document.querySelector('[name=fecha_recibido]');
+    if(fr) fr.value = new Date().toISOString().substring(0,10);
+    // Reset info boxes
+    const b1=document.getElementById('contratoInfoBox'); if(b1) b1.style.display='none';
+    const b2=document.getElementById('contratoInfoBoxInactivo'); if(b2) b2.style.display='none';
+    const qr=document.getElementById('quienRemiteSelect'); if(qr) qr.innerHTML='<option value="">Seleccionar...</option>';
+    const cs=document.getElementById('contratoSelect'); if(cs) cs.innerHTML='<option value="">Sin contrato</option>';
+    _contratosData=[]; _clienteEpsId=null; _clienteArlId=null; _clienteNombre=''; _empresaNombre='';
     abrirModal('modalCrear');
 }
+
 
 function abrirModalProroga(padreId){
     abrirModalCrear();
     document.getElementById('modalCrearTitle').textContent = '➕ Registrar Prórroga';
     document.getElementById('padreId').value = padreId;
-    document.getElementById('chkProroga').checked = true;
 }
 
 function abrirModalEditar(id){
@@ -514,11 +423,15 @@ function abrirModalEditar(id){
             f.querySelector('[name=fecha_recibido]').value = inc.fecha_recibido?.substring(0,10)||'';
             f.querySelector('[name=tipo_incapacidad]').value = inc.tipo_incapacidad;
             f.querySelector('[name=tipo_entidad]').value = inc.tipo_entidad;
-            f.querySelector('[name=diagnostico]').value = inc.diagnostico||'';
-            f.querySelector('[name=observacion]').value = inc.observacion||'';
-            document.getElementById('chkProroga').checked = inc.prorroga;
+            f.querySelector('[name=diagnostico]') && (f.querySelector('[name=diagnostico]').value = inc.diagnostico||'');
+            f.querySelector('[name=observacion]') && (f.querySelector('[name=observacion]').value = inc.observacion||'');
+            // Razon social hidden
+            const rsH = document.getElementById('razonSocialHidden');
+            if(rsH) rsH.value = inc.razon_social_id || '';
+            // Nombre cliente
             document.getElementById('nombreCliente').value = data.cliente
-                ? [data.cliente.primer_nombre,data.cliente.primer_apellido].join(' ') : inc.cedula_usuario;
+                ? [data.cliente.primer_nombre, data.cliente.primer_apellido].filter(Boolean).join(' ')
+                : inc.cedula_usuario;
             actualizarListaEntidades(inc.tipo_entidad, inc.entidad_responsable_id);
             abrirModal('modalCrear');
         });
@@ -539,11 +452,11 @@ function verDetalle(id){
             document.getElementById('detalleTitle').textContent = `🏥 Incapacidad #${inc.id} — ${nombre}`;
             document.getElementById('detalleSubtitle').innerHTML =
                 `Cédula: ${inc.cedula_usuario} ${data.empresa?`· Empresa: ${data.empresa}`:''} ` +
-                `· Recibida: ${inc.fecha_recibido?.substring(0,10)||'—'}`;
+                `· Recibida: ${formatFechaLarga(inc.fecha_recibido)}`;
 
             const colClass = {verde:'sem-verde',amarillo:'sem-amarillo',rojo:'sem-rojo',gris:'sem-gris'}[data.semaforo]||'sem-gris';
             document.getElementById('detalleSemaforo').innerHTML =
-                `<span class="semaforo ${colClass}">${data.icono} ${data.dias_gestion}d sin gestión</span>`;
+                `<span class="semaforo ${colClass}">${data.icono} ${data.dias_gestion} días sin gestión</span>`;
 
             // Alerta 180 días
             const al180 = data.alerta_180 ? `<div class="alerta-180" style="margin-bottom:.8rem">⚠️ Esta familia suma ${data.familia_dias} días — supera el límite de 180 días EPS. Debe radicar al AFP/Pensión.</div>` : '';
@@ -563,29 +476,51 @@ function verDetalle(id){
                         <div class="tl-tipo">${g.tipo}${g.aplica_a_familia?' <span style="color:#d97706">· Familia</span>':''}</div>
                         <div class="tl-tramite">${g.tramite}</div>
                         ${g.respuesta?`<div class="tl-tramite" style="color:#059669">↳ ${g.respuesta}</div>`:''}
-                        <div class="tl-meta">${g.user?.nombre||'Sistema'} · ${g.created_at?.substring(0,16)||''} ${g.fecha_recordar?`· 🔔 Recordar: ${g.fecha_recordar?.substring(0,10)}`:''}${g.estado_resultado?` · Estado: ${g.estado_resultado}`:''}</div>
+                        <div class="tl-meta">${g.user?.nombre||'Sistema'} · ${formatFechaLarga(g.created_at)} ${g.fecha_recordar?`· 🔔 Recordar: ${formatFechaLarga(g.fecha_recordar)}`:''}${g.estado_resultado?` · Estado: ${labelEstado(g.estado_resultado)}`:''}</div>
                     </div>
                 </div>`).join('');
 
-            // Prórrogas
-            const prorrogas = (inc.prorrogas||[]).map(p=>{
-                const estadoColor = {pagado_afiliado:'success',rechazado:'danger',autorizado:'success',liquidado:'primary',en_tramite:'warning'}[p.estado_pago]||'warning';
-                return `
-                <div class="proroga-card">
-                    <h5>📄 Prórroga #${p.numero_proroga} — ${labelTipo(p.tipo_incapacidad)} — ${p.dias_incapacidad} días</h5>
-                    <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-bottom:.5rem">
-                        <span class="badge badge-secondary">${TIPOS_ENTIDAD[p.tipo_entidad]||p.tipo_entidad?.toUpperCase()}</span>
-                        ${p.entidad_nombre?`<span class="badge badge-secondary">${p.entidad_nombre}</span>`:''}
-                        <span class="badge badge-${estadoColor}">${labelEstadoPago(p.estado_pago)}</span>
-                        ${p.valor_esperado?`<span style="font-size:.75rem;font-weight:600;color:#059669">💰 Esperado: $${Number(p.valor_esperado).toLocaleString('es-CO')}</span>`:''}
-                    </div>
-                    <div style="font-size:.75rem;color:#64748b;margin-bottom:.6rem">📅 ${formatFecha(p.fecha_inicio)} → ${formatFecha(p.fecha_terminacion)}</div>
-                    <div style="display:flex;gap:.4rem">
-                        <button class="btn btn-info btn-sm" onclick="registrarGestion(${p.id})">📞 Gestión</button>
-                        <button class="btn btn-primary btn-sm" onclick="registrarPago(${p.id})">💰 Pago</button>
-                    </div>
-                </div>`;
-            }).join('');
+            // Prórrogas — tabla compacta con numeración y botón editar
+            const prorrogas = (inc.prorrogas||[]).length === 0 ? '<p style="color:#94a3b8;font-size:.82rem">Sin prórrogas.</p>' : `
+            <div style="overflow-x:auto">
+            <table style="width:100%;border-collapse:collapse;font-size:.8rem">
+                <thead>
+                    <tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0">
+                        <th style="padding:.5rem .7rem;text-align:left;font-size:.7rem;text-transform:uppercase;color:#64748b;white-space:nowrap">#</th>
+                        <th style="padding:.5rem .7rem;text-align:left;font-size:.7rem;text-transform:uppercase;color:#64748b">Tipo</th>
+                        <th style="padding:.5rem .7rem;text-align:center;font-size:.7rem;text-transform:uppercase;color:#64748b">Días</th>
+                        <th style="padding:.5rem .7rem;text-align:left;font-size:.7rem;text-transform:uppercase;color:#64748b">Período</th>
+                        <th style="padding:.5rem .7rem;text-align:left;font-size:.7rem;text-transform:uppercase;color:#64748b">Entidad</th>
+                        <th style="padding:.5rem .7rem;text-align:left;font-size:.7rem;text-transform:uppercase;color:#64748b">Estado</th>
+                        <th style="padding:.5rem .7rem;text-align:right;font-size:.7rem;text-transform:uppercase;color:#64748b">Valor Esp.</th>
+                        <th style="padding:.5rem .7rem;text-align:center;font-size:.7rem;text-transform:uppercase;color:#64748b">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                ${(inc.prorrogas||[]).map((p,i)=>{
+                    const ec = colorEstadoPago(p.estado_pago);
+                    const badgeColors = {success:'#d1fae5;color:#065f46',danger:'#fee2e2;color:#991b1b',warning:'#fef3c7;color:#92400e',primary:'#dbeafe;color:#1e40af',info:'#cffafe;color:#155e75',secondary:'#f1f5f9;color:#475569'};
+                    const bc = badgeColors[ec]||badgeColors.secondary;
+                    return `<tr style="border-bottom:1px solid #f1f5f9;transition:background .1s" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''"> 
+                        <td style="padding:.55rem .7rem;font-weight:700;color:#2563eb">${p.numero_proroga}</td>
+                        <td style="padding:.55rem .7rem;color:#374151">${labelTipo(p.tipo_incapacidad)}</td>
+                        <td style="padding:.55rem .7rem;text-align:center;font-weight:600">${p.dias_incapacidad}d</td>
+                        <td style="padding:.55rem .7rem;font-size:.75rem;color:#64748b;white-space:nowrap">${formatFechaLarga(p.fecha_inicio)}<br>→ ${formatFechaLarga(p.fecha_terminacion)}</td>
+                        <td style="padding:.55rem .7rem;font-size:.75rem">${TIPOS_ENTIDAD[p.tipo_entidad]||p.tipo_entidad?.toUpperCase()}<br><span style="color:#64748b">${p.entidad_nombre||''}</span></td>
+                        <td style="padding:.55rem .7rem"><span style="display:inline-block;padding:.15rem .5rem;border-radius:999px;font-size:.68rem;font-weight:600;background:${bc.split(';')[0]};${bc.split(';')[1]}">${labelEstadoPago(p.estado_pago)}</span></td>
+                        <td style="padding:.55rem .7rem;text-align:right;font-weight:600;color:#059669">${p.valor_esperado?'$'+Number(p.valor_esperado).toLocaleString('es-CO'):'—'}</td>
+                        <td style="padding:.55rem .7rem;text-align:center">
+                            <div style="display:flex;gap:.3rem;justify-content:center;flex-wrap:wrap">
+                                <button class="btn btn-info btn-sm" onclick="registrarGestion(${p.id})" title="Gestión">📞</button>
+                                <button class="btn btn-primary btn-sm" onclick="registrarPago(${p.id})" title="Pago">💰</button>
+                                <button class="btn btn-warning btn-sm" onclick="cerrarModal('modalDetalle'); abrirModalEditar(${p.id})" title="Editar prórroga">✏️</button>
+                            </div>
+                        </td>
+                    </tr>`;
+                }).join('')}
+                </tbody>
+            </table>
+            </div>`;
 
             // Valor esperado
             const val = inc.valor_esperado ? `$${Number(inc.valor_esperado).toLocaleString('es-CO')}` : '—';
@@ -600,29 +535,54 @@ function verDetalle(id){
                 </div>
 
                 <div id="tabInfo" class="tab-pane active">
-                    <div class="form-row">
-                        <div><label class="section-title">Tipo</label><p>${labelTipo(inc.tipo_incapacidad)}</p></div>
-                        <div><label class="section-title">Entidad</label><p>${(TIPOS_ENTIDAD[inc.tipo_entidad]||inc.tipo_entidad?.toUpperCase())} — <strong>${inc.entidad_nombre||'N/A'}</strong></p></div>
-                        <div><label class="section-title">Días</label><p><strong style="font-size:1.1rem">${inc.dias_incapacidad}</strong>${data.familia_dias>inc.dias_incapacidad?` <span style="color:#2563eb;font-size:.8rem">(Total familia: ${data.familia_dias}d)</span>`:''}</p></div>
-                        <div><label class="section-title">Período</label><p>${formatFecha(inc.fecha_inicio)} → ${formatFecha(inc.fecha_terminacion)}</p></div>
-                        <div><label class="section-title">Radicado</label><p>${inc.numero_radicado||'<span style="color:#94a3b8">Sin radicar</span>'} ${inc.fecha_radicado?'('+formatFecha(inc.fecha_radicado)+')':''}</p></div>
-                        <div><label class="section-title">Razón Social</label><p>${inc.razon_social_nombre||'—'}</p></div>
-                        <div><label class="section-title">Diagnóstico</label><p>${inc.diagnostico||'<span style="color:#94a3b8">—</span>'}</p></div>
-                        <div><label class="section-title">Valor Esperado</label><p style="font-weight:700;color:#059669;font-size:1.05rem">${val}</p></div>
+                    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:.65rem;margin-bottom:.8rem">
+                        <div style="background:#eff6ff;border-radius:10px;padding:.7rem .85rem;border:1px solid #bfdbfe">
+                            <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;color:#3b82f6;letter-spacing:.06em;margin-bottom:.25rem">🏷️ Tipo</div>
+                            <div style="font-size:.85rem;font-weight:600;color:#1e3a8a">${labelTipo(inc.tipo_incapacidad)}</div>
+                        </div>
+                        <div style="background:#f0fdf4;border-radius:10px;padding:.7rem .85rem;border:1px solid #bbf7d0">
+                            <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;color:#059669;letter-spacing:.06em;margin-bottom:.25rem">🏦 Entidad</div>
+                            <div style="font-size:.85rem;font-weight:600;color:#065f46">${TIPOS_ENTIDAD[inc.tipo_entidad]||inc.tipo_entidad?.toUpperCase()||'—'} — <strong>${inc.entidad_nombre||'N/A'}</strong></div>
+                        </div>
+                        <div style="background:#faf5ff;border-radius:10px;padding:.7rem .85rem;border:1px solid #e9d5ff">
+                            <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;color:#7c3aed;letter-spacing:.06em;margin-bottom:.25rem">📅 Días</div>
+                            <div style="font-size:1.4rem;font-weight:800;color:#4c1d95;line-height:1">${inc.dias_incapacidad}</div>
+                            ${data.familia_dias>inc.dias_incapacidad?`<div style="font-size:.65rem;color:#7c3aed">Total familia: ${data.familia_dias} días</div>`:''}
+                        </div>
+                        <div style="background:#fff7ed;border-radius:10px;padding:.7rem .85rem;border:1px solid #fed7aa">
+                            <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;color:#ea580c;letter-spacing:.06em;margin-bottom:.25rem">🗓️ Período</div>
+                            <div style="font-size:.78rem;font-weight:600;color:#7c2d12">${formatFechaLarga(inc.fecha_inicio)}</div>
+                            <div style="font-size:.72rem;color:#9a3412">→ ${formatFechaLarga(inc.fecha_terminacion)}</div>
+                        </div>
                     </div>
-                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:.6rem;margin:.75rem 0;background:#f8fafc;padding:.75rem;border-radius:10px;border:1px solid #e2e8f0">
-                        <div><span style="font-size:.7rem;color:#64748b;display:block;font-weight:600;text-transform:uppercase;letter-spacing:.04em">Estado</span><span style="font-size:.85rem;font-weight:600">${labelEstado(inc.estado)}</span></div>
-                        <div><span style="font-size:.7rem;color:#64748b;display:block;font-weight:600;text-transform:uppercase;letter-spacing:.04em">Pago</span><span style="font-size:.85rem;font-weight:600">${labelEstadoPago(inc.estado_pago)}</span></div>
-                        <div><span style="font-size:.7rem;color:#64748b;display:block;font-weight:600;text-transform:uppercase;letter-spacing:.04em">Recibido</span><span style="font-size:.85rem">${formatFecha(inc.fecha_recibido)}</span></div>
-                        ${inc.prorroga?'<div><span style="font-size:.7rem;color:#2563eb;font-weight:700">✓ Doc. prórroga</span></div>':''}
-                        ${inc.transcripcion_requerida&&!inc.transcripcion_completada?'<div><span style="font-size:.7rem;color:#d97706;font-weight:700">⚕️ Transcripción pdte.</span></div>':''}
+                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.65rem;margin-bottom:.8rem">
+                        <div style="background:#f8fafc;border-radius:10px;padding:.65rem .85rem;border:1px solid #e2e8f0">
+                            <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:.06em;margin-bottom:.2rem">📋 Radicado</div>
+                            <div style="font-size:.83rem;color:${inc.numero_radicado?'#1e293b':'#94a3b8'}">${inc.numero_radicado||'Sin radicar'}</div>
+                            ${inc.fecha_radicado?`<div style="font-size:.72rem;color:#64748b">${formatFechaLarga(inc.fecha_radicado)}</div>`:''}
+                        </div>
+                        <div style="background:#f8fafc;border-radius:10px;padding:.65rem .85rem;border:1px solid #e2e8f0">
+                            <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:.06em;margin-bottom:.2rem">🏢 Razón Social</div>
+                            <div style="font-size:.83rem;font-weight:600;color:#1e293b">${inc.razon_social_nombre||'—'}</div>
+                        </div>
+                        <div style="background:#f0fdf4;border-radius:10px;padding:.65rem .85rem;border:1px solid #bbf7d0">
+                            <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;color:#059669;letter-spacing:.06em;margin-bottom:.2rem">💰 Valor Esperado</div>
+                            <div style="font-size:1.05rem;font-weight:800;color:#059669">${val}</div>
+                        </div>
                     </div>
-                    ${inc.observacion?`<div class="form-group" style="margin-top:.5rem"><label class="section-title">Observación</label><p style="font-size:.82rem;color:#374151">${inc.observacion}</p></div>`:''}
-                    <div style="display:flex;gap:.5rem;margin-top:1rem;flex-wrap:wrap">
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.5rem;background:#f8fafc;padding:.75rem;border-radius:10px;border:1px solid #e2e8f0;margin-bottom:.6rem">
+                        <div><span style="font-size:.63rem;color:#64748b;display:block;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.2rem">Estado</span><span class="badge badge-${colorEstado(inc.estado)}">${labelEstado(inc.estado)}</span></div>
+                        <div><span style="font-size:.63rem;color:#64748b;display:block;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.2rem">Pago</span><span class="badge badge-${colorEstadoPago(inc.estado_pago)}">${labelEstadoPago(inc.estado_pago)}</span></div>
+                        <div><span style="font-size:.63rem;color:#64748b;display:block;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.2rem">Recibido</span><span style="font-size:.82rem">${formatFechaLarga(inc.fecha_recibido)}</span></div>
+                        <div><span style="font-size:.63rem;color:#64748b;display:block;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.2rem">Diagnóstico</span><span style="font-size:.82rem;color:${inc.diagnostico?'#374151':'#94a3b8'}">${inc.diagnostico||'—'}</span></div>
+                        ${inc.prorroga?'<div><span style="font-size:.72rem;color:#2563eb;font-weight:700;background:#eff6ff;padding:.2rem .5rem;border-radius:6px;display:inline-block">✓ Doc. prórroga</span></div>':''}
+                    </div>
+                    ${inc.observacion?`<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:.6rem .85rem;font-size:.82rem;color:#92400e;margin-bottom:.6rem"><strong>📝 Observación:</strong> ${inc.observacion}</div>`:''}
+                    <div style="display:flex;gap:.5rem;margin-top:1rem;flex-wrap:wrap;padding-top:.75rem;border-top:1px solid #f1f5f9">
                         <button class="btn btn-primary btn-sm" onclick="registrarGestion(${inc.id})">📞 Nueva Gestión</button>
                         <button class="btn btn-success btn-sm" onclick="subirDocumento(${inc.id})">📎 Subir Documento</button>
-                        <button class="btn btn-warning btn-sm" onclick="abrirModalEditar(${inc.id}); cerrarModal('modalDetalle')">✏️ Editar</button>
-                        <button class="btn btn-primary btn-sm" onclick="abrirModalProroga(${inc.id}); cerrarModal('modalDetalle')">➕ Prórroga</button>
+                        <button class="btn btn-warning btn-sm" onclick="cerrarModal('modalDetalle'); abrirModalEditar(${inc.id})">✏️ Editar Incapacidad</button>
+                        <button class="btn btn-secondary btn-sm" onclick="cerrarModal('modalDetalle'); abrirModalProroga(${inc.id})">➕ Agregar Prórroga</button>
                     </div>
                 </div>
 
@@ -635,10 +595,10 @@ function verDetalle(id){
 
                 <div id="tabPago" class="tab-pane">
                     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.75rem;margin-bottom:1rem">
-                        <div class="kpi"><div class="num" style="font-size:1.1rem">${inc.estado_pago||'—'}</div><div class="lbl">Estado Pago</div></div>
+                        <div class="kpi"><div class="num" style="font-size:.95rem">${labelEstadoPago(inc.estado_pago)}</div><div class="lbl">Estado Pago</div></div>
                         <div class="kpi"><div class="num" style="font-size:1.1rem">${inc.valor_pago?'$'+Number(inc.valor_pago).toLocaleString('es-CO'):'—'}</div><div class="lbl">Valor Pagado</div></div>
                         <div class="kpi"><div class="num" style="font-size:1.1rem">${val}</div><div class="lbl">Valor Esperado</div></div>
-                        <div class="kpi"><div class="num" style="font-size:1.1rem">${inc.pagado_a||'—'}</div><div class="lbl">Pagado a</div></div>
+                        <div class="kpi"><div class="num" style="font-size:.95rem">${inc.pagado_a==='cliente'?'Afiliado':inc.pagado_a==='empresa'?'Empresa':'—'}</div><div class="lbl">Pagado a</div></div>
                     </div>
                     ${inc.detalle_pago?`<p style="font-size:.82rem;color:#374151"><strong>Detalle:</strong> ${inc.detalle_pago}</p>`:''}
                     <button class="btn btn-success" onclick="registrarPago(${inc.id})" style="margin-top:.8rem">💰 Registrar Pago al Afiliado</button>
@@ -668,25 +628,30 @@ function iconoTipoGestion(tipo){
 function registrarGestion(incId){
     const tipos = @json(\App\Models\Incapacidad::TIPOS_GESTION);
     const estados = @json(\App\Models\Incapacidad::ESTADOS);
-    const optTipos = Object.entries(tipos).map(([k,v])=>`<option value="${k}">${v}</option>`).join('');
-    const optEstados = Object.entries(estados).map(([k,v])=>`<option value="${k}">${v}</option>`).join('');
+    const optTipos = Object.entries(tipos).map(([k,v])=>`<option value="${k}">${v.label||v}</option>`).join('');
+    const optEstados = Object.entries(estados).map(([k,v])=>`<option value="${k}">${v.label||v}</option>`).join('');
 
-    const html = `<div style="padding:1rem">
-        <h4 style="margin-bottom:1rem">📞 Registrar Gestión — Incapacidad #${incId}</h4>
-        <div class="form-group"><label>Tipo de Gestión *</label><select id="gTipo" style="width:100%;padding:.4rem;border:1px solid #d1d5db;border-radius:6px">${optTipos}</select></div>
-        <div class="form-group"><label>Trámite realizado *</label><textarea id="gTramite" style="width:100%;min-height:70px;padding:.4rem;border:1px solid #d1d5db;border-radius:6px"></textarea></div>
-        <div class="form-group"><label>Respuesta / Resultado</label><textarea id="gRespuesta" style="width:100%;min-height:50px;padding:.4rem;border:1px solid #d1d5db;border-radius:6px"></textarea></div>
-        <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">
-            <div class="form-group"><label>Estado resultado</label><select id="gEstado" style="width:100%;padding:.4rem;border:1px solid #d1d5db;border-radius:6px"><option value="">Sin cambio</option>${optEstados}</select></div>
-            <div class="form-group"><label>Recordar en fecha</label><input type="date" id="gRecordar" style="width:100%;padding:.4rem;border:1px solid #d1d5db;border-radius:6px"></div>
+    const html = `
+    <div class="modal-header" style="background:linear-gradient(135deg,#1e40af,#0891b2);border-radius:16px 16px 0 0">
+        <div><h3 style="color:#fff;font-size:1rem;font-weight:700;margin:0">📞 Registrar Gestión</h3>
+        <div style="font-size:.75rem;color:rgba(255,255,255,.75);margin-top:.15rem">Incapacidad #${incId}</div></div>
+        <button class="btn-close-modal" onclick="document.getElementById('modalGestion').classList.remove('open')">×</button>
+    </div>
+    <div class="modal-body">
+        <div class="form-group"><label>Tipo de Gestión *</label><select id="gTipo" class="form-control">${optTipos}</select></div>
+        <div class="form-group"><label>Trámite realizado *</label><textarea id="gTramite" class="form-control" style="min-height:70px"></textarea></div>
+        <div class="form-group"><label>Respuesta / Resultado</label><textarea id="gRespuesta" class="form-control" style="min-height:50px"></textarea></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">
+            <div class="form-group"><label>Estado resultado</label><select id="gEstado" class="form-control"><option value="">Sin cambio</option>${optEstados}</select></div>
+            <div class="form-group"><label>Recordar en fecha</label><input type="date" id="gRecordar" class="form-control"></div>
         </div>
-        <label style="display:flex;align-items:center;gap:.4rem;font-size:.82rem;margin-bottom:1rem">
+        <label style="display:flex;align-items:center;gap:.4rem;font-size:.82rem;color:#374151;margin-bottom:.5rem;cursor:pointer">
             <input type="checkbox" id="gFamilia"> Aplicar a toda la familia (padre + prórrogas)
         </label>
-        <div style="display:flex;gap:.5rem;justify-content:flex-end">
-            <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').classList.remove('open')">Cancelar</button>
-            <button class="btn btn-primary" onclick="enviarGestion(${incId})">💾 Guardar Gestión</button>
-        </div>
+    </div>
+    <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="document.getElementById('modalGestion').classList.remove('open')">Cancelar</button>
+        <button class="btn btn-primary" onclick="enviarGestion(${incId})">💾 Guardar Gestión</button>
     </div>`;
 
     let overlay = document.getElementById('modalGestion');
@@ -694,7 +659,7 @@ function registrarGestion(incId){
         overlay = document.createElement('div');
         overlay.id = 'modalGestion';
         overlay.className = 'modal-overlay';
-        overlay.innerHTML = `<div class="modal" style="max-width:560px">${html}</div>`;
+        overlay.innerHTML = `<div class="modal" style="max-width:540px">${html}</div>`;
         document.body.appendChild(overlay);
     } else { overlay.querySelector('.modal').innerHTML = html; }
     overlay.classList.add('open');
@@ -766,50 +731,100 @@ function enviarPago(incId){
     });
 }
 
-// ── Subir documento ──────────────────────────────────────────────────────────
+// ── Subir documento (modal persistente con lista de docs) ───────────────────
+let _docIncId = null;
 function subirDocumento(incId){
-    const html = `<div style="padding:1rem">
-        <h4 style="margin-bottom:1rem">📎 Subir Documento — Incapacidad #${incId}</h4>
-        <div class="form-group"><label>Tipo de Documento *</label>
-            <select id="docTipo" style="width:100%;padding:.4rem;border:1px solid #d1d5db;border-radius:6px">
-                <option value="incapacidad_original">Incapacidad Original</option>
-                <option value="historia_clinica">Historia Clínica</option>
-                <option value="radicado_entidad">Radicado Entidad</option>
-                <option value="soporte_pago">Soporte de Pago</option>
-                <option value="transcripcion">Transcripción</option>
-                <option value="otro">Otro</option>
-            </select></div>
-        <div class="form-group"><label>Archivo *</label><input type="file" id="docArchivo" accept=".pdf,.jpg,.jpeg,.png,.webp"></div>
-        <div class="form-group"><label>Observación</label><input type="text" id="docObs" style="width:100%;padding:.4rem;border:1px solid #d1d5db;border-radius:6px"></div>
-        <div style="display:flex;gap:.5rem;justify-content:flex-end">
-            <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').classList.remove('open')">Cancelar</button>
-            <button class="btn btn-primary" onclick="enviarDocumento(${incId})">📤 Subir</button>
-        </div>
-    </div>`;
-
+    _docIncId = incId;
     let overlay = document.getElementById('modalDoc');
     if(!overlay){
         overlay = document.createElement('div');
         overlay.id = 'modalDoc';
         overlay.className = 'modal-overlay';
-        overlay.innerHTML = `<div class="modal" style="max-width:480px">${html}</div>`;
+        overlay.innerHTML = `<div class="modal" style="max-width:580px">
+            <div class="modal-header" style="background:linear-gradient(135deg,#059669,#0891b2)">
+                <div><h3 style="color:#fff;font-size:1rem;font-weight:700;margin:0">📎 Documentos de Incapacidad</h3>
+                <div id="docModalSubtitle" style="font-size:.75rem;color:rgba(255,255,255,.8);margin-top:.1rem">Incapacidad #${incId}</div></div>
+                <button class="btn-close-modal" onclick="document.getElementById('modalDoc').classList.remove('open')">✕</button>
+            </div>
+            <div class="modal-body">
+                <div id="docListaExistente" style="margin-bottom:1rem"></div>
+                <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:.85rem">
+                    <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:.05em;margin-bottom:.7rem">➕ Agregar Documento</div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">
+                        <div class="form-group">
+                            <label>Tipo de Documento *</label>
+                            <select id="docTipo" class="form-control">
+                                <option value="incapacidad_original">Incapacidad Original</option>
+                                <option value="historia_clinica">Historia Clínica</option>
+                                <option value="radicado_entidad">Radicado Entidad</option>
+                                <option value="soporte_pago">Soporte de Pago</option>
+                                <option value="transcripcion">Transcripción</option>
+                                <option value="otro">Otro</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Observación</label>
+                            <input type="text" id="docObs" class="form-control" placeholder="Opcional">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Archivo * <span style="font-size:.72rem;color:#64748b">(PDF, JPG, PNG)</span></label>
+                        <input type="file" id="docArchivo" accept=".pdf,.jpg,.jpeg,.png,.webp" class="form-control">
+                    </div>
+                    <div id="docUploadMsg" style="font-size:.8rem;margin-bottom:.5rem"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="document.getElementById('modalDoc').classList.remove('open')">Cerrar</button>
+                <button class="btn btn-primary" id="btnSubirDoc" onclick="enviarDocumento()">📤 Subir Documento</button>
+            </div>
+        </div>`;
         document.body.appendChild(overlay);
-    } else { overlay.querySelector('.modal').innerHTML = html; }
+    }
+    document.getElementById('docModalSubtitle').textContent = `Incapacidad #${incId}`;
     overlay.classList.add('open');
+    cargarDocumentosExistentes(incId);
 }
 
-function enviarDocumento(incId){
+function cargarDocumentosExistentes(incId){
+    const box = document.getElementById('docListaExistente');
+    if(!box) return;
+    box.innerHTML = '<div style="font-size:.78rem;color:#94a3b8">⏳ Cargando documentos...</div>';
+    fetch(`/admin/incapacidades/${incId}/show`)
+        .then(r=>r.json()).then(data=>{
+            const docs = data.incapacidad?.documentos || [];
+            if(!docs.length){ box.innerHTML='<div style="font-size:.78rem;color:#94a3b8;padding:.5rem 0">Sin documentos aún.</div>'; return; }
+            box.innerHTML = `<div style="font-size:.72rem;font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:.05em;margin-bottom:.5rem">📁 Documentos cargados (${docs.length})</div>`
+                + docs.map(d=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:.45rem .65rem;background:#fff;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:.35rem;font-size:.8rem">
+                    <div><span style="font-weight:600;color:#374151">📄 ${d.tipo_documento||'Documento'}</span><span style="color:#64748b;margin-left:.5rem">${formatFechaLarga(d.created_at)}</span>${d.observacion?`<div style="color:#94a3b8;font-size:.72rem">${d.observacion}</div>`:''}</div>
+                    <a href="/storage/${d.archivo}" target="_blank" style="color:#2563eb;font-size:.78rem;white-space:nowrap">👁 Ver</a>
+                </div>`).join('');
+        });
+}
+
+function enviarDocumento(){
+    const incId = _docIncId;
+    const archivo = document.getElementById('docArchivo').files[0];
+    if(!archivo){ alert('Selecciona un archivo'); return; }
+    const btn = document.getElementById('btnSubirDoc');
+    const msg = document.getElementById('docUploadMsg');
+    btn.disabled = true; btn.textContent = '⏳ Subiendo...';
+    msg.textContent = '';
     const fd = new FormData();
     fd.append('tipo_documento', document.getElementById('docTipo').value);
     fd.append('observacion', document.getElementById('docObs').value);
-    fd.append('archivo', document.getElementById('docArchivo').files[0]);
+    fd.append('archivo', archivo);
     fd.append('_token', TOKEN);
-
     fetch(`/admin/incapacidades/${incId}/documento`,{method:'POST',body:fd})
         .then(r=>r.json()).then(d=>{
-            if(d.ok){ document.getElementById('modalDoc').classList.remove('open'); alert('✅ Documento subido.'); }
-            else alert('Error: '+(d.message||''));
-        });
+            btn.disabled=false; btn.textContent='📤 Subir Documento';
+            if(d.ok){
+                msg.innerHTML='<span style="color:#059669">✅ Documento subido correctamente.</span>';
+                document.getElementById('docArchivo').value='';
+                document.getElementById('docObs').value='';
+                cargarDocumentosExistentes(incId);
+            } else { msg.innerHTML=`<span style="color:#ef4444">Error: ${d.message||''}</span>`; }
+        }).catch(e=>{ btn.disabled=false; btn.textContent='📤 Subir Documento'; msg.innerHTML=`<span style="color:#ef4444">Error: ${e.message}</span>`; });
 }
 
 // ── Autocompletado de cliente ────────────────────────────────────────────────
@@ -822,37 +837,159 @@ function buscarCliente(val){
             .then(r=>r.json()).then(data=>{
                 const box = document.getElementById('clienteSugerencias');
                 if(!data.length){ box.style.display='none'; return; }
-                box.innerHTML = data.map(c=>`
-                    <div onclick="seleccionarCliente('${c.cedula}','${c.primer_nombre||''} ${c.primer_apellido||''}', '${c.cod_empresa||''}')"
-                         style="padding:.45rem .75rem;cursor:pointer;font-size:.82rem;border-bottom:1px solid #f1f5f9;hover:background:#f8fafc">
-                        <strong>${c.cedula}</strong> — ${c.primer_nombre||''} ${c.primer_apellido||''}
-                    </div>`).join('');
+                box.innerHTML = data.map(c=>{
+                    const emp = (c.empresa_nombre||'').replace(/'/g,"\\'");
+                    const nom = `${c.primer_nombre||''} ${c.primer_apellido||''}`.trim().replace(/'/g,"\\'");
+                    return `<div onclick="seleccionarCliente('${c.cedula}','${nom}','${emp}')"
+                         style="padding:.45rem .75rem;cursor:pointer;font-size:.82rem;border-bottom:1px solid #f1f5f9"
+                         onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
+                        <strong>${c.cedula}</strong> \u2014 ${c.primer_nombre||''} ${c.primer_apellido||''}
+                        ${c.empresa_nombre?`<span style="color:#64748b;font-size:.75rem"> \u00b7 ${c.empresa_nombre}</span>`:''}
+                    </div>`;
+                }).join('');
                 box.style.display='block';
             });
     }, 350);
 }
 
-function seleccionarCliente(cedula, nombre, codEmpresa){
+// Stored contracts data for quick lookup
+let _contratosData = [];
+let _clienteEpsId  = null;
+let _clienteArlId  = null;
+let _clienteNombre = '';
+let _empresaNombre = '';
+
+function seleccionarCliente(cedula, nombre, empresaNombre){
     document.getElementById('cedulaInput').value = cedula;
     document.getElementById('nombreCliente').value = nombre;
     document.getElementById('clienteSugerencias').style.display='none';
+    _clienteNombre = nombre;
+    _empresaNombre = empresaNombre || '';
+    // Poblar Quien Remite inmediatamente con afiliado y empresa
+    const qrSel = document.getElementById('quienRemiteSelect');
+    if(qrSel){
+        qrSel.innerHTML = `<option value="${nombre}">${nombre} (Afiliado)</option>`
+            + (_empresaNombre ? `<option value="${_empresaNombre}">${_empresaNombre} (Empresa)</option>` : '');
+    }
     // Cargar contratos
     fetch(`/admin/incapacidades/api/contratos?cedula=${encodeURIComponent(cedula)}`)
         .then(r=>r.json()).then(contratos=>{
+            _contratosData = contratos;
             const sel = document.getElementById('contratoSelect');
-            sel.innerHTML = '<option value="">Sin contrato específico</option>';
-            contratos.forEach(c=>{ sel.innerHTML+=`<option value="${c.id}">#${c.id} — ${c.estado} (${c.fecha_ingreso?.substring(0,10)||''})</option>`; });
+            sel.innerHTML = '<option value="">Sin contrato especifico</option>';
+            let primeraVigente = null;
+            contratos.forEach(c=>{
+                const vigente = c.estado === 'vigente';
+                const opt = document.createElement('option');
+                opt.value = c.id;
+                opt.textContent = `#${c.id} - ${c.estado.charAt(0).toUpperCase()+c.estado.slice(1)} (${c.fecha_ingreso?.substring(0,10)||''})`;
+                if(vigente){ opt.style.color='#059669'; opt.style.fontWeight='600'; if(!primeraVigente) primeraVigente = c.id; }
+                sel.appendChild(opt);
+            });
+            if(primeraVigente){ sel.value = primeraVigente; contratoSeleccionado(sel); }
         });
 }
 
-// ── Lista dinámica de entidades ──────────────────────────────────────────────
+
+function contratoSeleccionado(sel){
+    const id = parseInt(sel.value);
+    const c  = _contratosData.find(x=>x.id===id);
+    const boxOk   = document.getElementById('contratoInfoBox');
+    const boxWarn = document.getElementById('contratoInfoBoxInactivo');
+    const txtOk   = document.getElementById('contratoInfoText');
+    const txtWarn = document.getElementById('contratoInfoTextInactivo');
+    if(c){
+        const rsH = document.getElementById('razonSocialHidden');
+        if(rsH) rsH.value = c.razon_social_id || '';
+        _clienteEpsId = c.eps_id || null;
+        _clienteArlId = c.arl_id || null;
+        // rsNombre es solo para mostrar en el info box — NO sobreescribe _empresaNombre
+        const rsNombre = c.razon_social_nombre || 'Sin razón social';
+        const salario  = c.salario ? '$'+Number(c.salario).toLocaleString('es-CO') : 'No registrado';
+        const txt = `${rsNombre} — Ingreso: ${c.fecha_ingreso?.substring(0,7)||'?'} — Salario: ${salario}`;
+        if(c.estado === 'vigente'){
+            if(boxOk){ boxOk.style.display='block'; if(txtOk) txtOk.textContent=txt; }
+            if(boxWarn) boxWarn.style.display='none';
+        } else {
+            if(boxWarn){ boxWarn.style.display='block'; if(txtWarn) txtWarn.textContent=txt; }
+            if(boxOk) boxOk.style.display='none';
+        }
+        const tipoEnt = document.getElementById('tipoEntidadSelect')?.value;
+        if(tipoEnt === 'eps' && _clienteEpsId) actualizarListaEntidades('eps', _clienteEpsId);
+        if(tipoEnt === 'arl' && _clienteArlId) actualizarListaEntidades('arl', _clienteArlId);
+        // Quien Remite: usa _empresaNombre (empresa real del cliente), NO razón social
+        const qrSel = document.getElementById('quienRemiteSelect');
+        if(qrSel){
+            qrSel.innerHTML = `<option value="${_clienteNombre}">${_clienteNombre} (Afiliado)</option>`
+                + (_empresaNombre ? `<option value="${_empresaNombre}">${_empresaNombre} (Empresa)</option>` : '');
+        }
+    } else {
+        _clienteEpsId = null;
+        if(boxOk)   boxOk.style.display='none';
+        if(boxWarn) boxWarn.style.display='none';
+    }
+}
+
+
+function tipoIncapacidadCambiado(val){
+    const MAP = {'accidente_laboral':'arl','accidente_transito':'arl','enfermedad_laboral':'arl'};
+    const tipoEnt = MAP[val];
+    const s = document.getElementById('tipoEntidadSelect');
+    if(s){
+        if(tipoEnt){
+            s.value = tipoEnt;
+            // Auto-seleccionar entidad del contrato (ARL o EPS)
+            const autoId = tipoEnt==='arl' ? _clienteArlId : (tipoEnt==='eps' ? _clienteEpsId : null);
+            actualizarListaEntidades(tipoEnt, autoId);
+        } else if(val && s.value==='arl'){
+            s.value=''; document.getElementById('entidadSelect').innerHTML='<option value="">Seleccionar...</option>';
+        }
+    }
+}
+
+async function guardarIncapacidad(){
+    const form   = document.getElementById('formCrear');
+    const isEdit = document.getElementById('formMethod').value === 'PUT';
+    const incId  = document.getElementById('formId').value;
+    const url    = isEdit ? `/admin/incapacidades/${incId}` : form.dataset.storeUrl;
+    const fd = new FormData(form);
+    if(isEdit) fd.set('_method','PUT');
+    try {
+        const resp = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-TOKEN': TOKEN,
+                'Accept': 'application/json'
+            },
+            body: fd
+        });
+        let data;
+        try { data = await resp.json(); } catch(e){ throw new Error('Respuesta inesperada del servidor (HTTP '+resp.status+')'); }
+        if(resp.ok && data.ok){
+            cerrarModal('modalCrear');
+            if(!isEdit && data.incapacidad_id){ setTimeout(()=>{ subirDocumento(data.incapacidad_id); }, 250); }
+            else { location.reload(); }
+        } else if(resp.status === 422 && data.errors) {
+            // Mostrar errores de validación
+            const msgs = Object.entries(data.errors).map(([f,e])=>`• ${f}: ${e[0]}`).join('\n');
+            alert('⚠️ Hay campos requeridos incompletos:\n\n'+msgs);
+        } else {
+            alert('❌ Error: '+(data.message||JSON.stringify(data)));
+        }
+    } catch(e){ alert('❌ Error de red: '+e.message); }
+}
+
+// Lista dinamica de entidades
 function actualizarListaEntidades(tipo, selId=null){
     const sel = document.getElementById('entidadSelect');
     const listas = {eps:EPS_LIST, arl:ARL_LIST, afp:AFP_LIST};
     const lista = listas[tipo]||[];
     sel.innerHTML = '<option value="">Seleccionar...</option>';
     lista.forEach(e=>{ sel.innerHTML+=`<option value="${e.id}" ${selId&&e.id==selId?'selected':''}>${e.nombre}</option>`; });
+    if(tipo === 'eps' && _clienteEpsId && !selId) sel.value = _clienteEpsId;
 }
+
 
 // ── Cálculo automático de fecha fin ─────────────────────────────────────────
 function calcularFechaFin(){

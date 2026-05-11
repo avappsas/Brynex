@@ -1092,13 +1092,12 @@ $efAcum = $csAcum = $prAcum = $sfAcum = 0;
             return response()->json(['ok' => false, 'message' => 'Debe indicar el motivo de anulación.'], 422);
         }
 
-        // Si tiene NP, anula todo el grupo
+        // Anula solo las facturas con el mismo numero_factura dentro del aliado.
+        // NO filtra por mes/año ni por NP para no afectar lotes de otros períodos.
         $facturasAnular = collect([$factura]);
-        if ($factura->np && $request->boolean('todo_np', false)) {
+        if ($factura->numero_factura && $request->boolean('todo_np', false)) {
             $facturasAnular = Factura::where('aliado_id', $aliadoId)
-                ->where('np', $factura->np)
-                ->where('mes',  $factura->mes)
-                ->where('anio', $factura->anio)
+                ->where('numero_factura', $factura->numero_factura)
                 ->with(['abonos', 'plano'])
                 ->get();
         }
@@ -1167,7 +1166,7 @@ $efAcum = $csAcum = $prAcum = $sfAcum = 0;
         return response()->json([
             'ok'      => true,
             'mensaje' => $facturasAnular->count() > 1
-                ? "{$facturasAnular->count()} facturas del NP {$factura->np} anuladas."
+                ? "{$facturasAnular->count()} facturas del recibo #{$factura->numero_factura} anuladas."
                 : "Recibo #{$factura->numero_factura} anulado.",
         ]);
     }

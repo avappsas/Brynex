@@ -262,16 +262,28 @@ class IncapacidadController extends Controller
         // Calcular y guardar valor_esperado usando salario_base
         $incapacidad->calcularValorEsperado(persistir: true);
 
-        // Gestión inicial automática
+        // Gestión inicial automática con texto descriptivo
+        $asesor = Auth::user();
+        $fechaTexto = now()->locale('es')->isoFormat('D [de] MMMM [de] YYYY');
         GestionIncapacidad::create([
-            'incapacidad_id'  => $incapacidad->id,
-            'user_id'         => Auth::id(),
-            'aplica_a_familia'=> false,
-            'tipo'            => 'otro',
-            'tramite'         => '📬 Incapacidad recibida y registrada en el sistema.',
+            'incapacidad_id'   => $incapacidad->id,
+            'user_id'          => Auth::id(),
+            'aplica_a_familia' => false,
+            'tipo'             => 'otro',
+            'tramite'          => "Incapacidad registrada en BryNex el {$fechaTexto}. Asesor: {$asesor->nombre}. Pdte. radicación en entidad.",
             'estado_resultado' => 'recibido',
-            'created_at'      => now(),
+            'created_at'       => now(),
+            'updated_at'       => now(),
         ]);
+
+        // Si la petición es AJAX/JSON, retornar JSON para que el frontend abra el modal de documentos
+        if ($request->expectsJson() || $request->header('X-Requested-With') === 'XMLHttpRequest') {
+            return response()->json([
+                'ok'             => true,
+                'incapacidad_id' => $incapacidad->id,
+                'message'        => 'Incapacidad registrada correctamente.',
+            ]);
+        }
 
         return redirect()->route('admin.incapacidades.index')
             ->with('success', 'Incapacidad registrada correctamente.');
@@ -683,16 +695,17 @@ class IncapacidadController extends Controller
     // ── API: buscar clientes ─────────────────────────────────────────────────
     public function apiClientes(Request $request)
     {
-        $cedula = $request->get('cedula', '');
+        $cedula  = $request->get('cedula', '');
         $alidoId = session('aliado_id_activo') ?? Auth::user()->aliado_id;
 
         $clientes = DB::table('clientes as c')
-            ->join('contratos as ct', 'ct.cedula', '=', 'c.cedula')
-            ->where('ct.aliado_id', $alidoId)
+            ->leftJoin('empresas as e', 'e.id', '=', 'c.cod_empresa')
+            ->where('c.aliado_id', $alidoId)
             ->where('c.cedula', 'like', '%' . $cedula . '%')
             ->select('c.cedula', 'c.primer_nombre', 'c.segundo_nombre',
                      'c.primer_apellido', 'c.segundo_apellido',
-                     'c.celular', 'c.cod_empresa')
+                     'c.celular', 'c.cod_empresa',
+                     'e.empresa as empresa_nombre')
             ->distinct()
             ->limit(10)
             ->get();
@@ -700,17 +713,22 @@ class IncapacidadController extends Controller
         return response()->json($clientes);
     }
 
+
     // ── API: contratos por cédula ────────────────────────────────────────────
     public function apiContratos(Request $request)
     {
         $cedula  = $request->get('cedula');
         $alidoId = session('aliado_id_activo') ?? Auth::user()->aliado_id;
 
-        $contratos = DB::table('contratos')
-            ->where('cedula', $cedula)
-            ->where('aliado_id', $alidoId)
-            ->orderByDesc('fecha_ingreso')
-            ->get(['id', 'cedula', 'fecha_ingreso', 'estado']);
+        $contratos = DB::table('contratos as c')
+            ->leftJoin('razones_sociales as rs', 'rs.id', '=', 'c.razon_social_id')
+            ->where('c.cedula', $cedula)
+            ->where('c.aliado_id', $alidoId)
+            ->orderByRaw("CASE WHEN c.estado='vigente' THEN 0 ELSE 1 END")
+            ->orderByDesc('c.fecha_ingreso')
+            ->get(['c.id', 'c.cedula', 'c.fecha_ingreso', 'c.estado',
+                   'c.razon_social_id', 'rs.razon_social as razon_social_nombre',
+                   'c.eps_id', 'c.arl_id', 'c.salario']);
 
         return response()->json($contratos);
     }
