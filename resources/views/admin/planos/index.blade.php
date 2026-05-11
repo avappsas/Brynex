@@ -1152,9 +1152,13 @@ const CTX = {
     mes           : {{ $mes }},
     anio          : {{ $anio }},
     modalidadesIds: {!! json_encode(array_map('intval', $modalidadesIds)) !!},
-    totalSS       : {{ $totalSS }},
-    totalSSPendiente: {{ $planos->filter(fn($p) => empty($p->numero_planilla))->sum('total_ss') }},
-    tasaMora      : {{ \App\Models\ConfiguracionBrynex::obtener('tasa_mora_pila', 26.17) }},
+    totalSS          : {{ $totalSS }},
+    totalSSPendiente  : {{ $planos->filter(fn($p) => empty($p->numero_planilla))->sum('total_ss') }},
+    pendienteEPS      : {{ $planos->filter(fn($p) => empty($p->numero_planilla))->sum('v_eps') }},
+    pendienteAFP      : {{ $planos->filter(fn($p) => empty($p->numero_planilla))->sum('v_afp') }},
+    pendienteARL      : {{ $planos->filter(fn($p) => empty($p->numero_planilla))->sum('v_arl') }},
+    pendienteCCF      : {{ $planos->filter(fn($p) => empty($p->numero_planilla))->sum('v_caja') }},
+    tasaMora          : {{ \App\Models\ConfiguracionBrynex::obtener('tasa_mora_pila', 26.17) }},
     esIndependiente: {{ $esIndependiente ? 'true' : 'false' }},
     planoPagado   : {{ $planoPagado ? 'true' : 'false' }},
     rsNit         : {{ $rsNit ?? 'null' }},
@@ -1279,14 +1283,18 @@ const CTX = {
     document.getElementById('mora-bloque').style.background = 'linear-gradient(135deg,#fff7ed,#fef3c7)';
     document.getElementById('mora-bloque').style.borderColor = '#fde68a';
 
-    // 4) Tasa mora configurada en servidor (Art. 635 ET) | base = solo pendientes
+    // 4) Mora por subsistema (EPS, AFP, ARL, CCF) → cada una ceil al próximo 100
     const tasaAnual = CTX.tasaMora / 100;
     const bisiesto  = (anioPago % 4 === 0 && (anioPago % 100 !== 0 || anioPago % 400 === 0));
     const diasAnio  = bisiesto ? 366 : 365;
-    const baseMora  = CTX.totalSSPendiente > 0 ? CTX.totalSSPendiente : CTX.totalSS;
-    const moraExacta = baseMora * tasaAnual / diasAnio * diasMora;
-    const mora       = Math.ceil(moraExacta / 100) * 100; // redondear al próximo múltiplo de 100 (igual que PILA)
-    const total      = CTX.totalSS + mora;
+    const factor    = tasaAnual / diasAnio * diasMora;
+    const ceil100   = v => Math.ceil(v * factor / 100) * 100;
+    const moraEPS   = ceil100(CTX.pendienteEPS);
+    const moraAFP   = ceil100(CTX.pendienteAFP);
+    const moraARL   = ceil100(CTX.pendienteARL);
+    const moraCCF   = ceil100(CTX.pendienteCCF);
+    const mora      = moraEPS + moraAFP + moraARL + moraCCF;
+    const total     = CTX.totalSS + mora;
 
     mostrarNodo('mora-sep2'); mostrarNodo('mora-item-dias');
     mostrarNodo('mora-sep3'); mostrarNodo('mora-item-valor');
@@ -1298,7 +1306,7 @@ const CTX = {
 
     mostrarEl('mora-info-txt');
     document.getElementById('mora-info-txt').textContent =
-        `${infoSufijo} · Tasa mora: ${CTX.tasaMora}% E.A. · ${(tasaAnual/diasAnio*100).toFixed(4)}% diario · Base: $${fmtNum(baseMora)} (pendientes)`;
+        `${infoSufijo} · Tasa: ${CTX.tasaMora}% E.A. · EPS $${fmtNum(moraEPS)} + AFP $${fmtNum(moraAFP)} + ARL $${fmtNum(moraARL)} + CCF $${fmtNum(moraCCF)}`;
 })();
 
 // Devuelve la fecha del N-ésimo día hábil del mes (lun-vie, sin festivos)
