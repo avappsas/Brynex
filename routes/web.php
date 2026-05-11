@@ -236,6 +236,18 @@ Route::middleware('auth')->group(function () {
             Route::post('/gastos/{id}/imagen', [$ga, 'imagen'])  ->name('gastos.imagen');
         });
 
+        // ── Anticipos (Pagos sin Factura) ────────────────────────────────
+        Route::prefix('anticipos')->name('anticipos.')->group(function () {
+            $ac = \App\Http\Controllers\Admin\AnticipoController::class;
+            Route::post('/',                        [$ac, 'store'])       ->name('store');
+            Route::get('/informe',                  [$ac, 'informe'])     ->name('informe');
+            Route::post('/{id}/devolver',           [$ac, 'devolver'])    ->name('devolver');
+            Route::delete('/{id}',                  [$ac, 'destroy'])     ->name('destroy');
+            // APIs para modal facturar
+            Route::get('/api/contrato/{id}',        [$ac, 'porContrato']) ->name('api.contrato');
+            Route::get('/api/empresa/{id}',         [$ac, 'porEmpresa'])  ->name('api.empresa');
+        });
+
         // ── Préstamos / Cartera ──────────────────────────────────────────
         Route::prefix('prestamos')->name('prestamos.')->group(function () {
             $pc = \App\Http\Controllers\Admin\PrestamosController::class;
