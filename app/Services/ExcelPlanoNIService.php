@@ -21,6 +21,12 @@ use Illuminate\Support\Facades\DB;
  */
 class ExcelPlanoNIService
 {
+    // --- Actividad económica ARL por nivel de riesgo (Decreto 768/2022) ----------
+    private const ACTECO_ARL = [
+        1 => '1141001', 2 => '2141003', 3 => '3139202',
+        4 => '4131301', 5 => '5131201',
+    ];
+
     // --- Encabezados fila 1: Aportante (22 columnas formato NI Simple/ARUS) ------
     private const HEADERS_APORTANTE = [
         'Tipo de Registro',                                          // 1
@@ -40,11 +46,12 @@ class ExcelPlanoNIService
         'Periodo Pago Sistemas Diferentes a Salud',                  // 15 -> mes vencido
         'Periodo Pago al Sistema de Salud',                          // 16 -> mes actual
         'Numero de Planilla',                                        // 17
-        'Numero de Cotizantes',                                      // 18
-        'Valor Total de la Nomina',                                  // 19
-        'Tipo de Aportante',                                         // 20 -> 1
-        'Codigo del Operador de Informacion',                        // 21 -> 89 ARUS
-        'Version del Formato',                                       // 22
+        'Fecha de Pago',                                             // 18 -> vacío planilla ordinaria
+        'Numero de Cotizantes',                                      // 19
+        'Valor Total de la Nomina',                                  // 20
+        'Tipo de Aportante',                                         // 21 -> 1  (col U)
+        'Codigo del Operador de Informacion',                        // 22
+        'Version del Formato',                                       // 23
     ];
 
     // --- Encabezados fila 3: Trabajadores (98 columnas — formato operadores SS) ----
@@ -309,11 +316,11 @@ class ExcelPlanoNIService
         $totalCotizantes = $planos->count();
         $totalNomina     = $planos->sum('total_ss');
 
-        // -- 5. Periodos AAAAMM separados ------------------------------------------
+        // -- 5. Periodos AAAA-MM separados ------------------------------------------
         // Col 15: Sistemas diferentes a Salud (AFP, ARL, CCF) = mes VENCIDO
-        $periodoSS     = sprintf('%04d%02d', $anioVencido, $mesVencido);
+        $periodoSS     = sprintf('%04d-%02d', $anioVencido, $mesVencido);
         // Col 16: Sistema de Salud (EPS) = mes ACTUAL (de pago)
-        $periodoSalud  = sprintf('%04d%02d', $anioPago,   $mesPago);
+        $periodoSalud  = sprintf('%04d-%02d', $anioPago,   $mesPago);
 
         // -- 6. Construir Spreadsheet ----------------------------------------------
         $spreadsheet = new Spreadsheet();
@@ -338,17 +345,18 @@ class ExcelPlanoNIService
             'tipo_planilla'      => 'E',         // E = Ordinaria
             'nro_pi_factura'     => null,
             'fecha_p_factura'    => null,
-            'forma_presentacion' => $rs->forma_presentacion,
+            'forma_presentacion' => 'S',                 // S = electrónica (fijo)
             'codigo_suc'         => $rs->codigo_sucursal,
             'nombre_suc'         => $rs->nombre_sucursal,
             'codigo_arl'         => $codigoArl ?? '',  // NIT/código ARL de la empresa
             'periodo_ss'         => $periodoSS,       // mes vencido para AFP/ARL/CCF
             'periodo_salud'      => $periodoSalud,    // mes actual para EPS
-            'numero_planilla'    => $numeroPlanilla,
+            'numero_planilla'    => null,                          // vacío
+            'fecha_pago'         => null,                          // vacío — planilla ordinaria
             'numero_cotizantes'  => $totalCotizantes,
-            'valor_nomina'       => (int) $totalNomina,
+            'valor_nomina'       => null,                          // vacío
             'tipo_aportante'     => 1,
-            'codigo_operador'    => $operador?->codigo_ni ?? '',   // código numérico PILA (89=ARUS)
+            'codigo_operador'    => null,                          // vacío — auto-completa operador
             'version_formato'    => null,
         ]);
 
@@ -392,11 +400,12 @@ class ExcelPlanoNIService
             /* 15 */ $d['periodo_ss'],          // AAAAMM mes vencido
             /* 16 */ $d['periodo_salud'],       // AAAAMM mes actual
             /* 17 */ $d['numero_planilla'],     // número planilla
-            /* 18 */ $d['numero_cotizantes'],   // total personas
-            /* 19 */ $d['valor_nomina'],        // total SS
-            /* 20 */ $d['tipo_aportante'],      // 1
-            /* 21 */ $d['codigo_operador'],     // 89 (ARUS)
-            /* 22 */ $d['version_formato'],     // null
+            /* 18 */ $d['fecha_pago'],          // vacío — planilla ordinaria
+            /* 19 */ $d['numero_cotizantes'],   // total personas
+            /* 20 */ $d['valor_nomina'],        // total SS
+            /* 21 */ $d['tipo_aportante'],      // 1  (col U)
+            /* 22 */ $d['codigo_operador'],     // vacío — auto-completa operador
+            /* 23 */ $d['version_formato'],     // null
         ];
 
         // Columnas que deben ser texto para evitar notacion cientifica
@@ -448,7 +457,7 @@ class ExcelPlanoNIService
             /*  7 */ $esExtranjero,                                    // Extranjero
             /*  8 */ null,                                             // Colombiano exterior
             /*  9 */ $depExcel,                                        // Departamento
-            /* 10 */ $p->cod_municipio ?? null,                        // Municipio
+            /* 10 */ $c['sinCaja'] ? 1 : ($p->cod_municipio ?? null),  // Municipio (1 si sin caja)
             /* 11 */ $p->primer_ape,                                   // Primer apellido
             /* 12 */ $p->segundo_ape,                                  // Segundo apellido
             /* 13 */ $p->primer_nombre,                                // Primer nombre
@@ -468,27 +477,27 @@ class ExcelPlanoNIService
             /* 27 */ null,                                             // VAC-LR
             /* 28 */ null,                                             // AVP
             /* 29 */ null,                                             // VCT
-            /* 30 */ 0,                                                // IRL
+            /* 30 */ null,                                             // IRL (vacío — no aplica)
             /* 31 */ $c['codAfpPila'] ?: null,                         // AFP
             /* 32 */ null,                                             // AFP Traslado
             /* 33 */ $c['codEpsPila'] ?: null,                         // EPS
             /* 34 */ null,                                             // EPS Traslado
             /* 35 */ $c['codCcfPila'] ?: null,                         // CCF
-            /* 36 */ $c['diasPension'] ?: null,                        // Días AFP
+            /* 36 */ $c['tienePension'] ? ($c['diasPension'] ?: null) : 0, // Días AFP (0 si sin pensión)
             /* 37 */ $c['diasSalud']   ?: null,                        // Días EPS
             /* 38 */ $c['diasArl'],                                    // Días ARL (30 si K)
             /* 39 */ $c['diasCcf']     ?: null,                        // Días CCF
             /* 40 */ $c['ibcFull'],                                    // Salario básico
             /* 41 */ 'F',                                              // Tipo salario
-            /* 42 */ $c['ibcAfp']      ?: null,                        // IBC AFP
+            /* 42 */ $c['tienePension'] ? ($c['ibcAfp'] ?: null) : 0,  // IBC AFP (0 si sin pensión)
             /* 43 */ $c['ibcEps']      ?: null,                        // IBC EPS
             /* 44 */ $c['ibcArl'],                                     // IBC ARL
             /* 45 */ $c['ibcCcf']      ?: null,                        // IBC CCF
-            /* 46 */ $c['tienePension'] ? 0.16 : null,                 // Tarifa AFP
-            /* 47 */ $c['vAfp']        ?: null,                        // Cotización AFP
+            /* 46 */ $c['tienePension'] ? 0.16 : 0,                    // Tarifa AFP (0 si sin pensión)
+            /* 47 */ $c['tienePension'] ? ($c['vAfp'] ?: null) : 0,    // Cotización AFP (0 si sin pensión)
             /* 48 */ 0,                                                // AVP afiliado
             /* 49 */ 0,                                                // AVP aportante
-            /* 50 */ $c['vAfp']        ?: null,                        // Total AFP
+            /* 50 */ $c['tienePension'] ? ($c['vAfp'] ?: null) : 0,    // Total AFP (0 si sin pensión)
             /* 51 */ 0,                                                // FSP solidaridad
             /* 52 */ 0,                                                // FSP subsistencia
             /* 53 */ 0,                                                // Valor no retenido
@@ -529,7 +538,7 @@ class ExcelPlanoNIService
             /* 95 */ $c['ibcOtros']    ?: null,                        // IBC parafiscales
             /* 96 */ $horasLaboradas,                                  // Horas laboradas
             /* 97 */ null,                                             // Fecha radicación
-            /* 98 */ null,                                             // Actividad económica ARL
+            /* 98 */ self::ACTECO_ARL[$c['nivelRiesgo']] ?? null,      // Actividad económica ARL (por nivel riesgo)
         ];
 
         $colTexto = [4, 31, 33, 35, 77];

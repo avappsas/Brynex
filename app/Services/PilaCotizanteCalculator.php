@@ -167,8 +167,8 @@ class PilaCotizanteCalculator
                 'vIcbf'            => 0,
                 'sinCaja'          => false,
                 'esTiempoParcial'  => false,
-                'depCod'           => '99',
-                'munCod'           => '001',
+                'depCod'           => '94',
+                'munCod'           => '1',
             ];
         }
 
@@ -226,7 +226,7 @@ class PilaCotizanteCalculator
 
             // ── Departamento / Municipio ────────────────────────────────────────
             if ($sinCaja) {
-                $depCod = '99'; $munCod = '001';
+                $depCod = '94'; $munCod = '1';
             } else {
                 $depCod = str_pad((string)($p->dep_id ?? $p->cod_departamento ?? ''), 2, '0', STR_PAD_LEFT);
                 $munCod = str_pad((string)($p->mun_id ?? $p->cod_municipio    ?? ''), 3, '0', STR_PAD_LEFT);
@@ -337,10 +337,10 @@ class PilaCotizanteCalculator
         $codArlPila = $p->cod_arl_pila ?? $p->codigo_arl_pila ?? '';
 
         // ── Departamento / Municipio ─────────────────────────────────────────
-        // Sin caja propia (CCF68): departamento 99 (nacional), municipio 001
+        // Sin caja propia (CCF68): departamento 94 por defecto, municipio 1
         $sinCaja = ($codCcfFin === 'CCF68');
         if ($sinCaja) {
-            $depCod = '99'; $munCod = '001';
+            $depCod = '94'; $munCod = '1';
         } else {
             $depCod = str_pad((string)($p->dep_id ?? $p->cod_departamento ?? ''), 2, '0', STR_PAD_LEFT);
             $munCod = str_pad((string)($p->mun_id ?? $p->cod_municipio    ?? ''), 3, '0', STR_PAD_LEFT);
