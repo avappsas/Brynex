@@ -84,7 +84,7 @@
                                 {{ $nombreCompleto ?: (isset($cliente->id) && $cliente->id ? 'Editar Cliente #'.$cliente->id : 'Nuevo Cliente') }}
                             </h2>
                             @if(!empty($cliente->cedula))
-                            <span style="background:linear-gradient(135deg,#1e40af,#2563eb);color:#fff;border-radius:999px;padding:0.15rem 0.65rem;font-size:0.68rem;font-weight:700;letter-spacing:0.03em;display:inline-block;margin-top:0.1rem;">CC {{ number_format($cliente->cedula, 0, ',', '.') }}</span>
+                            <span style="background:linear-gradient(135deg,#1e40af,#2563eb);color:#fff;border-radius:999px;padding:0.15rem 0.65rem;font-size:0.68rem;font-weight:700;letter-spacing:0.03em;display:inline-block;margin-top:0.1rem;">CC {{ $cliente->cedula }}</span>
                             @endif
                         </div>
                     </div>

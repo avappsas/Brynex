@@ -610,7 +610,7 @@ $tIva += $vIvaG; $tOtros += $vOtrG;
     <td style="text-align:center;color:#94a3b8;font-weight:700;font-size:.72rem">{{ $idx+1 }}</td>
     <td>
         <div style="font-weight:700;font-size:.78rem;color:#0f172a">{{ $nom ?: '—' }}</div>
-        <div style="font-size:.63rem;color:#94a3b8">CC {{ number_format($f->cedula,0,'','.') }}</div>
+        <div style="font-size:.63rem;color:#94a3b8">CC {{ $f->cedula }}</div>
     </td>
     <td>
         @if($rsG)
@@ -845,12 +845,12 @@ $nomAliado  = $aliadoObj?->nombre ?? $aliadoObj?->razon_social ?? 'BryNex';
         @elseif($rs1)
             {{-- Con razón social → DEPENDIENTE --}}
             <div style="font-size:1.1rem;font-weight:900;color:#0f172a;line-height:1.1">{{ $nom1 ?: 'CC '.$factura->cedula }}</div>
-            <div style="font-size:.68rem;color:#64748b;margin-top:.12rem">C.C. {{ number_format($factura->cedula, 0, '', '.') }}</div>
+            <div style="font-size:.68rem;color:#64748b;margin-top:.12rem">C.C. {{ $factura->cedula }}</div>
             <div style="font-size:.65rem;font-weight:800;color:#1d4ed8;text-transform:uppercase;letter-spacing:.07em;margin-top:.2rem">Dependiente</div>
         @else
             {{-- Sin razón social → INDEPENDIENTE --}}
             <div style="font-size:1.1rem;font-weight:900;color:#0f172a;line-height:1.1">{{ $nom1 ?: 'CC '.$factura->cedula }}</div>
-            <div style="font-size:.68rem;color:#64748b;margin-top:.12rem">C.C. {{ number_format($factura->cedula, 0, '', '.') }}</div>
+            <div style="font-size:.68rem;color:#64748b;margin-top:.12rem">C.C. {{ $factura->cedula }}</div>
             <div style="font-size:.65rem;font-weight:800;color:#15803d;text-transform:uppercase;letter-spacing:.07em;margin-top:.2rem">Independiente</div>
         @endif
     </div>
@@ -898,7 +898,7 @@ $nomAliado  = $aliadoObj?->nombre ?? $aliadoObj?->razon_social ?? 'BryNex';
 
     <div class="fact-cliente-row">
         <span class="fact-cliente-lbl">Cédula</span>
-        <span class="fact-cliente-val">{{ number_format($factura->cedula, 0, '', '.') }}</span>
+        <span class="fact-cliente-val">{{ $factura->cedula }}</span>
     </div>
     @if($tel1)
     <div class="fact-cliente-row">

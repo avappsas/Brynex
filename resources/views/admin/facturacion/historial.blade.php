@@ -6,7 +6,7 @@ $fmt   = fn($v) => '$' . number_format($v ?? 0, 0, ',', '.');
 $meses_full = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 // $cliente viene directo del controlador (no depende de $contrato)
 $nombre  = trim(($cliente->primer_nombre ?? '') . ' ' . ($cliente->segundo_nombre ?? '') . ' ' . ($cliente->primer_apellido ?? '') . ' ' . ($cliente->segundo_apellido ?? ''));
-if (!$nombre) $nombre = $cliente->nombre_completo ?? ('CC ' . number_format($cedula, 0, '', '.'));
+if (!$nombre) $nombre = $cliente->nombre_completo ?? ('CC ' . $cedula);
 $esAdmin       = in_array(auth()->user()->rol ?? '', ['superadmin','admin']);
 // SuperAdmin de BryNex: puede anular facturas con planilla pagada
 $esSuperBrynex = auth()->user()->es_brynex && auth()->user()->hasRole('superadmin');
@@ -88,7 +88,7 @@ table.hi-tbl{width:100%;border-collapse:collapse;font-size:.77rem}
             <div class="hi-nom" style="margin-top:.2rem">🕒 Historial de Pagos</div>
             <div class="hi-meta">
                 <span>👤 {{ $nombre }}</span>
-                <span>CC {{ number_format($cedula, 0, '', '.') }}</span>
+                <span>CC {{ $cedula }}</span>
                 @if($contrato)
                 <span>📋 Contrato #{{ $contrato->id }}</span>
                 @endif

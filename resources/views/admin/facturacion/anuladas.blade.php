@@ -103,7 +103,7 @@ $anulador = \App\Models\User::find($f->anulado_por);
 <tr>
     <td style="font-weight:800;color:#991b1b">{{ str_pad($f->numero_factura,6,'0',STR_PAD_LEFT) }}</td>
     <td style="white-space:nowrap;color:#475569">{{ $per }}</td>
-    <td style="font-family:monospace;font-size:.74rem">{{ number_format($f->cedula,0,'','.') }}</td>
+    <td style="font-family:monospace;font-size:.74rem">{{ $f->cedula }}</td>
     <td>
         <div style="font-weight:600;font-size:.8rem">{{ $nom }}</div>
         <div style="font-size:.66rem;color:#94a3b8">{{ ucfirst($f->tipo ?? '') }}</div>

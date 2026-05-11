@@ -105,7 +105,7 @@
                                     </a>
                                     @endif
                                 </div>
-                                <div class="cl-cedula">{{ $c->cedula ? number_format($c->cedula, 0, '', '.') : '—' }}</div>
+                                <div class="cl-cedula">{{ $c->cedula ? $c->cedula : '—' }}</div>
                             </div>
                         </div>
                     </td>

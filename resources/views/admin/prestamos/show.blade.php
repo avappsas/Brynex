@@ -140,7 +140,7 @@ $meses = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','
                     {{ $lf->contrato?->cliente?->primer_nombre }} {{ $lf->contrato?->cliente?->primer_apellido }}
                 </td>
                 <td style="padding:.45rem .7rem;font-family:monospace;color:#64748b;">
-                    {{ number_format($lf->cedula, 0, '', '.') }}
+                    {{ $lf->cedula }}
                 </td>
                 <td style="padding:.45rem .7rem;text-align:right;font-family:monospace;font-weight:700;">
                     {{ $fmt($lf->total) }}
@@ -246,7 +246,7 @@ $meses = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','
             </div>
             <div class="info-row">
                 <span class="info-lbl">Cédula</span>
-                <span class="info-val">{{ number_format($factura->cedula, 0, '', '.') }}</span>
+                <span class="info-val">{{ $factura->cedula }}</span>
             </div>
             <div class="info-row">
                 <span class="info-lbl">Asesor</span>

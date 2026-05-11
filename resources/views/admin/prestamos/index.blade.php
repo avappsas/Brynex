@@ -197,7 +197,7 @@ $meses = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','
                 <div style="font-weight:700;color:#1e3a5f;">{{ $nombre ?: '—' }}</div>
             </td>
             <td style="font-family:monospace;color:#64748b;font-size:.78rem;">
-                {{ number_format($f->cedula, 0, '', '.') }}
+                {{ $f->cedula }}
             </td>
             <td style="font-size:.75rem;color:#64748b;">{{ $f->contrato?->asesor?->nombre ?? '—' }}</td>
             <td>

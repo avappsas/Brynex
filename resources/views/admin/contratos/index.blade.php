@@ -64,9 +64,9 @@
                     <div style="font-weight:600;color:#0f172a;">
                         {{ $contrato->cliente->primer_nombre }} {{ $contrato->cliente->primer_apellido }}
                     </div>
-                    <div style="font-size:0.75rem;color:#64748b;">CC {{ number_format($contrato->cedula,0,',','.') }}</div>
+                    <div style="font-size:0.75rem;color:#64748b;">CC {{ $contrato->cedula }}</div>
                     @else
-                    <span style="color:#94a3b8;">CC {{ number_format($contrato->cedula,0,',','.') }}</span>
+                    <span style="color:#94a3b8;">CC {{ $contrato->cedula }}</span>
                     @endif
                 </td>
                 <td style="padding:0.65rem 1rem;color:#475569;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">

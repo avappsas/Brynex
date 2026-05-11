@@ -43,7 +43,7 @@ $totalAbonado = $factura->abonos->sum('valor');
     <div class="ab-row"><span class="ab-lbl">Fecha</span><span class="ab-val">{{ $abono->fecha?->format('d/m/Y') }}</span></div>
     <div class="ab-row"><span class="ab-lbl">Factura asociada</span><span class="ab-val">#{{ str_pad($factura->numero_factura, 6, '0', STR_PAD_LEFT) }}</span></div>
     <div class="ab-row"><span class="ab-lbl">Período</span><span class="ab-val">{{ $meses[$factura->mes] }} {{ $factura->anio }}</span></div>
-    <div class="ab-row"><span class="ab-lbl">Cédula</span><span class="ab-val">{{ number_format($factura->cedula, 0, '', '.') }}</span></div>
+    <div class="ab-row"><span class="ab-lbl">Cédula</span><span class="ab-val">{{ $factura->cedula }}</span></div>
     <div class="ab-row"><span class="ab-lbl">Trabajador</span><span class="ab-val">{{ $cliente?->nombres }} {{ $cliente?->apellidos }}</span></div>
     <div class="ab-row"><span class="ab-lbl">Forma de pago</span><span class="ab-val">{{ ucfirst($abono->forma_pago) }}</span></div>
     @if($abono->observacion)

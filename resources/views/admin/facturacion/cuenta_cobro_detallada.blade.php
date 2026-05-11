@@ -214,7 +214,7 @@ table.tbl-det tfoot .num { color: #34d399; }
         @endphp
         <tr>
             <td style="text-align:center;color:#94a3b8;">{{ $no++ }}</td>
-            <td style="font-family:monospace;">{{ number_format($item->cedula,0,'','.') }}</td>
+            <td style="font-family:monospace;">{{ $item->cedula }}</td>
             <td style="min-width:160px;">
                 <div style="font-weight:700;">{{ $item->nombre }}</div>
                 <div style="font-size:8.5px;color:#dc2626;font-weight:600;">{{ $item->razon_social }}</div>

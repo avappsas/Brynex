@@ -310,7 +310,7 @@ $totAdmon+=$vAdm;$totIva+=$vIva;$totTotal+=$vTot;$totMora+=$vMora;
             @endif
         </span>
     </td>
-    <td style="font-family:monospace;font-size:.75rem">{{ number_format($c->cedula,0,'','.') }}</td>
+    <td style="font-family:monospace;font-size:.75rem">{{ $c->cedula }}</td>
     <td style="max-width:170px;overflow:hidden;text-overflow:ellipsis;font-weight:500">
         @if($c->cliente?->id)
         <a href="{{ route('admin.clientes.edit', $c->cliente->id) }}"

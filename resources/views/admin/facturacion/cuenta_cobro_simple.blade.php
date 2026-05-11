@@ -230,7 +230,7 @@ table.tbl-cc .num { text-align: right; font-family: monospace; }
                 <div style="font-weight:700;font-size:10px;color:#dc2626;">{{ $item->razon_social }}</div>
                 @if($item->es_afil)<span style="font-size:9px;color:#7c3aed;font-weight:700;">📌 Afiliación</span>@endif
             </td>
-            <td style="text-align:center;font-family:monospace;">{{ number_format($item->cedula,0,'','.') }}</td>
+            <td style="text-align:center;font-family:monospace;">{{ $item->cedula }}</td>
             <td>
                 <div style="font-weight:600;white-space:nowrap;">{{ $item->nombre }}</div>
                 @if($itemAFavor > 0)
