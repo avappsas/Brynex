@@ -1153,6 +1153,8 @@ const CTX = {
     anio          : {{ $anio }},
     modalidadesIds: {!! json_encode(array_map('intval', $modalidadesIds)) !!},
     totalSS       : {{ $totalSS }},
+    totalSSPendiente: {{ $planos->filter(fn($p) => empty($p->numero_planilla))->sum('total_ss') }},
+    tasaMora      : {{ \App\Models\ConfiguracionBrynex::obtener('tasa_mora_pila', 26.17) }},
     esIndependiente: {{ $esIndependiente ? 'true' : 'false' }},
     planoPagado   : {{ $planoPagado ? 'true' : 'false' }},
     rsNit         : {{ $rsNit ?? 'null' }},
@@ -1221,12 +1223,21 @@ const CTX = {
 
     if (!fechaVence) return;
 
-    // 3) Días calendario de mora desde el vencimiento hasta hoy
+    // 3) Días calendario de mora: si hoy es fin de semana/festivo,
+    //    el pago real ocurre el próximo día hábil → usar esa fecha para contar
     const hoy = new Date();
     hoy.setHours(0,0,0,0);
-    const venceMs = fechaVence.getTime();
-    const hoyMs   = hoy.getTime();
-    const diasMora = Math.floor((hoyMs - venceMs) / 86400000);
+    // Avanzar al próximo día hábil si hoy no lo es
+    const fechaPago = new Date(hoy);
+    while (true) {
+        const dow = fechaPago.getDay();
+        const key = `${fechaPago.getFullYear()}-${String(fechaPago.getMonth()+1).padStart(2,'0')}-${String(fechaPago.getDate()).padStart(2,'0')}`;
+        if (dow !== 0 && dow !== 6 && !festivosCo.has(key)) break;
+        fechaPago.setDate(fechaPago.getDate() + 1);
+    }
+    const venceMs  = fechaVence.getTime();
+    const pagoMs   = fechaPago.getTime();
+    const diasMora = Math.max(0, Math.floor((pagoMs - venceMs) / 86400000));
 
     // ── Mostrar sección mora en el bloque unificado ───────────────────
     function mostrarNodo(id) { const el = document.getElementById(id); if (el) el.hidden = false; }
@@ -1268,13 +1279,14 @@ const CTX = {
     document.getElementById('mora-bloque').style.background = 'linear-gradient(135deg,#fff7ed,#fef3c7)';
     document.getElementById('mora-bloque').style.borderColor = '#fde68a';
 
-    // 4) Tasa mora: 26.17% EA (usura 28.17% – 2 pp) | Art. 635 ET
-    //    Interés simple: valor × tasa_anual / diasAnio × días
-    const tasaAnual = 0.2617;
+    // 4) Tasa mora configurada en servidor (Art. 635 ET) | base = solo pendientes
+    const tasaAnual = CTX.tasaMora / 100;
     const bisiesto  = (anioPago % 4 === 0 && (anioPago % 100 !== 0 || anioPago % 400 === 0));
     const diasAnio  = bisiesto ? 366 : 365;
-    const mora      = Math.round(CTX.totalSS * tasaAnual / diasAnio * diasMora);
-    const total     = CTX.totalSS + mora;
+    const baseMora  = CTX.totalSSPendiente > 0 ? CTX.totalSSPendiente : CTX.totalSS;
+    const moraExacta = baseMora * tasaAnual / diasAnio * diasMora;
+    const mora       = Math.ceil(moraExacta / 100) * 100; // redondear al próximo múltiplo de 100 (igual que PILA)
+    const total      = CTX.totalSS + mora;
 
     mostrarNodo('mora-sep2'); mostrarNodo('mora-item-dias');
     mostrarNodo('mora-sep3'); mostrarNodo('mora-item-valor');
@@ -1286,7 +1298,7 @@ const CTX = {
 
     mostrarEl('mora-info-txt');
     document.getElementById('mora-info-txt').textContent =
-        `${infoSufijo} · Tasa mora: 26.17% E.A. (usura 28.17% – 2 pp) · ${(tasaAnual/diasAnio*100).toFixed(4)}% diario`;
+        `${infoSufijo} · Tasa mora: ${CTX.tasaMora}% E.A. · ${(tasaAnual/diasAnio*100).toFixed(4)}% diario · Base: $${fmtNum(baseMora)} (pendientes)`;
 })();
 
 // Devuelve la fecha del N-ésimo día hábil del mes (lun-vie, sin festivos)

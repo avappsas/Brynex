@@ -723,10 +723,10 @@ class ContratoController extends Controller
         $modalidadesArlLibre = \App\Models\TipoModalidad::IDS_ARL_LIBRE;  // [10, 11, -1, 8]
         $modalidadesModoArl  = \App\Models\TipoModalidad::IDS_MODO_ARL;   // [10, 11, -1]
 
-        // IDs de modalidades independientes (I Act=11, I Venc=10)
+        // IDs de modalidades independientes (I Act=11, I Venc=10, En el Exterior=14, UPC=13)
         // NOTA: Las modalidades TP NO son "independientes" a efectos del filtro de RS;
         // se manejan por su propia lógica (es_tiempo_parcial=1 en la BD).
-        $modalidadesIndependientes = [10, 11];
+        $modalidadesIndependientes = [10, 11, 13, 14];
 
         // Mapa: tipo_modalidad_id => [plan_ids] — para filtrado dinámico en el JS
         $planesPermitidos = DB::table('modalidad_planes')
