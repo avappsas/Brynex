@@ -687,7 +687,8 @@ class PlanoPagoController extends Controller
                 $queryUpdate = DB::table('planos')
                     ->where('aliado_id', $aliadoId)
                     ->whereNull('deleted_at')
-                    ->where('tipo_reg', 'planilla')
+                    ->whereIn('tipo_reg', ['planilla', 'retiro'])
+                    ->where('num_dias', '>', 0)
                     ->where('razon_social_id', $validated['razon_social_id'])
                     ->where('n_plano', $validated['n_plano'])
                     ->where(function ($q) use ($mesPago, $anioPago, $mesVencido, $anioVencido) {
