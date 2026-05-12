@@ -353,30 +353,15 @@
             </select>
           </div>
 
-          {{-- Panel "Independiente": cédula + operador planilla --}}
+          {{-- Panel "Independiente": solo cédula cotizante (el Operador Planilla está en su propio panel) --}}
           <div id="panel_arl_cedula" style="display:none;">
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;align-items:end;">
-              <div>
-                <label class="lb">Cédula Cotizante
-                  <span style="font-weight:400;color:#64748b;font-size:0.6rem;margin-left:3px;">el cliente cotiza por sí mismo</span>
-                </label>
-                <input type="text" id="disp_arl_cedula" readonly
-                    style="{{ $I }}background:#f8fafc;color:#475569;font-family:monospace;cursor:not-allowed;"
-                    value="{{ old('cedula', $cliente->cedula ?? $contrato->cedula ?? '') }}">
-              </div>
-              <div>
-                <label class="lb" style="color:#1d4ed8;">&#x1F4B3; Operador Planilla</label>
-                <select name="operador_planilla_id"
-                        style="{{ $S }}border-color:#bfdbfe;background:#eff6ff;color:#1d4ed8;font-weight:600;">
-                  <option value="">&mdash; Seleccione &mdash;</option>
-                  @foreach($operadoresPlanilla ?? [] as $op)
-                  <option value="{{ $op->id }}"
-                      {{ old('operador_planilla_id', $clienteOperadorId ?? '') == $op->id ? 'selected' : '' }}>
-                    {{ $op->nombre }}{{ $op->codigo_ni ? ' ('.$op->codigo_ni.')' : '' }}
-                  </option>
-                  @endforeach
-                </select>
-              </div>
+            <div>
+              <label class="lb">Cédula Cotizante
+                <span style="font-weight:400;color:#64748b;font-size:0.6rem;margin-left:3px;">el cliente cotiza por sí mismo</span>
+              </label>
+              <input type="text" id="disp_arl_cedula" readonly
+                  style="{{ $I }}background:#f8fafc;color:#475569;font-family:monospace;cursor:not-allowed;"
+                  value="{{ old('cedula', $cliente->cedula ?? $contrato->cedula ?? '') }}">
             </div>
           </div>
         </div>
@@ -385,6 +370,21 @@
       {{-- Campo oculto que guarda el bigInteger en BD --}}
       <input type="hidden" name="arl_nit_cotizante" id="inp_arl_nit"
           value="{{ old('arl_nit_cotizante', $contrato->arl_nit_cotizante ?? '') }}">
+    </div>
+
+    {{-- Panel Operador Planilla: visible SOLO cuando RS es independiente, sin importar si hay ARL --}}
+    <div id="panel-operador-planilla" style="display:none;margin-top:0.5rem;max-width:280px;">
+      <label class="lb" style="color:#1d4ed8;">&#x1F4B3; Operador Planilla</label>
+      <select name="operador_planilla_id"
+              style="{{ $S }}border-color:#bfdbfe;background:#eff6ff;color:#1d4ed8;font-weight:600;">
+        <option value="">&mdash; Seleccione &mdash;</option>
+        @foreach($operadoresPlanilla ?? [] as $op)
+        <option value="{{ $op->id }}"
+            {{ old('operador_planilla_id', $clienteOperadorId ?? '') == $op->id ? 'selected' : '' }}>
+          {{ $op->nombre }}{{ $op->codigo_ni ? ' ('.$op->codigo_ni.')' : '' }}
+        </option>
+        @endforeach
+      </select>
     </div>
   </div>
 
@@ -1232,6 +1232,9 @@ function onRazonSocialChange(sel) {
             mostrarPanelArlSegunModo('');
         }
     }
+    // Mostrar/ocultar panel Operador Planilla según independiente (independiente del ARL)
+    const panelOp = document.getElementById('panel-operador-planilla');
+    if (panelOp) panelOp.style.display = esIndep ? '' : 'none';
     // Actualizar NIT cotizante si ya hay un modo ARL seleccionado
     const modoSel = document.getElementById('sel_arl_modo');
     if (modoSel) sincronizarNitCotizante(modoSel.value, opt?.value || '');
@@ -1724,6 +1727,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (modoArlSel?.value) {
         mostrarPanelArlSegunModo(modoArlSel.value);
     }
+
+    // ── Mostrar Operador Planilla si la RS es independiente ────────
+    const esIndepInit = selRS?.options[selRS.selectedIndex]?.dataset?.independiente === '1';
+    const panelOpInit = document.getElementById('panel-operador-planilla');
+    if (panelOpInit) panelOpInit.style.display = esIndepInit ? '' : 'none';
 
     // ── Cotizador inicial: disparo directo con vanilla JS ─────────
     const cotizarInicial = () => {
