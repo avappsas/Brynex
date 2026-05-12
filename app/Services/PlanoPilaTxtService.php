@@ -160,6 +160,10 @@ class PlanoPilaTxtService
         if (!empty($tiposModal)) $query->whereIn('p.tipo_modalidad_id', $tiposModal);
         $planos = $query->orderBy('p.primer_ape')->orderBy('p.primer_nombre')->get();
 
+        // Tipo de planilla: 'K' si TODOS los registros son Estudiante K (-1), 'E' en cualquier otro caso
+        $todosK       = $planos->count() > 0 && $planos->every(fn($p) => (int)$p->tipo_modalidad_id === -1);
+        $tipoPlanilla = $todosK ? 'K' : 'E';
+
         $nit     = preg_replace('/[^0-9]/', '', (string)($rs->nit ?? ''));
         $periodo = sprintf('%04d%02d', $anioPago, $mesPago);
         $actEco  = $this->N((string)($rs->actividad_economica ?? '0'), 7);
@@ -176,7 +180,7 @@ class PlanoPilaTxtService
         }
 
         $lineas   = [];
-        $lineas[] = $this->tipo1($rs, $nit, $periodo, count($planos), $codigoArlRs, (int)$valorNomina);
+        $lineas[] = $this->tipo1($rs, $nit, $periodo, count($planos), $codigoArlRs, (int)$valorNomina, $tipoPlanilla);
 
         // periodoLiq = mes vencido (para validar que ING/RET estén dentro del período)
         $periodoLiq = sprintf('%04d-%02d', $anioVencido, $mesVencido); // ej: '2026-04'
@@ -202,7 +206,7 @@ class PlanoPilaTxtService
     }
 
     // ── Registro Tipo 1 — 359 chars, 22 campos (Resolución 2388) ─────────────
-    private function tipo1(object $rs, string $nit, string $periodo, int $total, ?string $codigoArlRs, int $valorNomina): string
+    private function tipo1(object $rs, string $nit, string $periodo, int $total, ?string $codigoArlRs, int $valorNomina, string $tipoPlanilla = 'E'): string
     {
         $anio = (int)substr($periodo, 0, 4);
         $mes  = (int)substr($periodo, 4, 2);
@@ -224,7 +228,7 @@ class PlanoPilaTxtService
             . $this->A('NI', 2)                                    // 5  tipo_doc_aportante   A 2   pos 208-209
             . $this->A($nit, 16)                                   // 6  num_doc_aportante    A 16  pos 210-225
             . $dv                                                   // 7  digito_verificacion  N 1   pos 226
-            . $this->A('E', 1)                                     // 8  tipo_planilla        A 1   pos 227 (E=empresa)
+            . $this->A($tipoPlanilla, 1)                         // 8  tipo_planilla        A 1   pos 227 ('K'=Estudiante | 'E'=Ordinaria)
             . $this->A('', 10)                                     // 9  num_planilla_asoc    N 10  pos 228-237 (vacío si no es corrección)
             . $this->A('', 10)                                     // 10 fecha_pago_asoc      A 10  pos 238-247
             . $this->A('S', 1)                                     // 11 forma_presentacion   A 1   pos 248 (S=sucursal)

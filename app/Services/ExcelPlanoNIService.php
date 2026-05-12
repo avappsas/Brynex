@@ -312,7 +312,11 @@ class ExcelPlanoNIService
             ->whereNotNull('numero_planilla')
             ->value('numero_planilla');
 
-        // -- 4. Totales para fila 2 ------------------------------------------------
+        // -- 4. Tipo de planilla y totales ---------------------------------------
+        // Si TODOS los registros cargados son Estudiante K (tipo_modalidad_id = -1)
+        // → Tipo Planilla = 'K'. Para cualquier otro caso → 'E' (Ordinaria).
+        $todosK          = $planos->count() > 0 && $planos->every(fn($p) => (int)$p->tipo_modalidad_id === -1);
+        $tipoPlanilla    = $todosK ? 'K' : 'E';
         $totalCotizantes = $planos->count();
         $totalNomina     = $planos->sum('total_ss');
 
@@ -342,7 +346,7 @@ class ExcelPlanoNIService
             'tipo_doc_ap'        => 'NI',        // NI = NIT para aportante empresa
             'nit'                => preg_replace('/[^0-9]/', '', (string)($rs->nit ?? $rs->id)),
             'dv'                 => $rs->dv,
-            'tipo_planilla'      => 'E',         // E = Ordinaria
+            'tipo_planilla'      => $tipoPlanilla,  // 'K' = Estudiante | 'E' = Ordinaria
             'nro_pi_factura'     => null,
             'fecha_p_factura'    => null,
             'forma_presentacion' => 'S',                 // S = electrónica (fijo)
