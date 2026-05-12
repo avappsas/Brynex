@@ -159,12 +159,68 @@ class FormularioEpsService
         return $valor[$pos] ?? '';
     }
 
+    /**
+     * Decrypts an encrypted PDF to a temp file using qpdf or GhostScript.
+     * Returns the path to the decrypted file, or null if the PDF is not
+     * encrypted / no tool is available.
+     */
+    protected function descifrarPdf(string $rutaPdf): ?string
+    {
+        $tmp = tempnam(sys_get_temp_dir(), 'fpdi_dec_') . '.pdf';
+
+        // 1. Try qpdf
+        if (($qpdf = trim(shell_exec('which qpdf 2>/dev/null') ?? '')) !== '') {
+            exec(escapeshellcmd($qpdf) . ' --decrypt ' .
+                escapeshellarg($rutaPdf) . ' ' . escapeshellarg($tmp) . ' 2>&1', $out, $code);
+            if ($code === 0 && file_exists($tmp) && filesize($tmp) > 0) {
+                return $tmp;
+            }
+        }
+
+        // 2. Try GhostScript
+        foreach (['gs', 'ghostscript'] as $bin) {
+            if (($gs = trim(shell_exec("which {$bin} 2>/dev/null") ?? '')) !== '') {
+                exec(escapeshellcmd($gs) .
+                    ' -dBATCH -dNOPAUSE -sDEVICE=pdfwrite' .
+                    ' -dEncryptionR=3 -dKeyLength=128' .
+                    ' -sOutputFile=' . escapeshellarg($tmp) . ' ' .
+                    escapeshellarg($rutaPdf) . ' 2>&1', $out, $code);
+                if ($code === 0 && file_exists($tmp) && filesize($tmp) > 0) {
+                    return $tmp;
+                }
+            }
+        }
+
+        @unlink($tmp);
+        return null;
+    }
+
     protected function rellenarPdf(string $rutaPdf, array $campos, array $datos): string
     {
         $pdf = new Fpdi('P', 'pt');
         $pdf->SetAutoPageBreak(false);
 
-        $totalPaginas = $pdf->setSourceFile($rutaPdf);
+        // If the PDF is encrypted, FPDI cannot read it. Attempt to decrypt first.
+        $tmpDecrypted = null;
+        try {
+            $totalPaginas = $pdf->setSourceFile($rutaPdf);
+        } catch (\Exception $e) {
+            if (stripos($e->getMessage(), 'encrypted') !== false) {
+                $tmpDecrypted = $this->descifrarPdf($rutaPdf);
+                if (!$tmpDecrypted) {
+                    throw new \RuntimeException(
+                        'El PDF está cifrado y no se encontró qpdf ni GhostScript en el servidor ' .
+                        'para descifrarlo. Instale qpdf (`apt install qpdf`) y vuelva a intentarlo.',
+                        0, $e
+                    );
+                }
+                $pdf = new Fpdi('P', 'pt');
+                $pdf->SetAutoPageBreak(false);
+                $totalPaginas = $pdf->setSourceFile($tmpDecrypted);
+            } else {
+                throw $e;
+            }
+        }
         $tpls = [];
         for ($p = 1; $p <= $totalPaginas; $p++) {
             $tpls[$p] = $pdf->importPage($p);
@@ -244,6 +300,13 @@ class FormularioEpsService
             }
         }
 
-        return $pdf->Output('S');
+        $resultado = $pdf->Output('S');
+
+        // Clean up the temporary decrypted file if one was created
+        if ($tmpDecrypted && file_exists($tmpDecrypted)) {
+            @unlink($tmpDecrypted);
+        }
+
+        return $resultado;
     }
 }

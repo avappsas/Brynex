@@ -237,29 +237,45 @@ class PlanoPagoController extends Controller
         // Bancos (para modal confirmar pago)
         $bancos = BancoCuenta::where('aliado_id', $aliadoId)->where('activo', true)->get();
 
-        // Operadores: respetar configuración del aliado (pivot aliado_operadores_planilla)
-        // Si el aliado tiene filas en el pivot → filtrar por activo=true
-        // Si no tiene filas → mostrar todos los globales activos
-        $tienePivot = DB::table('aliado_operadores_planilla')
-            ->where('aliado_id', $aliadoId)->exists();
+        // Operadores:
+        //   - RS Independiente (es_independiente=true) → mostrar TODOS los operadores
+        //     globales activos (el afiliado puede usar cualquier operador).
+        //   - RS Normal (dependientes, etc.)           → filtrar por el pivot del aliado
+        //     (solo los operadores que el aliado tiene configurados).
+        $esIndependienteRS = (bool) ($rsSeleccionada?->es_independiente);
 
-        if ($tienePivot) {
-            $operadores = DB::table('operadores_planilla AS op')
-                ->join('aliado_operadores_planilla AS piv',
-                    fn ($j) => $j->on('piv.operador_id', '=', 'op.id')
-                                 ->where('piv.aliado_id', $aliadoId)
-                                 ->where('piv.activo', true))
-                ->whereNull('op.aliado_id')
-                ->where('op.activo', true)
-                ->orderBy('op.orden')
-                ->select('op.*')
-                ->get();
-        } else {
+        if ($esIndependienteRS) {
+            // Todos los operadores globales activos, sin restricción de aliado
             $operadores = DB::table('operadores_planilla')
                 ->whereNull('aliado_id')
                 ->where('activo', true)
                 ->orderBy('orden')
                 ->get();
+        } else {
+            // Respetar configuración del aliado (pivot aliado_operadores_planilla)
+            // Si el aliado tiene filas en el pivot → filtrar por activo=true
+            // Si no tiene filas → mostrar todos los globales activos
+            $tienePivot = DB::table('aliado_operadores_planilla')
+                ->where('aliado_id', $aliadoId)->exists();
+
+            if ($tienePivot) {
+                $operadores = DB::table('operadores_planilla AS op')
+                    ->join('aliado_operadores_planilla AS piv',
+                        fn ($j) => $j->on('piv.operador_id', '=', 'op.id')
+                                     ->where('piv.aliado_id', $aliadoId)
+                                     ->where('piv.activo', true))
+                    ->whereNull('op.aliado_id')
+                    ->where('op.activo', true)
+                    ->orderBy('op.orden')
+                    ->select('op.*')
+                    ->get();
+            } else {
+                $operadores = DB::table('operadores_planilla')
+                    ->whereNull('aliado_id')
+                    ->where('activo', true)
+                    ->orderBy('orden')
+                    ->get();
+            }
         }
 
         return view('admin.planos.index', compact(
@@ -522,6 +538,58 @@ class PlanoPagoController extends Controller
         } catch (\Exception $e) {
             abort(500, 'Error al generar TXT MiPlanilla: ' . $e->getMessage());
         }
+    }
+
+    // ── 4c. Limpiar planos huérfanos (factura anulada pero plano activo) ──────
+    /**
+     * Soft-deletea planos cuyos factura_id apunta a facturas ya anuladas (deleted_at != null).
+     * Solo ejecutable por superadmin. Resuelve duplicados causados por el bug del hasOne
+     * en el método anular() que dejaba planos activos al eliminar solo el primero del lote.
+     */
+    public function limpiarHuerfanos(Request $request)
+    {
+        $user = \Illuminate\Support\Facades\Auth::user();
+        if (!$user || !$user->hasRole('superadmin')) {
+            return response()->json(['ok' => false, 'mensaje' => 'Sin permisos.'], 403);
+        }
+
+        $aliadoId = session('aliado_id_activo');
+
+        // Buscar planos activos cuya factura está soft-deleted (anulada)
+        $huerfanos = DB::table('planos AS p')
+            ->join('facturas AS f', 'f.id', '=', 'p.factura_id')
+            ->whereNull('p.deleted_at')
+            ->whereNotNull('f.deleted_at')   // factura anulada
+            ->where('p.aliado_id', $aliadoId)
+            ->select('p.id', 'p.no_identifi', 'p.primer_nombre', 'p.primer_ape',
+                     'p.factura_id', 'f.numero_factura')
+            ->get();
+
+        $ids = $huerfanos->pluck('id')->toArray();
+
+        if (empty($ids)) {
+            return response()->json([
+                'ok'      => true,
+                'mensaje' => 'No se encontraron planos huérfanos.',
+                'eliminados' => 0,
+            ]);
+        }
+
+        // Soft-delete masivo
+        Plano::whereIn('id', $ids)->each(fn($p) => $p->delete());
+
+        return response()->json([
+            'ok'         => true,
+            'mensaje'    => count($ids) . ' plano(s) huérfano(s) eliminados correctamente.',
+            'eliminados' => count($ids),
+            'detalle'    => $huerfanos->map(fn($p) => [
+                'plano_id'       => $p->id,
+                'cedula'         => $p->no_identifi,
+                'nombre'         => trim($p->primer_nombre . ' ' . $p->primer_ape),
+                'factura_id'     => $p->factura_id,
+                'numero_factura' => $p->numero_factura,
+            ]),
+        ]);
     }
 
     // ── 5. Confirmar Pago ─────────────────────────────────────────────

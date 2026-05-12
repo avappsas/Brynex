@@ -61,6 +61,14 @@ class Plano extends BaseModel
      */
     public static function generarDesdeContrato(Contrato $contrato, Factura $factura, ?string $fechaRetiro = null): static
     {
+        // ── Protección idempotente: no generar dos planos para la misma factura ──
+        // Si ya existe un plano activo (no soft-deleted) para esta factura_id, retornarlo
+        // sin crear un duplicado (ej: flujo abonar() que completa una factura ya planificada).
+        $existente = static::where('factura_id', $factura->id)->whereNull('deleted_at')->first();
+        if ($existente) {
+            return $existente;
+        }
+    
         $cliente = $contrato->cliente;
         $eps     = $contrato->eps;
         $afp     = $contrato->pension;

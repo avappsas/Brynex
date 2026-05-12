@@ -1074,22 +1074,14 @@ class FacturacionController extends Controller
                     'consignaciones.bancoCuenta'])   // ← todas las cuentas consignadas
             ->findOrFail($facturaId);
 
-        // Grupo NP: todas las facturas del mismo NP/mes/año/empresa
-        // IMPORTANTE: filtrar también por empresa_id para no mezclar trabajadores
-        // de diferentes empresas que coincidan en NP+mes+año dentro del mismo aliado.
+        // Grupo del recibo: todas las facturas del mismo numero_factura dentro del aliado.
+        // Se usa numero_factura (identificador único del lote) en lugar de np+mes+año+empresa_id
+        // para evitar mezclar dos recibos distintos que casualmente comparten el mismo NP
+        // (p.ej. dos lotes de "NP 2" facturados en fechas distintas del mismo mes).
         $grupoNp = null;
-        if ($factura->np) {
-            $qGrupo = Factura::where('aliado_id', $aliadoId)
-                ->where('np', $factura->np)
-                ->where('mes',  $factura->mes)
-                ->where('anio', $factura->anio);
-
-            // Si la factura tiene empresa_id, restringir al mismo grupo empresa
-            if ($factura->empresa_id) {
-                $qGrupo->where('empresa_id', $factura->empresa_id);
-            }
-
-            $grupoNp = $qGrupo
+        if ($factura->numero_factura) {
+            $grupoNp = Factura::where('aliado_id', $aliadoId)
+                ->where('numero_factura', $factura->numero_factura)
                 ->with(['contrato.cliente','contrato.eps','contrato.arl',
                         'contrato.pension','contrato.caja','contrato.razonSocial',
                         'abonos','consignaciones.bancoCuenta'])
@@ -1173,10 +1165,11 @@ class FacturacionController extends Controller
                 $f->save();
                 $f->delete(); // SoftDeletes → establece deleted_at
 
-                // Soft-delete del plano (si existe)
-                if ($f->plano) {
-                    $f->plano->delete();
-                }
+                // Soft-delete de TODOS los planos de esta factura.
+                // IMPORTANTE: en lotes masivos hay N planos por factura_id (uno por contrato).
+                // El hasOne solo eliminaría el primero, dejando los demás activos y causando
+                // duplicados cuando se re-factura el mismo período tras una anulación.
+                Plano::where('factura_id', $f->id)->each(fn($p) => $p->delete());
 
                 // ── Reversar retiro si la factura es de retiro ──────────────
                 // Las facturas de retiro se identifican por numero_factura = 0.
