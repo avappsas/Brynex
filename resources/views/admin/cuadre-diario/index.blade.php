@@ -367,6 +367,7 @@ $totalBancos = $bancos->sum(fn($bc) => \App\Models\Consignacion::saldoBanco(sess
 </div>
 @endif
 
+@if($cuadre)
 @include('admin.partials.modal_gasto', [
     'formAction'  => route('admin.cuadre-diario.gasto.store', $cuadre->id),
     'bancos'      => $bancos,
@@ -374,9 +375,10 @@ $totalBancos = $bancos->sum(fn($bc) => \App\Models\Consignacion::saldoBanco(sess
     'modalId'     => 'modal-gasto',
     'imagenPaste' => true,
 ])
+@endif
 
 {{-- Modal: Cerrar Cuadre --}}
-@if($esSuperAdmin)
+@if($cuadre && $esSuperAdmin)
 <div id="modal-cerrar"
      onclick="if(event.target.id==='modal-cerrar')this.style.display='none'"
      style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center">
