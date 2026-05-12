@@ -469,6 +469,8 @@ const MF = (function () {
         // Según modo: detectar tipo o verificar mes pagado
         if (_modo === 'individual') {
             _verificarMesPagado().then(() => { detectarTipo(); recalc(); });
+            // Cargar anticipos disponibles del contrato
+            if (window.MF_ANT) MF_ANT.cargar(_cfg.contratoId, null);
             // Inicializar sección de 2do contrato si hay otros vigentes
             _iniciarSegundoContrato();
         } else {
@@ -476,8 +478,9 @@ const MF = (function () {
             _setTipo('planilla');
             // Mostrar aviso si hay contratos I ACT primer mes (afiliación + planilla juntas)
             _mostrarAvisoIndActMasivo();
-            // Consultar saldos a favor/pendientes de los contratos seleccionados
             _fetchSaldosMasivo().then(() => recalc());
+            // Cargar anticipos disponibles de la empresa
+            if (window.MF_ANT) MF_ANT.cargar(null, _cfg.empresaId || null);
         }
     }
 
@@ -1034,12 +1037,12 @@ const MF = (function () {
         setText('mf-total', fmt(totalBruto));
 
         // ── Columna derecha: SALDO PENDIENTE ─────────────────────────────
-        // Pendiente = totalBruto - saldoFavor - consignaciones - efectivo - prestamo
-        // El saldo a favor se descuenta AQUÍ (como anticipó ya registrado).
-        const consigs   = [...document.querySelectorAll('.mf-consig-monto')].reduce((s, e) => s + parse(e.value), 0);
-        const efect     = parse(el('mf-efectivo')?.value);
-        const prest     = parse(el('mf-prestamo')?.value);
-        const pendiente = Math.max(0, totalBruto - _saldoFavor - consigs - efect - prest);
+        // Pendiente = totalBruto - saldoFavor - anticipos - consignaciones - efectivo - prestamo
+        const consigs       = [...document.querySelectorAll('.mf-consig-monto')].reduce((s, e) => s + parse(e.value), 0);
+        const efect         = parse(el('mf-efectivo')?.value);
+        const prest         = parse(el('mf-prestamo')?.value);
+        const totalAnticipo = (window.MF_ANT ? MF_ANT.totalSeleccionado() : 0);
+        const pendiente     = Math.max(0, totalBruto - _saldoFavor - totalAnticipo - consigs - efect - prest);
 
         const pEl = el('mf-pendiente');
         if (pEl) {
@@ -1054,7 +1057,7 @@ const MF = (function () {
         // El pendiente de la derecha = (C1 total + C2 total) - pagos ingresados.
         if (_segundoContrato) {
             const totalC1C2 = totalBruto + (_segundoContrato.total || 0);
-            const pendienteTotal = Math.max(0, totalC1C2 - _saldoFavor - consigs - efect - prest);
+            const pendienteTotal = Math.max(0, totalC1C2 - _saldoFavor - totalAnticipo - consigs - efect - prest);
             if (pEl) {
                 pEl.textContent = fmt(pendienteTotal);
                 pEl.style.color      = pendienteTotal === 0 ? '#15803d' : '#dc2626';
@@ -1327,6 +1330,8 @@ const MF = (function () {
                 observacion: obs,
                 np: parse(el('mf-nplano')?.value) || null,
                 empresa_id: _cfg.empresaId || null,
+                // Anticipos seleccionados (pagos previos sin factura)
+                anticipo_ids: (window.MF_ANT ? MF_ANT.ids() : []),
                 // Retiro
                 es_retiro:    _esRetiro,
                 fecha_retiro: _esRetiro ? (el('mf-retiro-fecha')?.value || null) : null,
@@ -1481,7 +1486,28 @@ const MF = (function () {
     }
 
     // ── API pública ───────────────────────────────────────────────
-    return { init, abrir, cerrar, detectarTipo, actualizarTipo, cambiarPeriodo, onEstado, recalc, distRecalc, addConsig, guardar, toggleRetiro, onRetiroFecha, setMora, seleccionarSegundoContrato };
+    // ── Abrir modal de anticipo desde el footer del modal facturar ────
+    function _abrirAnticipo() {
+        if (!window.ANT) {
+            console.warn('[MF] Módulo ANT no disponible');
+            return;
+        }
+
+        // Determinar contexto: empresa (masivo) o contrato individual
+        const contratoId = (_modo === 'individual') ? (_cfg.contratoId || null) : null;
+        const empresaId  = (_cfg.empresaId || null);
+
+        // Callback: tras registrar, recargar anticipos disponibles en el panel
+        const onRegistrado = () => {
+            if (window.MF_ANT) {
+                MF_ANT.cargar(contratoId, empresaId);
+            }
+        };
+
+        ANT.abrir(contratoId, empresaId, onRegistrado);
+    }
+
+    return { init, abrir, cerrar, detectarTipo, actualizarTipo, cambiarPeriodo, onEstado, recalc, distRecalc, addConsig, guardar, toggleRetiro, onRetiroFecha, setMora, seleccionarSegundoContrato, _abrirAnticipo };
 
 })();
 

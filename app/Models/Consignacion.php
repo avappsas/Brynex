@@ -9,7 +9,7 @@ class Consignacion extends BaseModel
 {
     protected $table    = 'consignaciones';
     protected $fillable = [
-        'aliado_id', 'factura_id', 'banco_cuenta_id',
+        'aliado_id', 'factura_id', 'anticipo_id', 'banco_cuenta_id',
         'fecha', 'valor', 'tipo', 'referencia', 'imagen_path',
         'confirmado', 'observacion', 'usuario_id',
         // Cuadre diario - traslados internos
@@ -29,6 +29,8 @@ class Consignacion extends BaseModel
     const TIPO_TRASLADO_EFECTIVO = 'traslado_efectivo';
     /** Entrada por transferencia banco→banco */
     const TIPO_BANCO_RECIBIDO   = 'banco_recibido';
+    /** Pago anticipado de cliente (antes de la factura) */
+    const TIPO_ANTICIPO         = 'anticipo';
 
     // ── Relaciones ───────────────────────────────────────────────────
     public function factura()
@@ -44,6 +46,12 @@ class Consignacion extends BaseModel
     public function usuario()
     {
         return $this->belongsTo(User::class, 'usuario_id');
+    }
+
+    /** Anticipo asociado (cuando tipo = 'anticipo') */
+    public function anticipo()
+    {
+        return $this->belongsTo(Anticipo::class, 'anticipo_id');
     }
 
     // ── Scopes ───────────────────────────────────────────────────────

@@ -56,6 +56,12 @@ $esSuperAdmin = auth()->user()->hasRole('superadmin');
             </a>
             @endif
             @if($esAdmin)
+            <a href="{{ route('admin.anticipos.informe') }}"
+               style="padding:.35rem .85rem;font-size:.78rem;font-weight:600;border-radius:7px;background:rgba(253,230,138,.25);color:#fde68a;text-decoration:none">
+                💰 Anticipos
+            </a>
+            @endif
+            @if($esAdmin)
             <a href="{{ route('admin.caja-menor.index') }}"
                style="padding:.35rem .85rem;font-size:.78rem;font-weight:600;border-radius:7px;background:#f59e0b;color:#fff;text-decoration:none">
                 💵 Caja Menor
@@ -108,6 +114,14 @@ $totalBancos = $bancos->sum(fn($bc) => \App\Models\Consignacion::saldoBanco(sess
         <div class="cd-card-title" style="color:#065f46">📋 Cobros cartera</div>
         <div class="cd-card-val" style="color:#065f46">{{ $fmt($datosPeriodo['cobros_cartera']) }}</div>
         <div style="font-size:.72rem;color:#6b7280;margin-top:.3rem">Préstamos recuperados</div>
+    </div>
+    @endif
+    {{-- Anticipos efectivo/Nequi recibidos en este período --}}
+    @if(($datosPeriodo['anticipos_efectivo'] ?? 0) > 0)
+    <div class="cd-card" style="border-color:#fde68a">
+        <div class="cd-card-title" style="color:#78350f">💰 Anticipos recibidos</div>
+        <div class="cd-card-val" style="color:#78350f">{{ $fmt($datosPeriodo['anticipos_efectivo']) }}</div>
+        <div style="font-size:.72rem;color:#6b7280;margin-top:.3rem">Efectivo/Nequi (no facturado aún)</div>
     </div>
     @endif
     {{-- Total prestado: informativo, no es ingreso real --}}
@@ -202,16 +216,20 @@ $totalBancos = $bancos->sum(fn($bc) => \App\Models\Consignacion::saldoBanco(sess
             <th>Día</th>
             <th class="num">+ Ingresos efectivo</th>
             <th class="num" style="color:#6ee7b7">+ Cobros cartera</th>
+            <th class="num" style="color:#fde68a">💰 Anticipos</th>
             <th class="num">- Gastos efectivo</th>
             <th class="num">Saldo acumulado</th>
         </tr></thead>
         <tbody>
         @foreach($datosPeriodo['por_dia'] as $dia)
-        <tr class="{{ ($dia['ingresos'] > 0 || ($dia['cartera'] ?? 0) > 0 || $dia['gastos'] > 0) ? '' : 'opacity-40' }}">
+        <tr class="{{ ($dia['ingresos'] > 0 || ($dia['cartera'] ?? 0) > 0 || ($dia['anticipos'] ?? 0) > 0 || $dia['gastos'] > 0) ? '' : 'opacity-40' }}">
             <td>{{ sqldate($dia['fecha'])->locale('es')->isoFormat('ddd DD MMM') }}</td>
             <td class="num" style="color:#15803d">{{ $dia['ingresos'] ? '+'.$fmt($dia['ingresos']) : '—' }}</td>
             <td class="num" style="color:#065f46;font-size:.75rem">
                 {{ ($dia['cartera'] ?? 0) > 0 ? '+'.$fmt($dia['cartera']) : '' }}
+            </td>
+            <td class="num" style="color:#d97706;font-size:.75rem">
+                {{ ($dia['anticipos'] ?? 0) > 0 ? '+'.$fmt($dia['anticipos']) : '' }}
             </td>
             <td class="num" style="color:#dc2626">{{ $dia['gastos'] ? '-'.$fmt($dia['gastos']) : '—' }}</td>
             <td class="num" style="font-weight:700;color:{{ $dia['saldo'] >= 0 ? '#1d4ed8' : '#dc2626' }}">
@@ -223,6 +241,7 @@ $totalBancos = $bancos->sum(fn($bc) => \App\Models\Consignacion::saldoBanco(sess
             <td style="color:#94a3b8;font-weight:600;font-size:.75rem">SALDO FINAL ESPERADO</td>
             <td class="num" style="color:#4ade80;font-weight:800;font-size:.9rem">{{ $fmt($datosPeriodo['efectivo_total']) }}</td>
             <td class="num" style="color:#6ee7b7;font-weight:700;font-size:.85rem">{{ ($datosPeriodo['cobros_cartera'] ?? 0) > 0 ? '+'.$fmt($datosPeriodo['cobros_cartera']) : '—' }}</td>
+            <td class="num" style="color:#fde68a;font-weight:700;font-size:.85rem">{{ ($datosPeriodo['anticipos_efectivo'] ?? 0) > 0 ? '+'.$fmt($datosPeriodo['anticipos_efectivo']) : '—' }}</td>
             <td class="num" style="color:#f87171;font-weight:800;font-size:.9rem">-{{ $fmt($datosPeriodo['gastos_efectivo']) }}</td>
             <td class="num" style="color:#fbbf24;font-weight:800;font-size:.95rem">{{ $fmt($datosPeriodo['saldo_final']) }}</td>
         </tr>

@@ -18,7 +18,7 @@ if ($esGrupo) {
 
 // Totales del grupo
 $totSS=$totAdmon=$totSeg=$totAfil=$totIva=$totTotal=$totPrest=0;
-$totEfect=$totConsig=$totBanco2=0;
+$totEfect=$totConsig=$totBanco2=$totAnticipo=0;
 foreach ($filas as $f) {
     $totSS    += (int)($f->total_ss ?? 0);
     $totAdmon += (int)($f->admon ?? 0) + (int)($f->admin_asesor ?? 0);
@@ -30,6 +30,7 @@ foreach ($filas as $f) {
     $totEfect += (int)($f->valor_efectivo ?? 0);
     $totConsig+= (int)($f->valor_consignado ?? 0);
     $totBanco2+= (int)($f->valor_banco2 ?? 0);
+    $totAnticipo += (int)($f->anticipo_aplicado ?? 0);
 }
 // Si estado es préstamo y valor_prestamo=0, calcularlo como total - lo recibido
 if ($factura->estado === 'prestamo' && $totPrest === 0) {
@@ -1280,6 +1281,21 @@ $nomAliado  = $aliadoObj?->nombre ?? $aliadoObj?->razon_social ?? 'BryNex';
             <span>💳 Préstamo (pendiente)</span><strong>{{ $fmt($totPrest) }}</strong>
         </div>
         @endif
+        {{-- Anticipos aplicados (detallado) --}}
+        @if(isset($anticiposAplicados) && $anticiposAplicados->isNotEmpty())
+        <div style="margin-top:.3rem;padding-top:.3rem;border-top:1px solid #d1fae5;">
+            @foreach($anticiposAplicados as $antApl)
+            <div style="display:flex;justify-content:space-between;padding:.1rem 0;font-size:.73rem;color:#15803d;">
+                <span>
+                    💰 Anticipo {{ \App\Models\Anticipo::FORMAS_PAGO[$antApl->forma_pago] ?? $antApl->forma_pago }}
+                    <small style="font-size:.62rem;color:#64748b">{{ $antApl->fecha_pago->format('d/m/Y') }}</small>
+                    @if($antApl->referencia)<small style="color:#94a3b8"> · {{ $antApl->referencia }}</small>@endif
+                </span>
+                <strong>−{{ $fmt($antApl->valor_aplicado > 0 ? $antApl->valor_aplicado : $antApl->valor) }}</strong>
+            </div>
+            @endforeach
+        </div>
+        @endif
     </div>
 </div>
 
@@ -1343,6 +1359,39 @@ $fpLabel = match($factura->forma_pago ?? '') {
         <div style="display:flex;align-items:center;gap:.35rem;font-size:.77rem;color:#7c3aed;">
             <span style="font-weight:600;">💳 Préstamo pendiente:</span>
             <strong>{{ $fmt($totPrest) }}</strong>
+        </div>
+        @endif
+
+        {{-- ─── ANTICIPOS APLICADOS (desglose por anticipo) ─── --}}
+        @if(isset($anticiposAplicados) && $anticiposAplicados->isNotEmpty())
+        <div style="display:flex;flex-direction:column;gap:.3rem;width:100%;margin-top:.25rem;padding-top:.25rem;border-top:1.5px solid #d1fae5;">
+            <span style="font-size:.6rem;font-weight:800;color:#15803d;text-transform:uppercase;letter-spacing:.06em;">💰 Anticipos aplicados</span>
+            @foreach($anticiposAplicados as $antApl)
+            <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:7px;padding:.3rem .65rem;font-size:.74rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.3rem;">
+                <div style="display:flex;flex-direction:column;gap:.08rem;">
+                    <span style="color:#15803d;font-weight:700;">
+                        {{ match($antApl->forma_pago) {
+                            'efectivo'      => '💵',
+                            'nequi'         => '📱',
+                            'consignacion'  => '🏦',
+                            'transferencia' => '↔️',
+                            default         => '💰',
+                        } }}
+                        {{ \App\Models\Anticipo::FORMAS_PAGO[$antApl->forma_pago] ?? ucfirst($antApl->forma_pago) }}
+                        <span style="font-weight:500;color:#64748b;font-size:.68rem;">registrado el {{ $antApl->fecha_pago->format('d/m/Y') }}</span>
+                    </span>
+                    @if($antApl->referencia)
+                    <span style="font-size:.65rem;color:#64748b;">Ref: {{ $antApl->referencia }}</span>
+                    @endif
+                </div>
+                <strong style="color:#15803d;font-family:monospace;white-space:nowrap;">
+                    −{{ $fmt($antApl->valor_aplicado > 0 ? $antApl->valor_aplicado : $antApl->valor) }}
+                </strong>
+            </div>
+            @endforeach
+            @if($totAnticipo > 0)
+            <div style="font-size:.7rem;font-weight:800;color:#15803d;text-align:right;">Total anticipos: {{ $fmt($totAnticipo) }}</div>
+            @endif
         </div>
         @endif
 

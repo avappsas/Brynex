@@ -101,13 +101,17 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.78rem}
             {{-- Tipo --}}
             <td>
                 @if(!$mov->es_salida)
-                <span class="badge" style="background:#dbeafe;color:#1d4ed8">
-                    📥 {{ match($mov->tipo) {
-                        'cliente'           => 'Pago SS',
-                        'traslado_efectivo' => 'Ef→Banco',
-                        'banco_recibido'    => 'T. entrada',
-                        default             => ucfirst($mov->tipo),
-                    } }}
+                @php
+                    $tipoLabel = match($mov->tipo ?? 'cliente') {
+                        'cliente'            => ['label' => 'Pago SS',    'color' => '#1d4ed8', 'bg' => '#dbeafe', 'icon' => '📥'],
+                        'anticipo'           => ['label' => 'Anticipo',   'color' => '#92400e', 'bg' => '#fef3c7', 'icon' => '💰'],
+                        'traslado_efectivo'  => ['label' => 'Ef→Banco',   'color' => '#1d4ed8', 'bg' => '#dbeafe', 'icon' => '📥'],
+                        'banco_recibido'     => ['label' => 'T. entrada', 'color' => '#1d4ed8', 'bg' => '#dbeafe', 'icon' => '📥'],
+                        default              => ['label' => ucfirst($mov->tipo ?? ''), 'color' => '#1d4ed8', 'bg' => '#dbeafe', 'icon' => '📥'],
+                    };
+                @endphp
+                <span class="badge" style="background:{{ $tipoLabel['bg'] }};color:{{ $tipoLabel['color'] }}">
+                    {{ $tipoLabel['icon'] }} {{ $tipoLabel['label'] }}
                 </span>
                 @else
                 <span class="badge" style="background:#fee2e2;color:#dc2626">
@@ -123,6 +127,15 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.78rem}
                    style="font-weight:700;font-size:.78rem;color:#2563eb;text-decoration:none">
                     📋 #{{ $mov->num_factura }}
                 </a>
+                @elseif(($mov->tipo ?? '') === 'anticipo' && $mov->anticipo_factura_id ?? null)
+                {{-- Anticipo ya aplicado: mostrar enlace a la factura donde se usó --}}
+                <div style="display:flex;flex-direction:column;align-items:center;gap:.1rem;">
+                    <span style="font-size:.6rem;color:#92400e;font-weight:700;background:#fef3c7;border-radius:3px;padding:0 4px;">Aplicado →</span>
+                    <a href="#" onclick="abrirRecibo({{ $mov->anticipo_factura_id }}); return false;"
+                       style="font-weight:700;font-size:.72rem;color:#92400e;text-decoration:none;">
+                        📋 #{{ $mov->anticipo_factura_num }}
+                    </a>
+                </div>
                 @else
                 <span style="color:#cbd5e1;font-size:.72rem">—</span>
                 @endif

@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\{Cuadre, Gasto, CajaMenor, Consignacion, BancoCuenta, Factura, User};
+use App\Models\{Cuadre, Gasto, CajaMenor, Consignacion, BancoCuenta, Factura, User, Anticipo};
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -312,7 +312,7 @@ class CuadreDiarioController extends Controller
             $movEntradas = Consignacion::where('aliado_id', $aliadoId)
                 ->where('banco_cuenta_id', $bc->id)
                 ->whereBetween('fecha', [$inicio, $fin])
-                ->with(['usuario', 'factura.empresa'])
+                ->with(['usuario', 'factura.empresa', 'anticipo.factura'])
                 ->orderByDesc('fecha')->orderByDesc('id')
                 ->get()
                 ->map(function ($c) {
@@ -331,27 +331,46 @@ class CuadreDiarioController extends Controller
                             $pagador = $cli?->nombre;
                         }
                     }
+                    // Trazabilidad de anticipo: si fue aplicado a una factura, guardar referencia
+                    $anticFact    = null;
+                    $anticFactNum = null;
+                    if (($c->tipo ?? '') === 'anticipo' && $c->anticipo) {
+                        $anticFact    = $c->anticipo->factura_id;
+                        $anticFactNum = $c->anticipo->factura?->numero_factura;
+                        // Pagador = cliente o empresa del anticipo
+                        if (!$pagador) {
+                            $antCedula = $c->anticipo->cedula;
+                            if ($antCedula) {
+                                $antCli = DB::table('clientes')->where('cedula', $antCedula)->value('nombre');
+                                $pagador = $antCli ?? 'Anticipo';
+                            }
+                        }
+                    }
+
                     return (object)[
-                        'id'          => $c->id,
-                        'cs_id'       => $c->id,
-                        'fecha'       => $c->fecha,
-                        'tipo'        => $c->tipo ?? 'cliente',
-                        'confirmado'  => (bool)$c->confirmado,
-                        'factura_id'  => $c->factura_id,
-                        'num_factura' => $c->factura?->numero_factura ?? $c->factura_id,
-                        'pagador'     => $pagador,
-                        'descripcion' => match($c->tipo ?? 'cliente') {
+                        'id'                  => $c->id,
+                        'cs_id'               => $c->id,
+                        'fecha'               => $c->fecha,
+                        'tipo'                => $c->tipo ?? 'cliente',
+                        'confirmado'          => (bool)$c->confirmado,
+                        'factura_id'          => $c->factura_id,
+                        'num_factura'         => $c->factura?->numero_factura ?? $c->factura_id,
+                        'anticipo_factura_id' => $anticFact,
+                        'anticipo_factura_num'=> $anticFactNum,
+                        'pagador'             => $pagador,
+                        'descripcion'         => match($c->tipo ?? 'cliente') {
                             'traslado_efectivo' => 'Traslado efectivo → banco',
                             'banco_recibido'    => 'Transferencia banco recibida',
+                            'anticipo'          => 'Anticipo' . ($c->referencia ? ' · Ref: ' . $c->referencia : ''),
                             default             => $c->observacion,
                         },
-                        'usuario'     => $c->usuario,
-                        'valor'       => $c->valor,
-                        'imagen_path' => $c->imagen_path,
-                        'imagen_url'  => $c->imagen_path ? Storage::url($c->imagen_path) : null,
-                        'es_salida'   => false,
-                        'es_gasto'    => false,
-                        'referencia'  => $c->referencia,
+                        'usuario'             => $c->usuario,
+                        'valor'               => $c->valor,
+                        'imagen_path'         => $c->imagen_path,
+                        'imagen_url'          => $c->imagen_path ? Storage::url($c->imagen_path) : null,
+                        'es_salida'           => false,
+                        'es_gasto'            => false,
+                        'referencia'          => $c->referencia,
                     ];
                 });
 
@@ -491,9 +510,27 @@ class CuadreDiarioController extends Controller
                 ->orWhere('tipo', 'efectivo_banco'))
             ->sum('valor');
 
+        // ── Anticipos en efectivo/Nequi del período (ingreso real del día) ───────────────────────
+        // REGLA CLAVE:
+        //   • Anticipo recibido en ABRIL  → aparece como ingreso en el cuadre de ABRIL.
+        //   • Cuando se factura en MAYO   → anticipo_aplicado en la factura de mayo.
+        //     El cuadre de MAYO NO suma ese dinero (ya fue contado en abril).
+        //
+        // Solo se suman formas de pago que no pasan por banco:
+        //   efectivo          → entra al flujo de efectivo del cuadre.
+        //   nequi             → idem (solo registros históricos; nueva UI solo usa efectivo/transferencia).
+        //   transferencia     → ya se refleja en Consignacion (saldo banco),
+        //                        NO se suma aquí para evitar doble conteo.
+        $anticiposEfectivo = (int) Anticipo::where('aliado_id', $aliadoId)
+            ->where('usuario_id', $usuarioId)
+            ->whereIn('forma_pago', ['efectivo', 'nequi'])
+            ->whereBetween('fecha_pago', [$inicio, $fin])
+            ->whereNotIn('estado', [Anticipo::ESTADO_DEVUELTO])
+            ->sum('valor');
+
         $saldoInicial = $cuadre->saldo_apertura;
-        // El saldo real incluye tanto ingresos normales como cobros de cartera
-        $saldoFinal   = $saldoInicial + $ingresosEfectivo + $cobrosCartera - $gastosEfectivo;
+        // Saldo = apertura + ingresos facturas + cartera + anticipos efectivo/nequi - gastos
+        $saldoFinal   = $saldoInicial + $ingresosEfectivo + $cobrosCartera + $anticiposEfectivo - $gastosEfectivo;
 
         // Por día
         $dias = $cuadre->diasDelPeriodo();
@@ -516,31 +553,41 @@ class CuadreDiarioController extends Controller
                 ->whereDate('abonos.fecha', $fechaDia)
                 ->sum('abonos.valor_efectivo');
 
+            // Anticipos efectivo/Nequi del día
+            $anticipoDia = (int) Anticipo::where('aliado_id', $aliadoId)
+                ->where('usuario_id', $usuarioId)
+                ->whereIn('forma_pago', ['efectivo', 'nequi'])
+                ->whereDate('fecha_pago', $fechaDia)
+                ->whereNotIn('estado', [Anticipo::ESTADO_DEVUELTO])
+                ->sum('valor');
+
             $gastoDia = (int) Gasto::where('cuadre_id', $cuadre->id)
                 ->whereDate('fecha', $fechaDia)
                 ->where(fn($q) => $q->where('forma_pago', 'efectivo')
                     ->orWhere('tipo', 'efectivo_banco'))
                 ->sum('valor');
 
-            $saldoAcum += $ingDia + $carteraDia - $gastoDia;
+            $saldoAcum += $ingDia + $carteraDia + $anticipoDia - $gastoDia;
 
             return [
                 'fecha'        => $dia,
                 'ingresos'     => $ingDia,
                 'cartera'      => $carteraDia,
+                'anticipos'    => $anticipoDia,
                 'gastos'       => $gastoDia,
                 'saldo'        => $saldoAcum,
             ];
         });
 
         return [
-            'efectivo_total'  => $ingresosEfectivo,
-            'cobros_cartera'  => $cobrosCartera,   // ← nuevo: abonos a préstamos
-            'total_prestado'  => $totalPrestado,   // ← nuevo: informativo (no ingreso real)
-            'gastos_efectivo' => $gastosEfectivo,
-            'saldo_inicial'   => $saldoInicial,
-            'saldo_final'     => $saldoFinal,
-            'por_dia'         => $porDia,
+            'efectivo_total'    => $ingresosEfectivo,
+            'cobros_cartera'    => $cobrosCartera,
+            'total_prestado'    => $totalPrestado,
+            'anticipos_efectivo'=> $anticiposEfectivo,  // ⇐ anticipos efectivo/nequi del período
+            'gastos_efectivo'   => $gastosEfectivo,
+            'saldo_inicial'     => $saldoInicial,
+            'saldo_final'       => $saldoFinal,
+            'por_dia'           => $porDia,
         ];
     }
 

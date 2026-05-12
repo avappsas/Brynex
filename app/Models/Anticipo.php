@@ -25,12 +25,13 @@ class Anticipo extends BaseModel
     const ESTADO_APLICADO   = 'aplicado';
     const ESTADO_DEVUELTO   = 'devuelto';
 
-    // ── Formas de pago ─────────────────────────────────────────────────
+    // ── Formas de pago aceptadas ─────────────────────────────────────────────────────
     const FORMAS_PAGO = [
         'efectivo'      => 'Efectivo',
+        'transferencia' => 'Transferencia',
+        // Mantenidos por compatibilidad con registros históricos:
         'nequi'         => 'Nequi',
         'consignacion'  => 'Consignación',
-        'transferencia' => 'Transferencia',
     ];
 
     // ── Relaciones ────────────────────────────────────────────────────

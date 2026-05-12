@@ -27,8 +27,8 @@ return new class extends Migration
 
             // Vínculo con cliente individual o empresa (bloque)
             $table->unsignedBigInteger('cedula')->nullable()->index();
-            $table->unsignedBigInteger('contrato_id')->nullable()->index();
-            $table->unsignedBigInteger('empresa_id')->nullable()->index();
+            $table->unsignedInteger('contrato_id')->nullable()->index();  // contratos.id = unsignedInteger
+            $table->unsignedInteger('empresa_id')->nullable()->index();   // empresas.id  = integer
 
             // Datos del pago
             $table->date('fecha_pago');                              // fecha REAL que llegó el dinero

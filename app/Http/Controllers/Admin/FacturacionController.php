@@ -283,6 +283,9 @@ class FacturacionController extends Controller
             'empresa_id'           => 'nullable|integer',
             'aplicar_saldo'        => 'boolean',
             'observacion'          => 'nullable|string|max:500',
+            // Anticipos (pagos previos sin factura)
+            'anticipo_ids'         => 'nullable|array',
+            'anticipo_ids.*'       => 'integer',
             // SS editables desde la UI (override manual — solo 1 contrato)
             'v_eps_manual'         => 'nullable|integer|min:0',
             'v_arl_manual'         => 'nullable|integer|min:0',
@@ -366,6 +369,20 @@ class FacturacionController extends Controller
         $totalPagoEfectivo  = (int)($validated['valor_efectivo']  ?? 0);
         $totalPagoPrestamo  = (int)($validated['valor_prestamo']  ?? 0);
 
+        // ─── Pre-cargar anticipos seleccionados ────────────────────────────
+        // Los anticipos son pagos previos sin factura. Se separan de valor_efectivo
+        // y valor_consignado para evitar doble conteo en el cuadre diario.
+        $anticiposSeleccionados = collect();
+        $totalAnticipo = 0;
+        if (!empty($validated['anticipo_ids'])) {
+            $anticiposSeleccionados = \App\Models\Anticipo::whereIn('id', $validated['anticipo_ids'])
+                ->where('aliado_id', $aliadoId)
+                ->whereIn('estado', [\App\Models\Anticipo::ESTADO_DISPONIBLE, \App\Models\Anticipo::ESTADO_PARCIAL])
+                ->lockForUpdate()  // previene race condition
+                ->get();
+            $totalAnticipo = $anticiposSeleccionados->sum('valor_disponible');
+        }
+
         // IVA configurado (se aplica a clientes con IVA=SI, igual que en la factura)
         $cfgIvaPct = \App\Models\ConfiguracionBrynex::porcentajeIva(); // ej: 19
 
@@ -422,7 +439,7 @@ class FacturacionController extends Controller
         $omitidos         = [];  // contratos ya facturados para ese período
         // Acumuladores para ajuste de redondeo post-loop en la última factura del batch.
         // Garantiza sum(ef_i) = ef_total exactamente, eliminando residuos de redondeo.
-$efAcum = $csAcum = $prAcum = $sfAcum = 0;
+        $efAcum = $csAcum = $prAcum = $sfAcum = $antAcum = 0;
         // Saldo empresa a aplicar como credito en este batch (distribuido igualmente)
         $empresaId = $validated['empresa_id'] ?? null;
         $saldoEmpresaAplicar = 0;
@@ -450,8 +467,9 @@ $efAcum = $csAcum = $prAcum = $sfAcum = 0;
             $esMasivo,
             &$facturasCreadas, &$omitidos, &$nPlanosPorRS,
             $totalPagoConsig, $totalPagoEfectivo, $totalPagoPrestamo,
+            $totalAnticipo, $anticiposSeleccionados,
             $consignacionesData, $totalesPorContrato, $granTotal, $batchNumeroFactura,
-            &$efAcum, &$csAcum, &$prAcum, &$sfAcum,
+            &$efAcum, &$csAcum, &$prAcum, &$sfAcum, &$antAcum,
             $saldoEmpresaAplicar, &$contratosPendientes
         ) {
             foreach ($validated['contratos'] as $contratoId) {
@@ -682,19 +700,22 @@ $efAcum = $csAcum = $prAcum = $sfAcum = 0;
 
                 if ($esUltimoNoOmitido) {
                     // Ultimo: residuo exacto
-                    $vConsig     = $totalPagoConsig     - $csAcum;
-                    $vEfectivo   = $totalPagoEfectivo   - $efAcum;
-                    $vPrestamo   = $totalPagoPrestamo   - $prAcum;
-                    $vSaldoFavor = $saldoEmpresaAplicar - $sfAcum;
+                    $vConsig      = $totalPagoConsig     - $csAcum;
+                    $vEfectivo    = $totalPagoEfectivo   - $efAcum;
+                    $vPrestamo    = $totalPagoPrestamo   - $prAcum;
+                    $vSaldoFavor  = $saldoEmpresaAplicar - $sfAcum;
+                    $vAnticipo    = $totalAnticipo        - $antAcum;
                 } else {
-                    $vConsig     = (int) floor($totalPagoConsig     / $nContratos);
-                    $vEfectivo   = (int) floor($totalPagoEfectivo   / $nContratos);
-                    $vPrestamo   = (int) floor($totalPagoPrestamo   / $nContratos);
-                    $vSaldoFavor = (int) floor($saldoEmpresaAplicar / $nContratos);
-                    $csAcum  += $vConsig;
-                    $efAcum  += $vEfectivo;
-                    $prAcum  += $vPrestamo;
-                    $sfAcum  += $vSaldoFavor;
+                    $vConsig      = (int) floor($totalPagoConsig     / $nContratos);
+                    $vEfectivo    = (int) floor($totalPagoEfectivo   / $nContratos);
+                    $vPrestamo    = (int) floor($totalPagoPrestamo   / $nContratos);
+                    $vSaldoFavor  = (int) floor($saldoEmpresaAplicar / $nContratos);
+                    $vAnticipo    = (int) floor($totalAnticipo        / $nContratos);
+                    $csAcum   += $vConsig;
+                    $efAcum   += $vEfectivo;
+                    $prAcum   += $vPrestamo;
+                    $sfAcum   += $vSaldoFavor;
+                    $antAcum  += $vAnticipo;
                 }
 
                 $factura = Factura::create([
@@ -733,12 +754,17 @@ $efAcum = $csAcum = $prAcum = $sfAcum = 0;
                     'dist_utilidad'    => $distUtilidad,
                     'np'               => $np,
                     'n_plano'          => $nPlanoFactura,
-                    'empresa_id'       => $validated['empresa_id'] ?? null,
-                    'razon_social_id'  => $contrato->razon_social_id,
-                    'usuario_id'       => Auth::id(),
-                    'observacion'      => $validated['observacion'] ?? null,
+                    'empresa_id'        => $validated['empresa_id'] ?? null,
+                    'razon_social_id'   => $contrato->razon_social_id,
+                    'usuario_id'        => Auth::id(),
+                    'observacion'       => $validated['observacion'] ?? null,
                     // Mora al cliente (no es ingreso — se reporta separado en SS)
-                    'mora'             => $moraCliente,
+                    'mora'              => $moraCliente,
+                    // Anticipo: pagos previos registrados antes de la factura.
+                    // Se guarda separado de valor_efectivo/consignado para evitar
+                    // doble conteo en el cuadre diario (ese dinero ya se contabilizó
+                    // en el mes en que se recibió el anticipo).
+                    'anticipo_aplicado' => $vAnticipo,
                 ]);
 
                 // ─── Guardar consignaciones bancarias ──────────────────────
@@ -781,21 +807,17 @@ $efAcum = $csAcum = $prAcum = $sfAcum = 0;
                 // PRÉSTAMO CON PAGO PARCIAL: si la persona consignó $587k sobre $587.8k,
                 // el saldo real pendiente es solo $800, no el total bruto completo.
                 // Se usa la misma fórmula (pagadoReal - total) en todos los casos.
-                $pagadoReal = (int)$factura->valor_consignado + (int)$factura->valor_efectivo;
+                // pagadoReal = efectivo nuevo + consig nuevo + anticipo aplicado
+                $pagadoReal = (int)$factura->valor_consignado
+                            + (int)$factura->valor_efectivo
+                            + (int)$factura->anticipo_aplicado;
                 if ($factura->es_prestamo) {
                     // Préstamo: graba el saldo REAL pendiente (puede ser pago parcial o $0).
-                    // pagadoReal - total: negativo = debe, 0 = saldado.
                     $saldoProximo = $pagadoReal - (int)$factura->total;
                 } else {
-                    // ─── Saldo proximo según tipo de pago ─────────────────
                     if ($esMasivo && $saldoEmpresaAplicar > 0) {
-                        // Batch empresa con credito: fijar saldo_proximo = -(credito/n)
-                        // Garantiza: SUM(saldo_proximo) = -saldo_empresa exacto → empresa = 0
-                        // La diferencia de redondeo de ceil() en SS queda absorbida en la
-                        // distribución del efectivo, no en el balance contable de la empresa.
                         $saldoProximo = -$vSaldoFavor;
                     } else {
-                        // Pago normal sin credito empresa: pagado - bruto
                         $saldoProximo = $pagadoReal - (int)$factura->total;
                     }
                 }
@@ -808,6 +830,19 @@ $efAcum = $csAcum = $prAcum = $sfAcum = 0;
                 }
 
                 $facturasCreadas[] = $factura->id;
+            }
+
+            // ─── Marcar anticipos como aplicados (post-loop, fuera del foreach) ──
+            // Se hace al final de la transacción para que todos los factura->id existan.
+            // La primera factura del lote "absorbe" los anticipos.
+            if ($anticiposSeleccionados->isNotEmpty() && !empty($facturasCreadas)) {
+                $facturaAnticipo = $facturasCreadas[0]; // primera del lote
+                $pendienteAplicar = $totalAnticipo;
+                foreach ($anticiposSeleccionados as $ant) {
+                    if ($pendienteAplicar <= 0) break;
+                    $aplicado = $ant->aplicarAFactura($facturaAnticipo, $pendienteAplicar);
+                    $pendienteAplicar -= $aplicado;
+                }
             }
         });
 
@@ -1057,8 +1092,14 @@ $efAcum = $csAcum = $prAcum = $sfAcum = 0;
                 ->get();
         }
 
+        // Anticipos aplicados a esta factura (para el recibo/PDF)
+        $anticiposAplicados = \App\Models\Anticipo::where('factura_id', $facturaId)
+            ->with(['bancoCuenta', 'usuario'])
+            ->orderBy('fecha_pago')
+            ->get();
+
         return view('admin.facturacion.recibo',
-            compact('factura','grupoNp'));
+            compact('factura','grupoNp','anticiposAplicados'));
     }
 
     // ─── Anular factura (solo admin) ─────────────────────────────────

@@ -105,6 +105,43 @@
 .mf-badge-favor    { display:flex;align-items:center;gap:.4rem;background: #dcfce7; color: #15803d; padding: .3rem .7rem; border-radius: 7px; font-size: .72rem; font-weight: 700; }
 .mf-badge-pendiente{ display:flex;align-items:center;gap:.4rem;background: #fee2e2; color: #dc2626; padding: .3rem .7rem; border-radius: 7px; font-size: .72rem; font-weight: 700; }
 
+/* ── PANEL ANTICIPOS ── */
+#mf-anticipo-panel {
+    background: linear-gradient(135deg, #fffbeb, #fef9c3);
+    border: 1.5px solid #fde68a;
+    border-radius: 11px; overflow: hidden; display: none;
+}
+#mf-anticipo-hdr {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: .38rem .75rem;
+    font-size: .65rem; font-weight: 800; color: #78350f;
+    text-transform: uppercase; letter-spacing: .06em;
+    background: #fef3c7; border-bottom: 1px solid #fde68a;
+    cursor: pointer;
+}
+#mf-anticipo-total-badge {
+    font-size: .72rem; font-weight: 900; color: #92400e;
+    background: #fde68a; border-radius: 5px; padding: .1rem .45rem;
+}
+#mf-anticipo-body { padding: .35rem .5rem; display: flex; flex-direction: column; gap: .22rem; max-height: 150px; overflow-y: auto; }
+.mf-ant-row {
+    display: grid; grid-template-columns: 20px 1fr auto auto;
+    gap: .3rem; align-items: center;
+    padding: .22rem .3rem; border-radius: 6px; transition: background .15s;
+}
+.mf-ant-row:hover { background: rgba(253,230,138,.4); }
+.mf-ant-cb { accent-color: #d97706; cursor: pointer; }
+.mf-ant-info { font-size: .7rem; color: #78350f; font-weight: 600; display: flex; flex-direction: column; gap: .05rem; }
+.mf-ant-fecha { font-size: .62rem; color: #92400e; font-weight: 500; }
+.mf-ant-forma { font-size: .6rem; color: #a16207; background: #fef3c7; border-radius: 3px; padding: .02rem .22rem; }
+.mf-ant-monto { font-size: .75rem; font-weight: 900; color: #78350f; font-family: monospace; white-space: nowrap; }
+.mf-ant-ref { font-size: .58rem; color: #a16207; }
+#mf-anticipo-subtotal {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: .28rem .5rem; border-top: 1px solid #fde68a;
+    font-size: .7rem; font-weight: 800; color: #78350f; background: #fffbeb;
+}
+
 /* ── OPCIONES INDEPENDIENTE ── */
 #mf-indep-opts {
     display: none;
@@ -375,6 +412,17 @@
 }
 .mf-btn-guardar:hover { background: linear-gradient(135deg, #14532d, #166534); transform: translateY(-1px); box-shadow: 0 4px 14px rgba(21, 128, 61, .35); }
 .mf-btn-guardar:disabled { opacity: .6; transform: none; cursor: not-allowed; }
+
+/* ── Botón Registrar Anticipo ── */
+.mf-btn-anticipo {
+    padding: .42rem 1rem;
+    background: linear-gradient(135deg, #78350f, #d97706);
+    color: #fff; border: none; border-radius: 8px; cursor: pointer;
+    font-size: .78rem; font-weight: 700; letter-spacing: .01em;
+    box-shadow: 0 2px 8px rgba(217,119,6,.3);
+    transition: all .18s; display: flex; align-items: center; gap: .35rem;
+}
+.mf-btn-anticipo:hover { opacity: .9; transform: translateY(-1px); }
 
 /* ── Badge nivel ARL ── */
 .mf-arl-badge {
@@ -801,6 +849,19 @@
                 </div>
             </div>
 
+            {{-- ── ANTICIPOS disponibles (se muestra si el cliente tiene saldo) ── --}}
+            <div id="mf-anticipo-panel">
+                <div id="mf-anticipo-hdr" onclick="MF_ANT.toggleBody()">
+                    <span>💰 Anticipos disponibles</span>
+                    <span id="mf-anticipo-total-badge">$0</span>
+                </div>
+                <div id="mf-anticipo-body"></div>
+                <div id="mf-anticipo-subtotal">
+                    <span>Total seleccionado:</span>
+                    <span id="mf-anticipo-sel-total">$0</span>
+                </div>
+            </div>
+
             {{-- Observación --}}
             <div class="mf-obs-wrap">
                 <div class="mf-col-title" style="margin-bottom:.25rem;">
@@ -813,9 +874,20 @@
     </div>{{-- /mf-body --}}
 
     {{-- ── FOOTER ── --}}
-    <div id="mf-footer">
-        <button type="button" class="mf-btn-cancel" onclick="MF.cerrar()">Cancelar</button>
-        <button type="button" class="mf-btn-guardar" id="mf-btn-guardar" onclick="MF.guardar()">🧾 Facturar ahora</button>
+    <div id="mf-footer" style="justify-content:space-between">
+
+        {{-- Izquierda: registrar anticipo --}}
+        <button type="button" class="mf-btn-anticipo" id="mf-btn-anticipo"
+                onclick="MF._abrirAnticipo()">
+            💰 Registrar Anticipo
+        </button>
+
+        {{-- Derecha: cancelar + facturar --}}
+        <div style="display:flex;gap:.5rem;align-items:center">
+            <button type="button" class="mf-btn-cancel" onclick="MF.cerrar()">Cancelar</button>
+            <button type="button" class="mf-btn-guardar" id="mf-btn-guardar" onclick="MF.guardar()">🧾 Facturar ahora</button>
+        </div>
+
     </div>
 
 </div>
@@ -829,4 +901,399 @@ window._MF_BANCOS = [
     {id:{{ $b->id }}, label:{!! json_encode($b->nombre . ' — ' . $b->tipo_cuenta) !!}},
     @endforeach
 ];
+</script>
+
+{{-- ══ MODAL REGISTRAR ANTICIPO ══════════════════════════════════════════ --}}
+<div id="ant-overlay" style="display:none;position:fixed;inset:0;background:rgba(10,10,20,.6);backdrop-filter:blur(4px);z-index:3000;display:none;align-items:center;justify-content:center;">
+<div style="background:#fff;border-radius:16px;width:min(480px,96vw);box-shadow:0 24px 80px rgba(0,0,0,.35);overflow:hidden;display:flex;flex-direction:column;" onclick="event.stopPropagation()">
+    {{-- Header --}}
+    <div style="background:linear-gradient(135deg,#78350f,#d97706);padding:.75rem 1.1rem;display:flex;align-items:center;justify-content:space-between;">
+        <div style="display:flex;align-items:center;gap:.55rem;">
+            <span style="font-size:1.2rem;">💰</span>
+            <div>
+                <div style="font-size:.9rem;font-weight:800;color:#fff;">Registrar Anticipo</div>
+                <div style="font-size:.62rem;color:rgba(255,255,255,.7);">Pago recibido sin factura</div>
+            </div>
+        </div>
+        <button onclick="ANT.cerrar()" style="background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:7px;width:26px;height:26px;cursor:pointer;font-size:.9rem;">✕</button>
+    </div>
+    {{-- Body --}}
+    <div style="padding:1rem 1.2rem;display:flex;flex-direction:column;gap:.65rem;">
+        <input type="hidden" id="ant-contrato-id">
+        <input type="hidden" id="ant-empresa-id">
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem;">
+            <div>
+                <label style="font-size:.6rem;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:.22rem;">Fecha de pago</label>
+                <input type="date" id="ant-fecha"
+                    style="width:100%;padding:.38rem .55rem;border:1.5px solid #e2e8f0;border-radius:7px;font-size:.82rem;outline:none;box-sizing:border-box;">
+            </div>
+            <div>
+                <label style="font-size:.6rem;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:.22rem;">Valor</label>
+                <input type="text" id="ant-valor" placeholder="0"
+                    style="width:100%;padding:.38rem .55rem;border:1.5px solid #e2e8f0;border-radius:7px;font-size:.82rem;font-family:monospace;font-weight:700;outline:none;box-sizing:border-box;text-align:right;">
+            </div>
+        </div>
+
+        <div>
+            <label style="font-size:.6rem;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:.22rem;">Forma de pago</label>
+            <select id="ant-forma"
+                style="width:100%;padding:.38rem .55rem;border:1.5px solid #e2e8f0;border-radius:7px;font-size:.82rem;outline:none;background:#fff;box-sizing:border-box;"
+                onchange="ANT.onForma()">
+                <option value="efectivo" selected>💵 Efectivo</option>
+                <option value="transferencia">⇔️ Transferencia</option>
+            </select>
+        </div>
+
+        <div id="ant-banco-wrap" style="display:none;">
+            <label style="font-size:.6rem;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:.22rem;">Banco destino</label>
+            <select id="ant-banco"
+                style="width:100%;padding:.38rem .55rem;border:1.5px solid #e2e8f0;border-radius:7px;font-size:.82rem;outline:none;background:#fff;box-sizing:border-box;">
+                <option value="">— Seleccionar banco —</option>
+                @foreach($mfBancos as $b)
+                <option value="{{ $b->id }}">{{ $b->nombre }} — {{ $b->tipo_cuenta }}</option>
+                @endforeach
+            </select>
+        </div>
+
+        {{-- ZONA DE IMAGEN: solo transferencia --}}
+        <div id="ant-imagen-wrap" style="display:none;">
+            <label style="font-size:.6rem;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:.22rem;">Comprobante de transferencia</label>
+            {{-- Drop zone --}}
+            <div id="ant-drop-zone"
+                 onclick="document.getElementById('ant-imagen-file').click()"
+                 style="border:2px dashed #d97706;border-radius:9px;padding:.8rem;text-align:center;cursor:pointer;background:#fffbeb;transition:background .15s;position:relative;">
+                <span id="ant-drop-label" style="font-size:.75rem;color:#92400e;font-weight:600;">
+                    📎 Clic, arrastra o pega (Ctrl+V) el comprobante
+                </span>
+                <input type="file" id="ant-imagen-file" accept="image/*,.pdf"
+                       style="display:none;"
+                       onchange="ANT._onFileChange(this.files[0])">
+            </div>
+            {{-- Preview --}}
+            <div id="ant-imagen-preview" style="display:none;margin-top:.5rem;position:relative;">
+                <img id="ant-img-preview" src="" alt="preview"
+                     style="max-width:100%;max-height:140px;border-radius:7px;border:1px solid #e2e8f0;object-fit:contain;display:block;">
+                <div id="ant-pdf-preview"
+                     style="display:none;background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px;padding:.5rem;font-size:.75rem;color:#374151;font-weight:600;">
+                    📄 <span id="ant-pdf-name"></span>
+                </div>
+                <button type="button" onclick="ANT._clearFile()"
+                        style="position:absolute;top:4px;right:4px;background:#dc2626;color:#fff;border:none;border-radius:50%;width:20px;height:20px;cursor:pointer;font-size:.7rem;line-height:1;font-weight:800;">
+                    ×
+                </button>
+            </div>
+        </div>
+
+        <div>
+            <label style="font-size:.6rem;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:.22rem;">Referencia (núm. operación)</label>
+            <input type="text" id="ant-ref" placeholder="Número de referencia o comprobante"
+                style="width:100%;padding:.38rem .55rem;border:1.5px solid #e2e8f0;border-radius:7px;font-size:.82rem;outline:none;box-sizing:border-box;">
+        </div>
+
+        <div>
+            <label style="font-size:.6rem;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:.22rem;">Observación</label>
+            <input type="text" id="ant-obs" placeholder="Opcional…"
+                style="width:100%;padding:.38rem .55rem;border:1.5px solid #e2e8f0;border-radius:7px;font-size:.82rem;outline:none;box-sizing:border-box;">
+        </div>
+
+        <div id="ant-error" style="display:none;background:#fee2e2;border:1.5px solid #fca5a5;border-radius:7px;padding:.4rem .65rem;font-size:.75rem;font-weight:700;color:#dc2626;"></div>
+    </div>
+    {{-- Footer --}}
+    <div style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:.65rem 1.2rem;display:flex;justify-content:flex-end;gap:.5rem;">
+        <button onclick="ANT.cerrar()" style="padding:.4rem 1.1rem;background:#fff;color:#475569;border:1.5px solid #e2e8f0;border-radius:8px;cursor:pointer;font-size:.8rem;font-weight:600;">Cancelar</button>
+        <button id="ant-btn-guardar" onclick="ANT.guardar()"
+            style="padding:.42rem 1.4rem;background:linear-gradient(135deg,#78350f,#d97706);color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:.83rem;font-weight:800;">💰 Registrar</button>
+    </div>
+</div>
+</div>
+
+<script>
+// ══════════════════════════════════════════
+// Módulo ANT: Modal Registrar Anticipo
+// ══════════════════════════════════════════
+window.ANT = {
+    _contratoId: null,
+    _empresaId: null,
+    _onSuccess: null,
+    _archivo: null,
+    _pasteHandler: null,
+
+    // Abrir modal de registro
+    abrir(contratoId, empresaId, onSuccess) {
+        this._contratoId = contratoId || null;
+        this._empresaId  = empresaId  || null;
+        this._onSuccess  = onSuccess  || null;
+
+        // Defaults
+        const hoy = new Date().toISOString().split('T')[0];
+        document.getElementById('ant-fecha').value  = hoy;
+        document.getElementById('ant-valor').value  = '';
+        document.getElementById('ant-forma').value  = 'efectivo';
+        document.getElementById('ant-ref').value    = '';
+        document.getElementById('ant-obs').value    = '';
+        document.getElementById('ant-banco').value  = '';
+        document.getElementById('ant-banco-wrap').style.display  = 'none';
+        document.getElementById('ant-imagen-wrap').style.display = 'none';
+        document.getElementById('ant-error').style.display = 'none';
+        document.getElementById('ant-contrato-id').value = contratoId || '';
+        document.getElementById('ant-empresa-id').value  = empresaId  || '';
+        this._clearFile();
+
+        // Paste listener
+        if (this._pasteHandler) document.removeEventListener('paste', this._pasteHandler);
+        this._pasteHandler = (e) => {
+            if (document.getElementById('ant-forma').value !== 'transferencia') return;
+            const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/'));
+            if (item) this._onFileChange(item.getAsFile());
+        };
+        document.addEventListener('paste', this._pasteHandler);
+
+        // Drag & drop
+        const dz = document.getElementById('ant-drop-zone');
+        dz.ondragover  = (e) => { e.preventDefault(); dz.style.background='#fef3c7'; };
+        dz.ondragleave = ()  => { dz.style.background='#fffbeb'; };
+        dz.ondrop      = (e) => { e.preventDefault(); dz.style.background='#fffbeb'; const f=e.dataTransfer?.files?.[0]; if(f) this._onFileChange(f); };
+
+        document.getElementById('ant-overlay').style.display = 'flex';
+    },
+
+    cerrar() {
+        document.getElementById('ant-overlay').style.display = 'none';
+        if (this._pasteHandler) {
+            document.removeEventListener('paste', this._pasteHandler);
+            this._pasteHandler = null;
+        }
+    },
+
+    onForma() {
+        const forma   = document.getElementById('ant-forma').value;
+        const esTrans = forma === 'transferencia';
+        document.getElementById('ant-banco-wrap').style.display  = esTrans ? 'block' : 'none';
+        document.getElementById('ant-imagen-wrap').style.display = esTrans ? 'block' : 'none';
+        if (!esTrans) this._clearFile();
+    },
+
+    _onFileChange(file) {
+        if (!file) return;
+        this._archivo = file;
+        const prev = document.getElementById('ant-imagen-preview');
+        const img  = document.getElementById('ant-img-preview');
+        const pdf  = document.getElementById('ant-pdf-preview');
+        prev.style.display = 'block';
+        if (file.type === 'application/pdf') {
+            img.style.display = 'none'; pdf.style.display = 'block';
+            document.getElementById('ant-pdf-name').textContent = file.name;
+        } else {
+            pdf.style.display = 'none'; img.style.display = 'block';
+            img.src = URL.createObjectURL(file);
+        }
+    },
+
+    _clearFile() {
+        this._archivo = null;
+        const fi = document.getElementById('ant-imagen-file');
+        if (fi) fi.value = '';
+        const prev = document.getElementById('ant-imagen-preview');
+        if (prev) prev.style.display = 'none';
+        const img = document.getElementById('ant-img-preview');
+        if (img) img.src = '';
+    },
+
+    async guardar() {
+        const btn = document.getElementById('ant-btn-guardar');
+        const errDiv = document.getElementById('ant-error');
+        errDiv.style.display = 'none';
+        btn.disabled = true;
+        btn.textContent = 'Guardando…';
+
+        const forma     = document.getElementById('ant-forma').value;
+        const csrfToken = document.querySelector('meta[name=csrf-token]')?.content || '';
+
+        let fetchOpts;
+        if (this._archivo && forma === 'transferencia') {
+            const fd = new FormData();
+            fd.append('contrato_id',     document.getElementById('ant-contrato-id').value || '');
+            fd.append('empresa_id',      document.getElementById('ant-empresa-id').value  || '');
+            fd.append('fecha_pago',      document.getElementById('ant-fecha').value);
+            fd.append('valor',           parseInt(document.getElementById('ant-valor').value.replace(/\D/g,'')) || 0);
+            fd.append('forma_pago',      forma);
+            fd.append('banco_cuenta_id', document.getElementById('ant-banco').value || '');
+            fd.append('referencia',      document.getElementById('ant-ref').value || '');
+            fd.append('observacion',     document.getElementById('ant-obs').value || '');
+            fd.append('imagen',          this._archivo);
+            fetchOpts = { method:'POST', headers:{'Accept':'application/json','X-CSRF-TOKEN':csrfToken}, body:fd };
+        } else {
+            fetchOpts = {
+                method: 'POST',
+                headers: { 'Content-Type':'application/json', 'Accept':'application/json', 'X-CSRF-TOKEN':csrfToken },
+                body: JSON.stringify({
+                    contrato_id:     document.getElementById('ant-contrato-id').value || null,
+                    empresa_id:      document.getElementById('ant-empresa-id').value  || null,
+                    fecha_pago:      document.getElementById('ant-fecha').value,
+                    valor:           parseInt(document.getElementById('ant-valor').value.replace(/\D/g,'')) || 0,
+                    forma_pago:      forma,
+                    banco_cuenta_id: document.getElementById('ant-banco').value || null,
+                    referencia:      document.getElementById('ant-ref').value || null,
+                    observacion:     document.getElementById('ant-obs').value || null,
+                }),
+            };
+        }
+
+        try {
+            const res  = await fetch('/admin/anticipos', fetchOpts);
+
+            const data = await res.json();
+
+            if (res.status === 409 && data.alerta) {
+                // Referencia duplicada — advertir pero dejar al usuario decidir
+                if (!confirm(data.mensaje + '\n\n¿Deseas registrarlo de todas formas?')) {
+                    btn.disabled = false;
+                    btn.textContent = '💰 Registrar';
+                    return;
+                }
+                // Reintentar sin validación de duplicado — por ahora solo avisa
+                errDiv.textContent = data.mensaje;
+                errDiv.style.display = 'block';
+                btn.disabled = false;
+                btn.textContent = '💰 Registrar';
+                return;
+            }
+
+            if (!data.ok) {
+                errDiv.textContent = data.mensaje || 'Error al registrar.';
+                errDiv.style.display = 'block';
+                btn.disabled = false;
+                btn.textContent = '💰 Registrar';
+                return;
+            }
+
+            // Éxito
+            this.cerrar();
+
+            // Toast de confirmación (el anticipo queda disponible en el panel MF_ANT)
+            const toast = document.createElement('div');
+            toast.style.cssText = 'position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;background:linear-gradient(135deg,#78350f,#d97706);color:#fff;padding:.65rem 1.2rem;border-radius:10px;font-size:.83rem;font-weight:700;box-shadow:0 6px 20px rgba(0,0,0,.25);display:flex;align-items:center;gap:.5rem;';
+            toast.innerHTML = '💰 Anticipo registrado — ya está disponible para aplicar';
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3500);
+
+            if (this._onSuccess) this._onSuccess(data);
+
+        } catch(e) {
+            errDiv.textContent = 'Error de red: ' + e.message;
+            errDiv.style.display = 'block';
+        }
+
+        btn.disabled = false;
+        btn.textContent = '💰 Registrar';
+    }
+};
+
+// ══════════════════════════════════════════
+// Módulo MF_ANT: Anticipos en modal facturar
+// ══════════════════════════════════════════
+window.MF_ANT = {
+    _anticipos: [],    // lista completa cargada de la API
+    _seleccionados: new Set(),
+
+    // Carga anticipos disponibles para un contrato o empresa
+    async cargar(contratoId, empresaId) {
+        this._anticipos = [];
+        this._seleccionados.clear();
+        this._render();
+
+        let url = null;
+        if (contratoId) url = `/admin/anticipos/api/contrato/${contratoId}`;
+        else if (empresaId) url = `/admin/anticipos/api/empresa/${empresaId}`;
+        if (!url) { document.getElementById('mf-anticipo-panel').style.display = 'none'; return; }
+
+        try {
+            const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+            const data = await res.json();
+            this._anticipos = data.anticipos || [];
+        } catch(e) {
+            this._anticipos = [];
+        }
+
+        this._render();
+    },
+
+    _render() {
+        const panel = document.getElementById('mf-anticipo-panel');
+        const body  = document.getElementById('mf-anticipo-body');
+        const badge = document.getElementById('mf-anticipo-total-badge');
+
+        if (!this._anticipos.length) {
+            panel.style.display = 'none';
+            return;
+        }
+
+        panel.style.display = 'block';
+        const totalDisp = this._anticipos.reduce((s,a) => s + a.valor_disponible, 0);
+        badge.textContent = '$' + totalDisp.toLocaleString('es-CO');
+
+        body.innerHTML = this._anticipos.map(a => `
+            <div class="mf-ant-row">
+                <input type="checkbox" class="mf-ant-cb"
+                    id="mf-ant-${a.id}"
+                    data-id="${a.id}" data-val="${a.valor_disponible}"
+                    data-forma="${a.forma_pago}"
+                    onchange="MF_ANT.toggle(${a.id}, this.checked)">
+                <div class="mf-ant-info">
+                    <span>${a.forma_label}${a.referencia ? ' · <em>' + a.referencia + '</em>' : ''}</span>
+                    <span class="mf-ant-fecha">${a.fecha_pago}</span>
+                </div>
+                <span class="mf-ant-monto">$${a.valor_disponible.toLocaleString('es-CO')}</span>
+            </div>
+        `).join('');
+
+        this._actualizarSubtotal();
+    },
+
+    toggleBody() {
+        const body = document.getElementById('mf-anticipo-body');
+        body.style.display = body.style.display === 'none' ? 'flex' : 'none';
+    },
+
+    toggle(id, checked) {
+        if (checked) this._seleccionados.add(id);
+        else this._seleccionados.delete(id);
+        this._actualizarSubtotal();
+        if (typeof MF !== 'undefined') MF.recalc();
+    },
+
+    _actualizarSubtotal() {
+        const selDiv = document.getElementById('mf-anticipo-sel-total');
+        const total = this._anticipos
+            .filter(a => this._seleccionados.has(a.id))
+            .reduce((s,a) => s + a.valor_disponible, 0);
+        selDiv.textContent = '$' + total.toLocaleString('es-CO');
+        return total;
+    },
+
+    // Total actualmente seleccionado (usado por MF.recalc())
+    totalSeleccionado() {
+        return this._anticipos
+            .filter(a => this._seleccionados.has(a.id))
+            .reduce((s,a) => s + a.valor_disponible, 0);
+    },
+
+    // IDs seleccionados para enviar al backend
+    ids() {
+        return [...this._seleccionados];
+    },
+
+    // Seleccionar todos
+    seleccionarTodos(checked) {
+        this._anticipos.forEach(a => {
+            const cb = document.getElementById(`mf-ant-${a.id}`);
+            if (cb) { cb.checked = checked; }
+            if (checked) this._seleccionados.add(a.id);
+            else this._seleccionados.delete(a.id);
+        });
+        this._actualizarSubtotal();
+        if (typeof MF !== 'undefined') MF.recalc();
+    },
+};
 </script>

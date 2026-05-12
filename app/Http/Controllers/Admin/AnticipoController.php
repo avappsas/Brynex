@@ -19,10 +19,11 @@ class AnticipoController extends Controller
             'empresa_id'     => 'nullable|integer|exists:empresas,id',
             'fecha_pago'     => 'required|date',
             'valor'          => 'required|integer|min:1',
-            'forma_pago'     => 'required|in:efectivo,nequi,consignacion,transferencia',
+            'forma_pago'     => 'required|in:efectivo,transferencia',
             'banco_cuenta_id'=> 'nullable|integer|exists:banco_cuentas,id',
             'referencia'     => 'nullable|string|max:100',
             'observacion'    => 'nullable|string|max:300',
+            'imagen'         => 'nullable|file|mimes:jpg,jpeg,png,pdf,webp|max:8192',
         ]);
 
         // Debe venir al menos un vínculo (contrato O empresa)
@@ -76,23 +77,35 @@ class AnticipoController extends Controller
                 'usuario_id'     => Auth::id(),
             ]);
 
-            // ── Si es consignación/transferencia: crear registro bancario ──
+            // ── Si es transferencia: crear registro bancario ──
             // Así el saldo bancario refleja este dinero desde el día que llegó.
-            if (in_array($validated['forma_pago'], ['consignacion', 'transferencia'])
+            if ($validated['forma_pago'] === 'transferencia'
                 && !empty($validated['banco_cuenta_id']))
             {
+                // Guardar imagen si viene en el request
+                $imagenPath = null;
+                if ($request->hasFile('imagen') && $request->file('imagen')->isValid()) {
+                    $file = $request->file('imagen');
+                    $imagenPath = $file->storeAs(
+                        'anticipos',
+                        'ant_' . $anticipo->id . '_' . time() . '.' . $file->getClientOriginalExtension(),
+                        'public'
+                    );
+                }
+
                 Consignacion::create([
                     'aliado_id'       => $aliadoId,
                     'banco_cuenta_id' => $validated['banco_cuenta_id'],
-                    'factura_id'      => null,  // aún no hay factura
+                    'factura_id'      => null,
                     'anticipo_id'     => $anticipo->id,
                     'fecha'           => $validated['fecha_pago'],
                     'valor'           => $validated['valor'],
-                    'tipo'            => 'anticipo',
+                    'tipo'            => Consignacion::TIPO_ANTICIPO,
                     'referencia'      => $validated['referencia'] ?? null,
                     'confirmado'      => false,
                     'observacion'     => $validated['observacion'] ?? 'Anticipo',
                     'usuario_id'      => Auth::id(),
+                    'imagen_path'     => $imagenPath,
                 ]);
             }
 
