@@ -62,8 +62,10 @@ class TareaController extends Controller
             END ASC
         ")->orderBy('fecha_limite', 'asc');
 
-        // Paginación
-        $mostrarCerradas = $request->boolean('cerradas', false);
+        // Paginación: ocultar cerradas por defecto, salvo que
+        // se pida explícitamente (cerradas=true) o se filtre por estado=cerrada
+        $mostrarCerradas = $request->boolean('cerradas', false)
+            || $request->get('estado') === 'cerrada';
         if (!$mostrarCerradas) {
             $query->where('estado', '!=', 'cerrada');
         }
