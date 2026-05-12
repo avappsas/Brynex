@@ -528,6 +528,11 @@ class FacturacionController extends Controller
                     }
                 }
 
+                // ── Gestión ARL (id=15): SIEMPRE afiliación, nunca planilla ──
+                if ((int)$contrato->tipo_modalidad_id === 15) {
+                    $tipoForzado = 'afiliacion';
+                }
+
                 // ─── Detectar I Act primer mes ─────────────────────────────
                 // I Act (id=11) en mes de ingreso: paga afiliación + planilla juntas
                 $esIndActPrimerMes = $esIndAct && isset($esMesIngreso) && $esMesIngreso;

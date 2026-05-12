@@ -296,6 +296,13 @@ Route::middleware('auth')->group(function () {
         Route::post('/',   [$cm, 'store'])->name('store');
     });
 
+    // ── Gestión ARL (tipo_modalidad_id = 15)
+    Route::prefix('admin/gestion-arl')->name('admin.gestion-arl.')->group(function () {
+        $ga = \App\Http\Controllers\Admin\GestionArlController::class;
+        Route::get('/',            [$ga, 'index'])   ->name('index');
+        Route::patch('/{id}/renovar', [$ga, 'renovar'])->name('renovar');
+    });
+
     // -- Afiliaciones
     Route::prefix('admin/afiliaciones')->name('admin.afiliaciones.')->group(function () {
         $ac = \App\Http\Controllers\Admin\AfiliacionController::class;
