@@ -9,9 +9,9 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('contratos', function (Blueprint $table) {
-            // Fecha de afiliación ARL vigente (se actualiza mes a mes en Gestión ARL)
-            // Null = aún no se ha registrado la primera afiliación en el portal ARL
-            $table->date('fecha_arl')->nullable()->after('fecha_retiro');
+            if (!Schema::hasColumn('contratos', 'fecha_arl')) {
+                $table->date('fecha_arl')->nullable()->after('fecha_retiro');
+            }
         });
     }
 
