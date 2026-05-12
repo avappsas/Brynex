@@ -1573,6 +1573,8 @@ function ejecutarDescarga(formato) {
         anio  : CTX.anio,
         n_plano: CTX.nPlanoFiltro ?? '',
     });
+    // Agregar tipos_modalidad[] como params repetidos (URLSearchParams no soporta arrays nativamente)
+    CTX.modalidadesIds.forEach(id => params.append('tipos_modalidad[]', id));
     window.location.href = CTX.routes.descargar + '?' + params.toString();
 }
 
@@ -1588,6 +1590,7 @@ function ejecutarDescargaAsopagos() {
         anio   : CTX.anio,
         n_plano: CTX.nPlanoFiltro ?? '',
     });
+    CTX.modalidadesIds.forEach(id => params.append('tipos_modalidad[]', id));
     window.location.href = CTX.routes.descargarAsopagos + '?' + params.toString();
 }
 
@@ -1602,6 +1605,7 @@ function ejecutarDescargaMiPlanilla() {
         anio   : CTX.anio,
         n_plano: CTX.nPlanoFiltro ?? '',
     });
+    CTX.modalidadesIds.forEach(id => params.append('tipos_modalidad[]', id));
     window.location.href = CTX.routes.descargarMiPlanilla + '?' + params.toString();
 }
 

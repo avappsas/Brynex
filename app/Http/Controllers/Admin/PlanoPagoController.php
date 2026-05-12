@@ -399,7 +399,7 @@ class PlanoPagoController extends Controller
         $mes            = (int) $request->input('mes',  now()->month);
         $anio           = (int) $request->input('anio', now()->year);
         $nPlano         = (int) $request->input('n_plano', 1);
-        $tiposModalidad = (array) $request->input('tipos_modalidad', []);
+        $tiposModalidad = array_map('intval', (array) $request->input('tipos_modalidad', []));
         $operadorId     = $request->input('operador_id'); // ID del operador seleccionado
 
         $rsNombre = 'SIN_RS';
@@ -425,7 +425,7 @@ class PlanoPagoController extends Controller
                     'mes'             => $mes,
                     'anio'            => $anio,
                     'n_plano'         => $nPlano,
-                    'tipos_modalidad' => $tiposModalidad,
+                    'tipos_modalidad' => $tiposModalidad, // ya casteados a int
                     'operador_id'     => $operadorId,
                 ]);
 
@@ -704,7 +704,10 @@ class PlanoPagoController extends Controller
                     });
 
                 if (!empty($validated['tipos_modalidad'])) {
-                    $queryUpdate->whereIn('tipo_modalidad_id', $validated['tipos_modalidad']);
+                    // Castear a int para que SQL Server compare correctamente
+                    // con la columna integer, especialmente con valores negativos (-1, -6, etc.)
+                    $tiposIds = array_map('intval', (array) $validated['tipos_modalidad']);
+                    $queryUpdate->whereIn('tipo_modalidad_id', $tiposIds);
                 }
 
                 $cantActualizados = $queryUpdate->update([
