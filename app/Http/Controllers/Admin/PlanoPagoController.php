@@ -540,7 +540,51 @@ class PlanoPagoController extends Controller
         }
     }
 
-    // ── 4c. Limpiar planos huérfanos (factura anulada pero plano activo) ──────
+    // ── 4c. Descargar Excel Aportes en Línea (formato AEL / ASOPAGOS) ──────────
+    public function descargarAportesEnLinea(Request $request)
+    {
+        $aliadoId      = session('aliado_id_activo');
+        $razonSocialId = $request->input('razon_social_id');
+        $mes           = (int) $request->input('mes',  now()->month);
+        $anio          = (int) $request->input('anio', now()->year);
+        $nPlano        = (int) $request->input('n_plano', 1);
+        $tiposModalidad = array_map('intval', (array) $request->input('tipos_modalidad', []));
+
+        if (!$razonSocialId) {
+            abort(400, 'Debe seleccionar una Razón Social.');
+        }
+
+        $rsNombre = 'SIN_RS';
+        $rs = \App\Models\RazonSocial::find($razonSocialId);
+        if ($rs) {
+            $rsNombre = preg_replace('/[^A-Za-z0-9_\-]/', '_', $rs->razon_social);
+        }
+        $filename = "AEL_{$rsNombre}_{$mes}_{$anio}_P{$nPlano}.xlsx";
+
+        try {
+            $service     = new \App\Services\ExcelAportesEnLineaService();
+            $spreadsheet = $service->generar([
+                'aliado_id'       => $aliadoId,
+                'razon_social_id' => $razonSocialId,
+                'mes'             => $mes,
+                'anio'            => $anio,
+                'n_plano'         => $nPlano,
+                'tipos_modalidad' => $tiposModalidad, // ya casteados a int
+            ]);
+            return $service->respuesta($spreadsheet, $filename);
+        } catch (\Illuminate\Database\QueryException $e) {
+            \Illuminate\Support\Facades\Log::error('AEL QueryException', [
+                'sql' => $e->getSql(), 'msg' => $e->getMessage(),
+            ]);
+            abort(500, 'Error de base de datos al generar el Excel AEL.');
+        } catch (\RuntimeException $e) {
+            abort(422, $e->getMessage());
+        } catch (\Exception $e) {
+            abort(500, 'Error al generar Excel AEL: ' . $e->getMessage());
+        }
+    }
+
+    // ── 4d. Limpiar planos huérfanos (factura anulada pero plano activo) ──────
     /**
      * Soft-deletea planos cuyos factura_id apunta a facturas ya anuladas (deleted_at != null).
      * Solo ejecutable por superadmin. Resuelve duplicados causados por el bug del hasOne

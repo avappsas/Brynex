@@ -873,6 +873,11 @@
                     onclick="ejecutarDescargaMiPlanilla()">
                 📄 Descargar TXT MiPlanilla
             </button>
+            <button class="btn-accion" style="width:100%;justify-content:center;padding:.55rem;margin-top:.5rem;background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:.85rem;display:flex;align-items:center;gap:.4rem"
+                    id="btn-aportes-en-linea"
+                    onclick="ejecutarDescargaAportesEnLinea()">
+                📊 Descargar Aportes en Línea
+            </button>
 
             <div style="border-top:1px solid #f1f5f9;padding-top:1rem;margin-top:1rem">
                 <div class="aviso-modal">
@@ -1168,6 +1173,7 @@ const CTX = {
         descargar        : '{{ route('admin.planos.descargar') }}',
         descargarAsopagos  : '{{ route('admin.planos.descargar_asopagos') }}',
         descargarMiPlanilla: '{{ route('admin.planos.descargar_miplanilla') }}',
+        descargarAportesEnLinea: '{{ route('admin.planos.descargar_aportes_en_linea') }}',
         nPlanoUpdate : '{{ route('admin.planos.n_plano.update') }}',
         confirmarPago: '{{ route('admin.planos.confirmar_pago') }}',
         apiRazon     : '/admin/planos/api/razon/',
@@ -1607,6 +1613,22 @@ function ejecutarDescargaMiPlanilla() {
     });
     CTX.modalidadesIds.forEach(id => params.append('tipos_modalidad[]', id));
     window.location.href = CTX.routes.descargarMiPlanilla + '?' + params.toString();
+}
+
+// ── Descargar Aportes en Línea (Excel AEL) ──────────────────────────
+function ejecutarDescargaAportesEnLinea() {
+    if (!CTX.razonSocialId) {
+        mostrarToast('Seleccione una Razón Social primero.', 'error');
+        return;
+    }
+    const params = new URLSearchParams({
+        razon_social_id: CTX.razonSocialId,
+        mes    : CTX.mes,
+        anio   : CTX.anio,
+        n_plano: CTX.nPlanoFiltro ?? '',
+    });
+    CTX.modalidadesIds.forEach(id => params.append('tipos_modalidad[]', id));
+    window.location.href = CTX.routes.descargarAportesEnLinea + '?' + params.toString();
 }
 
 // ── Guardar N_PLANO ────────────────────────────────────────────────────
