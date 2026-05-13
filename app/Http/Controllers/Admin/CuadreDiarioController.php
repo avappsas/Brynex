@@ -298,115 +298,160 @@ class CuadreDiarioController extends Controller
             abort(403);
         }
 
+        set_time_limit(120); // protección ante meses con muchos movimientos
+
         $aliadoId = session('aliado_id_activo');
-        // Filtro por mes (default: mes actual)
-        $mes = $request->input('mes', now()->format('Y-m'));
+        $mes      = $request->input('mes', now()->format('Y-m'));
         [$anio, $mesNum] = explode('-', $mes);
         $inicio = "{$anio}-{$mesNum}-01";
         $fin    = date('Y-m-t', strtotime($inicio));
 
-        $bancos = BancoCuenta::where('aliado_id', $aliadoId)->where('activo', true)->get();
+        $bancos   = BancoCuenta::where('aliado_id', $aliadoId)->where('activo', true)->get();
+        $bancoIds = $bancos->pluck('id')->toArray();
 
-        $saldos = $bancos->map(function ($bc) use ($aliadoId, $inicio, $fin) {
-            // Entradas: consignaciones del mes filtrado
-            $movEntradas = Consignacion::where('aliado_id', $aliadoId)
-                ->where('banco_cuenta_id', $bc->id)
-                ->whereBetween('fecha', [$inicio, $fin])
-                ->with(['usuario', 'factura.empresa', 'anticipo.factura'])
-                ->orderByDesc('fecha')->orderByDesc('id')
+        // ── 1. Cargar TODAS las consignaciones con nombres via JOIN (igual que financiero) ──
+        // Un solo query con LEFT JOIN a clientes y empresas — replica exactamente
+        // el patrón de InformeController::movimientosBancos() que funciona correctamente.
+        $todasConsigRaw = DB::table('consignaciones AS cs')
+            ->leftJoin('facturas AS f',  'f.id',  '=', 'cs.factura_id')
+            ->leftJoin('clientes AS cl', function ($j) use ($aliadoId) {
+                $j->on('cl.cedula', '=', 'f.cedula')
+                  ->where('cl.aliado_id', $aliadoId);
+            })
+            ->leftJoin('empresas AS em', 'em.id', '=', 'f.empresa_id')
+            ->leftJoin('users AS u',     'u.id',  '=', 'cs.usuario_id')
+            ->where('cs.aliado_id', $aliadoId)
+            ->whereIn('cs.banco_cuenta_id', $bancoIds)
+            ->whereBetween('cs.fecha', [$inicio, $fin])
+            ->selectRaw("
+                cs.id,
+                cs.banco_cuenta_id,
+                cs.factura_id,
+                cs.tipo,
+                cs.referencia,
+                cs.observacion,
+                cs.valor,
+                cs.confirmado,
+                cs.imagen_path,
+                CONVERT(VARCHAR(10), cs.fecha, 120) AS fecha,
+                f.numero_factura,
+                f.empresa_id,
+                CASE
+                    WHEN f.empresa_id IS NOT NULL AND f.empresa_id > 0
+                        THEN UPPER(ISNULL(em.empresa, '—'))
+                    ELSE
+                        LTRIM(RTRIM(
+                            ISNULL(cl.primer_nombre,'') + ' ' +
+                            ISNULL(cl.segundo_nombre,'') + ' ' +
+                            ISNULL(cl.primer_apellido,'') + ' ' +
+                            ISNULL(cl.segundo_apellido,'')
+                        ))
+                END AS nombre_cliente,
+                u.nombre AS usuario_nombre
+            ")
+            ->orderByDesc('cs.fecha')
+            ->orderByDesc('cs.id')
+            ->get();
+
+        // ── 2. Cargar anticipos relacionados (batch) ─────────────────────────
+        $anticIds = $todasConsigRaw->where('tipo', 'anticipo')->pluck('id');
+        $anticipos = collect();
+        if ($anticIds->isNotEmpty()) {
+            $anticipos = \App\Models\Anticipo::whereIn('id', $anticIds)
+                ->with('factura')
                 ->get()
-                ->map(function ($c) {
-                    // Nombre del pagador:
-                    // 1. Si es factura de empresa → razon_social de empresa
-                    // 2. Si es factura individual → nombre del cliente por cédula
-                    $pagador = null;
-                    if ($c->factura) {
-                        if ($c->factura->empresa) {
-                            $pagador = $c->factura->empresa->empresa; // campo 'empresa' en tabla empresas
-                        } elseif ($c->factura->cedula) {
-                            $cli = DB::table('clientes')
-                                ->where('cedula', $c->factura->cedula)
-                                ->select('nombre')
-                                ->first();
-                            $pagador = $cli?->nombre;
-                        }
+                ->keyBy('id');
+        }
+
+        // ── 3. Cargar TODOS los gastos del período (batch) ───────────────────
+        $todasSalidas = Gasto::where('aliado_id', $aliadoId)
+            ->whereIn('banco_origen_id', $bancoIds)
+            ->whereIn('forma_pago', ['transferencia_bancaria', 'banco_banco'])
+            ->whereBetween('fecha', [$inicio, $fin])
+            ->with(['usuario', 'bancoDestino'])
+            ->orderByDesc('fecha')->orderByDesc('id')
+            ->get()
+            ->groupBy('banco_origen_id');
+
+        // ── 4. Pre-calcular saldos (uno por banco) ────────────────────────────
+        $saldosBanco = [];
+        foreach ($bancoIds as $bid) {
+            $saldosBanco[$bid] = Consignacion::saldoBanco($aliadoId, $bid);
+        }
+
+        // ── 5. Agrupar y transformar por banco ────────────────────────────────
+        $consigPorBanco = $todasConsigRaw->groupBy('banco_cuenta_id');
+
+        $saldos = $bancos->map(function ($bc) use ($consigPorBanco, $todasSalidas, $saldosBanco, $anticipos) {
+
+            $movEntradas = ($consigPorBanco[$bc->id] ?? collect())->map(function ($c) use ($anticipos) {
+                // nombre_cliente ya viene del CASE WHEN en SQL Server (igual que financiero)
+                $pagador   = trim($c->nombre_cliente ?? '');
+                $esEmpresa = ($c->empresa_id ?? 0) > 0;
+
+                if ($pagador === '' || $pagador === '— — — —') $pagador = null;
+
+                // Trazabilidad anticipo
+                $anticFact = $anticFactNum = null;
+                if (($c->tipo ?? '') === 'anticipo') {
+                    $ant = $anticipos[$c->id] ?? null;
+                    if ($ant) {
+                        $anticFact    = $ant->factura_id;
+                        $anticFactNum = $ant->factura?->numero_factura;
                     }
-                    // Trazabilidad de anticipo: si fue aplicado a una factura, guardar referencia
-                    $anticFact    = null;
-                    $anticFactNum = null;
-                    if (($c->tipo ?? '') === 'anticipo' && $c->anticipo) {
-                        $anticFact    = $c->anticipo->factura_id;
-                        $anticFactNum = $c->anticipo->factura?->numero_factura;
-                        // Pagador = cliente o empresa del anticipo
-                        if (!$pagador) {
-                            $antCedula = $c->anticipo->cedula;
-                            if ($antCedula) {
-                                $antCli = DB::table('clientes')->where('cedula', $antCedula)->value('nombre');
-                                $pagador = $antCli ?? 'Anticipo';
-                            }
-                        }
-                    }
+                }
 
-                    return (object)[
-                        'id'                  => $c->id,
-                        'cs_id'               => $c->id,
-                        'fecha'               => $c->fecha,
-                        'tipo'                => $c->tipo ?? 'cliente',
-                        'confirmado'          => (bool)$c->confirmado,
-                        'factura_id'          => $c->factura_id,
-                        'num_factura'         => $c->factura?->numero_factura ?? $c->factura_id,
-                        'anticipo_factura_id' => $anticFact,
-                        'anticipo_factura_num'=> $anticFactNum,
-                        'pagador'             => $pagador,
-                        'descripcion'         => match($c->tipo ?? 'cliente') {
-                            'traslado_efectivo' => 'Traslado efectivo → banco',
-                            'banco_recibido'    => 'Transferencia banco recibida',
-                            'anticipo'          => 'Anticipo' . ($c->referencia ? ' · Ref: ' . $c->referencia : ''),
-                            default             => $c->observacion,
-                        },
-                        'usuario'             => $c->usuario,
-                        'valor'               => $c->valor,
-                        'imagen_path'         => $c->imagen_path,
-                        'imagen_url'          => $c->imagen_path ? Storage::url($c->imagen_path) : null,
-                        'es_salida'           => false,
-                        'es_gasto'            => false,
-                        'referencia'          => $c->referencia,
-                    ];
-                });
+                return (object)[
+                    'id'                   => $c->id,
+                    'cs_id'                => $c->id,
+                    'fecha'                => $c->fecha,
+                    'tipo'                 => $c->tipo ?? 'cliente',
+                    'confirmado'           => (bool)$c->confirmado,
+                    'factura_id'           => $c->factura_id,
+                    'num_factura'          => $c->numero_factura ?? $c->factura_id,
+                    'anticipo_factura_id'  => $anticFact,
+                    'anticipo_factura_num' => $anticFactNum,
+                    'pagador'              => $pagador ?: null,
+                    'es_empresa'           => $esEmpresa,
+                    'descripcion'          => match($c->tipo ?? 'cliente') {
+                        'traslado_efectivo' => 'Traslado efectivo → banco',
+                        'banco_recibido'    => 'Transferencia banco recibida',
+                        'anticipo'          => 'Anticipo' . ($c->referencia ? ' · Ref: ' . $c->referencia : ''),
+                        default             => $c->observacion,
+                    },
+                    'usuario'              => $c->usuario_nombre,
+                    'valor'                => $c->valor,
+                    'imagen_path'          => $c->imagen_path,
+                    'imagen_url'           => $c->imagen_path ? Storage::url($c->imagen_path) : null,
+                    'es_salida'            => false,
+                    'es_gasto'             => false,
+                    'referencia'           => $c->referencia,
+                ];
+            });
 
-            // Salidas: gastos del mes filtrado pagados desde este banco
-            $movSalidas = Gasto::where('aliado_id', $aliadoId)
-                ->where('banco_origen_id', $bc->id)
-                ->whereIn('forma_pago', ['transferencia_bancaria', 'banco_banco'])
-                ->whereBetween('fecha', [$inicio, $fin])
-                ->with(['usuario', 'bancoDestino'])
-                ->orderByDesc('fecha')->orderByDesc('id')
-                ->get()
-                ->map(fn($g) => (object)[
-                    'id'          => $g->id,
-                    'fecha'       => $g->fecha,
-                    'tipo'        => $g->tipo,
-                    'confirmado'  => true,
-                    'factura_id'  => null,
-                    'num_factura' => null,
-                    'pagador'     => $g->pagado_a,
-                    'descripcion' => $g->descripcion
-                                     . ($g->bancoDestino ? ' → ' . $g->bancoDestino->banco : ''),
-                    'usuario'     => $g->usuario,
-                    'valor'       => $g->valor,
-                    'imagen_path' => $g->imagen_path,
-                    'imagen_url'  => $g->imagen_path ? Storage::url($g->imagen_path) : null,
-                    'es_salida'   => true,
-                    'es_gasto'    => true,
-                    'referencia'  => null,
-                ]);
+            $movSalidas = ($todasSalidas[$bc->id] ?? collect())->map(fn($g) => (object)[
+                'id'          => $g->id,
+                'fecha'       => $g->fecha,
+                'tipo'        => $g->tipo,
+                'confirmado'  => true,
+                'factura_id'  => null,
+                'num_factura' => null,
+                'pagador'     => $g->pagado_a,
+                'descripcion' => $g->descripcion . ($g->bancoDestino ? ' → ' . $g->bancoDestino->banco : ''),
+                'usuario'     => $g->usuario,
+                'valor'       => $g->valor,
+                'imagen_path' => $g->imagen_path,
+                'imagen_url'  => $g->imagen_path ? Storage::url($g->imagen_path) : null,
+                'es_salida'   => true,
+                'es_gasto'    => true,
+                'referencia'  => null,
+            ]);
 
-            $movimientos = $movEntradas->merge($movSalidas)
-                ->sortByDesc('fecha')->values();
+            $movimientos = $movEntradas->merge($movSalidas)->sortByDesc('fecha')->values();
 
             return [
                 'banco'       => $bc,
-                'saldo'       => Consignacion::saldoBanco($aliadoId, $bc->id),
+                'saldo'       => $saldosBanco[$bc->id] ?? 0,
                 'movimientos' => $movimientos,
             ];
         });

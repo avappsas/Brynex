@@ -500,6 +500,124 @@ class InformeController extends Controller
         ));
     }
 
+
+    // ── PATCH: editar datos de una consignación (desde informe financiero) ────
+    /**
+     * PATCH /admin/informes/financiero/consignacion/{id}
+     * Permite editar: fecha, valor, referencia, observacion de una consignación.
+     * Registra el cambio en la bitácora.
+     */
+    public function editarConsignacion(Request $request, int $id)
+    {
+        $this->checkFinanciero();
+        $aid = $this->aliadoId();
+
+        $consig = \App\Models\Consignacion::where('id', $id)
+            ->where('aliado_id', $aid)
+            ->firstOrFail();
+
+        $validated = $request->validate([
+            'fecha'       => 'required|date',
+            'valor'       => 'required|numeric|min:1',
+            'referencia'  => 'nullable|string|max:100',
+            'observacion' => 'nullable|string|max:500',
+        ]);
+
+        // Capturar valores anteriores para la bitácora
+        $antes = [
+            'fecha'       => $consig->fecha,
+            'valor'       => $consig->valor,
+            'referencia'  => $consig->referencia,
+            'observacion' => $consig->observacion,
+        ];
+
+        $consig->update([
+            'fecha'       => $validated['fecha'],
+            'valor'       => (int)$validated['valor'],
+            'referencia'  => $validated['referencia'] ?? null,
+            'observacion' => $validated['observacion'] ?? null,
+        ]);
+
+        $despues = [
+            'fecha'       => $validated['fecha'],
+            'valor'       => (int)$validated['valor'],
+            'referencia'  => $validated['referencia'] ?? null,
+            'observacion' => $validated['observacion'] ?? null,
+        ];
+
+        \App\Models\Bitacora::registrar(
+            'updated',
+            'Consignacion',
+            $id,
+            "Consignación #{$id} editada desde informe financiero. Factura #{$consig->factura_id}.",
+            ['antes' => $antes, 'despues' => $despues],
+            $aid
+        );
+
+        return response()->json([
+            'ok'      => true,
+            'mensaje' => 'Consignación actualizada correctamente.',
+            'consig'  => [
+                'id'          => $consig->id,
+                'fecha'       => $consig->fresh()->fecha,
+                'valor'       => $consig->fresh()->valor,
+                'referencia'  => $consig->fresh()->referencia,
+                'observacion' => $consig->fresh()->observacion,
+            ],
+        ]);
+    }
+
+    // ── POST: subir imagen de soporte (desde informe financiero) ─────────────
+    /**
+     * POST /admin/informes/financiero/consignacion/{id}/imagen
+     * Permite subir o reemplazar la imagen de soporte de una consignación.
+     * Registra el evento en bitácora.
+     */
+    public function subirImagenConsignacionFinanciero(Request $request, int $id)
+    {
+        $this->checkFinanciero();
+        $aid = $this->aliadoId();
+
+        $consig = \App\Models\Consignacion::where('id', $id)
+            ->where('aliado_id', $aid)
+            ->firstOrFail();
+
+        $request->validate([
+            'imagen' => 'required|file|mimes:jpg,jpeg,png,pdf,webp|max:8192',
+        ]);
+
+        $habia = $consig->imagen_path;
+
+        // Eliminar imagen anterior si existe
+        if ($habia && \Storage::disk('public')->exists($habia)) {
+            \Storage::disk('public')->delete($habia);
+        }
+
+        $file = $request->file('imagen');
+        $ext  = $file->getClientOriginalExtension();
+        $path = $file->storeAs(
+            "consignaciones/{$aid}/{$consig->factura_id}",
+            "{$id}_fin.{$ext}",
+            'public'
+        );
+
+        $consig->update(['imagen_path' => $path]);
+
+        \App\Models\Bitacora::registrar(
+            'updated',
+            'Consignacion',
+            $id,
+            "Imagen de soporte " . ($habia ? 'reemplazada' : 'subida') . " para consignación #{$id} (Factura #{$consig->factura_id}) desde informe financiero.",
+            ['imagen_anterior' => $habia, 'imagen_nueva' => $path],
+            $aid
+        );
+
+        return response()->json([
+            'ok'  => true,
+            'url' => \Storage::url($path),
+        ]);
+    }
+
     // ── JSON: movimientos de un banco ────────────────────────────────
     public function financieroBancos(Request $request)
     {
@@ -510,19 +628,51 @@ class InformeController extends Controller
         $anio     = (int)$request->input('anio', now()->year);
 
         $entradas = DB::table('consignaciones AS cs')
-            ->leftJoin('facturas AS f','f.id','=','cs.factura_id')
-            ->where('cs.aliado_id',$aid)->where('cs.banco_cuenta_id',$bancoId)
-            ->whereMonth('cs.fecha',$mes)->whereYear('cs.fecha',$anio)
-            ->select('cs.fecha','cs.valor','cs.tipo','cs.referencia','f.numero_factura')
-            ->orderBy('cs.fecha')->get();
+            ->leftJoin('facturas AS f', 'f.id', '=', 'cs.factura_id')
+            // Si empresa_id IS NULL → cliente individual → join clientes por cédula
+            ->leftJoin('clientes AS cl', function ($j) use ($aid) {
+                $j->on('cl.cedula', '=', 'f.cedula')
+                  ->where('cl.aliado_id', $aid);
+            })
+            // Si empresa_id > 0 → empresa → join empresas por id
+            ->leftJoin('empresas AS em', 'em.id', '=', 'f.empresa_id')
+            ->where('cs.aliado_id', $aid)
+            ->where('cs.banco_cuenta_id', $bancoId)
+            ->whereMonth('cs.fecha', $mes)
+            ->whereYear('cs.fecha', $anio)
+            ->selectRaw("
+                cs.id,
+                CONVERT(VARCHAR(10), cs.fecha, 120) AS fecha,
+                cs.created_at,
+                cs.valor,
+                cs.tipo,
+                cs.referencia,
+                cs.imagen_path,
+                f.numero_factura,
+                f.empresa_id,
+                CASE
+                    WHEN f.empresa_id IS NOT NULL AND f.empresa_id > 0
+                        THEN UPPER(ISNULL(em.empresa, '—'))
+                    ELSE
+                        LTRIM(RTRIM(
+                            ISNULL(cl.primer_nombre,'') + ' ' +
+                            ISNULL(cl.segundo_nombre,'') + ' ' +
+                            ISNULL(cl.primer_apellido,'') + ' ' +
+                            ISNULL(cl.segundo_apellido,'')
+                        ))
+                END AS nombre_cliente
+            ")
+            ->orderBy('cs.fecha')
+            ->orderBy('cs.created_at')
+            ->get();
 
         $salidas = DB::table('gastos')
-            ->where('aliado_id',$aid)->where('banco_origen_id',$bancoId)
-            ->whereMonth('fecha',$mes)->whereYear('fecha',$anio)
-            ->select('fecha','valor','tipo','descripcion','pagado_a')
+            ->where('aliado_id', $aid)->where('banco_origen_id', $bancoId)
+            ->whereMonth('fecha', $mes)->whereYear('fecha', $anio)
+            ->select('fecha', 'valor', 'tipo', 'descripcion', 'pagado_a')
             ->orderBy('fecha')->get();
 
-        return response()->json(['entradas'=>$entradas,'salidas'=>$salidas]);
+        return response()->json(['entradas' => $entradas, 'salidas' => $salidas]);
     }
 
     // ── JSON: auditoría de un número de planilla ─────────────────────

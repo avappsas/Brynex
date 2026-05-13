@@ -83,7 +83,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.78rem}
             <th>Fecha</th>
             <th>Tipo</th>
             <th>Fact.</th>
-            <th>Pagador / Destino</th>
+            <th style="text-align:left;padding-left:.8rem">Cliente / Empresa</th>
             <th style="text-align:left;padding-left:.8rem">Descripción</th>
             <th>Registró</th>
             <th style="text-align:right;padding-right:.8rem">Valor</th>
@@ -141,9 +141,21 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.78rem}
                 @endif
             </td>
 
-            {{-- Pagador / Destino — centrado --}}
-            <td style="font-size:.77rem;max-width:160px">
-                {{ $mov->pagador ?? '—' }}
+            {{-- Cliente / Empresa --}}
+            <td style="font-size:.77rem;max-width:175px;text-align:left;padding-left:.8rem">
+                @if($mov->es_salida ?? false)
+                    <span style="color:#64748b">{{ $mov->pagador ?? '—' }}</span>
+                @elseif($mov->pagador ?? null)
+                    @if($mov->es_empresa ?? false)
+                        <span title="Empresa" style="font-size:.72rem">🏢</span>
+                        <span style="font-weight:700;color:#1e40af">{{ $mov->pagador }}</span>
+                    @else
+                        <span title="Cliente" style="font-size:.72rem">👤</span>
+                        <span style="font-weight:600;color:#1e293b">{{ $mov->pagador }}</span>
+                    @endif
+                @else
+                    <span style="color:#cbd5e1">—</span>
+                @endif
             </td>
 
             {{-- Descripción — izquierda --}}
@@ -153,7 +165,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.78rem}
 
             {{-- Registró --}}
             <td style="font-size:.73rem;color:#64748b;white-space:nowrap">
-                {{ $mov->usuario?->nombre ?? '—' }}
+                {{ $mov->usuario ?? '—' }}
             </td>
 
             {{-- Valor — alineado a la derecha con número visible --}}
@@ -177,16 +189,20 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.78rem}
             </td>
 
             {{-- Imagen --}}
-            <td>
+            <td style="white-space:nowrap">
                 @if($mov->imagen_path ?? null)
-                <button type="button" class="btn-sm" style="background:#dbeafe;color:#1d4ed8"
+                <button type="button" class="btn-sm" style="background:#dbeafe;color:#1d4ed8;margin-bottom:.15rem"
                         onclick="verImagen('{{ asset('storage/' . $mov->imagen_path) }}')">
                     🖼 Ver
                 </button>
+                <button type="button" class="btn-sm" style="background:#fef3c7;color:#b45309"
+                        onclick="abrirSubirImagen({{ $mov->id }}, {{ $mov->es_gasto ? 'true' : 'false' }}, true)">
+                    🔄
+                </button>
                 @else
-                <button type="button" class="btn-sm" style="background:#f1f5f9;color:#64748b"
-                        onclick="abrirSubirImagen({{ $mov->id }}, {{ $mov->es_gasto ? 'true' : 'false' }})">
-                    📎
+                <button type="button" class="btn-sm" style="background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0"
+                        onclick="abrirSubirImagen({{ $mov->id }}, {{ $mov->es_gasto ? 'true' : 'false' }}, false)">
+                    📎 Adjuntar
                 </button>
                 @endif
             </td>
@@ -241,20 +257,57 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.78rem}
     </div>
 </div>
 
-{{-- ═══ MODAL: Subir imagen ═══ --}}
+{{-- ═══ MODAL: Subir / Reemplazar imagen ═══ --}}
 <div id="modal-subir" class="modal-bg" onclick="if(event.target===this)cerrarModal('modal-subir')">
-    <div class="modal-box" style="width:min(400px,96vw)">
-        <div class="modal-head">
-            <span style="color:#fff;font-weight:700;font-size:.9rem">📎 Adjuntar comprobante</span>
+    <div class="modal-box" style="width:min(440px,96vw)">
+        <div class="modal-head" id="modal-subir-head">
+            <span id="modal-subir-titulo" style="color:#fff;font-weight:700;font-size:.9rem">📎 Adjuntar comprobante</span>
             <button onclick="cerrarModal('modal-subir')" class="btn-close">×</button>
         </div>
         <div class="modal-body">
-            <form id="form-subir" method="POST" enctype="multipart/form-data">
+            <form id="form-subir" method="POST" enctype="multipart/form-data" onsubmit="return subirComprobanteSubmit()">
                 @csrf
-                <p style="font-size:.79rem;color:#64748b;margin:0 0 .7rem">JPG, PNG o PDF. Máx 5MB.</p>
-                <input type="file" name="imagen" accept="image/*,.pdf"
-                       style="width:100%;border:2px dashed #cbd5e1;border-radius:8px;padding:1rem;font-size:.82rem;margin-bottom:.8rem;box-sizing:border-box">
-                <button type="submit" style="width:100%;padding:.55rem;background:#1d4ed8;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:.85rem">
+
+                {{-- Badge reemplazar --}}
+                <div id="badge-reemplazar" style="display:none;background:#fef3c7;border:1px solid #fde68a;border-radius:8px;
+                     padding:.4rem .75rem;font-size:.75rem;font-weight:700;color:#92400e;margin-bottom:.7rem">
+                    ⚠️ Reemplazando el comprobante actual
+                </div>
+
+                {{-- Drop zone --}}
+                <div id="drop-zone-subir"
+                     onclick="document.getElementById('file-input-subir').click()"
+                     style="border:2px dashed #3b82f6;border-radius:11px;padding:1.1rem;text-align:center;
+                            cursor:pointer;background:#eff6ff;transition:background .15s;margin-bottom:.7rem;position:relative">
+                    <div style="font-size:1.5rem">📁</div>
+                    <div id="drop-label-subir" style="font-size:.8rem;color:#2563eb;font-weight:700;margin-top:.3rem">
+                        Clic, arrastra o pega (Ctrl+V)
+                    </div>
+                    <div style="font-size:.67rem;color:#93c5fd;margin-top:.2rem">JPG, PNG o PDF · máx 5 MB</div>
+                    <input type="file" id="file-input-subir" name="imagen" accept="image/*,.pdf"
+                           style="display:none" onchange="onFileSubir(this.files[0])">
+                </div>
+
+                {{-- Preview --}}
+                <div id="preview-subir" style="display:none;margin-bottom:.7rem;position:relative">
+                    <img id="img-subir" src="" alt="preview"
+                         style="max-width:100%;max-height:180px;border-radius:9px;border:1px solid #e2e8f0;object-fit:contain;display:block">
+                    <div id="pdf-subir" style="display:none;background:#f8fafc;border:1px solid #e2e8f0;
+                         border-radius:9px;padding:.6rem;font-size:.78rem;color:#374151;font-weight:600">
+                        📄 <span id="pdf-name-subir"></span>
+                    </div>
+                    <button type="button" onclick="clearFileSubir()"
+                            style="position:absolute;top:4px;right:4px;background:#dc2626;color:#fff;
+                                   border:none;border-radius:50%;width:22px;height:22px;cursor:pointer;
+                                   font-size:.75rem;font-weight:800;line-height:1">×</button>
+                </div>
+
+                <div id="error-subir" style="display:none;background:#fee2e2;border:1px solid #fca5a5;
+                     border-radius:8px;padding:.4rem .7rem;font-size:.75rem;color:#dc2626;margin-bottom:.6rem"></div>
+
+                <button type="submit" id="btn-subir-comp"
+                        style="width:100%;padding:.6rem;background:#1d4ed8;color:#fff;border:none;
+                               border-radius:9px;font-weight:800;cursor:pointer;font-size:.85rem">
                     📤 Subir comprobante
                 </button>
             </form>
@@ -283,6 +336,8 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.78rem}
 
 <script>
 const baseUrl = '{{ url('') }}';
+let _subirFile = null;
+let _subirPasteHandler = null;
 
 function cerrarModal(id) {
     document.getElementById(id).classList.remove('open');
@@ -291,22 +346,23 @@ function cerrarModal(id) {
         document.getElementById('pdf-preview').src = '';
     }
     if (id === 'modal-recibo') document.getElementById('iframe-recibo').src = '';
+    if (id === 'modal-subir') {
+        clearFileSubir();
+        if (_subirPasteHandler) { document.removeEventListener('paste', _subirPasteHandler); _subirPasteHandler = null; }
+    }
 }
 
 function abrirModalEstado(csId, esVerificado) {
     const base = `${baseUrl}/cuadre-diario/consignacion/${csId}/confirmar`;
     document.getElementById('form-verificar').action = base;
     document.getElementById('form-pendiente').action = `${base}/reversar`;
-
     const div = document.getElementById('estado-actual');
     if (esVerificado) {
         div.textContent = '✅ Estado actual: Verificado';
-        div.style.background = '#dcfce7';
-        div.style.color = '#15803d';
+        div.style.background = '#dcfce7'; div.style.color = '#15803d';
     } else {
         div.textContent = '🕐 Estado actual: Pendiente de verificar';
-        div.style.background = '#fef3c7';
-        div.style.color = '#b45309';
+        div.style.background = '#fef3c7'; div.style.color = '#b45309';
     }
     document.getElementById('modal-estado').classList.add('open');
 }
@@ -321,13 +377,91 @@ function verImagen(url) {
     document.getElementById('modal-img').classList.add('open');
 }
 
-function abrirSubirImagen(id, esGasto) {
-    // Si es consignación usa ruta de consignación, si es gasto usa ruta de gasto
+function abrirSubirImagen(id, esGasto, esReemplazar = false) {
     const url = esGasto
         ? `${baseUrl}/cuadre-diario/gasto/${id}/imagen`
         : `${baseUrl}/cuadre-diario/consignacion/${id}/imagen`;
     document.getElementById('form-subir').action = url;
+
+    // Badge y título según si es reemplazar
+    const badge = document.getElementById('badge-reemplazar');
+    const titulo = document.getElementById('modal-subir-titulo');
+    const head   = document.getElementById('modal-subir-head');
+    if (esReemplazar) {
+        badge.style.display = 'block';
+        titulo.textContent  = '🔄 Reemplazar comprobante';
+        head.style.background = '#92400e';
+    } else {
+        badge.style.display = 'none';
+        titulo.textContent  = '📎 Adjuntar comprobante';
+        head.style.background = '';
+    }
+
+    clearFileSubir();
+    document.getElementById('error-subir').style.display = 'none';
+
+    // Drop zone drag & drop
+    const dz = document.getElementById('drop-zone-subir');
+    dz.ondragover  = (e) => { e.preventDefault(); dz.style.background = '#dbeafe'; };
+    dz.ondragleave = ()  => { dz.style.background = '#eff6ff'; };
+    dz.ondrop      = (e) => { e.preventDefault(); dz.style.background = '#eff6ff'; const f = e.dataTransfer?.files?.[0]; if (f) onFileSubir(f); };
+
+    // Ctrl+V paste
+    if (_subirPasteHandler) document.removeEventListener('paste', _subirPasteHandler);
+    _subirPasteHandler = (e) => {
+        const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/'));
+        if (item) onFileSubir(item.getAsFile());
+    };
+    document.addEventListener('paste', _subirPasteHandler);
+
     document.getElementById('modal-subir').classList.add('open');
+}
+
+function onFileSubir(file) {
+    if (!file) return;
+    _subirFile = file;
+    const prev = document.getElementById('preview-subir');
+    const img  = document.getElementById('img-subir');
+    const pdf  = document.getElementById('pdf-subir');
+    prev.style.display = 'block';
+    if (file.type === 'application/pdf') {
+        img.style.display = 'none'; pdf.style.display = 'block';
+        document.getElementById('pdf-name-subir').textContent = file.name;
+    } else {
+        pdf.style.display = 'none'; img.style.display = 'block';
+        img.src = URL.createObjectURL(file);
+    }
+    document.getElementById('drop-label-subir').textContent = '✅ ' + file.name;
+}
+
+function clearFileSubir() {
+    _subirFile = null;
+    const fi = document.getElementById('file-input-subir');
+    if (fi) fi.value = '';
+    document.getElementById('preview-subir').style.display = 'none';
+    const img = document.getElementById('img-subir');
+    if (img) img.src = '';
+    document.getElementById('drop-label-subir').textContent = 'Clic, arrastra o pega (Ctrl+V)';
+}
+
+function subirComprobanteSubmit() {
+    const err = document.getElementById('error-subir');
+    // Si hay archivo pegado/arrastrado, inyectarlo en el input
+    if (_subirFile) {
+        const dt = new DataTransfer();
+        dt.items.add(_subirFile);
+        document.getElementById('file-input-subir').files = dt.files;
+    }
+    const inp = document.getElementById('file-input-subir');
+    if (!inp.files || !inp.files[0]) {
+        err.textContent = 'Selecciona, arrastra o pega una imagen primero.';
+        err.style.display = 'block';
+        return false;
+    }
+    const btn = document.getElementById('btn-subir-comp');
+    btn.disabled = true;
+    btn.textContent = 'Subiendo...';
+    return true; // permite el submit normal del form
 }
 
 function abrirRecibo(facturaId) {

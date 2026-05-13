@@ -1042,13 +1042,57 @@ const MF = (function () {
         const efect         = parse(el('mf-efectivo')?.value);
         const prest         = parse(el('mf-prestamo')?.value);
         const totalAnticipo = (window.MF_ANT ? MF_ANT.totalSeleccionado() : 0);
-        const pendiente     = Math.max(0, totalBruto - _saldoFavor - totalAnticipo - consigs - efect - prest);
+
+        // Calcular diferencia REAL (puede ser negativa = saldo a favor por exceso de pago)
+        const diferencia    = totalBruto - _saldoFavor - totalAnticipo - consigs - efect - prest;
+        const pendiente     = Math.max(0, diferencia);
+        const excedente     = diferencia < 0 ? Math.abs(diferencia) : 0; // saldo a favor generado por overpayment
 
         const pEl = el('mf-pendiente');
         if (pEl) {
-            pEl.textContent = fmt(pendiente);
-            pEl.style.color      = pendiente === 0 ? '#15803d' : '#dc2626';
-            pEl.style.fontWeight = pendiente === 0 ? '700' : '900';
+            if (excedente > 0) {
+                // Mostrar saldo a favor de color naranja/ámbar como advertencia
+                pEl.textContent = '−' + fmt(excedente);
+                pEl.style.color      = '#b45309';
+                pEl.style.fontWeight = '900';
+                pEl.title = 'El pago ingresado supera el total. Quedará un saldo a favor de ' + fmt(excedente);
+            } else {
+                pEl.textContent = fmt(pendiente);
+                pEl.style.color      = pendiente === 0 ? '#15803d' : '#dc2626';
+                pEl.style.fontWeight = pendiente === 0 ? '700' : '900';
+                pEl.title = '';
+            }
+        }
+
+        // ── Banner de advertencia de saldo a favor en tiempo real ──────────
+        let bannerFavor = el('mf-aviso-saldo-favor');
+        if (!bannerFavor) {
+            bannerFavor = document.createElement('div');
+            bannerFavor.id = 'mf-aviso-saldo-favor';
+            bannerFavor.style.cssText = [
+                'display:none',
+                'margin:.3rem 0',
+                'padding:.5rem .8rem',
+                'border-radius:9px',
+                'border:2px solid #f59e0b',
+                'background:#fffbeb',
+                'color:#92400e',
+                'font-size:.76rem',
+                'font-weight:700',
+                'line-height:1.5',
+                'animation:mf-pulse-warn .8s ease-in-out',
+            ].join(';');
+            // Insertar debajo del badge de saldo a pagar
+            const pendienteBox = pEl?.closest('.mf-pendiente-box');
+            if (pendienteBox) pendienteBox.parentNode.insertBefore(bannerFavor, pendienteBox.nextSibling);
+        }
+        if (excedente > 0) {
+            bannerFavor.innerHTML =
+                '⚠️ <strong>¡El pago excede el total!</strong> — Quedará un saldo a favor de <strong style="color:#b45309">' + fmt(excedente) + '</strong><br>' +
+                '<span style="font-weight:500;font-size:.71rem;">Verifique que el valor de la consignación sea correcto antes de facturar.</span>';
+            bannerFavor.style.display = 'block';
+        } else {
+            bannerFavor.style.display = 'none';
         }
 
         // ── Actualizar total del 2do contrato en la columna izquierda ──
@@ -1056,17 +1100,28 @@ const MF = (function () {
         // Si hay C2, actualizamos su card (ya lo hace seleccionarSegundoContrato).
         // El pendiente de la derecha = (C1 total + C2 total) - pagos ingresados.
         if (_segundoContrato) {
-            const totalC1C2 = totalBruto + (_segundoContrato.total || 0);
-            const pendienteTotal = Math.max(0, totalC1C2 - _saldoFavor - totalAnticipo - consigs - efect - prest);
+            const totalC1C2    = totalBruto + (_segundoContrato.total || 0);
+            const difTotal     = totalC1C2 - _saldoFavor - totalAnticipo - consigs - efect - prest;
+            const pendienteTotal = Math.max(0, difTotal);
+            const excedenteTotal = difTotal < 0 ? Math.abs(difTotal) : 0;
             if (pEl) {
-                pEl.textContent = fmt(pendienteTotal);
-                pEl.style.color      = pendienteTotal === 0 ? '#15803d' : '#dc2626';
-                pEl.style.fontWeight = pendienteTotal === 0 ? '700' : '900';
+                if (excedenteTotal > 0) {
+                    pEl.textContent = '−' + fmt(excedenteTotal);
+                    pEl.style.color      = '#b45309';
+                    pEl.style.fontWeight = '900';
+                    pEl.title = 'El pago ingresado supera el total. Quedará un saldo a favor de ' + fmt(excedenteTotal);
+                } else {
+                    pEl.textContent = fmt(pendienteTotal);
+                    pEl.style.color      = pendienteTotal === 0 ? '#15803d' : '#dc2626';
+                    pEl.style.fontWeight = pendienteTotal === 0 ? '700' : '900';
+                    pEl.title = '';
+                }
             }
-            return pendienteTotal;
+            if (bannerFavor) bannerFavor.style.display = excedenteTotal > 0 ? 'block' : 'none';
+            return -excedenteTotal || pendienteTotal; // negativo = excedente
         }
 
-        return pendiente;
+        return excedente > 0 ? -excedente : pendiente; // negativo = hay saldo a favor
     }
 
     // ── Distribución de afiliación ────────────────────────────────
@@ -1200,9 +1255,143 @@ const MF = (function () {
         recalc();
     }
 
+    // ── Modal de confirmación: saldo a favor por overpayment ─────────────
+    /**
+     * Muestra un modal de confirmación cuando el pago ingresado supera el total.
+     * @param {number} excedente  - monto en exceso (positivo)
+     * @param {number} totalBruto - total bruto de la factura
+     * @returns {Promise<boolean>} - true = continuar, false = cancelar
+     */
+    function _confirmarSaldoAFavor(excedente, totalBruto) {
+        return new Promise((resolve) => {
+            // Crear overlay si no existe
+            let ov = document.getElementById('mf-confirm-favor-ov');
+            if (!ov) {
+                ov = document.createElement('div');
+                ov.id = 'mf-confirm-favor-ov';
+                ov.style.cssText = [
+                    'position:fixed', 'inset:0', 'z-index:5000',
+                    'background:rgba(0,0,0,.6)', 'backdrop-filter:blur(6px)',
+                    'display:flex', 'align-items:center', 'justify-content:center', 'padding:1rem',
+                ].join(';');
+                ov.innerHTML = `
+                <div id="mf-confirm-favor-box" style="
+                    background:#fff;border-radius:18px;width:min(420px,96vw);
+                    box-shadow:0 32px 100px rgba(0,0,0,.4),0 0 0 1px rgba(255,255,255,.08);
+                    overflow:hidden;display:flex;flex-direction:column;
+                    animation:mf-scale-in .2s cubic-bezier(.175,.885,.32,1.275);
+                " onclick="event.stopPropagation()">
+                    <div style="
+                        background:linear-gradient(135deg,#78350f,#b45309);
+                        padding:.85rem 1.2rem;display:flex;align-items:center;gap:.7rem;
+                    ">
+                        <span style="font-size:1.6rem;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.3))">⚠️</span>
+                        <div>
+                            <div style="font-size:.9rem;font-weight:800;color:#fff;line-height:1.2">
+                                ¡Pago mayor al saldo!
+                            </div>
+                            <div style="font-size:.63rem;color:rgba(255,255,255,.7);margin-top:.1rem;">
+                                El valor ingresado supera el total a cobrar
+                            </div>
+                        </div>
+                    </div>
+                    <div style="padding:1.1rem 1.2rem;display:flex;flex-direction:column;gap:.8rem;">
+                        <div style="
+                            background:#fffbeb;border:1.5px solid #fde68a;border-radius:10px;
+                            padding:.7rem .9rem;display:flex;flex-direction:column;gap:.4rem;
+                        ">
+                            <div style="display:flex;justify-content:space-between;font-size:.79rem;">
+                                <span style="color:#78350f;font-weight:600;">Total a cobrar</span>
+                                <span id="mf-cf-total" style="font-family:monospace;font-weight:800;color:#0f172a;"></span>
+                            </div>
+                            <div style="display:flex;justify-content:space-between;font-size:.79rem;">
+                                <span style="color:#78350f;font-weight:600;">Pago ingresado</span>
+                                <span id="mf-cf-pago" style="font-family:monospace;font-weight:800;color:#0f172a;"></span>
+                            </div>
+                            <div style="border-top:1px dashed #fde68a;margin-top:.2rem;padding-top:.4rem;
+                                        display:flex;justify-content:space-between;font-size:.84rem;">
+                                <span style="color:#b45309;font-weight:800;">Saldo a favor generado</span>
+                                <span id="mf-cf-favor" style="font-family:monospace;font-weight:900;color:#b45309;font-size:.95rem;"></span>
+                            </div>
+                        </div>
+                        <div style="
+                            background:#fef2f2;border:1px solid #fecaca;border-radius:8px;
+                            padding:.55rem .8rem;font-size:.74rem;color:#991b1b;font-weight:600;line-height:1.5;
+                        ">
+                            🔍 <strong>Verifique antes de continuar:</strong> ¿El valor de la consignación es correcto?
+                            Si no, corrija el monto. Si el excedente es intencional, confirme para registrar el saldo a favor.
+                        </div>
+                    </div>
+                    <div style="
+                        background:#f8fafc;border-top:1px solid #e2e8f0;
+                        padding:.65rem 1.2rem;display:flex;gap:.5rem;justify-content:flex-end;align-items:center;
+                    ">
+                        <button id="mf-cf-btn-cancel" style="
+                            padding:.42rem 1.1rem;background:#fff;color:#475569;
+                            border:1.5px solid #e2e8f0;border-radius:8px;cursor:pointer;
+                            font-size:.8rem;font-weight:600;transition:all .15s;font-family:inherit;
+                        ">← Corregir monto</button>
+                        <button id="mf-cf-btn-confirm" style="
+                            padding:.44rem 1.2rem;
+                            background:linear-gradient(135deg,#b45309,#d97706);
+                            color:#fff;border:none;border-radius:8px;cursor:pointer;
+                            font-size:.8rem;font-weight:800;letter-spacing:.01em;
+                            box-shadow:0 2px 10px rgba(180,83,9,.35);
+                            transition:all .18s;font-family:inherit;
+                        ">✅ Sí, registrar saldo a favor</button>
+                    </div>
+                </div>`;
+                document.body.appendChild(ov);
+
+                // Añadir keyframe CSS si no existe
+                if (!document.getElementById('mf-confirm-favor-style')) {
+                    const s = document.createElement('style');
+                    s.id = 'mf-confirm-favor-style';
+                    s.textContent = `
+                        @keyframes mf-scale-in {
+                            from { opacity:0; transform:scale(.92) translateY(8px); }
+                            to   { opacity:1; transform:scale(1)  translateY(0); }
+                        }
+                        @keyframes mf-pulse-warn {
+                            0%,100% { opacity:1; }
+                            50%      { opacity:.7; }
+                        }
+                        #mf-cf-btn-cancel:hover  { background:#f1f5f9!important; border-color:#cbd5e1!important; }
+                        #mf-cf-btn-confirm:hover { opacity:.9; transform:translateY(-1px); }
+                    `;
+                    document.head.appendChild(s);
+                }
+            }
+
+            // Rellenar valores
+            const pagoTotal = totalBruto + excedente;
+            document.getElementById('mf-cf-total').textContent  = fmt(totalBruto);
+            document.getElementById('mf-cf-pago').textContent   = fmt(pagoTotal);
+            document.getElementById('mf-cf-favor').textContent  = fmt(excedente);
+
+            ov.style.display = 'flex';
+
+            // Cleanup y resolución
+            const cleanup = (result) => {
+                ov.style.display = 'none';
+                document.getElementById('mf-cf-btn-confirm').onclick = null;
+                document.getElementById('mf-cf-btn-cancel').onclick  = null;
+                ov.onclick = null;
+                resolve(result);
+            };
+
+            document.getElementById('mf-cf-btn-confirm').onclick = () => cleanup(true);
+            document.getElementById('mf-cf-btn-cancel').onclick  = () => cleanup(false);
+            ov.onclick = () => cleanup(false); // click fuera = cancelar
+        });
+    }
+
     // ── Guardar factura ───────────────────────────────────────────
     async function guardar() {
-        const pendiente = recalc();
+        const resultado = recalc(); // positivo = falta pagar, negativo = excedente (saldo a favor)
+        const pendiente  = resultado > 0 ? resultado  : 0;
+        const excedente  = resultado < 0 ? -resultado : 0; // monto que sobra
+
         if (pendiente > 0) {
             const totalBruto = parse(el('mf-total')?.textContent);
             const neto = Math.max(0, totalBruto - _saldoFavor);
@@ -1254,9 +1443,19 @@ const MF = (function () {
             return;
         }
 
+        // ── Advertencia de saldo a favor (overpayment) ─────────────────────
+        // Si el total ingresado SUPERA el saldo a pagar, pedir confirmación explícita.
+        if (excedente > 0) {
+            const totalBruto = parse(el('mf-total')?.textContent);
+            const confirmado = await _confirmarSaldoAFavor(excedente, totalBruto);
+            if (!confirmado) return; // usuario canceló
+        }
+
         // Ocultar banner de error si existía de un intento previo
         const bannerPrev = el('mf-aviso-pago');
         if (bannerPrev) bannerPrev.style.display = 'none';
+
+
 
         const tipoActual = el('mf-tipo')?.value;
 

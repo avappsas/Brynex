@@ -489,13 +489,17 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
 </div>
 
 {{-- Modal movimientos banco --}}
-<div id="modalBanco" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;">
-    <div style="background:#fff;border-radius:16px;padding:1.5rem;min-width:500px;max-width:700px;max-height:80vh;overflow-y:auto;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
-            <h3 id="modalBancoTitulo" style="font-size:1rem;font-weight:700;color:#0d2550;"></h3>
-            <button onclick="document.getElementById('modalBanco').style.display='none'" style="background:none;border:none;font-size:1.2rem;cursor:pointer;color:#64748b;">✕</button>
+<div id="modalBanco" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;align-items:flex-start;justify-content:center;padding-top:3vh;overflow-y:auto;">
+    <div style="background:#fff;border-radius:18px;width:min(980px,96vw);box-shadow:0 25px 60px rgba(0,0,0,.22);">
+        <div style="background:linear-gradient(135deg,#0d2550,#1e40af);border-radius:18px 18px 0 0;padding:1rem 1.5rem;display:flex;align-items:center;justify-content:space-between;">
+            <div>
+                <div id="modalBancoTitulo" style="color:#fff;font-weight:800;font-size:1rem;"></div>
+                <div id="modalBancoSub" style="color:rgba(255,255,255,.65);font-size:.74rem;margin-top:.15rem;"></div>
+            </div>
+            <button onclick="document.getElementById('modalBanco').style.display='none'" style="background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:8px;width:32px;height:32px;cursor:pointer;font-size:1.1rem;">✕</button>
         </div>
-        <div id="modalBancoBody" style="font-size:.84rem;color:#475569;">Cargando…</div>
+        <div id="modalBancoSummary" style="display:grid;grid-template-columns:repeat(3,1fr);gap:.65rem;padding:.85rem 1.25rem;background:#f8fafc;border-bottom:1px solid #e2e8f0;"></div>
+        <div id="modalBancoBody" style="padding:1.25rem;max-height:62vh;overflow-y:auto;font-size:.82rem;color:#475569;">Cargando...</div>
     </div>
 </div>
 
@@ -514,6 +518,74 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
         {{-- Body --}}
         <div id="auditBody" style="padding:1.25rem 1.5rem 1.5rem;">
             <div style="text-align:center;padding:2rem;color:#94a3b8;">Cargando auditoría…</div>
+        </div>
+    </div>
+</div>
+
+
+{{-- Modal Editar Consignacion --}}
+<div id="modalEditarConsig" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:10000;align-items:center;justify-content:center;">
+    <div style="background:#fff;border-radius:16px;width:min(500px,96vw);box-shadow:0 25px 60px rgba(0,0,0,.25);">
+        <div style="background:linear-gradient(135deg,#d97706,#f59e0b);border-radius:16px 16px 0 0;padding:.9rem 1.25rem;display:flex;align-items:center;justify-content:space-between;">
+            <div>
+                <div style="color:#fff;font-weight:800;font-size:.95rem;">Editar Consignacion</div>
+                <div id="editConsigSub" style="color:rgba(255,255,255,.75);font-size:.72rem;margin-top:.1rem;"></div>
+            </div>
+            <button onclick="cerrarEditarConsig()" style="background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:8px;width:30px;height:30px;cursor:pointer;font-size:1rem;">X</button>
+        </div>
+        <div style="padding:1.2rem 1.5rem;">
+            <input type="hidden" id="editConsigId">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:.8rem;margin-bottom:.8rem;">
+                <div>
+                    <label style="font-size:.75rem;font-weight:600;color:#374151;display:block;margin-bottom:.3rem;">Fecha</label>
+                    <input type="date" id="editConsigFecha" style="width:100%;padding:.5rem .7rem;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;">
+                </div>
+                <div>
+                    <label style="font-size:.75rem;font-weight:600;color:#374151;display:block;margin-bottom:.3rem;">Valor ($)</label>
+                    <input type="text" id="editConsigValor" placeholder="$ 0" oninput="fmtConsigValor(this)" style="width:100%;padding:.5rem .7rem;border:1px solid #d1d5db;border-radius:8px;font-size:.9rem;font-weight:700;font-family:monospace;color:#16a34a;box-sizing:border-box;">
+                </div>
+            </div>
+            <div style="margin-bottom:.8rem;">
+                <label style="font-size:.75rem;font-weight:600;color:#374151;display:block;margin-bottom:.3rem;">Referencia</label>
+                <input type="text" id="editConsigRef" maxlength="100" placeholder="Numero de referencia..." style="width:100%;padding:.5rem .7rem;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;">
+            </div>
+            <div style="margin-bottom:.9rem;">
+                <label style="font-size:.75rem;font-weight:600;color:#374151;display:block;margin-bottom:.3rem;">Observacion</label>
+                <textarea id="editConsigObs" rows="2" maxlength="500" style="width:100%;padding:.5rem .7rem;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;resize:vertical;"></textarea>
+            </div>
+            <div style="margin-bottom:.9rem;">
+                <div style="font-size:.75rem;font-weight:600;color:#374151;margin-bottom:.4rem;">Imagen de soporte</div>
+                <div id="editConsigDropZone"
+                     onclick="document.getElementById('editConsigImagen').click()"
+                     style="border:2px dashed #7c3aed;border-radius:10px;padding:.8rem;text-align:center;cursor:pointer;background:#faf5ff;transition:background .15s;position:relative;">
+                    <span id="editConsigDropLabel" style="font-size:.75rem;color:#6d28d9;font-weight:600;">
+                        📎 Clic, arrastra o pega (Ctrl+V) el comprobante
+                    </span>
+                    <input type="file" id="editConsigImagen" accept="image/*,.pdf" style="display:none;"
+                           onchange="editConsigOnFile(this.files[0])">
+                </div>
+                <div id="editConsigPreview" style="display:none;margin-top:.5rem;position:relative;">
+                    <img id="editConsigImgEl" src="" alt="preview"
+                         style="max-width:100%;max-height:130px;border-radius:8px;border:1px solid #e2e8f0;object-fit:contain;display:block;">
+                    <div id="editConsigPdfEl" style="display:none;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:.5rem;font-size:.75rem;color:#374151;font-weight:600;">
+                        📄 <span id="editConsigPdfName"></span>
+                    </div>
+                    <button type="button" onclick="editConsigClearFile()"
+                            style="position:absolute;top:4px;right:4px;background:#dc2626;color:#fff;border:none;border-radius:50%;width:20px;height:20px;cursor:pointer;font-size:.7rem;font-weight:800;">×</button>
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-top:.45rem;">
+                    <span id="editConsigImgStatus" style="font-size:.72rem;color:#94a3b8;"></span>
+                    <button onclick="subirImgConsig()" id="btnSubirImg"
+                            style="background:#7c3aed;color:#fff;border:none;border-radius:8px;padding:.38rem .9rem;font-size:.78rem;font-weight:700;cursor:pointer;">
+                        ↑ Subir imagen
+                    </button>
+                </div>
+            </div>
+            <div id="editConsigError" style="display:none;background:#fef2f2;border:1px solid #fca5a5;color:#dc2626;border-radius:8px;padding:.5rem .8rem;font-size:.78rem;margin-bottom:.8rem;"></div>
+            <div style="display:flex;gap:.6rem;justify-content:flex-end;">
+                <button onclick="cerrarEditarConsig()" style="background:#f1f5f9;color:#475569;border:none;border-radius:8px;padding:.48rem 1rem;font-size:.82rem;font-weight:600;cursor:pointer;">Cancelar</button>
+                <button onclick="guardarConsig()" id="btnGuardarConsig" style="background:#16a34a;color:#fff;border:none;border-radius:8px;padding:.48rem 1.2rem;font-size:.82rem;font-weight:700;cursor:pointer;">Guardar</button>
+            </div>
         </div>
     </div>
 </div>
@@ -694,32 +766,240 @@ function verPrestamos() {
         }).catch(()=>{ document.getElementById('modalPrestamosBody').innerHTML='<div style="color:#ef4444;padding:1.5rem;">Error al cargar.</div>'; });
 }
 
-// Modal movimientos banco
+// Modal movimientos banco — mejorado
+const mesesEs = ['','enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+let _consigMap = {};
+let _bancoActualId = null, _bancoActualLabel = '';
+
+function fmtFechaLargo(f) {
+    if (!f) return '—';
+    const p = f.substring(0,10).split('-');
+    if (p.length < 3) return f;
+    return parseInt(p[2])+'-'+(mesesEs[parseInt(p[1])]||p[1])+'-'+p[0];
+}
+function fmtHora(c) {
+    if (!c) return null;
+    const t = c.includes('T') ? c.split('T')[1] : (c.split(' ')[1]||'');
+    if (!t) return null;
+    const [h,m] = t.split(':');
+    const hh = parseInt(h); const ampm = hh>=12?'pm':'am'; const h12 = hh%12||12;
+    return h12+':'+m+' '+ampm;
+}
+
 function verMovimientosBanco(bancoId, label) {
-    const m = document.getElementById('modalBanco');
-    document.getElementById('modalBancoTitulo').textContent = label;
-    document.getElementById('modalBancoBody').innerHTML = 'Cargando…';
-    m.style.display='flex';
+    _bancoActualId = bancoId; _bancoActualLabel = label; _consigMap = {};
+    const modal = document.getElementById('modalBanco');
+    document.getElementById('modalBancoTitulo').textContent = '🏦 ' + label;
+    document.getElementById('modalBancoSub').textContent = 'Consignaciones y salidas del mes';
+    document.getElementById('modalBancoSummary').innerHTML = '';
+    document.getElementById('modalBancoBody').innerHTML = '<div style="text-align:center;padding:2rem;color:#94a3b8;">Cargando...</div>';
+    modal.style.display = 'flex';
 
     fetch(`{{ route('admin.informes.financiero.bancos') }}?banco_id=${bancoId}&mes={{ $mes }}&anio={{ $anio }}`)
         .then(r=>r.json()).then(data=>{
-            let html = '<div style="font-size:.72rem;font-weight:700;text-transform:uppercase;color:#10b981;margin-bottom:.5rem;">Entradas</div>';
-            if (!data.entradas.length) html+='<p style="color:#94a3b8;font-size:.82rem;">Sin entradas</p>';
-            else data.entradas.forEach(e=>{
-                html+=`<div style="display:flex;justify-content:space-between;padding:.4rem 0;border-bottom:1px solid #f1f5f9;font-size:.82rem;">
-                    <span>${e.fecha} ${e.tipo}${e.numero_factura?' #'+e.numero_factura:''} ${e.referencia||''}</span>
-                    <span style="font-weight:700;color:#10b981;">${fmt(e.valor)}</span></div>`;
-            });
-            html+='<div style="font-size:.72rem;font-weight:700;text-transform:uppercase;color:#ef4444;margin:.85rem 0 .5rem;">Salidas</div>';
-            if (!data.salidas.length) html+='<p style="color:#94a3b8;font-size:.82rem;">Sin salidas</p>';
-            else data.salidas.forEach(s=>{
-                html+=`<div style="display:flex;justify-content:space-between;padding:.4rem 0;border-bottom:1px solid #f1f5f9;font-size:.82rem;">
-                    <span>${s.fecha} — ${s.descripcion}</span>
-                    <span style="font-weight:700;color:#ef4444;">- ${fmt(s.valor)}</span></div>`;
-            });
-            document.getElementById('modalBancoBody').innerHTML=html;
-        }).catch(()=>{ document.getElementById('modalBancoBody').innerHTML='Error al cargar movimientos.'; });
+            const fmtN = v => '$ '+Math.round(v||0).toLocaleString('es-CO');
+            const totEnt = data.entradas.reduce((s,e)=>s+(e.valor||0),0);
+            const totSal = data.salidas.reduce((s,s2)=>s+(s2.valor||0),0);
+            const saldo  = totEnt - totSal;
+
+            document.getElementById('modalBancoSummary').innerHTML =
+                '<div style="background:#f0fdf4;border-radius:10px;padding:.65rem .9rem;text-align:center;">'
+                  +'<div style="font-size:.95rem;font-weight:800;color:#16a34a;">'+fmtN(totEnt)+'</div>'
+                  +'<div style="font-size:.68rem;color:#15803d;margin-top:.1rem;">Entradas ('+data.entradas.length+')</div>'
+                +'</div>'
+                +'<div style="background:#fef2f2;border-radius:10px;padding:.65rem .9rem;text-align:center;">'
+                  +'<div style="font-size:.95rem;font-weight:800;color:#dc2626;">'+fmtN(totSal)+'</div>'
+                  +'<div style="font-size:.68rem;color:#b91c1c;margin-top:.1rem;">Salidas ('+data.salidas.length+')</div>'
+                +'</div>'
+                +'<div style="background:'+(saldo>=0?'#eff6ff':'#fff7ed')+';border-radius:10px;padding:.65rem .9rem;text-align:center;">'
+                  +'<div style="font-size:.95rem;font-weight:800;color:'+(saldo>=0?'#2563eb':'#ea580c')+';">'+fmtN(saldo)+'</div>'
+                  +'<div style="font-size:.68rem;color:'+(saldo>=0?'#1d4ed8':'#c2410c')+';margin-top:.1rem;">Neto del mes</div>'
+                +'</div>';
+
+            let html = '';
+
+            // ── ENTRADAS ─────────────────────────────────────────────
+            html += '<div style="font-size:.72rem;font-weight:700;text-transform:uppercase;color:#16a34a;letter-spacing:.04em;margin-bottom:.5rem;">Entradas ('+data.entradas.length+')</div>';
+            if (!data.entradas.length) {
+                html += '<div style="color:#94a3b8;font-size:.82rem;margin-bottom:1.25rem;padding:.5rem;">Sin entradas en este periodo.</div>';
+            } else {
+                html += '<div style="border-radius:10px;overflow:hidden;border:1px solid #bbf7d0;margin-bottom:1.25rem;">'
+                      + '<div style="display:grid;grid-template-columns:115px 1fr 85px 105px 75px 68px 36px;gap:.3rem;padding:.42rem .75rem;background:#f0fdf4;font-size:.63rem;font-weight:700;text-transform:uppercase;color:#15803d;border-bottom:2px solid #86efac;">'
+                      + '<span>Fecha</span><span>Cliente / Empresa</span><span>Referencia</span>'
+                      + '<span style="text-align:right;">Valor</span><span style="text-align:center;">Factura</span>'
+                      + '<span style="text-align:center;">Soporte</span><span style="text-align:center;">Ed.</span>'
+                      + '</div>';
+
+                data.entradas.forEach((e,i) => {
+                    _consigMap[e.id] = e;
+                    const bg      = i%2===0?'#fff':'#f9fef9';
+                    const fechaStr= fmtFechaLargo(e.fecha);
+                    const horaStr = fmtHora(e.created_at);
+                    const nombre  = (e.nombre_cliente||'').trim()||'—';
+                    const icon    = (e.empresa_id&&e.empresa_id>0)?'🏢':'👤';
+                    const refTxt  = e.referencia?'<span style="font-size:.74rem;color:#475569;">'+e.referencia+'</span>':'<span style="color:#cbd5e1;">—</span>';
+                    const factTxt = e.numero_factura?'<span style="background:#dbeafe;color:#1e40af;border-radius:5px;padding:.1rem .35rem;font-size:.7rem;font-weight:700;">#'+e.numero_factura+'</span>':'<span style="color:#94a3b8;">—</span>';
+                    const tipoLbl = (e.tipo&&e.tipo!=='cliente')?'<span style="font-size:.6rem;color:#94a3b8;display:block;">'+e.tipo+'</span>':'';
+                    let sopBtn = '<span style="color:#cbd5e1;font-size:.72rem;">Sin foto</span>';
+                    if (e.imagen_path) {
+                        const url = e.imagen_path.startsWith('http')?e.imagen_path:'/storage/'+e.imagen_path;
+                        sopBtn = '<a href="'+url+'" target="_blank" style="display:inline-flex;align-items:center;background:#7c3aed;color:#fff;border-radius:7px;padding:.2rem .45rem;font-size:.68rem;font-weight:700;text-decoration:none;white-space:nowrap;">📷 Ver</a>';
+                    }
+                    html += '<div style="display:grid;grid-template-columns:115px 1fr 85px 105px 75px 68px 36px;gap:.3rem;padding:.42rem .75rem;background:'+bg+';border-bottom:1px solid #f0fdf4;align-items:center;font-size:.77rem;">'
+                        +'<div>'
+                            +'<div style="font-weight:700;color:#0d2550;">'+fechaStr+'</div>'
+                            +(horaStr?'<div style="font-size:.63rem;color:#6366f1;font-weight:600;">🕐 '+horaStr+'</div>':'')
+                        +'</div>'
+                        +'<div>'
+                            +'<div style="font-weight:600;color:#1e293b;line-height:1.3;">'+icon+' '+nombre+'</div>'
+                            +tipoLbl
+                        +'</div>'
+                        +'<div>'+refTxt+'</div>'
+                        +'<div style="text-align:right;font-weight:800;color:#16a34a;font-family:monospace;">'+fmtN(e.valor)+'</div>'
+                        +'<div style="text-align:center;">'+factTxt+'</div>'
+                        +'<div style="text-align:center;">'+sopBtn+'</div>'
+                        +'<div style="text-align:center;"><button onclick="abrirEditarConsig('+e.id+')" style="background:#f59e0b;border:none;color:#fff;border-radius:7px;width:26px;height:26px;cursor:pointer;font-size:.72rem;display:inline-flex;align-items:center;justify-content:center;" title="Editar">✏️</button></div>'
+                        +'</div>';
+                });
+                html += '</div>';
+            }
+
+            // ── SALIDAS ──────────────────────────────────────────────
+            html += '<div style="font-size:.72rem;font-weight:700;text-transform:uppercase;color:#dc2626;letter-spacing:.04em;margin-bottom:.5rem;">Salidas ('+data.salidas.length+')</div>';
+            if (!data.salidas.length) {
+                html += '<div style="color:#94a3b8;font-size:.82rem;padding:.5rem;">Sin salidas en este periodo.</div>';
+            } else {
+                html += '<div style="border-radius:10px;overflow:hidden;border:1px solid #fecaca;">'
+                      + '<div style="display:grid;grid-template-columns:130px 1fr 110px;gap:.3rem;padding:.42rem .75rem;background:#fef2f2;font-size:.65rem;font-weight:700;text-transform:uppercase;color:#b91c1c;border-bottom:2px solid #fca5a5;">'
+                      + '<span>Fecha</span><span>Descripcion</span><span style="text-align:right;">Valor</span>'
+                      + '</div>';
+                data.salidas.forEach((s,i) => {
+                    const bg      = i%2===0?'#fff':'#fff5f5';
+                    const fechaStr= fmtFechaLargo(s.fecha);
+                    const desc    = s.descripcion||s.pagado_a||s.tipo||'—';
+                    html += '<div style="display:grid;grid-template-columns:130px 1fr 110px;gap:.3rem;padding:.45rem .75rem;background:'+bg+';border-bottom:1px solid #fff1f2;align-items:center;font-size:.78rem;">'
+                        +'<div style="font-weight:700;color:#0d2550;">'+fechaStr+'</div>'
+                        +'<div style="color:#334155;">'+desc+'</div>'
+                        +'<div style="text-align:right;font-weight:800;color:#dc2626;font-family:monospace;">- '+fmtN(s.valor)+'</div>'
+                        +'</div>';
+                });
+                html += '</div>';
+            }
+
+            document.getElementById('modalBancoBody').innerHTML = html;
+        }).catch(()=>{
+            document.getElementById('modalBancoBody').innerHTML = '<div style="color:#ef4444;padding:1.5rem;text-align:center;">Error al cargar movimientos.</div>';
+        });
 }
+
+// ── Funciones modal editar consignacion ──────────────────────────────
+// ── Formato moneda para el campo valor ────────────────────────────────
+function fmtConsigValor(input) {
+    let raw = input.value.replace(/[^0-9]/g, '');
+    if (!raw) { input.value = ''; return; }
+    input.value = '$ ' + parseInt(raw).toLocaleString('es-CO');
+}
+function editConsigGetValorRaw() {
+    return parseInt((document.getElementById('editConsigValor').value || '').replace(/[^0-9]/g, '')) || 0;
+}
+
+// ── File helpers para drop zone ────────────────────────────────────────
+let _editConsigFile = null;
+let _editConsigPasteHandler = null;
+
+function editConsigOnFile(file) {
+    if (!file) return;
+    _editConsigFile = file;
+    const prev = document.getElementById('editConsigPreview');
+    const img  = document.getElementById('editConsigImgEl');
+    const pdf  = document.getElementById('editConsigPdfEl');
+    prev.style.display = 'block';
+    if (file.type === 'application/pdf') {
+        img.style.display = 'none'; pdf.style.display = 'block';
+        document.getElementById('editConsigPdfName').textContent = file.name;
+    } else {
+        pdf.style.display = 'none'; img.style.display = 'block';
+        img.src = URL.createObjectURL(file);
+    }
+    document.getElementById('editConsigDropLabel').textContent = file.name;
+}
+function editConsigClearFile() {
+    _editConsigFile = null;
+    const fi = document.getElementById('editConsigImagen');
+    if (fi) fi.value = '';
+    document.getElementById('editConsigPreview').style.display = 'none';
+    document.getElementById('editConsigImgEl').src = '';
+    document.getElementById('editConsigDropLabel').textContent = '📎 Clic, arrastra o pega (Ctrl+V) el comprobante';
+    document.getElementById('editConsigImgStatus').textContent = '';
+}
+
+function abrirEditarConsig(id) {
+    const e = _consigMap[id]||{};
+    document.getElementById('editConsigId').value    = id;
+    document.getElementById('editConsigFecha').value = (e.fecha||'').substring(0,10);
+    const vRaw = parseInt(e.valor)||0;
+    document.getElementById('editConsigValor').value = vRaw > 0 ? '$ '+vRaw.toLocaleString('es-CO') : '';
+    document.getElementById('editConsigRef').value   = e.referencia||'';
+    document.getElementById('editConsigObs').value   = e.observacion||'';
+    document.getElementById('editConsigError').style.display = 'none';
+    editConsigClearFile();
+    document.getElementById('editConsigSub').textContent = 'Consignacion #'+id;
+
+    // Drag & drop en drop zone
+    const dz = document.getElementById('editConsigDropZone');
+    dz.ondragover  = (ev) => { ev.preventDefault(); dz.style.background='#ede9fe'; };
+    dz.ondragleave = ()   => { dz.style.background='#faf5ff'; };
+    dz.ondrop      = (ev) => { ev.preventDefault(); dz.style.background='#faf5ff'; const f=ev.dataTransfer?.files?.[0]; if(f) editConsigOnFile(f); };
+
+    // Paste Ctrl+V
+    if (_editConsigPasteHandler) document.removeEventListener('paste', _editConsigPasteHandler);
+    _editConsigPasteHandler = (ev) => {
+        const item = [...(ev.clipboardData?.items || [])].find(i => i.type.startsWith('image/'));
+        if (item) editConsigOnFile(item.getAsFile());
+    };
+    document.addEventListener('paste', _editConsigPasteHandler);
+
+    document.getElementById('modalEditarConsig').style.display = 'flex';
+}
+function cerrarEditarConsig() {
+    document.getElementById('modalEditarConsig').style.display='none';
+    if (_editConsigPasteHandler) { document.removeEventListener('paste', _editConsigPasteHandler); _editConsigPasteHandler = null; }
+    editConsigClearFile();
+}
+function guardarConsig() {
+    const id=document.getElementById('editConsigId').value;
+    const fecha=document.getElementById('editConsigFecha').value;
+    const valor=document.getElementById('editConsigValor').value;
+    const ref=document.getElementById('editConsigRef').value;
+    const obs=document.getElementById('editConsigObs').value;
+    const err=document.getElementById('editConsigError');
+    const btn=document.getElementById('btnGuardarConsig');
+    const valorNum = editConsigGetValorRaw();
+    if(!fecha||valorNum<1){err.textContent='Fecha y valor obligatorios.';err.style.display='block';return;}
+    err.style.display='none';btn.disabled=true;btn.textContent='Guardando...';
+    fetch('{{ route("admin.informes.financiero.consignacion.editar","_X_") }}'.replace('_X_',id),{
+        method:'PATCH',
+        headers:{'Content-Type':'application/json','X-CSRF-TOKEN':document.querySelector('meta[name="csrf-token"]')?.content||'','Accept':'application/json'},
+        body:JSON.stringify({fecha,valor:valorNum,referencia:ref,observacion:obs})
+    }).then(r=>r.json()).then(d=>{
+        btn.disabled=false;btn.textContent='Guardar';
+        if(d.ok){cerrarEditarConsig();if(_bancoActualId)verMovimientosBanco(_bancoActualId,_bancoActualLabel);}
+        else{err.textContent=d.mensaje||'Error.';err.style.display='block';}
+    }).catch(()=>{btn.disabled=false;btn.textContent='Guardar';err.textContent='Error de conexion.';err.style.display='block';});
+}
+function subirImgConsig() {
+    const id=document.getElementById('editConsigId').value;
+    const file=_editConsigFile||document.getElementById('editConsigImagen').files[0];
+    const stat=document.getElementById('editConsigImgStatus');
+    const btn=document.getElementById('btnSubirImg');
+    if(!file){stat.textContent='Selecciona o pega una imagen primero.';return;}
+    stat.textContent='Subiendo...';btn.disabled=true;
+    const fd=new FormData();fd.append('imagen',file);fd.append('_token',document.querySelector('meta[name="csrf-token"]')?.content||'');
+    fetch('{{ route("admin.informes.financiero.consignacion.imagen","_X_") }}'.replace('_X_',id),{method:'POST',body:fd,headers:{'Accept':'application/json'}})
+    .then(r=>r.json()).then(d=>{btn.disabled=false;if(d.ok){stat.textContent='OK';stat.style.color='#16a34a';document.getElementById('editConsigImagen').value='';}else{stat.textContent='Error: '+(d.message||'');stat.style.color='#dc2626';}})
+    .catch(()=>{btn.disabled=false;stat.textContent='Error.';stat.style.color='#dc2626';});
+}
+document.getElementById('modalEditarConsig').addEventListener('click',function(ev){if(ev.target===this)cerrarEditarConsig();});
 
 // Cerrar modales al clic fuera
 ['modalDia','modalBanco','modalAudit','modalPrestamos'].forEach(id=>{
@@ -950,6 +1230,7 @@ function auditarPlanilla(numPlanilla, descripcion) {
             document.getElementById('auditBody').innerHTML = '<div style="color:#ef4444;padding:1.5rem;text-align:center;">Error al cargar la auditoría. Intente de nuevo.</div>';
         });
 }
+
 </script>
 @endpush
 @endsection
