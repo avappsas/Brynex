@@ -797,9 +797,9 @@ function verMovimientosBanco(bancoId, label) {
 
     fetch(`{{ route('admin.informes.financiero.bancos') }}?banco_id=${bancoId}&mes={{ $mes }}&anio={{ $anio }}`)
         .then(r=>r.json()).then(data=>{
-            const fmtN = v => '$ '+Math.round(v||0).toLocaleString('es-CO');
-            const totEnt = data.entradas.reduce((s,e)=>s+(e.valor||0),0);
-            const totSal = data.salidas.reduce((s,s2)=>s+(s2.valor||0),0);
+            const fmtN = v => '$ '+Math.round(Number(v)||0).toLocaleString('es-CO');
+            const totEnt = data.entradas.reduce((s,e)=>s+Number(e.valor||0),0);
+            const totSal = data.salidas.reduce((s,s2)=>s+Number(s2.valor||0),0);
             const saldo  = totEnt - totSal;
 
             document.getElementById('modalBancoSummary').innerHTML =

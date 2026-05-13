@@ -34,7 +34,7 @@
       </h1>
       @if($cliente)
       <div style="font-size:0.76rem;color:#475569;">
-        <strong>{{ $cliente->primer_nombre }} {{ $cliente->primer_apellido }}</strong>
+        <strong>{{ trim(($cliente->primer_nombre ?? '').' '.($cliente->segundo_nombre ?? '')) }} {{ trim(($cliente->primer_apellido ?? '').' '.($cliente->segundo_apellido ?? '')) }}</strong>
         &middot; CC {{ $cliente->cedula }}
         @if($cliente->iva === 'SI')<span style="background:#fef3c7;color:#92400e;padding:0.1rem 0.4rem;border-radius:999px;font-size:0.68rem;margin-left:4px;">IVA</span>@endif
       </div>
@@ -85,7 +85,7 @@
             $rsLock = $esEdicion && ($rsBloquedaPorAfiliacion ?? false);
           @endphp
       <div>
-        <label class="lb">Razon Social</label>
+        <label class="lb">Razon Social <span id="badge-rs-nit" style="font-weight:400;color:#64748b;font-size:0.63rem;background:#f1f5f9;padding:0.1rem 0.45rem;border-radius:6px;margin-left:4px;font-family:monospace;letter-spacing:0.02em;display:none;"></span></label>
         <div class="{{ $rsLock ? 'tip-lock' : '' }}" data-tip="🔒 Bloqueado — hay afiliaciones en trámite u OK">
         <select name="razon_social_id" id="sel_rs" style="{{ $S }}{{ $rsLock ? 'background:#f1f5f9;color:#1e293b;cursor:not-allowed;opacity:1;' : '' }}"
             onchange="onRazonSocialChange(this)"
@@ -103,6 +103,7 @@
           <option value="{{ $rs->id }}"
               data-arl="{{ $rs->arl_nit ?? '' }}"
               data-independiente="{{ $rs->es_independiente ? '1' : '0' }}"
+              data-nit="{{ $rs->nit ?? '' }}"
               {{ old('razon_social_id', $contrato->razon_social_id ?? '') == $rs->id ? 'selected' : '' }}
               {{ $rsDisabled ? 'disabled' : '' }}
               style="{{ $rsEstilo }}">
@@ -1194,6 +1195,17 @@ document.querySelectorAll('#sel_plan option[value]').forEach(opt => {
 function onRazonSocialChange(sel) {
     const opt    = sel.options[sel.selectedIndex];
     const arlNit = opt?.dataset?.arl || '';
+    // Actualizar badge NIT
+    const badgeNit = document.getElementById('badge-rs-nit');
+    if (badgeNit) {
+        const nit = opt?.dataset?.nit || '';
+        if (nit && sel.value) {
+            badgeNit.textContent = 'NIT ' + nit;
+            badgeNit.style.display = 'inline';
+        } else {
+            badgeNit.style.display = 'none';
+        }
+    }
     if (arlNit && arlNitMap[arlNit]) {
         document.getElementById('sel_arl').value = arlNitMap[arlNit];
     }
@@ -1853,6 +1865,17 @@ function cotizador() {
             const rsSelInit = document.getElementById('sel_rs');
             const rsEsIndepInit = rsSelInit?.options[rsSelInit.selectedIndex]?.dataset?.independiente === '1';
             this.mostrarModoArl  = MODALIDADES_MODO_ARL.includes(parseInt(this.tipoModalidadId)) || rsEsIndepInit;
+            // Inicializar badge NIT de la RS seleccionada al cargar
+            (function() {
+                if (!rsSelInit) return;
+                const optInit = rsSelInit.options[rsSelInit.selectedIndex];
+                const nitInit = optInit?.dataset?.nit || '';
+                const badgeNit = document.getElementById('badge-rs-nit');
+                if (badgeNit && nitInit && rsSelInit.value) {
+                    badgeNit.textContent = 'NIT ' + nitInit;
+                    badgeNit.style.display = 'inline';
+                }
+            })();
             // Si la RS es independiente y no hay modo ARL guardado, auto-seleccionar "independiente"
             // Usar setTimeout para esperar que Alpine haya montado el panel en el DOM
             if (rsEsIndepInit) {
@@ -2202,7 +2225,7 @@ function abrirModalFacturarContrato() {
     if (typeof MF !== 'undefined') {
         MF.abrir(
             [FC_CONTRATO_ID],
-            '{{ $cliente?->primer_nombre }} {{ $cliente?->primer_apellido }}'
+            '{{ trim(($cliente?->primer_nombre ?? "")." ".($cliente?->segundo_nombre ?? "")) }} {{ trim(($cliente?->primer_apellido ?? "")." ".($cliente?->segundo_apellido ?? "")) }}'
         );
     }
 }

@@ -89,12 +89,6 @@ table.hi-tbl{width:100%;border-collapse:collapse;font-size:.77rem}
             <div class="hi-meta">
                 <span>👤 {{ $nombre }}</span>
                 <span>CC {{ $cedula }}</span>
-                @if($contrato)
-                <span>📋 Contrato #{{ $contrato->id }}</span>
-                @endif
-                @if($contrato?->razonSocial)
-                <span>🏢 {{ $contrato->razonSocial->razon_social }}</span>
-                @endif
             </div>
         </div>
         <div style="text-align:right">
@@ -140,6 +134,11 @@ table.hi-tbl{width:100%;border-collapse:collapse;font-size:.77rem}
         <div class="hi-group-title">
             🏢 {{ $razonSocial }}
             <span class="hi-group-badge">{{ $countGrupo }} factura(s)</span>
+            @if(!empty($contratosporRS[$razonSocial]))
+                @foreach($contratosporRS[$razonSocial] as $cid)
+                <span style="font-size:.6rem;font-weight:700;padding:.12rem .45rem;border-radius:20px;background:#e0f2fe;color:#0369a1;border:1px solid #bae6fd;font-family:monospace;letter-spacing:.02em;" title="Contrato en {{ $razonSocial }}">#{{ $cid }}</span>
+                @endforeach
+            @endif
         </div>
         <div style="display:flex;align-items:center;gap:.75rem">
             <span class="hi-group-total">{{ $fmt($totalGrupo) }}</span>

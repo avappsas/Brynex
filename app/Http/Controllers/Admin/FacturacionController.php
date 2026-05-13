@@ -1797,6 +1797,19 @@ class FacturacionController extends Controller
             $agrupado[$rs][$anio][] = $f;
         }
 
+        // Mapa razon_social_name → contrato_ids (todos los contratos del cliente, agrupados por RS)
+        $todosContratos = Contrato::where('aliado_id', $aliadoId)
+            ->where('cedula', $cedula)
+            ->with('razonSocial')
+            ->orderBy('id')
+            ->get();
+
+        $contratosporRS = []; // ["Nombre RS" => [id1, id2, ...]]
+        foreach ($todosContratos as $c) {
+            $rsNombre = $c->razonSocial?->razon_social ?? 'Sin razón social';
+            $contratosporRS[$rsNombre][] = $c->id;
+        }
+
         // Para filtros: años y razones sociales disponibles del cliente
         $aniosDisp = Factura::where('aliado_id', $aliadoId)
             ->where('cedula', $cedula)
@@ -1819,7 +1832,7 @@ class FacturacionController extends Controller
         return view('admin.facturacion.historial', compact(
             'cliente', 'contrato', 'cedula', 'agrupado',
             'filtroAnio', 'filtroRs', 'sinFiltros',
-            'aniosDisp', 'rsSocDisp', 'meses'
+            'aniosDisp', 'rsSocDisp', 'meses', 'contratosporRS'
         ));
     }
 
