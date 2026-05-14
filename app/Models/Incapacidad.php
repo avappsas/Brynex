@@ -104,15 +104,18 @@ class Incapacidad extends BaseModel
      * El estado 'negada' se asigna manualmente desde la vista de detalle.
      */
     const ESTADOS = [
-        'recibido'        => ['label' => '📬 Recibido',          'color' => 'secondary'],
-        'transcripcion'   => ['label' => '🏥 Transcripción',      'color' => 'info'],
-        'radicada'        => ['label' => '📋 Radicada',           'color' => 'primary'],
-        'negada'          => ['label' => '🚫 Negada',             'color' => 'danger'],
-        'tutela'          => ['label' => '⚖️ Tutela',             'color' => 'warning'],
-        'tutela_radicada' => ['label' => '📜 Tutela Radicada',    'color' => 'warning'],
-        'liquidacion'     => ['label' => '💰 En Liquidación',     'color' => 'info'],
-        'pagada'          => ['label' => '✅ Pagada',             'color' => 'success'],
-        'rechazado'       => ['label' => '❌ Rechazado',          'color' => 'danger'],
+        'recibido'           => ['label' => '📬 Recibido',              'color' => 'secondary'],
+        'transcripcion'      => ['label' => '🏥 Transcripción IPS',     'color' => 'info'],
+        'radicada'           => ['label' => '📋 Radicada',              'color' => 'primary'],
+        'negada'             => ['label' => '🚫 Negada',                'color' => 'danger'],
+        'tutela'             => ['label' => '⚖️ Tutela',                'color' => 'warning'],
+        'tutela_radicada'    => ['label' => '📜 Tutela Radicada',       'color' => 'warning'],
+        'liquidacion'        => ['label' => '💰 En Liquidación',        'color' => 'info'],
+        'pagada_razon_social'=> ['label' => '🏢 Pagada a Razón Social', 'color' => 'info'],
+        'pagada_afiliado'    => ['label' => '🏦 Pagada al Afiliado',    'color' => 'success'],
+        'cierre_exitoso'     => ['label' => '✅ Cierre Exitoso',        'color' => 'success'],
+        'pagada'             => ['label' => '✅ Pagada',                'color' => 'success'],
+        'rechazado'          => ['label' => '❌ Rechazado',             'color' => 'danger'],
     ];
 
     /**
@@ -126,25 +129,16 @@ class Incapacidad extends BaseModel
     ];
 
     /**
-     * Tipos de gestión y si cambian el estado.
-     * cambia_estado: bool — true = actualiza incapacidad.estado al guardar.
-     * nuevo_estado: string|null — estado al que pasa la incapacidad.
+     * Tipos de gestión (canales de contacto).
+     * Ninguno cambia el estado automáticamente — el estado se
+     * actualiza manualmente desde el selector de estado en el modal.
      */
     const TIPOS_GESTION = [
-        // ── Solo seguimiento (NO cambian estado) ─────────────────────────────
-        'llamada'          => ['label' => '📞 Llamada',              'cambia_estado' => false, 'nuevo_estado' => null],
-        'correo'           => ['label' => '📧 Correo',               'cambia_estado' => false, 'nuevo_estado' => null],
-        'whatsapp'         => ['label' => '💬 WhatsApp',             'cambia_estado' => false, 'nuevo_estado' => null],
-        'portal'           => ['label' => '🌐 Consulta Portal',      'cambia_estado' => false, 'nuevo_estado' => null],
-        'otro'             => ['label' => '📝 Otro',                 'cambia_estado' => false, 'nuevo_estado' => null],
-        // ── Con cambio de estado ──────────────────────────────────────────────
-        'transcripcion'    => ['label' => '🏥 Transcripción IPS',    'cambia_estado' => true,  'nuevo_estado' => 'transcripcion'],
-        'radico'           => ['label' => '📋 Radicó en Entidad',    'cambia_estado' => true,  'nuevo_estado' => 'radicada'],
-        'tutela'           => ['label' => '⚖️ Interpuso Tutela',     'cambia_estado' => true,  'nuevo_estado' => 'tutela'],
-        'tutela_radicada'  => ['label' => '📜 Tutela Radicada',      'cambia_estado' => true,  'nuevo_estado' => 'tutela_radicada'],
-        'liquidacion'      => ['label' => '💰 Liquidación',          'cambia_estado' => true,  'nuevo_estado' => 'liquidacion'],
-        'pago'             => ['label' => '✅ Pago al Afiliado',     'cambia_estado' => true,  'nuevo_estado' => 'pagada'],
-        'rechazado'        => ['label' => '❌ Rechazado (final)',     'cambia_estado' => true,  'nuevo_estado' => 'rechazado'],
+        'llamada'  => ['label' => '📞 Llamada',         'cambia_estado' => false, 'nuevo_estado' => null],
+        'correo'   => ['label' => '📧 Correo',          'cambia_estado' => false, 'nuevo_estado' => null],
+        'whatsapp' => ['label' => '💬 WhatsApp',        'cambia_estado' => false, 'nuevo_estado' => null],
+        'portal'   => ['label' => '🌐 Portal Web',       'cambia_estado' => false, 'nuevo_estado' => null],
+        'otro'     => ['label' => '📝 Otro',            'cambia_estado' => false, 'nuevo_estado' => null],
     ];
 
     // ════════════════════════════════════════════════════════════════════════
@@ -472,10 +466,23 @@ class Incapacidad extends BaseModel
      */
     public function diasDesdeUltimaGestion(): int
     {
+        // Buscar la gestión más reciente propia
         if ($this->relationLoaded('latestGestion')) {
             $ultima = $this->latestGestion;
         } else {
             $ultima = $this->gestiones()->first();
+        }
+
+        // También buscar gestiones de familia del padre (aplica_a_familia=true)
+        if ($this->incapacidad_padre_id) {
+            $ultimaFamilia = \App\Models\GestionIncapacidad::where('incapacidad_id', $this->incapacidad_padre_id)
+                ->where('aplica_a_familia', true)
+                ->orderByDesc('created_at')
+                ->first();
+            // Tomar la más reciente entre la propia y la de familia
+            if ($ultimaFamilia && (!$ultima || $ultimaFamilia->created_at->gt($ultima->created_at))) {
+                $ultima = $ultimaFamilia;
+            }
         }
 
         if (!$ultima) {
@@ -493,13 +500,14 @@ class Incapacidad extends BaseModel
      */
     public function colorSemaforo(): string
     {
-        if (in_array($this->estado, ['pagada', 'rechazado'])) {
+        // Estados finales — ya no requieren gestión
+        if (in_array($this->estado, ['pagada', 'rechazado', 'cierre_exitoso', 'pagada_afiliado', 'pagada_razon_social'])) {
             return 'gris';
         }
 
         $dias = $this->diasDesdeUltimaGestion();
 
-        if ($dias < 7)  return 'verde';
+        if ($dias < 7)   return 'verde';
         if ($dias <= 14) return 'amarillo';
         return 'rojo';
     }

@@ -2547,7 +2547,7 @@ function cerrarHistorial() {
 
         {{-- Días y Fecha de retiro --}}
         <div class="mir-row">
-            <div class="mir-fg" style="margin-bottom:0;">
+            <div class="mir-fg" style="margin-bottom:0;" id="mir-dias-wrapper">
                 <label class="mir-label">Días cotizados en retiro (1–3) *</label>
                 <input type="number" id="mir-num-dias" class="mir-input"
                     min="1" max="3" value="1"
@@ -2559,7 +2559,7 @@ function cerrarHistorial() {
                 <div class="mir-fecha-display" id="mir-fecha-display">{{ $fIngresoDia }}</div>
             </div>
         </div>
-        <div style="font-size:.68rem;color:#94a3b8;margin-top:.2rem;margin-bottom:.75rem;">
+        <div id="mir-dias-hint" style="font-size:.68rem;color:#94a3b8;margin-top:.2rem;margin-bottom:.75rem;">
             1 día = fecha ingreso · 2 días = fecha ingreso +1 día · 3 días = fecha ingreso +2 días
         </div>
 
@@ -2620,16 +2620,47 @@ function cerrarModalDuplicarIR() {
 }
 
 function mirActualizarFecha() {
-    const dias   = parseInt(document.getElementById('mir-num-dias').value) || 1;
+    const dias       = parseInt(document.getElementById('mir-num-dias').value) || 1;
     const diaClamped = Math.min(3, Math.max(1, dias));
     document.getElementById('mir-num-dias').value = diaClamped;
 
     if (!MIR_FECHA_INGRESO) return;
-    const base = new Date(MIR_FECHA_INGRESO + 'T00:00:00');
-    base.setDate(base.getDate() + (diaClamped - 1));
-    const dd   = String(base.getDate()).padStart(2,'0');
-    const mm   = String(base.getMonth()+1).padStart(2,'0');
-    const yyyy = base.getFullYear();
+
+    const ingreso = new Date(MIR_FECHA_INGRESO + 'T00:00:00');
+    const hoy     = new Date();
+
+    // Mes anterior al actual (0-based)
+    const mesAntMes  = hoy.getMonth() === 0 ? 11 : hoy.getMonth() - 1;
+    const mesAntAnio = hoy.getMonth() === 0 ? hoy.getFullYear() - 1 : hoy.getFullYear();
+
+    // ¿La afiliación fue exactamente el mes anterior?
+    const esAfiliacionMesAnterior = (
+        ingreso.getFullYear() === mesAntAnio &&
+        ingreso.getMonth()    === mesAntMes
+    );
+
+    let fechaRetiro;
+    const diasWrapper = document.getElementById('mir-dias-wrapper');
+    const diasHint    = document.getElementById('mir-dias-hint');
+
+    if (esAfiliacionMesAnterior) {
+        // Afiliación fue el mes anterior → usar fecha_ingreso + (dias-1)
+        fechaRetiro = new Date(MIR_FECHA_INGRESO + 'T00:00:00');
+        fechaRetiro.setDate(fechaRetiro.getDate() + (diaClamped - 1));
+        // Mostrar campo de días
+        if (diasWrapper) diasWrapper.style.display = '';
+        if (diasHint)    diasHint.style.display = '';
+    } else {
+        // Afiliación fue antes del mes anterior → retiro = 1 del mes anterior
+        fechaRetiro = new Date(mesAntAnio, mesAntMes, 1);
+        // Ocultar campo de días (no aplica)
+        if (diasWrapper) diasWrapper.style.display = 'none';
+        if (diasHint)    diasHint.style.display = 'none';
+    }
+
+    const dd   = String(fechaRetiro.getDate()).padStart(2,'0');
+    const mm   = String(fechaRetiro.getMonth()+1).padStart(2,'0');
+    const yyyy = fechaRetiro.getFullYear();
     document.getElementById('mir-fecha-display').textContent = `${dd}/${mm}/${yyyy}`;
 }
 

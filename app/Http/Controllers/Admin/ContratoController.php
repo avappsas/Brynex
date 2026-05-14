@@ -371,15 +371,29 @@ class ContratoController extends Controller
                 $vCajaRetiro = $incluyeCaja     ? (int)$r($sm * $factorCaja * $pctCaja / 100)      : 0;
             } else {
                 // Normal: proporcional a num_dias / 30
-                $epsMes  = $incluyeEps     ? $r($ibc * $pctEps  / 100) : 0;
-                $arlMes  = $incluyeArl     ? $r($ibc * $pctArl  / 100) : 0;
-                $penMes  = $incluyePension  ? $r($ibc * $pctPen  / 100) : 0;
-                $cajaMes = $incluyeCaja     ? $r($ibc * $pctCaja / 100) : 0;
+                // Para mes completo (30 días): ceil al 100 más cercano (igual que cotizar())
+                // Para días parciales: calcular DIRECTO desde IBC × rate × días/30
+                //   y usar round() — no ceil() — para evitar inflación por doble redondeo.
+                //   Ejemplo: IBC 1,750,905 × 0.522% × 1/30 = 304.66 → ceil = 400 ❌ / round = 300 ✅
+                $rRound = fn($v) => (int)(round($v / 100) * 100);
 
-                $vEpsRetiro  = $numDias < 30 ? (int)$r($epsMes  * $numDias / 30) : (int)$epsMes;
-                $vArlRetiro  = $numDias < 30 ? (int)$r($arlMes  * $numDias / 30) : (int)$arlMes;
-                $vAfpRetiro  = $numDias < 30 ? (int)$r($penMes  * $numDias / 30) : (int)$penMes;
-                $vCajaRetiro = $numDias < 30 ? (int)$r($cajaMes * $numDias / 30) : (int)$cajaMes;
+                $epsMes  = $incluyeEps    ? $r($ibc * $pctEps  / 100) : 0;
+                $arlMes  = $incluyeArl    ? $r($ibc * $pctArl  / 100) : 0;
+                $penMes  = $incluyePension ? $r($ibc * $pctPen  / 100) : 0;
+                $cajaMes = $incluyeCaja   ? $r($ibc * $pctCaja / 100) : 0;
+
+                $vEpsRetiro  = $numDias < 30
+                    ? ($incluyeEps    ? $rRound($ibc * $pctEps  / 100 * $numDias / 30) : 0)
+                    : (int)$epsMes;
+                $vArlRetiro  = $numDias < 30
+                    ? ($incluyeArl    ? $rRound($ibc * $pctArl  / 100 * $numDias / 30) : 0)
+                    : (int)$arlMes;
+                $vAfpRetiro  = $numDias < 30
+                    ? ($incluyePension ? $rRound($ibc * $pctPen  / 100 * $numDias / 30) : 0)
+                    : (int)$penMes;
+                $vCajaRetiro = $numDias < 30
+                    ? ($incluyeCaja   ? $rRound($ibc * $pctCaja / 100 * $numDias / 30) : 0)
+                    : (int)$cajaMes;
             }
 
             $totalSsRetiro = $vEpsRetiro + $vArlRetiro + $vAfpRetiro + $vCajaRetiro;
@@ -900,10 +914,20 @@ class ContratoController extends Controller
         $nuevoContrato = null;
 
         DB::transaction(function () use ($original, $validated, $alidoId, $nuevaRsId, &$nuevoContrato) {
-            $numDias     = (int)$validated['num_dias'];
-            $fechaRetiro = \Carbon\Carbon::parse($original->fecha_ingreso)
-                ->addDays($numDias - 1)
-                ->toDateString();
+            $numDias         = (int)$validated['num_dias'];
+            $fechaIngreso    = \Carbon\Carbon::parse($original->fecha_ingreso);
+            $mesAnterior     = now()->subMonth()->startOfMonth();
+
+            // Si la afiliación fue exactamente el mes anterior → fecha_ingreso + (dias-1)
+            // Si fue antes del mes anterior → día 1 del mes anterior
+            if (
+                $fechaIngreso->year  === $mesAnterior->year &&
+                $fechaIngreso->month === $mesAnterior->month
+            ) {
+                $fechaRetiro = $fechaIngreso->copy()->addDays($numDias - 1)->toDateString();
+            } else {
+                $fechaRetiro = $mesAnterior->toDateString(); // 1ro del mes anterior
+            }
 
             // ── 1. Marcar retiro en contrato original ─────────────────────
             $original->update([

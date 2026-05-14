@@ -10,6 +10,7 @@ class Radicado extends BaseModel
     protected $table = 'radicados';
     protected $fillable = [
         'contrato_id', 'aliado_id', 'tipo',
+        'incapacidad_id', 'tipo_documento',
         'numero_radicado', 'estado',
         'canal_envio', 'enviado_al_cliente',
         'canal_envio_cliente', 'fecha_envio_cliente',

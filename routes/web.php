@@ -346,6 +346,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/{id}/gestion',           [$ic, 'storeGestion'])      ->name('gestion.store');
         Route::post('/{id}/documento',         [$ic, 'storeDocumento'])    ->name('documento.store');
         Route::get('/documento/{docId}',       [$ic, 'descargarDocumento'])->name('documento.download');
+        Route::get('/{id}/documentos-familia', [$ic, 'documentosFamilia']) ->name('documentos.familia');
         Route::post('/{id}/pago',              [$ic, 'registrarPago'])     ->name('pago.store');
         Route::get('/api/calcular/{id}',       [$ic, 'calcularValor'])     ->name('api.calcular');
         Route::get('/api/clientes',            [$ic, 'apiClientes'])       ->name('api.clientes');
@@ -354,6 +355,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/{id}/link',              [$ic, 'generarLink'])       ->name('link.generar');
         Route::post('/{id}/abono',             [$ic, 'storeAbono'])        ->name('abono.store');
         Route::post('/{id}/prorroga',          [$ic, 'storeProrroga'])     ->name('prorroga.store');
+        Route::get('/{id}/cuentas-rs',         [$ic, 'cuentasRazonSocial'])->name('cuentas.rs');
     });
 
     // -- Radicados

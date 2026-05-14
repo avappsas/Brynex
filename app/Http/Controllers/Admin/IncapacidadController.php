@@ -389,57 +389,145 @@ class IncapacidadController extends Controller
     public function storeGestion(Request $request, int $id)
     {
         $request->validate([
-            'tipo'    => 'required|string',
+            'tipo'    => 'required|string|in:llamada,correo,whatsapp,portal,otro',
             'tramite' => 'required|string',
+            'alcance' => 'nullable|string|in:esta_incapacidad,toda_la_familia', // default: esta_incapacidad
         ]);
 
-        $inc = Incapacidad::findOrFail($id);
-        $cfg = Incapacidad::TIPOS_GESTION[$request->tipo] ?? null;
-        $cambia = $cfg['cambia_estado'] ?? false;
+        $inc    = Incapacidad::findOrFail($id);
+        $alcance = $request->input('alcance', 'esta_incapacidad');
+        $esFamilia = ($alcance === 'toda_la_familia');
+
+        // ── Validar cambio de estado manual ─────────────────────────────────
+        $nuevoEstado = $request->estado_nuevo ?: null;
+
+        // cierre_exitoso requiere que la incapacidad tenga pagada_razon_social Y pagada_afiliado
+        if ($nuevoEstado === 'cierre_exitoso') {
+            $tieneRS  = in_array($inc->estado, ['pagada_razon_social', 'cierre_exitoso']);
+            $tieneAf  = in_array($inc->estado, ['pagada_afiliado', 'cierre_exitoso']);
+            // También revisar si previamente se marcó alguno de los dos estados
+            $historial = GestionIncapacidad::where('incapacidad_id', $inc->id)
+                ->whereIn('estado_nuevo', ['pagada_razon_social', 'pagada_afiliado'])
+                ->pluck('estado_nuevo');
+            $tieneRS = $tieneRS || $historial->contains('pagada_razon_social');
+            $tieneAf = $tieneAf || $historial->contains('pagada_afiliado');
+
+            if (!$tieneRS || !$tieneAf) {
+                return response()->json([
+                    'ok'      => false,
+                    'message' => 'Para el cierre exitoso se requiere haber registrado primero "Pagada a Razón Social" y "Pagada al Afiliado".',
+                ], 422);
+            }
+        }
+
+        // ── Registrar gestión ────────────────────────────────────────────────
+        // Si es de familia, se guarda en el padre (o en la incapacidad actual marcada como familia)
+        $incGestionId = $inc->id;
+        if ($esFamilia) {
+            // Guardar en el padre de la familia
+            $incGestionId = $inc->incapacidad_padre_id ?? $inc->id;
+        }
 
         $gestion = GestionIncapacidad::create([
-            'incapacidad_id'   => $inc->id,
+            'incapacidad_id'   => $incGestionId,
             'user_id'          => Auth::id(),
-            'aplica_a_familia' => $request->boolean('aplica_a_familia'),
+            'aplica_a_familia' => $esFamilia,
             'tipo'             => $request->tipo,
             'tramite'          => $request->tramite,
             'respuesta'        => $request->respuesta,
-            'estado_resultado' => $cfg['nuevo_estado'] ?? null,
-            'fecha_recordar'   => $request->fecha_recordar ?: null,
-            'cambia_estado'    => $cambia,
-            'estado_nuevo'     => $cfg['nuevo_estado'] ?? null,
+            'estado_resultado' => $nuevoEstado,
+            'cambia_estado'    => (bool) $nuevoEstado,
+            'estado_nuevo'     => $nuevoEstado,
             'created_at'       => now(),
         ]);
 
-        // Aplicar cambio de estado si corresponde
-        if ($cambia) {
-            $gestion->aplicarCambioEstado();
-        }
-
-        // Si aplica a familia → registrar en todas las prórrogas (solo seguimiento)
-        if ($request->boolean('aplica_a_familia') && !$cambia) {
-            $padreId = $inc->incapacidad_padre_id ?? $inc->id;
-            Incapacidad::where(function ($q) use ($padreId, $id) {
-                $q->where('id', $padreId)->orWhere('incapacidad_padre_id', $padreId);
-            })->where('id', '!=', $id)->each(function($miembro) use ($request, $cfg) {
-                GestionIncapacidad::create([
-                    'incapacidad_id'   => $miembro->id,
-                    'user_id'          => Auth::id(),
-                    'aplica_a_familia' => true,
-                    'tipo'             => $request->tipo,
-                    'tramite'          => '[Grupo] ' . $request->tramite,
-                    'respuesta'        => $request->respuesta,
-                    'cambia_estado'    => false,
-                    'created_at'       => now(),
-                ]);
-            });
+        // ── Aplicar cambio de estado si se especificó ────────────────────────
+        if ($nuevoEstado) {
+            $incActualizar = Incapacidad::find($incGestionId);
+            if ($incActualizar) {
+                $incActualizar->estado = $nuevoEstado;
+                // Si cierre_exitoso, marcar como pagada
+                if ($nuevoEstado === 'cierre_exitoso') {
+                    $incActualizar->estado = 'pagada';
+                }
+                // Si radicada, guardar número y fecha
+                if ($nuevoEstado === 'radicada') {
+                    if ($request->filled('numero_radicado')) $incActualizar->numero_radicado = $request->numero_radicado;
+                    if ($request->filled('fecha_radicado'))  $incActualizar->fecha_radicado  = $request->fecha_radicado;
+                }
+                // Si pagada_razon_social, registrar abono + consignación
+                if ($nuevoEstado === 'pagada_razon_social' && $request->filled('valor_pago_rs')) {
+                    $consignacion = DB::table('consignaciones')->insertGetId([
+                        'aliado_id'       => $incActualizar->aliado_id,
+                        'fecha'           => $request->fecha_pago_rs ?? now()->toDateString(),
+                        'banco_cuenta_id' => $request->banco_cuenta_id ?: null,
+                        'valor_total'     => $request->valor_pago_rs,
+                        'valor_banco1'    => $request->valor_pago_rs,
+                        'referencia'      => 'Pago incapacidad #' . $incActualizar->id,
+                        'observacion'     => 'Pago EPS/ARL a Razón Social — incapacidad #' . $incActualizar->id,
+                        'usuario_id'      => Auth::id(),
+                        'created_at'      => now(),
+                        'updated_at'      => now(),
+                    ]);
+                    DB::table('abonos_incapacidades')->insert([
+                        'aliado_id'       => $incActualizar->aliado_id,
+                        'incapacidad_id'  => $incActualizar->id,
+                        'razon_social_id' => $incActualizar->razon_social_id ?? null,
+                        'tipo'            => 'pago_eps',
+                        'valor'           => $request->valor_pago_rs,
+                        'fecha'           => $request->fecha_pago_rs ?? now()->toDateString(),
+                        'banco_cuenta_id' => $request->banco_cuenta_id ?: null,
+                        'consignacion_id' => $consignacion,
+                        'usuario_id'      => Auth::id(),
+                        'observacion'     => 'EPS/ARL pagó a la Razón Social',
+                        'created_at'      => now(),
+                        'updated_at'      => now(),
+                    ]);
+                }
+                $incActualizar->saveQuietly();
+            }
         }
 
         return response()->json([
-            'ok'           => true,
-            'message'      => 'Gestión registrada.',
-            'estado'       => $inc->fresh()->estado,
-            'cambia_estado'=> $cambia,
+            'ok'      => true,
+            'message' => 'Gestión registrada.',
+            'estado'  => $inc->fresh()->estado,
+            'alcance' => $alcance,
+        ]);
+    }
+
+    // ── CUENTAS BANCARIAS DE LA RAZÓN SOCIAL ────────────────────────────────
+    public function cuentasRazonSocial(int $id)
+    {
+        $inc = Incapacidad::findOrFail($id);
+
+        // Buscar el NIT de la Razón Social
+        $nit = null;
+        if ($inc->razon_social_id) {
+            $nit = DB::table('razones_sociales')
+                ->where('id', $inc->razon_social_id)
+                ->value('nit');
+        }
+
+        // Buscar cuentas del aliado que coincidan con ese NIT
+        $query = DB::table('banco_cuentas')
+            ->where('aliado_id', $inc->aliado_id)
+            ->where('activo', true);
+
+        if ($nit) {
+            $query->where('nit', $nit);
+        } else {
+            // Si no hay NIT, devolver todas las cuentas del aliado
+            // con flag para indicar que no es específico de la RS
+        }
+
+        $cuentas = $query->orderBy('banco')->get(['id','nombre','banco','tipo_cuenta','numero_cuenta','nit']);
+
+        return response()->json([
+            'ok'      => true,
+            'cuentas' => $cuentas,
+            'nit_rs'  => $nit,
+            'rs_nombre' => $inc->razon_social_nombre,
         ]);
     }
 
@@ -629,6 +717,126 @@ class IncapacidadController extends Controller
     {
         $doc = Radicado::where('tipo', 'incapacidad')->findOrFail($docId);
         return Storage::disk('public')->download($doc->ruta_pdf, $doc->tipo_documento . '.pdf');
+    }
+
+    // ── DOCUMENTOS DE TODA LA FAMILIA (padre + prórrogas) ───────────────────
+    public function documentosFamilia(int $id)
+    {
+        $inc = Incapacidad::findOrFail($id);
+
+        // Obtener el id padre real (si es una prórroga, subir al padre)
+        $padreId = $inc->incapacidad_padre_id ?? $inc->id;
+
+        // Obtener todos los miembros de la familia
+        $familia = Incapacidad::where(function ($q) use ($padreId) {
+            $q->where('id', $padreId)->orWhere('incapacidad_padre_id', $padreId);
+        })->whereNull('deleted_at')
+          ->orderBy('numero_proroga')
+          ->get(['id', 'numero_proroga', 'incapacidad_padre_id', 'fecha_inicio', 'fecha_terminacion', 'dias_incapacidad']);
+
+        $familiaIds = $familia->pluck('id')->toArray();
+
+        // Obtener todos los documentos de la familia en una sola consulta
+        $documentos = DB::table('radicados as r')
+            ->leftJoin('users as u', 'u.id', '=', 'r.user_id')
+            ->whereIn('r.incapacidad_id', $familiaIds)
+            ->where('r.tipo', 'incapacidad')
+            ->orderBy('r.incapacidad_id')
+            ->orderByDesc('r.id')
+            ->select(
+                'r.id', 'r.incapacidad_id', 'r.tipo_documento', 'r.observacion',
+                'r.ruta_pdf', 'r.estado', 'r.created_at',
+                'u.nombre as subido_por'
+            )
+            ->get();
+
+        // Agrupar documentos por incapacidad_id
+        $docsAgrupados = $documentos->groupBy('incapacidad_id');
+
+        // Construir respuesta enriquecida
+        $resultado = $familia->map(function ($miembro) use ($docsAgrupados) {
+            $docs = $docsAgrupados->get($miembro->id, collect());
+            return [
+                'incapacidad_id'    => $miembro->id,
+                'es_padre'          => is_null($miembro->incapacidad_padre_id),
+                'numero_proroga'    => $miembro->numero_proroga,
+                'label'             => is_null($miembro->incapacidad_padre_id) ? 'Original' : "Prórroga {$miembro->numero_proroga}",
+                'fecha_inicio'      => $miembro->fecha_inicio,
+                'fecha_terminacion' => $miembro->fecha_terminacion,
+                'dias_incapacidad'  => $miembro->dias_incapacidad,
+                'documentos'        => $docs->map(function ($d) {
+                    $ext = strtolower(pathinfo($d->ruta_pdf, PATHINFO_EXTENSION));
+                    return [
+                        'id'            => $d->id,
+                        'tipo_documento'=> $d->tipo_documento,
+                        'observacion'   => $d->observacion,
+                        'ruta_pdf'      => $d->ruta_pdf,
+                        'url_ver'       => Storage::disk('public')->url($d->ruta_pdf),
+                        'url_descargar' => route('admin.incapacidades.documento.download', $d->id),
+                        'es_pdf'        => $ext === 'pdf',
+                        'extension'     => $ext,
+                        'subido_por'    => $d->subido_por ?? 'Cliente',
+                        'fecha'         => $d->created_at,
+                    ];
+                })->values(),
+                'total_docs' => $docs->count(),
+            ];
+        });
+
+        // ── Documentos globales del cliente (cédula, carta laboral, etc.) ────
+        $alidoId = $inc->aliado_id;
+        $cedula  = $inc->cedula_usuario;
+        $docsGlobales = collect();
+
+        try {
+            $docsGlobales = DB::table('documentos_cliente as dc')
+                ->leftJoin('users as u', 'u.id', '=', 'dc.subido_por')
+                ->where('dc.aliado_id', $alidoId)
+                ->where('dc.cc_cliente', $cedula)
+                ->whereNull('dc.doc_beneficiario') // solo del titular
+                ->orderByDesc('dc.created_at')
+                ->select(
+                    'dc.id', 'dc.tipo_documento', 'dc.nombre_archivo',
+                    'dc.ruta', 'dc.created_at',
+                    'u.nombre as subido_por'
+                )
+                ->get()
+                ->map(function ($d) {
+                    $ext = strtolower(pathinfo($d->ruta ?? $d->nombre_archivo ?? '', PATHINFO_EXTENSION));
+                    $tiposLabel = [
+                        'cedula'            => '🪪 Cédula',
+                        'carta_laboral'     => '📋 Carta Laboral',
+                        'registro_civil'    => '📜 Registro Civil',
+                        'tarjeta_identidad' => '🪪 Tarjeta Identidad',
+                        'decl_juramentada'  => '⚖️ Decl. Juramentada',
+                        'acta_matrimonio'   => '💍 Acta Matrimonio',
+                        'otro'              => '📎 Otro',
+                    ];
+                    return [
+                        'id'            => $d->id,
+                        'tipo_documento'=> $d->tipo_documento,
+                        'tipo_label'    => $tiposLabel[$d->tipo_documento] ?? ucfirst($d->tipo_documento),
+                        'nombre'        => $d->nombre_archivo,
+                        'ruta'          => $d->ruta,
+                        'url_ver'       => $d->ruta ? route('admin.documentos.download', $d->id) : null,
+                        'url_descargar' => $d->ruta ? route('admin.documentos.download', $d->id) : null,
+                        'es_pdf'        => $ext === 'pdf',
+                        'extension'     => $ext,
+                        'subido_por'    => $d->subido_por ?? 'Sistema',
+                        'fecha'         => $d->created_at,
+                    ];
+                });
+        } catch (\Exception $e) {
+            // Si la tabla no existe o hay error, continuar sin docs globales
+            $docsGlobales = collect();
+        }
+
+        return response()->json([
+            'ok'              => true,
+            'familia'         => $resultado,
+            'total_documentos'=> $documentos->count(),
+            'docs_globales'   => $docsGlobales->values(),
+        ]);
     }
 
     // ── REGISTRAR PAGO AL AFILIADO ───────────────────────────────────────────

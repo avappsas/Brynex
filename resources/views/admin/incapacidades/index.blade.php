@@ -354,6 +354,9 @@ const EPS_LIST   = @json($epsList->map(fn($e)=>['id'=>$e->id,'nombre'=>$e->nombr
 const ARL_LIST   = @json($arlList->map(fn($e)=>['id'=>$e->id,'nombre'=>$e->nombre_arl]));
 const AFP_LIST   = @json($pensionList->map(fn($e)=>['id'=>$e->id,'nombre'=>$e->razon_social]));
 
+// Cache para docs de familia
+let _docsFamiliaLoaded = null;
+
 // Mapas de labels para mostrar en el frontend
 const TIPOS_INCAPACIDAD = @json(\App\Models\Incapacidad::TIPOS_INCAPACIDAD);
 const TIPOS_ENTIDAD     = @json(\App\Models\Incapacidad::TIPOS_ENTIDAD);
@@ -374,7 +377,11 @@ function formatFechaLarga(str){
 }
 
 // ── Modales ──────────────────────────────────────────────────────────────────
-function cerrarModal(id){ document.getElementById(id).classList.remove('open'); }
+function cerrarModal(id){
+    document.getElementById(id).classList.remove('open');
+    if (id === 'modalDetalle') _docsFamiliaLoaded = null;
+    if (id === 'modalCrear') { const p = document.getElementById('editarDocsPanel'); if(p) p.remove(); }
+}
 function abrirModal(id) { document.getElementById(id).classList.add('open'); }
 
 function abrirModalCrear(){
@@ -409,33 +416,127 @@ function abrirModalEditar(id){
     fetch(`/admin/incapacidades/${id}/show`)
         .then(r=>r.json()).then(data=>{
             const inc = data.incapacidad;
-            document.getElementById('modalCrearTitle').textContent = '✏️ Editar Incapacidad';
+            const esPrrroga = !!inc.incapacidad_padre_id;
+            document.getElementById('modalCrearTitle').textContent =
+                esPrrroga ? `✏️ Editar Prórroga #${inc.numero_proroga}` : '✏️ Editar Incapacidad';
             document.getElementById('formCrear').action = `/admin/incapacidades/${id}`;
             document.getElementById('formMethod').value = 'PUT';
             document.getElementById('formId').value = id;
             document.getElementById('formCrear').reset();
-            // Poblar campos
+            // Poblar campos básicos
             const f = document.getElementById('formCrear');
-            f.querySelector('[name=cedula_usuario]').value = inc.cedula_usuario;
-            f.querySelector('[name=dias_incapacidad]').value = inc.dias_incapacidad;
-            f.querySelector('[name=fecha_inicio]').value = inc.fecha_inicio?.substring(0,10)||'';
-            f.querySelector('[name=fecha_terminacion]').value = inc.fecha_terminacion?.substring(0,10)||'';
-            f.querySelector('[name=fecha_recibido]').value = inc.fecha_recibido?.substring(0,10)||'';
-            f.querySelector('[name=tipo_incapacidad]').value = inc.tipo_incapacidad;
-            f.querySelector('[name=tipo_entidad]').value = inc.tipo_entidad;
+            f.querySelector('[name=cedula_usuario]').value          = inc.cedula_usuario;
+            f.querySelector('[name=dias_incapacidad]').value        = inc.dias_incapacidad;
+            f.querySelector('[name=fecha_inicio]').value            = inc.fecha_inicio?.substring(0,10)||'';
+            f.querySelector('[name=fecha_terminacion]').value       = inc.fecha_terminacion?.substring(0,10)||'';
+            f.querySelector('[name=fecha_recibido]').value          = inc.fecha_recibido?.substring(0,10)||'';
+            f.querySelector('[name=tipo_incapacidad]').value        = inc.tipo_incapacidad;
+            f.querySelector('[name=tipo_entidad]').value            = inc.tipo_entidad;
             f.querySelector('[name=diagnostico]') && (f.querySelector('[name=diagnostico]').value = inc.diagnostico||'');
             f.querySelector('[name=observacion]') && (f.querySelector('[name=observacion]').value = inc.observacion||'');
-            // Razon social hidden
+
+            // Número radicado y fecha radicado
+            const nrEl = f.querySelector('[name=numero_radicado]');
+            if (nrEl) nrEl.value = inc.numero_radicado || '';
+            const frEl = f.querySelector('[name=fecha_radicado]');
+            if (frEl) frEl.value = inc.fecha_radicado?.substring(0,10) || '';
+
+            // Razón social hidden
             const rsH = document.getElementById('razonSocialHidden');
-            if(rsH) rsH.value = inc.razon_social_id || '';
+            if (rsH) rsH.value = inc.razon_social_id || '';
+
+            // Contrato — inyectar la opción actual en el select para que quede seleccionada
+            const csEl = document.getElementById('contratoSelect');
+            if (csEl && inc.contrato_id) {
+                const label = inc.razon_social_nombre
+                    ? `Contrato #${inc.contrato_id} — ${inc.razon_social_nombre}`
+                    : `Contrato #${inc.contrato_id}`;
+                // Limpiar y añadir la opción del contrato actual
+                csEl.innerHTML = `<option value="">Sin contrato</option>
+                    <option value="${inc.contrato_id}" selected>${label}</option>`;
+                // Mostrar info del contrato
+                const infoBox = document.getElementById('contratoInfoBox');
+                const infoTxt = document.getElementById('contratoInfoText');
+                if (infoBox && infoTxt) {
+                    infoTxt.textContent = label;
+                    infoBox.style.display = 'block';
+                }
+            }
+
+            // Encargado
+            const qrSel = document.getElementById('quienRecibeSelect');
+            if (qrSel && inc.quien_recibe_id) qrSel.value = inc.quien_recibe_id;
+
+            // Quién remite — inyectar opción si tiene valor
+            const qrmSel = document.getElementById('quienRemiteSelect');
+            if (qrmSel && inc.quien_remite) {
+                if (!qrmSel.querySelector(`option[value="${inc.quien_remite}"]`)) {
+                    const opt = document.createElement('option');
+                    opt.value = inc.quien_remite;
+                    opt.textContent = inc.quien_remite;
+                    qrmSel.appendChild(opt);
+                }
+                qrmSel.value = inc.quien_remite;
+            }
+
             // Nombre cliente
             document.getElementById('nombreCliente').value = data.cliente
                 ? [data.cliente.primer_nombre, data.cliente.primer_apellido].filter(Boolean).join(' ')
                 : inc.cedula_usuario;
+
             actualizarListaEntidades(inc.tipo_entidad, inc.entidad_responsable_id);
+
+            // Panel de documentos de esta incapacidad específica
+            mostrarDocsEnEditar(id, esPrrroga ? `Prórroga #${inc.numero_proroga}` : 'Incapacidad Original');
+
             abrirModal('modalCrear');
         });
 }
+
+function mostrarDocsEnEditar(incId, labelGrupo) {
+    // Buscar o crear el panel de docs dentro del modal crear
+    let panel = document.getElementById('editarDocsPanel');
+    if (!panel) {
+        const footer = document.querySelector('#modalCrear .modal-footer');
+        panel = document.createElement('div');
+        panel.id = 'editarDocsPanel';
+        panel.style.cssText = 'border-top:1px solid #e2e8f0;padding:.75rem 1.35rem;background:#f8fafc;max-height:220px;overflow-y:auto';
+        footer.parentNode.insertBefore(panel, footer);
+    }
+    panel.innerHTML = `<div style="font-size:.72rem;font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:.05em;margin-bottom:.5rem">
+        📎 Documentos de ${labelGrupo}
+        <button class="btn btn-sm" style="background:#e0e7ff;color:#3730a3;font-size:.7rem;padding:.15rem .45rem;margin-left:.5rem"
+            onclick="subirDocumento(${incId});_docsFamiliaLoaded=null">+ Subir</button>
+    </div>
+    <div id="editarDocsList" style="font-size:.78rem;color:#94a3b8">⏳ Cargando...</div>`;
+
+    fetch(`/admin/incapacidades/${incId}/documentos-familia`)
+        .then(r=>r.json()).then(data=>{
+            const lista = document.getElementById('editarDocsList');
+            if (!lista) return;
+            // Solo mostrar documentos del grupo con ese incId
+            const grupo = (data.familia||[]).find(g=>g.incapacidad_id==incId);
+            const docs = grupo?.documentos || [];
+            if (!docs.length) { lista.textContent = 'Sin documentos en este grupo.'; return; }
+            const TIPOS_DOC = {
+                incapacidad_original:'📄 Inc. Original', historia_clinica:'📋 Hist. Clínica',
+                radicado_entidad:'📮 Radicado', soporte_pago:'💳 Soporte Pago',
+                transcripcion:'🏥 Transcripción', cedula:'🪪 Cédula', examen:'🔬 Examen', otro:'📎 Otro'
+            };
+            lista.innerHTML = docs.map(d=>`
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:.3rem .5rem;border:1px solid #e2e8f0;border-radius:6px;margin-bottom:.3rem;background:#fff">
+                    <span style="font-weight:600;color:#374151">${TIPOS_DOC[d.tipo_documento]||d.tipo_documento}</span>
+                    <div style="display:flex;gap:.3rem">
+                        ${d.es_pdf
+                            ? `<button class="btn btn-info btn-sm" style="font-size:.7rem;padding:.15rem .4rem" onclick="verPdfDoc('${d.url_ver}','${TIPOS_DOC[d.tipo_documento]||d.tipo_documento}')">👁 Ver</button>`
+                            : `<a href="${d.url_ver}" target="_blank" class="btn btn-info btn-sm" style="font-size:.7rem;padding:.15rem .4rem">👁 Ver</a>`
+                        }
+                        <a href="${d.url_descargar}" class="btn btn-secondary btn-sm" style="font-size:.7rem;padding:.15rem .4rem">⬇</a>
+                    </div>
+                </div>`).join('');
+        }).catch(()=>{ const l=document.getElementById('editarDocsList'); if(l) l.textContent='Error al cargar.'; });
+}
+
 
 // ── Ver detalle completo ─────────────────────────────────────────────────────
 function verDetalle(id){
@@ -529,8 +630,9 @@ function verDetalle(id){
                 ${al180}${resumenFam}
                 <div class="tabs">
                     <button class="tab-btn active" onclick="switchTab(this,'tabInfo')">📋 Datos</button>
-                    <button class="tab-btn" onclick="switchTab(this,'tabGestiones')">📞 Gestiones (${(inc.gestiones||[]).length})</button>
+                    <button class="tab-btn" onclick="switchTab(this,'tabDocumentos');cargarDocsFamilia(${inc.id})">📎 Documentos</button>
                     ${data.num_prorrogas>0?`<button class="tab-btn" onclick="switchTab(this,'tabProrrogas')">📄 Prórrogas (${data.num_prorrogas})</button>`:''}
+                    <button class="tab-btn" onclick="switchTab(this,'tabGestiones')">📞 Gestiones (${(inc.gestiones||[]).length})</button>
                     <button class="tab-btn" onclick="switchTab(this,'tabPago')">💰 Pago</button>
                 </div>
 
@@ -580,7 +682,6 @@ function verDetalle(id){
                     ${inc.observacion?`<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:.6rem .85rem;font-size:.82rem;color:#92400e;margin-bottom:.6rem"><strong>📝 Observación:</strong> ${inc.observacion}</div>`:''}
                     <div style="display:flex;gap:.5rem;margin-top:1rem;flex-wrap:wrap;padding-top:.75rem;border-top:1px solid #f1f5f9">
                         <button class="btn btn-primary btn-sm" onclick="registrarGestion(${inc.id})">📞 Nueva Gestión</button>
-                        <button class="btn btn-success btn-sm" onclick="subirDocumento(${inc.id})">📎 Subir Documento</button>
                         <button class="btn btn-warning btn-sm" onclick="cerrarModal('modalDetalle'); abrirModalEditar(${inc.id})">✏️ Editar Incapacidad</button>
                         <button class="btn btn-secondary btn-sm" onclick="cerrarModal('modalDetalle'); abrirModalProroga(${inc.id})">➕ Agregar Prórroga</button>
                     </div>
@@ -602,6 +703,12 @@ function verDetalle(id){
                     </div>
                     ${inc.detalle_pago?`<p style="font-size:.82rem;color:#374151"><strong>Detalle:</strong> ${inc.detalle_pago}</p>`:''}
                     <button class="btn btn-success" onclick="registrarPago(${inc.id})" style="margin-top:.8rem">💰 Registrar Pago al Afiliado</button>
+                </div>
+
+                <div id="tabDocumentos" class="tab-pane">
+                    <div id="docsFamiliaContainer" style="min-height:80px;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:.85rem">
+                        Haz clic en la pestaña Documentos para cargar.
+                    </div>
                 </div>`;
 
             // Guardar ID activo
@@ -625,29 +732,127 @@ function iconoTipoGestion(tipo){
 }
 
 // ── Gestión inline ───────────────────────────────────────────────────────────
-function registrarGestion(incId){
-    const tipos = @json(\App\Models\Incapacidad::TIPOS_GESTION);
-    const estados = @json(\App\Models\Incapacidad::ESTADOS);
-    const optTipos = Object.entries(tipos).map(([k,v])=>`<option value="${k}">${v.label||v}</option>`).join('');
-    const optEstados = Object.entries(estados).map(([k,v])=>`<option value="${k}">${v.label||v}</option>`).join('');
+function registrarGestion(incId) {
+    // Cargar en paralelo: datos de la incapacidad + familia
+    Promise.all([
+        fetch(`/admin/incapacidades/${incId}/show`).then(r => r.json()).catch(() => ({})),
+        fetch(`/admin/incapacidades/${incId}/documentos-familia`).then(r => r.json()).catch(() => ({}))
+    ]).then(([showData, familiaData]) => {
+        const inc    = showData.incapacidad || {};
+        const familia = familiaData.familia || [];
+        _mostrarModalGestion(incId, familia, inc);
+    });
+}
+
+function _mostrarModalGestion(incId, familia, inc = {}) {
+    const TIPOS = {
+        llamada:  '📞 Llamada',
+        correo:   '📧 Correo',
+        whatsapp: '💬 WhatsApp',
+        portal:   '🌐 Portal Web',
+        otro:     '📝 Otro',
+    };
+    const ESTADOS = @json(\App\Models\Incapacidad::ESTADOS);
+
+    // Estado actual de la incapacidad (para pre-seleccionar)
+    const estadoActual     = inc.estado || '';
+    // Si ya tiene número de radicado, no pedir de nuevo
+    const yaRadicada       = !!(inc.numero_radicado);
+
+    // Opciones de alcance
+    let optsAlcance = '';
+    if (familia.length <= 1) {
+        optsAlcance = `<option value="esta_incapacidad" selected>📋 Esta incapacidad</option>`;
+    } else {
+        familia.forEach(g => {
+            const selected = g.incapacidad_id == incId ? 'selected' : '';
+            const icon = g.es_padre ? '🏥' : '🔁';
+            optsAlcance += `<option value="incapacidad_${g.incapacidad_id}" ${selected}>${icon} ${g.label} #${g.incapacidad_id}</option>`;
+        });
+        optsAlcance += `<option value="toda_la_familia">👨‍👩‍👧 Toda la familia (seguimiento global)</option>`;
+    }
+
+    const optTipos = Object.entries(TIPOS)
+        .map(([k,v]) => `<option value="${k}">${v}</option>`).join('');
+
+    // Opciones de estado — pre-selecciona el estado actual
+    const optEstados = Object.entries(ESTADOS)
+        .map(([k,v]) => `<option value="${k}" ${k === estadoActual ? 'selected' : ''}>${v.label||v}</option>`).join('');
 
     const html = `
     <div class="modal-header" style="background:linear-gradient(135deg,#1e40af,#0891b2);border-radius:16px 16px 0 0">
-        <div><h3 style="color:#fff;font-size:1rem;font-weight:700;margin:0">📞 Registrar Gestión</h3>
-        <div style="font-size:.75rem;color:rgba(255,255,255,.75);margin-top:.15rem">Incapacidad #${incId}</div></div>
+        <div>
+            <h3 style="color:#fff;font-size:1rem;font-weight:700;margin:0">📞 Registrar Gestión</h3>
+            <div id="gModalSubtitle" style="font-size:.75rem;color:rgba(255,255,255,.75);margin-top:.1rem">Incapacidad #${incId}</div>
+        </div>
         <button class="btn-close-modal" onclick="document.getElementById('modalGestion').classList.remove('open')">×</button>
     </div>
-    <div class="modal-body">
-        <div class="form-group"><label>Tipo de Gestión *</label><select id="gTipo" class="form-control">${optTipos}</select></div>
-        <div class="form-group"><label>Trámite realizado *</label><textarea id="gTramite" class="form-control" style="min-height:70px"></textarea></div>
-        <div class="form-group"><label>Respuesta / Resultado</label><textarea id="gRespuesta" class="form-control" style="min-height:50px"></textarea></div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:.75rem">
+
+        ${familia.length > 1 ? `
+        <div class="form-group" style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:.65rem .85rem">
+            <label style="font-size:.72rem;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:.04em">
+                📋 ¿A qué incapacidad aplica esta gestión? *
+            </label>
+            <select id="gAlcance" class="form-control" style="margin-top:.3rem" onchange="_actualizarSubtituloGestion(this)">
+                ${optsAlcance}
+            </select>
+        </div>` : `<input type="hidden" id="gAlcance" value="esta_incapacidad">`}
+
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">
-            <div class="form-group"><label>Estado resultado</label><select id="gEstado" class="form-control"><option value="">Sin cambio</option>${optEstados}</select></div>
-            <div class="form-group"><label>Recordar en fecha</label><input type="date" id="gRecordar" class="form-control"></div>
+            <div class="form-group">
+                <label>Canal de Gestión *</label>
+                <select id="gTipo" class="form-control">${optTipos}</select>
+            </div>
+            <div class="form-group">
+                <label>Actualizar Estado <span style="font-size:.7rem;color:#94a3b8">(opcional)</span></label>
+                <select id="gEstado" class="form-control">
+                    <option value="">— Sin cambio de estado —</option>
+                    ${optEstados}
+                </select>
+            </div>
         </div>
-        <label style="display:flex;align-items:center;gap:.4rem;font-size:.82rem;color:#374151;margin-bottom:.5rem;cursor:pointer">
-            <input type="checkbox" id="gFamilia"> Aplicar a toda la familia (padre + prórrogas)
-        </label>
+
+        <div class="form-group">
+            <label>Gestión realizada *</label>
+            <textarea id="gTramite" class="form-control" style="min-height:70px" placeholder="Describe qué se hizo: llamada a EPS, consulta en portal, etc."></textarea>
+        </div>
+        <div class="form-group">
+            <label>Respuesta / Resultado <span style="font-size:.7rem;color:#94a3b8">(opcional)</span></label>
+            <textarea id="gRespuesta" class="form-control" style="min-height:48px" placeholder="Qué respondió la entidad, cliente, etc."></textarea>
+        </div>
+
+        <div id="gAlertaCierre" style="display:none;background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:.6rem .85rem;font-size:.78rem;color:#92400e">
+            ⚠️ Para el <strong>Cierre Exitoso</strong> se requiere haber registrado previamente <em>Pagada a Razón Social</em> y <em>Pagada al Afiliado</em>.
+        </div>
+
+        <div id="gPanelPagoRS" style="display:none;background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:.75rem .9rem">
+            <div style="font-size:.72rem;font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.6rem">
+                🏢 Pago recibido por Razón Social
+            </div>
+            <div id="gCuentasRSContent">
+                <div style="font-size:.8rem;color:#94a3b8">⏳ Cargando cuentas...</div>
+            </div>
+        </div>
+
+        <div id="gCamposRadicada" style="display:none;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:.65rem .85rem">
+            <div style="font-size:.72rem;font-weight:700;color:#065f46;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.5rem">📋 Datos del Radicado</div>
+            ${yaRadicada ? `
+            <div style="font-size:.82rem;color:#065f46;background:#dcfce7;border-radius:6px;padding:.45rem .7rem">
+                ✅ Ya tiene radicado: <strong>${inc.numero_radicado}</strong>
+                ${inc.fecha_radicado ? `<span style="color:#047857;margin-left:.5rem">(${inc.fecha_radicado.substring(0,10)})</span>` : ''}
+            </div>` : `
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">
+                <div class="form-group" style="margin:0">
+                    <label>Número Radicado *</label>
+                    <input type="text" id="gNumRadicado" class="form-control" placeholder="Ej: 2026-12345">
+                </div>
+                <div class="form-group" style="margin:0">
+                    <label>Fecha Radicado *</label>
+                    <input type="date" id="gFechaRadicado" class="form-control" value="${new Date().toISOString().substring(0,10)}">
+                </div>
+            </div>`}
+        </div>
     </div>
     <div class="modal-footer">
         <button class="btn btn-secondary" onclick="document.getElementById('modalGestion').classList.remove('open')">Cancelar</button>
@@ -655,34 +860,161 @@ function registrarGestion(incId){
     </div>`;
 
     let overlay = document.getElementById('modalGestion');
-    if(!overlay){
+    if (!overlay) {
         overlay = document.createElement('div');
         overlay.id = 'modalGestion';
         overlay.className = 'modal-overlay';
-        overlay.innerHTML = `<div class="modal" style="max-width:540px">${html}</div>`;
+        overlay.innerHTML = `<div class="modal" style="max-width:580px">${html}</div>`;
         document.body.appendChild(overlay);
-    } else { overlay.querySelector('.modal').innerHTML = html; }
+    } else {
+        overlay.querySelector('.modal').innerHTML = html;
+    }
+
+    // Listener para mostrar/ocultar campos según estado seleccionado
+    setTimeout(() => {
+        const sel = document.getElementById('gEstado');
+        if (sel) {
+            const _toggle = (val) => {
+                const alerta   = document.getElementById('gAlertaCierre');
+                const radicado = document.getElementById('gCamposRadicada');
+                const pagoRS   = document.getElementById('gPanelPagoRS');
+                if (alerta)   alerta.style.display  = val === 'cierre_exitoso'     ? 'block' : 'none';
+                if (radicado) radicado.style.display = val === 'radicada'           ? 'block' : 'none';
+                if (pagoRS) {
+                    pagoRS.style.display = val === 'pagada_razon_social' ? 'block' : 'none';
+                    if (val === 'pagada_razon_social') {
+                        _cargarCuentasRS(incId);
+                    }
+                }
+            };
+            _toggle(sel.value);
+            sel.addEventListener('change', function() { _toggle(this.value); });
+        }
+    }, 100);
+
     overlay.classList.add('open');
 }
 
-function enviarGestion(incId){
+// Carga las cuentas bancarias de la Razón Social vía API
+function _cargarCuentasRS(incId) {
+    const box = document.getElementById('gCuentasRSContent');
+    if (!box) return;
+    box.innerHTML = '<div style="font-size:.8rem;color:#94a3b8">⏳ Cargando cuentas...</div>';
+    fetch(`/admin/incapacidades/${incId}/cuentas-rs`)
+        .then(r => r.json()).then(d => {
+            if (!d.ok) { box.innerHTML = '<div style="color:#ef4444;font-size:.8rem">Error al cargar cuentas.</div>'; return; }
+            const cuentas = d.cuentas || [];
+            if (!cuentas.length) {
+                box.innerHTML = `
+                <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:.6rem .8rem;font-size:.8rem;color:#c2410c">
+                    ⚠️ <strong>Sin cuenta configurada</strong> para ${d.rs_nombre || 'esta Razón Social'}.<br>
+                    <a href="/admin/configuracion/cuentas" target="_blank" style="color:#2563eb;text-decoration:underline">
+                        → Ir a Configuración → Cuentas Bancarias
+                    </a>
+                </div>`;
+                return;
+            }
+            const opts = cuentas.map(c =>
+                `<option value="${c.id}">${c.banco} · ${c.tipo_cuenta||''} · ****${(c.numero_cuenta||'').slice(-4)} (${c.nombre})</option>`
+            ).join('');
+            box.innerHTML = `
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:.55rem;margin-bottom:.5rem">
+                <div class="form-group" style="margin:0;grid-column:1/-1">
+                    <label>Cuenta que recibió el pago *</label>
+                    <select id="gBancoCuentaId" class="form-control">${opts}</select>
+                </div>
+                <div class="form-group" style="margin:0">
+                    <label>Valor recibido *</label>
+                    <input type="number" id="gValorPagoRS" class="form-control" placeholder="0" min="0" step="1000">
+                </div>
+                <div class="form-group" style="margin:0">
+                    <label>Fecha del ingreso *</label>
+                    <input type="date" id="gFechaPagoRS" class="form-control" value="${new Date().toISOString().substring(0,10)}">
+                </div>
+            </div>
+            <div style="font-size:.72rem;color:#0369a1;background:#e0f2fe;border-radius:5px;padding:.3rem .6rem">
+                💡 Se registrará una consignación en el banco y un abono a esta incapacidad.
+            </div>`;
+        }).catch(() => {
+            box.innerHTML = '<div style="color:#ef4444;font-size:.8rem">Error de red al cargar cuentas.</div>';
+        });
+}
+
+
+// Actualiza el subtítulo del modal al cambiar la incapacidad seleccionada
+function _actualizarSubtituloGestion(sel) {
+    const sub = document.getElementById('gModalSubtitle');
+    if (!sub) return;
+    const txt = sel.options[sel.selectedIndex]?.text || '';
+    sub.textContent = txt.includes('familia') ? '👨‍👩‍👧 Gestión para toda la familia' : txt;
+}
+
+function enviarGestion(incId) {
+    const alcanceEl = document.getElementById('gAlcance');
+    const alcanceVal = alcanceEl?.value || 'esta_incapacidad';
+    const tramite = document.getElementById('gTramite').value.trim();
+
+    if (!tramite) { alert('Por favor ingresa la gestión realizada.'); return; }
+
+    // Determinar incapacidad destino y alcance a enviar
+    let targetId = incId;
+    let alcance = 'esta_incapacidad';
+
+    if (alcanceVal === 'toda_la_familia') {
+        alcance = 'toda_la_familia';
+    } else if (alcanceVal.startsWith('incapacidad_')) {
+        targetId = parseInt(alcanceVal.replace('incapacidad_', ''));
+        alcance = 'esta_incapacidad';
+    }
+
+    const estadoNuevo = document.getElementById('gEstado').value || null;
+
     const body = {
-        tipo: document.getElementById('gTipo').value,
-        tramite: document.getElementById('gTramite').value,
-        respuesta: document.getElementById('gRespuesta').value,
-        estado_resultado: document.getElementById('gEstado').value,
-        fecha_recordar: document.getElementById('gRecordar').value,
-        aplica_a_familia: document.getElementById('gFamilia').checked ? 1 : 0,
-        _token: TOKEN
+        tipo:            document.getElementById('gTipo').value,
+        tramite:         tramite,
+        respuesta:       document.getElementById('gRespuesta').value,
+        estado_nuevo:    estadoNuevo,
+        alcance:         alcance,
+        numero_radicado: estadoNuevo === 'radicada' ? (document.getElementById('gNumRadicado')?.value || null) : null,
+        fecha_radicado:  estadoNuevo === 'radicada' ? (document.getElementById('gFechaRadicado')?.value || null) : null,
+        // Pago a Razón Social
+        banco_cuenta_id: estadoNuevo === 'pagada_razon_social' ? (document.getElementById('gBancoCuentaId')?.value || null) : null,
+        valor_pago_rs:   estadoNuevo === 'pagada_razon_social' ? (document.getElementById('gValorPagoRS')?.value || null) : null,
+        fecha_pago_rs:   estadoNuevo === 'pagada_razon_social' ? (document.getElementById('gFechaPagoRS')?.value || null) : null,
+        _token:          TOKEN,
     };
-    fetch(`/admin/incapacidades/${incId}/gestion`, {
-        method:'POST', headers:{'Content-Type':'application/json','X-CSRF-TOKEN':TOKEN},
-        body: JSON.stringify(body)
-    }).then(r=>r.json()).then(d=>{
-        if(d.ok){ document.getElementById('modalGestion').classList.remove('open'); verDetalle(incId); }
-        else alert('Error: '+(d.message||'Error desconocido'));
+
+    // Validar campos de radicado solo si el input existe (no hay radicado previo)
+    const numRadicadoInput = document.getElementById('gNumRadicado');
+    if (estadoNuevo === 'radicada' && numRadicadoInput && !body.numero_radicado) {
+        alert('Por favor ingresa el Número Radicado.');
+        return;
+    }
+
+    const btn = document.querySelector('#modalGestion .btn-primary');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Guardando...'; }
+
+    fetch(`/admin/incapacidades/${targetId}/gestion`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': TOKEN, 'Accept': 'application/json' },
+        body: JSON.stringify(body),
+    }).then(r => r.json()).then(d => {
+        if (btn) { btn.disabled = false; btn.textContent = '💾 Guardar Gestión'; }
+        if (d.ok) {
+            document.getElementById('modalGestion').classList.remove('open');
+            // Refrescar el modal de detalle con el ID original
+            const detalleId = document.getElementById('modalDetalle')?.dataset?.incId || incId;
+            verDetalle(parseInt(detalleId));
+        } else {
+            alert('Error: ' + (d.message || 'Error desconocido'));
+        }
+    }).catch(e => {
+        if (btn) { btn.disabled = false; btn.textContent = '💾 Guardar Gestión'; }
+        alert('Error de red: ' + e.message);
     });
 }
+
+
 
 // ── Pago al afiliado ─────────────────────────────────────────────────────────
 function registrarPago(incId){
@@ -744,7 +1076,7 @@ function subirDocumento(incId){
             <div class="modal-header" style="background:linear-gradient(135deg,#059669,#0891b2)">
                 <div><h3 style="color:#fff;font-size:1rem;font-weight:700;margin:0">📎 Documentos de Incapacidad</h3>
                 <div id="docModalSubtitle" style="font-size:.75rem;color:rgba(255,255,255,.8);margin-top:.1rem">Incapacidad #${incId}</div></div>
-                <button class="btn-close-modal" onclick="document.getElementById('modalDoc').classList.remove('open')">✕</button>
+                <button class="btn-close-modal" onclick="cerrarModalDoc()">✕</button>
             </div>
             <div class="modal-body">
                 <div id="docListaExistente" style="margin-bottom:1rem"></div>
@@ -754,12 +1086,14 @@ function subirDocumento(incId){
                         <div class="form-group">
                             <label>Tipo de Documento *</label>
                             <select id="docTipo" class="form-control">
-                                <option value="incapacidad_original">Incapacidad Original</option>
-                                <option value="historia_clinica">Historia Clínica</option>
-                                <option value="radicado_entidad">Radicado Entidad</option>
-                                <option value="soporte_pago">Soporte de Pago</option>
-                                <option value="transcripcion">Transcripción</option>
-                                <option value="otro">Otro</option>
+                                <option value="incapacidad_original">📄 Incapacidad Original</option>
+                                <option value="historia_clinica">📋 Historia Clínica</option>
+                                <option value="radicado_entidad">📮 Radicado Entidad</option>
+                                <option value="soporte_pago">💳 Soporte de Pago</option>
+                                <option value="transcripcion">🏥 Transcripción IPS</option>
+                                <option value="cedula">🪪 Cédula</option>
+                                <option value="examen">🔬 Examen / Diagnóstico</option>
+                                <option value="otro">📎 Otro</option>
                             </select>
                         </div>
                         <div class="form-group">
@@ -775,7 +1109,7 @@ function subirDocumento(incId){
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="document.getElementById('modalDoc').classList.remove('open')">Cerrar</button>
+                <button class="btn btn-secondary" onclick="cerrarModalDoc()">Cerrar</button>
                 <button class="btn btn-primary" id="btnSubirDoc" onclick="enviarDocumento()">📤 Subir Documento</button>
             </div>
         </div>`;
@@ -819,12 +1153,36 @@ function enviarDocumento(){
         .then(r=>r.json()).then(d=>{
             btn.disabled=false; btn.textContent='📤 Subir Documento';
             if(d.ok){
-                msg.innerHTML='<span style="color:#059669">✅ Documento subido correctamente.</span>';
-                document.getElementById('docArchivo').value='';
-                document.getElementById('docObs').value='';
-                cargarDocumentosExistentes(incId);
-            } else { msg.innerHTML=`<span style="color:#ef4444">Error: ${d.message||''}</span>`; }
-        }).catch(e=>{ btn.disabled=false; btn.textContent='📤 Subir Documento'; msg.innerHTML=`<span style="color:#ef4444">Error: ${e.message}</span>`; });
+                // Cerrar automáticamente y refrescar la pestaña Documentos
+                cerrarModalDoc();
+            } else {
+                msg.innerHTML=`<span style="color:#ef4444">Error: ${d.message||'Error al subir'}</span>`;
+            }
+        }).catch(e=>{
+            btn.disabled=false;
+            btn.textContent='📤 Subir Documento';
+            msg.innerHTML=`<span style="color:#ef4444">Error: ${e.message}</span>`;
+        });
+}
+
+
+function cerrarModalDoc() {
+    document.getElementById('modalDoc')?.classList.remove('open');
+
+    // Resetear cache para que la pestaña Documentos recargue al volver
+    _docsFamiliaLoaded = null;
+
+    // Si la pestaña Documentos del modal de detalle está activa, recargarla ahora
+    const tabDocBtn = document.querySelector('#modalDetalle .tab-btn.active');
+    const incId = document.getElementById('modalDetalle')?.dataset?.incId;
+    if (incId && tabDocBtn && tabDocBtn.textContent.includes('Documentos')) {
+        cargarDocsFamilia(parseInt(incId));
+    }
+
+    // Si el panel de docs del modal editar está visible, refrescarlo
+    if (_docIncId && document.getElementById('editarDocsList')) {
+        mostrarDocsEnEditar(_docIncId, '');
+    }
 }
 
 // ── Autocompletado de cliente ────────────────────────────────────────────────
@@ -968,8 +1326,11 @@ async function guardarIncapacidad(){
         try { data = await resp.json(); } catch(e){ throw new Error('Respuesta inesperada del servidor (HTTP '+resp.status+')'); }
         if(resp.ok && data.ok){
             cerrarModal('modalCrear');
-            if(!isEdit && data.incapacidad_id){ setTimeout(()=>{ subirDocumento(data.incapacidad_id); }, 250); }
-            else { location.reload(); }
+            if (!isEdit && data.incapacidad_id) {
+                setTimeout(() => { verDetalle(data.incapacidad_id); }, 250);
+            } else {
+                location.reload();
+            }
         } else if(resp.status === 422 && data.errors) {
             // Mostrar errores de validación
             const msgs = Object.entries(data.errors).map(([f,e])=>`• ${f}: ${e[0]}`).join('\n');
@@ -1026,5 +1387,188 @@ function filtrosInc(){
 function abrirModalGestion(id, solo_seguimiento = false){
     verDetalle(id); // Abre el detalle y dentro se puede registrar gestión
 }
+
+// ── Documentos de familia (pestaña en modal detalle) ─────────────────────────
+function cargarDocsFamilia(incId) {
+    const box = document.getElementById('docsFamiliaContainer');
+    if (!box) return;
+    if (_docsFamiliaLoaded === incId) return; // ya cargado
+    // Resetear flex del placeholder para que el contenido sea block
+    box.style.cssText = 'padding:.25rem 0';
+    box.innerHTML = '<div style="text-align:center;padding:1.5rem;color:#94a3b8">⏳ Cargando documentos...</div>';
+    fetch(`/admin/incapacidades/${incId}/documentos-familia`)
+        .then(r => r.json()).then(data => {
+            _docsFamiliaLoaded = incId;
+            if (!data.ok) {
+                box.innerHTML = '<div style="text-align:center;padding:1.5rem;color:#ef4444">Error al cargar.</div>';
+                return;
+            }
+            const TIPOS_DOC = {
+                incapacidad_original: '📄 Inc. Original',
+                historia_clinica:     '📋 Hist. Clínica',
+                radicado_entidad:     '📮 Radicado Entidad',
+                soporte_pago:         '💳 Soporte Pago',
+                transcripcion:        '🏥 Transcripción',
+                cedula:               '🪪 Cédula',
+                examen:               '🔬 Examen',
+                otro:                 '📎 Otro',
+            };
+            const iconExt = e => ({pdf:'📄',jpg:'🖼️',jpeg:'🖼️',png:'🖼️',webp:'🖼️'}[e]||'📎');
+
+            let html = '';
+
+            // ── Documentos globales del cliente ──────────────────────────────
+            const globales = data.docs_globales || [];
+            if (globales.length > 0) {
+                html += `<div style="border:1px solid #bbf7d0;border-radius:10px;overflow:hidden;margin-bottom:.75rem">
+                    <div style="background:#f0fdf4;padding:.55rem .85rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.4rem">
+                        <span style="font-weight:700;color:#059669;font-size:.83rem">
+                            🗂️ Documentos Globales del Cliente
+                            <span style="font-size:.7rem;color:#64748b;font-weight:400;margin-left:.5rem">cargados en afiliación / contrato</span>
+                        </span>
+                        <span style="font-size:.7rem;color:#064e3b;background:#d1fae5;padding:.15rem .5rem;border-radius:999px">${globales.length} doc(s)</span>
+                    </div>`;
+                globales.forEach(doc => {
+                    const tipoLabel = doc.tipo_label || doc.tipo_documento;
+                    html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:.5rem .85rem;border-top:1px solid #f1f5f9;gap:.5rem">
+                        <div style="flex:1;min-width:0">
+                            <span style="font-weight:600;color:#374151;font-size:.82rem">${tipoLabel}</span>
+                            <div style="font-size:.68rem;color:#94a3b8;margin-top:.1rem">
+                                🕐 ${formatFechaLarga(doc.fecha)} · 👤 ${doc.subido_por||'Sistema'} · <span style="color:#059669">✓ Global</span>
+                            </div>
+                        </div>
+                        <div style="display:flex;gap:.3rem;flex-shrink:0">
+                            ${doc.url_ver
+                                ? (doc.es_pdf
+                                    ? `<button class="btn btn-info btn-sm" onclick="verPdfDoc('${doc.url_ver}','${tipoLabel}')" title="Ver PDF">👁 Ver</button>`
+                                    : `<a href="${doc.url_ver}" target="_blank" class="btn btn-info btn-sm">👁 Ver</a>`)
+                                : '<span style="font-size:.72rem;color:#94a3b8">Sin archivo</span>'
+                            }
+                        </div>
+                    </div>`;
+                });
+                html += `</div>`;
+            }
+
+            // ── Documentos por incapacidad / prórroga ─────────────────────────
+            const familia = data.familia || [];
+            if (!familia.length && !globales.length) {
+                html = '<div style="text-align:center;padding:1.5rem;color:#94a3b8">Sin documentos registrados.</div>';
+                box.innerHTML = html;
+                return;
+            }
+
+            familia.forEach(grupo => {
+                const esPadre = grupo.es_padre;
+                const headerBg     = esPadre ? '#eff6ff' : '#fdf4ff';
+                const headerBorder = esPadre ? '#bfdbfe' : '#e9d5ff';
+                const headerColor  = esPadre ? '#1e40af' : '#7c3aed';
+                const periodo = grupo.fecha_inicio
+                    ? `${grupo.fecha_inicio.substring(0,10)} → ${(grupo.fecha_terminacion||'').substring(0,10)}`
+                    : '';
+
+                html += `<div style="border:1px solid ${headerBorder};border-radius:10px;overflow:hidden;margin-bottom:.75rem">
+                    <div style="background:${headerBg};padding:.55rem .85rem">
+                        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.4rem">
+                            <div>
+                                <span style="font-weight:700;color:${headerColor};font-size:.83rem">
+                                    ${esPadre ? '🏥 Incapacidad Original' : `🔁 ${grupo.label}`}
+                                    <span style="font-size:.7rem;color:#64748b;font-weight:400;margin-left:.4rem">#${grupo.incapacidad_id}</span>
+                                </span>
+                                ${periodo ? `<div style="font-size:.7rem;color:#64748b;margin-top:.15rem">📅 ${periodo} · ${grupo.dias_incapacidad} días</div>` : ''}
+                            </div>
+                            <div style="display:flex;align-items:center;gap:.5rem">
+                                <span style="font-size:.72rem;color:${headerColor};background:${esPadre?'#dbeafe':'#ede9fe'};padding:.15rem .5rem;border-radius:999px;font-weight:600">${grupo.total_docs} doc(s)</span>
+                                <button class="btn btn-sm" style="background:#e0e7ff;color:#3730a3;font-size:.72rem;padding:.22rem .6rem;border-radius:6px"
+                                    onclick="subirDocumentoEn(${grupo.incapacidad_id})">+ Agregar</button>
+                            </div>
+                        </div>
+                    </div>`;
+
+                if (!grupo.documentos?.length) {
+                    html += `<div style="padding:.65rem .85rem;font-size:.78rem;color:#94a3b8;border-top:1px solid #f1f5f9">Sin documentos en este grupo.</div>`;
+                } else {
+                    grupo.documentos.forEach(doc => {
+                        const tipoLabel = TIPOS_DOC[doc.tipo_documento] || doc.tipo_documento;
+                        const ext = doc.extension || '';
+                        html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:.5rem .85rem;border-top:1px solid #f1f5f9;gap:.5rem">
+                            <div style="flex:1;min-width:0">
+                                <span style="font-weight:600;color:#374151;font-size:.82rem">${iconExt(ext)} ${tipoLabel}</span>
+                                ${doc.observacion ? `<span style="color:#94a3b8;font-size:.72rem;margin-left:.4rem">— ${doc.observacion}</span>` : ''}
+                                <div style="font-size:.68rem;color:#94a3b8;margin-top:.1rem">
+                                    🕐 ${formatFechaLarga(doc.fecha)} · 👤 ${doc.subido_por||'Sistema'}
+                                </div>
+                            </div>
+                            <div style="display:flex;gap:.3rem;flex-shrink:0">
+                                ${doc.es_pdf
+                                    ? `<button class="btn btn-info btn-sm" onclick="verPdfDoc('${doc.url_ver}','${tipoLabel}')" title="Ver PDF">👁 Ver</button>`
+                                    : `<a href="${doc.url_ver}" target="_blank" class="btn btn-info btn-sm" title="Ver imagen">👁 Ver</a>`
+                                }
+                                <a href="${doc.url_descargar}" class="btn btn-secondary btn-sm" title="Descargar">⬇</a>
+                            </div>
+                        </div>`;
+                    });
+                }
+                html += `</div>`;
+            });
+
+            // Botón subir al FINAL, con ancho completo
+            const totalDocs = data.total_documentos || 0;
+            html += `<div style="margin-top:.5rem;padding-top:.5rem;border-top:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between">
+                <span style="font-size:.72rem;color:#64748b">📁 ${totalDocs} doc(s) en incapacidades${globales.length?` · ${globales.length} global(es)`:''}</span>
+                <button class="btn btn-success btn-sm" onclick="subirDocumento(${incId})">📤 Subir Documento</button>
+            </div>`;
+
+            box.innerHTML = html;
+        }).catch(() => {
+            box.style.cssText = '';
+            box.innerHTML = '<div style="text-align:center;padding:1rem;color:#ef4444">Error al cargar documentos.</div>';
+        });
+}
+
+
+// Subir doc en una incapacidad específica de la familia
+function subirDocumentoEn(incId) {
+    _docsFamiliaLoaded = null; // forzar recarga
+    subirDocumento(incId);
+}
+
+// Visor de PDF en modal ligero
+function verPdfDoc(url, titulo) {
+    let ov = document.getElementById('modalPdfViewer');
+    if (!ov) {
+        ov = document.createElement('div');
+        ov.id = 'modalPdfViewer';
+        ov.className = 'modal-overlay';
+        ov.innerHTML = `<div class="modal" style="max-width:860px;height:90vh;display:flex;flex-direction:column">
+            <div class="modal-header">
+                <h3 id="pdfViewerTitle" style="color:#fff;font-size:1rem">📄 Documento</h3>
+                <button class="btn-close-modal" onclick="document.getElementById('modalPdfViewer').classList.remove('open')">✕</button>
+            </div>
+            <div style="flex:1;overflow:hidden;background:#525659">
+                <iframe id="pdfViewerFrame" style="width:100%;height:100%;border:none"></iframe>
+            </div>
+            <div class="modal-footer" style="background:#f8fafc">
+                <a id="pdfDownloadLink" class="btn btn-primary btn-sm" download>⬇ Descargar</a>
+                <button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalPdfViewer').classList.remove('open')">Cerrar</button>
+            </div>
+        </div>`;
+        document.body.appendChild(ov);
+    }
+    document.getElementById('pdfViewerTitle').textContent = '📄 ' + titulo;
+    document.getElementById('pdfViewerFrame').src = url;
+    document.getElementById('pdfDownloadLink').href = url;
+    ov.classList.add('open');
+}
+
+// Cerrar modal de detalle al clic en overlay
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('modalDetalle')?.addEventListener('click', e => {
+        if (e.target === document.getElementById('modalDetalle')) cerrarModal('modalDetalle');
+    });
+    document.getElementById('modalCrear')?.addEventListener('click', e => {
+        if (e.target === document.getElementById('modalCrear')) cerrarModal('modalCrear');
+    });
+});
 </script>
 @endpush
