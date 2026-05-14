@@ -84,7 +84,7 @@
                                 {{ $nombreCompleto ?: (isset($cliente->id) && $cliente->id ? 'Editar Cliente #'.$cliente->id : 'Nuevo Cliente') }}
                             </h2>
                             @if(!empty($cliente->cedula))
-                            <span style="background:linear-gradient(135deg,#1e40af,#2563eb);color:#fff;border-radius:999px;padding:0.15rem 0.65rem;font-size:0.68rem;font-weight:700;letter-spacing:0.03em;display:inline-block;margin-top:0.1rem;">CC {{ $cliente->cedula }}</span>
+                            <span style="background:linear-gradient(135deg,#1e40af,#2563eb);color:#fff;border-radius:999px;padding:0.15rem 0.65rem;font-size:0.68rem;font-weight:700;letter-spacing:0.03em;display:inline-block;margin-top:0.1rem;">{{ $cliente->tipo_doc ?: 'CC' }} {{ $cliente->cedula }}</span>
                             @endif
                         </div>
                     </div>
@@ -551,7 +551,7 @@ function OI_abrirCliente() {
     OI.abrir({
         cedula:      {{ $cliente->cedula }},
         empresaId:   {{ $cliente->cod_empresa ?? 'null' }},
-        subtitulo:   {!! json_encode(trim(($cliente->primer_nombre ?? '') . ' ' . ($cliente->primer_apellido ?? '') . ' — CC ' . $cliente->cedula)) !!},
+        subtitulo:   {!! json_encode(trim(($cliente->primer_nombre ?? '') . ' ' . ($cliente->primer_apellido ?? '') . ' — ' . ($cliente->tipo_doc ?: 'CC') . ' ' . $cliente->cedula)) !!},
         aplicaIva:   {{ strtoupper($cliente->iva ?? '') === 'SI' ? 'true' : 'false' }},
         pctIva:      19,
         mes:         {{ now()->month }},

@@ -35,7 +35,7 @@
       @if($cliente)
       <div style="font-size:0.76rem;color:#475569;">
         <strong>{{ trim(($cliente->primer_nombre ?? '').' '.($cliente->segundo_nombre ?? '')) }} {{ trim(($cliente->primer_apellido ?? '').' '.($cliente->segundo_apellido ?? '')) }}</strong>
-        &middot; CC {{ $cliente->cedula }}
+        &middot; {{ $cliente->tipo_doc ?: 'CC' }} {{ $cliente->cedula }}
         @if($cliente->iva === 'SI')<span style="background:#fef3c7;color:#92400e;padding:0.1rem 0.4rem;border-radius:999px;font-size:0.68rem;margin-left:4px;">IVA</span>@endif
       </div>
       @endif
@@ -1046,7 +1046,7 @@ function mrOnSubmit() {
       <div style="display:flex;align-items:center;gap:.55rem">
         <span style="font-size:1.1rem">📊</span>
         <span style="color:#fff;font-size:.92rem;font-weight:700;letter-spacing:.02em">Historial de Pagos</span>
-        <span style="color:rgba(255,255,255,.55);font-size:.78rem">— CC {{ $contrato->cedula }}</span>
+        <span style="color:rgba(255,255,255,.55);font-size:.78rem">— {{ $cliente?->tipo_doc ?: 'CC' }} {{ $contrato->cedula }}</span>
       </div>
       <button type="button" onclick="cerrarHistorial()"
               style="background:rgba(255,255,255,.15);color:#fff;border:none;border-radius:7px;width:30px;height:30px;font-size:1rem;cursor:pointer;font-weight:700;line-height:1;transition:background .15s"
