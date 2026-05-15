@@ -64,8 +64,8 @@ class IncapacidadController extends Controller
         }
 
         // Si hay búsqueda: mostrar TODAS (pagadas, rechazadas, activas)
-        // Sin búsqueda: ocultar pagadas/cerradas por defecto
-        $estadosInactivosDefault = ['pagada', 'rechazado'];
+        // Sin búsqueda: ocultar estados finales/cerrados por defecto
+        $estadosInactivosDefault = ['pagada', 'rechazado', 'cierre_exitoso'];
         if (!$hayBusqueda && !$request->boolean('con_cerradas')) {
             $query->whereNotIn('estado', $estadosInactivosDefault);
         }
@@ -73,7 +73,7 @@ class IncapacidadController extends Controller
         $vista = $request->get('vista', 'agrupada'); // agrupada | plana
 
         $query->orderByRaw("
-            CASE WHEN estado IN ('pagada','rechazado') THEN 99 ELSE 0 END ASC
+            CASE WHEN estado IN ('pagada','rechazado','cierre_exitoso') THEN 99 ELSE 0 END ASC
         ")->orderByDesc('fecha_recibido');
 
         $incapacidades = $query->paginate(40)->withQueryString();
@@ -446,9 +446,9 @@ class IncapacidadController extends Controller
             $incActualizar = Incapacidad::find($incGestionId);
             if ($incActualizar) {
                 $incActualizar->estado = $nuevoEstado;
-                // Si cierre_exitoso, marcar como pagada
+                // Si cierre_exitoso, mantener ese estado (ya no mapear a 'pagada' legacy)
                 if ($nuevoEstado === 'cierre_exitoso') {
-                    $incActualizar->estado = 'pagada';
+                    $incActualizar->estado = 'cierre_exitoso';
                 }
                 // Si radicada, guardar número y fecha
                 if ($nuevoEstado === 'radicada') {
@@ -457,18 +457,36 @@ class IncapacidadController extends Controller
                 }
                 // Si pagada_razon_social, registrar abono + consignación
                 if ($nuevoEstado === 'pagada_razon_social' && $request->filled('valor_pago_rs')) {
-                    $consignacion = DB::table('consignaciones')->insertGetId([
-                        'aliado_id'       => $incActualizar->aliado_id,
-                        'fecha'           => $request->fecha_pago_rs ?? now()->toDateString(),
-                        'banco_cuenta_id' => $request->banco_cuenta_id ?: null,
-                        'valor_total'     => $request->valor_pago_rs,
-                        'valor_banco1'    => $request->valor_pago_rs,
-                        'referencia'      => 'Pago incapacidad #' . $incActualizar->id,
-                        'observacion'     => 'Pago EPS/ARL a Razón Social — incapacidad #' . $incActualizar->id,
-                        'usuario_id'      => Auth::id(),
-                        'created_at'      => now(),
-                        'updated_at'      => now(),
-                    ]);
+                    $formaLabel = match($request->forma_pago_rs ?? 'otro') {
+                        'transferencia' => 'Transferencia/Consignación bancaria',
+                        'opi'           => 'OPI (Orden de Pago Inmediata - ARL)',
+                        'odi'           => 'ODI (Orden de la entidad)',
+                        'cheque'        => 'Cheque',
+                        'directo'       => 'Pago directo al cliente',
+                        default         => 'Otro medio de pago',
+                    };
+                    $refLabel = $request->filled('ref_pago_rs') ? ' · Ref: ' . $request->ref_pago_rs : '';
+                    $obsAbono = "{$formaLabel}{$refLabel} — Incapacidad #{$incActualizar->id}";
+
+                    // Solo crear consignación bancaria si es transferencia y hay cuenta
+                    $consignacionId = null;
+                    if ($request->forma_pago_rs === 'transferencia') {
+                        $consignacionId = DB::table('consignaciones')->insertGetId([
+                            'aliado_id'       => $incActualizar->aliado_id,
+                            'fecha'           => $request->fecha_pago_rs ?? now()->toDateString(),
+                            'banco_cuenta_id' => $request->banco_cuenta_id ?: null,
+                            'valor'           => $request->valor_pago_rs,
+                            'referencia'      => $request->ref_pago_rs ?: ('Pago incapacidad #' . $incActualizar->id),
+                            'observacion'     => $obsAbono,
+                            'tipo'            => 'incapacidad',
+                            'incapacidad_id'  => $incActualizar->id,
+                            'confirmado'      => 0,
+                            'usuario_id'      => Auth::id(),
+                            'created_at'      => now(),
+                            'updated_at'      => now(),
+                        ]);
+                    }
+
                     DB::table('abonos_incapacidades')->insert([
                         'aliado_id'       => $incActualizar->aliado_id,
                         'incapacidad_id'  => $incActualizar->id,
@@ -477,9 +495,9 @@ class IncapacidadController extends Controller
                         'valor'           => $request->valor_pago_rs,
                         'fecha'           => $request->fecha_pago_rs ?? now()->toDateString(),
                         'banco_cuenta_id' => $request->banco_cuenta_id ?: null,
-                        'consignacion_id' => $consignacion,
+                        'consignacion_id' => $consignacionId,
                         'usuario_id'      => Auth::id(),
-                        'observacion'     => 'EPS/ARL pagó a la Razón Social',
+                        'observacion'     => $obsAbono,
                         'created_at'      => now(),
                         'updated_at'      => now(),
                     ]);
@@ -489,47 +507,64 @@ class IncapacidadController extends Controller
         }
 
         return response()->json([
-            'ok'      => true,
-            'message' => 'Gestión registrada.',
-            'estado'  => $inc->fresh()->estado,
-            'alcance' => $alcance,
+            'ok'              => true,
+            'message'         => 'Gestión registrada.',
+            'estado'          => $inc->fresh()->estado,
+            'alcance'         => $alcance,
+            'consignacion_id' => $consignacionId ?? null,
         ]);
     }
 
     // ── CUENTAS BANCARIAS DE LA RAZÓN SOCIAL ────────────────────────────────
     public function cuentasRazonSocial(int $id)
     {
+        $aliadoId = session('aliado_id_activo');
         $inc = Incapacidad::findOrFail($id);
 
-        // Buscar el NIT de la Razón Social
-        $nit = null;
-        if ($inc->razon_social_id) {
-            $nit = DB::table('razones_sociales')
-                ->where('id', $inc->razon_social_id)
-                ->value('nit');
+        // Obtener NIT y razon_social_id de la RS de la incapacidad
+        $rsId = $inc->razon_social_id;
+        $nit  = null;
+
+        if ($rsId) {
+            $rs  = DB::table('razones_sociales')->where('id', $rsId)->first(['nit', 'razon_social']);
+            $nit = $rs?->nit ? trim((string)$rs->nit) : null;
         }
 
-        // Buscar cuentas del aliado que coincidan con ese NIT
-        $query = DB::table('banco_cuentas')
+        $base = DB::table('banco_cuentas')
             ->where('aliado_id', $inc->aliado_id)
             ->where('activo', true);
 
+        // Prioridad 1: cuentas que coincidan por NIT del titular
+        $cuentas = collect();
         if ($nit) {
-            $query->where('nit', $nit);
-        } else {
-            // Si no hay NIT, devolver todas las cuentas del aliado
-            // con flag para indicar que no es específico de la RS
+            $cuentas = (clone $base)
+                ->where(function($q) use ($nit) {
+                    // Comparar NIT sin puntos ni espacios para evitar mismatch de formato
+                    $q->whereRaw("REPLACE(REPLACE(nit, '.', ''), ' ', '') = ?", [preg_replace('/[\.\s]/', '', $nit)]);
+                })
+                ->orderBy('banco')
+                ->get(['id','nombre','banco','tipo_cuenta','numero_cuenta','nit']);
         }
 
-        $cuentas = $query->orderBy('banco')->get(['id','nombre','banco','tipo_cuenta','numero_cuenta','nit']);
+        // Prioridad 2: si no hay por NIT, buscar por razon_social_id
+        if ($cuentas->isEmpty() && $rsId) {
+            $cuentas = (clone $base)
+                ->where('razon_social_id', $rsId)
+                ->orderBy('banco')
+                ->get(['id','nombre','banco','tipo_cuenta','numero_cuenta','nit']);
+        }
 
         return response()->json([
-            'ok'      => true,
-            'cuentas' => $cuentas,
-            'nit_rs'  => $nit,
-            'rs_nombre' => $inc->razon_social_nombre,
+            'ok'        => true,
+            'cuentas'   => $cuentas,
+            'nit_rs'    => $nit,
+            'rs_nombre' => $rs?->razon_social ?? $inc->razon_social_nombre ?? null,
+            'buscado_por' => $cuentas->isNotEmpty()
+                ? ($nit ? "NIT: {$nit}" : "razon_social_id: {$rsId}")
+                : 'sin coincidencia',
         ]);
     }
+
 
     // ── GENERAR LINK DE SUBIDA ───────────────────────────────────────────────
     public function generarLink(int $id)

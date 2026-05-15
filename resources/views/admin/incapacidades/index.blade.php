@@ -181,7 +181,7 @@ tbody td{padding:.6rem .85rem;vertical-align:middle;}
         <div style="display:flex;align-items:flex-end">
             <label style="display:flex;align-items:center;gap:.3rem;font-size:.78rem;cursor:pointer">
                 <input type="checkbox" name="con_cerradas" value="1"
-                       @checked(request('con_cerradas')) @change="$el.form.submit()"> Ver pagadas
+                       @checked(request('con_cerradas')) @change="$el.form.submit()"> Ver cerradas (pagadas/rechazadas)
             </label>
         </div>
         <div style="display:flex;align-items:flex-end">
@@ -575,8 +575,8 @@ function verDetalle(id){
                     <div class="tl-dot">${iconoTipoGestion(g.tipo)}</div>
                     <div class="tl-content">
                         <div class="tl-tipo">${g.tipo}${g.aplica_a_familia?' <span style="color:#d97706">· Familia</span>':''}</div>
-                        <div class="tl-tramite">${g.tramite}</div>
-                        ${g.respuesta?`<div class="tl-tramite" style="color:#059669">↳ ${g.respuesta}</div>`:''}
+                        <div class="tl-tramite">${g.tramite || g.respuesta || '—'}</div>
+
                         <div class="tl-meta">${g.user?.nombre||'Sistema'} · ${formatFechaLarga(g.created_at)} ${g.fecha_recordar?`· 🔔 Recordar: ${formatFechaLarga(g.fecha_recordar)}`:''}${g.estado_resultado?` · Estado: ${labelEstado(g.estado_resultado)}`:''}</div>
                     </div>
                 </div>`).join('');
@@ -775,9 +775,43 @@ function _mostrarModalGestion(incId, familia, inc = {}) {
     const optTipos = Object.entries(TIPOS)
         .map(([k,v]) => `<option value="${k}">${v}</option>`).join('');
 
-    // Opciones de estado — pre-selecciona el estado actual
-    const optEstados = Object.entries(ESTADOS)
-        .map(([k,v]) => `<option value="${k}" ${k === estadoActual ? 'selected' : ''}>${v.label||v}</option>`).join('');
+    // ── Mapa de transiciones válidas (máquina de estados) ──────────────────
+    const TRANSICIONES = {
+        'recibido':                    ['transcripcion_ips', 'radicada'],
+        'transcripcion_ips':           ['radicada'],
+        'radicada':                    ['negada', 'en_liquidacion'],
+        'negada':                      ['radicada', 'rechazado', 'derecho_peticion'],
+        'derecho_peticion':            ['derecho_peticion_radicado'],
+        'derecho_peticion_radicado':   ['rechazado', 'tutela', 'en_liquidacion'],
+        'tutela':                      ['tutela_radicada', 'rechazado'],
+        'tutela_radicada':             ['en_liquidacion', 'rechazado'],
+        'en_liquidacion':              ['pagada_razon_social'],
+        'pagada_razon_social':         ['pagada_afiliado'],
+        'pagada_afiliado':             ['cierre_exitoso'],
+        'cierre_exitoso':              [],
+        'rechazado':                   [],
+        // legacy
+        'pagada':                      [],
+        'liquidacion':                 ['pagada_razon_social'],
+        'transcripcion':               ['radicada'],
+    };
+
+    const siguientesValidos = TRANSICIONES[estadoActual] || [];
+
+    // Construir opciones: solo los estados válidos desde el actual
+    const optEstados = siguientesValidos.length === 0
+        ? `<option value="" disabled style="color:#94a3b8">— Estado final, sin transiciones disponibles —</option>`
+        : siguientesValidos.map(k => {
+            const cfg = ESTADOS[k] || {};
+            const lbl = (cfg.label || k).replace(/[\u{1F000}-\u{1FFFF}]/gu, '').trim() || cfg.label || k;
+            const icons = { secondary:'⬜', info:'🔵', primary:'📋', warning:'🟡', danger:'🔴', success:'🟢' };
+            const dot = icons[cfg.color || 'secondary'] || '⬜';
+            return `<option value="${k}">${dot} ${cfg.label || k}</option>`;
+          }).join('');
+
+    // Indicador visual de estado actual
+    const estadoActualCfg = ESTADOS[estadoActual] || {};
+    const estadoActualLbl = estadoActualCfg.label || estadoActual || '—';
 
     const html = `
     <div class="modal-header" style="background:linear-gradient(135deg,#1e40af,#0891b2);border-radius:16px 16px 0 0">
@@ -805,21 +839,18 @@ function _mostrarModalGestion(incId, familia, inc = {}) {
                 <select id="gTipo" class="form-control">${optTipos}</select>
             </div>
             <div class="form-group">
-                <label>Actualizar Estado <span style="font-size:.7rem;color:#94a3b8">(opcional)</span></label>
-                <select id="gEstado" class="form-control">
-                    <option value="">— Sin cambio de estado —</option>
+                <label>Estado de la incapacidad</label>
+                <select id="gEstado" class="form-control" ${siguientesValidos.length === 0 ? 'disabled' : ''}>
+                    <option value="" selected>${estadoActualLbl}</option>
                     ${optEstados}
                 </select>
             </div>
         </div>
 
         <div class="form-group">
-            <label>Gestión realizada *</label>
-            <textarea id="gTramite" class="form-control" style="min-height:70px" placeholder="Describe qué se hizo: llamada a EPS, consulta en portal, etc."></textarea>
-        </div>
-        <div class="form-group">
-            <label>Respuesta / Resultado <span style="font-size:.7rem;color:#94a3b8">(opcional)</span></label>
-            <textarea id="gRespuesta" class="form-control" style="min-height:48px" placeholder="Qué respondió la entidad, cliente, etc."></textarea>
+            <label>Observación / Gestión</label>
+            <textarea id="gRespuesta" class="form-control" style="min-height:90px"
+                placeholder="Describe qué se hizo y qué respondió la entidad..."></textarea>
         </div>
 
         <div id="gAlertaCierre" style="display:none;background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:.6rem .85rem;font-size:.78rem;color:#92400e">
@@ -895,49 +926,356 @@ function _mostrarModalGestion(incId, familia, inc = {}) {
     overlay.classList.add('open');
 }
 
-// Carga las cuentas bancarias de la Razón Social vía API
+// Carga el panel de pago a Razón Social con selector de forma de pago
 function _cargarCuentasRS(incId) {
     const box = document.getElementById('gCuentasRSContent');
-    if (!box) return;
-    box.innerHTML = '<div style="font-size:.8rem;color:#94a3b8">⏳ Cargando cuentas...</div>';
+    if (!box || box.dataset.loaded === incId.toString()) return;
+    box.dataset.loaded = incId.toString();
+    box.innerHTML = '<div style="font-size:.8rem;color:#94a3b8">⏳ Cargando...</div>';
+
     fetch(`/admin/incapacidades/${incId}/cuentas-rs`)
         .then(r => r.json()).then(d => {
-            if (!d.ok) { box.innerHTML = '<div style="color:#ef4444;font-size:.8rem">Error al cargar cuentas.</div>'; return; }
-            const cuentas = d.cuentas || [];
-            if (!cuentas.length) {
-                box.innerHTML = `
-                <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:.6rem .8rem;font-size:.8rem;color:#c2410c">
-                    ⚠️ <strong>Sin cuenta configurada</strong> para ${d.rs_nombre || 'esta Razón Social'}.<br>
-                    <a href="/admin/configuracion/cuentas" target="_blank" style="color:#2563eb;text-decoration:underline">
-                        → Ir a Configuración → Cuentas Bancarias
-                    </a>
-                </div>`;
-                return;
-            }
-            const opts = cuentas.map(c =>
-                `<option value="${c.id}">${c.banco} · ${c.tipo_cuenta||''} · ****${(c.numero_cuenta||'').slice(-4)} (${c.nombre})</option>`
-            ).join('');
+            if (!d.ok) { box.innerHTML = '<div style="color:#ef4444;font-size:.8rem">Error al cargar.</div>'; return; }
+            // Guardar cuentas en variable global para usarlas en el mini-modal
+            window._rsIncId      = incId;
+            window._rsCuentas    = d.cuentas || [];
+            window._rsCuentaOpts = window._rsCuentas.length
+                ? window._rsCuentas.map(c =>
+                    `<option value="${c.id}">${c.banco} · ${c.tipo_cuenta||''} · ****${(c.numero_cuenta||'').slice(-4)} (${c.nombre})</option>`
+                  ).join('')
+                : '';
+
+            // Inputs ocultos para los valores que se enviarán al guardar la gestión
             box.innerHTML = `
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:.55rem;margin-bottom:.5rem">
-                <div class="form-group" style="margin:0;grid-column:1/-1">
-                    <label>Cuenta que recibió el pago *</label>
-                    <select id="gBancoCuentaId" class="form-control">${opts}</select>
-                </div>
-                <div class="form-group" style="margin:0">
-                    <label>Valor recibido *</label>
-                    <input type="number" id="gValorPagoRS" class="form-control" placeholder="0" min="0" step="1000">
-                </div>
-                <div class="form-group" style="margin:0">
-                    <label>Fecha del ingreso *</label>
-                    <input type="date" id="gFechaPagoRS" class="form-control" value="${new Date().toISOString().substring(0,10)}">
-                </div>
+            <input type="hidden" id="gFormaPagoRS" value="">
+            <input type="hidden" id="gBancoCuentaId" value="">
+            <input type="hidden" id="gValorPagoRS" value="">
+            <input type="hidden" id="gFechaPagoRS" value="">
+            <input type="hidden" id="gRefPagoRS" value="">
+
+            <div class="form-group" style="margin:0 0 .35rem">
+                <label style="font-weight:600;font-size:.82rem">¿Cómo se recibió el pago? *</label>
             </div>
-            <div style="font-size:.72rem;color:#0369a1;background:#e0f2fe;border-radius:5px;padding:.3rem .6rem">
-                💡 Se registrará una consignación en el banco y un abono a esta incapacidad.
+            <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:.45rem" id="gFormasPago">
+                ${[
+                    ['transferencia', '🏦', 'Transferencia\n/ Consignación'],
+                    ['odi',           '📋', 'ODI'],
+                    ['cheque',        '🧾', 'Cheque'],
+                    ['directo',       '👤', 'Directo al\nCliente'],
+                    ['otro',          '📎', 'Otro'],
+                ].map(([val, ico, lbl]) => `
+                    <button type="button" onclick="_selFormaRS('${val}')"
+                        id="gBtnForma_${val}"
+                        style="padding:.5rem .4rem;border:1.5px solid #cbd5e1;border-radius:10px;
+                               background:#f8fafc;cursor:pointer;font-size:.74rem;text-align:center;
+                               transition:all .15s;line-height:1.35;white-space:pre-line">
+                        <div style="font-size:1.1rem;margin-bottom:.15rem">${ico}</div>${lbl}
+                    </button>`).join('')}
+            </div>
+            <div id="gResumenFormaRS" style="display:none;margin-top:.55rem;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:.45rem .65rem;font-size:.78rem;color:#0369a1">
             </div>`;
         }).catch(() => {
-            box.innerHTML = '<div style="color:#ef4444;font-size:.8rem">Error de red al cargar cuentas.</div>';
+            box.innerHTML = '<div style="color:#ef4444;font-size:.8rem">Error de red.</div>';
         });
+}
+
+function _selFormaRS(forma) {
+    // Resaltar botón activo
+    document.querySelectorAll('#gFormasPago button').forEach(b => {
+        b.style.background  = '#f8fafc';
+        b.style.borderColor = '#cbd5e1';
+        b.style.color       = '#374151';
+    });
+    const activeBtn = document.getElementById(`gBtnForma_${forma}`);
+    if (activeBtn) {
+        activeBtn.style.background  = '#1e40af';
+        activeBtn.style.borderColor = '#1e40af';
+        activeBtn.style.color       = '#fff';
+    }
+
+    if (forma === 'directo') {
+        // Sin mini-modal — solo marcar y mostrar resumen
+        document.getElementById('gFormaPagoRS').value = 'directo';
+        document.getElementById('gBancoCuentaId').value = '';
+        document.getElementById('gValorPagoRS').value   = '';
+        document.getElementById('gFechaPagoRS').value   = new Date().toISOString().substring(0,10);
+        document.getElementById('gRefPagoRS').value     = '';
+        const resumen = document.getElementById('gResumenFormaRS');
+        if (resumen) {
+            resumen.style.display = 'block';
+            resumen.innerHTML = '👤 <strong>Directo al cliente</strong> — La entidad pagó directamente al afiliado. Ingresa el valor en el campo de gestión o deja en $0 si es solo registro.';
+        }
+        _abrirMiniModalRS(forma);
+        return;
+    }
+
+    _abrirMiniModalRS(forma);
+}
+
+function _abrirMiniModalRS(forma) {
+    const today = new Date().toISOString().substring(0,10);
+
+    let titulo = '', cuerpo = '';
+
+    if (forma === 'transferencia') {
+        const sinCuenta = !window._rsCuentaOpts;
+        titulo = '🏦 Transferencia / Consignación';
+        cuerpo = `
+        ${sinCuenta ? `
+        <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:.5rem .7rem;font-size:.79rem;color:#c2410c;margin-bottom:.6rem">
+            ⚠️ <strong>Sin cuenta bancaria configurada</strong> para esta Razón Social.<br>
+            <a href="/admin/configuracion/cuentas" target="_blank" style="color:#2563eb;text-decoration:underline">→ Configurar cuenta</a>
+        </div>` : `
+        <div class="form-group" style="margin:0 0 .5rem">
+            <label>Cuenta que recibió el pago *</label>
+            <select id="_mBancoCuenta" class="form-control">${window._rsCuentaOpts}</select>
+        </div>`}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-bottom:.5rem">
+            <div class="form-group" style="margin:0">
+                <label>Valor recibido *</label>
+                <input type="number" id="_mValor" class="form-control" placeholder="0" min="0" step="1000" ${sinCuenta ? '' : 'autofocus'}>
+            </div>
+            <div class="form-group" style="margin:0">
+                <label>Fecha de recepción *</label>
+                <input type="date" id="_mFecha" class="form-control" value="${today}">
+            </div>
+        </div>
+        <!-- Foto del comprobante -->
+        <div class="form-group" style="margin:0">
+            <label style="font-size:.78rem">Foto del comprobante <span style="color:#94a3b8">(opcional)</span></label>
+            <div id="_mFotoZone" onclick="document.getElementById('_mFotoInput').click()"
+                style="border:2px dashed #bae6fd;border-radius:8px;padding:.6rem;text-align:center;
+                       cursor:pointer;font-size:.78rem;color:#0369a1;background:#f0f9ff;margin-top:.25rem"
+                ondragover="event.preventDefault()" ondrop="_dropFotoRS(event)">
+                <div id="_mFotoPreview">📷 Haz clic o arrastra la imagen / PDF</div>
+            </div>
+            <input type="file" id="_mFotoInput" accept="image/*,application/pdf" style="display:none"
+                onchange="_previewFotoRS(this)">
+        </div>
+        <div style="font-size:.71rem;color:#0369a1;background:#e0f2fe;border-radius:5px;padding:.3rem .55rem;margin-top:.5rem">
+            💡 Se registrará una consignación bancaria.
+        </div>`;
+        // Guardar flag para deshabilitar Confirmar si sin cuenta
+        window._miniModalSinCuenta = sinCuenta;
+    } else if (forma === 'odi') {
+        titulo = '📋 ODI — Orden de la Entidad';
+        cuerpo = `
+        <div class="form-group" style="margin:0 0 .5rem">
+            <label>Número de Referencia ODI</label>
+            <input type="text" id="_mRef" class="form-control" placeholder="Ej: ODI-2026-001" autofocus>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem">
+            <div class="form-group" style="margin:0">
+                <label>Valor *</label>
+                <input type="number" id="_mValor" class="form-control" placeholder="0" min="0" step="1000">
+            </div>
+            <div class="form-group" style="margin:0">
+                <label>Fecha *</label>
+                <input type="date" id="_mFecha" class="form-control" value="${today}">
+            </div>
+        </div>`;
+    } else if (forma === 'cheque') {
+        titulo = '🧾 Pago con Cheque';
+        cuerpo = `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-bottom:.5rem">
+            <div class="form-group" style="margin:0">
+                <label>Número de Cheque</label>
+                <input type="text" id="_mRef" class="form-control" placeholder="Ej: 0012345" autofocus>
+            </div>
+            <div class="form-group" style="margin:0">
+                <label>Banco Emisor</label>
+                <input type="text" id="_mBancoEmisor" class="form-control" placeholder="Ej: Bancolombia">
+            </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem">
+            <div class="form-group" style="margin:0">
+                <label>Valor *</label>
+                <input type="number" id="_mValor" class="form-control" placeholder="0" min="0" step="1000">
+            </div>
+            <div class="form-group" style="margin:0">
+                <label>Fecha *</label>
+                <input type="date" id="_mFecha" class="form-control" value="${today}">
+            </div>
+        </div>`;
+    } else if (forma === 'directo') {
+        titulo = '👤 Directo al Cliente';
+        cuerpo = `
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:.5rem .7rem;font-size:.8rem;color:#065f46;margin-bottom:.5rem">
+            La entidad pagó directamente al afiliado.
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem">
+            <div class="form-group" style="margin:0">
+                <label>Valor (informativo)</label>
+                <input type="number" id="_mValor" class="form-control" placeholder="0 si no se conoce" min="0" step="1000" autofocus>
+            </div>
+            <div class="form-group" style="margin:0">
+                <label>Fecha</label>
+                <input type="date" id="_mFecha" class="form-control" value="${today}">
+            </div>
+        </div>`;
+    } else { // otro
+        titulo = '📎 Otro Medio de Pago';
+        cuerpo = `
+        <div class="form-group" style="margin:0 0 .5rem">
+            <label>Referencia / Descripción</label>
+            <input type="text" id="_mRef" class="form-control" placeholder="Describe el medio de pago" autofocus>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem">
+            <div class="form-group" style="margin:0">
+                <label>Valor *</label>
+                <input type="number" id="_mValor" class="form-control" placeholder="0" min="0" step="1000">
+            </div>
+            <div class="form-group" style="margin:0">
+                <label>Fecha *</label>
+                <input type="date" id="_mFecha" class="form-control" value="${today}">
+            </div>
+        </div>`;
+    }
+
+    // Crear o reutilizar mini-modal
+    let mini = document.getElementById('miniModalRS');
+    if (!mini) {
+        mini = document.createElement('div');
+        mini.id = 'miniModalRS';
+        mini.style.cssText = `position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;
+            display:flex;align-items:center;justify-content:center`;
+        document.body.appendChild(mini);
+    }
+    mini.innerHTML = `
+    <div style="background:#fff;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.3);
+                width:min(500px,94vw);animation:fadeInUp .2s ease">
+        <div style="background:linear-gradient(135deg,#1e40af,#0891b2);border-radius:16px 16px 0 0;
+                    padding:.85rem 1.2rem;display:flex;justify-content:space-between;align-items:center">
+            <h4 style="color:#fff;margin:0;font-size:.95rem;font-weight:700">${titulo}</h4>
+            <button onclick="_cerrarMiniModalRS()"
+                style="background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:8px;
+                       cursor:pointer;font-size:1rem;padding:.2rem .55rem">✕</button>
+        </div>
+        <div style="padding:1.1rem 1.2rem">
+            ${cuerpo}
+        </div>
+        <div style="padding:.75rem 1.2rem;border-top:1px solid #e2e8f0;display:flex;gap:.5rem;justify-content:flex-end">
+            <button onclick="_cerrarMiniModalRS()"
+                class="btn btn-secondary" style="font-size:.82rem">Cancelar</button>
+            <button id="_mBtnConfirmar" onclick="_confirmarFormaRS('${forma}')"
+                class="btn btn-primary" style="font-size:.82rem"
+                ${forma === 'transferencia' && window._miniModalSinCuenta ? 'disabled title="Configura la cuenta bancaria primero"' : ''}>
+                ✅ Confirmar
+            </button>
+        </div>
+    </div>`;
+    mini.style.display = 'flex';
+    setTimeout(() => mini.querySelector('input:not([disabled]), select')?.focus(), 100);
+
+    // ── Listener Ctrl+V para pegar imagen desde portapapeles ──────────────
+    window._rsPasteHandler = (e) => {
+        if (forma !== 'transferencia') return;
+        const items = e.clipboardData?.items;
+        if (!items) return;
+        for (const item of items) {
+            if (item.type.startsWith('image/')) {
+                const file = item.getAsFile();
+                if (!file) continue;
+                // Simular selección en el input para reutilizar _previewFotoRS
+                const dt = new DataTransfer();
+                dt.items.add(file);
+                const inp = document.getElementById('_mFotoInput');
+                if (inp) { inp.files = dt.files; _previewFotoRS(inp); }
+                // Mostrar hint de que se pegó
+                const zone = document.getElementById('_mFotoZone');
+                if (zone) {
+                    zone.style.borderColor = '#22c55e';
+                    zone.style.background  = '#f0fdf4';
+                    setTimeout(() => {
+                        if (zone) { zone.style.borderColor = '#bae6fd'; zone.style.background = '#f0f9ff'; }
+                    }, 800);
+                }
+                e.preventDefault();
+                break;
+            }
+        }
+    };
+    document.addEventListener('paste', window._rsPasteHandler);
+
+    // Mostrar hint Ctrl+V en la zona de foto si existe
+    setTimeout(() => {
+        const prev = document.getElementById('_mFotoPreview');
+        if (prev && prev.textContent.includes('clic')) {
+            prev.innerHTML = '📷 Clic, arrastra o <kbd style="background:#e2e8f0;padding:.1rem .3rem;border-radius:4px;font-size:.85em">Ctrl+V</kbd> para pegar';
+        }
+    }, 150);
+}
+
+function _cerrarMiniModalRS() {
+    if (window._rsPasteHandler) {
+        document.removeEventListener('paste', window._rsPasteHandler);
+        window._rsPasteHandler = null;
+    }
+    document.getElementById('miniModalRS')?.remove();
+}
+
+
+function _previewFotoRS(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const prev = document.getElementById('_mFotoPreview');
+    if (!prev) return;
+    if (file.type.startsWith('image/')) {
+        const url = URL.createObjectURL(file);
+        prev.innerHTML = `<img src="${url}" style="max-height:80px;border-radius:6px;object-fit:contain"> <div style="margin-top:.2rem;font-size:.72rem;color:#065f46">${file.name}</div>`;
+    } else {
+        prev.innerHTML = `📄 ${file.name}`;
+    }
+    window._rsFotoFile = file;
+}
+function _dropFotoRS(e) {
+    e.preventDefault();
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+    const input = document.getElementById('_mFotoInput');
+    const dt = new DataTransfer(); dt.items.add(file); input.files = dt.files;
+    _previewFotoRS(input);
+}
+
+function _confirmarFormaRS(forma) {
+    if (forma === 'transferencia' && window._miniModalSinCuenta) {
+        alert('Debes configurar una cuenta bancaria para esta Razón Social antes de continuar.');
+        return;
+    }
+
+    const valor = document.getElementById('_mValor')?.value || '0';
+    const fecha = document.getElementById('_mFecha')?.value || new Date().toISOString().substring(0,10);
+    const ref   = document.getElementById('_mRef')?.value || '';
+    const banco = document.getElementById('_mBancoCuenta')?.value || '';
+    const bancoEmisor = document.getElementById('_mBancoEmisor')?.value || '';
+
+    // Guardar en los inputs ocultos del panel principal
+    document.getElementById('gFormaPagoRS').value  = forma;
+    document.getElementById('gBancoCuentaId').value = banco;
+    document.getElementById('gValorPagoRS').value  = valor;
+    document.getElementById('gFechaPagoRS').value  = fecha;
+    document.getElementById('gRefPagoRS').value    = ref + (bancoEmisor ? ` · Banco: ${bancoEmisor}` : '');
+
+    // Resumen visible en el panel
+    const formaLabel = {
+        transferencia: '🏦 Transferencia/Consignación',
+        odi:           '📋 ODI',
+        cheque:        '🧾 Cheque',
+        directo:       '👤 Directo al cliente',
+        otro:          '📎 Otro',
+    }[forma] || forma;
+
+    const valorFmt = Number(valor) > 0 ? ' · $' + Number(valor).toLocaleString('es-CO') : '';
+    const refTxt   = ref ? ` · Ref: ${ref}` : '';
+    const fotoTxt  = (forma === 'transferencia' && window._rsFotoFile) ? ' 📸' : '';
+
+    const resumen = document.getElementById('gResumenFormaRS');
+    if (resumen) {
+        resumen.style.display = 'block';
+        resumen.innerHTML = `<strong>${formaLabel}</strong>${valorFmt}${refTxt} · ${fecha}${fotoTxt} ✅`;
+    }
+
+    document.getElementById('miniModalRS')?.remove();
 }
 
 
@@ -952,9 +1290,7 @@ function _actualizarSubtituloGestion(sel) {
 function enviarGestion(incId) {
     const alcanceEl = document.getElementById('gAlcance');
     const alcanceVal = alcanceEl?.value || 'esta_incapacidad';
-    const tramite = document.getElementById('gTramite').value.trim();
-
-    if (!tramite) { alert('Por favor ingresa la gestión realizada.'); return; }
+    const tramite = document.getElementById('gRespuesta').value.trim();
 
     // Determinar incapacidad destino y alcance a enviar
     let targetId = incId;
@@ -968,19 +1304,22 @@ function enviarGestion(incId) {
     }
 
     const estadoNuevo = document.getElementById('gEstado').value || null;
+    const esPagoRS    = estadoNuevo === 'pagada_razon_social';
 
     const body = {
         tipo:            document.getElementById('gTipo').value,
         tramite:         tramite,
-        respuesta:       document.getElementById('gRespuesta').value,
+
         estado_nuevo:    estadoNuevo,
         alcance:         alcance,
         numero_radicado: estadoNuevo === 'radicada' ? (document.getElementById('gNumRadicado')?.value || null) : null,
         fecha_radicado:  estadoNuevo === 'radicada' ? (document.getElementById('gFechaRadicado')?.value || null) : null,
         // Pago a Razón Social
-        banco_cuenta_id: estadoNuevo === 'pagada_razon_social' ? (document.getElementById('gBancoCuentaId')?.value || null) : null,
-        valor_pago_rs:   estadoNuevo === 'pagada_razon_social' ? (document.getElementById('gValorPagoRS')?.value || null) : null,
-        fecha_pago_rs:   estadoNuevo === 'pagada_razon_social' ? (document.getElementById('gFechaPagoRS')?.value || null) : null,
+        forma_pago_rs:   esPagoRS ? (document.getElementById('gFormaPagoRS')?.value || null) : null,
+        banco_cuenta_id: esPagoRS ? (document.getElementById('gBancoCuentaId')?.value || null) : null,
+        valor_pago_rs:   esPagoRS ? (document.getElementById('gValorPagoRS')?.value || null) : null,
+        fecha_pago_rs:   esPagoRS ? (document.getElementById('gFechaPagoRS')?.value || null) : null,
+        ref_pago_rs:     esPagoRS ? (document.getElementById('gRefPagoRS')?.value || null) : null,
         _token:          TOKEN,
     };
 
@@ -989,6 +1328,12 @@ function enviarGestion(incId) {
     if (estadoNuevo === 'radicada' && numRadicadoInput && !body.numero_radicado) {
         alert('Por favor ingresa el Número Radicado.');
         return;
+    }
+
+    // Validar pago RS
+    if (esPagoRS) {
+        if (!body.forma_pago_rs) { alert('Selecciona la forma en que se recibió el pago.'); return; }
+        if (!body.valor_pago_rs || Number(body.valor_pago_rs) <= 0) { alert('Ingresa el valor recibido.'); return; }
     }
 
     const btn = document.querySelector('#modalGestion .btn-primary');
@@ -1001,8 +1346,17 @@ function enviarGestion(incId) {
     }).then(r => r.json()).then(d => {
         if (btn) { btn.disabled = false; btn.textContent = '💾 Guardar Gestión'; }
         if (d.ok) {
+            // Subir foto de comprobante si hay una y se creó consignación
+            if (d.consignacion_id && window._rsFotoFile) {
+                const fd = new FormData();
+                fd.append('imagen', window._rsFotoFile);
+                fd.append('_token', TOKEN);
+                fetch(`/admin/facturacion/consignacion/${d.consignacion_id}/imagen`, {
+                    method: 'POST', body: fd,
+                }).catch(() => {}); // silencioso
+                window._rsFotoFile = null;
+            }
             document.getElementById('modalGestion').classList.remove('open');
-            // Refrescar el modal de detalle con el ID original
             const detalleId = document.getElementById('modalDetalle')?.dataset?.incId || incId;
             verDetalle(parseInt(detalleId));
         } else {
@@ -1013,6 +1367,7 @@ function enviarGestion(incId) {
         alert('Error de red: ' + e.message);
     });
 }
+
 
 
 

@@ -23,6 +23,11 @@
 .btn-del:hover{background:#fecaca}
 .empty-state{padding:2.5rem;text-align:center;color:#94a3b8;font-size:.85rem}
 .nit-col{font-family:monospace;font-size:.75rem;color:#64748b}
+.num-col{font-size:.7rem;color:#94a3b8;font-weight:600;text-align:center;width:32px}
+.badge-activos{background:#dbeafe;color:#1d4ed8;font-size:.65rem;font-weight:700;padding:.15rem .5rem;border-radius:20px;white-space:nowrap}
+.badge-sin-activos{background:#f1f5f9;color:#94a3b8;font-size:.65rem;font-weight:600;padding:.15rem .5rem;border-radius:20px;white-space:nowrap}
+.badge-antiguedad{background:#f0fdf4;color:#15803d;font-size:.65rem;font-weight:600;padding:.15rem .5rem;border-radius:20px;white-space:nowrap}
+.badge-sin-fecha{background:#fef9c3;color:#a16207;font-size:.65rem;font-weight:600;padding:.15rem .5rem;border-radius:20px;white-space:nowrap}
 </style>
 
 {{-- Header --}}
@@ -92,19 +97,47 @@
     <table class="tbl">
         <thead>
             <tr>
+                <th class="num-col">#</th>
+                <th>ID</th>
                 <th>NIT</th>
                 <th>Razón Social</th>
                 <th>ARL</th>
                 <th>Caja</th>
                 <th>Estado</th>
                 <th>Tipo</th>
+                <th style="text-align:center">Activos</th>
+                <th>Antigüedad</th>
                 <th style="text-align:right">Acciones</th>
             </tr>
         </thead>
         <tbody>
             @forelse($razones as $rs)
+            @php
+                $rowNum = ($razones->currentPage() - 1) * $razones->perPage() + $loop->iteration;
+
+                // Formatear NIT con DV
+                $nitFormateado = null;
+                if (!is_null($rs->nit) && $rs->nit !== '') {
+                    $nitStr = number_format((int)$rs->nit, 0, ',', '.');
+                    $nitFormateado = $nitStr . ((!is_null($rs->dv) && $rs->dv !== '') ? '-' . $rs->dv : '');
+                }
+
+                // Calcular antigüedad desde fecha_constitucion
+                $antiguedad = null;
+                if (!empty($rs->fecha_constitucion)) {
+                    $fechaConst = \Carbon\Carbon::parse($rs->fecha_constitucion);
+                    $diff = $fechaConst->diff(\Carbon\Carbon::now());
+                    $partes = [];
+                    if ($diff->y > 0) $partes[] = $diff->y . ' año' . ($diff->y !== 1 ? 's' : '');
+                    if ($diff->m > 0) $partes[] = $diff->m . ' mes' . ($diff->m !== 1 ? 'es' : '');
+                    if (empty($partes)) $partes[] = $diff->d . ' día' . ($diff->d !== 1 ? 's' : '');
+                    $antiguedad = implode(', ', $partes);
+                }
+            @endphp
             <tr>
-                <td class="nit-col">{{ number_format($rs->id, 0, ',', '.') }}</td>
+                <td class="num-col" style="color:#94a3b8;font-size:.7rem">{{ $rowNum }}</td>
+                <td class="nit-col">{{ $rs->id }}</td>
+                <td class="nit-col">{{ $nitFormateado ?? '—' }}</td>
                 <td style="font-weight:600;color:#1e293b">{{ $rs->razon_social }}</td>
                 <td style="font-size:.75rem;color:#475569">{{ $rs->arl_nombre ?? '—' }}</td>
                 <td style="font-size:.75rem;color:#475569">{{ $rs->caja_nombre ?? '—' }}</td>
@@ -123,17 +156,31 @@
                     <span style="font-size:.7rem;color:#94a3b8">Normal</span>
                     @endif
                 </td>
+                <td style="text-align:center">
+                    @if($rs->personas_activas > 0)
+                    <span class="badge-activos">{{ $rs->personas_activas }} 👤</span>
+                    @else
+                    <span class="badge-sin-activos">0</span>
+                    @endif
+                </td>
+                <td>
+                    @if($antiguedad)
+                    <span class="badge-antiguedad">{{ $antiguedad }}</span>
+                    @else
+                    <span class="badge-sin-fecha">Sin fecha</span>
+                    @endif
+                </td>
                 <td style="text-align:right;white-space:nowrap">
                     <a href="{{ route('admin.configuracion.razones.edit', $rs->id) }}" class="btn-edit">✏️ Editar</a>
-                    <form method="POST" action="{{ route('admin.configuracion.razones.destroy', $rs->id) }}" style="display:inline"
-                          onsubmit="return confirm('¿Eliminar «{{ addslashes($rs->razon_social) }}»? Solo es posible si no tiene contratos.')">
-                        @csrf @method('DELETE')
-                        <button type="submit" class="btn-del">🗑</button>
-                    </form>
+                    <button type="button" class="btn-del"
+                            onclick="abrirModalGestion({{ $rs->id }}, '{{ addslashes($rs->razon_social) }}')"
+                            title="Gestionar / Inactivar / Eliminar">
+                        🗑
+                    </button>
                 </td>
             </tr>
             @empty
-            <tr><td colspan="7"><div class="empty-state">🏭 No hay razones sociales. <a href="{{ route('admin.configuracion.razones.create') }}">Crear la primera</a></div></td></tr>
+            <tr><td colspan="11"><div class="empty-state">🏭 No hay razones sociales. <a href="{{ route('admin.configuracion.razones.create') }}">Crear la primera</a></div></td></tr>
             @endforelse
         </tbody>
     </table>
@@ -253,3 +300,144 @@
 </style>
 
 @endsection
+
+{{-- ══ MODAL GESTIÓN RS ══════════════════════════════════════════ --}}
+<div id="rsGestionModal" style="display:none;position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.5);backdrop-filter:blur(4px);align-items:center;justify-content:center">
+    <div style="background:#fff;border-radius:16px;width:100%;max-width:440px;margin:1rem;box-shadow:0 20px 60px rgba(0,0,0,.25);overflow:hidden">
+
+        {{-- Header --}}
+        <div id="rsModal-header" style="padding:1.2rem 1.4rem .8rem;border-bottom:1px solid #f1f5f9;display:flex;justify-content:space-between;align-items:flex-start">
+            <div>
+                <div style="font-size:.65rem;color:#94a3b8;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.2rem">Gestión</div>
+                <div id="rsModal-nombre" style="font-size:.95rem;font-weight:800;color:#0f172a">Razón Social</div>
+            </div>
+            <button onclick="cerrarModalGestion()" style="border:none;background:none;font-size:1.2rem;cursor:pointer;color:#94a3b8;line-height:1">&#215;</button>
+        </div>
+
+        {{-- Cuerpo --}}
+        <div id="rsModal-body" style="padding:1.2rem 1.4rem">
+
+            {{-- Loading --}}
+            <div id="rsModal-loading" style="text-align:center;padding:2rem;color:#64748b;font-size:.85rem">
+                <div style="font-size:1.5rem;margin-bottom:.5rem">⏳</div>
+                Verificando contratos...
+            </div>
+
+            {{-- Error: tiene vigentes --}}
+            <div id="rsModal-bloqueado" style="display:none">
+                <div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:10px;padding:1rem;margin-bottom:1rem">
+                    <div style="font-size:.9rem;font-weight:700;color:#dc2626;margin-bottom:.4rem">⚠️ Tiene afiliados activos</div>
+                    <div style="font-size:.8rem;color:#b91c1c" id="rsModal-msg-vigentes"></div>
+                </div>
+                <p style="font-size:.8rem;color:#64748b">Para inactivar esta razón social primero debe retirar o trasladar todos los contratos vigentes.</p>
+            </div>
+
+            {{-- Solo inactivar (tuvo contratos pero no vigentes) --}}
+            <div id="rsModal-solo-inactivar" style="display:none">
+                <div style="background:#fef9c3;border:1px solid #fde68a;border-radius:10px;padding:1rem;margin-bottom:1rem">
+                    <div style="font-size:.85rem;font-weight:600;color:#92400e">📄 Ha tenido contratos históricos</div>
+                    <div style="font-size:.78rem;color:#78350f;margin-top:.3rem">Esta razón social ha tenido contratos vinculados. Solo puede <strong>inactivarse</strong>, no eliminarse.</div>
+                </div>
+                <form id="rsForm-inactivar" method="POST" action="">
+                    @csrf @method('PATCH')
+                    <button type="submit" style="width:100%;padding:.65rem;background:linear-gradient(135deg,#f59e0b,#d97706);border:none;border-radius:10px;color:#fff;font-size:.9rem;font-weight:700;cursor:pointer">
+                        🔒 Inactivar Razón Social
+                    </button>
+                </form>
+            </div>
+
+            {{-- Sin contratos: inactivar O eliminar --}}
+            <div id="rsModal-sin-contratos" style="display:none">
+                <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:1rem;margin-bottom:1.2rem">
+                    <div style="font-size:.85rem;font-weight:600;color:#15803d">✅ Sin contratos registrados</div>
+                    <div style="font-size:.78rem;color:#166534;margin-top:.3rem">Esta razón social nunca ha tenido contratos. Puede inactivarla o eliminarla permanentemente.</div>
+                </div>
+
+                <div style="display:flex;flex-direction:column;gap:.75rem">
+                    <form id="rsForm-inactivar2" method="POST" action="">
+                        @csrf @method('PATCH')
+                        <button type="submit" style="width:100%;padding:.6rem;background:#f1f5f9;border:1.5px solid #cbd5e1;border-radius:10px;color:#334155;font-size:.85rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:.4rem">
+                            🔒 Inactivar Razón Social
+                        </button>
+                    </form>
+
+                    <div style="text-align:center;font-size:.72rem;color:#94a3b8">o</div>
+
+                    <form id="rsForm-eliminar" method="POST" action="" onsubmit="return confirmarEliminacion()">
+                        @csrf @method('DELETE')
+                        <button type="submit" style="width:100%;padding:.6rem;background:linear-gradient(135deg,#ef4444,#dc2626);border:none;border-radius:10px;color:#fff;font-size:.85rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:.4rem">
+                            🗑️ Eliminar definitivamente
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let rsModalNombre = '';
+
+function abrirModalGestion(id, nombre) {
+    rsModalNombre = nombre;
+    document.getElementById('rsModal-nombre').textContent = nombre;
+
+    // Reset estados
+    document.getElementById('rsModal-loading').style.display = 'block';
+    document.getElementById('rsModal-bloqueado').style.display     = 'none';
+    document.getElementById('rsModal-solo-inactivar').style.display = 'none';
+    document.getElementById('rsModal-sin-contratos').style.display  = 'none';
+
+    // Mostrar modal
+    const modal = document.getElementById('rsGestionModal');
+    modal.style.display = 'flex';
+
+    // Consultar API
+    fetch(`/admin/configuracion/razones-sociales/${id}/estado-contratos`, {
+        headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
+    })
+    .then(r => r.json())
+    .then(data => {
+        document.getElementById('rsModal-loading').style.display = 'none';
+
+        const urlInactivar = `/admin/configuracion/razones-sociales/${id}/inactivar`;
+        const urlEliminar  = `/admin/configuracion/razones-sociales/${id}`;
+
+        if (data.vigentes > 0) {
+            // Bloqueado: tiene vigentes
+            document.getElementById('rsModal-msg-vigentes').textContent =
+                `Tiene ${data.vigentes} contrato(s) vigente(s). Retire o traslade los afiliados antes de continuar.`;
+            document.getElementById('rsModal-bloqueado').style.display = 'block';
+
+        } else if (!data.puede_eliminar) {
+            // Solo inactivar (tuvo contratos en el pasado)
+            document.getElementById('rsForm-inactivar').action = urlInactivar;
+            document.getElementById('rsModal-solo-inactivar').style.display = 'block';
+
+        } else {
+            // Sin contratos: puede inactivar O eliminar
+            document.getElementById('rsForm-inactivar2').action = urlInactivar;
+            document.getElementById('rsForm-eliminar').action   = urlEliminar;
+            document.getElementById('rsModal-sin-contratos').style.display = 'block';
+        }
+    })
+    .catch(() => {
+        document.getElementById('rsModal-loading').style.display = 'none';
+        document.getElementById('rsModal-loading').innerHTML = '⚠️ Error al verificar el estado. Inténtalo de nuevo.';
+        document.getElementById('rsModal-loading').style.display = 'block';
+    });
+}
+
+function cerrarModalGestion() {
+    document.getElementById('rsGestionModal').style.display = 'none';
+}
+
+function confirmarEliminacion() {
+    return confirm(`¿Eliminar definitivamente «${rsModalNombre}»?\n\nEsta acción no se puede deshacer.`);
+}
+
+// Cerrar al hacer clic fuera del modal
+document.getElementById('rsGestionModal').addEventListener('click', function(e) {
+    if (e.target === this) cerrarModalGestion();
+});
+</script>

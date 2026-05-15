@@ -116,6 +116,7 @@ class PlanoPagoController extends Controller
                 ->select([
                     'p.id',
                     'p.tipo_reg',
+                    'p.tipo_doc',
                     'p.no_identifi',
                     'p.primer_nombre', 'p.segundo_nombre',
                     'p.primer_ape', 'p.segundo_ape',

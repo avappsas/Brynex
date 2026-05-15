@@ -193,8 +193,53 @@ class ConfiguracionAliadoController extends Controller
     public function destroyCuenta(int $id)
     {
         $alidoId = session('aliado_id_activo');
-        \App\Models\BancoCuenta::where('aliado_id', $alidoId)->findOrFail($id)->delete();
+        $cuenta  = \App\Models\BancoCuenta::where('aliado_id', $alidoId)->findOrFail($id);
+
+        // Verificar que no tenga registros en consignaciones ni anticipos
+        $tieneRegistros = DB::table('consignaciones')->where('banco_cuenta_id', $id)->exists()
+            || DB::table('consignaciones')->where('banco_cuenta2_id', $id)->exists()
+            || DB::table('anticipos')->where('banco_cuenta_id', $id)->exists();
+
+        if ($tieneRegistros) {
+            return response()->json([
+                'ok'      => false,
+                'mensaje' => 'Esta cuenta tiene registros asociados (facturas o consignaciones). Solo puede inactivarse.'
+            ], 422);
+        }
+
+        $cuenta->delete();
         return response()->json(['ok' => true]);
+    }
+
+    public function inactivarCuenta(int $id)
+    {
+        $alidoId = session('aliado_id_activo');
+        $cuenta  = \App\Models\BancoCuenta::where('aliado_id', $alidoId)->findOrFail($id);
+        $cuenta->update(['activo' => false]);
+        return response()->json(['ok' => true]);
+    }
+
+    public function estadoCuentaContratos(int $id)
+    {
+        $alidoId = session('aliado_id_activo');
+        $cuenta  = \App\Models\BancoCuenta::where('aliado_id', $alidoId)->find($id);
+
+        if (!$cuenta) {
+            return response()->json(['error' => 'No encontrada'], 404);
+        }
+
+        $tieneRegistros = DB::table('consignaciones')->where('banco_cuenta_id', $id)->exists()
+            || DB::table('consignaciones')->where('banco_cuenta2_id', $id)->exists()
+            || DB::table('anticipos')->where('banco_cuenta_id', $id)->exists();
+
+        return response()->json([
+            'banco'          => $cuenta->banco,
+            'numero_cuenta'  => $cuenta->numero_cuenta,
+            'activo'         => (bool) $cuenta->activo,
+            'tiene_registros'=> $tieneRegistros,
+            'puede_eliminar' => !$tieneRegistros,
+            'puede_inactivar'=> (bool) $cuenta->activo,
+        ]);
     }
 }
 

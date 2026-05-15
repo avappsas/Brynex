@@ -193,14 +193,14 @@ class PilaCotizanteCalculator
             $ibcCajaTp = $ibcFull;      // CCF sobre salario completo
 
             // ── Exención por edad (misma regla dependiente) ────────────────────
-            $isExento    = $edad !== null
-                && (($genero === 'M' && $edad >= self::EDAD_EXENTO_M)
-                    || ($genero === 'F' && $edad >= self::EDAD_EXENTO_F));
-            $vAfpFactura  = (int)($p->v_afp ?? 0);
-            $tienePension = !empty($codAfpRaw) && (!$isExento || $vAfpFactura > 0);
+            // tienePension: SOLO depende de cod_afp (si el plan facturó AFP, siempre cotiza,
+            // sin importar la edad del cliente). La edad solo aplica cuando cod_afp está vacío.
+            $tienePension = !empty($codAfpRaw);
 
             $subtipoCotizante = 0;
             if (!$tienePension && $edad !== null) {
+                $isExento         = ($genero === 'M' && $edad >= self::EDAD_EXENTO_M)
+                                 || ($genero === 'F' && $edad >= self::EDAD_EXENTO_F);
                 $subtipoCotizante = $isExento ? 3 : 4;
             }
 
@@ -278,21 +278,20 @@ class PilaCotizanteCalculator
         }
 
         // ── Lógica normal (dependiente / independiente) ──────────────────────
-        $isExento    = $edad !== null
-            && (($genero === 'M' && $edad >= self::EDAD_EXENTO_M)
-                || ($genero === 'F' && $edad >= self::EDAD_EXENTO_F));
-        $vAfpFactura = (int)($p->v_afp ?? 0);
 
         // ── tienePension ────────────────────────────────────────────────────
-        // 1) Sin cod_afp (null/'0')               → false
-        // 2) Con cod_afp, cualquier edad, v_afp>0  → true
-        // 3) Con cod_afp, exento por edad, v_afp=0 → false (subtipo 03)
-        // 4) Con cod_afp, joven, v_afp=0           → true (calcula igual)
-        $tienePension = !empty($codAfpRaw) && (!$isExento || $vAfpFactura > 0);
+        // La ÚNICA señal es cod_afp: si el plan facturó con AFP → siempre cotiza pensión
+        // independientemente de la edad del cliente.
+        // Solo cuando cod_afp está vacío (plan sin AFP) se aplica la regla de edad:
+        //   subtipo 3 → exento por edad (hombre ≥55 / mujer ≥50)
+        //   subtipo 4 → reclamó pensión anticipada (cualquier edad, sin cod_afp)
+        $tienePension = !empty($codAfpRaw);
 
         // ── Subtipo cotizante ───────────────────────────────────────────────
         $subtipoCotizante = 0;
         if (!$tienePension && $edad !== null) {
+            $isExento         = ($genero === 'M' && $edad >= self::EDAD_EXENTO_M)
+                             || ($genero === 'F' && $edad >= self::EDAD_EXENTO_F);
             $subtipoCotizante = $isExento ? 3 : 4;
         }
 

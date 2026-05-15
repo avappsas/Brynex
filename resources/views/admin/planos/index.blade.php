@@ -666,7 +666,12 @@
                 <span class="chip-tipo {{ $tipoClass }}">{{ $p->tipo_modal_nombre ?? $p->tipo_p }}</span>
                 @endif
             </td>
-            <td>{{ $p->no_identifi }}</td>
+            <td style="white-space:nowrap">
+                @if($p->tipo_doc)
+                <span style="display:inline-block;background:#e0f2fe;color:#0369a1;font-size:.62rem;font-weight:700;padding:.05rem .3rem;border-radius:3px;margin-right:.25rem;letter-spacing:.03em">{{ $p->tipo_doc }}</span>
+                @endif
+                {{ $p->no_identifi }}
+            </td>
             <td class="td-nombre" title="{{ $p->nombre_completo ?? $clienteNombre }}">
                 <a href="{{ ($p->cliente_id ?? null) ? url('/admin/clientes/'.$p->cliente_id.'/edit') : '#' }}"
                    style="color:#1d4ed8;text-decoration:none;font-weight:600"

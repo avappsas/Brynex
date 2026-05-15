@@ -104,19 +104,28 @@ class Incapacidad extends BaseModel
      * El estado 'negada' se asigna manualmente desde la vista de detalle.
      */
     const ESTADOS = [
-        'recibido'           => ['label' => '📬 Recibido',              'color' => 'secondary'],
-        'transcripcion'      => ['label' => '🏥 Transcripción IPS',     'color' => 'info'],
-        'radicada'           => ['label' => '📋 Radicada',              'color' => 'primary'],
-        'negada'             => ['label' => '🚫 Negada',                'color' => 'danger'],
-        'tutela'             => ['label' => '⚖️ Tutela',                'color' => 'warning'],
-        'tutela_radicada'    => ['label' => '📜 Tutela Radicada',       'color' => 'warning'],
-        'liquidacion'        => ['label' => '💰 En Liquidación',        'color' => 'info'],
-        'pagada_razon_social'=> ['label' => '🏢 Pagada a Razón Social', 'color' => 'info'],
-        'pagada_afiliado'    => ['label' => '🏦 Pagada al Afiliado',    'color' => 'success'],
-        'cierre_exitoso'     => ['label' => '✅ Cierre Exitoso',        'color' => 'success'],
-        'pagada'             => ['label' => '✅ Pagada',                'color' => 'success'],
-        'rechazado'          => ['label' => '❌ Rechazado',             'color' => 'danger'],
+        // ── Ciclo Normal ─────────────────────────────────────────────────────
+        'recibido'                  => ['label' => '📬 Recibido',                     'color' => 'secondary'],
+        'transcripcion_ips'         => ['label' => '🏥 Transcripción IPS',            'color' => 'info'],
+        'radicada'                  => ['label' => '📋 Radicada',                     'color' => 'primary'],
+        // ── Ciclo Negado ──────────────────────────────────────────────────────
+        'negada'                    => ['label' => '🚫 Negada',                       'color' => 'danger'],
+        'derecho_peticion'          => ['label' => '📄 Derecho de Petición',          'color' => 'warning'],
+        'derecho_peticion_radicado' => ['label' => '📄 D. Petición Radicado',         'color' => 'warning'],
+        'tutela'                    => ['label' => '⚖️ Tutela',                        'color' => 'warning'],
+        'tutela_radicada'           => ['label' => '📜 Tutela Radicada',              'color' => 'warning'],
+        'rechazado'                 => ['label' => '❌ Rechazado',                    'color' => 'danger'],
+        // ── Ciclo de Pago ─────────────────────────────────────────────────────
+        'en_liquidacion'            => ['label' => '💰 En Liquidación',              'color' => 'info'],
+        'pagada_razon_social'       => ['label' => '🏢 Pagada a Razón Social',       'color' => 'info'],
+        'pagada_afiliado'           => ['label' => '🏦 Pagada al Afiliado',          'color' => 'success'],
+        'cierre_exitoso'            => ['label' => '✅ Cierre Exitoso',              'color' => 'success'],
+        // ── Legacy (no mostrar en selector) ──────────────────────────────────
+        'pagada'                    => ['label' => '✅ Pagada (legacy)',              'color' => 'success', 'legacy' => true],
+        'liquidacion'               => ['label' => '💰 En Liquidación (legacy)',     'color' => 'info',    'legacy' => true],
+        'transcripcion'             => ['label' => '🏥 Transcripción (legacy)',      'color' => 'info',    'legacy' => true],
     ];
+
 
     /**
      * Estados de pago del valor de la incapacidad.

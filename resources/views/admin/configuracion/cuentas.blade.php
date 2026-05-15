@@ -129,7 +129,8 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.8rem}
                 <button class="btn-sm" style="background:#eff6ff;color:#1d4ed8"
                         onclick="editarCuenta({{ $c->id }}, {{ json_encode($c) }})">✏️</button>
                 <button class="btn-sm" style="background:#fee2e2;color:#dc2626;margin-left:3px"
-                        onclick="eliminarCuenta({{ $c->id }})">🗑</button>
+                        onclick="abrirModalCuenta({{ $c->id }}, '{{ addslashes($c->banco) }}', '{{ addslashes($c->numero_cuenta) }}')"
+                        title="Inactivar o Eliminar">🗑</button>
             </td>
         </tr>
         @empty
@@ -231,15 +232,168 @@ function cerrarModal() {
 }
 
 async function eliminarCuenta(id) {
-    if (!confirm('¿Eliminar esta cuenta bancaria?')) return;
-    const r = await fetch(`{{ url('admin/configuracion/cuentas') }}/${id}`, {
+    // Ahora delega al modal inteligente (se invoca desde el row)
+    // Esta función ya no se usa directamente; la reemplaza abrirModalCuenta
+}
+</script>
+
+{{-- Modal inteligente cuentas --}}
+<div id="cuentaGestionModal" style="display:none;position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.5);backdrop-filter:blur(4px);align-items:center;justify-content:center">
+    <div style="background:#fff;border-radius:16px;width:100%;max-width:430px;margin:1rem;box-shadow:0 20px 60px rgba(0,0,0,.25);overflow:hidden">
+
+        {{-- Header --}}
+        <div style="padding:1.1rem 1.4rem .8rem;border-bottom:1px solid #f1f5f9;display:flex;justify-content:space-between;align-items:flex-start">
+            <div>
+                <div style="font-size:.62rem;color:#94a3b8;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.15rem">Cuenta Bancaria</div>
+                <div id="cModal-banco" style="font-size:.92rem;font-weight:800;color:#0f172a"></div>
+                <div id="cModal-numero" style="font-size:.75rem;color:#64748b;font-family:monospace"></div>
+            </div>
+            <button onclick="cerrarModalCuenta()" style="border:none;background:none;font-size:1.2rem;cursor:pointer;color:#94a3b8;line-height:1">&#215;</button>
+        </div>
+
+        {{-- Cuerpo --}}
+        <div style="padding:1.2rem 1.4rem">
+
+            {{-- Loading --}}
+            <div id="cModal-loading" style="text-align:center;padding:1.5rem;color:#64748b;font-size:.85rem">
+                <div style="font-size:1.4rem;margin-bottom:.4rem">⏳</div>
+                Verificando registros...
+            </div>
+
+            {{-- Con registros: solo inactivar --}}
+            <div id="cModal-solo-inactivar" style="display:none">
+                <div style="background:#fef9c3;border:1px solid #fde68a;border-radius:10px;padding:1rem;margin-bottom:1rem">
+                    <div style="font-size:.85rem;font-weight:600;color:#92400e">📄 Tiene registros de facturas o consignaciones</div>
+                    <div style="font-size:.78rem;color:#78350f;margin-top:.3rem">Esta cuenta tiene movimientos financieros registrados. Solo puede <strong>inactivarse</strong>, no eliminarse.</div>
+                </div>
+                <button id="cBtn-inactivar" onclick="ejecutarInactivar()" style="width:100%;padding:.62rem;background:linear-gradient(135deg,#f59e0b,#d97706);border:none;border-radius:10px;color:#fff;font-size:.88rem;font-weight:700;cursor:pointer">
+                    🔒 Inactivar Cuenta
+                </button>
+            </div>
+
+            {{-- Sin registros: inactivar O eliminar --}}
+            <div id="cModal-sin-registros" style="display:none">
+                <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:1rem;margin-bottom:1.1rem">
+                    <div style="font-size:.85rem;font-weight:600;color:#15803d">✅ Sin registros asociados</div>
+                    <div style="font-size:.78rem;color:#166534;margin-top:.3rem">Esta cuenta no tiene facturas ni consignaciones. Puede inactivarla o eliminarla definitivamente.</div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:.7rem">
+                    <button id="cBtn-inactivar2" onclick="ejecutarInactivar()" style="width:100%;padding:.58rem;background:#f1f5f9;border:1.5px solid #cbd5e1;border-radius:10px;color:#334155;font-size:.84rem;font-weight:700;cursor:pointer">
+                        🔒 Inactivar Cuenta
+                    </button>
+                    <div style="text-align:center;font-size:.72rem;color:#94a3b8">o</div>
+                    <button onclick="ejecutarEliminar()" style="width:100%;padding:.58rem;background:linear-gradient(135deg,#ef4444,#dc2626);border:none;border-radius:10px;color:#fff;font-size:.84rem;font-weight:700;cursor:pointer">
+                        🗑️ Eliminar definitivamente
+                    </button>
+                </div>
+            </div>
+
+            {{-- Ya inactiva: solo eliminar (si no tiene registros) o info --}}
+            <div id="cModal-ya-inactiva" style="display:none">
+                <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:1rem;margin-bottom:1rem">
+                    <div style="font-size:.85rem;font-weight:600;color:#64748b">ℹ️ Cuenta ya inactiva</div>
+                    <div id="cModal-ya-inactiva-texto" style="font-size:.78rem;color:#94a3b8;margin-top:.3rem">Esta cuenta ya está marcada como Inactiva.</div>
+                </div>
+                <button onclick="ejecutarEliminar()" id="cBtn-eliminar-inactiva" style="width:100%;padding:.58rem;background:linear-gradient(135deg,#ef4444,#dc2626);border:none;border-radius:10px;color:#fff;font-size:.84rem;font-weight:700;cursor:pointer">
+                    🗑️ Eliminar definitivamente
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let _cuentaId   = null;
+let _cuentaBanco = '';
+
+function abrirModalCuenta(id, banco, numero) {
+    _cuentaId    = id;
+    _cuentaBanco = banco;
+    document.getElementById('cModal-banco').textContent  = banco;
+    document.getElementById('cModal-numero').textContent = numero;
+
+    // reset
+    document.getElementById('cModal-loading').style.display       = 'block';
+    document.getElementById('cModal-solo-inactivar').style.display = 'none';
+    document.getElementById('cModal-sin-registros').style.display  = 'none';
+    document.getElementById('cModal-ya-inactiva').style.display    = 'none';
+
+    document.getElementById('cuentaGestionModal').style.display = 'flex';
+
+    fetch(`/admin/configuracion/cuentas/${id}/estado-registros`, {
+        headers: {'X-Requested-With':'XMLHttpRequest','Accept':'application/json'}
+    })
+    .then(r => r.json())
+    .then(data => {
+        document.getElementById('cModal-loading').style.display = 'none';
+
+        if (!data.activo) {
+            // Ya está inactiva
+            const btnEl = document.getElementById('cBtn-eliminar-inactiva');
+            const infoText = document.getElementById('cModal-ya-inactiva-texto');
+            if (data.tiene_registros) {
+                // inactiva y con registros: no puede eliminar
+                btnEl.style.display = 'none';
+                if (infoText) infoText.textContent = 'Esta cuenta está inactiva y tiene registros de facturas/consignaciones. No se puede eliminar.';
+            } else {
+                btnEl.style.display = 'block';
+                if (infoText) infoText.textContent = 'Esta cuenta ya está marcada como Inactiva.';
+            }
+            document.getElementById('cModal-ya-inactiva').style.display = 'block';
+
+        } else if (data.tiene_registros) {
+            // Activa con registros: solo inactivar
+            document.getElementById('cModal-solo-inactivar').style.display = 'block';
+
+        } else {
+            // Activa sin registros: inactivar o eliminar
+            document.getElementById('cModal-sin-registros').style.display = 'block';
+        }
+    })
+    .catch(() => {
+        document.getElementById('cModal-loading').innerHTML = '⚠️ Error al verificar. Inténtalo de nuevo.';
+    });
+}
+
+function cerrarModalCuenta() {
+    document.getElementById('cuentaGestionModal').style.display = 'none';
+}
+
+async function ejecutarInactivar() {
+    const r = await fetch(`/admin/configuracion/cuentas/${_cuentaId}/inactivar`, {
+        method: 'POST',
+        headers: {'X-CSRF-TOKEN': CSRF, 'X-HTTP-Method-Override':'PATCH', 'Accept':'application/json',
+                  'Content-Type':'application/json'},
+        body: JSON.stringify({_method:'PATCH'})
+    });
+    if (r.ok) {
+        cerrarModalCuenta();
+        // Actualizar badge en la fila
+        const row = document.querySelector(`tr[id^="row-"]`);
+        // Recarga la página para reflejar el cambio
+        location.reload();
+    }
+}
+
+async function ejecutarEliminar() {
+    if (!confirm(`¿Eliminar definitivamente la cuenta ${_cuentaBanco}?\n\nEsta acción no se puede deshacer.`)) return;
+    const r = await fetch(`/admin/configuracion/cuentas/${_cuentaId}`, {
         method: 'DELETE',
         headers: {'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json'}
     });
-    if (r.ok) {
-        const row = document.getElementById(`row-${id}`);
+    const data = await r.json();
+    if (data.ok) {
+        cerrarModalCuenta();
+        const row = document.getElementById(`row-${_cuentaId}`);
         if (row) row.remove();
+    } else {
+        alert(data.mensaje || 'No se pudo eliminar.');
     }
 }
+
+// Cerrar al clic fuera
+document.getElementById('cuentaGestionModal').addEventListener('click', function(e) {
+    if (e.target === this) cerrarModalCuenta();
+});
 </script>
 @endsection

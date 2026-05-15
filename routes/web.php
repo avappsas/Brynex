@@ -110,10 +110,12 @@ Route::middleware('auth')->group(function () {
         Route::get('configuracion/parametros', [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'index'])->name('configuracion.index');
         Route::post('configuracion/parametros',[\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'store'])->name('configuracion.store');
         // Cuentas bancarias
-        Route::get('configuracion/cuentas',        [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'cuentas'])      ->name('configuracion.cuentas');
-        Route::post('configuracion/cuentas',       [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'storeCuenta']) ->name('configuracion.cuentas.store');
-        Route::patch('configuracion/cuentas/{id}', [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'updateCuenta'])->name('configuracion.cuentas.update');
-        Route::delete('configuracion/cuentas/{id}',[\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'destroyCuenta'])->name('configuracion.cuentas.destroy');
+        Route::get('configuracion/cuentas',        [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'cuentas'])              ->name('configuracion.cuentas');
+        Route::post('configuracion/cuentas',       [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'storeCuenta'])            ->name('configuracion.cuentas.store');
+        Route::patch('configuracion/cuentas/{id}', [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'updateCuenta'])           ->name('configuracion.cuentas.update');
+        Route::delete('configuracion/cuentas/{id}',[\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'destroyCuenta'])          ->name('configuracion.cuentas.destroy');
+        Route::patch('configuracion/cuentas/{id}/inactivar',         [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'inactivarCuenta'])        ->name('configuracion.cuentas.inactivar');
+        Route::get('configuracion/cuentas/{id}/estado-registros',    [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'estadoCuentaContratos']) ->name('configuracion.cuentas.estado_registros');
         // Configuración de modalidades → planes
         $mc = \App\Http\Controllers\Admin\ModalidadConfigController::class;
         Route::get('configuracion/modalidades',          [$mc, 'index'])        ->name('configuracion.modalidades');
@@ -133,9 +135,11 @@ Route::middleware('auth')->group(function () {
         Route::post('configuracion/razones-sociales',              [$rsc, 'store'])       ->name('configuracion.razones.store');
         Route::get( 'configuracion/razones-sociales/{id}/editar',  [$rsc, 'edit'])        ->name('configuracion.razones.edit');
         Route::put( 'configuracion/razones-sociales/{id}',         [$rsc, 'update'])      ->name('configuracion.razones.update');
-        Route::delete('configuracion/razones-sociales/{id}',       [$rsc, 'destroy'])     ->name('configuracion.razones.destroy');
-        Route::patch('configuracion/razones-sociales/{id}/estado', [$rsc, 'toggleEstado'])->name('configuracion.razones.estado');
-        Route::post('configuracion/razones-sociales/{id}/sello',   [$rsc, 'subirSello']) ->name('configuracion.razones.sello');
+        Route::delete('configuracion/razones-sociales/{id}',              [$rsc, 'destroy'])       ->name('configuracion.razones.destroy');
+        Route::patch('configuracion/razones-sociales/{id}/estado',        [$rsc, 'toggleEstado'])  ->name('configuracion.razones.estado');
+        Route::patch('configuracion/razones-sociales/{id}/inactivar',     [$rsc, 'inactivar'])     ->name('configuracion.razones.inactivar');
+        Route::get('configuracion/razones-sociales/{id}/estado-contratos',[$rsc, 'estadoContratos'])->name('configuracion.razones.estado_contratos');
+        Route::post('configuracion/razones-sociales/{id}/sello',          [$rsc, 'subirSello'])    ->name('configuracion.razones.sello');
 
         // Formularios EPS — mapeo visual de coordenadas
         $ef = \App\Http\Controllers\Admin\EpsFormularioController::class;

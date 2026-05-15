@@ -216,9 +216,11 @@ class ExcelAsopagosService
         // ── Tipo / subtipo cotizante ────────────────────────────────────────
         $esIndep    = in_array((int)$p->tipo_modalidad_id, [10, 11]);
         $tipoCot    = $esIndep ? 2 : 1;
-        // Pensión
-        $tienePension = !empty($p->cod_afp) && (int)($p->v_afp ?? 0) > 0;
-        // Subtipo: null si cotiza pensión; 3=edad pensión, 4=sin pensión joven
+        // Pensión: la ÚNICA señal es cod_afp. Si el plan facturó con AFP → siempre cotiza
+        // pensión, sin importar la edad. La regla de edad (subtipo 3/4) solo aplica cuando
+        // cod_afp está vacío (plan sin AFP).
+        $tienePension = !empty($p->cod_afp) && trim((string)$p->cod_afp) !== '0';
+        // Subtipo: 0 si cotiza pensión; 3=exento por edad, 4=sin pensión joven (solo si !cod_afp)
         $subtipo = null;
         if (!$tienePension) {
             $subtipo = ($edad !== null && (($genero==='M' && $edad>=55)||($genero==='F' && $edad>=50))) ? 3 : 4;

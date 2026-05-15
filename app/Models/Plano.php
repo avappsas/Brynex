@@ -77,6 +77,16 @@ class Plano extends BaseModel
         $rs      = $contrato->razonSocial;
         $modal   = $contrato->tipoModalidad;
 
+        // ── Fallback AFP: si el contrato no tiene pension_id pero el plan incluye AFP
+        //    y el cliente sí tiene pensión, usar la del cliente para el snapshot del plano.
+        //    Esto evita que cod_afp quede NULL cuando se facturó con valor de pensión.
+        if (!$afp && $cliente?->pension_id) {
+            $plan = $contrato->plan;
+            if ($plan?->incluye_pension && (int)($factura->v_afp ?? 0) > 0) {
+                $afp = $cliente->pension; // relación pension en el modelo Cliente
+            }
+        }
+
         // cod_arl y nombre_arl:
         // Prioridad 1: la RS tiene arl_nit → buscar nombre en tabla arls por ese NIT
         // Prioridad 2: fallback al ARL del contrato individual (independientes o RS sin ARL)
@@ -141,7 +151,7 @@ class Plano extends BaseModel
             'numero_factura'    => $factura->numero_factura,
             // Tipo de registro
             'tipo_reg'          => $esAfiliacion ? 'afiliacion' : 'planilla',
-            'tipo_doc'          => 'CC',
+            'tipo_doc'          => strtoupper(trim($cliente?->tipo_doc ?? 'CC')) ?: 'CC',
             'no_identifi'       => $contrato->cedula,
             // Nombre snapshot
             'primer_ape'        => strtoupper($primerApe),

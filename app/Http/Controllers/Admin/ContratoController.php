@@ -371,16 +371,23 @@ class ContratoController extends Controller
                 $vCajaRetiro = $incluyeCaja     ? (int)$r($sm * $factorCaja * $pctCaja / 100)      : 0;
             } else {
                 // Normal: proporcional a num_dias / 30
-                // Para mes completo (30 días): ceil al 100 más cercano (igual que cotizar())
-                // Para días parciales: calcular DIRECTO desde IBC × rate × días/30
-                //   y usar round() — no ceil() — para evitar inflación por doble redondeo.
-                //   Ejemplo: IBC 1,750,905 × 0.522% × 1/30 = 304.66 → ceil = 400 ❌ / round = 300 ✅
                 $rRound = fn($v) => (int)(round($v / 100) * 100);
 
                 $epsMes  = $incluyeEps    ? $r($ibc * $pctEps  / 100) : 0;
                 $arlMes  = $incluyeArl    ? $r($ibc * $pctArl  / 100) : 0;
                 $penMes  = $incluyePension ? $r($ibc * $pctPen  / 100) : 0;
                 $cajaMes = $incluyeCaja   ? $r($ibc * $pctCaja / 100) : 0;
+
+                // ── Cargo sin-CCF ($100 fijo): aplica cuando modalidad es 0 o 12
+                //    y el plan NO incluye caja. Igual que calcularCotizacion() y cotizar().
+                //    Este cargo NO se prorratea por días.
+                $tipoModId   = (int)($contrato->tipo_modalidad_id ?? -99);
+                $aplicaSinCcf = ($cajaMes === 0)
+                    && in_array($tipoModId, \App\Models\Contrato::IDS_SIN_CCF)
+                    && !$incluyeCaja;
+                if ($aplicaSinCcf) {
+                    $cajaMes = \App\Models\Contrato::CARGO_SIN_CCF;
+                }
 
                 $vEpsRetiro  = $numDias < 30
                     ? ($incluyeEps    ? $rRound($ibc * $pctEps  / 100 * $numDias / 30) : 0)
@@ -391,9 +398,12 @@ class ContratoController extends Controller
                 $vAfpRetiro  = $numDias < 30
                     ? ($incluyePension ? $rRound($ibc * $pctPen  / 100 * $numDias / 30) : 0)
                     : (int)$penMes;
-                $vCajaRetiro = $numDias < 30
-                    ? ($incluyeCaja   ? $rRound($ibc * $pctCaja / 100 * $numDias / 30) : 0)
-                    : (int)$cajaMes;
+                // Cargo sin-CCF es fijo: no se prorratea (igual que cotizar())
+                $vCajaRetiro = $aplicaSinCcf
+                    ? \App\Models\Contrato::CARGO_SIN_CCF
+                    : ($numDias < 30
+                        ? ($incluyeCaja ? $rRound($ibc * $pctCaja / 100 * $numDias / 30) : 0)
+                        : (int)$cajaMes);
             }
 
             $totalSsRetiro = $vEpsRetiro + $vArlRetiro + $vAfpRetiro + $vCajaRetiro;
@@ -501,7 +511,7 @@ class ContratoController extends Controller
                 'aliado_id'         => $alidoId,
                 'numero_factura'    => 0,
                 'tipo_reg'          => 'retiro',
-                'tipo_doc'          => 'CC',
+                'tipo_doc'          => strtoupper(trim($cliente?->tipo_doc ?? 'CC')) ?: 'CC',
                 'no_identifi'       => $contrato->cedula,
                 'primer_ape'        => strtoupper($partsApe[0] ?? ''),
                 'segundo_ape'       => strtoupper($partsApe[1] ?? ''),
@@ -992,7 +1002,7 @@ class ContratoController extends Controller
                 'aliado_id'         => $alidoId,
                 'numero_factura'    => 0,
                 'tipo_reg'          => 'retiro',
-                'tipo_doc'          => 'CC',
+                'tipo_doc'          => strtoupper(trim($cliente?->tipo_doc ?? 'CC')) ?: 'CC',
                 'no_identifi'       => $original->cedula,
                 'primer_ape'        => strtoupper($partsApe[0] ?? ''),
                 'segundo_ape'       => strtoupper($partsApe[1] ?? ''),

@@ -31,14 +31,19 @@ class RazonSocialController extends Controller
             ->leftJoin('cajas', 'cajas.nit', '=', 'rs.caja_nit')
             ->where('rs.aliado_id', $aliadoId)
             ->select(
-                'rs.id', 'rs.razon_social', 'rs.estado',
+                'rs.id', 'rs.nit', 'rs.dv', 'rs.razon_social', 'rs.estado',
                 'rs.es_independiente', 'rs.observacion',
+                'rs.fecha_constitucion',
                 'arls.nombre_arl  as arl_nombre',
-                'cajas.nombre     as caja_nombre'
+                'cajas.nombre     as caja_nombre',
+                DB::raw('(SELECT COUNT(*) FROM contratos WHERE contratos.razon_social_id = rs.id AND contratos.estado = \'vigente\') as personas_activas')
             );
 
         if ($buscar) {
-            $query->where('rs.razon_social', 'LIKE', "%{$buscar}%");
+            $query->where(function($q) use ($buscar) {
+                $q->where('rs.razon_social', 'LIKE', "%{$buscar}%")
+                  ->orWhere(DB::raw('CAST(rs.nit AS CHAR)'), 'LIKE', "%{$buscar}%");
+            });
         }
 
         if ($estado && $estado !== 'Todas') {
@@ -133,14 +138,30 @@ class RazonSocialController extends Controller
     {
         $aliadoId = session('aliado_id_activo');
 
-        // Verificar que no tenga contratos asociados
-        $tieneContratos = DB::table('contratos')
+        // Verificar que exista y pertenezca al aliado
+        $rs = DB::table('razones_sociales')
+            ->where('id', $id)->where('aliado_id', $aliadoId)->first();
+        abort_if(!$rs, 404);
+
+        // Verificar que no tenga contratos vigentes
+        $tieneVigentes = DB::table('contratos')
+            ->where('razon_social_id', $id)
+            ->where('aliado_id', $aliadoId)
+            ->where('estado', 'vigente')
+            ->exists();
+
+        if ($tieneVigentes) {
+            return back()->with('error', '⚠️ No se puede eliminar: tiene afiliados con contratos vigentes.');
+        }
+
+        // Verificar que nunca haya tenido contratos (si tuvo, solo puede inactivar)
+        $tuvoContratos = DB::table('contratos')
             ->where('razon_social_id', $id)
             ->where('aliado_id', $aliadoId)
             ->exists();
 
-        if ($tieneContratos) {
-            return back()->with('error', '⚠️ No se puede eliminar: tiene contratos asociados.');
+        if ($tuvoContratos) {
+            return back()->with('error', '⚠️ Esta razón social tuvo contratos asociados. Solo puede inactivarse, no eliminarse.');
         }
 
         DB::table('razones_sociales')
@@ -150,6 +171,67 @@ class RazonSocialController extends Controller
 
         return redirect()->route('admin.configuracion.razones.index')
             ->with('success', '🗑️ Razón Social eliminada.');
+    }
+
+    // ─── Inactivar ────────────────────────────────────────────────
+    public function inactivar(int $id)
+    {
+        $aliadoId = session('aliado_id_activo');
+
+        $rs = DB::table('razones_sociales')
+            ->where('id', $id)->where('aliado_id', $aliadoId)->first();
+        abort_if(!$rs, 404);
+
+        // Verificar que no tenga contratos vigentes
+        $tieneVigentes = DB::table('contratos')
+            ->where('razon_social_id', $id)
+            ->where('aliado_id', $aliadoId)
+            ->where('estado', 'vigente')
+            ->exists();
+
+        if ($tieneVigentes) {
+            return back()->with('error', '⚠️ No se puede inactivar: tiene afiliados con contratos vigentes.');
+        }
+
+        DB::table('razones_sociales')
+            ->where('id', $id)
+            ->where('aliado_id', $aliadoId)
+            ->update(['estado' => 'Inactiva']);
+
+        return back()->with('success', '✅ Razón Social marcada como Inactiva.');
+    }
+
+    // ─── API: estado de contratos (para modal JS) ─────────────────
+    public function estadoContratos(int $id)
+    {
+        $aliadoId = session('aliado_id_activo');
+
+        $rs = DB::table('razones_sociales')
+            ->where('id', $id)->where('aliado_id', $aliadoId)->first();
+
+        if (!$rs) {
+            return response()->json(['error' => 'No encontrada'], 404);
+        }
+
+        $vigentes = DB::table('contratos')
+            ->where('razon_social_id', $id)
+            ->where('aliado_id', $aliadoId)
+            ->where('estado', 'vigente')
+            ->count();
+
+        $totalHistorico = DB::table('contratos')
+            ->where('razon_social_id', $id)
+            ->where('aliado_id', $aliadoId)
+            ->count();
+
+        return response()->json([
+            'razon_social'    => $rs->razon_social,
+            'estado'          => $rs->estado,
+            'vigentes'        => $vigentes,
+            'total_historico' => $totalHistorico,
+            'puede_eliminar'  => ($totalHistorico === 0),
+            'puede_inactivar' => ($vigentes === 0 && $rs->estado !== 'Inactiva'),
+        ]);
     }
 
     // ─── Subir sello ──────────────────────────────────────────────

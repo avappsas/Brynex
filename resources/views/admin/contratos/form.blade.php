@@ -249,9 +249,11 @@
           <option value="{{ $eps->id }}" {{ $epsDefault == $eps->id ? 'selected' : '' }}>{{ $eps->nombre }}</option>
           @endforeach
         </select>
+        <div id="badge-area-eps" data-saved="{{ ($esEdicion && $contrato->eps_id) ? '1' : '0' }}">
         @if($esEdicion && $contrato->eps_id && collect($epsList)->contains('id', (int)$contrato->eps_id))
         {!! $badgeEstado($rPT->get('eps')) !!}
         @endif
+        </div>
       </div>
       <div>
         <label class="lb">AFP / Pension</label>
@@ -261,9 +263,17 @@
           <option value="{{ $pen->id }}" {{ $pensionDefault == $pen->id ? 'selected' : '' }}>{{ $pen->razon_social }}</option>
           @endforeach
         </select>
+        <div id="badge-area-pen" data-saved="{{ ($esEdicion && $contrato->pension_id) ? '1' : '0' }}">
         @if($esEdicion && $contrato->pension_id && collect($pensiones)->contains('id', (int)$contrato->pension_id))
         {!! $badgeEstado($rPT->get('pension')) !!}
+        @elseif($esEdicion && !$contrato->pension_id && ($planContrato?->incluye_pension ?? false))
+        <div style="margin-top:0.22rem;width:100%;box-sizing:border-box;">
+          <span style="display:flex;align-items:center;justify-content:center;gap:0.2rem;width:100%;box-sizing:border-box;background:#fef3c7;color:#92400e;font-size:0.62rem;font-weight:700;padding:0.18rem 0.4rem;border-radius:5px;white-space:nowrap;">
+            ⚠️ Sin AFP guardada — seleccione y guarde
+          </span>
+        </div>
         @endif
+        </div>
       </div>
       <div>
         <label class="lb">ARL <span id="lbl_arl_lock" style="color:#94a3b8;font-weight:400;font-size:0.63rem;">(de la R.Social)</span></label>
@@ -1616,9 +1626,36 @@ function bloquearEntidadesPorPlan(planId) {
         }
     }
 
-    // Auto-seleccionar entidades del cliente si el campo quedó habilitado pero vacío
-    if (d.eps  && epsSel  && !epsSel.value  && CLIENTE_EPS_ID)     { epsSel.value  = CLIENTE_EPS_ID;     epsSel.style.cssText  = STYLE_COMPLETO; }
-    if (d.pen  && penSel  && !penSel.value  && CLIENTE_PENSION_ID) { penSel.value  = CLIENTE_PENSION_ID; penSel.style.cssText  = STYLE_COMPLETO; }
+    // ── Helper: mostrar badge ⚠️ "Sin X guardada" en el área de badge ─────────
+    function mostrarBadgePendiente(areaId, nombre) {
+        const area = document.getElementById(areaId);
+        if (!area) return;
+        // Si el valor ya estaba guardado en BD (data-saved="1"), reemplazar con ⚠️ al cambiar
+        area.innerHTML = '<div style="margin-top:0.22rem;width:100%;box-sizing:border-box;">'
+            + '<span style="display:flex;align-items:center;justify-content:center;gap:0.2rem;width:100%;'
+            + 'box-sizing:border-box;background:#fef3c7;color:#92400e;font-size:0.62rem;font-weight:700;'
+            + 'padding:0.18rem 0.4rem;border-radius:5px;white-space:nowrap;">'
+            + '\u26a0\ufe0f Sin ' + nombre + ' guardada \u2014 seleccione y guarde</span></div>';
+    }
+    function limpiarBadge(areaId) {
+        const area = document.getElementById(areaId);
+        if (area) area.innerHTML = '';
+    }
+
+    // Auto-seleccionar entidades del cliente si el campo quedó habilitado pero vacío.
+    // Aplica tanto en creación como en edición: si el contrato no tiene la entidad guardada,
+    // pre-seleccionar la del cliente como sugerencia. El badge ⚠️ advierte al usuario
+    // que debe guardar el contrato para que quede registrada correctamente.
+    if (d.eps && epsSel && !epsSel.value && CLIENTE_EPS_ID) {
+        epsSel.value = CLIENTE_EPS_ID;
+        epsSel.style.cssText = STYLE_COMPLETO;
+        mostrarBadgePendiente('badge-area-eps', 'EPS');
+    }
+    if (d.pen && penSel && !penSel.value && CLIENTE_PENSION_ID) {
+        penSel.value = CLIENTE_PENSION_ID;
+        penSel.style.cssText = STYLE_COMPLETO;
+        mostrarBadgePendiente('badge-area-pen', 'AFP');
+    }
 
     // Actualizar en tiempo real al seleccionar una entidad
     [epsSel, penSel, arlSel, cajSel].forEach(sel => {
@@ -1627,6 +1664,15 @@ function bloquearEntidadesPorPlan(planId) {
             if (sel.required) {
                 sel.style.cssText = sel.value ? STYLE_COMPLETO : STYLE_REQUERIDO;
             }
+            // Al cambiar manualmente → badge ⚠️ (el valor aún no está guardado)
+            if (sel === epsSel) {
+                if (sel.value) mostrarBadgePendiente('badge-area-eps', 'EPS');
+                else limpiarBadge('badge-area-eps');
+            }
+            if (sel === penSel) {
+                if (sel.value) mostrarBadgePendiente('badge-area-pen', 'AFP');
+                else limpiarBadge('badge-area-pen');
+            }
             // Recalcular solo para ARL (afecta el %)
             if (sel === arlSel) {
                 const alpineComp = document.querySelector('[x-data]')?._x_dataStack?.[0];
@@ -1634,6 +1680,7 @@ function bloquearEntidadesPorPlan(planId) {
             }
         };
     });
+
 }
 
 // Validacion al enviar el formulario
