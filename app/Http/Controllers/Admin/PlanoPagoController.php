@@ -50,21 +50,34 @@ class PlanoPagoController extends Controller
             });
         };
 
-        // ── Conteo de planos por RS para el periodo mixto ────────────────
-        // Cuenta TODOS los planos del periodo sin importar el n_plano actual de la RS.
-        // (Si el n_plano se avanzó, los planos del periodo anterior siguen visibles en el select.)
+        // Regla IR (n_plano=100): antes del día 26 no se muestran como pendientes en el select.
+        $diaHoy = (int) now()->day;
+
+        // ── Planos PENDIENTES por RS para el SELECT (sin numero_planilla) ──────────
+        // Excluye n_plano=100 (Ingreso-Retiro) si hoy < día 26 del mes.
         $cantPorRs = DB::table('planos AS p')
+            ->leftJoin('facturas AS f', function ($join) use ($aliadoId) {
+                $join->on('f.id', '=', 'p.factura_id')
+                     ->where('f.aliado_id', $aliadoId);  // scope al aliado
+            })
             ->where('p.aliado_id', $aliadoId)
-            ->whereNull('p.deleted_at')
+            ->whereNull('p.deleted_at')          // plano no soft-deleted
+            ->whereNull('f.deleted_at')          // factura no anulada
             ->whereIn('p.tipo_reg', ['planilla', 'retiro'])
             ->where('p.num_dias', '>', 0)
+            ->where('p.n_plano', '>', 0)         // excluye n_plano=0 (retiros IR legacy)
+            ->where(function ($q) {
+                $q->whereNull('p.numero_planilla')
+                  ->orWhere('p.numero_planilla', '');
+            })
+            ->when($diaHoy < 26, fn($q) => $q->where('p.n_plano', '<>', 100))
             ->where($wherePeriodo)
             ->groupBy('p.razon_social_id')
             ->select('p.razon_social_id', DB::raw('COUNT(*) AS cant'))
             ->pluck('cant', 'razon_social_id');
 
         $razonesSociales = RazonSocial::where('aliado_id', $aliadoId)
-            ->orderByRaw("CASE WHEN LOWER(estado) IN ('activo','activa','1','si','yes') THEN 0 ELSE 1 END")
+            ->whereRaw("LOWER(ISNULL(estado,'')) IN ('activo','activa','1','si','yes')") // solo activas
             ->orderBy('razon_social')
             ->get(['id', 'razon_social', 'n_plano', 'mes_pagos', 'anio_pagos', 'estado']);
 
@@ -225,13 +238,22 @@ class PlanoPagoController extends Controller
         // Detectar si el plano ya fue pagado:
         // Se considera pagado si TODOS los registros del filtro tienen numero_planilla.
         // Esto evita que otro usuario intente duplicar el pago.
-        $planoPagado     = false;
+        $planoPagado          = false;
         $numeroPlanillaPagado = null;
+        $valorPagado          = null; // total real pagado (SS + mora) desde gastos
         if ($planos->count() > 0) {
             $conPlanilla  = $planos->whereNotNull('numero_planilla')->where('numero_planilla', '!=', '')->count();
             $planoPagado  = ($conPlanilla === $planos->count());
             if ($planoPagado) {
                 $numeroPlanillaPagado = $planos->first()->numero_planilla;
+                // Buscar el gasto de pago_planilla asociado para obtener el valor real pagado
+                $gastosPago = DB::table('gastos')
+                    ->where('aliado_id', $aliadoId)
+                    ->where('tipo', 'pago_planilla')
+                    ->where('numero_planilla', $numeroPlanillaPagado)
+                    ->orderByDesc('id')
+                    ->first(['valor', 'fecha', 'observacion', 'pagado_a']);
+                $valorPagado = $gastosPago ? (int) $gastosPago->valor : null;
             }
         }
 
@@ -281,13 +303,13 @@ class PlanoPagoController extends Controller
 
         return view('admin.planos.index', compact(
             'planos', 'razonesSociales', 'tiposModalidad', 'modalidadesDispon',
-            'cantPorRs',
+            'cantPorRs', 'diaHoy',
             'anio', 'mes', 'mesVencido', 'anioVencido',
             'razonSocialId', 'nPlanoFiltro', 'modalidadesIds',
             'rsSeleccionada', 'nPlanoActual',
             'totalSS', 'totalAdmon', 'totalPersonas',
             'bancos', 'operadores',
-            'planoPagado', 'numeroPlanillaPagado',
+            'planoPagado', 'numeroPlanillaPagado', 'valorPagado',
             'estadoPago',
         ) + [
             // Indica si la RS seleccionada es de tipo independiente:
@@ -316,7 +338,84 @@ class PlanoPagoController extends Controller
         ]);
     }
 
-    // ── 3. Actualizar N_PLANO en Razon Social ─────────────────────────
+    // ── 2b. API: Resumen de planos por RS y n_plano (modal resumen) ───────────
+    public function apiResumenPlanos(Request $request)
+    {
+        $aliadoId = session('aliado_id_activo');
+        $anio     = (int) $request->input('anio', now()->year);
+        $mes      = (int) $request->input('mes',  now()->month);
+
+        $mesVencido  = $mes > 1 ? $mes - 1 : 12;
+        $anioVencido = $mes > 1 ? $anio    : $anio - 1;
+
+        $wherePeriodo = function ($q) use ($mes, $anio, $mesVencido, $anioVencido) {
+            $q->where(function ($inner) use ($mes, $anio) {
+                $inner->where('p.tipo_modalidad_id', 11)
+                      ->where('p.mes_plano',  $mes)
+                      ->where('p.anio_plano', $anio);
+            })->orWhere(function ($inner) use ($mesVencido, $anioVencido) {
+                $inner->where('p.tipo_modalidad_id', '<>', 11)
+                      ->where('p.mes_plano',  $mesVencido)
+                      ->where('p.anio_plano', $anioVencido);
+            });
+        };
+
+        // Contar pagados y pendientes agrupados por RS y n_plano
+        $rows = DB::table('planos AS p')
+            ->join('razones_sociales AS rs', 'rs.id', '=', 'p.razon_social_id')
+            ->leftJoin('facturas AS f', function ($join) use ($aliadoId) {
+                $join->on('f.id', '=', 'p.factura_id')
+                     ->where('f.aliado_id', $aliadoId);  // scope al aliado
+            })
+            ->where('p.aliado_id', $aliadoId)
+            ->whereNull('p.deleted_at')          // plano no soft-deleted
+            ->whereNull('f.deleted_at')          // factura no anulada
+            ->whereIn('p.tipo_reg', ['planilla', 'retiro'])
+            ->where('p.num_dias', '>', 0)
+            ->where('p.n_plano', '>', 0)         // excluye n_plano=0 (retiros IR legacy)
+            ->where($wherePeriodo)
+            ->groupBy('p.razon_social_id', 'rs.razon_social', 'p.n_plano')
+            ->select(
+                'p.razon_social_id',
+                'rs.razon_social',
+                'p.n_plano',
+                DB::raw("SUM(CASE WHEN ISNULL(p.numero_planilla,'') <> '' THEN 1 ELSE 0 END) AS pagados"),
+                DB::raw("SUM(CASE WHEN ISNULL(p.numero_planilla,'') = ''  THEN 1 ELSE 0 END) AS pendientes")
+            )
+            ->orderBy('rs.razon_social')
+            ->orderBy('p.n_plano')
+            ->get();
+
+        // Agrupar por RS
+        $agrupado = [];
+        foreach ($rows as $row) {
+            $rsId = $row->razon_social_id;
+            if (!isset($agrupado[$rsId])) {
+                $agrupado[$rsId] = [
+                    'id'           => $rsId,
+                    'razon_social' => $row->razon_social,
+                    'planos'       => [],
+                    'total_pend'   => 0,
+                    'total_pag'    => 0,
+                ];
+            }
+            $agrupado[$rsId]['planos'][] = [
+                'n_plano'    => (int)$row->n_plano,
+                'pagados'    => (int)$row->pagados,
+                'pendientes' => (int)$row->pendientes,
+            ];
+            $agrupado[$rsId]['total_pend'] += (int)$row->pendientes;
+            $agrupado[$rsId]['total_pag']  += (int)$row->pagados;
+        }
+
+        return response()->json([
+            'ok'  => true,
+            'data'=> array_values($agrupado),
+            'dia' => (int) now()->day,
+        ]);
+    }
+
+
     public function actualizarNPlano(Request $request)
     {
         // Forzar respuesta JSON siempre (petición AJAX)

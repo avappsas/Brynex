@@ -423,10 +423,12 @@ class ContratoController extends Controller
             $mesPlan  = (int) $validated['mes_plano'];
             $anioPlan = (int) $validated['anio_plano'];
 
-            // Último n_plano de la RS o 1
-            $nPlano = $contrato->razon_social_id
-                ? (\App\Models\RazonSocial::find($contrato->razon_social_id)?->n_plano ?? 1)
-                : 1;
+            // Último n_plano de la RS o 1; para Ingreso-Retiro (id=12) siempre 100.
+            $nPlano = ((int)$contrato->tipo_modalidad_id === 12)
+                ? 100
+                : ($contrato->razon_social_id
+                    ? (\App\Models\RazonSocial::find($contrato->razon_social_id)?->n_plano ?? 1)
+                    : 1);
 
             // 4) Crear plano con fecha_ret y num_dias
             $cliente = $contrato->cliente;
@@ -964,7 +966,7 @@ class ContratoController extends Controller
                 'nombre_caja'       => $caja?->nombre ?? null,
                 'nivel_riesgo'      => $original->n_arl ?? 1,
                 'salario_basico'    => $original->salario ?? 0,
-                'n_plano'           => 0,   // ← siempre 0 en Ingreso-Retiro
+                'n_plano'           => 100, // IR siempre en plano 100 (separado de planillas normales)
                 'mes_plano'         => now()->month,
                 'anio_plano'        => now()->year,
                 'razon_social'      => $rs?->razon_social ?? null,

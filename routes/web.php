@@ -197,6 +197,7 @@ Route::middleware('auth')->group(function () {
             Route::patch('/{id}/mover',         [$pp, 'moverPlano'])       ->name('mover');
             Route::post('/confirmar-pago',      [$pp, 'confirmarPago'])    ->name('confirmar_pago');
             Route::get('/api/razon/{id}',       [$pp, 'apiRazonSocial'])   ->name('api.razon');
+            Route::get('/api/resumen',           [$pp, 'apiResumenPlanos']) ->name('api.resumen');
         });
 
         // ── Cobros ───────────────────────────────────────────────────────

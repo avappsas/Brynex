@@ -432,14 +432,23 @@
     <div class="modulo-titulo">
         📄 Planos de Seguridad Social – Pago al Operador
     </div>
-    @if($rsSeleccionada)
-    <div style="display:flex;align-items:center;gap:.5rem">
+    <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap">
+        @if($rsSeleccionada)
         <span class="badge-plano">
             N_PLANO actual:
             <span id="badge-nplano-val">{{ $nPlanoActual }}</span>
         </span>
+        @endif
+        <button type="button" id="btn-resumen-planos"
+            onclick="abrirResumenPlanos()"
+            style="display:inline-flex;align-items:center;gap:.35rem;padding:.3rem .8rem;
+                   border-radius:8px;border:1px solid #bfdbfe;background:#eff6ff;
+                   color:#1d4ed8;font-size:.78rem;font-weight:700;cursor:pointer;
+                   transition:all .15s"
+            onmouseover="this.style.background='#dbeafe'" onmouseout="this.style.background='#eff6ff'">
+            📊 Ver Resumen
+        </button>
     </div>
-    @endif
 </div>
 
 {{-- ── Panel de filtros (toolbar compacto) ───────────── --}}
@@ -495,11 +504,10 @@
                                 <span class="rp"></span><span class="rc"></span>
                             </div>
                             @php
+                                // "Con planos" = RS con al menos 1 plano pendiente en el periodo
                                 $rsConPlanos = $razonesSociales->filter(fn($r) => isset($cantPorRs[$r->id]) && $cantPorRs[$r->id] > 0);
-                                $activas = ['activo','activa','1','si','yes'];
-                                $rsSinPlanosActivas = $razonesSociales
-                                    ->filter(fn($r) => !isset($cantPorRs[$r->id]) || $cantPorRs[$r->id] == 0)
-                                    ->filter(fn($r) => in_array(strtolower($r->estado ?? ''), $activas));
+                                // "Sin planos" = RS sin ningún pendiente en el periodo
+                                $rsSinPlanos = $razonesSociales->filter(fn($r) => !isset($cantPorRs[$r->id]) || $cantPorRs[$r->id] == 0);
                             @endphp
                             @if($rsConPlanos->count())
                             <div class="rs-glabel">● Con planos — {{ $rsConPlanos->count() }} RS</div>
@@ -515,9 +523,9 @@
                             </div>
                             @endforeach
                             @endif
-                            @if($rsSinPlanosActivas->count())
-                            <div class="rs-glabel" style="margin-top:.2rem">○ Sin planos — {{ $rsSinPlanosActivas->count() }} RS</div>
-                            @foreach($rsSinPlanosActivas as $rs)
+                            @if($rsSinPlanos->count())
+                            <div class="rs-glabel" style="margin-top:.2rem">○ Sin planos — {{ $rsSinPlanos->count() }} RS</div>
+                            @foreach($rsSinPlanos as $rs)
                             @php $nom = mb_strtoupper($rs->razon_social); @endphp
                             <div class="rs-row {{ $razonSocialId == $rs->id ? 'sel':'' }}"
                                  data-lbl="{{ strtolower($rs->razon_social) }}"
@@ -540,15 +548,18 @@
             {{-- N° Plano --}}
             <div class="filtro-inline">
                 <span class="fi-label">Plano</span>
-                <select name="n_plano" id="sel-nplano" onchange="autoSubmit()" style="width:80px">
+                <select name="n_plano" id="sel-nplano" onchange="autoSubmit()" style="width:90px">
                     <option value="">Todos</option>
-                    @php $maxPlano = max(12, (int)($nPlanoFiltro ?? 0), (int)($rsSeleccionada->n_plano ?? 0)); @endphp
-                    @for($np = 1; $np <= $maxPlano; $np++)
+                    @for($np = 1; $np <= 20; $np++)
                     <option value="{{ $np }}"
                         {{ (string)$nPlanoFiltro === (string)$np ? 'selected' : '' }}>
                         P{{ $np }}{{ ($rsSeleccionada && $rsSeleccionada->n_plano == $np) ? ' ⭐' : '' }}
                     </option>
                     @endfor
+                    <option value="100" {{ (string)$nPlanoFiltro === '100' ? 'selected' : '' }}
+                        style="color:#92400e;font-weight:700;background:#fefce8">
+                        P100 — IR
+                    </option>
                 </select>
             </div>
 
@@ -834,11 +845,35 @@
         <div class="mora-info" id="mora-info-txt" style="display:none"></div>
     </div>
     @elseif($planoPagado && $rsSeleccionada)
+    @php
+        // ssBase PILA = suma de ceil(v_x/100)*100 por cotizante
+        $ssBasePila = $planos->sum(fn($p) =>
+            (int)(ceil(($p->v_eps ??0)/100)*100) +
+            (int)(ceil(($p->v_afp ??0)/100)*100) +
+            (int)(ceil(($p->v_arl ??0)/100)*100) +
+            (int)(ceil(($p->v_caja??0)/100)*100)
+        );
+        $moraPagada   = ($valorPagado && $valorPagado > $ssBasePila) ? ($valorPagado - $ssBasePila) : null;
+    @endphp
     <div class="mora-sep" style="background:#86efac"></div>
     <div class="mora-item">
         <span class="ml">Estado</span>
         <span class="mv verde">✅ Pagado</span>
     </div>
+    @if($moraPagada !== null && $moraPagada > 0)
+    <div class="mora-sep" style="background:#fde68a"></div>
+    <div class="mora-item">
+        <span class="ml">Mora pagada</span>
+        <span class="mv rojo">$ {{ number_format($moraPagada,0,',','.') }}</span>
+    </div>
+    @endif
+    @if($valorPagado)
+    <div class="mora-sep" style="background:#c4b5fd"></div>
+    <div class="mora-item">
+        <span class="ml">Total pagado</span>
+        <span class="mv" style="color:#7c3aed">$ {{ number_format($valorPagado,0,',','.') }}</span>
+    </div>
+    @endif
     @endif
 </div>
 @endif
@@ -849,12 +884,52 @@
 <div class="modal-overlay" id="modal-descarga">
     <div class="modal-box md">
         <div class="modal-head">
-            <h3>📥 Descargar Plano Excel</h3>
+            <h3>📥 Descargar Plano</h3>
             <button class="modal-close" onclick="cerrarModal('modal-descarga')">✕</button>
         </div>
         <div class="modal-body">
 
-            {{-- Operadores activos del aliado --}}
+            {{-- ── Info del plano (periodo, clientes, valor SS) ──────── --}}
+            @if($rsSeleccionada)
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem;margin-bottom:1rem">
+                <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:.5rem .7rem;text-align:center">
+                    <div style="font-size:.62rem;color:#64748b;text-transform:uppercase;letter-spacing:.04em;font-weight:600">Período</div>
+                    <div style="font-size:.88rem;font-weight:800;color:#0f172a;margin-top:.15rem">
+                        {{ \Carbon\Carbon::createFromDate(null, $mes, 1)->locale('es')->monthName }} {{ $anio }}
+                    </div>
+                </div>
+                <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:.5rem .7rem;text-align:center">
+                    <div style="font-size:.62rem;color:#1d4ed8;text-transform:uppercase;letter-spacing:.04em;font-weight:600">Clientes en plano</div>
+                    <div style="font-size:.88rem;font-weight:800;color:#1d4ed8;margin-top:.15rem">{{ $totalPersonas }}</div>
+                </div>
+                <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:.5rem .7rem;text-align:center">
+                    <div style="font-size:.62rem;color:#15803d;text-transform:uppercase;letter-spacing:.04em;font-weight:600">Valor Plano</div>
+                    <div style="font-size:.82rem;font-weight:800;color:#15803d;margin-top:.15rem"
+                         id="modal-descarga-valor-plano"
+                         data-pagado="{{ $valorPagado ?? 0 }}"
+                         data-ss="{{ $totalSS }}">
+                        $ {{ number_format($totalSS, 0, ',', '.') }}
+                    </div>
+                </div>
+            </div>
+            @endif
+
+            {{-- ── Aviso plano YA PAGADO ─────────────────────────────── --}}
+            @if($planoPagado)
+            <div style="display:flex;align-items:flex-start;gap:.6rem;background:#fef2f2;border:1px solid #fca5a5;
+                        border-radius:10px;padding:.65rem .85rem;margin-bottom:1rem">
+                <span style="font-size:1.1rem;line-height:1">🔒</span>
+                <div>
+                    <div style="font-size:.78rem;font-weight:700;color:#991b1b">Este plano ya fue confirmado como pagado</div>
+                    <div style="font-size:.72rem;color:#b91c1c;margin-top:.2rem">
+                        N° Planilla: <strong>{{ $numeroPlanillaPagado }}</strong>.
+                        Las descargas están inhabilitadas para evitar modificaciones accidentales.
+                    </div>
+                </div>
+            </div>
+            @endif
+
+            {{-- ── Operadores activos del aliado ─────────────────────── --}}
             @if($operadores->count())
             <div style="margin-bottom:1rem">
                 <div style="font-size:.7rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.4rem">🏦 Operadores activos del aliado</div>
@@ -869,22 +944,38 @@
             </div>
             @endif
 
-            {{-- Botón único: Excel --}}
-            <button class="btn-accion btn-pagar" style="width:100%;justify-content:center;padding:.55rem"
-                    onclick="ejecutarDescarga('xlsx')">
-                📊 Descargar Excel (Simple,Arus)
+            {{-- ── Botones de descarga (deshabilitados si pagado) ────── --}}
+            @php $pagado = $planoPagado; @endphp
+
+            <button class="btn-accion btn-pagar" style="width:100%;justify-content:center;padding:.55rem;
+                {{ $pagado ? 'opacity:.4;cursor:not-allowed;filter:grayscale(.6)' : '' }}"
+                    onclick="ejecutarDescarga('xlsx')"
+                    @if($pagado) disabled @endif>
+                📊 Descargar Excel (Simple, Arus)
             </button>
-            <button class="btn-asopagos" style="width:100%;justify-content:center;padding:.55rem;margin-top:.5rem"
-                    onclick="ejecutarDescargaAsopagos()">
+            <button class="btn-asopagos" style="width:100%;justify-content:center;padding:.55rem;margin-top:.5rem;
+                {{ $pagado ? 'opacity:.4;cursor:not-allowed;filter:grayscale(.6)' : '' }}"
+                    onclick="ejecutarDescargaAsopagos()"
+                    @if($pagado) disabled @endif>
                 📌 Descargar Excel Asopagos
             </button>
-            <button class="btn-accion" style="width:100%;justify-content:center;padding:.55rem;margin-top:.5rem;background:linear-gradient(135deg,#059669,#047857);color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:.85rem;display:flex;align-items:center;gap:.4rem"
-                    onclick="ejecutarDescargaMiPlanilla()">
+            <button class="btn-accion" style="width:100%;justify-content:center;padding:.55rem;margin-top:.5rem;
+                background:{{ $pagado ? '#94a3b8' : 'linear-gradient(135deg,#059669,#047857)' }};
+                color:#fff;border:none;border-radius:8px;cursor:{{ $pagado ? 'not-allowed' : 'pointer' }};
+                font-size:.85rem;display:flex;align-items:center;gap:.4rem;
+                {{ $pagado ? 'opacity:.4;filter:grayscale(.6)' : '' }}"
+                    onclick="ejecutarDescargaMiPlanilla()"
+                    @if($pagado) disabled @endif>
                 📄 Descargar TXT MiPlanilla
             </button>
-            <button class="btn-accion" style="width:100%;justify-content:center;padding:.55rem;margin-top:.5rem;background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:.85rem;display:flex;align-items:center;gap:.4rem"
+            <button class="btn-accion" style="width:100%;justify-content:center;padding:.55rem;margin-top:.5rem;
+                background:{{ $pagado ? '#94a3b8' : 'linear-gradient(135deg,#7c3aed,#5b21b6)' }};
+                color:#fff;border:none;border-radius:8px;cursor:{{ $pagado ? 'not-allowed' : 'pointer' }};
+                font-size:.85rem;display:flex;align-items:center;gap:.4rem;
+                {{ $pagado ? 'opacity:.4;filter:grayscale(.6)' : '' }}"
                     id="btn-aportes-en-linea"
-                    onclick="ejecutarDescargaAportesEnLinea()">
+                    onclick="ejecutarDescargaAportesEnLinea()"
+                    @if($pagado) disabled @endif>
                 📊 Descargar Aportes en Línea
             </button>
 
@@ -1244,11 +1335,12 @@ const CTX = {
 // ── Cálculo de Mora PILA Colombia ────────────────────────────────────
 // Decreto 1990/2016 | Art. 635 ET | Tasa usura Superfinanciera
 (function calcularMora() {
-    if (CTX.planoPagado || !CTX.rsNit || CTX.totalSS <= 0) return;
-
-    // Actualizar Total SS con el valor PILA redondeado (ceil por cotizante)
+    // Siempre actualizar Total SS con el valor PILA redondeado (ceil por cotizante)
+    // independiente de si el plano está pagado o no
     const elSS = document.getElementById('total-ss-display');
-    if (elSS) elSS.textContent = '$ ' + fmtNum(CTX.ssBaseOperador);
+    if (elSS && CTX.ssBaseOperador > 0) elSS.textContent = '$ ' + fmtNum(CTX.ssBaseOperador);
+
+    if (CTX.planoPagado || !CTX.rsNit || CTX.totalSS <= 0) return;
 
     // 1) Tabla legal: últimos 2 dígitos NIT → día hábil de vencimiento
     const TABLA = [
@@ -1467,14 +1559,9 @@ function selRs(val, nplano, label) {
     document.querySelectorAll('#rs-list .rs-row').forEach(r => r.classList.remove('sel'));
     const hit = [...document.querySelectorAll('#rs-list .rs-row')].find(r => r.getAttribute('onclick')?.includes("'" + val + "'"));
     if (hit) hit.classList.add('sel'); else document.querySelector('#rs-list .rs-row')?.classList.add('sel');
-    const selNp = document.getElementById('sel-nplano');
-    if (selNp && nplano) {
-        let found = false;
-        for (let o of selNp.options) { if (o.value === String(nplano)) { o.selected = true; found = true; break; } }
-        if (!found) selNp.value = '';
-    }
-    const mi = document.getElementById('inp-nplano-modal');
-    if (mi && nplano) mi.value = parseInt(nplano) + 1;
+    // NO forzar el n_plano al cambiar de RS: el usuario puede tener planos
+    // en distintos n_plano y forzar el actual oculta los pendientes de otros.
+    // El selector de plano queda como estaba; el usuario filtra manualmente.
     autoSubmit();
 }
 function filtrarRs(q) {
@@ -1596,6 +1683,27 @@ function validarCompatibilidadYAbrir(accion) {
 
 // ── Modales ───────────────────────────────────────────────────────────
 function abrirModalDescarga() {
+    // ── Inyectar "Valor Plano" ────────────────────────────────────────
+    const chip = document.getElementById('modal-descarga-valor-plano');
+    if (chip) {
+        const pagado    = parseInt(chip.dataset.pagado || '0', 10);
+        const ssBase    = parseInt(chip.dataset.ss     || '0', 10);
+        const ctxTotal  = (typeof window.CTX_TOTAL_PAGAR === 'number' && window.CTX_TOTAL_PAGAR > 0)
+                          ? window.CTX_TOTAL_PAGAR : 0;
+
+        let total;
+        if (CTX.planoPagado && pagado > 0) {
+            // Plano pagado: mostrar lo que realmente se pagó (SS + mora del gasto)
+            total = pagado;
+        } else if (ctxTotal > 0) {
+            // No pagado: SS + mora calculada en vivo
+            total = ctxTotal;
+        } else {
+            // Fallback: solo SS
+            total = ssBase;
+        }
+        chip.textContent = '$ ' + fmtNum(total);
+    }
     document.getElementById('modal-descarga').classList.add('open');
 }
 function resetModalPago() {
@@ -2019,6 +2127,306 @@ function resaltarError(fieldId, msg) {
         el.focus();
     }
     mostrarToast(msg, 'error');
+}
+</script>
+@endpush
+
+{{-- ══════════════════════════════════════════════════════════════════════
+     MODAL: Resumen de Planos por RS y N_PLANO  (diseño mejorado)
+═══════════════════════════════════════════════════════════════════════ --}}
+<style>
+/* ── Resumen modal ─────────────────────────────────────────────────── */
+#modal-resumen-planos .modal-box {
+    display:flex; flex-direction:column;
+    max-width:720px; width:96vw; max-height:90vh;
+    border-radius:14px; overflow:hidden;
+}
+#modal-resumen-planos .res-head {
+    flex-shrink:0;
+    background:linear-gradient(135deg,#0a1628 0%,#0d2550 100%);
+    color:#e2e8f0; padding:.8rem 1.1rem;
+    display:flex; align-items:center; justify-content:space-between;
+    gap:.5rem;
+}
+#modal-resumen-planos .res-head h3 {
+    margin:0; font-size:.95rem; font-weight:700; letter-spacing:.01em;
+}
+#modal-resumen-planos .res-head .res-periodo {
+    font-size:.78rem; color:#93c5fd; font-weight:600; margin-left:.4rem;
+}
+#modal-resumen-planos .res-close {
+    background:rgba(255,255,255,.1); border:none; color:#e2e8f0;
+    border-radius:6px; width:28px; height:28px; cursor:pointer;
+    font-size:.9rem; display:flex; align-items:center; justify-content:center;
+    transition:background .15s;
+}
+#modal-resumen-planos .res-close:hover { background:rgba(255,255,255,.22); }
+
+/* leyenda + aviso: fija debajo del header */
+#modal-resumen-planos .res-legend {
+    flex-shrink:0;
+    padding:.45rem 1rem; background:#f8fafc;
+    border-bottom:1px solid #e2e8f0;
+    display:flex; gap:.75rem; flex-wrap:wrap; align-items:center; font-size:.7rem; color:#475569;
+}
+#modal-resumen-planos .res-legend .leg-dot {
+    width:9px; height:9px; border-radius:50%; display:inline-block; margin-right:.2rem;
+}
+
+/* tabla: cabecera sticky dentro del scroll */
+#modal-resumen-planos .res-scroll {
+    flex:1; overflow-y:auto; overflow-x:hidden;
+}
+#modal-resumen-planos .res-table {
+    width:100%; border-collapse:collapse; font-size:.75rem;
+}
+#modal-resumen-planos .res-table thead th {
+    position:sticky; top:0; z-index:2;
+    background:#1e3a5f; color:#cbd5e1;
+    padding:.4rem .55rem; font-size:.65rem; font-weight:700;
+    text-transform:uppercase; letter-spacing:.04em; white-space:nowrap;
+}
+#modal-resumen-planos .res-table thead th:first-child { text-align:left; padding-left:.8rem; }
+#modal-resumen-planos .res-table thead th:not(:first-child) { text-align:center; }
+
+/* separador de RS */
+#modal-resumen-planos .res-table tr.rs-header td {
+    padding:.35rem .8rem .2rem;
+    background:#f1f5f9;
+    border-top:2px solid #cbd5e1;
+    font-weight:700; font-size:.72rem; color:#1e293b;
+    letter-spacing:.02em;
+}
+#modal-resumen-planos .res-table tr.rs-header td span.rs-badge {
+    margin-left:.4rem; padding:.05rem .35rem; border-radius:4px;
+    font-size:.63rem; font-weight:700; vertical-align:middle;
+}
+
+/* filas de plano */
+#modal-resumen-planos .res-table tr.plano-row td {
+    padding:.28rem .55rem; border-bottom:1px solid #f1f5f9;
+    vertical-align:middle;
+}
+#modal-resumen-planos .res-table tr.plano-row td:first-child { padding-left:1.4rem; }
+#modal-resumen-planos .res-table tr.plano-row td:not(:first-child) { text-align:center; }
+#modal-resumen-planos .res-table tr.plano-row.ok   { background:#f0fdf4; }
+#modal-resumen-planos .res-table tr.plano-row.warn { background:#fef2f2; }
+#modal-resumen-planos .res-table tr.plano-row.ir   { background:#fefce8; }
+
+/* fila totales global */
+#modal-resumen-planos .res-foot {
+    flex-shrink:0;
+    border-top:2px solid #e2e8f0;
+    padding:.55rem 1rem;
+    background:#f8fafc;
+    display:flex; gap:1.2rem; align-items:center; flex-wrap:wrap; font-size:.78rem;
+}
+#modal-resumen-planos .res-foot .tot-item { display:flex; flex-direction:column; align-items:center; }
+#modal-resumen-planos .res-foot .tot-item .tv { font-size:1.1rem; font-weight:800; line-height:1.1; }
+#modal-resumen-planos .res-foot .tot-item .tl { font-size:.63rem; color:#64748b; text-transform:uppercase; letter-spacing:.04em; }
+#modal-resumen-planos .res-foot .tot-sep { width:1px; height:32px; background:#e2e8f0; }
+#modal-resumen-planos .res-foot .btn-cerrar-res {
+    margin-left:auto; padding:.3rem .9rem; border-radius:7px;
+    background:#1e3a5f; color:#fff; border:none; font-size:.75rem;
+    font-weight:600; cursor:pointer; transition:background .15s;
+}
+#modal-resumen-planos .res-foot .btn-cerrar-res:hover { background:#0d2550; }
+</style>
+
+<div class="modal-overlay" id="modal-resumen-planos">
+    <div class="modal-box" style="padding:0;border-radius:14px">
+
+        {{-- CABECERA FIJA --}}
+        <div class="res-head">
+            <h3>📊 Resumen de Planos <span class="res-periodo" id="res-periodo-lbl"></span></h3>
+            <button class="res-close" onclick="cerrarModal('modal-resumen-planos')">✕</button>
+        </div>
+
+        {{-- LEYENDA FIJA --}}
+        <div class="res-legend">
+            <span><span class="leg-dot" style="background:#86efac;border:1px solid #4ade80"></span>Todo pagado</span>
+            <span><span class="leg-dot" style="background:#fca5a5;border:1px solid #ef4444"></span>Pendiente</span>
+            <span><span class="leg-dot" style="background:#fde047;border:1px solid #ca8a04"></span>IR (P100)</span>
+            <span id="res-dia-aviso" style="display:none;color:#92400e;font-weight:700;margin-left:.3rem">
+                ⚠️ IR se muestra desde el día 26
+            </span>
+        </div>
+
+        {{-- ZONA SCROLLABLE --}}
+        <div class="res-scroll">
+            <div id="res-loading" style="text-align:center;padding:2.5rem;color:#94a3b8;font-size:.85rem">
+                ⏳ Cargando…
+            </div>
+            <table class="res-table" id="res-tabla" style="display:none">
+                <thead>
+                    <tr>
+                        <th style="width:46%">Razón Social / Plano</th>
+                        <th style="width:14%">✅ Pagados</th>
+                        <th style="width:14%">⏳ Pendientes</th>
+                        <th style="width:26%">Estado</th>
+                    </tr>
+                </thead>
+                <tbody id="res-tbody"></tbody>
+            </table>
+        </div>
+
+        {{-- PIE FIJO CON TOTALES --}}
+        <div class="res-foot" id="res-foot" style="display:none">
+            <div class="tot-item">
+                <span class="tv" id="res-tot-rs"   style="color:#0f172a">—</span>
+                <span class="tl">Empresas</span>
+            </div>
+            <div class="tot-sep"></div>
+            <div class="tot-item">
+                <span class="tv" id="res-tot-tot"  style="color:#0f172a">—</span>
+                <span class="tl">Total registros</span>
+            </div>
+            <div class="tot-sep"></div>
+            <div class="tot-item">
+                <span class="tv" id="res-tot-pag"  style="color:#16a34a">—</span>
+                <span class="tl">Pagados</span>
+            </div>
+            <div class="tot-sep"></div>
+            <div class="tot-item">
+                <span class="tv" id="res-tot-pend" style="color:#dc2626">—</span>
+                <span class="tl">Pendientes</span>
+            </div>
+            <button class="btn-cerrar-res" onclick="cerrarModal('modal-resumen-planos')">Cerrar</button>
+        </div>
+    </div>
+</div>
+
+@push('scripts')
+<script>
+// ── Modal Resumen Planos ──────────────────────────────────────────────
+const RES_URL  = '{{ route('admin.planos.api.resumen') }}';
+const RES_ANIO = {{ $anio }};
+const RES_MES  = {{ $mes }};
+const RES_DIA  = {{ $diaHoy }};
+const MESES_RES = ['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+
+function abrirResumenPlanos() {
+    document.getElementById('modal-resumen-planos').classList.add('open');
+    document.getElementById('res-periodo-lbl').textContent =
+        MESES_RES[RES_MES] + ' ' + RES_ANIO;
+    document.getElementById('res-dia-aviso').style.display =
+        RES_DIA < 26 ? 'inline-flex' : 'none';
+
+    // reset
+    document.getElementById('res-loading').style.display = 'block';
+    document.getElementById('res-tabla').style.display   = 'none';
+    document.getElementById('res-foot').style.display    = 'none';
+    document.getElementById('res-tbody').innerHTML       = '';
+
+    fetch(`${RES_URL}?anio=${RES_ANIO}&mes=${RES_MES}`)
+        .then(r => r.json())
+        .then(json => {
+            document.getElementById('res-loading').style.display = 'none';
+            renderResumen(json.data, json.dia);
+        })
+        .catch(() => {
+            document.getElementById('res-loading').textContent = '❌ Error al cargar el resumen.';
+        });
+}
+
+function renderResumen(data, dia) {
+    const tbody = document.getElementById('res-tbody');
+    if (!data || !data.length) {
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:2rem;color:#94a3b8">
+            No hay planos en este período.</td></tr>`;
+        document.getElementById('res-tabla').style.display = 'table';
+        return;
+    }
+
+    // ── Totales globales ─────────────────────────────────────────────
+    let totPend = 0, totPag = 0;
+    data.forEach(rs => {
+        totPend += rs.total_pend;
+        totPag  += rs.total_pag;
+    });
+    const totTot = totPend + totPag;
+
+    document.getElementById('res-tot-rs').textContent   = data.length;
+    document.getElementById('res-tot-tot').textContent  = totTot;
+    document.getElementById('res-tot-pag').textContent  = totPag;
+    document.getElementById('res-tot-pend').textContent = totPend;
+    document.getElementById('res-tot-pend').style.color = totPend > 0 ? '#dc2626' : '#16a34a';
+
+    // ── Filas ────────────────────────────────────────────────────────
+    let html = '';
+
+    data.forEach(rs => {
+        // Calcular si TODA la RS está pagada (ignorando IR si día < 26)
+        const rsPendReal = rs.planos.reduce((s, pl) => {
+            const irOculto = pl.n_plano === 100 && dia < 26;
+            return s + (irOculto ? 0 : pl.pendientes);
+        }, 0);
+        const rsTodoPag = rsPendReal === 0 && rs.total_pag > 0;
+
+        // Fila separadora de RS
+        const badgeBg    = rsTodoPag ? '#dcfce7' : '#fee2e2';
+        const badgeColor = rsTodoPag ? '#15803d' : '#dc2626';
+        const badgeTxt   = rsTodoPag ? '✅ Pagado' : `⏳ ${rsPendReal} pend.`;
+
+        html += `<tr class="rs-header">
+            <td colspan="4">
+                ${rs.razon_social.toUpperCase()}
+                <span class="rs-badge" style="background:${badgeBg};color:${badgeColor}">${badgeTxt}</span>
+            </td>
+        </tr>`;
+
+        // Filas de cada n_plano de esta RS
+        rs.planos.forEach(pl => {
+            const esIR     = pl.n_plano === 100;
+            const irOculto = esIR && dia < 26;
+            const pendReal = irOculto ? 0 : pl.pendientes;
+            const todoPag  = pl.pagados > 0 && pendReal === 0;
+            const hayPend  = pendReal > 0;
+
+            let rowCls = '', estadoHtml = '', plLabel = '';
+
+            // badge plano
+            if (esIR) {
+                plLabel = `<span style="background:#fef9c3;color:#92400e;border:1px solid #fde047;
+                           border-radius:4px;padding:.06rem .35rem;font-size:.65rem;font-weight:700">
+                           P100 IR</span>`;
+            } else {
+                plLabel = `<span style="font-weight:700;color:#1d4ed8;font-size:.78rem">P${pl.n_plano}</span>`;
+            }
+
+            // estado y color fila
+            if (todoPag) {
+                rowCls = 'ok';
+                estadoHtml = `<span style="color:#15803d;font-weight:700;font-size:.73rem">✅ Pagado</span>`;
+            } else if (hayPend && !esIR) {
+                rowCls = 'warn';
+                estadoHtml = `<span style="color:#dc2626;font-weight:700;font-size:.73rem">⏳ ${pendReal} pendiente${pendReal>1?'s':''}</span>`;
+            } else if (esIR) {
+                rowCls = irOculto ? '' : 'ir';
+                estadoHtml = irOculto
+                    ? `<span style="color:#94a3b8;font-size:.67rem">🕐 desde día 26</span>`
+                    : `<span style="color:#b45309;font-weight:700;font-size:.73rem">⚠️ ${pendReal} pend.</span>`;
+            } else {
+                estadoHtml = `<span style="color:#94a3b8">—</span>`;
+            }
+
+            const pagCol  = pl.pagados   > 0
+                ? `<strong style="color:#15803d">${pl.pagados}</strong>`   : `<span style="color:#cbd5e1">—</span>`;
+            const pendCol = pl.pendientes > 0
+                ? `<strong style="color:#dc2626">${pl.pendientes}</strong>` : `<span style="color:#cbd5e1">—</span>`;
+
+            html += `<tr class="plano-row ${rowCls}">
+                <td>${plLabel}</td>
+                <td>${pagCol}</td>
+                <td>${pendCol}</td>
+                <td>${estadoHtml}</td>
+            </tr>`;
+        });
+    });
+
+    tbody.innerHTML = html;
+    document.getElementById('res-tabla').style.display = 'table';
+    document.getElementById('res-foot').style.display  = 'flex';
 }
 </script>
 @endpush

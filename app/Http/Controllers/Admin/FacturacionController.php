@@ -689,11 +689,17 @@ class FacturacionController extends Controller
 
                 // ─── n_plano compartido por RS en este lote ────────────────
                 // Todos los contratos de la misma RS deben tener el mismo n_plano.
+                // EXCEPCIÓN: Ingreso-Retiro (tipo_modalidad_id=12) siempre usa n_plano=100
+                // para separarlo de los planos normales y facilitar el control de pagos.
                 $rsId = $contrato->razon_social_id;
-                if ($rsId && !isset($nPlanosPorRS[$rsId])) {
-                    $nPlanosPorRS[$rsId] = static::_nPlanoParaRS($aliadoId, $rsId, $mes, $anio);
+                if ((int)$contrato->tipo_modalidad_id === 12) {
+                    $nPlanoFactura = 100; // IR siempre en plano 100
+                } else {
+                    if ($rsId && !isset($nPlanosPorRS[$rsId])) {
+                        $nPlanosPorRS[$rsId] = static::_nPlanoParaRS($aliadoId, $rsId, $mes, $anio);
+                    }
+                    $nPlanoFactura = $rsId ? ($nPlanosPorRS[$rsId] ?? null) : null;
                 }
-                $nPlanoFactura = $rsId ? ($nPlanosPorRS[$rsId] ?? null) : null;
 
                 // --- Distribucion IGUAL entre contratos del batch ---
                 // Ef, consignacion y saldo a favor en PARTES IGUALES.
