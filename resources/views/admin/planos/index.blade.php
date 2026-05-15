@@ -756,13 +756,17 @@
         <tr>
             <td colspan="7" style="text-align:right">TOTALES &rarr;</td>
             <td></td>
-            <td>{{ number_format($planos->sum('v_eps'),0,',','.') }}</td>
+            {{-- EPS: ceil(v_eps/100)*100 por cotizante, luego sumar --}}
+            <td>{{ number_format($planos->sum(fn($p) => (int)(ceil(($p->v_eps??0)/100)*100)),0,',','.') }}</td>
             <td></td>
-            <td>{{ number_format($planos->sum('v_arl'),0,',','.') }}</td>
+            {{-- ARL --}}
+            <td>{{ number_format($planos->sum(fn($p) => (int)(ceil(($p->v_arl??0)/100)*100)),0,',','.') }}</td>
             <td></td>
-            <td>{{ number_format($planos->sum('v_caja'),0,',','.') }}</td>
+            {{-- CCF --}}
+            <td>{{ number_format($planos->sum(fn($p) => (int)(ceil(($p->v_caja??0)/100)*100)),0,',','.') }}</td>
             <td></td>
-            <td>{{ number_format($planos->sum('v_afp'),0,',','.') }}</td>
+            {{-- AFP --}}
+            <td>{{ number_format($planos->sum(fn($p) => (int)(ceil(($p->v_afp??0)/100)*100)),0,',','.') }}</td>
             <td></td>{{-- TOTAL SS: se muestra en el resumen inferior --}}
             <td colspan="{{ $esIndependiente ? 2 : 4 }}"></td>
             @if($esIndependiente)
@@ -800,7 +804,7 @@
     <div class="mora-sep" style="background:#7dd3fc"></div>
     <div class="mora-item">
         <span class="ml">Total SS</span>
-        <span class="mv azul">$ {{ number_format($totalSS,0,',','.') }}</span>
+        <span class="mv azul" id="total-ss-display">$ {{ number_format($totalSS,0,',','.') }}</span>
     </div>
 
     {{-- Sección mora: se inyecta por JS cuando aplica --}}
@@ -1164,11 +1168,56 @@ const CTX = {
     modalidadesIds: {!! json_encode(array_map('intval', $modalidadesIds)) !!},
     totalSS          : {{ $totalSS }},
     totalSSPendiente  : {{ $planos->filter(fn($p) => empty($p->numero_planilla))->sum('total_ss') }},
+    // ssBaseOperador: suma de aportes individuales con redondeo PILA ceil(x/100)*100 por cotizante
+    // El operador redondea cada aporte (v_eps, v_afp, v_arl, v_caja) al siguiente múltiplo de 100
+    // ANTES de sumar por entidad. Los retiros con IBC parcial generan aportes no redondeados.
+    ssBaseOperador    : {{ $planos->sum(fn($p) =>
+        (int)(ceil(($p->v_eps  ??0)/100)*100) +
+        (int)(ceil(($p->v_afp  ??0)/100)*100) +
+        (int)(ceil(($p->v_arl  ??0)/100)*100) +
+        (int)(ceil(($p->v_caja ??0)/100)*100)
+    ) }},
     pendienteEPS      : {{ $planos->filter(fn($p) => empty($p->numero_planilla))->sum('v_eps') }},
     pendienteAFP      : {{ $planos->filter(fn($p) => empty($p->numero_planilla))->sum('v_afp') }},
     pendienteARL      : {{ $planos->filter(fn($p) => empty($p->numero_planilla))->sum('v_arl') }},
     pendienteCCF      : {{ $planos->filter(fn($p) => empty($p->numero_planilla))->sum('v_caja') }},
     tasaMora          : {{ \App\Models\ConfiguracionBrynex::obtener('tasa_mora_pila', 26.17) }},
+    // Totales por entidad (para mora exacta igual al operador PILA)
+    // PILA redondea cada aporte al siguiente múltiplo de 100 POR COTIZANTE antes de agrupar.
+    // Así PORVENIR-AFP suma ceil(v_afp/100)*100 de cada persona individualmente.
+    porEntidad        : {!! json_encode(
+        $planos
+               ->flatMap(fn($p) => [
+                    // EPS: ceil(v_eps/100)*100 por cotizante
+                    !empty($p->cod_eps) && ($p->v_eps ?? 0) > 0
+                        ? ['cod' => $p->cod_eps, 'tipo' => 'EPS',
+                           'valor' => (float)((int)(ceil(($p->v_eps??0)/100)*100))]
+                        : null,
+                    // AFP: ceil(v_afp/100)*100 por cotizante
+                    !empty($p->cod_afp) && ($p->v_afp ?? 0) > 0
+                        ? ['cod' => $p->cod_afp, 'tipo' => 'AFP',
+                           'valor' => (float)((int)(ceil(($p->v_afp??0)/100)*100))]
+                        : null,
+                    // ARL: ceil(v_arl/100)*100 por cotizante
+                    !empty($p->cod_arl) && ($p->v_arl ?? 0) > 0
+                        ? ['cod' => $p->cod_arl, 'tipo' => 'ARL',
+                           'valor' => (float)((int)(ceil(($p->v_arl??0)/100)*100))]
+                        : null,
+                    // CCF: ceil(v_caja/100)*100 por cotizante
+                    !empty($p->cod_caja) && ($p->v_caja ?? 0) > 0
+                        ? ['cod' => $p->cod_caja, 'tipo' => 'CCF',
+                           'valor' => (float)((int)(ceil(($p->v_caja??0)/100)*100))]
+                        : null,
+               ])
+               ->filter()
+               ->groupBy(fn($e) => $e['tipo'] . '|' . $e['cod'])
+               ->map(fn($g) => [
+                    'tipo'  => $g->first()['tipo'],
+                    'cod'   => $g->first()['cod'],
+                    'total' => $g->sum('valor'),   // suma de valores ya redondeados a 100
+               ])
+               ->values()
+    ) !!},
     esIndependiente: {{ $esIndependiente ? 'true' : 'false' }},
     planoPagado   : {{ $planoPagado ? 'true' : 'false' }},
     rsNit         : {{ $rsNit ?? 'null' }},
@@ -1196,6 +1245,10 @@ const CTX = {
 // Decreto 1990/2016 | Art. 635 ET | Tasa usura Superfinanciera
 (function calcularMora() {
     if (CTX.planoPagado || !CTX.rsNit || CTX.totalSS <= 0) return;
+
+    // Actualizar Total SS con el valor PILA redondeado (ceil por cotizante)
+    const elSS = document.getElementById('total-ss-display');
+    if (elSS) elSS.textContent = '$ ' + fmtNum(CTX.ssBaseOperador);
 
     // 1) Tabla legal: últimos 2 dígitos NIT → día hábil de vencimiento
     const TABLA = [
@@ -1294,18 +1347,38 @@ const CTX = {
     document.getElementById('mora-bloque').style.background = 'linear-gradient(135deg,#fff7ed,#fef3c7)';
     document.getElementById('mora-bloque').style.borderColor = '#fde68a';
 
-    // 4) Mora por subsistema (EPS, AFP, ARL, CCF) → cada una ceil al próximo 100
+    // 4) Mora POR ENTIDAD (igual al operador PILA): ceil(valor × factor / 100) × 100 por cada administradora
+    // El operador NO agrupa EPS/AFP/ARL/CCF juntos — cada administradora (ej: Porvenir, Colpensiones)
+    // recibe su propio ceil. Esto replica exactamente la tabla del operador.
     const tasaAnual = CTX.tasaMora / 100;
     const bisiesto  = (anioPago % 4 === 0 && (anioPago % 100 !== 0 || anioPago % 400 === 0));
     const diasAnio  = bisiesto ? 366 : 365;
     const factor    = tasaAnual / diasAnio * diasMora;
     const ceil100   = v => Math.ceil(v * factor / 100) * 100;
-    const moraEPS   = ceil100(CTX.pendienteEPS);
-    const moraAFP   = ceil100(CTX.pendienteAFP);
-    const moraARL   = ceil100(CTX.pendienteARL);
-    const moraCCF   = ceil100(CTX.pendienteCCF);
-    const mora      = moraEPS + moraAFP + moraARL + moraCCF;
-    const total     = CTX.totalSS + mora;
+
+    let mora = 0;
+    const detalleMora = {};
+    for (const ent of CTX.porEntidad) {
+        const m = ceil100(ent.total);
+        mora += m;
+        detalleMora[ent.tipo] = (detalleMora[ent.tipo] || 0) + m;
+    }
+    // Fallback: si porEntidad vacío (plano ya pagado / sin datos), usar cálculo por subsistema
+    if (!CTX.porEntidad.length) {
+        mora = ceil100(CTX.pendienteEPS) + ceil100(CTX.pendienteAFP)
+             + ceil100(CTX.pendienteARL) + ceil100(CTX.pendienteCCF);
+        detalleMora['EPS'] = ceil100(CTX.pendienteEPS);
+        detalleMora['AFP'] = ceil100(CTX.pendienteAFP);
+        detalleMora['ARL'] = ceil100(CTX.pendienteARL);
+        detalleMora['CCF'] = ceil100(CTX.pendienteCCF);
+    }
+    // SS base: igual al operador = suma aportes individuales de TODOS los planos
+    // (NO solo pendientes — el operador incluye todos los 31 afiliados)
+    const ssBase = CTX.ssBaseOperador;
+    const total  = ssBase + mora;
+
+    // Guardar total final para el modal de pago (SS + mora)
+    window.CTX_TOTAL_PAGAR = total;
 
     mostrarNodo('mora-sep2'); mostrarNodo('mora-item-dias');
     mostrarNodo('mora-sep3'); mostrarNodo('mora-item-valor');
@@ -1316,8 +1389,9 @@ const CTX = {
     document.getElementById('mora-total').textContent = '$ ' + fmtNum(total);
 
     mostrarEl('mora-info-txt');
+    const detalleStr = Object.entries(detalleMora).map(([k,v]) => `${k} $${fmtNum(v)}`).join(' + ');
     document.getElementById('mora-info-txt').textContent =
-        `${infoSufijo} · Tasa: ${CTX.tasaMora}% E.A. · EPS $${fmtNum(moraEPS)} + AFP $${fmtNum(moraAFP)} + ARL $${fmtNum(moraARL)} + CCF $${fmtNum(moraCCF)}`;
+        `${infoSufijo} · Tasa: ${CTX.tasaMora}% E.A. · ${detalleStr}`;
 })();
 
 // Devuelve la fecha del N-ésimo día hábil del mes (lun-vie, sin festivos)
@@ -1537,7 +1611,7 @@ function abrirModalPago() {
     _operadorClienteId = null;
     document.getElementById('modal-pago-titulo').textContent = '✅ Confirmar Pago de Planilla al Operador';
     document.getElementById('modal-pago-aviso').style.display = '';
-    document.getElementById('pago-valor').value = CTX.totalSS;
+    document.getElementById('pago-valor').value = window.CTX_TOTAL_PAGAR || CTX.ssBaseOperador;
     resetModalPago();
     const btn = document.getElementById('btn-confirmar-pago');
     btn.disabled = false; btn.textContent = '✅ CONFIRMAR PAGO PLANILLA';

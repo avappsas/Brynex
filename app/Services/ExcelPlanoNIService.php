@@ -211,25 +211,28 @@ class ExcelPlanoNIService
 
         // -- 2. Planos del periodo (logica mes vencido) ----------------------------
         $query = DB::table('planos AS p')
-            ->leftJoin('facturas AS f',   'f.id',          '=', 'p.factura_id')
-            ->leftJoin('clientes AS cl',  'cl.cedula',     '=', 'p.no_identifi')
+            ->leftJoin('facturas AS f',   'f.id',  '=', 'p.factura_id')
+            // ── clientes: filtrar por aliado_id para evitar duplicados cuando
+            //    el mismo cliente está registrado en múltiples aliados (misma cédula)
+            ->leftJoin('clientes AS cl', function ($join) use ($aliadoId) {
+                $join->on('cl.cedula', '=', 'p.no_identifi')
+                     ->where('cl.aliado_id', '=', $aliadoId);
+            })
+            // ── ciudades/departamentos con TOP 1 para evitar duplicar si hay
+            //    múltiples registros con el mismo id_ciudad_t o departamento id
             ->leftJoin('ciudades AS c',      'c.id_ciudad_t', '=', 'cl.municipio_id')
             ->leftJoin('departamentos AS d', 'd.id',          '=', 'cl.departamento_id')
             // Códigos PILA de entidades (NIT del plano → codigo en tabla maestra)
             ->leftJoin('pensiones AS afp_t', DB::raw('CAST(afp_t.nit AS VARCHAR(20))'), '=', DB::raw('p.cod_afp'))
             ->leftJoin('eps AS eps_t',       DB::raw('CAST(eps_t.nit AS VARCHAR(20))'), '=', DB::raw('p.cod_eps'))
             ->leftJoin('cajas AS caj_t',     DB::raw('CAST(caj_t.nit AS VARCHAR(20))'), '=', DB::raw('p.cod_caja'))
-            // Tarifa ARL según nivel de riesgo del plano
-            ->leftJoin('arl_tarifas AS arl_t', 'arl_t.nivel', '=', 'p.nivel_riesgo')
-            // Código PILA de la ARL (NIT del plano → codigo en tabla arls)
             ->leftJoin('arls AS arl_m', DB::raw('CAST(arl_m.nit AS VARCHAR(20))'), '=', DB::raw('p.cod_arl'))
             ->leftJoin('tipo_modalidad AS tm', 'tm.id', '=', 'p.tipo_modalidad_id')
             ->where('p.aliado_id',       $aliadoId)
             ->where('p.razon_social_id', $razonSocialId)
             ->where('p.n_plano',         $nPlano)
             ->whereIn('p.tipo_reg',       ['planilla', 'retiro'])
-            ->where('p.num_dias',         '>', 0)                 // excluir planos sin días
-            ->where(fn($q) => $q->where('p.num_dias', '>=', 1)->orWhere('p.tipo_reg', '!=', 'retiro'))
+            ->whereRaw('ISNULL(p.num_dias, 0) > 0')   // excluir num_dias=0 Y num_dias=NULL
             ->whereNull('p.deleted_at')
             ->where(function ($q) use ($mesPago, $anioPago, $mesVencido, $anioVencido) {
                 $q->where(function ($i) use ($mesPago, $anioPago) {
@@ -263,9 +266,11 @@ class ExcelPlanoNIService
                 DB::raw('afp_t.codigo  AS codigo_afp'),
                 DB::raw('eps_t.codigo  AS codigo_eps'),
                 DB::raw('caj_t.codigo  AS codigo_caj'),
-                DB::raw('arl_m.codigo  AS codigo_arl_pila'),
-                // Tarifa ARL
-                DB::raw('arl_t.porcentaje AS tarifa_arl'),
+                // cod_arl: primero el código PILA de la tabla arls (por NIT),
+                // fallback al cod_arl del plano (NIT directo) para retiros donde el join falla
+                DB::raw('ISNULL(arl_m.codigo, p.cod_arl) AS codigo_arl_pila'),
+                // Tarifa ARL: calculada directamente en PilaCotizanteCalculator (TARIFAS_ARL const)
+                // NO se incluye arl_tarifas join — evita multiplicar filas si hay tarifas por aliado
                 // IBC / salario
                 'p.salario_basico',
                 'p.num_dias',
@@ -437,7 +442,9 @@ class ExcelPlanoNIService
         // ── Tipo documento ────────────────────────────────────────────────────
         $tipoDocNorm    = strtoupper(trim($p->tipo_doc ?? 'CC'));
         $docsColombiano = ['CC', 'TI', 'NUIP', 'RC'];
-        $esExtranjero   = !in_array($tipoDocNorm, $docsColombiano) ? 'X' : null;
+        // Extranjero: usar la regla centralizada del calculador
+        // Regla: extranjero CON AFP → no marcar X; extranjero SIN AFP → marcar X
+        $esExtranjero   = $c['esExtranjero'] ? 'X' : null;
 
         // ── Fechas ING / RET ──────────────────────────────────────────────────
         $fechaIng = !empty($p->fecha_ing) ? $p->fecha_ing : null;
@@ -449,7 +456,8 @@ class ExcelPlanoNIService
         $depExcel = $c['depCod'];
 
         // ── Horas laboradas ────────────────────────────────────────────────────
-        $horasLaboradas = 8 * $c['dias'];
+        // Horas laboradas: tipo 51 usa dias_caja (días reales) × 8; el resto usa num_dias × 8
+        $horasLaboradas = $c['horasLaboradas'];
 
         $valores = [
             /*  1 */ 2,                                                // Tipo de registro
@@ -492,7 +500,7 @@ class ExcelPlanoNIService
             /* 38 */ $c['diasArl'],                                    // Días ARL (30 si K)
             /* 39 */ $c['diasCcf']     ?: null,                        // Días CCF
             /* 40 */ $c['ibcFull'],                                    // Salario básico
-            /* 41 */ 'F',                                              // Tipo salario
+            /* 41 */ $c['esTiempoParcial'] ? null : 'F',  // Tipo salario: blank para tipo 51 (PILA lo prohíbe)
             /* 42 */ $c['tienePension'] ? ($c['ibcAfp'] ?: null) : 0,  // IBC AFP (0 si sin pensión)
             /* 43 */ $c['ibcEps']      ?: null,                        // IBC EPS
             /* 44 */ $c['ibcArl'],                                     // IBC ARL

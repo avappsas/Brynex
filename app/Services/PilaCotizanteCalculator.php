@@ -85,19 +85,16 @@ class PilaCotizanteCalculator
     public static function calcular(object $p): array
     {
         $tipoModalidad = (int)($p->tipo_modalidad_id ?? 0);
-        
-        // ── Exonerado SENA/ICBF (dependientes = S, independientes/K/TP = N) ──
+
+        // ── Flags de tipo de cotizante ────────────────────────────────────────
         $esKMatriz       = ($tipoModalidad === self::TIPO_K_MATRIZ);
         $esIndep         = in_array($tipoModalidad, self::TIPOS_INDEPENDIENTE);
         $esTiempoParcial = (bool)($p->es_tiempo_parcial ?? false);
 
-        // ── Tipo cotizante ──────────────────────────────────────────────────
+        // ── Tipo cotizante ───────────────────────────────────────────────────
         if ($esKMatriz) {
             $tipoCotizante = 23;
         } elseif ($esTiempoParcial) {
-            // Tipo cotizante 51 = trabajador de tiempo parcial (PILA Res. 2388)
-            // La columna tipo_cot está en la tabla planos; en tipo_modalidad
-            // no existe aún, así que se usa el valor fijo 51.
             $tipoCotizante = 51;
         } elseif ($esIndep) {
             $tipoCotizante = 2;
@@ -105,9 +102,14 @@ class PilaCotizanteCalculator
             $tipoCotizante = 1;
         }
 
-        $exonerado = (!$esIndep && !$esKMatriz && !$esTiempoParcial) ? 'S' : 'N';
+        // ── Tipo documento y regla de extranjero PILA ────────────────────────
+        // Regla 1: extranjero CON AFP → NO marcar X (cotiza normal, sin excepción pensión)
+        // Regla 2: extranjero SIN AFP → marcar X extranjero, subtipo = 0 (no 3 ni 4)
+        $docsCol         = ['CC', 'TI', 'NUIP', 'RC', 'SC'];
+        $tipoDocNorm     = strtoupper(trim($p->tipo_doc ?? 'CC'));
+        $esExtranjeroDoc = !in_array($tipoDocNorm, $docsCol);
 
-        // ── Normalizar códigos: '0' → null ──────────────────────────────────
+        // Normalizar códigos: '0' → null
         $codAfpRaw = (trim((string)($p->cod_afp  ?? '')) === '0') ? null : ($p->cod_afp  ?? null);
         $codEpsRaw = (trim((string)($p->cod_eps  ?? '')) === '0') ? null : ($p->cod_eps  ?? null);
         $codCajRaw = (trim((string)($p->cod_caja ?? '')) === '0') ? null : ($p->cod_caja ?? null);
@@ -126,26 +128,27 @@ class PilaCotizanteCalculator
         $nivel    = max(1, min(5, (int)($p->nivel_riesgo ?? 1)));
         $tasaArl  = self::TARIFAS_ARL[$nivel];
 
-        // ── Planilla K: solo ARL 30 días ───────────────────────────────────
+        // ── Planilla K: solo ARL 30 días ────────────────────────────────────
         if ($esKMatriz) {
-            $vArl = self::roundPila($ibcFull * $tasaArl); // ARL sobre salario completo
+            $vArl = self::roundPila($ibcFull * $tasaArl);
             return [
                 'tipoCotizante'    => 23,
                 'subtipoCotizante' => 0,
                 'tienePension'     => false,
                 'esKMatriz'        => true,
                 'esIndependiente'  => false,
+                'esExtranjero'     => false,
                 'exonerado'        => 'N',
                 'ibcFull'          => $ibcFull,
-                'ibcProp'          => $ibcFull,   // K siempre 30 días
+                'ibcProp'          => $ibcFull,
                 'ibcAfp'           => 0,
                 'ibcEps'           => 0,
-                'ibcArl'           => $ibcFull,   // ARL sobre salario completo
+                'ibcArl'           => $ibcFull,
                 'ibcCcf'           => 0,
                 'dias'             => $dias,
                 'diasPension'      => 0,
                 'diasSalud'        => 0,
-                'diasArl'          => 30,          // siempre 30 días para K
+                'diasArl'          => 30,
                 'diasCcf'          => 0,
                 'vAfp'             => 0,
                 'vEps'             => 0,
@@ -169,62 +172,61 @@ class PilaCotizanteCalculator
                 'esTiempoParcial'  => false,
                 'depCod'           => '94',
                 'munCod'           => '1',
+                'horasLaboradas'   => 30 * 8,   // K: siempre 30 días
             ];
         }
 
-        // ── Tiempo parcial: sin EPS, IBC fijos (NO proporcionales por días) ──
+        // ── Tiempo parcial (tipo cotizante 51) ─────────────────────────────
         if ($esTiempoParcial) {
-            // ── Días por subsistema (de tipo_modalidad, no del plano) ─────────
-            // ARL: siempre 30 días (cotización mensual completa)
-            // AFP / CAJA: días fijos del plan (7, 14 ó 21)
             $diasArlTp  = 30;
             $diasAfpTp  = (int)($p->dias_afp  ?? 30);
             $diasCajaTp = (int)($p->dias_caja ?? 30);
 
-            // ── IBC: NO se dividen por días, se usan valores fijos ────────────
-            // ARL : salario mínimo legal vigente 2026 (configurable)
-            // AFP : salario_basico completo (sin proporcionar)
-            // CCF : salario_basico completo (sin proporcionar)
-            // EPS : 0 (nunca para TP)
-            // IBC ARL = SMMLV configurado en parámetros del sistema
-            $smmlv     = (int) ConfiguracionBrynex::salarioMinimo();
-            $ibcArlTp  = $smmlv;        // ARL sobre SMMLV
-            $ibcAfpTp  = $ibcFull;      // AFP sobre salario completo
-            $ibcCajaTp = $ibcFull;      // CCF sobre salario completo
+            $smmlv    = (int) ConfiguracionBrynex::salarioMinimo();
+            $ibcArlTp = $smmlv;
 
-            // ── Exención por edad (misma regla dependiente) ────────────────────
-            // tienePension: SOLO depende de cod_afp (si el plan facturó AFP, siempre cotiza,
-            // sin importar la edad del cliente). La edad solo aplica cuando cod_afp está vacío.
+            // ── IBC AFP y CCF según tipo de plan ────────────────────────────────
+            // Planes -6,-7,-8: salario_basico = salario mensual COMPLETO.
+            //   → IBC proporcional con ceil (ceil exigido por PILA Res. 2388)
+            // Planes 1,2,3,4: salario_basico YA viene con ceil correcto desde Plano::fromFactura
+            //   → usar ibcFull directamente (sin recalcular)
+            $planesConSalarioCompleto = [-6, -7, -8];
+            $necesitaProporcion       = in_array($tipoModalidad, $planesConSalarioCompleto);
+
+            $ibcAfpTp  = ($necesitaProporcion && $diasAfpTp  < 30)
+                ? (int)ceil($ibcFull * $diasAfpTp  / 30)
+                : $ibcFull;
+            $ibcCajaTp = ($necesitaProporcion && $diasCajaTp < 30)
+                ? (int)ceil($ibcFull * $diasCajaTp / 30)
+                : $ibcFull;
+
             $tienePension = !empty($codAfpRaw);
 
-            $subtipoCotizante = 0;
-            if (!$tienePension && $edad !== null) {
-                $isExento         = ($genero === 'M' && $edad >= self::EDAD_EXENTO_M)
-                                 || ($genero === 'F' && $edad >= self::EDAD_EXENTO_F);
-                $subtipoCotizante = $isExento ? 3 : 4;
-            }
+            // Extranjero: mismas reglas que bloque normal
+            $esExtranjero = $esExtranjeroDoc && !$tienePension;
 
-            // ── Caja ───────────────────────────────────────────────────────────
+            // Subtipo: 0 siempre para tipo 51
+            // (PILA no permite subtipo 3/4 para cotizante 51, y extranjeros usan subtipo 0)
+            $subtipoCotizante = 0;
+
+            // Caja
             $codCajPila = $p->cod_caj_pila ?? $p->codigo_caj ?? null;
             $codCcfFin  = $codCajPila ?: (empty($codCajRaw) ? 'CCF68' : $codCajRaw);
             $sinCaja    = ($codCcfFin === 'CCF68');
-            $ibcCcfTp   = $sinCaja ? 100  : $ibcCajaTp;
-            $vCcfTp     = $sinCaja ? 100  : self::roundPila($ibcCajaTp * 0.04);
+            $ibcCcfTp   = $sinCaja ? 100 : $ibcCajaTp;
+            $vCcfTp     = $sinCaja ? 100 : self::roundPila($ibcCajaTp * 0.04);
 
-            // ── Cotizaciones ───────────────────────────────────────────────────
             $vArlTp = self::roundPila($ibcArlTp * $tasaArl);
             $vAfpTp = $tienePension ? self::roundPila($ibcAfpTp * 0.16) : 0;
 
-            // ── Código AFP ─────────────────────────────────────────────────────
             $codArlPila = $p->cod_arl_pila ?? $p->codigo_arl_pila ?? '';
             $codAfpPila = '';
             if ($tienePension) {
                 $nitAfp     = preg_replace('/[^0-9]/', '', (string)$codAfpRaw);
-                $codAfpDb   = $p->cod_afp_pila ?? $p->codigo_afp ?? null; // TXT=cod_afp_pila, Excel=codigo_afp
+                $codAfpDb   = $p->cod_afp_pila ?? $p->codigo_afp ?? null;
                 $codAfpPila = !empty($codAfpDb) ? $codAfpDb : $nitAfp;
             }
 
-            // ── Departamento / Municipio ────────────────────────────────────────
             if ($sinCaja) {
                 $depCod = '94'; $munCod = '1';
             } else {
@@ -233,24 +235,25 @@ class PilaCotizanteCalculator
             }
 
             return [
-                'tipoCotizante'    => $tipoCotizante,   // 51
-                'subtipoCotizante' => $subtipoCotizante,
+                'tipoCotizante'    => 51,
+                'subtipoCotizante' => 0,          // tipo 51 no admite subtipo 3/4
                 'tienePension'     => $tienePension,
                 'esKMatriz'        => false,
                 'esTiempoParcial'  => true,
                 'esIndependiente'  => false,
-                // Exonerado = S: TP son dependientes → exonerados SENA/ICBF
-                'exonerado'        => 'S',
+                'esExtranjero'     => $esExtranjero,
+                // Tipo 51 NO está exonerado de parafiscales (PILA Res. 2388)
+                'exonerado'        => 'N',
                 'ibcFull'          => $ibcFull,
-                'ibcProp'          => $ibcFull,          // TP no usa proporcional
+                'ibcProp'          => $ibcFull,
                 'ibcAfp'           => $tienePension ? $ibcAfpTp : 0,
-                'ibcEps'           => 0,                 // NUNCA EPS en TP
-                'ibcArl'           => $ibcArlTp,         // siempre SMMLV
+                'ibcEps'           => 0,
+                'ibcArl'           => $ibcArlTp,
                 'ibcCcf'           => $ibcCcfTp,
                 'dias'             => $dias,
                 'diasPension'      => $tienePension ? $diasAfpTp : 0,
-                'diasSalud'        => 0,                 // sin EPS
-                'diasArl'          => $diasArlTp,        // siempre 30
+                'diasSalud'        => 0,
+                'diasArl'          => $diasArlTp,
                 'diasCcf'          => $diasCajaTp,
                 'vAfp'             => $vAfpTp,
                 'vEps'             => 0,
@@ -262,18 +265,19 @@ class PilaCotizanteCalculator
                 'codArlPila'       => (string)$codArlPila,
                 'sinCaja'          => $sinCaja,
                 'tarifaAfpDecimal' => $tienePension ? 0.16 : 0.0,
-                // EPS vacía para TP (dependientes sin EPS)
                 'tarifaEpsStr'     => '0.00000',
-                'tarifaSenaStr'    => '0.00000',         // exonerado → SENA=0
-                'tarifaIcbfStr'    => '0.00000',         // exonerado → ICBF=0
+                'tarifaSenaStr'    => '0.00000',
+                'tarifaIcbfStr'    => '0.00000',
                 'tarifaArlStr'     => sprintf('%.5f', $tasaArl),
                 'tarifaArlDecimal' => $tasaArl,
                 'nivelRiesgo'      => $nivel,
-                'ibcOtros'         => 0,                 // exonerado → no parafiscales
+                'ibcOtros'         => 0,
                 'vSena'            => 0,
                 'vIcbf'            => 0,
                 'depCod'           => $depCod,
                 'munCod'           => $munCod,
+                // Tipo 51: horas = dias_caja (días reales trabajados) × 8, NO num_dias
+                'horasLaboradas'   => $diasCajaTp * 8,
             ];
         }
 
@@ -287,13 +291,24 @@ class PilaCotizanteCalculator
         //   subtipo 4 → reclamó pensión anticipada (cualquier edad, sin cod_afp)
         $tienePension = !empty($codAfpRaw);
 
-        // ── Subtipo cotizante ───────────────────────────────────────────────
+        // ── Extranjero PILA ──────────────────────────────────────────────────
+        // Regla 1: extranjero CON AFP → NO marcar X (cotiza pensión normalmente)
+        // Regla 2: extranjero SIN AFP → marcar X, subtipo=0 (no aplican reglas de edad)
+        $esExtranjero = $esExtranjeroDoc && !$tienePension;
+
+        // ── Subtipo cotizante ─────────────────────────────────────────────────
         $subtipoCotizante = 0;
-        if (!$tienePension && $edad !== null) {
+        if (!$tienePension && !$esExtranjero && $edad !== null) {
+            // Solo aplica regla de edad para NO extranjeros sin pensión
             $isExento         = ($genero === 'M' && $edad >= self::EDAD_EXENTO_M)
                              || ($genero === 'F' && $edad >= self::EDAD_EXENTO_F);
             $subtipoCotizante = $isExento ? 3 : 4;
         }
+
+        // ── Exonerado SENA/ICBF ────────────────────────────────────────────────
+        // Dependientes → S (empresa paga 4% EPS, exonerado de SENA/ICBF)
+        // Independientes/K/TP → N
+        $exonerado = (!$esIndep && !$esKMatriz && !$esTiempoParcial) ? 'S' : 'N';
 
         // ── Código CCF ─────────────────────────────────────────────────────
         $codCajPila = $p->cod_caj_pila ?? $p->codigo_caj ?? null;
@@ -351,6 +366,7 @@ class PilaCotizanteCalculator
             'tienePension'     => $tienePension,
             'esKMatriz'        => false,
             'esIndependiente'  => $esIndep,
+            'esExtranjero'     => $esExtranjero,
             'exonerado'        => $exonerado,
             'ibcFull'          => $ibcFull,
             'ibcProp'          => $ibcProp,
@@ -385,6 +401,7 @@ class PilaCotizanteCalculator
             'esTiempoParcial'  => false,
             'depCod'           => $depCod,
             'munCod'           => $munCod,
+            'horasLaboradas'   => $dias * 8,    // Normal: num_dias × 8
         ];
     }
 

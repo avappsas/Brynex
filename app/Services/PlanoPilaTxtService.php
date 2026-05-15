@@ -108,21 +108,25 @@ class PlanoPilaTxtService
         }
 
         $query = DB::table('planos AS p')
-            ->leftJoin('facturas AS f',       'f.id',          '=', 'p.factura_id')
-            ->leftJoin('clientes AS cl',      'cl.cedula',     '=', 'p.no_identifi')
+            ->leftJoin('facturas AS f',       'f.id',  '=', 'p.factura_id')
+            // filtrar por aliado_id: evita duplicar filas si el cliente existe en múltiples aliados
+            ->leftJoin('clientes AS cl', function ($join) use ($aliadoId) {
+                $join->on('cl.cedula', '=', 'p.no_identifi')
+                     ->where('cl.aliado_id', '=', $aliadoId);
+            })
             ->leftJoin('ciudades AS c',       'c.id_ciudad_t', '=', 'cl.municipio_id')
             ->leftJoin('departamentos AS d',  'd.id',          '=', 'cl.departamento_id')
             ->leftJoin('pensiones AS afp_t',  DB::raw('CAST(afp_t.nit AS VARCHAR(20))'), '=', DB::raw('p.cod_afp'))
             ->leftJoin('eps AS eps_t',        DB::raw('CAST(eps_t.nit AS VARCHAR(20))'), '=', DB::raw('p.cod_eps'))
             ->leftJoin('cajas AS caj_t',      DB::raw('CAST(caj_t.nit AS VARCHAR(20))'), '=', DB::raw('p.cod_caja'))
-            ->leftJoin('arl_tarifas AS arl_t','arl_t.nivel',  '=', 'p.nivel_riesgo')
+            // arl_tarifas NO se une: puede tener múltiples filas por nivel y causa duplicados
             ->leftJoin('arls AS arl_m',       DB::raw('CAST(arl_m.nit AS VARCHAR(20))'), '=', DB::raw('p.cod_arl'))
             ->leftJoin('tipo_modalidad AS tm', 'tm.id', '=', 'p.tipo_modalidad_id')
             ->where('p.aliado_id',       $aliadoId)
             ->where('p.razon_social_id', $razonSocialId)
             ->where('p.n_plano',         $nPlano)
             ->whereIn('p.tipo_reg',      ['planilla', 'retiro'])
-            ->where(fn($q) => $q->where('p.num_dias', '>=', 1)->orWhere('p.tipo_reg', '!=', 'retiro'))
+            ->whereRaw('ISNULL(p.num_dias, 0) > 0')   // excluir num_dias=0 y NULL
             ->whereNull('p.deleted_at')
             ->where(function ($q) use ($mesPago, $anioPago, $mesVencido, $anioVencido) {
                 // Independientes (tipo 11): usan mes de pago
@@ -265,13 +269,14 @@ class PlanoPilaTxtService
         $tipoDoc = strtoupper(trim($p->tipo_doc ?? 'CC'));
         $mapaDoc = ['C' => 'CC', 'NIT' => 'CC', 'PT' => 'CE', 'NUIP' => 'CC'];
         $tipoDoc = $mapaDoc[$tipoDoc] ?? $tipoDoc;
-        $esExtranjero = !in_array($tipoDoc, ['CC', 'TI', 'RC', 'SC']) ? 'X' : ' ';
+        $esExtranjero = $c['esExtranjero'] ? 'X' : ' ';
 
         // ── IBC y días (del calculador) ───────────────────────────────────────
         $ibcFull   = $c['ibcFull'];
         $ibcProp   = $c['ibcProp'];
         $dias      = $c['dias'];
-        $esIntegral = strtoupper(trim($p->tipo_p ?? '')) === 'I' ? 'X' : 'F';
+        // Tipo salario: blank para tipo 51 (PILA prohíbe marcar el campo para cotizante 51)
+        $esIntegral = $c['esTiempoParcial'] ? ' ' : (strtoupper(trim($p->tipo_p ?? '')) === 'I' ? 'X' : 'F');
 
         // ── Cotizaciones (del calculador) ──────────────────────────────────────
         $vAfp = $c['vAfp'];
@@ -415,7 +420,7 @@ class PlanoPilaTxtService
             . str_repeat(' ', 10)                               // 93 fecha IRL ini 645-654
             . str_repeat(' ', 10)                               // 94 fecha IRL fin 655-664
             . $this->N((string)$ibcOtros, 9)                    // 95 IBC otros paraf 665-673
-            . $this->N((string)(8 * $dias), 3)                  // 96 horas laboradas 674-676
+            . $this->N((string)$c['horasLaboradas'], 3)                // 96 horas laboradas 674-676 (tipo 51: dias_caja×8; otros: num_dias×8)
             . str_repeat(' ', 10)                               // 97 fecha radicación 677-686
             . self::ACTECO_ARL[$nivel];                          // 98 actividad económica 687-693
 

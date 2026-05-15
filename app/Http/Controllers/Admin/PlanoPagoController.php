@@ -110,7 +110,7 @@ class PlanoPagoController extends Controller
                 ->where('p.aliado_id', $aliadoId)
                 ->whereNull('p.deleted_at')
                 ->whereIn('p.tipo_reg', ['planilla', 'retiro'])
-                ->where('p.num_dias', '>', 0)
+                ->whereRaw('ISNULL(p.num_dias, 0) > 0')   // excluir num_dias=0 Y num_dias=NULL
                 ->where('p.razon_social_id', $razonSocialId)
                 ->where($wherePeriodo)
                 ->select([

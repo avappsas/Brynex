@@ -173,7 +173,9 @@ class Plano extends BaseModel
             'cod_caja'          => $caja?->nit ?? $caja?->cod_caja ?? null,
             'nombre_caja'       => $caja?->nombre ?? null,
             'nivel_riesgo'      => $contrato->n_arl ?? 1,
-            'salario_basico'    => $contrato->salario ?? 0,
+            // salario_basico: para Tiempo Parcial (planes 1-4) usamos ceil(SM × factor_afp)
+            // para garantizar el redondeo PILA (Res. 2388). Para otros planes, salario del contrato.
+            'salario_basico'    => static::calcularSalarioBasicoPlano($contrato, $modal),
             // Período — mes ANTERIOR para dependientes (billing mayo → plano abril)
             'n_plano'           => $factura->n_plano,
             'mes_plano'         => $mesPlan,
@@ -185,6 +187,30 @@ class Plano extends BaseModel
             'tipo_modalidad_id' => $contrato->tipo_modalidad_id,
             'usuario_id'        => $factura->usuario_id,
         ]);
+    }
+
+    /**
+     * Calcula el salario_basico que se almacena en el plano.
+     *
+     * Para planes de Tiempo Parcial (es_tiempo_parcial = true, planes 1-4):
+     *   salario_basico = ceil(SM × factor_afp)
+     *   donde factor_afp = dias_afp / 30
+     *   Esto garantiza el redondeo PILA hacia arriba (Res. 2388) sin importar
+     *   el salario del año (SM se lee de ConfiguracionBrynex).
+     *
+     * Para todos los demás planes: usa contrato->salario sin modificar.
+     */
+    private static function calcularSalarioBasicoPlano($contrato, $modal): int
+    {
+        if ($modal && $modal->esTiempoParcial()) {
+            $sm      = (float) ConfiguracionBrynex::obtener('salario_minimo', 1423500);
+            $diasP   = $modal->diasPorEntidad();                     // ['afp'=>7|14|21|30, ...]
+            $diasAfp = (int)($diasP['afp'] ?? 30);
+            // ceil(SM × dias_afp / 30) garantiza redondeo hacia arriba requerido por PILA
+            return (int)ceil($sm * $diasAfp / 30);
+        }
+
+        return (int)($contrato->salario ?? 0);
     }
 
     private static function splitNombre(string $nombre): array

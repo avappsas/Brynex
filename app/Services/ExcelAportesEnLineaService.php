@@ -181,21 +181,26 @@ class ExcelAportesEnLineaService
 
         // ── Query planos ──────────────────────────────────────────────────
         $query = DB::table('planos AS p')
-            ->leftJoin('facturas AS f',      'f.id',          '=', 'p.factura_id')
-            ->leftJoin('clientes AS cl',     'cl.cedula',     '=', 'p.no_identifi')
+            ->leftJoin('facturas AS f',      'f.id',  '=', 'p.factura_id')
+            // filtrar por aliado_id: evita duplicar filas si el cliente existe en múltiples aliados
+            ->leftJoin('clientes AS cl', function ($join) use ($aliadoId) {
+                $join->on('cl.cedula', '=', 'p.no_identifi')
+                     ->where('cl.aliado_id', '=', $aliadoId);
+            })
             ->leftJoin('ciudades AS c',      'c.id_ciudad_t', '=', 'cl.municipio_id')
             ->leftJoin('departamentos AS d', 'd.id',          '=', 'cl.departamento_id')
             ->leftJoin('pensiones AS afp_t', DB::raw('CAST(afp_t.nit AS VARCHAR(20))'), '=', DB::raw('p.cod_afp'))
             ->leftJoin('eps AS eps_t',       DB::raw('CAST(eps_t.nit AS VARCHAR(20))'), '=', DB::raw('p.cod_eps'))
             ->leftJoin('cajas AS caj_t',     DB::raw('CAST(caj_t.nit AS VARCHAR(20))'), '=', DB::raw('p.cod_caja'))
-            ->leftJoin('arl_tarifas AS arl_t', 'arl_t.nivel', '=', 'p.nivel_riesgo')
+            // arl_tarifas NO se une: puede tener múltiples filas por nivel (por aliado) y causa duplicados.
+            // La tarifa ARL la calcula PilaCotizanteCalculator desde su constante TARIFAS_ARL.
             ->leftJoin('arls AS arl_m',      DB::raw('CAST(arl_m.nit AS VARCHAR(20))'), '=', DB::raw('p.cod_arl'))
             ->leftJoin('tipo_modalidad AS tm', 'tm.id', '=', 'p.tipo_modalidad_id')
             ->where('p.aliado_id',       $aliadoId)
             ->where('p.razon_social_id', $razonSocialId)
             ->where('p.n_plano',         $nPlano)
             ->whereIn('p.tipo_reg',      ['planilla', 'retiro'])
-            ->where('p.num_dias',        '>', 0)
+            ->whereRaw('ISNULL(p.num_dias, 0) > 0')   // excluir num_dias=0 y NULL
             ->whereNull('p.deleted_at')
             ->where(function ($q) use ($mesPago, $anioPago, $mesVencido, $anioVencido) {
                 $q->where(function ($i) use ($mesPago, $anioPago) {
@@ -223,7 +228,7 @@ class ExcelAportesEnLineaService
                 DB::raw('caj_t.nombre   AS nombre_caj'),
                 DB::raw('arl_m.codigo       AS codigo_arl_pila'),
                 DB::raw('arl_m.razon_social AS nombre_arl'),
-                DB::raw('arl_t.porcentaje AS tarifa_arl'),
+                // tarifa_arl: no se lee de arl_tarifas (join eliminado), PilaCotizanteCalculator usa su constante
                 'f.v_eps', 'f.v_afp', 'f.v_arl', 'f.v_caja', 'f.total_ss', 'f.dias_cotizados',
                 'cl.genero',
                 DB::raw("DATEDIFF(YEAR, cl.fecha_nacimiento, GETDATE()) AS edad_calculada"),

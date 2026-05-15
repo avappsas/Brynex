@@ -317,97 +317,40 @@ class ContratoController extends Controller
             }
         }
 
-        // ── Calcular SS del retiro real (misma lógica que cotizar()) ──────────
-        // Solo aplica para retiro real y cuando hay días cotizados
+        // ── Calcular SS del retiro real usando calcularCotizacion() del modelo ─
+        // Delegar al modelo centraliza TODAS las reglas del plan:
+        //   • Cargo sin-CCF $100 para modalidades 0/12 sin caja
+        //   • Tiempo Parcial (IBC por entidad, factores por días)
+        //   • Prorrateo por num_dias
+        //   • Flags incluye_eps / incluye_arl / incluye_pension / incluye_caja
+        //   • Fallback plan→IDs del contrato (contratos legacy sin plan_id)
+        // Solo aplica para retiro real con días cotizados.
         $vEpsRetiro = 0; $vArlRetiro = 0; $vAfpRetiro = 0; $vCajaRetiro = 0; $totalSsRetiro = 0;
 
         if ($tipoRetiro === 'real' && $numDias > 0) {
-            $modal   = $contrato->tipoModalidad;
-            $plan    = $contrato->plan;
-            $nivelArl = (int)($contrato->n_arl ?? 1);
-            $salario  = (float)($contrato->salario ?? 0);
-            $ibc      = (float)($contrato->ibc ?? $salario) ?: $salario;
-            $sm       = (float) ConfiguracionBrynex::obtener('salario_minimo', 1423500);
-
-            // ── Fallback IBC: si salario/ibc = 0 (común en contratos legacy), usar salario mínimo
-            if ($ibc <= 0) {
-                $ibc = $sm;
+            // ── Fallback IBC: contratos legacy con ibc/salario = 0 → usar SM ──
+            // calcularCotizacion() no tiene este guard; se inyecta temporalmente.
+            $ibcOriginal = (float)($contrato->ibc ?? 0);
+            $salOriginal = (float)($contrato->salario ?? 0);
+            if ($ibcOriginal <= 0 && $salOriginal <= 0) {
+                $sm = (float) ConfiguracionBrynex::obtener('salario_minimo', 1423500);
+                $contrato->ibc     = $sm;
+                $contrato->salario = $sm;
             }
 
-            $esIndep = $modal && $modal->esIndependiente();
-            $esTP    = $modal && $modal->esTiempoParcial();
-
-            $pctEps  = $esIndep ? ConfiguracionBrynex::pctSaludIndependiente()  : ConfiguracionBrynex::pctSaludDependiente();
-            $pctPen  = $esIndep ? ConfiguracionBrynex::pctPensionIndependiente() : ConfiguracionBrynex::pctPensionDependiente();
-            $pctArl  = ArlTarifa::porcentajePara($nivelArl, $alidoId);
-
-            if ($esIndep) {
-                $pctCaja = ConfiguracionBrynex::pctCajaIndependienteAlto();
-            } else {
-                $pctCaja = ConfiguracionBrynex::pctCajaDependiente();
-            }
-
-            // ── Fallback plan: si el contrato no tiene plan asignado,
-            //    inferir entidades directamente desde los IDs del contrato.
-            //    Esto aplica a contratos migrados del legacy que no tienen plan_id.
-            $incluyeEps     = $plan ? (bool)$plan->incluye_eps     : ($contrato->eps_id     !== null);
-            $incluyeArl     = $plan ? (bool)$plan->incluye_arl     : ($contrato->arl_id     !== null);
-            $incluyePension = $plan ? (bool)$plan->incluye_pension  : ($contrato->pension_id  !== null);
-            $incluyeCaja    = $plan ? (bool)$plan->incluye_caja     : ($contrato->caja_id     !== null);
-
-            // Redondear hacia arriba al 100 más cercano
-            $r = fn($v) => ceil($v / 100) * 100;
-
-            if ($esTP) {
-                // Tiempo Parcial: usar días y factor del tipo de modalidad
-                $diasP     = $modal->diasPorEntidad();
-                $factorMap = [7 => 0.25, 14 => 0.50, 21 => 0.75, 30 => 1.00];
-                $factorAfp  = $factorMap[$diasP['afp']]  ?? 1.0;
-                $factorCaja = $factorMap[$diasP['caja']] ?? 1.0;
-
-                $vEpsRetiro  = 0;
-                $vArlRetiro  = $incluyeArl     ? (int)$r($sm * $pctArl / 100)                     : 0;
-                $vAfpRetiro  = $incluyePension  ? (int)$r($sm * $factorAfp  * $pctPen / 100)       : 0;
-                $vCajaRetiro = $incluyeCaja     ? (int)$r($sm * $factorCaja * $pctCaja / 100)      : 0;
-            } else {
-                // Normal: proporcional a num_dias / 30
-                $rRound = fn($v) => (int)(round($v / 100) * 100);
-
-                $epsMes  = $incluyeEps    ? $r($ibc * $pctEps  / 100) : 0;
-                $arlMes  = $incluyeArl    ? $r($ibc * $pctArl  / 100) : 0;
-                $penMes  = $incluyePension ? $r($ibc * $pctPen  / 100) : 0;
-                $cajaMes = $incluyeCaja   ? $r($ibc * $pctCaja / 100) : 0;
-
-                // ── Cargo sin-CCF ($100 fijo): aplica cuando modalidad es 0 o 12
-                //    y el plan NO incluye caja. Igual que calcularCotizacion() y cotizar().
-                //    Este cargo NO se prorratea por días.
-                $tipoModId   = (int)($contrato->tipo_modalidad_id ?? -99);
-                $aplicaSinCcf = ($cajaMes === 0)
-                    && in_array($tipoModId, \App\Models\Contrato::IDS_SIN_CCF)
-                    && !$incluyeCaja;
-                if ($aplicaSinCcf) {
-                    $cajaMes = \App\Models\Contrato::CARGO_SIN_CCF;
-                }
-
-                $vEpsRetiro  = $numDias < 30
-                    ? ($incluyeEps    ? $rRound($ibc * $pctEps  / 100 * $numDias / 30) : 0)
-                    : (int)$epsMes;
-                $vArlRetiro  = $numDias < 30
-                    ? ($incluyeArl    ? $rRound($ibc * $pctArl  / 100 * $numDias / 30) : 0)
-                    : (int)$arlMes;
-                $vAfpRetiro  = $numDias < 30
-                    ? ($incluyePension ? $rRound($ibc * $pctPen  / 100 * $numDias / 30) : 0)
-                    : (int)$penMes;
-                // Cargo sin-CCF es fijo: no se prorratea (igual que cotizar())
-                $vCajaRetiro = $aplicaSinCcf
-                    ? \App\Models\Contrato::CARGO_SIN_CCF
-                    : ($numDias < 30
-                        ? ($incluyeCaja ? $rRound($ibc * $pctCaja / 100 * $numDias / 30) : 0)
-                        : (int)$cajaMes);
-            }
-
+            // Una sola llamada — misma fuente de verdad que la facturación normal
+            $cotizacion  = $contrato->calcularCotizacion($numDias);
+            $vEpsRetiro  = (int)($cotizacion['eps']  ?? 0);
+            $vArlRetiro  = (int)($cotizacion['arl']  ?? 0);
+            $vAfpRetiro  = (int)($cotizacion['pen']  ?? 0);
+            $vCajaRetiro = (int)($cotizacion['caja'] ?? 0);
             $totalSsRetiro = $vEpsRetiro + $vArlRetiro + $vAfpRetiro + $vCajaRetiro;
+
+            // Restaurar valores originales (evita mutar el objeto si se reutiliza)
+            $contrato->ibc     = $ibcOriginal;
+            $contrato->salario = $salOriginal;
         }
+
 
         // ── Mora real del retiro (sin tramos mínimos) ─────────────────────────
         // En retiro NO se cobra al cliente el mínimo: solo el interés real calculado.
