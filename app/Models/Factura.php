@@ -91,7 +91,9 @@ class Factura extends BaseModel
     /** Total ya abonado a esta factura */
     public function getTotalAbonadoAttribute(): int
     {
-        return (int) $this->abonos()->sum('valor');
+        // Usar $this->abonos (sin paréntesis) para aprovechar el eager loading.
+        // Con paréntesis dispararía una nueva SQL query por cada Factura.
+        return (int) $this->abonos->sum('valor');
     }
 
     /** Saldo restante para completar el pago */
@@ -110,18 +112,24 @@ class Factura extends BaseModel
     }
 
     /**
-     * Saldo pendiente del préstamo = total - pago_inicial - sum(abonos_posteriores).
+     * Saldo pendiente del préstamo = abs(saldo_proximo) - sum(abonos_posteriores).
      * Solo relevante cuando estado = 'prestamo'.
      *
-     * El pago inicial (valor_consignado + valor_efectivo) ocurre al momento de
-     * facturar y NO se registra en la tabla abonos. Los abonos posteriores
-     * (registrados desde el módulo Préstamos) sí van en la tabla abonos.
-     * Ambos deben descontarse del total para obtener el saldo real adeudado.
+     * IMPORTANTE: Usar saldo_proximo (NO total - valor_efectivo - valor_consignado)
+     * porque saldo_proximo fue calculado correctamente al facturar con la fórmula:
+     *   saldo_proximo = pagadoReal - total
+     *   donde pagadoReal = efectivo + consignado + anticipo (todos los pagos al facturar)
+     *
+     * En lotes empresa, valor_efectivo puede no estar bien distribuido en
+     * todas las filas (problema de datos históricos), pero saldo_proximo siempre
+     * refleja la deuda real de esa fila al momento de facturar.
      */
     public function getSaldoPendientePrestamoAttribute(): int
     {
-        $pagadoAlFacturar = (int)$this->valor_consignado + (int)$this->valor_efectivo;
-        return max(0, (int)$this->total - $pagadoAlFacturar - $this->total_abonado);
+        // abs(saldo_proximo): si saldo_proximo = -846, la fila debía $846 al facturar.
+        // Si saldo_proximo = 0 o positivo, la fila estaba pagada al facturar → 0.
+        $saldoOriginal = max(0, -(float)($this->saldo_proximo ?? 0));
+        return max(0, (int)$saldoOriginal - $this->total_abonado);
     }
 
     /** Genera el siguiente número de factura para un aliado */

@@ -26,13 +26,16 @@ class PrestamosController extends Controller
             ->filter(fn($f) => $f->saldo_pendiente_prestamo > 0);
 
         // ── Préstamos de empresas (empresa_id NOT NULL, excluyendo empresa=1) ──
+        // NO filtrar por fila individual (saldo_pendiente_prestamo > 0) aquí:
+        // muchas filas tienen abs(saldo_proximo)=0 aunque el LOTE siga debiendo
+        // (porque el efectivo se distribuyó a esas filas pero no a otras).
+        // El filtro correcto es a nivel de LOTE completo, después de agrupar.
         $qEmp = Factura::where('aliado_id', $aliadoId)
-            ->prestamoPendiente()
+            ->prestamoPendiente()   // estado='prestamo'
             ->whereNotNull('empresa_id')
             ->where('empresa_id', '!=', 1)
             ->with(['empresa', 'abonos'])
-            ->get()
-            ->filter(fn($f) => $f->saldo_pendiente_prestamo > 0);
+            ->get(); // sin filtro por fila — se filtra a nivel de lote abajo
 
         // ── Búsqueda ──────────────────────────────────────────────────
         if ($buscar) {
@@ -49,8 +52,28 @@ class PrestamosController extends Controller
             });
         }
 
+        // ── Pre-cargar BitacoraCobro en BATCH (evitar N+1 queries) ───────
+        $empresaIds  = $qEmp->pluck('empresa_id')->unique()->filter()->values()->all();
+        $facturaIds  = $qInd->pluck('id')->all();
+
+        // Una sola query para todas las gestiones de empresas
+        $gestionesPorEmpresa = BitacoraCobro::whereIn('empresa_id', $empresaIds)
+            ->where('tipo', BitacoraCobro::TIPO_PRESTAMO)
+            ->with('usuario')
+            ->orderByDesc('fecha_llamada')
+            ->get()
+            ->groupBy('empresa_id');
+
+        // Una sola query para todas las gestiones de individuales
+        $gestionesPorFactura = BitacoraCobro::whereIn('factura_id', $facturaIds)
+            ->where('tipo', BitacoraCobro::TIPO_PRESTAMO)
+            ->with('usuario')
+            ->orderByDesc('fecha_llamada')
+            ->get()
+            ->groupBy('factura_id');
+
         // ── Agrupar empresas por empresa_id ───────────────────────────
-        $empresasAgrupadas = $qEmp->groupBy('empresa_id')->map(function ($facturas) {
+        $empresasAgrupadas = $qEmp->groupBy('empresa_id')->map(function ($facturas) use ($gestionesPorEmpresa) {
             $empresa     = $facturas->first()->empresa;
             $totalDeuda  = $facturas->sum('saldo_pendiente_prestamo');
             $totalOrig   = $facturas->sum('total');
@@ -60,24 +83,33 @@ class PrestamosController extends Controller
             // cuente como 1 solo préstamo, independientemente de cuántos clientes tenga
             $lotes = $facturas->groupBy('numero_factura')->map(function ($lote) {
                 $primera = $lote->first();
+                $abonosLote    = (int)$lote->sum(fn($f) => $f->abonos->sum('valor'));
+                $valorPrestamo = (int)$lote->sum('valor_prestamo');
+                // Saldo a nivel de lote — usa valor_prestamo como fuente de verdad.
+                // valor_prestamo = monto explícito del préstamo al facturar ($22K total).
+                // Fallback: abs(saldo_proximo) para facturas antiguas sin valor_prestamo.
+                $saldoLote = $valorPrestamo > 0
+                    ? max(0, $valorPrestamo - $abonosLote)
+                    : max(0, abs((int)$lote->sum('saldo_proximo')) - $abonosLote);
                 return (object)[
                     'numero_factura'  => $primera->numero_factura,
                     'mes'             => $primera->mes,
                     'anio'            => $primera->anio,
-                    'facturas'        => $lote,          // registros individuales del lote
+                    'facturas'        => $lote,
                     'total'           => $lote->sum('total'),
-                    'total_abonado'   => $lote->sum(fn($f) => (int)$f->abonos->sum('valor')),
-                    'saldo_pendiente' => $lote->sum('saldo_pendiente_prestamo'),
-                    // ID representativo para rutas (usar el primer registro del lote)
+                    'total_abonado'   => $abonosLote,
+                    'saldo_pendiente' => $saldoLote,
                     'factura_id'      => $primera->id,
                 ];
-            })->values();
+            })
+            ->filter(fn($l) => $l->saldo_pendiente > 0) // filtrar lotes ya pagados
+            ->values();
 
-            // Última gestión de cobro de esta empresa
-            $ultimaGestion = BitacoraCobro::where('empresa_id', $empresa?->id)
-                ->where('tipo', BitacoraCobro::TIPO_PRESTAMO)
-                ->latest('fecha_llamada')
-                ->first();
+            // Total deuda empresa = suma de saldos reales de todos sus lotes pendientes
+            $totalDeuda = $lotes->sum('saldo_pendiente');
+
+            // Última gestión de cobro de esta empresa (ya pre-cargada)
+            $ultimaGestion = $gestionesPorEmpresa->get($empresa?->id)?->first();
 
             $diasSinGestion = $ultimaGestion
                 ? (int)$ultimaGestion->fecha_llamada->diffInDays(now())
@@ -98,11 +130,8 @@ class PrestamosController extends Controller
         })->sortByDesc('total_deuda')->values();
 
         // ── Enriquecer individuales con última gestión y semáforo ─────
-        $individuales = $qInd->map(function ($f) {
-            $ultimaGestion = BitacoraCobro::where('factura_id', $f->id)
-                ->where('tipo', BitacoraCobro::TIPO_PRESTAMO)
-                ->latest('fecha_llamada')
-                ->first();
+        $individuales = $qInd->map(function ($f) use ($gestionesPorFactura) {
+            $ultimaGestion = $gestionesPorFactura->get($f->id)?->first();
             $dias = $ultimaGestion
                 ? (int)$ultimaGestion->fecha_llamada->diffInDays(now())
                 : null;
@@ -112,6 +141,7 @@ class PrestamosController extends Controller
             $f->semaforo         = $this->calcularSemaforo($dias);
             return $f;
         })->sortByDesc('total')->values();
+
 
         // ── Cards resumen ─────────────────────────────────────────────
         $totalDeudaInd  = $individuales->sum('saldo_pendiente_prestamo');
@@ -164,8 +194,16 @@ class PrestamosController extends Controller
             // Totales del lote completo
             $lote_total          = $lote->sum('total');
             $lote_total_abonado  = $lote->sum(fn($f) => (int)$f->abonos->sum('valor'));
-            $lote_saldo_pendiente= $lote->sum('saldo_pendiente_prestamo');
-            $lote_estado         = $lote_saldo_pendiente > 0 ? Factura::ESTADO_PRESTAMO : Factura::ESTADO_PAGADA;
+
+            // Saldo real = valor_prestamo (fuente de verdad explícita) - abonos posteriores.
+            // NO usar saldo_proximo: puede ser incorrecto si efectivo se distribuyó mal.
+            // Fallback a abs(saldo_proximo) para facturas antiguas sin valor_prestamo.
+            $valorPrestamoLote = (int)$lote->sum('valor_prestamo');
+            $lote_saldo_pendiente = $valorPrestamoLote > 0
+                ? max(0, $valorPrestamoLote - $lote_total_abonado)
+                : max(0, abs((int)$lote->sum('saldo_proximo')) - $lote_total_abonado);
+
+            $lote_estado = $lote_saldo_pendiente > 0 ? Factura::ESTADO_PRESTAMO : Factura::ESTADO_PAGADA;
 
             // Gestiones por empresa_id (no por factura_id individual)
             $gestiones = BitacoraCobro::where('empresa_id', $factura->empresa_id)
@@ -241,14 +279,17 @@ class PrestamosController extends Controller
                     ->with('abonos')
                     ->get();
 
-                $totalLote        = $lote->sum('total');
-                $totalAbonadoLote = $lote->sum(fn($f) => (int)$f->abonos->sum('valor'));
-                $loteCompleto     = $totalAbonadoLote >= $totalLote;
+                // Saldo ORIGINAL del lote = abs(SUM(saldo_proximo)):
+                // saldo_proximo fue calculado correctamente al facturar (efectivo+consignado+anticipo).
+                // Esta fórmula es inmune a la distribución incorrecta de valor_efectivo.
+                $saldoOriginalLote = abs((int)$lote->sum('saldo_proximo'));
+                $totalAbonadoLote  = $lote->sum(fn($f) => (int)$f->abonos->sum('valor'));
+                $loteCompleto      = $totalAbonadoLote >= $saldoOriginalLote;
 
                 foreach ($lote as $f) {
                     $f->update([
                         'estado'        => $loteCompleto ? Factura::ESTADO_PAGADA : Factura::ESTADO_PRESTAMO,
-                        'saldo_proximo' => $loteCompleto ? 0 : -$f->saldo_pendiente_prestamo,
+                        'saldo_proximo' => $loteCompleto ? 0 : $f->saldo_proximo, // conservar si parcial
                     ]);
                 }
             } else {

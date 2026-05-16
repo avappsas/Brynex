@@ -305,6 +305,9 @@ class FacturacionController extends Controller
             'dias_retiro'          => 'nullable|integer|min:1|max:30',
             // Mora al cliente (cobrada en la factura, no es ingreso)
             'mora'                 => 'nullable|integer|min:0',
+            // Cartera pendiente: marcar si el usuario incluyó deuda de préstamo anterior
+            'incluir_cartera'      => 'boolean',
+            'valor_cartera'        => 'nullable|integer|min:0',
         ]);
 
         // Decodificar manual_ss_por_contrato si viene como JSON string
@@ -870,6 +873,13 @@ class FacturacionController extends Controller
             ], 422);
         }
 
+        // ─── Liquidar cartera pendiente de préstamos anteriores ────────────────────
+        // Se ejecuta FUERA de la transacción principal para que un error aqui
+        // no revierta las facturas ya creadas. Tiene su propia transacción interna.
+        if (!empty($validated['incluir_cartera']) && !empty($validated['valor_cartera']) && !empty($facturasCreadas)) {
+            $this->_liquidarCartera($aliadoId, $validated, $facturasCreadas);
+        }
+
         // Éxito con posibles omitidos parciales
         $msgOmit = !empty($omitidos)
             ? ' | ' . count($omitidos) . ' omitido(s) por duplicado.'
@@ -891,7 +901,137 @@ class FacturacionController extends Controller
         ]);
     }
 
+    // ─── Liquidar cartera pendiente al facturar ────────────────────────────────
+    /**
+     * Cuando el usuario marca "Cartera pendiente" en el modal de facturación y confirma,
+     * este método busca las facturas en estado=prestamo del cliente/empresa,
+     * registra un Abono (con referencia a la nueva factura creada) y actualiza el estado.
+     *
+     * NO afecta el informe financiero: los ingresos se calculan de admon+seguro+mensajeria,
+     * nunca de la tabla abonos. Sin riesgo de duplicación de ingresos.
+     */
+    private function _liquidarCartera(int $aliadoId, array $validated, array $facturasCreadas): void
+    {
+        $empresaId   = $validated['empresa_id'] ?? null;
+        $valorCartera = (int)($validated['valor_cartera'] ?? 0);
+        if ($valorCartera <= 0) return;
+
+        // Buscar cédulas de los contratos facturados
+        $cedulas = Contrato::whereIn('id', $validated['contratos'])->pluck('cedula');
+
+        // Query base: facturas en estado=prestamo de este aliado
+        $query = Factura::where('aliado_id', $aliadoId)
+            ->where('estado', Factura::ESTADO_PRESTAMO)
+            ->whereNull('deleted_at')
+            ->with('abonos')
+            ->orderBy('anio')->orderBy('mes'); // pagar primero los más antiguos
+
+        if ($empresaId) {
+            $query->where('empresa_id', $empresaId);
+        } else {
+            $query->whereIn('cedula', $cedulas)->whereNull('empresa_id');
+        }
+
+        $facturasPrestamo = $query->get();
+        if ($facturasPrestamo->isEmpty()) return;
+
+        // Texto de referencia para el Abono
+        $nuevaFactura = Factura::find($facturasCreadas[0] ?? null);
+        $refNro  = $nuevaFactura
+            ? str_pad($nuevaFactura->numero_factura, 6, '0', STR_PAD_LEFT)
+            : '—';
+        $meses   = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
+                    'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+        $mesNom  = $meses[((int)($validated['mes'])) - 1] ?? '';
+        $obsText = "Cobrado con factura #{$refNro} — {$mesNom} {$validated['anio']}";
+
+        $pendiente = $valorCartera;
+
+        try {
+            DB::transaction(function () use (
+                $facturasPrestamo, $empresaId, &$pendiente,
+                $validated, $obsText, $aliadoId
+            ) {
+                if ($empresaId) {
+                    // Lote empresa: agrupar por numero_factura, pagar lote por lote
+                    $lotes = $facturasPrestamo->groupBy('numero_factura');
+                    foreach ($lotes as $lote) {
+                        if ($pendiente <= 0) break;
+                        $saldoLote = $lote->sum('saldo_pendiente_prestamo');
+                        if ($saldoLote <= 0) continue;
+
+                        $abono = min($pendiente, $saldoLote);
+                        $pendiente -= $abono;
+
+                        // Registrar abono en la fila de referencia (primera del lote)
+                        Abono::create([
+                            'factura_id'       => $lote->first()->id,
+                            'valor'            => $abono,
+                            'forma_pago'       => $validated['forma_pago'] ?? 'efectivo',
+                            'valor_efectivo'   => $abono,
+                            'valor_consignado' => 0,
+                            'observacion'      => $obsText,
+                            'fecha'            => today()->toDateString(),
+                            'usuario_id'       => Auth::id(),
+                        ]);
+
+                        // Actualizar estado de TODAS las filas del lote
+                        $nuevoSaldo  = $saldoLote - $abono;
+                        $estadoNuevo = $nuevoSaldo <= 0
+                            ? Factura::ESTADO_PAGADA
+                            : Factura::ESTADO_PRESTAMO;
+
+                        foreach ($lote as $f) {
+                            $f->update([
+                                'estado'        => $estadoNuevo,
+                                'saldo_proximo' => $estadoNuevo === Factura::ESTADO_PAGADA ? 0 : $f->saldo_proximo,
+                            ]);
+                        }
+                    }
+                } else {
+                    // Individual: una factura por cédula, pagar de más antigua a más nueva
+                    foreach ($facturasPrestamo as $fp) {
+                        if ($pendiente <= 0) break;
+                        $saldo = $fp->saldo_pendiente_prestamo;
+                        if ($saldo <= 0) continue;
+
+                        $abono = min($pendiente, $saldo);
+                        $pendiente -= $abono;
+
+                        Abono::create([
+                            'factura_id'       => $fp->id,
+                            'valor'            => $abono,
+                            'forma_pago'       => $validated['forma_pago'] ?? 'efectivo',
+                            'valor_efectivo'   => $abono,
+                            'valor_consignado' => 0,
+                            'observacion'      => $obsText,
+                            'fecha'            => today()->toDateString(),
+                            'usuario_id'       => Auth::id(),
+                        ]);
+
+                        $fp->refresh();
+                        if ($fp->estaCompletamentePagada()) {
+                            $fp->update([
+                                'estado'        => Factura::ESTADO_PAGADA,
+                                'saldo_proximo' => 0,
+                            ]);
+                        }
+                    }
+                }
+            });
+        } catch (\Throwable $e) {
+            // Si falla el cierre del préstamo, loguear pero NO revertir la factura ya creada.
+            \Log::warning("[_liquidarCartera] No se pudo liquidar la cartera: " . $e->getMessage(), [
+                'aliado_id'    => $aliadoId,
+                'empresa_id'   => $empresaId,
+                'valor_cartera'=> $valorCartera,
+                'facturas'     => $facturasCreadas,
+            ]);
+        }
+    }
+
     // ─── Registrar abono ─────────────────────────────────────────────
+
     public function abonar(Request $request, int $facturaId)
     {
         $aliadoId = session('aliado_id_activo');

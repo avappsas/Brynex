@@ -1531,6 +1531,10 @@ const MF = (function () {
                 empresa_id: _cfg.empresaId || null,
                 // Anticipos seleccionados (pagos previos sin factura)
                 anticipo_ids: (window.MF_ANT ? MF_ANT.ids() : []),
+                // Cartera pendiente: si el usuario marcó el checkbox, se liquida
+                // la factura de préstamo anterior en el backend (sin duplicar ingresos).
+                incluir_cartera: document.getElementById('mf-chk-cartera')?.checked ?? false,
+                valor_cartera:   _saldoPendiente,
                 // Retiro
                 es_retiro:    _esRetiro,
                 fecha_retiro: _esRetiro ? (el('mf-retiro-fecha')?.value || null) : null,

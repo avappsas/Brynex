@@ -738,7 +738,7 @@ function verPrestamos() {
             const t = data.totales;
             let html = `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.75rem;margin-bottom:1.25rem;">
                 <div style="background:#ede9fe;border-radius:12px;padding:.85rem;text-align:center;"><div style="font-size:1.1rem;font-weight:800;color:#7c3aed;">${t.cant}</div><div style="font-size:.72rem;color:#6d28d9;">Préstamos activos</div></div>
-                <div style="background:#fef3c7;border-radius:12px;padding:.85rem;text-align:center;"><div style="font-size:1.1rem;font-weight:800;color:#d97706;">${fmtN(t.total_prestado)}</div><div style="font-size:.72rem;color:#b45309;">Total facturado</div></div>
+                <div style="background:#fef3c7;border-radius:12px;padding:.85rem;text-align:center;"><div style="font-size:1.1rem;font-weight:800;color:#d97706;">${fmtN(t.total_financiado)}</div><div style="font-size:.72rem;color:#b45309;">Total financiado</div></div>
                 <div style="background:#fef2f2;border-radius:12px;padding:.85rem;text-align:center;"><div style="font-size:1.1rem;font-weight:800;color:#dc2626;">${fmtN(t.saldo_pendiente)}</div><div style="font-size:.72rem;color:#b91c1c;">Saldo pendiente</div></div>
             </div>`;
             const renderLista = (lista, titulo) => {
@@ -752,7 +752,7 @@ function verPrestamos() {
                     const sub = p.cant_clientes ? ` <span style="color:#94a3b8;font-size:.65rem;">(${p.cant_clientes} clientes)</span>` : '';
                     h += `<div style="display:grid;grid-template-columns:1fr 100px 100px 80px;gap:.3rem;padding:.42rem .75rem;border-bottom:1px solid #f1f5f9;font-size:.78rem;align-items:center;">
                         <span style="font-weight:600;color:#1e293b;">${p.nombre}${sub}</span>
-                        <span style="text-align:right;font-family:monospace;color:#64748b;">${fmtN(p.total_prestado)}</span>
+                        <span style="text-align:right;font-family:monospace;color:#64748b;">${fmtN(p.total_financiado)}</span>
                         <span style="text-align:right;font-family:monospace;font-weight:700;color:#dc2626;">${fmtN(p.saldo_pendiente)}</span>
                         <a href="${url}" style="display:block;text-align:center;background:#ede9fe;color:#7c3aed;border-radius:6px;padding:.2rem .5rem;font-size:.7rem;font-weight:700;text-decoration:none;">Ver</a>
                     </div>`;

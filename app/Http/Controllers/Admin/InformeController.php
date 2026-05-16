@@ -1111,8 +1111,11 @@ class InformeController extends Controller
         $mes  = (int)$request->input('mes', now()->month);
         $anio = (int)$request->input('anio', now()->year);
 
-        // Préstamos pendientes generados en ese mes/año
-        $prestamos = DB::table('facturas AS f')
+        // Misma lógica que PrestamosController@index (tab empresas):
+        //   saldo_lote = SUM(valor_prestamo) - SUM(abonos_lote)
+        // valor_prestamo = monto explícito capturado al facturar (fuente de verdad).
+        // Para individuales: abs(saldo_proximo) - abonos (correcto por fila).
+        $rows = DB::table('facturas AS f')
             ->where('f.aliado_id', $aid)
             ->whereNull('f.deleted_at')
             ->where('f.estado', 'prestamo')
@@ -1124,52 +1127,89 @@ class InformeController extends Controller
             ->leftJoin('empresas AS em', 'em.id', '=', 'f.empresa_id')
             ->select([
                 'f.id', 'f.numero_factura', 'f.cedula', 'f.empresa_id',
-                'f.total', 'f.saldo_proximo',
+                'f.total', 'f.saldo_proximo', 'f.valor_prestamo',
+                DB::raw("ISNULL((SELECT SUM(a.valor) FROM abonos a WHERE a.factura_id = f.id), 0) AS total_abonado"),
                 DB::raw("ISNULL(LTRIM(RTRIM(cl.primer_nombre+' '+cl.primer_apellido)),'—') AS nombre_cliente"),
                 DB::raw("ISNULL(em.empresa,'—') AS nombre_empresa"),
             ])
             ->get()
             ->map(function($r) {
-                $saldo = abs((float)$r->saldo_proximo);
                 $esEmpresa = $r->empresa_id && $r->empresa_id != 1;
+                // Para individuales: saldo por fila usando abs(saldo_proximo)
+                $saldoFila = max(0, (int)max(0.0, -(float)($r->saldo_proximo ?? 0)) - (int)($r->total_abonado ?? 0));
                 return [
                     'id'             => $r->id,
                     'numero_factura' => $r->numero_factura,
-                    'nombre'         => $esEmpresa ? '🏢 '.$r->nombre_empresa : '👤 '.$r->nombre_cliente,
                     'cedula'         => $r->cedula,
-                    'total_prestado' => (float)$r->total,
-                    'saldo_pendiente'=> $saldo,
-                    'es_empresa'     => $esEmpresa,
                     'empresa_id'     => $r->empresa_id,
+                    'nombre'         => $esEmpresa ? '🏢 '.$r->nombre_empresa : '👤 '.$r->nombre_cliente,
+                    'valor_prestamo' => (int)($r->valor_prestamo ?? 0),  // fuente de verdad para lotes
+                    'saldo_proximo'  => (float)($r->saldo_proximo ?? 0),
+                    'total_abonado'  => (int)($r->total_abonado ?? 0),
+                    'saldo_fila'     => $saldoFila,
+                    'es_empresa'     => $esEmpresa,
                 ];
             });
 
-        // Agrupar empresas por numero_factura para no duplicar lotes
-        $individuales = $prestamos->where('es_empresa', false)->values();
-        $empresasLotes = $prestamos->where('es_empresa', true)
+        // ── Individuales ─────────────────────────────────────────────
+        $individuales = $rows
+            ->where('es_empresa', false)
+            ->filter(fn($r) => $r['saldo_fila'] > 0)
+            ->map(fn($r) => [
+                'id'               => $r['id'],
+                'numero_factura'   => $r['numero_factura'],
+                'nombre'           => $r['nombre'],
+                'cedula'           => $r['cedula'],
+                'total_financiado' => $r['saldo_fila'],
+                'saldo_pendiente'  => $r['saldo_fila'],
+                'es_empresa'       => false,
+                'empresa_id'       => null,
+            ])->values();
+
+        // ── Empresas (lotes) ─────────────────────────────────────────
+        // Igual que PrestamosController: saldo a nivel de LOTE completo.
+        // Se cargan TODAS las filas del lote (sin filtro per-fila) para
+        // que SUM(valor_prestamo) cubra los $22K del lote completo.
+        $empresasLotes = $rows
+            ->where('es_empresa', true)
             ->groupBy('numero_factura')
             ->map(function($lote) {
+                $abonosLote    = $lote->sum('total_abonado');
+                $valorPrestamo = $lote->sum('valor_prestamo');
+
+                // Usar valor_prestamo como fuente de verdad (igual que módulo préstamos)
+                $saldoLote = $valorPrestamo > 0
+                    ? max(0, (int)$valorPrestamo - $abonosLote)
+                    : max(0, abs((int)$lote->sum('saldo_proximo')) - $abonosLote);
+
+                if ($saldoLote <= 0) return null;
+
                 $first = $lote->first();
                 return [
-                    'numero_factura' => $first['numero_factura'],
-                    'nombre'         => $first['nombre'],
-                    'empresa_id'     => $first['empresa_id'],
-                    'total_prestado' => $lote->sum('total_prestado'),
-                    'saldo_pendiente'=> $lote->sum('saldo_pendiente'),
-                    'cant_clientes'  => $lote->count(),
-                    'factura_id'     => $first['id'],
+                    'numero_factura'   => $first['numero_factura'],
+                    'nombre'           => $first['nombre'],
+                    'empresa_id'       => $first['empresa_id'],
+                    'total_financiado' => $saldoLote,
+                    'saldo_pendiente'  => $saldoLote,
+                    'cant_clientes'    => $lote->count(),
+                    'factura_id'       => $first['id'],
                 ];
-            })->values();
+            })
+            ->filter()
+            ->values();
 
         return response()->json([
             'ok'          => true,
             'individuales'=> $individuales,
             'empresas'    => $empresasLotes,
             'totales'     => [
-                'total_prestado'  => $prestamos->sum('total_prestado'),
-                'saldo_pendiente' => $prestamos->sum('saldo_pendiente'),
-                'cant'            => $individuales->count() + $empresasLotes->count(),
+                'total_financiado' => $individuales->sum('total_financiado') + $empresasLotes->sum('total_financiado'),
+                'saldo_pendiente'  => $individuales->sum('saldo_pendiente')  + $empresasLotes->sum('saldo_pendiente'),
+                'cant'             => $individuales->count() + $empresasLotes->count(),
             ],
         ]);
     }
 }
+
+
+
