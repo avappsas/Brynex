@@ -1559,9 +1559,12 @@ function selRs(val, nplano, label) {
     document.querySelectorAll('#rs-list .rs-row').forEach(r => r.classList.remove('sel'));
     const hit = [...document.querySelectorAll('#rs-list .rs-row')].find(r => r.getAttribute('onclick')?.includes("'" + val + "'"));
     if (hit) hit.classList.add('sel'); else document.querySelector('#rs-list .rs-row')?.classList.add('sel');
-    // NO forzar el n_plano al cambiar de RS: el usuario puede tener planos
-    // en distintos n_plano y forzar el actual oculta los pendientes de otros.
-    // El selector de plano queda como estaba; el usuario filtra manualmente.
+    // Al seleccionar una RS, preseleccionar su n_plano en el select de plano.
+    // Si se elige "— Todas —" (val vacío), dejar el selector en "Todos" (vacío).
+    const selNplano = document.getElementById('sel-nplano');
+    if (selNplano) {
+        selNplano.value = val && nplano ? String(nplano) : '';
+    }
     autoSubmit();
 }
 function filtrarRs(q) {
