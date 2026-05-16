@@ -171,7 +171,7 @@ class Contrato extends BaseModel
      *
      * @param int $dias Días cotizados en el mes (1-30). Ignorado en Tiempo Parcial.
      */
-    public function calcularCotizacion(int $dias = 30): array
+    public function calcularCotizacion(int $dias = 30, ?bool $ivaCliente = null): array
     {
         $ibc        = (float) ($this->ibc ?? $this->salario ?? 0);
         $alidoId    = $this->aliado_id;
@@ -250,8 +250,10 @@ class Contrato extends BaseModel
 
         // IVA solo sobre la administración, solo si el cliente tiene iva=SI
         // Admon, seguro e IVA son cargos fijos mensuales: NO se prorratean
-        $tieneIva = false;
-        if ($this->cedula) {
+        // $ivaCliente: pre-cargado por el controller (evita N+1).
+        // Si viene null, consultar la BD como antes (compatibilidad).
+        $tieneIva = $ivaCliente;
+        if ($tieneIva === null && $this->cedula) {
             $iva = DB::table('clientes')
                 ->where('cedula', $this->cedula)
                 ->value('iva');

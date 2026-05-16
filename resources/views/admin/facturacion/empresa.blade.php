@@ -101,12 +101,27 @@ table.fac-tbl{width:100%;border-collapse:collapse;font-size:.78rem}
 
 {{-- Filtros + Acciones --}}
 <div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:.6rem 1rem;margin-bottom:.8rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.55rem;">
-    {{-- Izquierda: filtros --}}
+    {{-- Izquierda: filtros de estado + buscador --}}
     <div style="display:flex;gap:.4rem;flex-wrap:wrap;align-items:center;">
         <span class="fil-btn active" onclick="filtrar(this,'todos')">Todos ({{ $contratos->count() }})</span>
         <span class="fil-btn" onclick="filtrar(this,'pendiente')">⏳ Pendientes</span>
         <span class="fil-btn" onclick="filtrar(this,'pago')">✅ Pagados</span>
-        <span class="fil-btn" onclick="filtrar(this,'prestamo')">💳 Préstamo</span>
+        {{-- Buscador inline por nombre y cédula --}}
+        <div style="position:relative;display:inline-flex;align-items:center;">
+            <span style="position:absolute;left:.5rem;color:#94a3b8;font-size:.85rem;pointer-events:none;">🔍</span>
+            <input id="inp-buscar" type="text" placeholder="Nombre o cédula..."
+                   oninput="buscar(this.value)"
+                   autocomplete="off" spellcheck="false"
+                   style="padding:.28rem .6rem .28rem 1.75rem;border:1.5px solid #e2e8f0;
+                          border-radius:20px;font-size:.8rem;background:#f8fafc;
+                          color:#334155;outline:none;width:190px;transition:border .15s,width .2s;"
+                   onfocus="this.style.borderColor='#3b82f6';this.style.background='#fff';this.style.width='230px'"
+                   onblur="this.style.borderColor='#e2e8f0';this.style.background='#f8fafc';this.style.width='190px'">
+            <button id="btn-limpiar-bus" onclick="limpiarBuscar()" title="Limpiar búsqueda"
+                    style="display:none;position:absolute;right:.4rem;background:none;border:none;
+                           cursor:pointer;color:#94a3b8;font-size:.85rem;line-height:1;"
+                    onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#94a3b8'">✕</button>
+        </div>
     </div>
     <div style="display:flex;gap:.45rem;align-items:center;flex-wrap:wrap;">
 
@@ -232,7 +247,7 @@ $vPen  = $fact ? $r100($fact->v_afp)  : 0;
 $vAdm  = $fact ? (int)($fact->admon + $fact->admin_asesor) : ($esRetirado ? 0 : (int)(($c->administracion??0) + ($c->admon_asesor??0)));
 $vIva  = $fact ? $r100($fact->iva)    : 0;
 // Total y SS
-$cotiz = $c->calcularCotizacion($dias);
+$cotiz = $c->cotizacion_calc ?? $c->calcularCotizacion($dias); // pre-calculado en controller
 if (!$fact) {
     if ($esRetirado) {
         // Retirado sin factura aún → mostrar todo en 0
@@ -543,17 +558,58 @@ const BANCOS = [
     @endforeach
 ];
 
-// ─── Filtros ─────────────────────────────────────────────────
+// ─── Estado del filtro activo (para combinarlo con la búsqueda) ───────
+let _filtroActivo = 'todos';
+
+// ─── Filtro por estado ───────────────────────────────────────────────
 function filtrar(btn, tipo) {
-    document.querySelectorAll('.fil-btn').forEach(b=>b.classList.remove('active'));
+    _filtroActivo = tipo;
+    document.querySelectorAll('.fil-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    document.querySelectorAll('#tblTrab tbody tr').forEach(tr=>{
-        const est=tr.dataset.estado;
-        let show=true;
-        if(tipo==='pendiente') show=!['pagada','prestamo'].includes(est);
-        else if(tipo==='pago')     show=est==='pagada';
-        else if(tipo==='prestamo') show=est==='prestamo';
-        tr.style.display=show?'':'none';
+    _aplicarFiltros();
+}
+
+// ─── Búsqueda por nombre / cédula ───────────────────────────────────
+function buscar(q) {
+    const btnLimp = document.getElementById('btn-limpiar-bus');
+    btnLimp.style.display = q.trim() ? 'block' : 'none';
+    _aplicarFiltros();
+}
+function limpiarBuscar() {
+    const inp = document.getElementById('inp-buscar');
+    inp.value = '';
+    document.getElementById('btn-limpiar-bus').style.display = 'none';
+    inp.focus();
+    _aplicarFiltros();
+}
+
+// ─── Motor combinado: estado + texto ─────────────────────────────────
+function _aplicarFiltros() {
+    const q = (document.getElementById('inp-buscar')?.value || '').trim().toLowerCase();
+    // Dividir la búsqueda en palabras (tokens) para coincidencia parcial y desordenada
+    // Ejemplo: "brayan garcia" → tokens ["brayan","garcia"]
+    // Coincide con "Brayan Humberto Garcia" porque ambos tokens están en el nombre
+    const tokens = q ? q.split(/\s+/).filter(t => t.length > 0) : [];
+
+    document.querySelectorAll('#tblTrab tbody tr').forEach(tr => {
+        const est = tr.dataset.estado;
+
+        // 1) Filtro de estado
+        let showEstado = true;
+        if (_filtroActivo === 'pendiente') showEstado = !['pagada','prestamo'].includes(est);
+        else if (_filtroActivo === 'pago')  showEstado = est === 'pagada';
+
+        // 2) Filtro de texto (nombre + cédula)
+        let showTexto = true;
+        if (tokens.length > 0) {
+            const nombre  = (tr.dataset.nombre  || '').toLowerCase();
+            const cedula  = (tr.dataset.cedula  || '').toLowerCase();
+            const haystack = nombre + ' ' + cedula;
+            // Todos los tokens deben aparecer en el haystack
+            showTexto = tokens.every(t => haystack.includes(t));
+        }
+
+        tr.style.display = (showEstado && showTexto) ? '' : 'none';
     });
 }
 

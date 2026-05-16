@@ -46,6 +46,9 @@ class FacturacionController extends Controller
         $aliadoId = session('aliado_id_activo');
         $empresa  = Empresa::where('aliado_id', $aliadoId)->findOrFail($empresaId);
 
+        // Pre-cargar configuración global en 1 query (evita N+1 en calcularCotizacion)
+        \App\Models\ConfiguracionBrynex::precargar();
+
         $mes  = (int) $request->get('mes',  now()->month);
         $anio = (int) $request->get('anio', now()->year);
 
@@ -85,6 +88,7 @@ class FacturacionController extends Controller
             ->with([
                 'cliente'      => fn($q) => $q->where('aliado_id', $aliadoId),
                 'tipoModalidad', 'razonSocial', 'eps', 'arl', 'pension', 'caja', 'asesor',
+                'plan', // ← eager-load del plan para evitar N+1 en calcularCotizacion()
             ])
             ->orderBy('cedula')
             ->get();
@@ -129,10 +133,19 @@ class FacturacionController extends Controller
             ->select('contrato_id', DB::raw('SUM(saldo_proximo) as suma'))
             ->pluck('suma', 'contrato_id');
 
+        // ── Pre-cargar IVA de clientes en batch (1 query) ────────────────────
+        // Evita N queries individuales dentro de calcularCotizacion() en el map() y en el blade.
+        $ivaClientes = DB::table('clientes')
+            ->where('aliado_id', $aliadoId)
+            ->where('cod_empresa', $empresaId)
+            ->pluck('iva', 'cedula')
+            ->map(fn($v) => strtoupper(trim($v ?? '')) === 'SI')
+            ->toArray();
+
         // Calcular días cotizados para cada contrato según fecha_ingreso
         $hoy = now();
 
-        $contratos = $contratos->map(function ($c) use ($mes, $anio, $hoy, $facturasExistentes, $saldosTotales, $saldosPrevios) {
+        $contratos = $contratos->map(function ($c) use ($mes, $anio, $hoy, $facturasExistentes, $saldosTotales, $saldosPrevios, $ivaClientes) {
             $diasCotizar = 30;
             $esIndActPrimerMes = false; // I Act (id=11) en su mes de ingreso → afiliación + planilla juntas
             if ($c->fecha_ingreso) {
@@ -169,6 +182,12 @@ class FacturacionController extends Controller
             $c->es_ind_act_primer_mes = $esIndActPrimerMes;
             $c->factura_exist         = $facturasExistentes->get($c->id);
 
+            // ── Cotización pre-calculada aquí (evita N+1 en el blade) ──────────
+            // El plan ya fue eager-loaded. El IVA viene del batch pre-cargado.
+            // El blade usa $c->cotizacion_calc directamente, sin tocar la BD.
+            $ivaFlag = $ivaClientes[$c->cedula] ?? null;
+            $c->cotizacion_calc = $c->calcularCotizacion($diasCotizar, $ivaFlag);
+
             // 1a) Saldo para FACTURAR (batch pre-calculado)
             $sumaPrev = (int)($saldosPrevios[$c->id] ?? 0);
             $c->saldo_a_favor_facturar   = $sumaPrev > 0 ? $sumaPrev : 0;
@@ -189,6 +208,7 @@ class FacturacionController extends Controller
 
         // ── BATCH 3: mora pre-calculada para contratos SIN factura (1 call) ──
         // Evita que la vista llame MoraClienteService::calcular() por fila.
+        // La cotización ya fue calculada en el map() anterior (cotizacion_calc).
         $filasMora = [];
         foreach ($contratos as $c) {
             if ($c->factura_exist) continue; // si ya tiene factura, la mora viene de ella
@@ -197,9 +217,8 @@ class FacturacionController extends Controller
             if (!$rs) continue;
             $rsNit = (int)($rs->nit ?: $rs->id);
             if (!$rsNit) continue;
-            // Estimar SS para mora (usamos calcularCotizacion con días del contrato)
-            $cotiz = $c->calcularCotizacion($c->dias_cotizar ?? 30);
-            $vSS   = (int)($cotiz['ss'] ?? 0);
+            // Reutilizar la cotización ya calculada en el map() (cero queries extra)
+            $vSS = (int)($c->cotizacion_calc['ss'] ?? 0);
             if ($vSS <= 0) continue;
             $filasMora[$c->id] = [
                 'contrato_id'  => $c->id,
