@@ -67,12 +67,29 @@ class ClienteController extends Controller
         $cedulas = $clientes->pluck('cedula')->filter()->values()->toArray();
         $ultimosContratos = [];
         if (!empty($cedulas)) {
-            // Subquery: último contrato por cédula (por ID descendente)
+            // Subquery con prioridad: primero contrato vigente/activo, luego el de mayor ID.
+            // Evita mostrar "retirado" cuando el cliente tiene un contrato más antiguo pero vigente.
+            // Lógica:
+            //   - CASE: vigente=0, activo=1, cualquier otro=2 → ORDER BY prioridad ASC, id DESC
+            //   - CROSS APPLY TOP 1 selecciona el contrato ganador por cédula.
             $subs = DB::table('contratos as c')
-                ->join(DB::raw('(SELECT cedula, MAX(id) AS max_id FROM contratos WHERE aliado_id = ? GROUP BY cedula) as ult'), function ($j) {
-                    $j->on('c.cedula', '=', 'ult.cedula')->on('c.id', '=', 'ult.max_id');
-                })
-                ->addBinding($aliadoId, 'join')
+                ->join(
+                    DB::raw("(
+                        SELECT TOP 1 WITH TIES c2.cedula, c2.id AS pref_id
+                        FROM contratos c2
+                        WHERE c2.aliado_id = {$aliadoId}
+                        ORDER BY ROW_NUMBER() OVER (
+                            PARTITION BY c2.cedula
+                            ORDER BY
+                                CASE
+                                    WHEN c2.estado IN ('vigente','activo') THEN 0
+                                    ELSE 1
+                                END ASC,
+                                c2.id DESC
+                        )
+                    ) AS pref"),
+                    fn($j) => $j->on('c.cedula', '=', 'pref.cedula')->on('c.id', '=', 'pref.pref_id')
+                )
                 ->leftJoin('tipo_modalidad as tm', 'tm.id', '=', 'c.tipo_modalidad_id')
                 ->select('c.cedula', 'c.estado', 'c.fecha_ingreso', 'c.fecha_retiro',
                          DB::raw("COALESCE(tm.observacion, tm.tipo_modalidad) AS modalidad"))
