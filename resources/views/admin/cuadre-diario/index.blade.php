@@ -254,7 +254,7 @@ $totalBancos = $bancos->sum(fn($bc) => \App\Models\Consignacion::saldoBanco(sess
 <div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden;margin-bottom:.8rem">
     <div style="padding:.7rem 1rem;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.4rem">
         <div style="font-size:.85rem;font-weight:700">📋 Gastos del período</div>
-        <button onclick="document.getElementById('modal-gasto').style.display='flex'" class="btn-sm btn-gasto">
+        <button onclick="abrirModalGasto()" class="btn-sm btn-gasto">
             + Registrar Gasto
         </button>
     </div>
@@ -413,6 +413,24 @@ $totalBancos = $bancos->sum(fn($bc) => \App\Models\Consignacion::saldoBanco(sess
 
 <script>
 // Los aliases actualizarBancos/actualizarFormPago ya están definidos en el partial modal_gasto
+function abrirModalGasto() {
+    const form = document.getElementById('modal-gasto-form');
+    if (form) {
+        form.reset();
+        // Re-ocultar paneles que el JS de tipo/forma_pago podría haber mostrado
+        const hide = ['modal-gasto-banco-origen','modal-gasto-banco-destino','modal-gasto-blq-usuario'];
+        hide.forEach(id => { const el = document.getElementById(id); if(el) el.style.display='none'; });
+        // Limpiar zona de imagen si existe
+        const zone = document.getElementById('modal-gasto-paste-zone');
+        if (zone) {
+            zone.style.borderColor = '#cbd5e1';
+            zone.innerHTML = '<div style="font-size:1.3rem">📎</div><p style="font-size:.75rem;color:#64748b;margin:0">Pega imagen (Ctrl+V) o arrastra aquí</p><p style="font-size:.68rem;color:#94a3b8;margin:0">Clic para seleccionar archivo</p>';
+        }
+        const b64 = document.getElementById('modal-gasto-base64');
+        if (b64) b64.value = '';
+    }
+    document.getElementById('modal-gasto').style.display = 'flex';
+}
 </script>
 
 @endsection

@@ -134,24 +134,26 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
         {{-- Bancos + Efectivo --}}
         <div style="background:#fff;border-radius:14px;padding:1.25rem;box-shadow:0 1px 8px rgba(0,0,0,.06);">
             <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;color:#94a3b8;margin-bottom:.85rem;">Cuentas Bancarias &amp; Efectivo</div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:.75rem;">
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(185px,1fr));gap:.75rem;">
 
                 {{-- Tarjetas banco --}}
                 @foreach($bancos as $b)
-                @php $netColor = $b->saldo_mes >= 0 ? '#16a34a' : '#dc2626'; @endphp
+                @php $netColor = $b->saldo_mes >= 0 ? '#16a34a' : '#dc2626'; $netBg = $b->saldo_mes >= 0 ? '#f0fdf4' : '#fef2f2'; @endphp
                 <div class="bank-card" onclick="verMovimientosBanco({{ $b->id }},'{{ addslashes($b->nombre) }}')" title="Clic para ver movimientos del mes">
                     {{-- Cabecera --}}
                     <div style="font-size:.65rem;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:.04em;">{{ $b->banco }}</div>
                     <div style="font-size:.78rem;font-weight:700;color:#334155;margin-top:.1rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{{ $b->nombre }}">{{ $b->nombre }}</div>
 
-                    {{-- Saldo hero --}}
-                    <div style="margin-top:.6rem;">
-                        <div style="font-size:1.25rem;font-weight:900;color:#1e40af;line-height:1.1;">{{ $fmt($b->saldo_actual) }}</div>
-                        <div style="font-size:.62rem;color:#94a3b8;margin-top:.15rem;">{{ $b->label_saldo }}</div>
+                    {{-- Hero: Neto del mes --}}
+                    <div style="margin-top:.55rem;">
+                        <div style="font-size:.6rem;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:.03em;margin-bottom:.2rem;">Neto {{ $mesesEs[$mes] }}</div>
+                        <div style="font-size:1.3rem;font-weight:900;color:{{ $netColor }};line-height:1.1;">
+                            {{ $b->saldo_mes >= 0 ? '+' : '' }}{{ $fmt($b->saldo_mes) }}
+                        </div>
                     </div>
 
                     {{-- Movimientos del mes --}}
-                    <div style="margin-top:auto;padding-top:.65rem;border-top:1px dashed #e2e8f0;display:flex;flex-direction:column;gap:.28rem;">
+                    <div style="margin-top:auto;padding-top:.6rem;border-top:1px dashed #e2e8f0;display:flex;flex-direction:column;gap:.25rem;">
                         <div style="display:flex;justify-content:space-between;align-items:center;">
                             <span style="font-size:.65rem;color:#64748b;font-weight:600;">↑ Entró</span>
                             <span style="font-size:.72rem;font-weight:700;color:#16a34a;font-family:monospace;">{{ $fmt($b->ing_mes) }}</span>
@@ -160,9 +162,9 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
                             <span style="font-size:.65rem;color:#64748b;font-weight:600;">↓ Salió</span>
                             <span style="font-size:.72rem;font-weight:700;color:#dc2626;font-family:monospace;">{{ $fmt($b->sal_mes) }}</span>
                         </div>
-                        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:.1rem;">
-                            <span style="font-size:.6rem;color:#94a3b8;">Neto {{ $mesesEs[$mes] }}</span>
-                            <span style="font-size:.7rem;font-weight:800;color:#fff;background:{{ $netColor }};border-radius:5px;padding:.05rem .4rem;font-family:monospace;">{{ $b->saldo_mes >= 0 ? '+' : '' }}{{ $fmt($b->saldo_mes) }}</span>
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:.15rem;padding-top:.3rem;border-top:1px solid #f1f5f9;">
+                            <span style="font-size:.6rem;color:#94a3b8;">{{ $b->label_saldo }}</span>
+                            <span style="font-size:.65rem;font-weight:600;color:#64748b;font-family:monospace;">{{ $fmt($b->saldo_actual) }}</span>
                         </div>
                     </div>
                 </div>

@@ -213,6 +213,9 @@ class FacturacionController extends Controller
         foreach ($contratos as $c) {
             if ($c->factura_exist) continue; // si ya tiene factura, la mora viene de ella
             if ($c->estado === 'retirado') continue;
+            // Afiliaciones nunca tienen mora (no hay pago de planilla)
+            if ($c->es_ind_act_primer_mes === false && $c->cotizacion_calc['ss'] == 0) continue;
+            if ((int)$c->tipo_modalidad_id === 15) continue; // ARL: siempre afiliación
             $rs = $c->razonSocial;
             if (!$rs) continue;
             $rsNit = (int)($rs->nit ?: $rs->id);
@@ -666,15 +669,19 @@ class FacturacionController extends Controller
                 $moraCliente = 0;
                 if ($esModoIndividual) {
                     // Modo individual: usar el valor del modal (puede ser 0 o el calculado)
-                    $moraCliente = (int)($validated['mora'] ?? 0);
+                    // Si es afiliación pura, forzar mora=0 sin importar lo que envíe el frontend
+                    $moraCliente = $esAfiliacion ? 0 : (int)($validated['mora'] ?? 0);
                 } else {
                     // Modo masivo (empresa): calcular mora por contrato si aplica
-                    $rs       = $contrato->razonSocial;
-                    $rsNit    = $rs ? (int)($rs->nit ?: $rs->id) : 0;
-                    $rsDiaH   = $rs ? ($rs->dia_habil ?? null) : null;
-                    if ($rsNit && $totalSS > 0) {
-                        $moraInfo   = MoraClienteService::calcular($aliadoId, $rsNit, $rsDiaH, $totalSS, $mes, $anio);
-                        $moraCliente = $moraInfo['mora']; // aplicar tramos automáticamente
+                    // Afiliaciones nunca generan mora (no hay pago de planilla)
+                    if (!$esAfiliacion) {
+                        $rs       = $contrato->razonSocial;
+                        $rsNit    = $rs ? (int)($rs->nit ?: $rs->id) : 0;
+                        $rsDiaH   = $rs ? ($rs->dia_habil ?? null) : null;
+                        if ($rsNit && $totalSS > 0) {
+                            $moraInfo   = MoraClienteService::calcular($aliadoId, $rsNit, $rsDiaH, $totalSS, $mes, $anio);
+                            $moraCliente = $moraInfo['mora']; // aplicar tramos automáticamente
+                        }
                     }
                 }
 
@@ -1202,17 +1209,19 @@ class FacturacionController extends Controller
 
         $total = $calcSS['ss'] + $admon + $admonAsesor + $seguro + $afiliacion + $iva;
 
-        // Mora estimada
+        // Mora estimada — las afiliaciones nunca generan mora (no hay pago de planilla)
         $mora = 0;
-        try {
-            $rs    = $contrato->razonSocial;
-            $rsNit = $rs ? (int)($rs->nit ?: $rs->id) : 0;
-            $rsDia = $rs ? ($rs->dia_habil ?? null) : null;
-            if ($rsNit && $calcSS['ss'] > 0) {
-                $moraInfo = MoraClienteService::calcular($aliadoId, $rsNit, $rsDia, $calcSS['ss'], $mes, $anio);
-                $mora = (int)($moraInfo['mora'] ?? 0);
-            }
-        } catch (\Throwable) {}
+        if (!$esAfiliacion) {
+            try {
+                $rs    = $contrato->razonSocial;
+                $rsNit = $rs ? (int)($rs->nit ?: $rs->id) : 0;
+                $rsDia = $rs ? ($rs->dia_habil ?? null) : null;
+                if ($rsNit && $calcSS['ss'] > 0) {
+                    $moraInfo = MoraClienteService::calcular($aliadoId, $rsNit, $rsDia, $calcSS['ss'], $mes, $anio);
+                    $mora = (int)($moraInfo['mora'] ?? 0);
+                }
+            } catch (\Throwable) {}
+        }
 
         $tipo = $esAfiliacion ? 'afiliacion' : 'planilla';
 
@@ -1683,6 +1692,22 @@ class FacturacionController extends Controller
 
             if (!$rsNit) {
                 return ['mora_cliente' => 0, 'mora_dias' => 0, 'mora_fecha_vence' => null, 'mora_dia_habil' => 0, 'mora_info' => ''];
+            }
+
+            // Detectar si el contrato es afiliación para este período
+            $esIndependiente = $contrato->tipoModalidad?->esIndependiente() ?? false;
+            $esIndAct        = (int)($contrato->tipo_modalidad_id) === 11;
+            $esArlModalidad  = (int)($contrato->tipo_modalidad_id) === 15;
+            $esMesIngreso    = $contrato->fecha_ingreso
+                && (int)$contrato->fecha_ingreso->month === $mes
+                && (int)$contrato->fecha_ingreso->year  === $anio;
+            $esAfiliacion    = $esArlModalidad
+                || ($esMesIngreso && !$esIndependiente)
+                || ($esMesIngreso && $esIndependiente && !$esIndAct);
+
+            // Las afiliaciones nunca tienen mora (no hay pago de planilla)
+            if ($esAfiliacion) {
+                return ['mora_cliente' => 0, 'mora_real' => 0, 'mora_dias' => 0, 'mora_fecha_vence' => null, 'mora_dia_habil' => 0, 'mora_info' => '✅ Afiliación — sin mora', 'mora_aplica' => false];
             }
 
             // Usar la última factura de este contrato para obtener el total_ss real

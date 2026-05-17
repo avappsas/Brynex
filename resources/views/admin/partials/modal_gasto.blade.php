@@ -50,6 +50,7 @@
                     <label class="lbl-g">Tipo *</label>
                     <select name="tipo" id="{{ $modalId }}-tipo"
                             onchange="gasto_onTipoChange('{{ $modalId }}')" required class="inp-g">
+                        <option value="" disabled selected>— Seleccionar tipo —</option>
                         @foreach($tiposGrupos as $grupo => $claves)
                         <optgroup label="{{ $grupo }}">
                             @foreach($claves as $k)

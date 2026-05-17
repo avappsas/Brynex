@@ -428,9 +428,10 @@ class InformeController extends Controller
         // Comisiones asesor (acumuladas en facturas del mes)
         $comisionesAsesor = (clone $facturasBase)->sum('c_asesor');
 
-        // Gastos operativos (sin planillas SS)
+        // Gastos operativos (sin planillas SS ni traslados efectivo→banco)
         $gastosOp = DB::table('gastos')->where('aliado_id',$aid)
             ->where('tipo','!=','pago_planilla')
+            ->where('tipo','!=','efectivo_banco')   // traslado interno, no es egreso real
             ->whereMonth('fecha',$mes)->whereYear('fecha',$anio)
             ->selectRaw('ISNULL(SUM(CAST(valor AS BIGINT)), 0) AS total')
             ->value('total');
@@ -496,9 +497,11 @@ class InformeController extends Controller
             ->where('aliado_id', $aid)
             ->whereIn('banco_origen_id', $bancoIds)
             ->whereMonth('fecha', $mes)->whereYear('fecha', $anio)
+            ->where('tipo', '!=', 'efectivo_banco')   // traslados efectivo→banco NO son salida del banco
             ->groupBy('banco_origen_id')
             ->selectRaw('banco_origen_id, SUM(valor) AS total')
             ->pluck('total', 'banco_origen_id');
+
 
         $bancos = $bancos->map(function ($b) use ($ingMesPorBanco, $salMesPorBanco) {
             $b->ing_mes   = (float)($ingMesPorBanco[$b->id] ?? 0);
@@ -717,6 +720,7 @@ class InformeController extends Controller
         $salidas = DB::table('gastos')
             ->where('aliado_id', $aid)->where('banco_origen_id', $bancoId)
             ->whereMonth('fecha', $mes)->whereYear('fecha', $anio)
+            ->where('tipo', '!=', 'efectivo_banco')   // traslados efectivo→banco no son salida del banco
             ->select('fecha', 'valor', 'tipo', 'descripcion', 'pagado_a')
             ->orderBy('fecha')->get();
 
@@ -1138,6 +1142,7 @@ class InformeController extends Controller
         $gastosDia = DB::table('gastos')
             ->where('aliado_id',$aid)
             ->where('tipo','!=','pago_planilla')
+            ->where('tipo','!=','efectivo_banco')   // traslado interno, no es egreso real
             ->whereMonth('fecha',$mes)->whereYear('fecha',$anio)
             ->selectRaw('DAY(fecha) AS dia, ISNULL(SUM(CAST(valor AS BIGINT)), 0) AS total')
             ->groupByRaw('DAY(fecha)')
@@ -1181,6 +1186,7 @@ class InformeController extends Controller
             ->whereIn('estado',['pagada','abono']);
         $ingresos = (clone $base)->sum(DB::raw('admon+seguro+afiliacion+mensajeria+otros+iva+retiro'));
         $egresos  = DB::table('gastos')->where('aliado_id',$aid)->where('tipo','!=','pago_planilla')
+            ->where('tipo','!=','efectivo_banco')
             ->whereMonth('fecha',$mes)->whereYear('fecha',$anio)->sum('valor');
         return ['ingresos'=>$ingresos,'egresos'=>$egresos,'utilidad'=>$ingresos-$egresos];
     }

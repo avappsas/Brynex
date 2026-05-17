@@ -29,8 +29,88 @@ class CuadreDiarioController extends Controller
         $bancos    = BancoCuenta::where('aliado_id', $aliadoId)->where('activo', true)->get();
         $usuarios  = User::where('aliado_id', $aliadoId)->where('activo', true)->orderBy('nombre')->get(['id','nombre']);
 
-        // Datos para el cuadre activo
-        $datosPeriodo = $cuadre ? $this->calcularPeriodo($cuadre, $aliadoId, $usuarioId) : null;
+        // ── Datos del cuadre activo (batch: 4 queries, sin loop por día) ─────
+        if ($cuadre) {
+            $inicio = $cuadre->fecha_inicio->toDateString();
+            $fin    = ($cuadre->fecha_fin ?? today())->toDateString();
+            $uid    = $usuarioId;
+
+            // 1) Facturas efectivo por fecha
+            $ingPorFecha = DB::table('facturas')
+                ->where('aliado_id', $aliadoId)->where('usuario_id', $uid)
+                ->whereBetween('fecha_pago', [$inicio, $fin])
+                ->where('es_prestamo', false)->whereNotNull('valor_efectivo')
+                ->selectRaw("CONVERT(VARCHAR(10), fecha_pago, 120) AS d, SUM(valor_efectivo) AS t")
+                ->groupByRaw("CONVERT(VARCHAR(10), fecha_pago, 120)")
+                ->pluck('t', 'd');
+
+            // 2) Abonos cartera por fecha
+            $carteraPorFecha = DB::table('abonos')
+                ->join('facturas', 'abonos.factura_id', '=', 'facturas.id')
+                ->where('facturas.aliado_id', $aliadoId)->where('facturas.es_prestamo', true)
+                ->where('abonos.usuario_id', $uid)
+                ->whereBetween('abonos.fecha', [$inicio, $fin])
+                ->selectRaw("CONVERT(VARCHAR(10), abonos.fecha, 120) AS d, SUM(abonos.valor_efectivo) AS t")
+                ->groupByRaw("CONVERT(VARCHAR(10), abonos.fecha, 120)")
+                ->pluck('t', 'd');
+
+            // 3) Anticipos efectivo/nequi por fecha
+            $anticiposPorFecha = DB::table('anticipos')
+                ->where('aliado_id', $aliadoId)->where('usuario_id', $uid)
+                ->whereIn('forma_pago', ['efectivo', 'nequi'])
+                ->whereBetween('fecha_pago', [$inicio, $fin])
+                ->whereNotIn('estado', ['devuelto'])
+                ->selectRaw("CONVERT(VARCHAR(10), fecha_pago, 120) AS d, SUM(valor) AS t")
+                ->groupByRaw("CONVERT(VARCHAR(10), fecha_pago, 120)")
+                ->pluck('t', 'd');
+
+            // 4) Gastos del cuadre por fecha
+            $gastosPorFecha = DB::table('gastos')
+                ->where('cuadre_id', $cuadre->id)
+                ->where(fn($q) => $q->where('forma_pago', 'efectivo')->orWhere('tipo', 'efectivo_banco'))
+                ->selectRaw("CONVERT(VARCHAR(10), fecha, 120) AS d, SUM(valor) AS t")
+                ->groupByRaw("CONVERT(VARCHAR(10), fecha, 120)")
+                ->pluck('t', 'd');
+
+            // Totales del período
+            $ingresosEfectivo   = (int) $ingPorFecha->sum();
+            $cobrosCartera      = (int) $carteraPorFecha->sum();
+            $anticiposEfectivo  = (int) $anticiposPorFecha->sum();
+            $gastosEfectivo     = (int) $gastosPorFecha->sum();
+            $totalPrestado      = (int) DB::table('facturas')
+                ->where('aliado_id', $aliadoId)->where('usuario_id', $uid)
+                ->where('es_prestamo', true)->whereBetween('fecha_pago', [$inicio, $fin])
+                ->sum('total');
+
+            // Desglose por día (puro PHP, sin queries)
+            $saldoAcum = (int)($cuadre->saldo_apertura ?? 0);
+            $dias      = $cuadre->diasDelPeriodo();
+            $porDia    = $dias->map(function($dia) use (
+                $ingPorFecha, $carteraPorFecha, $anticiposPorFecha, $gastosPorFecha, &$saldoAcum
+            ) {
+                $d   = $dia->toDateString();
+                $ing = (int)($ingPorFecha[$d]        ?? 0);
+                $car = (int)($carteraPorFecha[$d]    ?? 0);
+                $ant = (int)($anticiposPorFecha[$d]  ?? 0);
+                $gas = (int)($gastosPorFecha[$d]     ?? 0);
+                $saldoAcum += $ing + $car + $ant - $gas;
+                return ['fecha' => $dia, 'ingresos' => $ing, 'cartera' => $car,
+                        'anticipos' => $ant, 'gastos' => $gas, 'saldo' => $saldoAcum];
+            });
+
+            $datosPeriodo = [
+                'efectivo_total'     => $ingresosEfectivo,
+                'cobros_cartera'     => $cobrosCartera,
+                'total_prestado'     => $totalPrestado,
+                'anticipos_efectivo' => $anticiposEfectivo,
+                'gastos_efectivo'    => $gastosEfectivo,
+                'saldo_inicial'      => (int)($cuadre->saldo_apertura ?? 0),
+                'saldo_final'        => (int)($cuadre->saldo_apertura ?? 0) + $ingresosEfectivo + $cobrosCartera + $anticiposEfectivo - $gastosEfectivo,
+                'por_dia'            => $porDia,
+            ];
+        } else {
+            $datosPeriodo = null;
+        }
 
         // Gastos del cuadre actual
         $gastos = $cuadre
@@ -141,14 +221,76 @@ class CuadreDiarioController extends Controller
 
         $cuadres = $cuadresQuery->orderBy('usuario_id')->get();
 
-        // Calcular resumen por cuadre
-        $resumen = $cuadres->map(function($c) use ($aliadoId) {
-            $datos = $this->calcularPeriodo($c, $aliadoId, $c->usuario_id);
+        // ── Resumen batch: 4 queries en total (sin N+1) ──────────────────────
+        // Recopilamos todos los usuario_id + rango de fechas de los cuadres activos
+        // y hacemos una sola query por tabla, agrupando por usuario_id.
+        $cuadreIds   = $cuadres->pluck('id')->toArray();
+        $usuarioIds  = $cuadres->pluck('usuario_id')->toArray();
+
+        // 1) Facturas efectivo por usuario (periodo = desde fecha_inicio más antigua hasta hoy)
+        $fechaMin = $cuadres->min('fecha_inicio');
+        $hoy      = today()->toDateString();
+
+        $ingresosEfPorUsuario = DB::table('facturas')
+            ->where('aliado_id', $aliadoId)
+            ->whereIn('usuario_id', $usuarioIds)
+            ->whereBetween('fecha_pago', [$fechaMin, $hoy])
+            ->where('es_prestamo', false)
+            ->whereNotNull('valor_efectivo')
+            ->groupBy('usuario_id')
+            ->selectRaw('usuario_id, SUM(valor_efectivo) AS total')
+            ->pluck('total', 'usuario_id');
+
+        // 2) Cobros cartera (abonos a préstamos) por usuario
+        $carteraEfPorUsuario = DB::table('abonos')
+            ->join('facturas', 'abonos.factura_id', '=', 'facturas.id')
+            ->where('facturas.aliado_id', $aliadoId)
+            ->where('facturas.es_prestamo', true)
+            ->whereIn('abonos.usuario_id', $usuarioIds)
+            ->whereBetween('abonos.fecha', [$fechaMin, $hoy])
+            ->groupBy('abonos.usuario_id')
+            ->selectRaw('abonos.usuario_id, SUM(abonos.valor_efectivo) AS total')
+            ->pluck('total', 'usuario_id');
+
+        // 3) Anticipos efectivo/nequi por usuario
+        $anticiposEfPorUsuario = DB::table('anticipos')
+            ->where('aliado_id', $aliadoId)
+            ->whereIn('usuario_id', $usuarioIds)
+            ->whereIn('forma_pago', ['efectivo', 'nequi'])
+            ->whereBetween('fecha_pago', [$fechaMin, $hoy])
+            ->whereNotIn('estado', ['devuelto'])
+            ->groupBy('usuario_id')
+            ->selectRaw('usuario_id, SUM(valor) AS total')
+            ->pluck('total', 'usuario_id');
+
+        // 4) Gastos efectivo por cuadre_id
+        $gastosEfPorCuadre = DB::table('gastos')
+            ->whereIn('cuadre_id', $cuadreIds)
+            ->where(fn($q) => $q->where('forma_pago', 'efectivo')
+                                ->orWhere('tipo', 'efectivo_banco'))
+            ->groupBy('cuadre_id')
+            ->selectRaw('cuadre_id, SUM(valor) AS total')
+            ->pluck('total', 'cuadre_id');
+
+        // Construir resumen en PHP (sin más queries)
+        $resumen = $cuadres->map(function($c) use (
+            $ingresosEfPorUsuario, $carteraEfPorUsuario,
+            $anticiposEfPorUsuario, $gastosEfPorCuadre
+        ) {
+            $uid          = $c->usuario_id;
+            $ingresos     = (int)($ingresosEfPorUsuario[$uid]  ?? 0);
+            $cartera      = (int)($carteraEfPorUsuario[$uid]   ?? 0);
+            $anticipos    = (int)($anticiposEfPorUsuario[$uid] ?? 0);
+            $gastos       = (int)($gastosEfPorCuadre[$c->id]   ?? 0);
+            $apertura     = (int)($c->saldo_apertura            ?? 0);
+            $efectivoTotal = $ingresos + $cartera + $anticipos;
+            $saldoEsperado = $apertura + $efectivoTotal - $gastos;
+
             return (object)[
                 'cuadre'          => $c,
-                'efectivo_total'  => $datos['efectivo_total'],
-                'gastos_efectivo' => $datos['gastos_efectivo'],
-                'saldo_esperado'  => $datos['saldo_final'],
+                'efectivo_total'  => $efectivoTotal,
+                'gastos_efectivo' => $gastos,
+                'saldo_esperado'  => $saldoEsperado,
             ];
         });
 

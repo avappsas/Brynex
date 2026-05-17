@@ -423,12 +423,12 @@ class ContratoController extends Controller
             $mesPlan  = (int) $validated['mes_plano'];
             $anioPlan = (int) $validated['anio_plano'];
 
-            // Último n_plano de la RS o 1; para Ingreso-Retiro (id=12) siempre 100.
-            $nPlano = ((int)$contrato->tipo_modalidad_id === 12)
-                ? 100
-                : ($contrato->razon_social_id
-                    ? (\App\Models\RazonSocial::find($contrato->razon_social_id)?->n_plano ?? 1)
-                    : 1);
+            // n_plano del plano de retiro = plano actual de la RS.
+            // NOTA: El plano 100 es exclusivo del flujo "Duplicar Contrato" (IR rotation).
+            // El retiro normal — incluso en IR (id=12) — usa el n_plano de la RS.
+            $nPlano = $contrato->razon_social_id
+                ? (\App\Models\RazonSocial::find($contrato->razon_social_id)?->n_plano ?? 1)
+                : 1;
 
             // 4) Crear plano con fecha_ret y num_dias
             $cliente = $contrato->cliente;
