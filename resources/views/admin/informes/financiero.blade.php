@@ -9,8 +9,19 @@
 .dia-row{display:grid;grid-template-columns:50px 1fr 1fr 1fr 1fr 1fr;gap:.5rem;padding:.5rem .75rem;border-bottom:1px solid #f1f5f9;font-size:.8rem;align-items:center;cursor:pointer;transition:background .12s;}
 .dia-row:hover{background:#f8fafc;}
 .dia-row.dia-head{background:#f8fafc;border-bottom:2px solid #e2e8f0;font-size:.7rem;text-transform:uppercase;color:#64748b;font-weight:700;cursor:default;}
-.bank-card{background:#fff;border-radius:12px;padding:1rem 1.25rem;box-shadow:0 1px 6px rgba(0,0,0,.06);border-top:3px solid #3b82f6;cursor:pointer;transition:all .18s;}
-.bank-card:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(0,0,0,.1);}
+.bank-card{
+    background:#fff;
+    border-radius:14px;
+    padding:1.1rem 1.2rem 1rem;
+    box-shadow:0 2px 10px rgba(0,0,0,.07);
+    border-top:4px solid #3b82f6;
+    cursor:pointer;
+    transition:all .2s;
+    display:flex;
+    flex-direction:column;
+    min-height:168px;
+}
+.bank-card:hover{transform:translateY(-3px);box-shadow:0 8px 24px rgba(0,0,0,.12);}
 .audit-row{cursor:pointer;transition:background .12s;}
 .audit-row:hover{background:#faf5ff !important;}
 .audit-row .audit-hint{font-size:.68rem;color:#a78bfa;margin-top:.15rem;}
@@ -42,7 +53,7 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
     </div>
 
     {{-- KPIs principales --}}
-    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:1rem;margin-bottom:1.5rem;">
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:1.5rem;">
         <div class="fin-kpi" style="--c:#2563eb;">
             <div class="val">{{ $fmt($ingresos['total']) }}</div>
             <div class="lab">Ingresos Totales</div>
@@ -62,12 +73,6 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
             <div class="val">{{ $fmt($saldoSS) }}</div>
             <div class="lab">Saldo SS Terceros</div>
             <div class="sub">Recaudado en mes − Pagado planillas</div>
-        </div>
-        <div class="fin-kpi" style="--c:#7c3aed;cursor:pointer;" onclick="verPrestamos()" title="Ver detalle en módulo Préstamos">
-            <div class="val" id="kpi-prestamos-val" style="font-size:1.1rem;">—</div>
-            <div class="lab">💳 Préstamos del Mes</div>
-            <div class="sub" id="kpi-prestamos-sub">Cargando…</div>
-            <a href="{{ route('admin.prestamos.index') }}?tab=empresas" style="display:inline-block;margin-top:.4rem;font-size:.68rem;color:#7c3aed;font-weight:700;">→ Ver módulo Préstamos</a>
         </div>
     </div>
 
@@ -126,18 +131,87 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
             <canvas id="chartDona" height="200"></canvas>
         </div>
 
-        {{-- Bancos --}}
+        {{-- Bancos + Efectivo --}}
         <div style="background:#fff;border-radius:14px;padding:1.25rem;box-shadow:0 1px 8px rgba(0,0,0,.06);">
-            <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;color:#94a3b8;margin-bottom:.85rem;">Cuentas Bancarias</div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.75rem;">
+            <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;color:#94a3b8;margin-bottom:.85rem;">Cuentas Bancarias &amp; Efectivo</div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:.75rem;">
+
+                {{-- Tarjetas banco --}}
                 @foreach($bancos as $b)
-                <div class="bank-card" onclick="verMovimientosBanco({{ $b->id }},'{{ addslashes($b->nombre) }}')" title="Clic para ver movimientos">
-                    <div style="font-size:.72rem;color:#64748b;margin-bottom:.25rem;">{{ $b->banco }}</div>
-                    <div style="font-size:.82rem;font-weight:600;color:#0d2550;margin-bottom:.5rem;">{{ $b->nombre }}</div>
-                    <div style="font-size:1rem;font-weight:800;color:#2563eb;">{{ $fmt($b->saldo_actual) }}</div>
-                    <div style="font-size:.68rem;color:#94a3b8;margin-top:.2rem;">{{ $b->label_saldo }}</div>
+                @php $netColor = $b->saldo_mes >= 0 ? '#16a34a' : '#dc2626'; @endphp
+                <div class="bank-card" onclick="verMovimientosBanco({{ $b->id }},'{{ addslashes($b->nombre) }}')" title="Clic para ver movimientos del mes">
+                    {{-- Cabecera --}}
+                    <div style="font-size:.65rem;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:.04em;">{{ $b->banco }}</div>
+                    <div style="font-size:.78rem;font-weight:700;color:#334155;margin-top:.1rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{{ $b->nombre }}">{{ $b->nombre }}</div>
+
+                    {{-- Saldo hero --}}
+                    <div style="margin-top:.6rem;">
+                        <div style="font-size:1.25rem;font-weight:900;color:#1e40af;line-height:1.1;">{{ $fmt($b->saldo_actual) }}</div>
+                        <div style="font-size:.62rem;color:#94a3b8;margin-top:.15rem;">{{ $b->label_saldo }}</div>
+                    </div>
+
+                    {{-- Movimientos del mes --}}
+                    <div style="margin-top:auto;padding-top:.65rem;border-top:1px dashed #e2e8f0;display:flex;flex-direction:column;gap:.28rem;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;">
+                            <span style="font-size:.65rem;color:#64748b;font-weight:600;">↑ Entró</span>
+                            <span style="font-size:.72rem;font-weight:700;color:#16a34a;font-family:monospace;">{{ $fmt($b->ing_mes) }}</span>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;align-items:center;">
+                            <span style="font-size:.65rem;color:#64748b;font-weight:600;">↓ Salió</span>
+                            <span style="font-size:.72rem;font-weight:700;color:#dc2626;font-family:monospace;">{{ $fmt($b->sal_mes) }}</span>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:.1rem;">
+                            <span style="font-size:.6rem;color:#94a3b8;">Neto {{ $mesesEs[$mes] }}</span>
+                            <span style="font-size:.7rem;font-weight:800;color:#fff;background:{{ $netColor }};border-radius:5px;padding:.05rem .4rem;font-family:monospace;">{{ $b->saldo_mes >= 0 ? '+' : '' }}{{ $fmt($b->saldo_mes) }}</span>
+                        </div>
+                    </div>
                 </div>
                 @endforeach
+
+                {{-- Tarjeta Efectivo --}}
+                @php $efColor = $efMes->neto >= 0 ? '#16a34a' : '#dc2626'; @endphp
+                <div class="bank-card" onclick="verMovimientosEfectivo()" title="Clic para ver facturas en efectivo y desglose por asesor" style="border-top-color:#16a34a;">
+                    <div style="font-size:.65rem;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:.04em;">💵 Caja</div>
+                    <div style="font-size:.78rem;font-weight:700;color:#334155;margin-top:.1rem;">Efectivo</div>
+
+                    <div style="margin-top:.6rem;">
+                        <div style="font-size:1.25rem;font-weight:900;color:#15803d;line-height:1.1;">{{ $fmt($efMes->neto) }}</div>
+                        <div style="font-size:.62rem;color:#94a3b8;margin-top:.15rem;">Neto del mes</div>
+                    </div>
+
+                    <div style="margin-top:auto;padding-top:.65rem;border-top:1px dashed #dcfce7;display:flex;flex-direction:column;gap:.28rem;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;">
+                            <span style="font-size:.65rem;color:#64748b;font-weight:600;">↑ Entró</span>
+                            <span style="font-size:.72rem;font-weight:700;color:#16a34a;font-family:monospace;">{{ $fmt($efMes->entradas) }}</span>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;align-items:center;">
+                            <span style="font-size:.65rem;color:#64748b;font-weight:600;">↓ Salió</span>
+                            <span style="font-size:.72rem;font-weight:700;color:#dc2626;font-family:monospace;">{{ $fmt($efMes->salidas) }}</span>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:.1rem;">
+                            <span style="font-size:.6rem;color:#94a3b8;">{{ $mesesEs[$mes] }}</span>
+                            <span style="font-size:.68rem;color:#15803d;font-weight:700;">ver detalle →</span>
+                        </div>
+                    </div>
+                </div>
+
+                {{-- Tarjeta Cartera Préstamos --}}
+                <div class="bank-card" onclick="verPrestamos()" title="Clic para ver detalle de préstamos" style="border-top-color:#7c3aed;">
+                    <div style="font-size:.65rem;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:.04em;">💳 Cartera</div>
+                    <div style="font-size:.78rem;font-weight:700;color:#334155;margin-top:.1rem;">Préstamos</div>
+
+                    <div style="margin-top:.6rem;">
+                        <div style="font-size:1.25rem;font-weight:900;color:#7c3aed;line-height:1.1;" id="kpi-prestamos-val">—</div>
+                        <div style="font-size:.62rem;color:#94a3b8;margin-top:.15rem;" id="kpi-prestamos-sub">Cargando…</div>
+                    </div>
+
+                    <div style="margin-top:auto;padding-top:.65rem;border-top:1px dashed #ede9fe;">
+                        <a href="{{ route('admin.prestamos.index') }}" target="_blank"
+                           style="font-size:.65rem;color:#7c3aed;font-weight:700;text-decoration:none;"
+                           onclick="event.stopPropagation()">→ Ver módulo Préstamos</a>
+                    </div>
+                </div>
+
             </div>
         </div>
     </div>
@@ -311,13 +385,15 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
             <div id="egresosSSList" style="max-height:320px;overflow-y:auto;">
                 @foreach($egresosSSDetalle as $eg)
                 @php
-                    $numPlan     = $eg->numero_planilla ?? null;
-                    $fechaEg     = sqldate($eg->fecha);
-                    $fechaStr    = $fechaEg ? $fechaEg->format('d/m/Y') : '—';
-                    $fechaIso    = $fechaEg ? $fechaEg->format('Y-m-d') : '';
-                    $ssCobrado   = (float)($eg->ss_cobrado_facturas ?? 0);
-                    $ssPagado    = (float)($eg->total ?? 0);
-                    $ssDiff      = abs($ssCobrado - $ssPagado);
+                    $numPlan      = $eg->numero_planilla ?? null;
+                    $fechaEg      = sqldate($eg->fecha);
+                    $fechaStr     = $fechaEg ? $fechaEg->format('d/m/Y') : '—';
+                    $fechaIso     = $fechaEg ? $fechaEg->format('Y-m-d') : '';
+                    $ssCobradoReg = (float)($eg->ss_cobrado_facturas ?? 0); // numero_factura > 0
+                    $ssCobradoRet = (float)($eg->ss_retiro_facturas  ?? 0); // numero_factura = 0
+                    $ssCobrado    = $ssCobradoReg + $ssCobradoRet;          // total combinado
+                    $ssPagado     = (float)($eg->total ?? 0);
+                    $ssDiff       = abs($ssCobrado - $ssPagado);
                     $esAdvertencia = $numPlan && $ssCobrado > 0 && $ssDiff > 50000;
                 @endphp
                 @php $saldoFila = $ssCobrado - $ssPagado; @endphp
@@ -350,9 +426,14 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
                             <div style="font-size:.76rem;color:#94a3b8;">Efectivo</div>
                         @endif
                     </div>
-                    {{-- SS Cobrado --}}
+                    {{-- SS Cobrado (regulares + retiros) --}}
                     <div style="text-align:right;">
                         <div style="font-weight:600;color:{{ $ssCobrado > 0 ? '#10b981' : '#94a3b8' }};font-size:.85rem;">{{ $ssCobrado > 0 ? $fmt($ssCobrado) : '—' }}</div>
+                        @if($ssCobradoRet > 0)
+                            <div style="font-size:.63rem;color:#c2410c;margin-top:.1rem;" title="Incluye SS de retiros: {{ $fmt($ssCobradoRet) }}">
+                                incl. ret. {{ $fmt($ssCobradoRet) }}
+                            </div>
+                        @endif
                     </div>
                     {{-- Valor pagado --}}
                     <div style="text-align:right;">
@@ -366,7 +447,8 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
             </div>
             {{-- Fila de totales y saldo --}}
             @php
-                $totalSsCobradoEgresos = $egresosSSDetalle->sum('ss_cobrado_facturas');
+                $totalSsCobradoEgresos = $egresosSSDetalle->sum('ss_cobrado_facturas')
+                                       + $egresosSSDetalle->sum('ss_retiro_facturas');
                 $saldoEgresos = $totalSsCobradoEgresos - $pagadoSS;
             @endphp
             <div style="display:grid;grid-template-columns:90px 1fr 130px 120px 110px;gap:.4rem;padding:.55rem 1rem;background:#f5f3ff;border-top:2px solid #ddd6fe;font-size:.78rem;font-weight:700;">
@@ -485,6 +567,21 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
             </div>
         </div>
         <div id="modalPrestamosBody" style="padding:1.25rem;max-height:60vh;overflow-y:auto;font-size:.82rem;">Cargando…</div>
+    </div>
+</div>
+
+{{-- Modal Efectivo --}}
+<div id="modalEfectivo" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;align-items:flex-start;justify-content:center;padding-top:3vh;overflow-y:auto;">
+    <div style="background:#fff;border-radius:18px;width:min(1000px,96vw);box-shadow:0 25px 60px rgba(0,0,0,.22);">
+        <div style="background:linear-gradient(135deg,#15803d,#16a34a);border-radius:18px 18px 0 0;padding:1rem 1.5rem;display:flex;align-items:center;justify-content:space-between;">
+            <div>
+                <div style="color:#fff;font-weight:800;font-size:1rem;">💵 Movimientos en Efectivo — {{ $mesesEs[$mes] }} {{ $anio }}</div>
+                <div style="color:rgba(255,255,255,.65);font-size:.74rem;margin-top:.15rem;">Facturas cobradas en efectivo · Gastos en efectivo · Cuadres abiertos por asesor</div>
+            </div>
+            <button onclick="document.getElementById('modalEfectivo').style.display='none'" style="background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:8px;width:32px;height:32px;cursor:pointer;font-size:1.1rem;">✕</button>
+        </div>
+        <div id="modalEfectivoSummary" style="display:grid;grid-template-columns:repeat(3,1fr);gap:.65rem;padding:.85rem 1.25rem;background:#f0fdf4;border-bottom:1px solid #bbf7d0;"></div>
+        <div id="modalEfectivoBody" style="padding:1.25rem;max-height:65vh;overflow-y:auto;font-size:.82rem;color:#475569;">Cargando...</div>
     </div>
 </div>
 
@@ -1002,11 +1099,124 @@ function subirImgConsig() {
 document.getElementById('modalEditarConsig').addEventListener('click',function(ev){if(ev.target===this)cerrarEditarConsig();});
 
 // Cerrar modales al clic fuera
-['modalDia','modalBanco','modalAudit','modalPrestamos'].forEach(id=>{
+['modalDia','modalBanco','modalAudit','modalPrestamos','modalEfectivo'].forEach(id=>{
     document.getElementById(id).addEventListener('click',function(e){
         if(e.target===this) this.style.display='none';
     });
 });
+
+// ── Modal Efectivo ──────────────────────────────────────────────────
+function verMovimientosEfectivo() {
+    const modal = document.getElementById('modalEfectivo');
+    document.getElementById('modalEfectivoSummary').innerHTML = '';
+    document.getElementById('modalEfectivoBody').innerHTML = '<div style="text-align:center;padding:2rem;color:#94a3b8;">⏳ Cargando movimientos en efectivo…</div>';
+    modal.style.display = 'flex';
+
+    fetch(`{{ route('admin.informes.financiero.efectivo') }}?mes={{ $mes }}&anio={{ $anio }}`)
+        .then(r => r.json())
+        .then(data => {
+            const fmtN = v => '$ ' + Math.round(Number(v) || 0).toLocaleString('es-CO');
+
+            // ── Cards resumen ──
+            document.getElementById('modalEfectivoSummary').innerHTML = `
+                <div style="background:#f0fdf4;border-radius:10px;padding:.75rem;text-align:center;border:1px solid #bbf7d0;">
+                    <div style="font-weight:800;color:#16a34a;font-size:1.1rem;">${fmtN(data.total_entradas)}</div>
+                    <div style="font-size:.68rem;color:#15803d;font-weight:600;margin-top:.2rem;">↑ Ingresos Efectivo</div>
+                    <div style="font-size:.62rem;color:#94a3b8;">${data.entradas.length} factura(s)</div>
+                </div>
+                <div style="background:#fef2f2;border-radius:10px;padding:.75rem;text-align:center;border:1px solid #fecaca;">
+                    <div style="font-weight:800;color:#dc2626;font-size:1.1rem;">${fmtN(data.total_salidas)}</div>
+                    <div style="font-size:.68rem;color:#b91c1c;font-weight:600;margin-top:.2rem;">↓ Salidas Efectivo</div>
+                    <div style="font-size:.62rem;color:#94a3b8;">${data.salidas.length} gasto(s)</div>
+                </div>
+                <div style="background:${data.saldo_efectivo >= 0 ? '#f0fdf4' : '#fef2f2'};border-radius:10px;padding:.75rem;text-align:center;border:1px solid ${data.saldo_efectivo >= 0 ? '#bbf7d0' : '#fecaca'};">
+                    <div style="font-weight:800;color:${data.saldo_efectivo >= 0 ? '#16a34a' : '#dc2626'};font-size:1.1rem;">${fmtN(data.saldo_efectivo)}</div>
+                    <div style="font-size:.68rem;color:${data.saldo_efectivo >= 0 ? '#15803d' : '#b91c1c'};font-weight:600;margin-top:.2rem;">Neto en Efectivo</div>
+                    <div style="font-size:.62rem;color:#94a3b8;">Ingresos − Salidas</div>
+                </div>`;
+
+            let html = '';
+
+            // ── Sección: Efectivo por Asesor del mes ──
+            if (data.por_asesor && data.por_asesor.length > 0) {
+                const totalNeto = data.por_asesor.reduce((s, c) => s + (c.efectivo_neto || 0), 0);
+                html += `<div style="font-size:.7rem;font-weight:700;text-transform:uppercase;color:#15803d;margin-bottom:.5rem;">👤 Efectivo por Asesor — ${data.por_asesor.length} asesor(es)</div>`;
+                html += `<div style="border-radius:10px;overflow:hidden;border:1px solid #bbf7d0;margin-bottom:1.25rem;">`;
+                html += `<div style="display:grid;grid-template-columns:1fr 110px 110px 110px 120px;gap:.3rem;padding:.4rem .75rem;background:#f0fdf4;font-size:.65rem;font-weight:700;text-transform:uppercase;color:#15803d;border-bottom:2px solid #bbf7d0;">
+                    <span>Asesor</span>
+                    <span style="text-align:right;">Facturas</span>
+                    <span style="text-align:right;">Anticipos</span>
+                    <span style="text-align:right;">Gastos</span>
+                    <span style="text-align:right;">Neto Efectivo</span></div>`;
+                data.por_asesor.forEach(c => {
+                    const isOk = c.efectivo_neto >= 0;
+                    html += `<div style="display:grid;grid-template-columns:1fr 110px 110px 110px 120px;gap:.3rem;padding:.42rem .75rem;border-bottom:1px solid #f0fdf4;font-size:.76rem;align-items:center;background:${isOk ? '#fff' : '#fef2f2'};">
+                        <span style="font-weight:700;color:#1e293b;">👤 ${c.asesor_nombre || '—'}</span>
+                        <span style="text-align:right;color:#16a34a;font-family:monospace;">${fmtN(c.ingresos_ef)}</span>
+                        <span style="text-align:right;color:#0ea5e9;font-family:monospace;">${c.anticipos_ef > 0 ? fmtN(c.anticipos_ef) : '—'}</span>
+                        <span style="text-align:right;color:#dc2626;font-family:monospace;">${c.gastos_ef > 0 ? '-'+fmtN(c.gastos_ef) : '—'}</span>
+                        <span style="text-align:right;font-weight:800;color:${isOk ? '#15803d' : '#dc2626'};font-family:monospace;">${fmtN(c.efectivo_neto)}</span>
+                    </div>`;
+                });
+                html += `<div style="display:grid;grid-template-columns:1fr 110px 110px 110px 120px;gap:.3rem;padding:.45rem .75rem;background:#f0fdf4;font-size:.75rem;font-weight:700;border-top:2px solid #bbf7d0;">
+                    <span style="color:#15803d;">TOTAL ASESORES</span>
+                    <span style="text-align:right;color:#16a34a;font-family:monospace;">${fmtN(data.total_entradas)}</span>
+                    <span></span><span></span>
+                    <span style="text-align:right;color:#15803d;font-family:monospace;">${fmtN(totalNeto)}</span></div>`;
+                html += `</div>`;
+            } else {
+                html += `<div style="background:#f0fdf4;border-radius:10px;padding:.7rem 1rem;font-size:.78rem;color:#15803d;margin-bottom:1rem;">Sin movimientos en efectivo en este mes.</div>`;
+            }
+
+            // ── Sección: Facturas cobradas en efectivo ──
+            html += `<div style="font-size:.7rem;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:.5rem;">📋 Facturas cobradas en efectivo (${data.entradas.length})</div>`;
+            if (data.entradas.length) {
+                html += `<div style="border-radius:10px;overflow:hidden;border:1px solid #e2e8f0;margin-bottom:1.25rem;">`;
+                html += `<div style="display:grid;grid-template-columns:90px 70px 1fr 130px 100px 110px;gap:.3rem;padding:.4rem .75rem;background:#f8fafc;font-size:.64rem;font-weight:700;text-transform:uppercase;color:#64748b;border-bottom:2px solid #e2e8f0;">
+                    <span>Fecha</span><span>#Fact</span><span>Cliente / Empresa</span><span>Asesor</span><span style="text-align:right;">Forma pago</span><span style="text-align:right;color:#16a34a;">Efectivo</span></div>`;
+                data.entradas.forEach(e => {
+                    const fp = e.forma_pago === 'mixto' ? '⚡ Mixto' : '💵 Efectivo';
+                    html += `<div style="display:grid;grid-template-columns:90px 70px 1fr 130px 100px 110px;gap:.3rem;padding:.4rem .75rem;border-bottom:1px solid #f1f5f9;font-size:.76rem;align-items:center;">
+                        <span style="color:#64748b;">${e.fecha || '—'}</span>
+                        <span style="font-weight:700;color:#475569;font-family:monospace;">#${e.numero_factura || '—'}</span>
+                        <span style="color:#1e293b;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${e.nombre_cliente}">${e.nombre_cliente || '—'}</span>
+                        <span style="font-size:.68rem;color:#7c3aed;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${e.usuario_nombre}">👤 ${e.usuario_nombre || '—'}</span>
+                        <span style="text-align:right;font-size:.68rem;color:#64748b;">${fp}</span>
+                        <span style="text-align:right;font-weight:800;color:#16a34a;font-family:monospace;">${fmtN(e.valor)}</span>
+                    </div>`;
+                });
+                html += `<div style="display:grid;grid-template-columns:90px 70px 1fr 130px 100px 110px;gap:.3rem;padding:.42rem .75rem;background:#f8fafc;font-size:.75rem;font-weight:700;border-top:2px solid #e2e8f0;">
+                    <span></span><span></span><span style="color:#64748b;">TOTAL</span><span></span><span></span>
+                    <span style="text-align:right;color:#16a34a;font-family:monospace;">${fmtN(data.total_entradas)}</span></div>`;
+                html += `</div>`;
+            } else {
+                html += `<div style="background:#f8fafc;border-radius:10px;padding:.7rem 1rem;font-size:.78rem;color:#94a3b8;margin-bottom:1rem;">Sin facturas en efectivo para este mes.</div>`;
+            }
+
+            // ── Sección: Gastos en efectivo ──
+            html += `<div style="font-size:.7rem;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:.5rem;">💸 Gastos en efectivo (${data.salidas.length})</div>`;
+            if (data.salidas.length) {
+                html += `<div style="border-radius:10px;overflow:hidden;border:1px solid #fecaca;">`;
+                data.salidas.forEach(g => {
+                    html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:.42rem .75rem;border-bottom:1px solid #fff1f2;font-size:.76rem;">
+                        <div><span style="color:#475569;">${g.descripcion || g.tipo}</span>${g.pagado_a ? `<span style="font-size:.65rem;color:#94a3b8;margin-left:.4rem;">→ ${g.pagado_a}</span>` : ''}</div>
+                        <span style="font-weight:700;color:#dc2626;font-family:monospace;">-${fmtN(g.valor)}</span>
+                    </div>`;
+                });
+                html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:.42rem .75rem;background:#fef2f2;font-size:.75rem;font-weight:700;border-top:2px solid #fecaca;">
+                    <span style="color:#b91c1c;">TOTAL SALIDAS</span>
+                    <span style="color:#dc2626;font-family:monospace;">-${fmtN(data.total_salidas)}</span></div>`;
+                html += `</div>`;
+            } else {
+                html += `<div style="background:#f8fafc;border-radius:10px;padding:.7rem 1rem;font-size:.78rem;color:#94a3b8;">Sin gastos en efectivo para este mes.</div>`;
+            }
+
+            document.getElementById('modalEfectivoBody').innerHTML = html;
+        })
+        .catch(() => {
+            document.getElementById('modalEfectivoBody').innerHTML = '<div style="color:#ef4444;padding:1.5rem;text-align:center;">Error al cargar movimientos en efectivo.</div>';
+        });
+}
 
 // ── Cargar KPI préstamos al init ──
 (function() {
@@ -1109,27 +1319,41 @@ function auditarPlanilla(numPlanilla, descripcion) {
                 html += `</div></div>`;
             }
 
-            // ── Resumen top 3 tarjetas ─────────────────────────────────
+            // ── Resumen tarjetas ───────────────────────────────────────
+            // total_ss_facturas = facturas con numero_factura > 0 (= valor columna tabla)
+            // total_ss_retiros  = facturas con numero_factura = 0 (retiros)
+            // total_ss_todos    = suma completa (usado para calcular diferencia vs gasto)
+            const ssTodos = data.total_ss_todos || 0;
+            const ssRet   = data.total_ss_retiros || 0;
+
             html += `
-            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.85rem;margin-bottom:1.25rem;">
-                <div style="background:#ede9fe;border-radius:12px;padding:.9rem;text-align:center;">
-                    <div style="font-size:1.1rem;font-weight:800;color:#7c3aed;">${fmtN(data.total_ss_facturas)}</div>
-                    <div style="font-size:.72rem;color:#6d28d9;font-weight:600;margin-top:.2rem;">SS Cobrado (facturas)</div>
-                    <div style="font-size:.68rem;color:#94a3b8;margin-top:.1rem;">${data.cant_empleados} empleado(s)</div>
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:.75rem;margin-bottom:1.25rem;">
+                <div style="background:#ede9fe;border-radius:12px;padding:.85rem;text-align:center;">
+                    <div style="font-size:1rem;font-weight:800;color:#7c3aed;">${fmtN(data.total_ss_facturas)}</div>
+                    <div style="font-size:.68rem;color:#6d28d9;font-weight:600;margin-top:.2rem;">SS Cobrado (facturas)</div>
+                    <div style="font-size:.63rem;color:#94a3b8;margin-top:.1rem;">= columna tabla · fact. regulares</div>
                 </div>
-                <div style="background:${data.es_duplicado ? '#fef2f2' : '#fef3c7'};border-radius:12px;padding:.9rem;text-align:center;${data.es_duplicado ? 'border:2px solid #fca5a5;' : ''}">
-                    <div style="font-size:1.1rem;font-weight:800;color:${data.es_duplicado ? '#dc2626' : '#d97706'};">${fmtN(data.gasto_valor)}</div>
-                    <div style="font-size:.72rem;color:${data.es_duplicado ? '#b91c1c' : '#b45309'};font-weight:600;margin-top:.2rem;">
-                        Pagado ${data.cant_gastos > 1 ? '('+data.cant_gastos+' registros ⚠️)' : '(gasto registrado)'}
+                <div style="background:${ssRet > 0 ? '#fff7ed' : '#f8fafc'};border-radius:12px;padding:.85rem;text-align:center;${ssRet > 0 ? 'border:1px solid #fed7aa;' : ''}">
+                    <div style="font-size:1rem;font-weight:800;color:${ssRet > 0 ? '#c2410c' : '#94a3b8'};">${ssRet > 0 ? fmtN(ssRet) : '$ 0'}</div>
+                    <div style="font-size:.68rem;color:${ssRet > 0 ? '#c2410c' : '#64748b'};font-weight:600;margin-top:.2rem;">SS Retiros</div>
+                    <div style="font-size:.63rem;color:#94a3b8;margin-top:.1rem;">fact. número_factura = 0</div>
+                </div>
+                <div style="background:${data.es_duplicado ? '#fef2f2' : '#fef3c7'};border-radius:12px;padding:.85rem;text-align:center;${data.es_duplicado ? 'border:2px solid #fca5a5;' : ''}">
+                    <div style="font-size:1rem;font-weight:800;color:${data.es_duplicado ? '#dc2626' : '#d97706'};">${fmtN(data.gasto_valor)}</div>
+                    <div style="font-size:.68rem;color:${data.es_duplicado ? '#b91c1c' : '#b45309'};font-weight:600;margin-top:.2rem;">
+                        Pagado ${data.cant_gastos > 1 ? '('+data.cant_gastos+' reg. ⚠️)' : '(gasto)'}
                     </div>
-                    <div style="font-size:.68rem;color:#94a3b8;margin-top:.1rem;">${data.gasto ? new Date(data.gasto.fecha).toLocaleDateString('es-CO') : '—'}</div>
+                    <div style="font-size:.63rem;color:#94a3b8;margin-top:.1rem;">${data.gasto ? new Date(data.gasto.fecha).toLocaleDateString('es-CO') : '—'}</div>
                 </div>
-                <div style="background:${difBg};border-radius:12px;padding:.9rem;text-align:center;">
-                    <div style="font-size:1.1rem;font-weight:800;color:${difColor};">${fmtN(dif)}</div>
-                    <div style="font-size:.72rem;color:${difColor};font-weight:600;margin-top:.2rem;">Diferencia</div>
-                    <div style="font-size:.65rem;color:${difColor};margin-top:.1rem;">${difLabel}</div>
+                <div style="background:${difBg};border-radius:12px;padding:.85rem;text-align:center;">
+                    <div style="font-size:1rem;font-weight:800;color:${difColor};">${fmtN(dif)}</div>
+                    <div style="font-size:.68rem;color:${difColor};font-weight:600;margin-top:.2rem;">Diferencia</div>
+                    <div style="font-size:.63rem;color:${difColor};margin-top:.1rem;">${difLabel}</div>
                 </div>
-            </div>`;
+            </div>
+            ${ssRet > 0 ? `<div style="background:#fff7ed;border-left:3px solid #f97316;border-radius:0 8px 8px 0;padding:.5rem .85rem;font-size:.74rem;color:#c2410c;margin-bottom:.85rem;">
+                ℹ️ <strong>SS Total cobrado (fact. + retiros): ${fmtN(ssTodos)}</strong> — La columna de la tabla muestra solo las facturas regulares <em>(${fmtN(data.total_ss_facturas)})</em>; los retiros <em>(${fmtN(ssRet)})</em> se contabilizan aparte.
+            </div>` : ''}`;
 
             // Desglose por componente SS
             html += `

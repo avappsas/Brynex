@@ -481,6 +481,53 @@ class InformeController extends Controller
             return $b;
         });
 
+        // ── Mini-desglose del mes por banco (batch: 2 queries para todos los bancos) ──
+        $bancoIds = $bancos->pluck('id')->toArray();
+
+        $ingMesPorBanco = DB::table('consignaciones')
+            ->where('aliado_id', $aid)
+            ->whereIn('banco_cuenta_id', $bancoIds)
+            ->whereMonth('fecha', $mes)->whereYear('fecha', $anio)
+            ->groupBy('banco_cuenta_id')
+            ->selectRaw('banco_cuenta_id, SUM(valor) AS total')
+            ->pluck('total', 'banco_cuenta_id');
+
+        $salMesPorBanco = DB::table('gastos')
+            ->where('aliado_id', $aid)
+            ->whereIn('banco_origen_id', $bancoIds)
+            ->whereMonth('fecha', $mes)->whereYear('fecha', $anio)
+            ->groupBy('banco_origen_id')
+            ->selectRaw('banco_origen_id, SUM(valor) AS total')
+            ->pluck('total', 'banco_origen_id');
+
+        $bancos = $bancos->map(function ($b) use ($ingMesPorBanco, $salMesPorBanco) {
+            $b->ing_mes   = (float)($ingMesPorBanco[$b->id] ?? 0);
+            $b->sal_mes   = (float)($salMesPorBanco[$b->id] ?? 0);
+            $b->saldo_mes = $b->ing_mes - $b->sal_mes;
+            return $b;
+        });
+
+        // ── Efectivo del mes (para la tarjeta de caja) ──
+        $efEntradas = (float) DB::table('facturas')
+            ->where('aliado_id', $aid)->whereNull('deleted_at')
+            ->whereIn('estado', ['pagada','abono'])
+            ->whereNotNull('fecha_pago')
+            ->whereMonth('fecha_pago', $mes)->whereYear('fecha_pago', $anio)
+            ->where('valor_efectivo', '>', 0)
+            ->sum('valor_efectivo');
+
+        $efSalidas = (float) DB::table('gastos')
+            ->where('aliado_id', $aid)
+            ->whereMonth('fecha', $mes)->whereYear('fecha', $anio)
+            ->where('forma_pago', 'efectivo')
+            ->sum('valor');
+
+        $efMes = (object)[
+            'entradas' => $efEntradas,
+            'salidas'  => $efSalidas,
+            'neto'     => $efEntradas - $efSalidas,
+        ];
+
         // Desglose diario
         $diario = $this->desgloseDiario($aid, $mes, $anio);
 
@@ -496,7 +543,8 @@ class InformeController extends Controller
             'gapSS','gapResumen',
             'comisionesAsesor','gastosOp','tendencia','anterior','bancos','diario',
             'anticipos','cobradosAntes',
-            'moraRecogida'
+            'moraRecogida',
+            'aid', 'efMes'
         ));
     }
 
@@ -675,6 +723,165 @@ class InformeController extends Controller
         return response()->json(['entradas' => $entradas, 'salidas' => $salidas]);
     }
 
+    // ── JSON: movimientos en EFECTIVO del mes ────────────────────────
+    public function financieroEfectivo(Request $request)
+    {
+        $this->checkFinanciero();
+        $aid  = $this->aliadoId();
+        $mes  = (int)$request->input('mes',  now()->month);
+        $anio = (int)$request->input('anio', now()->year);
+
+        // ── Entradas efectivo: UNA fila por numero_factura (excluye préstamos) ──
+        // Estrategia: subquery interna agrupa solo por numero_factura (MIN/SUM),
+        // query externa resuelve nombre cliente/empresa/asesor sin duplicados.
+        $sub = DB::table('facturas AS f')
+            ->where('f.aliado_id', $aid)
+            ->whereNull('f.deleted_at')
+            ->whereIn('f.estado', ['pagada', 'abono'])
+            ->whereNotNull('f.fecha_pago')
+            ->whereMonth('f.fecha_pago', $mes)
+            ->whereYear('f.fecha_pago', $anio)
+            ->where('f.valor_efectivo', '>', 0)
+            ->where('f.es_prestamo', false)          // ← excluir préstamos
+            ->groupBy('f.numero_factura')
+            ->selectRaw("
+                f.numero_factura,
+                CONVERT(VARCHAR(10), MIN(f.fecha_pago), 120) AS fecha,
+                SUM(f.valor_efectivo)                        AS valor,
+                MIN(f.forma_pago)                            AS forma_pago,
+                MIN(f.empresa_id)                            AS empresa_id,
+                MIN(f.cedula)                                AS cedula,
+                MIN(f.usuario_id)                            AS usuario_id
+            ");
+
+        $entradas = DB::table(DB::raw("({$sub->toSql()}) AS g"))
+            ->mergeBindings($sub)
+            ->selectRaw("
+                g.numero_factura,
+                g.fecha,
+                g.valor,
+                g.forma_pago,
+                g.empresa_id,
+                CASE
+                    WHEN g.empresa_id IS NOT NULL AND g.empresa_id > 0
+                        THEN UPPER(ISNULL(
+                            (SELECT TOP 1 em.empresa FROM empresas em WHERE em.id = g.empresa_id),
+                            '—'))
+                    ELSE
+                        ISNULL(
+                            (SELECT TOP 1 LTRIM(RTRIM(
+                                ISNULL(cl.primer_nombre,'') + ' ' +
+                                ISNULL(cl.segundo_nombre,'') + ' ' +
+                                ISNULL(cl.primer_apellido,'') + ' ' +
+                                ISNULL(cl.segundo_apellido,'')
+                            ))
+                            FROM clientes cl
+                            WHERE cl.cedula = g.cedula
+                              AND cl.aliado_id = {$aid}),
+                            g.cedula
+                        )
+                END AS nombre_cliente,
+                ISNULL(
+                    (SELECT TOP 1 u.nombre FROM users u WHERE u.id = g.usuario_id),
+                    '—'
+                ) AS usuario_nombre
+            ")
+            ->orderBy('g.fecha')
+            ->orderBy('g.numero_factura')
+            ->get();
+
+        // ── Salidas efectivo: gastos con forma_pago efectivo del mes ─────────
+        $salidas = DB::table('gastos')
+            ->where('aliado_id', $aid)
+            ->whereMonth('fecha', $mes)
+            ->whereYear('fecha', $anio)
+            ->where('forma_pago', 'efectivo')
+            ->select('fecha', 'valor', 'tipo', 'descripcion', 'pagado_a')
+            ->orderBy('fecha')
+            ->get();
+
+        // ── Efectivo por asesor en el mes (facturas + anticipos del mes) ─────
+        // Se agrupa por usuario del mes — así la suma de asesores = total ingresos.
+        $efectivoFacturasAsesor = DB::table('facturas AS f')
+            ->join('users AS u', 'u.id', '=', 'f.usuario_id')
+            ->where('f.aliado_id', $aid)
+            ->whereNull('f.deleted_at')
+            ->whereIn('f.estado', ['pagada', 'abono'])
+            ->whereNotNull('f.fecha_pago')
+            ->whereMonth('f.fecha_pago', $mes)
+            ->whereYear('f.fecha_pago', $anio)
+            ->where('f.valor_efectivo', '>', 0)
+            ->where('f.es_prestamo', false)
+            ->groupBy('f.usuario_id', 'u.nombre')
+            ->selectRaw('f.usuario_id, u.nombre AS asesor_nombre, SUM(f.valor_efectivo) AS ingresos_ef')
+            ->get()
+            ->keyBy('usuario_id');
+
+        $efectivoAnticiposAsesor = DB::table('anticipos AS a')
+            ->join('users AS u', 'u.id', '=', 'a.usuario_id')
+            ->where('a.aliado_id', $aid)
+            ->whereIn('a.forma_pago', ['efectivo', 'nequi'])
+            ->whereMonth('a.fecha_pago', $mes)
+            ->whereYear('a.fecha_pago', $anio)
+            ->whereNotIn('a.estado', ['devuelto'])
+            ->groupBy('a.usuario_id', 'u.nombre')
+            ->selectRaw('a.usuario_id, u.nombre AS asesor_nombre, SUM(a.valor) AS anticipos_ef')
+            ->get()
+            ->keyBy('usuario_id');
+
+        $efectivoGastosAsesor = DB::table('gastos AS g')
+            ->join('users AS u', 'u.id', '=', 'g.usuario_id')
+            ->where('g.aliado_id', $aid)
+            ->whereMonth('g.fecha', $mes)
+            ->whereYear('g.fecha', $anio)
+            ->where(fn($q) => $q->where('g.forma_pago', 'efectivo')
+                                ->orWhere('g.tipo', 'efectivo_banco'))
+            ->groupBy('g.usuario_id', 'u.nombre')
+            ->selectRaw('g.usuario_id, u.nombre AS asesor_nombre, SUM(g.valor) AS gastos_ef')
+            ->get()
+            ->keyBy('usuario_id');
+
+        // Combinar todos los usuario_ids que aparecen en cualquier flujo
+        $todosUsuarios = $efectivoFacturasAsesor->keys()
+            ->merge($efectivoAnticiposAsesor->keys())
+            ->merge($efectivoGastosAsesor->keys())
+            ->unique();
+
+        $porAsesor = $todosUsuarios->map(function ($uid) use (
+            $efectivoFacturasAsesor, $efectivoAnticiposAsesor, $efectivoGastosAsesor
+        ) {
+            $nombre     = $efectivoFacturasAsesor[$uid]->asesor_nombre
+                       ?? $efectivoAnticiposAsesor[$uid]->asesor_nombre
+                       ?? $efectivoGastosAsesor[$uid]->asesor_nombre
+                       ?? '—';
+            $ingresosEf = (float)($efectivoFacturasAsesor[$uid]->ingresos_ef ?? 0);
+            $anticiposEf= (float)($efectivoAnticiposAsesor[$uid]->anticipos_ef ?? 0);
+            $gastosEf   = (float)($efectivoGastosAsesor[$uid]->gastos_ef ?? 0);
+
+            return [
+                'usuario_id'    => $uid,
+                'asesor_nombre' => $nombre,
+                'ingresos_ef'   => $ingresosEf,
+                'anticipos_ef'  => $anticiposEf,
+                'gastos_ef'     => $gastosEf,
+                'efectivo_neto' => $ingresosEf + $anticiposEf - $gastosEf,
+            ];
+        })->sortBy('asesor_nombre')->values();
+
+        $totalEntradas = (float)$entradas->sum('valor');
+        $totalSalidas  = (float)$salidas->sum('valor');
+        $saldoEfectivo = $totalEntradas - $totalSalidas;
+
+        return response()->json([
+            'entradas'       => $entradas,
+            'salidas'        => $salidas,
+            'por_asesor'     => $porAsesor,
+            'total_entradas' => $totalEntradas,
+            'total_salidas'  => $totalSalidas,
+            'saldo_efectivo' => $saldoEfectivo,
+        ]);
+    }
+
     // ── JSON: auditoría de un número de planilla ─────────────────────
     public function auditarPlanilla(Request $request)
     {
@@ -728,28 +935,40 @@ class InformeController extends Controller
             ->get();
 
         // ── 3. Totales SS cobrados a clientes (desde facturas) ────────
-        $totalSSFacturas = (float)$planos->sum('total_ss');
-        $totalEPS        = (float)$planos->sum('v_eps');
-        $totalAFP        = (float)$planos->sum('v_afp');
-        $totalARL        = (float)$planos->sum('v_arl');
-        $totalCaja       = (float)$planos->sum('v_caja');
-        $diferencia      = $totalSSFacturas - $gastoValor;
+        // Separar facturas regulares (numero_factura > 0) de retiros (numero_factura = 0)
+        // La columna "SS Cobrado" de la tabla usa solo numero_factura > 0
+        $planosRegulares = $planos->filter(fn($p) => (int)($p->numero_factura ?? 0) > 0);
+        $planosRetiros   = $planos->filter(fn($p) => (int)($p->numero_factura ?? 0) === 0);
+
+        $totalSSFacturas   = (float)$planosRegulares->sum('total_ss'); // == valor columna tabla
+        $totalSSRetiros    = (float)$planosRetiros->sum('total_ss');   // retiros (numero_factura=0)
+        $totalSSTodos      = $totalSSFacturas + $totalSSRetiros;       // suma completa
+
+        $totalEPS          = (float)$planosRegulares->sum('v_eps');
+        $totalAFP          = (float)$planosRegulares->sum('v_afp');
+        $totalARL          = (float)$planosRegulares->sum('v_arl');
+        $totalCaja         = (float)$planosRegulares->sum('v_caja');
+
+        // La diferencia se calcula contra el total (regulares + retiros) para cuadrar con el gasto real
+        $diferencia        = $totalSSTodos - $gastoValor;
 
         return response()->json([
-            'numero_planilla'   => $numPlanilla,
-            'es_duplicado'      => $esDuplicado,
-            'cant_gastos'       => $cantGastos,
-            'gastos_detalle'    => $gastosAll,   // lista completa (para mostrar duplicados)
-            'gasto'             => $gasto,
-            'gasto_valor'       => $gastoValor,
-            'total_ss_facturas' => $totalSSFacturas,
-            'total_eps'         => $totalEPS,
-            'total_afp'         => $totalAFP,
-            'total_arl'         => $totalARL,
-            'total_caja'        => $totalCaja,
-            'diferencia'        => $diferencia,
-            'cant_empleados'    => $planos->count(),
-            'planos'            => $planos,
+            'numero_planilla'      => $numPlanilla,
+            'es_duplicado'         => $esDuplicado,
+            'cant_gastos'          => $cantGastos,
+            'gastos_detalle'       => $gastosAll,   // lista completa (para mostrar duplicados)
+            'gasto'                => $gasto,
+            'gasto_valor'          => $gastoValor,
+            'total_ss_facturas'    => $totalSSFacturas,   // facturas regulares (numero_factura > 0)
+            'total_ss_retiros'     => $totalSSRetiros,    // retiros (numero_factura = 0)
+            'total_ss_todos'       => $totalSSTodos,      // suma completa
+            'total_eps'            => $totalEPS,
+            'total_afp'            => $totalAFP,
+            'total_arl'            => $totalARL,
+            'total_caja'           => $totalCaja,
+            'diferencia'           => $diferencia,
+            'cant_empleados'       => $planos->count(),
+            'planos'               => $planos,
         ]);
     }
 
