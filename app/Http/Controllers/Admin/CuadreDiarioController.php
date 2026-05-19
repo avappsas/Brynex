@@ -579,7 +579,7 @@ class CuadreDiarioController extends Controller
                 'num_factura' => null,
                 'pagador'     => $g->pagado_a,
                 'descripcion' => $g->descripcion . ($g->bancoDestino ? ' → ' . $g->bancoDestino->banco : ''),
-                'usuario'     => $g->usuario,
+                'usuario'     => $g->usuario?->nombre,
                 'valor'       => $g->valor,
                 'imagen_path' => $g->imagen_path,
                 'imagen_url'  => $g->imagen_path ? Storage::url($g->imagen_path) : null,
