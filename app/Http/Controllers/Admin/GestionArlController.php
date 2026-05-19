@@ -38,13 +38,15 @@ class GestionArlController extends Controller
         $alidoId = $this->resolverAliado($request, $user);
 
         // ── Filtros ────────────────────────────────────────────────────
-        $encId   = $request->has('encargado_id') ? $request->get('encargado_id') : $user->id;
-        $rsId    = $request->get('razon_social_id');
-        $arlF    = $request->get('arl_id');
-        $sort    = $request->get('sort', 'semaforo'); // default: más urgentes primero
-        $dir     = $request->get('dir', 'asc');
+        $encId     = $request->has('encargado_id') ? $request->get('encargado_id') : null;
+        $rsId      = $request->get('razon_social_id');
+        $arlF      = $request->get('arl_id');
+        $empresaId = $request->get('empresa_id');
+        $buscar    = trim($request->get('buscar', ''));
+        $sort      = $request->get('sort', 'semaforo');
+        $dir       = $request->get('dir', 'asc');
 
-        $sortAllowed = ['semaforo', 'fecha_arl', 'cedula', 'razon_social_id'];
+        $sortAllowed = ['semaforo', 'fecha_arl', 'cedula', 'razon_social_id', 'nombre', 'empresa', 'encargado', 'dias_fact'];
         if (!in_array($sort, $sortAllowed)) $sort = 'semaforo';
         if (!in_array($dir, ['asc', 'desc'])) $dir = 'asc';
 
@@ -61,9 +63,28 @@ class GestionArlController extends Controller
         ->where('estado', 'vigente')
         ->where('tipo_modalidad_id', self::TIPO_MODALIDAD_ARL);
 
-        if ($encId)  $query->where('encargado_id', $encId);
-        if ($rsId)   $query->where('razon_social_id', $rsId);
-        if ($arlF)   $query->where('arl_id', $arlF);
+        if ($encId)     $query->where('encargado_id', $encId);
+        if ($rsId)      $query->where('razon_social_id', $rsId);
+        if ($arlF)      $query->where('arl_id', $arlF);
+        if ($empresaId) $query->whereHas('cliente', fn($q) => $q->where('cod_empresa', $empresaId));
+        if ($buscar) {
+            $palabras = preg_split('/\s+/', trim($buscar), -1, PREG_SPLIT_NO_EMPTY);
+            $query->where(function ($q) use ($buscar, $palabras) {
+                // Búsqueda exacta por cédula
+                $q->where('cedula', 'like', "%{$buscar}%")
+                  // Búsqueda por nombre: cada palabra debe aparecer en algún campo
+                  ->orWhereHas('cliente', function ($q2) use ($palabras) {
+                      foreach ($palabras as $palabra) {
+                          $q2->where(function ($q3) use ($palabra) {
+                              $q3->where('primer_nombre',    'like', "%{$palabra}%")
+                                 ->orWhere('segundo_nombre', 'like', "%{$palabra}%")
+                                 ->orWhere('primer_apellido','like', "%{$palabra}%")
+                                 ->orWhere('segundo_apellido','like', "%{$palabra}%");
+                          });
+                      }
+                  });
+            });
+        }
 
         // Ordenar por columnas simples
         if ($sort === 'fecha_arl') {
@@ -106,9 +127,10 @@ class GestionArlController extends Controller
                 $c->arl_efectiva_nombre = $c->arl?->nombre_arl ?? $c->arl?->razon_social ?? '—';
             }
 
-            // Semáforo: basado en fecha_arl
-            if ($c->fecha_arl) {
-                $diasTranscurridos = (int) $c->fecha_arl->diffInDays($hoy, false);
+            // Semáforo: basado en fecha_arl; usa fecha_ingreso como fallback temporal
+            $fechaBase = $c->fecha_arl ?? $c->fecha_ingreso;
+            if ($fechaBase) {
+                $diasTranscurridos = (int) $fechaBase->diffInDays($hoy, false);
                 $diasRestantes = self::DIAS_VIGENCIA - $diasTranscurridos;
                 $c->dias_restantes = $diasRestantes;
 
@@ -123,10 +145,10 @@ class GestionArlController extends Controller
                     $c->semaforo_orden = 1;
                 }
             } else {
-                // Sin fecha_arl = pendiente de primera afiliación
+                // Sin fecha_arl ni fecha_ingreso
                 $c->dias_restantes = null;
                 $c->semaforo = 'sin_fecha';
-                $c->semaforo_orden = 4; // al final
+                $c->semaforo_orden = 4;
             }
 
             // Primera afiliación: si fecha_ingreso es este mes → mostrar badge
@@ -136,13 +158,38 @@ class GestionArlController extends Controller
 
             // Última factura
             $c->ultima_factura = $ultimasFacturas->get($c->id);
+
+            // Días transcurridos desde la última factura
+            if ($c->ultima_factura) {
+                $uf = $c->ultima_factura;
+                $fechaFact = $uf->fecha_pago
+                    ? \Carbon\Carbon::parse($uf->fecha_pago)
+                    : \Carbon\Carbon::create($uf->anio, $uf->mes, 1);
+                $c->dias_desde_factura = (int) $fechaFact->diffInDays($hoy, false);
+            } else {
+                $c->dias_desde_factura = null;
+            }
         });
 
-        // Ordenar por semáforo en PHP (urgentes primero)
+        // Ordenar en PHP los campos calculados o de relaciones
         if ($sort === 'semaforo') {
+            $contratos = $dir === 'asc' ? $contratos->sortBy('semaforo_orden') : $contratos->sortByDesc('semaforo_orden');
+        } elseif ($sort === 'nombre') {
             $contratos = $dir === 'asc'
-                ? $contratos->sortBy('semaforo_orden')
-                : $contratos->sortByDesc('semaforo_orden');
+                ? $contratos->sortBy(fn($c) => $c->cliente?->primer_apellido . ' ' . $c->cliente?->primer_nombre)
+                : $contratos->sortByDesc(fn($c) => $c->cliente?->primer_apellido . ' ' . $c->cliente?->primer_nombre);
+        } elseif ($sort === 'empresa') {
+            $contratos = $dir === 'asc'
+                ? $contratos->sortBy(fn($c) => $c->cliente?->empresa?->empresa ?? '')
+                : $contratos->sortByDesc(fn($c) => $c->cliente?->empresa?->empresa ?? '');
+        } elseif ($sort === 'encargado') {
+            $contratos = $dir === 'asc'
+                ? $contratos->sortBy(fn($c) => $c->encargado?->nombre ?? '')
+                : $contratos->sortByDesc(fn($c) => $c->encargado?->nombre ?? '');
+        } elseif ($sort === 'dias_fact') {
+            $contratos = $dir === 'asc'
+                ? $contratos->sortBy(fn($c) => $c->dias_desde_factura ?? 9999)
+                : $contratos->sortByDesc(fn($c) => $c->dias_desde_factura ?? -1);
         }
 
         // ── Datos para filtros dinámicos ──────────────────────────────
@@ -167,6 +214,20 @@ class GestionArlController extends Controller
             ->orderBy('nombre_arl')
             ->get(['id', 'nombre_arl']);
 
+        // Empresas disponibles para filtro
+        $cedulasBase = Contrato::where('aliado_id', $alidoId)
+            ->where('estado', 'vigente')
+            ->where('tipo_modalidad_id', self::TIPO_MODALIDAD_ARL)
+            ->pluck('cedula');
+        $empresasDisponibles = DB::table('empresas')
+            ->whereIn('id', DB::table('clientes')
+                ->whereIn('cedula', $cedulasBase)
+                ->whereNotNull('cod_empresa')
+                ->distinct()
+                ->pluck('cod_empresa'))
+            ->orderBy('empresa')
+            ->get(['id', 'empresa']);
+
         $alidosDisponibles = [];
         if ($user->es_brynex) {
             $alidosDisponibles = $this->alidosParaBrynex($user);
@@ -176,7 +237,8 @@ class GestionArlController extends Controller
             'contratos', 'encId', 'encargados',
             'alidoId', 'alidosDisponibles', 'user',
             'rsId', 'arlF', 'sort', 'dir',
-            'razonesDisponibles', 'arlDisponibles'
+            'razonesDisponibles', 'arlDisponibles',
+            'empresasDisponibles', 'empresaId', 'buscar'
         ));
     }
 

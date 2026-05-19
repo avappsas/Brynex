@@ -684,7 +684,7 @@
             @role('superadmin|admin|contador')
             <div class="menu-sep"></div>
             <a href="{{ route('admin.informes.hub') }}"
-               class="menu-item {{ request()->routeIs('admin.informes*') ? 'activo' : '' }}">
+               class="menu-item {{ request()->routeIs('admin.informes*') && !request()->routeIs('admin.informes.comisiones*') ? 'activo' : '' }}">
                 <div class="icono">📊</div>
                 <div class="label">Informes</div>
             </a>

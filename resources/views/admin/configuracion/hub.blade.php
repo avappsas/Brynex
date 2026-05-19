@@ -79,6 +79,14 @@
             <div class="c-desc">Crear, editar y controlar el acceso de los usuarios al sistema según roles.</div>
         </a>
 
+        <a class="cfg-card" href="{{ route('admin.asesores.index') }}"
+           style="--c:#f59e0b;--bc:#fcd34d">
+            <span class="c-badge" style="background:#fffbeb;color:#b45309">Red Comercial</span>
+            <div class="c-icon">🤝</div>
+            <div class="c-title">Asesores</div>
+            <div class="c-desc">Registrar y gestionar asesores comerciales. Configure su comisión por afiliación y por planilla (fija o porcentaje).</div>
+        </a>
+
         @if(Auth::user()->hasRole('superadmin') && Auth::user()->es_brynex)
         <a class="cfg-card" href="{{ route('admin.aliados.index') }}"
            style="--c:#0f172a;--bc:#94a3b8">

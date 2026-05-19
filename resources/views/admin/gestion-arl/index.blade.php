@@ -60,6 +60,11 @@ body{display:flex;flex-direction:column}
 .th-select.activo{border-bottom-color:#3b82f6;color:#93c5fd}
 .th-select option{background:#0f172a;color:#fff}
 
+/* ── Sort links en th ── */
+.th-sort{color:#94a3b8;text-decoration:none;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;display:block;white-space:nowrap;transition:color .15s}
+.th-sort:hover{color:#e2e8f0}
+.th-sort.activo{color:#93c5fd}
+
 /* ── Modales ── */
 .modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;align-items:center;justify-content:center;backdrop-filter:blur(2px)}
 .modal-bg.open{display:flex}
@@ -107,6 +112,21 @@ body{display:flex;flex-direction:column}
             @endforeach
         </select>
 
+        <span style="color:#4b6a8b;">|</span>
+
+        {{-- Buscador por nombre / cédula --}}
+        <div style="display:flex;align-items:center;background:#1a3a5c;border:1px solid #334155;border-radius:6px;overflow:hidden;">
+            <span style="padding:0 .4rem;color:#64748b;font-size:.85rem;">🔍</span>
+            <input type="text" name="buscar" value="{{ $buscar }}"
+                   placeholder="Nombre o cédula…"
+                   style="background:transparent;border:none;outline:none;color:#e2e8f0;font-size:.78rem;padding:.3rem .4rem .3rem 0;width:160px;"
+                   onkeydown="if(event.key==='Enter'){this.form.submit();}">
+            @if($buscar)
+            <a href="{{ request()->fullUrlWithQuery(['buscar'=>'']) }}"
+               style="padding:0 .4rem;color:#94a3b8;font-size:.75rem;text-decoration:none;" title="Limpiar búsqueda">✕</a>
+            @endif
+        </div>
+
         <span style="background:rgba(255,255,255,.15);color:#fff;font-size:.88rem;font-weight:800;padding:.3rem .7rem;border-radius:20px;white-space:nowrap;">
             {{ $contratos->count() }} <span style="font-size:.7rem;font-weight:500;opacity:.75;">vigentes</span>
         </span>
@@ -134,9 +154,17 @@ body{display:flex;flex-direction:column}
 @else
 <div class="tbl-wrap">
 <table class="tbl-arl">
+    @php
+        // Helpers de ordenamiento
+        $si = fn($col) => $sort === $col ? ($dir === 'asc' ? ' ↑' : ' ↓') : '';
+        $su = fn($col) => request()->fullUrlWithQuery(['sort' => $col, 'dir' => ($sort === $col && $dir === 'asc') ? 'desc' : 'asc']);
+        $sc = fn($col) => 'th-sort' . ($sort === $col ? ' activo' : '');
+    @endphp
     <thead>
         <tr>
-            <th style="width:36px;text-align:center;">⚡</th>
+            <th style="width:36px;text-align:center;">
+                <a href="{{ $su('semaforo') }}" class="{{ $sc('semaforo') }}" title="Ordenar por urgencia">⚡{{ $si('semaforo') }}</a>
+            </th>
             <th style="max-width:130px;">
                 <form method="GET" action="{{ route('admin.gestion-arl.index') }}" style="margin:0;">
                     @foreach(request()->except(['razon_social_id']) as $k=>$v)<input type="hidden" name="{{ $k }}" value="{{ $v }}">@endforeach
@@ -146,11 +174,24 @@ body{display:flex;flex-direction:column}
                     </select>
                 </form>
             </th>
-            <th>Fecha ARL</th>
-            <th>Días</th>
-            <th>Fact.</th>
-            <th>Cédula</th>
-            <th>Nombres</th>
+            <th>
+                <a href="{{ $su('fecha_arl') }}" class="{{ $sc('fecha_arl') }}" title="Ordenar por fecha ARL">Fecha ARL{{ $si('fecha_arl') }}</a>
+            </th>
+            <th style="white-space:nowrap;">
+                <a href="{{ $su('semaforo') }}" class="{{ $sc('semaforo') }}" title="Ordenar por días restantes">D. Rest. 📅{{ $si('semaforo') }}</a>
+            </th>
+            <th>
+                <a href="{{ $su('dias_fact') }}" class="{{ $sc('dias_fact') }}" title="Ordenar por última factura">Fact.{{ $si('dias_fact') }}</a>
+            </th>
+            <th style="white-space:nowrap;">
+                <a href="{{ $su('dias_fact') }}" class="{{ $sc('dias_fact') }}" title="Ordenar por días sin facturar">⏱ Sin fact.{{ $si('dias_fact') }}</a>
+            </th>
+            <th>
+                <a href="{{ $su('cedula') }}" class="{{ $sc('cedula') }}" title="Ordenar por cédula">Cédula{{ $si('cedula') }}</a>
+            </th>
+            <th>
+                <a href="{{ $su('nombre') }}" class="{{ $sc('nombre') }}" title="Ordenar por nombre">Nombres{{ $si('nombre') }}</a>
+            </th>
             <th>
                 <form method="GET" action="{{ route('admin.gestion-arl.index') }}" style="margin:0;">
                     @foreach(request()->except(['arl_id']) as $k=>$v)<input type="hidden" name="{{ $k }}" value="{{ $v }}">@endforeach
@@ -161,7 +202,15 @@ body{display:flex;flex-direction:column}
                 </form>
             </th>
             <th>N.ARL</th>
-            <th>Empresa</th>
+            <th>
+                <form method="GET" action="{{ route('admin.gestion-arl.index') }}" style="margin:0;">
+                    @foreach(request()->except(['empresa_id']) as $k=>$v)<input type="hidden" name="{{ $k }}" value="{{ $v }}">@endforeach
+                    <select name="empresa_id" onchange="this.form.submit()" class="th-select {{ $empresaId ? 'activo' : '' }}" style="max-width:120px;">
+                        <option value="">↓ Empresa</option>
+                        @foreach($empresasDisponibles as $emp)<option value="{{ $emp->id }}" {{ $empresaId == $emp->id ? 'selected' : '' }}>{{ $emp->empresa }}</option>@endforeach
+                    </select>
+                </form>
+            </th>
             <th style="min-width:160px;">Acciones</th>
         </tr>
     </thead>
@@ -173,13 +222,17 @@ body{display:flex;flex-direction:column}
         $empresa = $c->cliente?->empresa?->empresa ?? '—';
         // Última factura display
         $uf = $c->ultima_factura;
-        $ufDisplay = $uf ? $uf->numero_factura . ' (' . \Carbon\Carbon::create($uf->anio, $uf->mes, 1)->locale('es')->isoFormat('MMM-YY') . ')' : null;
+        $fechaUf   = $uf ? ($uf->fecha_pago ? \Carbon\Carbon::parse($uf->fecha_pago) : \Carbon\Carbon::create($uf->anio, $uf->mes, 1)) : null;
+        $ufDisplay = $uf ? $uf->numero_factura . ' (' . $fechaUf->format('d/m') . ')' : null;
         // Semáforo
         $sem = $c->semaforo;
         $diasR = $c->dias_restantes;
         $diasText = $diasR !== null ? ($diasR >= 0 ? "{$diasR}d" : 'VEN') : '—';
-        // Fecha ARL display
-        $fechaArlDisplay = $c->fecha_arl ? $c->fecha_arl->format('d/m/Y') : '—';
+        // Fecha ARL display (fallback a fecha_ingreso con indicador visual)
+        $esFechaIngreso  = !$c->fecha_arl && $c->fecha_ingreso;
+        $fechaArlDisplay = $c->fecha_arl
+            ? $c->fecha_arl->format('d/m/Y')
+            : ($c->fecha_ingreso ? $c->fecha_ingreso->format('d/m/Y') : '—');
         // Data para modales
         $ctx = json_encode([
             'id'            => $c->id,
@@ -207,9 +260,13 @@ body{display:flex;flex-direction:column}
         <td><span class="razon-badge" title="{{ $c->razonSocial?->razon_social }}">{{ $c->razonSocial?->razon_social ?? '—' }}</span></td>
 
         {{-- Fecha ARL --}}
-        <td style="font-size:.75rem;font-weight:700;color:{{ $sem === 'rojo' ? '#dc2626' : ($sem === 'amarillo' ? '#b45309' : '#15803d') }};">
+        <td style="font-size:.75rem;font-weight:700;color:{{ $esFechaIngreso ? '#64748b' : ($sem === 'rojo' ? '#dc2626' : ($sem === 'amarillo' ? '#b45309' : '#15803d')) }};">
             {{ $fechaArlDisplay }}
-            @if($c->es_primer_mes)<span class="primer-mes">1er mes</span>@endif
+            @if($esFechaIngreso)
+                <span style="font-size:.58rem;font-weight:600;background:#f1f5f9;color:#64748b;padding:.1rem .35rem;border-radius:8px;margin-left:.2rem;border:1px solid #e2e8f0;">ing.</span>
+            @elseif($c->es_primer_mes)
+                <span class="primer-mes">1er mes</span>
+            @endif
         </td>
 
         {{-- Días restantes --}}
@@ -221,6 +278,19 @@ body{display:flex;flex-direction:column}
         <td>
             @if($ufDisplay)<span class="fact-badge">{{ $ufDisplay }}</span>
             @else<span class="fact-none">—</span>@endif
+        </td>
+
+        {{-- Días desde última factura --}}
+        <td style="text-align:center;">
+            @if($c->dias_desde_factura !== null)
+                @php $df = $c->dias_desde_factura; @endphp
+                <span class="dias-badge {{ $df <= 10 ? 'dias-verde' : ($df <= 20 ? 'dias-amarillo' : 'dias-rojo') }}"
+                      title="{{ $df }} días desde la última factura">
+                    {{ $df }}d
+                </span>
+            @else
+                <span class="fact-none">—</span>
+            @endif
         </td>
 
         {{-- Cédula --}}

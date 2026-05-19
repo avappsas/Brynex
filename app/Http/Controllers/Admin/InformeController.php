@@ -538,6 +538,9 @@ class InformeController extends Controller
             ['Día','# Plan','Planillas','# Afil','Afiliaciones','Trámites','SS','Gastos','Utilidad'],
             fn($r)=>[$r['dia'],$r['cant_planillas'],number_format($r['planillas']),$r['cant_afiliaciones'],number_format($r['afiliaciones']),number_format($r['tramites']),number_format($r['ss']),number_format($r['gastos']),number_format($r['utilidad'])]);
 
+        // ── Saldo retenido para asesores (comisiones ganadas - pagadas, desde mayo 2025) ──
+        $saldoAsesores = \App\Http\Controllers\Admin\ComisionesController::calcularSaldoRetenido($aid);
+
         return view('admin.informes.financiero', compact(
             'mes','anio','ingresos','egresos','utilidad',
             'recaudoSS','pagadoSS','saldoSS',
@@ -546,7 +549,7 @@ class InformeController extends Controller
             'gapSS','gapResumen',
             'comisionesAsesor','gastosOp','tendencia','anterior','bancos','diario',
             'anticipos','cobradosAntes',
-            'moraRecogida',
+            'moraRecogida', 'saldoAsesores',
             'aid', 'efMes'
         ));
     }

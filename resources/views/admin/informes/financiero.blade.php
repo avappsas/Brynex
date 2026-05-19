@@ -39,7 +39,7 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
     <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1.25rem;flex-wrap:wrap;">
         <a href="{{ route('admin.informes.hub') }}" style="color:#64748b;font-size:.82rem;text-decoration:none;">← Informes</a>
         <h1 style="font-size:1.2rem;font-weight:700;color:#0d2550;flex:1;">💰 Estado Financiero — {{ $mesesEs[$mes] }} {{ $anio }}</h1>
-        <form method="GET" style="display:flex;gap:.5rem;align-items:center;">
+        <form method="GET" style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;">
             <select name="mes" style="padding:.4rem .65rem;border:1px solid #e2e8f0;border-radius:8px;font-size:.82rem;">
                 @foreach($mesesEs as $n=>$nm) @if($n>0)<option value="{{ $n }}" {{ $mes==$n?'selected':'' }}>{{ $nm }}</option>@endif @endforeach
             </select>
@@ -49,11 +49,21 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
             <button type="submit" style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:.4rem 1rem;font-size:.82rem;cursor:pointer;">Ver</button>
             <a href="?mes={{ $mes }}&anio={{ $anio }}&excel=1" style="background:#16a34a;color:#fff;border-radius:8px;padding:.4rem .9rem;font-size:.78rem;font-weight:600;text-decoration:none;">📥 Excel</a>
             <a href="{{ route('admin.informes.gastos.index', ['mes'=>$mes,'anio'=>$anio]) }}" style="background:#7c3aed;color:#fff;border-radius:8px;padding:.4rem .9rem;font-size:.78rem;font-weight:600;text-decoration:none;">💸 Ver Gastos</a>
+            @role('superadmin')
+            <a href="{{ route('admin.informes.comisiones.index', ['mes'=>$mes,'anio'=>$anio]) }}"
+               style="background:#f59e0b;color:#fff;border-radius:8px;padding:.4rem .9rem;font-size:.78rem;font-weight:600;text-decoration:none;">
+                💼 Comisiones Asesores
+            </a>
+            <a href="{{ route('admin.informes.comisiones.afiliaciones', ['mes'=>$mes,'anio'=>$anio]) }}"
+               style="background:#0ea5e9;color:#fff;border-radius:8px;padding:.4rem .9rem;font-size:.78rem;font-weight:600;text-decoration:none;">
+                📋 Distribución Afiliaciones
+            </a>
+            @endrole
         </form>
     </div>
 
     {{-- KPIs principales --}}
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:1.5rem;">
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:1rem;margin-bottom:1.5rem;">
         <div class="fin-kpi" style="--c:#2563eb;">
             <div class="val">{{ $fmt($ingresos['total']) }}</div>
             <div class="lab">Ingresos Totales</div>
@@ -73,6 +83,12 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
             <div class="val">{{ $fmt($saldoSS) }}</div>
             <div class="lab">Saldo SS Terceros</div>
             <div class="sub">Recaudado en mes − Pagado planillas</div>
+        </div>
+        {{-- Card nuevo: saldo retenido para asesores --}}
+        <div class="fin-kpi" style="--c:#f59e0b; cursor:pointer;" onclick="window.location='{{ route('admin.informes.comisiones.index') }}'" title="Ver módulo Comisiones Asesores">
+            <div class="val">{{ $fmt($saldoAsesores) }}</div>
+            <div class="lab">💼 Retenido Asesores</div>
+            <div class="sub">Comisiones ganadas sin pagar (desde mayo 2025)</div>
         </div>
     </div>
 

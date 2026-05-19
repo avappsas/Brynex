@@ -244,6 +244,13 @@ Route::middleware('auth')->group(function () {
             Route::put('/gastos/{id}',         [$ga, 'update'])  ->name('gastos.update');
             Route::delete('/gastos/{id}',      [$ga, 'destroy']) ->name('gastos.destroy');
             Route::post('/gastos/{id}/imagen', [$ga, 'imagen'])  ->name('gastos.imagen');
+
+            // ── Comisiones Asesores ──────────────────────────────────────
+            $cc = \App\Http\Controllers\Admin\ComisionesController::class;
+            Route::get('/comisiones',                            [$cc, 'index'])       ->name('comisiones.index');
+            Route::get('/comisiones/afiliaciones',               [$cc, 'afiliaciones'])->name('comisiones.afiliaciones');
+            Route::post('/comisiones/afiliaciones/{id}',         [$cc, 'distribuir'])  ->name('comisiones.distribuir');
+            Route::post('/comisiones/asesores/{asesor}/pagar',   [$cc, 'pagar'])       ->name('comisiones.pagar');
         });
 
         // ── Anticipos (Pagos sin Factura) ────────────────────────────────
@@ -311,6 +318,36 @@ Route::middleware('auth')->group(function () {
         $ga = \App\Http\Controllers\Admin\GestionArlController::class;
         Route::get('/',            [$ga, 'index'])   ->name('index');
         Route::patch('/{id}/renovar', [$ga, 'renovar'])->name('renovar');
+
+        // ── DEBUG TEMPORAL — borrar después ──
+        Route::get('/debug/{cedula}', function ($cedula) {
+            $contratos = \App\Models\Contrato::where('cedula', $cedula)
+                ->with(['tipoModalidad:id,tipo_modalidad,modalidad', 'razonSocial:id,razon_social', 'encargado:id,nombre'])
+                ->get(['id','cedula','estado','tipo_modalidad_id','aliado_id','encargado_id','razon_social_id','fecha_ingreso','fecha_arl']);
+            $user = \Illuminate\Support\Facades\Auth::user();
+            return response()->json([
+                'cedula_buscada'    => $cedula,
+                'aliado_id_session' => session('aliado_id_activo', $user->aliado_id),
+                'tu_aliado_id'      => $user->aliado_id,
+                'es_brynex'         => $user->es_brynex,
+                'TIPO_MODALIDAD_ARL'=> 15,
+                'contratos_encontrados' => $contratos->count(),
+                'contratos'         => $contratos->map(fn($c) => [
+                    'id'               => $c->id,
+                    'estado'           => $c->estado,
+                    'tipo_modalidad_id'=> $c->tipo_modalidad_id,
+                    'tipo_modalidad'   => $c->tipoModalidad?->tipo_modalidad . ' / ' . $c->tipoModalidad?->modalidad,
+                    'aliado_id'        => $c->aliado_id,
+                    'coincide_aliado'  => $c->aliado_id == session('aliado_id_activo', $user->aliado_id),
+                    'es_tipo_15'       => $c->tipo_modalidad_id == 15,
+                    'es_vigente'       => $c->estado === 'vigente',
+                    'razon_social'     => $c->razonSocial?->razon_social,
+                    'encargado'        => $c->encargado?->nombre,
+                    'fecha_ingreso'    => $c->fecha_ingreso,
+                    'fecha_arl'        => $c->fecha_arl,
+                ]),
+            ], 200, [], JSON_PRETTY_PRINT);
+        })->name('debug');
     });
 
     // -- Afiliaciones
