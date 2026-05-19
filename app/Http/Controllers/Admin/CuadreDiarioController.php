@@ -433,12 +433,11 @@ class CuadreDiarioController extends Controller
         return back()->with('success', 'Cuadre cerrado. Saldo: $' . number_format($datos['saldo_final'], 0, ',', '.'));
     }
 
-    // ── Saldos bancarios (solo admin/superadmin) ─────────────────────
+    // ── Saldos bancarios (visible para todos los roles autenticados) ──────
     public function bancos(Request $request)
     {
-        if (!Auth::user()->hasRole(['admin', 'superadmin'])) {
-            abort(403);
-        }
+        // Acceso de lectura para todos; las acciones de escritura
+        // (confirmar, reversar, subir imagen) verifican el rol internamente.
 
         set_time_limit(120); // protección ante meses con muchos movimientos
 
@@ -630,12 +629,9 @@ class CuadreDiarioController extends Controller
         return back()->with('success', 'Imagen del gasto guardada.');
     }
 
-    // ── Subir imagen de consignación ──────────────────────────────────
+    // ── Subir imagen de consignación (todos los roles pueden adjuntar comprobantes) ──
     public function subirImagenConsignacion(Request $request, int $csId)
     {
-        if (!Auth::user()->hasRole(['admin', 'superadmin'])) {
-            abort(403);
-        }
         $aliadoId = session('aliado_id_activo');
         $cs = Consignacion::where('aliado_id', $aliadoId)->findOrFail($csId);
 

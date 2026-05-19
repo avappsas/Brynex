@@ -56,7 +56,7 @@ class CobrosController extends Controller
         // ── Contratos vigentes del aliado ───────────────────────────
         $q = Contrato::where('aliado_id', $aliadoId)
             ->whereIn('estado', ['vigente', 'activo'])
-            ->with(['cliente.empresa', 'tipoModalidad', 'razonSocial', 'asesor', 'plan']);
+            ->with(['cliente.empresa', 'tipoModalidad', 'razonSocial', 'asesor', 'plan', 'eps', 'arl', 'pension', 'caja']);
 
         // Filtro: solo individuales (cod_empresa = 1 = Individual)
         if ($soloInd === 'individual') {
@@ -141,6 +141,16 @@ class CobrosController extends Controller
 
         // ── Pre-calcular SS por contrato (necesario antes del lote de mora) ──
         $r100 = fn($v) => (int)(ceil(($v ?? 0) / 100) * 100);
+
+        // ── Lookup de ARL por nit (para fallback desde Razón Social) ──────
+        // RazonSocial guarda el nit de la ARL en arl_nit; el contrato puede
+        // tener arl_id nulo si hereda la ARL de su RS.
+        $arlNitsFallback = $contratos
+            ->filter(fn($c) => !$c->arl_id && $c->razonSocial?->arl_nit)
+            ->map(fn($c) => $c->razonSocial->arl_nit)
+            ->unique()->values()->toArray();
+        $arlPorNit = \App\Models\Arl::whereIn('nit', $arlNitsFallback)
+            ->get()->keyBy('nit');
 
         // Primera pasada: calcular vSS y flags por contrato sin tocar BD
         $vSsPorContrato = [];
@@ -229,14 +239,16 @@ class CobrosController extends Controller
 
         // Indexar resultado de mora por contrato_id para O(1) en el map()
         $moraPorContrato = [];
+        $morasDiasPorContrato = [];
         foreach ($moraLoteOutput as $fila) {
-            $moraPorContrato[$fila['_contrato_id']] = (int)($fila['mora'] ?? 0);
+            $moraPorContrato[$fila['_contrato_id']]     = (int)($fila['mora']      ?? 0);
+            $morasDiasPorContrato[$fila['_contrato_id']] = (int)($fila['dias_mora'] ?? 0);
         }
 
         // ── Segunda pasada: enriquecer modelos con datos calculados ─────
         $contratos = $contratos->map(function ($c) use (
             $mes, $anio, $facturasPorContrato, $facturasPorCedula, $ultimasLlamadas, $flagsPorContrato,
-            $moraPorContrato, $cedulasConPrestamo
+            $moraPorContrato, $cedulasConPrestamo, $morasDiasPorContrato, $arlPorNit
         ) {
             // Buscar factura: primero por contrato_id, fallback por cédula
             $fact = $facturasPorContrato->get((int) $c->id)
@@ -253,6 +265,10 @@ class CobrosController extends Controller
             $totalEstimado     = $flags['totalEstimado'];
 
             // ── Datos de la factura (solo estado y número) ───────
+            // 'factura emitida' = cualquier factura que no sea pre_factura ni esté anulada.
+            // Si existe una factura con estado pagada, abono o prestamo → ya fue facturada.
+            // prestamo = ya se facturó en modalidad préstamo → NO debe aparecer en cobros.
+            $facturaEmitida  = $fact && !in_array($fact->estado, ['pre_factura', 'anulada']);
             $facturaPagada   = $fact && in_array($fact->estado, ['pagada', 'abono', 'prestamo']);
             $facturaEstado   = $fact?->estado;
             $facturaNumero   = $fact?->numero_factura;
@@ -285,12 +301,38 @@ class CobrosController extends Controller
             $c->v_ss             = $vSS ?? 0;
             $c->total_estimado   = $totalEstimado;
             $c->mora_estimada    = $moraEst;
+            $c->mora_dias        = $morasDiasPorContrato[$c->id] ?? 0;
+            $c->fact_emitida     = $facturaEmitida;
             $c->fact_pagada      = $facturaPagada;
             $c->fact_estado      = $facturaEstado;
             $c->fact_numero      = $facturaNumero;
             $c->fact_id          = $facturaId;
             $c->fact_n_plano     = $facturaNPlano;
             $c->fact_saldo_pend  = $facturaSaldoPend;
+            // ── Entidades para cuenta de cobro individual ─────────────
+            // ARL: campo real es 'nombre_arl'.
+            // Si el contrato tiene arl_id propio → usar esa relación.
+            // Si no, caer al lookup por arl_nit de la Razón Social.
+            $arlObj = $c->arl
+                ?? ($c->razonSocial?->arl_nit ? ($arlPorNit->get($c->razonSocial->arl_nit) ?? null) : null);
+            $c->eps_nombre      = $c->eps?->nombre         ?? 'Ninguna';
+            $c->arl_nombre      = $arlObj?->nombre_arl     ?? $arlObj?->razon_social ?? 'Ninguna';
+            // AFP/Pension: usar razon_social (limpiando prefijo "25-14_" y NIT final " - 900xxx")
+            $pensionRaw = $c->pension?->razon_social ?? null;
+            if ($pensionRaw) {
+                $pensionRaw = preg_replace('/^\d+[-\d]*_/u', '', $pensionRaw);      // quita "25-14_"
+                $pensionRaw = preg_replace('/\s*-\s*\d{6,}\s*$/u', '', $pensionRaw); // quita " - NIT"
+                $pensionRaw = trim($pensionRaw);
+            }
+            $c->afp_nombre = $pensionRaw ?: 'Ninguna';
+            $c->caja_nombre     = $c->caja?->nombre        ?? 'Ninguna';
+            $c->plan_nombre     = $c->plan?->nombre        ?? 'Estándar';
+            $c->tipo_mod_nombre = $c->tipoModalidad?->nombre ?? '—';
+            $c->dias_cotizados  = $esAfil ? 0 : ($esIndActPrimerMes
+                ? max(1, 30 - (int)($c->fecha_ingreso?->day ?? 1) + 1)
+                : ($c->fecha_ingreso && (int)$c->fecha_ingreso->month === ($mes === 1 ? 12 : $mes - 1) && (int)$c->fecha_ingreso->year === ($mes === 1 ? $anio - 1 : $anio)
+                    ? max(1, 30 - (int)$c->fecha_ingreso->day + 1)
+                    : 30));
             $c->ultima_llamada   = $ultimaLlamada;
             $c->dias_sin_llamar  = $diasSinLlamar;
             $c->semaforo         = $semaforo;
@@ -334,8 +376,14 @@ class CobrosController extends Controller
         // ── Filtro estado de pago ───────────────────────────────────
         if ($soloPend === 'pendiente') {
             $contratos = $contratos->filter(function ($c) {
-                // Pendiente = sin factura pagada o con factura en pre_factura/abono
-                return !$c->fact_pagada || in_array($c->fact_estado, ['pre_factura', 'abono', 'prestamo']);
+                // Pendiente = sin factura emitida, o con factura en borrador (pre_factura)
+                // o con pago parcial (abono).
+                // EXCLUIR: 'prestamo', 'pagada' → ya fueron facturados en este período.
+                if ($c->fact_emitida) {
+                    // Solo re-incluir si está en pre_factura (borrador) o abono (pago parcial)
+                    return in_array($c->fact_estado, ['pre_factura', 'abono']);
+                }
+                return true; // sin factura → pendiente
             })->values();
         }
 
@@ -359,14 +407,15 @@ class CobrosController extends Controller
             ->orderBy('nombre')
             ->get(['id', 'nombre']);
 
-        $bancos = BancoCuenta::where('aliado_id', $aliadoId)->where('activo', true)->orderBy('nombre')->get();
+        $bancos       = BancoCuenta::where('aliado_id', $aliadoId)->where('activo', true)->orderBy('nombre')->get();
+        $cuentasCobro = BancoCuenta::paraCobro($aliadoId);
 
         return view('admin.cobros.index', compact(
             'contratos', 'mes', 'anio',
             'totalAdmon', 'totalPendientes', 'sinLlamar', 'prometieronPago', 'totalSS',
             'razonesDisponibles', 'asesoresDisponibles',
             'rsId', 'asesorId', 'buscar', 'soloInd', 'soloPend', 'sort', 'dir',
-            'bancos'
+            'bancos', 'cuentasCobro'
         ));
     }
 

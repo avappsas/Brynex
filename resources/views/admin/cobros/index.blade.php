@@ -133,7 +133,7 @@ function sortClassC($col, $cs, $cd) {
 }
 .num-mono { font-family:monospace; font-size:.77rem; }
 
-/* ── Modal ── */
+/* ── Modal llamada ── */
 .modal-bg { display:none; position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:1000; align-items:center; justify-content:center; backdrop-filter:blur(2px); }
 .modal-bg.open { display:flex; }
 .modal-box { background:#fff; border-radius:16px; padding:1.4rem; max-width:520px; width:95%; max-height:92vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,.22); animation:mIn .18s ease; }
@@ -156,14 +156,12 @@ function sortClassC($col, $cs, $cd) {
     cursor:pointer; box-shadow:0 3px 10px rgba(37,99,235,.3); transition:all .15s; width:100%;
 }
 .btn-save:hover { transform:translateY(-1px); box-shadow:0 5px 15px rgba(37,99,235,.4); }
-/* Info box modal */
 .info-box {
     background:#f0f9ff; border-radius:9px; padding:.55rem .85rem;
     margin-bottom:.85rem; display:flex; flex-wrap:wrap; gap:.6rem; font-size:.77rem;
 }
 .info-box strong { color:#0f172a; }
 .info-box span   { color:#64748b; }
-/* Timeline */
 .timeline { position:relative; padding-left:1.4rem; }
 .timeline::before { content:''; position:absolute; left:.45rem; top:0; bottom:0; width:2px; background:#e2e8f0; }
 .tl-item { position:relative; margin-bottom:.9rem; }
@@ -172,18 +170,157 @@ function sortClassC($col, $cs, $cd) {
 .tl-user { font-size:.7rem; font-weight:700; color:#1e40af; }
 .tl-obs  { font-size:.78rem; color:#334155; margin-top:.15rem; }
 .tl-res  { font-size:.68rem; font-weight:700; padding:.12rem .4rem; border-radius:5px; background:#f0fdf4; color:#15803d; display:inline-block; margin-top:.15rem; }
-
-/* Toast */
 .toast {
     position:fixed; bottom:1.2rem; right:1.2rem; z-index:9999;
     padding:.65rem 1.2rem; border-radius:10px; font-weight:600; font-size:.85rem;
-    box-shadow:0 4px 16px rgba(0,0,0,.15); animation:toastIn .25s ease;
-    display:none;
+    box-shadow:0 4px 16px rgba(0,0,0,.15); animation:toastIn .25s ease; display:none;
 }
 .toast.show { display:block; }
 .toast.success { background:#dcfce7; color:#15803d; border:1px solid #86efac; }
 .toast.error   { background:#fee2e2; color:#b91c1c; border:1px solid #fca5a5; }
 @keyframes toastIn { from{transform:translateY(10px);opacity:0} to{transform:translateY(0);opacity:1} }
+
+
+.btn-cc-ind {
+    padding:.25rem .55rem; border-radius:7px; font-size:.72rem; font-weight:700;
+    cursor:pointer; border:none; transition:all .15s;
+    background:linear-gradient(135deg,#065f46,#059669); color:#fff;
+    display:inline-flex; align-items:center; gap:.2rem; margin-left:.2rem;
+}
+.btn-cc-ind:hover { transform:translateY(-1px); box-shadow:0 3px 10px rgba(5,150,105,.3); }
+
+/* Modal Cuenta de Cobro Individual */
+.modal-cc-bg {
+    display:none; position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:1100;
+    align-items:center; justify-content:center; backdrop-filter:blur(3px);
+}
+.modal-cc-bg.open { display:flex; }
+.modal-cc-box {
+    background:#fff; border-radius:16px; width:min(660px,96vw);
+    max-height:92vh; overflow:hidden; display:flex; flex-direction:column;
+    box-shadow:0 24px 80px rgba(0,0,0,.28); animation:mIn .18s ease;
+}
+.cc-bar {
+    background:linear-gradient(135deg,#065f46,#059669); padding:.65rem 1rem;
+    display:flex; align-items:center; gap:.5rem; flex-shrink:0;
+}
+.cc-bar-title { color:#fff; font-weight:800; font-size:.88rem; flex:1; }
+.cc-toggle {
+    padding:.22rem .65rem; border-radius:6px; border:none; cursor:pointer;
+    font-size:.72rem; font-weight:700; transition:all .15s;
+}
+.cc-toggle.active   { background:#fff; color:#065f46; }
+.cc-toggle.inactive { background:rgba(255,255,255,.2); color:#d1fae5; }
+.cc-toggle.inactive:hover { background:rgba(255,255,255,.35); }
+.cc-body { overflow-y:auto; flex:1; padding:1.2rem; font-family:'Arial',sans-serif; font-size:11px; }
+.cc-doc-title {
+    text-align:center; font-size:.95rem; font-weight:900;
+    letter-spacing:.1em; text-transform:uppercase;
+    border-top:2px solid #065f46; border-bottom:2px solid #065f46;
+    padding:.3rem 0; margin-bottom:.9rem; color:#065f46;
+}
+.cc-header-row { display:flex; justify-content:space-between; margin-bottom:.8rem; font-size:10.5px; }
+.cc-client-block { line-height:1.7; }
+.cc-client-block strong { font-size:12px; color:#0f172a; display:block; }
+.cc-client-block span { color:#475569; }
+.cc-period { text-align:right; color:#475569; font-size:10px; }
+.cc-period strong { display:block; font-size:12px; color:#065f46; }
+/* Tabla de entidades */
+.cc-tbl { width:100%; border-collapse:collapse; margin-bottom:.8rem; }
+.cc-tbl th {
+    background:#065f46; color:#fff; padding:.35rem .5rem;
+    font-size:9px; text-transform:uppercase; letter-spacing:.04em; text-align:left;
+}
+.cc-tbl td { padding:.32rem .5rem; border-bottom:1px solid #f1f5f9; font-size:10.5px; vertical-align:middle; }
+.cc-tbl tr:nth-child(even) td { background:#f8fafc; }
+.cc-tbl .cc-label { color:#475569; font-size:9.5px; font-weight:600; width:90px; }
+.cc-tbl .cc-entity { font-weight:600; color:#0f172a; }
+.cc-tbl .cc-val { text-align:right; font-family:monospace; font-weight:700; color:#1e40af; white-space:nowrap; }
+/* Totales */
+.cc-totales { display:flex; flex-direction:column; gap:.2rem; align-items:flex-end; margin-bottom:.85rem; }
+.cc-tot-row { display:flex; gap:.5rem; font-size:11px; }
+.cc-tot-label { min-width:160px; text-align:right; color:#475569; }
+.cc-tot-val { min-width:100px; text-align:right; font-family:monospace; font-weight:700; color:#0f172a; }
+.cc-tot-row.principal { border-top:2px solid #065f46; padding-top:.3rem; margin-top:.2rem; }
+.cc-tot-row.principal .cc-tot-label { font-size:12px; font-weight:800; color:#065f46; }
+.cc-tot-row.principal .cc-tot-val   { font-size:13px; font-weight:900; color:#065f46; }
+.cc-mora-badge {
+    display:inline-flex; align-items:center; gap:.3rem;
+    background:#fef3c7; color:#92400e; border-radius:8px;
+    padding:.3rem .75rem; font-size:10.5px; font-weight:700; margin-bottom:.55rem;
+}
+/* Cuentas bancarias */
+.cc-banco-item {
+    border-left:4px solid #2563eb; background:#eff6ff;
+    border-radius:0 8px 8px 0; padding:.55rem .9rem;
+    margin-bottom:.4rem; font-size:10.5px;
+    border-top:1px solid #bfdbfe; border-bottom:1px solid #bfdbfe;
+}
+.cc-banco-nombre { font-weight:900; color:#1e3a5f; font-size:12px; }
+.cc-banco-num    { font-family:monospace; font-weight:700; color:#1d4ed8; font-size:12px; letter-spacing:.03em; }
+.cc-banco-tipo   { background:#dbeafe; color:#1e40af; font-size:9px; font-weight:700; padding:.1rem .35rem; border-radius:8px; }
+.cc-nota {
+    background:#fee2e2; border:1px solid #fca5a5; border-radius:6px;
+    padding:.45rem .7rem; font-size:9px; color:#7f1d1d; line-height:1.5; margin-top:.5rem;
+}
+.cc-footer-bar {
+    border-top:1px solid #e2e8f0; padding:.55rem 1rem;
+    display:flex; gap:.5rem; justify-content:flex-end; flex-shrink:0; background:#f8fafc;
+}
+
+.cc-doc-header {
+    background:linear-gradient(135deg,#064e3b,#065f46);
+    padding:1.4rem 1.6rem 1.1rem; color:#fff;
+}
+.cc-doc-periodo { font-size:.72rem; font-weight:600; text-transform:uppercase; letter-spacing:.1em; color:#6ee7b7; margin-bottom:.3rem; }
+.cc-doc-nombre { font-size:1.35rem; font-weight:900; letter-spacing:.01em; margin-bottom:.25rem; text-shadow:0 1px 3px rgba(0,0,0,.2); }
+.cc-doc-meta { font-size:.82rem; color:#a7f3d0; line-height:1.7; }
+.cc-doc-meta strong { color:#fff; font-weight:700; }
+.cc-doc-rs { display:inline-block; background:rgba(255,255,255,.15); border-radius:6px; padding:.15rem .55rem; font-size:.78rem; font-weight:700; color:#d1fae5; margin-top:.3rem; }
+.cc-main { padding:1.2rem 1.4rem; display:flex; flex-direction:column; gap:1rem; }
+.cc-section-title { font-size:.68rem; font-weight:800; text-transform:uppercase; letter-spacing:.08em; color:#64748b; margin-bottom:.5rem; display:flex; align-items:center; gap:.4rem; }
+.cc-section-title::after { content:''; flex:1; height:1px; background:#e2e8f0; }
+.cc-cards { display:grid; grid-template-columns:1fr 1fr; gap:.35rem; align-items:stretch; }
+.cc-card { background:#fff; border-radius:12px; padding:.7rem .9rem; border:1.5px solid #e2e8f0; display:flex; align-items:center; gap:.65rem; transition:border-color .15s; box-sizing:border-box; min-width:0; overflow:hidden; }
+.cc-card:hover { border-color:#059669; }
+.cc-card-icon { width:36px; height:36px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:1rem; flex-shrink:0; }
+.cc-card-info { flex:1; min-width:0; }
+.cc-card-label { font-size:.62rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:#94a3b8; }
+.cc-card-entity { font-size:.88rem; font-weight:700; color:#0f172a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.cc-card-entity.ninguna { color:#cbd5e1; font-weight:500; font-style:italic; }
+.cc-card-val { font-size:.95rem; font-weight:800; color:#1e40af; font-family:monospace; white-space:nowrap; flex-shrink:0; }
+.cc-nivel-badge { display:inline-block; background:#dbeafe; color:#1e40af; font-size:.6rem; font-weight:800; padding:.1rem .35rem; border-radius:5px; margin-left:.3rem; vertical-align:middle; }
+.cc-plan-row { background:#fff; border-radius:12px; padding:.7rem 1rem; border:1.5px solid #e2e8f0; display:flex; align-items:center; justify-content:space-between; gap:.5rem; }
+.cc-plan-badge { background:linear-gradient(135deg,#ede9fe,#ddd6fe); color:#5b21b6; font-size:.78rem; font-weight:800; padding:.25rem .7rem; border-radius:20px; }
+.cc-tipo-badge { background:#f0fdf4; color:#15803d; font-size:.78rem; font-weight:700; padding:.25rem .7rem; border-radius:20px; border:1px solid #bbf7d0; }
+.cc-total-block { background:linear-gradient(135deg,#064e3b,#065f46); border-radius:14px; padding:1.1rem 1.4rem; display:flex; align-items:center; justify-content:space-between; }
+.cc-total-label { color:#a7f3d0; font-size:.75rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; margin-bottom:.25rem; }
+.cc-total-amount { color:#fff; font-size:2rem; font-weight:900; font-family:monospace; text-shadow:0 2px 8px rgba(0,0,0,.3); }
+.cc-total-subtotals { display:flex; flex-direction:column; gap:.2rem; align-items:flex-end; }
+.cc-sub-row { font-size:.75rem; color:#6ee7b7; display:flex; gap:.5rem; }
+.cc-sub-row span:last-child { font-weight:700; color:#a7f3d0; }
+.cc-mora-block { background:linear-gradient(135deg,#7c2d12,#92400e); border-radius:12px; padding:.75rem 1.1rem; display:flex; align-items:center; justify-content:space-between; }
+.cc-mora-label { color:#fed7aa; font-size:.75rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; }
+.cc-mora-amount { color:#fff; font-size:1.25rem; font-weight:900; font-family:monospace; }
+.cc-mora-dias { color:#fed7aa; font-size:.72rem; font-weight:600; margin-top:.15rem; }
+.cc-banco-card { background:#fff; border-radius:12px; padding:.7rem .9rem; border:1.5px solid #bfdbfe; display:flex; align-items:center; gap:.9rem; box-sizing:border-box; height:100%; margin-bottom:0; }
+.cc-banco-icon { width:42px; height:42px; background:linear-gradient(135deg,#1e40af,#2563eb); border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:1.2rem; flex-shrink:0; }
+.cc-banco-info { flex:1; }
+.cc-banco-nombre2 { font-size:1rem; font-weight:800; color:#1e3a5f; }
+.cc-banco-tipo2 { display:inline-block; background:#dbeafe; color:#1e40af; font-size:.65rem; font-weight:700; padding:.1rem .4rem; border-radius:5px; margin-left:.4rem; }
+.cc-banco-num2 { font-size:1.1rem; font-family:monospace; font-weight:800; color:#1d4ed8; letter-spacing:.04em; margin-top:.15rem; }
+.cc-banco-nit { font-size:.72rem; color:#94a3b8; margin-top:.1rem; }
+.cc-nota2 { background:#fff3cd; border-radius:10px; padding:.6rem .9rem; font-size:.72rem; color:#7c5b00; line-height:1.6; border:1px solid #ffe082; box-sizing:border-box; height:100%; }
+.cc-footer-bar { border-top:1px solid #e2e8f0; padding:.65rem 1.1rem; display:flex; gap:.5rem; justify-content:flex-end; flex-shrink:0; background:#fff; }
+.btn-cc-print { padding:.42rem 1.2rem; border-radius:9px; border:none; cursor:pointer; background:linear-gradient(135deg,#1e40af,#2563eb); color:#fff; font-size:.82rem; font-weight:700; display:flex; align-items:center; gap:.35rem; box-shadow:0 3px 10px rgba(37,99,235,.3); transition:all .15s; }
+.btn-cc-print:hover { transform:translateY(-1px); box-shadow:0 5px 15px rgba(37,99,235,.4); }
+
+/* ── Impresión: solo el contenido de la cuenta de cobro ── */
+@media print {
+    body > *:not(#cc-print-area) { display:none !important; }
+    #cc-print-area { display:block !important; position:fixed; inset:0; background:#fff; padding:1rem 1.5rem; z-index:99999; }
+    .modal-cc-bg { display:none !important; }
+}
 
 /* Responsive */
 @media(max-width:768px) {
@@ -379,7 +516,7 @@ function sortClassC($col, $cs, $cd) {
     @if($soloPend === 'pendiente')
     <th style="min-width:120px">Última gestión</th>
     @endif
-    <th style="text-align:center">📞</th>
+    <th style="text-align:center;min-width:90px">Acciones</th>
 </tr>
 </thead>
 <tbody>
@@ -573,8 +710,9 @@ $rowStyle    = $esIrAlerta
     </td>
     @endif
 
-    {{-- Botón llamar (siempre) --}}
-    <td style="text-align:center;">
+    {{-- Acciones: Llamar + Cuenta de Cobro --}}
+    <td style="text-align:center;white-space:nowrap;">
+        {{-- Botón llamar --}}
         <button class="btn-llamar btn-abrir-modal"
             data-contrato-id="{{ $c->id }}"
             data-nombre="{{ $nombre }}"
@@ -586,6 +724,30 @@ $rowStyle    = $esIrAlerta
             data-semaforo="{{ $c->semaforo }}"
             title="Registrar llamada de cobro">
             📞
+        </button>
+        {{-- Botón cuenta de cobro individual --}}
+        <button class="btn-cc-ind"
+            data-nombre="{{ $nombre }}"
+            data-cedula="{{ $c->cedula }}"
+            data-rs="{{ $rs }}"
+            data-plan="{{ $c->plan_nombre }}"
+            data-tipo="{{ $c->tipo_mod_nombre }}"
+            data-eps="{{ $c->eps_nombre }}"
+            data-arl="{{ $c->arl_nombre }}"
+            data-n-arl="{{ $c->n_arl ?? 1 }}"
+            data-afp="{{ $c->afp_nombre }}"
+            data-caja="{{ $c->caja_nombre }}"
+            data-v-eps="{{ $c->v_eps ?? 0 }}"
+            data-v-arl="{{ $c->v_arl ?? 0 }}"
+            data-v-afp="{{ $c->v_pen ?? 0 }}"
+            data-v-caja="{{ $c->v_caja ?? 0 }}"
+            data-v-admon="{{ (int)($c->administracion ?? 0) }}"
+            data-v-total="{{ $c->total_estimado ?? 0 }}"
+            data-mora-val="{{ $c->mora_estimada ?? 0 }}"
+            data-mora-dias="{{ $c->mora_dias ?? 0 }}"
+            data-dias="{{ $c->dias_cotizados ?? 30 }}"
+            title="Ver cuenta de cobro individual">
+            🧾
         </button>
     </td>
 </tr>
@@ -607,6 +769,29 @@ $rowStyle    = $esIrAlerta
 @endif
 
 </div>{{-- /cob-wrap --}}
+
+{{-- ══ MODAL CUENTA DE COBRO INDIVIDUAL ══ --}}
+<div class="modal-cc-bg" id="modalCuentaCobro">
+<div class="modal-cc-box">
+    {{-- Barra superior --}}
+    <div class="cc-bar">
+        <span class="cc-bar-title">🧾 Cuenta de Cobro Individual</span>
+        <button id="cc-btn-simple"    class="cc-toggle active"   onclick="ccToggleVista('simple')">📄 Simple</button>
+        <button id="cc-btn-detallada" class="cc-toggle inactive" onclick="ccToggleVista('detallada')">📋 Detallada</button>
+        <button onclick="document.getElementById('modalCuentaCobro').classList.remove('open')"
+            style="background:rgba(255,255,255,.18);border:none;color:#fff;width:28px;height:28px;border-radius:7px;cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center;margin-left:.3rem;">✕</button>
+    </div>
+    {{-- Cuerpo (renderizado por JS) --}}
+    <div class="cc-body" id="cc-body-content"></div>
+    {{-- Footer --}}
+    <div class="cc-footer-bar">
+        <button class="btn-cc-print" onclick="ccImprimir()">🖨️ Imprimir / PDF</button>
+    </div>
+</div>
+</div>
+
+{{-- Área de impresión oculta (se muestra solo en @media print) --}}
+<div id="cc-print-area" style="display:none;"></div>
 
 {{-- ══ MODAL REGISTRAR LLAMADA ══ --}}
 <div class="modal-bg" id="modalLlamada">
@@ -919,7 +1104,6 @@ async function cargarHistorial(contratoId) {
 
 // ── Actualizar semáforo en la tabla ──
 function actualizarFilaSemaforo(contratoId, data) {
-    // Recargar para reflejar cambios
     setTimeout(() => location.reload(), 600);
 }
 
@@ -941,6 +1125,229 @@ function actualizarFilaSemaforo(contratoId, data) {
             subEl.textContent = 'No disponible';
         });
 })();
+
+// ══════════════════════════════════════════════════════════
+// CUENTA DE COBRO INDIVIDUAL
+// ══════════════════════════════════════════════════════════
+
+// Datos de cuentas bancarias pasados desde el servidor
+const CC_CUENTAS = @json($cuentasCobro ?? []);
+const CC_MESES   = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+let ccDatos   = null;  // datos del contrato activo
+let ccVista   = 'simple'; // 'simple' | 'detallada'
+
+const fmt = v => '$' + Math.round(v||0).toLocaleString('es-CO');
+
+// Abrir modal al pulsar el botón 🧾
+document.addEventListener('click', function(e) {
+    const btn = e.target.closest('.btn-cc-ind');
+    if (!btn) return;
+    ccDatos = {
+        nombre:    btn.dataset.nombre,
+        cedula:    btn.dataset.cedula,
+        rs:        btn.dataset.rs,
+        plan:      btn.dataset.plan,
+        tipo:      btn.dataset.tipo,
+        eps:       btn.dataset.eps,
+        arl:       btn.dataset.arl,
+        nArl:      btn.dataset.nArl,
+        afp:       btn.dataset.afp,
+        caja:      btn.dataset.caja,
+        vEps:      parseInt(btn.dataset.vEps)  || 0,
+        vArl:      parseInt(btn.dataset.vArl)  || 0,
+        vAfp:      parseInt(btn.dataset.vAfp)  || 0,
+        vCaja:     parseInt(btn.dataset.vCaja) || 0,
+        vAdmon:    parseInt(btn.dataset.vAdmon)|| 0,
+        vTotal:    parseInt(btn.dataset.vTotal)|| 0,
+        moraVal:   parseInt(btn.dataset.moraVal)  || 0,
+        moraDias:  parseInt(btn.dataset.moraDias) || 0,
+        dias:      parseInt(btn.dataset.dias)      || 30,
+    };
+    ccVista = 'simple';
+    ccToggleVista('simple');
+    document.getElementById('modalCuentaCobro').classList.add('open');
+});
+
+// Cerrar con Escape
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') document.getElementById('modalCuentaCobro').classList.remove('open');
+});
+
+// Cerrar al clic en el fondo
+document.getElementById('modalCuentaCobro').addEventListener('click', function(e) {
+    if (e.target === this) this.classList.remove('open');
+});
+
+function ccToggleVista(vista) {
+    ccVista = vista;
+    document.getElementById('cc-btn-simple').className    = 'cc-toggle ' + (vista==='simple'    ? 'active' : 'inactive');
+    document.getElementById('cc-btn-detallada').className = 'cc-toggle ' + (vista==='detallada' ? 'active' : 'inactive');
+    if (ccDatos) ccRenderizar();
+}
+
+function ccRenderizar() {
+    const d = ccDatos;
+    const mes  = {{ $mes }};
+    const anio = {{ $anio }};
+    const periodoLabel = (CC_MESES[mes] || mes) + ' ' + anio;
+    const vTotalConMora = d.vTotal + d.moraVal;
+
+    // ── Cabecera compacta (sin Razón Social, cédula al lado del nombre) ──
+    const headerHtml = `
+    <div class="cc-doc-header">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:.3rem;">
+            <div class="cc-doc-nombre">${d.nombre}</div>
+            <div style="font-size:.82rem;color:#6ee7b7;font-weight:600;white-space:nowrap;">CC ${d.cedula}</div>
+        </div>
+        <div class="cc-doc-periodo" style="margin-top:.25rem;">📅 Cuenta de Cobro · ${periodoLabel}</div>
+    </div>`;
+
+    // ── Card de entidad ────────────────────────────────────────────
+    const card = (icono, bg, label, entidad, nivel, valor, mostrarValor) => {
+        const esNinguna = !entidad || entidad === 'Ninguna';
+        const nivBadge  = nivel ? `<span class="cc-nivel-badge">N${nivel}</span>` : '';
+        const entHtml   = esNinguna
+            ? `<span class="cc-card-entity ninguna">Ninguna</span>`
+            : `<span class="cc-card-entity">${entidad}${nivBadge}</span>`;
+        const valHtml   = mostrarValor && !esNinguna && valor > 0
+            ? `<span class="cc-card-val">${fmt(valor)}</span>`
+            : (mostrarValor ? `<span style="color:#e2e8f0;font-size:.85rem;">—</span>` : '');
+        return `
+        <div class="cc-card">
+            <div class="cc-card-icon" style="background:${bg};">${icono}</div>
+            <div class="cc-card-info">
+                <div class="cc-card-label">${label}</div>
+                ${entHtml}
+            </div>
+            ${valHtml}
+        </div>`;
+    };
+
+    // ── Cuentas bancarias compactas ────────────────────────────────
+    const bancosHtml = CC_CUENTAS.length
+        ? CC_CUENTAS.map(c => `
+            <div class="cc-banco-card" style="margin-bottom:0;padding:.6rem .8rem;">
+                <div class="cc-banco-icon" style="width:34px;height:34px;font-size:1rem;">🏦</div>
+                <div class="cc-banco-info">
+                    <div>
+                        <span class="cc-banco-nombre2" style="font-size:.88rem;">${c.banco || c.nombre || '—'}</span>
+                        <span class="cc-banco-tipo2">${c.tipo_cuenta || ''}</span>
+                    </div>
+                    <div class="cc-banco-num2" style="font-size:.98rem;">${c.numero_cuenta || ''}</div>
+                    ${c.nit ? `<div class="cc-banco-nit">NIT: ${c.nit}</div>` : ''}
+                </div>
+            </div>`).join('')
+        : `<div style="background:#fef9c3;border-radius:8px;padding:.5rem .7rem;font-size:.75rem;color:#854d0e;">⚠️ Sin cuentas configuradas.</div>`;
+
+    // ── Bloque Total con subtotales más grandes ────────────────────
+    const totalHtml = `
+    <div class="cc-total-block" style="padding:.85rem 1.2rem;">
+        <div>
+            <div class="cc-total-label">Total a Pagar</div>
+            <div class="cc-total-amount">${fmt(vTotalConMora)}</div>
+        </div>
+        ${d.moraVal > 0 ? `
+        <div class="cc-total-subtotals">
+            <div class="cc-sub-row" style="font-size:.88rem;font-weight:800;">
+                <span style="color:#a7f3d0;">Cuota mensual</span>
+                <span style="color:#fff;font-size:.95rem;">${fmt(d.vTotal)}</span>
+            </div>
+            <div class="cc-sub-row" style="font-size:.88rem;font-weight:800;">
+                <span style="color:#fcd34d;">⚠️ Mora${d.moraDias > 0 ? ` (${d.moraDias}d)` : ''}</span>
+                <span style="color:#fbbf24;font-size:.95rem;">${fmt(d.moraVal)}</span>
+            </div>
+        </div>` : ''}
+    </div>`;
+
+    // ── Nota compacta ──────────────────────────────────────────────
+    const notaHtml = `<div class="cc-nota2" style="font-size:.65rem;padding:.45rem .65rem;line-height:1.5;">
+        📌 Pagos en los primeros <strong>5 días hábiles</strong> de cada mes. El pago tardío puede generar pérdida de prestaciones (D.047/2000 Art.3, D.1804/99 Art.21).
+    </div>`;
+
+    // ══ VISTA SIMPLE ════════════════════════════════════════════
+    if (ccVista === 'simple') {
+        document.getElementById('cc-body-content').innerHTML = headerHtml + `
+        <div class="cc-main" style="gap:.6rem;padding:1rem 1.2rem;">
+            <div class="cc-plan-row" style="padding:.55rem .9rem;">
+                <span style="font-size:.78rem;font-weight:700;color:#334155;">Plan</span>
+                <span class="cc-plan-badge">${d.plan}</span>
+                <span class="cc-tipo-badge">${d.tipo}</span>
+                ${d.dias > 0 && d.dias < 30 ? `<span style="background:#f0f9ff;color:#0369a1;font-size:.72rem;font-weight:700;padding:.2rem .55rem;border-radius:20px;border:1px solid #bae6fd;">${d.dias} días</span>` : ''}
+            </div>
+            <div>
+                <div class="cc-section-title" style="margin-bottom:.35rem;">Entidades</div>
+                <div class="cc-cards" style="gap:.35rem;">
+                    ${card('❤️','#fef2f2','EPS – Salud',     d.eps,  null,  d.vEps,  false)}
+                    ${card('🦺','#fffbeb','ARL – Riesgos',   d.arl,  d.nArl,d.vArl,  false)}
+                    ${card('🏦','#f0fdf4','AFP – Pensión',   d.afp,  null,  d.vAfp,  false)}
+                    ${card('🏛️','#eff6ff','Caja',            d.caja, null,  d.vCaja, false)}
+                </div>
+            </div>
+            ${totalHtml}
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem;align-items:stretch;">
+                <div style="display:flex;flex-direction:column;">
+                    <div class="cc-section-title" style="margin-bottom:.35rem;">Consignar en</div>
+                    ${bancosHtml}
+                </div>
+                <div style="display:flex;flex-direction:column;">
+                    <div class="cc-section-title" style="margin-bottom:.35rem;">Nota</div>
+                    ${notaHtml}
+                </div>
+            </div>
+        </div>`;
+        return;
+    }
+
+    // ══ VISTA DETALLADA ══════════════════════════════════════════
+    document.getElementById('cc-body-content').innerHTML = headerHtml + `
+    <div class="cc-main" style="gap:.6rem;padding:1rem 1.2rem;">
+        <div class="cc-plan-row" style="padding:.55rem .9rem;">
+            <span style="font-size:.78rem;font-weight:700;color:#334155;">Plan</span>
+            <span class="cc-plan-badge">${d.plan}</span>
+            <span class="cc-tipo-badge">${d.tipo}</span>
+            ${d.dias > 0 && d.dias < 30 ? `<span style="background:#f0f9ff;color:#0369a1;font-size:.72rem;font-weight:700;padding:.2rem .55rem;border-radius:20px;border:1px solid #bae6fd;">${d.dias} días</span>` : ''}
+        </div>
+        <div>
+            <div class="cc-section-title" style="margin-bottom:.35rem;">Desglose de Aportes</div>
+            <div class="cc-cards" style="gap:.35rem;">
+                ${card('❤️','#fef2f2','EPS – Salud',      d.eps,  null,  d.vEps,  true)}
+                ${card('🦺','#fffbeb','ARL – Riesgos',    d.arl,  d.nArl,d.vArl,  true)}
+                ${card('🏦','#f0fdf4','AFP – Pensión',    d.afp,  null,  d.vAfp,  true)}
+                ${card('🏛️','#eff6ff','Caja – Bienestar', d.caja, null,  d.vCaja, true)}
+                ${d.vAdmon > 0 ? card('⚙️','#f5f3ff','Administración',   'Administración',null,d.vAdmon,true) : ''}
+            </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem;align-items:stretch;">
+            ${totalHtml}
+            <div style="display:flex;flex-direction:column;">
+                <div class="cc-section-title" style="margin-bottom:.35rem;">Consignar en</div>
+                ${bancosHtml}
+            </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem;align-items:stretch;">
+            <div style="display:flex;flex-direction:column;">
+                <div class="cc-section-title" style="margin-bottom:.35rem;visibility:hidden;">_</div>
+            </div>
+            <div style="display:flex;flex-direction:column;">
+                <div class="cc-section-title" style="margin-bottom:.35rem;">Nota</div>
+                ${notaHtml}
+            </div>
+        </div>
+    </div>`;
+
+}
+
+function ccImprimir() {
+    const body = document.getElementById('cc-body-content');
+    if (!body) return;
+    const area = document.getElementById('cc-print-area');
+    area.innerHTML = `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:680px;margin:0 auto;">${body.innerHTML}</div>`;
+    area.style.display = 'block';
+    window.print();
+    setTimeout(() => { area.style.display = 'none'; }, 1200);
+}
+
 </script>
 @endpush
 @endsection

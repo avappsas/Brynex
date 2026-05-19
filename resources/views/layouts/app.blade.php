@@ -633,12 +633,7 @@
             </a>
             @endrole
 
-            @role('superadmin|admin|usuario')
-            <a href="{{ route('admin.gestion-arl.index') }}" class="menu-item {{ request()->routeIs('admin.gestion-arl*') ? 'activo' : '' }}">
-                <div class="icono">🛡️</div>
-                <div class="label">Gestión ARL</div>
-            </a>
-            @endrole
+
 
             @role('superadmin|admin|usuario')
             <a href="{{ route('admin.planos.index') }}" class="menu-item {{ request()->routeIs('admin.planos*') ? 'activo' : '' }}">

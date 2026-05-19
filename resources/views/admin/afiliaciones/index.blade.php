@@ -207,6 +207,7 @@ body {
         <span style="background:rgba(255,255,255,0.15);color:#fff;font-size:0.88rem;font-weight:800;padding:0.3rem 0.7rem;border-radius:20px;white-space:nowrap;letter-spacing:0.02em;">
             {{ $contratos->count() }} <span style="font-size:0.7rem;font-weight:500;opacity:0.75;">registros</span>
         </span>
+        <a href="{{ route('admin.gestion-arl.index') }}" class="btn-export" style="background:#f97316;">🛡️ ARL</a>
         <a href="{{ route('admin.afiliaciones.exportar', request()->query()) }}" class="btn-export">📥 Excel</a>
     </div>
 </div>

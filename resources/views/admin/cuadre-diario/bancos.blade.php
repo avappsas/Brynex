@@ -174,15 +174,21 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.78rem}
                 {{ $mov->es_salida ? '-' : '+' }}{{ $fmt($mov->valor) }}
             </td>
 
-            {{-- Estado (clic abre modal) --}}
+            {{-- Estado (clic abre modal — solo admin/superadmin pueden cambiar) --}}
             <td>
                 @if(!$mov->es_salida)
+                @if(auth()->user()->hasRole(['admin','superadmin']))
                 <button type="button"
                         onclick="abrirModalEstado({{ $mov->cs_id }}, {{ $mov->confirmado ? 'true' : 'false' }})"
                         class="btn-sm"
                         style="background:{{ $mov->confirmado ? '#dcfce7' : '#fef3c7' }};color:{{ $mov->confirmado ? '#15803d' : '#b45309' }}">
                     {{ $mov->confirmado ? '✅ Verificado' : '🕐 Pendiente' }}
                 </button>
+                @else
+                <span class="badge" style="background:{{ $mov->confirmado ? '#dcfce7' : '#fef3c7' }};color:{{ $mov->confirmado ? '#15803d' : '#b45309' }}">
+                    {{ $mov->confirmado ? '✅ Verificado' : '🕐 Pendiente' }}
+                </span>
+                @endif
                 @else
                 <span style="font-size:.72rem;color:#94a3b8">—</span>
                 @endif

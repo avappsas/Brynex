@@ -31,6 +31,7 @@
                 ['icono'=>'👥', 'nombre'=>'Clientes',      'color'=>'#3b82f6', 'url'=>route('admin.clientes.index')],
                 ['icono'=>'🏢', 'nombre'=>'Empresas',      'color'=>'#06b6d4', 'url'=>route('admin.facturacion.index')],
                 ['icono'=>'🤝', 'nombre'=>'Afiliaciones',  'color'=>'#8b5cf6', 'url'=>route('admin.afiliaciones.index')],
+                ['icono'=>'🛡️', 'nombre'=>'Gestión ARL',  'color'=>'#f97316', 'url'=>route('admin.gestion-arl.index')],
                 ['icono'=>'📋', 'nombre'=>'Contratos',     'color'=>'#0ea5e9', 'url'=>route('admin.contratos.index')],
                 ['icono'=>'📄', 'nombre'=>'Planos SS',     'color'=>'#a855f7', 'url'=>route('admin.planos.index')],
                 ['icono'=>'💰', 'nombre'=>'Cobros',        'color'=>'#10b981', 'url'=>route('admin.cobros.index')],
