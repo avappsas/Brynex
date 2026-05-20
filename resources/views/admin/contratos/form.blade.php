@@ -120,10 +120,9 @@
       </div>
       <div>
         <label class="lb">Modalidad</label>
-        <div class="{{ $rsLock ? 'tip-lock' : '' }}" data-tip="🔒 Bloqueado — hay afiliaciones en trámite u OK">
+        {{-- Modalidad NO se bloquea con rsLock: cambiarla (ej. IR → Dependiente) no afecta los radicados existentes --}}
         <select name="tipo_modalidad_id" id="sel_modalidad" x-model="tipoModalidadId" @change="onModalidadChange"
-            style="{{ $S }}{{ $rsLock ? 'background:#f1f5f9;color:#1e293b;cursor:not-allowed;opacity:1;' : '' }}"
-            {{ $rsLock ? 'disabled' : '' }}>
+            style="{{ $S }}">
           <option value="">-- Modalidad --</option>
           @foreach($tiposModalidad as $tm)
           <option value="{{ $tm->id }}"
@@ -133,10 +132,6 @@
           </option>
           @endforeach
         </select>
-        @if($rsLock)
-        <input type="hidden" name="tipo_modalidad_id" value="{{ old('tipo_modalidad_id', $contrato->tipo_modalidad_id ?? '') }}">
-        @endif
-        </div>
       </div>
       <div>
         <label class="lb">Plan
@@ -169,6 +164,13 @@
         <input type="hidden" name="plan_id" value="{{ old('plan_id', $contrato->plan_id ?? '') }}">
         @endif
         </div>
+        {{-- Aviso: solo aparece cuando rsLock y la modalidad nueva es incompatible con el plan --}}
+        @if($rsLock)
+        <div id="aviso-plan-incompatible"
+             style="display:none;margin-top:0.25rem;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:0.3rem 0.55rem;font-size:0.68rem;color:#dc2626;font-weight:600;line-height:1.35;">
+          ⚠️ La modalidad elegida no incluye el plan actual. Cambie la modalidad a una compatible o contacte al administrador.
+        </div>
+        @endif
         <div id="nota-plan-modalidad" style="display:none;font-size:.6rem;color:#94a3b8;margin-top:.15rem;">Seleccione primero la modalidad</div>
 
       </div>
@@ -1115,6 +1117,8 @@ const MODALIDADES_INDEP          = @json($modalidadesIndependientes ?? [10,11]);
 const CLIENTE_EXENTO_AFP         = {{ ($clienteExentoAfp ?? false) ? 'true' : 'false' }};
 const CLIENTE_TIPO_DOC           = @json($clienteTipoDoc ?? null);
 const ES_EDICION                 = {{ ($esEdicion ?? false) ? 'true' : 'false' }};
+const RS_LOCK                    = {{ ($rsLock ?? false) ? 'true' : 'false' }};  // hay radicados → plan bloqueado
+const PLAN_ORIGINAL_ID           = {{ ($rsLock && $esEdicion) ? (int)old('plan_id', $contrato->plan_id ?? 0) : 0 }};  // plan guardado en BD (inmutable)
 // 🔍 Debug AFP — revisar en consola del navegador
 console.log('[AFP] tipo_doc en BD:', CLIENTE_TIPO_DOC, '| exento AFP:', CLIENTE_EXENTO_AFP);
 // ── Regla AFP obligatorio ──────────────────────────────────────────────────
@@ -1448,14 +1452,47 @@ function filtrarPlanes(modalidadId) {
         if (planId === valorActual) planActualPermitido = true;
     });
 
-    // Si el plan ya no aplica, limpiar
-    if (valorActual && !planActualPermitido) {
+    // ── Referencia del plan: cuando hay rsLock usamos PLAN_ORIGINAL_ID ──────
+    // selPlan.value pudo haber sido limpiado por una selección incompatible
+    // anterior, así que no es confiable. PLAN_ORIGINAL_ID siempre es el valor
+    // guardado en BD y no cambia durante la sesión.
+    const valorReferencia = RS_LOCK ? PLAN_ORIGINAL_ID : (valorActual || 0);
+    // Recalcular si el plan de referencia está entre los permitidos
+    let planReferenciaPermitido = planesAgregados.includes(valorReferencia);
+
+    // Si hay rsLock: decisión basada en PLAN_ORIGINAL_ID (inmutable, no en selPlan.value)
+    if (RS_LOCK) {
+        const hiddenPlan = document.querySelector('input[type=hidden][name=plan_id]');
+        const alpineComp = document.querySelector('[x-data]')?._x_dataStack?.[0];
+        if (planReferenciaPermitido && valorReferencia) {
+            // Plan original compatible con la nueva modalidad → restaurar
+            selPlan.value = String(valorReferencia);
+            if (hiddenPlan) hiddenPlan.value = String(valorReferencia);
+            if (alpineComp) { alpineComp.planId = String(valorReferencia); }
+            bloquearEntidadesPorPlan(String(valorReferencia));
+        } else {
+            // Plan original NO compatible → limpiar
+            selPlan.value = '';
+            if (hiddenPlan) hiddenPlan.value = '';
+            if (alpineComp) { alpineComp.planId = ''; }
+        }
+    } else if (valorActual && !planActualPermitido) {
         selPlan.value = '';
         const alpineComp = document.querySelector('[x-data]')?._x_dataStack?.[0];
         if (alpineComp) { alpineComp.planId = ''; }
     } else {
         selPlan.value = valorActual || '';
         if (selPlan.value) bloquearEntidadesPorPlan(selPlan.value);
+    }
+
+    // ── Feedback visual inmediato cuando hay rsLock ──────────────────
+    if (RS_LOCK) {
+        const aviso      = document.getElementById('aviso-plan-incompatible');
+        const selPlanEl  = document.getElementById('sel_plan');
+        const hiddenPlan = document.querySelector('input[type=hidden][name=plan_id]');
+        const planVacio  = !planReferenciaPermitido || !valorReferencia;
+        if (aviso)     aviso.style.display   = planVacio ? 'block' : 'none';
+        if (selPlanEl) selPlanEl.style.borderColor = planVacio ? '#dc2626' : '';
     }
 
     // ── Auto-selección: si es TP y solo hay 1 plan válido, seleccionarlo ──
@@ -1467,6 +1504,11 @@ function filtrarPlanes(modalidadId) {
             alpineComp.recalcular();
         }
         bloquearEntidadesPorPlan(String(planesAgregados[0]));
+        // Actualizar hidden si rsLock
+        if (RS_LOCK) {
+            const hiddenPlan = document.querySelector('input[type=hidden][name=plan_id]');
+            if (hiddenPlan) hiddenPlan.value = String(planesAgregados[0]);
+        }
     }
 }
 
@@ -1688,6 +1730,25 @@ document.addEventListener('DOMContentLoaded', () => {
     const form = document.getElementById('form-contrato');
     if (form) {
         form.addEventListener('submit', function(e) {
+            // ── Validación: modalidad incompatible con plan bloqueado ──
+            // Si hay radicados (RS_LOCK), el plan está disabled y su valor viaja
+            // por el hidden. Pero si la modalidad cambió a una incompatible,
+            // filtrarPlanes() ya limpió el hidden → plan_id queda vacío.
+            if (RS_LOCK) {
+                const hiddenPlan = form.querySelector('input[type=hidden][name=plan_id]');
+                const planVal    = hiddenPlan ? hiddenPlan.value : (document.getElementById('sel_plan')?.value || '');
+                if (!planVal) {
+                    e.preventDefault();
+                    // Resaltar el select de plan
+                    const selPlan = document.getElementById('sel_plan');
+                    if (selPlan) selPlan.style.cssText += ';border-color:#dc2626!important;box-shadow:0 0 0 2px rgba(220,38,38,0.25)!important;';
+                    // Mostrar aviso visual
+                    const aviso = document.getElementById('aviso-plan-incompatible');
+                    if (aviso) { aviso.style.display = 'block'; aviso.scrollIntoView({ behavior:'smooth', block:'nearest' }); }
+                    return;
+                }
+            }
+
             const planId = document.getElementById('sel_plan')?.value;
             const d = PLAN_DATA[planId] || {};
             const checks = [

@@ -21,8 +21,9 @@ class IncapacidadController extends Controller
 
         // Solo mostramos las incapacidades PADRE (raíz) en la lista principal
         $query = Incapacidad::with([
-                'quienRecibe:id,nombre',   // solo columnas necesarias
-                'latestGestion',            // eager: una sola query para semáforo
+                'quienRecibe:id,nombre',
+                'latestGestion',
+                'prorrogas:id,incapacidad_padre_id,estado,valor_esperado', // para calcular valor pendiente
             ])
             ->withCount('prorrogas')
             ->where('aliado_id', $alidoId)
@@ -369,19 +370,37 @@ class IncapacidadController extends Controller
         }
 
         // Calcular resumen de familia
-        $familiaDias = $inc->totalDiasFamilia();
+        $familiaDias  = $inc->totalDiasFamilia();
         $numProrrogas = $inc->numeroProrrogas();
 
+        // Valor esperado total: original + todas las prórrogas
+        $totalValorEsperado = (float) ($inc->valor_esperado ?? 0)
+            + (float) $inc->prorrogas->sum('valor_esperado');
+
+        // Total ya pagado (abonos tipo pago_eps en la incapacidad original)
+        $totalPagado = DB::table('abonos_incapacidades')
+            ->where('incapacidad_id', $inc->id)
+            ->whereIn('tipo', ['pago_eps', 'pago_cliente'])
+            ->sum('valor');
+
+        // Contar prórrogas con estado NO final (pendientes de gestión)
+        $prorrogasPendientes = $inc->prorrogas
+            ->whereNotIn('estado', ['pagada', 'pagada_afiliado', 'pagada_razon_social', 'cierre_exitoso', 'rechazado'])
+            ->count();
+
         return response()->json([
-            'incapacidad'  => $inc,
-            'cliente'      => $cliente,
-            'empresa'      => $empresa,
-            'semaforo'     => $inc->colorSemaforo(),
-            'icono'        => $inc->iconoSemaforo(),
-            'dias_gestion' => $inc->diasDesdeUltimaGestion(),
-            'familia_dias' => $familiaDias,
-            'num_prorrogas'=> $numProrrogas,
-            'alerta_180'   => $inc->alertaDias180(),
+            'incapacidad'          => $inc,
+            'cliente'              => $cliente,
+            'empresa'              => $empresa,
+            'semaforo'             => $inc->colorSemaforo(),
+            'icono'                => $inc->iconoSemaforo(),
+            'dias_gestion'         => $inc->diasDesdeUltimaGestion(),
+            'familia_dias'         => $familiaDias,
+            'num_prorrogas'        => $numProrrogas,
+            'alerta_180'           => $inc->alertaDias180(),
+            'total_valor_esperado' => $totalValorEsperado,
+            'total_pagado'         => (float) $totalPagado,
+            'prorrogas_pendientes' => $prorrogasPendientes,
         ]);
     }
 
@@ -767,7 +786,8 @@ class IncapacidadController extends Controller
             $q->where('id', $padreId)->orWhere('incapacidad_padre_id', $padreId);
         })->whereNull('deleted_at')
           ->orderBy('numero_proroga')
-          ->get(['id', 'numero_proroga', 'incapacidad_padre_id', 'fecha_inicio', 'fecha_terminacion', 'dias_incapacidad']);
+          ->get(['id', 'numero_proroga', 'incapacidad_padre_id', 'fecha_inicio', 'fecha_terminacion',
+                 'dias_incapacidad', 'numero_radicado', 'fecha_radicado', 'estado', 'estado_pago', 'valor_esperado']);
 
         $familiaIds = $familia->pluck('id')->toArray();
 
@@ -799,6 +819,11 @@ class IncapacidadController extends Controller
                 'fecha_inicio'      => $miembro->fecha_inicio,
                 'fecha_terminacion' => $miembro->fecha_terminacion,
                 'dias_incapacidad'  => $miembro->dias_incapacidad,
+                'numero_radicado'   => $miembro->numero_radicado,
+                'fecha_radicado'    => $miembro->fecha_radicado,
+                'estado'            => $miembro->estado,
+                'estado_pago'       => $miembro->estado_pago,
+                'valor_esperado'    => $miembro->valor_esperado,
                 'documentos'        => $docs->map(function ($d) {
                     $ext = strtolower(pathinfo($d->ruta_pdf, PATHINFO_EXTENSION));
                     return [

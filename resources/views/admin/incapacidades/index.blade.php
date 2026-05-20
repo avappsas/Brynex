@@ -247,13 +247,28 @@ tbody td{padding:.6rem .85rem;vertical-align:middle;}
                     <div style="font-size:.68rem;color:#64748b">{{ $inc->fecha_inicio?->format('d/m/y') }}</div>
                 </td>
                 <td style="text-align:right">
-                    @if($inc->valor_esperado)
-                    <span style="font-weight:700;color:#059669;font-size:.83rem">${{ number_format($inc->valor_esperado,0,',','.') }}</span>
-                    @else<span style="color:#94a3b8;font-size:.75rem">—</span>@endif
+                    @php
+                    $estadosPagados = ['pagada','pagada_afiliado','pagada_razon_social','cierre_exitoso'];
+                    $valPendiente = 0;
+                    if (!in_array($inc->estado, $estadosPagados)) $valPendiente += (float)($inc->valor_esperado ?? 0);
+                    foreach ($inc->prorrogas as $p) {
+                        if (!in_array($p->estado, $estadosPagados)) $valPendiente += (float)($p->valor_esperado ?? 0);
+                    }
+                @endphp
+                @if($valPendiente > 0)
+                <span style="font-weight:700;color:#059669;font-size:.83rem">${{ number_format($valPendiente,0,',','.') }}</span>
+                @else<span style="color:#94a3b8;font-size:.75rem">—</span>@endif
                 </td>
                 <td style="text-align:center">
                     @if($numPrr > 0)
                     <span class="badge badge-primary">+{{ $numPrr }} prórr.</span>
+                    @php
+                        $estadosFinales = ['pagada','pagada_afiliado','pagada_razon_social','cierre_exitoso','rechazado'];
+                        $hayPendiente = $inc->prorrogas->whereNotIn('estado', $estadosFinales)->count() > 0;
+                    @endphp
+                    @if($hayPendiente)
+                    <span style="display:block;font-size:.68rem;color:#d97706;font-weight:700;margin-top:.15rem">⚠️ Prórr. activa</span>
+                    @endif
                     @else<span style="color:#94a3b8;font-size:.72rem">Original</span>@endif
                 </td>
                 <td>
@@ -569,62 +584,67 @@ function verDetalle(id){
                     <span class="badge badge-info">📅 Total familia: ${data.familia_dias} días</span>
                    </div>` : '';
 
-            // Gestiones
+            // Gestiones (timeline)
             const gestiones = (inc.gestiones||[]).map(g=>`
                 <div class="timeline-item">
                     <div class="tl-dot">${iconoTipoGestion(g.tipo)}</div>
                     <div class="tl-content">
                         <div class="tl-tipo">${g.tipo}${g.aplica_a_familia?' <span style="color:#d97706">· Familia</span>':''}</div>
                         <div class="tl-tramite">${g.tramite || g.respuesta || '—'}</div>
-
                         <div class="tl-meta">${g.user?.nombre||'Sistema'} · ${formatFechaLarga(g.created_at)} ${g.fecha_recordar?`· 🔔 Recordar: ${formatFechaLarga(g.fecha_recordar)}`:''}${g.estado_resultado?` · Estado: ${labelEstado(g.estado_resultado)}`:''}</div>
                     </div>
                 </div>`).join('');
 
-            // Prórrogas — tabla compacta con numeración y botón editar
+            // Prórrogas — tabla con original + prórrogas
+            const _bcMap = {success:'#d1fae5;color:#065f46',danger:'#fee2e2;color:#991b1b',warning:'#fef3c7;color:#92400e',primary:'#dbeafe;color:#1e40af',info:'#cffafe;color:#155e75',secondary:'#f1f5f9;color:#475569'};
+            const _tdStyle = 'padding:.55rem .7rem';
+            const _renderFila = (esOrig, id, numLabel, tipo, dias, fIni, fFin, tipoEnt, entNom, badgeHtml, valEsp, botones) =>
+                `<tr style="border-bottom:1px solid ${esOrig?'#bbf7d0':'#f1f5f9'};background:${esOrig?'#f0fdf4':''};transition:background .1s" onmouseover="this.style.background='${esOrig?'#dcfce7':'#f8fafc'}'" onmouseout="this.style.background='${esOrig?'#f0fdf4':''}'"> 
+                    <td style="${_tdStyle};font-weight:700;color:${esOrig?'#059669':'#2563eb'}">${numLabel}</td>
+                    <td style="${_tdStyle};color:#374151">${tipo}</td>
+                    <td style="${_tdStyle};text-align:center;font-weight:600">${dias}d</td>
+                    <td style="${_tdStyle};font-size:.75rem;color:#64748b;white-space:nowrap">${formatFechaLarga(fIni)}<br>→ ${formatFechaLarga(fFin)}</td>
+                    <td style="${_tdStyle};font-size:.75rem">${TIPOS_ENTIDAD[tipoEnt]||tipoEnt?.toUpperCase()}<br><span style="color:#64748b">${entNom||''}</span></td>
+                    <td style="${_tdStyle}">${badgeHtml}</td>
+                    <td style="${_tdStyle};text-align:right;font-weight:600;color:#059669">${valEsp?'$'+Number(valEsp).toLocaleString('es-CO'):'—'}</td>
+                    <td style="${_tdStyle};text-align:center"><div style="display:flex;gap:.3rem;justify-content:center;flex-wrap:wrap">${botones}</div></td>
+                </tr>`;
+            const _badge = (lbl,bg,col) => `<span style="display:inline-block;padding:.15rem .5rem;border-radius:999px;font-size:.68rem;font-weight:600;background:${bg};color:${col}">${lbl}</span>`;
+            // Fila original
+            const _ecOrig = colorEstado(inc.estado);
+            const _bcO = (_bcMap[_ecOrig]||_bcMap.secondary).split(';');
+            const _filaOrig = _renderFila(true,inc.id,'🏥 Original',labelTipo(inc.tipo_incapacidad),inc.dias_incapacidad,inc.fecha_inicio,inc.fecha_terminacion,inc.tipo_entidad,inc.entidad_nombre,_badge(labelEstado(inc.estado),_bcO[0],_bcO[1]||'color:#475569'),inc.valor_esperado,
+                `<button class="btn btn-warning btn-sm" onclick="cerrarModal('modalDetalle');abrirModalEditar(${inc.id})" title="Editar">✏️</button>`);
             const prorrogas = (inc.prorrogas||[]).length === 0 ? '<p style="color:#94a3b8;font-size:.82rem">Sin prórrogas.</p>' : `
             <div style="overflow-x:auto">
             <table style="width:100%;border-collapse:collapse;font-size:.8rem">
-                <thead>
-                    <tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0">
-                        <th style="padding:.5rem .7rem;text-align:left;font-size:.7rem;text-transform:uppercase;color:#64748b;white-space:nowrap">#</th>
-                        <th style="padding:.5rem .7rem;text-align:left;font-size:.7rem;text-transform:uppercase;color:#64748b">Tipo</th>
-                        <th style="padding:.5rem .7rem;text-align:center;font-size:.7rem;text-transform:uppercase;color:#64748b">Días</th>
-                        <th style="padding:.5rem .7rem;text-align:left;font-size:.7rem;text-transform:uppercase;color:#64748b">Período</th>
-                        <th style="padding:.5rem .7rem;text-align:left;font-size:.7rem;text-transform:uppercase;color:#64748b">Entidad</th>
-                        <th style="padding:.5rem .7rem;text-align:left;font-size:.7rem;text-transform:uppercase;color:#64748b">Estado</th>
-                        <th style="padding:.5rem .7rem;text-align:right;font-size:.7rem;text-transform:uppercase;color:#64748b">Valor Esp.</th>
-                        <th style="padding:.5rem .7rem;text-align:center;font-size:.7rem;text-transform:uppercase;color:#64748b">Acciones</th>
-                    </tr>
-                </thead>
+                <thead><tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0">
+                    <th style="padding:.5rem .7rem;font-size:.7rem;text-transform:uppercase;color:#64748b;white-space:nowrap">#</th>
+                    <th style="padding:.5rem .7rem;font-size:.7rem;text-transform:uppercase;color:#64748b">Tipo</th>
+                    <th style="padding:.5rem .7rem;text-align:center;font-size:.7rem;text-transform:uppercase;color:#64748b">Días</th>
+                    <th style="padding:.5rem .7rem;font-size:.7rem;text-transform:uppercase;color:#64748b">Período</th>
+                    <th style="padding:.5rem .7rem;font-size:.7rem;text-transform:uppercase;color:#64748b">Entidad</th>
+                    <th style="padding:.5rem .7rem;font-size:.7rem;text-transform:uppercase;color:#64748b">Estado</th>
+                    <th style="padding:.5rem .7rem;text-align:right;font-size:.7rem;text-transform:uppercase;color:#64748b">Valor Esp.</th>
+                    <th style="padding:.5rem .7rem;text-align:center;font-size:.7rem;text-transform:uppercase;color:#64748b">Acciones</th>
+                </tr></thead>
                 <tbody>
-                ${(inc.prorrogas||[]).map((p,i)=>{
-                    const ec = colorEstadoPago(p.estado_pago);
-                    const badgeColors = {success:'#d1fae5;color:#065f46',danger:'#fee2e2;color:#991b1b',warning:'#fef3c7;color:#92400e',primary:'#dbeafe;color:#1e40af',info:'#cffafe;color:#155e75',secondary:'#f1f5f9;color:#475569'};
-                    const bc = badgeColors[ec]||badgeColors.secondary;
-                    return `<tr style="border-bottom:1px solid #f1f5f9;transition:background .1s" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''"> 
-                        <td style="padding:.55rem .7rem;font-weight:700;color:#2563eb">${p.numero_proroga}</td>
-                        <td style="padding:.55rem .7rem;color:#374151">${labelTipo(p.tipo_incapacidad)}</td>
-                        <td style="padding:.55rem .7rem;text-align:center;font-weight:600">${p.dias_incapacidad}d</td>
-                        <td style="padding:.55rem .7rem;font-size:.75rem;color:#64748b;white-space:nowrap">${formatFechaLarga(p.fecha_inicio)}<br>→ ${formatFechaLarga(p.fecha_terminacion)}</td>
-                        <td style="padding:.55rem .7rem;font-size:.75rem">${TIPOS_ENTIDAD[p.tipo_entidad]||p.tipo_entidad?.toUpperCase()}<br><span style="color:#64748b">${p.entidad_nombre||''}</span></td>
-                        <td style="padding:.55rem .7rem"><span style="display:inline-block;padding:.15rem .5rem;border-radius:999px;font-size:.68rem;font-weight:600;background:${bc.split(';')[0]};${bc.split(';')[1]}">${labelEstadoPago(p.estado_pago)}</span></td>
-                        <td style="padding:.55rem .7rem;text-align:right;font-weight:600;color:#059669">${p.valor_esperado?'$'+Number(p.valor_esperado).toLocaleString('es-CO'):'—'}</td>
-                        <td style="padding:.55rem .7rem;text-align:center">
-                            <div style="display:flex;gap:.3rem;justify-content:center;flex-wrap:wrap">
-                                <button class="btn btn-info btn-sm" onclick="registrarGestion(${p.id})" title="Gestión">📞</button>
-                                <button class="btn btn-primary btn-sm" onclick="registrarPago(${p.id})" title="Pago">💰</button>
-                                <button class="btn btn-warning btn-sm" onclick="cerrarModal('modalDetalle'); abrirModalEditar(${p.id})" title="Editar prórroga">✏️</button>
-                            </div>
-                        </td>
-                    </tr>`;
+                ${_filaOrig}
+                ${(inc.prorrogas||[]).map((p)=>{
+                    const ec=colorEstadoPago(p.estado_pago); const bcp=(_bcMap[ec]||_bcMap.secondary).split(';');
+                    return _renderFila(false,p.id,p.numero_proroga,labelTipo(p.tipo_incapacidad),p.dias_incapacidad,p.fecha_inicio,p.fecha_terminacion,p.tipo_entidad,p.entidad_nombre,_badge(labelEstadoPago(p.estado_pago),bcp[0],bcp[1]||'color:#475569'),p.valor_esperado,
+                        `<button class="btn btn-info btn-sm" onclick="registrarGestion(${p.id})" title="Gestión">📞</button><button class="btn btn-primary btn-sm" onclick="registrarPago(${p.id})" title="Pago">💰</button><button class="btn btn-warning btn-sm" onclick="cerrarModal('modalDetalle');abrirModalEditar(${p.id})" title="Editar">✏️</button>`);
                 }).join('')}
-                </tbody>
-            </table>
-            </div>`;
+                </tbody></table></div>`;
 
-            // Valor esperado
-            const val = inc.valor_esperado ? `$${Number(inc.valor_esperado).toLocaleString('es-CO')}` : '—';
+            // Valor esperado — solo lo pendiente (no pagado)
+            const _estadosPag = ['pagada','pagada_afiliado','pagada_razon_social','cierre_exitoso'];
+            let _valPending = 0;
+            if (!_estadosPag.includes(inc.estado)) _valPending += Number(inc.valor_esperado||0);
+            (inc.prorrogas||[]).forEach(p => { if (!_estadosPag.includes(p.estado)) _valPending += Number(p.valor_esperado||0); });
+            const val = _valPending > 0 ? `$${_valPending.toLocaleString('es-CO')}` : '—';
+            const totalPagado = data.total_pagado || 0;
+            const prorrogasPend = data.prorrogas_pendientes || 0;
 
             document.getElementById('detalleCuerpo').innerHTML = `
                 ${al180}${resumenFam}
@@ -637,6 +657,7 @@ function verDetalle(id){
                 </div>
 
                 <div id="tabInfo" class="tab-pane active">
+                    ${prorrogasPend>0?`<div style="background:#fef3c7;border:1px solid #fde68a;border-radius:10px;padding:.6rem .9rem;margin-bottom:.75rem;display:flex;align-items:center;gap:.6rem;font-size:.82rem;color:#92400e"><span style="font-size:1.1rem">⚠️</span><div><strong>${prorrogasPend} prórroga(s) activa(s)</strong> pendiente(s) de gestión — revisa la pestaña <em>Prórrogas</em> para ver el detalle.</div></div>`:''}
                     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:.65rem;margin-bottom:.8rem">
                         <div style="background:#eff6ff;border-radius:10px;padding:.7rem .85rem;border:1px solid #bfdbfe">
                             <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;color:#3b82f6;letter-spacing:.06em;margin-bottom:.25rem">🏷️ Tipo</div>
@@ -647,9 +668,9 @@ function verDetalle(id){
                             <div style="font-size:.85rem;font-weight:600;color:#065f46">${TIPOS_ENTIDAD[inc.tipo_entidad]||inc.tipo_entidad?.toUpperCase()||'—'} — <strong>${inc.entidad_nombre||'N/A'}</strong></div>
                         </div>
                         <div style="background:#faf5ff;border-radius:10px;padding:.7rem .85rem;border:1px solid #e9d5ff">
-                            <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;color:#7c3aed;letter-spacing:.06em;margin-bottom:.25rem">📅 Días</div>
-                            <div style="font-size:1.4rem;font-weight:800;color:#4c1d95;line-height:1">${inc.dias_incapacidad}</div>
-                            ${data.familia_dias>inc.dias_incapacidad?`<div style="font-size:.65rem;color:#7c3aed">Total familia: ${data.familia_dias} días</div>`:''}
+                            <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;color:#7c3aed;letter-spacing:.06em;margin-bottom:.25rem">📅 Días totales</div>
+                            <div style="font-size:1.4rem;font-weight:800;color:#4c1d95;line-height:1">${data.familia_dias||inc.dias_incapacidad}</div>
+                            ${data.num_prorrogas>0?`<div style="font-size:.65rem;color:#7c3aed">Original: ${inc.dias_incapacidad}d + ${data.num_prorrogas} prórr.</div>`:''}
                         </div>
                         <div style="background:#fff7ed;border-radius:10px;padding:.7rem .85rem;border:1px solid #fed7aa">
                             <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;color:#ea580c;letter-spacing:.06em;margin-bottom:.25rem">🗓️ Período</div>
@@ -668,8 +689,9 @@ function verDetalle(id){
                             <div style="font-size:.83rem;font-weight:600;color:#1e293b">${inc.razon_social_nombre||'—'}</div>
                         </div>
                         <div style="background:#f0fdf4;border-radius:10px;padding:.65rem .85rem;border:1px solid #bbf7d0">
-                            <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;color:#059669;letter-spacing:.06em;margin-bottom:.2rem">💰 Valor Esperado</div>
+                            <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;color:#059669;letter-spacing:.06em;margin-bottom:.2rem">💰 Valor Esperado${data.num_prorrogas>0?' (Total)':''}</div>
                             <div style="font-size:1.05rem;font-weight:800;color:#059669">${val}</div>
+                            ${data.num_prorrogas>0&&totalPagado>0?`<div style="font-size:.65rem;color:#64748b">Pagado orig.: $${Number(totalPagado).toLocaleString('es-CO')}</div>`:''}
                         </div>
                     </div>
                     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.5rem;background:#f8fafc;padding:.75rem;border-radius:10px;border:1px solid #e2e8f0;margin-bottom:.6rem">
@@ -733,13 +755,19 @@ function iconoTipoGestion(tipo){
 
 // ── Gestión inline ───────────────────────────────────────────────────────────
 function registrarGestion(incId) {
-    // Cargar en paralelo: datos de la incapacidad + familia
     Promise.all([
         fetch(`/admin/incapacidades/${incId}/show`).then(r => r.json()).catch(() => ({})),
         fetch(`/admin/incapacidades/${incId}/documentos-familia`).then(r => r.json()).catch(() => ({}))
     ]).then(([showData, familiaData]) => {
         const inc    = showData.incapacidad || {};
         const familia = familiaData.familia || [];
+        // Mapa id → radicado y estado para el panel de gestión
+        window._familiaRadicadosMap = {};
+        window._familiaEstadosMap   = {};
+        familia.forEach(m => {
+            window._familiaRadicadosMap[m.incapacidad_id] = {numero_radicado: m.numero_radicado, fecha_radicado: m.fecha_radicado};
+            window._familiaEstadosMap[m.incapacidad_id]   = m.estado;
+        });
         _mostrarModalGestion(incId, familia, inc);
     });
 }
@@ -753,6 +781,7 @@ function _mostrarModalGestion(incId, familia, inc = {}) {
         otro:     '📝 Otro',
     };
     const ESTADOS = @json(\App\Models\Incapacidad::ESTADOS);
+    window.ESTADOS = ESTADOS; // Exponer para _actualizarSubtituloGestion
 
     // Estado actual de la incapacidad (para pre-seleccionar)
     const estadoActual     = inc.estado || '';
@@ -777,8 +806,10 @@ function _mostrarModalGestion(incId, familia, inc = {}) {
 
     // ── Mapa de transiciones válidas (máquina de estados) ──────────────────
     const TRANSICIONES = {
+        'pendiente':                   ['transcripcion_ips', 'radicada'],
         'recibido':                    ['transcripcion_ips', 'radicada'],
         'transcripcion_ips':           ['radicada'],
+        'transcripcion':               ['radicada'],
         'radicada':                    ['negada', 'en_liquidacion'],
         'negada':                      ['radicada', 'rechazado', 'derecho_peticion'],
         'derecho_peticion':            ['derecho_peticion_radicado'],
@@ -786,14 +817,12 @@ function _mostrarModalGestion(incId, familia, inc = {}) {
         'tutela':                      ['tutela_radicada', 'rechazado'],
         'tutela_radicada':             ['en_liquidacion', 'rechazado'],
         'en_liquidacion':              ['pagada_razon_social'],
+        'liquidacion':                 ['pagada_razon_social'],
         'pagada_razon_social':         ['pagada_afiliado'],
         'pagada_afiliado':             ['cierre_exitoso'],
         'cierre_exitoso':              [],
         'rechazado':                   [],
-        // legacy
         'pagada':                      [],
-        'liquidacion':                 ['pagada_razon_social'],
-        'transcripcion':               ['radicada'],
     };
 
     const siguientesValidos = TRANSICIONES[estadoActual] || [];
@@ -905,21 +934,54 @@ function _mostrarModalGestion(incId, familia, inc = {}) {
     setTimeout(() => {
         const sel = document.getElementById('gEstado');
         if (sel) {
-            const _toggle = (val) => {
+            window._gToggle = (val) => {
+                // Normalizar: si val='' (opcion "no cambiar"), usar el estado actual del inc seleccionado
+                const alcEl2 = document.getElementById('gAlcance');
+                const alcVal2 = alcEl2 ? alcEl2.value : '';
+                let selEstado = val;
+                if (!selEstado) {
+                    // Usar el estado del miembro seleccionado en el alcance
+                    if (alcVal2.startsWith('incapacidad_')) {
+                        const tId2 = parseInt(alcVal2.replace('incapacidad_', ''));
+                        selEstado = (window._familiaEstadosMap || {})[tId2] || estadoActual;
+                    } else {
+                        selEstado = estadoActual;
+                    }
+                }
                 const alerta   = document.getElementById('gAlertaCierre');
                 const radicado = document.getElementById('gCamposRadicada');
                 const pagoRS   = document.getElementById('gPanelPagoRS');
-                if (alerta)   alerta.style.display  = val === 'cierre_exitoso'     ? 'block' : 'none';
-                if (radicado) radicado.style.display = val === 'radicada'           ? 'block' : 'none';
-                if (pagoRS) {
-                    pagoRS.style.display = val === 'pagada_razon_social' ? 'block' : 'none';
-                    if (val === 'pagada_razon_social') {
-                        _cargarCuentasRS(incId);
+                if (alerta) alerta.style.display = selEstado === 'cierre_exitoso' ? 'block' : 'none';
+                if (radicado) {
+                    radicado.style.display = selEstado === 'radicada' ? 'block' : 'none';
+                    if (selEstado === 'radicada') {
+                        const alcEl = document.getElementById('gAlcance');
+                        const alcVal = alcEl ? alcEl.value : '';
+                        let tId = incId;
+                        if (alcVal.startsWith('incapacidad_')) tId = parseInt(alcVal.replace('incapacidad_', ''));
+                        const info = (window._familiaRadicadosMap || {})[tId] || {};
+                        const today = new Date().toISOString().substring(0,10);
+                        radicado.innerHTML =
+                            `<div style="font-size:.72rem;font-weight:700;color:#065f46;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.5rem">📋 Datos del Radicado</div>
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">
+                                <div class="form-group" style="margin:0">
+                                    <label>Número Radicado *</label>
+                                    <input type="text" id="gNumRadicado" class="form-control" placeholder="Ej: 2026-12345" value="${info.numero_radicado || ''}">
+                                </div>
+                                <div class="form-group" style="margin:0">
+                                    <label>Fecha Radicado *</label>
+                                    <input type="date" id="gFechaRadicado" class="form-control" value="${info.fecha_radicado ? String(info.fecha_radicado).substring(0,10) : today}">
+                                </div>
+                            </div>`;
                     }
                 }
+                if (pagoRS) {
+                    pagoRS.style.display = selEstado === 'pagada_razon_social' ? 'block' : 'none';
+                    if (selEstado === 'pagada_razon_social') _cargarCuentasRS(incId);
+                }
             };
-            _toggle(sel.value);
-            sel.addEventListener('change', function() { _toggle(this.value); });
+            window._gToggle(sel.value);
+            sel.addEventListener('change', function() { window._gToggle(this.value); });
         }
     }, 100);
 
@@ -1279,12 +1341,48 @@ function _confirmarFormaRS(forma) {
 }
 
 
-// Actualiza el subtítulo del modal al cambiar la incapacidad seleccionada
+// Actualiza subtítulo y panel de radicado al cambiar la incapacidad seleccionada
 function _actualizarSubtituloGestion(sel) {
     const sub = document.getElementById('gModalSubtitle');
-    if (!sub) return;
-    const txt = sel.options[sel.selectedIndex]?.text || '';
-    sub.textContent = txt.includes('familia') ? '👨‍👩‍👧 Gestión para toda la familia' : txt;
+    if (sub) {
+        const txt = sel.options[sel.selectedIndex]?.text || '';
+        sub.textContent = txt.includes('familia') ? '👨‍👩‍👧 Gestión para toda la familia' : txt;
+    }
+    // Actualizar las opciones de gEstado según el estado del miembro seleccionado
+    const alcVal = sel.value;
+    const gEstadoEl = document.getElementById('gEstado');
+    if (gEstadoEl && alcVal.startsWith('incapacidad_')) {
+        const tId = parseInt(alcVal.replace('incapacidad_', ''));
+        const estadoMiembro = (window._familiaEstadosMap || {})[tId] || '';
+        const TRANS = {
+            'pendiente':['transcripcion_ips','radicada'],'recibido':['transcripcion_ips','radicada'],
+            'transcripcion_ips':['radicada'],'transcripcion':['radicada'],
+            'radicada':['negada','en_liquidacion'],
+            'negada':['radicada','rechazado','derecho_peticion'],
+            'derecho_peticion':['derecho_peticion_radicado'],
+            'derecho_peticion_radicado':['rechazado','tutela','en_liquidacion'],
+            'tutela':['tutela_radicada','rechazado'],'tutela_radicada':['en_liquidacion','rechazado'],
+            'en_liquidacion':['pagada_razon_social'],'liquidacion':['pagada_razon_social'],
+            'pagada_razon_social':['pagada_afiliado'],'pagada_afiliado':['cierre_exitoso'],
+            'cierre_exitoso':[],'rechazado':[],'pagada':[],
+        };
+        const sigs = TRANS[estadoMiembro] || [];
+        const ESTADOS_LBL = window.ESTADOS || {};
+        const icons = {secondary:'⬜',info:'🔵',primary:'📋',warning:'🟡',danger:'🔴',success:'🟢'};
+        const opts = sigs.map(k => {
+            const cfg = ESTADOS_LBL[k] || {};
+            const dot = icons[cfg.color||'secondary']||'⬜';
+            return `<option value="${k}">${dot} ${cfg.label||k}</option>`;
+        }).join('');
+        const estadoLbl = (ESTADOS_LBL[estadoMiembro]||{}).label || estadoMiembro || '—';
+        gEstadoEl.disabled = sigs.length === 0;
+        gEstadoEl.innerHTML = `<option value="" selected>${estadoLbl}</option>${opts ||
+            '<option value="" disabled style="color:#94a3b8">— Sin transiciones disponibles —</option>'}`;
+    }
+    // Refrescar panel de campos si el estado seleccionado lo requiere
+    if (typeof window._gToggle === 'function') {
+        window._gToggle(gEstadoEl?.value || '');
+    }
 }
 
 function enviarGestion(incId) {
@@ -1343,22 +1441,40 @@ function enviarGestion(incId) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': TOKEN, 'Accept': 'application/json' },
         body: JSON.stringify(body),
-    }).then(r => r.json()).then(d => {
+    }).then(r => {
+        // Capturar status para detectar errores de validación (422)
+        const status = r.status;
+        return r.json().then(d => ({ d, status }));
+    }).then(({ d, status }) => {
         if (btn) { btn.disabled = false; btn.textContent = '💾 Guardar Gestión'; }
         if (d.ok) {
-            // Subir foto de comprobante si hay una y se creó consignación
+            // Foto comprobante
             if (d.consignacion_id && window._rsFotoFile) {
                 const fd = new FormData();
                 fd.append('imagen', window._rsFotoFile);
                 fd.append('_token', TOKEN);
-                fetch(`/admin/facturacion/consignacion/${d.consignacion_id}/imagen`, {
-                    method: 'POST', body: fd,
-                }).catch(() => {}); // silencioso
+                fetch(`/admin/facturacion/consignacion/${d.consignacion_id}/imagen`, { method: 'POST', body: fd }).catch(() => {});
                 window._rsFotoFile = null;
             }
+            // Toast de éxito
+            _toastExito('✅ Gestión guardada correctamente');
             document.getElementById('modalGestion').classList.remove('open');
-            const detalleId = document.getElementById('modalDetalle')?.dataset?.incId || incId;
-            verDetalle(parseInt(detalleId));
+            // Recargar detalle del padre y abrir pestaña Prórrogas si se guardó en una prórroga
+            const detalleEl  = document.getElementById('modalDetalle');
+            const detalleId  = parseInt(detalleEl?.dataset?.incId || incId);
+            const esProrrogaDiferente = targetId !== detalleId;
+            verDetalle(detalleId);
+            if (esProrrogaDiferente) {
+                // Dar tiempo para que el modal se renderice y luego abrir la pestaña
+                setTimeout(() => {
+                    const tabProrrogas = document.querySelector('#modalDetalle [data-tab="prorrogas"], #modalDetalle button[onclick*="prorrogas"]');
+                    if (tabProrrogas) tabProrrogas.click();
+                }, 600);
+            }
+        } else if (status === 422 && d.errors) {
+            // Error de validación de Laravel
+            const msgs = Object.values(d.errors).flat().join('\n');
+            alert('Error de validación:\n' + msgs);
         } else {
             alert('Error: ' + (d.message || 'Error desconocido'));
         }
