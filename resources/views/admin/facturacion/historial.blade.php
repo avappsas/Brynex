@@ -78,6 +78,8 @@ table.hi-tbl{width:100%;border-collapse:collapse;font-size:.77rem}
 .btn-anular{background:#fff1f2;color:#be123c;border:1px solid #fecdd3}.btn-anular:hover{background:#ffe4e6}
 .badge-planilla{display:inline-flex;align-items:center;gap:.25rem;padding:.13rem .5rem;border-radius:20px;font-size:.62rem;font-weight:700;background:#dcfce7;color:#15803d;border:1px solid #bbf7d0;font-family:monospace;letter-spacing:.03em}
 .badge-planilla-lock{background:#fef9c3;color:#854d0e;border-color:#fde68a}
+.btn-soporte-planilla{display:inline-flex;align-items:center;gap:.2rem;padding:.1rem .38rem;border-radius:5px;font-size:.62rem;font-weight:700;background:#fffbeb;color:#b45309;border:1px solid #fde68a;cursor:pointer;transition:all .15s;vertical-align:middle;margin-left:.25rem}
+.btn-soporte-planilla:hover{background:#fef3c7;border-color:#f59e0b}
 </style>
 
 {{-- HEADER --}}
@@ -204,11 +206,23 @@ table.hi-tbl{width:100%;border-collapse:collapse;font-size:.77rem}
                 {{-- NP — al lado de Estado --}}
                 <td style="font-weight:700;color:#1d4ed8;font-family:monospace;font-size:.76rem">{{ $f->n_plano ?? '—' }}</td>
                 {{-- Nº Planilla operador --}}
-                <td>
+                <td style="white-space:nowrap">
                     @if($numeroPlanillaOp)
                     <span class="badge-planilla" title="Planilla pagada al operador">
                         📄 {{ $numeroPlanillaOp }}
                     </span>
+                    @php $soporte = $soportesPlanilla[$numeroPlanillaOp] ?? null; @endphp
+                    @if($soporte)
+                    <button class="btn-soporte-planilla"
+                            onclick="verSoportePlanilla(
+                                '{{ Storage::url($soporte->imagen_path) }}',
+                                '{{ addslashes($numeroPlanillaOp) }}',
+                                '{{ addslashes($soporte->pagado_a ?? '') }}'
+                            )"
+                            title="Ver comprobante de pago planilla #{{ $numeroPlanillaOp }}">
+                        🖼️
+                    </button>
+                    @endif
                     @else
                     <span style="color:#cbd5e1;font-size:.7rem">—</span>
                     @endif
@@ -430,6 +444,24 @@ async function confirmarAnular() {
         btn.disabled = false; btn.textContent = '⛔ Confirmar Anulación';
     }
 }
+// ── Modal Soporte Planilla ─────────────────────────────
+function verSoportePlanilla(url, nroPlanilla, operador) {
+    document.getElementById('sp-numero').textContent   = '#' + nroPlanilla;
+    document.getElementById('sp-operador').textContent = operador || '—';
+    const visor = document.getElementById('sp-visor');
+    const esPdf = url.toLowerCase().endsWith('.pdf');
+    if (esPdf) {
+        visor.innerHTML = `<iframe src="${url}" style="width:100%;height:100%;border:none;"></iframe>`;
+    } else {
+        visor.innerHTML = `<img src="${url}" style="max-width:100%;max-height:100%;object-fit:contain;display:block;margin:auto;" alt="Comprobante planilla">`;
+    }
+    document.getElementById('sp-link').href = url;
+    document.getElementById('modal-soporte-ov').style.display = 'flex';
+}
+function cerrarSoportePlanilla() {
+    document.getElementById('modal-soporte-ov').style.display = 'none';
+    document.getElementById('sp-visor').innerHTML = '';
+}
 </script>
 
 {{-- Modal Recibo --}}
@@ -457,6 +489,34 @@ async function confirmarAnular() {
         </div>
         <div style="flex:1;background:#e8edf2;padding:.35rem 0 0;overflow:hidden;">
             <iframe id="recibo-frame" src="" style="width:100%;height:100%;border:none;display:block;"></iframe>
+        </div>
+    </div>
+</div>
+
+{{-- Modal Soporte Planilla --}}
+<div id="modal-soporte-ov"
+     onclick="if(event.target.id==='modal-soporte-ov')cerrarSoportePlanilla()"
+     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);backdrop-filter:blur(4px);z-index:99998;align-items:center;justify-content:center;padding:.75rem">
+    <div style="background:#fff;border-radius:14px;width:min(800px,97vw);max-height:92vh;display:flex;flex-direction:column;box-shadow:0 28px 70px rgba(0,0,0,.5);overflow:hidden">
+        {{-- Header --}}
+        <div style="background:linear-gradient(135deg,#78350f,#b45309);padding:.65rem 1rem;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+            <div>
+                <div style="color:#fff;font-size:.9rem;font-weight:800">🖼️ Comprobante Planilla <span id="sp-numero" style="font-family:monospace"></span></div>
+                <div style="color:rgba(255,255,255,.7);font-size:.68rem;margin-top:.1rem">Operador: <span id="sp-operador"></span></div>
+            </div>
+            <div style="display:flex;gap:.5rem;align-items:center">
+                <a id="sp-link" href="#" target="_blank"
+                   style="background:rgba(255,255,255,.18);color:#fef3c7;border:none;border-radius:6px;padding:.25rem .65rem;font-size:.72rem;font-weight:700;cursor:pointer;text-decoration:none;transition:background .15s"
+                   onmouseover="this.style.background='rgba(255,255,255,.3)'" onmouseout="this.style.background='rgba(255,255,255,.18)'">
+                    ↗ Abrir
+                </a>
+                <button onclick="cerrarSoportePlanilla()"
+                        style="background:rgba(255,255,255,.15);color:#fff;border:none;border-radius:6px;width:28px;height:28px;font-size:1rem;cursor:pointer;font-weight:700;transition:background .15s"
+                        onmouseover="this.style.background='rgba(255,255,255,.28)'" onmouseout="this.style.background='rgba(255,255,255,.15)'">&#x2715;</button>
+            </div>
+        </div>
+        {{-- Visor --}}
+        <div id="sp-visor" style="flex:1;background:#f1f5f9;overflow:auto;min-height:400px;display:flex;align-items:center;justify-content:center;padding:.5rem">
         </div>
     </div>
 </div>

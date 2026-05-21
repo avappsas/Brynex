@@ -437,7 +437,7 @@ $totAdmon+=$vAdm;$totIva+=$vIva;$totTotal+=$vTot;$totMora+=$vMora;
      Usa empresa_id: suma TODOS los saldo_proximo hasta e incluyendo el mes actual.
      Abril: +700k  |  Mayo: +700k - 700k = 0  |  Junio: correcto
 --}}
-@if($saldoEmpresaFavor > 0 || $saldoEmpresaPendiente > 0)
+@if($saldoEmpresaFavor > 0 || $saldoEmpresaPendiente > 0 || $totalAnticipoDisponible > 0)
 <div style="display:flex;justify-content:flex-end;gap:.6rem;flex-wrap:wrap;margin-top:.55rem;">
 
     @if($saldoEmpresaFavor > 0)
@@ -458,6 +458,31 @@ $totAdmon+=$vAdm;$totIva+=$vIva;$totTotal+=$vTot;$totMora+=$vMora;
             <div style="font-size:.6rem;font-weight:700;color:#dc2626;text-transform:uppercase;letter-spacing:.04em;">Pendiente empresa</div>
             <div style="font-size:.95rem;font-weight:800;color:#dc2626;">-${{ number_format($saldoEmpresaPendiente,0,',','.') }}</div>
             <div style="font-size:.58rem;color:#fca5a5;">Se suma al total al facturar</div>
+        </div>
+    </div>
+    @endif
+
+    {{-- ─── Panel anticipo disponible ───────────────────────────── --}}
+    @if($totalAnticipoDisponible > 0)
+    <div style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:10px;padding:.55rem .9rem;display:flex;align-items:flex-start;gap:.5rem;min-width:210px;max-width:320px;">
+        <span style="font-size:1.2rem;margin-top:.05rem;">🟡</span>
+        <div style="flex:1;">
+            <div style="font-size:.6rem;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.04em;">Anticipo disponible</div>
+            <div style="font-size:.95rem;font-weight:800;color:#92400e;">${{ number_format($totalAnticipoDisponible,0,',','.') }}</div>
+            <div style="font-size:.58rem;color:#b45309;margin-bottom:.3rem;">Se puede aplicar al facturar este mes</div>
+            {{-- Detalle de cada anticipo --}}
+            @foreach($anticiposEmpresa as $ant)
+            <div style="display:flex;justify-content:space-between;align-items:center;font-size:.62rem;padding:.1rem 0;border-top:.5px solid #fde68a;color:#78350f;">
+                <span>
+                    {{ ucfirst($ant->forma_pago) }}
+                    · {{ $ant->fecha_pago->format('d/m/Y') }}
+                    @if($ant->estado === 'parcial')
+                        <span style="background:#fed7aa;color:#c2410c;border-radius:4px;padding:.05rem .25rem;font-size:.55rem;font-weight:700;">Parcial</span>
+                    @endif
+                </span>
+                <strong style="font-family:monospace;">${{ number_format($ant->valor_disponible,0,',','.') }}</strong>
+            </div>
+            @endforeach
         </div>
     </div>
     @endif

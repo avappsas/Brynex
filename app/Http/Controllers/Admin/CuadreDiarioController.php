@@ -505,9 +505,14 @@ class CuadreDiarioController extends Controller
         }
 
         // ── 3. Cargar TODOS los gastos del período (batch) ───────────────────
+        // NOTA: gastos tipo 'pago_planilla' se guardan con forma_pago='transferencia'
+        //       (no 'transferencia_bancaria'), por eso se incluyen explícitamente por tipo.
         $todasSalidas = Gasto::where('aliado_id', $aliadoId)
             ->whereIn('banco_origen_id', $bancoIds)
-            ->whereIn('forma_pago', ['transferencia_bancaria', 'banco_banco'])
+            ->where(function ($q) {
+                $q->whereIn('forma_pago', ['transferencia_bancaria', 'banco_banco'])
+                  ->orWhere('tipo', 'pago_planilla');   // ← pago_planilla usa forma_pago='transferencia'
+            })
             ->whereBetween('fecha', [$inicio, $fin])
             ->with(['usuario', 'bancoDestino'])
             ->orderByDesc('fecha')->orderByDesc('id')
@@ -571,21 +576,25 @@ class CuadreDiarioController extends Controller
             });
 
             $movSalidas = ($todasSalidas[$bc->id] ?? collect())->map(fn($g) => (object)[
-                'id'          => $g->id,
-                'fecha'       => $g->fecha,
-                'tipo'        => $g->tipo,
-                'confirmado'  => true,
-                'factura_id'  => null,
-                'num_factura' => null,
-                'pagador'     => $g->pagado_a,
-                'descripcion' => $g->descripcion . ($g->bancoDestino ? ' → ' . $g->bancoDestino->banco : ''),
-                'usuario'     => $g->usuario?->nombre,
-                'valor'       => $g->valor,
-                'imagen_path' => $g->imagen_path,
-                'imagen_url'  => $g->imagen_path ? Storage::url($g->imagen_path) : null,
-                'es_salida'   => true,
-                'es_gasto'    => true,
-                'referencia'  => null,
+                'id'               => $g->id,
+                'fecha'            => $g->fecha,
+                'tipo'             => $g->tipo,
+                'confirmado'       => true,
+                'factura_id'       => null,
+                'num_factura'      => $g->tipo === 'pago_planilla' ? ($g->numero_planilla ?? null) : null,
+                'pagador'          => $g->pagado_a,
+                'descripcion'      => $g->tipo === 'pago_planilla'
+                    ? '📋 Planilla SS' . ($g->numero_planilla ? ' #' . $g->numero_planilla : '')
+                        . ($g->pagado_a ? ' · ' . $g->pagado_a : '')
+                    : ($g->descripcion . ($g->bancoDestino ? ' → ' . $g->bancoDestino->banco : '')),
+                'usuario'          => $g->usuario?->nombre,
+                'valor'            => $g->valor,
+                'imagen_path'      => $g->imagen_path,
+                'imagen_url'       => $g->imagen_path ? Storage::url($g->imagen_path) : null,
+                'es_salida'        => true,
+                'es_gasto'         => true,
+                'es_planilla'      => $g->tipo === 'pago_planilla',
+                'referencia'       => $g->numero_planilla ?? null,
             ]);
 
             $movimientos = $movEntradas->merge($movSalidas)->sortByDesc('fecha')->values();

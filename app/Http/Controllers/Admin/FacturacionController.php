@@ -267,11 +267,16 @@ class FacturacionController extends Controller
         $saldoEmpresaFavor    = $saldoNetoEmpresa > 0 ? (int)$saldoNetoEmpresa : 0;
         $saldoEmpresaPendiente = $saldoNetoEmpresa < 0 ? (int)abs($saldoNetoEmpresa) : 0;
 
+        // ─── Anticipos disponibles de la empresa (aún no aplicados) ──────────
+        $anticiposEmpresa       = \App\Models\Anticipo::disponiblesParaEmpresa($aliadoId, $empresa->id);
+        $totalAnticipoDisponible = (int)$anticiposEmpresa->sum('valor_disponible');
+
         return view('admin.facturacion.empresa', compact(
             'empresa', 'contratos', 'facturasExistentes',
             'mes', 'anio', 'bancos', 'planosActuales', 'asesores',
             'saldoEmpresaFavor', 'saldoEmpresaPendiente',
-            'moraPorContrato'
+            'moraPorContrato',
+            'anticiposEmpresa', 'totalAnticipoDisponible'
         ));
     }
 
@@ -2028,10 +2033,31 @@ class FacturacionController extends Controller
         $meses = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
                        'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 
+        // ─── Comprobantes de pago planilla (batch, una sola query) ───────────
+        // Para cada factura con plano.numero_planilla, buscamos el gasto pago_planilla
+        // correspondiente y obtenemos su imagen (soporte del pago al operador).
+        $numeroPlanillas = $facturas
+            ->map(fn($f) => $f->plano?->numero_planilla)
+            ->filter()
+            ->unique()
+            ->values()
+            ->toArray();
+
+        $soportesPlanilla = collect();
+        if (!empty($numeroPlanillas)) {
+            $soportesPlanilla = \App\Models\Gasto::where('aliado_id', $aliadoId)
+                ->where('tipo', 'pago_planilla')
+                ->whereIn('numero_planilla', $numeroPlanillas)
+                ->whereNotNull('imagen_path')
+                ->get(['numero_planilla', 'imagen_path', 'descripcion', 'pagado_a'])
+                ->keyBy('numero_planilla');
+        }
+
         return view('admin.facturacion.historial', compact(
             'cliente', 'contrato', 'cedula', 'agrupado',
             'filtroAnio', 'filtroRs', 'sinFiltros',
-            'aniosDisp', 'rsSocDisp', 'meses', 'contratosporRS'
+            'aniosDisp', 'rsSocDisp', 'meses', 'contratosporRS',
+            'soportesPlanilla'
         ));
     }
 
