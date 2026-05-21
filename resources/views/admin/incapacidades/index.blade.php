@@ -827,16 +827,17 @@ function _mostrarModalGestion(incId, familia, inc = {}) {
 
     const siguientesValidos = TRANSICIONES[estadoActual] || [];
 
-    // Construir opciones: solo los estados válidos desde el actual
-    const optEstados = siguientesValidos.length === 0
-        ? `<option value="" disabled style="color:#94a3b8">— Estado final, sin transiciones disponibles —</option>`
-        : siguientesValidos.map(k => {
+    // Construir opciones: estado actual + posibles estados siguientes
+    let optEstados = `<option value="${estadoActual}">— (Mantener estado actual)</option>`;
+    if (siguientesValidos.length > 0) {
+        optEstados += siguientesValidos.map(k => {
             const cfg = ESTADOS[k] || {};
-            const lbl = (cfg.label || k).replace(/[\u{1F000}-\u{1FFFF}]/gu, '').trim() || cfg.label || k;
+            const lbl = (cfg.label || k);
             const icons = { secondary:'⬜', info:'🔵', primary:'📋', warning:'🟡', danger:'🔴', success:'🟢' };
             const dot = icons[cfg.color || 'secondary'] || '⬜';
-            return `<option value="${k}">${dot} ${cfg.label || k}</option>`;
+            return `<option value="${k}">${dot} ${lbl}</option>`;
           }).join('');
+    }
 
     // Indicador visual de estado actual
     const estadoActualCfg = ESTADOS[estadoActual] || {};
@@ -869,8 +870,7 @@ function _mostrarModalGestion(incId, familia, inc = {}) {
             </div>
             <div class="form-group">
                 <label>Estado de la incapacidad</label>
-                <select id="gEstado" class="form-control" ${siguientesValidos.length === 0 ? 'disabled' : ''}>
-                    <option value="" selected>${estadoActualLbl}</option>
+                <select id="gEstado" class="form-control">
                     ${optEstados}
                 </select>
             </div>
@@ -897,21 +897,18 @@ function _mostrarModalGestion(incId, familia, inc = {}) {
 
         <div id="gCamposRadicada" style="display:none;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:.65rem .85rem">
             <div style="font-size:.72rem;font-weight:700;color:#065f46;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.5rem">📋 Datos del Radicado</div>
-            ${yaRadicada ? `
-            <div style="font-size:.82rem;color:#065f46;background:#dcfce7;border-radius:6px;padding:.45rem .7rem">
-                ✅ Ya tiene radicado: <strong>${inc.numero_radicado}</strong>
-                ${inc.fecha_radicado ? `<span style="color:#047857;margin-left:.5rem">(${inc.fecha_radicado.substring(0,10)})</span>` : ''}
-            </div>` : `
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">
-                <div class="form-group" style="margin:0">
-                    <label>Número Radicado *</label>
-                    <input type="text" id="gNumRadicado" class="form-control" placeholder="Ej: 2026-12345">
+            <div id="gCamposRadicadaInner">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">
+                    <div class="form-group" style="margin:0">
+                        <label>Número Radicado *</label>
+                        <input type="text" id="gNumRadicado" class="form-control" placeholder="Ej: 2026-12345">
+                    </div>
+                    <div class="form-group" style="margin:0">
+                        <label>Fecha Radicado *</label>
+                        <input type="date" id="gFechaRadicado" class="form-control">
+                    </div>
                 </div>
-                <div class="form-group" style="margin:0">
-                    <label>Fecha Radicado *</label>
-                    <input type="date" id="gFechaRadicado" class="form-control" value="${new Date().toISOString().substring(0,10)}">
-                </div>
-            </div>`}
+            </div>
         </div>
     </div>
     <div class="modal-footer">
@@ -1376,8 +1373,8 @@ function _actualizarSubtituloGestion(sel) {
         }).join('');
         const estadoLbl = (ESTADOS_LBL[estadoMiembro]||{}).label || estadoMiembro || '—';
         gEstadoEl.disabled = sigs.length === 0;
-        gEstadoEl.innerHTML = `<option value="" selected>${estadoLbl}</option>${opts ||
-            '<option value="" disabled style="color:#94a3b8">— Sin transiciones disponibles —</option>'}`;
+        gEstadoEl.innerHTML = `<option value="${estadoMiembro}" selected>${estadoLbl}</option>${opts ||
+            '<option value="${estadoMiembro}" disabled style="color:#94a3b8">— Sin transiciones disponibles —</option>'}`;
     }
     // Refrescar panel de campos si el estado seleccionado lo requiere
     if (typeof window._gToggle === 'function') {
@@ -1456,8 +1453,8 @@ function enviarGestion(incId) {
                 fetch(`/admin/facturacion/consignacion/${d.consignacion_id}/imagen`, { method: 'POST', body: fd }).catch(() => {});
                 window._rsFotoFile = null;
             }
-            // Toast de éxito
-            _toastExito('✅ Gestión guardada correctamente');
+            // Mensaje de éxito
+            alert('✅ Gestión guardada correctamente');
             document.getElementById('modalGestion').classList.remove('open');
             // Recargar detalle del padre y abrir pestaña Prórrogas si se guardó en una prórroga
             const detalleEl  = document.getElementById('modalDetalle');

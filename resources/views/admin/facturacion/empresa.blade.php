@@ -111,7 +111,7 @@ table.fac-tbl{width:100%;border-collapse:collapse;font-size:.78rem}
             <span style="position:absolute;left:.5rem;color:#94a3b8;font-size:.85rem;pointer-events:none;">🔍</span>
             <input id="inp-buscar" type="text" placeholder="Nombre o cédula..."
                    oninput="buscar(this.value)"
-                   autocomplete="off" spellcheck="false"
+                   autocomplete="new-password" spellcheck="false"
                    style="padding:.28rem .6rem .28rem 1.75rem;border:1.5px solid #e2e8f0;
                           border-radius:20px;font-size:.8rem;background:#f8fafc;
                           color:#334155;outline:none;width:190px;transition:border .15s,width .2s;"
@@ -780,6 +780,14 @@ function OI_abrirEmpresa() {
         asesorNombre: {!! json_encode($empresa->asesor?->nombre ?? '') !!},
     });
 }
+// ─── Forzar campo buscador vacío al cargar (evita autorrelleno del navegador) ───
+document.addEventListener('DOMContentLoaded', () => {
+    const inp = document.getElementById('inp-buscar');
+    if (inp) { inp.value = ''; }
+    const btnLimp = document.getElementById('btn-limpiar-bus');
+    if (btnLimp) btnLimp.style.display = 'none';
+    _aplicarFiltros();
+});
 </script>
 
 {{-- Modal Recibo reutilizable --}}

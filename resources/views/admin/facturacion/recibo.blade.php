@@ -687,17 +687,14 @@ $tSS = $tEps + $tArl + $tPen + $tCaj;
         </div>
         @endif
         @php
-        // saldo_proximo de la primera factura del grupo (anticipo o pendiente aplicado)
-        $spGrupo = (int)(collect($filas)->sum(fn($f) => (int)($f->saldo_proximo ?? 0)));
-        $saldoFavorG = $spGrupo < 0 ? abs($spGrupo) : 0; // consumió anticipo previo
+        // Anticipo real aplicado en este lote = suma de anticipo_aplicado por factura.
+        // NO usar saldo_proximo (que es el neto contable: puede tener + y - que se cancelen
+        // y no refleja el anticipo real pagado). $totAnticipo ya fue calculado arriba (línea 33).
+        $saldoFavorG = $totAnticipo > 0 ? $totAnticipo : 0;
         @endphp
         @if($saldoFavorG > 0)
-        @php
-        $mesAntG  = $factura->mes > 1 ? $factura->mes - 1 : 12;
-        $anioAntG = $factura->mes > 1 ? $factura->anio : $factura->anio - 1;
-        @endphp
         <div class="fact-pago-row" style="color:#15803d;border-top:1px solid #d1fae5;padding-top:.2rem;margin-top:.2rem">
-            <span>✅ Anticipo aplicado <small style="font-size:.62rem">{{ $meses[$mesAntG-1] }} {{ $anioAntG }}</small></span>
+            <span>✅ Anticipo aplicado</span>
             <strong>−{{ $fmt($saldoFavorG) }}</strong>
         </div>
         @endif

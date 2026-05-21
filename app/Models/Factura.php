@@ -20,8 +20,12 @@ class Factura extends BaseModel
         'valor_consignado','valor_efectivo','valor_prestamo',
         'dias_cotizados',
         'v_eps','v_arl','v_afp','v_caja','total_ss',
-        'admon','admin_asesor','seguro','afiliacion','mensajeria','otros','mora','iva','total',
+        'admon','admin_asesor','otros_admon','seguro','afiliacion','mensajeria','otros','mora','iva','total',
         'saldo_proximo',
+        // ── Anticipo: pagos previos aplicados a esta factura ──────
+        // IMPORTANTE: debe estar en fillable para que Factura::create() lo guarde.
+        // Sin esto, saldo_proximo = efectivo - total (ignora el anticipo → aparece como deuda).
+        'anticipo_aplicado',
         'c_asesor','c_utilidad','retiro',
         'dist_admon','dist_asesor','dist_retiro','dist_utilidad',
         'np','n_plano','razon_social_id',
@@ -105,9 +109,11 @@ class Factura extends BaseModel
     /** ¿Está completamente pagada? */
     public function estaCompletamentePagada(): bool
     {
-        // Considera tanto el pago inicial (valor_consignado/efectivo al facturar)
-        // como los abonos posteriores registrados en la tabla abonos.
-        $pagadoAlFacturar = (int)$this->valor_consignado + (int)$this->valor_efectivo;
+        // Considera el pago inicial (valor_consignado + valor_efectivo + anticipo_aplicado)
+        // y los abonos posteriores registrados en la tabla abonos.
+        $pagadoAlFacturar = (int)$this->valor_consignado
+                          + (int)$this->valor_efectivo
+                          + (int)$this->anticipo_aplicado; // ← anticipo ya contabilizado al facturar
         return ($pagadoAlFacturar + $this->total_abonado) >= (int)$this->total;
     }
 
