@@ -2352,7 +2352,7 @@ class FacturacionController extends Controller
 
         $empresa = \App\Models\Empresa::create($validated);
 
-        return redirect()->route('admin.facturacion.empresa', $empresa->id)
+        return redirect()->route('admin.facturacion.index')
                          ->with('success', 'Empresa creada exitosamente.');
     }
 
