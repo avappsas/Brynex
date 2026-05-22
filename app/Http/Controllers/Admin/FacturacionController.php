@@ -2345,7 +2345,12 @@ class FacturacionController extends Controller
         ]);
 
         $validated['aliado_id'] = $aliadoId;
-        $empresa = Empresa::create($validated);
+
+        // Workaround para tabla legacy de SQL Server sin IDENTITY
+        $maxId = \App\Models\Empresa::max('id');
+        $validated['id'] = $maxId ? $maxId + 1 : 1;
+
+        $empresa = \App\Models\Empresa::create($validated);
 
         return redirect()->route('admin.facturacion.empresa', $empresa->id)
                          ->with('success', 'Empresa creada exitosamente.');
