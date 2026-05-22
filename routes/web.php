@@ -159,6 +159,8 @@ Route::middleware('auth')->group(function () {
         Route::prefix('facturacion')->name('facturacion.')->group(function () {
             $fc = \App\Http\Controllers\Admin\FacturacionController::class;
             Route::get('/',                             [$fc, 'index'])             ->name('index');
+            Route::get('empresa/crear',                 [$fc, 'createEmpresa'])     ->name('empresa.create');
+            Route::post('empresa',                      [$fc, 'storeEmpresa'])      ->name('empresa.store');
             Route::get('empresa/{id}',                  [$fc, 'empresa'])           ->name('empresa');
             Route::get('empresa/{id}/historial',        [$fc, 'historialEmpresa'])  ->name('empresa.historial');
             Route::get('empresa/{id}/editar',           [$fc, 'editEmpresa'])       ->name('empresa.edit');

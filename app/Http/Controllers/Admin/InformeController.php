@@ -541,6 +541,14 @@ class InformeController extends Controller
         // ── Saldo retenido para asesores (comisiones ganadas - pagadas, desde mayo 2025) ──
         $saldoAsesores = \App\Http\Controllers\Admin\ComisionesController::calcularSaldoRetenido($aid);
 
+        // ── Anticipos disponibles (recibidos, sin aplicar a factura) ─────────────
+        $anticiposDisponibles = \App\Models\Anticipo::where('aliado_id', $aid)
+            ->whereIn('estado', [\App\Models\Anticipo::ESTADO_DISPONIBLE, \App\Models\Anticipo::ESTADO_PARCIAL])
+            ->selectRaw('COUNT(*) AS cant, ISNULL(SUM(valor - valor_aplicado), 0) AS total')
+            ->first();
+        $totalAnticiposDisponibles = (int)($anticiposDisponibles->total ?? 0);
+        $cantAnticiposDisponibles  = (int)($anticiposDisponibles->cant  ?? 0);
+
         return view('admin.informes.financiero', compact(
             'mes','anio','ingresos','egresos','utilidad',
             'recaudoSS','pagadoSS','saldoSS',
@@ -550,7 +558,8 @@ class InformeController extends Controller
             'comisionesAsesor','gastosOp','tendencia','anterior','bancos','diario',
             'anticipos','cobradosAntes',
             'moraRecogida', 'saldoAsesores',
-            'aid', 'efMes'
+            'aid', 'efMes',
+            'totalAnticiposDisponibles', 'cantAnticiposDisponibles'
         ));
     }
 

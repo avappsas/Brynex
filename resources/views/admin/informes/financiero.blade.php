@@ -49,16 +49,6 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
             <button type="submit" style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:.4rem 1rem;font-size:.82rem;cursor:pointer;">Ver</button>
             <a href="?mes={{ $mes }}&anio={{ $anio }}&excel=1" style="background:#16a34a;color:#fff;border-radius:8px;padding:.4rem .9rem;font-size:.78rem;font-weight:600;text-decoration:none;">📥 Excel</a>
             <a href="{{ route('admin.informes.gastos.index', ['mes'=>$mes,'anio'=>$anio]) }}" style="background:#7c3aed;color:#fff;border-radius:8px;padding:.4rem .9rem;font-size:.78rem;font-weight:600;text-decoration:none;">💸 Ver Gastos</a>
-            @role('superadmin')
-            <a href="{{ route('admin.informes.comisiones.index', ['mes'=>$mes,'anio'=>$anio]) }}"
-               style="background:#f59e0b;color:#fff;border-radius:8px;padding:.4rem .9rem;font-size:.78rem;font-weight:600;text-decoration:none;">
-                💼 Comisiones Asesores
-            </a>
-            <a href="{{ route('admin.informes.comisiones.afiliaciones', ['mes'=>$mes,'anio'=>$anio]) }}"
-               style="background:#0ea5e9;color:#fff;border-radius:8px;padding:.4rem .9rem;font-size:.78rem;font-weight:600;text-decoration:none;">
-                📋 Distribución Afiliaciones
-            </a>
-            @endrole
         </form>
     </div>
 
@@ -87,8 +77,8 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
         {{-- Card nuevo: saldo retenido para asesores --}}
         <div class="fin-kpi" style="--c:#f59e0b; cursor:pointer;" onclick="window.location='{{ route('admin.informes.comisiones.index') }}'" title="Ver módulo Comisiones Asesores">
             <div class="val">{{ $fmt($saldoAsesores) }}</div>
-            <div class="lab">💼 Retenido Asesores</div>
-            <div class="sub">Comisiones ganadas sin pagar (desde mayo 2025)</div>
+            <div class="lab">💼 Comisión Asesores</div>
+            <div class="sub">Retenido sin pagar (desde mayo 2025)</div>
         </div>
     </div>
 
@@ -96,10 +86,19 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
     <div style="display:grid;grid-template-columns:2fr 1fr;gap:1.25rem;margin-bottom:1.5rem;">
         <div style="background:#fff;border-radius:14px;padding:1.25rem;box-shadow:0 1px 8px rgba(0,0,0,.06);">
             <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;color:#94a3b8;margin-bottom:.85rem;">Desglose de Ingresos <span style="color:#0ea5e9;font-weight:400;">(cobrados en {{ $mesesEs[$mes] }})</span></div>
-            @foreach([['Planillas (admon, seguro, otros)',$ingresos['planillas'],'#3b82f6'],['Afiliaciones',$ingresos['afiliaciones'],'#8b5cf6'],['Trámites',$ingresos['tramites'],'#10b981']] as [$l,$v,$c])
+            @foreach([
+                ['Planillas (admon, seguro, otros)', $ingresos['planillas'], '#3b82f6', null],
+                ['Afiliaciones', $ingresos['afiliaciones'], '#8b5cf6', route('admin.informes.comisiones.afiliaciones', ['mes'=>$mes,'anio'=>$anio])],
+                ['Trámites', $ingresos['tramites'], '#10b981', null]
+            ] as [$l, $v, $c, $link])
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.6rem;">
                 <div>
-                    <div style="font-size:.83rem;font-weight:600;color:#334155;">{{ $l }}</div>
+                    <div style="font-size:.83rem;font-weight:600;color:#334155;display:flex;align-items:center;gap:.35rem;">
+                        {{ $l }}
+                        @if($link)
+                        <a href="{{ $link }}" title="Ver distribución de afiliaciones" style="font-size:.75rem;text-decoration:none;opacity:.75;transition:opacity .15s;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=.75">📋</a>
+                        @endif
+                    </div>
                     <div style="height:5px;border-radius:3px;background:{{ $c }};width:{{ $ingresos['total']>0?round($v/$ingresos['total']*200).'px':'4px' }};margin-top:.25rem;transition:width .4s;"></div>
                 </div>
                 <div style="font-size:.9rem;font-weight:700;color:{{ $c }};">{{ $fmt($v) }}</div>
@@ -227,6 +226,28 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
                         <a href="{{ route('admin.prestamos.index') }}" target="_blank"
                            style="font-size:.65rem;color:#7c3aed;font-weight:700;text-decoration:none;"
                            onclick="event.stopPropagation()">→ Ver módulo Préstamos</a>
+                    </div>
+                </div>
+
+                {{-- Tarjeta Anticipos Disponibles --}}
+                <div class="bank-card" onclick="window.location='{{ route('admin.anticipos.informe') }}'" title="Ver informe de anticipos" style="border-top-color:#d97706;">
+                    <div style="font-size:.65rem;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:.04em;">🟡 Anticipos</div>
+                    <div style="font-size:.78rem;font-weight:700;color:#334155;margin-top:.1rem;">Disponibles</div>
+
+                    <div style="margin-top:.6rem;">
+                        <div style="font-size:1.25rem;font-weight:900;color:#d97706;line-height:1.1;">{{ $fmt($totalAnticiposDisponibles) }}</div>
+                        <div style="font-size:.62rem;color:#94a3b8;margin-top:.15rem;">Sin aplicar a factura</div>
+                    </div>
+
+                    <div style="margin-top:auto;padding-top:.65rem;border-top:1px dashed #fde68a;display:flex;flex-direction:column;gap:.28rem;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;">
+                            <span style="font-size:.65rem;color:#64748b;font-weight:600;">Anticipos activos</span>
+                            <span style="font-size:.72rem;font-weight:700;color:#d97706;font-family:monospace;">{{ $cantAnticiposDisponibles }}</span>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:.1rem;">
+                            <span style="font-size:.6rem;color:#94a3b8;">Disponibles + Parciales</span>
+                            <span style="font-size:.68rem;color:#d97706;font-weight:700;">ver detalle →</span>
+                        </div>
                     </div>
                 </div>
 

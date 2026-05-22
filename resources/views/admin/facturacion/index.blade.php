@@ -72,14 +72,19 @@
 </style>
 
 <div class="fat-header" style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;">
-    <div>
+    <div style="flex:1;min-width:200px;">
         <div class="fat-title">🏢 Empresas</div>
         <div class="fat-sub">Seleccione una empresa para gestionar la facturación del período</div>
     </div>
-    <div class="search-box" style="max-width:300px;flex:1;min-width:180px;">
-        <span class="search-icon" style="color:#94a3b8;">🔍</span>
-        <input type="text" id="buscadorEmpresa" placeholder="Buscar empresa o NIT..." autocomplete="off"
-               style="background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.2);color:#fff;padding:0.45rem 1rem 0.45rem 2.4rem;font-size:0.85rem;">
+    <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
+        <div class="search-box" style="width:300px;max-width:100%;">
+            <span class="search-icon" style="color:#94a3b8;">🔍</span>
+            <input type="text" id="buscadorEmpresa" placeholder="Buscar empresa o NIT..." autocomplete="off"
+                   style="background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.2);color:#fff;padding:0.45rem 1rem 0.45rem 2.4rem;font-size:0.85rem;">
+        </div>
+        <a href="{{ route('admin.facturacion.empresa.create') }}" style="background:#10b981;color:#fff;padding:0.5rem 1.2rem;border-radius:8px;font-size:0.85rem;font-weight:700;text-decoration:none;transition:background .15s;display:inline-flex;align-items:center;gap:0.4rem;white-space:nowrap;">
+            ➕ Nueva Empresa
+        </a>
     </div>
 </div>
 

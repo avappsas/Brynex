@@ -1127,9 +1127,30 @@ const MF = (function () {
     // ── Distribución de afiliación ────────────────────────────────
     function _distInicial() {
         const d = _cfg.distDefaults || {};
-        setVal('mf-dist-asesor', d.asesor || 0);
-        setVal('mf-dist-retiro', d.retiro || 0);
+        setVal('mf-dist-asesor',    d.asesor    || 0);
         setVal('mf-dist-encargado', d.encargado || 0);
+
+        // ── Auto-calcular retiro = SS de 1 día cotizado ───────────────
+        // Solo si no viene un default manual desde el servidor
+        let autoRetiro = 0;
+        if (!d.retiro) {
+            if (_modo === 'individual') {
+                // Leer los valores del cotizador Alpine (ya calculados con dias=1 para afiliación)
+                autoRetiro = parse(el('mf-v-eps')?.textContent)
+                           + parse(el('mf-v-arl')?.textContent)
+                           + parse(el('mf-v-afp')?.textContent)
+                           + parse(el('mf-v-caja')?.textContent);
+            } else {
+                // Masivo: sumar SS de cada contrato seleccionado (afiliaciones = 1 día c/u)
+                _selContratos.forEach(c => {
+                    autoRetiro += Math.ceil(c.eps  || 0)
+                               + Math.ceil(c.arl  || 0)
+                               + Math.ceil(c.afp  || 0)
+                               + Math.ceil(c.caja || 0);
+                });
+            }
+        }
+        setVal('mf-dist-retiro', d.retiro || autoRetiro || 0);
         distRecalc();
     }
 

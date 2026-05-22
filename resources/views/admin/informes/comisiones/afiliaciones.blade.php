@@ -55,11 +55,25 @@
     }
 
     /* Panel tabla */
-    .panel { background: var(--c-surface); border: 1px solid var(--c-border); border-radius: 14px; overflow: hidden; }
-    .panel-head { padding: .7rem 1rem; border-bottom: 1px solid var(--c-border); font-size: .78rem; font-weight: 700; color: var(--c-muted); text-transform: uppercase; letter-spacing: .06em; display: flex; align-items: center; justify-content: space-between; }
+    .panel { background: var(--c-surface); border: 1px solid var(--c-border); border-radius: 14px; overflow: visible; }
+    .panel-head {
+        position: sticky; top: 0; z-index: 20;
+        background: var(--c-surface);
+        border-bottom: 1px solid var(--c-border);
+        border-radius: 14px 14px 0 0;
+        padding: .7rem 1rem;
+        font-size: .78rem; font-weight: 700; color: var(--c-muted); text-transform: uppercase; letter-spacing: .06em;
+        display: flex; align-items: center; justify-content: space-between;
+    }
     .tabla-wrap { overflow-x: auto; }
     table.af-table { width: 100%; border-collapse: collapse; }
-    .af-table th { padding: .55rem .65rem; text-align: left; font-size: .7rem; font-weight: 700; color: var(--c-muted); text-transform: uppercase; letter-spacing: .06em; border-bottom: 1px solid var(--c-border); white-space: nowrap; }
+    .af-table thead tr th {
+        position: sticky; top: 51px; z-index: 10;
+        background: var(--c-surface);
+        padding: .55rem .65rem; text-align: left; font-size: .7rem; font-weight: 700;
+        color: var(--c-muted); text-transform: uppercase; letter-spacing: .06em;
+        border-bottom: 1px solid var(--c-border); white-space: nowrap;
+    }
     .af-table td { padding: .6rem .65rem; font-size: .82rem; color: var(--c-text); border-bottom: 1px solid rgba(59,130,246,.06); }
     .af-table tr.sin-dist td { background: rgba(239,68,68,.04); }
     .af-table tr:hover td { background: rgba(59,130,246,.06); }
@@ -189,6 +203,7 @@
                 <thead>
                     <tr>
                         <th>#</th>
+                        <th>Fecha</th>
                         <th>Cliente</th>
                         <th>Empresa</th>
                         <th>Asesor</th>
@@ -206,7 +221,9 @@
                     <tr class="{{ !$f->distribuida ? 'sin-dist' : '' }}" id="row-{{ $f->id }}" data-id="{{ $f->id }}" data-afil="{{ (int)$f->afiliacion }}">
                         <td>
                             <strong>#{{ $f->numero_factura }}</strong>
-                            <div style="font-size:.68rem; color:var(--c-muted)">{{ $f->fecha_pago }}</div>
+                        </td>
+                        <td style="font-size:.78rem;white-space:nowrap;color:var(--c-muted)">
+                            {{ $f->fecha_pago }}
                         </td>
                         <td>
                             <div>{{ trim($f->nombre_cliente) ?: $f->cedula }}</div>

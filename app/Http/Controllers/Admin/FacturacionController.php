@@ -2315,6 +2315,42 @@ class FacturacionController extends Controller
         return view('admin.facturacion.historial_empresa', compact('empresa', 'grupos', 'facturas'));
     }
 
+    // ─── Crear empresa ──────────────────────────────────────────────
+    public function createEmpresa()
+    {
+        $aliadoId = session('aliado_id_activo');
+        $asesores = \App\Models\Asesor::where('aliado_id', $aliadoId)
+            ->orderBy('nombre')
+            ->get(['id', 'nombre']);
+
+        return view('admin.facturacion.empresa_create', compact('asesores'));
+    }
+
+    // ─── Guardar empresa nueva ──────────────────────────────────────────────
+    public function storeEmpresa(Request $request)
+    {
+        $aliadoId = session('aliado_id_activo');
+
+        $validated = $request->validate([
+            'empresa'    => 'required|string|max:255',
+            'nit'        => 'nullable|numeric',
+            'contacto'   => 'nullable|string|max:255',
+            'telefono'   => 'nullable|string|max:50',
+            'celular'    => 'nullable|string|max:50',
+            'correo'     => 'nullable|email|max:150',
+            'direccion'  => 'nullable|string|max:255',
+            'iva'        => 'nullable|string|max:20',
+            'asesor_id'  => 'nullable|exists:asesores,id',
+            'observacion'=> 'nullable|string|max:500',
+        ]);
+
+        $validated['aliado_id'] = $aliadoId;
+        $empresa = Empresa::create($validated);
+
+        return redirect()->route('admin.facturacion.empresa', $empresa->id)
+                         ->with('success', 'Empresa creada exitosamente.');
+    }
+
     // ─── Editar empresa ──────────────────────────────────────────────
     public function editEmpresa(int $empresaId)
     {
