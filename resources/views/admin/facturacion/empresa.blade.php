@@ -109,13 +109,14 @@ table.fac-tbl{width:100%;border-collapse:collapse;font-size:.78rem}
         {{-- Buscador inline por nombre y cédula --}}
         <div style="position:relative;display:inline-flex;align-items:center;">
             <span style="position:absolute;left:.5rem;color:#94a3b8;font-size:.85rem;pointer-events:none;">🔍</span>
-            <input id="inp-buscar" type="text" placeholder="Nombre o cédula..."
+            <input id="inp-buscar" type="search" placeholder="Nombre o cédula..."
                    oninput="buscar(this.value)"
+                   name="q_{{ rand() }}"
                    autocomplete="off" data-lpignore="true" data-form-type="other" spellcheck="false"
+                   readonly onfocus="this.removeAttribute('readonly'); this.style.borderColor='#3b82f6';this.style.background='#fff';this.style.width='230px'"
                    style="padding:.28rem .6rem .28rem 1.75rem;border:1.5px solid #e2e8f0;
                           border-radius:20px;font-size:.8rem;background:#f8fafc;
                           color:#334155;outline:none;width:190px;transition:border .15s,width .2s;"
-                   onfocus="this.style.borderColor='#3b82f6';this.style.background='#fff';this.style.width='230px'"
                    onblur="this.style.borderColor='#e2e8f0';this.style.background='#f8fafc';this.style.width='190px'">
             <button id="btn-limpiar-bus" onclick="limpiarBuscar()" title="Limpiar búsqueda"
                     style="display:none;position:absolute;right:.4rem;background:none;border:none;
