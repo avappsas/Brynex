@@ -185,6 +185,12 @@ Route::middleware('auth')->group(function () {
             Route::post('otro-ingreso',                 [$fc, 'facturarOtroIngreso'])    ->name('otro_ingreso.store');
             // Cuenta de Cobro
             Route::post('cuenta-cobro',                 [$fc, 'cuentaCobroPreview'])     ->name('cuenta_cobro.preview');
+
+            // ── Facturación Electrónica (Dataico) — solo admin + superadmin ──
+            $fe = \App\Http\Controllers\Admin\FacturacionElectronicaController::class;
+            Route::get( 'electronica',          [$fe, 'index'])   ->name('electronica.index');
+            Route::patch('electronica/marcar',  [$fe, 'marcar'])  ->name('electronica.marcar');
+            Route::get(  'electronica/exportar',[$fe, 'exportar'])->name('electronica.exportar');
         });
 
         // ── Planos (Pago Planillas SS) ────────────────────────────────────

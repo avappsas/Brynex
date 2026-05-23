@@ -33,11 +33,15 @@ class Factura extends BaseModel
         'motivo_anulacion','anulado_por',
         // ── Otro ingreso / trámite ─────────────────────────────
         'descripcion_tramite','admon_asesor_oi',
+        // ── Facturación Electrónica (Dataico) ─────────────────
+        'fe_marcada','fe_marcada_at','fe_marcada_por',
     ];
 
     protected $casts = [
         'fecha_pago'           => 'date',
         'es_prestamo'          => 'boolean',
+        'fe_marcada'           => 'boolean',
+        'fe_marcada_at'        => 'datetime',
     ];
 
     // ── Tipos ──────────────────────────────────────────────────

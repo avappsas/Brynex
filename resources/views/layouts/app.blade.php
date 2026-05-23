@@ -685,6 +685,15 @@
             </a>
             @endrole
 
+            @role('admin|superadmin')
+            <a href="{{ route('admin.facturacion.electronica.index') }}"
+               class="menu-item {{ request()->routeIs('admin.facturacion.electronica*') ? 'activo' : '' }}"
+               title="Facturación Electrónica Dataico">
+                <div class="icono">🧾</div>
+                <div class="label">F. Electrónica</div>
+            </a>
+            @endrole
+
             {{-- ───────────────────────────────────────────────────────────── --}}
 
             {{-- DROPDOWN ADMIN: visible para admin y superadmin              --}}
