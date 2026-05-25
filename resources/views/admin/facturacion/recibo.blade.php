@@ -464,7 +464,7 @@ $estadoCls = fn($e) => match($e) {
 <div class="no-print" style="max-width:1150px;margin:0 auto .65rem;display:flex;gap:.5rem;justify-content:flex-end;flex-wrap:wrap;">
     <button class="btn-a" id="btnToggleVista" style="background:#f1f5f9;color:#475569" onclick="toggleVistaDet()">📋 Vista detallada</button>
     <button class="btn-a" style="background:#0f172a;color:#fff" onclick="window.print()">🖨 Imprimir</button>
-    @if((auth()->user()?->hasRole('admin') || auth()->user()?->hasRole('superadmin')) && !request()->boolean('modal'))
+    @if((auth()->user()?->hasRole('admin') || auth()->user()?->hasRole('superadmin')) && !request()->boolean('no_anular'))
     <button class="btn-a" style="background:#dc2626;color:#fff" onclick="abrirAnular()">🗑 Anular</button>
     @endif
     @if(request()->boolean('modal'))

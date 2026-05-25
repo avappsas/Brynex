@@ -585,12 +585,16 @@
             const id = this.dataset.id;
             if(id) {
                 const iframe = document.getElementById('iframeRecibo');
-                iframe.src = '{{ url("admin/facturacion/recibo") }}/' + id + '?modal=1';
+                iframe.src = '{{ url("admin/facturacion/recibo") }}/' + id + '?modal=1&no_anular=1';
                 document.getElementById('modalRecibo').style.display = 'flex';
             }
         });
         row.style.cursor = 'pointer';
     });
+
+    window.cerrarRecibo = function() {
+        document.getElementById('modalRecibo').style.display = 'none';
+    };
 })();
 </script>
 @endpush

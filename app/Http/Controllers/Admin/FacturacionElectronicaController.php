@@ -74,7 +74,7 @@ class FacturacionElectronicaController extends Controller
         ];
 
         // Paginación manual (evita conflictos SQL Server + GROUP BY + HAVING + paginate)
-        $perPage = 50;
+        $perPage = 200;
         $page    = (int)$request->input('page', 1);
         $facturas = new LengthAwarePaginator(
             $todos->forPage($page, $perPage)->values(),
