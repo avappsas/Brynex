@@ -216,7 +216,7 @@ $esRetirado = $c->estado === 'retirado';
 $esIngRet   = (int)($c->tipo_modalidad_id) === 12;
 $fIng       = $c->fecha_ingreso ? $c->fecha_ingreso->format('d/m/Y') : '—';
 $fRet       = ($esRetirado && $c->fecha_retiro) ? $c->fecha_retiro->format('d/m/Y') : null;
-$dias       = $c->dias_cotizar ?? 30;
+$dias       = $fact ? (int)$fact->dias_cotizados : ($c->dias_cotizar ?? 30);
 // Detectar si este período debe ser afiliación pura (I VENC, empresa)
 // vs I ACT primer mes (viene del controlador como es_ind_act_primer_mes)
 $esIndep          = $c->tipoModalidad?->esIndependiente() ?? false;
@@ -386,7 +386,7 @@ $totAdmon+=$vAdm;$totIva+=$vIva;$totTotal+=$vTot;$totMora+=$vMora;
     <td style="text-align:center">
         @if($fact)
         @php $colores=$estadoBg($fact->estado); @endphp
-        @if($esIngRet && $esRetirado)
+        @if($esRetirado || (int)$fact->numero_factura === 0)
         <span style="display:inline-block;padding:.16rem .5rem;border-radius:20px;font-size:.63rem;font-weight:800;background:#fee2e2;color:#dc2626">
             RETIRO
         </span>

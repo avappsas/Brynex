@@ -912,6 +912,30 @@ class ContratoController extends Controller
             $partsApe  = preg_split('/\s+/', trim($apellidos), 2);
             $partsNom  = preg_split('/\s+/', trim($nombres),   2);
 
+            // Calcular la cotización para el retiro real (aportes a seguridad social)
+            $vEpsRetiro = 0; $vArlRetiro = 0; $vAfpRetiro = 0; $vCajaRetiro = 0; $totalSsRetiro = 0;
+            if ($numDias > 0) {
+                // Fallback IBC si ibc/salario son 0 en contratos legacy
+                $ibcOriginal = (float)($original->ibc ?? 0);
+                $salOriginal = (float)($original->salario ?? 0);
+                if ($ibcOriginal <= 0 && $salOriginal <= 0) {
+                    $sm = (float) \App\Models\ConfiguracionBrynex::obtener('salario_minimo', 1423500);
+                    $original->ibc     = $sm;
+                    $original->salario = $sm;
+                }
+
+                $cotizacion    = $original->calcularCotizacion($numDias);
+                $vEpsRetiro    = (int)($cotizacion['eps']  ?? 0);
+                $vArlRetiro    = (int)($cotizacion['arl']  ?? 0);
+                $vAfpRetiro    = (int)($cotizacion['pen']  ?? 0);
+                $vCajaRetiro   = (int)($cotizacion['caja'] ?? 0);
+                $totalSsRetiro = $vEpsRetiro + $vArlRetiro + $vAfpRetiro + $vCajaRetiro;
+
+                // Restaurar
+                $original->ibc     = $ibcOriginal;
+                $original->salario = $salOriginal;
+            }
+
             // Crear factura de retiro (costo interno, no ingreso)
             $facRetiro = \App\Models\Factura::create([
                 'aliado_id'        => $alidoId,
@@ -933,12 +957,20 @@ class ContratoController extends Controller
                 'otros_admon'      => 0,
                 'mensajeria'       => 0,
                 'dias_cotizados'   => $numDias,
-                'v_eps'  => 0, 'v_arl'  => 0, 'v_afp'  => 0, 'v_caja' => 0,
-                'total_ss' => 0, 'admon' => 0, 'admin_asesor' => 0,
-                'seguro' => 0, 'afiliacion' => 0, 'iva' => 0, 'total' => 0,
-                'saldo_proximo' => 0,
-                'usuario_id' => \Illuminate\Support\Facades\Auth::id(),
-                'observacion' => $validated['observacion'] ?? null,
+                'v_eps'            => $vEpsRetiro,
+                'v_arl'            => $vArlRetiro,
+                'v_afp'            => $vAfpRetiro,
+                'v_caja'           => $vCajaRetiro,
+                'total_ss'         => $totalSsRetiro,
+                'admon'            => 0,
+                'admin_asesor'     => 0,
+                'seguro'           => 0,
+                'afiliacion'       => 0,
+                'iva'              => 0,
+                'total'            => 0,
+                'saldo_proximo'    => 0,
+                'usuario_id'       => \Illuminate\Support\Facades\Auth::id(),
+                'observacion'      => $validated['observacion'] ?? null,
             ]);
 
             // Parsear la fecha de retiro para obtener el mes y año de la cotización real
