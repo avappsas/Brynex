@@ -191,8 +191,8 @@ class PilaCotizanteCalculator
 
             $salarioSemanal = $smmlv / 4;
 
-            $ibcAfpTp  = (int)ceil($salarioSemanal * $semanasAfp);
-            $ibcCajaTp = (int)ceil($salarioSemanal * $semanasCaja);
+            $ibcAfpTp  = (int)round($salarioSemanal * $semanasAfp);
+            $ibcCajaTp = (int)round($salarioSemanal * $semanasCaja);
 
             $tienePension = !empty($codAfpRaw);
 
