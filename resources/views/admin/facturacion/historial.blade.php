@@ -54,6 +54,7 @@ table.hi-tbl{width:100%;border-collapse:collapse;font-size:.77rem}
 .badge-abono   {background:#fef9c3;color:#854d0e}
 .badge-plan    {background:#dbeafe;color:#1e40af}
 .badge-afil    {background:#fce7f3;color:#9d174d}
+.badge-ret     {background:#ffe4e6;color:#9f1239;border:1px solid #fecdd3}
 .badge-emp     {background:#f0fdf4;color:#166534;border:1px solid #bbf7d0}
 .badge-ind     {background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe}
 /* Botones acción */
@@ -174,9 +175,12 @@ table.hi-tbl{width:100%;border-collapse:collapse;font-size:.77rem}
                 'abono'       => ['badge-abono', '💰 Abono'],
                 default       => ['badge-pre',   ucfirst($f->estado)],
             };
-            $tipoBadge = $f->tipo === 'afiliacion'
-                ? ['badge-afil', '📌 Afiliación']
-                : ['badge-plan', '📄 Planilla'];
+            $esRetiro = ((int)$f->numero_factura === 0) || ($f->plano && !is_null($f->plano->fecha_ret));
+            $tipoBadge = $esRetiro
+                ? ['badge-ret', '🛑 Retiro']
+                : ($f->tipo === 'afiliacion'
+                    ? ['badge-afil', '📌 Afiliación']
+                    : ['badge-plan', '📄 Planilla']);
             $esPorEmpresa = !is_null($f->empresa_id);
             // N° Planilla del operador (si el plano fue pagado al operador)
             $numeroPlanillaOp = $f->plano?->numero_planilla;
