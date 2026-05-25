@@ -770,8 +770,17 @@ function sortClass($col, $currSort, $currDir) {
                 <div id="rs-claves-subtitulo" style="font-size:0.72rem;color:rgba(28,25,23,0.7);font-weight:500;">Razón Social</div>
             </div>
         </div>
-        <button onclick="cerrarClavesRS()"
-                style="background:rgba(255,255,255,0.2);border:none;border-radius:8px;width:34px;height:34px;color:#1c1917;font-size:1.1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:700;">✕</button>
+        <div style="display:flex;gap:0.5rem;align-items:center;">
+            <button onclick="abrirModalClaveRS()" id="rs-ca-btn-nueva"
+                    style="display:inline-flex;align-items:center;gap:0.35rem;background:#fff;color:#92400e;
+                           border:none;border-radius:8px;padding:0.4rem 0.9rem;font-size:0.8rem;font-weight:700;cursor:pointer;
+                           box-shadow:0 2px 6px rgba(0,0,0,0.15);transition:background 0.15s;"
+                    onmouseover="this.style.background='#fef3c7'" onmouseout="this.style.background='#fff'">
+                ➕ Nueva Clave
+            </button>
+            <button onclick="cerrarClavesRS()"
+                    style="background:rgba(255,255,255,0.2);border:none;border-radius:8px;width:34px;height:34px;color:#1c1917;font-size:1.1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:700;">✕</button>
+        </div>
     </div>
 
     {{-- Notif --}}
@@ -793,18 +802,114 @@ function sortClass($col, $currSort, $currDir) {
                     <th class="ca-th">Correo</th>
                     <th class="ca-th">Observación</th>
                     <th class="ca-th" style="text-align:center;">Estado</th>
+                    <th class="ca-th" style="text-align:center;">Acciones</th>
                 </tr>
             </thead>
             <tbody id="rs-claves-tbody">
-                <tr><td colspan="8" style="text-align:center;padding:2rem;color:#94a3b8;font-size:0.85rem;">Selecciona una razón social.</td></tr>
+                <tr><td colspan="9" style="text-align:center;padding:2rem;color:#94a3b8;font-size:0.85rem;">Selecciona una razón social.</td></tr>
             </tbody>
         </table>
+    </div>
+</div>
+
+{{-- ═══ MODAL: Crear / Editar Clave Razón Social ═══════════════════════════════ --}}
+<div id="rs-ca-modal-overlay"
+     style="display:none;position:fixed;inset:0;background:rgba(15,23,42,0.6);z-index:1100;
+            align-items:center;justify-content:center;backdrop-filter:blur(2px);"
+     onclick="if(event.target===this) cerrarModalClaveRS()">
+    <div style="background:#fff;border-radius:16px;padding:0;width:560px;max-width:96vw;
+                box-shadow:0 20px 60px rgba(0,0,0,0.3);overflow:hidden;">
+        {{-- Modal header --}}
+        <div style="background:linear-gradient(135deg,#fbbf24,#f59e0b);padding:0.85rem 1.25rem;display:flex;align-items:center;justify-content:space-between;">
+            <div style="font-size:0.9rem;font-weight:800;color:#1c1917;" id="rs-ca-modal-titulo">🔑 Nueva Clave</div>
+            <button onclick="cerrarModalClaveRS()" style="background:rgba(255,255,255,0.25);border:none;border-radius:7px;width:28px;height:28px;cursor:pointer;font-size:0.9rem;font-weight:700;color:#1c1917;">✕</button>
+        </div>
+        {{-- Modal body --}}
+        <div style="padding:1.25rem;">
+            <input type="hidden" id="rs-ca-modal-id">
+            <input type="hidden" id="rs-ca-modal-rs-id">
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;">
+                {{-- Tipo --}}
+                <div>
+                    <label class="ca-lbl">Tipo *</label>
+                    <select id="rs-ca-f-tipo" class="ca-inp">
+                        <option value="Portal">Portal Web</option>
+                        <option value="Correo">Correo Electrónico</option>
+                        <option value="EPS">EPS</option>
+                        <option value="ARL">ARL</option>
+                        <option value="AFP">AFP / Pensión</option>
+                        <option value="CAJA">Caja de Compensación</option>
+                        <option value="DIAN">DIAN</option>
+                        <option value="MinTrabajo">Min. Trabajo (PILA)</option>
+                        <option value="Banco">Banco / Entidad Financiera</option>
+                        <option value="Otro">Otro</option>
+                    </select>
+                </div>
+                {{-- Entidad --}}
+                <div>
+                    <label class="ca-lbl">Entidad / Portal *</label>
+                    <input type="text" id="rs-ca-f-entidad" class="ca-inp" placeholder="Ej: Portal EPS Sura, Gmail...">
+                </div>
+                {{-- Usuario --}}
+                <div>
+                    <label class="ca-lbl">Usuario / Login</label>
+                    <input type="text" id="rs-ca-f-usuario" class="ca-inp" placeholder="Nombre de usuario o email">
+                </div>
+                {{-- Contraseña --}}
+                <div>
+                    <label class="ca-lbl">Contraseña</label>
+                    <div style="display:flex;gap:0.3rem;align-items:center;">
+                        <input type="password" id="rs-ca-f-contrasena" class="ca-inp" placeholder="••••••••" style="flex:1;">
+                        <button type="button" onclick="togglePassClaveRS()"
+                                style="background:#f1f5f9;border:1px solid #cbd5e1;border-radius:6px;padding:0.35rem 0.5rem;cursor:pointer;font-size:0.8rem;flex-shrink:0;"
+                                title="Mostrar/Ocultar">👁</button>
+                    </div>
+                </div>
+                {{-- Link --}}
+                <div style="grid-column:span 2;">
+                    <label class="ca-lbl">Link / URL de acceso</label>
+                    <input type="text" id="rs-ca-f-link" class="ca-inp" placeholder="https://...">
+                </div>
+                {{-- Correo entidad --}}
+                <div>
+                    <label class="ca-lbl">Correo de la entidad</label>
+                    <input type="text" id="rs-ca-f-correo" class="ca-inp" placeholder="contacto@entidad.com">
+                </div>
+                {{-- Activo --}}
+                <div style="display:flex;align-items:center;gap:0.5rem;padding-top:1.2rem;">
+                    <input type="checkbox" id="rs-ca-f-activo" style="width:16px;height:16px;cursor:pointer;" checked>
+                    <label for="rs-ca-f-activo" style="font-size:0.8rem;font-weight:600;color:#475569;cursor:pointer;">Activo</label>
+                </div>
+                {{-- Observación --}}
+                <div style="grid-column:span 2;">
+                    <label class="ca-lbl">Observación</label>
+                    <textarea id="rs-ca-f-obs" class="ca-inp" rows="2" placeholder="Notas adicionales..." style="resize:vertical;"></textarea>
+                </div>
+            </div>
+
+            <div style="display:flex;justify-content:flex-end;gap:0.6rem;margin-top:1rem;">
+                <button onclick="cerrarModalClaveRS()"
+                        style="padding:0.45rem 1rem;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#475569;font-size:0.82rem;font-weight:500;cursor:pointer;">
+                    Cancelar
+                </button>
+                <button onclick="guardarClaveRS()"
+                        style="padding:0.45rem 1.2rem;background:linear-gradient(135deg,#f59e0b,#d97706);border:none;border-radius:8px;
+                               color:#1c1917;font-size:0.84rem;font-weight:800;cursor:pointer;box-shadow:0 2px 8px rgba(245,158,11,0.4);">
+                    💾 Guardar
+                </button>
+            </div>
+        </div>
     </div>
 </div>
 
 <style>
 .razon-badge-link:hover { background:#bfdbfe !important; color:#1e3a8a !important; box-shadow:0 2px 8px rgba(37,99,235,0.15); transition:all .15s; }
 .ca-th { padding:0.5rem 0.65rem;font-size:0.72rem;font-weight:700;color:#92400e;white-space:nowrap;text-align:left; }
+.ca-td { padding:0.38rem 0.65rem;color:#1c1917;vertical-align:middle; }
+.ca-lbl { display:block;font-size:0.7rem;font-weight:700;color:#475569;margin-bottom:0.18rem;text-transform:uppercase;letter-spacing:0.02em; }
+.ca-inp { width:100%;padding:0.38rem 0.5rem;border:1px solid #cbd5e1;border-radius:6px;font-size:0.82rem;color:#0f172a;box-sizing:border-box; }
+.ca-inp:focus { outline:none;border-color:#f59e0b;box-shadow:0 0 0 2px rgba(245,158,11,0.2); }
 </style>
 
 {{-- ═══ Modal iframe: Cliente ═══ --}}
@@ -1453,7 +1558,13 @@ async function subirDocumento() {
 }
 
 // ══ CLAVES RAZÓN SOCIAL ══
+let rsIdActivo = null;
+let rsNombreActivo = null;
+let clavesCargadas = [];
+
 function abrirClavesRS(rsId, rsNombre) {
+    rsIdActivo = rsId;
+    rsNombreActivo = rsNombre;
     var panel   = document.getElementById('rs-claves-panel');
     var overlay = document.getElementById('rs-claves-overlay');
     document.getElementById('rs-claves-subtitulo').textContent = rsNombre;
@@ -1477,8 +1588,9 @@ function abrirClavesRS(rsId, rsNombre) {
         loading.style.display = 'none';
         body.style.display    = 'block';
         tbody.innerHTML = '';
-        if (!claves || claves.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:2rem;color:#94a3b8;font-size:0.85rem;">No hay claves registradas para esta razón social.</td></tr>';
+        clavesCargadas = claves || [];
+        if (clavesCargadas.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:2rem;color:#94a3b8;font-size:0.85rem;">No hay claves registradas para esta razón social. Use ➕ Nueva Clave para agregar.</td></tr>';
             return;
         }
         var colores = {
@@ -1488,7 +1600,7 @@ function abrirClavesRS(rsId, rsNombre) {
             'DIAN':['#fef9c3','#713f12'],'MinTrabajo':['#f0fdf4','#166534'],
             'Banco':['#f5f3ff','#6d28d9'],'Otro':['#f1f5f9','#475569']
         };
-        claves.forEach(function(c) {
+        clavesCargadas.forEach(function(c) {
             var col = colores[c.tipo] || ['#f1f5f9','#475569'];
             var tipoBadge = '<span style="background:'+col[0]+';color:'+col[1]+';padding:0.15rem 0.5rem;border-radius:999px;font-size:0.68rem;font-weight:700;">'+(c.tipo||'—')+'</span>';
             var linkBtn = c.link_acceso
@@ -1499,7 +1611,7 @@ function abrirClavesRS(rsId, rsNombre) {
                 : '<span style="background:#fee2e2;color:#dc2626;padding:0.12rem 0.45rem;border-radius:999px;font-size:0.65rem;font-weight:700;">INACTIVO</span>';
             var masked = c.contrasena ? '•'.repeat(Math.min(c.contrasena.length,8))+' 👁' : '<span style="color:#cbd5e1;">—</span>';
             var passHtml = c.contrasena
-                ? '<span style="font-family:monospace;font-size:0.77rem;cursor:pointer;" onclick="this.textContent=this.dataset.show==\'1\'?\''+('•'.repeat(8))+' 👁\':\''+c.contrasena+' 👁\';this.dataset.show=this.dataset.show==\'1\'?\'0\':\'1\';" data-show="0">'+masked+'</span>'
+                ? '<span style="font-family:monospace;font-size:0.77rem;cursor:pointer;" onclick="verPassClaveRS(this, '+c.id+', \''+btoa(unescape(encodeURIComponent(c.contrasena)))+'\')" title="Click para revelar">'+masked+'</span>'
                 : masked;
             var tr = document.createElement('tr');
             tr.style.cssText = 'border-bottom:1px solid #fef3c7;';
@@ -1513,16 +1625,18 @@ function abrirClavesRS(rsId, rsNombre) {
                 '<td style="padding:0.38rem 0.65rem;text-align:center;">'+linkBtn+'</td>'+
                 '<td style="padding:0.38rem 0.65rem;font-size:0.75rem;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+(c.correo_entidad||'')+'">'+(c.correo_entidad||'<span style="color:#cbd5e1;">—</span>')+'</td>'+
                 '<td style="padding:0.38rem 0.65rem;font-size:0.73rem;color:#64748b;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+(c.observacion||'')+'">'+(c.observacion||'')+'</td>'+
-                '<td style="padding:0.38rem 0.65rem;text-align:center;">'+estadoBadge+'</td>';
+                '<td style="padding:0.38rem 0.65rem;text-align:center;">'+estadoBadge+'</td>'+
+                '<td style="padding:0.38rem 0.65rem;text-align:center;white-space:nowrap;">' +
+                    '<button onclick="abrirModalClaveRS(' + c.id + ')" style="background:#fef3c7;border:1px solid #fde68a;border-radius:5px;padding:0.18rem 0.55rem;font-size:0.7rem;font-weight:600;cursor:pointer;color:#92400e;" title="Editar">✏️</button> ' +
+                    '<button onclick="eliminarClaveRS(' + c.id + ')" style="background:#fee2e2;border:1px solid #fca5a5;border-radius:5px;padding:0.18rem 0.55rem;font-size:0.7rem;font-weight:600;cursor:pointer;color:#dc2626;" title="Eliminar">🗑</button>' +
+                '</td>';
             tbody.appendChild(tr);
         });
     })
     .catch(function() {
         loading.style.display = 'none';
         body.style.display    = 'block';
-        var notif = document.getElementById('rs-claves-notif');
-        notif.style.cssText = 'display:block;margin:0.5rem 1rem 0;padding:0.45rem 0.85rem;border-radius:7px;font-size:0.8rem;font-weight:600;background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;';
-        notif.textContent = '❌ Error al cargar las claves.';
+        mostrarNotifClavesRS('Error al cargar las claves.', 'error');
     });
 }
 
@@ -1534,6 +1648,146 @@ function cerrarClavesRS() {
         panel.style.display   = 'none';
         overlay.style.display = 'none';
     }, 300);
+}
+
+function abrirModalClaveRS(id = null) {
+    var modal = document.getElementById('rs-ca-modal-overlay');
+    modal.style.display = 'flex';
+
+    if (id) {
+        var clave = clavesCargadas.find(item => item.id === id);
+        if (clave) {
+            document.getElementById('rs-ca-modal-titulo').textContent  = '✏️ Editar Clave #' + clave.id;
+            document.getElementById('rs-ca-modal-id').value            = clave.id;
+            document.getElementById('rs-ca-modal-rs-id').value         = clave.razon_social_id || rsIdActivo;
+            document.getElementById('rs-ca-f-tipo').value              = clave.tipo || 'Portal';
+            document.getElementById('rs-ca-f-entidad').value           = clave.entidad || '';
+            document.getElementById('rs-ca-f-usuario').value           = clave.usuario || '';
+            document.getElementById('rs-ca-f-contrasena').value        = clave.contrasena || '';
+            document.getElementById('rs-ca-f-link').value              = clave.link_acceso || '';
+            document.getElementById('rs-ca-f-correo').value            = clave.correo_entidad || '';
+            document.getElementById('rs-ca-f-obs').value               = clave.observacion || '';
+            document.getElementById('rs-ca-f-activo').checked          = clave.activo == 1 || clave.activo === true;
+        }
+    } else {
+        document.getElementById('rs-ca-modal-titulo').textContent = '🔑 Nueva Clave';
+        document.getElementById('rs-ca-modal-id').value           = '';
+        document.getElementById('rs-ca-modal-rs-id').value         = rsIdActivo;
+        document.getElementById('rs-ca-f-tipo').value             = 'Portal';
+        document.getElementById('rs-ca-f-entidad').value          = '';
+        document.getElementById('rs-ca-f-usuario').value          = '';
+        document.getElementById('rs-ca-f-contrasena').value       = '';
+        document.getElementById('rs-ca-f-link').value             = '';
+        document.getElementById('rs-ca-f-correo').value           = '';
+        document.getElementById('rs-ca-f-obs').value              = '';
+        document.getElementById('rs-ca-f-activo').checked         = true;
+    }
+}
+
+function cerrarModalClaveRS() {
+    document.getElementById('rs-ca-modal-overlay').style.display = 'none';
+}
+
+function togglePassClaveRS() {
+    var inp = document.getElementById('rs-ca-f-contrasena');
+    inp.type = inp.type === 'password' ? 'text' : 'password';
+}
+
+function verPassClaveRS(el, id, b64) {
+    var actual = el.dataset.visible === '1';
+    if (actual) {
+        el.textContent = '•'.repeat(8) + ' 👁';
+        el.dataset.visible = '0';
+    } else {
+        try { el.textContent = decodeURIComponent(escape(atob(b64))) + ' 👁'; } catch(e){ el.textContent = atob(b64) + ' 👁'; }
+        el.dataset.visible = '1';
+    }
+}
+
+function guardarClaveRS() {
+    var id      = document.getElementById('rs-ca-modal-id').value;
+    var rsId    = document.getElementById('rs-ca-modal-rs-id').value;
+    var entidad = document.getElementById('rs-ca-f-entidad').value.trim();
+    var tipo    = document.getElementById('rs-ca-f-tipo').value;
+
+    if (!entidad) {
+        mostrarNotifClavesRS('Ingresa el nombre de la entidad o portal.', 'error');
+        return;
+    }
+
+    var body = {
+        _token:          CSRF,
+        tipo:            tipo,
+        entidad:         entidad,
+        usuario:         document.getElementById('rs-ca-f-usuario').value.trim(),
+        contrasena:      document.getElementById('rs-ca-f-contrasena').value,
+        link_acceso:     document.getElementById('rs-ca-f-link').value.trim(),
+        correo_entidad:  document.getElementById('rs-ca-f-correo').value.trim(),
+        observacion:     document.getElementById('rs-ca-f-obs').value.trim(),
+        activo:          document.getElementById('rs-ca-f-activo').checked ? 1 : 0,
+        razon_social_id: rsId
+    };
+
+    var url    = id ? '/admin/clave-accesos/' + id : '/admin/clave-accesos';
+    var method = id ? 'PUT' : 'POST';
+
+    fetch(url, {
+        method: method,
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRF-TOKEN': CSRF
+        },
+        body: JSON.stringify(body)
+    })
+    .then(r => r.json())
+    .then(function(res) {
+        if (res.success) {
+            cerrarModalClaveRS();
+            mostrarNotifClavesRS(res.message || 'Guardado correctamente.', 'success');
+            abrirClavesRS(rsIdActivo, rsNombreActivo);
+        } else {
+            mostrarNotifClavesRS('Error: ' + (res.message || 'Error al guardar.'), 'error');
+        }
+    })
+    .catch(function() {
+        mostrarNotifClavesRS('Error de conexión al guardar.', 'error');
+    });
+}
+
+function eliminarClaveRS(id) {
+    if (!confirm('¿Eliminar esta clave de acceso? Esta acción no se puede deshacer.')) return;
+
+    fetch('/admin/clave-accesos/' + id, {
+        method: 'DELETE',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRF-TOKEN': CSRF
+        }
+    })
+    .then(r => r.json())
+    .then(function(res) {
+        if (res.success) {
+            mostrarNotifClavesRS(res.message || 'Eliminada correctamente.', 'success');
+            abrirClavesRS(rsIdActivo, rsNombreActivo);
+        } else {
+            mostrarNotifClavesRS('Error al eliminar.', 'error');
+        }
+    })
+    .catch(() => mostrarNotifClavesRS('Error de conexión.', 'error'));
+}
+
+function mostrarNotifClavesRS(msg, tipo) {
+    var el = document.getElementById('rs-claves-notif');
+    el.style.display = 'block';
+    if (tipo === 'success') {
+        el.style.cssText = 'display:block;margin:0.5rem 1rem 0;padding:0.45rem 0.85rem;border-radius:7px;font-size:0.8rem;font-weight:600;background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.3);color:#065f46;';
+        el.textContent = '✅ ' + msg;
+    } else {
+        el.style.cssText = 'display:block;margin:0.5rem 1rem 0;padding:0.45rem 0.85rem;border-radius:7px;font-size:0.8rem;font-weight:600;background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;';
+        el.textContent = '❌ ' + msg;
+    }
+    setTimeout(function(){ el.style.display = 'none'; }, 4000);
 }
 
 // ── Toast ──
