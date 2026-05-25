@@ -176,7 +176,7 @@ class ExcelAportesEnLineaService
         if (!empty($rs->arl_nit)) {
             $nombreArl = DB::table('arls')
                 ->where(DB::raw('CAST(nit AS VARCHAR(20))'), (string)$rs->arl_nit)
-                ->value('nombre_arl');
+                ->value('razon_social'); // Usar razon_social ("ARL SURA") en vez de nombre_arl ("SURA")
         }
 
         // ── Query planos ──────────────────────────────────────────────────
@@ -326,7 +326,7 @@ class ExcelAportesEnLineaService
         $sheet->setCellValue('F10', '');                          // clave planilla asociada
         $sheet->setCellValue('G10', $rs->codigo_sucursal ?? '');
         $sheet->setCellValue('H10', $rs->nombre_sucursal ?? '');
-        $sheet->setCellValue('I10', 'EMPLEADOR');
+        $sheet->setCellValue('I10', '');                          // I10/J10 vacíos según requerimiento
         $sheet->setCellValue('K10', $nombreArl ?? '');
         $this->estilo($sheet, 'A10:K10', self::CLR_WHITE, '1F3864', false, 'center');
 
@@ -536,7 +536,7 @@ class ExcelAportesEnLineaService
             28 => null,  29 => null,  30 => 'NO', 31 => null,  // InicioSLN FinSLN IGE InicioIGE
             32 => null,  33 => 'NO',  34 => null, 35 => null,  // FinIGE LMA(NO) InicioLMA(null) FinLMA
             36 => 'NO', 37 => null,  38 => null,  39 => 'NO', // VAC-LR InicioVAC FinVAC AVP
-            40 => 'NO', 41 => null,  42 => null,  43 => 'NO', // VCT InicioVCT FinVCT IRL
+            40 => 'NO', 41 => null,  42 => null,  43 => 0,    // VCT InicioVCT FinVCT IRL
             44 => null,  45 => null,                          // InicioIRL FinIRL
             46 => 'NO',                           // AT Correcciones
             // Salario
