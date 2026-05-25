@@ -128,19 +128,14 @@ table.hi-tbl{width:100%;border-collapse:collapse;font-size:.77rem}
     @endif
 </form>
 
-{{-- CONTENIDO AGRUPADO --}}
-@forelse($agrupado as $razonSocial => $porAnio)
+{{-- CONTENIDO AGRUPADO POR CONTRATO Y AÑO --}}
+@forelse($agrupado as $grupoKey => $porAnio)
 @php $totalGrupo = collect($porAnio)->flatten()->sum('total'); $countGrupo = collect($porAnio)->flatten()->count(); @endphp
 <div class="hi-group open">
     <div class="hi-group-hdr" onclick="toggleGrupo(this)">
         <div class="hi-group-title">
-            🏢 {{ $razonSocial }}
+            📝 {{ $grupoKey }}
             <span class="hi-group-badge">{{ $countGrupo }} factura(s)</span>
-            @if(!empty($contratosporRS[$razonSocial]))
-                @foreach($contratosporRS[$razonSocial] as $cid)
-                <span style="font-size:.6rem;font-weight:700;padding:.12rem .45rem;border-radius:20px;background:#e0f2fe;color:#0369a1;border:1px solid #bae6fd;font-family:monospace;letter-spacing:.02em;" title="Contrato en {{ $razonSocial }}">#{{ $cid }}</span>
-                @endforeach
-            @endif
         </div>
         <div style="display:flex;align-items:center;gap:.75rem">
             <span class="hi-group-total">{{ $fmt($totalGrupo) }}</span>

@@ -1968,10 +1968,10 @@ class FacturacionController extends Controller
         $filtroAnio = $request->integer('anio', 0);
         $filtroRs   = $request->get('razon_social_id', '');
 
-        // Query principal
+        // Query principal con eager loading optimizado para contrato y razón social
         $query = Factura::where('aliado_id', $aliadoId)
             ->where('cedula', $cedula)
-            ->with(['razonSocial', 'empresa', 'plano.razonSocial', 'usuario'])
+            ->with(['contrato.razonSocial', 'razonSocial', 'empresa', 'plano.razonSocial', 'usuario'])
             ->orderByDesc('anio')
             ->orderByDesc('mes');
 
@@ -1990,15 +1990,20 @@ class FacturacionController extends Controller
             $facturas = $query->get();
         }
 
-        // Agrupar: [razon_social → [anio → [facturas]]]
-        // Prioridad por FK: factura.razon_social_id → plano.razon_social_id (via relación)
+        // Agrupar: [contrato_label → [anio → [facturas]]]
         $agrupado = [];
         foreach ($facturas as $f) {
-            $rs = $f->razonSocial?->razon_social
-               ?? $f->plano?->razonSocial?->razon_social
-               ?? 'Sin razón social';
+            if ($f->contrato_id) {
+                $rsName = $f->contrato?->razonSocial?->razon_social
+                       ?? $f->razonSocial?->razon_social
+                       ?? $f->plano?->razonSocial?->razon_social
+                       ?? 'Sin razón social';
+                $grupoKey = "Contrato #{$f->contrato_id} — {$rsName}";
+            } else {
+                $grupoKey = "Sin contrato";
+            }
             $anio = $f->anio;
-            $agrupado[$rs][$anio][] = $f;
+            $agrupado[$grupoKey][$anio][] = $f;
         }
 
         // Mapa razon_social_name → contrato_ids (todos los contratos del cliente, agrupados por RS)

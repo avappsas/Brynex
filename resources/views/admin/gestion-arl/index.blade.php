@@ -359,12 +359,12 @@ body{display:flex;flex-direction:column}
 
 {{-- ══ MODAL RETIRO (iframe contrato form) ══ --}}
 <div class="modal-bg" id="modalRetirar">
-<div class="modal-box wide" style="max-width:720px;padding:0;overflow:hidden;">
+<div class="modal-box wide" style="max-width:1200px;padding:0;overflow:hidden;">
     <div style="background:#0f172a;color:#fff;padding:.75rem 1rem;display:flex;align-items:center;justify-content:space-between;">
         <strong style="font-size:.9rem;">❌ Retiro Informativo — <span id="retirar-nombre"></span></strong>
         <button class="modal-close" onclick="cerrarModal('modalRetirar')" style="color:#94a3b8;font-size:1.2rem;">✕</button>
     </div>
-    <iframe id="retirar-iframe" src="" style="width:100%;height:520px;border:none;"></iframe>
+    <iframe id="retirar-iframe" src="" style="width:100%;height:750px;border:none;"></iframe>
 </div>
 </div>
 

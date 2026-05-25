@@ -36,18 +36,24 @@ class PlanoPagoController extends Controller
         $anioVencido = $mes > 1 ? $anio    : $anio - 1;
 
         // Closure reutilizable para el WHERE de periodo mixto
-        $wherePeriodo = function ($q) use ($mes, $anio, $mesVencido, $anioVencido) {
-            $q->where(function ($inner) use ($mes, $anio) {
-                // Independientes → mes actual
-                $inner->where('p.tipo_modalidad_id', 11)
-                      ->where('p.mes_plano',  $mes)
-                      ->where('p.anio_plano', $anio);
-            })->orWhere(function ($inner) use ($mesVencido, $anioVencido) {
-                // Todos los demas → mes vencido (mes_pago - 1)
-                $inner->where('p.tipo_modalidad_id', '<>', 11)
-                      ->where('p.mes_plano',  $mesVencido)
-                      ->where('p.anio_plano', $anioVencido);
-            });
+        $wherePeriodo = function ($q) use ($mes, $anio, $mesVencido, $anioVencido, $nPlanoFiltro) {
+            if ((int)$nPlanoFiltro === 100) {
+                // Para el plano 100 (IR) permitimos tanto el mes de pago como el mes vencido
+                $q->whereIn('p.mes_plano', [$mes, $mesVencido])
+                  ->whereIn('p.anio_plano', [$anio, $anioVencido]);
+            } else {
+                $q->where(function ($inner) use ($mes, $anio) {
+                    // Independientes → mes actual
+                    $inner->where('p.tipo_modalidad_id', 11)
+                          ->where('p.mes_plano',  $mes)
+                          ->where('p.anio_plano', $anio);
+                })->orWhere(function ($inner) use ($mesVencido, $anioVencido) {
+                    // Todos los demas → mes vencido (mes_pago - 1)
+                    $inner->where('p.tipo_modalidad_id', '<>', 11)
+                          ->where('p.mes_plano',  $mesVencido)
+                          ->where('p.anio_plano', $anioVencido);
+                });
+            }
         };
 
         // Regla IR (n_plano=100): antes del día 26 no se muestran como pendientes en el select.
@@ -122,8 +128,18 @@ class PlanoPagoController extends Controller
                 ->leftJoin('operadores_planilla AS op_cl', 'op_cl.id', '=', 'cl.operador_planilla_id')
                 ->where('p.aliado_id', $aliadoId)
                 ->whereNull('p.deleted_at')
-                ->whereIn('p.tipo_reg', ['planilla', 'retiro'])
-                ->whereRaw('ISNULL(p.num_dias, 0) > 0')   // excluir num_dias=0 Y num_dias=NULL
+                ->where(function ($q) use ($nPlanoFiltro) {
+                    if ((int)$nPlanoFiltro === 100) {
+                        // En el plano 100 (IR) se muestran registros con n_plano=100 O cualquier novedad (retiro/afiliacion)
+                        $q->where(function ($sub) {
+                            $sub->where('p.n_plano', 100)
+                                ->orWhereIn('p.tipo_reg', ['retiro', 'afiliacion']);
+                        });
+                    } else {
+                        $q->whereIn('p.tipo_reg', ['planilla', 'retiro'])
+                          ->whereRaw('ISNULL(p.num_dias, 0) > 0');
+                    }
+                })
                 ->where('p.razon_social_id', $razonSocialId)
                 ->where($wherePeriodo)
                 ->select([
