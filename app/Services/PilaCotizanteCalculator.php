@@ -185,20 +185,14 @@ class PilaCotizanteCalculator
             $smmlv    = (int) ConfiguracionBrynex::salarioMinimo();
             $ibcArlTp = $smmlv;
 
-            // ── IBC AFP y CCF según tipo de plan ────────────────────────────────
-            // Planes -6,-7,-8: salario_basico = salario mensual COMPLETO.
-            //   → IBC proporcional con ceil (ceil exigido por PILA Res. 2388)
-            // Planes 1,2,3,4: salario_basico YA viene con ceil correcto desde Plano::fromFactura
-            //   → usar ibcFull directamente (sin recalcular)
-            $planesConSalarioCompleto = [-6, -7, -8];
-            $necesitaProporcion       = in_array($tipoModalidad, $planesConSalarioCompleto);
+            // Calcular semanas e IBC por semanas (Decreto 2616 de 2013)
+            $semanasAfp  = self::calcularSemanasTp($diasAfpTp);
+            $semanasCaja = self::calcularSemanasTp($diasCajaTp);
 
-            $ibcAfpTp  = ($necesitaProporcion && $diasAfpTp  < 30)
-                ? (int)ceil($ibcFull * $diasAfpTp  / 30)
-                : $ibcFull;
-            $ibcCajaTp = ($necesitaProporcion && $diasCajaTp < 30)
-                ? (int)ceil($ibcFull * $diasCajaTp / 30)
-                : $ibcFull;
+            $salarioSemanal = $smmlv / 4;
+
+            $ibcAfpTp  = (int)ceil($salarioSemanal * $semanasAfp);
+            $ibcCajaTp = (int)ceil($salarioSemanal * $semanasCaja);
 
             $tienePension = !empty($codAfpRaw);
 
@@ -244,8 +238,8 @@ class PilaCotizanteCalculator
                 'esExtranjero'     => $esExtranjero,
                 // Tipo 51 NO está exonerado de parafiscales (PILA Res. 2388)
                 'exonerado'        => 'N',
-                'ibcFull'          => $ibcFull,
-                'ibcProp'          => $ibcFull,
+                'ibcFull'          => $ibcCajaTp, // Para tiempo parcial, el salario mensual reportado es la base de caja por semanas
+                'ibcProp'          => $ibcCajaTp,
                 'ibcAfp'           => $tienePension ? $ibcAfpTp : 0,
                 'ibcEps'           => 0,
                 'ibcArl'           => $ibcArlTp,
@@ -403,6 +397,23 @@ class PilaCotizanteCalculator
             'munCod'           => $munCod,
             'horasLaboradas'   => $dias * 8,    // Normal: num_dias × 8
         ];
+    }
+
+    /**
+     * Calcula la cantidad de semanas a cotizar según los días laborados (Decreto 2616 de 2013).
+     */
+    private static function calcularSemanasTp(int $dias): int
+    {
+        if ($dias >= 1 && $dias <= 7) {
+            return 1;
+        } elseif ($dias >= 8 && $dias <= 14) {
+            return 2;
+        } elseif ($dias >= 15 && $dias <= 21) {
+            return 3;
+        } elseif ($dias > 21) {
+            return 4;
+        }
+        return 0;
     }
 
     /**

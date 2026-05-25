@@ -268,12 +268,6 @@ class ExcelAportesEnLineaService
         $this->buildGruposYHeaders($sheet);
         $this->buildDatosEmpleados($sheet, $planos);
 
-        // Hoja 2: DatosPruebaEmp
-        $spreadsheet->createSheet();
-        $aux = $spreadsheet->getSheet(1);
-        $aux->setTitle('DatosPruebaEmp');
-        $this->buildDatosPruebaEmp($aux);
-
         $spreadsheet->setActiveSheetIndex(0);
         return $spreadsheet;
     }
@@ -492,7 +486,9 @@ class ExcelAportesEnLineaService
             -7, -8 => 3,
             default => 1,
         };
-        $salarioMensual = (int)($p->salario_basico ?? 0) * $factorSalario;
+        $salarioMensual = $c['esTiempoParcial']
+            ? $c['ibcFull']
+            : ((int)($p->salario_basico ?? 0) * $factorSalario);
 
         // Horas laboradas:
         // - Tiempo parcial (tipo_modalidad -6,-7,-8,1,2,3): usa dias_caja del plan × 8
@@ -527,7 +523,7 @@ class ExcelAportesEnLineaService
             20 => 'NO', 21 => 'NO', 22 => 'NO', 23 => 'NO', // TDE TAE TDP TAP
             24 => 'NO', 25 => null,  26 => 'NO', 27 => 'NO', // VSP FechaVSP VST SLN
             28 => null,  29 => null,  30 => 'NO', 31 => null,  // InicioSLN FinSLN IGE InicioIGE
-            32 => null,  33 => null,  34 => 'NO', 35 => null,  // FinIGE LMA(NO) InicioLMA(null) FinLMA
+            32 => null,  33 => 'NO',  34 => null, 35 => null,  // FinIGE LMA(NO) InicioLMA(null) FinLMA
             36 => 'NO', 37 => null,  38 => null,  39 => 'NO', // VAC-LR InicioVAC FinVAC AVP
             40 => 'NO', 41 => null,  42 => null,  43 => 'NO', // VCT InicioVCT FinVCT IRL
             44 => null,  45 => null,                          // InicioIRL FinIRL
@@ -582,7 +578,7 @@ class ExcelAportesEnLineaService
             85 => $tarifaCcf !== null              // CG Tarifa CCF (ej: 4,00%)
                 ? number_format($tarifaCcf * 100, 2, ',', '.') . '%'
                 : null,
-            86 => $tarifaCcf ? (int)round($salarioMensual * $tarifaCcf) : 0, // CH Valor CCF redondeado
+            86 => $c['vCcf'] ?? 0, // CH Valor CCF redondeado (del calculador centralizado con redondeo PILA)
             87 => 0,                              // CI IBC Otros Parafiscales
             88 => $c['tarifaSenaStr'] ?? null,    // CJ Tarifa SENA
             89 => 0,                              // CK Valor Cotización SENA
@@ -618,41 +614,7 @@ class ExcelAportesEnLineaService
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────
-    // ETAPA 3b: buildDatosPruebaEmp — listas auxiliares
-    // ─────────────────────────────────────────────────────────────────────
-    private function buildDatosPruebaEmp($sheet): void
-    {
-        $listas = [
-            'A' => ['Tipo Documento',     'CC','TI','CE','PA','RC','PE','AS','CD','SC','NUIP','PT'],
-            'B' => ['Tipo Planilla',      'E','N','S','A','R','J','K'],
-            'C' => ['Tipo Aportante',     'EMPLEADOR','AGREMIACION','CONSORCIO','ENTIDAD PUBLICA'],
-            'D' => ['Tipo Cotizante',     '1','2','3','12','18','19','22','23','30','31','32'],
-            'E' => ['Subtipo Cotizante',  '0','1','2','3','4'],
-            'F' => ['Clase Riesgo',       '1','2','3','4','5'],
-            'G' => ['SI / NO',            'SI','NO','S','N'],
-            'H' => ['Exonerado',          'S','N'],
-        ];
 
-        $sheet->setCellValue('A1', 'DatosPruebaEmp — Listas de validación');
-        $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(12);
-
-        $col = 'A';
-        foreach ($listas as $colLetra => $items) {
-            $fila = 3;
-            foreach ($items as $idx => $val) {
-                $sheet->setCellValue("{$colLetra}{$fila}", $val);
-                if ($idx === 0) {
-                    $sheet->getStyle("{$colLetra}{$fila}")->getFont()->setBold(true);
-                    $sheet->getStyle("{$colLetra}{$fila}")
-                        ->getFill()->setFillType(Fill::FILL_SOLID)
-                        ->getStartColor()->setRGB(self::CLR_SECT);
-                }
-                $fila++;
-            }
-            $sheet->getColumnDimension($colLetra)->setAutoSize(true);
-        }
-    }
 
     // ─────────────────────────────────────────────────────────────────────
     // Helper: aplicar estilo de fondo + texto a un rango
