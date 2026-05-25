@@ -446,6 +446,17 @@ class ExcelAportesEnLineaService
                 $sheet->getStyle("{$cl}19:{$cl}{$lastRow}")
                     ->getNumberFormat()->setFormatCode('#,##0');
             }
+            // Porcentajes (cols BA=53, BN=66, CG=85, CJ=88, CL=90)
+            $pctCols = [53, 66, 85, 88, 90];
+            foreach ($pctCols as $ci) {
+                $cl = $this->col($ci);
+                $sheet->getStyle("{$cl}19:{$cl}{$lastRow}")
+                    ->getNumberFormat()->setFormatCode('0.00%');
+            }
+            // ARL requiere más decimales (BY=77)
+            $clArl = $this->col(77);
+            $sheet->getStyle("{$clArl}19:{$clArl}{$lastRow}")
+                ->getNumberFormat()->setFormatCode('0.000%');
         }
     }
 
@@ -536,7 +547,7 @@ class ExcelAportesEnLineaService
             50 => $c['tienePension'] ? ($p->nombre_afp ?? $c['codAfpPila'] ?? null) : null, // AX AFP nombre
             51 => $c['tienePension'] ? $c['diasPension'] : 0,                               // AY Días
             52 => $c['tienePension'] ? $c['ibcAfp'] : 0,                                    // AZ IBC
-            53 => $c['tienePension'] ? '16,00%' : null,                                     // BA Tarifa
+            53 => $c['tienePension'] ? 0.16 : null,                                     // BA Tarifa
             54 => $c['tienePension'] ? ($c['vAfp'] ?: null) : 0,                            // BB Valor
             55 => 'Sin Riesgo',                                                             // BC Indicador Alto Riesgo
             56 => 0,                              // BD Vol Afiliado
@@ -550,9 +561,7 @@ class ExcelAportesEnLineaService
             63 => $p->nombre_eps ? strtoupper($p->nombre_eps) : 'NINGUNA', // BK Administradora EPS
             64 => $c['diasSalud'],                // BL Días
             65 => $c['ibcEps'],                   // BM IBC
-            66 => $tarifaEps !== null             // BN Tarifa
-                ? number_format($tarifaEps * 100, 2, ',', '.') . '%'
-                : '0,00%',
+            66 => $tarifaEps !== null ? (float)$tarifaEps : 0.0,                        // BN Tarifa
             67 => $c['vEps'] ?? 0,               // BO Valor Cotización (0 si null)
             68 => 0,                              // BP Valor UPC
             69 => null,                           // BQ Auth IGE
@@ -564,9 +573,7 @@ class ExcelAportesEnLineaService
             74 => $p->nombre_arl ? strtoupper($p->nombre_arl) : 'NINGUNA', // BV Administradora ARL (nombre)
             75 => $c['diasArl'],                  // BW Días
             76 => $c['ibcArl'],                   // BX IBC
-            77 => $c['tarifaArlDecimal'] !== null  // BY Tarifa ARL (ej: 0,52%)
-                ? number_format((float)$c['tarifaArlDecimal'] * 100, 2, ',', '.') . '%'
-                : null,
+            77 => $c['tarifaArlDecimal'] !== null ? (float)$c['tarifaArlDecimal'] : null, // BY Tarifa ARL
             78 => $c['nivelRiesgo'],              // BZ Clase
             79 => 1,                              // CA Centro de trabajo
             80 => $actEco,                        // CB Actividad económica
@@ -575,14 +582,12 @@ class ExcelAportesEnLineaService
             82 => $c['diasCcf'],                  // CD Días
             83 => $p->nombre_caj ? strtoupper($p->nombre_caj) : 'NINGUNA', // CE Administradora CCF (nombre)
             84 => $salarioMensual ?: 0,           // CF IBC CCF (mismo factor que salario mensual)
-            85 => $tarifaCcf !== null              // CG Tarifa CCF (ej: 4,00%)
-                ? number_format($tarifaCcf * 100, 2, ',', '.') . '%'
-                : null,
+            85 => $tarifaCcf !== null ? (float)$tarifaCcf : null,                       // CG Tarifa CCF
             86 => $c['vCcf'] ?? 0, // CH Valor CCF redondeado (del calculador centralizado con redondeo PILA)
             87 => 0,                              // CI IBC Otros Parafiscales
-            88 => $c['tarifaSenaStr'] ?? null,    // CJ Tarifa SENA
+            88 => $c['exonerado'] === 'S' ? 0.0 : 0.02,                                 // CJ Tarifa SENA
             89 => 0,                              // CK Valor Cotización SENA
-            90 => $c['tarifaIcbfStr'] ?? null,    // CL Tarifa ICBF
+            90 => $c['exonerado'] === 'S' ? 0.0 : 0.03,                                 // CL Tarifa ICBF
             91 => 0,                              // CM Valor Cotización ICBF
             92 => 0,                              // CN Tarifa ESAP
             93 => 0,                              // CO Valor ESAP
