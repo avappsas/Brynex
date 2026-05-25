@@ -941,6 +941,9 @@ class ContratoController extends Controller
                 'observacion' => $validated['observacion'] ?? null,
             ]);
 
+            // Parsear la fecha de retiro para obtener el mes y año de la cotización real
+            $carbonRetiro = \Carbon\Carbon::parse($fechaRetiro);
+
             \App\Models\Plano::create([
                 'factura_id'        => $facRetiro->id,
                 'contrato_id'       => $original->id,
@@ -967,8 +970,8 @@ class ContratoController extends Controller
                 'nivel_riesgo'      => $original->n_arl ?? 1,
                 'salario_basico'    => $original->salario ?? 0,
                 'n_plano'           => 100, // IR siempre en plano 100 (separado de planillas normales)
-                'mes_plano'         => now()->month,
-                'anio_plano'        => now()->year,
+                'mes_plano'         => $carbonRetiro->month,
+                'anio_plano'        => $carbonRetiro->year,
                 'razon_social'      => $rs?->razon_social ?? null,
                 'razon_social_id'   => $original->razon_social_id,
                 'tipo_p'            => $original->tipo_modalidad_id,
