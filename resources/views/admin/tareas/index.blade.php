@@ -155,8 +155,9 @@
         <div style="font-size:.78rem;color:#64748b;">Seguimiento y control de trámites por cliente</div>
     </div>
     <div style="display:flex;gap:.6rem;align-items:center;">
-        <a href="{{ route('admin.tareas.reporte') }}" style="background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;border-radius:9px;padding:.48rem 1rem;font-size:.8rem;text-decoration:none;font-weight:600;">📊 Reporte</a>
-        <button class="btn-nueva" onclick="abrirModalNueva()">＋ Nueva Tarea</button>
+        <button type="button" onclick="abrirModalClavesGlobal()" style="background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#1c1917;border:none;border-radius:9px;padding:.48rem 1rem;font-size:.8rem;font-weight:800;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,0.15);display:inline-flex;align-items:center;gap:0.35rem;height:36px;white-space:nowrap;">🔑 Claves</button>
+        <a href="{{ route('admin.tareas.reporte') }}" style="background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;border-radius:9px;padding:.48rem 1rem;font-size:.8rem;text-decoration:none;font-weight:600;display:inline-flex;align-items:center;height:36px;box-sizing:border-box;">📊 Reporte</a>
+        <button class="btn-nueva" onclick="abrirModalNueva()" style="height:36px;align-items:center;box-sizing:border-box;">＋ Nueva Tarea</button>
     </div>
 </div>
 
@@ -546,6 +547,8 @@
 </div>
 
 <div class="toast" id="toast"></div>
+
+{{-- @include('admin.partials._modal_claves_globales') --}}
 
 @endsection
 

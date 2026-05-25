@@ -40,6 +40,11 @@ class ClaveAcceso extends BaseModel
         return $this->belongsTo(\App\Models\RazonSocial::class, 'razon_social_id');
     }
 
+    public function empresa()
+    {
+        return $this->belongsTo(\App\Models\Empresa::class, 'empresa_id');
+    }
+
     // ─── Scopes ───────────────────────────────────────────────────────
 
     public function scopeActivos($query)

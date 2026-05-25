@@ -132,7 +132,10 @@ tbody td{padding:.6rem .85rem;vertical-align:middle;}
 @section('contenido')
 <div class="page-header">
     <h1>🏥 Incapacidades</h1>
-    <button class="btn btn-primary" onclick="abrirModalCrear()">➕ Nueva Incapacidad</button>
+    <div style="display:flex;gap:0.4rem;">
+        <button class="btn btn-warning" onclick="abrirModalClavesGlobal()" style="background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#1c1917;border:none;box-shadow:0 2px 6px rgba(0,0,0,0.15);">🔑 Claves y Accesos</button>
+        <button class="btn btn-primary" onclick="abrirModalCrear()">➕ Nueva Incapacidad</button>
+    </div>
 </div>
 
 {{-- KPIs --}}
@@ -359,6 +362,7 @@ tbody td{padding:.6rem .85rem;vertical-align:middle;}
 {{-- ═══════════════════════════════════════════════════════════ --}}
 @include('admin.incapacidades.partials._modal_crear', ['trabajadores' => $trabajadores, 'razonesSociales' => $razonesSociales])
 @include('admin.incapacidades.partials._modal_detalle')
+@include('admin.partials._modal_claves_globales')
 
 @endsection
 

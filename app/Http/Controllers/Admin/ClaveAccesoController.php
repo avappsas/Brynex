@@ -14,6 +14,50 @@ class ClaveAccesoController extends Controller
         $this->middleware(['auth']);
     }
 
+    // ─── Vista global para buscar y filtrar todas las claves ──────────
+    public function vistaGlobal(Request $request)
+    {
+        $aliadoId = session('aliado_id_activo') ?: auth()->user()->aliado_id;
+
+        $query = ClaveAcceso::where('aliado_id', $aliadoId)
+            ->with(['razonSocial', 'cliente', 'empresa']);
+
+        // Filtro por Razón Social
+        if ($request->filled('razon_social_id')) {
+            $query->where('razon_social_id', $request->get('razon_social_id'));
+        }
+
+        // Filtro por Entidad
+        if ($request->filled('entidad')) {
+            $query->where('entidad', 'LIKE', '%' . $request->get('entidad') . '%');
+        }
+
+        // Filtro por Tipo
+        if ($request->filled('tipo')) {
+            $query->where('tipo', $request->get('tipo'));
+        }
+
+        // Búsqueda general (usuario, correo, etc.)
+        if ($request->filled('buscar')) {
+            $buscar = $request->get('buscar');
+            $query->where(function($q) use ($buscar) {
+                $q->where('usuario', 'LIKE', "%$buscar%")
+                  ->orWhere('correo_entidad', 'LIKE', "%$buscar%")
+                  ->orWhere('observacion', 'LIKE', "%$buscar%")
+                  ->orWhere('entidad', 'LIKE', "%$buscar%");
+            });
+        }
+
+        $claves = $query->orderBy('tipo')->orderBy('entidad')->get();
+
+        // Obtener razones sociales para el filtro select
+        $razones = \App\Models\RazonSocial::where('aliado_id', $aliadoId)
+            ->orderBy('razon_social')
+            ->get(['id', 'razon_social']);
+
+        return view('admin.claves.global', compact('claves', 'razones'));
+    }
+
     // ─── Listar claves de un cliente (por cédula) ─────────────────────
     public function index(Request $request)
     {

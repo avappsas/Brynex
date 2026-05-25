@@ -84,6 +84,7 @@ Route::middleware('auth')->group(function () {
 
         // Claves de acceso (cliente y razón social)
         $cac = \App\Http\Controllers\Admin\ClaveAccesoController::class;
+        Route::get('clave-accesos/global',                 [$cac, 'vistaGlobal'])       ->name('clave_accesos.global');
         Route::get('clave-accesos',                        [$cac, 'index'])             ->name('clave_accesos.index');
         Route::get('clave-accesos/razon-social/{id}',      [$cac, 'indexRazonSocial'])  ->name('clave_accesos.razon_social');
         Route::get('clave-accesos/empresa/{id}',           [$cac, 'indexEmpresa'])      ->name('clave_accesos.empresa');

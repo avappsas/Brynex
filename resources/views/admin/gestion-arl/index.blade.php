@@ -93,6 +93,8 @@ body{display:flex;flex-direction:column}
         <div class="garl-sub">Seguimiento de contratos ARL — {{ now()->format('d/m/Y') }}</div>
     </div>
     <div style="display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;margin-left:auto;">
+        <button type="button" onclick="abrirModalClavesGlobal()" style="background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#1c1917;padding:.32rem .75rem;border-radius:6px;font-size:.78rem;font-weight:800;border:none;box-shadow:0 2px 6px rgba(0,0,0,0.25);cursor:pointer;">🔑 Claves</button>
+        <span style="color:#4b6a8b;">|</span>
 
         {{-- Aliado (solo BryNex) --}}
         @if($user->es_brynex && count($alidosDisponibles) > 1)
@@ -460,4 +462,6 @@ document.querySelectorAll('.modal-bg').forEach(bg => {
 });
 </script>
 @endpush
+@include('admin.partials._modal_claves_globales')
+
 @endsection
