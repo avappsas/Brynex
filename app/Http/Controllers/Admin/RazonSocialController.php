@@ -69,19 +69,27 @@ class RazonSocialController extends Controller
     public function store(Request $request)
     {
         $aliadoId = session('aliado_id_activo');
+
+        // Generar automáticamente el siguiente ID interno (PK)
+        $nextId = (int) DB::table('razones_sociales')->max('id') + 1;
+        $request->merge(['id' => $nextId]);
+
         $data = $this->validar($request);
 
-        // Verificar que el NIT no exista para este aliado
-        $existe = DB::table('razones_sociales')
-            ->where('id', $data['id'])
-            ->where('aliado_id', $aliadoId)
-            ->exists();
+        // Verificar que el NIT no exista para este aliado (si se proporciona)
+        if (!empty($data['nit'])) {
+            $existeNit = DB::table('razones_sociales')
+                ->where('nit', $data['nit'])
+                ->where('aliado_id', $aliadoId)
+                ->exists();
 
-        if ($existe) {
-            return back()->withInput()
-                ->withErrors(['id' => 'Ya existe una Razón Social con ese NIT para este aliado.']);
+            if ($existeNit) {
+                return back()->withInput()
+                    ->withErrors(['nit' => 'Ya existe una Razón Social con ese NIT para este aliado.']);
+            }
         }
 
+        $data['id']              = $nextId;
         $data['aliado_id']       = $aliadoId;
         $data['es_independiente'] = $request->boolean('es_independiente');
 
@@ -121,6 +129,20 @@ class RazonSocialController extends Controller
 
         $data = $this->validar($request, $id);
         unset($data['id']); // no cambiar PK en update
+
+        // Verificar que el NIT no exista para este aliado en otra razón social
+        if (!empty($data['nit'])) {
+            $existeNit = DB::table('razones_sociales')
+                ->where('nit', $data['nit'])
+                ->where('aliado_id', $aliadoId)
+                ->where('id', '<>', $id)
+                ->exists();
+
+            if ($existeNit) {
+                return back()->withInput()
+                    ->withErrors(['nit' => 'Ya existe otra Razón Social con ese NIT para este aliado.']);
+            }
+        }
 
         $data['es_independiente'] = $request->boolean('es_independiente');
 
@@ -307,7 +329,7 @@ class RazonSocialController extends Controller
     private function validar(Request $request, ?int $editId = null): array
     {
         return $request->validate([
-            'id'                   => 'required|integer|min:1',
+            'id'                   => 'nullable|integer|min:1',
             'nit'                  => 'nullable|integer|min:1',
             'dv'                   => 'nullable|integer|min:0|max:9',
             'razon_social'         => 'required|string|max:255',

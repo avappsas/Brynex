@@ -142,6 +142,12 @@ Route::middleware('auth')->group(function () {
         Route::get('configuracion/razones-sociales/{id}/estado-contratos',[$rsc, 'estadoContratos'])->name('configuracion.razones.estado_contratos');
         Route::post('configuracion/razones-sociales/{id}/sello',          [$rsc, 'subirSello'])    ->name('configuracion.razones.sello');
 
+        // Documentos de Razones Sociales
+        $rsdc = \App\Http\Controllers\Admin\RazonSocialDocumentoController::class;
+        Route::post('configuracion/razones-sociales/{id}/documentos',          [$rsdc, 'store'])   ->name('configuracion.razones.documentos.store');
+        Route::get('configuracion/razones-sociales/documentos/{id}/descargar', [$rsdc, 'download'])->name('configuracion.razones.documentos.download');
+        Route::delete('configuracion/razones-sociales/documentos/{id}',        [$rsdc, 'destroy'])  ->name('configuracion.razones.documentos.destroy');
+
         // Formularios EPS — mapeo visual de coordenadas
         $ef = \App\Http\Controllers\Admin\EpsFormularioController::class;
         Route::get ('configuracion/eps/{eps}/formulario',      [$ef, 'editor'])   ->name('configuracion.eps.formulario');

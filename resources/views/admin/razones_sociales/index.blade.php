@@ -171,6 +171,7 @@
                     @endif
                 </td>
                 <td style="text-align:right;white-space:nowrap">
+                    <a href="{{ route('admin.configuracion.razones.edit', $rs->id) }}#cardDocumentos" class="btn-edit" title="Ver / Cargar documentos" style="margin-right: 4px">📁 Docs</a>
                     <a href="{{ route('admin.configuracion.razones.edit', $rs->id) }}" class="btn-edit">✏️ Editar</a>
                     <button type="button" class="btn-del"
                             onclick="abrirModalGestion({{ $rs->id }}, '{{ addslashes($rs->razon_social) }}')"
