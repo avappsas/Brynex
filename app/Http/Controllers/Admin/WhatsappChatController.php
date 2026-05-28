@@ -83,7 +83,7 @@ class WhatsappChatController extends Controller
         // Plantillas aprobadas para cuando la ventana esté inactiva
         $plantillas = \App\Models\WhatsappPlantilla::delAliado($alidoId)
             ->aprobadas()
-            ->select('id', 'nombre', 'nombre_display', 'cuerpo', 'variables_mapa', 'cantidadVariables')
+            ->select('id', 'nombre', 'nombre_display', 'cuerpo', 'variables_mapa')
             ->get();
 
         return view('admin.whatsapp.chat.show', compact(
