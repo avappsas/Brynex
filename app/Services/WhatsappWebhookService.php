@@ -54,7 +54,7 @@ class WhatsappWebhookService
                 // Mensajes entrantes
                 $mensajes = $value['messages'] ?? [];
                 foreach ($mensajes as $msg) {
-                    $this->procesarMensajeEntrante($msg, $config->aliado_id, $config);
+                    $this->procesarMensajeEntrante($msg, $config->aliado_id, $config, $value);
                 }
 
                 // Actualizaciones de estado (entregado/leído)
@@ -69,7 +69,7 @@ class WhatsappWebhookService
     /**
      * Procesa un mensaje entrante del cliente.
      */
-    public function procesarMensajeEntrante(array $msg, int $alidoId, WhatsappConfig $config): void
+    public function procesarMensajeEntrante(array $msg, int $alidoId, WhatsappConfig $config, array $changeValue = []): void
     {
         $waFrom = $msg['from'] ?? null;
         $waId   = $msg['id']   ?? null;
@@ -81,7 +81,7 @@ class WhatsappWebhookService
         if (WhatsappMensaje::where('wa_message_id', $waId)->exists()) return;
 
         // Obtener o crear la conversación
-        $conversacion = $this->obtenerOCrearConversacion($waFrom, $alidoId, $msg);
+        $conversacion = $this->obtenerOCrearConversacion($waFrom, $alidoId, $msg, $changeValue);
 
         // Construir el mensaje
         $dataMensaje = [
@@ -169,7 +169,8 @@ class WhatsappWebhookService
     public function obtenerOCrearConversacion(
         string $waFrom,
         int $alidoId,
-        array $msgData = []
+        array $msgData = [],
+        array $changeValue = []
     ): WhatsappConversacion {
         $conversacion = WhatsappConversacion::where('aliado_id', $alidoId)
             ->where('wa_contact_id', $waFrom)
@@ -179,9 +180,17 @@ class WhatsappWebhookService
         if ($conversacion) return $conversacion;
 
         // Buscar nombre del perfil en los datos del webhook
-        $nombreContacto = $msgData['contacts'][0]['profile']['name']
-            ?? $msgData['profile']['name']
-            ?? null;
+        $nombreContacto = null;
+        $contacts = $changeValue['contacts'] ?? $msgData['contacts'] ?? [];
+        foreach ($contacts as $contact) {
+            if (($contact['wa_id'] ?? '') === $waFrom) {
+                $nombreContacto = $contact['profile']['name'] ?? null;
+                break;
+            }
+        }
+        if (!$nombreContacto) {
+            $nombreContacto = $contacts[0]['profile']['name'] ?? $msgData['profile']['name'] ?? null;
+        }
 
         // Intentar vincular con un contrato/cliente por número de celular
         $numeroLimpio = preg_replace('/[^0-9]/', '', $waFrom);
@@ -245,7 +254,7 @@ class WhatsappWebhookService
             if ($convExistente) {
                 $config = WhatsappConfig::where('aliado_id', $convExistente->aliado_id)->first();
                 if ($config) {
-                    $this->procesarMensajeEntrante($msg, $convExistente->aliado_id, $config);
+                    $this->procesarMensajeEntrante($msg, $convExistente->aliado_id, $config, $value);
                 }
             }
             // Si no hay conversación existente, el mensaje se pierde en modo multi-aliado compartido
