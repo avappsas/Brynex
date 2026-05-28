@@ -172,12 +172,21 @@ class WhatsappWebhookService
         array $msgData = [],
         array $changeValue = []
     ): WhatsappConversacion {
+        // Buscar cualquier conversación existente (incluyendo cerrada) para este contacto
         $conversacion = WhatsappConversacion::where('aliado_id', $alidoId)
             ->where('wa_contact_id', $waFrom)
-            ->whereIn('estado', ['abierta', 'asignada'])
             ->first();
 
-        if ($conversacion) return $conversacion;
+        if ($conversacion) {
+            // Si la conversación estaba cerrada, la reabrimos en el inbox general
+            if ($conversacion->estado === 'cerrada') {
+                $conversacion->update([
+                    'estado'     => 'abierta',
+                    'asignado_a' => null,
+                ]);
+            }
+            return $conversacion;
+        }
 
         // Buscar nombre del perfil en los datos del webhook
         $nombreContacto = null;
