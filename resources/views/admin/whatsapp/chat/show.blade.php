@@ -88,7 +88,7 @@
 </style>
 @endpush
 
-@section('content')
+@section('contenido')
 <div style="padding:0 1.5rem 1.5rem">
 <div class="chat-layout" x-data="chatApp()" x-init="init()">
 

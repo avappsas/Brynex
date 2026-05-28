@@ -7,6 +7,7 @@ use App\Models\{Aliado, WhatsappConfig};
 use App\Services\WhatsappApiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Http;
 
 /**
  * Gestión de la configuración de WhatsApp por aliado.
@@ -21,7 +22,7 @@ class WhatsappConfigController extends Controller
      */
     public function index()
     {
-        $this->authorizarSuperadminBrynex();
+        $this->autorizarSuperadminBrynex();
 
         $aliados = Aliado::activos()
             ->with('whatsappConfig')
@@ -36,7 +37,7 @@ class WhatsappConfigController extends Controller
      */
     public function edit(int $alidoId)
     {
-        $this->authorizarSuperadminBrynex();
+        $this->autorizarSuperadminBrynex();
 
         $aliado = Aliado::findOrFail($alidoId);
         $config = WhatsappConfig::paraAliado($alidoId);
@@ -49,7 +50,7 @@ class WhatsappConfigController extends Controller
      */
     public function update(Request $request, int $alidoId)
     {
-        $this->authorizarSuperadminBrynex();
+        $this->autorizarSuperadminBrynex();
 
         $aliado = Aliado::findOrFail($alidoId);
         $config = WhatsappConfig::paraAliado($alidoId);
@@ -83,7 +84,7 @@ class WhatsappConfigController extends Controller
      */
     public function verificarWebhook(Request $request)
     {
-        $this->authorizarSuperadminBrynex();
+        $this->autorizarSuperadminBrynex();
 
         $alidoId = $request->validate(['aliado_id' => 'required|integer'])['aliado_id'];
         $config  = WhatsappConfig::paraAliado($alidoId);
@@ -98,12 +99,10 @@ class WhatsappConfigController extends Controller
         try {
             // Intentar listar las plantillas como prueba de conectividad
             $creds    = $config->credencialesEfectivas();
-            $response = app(\GuzzleHttp\Client::class)->get(
-                "https://graph.facebook.com/v19.0/{$creds['waba_id']}",
-                ['headers' => ['Authorization' => "Bearer {$creds['access_token']}"]]
-            );
+            $response = Http::withToken($creds['access_token'])
+                ->get("https://graph.facebook.com/v19.0/{$creds['waba_id']}");
 
-            $data = json_decode($response->getBody()->getContents(), true);
+            $data = $response->json();
             $config->update(['webhook_verificado' => true]);
 
             return response()->json([
@@ -118,7 +117,7 @@ class WhatsappConfigController extends Controller
         }
     }
 
-    private function authorizarSuperadminBrynex(): void
+    private function autorizarSuperadminBrynex(): void
     {
         $user = Auth::user();
         abort_unless($user->hasRole('superadmin') && $user->es_brynex, 403);

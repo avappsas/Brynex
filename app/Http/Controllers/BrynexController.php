@@ -28,7 +28,16 @@ class BrynexController extends Controller
         $activos      = $aliados->where('activo', true)->count();
         $usuariosBrynex = User::where('es_brynex', true)->count();
 
-        return view('brynex.hub', compact('aliados', 'totalAliados', 'activos', 'usuariosBrynex'));
+        // Configuraciones WhatsApp por aliado
+        $whatsappConfigs = DB::table('whatsapp_configuracion_aliado')
+            ->get()
+            ->keyBy('aliado_id');
+        $totalWaConfigurados = $whatsappConfigs->where('activo', 1)->count();
+
+        return view('brynex.hub', compact(
+            'aliados', 'totalAliados', 'activos', 'usuariosBrynex',
+            'whatsappConfigs', 'totalWaConfigurados'
+        ));
     }
 
     // ── Gestión de accesos: qué BryNex puede entrar a qué aliado ────────

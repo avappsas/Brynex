@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Models\BaseModel;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class Aliado extends BaseModel
@@ -59,5 +60,11 @@ class Aliado extends BaseModel
     public function scopeActivos($query)
     {
         return $query->where('activo', true);
+    }
+
+    // Configuración WhatsApp Business API de este aliado
+    public function whatsappConfig(): HasOne
+    {
+        return $this->hasOne(WhatsappConfig::class, 'aliado_id');
     }
 }

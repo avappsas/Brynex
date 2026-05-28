@@ -25,7 +25,7 @@
 </style>
 @endpush
 
-@section('content')
+@section('contenido')
 <div class="contenido">
     <div class="page-card">
         <div class="page-header">

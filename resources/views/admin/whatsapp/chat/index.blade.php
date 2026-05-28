@@ -170,7 +170,7 @@
 </style>
 @endpush
 
-@section('content')
+@section('contenido')
 <div style="padding:1rem 1.5rem 0">
     @if(session('ok'))
         <div class="flash success" style="margin-bottom:.75rem">✅ {{ session('ok') }}</div>

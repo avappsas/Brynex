@@ -28,7 +28,7 @@
 </style>
 @endpush
 
-@section('content')
+@section('contenido')
 <div class="contenido">
     @if(session('ok'))
         <div class="flash success">✅ {{ session('ok') }}</div>

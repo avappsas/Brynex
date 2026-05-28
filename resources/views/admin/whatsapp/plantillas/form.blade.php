@@ -24,7 +24,7 @@
 </style>
 @endpush
 
-@section('content')
+@section('contenido')
 <div class="contenido">
     @if($errors->any())
         <div class="flash" style="background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;border-radius:8px;padding:.75rem 1rem;margin-bottom:1rem;font-size:.83rem;">

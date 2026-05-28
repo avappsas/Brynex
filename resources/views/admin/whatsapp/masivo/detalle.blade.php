@@ -25,7 +25,7 @@
 </style>
 @endpush
 
-@section('content')
+@section('contenido')
 <div class="contenido">
     <div style="margin-bottom:1rem">
         <a href="{{ route('admin.whatsapp.masivo.historial') }}" style="color:#2563eb;text-decoration:none;font-size:.83rem">← Volver al historial</a>
