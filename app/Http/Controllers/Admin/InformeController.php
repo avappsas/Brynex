@@ -66,16 +66,29 @@ class InformeController extends Controller
         $aid    = $this->aliadoId();
         $buscar = $request->input('q','');
 
+        $fRazon      = $request->input('razon_social_id');
+        $fEps        = $request->input('eps_id');
+        $fCaja       = $request->input('caja_id');
+        $fPension    = $request->input('pension_id');
+        $fModalidad  = $request->input('tipo_modalidad_id');
+        $fPlan       = $request->input('plan_id');
+
         $query = DB::table('contratos AS c')
             ->join('clientes AS cl', function($j) use($aid){ $j->on('cl.cedula','=','c.cedula')->where('cl.aliado_id',$aid); })
             ->leftJoin('razones_sociales AS rs','rs.id','=','c.razon_social_id')
             ->leftJoin('empresas AS em','em.id','=','cl.cod_empresa')
             ->leftJoin('eps AS e','e.id','=','c.eps_id')
+            ->leftJoin('pensiones AS p','p.id','=','c.pension_id')
+            ->leftJoin('cajas AS cj','cj.id','=','c.caja_id')
+            ->leftJoin('tipo_modalidad AS tm','tm.id','=','c.tipo_modalidad_id')
+            ->leftJoin('planes_contrato AS pl','pl.id','=','c.plan_id')
             ->where('c.aliado_id',$aid)
             ->where('c.estado','vigente')
             ->select('c.id','c.cedula','c.fecha_ingreso','c.salario',
                 DB::raw("LTRIM(RTRIM(cl.primer_nombre+' '+ISNULL(cl.segundo_nombre,'')+' '+cl.primer_apellido+' '+ISNULL(cl.segundo_apellido,''))) AS nombre_completo"),
-                'rs.razon_social','em.empresa','e.nombre AS eps_nombre');
+                'rs.razon_social','em.empresa','e.nombre AS eps_nombre',
+                'cj.nombre AS caja_nombre','p.razon_social AS pension_nombre',
+                'tm.tipo_modalidad AS modalidad_nombre','pl.nombre AS plan_nombre');
 
         if ($buscar) {
             $query->where(function($q) use($buscar){
@@ -85,14 +98,83 @@ class InformeController extends Controller
             });
         }
 
+        if ($fRazon)      $query->where('c.razon_social_id', $fRazon);
+        if ($fEps)        $query->where('c.eps_id', $fEps);
+        if ($fCaja)       $query->where('c.caja_id', $fCaja);
+        if ($fPension)    $query->where('c.pension_id', $fPension);
+        if ($fModalidad)  $query->where('c.tipo_modalidad_id', $fModalidad);
+        if ($fPlan)       $query->where('c.plan_id', $fPlan);
+
+        if ($request->input('excel')) {
+            $todosClientes = $query->orderBy('cl.primer_apellido')->get();
+            return $this->exportCsv($todosClientes, 'clientes_activos',
+                ['Cédula','Nombre','Razón Social','Empresa','EPS','Caja','Pensión','Modalidad','Plan','Fecha Ingreso','Salario'],
+                fn($r)=>[$r->cedula,$r->nombre_completo,$r->razon_social,$r->empresa,$r->eps_nombre,$r->caja_nombre,$r->pension_nombre,$r->modalidad_nombre,$r->plan_nombre,sqldate($r->fecha_ingreso)?->format('d/m/Y'),$r->salario]);
+        }
+
         $clientes = $query->orderBy('cl.primer_apellido')->paginate(50)->withQueryString();
         $total    = DB::table('contratos')->where('aliado_id',$aid)->where('estado','vigente')->count();
 
-        if ($request->input('excel')) return $this->exportCsv($clientes->getCollection(), 'clientes_activos',
-            ['Cédula','Nombre','Razón Social','Empresa','EPS','Fecha Ingreso','Salario'],
-            fn($r)=>[$r->cedula,$r->nombre_completo,$r->razon_social,$r->empresa,$r->eps_nombre,sqldate($r->fecha_ingreso)?->format('d/m/Y'),$r->salario]);
+        // Carga de catálogos para los selects (solo opciones con clientes activos y su respectivo conteo)
+        $razones = DB::table('contratos AS c')
+            ->join('razones_sociales AS rs', 'rs.id', '=', 'c.razon_social_id')
+            ->where('c.aliado_id', $aid)
+            ->where('c.estado', 'vigente')
+            ->groupBy('rs.id', 'rs.razon_social')
+            ->select('rs.id', 'rs.razon_social', DB::raw('COUNT(*) AS total'))
+            ->orderBy('rs.razon_social')
+            ->get();
 
-        return view('admin.informes.clientes_activos', compact('clientes','total','buscar'));
+        $epsList = DB::table('contratos AS c')
+            ->join('eps AS e', 'e.id', '=', 'c.eps_id')
+            ->where('c.aliado_id', $aid)
+            ->where('c.estado', 'vigente')
+            ->groupBy('e.id', 'e.nombre')
+            ->select('e.id', 'e.nombre', DB::raw('COUNT(*) AS total'))
+            ->orderBy('e.nombre')
+            ->get();
+
+        $cajas = DB::table('contratos AS c')
+            ->join('cajas AS cj', 'cj.id', '=', 'c.caja_id')
+            ->where('c.aliado_id', $aid)
+            ->where('c.estado', 'vigente')
+            ->groupBy('cj.id', 'cj.nombre')
+            ->select('cj.id', 'cj.nombre', DB::raw('COUNT(*) AS total'))
+            ->orderBy('cj.nombre')
+            ->get();
+
+        $pensiones = DB::table('contratos AS c')
+            ->join('pensiones AS p', 'p.id', '=', 'c.pension_id')
+            ->where('c.aliado_id', $aid)
+            ->where('c.estado', 'vigente')
+            ->groupBy('p.id', 'p.razon_social')
+            ->select('p.id', 'p.razon_social', DB::raw('COUNT(*) AS total'))
+            ->orderBy('p.razon_social')
+            ->get();
+
+        $modalidades = DB::table('contratos AS c')
+            ->join('tipo_modalidad AS tm', 'tm.id', '=', 'c.tipo_modalidad_id')
+            ->where('c.aliado_id', $aid)
+            ->where('c.estado', 'vigente')
+            ->groupBy('tm.id', 'tm.tipo_modalidad', 'tm.observacion')
+            ->select('tm.id', 'tm.tipo_modalidad', 'tm.observacion', DB::raw('COUNT(*) AS total'))
+            ->orderBy('tm.tipo_modalidad')
+            ->get();
+
+        $planes = DB::table('contratos AS c')
+            ->join('planes_contrato AS pl', 'pl.id', '=', 'c.plan_id')
+            ->where('c.aliado_id', $aid)
+            ->where('c.estado', 'vigente')
+            ->groupBy('pl.id', 'pl.nombre')
+            ->select('pl.id', 'pl.nombre', DB::raw('COUNT(*) AS total'))
+            ->orderBy('pl.nombre')
+            ->get();
+
+        return view('admin.informes.clientes_activos', compact(
+            'clientes','total','buscar',
+            'razones','epsList','cajas','pensiones','modalidades','planes',
+            'fRazon','fEps','fCaja','fPension','fModalidad','fPlan'
+        ));
     }
 
     // ── 2. Por razón social ───────────────────────────────────────────

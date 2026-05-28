@@ -178,12 +178,25 @@ class WhatsappWebhookService
             ->first();
 
         if ($conversacion) {
-            // Si la conversación estaba cerrada, la reabrimos en el inbox general
+            // Si la conversación estaba cerrada, la reabrimos asignada al último agente que le contestó
             if ($conversacion->estado === 'cerrada') {
-                $conversacion->update([
-                    'estado'     => 'abierta',
-                    'asignado_a' => null,
-                ]);
+                $ultimoMensajeSaliente = WhatsappMensaje::where('conversacion_id', $conversacion->id)
+                    ->where('direccion', 'saliente')
+                    ->whereNotNull('usuario_id')
+                    ->latest()
+                    ->first();
+
+                if ($ultimoMensajeSaliente) {
+                    $conversacion->update([
+                        'estado'     => 'asignada',
+                        'asignado_a' => $ultimoMensajeSaliente->usuario_id,
+                    ]);
+                } else {
+                    $conversacion->update([
+                        'estado'     => 'abierta',
+                        'asignado_a' => null,
+                    ]);
+                }
             }
             return $conversacion;
         }
@@ -201,12 +214,12 @@ class WhatsappWebhookService
             $nombreContacto = $contacts[0]['profile']['name'] ?? $msgData['profile']['name'] ?? null;
         }
 
-        // Intentar vincular con un contrato/cliente por número de celular
+        // Intentar vincular con un contrato/cliente y/o empresa por número de celular
         $numeroLimpio = preg_replace('/[^0-9]/', '', $waFrom);
         $contrato = null;
         $empresa  = null;
 
-        // Buscar en la BD (por celular del cliente)
+        // 1. Buscar en la BD (por celular del cliente)
         $clienteConCelular = \App\Models\Cliente::where('aliado_id', $alidoId)
             ->where(function ($q) use ($numeroLimpio) {
                 $q->where('celular', $numeroLimpio)
@@ -227,6 +240,25 @@ class WhatsappWebhookService
                     ($clienteConCelular->primer_nombre ?? '') . ' ' .
                     ($clienteConCelular->primer_apellido ?? '')
                 );
+            }
+        }
+
+        // 2. Buscar en la BD (por celular o teléfono de la empresa)
+        $empresaConTelefono = \App\Models\Empresa::where('aliado_id', $alidoId)
+            ->where(function ($q) use ($numeroLimpio) {
+                $q->where('celular', $numeroLimpio)
+                  ->orWhere('celular', '+57' . $numeroLimpio)
+                  ->orWhere('celular', 'like', '%' . substr($numeroLimpio, -10))
+                  ->orWhere('telefono', $numeroLimpio)
+                  ->orWhere('telefono', '+57' . $numeroLimpio)
+                  ->orWhere('telefono', 'like', '%' . substr($numeroLimpio, -10));
+            })
+            ->first();
+
+        if ($empresaConTelefono) {
+            $empresa = $empresaConTelefono;
+            if (!$nombreContacto) {
+                $nombreContacto = $empresaConTelefono->contacto ?: $empresaConTelefono->empresa;
             }
         }
 

@@ -27,10 +27,21 @@ class WhatsappChatController extends Controller
         $tab     = $request->get('tab', 'general'); // general | mias
         $buscar  = $request->get('buscar');
 
+        $user    = Auth::user();
+        $esAdmin = $user->es_brynex || $user->hasRole(['admin', 'superadmin']);
+
         $query = WhatsappConversacion::delAliado($alidoId)
             ->activas()
             ->with(['mensajes' => fn($q) => $q->reorder()->latest()->limit(1)])
             ->orderByDesc('ultimo_mensaje_at');
+
+        // Los usuarios asesores solo ven sus chats asignados y los del inbox general (sin asignar)
+        if (!$esAdmin) {
+            $query->where(function ($q) use ($userId) {
+                $q->where('asignado_a', $userId)
+                  ->orWhereNull('asignado_a');
+            });
+        }
 
         if ($tab === 'mias') {
             $query->where('asignado_a', $userId);
@@ -45,10 +56,15 @@ class WhatsappChatController extends Controller
 
         $conversaciones = $query->get();
 
-        // Badge total no leídos del aliado
-        $totalNoLeidos = WhatsappConversacion::delAliado($alidoId)
-            ->activas()
-            ->sum('total_mensajes_no_leidos');
+        // Badge total no leídos del aliado respetando la visibilidad del usuario actual
+        $queryNoLeidos = WhatsappConversacion::delAliado($alidoId)->activas();
+        if (!$esAdmin) {
+            $queryNoLeidos->where(function ($q) use ($userId) {
+                $q->where('asignado_a', $userId)
+                  ->orWhereNull('asignado_a');
+            });
+        }
+        $totalNoLeidos = $queryNoLeidos->sum('total_mensajes_no_leidos');
 
         // Usuarios del aliado para la asignación
         $usuarios = User::where('aliado_id', $alidoId)
@@ -121,11 +137,11 @@ class WhatsappChatController extends Controller
 
         $validated = $request->validate($rules);
 
-        // ── Verificar ventana de 24h para texto libre ──────────────────
-        if ($tipo === 'text' && !$conversacion->ventanaActiva()) {
+        // ── Verificar ventana de 24h para mensajes libres (no plantillas) ──────────────────
+        if ($tipo !== 'template' && !$conversacion->ventanaActiva()) {
             return response()->json([
                 'ok'    => false,
-                'error' => 'La ventana de 24h expiró. Debes enviar una plantilla aprobada para iniciar la conversación.',
+                'error' => 'La ventana de 24h no está activa. Debes enviar una plantilla aprobada para iniciar o reabrir la conversación.',
             ], 422);
         }
 
@@ -140,8 +156,12 @@ class WhatsappChatController extends Controller
             return response()->json(['ok' => false, 'error' => $resultado['error']], 422);
         }
 
-        // Actualizar último mensaje
-        $conversacion->update(['ultimo_mensaje_at' => now()]);
+        // Autoasignación / Reasignación al agente emisor actual
+        $conversacion->update([
+            'asignado_a'        => Auth::id(),
+            'estado'            => 'asignada',
+            'ultimo_mensaje_at' => now(),
+        ]);
 
         return response()->json([
             'ok'      => true,
@@ -224,10 +244,22 @@ class WhatsappChatController extends Controller
      */
     public function apiNoLeidos()
     {
-        $alidoId   = session('aliado_id_activo');
-        $noLeidos  = WhatsappConversacion::delAliado($alidoId)
-            ->activas()
-            ->sum('total_mensajes_no_leidos');
+        $alidoId = session('aliado_id_activo');
+        $user    = Auth::user();
+        $userId  = $user->id;
+        $esAdmin = $user->es_brynex || $user->hasRole(['admin', 'superadmin']);
+
+        $query = WhatsappConversacion::delAliado($alidoId)
+            ->activas();
+
+        if (!$esAdmin) {
+            $query->where(function ($q) use ($userId) {
+                $q->where('asignado_a', $userId)
+                  ->orWhereNull('asignado_a');
+            });
+        }
+
+        $noLeidos = $query->sum('total_mensajes_no_leidos');
 
         return response()->json(['total' => (int)$noLeidos]);
     }
@@ -236,7 +268,11 @@ class WhatsappChatController extends Controller
 
     private function enviarTexto(WhatsappConversacion $conv, array $data, WhatsappConfig $config): array
     {
-        $resultado = $this->apiService->enviarTexto($conv->wa_contact_id, $data['contenido'], $config);
+        // Firma automática para informar al cliente quién le está escribiendo
+        $nombreAgente = Auth::user()->nombre;
+        $textoFirmado = "*Atendido por {$nombreAgente}:*\n\n" . $data['contenido'];
+
+        $resultado = $this->apiService->enviarTexto($conv->wa_contact_id, $textoFirmado, $config);
 
         if (!$resultado['ok']) return $resultado;
 
@@ -246,7 +282,7 @@ class WhatsappChatController extends Controller
             'wa_message_id'   => $resultado['wa_message_id'],
             'direccion'       => 'saliente',
             'tipo'            => 'text',
-            'contenido'       => $data['contenido'],
+            'contenido'       => $textoFirmado,
             'estado'          => 'enviado',
             'usuario_id'      => Auth::id(),
         ]);
@@ -288,6 +324,11 @@ class WhatsappChatController extends Controller
         $directorio = 'whatsapp/' . now()->format('Y/m');
         $path = $archivo->store($directorio, 'local');
 
+        // Firma automática en el pie de foto/media (caption) para informar al cliente
+        $nombreAgente = Auth::user()->nombre;
+        $captionOriginal = $request->input('caption') ?? '';
+        $captionFirmado = "*Atendido por {$nombreAgente}:*" . ($captionOriginal ? "\n\n" . $captionOriginal : '');
+
         $resultado = $this->apiService->enviarMedia(
             $conv->wa_contact_id,
             $tipo,
@@ -308,7 +349,7 @@ class WhatsappChatController extends Controller
             'media_url'       => $path,
             'media_mime_type' => $mimeType,
             'media_nombre'    => $nombre,
-            'contenido'       => $request->input('caption'),
+            'contenido'       => $captionFirmado,
             'estado'          => 'enviado',
             'usuario_id'      => Auth::id(),
         ]);
