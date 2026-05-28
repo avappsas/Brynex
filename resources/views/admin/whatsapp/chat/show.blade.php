@@ -289,8 +289,6 @@
         </div>
     </main>
 
-</div>
-
 {{-- Modal de asignación --}}
 <div class="modal-overlay" x-show="modalAsignar" x-cloak @click.self="modalAsignar = false">
     <div class="modal-box">
@@ -311,6 +309,7 @@
             <button class="btn-sm btn-primary" @click="asignarConversacion()">✅ Asignar</button>
         </div>
     </div>
+</div>
 </div>
 </div>
 @endsection
