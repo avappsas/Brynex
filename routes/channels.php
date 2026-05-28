@@ -16,3 +16,11 @@ use Illuminate\Support\Facades\Broadcast;
 Broadcast::channel('App.Models.User.{id}', function ($user, $id) {
     return (int) $user->id === (int) $id;
 });
+
+// Canal privado de WhatsApp por aliado
+Broadcast::channel('whatsapp-aliado.{aliadoId}', function ($user, $aliadoId) {
+    if ($user->es_brynex) {
+        return true;
+    }
+    return (int) $user->aliado_id === (int) $aliadoId;
+});

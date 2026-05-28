@@ -315,6 +315,21 @@
 @endsection
 
 @push('scripts')
+<!-- Load Echo & Pusher dynamically from CDN -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pusher/8.3.0/pusher.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/laravel-echo@1.16.1/dist/echo.iife.js"></script>
+<script>
+window.Pusher = Pusher;
+window.Echo = new Echo({
+    broadcaster: 'reverb',
+    key: '{{ env('REVERB_APP_KEY') }}',
+    wsHost: '{{ env('VITE_REVERB_HOST') }}' || window.location.hostname,
+    wsPort: {{ env('VITE_REVERB_PORT', 8080) }},
+    wssPort: {{ env('VITE_REVERB_PORT', 8080) }},
+    forceTLS: {{ env('VITE_REVERB_SCHEME', 'http') === 'https' ? 'true' : 'false' }},
+    enabledTransports: ['ws', 'wss'],
+});
+</script>
 <script>
 function chatApp() {
     return {
