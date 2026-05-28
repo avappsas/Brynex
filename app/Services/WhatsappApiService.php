@@ -333,11 +333,17 @@ class WhatsappApiService
 
     private function normalizarNumero(string $numero): string
     {
-        // Asegurar formato E.164 sin espacios ni guiones
-        $numero = preg_replace('/[^0-9+]/', '', $numero);
-        if (!str_starts_with($numero, '+')) {
-            $numero = '+57' . ltrim($numero, '0'); // Colombia por defecto
+        // Quitar cualquier carácter que no sea número
+        $numero = preg_replace('/[^0-9]/', '', $numero);
+
+        // Si empieza por 0, lo quitamos
+        $numero = ltrim($numero, '0');
+
+        // Si tiene 10 dígitos (celular Colombia estándar sin código de país), le agregamos el 57
+        if (strlen($numero) === 10) {
+            $numero = '57' . $numero;
         }
+
         return $numero;
     }
 
