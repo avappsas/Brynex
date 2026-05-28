@@ -1135,11 +1135,15 @@ const MF = (function () {
         let autoRetiro = 0;
         if (!d.retiro) {
             if (_modo === 'individual') {
-                // Leer los valores del cotizador Alpine (ya calculados con dias=1 para afiliación)
-                autoRetiro = parse(el('mf-v-eps')?.textContent)
-                           + parse(el('mf-v-arl')?.textContent)
-                           + parse(el('mf-v-afp')?.textContent)
-                           + parse(el('mf-v-caja')?.textContent);
+                // Calcular SS de 1 día: SS_total / días_cotizados actuales
+                // Los valores del DOM reflejan el SS de los días configurados en el cotizador,
+                // NO necesariamente 1 día. Para afiliación la reserva de retiro = SS de 1 día.
+                const r = (_cfg.getAlpineResult && _cfg.getAlpineResult()) || {};
+                const ssTotal = (r.eps || 0) + (r.arl || 0) + (r.pen || 0) + (r.caja || 0);
+                const diasActuales = (_cfg.getDias && _cfg.getDias())
+                    || parseInt(document.getElementById('sel_dias_cotizar')?.value)
+                    || 30;
+                autoRetiro = Math.ceil(ssTotal / Math.max(1, diasActuales));
             } else {
                 // Masivo: sumar SS de cada contrato seleccionado (afiliaciones = 1 día c/u)
                 _selContratos.forEach(c => {

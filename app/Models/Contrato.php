@@ -219,20 +219,20 @@ class Contrato extends BaseModel
             $caja  = ($plan && $plan->incluye_caja)     ? $r($ibcCaja * $pctCaja / 100) : 0;
         } else {
             // ── Normal: calcular por mes completo y prorratear si $dias < 30 ─
-            // Usar $r() = ceil/100 para garantizar múltiplos de 100 (igual que TP).
-            // "En el cobro siempre se redondea a mayor." — esto aplica a la factura real y
-            // a la estimación UI: usamos la misma función para ambas.
+            // Mes completo: ceil al centena superior para garantizar múltiplos de 100.
             $eps   = ($plan && $plan->incluye_eps)     ? $r($ibc * $pctEps / 100)  : 0;
             $arl   = ($plan && $plan->incluye_arl)     ? $r($ibc * $pctArl / 100)  : 0;
             $pen   = ($plan && $plan->incluye_pension)  ? $r($ibc * $pctPen / 100)  : 0;
             $caja  = ($plan && $plan->incluye_caja)     ? $r($ibc * $pctCaja / 100) : 0;
 
             if ($dias < 30) {
-                $r30  = fn($v) => (int)(ceil($v * $dias / 30 / 100) * 100);
-                $eps  = $r30($eps);
-                $arl  = $r30($arl);
-                $pen  = $r30($pen);
-                $caja = $r30($caja);
+                // EPS: ceil al centena superior (garantiza cobertura completa en salud).
+                // ARL/AFP/CAJA: round al centena más cercano (evita el efecto
+                // de doble-ceil que infla valores pequeños, e.g. 306.67 → 400 en vez de 300).
+                $eps  = (int)(ceil($eps  * $dias / 30 / 100) * 100);
+                $arl  = (int)(round($arl  * $dias / 30 / 100) * 100);
+                $pen  = (int)(round($pen  * $dias / 30 / 100) * 100);
+                $caja = (int)(round($caja * $dias / 30 / 100) * 100);
             }
 
             // ── Cargo sin-CCF: dependiente E o Ingreso-Retiro sin caja ─────

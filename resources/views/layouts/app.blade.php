@@ -667,6 +667,18 @@
             </a>
 
             @role('superadmin|admin|usuario')
+            <a href="{{ route('admin.whatsapp.chat.index') }}"
+               class="menu-item {{ request()->routeIs('admin.whatsapp*') ? 'activo' : '' }}"
+               style="position:relative" title="WhatsApp Chat">
+                <div class="icono" style="position:relative">
+                    💬
+                    <span id="wa-badge" style="display:none;position:absolute;top:-5px;right:-5px;background:#ef4444;color:#fff;font-size:.55rem;font-weight:700;padding:.08rem .35rem;border-radius:999px;min-width:16px;text-align:center"></span>
+                </div>
+                <div class="label">WhatsApp</div>
+            </a>
+            @endrole
+
+            @role('superadmin|admin|usuario')
             <div class="menu-sep"></div>
 
             <a href="{{ route('admin.cuadre-diario.index') }}"
@@ -867,6 +879,37 @@
                 } catch(e) { /* silencioso */ }
             }, INTERVAL);
         })();
+
+        // ── Badge de mensajes no leídos de WhatsApp ───────────────────────────
+        // Actualiza el badge del menú cada 30 segundos via polling.
+        @auth
+        @role('superadmin|admin|usuario')
+        (function waBadge() {
+            const badge = document.getElementById('wa-badge');
+            if (!badge) return;
+
+            async function actualizarBadge() {
+                try {
+                    const resp = await fetch('{{ route('admin.whatsapp.api.no_leidos') }}', {
+                        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                    });
+                    if (!resp.ok) return;
+                    const data = await resp.json();
+                    const total = data.total || 0;
+                    if (total > 0) {
+                        badge.textContent = total > 99 ? '99+' : total;
+                        badge.style.display = 'inline-block';
+                    } else {
+                        badge.style.display = 'none';
+                    }
+                } catch(e) { /* silencioso */ }
+            }
+
+            actualizarBadge();
+            setInterval(actualizarBadge, 30000); // cada 30 segundos
+        })();
+        @endrole
+        @endauth
     </script>
     @stack('scripts')
 </body>

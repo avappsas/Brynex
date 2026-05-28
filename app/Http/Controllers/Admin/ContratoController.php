@@ -576,14 +576,18 @@ class ContratoController extends Controller
                 $cajaMes = \App\Models\Contrato::CARGO_SIN_CCF;
             }
 
-            // Prorratear por dias cotizados (dias/30); admon y seguro siempre completos
-            $eps  = $dias < 30 ? $r($epsMes  * $dias / 30) : $epsMes;
-            $arl  = $dias < 30 ? $r($arlMes  * $dias / 30) : $arlMes;
-            $pen  = $dias < 30 ? $r($penMes  * $dias / 30) : $penMes;
+            // Prorratear por dias cotizados (dias/30); admon y seguro siempre completos.
+            // EPS: ceil al centena superior (mismo comportamiento que calcularCotizacion del modelo).
+            // ARL/AFP/CAJA: round al centena más cercano (evita doble-ceil que infla valores pequeños,
+            //   e.g. ARL 9200/30=306.67 → 400 con ceil, pero debe quedar en 300).
+            $rRound = fn($v) => (int)(round($v / 100) * 100);
+            $eps  = $dias < 30 ? $r($epsMes       * $dias / 30) : $epsMes;
+            $arl  = $dias < 30 ? $rRound($arlMes  * $dias / 30) : $arlMes;
+            $pen  = $dias < 30 ? $rRound($penMes  * $dias / 30) : $penMes;
             // Cargo sin-CCF es fijo: NO se prorratea por días
             $caja = ($cajaMes === \App\Models\Contrato::CARGO_SIN_CCF)
                 ? $cajaMes
-                : ($dias < 30 ? $r($cajaMes * $dias / 30) : $cajaMes);
+                : ($dias < 30 ? $rRound($cajaMes * $dias / 30) : $cajaMes);
             $ss   = $eps + $arl + $pen + $caja;
             $diasArl  = $dias;
             $diasAfp  = $dias;

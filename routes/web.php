@@ -15,6 +15,11 @@ Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
 Route::get( '/incapacidades/subir/{token}',  [\App\Http\Controllers\IncapacidadUploadController::class, 'show'])  ->name('incapacidades.subir');
 Route::post('/incapacidades/subir/{token}',  [\App\Http\Controllers\IncapacidadUploadController::class, 'upload'])->name('incapacidades.subir.post');
 
+// ─── Webhook público WhatsApp (Meta Cloud API) ─────────────────────────────
+// No requiere auth — Meta llama directamente. Seguridad via HMAC en el controller.
+Route::get( '/whatsapp/webhook', [\App\Http\Controllers\WhatsappWebhookController::class, 'verify']) ->name('whatsapp.webhook.verify');
+Route::post('/whatsapp/webhook', [\App\Http\Controllers\WhatsappWebhookController::class, 'receive'])->name('whatsapp.webhook.receive');
+
 // ─── CSRF token fresco (puede llamarse sin auth, pero solo desde session activa) ──
 // El JS lo usa para renovar el token antes de peticiones PATCH/POST críticas.
 Route::get('/csrf-token', function () {
@@ -426,6 +431,46 @@ Route::middleware('auth')->group(function () {
         Route::patch('{id}/enviado',     [$rc, 'marcarEnviado'])      ->name('enviado');
         Route::get('{id}/bitacora',      [$rc, 'bitacora'])           ->name('bitacora');
         Route::get('{id}/documentos',    [$rc, 'documentosCotizante'])->name('documentos');
+    });
+
+    // ─── Módulo WhatsApp ───────────────────────────────────────────────────────
+    Route::prefix('admin/whatsapp')->name('admin.whatsapp.')->group(function () {
+        $chat      = \App\Http\Controllers\Admin\WhatsappChatController::class;
+        $plantilla = \App\Http\Controllers\Admin\WhatsappPlantillaController::class;
+        $masivo    = \App\Http\Controllers\Admin\WhatsappMasivoController::class;
+        $config    = \App\Http\Controllers\Admin\WhatsappConfigController::class;
+
+        // ── Chat (todos los usuarios del aliado) ──────────────────────────────
+        Route::get('chat',                       [$chat, 'index'])         ->name('chat.index');
+        Route::get('chat/{id}',                  [$chat, 'show'])          ->name('chat.show');
+        Route::post('chat/{id}/mensaje',         [$chat, 'enviarMensaje']) ->name('chat.mensaje');
+        Route::patch('chat/{id}/asignar',        [$chat, 'asignar'])       ->name('chat.asignar');
+        Route::patch('chat/{id}/cerrar',         [$chat, 'cerrar'])        ->name('chat.cerrar');
+        Route::patch('chat/{id}/leer',           [$chat, 'marcarLeido'])   ->name('chat.leer');
+        Route::get('chat/media/{mensajeId}',     [$chat, 'descargarMedia'])->name('chat.media');
+        Route::get('api/no-leidos',              [$chat, 'apiNoLeidos'])   ->name('api.no_leidos');
+
+        // ── Plantillas (admin del aliado) ─────────────────────────────────────
+        Route::get('plantillas',                 [$plantilla, 'index'])          ->name('plantillas.index');
+        Route::get('plantillas/crear',           [$plantilla, 'create'])         ->name('plantillas.create');
+        Route::post('plantillas',                [$plantilla, 'store'])          ->name('plantillas.store');
+        Route::get('plantillas/{id}/editar',     [$plantilla, 'edit'])           ->name('plantillas.edit');
+        Route::put('plantillas/{id}',            [$plantilla, 'update'])         ->name('plantillas.update');
+        Route::delete('plantillas/{id}',         [$plantilla, 'destroy'])        ->name('plantillas.destroy');
+        Route::post('plantillas/sincronizar',    [$plantilla, 'sincronizar'])    ->name('plantillas.sincronizar');
+        Route::get('api/plantillas-aprobadas',   [$plantilla, 'apiListarAprobadas'])->name('api.plantillas');
+
+        // ── Envíos masivos (admin del aliado) ─────────────────────────────────
+        Route::post('masivo/individual',         [$masivo, 'lanzarIndividual'])  ->name('masivo.individual');
+        Route::post('masivo/empresa',            [$masivo, 'lanzarEmpresa'])     ->name('masivo.empresa');
+        Route::get('masivo/historial',           [$masivo, 'historial'])         ->name('masivo.historial');
+        Route::get('masivo/{id}',                [$masivo, 'detalle'])           ->name('masivo.detalle');
+
+        // ── Configuración (solo Brynex superadmin) ────────────────────────────
+        Route::get('configuracion',              [$config, 'index'])             ->name('config.index');
+        Route::get('configuracion/{id}/editar',  [$config, 'edit'])              ->name('config.edit');
+        Route::put('configuracion/{id}',         [$config, 'update'])            ->name('config.update');
+        Route::post('configuracion/verificar',   [$config, 'verificarWebhook'])  ->name('config.verificar');
     });
 });
 

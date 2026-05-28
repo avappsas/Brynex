@@ -1848,11 +1848,14 @@ class FacturacionController extends Controller
         $cajaMes = ($plan?->incluye_caja)    ? (int) round($ibc * $pctCaj / 100) : 0;
 
         if ($dias < 30) {
+            // EPS: ceil al centena superior; ARL/AFP/CAJA: round al centena más cercano.
+            // Mismo criterio que Contrato::calcularCotizacion() (fuente de verdad).
+            $rRound = fn($v) => (int)(round($v / 100) * 100);
             return [
-                'eps'  => $r($epsMes  * $dias / 30),
-                'arl'  => $r($arlMes  * $dias / 30),
-                'afp'  => $r($afpMes  * $dias / 30),
-                'caja' => $r($cajaMes * $dias / 30),
+                'eps'  => $r($epsMes       * $dias / 30),
+                'arl'  => $rRound($arlMes  * $dias / 30),
+                'afp'  => $rRound($afpMes  * $dias / 30),
+                'caja' => $rRound($cajaMes * $dias / 30),
             ];
         }
 

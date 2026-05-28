@@ -31,4 +31,27 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | WhatsApp Business API (Meta Cloud API) — Cuenta Global Brynex
+    |--------------------------------------------------------------------------
+    | Los aliados que no tengan cuenta propia usarán estas credenciales.
+    | Los aliados con cuenta propia las configuran desde el panel (WhatsappConfig).
+    |
+    | waba_id:         WhatsApp Business Account ID de Meta
+    | phone_number_id: ID del número de teléfono registrado en Meta
+    | token:           Token de acceso permanente de Meta
+    | numero:          Número visible del WhatsApp Business Brynex
+    | app_secret:      App Secret de la Meta App (para validar firma HMAC del webhook)
+    | webhook_verify_token: Token que Meta usa para verificar el webhook (GET)
+    */
+    'whatsapp' => [
+        'waba_id'              => env('WHATSAPP_BRYNEX_WABA_ID'),
+        'phone_number_id'      => env('WHATSAPP_BRYNEX_PHONE_NUMBER_ID'),
+        'token'                => env('WHATSAPP_BRYNEX_TOKEN'),
+        'numero'               => env('WHATSAPP_BRYNEX_NUMERO'),
+        'app_secret'           => env('WHATSAPP_APP_SECRET'),
+        'webhook_verify_token' => env('WHATSAPP_WEBHOOK_VERIFY_TOKEN', 'brynex_wh_secret_2026'),
+    ],
+
 ];
