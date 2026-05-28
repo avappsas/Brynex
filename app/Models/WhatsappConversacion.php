@@ -172,7 +172,7 @@ class WhatsappConversacion extends BaseModel
      */
     public function previewUltimoMensaje(): string
     {
-        $ultimo = $this->mensajes()->latest()->first();
+        $ultimo = WhatsappMensaje::where('conversacion_id', $this->id)->latest()->first();
         if (!$ultimo) return '';
 
         return match($ultimo->tipo) {

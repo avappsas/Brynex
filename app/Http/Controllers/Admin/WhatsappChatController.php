@@ -29,7 +29,7 @@ class WhatsappChatController extends Controller
 
         $query = WhatsappConversacion::delAliado($alidoId)
             ->activas()
-            ->with(['mensajes' => fn($q) => $q->latest()->limit(1)])
+            ->with(['mensajes' => fn($q) => $q->reorder()->latest()->limit(1)])
             ->orderByDesc('ultimo_mensaje_at');
 
         if ($tab === 'mias') {
