@@ -129,16 +129,127 @@ class Consignacion extends BaseModel
     }
 
     /**
+     * Calcula los saldos de múltiples cuentas bancarias en un lote optimizado.
+     * Retorna un array asociativo [banco_cuenta_id => saldo].
+     */
+    public static function saldosBancosOptimizados(int $aliadoId, array $bancoCuentaIds, ?string $fechaFin = null): array
+    {
+        if (empty($bancoCuentaIds)) {
+            return [];
+        }
+
+        $saldos = array_fill_keys($bancoCuentaIds, 0);
+
+        // 1. Obtener los saldos iniciales (ledgers) si existen para estos bancos
+        $ledgersQuery = DB::table('saldos_banco')
+            ->where('aliado_id', $aliadoId)
+            ->whereIn('banco_cuenta_id', $bancoCuentaIds)
+            ->where('tipo', 'saldo_inicial');
+        
+        if ($fechaFin) {
+            $ledgersQuery->where('fecha', '<=', $fechaFin);
+        }
+
+        $ledgers = $ledgersQuery->orderByDesc('fecha')
+            ->orderByDesc('id')
+            ->get()
+            ->groupBy('banco_cuenta_id');
+
+        $bancosConLedger = [];
+        $bancosSinLedger = [];
+
+        foreach ($bancoCuentaIds as $bancoId) {
+            if ($ledgers->has($bancoId)) {
+                $bancosConLedger[] = $bancoId;
+            } else {
+                $bancosSinLedger[] = $bancoId;
+            }
+        }
+
+        // 2. Procesar en lote bancos SIN ledger (la gran mayoría)
+        if (!empty($bancosSinLedger)) {
+            $entradasQuery = DB::table('consignaciones')
+                ->where('aliado_id', $aliadoId)
+                ->whereIn('banco_cuenta_id', $bancosSinLedger);
+            
+            if ($fechaFin) {
+                $entradasQuery->where('fecha', '<=', $fechaFin);
+            }
+
+            $entradas = $entradasQuery
+                ->groupBy('banco_cuenta_id')
+                ->selectRaw('banco_cuenta_id, ISNULL(SUM(CAST(valor AS BIGINT)), 0) as total')
+                ->pluck('total', 'banco_cuenta_id')
+                ->toArray();
+
+            $salidasQuery = DB::table('gastos')
+                ->where('aliado_id', $aliadoId)
+                ->whereIn('banco_origen_id', $bancosSinLedger)
+                ->whereIn('forma_pago', ['transferencia_bancaria', 'banco_banco']);
+
+            if ($fechaFin) {
+                $salidasQuery->where('fecha', '<=', $fechaFin);
+            }
+
+            $salidas = $salidasQuery
+                ->groupBy('banco_origen_id')
+                ->selectRaw('banco_origen_id, ISNULL(SUM(CAST(valor AS BIGINT)), 0) as total')
+                ->pluck('total', 'banco_origen_id')
+                ->toArray();
+
+            foreach ($bancosSinLedger as $bancoId) {
+                $ent = (int)($entradas[$bancoId] ?? 0);
+                $sal = (int)($salidas[$bancoId] ?? 0);
+                $saldos[$bancoId] = $ent - $sal;
+            }
+        }
+
+        // 3. Procesar bancos CON ledger de forma individual (son muy pocos o ninguno)
+        foreach ($bancosConLedger as $bancoId) {
+            $ledger = $ledgers->get($bancoId)->first();
+            $baseDate  = $ledger->fecha;
+            $baseSaldo = (int) $ledger->saldo_acumulado;
+
+            $entradasQuery = static::where('aliado_id', $aliadoId)
+                ->where('banco_cuenta_id', $bancoId)
+                ->where('fecha', '>', $baseDate);
+            
+            if ($fechaFin) {
+                $entradasQuery->where('fecha', '<=', $fechaFin);
+            }
+
+            $entradas = (int) $entradasQuery
+                ->selectRaw('ISNULL(SUM(CAST(valor AS BIGINT)), 0) AS total')
+                ->value('total');
+
+            $salidasQuery = DB::table('gastos')
+                ->where('aliado_id', $aliadoId)
+                ->where('banco_origen_id', $bancoId)
+                ->whereIn('forma_pago', ['transferencia_bancaria', 'banco_banco'])
+                ->where('tipo', '!=', 'ajuste_apertura')
+                ->where('fecha', '>', $baseDate);
+
+            if ($fechaFin) {
+                $salidasQuery->where('fecha', '<=', $fechaFin);
+            }
+
+            $salidas = (int) $salidasQuery
+                ->selectRaw('ISNULL(SUM(CAST(valor AS BIGINT)), 0) AS total')
+                ->value('total');
+
+            $saldos[$bancoId] = $baseSaldo + $entradas - $salidas;
+        }
+
+        return $saldos;
+    }
+
+    /**
      * Retorna un array con [banco_cuenta_id => saldo] para todas las cuentas activas.
      */
     public static function saldosTodos(int $aliadoId): array
     {
-        $bancos = BancoCuenta::where('aliado_id', $aliadoId)->where('activo', true)->get();
-        $result = [];
-        foreach ($bancos as $bc) {
-            $result[$bc->id] = static::saldoBanco($aliadoId, $bc->id);
-        }
-        return $result;
+        $bancoCuentaIds = BancoCuenta::where('aliado_id', $aliadoId)->where('activo', true)->pluck('id')->toArray();
+        return static::saldosBancosOptimizados($aliadoId, $bancoCuentaIds);
     }
 
     /**

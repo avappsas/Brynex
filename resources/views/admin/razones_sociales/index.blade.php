@@ -37,7 +37,15 @@
         <div class="rs-h-title">🏭 Razones Sociales</div>
         <div class="rs-h-sub">Empresas a través de las cuales se afilian trabajadores al sistema de seguridad social</div>
     </div>
-    <a href="{{ route('admin.configuracion.razones.create') }}" class="btn-nuevo">+ Nueva Razón Social</a>
+    <div style="display:flex;gap:.5rem;align-items:center">
+        <a href="{{ route('admin.traslados.index') }}"
+           class="btn-nuevo"
+           style="background:#7c3aed"
+           title="Trasladar personas de una empresa a otra">
+            🔄 Traslado RS
+        </a>
+        <a href="{{ route('admin.configuracion.razones.create') }}" class="btn-nuevo">+ Nueva Razón Social</a>
+    </div>
 </div>
 
 {{-- Alertas --}}

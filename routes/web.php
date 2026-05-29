@@ -252,6 +252,7 @@ Route::middleware('auth')->group(function () {
 
             Route::get('/financiero/auditar-planilla', [$ic, 'auditarPlanilla']) ->name('financiero.auditar_planilla');
             Route::get('/financiero/ss-planillas',     [$ic, 'ssPlanillas'])     ->name('financiero.ss_planillas');
+            Route::get('/financiero/conciliacion-ss',  [$ic, 'conciliacionSS'])  ->name('financiero.conciliacion_ss');
             Route::get('/financiero/detalle-dia',      [$ic, 'detalleDia'])      ->name('financiero.detalle_dia');
             Route::get('/financiero/prestamos-mes',    [$ic, 'prestamesMes'])    ->name('financiero.prestamos_mes');
             Route::patch('/financiero/consignacion/{id}',  [$ic, 'editarConsignacion'])->name('financiero.consignacion.editar');
@@ -397,6 +398,19 @@ Route::middleware('auth')->group(function () {
         Route::get('/documento/{docId}',       [$tc, 'descargarDocumento']) ->name('documento.download');
         Route::get('/api/clientes',            [$tc, 'buscarCliente'])      ->name('api.clientes');
         Route::get('/api/contratos',           [$tc, 'contratosPorCedula']) ->name('api.contratos');
+    });
+
+    // ── Traslado Masivo de Razón Social ─────────────────────────────────────
+    Route::prefix('admin/traslados-rs')->name('admin.traslados.')->middleware('role:superadmin|admin')->group(function () {
+        $trs = \App\Http\Controllers\Admin\TrasladoRazonSocialController::class;
+        Route::get('/',                        [$trs, 'index'])           ->name('index');
+        Route::post('/validar',                [$trs, 'validar'])         ->name('validar');
+        Route::post('/ejecutar',               [$trs, 'ejecutar'])        ->name('ejecutar');
+        Route::post('/retiro-opcion-a',        [$trs, 'retirarOpcionA'])  ->name('retiro_a');
+        Route::post('/retiro-opcion-b',        [$trs, 'retirarOpcionB'])  ->name('retiro_b');
+        Route::get('/descargar-plano',         [$trs, 'descargarPlano'])  ->name('descargar_plano');
+        Route::get('/descargar-excel',         [$trs, 'descargarExcel'])  ->name('descargar_excel');
+        Route::get('/api/n-planos/{id}',       [$trs, 'apiNPlanosRs'])    ->name('api.n_planos');
     });
 
     // ── Incapacidades ────────────────────────────────────────────────────────

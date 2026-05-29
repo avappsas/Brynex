@@ -90,11 +90,18 @@ class PlanoPilaTxtService
         $anioPago      = (int)$params['anio'];
         $nPlano        = (int)$params['n_plano'];
         $tiposModal    = $params['tipos_modalidad'] ?? [];
+        $codigoOperador = $params['codigo_operador'] ?? '88';
+        $ignorarMesVenc = $params['ignorar_mes_vencido'] ?? false;
 
         // mesPago = mes de pago (ej: 5=Mayo)
         // mesVencido = mes que se liquida (ej: 4=Abril) — los dependientes tienen mes_plano = vencido
-        $mesVencido  = $mesPago > 1 ? $mesPago - 1 : 12;
-        $anioVencido = $mesPago > 1 ? $anioPago    : $anioPago - 1;
+        if ($ignorarMesVenc) {
+            $mesVencido  = $mesPago;
+            $anioVencido = $anioPago;
+        } else {
+            $mesVencido  = $mesPago > 1 ? $mesPago - 1 : 12;
+            $anioVencido = $mesPago > 1 ? $anioPago    : $anioPago - 1;
+        }
 
         $rs = DB::table('razones_sociales')
             ->where('id', $razonSocialId)->where('aliado_id', $aliadoId)->first();
@@ -164,9 +171,13 @@ class PlanoPilaTxtService
         if (!empty($tiposModal)) $query->whereIn('p.tipo_modalidad_id', $tiposModal);
         $planos = $query->orderBy('p.primer_ape')->orderBy('p.primer_nombre')->get();
 
-        // Tipo de planilla: 'K' si TODOS los registros son Estudiante K (-1), 'E' en cualquier otro caso
-        $todosK       = $planos->count() > 0 && $planos->every(fn($p) => (int)$p->tipo_modalidad_id === -1);
-        $tipoPlanilla = $todosK ? 'K' : 'E';
+        // Tipo de planilla: 'N' si hay algún registro con tipo_p = 16, 'K' si todos son Estudiante K (-1), 'E' en cualquier otro caso
+        $tipoPlanilla = $params['tipo_planilla'] ?? null;
+        if (!$tipoPlanilla) {
+            $tieneN       = $planos->count() > 0 && $planos->contains(fn($p) => (int)($p->tipo_p ?? 0) === 16);
+            $todosK       = !$tieneN && $planos->count() > 0 && $planos->every(fn($p) => (int)$p->tipo_modalidad_id === -1);
+            $tipoPlanilla = $tieneN ? 'N' : ($todosK ? 'K' : 'E');
+        }
 
         $nit     = preg_replace('/[^0-9]/', '', (string)($rs->nit ?? ''));
         $periodo = sprintf('%04d%02d', $anioPago, $mesPago);
@@ -184,13 +195,21 @@ class PlanoPilaTxtService
         }
 
         $lineas   = [];
-        $lineas[] = $this->tipo1($rs, $nit, $periodo, count($planos), $codigoArlRs, (int)$valorNomina, $tipoPlanilla);
+        $lineas[] = $this->tipo1($rs, $nit, $periodo, count($planos), $codigoArlRs, (int)$valorNomina, $tipoPlanilla, $codigoOperador);
 
         // periodoLiq = mes vencido (para validar que ING/RET estén dentro del período)
         $periodoLiq = sprintf('%04d-%02d', $anioVencido, $mesVencido); // ej: '2026-04'
 
-        foreach ($planos as $i => $p) {
-            $lineas[] = $this->tipo2($p, $i + 1, $actEco, $codigoArlRs, $periodoLiq);
+        $seqLineas = 1;
+        foreach ($planos as $p) {
+            if ($tipoPlanilla === 'N') {
+                // Línea A (Original - sin novedades)
+                $lineas[] = $this->tipo2($p, $seqLineas++, $actEco, $codigoArlRs, $periodoLiq, 'A');
+                // Línea C (Corregida - con novedades)
+                $lineas[] = $this->tipo2($p, $seqLineas++, $actEco, $codigoArlRs, $periodoLiq, 'C');
+            } else {
+                $lineas[] = $this->tipo2($p, $seqLineas++, $actEco, $codigoArlRs, $periodoLiq);
+            }
         }
 
         // Nombre del archivo: NOMBRE_RS_MES_ANIO_Pn_plano.txt
@@ -210,7 +229,7 @@ class PlanoPilaTxtService
     }
 
     // ── Registro Tipo 1 — 359 chars, 22 campos (Resolución 2388) ─────────────
-    private function tipo1(object $rs, string $nit, string $periodo, int $total, ?string $codigoArlRs, int $valorNomina, string $tipoPlanilla = 'E'): string
+    private function tipo1(object $rs, string $nit, string $periodo, int $total, ?string $codigoArlRs, int $valorNomina, string $tipoPlanilla = 'E', string $codigoOperador = '88'): string
     {
         $anio = (int)substr($periodo, 0, 4);
         $mes  = (int)substr($periodo, 4, 2);
@@ -246,7 +265,7 @@ class PlanoPilaTxtService
             . str_pad((string)$total, 5, '0', STR_PAD_LEFT)        // 19 total_empleados      N 5   pos 339-343
             . str_pad((string)$valorNomina, 12, '0', STR_PAD_LEFT) // 20 valor_total_nomina   N 12  pos 344-355
             . '01'                                                  // 21 tipo_aportante       N 2   pos 356-357
-            . '88';                                                 // 22 codigo_operador      N 2   pos 358-359
+            . $this->N($codigoOperador, 2);                        // 22 codigo_operador      N 2   pos 358-359
 
         if (strlen($linea) !== 359) {
             throw new \RuntimeException("Tipo 1 generó " . strlen($linea) . " chars (esperado 359).");
@@ -255,7 +274,7 @@ class PlanoPilaTxtService
     }
 
     // ── Registro Tipo 2 — 693 chars, 98 campos ───────────────────────────────
-    private function tipo2(object $p, int $seq, string $actEco, ?string $codigoArlRs, string $periodoLiq = ''): string
+    private function tipo2(object $p, int $seq, string $actEco, ?string $codigoArlRs, string $periodoLiq = '', string $tipoCorr = ' '): string
     {
         // ── Calculador centralizado (todas las reglas de negocio PILA) ────────
         $c = PilaCotizanteCalculator::calcular($p);
@@ -319,6 +338,13 @@ class PlanoPilaTxtService
         $fechaIng  = $this->fecha($p->fecha_ing ?? null);
         $fechaRet  = $this->fecha($p->fecha_ret ?? null);
         $blanco10  = str_repeat(' ', 10);
+
+        // En la línea A de la planilla de corrección N, no se reportan novedades de ingreso ni de retiro.
+        if ($tipoCorr === 'A') {
+            $fechaIng = $blanco10;
+            $fechaRet = $blanco10;
+        }
+
         $periodoYm = substr($fechaIng, 0, 7);
         $ing = ($fechaIng !== $blanco10 && $periodoYm >= $periodoLiq) ? 'X' : ' ';
         $periodoYmR = substr($fechaRet, 0, 7);
@@ -346,7 +372,7 @@ class PlanoPilaTxtService
             . $this->A(' ', 1)                                  // 19 TDP pos 141
             . $this->A(' ', 1)                                  // 20 TAP pos 142
             . $this->A(' ', 1)                                  // 21 VSP pos 143
-            . $this->A(' ', 1)                                  // 22 Correcciones pos 144
+            . $this->A($tipoCorr, 1)                            // 22 Correcciones pos 144
             . $this->A(' ', 1)                                  // 23 VST pos 145
             . $this->A(' ', 1)                                  // 24 SLN pos 146
             . $this->A(' ', 1)                                  // 25 IGE pos 147
@@ -403,30 +429,11 @@ class PlanoPilaTxtService
             . $this->A($exonerado, 1)                           // 76 exonerado 506
             . $this->A($codArl, 6)                              // 77 código ARL 507-512
             . $this->A((string)$nivel, 1)                       // 78 clase de riesgo 513
-            . ' '                                                // 79 ind tarifa especial 514
-            . $this->A($fechaIng, 10)                           // 80 fecha ingreso 515-524
-            . $this->A($fechaRet, 10)                           // 81 fecha retiro 525-534
-            . str_repeat(' ', 10)                               // 82 fecha VSP 535-544
-            . str_repeat(' ', 10)                               // 83 fecha SLN ini 545-554
-            . str_repeat(' ', 10)                               // 84 fecha SLN fin 555-564
-            . str_repeat(' ', 10)                               // 85 fecha IGE ini 565-574
-            . str_repeat(' ', 10)                               // 86 fecha IGE fin 575-584
-            . str_repeat(' ', 10)                               // 87 fecha LMA ini 585-594
-            . str_repeat(' ', 10)                               // 88 fecha LMA fin 595-604
-            . str_repeat(' ', 10)                               // 89 fecha VAC ini 605-614
-            . str_repeat(' ', 10)                               // 90 fecha VAC fin 615-624
-            . str_repeat(' ', 10)                               // 91 fecha VCT ini 625-634
-            . str_repeat(' ', 10)                               // 92 fecha VCT fin 635-644
-            . str_repeat(' ', 10)                               // 93 fecha IRL ini 645-654
-            . str_repeat(' ', 10)                               // 94 fecha IRL fin 655-664
-            . $this->N((string)$ibcOtros, 9)                    // 95 IBC otros paraf 665-673
-            . $this->N((string)$c['horasLaboradas'], 3)                // 96 horas laboradas 674-676 (tipo 51: dias_caja×8; otros: num_dias×8)
-            . str_repeat(' ', 10)                               // 97 fecha radicación 677-686
-            . self::ACTECO_ARL[$nivel];                          // 98 actividad económica 687-693
-
-        if (strlen($linea) !== 693) {
+            . ' ';                                               // 79 ind tarifa especial 514
+        
+        if (strlen($linea) !== 514) {
             throw new \RuntimeException(
-                "Tipo 2 generó " . strlen($linea) . " chars (esperado 693) en cotizante " . $p->no_identifi
+                "Tipo 2 generó " . strlen($linea) . " chars (esperado 514) en cotizante " . $p->no_identifi
             );
         }
         return $linea;

@@ -62,7 +62,7 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
         <div class="fin-kpi" style="--c:#ef4444;">
             <div class="val">{{ $fmt($egresos['total']) }}</div>
             <div class="lab">Egresos Operativos</div>
-            <div class="sub">Gastos + Comisiones asesor</div>
+            <div class="sub">Gastos + Comisiones + Retiros</div>
         </div>
         <div class="fin-kpi" style="{{ $utilidad>=0?'--c:#10b981':'--c:#ef4444' }};">
             <div class="val">{{ $fmt($utilidad) }}</div>
@@ -112,16 +112,26 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
 
         <div style="background:#fff;border-radius:14px;padding:1.25rem;box-shadow:0 1px 8px rgba(0,0,0,.06);">
             <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;color:#94a3b8;margin-bottom:.85rem;">Desglose Egresos</div>
-            @foreach([['Gastos Operativos',$egresos['operativos'],'#ef4444'],['Comisiones Asesor',$egresos['comisiones'],'#f59e0b'],['Pagado SS',$pagadoSS,'#8b5cf6']] as [$l,$v,$c])
+            @foreach([
+                ['Gastos Operativos', $egresos['operativos'], '#ef4444'],
+                ['Comisiones Asesor', $egresos['comisiones'], '#f59e0b'],
+                ['Retiros aplicados', $egresos['retiros'], '#c2410c'],
+                ['Pagado SS', $pagadoSS, '#8b5cf6']
+            ] as [$l,$v,$c])
             <div style="display:flex;justify-content:space-between;margin-bottom:.65rem;">
                 <span style="font-size:.82rem;color:#334155;">{{ $l }}</span>
                 <span style="font-weight:700;color:{{ $c }};">{{ $fmt($v) }}</span>
             </div>
             @endforeach
             <div style="border-top:1px solid #e2e8f0;padding-top:.5rem;margin-top:.25rem;">
-                <div style="display:flex;justify-content:space-between;">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
                     <span style="font-size:.8rem;font-weight:600;color:#64748b;">SS Recaudado</span>
-                    <span style="font-size:.82rem;color:#64748b;">{{ $fmt($recaudoSS) }}</span>
+                    <span style="font-size:.82rem;color:#64748b;font-weight:700;">{{ $fmt($recaudoSS) }}</span>
+                </div>
+                <div style="margin-top:.4rem;text-align:right;">
+                    <button onclick="abrirConciliacionSS()" style="background:#f1f5f9;border:none;border-radius:6px;padding:.25rem .5rem;font-size:.68rem;font-weight:700;color:#1e293b;cursor:pointer;transition:background .15s;" onmouseover="this.style.background='#e2e8f0'" onmouseout="this.style.background='#f1f5f9'">
+                        🔍 Conciliar Desfase SS
+                    </button>
                 </div>
             </div>
         </div>
@@ -405,7 +415,7 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
                         </button>
                     </div>
                     <div style="text-align:right;">
-                        <div style="font-weight:800;color:#fff;font-size:1.1rem;">{{ $fmt($pagadoSS) }}</div>
+                        <div style="font-weight:800;color:#fff;font-size:1.1rem;">{{ $fmt($pagadoSSRaw) }}</div>
                         <div style="font-size:.7rem;color:rgba(255,255,255,.6);">Saldo: {{ $fmt($saldoSS) }}</div>
                     </div>
                 </div>
@@ -488,14 +498,14 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
             @php
                 $totalSsCobradoEgresos = $egresosSSDetalle->sum('ss_cobrado_facturas')
                                        + $egresosSSDetalle->sum('ss_retiro_facturas');
-                $saldoEgresos = $totalSsCobradoEgresos - $pagadoSS;
+                $saldoEgresos = $totalSsCobradoEgresos - $pagadoSSRaw;
             @endphp
             <div style="display:grid;grid-template-columns:90px 1fr 130px 120px 110px;gap:.4rem;padding:.55rem 1rem;background:#f5f3ff;border-top:2px solid #ddd6fe;font-size:.78rem;font-weight:700;">
                 <span></span>
                 <span style="color:#7c3aed;">{{ $egresosSSDetalle->count() }} planilla(s)</span>
                 <span></span>
                 <span style="text-align:right;color:#10b981;">{{ $fmt($totalSsCobradoEgresos) }}</span>
-                <span style="text-align:right;color:#7c3aed;">{{ $fmt($pagadoSS) }}</span>
+                <span style="text-align:right;color:#7c3aed;">{{ $fmt($pagadoSSRaw) }}</span>
             </div>
             <div style="display:grid;grid-template-columns:90px 1fr 130px 120px 110px;gap:.4rem;padding:.5rem 1rem;background:{{ $saldoEgresos >= 0 ? '#f0fdf4' : '#fef2f2' }};border-top:1px solid {{ $saldoEgresos >= 0 ? '#bbf7d0' : '#fecaca' }};">
                 <span></span>
@@ -654,6 +664,64 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
         {{-- Body --}}
         <div id="auditBody" style="padding:1.25rem 1.5rem 1.5rem;">
             <div style="text-align:center;padding:2rem;color:#94a3b8;">Cargando auditoría…</div>
+        </div>
+    </div>
+</div>
+
+{{-- Modal Conciliación Seguridad Social (Desfases) --}}
+<div id="modalConciliacion" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;align-items:flex-start;justify-content:center;padding-top:3vh;overflow-y:auto;">
+    <div style="background:#fff;border-radius:18px;width:min(900px,96vw);box-shadow:0 25px 60px rgba(0,0,0,.22);margin-bottom:3vh;">
+        <div style="background:linear-gradient(135deg,#0e7490,#0891b2);border-radius:18px 18px 0 0;padding:1rem 1.5rem;display:flex;align-items:center;justify-content:space-between;">
+            <div>
+                <div style="color:#fff;font-weight:800;font-size:1rem;">🔍 Conciliación y Desfases de Seguridad Social</div>
+                <div style="color:rgba(255,255,255,.7);font-size:.74rem;margin-top:.15rem;">Análisis de la diferencia de recaudo contra planillas pagadas en el mes</div>
+            </div>
+            <button onclick="document.getElementById('modalConciliacion').style.display='none'" style="background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:8px;width:32px;height:32px;cursor:pointer;font-size:1.1rem;">✕</button>
+        </div>
+        
+        <div style="padding:1.25rem;max-height:75vh;overflow-y:auto;">
+            {{-- Resumen de conciliación --}}
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.75rem;margin-bottom:1.25rem;background:#ecfeff;border:1px solid #a5f3fc;border-radius:12px;padding:.85rem 1rem;">
+                <div style="text-align:center;">
+                    <div style="font-size:.68rem;font-weight:600;color:#0e7490;text-transform:uppercase;">(+) Cobrado sin Planilla Pagada</div>
+                    <div id="concilSinPlanillaTotal" style="font-size:1.25rem;font-weight:800;color:#0891b2;margin-top:.15rem;">—</div>
+                    <div style="font-size:.62rem;color:#0e7490;margin-top:.1rem;">Dinero en caja sin pagar planilla al operador</div>
+                </div>
+                <div style="text-align:center;border-left:1px solid #a5f3fc;border-right:1px solid #a5f3fc;">
+                    <div style="font-size:.68rem;font-weight:600;color:#9a3412;text-transform:uppercase;">(-) Planilla Pagada de Otros Meses / Retiro</div>
+                    <div id="concilOtrosMesesTotal" style="font-size:1.25rem;font-weight:800;color:#c2410c;margin-top:.15rem;">—</div>
+                    <div style="font-size:.62rem;color:#9a3412;margin-top:.1rem;">Planillas pagadas que se cobraron antes o son retiros</div>
+                </div>
+                <div style="text-align:center;">
+                    <div style="font-size:.68rem;font-weight:600;color:#1e3a8a;text-transform:uppercase;">Diferencia Neta</div>
+                    <div id="concilDiferenciaNeta" style="font-size:1.25rem;font-weight:800;color:#1d4ed8;margin-top:.15rem;">—</div>
+                    <div style="font-size:.62rem;color:#1e3a8a;margin-top:.1rem;">Desfase neto entre Recaudo y Auditoría</div>
+                </div>
+            </div>
+            
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;">
+                {{-- Columna A: Cobrados sin Planilla --}}
+                <div>
+                    <div style="font-size:.8rem;font-weight:700;color:#1e293b;margin-bottom:.5rem;display:flex;justify-content:space-between;border-bottom:2px solid #e2e8f0;padding-bottom:.3rem;">
+                        <span>(+) Cobrado sin Planilla Pagada</span>
+                        <span id="badgeSinPlanillaCount" style="background:#dcfce7;color:#15803d;font-size:.7rem;border-radius:12px;padding:.05rem .4rem;">0</span>
+                    </div>
+                    <div id="concilSinPlanillaList" style="max-height:40vh;overflow-y:auto;font-size:.78rem;display:flex;flex-direction:column;gap:.4rem;padding-right:.25rem;">
+                        Cargando…
+                    </div>
+                </div>
+                
+                {{-- Columna B: Pagados de Otros Meses o Retiros --}}
+                <div>
+                    <div style="font-size:.8rem;font-weight:700;color:#1e293b;margin-bottom:.5rem;display:flex;justify-content:space-between;border-bottom:2px solid #e2e8f0;padding-bottom:.3rem;">
+                        <span>(-) Planilla Pagada de Otros Meses / Retiros</span>
+                        <span id="badgeOtrosMesesCount" style="background:#ffedd5;color:#c2410c;font-size:.7rem;border-radius:12px;padding:.05rem .4rem;">0</span>
+                    </div>
+                    <div id="concilOtrosMesesList" style="max-height:40vh;overflow-y:auto;font-size:.78rem;display:flex;flex-direction:column;gap:.4rem;padding-right:.25rem;">
+                        Cargando…
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -1492,6 +1560,92 @@ function auditarPlanilla(numPlanilla, descripcion) {
         .catch(() => {
             document.getElementById('auditBody').innerHTML = '<div style="color:#ef4444;padding:1.5rem;text-align:center;">Error al cargar la auditoría. Intente de nuevo.</div>';
         });
+}
+
+function abrirConciliacionSS() {
+    const modal = document.getElementById('modalConciliacion');
+    modal.style.display = 'flex';
+    
+    const listSin = document.getElementById('concilSinPlanillaList');
+    const listOtr = document.getElementById('concilOtrosMesesList');
+    const totSin  = document.getElementById('concilSinPlanillaTotal');
+    const totOtr  = document.getElementById('concilOtrosMesesTotal');
+    const totNet  = document.getElementById('concilDiferenciaNeta');
+    const badgeSin = document.getElementById('badgeSinPlanillaCount');
+    const badgeOtr = document.getElementById('badgeOtrosMesesCount');
+    
+    listSin.innerHTML = '<div style="color:#94a3b8;padding:1rem;text-align:center;">Cargando conciliación...</div>';
+    listOtr.innerHTML = '<div style="color:#94a3b8;padding:1rem;text-align:center;">Cargando conciliación...</div>';
+    
+    const fmt = val => '$ ' + Math.round(Number(val || 0)).toLocaleString('es-CO');
+
+    fetch(`{{ route('admin.informes.financiero.conciliacion_ss') }}?mes={{ $mes }}&anio={{ $anio }}`)
+        .then(res => res.json())
+        .then(data => {
+            if (!data.exito) {
+                listSin.innerHTML = 'Error al cargar los datos';
+                listOtr.innerHTML = 'Error al cargar los datos';
+                return;
+            }
+            
+            totSin.textContent = fmt(data.total_sin_planilla);
+            totOtr.textContent = fmt(data.total_otros_meses);
+            
+            const diff = data.diferencia_neta;
+            totNet.textContent = (diff >= 0 ? '+' : '') + fmt(diff);
+            totNet.style.color = diff >= 0 ? '#15803d' : '#dc2626';
+            
+            badgeSin.textContent = data.sin_planilla.length;
+            badgeOtr.textContent = data.otros_meses.length;
+            
+            if (data.sin_planilla.length === 0) {
+                listSin.innerHTML = '<div style="color:#94a3b8;padding:1.5rem;text-align:center;background:#f8fafc;border-radius:10px;">Todas las facturas cobradas este mes ya tienen planilla pagada.</div>';
+            } else {
+                listSin.innerHTML = data.sin_planilla.map(f => `
+                    <div style="padding:.5rem .75rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;display:flex;justify-content:space-between;align-items:start;margin-bottom:.35rem;">
+                        <div>
+                            <div style="font-weight:700;color:#1e293b;">${f.cliente_nombre}</div>
+                            <div style="font-size:.68rem;color:#64748b;margin-top:.15rem;">C.C. ${f.cedula} · Factura #${f.numero_factura} (${f.mes}/${f.anio})</div>
+                            <span style="font-size:.62rem;background:#dbeafe;color:#1e40af;padding:.05rem .35rem;border-radius:6px;font-weight:700;display:inline-block;margin-top:.2rem;">${f.estado.toUpperCase()}</span>
+                        </div>
+                        <div style="font-weight:800;color:#15803d;font-size:.85rem;white-space:nowrap;">${fmt(f.total_ss)}</div>
+                    </div>
+                `).join('');
+            }
+            
+            if (data.otros_meses.length === 0) {
+                listOtr.innerHTML = '<div style="color:#94a3b8;padding:1.5rem;text-align:center;background:#f8fafc;border-radius:10px;">No hay planillas pagadas en el mes asociadas a facturas de otros periodos o retiros.</div>';
+            } else {
+                listOtr.innerHTML = data.otros_meses.map(f => {
+                    const descPeriodo = f.numero_factura == 0 
+                        ? '<span style="font-size:.62rem;background:#fee2e2;color:#991b1b;padding:.05rem .35rem;border-radius:6px;font-weight:700;display:inline-block;margin-top:.2rem;">RETIRO ASUMIDO</span>'
+                        : `<span style="font-size:.62rem;background:#ffedd5;color:#9a3412;padding:.05rem .35rem;border-radius:6px;font-weight:700;display:inline-block;margin-top:.2rem;">PAGADO EN ${fmtFecha(f.fecha_pago)} (Per. ${f.mes}/${f.anio})</span>`;
+                        
+                    return `
+                        <div style="padding:.5rem .75rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;display:flex;justify-content:space-between;align-items:start;margin-bottom:.35rem;">
+                            <div>
+                                <div style="font-weight:700;color:#1e293b;">${f.cliente_nombre}</div>
+                                <div style="font-size:.68rem;color:#64748b;margin-top:.15rem;">C.C. ${f.cedula} · Factura #${f.numero_factura == 0 ? 'Retiro' : f.numero_factura} · Planilla PILA #${f.numero_planilla}</div>
+                                ${descPeriodo}
+                            </div>
+                            <div style="font-weight:800;color:#c2410c;font-size:.85rem;white-space:nowrap;">${fmt(f.total_ss)}</div>
+                        </div>
+                    `;
+                }).join('');
+            }
+        })
+        .catch(err => {
+            console.error("Error en conciliacion SS:", err);
+            listSin.innerHTML = '<div style="color:#ef4444;padding:1rem;text-align:center;">Error de conexión: ' + err.message + '</div>';
+            listOtr.innerHTML = '<div style="color:#ef4444;padding:1rem;text-align:center;">Error de conexión: ' + err.message + '</div>';
+        });
+}
+
+function fmtFecha(fechaStr) {
+    if (!fechaStr) return '—';
+    const date = new Date(fechaStr + 'T00:00:00');
+    const meses = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+    return date.getDate() + ' ' + meses[date.getMonth()];
 }
 
 </script>

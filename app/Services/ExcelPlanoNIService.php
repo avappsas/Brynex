@@ -252,6 +252,7 @@ class ExcelPlanoNIService
                 'p.tipo_doc',
                 'p.no_identifi',
                 'p.tipo_modalidad_id',
+                'p.tipo_p',
                 // Nombres
                 'p.primer_nombre',
                 'p.segundo_nombre',
@@ -317,11 +318,12 @@ class ExcelPlanoNIService
             ->whereNotNull('numero_planilla')
             ->value('numero_planilla');
 
-        // -- 4. Tipo de planilla y totales ---------------------------------------
+        // Si hay registros con tipo_p = 16, Tipo Planilla = 'N' (Correcciones).
         // Si TODOS los registros cargados son Estudiante K (tipo_modalidad_id = -1)
         // → Tipo Planilla = 'K'. Para cualquier otro caso → 'E' (Ordinaria).
-        $todosK          = $planos->count() > 0 && $planos->every(fn($p) => (int)$p->tipo_modalidad_id === -1);
-        $tipoPlanilla    = $todosK ? 'K' : 'E';
+        $tieneN          = $planos->count() > 0 && $planos->contains(fn($p) => (int)($p->tipo_p ?? 0) === 16);
+        $todosK          = !$tieneN && $planos->count() > 0 && $planos->every(fn($p) => (int)$p->tipo_modalidad_id === -1);
+        $tipoPlanilla    = $tieneN ? 'N' : ($todosK ? 'K' : 'E');
         $totalCotizantes = $planos->count();
         $totalNomina     = $planos->sum('total_ss');
 

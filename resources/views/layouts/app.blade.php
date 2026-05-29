@@ -741,6 +741,10 @@
                     <a href="{{ route('admin.configuracion.index') }}" class="panel-item {{ request()->routeIs('admin.configuracion.index') ? 'activo' : '' }}">
                         <div class="pi">💲</div> Parámetros / Precios
                     </a>
+                    <div class="panel-sep"></div>
+                    <a href="{{ route('admin.traslados.index') }}" class="panel-item {{ request()->routeIs('admin.traslados*') ? 'activo' : '' }}">
+                        <div class="pi">🔄</div> Traslado de RS
+                    </a>
                 </div>
             </div>
             @endrole

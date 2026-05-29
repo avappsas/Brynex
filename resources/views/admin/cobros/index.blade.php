@@ -697,8 +697,8 @@ $rowStyle    = $esIrAlerta
             @php [$fl, $fc, $fb] = $estadoFact($c->fact_estado); @endphp
             <a href="{{ route('admin.facturacion.recibo', $c->fact_id) }}" target="_blank"
                style="display:inline-block;padding:.15rem .5rem;border-radius:20px;font-size:.62rem;font-weight:700;background:{{ $fb }};color:{{ $fc }};text-decoration:none;"
-               title="Recibo #{{ $c->fact_numero }}">
-                {{ $fl }} #{{ $c->fact_numero }}
+               title="Recibo #{{ $c->fact_numero }} ({{ $fl }})">
+                {{ $c->fact_numero }}
             </a>
         @else
             <span style="color:#cbd5e1;font-size:.7rem;">Sin factura</span>

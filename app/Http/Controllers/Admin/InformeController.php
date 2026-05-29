@@ -35,11 +35,32 @@ class InformeController extends Controller
         $this->checkAdmin();
         $aid = $this->aliadoId();
 
+        $mes  = now()->month;
+        $anio = now()->year;
+        $mesAnterior  = $mes === 1 ? 12 : $mes - 1;
+        $anioAnterior = $mes === 1 ? $anio - 1 : $anio;
+
         $kpis = [
             'clientes_activos'   => DB::table('contratos')->where('aliado_id',$aid)->where('estado','vigente')->count(),
             'razones_sociales'   => DB::table('razones_sociales')->where('aliado_id',$aid)->where('estado','Activa')->count(),
-            'afiliaciones_mes'   => DB::table('contratos')->where('aliado_id',$aid)->whereMonth('fecha_ingreso', now()->month)->whereYear('fecha_ingreso', now()->year)->count(),
-            'retiros_mes'        => DB::table('contratos')->where('aliado_id',$aid)->where('estado','retirado')->whereMonth('fecha_retiro', now()->month)->whereYear('fecha_retiro', now()->year)->count(),
+            'afiliaciones_mes'   => DB::table('contratos')->where('aliado_id',$aid)->whereMonth('fecha_ingreso', $mes)->whereYear('fecha_ingreso', $anio)->count(),
+            'retiros_mes'        => DB::table('contratos AS c')
+                ->where('c.aliado_id',$aid)
+                ->where('c.estado','retirado')
+                ->where(function ($q) use ($mes, $anio, $mesAnterior, $anioAnterior) {
+                    $q->where(function ($q1) use ($mes, $anio) {
+                        $q1->where('c.tipo_modalidad_id', 11)
+                           ->whereMonth('c.fecha_retiro', $mes)
+                           ->whereYear('c.fecha_retiro', $anio);
+                    })->orWhere(function ($q2) use ($mesAnterior, $anioAnterior) {
+                        $q2->where(function ($q3) {
+                            $q3->whereNull('c.tipo_modalidad_id')
+                               ->orWhere('c.tipo_modalidad_id', '<>', 11);
+                        })
+                        ->whereMonth('c.fecha_retiro', $mesAnterior)
+                        ->whereYear('c.fecha_retiro', $anioAnterior);
+                    });
+                })->count(),
             'empresas'           => DB::table('empresas')->where('aliado_id',$aid)->count(),
             'incapacidades'      => DB::table('incapacidades')->where('aliado_id',$aid)->whereNull('deleted_at')->whereNotIn('estado',['cerrado','rechazado'])->count(),
             'tareas'             => DB::table('tareas')->where('aliado_id',$aid)->whereNull('deleted_at')->whereIn('estado',['pendiente','en_gestion','en_espera'])->count(),
@@ -47,8 +68,6 @@ class InformeController extends Controller
 
         $esFinanciero = Auth::user()->hasRole(['superadmin','contador']);
         if ($esFinanciero) {
-            $mes  = now()->month;
-            $anio = now()->year;
             $kpis['ingresos_mes'] = DB::table('facturas')
                 ->where('aliado_id',$aid)->whereNull('deleted_at')
                 ->where('mes',$mes)->where('anio',$anio)
@@ -201,6 +220,8 @@ class InformeController extends Controller
         $aid  = $this->aliadoId();
         $mes  = (int)$request->input('mes', now()->month);
         $anio = (int)$request->input('anio', now()->year);
+        $mesAnterior  = $mes  === 1 ? 12 : $mes  - 1;
+        $anioAnterior = $mes  === 1 ? $anio - 1 : $anio;
 
         $afiliaciones = DB::table('contratos AS c')
             ->leftJoin('motivos_afiliacion AS ma','ma.id','=','c.motivo_afiliacion_id')
@@ -213,7 +234,20 @@ class InformeController extends Controller
         $retiros = DB::table('contratos AS c')
             ->leftJoin('motivos_retiro AS mr','mr.id','=','c.motivo_retiro_id')
             ->where('c.aliado_id',$aid)->where('c.estado','retirado')
-            ->whereMonth('c.fecha_retiro',$mes)->whereYear('c.fecha_retiro',$anio)
+            ->where(function ($q) use ($mes, $anio, $mesAnterior, $anioAnterior) {
+                $q->where(function ($q1) use ($mes, $anio) {
+                    $q1->where('c.tipo_modalidad_id', 11)
+                       ->whereMonth('c.fecha_retiro', $mes)
+                       ->whereYear('c.fecha_retiro', $anio);
+                })->orWhere(function ($q2) use ($mesAnterior, $anioAnterior) {
+                    $q2->where(function ($q3) {
+                        $q3->whereNull('c.tipo_modalidad_id')
+                           ->orWhere('c.tipo_modalidad_id', '<>', 11);
+                    })
+                    ->whereMonth('c.fecha_retiro', $mesAnterior)
+                    ->whereYear('c.fecha_retiro', $anioAnterior);
+                });
+            })
             ->groupBy('mr.id','mr.nombre')
             ->select('mr.nombre AS motivo', DB::raw('COUNT(*) AS total'))
             ->orderByDesc('total')->get();
@@ -267,30 +301,92 @@ class InformeController extends Controller
         return view('admin.informes.por_entidades', compact('eps','pension','arl','caja'));
     }
 
-    // ── 6. Retirados del mes ──────────────────────────────────────────
     public function retiradosMes(Request $request)
     {
         $this->checkAdmin();
         $aid  = $this->aliadoId();
         $mes  = (int)$request->input('mes', now()->month);
         $anio = (int)$request->input('anio', now()->year);
+        $mesAnterior  = $mes  === 1 ? 12 : $mes  - 1;
+        $anioAnterior = $mes  === 1 ? $anio - 1 : $anio;
 
-        $retirados = DB::table('contratos AS c')
+        $retiradosBase = DB::table('contratos AS c')
             ->join('clientes AS cl', function($j) use($aid){ $j->on('cl.cedula','=','c.cedula')->where('cl.aliado_id',$aid); })
             ->leftJoin('razones_sociales AS rs','rs.id','=','c.razon_social_id')
             ->leftJoin('motivos_retiro AS mr','mr.id','=','c.motivo_retiro_id')
+            ->leftJoin('planes_contrato AS pl','pl.id','=','c.plan_id')
+            ->leftJoin('tipo_modalidad AS tm','tm.id','=','c.tipo_modalidad_id')
             ->where('c.aliado_id',$aid)->where('c.estado','retirado')
-            ->whereMonth('c.fecha_retiro',$mes)->whereYear('c.fecha_retiro',$anio)
+            ->where(function ($q) use ($mes, $anio, $mesAnterior, $anioAnterior) {
+                $q->where(function ($q1) use ($mes, $anio) {
+                    $q1->where('c.tipo_modalidad_id', 11)
+                       ->whereMonth('c.fecha_retiro', $mes)
+                       ->whereYear('c.fecha_retiro', $anio);
+                })->orWhere(function ($q2) use ($mesAnterior, $anioAnterior) {
+                    $q2->where(function ($q3) {
+                        $q3->whereNull('c.tipo_modalidad_id')
+                           ->orWhere('c.tipo_modalidad_id', '<>', 11);
+                    })
+                    ->whereMonth('c.fecha_retiro', $mesAnterior)
+                    ->whereYear('c.fecha_retiro', $anioAnterior);
+                });
+            })
             ->select('c.cedula','c.fecha_retiro','c.observacion',
                 DB::raw("LTRIM(RTRIM(cl.primer_nombre+' '+ISNULL(cl.segundo_nombre,'')+' '+cl.primer_apellido+' '+ISNULL(cl.segundo_apellido,''))) AS nombre_completo"),
-                'rs.razon_social','mr.nombre AS motivo')
+                'rs.razon_social','mr.nombre AS motivo',
+                'pl.nombre AS plan_nombre','tm.tipo_modalidad AS modalidad_nombre',
+                DB::raw("(SELECT TOP 1 total_ss FROM facturas WHERE contrato_id = c.id AND numero_factura = 0 AND deleted_at IS NULL ORDER BY id DESC) AS costo_ss"),
+                DB::raw("(SELECT TOP 1 dias_cotizados FROM facturas WHERE contrato_id = c.id AND numero_factura = 0 AND deleted_at IS NULL ORDER BY id DESC) AS dias_retiro"))
             ->orderBy('c.fecha_retiro')->get();
 
-        if ($request->input('excel')) return $this->exportCsv($retirados,'retirados_mes',
-            ['Cédula','Nombre','Razón Social','Fecha Retiro','Motivo','Observación'],
-            fn($r)=>[$r->cedula,$r->nombre_completo,$r->razon_social,sqldate($r->fecha_retiro)?->format('d/m/Y'),$r->motivo,$r->observacion]);
+        // Enriquecer cada registro con tipo_retiro en memoria
+        $retiradosBase = $retiradosBase->map(function($r) {
+            $r->tipo_retiro = ($r->costo_ss ?? 0) > 0 ? 'Real' : 'Informativo';
+            return $r;
+        });
 
-        return view('admin.informes.retirados_mes', compact('retirados','mes','anio'));
+        // Extraer opciones únicas para los filtros basados en la consulta actual del mes
+        $opcRs = $retiradosBase->pluck('razon_social')->unique()->filter()->values()->toArray();
+        $opcPlan = $retiradosBase->pluck('plan_nombre')->unique()->filter()->values()->toArray();
+        $opcModalidad = $retiradosBase->pluck('modalidad_nombre')->unique()->filter()->values()->toArray();
+        $opcMotivo = $retiradosBase->pluck('motivo')->unique()->filter()->values()->toArray();
+        $opcTipo = ['Real', 'Informativo'];
+
+        // Capturar filtros
+        $fRs = $request->get('f_rs');
+        $fPlan = $request->get('f_plan');
+        $fModalidad = $request->get('f_modalidad');
+        $fMotivo = $request->get('f_motivo');
+        $fTipo = $request->get('f_tipo');
+
+        // Filtrar la colección (excluir el valor 'todos' que representa resetear filtro)
+        $retirados = $retiradosBase;
+        if ($fRs && $fRs !== 'todos') {
+            $retirados = $retirados->where('razon_social', $fRs);
+        }
+        if ($fPlan && $fPlan !== 'todos') {
+            $retirados = $retirados->where('plan_nombre', $fPlan);
+        }
+        if ($fModalidad && $fModalidad !== 'todos') {
+            $retirados = $retirados->where('modalidad_nombre', $fModalidad);
+        }
+        if ($fMotivo && $fMotivo !== 'todos') {
+            $retirados = $retirados->where('motivo', $fMotivo);
+        }
+        if ($fTipo && $fTipo !== 'todos') {
+            $retirados = $retirados->where('tipo_retiro', $fTipo);
+        }
+        $retirados = $retirados->values();
+
+        if ($request->input('excel')) return $this->exportCsv($retirados,'retirados_mes',
+            ['Cédula','Nombre','Razón Social','Plan','Modalidad','Días Retiro','Fecha Retiro','Motivo','Costo SS Retiro','Tipo Retiro','Observación'],
+            fn($r)=>[$r->cedula,$r->nombre_completo,$r->razon_social,$r->plan_nombre ?? '—',$r->modalidad_nombre ?? '—',$r->dias_retiro ?? 0,sqldate($r->fecha_retiro)?->format('d/m/Y'),$r->motivo,$r->costo_ss ? (int)$r->costo_ss : 0, $r->tipo_retiro, $r->observacion]);
+
+        return view('admin.informes.retirados_mes', compact(
+            'retirados','mes','anio',
+            'opcRs','opcPlan','opcModalidad','opcMotivo','opcTipo',
+            'fRs','fPlan','fModalidad','fMotivo','fTipo'
+        ));
     }
 
     // ── 7. Incapacidades ──────────────────────────────────────────────
@@ -350,63 +446,81 @@ class InformeController extends Controller
         // ── Ingresos base CAJA: dinero recibido este mes (fecha_pago) ────────────
         // Se usa fecha_pago (no mes/anio del período) para reflejar el efectivo
         // real cobrado en el mes — incluye facturas de meses anteriores pagadas ahora.
-        $facturasBase = DB::table('facturas')
-            ->where('aliado_id',$aid)->whereNull('deleted_at')
+        $ingresosRaw = DB::table('facturas')
+            ->where('aliado_id', $aid)->whereNull('deleted_at')
             ->whereNotNull('fecha_pago')
-            ->whereMonth('fecha_pago',$mes)->whereYear('fecha_pago',$anio)
-            ->whereIn('estado',['pagada','abono']);
+            ->whereMonth('fecha_pago', $mes)->whereYear('fecha_pago', $anio)
+            ->whereIn('estado', ['pagada', 'abono'])
+            ->groupBy('tipo')
+            ->selectRaw('
+                tipo,
+                SUM(admon) as sum_admon,
+                SUM(seguro) as sum_seguro,
+                SUM(afiliacion) as sum_afiliacion,
+                SUM(mensajeria) as sum_mensajeria,
+                SUM(otros) as sum_otros,
+                SUM(iva) as sum_iva,
+                SUM(retiro) as sum_retiro
+            ')
+            ->get()
+            ->keyBy('tipo');
+
+        $planillasRaw = $ingresosRaw->get('planilla');
+        $ingPlanillas = $planillasRaw 
+            ? ($planillasRaw->sum_admon + $planillasRaw->sum_seguro + $planillasRaw->sum_mensajeria + $planillasRaw->sum_otros + $planillasRaw->sum_iva + $planillasRaw->sum_retiro)
+            : 0;
+
+        $afiliacionesRaw = $ingresosRaw->get('afiliacion');
+        $ingAfiliaciones = $afiliacionesRaw
+            ? ($afiliacionesRaw->sum_afiliacion + $afiliacionesRaw->sum_admon + $afiliacionesRaw->sum_seguro + $afiliacionesRaw->sum_iva)
+            : 0;
+
+        $tramitesRaw = $ingresosRaw->get('otro_ingreso');
+        $ingTramites = $tramitesRaw
+            ? ($tramitesRaw->sum_admon + $tramitesRaw->sum_otros)
+            : 0;
 
         $ingresos = [
-            'planillas'   => (clone $facturasBase)->where('tipo','planilla')->sum(DB::raw('admon + seguro + mensajeria + otros + iva + retiro')),
-            'afiliaciones'=> (clone $facturasBase)->where('tipo','afiliacion')->sum(DB::raw('afiliacion + admon + seguro + iva')),
-            'tramites'    => (clone $facturasBase)->where('tipo','otro_ingreso')->sum(DB::raw('admon + otros')),
+            'planillas'   => (float)$ingPlanillas,
+            'afiliaciones'=> (float)$ingAfiliaciones,
+            'tramites'    => (float)$ingTramites,
+            'total'       => (float)($ingPlanillas + $ingAfiliaciones + $ingTramites)
         ];
-        $ingresos['total'] = $ingresos['planillas'] + $ingresos['afiliaciones'] + $ingresos['tramites'];
 
-        // ── SS de terceros (base CAJA) ────────────────────────────────
-        // Recaudo SS real: facturas pagadas este mes con numero_factura > 0
-        $facturasSSBase = (clone $facturasBase)->where('numero_factura', '>', 0);
-
-        $recaudoSS = (clone $facturasSSBase)->sum('total_ss');
-
-        // ── Mora recogida (NO es ingreso — es multa al cliente por pago tardío) ──
-        // Se separa del recaudoSS para que el informe muestre cuánto fue cargo
-        // real de SS vs cuánto fue por penalización de mora.
-        $moraRecogida = (clone $facturasBase)->sum('mora');
-
-        // Desglose ingresos SS por componente (EPS, ARL, AFP, Caja)
-        // $facturasSSBase filtra por fecha_pago (caja) y numero_factura > 0
-        $ingresosSSRaw = (clone $facturasSSBase)
-            ->where('tipo','planilla')
-            ->selectRaw('SUM(v_eps) AS eps, SUM(v_arl) AS arl, SUM(v_afp) AS afp, SUM(v_caja) AS caja,
-                         SUM(total_ss) AS total_ss')
+        // ── SS de terceros, mora recogida y desglose ingresos SS en una sola consulta ──
+        $facturasData = DB::table('facturas')
+            ->where('aliado_id', $aid)->whereNull('deleted_at')
+            ->whereNotNull('fecha_pago')
+            ->whereMonth('fecha_pago', $mes)->whereYear('fecha_pago', $anio)
+            ->selectRaw("
+                SUM(CASE WHEN estado IN ('pagada','abono','prestamo') AND numero_factura > 0 THEN total_ss ELSE 0 END) AS recaudo_ss,
+                SUM(CASE WHEN estado IN ('pagada','abono','prestamo') AND numero_factura = 0 THEN total_ss ELSE 0 END) AS costo_retiros,
+                SUM(CASE WHEN estado IN ('pagada','abono') THEN mora ELSE 0 END) AS mora_recogida,
+                SUM(CASE WHEN estado IN ('pagada','abono','prestamo') AND numero_factura > 0 AND tipo = 'planilla' THEN v_eps ELSE 0 END) AS ss_eps,
+                SUM(CASE WHEN estado IN ('pagada','abono','prestamo') AND numero_factura > 0 AND tipo = 'planilla' THEN v_arl ELSE 0 END) AS ss_arl,
+                SUM(CASE WHEN estado IN ('pagada','abono','prestamo') AND numero_factura > 0 AND tipo = 'planilla' THEN v_afp ELSE 0 END) AS ss_afp,
+                SUM(CASE WHEN estado IN ('pagada','abono','prestamo') AND numero_factura > 0 AND tipo = 'planilla' THEN v_caja ELSE 0 END) AS ss_caja,
+                SUM(CASE WHEN estado IN ('pagada','abono','prestamo') AND numero_factura > 0 AND tipo = 'planilla' AND (anio < ? OR (anio = ? AND mes < ?)) THEN total_ss ELSE 0 END) AS ss_anteriores,
+                SUM(CASE WHEN estado IN ('pagada','abono') THEN retiro ELSE 0 END) AS retiro_campo,
+                SUM(CASE WHEN estado IN ('pagada','abono') THEN c_asesor ELSE 0 END) AS comisiones_asesor
+            ", [$anio, $anio, $mes])
             ->first();
 
-        // SS proveniente de facturas de PERÍODOS ANTERIORES pagadas este mes
-        // (la factura tiene mes/anio distinto al mes consultado, pero fecha_pago en este mes)
-        $ssAnteriores = (clone $facturasSSBase)
-            ->where('tipo','planilla')
-            ->where(function($q) use ($mes, $anio) {
-                $q->where('anio', '<', $anio)
-                  ->orWhere(fn($i) => $i->where('anio', $anio)->where('mes', '<', $mes));
-            })
-            ->sum('total_ss');
-
-        // Campo `retiro` de facturas — fee de retiro separado de la afiliación
-        // (NO es el SS de retiro; es la tarifa cobrada al cliente por el proceso de retiro)
-        $retiroCampo = (clone $facturasBase)->sum('retiro');
+        $recaudoSS    = (float)($facturasData->recaudo_ss ?? 0);
+        $costoRetiros = (float)($facturasData->costo_retiros ?? 0);
+        $moraRecogida = (float)($facturasData->mora_recogida ?? 0);
 
         $ingresosSS = [
-            'eps'          => (float)($ingresosSSRaw->eps      ?? 0),
-            'arl'          => (float)($ingresosSSRaw->arl      ?? 0),
-            'afp'          => (float)($ingresosSSRaw->afp      ?? 0),
-            'caja'         => (float)($ingresosSSRaw->caja     ?? 0),
-            'total_ss'     => (float)($ingresosSSRaw->total_ss ?? 0),
-            'ss_anteriores'=> (float)$ssAnteriores,
-            'retiro_campo' => (float)$retiroCampo,
+            'eps'          => (float)($facturasData->ss_eps ?? 0),
+            'arl'          => (float)($facturasData->ss_arl ?? 0),
+            'afp'          => (float)($facturasData->ss_afp ?? 0),
+            'caja'         => (float)($facturasData->ss_caja ?? 0),
+            'total_ss'     => (float)($facturasData->recaudo_ss ?? 0),
+            'ss_anteriores'=> (float)($facturasData->ss_anteriores ?? 0),
+            'retiro_campo' => (float)($facturasData->retiro_campo ?? 0),
         ];
 
-        // Egresos SS: gastos pago_planilla del mes seleccionado
+        // Egresos SS: gastos pago_planilla del mes seleccionado (consulta base rápida)
         $egresosSSDetalle = DB::table('gastos AS g')
             ->leftJoin('banco_cuentas AS bc', 'bc.id', '=', 'g.banco_origen_id')
             ->where('g.aliado_id', $aid)
@@ -419,32 +533,40 @@ class InformeController extends Controller
                 SUM(g.valor) AS total,
                 COUNT(*) AS cantidad,
                 MAX(bc.banco) AS banco_nombre,
-                MAX(bc.nombre) AS banco_titular,
-                ISNULL((
-                    SELECT SUM(f.total_ss)
-                    FROM planos p2
-                    INNER JOIN facturas f ON f.id = p2.factura_id
-                    WHERE p2.aliado_id = {$aid}
-                      AND p2.numero_planilla = g.numero_planilla
-                      AND p2.deleted_at IS NULL
-                      AND f.deleted_at IS NULL
-                      AND f.numero_factura > 0
-                ), 0) AS ss_cobrado_facturas,
-                ISNULL((
-                    SELECT SUM(f.total_ss)
-                    FROM planos p2
-                    INNER JOIN facturas f ON f.id = p2.factura_id
-                    WHERE p2.aliado_id = {$aid}
-                      AND p2.numero_planilla = g.numero_planilla
-                      AND p2.deleted_at IS NULL
-                      AND f.deleted_at IS NULL
-                      AND f.numero_factura = 0
-                ), 0) AS ss_retiro_facturas
+                MAX(bc.nombre) AS banco_titular
             ")
             ->groupBy('g.numero_planilla', 'g.descripcion', 'g.pagado_a')
             ->orderByDesc('total')
             ->get();
 
+        // Enriquecer en memoria cruzando con planillas
+        $planillasMes = $egresosSSDetalle->pluck('numero_planilla')->filter()->unique()->toArray();
+        $ssFacturas = collect();
+        if (!empty($planillasMes)) {
+            $ssFacturas = DB::table('planos as p2')
+                ->join('facturas as f', 'f.id', '=', 'p2.factura_id')
+                ->where('p2.aliado_id', $aid)
+                ->whereIn('p2.numero_planilla', $planillasMes)
+                ->whereNull('p2.deleted_at')
+                ->whereNull('f.deleted_at')
+                ->groupBy('p2.numero_planilla')
+                ->selectRaw('
+                    p2.numero_planilla,
+                    SUM(CASE WHEN f.numero_factura > 0 THEN f.total_ss ELSE 0 END) AS ss_cobrado_facturas,
+                    SUM(CASE WHEN f.numero_factura = 0 THEN f.total_ss ELSE 0 END) AS ss_retiro_facturas
+                ')
+                ->get()
+                ->keyBy('numero_planilla');
+        }
+
+        $egresosSSDetalle = $egresosSSDetalle->map(function ($eg) use ($ssFacturas) {
+            $numPlanilla = $eg->numero_planilla;
+            $facData = $ssFacturas->get($numPlanilla);
+
+            $eg->ss_cobrado_facturas = (float)($facData->ss_cobrado_facturas ?? 0);
+            $eg->ss_retiro_facturas  = (float)($facData->ss_retiro_facturas  ?? 0);
+            return $eg;
+        });
 
         // ── Base CAJA: anticipos y cobradosAntes ya no aplican como ajuste ─────
         // Con base caja (fecha_pago), TODAS las facturas pagadas este mes ya están
@@ -453,7 +575,11 @@ class InformeController extends Controller
         $anticipos     = ['admon' => 0, 'ss' => 0, 'cant' => 0, 'total' => 0];
         $cobradosAntes = ['admon' => 0, 'ss' => 0, 'cant' => 0, 'total' => 0];
 
-        $pagadoSS = $egresosSSDetalle->sum('total');
+        $pagadoSSRaw = (float) $egresosSSDetalle->sum('total');
+        // Restamos el costo de los retiros del Pagado SS para que el saldo de terceros
+        // se concilie sin el costo que la empresa asumió de su propio bolsillo.
+        $pagadoSS = max(0.0, $pagadoSSRaw - $costoRetiros);
+
         // Saldo SS = recaudado este mes (caja) − pagado a planillas este mes
         $saldoSS  = $recaudoSS - $pagadoSS;
 
@@ -508,7 +634,9 @@ class InformeController extends Controller
 
 
         // Comisiones asesor (acumuladas en facturas del mes)
-        $comisionesAsesor = (clone $facturasBase)->sum('c_asesor');
+        $comisionesAsesor = (float)($facturasData->comisiones_asesor ?? 0);
+
+        // $costoRetiros ya fue definido y calculado al inicio del método
 
         // Gastos operativos (sin planillas SS ni traslados efectivo→banco)
         $gastosOp = DB::table('gastos')->where('aliado_id',$aid)
@@ -518,7 +646,12 @@ class InformeController extends Controller
             ->selectRaw('ISNULL(SUM(CAST(valor AS BIGINT)), 0) AS total')
             ->value('total');
 
-        $egresos = ['comisiones' => $comisionesAsesor, 'operativos' => $gastosOp, 'total' => $comisionesAsesor + $gastosOp];
+        $egresos = [
+            'comisiones' => $comisionesAsesor,
+            'operativos' => $gastosOp,
+            'retiros'    => $costoRetiros,
+            'total'      => $comisionesAsesor + $gastosOp + $costoRetiros
+        ];
         $utilidad = $ingresos['total'] - $egresos['total'];
 
         // Tendencia 6 meses
@@ -530,21 +663,28 @@ class InformeController extends Controller
         $anterior = $this->resumenMes($aid, $mesAnt, $anioAnt);
 
         // ── Saldo SS del mes anterior ─────────────────────────────────
-        // Recaudo SS del mes anterior (caja, mismo criterio que este mes)
-        $recaudoSSPrev = DB::table('facturas')
+        // Recaudo SS y Costo Retiros del mes anterior en una sola consulta
+        $facturasDataPrev = DB::table('facturas')
             ->where('aliado_id', $aid)->whereNull('deleted_at')
             ->whereNotNull('fecha_pago')
             ->whereMonth('fecha_pago', $mesAnt)->whereYear('fecha_pago', $anioAnt)
-            ->whereIn('estado', ['pagada','abono'])
-            ->where('numero_factura', '>', 0)
-            ->sum('total_ss');
+            ->selectRaw("
+                SUM(CASE WHEN estado IN ('pagada','abono','prestamo') AND numero_factura > 0 THEN total_ss ELSE 0 END) AS recaudo_ss_prev,
+                SUM(CASE WHEN estado IN ('pagada','abono','prestamo') AND numero_factura = 0 THEN total_ss ELSE 0 END) AS costo_retiros_prev
+            ")
+            ->first();
+
+        $recaudoSSPrev    = (float)($facturasDataPrev->recaudo_ss_prev ?? 0);
+        $costoRetirosPrev = (float)($facturasDataPrev->costo_retiros_prev ?? 0);
 
         // Pagado SS del mes anterior (gastos pago_planilla)
-        $pagadoSSPrev = DB::table('gastos')
+        $pagadoSSPrevRaw = (float) DB::table('gastos')
             ->where('aliado_id', $aid)
             ->where('tipo', 'pago_planilla')
             ->whereMonth('fecha', $mesAnt)->whereYear('fecha', $anioAnt)
             ->sum('valor');
+
+        $pagadoSSPrev = max(0.0, $pagadoSSPrevRaw - $costoRetirosPrev);
 
         // Saldo SS disponible del mes anterior (positivo = quedó dinero para este mes)
         // Solo se arrastra saldo POSITIVO del mes anterior.
@@ -556,10 +696,14 @@ class InformeController extends Controller
 
         // Bancos: saldo al cierre del mes filtrado (si es mes pasado) o saldo actual (mes en curso)
         $esMesActual = ($mes == now()->month && $anio == now()->year);
-        $bancos = BancoCuenta::where('aliado_id',$aid)->where('activo',true)->get()->map(function($b) use($aid,$mes,$anio,$esMesActual){
-            $b->saldo_actual = $esMesActual
-                ? \App\Models\Consignacion::saldoBanco($aid, $b->id)
-                : \App\Models\Consignacion::saldoBancoAlFin($aid, $b->id, $mes, $anio);
+        $bancos = BancoCuenta::where('aliado_id',$aid)->where('activo',true)->get();
+        $bancoIds = $bancos->pluck('id')->toArray();
+
+        $fechaFin = $esMesActual ? null : \Carbon\Carbon::createFromDate($anio, $mes, 1)->endOfMonth()->toDateString();
+        $saldosBancos = \App\Models\Consignacion::saldosBancosOptimizados($aid, $bancoIds, $fechaFin);
+
+        $bancos = $bancos->map(function($b) use($saldosBancos, $esMesActual, $mes, $anio){
+            $b->saldo_actual = (int)($saldosBancos[$b->id] ?? 0);
             $b->label_saldo  = $esMesActual ? 'Saldo actual' : 'Saldo al ' . \Carbon\Carbon::createFromDate($anio,$mes,1)->endOfMonth()->format('d/m/y');
             return $b;
         });
@@ -633,7 +777,7 @@ class InformeController extends Controller
 
         return view('admin.informes.financiero', compact(
             'mes','anio','ingresos','egresos','utilidad',
-            'recaudoSS','pagadoSS','saldoSS',
+            'recaudoSS','pagadoSS','pagadoSSRaw','saldoSS',
             'saldoSSMesAnterior','recaudoSSPrev','pagadoSSPrev','mesAnt','anioAnt',
             'ingresosSS','egresosSSDetalle',
             'gapSS','gapResumen',
@@ -1274,28 +1418,100 @@ class InformeController extends Controller
     // ── Helper: resumen de un mes ─────────────────────────────────────
     private function resumenMes(int $aid, int $mes, int $anio): array
     {
-        $base = DB::table('facturas')->where('aliado_id',$aid)->whereNull('deleted_at')
+        $factData = DB::table('facturas')
+            ->where('aliado_id', $aid)->whereNull('deleted_at')
             ->whereNotNull('fecha_pago')
-            ->whereMonth('fecha_pago',$mes)->whereYear('fecha_pago',$anio)
-            ->whereIn('estado',['pagada','abono']);
-        $ingresos = (clone $base)->sum(DB::raw('admon+seguro+afiliacion+mensajeria+otros+iva+retiro'));
-        $egresos  = DB::table('gastos')->where('aliado_id',$aid)->where('tipo','!=','pago_planilla')
-            ->where('tipo','!=','efectivo_banco')
-            ->whereMonth('fecha',$mes)->whereYear('fecha',$anio)->sum('valor');
-        return ['ingresos'=>$ingresos,'egresos'=>$egresos,'utilidad'=>$ingresos-$egresos];
+            ->whereMonth('fecha_pago', $mes)->whereYear('fecha_pago', $anio)
+            ->whereIn('estado', ['pagada', 'abono'])
+            ->selectRaw("
+                SUM(admon+seguro+afiliacion+mensajeria+otros+iva+retiro) AS ingresos,
+                SUM(c_asesor) AS comisiones,
+                SUM(CASE WHEN numero_factura = 0 THEN total_ss ELSE 0 END) AS retiros
+            ")
+            ->first();
+
+        $gastosOp = DB::table('gastos')->where('aliado_id', $aid)
+            ->where('tipo', '!=', 'pago_planilla')
+            ->where('tipo', '!=', 'efectivo_banco')
+            ->whereMonth('fecha', $mes)->whereYear('fecha', $anio)
+            ->sum('valor');
+
+        $ing = (float)($factData->ingresos ?? 0);
+        $com = (float)($factData->comisiones ?? 0);
+        $ret = (float)($factData->retiros ?? 0);
+        $gas = (float)($gastosOp ?? 0);
+
+        $egresosTotal = $com + $ret + $gas;
+
+        return ['ingresos' => $ing, 'egresos' => $egresosTotal, 'utilidad' => $ing - $egresosTotal];
     }
 
     // ── Helper: tendencia 6 meses ─────────────────────────────────────
     private function tendencia6Meses(int $aid, int $mes, int $anio): array
     {
+        $fechaInicio = \Carbon\Carbon::createFromDate($anio, $mes, 1)->subMonths(5)->startOfMonth()->toDateString();
+        $fechaFin = \Carbon\Carbon::createFromDate($anio, $mes, 1)->endOfMonth()->toDateString();
+
+        $facturasPeriodos = DB::table('facturas')
+            ->where('aliado_id', $aid)->whereNull('deleted_at')
+            ->whereNotNull('fecha_pago')
+            ->whereBetween('fecha_pago', [$fechaInicio, $fechaFin])
+            ->whereIn('estado', ['pagada', 'abono'])
+            ->groupByRaw('YEAR(fecha_pago), MONTH(fecha_pago)')
+            ->selectRaw('
+                YEAR(fecha_pago) as anio,
+                MONTH(fecha_pago) as mes,
+                SUM(admon+seguro+afiliacion+mensajeria+otros+iva+retiro) as ingresos,
+                SUM(c_asesor) as comisiones,
+                SUM(CASE WHEN numero_factura = 0 THEN total_ss ELSE 0 END) as retiros
+            ')
+            ->get()
+            ->keyBy(function($r) { return $r->anio . '-' . $r->mes; });
+
+        $gastosPeriodos = DB::table('gastos')
+            ->where('aliado_id', $aid)
+            ->where('tipo', '!=', 'pago_planilla')
+            ->where('tipo', '!=', 'efectivo_banco')
+            ->whereBetween('fecha', [$fechaInicio, $fechaFin])
+            ->groupByRaw('YEAR(fecha), MONTH(fecha)')
+            ->selectRaw('
+                YEAR(fecha) as anio,
+                MONTH(fecha) as mes,
+                SUM(valor) as total_gastos
+            ')
+            ->get()
+            ->keyBy(function($r) { return $r->anio . '-' . $r->mes; });
+
         $resultado = [];
-        for($i=5;$i>=0;$i--){
-            $m = $mes - $i; $a = $anio;
-            while($m<1){$m+=12;$a--;}
-            $r = $this->resumenMes($aid,$m,$a);
-            $meses = ['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
-            $resultado[] = array_merge($r,['label'=>$meses[$m].' '.substr($a,2)]);
+        $meses = ['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+
+        for ($i = 5; $i >= 0; $i--) {
+            $m = $mes - $i;
+            $a = $anio;
+            while ($m < 1) {
+                $m += 12;
+                $a--;
+            }
+
+            $key = $a . '-' . $m;
+            $factData = $facturasPeriodos->get($key);
+            $gastoData = $gastosPeriodos->get($key);
+
+            $ing = (float)($factData->ingresos ?? 0);
+            $com = (float)($factData->comisiones ?? 0);
+            $ret = (float)($factData->retiros ?? 0);
+            $gas = (float)($gastoData->total_gastos ?? 0);
+
+            $egresosTotal = $com + $ret + $gas;
+
+            $resultado[] = [
+                'label'    => $meses[$m] . ' ' . substr($a, 2),
+                'ingresos' => $ing,
+                'egresos'  => $egresosTotal,
+                'utilidad' => $ing - $egresosTotal,
+            ];
         }
+
         return $resultado;
     }
 
@@ -1310,6 +1526,83 @@ class InformeController extends Controller
             foreach($data as $row) fputcsv($out,$mapFn($row),';');
             fclose($out);
         },$filename,['Content-Type'=>'text/csv; charset=UTF-8']);
+    }
+
+    // ── JSON: Conciliación de Seguridad Social (Desfase de Recaudo vs Planillas) ──
+    public function conciliacionSS(Request $request)
+    {
+        $this->checkFinanciero();
+        $aid  = $this->aliadoId();
+        $mes  = (int)$request->input('mes', now()->month);
+        $anio = (int)$request->input('anio', now()->year);
+
+        // 1. Obtener los números de planilla PILA que se pagaron en este mes
+        $planillasIds = DB::table('gastos')
+            ->where('aliado_id', $aid)
+            ->where('tipo', 'pago_planilla')
+            ->whereMonth('fecha', $mes)->whereYear('fecha', $anio)
+            ->whereNotNull('numero_planilla')
+            ->pluck('numero_planilla')
+            ->unique()
+            ->toArray();
+
+        // 2. Facturas cobradas/prestadas en el mes actual sin planilla pagada este mes (A favor de caja)
+        $sinPlanilla = DB::table('facturas as f')
+            ->leftJoin('clientes as cl', 'cl.cedula', '=', 'f.cedula')
+            ->where('f.aliado_id', $aid)->whereNull('f.deleted_at')
+            ->whereNotNull('f.fecha_pago')
+            ->whereMonth('f.fecha_pago', $mes)->whereYear('f.fecha_pago', $anio)
+            ->whereIn('f.estado', ['pagada', 'abono', 'prestamo'])
+            ->where('f.numero_factura', '>', 0)
+            ->where('f.total_ss', '>', 0)
+            ->whereNotExists(function($q) use ($planillasIds) {
+                $q->select(DB::raw(1))
+                  ->from('planos as p')
+                  ->whereColumn('p.factura_id', 'f.id')
+                  ->whereNull('p.deleted_at')
+                  ->whereIn('p.numero_planilla', $planillasIds);
+            })
+            ->select('f.id', 'f.cedula', 'f.numero_factura', 'f.total_ss', 'f.estado', 'f.mes', 'f.anio', 'f.fecha_pago',
+                DB::raw("ISNULL(LTRIM(RTRIM(cl.primer_nombre+' '+cl.primer_apellido)), '—') AS cliente_nombre"))
+            ->orderBy('f.fecha_pago')
+            ->get();
+
+        // 3. Facturas de planillas pagadas que NO se cobraron en el mes actual (o son retiros) (En contra de caja)
+        $cobradasOtrosMeses = [];
+        if (!empty($planillasIds)) {
+            $cobradasOtrosMeses = DB::table('planos as p')
+                ->join('facturas as f', 'f.id', '=', 'p.factura_id')
+                ->leftJoin('clientes as cl', 'cl.cedula', '=', 'f.cedula')
+                ->where('p.aliado_id', $aid)
+                ->whereNull('p.deleted_at')
+                ->whereNull('f.deleted_at')
+                ->whereIn('p.numero_planilla', $planillasIds)
+                ->where('f.total_ss', '>', 0)
+                ->where(function($q) use ($mes, $anio) {
+                    $q->where('f.numero_factura', 0) // Retiro
+                      ->orWhereNull('f.fecha_pago')
+                      ->orWhereMonth('f.fecha_pago', '<>', $mes)
+                      ->orWhereYear('f.fecha_pago', '<>', $anio)
+                      ->orWhereNotIn('f.estado', ['pagada', 'abono', 'prestamo']);
+                })
+                ->select('f.id', 'f.cedula', 'f.numero_factura', 'f.total_ss', 'f.estado', 'f.mes', 'f.anio', 'f.fecha_pago', 'p.numero_planilla',
+                    DB::raw("ISNULL(LTRIM(RTRIM(cl.primer_nombre+' '+cl.primer_apellido)), '—') AS cliente_nombre"),
+                    DB::raw("CASE WHEN f.numero_factura = 0 THEN 'Retiro asumido' ELSE 'Mes anterior / anticipado' END AS tipo_desfase"))
+                ->orderBy('p.numero_planilla')
+                ->get();
+        }
+
+        $totalSinPlanilla = $sinPlanilla->sum('total_ss');
+        $totalOtrosMeses  = collect($cobradasOtrosMeses)->sum('total_ss');
+
+        return response()->json([
+            'exito'             => true,
+            'sin_planilla'      => $sinPlanilla,
+            'total_sin_planilla'=> $totalSinPlanilla,
+            'otros_meses'       => $cobradasOtrosMeses,
+            'total_otros_meses' => $totalOtrosMeses,
+            'diferencia_neta'   => $totalSinPlanilla - $totalOtrosMeses,
+        ]);
     }
 
     // ── JSON: facturas y gastos de un día específico ──────────────────

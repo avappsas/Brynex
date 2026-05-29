@@ -61,6 +61,21 @@
             </div>
         </div>
 
+        {{-- ── Operaciones ──────────────────────────────────────────────── --}}
+        <div class="hub-section" style="border:1px solid #ede9fe">
+            <div class="hub-section-title" style="color:#7c3aed">🔄 Operaciones Masivas</div>
+            <div class="hub-cards">
+                <a href="{{ route('admin.traslados.index') }}" class="hub-card" style="border-color:#ddd6fe;background:#faf5ff">
+                    <div class="hc-icon">🔄</div>
+                    <div class="hc-body">
+                        <div class="hc-name" style="color:#6d28d9">Traslado de Razón Social</div>
+                        <div class="hc-desc">Transfiere personas de una empresa a otra · Gestiona retiros y nuevas afiliaciones masivas</div>
+                    </div>
+                    <div class="hc-arrow" style="color:#7c3aed">→</div>
+                </a>
+            </div>
+        </div>
+
         {{-- ── Superadmin únicamente ────────────────────────────────────── --}}
         @role('superadmin')
         <div class="hub-section">
