@@ -574,23 +574,19 @@ function sortClass($col, $currSort, $currDir) {
         <div style="display:flex;gap:0.6rem;margin-bottom:0.8rem;flex-wrap:wrap;align-items:center;">
             <span style="font-size:0.75rem;background:#f1f5f9;padding:0.2rem 0.6rem;border-radius:6px;font-weight:600;" id="mrad-tipo"></span>
             <span style="font-size:0.75rem;background:#f0f9ff;padding:0.2rem 0.6rem;border-radius:6px;" id="mrad-num-rad"></span>
-            {{-- Botón PDF formulario EPS (solo si la EPS tiene formulario configurado y el tipo es eps) --}}
-            <div id="seccionFormularioEps" style="display:none;margin-left:auto;">
-                <label style="font-size:0.72rem;color:#64748b;display:flex;align-items:center;gap:0.4rem;cursor:pointer;margin-right:0.5rem;">
-                    <input type="checkbox" id="chkBeneficiarios" style="width:auto;height:auto;"> Beneficiarios
-                </label>
+            {{-- Botones: Formulario PDF + Ver Datos (siempre juntos a la derecha) --}}
+            <div id="seccionFormularioEps" style="display:flex;margin-left:auto;align-items:center;gap:0.4rem;">
                 <a id="btnFormularioPdf"
                    href="#" target="_blank"
-                   style="display:inline-flex;align-items:center;gap:0.35rem;padding:0.3rem 0.7rem;background:#7c3aed;color:#fff;border-radius:7px;font-size:0.75rem;font-weight:700;text-decoration:none;">
+                   style="display:none;align-items:center;gap:0.35rem;padding:0.3rem 0.7rem;background:#7c3aed;color:#fff;border-radius:7px;font-size:0.75rem;font-weight:700;text-decoration:none;">
                     📄 Formulario
                 </a>
+                <button id="btnVerDatosCotizante" type="button"
+                    style="display:none;align-items:center;gap:0.35rem;padding:0.3rem 0.85rem;background:linear-gradient(135deg,#0f172a,#1e40af);color:#fff;border:none;border-radius:7px;font-size:0.75rem;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(30,64,175,0.25);"
+                    onclick="abrirVerDatos(this._ctx, this._tipo)">
+                    📋 Ver Datos
+                </button>
             </div>
-            {{-- Botón Ver Datos (cuando no hay formulario PDF) --}}
-            <button id="btnVerDatosCotizante" type="button"
-                style="display:none;margin-left:auto;align-items:center;gap:0.35rem;padding:0.3rem 0.85rem;background:linear-gradient(135deg,#0f172a,#1e40af);color:#fff;border:none;border-radius:7px;font-size:0.75rem;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(30,64,175,0.25);"
-                onclick="abrirVerDatos(this._ctx, this._tipo)">
-                📋 Ver Datos
-            </button>
         </div>
 
         <form id="formRadicado" onsubmit="guardarRadicado(event)">
@@ -1182,25 +1178,20 @@ function abrirModalRadicado(radId, radData, ctx = {}, contratoId = null, epsForm
     // ── Botón PDF Formulario EPS / Ver Datos ──
     const secFormulario = document.getElementById('seccionFormularioEps');
     const btnPdf        = document.getElementById('btnFormularioPdf');
-    const chkBen        = document.getElementById('chkBeneficiarios');
     const btnVerDatos   = document.getElementById('btnVerDatosCotizante');
     const esEps = (radData.tipo === 'eps');
 
-    if (esEps && epsFormulario && contratoId) {
-        const baseUrl = `/admin/afiliaciones/${contratoId}/formulario/eps`;
-        const actualizarHref = () => {
-            btnPdf.href = baseUrl + (chkBen.checked ? '?beneficiarios=1' : '');
-        };
-        chkBen.checked = false;
-        chkBen.onchange = actualizarHref;
-        actualizarHref();
-        secFormulario.style.display = 'flex';
-        secFormulario.style.alignItems = 'center';
-    } else {
-        secFormulario.style.display = 'none';
+    // Botón Formulario PDF: visible solo si la EPS tiene formulario configurado
+    if (btnPdf) {
+        if (esEps && epsFormulario && contratoId) {
+            btnPdf.href = `/admin/afiliaciones/${contratoId}/formulario/eps`;
+            btnPdf.style.display = 'inline-flex';
+        } else {
+            btnPdf.style.display = 'none';
+        }
     }
 
-    // Botón "Ver Datos" siempre visible (tenga o no formulario PDF)
+    // Botón "Ver Datos" siempre visible
     if (btnVerDatos) {
         btnVerDatos.style.display = 'inline-flex';
         btnVerDatos._ctx = ctx;
