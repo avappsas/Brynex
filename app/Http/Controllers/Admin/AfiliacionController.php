@@ -70,7 +70,7 @@ class AfiliacionController extends Controller
         $query = Contrato::with([
             'cliente:id,cedula,primer_nombre,segundo_nombre,primer_apellido,segundo_apellido,iva,cod_empresa',
             'cliente.empresa:id,empresa',
-            'razonSocial:id,razon_social,arl_nit',
+            'razonSocial:id,razon_social,nit,arl_nit',
             'eps:id,nombre,formulario_pdf',
             'arl:id,nombre_arl,razon_social',
             'caja:id,nombre',
