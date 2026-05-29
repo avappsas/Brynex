@@ -109,8 +109,13 @@
             <div class="c-title">Bitácora de Auditoría</div>
             <div class="c-desc">Registro completo de todas las acciones realizadas: creaciones, ediciones, eliminaciones y restauraciones.</div>
         </a>
+        @endif
 
-        @if($primeraEps ?? null)
+        @if(Auth::user()->hasAnyRole(['superadmin', 'admin']) && Auth::user()->es_brynex && ($primeraEps ?? null))
+        @if(!Auth::user()->hasRole('superadmin'))
+        <hr class="cfg-sep">
+        <div class="cfg-sep-label">🔍 Auditoría</div>
+        @endif
         <a class="cfg-card" href="{{ route('admin.configuracion.eps.formulario', $primeraEps) }}"
            style="--c:#0891b2;--bc:#67e8f9">
             <span class="c-badge" style="background:#cffafe;color:#0e7490">Solo BryNex</span>
@@ -118,7 +123,6 @@
             <div class="c-title">Editor de Formularios EPS</div>
             <div class="c-desc">Sube el PDF de cada EPS y arrastra los campos para definir dónde se escriben los datos del cotizante automáticamente.</div>
         </a>
-        @endif
         @endif
 
         {{-- ── CONTRATOS ────────────────────────────────────── --}}

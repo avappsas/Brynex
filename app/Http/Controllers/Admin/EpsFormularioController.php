@@ -8,6 +8,17 @@ use Illuminate\Http\Request;
 
 class EpsFormularioController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware(['auth', 'role:superadmin|admin']);
+        $this->middleware(function ($request, $next) {
+            if (!auth()->user()->es_brynex) {
+                abort(403, 'Acceso denegado. Esta sección es exclusiva de BryNex.');
+            }
+            return $next($request);
+        });
+    }
+
     // Campos disponibles para mapear (clave interna → etiqueta para el usuario)
     public static function camposDisponibles(): array
     {
