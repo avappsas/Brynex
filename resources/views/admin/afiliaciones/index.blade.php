@@ -1194,15 +1194,15 @@ function abrirModalRadicado(radId, radData, ctx = {}, contratoId = null, epsForm
         actualizarHref();
         secFormulario.style.display = 'flex';
         secFormulario.style.alignItems = 'center';
-        if (btnVerDatos) btnVerDatos.style.display = 'none';
     } else {
         secFormulario.style.display = 'none';
-        // Mostrar botón "Ver Datos" si hay contexto
-        if (btnVerDatos) {
-            btnVerDatos.style.display = 'inline-flex';
-            btnVerDatos._ctx = ctx;
-            btnVerDatos._tipo = (radData.tipo || 'eps').toUpperCase();
-        }
+    }
+
+    // Botón "Ver Datos" siempre visible (tenga o no formulario PDF)
+    if (btnVerDatos) {
+        btnVerDatos.style.display = 'inline-flex';
+        btnVerDatos._ctx = ctx;
+        btnVerDatos._tipo = (radData.tipo || 'eps').toUpperCase();
     }
 
     // Colorear select de estado

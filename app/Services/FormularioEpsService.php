@@ -7,7 +7,10 @@ use setasign\Fpdi\Fpdi;
 
 class FormularioEpsService
 {
-    public function generar(Contrato $contrato, bool $incluirBeneficiarios = false): string
+    /**
+     * @param array<string,string> $customDatos  Valores de campos custom.* pasados desde la vista
+     */
+    public function generar(Contrato $contrato, bool $incluirBeneficiarios = false, array $customDatos = []): string
     {
         $eps = $contrato->eps;
         if (!$eps || !$eps->formulario_pdf) abort(404, 'Sin formulario configurado para esta EPS.');
@@ -18,11 +21,14 @@ class FormularioEpsService
         $campos = $eps->formulario_campos ?? [];
         if (empty($campos)) return file_get_contents($ruta);
 
-        $datos = $this->ensamblarDatos($contrato, $incluirBeneficiarios);
+        $datos = $this->ensamblarDatos($contrato, $incluirBeneficiarios, $customDatos);
         return $this->rellenarPdf($ruta, $campos, $datos);
     }
 
-    protected function ensamblarDatos(Contrato $contrato, bool $incluirBeneficiarios): array
+    /**
+     * @param array<string,string> $customDatos  Ej: ['texto_1' => 'Valor libre']
+     */
+    protected function ensamblarDatos(Contrato $contrato, bool $incluirBeneficiarios, array $customDatos = []): array
     {
         $c  = $contrato->cliente;
         $rs = $contrato->razonSocial;
@@ -142,6 +148,17 @@ class FormularioEpsService
             }
         }
 
+        // ── Campos de texto libre (custom.*) ────────────────────────
+        // Claves del formulario: custom.texto_1, custom.texto_2, …
+        // Los valores vienen de la URL: ?custom[texto_1]=…
+        foreach ($customDatos as $sufijo => $valor) {
+            // Sanitizar la clave por seguridad
+            $sufijo = preg_replace('/[^a-zA-Z0-9_]/', '', (string) $sufijo);
+            if ($sufijo !== '') {
+                $datos["custom.{$sufijo}"] = (string) $valor;
+            }
+        }
+
         return $datos;
     }
 
@@ -235,14 +252,23 @@ class FormularioEpsService
             foreach ($campos as $campo) {
                 if ((int)($campo['pagina'] ?? 1) !== $p) continue;
 
+                $dato = $campo['dato'] ?? '';
+
                 // Marcas X estáticas (static.X_1, static.X_2, …) → siempre 'X'
-                if (str_starts_with($campo['dato'] ?? '', 'static.X_')) {
+                if (str_starts_with($dato, 'static.X_')) {
                     $valor = 'X';
                 // Firmas adicionales (cliente.firma_2, …) → misma imagen que cliente.firma
-                } elseif (str_starts_with($campo['dato'] ?? '', 'cliente.firma_')) {
+                } elseif (str_starts_with($dato, 'cliente.firma_')) {
                     $valor = $datos['cliente.firma'] ?? '';
+                // Campos repetidos con sufijo __N (ej: cliente.cedula__2) → usar clave base
+                } elseif (preg_match('/^(.+)__\d+$/', $dato, $m)) {
+                    $claveBase = $m[1];
+                    $valor = $datos[$claveBase] ?? ($campo['default'] ?? '');
+                // Campos custom de texto libre (custom.texto_N) → ya en $datos
+                } elseif (str_starts_with($dato, 'custom.')) {
+                    $valor = $datos[$dato] ?? ($campo['default'] ?? '');
                 } else {
-                    $valor = $datos[$campo['dato'] ?? ''] ?? ($campo['default'] ?? '');
+                    $valor = $datos[$dato] ?? ($campo['default'] ?? '');
                 }
                 if ($valor === '') continue;
 

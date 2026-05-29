@@ -787,7 +787,7 @@
         </div>
         <div>
           <label class="lb">Año del Plano *</label>
-          <select name="anio_plano" id="mr-anio" onchange="mrSetDefault()" style="{{ $S }}">
+          <select name="anio_plano" id="mr-anio" onchange="mrOnAnioChange()" style="{{ $S }}">
             @for($y = now()->year - 2; $y <= now()->year + 1; $y++)
             <option value="{{ $y }}">{{ $y }}</option>
             @endfor
@@ -872,6 +872,9 @@ const MR = {
     esMesActual: {{ (int)($contrato->tipo_modalidad_id) === 11 ? 'true' : 'false' }},
 };
 
+// Planos ya generados para este contrato
+const PLANOS_EXISTENTES = @json($planosExistentes ?? []);
+
 // ── Leer mes/año seleccionados (fuente de verdad) ─────────────────────────
 function mrMesPlan() {
     const mesEl  = document.getElementById('mr-mes');
@@ -884,6 +887,41 @@ function mrMesPlan() {
     if (MR.esMesActual) return { anio: hoy.getFullYear(), mes: hoy.getMonth() + 1 };
     const m = hoy.getMonth(); // 0-based; 0 = enero
     return { anio: m === 0 ? hoy.getFullYear() - 1 : hoy.getFullYear(), mes: m === 0 ? 12 : m };
+}
+
+// ── Inhabilitar meses que ya tienen planilla para el año seleccionado ───
+function mrActualizarMesesDisponibles() {
+    const anioEl = document.getElementById('mr-anio');
+    const mesEl  = document.getElementById('mr-mes');
+    if (!anioEl || !mesEl) return;
+    const anioSel = parseInt(anioEl.value, 10);
+
+    Array.from(mesEl.options).forEach(opt => {
+        const mesVal = parseInt(opt.value, 10);
+        const yaTiene = PLANOS_EXISTENTES.some(p => p.mes === mesVal && p.anio === anioSel);
+        opt.disabled = yaTiene;
+        if (yaTiene) {
+            opt.style.color = '#94a3b8';
+            opt.style.textDecoration = 'line-through';
+        } else {
+            opt.style.color = '';
+            opt.style.textDecoration = '';
+        }
+    });
+}
+
+// ── Evento al cambiar el año del plano ──────────────────────────────────
+function mrOnAnioChange() {
+    mrActualizarMesesDisponibles();
+    const mesEl = document.getElementById('mr-mes');
+    if (mesEl && mesEl.selectedOptions[0]?.disabled) {
+        // Si el mes seleccionado queda inhabilitado, buscar el primer mes disponible
+        const primerDisponible = Array.from(mesEl.options).find(opt => !opt.disabled);
+        if (primerDisponible) {
+            mesEl.value = primerDisponible.value;
+        }
+    }
+    mrSetDefault();
 }
 
 // ── Inicializar selects al abrir el modal ────────────────────────────────
@@ -910,10 +948,25 @@ function mrInitSelects() {
         }
     }
 
+    // Si el periodo actual (mesDef, anioDef) ya tiene planilla, avanzar consecutivamente al siguiente mes disponible
+    let bucleSeguridad = 0;
+    while (PLANOS_EXISTENTES.some(p => p.mes === mesDef && p.anio === anioDef) && bucleSeguridad < 24) {
+        mesDef++;
+        if (mesDef > 12) {
+            mesDef = 1;
+            anioDef++;
+        }
+        bucleSeguridad++;
+    }
+
     const mesEl  = document.getElementById('mr-mes');
     const anioEl = document.getElementById('mr-anio');
-    if (mesEl)  mesEl.value  = mesDef;
     if (anioEl) anioEl.value = anioDef;
+    
+    // Actualizar deshabilitados antes de asignar el valor del mes
+    mrActualizarMesesDisponibles();
+
+    if (mesEl)  mesEl.value  = mesDef;
 }
 
 // ── Validar que mes_plano no sea anterior al mes de ingreso ───────────────

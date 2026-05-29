@@ -36,6 +36,20 @@
 .btn-add-x:hover { filter:brightness(1.12); }
 .campo-dot   { width:8px;height:8px;border-radius:50%;background:currentColor;flex-shrink:0; }
 
+/* ── Botón Repetir / Custom ───────────────────────────── */
+.btn-add-rep    { width:100%;background:linear-gradient(135deg,#065f46,#059669);color:#fff;
+                  border:none;border-radius:8px;padding:0.45rem;font-size:0.78rem;font-weight:700;
+                  cursor:pointer;display:flex;align-items:center;justify-content:center;gap:0.4rem; }
+.btn-add-rep:hover { filter:brightness(1.12); }
+.btn-add-custom { width:100%;background:linear-gradient(135deg,#3730a3,#4f46e5);color:#fff;
+                  border:none;border-radius:8px;padding:0.45rem;font-size:0.78rem;font-weight:700;
+                  cursor:pointer;display:flex;align-items:center;justify-content:center;gap:0.4rem; }
+.btn-add-custom:hover { filter:brightness(1.12); }
+.campo-item.es-rep    { border-color:#059669;color:#6ee7b7; }
+.campo-item.es-rep.activo    { background:#064e3b;border-color:#34d399; }
+.campo-item.es-custom { border-color:#6366f1;color:#a5b4fc; }
+.campo-item.es-custom.activo { background:#312e81;border-color:#818cf8; }
+
 /* ── Toolbar visor ───────────────────────────────────── */
 .fmap-toolbar { background:#1e293b;padding:0.4rem 0.8rem;display:flex;align-items:center;gap:0.5rem;flex-shrink:0; }
 .fmap-toolbar button { background:#334155;color:#e2e8f0;border:none;border-radius:6px;padding:0.25rem 0.6rem;font-size:0.72rem;cursor:pointer; }
@@ -71,6 +85,8 @@
                                      color:#e2e8f0;border-radius:5px;padding:0.18rem 0.35rem;font-size:0.7rem; }
 .campo-config select { background:#0f172a;border:1px solid #334155;color:#e2e8f0;
                        border-radius:5px;padding:0.18rem 0.35rem;font-size:0.7rem; }
+.campo-config input[type="text"] { background:#0f172a;border:1px solid #334155;color:#e2e8f0;
+                                   border-radius:5px;padding:0.18rem 0.35rem;font-size:0.7rem;min-width:110px; }
 .btn-del-campo { background:#7f1d1d;color:#fca5a5;border:none;border-radius:6px;
                  padding:0.22rem 0.55rem;font-size:0.68rem;cursor:pointer; }
 
@@ -147,6 +163,12 @@
         style="background:linear-gradient(135deg,#1e3a8a,#2563eb);margin-top:2px;">
         ✍️ Agregar firma adicional
     </button>
+    <button class="btn-add-rep" onclick="agregarInstanciaExtra()" id="btnRepetirCampo" style="margin-top:2px;">
+        🔁 Repetir campo seleccionado
+    </button>
+    <button class="btn-add-custom" onclick="agregarCampoCustom()" style="margin-top:2px;">
+        📝 Agregar texto editable
+    </button>
 
     <button class="btn-guardar" onclick="guardarMapeo()" style="margin-top:auto">💾 Guardar mapeo</button>
     <button class="btn-guardar" onclick="limpiarObsoletos()"
@@ -192,6 +214,11 @@
             <option value="C">Centro</option>
             <option value="R">Der.</option>
         </select>
+        {{-- Label editable para campos custom --}}
+        <span id="cfgLabelWrap" style="display:none;align-items:center;gap:0.3rem;">
+            <label>Etiqueta</label>
+            <input type="text" id="cfgLabel" placeholder="Nombre del campo" oninput="actualizarLabelCustom()">
+        </span>
         <button class="btn-del-campo" onclick="eliminarCampoActivo()">🗑 Quitar campo</button>
     </div>
 </div>
@@ -288,11 +315,24 @@ const PREVIEWS = {
 function previewDe(clave) {
     if (clave.startsWith('static.X_'))     return 'X';
     if (clave.startsWith('cliente.firma_')) return '✍ firma';
+    // Campos repetidos: obtener preview del campo base
+    const matchRep = clave.match(/^(.+)__\d+$/);
+    if (matchRep) return PREVIEWS[matchRep[1]] ?? matchRep[1];
+    // Campos custom: mostrar etiqueta o placeholder
+    if (clave.startsWith('custom.')) {
+        const m = mapeo.find(r => r.dato === clave);
+        return m?.label ? `[${m.label}]` : `[${clave.replace('custom.','')}]`;
+    }
     return PREVIEWS[clave] ?? '';
 }
 
 function colorDe(clave) {
-    const idx = camposKeys.indexOf(clave);
+    // Para instancias extra, usar el color del campo base
+    const matchRep = clave.match(/^(.+)__\d+$/);
+    const claveBase = matchRep ? matchRep[1] : clave;
+    // Campos custom: color fijo violeta
+    if (clave.startsWith('custom.')) return '#6366f1';
+    const idx = camposKeys.indexOf(claveBase);
     return COLORES[idx % COLORES.length] ?? '#64748b';
 }
 
@@ -424,7 +464,7 @@ canvasWrap.addEventListener('mouseup', e => {
 
     if (drag.mode === 'move') {
         // Guardar nueva posición (ya se actualizó en mousemove)
-        renderizarPanelX(); renderizarPanelFirmas();
+        renderizarPanelX(); renderizarPanelFirmas(); renderizarPanelRepetidos(); renderizarPanelCustom();
         return;
     }
 
@@ -457,15 +497,26 @@ canvasWrap.addEventListener('mouseup', e => {
         tipo      : esImagen ? 'imagen' : 'texto',
     };
 
+    // Para campos custom, guardar también el label
+    if (campoActivo.startsWith('custom.')) {
+        const labelInput = document.getElementById('cfgLabel');
+        obj.label = labelInput?.value?.trim() || campoActivo.replace('custom.', '');
+    }
+
+    // Todos los tipos de campo usan findIndex por su clave exacta.
+    // - Campos normales (cliente.cedula): solo 1 instancia, se reemplaza.
+    // - Campos con clave única (__N, custom.*, X_N, firma_N): se reemplaza si ya existe, se agrega si es nuevo.
     const idx = mapeo.findIndex(m => m.dato === campoActivo);
-    if (idx >= 0) mapeo[idx] = obj;
-    else          mapeo.push(obj);
+    if (idx >= 0) mapeo[idx] = obj;  // Actualizar posición existente
+    else          mapeo.push(obj);   // Primera vez que se pone este campo
 
     marcarMapeado(campoActivo);
     dibujarRectangulos();
     actualizarContador();
     renderizarPanelX();
     renderizarPanelFirmas();
+    renderizarPanelRepetidos();
+    renderizarPanelCustom();
 });
 
 // Cancelar drag si sale del área
@@ -474,7 +525,7 @@ canvasWrap.addEventListener('mouseleave', () => {
         drag.active = false;
         preview.style.display = 'none';
         canvasWrap.style.cursor = 'default';
-        if (drag.mode === 'move') { renderizarPanelX(); renderizarPanelFirmas(); }
+        if (drag.mode === 'move') { renderizarPanelX(); renderizarPanelFirmas(); renderizarPanelRepetidos(); renderizarPanelCustom(); }
     }
 });
 
@@ -489,7 +540,7 @@ function seleccionarCampo(clave, etiqueta) {
     }
     campoActivo = clave;
     // IDs de items dinámicos usan guiones en lugar de puntos y underscores
-    const elId = 'ci-' + clave.replace(/\./g, '-').replace(/_/g, '-');
+    const elId = 'ci-' + clave.replace(/\./g, '-').replace(/_/g, '-').replace(/__/g, '--');
     const elActivo = document.getElementById(elId);
     if (elActivo) elActivo.classList.add('activo');
 
@@ -498,6 +549,17 @@ function seleccionarCampo(clave, etiqueta) {
     // Ocultar/mostrar controles de fuente para campos imagen
     document.querySelectorAll('#campoConfig label:not(:last-of-type), #cfgFontSize, #cfgStyle, #cfgAlign')
         .forEach(el => el.style.display = esImagen ? 'none' : '');
+
+    // Mostrar/ocultar input de etiqueta para campos custom
+    const cfgLabelWrap = document.getElementById('cfgLabelWrap');
+    if (cfgLabelWrap) {
+        const esCustom = clave.startsWith('custom.');
+        cfgLabelWrap.style.display = esCustom ? 'inline-flex' : 'none';
+        if (esCustom) {
+            const existente = mapeo.find(m => m.dato === clave);
+            document.getElementById('cfgLabel').value = existente?.label ?? clave.replace('custom.', '');
+        }
+    }
 
     document.getElementById('statusCampo').textContent = esImagen
         ? `🖼️ Arrastrando zona de imagen: ${etiqueta}`
@@ -513,14 +575,26 @@ function seleccionarCampo(clave, etiqueta) {
     }
 }
 
+function actualizarLabelCustom() {
+    if (!campoActivo || !campoActivo.startsWith('custom.')) return;
+    const m = mapeo.find(r => r.dato === campoActivo);
+    if (m) {
+        m.label = document.getElementById('cfgLabel').value.trim();
+        dibujarRectangulos();
+        renderizarPanelCustom();
+    }
+}
+
 function eliminarCampoActivo() {
     if (!campoActivo) return;
     mapeo = mapeo.filter(m => m.dato !== campoActivo);
-    const el = document.getElementById('ci-' + campoActivo.replace(/\./g, '-').replace(/_/g, '-'));
+    const el = document.getElementById('ci-' + campoActivo.replace(/\./g, '-').replace(/_/g, '-').replace(/__/g, '--'));
     if (el) el.classList.remove('mapeado');
     // Actualizar paneles dinámicos
     if (campoActivo.startsWith('static.X_'))       renderizarPanelX();
     if (campoActivo.startsWith('cliente.firma_'))   renderizarPanelFirmas();
+    if (campoActivo.match(/^(.+)__\d+$/))           renderizarPanelRepetidos();
+    if (campoActivo.startsWith('custom.'))          renderizarPanelCustom();
     campoActivo = null;
     document.getElementById('campoConfig').classList.remove('visible');
     document.getElementById('statusCampo').textContent = '👆 Selecciona un campo y arrastra en el PDF';
@@ -539,11 +613,19 @@ function dibujarRectangulos() {
     layer.innerHTML = '';
 
     mapeo.filter(m => m.pagina === pageNum).forEach(m => {
+        const esRepetido = m.dato.match(/^(.+)__\d+$/);
+        const esCustom   = m.dato.startsWith('custom.');
         const esObsoleto = !camposKeys.includes(m.dato)
                          && !m.dato.startsWith('static.X_')
-                         && !m.dato.startsWith('cliente.firma_');
+                         && !m.dato.startsWith('cliente.firma_')
+                         && !esRepetido
+                         && !esCustom;
         const color  = esObsoleto ? '#ef4444' : colorDe(m.dato);
-        const label  = esObsoleto ? `⚠️ OBSOLETO: ${m.dato}` : (@json($campos)[m.dato] ?? m.dato);
+        let label;
+        if (esObsoleto)        label = `⚠️ OBSOLETO: ${m.dato}`;
+        else if (esCustom)     label = `📝 ${m.label ?? m.dato}`;
+        else if (esRepetido)   label = (@json($campos)[esRepetido[1]] ?? esRepetido[1]) + ' (copia)';
+        else                   label = @json($campos)[m.dato] ?? m.dato;
         const sample = previewDe(m.dato);
 
         const div = document.createElement('div');
@@ -601,8 +683,14 @@ function actualizarContador() {
 // Inicializar mapeados
 mapeo.forEach(m => marcarMapeado(m.dato));
 
-// Contar obsoletos al cargar (excluir X estáticas que son válidas)
-const obsoletos = mapeo.filter(m => !camposKeys.includes(m.dato) && !m.dato.startsWith('static.X_'));
+// Contar obsoletos al cargar (excluir X estáticas, claves __N y custom que son válidas)
+const obsoletos = mapeo.filter(m =>
+    !camposKeys.includes(m.dato) &&
+    !m.dato.startsWith('static.X_') &&
+    !m.dato.startsWith('cliente.firma_') &&
+    !m.dato.match(/^(.+)__\d+$/) &&
+    !m.dato.startsWith('custom.')
+);
 if (obsoletos.length > 0) {
     document.getElementById('statusCampo').textContent =
         `⚠️ ${obsoletos.length} campo(s) obsoleto(s) en el mapeo — usa 🧹 Limpiar`;
@@ -611,6 +699,8 @@ if (obsoletos.length > 0) {
 // Renderizar elementos dinámicos existentes
 renderizarPanelX();
 renderizarPanelFirmas();
+renderizarPanelRepetidos();
+renderizarPanelCustom();
 
 // ── Funciones para X estáticas ───────────────────────────────
 function agregarX() {
@@ -625,13 +715,33 @@ function agregarX() {
 
 function agregarFirmaExtra() {
     if (!pdfDoc) { alert('Sube el PDF primero.'); return; }
-    // Las instancias extra empiezan en _2 (la original cliente.firma es la #1)
     const existentes = mapeo.filter(m => m.dato.startsWith('cliente.firma_'));
     const nums = existentes.map(m => parseInt(m.dato.split('_').pop())).filter(n => !isNaN(n));
     const siguiente = nums.length ? Math.max(...nums) + 1 : 2;
     const clave = `cliente.firma_${siguiente}`;
     seleccionarCampo(clave, `✍️ Firma #${siguiente}`);
     document.getElementById('statusCampo').textContent = `✍️ Arrastra en el PDF para colocar Firma #${siguiente}`;
+}
+
+function agregarInstanciaExtra() {
+    if (!campoActivo || campoActivo.startsWith('static.') || campoActivo.startsWith('custom.')) {
+        alert('Selecciona un campo normal para repetir.'); return;
+    }
+    const baseClave = campoActivo.split('__')[0];
+    const existentes = mapeo.filter(m => m.dato.startsWith(baseClave + '__'));
+    const nums = existentes.map(m => parseInt(m.dato.split('__').pop())).filter(n => !isNaN(n));
+    const siguiente = nums.length ? Math.max(...nums) + 1 : 1;
+    const clave = `${baseClave}__${siguiente}`;
+    seleccionarCampo(clave, `🔁 ${baseClave} copia ${siguiente}`);
+}
+
+function agregarCampoCustom() {
+    if (!pdfDoc) { alert('Sube el PDF primero.'); return; }
+    const existentes = mapeo.filter(m => m.dato.startsWith('custom.'));
+    const nums = existentes.map(m => parseInt(m.dato.split('.').pop())).filter(n => !isNaN(n));
+    const siguiente = nums.length ? Math.max(...nums) + 1 : 1;
+    const clave = `custom.${siguiente}`;
+    seleccionarCampo(clave, `📝 Campo ${siguiente}`);
 }
 
 function renderizarPanelX() {
@@ -665,13 +775,50 @@ function renderizarPanelFirmas() {
     });
 }
 
-// Limpiar campos que ya no existen en la lista (conservar X estáticas)
+// ── Panel de campos repetidos (__N) ────────────────────────────────
+function renderizarPanelRepetidos() {
+    document.querySelectorAll('.campo-item-rep-dinamico').forEach(el => el.remove());
+    const lista = document.getElementById('listaCampos');
+    mapeo.filter(m => m.dato.match(/^(.+)__\d+$/)).forEach(m => {
+        const match    = m.dato.match(/^(.+)__(\d+)$/);
+        const claveBase = match[1];
+        const num      = match[2];
+        const labelBase = @json($campos)[claveBase] ?? claveBase;
+        const div = document.createElement('div');
+        div.className = `campo-item es-rep campo-item-rep-dinamico ${campoActivo === m.dato ? 'activo' : ''}`;
+        div.dataset.clave = m.dato;
+        div.id = 'ci-' + m.dato.replace(/\./g, '-').replace(/__/g, '--').replace(/_/g, '-');
+        div.innerHTML = `<div class="campo-dot"></div><span>🔁 ${labelBase} (copia ${num}, pág. ${m.pagina})</span>`;
+        div.onclick = () => seleccionarCampo(m.dato, `${labelBase} copia ${num}`);
+        lista.appendChild(div);
+    });
+}
+
+// ── Panel de campos custom (texto libre) ───────────────────────────
+function renderizarPanelCustom() {
+    document.querySelectorAll('.campo-item-custom-dinamico').forEach(el => el.remove());
+    const lista = document.getElementById('listaCampos');
+    mapeo.filter(m => m.dato.startsWith('custom.')).forEach(m => {
+        const etiqueta = m.label || m.dato.replace('custom.', 'Campo ');
+        const div = document.createElement('div');
+        div.className = `campo-item es-custom campo-item-custom-dinamico ${campoActivo === m.dato ? 'activo' : ''}`;
+        div.dataset.clave = m.dato;
+        div.id = 'ci-' + m.dato.replace(/\./g, '-').replace(/_/g, '-');
+        div.innerHTML = `<div class="campo-dot"></div><span>📝 ${etiqueta} (pág. ${m.pagina})</span>`;
+        div.onclick = () => seleccionarCampo(m.dato, etiqueta);
+        lista.appendChild(div);
+    });
+}
+
+// Limpiar campos que ya no existen en la lista (conservar X estáticas, __N y custom.*)
 function limpiarObsoletos() {
     const antes = mapeo.length;
     mapeo = mapeo.filter(m =>
         camposKeys.includes(m.dato) ||
         m.dato.startsWith('static.X_') ||
-        m.dato.startsWith('cliente.firma_')
+        m.dato.startsWith('cliente.firma_') ||
+        m.dato.match(/^(.+)__\d+$/) ||
+        m.dato.startsWith('custom.')
     );
     const eliminados = antes - mapeo.length;
     document.querySelectorAll('.campo-item.mapeado').forEach(el => {
@@ -680,6 +827,8 @@ function limpiarObsoletos() {
     });
     renderizarPanelX();
     renderizarPanelFirmas();
+    renderizarPanelRepetidos();
+    renderizarPanelCustom();
     dibujarRectangulos();
     actualizarContador();
     // Guardar inmediatamente

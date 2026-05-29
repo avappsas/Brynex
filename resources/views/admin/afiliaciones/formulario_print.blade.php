@@ -85,6 +85,18 @@
         /* Indicador de firma guardada */
         .firma-guardada { font-size:0.72rem; color:#86efac; display:none; }
         .firma-guardada.ok { display:inline; }
+        /* Campos de texto libre custom */
+        .custom-campos { display:flex; flex-wrap:wrap; gap:0.5rem; align-items:center; width:100%; padding:0.35rem 1.25rem 0.45rem; background:rgba(30,58,95,0.4); border-top:1px solid rgba(255,255,255,0.06); }
+        .custom-campo-item { display:flex; align-items:center; gap:0.35rem; }
+        .custom-campo-label { font-size:0.68rem; color:#64748b; white-space:nowrap; }
+        .custom-campo-input {
+            background:#0f172a; border:1px solid #334155; color:#e2e8f0;
+            border-radius:6px; padding:0.28rem 0.6rem; font-size:0.78rem;
+            min-width:120px; max-width:220px;
+            transition:border-color 0.15s;
+        }
+        .custom-campo-input:focus { outline:none; border-color:#3b82f6; }
+        .custom-campos-hint { font-size:0.63rem; color:#475569; margin-left:auto; white-space:nowrap; }
     </style>
 </head>
 <body>
@@ -113,6 +125,25 @@
         🖨️ Imprimir / Guardar PDF
     </button>
 </div>
+
+{{-- ══ CAMPOS DE TEXTO LIBRE CUSTOM ══ --}}
+@if($camposCustom->isNotEmpty())
+<div class="custom-campos" id="customCamposBar">
+    <span style="font-size:0.7rem;font-weight:700;color:#94a3b8;white-space:nowrap;">✏️ Datos adicionales:</span>
+    @foreach($camposCustom as $cc)
+    <div class="custom-campo-item">
+        <label class="custom-campo-label" for="custom_{{ $cc['sufijo'] }}">{{ $cc['label'] }}</label>
+        <input type="text"
+               class="custom-campo-input"
+               id="custom_{{ $cc['sufijo'] }}"
+               data-sufijo="{{ $cc['sufijo'] }}"
+               placeholder="{{ $cc['label'] }}"
+               oninput="actualizarPdfConCustom()">
+    </div>
+    @endforeach
+    <span class="custom-campos-hint">💡 Escribe y el PDF se actualiza automáticamente</span>
+</div>
+@endif
 
 <iframe id="pdfFrame"
     src="{{ route('admin.afiliaciones.formulario.eps.raw', ['contrato' => $contrato->id, 'beneficiarios' => $conBeneficiarios ? 1 : 0]) }}"
@@ -161,10 +192,35 @@
 </div>
 
 <script>
-const FIRMA_URL = "{{ route('admin.afiliaciones.formulario.eps.firma', $contrato->id) }}";
-const PDF_RAW   = "{{ route('admin.afiliaciones.formulario.eps.raw', ['contrato' => $contrato->id, 'beneficiarios' => $conBeneficiarios ? 1 : 0]) }}";
-const CSRF      = document.querySelector('meta[name="csrf-token"]').content;
-let tabActivo   = 'texto';
+const FIRMA_URL  = "{{ route('admin.afiliaciones.formulario.eps.firma', $contrato->id) }}";
+const PDF_BASE   = "{{ route('admin.afiliaciones.formulario.eps.raw', ['contrato' => $contrato->id]) }}";
+const BEN_PARAM  = {{ $conBeneficiarios ? 'true' : 'false' }};
+const CSRF       = document.querySelector('meta[name="csrf-token"]').content;
+let tabActivo    = 'texto';
+
+// Construye la URL del iframe con beneficiarios + params custom
+function buildPdfUrl() {
+    const params = new URLSearchParams();
+    params.set('beneficiarios', BEN_PARAM ? '1' : '0');
+    // Recopilar inputs custom
+    document.querySelectorAll('.custom-campo-input').forEach(inp => {
+        const val = inp.value.trim();
+        if (val) params.set('custom[' + inp.dataset.sufijo + ']', val);
+    });
+    return PDF_BASE + '?' + params.toString();
+}
+
+// Timer para debounce (espera 600ms después de que el usuario deja de escribir)
+let customTimer = null;
+function actualizarPdfConCustom() {
+    clearTimeout(customTimer);
+    customTimer = setTimeout(() => {
+        document.getElementById('pdfFrame').src = buildPdfUrl() + '&_t=' + Date.now();
+    }, 600);
+}
+
+// URL fija para PDF_RAW (compatibilidad con guardarFirma)
+const PDF_RAW = buildPdfUrl();
 
 // ── Modal ────────────────────────────────────────────
 function abrirModalFirma() {
@@ -203,7 +259,8 @@ async function guardarFirma() {
             if (j.ok) {
                 document.getElementById('firmaOk').classList.add('ok');
                 cerrarModalFirma();
-                document.getElementById('pdfFrame').src = PDF_RAW + (PDF_RAW.includes('?') ? '&' : '?') + '_t=' + Date.now();
+                // Recargar iframe con todos los params actuales
+                document.getElementById('pdfFrame').src = buildPdfUrl() + '&_t=' + Date.now();
                 return;
             }
         } catch(e) {}

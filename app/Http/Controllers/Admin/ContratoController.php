@@ -683,6 +683,18 @@ class ContratoController extends Controller
     // ─── Datos comunes del formulario ─────────────────────────────────
     private function datosFormulario(int $alidoId, ?object $cliente = null, ?int $razonSocialId = null, ?int $excludeContratoId = null): array
     {
+        // Planos ya generados para este contrato (para inhabilitar meses del plano en retiros)
+        $planosExistentes = [];
+        if ($excludeContratoId) {
+            $planosExistentes = DB::table('planos')
+                ->where('contrato_id', $excludeContratoId)
+                ->whereNull('deleted_at')
+                ->select('mes_plano', 'anio_plano')
+                ->get()
+                ->map(fn($p) => ['mes' => (int)$p->mes_plano, 'anio' => (int)$p->anio_plano])
+                ->toArray();
+        }
+
         // ARL predeterminada de la razón social (por arl_nit)
         $arlIdRazonSocial = null;
         if ($razonSocialId) {
@@ -779,6 +791,7 @@ class ContratoController extends Controller
                                             ->get(['id', 'nombre', 'codigo_ni']),
             // Valor actual del operador asignado al cliente
             'clienteOperadorId'         => $cliente?->operador_planilla_id,
+            'planosExistentes'          => $planosExistentes,
         ];
     }
 

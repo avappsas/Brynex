@@ -38,9 +38,20 @@ class FormularioEpsController extends Controller
             ? '$ ' . number_format((float)$contrato->salario, 0, ',', '.')
             : '—';
 
+        // Obtener campos de texto libre (custom.*) configurados para esta EPS
+        $camposCustom = collect($eps?->formulario_campos ?? [])
+            ->filter(fn($c) => str_starts_with($c['dato'] ?? '', 'custom.'))
+            ->map(fn($c) => [
+                'clave'  => $c['dato'],
+                'sufijo' => str_replace('custom.', '', $c['dato']),
+                'label'  => $c['label'] ?? $c['dato'],
+            ])
+            ->unique('clave')
+            ->values();
+
         return view('admin.afiliaciones.formulario_print', compact(
             'contrato', 'eps', 'nombreCompleto',
-            'empresa', 'fechaIngreso', 'salario', 'conBeneficiarios'
+            'empresa', 'fechaIngreso', 'salario', 'conBeneficiarios', 'camposCustom'
         ));
     }
 
@@ -76,6 +87,10 @@ class FormularioEpsController extends Controller
     {
         $incluirBeneficiarios = request()->boolean('beneficiarios', false);
 
+        // Datos de texto libre enviados desde la vista (custom[texto_1]=valor, …)
+        $customDatos = request()->input('custom', []);
+        if (!is_array($customDatos)) $customDatos = [];
+
         $contrato->loadMissing([
             'cliente.municipio',
             'cliente.departamento',
@@ -86,7 +101,7 @@ class FormularioEpsController extends Controller
             'pension',
         ]);
 
-        $pdfBinario = $this->service->generar($contrato, $incluirBeneficiarios);
+        $pdfBinario = $this->service->generar($contrato, $incluirBeneficiarios, $customDatos);
 
         $nombreCliente = str_replace([' ', '/'], '_', $contrato->cliente?->nombre_completo ?? 'formulario');
         $nombreEps     = str_replace([' ', '/'], '_', $contrato->eps?->nombre ?? 'eps');
