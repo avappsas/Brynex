@@ -427,6 +427,8 @@ function sortClassC($col, $cs, $cd) {
 <input type="hidden" name="anio"   value="{{ $anio }}">
 <input type="hidden" name="estado" value="{{ $soloPend }}">
 <input type="hidden" name="tipo"   value="{{ $soloInd }}">
+<input type="hidden" name="afil_plan" value="{{ $afilPlan }}">
+<input type="hidden" name="empresa_cliente" value="{{ $empresaCliente }}">
 <div class="filtros">
     {{-- Buscar --}}
     <input type="text" name="buscar" value="{{ $buscar }}" placeholder="🔍 Nombre o cédula..." style="min-width:180px;">
@@ -493,10 +495,33 @@ function sortClassC($col, $cs, $cd) {
             </select>
         </form>
     </th>
-    <th title="Afiliación o Planilla">AFIL/PLAN</th>
+    <th>
+        <form method="GET" action="{{ route('admin.cobros.index') }}" style="margin:0">
+            @foreach(request()->except(['afil_plan','page']) as $k => $v)<input type="hidden" name="{{ $k }}" value="{{ $v }}">@endforeach
+            <select name="afil_plan" onchange="this.form.submit()" class="th-select {{ $afilPlan ? 'activo' : '' }}">
+                <option value="">↓ AFIL/PLAN</option>
+                <option value="todos" {{ $afilPlan === 'todos' ? 'selected' : '' }}>Todos</option>
+                <option value="afil"  {{ $afilPlan === 'afil'  ? 'selected' : '' }}>📌 AFIL</option>
+                <option value="plan"  {{ $afilPlan === 'plan'  ? 'selected' : '' }}>📄 PLAN</option>
+            </select>
+        </form>
+    </th>
     {{-- Empresa/Cliente: solo cuando tipo = todos --}}
     @if($soloInd === 'todos')
-    <th style="text-align:center">Empresa/Cliente</th>
+    <th>
+        <form method="GET" action="{{ route('admin.cobros.index') }}" style="margin:0">
+            @foreach(request()->except(['empresa_cliente','page']) as $k => $v)<input type="hidden" name="{{ $k }}" value="{{ $v }}">@endforeach
+            <select name="empresa_cliente" onchange="this.form.submit()" class="th-select {{ $empresaCliente ? 'activo' : '' }}">
+                <option value="">↓ Empresa/Cliente</option>
+                <option value="todos" {{ $empresaCliente === 'todos' ? 'selected' : '' }}>Todos</option>
+                @foreach($opcionesEmpresaCliente as $opc)
+                    <option value="{{ $opc }}" {{ $empresaCliente === $opc ? 'selected' : '' }}>
+                        {{ $opc === 'Individual' ? '👤 Individual' : '🏢 ' . \Illuminate\Support\Str::limit($opc, 15, '…') }}
+                    </option>
+                @endforeach
+            </select>
+        </form>
+    </th>
     @endif
     {{-- Admon: solo cuando tipo = individual --}}
     @if($soloInd !== 'todos')
@@ -508,7 +533,9 @@ function sortClassC($col, $cs, $cd) {
     {{-- Factura: solo cuando filtro = todos --}}
     @if($soloPend === 'todos')
     <th style="text-align:center">Factura</th>
-    <th title="N° Planilla">N° Planilla</th>
+    <th title="N° Planilla">
+        <a href="{{ sortUrlC('n_planilla', $sort, $dir) }}" class="{{ sortClassC('n_planilla', $sort, $dir) }}">N° Planilla</a>
+    </th>
     @endif
     {{-- Semáforo siempre --}}
     <th style="text-align:center;min-width:90px">Semáforo</th>

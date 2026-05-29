@@ -52,6 +52,7 @@ class CobrosController extends Controller
         $soloPend = $request->get('estado', 'pendiente'); // pendiente | todos
         $sort     = $request->get('sort', 'nombre');
         $dir      = $request->get('dir', 'asc') === 'desc' ? 'desc' : 'asc';
+        $afilPlan = $request->get('afil_plan');
 
         // ── Contratos vigentes del aliado ───────────────────────────
         $q = Contrato::where('aliado_id', $aliadoId)
@@ -110,6 +111,7 @@ class CobrosController extends Controller
             ->whereIn('tipo', ['planilla', 'afiliacion'])
             ->whereIn('cedula', $cedulas)
             ->whereNull('deleted_at')
+            ->with('plano')
             ->get();
 
         // Índice principal: contrato_id → factura (1 factura por contrato)
@@ -273,7 +275,7 @@ class CobrosController extends Controller
             $facturaEstado   = $fact?->estado;
             $facturaNumero   = $fact?->numero_factura;
             $facturaId       = $fact?->id;
-            $facturaNPlano   = $fact?->n_plano;
+            $facturaNPlano   = $fact?->plano?->numero_planilla ?? $fact?->n_plano;
             $facturaSaldoPend= 0; // saldo_pendiente eliminado — derivar de saldo_proximo si se necesita
 
             // ── Semáforo ─────────────────────────────────────────
@@ -373,6 +375,19 @@ class CobrosController extends Controller
             return $c;
         });
 
+        // ── Ordenamiento en colección (campos calculados en PHP) ────
+        if ($sort === 'n_planilla') {
+            $contratos = $dir === 'asc'
+                ? $contratos->sortBy('fact_n_plano', SORT_NATURAL)
+                : $contratos->sortByDesc('fact_n_plano', SORT_NATURAL);
+            $contratos = $contratos->values();
+        }
+
+        // ── Extraer opciones únicas de Empresa/Cliente para el filtro ──
+        $opcionesEmpresaCliente = $contratos->map(function ($c) {
+            return $c->es_empresa ? $c->nombre_empresa : 'Individual';
+        })->unique()->filter()->values()->toArray();
+
         // ── Filtro estado de pago ───────────────────────────────────
         if ($soloPend === 'pendiente') {
             $contratos = $contratos->filter(function ($c) {
@@ -384,6 +399,30 @@ class CobrosController extends Controller
                     return in_array($c->fact_estado, ['pre_factura', 'abono']);
                 }
                 return true; // sin factura → pendiente
+            })->values();
+        }
+
+        // ── Filtro AFIL/PLAN ────────────────────────────────────────
+        if ($afilPlan && $afilPlan !== 'todos') {
+            $contratos = $contratos->filter(function ($c) use ($afilPlan) {
+                if ($afilPlan === 'afil') {
+                    return (bool)($c->es_afil ?? false);
+                } elseif ($afilPlan === 'plan') {
+                    return !($c->es_afil ?? false);
+                }
+                return true;
+            })->values();
+        }
+
+        // ── Filtro Empresa/Cliente ──────────────────────────────────
+        $empresaCliente = $request->get('empresa_cliente');
+        if ($empresaCliente && $empresaCliente !== 'todos') {
+            $contratos = $contratos->filter(function ($c) use ($empresaCliente) {
+                if ($empresaCliente === 'Individual') {
+                    return !$c->es_empresa;
+                } else {
+                    return $c->es_empresa && $c->nombre_empresa === $empresaCliente;
+                }
             })->values();
         }
 
@@ -415,7 +454,7 @@ class CobrosController extends Controller
             'totalAdmon', 'totalPendientes', 'sinLlamar', 'prometieronPago', 'totalSS',
             'razonesDisponibles', 'asesoresDisponibles',
             'rsId', 'asesorId', 'buscar', 'soloInd', 'soloPend', 'sort', 'dir',
-            'bancos', 'cuentasCobro'
+            'bancos', 'cuentasCobro', 'afilPlan', 'empresaCliente', 'opcionesEmpresaCliente'
         ));
     }
 
