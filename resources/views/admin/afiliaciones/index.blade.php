@@ -345,7 +345,9 @@ function sortClass($col, $currSort, $currDir) {
         $ctxCargo          = $c->cargo ?? '';
         $ctxDireccion      = $c->cliente?->direccion_vivienda ?? '';
         $ctxBarrio         = $c->cliente?->barrio ?? '';
-        $ctxCiudad         = $c->cliente?->municipio?->nombre ?? '';
+        $ctxCiudadNombre   = $c->cliente?->municipio?->nombre ?? '';
+        $ctxDeptNombre     = $c->cliente?->municipio?->departamento?->nombre ?? '';
+        $ctxCiudad         = $ctxCiudadNombre ? ($ctxDeptNombre ? $ctxCiudadNombre . ' - ' . $ctxDeptNombre : $ctxCiudadNombre) : '';
         $ctxCelular        = $c->cliente?->celular ?? '';
         $ctxCorreo         = $c->cliente?->correo ?? '';
         $contexto          = json_encode([

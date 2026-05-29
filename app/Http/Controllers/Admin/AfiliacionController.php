@@ -70,7 +70,8 @@ class AfiliacionController extends Controller
         $query = Contrato::with([
             'cliente:id,cedula,primer_nombre,segundo_nombre,primer_apellido,segundo_apellido,iva,cod_empresa,celular,correo,direccion_vivienda,barrio,municipio_id,pension_id',
             'cliente.empresa:id,empresa',
-            'cliente.municipio:id,nombre',
+            'cliente.municipio:id,nombre,departamento_id',
+            'cliente.municipio.departamento:id,nombre',
             'cliente.pension:id,razon_social',
             'razonSocial:id,razon_social,nit,arl_nit',
             'eps:id,nombre,formulario_pdf',
@@ -254,6 +255,7 @@ class AfiliacionController extends Controller
         $row = 2;
         foreach ($contratos as $c) {
             $radicados = $c->radicados->keyBy('tipo');
+
             $sheet->fromArray([
                 $c->razonSocial?->razon_social ?? '—',
                 $c->fecha_ingreso?->format('d') ?? '',
