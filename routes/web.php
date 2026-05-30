@@ -255,8 +255,10 @@ Route::middleware('auth')->group(function () {
             Route::get('/financiero/conciliacion-ss',  [$ic, 'conciliacionSS'])  ->name('financiero.conciliacion_ss');
             Route::get('/financiero/detalle-dia',      [$ic, 'detalleDia'])      ->name('financiero.detalle_dia');
             Route::get('/financiero/prestamos-mes',    [$ic, 'prestamesMes'])    ->name('financiero.prestamos_mes');
+            Route::get('/financiero/gastos-detalle',   [$ic, 'gastosDetalle'])   ->name('financiero.gastos_detalle');
             Route::patch('/financiero/consignacion/{id}',  [$ic, 'editarConsignacion'])->name('financiero.consignacion.editar');
             Route::post('/financiero/consignacion/{id}/imagen', [$ic, 'subirImagenConsignacionFinanciero'])->name('financiero.consignacion.imagen');
+            Route::get('/auditoria-facturas', [$ic, 'auditoriaFacturas'])->name('auditoria_facturas');
 
             // ── Gestión de gastos ──────────────────────────────────────────
             $ga = \App\Http\Controllers\Admin\GastoAdminController::class;

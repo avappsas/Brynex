@@ -59,10 +59,14 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
             <div class="lab">Ingresos Totales</div>
             <div class="sub">Cobrado en {{ $mesesEs[$mes] }} (base caja)</div>
         </div>
-        <div class="fin-kpi" style="--c:#ef4444;">
-            <div class="val">{{ $fmt($egresos['total']) }}</div>
-            <div class="lab">Egresos Operativos</div>
-            <div class="sub">Gastos + Comisiones + Retiros</div>
+        <div class="fin-kpi" style="--c:#ef4444;cursor:pointer;transition:box-shadow .2s,transform .15s;"
+             onclick="abrirGastosDetalle()"
+             onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 8px 24px rgba(239,68,68,.18)'"
+             onmouseout="this.style.transform='';this.style.boxShadow=''"
+             title="Clic para ver detalle de gastos operativos">
+            <div class="val">{{ $fmt($egresos['operativos']) }}</div>
+            <div class="lab">Gastos Operativos <span style="font-size:.65rem;opacity:.6;">🔍</span></div>
+            <div class="sub">Ver comisiones y retiros en el desglose →</div>
         </div>
         <div class="fin-kpi" style="{{ $utilidad>=0?'--c:#10b981':'--c:#ef4444' }};">
             <div class="val">{{ $fmt($utilidad) }}</div>
@@ -82,60 +86,214 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
         </div>
     </div>
 
-    {{-- Desglose ingresos --}}
-    <div style="display:grid;grid-template-columns:2fr 1fr;gap:1.25rem;margin-bottom:1.5rem;">
-        <div style="background:#fff;border-radius:14px;padding:1.25rem;box-shadow:0 1px 8px rgba(0,0,0,.06);">
-            <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;color:#94a3b8;margin-bottom:.85rem;">Desglose de Ingresos <span style="color:#0ea5e9;font-weight:400;">(cobrados en {{ $mesesEs[$mes] }})</span></div>
-            @foreach([
-                ['Planillas (admon, seguro, otros)', $ingresos['planillas'], '#3b82f6', null],
-                ['Afiliaciones', $ingresos['afiliaciones'], '#8b5cf6', route('admin.informes.comisiones.afiliaciones', ['mes'=>$mes,'anio'=>$anio])],
-                ['Trámites', $ingresos['tramites'], '#10b981', null]
-            ] as [$l, $v, $c, $link])
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.6rem;">
-                <div>
-                    <div style="font-size:.83rem;font-weight:600;color:#334155;display:flex;align-items:center;gap:.35rem;">
-                        {{ $l }}
-                        @if($link)
-                        <a href="{{ $link }}" title="Ver distribución de afiliaciones" style="font-size:.75rem;text-decoration:none;opacity:.75;transition:opacity .15s;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=.75">📋</a>
-                        @endif
-                    </div>
-                    <div style="height:5px;border-radius:3px;background:{{ $c }};width:{{ $ingresos['total']>0?round($v/$ingresos['total']*200).'px':'4px' }};margin-top:.25rem;transition:width .4s;"></div>
-                </div>
-                <div style="font-size:.9rem;font-weight:700;color:{{ $c }};">{{ $fmt($v) }}</div>
+    {{-- ══ 3 Canales Financieros ══ --}}
+    @php
+        $fmtC = fn($v) => ($v >= 0 ? '+' : '') . $fmt($v);
+        $totalSScanalRaw = $recaudoSS + $moraRecogida;
+    @endphp
+
+    <style>
+    .fc-card          { background:#fff;border-radius:16px;box-shadow:0 2px 16px rgba(0,0,0,.08);overflow:hidden;display:flex;flex-direction:column;transition:box-shadow .2s,transform .15s; }
+    .fc-card:hover    { box-shadow:0 8px 32px rgba(0,0,0,.13);transform:translateY(-2px); }
+    .fc-header        { padding:.85rem 1.15rem; }
+    .fc-label         { font-size:.58rem;font-weight:700;text-transform:uppercase;color:rgba(255,255,255,.55);letter-spacing:.09em; }
+    .fc-title         { font-size:1rem;font-weight:800;color:#fff;margin-top:.2rem; }
+    .fc-body          { padding:.9rem 1.1rem;flex:1;display:flex;flex-direction:column; }
+    .fc-section-label { font-size:.57rem;font-weight:700;text-transform:uppercase;color:#94a3b8;letter-spacing:.07em;margin:.55rem 0 .4rem; }
+    .fc-row           { display:flex;justify-content:space-between;align-items:center;padding:.28rem .35rem .28rem .15rem;border-radius:6px;transition:background .12s; }
+    .fc-row:hover     { background:#f8fafc; }
+    .fc-row-label     { display:flex;align-items:center;gap:.5rem;font-size:.77rem;color:#475569; }
+    .fc-dot           { width:7px;height:7px;border-radius:50%;flex-shrink:0; }
+    .fc-row-val       { font-size:.79rem;font-weight:700;font-family:monospace; }
+    .fc-row-zero      { font-size:.79rem;font-weight:400;font-family:monospace;color:#cbd5e1; }
+    .fc-divider       { border:none;border-top:1px dashed #e2e8f0;margin:.55rem 0; }
+    .fc-subtotal      { display:flex;justify-content:space-between;align-items:center;padding:.32rem .45rem;background:#f1f5f9;border-radius:8px;margin:.1rem 0 .2rem; }
+    .fc-subtotal-l    { font-size:.77rem;font-weight:700;color:#334155; }
+    .fc-subtotal-v    { font-size:.84rem;font-weight:800;font-family:monospace; }
+    .fc-footer        { padding:.9rem 1.15rem;display:flex;justify-content:space-between;align-items:center;margin-top:auto; }
+    .fc-footer-l      { font-size:.67rem;font-weight:700;text-transform:uppercase;color:rgba(255,255,255,.7);letter-spacing:.06em; }
+    .fc-footer-sub    { font-size:.59rem;color:rgba(255,255,255,.45);margin-top:.1rem; }
+    .fc-footer-v      { font-size:1.18rem;font-weight:900;color:#fff;font-family:monospace; }
+    .fc-note          { display:flex;justify-content:space-between;align-items:center;padding:.18rem .35rem;opacity:.6; }
+    .fc-note span     { font-size:.68rem;color:#94a3b8;font-style:italic; }
+    .fc-btn-ss        { background:rgba(20,184,166,.1);border:1px solid rgba(20,184,166,.3);border-radius:7px;padding:.28rem .65rem;font-size:.67rem;font-weight:700;color:#0f766e;cursor:pointer;transition:background .15s; }
+    .fc-btn-ss:hover  { background:rgba(20,184,166,.22); }
+    .fc-btn-hdr       { background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);border-radius:6px;padding:.18rem .55rem;font-size:.62rem;font-weight:700;color:#fff;cursor:pointer;transition:background .15s;white-space:nowrap; }
+    .fc-btn-hdr:hover { background:rgba(255,255,255,.28); }
+    </style>
+
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1.2rem;margin-bottom:1.5rem;align-items:stretch;">
+
+        {{-- ══ Card 1: ADMINISTRACIÓN ══ --}}
+        <div class="fc-card">
+            <div class="fc-header" style="background:linear-gradient(135deg,#1e3a8a,#2563eb);">
+                <div class="fc-label">Canal 1</div>
+                <div class="fc-title">💼 Administración</div>
             </div>
-            @endforeach
-            <div style="border-top:1px solid #e2e8f0;margin-top:.5rem;padding-top:.5rem;display:flex;justify-content:space-between;">
-                <span style="font-size:.83rem;font-weight:700;color:#0d2550;">Total Ingresos</span>
-                <span style="font-size:.9rem;font-weight:800;color:#2563eb;">{{ $fmt($ingresos['total']) }}</span>
+            <div class="fc-body">
+                <div class="fc-section-label">Ingresos cobrados</div>
+
+                @foreach([
+                    ['Administración', $desgloseAdmon['admon'],        '#3b82f6'],
+                    ['Seguro',         $desgloseAdmon['seguro'],       '#0ea5e9'],
+                    ['Mensajería',     $desgloseAdmon['mensajeria'],   '#06b6d4'],
+                    ['IVA',            $desgloseAdmon['iva'],          '#8b5cf6'],
+                    ['Otros admon',    $desgloseAdmon['otros_admon'],  '#a78bfa'],
+                    ['Trámites',       $ingresos['tramites'],          '#10b981'],
+                ] as [$l,$v,$c])
+                <div class="fc-row">
+                    <div class="fc-row-label"><span class="fc-dot" style="background:{{ $c }};"></span>{{ $l }}</div>
+                    @if($v > 0)
+                        <span class="fc-row-val" style="color:{{ $c }};">{{ $fmt($v) }}</span>
+                    @else
+                        <span class="fc-row-zero">—</span>
+                    @endif
+                </div>
+                @endforeach
+
+                @if($desgloseAdmon['admin_asesor'] > 0)
+                <div class="fc-note" title="Comisión ganada por asesores en planillas — no pagada aún">
+                    <span>↳ Comisión asesor <em>(ganada, pendiente)</em></span>
+                    <span style="font-family:monospace;color:#f59e0b;">{{ $fmt($desgloseAdmon['admin_asesor']) }}</span>
+                </div>
+                @endif
+            </div>
+            <div class="fc-footer" style="background:linear-gradient(135deg,#1e3a8a,#2563eb);">
+                <div>
+                    <div class="fc-footer-l">Total Administración</div>
+                    <div class="fc-footer-sub">admon + seguro + iva + otros + trámites</div>
+                </div>
+                <div class="fc-footer-v">{{ $fmt($ingresos['planillas'] + $ingresos['tramites']) }}</div>
             </div>
         </div>
 
-        <div style="background:#fff;border-radius:14px;padding:1.25rem;box-shadow:0 1px 8px rgba(0,0,0,.06);">
-            <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;color:#94a3b8;margin-bottom:.85rem;">Desglose Egresos</div>
-            @foreach([
-                ['Gastos Operativos', $egresos['operativos'], '#ef4444'],
-                ['Comisiones Asesor', $egresos['comisiones'], '#f59e0b'],
-                ['Retiros aplicados', $egresos['retiros'], '#c2410c'],
-                ['Pagado SS', $pagadoSS, '#8b5cf6']
-            ] as [$l,$v,$c])
-            <div style="display:flex;justify-content:space-between;margin-bottom:.65rem;">
-                <span style="font-size:.82rem;color:#334155;">{{ $l }}</span>
-                <span style="font-weight:700;color:{{ $c }};">{{ $fmt($v) }}</span>
+        {{-- ══ Card 2: AFILIACIONES ══ --}}
+        <div class="fc-card">
+            <div class="fc-header" style="background:linear-gradient(135deg,#5b21b6,#7c3aed);">
+                <div class="fc-label">Canal 2</div>
+                <div class="fc-title" style="display:flex;justify-content:space-between;align-items:center;">
+                    <span>🔖 Afiliaciones</span>
+                    <a href="{{ route('admin.informes.comisiones.afiliaciones', ['mes'=>$mes,'anio'=>$anio]) }}"
+                       class="fc-btn-hdr" style="text-decoration:none;">
+                        📋 Ver desglose
+                    </a>
+                </div>
             </div>
-            @endforeach
-            <div style="border-top:1px solid #e2e8f0;padding-top:.5rem;margin-top:.25rem;">
-                <div style="display:flex;justify-content:space-between;align-items:center;">
-                    <span style="font-size:.8rem;font-weight:600;color:#64748b;">SS Recaudado</span>
-                    <span style="font-size:.82rem;color:#64748b;font-weight:700;">{{ $fmt($recaudoSS) }}</span>
+            <div class="fc-body">
+
+                <div class="fc-section-label">Distribución del ingreso</div>
+
+                {{-- dist_admon --}}
+                <div class="fc-row">
+                    <div class="fc-row-label"><span class="fc-dot" style="background:#3b82f6;"></span><span style="color:#94a3b8;font-size:.7rem;">→</span> Admon</div>
+                    @if($desgloseAfiliaciones['dist_admon'] > 0)
+                        <span class="fc-row-val" style="color:#3b82f6;">{{ $fmt($desgloseAfiliaciones['dist_admon']) }}</span>
+                    @else <span class="fc-row-zero">—</span>@endif
                 </div>
-                <div style="margin-top:.4rem;text-align:right;">
-                    <button onclick="abrirConciliacionSS()" style="background:#f1f5f9;border:none;border-radius:6px;padding:.25rem .5rem;font-size:.68rem;font-weight:700;color:#1e293b;cursor:pointer;transition:background .15s;" onmouseover="this.style.background='#e2e8f0'" onmouseout="this.style.background='#f1f5f9'">
-                        🔍 Conciliar Desfase SS
-                    </button>
+
+                {{-- dist_asesor — siempre visible --}}
+                <div class="fc-row" style="{{ $desgloseAfiliaciones['dist_asesor'] > 0 ? '' : 'opacity:.55;' }}" title="Comisión distribuida al asesor por esta afiliación">
+                    <div class="fc-row-label"><span class="fc-dot" style="background:#f59e0b;"></span><span style="color:#94a3b8;font-size:.7rem;">→</span> Comisión asesor</div>
+                    @if($desgloseAfiliaciones['dist_asesor'] > 0)
+                        <span class="fc-row-val" style="color:#f59e0b;">{{ $fmt($desgloseAfiliaciones['dist_asesor']) }}</span>
+                    @else <span class="fc-row-zero">sin asignar</span>@endif
                 </div>
+
+                {{-- dist_retiro --}}
+                <div class="fc-row">
+                    <div class="fc-row-label"><span class="fc-dot" style="background:#c2410c;"></span><span style="color:#94a3b8;font-size:.7rem;">→</span> Retiro</div>
+                    @if($desgloseAfiliaciones['dist_retiro'] > 0)
+                        <span class="fc-row-val" style="color:#c2410c;">{{ $fmt($desgloseAfiliaciones['dist_retiro']) }}</span>
+                    @else <span class="fc-row-zero">—</span>@endif
+                </div>
+
+                {{-- dist_utilidad --}}
+                <div class="fc-row">
+                    <div class="fc-row-label"><span class="fc-dot" style="background:#16a34a;"></span><span style="color:#94a3b8;font-size:.7rem;">→</span> Utilidad</div>
+                    @if($desgloseAfiliaciones['dist_utilidad'] > 0)
+                        <span class="fc-row-val" style="color:#16a34a;">{{ $fmt($desgloseAfiliaciones['dist_utilidad']) }}</span>
+                    @else <span class="fc-row-zero">—</span>@endif
+                </div>
+
+                @php $sinDist = $desgloseAfiliaciones['afiliacion'] - $desgloseAfiliaciones['distribuido']; @endphp
+                <div class="fc-row" style="{{ abs($sinDist) > 1 ? '' : 'opacity:.45;' }}">
+                    <div class="fc-row-label"><span class="fc-dot" style="background:#94a3b8;"></span><span style="color:#94a3b8;font-size:.7rem;">→</span> Sin distribuir</div>
+                    @if(abs($sinDist) > 1)
+                        <span class="fc-row-val" style="color:#64748b;">{{ $fmt($sinDist) }}</span>
+                    @else
+                        <span class="fc-row-zero">—</span>
+                    @endif
+                </div>
+            </div>
+            <div class="fc-footer" style="background:linear-gradient(135deg,#5b21b6,#7c3aed);">
+                <div>
+                    <div class="fc-footer-l">Total Afiliaciones</div>
+                    <div class="fc-footer-sub">ingreso bruto del canal</div>
+                </div>
+                <div class="fc-footer-v">{{ $fmt($desgloseAfiliaciones['afiliacion']) }}</div>
             </div>
         </div>
+
+        {{-- ══ Card 3: SEGURIDAD SOCIAL ══ --}}
+        <div class="fc-card">
+            <div class="fc-header" style="background:linear-gradient(135deg,#0f766e,#0d9488);">
+                <div class="fc-label">Canal 3</div>
+                <div class="fc-title" style="display:flex;justify-content:space-between;align-items:center;">
+                    <span>🏥 Seguridad Social</span>
+                    <button class="fc-btn-hdr" onclick="abrirConciliacionSS()">🔍 Conciliar SS</button>
+                </div>
+            </div>
+            <div class="fc-body">
+                <div class="fc-section-label">Recaudado este mes</div>
+
+                @foreach([
+                    ['EPS',         $ingresosSS['eps'],  '#0ea5e9'],
+                    ['Pensión AFP', $ingresosSS['afp'],  '#10b981'],
+                    ['ARL',         $ingresosSS['arl'],  '#8b5cf6'],
+                    ['Caja Comp.',  $ingresosSS['caja'], '#f59e0b'],
+                ] as [$l,$v,$c])
+                <div class="fc-row">
+                    <div class="fc-row-label"><span class="fc-dot" style="background:{{ $c }};"></span>{{ $l }}</div>
+                    @if($v > 0)
+                        <span class="fc-row-val" style="color:{{ $c }};">{{ $fmt($v) }}</span>
+                    @else
+                        <span class="fc-row-zero">—</span>
+                    @endif
+                </div>
+                @endforeach
+
+                {{-- Mora recogida --}}
+                <div class="fc-row" style="{{ $moraRecogida > 0 ? '' : 'opacity:.5;' }}" title="Mora SS recogida en facturas pagadas este mes">
+                    <div class="fc-row-label"><span class="fc-dot" style="background:#f43f5e;"></span>Mora SS recogida</div>
+                    @if($moraRecogida > 0)
+                        <span class="fc-row-val" style="color:#f43f5e;">{{ $fmt($moraRecogida) }}</span>
+                    @else
+                        <span class="fc-row-zero">—</span>
+                    @endif
+                </div>
+
+                @if($saldoSSMesAnterior > 0)
+                <div class="fc-row" title="Saldo SS que quedó del mes anterior">
+                    <div class="fc-row-label"><span class="fc-dot" style="background:#14b8a6;"></span>+ Saldo mes anterior</div>
+                    <span class="fc-row-val" style="color:#14b8a6;">{{ $fmt($saldoSSMesAnterior) }}</span>
+                </div>
+                @endif
+
+                <div style="margin-top:auto;"></div>
+            </div>
+            <div class="fc-footer" style="background:linear-gradient(135deg,#0f766e,#0d9488);">
+                <div>
+                    <div class="fc-footer-l">Total SS + Mora</div>
+                    <div class="fc-footer-sub">recaudado en el mes</div>
+                </div>
+                <div class="fc-footer-v">{{ $fmt($totalSScanalRaw) }}</div>
+            </div>
+        </div>
+
     </div>
+
+
+
 
     {{-- Gráficas --}}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;margin-bottom:1.5rem;">
@@ -151,9 +309,45 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
 
     {{-- Gráfica distribución ingresos --}}
     <div style="display:grid;grid-template-columns:300px 1fr;gap:1.25rem;margin-bottom:1.5rem;">
-        <div style="background:#fff;border-radius:14px;padding:1.25rem;box-shadow:0 1px 8px rgba(0,0,0,.06);">
+        <div style="background:#fff;border-radius:14px;padding:1.25rem;box-shadow:0 1px 8px rgba(0,0,0,.06);display:flex;flex-direction:column;">
             <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;color:#94a3b8;margin-bottom:.85rem;">Distribución Ingresos</div>
-            <canvas id="chartDona" height="200"></canvas>
+            <canvas id="chartDona" height="140"></canvas>
+
+            {{-- Flujo disponible (saldos positivos del mes) --}}
+            @php
+                $flujoEfectivo  = $efMes->neto > 0 ? $efMes->neto : 0;
+                $flujoBancosSum = $bancos->filter(fn($b) => $b->saldo_mes > 0)->sum('saldo_mes');
+                $flujoTotal     = $flujoEfectivo + $flujoBancosSum;
+            @endphp
+            <div style="margin-top:1rem;border-top:1px solid #f1f5f9;padding-top:.85rem;display:flex;flex-direction:column;gap:.35rem;">
+                <div style="font-size:.6rem;font-weight:800;text-transform:uppercase;color:#94a3b8;letter-spacing:.06em;margin-bottom:.2rem;">
+                    💰 Flujo disponible
+                </div>
+
+                {{-- Efectivo --}}
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="display:flex;align-items:center;gap:.3rem;font-size:.72rem;color:#334155;font-weight:600;">
+                        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#16a34a;"></span>
+                        💵 Efectivo
+                    </span>
+                    <span style="font-size:.75rem;font-weight:800;color:#16a34a;font-family:monospace;">{{ $fmt($flujoEfectivo) }}</span>
+                </div>
+
+                {{-- Bancos (suma consolidada) --}}
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="display:flex;align-items:center;gap:.3rem;font-size:.72rem;color:#334155;font-weight:600;">
+                        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#3b82f6;"></span>
+                        🏦 Bancos
+                    </span>
+                    <span style="font-size:.75rem;font-weight:800;color:#1d4ed8;font-family:monospace;">{{ $fmt($flujoBancosSum) }}</span>
+                </div>
+
+                {{-- Total --}}
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-top:.3rem;padding-top:.4rem;border-top:1.5px solid #e2e8f0;">
+                    <span style="font-size:.72rem;font-weight:800;color:#0f172a;">Total disponible</span>
+                    <span style="font-size:.82rem;font-weight:900;color:#0f172a;font-family:monospace;">{{ $fmt($flujoTotal) }}</span>
+                </div>
+            </div>
         </div>
 
         {{-- Bancos + Efectivo --}}
@@ -161,8 +355,9 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
             <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;color:#94a3b8;margin-bottom:.85rem;">Cuentas Bancarias &amp; Efectivo</div>
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(185px,1fr));gap:.75rem;">
 
-                {{-- Tarjetas banco --}}
+                {{-- Tarjetas banco — solo bancos con movimiento o saldo distinto de cero --}}
                 @foreach($bancos as $b)
+                @if($b->saldo_actual != 0 || $b->ing_mes != 0 || $b->sal_mes != 0)
                 @php $netColor = $b->saldo_mes >= 0 ? '#16a34a' : '#dc2626'; $netBg = $b->saldo_mes >= 0 ? '#f0fdf4' : '#fef2f2'; @endphp
                 <div class="bank-card" onclick="verMovimientosBanco({{ $b->id }},'{{ addslashes($b->nombre) }}')" title="Clic para ver movimientos del mes">
                     {{-- Cabecera --}}
@@ -193,6 +388,7 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
                         </div>
                     </div>
                 </div>
+                @endif
                 @endforeach
 
                 {{-- Tarjeta Efectivo --}}
@@ -203,7 +399,6 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
 
                     <div style="margin-top:.6rem;">
                         <div style="font-size:1.25rem;font-weight:900;color:#15803d;line-height:1.1;">{{ $fmt($efMes->neto) }}</div>
-                        <div style="font-size:.62rem;color:#94a3b8;margin-top:.15rem;">Neto del mes</div>
                     </div>
 
                     <div style="margin-top:auto;padding-top:.65rem;border-top:1px dashed #dcfce7;display:flex;flex-direction:column;gap:.28rem;">
@@ -211,14 +406,21 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
                             <span style="font-size:.65rem;color:#64748b;font-weight:600;">↑ Entró</span>
                             <span style="font-size:.72rem;font-weight:700;color:#16a34a;font-family:monospace;">{{ $fmt($efMes->entradas) }}</span>
                         </div>
+                        @if(($efMes->anticipos ?? 0) > 0)
+                        <div style="display:flex;justify-content:space-between;align-items:center;padding-left:.6rem;">
+                            <span style="font-size:.6rem;color:#94a3b8;">└ Facturas</span>
+                            <span style="font-size:.65rem;color:#64748b;font-family:monospace;">{{ $fmt($efMes->facturas) }}</span>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;align-items:center;padding-left:.6rem;">
+                            <span style="font-size:.6rem;color:#d97706;font-weight:600;">└ Anticipos</span>
+                            <span style="font-size:.65rem;color:#d97706;font-weight:700;font-family:monospace;">{{ $fmt($efMes->anticipos) }}</span>
+                        </div>
+                        @endif
                         <div style="display:flex;justify-content:space-between;align-items:center;">
                             <span style="font-size:.65rem;color:#64748b;font-weight:600;">↓ Salió</span>
                             <span style="font-size:.72rem;font-weight:700;color:#dc2626;font-family:monospace;">{{ $fmt($efMes->salidas) }}</span>
                         </div>
-                        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:.1rem;">
-                            <span style="font-size:.6rem;color:#94a3b8;">{{ $mesesEs[$mes] }}</span>
-                            <span style="font-size:.68rem;color:#15803d;font-weight:700;">ver detalle →</span>
-                        </div>
+
                     </div>
                 </div>
 
@@ -335,57 +537,107 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
     {{-- ══ SEGURIDAD SOCIAL ══ --}}
     <div style="display:grid;grid-template-columns:1fr 2fr;gap:1.25rem;margin-bottom:1.5rem;">
 
-        {{-- Ingresos SS --}}
-        <div style="background:#fff;border-radius:14px;box-shadow:0 1px 8px rgba(0,0,0,.06);overflow:hidden;">
-            <div style="background:linear-gradient(135deg,#0e7490,#06b6d4);padding:.85rem 1.25rem;display:flex;align-items:center;gap:.75rem;">
-                <span style="font-size:1.2rem;">🏥</span>
-                <div style="flex:1;">
-                    <div style="color:#fff;font-weight:700;font-size:.9rem;">Ingresos SS</div>
-                    <div style="color:rgba(255,255,255,.7);font-size:.75rem;">Seguridad Social — cobrado en {{ $mesesEs[$mes] }} {{ $anio }}</div>
+        {{-- ── Card Flujo SS ── --}}
+        <div style="background:#fff;border-radius:14px;box-shadow:0 1px 8px rgba(0,0,0,.06);overflow:hidden;display:flex;flex-direction:column;">
+
+            {{-- Header --}}
+            <div style="background:linear-gradient(135deg,#0f766e,#0d9488);padding:.8rem 1.1rem;display:flex;justify-content:space-between;align-items:center;">
+                <div>
+                    <div style="font-size:.6rem;font-weight:700;text-transform:uppercase;color:rgba(255,255,255,.55);letter-spacing:.08em;">Canal 4</div>
+                    <div style="font-size:.95rem;font-weight:800;color:#fff;margin-top:.15rem;">🏥 Seguridad Social</div>
                 </div>
-                <div style="font-weight:800;color:#fff;font-size:1.1rem;">{{ $fmt($ingresosSS['total_ss']) }}</div>
+                <div style="text-align:right;">
+                    <div style="font-size:.62rem;color:rgba(255,255,255,.6);">{{ $mesesEs[$mes] }} {{ $anio }}</div>
+                    <div style="font-size:1rem;font-weight:900;color:#fff;">{{ $fmt($recaudoSS + $moraRecogida) }}</div>
+                </div>
             </div>
 
-            {{-- Lista simple --}}
             @php
-                $filas = [
-                    ['EPS',              $ingresosSS['eps'],           '#0ea5e9'],
-                    ['ARL',              $ingresosSS['arl'],           '#8b5cf6'],
-                    ['Caja',             $ingresosSS['caja'],          '#f59e0b'],
-                    ['Pensión',          $ingresosSS['afp'],           '#10b981'],
-                    ['SS meses anteriores', $ingresosSS['ss_anteriores'], '#64748b'],
-                    ['Retiro (fee afiliación)', $ingresosSS['retiro_campo'], '#ef4444'],
-                ];
+                $ssColor    = $saldoSS >= 0 ? '#16a34a' : '#dc2626';
+                $ssBg       = $saldoSS >= 0 ? '#f0fdf4' : '#fef2f2';
+                $ssBorder   = $saldoSS >= 0 ? '#bbf7d0' : '#fecaca';
+                $fmtSS      = fn($v) => ($v >= 0 ? '+' : '') . $fmt($v);
             @endphp
-            @foreach($filas as [$lbl, $val, $color])
-            <div style="display:flex;justify-content:space-between;align-items:center;padding:.55rem 1.25rem;border-bottom:1px solid #f1f5f9;">
-                <div style="display:flex;align-items:center;gap:.5rem;">
-                    <div style="width:7px;height:7px;border-radius:50%;background:{{ $color }};flex-shrink:0;"></div>
-                    <span style="font-size:.82rem;color:#334155;">{{ $lbl }}</span>
-                </div>
-                <span style="font-weight:700;color:{{ $color }};font-size:.85rem;">{{ $fmt($val) }}</span>
-            </div>
-            @endforeach
 
-            {{-- Total --}}
-            <div style="display:flex;justify-content:space-between;align-items:center;padding:.65rem 1.25rem;background:#ecfeff;">
-                <span style="font-size:.83rem;font-weight:700;color:#0e7490;">Total recogido</span>
-                <span style="font-size:.95rem;font-weight:800;color:#0e7490;">{{ $fmt($ingresosSS['total_ss']) }}</span>
-            </div>
-            {{-- Mora recogida — separada (NO es ingreso operativo) --}}
-            @if($moraRecogida > 0)
-            <div style="display:flex;justify-content:space-between;align-items:center;padding:.55rem 1.25rem;background:#fffbeb;border-top:1.5px dashed #fde68a;" title="Multa cobrada al cliente por pago tardío. No se contabiliza como ingreso operativo.">
-                <div style="display:flex;align-items:center;gap:.5rem;">
-                    <div style="width:7px;height:7px;border-radius:50%;background:#f59e0b;flex-shrink:0;"></div>
-                    <div>
-                        <span style="font-size:.82rem;color:#92400e;font-weight:700;">⚠️ Mora recogida</span>
-                        <div style="font-size:.62rem;color:#b45309;">No es ingreso operativo — multa al cliente</div>
+            {{-- Bloque 1: SS Mes Anterior --}}
+            <div style="padding:.65rem 1.1rem;border-bottom:1px solid #f1f5f9;">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div style="display:flex;align-items:center;gap:.45rem;">
+                        <div style="width:28px;height:28px;border-radius:8px;background:#e0f2fe;display:flex;align-items:center;justify-content:center;font-size:.85rem;flex-shrink:0;">📦</div>
+                        <div>
+                            <div style="font-size:.77rem;font-weight:700;color:#0369a1;">SS Mes Anterior</div>
+                            <div style="font-size:.62rem;color:#7dd3fc;">Saldo arrastrado de {{ $mesesEs[$mesAnt] }}</div>
+                        </div>
+                    </div>
+                    <div style="text-align:right;">
+                        @if($saldoSSMesAnterior > 0)
+                            <div style="font-size:.92rem;font-weight:800;color:#0369a1;font-family:monospace;">{{ $fmt($saldoSSMesAnterior) }}</div>
+                        @else
+                            <div style="font-size:.8rem;color:#94a3b8;font-style:italic;">sin saldo</div>
+                        @endif
                     </div>
                 </div>
-                <span style="font-weight:800;color:#d97706;font-size:.88rem;">{{ $fmt($moraRecogida) }}</span>
             </div>
-            @endif
+
+            {{-- Bloque 2: SS Recaudado Mes Actual --}}
+            <div style="padding:.65rem 1.1rem;border-bottom:1px solid #f1f5f9;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.45rem;">
+                    <div style="display:flex;align-items:center;gap:.45rem;">
+                        <div style="width:28px;height:28px;border-radius:8px;background:#ccfbf1;display:flex;align-items:center;justify-content:center;font-size:.85rem;flex-shrink:0;">📥</div>
+                        <div>
+                            <div style="font-size:.77rem;font-weight:700;color:#0f766e;">SS Recaudado {{ $mesesEs[$mes] }}</div>
+                            <div style="font-size:.62rem;color:#5eead4;">cobrado en caja este mes</div>
+                        </div>
+                    </div>
+                    <div style="font-size:.92rem;font-weight:800;color:#0f766e;font-family:monospace;">{{ $fmt($recaudoSS) }}</div>
+                </div>
+            </div>
+
+            {{-- Bloque 3: Gastos Planilla Mes Actual --}}
+            <div style="padding:.65rem 1.1rem;border-bottom:1px solid #f1f5f9;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.45rem;">
+                    <div style="display:flex;align-items:center;gap:.45rem;">
+                        <div style="width:28px;height:28px;border-radius:8px;background:#fee2e2;display:flex;align-items:center;justify-content:center;font-size:.85rem;flex-shrink:0;">📤</div>
+                        <div>
+                            <div style="font-size:.77rem;font-weight:700;color:#b91c1c;">Gastos Planilla {{ $mesesEs[$mes] }}</div>
+                            <div style="font-size:.62rem;color:#fca5a5;">pagos SS realizados este mes</div>
+                        </div>
+                    </div>
+                    <div style="font-size:.92rem;font-weight:800;color:#dc2626;font-family:monospace;">− {{ $fmt($pagadoSSRaw) }}</div>
+                </div>
+                {{-- Sub-filas: Planillas + Retiros --}}
+                <div style="display:flex;flex-direction:column;gap:.2rem;padding-left:.35rem;">
+                    <div style="display:flex;justify-content:space-between;">
+                        <span style="font-size:.69rem;color:#64748b;">Planillas</span>
+                        <span style="font-size:.69rem;font-weight:700;color:#b91c1c;font-family:monospace;">{{ $fmt($pagadoSS) }}</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;">
+                        <span style="font-size:.69rem;color:#64748b;">Retiros</span>
+                        <span style="font-size:.69rem;font-weight:700;color:#c2410c;font-family:monospace;">{{ $fmt($costoRetiros) }}</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;border-top:1px dashed #fecaca;margin-top:.1rem;padding-top:.18rem;">
+                        <span style="font-size:.7rem;font-weight:700;color:#991b1b;">Total pagos</span>
+                        <span style="font-size:.72rem;font-weight:800;color:#991b1b;font-family:monospace;">{{ $fmt($pagadoSSRaw) }}</span>
+                    </div>
+                </div>
+            </div>
+
+            {{-- Bloque 4: Saldo SS para el Siguiente Mes --}}
+            <div style="padding:.75rem 1.1rem;background:{{ $ssBg }};border-top:2px solid {{ $ssBorder }};margin-top:auto;">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div style="display:flex;align-items:center;gap:.45rem;">
+                        <div style="width:28px;height:28px;border-radius:8px;background:{{ $ssBorder }};display:flex;align-items:center;justify-content:center;font-size:.85rem;flex-shrink:0;">💰</div>
+                        <div>
+                            <div style="font-size:.77rem;font-weight:800;color:{{ $ssColor }};">Saldo SS → Próximo Mes</div>
+                            <div style="font-size:.6rem;color:{{ $ssColor }};opacity:.7;">anterior + recaudado − planillas</div>
+                        </div>
+                    </div>
+                    <div style="font-size:1.05rem;font-weight:900;color:{{ $ssColor }};font-family:monospace;">{{ $fmtSS($saldoSS) }}</div>
+                </div>
+            </div>
+
         </div>
+
 
 
         {{-- Desglose Egresos SS --}}
@@ -573,6 +825,47 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
             <span style="color:#ef4444;">- {{ $fmt($totDia['gastos']) }}</span>
             <span style="color:{{ $totDia['utilidad']>=0?'#10b981':'#ef4444' }};">{{ $fmt($totDia['utilidad']) }}</span>
         </div>
+    </div>
+
+    <div style="display:flex;justify-content:center;margin-top:1.2rem;margin-bottom:1.2rem;">
+        <a href="{{ route('admin.informes.auditoria_facturas', ['anio' => $anio, 'mes_pago' => $mes]) }}" 
+           style="display:inline-flex;align-items:center;gap:.5rem;background:linear-gradient(135deg,#1e3a8a,#2563eb);color:#fff;border-radius:10px;padding:.65rem 1.4rem;font-size:.85rem;font-weight:700;text-decoration:none;box-shadow:0 4px 12px rgba(37,99,235,.25);transition:transform .12s,box-shadow .12s;"
+           onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 16px rgba(37,99,235,.35)'" 
+           onmouseout="this.style.transform='';this.style.boxShadow='0 4px 12px rgba(37,99,235,.25)'">
+            🔍 Auditoría de Facturas
+        </a>
+    </div>
+</div>
+
+{{-- ══ Modal Egresos Operativos — detalle de gastos ══ --}}
+<div id="modalGastos" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;align-items:flex-start;justify-content:center;padding-top:2.5vh;overflow-y:auto;">
+    <div style="background:#fff;border-radius:18px;width:min(1100px,97vw);box-shadow:0 25px 60px rgba(0,0,0,.25);margin-bottom:2rem;">
+        <div style="background:linear-gradient(135deg,#b91c1c,#ef4444);border-radius:18px 18px 0 0;padding:1rem 1.5rem;display:flex;align-items:center;justify-content:space-between;">
+            <div>
+                <div style="color:#fff;font-weight:800;font-size:1.05rem;">💸 Egresos Operativos — {{ $mesesEs[$mes] }} {{ $anio }}</div>
+                <div style="color:rgba(255,255,255,.65);font-size:.74rem;margin-top:.15rem;">Todos los gastos registrados en el período · haz clic en ✏️ para editar</div>
+            </div>
+            <div style="display:flex;gap:.5rem;align-items:center;">
+                <a href="{{ route('admin.informes.gastos.index', ['mes'=>$mes,'anio'=>$anio]) }}"
+                   style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);color:#fff;border-radius:8px;padding:.3rem .8rem;font-size:.75rem;font-weight:700;text-decoration:none;white-space:nowrap;">→ Módulo Gastos</a>
+                <button onclick="document.getElementById('modalGastos').style.display='none'"
+                        style="background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:8px;width:32px;height:32px;cursor:pointer;font-size:1.1rem;">✕</button>
+            </div>
+        </div>
+        <div id="modalGastosResumen" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:.6rem;padding:.9rem 1.25rem;background:#fef2f2;border-bottom:1px solid #fecaca;"></div>
+        <div id="modalGastosBody" style="padding:1rem 1.25rem;max-height:60vh;overflow-y:auto;font-size:.82rem;color:#475569;">
+            <div style="text-align:center;padding:2rem;color:#94a3b8;">Cargando…</div>
+        </div>
+    </div>
+</div>
+
+{{-- ══ Lightbox imagen soporte ══ --}}
+<div id="modalLightbox" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:10000;align-items:center;justify-content:center;">
+    <div style="position:relative;max-width:92vw;max-height:92vh;display:flex;flex-direction:column;align-items:center;gap:.75rem;">
+        <button onclick="document.getElementById('modalLightbox').style.display='none'"
+                style="position:absolute;top:-42px;right:0;background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:50%;width:34px;height:34px;cursor:pointer;font-size:1.2rem;">✕</button>
+        <img id="lightboxImg" src="" alt="Soporte" style="max-width:88vw;max-height:80vh;border-radius:10px;object-fit:contain;box-shadow:0 8px 40px rgba(0,0,0,.5);">
+        <a id="lightboxImgLink" href="" target="_blank" style="color:#93c5fd;font-size:.8rem;text-decoration:none;font-weight:600;">↗ Abrir en nueva pestaña</a>
     </div>
 </div>
 
@@ -837,7 +1130,24 @@ new Chart(document.getElementById('chartDona'), {
         labels:['Planillas','Afiliaciones','Trámites'],
         datasets:[{data:[ingresos.planillas,ingresos.afiliaciones,ingresos.tramites],backgroundColor:['#3b82f6','#8b5cf6','#10b981'],borderWidth:2}]
     },
-    options:{responsive:true,cutout:'60%',plugins:{legend:{labels:{font:{size:11}}}}}
+    options:{
+        responsive:true,
+        cutout:'60%',
+        plugins:{
+            legend:{
+                position:'bottom',
+                labels:{
+                    font:{size:10},
+                    boxWidth:10,
+                    boxHeight:10,
+                    padding:8,
+                    usePointStyle:true,
+                    pointStyle:'circle'
+                }
+            }
+        },
+        layout:{ padding:{ top:0, bottom:0 } }
+    }
 });
 
 // ── Modal detalle día (con fetch) ──
@@ -1206,7 +1516,7 @@ function subirImgConsig() {
 document.getElementById('modalEditarConsig').addEventListener('click',function(ev){if(ev.target===this)cerrarEditarConsig();});
 
 // Cerrar modales al clic fuera
-['modalDia','modalBanco','modalAudit','modalPrestamos','modalEfectivo'].forEach(id=>{
+['modalDia','modalBanco','modalAudit','modalPrestamos','modalEfectivo','modalGastos','modalLightbox'].forEach(id=>{
     document.getElementById(id).addEventListener('click',function(e){
         if(e.target===this) this.style.display='none';
     });
@@ -1225,11 +1535,13 @@ function verMovimientosEfectivo() {
             const fmtN = v => '$ ' + Math.round(Number(v) || 0).toLocaleString('es-CO');
 
             // ── Cards resumen ──
+            const subFacturas  = data.total_facturas  || 0;
+            const subAnticipos = data.total_anticipos || 0;
             document.getElementById('modalEfectivoSummary').innerHTML = `
                 <div style="background:#f0fdf4;border-radius:10px;padding:.75rem;text-align:center;border:1px solid #bbf7d0;">
                     <div style="font-weight:800;color:#16a34a;font-size:1.1rem;">${fmtN(data.total_entradas)}</div>
                     <div style="font-size:.68rem;color:#15803d;font-weight:600;margin-top:.2rem;">↑ Ingresos Efectivo</div>
-                    <div style="font-size:.62rem;color:#94a3b8;">${data.entradas.length} factura(s)</div>
+                    <div style="font-size:.62rem;color:#94a3b8;">${data.entradas.length} factura(s)${subAnticipos > 0 ? ' + ' + (data.anticipos?.length||0) + ' anticipo(s)' : ''}</div>
                 </div>
                 <div style="background:#fef2f2;border-radius:10px;padding:.75rem;text-align:center;border:1px solid #fecaca;">
                     <div style="font-weight:800;color:#dc2626;font-size:1.1rem;">${fmtN(data.total_salidas)}</div>
@@ -1294,10 +1606,33 @@ function verMovimientosEfectivo() {
                 });
                 html += `<div style="display:grid;grid-template-columns:90px 70px 1fr 130px 100px 110px;gap:.3rem;padding:.42rem .75rem;background:#f8fafc;font-size:.75rem;font-weight:700;border-top:2px solid #e2e8f0;">
                     <span></span><span></span><span style="color:#64748b;">TOTAL</span><span></span><span></span>
-                    <span style="text-align:right;color:#16a34a;font-family:monospace;">${fmtN(data.total_entradas)}</span></div>`;
+                    <span style="text-align:right;color:#16a34a;font-family:monospace;">${fmtN(data.total_facturas)}</span></div>`;
                 html += `</div>`;
             } else {
                 html += `<div style="background:#f8fafc;border-radius:10px;padding:.7rem 1rem;font-size:.78rem;color:#94a3b8;margin-bottom:1rem;">Sin facturas en efectivo para este mes.</div>`;
+            }
+
+            // ── Sección: Anticipos cobrados en efectivo ──
+            if (data.anticipos && data.anticipos.length > 0) {
+                html += `<div style="font-size:.7rem;font-weight:700;text-transform:uppercase;color:#d97706;margin-bottom:.5rem;margin-top:.25rem;">💰 Anticipos cobrados en efectivo (${data.anticipos.length})</div>`;
+                html += `<div style="border-radius:10px;overflow:hidden;border:1px solid #fde68a;margin-bottom:1.25rem;">`;
+                html += `<div style="display:grid;grid-template-columns:90px 1fr 120px 110px 110px;gap:.3rem;padding:.4rem .75rem;background:#fffbeb;font-size:.64rem;font-weight:700;text-transform:uppercase;color:#92400e;border-bottom:2px solid #fde68a;">
+                    <span>Fecha</span><span>Cliente / Empresa</span><span>Asesor</span><span style="text-align:right;">Forma</span><span style="text-align:right;color:#d97706;">Valor</span></div>`;
+                data.anticipos.forEach(a => {
+                    const formaIcon = a.forma_pago === 'nequi' ? '📱 Nequi' : '💵 Efectivo';
+                    const estadoBadge = a.estado === 'disponible' ? '🟢' : a.estado === 'parcial' ? '🟡' : '📋';
+                    html += `<div style="display:grid;grid-template-columns:90px 1fr 120px 110px 110px;gap:.3rem;padding:.4rem .75rem;border-bottom:1px solid #fef3c7;font-size:.76rem;align-items:center;">
+                        <span style="color:#64748b;">${a.fecha || '—'}</span>
+                        <span style="color:#1e293b;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${a.nombre_cliente}">${estadoBadge} ${a.nombre_cliente || '—'}</span>
+                        <span style="font-size:.68rem;color:#7c3aed;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">👤 ${a.usuario_nombre || '—'}</span>
+                        <span style="text-align:right;font-size:.68rem;color:#64748b;">${formaIcon}</span>
+                        <span style="text-align:right;font-weight:800;color:#d97706;font-family:monospace;">${fmtN(a.valor)}</span>
+                    </div>`;
+                });
+                html += `<div style="display:flex;justify-content:space-between;padding:.42rem .75rem;background:#fffbeb;font-size:.75rem;font-weight:700;border-top:2px solid #fde68a;">
+                    <span style="color:#92400e;">TOTAL ANTICIPOS</span>
+                    <span style="color:#d97706;font-family:monospace;">${fmtN(data.total_anticipos)}</span></div>`;
+                html += `</div>`;
             }
 
             // ── Sección: Gastos en efectivo ──
@@ -1639,6 +1974,221 @@ function abrirConciliacionSS() {
             listSin.innerHTML = '<div style="color:#ef4444;padding:1rem;text-align:center;">Error de conexión: ' + err.message + '</div>';
             listOtr.innerHTML = '<div style="color:#ef4444;padding:1rem;text-align:center;">Error de conexión: ' + err.message + '</div>';
         });
+}
+
+
+// ── Modal Gastos Operativos ─────────────────────────────────────────
+let _gastosData = [];
+
+function abrirGastosDetalle() {
+    const modal = document.getElementById('modalGastos');
+    document.getElementById('modalGastosResumen').innerHTML = '';
+    document.getElementById('modalGastosBody').innerHTML = '<div style="text-align:center;padding:2.5rem;color:#94a3b8;"><div style="font-size:2rem;margin-bottom:.5rem;">⏳</div>Cargando gastos…</div>';
+    modal.style.display = 'flex';
+
+    fetch(`{{ route('admin.informes.financiero.gastos_detalle') }}?mes={{ $mes }}&anio={{ $anio }}`)
+        .then(r => r.json())
+        .then(data => {
+            if (!data.ok) throw new Error('Error de servidor');
+            _gastosData = data.gastos;
+            renderGastosModal(data);
+        })
+        .catch(() => {
+            document.getElementById('modalGastosBody').innerHTML = '<div style="color:#ef4444;padding:1.5rem;text-align:center;">Error al cargar los gastos. Intente de nuevo.</div>';
+        });
+}
+
+const _TIPOS_GASTO_LABEL = {
+    'nomina':'💼 Nómina','gasto_fijo':'🏢 Gasto Fijo','gasto_variable':'⚡ Variable',
+    'comision_asesor':'👤 Comisión','banco_banco':'💱 Banco→Banco',
+    'otro':'📌 Otro','pago_planilla':'📋 Planilla'
+};
+
+function renderGastosModal(data) {
+    const fmtN = v => '$ ' + Math.round(Number(v) || 0).toLocaleString('es-CO');
+
+    // ── Resumen KPIs agrupados por tipo ──
+    const agrupados = {};
+    data.gastos.forEach(g => {
+        const k = g.tipo || 'otro';
+        if (!agrupados[k]) agrupados[k] = { total: 0, count: 0 };
+        agrupados[k].total += Number(g.valor) || 0;
+        agrupados[k].count++;
+    });
+    const colores = ['#ef4444','#f97316','#f59e0b','#10b981','#3b82f6','#8b5cf6','#ec4899','#14b8a6'];
+    let resHtml = `
+        <div style="background:#fef2f2;border-radius:10px;padding:.75rem;text-align:center;border:1px solid #fecaca;">
+            <div style="font-weight:800;color:#dc2626;font-size:1.15rem;">${fmtN(data.total)}</div>
+            <div style="font-size:.68rem;color:#b91c1c;font-weight:600;margin-top:.15rem;">Total Gastos</div>
+            <div style="font-size:.62rem;color:#94a3b8;">${data.count} registro(s)</div>
+        </div>`;
+    Object.entries(agrupados).forEach(([tipo, info], i) => {
+        const lbl = _TIPOS_GASTO_LABEL[tipo] || tipo;
+        const col = colores[i % colores.length];
+        resHtml += `
+        <div style="background:#fff;border-radius:10px;padding:.65rem;text-align:center;border:1px solid #e2e8f0;">
+            <div style="font-weight:800;color:${col};font-size:.92rem;">${fmtN(info.total)}</div>
+            <div style="font-size:.65rem;color:#475569;font-weight:600;margin-top:.15rem;">${lbl}</div>
+            <div style="font-size:.6rem;color:#94a3b8;">${info.count} reg.</div>
+        </div>`;
+    });
+    document.getElementById('modalGastosResumen').innerHTML = resHtml;
+
+    // ── Tabla gastos ──
+    if (!data.gastos.length) {
+        document.getElementById('modalGastosBody').innerHTML = '<div style="text-align:center;padding:2rem;color:#94a3b8;">Sin gastos operativos en este período.</div>';
+        return;
+    }
+
+    let html = `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:.8rem;min-width:760px;">
+        <thead><tr style="background:#fef2f2;border-bottom:2px solid #fecaca;">
+            <th style="padding:.5rem .7rem;text-align:left;font-size:.67rem;text-transform:uppercase;color:#64748b;width:85px;">Fecha</th>
+            <th style="padding:.5rem .7rem;text-align:left;font-size:.67rem;text-transform:uppercase;color:#64748b;">Tipo / Descripción</th>
+            <th style="padding:.5rem .7rem;text-align:left;font-size:.67rem;text-transform:uppercase;color:#64748b;width:115px;">Pagado a</th>
+            <th style="padding:.5rem .7rem;text-align:left;font-size:.67rem;text-transform:uppercase;color:#64748b;width:105px;">Reportado por</th>
+            <th style="padding:.5rem .7rem;text-align:left;font-size:.67rem;text-transform:uppercase;color:#64748b;width:110px;">Banco / Forma</th>
+            <th style="padding:.5rem .7rem;text-align:right;font-size:.67rem;text-transform:uppercase;color:#ef4444;width:95px;">Valor</th>
+            <th style="padding:.5rem .7rem;text-align:center;font-size:.67rem;text-transform:uppercase;color:#64748b;width:70px;">Acc.</th>
+        </tr></thead>
+        <tbody>`;
+
+    data.gastos.forEach(g => {
+        const fechaStr = g.fecha ? g.fecha.substring(0,10).split('-').reverse().join('/') : '—';
+        const tipoLbl  = _TIPOS_GASTO_LABEL[g.tipo] || ('📌 ' + (g.tipo || 'Otro'));
+        const banco    = g.banco_nombre ? `🏦 ${g.banco_nombre}` : (g.forma_pago === 'efectivo' ? '💵 Efectivo' : (g.forma_pago || '—'));
+        const tieneImg = !!g.imagen_url;
+        const desc     = (g.descripcion || '—').replace(/</g,'&lt;');
+        const obs      = (g.observacion || '').replace(/</g,'&lt;');
+        const pagadoA  = (g.pagado_a    || '—').replace(/</g,'&lt;');
+        const editDesc = (g.descripcion || '').replace(/"/g,'&quot;');
+        const editObs  = (g.observacion || '').replace(/"/g,'&quot;');
+
+        html += `
+        <tr id="gasto-row-${g.id}" style="border-bottom:1px solid #f9fafb;transition:background .12s;"
+            onmouseover="this.style.background='#fff7f7'" onmouseout="this.style.background=''">
+            <td style="padding:.55rem .7rem;color:#64748b;font-size:.78rem;">${fechaStr}</td>
+            <td style="padding:.55rem .7rem;">
+                <div style="font-size:.73rem;font-weight:600;color:#374151;">${tipoLbl}</div>
+                <div style="font-size:.7rem;color:#6b7280;margin-top:.1rem;">${desc}</div>
+                ${obs ? `<div style="font-size:.65rem;color:#9ca3af;font-style:italic;margin-top:.1rem;">${obs}</div>` : ''}
+            </td>
+            <td style="padding:.55rem .7rem;font-size:.76rem;color:#374151;">${pagadoA}</td>
+            <td style="padding:.55rem .7rem;"><span style="font-size:.73rem;color:#7c3aed;font-weight:600;">👤 ${g.usuario_nombre || '—'}</span></td>
+            <td style="padding:.55rem .7rem;font-size:.73rem;color:#1e40af;">${banco}</td>
+            <td style="padding:.55rem .7rem;text-align:right;font-weight:800;color:#dc2626;font-family:monospace;">${fmtN(g.valor)}</td>
+            <td style="padding:.55rem .7rem;text-align:center;">
+                <div style="display:flex;gap:.3rem;justify-content:center;">
+                    ${tieneImg
+                        ? `<button onclick="verImagenGasto('${g.imagen_url}')" title="Ver soporte" style="background:#dbeafe;border:none;border-radius:6px;padding:.25rem .45rem;cursor:pointer;font-size:.8rem;" onmouseover="this.style.background='#bfdbfe'" onmouseout="this.style.background='#dbeafe'">🖼️</button>`
+                        : `<button style="background:#f3f4f6;border:none;border-radius:6px;padding:.25rem .45rem;cursor:default;font-size:.8rem;opacity:.35;" title="Sin imagen">🖼️</button>`}
+                    <button onclick="editarGasto(${g.id})" title="Editar" style="background:#fef3c7;border:none;border-radius:6px;padding:.25rem .45rem;cursor:pointer;font-size:.8rem;" onmouseover="this.style.background='#fde68a'" onmouseout="this.style.background='#fef3c7'">✏️</button>
+                </div>
+            </td>
+        </tr>
+        <tr id="gasto-edit-${g.id}" style="display:none;background:#fffbeb;">
+            <td colspan="7" style="padding:.7rem 1rem;border-bottom:2px solid #fde68a;">
+                <form onsubmit="guardarGasto(event,${g.id})" style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-end;">
+                    <div style="flex:0 0 105px;">
+                        <label style="font-size:.65rem;font-weight:700;color:#92400e;display:block;margin-bottom:.15rem;">Fecha</label>
+                        <input type="date" id="edit-fecha-${g.id}" value="${g.fecha ? g.fecha.substring(0,10) : ''}" style="width:100%;padding:.3rem .5rem;border:1px solid #fcd34d;border-radius:6px;font-size:.78rem;">
+                    </div>
+                    <div style="flex:2;min-width:150px;">
+                        <label style="font-size:.65rem;font-weight:700;color:#92400e;display:block;margin-bottom:.15rem;">Descripción</label>
+                        <input type="text" id="edit-desc-${g.id}" value="${editDesc}" style="width:100%;padding:.3rem .5rem;border:1px solid #fcd34d;border-radius:6px;font-size:.78rem;">
+                    </div>
+                    <div style="flex:0 0 108px;">
+                        <label style="font-size:.65rem;font-weight:700;color:#92400e;display:block;margin-bottom:.15rem;">Valor</label>
+                        <input type="number" id="edit-valor-${g.id}" value="${g.valor}" min="1" style="width:100%;padding:.3rem .5rem;border:1px solid #fcd34d;border-radius:6px;font-size:.78rem;">
+                    </div>
+                    <div style="flex:1;min-width:110px;">
+                        <label style="font-size:.65rem;font-weight:700;color:#92400e;display:block;margin-bottom:.15rem;">Observación</label>
+                        <input type="text" id="edit-obs-${g.id}" value="${editObs}" style="width:100%;padding:.3rem .5rem;border:1px solid #fcd34d;border-radius:6px;font-size:.78rem;">
+                    </div>
+                    <div style="flex:0 0 auto;">
+                        <label style="font-size:.65rem;font-weight:700;color:#92400e;display:block;margin-bottom:.15rem;">Imagen</label>
+                        <input type="file" id="edit-img-${g.id}" accept="image/*,application/pdf" style="font-size:.7rem;max-width:175px;">
+                    </div>
+                    <div style="display:flex;gap:.35rem;flex-shrink:0;align-items:flex-end;">
+                        <button type="submit" style="background:#16a34a;color:#fff;border:none;border-radius:7px;padding:.32rem .9rem;font-size:.78rem;font-weight:700;cursor:pointer;">💾 Guardar</button>
+                        <button type="button" onclick="cancelarEdicionGasto(${g.id})" style="background:#f1f5f9;border:none;border-radius:7px;padding:.32rem .75rem;font-size:.78rem;cursor:pointer;">✕</button>
+                    </div>
+                    <span id="edit-status-${g.id}" style="font-size:.72rem;color:#16a34a;align-self:flex-end;"></span>
+                </form>
+            </td>
+        </tr>`;
+    });
+
+    html += `<tr style="background:#fef2f2;border-top:2px solid #fecaca;">
+        <td colspan="5" style="padding:.55rem .7rem;font-size:.78rem;font-weight:700;color:#b91c1c;">TOTAL — ${data.count} gasto(s)</td>
+        <td style="padding:.55rem .7rem;text-align:right;font-weight:800;color:#dc2626;font-family:monospace;font-size:.88rem;">${fmtN(data.total)}</td>
+        <td></td>
+    </tr></tbody></table></div>`;
+
+    document.getElementById('modalGastosBody').innerHTML = html;
+}
+
+function verImagenGasto(url) {
+    document.getElementById('lightboxImg').src      = url;
+    document.getElementById('lightboxImgLink').href = url;
+    document.getElementById('modalLightbox').style.display = 'flex';
+}
+
+function editarGasto(id) {
+    const row = document.getElementById(`gasto-edit-${id}`);
+    if (!row) return;
+    const visible = row.style.display !== 'none';
+    document.querySelectorAll('[id^="gasto-edit-"]').forEach(r => r.style.display = 'none');
+    row.style.display = visible ? 'none' : 'table-row';
+}
+
+function cancelarEdicionGasto(id) {
+    const row = document.getElementById(`gasto-edit-${id}`);
+    if (row) row.style.display = 'none';
+}
+
+async function guardarGasto(ev, id) {
+    ev.preventDefault();
+    const status = document.getElementById(`edit-status-${id}`);
+    const btn    = ev.target.querySelector('button[type="submit"]');
+    status.textContent = 'Guardando…';
+    status.style.color = '#92400e';
+    btn.disabled = true;
+
+    const g = _gastosData.find(x => x.id == id) || {};
+    const fd = new FormData();
+    fd.append('_method',     'PUT');
+    fd.append('_token',      document.querySelector('meta[name="csrf-token"]')?.content || '');
+    fd.append('fecha',       document.getElementById(`edit-fecha-${id}`).value);
+    fd.append('descripcion', document.getElementById(`edit-desc-${id}`).value);
+    fd.append('valor',       document.getElementById(`edit-valor-${id}`).value);
+    fd.append('observacion', document.getElementById(`edit-obs-${id}`).value);
+    fd.append('tipo',        g.tipo       || 'otro');
+    fd.append('forma_pago',  g.forma_pago || 'efectivo');
+    if (g.pagado_a)        fd.append('pagado_a',       g.pagado_a);
+    if (g.banco_origen_id) fd.append('banco_origen_id', g.banco_origen_id);
+
+    const imgInput = document.getElementById(`edit-img-${id}`);
+    if (imgInput && imgInput.files[0]) fd.append('imagen', imgInput.files[0]);
+
+    try {
+        const resp = await fetch(`{{ url('/admin/informes/gastos') }}/${id}`, {
+            method: 'POST', body: fd, headers: { 'Accept': 'application/json' }
+        });
+        if (resp.ok || resp.status === 302) {
+            status.textContent = '✅ Guardado';
+            status.style.color = '#16a34a';
+            setTimeout(() => abrirGastosDetalle(), 850);
+        } else {
+            const err = await resp.json().catch(() => ({}));
+            status.textContent = '❌ ' + (err.message || 'Error al guardar');
+            status.style.color = '#dc2626';
+            btn.disabled = false;
+        }
+    } catch(e) {
+        status.textContent = '❌ Error de red';
+        status.style.color = '#dc2626';
+        btn.disabled = false;
+    }
 }
 
 function fmtFecha(fechaStr) {

@@ -2,7 +2,7 @@
 
 @section('title', 'Informe de Anticipos')
 
-@section('content')
+@section('contenido')
 <style>
 /* ══════════════════════════════════════
    Informe de Anticipos — BryNex

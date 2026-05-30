@@ -301,8 +301,96 @@ td{padding:.55rem .8rem;color:#334155;vertical-align:middle}
 
 <script>
 function abrirModalNuevo(){
+    const form = document.getElementById('modal-gasto-form');
+    if(form){
+        form.reset();
+        const mp = form.querySelector('input[name="_method"]');
+        if(mp) mp.remove();
+        form.action = "{{ route('admin.informes.gastos.store') }}";
+        // Restaurar select tipo si fue ocultado
+        const selTipo = form.querySelector('select[name="tipo"]');
+        if(selTipo){ selTipo.style.display = ''; selTipo.setAttribute('required',''); }
+        const htipo = form.querySelector('input[name="tipo"][type="hidden"]');
+        if(htipo) htipo.remove();
+        const badge = form.querySelector('#badge-tipo-planilla');
+        if(badge) badge.remove();
+    }
+    const hdr = document.querySelector('#modal-gasto [style*="background:#0f172a"] span');
+    if(hdr) hdr.textContent = '💼 Registrar Gasto';
+    const btn = document.querySelector('#modal-gasto-form button[type="submit"]');
+    if(btn) btn.textContent = '✅ Registrar Gasto';
     document.getElementById('modal-gasto').style.display = 'flex';
 }
+
+function abrirModalEditar(g){
+    const modal = document.getElementById('modal-gasto');
+    const form  = document.getElementById('modal-gasto-form');
+    if(!modal || !form) return;
+
+    // Título y botón
+    const hdr = modal.querySelector('[style*="background:#0f172a"] span');
+    if(hdr) hdr.textContent = '✏️ Editar Gasto #' + (g.id || '');
+    const btn = form.querySelector('button[type="submit"]');
+    if(btn) btn.textContent = '💾 Guardar Cambios';
+
+    // _method PUT
+    let mp = form.querySelector('input[name="_method"]');
+    if(!mp){ mp = document.createElement('input'); mp.type='hidden'; mp.name='_method'; form.appendChild(mp); }
+    mp.value = 'PUT';
+
+    // Action
+    form.action = `/admin/informes/gastos/${g.id}`;
+
+    // ── Manejar tipo pago_planilla ────────────────────────────────────
+    const selTipo = form.querySelector('select[name="tipo"]');
+    // Limpiar estado anterior
+    const prevHidden = form.querySelector('input[name="tipo"][type="hidden"]');
+    if(prevHidden) prevHidden.remove();
+    const prevBadge = form.querySelector('#badge-tipo-planilla');
+    if(prevBadge) prevBadge.remove();
+
+    if(g.tipo === 'pago_planilla'){
+        // Ocultar select y quitar required
+        if(selTipo){ selTipo.style.display = 'none'; selTipo.removeAttribute('required'); }
+        // Inyectar hidden con tipo real
+        const ht = document.createElement('input');
+        ht.type = 'hidden'; ht.name = 'tipo'; ht.value = 'pago_planilla';
+        ht.id = 'hidden-tipo-planilla';
+        if(selTipo) selTipo.parentNode.appendChild(ht);
+        // Badge informativo
+        const badge = document.createElement('div');
+        badge.id = 'badge-tipo-planilla';
+        badge.innerHTML = '<span style="display:inline-flex;align-items:center;gap:.4rem;background:#f0fdf4;border:1px solid #86efac;color:#15803d;border-radius:7px;padding:.35rem .7rem;font-size:.78rem;font-weight:600;">🏢 Pago Planilla <span style="color:#6b7280;font-weight:400;font-size:.72rem;">(tipo fijo — administrar desde Planos)</span></span>';
+        if(selTipo) selTipo.parentNode.insertBefore(badge, selTipo);
+    } else {
+        // Restaurar select normal
+        if(selTipo){ selTipo.style.display = ''; selTipo.setAttribute('required',''); }
+    }
+    // ─────────────────────────────────────────────────────────────────
+
+    // Rellenar campos (excluye hidden para no pisar el tipo inyectado)
+    const set = (name, val) => {
+        const el = form.querySelector(`[name="${name}"]:not([type="hidden"])`);
+        if(el) el.value = val ?? '';
+    };
+    set('fecha',            g.fecha ? g.fecha.substring(0,10) : '');
+    if(g.tipo !== 'pago_planilla') set('tipo', g.tipo ?? '');
+    set('descripcion',      g.descripcion ?? '');
+    set('pagado_a',         g.pagado_a    ?? '');
+    set('valor',            g.valor       ?? '');
+    set('forma_pago',       g.forma_pago  ?? 'efectivo');
+    set('banco_origen_id',  g.banco_origen_id  ?? '');
+    set('banco_destino_id', g.banco_destino_id ?? '');
+    set('recibo_caja',      g.recibo_caja ?? '');
+    set('observacion',      g.observacion ?? '');
+
+    // Visibilidad de bancos
+    if(g.tipo !== 'pago_planilla') gasto_onTipoChange('modal-gasto');
+    gasto_actualizarBancos('modal-gasto');
+
+    modal.style.display = 'flex';
+}
+
 function abrirSubirImagen(id){
     document.getElementById('formImagen').action = `/admin/informes/gastos/${id}/imagen`;
     document.getElementById('modalImagen').classList.add('open');

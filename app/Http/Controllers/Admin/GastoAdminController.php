@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\{Gasto, BancoCuenta, User};
+use App\Models\{Gasto, BancoCuenta, User, Consignacion};
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\{Auth, DB, Storage};
 
@@ -72,6 +72,7 @@ class GastoAdminController extends Controller
                 'g.id', 'g.fecha', 'g.numero_planilla', 'g.descripcion',
                 'g.pagado_a', 'g.valor', 'g.imagen_path',
                 'g.created_at',
+                'g.tipo', 'g.forma_pago', 'g.banco_origen_id',
                 'u.nombre AS usuario_nombre',
                 'bc.banco AS banco_nombre',
                 'bc.nombre AS banco_titular',
@@ -80,6 +81,7 @@ class GastoAdminController extends Controller
             ->groupBy(
                 'g.id','g.fecha','g.numero_planilla','g.descripcion',
                 'g.pagado_a','g.valor','g.imagen_path','g.created_at',
+                'g.tipo','g.forma_pago','g.banco_origen_id',
                 'u.nombre','bc.banco','bc.nombre'
             )
             ->orderByRaw('MAX(ISNULL(rs.razon_social, g.pagado_a))')
@@ -119,36 +121,80 @@ class GastoAdminController extends Controller
     {
         $this->checkSuperAdmin();
         $aid = $this->aliadoId();
+        $usuarioId = Auth::id();
 
         $data = $request->validate([
-            'fecha'           => 'required|date',
-            'tipo'            => 'required|string',
-            'descripcion'     => 'required|string|max:500',
-            'pagado_a'        => 'nullable|string|max:255',
-            'forma_pago'      => 'required|in:efectivo,transferencia_bancaria,banco_banco',
-            'banco_origen_id' => 'nullable|integer',
-            'valor'           => 'required|integer|min:1',
-            'recibo_caja'     => 'nullable|string|max:100',
-            'observacion'     => 'nullable|string|max:1000',
-            'imagen_base64'   => 'nullable|string',   // paste Ctrl+V
-            'imagen'          => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:5120',
+            'fecha'             => 'required|date',
+            'tipo'              => 'required|string',
+            'descripcion'       => 'required|string|max:500',
+            'pagado_a'          => 'nullable|string|max:255',
+            'forma_pago'        => 'required|in:efectivo,transferencia_bancaria,banco_banco',
+            'banco_origen_id'   => 'nullable|integer',
+            'banco_destino_id'  => 'nullable|integer',
+            'valor'             => 'required|integer|min:1',
+            'recibo_caja'       => 'nullable|string|max:100',
+            'observacion'       => 'nullable|string|max:1000',
+            'imagen_base64'     => 'nullable|string',   // paste Ctrl+V
+            'imagen'            => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:5120',
         ]);
 
-        $gasto = Gasto::create(array_merge($data, [
-            'aliado_id'  => $aid,
-            'usuario_id' => Auth::id(),
-            'cuadre_id'  => null,
-        ]));
+        DB::beginTransaction();
+        try {
+            $gasto = Gasto::create(array_merge($data, [
+                'aliado_id'  => $aid,
+                'usuario_id' => $usuarioId,
+                'cuadre_id'  => null,
+            ]));
 
-        // Imagen pegada (base64)
-        if (!empty($data['imagen_base64'])) {
-            $path = $this->guardarBase64($data['imagen_base64'], $gasto->id);
-            if ($path) $gasto->update(['imagen_path' => $path]);
-        }
-        // Imagen subida como archivo
-        elseif ($request->hasFile('imagen')) {
-            $path = $request->file('imagen')->store("gastos/{$aid}", 'public');
-            $gasto->update(['imagen_path' => $path]);
+            // ── Traslado efectivo → banco ────────────────────────────────
+            // Registra consignación interna para que el saldo bancario suba.
+            if ($data['tipo'] === 'efectivo_banco' && !empty($data['banco_origen_id'])) {
+                Consignacion::create([
+                    'aliado_id'       => $aid,
+                    'banco_cuenta_id' => $data['banco_origen_id'],
+                    'factura_id'      => null,
+                    'fecha'           => $data['fecha'],
+                    'valor'           => $data['valor'],
+                    'tipo'            => Consignacion::TIPO_TRASLADO_EFECTIVO,
+                    'referencia'      => 'Gasto #' . $gasto->id,
+                    'confirmado'      => true,
+                    'observacion'     => $data['descripcion'],
+                    'usuario_id'      => $usuarioId,
+                ]);
+            }
+
+            // ── Banco → Banco ────────────────────────────────────────────
+            // El gasto descuenta el banco origen. Creamos la entrada en el destino.
+            if ($data['forma_pago'] === 'banco_banco' && !empty($data['banco_destino_id'])) {
+                Consignacion::create([
+                    'aliado_id'       => $aid,
+                    'banco_cuenta_id' => $data['banco_destino_id'],
+                    'factura_id'      => null,
+                    'fecha'           => $data['fecha'],
+                    'valor'           => $data['valor'],
+                    'tipo'            => Consignacion::TIPO_BANCO_RECIBIDO,
+                    'referencia'      => 'Gasto #' . $gasto->id,
+                    'confirmado'      => true,
+                    'observacion'     => $data['descripcion'],
+                    'usuario_id'      => $usuarioId,
+                ]);
+            }
+
+            // Imagen pegada (base64)
+            if (!empty($data['imagen_base64'])) {
+                $path = $this->guardarBase64($data['imagen_base64'], $gasto->id);
+                if ($path) $gasto->update(['imagen_path' => $path]);
+            }
+            // Imagen subida como archivo
+            elseif ($request->hasFile('imagen')) {
+                $path = $request->file('imagen')->store("gastos/{$aid}", 'public');
+                $gasto->update(['imagen_path' => $path]);
+            }
+
+            DB::commit();
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return redirect()->back()->with('error', 'Error al registrar el gasto: ' . $e->getMessage());
         }
 
         return redirect()->back()->with('success', 'Gasto registrado correctamente.');
@@ -162,17 +208,18 @@ class GastoAdminController extends Controller
         $gasto = Gasto::where('aliado_id', $aid)->findOrFail($id);
 
         $data = $request->validate([
-            'fecha'           => 'required|date',
-            'tipo'            => 'required|string',
-            'descripcion'     => 'required|string|max:500',
-            'pagado_a'        => 'nullable|string|max:255',
-            'forma_pago'      => 'required|in:efectivo,transferencia_bancaria,banco_banco',
-            'banco_origen_id' => 'nullable|integer',
-            'valor'           => 'required|integer|min:1',
-            'recibo_caja'     => 'nullable|string|max:100',
-            'observacion'     => 'nullable|string|max:1000',
-            'imagen_base64'   => 'nullable|string',
-            'imagen'          => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:5120',
+            'fecha'             => 'required|date',
+            'tipo'              => 'required|string',
+            'descripcion'       => 'required|string|max:500',
+            'pagado_a'          => 'nullable|string|max:255',
+            'forma_pago'        => 'required|in:efectivo,transferencia_bancaria,banco_banco',
+            'banco_origen_id'   => 'nullable|integer',
+            'banco_destino_id'  => 'nullable|integer',
+            'valor'             => 'required|integer|min:1',
+            'recibo_caja'       => 'nullable|string|max:100',
+            'observacion'       => 'nullable|string|max:1000',
+            'imagen_base64'     => 'nullable|string',
+            'imagen'            => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:5120',
         ]);
 
         $gasto->update($data);
@@ -196,6 +243,14 @@ class GastoAdminController extends Controller
         $this->checkSuperAdmin();
         $aid   = $this->aliadoId();
         $gasto = Gasto::where('aliado_id', $aid)->findOrFail($id);
+
+        // Eliminar consignaciones internas generadas por traslados banco a banco
+        // que referencian a este gasto (identificadas por la referencia 'Gasto #ID')
+        if (in_array($gasto->tipo, ['efectivo_banco', 'banco_banco'])) {
+            Consignacion::where('aliado_id', $aid)
+                ->where('referencia', 'Gasto #' . $id)
+                ->delete();
+        }
 
         if ($gasto->imagen_path) {
             Storage::disk('public')->delete($gasto->imagen_path);

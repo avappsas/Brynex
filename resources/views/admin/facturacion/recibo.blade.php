@@ -32,10 +32,37 @@ foreach ($filas as $f) {
     $totBanco2+= (int)($f->valor_banco2 ?? 0);
     $totAnticipo += (int)($f->anticipo_aplicado ?? 0);
 }
+// Agrupar todas las consignaciones del lote/grupo para que se muestren unificadas sin importar con qué ID del lote se abrió el recibo
+$consignacionesGrupo = collect();
+foreach ($filas as $f) {
+    if (is_object($f) && isset($f->consignaciones)) {
+        foreach ($f->consignaciones as $csg) {
+            $consignacionesGrupo->push($csg);
+        }
+    } else {
+        $csgs = DB::table('consignaciones')->where('factura_id', $f->id)->get();
+        foreach ($csgs as $csg) {
+            if (isset($csg->banco_cuenta_id)) {
+                $csg->bancoCuenta = DB::table('banco_cuentas')->find($csg->banco_cuenta_id);
+            }
+            $consignacionesGrupo->push($csg);
+        }
+    }
+}
+$consignacionesGrupo = $consignacionesGrupo->unique('id');
+
 // Si estado es préstamo y valor_prestamo=0, calcularlo como total - lo recibido
 if ($factura->estado === 'prestamo' && $totPrest === 0) {
     $totPrest = max(0, $totTotal - $totEfect - $totConsig);
 }
+
+$estadoVisual = $factura->estado;
+if ($factura->estado === 'prestamo') {
+    if ($totPrest <= ($totTotal / 2)) {
+        $estadoVisual = 'pagada';
+    }
+}
+
 
 $estadoLabel = fn($e) => match($e) {
     'pagada'      => 'PAGO',
@@ -496,8 +523,8 @@ $numGrupo    = str_pad($filas->first()?->numero_factura ?? $factura->numero_fact
 
     {{-- Sello diagonal --}}
     <div class="fact-sello-wrap">
-        <div class="fact-sello {{ $estadoCls($factura->estado) === 'badge-pago' ? 'sello-pagado' : ($estadoCls($factura->estado) === 'badge-prest' ? 'sello-prest' : ($estadoCls($factura->estado) === 'badge-abono' ? 'sello-abono' : 'sello-pre')) }}">
-            {{ $estadoLabel($factura->estado) }}
+        <div class="fact-sello {{ $estadoCls($estadoVisual) === 'badge-pago' ? 'sello-pagado' : ($estadoCls($estadoVisual) === 'badge-prest' ? 'sello-prest' : ($estadoCls($estadoVisual) === 'badge-abono' ? 'sello-abono' : 'sello-pre')) }}">
+            {{ $estadoLabel($estadoVisual) }}
         </div>
     </div>
 
@@ -524,7 +551,7 @@ $numGrupo    = str_pad($filas->first()?->numero_factura ?? $factura->numero_fact
             {{ $numGrupo }}
         </div>
         <div style="margin-top:.35rem">
-            <span class="badge {{ $estadoCls($factura->estado) }}">{{ $estadoLabel($factura->estado) }}</span>
+            <span class="badge {{ $estadoCls($estadoVisual) }}">{{ $estadoLabel($estadoVisual) }}</span>
         </div>
     </div>
 
@@ -721,7 +748,7 @@ $tSS = $tEps + $tArl + $tPen + $tCaj;
             <span>💵 Efectivo</span><strong>{{ $fmt($totEfect) }}</strong>
         </div>
         @endif
-        @foreach($factura->consignaciones as $csg)
+        @foreach($consignacionesGrupo as $csg)
         <div style="padding:.14rem 0;border-bottom:.5px solid #f1f5f9">
             <div style="display:flex;justify-content:space-between;align-items:flex-start">
                 <div>
@@ -800,14 +827,14 @@ $vIva1    = (int)($factura->iva ?? 0);
 $dias1    = $factura->dias_cotizados ?? 30;
 
 // Sello de estado
-$selloTxt = match($factura->estado) {
+$selloTxt = match($estadoVisual) {
     'pagada'      => 'PAGADO',
     'pre_factura' => 'PRE-FACT',
     'prestamo'    => 'PRÉSTAMO',
     'abono'       => 'ABONO',
-    default       => strtoupper($factura->estado ?? '')
+    default       => strtoupper($estadoVisual ?? '')
 };
-$selloCls = match($factura->estado) {
+$selloCls = match($estadoVisual) {
     'pagada'   => 'sello-pagado',
     'prestamo' => 'sello-prest',
     'abono'    => 'sello-abono',
@@ -860,7 +887,7 @@ $nomAliado  = $aliadoObj?->nombre ?? $aliadoObj?->razon_social ?? 'BryNex';
             {{ str_pad($factura->numero_factura, 6, '0', STR_PAD_LEFT) }}
         </div>
         <div style="margin-top:.35rem">
-            <span class="badge {{ $estadoCls($factura->estado) }}">{{ $estadoLabel($factura->estado) }}</span>
+            <span class="badge {{ $estadoCls($estadoVisual) }}">{{ $estadoLabel($estadoVisual) }}</span>
         </div>
     </div>
 
@@ -1250,7 +1277,7 @@ $nomAliado  = $aliadoObj?->nombre ?? $aliadoObj?->razon_social ?? 'BryNex';
             <span>💵 Efectivo</span><strong>{{ $fmt($totEfect) }}</strong>
         </div>
         @endif
-        @foreach($factura->consignaciones as $csg)
+        @foreach($consignacionesGrupo as $csg)
         <div style="padding:.14rem 0;border-bottom:.5px solid #f1f5f9">
             <div style="display:flex;justify-content:space-between;align-items:flex-start">
                 <div>
@@ -1329,7 +1356,7 @@ $fpLabel = match($factura->forma_pago ?? '') {
         @endif
 
         {{-- Consignaciones --}}
-        @foreach($factura->consignaciones as $csg)
+        @foreach($consignacionesGrupo as $csg)
         <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:7px;padding:.3rem .65rem;font-size:.75rem;display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;">
             <span style="color:#1d4ed8;font-weight:700;">
                 🏦 {{ $csg->bancoCuenta?->nombre ?? 'Banco' }}

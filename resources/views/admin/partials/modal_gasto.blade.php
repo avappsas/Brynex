@@ -105,14 +105,15 @@
                     <option value="efectivo">💵 Efectivo</option>
                     @if($esAdmin)
                     <option value="transferencia_bancaria">🏦 Transferencia Bancaria</option>
+                    <option value="banco_banco">💱 Banco → Banco</option>
                     @endif
                 </select>
             </div>
 
-            {{-- Banco Origen (solo transferencia) --}}
+            {{-- Banco Origen (solo transferencia/banco_banco/efectivo_banco) --}}
             <div id="{{ $modalId }}-banco-origen" style="display:none">
-                <label class="lbl-g">Banco Origen</label>
-                <select name="banco_origen_id" class="inp-g">
+                <label class="lbl-g" id="{{ $modalId }}-lbl-banco-origen">Banco Origen</label>
+                <select name="banco_origen_id" id="{{ $modalId }}-sel-banco-origen" class="inp-g">
                     <option value="">— Seleccionar —</option>
                     @foreach($bancos as $bc)
                     <option value="{{ $bc->id }}">{{ $bc->banco }} · {{ $bc->nombre }}{{ $bc->numero_cuenta ? ' · '.$bc->numero_cuenta : '' }}</option>
@@ -120,10 +121,10 @@
                 </select>
             </div>
 
-            {{-- Banco Destino --}}
+            {{-- Banco Destino (visible solo para banco_banco y efectivo_banco) --}}
             <div id="{{ $modalId }}-banco-destino" style="display:none">
-                <label class="lbl-g">Banco Destino</label>
-                <select name="banco_destino_id" class="inp-g">
+                <label class="lbl-g" id="{{ $modalId }}-lbl-banco-destino">Banco Destino</label>
+                <select name="banco_destino_id" id="{{ $modalId }}-sel-banco-destino" class="inp-g">
                     <option value="">— Seleccionar —</option>
                     @foreach($bancos as $bc)
                     <option value="{{ $bc->id }}">{{ $bc->banco }} · {{ $bc->nombre }}</option>
@@ -199,12 +200,14 @@ function gasto_onTipoChange(id) {
     // Auto-forma de pago para movimientos bancarios
     const forma = document.getElementById(id+'-forma');
     if (tipo === 'efectivo_banco') {
+        // Efectivo→Banco: forma de pago = efectivo, muestra solo banco destino (a cuál banco va)
         forma.value = 'efectivo';
-        document.getElementById(id+'-banco-origen').style.display = 'block';
-        document.getElementById(id+'-banco-destino').style.display = 'none';
+        gasto_actualizarBancos(id);
     } else if (tipo === 'banco_banco') {
-        // Banco→Banco usa transferencia como forma de pago
-        if (forma.querySelector('option[value="transferencia_bancaria"]')) {
+        // Banco→Banco: asignar forma_pago = banco_banco (tiene opción dedicada)
+        if (forma.querySelector('option[value="banco_banco"]')) {
+            forma.value = 'banco_banco';
+        } else if (forma.querySelector('option[value="transferencia_bancaria"]')) {
             forma.value = 'transferencia_bancaria';
         }
         gasto_actualizarBancos(id);
@@ -224,12 +227,35 @@ function gasto_seleccionarUsuario(id) {
 }
 
 function gasto_actualizarBancos(id) {
-    const fp = document.getElementById(id+'-forma').value;
-    document.getElementById(id+'-banco-origen').style.display =
-        fp === 'transferencia_bancaria' ? 'block' : 'none';
-    // banco-destino ya no se usa en el form (se eliminó banco_banco de forma_pago)
-    const dest = document.getElementById(id+'-banco-destino');
-    if (dest) dest.style.display = 'none';
+    const fp   = document.getElementById(id+'-forma').value;
+    const tipo = document.getElementById(id+'-tipo')?.value ?? '';
+
+    const bloqOrigen  = document.getElementById(id+'-banco-origen');
+    const bloqDestino = document.getElementById(id+'-banco-destino');
+    const lblOrigen   = document.getElementById(id+'-lbl-banco-origen');
+    const lblDestino  = document.getElementById(id+'-lbl-banco-destino');
+
+    if (fp === 'banco_banco') {
+        // Banco → Banco: mostrar ORIGEN y DESTINO
+        if (bloqOrigen)  bloqOrigen.style.display  = 'block';
+        if (bloqDestino) bloqDestino.style.display = 'block';
+        if (lblOrigen)   lblOrigen.textContent  = 'Banco Origen (sale el dinero)';
+        if (lblDestino)  lblDestino.textContent = 'Banco Destino (entra el dinero)';
+    } else if (fp === 'transferencia_bancaria') {
+        // Pago de gasto por transferencia: solo banco origen
+        if (bloqOrigen)  bloqOrigen.style.display  = 'block';
+        if (bloqDestino) bloqDestino.style.display = 'none';
+        if (lblOrigen)   lblOrigen.textContent = 'Banco Origen';
+    } else if (fp === 'efectivo' && tipo === 'efectivo_banco') {
+        // Efectivo → Banco: solo banco destino (a cuál banco ingresa el efectivo)
+        if (bloqOrigen)  bloqOrigen.style.display  = 'block';
+        if (bloqDestino) bloqDestino.style.display = 'none';
+        if (lblOrigen)   lblOrigen.textContent = 'Banco que recibe el efectivo';
+    } else {
+        // Gasto en efectivo ordinario: sin bancos
+        if (bloqOrigen)  bloqOrigen.style.display  = 'none';
+        if (bloqDestino) bloqDestino.style.display = 'none';
+    }
 }
 
 // Aliases para cuadre-diario (compatibilidad)

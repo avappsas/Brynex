@@ -331,7 +331,7 @@ class InformeController extends Controller
                     ->whereYear('c.fecha_retiro', $anioAnterior);
                 });
             })
-            ->select('c.cedula','c.fecha_retiro','c.observacion',
+            ->select('c.cedula','c.fecha_retiro','c.observacion','c.updated_at AS fecha_marcado_retiro',
                 DB::raw("LTRIM(RTRIM(cl.primer_nombre+' '+ISNULL(cl.segundo_nombre,'')+' '+cl.primer_apellido+' '+ISNULL(cl.segundo_apellido,''))) AS nombre_completo"),
                 'rs.razon_social','mr.nombre AS motivo',
                 'pl.nombre AS plan_nombre','tm.tipo_modalidad AS modalidad_nombre',
@@ -379,8 +379,8 @@ class InformeController extends Controller
         $retirados = $retirados->values();
 
         if ($request->input('excel')) return $this->exportCsv($retirados,'retirados_mes',
-            ['Cédula','Nombre','Razón Social','Plan','Modalidad','Días Retiro','Fecha Retiro','Motivo','Costo SS Retiro','Tipo Retiro','Observación'],
-            fn($r)=>[$r->cedula,$r->nombre_completo,$r->razon_social,$r->plan_nombre ?? '—',$r->modalidad_nombre ?? '—',$r->dias_retiro ?? 0,sqldate($r->fecha_retiro)?->format('d/m/Y'),$r->motivo,$r->costo_ss ? (int)$r->costo_ss : 0, $r->tipo_retiro, $r->observacion]);
+            ['Cédula','Nombre','Razón Social','Plan','Modalidad','Días Retiro','Fecha Retiro','Fecha Marcado Retiro','Motivo','Costo SS Retiro','Tipo Retiro','Observación'],
+            fn($r)=>[$r->cedula,$r->nombre_completo,$r->razon_social,$r->plan_nombre ?? '—',$r->modalidad_nombre ?? '—',$r->dias_retiro ?? 0,sqldate($r->fecha_retiro)?->format('d/m/Y'),sqldate($r->fecha_marcado_retiro)?->format('d/m/Y H:i'),$r->motivo,$r->costo_ss ? (int)$r->costo_ss : 0, $r->tipo_retiro, $r->observacion]);
 
         return view('admin.informes.retirados_mes', compact(
             'retirados','mes','anio',
@@ -450,35 +450,51 @@ class InformeController extends Controller
             ->where('aliado_id', $aid)->whereNull('deleted_at')
             ->whereNotNull('fecha_pago')
             ->whereMonth('fecha_pago', $mes)->whereYear('fecha_pago', $anio)
-            ->whereIn('estado', ['pagada', 'abono'])
+            ->whereIn('estado', ['pagada', 'abono', 'prestamo'])
             ->groupBy('tipo')
             ->selectRaw('
                 tipo,
-                SUM(admon) as sum_admon,
-                SUM(seguro) as sum_seguro,
-                SUM(afiliacion) as sum_afiliacion,
-                SUM(mensajeria) as sum_mensajeria,
-                SUM(otros) as sum_otros,
-                SUM(iva) as sum_iva,
-                SUM(retiro) as sum_retiro
+                SUM(admon)        as sum_admon,
+                SUM(seguro)       as sum_seguro,
+                SUM(afiliacion)   as sum_afiliacion,
+                SUM(mensajeria)   as sum_mensajeria,
+                SUM(otros)        as sum_otros,
+                SUM(iva)          as sum_iva,
+                SUM(retiro)       as sum_retiro,
+                SUM(ISNULL(admin_asesor,0))   as sum_admin_asesor,
+                SUM(ISNULL(otros_admon,0))    as sum_otros_admon,
+                SUM(ISNULL(dist_admon,0))     as sum_dist_admon,
+                SUM(ISNULL(dist_asesor,0))    as sum_dist_asesor,
+                SUM(ISNULL(dist_retiro,0))    as sum_dist_retiro,
+                SUM(ISNULL(dist_utilidad,0))  as sum_dist_utilidad
             ')
             ->get()
             ->keyBy('tipo');
 
         $planillasRaw = $ingresosRaw->get('planilla');
-        $ingPlanillas = $planillasRaw 
-            ? ($planillasRaw->sum_admon + $planillasRaw->sum_seguro + $planillasRaw->sum_mensajeria + $planillasRaw->sum_otros + $planillasRaw->sum_iva + $planillasRaw->sum_retiro)
-            : 0;
+        // Canal ADMON: admon + seguro + mensajeria + iva + otros_admon
+        // 'otros' pertenece al canal SS, no a admon
+        $ingAdmon = $planillasRaw
+            ? ((float)($planillasRaw->sum_admon      ?? 0)
+             + (float)($planillasRaw->sum_seguro     ?? 0)
+             + (float)($planillasRaw->sum_mensajeria ?? 0)
+             + (float)($planillasRaw->sum_iva        ?? 0)
+             + (float)($planillasRaw->sum_otros_admon?? 0))
+            : 0.0;
+        // Retiro campo: lo cobra el aliado por procesar el retiro del empleado
+        $ingRetiroCampo = $planillasRaw ? (float)($planillasRaw->sum_retiro ?? 0) : 0.0;
+        $ingPlanillas   = $ingAdmon + $ingRetiroCampo;
 
         $afiliacionesRaw = $ingresosRaw->get('afiliacion');
+        // Canal AFILIACIONES: solo 'afiliacion'; dist_* son su distribución interna
         $ingAfiliaciones = $afiliacionesRaw
-            ? ($afiliacionesRaw->sum_afiliacion + $afiliacionesRaw->sum_admon + $afiliacionesRaw->sum_seguro + $afiliacionesRaw->sum_iva)
-            : 0;
+            ? (float)($afiliacionesRaw->sum_afiliacion ?? 0)
+            : 0.0;
 
         $tramitesRaw = $ingresosRaw->get('otro_ingreso');
         $ingTramites = $tramitesRaw
-            ? ($tramitesRaw->sum_admon + $tramitesRaw->sum_otros)
-            : 0;
+            ? ((float)($tramitesRaw->sum_admon ?? 0) + (float)($tramitesRaw->sum_otros ?? 0))
+            : 0.0;
 
         $ingresos = [
             'planillas'   => (float)$ingPlanillas,
@@ -486,6 +502,32 @@ class InformeController extends Controller
             'tramites'    => (float)$ingTramites,
             'total'       => (float)($ingPlanillas + $ingAfiliaciones + $ingTramites)
         ];
+
+        // ── Desglose canal ADMON (para la vista de 3 canales) ────────────────
+        $desgloseAdmon = [
+            'admon'        => (float)($planillasRaw->sum_admon       ?? 0),
+            'seguro'       => (float)($planillasRaw->sum_seguro      ?? 0),
+            'mensajeria'   => (float)($planillasRaw->sum_mensajeria  ?? 0),
+            'iva'          => (float)($planillasRaw->sum_iva         ?? 0),
+            'otros_admon'  => (float)($planillasRaw->sum_otros_admon ?? 0),
+            'retiro_campo' => (float)($planillasRaw->sum_retiro      ?? 0),
+            'admin_asesor' => (float)($planillasRaw->sum_admin_asesor?? 0), // comisión informativa
+        ];
+
+        // ── Desglose canal AFILIACIONES (para la vista de 3 canales) ──────────
+        $desgloseAfiliaciones = [
+            'afiliacion'    => (float)($afiliacionesRaw->sum_afiliacion  ?? 0),
+            'dist_admon'    => (float)($afiliacionesRaw->sum_dist_admon  ?? 0),
+            'dist_asesor'   => (float)($afiliacionesRaw->sum_dist_asesor ?? 0),
+            'dist_retiro'   => (float)($afiliacionesRaw->sum_dist_retiro ?? 0),
+            'dist_utilidad' => (float)($afiliacionesRaw->sum_dist_utilidad?? 0),
+            // Distribuido total para verificar que sume igual a afiliacion
+            'distribuido'   => (float)(($afiliacionesRaw->sum_dist_admon ?? 0)
+                                     + ($afiliacionesRaw->sum_dist_asesor  ?? 0)
+                                     + ($afiliacionesRaw->sum_dist_retiro  ?? 0)
+                                     + ($afiliacionesRaw->sum_dist_utilidad?? 0)),
+        ];
+
 
         // ── SS de terceros, mora recogida y desglose ingresos SS en una sola consulta ──
         $facturasData = DB::table('facturas')
@@ -638,10 +680,11 @@ class InformeController extends Controller
 
         // $costoRetiros ya fue definido y calculado al inicio del método
 
-        // Gastos operativos (sin planillas SS ni traslados efectivo→banco)
+        // Gastos operativos (sin planillas SS, traslados efectivo→banco ni banco→banco)
         $gastosOp = DB::table('gastos')->where('aliado_id',$aid)
             ->where('tipo','!=','pago_planilla')
             ->where('tipo','!=','efectivo_banco')   // traslado interno, no es egreso real
+            ->where('forma_pago','!=','banco_banco') // transferencia interna entre cuentas
             ->whereMonth('fecha',$mes)->whereYear('fecha',$anio)
             ->selectRaw('ISNULL(SUM(CAST(valor AS BIGINT)), 0) AS total')
             ->value('total');
@@ -745,6 +788,14 @@ class InformeController extends Controller
             ->where('valor_efectivo', '>', 0)
             ->sum('valor_efectivo');
 
+        // Anticipos cobrados en efectivo o nequi en el mes (no devueltos)
+        $efAnticipos = (float) DB::table('anticipos')
+            ->where('aliado_id', $aid)
+            ->whereIn('forma_pago', ['efectivo', 'nequi'])
+            ->whereMonth('fecha_pago', $mes)->whereYear('fecha_pago', $anio)
+            ->whereNotIn('estado', ['devuelto'])
+            ->sum('valor');
+
         $efSalidas = (float) DB::table('gastos')
             ->where('aliado_id', $aid)
             ->whereMonth('fecha', $mes)->whereYear('fecha', $anio)
@@ -752,9 +803,11 @@ class InformeController extends Controller
             ->sum('valor');
 
         $efMes = (object)[
-            'entradas' => $efEntradas,
-            'salidas'  => $efSalidas,
-            'neto'     => $efEntradas - $efSalidas,
+            'entradas'   => $efEntradas + $efAnticipos,
+            'anticipos'  => $efAnticipos,
+            'facturas'   => $efEntradas,
+            'salidas'    => $efSalidas,
+            'neto'       => ($efEntradas + $efAnticipos) - $efSalidas,
         ];
 
         // Desglose diario
@@ -785,7 +838,8 @@ class InformeController extends Controller
             'anticipos','cobradosAntes',
             'moraRecogida', 'saldoAsesores',
             'aid', 'efMes',
-            'totalAnticiposDisponibles', 'cantAnticiposDisponibles'
+            'totalAnticiposDisponibles', 'cantAnticiposDisponibles',
+            'desgloseAdmon', 'desgloseAfiliaciones', 'costoRetiros', 'ingRetiroCampo'
         ));
     }
 
@@ -904,6 +958,48 @@ class InformeController extends Controller
         return response()->json([
             'ok'  => true,
             'url' => \Storage::url($path),
+        ]);
+    }
+
+    // ── JSON: detalle gastos operativos (para modal Egresos Operativos) ──────
+    public function gastosDetalle(Request $request)
+    {
+        $this->checkFinanciero();
+        $aid  = $this->aliadoId();
+        $mes  = (int)$request->input('mes',  now()->month);
+        $anio = (int)$request->input('anio', now()->year);
+
+        $gastos = DB::table('gastos AS g')
+            ->leftJoin('users AS u',         'u.id',  '=', 'g.usuario_id')
+            ->leftJoin('banco_cuentas AS bc', 'bc.id', '=', 'g.banco_origen_id')
+            ->where('g.aliado_id', $aid)
+            ->where('g.tipo', '!=', 'pago_planilla')
+            ->where('g.tipo', '!=', 'efectivo_banco')   // traslado interno
+            ->where('g.forma_pago', '!=', 'banco_banco') // transferencia entre cuentas, no es egreso
+            ->whereMonth('g.fecha', $mes)
+            ->whereYear('g.fecha', $anio)
+            ->select(
+                'g.id', 'g.fecha', 'g.tipo', 'g.descripcion', 'g.pagado_a',
+                'g.forma_pago', 'g.banco_origen_id', 'g.banco_destino_id',
+                'g.valor', 'g.recibo_caja', 'g.observacion', 'g.imagen_path',
+                'u.nombre AS usuario_nombre',
+                'bc.banco AS banco_nombre', 'bc.nombre AS banco_titular'
+            )
+            ->orderByDesc('g.fecha')
+            ->orderByDesc('g.id')
+            ->get()
+            ->map(function ($g) {
+                $g->imagen_url = $g->imagen_path
+                    ? \Storage::url($g->imagen_path)
+                    : null;
+                return $g;
+            });
+
+        return response()->json([
+            'ok'     => true,
+            'gastos' => $gastos,
+            'total'  => $gastos->sum('valor'),
+            'count'  => $gastos->count(),
         ]);
     }
 
@@ -1110,17 +1206,56 @@ class InformeController extends Controller
             ];
         })->sortBy('asesor_nombre')->values();
 
-        $totalEntradas = (float)$entradas->sum('valor');
-        $totalSalidas  = (float)$salidas->sum('valor');
-        $saldoEfectivo = $totalEntradas - $totalSalidas;
+        // ── Totales reales usando la misma lógica que el desglose por asesor ──
+        // Así el neto del card = TOTAL ASESORES de la tabla (facturas + anticipos - gastos)
+        $totalFacturas  = (float)$entradas->sum('valor');
+        $totalAnticipos = (float)collect($porAsesor)->sum('anticipos_ef');
+        $totalEntradas  = $totalFacturas + $totalAnticipos;
+        $totalSalidas   = (float)$salidas->sum('valor');
+        $saldoEfectivo  = (float)collect($porAsesor)->sum('efectivo_neto');
+
+        // Lista de anticipos para el desglose en el modal
+        $anticiposDetalle = DB::table('anticipos AS a')
+            ->where('a.aliado_id', $aid)
+            ->whereIn('a.forma_pago', ['efectivo', 'nequi'])
+            ->whereMonth('a.fecha_pago', $mes)
+            ->whereYear('a.fecha_pago', $anio)
+            ->whereNotIn('a.estado', ['devuelto'])
+            ->leftJoin('users AS u', 'u.id', '=', 'a.usuario_id')
+            ->selectRaw("
+                a.id,
+                CONVERT(VARCHAR(10), a.fecha_pago, 120) AS fecha,
+                a.valor,
+                a.forma_pago,
+                a.referencia,
+                a.estado,
+                ISNULL(u.nombre, '—') AS usuario_nombre,
+                CASE
+                    WHEN a.empresa_id IS NOT NULL
+                        THEN ISNULL((SELECT TOP 1 em.empresa FROM empresas em WHERE em.id = a.empresa_id), '—')
+                    WHEN a.cedula IS NOT NULL
+                        THEN ISNULL((SELECT TOP 1 LTRIM(RTRIM(
+                            ISNULL(cl.primer_nombre,'') + ' ' +
+                            ISNULL(cl.segundo_nombre,'') + ' ' +
+                            ISNULL(cl.primer_apellido,'') + ' ' +
+                            ISNULL(cl.segundo_apellido,'')
+                        )) FROM clientes cl WHERE cl.cedula = a.cedula AND cl.aliado_id = {$aid}), a.cedula)
+                    ELSE '—'
+                END AS nombre_cliente
+            ")
+            ->orderBy('a.fecha_pago')
+            ->get();
 
         return response()->json([
-            'entradas'       => $entradas,
-            'salidas'        => $salidas,
-            'por_asesor'     => $porAsesor,
-            'total_entradas' => $totalEntradas,
-            'total_salidas'  => $totalSalidas,
-            'saldo_efectivo' => $saldoEfectivo,
+            'entradas'        => $entradas,
+            'anticipos'       => $anticiposDetalle,
+            'salidas'         => $salidas,
+            'por_asesor'      => $porAsesor,
+            'total_facturas'  => $totalFacturas,
+            'total_anticipos' => $totalAnticipos,
+            'total_entradas'  => $totalEntradas,
+            'total_salidas'   => $totalSalidas,
+            'saldo_efectivo'  => $saldoEfectivo,
         ]);
     }
 
@@ -1360,6 +1495,221 @@ class InformeController extends Controller
         ));
     }
 
+    // ── Vista de Auditoría de Facturas ────────────────────────────────
+    public function auditoriaFacturas(Request $request)
+    {
+        $this->checkAdmin();
+        $aid  = $this->aliadoId();
+        // $mes  = período de facturación (no tiene default, el usuario lo filtra desde la columna)
+        $mes  = $request->has('mes') && $request->input('mes') !== ''
+                ? (int)$request->input('mes') : null;
+        $anio    = (int)$request->input('anio',    now()->year);
+        $tipo    = $request->input('tipo',          'todos');
+        $estado  = $request->input('estado',        'todos');
+        $forma   = $request->input('forma',         'todos');
+        $cobro   = $request->input('cobro',         'todos');
+        $asId    = $request->input('asesor_id',     'todos');
+        // mes_pago: mes del PAGO — default = mes actual al entrar por primera vez
+        $mesPago = $request->has('mes_pago')
+                   ? $request->input('mes_pago', 'todos')
+                   : (string)now()->month;
+        $sortDir = $request->input('sort_dir',     'desc');
+        $buscar  = trim($request->input('buscar',  ''));
+        $banco   = $request->input('banco',          'todos');  // filtro por banco_cuentas.banco
+
+        // ── Closure de filtros reutilizable ──────────────────────────
+        $applyFiltros = function($q) use ($mes,$tipo,$estado,$forma,$cobro,$asId,$mesPago,$buscar,$banco) {
+            if ($mes)                                  { $q->where('f.mes', $mes); }
+            if ($mesPago !== '' && $mesPago !== 'todos') { $q->whereMonth('f.fecha_pago', (int)$mesPago); }
+            if ($tipo   !== 'todos') { $q->where('f.tipo',       $tipo); }
+            if ($estado !== 'todos') { $q->where('f.estado',     $estado); }
+            if ($forma  !== 'todos') { $q->where('f.forma_pago', $forma); }
+            if ($cobro === 'consignado') { $q->where('f.valor_consignado',  '>', 0); }
+            if ($cobro === 'efectivo')   { $q->where('f.valor_efectivo',    '>', 0); }
+            if ($cobro === 'prestamo')   { $q->where('f.valor_prestamo',    '>', 0); }
+            if ($cobro === 'anticipo')   { $q->where('f.anticipo_aplicado', '>', 0); }
+            if ($asId   !== 'todos')     { $q->where('f.usuario_id', $asId); }
+            if ($buscar !== '') {
+                $q->where(function($sq) use ($buscar) {
+                    $sq->where('f.cedula',         'like', "%{$buscar}%")
+                       ->orWhere('f.numero_factura','like', "%{$buscar}%")
+                       ->orWhere('f.np',           'like', "%{$buscar}%");
+                });
+            }
+            if ($banco !== 'todos') {
+                $q->whereExists(function($sq) use ($banco) {
+                    $sq->from('consignaciones AS cs')
+                       ->join('banco_cuentas AS bc', 'bc.id', '=', 'cs.banco_cuenta_id')
+                       ->join('facturas AS fx', 'fx.id', '=', 'cs.factura_id')
+                       ->whereRaw("
+                           (
+                               fx.id = f.id
+                               OR (
+                                   fx.numero_factura = f.numero_factura 
+                                   AND fx.numero_factura <> '0'
+                                   AND fx.numero_factura IS NOT NULL
+                                   AND fx.aliado_id = f.aliado_id
+                                   AND fx.anio = f.anio
+                                   AND fx.deleted_at IS NULL
+                               )
+                           )
+                       ")
+                       ->whereRaw('UPPER(bc.nombre) = UPPER(?)', [$banco]);
+                });
+            }
+        };
+
+        // ── Query principal ───────────────────────────────────────────
+
+
+        $q = DB::table('facturas AS f')
+            ->where('f.aliado_id', $aid)
+            ->whereNull('f.deleted_at')
+            ->where('f.anio', $anio);
+
+        $applyFiltros($q);
+
+        $q->selectRaw("
+            f.id,
+            f.numero_factura,
+            CONVERT(VARCHAR(10), f.fecha_pago, 120)  AS fecha_pago,
+            f.mes,
+            f.anio,
+            f.tipo,
+            f.estado,
+            f.cedula,
+            f.empresa_id,
+            f.np,
+            f.forma_pago,
+            f.es_prestamo,
+            f.usuario_id,
+            ISNULL(f.valor_consignado,  0) AS valor_consignado,
+            ISNULL(f.valor_efectivo,    0) AS valor_efectivo,
+            ISNULL(f.valor_prestamo,    0) AS valor_prestamo,
+            ISNULL(f.anticipo_aplicado, 0) AS anticipo_aplicado,
+            ISNULL(f.admon,       0) AS admon,
+            ISNULL(f.seguro,      0) AS seguro,
+            ISNULL(f.mensajeria,  0) AS mensajeria,
+            ISNULL(f.iva,         0) AS iva,
+            ISNULL(f.otros,       0) AS otros,
+            ISNULL(f.retiro,      0) AS retiro,
+            ISNULL(f.mora,        0) AS mora,
+            ISNULL(f.afiliacion,  0) AS afiliacion,
+            ISNULL(f.v_eps,       0) AS v_eps,
+            ISNULL(f.v_afp,       0) AS v_afp,
+            ISNULL(f.v_arl,       0) AS v_arl,
+            ISNULL(f.v_caja,      0) AS v_caja,
+            ISNULL(f.total_ss,    0) AS total_ss,
+            ISNULL(f.c_asesor,    0) AS c_asesor,
+            ISNULL(f.c_utilidad,  0) AS c_utilidad,
+            ISNULL(f.total,       0) AS total,
+            ISNULL(f.saldo_proximo, 0) AS saldo_proximo,
+            CASE
+                WHEN f.empresa_id IS NOT NULL
+                    THEN ISNULL((SELECT TOP 1 em.empresa FROM empresas em WHERE em.id = f.empresa_id), '—')
+                WHEN f.cedula IS NOT NULL
+                    THEN ISNULL((SELECT TOP 1 LTRIM(RTRIM(
+                        ISNULL(cl.primer_nombre,'') + ' ' + ISNULL(cl.primer_apellido,'')
+                    )) FROM clientes cl WHERE cl.cedula = f.cedula AND cl.aliado_id = {$aid}), f.cedula)
+                ELSE '—'
+            END AS nombre_cliente,
+            ISNULL((SELECT TOP 1 u.nombre FROM users u WHERE u.id = f.usuario_id), '—') AS asesor_nombre,
+            ISNULL((SELECT TOP 1 bc.nombre
+                    FROM consignaciones cs
+                    JOIN banco_cuentas bc ON bc.id = cs.banco_cuenta_id
+                    JOIN facturas fx ON fx.id = cs.factura_id
+                    WHERE (
+                        fx.id = f.id
+                        OR (
+                            fx.numero_factura = f.numero_factura 
+                            AND fx.numero_factura <> '0'
+                            AND fx.numero_factura IS NOT NULL
+                            AND fx.aliado_id = f.aliado_id
+                            AND fx.anio = f.anio
+                            AND fx.deleted_at IS NULL
+                        )
+                    )
+                    ORDER BY cs.id), NULL) AS nombre_banco
+        ");
+
+        if ($sortDir === 'asc') {
+            $q->orderBy('f.fecha_pago')->orderBy('f.numero_factura');
+        } else {
+            $q->orderByDesc('f.fecha_pago')->orderByDesc('f.numero_factura');
+        }
+        $facturas = $q->get();
+
+        // ── Totalizadores ─────────────────────────────────────────────
+        $qTot = DB::table('facturas AS f')
+            ->where('f.aliado_id', $aid)
+            ->whereNull('f.deleted_at')
+            ->where('f.anio', $anio);
+        $applyFiltros($qTot);
+        $tots = $qTot->selectRaw("
+            COUNT(*)                                AS cant,
+            SUM(ISNULL(f.total,          0))        AS total,
+            SUM(ISNULL(f.valor_consignado,  0))     AS tot_consig,
+            SUM(ISNULL(f.valor_efectivo,    0))     AS tot_efect,
+            SUM(ISNULL(f.valor_prestamo,    0))     AS tot_prestamo,
+            SUM(ISNULL(f.anticipo_aplicado, 0))     AS tot_anticipo,
+            SUM(ISNULL(f.admon,       0))           AS tot_admon,
+            SUM(ISNULL(f.seguro,      0))           AS tot_seguro,
+            SUM(ISNULL(f.mensajeria,  0))           AS tot_mensajeria,
+            SUM(ISNULL(f.iva,         0))           AS tot_iva,
+            SUM(ISNULL(f.otros,       0))           AS tot_otros,
+            SUM(ISNULL(f.retiro,      0))           AS tot_retiro,
+            SUM(ISNULL(f.mora,        0))           AS tot_mora,
+            SUM(ISNULL(f.afiliacion,  0))           AS tot_afiliacion,
+            SUM(ISNULL(f.v_eps,       0))           AS tot_eps,
+            SUM(ISNULL(f.v_afp,       0))           AS tot_afp,
+            SUM(ISNULL(f.v_arl,       0))           AS tot_arl,
+            SUM(ISNULL(f.v_caja,      0))           AS tot_caja,
+            SUM(ISNULL(f.total_ss,    0))           AS tot_ss,
+            SUM(ISNULL(f.c_asesor,    0))           AS tot_asesor,
+            SUM(ISNULL(f.c_utilidad,  0))           AS tot_utilidad
+        ")->first();
+
+        $meses = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio',
+                  'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+        // ── Opciones para dropdowns ───────────────────────────────────
+        $baseOpc = DB::table('facturas')->where('aliado_id', $aid)
+            ->whereNull('deleted_at')->where('anio', $anio);
+
+        $opcionesForma = (clone $baseOpc)->whereNotNull('forma_pago')
+            ->distinct()->orderBy('forma_pago')->pluck('forma_pago');
+
+        $opcionesPeriodo = (clone $baseOpc)
+            ->selectRaw('DISTINCT mes AS nmes')->orderByRaw('mes')->pluck('nmes');
+
+        $opcionesTipo = (clone $baseOpc)->whereNotNull('tipo')
+            ->distinct()->orderBy('tipo')->pluck('tipo');
+
+        $opcionesAsesor = DB::table('facturas AS f')
+            ->where('f.aliado_id', $aid)->whereNull('f.deleted_at')
+            ->where('f.anio', $anio)->whereNotNull('f.usuario_id')
+            ->join('users AS u', 'u.id', '=', 'f.usuario_id')
+            ->selectRaw('DISTINCT f.usuario_id AS id, u.nombre')
+            ->orderBy('u.nombre')->get();
+
+        // Bancos disponibles en la consulta actual (ya con filtros aplicados)
+        $qBancos = DB::table('facturas AS f')
+            ->where('f.aliado_id', $aid)->whereNull('f.deleted_at')->where('f.anio', $anio);
+        $applyFiltros($qBancos);
+        $opcionesBanco = $qBancos
+            ->join('consignaciones AS cs', 'cs.factura_id', '=', 'f.id')
+            ->join('banco_cuentas AS bc', 'bc.id', '=', 'cs.banco_cuenta_id')
+            ->whereNotNull('bc.nombre')->where('bc.nombre', '<>', '')
+            ->selectRaw('DISTINCT UPPER(bc.nombre) AS banco')
+            ->orderBy('banco')->pluck('banco');
+
+        return view('admin.informes.auditoria_facturas', compact(
+            'facturas','tots','mes','anio','tipo','estado','forma','cobro','asId',
+            'mesPago','sortDir','buscar','banco',
+            'meses','opcionesForma','opcionesPeriodo','opcionesTipo','opcionesAsesor','opcionesBanco'
+        ));
+    }
+
 
     private function desgloseDiario(int $aid, int $mes, int $anio): array
     {
@@ -1367,7 +1717,7 @@ class InformeController extends Controller
             ->where('aliado_id',$aid)->whereNull('deleted_at')
             ->whereNotNull('fecha_pago')
             ->whereMonth('fecha_pago',$mes)->whereYear('fecha_pago',$anio)
-            ->whereIn('estado',['pagada','abono'])
+            ->whereIn('estado',['pagada','abono','prestamo'])
             ->selectRaw('DAY(fecha_pago) AS dia, tipo,
                 COUNT(*) AS cant_filas,
                 SUM(admon+seguro+mensajeria+otros+iva+retiro) AS ing_planilla,
@@ -1381,6 +1731,7 @@ class InformeController extends Controller
             ->where('aliado_id',$aid)
             ->where('tipo','!=','pago_planilla')
             ->where('tipo','!=','efectivo_banco')   // traslado interno, no es egreso real
+            ->where('forma_pago','!=','banco_banco') // transferencia entre cuentas, no es egreso
             ->whereMonth('fecha',$mes)->whereYear('fecha',$anio)
             ->selectRaw('DAY(fecha) AS dia, ISNULL(SUM(CAST(valor AS BIGINT)), 0) AS total')
             ->groupByRaw('DAY(fecha)')

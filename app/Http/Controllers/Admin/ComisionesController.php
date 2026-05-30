@@ -193,6 +193,8 @@ class ComisionesController extends Controller
         $query = DB::table('facturas AS f')
             ->join('contratos AS c', 'c.id', '=', 'f.contrato_id')
             ->leftJoin('asesores AS a', 'a.id', '=', 'c.asesor_id')
+            ->leftJoin('planes_contrato AS pc', 'pc.id', '=', 'c.plan_id')
+            ->leftJoin('tipo_modalidad AS tm', 'tm.id', '=', 'c.tipo_modalidad_id')
             ->leftJoin('clientes AS cl', function ($j) use ($aid) {
                 $j->on('cl.cedula', '=', 'f.cedula')->where('cl.aliado_id', $aid);
             })
@@ -235,6 +237,8 @@ class ComisionesController extends Controller
                 CONVERT(VARCHAR(10), f.fecha_pago, 120) AS fecha_pago,
                 ISNULL(a.nombre, '—') AS asesor_nombre,
                 c.asesor_id,
+                ISNULL(pc.nombre, '—') AS plan_nombre,
+                ISNULL(tm.tipo_modalidad, '—') AS modalidad_nombre,
                 LTRIM(RTRIM(
                     ISNULL(cl.primer_nombre,'') + ' ' +
                     ISNULL(cl.segundo_nombre,'') + ' ' +

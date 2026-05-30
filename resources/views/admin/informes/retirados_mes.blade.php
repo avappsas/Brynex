@@ -126,6 +126,7 @@
 
                     <th style="padding:.65rem .8rem;text-align:center;font-size:.72rem;text-transform:uppercase;color:#64748b;min-width:55px;">Días</th>
                     <th style="padding:.65rem .8rem;text-align:center;font-size:.72rem;text-transform:uppercase;color:#64748b;min-width:90px;">Fecha Retiro</th>
+                    <th style="padding:.65rem .8rem;text-align:center;font-size:.72rem;text-transform:uppercase;color:#64748b;min-width:110px;" title="Fecha en que se marcó el retiro en el sistema">🗓 Marcado Retiro</th>
 
                     {{-- Filtro Motivo en el título --}}
                     <th style="padding:.65rem .8rem;text-align:left;min-width:120px;">
@@ -173,6 +174,14 @@
                     <td style="padding:.6rem .8rem;color:#475569;font-weight:600;">{{ $r->modalidad_nombre ?? '—' }}</td>
                     <td style="padding:.6rem .8rem;text-align:center;font-weight:700;color:#334155;">{{ $r->dias_retiro ?? 0 }}</td>
                     <td style="padding:.6rem .8rem;text-align:center;color:#92400e;font-weight:600;">{{ sqldate($r->fecha_retiro)?->format('d/m/Y') }}</td>
+                    <td style="padding:.6rem .8rem;text-align:center;color:#64748b;font-size:.78rem;">
+                        @if($r->fecha_marcado_retiro)
+                            <span title="Fecha en que se marcó el retiro en el sistema">{{ sqldate($r->fecha_marcado_retiro)?->format('d/m/Y') }}</span>
+                            <br><span style="color:#94a3b8;font-size:.7rem;">{{ sqldate($r->fecha_marcado_retiro)?->format('H:i') }}</span>
+                        @else
+                            <span style="color:#cbd5e1">—</span>
+                        @endif
+                    </td>
                     <td style="padding:.6rem .8rem;color:#475569;">{{ $r->motivo ?? '—' }}</td>
                     <td style="padding:.6rem .8rem;text-align:center;white-space:nowrap;">
                         @if($r->tipo_retiro === 'Real')
@@ -193,7 +202,7 @@
             <tfoot>
                 <tr style="background:#f8fafc;border-top:2px solid #cbd5e1;font-weight:700;color:#0d2550;">
                     <td style="padding:.65rem .8rem;text-align:left;" colspan="4">TOTALES ({{ $retirados->count() }} registros)</td>
-                    <td colspan="6"></td>
+                    <td colspan="7"></td>
                     <td style="padding:.65rem .8rem;text-align:right;font-family:monospace;font-weight:700;color:#1e40af;font-size:.85rem;">
                         ${{ number_format($retirados->sum('costo_ss'), 0, ',', '.') }}
                     </td>

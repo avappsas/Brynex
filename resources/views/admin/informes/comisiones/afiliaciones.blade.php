@@ -57,7 +57,6 @@
     /* Panel tabla */
     .panel { background: var(--c-surface); border: 1px solid var(--c-border); border-radius: 14px; overflow: visible; }
     .panel-head {
-        position: sticky; top: 0; z-index: 20;
         background: var(--c-surface);
         border-bottom: 1px solid var(--c-border);
         border-radius: 14px 14px 0 0;
@@ -68,7 +67,7 @@
     .tabla-wrap { overflow-x: auto; }
     table.af-table { width: 100%; border-collapse: collapse; }
     .af-table thead tr th {
-        position: sticky; top: 51px; z-index: 10;
+        position: sticky; top: 0; z-index: 10;
         background: var(--c-surface);
         padding: .55rem .65rem; text-align: left; font-size: .7rem; font-weight: 700;
         color: var(--c-muted); text-transform: uppercase; letter-spacing: .06em;
@@ -127,13 +126,96 @@
 @section('contenido')
 <div class="af-wrap">
 
-    <div class="af-header">
-        <div class="af-title">
-            📋 Distribución de Afiliaciones
+    {{-- Header prominente --}}
+    <div style="background:linear-gradient(135deg,#1e1b4b,#2e1065);border-radius:14px;padding:1.1rem 1.5rem;margin-bottom:1.1rem;display:flex;justify-content:space-between;align-items:center;box-shadow:0 2px 16px rgba(139,92,246,.2);">
+        <div>
+            <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;color:rgba(167,139,250,.6);letter-spacing:.1em;margin-bottom:.25rem;">Canal 2 — {{ \Carbon\Carbon::create()->month($mes)->locale('es')->monthName }} {{ $anio }}</div>
+            <div style="font-size:1.4rem;font-weight:800;color:#fff;display:flex;align-items:center;gap:.5rem;">
+                <span style="font-size:1.3rem;">📋</span> Distribución de Afiliaciones
+            </div>
         </div>
-        <a href="{{ route('admin.informes.comisiones.index', ['mes' => $mes, 'anio' => $anio]) }}" class="btn-back">
+        <a href="{{ route('admin.informes.comisiones.index', ['mes' => $mes, 'anio' => $anio]) }}"
+           style="background:rgba(167,139,250,.15);border:1px solid rgba(167,139,250,.35);color:#c4b5fd;border-radius:8px;padding:.45rem 1rem;font-size:.8rem;font-weight:600;text-decoration:none;transition:background .15s;white-space:nowrap;"
+           onmouseover="this.style.background='rgba(167,139,250,.28)'" onmouseout="this.style.background='rgba(167,139,250,.15)'">
             ← Volver a Comisiones
         </a>
+    </div>
+
+    {{-- ══ Totalizador ══ --}}
+    @php
+        $totAfil      = $facturas->sum(fn($f) => (int)$f->afiliacion);
+        $totAsesor    = $facturas->sum(fn($f) => (int)$f->dist_asesor);
+        $totRetiro    = $facturas->sum(fn($f) => (int)$f->dist_retiro);
+        $totAdmon     = $facturas->sum(fn($f) => (int)$f->dist_admon);
+        $totUtilidad  = $facturas->sum(fn($f) => (int)$f->dist_utilidad);
+        $totDist      = $totAsesor + $totRetiro + $totAdmon + $totUtilidad;
+        $totSinDist   = $totAfil - $totDist;
+        $cntTotal     = $facturas->count();
+        $cntSinDist   = $facturas->where('distribuida', false)->count();
+        $fmt = fn($v) => '$ ' . number_format($v, 0, ',', '.');
+    @endphp
+    <div style="background:var(--c-surface);border:1px solid var(--c-border);border-radius:14px;padding:1rem 1.25rem;margin-bottom:1rem;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.85rem;">
+            <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;color:var(--c-muted);letter-spacing:.07em;">
+                Resumen — {{ \Carbon\Carbon::create()->month($mes)->locale('es')->monthName }} {{ $anio }}
+                <span style="color:var(--c-blue);margin-left:.5rem;">{{ $cntTotal }} registros</span>
+            </div>
+            @if($cntSinDist > 0)
+            <span style="background:rgba(239,68,68,.15);color:#fca5a5;border:1px solid rgba(239,68,68,.3);border-radius:20px;padding:.18rem .65rem;font-size:.68rem;font-weight:700;">
+                ⚠️ {{ $cntSinDist }} sin distribuir
+            </span>
+            @else
+            <span style="background:rgba(16,185,129,.1);color:#6ee7b7;border:1px solid rgba(16,185,129,.25);border-radius:20px;padding:.18rem .65rem;font-size:.68rem;font-weight:700;">
+                ✅ Todo distribuido
+            </span>
+            @endif
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:.75rem;">
+            {{-- Total Afiliaciones --}}
+            <div style="background:rgba(139,92,246,.08);border:1px solid rgba(139,92,246,.2);border-radius:10px;padding:.65rem .85rem;">
+                <div style="font-size:.6rem;font-weight:700;text-transform:uppercase;color:rgba(139,92,246,.7);letter-spacing:.06em;margin-bottom:.3rem;">Total Afiliaciones</div>
+                <div style="font-size:.95rem;font-weight:800;color:#a78bfa;font-family:monospace;">{{ $fmt($totAfil) }}</div>
+            </div>
+            {{-- Asesor --}}
+            <div style="background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.2);border-radius:10px;padding:.65rem .85rem;">
+                <div style="font-size:.6rem;font-weight:700;text-transform:uppercase;color:rgba(245,158,11,.7);letter-spacing:.06em;margin-bottom:.3rem;">💼 Asesor</div>
+                <div style="font-size:.95rem;font-weight:800;color:#fbbf24;font-family:monospace;">{{ $fmt($totAsesor) }}</div>
+                @if($totAfil > 0)<div style="font-size:.62rem;color:rgba(245,158,11,.5);margin-top:.15rem;">{{ number_format($totAsesor/$totAfil*100,1) }}%</div>@endif
+            </div>
+            {{-- Retiro --}}
+            <div style="background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.18);border-radius:10px;padding:.65rem .85rem;">
+                <div style="font-size:.6rem;font-weight:700;text-transform:uppercase;color:rgba(239,68,68,.7);letter-spacing:.06em;margin-bottom:.3rem;">🔒 Retiro</div>
+                <div style="font-size:.95rem;font-weight:800;color:#f87171;font-family:monospace;">{{ $fmt($totRetiro) }}</div>
+                @if($totAfil > 0)<div style="font-size:.62rem;color:rgba(239,68,68,.5);margin-top:.15rem;">{{ number_format($totRetiro/$totAfil*100,1) }}%</div>@endif
+            </div>
+            {{-- Gastos/Admon --}}
+            <div style="background:rgba(59,130,246,.07);border:1px solid rgba(59,130,246,.18);border-radius:10px;padding:.65rem .85rem;">
+                <div style="font-size:.6rem;font-weight:700;text-transform:uppercase;color:rgba(59,130,246,.7);letter-spacing:.06em;margin-bottom:.3rem;">🏢 Gastos/Admon</div>
+                <div style="font-size:.95rem;font-weight:800;color:#93c5fd;font-family:monospace;">{{ $fmt($totAdmon) }}</div>
+                @if($totAfil > 0)<div style="font-size:.62rem;color:rgba(59,130,246,.5);margin-top:.15rem;">{{ number_format($totAdmon/$totAfil*100,1) }}%</div>@endif
+            </div>
+            {{-- Utilidad --}}
+            <div style="background:rgba(16,185,129,.07);border:1px solid rgba(16,185,129,.18);border-radius:10px;padding:.65rem .85rem;">
+                <div style="font-size:.6rem;font-weight:700;text-transform:uppercase;color:rgba(16,185,129,.7);letter-spacing:.06em;margin-bottom:.3rem;">📊 Utilidad</div>
+                <div style="font-size:.95rem;font-weight:800;color:#6ee7b7;font-family:monospace;">{{ $fmt($totUtilidad) }}</div>
+                @if($totAfil > 0)<div style="font-size:.62rem;color:rgba(16,185,129,.5);margin-top:.15rem;">{{ number_format($totUtilidad/$totAfil*100,1) }}%</div>@endif
+            </div>
+        </div>
+        {{-- Barra de progreso distribución --}}
+        @if($totAfil > 0)
+        <div style="margin-top:.75rem;">
+            <div style="display:flex;justify-content:space-between;margin-bottom:.25rem;">
+                <span style="font-size:.62rem;color:var(--c-muted);">Distribuido</span>
+                <span style="font-size:.62rem;color:{{ $totSinDist <= 0 ? '#6ee7b7' : '#fca5a5' }};font-weight:700;">
+                    {{ $fmt($totDist) }} / {{ $fmt($totAfil) }}
+                    @if($totSinDist > 0) — Sin distribuir: {{ $fmt($totSinDist) }} @endif
+                </span>
+            </div>
+            <div style="height:5px;background:rgba(59,130,246,.12);border-radius:3px;overflow:hidden;">
+                <div style="height:100%;width:{{ min(100, round($totDist/$totAfil*100)) }}%;background:{{ $totSinDist <= 0 ? 'linear-gradient(90deg,#10b981,#34d399)' : 'linear-gradient(90deg,#3b82f6,#8b5cf6)' }};border-radius:3px;transition:width .4s;"></div>
+            </div>
+        </div>
+        @endif
     </div>
 
     {{-- Filtros --}}
@@ -175,14 +257,7 @@
         <button type="submit" class="btn-filtrar">🔍 Filtrar</button>
     </form>
 
-    {{-- Alerta si hay sin distribuir --}}
-    @if($totalSinDistribuir > 0)
-        <div class="alerta-sin">
-            ⚠️ Hay <strong>{{ $totalSinDistribuir }}</strong>
-            {{ $totalSinDistribuir === 1 ? 'afiliación sin distribuir' : 'afiliaciones sin distribuir' }}
-            en el período seleccionado.
-        </div>
-    @endif
+
 
     {{-- Tabla --}}
     <div class="panel">
@@ -207,6 +282,7 @@
                         <th>Cliente</th>
                         <th>Empresa</th>
                         <th>Asesor</th>
+                        <th>Plan / Modalidad</th>
                         <th style="text-align:right">Afiliación</th>
                         <th style="text-align:right">💼 Asesor</th>
                         <th style="text-align:right">🔒 Retiro</th>
@@ -223,14 +299,24 @@
                             <strong>#{{ $f->numero_factura }}</strong>
                         </td>
                         <td style="font-size:.78rem;white-space:nowrap;color:var(--c-muted)">
-                            {{ $f->fecha_pago }}
+                            @if($f->fecha_pago)
+                                {{ \Carbon\Carbon::parse($f->fecha_pago)->locale('es')->isoFormat('D-MMMM') }}
+                            @else
+                                —
+                            @endif
                         </td>
                         <td>
                             <div>{{ trim($f->nombre_cliente) ?: $f->cedula }}</div>
                             <div style="font-size:.7rem; color:var(--c-muted)">{{ $f->cedula }}</div>
                         </td>
                         <td style="font-size:.78rem">{{ $f->empresa_nombre }}</td>
-                        <td style="font-size:.78rem">{{ $f->asesor_nombre }}</td>
+                        <td style="font-size:.78rem">
+                            {{ $f->asesor_nombre }}
+                        </td>
+                        <td style="font-size:.72rem;white-space:nowrap;">
+                            <div style="color:var(--c-text);font-weight:600;">{{ $f->plan_nombre }}</div>
+                            <div style="color:var(--c-muted);font-size:.65rem;margin-top:.1rem;">{{ $f->modalidad_nombre }}</div>
+                        </td>
                         <td style="text-align:right; font-weight:700">${{ number_format($f->afiliacion) }}</td>
 
                         {{-- Campos dist (modo lectura) --}}
