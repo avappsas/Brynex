@@ -981,49 +981,77 @@ function mrValidarMes() {
     return true;
 }
 
+// ── Obtener la fecha base para los cálculos del retiro ────────────────────
+function mrGetBaseDate() {
+    const { anio, mes } = mrMesPlan();
+    if (MR.fechaIngreso) {
+        const parts = MR.fechaIngreso.split('-');
+        if (parts.length === 3) {
+            const fAnio = parseInt(parts[0], 10);
+            const fMes  = parseInt(parts[1], 10);
+            const fDia  = parseInt(parts[2], 10);
+            if (fAnio === anio && fMes === mes) {
+                // Ingreso en el mismo mes del plano → la base es la fecha de ingreso
+                return new Date(fAnio, fMes - 1, fDia);
+            }
+        }
+    }
+    // Ingreso en otro mes (o no definido) → la base es el día 1 del mes del plano
+    return new Date(anio, mes - 1, 1);
+}
+
 // ── Establecer fecha/días según mes/año seleccionado ─────────────────────
 function mrSetDefault() {
     // Ocultar error previo al cambiar el select
     const errEl = document.getElementById('mr-mes-error');
     if (errEl) errEl.style.display = 'none';
 
-    const { anio, mes } = mrMesPlan();
-    const mesStr = String(mes).padStart(2, '0');
-    let fechaDefault, diasDefault = 1;
-
-    if (MR.fechaIngreso) {
-        const [fAnio, fMes] = MR.fechaIngreso.split('-').map(Number);
-        if (fAnio === anio && fMes === mes) {
-            // Se afilió exactamente en el mes seleccionado → usar fecha_ingreso, 1 día
-            fechaDefault = MR.fechaIngreso;
-            diasDefault  = 1;
-        } else {
-            // Otro mes → día 1 del mes seleccionado, 1 día
-            fechaDefault = `${anio}-${mesStr}-01`;
-            diasDefault  = 1;
-        }
-    } else {
-        fechaDefault = `${anio}-${mesStr}-01`;
-        diasDefault  = 1;
-    }
+    const baseDate = mrGetBaseDate();
+    const yB = baseDate.getFullYear();
+    const mB = String(baseDate.getMonth() + 1).padStart(2, '0');
+    const dB = String(baseDate.getDate()).padStart(2, '0');
 
     const fechaEl = document.getElementById('mr-fecha');
     const diasEl  = document.getElementById('mr-num-dias');
-    if (fechaEl) fechaEl.value = fechaDefault;
-    if (diasEl)  diasEl.value  = diasDefault;
+    if (fechaEl) fechaEl.value = `${yB}-${mB}-${dB}`;
+    if (diasEl)  diasEl.value  = 1;
 }
 
-// ── Fecha → Días (día del mes, máx 30) ───────────────────────────────────
+// ── Fecha → Días (diferencia con la fecha base, máx 30) ───────────────────
 function mrCalcDias() {
     const val = document.getElementById('mr-fecha')?.value;
     if (!val) return;
-    const dia  = parseInt(val.split('-')[2], 10);
-    const dias = Math.min(dia, 30);
+
+    const parts = val.split('-');
+    if (parts.length !== 3) return;
+    const y = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10);
+    const d = parseInt(parts[2], 10);
+    
+    const selectedDate = new Date(y, m - 1, d);
+    const baseDate = mrGetBaseDate();
+
+    // Si la fecha seleccionada es menor que la base, la ajustamos a la base
+    if (selectedDate < baseDate) {
+        const yB = baseDate.getFullYear();
+        const mB = String(baseDate.getMonth() + 1).padStart(2, '0');
+        const dB = String(baseDate.getDate()).padStart(2, '0');
+        document.getElementById('mr-fecha').value = `${yB}-${mB}-${dB}`;
+        const input = document.getElementById('mr-num-dias');
+        if (input) input.value = 1;
+        return;
+    }
+
+    // Diferencia en días
+    const diffTime = selectedDate - baseDate;
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1;
+    const dias = Math.min(diffDays, 30);
+
     const input = document.getElementById('mr-num-dias');
     if (input) input.value = dias;
 }
 
-// ── Días → Fecha (coloca el día en el mes seleccionado) ──────────────────
+// ── Días → Fecha (suma días a la fecha base en el mes seleccionado) ───────
 function mrCalcFecha() {
     const diasInput = document.getElementById('mr-num-dias');
     const fechaEl   = document.getElementById('mr-fecha');
@@ -1032,11 +1060,23 @@ function mrCalcFecha() {
     if (isNaN(dias) || dias < 1) { dias = 1; diasInput.value = 1; }
     if (dias > 30)               { dias = 30; diasInput.value = 30; }
 
+    const baseDate = mrGetBaseDate();
     const { anio, mes } = mrMesPlan();
-    // Último día real del mes (para no poner 31 en febrero)
-    const ultimoDia = new Date(anio, mes, 0).getDate();
-    const dia = Math.min(dias, ultimoDia);
-    fechaEl.value = `${anio}-${String(mes).padStart(2,'0')}-${String(dia).padStart(2,'0')}`;
+
+    // Calcular nueva fecha sumando (dias - 1) a la base
+    const targetDate = new Date(baseDate.getTime());
+    targetDate.setDate(baseDate.getDate() + (dias - 1));
+
+    // Si la fecha resultante se pasa del mes seleccionado, limitar al último día real del mes
+    const ultimoDiaReal = new Date(anio, mes, 0).getDate();
+    if (targetDate.getMonth() + 1 !== mes || targetDate.getFullYear() !== anio) {
+        fechaEl.value = `${anio}-${String(mes).padStart(2,'0')}-${String(ultimoDiaReal).padStart(2,'0')}`;
+    } else {
+        const y = targetDate.getFullYear();
+        const m = String(targetDate.getMonth() + 1).padStart(2, '0');
+        const d = String(targetDate.getDate()).padStart(2, '0');
+        fechaEl.value = `${y}-${m}-${d}`;
+    }
 }
 
 // ── Toggle tipo retiro ────────────────────────────────────────────────────

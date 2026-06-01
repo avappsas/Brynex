@@ -26,7 +26,7 @@ body{background:#f1f5f9;font-family:'Inter',sans-serif;font-size:.8rem;margin:0}
 .reg-info{margin-left:auto;font-size:.7rem;color:#64748b;white-space:nowrap}
 .reg-info strong{color:#93c5fd}
 /* Tabla: el wrapper ocupa todo el alto restante */
-.wrap{height:calc(100vh - 46px - 36px);overflow:auto;position:relative}
+.wrap{height:calc(100vh - 46px - 36px);overflow:auto;position:relative;padding-bottom:35px}
 table{width:100%;border-collapse:collapse;font-size:.7rem;white-space:nowrap}
 /* Cabecera pegada arriba */
 thead tr th{
@@ -146,6 +146,7 @@ tfoot .col-ss.open,tfoot .col-afil-det.open{display:table-cell}
     <a href="#" class="{{ $estado=='abono' ? 'sel':'' }}"       onclick="return setF('estado','abono')">🟡 Abono</a>
     <a href="#" class="{{ $estado=='prestamo' ? 'sel':'' }}"    onclick="return setF('estado','prestamo')">🟣 Préstamo</a>
     <a href="#" class="{{ $estado=='pre_factura' ? 'sel':'' }}" onclick="return setF('estado','pre_factura')">⬜ Pre-factura</a>
+    <a href="#" class="{{ $estado=='retiro' ? 'sel':'' }}"      onclick="return setF('estado','retiro')">🔴 Retiro</a>
 </div>
 <div class="col-dd" id="ddForma">
     <a href="#" class="{{ $forma=='todos' ? 'sel':'' }}" onclick="return setF('forma','todos')">Todas</a>
@@ -235,7 +236,7 @@ tfoot .col-ss.open,tfoot .col-afil-det.open{display:table-cell}
 <tbody>
 @forelse($facturas as $f)
 @php
-    $esRetiro = ((int)($f->numero_factura ?? 0) === 0);
+    $esRetiro = ((int)($f->numero_factura ?? 0) === 0 && (int)($f->total ?? 0) === 0);
     $tipoMostrar  = $esRetiro ? '🏃 Retiro' : ($tipoLabel[$f->tipo]  ?? $f->tipo);
     $estadoLabel  = $esRetiro ? 'Retiro'    : ucfirst($f->estado);
     $estadoBg     = $esRetiro ? '#dc2626'   : ($estadoColor[$f->estado] ?? '#64748b');
@@ -286,37 +287,6 @@ tfoot .col-ss.open,tfoot .col-afil-det.open{display:table-cell}
 <tr><td colspan="34" style="text-align:center;padding:3rem;color:#94a3b8">Sin resultados.</td></tr>
 @endforelse
 </tbody>
-
-{{-- TOTALES: position:sticky bottom:0 — SIEMPRE VISIBLE --}}
-<tfoot><tr>
-    <td colspan="11" style="color:#93c5fd;font-size:.65rem;font-weight:700">
-        TOTALES — {{ number_format($tots->cant ?? 0) }} fact.
-        @if($cobro!='todos')   &nbsp;·&nbsp;<span style="color:#facc15">{{ $cobroMap[$cobro] }}</span> @endif
-        @if($asId!='todos')    &nbsp;·&nbsp;<span style="color:#c4b5fd">Asesor filtrado</span> @endif
-        @if($mesPago)          &nbsp;·&nbsp;<span style="color:#6ee7b7">Pago {{ $mesesFull[(int)$mesPago] ?? '' }}</span> @endif
-    </td>
-    <td class="num b">{{ $fmt($tots->tot_consig     ?? 0) }}</td>
-    <td class="num g">{{ $fmt($tots->tot_efect      ?? 0) }}</td>
-    <td class="num p">{{ $fmt($tots->tot_prestamo   ?? 0) }}</td>
-    <td class="num a">{{ $fmt($tots->tot_anticipo   ?? 0) }}</td>
-    <td class="num w">{{ $fmt($tots->tot_admon      ?? 0) }}</td>
-    <td class="num w">{{ $fmt($tots->tot_seguro     ?? 0) }}</td>
-    <td class="num w">{{ $fmt($tots->tot_mensajeria ?? 0) }}</td>
-    <td class="num w">{{ $fmt($tots->tot_iva        ?? 0) }}</td>
-    <td class="num r">{{ $fmt($tots->tot_mora       ?? 0) }}</td>
-    <td class="num b">{{ $fmt($tots->tot_afiliacion ?? 0) }}</td>
-    <td class="num w col-afil-det">{{ $fmt($tots->tot_retiro ?? 0) }}</td>
-    <td class="num w col-afil-det">{{ $fmt($tots->tot_otros  ?? 0) }}</td>
-    <td class="num" style="color:#c4b5fd;font-weight:900">{{ $fmt($tots->tot_ss ?? 0) }}</td>
-    <td class="num p col-ss">{{ $fmt($tots->tot_eps  ?? 0) }}</td>
-    <td class="num p col-ss">{{ $fmt($tots->tot_afp  ?? 0) }}</td>
-    <td class="num p col-ss">{{ $fmt($tots->tot_arl  ?? 0) }}</td>
-    <td class="num p col-ss">{{ $fmt($tots->tot_caja ?? 0) }}</td>
-    <td class="num a">{{ $fmt($tots->tot_asesor   ?? 0) }}</td>
-    <td class="num g">{{ $fmt($tots->tot_utilidad ?? 0) }}</td>
-    <td class="num" style="color:#fff;font-size:.78rem;font-weight:900">{{ $fmt($tots->total ?? 0) }}</td>
-    <td></td>
-</tr></tfoot>
 </table>
 </div>{{-- /wrap --}}
 
@@ -400,28 +370,61 @@ tfoot .col-ss.open,tfoot .col-afil-det.open{display:table-cell}
 </div>
 
 <script>
-// ── Sincronizar ancho de totbar con la tabla ──────────────────────
+// ── Sincronizar ancho y posición de totbar con la tabla ──────────────────────
 function syncTotBar() {
-    const ths  = [...document.querySelectorAll('thead tr th')].filter(th => getComputedStyle(th).display !== 'none');
-    const tds  = document.querySelectorAll('#totTable tr td');
+    const mainTable = document.querySelector('.wrap table');
+    if (!mainTable) return;
+    
     const wrap = document.querySelector('.wrap');
+    const totbar = document.getElementById('totbar');
+    const totTable = document.getElementById('totTable');
+    
+    // Alinear el contenedor totbar con el wrap principal (evita desfase por sidebar)
+    if (wrap && totbar) {
+        const wrapRect = wrap.getBoundingClientRect();
+        totbar.style.left = wrapRect.left + 'px';
+        totbar.style.width = wrapRect.width + 'px';
+    }
+    
+    // Obtener y asignar el ancho exacto de la tabla de datos superior a la de totales
+    const tableWidth = mainTable.getBoundingClientRect().width + 'px';
+    if (totTable) {
+        totTable.style.width = tableWidth;
+        totTable.style.minWidth = tableWidth;
+    }
+    
+    const ths  = [...document.querySelectorAll('thead tr th')].filter(th => getComputedStyle(th).display !== 'none');
+    const tds  = [...document.querySelectorAll('#totTable tr td')].filter(td => getComputedStyle(td).display !== 'none');
+    
     // Sincronizar scroll horizontal
-    document.getElementById('totTable').style.transform = `translateX(-${wrap.scrollLeft}px)`;
+    if (totTable && wrap) {
+        totTable.style.transform = `translateX(-${wrap.scrollLeft}px)`;
+    }
+    
     // Copiar ancho real de cada th al td correspondiente
-    let i = 0;
-    ths.forEach(th => {
-        if (tds[i]) {
+    ths.forEach((th, idx) => {
+        if (tds[idx]) {
             const w = th.getBoundingClientRect().width + 'px';
-            tds[i].style.width = w;
-            tds[i].style.minWidth = w;
-            tds[i].style.maxWidth = w;
+            tds[idx].style.width = w;
+            tds[idx].style.minWidth = w;
+            tds[idx].style.maxWidth = w;
         }
-        i++;
     });
 }
 document.querySelector('.wrap').addEventListener('scroll', syncTotBar);
 window.addEventListener('resize', syncTotBar);
+window.addEventListener('load', syncTotBar);
 setTimeout(syncTotBar, 150);
+setTimeout(syncTotBar, 500); // Re-alinear después de 500ms por si hay retraso en fuentes/estilos
+
+// Utilizar ResizeObserver para auto-alinear de forma reactiva ante cualquier cambio de tamaño
+if (window.ResizeObserver) {
+    const observer = new ResizeObserver(() => {
+        syncTotBar();
+    });
+    const mainTable = document.querySelector('.wrap table');
+    if (mainTable) observer.observe(mainTable);
+}
 
 // ── Dropdowns ──────────────────────────────────────────────────────
 let _dd = null;

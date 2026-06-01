@@ -684,10 +684,12 @@ class ContratoController extends Controller
     private function datosFormulario(int $alidoId, ?object $cliente = null, ?int $razonSocialId = null, ?int $excludeContratoId = null): array
     {
         // Planos ya generados para este contrato (para inhabilitar meses del plano en retiros)
+        // Solo inhabilitamos meses que tengan planillas con más de 0 días (evita bloquear por afiliaciones de 0 días).
         $planosExistentes = [];
         if ($excludeContratoId) {
             $planosExistentes = DB::table('planos')
                 ->where('contrato_id', $excludeContratoId)
+                ->where('num_dias', '>', 0)
                 ->whereNull('deleted_at')
                 ->select('mes_plano', 'anio_plano')
                 ->get()
