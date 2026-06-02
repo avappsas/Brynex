@@ -250,7 +250,46 @@ tfoot .col-ss.open,tfoot .col-afil-det.open{display:table-cell}
         #{{ $f->numero_factura }}
     </td>
     <td style="font-size:.68rem">{{ $tipoMostrar }}</td>
-    <td><span class="badge" style="background:{{ $estadoBg }}">{{ $estadoLabel }}</span></td>
+    @php
+        $alertas = [];
+        if ($f->contrato_id) {
+            // Comparar Admon (solo si NO es de tipo afiliacion)
+            if ($f->tipo !== 'afiliacion' && (float)$f->admon < (float)$f->contrato_admon) {
+                $alertas[] = '⚠️ Admon Menor (Factura: $' . number_format($f->admon, 0, ',', '.') . ' vs Contrato: $' . number_format($f->contrato_admon, 0, ',', '.') . ')';
+            }
+            // Comparar Seguro (solo si NO es de tipo afiliacion)
+            if ($f->tipo !== 'afiliacion' && (float)$f->seguro < (float)$f->contrato_seguro) {
+                $alertas[] = '⚠️ Seguro Menor (Factura: $' . number_format($f->seguro, 0, ',', '.') . ' vs Contrato: $' . number_format($f->contrato_seguro, 0, ',', '.') . ')';
+            }
+            // Comparar Afiliacion (solo si es de tipo afiliacion)
+            if ($f->tipo === 'afiliacion' && (float)$f->afiliacion < (float)$f->contrato_costo_afiliacion) {
+                $alertas[] = '⚠️ Afiliación Menor (Factura: $' . number_format($f->afiliacion, 0, ',', '.') . ' vs Contrato: $' . number_format($f->contrato_costo_afiliacion, 0, ',', '.') . ')';
+            }
+            // Historial de cambios
+            if (($f->cant_cambios_contrato ?? 0) > 0) {
+                $alertas[] = '🕒 Tarifas del contrato editadas';
+            }
+        }
+    @endphp
+    <td>
+        <div style="display:flex; align-items:center; gap:.4rem;">
+            <span class="badge" style="background:{{ $estadoBg }}">{{ $estadoLabel }}</span>
+            @if(empty($alertas))
+                <span style="cursor:help; font-size:0.92rem;" title="Conforme">🟢</span>
+            @else
+                <div style="display:flex; gap:.22rem; align-items:center;">
+                    @foreach($alertas as $alt)
+                        @php
+                            $emoji = str_starts_with($alt, '⚠️') ? '⚠️' : (str_starts_with($alt, '🕒') ? '🕒' : '🚨');
+                        @endphp
+                        <span style="font-size:0.92rem; cursor:help;" title="{{ $alt }}">
+                            {{ $emoji }}
+                        </span>
+                    @endforeach
+                </div>
+            @endif
+        </div>
+    </td>
     <td style="max-width:148px;overflow:hidden;text-overflow:ellipsis;font-weight:600;color:#1e293b" title="{{ $f->nombre_cliente }}">{{ $f->nombre_cliente }}</td>
     <td style="color:#94a3b8;font-family:monospace;font-size:.65rem">{{ $f->cedula }}</td>
     <td style="color:#64748b;font-family:monospace;font-size:.65rem">{{ $f->np ?? '—' }}</td>

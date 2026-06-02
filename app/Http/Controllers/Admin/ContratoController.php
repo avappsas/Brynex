@@ -195,11 +195,12 @@ class ContratoController extends Controller
                 ->withErrors(['razon_social_id' => 'No se puede cambiar la Razón Social: ya existe una afiliación en trámite u OK. Para cambiarla, marque retiro del contrato.']);
         }
 
-        // Si hay afiliaciones activas, preservar también modalidad, plan y fecha_ingreso
+        // Si hay afiliaciones activas, preservar también modalidad, plan, encargado y fecha_ingreso
         if ($rsBloquedaPorAfiliacion) {
             $data['tipo_modalidad_id'] = $contrato->tipo_modalidad_id;
             $data['plan_id']           = $contrato->plan_id;
             $data['fecha_ingreso']     = $contrato->fecha_ingreso;
+            $data['encargado_id']      = $contrato->encargado_id;
         }
 
         // Protección razón social: solo admin puede cambiarla si está bloqueada
@@ -245,9 +246,34 @@ class ContratoController extends Controller
             }
         }
 
-        DB::transaction(function () use ($contrato, $data) {
+        DB::transaction(function () use ($contrato, $data, $alidoId) {
             $oldPlanId = $contrato->plan_id;
+
+            // Detectar cambios en campos sensibles de tarifa
+            $cambios = [];
+            foreach (['administracion', 'admon_asesor', 'costo_afiliacion', 'seguro'] as $campo) {
+                if (array_key_exists($campo, $data)) {
+                    $oldVal = (float)($contrato->$campo ?? 0);
+                    $newVal = (float)($data[$campo] ?? 0);
+                    if ($oldVal !== $newVal) {
+                        $cambios[$campo] = [
+                            'old' => $oldVal,
+                            'new' => $newVal
+                        ];
+                    }
+                }
+            }
+
             $contrato->update($data);
+
+            if (!empty($cambios)) {
+                \App\Models\Bitacora::registrar(
+                    'updated', 'Contrato', $contrato->id,
+                    "Tarifas de contrato modificadas (Cédula: {$contrato->cedula}).",
+                    ['cambios' => $cambios],
+                    $alidoId
+                );
+            }
 
             // Si cambio el plan, agregar nuevos radicados pendientes
             if (isset($data['plan_id']) && $data['plan_id'] != $oldPlanId) {

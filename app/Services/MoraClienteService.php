@@ -85,6 +85,22 @@ class MoraClienteService
         return null; // mes muy corto o n demasiado grande
     }
 
+    private static array $cacheConfigAliado = [];
+
+    /**
+     * Obtiene y cachea la configuración del aliado (sin plan específico) en memoria.
+     */
+    private static function getConfigAliado(int $aliadoId)
+    {
+        if (!array_key_exists($aliadoId, self::$cacheConfigAliado)) {
+            self::$cacheConfigAliado[$aliadoId] = DB::table('configuracion_aliado')
+                ->where('aliado_id', $aliadoId)
+                ->whereNull('plan_id')
+                ->first(['mora_dia_habil_inicio', 'mora_minimo', 'mora_segundo']);
+        }
+        return self::$cacheConfigAliado[$aliadoId];
+    }
+
     /**
      * Obtiene el día hábil de vencimiento para una razón social y aliado dados.
      *
@@ -101,10 +117,7 @@ class MoraClienteService
     public static function diaHabilVencimiento(int $aliadoId, int $rsNit, ?int $rsDiaHabil = null): int
     {
         // 1. Configuración global del aliado (mora_dia_habil_inicio)
-        $cfgAliado = DB::table('configuracion_aliado')
-            ->where('aliado_id', $aliadoId)
-            ->whereNull('plan_id')
-            ->first(['mora_dia_habil_inicio']);
+        $cfgAliado = self::getConfigAliado($aliadoId);
 
         if ($cfgAliado && !is_null($cfgAliado->mora_dia_habil_inicio)) {
             return (int) $cfgAliado->mora_dia_habil_inicio;
@@ -133,10 +146,7 @@ class MoraClienteService
      */
     public static function tramosAliado(int $aliadoId): array
     {
-        $cfg = DB::table('configuracion_aliado')
-            ->where('aliado_id', $aliadoId)
-            ->whereNull('plan_id')
-            ->first(['mora_minimo', 'mora_segundo']);
+        $cfg = self::getConfigAliado($aliadoId);
 
         return [
             'mora_minimo'  => (int) ($cfg->mora_minimo  ?? 2000),

@@ -19,6 +19,74 @@ class CobrosController extends Controller
 
     public function index(Request $request)
     {
+        $data = $this->obtenerDatosCobros($request);
+        return view('admin.cobros.index', $data);
+    }
+
+    public function exportar(Request $request)
+    {
+        $data = $this->obtenerDatosCobros($request);
+        $contratos = $data['contratos'];
+        $mes = $data['mes'];
+        $anio = $data['anio'];
+
+        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Cobros');
+
+        // Encabezado
+        $headers = ['Cédula', 'Nombre', 'Celular', 'Razón Social', 'Modalidad', 'Valor'];
+        $sheet->fromArray($headers, null, 'A1');
+
+        // Estilo del encabezado
+        $sheet->getStyle('A1:F1')->applyFromArray([
+            'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
+            'fill' => ['fillType' => 'solid', 'startColor' => ['rgb' => '1e40af']],
+        ]);
+
+        $row = 2;
+        foreach ($contratos as $c) {
+            $celularRaw = preg_replace('/\D/', '', $c->cliente?->celular ?? '');
+            $celular = '';
+            if (!empty($celularRaw)) {
+                if (str_starts_with($celularRaw, '57')) {
+                    $celular = $celularRaw;
+                } else {
+                    $celular = '57' . $celularRaw;
+                }
+            }
+
+            $sheet->fromArray([
+                $c->cedula,
+                $c->cliente?->nombre_completo ?? '—',
+                $celular ?: '—',
+                $c->razonSocial?->razon_social ?? '—',
+                $c->tipoModalidad?->nombre ?? '—',
+                (int)($c->total_estimado ?? 0)
+            ], null, "A{$row}");
+
+            $sheet->getStyle("F{$row}")->getNumberFormat()->setFormatCode('$#,##0');
+            $row++;
+        }
+
+        // Auto-ancho columnas
+        foreach (range('A', 'F') as $col) {
+            $sheet->getColumnDimension($col)->setAutoSize(true);
+        }
+
+        $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+        $meses = ['', 'Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+        $filename = "cobros_individuales_{$meses[$mes]}_{$anio}.xlsx";
+        $tmpPath = tempnam(sys_get_temp_dir(), 'cobxls');
+        $writer->save($tmpPath);
+
+        return response()->download($tmpPath, $filename, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ])->deleteFileAfterSend(true);
+    }
+
+    private function obtenerDatosCobros(Request $request)
+    {
         $aliadoId = session('aliado_id_activo');
         $mes      = (int) $request->get('mes',  now()->month);
         $anio     = (int) $request->get('anio', now()->year);
@@ -267,9 +335,6 @@ class CobrosController extends Controller
             $totalEstimado     = $flags['totalEstimado'];
 
             // ── Datos de la factura (solo estado y número) ───────
-            // 'factura emitida' = cualquier factura que no sea pre_factura ni esté anulada.
-            // Si existe una factura con estado pagada, abono o prestamo → ya fue facturada.
-            // prestamo = ya se facturó en modalidad préstamo → NO debe aparecer en cobros.
             $facturaEmitida  = $fact && !in_array($fact->estado, ['pre_factura', 'anulada']);
             $facturaPagada   = $fact && in_array($fact->estado, ['pagada', 'abono', 'prestamo']);
             $facturaEstado   = $fact?->estado;
@@ -312,9 +377,6 @@ class CobrosController extends Controller
             $c->fact_n_plano     = $facturaNPlano;
             $c->fact_saldo_pend  = $facturaSaldoPend;
             // ── Entidades para cuenta de cobro individual ─────────────
-            // ARL: campo real es 'nombre_arl'.
-            // Si el contrato tiene arl_id propio → usar esa relación.
-            // Si no, caer al lookup por arl_nit de la Razón Social.
             $arlObj = $c->arl
                 ?? ($c->razonSocial?->arl_nit ? ($arlPorNit->get($c->razonSocial->arl_nit) ?? null) : null);
             $c->eps_nombre      = $c->eps?->nombre         ?? 'Ninguna';
@@ -346,8 +408,6 @@ class CobrosController extends Controller
             $c->nombre_empresa = $c->es_empresa ? $empresa->empresa : null;
 
             // ── Detección Plan Ingreso-Retiro: planilla > 5 días ──────────
-            // Si tipo_modalidad=12 y no es mes de afiliación y diasCotizar>5
-            // → el sistema debe advertir que hay que rotar Razón Social.
             $esIngresoRetiro  = (int)($c->tipo_modalidad_id) === 12;
             $diasCotizEstim   = 30; // default: mes completo
             if ($esIngresoRetiro && !$esAfil && !$esIndActPrimerMes && $c->fecha_ingreso) {
@@ -358,13 +418,11 @@ class CobrosController extends Controller
                 if ((int)$fIng2->month === $mesAnt && (int)$fIng2->year === $anioAnt) {
                     $diasCotizEstim = max(1, 30 - $fIng2->day + 1);
                 }
-                // Si ingresó antes del mes anterior → 30 días (mes completo)
             }
             $c->es_ir_alerta     = $esIngresoRetiro && !$esAfil && !$esIndActPrimerMes && ($diasCotizEstim > 5);
             $c->dias_cotiz_estim = $diasCotizEstim;
 
             // ── Cuando debe rotar RS: el cobro es AFILIACIÓN del nuevo contrato ──
-            // No se factura la planilla larga → se muestra costo_afiliacion en su lugar.
             if ($c->es_ir_alerta) {
                 $c->total_estimado = (int)($c->costo_afiliacion ?? 0);
                 $c->v_ss           = 0;
@@ -391,11 +449,7 @@ class CobrosController extends Controller
         // ── Filtro estado de pago ───────────────────────────────────
         if ($soloPend === 'pendiente') {
             $contratos = $contratos->filter(function ($c) {
-                // Pendiente = sin factura emitida, o con factura en borrador (pre_factura)
-                // o con pago parcial (abono).
-                // EXCLUIR: 'prestamo', 'pagada' → ya fueron facturados en este período.
                 if ($c->fact_emitida) {
-                    // Solo re-incluir si está en pre_factura (borrador) o abono (pago parcial)
                     return in_array($c->fact_estado, ['pre_factura', 'abono']);
                 }
                 return true; // sin factura → pendiente
@@ -449,13 +503,13 @@ class CobrosController extends Controller
         $bancos       = BancoCuenta::where('aliado_id', $aliadoId)->where('activo', true)->orderBy('nombre')->get();
         $cuentasCobro = BancoCuenta::paraCobro($aliadoId);
 
-        return view('admin.cobros.index', compact(
+        return compact(
             'contratos', 'mes', 'anio',
             'totalAdmon', 'totalPendientes', 'sinLlamar', 'prometieronPago', 'totalSS',
             'razonesDisponibles', 'asesoresDisponibles',
             'rsId', 'asesorId', 'buscar', 'soloInd', 'soloPend', 'sort', 'dir',
             'bancos', 'cuentasCobro', 'afilPlan', 'empresaCliente', 'opcionesEmpresaCliente'
-        ));
+        );
     }
 
     // ─── Registrar llamada ───────────────────────────────────────────

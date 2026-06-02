@@ -39,26 +39,35 @@ class ConfiguracionAliado extends BaseModel
         return $this->belongsTo(User::class, 'encargado_default_id');
     }
 
+    private static array $cacheParaAliado = [];
+
     /**
      * Obtiene la configuración del aliado para un plan dado.
      * Si no existe configuración específica para el plan, devuelve la genérica (plan_id null).
      */
     public static function paraAliado(int $alidoId, ?int $planId = null): ?static
     {
-        // Primero buscar específica por plan
-        if ($planId) {
-            $cfg = static::where('aliado_id', $alidoId)
-                ->where('plan_id', $planId)
-                ->where('activo', true)
-                ->first();
-            if ($cfg) return $cfg;
-        }
+        $key = "{$alidoId}_" . ($planId ?? 'null');
+        if (!array_key_exists($key, self::$cacheParaAliado)) {
+            $cfg = null;
+            // Primero buscar específica por plan
+            if ($planId) {
+                $cfg = static::where('aliado_id', $alidoId)
+                    ->where('plan_id', $planId)
+                    ->where('activo', true)
+                    ->first();
+            }
 
-        // Luego la genérica sin plan
-        return static::where('aliado_id', $alidoId)
-            ->whereNull('plan_id')
-            ->where('activo', true)
-            ->first();
+            if (!$cfg) {
+                // Luego la genérica sin plan
+                $cfg = static::where('aliado_id', $alidoId)
+                    ->whereNull('plan_id')
+                    ->where('activo', true)
+                    ->first();
+            }
+            self::$cacheParaAliado[$key] = $cfg;
+        }
+        return self::$cacheParaAliado[$key];
     }
 
     /**

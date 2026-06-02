@@ -375,6 +375,11 @@ function sortClassC($col, $cs, $cd) {
         <span style="background:rgba(255,255,255,.15);color:#fff;font-size:.85rem;font-weight:800;padding:.3rem .7rem;border-radius:20px;white-space:nowrap;">
             {{ $contratos->count() }} <span style="font-size:.7rem;font-weight:500;opacity:.75;">registros</span>
         </span>
+        <a href="{{ route('admin.cobros.exportar', request()->query()) }}" 
+           style="background:#16a34a;color:#fff;font-size:.8rem;font-weight:700;padding:.3rem .7rem;border-radius:6px;text-decoration:none;display:inline-flex;align-items:center;gap:.3rem;"
+           title="Exportar listado actual a Excel">
+            📥 Excel
+        </a>
     </div>
 </div>
 </form>

@@ -37,6 +37,11 @@
                 <div class="page-title">📱 Configuración WhatsApp por Aliado</div>
                 <small style="color:#64748b">Solo el superadmin de Brynex puede configurar las credenciales de WhatsApp.</small>
             </div>
+            <div>
+                <a href="{{ route('admin.whatsapp.config.global') }}" class="btn-sm btn-primary" style="padding:.5rem 1rem; border-radius:8px; text-decoration:none;">
+                    🔵 Cuenta BRYNEX Global
+                </a>
+            </div>
         </div>
 
         <table class="wa-config-table">

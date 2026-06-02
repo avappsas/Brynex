@@ -27,7 +27,7 @@ class Factura extends BaseModel
         // Sin esto, saldo_proximo = efectivo - total (ignora el anticipo → aparece como deuda).
         'anticipo_aplicado',
         'c_asesor','c_utilidad','retiro',
-        'dist_admon','dist_asesor','dist_retiro','dist_utilidad',
+        'dist_admon','dist_asesor','dist_retiro','dist_utilidad','dist_encargado',
         'np','n_plano','razon_social_id',
         'usuario_id','observacion','obs_factura',
         'motivo_anulacion','anulado_por',

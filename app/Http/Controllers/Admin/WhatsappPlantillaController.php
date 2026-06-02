@@ -139,6 +139,142 @@ class WhatsappPlantillaController extends Controller
     }
 
     /**
+     * Muestra la interfaz para seleccionar e importar plantillas desde Meta.
+     */
+    public function vistaImportar()
+    {
+        $alidoId = session('aliado_id_activo');
+        $config  = WhatsappConfig::paraAliado($alidoId);
+
+        if (!$config->credencialesCompletas()) {
+            return redirect()
+                ->route('admin.whatsapp.plantillas.index')
+                ->with('warning', 'No hay credenciales de WhatsApp configuradas para este aliado.');
+        }
+
+        $templatesMetaRaw = $this->apiService->obtenerPlantillasDeMeta($config);
+        $plantillasLocales = WhatsappPlantilla::delAliado($alidoId)->pluck('nombre')->toArray();
+
+        $plantillasDisponibles = [];
+        foreach ($templatesMetaRaw as $tmpl) {
+            $nombre = $tmpl['name'] ?? '';
+            $yaExiste = in_array($nombre, $plantillasLocales);
+
+            // Parsear componentes para vista previa
+            $parsed = $this->parsearComponentesMeta($tmpl['components'] ?? []);
+
+            $plantillasDisponibles[] = [
+                'id'         => $tmpl['id'] ?? '',
+                'nombre'     => $nombre,
+                'categoria'  => $tmpl['category'] ?? 'UTILITY',
+                'idioma'     => $tmpl['language'] ?? 'es_CO',
+                'estado'     => strtolower($tmpl['status'] ?? 'approved'),
+                'ya_existe'  => $yaExiste,
+                'cuerpo'     => $parsed['cuerpo'],
+                'footer'     => $parsed['footer'],
+                'header_tipo'=> $parsed['headerTipo'],
+                'botones'    => $parsed['botones'],
+            ];
+        }
+
+        return view('admin.whatsapp.plantillas.importar', compact('plantillasDisponibles'));
+    }
+
+    /**
+     * Procesa la importación de las plantillas seleccionadas desde Meta.
+     */
+    public function procesarImportar(Request $request)
+    {
+        $alidoId = session('aliado_id_activo');
+        $config  = WhatsappConfig::paraAliado($alidoId);
+
+        if (!$config->credencialesCompletas()) {
+            return redirect()
+                ->route('admin.whatsapp.plantillas.index')
+                ->with('warning', 'No hay credenciales de WhatsApp configuradas para este aliado.');
+        }
+
+        $request->validate([
+            'plantillas'   => 'required|array',
+            'plantillas.*' => 'required|string',
+        ]);
+
+        $seleccionadas = $request->input('plantillas');
+        $templatesMetaRaw = $this->apiService->obtenerPlantillasDeMeta($config);
+
+        $importadas = 0;
+        foreach ($templatesMetaRaw as $tmpl) {
+            $nombre = $tmpl['name'] ?? '';
+            if (in_array($nombre, $seleccionadas)) {
+                $parsed = $this->parsearComponentesMeta($tmpl['components'] ?? []);
+
+                WhatsappPlantilla::updateOrCreate(
+                    [
+                        'aliado_id' => $alidoId,
+                        'nombre'    => $nombre,
+                    ],
+                    [
+                        'nombre_display'   => str_replace('_', ' ', ucfirst($nombre)),
+                        'categoria'        => $tmpl['category'] ?? 'UTILITY',
+                        'idioma'           => $tmpl['language'] ?? 'es_CO',
+                        'estado'           => strtolower($tmpl['status'] ?? 'approved'),
+                        'meta_template_id' => $tmpl['id'] ?? null,
+                        'creado_en_meta'   => true,
+                        'header_tipo'      => $parsed['headerTipo'],
+                        'header_valor'     => $parsed['headerValor'],
+                        'cuerpo'           => $parsed['cuerpo'],
+                        'footer'           => $parsed['footer'],
+                        'botones'          => $parsed['botones'],
+                        'variables_mapa'   => [],
+                    ]
+                );
+
+                $importadas++;
+            }
+        }
+
+        return redirect()
+            ->route('admin.whatsapp.plantillas.index')
+            ->with('ok', "Se han importado correctamente {$importadas} plantilla(s) de WhatsApp.");
+    }
+
+    /**
+     * Parsea los componentes de Meta en campos relacionales locales.
+     */
+    private function parsearComponentesMeta(array $components): array
+    {
+        $headerTipo = null;
+        $headerValor = null;
+        $cuerpo = '';
+        $footer = null;
+        $botones = [];
+
+        foreach ($components as $comp) {
+            $type = $comp['type'] ?? '';
+            if ($type === 'HEADER') {
+                $headerTipo = $comp['format'] ?? null;
+                $headerValor = $comp['text'] ?? null;
+            } elseif ($type === 'BODY') {
+                $cuerpo = $comp['text'] ?? '';
+            } elseif ($type === 'FOOTER') {
+                $footer = $comp['text'] ?? null;
+            } elseif ($type === 'BUTTONS') {
+                $btns = $comp['buttons'] ?? [];
+                foreach ($btns as $btn) {
+                    $botones[] = [
+                        'tipo'     => $btn['type'] ?? '',
+                        'texto'    => $btn['text'] ?? '',
+                        'url'      => $btn['url'] ?? null,
+                        'telefono' => $btn['phone_number'] ?? null,
+                    ];
+                }
+            }
+        }
+
+        return compact('headerTipo', 'headerValor', 'cuerpo', 'footer', 'botones');
+    }
+
+    /**
      * API: lista plantillas aprobadas (para el selector en el modal de cobros).
      */
     public function apiListarAprobadas()

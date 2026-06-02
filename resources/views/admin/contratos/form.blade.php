@@ -442,12 +442,18 @@
       </div>
       <div>
         <label class="lb">Encargado Afiliacion</label>
-        <select name="encargado_id" style="{{ $S }}">
+        <div class="{{ $rsLock ? 'tip-lock' : '' }}" data-tip="🔒 Bloqueado — hay afiliaciones en trámite u OK">
+        <select name="encargado_id" style="{{ $S }}{{ $rsLock ? 'background:#f1f5f9;color:#1e293b;cursor:not-allowed;opacity:1;' : '' }}"
+            {{ $rsLock ? 'disabled' : '' }}>
           <option value="">-- Responsable --</option>
           @foreach($usuarios as $usr)
           <option value="{{ $usr->id }}" {{ $defEncargado == $usr->id ? 'selected' : '' }}>{{ $usr->nombre }}</option>
           @endforeach
         </select>
+        @if($rsLock)
+        <input type="hidden" name="encargado_id" value="{{ $defEncargado }}">
+        @endif
+        </div>
       </div>
     </div>
 

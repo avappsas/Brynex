@@ -82,7 +82,7 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
         <div class="fin-kpi" style="--c:#f59e0b; cursor:pointer;" onclick="window.location='{{ route('admin.informes.comisiones.index') }}'" title="Ver módulo Comisiones Asesores">
             <div class="val">{{ $fmt($saldoAsesores) }}</div>
             <div class="lab">💼 Comisión Asesores</div>
-            <div class="sub">(desde mayo 2025)</div>
+            <div class="sub">(desde mayo 2026)</div>
         </div>
         {{-- Card nuevo: recuperación de préstamos de meses anteriores --}}
         <div class="fin-kpi" style="--c:#0d9488; cursor:pointer;" onclick="abrirModalRecuperacionPrestamos()" title="Clic para ver detalle de recuperación de préstamos de meses anteriores">
@@ -140,14 +140,30 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
             <div class="fc-body">
                 <div class="fc-section-label">Ingresos cobrados</div>
 
-                @foreach([
-                    ['Administración', $desgloseAdmon['admon'],        '#3b82f6'],
-                    ['Seguro',         $desgloseAdmon['seguro'],       '#0ea5e9'],
-                    ['Mensajería',     $desgloseAdmon['mensajeria'],   '#06b6d4'],
-                    ['IVA',            $desgloseAdmon['iva'],          '#8b5cf6'],
-                    ['Otros admon',    $desgloseAdmon['otros_admon'],  '#a78bfa'],
-                    ['Trámites',       $ingresos['tramites'],          '#10b981'],
-                ] as [$l,$v,$c])
+                @php
+                    $filasCanal1 = [
+                        ['Administración', $desgloseAdmon['admon'],        '#3b82f6'],
+                        ['Seguro',         $desgloseAdmon['seguro'],       '#0ea5e9'],
+                        ['Mensajería',     $desgloseAdmon['mensajeria'],   '#06b6d4'],
+                        ['IVA',            $desgloseAdmon['iva'],          '#8b5cf6'],
+                        ['Otros admon',    $desgloseAdmon['otros_admon'],  '#a78bfa'],
+                    ];
+                    if (($desgloseAdmon['retiro_campo'] ?? 0) > 0) {
+                        $filasCanal1[] = ['Comisión retiros', $desgloseAdmon['retiro_campo'], '#c2410c'];
+                    }
+                    if (($ingresos['tramites'] ?? 0) > 0) {
+                        $filasCanal1[] = ['Trámites', $ingresos['tramites'], '#10b981'];
+                    }
+                    // Mora ganada se maneja en Canal 4, no se muestra aquí
+                    // if (($moraGanancia ?? 0) > 0) {
+                    //     $filasCanal1[] = ['Mora ganada', $moraGanancia, '#f43f5e'];
+                    // }
+                    if (($sobrantePlanilla ?? 0) > 0) {
+                        $filasCanal1[] = ['Excedente planilla', $sobrantePlanilla, '#14b8a6'];
+                    }
+                @endphp
+
+                @foreach($filasCanal1 as [$l,$v,$c])
                 <div class="fc-row">
                     <div class="fc-row-label"><span class="fc-dot" style="background:{{ $c }};"></span>{{ $l }}</div>
                     @if($v > 0)
@@ -168,9 +184,9 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
             <div class="fc-footer" style="background:linear-gradient(135deg,#1e3a8a,#2563eb);">
                 <div>
                     <div class="fc-footer-l">Total Administración</div>
-                    <div class="fc-footer-sub">admon + seguro + iva + otros + trámites</div>
+                    <div class="fc-footer-sub">admon + seguro + iva + otros + trámites + comisiones + excedentes</div>
                 </div>
-                <div class="fc-footer-v">{{ $fmt($ingresos['planillas'] + $ingresos['tramites']) }}</div>
+                <div class="fc-footer-v">{{ $fmt($ingresos['planillas'] + $ingresos['tramites'] + $sobrantePlanilla) }}</div>
             </div>
         </div>
 
@@ -222,6 +238,14 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
                     @else <span class="fc-row-zero">—</span>@endif
                 </div>
 
+                {{-- dist_encargado --}}
+                <div class="fc-row" title="Comisión distribuida al encargado por esta afiliación">
+                    <div class="fc-row-label"><span class="fc-dot" style="background:#8b5cf6;"></span><span style="color:#94a3b8;font-size:.7rem;">→</span> Comisión encargado</div>
+                    @if(($desgloseAfiliaciones['dist_encargado'] ?? 0) > 0)
+                        <span class="fc-row-val" style="color:#8b5cf6;">{{ $fmt($desgloseAfiliaciones['dist_encargado']) }}</span>
+                    @else <span class="fc-row-zero">—</span>@endif
+                </div>
+
                 @php $sinDist = $desgloseAfiliaciones['afiliacion'] - $desgloseAfiliaciones['distribuido']; @endphp
                 <div class="fc-row" style="{{ abs($sinDist) > 1 ? '' : 'opacity:.45;' }}">
                     <div class="fc-row-label"><span class="fc-dot" style="background:#94a3b8;"></span><span style="color:#94a3b8;font-size:.7rem;">→</span> Sin distribuir</div>
@@ -231,13 +255,19 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
                         <span class="fc-row-zero">—</span>
                     @endif
                 </div>
+
+                {{-- Fila agregada para mostrar Total Distribución (Bruto) --}}
+                <div class="fc-row" style="border-top:1px dashed #dddfeb; margin-top:8px; padding-top:8px; font-weight:bold;">
+                    <div class="fc-row-label"><span class="fc-dot" style="background:#5b21b6;"></span>Total Distribución (Bruto)</div>
+                    <span class="fc-row-val" style="color:#5b21b6;">{{ $fmt($desgloseAfiliaciones['afiliacion']) }}</span>
+                </div>
             </div>
             <div class="fc-footer" style="background:linear-gradient(135deg,#5b21b6,#7c3aed);">
                 <div>
-                    <div class="fc-footer-l">Total Afiliaciones</div>
-                    <div class="fc-footer-sub">ingreso bruto del canal</div>
+                    <div class="fc-footer-l">Total Afiliaciones (Neto)</div>
+                    <div class="fc-footer-sub">admon + utilidad (sin comisión ni retiro)</div>
                 </div>
-                <div class="fc-footer-v">{{ $fmt($desgloseAfiliaciones['afiliacion']) }}</div>
+                <div class="fc-footer-v">{{ $fmt($ingresos['afiliaciones']) }}</div>
             </div>
         </div>
 
@@ -627,7 +657,7 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
                 </div>
                 <div style="text-align:right;">
                     <div style="font-size:.62rem;color:rgba(255,255,255,.6);">{{ $mesesEs[$mes] }} {{ $anio }}</div>
-                    <div style="font-size:1rem;font-weight:900;color:#fff;">{{ $fmt($recaudoSS + $moraRecogida) }}</div>
+                    <div style="font-size:1rem;font-weight:900;color:#fff;">{{ $fmt($totalSScanalRaw) }}</div>
                 </div>
             </div>
 
@@ -636,148 +666,143 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
                 $ssBg       = $saldoSS >= 0 ? '#f0fdf4' : '#fef2f2';
                 $ssBorder   = $saldoSS >= 0 ? '#bbf7d0' : '#fecaca';
                 $fmtSS      = fn($v) => ($v >= 0 ? '+' : '') . $fmt($v);
+                
+                // SS atrasada cobrada en este mes (se sumará a la visualización del mes actual)
+                $ssAtrasadasCobradas = max(0.0, $recaudoSS - $ssActuales - $ingresosSS['ss_futuras']);
             @endphp
 
             {{-- Body --}}
-            <div style="padding: 1.1rem; display: flex; flex-direction: column; gap: 0.85rem;">
+            <div style="padding: 1.1rem; display: flex; flex-direction: column; gap: 0.75rem;">
                 
                 {{-- Sección 1: Seguridad Social Operativa --}}
-                <div>
-                    <div style="font-size: .62rem; font-weight: 800; text-transform: uppercase; color: #0f766e; letter-spacing: .05em; border-bottom: 1px solid #ccfbf1; padding-bottom: .25rem; margin-bottom: .4rem;">
-                        📥 SS Operativa ({{ $mesesEs[$mesAnt] }} + {{ $mesesEs[$mes] }})
+                <div style="display: flex; flex-direction: column; gap: 0.35rem;">
+                    
+                    {{-- SS MES ANTERIOR --}}
+                    @if($saldoSSMesAnterior > 0)
+                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: .78rem;">
+                        <span style="color: #475569; display: flex; align-items: center; gap: .35rem;">
+                            <span style="font-size: .9rem;">📦</span> Ss mes {{ $mesesEs[$mesAnt] }}
+                        </span>
+                        <span style="font-family: monospace; font-weight: 700; color: #0369a1;">
+                            {{ $fmt($saldoSSMesAnterior) }}
+                        </span>
                     </div>
-                    <div style="display: flex; flex-direction: column; gap: 0.35rem;">
-                        
-                        {{-- SS MES ANTERIOR --}}
-                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: .78rem;">
-                            <span style="color: #475569; display: flex; align-items: center; gap: .35rem;">
-                                <span style="font-size: .9rem;">📦</span> SS MES {{ strtoupper($mesesEs[$mesAnt]) }}
-                            </span>
-                            <span style="font-family: monospace; font-weight: 700; color: #0369a1;">
-                                {{ $saldoSSMesAnterior > 0 ? $fmt($saldoSSMesAnterior) : '—' }}
-                            </span>
-                        </div>
-                        
-                        {{-- SS RECAUDADO MES ACTUAL --}}
-                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: .78rem;">
-                            <span style="color: #475569; display: flex; align-items: center; gap: .35rem;">
-                                <span style="font-size: .9rem;">📥</span> SS RECAUDO {{ strtoupper($mesesEs[$mes]) }}
-                            </span>
-                            <span style="font-family: monospace; font-weight: 700; color: #0f766e;">
-                                {{ $ssActuales > 0 ? $fmt($ssActuales) : '—' }}
-                            </span>
-                        </div>
+                    @endif
+                    
+                    {{-- SS RECAUDADO MES ACTUAL (Incluyendo lo cobrado atrasado) --}}
+                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: .78rem;">
+                        <span style="color: #475569; display: flex; align-items: center; gap: .35rem;">
+                            <span style="font-size: .9rem;">📥</span> Ss recaudo {{ $mesesEs[$mes] }}
+                        </span>
+                        <span style="font-family: monospace; font-weight: 700; color: #0f766e;">
+                            {{ $fmt($ssActuales + $ssAtrasadasCobradas) }}
+                        </span>
+                    </div>
+                    
+                    {{-- MORA MES ACTUAL --}}
+                    @if($moraRecogida > 0)
+                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: .78rem;">
+                        <span style="color: #475569; display: flex; align-items: center; gap: .35rem;">
+                            <span style="font-size: .9rem;">📈</span> Mora {{ $mesesEs[$mes] }}
+                        </span>
+                        <span style="font-family: monospace; font-weight: 700; color: #d97706;">
+                            {{ $fmt($moraRecogida) }}
+                        </span>
+                    </div>
+                    @endif
 
-                        {{-- MORA MES ACTUAL --}}
-                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: .78rem;">
-                            <span style="color: #475569; display: flex; align-items: center; gap: .35rem;">
-                                <span style="font-size: .9rem;">📈</span> MORA {{ strtoupper($mesesEs[$mes]) }}
-                            </span>
-                            <span style="font-family: monospace; font-weight: 700; color: #d97706;">
-                                {{ $moraRecogida > 0 ? $fmt($moraRecogida) : '—' }}
-                            </span>
-                        </div>
+                    {{-- SS RECAUDADO MES SIGUIENTE --}}
+                    @if($ssFuturasRegular > 0)
+                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: .78rem;">
+                        <span style="color: #475569; display: flex; align-items: center; gap: .35rem;">
+                            <span style="font-size: .9rem;">📥</span> Ss recaudo {{ $mesesEs[$mesSig] }} (Regular)
+                        </span>
+                        <span style="font-family: monospace; font-weight: 700; color: #0f766e;">
+                            {{ $fmt($ssFuturasRegular) }}
+                        </span>
+                    </div>
+                    @endif
 
-                        {{-- GASTOS PLANILLA MES ACTUAL --}}
-                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: .78rem;">
-                            <span style="color: #475569; display: flex; align-items: center; gap: .35rem;">
-                                <span style="font-size: .9rem;">📤</span> GASTOS PLANILLA {{ strtoupper($mesesEs[$mes]) }}
-                            </span>
-                            <span style="font-family: monospace; font-weight: 700; color: #dc2626;">
-                                − {{ $fmt($pagadoSSReg) }}
-                            </span>
-                        </div>
+                    {{-- SUBTOTAL DE INGRESOS SS (Línea de corte a la derecha) --}}
+                    <div style="display: flex; justify-content: flex-end; align-items: center; font-size: .78rem; border-top: 1px solid #e2e8f0; margin-top: .1rem; padding-top: .15rem; font-weight: 700; font-family: monospace; color: #334155;">
+                        {{ $fmt($totalSScanalRaw) }}
+                    </div>
 
-                        {{-- SUBTOTAL OPERATIVO --}}
-                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: .78rem; border-top: 1px dashed #ccfbf1; margin-top: .25rem; padding-top: .25rem; font-weight: 700;">
-                            <span style="color: #0f766e;">TOTAL O DÉFICIT OPERATIVO</span>
-                            <span style="font-family: monospace; color: {{ $subtotalOperativo >= 0 ? '#10b981' : '#dc2626' }};">
-                                {{ $subtotalOperativo >= 0 ? '+' : '' }}{{ $fmt($subtotalOperativo) }}
-                            </span>
-                        </div>
+                    {{-- GASTOS PLANILLA MES ACTUAL --}}
+                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: .78rem; margin-top: .15rem;">
+                        <span style="color: #475569; display: flex; align-items: center; gap: .35rem;">
+                            <span style="font-size: .9rem;">📥</span> Gastos planilla {{ $mesesEs[$mes] }}
+                        </span>
+                        <span style="font-family: monospace; font-weight: 700; color: #dc2626;">
+                            − {{ $fmt($pagadoSSReg) }}
+                        </span>
+                    </div>
+
+                    {{-- SALDO PLANILLAS --}}
+                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: .78rem; border-top: 1px solid #e2e8f0; margin-top: .15rem; padding-top: .25rem; font-weight: 800;">
+                        <span style="color: #0f766e;">Saldo planillas</span>
+                        <span style="font-family: monospace; color: {{ $saldoPlanillas >= 0 ? '#16a34a' : '#dc2626' }};">
+                            {{ $fmt($saldoPlanillas) }}
+                        </span>
                     </div>
                 </div>
+ 
+                <div style="margin-top: .15rem; border-top: 1px solid #f1f5f9; padding-top: .15rem;"></div>
 
                 {{-- Sección 2: Retiros --}}
                 <div>
-                    <div style="font-size: .62rem; font-weight: 800; text-transform: uppercase; color: #c2410c; letter-spacing: .05em; border-bottom: 1px solid #ffedd5; padding-bottom: .25rem; margin-bottom: .4rem;">
-                        🛑 Retiros Seguridad Social
+                    <div style="font-size: .82rem; font-weight: 800; color: #c2410c; margin-bottom: .4rem; display: flex; align-items: center; gap: .35rem;">
+                        🛑 Retiros seguridad social
                     </div>
                     <div style="display: flex; flex-direction: column; gap: 0.35rem;">
                         
                         {{-- RETIROS CONSOLIDADO --}}
                         <div style="display: flex; justify-content: space-between; align-items: center; font-size: .78rem;">
                             <span style="color: #475569; display: flex; align-items: center; gap: .35rem;">
-                                <span style="font-size: .9rem;">⚖️</span> RETIROS CONSOLIDADO
+                                <span style="font-size: .9rem;">⚖️</span> Retiros consolidado
                             </span>
-                            <span style="font-family: monospace; font-weight: 700; color: #334155;">
-                                {{ $costoRetiros > 0 ? $fmt($costoRetiros) : '—' }}
+                            <span style="font-family: monospace; font-weight: 700; color: #475569;">
+                                {{ $costoRetiros > 0 ? $fmt($costoRetiros) : '0' }}
                             </span>
                         </div>
 
                         {{-- RETIROS DE AFILIACIONES --}}
                         <div style="display: flex; justify-content: space-between; align-items: center; font-size: .78rem;">
                             <span style="color: #475569; display: flex; align-items: center; gap: .35rem;">
-                                <span style="font-size: .9rem;">📑</span> RETIROS DE AFILIACIONES
+                                <span style="font-size: .9rem;">📑</span> Retiros de afiliaciones
                             </span>
                             <span style="font-family: monospace; font-weight: 700; color: #0284c7;">
-                                {{ $distRetiroAcumulado > 0 ? $fmt($distRetiroAcumulado) : '—' }}
+                                {{ $fmt($distRetiroAcumulado) }}
                             </span>
                         </div>
-
+ 
                         {{-- GASTOS EN RETIROS DEL MES --}}
                         <div style="display: flex; justify-content: space-between; align-items: center; font-size: .78rem;">
                             <span style="color: #475569; display: flex; align-items: center; gap: .35rem;">
-                                <span style="font-size: .9rem;">🛑</span> GASTOS EN RETIROS DEL MES
+                                <span style="font-size: .9rem;">🛑</span> Gastos en retiros del mes
                             </span>
                             <span style="font-family: monospace; font-weight: 700; color: #dc2626;">
                                 − {{ $fmt($pagadoSSRetiro) }}
                             </span>
                         </div>
-
+ 
                         {{-- SUBTOTAL RETIROS --}}
-                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: .78rem; border-top: 1px dashed #ffedd5; margin-top: .25rem; padding-top: .25rem; font-weight: 700;">
-                            <span style="color: #c2410c;">TOTAL O DÉFICIT RETIROS</span>
+                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: .78rem; border-top: 1px dashed #ffedd5; margin-top: .15rem; padding-top: .25rem; font-weight: 800;">
+                            <span style="color: #c2410c;">Total o déficit retiros</span>
                             <span style="font-family: monospace; color: {{ $subtotalRetiros >= 0 ? '#16a34a' : '#dc2626' }};">
                                 {{ $subtotalRetiros >= 0 ? '+' : '' }}{{ $fmt($subtotalRetiros) }}
                             </span>
                         </div>
                     </div>
                 </div>
-
-                {{-- Sección 3: Reserva Próximo Mes --}}
-                <div style="background:#f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: .65rem .85rem;">
-                    <div style="font-size: .62rem; font-weight: 800; text-transform: uppercase; color: #475569; letter-spacing: .05em; border-bottom: 1px solid #e2e8f0; padding-bottom: .25rem; margin-bottom: .45rem; display:flex; justify-content:space-between; align-items:center;">
-                        <span>⏳ RESERVA {{ strtoupper($mesesEs[$mesSig]) }}</span>
-                        <span style="background:#e2e8f0; color:#475569; border-radius:12px; padding:0.05rem 0.4rem; font-size:0.6rem;">FUTURO</span>
-                    </div>
-                    <div style="display: flex; flex-direction: column; gap: 0.35rem; font-size: .78rem;">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <span style="color: #64748b;">SS RECAUDADO {{ strtoupper($mesesEs[$mesSig]) }}</span>
-                            <span style="font-family: monospace; font-weight: 700; color: #d97706;">+ {{ $fmt($ingresosSS['ss_futuras']) }}</span>
-                        </div>
-                        @if($ssPrestamosMesSiguiente > 0)
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <span style="color: #64748b; padding-left:.35rem;">↳ planillas préstamo (financiad.)</span>
-                            <span style="font-family: monospace; font-weight: 700; color: #b45309;">− {{ $fmt($ssPrestamosMesSiguiente) }}</span>
-                        </div>
-                        @endif
-                    </div>
-                </div>
-
+ 
             </div>
-
+ 
             {{-- Bloque 4: Saldo SS para el Siguiente Mes --}}
             <div style="padding:.75rem 1.1rem;background:{{ $ssBg }};border-top:2px solid {{ $ssBorder }};margin-top:auto;">
                 <div style="display:flex;justify-content:space-between;align-items:center;">
-                    <div style="display:flex;align-items:center;gap:.45rem;">
-                        <div style="width:28px;height:28px;border-radius:8px;background:{{ $ssBorder }};display:flex;align-items:center;justify-content:center;font-size:.85rem;flex-shrink:0;">💰</div>
-                        <div>
-                            <div style="font-size:.77rem;font-weight:800;color:{{ $ssColor }};">Saldo SS → Próximo Mes</div>
-                            <div style="font-size:.6rem;color:{{ $ssColor }};opacity:.7;">saldo SS reservado para el mes siguiente</div>
-                        </div>
-                    </div>
-                    <div style="font-size:1.05rem;font-weight:900;color:{{ $ssColor }};font-family:monospace;">{{ $fmtSS($saldoSS) }}</div>
+                    <div style="font-size:.8rem;font-weight:800;color:#334155;">saldo proximo mes</div>
+                    <div style="font-size:1.05rem;font-weight:900;color:{{ $ssColor }};font-family:monospace;">{{ $fmt($saldoSS) }}</div>
                 </div>
             </div>
 
@@ -837,7 +862,8 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
                     $fechaIso     = $fechaEg ? $fechaEg->format('Y-m-d') : '';
                     $ssCobradoReg = (float)($eg->ss_cobrado_facturas ?? 0); // numero_factura > 0
                     $ssCobradoRet = (float)($eg->ss_retiro_facturas  ?? 0); // numero_factura = 0
-                    $ssCobrado    = $ssCobradoReg + $ssCobradoRet;          // total combinado
+                    $ssMora       = (float)($eg->ss_mora_facturas    ?? 0); // mora
+                    $ssCobrado    = $ssCobradoReg + $ssCobradoRet + $ssMora; // total combinado
                     $ssPagado     = (float)($eg->total ?? 0);
                     $ssDiff       = abs($ssCobrado - $ssPagado);
                     $esAdvertencia = $numPlan && $ssCobrado > 0 && $ssDiff > 50000;
@@ -865,21 +891,29 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
                             ? $eg->banco_nombre . ($eg->banco_titular ? ' — ' . $eg->banco_titular : '')
                             : null;
                     @endphp
-                    <div>
+                    <div style="display:flex;align-items:center;gap:.3rem;">
+                        @if(!empty($eg->imagen_path))
+                            <span onclick="verImagenGasto('{{ \Storage::url($eg->imagen_path) }}'); event.stopPropagation();" title="Clic para ver comprobante" style="cursor:pointer;font-size:.85rem;line-height:1;transition:transform 0.1s;" onmouseover="this.style.transform='scale(1.2)'" onmouseout="this.style.transform='scale(1)'">🖼️</span>
+                        @endif
                         @if($bancoLabel)
                             <div style="font-size:.76rem;font-weight:600;color:#1e40af;">{{ $bancoLabel }}</div>
                         @else
                             <div style="font-size:.76rem;color:#94a3b8;">Efectivo</div>
                         @endif
                     </div>
-                    {{-- SS Cobrado (regulares + retiros) --}}
-                    <div style="text-align:right;">
-                        <div style="font-weight:600;color:{{ $ssCobrado > 0 ? '#10b981' : '#94a3b8' }};font-size:.85rem;">{{ $ssCobrado > 0 ? $fmt($ssCobrado) : '—' }}</div>
-                        @if($ssCobradoRet > 0)
-                            <div style="font-size:.63rem;color:#c2410c;margin-top:.1rem;" title="Incluye SS de retiros: {{ $fmt($ssCobradoRet) }}">
-                                incl. ret. {{ $fmt($ssCobradoRet) }}
-                            </div>
-                        @endif
+                    {{-- SS Cobrado desglosado --}}
+                    <div style="text-align:right;font-size:.78rem;line-height:1.25;color:#475569;">
+                        <div>
+                            <span style="font-weight:700;color:{{ $ssCobrado > 0 ? '#10b981' : '#64748b' }};font-size:.85rem;">{{ $fmt($ssCobrado) }}</span>
+                        </div>
+                        <div style="font-size:.68rem;margin-top:1px;">
+                            <span style="color:#94a3b8;">Retiros.</span> 
+                            <span style="font-weight:600;color:{{ $ssCobradoRet > 0 ? '#c2410c' : '#64748b' }};">{{ $fmt($ssCobradoRet) }}</span>
+                        </div>
+                        <div style="font-size:.68rem;margin-top:1px;">
+                            <span style="color:#94a3b8;">Mora.</span> 
+                            <span style="font-weight:600;color:{{ $ssMora > 0 ? '#b45309' : '#64748b' }};">{{ $fmt($ssMora) }}</span>
+                        </div>
                     </div>
                     {{-- Valor pagado --}}
                     <div style="text-align:right;">
@@ -887,14 +921,28 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
                         @if($eg->cantidad > 1)
                         <div style="font-size:.67rem;color:#94a3b8;">{{ $eg->cantidad }} reg.</div>
                         @endif
+                        @if(abs($saldoFila) > 1)
+                            @if($saldoFila > 0)
+                                <div style="font-size:.68rem;font-weight:600;color:#10b981;" title="Sobró (Exceso de recaudo)">
+                                    +{{ $fmt($saldoFila) }}
+                                </div>
+                            @else
+                                <div style="font-size:.68rem;font-weight:600;color:#dc2626;" title="Se pagó de más (Déficit)">
+                                    -{{ $fmt(abs($saldoFila)) }}
+                                </div>
+                            @endif
+                        @endif
                     </div>
                 </div>
                 @endforeach
             </div>
             {{-- Fila de totales y saldo --}}
             @php
-                $totalSsCobradoEgresos = $egresosSSDetalle->sum('ss_cobrado_facturas')
-                                       + $egresosSSDetalle->sum('ss_retiro_facturas');
+                $sumaCobradoFact = $egresosSSDetalle->sum('ss_cobrado_facturas');
+                $sumaMoraFact = $egresosSSDetalle->sum('ss_mora_facturas');
+                $sumaRetiroFact = $egresosSSDetalle->sum('ss_retiro_facturas');
+                
+                $totalSsCobradoEgresos = $sumaCobradoFact + $sumaRetiroFact + $sumaMoraFact;
                 $saldoEgresos = $totalSsCobradoEgresos - $pagadoSSRaw;
             @endphp
             <div style="display:grid;grid-template-columns:90px 1fr 130px 120px 110px;gap:.4rem;padding:.55rem 1rem;background:#f5f3ff;border-top:2px solid #ddd6fe;font-size:.78rem;font-weight:700;">
@@ -906,9 +954,7 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
             </div>
             <div style="display:grid;grid-template-columns:90px 1fr 130px 120px 110px;gap:.4rem;padding:.5rem 1rem;background:{{ $saldoEgresos >= 0 ? '#f0fdf4' : '#fef2f2' }};border-top:1px solid {{ $saldoEgresos >= 0 ? '#bbf7d0' : '#fecaca' }};">
                 <span></span>
-                <span style="font-size:.75rem;color:#64748b;">SS Cobrado − Valor Pagado</span>
-                <span></span>
-                <span></span>
+                <span style="grid-column: span 3; font-size:.74rem;color:#64748b;font-weight:600;white-space:nowrap;">ss cobrado {{ $fmt($sumaCobradoFact) }} mora {{ $fmt($sumaMoraFact) }} retiros {{ $fmt($sumaRetiroFact) }}</span>
                 <span style="text-align:right;font-size:.9rem;font-weight:800;color:{{ $saldoEgresos >= 0 ? '#15803d' : '#dc2626' }};">{{ $saldoEgresos >= 0 ? '+' : '' }}{{ $fmt($saldoEgresos) }}</span>
             </div>
             @endif
@@ -1994,12 +2040,14 @@ function auditarPlanilla(numPlanilla, descripcion) {
             // ── Resumen tarjetas ───────────────────────────────────────
             // total_ss_facturas = facturas con numero_factura > 0 (= valor columna tabla)
             // total_ss_retiros  = facturas con numero_factura = 0 (retiros)
+            // total_mora        = mora de todas las facturas de la planilla
             // total_ss_todos    = suma completa (usado para calcular diferencia vs gasto)
             const ssTodos = data.total_ss_todos || 0;
             const ssRet   = data.total_ss_retiros || 0;
+            const totalMora = data.total_mora || 0;
 
             html += `
-            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:.75rem;margin-bottom:1.25rem;">
+            <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:.75rem;margin-bottom:1.25rem;">
                 <div style="background:#ede9fe;border-radius:12px;padding:.85rem;text-align:center;">
                     <div style="font-size:1rem;font-weight:800;color:#7c3aed;">${fmtN(data.total_ss_facturas)}</div>
                     <div style="font-size:.68rem;color:#6d28d9;font-weight:600;margin-top:.2rem;">SS Cobrado (facturas)</div>
@@ -2009,6 +2057,11 @@ function auditarPlanilla(numPlanilla, descripcion) {
                     <div style="font-size:1rem;font-weight:800;color:${ssRet > 0 ? '#c2410c' : '#94a3b8'};">${ssRet > 0 ? fmtN(ssRet) : '$ 0'}</div>
                     <div style="font-size:.68rem;color:${ssRet > 0 ? '#c2410c' : '#64748b'};font-weight:600;margin-top:.2rem;">SS Retiros</div>
                     <div style="font-size:.63rem;color:#94a3b8;margin-top:.1rem;">fact. número_factura = 0</div>
+                </div>
+                <div style="background:${totalMora > 0 ? '#fffbeb' : '#f8fafc'};border-radius:12px;padding:.85rem;text-align:center;${totalMora > 0 ? 'border:1px solid #fde68a;' : ''}">
+                    <div style="font-size:1rem;font-weight:800;color:${totalMora > 0 ? '#d97706' : '#94a3b8'};">${totalMora > 0 ? fmtN(totalMora) : '$ 0'}</div>
+                    <div style="font-size:.68rem;color:${totalMora > 0 ? '#b45309' : '#64748b'};font-weight:600;margin-top:.2rem;">Mora Recogida</div>
+                    <div style="font-size:.63rem;color:#94a3b8;margin-top:.1rem;">Recargo por pago tardío</div>
                 </div>
                 <div style="background:${data.es_duplicado ? '#fef2f2' : '#fef3c7'};border-radius:12px;padding:.85rem;text-align:center;${data.es_duplicado ? 'border:2px solid #fca5a5;' : ''}">
                     <div style="font-size:1rem;font-weight:800;color:${data.es_duplicado ? '#dc2626' : '#d97706'};">${fmtN(data.gasto_valor)}</div>
@@ -2023,8 +2076,8 @@ function auditarPlanilla(numPlanilla, descripcion) {
                     <div style="font-size:.63rem;color:${difColor};margin-top:.1rem;">${difLabel}</div>
                 </div>
             </div>
-            ${ssRet > 0 ? `<div style="background:#fff7ed;border-left:3px solid #f97316;border-radius:0 8px 8px 0;padding:.5rem .85rem;font-size:.74rem;color:#c2410c;margin-bottom:.85rem;">
-                ℹ️ <strong>SS Total cobrado (fact. + retiros): ${fmtN(ssTodos)}</strong> — La columna de la tabla muestra solo las facturas regulares <em>(${fmtN(data.total_ss_facturas)})</em>; los retiros <em>(${fmtN(ssRet)})</em> se contabilizan aparte.
+            ${ssRet > 0 || totalMora > 0 ? `<div style="background:#f0fdf4;border-left:3px solid #10b981;border-radius:0 8px 8px 0;padding:.5rem .85rem;font-size:.74rem;color:#15803d;margin-bottom:.85rem;">
+                ℹ️ <strong>SS Total cobrado (facturas + retiros + mora): ${fmtN(ssTodos)}</strong> — Desglose: regulares <em>(${fmtN(data.total_ss_facturas)})</em> + retiros <em>(${fmtN(ssRet)})</em> + mora <em>(${fmtN(totalMora)})</em>.
             </div>` : ''}`;
 
             // Desglose por componente SS

@@ -466,6 +466,7 @@ class InformeController extends Controller
                 SUM(ISNULL(dist_admon,0))     as sum_dist_admon,
                 SUM(ISNULL(dist_asesor,0))    as sum_dist_asesor,
                 SUM(ISNULL(dist_retiro,0))    as sum_dist_retiro,
+                SUM(ISNULL(dist_encargado,0)) as sum_dist_encargado,
                 SUM(ISNULL(dist_utilidad,0))  as sum_dist_utilidad
             ')
             ->get()
@@ -522,17 +523,8 @@ class InformeController extends Controller
             ->where('aliado_id', $aid)->whereNull('deleted_at')
             ->whereNotNull('fecha_pago')
             ->whereMonth('fecha_pago', $mes)->whereYear('fecha_pago', $anio)
-            ->whereIn('estado', ['pagada', 'abono'])
+            ->whereIn('estado', ['pagada', 'abono', 'prestamo'])
             ->sum('mora');
-
-        $ingresos = [
-            'planillas'   => (float)$ingPlanillas,
-            'afiliaciones'=> (float)$ingAfiliaciones,
-            'tramites'    => (float)$ingTramites,
-            'mora'        => (float)$moraRecogida,
-            'prestamos'   => $abonosCobradosMes,
-            'total'       => (float)($ingPlanillas + $ingAfiliaciones + $ingTramites) // Ingresos iniciales sin moras
-        ];
 
         // ── Desglose canal ADMON (para la vista de 3 canales) ────────────────
         $desgloseAdmon = [
@@ -551,12 +543,28 @@ class InformeController extends Controller
             'dist_admon'    => (float)($afiliacionesRaw->sum_dist_admon  ?? 0),
             'dist_asesor'   => (float)($afiliacionesRaw->sum_dist_asesor ?? 0),
             'dist_retiro'   => (float)($afiliacionesRaw->sum_dist_retiro ?? 0),
+            'dist_encargado'=> (float)($afiliacionesRaw->sum_dist_encargado?? 0),
             'dist_utilidad' => (float)($afiliacionesRaw->sum_dist_utilidad?? 0),
             // Distribuido total para verificar que sume igual a afiliacion
             'distribuido'   => (float)(($afiliacionesRaw->sum_dist_admon ?? 0)
                                      + ($afiliacionesRaw->sum_dist_asesor  ?? 0)
                                      + ($afiliacionesRaw->sum_dist_retiro  ?? 0)
+                                     + ($afiliacionesRaw->sum_dist_encargado ?? 0)
                                      + ($afiliacionesRaw->sum_dist_utilidad?? 0)),
+        ];
+
+        $distAsesorAfil = (float)($desgloseAfiliaciones['dist_asesor'] ?? 0);
+        $distRetiroAfil = (float)($desgloseAfiliaciones['dist_retiro'] ?? 0);
+        $distEncargadoAfil = (float)($desgloseAfiliaciones['dist_encargado'] ?? 0);
+        $ingAfiliacionesNeto = max(0.0, $ingAfiliaciones - $distAsesorAfil - $distRetiroAfil - $distEncargadoAfil);
+
+        $ingresos = [
+            'planillas'   => (float)$ingPlanillas,
+            'afiliaciones'=> (float)$ingAfiliacionesNeto,
+            'tramites'    => (float)$ingTramites,
+            'mora'        => (float)$moraRecogida,
+            'prestamos'   => $abonosCobradosMes,
+            'total'       => (float)($ingPlanillas + $ingAfiliacionesNeto + $ingTramites) // Ingresos iniciales sin moras
         ];
 
 
@@ -571,6 +579,8 @@ class InformeController extends Controller
             ->where('aliado_id', $aid)->whereNull('deleted_at')
             ->where('mes', $mesSig)->where('anio', $anioSig)
             ->where('es_prestamo', 1)
+            ->whereNotNull('fecha_pago')
+            ->whereMonth('fecha_pago', $mes)->whereYear('fecha_pago', $anio)
             ->sum('total_ss');
 
         $ssMesAnteriorParaActual = (float) DB::table('facturas')
@@ -590,21 +600,52 @@ class InformeController extends Controller
             ->selectRaw("
                 SUM(CASE WHEN estado IN ('pagada','abono','prestamo') AND numero_factura > 0 THEN total_ss ELSE 0 END) AS recaudo_ss,
                 SUM(CASE WHEN estado IN ('pagada','abono','prestamo') AND numero_factura = 0 THEN total_ss ELSE 0 END) AS costo_retiros,
-                SUM(CASE WHEN estado IN ('pagada','abono') THEN mora ELSE 0 END) AS mora_recogida,
+                SUM(CASE WHEN estado IN ('pagada','abono','prestamo') THEN mora ELSE 0 END) AS mora_recogida,
                 SUM(CASE WHEN estado IN ('pagada','abono','prestamo') AND numero_factura > 0 AND tipo = 'planilla' THEN v_eps ELSE 0 END) AS ss_eps,
                 SUM(CASE WHEN estado IN ('pagada','abono','prestamo') AND numero_factura > 0 AND tipo = 'planilla' THEN v_arl ELSE 0 END) AS ss_arl,
                 SUM(CASE WHEN estado IN ('pagada','abono','prestamo') AND numero_factura > 0 AND tipo = 'planilla' THEN v_afp ELSE 0 END) AS ss_afp,
                 SUM(CASE WHEN estado IN ('pagada','abono','prestamo') AND numero_factura > 0 AND tipo = 'planilla' THEN v_caja ELSE 0 END) AS ss_caja,
                 SUM(CASE WHEN estado IN ('pagada','abono','prestamo') AND numero_factura > 0 AND tipo = 'planilla' AND anio = ? AND mes = ? THEN total_ss ELSE 0 END) AS ss_actuales,
                 SUM(CASE WHEN estado IN ('pagada','abono','prestamo') AND numero_factura > 0 AND tipo = 'planilla' AND (anio > ? OR (anio = ? AND mes > ?)) THEN total_ss ELSE 0 END) AS ss_futuras,
-                SUM(CASE WHEN estado IN ('pagada','abono') THEN retiro ELSE 0 END) AS retiro_campo,
-                SUM(CASE WHEN estado IN ('pagada','abono') THEN c_asesor ELSE 0 END) AS comisiones_asesor
+                SUM(CASE WHEN estado IN ('pagada','abono','prestamo') THEN retiro ELSE 0 END) AS retiro_campo,
+                SUM(CASE WHEN estado IN ('pagada','abono','prestamo') THEN c_asesor ELSE 0 END) AS comisiones_asesor
             ", [$anio, $mes, $anio, $anio, $mes])
             ->first();
 
         $recaudoSS    = (float)($facturasData->recaudo_ss ?? 0);
-        $costoRetiros = (float)($facturasData->costo_retiros ?? 0);
         $moraRecogida = (float)($facturasData->mora_recogida ?? 0);
+
+        // Bolsa acumulada neta de retiros que viene de los meses anteriores al inicio de este mes
+        $fechaInicioMes = \Carbon\Carbon::createFromDate($anio, $mes, 1)->startOfMonth()->toDateString();
+
+        $cobradoRetirosFPrev = 0.0;
+
+        $cobradoDistRetPrev = DB::table('facturas')
+            ->where('aliado_id', $aid)->whereNull('deleted_at')->whereNotNull('fecha_pago')
+            ->where('fecha_pago', '>=', '2026-05-01')
+            ->where('fecha_pago', '<', $fechaInicioMes)
+            ->where('numero_factura', '>', 0)
+            ->whereIn('estado', ['pagada','abono','prestamo'])
+            ->sum('dist_retiro');
+
+        $pagadoRetirosPPrev = (float) DB::table('planos as p2')
+            ->join('facturas as f', 'f.id', '=', 'p2.factura_id')
+            ->where('p2.aliado_id', $aid)
+            ->whereNull('p2.deleted_at')
+            ->whereNull('f.deleted_at')
+            ->where('f.numero_factura', 0)
+            ->whereIn('p2.numero_planilla', function($query) use ($aid, $fechaInicioMes) {
+                $query->select('numero_planilla')
+                    ->from('gastos')
+                    ->where('aliado_id', $aid)
+                    ->where('tipo', 'pago_planilla')
+                    ->where('fecha', '>=', '2026-05-01')
+                    ->where('fecha', '<', $fechaInicioMes)
+                    ->whereNotNull('numero_planilla');
+            })
+            ->sum('f.total_ss');
+
+        $costoRetiros = max(0.0, (float)$cobradoRetirosFPrev + (float)$cobradoDistRetPrev - (float)$pagadoRetirosPPrev);
 
         $ingresosSS = [
             'eps'          => (float)($facturasData->ss_eps ?? 0),
@@ -632,7 +673,8 @@ class InformeController extends Controller
                 SUM(g.valor) AS total,
                 COUNT(*) AS cantidad,
                 MAX(bc.banco) AS banco_nombre,
-                MAX(bc.nombre) AS banco_titular
+                MAX(bc.nombre) AS banco_titular,
+                MAX(g.imagen_path) AS imagen_path
             ")
             ->groupBy('g.numero_planilla', 'g.descripcion', 'g.pagado_a')
             ->orderByDesc('total')
@@ -648,12 +690,15 @@ class InformeController extends Controller
                 ->whereIn('p2.numero_planilla', $planillasMes)
                 ->whereNull('p2.deleted_at')
                 ->whereNull('f.deleted_at')
+                ->whereMonth('f.fecha_pago', $mes)
+                ->whereYear('f.fecha_pago', $anio)
                 ->groupBy('p2.numero_planilla')
-                ->selectRaw('
+                ->selectRaw("
                     p2.numero_planilla,
                     SUM(CASE WHEN f.numero_factura > 0 THEN f.total_ss ELSE 0 END) AS ss_cobrado_facturas,
-                    SUM(CASE WHEN f.numero_factura = 0 THEN f.total_ss ELSE 0 END) AS ss_retiro_facturas
-                ')
+                    SUM(CASE WHEN f.numero_factura = 0 THEN f.total_ss ELSE 0 END) AS ss_retiro_facturas,
+                    SUM(CASE WHEN f.estado IN ('pagada','abono','prestamo') THEN f.mora ELSE 0 END) AS ss_mora_facturas
+                ")
                 ->get()
                 ->keyBy('numero_planilla');
         }
@@ -664,6 +709,7 @@ class InformeController extends Controller
 
             $eg->ss_cobrado_facturas = (float)($facData->ss_cobrado_facturas ?? 0);
             $eg->ss_retiro_facturas  = (float)($facData->ss_retiro_facturas  ?? 0);
+            $eg->ss_mora_facturas    = (float)($facData->ss_mora_facturas    ?? 0);
             return $eg;
         });
 
@@ -678,28 +724,37 @@ class InformeController extends Controller
         $pagadoSSRetiro = (float)($egresosSSDetalle->sum('ss_retiro_facturas'));
         $pagadoSSReg = max(0.0, $pagadoSSRaw - $pagadoSSRetiro);
 
+        $distRetiroAcumulado = (float)($desgloseAfiliaciones['dist_retiro'] ?? 0);
+        $retirosCobradosMesActual = (float)($facturasData->costo_retiros ?? 0);
+        $subtotalRetiros = $costoRetiros + $distRetiroAcumulado - $pagadoSSRetiro;
+
         $saldoSSMesAnterior = $ingresosSS['ss_anteriores'];
         $ssActuales = $ingresosSS['ss_actuales'];
-        $balanceSSBase = $saldoSSMesAnterior + $ssActuales - $pagadoSSReg;
-        $moraUtilizada = 0.0;
-        $moraGanancia = $moraRecogida;
-        $sobrantePlanilla = 0.0;
-        $deficitSSRemanente = 0.0;
+        $totalSScanalRaw = $recaudoSS + $moraRecogida + $saldoSSMesAnterior;
+        $subtotalOperativo = $totalSScanalRaw - $pagadoSSReg;
 
-        if ($balanceSSBase < 0) {
-            $moraUtilizada = min($moraRecogida, abs($balanceSSBase));
-            $moraGanancia = $moraRecogida - $moraUtilizada;
-            $deficitSSRemanente = abs($balanceSSBase) - $moraUtilizada;
-            $subtotalOperativo = -$deficitSSRemanente;
+        // SS futura regular excluyendo los préstamos del mes siguiente
+        $ssFuturasRegular = max(0.0, (float)$ingresosSS['ss_futuras'] - $ssPrestamosMesSiguiente);
+        
+        // Saldo próximo mes consolidado
+        $saldoSS = $ssFuturasRegular + $subtotalRetiros;
+        
+        // Saldo planillas (excedente operativo)
+        $saldoPlanillas = $subtotalOperativo - $saldoSS;
+
+        if ($pagadoSSReg == 0.0) {
+            $sobrantePlanilla = 0.0;
         } else {
-            $sobrantePlanilla = $balanceSSBase;
-            $subtotalOperativo = 0.0;
+            $sobrantePlanilla = max(0.0, $saldoPlanillas);
         }
+
+        $moraGanancia = 0.0;
+        $moraUtilizada = 0.0;
 
         // Actualizamos los ingresos con ganancia por mora y excedentes
         $ingresos['mora_ganancia'] = $moraGanancia;
         $ingresos['sobrante_planilla'] = $sobrantePlanilla;
-        $ingresos['total'] = (float)($ingPlanillas + $ingAfiliaciones + $ingTramites + $moraGanancia + $sobrantePlanilla);
+        $ingresos['total'] = (float)($ingPlanillas + $ingresos['afiliaciones'] + $ingTramites + $sobrantePlanilla);
 
         // ── Reconciliación SS: planillas con gap entre cobrado y pagado ──
         // diferencia = gasto - (SS cobrado en facturas regulares + SS de retiros)
@@ -709,7 +764,8 @@ class InformeController extends Controller
             $gasto      = (float)($eg->total ?? 0);
             $cobReg     = (float)($eg->ss_cobrado_facturas ?? 0);   // facturas numero_factura > 0
             $cobRetiro  = (float)($eg->ss_retiro_facturas  ?? 0);   // facturas numero_factura = 0
-            $cobTotal   = $cobReg + $cobRetiro;
+            $cobMora    = (float)($eg->ss_mora_facturas    ?? 0);   // mora
+            $cobTotal   = $cobReg + $cobRetiro + $cobMora;
             $diff       = $gasto - $cobTotal;
             $tieneGap   = abs($diff) > 100;   // tolerancia 100 pesos por redondeo
 
@@ -763,11 +819,8 @@ class InformeController extends Controller
             ->selectRaw('ISNULL(SUM(CAST(valor AS BIGINT)), 0) AS total')
             ->value('total');
 
-        // La mora utilizada se suma a los gastos operativos de la empresa
-        $gastosOpActualizado = $gastosOp + $moraUtilizada;
-
-        $distRetiroAcumulado = (float)($desgloseAfiliaciones['dist_retiro'] ?? 0);
-        $subtotalRetiros = $costoRetiros + $distRetiroAcumulado - $pagadoSSRetiro;
+        // La mora utilizada ya fue descontada de la mora ganada en ingresos, no se debe sumar a los gastos operativos para evitar doble resta
+        $gastosOpActualizado = $gastosOp;
 
         $egresos = [
             'comisiones' => $comisionesAsesor,
@@ -776,7 +829,7 @@ class InformeController extends Controller
         ];
 
         // La reserva de retiros de afiliación se resta de la utilidad
-        $utilidad = $ingresos['total'] - $egresos['total'] - $distRetiroAcumulado;
+        $utilidad = $ingresos['total'] - $egresos['total'];
 
         // Tendencia 6 meses
         $tendencia = $this->tendencia6Meses($aid, $mes, $anio);
@@ -813,8 +866,8 @@ class InformeController extends Controller
         // Saldo SS disponible del mes anterior es la SS cobrada en el mes anterior para el período actual
         $saldoSSMesAnterior = $ingresosSS['ss_anteriores'];
 
-        // El saldo SS que queda reservado para el mes siguiente es la SS cobrada este mes para períodos futuros menos los préstamos del mes siguiente + el excedente de retiros
-        $saldoSS = $ingresosSS['ss_futuras'] - $ssPrestamosMesSiguiente + $subtotalRetiros;
+        // El saldo SS que queda reservado para el mes siguiente es la SS cobrada este mes para períodos futuros + el excedente de retiros
+        $saldoSS = $ingresosSS['ss_futuras'] + $subtotalRetiros;
 
         // Bancos: saldo al cierre del mes filtrado (si es mes pasado) o saldo actual (mes en curso)
         $esMesActual = ($mes == now()->month && $anio == now()->year);
@@ -1027,6 +1080,12 @@ class InformeController extends Controller
             ->orderBy('a.fecha')
             ->get();
 
+        $totalSScanalRaw   = $recaudoSS + $moraRecogida + $saldoSSMesAnterior;
+        $subtotalOperativo = $totalSScanalRaw - $pagadoSSReg;
+        $ssFuturasRegular  = max(0.0, (float)$ingresosSS['ss_futuras'] - $ssPrestamosMesSiguiente);
+        $saldoSS           = $ssFuturasRegular + $subtotalRetiros;
+        $saldoPlanillas    = $subtotalOperativo - $saldoSS;
+
         return view('admin.informes.financiero', compact(
             'mes','anio','ingresos','egresos','utilidad',
             'recaudoSS','pagadoSSRaw','saldoSS',
@@ -1042,7 +1101,7 @@ class InformeController extends Controller
             'saldoTotalMesAnterior', 'abonosCobradosMes', 'abonosDetalleMes', 'abonosMesesAnteriores',
             'mesSig', 'anioSig', 'ssPrestamosMesSiguiente',
             'pagadoSSReg', 'pagadoSSRetiro', 'moraUtilizada', 'moraGanancia', 'sobrantePlanilla', 'subtotalRetiros', 'subtotalOperativo',
-            'ssActuales', 'distRetiroAcumulado'
+            'ssActuales', 'distRetiroAcumulado', 'retirosCobradosMesActual', 'totalSScanalRaw', 'ssFuturasRegular', 'saldoPlanillas'
         ));
     }
 
@@ -1527,7 +1586,7 @@ class InformeController extends Controller
                 'p.tipo_reg',
                 'f.id AS factura_id',
                 'f.numero_factura',
-                'f.v_eps', 'f.v_afp', 'f.v_arl', 'f.v_caja', 'f.total_ss',
+                'f.v_eps', 'f.v_afp', 'f.v_arl', 'f.v_caja', 'f.total_ss', 'f.mora',
             ])
             ->orderBy('rs.razon_social')
             ->orderBy('p.primer_ape')
@@ -1541,14 +1600,15 @@ class InformeController extends Controller
 
         $totalSSFacturas   = (float)$planosRegulares->sum('total_ss'); // == valor columna tabla
         $totalSSRetiros    = (float)$planosRetiros->sum('total_ss');   // retiros (numero_factura=0)
-        $totalSSTodos      = $totalSSFacturas + $totalSSRetiros;       // suma completa
+        $totalMora         = (float)$planos->sum('mora');              // mora de todas las facturas de la planilla
+        $totalSSTodos      = $totalSSFacturas + $totalSSRetiros + $totalMora;       // suma completa
 
         $totalEPS          = (float)$planosRegulares->sum('v_eps');
         $totalAFP          = (float)$planosRegulares->sum('v_afp');
         $totalARL          = (float)$planosRegulares->sum('v_arl');
         $totalCaja         = (float)$planosRegulares->sum('v_caja');
 
-        // La diferencia se calcula contra el total (regulares + retiros) para cuadrar con el gasto real
+        // La diferencia se calcula contra el total (regulares + retiros + mora) para cuadrar con el gasto real
         $diferencia        = $totalSSTodos - $gastoValor;
 
         return response()->json([
@@ -1560,6 +1620,7 @@ class InformeController extends Controller
             'gasto_valor'          => $gastoValor,
             'total_ss_facturas'    => $totalSSFacturas,   // facturas regulares (numero_factura > 0)
             'total_ss_retiros'     => $totalSSRetiros,    // retiros (numero_factura = 0)
+            'total_mora'           => $totalMora,         // mora recogida
             'total_ss_todos'       => $totalSSTodos,      // suma completa
             'total_eps'            => $totalEPS,
             'total_afp'            => $totalAFP,
@@ -1797,6 +1858,7 @@ class InformeController extends Controller
 
 
         $q = DB::table('facturas AS f')
+            ->leftJoin('contratos AS c', 'c.id', '=', 'f.contrato_id')
             ->where('f.aliado_id', $aid)
             ->whereNull('f.deleted_at')
             ->where('f.anio', $anio);
@@ -1813,6 +1875,7 @@ class InformeController extends Controller
             f.estado,
             f.cedula,
             f.empresa_id,
+            f.contrato_id,
             f.np,
             f.forma_pago,
             f.es_prestamo,
@@ -1822,6 +1885,7 @@ class InformeController extends Controller
             ISNULL(f.valor_prestamo,    0) AS valor_prestamo,
             ISNULL(f.anticipo_aplicado, 0) AS anticipo_aplicado,
             ISNULL(f.admon,       0) AS admon,
+            ISNULL(f.admin_asesor,0) AS admin_asesor,
             ISNULL(f.seguro,      0) AS seguro,
             ISNULL(f.mensajeria,  0) AS mensajeria,
             ISNULL(f.iva,         0) AS iva,
@@ -1838,6 +1902,11 @@ class InformeController extends Controller
             ISNULL(f.c_utilidad,  0) AS c_utilidad,
             ISNULL(f.total,       0) AS total,
             ISNULL(f.saldo_proximo, 0) AS saldo_proximo,
+            ISNULL(c.administracion, 0) AS contrato_admon,
+            ISNULL(c.admon_asesor,   0) AS contrato_admon_asesor,
+            ISNULL(c.costo_afiliacion, 0) AS contrato_costo_afiliacion,
+            ISNULL(c.seguro,           0) AS contrato_seguro,
+            (SELECT COUNT(*) FROM bitacora b WHERE b.modelo = 'Contrato' AND b.registro_id = f.contrato_id AND b.accion = 'updated' AND b.descripcion LIKE '%Tarifas%') AS cant_cambios_contrato,
             CASE
                 WHEN f.empresa_id IS NOT NULL
                     THEN ISNULL((SELECT TOP 1 em.empresa FROM empresas em WHERE em.id = f.empresa_id), '—')
@@ -1958,7 +2027,9 @@ class InformeController extends Controller
                 SUM(afiliacion+admon+seguro+iva) AS ing_afil,
                 SUM(admon+otros) AS ing_tramite,
                 SUM(mora) AS mora_dia,
-                SUM(dist_retiro) AS dist_retiro_dia,
+                SUM(ISNULL(dist_retiro,0)) AS dist_retiro_dia,
+                SUM(ISNULL(dist_asesor,0)) AS dist_asesor_dia,
+                SUM(ISNULL(dist_encargado,0)) AS dist_encargado_dia,
                 SUM(CASE WHEN numero_factura > 0 THEN total_ss ELSE 0 END) AS ss_dia')
             ->groupByRaw('DAY(fecha_pago), tipo')
             ->get()->groupBy('dia');
@@ -1988,17 +2059,25 @@ class InformeController extends Controller
             $ssDia           = (float)($filaPlan->ss_dia          ?? 0);
             $moraDia         = (float)($filas->sum('mora_dia'));
             $distRetiroDia   = (float)($filaAfil->dist_retiro_dia ?? 0);
+            $distAsesorDia   = (float)($filaAfil->dist_asesor_dia ?? 0);
+            $distEncargadoDia = (float)($filaAfil->dist_encargado_dia ?? 0);
             $gastos          = (int)($gastosDia[$d] ?? 0);
+            $afilNeto = $afil;
+            $fechaFiltro = \Carbon\Carbon::createFromDate($anio, $mes, $d);
+            $fechaCorte = \Carbon\Carbon::createFromDate(2026, 5, 1);
+            if ($fechaFiltro->greaterThanOrEqualTo($fechaCorte)) {
+                $afilNeto = max(0.0, $afil - $distAsesorDia - $distRetiroDia - $distEncargadoDia);
+            }
             $resultado[] = [
                 'dia'               => $d,
                 'cant_planillas'    => $cantPlanillas,
                 'planillas'         => $planillas,
                 'cant_afiliaciones' => $cantAfiliaciones,
-                'afiliaciones'      => $afil,
+                'afiliaciones'      => $afilNeto,
                 'tramites'          => $tramites,
                 'ss'                => $ssDia,
                 'gastos'            => $gastos,
-                'utilidad'          => $planillas + $afil + $tramites + $moraDia - $gastos - $distRetiroDia,
+                'utilidad'          => $planillas + $afilNeto + $tramites + $moraDia - $gastos,
             ];
         }
         return $resultado;
@@ -2015,7 +2094,10 @@ class InformeController extends Controller
             ->selectRaw("
                 SUM(admon+seguro+afiliacion+mensajeria+otros+iva+retiro) AS ingresos,
                 SUM(c_asesor) AS comisiones,
-                SUM(CASE WHEN numero_factura = 0 THEN total_ss ELSE 0 END) AS retiros
+                SUM(CASE WHEN numero_factura = 0 THEN total_ss ELSE 0 END) AS retiros,
+                SUM(ISNULL(dist_retiro,0)) AS dist_retiro,
+                SUM(ISNULL(dist_asesor,0)) AS dist_asesor,
+                SUM(ISNULL(dist_encargado,0)) AS dist_encargado
             ")
             ->first();
 
@@ -2026,6 +2108,14 @@ class InformeController extends Controller
             ->sum('valor');
 
         $ing = (float)($factData->ingresos ?? 0);
+        $distRet = (float)($factData->dist_retiro ?? 0);
+        $distAses = (float)($factData->dist_asesor ?? 0);
+        $distEncarg = (float)($factData->dist_encargado ?? 0);
+        $fechaPeriodo = \Carbon\Carbon::createFromDate($anio, $mes, 1);
+        $fechaCorte = \Carbon\Carbon::createFromDate(2026, 5, 1);
+        if ($fechaPeriodo->greaterThanOrEqualTo($fechaCorte)) {
+            $ing = max(0.0, $ing - $distRet - $distAses - $distEncarg);
+        }
         $com = (float)($factData->comisiones ?? 0);
         $ret = (float)($factData->retiros ?? 0);
         $gas = (float)($gastosOp ?? 0);
@@ -2052,7 +2142,10 @@ class InformeController extends Controller
                 MONTH(fecha_pago) as mes,
                 SUM(admon+seguro+afiliacion+mensajeria+otros+iva+retiro) as ingresos,
                 SUM(c_asesor) as comisiones,
-                SUM(CASE WHEN numero_factura = 0 THEN total_ss ELSE 0 END) as retiros
+                SUM(CASE WHEN numero_factura = 0 THEN total_ss ELSE 0 END) as retiros,
+                SUM(ISNULL(dist_retiro,0)) as dist_retiro,
+                SUM(ISNULL(dist_asesor,0)) as dist_asesor,
+                SUM(ISNULL(dist_encargado,0)) as dist_encargado
             ')
             ->get()
             ->keyBy(function($r) { return $r->anio . '-' . $r->mes; });
@@ -2087,6 +2180,14 @@ class InformeController extends Controller
             $gastoData = $gastosPeriodos->get($key);
 
             $ing = (float)($factData->ingresos ?? 0);
+            $distRet = (float)($factData->dist_retiro ?? 0);
+            $distAses = (float)($factData->dist_asesor ?? 0);
+            $distEncarg = (float)($factData->dist_encargado ?? 0);
+            $fechaPeriodo = \Carbon\Carbon::createFromDate($a, $m, 1);
+            $fechaCorte = \Carbon\Carbon::createFromDate(2026, 5, 1);
+            if ($fechaPeriodo->greaterThanOrEqualTo($fechaCorte)) {
+                $ing = max(0.0, $ing - $distRet - $distAses - $distEncarg);
+            }
             $com = (float)($factData->comisiones ?? 0);
             $ret = (float)($factData->retiros ?? 0);
             $gas = (float)($gastoData->total_gastos ?? 0);

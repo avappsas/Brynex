@@ -239,6 +239,38 @@ class WhatsappApiService
     }
 
     /**
+     * Obtiene las plantillas directamente desde Meta Cloud API sin guardarlas.
+     *
+     * @param WhatsappConfig $config
+     * @return array
+     */
+    public function obtenerPlantillasDeMeta(WhatsappConfig $config): array
+    {
+        $creds = $config->credencialesEfectivas();
+
+        try {
+            $response = $this->http->get(
+                "{$this->baseUrl}/{$creds['waba_id']}/message_templates",
+                [
+                    'headers' => ['Authorization' => "Bearer {$creds['access_token']}"],
+                    'query'   => [
+                        'limit'  => 250,
+                        'fields' => 'id,name,status,language,category,components',
+                    ],
+                ]
+            );
+
+            $data = json_decode($response->getBody()->getContents(), true);
+            return $data['data'] ?? [];
+        } catch (\Exception $e) {
+            Log::error('WhatsApp: Error al obtener plantillas desde Meta', [
+                'error' => $e->getMessage()
+            ]);
+            return [];
+        }
+    }
+
+    /**
      * Lista las plantillas desde Meta y las sincroniza en BD.
      */
     public function sincronizarEstadoPlantillas(int $alidoId, WhatsappConfig $config): int

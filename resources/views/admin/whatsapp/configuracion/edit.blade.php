@@ -42,7 +42,7 @@
             ⚙️ WhatsApp — {{ $aliado->nombre }}
         </h2>
 
-        <form method="POST" action="{{ route('admin.whatsapp.config.update', $aliado->id) }}">
+        <form method="POST" action="{{ route('admin.whatsapp.config.update', $aliado->id) }}" enctype="multipart/form-data">
             @csrf @method('PUT')
 
             {{-- Toggle cuenta Brynex / propia --}}
@@ -111,7 +111,34 @@
                 Para usar un número propio, selecciona <strong>"Cuenta propia del aliado"</strong>.
             </div>
 
-            <div class="form-group" style="margin-top:1rem">
+            {{-- Sección de Plantilla de Cobros de Brynex e Imagen --}}
+            <div class="section-title" style="margin-top:1.5rem">Configuración de Cobros por WhatsApp</div>
+            <div class="form-group">
+                <label class="form-label">Plantilla de WhatsApp para Cobros (Brynex Global)</label>
+                <select name="cobro_plantilla_id" class="form-control" onchange="toggleImageUpload(this)">
+                    <option value="">-- Seleccionar Plantilla --</option>
+                    @foreach($plantillasBrynex as $plantilla)
+                        <option value="{{ $plantilla->id }}" {{ old('cobro_plantilla_id', $config->cobro_plantilla_id) == $plantilla->id ? 'selected' : '' }} data-header-tipo="{{ $plantilla->header_tipo }}">
+                            {{ $plantilla->nombre_display }} ({{ $plantilla->nombre }})
+                        </option>
+                    @endforeach
+                </select>
+                <div class="form-hint">Selecciona la plantilla global que se enviará automáticamente en los cobros de este aliado.</div>
+            </div>
+
+            <div class="form-group" id="imageUploadSection" style="display:none">
+                <label class="form-label">Imagen para Encabezado de la Plantilla</label>
+                @if($config->cobro_header_imagen)
+                    <div style="margin-bottom:.5rem">
+                        <img src="{{ asset('storage/' . $config->cobro_header_imagen) }}" alt="Encabezado actual" style="max-height:100px; border-radius:6px; border:1px solid #cbd5e1; display:block">
+                        <small style="color:#64748b">Imagen actual. Sube otra si deseas reemplazarla.</small>
+                    </div>
+                @endif
+                <input type="file" name="cobro_header_imagen" class="form-control" accept="image/*">
+                <div class="form-hint">La plantilla seleccionada requiere una imagen como encabezado (HEADER). Sube una imagen PNG o JPG.</div>
+            </div>
+
+            <div class="form-group" style="margin-top:1.5rem">
                 <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.83rem;font-weight:500">
                     <input type="checkbox" name="activo" value="1" {{ $config->activo ? 'checked' : '' }} style="width:16px;height:16px;">
                     Módulo WhatsApp activo para este aliado
@@ -126,3 +153,27 @@
     </div>
 </div>
 @endsection
+
+@push('scripts')
+<script>
+function toggleImageUpload(select) {
+    const selectedOption = select.options[select.selectedIndex];
+    if (!selectedOption) return;
+    const headerTipo = selectedOption.getAttribute('data-header-tipo');
+    const imageSection = document.getElementById('imageUploadSection');
+    
+    if (headerTipo === 'IMAGE') {
+        imageSection.style.display = 'block';
+    } else {
+        imageSection.style.display = 'none';
+    }
+}
+
+document.addEventListener("DOMContentLoaded", function() {
+    const select = document.getElementsByName('cobro_plantilla_id')[0];
+    if (select) {
+        toggleImageUpload(select);
+    }
+});
+</script>
+@endpush

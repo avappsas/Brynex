@@ -225,6 +225,7 @@ Route::middleware('auth')->group(function () {
             $cb = \App\Http\Controllers\Admin\CobrosController::class;
             // Individuales
             Route::get('/',                          [$cb, 'index'])                  ->name('index');
+            Route::get('/exportar',                  [$cb, 'exportar'])               ->name('exportar');
             Route::post('/{contratoId}/llamada',     [$cb, 'registrarLlamada'])       ->name('llamada.store');
             Route::get('/{contratoId}/llamadas',     [$cb, 'historialLlamadas'])      ->name('llamadas');
             // Empresas
@@ -470,6 +471,8 @@ Route::middleware('auth')->group(function () {
         Route::get('plantillas',                 [$plantilla, 'index'])          ->name('plantillas.index');
         Route::get('plantillas/crear',           [$plantilla, 'create'])         ->name('plantillas.create');
         Route::post('plantillas',                [$plantilla, 'store'])          ->name('plantillas.store');
+        Route::get('plantillas/importar',        [$plantilla, 'vistaImportar'])  ->name('plantillas.importar');
+        Route::post('plantillas/importar',       [$plantilla, 'procesarImportar'])->name('plantillas.importar.store');
         Route::get('plantillas/{id}/editar',     [$plantilla, 'edit'])           ->name('plantillas.edit');
         Route::put('plantillas/{id}',            [$plantilla, 'update'])         ->name('plantillas.update');
         Route::delete('plantillas/{id}',         [$plantilla, 'destroy'])        ->name('plantillas.destroy');
@@ -484,6 +487,8 @@ Route::middleware('auth')->group(function () {
 
         // ── Configuración (solo Brynex superadmin) ────────────────────────────
         Route::get('configuracion',              [$config, 'index'])             ->name('config.index');
+        Route::get('configuracion/global',       [$config, 'editGlobal'])        ->name('config.global');
+        Route::post('configuracion/global',      [$config, 'updateGlobal'])       ->name('config.global.update');
         Route::get('configuracion/{id}/editar',  [$config, 'edit'])              ->name('config.edit');
         Route::put('configuracion/{id}',         [$config, 'update'])            ->name('config.update');
         Route::post('configuracion/verificar',   [$config, 'verificarWebhook'])  ->name('config.verificar');

@@ -416,48 +416,127 @@ class FacturacionController extends Controller
         // IVA configurado (se aplica a clientes con IVA=SI, igual que en la factura)
         $cfgIvaPct = \App\Models\ConfiguracionBrynex::porcentajeIva(); // ej: 19
 
-        // Calcular COSTO BRUTO ESTIMADO de cada contrato para proporcionar el pago.
-        // Para planilla: SS(30 días) + admon + seguro — no basta con solo admon.
-        // Para afiliación: costo_afiliacion + seguro.
-        $totalesPorContrato = [];
+        // Precargar todos los contratos involucrados en una sola query (con eager loading de relaciones)
+        $contratosCargados = Contrato::where('aliado_id', $aliadoId)
+            ->whereIn('id', $validated['contratos'])
+            ->with(['eps', 'arl', 'pension', 'caja', 'tipoModalidad', 'razonSocial', 'asesor', 'cliente'])
+            ->get()
+            ->keyBy('id');
+
+        // Calcular COSTO BRUTO REAL de cada contrato para proporcionar el pago proporcional.
+        $totalesRealesPorContrato = [];
         foreach ($validated['contratos'] as $cId) {
-            $c = Contrato::where('aliado_id', $aliadoId)
-                ->with(['eps', 'arl', 'pension', 'caja', 'tipoModalidad'])
-                ->find($cId);
-            if (!$c) { $totalesPorContrato[$cId] = 1; continue; }
-            // Detectar si es mes de afiliación
-            $esMesIng = $c->fecha_ingreso
-                && (int)$c->fecha_ingreso->month === $mes
-                && (int)$c->fecha_ingreso->year  === $anio;
-            $esAfil = $esMesIng && (!($c->tipoModalidad?->esIndependiente() ?? false)
-                        || !($c->cobra_planilla_primer_mes ?? false));
-            if ($esAfil) {
-                $totalesPorContrato[$cId] = (int)($c->costo_afiliacion ?? 0) + (int)($c->seguro ?? 0);
-            } else {
-                // Planilla: usar calcularCotizacion() del MODELO — mismo método que la UI y
-                // que facturar() usa para SS. Garantiza granTotal = sum(reales) exacto.
-                $diasEst = $this->calcularDias($c, $mes, $anio);
-                $cotiz   = $c->calcularCotizacion($diasEst);
+            $c = $contratosCargados->get($cId);
+            if (!$c) { $totalesRealesPorContrato[$cId] = 0; continue; }
+            
+            $esIndep = $c->tipoModalidad?->esIndependiente() ?? false;
+            $esIndAct = (int)($c->tipo_modalidad_id) === 11;
+            $tipoForzado = $validated['tipo'];
 
-                // Afiliación I ACT primer mes: se cobra junto con planilla (igual que facturar())
-                $esIndActEst = (int)($c->tipo_modalidad_id) === 11;
-                $afilEst = ($esMesIng && $esIndActEst)
-                    ? (int)($c->costo_afiliacion ?? 0)
-                    : 0;
+            if ($c->fecha_ingreso) {
+                $mesIng = (int)$c->fecha_ingreso->month;
+                $anioIng = (int)$c->fecha_ingreso->year;
+                $esMesIng = ($mes === $mesIng && $anio === $anioIng);
 
-                // calcularCotizacion devuelve ss+admon+seguro+iva (sin admon_asesor)
-                // facturar() suma: ss + admon + admin_asesor + seguro + afil + iva
-                $totalesPorContrato[$cId] = $cotiz['ss']
-                    + $cotiz['admon']
-                    + (int)($c->admon_asesor ?? 0)
-                    + $cotiz['seguro']
-                    + $cotiz['iva']
-                    + $afilEst;
+                if ($esMesIng) {
+                    if (!$esIndep) {
+                        $tipoForzado = 'afiliacion';
+                    } elseif (!$esIndAct) {
+                        $tipoForzado = 'afiliacion';
+                    }
+                }
             }
-            // Mínimo 1 para evitar peso cero en contratos sin costo
-            if ($totalesPorContrato[$cId] <= 0) $totalesPorContrato[$cId] = 1;
+
+            if ((int)$c->tipo_modalidad_id === 15) {
+                $tipoForzado = 'afiliacion';
+            }
+
+            $esIndActPrimerMes = $esIndAct && isset($esMesIng) && $esMesIng;
+            $esAfiliacion = $tipoForzado === 'afiliacion';
+
+            if ($esIndActPrimerMes) {
+                $diasCotizar = max(1, 30 - (int)$c->fecha_ingreso->day + 1);
+            } elseif ($esAfiliacion) {
+                $diasCotizar = 0;
+            } else {
+                $diasCotizar = $this->calcularDias($c, $mes, $anio);
+            }
+
+            $esRetiro    = !empty($validated['es_retiro']);
+            $diasRetiro  = $esRetiro ? (int)($validated['dias_retiro'] ?? $diasCotizar) : null;
+            if ($esRetiro && $diasRetiro !== null && !$esAfiliacion) {
+                $diasCotizar = $diasRetiro;
+            }
+
+            $tieneIva = $c->cliente ? (strtoupper(trim($c->cliente->iva ?? '')) === 'SI') : false;
+
+            if ($esAfiliacion && !$esIndActPrimerMes) {
+                $calcSS = ['eps' => 0, 'arl' => 0, 'afp' => 0, 'caja' => 0];
+            } else {
+                $cotiz = $c->calcularCotizacion($diasCotizar, $tieneIva);
+                $calcSS = [
+                    'eps'  => (int)($cotiz['eps']  ?? 0),
+                    'arl'  => (int)($cotiz['arl']  ?? 0),
+                    'afp'  => (int)($cotiz['pen']  ?? 0),
+                    'caja' => (int)($cotiz['caja']  ?? 0),
+                ];
+            }
+
+            // Override manual
+            $esModoIndividual = count($validated['contratos']) === 1;
+            if (!$esAfiliacion) {
+                if ($esModoIndividual) {
+                    if (isset($validated['v_eps_manual']))  $calcSS['eps']  = intval($validated['v_eps_manual']);
+                    if (isset($validated['v_arl_manual']))  $calcSS['arl']  = intval($validated['v_arl_manual']);
+                    if (isset($validated['v_afp_manual']))  $calcSS['afp']  = intval($validated['v_afp_manual']);
+                    if (isset($validated['v_caja_manual'])) $calcSS['caja'] = intval($validated['v_caja_manual']);
+                } elseif (!empty($manualSsPorContrato[(string)$cId])) {
+                    $ssMap = $manualSsPorContrato[(string)$cId];
+                    if (isset($ssMap['eps']))  $calcSS['eps']  = intval($ssMap['eps']);
+                    if (isset($ssMap['arl']))  $calcSS['arl']  = intval($ssMap['arl']);
+                    if (isset($ssMap['afp']))  $calcSS['afp']  = intval($ssMap['afp']);
+                    if (isset($ssMap['caja'])) $calcSS['caja'] = intval($ssMap['caja']);
+                }
+            }
+
+            $afiliacion = ($esAfiliacion || $esIndActPrimerMes) ? (int)($c->costo_afiliacion ?? 0) : 0;
+            $seguro     = (int)($c->seguro ?? 0);
+            $admon       = ($esAfiliacion && !$esIndActPrimerMes) ? 0 : intval($c->administracion ?? 0);
+            $adminAsesor = ($esAfiliacion && !$esIndActPrimerMes) ? 0 : intval($c->admon_asesor   ?? 0);
+            $otrosAdmon  = intval($validated['otros_admon'] ?? 0);
+
+            $totalSS  = $calcSS['eps'] + $calcSS['arl'] + $calcSS['afp'] + $calcSS['caja'];
+            $ivaBase  = $admon + $adminAsesor;
+            $iva      = 0;
+
+            if (!$esAfiliacion || $esIndActPrimerMes) {
+                if ($tieneIva) {
+                    $cfgIva = \App\Models\ConfiguracionBrynex::porcentajeIva();
+                    $iva    = (int) round($ivaBase * $cfgIva / 100);
+                }
+            }
+
+            $total = $totalSS + $admon + $adminAsesor + $otrosAdmon + $seguro + $afiliacion + $iva;
+
+            $moraCliente = 0;
+            if ($esModoIndividual) {
+                $moraCliente = $esAfiliacion ? 0 : (int)($validated['mora'] ?? 0);
+            } else {
+                if (!$esAfiliacion) {
+                    $rs       = $c->razonSocial;
+                    $rsNit    = $rs ? (int)($rs->nit ?: $rs->id) : 0;
+                    $rsDiaH   = $rs ? ($rs->dia_habil ?? null) : null;
+                    if ($rsNit && $totalSS > 0) {
+                        $moraInfo   = MoraClienteService::calcular($aliadoId, $rsNit, $rsDiaH, $totalSS, $mes, $anio);
+                        $moraCliente = $moraInfo['mora'];
+                    }
+                }
+            }
+
+            $total += $moraCliente;
+            $totalesRealesPorContrato[$cId] = max(0, $total);
         }
-        $granTotal = array_sum($totalesPorContrato) ?: 1; // evitar división por 0
+        $granTotalReal = array_sum($totalesRealesPorContrato) ?: 1; // evitar división por 0
 
         // ─── numero_factura compartido para el lote masivo ─────────────────
         // En modo masivo todos los contratos comparten el MISMO número de recibo.
@@ -492,31 +571,34 @@ class FacturacionController extends Controller
             $saldoEmpresaAplicar = max(0, (int)$histSaldo);
         }
 
+        $cedulasLote = $contratosCargados->pluck('cedula')->toArray();
+        $facturasDuplicadasLote = Factura::where('aliado_id', $aliadoId)
+            ->whereIn('cedula', $cedulasLote)
+            ->where('mes', $mes)
+            ->where('anio', $anio)
+            ->whereNotIn('estado', ['anulada'])
+            ->get(['id', 'cedula', 'razon_social_id', 'estado'])
+            ->groupBy('cedula');
+
         DB::transaction(function () use (
             $validated, $aliadoId, $np, $mes, $anio,
             $esMasivo,
             &$facturasCreadas, &$omitidos, &$nPlanosPorRS,
             $totalPagoConsig, $totalPagoEfectivo, $totalPagoPrestamo,
             $totalAnticipo, $anticiposSeleccionados,
-            $consignacionesData, $totalesPorContrato, $granTotal, $batchNumeroFactura,
+            $consignacionesData, $totalesRealesPorContrato, $granTotalReal, $batchNumeroFactura,
             &$efAcum, &$csAcum, &$prAcum, &$sfAcum, &$antAcum,
-            $saldoEmpresaAplicar, &$contratosPendientes
+            $saldoEmpresaAplicar, &$contratosPendientes, $contratosCargados, $facturasDuplicadasLote
         ) {
             foreach ($validated['contratos'] as $contratoId) {
-                $contrato = Contrato::where('aliado_id', $aliadoId)
-                    ->with(['eps','arl','pension','caja','asesor','tipoModalidad'])
-                    ->findOrFail($contratoId);
+                $contrato = $contratosCargados->get($contratoId);
+                if (!$contrato) continue;
 
 
                 // ─── Validación anti-duplicado ─────────────────────────────
                 // Solo bloquea si ya existe factura para la MISMA cedula+mes+año+razon_social.
                 // Permite facturar al mismo cliente desde distinta Razón Social.
-                $facturasDup = Factura::where('aliado_id', $aliadoId)
-                    ->where('cedula', $contrato->cedula)
-                    ->where('mes', $mes)
-                    ->where('anio', $anio)
-                    ->whereNotIn('estado', ['anulada'])
-                    ->get(['id', 'razon_social_id', 'estado']);
+                $facturasDup = $facturasDuplicadasLote->get($contrato->cedula) ?: collect();
 
                 $yaExiste = $facturasDup->contains(function ($f) use ($contrato) {
                     // Comparar como enteros para evitar fallos int vs string
@@ -590,12 +672,14 @@ class FacturacionController extends Controller
                     $diasCotizar = $diasRetiro;
                 }
 
+                $tieneIva = $contrato->cliente ? (strtoupper(trim($contrato->cliente->iva ?? '')) === 'SI') : false;
+
                 // ── Fuente de verdad: calcularCotizacion() del modelo ──────────────────────
                 // Usar el mismo método que la UI para que total facturado = estimación exacta.
                 if ($esAfiliacion && !$esIndActPrimerMes) {
                     $calcSS = ['eps' => 0, 'arl' => 0, 'afp' => 0, 'caja' => 0];
                 } else {
-                    $cotizacion = $contrato->calcularCotizacion($diasCotizar);
+                    $cotizacion = $contrato->calcularCotizacion($diasCotizar, $tieneIva);
                     $calcSS = [
                         'eps'  => (int)($cotizacion['eps']  ?? 0),
                         'arl'  => (int)($cotizacion['arl']  ?? 0),
@@ -627,8 +711,6 @@ class FacturacionController extends Controller
                     }
                 }
 
-                // Saldo previo del cliente (auto desde BD)
-                $saldo = Factura::saldoClienteMesPrevio($aliadoId, $contrato->cedula, $mes, $anio);
 
                 // Afiliación:
                 // • I ACT primer mes: se incluye SIEMPRE junto con SS (pago conjunto)
@@ -653,8 +735,7 @@ class FacturacionController extends Controller
                 // IVA aplica en planilla (sobre admon) — también para I ACT primer mes
                 // Usar round() igual que calcularCotizacion() del modelo (no ceil)
                 if (!$esAfiliacion || $esIndActPrimerMes) {
-                    $clienteIva = DB::table('clientes')->where('cedula', $contrato->cedula)->value('iva');
-                    if (strtoupper(trim($clienteIva ?? '')) === 'SI') {
+                    if ($tieneIva) {
                         $cfgIva = \App\Models\ConfiguracionBrynex::porcentajeIva();
                         $iva    = (int) round($ivaBase * $cfgIva / 100);
                     }
@@ -736,13 +817,16 @@ class FacturacionController extends Controller
                     $nPlanoFactura = $rsId ? ($nPlanosPorRS[$rsId] ?? null) : null;
                 }
 
-                // --- Distribucion IGUAL entre contratos del batch ---
-                // Ef, consignacion y saldo a favor en PARTES IGUALES.
-                // El ultimo contrato recibe el residuo (floor) para que sumen exacto.
+                // --- Distribucion PROPORCIONAL entre contratos del batch ---
+                // Ef, consignacion, saldo a favor y anticipo en proporción al costo real de la factura.
+                // El último contrato recibe el residuo acumulado para que sumen exacto.
                 $nContratos = max(1, count($validated['contratos']));
                 $contratosPendientes--;
                 $esUltimoNoOmitido = ($contratosPendientes === 0);
                 $vSaldoFavor = 0; // Inicializar siempre (evita Undefined variable)
+
+                $costoContrato = $totalesRealesPorContrato[$contratoId] ?? 0;
+                $proporcion = $granTotalReal > 0 ? ($costoContrato / $granTotalReal) : 0;
 
                 if ($esUltimoNoOmitido) {
                     // Ultimo: residuo exacto
@@ -752,11 +836,12 @@ class FacturacionController extends Controller
                     $vSaldoFavor  = $saldoEmpresaAplicar - $sfAcum;
                     $vAnticipo    = $totalAnticipo        - $antAcum;
                 } else {
-                    $vConsig      = (int) floor($totalPagoConsig     / $nContratos);
-                    $vEfectivo    = (int) floor($totalPagoEfectivo   / $nContratos);
-                    $vPrestamo    = (int) floor($totalPagoPrestamo   / $nContratos);
-                    $vSaldoFavor  = (int) floor($saldoEmpresaAplicar / $nContratos);
-                    $vAnticipo    = (int) floor($totalAnticipo        / $nContratos);
+                    $vConsig      = (int) round($totalPagoConsig     * $proporcion);
+                    $vEfectivo    = (int) round($totalPagoEfectivo   * $proporcion);
+                    $vPrestamo    = (int) round($totalPagoPrestamo   * $proporcion);
+                    $vSaldoFavor  = (int) round($saldoEmpresaAplicar * $proporcion);
+                    $vAnticipo    = (int) round($totalAnticipo        * $proporcion);
+                    
                     $csAcum   += $vConsig;
                     $efAcum   += $vEfectivo;
                     $prAcum   += $vPrestamo;
@@ -871,7 +956,6 @@ class FacturacionController extends Controller
 
                 // Si está pagada o en préstamo, generar plano
                 if (in_array($factura->estado, [Factura::ESTADO_PAGADA, Factura::ESTADO_PRESTAMO])) {
-                    $factura->load('contrato.eps', 'contrato.arl', 'contrato.pension', 'contrato.caja', 'contrato.razonSocial');
                     Plano::generarDesdeContrato($contrato, $factura, $fechaRetiro ?? null);
                 }
 

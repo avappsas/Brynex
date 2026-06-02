@@ -23,8 +23,8 @@
         display: flex; align-items: center; justify-content: space-between;
         margin-bottom: 1.5rem; flex-wrap: wrap; gap: .75rem;
     }
-    .com-title { font-size: 1.4rem; font-weight: 700; color: var(--c-text); display: flex; align-items: center; gap: .5rem; }
-    .com-title small { font-size: .75rem; font-weight: 400; color: var(--c-muted); }
+    .com-title { font-size: 1.4rem; font-weight: 700; color: #0f172a; display: flex; align-items: center; gap: .5rem; }
+    .com-title small { font-size: .75rem; font-weight: 400; color: #475569; }
 
     /* Filtros */
     .filtros-bar {
@@ -110,20 +110,22 @@
 
     /* Saldo acumulado banner */
     .saldo-banner {
-        background: linear-gradient(135deg, rgba(139,92,246,.15), rgba(59,130,246,.1));
-        border: 1px solid rgba(139,92,246,.35);
-        border-radius: 12px; padding: .9rem 1.1rem;
+        background: linear-gradient(135deg, #1e1b4b, #312e81);
+        border: 2px solid #4f46e5;
+        border-radius: 12px; padding: 1.1rem 1.4rem;
         display: flex; align-items: center; justify-content: space-between;
         margin-bottom: 1rem; flex-wrap: wrap; gap: .5rem;
+        box-shadow: 0 4px 20px rgba(79, 70, 229, 0.15);
     }
-    .saldo-banner-label { font-size: .78rem; color: var(--c-muted); }
-    .saldo-banner-val { font-size: 1.5rem; font-weight: 800; color: #c4b5fd; }
+    .saldo-banner-label { font-size: .82rem; color: #a5b4fc; font-weight: 600; letter-spacing: 0.02em; }
+    .saldo-banner-val { font-size: 1.8rem; font-weight: 900; color: #f59e0b; text-shadow: 0 2px 4px rgba(0,0,0,0.3); }
     .btn-pagar {
-        background: var(--c-purple); color: #fff; border: none;
+        background: #ffffff; color: #7c3aed; border: none;
         border-radius: 8px; padding: .5rem 1.1rem; font-size: .85rem;
-        font-weight: 700; cursor: pointer; transition: opacity .15s;
+        font-weight: 800; cursor: pointer; transition: all .15s;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     }
-    .btn-pagar:hover { opacity: .85; }
+    .btn-pagar:hover { background: #f8fafc; transform: translateY(-1px); }
 
     /* Tabla */
     .tabla-wrap { overflow-x: auto; }
@@ -253,7 +255,7 @@
         <div>
             <label>Año</label>
             <select name="anio">
-                @foreach(range(2025, now()->year) as $y)
+                @foreach(range(2026, now()->year) as $y)
                     <option value="{{ $y }}" {{ $anio == $y ? 'selected' : '' }}>{{ $y }}</option>
                 @endforeach
             </select>
@@ -274,7 +276,7 @@
                             <div class="asesor-avatar">👤</div>
                             <div>
                                 <div class="asesor-nombre">{{ $a->nombre }}</div>
-                                <div class="asesor-cedula">CC {{ number_format($a->cedula) }}</div>
+                                <div class="asesor-cedula">CC {{ is_numeric($a->cedula) ? number_format($a->cedula) : ($a->cedula ?: '—') }}</div>
                             </div>
                         </a>
                     </li>
@@ -291,7 +293,7 @@
                 {{-- Saldo acumulado total --}}
                 <div class="saldo-banner">
                     <div>
-                        <div class="saldo-banner-label">💰 Saldo acumulado total (desde mayo 2025)</div>
+                        <div class="saldo-banner-label">💰 Saldo acumulado total (desde mayo 2026)</div>
                         <div class="saldo-banner-val">${{ number_format($saldoTotal) }}</div>
                     </div>
                     @if($saldoTotal > 0)

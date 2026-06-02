@@ -146,9 +146,10 @@
         $totAfil      = $facturas->sum(fn($f) => (int)$f->afiliacion);
         $totAsesor    = $facturas->sum(fn($f) => (int)$f->dist_asesor);
         $totRetiro    = $facturas->sum(fn($f) => (int)$f->dist_retiro);
+        $totEncargado = $facturas->sum(fn($f) => (int)($f->dist_encargado ?? 0));
         $totAdmon     = $facturas->sum(fn($f) => (int)$f->dist_admon);
         $totUtilidad  = $facturas->sum(fn($f) => (int)$f->dist_utilidad);
-        $totDist      = $totAsesor + $totRetiro + $totAdmon + $totUtilidad;
+        $totDist      = $totAsesor + $totRetiro + $totEncargado + $totAdmon + $totUtilidad;
         $totSinDist   = $totAfil - $totDist;
         $cntTotal     = $facturas->count();
         $cntSinDist   = $facturas->where('distribuida', false)->count();
@@ -170,7 +171,7 @@
             </span>
             @endif
         </div>
-        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:.75rem;">
+        <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:.75rem;">
             {{-- Total Afiliaciones --}}
             <div style="background:rgba(139,92,246,.08);border:1px solid rgba(139,92,246,.2);border-radius:10px;padding:.65rem .85rem;">
                 <div style="font-size:.6rem;font-weight:700;text-transform:uppercase;color:rgba(139,92,246,.7);letter-spacing:.06em;margin-bottom:.3rem;">Total Afiliaciones</div>
@@ -181,6 +182,12 @@
                 <div style="font-size:.6rem;font-weight:700;text-transform:uppercase;color:rgba(245,158,11,.7);letter-spacing:.06em;margin-bottom:.3rem;">💼 Asesor</div>
                 <div style="font-size:.95rem;font-weight:800;color:#fbbf24;font-family:monospace;">{{ $fmt($totAsesor) }}</div>
                 @if($totAfil > 0)<div style="font-size:.62rem;color:rgba(245,158,11,.5);margin-top:.15rem;">{{ number_format($totAsesor/$totAfil*100,1) }}%</div>@endif
+            </div>
+            {{-- Encargado --}}
+            <div style="background:rgba(139,92,246,.07);border:1px solid rgba(139,92,246,.18);border-radius:10px;padding:.65rem .85rem;">
+                <div style="font-size:.6rem;font-weight:700;text-transform:uppercase;color:rgba(139,92,246,.7);letter-spacing:.06em;margin-bottom:.3rem;">👤 Encargado</div>
+                <div style="font-size:.95rem;font-weight:800;color:#c4b5fd;font-family:monospace;">{{ $fmt($totEncargado) }}</div>
+                @if($totAfil > 0)<div style="font-size:.62rem;color:rgba(139,92,246,.5);margin-top:.15rem;">{{ number_format($totEncargado/$totAfil*100,1) }}%</div>@endif
             </div>
             {{-- Retiro --}}
             <div style="background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.18);border-radius:10px;padding:.65rem .85rem;">
@@ -286,6 +293,7 @@
                         <th style="text-align:right">Afiliación</th>
                         <th style="text-align:right">💼 Asesor</th>
                         <th style="text-align:right">🔒 Retiro</th>
+                        <th style="text-align:right">👤 Encargado</th>
                         <th style="text-align:right">🏢 Gastos/Admin</th>
                         <th style="text-align:right">📊 Utilidad</th>
                         <th>Estado</th>
@@ -322,19 +330,23 @@
                         {{-- Campos dist (modo lectura) --}}
                         <td style="text-align:right" class="td-asesor">
                             <span class="val-asesor">${{ number_format($f->dist_asesor) }}</span>
-                            <input class="dist-input" name="dist_asesor" value="{{ (int)$f->dist_asesor }}" style="display:none">
+                            <input type="number" class="dist-input" name="dist_asesor" value="{{ (int)$f->dist_asesor }}" min="0" style="display:none; text-align:right; width:80px; padding:0.2rem; border:1px solid #cbd5e1; border-radius:4px;">
                         </td>
                         <td style="text-align:right" class="td-retiro">
                             <span class="val-retiro">${{ number_format($f->dist_retiro) }}</span>
-                            <input class="dist-input" name="dist_retiro" value="{{ (int)$f->dist_retiro }}" style="display:none">
+                            <input type="number" class="dist-input" name="dist_retiro" value="{{ (int)$f->dist_retiro }}" min="0" style="display:none; text-align:right; width:80px; padding:0.2rem; border:1px solid #cbd5e1; border-radius:4px;">
+                        </td>
+                        <td style="text-align:right" class="td-encargado">
+                            <span class="val-encargado">${{ number_format($f->dist_encargado) }}</span>
+                            <input type="number" class="dist-input" name="dist_encargado" value="{{ (int)$f->dist_encargado }}" min="0" style="display:none; text-align:right; width:80px; padding:0.2rem; border:1px solid #cbd5e1; border-radius:4px;">
                         </td>
                         <td style="text-align:right" class="td-admon">
                             <span class="val-admon">${{ number_format($f->dist_admon) }}</span>
-                            <input class="dist-input" name="dist_admon" value="{{ (int)$f->dist_admon }}" style="display:none">
+                            <input type="number" class="dist-input" name="dist_admon" value="{{ (int)$f->dist_admon }}" min="0" style="display:none; text-align:right; width:80px; padding:0.2rem; border:1px solid #cbd5e1; border-radius:4px;">
                         </td>
                         <td style="text-align:right" class="td-util">
                             <span class="val-util">${{ number_format($f->dist_utilidad) }}</span>
-                            <input class="dist-input" name="dist_utilidad" value="{{ (int)$f->dist_utilidad }}" style="display:none">
+                            <input type="number" class="dist-input" name="dist_utilidad" value="{{ (int)$f->dist_utilidad }}" min="0" style="display:none; text-align:right; width:80px; padding:0.2rem; border:1px solid #cbd5e1; border-radius:4px;">
                         </td>
 
                         <td>
@@ -369,22 +381,26 @@ const CSRF = document.querySelector('meta[name="csrf-token"]')?.content || '';
 function editarFila(id) {
     const row = document.getElementById('row-' + id);
     // Mostrar inputs, ocultar spans
-    row.querySelectorAll('.val-asesor,.val-retiro,.val-admon,.val-util').forEach(s => s.style.display = 'none');
+    row.querySelectorAll('.val-asesor,.val-retiro,.val-encargado,.val-admon,.val-util').forEach(s => s.style.display = 'none');
     row.querySelectorAll('.dist-input').forEach(i => i.style.display = 'inline-block');
     row.querySelector('.btn-edit').style.display = 'none';
     document.getElementById('save-' + id).style.display = '';
     document.getElementById('cancel-' + id).style.display = '';
 
-    // Evento de cálculo residuo
+    // Evento de cálculo residuo y limpieza de negativos
     row.querySelectorAll('.dist-input').forEach(input => {
-        input.addEventListener('input', () => calcularResiduo(id));
+        input.addEventListener('input', () => {
+            const rawVal = input.value.replace(/[^0-9]/g, '');
+            input.value = rawVal || '0';
+            calcularResiduo(id);
+        });
     });
     calcularResiduo(id);
 }
 
 function cancelarFila(id) {
     const row = document.getElementById('row-' + id);
-    row.querySelectorAll('.val-asesor,.val-retiro,.val-admon,.val-util').forEach(s => s.style.display = '');
+    row.querySelectorAll('.val-asesor,.val-retiro,.val-encargado,.val-admon,.val-util').forEach(s => s.style.display = '');
     row.querySelectorAll('.dist-input').forEach(i => i.style.display = 'none');
     row.querySelector('.btn-edit').style.display = '';
     document.getElementById('save-' + id).style.display = 'none';
@@ -397,7 +413,10 @@ function calcularResiduo(id) {
     const afil  = parseInt(row.dataset.afil) || 0;
     const inputs = row.querySelectorAll('.dist-input');
     let suma = 0;
-    inputs.forEach(i => suma += parseInt(i.value) || 0);
+    inputs.forEach(i => {
+        const val = parseInt(i.value) || 0;
+        suma += val < 0 ? 0 : val;
+    });
     const diff = afil - suma;
     const el   = document.getElementById('residuo-' + id);
     if (diff === 0) {
@@ -413,7 +432,21 @@ async function guardarFila(id) {
     const row     = document.getElementById('row-' + id);
     const afil    = parseInt(row.dataset.afil) || 0;
     const inputs  = {};
-    row.querySelectorAll('.dist-input').forEach(i => inputs[i.name] = parseInt(i.value) || 0);
+    
+    let tieneNegativos = false;
+    row.querySelectorAll('.dist-input').forEach(i => {
+        const val = parseInt(i.value) || 0;
+        if (val < 0) {
+            tieneNegativos = true;
+        }
+        inputs[i.name] = val;
+    });
+
+    if (tieneNegativos) {
+        alert('No se permiten valores negativos en la distribución.');
+        return;
+    }
+
     const suma = Object.values(inputs).reduce((a,b) => a+b, 0);
 
     if (suma !== afil) {
@@ -438,6 +471,7 @@ async function guardarFila(id) {
             // Actualizar spans con nuevos valores
             row.querySelector('.val-asesor').textContent = '$' + inputs.dist_asesor.toLocaleString();
             row.querySelector('.val-retiro').textContent = '$' + inputs.dist_retiro.toLocaleString();
+            row.querySelector('.val-encargado').textContent = '$' + inputs.dist_encargado.toLocaleString();
             row.querySelector('.val-admon').textContent  = '$' + inputs.dist_admon.toLocaleString();
             row.querySelector('.val-util').textContent   = '$' + inputs.dist_utilidad.toLocaleString();
             // Actualizar badge

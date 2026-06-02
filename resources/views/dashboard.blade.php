@@ -43,8 +43,8 @@
             if(auth()->user()?->hasRole(['admin','superadmin','contador'])){
                 $modulos[] = ['icono'=>'📊', 'nombre'=>'Informes', 'color'=>'#6366f1', 'url'=>route('admin.informes.hub')];
             }
-            // Comisiones Asesores solo para superadmin
-            if(auth()->user()?->hasRole('superadmin')){
+            // Comisiones Asesores para usuario, admin, superadmin, contador
+            if(auth()->user()?->hasRole(['superadmin', 'admin', 'contador', 'usuario'])){
                 $modulos[] = ['icono'=>'💼', 'nombre'=>'Comisiones', 'color'=>'#f59e0b', 'url'=>route('admin.informes.comisiones.index')];
             }
 

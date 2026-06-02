@@ -54,11 +54,12 @@ class PagoAsesor extends BaseModel
         return $q->where('periodo_mes', $mes)->where('periodo_anio', $anio);
     }
 
-    // ─── Total pagado a un asesor (todos los períodos desde mayo 2025) ─
+    // ─── Total pagado a un asesor (todos los períodos desde mayo 2026) ─
     public static function totalPagadoAsesor(int $aliadoId, int $asesorId): int
     {
         return (int) static::where('aliado_id', $aliadoId)
             ->where('asesor_id', $asesorId)
+            ->whereRaw("(periodo_anio > 2026 OR (periodo_anio = 2026 AND periodo_mes >= 5))")
             ->sum('valor');
     }
 }

@@ -20,6 +20,8 @@ class WhatsappConfig extends BaseModel
         'usa_cuenta_brynex',
         'activo',
         'webhook_verificado',
+        'cobro_plantilla_id',
+        'cobro_header_imagen',
     ];
 
     protected $casts = [
@@ -33,6 +35,11 @@ class WhatsappConfig extends BaseModel
     public function aliado(): BelongsTo
     {
         return $this->belongsTo(Aliado::class);
+    }
+
+    public function cobroPlantilla(): BelongsTo
+    {
+        return $this->belongsTo(WhatsappPlantilla::class, 'cobro_plantilla_id');
     }
 
     // ── Accesor/Mutador para token encriptado ────────────────────────
@@ -62,11 +69,20 @@ class WhatsappConfig extends BaseModel
     public function credencialesEfectivas(): array
     {
         if ($this->usa_cuenta_brynex) {
+            $dbToken = \App\Models\ConfiguracionBrynex::obtener('whatsapp_global_access_token');
+            if ($dbToken) {
+                try {
+                    $dbToken = \Illuminate\Support\Facades\Crypt::decryptString($dbToken);
+                } catch (\Exception $e) {
+                    // Fallback
+                }
+            }
+
             return [
-                'waba_id'         => config('services.whatsapp.waba_id'),
-                'phone_number_id' => config('services.whatsapp.phone_number_id'),
-                'access_token'    => config('services.whatsapp.token'),
-                'numero_telefono' => config('services.whatsapp.numero'),
+                'waba_id'         => \App\Models\ConfiguracionBrynex::obtener('whatsapp_global_waba_id') ?: config('services.whatsapp.waba_id'),
+                'phone_number_id' => \App\Models\ConfiguracionBrynex::obtener('whatsapp_global_phone_number_id') ?: config('services.whatsapp.phone_number_id'),
+                'access_token'    => $dbToken ?: config('services.whatsapp.token'),
+                'numero_telefono' => \App\Models\ConfiguracionBrynex::obtener('whatsapp_global_numero_telefono') ?: config('services.whatsapp.numero'),
             ];
         }
 

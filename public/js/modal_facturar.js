@@ -382,6 +382,21 @@ const MF = (function () {
     function abrir(contratos, subtitulo) {
         _selContratos = contratos || [];
 
+        // Blindar inputs numéricos contra negativos y caracteres no válidos
+        const inputsNum = [
+            'mf-otros', 'mf-otros-admon', 'mf-mora', 'mf-efectivo', 'mf-prestamo',
+            'mf-dist-asesor', 'mf-dist-retiro', 'mf-dist-encargado', 'ant-valor'
+        ];
+        inputsNum.forEach(id => {
+            const inp = el(id);
+            if (inp && !inp._negSanitized) {
+                inp.addEventListener('input', function() {
+                    this.value = this.value.replace(/[^0-9]/g, '');
+                });
+                inp._negSanitized = true;
+            }
+        });
+
         // Subtítulo
         setText('mf-subtitle', subtitulo || '');
 
@@ -1273,6 +1288,15 @@ const MF = (function () {
             e.preventDefault();
             _openAdjuntoModal(row);
         });
+
+        // Evitar números negativos
+        const montoInp = row.querySelector('.mf-consig-monto');
+        if (montoInp) {
+            montoInp.addEventListener('input', function() {
+                this.value = this.value.replace(/[^0-9]/g, '');
+            });
+        }
+
         el('mf-consig-list').appendChild(row);
         // Al agregar consignación, limpiar efectivo para que el saldo pendiente
         // muestre cuánto queda por cubrir con la(s) consignación(es)

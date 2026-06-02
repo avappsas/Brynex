@@ -44,6 +44,7 @@
                 <small style="color:#64748b">Gestiona las plantillas aprobadas por Meta para enviar mensajes.</small>
             </div>
             <div style="display:flex;gap:.5rem">
+                <a href="{{ route('admin.whatsapp.plantillas.importar') }}" class="btn btn-outline">📥 Importar desde Meta</a>
                 <form method="POST" action="{{ route('admin.whatsapp.plantillas.sincronizar') }}" style="display:inline"
                       onsubmit="return confirm('¿Sincronizar estado de plantillas con Meta?')">
                     @csrf
