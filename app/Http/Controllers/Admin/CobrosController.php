@@ -1285,8 +1285,14 @@ class CobrosController extends Controller
             ]);
         }
 
+        // ── Obtener la URL de la imagen del header desde la petición HTTP actual
+        $headerImageUrl = null;
+        if ($config->cobro_header_imagen) {
+            $headerImageUrl = url('storage/' . $config->cobro_header_imagen);
+        }
+
         // ── Despachar Job asíncrono ───────────────────────────────────────
-        dispatch(new \App\Jobs\WhatsappEnvioMasivoJob($envio->id));
+        dispatch(new \App\Jobs\WhatsappEnvioMasivoJob($envio->id, [], $headerImageUrl));
 
         return response()->json([
             'ok'      => true,
@@ -1413,10 +1419,13 @@ class CobrosController extends Controller
             ->where('wa_numero', '!=', 'sin_numero')
             ->update(['estado' => 'pendiente', 'error' => null]);
 
-        // Actualizar el lote a pendiente para re-procesar
-        $lote->update(['estado' => 'pendiente']);
+        $config = WhatsappConfig::paraAliado($lote->aliado_id);
+        $headerImageUrl = null;
+        if ($config && $config->cobro_header_imagen) {
+            $headerImageUrl = url('storage/' . $config->cobro_header_imagen);
+        }
 
-        dispatch(new \App\Jobs\WhatsappEnvioMasivoJob($lote->id));
+        dispatch(new \App\Jobs\WhatsappEnvioMasivoJob($lote->id, [], $headerImageUrl));
 
         return response()->json([
             'ok'      => true,

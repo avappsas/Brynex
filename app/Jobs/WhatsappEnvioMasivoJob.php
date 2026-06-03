@@ -32,7 +32,8 @@ class WhatsappEnvioMasivoJob implements ShouldQueue
 
     public function __construct(
         protected int   $envioId,
-        protected array $parametrosGlobales = []
+        protected array $parametrosGlobales = [],
+        protected ?string $headerImageUrl = null
     ) {}
 
     public function handle(WhatsappApiService $apiService): void
@@ -57,9 +58,9 @@ class WhatsappEnvioMasivoJob implements ShouldQueue
         $fallidos  = 0;
         $omitidos  = 0;
 
-        // URL pública de imagen del header (si el aliado tiene cobro_header_imagen configurado)
-        $headerImageUrl = null;
-        if ($config->cobro_header_imagen) {
+        // URL pública de imagen del header (prioriza la enviada desde el controlador, fallback a asset local)
+        $headerImageUrl = $this->headerImageUrl;
+        if (!$headerImageUrl && $config->cobro_header_imagen) {
             $headerImageUrl = asset('storage/' . $config->cobro_header_imagen);
         }
 

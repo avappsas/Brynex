@@ -105,8 +105,14 @@ class WhatsappMasivoController extends Controller
             ]));
         }
 
+        // Obtener la URL de la imagen del header desde la petición HTTP actual
+        $headerImageUrl = null;
+        if ($config->cobro_header_imagen) {
+            $headerImageUrl = url('storage/' . $config->cobro_header_imagen);
+        }
+
         // Despachar job en background
-        dispatch(new WhatsappEnvioMasivoJob($envio->id, $validated['parametros'] ?? []));
+        dispatch(new WhatsappEnvioMasivoJob($envio->id, $validated['parametros'] ?? [], $headerImageUrl));
 
         return response()->json([
             'ok'      => true,
@@ -202,7 +208,13 @@ class WhatsappMasivoController extends Controller
             ]));
         }
 
-        dispatch(new WhatsappEnvioMasivoJob($envio->id, $validated['parametros'] ?? []));
+        // Obtener la URL de la imagen del header desde la petición HTTP actual
+        $headerImageUrl = null;
+        if ($config->cobro_header_imagen) {
+            $headerImageUrl = url('storage/' . $config->cobro_header_imagen);
+        }
+
+        dispatch(new WhatsappEnvioMasivoJob($envio->id, $validated['parametros'] ?? [], $headerImageUrl));
 
         return response()->json([
             'ok'      => true,
