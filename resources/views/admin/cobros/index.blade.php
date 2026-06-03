@@ -1388,6 +1388,7 @@ function ccImprimir() {
 
 // ── ENVIOS MASIVOS POR WHATSAPP ──
 let cantClientesMasivo = 0;
+let cantEnviosValidosMasivo = 0;
 let waTabActiva = 'preview';
 let waPreviews = [];
 let waPreviewIndexAct = 0;
@@ -1444,6 +1445,7 @@ async function abrirModalWhatsAppMasivo() {
         }
 
         cantClientesMasivo = data.cant_clientes;
+        cantEnviosValidosMasivo = resumen ? resumen.envios_validos : cantClientesMasivo;
         document.getElementById('waDestinatariosCount').textContent = cantClientesMasivo;
 
         const resCont = document.getElementById('waResumenEnvios');
@@ -1712,8 +1714,8 @@ async function enviarMensajePruebaWa() {
 }
 
 async function confirmarEnvioMasivoWa() {
-    if (cantClientesMasivo === 0) { mostrarToast('⚠️ No hay destinatarios filtrados.', 'error'); return; }
-    if (!confirm(`¿Confirmar el envío masivo a ${cantClientesMasivo} clientes? Los cobros ya pagados serán excluidos automáticamente.`)) return;
+    if (cantEnviosValidosMasivo === 0) { mostrarToast('⚠️ No hay destinatarios pendientes de envío con datos válidos.', 'error'); return; }
+    if (!confirm(`¿Confirmar el envío masivo a ${cantEnviosValidosMasivo} clientes? Los cobros ya pagados serán excluidos automáticamente.`)) return;
 
     const btn = document.getElementById('btnWaConfirmarMasivo');
     btn.disabled = true; btn.textContent = 'Procesando envío...';

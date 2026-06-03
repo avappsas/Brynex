@@ -1104,6 +1104,7 @@ class CobrosController extends Controller
                 'solo_uno'            => $cantSoloUnContrato,
                 'varios'              => $cantVariosContratos,
                 'sin_celular'         => $cantSinCelular,
+                'ya_enviados_hoy'     => $cantYaEnviadosHoy,
                 'envios_validos'      => $totalEnviosValidos,
                 'total_destinatarios' => $cantClientes,
             ],
