@@ -151,12 +151,50 @@ class WhatsappWebhookService
         if (!$estadoLocal) return;
 
         $mensaje = WhatsappMensaje::where('wa_message_id', $waMessageId)->first();
-        if (!$mensaje) return;
+        if (!$mensaje) {
+            // Incluso si el mensaje no existe en la BD local, loguear la falla de Meta para auditoría
+            if ($estadoLocal === 'fallido') {
+                Log::error('WhatsApp webhook (auditoría): Mensaje sin registro local falló en Meta', [
+                    'wa_message_id' => $waMessageId,
+                    'errors' => $status['errors'] ?? 'Sin detalles de error',
+                ]);
+            }
+            return;
+        }
+
+        if ($estadoLocal === 'fallido') {
+            Log::error("WhatsApp webhook: Mensaje ID {$mensaje->id} falló en Meta", [
+                'wa_message_id' => $waMessageId,
+                'errors' => $status['errors'] ?? 'Sin detalles de error',
+            ]);
+        }
 
         $mensaje->update([
             'estado'    => $estadoLocal,
             'estado_at' => now(),
         ]);
+
+        // Actualizar el estado del detalle de envío masivo si existe
+        if ($waMessageId) {
+            $detalle = \App\Models\WhatsappEnvioMasivoDetalle::where('wa_message_id', $waMessageId)->first();
+            if ($detalle) {
+                $detalle->update([
+                    'estado' => $estadoLocal,
+                    'error'  => $estadoLocal === 'fallido' ? (json_encode($status['errors'] ?? 'Fallo reportado por Meta')) : null,
+                ]);
+
+                // Ajustar contadores de la cabecera del lote masivo
+                $envio = $detalle->envio;
+                if ($envio) {
+                    if ($estadoLocal === 'fallido') {
+                        $envio->increment('total_fallidos');
+                        if ($envio->total_enviados > 0) {
+                            $envio->decrement('total_enviados');
+                        }
+                    }
+                }
+            }
+        }
 
         // Emitir evento para actualizar ícono de estado en el chat
         broadcast(new WhatsappConversacionActualizada($mensaje->conversacion))->toOthers();

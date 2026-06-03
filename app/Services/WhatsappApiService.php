@@ -43,6 +43,13 @@ class WhatsappApiService
         ?string $headerImageUrl = null
     ): array {
         $creds      = $config->credencialesEfectivas();
+
+        // Si la URL de la imagen del header apunta a un host local (127.0.0.1 o localhost),
+        // la reemplazamos temporalmente con la de producción (https://brynex.co) para permitir que Meta la descargue.
+        if ($headerImageUrl && (str_contains($headerImageUrl, '127.0.0.1') || str_contains($headerImageUrl, 'localhost'))) {
+            $headerImageUrl = preg_replace('/https?:\/\/[^\/]+/', 'https://brynex.co', $headerImageUrl);
+        }
+
         $componentes = $plantilla->construirComponentes($params, $headerImageUrl);
 
         $payload = [

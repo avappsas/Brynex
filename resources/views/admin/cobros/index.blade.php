@@ -686,7 +686,7 @@ $rowStyle    = $esIrAlerta
 
     {{-- Total estimado --}}
     <td class="num-col" style="font-weight:700;color:#1e40af;" title="SS: {{ $fmt($c->v_ss) }}">
-        {{ $fmt($c->total_estimado) }}
+        {{ $fmt($c->total_estimado + ($c->mora_estimada ?? 0)) }}
     </td>
 
     {{-- Mora estimada --}}
@@ -756,7 +756,7 @@ $rowStyle    = $esIrAlerta
             data-cedula="{{ $c->cedula }}"
             data-celular="{{ $celular }}"
             data-admon="{{ $fmt($c->administracion ?? 0) }}"
-            data-total="{{ $fmt($c->total_estimado) }}"
+            data-total="{{ $fmt($c->total_estimado + ($c->mora_estimada ?? 0)) }}"
             data-factura-id="{{ $c->fact_id ?? '' }}"
             data-semaforo="{{ $c->semaforo }}"
             title="Registrar llamada de cobro">
@@ -794,7 +794,7 @@ $rowStyle    = $esIrAlerta
 <tr style="background:#0f172a;color:#fff;font-weight:700;">
     <td colspan="8" style="padding:.5rem .55rem;font-size:.72rem;">TOTALES ({{ $contratos->count() }} registros)</td>
     <td class="num-col" style="color:#34d399;padding:.5rem .55rem;">{{ $fmt($totalAdmon) }}</td>
-    <td class="num-col" style="color:#34d399;padding:.5rem .55rem;">{{ $fmt($contratos->sum('total_estimado')) }}</td>
+    <td class="num-col" style="color:#34d399;padding:.5rem .55rem;">{{ $fmt($contratos->sum(fn($c) => $c->total_estimado + ($c->mora_estimada ?? 0))) }}</td>
     <td class="num-col" style="color:#fbbf24;padding:.5rem .55rem;" title="Mora total estimada">
         {{ $contratos->sum('mora_estimada') > 0 ? $fmt($contratos->sum('mora_estimada')) : '—' }}
     </td>
@@ -863,6 +863,7 @@ $rowStyle    = $esIrAlerta
                 <option value="promesa_pago">🤝 Promesa de pago</option>
                 <option value="pagado">✅ Ya pagó / Pagará hoy</option>
                 <option value="numero_errado">❌ Número errado</option>
+                <option value="whatsapp">💬 WhatsApp enviado</option>
                 <option value="otro">📝 Otro</option>
             </select>
         </div>
@@ -1388,6 +1389,8 @@ function ccImprimir() {
 // ── ENVIOS MASIVOS POR WHATSAPP ──
 let cantClientesMasivo = 0;
 let waTabActiva = 'preview';
+let waPreviews = [];
+let waPreviewIndexAct = 0;
 
 async function abrirModalWhatsAppMasivo() {
     const modal   = document.getElementById('modalWaMasivo');
@@ -1411,26 +1414,38 @@ async function abrirModalWhatsAppMasivo() {
             return;
         }
 
-        // Bloqueo diario
+        // Bloqueo / Habilitación del botón Confirmar según envíos válidos disponibles
         const btnConfirmar = document.getElementById('btnWaConfirmarMasivo');
         const bannerHoy    = document.getElementById('waBannerEnvioHoy');
-        if (data.envio_hoy) {
+        const resumen      = data.resumen_envios;
+
+        if (resumen && resumen.envios_validos === 0) {
             btnConfirmar.disabled = true;
             btnConfirmar.style.opacity = '.5';
             btnConfirmar.style.cursor  = 'not-allowed';
-            bannerHoy.innerHTML = `✅ Envío masivo ya realizado hoy a las <strong>${data.envio_hoy.hora}</strong> (${data.envio_hoy.enviados} enviados). Solo se permite 1 envío por día.`;
+            bannerHoy.innerHTML = `⚠️ No hay nuevos destinatarios pendientes por enviar en este filtro el día de hoy (todos ya fueron enviados o no tienen celular válido).`;
             bannerHoy.style.display = 'block';
+            bannerHoy.style.background = '#fef2f2';
+            bannerHoy.style.borderColor = '#fecaca';
+            bannerHoy.style.color = '#991b1b';
         } else {
             btnConfirmar.disabled = false;
             btnConfirmar.style.opacity = '1';
             btnConfirmar.style.cursor  = 'pointer';
-            bannerHoy.style.display = 'none';
+            if (data.envio_hoy) {
+                bannerHoy.innerHTML = `ℹ️ Se detectó un envío masivo previo realizado hoy a las <strong>${data.envio_hoy.hora}</strong>. Se omitirán los clientes ya procesados.`;
+                bannerHoy.style.display = 'block';
+                bannerHoy.style.background = '#eff6ff';
+                bannerHoy.style.borderColor = '#bfdbfe';
+                bannerHoy.style.color = '#1e3a8a';
+            } else {
+                bannerHoy.style.display = 'none';
+            }
         }
 
         cantClientesMasivo = data.cant_clientes;
         document.getElementById('waDestinatariosCount').textContent = cantClientesMasivo;
 
-        const resumen = data.resumen_envios;
         const resCont = document.getElementById('waResumenEnvios');
         if (resumen) {
             resCont.innerHTML = `
@@ -1446,6 +1461,10 @@ async function abrirModalWhatsAppMasivo() {
                     <span>⚠️ Sin celular válido:</span>
                     <strong>${resumen.sin_celular} omitidos</strong>
                 </div>
+                <div style="display:flex;justify-content:space-between;border-bottom:1px dashed rgba(22,101,52,.12);padding:.2rem 0;color:#b45309;padding-left:.8rem;">
+                    <span>ya enviados hoy:</span>
+                    <strong>${resumen.ya_enviados_hoy} omitidos</strong>
+                </div>
                 <div style="display:flex;justify-content:space-between;padding:.3rem 0;font-size:.82rem;margin-top:.3rem;color:#15803d;">
                     <strong>💬 TOTAL ENVÍOS REALES:</strong>
                     <strong>${resumen.envios_validos} de ${resumen.total_destinatarios}</strong>
@@ -1456,10 +1475,18 @@ async function abrirModalWhatsAppMasivo() {
             resCont.style.display = 'none';
         }
 
-        let textFormateado = data.cuerpo;
-        textFormateado = textFormateado.replace(/\*(.*?)\*/g, '<strong>$1</strong>');
-        textFormateado = textFormateado.replace(/_(.*?)_/g, '<em>$1</em>');
-        document.getElementById('waPreviewBody').innerHTML = textFormateado;
+        // Cargar previsualizaciones reales
+        waPreviews = data.previsualizaciones || [];
+        waPreviewIndexAct = 0;
+        mostrarPrevisualizacionActual();
+
+        // Mostrar control de navegación si hay más de 1 previsualización
+        const navCont = document.getElementById('waPreviewNavigation');
+        if (waPreviews.length > 1) {
+            navCont.style.display = 'flex';
+        } else {
+            navCont.style.display = 'none';
+        }
 
         const foot = document.getElementById('waPreviewFooter');
         if (data.footer) { foot.textContent = data.footer; foot.style.display = 'block'; }
@@ -1490,6 +1517,37 @@ async function abrirModalWhatsAppMasivo() {
     } catch(err) {
         cerrarModal('modalWaMasivo');
         mostrarToast('❌ Error al cargar previsualización: ' + err.message, 'error');
+    }
+}
+
+function mostrarPrevisualizacionActual() {
+    if (waPreviews.length === 0) return;
+    const item = waPreviews[waPreviewIndexAct];
+    
+    let textFormateado = item.cuerpo;
+    textFormateado = textFormateado.replace(/\*(.*?)\*/g, '<strong>$1</strong>');
+    textFormateado = textFormateado.replace(/_(.*?)_/g, '<em>$1</em>');
+    
+    document.getElementById('waPreviewBody').innerHTML = textFormateado;
+    
+    // Actualizar indicador
+    document.getElementById('waPreviewIndex').innerHTML = `<strong>${item.nombre}</strong><br/><span style="color:#64748b;font-size:.65rem;font-weight:600;">(${waPreviewIndexAct + 1} de ${waPreviews.length})</span>`;
+    
+    // Deshabilitar flechas en los extremos
+    document.getElementById('btnWaPrev').disabled = (waPreviewIndexAct === 0);
+    document.getElementById('btnWaPrev').style.opacity = (waPreviewIndexAct === 0) ? '.4' : '1';
+    document.getElementById('btnWaPrev').style.cursor = (waPreviewIndexAct === 0) ? 'not-allowed' : 'pointer';
+    
+    document.getElementById('btnWaNext').disabled = (waPreviewIndexAct === waPreviews.length - 1);
+    document.getElementById('btnWaNext').style.opacity = (waPreviewIndexAct === waPreviews.length - 1) ? '.4' : '1';
+    document.getElementById('btnWaNext').style.cursor = (waPreviewIndexAct === waPreviews.length - 1) ? 'not-allowed' : 'pointer';
+}
+
+function navegarVistaPrevia(direccion) {
+    const nuevoIndice = waPreviewIndexAct + direccion;
+    if (nuevoIndice >= 0 && nuevoIndice < waPreviews.length) {
+        waPreviewIndexAct = nuevoIndice;
+        mostrarPrevisualizacionActual();
     }
 }
 
@@ -1797,8 +1855,8 @@ async function confirmarEnvioMasivoWa() {
             <div id="waPanelPreview">
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;">
                     <div>
-                        <div style="font-size:.68rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.55rem;">Vista previa (datos de prueba)</div>
-                        <div style="background:#e5ddd5;border-radius:12px;padding:1rem;border:1px solid #cbd5e1;min-height:300px;display:flex;flex-direction:column;gap:.5rem;background-image:url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png');background-repeat:repeat;">
+                        <div style="font-size:.68rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.55rem;">Vista previa (mensajes reales)</div>
+                        <div style="background:#e5ddd5;border-radius:12px;padding:1rem;border:1px solid #cbd5e1;min-height:300px;display:flex;flex-direction:column;gap:.5rem;background-image:url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png');background-repeat:repeat;margin-bottom:.5rem;">
                             <div style="background:#fff;border-radius:8px 8px 8px 0;padding:.5rem .75rem;box-shadow:0 1px 1px rgba(0,0,0,.1);max-width:90%;position:relative;align-self:flex-start;">
                                 <div id="waPreviewHeaderImageContainer" style="display:none;margin-bottom:.5rem;">
                                     <img id="waPreviewHeaderImage" src="" alt="Encabezado" style="width:100%;border-radius:6px;max-height:120px;object-fit:cover;">
@@ -1807,6 +1865,13 @@ async function confirmarEnvioMasivoWa() {
                                 <div id="waPreviewFooter" style="font-size:.7rem;color:#868686;margin-top:.25rem;display:none;"></div>
                                 <div id="waPreviewButtons" style="display:none;flex-direction:column;gap:.25rem;margin-top:.5rem;border-top:1px solid #f0f0f0;padding-top:.4rem;"></div>
                             </div>
+                        </div>
+                        
+                        {{-- Control de paginación/navegación de previsualización --}}
+                        <div id="waPreviewNavigation" style="display:none;align-items:center;justify-content:center;gap:.75rem;background:#f8fafc;padding:.4rem .8rem;border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 1px 3px rgba(0,0,0,.03);">
+                            <button type="button" onclick="navegarVistaPrevia(-1)" id="btnWaPrev" style="background:#fff;border:1px solid #cbd5e1;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-weight:bold;color:#475569;box-shadow:0 1px 2px rgba(0,0,0,.05);transition:all .15s ease;font-size:1.1rem;outline:none;">&larr;</button>
+                            <span id="waPreviewIndex" style="font-size:.72rem;font-weight:700;color:#334155;min-width:140px;text-align:center;line-height:1.3;user-select:none;">Cliente 1 de 1</span>
+                            <button type="button" onclick="navegarVistaPrevia(1)" id="btnWaNext" style="background:#fff;border:1px solid #cbd5e1;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-weight:bold;color:#475569;box-shadow:0 1px 2px rgba(0,0,0,.05);transition:all .15s ease;font-size:1.1rem;outline:none;">&rarr;</button>
                         </div>
                     </div>
                     <div style="display:flex;flex-direction:column;justify-content:space-between;">

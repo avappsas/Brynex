@@ -151,15 +151,16 @@ class ConfiguracionAliadoController extends Controller
             'banco'        => 'required|string|max:100',
             'nombre'       => 'nullable|string|max:150',
             'nit'          => 'nullable|string|max:20',
-            'tipo_cuenta'  => 'required|in:Ahorros,Corriente',
+            'tipo_cuenta'  => 'nullable|in:Ahorros,Corriente',
             'numero_cuenta'=> 'required|string|max:30',
             'activo'       => 'boolean',
             'cobro'        => 'boolean',
             'observacion'  => 'nullable|string|max:300',
+            'llave'        => 'nullable|string|max:100',
         ]);
         $v['aliado_id'] = $alidoId;
-        $v['activo']    = $request->boolean('activo', true);
-        $v['cobro']     = $request->boolean('cobro', false);
+        $v['activo']    = $request->boolean('activo');
+        $v['cobro']     = $request->boolean('cobro');
         \App\Models\BancoCuenta::create($v);
         return redirect()->route('admin.configuracion.cuentas')
             ->with('success', 'Cuenta bancaria creada.');
@@ -173,14 +174,15 @@ class ConfiguracionAliadoController extends Controller
             'banco'        => 'required|string|max:100',
             'nombre'       => 'nullable|string|max:150',
             'nit'          => 'nullable|string|max:20',
-            'tipo_cuenta'  => 'required|in:Ahorros,Corriente',
+            'tipo_cuenta'  => 'nullable|in:Ahorros,Corriente',
             'numero_cuenta'=> 'required|string|max:30',
             'activo'       => 'boolean',
             'cobro'        => 'boolean',
             'observacion'  => 'nullable|string|max:300',
+            'llave'        => 'nullable|string|max:100',
         ]);
-        $v['activo'] = $request->boolean('activo', true);
-        $v['cobro']  = $request->boolean('cobro', false);
+        $v['activo'] = $request->boolean('activo');
+        $v['cobro']  = $request->boolean('cobro');
         $cuenta->update($v);
         // Si petición AJAX (fetch) devuelve JSON
         if ($request->expectsJson() || $request->ajax()) {

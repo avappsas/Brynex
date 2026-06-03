@@ -33,7 +33,16 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.8rem}
             </div>
         </div>
     </div>
+@if ($errors->any())
+<div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:10px;padding:.8rem 1.1rem;margin-bottom:1rem;color:#b91c1c;font-size:.82rem">
+    <div style="font-weight:700;margin-bottom:.3rem">⚠️ Se presentaron algunos errores al guardar:</div>
+    <ul style="margin:0;padding-left:1.2rem">
+        @foreach ($errors->all() as $error)
+            <li>{{ $error }}</li>
+        @endforeach
+    </ul>
 </div>
+@endif
 
 {{-- Tabla de cuentas --}}
 <div class="card">
@@ -63,8 +72,9 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.8rem}
                     <input type="text" name="nit" class="finp" placeholder="NIT o cédula">
                 </div>
                 <div>
-                    <label class="flb">Tipo *</label>
+                    <label class="flb">Tipo (opcional)</label>
                     <select name="tipo_cuenta" class="finp">
+                        <option value="">— Ninguno (Nequi, etc.) —</option>
                         <option value="Ahorros">Ahorros</option>
                         <option value="Corriente">Corriente</option>
                     </select>
@@ -73,11 +83,15 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.8rem}
                     <label class="flb">Número cuenta *</label>
                     <input type="text" name="numero_cuenta" class="finp" placeholder="Ej: 123-456789" required>
                 </div>
+                <div>
+                    <label class="flb">Llave de Pago</label>
+                    <input type="text" name="llave" class="finp" placeholder="Llave alfanumérica (opcional)">
+                </div>
                 <div style="display:flex;align-items:center;gap:.5rem;padding-top:1.1rem">
-                    <label style="display:flex;align-items:center;gap:.4rem;font-size:.82rem;cursor:pointer">
+                    <label style="display:flex;align-items:center;gap:.4rem;font-size:.82rem;cursor:pointer;color:#334155">
                         <input type="checkbox" name="cobro" value="1" style="width:1rem;height:1rem"> Para Cobro
                     </label>
-                    <label style="display:flex;align-items:center;gap:.4rem;font-size:.82rem;cursor:pointer">
+                    <label style="display:flex;align-items:center;gap:.4rem;font-size:.82rem;cursor:pointer;color:#334155">
                         <input type="checkbox" name="activo" value="1" checked style="width:1rem;height:1rem"> Activa
                     </label>
                 </div>
@@ -106,16 +120,21 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.8rem}
         <tbody>
         @forelse($cuentas as $c)
         <tr id="row-{{ $c->id }}">
-            <td style="font-weight:700">{{ $c->banco }}</td>
+            <td style="font-weight:700;color:#0f172a">{{ $c->banco }}</td>
             <td style="font-size:.75rem;color:#475569">{{ $c->nombre ?? '—' }}<br>
                 @if($c->nit)<span style="color:#94a3b8;font-size:.7rem">{{ $c->nit }}</span>@endif
             </td>
-            <td style="font-size:.75rem">{{ $c->tipo_cuenta }}</td>
-            <td style="font-family:monospace;font-weight:600">{{ $c->numero_cuenta }}</td>
+            <td style="font-size:.75rem;color:#475569">{{ $c->tipo_cuenta ?? '—' }}</td>
+            <td style="font-family:monospace;font-weight:600;color:#0f172a">
+                {{ $c->numero_cuenta }}
+                @if($c->llave)
+                    <br><span style="font-family:sans-serif;font-size:.7rem;color:#475569;background:#f1f5f9;padding:.1rem .35rem;border-radius:4px;font-weight:600">🔑 {{ $c->llave }}</span>
+                @endif
+            </td>
             <td style="text-align:center">
                 <button class="badge-cobro {{ $c->cobro ? 'on' : 'off' }}"
                         id="cobro-{{ $c->id }}"
-                        onclick="toggleCobro({{ $c->id }}, this)"
+                        onclick="toggleCobro({{ $c->id }}, this, {{ json_encode($c) }})"
                         title="{{ $c->cobro ? 'Quitar de Cuenta de Cobro' : 'Incluir en Cuenta de Cobro' }}">
                     💳 {{ $c->cobro ? 'Cobro ✓' : 'Sin cobro' }}
                 </button>
@@ -165,8 +184,9 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.8rem}
                     <input type="text" name="nit" id="e_nit" class="finp">
                 </div>
                 <div>
-                    <label class="flb">Tipo *</label>
+                    <label class="flb">Tipo (opcional)</label>
                     <select name="tipo_cuenta" id="e_tipo" class="finp">
+                        <option value="">— Ninguno (Nequi, etc.) —</option>
                         <option value="Ahorros">Ahorros</option>
                         <option value="Corriente">Corriente</option>
                     </select>
@@ -175,11 +195,15 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.8rem}
                     <label class="flb">Número cuenta *</label>
                     <input type="text" name="numero_cuenta" id="e_numero" class="finp" required>
                 </div>
+                <div>
+                    <label class="flb">Llave de Pago</label>
+                    <input type="text" name="llave" id="e_llave" class="finp" placeholder="Llave alfanumérica (opcional)">
+                </div>
                 <div style="display:flex;align-items:center;gap:.5rem;padding-top:1.1rem">
-                    <label style="display:flex;align-items:center;gap:.4rem;font-size:.82rem;cursor:pointer">
+                    <label style="display:flex;align-items:center;gap:.4rem;font-size:.82rem;cursor:pointer;color:#334155">
                         <input type="checkbox" name="cobro" id="e_cobro" value="1" style="width:1rem;height:1rem"> Para Cobro
                     </label>
-                    <label style="display:flex;align-items:center;gap:.4rem;font-size:.82rem;cursor:pointer">
+                    <label style="display:flex;align-items:center;gap:.4rem;font-size:.82rem;cursor:pointer;color:#334155">
                         <input type="checkbox" name="activo" id="e_activo" value="1" style="width:1rem;height:1rem"> Activa
                     </label>
                 </div>
@@ -197,15 +221,22 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.8rem}
 const CSRF = document.querySelector('meta[name="csrf-token"]').content;
 
 // Toggle cobro via AJAX (sin reload)
-async function toggleCobro(id, btn) {
+async function toggleCobro(id, btn, data) {
     const esCobro = btn.classList.contains('on');
     const resp = await fetch(`{{ url('admin/configuracion/cuentas') }}/${id}`, {
         method: 'POST',
         headers: {'Content-Type':'application/json','X-CSRF-TOKEN':CSRF,'X-HTTP-Method-Override':'PATCH','Accept':'application/json'},
-        body: JSON.stringify({ cobro: esCobro ? 0 : 1, _method: 'PATCH',
-            banco: btn.closest('tr').cells[0].textContent.trim(),
-            tipo_cuenta: btn.closest('tr').cells[2].textContent.trim(),
-            numero_cuenta: btn.closest('tr').cells[3].textContent.trim() })
+        body: JSON.stringify({
+            _method: 'PATCH',
+            cobro: esCobro ? 0 : 1,
+            banco: data.banco,
+            tipo_cuenta: data.tipo_cuenta || null,
+            numero_cuenta: data.numero_cuenta,
+            nombre: data.nombre || null,
+            nit: data.nit || null,
+            llave: data.llave || null,
+            activo: data.activo !== false && data.activo !== 0 ? 1 : 0
+        })
     });
     if(resp.ok) {
         btn.classList.toggle('on', !esCobro);
@@ -220,8 +251,9 @@ function editarCuenta(id, data) {
     document.getElementById('e_banco').value   = data.banco || '';
     document.getElementById('e_nombre').value  = data.nombre || '';
     document.getElementById('e_nit').value     = data.nit || '';
-    document.getElementById('e_tipo').value    = data.tipo_cuenta || 'Ahorros';
+    document.getElementById('e_tipo').value    = data.tipo_cuenta || '';
     document.getElementById('e_numero').value  = data.numero_cuenta || '';
+    document.getElementById('e_llave').value   = data.llave || '';
     document.getElementById('e_cobro').checked  = !!data.cobro;
     document.getElementById('e_activo').checked = data.activo !== false && data.activo !== 0;
     document.getElementById('modal-editar').style.display = 'flex';

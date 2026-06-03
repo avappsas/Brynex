@@ -80,6 +80,14 @@ class Cliente extends BaseModel
         );
     }
 
+    public function getNombreCortoAttribute(): string
+    {
+        return trim(
+            ($this->primer_nombre ?? '') . ' ' .
+            ($this->primer_apellido ?? '')
+        );
+    }
+
     public function getEdadAttribute(): ?int
     {
         if (!$this->fecha_nacimiento) return null;

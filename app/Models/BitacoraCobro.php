@@ -36,6 +36,7 @@ class BitacoraCobro extends BaseModel
         'promesa_pago' => '🤝 Promesa de pago',
         'pagado'       => '✅ Pagado',
         'numero_errado'=> '❌ Número errado',
+        'whatsapp'     => '💬 WhatsApp enviado',
         'otro'         => '📝 Otro',
     ];
 

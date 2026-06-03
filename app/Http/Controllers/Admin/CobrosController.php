@@ -909,19 +909,14 @@ class CobrosController extends Controller
         // Cuentas de cobro
         $cuentasCobro = BancoCuenta::paraCobro($aliadoId);
         $cuentasText = $cuentasCobro->map(function($bc) {
-            $nitPart = '';
-            if ($bc->nit) {
-                $trimmedNit = trim($bc->nit);
-                if (preg_match('/^(nit|cc|c\.c\.)/i', $trimmedNit)) {
-                    $nitPart = " " . $trimmedNit;
-                } else {
-                    $nitPart = " NIT " . $trimmedNit;
-                }
-            }
-            return "{$bc->banco} {$bc->tipo_cuenta} {$bc->numero_cuenta} - {$bc->nombre}{$nitPart}";
-        })->join("\n");
+            $tipoPart = $bc->tipo_cuenta ? " {$bc->tipo_cuenta}" : "";
+            $llavePart = $bc->llave ? " o llave {$bc->llave}" : "";
+            return "{$bc->banco}{$tipoPart} {$bc->numero_cuenta} {$bc->nombre}{$llavePart}";
+        })->join("  •  ");
 
-        if (empty($cuentasText)) {
+        if (!empty($cuentasText)) {
+            $cuentasText = "•  " . $cuentasText;
+        } else {
             $cuentasText = 'no tiene configurada';
         }
 
@@ -967,40 +962,42 @@ class CobrosController extends Controller
             return $raw;
         };
 
-        $contratosAfil     = $contratos->filter(fn($c) => ($c->es_afil ?? false))->values();
-        $contratosPlanilla = $contratos->filter(fn($c) => !($c->es_afil ?? false))->values();
-
-        $gruposPlanilla = [];
-        foreach ($contratosPlanilla as $c) {
-            $num = $normalizarCelular($c->cliente?->celular);
-            $key = $num ?: 'sin_numero_' . $c->id;
-
-            if (!isset($gruposPlanilla[$key])) {
-                $gruposPlanilla[$key] = [
-                    'wa_numero'    => $num,
-                    'contrato_ids' => [],
-                ];
+        // ── Encontrar contratos que ya fueron enviados hoy ──
+        $lotesHoyIds = WhatsappEnvioMasivo::where('aliado_id', $aliadoId)
+            ->whereDate('created_at', today())
+            ->pluck('id');
+        $detallesHoy = WhatsappEnvioMasivoDetalle::whereIn('envio_id', $lotesHoyIds)
+            ->whereIn('estado', ['pendiente', 'enviado', 'entregado', 'leido'])
+            ->get();
+        $contratoIdsEnviadosSet = [];
+        foreach ($detallesHoy as $det) {
+            if ($det->contrato_id) {
+                $contratoIdsEnviadosSet[$det->contrato_id] = true;
             }
-            $gruposPlanilla[$key]['contrato_ids'][] = $c->id;
-        }
-
-        $cantSoloUnContrato = 0;
-        $cantVariosContratos = 0;
-        $cantSinCelular = 0;
-
-        foreach ($gruposPlanilla as $grupo) {
-            if (empty($grupo['wa_numero'])) {
-                $cantSinCelular += count($grupo['contrato_ids']);
-            } else {
-                if (count($grupo['contrato_ids']) === 1) {
-                    $cantSoloUnContrato++;
-                } else {
-                    $cantVariosContratos++;
+            if ($det->contrato_ids_json) {
+                $arr = json_decode($det->contrato_ids_json, true);
+                if (is_array($arr)) {
+                    foreach ($arr as $idC) {
+                        $contratoIdsEnviadosSet[$idC] = true;
+                    }
                 }
             }
         }
 
+        $contratosAfil     = $contratos->filter(fn($c) => ($c->es_afil ?? false))->values();
+        $contratosPlanilla = $contratos->filter(fn($c) => !($c->es_afil ?? false))->values();
+
+        $cantSoloUnContrato = 0;
+        $cantVariosContratos = 0;
+        $cantSinCelular = 0;
+        $cantYaEnviadosHoy = 0;
+
+        // Procesar afiliados
         foreach ($contratosAfil as $c) {
+            if (isset($contratoIdsEnviadosSet[$c->id])) {
+                $cantYaEnviadosHoy++;
+                continue;
+            }
             $num = $normalizarCelular($c->cliente?->celular);
             if (empty($num)) {
                 $cantSinCelular++;
@@ -1009,8 +1006,89 @@ class CobrosController extends Controller
             }
         }
 
+        // Agrupar planilla por número de celular
+        $gruposPlanilla = [];
+        foreach ($contratosPlanilla as $c) {
+            $num = $normalizarCelular($c->cliente?->celular);
+            $key = $num ?: 'sin_numero';
+
+            if (!isset($gruposPlanilla[$key])) {
+                $gruposPlanilla[$key] = [];
+            }
+            $gruposPlanilla[$key][] = $c;
+        }
+
+        foreach ($gruposPlanilla as $key => $grupoContratos) {
+            $enviados = [];
+            $noEnviados = [];
+            foreach ($grupoContratos as $c) {
+                if (isset($contratoIdsEnviadosSet[$c->id])) {
+                    $enviados[] = $c;
+                } else {
+                    $noEnviados[] = $c;
+                }
+            }
+
+            $cantYaEnviadosHoy += count($enviados);
+
+            if (empty($noEnviados)) {
+                continue;
+            }
+
+            if ($key === 'sin_numero') {
+                $cantSinCelular += count($noEnviados);
+            } else {
+                if (count($noEnviados) === 1) {
+                    $cantSoloUnContrato++;
+                } else {
+                    $cantVariosContratos++;
+                }
+            }
+        }
+
         $totalEnviosValidos = $cantSoloUnContrato + $cantVariosContratos;
-        $totalDestinatarios = $totalEnviosValidos + $cantSinCelular;
+        $totalDestinatarios = $cantClientes;
+
+        $previsualizacionesReales = [];
+        $contratosValidosPreview = $contratos
+            ->filter(fn($c) => !isset($contratoIdsEnviadosSet[$c->id]) && !empty($normalizarCelular($c->cliente?->celular)))
+            ->take(30);
+
+        foreach ($contratosValidosPreview as $c) {
+            $nombreCliente = $c->cliente?->nombre_corto ?? 'Cliente';
+            $nombreAliadoEfectivo  = $config->nombre_cuenta ?: $nombreAliado;
+            $plazoDias     = '10';
+            $celularSoporte = $config->numero_telefono ?: 'no tiene configurado';
+
+            $valorCobro = (float)($c->total_estimado ?? 0) + (float)($c->mora_estimada ?? 0);
+            $valorFormateado = '$' . number_format($valorCobro, 0, ',', '.');
+
+            $cantVars = $plantilla->cantidadVariables();
+            $params = $cantVars <= 5
+                ? [$nombreCliente, $nombreAliadoEfectivo, $plazoDias, $cuentasText, $celularSoporte]
+                : [$nombreCliente, $nombreAliadoEfectivo, $plazoDias, $cuentasText, $celularSoporte, $valorFormateado];
+
+            $cuerpoReal = $plantilla->cuerpo;
+            foreach ($params as $i => $val) {
+                $cuerpoReal = str_replace('{{' . ($i + 1) . '}}', $val, $cuerpoReal);
+            }
+
+            $previsualizacionesReales[] = [
+                'nombre' => $nombreCliente,
+                'celular' => $normalizarCelular($c->cliente?->celular),
+                'cuerpo' => $cuerpoReal,
+                'valor'  => $valorFormateado
+            ];
+        }
+
+        if (empty($previsualizacionesReales)) {
+            $previsualizacionesReales[] = [
+                'nombre' => 'Juan Pérez (PRUEBA)',
+                'celular' => 'Prueba',
+                'cuerpo' => $cuerpoPrevisualizado,
+                'valor'  => '$150.000'
+            ];
+        }
 
         return response()->json([
             'ok'             => true,
@@ -1034,6 +1112,7 @@ class CobrosController extends Controller
                 'enviados'=> $envioHoy->total_enviados,
                 'estado'  => $envioHoy->estado,
             ] : null,
+            'previsualizaciones' => $previsualizacionesReales,
         ]);
     }
 
@@ -1061,19 +1140,14 @@ class CobrosController extends Controller
 
         $cuentasCobro = BancoCuenta::paraCobro($aliadoId);
         $cuentasText = $cuentasCobro->map(function($bc) {
-            $nitPart = '';
-            if ($bc->nit) {
-                $trimmedNit = trim($bc->nit);
-                if (preg_match('/^(nit|cc|c\.c\.)/i', $trimmedNit)) {
-                    $nitPart = " " . $trimmedNit;
-                } else {
-                    $nitPart = " NIT " . $trimmedNit;
-                }
-            }
-            return "{$bc->banco} {$bc->tipo_cuenta} {$bc->numero_cuenta} - {$bc->nombre}{$nitPart}";
-        })->join("\n");
+            $tipoPart = $bc->tipo_cuenta ? " {$bc->tipo_cuenta}" : "";
+            $llavePart = $bc->llave ? " o llave {$bc->llave}" : "";
+            return "{$bc->banco}{$tipoPart} {$bc->numero_cuenta} {$bc->nombre}{$llavePart}";
+        })->join("  •  ");
 
-        if (empty($cuentasText)) {
+        if (!empty($cuentasText)) {
+            $cuentasText = "•  " . $cuentasText;
+        } else {
             $cuentasText = 'no tiene configurada';
         }
 
@@ -1130,16 +1204,26 @@ class CobrosController extends Controller
             return response()->json(['ok' => false, 'mensaje' => 'Las credenciales de WhatsApp del aliado están incompletas.'], 422);
         }
 
-        // ── Bloqueo diario por aliado ─────────────────────────────────────
-        $envioHoy = WhatsappEnvioMasivo::where('aliado_id', $aliadoId)
+        // ── Encontrar contratos que ya fueron enviados hoy ──
+        $lotesHoyIds = WhatsappEnvioMasivo::where('aliado_id', $aliadoId)
             ->whereDate('created_at', today())
-            ->first();
-
-        if ($envioHoy) {
-            return response()->json([
-                'ok'      => false,
-                'mensaje' => "Ya se realizó un envío masivo hoy a las {$envioHoy->created_at->format('H:i')}. Solo se permite un envío por día.",
-            ], 422);
+            ->pluck('id');
+        $detallesHoy = WhatsappEnvioMasivoDetalle::whereIn('envio_id', $lotesHoyIds)
+            ->whereIn('estado', ['pendiente', 'enviado', 'entregado', 'leido'])
+            ->get();
+        $contratoIdsEnviadosSet = [];
+        foreach ($detallesHoy as $det) {
+            if ($det->contrato_id) {
+                $contratoIdsEnviadosSet[$det->contrato_id] = true;
+            }
+            if ($det->contrato_ids_json) {
+                $arr = json_decode($det->contrato_ids_json, true);
+                if (is_array($arr)) {
+                    foreach ($arr as $idC) {
+                        $contratoIdsEnviadosSet[$idC] = true;
+                    }
+                }
+            }
         }
 
         $plantilla = $config->cobroPlantilla;
@@ -1167,13 +1251,9 @@ class CobrosController extends Controller
         $normalizarCelular = function (?string $raw): string {
             $raw = preg_replace('/\D/', '', $raw ?? '');
             if (empty($raw)) return '';
-            // Si ya tiene indicativo y tiene 12 dígitos → usar tal cual
             if (strlen($raw) === 12) return $raw;
-            // Si tiene 10 dígitos → agregar +57 (Colombia)
             if (strlen($raw) === 10) return '57' . $raw;
-            // Si ya tiene 57 al inicio y 12 dígitos → ok
             if (str_starts_with($raw, '57') && strlen($raw) === 12) return $raw;
-            // Otros casos (exterior, etc.) → devolver como viene
             return $raw;
         };
 
@@ -1182,24 +1262,20 @@ class CobrosController extends Controller
         $contratosPlanilla = $contratos->filter(fn($c) => !($c->es_afil ?? false))->values();
 
         // ── Agrupar contratos de planilla por número de celular ──────────
-        // Mismo número → un solo detalle con valor sumado y contrato_ids_json
         $gruposPlanilla = [];
         foreach ($contratosPlanilla as $c) {
             $num = $normalizarCelular($c->cliente?->celular);
-            $key = $num ?: 'sin_numero_' . $c->id; // si no tiene número, clave única para registrar el fallo
+            $key = $num ?: 'sin_numero_' . $c->id;
 
             if (!isset($gruposPlanilla[$key])) {
                 $gruposPlanilla[$key] = [
                     'wa_numero'    => $num,
-                    'nombre'       => $c->cliente?->nombre_completo ?? 'Cliente',
-                    'valor'        => 0.0,
-                    'contrato_ids' => [],
-                    'contrato_id'  => $c->id, // primario
+                    'nombre'       => $c->cliente?->nombre_corto ?? 'Cliente',
+                    'contrato_id'  => $c->id,
+                    'contratos'    => [],
                 ];
             }
-
-            $gruposPlanilla[$key]['valor']          += (float)($c->total_estimado ?? 0);
-            $gruposPlanilla[$key]['contrato_ids'][]  = $c->id;
+            $gruposPlanilla[$key]['contratos'][] = $c;
         }
 
         // ── Calcular total real de destinatarios ─────────────────────────
@@ -1218,20 +1294,61 @@ class CobrosController extends Controller
         ]);
 
         $destinatariosProgramados = 0;
+        $destinatariosOmitidos = 0;
 
         // ── Crear detalles para grupos de planilla ───────────────────────
         foreach ($gruposPlanilla as $grupo) {
-            $sinNumero       = empty($grupo['wa_numero']);
-            $idsJson         = count($grupo['contrato_ids']) > 1
-                ? json_encode($grupo['contrato_ids'])
-                : null;
+            $sinNumero = empty($grupo['wa_numero']);
+
+            // Clasificar contratos del grupo en enviados vs no enviados hoy
+            $enviados = [];
+            $noEnviados = [];
+            foreach ($grupo['contratos'] as $c) {
+                if (isset($contratoIdsEnviadosSet[$c->id])) {
+                    $enviados[] = $c;
+                } else {
+                    $noEnviados[] = $c;
+                }
+            }
+
+            $totalGrupoValor = 0.0;
+            foreach ($grupo['contratos'] as $c) {
+                $totalGrupoValor += (float)($c->total_estimado ?? 0) + (float)($c->mora_estimada ?? 0);
+            }
+
+            if (count($enviados) === count($grupo['contratos'])) {
+                // Todos ya fueron enviados hoy en este grupo
+                $idsJson = count($grupo['contratos']) > 1 ? json_encode(array_column($grupo['contratos'], 'id')) : null;
+                WhatsappEnvioMasivoDetalle::create([
+                    'envio_id'           => $envio->id,
+                    'contrato_id'        => $grupo['contrato_id'],
+                    'wa_numero'          => $sinNumero ? 'sin_numero' : $grupo['wa_numero'],
+                    'nombre_destinatario'=> $grupo['nombre'],
+                    'valor_cobro'        => $totalGrupoValor,
+                    'contrato_ids_json'  => $idsJson,
+                    'estado'             => 'omitido',
+                    'error'              => 'Ya enviado hoy',
+                ]);
+                $destinatariosOmitidos++;
+                continue;
+            }
+
+            // Ajustar valor y contratos para enviar solo los no enviados hoy
+            $valorAjustado = 0.0;
+            $idsNoEnviados = [];
+            foreach ($noEnviados as $c) {
+                $valorAjustado += (float)($c->total_estimado ?? 0) + (float)($c->mora_estimada ?? 0);
+                $idsNoEnviados[] = $c->id;
+            }
+
+            $idsJson = count($idsNoEnviados) > 1 ? json_encode($idsNoEnviados) : null;
 
             WhatsappEnvioMasivoDetalle::create([
                 'envio_id'           => $envio->id,
                 'contrato_id'        => $grupo['contrato_id'],
                 'wa_numero'          => $sinNumero ? 'sin_numero' : $grupo['wa_numero'],
                 'nombre_destinatario'=> $grupo['nombre'],
-                'valor_cobro'        => $grupo['valor'],
+                'valor_cobro'        => $valorAjustado,
                 'contrato_ids_json'  => $idsJson,
                 'estado'             => $sinNumero ? 'fallido' : 'pendiente',
                 'error'              => $sinNumero ? 'Número celular vacío o inválido' : null,
@@ -1239,9 +1356,7 @@ class CobrosController extends Controller
 
             if (!$sinNumero) $destinatariosProgramados++;
 
-            // Registrar gestión en bitácora para cada contrato agrupado
-            foreach ($grupo['contrato_ids'] as $cId) {
-                // Buscar el contrato para obtener fact_id
+            foreach ($idsNoEnviados as $cId) {
                 $cObj = $contratosPlanilla->firstWhere('id', $cId);
                 BitacoraCobro::create([
                     'aliado_id'     => $aliadoId,
@@ -1249,7 +1364,7 @@ class CobrosController extends Controller
                     'factura_id'    => $cObj?->fact_id ?? null,
                     'usuario_id'    => Auth::id(),
                     'fecha_llamada' => now(),
-                    'resultado'     => 'otro',
+                    'resultado'     => 'whatsapp',
                     'observacion'   => 'WhatsApp de cobro programado (envío masivo)',
                 ]);
             }
@@ -1259,13 +1374,28 @@ class CobrosController extends Controller
         foreach ($contratosAfil as $c) {
             $num       = $normalizarCelular($c->cliente?->celular);
             $sinNumero = empty($num);
-            $valor     = (float)(($c->costo_afiliacion ?? 0) + ($c->seguro ?? 0));
+            $valor     = (float)($c->total_estimado ?? 0) + (float)($c->mora_estimada ?? 0);
+
+            if (isset($contratoIdsEnviadosSet[$c->id])) {
+                WhatsappEnvioMasivoDetalle::create([
+                    'envio_id'           => $envio->id,
+                    'contrato_id'        => $c->id,
+                    'wa_numero'          => $sinNumero ? 'sin_numero' : $num,
+                    'nombre_destinatario'=> $c->cliente?->nombre_corto ?? 'Cliente',
+                    'valor_cobro'        => $valor,
+                    'contrato_ids_json'  => null,
+                    'estado'             => 'omitido',
+                    'error'              => 'Ya enviado hoy',
+                ]);
+                $destinatariosOmitidos++;
+                continue;
+            }
 
             WhatsappEnvioMasivoDetalle::create([
                 'envio_id'           => $envio->id,
                 'contrato_id'        => $c->id,
                 'wa_numero'          => $sinNumero ? 'sin_numero' : $num,
-                'nombre_destinatario'=> $c->cliente?->nombre_completo ?? 'Cliente',
+                'nombre_destinatario'=> $c->cliente?->nombre_corto ?? 'Cliente',
                 'valor_cobro'        => $valor,
                 'contrato_ids_json'  => null,
                 'estado'             => $sinNumero ? 'fallido' : 'pendiente',
@@ -1280,10 +1410,25 @@ class CobrosController extends Controller
                 'factura_id'    => $c->fact_id ?? null,
                 'usuario_id'    => Auth::id(),
                 'fecha_llamada' => now(),
-                'resultado'     => 'otro',
+                'resultado'     => 'whatsapp',
                 'observacion'   => 'WhatsApp de afiliación programado (envío masivo)',
             ]);
         }
+
+        if ($destinatariosProgramados === 0) {
+            $envio->update([
+                'estado'         => 'fallido',
+                'total_omitidos' => $destinatariosOmitidos,
+            ]);
+            return response()->json([
+                'ok' => false,
+                'mensaje' => 'No hay nuevos destinatarios pendientes de envío en este filtro para hoy (todos ya fueron enviados o no tienen celular válido).'
+            ], 422);
+        }
+
+        $envio->update([
+            'total_omitidos' => $destinatariosOmitidos,
+        ]);
 
         // ── Obtener la URL de la imagen del header desde la petición HTTP actual
         $headerImageUrl = null;

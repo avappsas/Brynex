@@ -9,7 +9,7 @@ class BancoCuenta extends BaseModel
     protected $table    = 'banco_cuentas';
     protected $fillable = [
         'aliado_id','nombre','nit','banco',
-        'tipo_cuenta','numero_cuenta','activo','cobro','observacion',
+        'tipo_cuenta','numero_cuenta','activo','cobro','observacion', 'llave',
     ];
 
     protected $casts = [

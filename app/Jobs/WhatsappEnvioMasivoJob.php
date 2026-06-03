@@ -173,26 +173,21 @@ class WhatsappEnvioMasivoJob implements ShouldQueue
                 ->find($contratoIdPrimario);
 
             if ($contrato) {
-                $nombreCliente = $contrato->cliente?->nombre_completo ?? $detalle->nombre_destinatario;
+                $nombreCliente = $contrato->cliente?->nombre_corto ?? $detalle->nombre_destinatario;
                 $nombreAliado  = $contrato->aliado?->nombre ?? 'BryNex';
                 $plazoDias     = '10'; // Días por defecto
 
                 // Obtener cuentas para cobro
                 $cuentasCobro = \App\Models\BancoCuenta::paraCobro($contrato->aliado_id);
                 $cuentasText = $cuentasCobro->map(function($bc) {
-                    $nitPart = '';
-                    if ($bc->nit) {
-                        $trimmedNit = trim($bc->nit);
-                        if (preg_match('/^(nit|cc|c\.c\.)/i', $trimmedNit)) {
-                            $nitPart = " " . $trimmedNit;
-                        } else {
-                            $nitPart = " NIT " . $trimmedNit;
-                        }
-                    }
-                    return "{$bc->banco} {$bc->tipo_cuenta} {$bc->numero_cuenta} - {$bc->nombre}{$nitPart}";
-                })->join("\n");
+                    $tipoPart = $bc->tipo_cuenta ? " {$bc->tipo_cuenta}" : "";
+                    $llavePart = $bc->llave ? " o llave {$bc->llave}" : "";
+                    return "{$bc->banco}{$tipoPart} {$bc->numero_cuenta} {$bc->nombre}{$llavePart}";
+                })->join("  •  ");
 
-                if (empty($cuentasText)) {
+                if (!empty($cuentasText)) {
+                    $cuentasText = "•  " . $cuentasText;
+                } else {
                     $cuentasText = 'no tiene configurada';
                 }
 
@@ -218,15 +213,61 @@ class WhatsappEnvioMasivoJob implements ShouldQueue
                     $valorCobro = $factura ? $factura->total : null;
 
                     if ($valorCobro === null) {
-                        $esIndep = $contrato->tipoModalidad?->esIndependiente() ?? false;
-                        $ibc     = (float)($contrato->salario ?? 0);
-                        $plan    = $contrato->plan;
-                        $r100    = fn($v) => (int)(ceil(($v ?? 0) / 100) * 100);
-                        $pctSS   = $esIndep ? 28.5 : 29.5;
-                        $vSS     = ($plan?->incluye_eps || $plan?->incluye_arl || $plan?->incluye_pension || $plan?->incluye_caja)
-                            ? $r100($ibc * $pctSS / 100)
-                            : 0;
-                        $valorCobro = $vSS + (int)($contrato->administracion ?? 0) + (int)($contrato->seguro ?? 0);
+                        $mesEnvio = $envio->mes ?? now()->month;
+                        $anioEnvio = $envio->anio ?? now()->year;
+
+                        // Determinar si es afiliación o ingreso-retiro alertado
+                        $esAfil = false;
+                        $esIndActPrimerMes = false;
+                        if ($contrato->fecha_ingreso) {
+                            $fIng = $contrato->fecha_ingreso;
+                            $esIndAct = (int)($contrato->tipo_modalidad_id) === 11;
+                            if ((int)$fIng->month === $mesEnvio && (int)$fIng->year === $anioEnvio) {
+                                $esIndActPrimerMes = $esIndAct;
+                                $esAfil = !$esIndAct;
+                            }
+                        }
+
+                        $esIngresoRetiro = (int)($contrato->tipo_modalidad_id) === 12;
+                        $diasCotizEstim = 30;
+                        if ($esIngresoRetiro && !$esAfil && !$esIndActPrimerMes && $contrato->fecha_ingreso) {
+                            $fIng2 = $contrato->fecha_ingreso;
+                            $mesAnt = $mesEnvio === 1 ? 12 : $mesEnvio - 1;
+                            $anioAnt = $mesEnvio === 1 ? $anioEnvio - 1 : $anioEnvio;
+                            if ((int)$fIng2->month === $mesAnt && (int)$fIng2->year === $anioAnt) {
+                                $diasCotizEstim = max(1, 30 - $fIng2->day + 1);
+                            }
+                        }
+                        $esIrAlerta = $esIngresoRetiro && !$esAfil && !$esIndActPrimerMes && ($diasCotizEstim > 5);
+
+                        if ($esIrAlerta) {
+                            $valorCobro = (float)($contrato->costo_afiliacion ?? 0);
+                        } elseif ($esAfil) {
+                            $valorCobro = (float)(($contrato->costo_afiliacion ?? 0) + ($contrato->seguro ?? 0));
+                        } else {
+                            $esIndep = $contrato->tipoModalidad?->esIndependiente() ?? false;
+                            $ibc     = (float)($contrato->salario ?? 0);
+                            $plan    = $contrato->plan;
+                            $r100    = fn($v) => (int)(ceil(($v ?? 0) / 100) * 100);
+                            $pctSS   = $esIndep ? 28.5 : 29.5;
+                            $vSS     = ($plan?->incluye_eps || $plan?->incluye_arl || $plan?->incluye_pension || $plan?->incluye_caja)
+                                ? $r100($ibc * $pctSS / 100)
+                                : 0;
+                            $valorCobro = $vSS + (int)($contrato->administracion ?? 0) + (int)($contrato->seguro ?? 0);
+                        }
+                        // Estimar mora en lote (fallback)
+                        $moraLoteInput = [[
+                            '_contrato_id' => $contrato->id,
+                            'rs_nit'       => $contrato->razonSocial ? (int)($contrato->razonSocial->nit ?: $contrato->razonSocial->id) : 0,
+                            'rs_dia_habil' => $contrato->razonSocial ? $contrato->razonSocial->dia_habil : null,
+                            'total_ss'     => ($esAfil || $esIrAlerta) ? 0 : $vSS,
+                            'mes'          => $mesEnvio,
+                            'anio'         => $anioEnvio,
+                        ]];
+                        $moraLoteOutput = \App\Services\MoraClienteService::calcularLote($contrato->aliado_id, $moraLoteInput);
+                        $moraEst = isset($moraLoteOutput[0]) ? (int)($moraLoteOutput[0]['mora'] ?? 0) : 0;
+                        
+                        $valorCobro = $valorCobro + $moraEst;
                     }
                 }
 
