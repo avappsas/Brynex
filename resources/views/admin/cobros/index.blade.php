@@ -380,6 +380,11 @@ function sortClassC($col, $cs, $cd) {
            title="Exportar listado actual a Excel">
             📥 Excel
         </a>
+        <button type="button" onclick="abrirModalWhatsAppMasivo()"
+           style="background:#25d366;color:#fff;font-size:.8rem;font-weight:700;padding:.3rem .7rem;border-radius:6px;border:none;cursor:pointer;display:inline-flex;align-items:center;gap:.3rem;"
+           title="Enviar cobros por WhatsApp">
+            💬 WhatsApp
+        </button>
     </div>
 </div>
 </form>
@@ -1380,6 +1385,488 @@ function ccImprimir() {
     setTimeout(() => { area.style.display = 'none'; }, 1200);
 }
 
+// ── ENVIOS MASIVOS POR WHATSAPP ──
+let cantClientesMasivo = 0;
+let waTabActiva = 'preview';
+
+async function abrirModalWhatsAppMasivo() {
+    const modal   = document.getElementById('modalWaMasivo');
+    const loading = document.getElementById('waPrevisualizacionLoading');
+    const content = document.getElementById('waPrevisualizacionContent');
+
+    loading.style.display = 'block';
+    content.style.display = 'none';
+    modal.classList.add('open');
+
+    cambiarTabWa('preview');
+
+    try {
+        const queryParams = new URLSearchParams(window.location.search);
+        const r = await fetch(`{{ route('admin.cobros.whatsapp.previsualizar') }}?${queryParams.toString()}`);
+        const data = await r.json();
+
+        if (!data.ok) {
+            cerrarModal('modalWaMasivo');
+            mostrarToast('⚠️ ' + data.mensaje, 'error');
+            return;
+        }
+
+        // Bloqueo diario
+        const btnConfirmar = document.getElementById('btnWaConfirmarMasivo');
+        const bannerHoy    = document.getElementById('waBannerEnvioHoy');
+        if (data.envio_hoy) {
+            btnConfirmar.disabled = true;
+            btnConfirmar.style.opacity = '.5';
+            btnConfirmar.style.cursor  = 'not-allowed';
+            bannerHoy.innerHTML = `✅ Envío masivo ya realizado hoy a las <strong>${data.envio_hoy.hora}</strong> (${data.envio_hoy.enviados} enviados). Solo se permite 1 envío por día.`;
+            bannerHoy.style.display = 'block';
+        } else {
+            btnConfirmar.disabled = false;
+            btnConfirmar.style.opacity = '1';
+            btnConfirmar.style.cursor  = 'pointer';
+            bannerHoy.style.display = 'none';
+        }
+
+        cantClientesMasivo = data.cant_clientes;
+        document.getElementById('waDestinatariosCount').textContent = cantClientesMasivo;
+
+        const resumen = data.resumen_envios;
+        const resCont = document.getElementById('waResumenEnvios');
+        if (resumen) {
+            resCont.innerHTML = `
+                <div style="display:flex;justify-content:space-between;border-bottom:1px dashed rgba(22,101,52,.12);padding:.2rem 0;">
+                    <span>📄 1 solo contrato:</span>
+                    <strong>${resumen.solo_uno} envíos</strong>
+                </div>
+                <div style="display:flex;justify-content:space-between;border-bottom:1px dashed rgba(22,101,52,.12);padding:.2rem 0;">
+                    <span>📂 2 o más contratos agrupados:</span>
+                    <strong>${resumen.varios} envíos</strong>
+                </div>
+                <div style="display:flex;justify-content:space-between;border-bottom:1px dashed rgba(22,101,52,.12);padding:.2rem 0;color:#991b1b;">
+                    <span>⚠️ Sin celular válido:</span>
+                    <strong>${resumen.sin_celular} omitidos</strong>
+                </div>
+                <div style="display:flex;justify-content:space-between;padding:.3rem 0;font-size:.82rem;margin-top:.3rem;color:#15803d;">
+                    <strong>💬 TOTAL ENVÍOS REALES:</strong>
+                    <strong>${resumen.envios_validos} de ${resumen.total_destinatarios}</strong>
+                </div>
+            `;
+            resCont.style.display = 'block';
+        } else {
+            resCont.style.display = 'none';
+        }
+
+        let textFormateado = data.cuerpo;
+        textFormateado = textFormateado.replace(/\*(.*?)\*/g, '<strong>$1</strong>');
+        textFormateado = textFormateado.replace(/_(.*?)_/g, '<em>$1</em>');
+        document.getElementById('waPreviewBody').innerHTML = textFormateado;
+
+        const foot = document.getElementById('waPreviewFooter');
+        if (data.footer) { foot.textContent = data.footer; foot.style.display = 'block'; }
+        else { foot.style.display = 'none'; }
+
+        const imgCont = document.getElementById('waPreviewHeaderImageContainer');
+        const img     = document.getElementById('waPreviewHeaderImage');
+        if (data.header_tipo === 'IMAGE' && data.header_imagen) {
+            img.src = data.header_imagen; imgCont.style.display = 'block';
+        } else { imgCont.style.display = 'none'; }
+
+        const btnCont = document.getElementById('waPreviewButtons');
+        btnCont.innerHTML = '';
+        if (data.botones && data.botones.length > 0) {
+            data.botones.forEach(btn => {
+                const bDiv = document.createElement('div');
+                bDiv.style.cssText = 'background:#fff;border:1px solid #e2e8f0;border-radius:24px;padding:.45rem;font-size:.78rem;text-align:center;font-weight:700;color:#00a884;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.05);transition:background .15s;';
+                bDiv.textContent = btn.texto;
+                bDiv.onmouseover = () => bDiv.style.background = '#f9f9f9';
+                bDiv.onmouseout = () => bDiv.style.background = '#fff';
+                btnCont.appendChild(bDiv);
+            });
+            btnCont.style.display = 'flex';
+        } else { btnCont.style.display = 'none'; }
+
+        loading.style.display = 'none';
+        content.style.display = 'block';
+    } catch(err) {
+        cerrarModal('modalWaMasivo');
+        mostrarToast('❌ Error al cargar previsualización: ' + err.message, 'error');
+    }
+}
+
+function cambiarTabWa(tab) {
+    waTabActiva = tab;
+    document.getElementById('waTabPreview').classList.toggle('active', tab === 'preview');
+    document.getElementById('waTabHistorial').classList.toggle('active', tab === 'historial');
+    document.getElementById('waPanelPreview').style.display   = tab === 'preview'   ? 'block' : 'none';
+    document.getElementById('waPanelHistorial').style.display = tab === 'historial' ? 'block' : 'none';
+    if (tab === 'historial') cargarHistorialEnvios();
+}
+
+async function cargarHistorialEnvios() {
+    const cont = document.getElementById('waHistorialContenido');
+    cont.innerHTML = '<div style="text-align:center;padding:1.5rem;color:#64748b;">Cargando historial...</div>';
+    try {
+        const queryParams = new URLSearchParams(window.location.search);
+        const r    = await fetch(`{{ route('admin.cobros.whatsapp.historial') }}?${queryParams.toString()}`);
+        const data = await r.json();
+        if (!data.ok || data.lotes.length === 0) {
+            cont.innerHTML = '<div style="text-align:center;padding:2rem;color:#94a3b8;">Sin envíos masivos este mes.</div>';
+            return;
+        }
+        let html = `<table style="width:100%;border-collapse:collapse;font-size:.78rem;">
+            <thead><tr style="background:#f8fafc;">
+                <th style="padding:.45rem .5rem;text-align:left;border-bottom:1px solid #e2e8f0;">Fecha</th>
+                <th style="padding:.45rem .5rem;text-align:left;border-bottom:1px solid #e2e8f0;">Estado</th>
+                <th style="padding:.45rem .5rem;text-align:center;border-bottom:1px solid #e2e8f0;">Total</th>
+                <th style="padding:.45rem .5rem;text-align:center;border-bottom:1px solid #e2e8f0;">Env.</th>
+                <th style="padding:.45rem .5rem;text-align:center;border-bottom:1px solid #e2e8f0;">Fal.</th>
+                <th style="padding:.45rem .5rem;text-align:left;border-bottom:1px solid #e2e8f0;">Usuario</th>
+                <th style="padding:.45rem .5rem;border-bottom:1px solid #e2e8f0;"></th>
+            </tr></thead><tbody>`;
+        data.lotes.forEach(l => {
+            const esHoyBadge = l.es_hoy ? '<span style="background:#dcfce7;color:#166534;border-radius:4px;padding:.1rem .35rem;font-size:.65rem;margin-left:.4rem;">HOY</span>' : '';
+            html += `<tr style="border-bottom:1px solid #f1f5f9;">
+                <td style="padding:.4rem .5rem;">${l.fecha}${esHoyBadge}</td>
+                <td style="padding:.4rem .5rem;">${l.etiqueta}</td>
+                <td style="padding:.4rem .5rem;text-align:center;">${l.total_destinatarios}</td>
+                <td style="padding:.4rem .5rem;text-align:center;color:#16a34a;">${l.total_enviados}</td>
+                <td style="padding:.4rem .5rem;text-align:center;color:#dc2626;">${l.total_fallidos}</td>
+                <td style="padding:.4rem .5rem;">${l.usuario}</td>
+                <td style="padding:.4rem .5rem;text-align:center;">
+                    <button type="button" onclick="abrirInformeLote(${l.id})"
+                        style="background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe;border-radius:6px;padding:.25rem .55rem;font-size:.72rem;cursor:pointer;">
+                        📋 Informe
+                    </button>
+                </td>
+            </tr>`;
+        });
+        html += '</tbody></table>';
+        cont.innerHTML = html;
+    } catch(err) {
+        cont.innerHTML = `<div style="color:#dc2626;padding:1rem;">Error: ${err.message}</div>`;
+    }
+}
+
+async function abrirInformeLote(loteId) {
+    const modal = document.getElementById('modalWaInforme');
+    const cont  = document.getElementById('waInformeContenido');
+    cont.innerHTML = '<div style="text-align:center;padding:2rem;color:#64748b;">Cargando informe...</div>';
+    modal.classList.add('open');
+    try {
+        const r    = await fetch(`{{ url('admin/cobros/whatsapp') }}/${loteId}/reporte`);
+        const data = await r.json();
+        if (!data.ok) throw new Error(data.mensaje || 'Error');
+        const lote = data.lote;
+        const hayFallidos = data.detalles.some(d => d.estado === 'fallido' && d.wa_numero);
+        let html = `<div style="display:flex;gap:.75rem;margin-bottom:1rem;flex-wrap:wrap;">
+            <div style="background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;padding:.5rem .8rem;border-radius:8px;font-size:.78rem;">
+                📋 <strong>${lote.plantilla}</strong>
+            </div>
+            <div style="background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;padding:.5rem .8rem;border-radius:8px;font-size:.78rem;">
+                📅 ${lote.fecha} — <em>${lote.usuario}</em>
+            </div>
+            <div style="padding:.5rem .8rem;border-radius:8px;font-size:.78rem;background:#f8fafc;border:1px solid #e2e8f0;">
+                Total: ${lote.total_destinatarios} | ✅ ${lote.total_enviados} | ❌ ${lote.total_fallidos}
+            </div>
+            ${hayFallidos ? `<button type="button" onclick="reintentarLote(${lote.id})" id="btnReintentarLote"
+                style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:8px;padding:.4rem .75rem;font-size:.76rem;cursor:pointer;">
+                🔄 Reintentar fallidos
+            </button>` : ''}
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:.77rem;">
+            <thead><tr style="background:#f8fafc;">
+                <th style="padding:.4rem .5rem;text-align:left;border-bottom:1px solid #e2e8f0;">Cliente</th>
+                <th style="padding:.4rem .5rem;text-align:left;border-bottom:1px solid #e2e8f0;">Celular</th>
+                <th style="padding:.4rem .5rem;text-align:right;border-bottom:1px solid #e2e8f0;">Valor</th>
+                <th style="padding:.4rem .5rem;text-align:center;border-bottom:1px solid #e2e8f0;">Estado</th>
+                <th style="padding:.4rem .5rem;text-align:center;border-bottom:1px solid #e2e8f0;">WA</th>
+                <th style="padding:.4rem .5rem;text-align:center;border-bottom:1px solid #e2e8f0;"></th>
+            </tr></thead><tbody>`;
+        data.detalles.forEach(d => {
+            const errTxt   = d.error ? `<div style="color:#dc2626;font-size:.68rem;">${d.error}</div>` : '';
+            const chatLink = d.conversacion_id
+                ? `<a href="{{ url('admin/whatsapp/conversaciones') }}/${d.conversacion_id}" target="_blank"
+                    style="font-size:.7rem;color:#2563eb;text-decoration:none;" title="Ir al chat">💬</a>`
+                : '';
+            html += `<tr style="border-bottom:1px solid #f1f5f9;">
+                <td style="padding:.38rem .5rem;">${d.nombre}</td>
+                <td style="padding:.38rem .5rem;color:#64748b;">${d.wa_numero || '<span style="color:#94a3b8">Sin número</span>'}</td>
+                <td style="padding:.38rem .5rem;text-align:right;">${d.valor_cobro || '—'}</td>
+                <td style="padding:.38rem .5rem;text-align:center;">${waEstadoIcon(d.estado)}${errTxt}</td>
+                <td style="padding:.38rem .5rem;text-align:center;">${waMsgEstadoIcon(d.estado_wa)}</td>
+                <td style="padding:.38rem .5rem;text-align:center;">${chatLink}</td>
+            </tr>`;
+        });
+        html += '</tbody></table>';
+        cont.innerHTML = html;
+    } catch(err) {
+        cont.innerHTML = `<div style="color:#dc2626;padding:1rem;">Error: ${err.message}</div>`;
+    }
+}
+
+function waEstadoIcon(estado) {
+    const m = { pendiente:'<span style="color:#f59e0b;">⏳ Pendiente</span>', fallido:'<span style="color:#dc2626;">❌ Fallido</span>', enviado:'<span style="color:#16a34a;">✅ Enviado</span>' };
+    return m[estado] || '<span style="color:#94a3b8;">—</span>';
+}
+function waMsgEstadoIcon(estado) {
+    if (!estado) return '<span style="color:#94a3b8;font-size:.75rem;">—</span>';
+    const m = { enviado:'<span title="Enviado a Meta" style="font-size:.85rem;">📤</span>', entregado:'<span title="Entregado" style="font-size:.85rem;">✓✓</span>', leido:'<span title="Leído" style="color:#22c55e;font-size:.85rem;">✓✓</span>', fallido:'<span title="Falló" style="color:#dc2626;font-size:.85rem;">✗</span>' };
+    return m[estado] || `<span style="font-size:.7rem;color:#64748b;">${estado}</span>`;
+}
+
+async function reintentarLote(loteId) {
+    const btn = document.getElementById('btnReintentarLote');
+    if (btn) { btn.disabled = true; btn.textContent = 'Reintentando...'; }
+    try {
+        const r = await fetch(`{{ url('admin/cobros/whatsapp') }}/${loteId}/reintentar`, {
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json', 'Content-Type': 'application/json' }
+        });
+        const data = await r.json();
+        if (!data.ok) throw new Error(data.mensaje || 'Error');
+        mostrarToast('🔄 ' + data.mensaje, 'success');
+        cerrarModal('modalWaInforme');
+    } catch(err) {
+        mostrarToast('❌ ' + err.message, 'error');
+        if (btn) { btn.disabled = false; btn.textContent = '🔄 Reintentar fallidos'; }
+    }
+}
+
+async function enviarMensajePruebaWa() {
+    const celular = document.getElementById('waCelularPrueba').value;
+    if (!celular) { mostrarToast('⚠️ Debes ingresar un celular de prueba (57...)', 'error'); return; }
+    const btn = document.getElementById('btnWaPrueba');
+    btn.disabled = true; btn.textContent = 'Enviando...';
+    try {
+        const r = await fetch(`{{ route('admin.cobros.whatsapp.prueba') }}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json' },
+            body: JSON.stringify({ celular_prueba: celular })
+        });
+        const data = await r.json();
+        if (!data.ok) throw new Error(data.mensaje || 'Error al enviar');
+        mostrarToast('✅ ' + data.mensaje);
+    } catch(err) {
+        mostrarToast('❌ ' + err.message, 'error');
+    } finally {
+        btn.disabled = false; btn.textContent = '🚀 Enviar Prueba';
+    }
+}
+
+async function confirmarEnvioMasivoWa() {
+    if (cantClientesMasivo === 0) { mostrarToast('⚠️ No hay destinatarios filtrados.', 'error'); return; }
+    if (!confirm(`¿Confirmar el envío masivo a ${cantClientesMasivo} clientes? Los cobros ya pagados serán excluidos automáticamente.`)) return;
+
+    const btn = document.getElementById('btnWaConfirmarMasivo');
+    btn.disabled = true; btn.textContent = 'Procesando envío...';
+    try {
+        const queryParams = new URLSearchParams(window.location.search);
+        const r = await fetch(`{{ route('admin.cobros.whatsapp.enviar_filtro') }}?${queryParams.toString()}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json' }
+        });
+        const data = await r.json();
+        if (!data.ok) throw new Error(data.mensaje || 'Error al programar');
+        cerrarModal('modalWaMasivo');
+        mostrarToast('✅ ' + data.mensaje, 'success');
+        setTimeout(() => { location.reload(); }, 1800);
+    } catch(err) {
+        mostrarToast('❌ ' + err.message, 'error');
+        btn.disabled = false; btn.textContent = '💬 Confirmar Envío Masivo a Todos';
+    }
+}
+
 </script>
 @endpush
+
+{{-- Modal WhatsApp Masivo --}}
+<div id="modalWaMasivo" class="modal-bg">
+    <div class="modal-box wide" style="max-width:860px; border-radius: 20px;">
+        <div class="modal-title" style="border-bottom: 1px solid #f1f5f9; padding-bottom: .8rem; margin-bottom: 1.2rem;">
+            <span style="font-weight: 800; font-size: 1.1rem; color: #0f172a; display: flex; align-items: center; gap: .5rem;">💬 Envío Masivo por WhatsApp</span>
+            <button type="button" class="modal-close" onclick="cerrarModal('modalWaMasivo')">&times;</button>
+        </div>
+
+        {{-- Estilos personalizados locales para el modal WhatsApp --}}
+        <style>
+            .wa-tab-container {
+                display: inline-flex;
+                gap: .4rem;
+                margin-bottom: 1.25rem;
+                background: #f1f5f9;
+                padding: .3rem;
+                border-radius: 50px;
+                border: 1px solid #e2e8f0;
+            }
+            .wa-tab-btn {
+                background: none;
+                border: none;
+                border-radius: 50px;
+                padding: .45rem 1.2rem;
+                font-size: .8rem;
+                font-weight: 700;
+                cursor: pointer;
+                color: #64748b;
+                transition: all .2s ease;
+                display: inline-flex;
+                align-items: center;
+                gap: .35rem;
+                outline: none;
+            }
+            .wa-tab-btn.active {
+                background: #fff;
+                color: #1e40af!important;
+                box-shadow: 0 2px 6px rgba(0, 0, 0, .06);
+            }
+            .wa-pill-btn {
+                padding: .55rem 1.25rem;
+                border-radius: 50px;
+                font-size: .82rem;
+                font-weight: 700;
+                cursor: pointer;
+                border: none;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: .4rem;
+                transition: all .2s ease;
+                text-decoration: none;
+                outline: none;
+            }
+            .wa-pill-btn-success {
+                background: linear-gradient(135deg, #22c55e 0%, #15803d 100%);
+                color: #fff;
+                box-shadow: 0 4px 12px rgba(34, 197, 94, .25);
+            }
+            .wa-pill-btn-success:hover {
+                transform: translateY(-1px);
+                box-shadow: 0 6px 18px rgba(34, 197, 94, .38);
+                background: linear-gradient(135deg, #26d063 0%, #168a41 100%);
+            }
+            .wa-pill-btn-success:active {
+                transform: translateY(0);
+            }
+            .wa-pill-btn-outline {
+                background: #fff;
+                color: #475569;
+                border: 1px solid #cbd5e1;
+                box-shadow: 0 2px 4px rgba(0,0,0,.03);
+            }
+            .wa-pill-btn-outline:hover {
+                background: #f8fafc;
+                color: #0f172a;
+                border-color: #94a3b8;
+                transform: translateY(-1px);
+            }
+            .wa-pill-btn-outline:active {
+                transform: translateY(0);
+            }
+            .wa-pill-btn-accent {
+                background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+                color: #fff;
+                box-shadow: 0 3px 10px rgba(37, 99, 235, .25);
+            }
+            .wa-pill-btn-accent:hover {
+                transform: translateY(-1px);
+                box-shadow: 0 5px 15px rgba(37, 99, 235, .38);
+                background: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%);
+            }
+            .wa-pill-btn-accent:active {
+                transform: translateY(0);
+            }
+        </style>
+
+        {{-- Pestañas en forma de píldoras --}}
+        <div class="wa-tab-container">
+            <button id="waTabPreview" onclick="cambiarTabWa('preview')" type="button" class="wa-tab-btn active">
+                📱 Previsualización
+            </button>
+            <button id="waTabHistorial" onclick="cambiarTabWa('historial')" type="button" class="wa-tab-btn">
+                📊 Historial del Mes
+            </button>
+        </div>
+
+        <div id="waPrevisualizacionLoading" style="text-align:center;padding:2rem 0;">
+            <span style="color:#64748b;">Cargando plantilla e información...</span>
+        </div>
+
+        <div id="waPrevisualizacionContent" style="display:none;">
+            <div id="waBannerEnvioHoy" style="display:none;background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;border-radius:8px;padding:.65rem .9rem;font-size:.8rem;margin-bottom:1rem;"></div>
+
+            {{-- Panel Previsualización --}}
+            <div id="waPanelPreview">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;">
+                    <div>
+                        <div style="font-size:.68rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.55rem;">Vista previa (datos de prueba)</div>
+                        <div style="background:#e5ddd5;border-radius:12px;padding:1rem;border:1px solid #cbd5e1;min-height:300px;display:flex;flex-direction:column;gap:.5rem;background-image:url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png');background-repeat:repeat;">
+                            <div style="background:#fff;border-radius:8px 8px 8px 0;padding:.5rem .75rem;box-shadow:0 1px 1px rgba(0,0,0,.1);max-width:90%;position:relative;align-self:flex-start;">
+                                <div id="waPreviewHeaderImageContainer" style="display:none;margin-bottom:.5rem;">
+                                    <img id="waPreviewHeaderImage" src="" alt="Encabezado" style="width:100%;border-radius:6px;max-height:120px;object-fit:cover;">
+                                </div>
+                                <div id="waPreviewBody" style="font-size:.82rem;color:#303030;white-space:pre-wrap;word-break:break-word;line-height:1.4;"></div>
+                                <div id="waPreviewFooter" style="font-size:.7rem;color:#868686;margin-top:.25rem;display:none;"></div>
+                                <div id="waPreviewButtons" style="display:none;flex-direction:column;gap:.25rem;margin-top:.5rem;border-top:1px solid #f0f0f0;padding-top:.4rem;"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display:flex;flex-direction:column;justify-content:space-between;">
+                        <div>
+                            <div style="font-size:.68rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.55rem;">Detalles del Envío</div>
+                            <div style="background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;padding:.8rem;border-radius:10px;margin-bottom:1rem;">
+                                <div style="font-size:1.1rem;font-weight:800;border-bottom:1px solid rgba(22,101,52,.12);padding-bottom:.4rem;margin-bottom:.4rem;">
+                                    <span id="waDestinatariosCount">0</span> contratos pendientes
+                                </div>
+                                <div id="waResumenEnvios" style="font-size:.76rem;line-height:1.6;color:#15803d;display:none;"></div>
+                                <small style="color:#1e8f49;margin-top:.4rem;display:block;font-size:.7rem;line-height:1.3;">Los clientes con facturas ya pagadas se excluyen automáticamente.</small>
+                            </div>
+                            <div style="background:#fefce8;border:1px solid #fde68a;border-radius:8px;padding:.6rem .8rem;margin-bottom:1rem;font-size:.75rem;color:#92400e;">
+                                ℹ️ <strong>Varios contratos de planilla</strong> = 1 mensaje con valor sumado. Afiliaciones = mensaje separado.
+                            </div>
+                            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:.8rem;margin-bottom:1rem;">
+                                <label style="font-size:.68rem;font-weight:700;color:#475569;">Celular de Prueba</label>
+                                <div style="display:flex;gap:.4rem;margin-top:.2rem;">
+                                    <input type="text" id="waCelularPrueba" class="form-control" placeholder="Ej: 573001234567"
+                                        style="flex:1;padding:.4rem .6rem;border-radius:50px;font-size:.8rem;" value="{{ Auth::user()->celular ?? '' }}">
+                                    <button type="button" class="wa-pill-btn wa-pill-btn-outline" onclick="enviarMensajePruebaWa()" id="btnWaPrueba"
+                                        style="font-size:.75rem;padding:.4rem 1rem;">🚀 Enviar Prueba</button>
+                                </div>
+                                <small style="color:#64748b;font-size:.7rem;">Recibe el mensaje en tu celular antes de enviarlo masivamente.</small>
+                            </div>
+                        </div>
+                        <div style="border-top:1px solid #f1f5f9;padding-top:1rem;display:flex;flex-direction:column;gap:.4rem;">
+                            <button type="button" class="wa-pill-btn wa-pill-btn-success" onclick="confirmarEnvioMasivoWa()" id="btnWaConfirmarMasivo"
+                                style="width:100%;padding:.65rem;font-size:.88rem;">
+                                💬 Confirmar Envío Masivo a Todos
+                            </button>
+                            <button type="button" class="wa-pill-btn wa-pill-btn-outline" onclick="cerrarModal('modalWaMasivo')"
+                                style="width:100%;padding:.5rem;">
+                                Cancelar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {{-- Panel Historial --}}
+            <div id="waPanelHistorial" style="display:none;">
+                <div id="waHistorialContenido" style="min-height:200px;">
+                    <div style="text-align:center;padding:2rem;color:#94a3b8;">Selecciona esta pestaña para ver el historial.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{{-- Sub-modal Informe Detallado --}}
+<div id="modalWaInforme" class="modal-bg">
+    <div class="modal-box wide" style="max-width:900px;">
+        <div class="modal-title">
+            <span>📋 Informe Detallado del Lote</span>
+            <button type="button" class="modal-close" onclick="cerrarModal('modalWaInforme')">&times;</button>
+        </div>
+        <div id="waInformeContenido" style="max-height:70vh;overflow-y:auto;">
+            <div style="text-align:center;padding:2rem;color:#64748b;">Cargando...</div>
+        </div>
+    </div>
+</div>
 @endsection

@@ -19,6 +19,7 @@
                     <th style="padding:0.7rem 1rem;text-align:left;color:#475569;font-weight:600;">Nombre / Razón Social</th>
                     <th style="padding:0.7rem 1rem;text-align:left;color:#475569;font-weight:600;">NIT</th>
                     <th style="padding:0.7rem 1rem;text-align:left;color:#475569;font-weight:600;">Contacto</th>
+                    <th style="padding:0.7rem 1rem;text-align:left;color:#475569;font-weight:600;">WhatsApp</th>
                     <th style="padding:0.7rem 1rem;text-align:left;color:#475569;font-weight:600;">Usuarios</th>
                     <th style="padding:0.7rem 1rem;text-align:center;color:#475569;font-weight:600;">Estado</th>
                     <th style="padding:0.7rem 1rem;text-align:center;color:#475569;font-weight:600;">Acciones</th>
@@ -43,6 +44,13 @@
                     <td style="padding:0.65rem 1rem;">
                         <div style="color:#334155;">{{ $aliado->contacto ?? '—' }}</div>
                         <div style="font-size:0.75rem;color:#94a3b8;">{{ $aliado->correo }}</div>
+                    </td>
+                    <td style="padding:0.65rem 1rem;color:#334155;">
+                        @if($aliado->whatsapp)
+                            <span style="font-weight:600;color:#16a34a;">🟢 {{ $aliado->whatsapp }}</span>
+                        @else
+                            <span style="color:#cbd5e1;">—</span>
+                        @endif
                     </td>
                     <td style="padding:0.65rem 1rem;text-align:center;">
                         <span style="background:#dbeafe;color:#1d4ed8;padding:0.15rem 0.6rem;border-radius:999px;font-size:0.75rem;font-weight:600;">

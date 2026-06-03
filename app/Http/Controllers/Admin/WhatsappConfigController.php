@@ -32,9 +32,6 @@ class WhatsappConfigController extends Controller
         return view('admin.whatsapp.configuracion.index', compact('aliados'));
     }
 
-    /**
-     * Formulario de configuración para un aliado específico.
-     */
     public function edit(int $alidoId)
     {
         $this->autorizarSuperadminBrynex();
@@ -51,7 +48,19 @@ class WhatsappConfigController extends Controller
             ->orderBy('nombre_display')
             ->get();
 
-        return view('admin.whatsapp.configuracion.edit', compact('aliado', 'config', 'plantillasBrynex'));
+        // Plantillas globales de Brynex
+        $plantillasGlobales = \App\Models\WhatsappPlantilla::where('aliado_id', $brynexId)
+            ->orderBy('nombre_display')
+            ->get();
+
+        // Nombres de las plantillas que ya tiene el aliado localmente
+        $plantillasPropias = \App\Models\WhatsappPlantilla::where('aliado_id', $alidoId)
+            ->get()
+            ->keyBy('nombre');
+
+        return view('admin.whatsapp.configuracion.edit', compact(
+            'aliado', 'config', 'plantillasBrynex', 'plantillasGlobales', 'plantillasPropias'
+        ));
     }
 
     /**
@@ -73,7 +82,7 @@ class WhatsappConfigController extends Controller
             'nombre_cuenta'       => 'nullable|string|max:150',
             'activo'              => 'boolean',
             'cobro_plantilla_id'  => 'nullable|exists:whatsapp_plantillas,id',
-            'cobro_header_imagen' => 'nullable|image|max:5120',
+            'cobro_header_imagen' => 'nullable|image|max:2048',
         ]);
 
         // Solo actualizar el token si se proporcionó uno nuevo (no sobreescribir con vacío)
@@ -189,6 +198,188 @@ class WhatsappConfigController extends Controller
         return redirect()
             ->route('admin.whatsapp.config.index')
             ->with('ok', 'Configuración global de WhatsApp (Brynex) actualizada correctamente.');
+    }
+
+    /**
+     * Cambia el aliado activo de la sesión al aliado especificado y redirige a la ruta indicada.
+     */
+    public function switchAndGo(int $alidoId, Request $request)
+    {
+        $this->autorizarSuperadminBrynex();
+        
+        $aliado = Aliado::findOrFail($alidoId);
+        session(['aliado_id_activo' => $alidoId]);
+        
+        $to = $request->get('to', 'plantillas.index');
+        
+        if ($to === 'plantillas.importar') {
+            return redirect()->route('admin.whatsapp.plantillas.importar');
+        } elseif ($to === 'plantillas.create') {
+            return redirect()->route('admin.whatsapp.plantillas.create');
+        }
+        
+        return redirect()->route('admin.whatsapp.plantillas.index');
+    }
+
+    /**
+     * Copia una plantilla global de Brynex a la cuenta propia del aliado, y la envía a Meta.
+     */
+    public function copiarPlantillaGlobal(int $alidoId, Request $request)
+    {
+        $this->autorizarSuperadminBrynex();
+        
+        $config = WhatsappConfig::paraAliado($alidoId);
+        if (!$config->credencialesCompletas()) {
+            return redirect()->back()->with('error', 'Las credenciales de WhatsApp del aliado están incompletas para realizar la copia en Meta.');
+        }
+
+        $validated = $request->validate([
+            'plantilla_id' => 'required|exists:whatsapp_plantillas,id',
+        ]);
+
+        $plantillaGlobal = \App\Models\WhatsappPlantilla::findOrFail($validated['plantilla_id']);
+
+        // Verificar si el aliado ya tiene una plantilla local con el mismo nombre (incluyendo eliminadas lógicamente)
+        $existe = \App\Models\WhatsappPlantilla::withTrashed()
+            ->where('aliado_id', $alidoId)
+            ->where('nombre', $plantillaGlobal->nombre)
+            ->first();
+
+        if ($existe) {
+            // Si la plantilla estaba eliminada lógicamente, la restauramos
+            if ($existe->trashed()) {
+                $existe->restore();
+            }
+            // Si ya existe, podemos asignarla de una vez como la plantilla de cobros de este aliado
+            $config->update(['cobro_plantilla_id' => $existe->id]);
+            return redirect()->back()->with('ok', "La plantilla '{$existe->nombre}' ya existe para este aliado y ha sido configurada para cobros.");
+        }
+
+        // Duplicar el registro local para el aliado
+        $nuevaPlantilla = $plantillaGlobal->replicate();
+        $nuevaPlantilla->aliado_id = $alidoId;
+        $nuevaPlantilla->estado = 'pending';
+        $nuevaPlantilla->meta_template_id = null;
+        $nuevaPlantilla->creado_en_meta = false;
+        $nuevaPlantilla->save();
+
+        // Enviar a Meta Cloud API para su aprobación
+        $resultado = $this->apiService->crearPlantillaEnMeta($nuevaPlantilla, $config);
+
+        if ($resultado['ok']) {
+            $nuevaPlantilla->update([
+                'meta_template_id' => $resultado['meta_template_id'],
+                'estado'           => $resultado['estado'] ?? 'pending',
+                'creado_en_meta'   => true,
+            ]);
+
+            // Asignarla automáticamente para cobros en la configuración
+            $config->update(['cobro_plantilla_id' => $nuevaPlantilla->id]);
+
+            return redirect()->back()->with('ok', "Plantilla '{$nuevaPlantilla->nombre}' copiada y enviada a Meta con éxito. Estado: " . ($resultado['estado'] ?? 'pending'));
+        }
+
+        // Si falló Meta, borramos el registro local para que pueda reintentar
+        $nuevaPlantilla->delete();
+
+        return redirect()->back()->with('error', 'Error al crear la plantilla en Meta: ' . ($resultado['error'] ?? 'Desconocido'));
+    }
+
+    /**
+     * Obtiene y sincroniza todas las plantillas desde la API de Meta y las guarda localmente para el aliado.
+     */
+    public function sincronizarPlantillasMeta(int $alidoId)
+    {
+        $this->autorizarSuperadminBrynex();
+        
+        $config = WhatsappConfig::paraAliado($alidoId);
+        if (!$config->credencialesCompletas()) {
+            return redirect()->back()->with('error', 'Las credenciales de WhatsApp del aliado están incompletas para sincronizar desde Meta.');
+        }
+
+        $templatesMetaRaw = $this->apiService->obtenerPlantillasDeMeta($config);
+        
+        if (empty($templatesMetaRaw)) {
+            return redirect()->back()->with('warning', 'No se encontraron plantillas en la cuenta de Meta o el token/configuración no es correcto.');
+        }
+
+        $importadas = 0;
+        foreach ($templatesMetaRaw as $tmpl) {
+            $nombre = $tmpl['name'] ?? '';
+            $parsed = $this->parsearComponentesMeta($tmpl['components'] ?? []);
+
+            $plantillaExistente = \App\Models\WhatsappPlantilla::withTrashed()
+                ->where('aliado_id', $alidoId)
+                ->where('nombre', $nombre)
+                ->first();
+
+            $datosPlantilla = [
+                'nombre_display'   => str_replace('_', ' ', ucfirst($nombre)),
+                'categoria'        => $tmpl['category'] ?? 'UTILITY',
+                'idioma'           => $tmpl['language'] ?? 'es_CO',
+                'estado'           => strtolower($tmpl['status'] ?? 'approved'),
+                'meta_template_id' => $tmpl['id'] ?? null,
+                'creado_en_meta'   => true,
+                'header_tipo'      => $parsed['headerTipo'],
+                'header_valor'     => $parsed['headerValor'],
+                'cuerpo'           => $parsed['cuerpo'],
+                'footer'           => $parsed['footer'],
+                'botones'          => $parsed['botones'],
+                'variables_mapa'   => [],
+            ];
+
+            if ($plantillaExistente) {
+                if ($plantillaExistente->trashed()) {
+                    $plantillaExistente->restore();
+                }
+                $plantillaExistente->update($datosPlantilla);
+            } else {
+                \App\Models\WhatsappPlantilla::create(array_merge([
+                    'aliado_id' => $alidoId,
+                    'nombre'    => $nombre,
+                ], $datosPlantilla));
+            }
+
+            $importadas++;
+        }
+
+        return redirect()->back()->with('ok', "Sincronización completada. Se han importado/sincronizado correctamente {$importadas} plantilla(s) desde Meta.");
+    }
+
+    /**
+     * Parsea los componentes de Meta en campos relacionales locales.
+     */
+    private function parsearComponentesMeta(array $components): array
+    {
+        $headerTipo = null;
+        $headerValor = null;
+        $cuerpo = '';
+        $footer = null;
+        $botones = [];
+
+        foreach ($components as $comp) {
+            $type = $comp['type'] ?? '';
+            if ($type === 'HEADER') {
+                $headerTipo = $comp['format'] ?? null;
+                $headerValor = $comp['text'] ?? null;
+            } elseif ($type === 'BODY') {
+                $cuerpo = $comp['text'] ?? '';
+            } elseif ($type === 'FOOTER') {
+                $footer = $comp['text'] ?? null;
+            } elseif ($type === 'BUTTONS') {
+                $btns = $comp['buttons'] ?? [];
+                foreach ($btns as $btn) {
+                    $botones[] = [
+                        'tipo'     => $btn['type'] ?? '',
+                        'texto'    => $btn['text'] ?? '',
+                        'url'      => $btn['url'] ?? null,
+                        'telefono' => $btn['phone_number'] ?? null,
+                    ];
+                }
+            }
+        }
+
+        return compact('headerTipo', 'headerValor', 'cuerpo', 'footer', 'botones');
     }
 
     private function autorizarSuperadminBrynex(): void

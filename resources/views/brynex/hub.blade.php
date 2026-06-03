@@ -46,22 +46,29 @@
                     <div class="hc-icon">🏢</div>
                     <div class="hc-body">
                         <div class="hc-name">Ver Aliados</div>
-                        <div class="hc-desc">Lista y gestión de todos los aliados</div>
-                    </div>
-                    <div class="hc-arrow">→</div>
-                </a>
-                <a href="{{ route('admin.aliados.create') }}" class="hub-card accent">
-                    <div class="hc-icon">➕</div>
-                    <div class="hc-body">
-                        <div class="hc-name">Nuevo Aliado</div>
-                        <div class="hc-desc">Registrar un nuevo aliado en el sistema</div>
+                        <div class="hc-desc">Lista, creación y gestión de todos los aliados del sistema</div>
                     </div>
                     <div class="hc-arrow">→</div>
                 </a>
             </div>
         </div>
 
-        {{-- ── Operaciones ──────────────────────────────────────────────── --}}
+        {{-- ── Cobros y Facturación por Uso ────────────────────────────────────── --}}
+        <div class="hub-section" style="border:1px solid #dbeafe">
+            <div class="hub-section-title" style="color:#2563eb">💰 Cobros y Consumo por Uso</div>
+            <div class="hub-cards">
+                <a href="{{ route('brynex.consumo.index') }}" class="hub-card" style="border-color:#bfdbfe;background:#eff6ff">
+                    <div class="hc-icon">📊</div>
+                    <div class="hc-body">
+                        <div class="hc-name" style="color:#1d4ed8">Monitoreo de Consumos</div>
+                        <div class="hc-desc">Ver consumos de tramos de contratos y uso de WhatsApp Business API por aliados</div>
+                    </div>
+                    <div class="hc-arrow" style="color:#2563eb">→</div>
+                </a>
+            </div>
+        </div>
+
+        {{-- ── Operaciones Masivas ────────────────────────────────────────── --}}
         <div class="hub-section" style="border:1px solid #ede9fe">
             <div class="hub-section-title" style="color:#7c3aed">🔄 Operaciones Masivas</div>
             <div class="hub-cards">
@@ -72,6 +79,21 @@
                         <div class="hc-desc">Transfiere personas de una empresa a otra · Gestiona retiros y nuevas afiliaciones masivas</div>
                     </div>
                     <div class="hc-arrow" style="color:#7c3aed">→</div>
+                </a>
+            </div>
+        </div>
+
+        {{-- ── WhatsApp Business API ────────────────────────────────────────── --}}
+        <div class="hub-section" style="border:1px solid #bbf7d0">
+            <div class="hub-section-title" style="color:#16a34a">💬 WhatsApp Business API</div>
+            <div class="hub-cards">
+                <a href="{{ route('admin.whatsapp.config.index') }}" class="hub-card" style="border-color:#a7f3d0;background:#f0fdf4">
+                    <div class="hc-icon">💬</div>
+                    <div class="hc-body">
+                        <div class="hc-name" style="color:#15803d">Configuración WhatsApp</div>
+                        <div class="hc-desc">Gestiona credenciales, números de teléfono y webhooks de Meta WhatsApp por aliado</div>
+                    </div>
+                    <div class="hc-arrow" style="color:#16a34a">→</div>
                 </a>
             </div>
         </div>
@@ -95,14 +117,6 @@
         <div class="hub-section">
             <div class="hub-section-title">⚙️ Configuración Global <span class="badge-sa">Solo Superadmin</span></div>
             <div class="hub-cards">
-                <a href="{{ route('admin.usuarios.index') }}" class="hub-card">
-                    <div class="hc-icon">👤</div>
-                    <div class="hc-body">
-                        <div class="hc-name">Usuarios del Sistema</div>
-                        <div class="hc-desc">Gestión de todos los usuarios BryNex y de aliados</div>
-                    </div>
-                    <div class="hc-arrow">→</div>
-                </a>
                 <a href="{{ route('admin.bitacora.index') }}" class="hub-card">
                     <div class="hc-icon">👁️</div>
                     <div class="hc-body">
@@ -113,152 +127,7 @@
                 </a>
             </div>
         </div>
-
-        {{-- ── WhatsApp Business API ─────────────────────────────────────── --}}
-        <div class="hub-section wa-section">
-            <div class="hub-section-title">
-                💬 WhatsApp Business API
-                <span class="badge-sa" style="background:#dcfce7;color:#15803d;border-color:#bbf7d0">
-                    {{ $totalWaConfigurados }}/{{ $totalAliados }} configurados
-                </span>
-            </div>
-
-            <div class="wa-desc">
-                Configura las credenciales de Meta WhatsApp para cada aliado. Los aliados sin
-                configuración propia usarán la cuenta global de Brynex.
-            </div>
-
-            {{-- Tabla de aliados con estado WhatsApp --}}
-            <div class="wa-aliados-table-wrap">
-                <table class="wa-aliados-table">
-                    <thead>
-                        <tr>
-                            <th>Aliado</th>
-                            <th>Número</th>
-                            <th>Cuenta</th>
-                            <th>Estado</th>
-                            <th>Webhook</th>
-                            <th style="text-align:right">Acción</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach($aliados as $al)
-                        @php $waCfg = $whatsappConfigs->get($al->id); @endphp
-                        <tr>
-                            <td>
-                                <div style="font-weight:700;color:#0f172a">{{ $al->nombre }}</div>
-                                <div style="font-size:.72rem;color:#94a3b8">{{ $al->razon_social ?? '' }}</div>
-                            </td>
-                            <td style="font-size:.82rem;color:#334155">
-                                @if($waCfg && $waCfg->numero_telefono)
-                                    <span style="font-family:monospace">{{ $waCfg->numero_telefono }}</span>
-                                @else
-                                    <span style="color:#cbd5e1">—</span>
-                                @endif
-                            </td>
-                            <td>
-                                @if(!$waCfg)
-                                    <span class="wa-badge wa-badge-brynex">Usa Brynex</span>
-                                @elseif($waCfg->usa_cuenta_brynex)
-                                    <span class="wa-badge wa-badge-brynex">Global Brynex</span>
-                                @else
-                                    <span class="wa-badge wa-badge-propia">Cuenta Propia</span>
-                                @endif
-                            </td>
-                            <td>
-                                @if(!$waCfg || !$waCfg->activo)
-                                    <span class="wa-estado wa-estado-sin">⚠️ Sin config</span>
-                                @else
-                                    <span class="wa-estado wa-estado-ok">✅ Activo</span>
-                                @endif
-                            </td>
-                            <td>
-                                @if($waCfg && $waCfg->webhook_verificado)
-                                    <span style="color:#16a34a;font-size:.8rem">✅</span>
-                                @else
-                                    <span style="color:#dc2626;font-size:.8rem">❌</span>
-                                @endif
-                            </td>
-                            <td style="text-align:right">
-                                <a href="{{ route('admin.whatsapp.config.edit', $al->id) }}"
-                                   class="wa-btn-config">
-                                    {{ $waCfg ? '✏️ Editar' : '⚙️ Configurar' }}
-                                </a>
-                            </td>
-                        </tr>
-                        @endforeach
-                    </tbody>
-                </table>
-            </div>
-
-            {{-- Acceso rápido a config general --}}
-            <div style="margin-top:1rem;padding-top:.85rem;border-top:1px solid #f0fdf4;display:flex;gap:.65rem;flex-wrap:wrap">
-                <a href="{{ route('admin.whatsapp.config.index') }}" class="hub-card" style="flex:1;min-width:200px;border-color:#bbf7d0;background:#f0fdf4">
-                    <div class="hc-icon">⚙️</div>
-                    <div class="hc-body">
-                        <div class="hc-name" style="color:#15803d">Configuración WhatsApp</div>
-                        <div class="hc-desc">Ver y editar todas las credenciales de Meta</div>
-                    </div>
-                    <div class="hc-arrow" style="color:#16a34a">→</div>
-                </a>
-                <a href="https://business.facebook.com" target="_blank" class="hub-card" style="flex:1;min-width:200px;border-color:#bfdbfe;background:#eff6ff">
-                    <div class="hc-icon">🌐</div>
-                    <div class="hc-body">
-                        <div class="hc-name" style="color:#1d4ed8">Meta Business Suite</div>
-                        <div class="hc-desc">Abrir panel de Meta (webhooks, plantillas)</div>
-                    </div>
-                    <div class="hc-arrow" style="color:#2563eb">↗</div>
-                </a>
-            </div>
-        </div>
         @endrole
-
-        {{-- ── Aliados activos (resumen rápido) ────────────────────────── --}}
-        <div class="hub-section">
-            <div class="hub-section-title">📋 Resumen de Aliados</div>
-            <div class="aliados-table-wrap">
-                <table class="aliados-table">
-                    <thead>
-                        <tr>
-                            <th>Aliado</th>
-                            <th>Razón Social</th>
-                            <th>Estado</th>
-                            <th>WhatsApp</th>
-                            <th></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @forelse($aliados as $al)
-                        @php $waCfg = $whatsappConfigs->get($al->id); @endphp
-                        <tr>
-                            <td style="font-weight:600">{{ $al->nombre }}</td>
-                            <td style="color:#64748b;font-size:.82rem">{{ $al->razon_social ?? '—' }}</td>
-                            <td>
-                                @if($al->activo)
-                                <span class="badge-activo">● Activo</span>
-                                @else
-                                <span class="badge-inactivo">● Inactivo</span>
-                                @endif
-                            </td>
-                            <td>
-                                @if($waCfg && $waCfg->activo)
-                                    <span style="font-size:.75rem;color:#16a34a;font-weight:600">✅ {{ $waCfg->numero_telefono }}</span>
-                                @else
-                                    <span style="font-size:.75rem;color:#94a3b8">Sin config</span>
-                                @endif
-                            </td>
-                            <td>
-                                <a href="{{ route('admin.aliados.edit', $al->id) }}"
-                                   style="font-size:.75rem;color:#3b82f6;text-decoration:none">Editar →</a>
-                            </td>
-                        </tr>
-                        @empty
-                        <tr><td colspan="5" style="text-align:center;color:#94a3b8;padding:1.5rem">Sin aliados registrados</td></tr>
-                        @endforelse
-                    </tbody>
-                </table>
-            </div>
-        </div>
 
     </div>
 </div>
@@ -320,54 +189,6 @@
 .hc-name { font-weight: 600; font-size: .9rem; color: #1e293b; }
 .hc-desc { font-size: .75rem; color: #64748b; margin-top: .1rem; }
 .hc-arrow { color: #3b82f6; font-weight: 700; font-size: 1rem; }
-
-/* WhatsApp section */
-.wa-section { border: 1px solid #d1fae5; }
-.wa-desc {
-    font-size: .8rem; color: #475569; margin-bottom: 1rem;
-    padding: .6rem .8rem; background: #f0fdf4; border-radius: 8px;
-}
-.wa-aliados-table-wrap { overflow-x: auto; }
-.wa-aliados-table {
-    width: 100%; border-collapse: collapse; font-size: .82rem;
-}
-.wa-aliados-table th {
-    text-align: left; padding: .45rem .75rem; font-size: .68rem; font-weight: 700;
-    color: #64748b; text-transform: uppercase; letter-spacing: .05em;
-    border-bottom: 2px solid #f1f5f9; background: #f8fafc;
-}
-.wa-aliados-table td {
-    padding: .6rem .75rem; border-bottom: 1px solid #f1f5f9; vertical-align: middle;
-}
-.wa-aliados-table tbody tr:hover { background: #f0fdf4; }
-.wa-badge {
-    display: inline-block; padding: .15rem .55rem; border-radius: 999px;
-    font-size: .68rem; font-weight: 700;
-}
-.wa-badge-brynex { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
-.wa-badge-propia { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
-.wa-estado { font-size: .78rem; font-weight: 600; }
-.wa-estado-ok { color: #15803d; }
-.wa-estado-sin { color: #d97706; }
-.wa-btn-config {
-    display: inline-block; padding: .3rem .75rem; border-radius: 7px;
-    background: #0a1628; color: #fff; font-size: .73rem; font-weight: 600;
-    text-decoration: none; transition: background .15s; white-space: nowrap;
-}
-.wa-btn-config:hover { background: #1e3a8a; color: #fff; }
-
-/* Aliados table */
-.aliados-table-wrap { overflow-x: auto; }
-.aliados-table { width: 100%; border-collapse: collapse; font-size: .82rem; }
-.aliados-table th {
-    text-align: left; padding: .5rem .75rem; font-size: .7rem; font-weight: 600;
-    color: #64748b; text-transform: uppercase; letter-spacing: .05em;
-    border-bottom: 1px solid #f1f5f9;
-}
-.aliados-table td { padding: .6rem .75rem; border-bottom: 1px solid #f8fafc; }
-.aliados-table tbody tr:hover { background: #f8fafc; }
-.badge-activo { color: #15803d; font-size: .72rem; font-weight: 600; }
-.badge-inactivo { color: #dc2626; font-size: .72rem; font-weight: 600; }
 
 @media (max-width: 640px) {
     .hub-stats { gap: .85rem; }

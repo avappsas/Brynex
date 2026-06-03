@@ -226,6 +226,12 @@ Route::middleware('auth')->group(function () {
             // Individuales
             Route::get('/',                          [$cb, 'index'])                  ->name('index');
             Route::get('/exportar',                  [$cb, 'exportar'])               ->name('exportar');
+            Route::get('/whatsapp/previsualizar',         [$cb, 'vistaPrevisualizarWhatsApp']) ->name('whatsapp.previsualizar');
+            Route::post('/whatsapp/prueba',               [$cb, 'enviarPruebaWhatsApp'])        ->name('whatsapp.prueba');
+            Route::post('/whatsapp/enviar-filtro',        [$cb, 'enviarFiltroWhatsApp'])        ->name('whatsapp.enviar_filtro');
+            Route::get('/whatsapp/historial',             [$cb, 'historialEnviosWhatsApp'])     ->name('whatsapp.historial');
+            Route::get('/whatsapp/{loteId}/reporte',      [$cb, 'reporteLoteWhatsApp'])         ->name('whatsapp.reporte');
+            Route::post('/whatsapp/{loteId}/reintentar',  [$cb, 'reintentarLoteWhatsApp'])      ->name('whatsapp.reintentar');
             Route::post('/{contratoId}/llamada',     [$cb, 'registrarLlamada'])       ->name('llamada.store');
             Route::get('/{contratoId}/llamadas',     [$cb, 'historialLlamadas'])      ->name('llamadas');
             // Empresas
@@ -239,6 +245,8 @@ Route::middleware('auth')->group(function () {
         Route::prefix('informes')->name('informes.')->group(function () {
             $ic = \App\Http\Controllers\Admin\InformeController::class;
             Route::get('/',                       [$ic, 'hub'])                  ->name('hub');
+            Route::get('/brynex-cobros',           [$ic, 'brynexCobros'])         ->name('brynex_cobros');
+            Route::get('/brynex-cobros/{cobro}/pdf', [$ic, 'brynexCobroPdf'])       ->name('brynex_cobros.pdf');
             Route::get('/clientes-activos',       [$ic, 'clientesActivos'])      ->name('clientes_activos');
             Route::get('/por-razon-social',       [$ic, 'porRazonSocial'])       ->name('por_razon_social');
             Route::get('/afiliaciones-retiros',   [$ic, 'afiliacionesRetiros'])  ->name('afiliaciones_retiros');
@@ -309,6 +317,17 @@ Route::middleware('auth')->group(function () {
         Route::get('/',         [$bx, 'hub'])          ->name('hub');
         Route::get('/accesos',  [$bx, 'accesos'])       ->name('accesos');
         Route::post('/accesos', [$bx, 'toggleAcceso'])  ->name('accesos.toggle');
+
+        // ── Módulo Consumo & Cobros ───────────────────────────────────────────
+        $cx = \App\Http\Controllers\BrynexConsumoController::class;
+        Route::get('consumo',                                    [$cx, 'index'])             ->name('consumo.index');
+        Route::get('consumo/contabilidad',                       [$cx, 'contabilidad'])      ->name('consumo.contabilidad');
+        Route::get('consumo/{aliado}/{mes}/{anio}',              [$cx, 'show'])              ->name('consumo.show');
+        Route::post('consumo/{aliado}/{mes}/{anio}/cerrar',      [$cx, 'cerrar'])            ->name('consumo.cerrar');
+        Route::get('consumo/{aliado}/modulos',                   [$cx, 'modulosAliado'])     ->name('consumo.modulos');
+        Route::put('consumo/{aliado}/modulos',                   [$cx, 'actualizarModulos']) ->name('consumo.modulos.update');
+        Route::post('consumo/cobros/{cobro}/pago',               [$cx, 'registrarPago'])     ->name('consumo.pago');
+        Route::get('consumo/cobros/{cobro}/pdf',                 [$cx, 'descargarPdf'])      ->name('consumo.pdf');
     });
 
 
@@ -491,6 +510,9 @@ Route::middleware('auth')->group(function () {
         Route::post('configuracion/global',      [$config, 'updateGlobal'])       ->name('config.global.update');
         Route::get('configuracion/{id}/editar',  [$config, 'edit'])              ->name('config.edit');
         Route::put('configuracion/{id}',         [$config, 'update'])            ->name('config.update');
+        Route::get('configuracion/{id}/switch-and-go', [$config, 'switchAndGo'])->name('config.switch_and_go');
+        Route::post('configuracion/{id}/copiar-plantilla', [$config, 'copiarPlantillaGlobal'])->name('config.copiar_plantilla');
+        Route::post('configuracion/{id}/sincronizar-meta', [$config, 'sincronizarPlantillasMeta'])->name('config.sincronizar_meta');
         Route::post('configuracion/verificar',   [$config, 'verificarWebhook'])  ->name('config.verificar');
     });
 });

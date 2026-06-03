@@ -112,41 +112,63 @@ class WhatsappPlantilla extends BaseModel
     /**
      * Construye el payload de componentes para la API de Meta al enviar.
      * Reemplaza {{1}}, {{2}} etc. con los valores del array $parametros.
+     *
+     * @param array       $parametros     Valores para las variables del BODY en orden.
+     * @param string|null $headerImageUrl URL override para el header IMAGE cuando
+     *                                    header_valor no está guardado en la plantilla
+     *                                    (p.ej. cobro_header_imagen de WhatsappConfig).
      */
-    public function construirComponentes(array $parametros): array
+    public function construirComponentes(array $parametros, ?string $headerImageUrl = null): array
     {
         $componentes = [];
 
-        // Header con media o texto
-        if ($this->header_tipo && $this->header_valor) {
-            if ($this->header_tipo === 'TEXT') {
+        // ── Header ──────────────────────────────────────────────────
+        if ($this->header_tipo) {
+            $headerValorEfectivo = $this->header_valor ?: $headerImageUrl;
+
+            if ($this->header_tipo === 'TEXT' && $headerValorEfectivo) {
                 $componentes[] = [
                     'type'       => 'header',
-                    'parameters' => [['type' => 'text', 'text' => $this->header_valor]],
+                    'parameters' => [['type' => 'text', 'text' => $headerValorEfectivo]],
                 ];
             } elseif (in_array($this->header_tipo, ['IMAGE', 'DOCUMENT', 'VIDEO'])) {
                 $tipoMedia = strtolower($this->header_tipo);
-                $componentes[] = [
-                    'type'       => 'header',
-                    'parameters' => [[$tipoMedia => ['link' => $this->header_valor], 'type' => $tipoMedia]],
-                ];
+                if ($headerValorEfectivo) {
+                    // Hay URL disponible: enviar como link
+                    $componentes[] = [
+                        'type'       => 'header',
+                        'parameters' => [[
+                            'type'    => $tipoMedia,
+                            $tipoMedia => ['link' => $headerValorEfectivo],
+                        ]],
+                    ];
+                } else {
+                    // Sin URL: enviar header vacío de tipo media (Meta lo requiere igual)
+                    $componentes[] = [
+                        'type'       => 'header',
+                        'parameters' => [[
+                            'type'    => $tipoMedia,
+                            $tipoMedia => [],
+                        ]],
+                    ];
+                }
             }
         }
 
-        // Body con parámetros
+        // ── Body con parámetros ──────────────────────────────────────
         if (!empty($parametros)) {
-            $bodyParams = array_map(fn($val) => ['type' => 'text', 'text' => (string)$val], $parametros);
+            $bodyParams    = array_map(fn($val) => ['type' => 'text', 'text' => (string)$val], $parametros);
             $componentes[] = ['type' => 'body', 'parameters' => $bodyParams];
         }
 
-        // Botones
+        // ── Botones ──────────────────────────────────────────────────
         if ($this->tieneBotones()) {
             foreach ($this->botones as $idx => $boton) {
                 if ($boton['tipo'] === 'QUICK_REPLY') {
                     $componentes[] = [
-                        'type'     => 'button',
-                        'sub_type' => 'quick_reply',
-                        'index'    => (string)$idx,
+                        'type'       => 'button',
+                        'sub_type'   => 'quick_reply',
+                        'index'      => (string)$idx,
                         'parameters' => [['type' => 'payload', 'payload' => $boton['texto']]],
                     ];
                 }

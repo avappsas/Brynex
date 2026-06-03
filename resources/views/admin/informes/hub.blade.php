@@ -61,5 +61,19 @@
     </a>
     @endif
 
+    {{-- Cobros BryNex --}}
+    @role('admin|superadmin|contador')
+    <h2 style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin-top:1.5rem;margin-bottom:.75rem;">Cobros por Uso</h2>
+    <a href="{{ route('admin.informes.brynex_cobros') }}" style="display:flex;align-items:center;gap:1.25rem;background:linear-gradient(135deg,#0f172a,#334155);border-radius:14px;padding:1.5rem 1.75rem;text-decoration:none;border:2px solid transparent;box-shadow:0 4px 20px rgba(15,23,42,.3);transition:all .18s;"
+       onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 12px 32px rgba(15,23,42,.4)'"
+       onmouseout="this.style.transform='';this.style.boxShadow='0 4px 20px rgba(15,23,42,.3)'">
+        <div style="font-size:2.5rem;">📋</div>
+        <div>
+            <div style="font-size:1rem;font-weight:700;color:#fff;">Cuentas de Cobro BryNex</div>
+            <div style="font-size:.82rem;color:rgba(255,255,255,.6);margin-top:.2rem;">Historial de cobros mensuales · Saldo pendiente · Cuentas en PDF</div>
+        </div>
+    </a>
+    @endrole
+
 </div>
 @endsection

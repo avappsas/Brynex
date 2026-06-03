@@ -33,8 +33,19 @@
         </div>
     @endif
 
-    <div style="margin-bottom:1rem">
+    <div style="margin-bottom:1rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:.5rem;">
         <a href="{{ route('admin.whatsapp.config.index') }}" style="color:#2563eb;text-decoration:none;font-size:.83rem">← Volver a configuraciones</a>
+        <div style="display:inline-flex; gap:.5rem;">
+            <a href="{{ route('admin.whatsapp.config.switch_and_go', ['id' => $aliado->id, 'to' => 'plantillas.index']) }}" class="btn btn-outline" style="padding:.35rem .75rem; font-size:.75rem; border-radius:6px; display:inline-flex; align-items:center; gap:.25rem; margin:0;">
+                📋 Plantillas del Aliado
+            </a>
+            <a href="{{ route('admin.whatsapp.config.switch_and_go', ['id' => $aliado->id, 'to' => 'plantillas.importar']) }}" class="btn btn-outline" style="padding:.35rem .75rem; font-size:.75rem; border-radius:6px; background:#f8fafc; display:inline-flex; align-items:center; gap:.25rem; margin:0;">
+                📥 Importar desde Meta
+            </a>
+            <a href="{{ route('admin.whatsapp.config.switch_and_go', ['id' => $aliado->id, 'to' => 'plantillas.create']) }}" class="btn" style="padding:.35rem .75rem; font-size:.75rem; border-radius:6px; background:#10b981; color:#fff; display:inline-flex; align-items:center; gap:.25rem; margin:0;">
+                ➕ Crear Plantilla
+            </a>
+        </div>
     </div>
 
     <div class="form-card" x-data="{ usaBrynex: {{ $config->usa_cuenta_brynex ? 'true' : 'false' }} }">
@@ -48,12 +59,12 @@
             {{-- Toggle cuenta Brynex / propia --}}
             <div class="section-title">Modo de cuenta</div>
             <div class="toggle-group">
-                <div class="toggle-option" :class="usaBrynex ? 'active' : ''" @click="usaBrynex = true" style="cursor:pointer">
+                <div class="toggle-option" :class="usaBrynex ? 'active' : ''" @click="usaBrynex = true; $nextTick(() => toggleImageUpload())" style="cursor:pointer">
                     <div class="icon">🔵</div>
                     <div class="label">Usar cuenta Brynex</div>
                     <div class="desc">El aliado usa el número y WABA de Brynex</div>
                 </div>
-                <div class="toggle-option" :class="!usaBrynex ? 'active' : ''" @click="usaBrynex = false" style="cursor:pointer">
+                <div class="toggle-option" :class="!usaBrynex ? 'active' : ''" @click="usaBrynex = false; $nextTick(() => toggleImageUpload())" style="cursor:pointer">
                     <div class="icon">🏢</div>
                     <div class="label">Cuenta propia del aliado</div>
                     <div class="desc">El aliado tiene su propio WABA y número</div>
@@ -91,17 +102,11 @@
                     @endif
                 </div>
 
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
-                    <div class="form-group">
-                        <label class="form-label">Número de Teléfono</label>
-                        <input type="text" name="numero_telefono" class="form-control" value="{{ old('numero_telefono', $config->numero_telefono) }}"
-                               placeholder="+573001234567">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Nombre de la cuenta</label>
-                        <input type="text" name="nombre_cuenta" class="form-control" value="{{ old('nombre_cuenta', $config->nombre_cuenta) }}"
-                               placeholder="Nombre del perfil WhatsApp Business">
-                    </div>
+                <div class="form-group">
+                    <label class="form-label">Nombre de la cuenta</label>
+                    <input type="text" name="nombre_cuenta" class="form-control" value="{{ old('nombre_cuenta', $config->nombre_cuenta) }}"
+                           placeholder="Nombre del perfil WhatsApp Business">
+                    <div class="form-hint">Nombre que aparece como remitente en los mensajes.</div>
                 </div>
             </div>
 
@@ -113,17 +118,33 @@
 
             {{-- Sección de Plantilla de Cobros de Brynex e Imagen --}}
             <div class="section-title" style="margin-top:1.5rem">Configuración de Cobros por WhatsApp</div>
-            <div class="form-group">
+            
+            {{-- Selector de plantillas para Brynex Global --}}
+            <div class="form-group" x-show="usaBrynex" x-cloak>
                 <label class="form-label">Plantilla de WhatsApp para Cobros (Brynex Global)</label>
-                <select name="cobro_plantilla_id" class="form-control" onchange="toggleImageUpload(this)">
-                    <option value="">-- Seleccionar Plantilla --</option>
-                    @foreach($plantillasBrynex as $plantilla)
+                <select name="cobro_plantilla_id" class="form-control" :disabled="!usaBrynex" onchange="toggleImageUpload()">
+                    <option value="">-- Seleccionar Plantilla Global --</option>
+                    @foreach($plantillasGlobales as $plantilla)
                         <option value="{{ $plantilla->id }}" {{ old('cobro_plantilla_id', $config->cobro_plantilla_id) == $plantilla->id ? 'selected' : '' }} data-header-tipo="{{ $plantilla->header_tipo }}">
                             {{ $plantilla->nombre_display }} ({{ $plantilla->nombre }})
                         </option>
                     @endforeach
                 </select>
-                <div class="form-hint">Selecciona la plantilla global que se enviará automáticamente en los cobros de este aliado.</div>
+                <div class="form-hint">Selecciona la plantilla global de Brynex que se enviará automáticamente.</div>
+            </div>
+
+            {{-- Selector de plantillas propias del Aliado --}}
+            <div class="form-group" x-show="!usaBrynex" x-cloak>
+                <label class="form-label">Plantilla de WhatsApp para Cobros (Propia del Aliado)</label>
+                <select name="cobro_plantilla_id" class="form-control" :disabled="usaBrynex" onchange="toggleImageUpload()">
+                    <option value="">-- Seleccionar Plantilla del Aliado --</option>
+                    @foreach($plantillasBrynex->where('aliado_id', $aliado->id) as $plantilla)
+                        <option value="{{ $plantilla->id }}" {{ old('cobro_plantilla_id', $config->cobro_plantilla_id) == $plantilla->id ? 'selected' : '' }} data-header-tipo="{{ $plantilla->header_tipo }}">
+                            {{ $plantilla->nombre_display }} ({{ $plantilla->nombre }})
+                        </option>
+                    @endforeach
+                </select>
+                <div class="form-hint">Selecciona una de las plantillas creadas o importadas en la cuenta propia de Meta de este aliado.</div>
             </div>
 
             <div class="form-group" id="imageUploadSection" style="display:none">
@@ -134,34 +155,61 @@
                         <small style="color:#64748b">Imagen actual. Sube otra si deseas reemplazarla.</small>
                     </div>
                 @endif
-                <input type="file" name="cobro_header_imagen" class="form-control" accept="image/*">
-                <div class="form-hint">La plantilla seleccionada requiere una imagen como encabezado (HEADER). Sube una imagen PNG o JPG.</div>
+                <input type="file" name="cobro_header_imagen" class="form-control" accept="image/*" onchange="validarTamanoImagen(this)">
+                <div class="form-hint">La plantilla seleccionada requiere una imagen como encabezado (HEADER). Sube una imagen PNG o JPG de máximo 2MB.</div>
             </div>
 
-            <div class="form-group" style="margin-top:1.5rem">
+            {{-- WhatsApp de Contacto / Variable {{5}} — siempre visible --}}
+            <div class="form-group" style="margin-top:1rem;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:1rem;">
+                <label class="form-label" style="color:#92400e;">
+                    WhatsApp de Contacto del Aliado
+                    <span style="background:#fef3c7;color:#92400e;border-radius:4px;padding:.1rem .4rem;font-size:.68rem;font-weight:700;margin-left:.4rem;">Variable {{5}}</span>
+                </label>
+                <input type="text" name="numero_telefono" class="form-control"
+                       value="{{ old('numero_telefono', $config->numero_telefono) }}"
+                       placeholder="Ej: 3001234567 ó 573001234567"
+                       style="background:#fff;">
+                <div class="form-hint" style="color:#b45309;">
+                    Número que el cliente verá en el mensaje de cobro para contactar al aliado (variable <strong>{{5}}</strong> de la plantilla).
+                </div>
+            </div>
+
+            {{-- Checkbox de Activo y Botones de Guardar --}}
+            <div class="form-group" style="margin-top:1.5rem;">
                 <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.83rem;font-weight:500">
                     <input type="checkbox" name="activo" value="1" {{ $config->activo ? 'checked' : '' }} style="width:16px;height:16px;">
                     Módulo WhatsApp activo para este aliado
                 </label>
             </div>
 
-            <div class="btn-row">
+            <div class="btn-row" style="margin-bottom: 2rem;">
                 <button type="submit" class="btn btn-primary">💾 Guardar configuración</button>
                 <a href="{{ route('admin.whatsapp.config.index') }}" class="btn btn-outline">Cancelar</a>
             </div>
+
         </form>
+
+
     </div>
 </div>
 @endsection
 
 @push('scripts')
 <script>
-function toggleImageUpload(select) {
-    const selectedOption = select.options[select.selectedIndex];
-    if (!selectedOption) return;
-    const headerTipo = selectedOption.getAttribute('data-header-tipo');
+function toggleImageUpload() {
+    // Buscar el select que esté actualmente habilitado (no disabled)
+    const select = document.querySelector('select[name="cobro_plantilla_id"]:not([disabled])');
     const imageSection = document.getElementById('imageUploadSection');
     
+    if (!select || !imageSection) return;
+    
+    const selectedOption = select.options[select.selectedIndex];
+    if (!selectedOption) {
+        imageSection.style.display = 'none';
+        return;
+    }
+    
+    const headerTipo = selectedOption.getAttribute('data-header-tipo');
     if (headerTipo === 'IMAGE') {
         imageSection.style.display = 'block';
     } else {
@@ -170,10 +218,19 @@ function toggleImageUpload(select) {
 }
 
 document.addEventListener("DOMContentLoaded", function() {
-    const select = document.getElementsByName('cobro_plantilla_id')[0];
-    if (select) {
-        toggleImageUpload(select);
-    }
+    toggleImageUpload();
 });
+
+function validarTamanoImagen(input) {
+    if (input.files && input.files[0]) {
+        const file = input.files[0];
+        const maxSize = 2 * 1024 * 1024; // 2MB en bytes
+        
+        if (file.size > maxSize) {
+            alert("⚠️ La imagen seleccionada pesa " + (file.size / (1024 * 1024)).toFixed(2) + "MB, lo cual supera el límite máximo de 2MB soportado por el servidor.\n\nPor favor, selecciona una imagen de máximo 2MB.");
+            input.value = ""; // Limpiar el input para evitar enviar el archivo
+        }
+    }
+}
 </script>
 @endpush

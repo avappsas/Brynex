@@ -49,7 +49,7 @@
         </div>
 
         {{-- Fila contacto --}}
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;margin-bottom:1rem;">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(130px, 1fr));gap:1rem;margin-bottom:1rem;">
             <div>
                 <label style="display:block;font-size:0.78rem;font-weight:600;color:#475569;margin-bottom:0.3rem;text-transform:uppercase;letter-spacing:0.04em;">Contacto</label>
                 <input type="text" name="contacto" value="{{ old('contacto', $aliado->contacto) }}"
@@ -65,6 +65,12 @@
             <div>
                 <label style="display:block;font-size:0.78rem;font-weight:600;color:#475569;margin-bottom:0.3rem;text-transform:uppercase;letter-spacing:0.04em;">Celular</label>
                 <input type="text" name="celular" value="{{ old('celular', $aliado->celular) }}"
+                    style="width:100%;padding:0.6rem 0.85rem;border:1px solid #cbd5e1;border-radius:8px;font-size:0.9rem;outline:none;font-family:inherit;"
+                    onfocus="this.style.borderColor='#3b82f6'" onblur="this.style.borderColor='#cbd5e1'">
+            </div>
+            <div>
+                <label style="display:block;font-size:0.78rem;font-weight:600;color:#475569;margin-bottom:0.3rem;text-transform:uppercase;letter-spacing:0.04em;">WhatsApp Notificaciones</label>
+                <input type="text" name="whatsapp" value="{{ old('whatsapp', $aliado->whatsapp) }}" placeholder="Ej: 573001234567"
                     style="width:100%;padding:0.6rem 0.85rem;border:1px solid #cbd5e1;border-radius:8px;font-size:0.9rem;outline:none;font-family:inherit;"
                     onfocus="this.style.borderColor='#3b82f6'" onblur="this.style.borderColor='#cbd5e1'">
             </div>
@@ -164,6 +170,38 @@
                     </p>
                 </div>
             </div>
+        </div>
+
+        {{-- ── Módulos BryNex contratados ── --}}
+        @php
+            $todosModulos = \App\Models\BrynexModulo::orderBy('orden')->get();
+            $modulosContratados = isset($aliado->id)
+                ? \App\Models\BrynexModuloAliado::where('aliado_id', $aliado->id)->pluck('activo', 'modulo_id')->toArray()
+                : [];
+        @endphp
+        <div style="margin-bottom:1.5rem;padding:1rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+            <div style="font-size:0.78rem;font-weight:700;color:#1e3a8a;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.8rem;">
+                🔵 Módulos BryNex Contratados (Cobros por Uso)
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:0.75rem;">
+                @foreach($todosModulos as $mod)
+                    @php
+                        $moduloActivo = !isset($aliado->id) && $mod->id == 1;
+                        if (isset($aliado->id)) {
+                            $moduloActivo = isset($modulosContratados[$mod->id]) && $modulosContratados[$mod->id] == 1;
+                        }
+                    @endphp
+                    <label style="display:flex;align-items:center;gap:0.4rem;cursor:pointer;background:#fff;padding:0.4rem 0.6rem;border-radius:6px;border:1px solid #cbd5e1;">
+                        <input type="checkbox" name="modulos[{{ $mod->id }}]" value="1" {{ $moduloActivo ? 'checked' : '' }} style="width:16px;height:16px;cursor:pointer;">
+                        <div>
+                            <span style="font-size:0.8rem;font-weight:600;color:#334155;">{{ $mod->nombre }}</span>
+                        </div>
+                    </label>
+                @endforeach
+            </div>
+            <p style="font-size:0.7rem;color:#64748b;margin:0.5rem 0 0 0;">
+                Nota: Las tarifas personalizadas para cada módulo contratado pueden gestionarse desde el menú BryNex → Consumo y Cobros.
+            </p>
         </div>
 
         {{-- Botones --}}

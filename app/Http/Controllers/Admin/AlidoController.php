@@ -38,6 +38,7 @@ class AlidoController extends Controller
             'contacto'             => 'nullable|string|max:100',
             'telefono'             => 'nullable|string|max:30',
             'celular'              => 'nullable|string|max:30',
+            'whatsapp'             => 'nullable|string|max:30',
             'correo'               => 'nullable|email|max:150',
             'direccion'            => 'nullable|string|max:255',
             'ciudad'               => 'nullable|string|max:80',
@@ -58,8 +59,19 @@ class AlidoController extends Controller
         $data['activo'] = $request->boolean('activo', true);
         $data['afiliaciones_brynex'] = $request->boolean('afiliaciones_brynex', false);
         $data['encargado_afil_id']   = $request->input('encargado_afil_id') ?: null;
+        $data['whatsapp']            = $request->input('whatsapp') ?: null;
 
-        Aliado::create($data);
+        $aliado = Aliado::create($data);
+
+        // Guardar relación de módulos
+        $modulosInput = $request->input('modulos', []);
+        foreach (\App\Models\BrynexModulo::all() as $mod) {
+            $activo = isset($modulosInput[$mod->id]) ? 1 : 0;
+            \App\Models\BrynexModuloAliado::updateOrCreate(
+                ['aliado_id' => $aliado->id, 'modulo_id' => $mod->id],
+                ['activo' => $activo]
+            );
+        }
 
         return redirect()->route('admin.aliados.index')
             ->with('success', "Aliado '{$data['nombre']}' creado correctamente.");
@@ -80,6 +92,7 @@ class AlidoController extends Controller
             'contacto'             => 'nullable|string|max:100',
             'telefono'             => 'nullable|string|max:30',
             'celular'              => 'nullable|string|max:30',
+            'whatsapp'             => 'nullable|string|max:30',
             'correo'               => 'nullable|email|max:150',
             'direccion'            => 'nullable|string|max:255',
             'ciudad'               => 'nullable|string|max:80',
@@ -108,8 +121,19 @@ class AlidoController extends Controller
         $data['activo'] = $request->boolean('activo');
         $data['afiliaciones_brynex'] = $request->boolean('afiliaciones_brynex', false);
         $data['encargado_afil_id']   = $request->input('encargado_afil_id') ?: null;
+        $data['whatsapp']            = $request->input('whatsapp') ?: null;
 
         $aliado->update($data);
+
+        // Guardar relación de módulos
+        $modulosInput = $request->input('modulos', []);
+        foreach (\App\Models\BrynexModulo::all() as $mod) {
+            $activo = isset($modulosInput[$mod->id]) ? 1 : 0;
+            \App\Models\BrynexModuloAliado::updateOrCreate(
+                ['aliado_id' => $aliado->id, 'modulo_id' => $mod->id],
+                ['activo' => $activo]
+            );
+        }
 
         return redirect()->route('admin.aliados.edit', $aliado)
             ->with('success', "Aliado '{$aliado->nombre}' actualizado correctamente.");

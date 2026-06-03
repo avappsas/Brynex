@@ -208,26 +208,37 @@ class WhatsappPlantillaController extends Controller
             if (in_array($nombre, $seleccionadas)) {
                 $parsed = $this->parsearComponentesMeta($tmpl['components'] ?? []);
 
-                WhatsappPlantilla::updateOrCreate(
-                    [
+                $plantillaExistente = WhatsappPlantilla::withTrashed()
+                    ->where('aliado_id', $alidoId)
+                    ->where('nombre', $nombre)
+                    ->first();
+
+                $datosPlantilla = [
+                    'nombre_display'   => str_replace('_', ' ', ucfirst($nombre)),
+                    'categoria'        => $tmpl['category'] ?? 'UTILITY',
+                    'idioma'           => $tmpl['language'] ?? 'es_CO',
+                    'estado'           => strtolower($tmpl['status'] ?? 'approved'),
+                    'meta_template_id' => $tmpl['id'] ?? null,
+                    'creado_en_meta'   => true,
+                    'header_tipo'      => $parsed['headerTipo'],
+                    'header_valor'     => $parsed['headerValor'],
+                    'cuerpo'           => $parsed['cuerpo'],
+                    'footer'           => $parsed['footer'],
+                    'botones'          => $parsed['botones'],
+                    'variables_mapa'   => [],
+                ];
+
+                if ($plantillaExistente) {
+                    if ($plantillaExistente->trashed()) {
+                        $plantillaExistente->restore();
+                    }
+                    $plantillaExistente->update($datosPlantilla);
+                } else {
+                    WhatsappPlantilla::create(array_merge([
                         'aliado_id' => $alidoId,
                         'nombre'    => $nombre,
-                    ],
-                    [
-                        'nombre_display'   => str_replace('_', ' ', ucfirst($nombre)),
-                        'categoria'        => $tmpl['category'] ?? 'UTILITY',
-                        'idioma'           => $tmpl['language'] ?? 'es_CO',
-                        'estado'           => strtolower($tmpl['status'] ?? 'approved'),
-                        'meta_template_id' => $tmpl['id'] ?? null,
-                        'creado_en_meta'   => true,
-                        'header_tipo'      => $parsed['headerTipo'],
-                        'header_valor'     => $parsed['headerValor'],
-                        'cuerpo'           => $parsed['cuerpo'],
-                        'footer'           => $parsed['footer'],
-                        'botones'          => $parsed['botones'],
-                        'variables_mapa'   => [],
-                    ]
-                );
+                    ], $datosPlantilla));
+                }
 
                 $importadas++;
             }

@@ -27,19 +27,23 @@ class WhatsappApiService
     /**
      * Envía un mensaje de plantilla aprobada a un número.
      *
-     * @param string             $to        Número E.164: +573001234567
-     * @param WhatsappPlantilla  $plantilla Plantilla aprobada por Meta
-     * @param array              $params    Parámetros {{1}}, {{2}}... en orden
-     * @param WhatsappConfig     $config    Configuración del aliado
+     * @param string             $to             Número E.164: +573001234567
+     * @param WhatsappPlantilla  $plantilla      Plantilla aprobada por Meta
+     * @param array              $params         Parámetros {{1}}, {{2}}... en orden (BODY)
+     * @param WhatsappConfig     $config         Configuración del aliado
+     * @param string|null        $headerImageUrl URL pública de imagen para header IMAGE
+     *                                           (cuando la plantilla no guarda header_valor)
      * @return array ['ok' => bool, 'wa_message_id' => string|null, 'error' => string|null]
      */
     public function enviarTemplate(
         string $to,
         WhatsappPlantilla $plantilla,
         array $params,
-        WhatsappConfig $config
+        WhatsappConfig $config,
+        ?string $headerImageUrl = null
     ): array {
-        $creds = $config->credencialesEfectivas();
+        $creds      = $config->credencialesEfectivas();
+        $componentes = $plantilla->construirComponentes($params, $headerImageUrl);
 
         $payload = [
             'messaging_product' => 'whatsapp',
@@ -48,9 +52,16 @@ class WhatsappApiService
             'template'          => [
                 'name'       => $plantilla->nombre,
                 'language'   => ['code' => $plantilla->idioma],
-                'components' => $plantilla->construirComponentes($params),
+                'components' => $componentes,
             ],
         ];
+
+        Log::debug('WhatsApp: enviando template', [
+            'to'          => $to,
+            'plantilla'   => $plantilla->nombre,
+            'idioma'      => $plantilla->idioma,
+            'componentes' => $componentes,
+        ]);
 
         return $this->llamarApi($creds, $payload);
     }

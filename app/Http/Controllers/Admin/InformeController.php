@@ -2517,6 +2517,46 @@ class InformeController extends Controller
             ],
         ]);
     }
+
+    public function brynexCobros()
+    {
+        $this->checkAdmin();
+        $aid = $this->aliadoId();
+
+        $cobros = \App\Models\BrynexCobroAliado::where('aliado_id', $aid)
+            ->orderBy('anio', 'desc')
+            ->orderBy('mes', 'desc')
+            ->get();
+
+        return view('admin.informes.brynex_cobros', compact('cobros'));
+    }
+
+    public function brynexCobroPdf($cobroId)
+    {
+        $this->checkAdmin();
+        $cobro = \App\Models\BrynexCobroAliado::findOrFail($cobroId);
+
+        if (!Auth::user()->es_brynex && $cobro->aliado_id !== $this->aliadoId()) {
+            abort(403, 'No tienes permisos para descargar este cobro.');
+        }
+
+        $cobro->load(['aliado', 'detalles.modulo', 'pagos']);
+
+        $saldoAnterior = \App\Models\BrynexCobroAliado::where('aliado_id', $cobro->aliado_id)
+            ->where(function ($q) use ($cobro) {
+                $q->where('anio', '<', $cobro->anio)
+                  ->orWhere(function ($sq) use ($cobro) {
+                      $sq->where('anio', '=', $cobro->anio)
+                         ->where('mes', '<', $cobro->mes);
+                  });
+            })
+            ->get()
+            ->sum(fn($c) => $c->saldo_pendiente);
+
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdf.brynex_cobro', compact('cobro', 'saldoAnterior'));
+        $nombreArchivo = 'Cuenta_de_Cobro_Brynex_' . str_replace(' ', '_', $cobro->aliado->nombre) . '_' . $cobro->anio . '_' . str_pad($cobro->mes, 2, '0', STR_PAD_LEFT) . '.pdf';
+        return $pdf->download($nombreArchivo);
+    }
 }
 
 

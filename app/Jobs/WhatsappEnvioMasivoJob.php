@@ -57,13 +57,18 @@ class WhatsappEnvioMasivoJob implements ShouldQueue
         $fallidos  = 0;
         $omitidos  = 0;
 
+        // URL pública de imagen del header (si el aliado tiene cobro_header_imagen configurado)
+        $headerImageUrl = null;
+        if ($config->cobro_header_imagen) {
+            $headerImageUrl = asset('storage/' . $config->cobro_header_imagen);
+        }
+
         // Procesar solo los pendientes (permite reanudar si el job falla a mitad)
         $pendientes = $envio->detalles()->where('estado', 'pendiente')->get();
 
         foreach ($pendientes as $detalle) {
             try {
                 // Construir parámetros para esta plantilla
-                // Los parámetros globales se mezclan con los específicos del destinatario
                 $params = $this->construirParametros($plantilla, $detalle, $this->parametrosGlobales);
 
                 // Obtener o crear la conversación para este destinatario
@@ -73,12 +78,13 @@ class WhatsappEnvioMasivoJob implements ShouldQueue
                     $detalle->nombre_destinatario
                 );
 
-                // Enviar el template
+                // Enviar el template (con imagen del header si aplica)
                 $resultado = $apiService->enviarTemplate(
                     $detalle->wa_numero,
                     $plantilla,
                     $params,
-                    $config
+                    $config,
+                    $headerImageUrl
                 );
 
                 if ($resultado['ok']) {
@@ -158,12 +164,91 @@ class WhatsappEnvioMasivoJob implements ShouldQueue
             return array_values($parametrosGlobales);
         }
 
+        // Determinar el contrato primario para datos del cliente
+        $contratoIdPrimario = $detalle->contratoIdPrimario();
+
+        if ($contratoIdPrimario) {
+            $contrato = \App\Models\Contrato::with(['cliente', 'razonSocial', 'plan', 'tipoModalidad', 'aliado'])
+                ->find($contratoIdPrimario);
+
+            if ($contrato) {
+                $nombreCliente = $contrato->cliente?->nombre_completo ?? $detalle->nombre_destinatario;
+                $nombreAliado  = $contrato->aliado?->nombre ?? 'BryNex';
+                $plazoDias     = '10'; // Días por defecto
+
+                // Obtener cuentas para cobro
+                $cuentasCobro = \App\Models\BancoCuenta::paraCobro($contrato->aliado_id);
+                $cuentasText = $cuentasCobro->map(function($bc) {
+                    $nitPart = '';
+                    if ($bc->nit) {
+                        $trimmedNit = trim($bc->nit);
+                        if (preg_match('/^(nit|cc|c\.c\.)/i', $trimmedNit)) {
+                            $nitPart = " " . $trimmedNit;
+                        } else {
+                            $nitPart = " NIT " . $trimmedNit;
+                        }
+                    }
+                    return "{$bc->banco} {$bc->tipo_cuenta} {$bc->numero_cuenta} - {$bc->nombre}{$nitPart}";
+                })->join("\n");
+
+                if (empty($cuentasText)) {
+                    $cuentasText = 'no tiene configurada';
+                }
+
+                // Celular de soporte
+                $configAliado   = \App\Models\WhatsappConfig::where('aliado_id', $contrato->aliado_id)->first();
+                $celularSoporte = $configAliado?->numero_telefono ?: 'no tiene configurado';
+
+                // Usar valor_cobro pre-calculado si está disponible (evita recalcular)
+                $valorCobro = $detalle->valor_cobro !== null
+                    ? (float) $detalle->valor_cobro
+                    : null;
+
+                // Fallback: calcular desde factura o estimado
+                if ($valorCobro === null) {
+                    $envio   = $detalle->envio;
+                    $factura = \App\Models\Factura::where('aliado_id', $contrato->aliado_id)
+                        ->where('contrato_id', $contrato->id)
+                        ->periodo($envio->mes ?? now()->month, $envio->anio ?? now()->year)
+                        ->whereIn('tipo', ['planilla', 'afiliacion'])
+                        ->whereNull('deleted_at')
+                        ->first();
+
+                    $valorCobro = $factura ? $factura->total : null;
+
+                    if ($valorCobro === null) {
+                        $esIndep = $contrato->tipoModalidad?->esIndependiente() ?? false;
+                        $ibc     = (float)($contrato->salario ?? 0);
+                        $plan    = $contrato->plan;
+                        $r100    = fn($v) => (int)(ceil(($v ?? 0) / 100) * 100);
+                        $pctSS   = $esIndep ? 28.5 : 29.5;
+                        $vSS     = ($plan?->incluye_eps || $plan?->incluye_arl || $plan?->incluye_pension || $plan?->incluye_caja)
+                            ? $r100($ibc * $pctSS / 100)
+                            : 0;
+                        $valorCobro = $vSS + (int)($contrato->administracion ?? 0) + (int)($contrato->seguro ?? 0);
+                    }
+                }
+
+                $valorFormateado = '$' . number_format($valorCobro, 0, ',', '.');
+
+                // Determinar el número de variables de la plantilla (5 o 6)
+                $cantVars = $plantilla->cantidadVariables();
+                if ($cantVars <= 5) {
+                    // Cobro sin variable de valor
+                    return [$nombreCliente, $nombreAliado, $plazoDias, $cuentasText, $celularSoporte];
+                } else {
+                    // Cobro con variable de valor
+                    return [$nombreCliente, $nombreAliado, $plazoDias, $cuentasText, $celularSoporte, $valorFormateado];
+                }
+            }
+        }
+
         // Auto-generar parámetros desde el mapa de variables de la plantilla
         $mapa = $plantilla->variables_mapa ?? [];
         if (empty($mapa)) return [];
 
         $params = [];
-        foreach ($mapa as $index => $campo) {
+        foreach ($mapa as $campo) {
             $params[] = $this->resolverCampo($campo, $detalle);
         }
 
@@ -174,7 +259,7 @@ class WhatsappEnvioMasivoJob implements ShouldQueue
     {
         return match($campo) {
             'cliente.nombre'              => $detalle->nombre_destinatario,
-            'factura.total'               => '',  // Se rellena con datos reales si se pasan en parametros
+            'factura.total'               => '',
             'factura.fecha_vencimiento'   => '',
             default                       => '',
         };
@@ -185,16 +270,27 @@ class WhatsappEnvioMasivoJob implements ShouldQueue
         int $alidoId,
         string $nombre
     ): WhatsappConversacion {
-        return WhatsappConversacion::firstOrCreate(
-            [
-                'aliado_id'     => $alidoId,
-                'wa_contact_id' => $numero,
-                'estado'        => 'abierta',
-            ],
-            [
-                'nombre_contacto'       => $nombre,
-                'ultimo_mensaje_at'     => now(),
-            ]
-        );
+        // Buscar conversación existente por aliado + número (sin importar el estado)
+        $conversacion = WhatsappConversacion::where('aliado_id', $alidoId)
+            ->where('wa_contact_id', $numero)
+            ->orderByDesc('updated_at')
+            ->first();
+
+        if ($conversacion) {
+            // Re-abrir si estaba cerrada
+            if ($conversacion->estado === 'cerrada') {
+                $conversacion->update(['estado' => 'abierta']);
+            }
+            return $conversacion;
+        }
+
+        // Crear nueva conversación vinculada al aliado
+        return WhatsappConversacion::create([
+            'aliado_id'             => $alidoId,
+            'wa_contact_id'         => $numero,
+            'nombre_contacto'       => $nombre,
+            'estado'                => 'abierta',
+            'ultimo_mensaje_at'     => now(),
+        ]);
     }
 }

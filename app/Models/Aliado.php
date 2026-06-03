@@ -21,6 +21,7 @@ class Aliado extends BaseModel
         'contacto',
         'telefono',
         'celular',
+        'whatsapp',
         'correo',
         'direccion',
         'ciudad',
@@ -66,5 +67,17 @@ class Aliado extends BaseModel
     public function whatsappConfig(): HasOne
     {
         return $this->hasOne(WhatsappConfig::class, 'aliado_id');
+    }
+
+    // Módulos de Brynex contratados por este aliado
+    public function modulosBrynex(): HasMany
+    {
+        return $this->hasMany(BrynexModuloAliado::class, 'aliado_id');
+    }
+
+    // Cobros mensuales de Brynex hacia este aliado
+    public function cobrosBrynex(): HasMany
+    {
+        return $this->hasMany(BrynexCobroAliado::class, 'aliado_id')->orderByDesc('anio')->orderByDesc('mes');
     }
 }
