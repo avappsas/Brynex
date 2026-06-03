@@ -479,6 +479,7 @@ Route::middleware('auth')->group(function () {
         // ── Chat (todos los usuarios del aliado) ──────────────────────────────
         Route::get('chat',                       [$chat, 'index'])         ->name('chat.index');
         Route::get('chat/{id}',                  [$chat, 'show'])          ->name('chat.show');
+        Route::get('chat/{id}/api-mensajes',     [$chat, 'apiMensajes'])   ->name('chat.api_mensajes');
         Route::post('chat/{id}/mensaje',         [$chat, 'enviarMensaje']) ->name('chat.mensaje');
         Route::patch('chat/{id}/asignar',        [$chat, 'asignar'])       ->name('chat.asignar');
         Route::patch('chat/{id}/cerrar',         [$chat, 'cerrar'])        ->name('chat.cerrar');

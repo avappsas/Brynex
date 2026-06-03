@@ -169,10 +169,14 @@ class WhatsappConversacion extends BaseModel
 
     /**
      * Preview del último mensaje para mostrar en el inbox.
+     * Optimizado para evitar consultas N+1 si la relación 'mensajes' ya fue precargada.
      */
     public function previewUltimoMensaje(): string
     {
-        $ultimo = WhatsappMensaje::where('conversacion_id', $this->id)->latest()->first();
+        $ultimo = $this->relationLoaded('mensajes')
+            ? $this->mensajes->first()
+            : WhatsappMensaje::where('conversacion_id', $this->id)->latest()->first();
+
         if (!$ultimo) return '';
 
         return match($ultimo->tipo) {

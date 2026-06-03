@@ -7,20 +7,30 @@
 .chat-layout { display:flex; height:calc(100vh - 120px); background:#fff; border-radius:12px; box-shadow:0 1px 8px rgba(0,0,0,.1); overflow:hidden; }
 
 /* Sidebar */
-.chat-sidebar { width:280px; min-width:240px; border-right:1px solid #f1f5f9; display:flex; flex-direction:column; }
-.sidebar-header { padding:.75rem .9rem; border-bottom:1px solid #f1f5f9; }
-.sidebar-title { font-size:.88rem; font-weight:700; color:#0f172a; margin-bottom:.5rem; }
+.chat-sidebar { width:310px; min-width:280px; border-right:1px solid #f1f5f9; display:flex; flex-direction:column; background:#fff; }
+.sidebar-header { padding:.85rem 1rem; border-bottom:1px solid #f1f5f9; }
+.sidebar-title { font-size:.95rem; font-weight:700; color:#0f172a; display:flex; align-items:center; gap:.5rem; margin-bottom:.65rem; }
+.sidebar-badge { background:#ef4444; color:#fff; font-size:.65rem; font-weight:700; padding:.12rem .45rem; border-radius:999px; min-width:18px; text-align:center; }
+.sidebar-search { width:100%; padding:.45rem .75rem; border:1px solid #e2e8f0; border-radius:8px; font-size:.82rem; color:#0f172a; outline:none; transition:border-color .15s; margin-bottom:.5rem; }
+.sidebar-search:focus { border-color:#2563eb; }
+.sidebar-tabs { display:flex; gap:.25rem; }
+.sidebar-tab { flex:1; text-align:center; padding:.35rem; border-radius:7px; font-size:.74rem; font-weight:600; cursor:pointer; text-decoration:none; color:#64748b; transition:background .12s, color .12s; }
+.sidebar-tab.active { background:#eff6ff; color:#2563eb; }
+.sidebar-tab:hover { background:#f8fafc; }
+
 .conv-list { flex:1; overflow-y:auto; }
 .conv-list::-webkit-scrollbar { width:4px; }
 .conv-list::-webkit-scrollbar-thumb { background:#e2e8f0; border-radius:999px; }
-.conv-item { display:flex; align-items:center; gap:.65rem; padding:.65rem .85rem; cursor:pointer; text-decoration:none; border-bottom:1px solid #f8fafc; transition:background .1s; }
+.conv-item { display:flex; align-items:center; gap:.75rem; padding:.75rem 1rem; cursor:pointer; text-decoration:none; border-bottom:1px solid #f8fafc; transition:background .1s; }
 .conv-item:hover { background:#f8fafc; }
 .conv-item.activa { background:#eff6ff; border-right:3px solid #2563eb; }
-.conv-avatar { width:36px; height:36px; border-radius:50%; background:linear-gradient(135deg,#2563eb,#7c3aed); display:flex; align-items:center; justify-content:center; font-size:.9rem; color:#fff; font-weight:700; flex-shrink:0; }
+.conv-avatar { width:40px; height:40px; border-radius:50%; background:linear-gradient(135deg,#2563eb,#7c3aed); display:flex; align-items:center; justify-content:center; font-size:1rem; color:#fff; font-weight:700; flex-shrink:0; }
 .conv-info { flex:1; min-width:0; }
-.conv-name { font-size:.8rem; font-weight:600; color:#0f172a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.conv-preview { font-size:.7rem; color:#94a3b8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.conv-unread { background:#ef4444; color:#fff; font-size:.62rem; font-weight:700; padding:.1rem .38rem; border-radius:999px; min-width:17px; text-align:center; }
+.conv-name { font-size:.83rem; font-weight:600; color:#0f172a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.conv-preview { font-size:.74rem; color:#94a3b8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:.1rem; }
+.conv-meta { display:flex; flex-direction:column; align-items:flex-end; gap:.25rem; flex-shrink:0; }
+.conv-time { font-size:.68rem; color:#cbd5e1; }
+.conv-unread { background:#ef4444; color:#fff; font-size:#063; font-weight:700; padding:.1rem .38rem; border-radius:999px; min-width:18px; text-align:center; }
 
 /* Chat principal */
 .chat-main { flex:1; display:flex; flex-direction:column; min-width:0; }
@@ -28,7 +38,7 @@
 .chat-contact-info { flex:1; }
 .chat-contact-name { font-size:.9rem; font-weight:700; color:#0f172a; }
 .chat-contact-sub { font-size:.72rem; color:#94a3b8; }
-.header-actions { display:flex; gap:.4rem; flex-shrink:0; }
+.header-actions { display:flex; gap:.4rem; flex-shrink:0; align-items:center; }
 .btn-sm { padding:.3rem .65rem; border-radius:7px; font-size:.75rem; font-weight:600; cursor:pointer; border:none; display:inline-flex; align-items:center; gap:.3rem; text-decoration:none; transition:opacity .15s; }
 .btn-sm:hover { opacity:.87; }
 .btn-primary { background:#2563eb; color:#fff; }
@@ -92,143 +102,183 @@
 <div style="padding:0 1.5rem 1.5rem">
 <div class="chat-layout" x-data="chatApp()" x-init="init()">
 
-    {{-- Sidebar con lista de conversaciones (igual al index) --}}
+    {{-- Sidebar con lista de conversaciones dinámica con Alpine.js --}}
     <aside class="chat-sidebar">
         <div class="sidebar-header">
-            <div class="sidebar-title">💬 WhatsApp</div>
+            <div class="sidebar-title">
+                💬 WhatsApp
+                <span class="sidebar-badge" x-show="totalNoLeidos > 0" x-text="totalNoLeidos"></span>
+            </div>
+
+            <form method="GET">
+                <input type="hidden" name="tab" value="{{ $tab }}">
+                <input type="text" name="buscar" class="sidebar-search"
+                       value="{{ $buscar }}" placeholder="Buscar conversación...">
+            </form>
+
+            <div class="sidebar-tabs">
+                <a href="{{ route('admin.whatsapp.chat.show', $conversacion->id) }}?tab=general&buscar={{ urlencode($buscar) }}"
+                   class="sidebar-tab {{ $tab === 'general' ? 'active' : '' }}">📥 General</a>
+                <a href="{{ route('admin.whatsapp.chat.show', $conversacion->id) }}?tab=mias&buscar={{ urlencode($buscar) }}"
+                   class="sidebar-tab {{ $tab === 'mias' ? 'active' : '' }}">👤 Mis chats</a>
+            </div>
         </div>
-        <div class="conv-list" id="convList">
-            {{-- Se carga vía fetch o se replica el mismo listado --}}
-            <a href="{{ route('admin.whatsapp.chat.index') }}"
-               style="display:flex;align-items:center;gap:.5rem;padding:.65rem .85rem;color:#2563eb;text-decoration:none;font-size:.78rem;border-bottom:1px solid #f1f5f9">
-                ← Ver todas las conversaciones
-            </a>
-            <a href="{{ route('admin.whatsapp.chat.show', $conversacion->id) }}" class="conv-item activa">
-                <div class="conv-avatar">{{ mb_strtoupper(mb_substr($conversacion->nombreMostrar(), 0, 1)) }}</div>
-                <div class="conv-info">
-                    <div class="conv-name">{{ $conversacion->nombreMostrar() }}</div>
-                    <div class="conv-preview">{{ $conversacion->wa_contact_id }}</div>
-                </div>
-                @if($conversacion->total_mensajes_no_leidos > 0)
-                    <span class="conv-unread">{{ $conversacion->total_mensajes_no_leidos }}</span>
-                @endif
-            </a>
+
+        <div class="conv-list">
+            <template x-for="c in listaConversaciones" :key="c.id">
+                <a :href="c.url_show + '?tab={{ $tab }}&buscar={{ urlencode($buscar) }}'"
+                   @click.prevent="cargarConversacion(c.id)"
+                   class="conv-item" :class="c.id == convId ? 'activa' : ''">
+                    <div class="conv-avatar" x-text="c.nombre.substring(0, 1).toUpperCase()"></div>
+                    <div class="conv-info">
+                        <div class="conv-name" x-text="c.nombre"></div>
+                        <div class="conv-preview">
+                            <template x-if="c.asignado_nombre">
+                                <span style="color:#10b981">● <span x-text="c.asignado_nombre"></span></span>
+                            </template>
+                            <template x-if="!c.asignado_nombre">
+                                <span x-text="c.preview || 'Sin mensajes'"></span>
+                            </template>
+                        </div>
+                    </div>
+                    <div class="conv-meta">
+                        <span class="conv-time" x-text="c.hora_display"></span>
+                        <span class="conv-unread" x-show="c.total_mensajes_no_leidos > 0" x-text="c.total_mensajes_no_leidos"></span>
+                    </div>
+                </a>
+            </template>
+            <div x-show="listaConversaciones.length === 0" style="text-align:center;padding:2rem 1rem;color:#94a3b8;font-size:.82rem">
+                No hay conversaciones.
+            </div>
         </div>
     </aside>
 
     {{-- Chat principal --}}
-    <main class="chat-main">
+    <main class="chat-main" x-show="conversacion" x-cloak>
 
         {{-- Header del chat --}}
         <div class="chat-header">
-            <div class="conv-avatar" style="width:42px;height:42px">
-                {{ mb_strtoupper(mb_substr($conversacion->nombreMostrar(), 0, 1)) }}
+            <div class="conv-avatar" style="width:42px;height:42px" x-text="conversacion.nombre.substring(0, 1).toUpperCase()">
             </div>
             <div class="chat-contact-info">
-                <div class="chat-contact-name">{{ $conversacion->nombreMostrar() }}</div>
+                <div class="chat-contact-name" x-text="conversacion.nombre"></div>
                 <div class="chat-contact-sub">
-                    {{ $conversacion->wa_contact_id }}
-                    @if($conversacion->estado === 'asignada' && $conversacion->asignado)
-                        · Asignada a <strong>{{ $conversacion->asignado->nombre }}</strong>
-                    @else
-                        · <span style="color:#94a3b8">Inbox general</span>
-                    @endif
+                    <span x-text="conversacion.celular"></span>
+                    <span x-show="conversacion.estado === 'asignada' && conversacion.asignado_nombre">
+                        · Asignada a <strong x-text="conversacion.asignado_nombre"></strong>
+                    </span>
+                    <span x-show="conversacion.estado !== 'asignada' || !conversacion.asignado_nombre" style="color:#94a3b8">
+                        · Inbox general
+                    </span>
                 </div>
             </div>
             <div class="header-actions">
+                <a x-show="conversacion.contrato_id" :href="conversacion.contrato_url" target="_blank" class="btn-sm btn-success">
+                    📄 Ver Contrato
+                </a>
                 <button class="btn-sm btn-outline" @click="modalAsignar = true">👤 Asignar</button>
                 <button class="btn-sm btn-danger" @click="cerrarConversacion()">✕ Cerrar</button>
             </div>
         </div>
 
         {{-- Barra de ventana activa/inactiva --}}
-        @if($conversacion->ventanaActiva())
-            <div class="ventana-bar ventana-activa">
-                ✅ Ventana activa — {{ $conversacion->minutosVentanaRestante() }} minutos restantes para enviar mensajes libres
-            </div>
-        @else
-            <div class="ventana-bar ventana-inactiva">
-                ⚠️ Ventana expirada — Solo puedes enviar plantillas aprobadas para iniciar la conversación
-            </div>
-        @endif
+        <div class="ventana-bar ventana-activa" x-show="conversacion.ventana_activa">
+            ✅ Ventana activa — <span x-text="conversacion.ventana_minutos"></span> minutos restantes para enviar mensajes libres
+        </div>
+        <div class="ventana-bar ventana-inactiva" x-show="!conversacion.ventana_activa">
+            ⚠️ Ventana expirada — Solo puedes enviar plantillas aprobadas para iniciar la conversación
+        </div>
 
         {{-- Área de mensajes --}}
         <div class="messages-area" id="messagesArea">
-            @foreach($mensajes as $msg)
-                @php $esEntrante = $msg->esEntrante(); @endphp
-                <div class="msg-wrap {{ $esEntrante ? 'entrante' : 'saliente' }}">
-                    @if(!$esEntrante && $msg->usuario)
-                        <div class="msg-sender">{{ $msg->usuario->nombre }}</div>
-                    @endif
+            <template x-for="msg in mensajes" :key="msg.id">
+                <div class="msg-wrap" :class="msg.es_entrante ? 'entrante' : 'saliente'">
+                    <template x-if="!msg.es_entrante && msg.usuario_nombre">
+                        <div class="msg-sender" x-text="msg.usuario_nombre"></div>
+                    </template>
 
-                    <div class="msg-bubble msg-{{ $esEntrante ? 'entrante' : 'saliente' }}">
+                    <div class="msg-bubble" :class="msg.es_entrante ? 'msg-entrante' : 'msg-saliente'">
 
-                        @if($msg->tipo === 'text' || $msg->tipo === 'template')
-                            {!! nl2br(e($msg->contenido)) !!}
-                            @if($msg->tipo === 'template' && $msg->plantilla)
-                                <div style="font-size:.68rem;opacity:.6;margin-top:.2rem">📋 {{ $msg->plantilla->nombre_display }}</div>
-                            @endif
+                        <!-- Texto y plantilla -->
+                        <template x-if="msg.tipo === 'text' || msg.tipo === 'template'">
+                            <div>
+                                <span x-html="formatearContenido(msg.contenido)"></span>
+                                <template x-if="msg.tipo === 'template' && msg.plantilla_nombre">
+                                    <div style="font-size:.68rem;opacity:.6;margin-top:.2rem" x-text="'📋 ' + msg.plantilla_nombre"></div>
+                                </template>
+                            </div>
+                        </template>
 
-                        @elseif($msg->tipo === 'image')
+                        <!-- Imagen -->
+                        <template x-if="msg.tipo === 'image'">
                             <div class="msg-image">
-                                @if($msg->tieneMedia())
-                                    <img src="{{ $msg->urlMedia() }}" alt="Imagen" loading="lazy"
-                                         onclick="window.open(this.src,'_blank')">
-                                @else
+                                <template x-if="msg.tiene_media">
+                                    <img :src="msg.media_url" alt="Imagen" loading="lazy"
+                                         @click="window.open(msg.media_url, '_blank')">
+                                </template>
+                                <template x-if="!msg.tiene_media">
                                     <div style="padding:.5rem;color:rgba(255,255,255,.6)">📷 Descargando imagen...</div>
-                                @endif
-                                @if($msg->contenido) <div style="margin-top:.3rem">{{ $msg->contenido }}</div> @endif
+                                </template>
+                                <template x-if="msg.contenido">
+                                    <div style="margin-top:.3rem" x-text="msg.contenido"></div>
+                                </template>
                             </div>
+                        </template>
 
-                        @elseif($msg->tipo === 'audio')
+                        <!-- Audio -->
+                        <template x-if="msg.tipo === 'audio'">
                             <div class="msg-audio">
-                                @if($msg->tieneMedia())
+                                <template x-if="msg.tiene_media">
                                     <audio controls preload="none" style="max-width:240px">
-                                        <source src="{{ $msg->urlMedia() }}" type="{{ $msg->media_mime_type ?? 'audio/ogg' }}">
+                                        <source :src="msg.media_url" :type="msg.media_mime_type || 'audio/ogg'">
                                     </audio>
-                                @else
+                                </template>
+                                <template x-if="!msg.tiene_media">
                                     <span style="opacity:.7">🎵 Descargando audio...</span>
-                                @endif
+                                </template>
                             </div>
+                        </template>
 
-                        @elseif($msg->tipo === 'document')
+                        <!-- Documento -->
+                        <template x-if="msg.tipo === 'document'">
                             <div class="msg-document">
                                 <span class="doc-icon">📄</span>
                                 <div>
-                                    <div style="font-size:.8rem;font-weight:600">{{ $msg->media_nombre ?? 'Documento' }}</div>
-                                    @if($msg->tieneMedia())
-                                        <a href="{{ $msg->urlMedia() }}" target="_blank"
-                                           style="font-size:.72rem;color:{{ $esEntrante ? '#2563eb' : '#bfdbfe' }};text-decoration:underline">
+                                    <div style="font-size:.8rem;font-weight:600" x-text="msg.media_nombre || 'Documento'"></div>
+                                    <template x-if="msg.tiene_media">
+                                        <a :href="msg.media_url" target="_blank"
+                                           style="font-size:.72rem;text-decoration:underline"
+                                           :style="msg.es_entrante ? 'color:#2563eb' : 'color:#bfdbfe'">
                                             Descargar
                                         </a>
-                                    @else
+                                    </template>
+                                    <template x-if="!msg.tiene_media">
                                         <span style="font-size:.72rem;opacity:.6">Descargando...</span>
-                                    @endif
+                                    </template>
                                 </div>
                             </div>
+                        </template>
 
-                        @elseif($msg->tipo === 'video')
-                            @if($msg->tieneMedia())
-                                <video controls style="max-width:220px;border-radius:6px">
-                                    <source src="{{ $msg->urlMedia() }}" type="{{ $msg->media_mime_type }}">
-                                </video>
-                            @else
-                                <span>🎥 Descargando video...</span>
-                            @endif
-                        @endif
+                        <!-- Video -->
+                        <template x-if="msg.tipo === 'video'">
+                            <div>
+                                <template x-if="msg.tiene_media">
+                                    <video controls style="max-width:220px;border-radius:6px">
+                                        <source :src="msg.media_url" :type="msg.media_mime_type">
+                                    </video>
+                                </template>
+                                <template x-if="!msg.tiene_media">
+                                    <span>🎥 Descargando video...</span>
+                                </template>
+                            </div>
+                        </template>
 
                         <div class="msg-meta">
-                            {{ $msg->created_at->format('H:i') }}
-                            @if(!$esEntrante) {{ $msg->iconoEstado() }} @endif
+                            <span x-text="msg.hora"></span>
+                            <template x-if="!msg.es_entrante">
+                                <span x-text="msg.icono_estado"></span>
+                            </template>
                         </div>
-                    </div>
-                </div>
-            @endforeach
-            {{-- Mensajes nuevos via Reverb se agregan aquí --}}
-            <template x-for="msg in mensajesNuevos" :key="msg.mensaje_id">
-                <div class="msg-wrap" :class="msg.direccion === 'entrante' ? 'entrante' : 'saliente'">
-                    <div class="msg-bubble" :class="msg.direccion === 'entrante' ? 'msg-entrante' : 'msg-saliente'"
-                         x-text="msg.contenido || ('📎 ' + msg.tipo)">
                     </div>
                 </div>
             </template>
@@ -237,7 +287,7 @@
         {{-- Área de entrada --}}
         <div class="chat-input-area">
             {{-- Ventana activa: texto libre + adjuntos --}}
-            @if($conversacion->ventanaActiva())
+            <template x-if="conversacion.ventana_activa">
                 <div class="input-row">
                     <label class="btn-adjuntar" title="Adjuntar imagen/documento">
                         📎
@@ -252,37 +302,41 @@
                         <span x-show="enviando">⏳</span>
                     </button>
                 </div>
-            @else
-                {{-- Ventana inactiva: solo plantillas --}}
-                <div class="template-selector">
-                    <div style="font-size:.75rem;font-weight:600;color:#92400e;margin-bottom:.4rem">
-                        📋 Selecciona una plantilla para iniciar
+            </template>
+
+            {{-- Ventana inactiva: solo plantillas --}}
+            <template x-if="!conversacion.ventana_activa">
+                <div>
+                    <div class="template-selector">
+                        <div style="font-size:.75rem;font-weight:600;color:#92400e;margin-bottom:.4rem">
+                            📋 Selecciona una plantilla para iniciar
+                        </div>
+                        <select x-model="plantillaSeleccionada" @change="cargarParamsPlantilla()" style="width:100%;border:none;background:transparent;font-size:.83rem;outline:none">
+                            <option value="">— Elige una plantilla aprobada —</option>
+                            @foreach($plantillas as $plt)
+                                <option value="{{ $plt->id }}"
+                                        data-vars="{{ $plt->cantidadVariables() }}"
+                                        data-preview="{{ e($plt->cuerpo) }}">
+                                    {{ $plt->nombre_display }}
+                                </option>
+                            @endforeach
+                        </select>
                     </div>
-                    <select x-model="plantillaSeleccionada" @change="cargarParamsPlantilla()" style="width:100%;border:none;background:transparent;font-size:.83rem;outline:none">
-                        <option value="">— Elige una plantilla aprobada —</option>
-                        @foreach($plantillas as $plt)
-                            <option value="{{ $plt->id }}"
-                                    data-vars="{{ $plt->cantidadVariables() }}"
-                                    data-preview="{{ e($plt->cuerpo) }}">
-                                {{ $plt->nombre_display }}
-                            </option>
-                        @endforeach
-                    </select>
+                    <div class="template-params" x-show="paramsPlantilla.length > 0">
+                        <template x-for="(p, idx) in paramsPlantilla" :key="idx">
+                            <input type="text" class="template-params input" x-model="paramsPlantilla[idx]"
+                                   :placeholder="'Variable {{' + (idx+1) + '}}: ' + (getMapaVar(idx) || '')">
+                        </template>
+                    </div>
+                    <div class="input-row" style="margin-top:.5rem">
+                        <button class="btn-sm btn-primary" style="width:100%;justify-content:center"
+                                @click="enviarTemplate()" :disabled="!plantillaSeleccionada || enviando">
+                            <span x-show="!enviando">📤 Enviar plantilla</span>
+                            <span x-show="enviando">⏳ Enviando...</span>
+                        </button>
+                    </div>
                 </div>
-                <div class="template-params" x-show="paramsPlantilla.length > 0">
-                    <template x-for="(p, idx) in paramsPlantilla" :key="idx">
-                        <input type="text" class="template-params input" x-model="paramsPlantilla[idx]"
-                               :placeholder="'Variable {{' + (idx+1) + '}}: ' + (getMapaVar(idx) || '')">
-                    </template>
-                </div>
-                <div class="input-row" style="margin-top:.5rem">
-                    <button class="btn-sm btn-primary" style="width:100%;justify-content:center"
-                            @click="enviarTemplate()" :disabled="!plantillaSeleccionada || enviando">
-                        <span x-show="!enviando">📤 Enviar plantilla</span>
-                        <span x-show="enviando">⏳ Enviando...</span>
-                    </button>
-                </div>
-            @endif
+            </template>
 
             {{-- Mensajes de error/éxito --}}
             <div x-show="mensajeError" style="color:#ef4444;font-size:.75rem;margin-top:.4rem" x-text="mensajeError"></div>
@@ -298,7 +352,7 @@
             <select x-model="usuarioAsignar" class="form-control">
                 <option value="">— Inbox general (sin asignar) —</option>
                 @foreach($usuarios as $u)
-                    <option value="{{ $u->id }}" {{ $conversacion->asignado_a == $u->id ? 'selected' : '' }}>
+                    <option value="{{ $u->id }}" :selected="usuarioAsignar == {{ $u->id }}">
                         {{ $u->nombre }}
                     </option>
                 @endforeach
@@ -341,9 +395,12 @@ function chatApp() {
         mensajeError: '',
         modalAsignar: false,
         usuarioAsignar: '{{ $conversacion->asignado_a ?? '' }}',
-        mensajesNuevos: [],
+        mensajes: @json($mensajesData),
+        conversacion: @json($conversacionData),
         alidoId: '{{ session('aliado_id_activo') }}',
         convId: {{ $conversacion->id }},
+        listaConversaciones: @json($conversacionesData),
+        totalNoLeidos: {{ (int) $totalNoLeidos }},
 
         init() {
             this.scrollBottom();
@@ -357,30 +414,103 @@ function chatApp() {
             });
         },
 
+        formatearContenido(contenido) {
+            if (!contenido) return '';
+            let escaped = contenido
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+            return escaped.replace(/\n/g, '<br>');
+        },
+
+        async cargarConversacion(id) {
+            if (this.enviando) return;
+            this.convId = id;
+            this.textoMensaje = '';
+            this.mensajeError = '';
+
+            // Cambiar URL en el navegador de manera SPA
+            const newUrl = `/admin/whatsapp/chat/${id}?tab={{ $tab }}&buscar={{ urlencode($buscar) }}`;
+            window.history.pushState({ path: newUrl }, '', newUrl);
+
+            try {
+                const resp = await fetch(`/admin/whatsapp/chat/${id}/api-mensajes`);
+                const data = await resp.json();
+                if (data.ok) {
+                    this.mensajes = data.mensajes;
+                    this.conversacion = data.conversacion;
+                    this.usuarioAsignar = data.conversacion.asignado_a || '';
+
+                    // Resetear no leídos en el listado local de manera reactiva
+                    let convItem = this.listaConversaciones.find(c => c.id == id);
+                    if (convItem) {
+                        this.totalNoLeidos = Math.max(0, this.totalNoLeidos - convItem.total_mensajes_no_leidos);
+                        convItem.total_mensajes_no_leidos = 0;
+                    }
+
+                    this.scrollBottom();
+                } else {
+                    this.mensajeError = data.error || 'Error al cargar mensajes.';
+                }
+            } catch (e) {
+                this.mensajeError = 'Error de conexión al cargar la conversación.';
+            }
+        },
+
+        ordenarConversaciones() {
+            this.listaConversaciones.sort((a, b) => {
+                if (!a.ultimo_mensaje_at) return 1;
+                if (!b.ultimo_mensaje_at) return -1;
+                return new Date(b.ultimo_mensaje_at) - new Date(a.ultimo_mensaje_at);
+            });
+        },
+
         async enviarTexto() {
             if (!this.textoMensaje.trim() || this.enviando) return;
+            const msgOriginal = this.textoMensaje;
             this.enviando = true;
             this.mensajeError = '';
 
             try {
-                const resp = await fetch(`/admin/whatsapp/chat/{{ $conversacion->id }}/mensaje`, {
+                const resp = await fetch(`/admin/whatsapp/chat/${this.convId}/mensaje`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
                         'Accept': 'application/json',
                     },
-                    body: JSON.stringify({ tipo: 'text', contenido: this.textoMensaje })
+                    body: JSON.stringify({ tipo: 'text', contenido: msgOriginal })
                 });
 
                 const data = await resp.json();
                 if (data.ok) {
-                    this.mensajesNuevos.push({
-                        mensaje_id: data.mensaje?.id || Date.now(),
-                        direccion: 'saliente',
+                    const ahora = new Date();
+                    this.mensajes.push({
+                        id: data.mensaje?.id || Date.now(),
                         tipo: 'text',
-                        contenido: this.textoMensaje,
+                        contenido: msgOriginal,
+                        es_entrante: false,
+                        usuario_nombre: '{{ Auth::user()->nombre }}',
+                        plantilla_nombre: null,
+                        tiene_media: false,
+                        media_url: null,
+                        media_nombre: null,
+                        media_mime_type: null,
+                        hora: String(ahora.getHours()).padStart(2, '0') + ':' + String(ahora.getMinutes()).padStart(2, '0'),
+                        icono_estado: '📤',
                     });
+
+                    // Actualizar barra lateral
+                    let conv = this.listaConversaciones.find(c => c.id == this.convId);
+                    if (conv) {
+                        conv.preview = msgOriginal;
+                        conv.ultimo_mensaje_at = ahora.toISOString();
+                        conv.hora_display = String(ahora.getHours()).padStart(2, '0') + ':' + String(ahora.getMinutes()).padStart(2, '0');
+                        this.ordenarConversaciones();
+                    }
+
                     this.textoMensaje = '';
                     this.scrollBottom();
                 } else {
@@ -399,7 +529,7 @@ function chatApp() {
             this.mensajeError = '';
 
             try {
-                const resp = await fetch(`/admin/whatsapp/chat/{{ $conversacion->id }}/mensaje`, {
+                const resp = await fetch(`/admin/whatsapp/chat/${this.convId}/mensaje`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -414,12 +544,31 @@ function chatApp() {
                 });
                 const data = await resp.json();
                 if (data.ok) {
-                    this.mensajesNuevos.push({
-                        mensaje_id: Date.now(),
-                        direccion: 'saliente',
+                    const ahora = new Date();
+                    this.mensajes.push({
+                        id: Date.now(),
                         tipo: 'template',
                         contenido: '📋 Plantilla enviada',
+                        es_entrante: false,
+                        usuario_nombre: '{{ Auth::user()->nombre }}',
+                        plantilla_nombre: null,
+                        tiene_media: false,
+                        media_url: null,
+                        media_nombre: null,
+                        media_mime_type: null,
+                        hora: String(ahora.getHours()).padStart(2, '0') + ':' + String(ahora.getMinutes()).padStart(2, '0'),
+                        icono_estado: '📤',
                     });
+
+                    // Actualizar barra lateral
+                    let conv = this.listaConversaciones.find(c => c.id == this.convId);
+                    if (conv) {
+                        conv.preview = '📋 Plantilla enviada';
+                        conv.ultimo_mensaje_at = ahora.toISOString();
+                        conv.hora_display = String(ahora.getHours()).padStart(2, '0') + ':' + String(ahora.getMinutes()).padStart(2, '0');
+                        this.ordenarConversaciones();
+                    }
+
                     this.plantillaSeleccionada = '';
                     this.paramsPlantilla = [];
                     this.scrollBottom();
@@ -452,19 +601,38 @@ function chatApp() {
             formData.append('_token', document.querySelector('meta[name="csrf-token"]').content);
 
             try {
-                const resp = await fetch(`/admin/whatsapp/chat/{{ $conversacion->id }}/mensaje`, {
+                const resp = await fetch(`/admin/whatsapp/chat/${this.convId}/mensaje`, {
                     method: 'POST',
                     headers: { 'Accept': 'application/json' },
                     body: formData,
                 });
                 const data = await resp.json();
                 if (data.ok) {
-                    this.mensajesNuevos.push({
-                        mensaje_id: Date.now(),
-                        direccion: 'saliente',
+                    const ahora = new Date();
+                    this.mensajes.push({
+                        id: Date.now(),
                         tipo: tipo,
                         contenido: '📎 ' + file.name,
+                        es_entrante: false,
+                        usuario_nombre: '{{ Auth::user()->nombre }}',
+                        plantilla_nombre: null,
+                        tiene_media: true,
+                        media_url: data.mensaje?.media_url || '',
+                        media_nombre: file.name,
+                        media_mime_type: file.type,
+                        hora: String(ahora.getHours()).padStart(2, '0') + ':' + String(ahora.getMinutes()).padStart(2, '0'),
+                        icono_estado: '📤',
                     });
+
+                    // Actualizar barra lateral
+                    let conv = this.listaConversaciones.find(c => c.id == this.convId);
+                    if (conv) {
+                        conv.preview = '📎 ' + file.name;
+                        conv.ultimo_mensaje_at = ahora.toISOString();
+                        conv.hora_display = String(ahora.getHours()).padStart(2, '0') + ':' + String(ahora.getMinutes()).padStart(2, '0');
+                        this.ordenarConversaciones();
+                    }
+
                     this.scrollBottom();
                 } else {
                     this.mensajeError = data.error || 'Error al enviar el archivo.';
@@ -489,7 +657,7 @@ function chatApp() {
 
         async asignarConversacion() {
             try {
-                const resp = await fetch(`/admin/whatsapp/chat/{{ $conversacion->id }}/asignar`, {
+                const resp = await fetch(`/admin/whatsapp/chat/${this.convId}/asignar`, {
                     method: 'PATCH',
                     headers: {
                         'Content-Type': 'application/json',
@@ -499,14 +667,27 @@ function chatApp() {
                     body: JSON.stringify({ user_id: this.usuarioAsignar || null })
                 });
                 const data = await resp.json();
-                if (data.ok) { this.modalAsignar = false; location.reload(); }
+                if (data.ok) { 
+                    this.modalAsignar = false; 
+                    // Actualizar asignado_nombre localmente
+                    const userSelected = document.querySelector(`option[value="${this.usuarioAsignar}"]`);
+                    this.conversacion.asignado_nombre = userSelected ? userSelected.textContent.trim() : null;
+                    this.conversacion.estado = this.usuarioAsignar ? 'asignada' : 'abierta';
+                    
+                    // Actualizar en el listado lateral
+                    let convItem = this.listaConversaciones.find(c => c.id == this.convId);
+                    if (convItem) {
+                        convItem.asignado_nombre = this.conversacion.asignado_nombre;
+                        convItem.asignado_a = this.usuarioAsignar || null;
+                    }
+                }
                 else alert(data.error || 'Error al asignar');
             } catch(e) { alert('Error de conexión'); }
         },
 
         async cerrarConversacion() {
             if (!confirm('¿Cerrar esta conversación? Se archivará y no aparecerá en el inbox.')) return;
-            const resp = await fetch(`/admin/whatsapp/chat/{{ $conversacion->id }}/cerrar`, {
+            const resp = await fetch(`/admin/whatsapp/chat/${this.convId}/cerrar`, {
                 method: 'PATCH',
                 headers: {
                     'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
@@ -518,19 +699,55 @@ function chatApp() {
         },
 
         conectarReverb() {
-            // Verificar si Laravel Echo está disponible
             if (typeof window.Echo === 'undefined') return;
 
             window.Echo.private(`whatsapp-aliado.${this.alidoId}`)
                 .listen('.mensaje.nuevo', (e) => {
+                    const ahora = new Date();
+                    
+                    // 1. Si es de la conversación abierta actual
                     if (e.conversacion_id == this.convId && e.direccion === 'entrante') {
-                        this.mensajesNuevos.push(e);
+                        this.mensajes.push({
+                            id: e.mensaje_id || Date.now(),
+                            tipo: e.tipo || 'text',
+                            contenido: e.contenido,
+                            es_entrante: true,
+                            usuario_nombre: null,
+                            plantilla_nombre: null,
+                            tiene_media: e.tipo !== 'text' && e.tipo !== 'template',
+                            media_url: e.media_url || null,
+                            media_nombre: e.media_nombre || null,
+                            media_mime_type: e.media_mime_type || null,
+                            hora: String(ahora.getHours()).padStart(2, '0') + ':' + String(ahora.getMinutes()).padStart(2, '0'),
+                            icono_estado: null,
+                        });
+                        
                         this.scrollBottom();
                         // Marcar como leído
                         fetch(`/admin/whatsapp/chat/${this.convId}/leer`, {
                             method: 'PATCH',
                             headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content }
                         });
+                    }
+
+                    // 2. Reordenar y actualizar barra lateral en tiempo real para cualquier conversación
+                    const convIdTarget = e.conversacion_id;
+                    let conv = this.listaConversaciones.find(c => c.id == convIdTarget);
+                    if (conv) {
+                        conv.preview = e.contenido || '📎 ' + e.tipo;
+                        conv.ultimo_mensaje_at = ahora.toISOString();
+                        
+                        const hrs = String(ahora.getHours()).padStart(2, '0');
+                        const mins = String(ahora.getMinutes()).padStart(2, '0');
+                        conv.hora_display = `${hrs}:${mins}`;
+
+                        // Si no es la conversación abierta, sumar no leído
+                        if (convIdTarget != this.convId) {
+                            conv.total_mensajes_no_leidos++;
+                            this.totalNoLeidos++;
+                        }
+                        
+                        this.ordenarConversaciones();
                     }
                 });
         },

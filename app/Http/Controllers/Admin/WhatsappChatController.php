@@ -32,7 +32,7 @@ class WhatsappChatController extends Controller
 
         $query = WhatsappConversacion::delAliado($alidoId)
             ->activas()
-            ->with(['mensajes' => fn($q) => $q->reorder()->latest()->limit(1)])
+            ->with(['mensajes' => fn($q) => $q->reorder()->latest()->limit(1), 'asignado'])
             ->orderByDesc('ultimo_mensaje_at');
 
         // Los usuarios asesores solo ven sus chats asignados y los del inbox general (sin asignar)
@@ -80,9 +80,10 @@ class WhatsappChatController extends Controller
     /**
      * Vista individual del chat con todos los mensajes.
      */
-    public function show(int $id)
+    public function show(Request $request, int $id)
     {
         $alidoId      = session('aliado_id_activo');
+        $userId       = Auth::id();
         $conversacion = WhatsappConversacion::delAliado($alidoId)->findOrFail($id);
         $conversacion->resetNoLeidos();
 
@@ -102,8 +103,102 @@ class WhatsappChatController extends Controller
             ->select('id', 'nombre', 'nombre_display', 'cuerpo', 'variables_mapa')
             ->get();
 
+        // --- Cargar listado lateral de conversaciones (igual al index) ---
+        $tab     = $request->get('tab', 'general'); // general | mias
+        $buscar  = $request->get('buscar');
+
+        $user    = Auth::user();
+        $esAdmin = $user->es_brynex || $user->hasRole(['admin', 'superadmin']);
+
+        $query = WhatsappConversacion::delAliado($alidoId)
+            ->activas()
+            ->with(['mensajes' => fn($q) => $q->reorder()->latest()->limit(1), 'asignado'])
+            ->orderByDesc('ultimo_mensaje_at');
+
+        if (!$esAdmin) {
+            $query->where(function ($q) use ($userId) {
+                $q->where('asignado_a', $userId)
+                  ->orWhereNull('asignado_a');
+            });
+        }
+
+        if ($tab === 'mias') {
+            $query->where('asignado_a', $userId);
+        }
+
+        if ($buscar) {
+            $query->where(function ($q) use ($buscar) {
+                $q->where('nombre_contacto', 'like', "%{$buscar}%")
+                  ->orWhere('wa_contact_id', 'like', "%{$buscar}%");
+            });
+        }
+
+        $conversaciones = $query->get();
+
+        // Badge total no leídos del aliado
+        $queryNoLeidos = WhatsappConversacion::delAliado($alidoId)->activas();
+        if (!$esAdmin) {
+            $queryNoLeidos->where(function ($q) use ($userId) {
+                $q->where('asignado_a', $userId)
+                  ->orWhereNull('asignado_a');
+            });
+        }
+        $totalNoLeidos = $queryNoLeidos->sum('total_mensajes_no_leidos');
+
+        // Mapear conversaciones para la reactividad en Alpine.js
+        $conversacionesData = $conversaciones->map(function ($c) {
+            return [
+                'id' => $c->id,
+                'nombre' => $c->nombreMostrar(),
+                'celular' => $c->wa_contact_id,
+                'total_mensajes_no_leidos' => (int) $c->total_mensajes_no_leidos,
+                'ultimo_mensaje_at' => $c->ultimo_mensaje_at ? $c->ultimo_mensaje_at->toIso8601String() : null,
+                'hora_display' => $c->ultimo_mensaje_at
+                    ? ($c->ultimo_mensaje_at->isToday()
+                        ? $c->ultimo_mensaje_at->format('H:i')
+                        : $c->ultimo_mensaje_at->format('d/m'))
+                    : '',
+                'preview' => $c->previewUltimoMensaje(),
+                'asignado_a' => $c->asignado_a,
+                'asignado_nombre' => $c->asignado?->nombre,
+                'url_show' => route('admin.whatsapp.chat.show', $c->id),
+            ];
+        })->toArray();
+
+        $mensajesData = $mensajes->map(function ($m) {
+            return [
+                'id' => $m->id,
+                'tipo' => $m->tipo,
+                'contenido' => $m->contenido,
+                'es_entrante' => $m->esEntrante(),
+                'usuario_nombre' => $m->usuario?->nombre,
+                'plantilla_nombre' => $m->plantilla?->nombre_display,
+                'tiene_media' => $m->tieneMedia(),
+                'media_url' => $m->urlMedia(),
+                'media_nombre' => $m->media_nombre,
+                'media_mime_type' => $m->media_mime_type,
+                'hora' => $m->created_at->format('H:i'),
+                'icono_estado' => $m->iconoEstado(),
+            ];
+        })->toArray();
+
+        $conversacionData = [
+            'id' => $conversacion->id,
+            'nombre' => $conversacion->nombreMostrar(),
+            'celular' => $conversacion->wa_contact_id,
+            'contrato_id' => $conversacion->contrato_id,
+            'contrato_url' => $conversacion->contrato_id ? route('admin.contratos.edit', $conversacion->contrato_id) : null,
+            'estado' => $conversacion->estado,
+            'asignado_a' => $conversacion->asignado_a,
+            'asignado_nombre' => $conversacion->asignado?->nombre,
+            'ventana_activa' => $conversacion->ventanaActiva(),
+            'ventana_minutos' => $conversacion->minutosVentanaRestante(),
+        ];
+
         return view('admin.whatsapp.chat.show', compact(
-            'conversacion', 'mensajes', 'usuarios', 'plantillas'
+            'conversacion', 'mensajes', 'usuarios', 'plantillas',
+            'conversaciones', 'conversacionesData', 'tab', 'buscar', 'totalNoLeidos',
+            'mensajesData', 'conversacionData'
         ));
     }
 
@@ -262,6 +357,54 @@ class WhatsappChatController extends Controller
         $noLeidos = $query->sum('total_mensajes_no_leidos');
 
         return response()->json(['total' => (int)$noLeidos]);
+    }
+
+    /**
+     * API: retorna los mensajes e información de una conversación.
+     */
+    public function apiMensajes(int $id)
+    {
+        $alidoId      = session('aliado_id_activo');
+        $conversacion = WhatsappConversacion::delAliado($alidoId)->findOrFail($id);
+        $conversacion->resetNoLeidos();
+
+        $mensajes = $conversacion->mensajes()
+            ->with(['usuario:id,nombre', 'plantilla:id,nombre_display'])
+            ->get();
+
+        $mensajesData = $mensajes->map(function ($m) {
+            return [
+                'id' => $m->id,
+                'tipo' => $m->tipo,
+                'contenido' => $m->contenido,
+                'es_entrante' => $m->esEntrante(),
+                'usuario_nombre' => $m->usuario?->nombre,
+                'plantilla_nombre' => $m->plantilla?->nombre_display,
+                'tiene_media' => $m->tieneMedia(),
+                'media_url' => $m->urlMedia(),
+                'media_nombre' => $m->media_nombre,
+                'media_mime_type' => $m->media_mime_type,
+                'hora' => $m->created_at->format('H:i'),
+                'icono_estado' => $m->iconoEstado(),
+            ];
+        })->toArray();
+
+        return response()->json([
+            'ok' => true,
+            'conversacion' => [
+                'id' => $conversacion->id,
+                'nombre' => $conversacion->nombreMostrar(),
+                'celular' => $conversacion->wa_contact_id,
+                'contrato_id' => $conversacion->contrato_id,
+                'contrato_url' => $conversacion->contrato_id ? route('admin.contratos.edit', $conversacion->contrato_id) : null,
+                'estado' => $conversacion->estado,
+                'asignado_a' => $conversacion->asignado_a,
+                'asignado_nombre' => $conversacion->asignado?->nombre,
+                'ventana_activa' => $conversacion->ventanaActiva(),
+                'ventana_minutos' => $conversacion->minutosVentanaRestante(),
+            ],
+            'mensajes' => $mensajesData,
+        ]);
     }
 
     // ── Helpers privados ─────────────────────────────────────────────
