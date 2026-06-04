@@ -120,9 +120,11 @@ class WhatsappConversacion extends BaseModel
 
     /**
      * Resetea el contador de no leídos (cuando el agente abre el chat).
+     * Solo ejecuta el UPDATE si realmente hay mensajes sin leer.
      */
     public function resetNoLeidos(): void
     {
+        if ($this->total_mensajes_no_leidos === 0) return;
         $this->update(['total_mensajes_no_leidos' => 0]);
     }
 
@@ -195,6 +197,40 @@ class WhatsappConversacion extends BaseModel
      */
     public function nombreMostrar(): string
     {
-        return $this->nombre_contacto ?: $this->wa_contact_id;
+        $nombre = $this->nombre_contacto ?: $this->wa_contact_id;
+        if ($this->nombre_contacto) {
+            return mb_convert_case($nombre, MB_CASE_TITLE, 'UTF-8');
+        }
+        return $nombre;
+    }
+
+    /**
+     * URL de edición del cliente asociado a la conversación.
+     * Busca primero por el contrato asociado y, si no lo tiene, realiza
+     * una búsqueda por el número de celular del contacto.
+     */
+    public function getClienteUrlAttribute(): ?string
+    {
+        if ($this->contrato_id) {
+            $contrato = $this->contrato;
+            if ($contrato) {
+                $cliente = \App\Models\Cliente::where('cedula', $contrato->cedula)->first();
+                if ($cliente) {
+                    return route('admin.clientes.edit', $cliente->id);
+                }
+            }
+        }
+
+        $phone = preg_replace('/^\+?57/', '', $this->wa_contact_id);
+        if (strlen($phone) >= 10) {
+            $cliente = \App\Models\Cliente::where('celular', 'like', "%{$phone}%")
+                ->orWhere('telefono', 'like', "%{$phone}%")
+                ->first();
+            if ($cliente) {
+                return route('admin.clientes.edit', $cliente->id);
+            }
+        }
+
+        return null;
     }
 }

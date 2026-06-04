@@ -477,15 +477,16 @@ Route::middleware('auth')->group(function () {
         $config    = \App\Http\Controllers\Admin\WhatsappConfigController::class;
 
         // ── Chat (todos los usuarios del aliado) ──────────────────────────────
-        Route::get('chat',                       [$chat, 'index'])         ->name('chat.index');
-        Route::get('chat/{id}',                  [$chat, 'show'])          ->name('chat.show');
-        Route::get('chat/{id}/api-mensajes',     [$chat, 'apiMensajes'])   ->name('chat.api_mensajes');
-        Route::post('chat/{id}/mensaje',         [$chat, 'enviarMensaje']) ->name('chat.mensaje');
-        Route::patch('chat/{id}/asignar',        [$chat, 'asignar'])       ->name('chat.asignar');
-        Route::patch('chat/{id}/cerrar',         [$chat, 'cerrar'])        ->name('chat.cerrar');
-        Route::patch('chat/{id}/leer',           [$chat, 'marcarLeido'])   ->name('chat.leer');
-        Route::get('chat/media/{mensajeId}',     [$chat, 'descargarMedia'])->name('chat.media');
-        Route::get('api/no-leidos',              [$chat, 'apiNoLeidos'])   ->name('api.no_leidos');
+        Route::get('chat',                           [$chat, 'index'])                   ->name('chat.index');
+        Route::get('chat/{id}',                      [$chat, 'show'])                    ->name('chat.show');
+        Route::get('chat/{id}/api-mensajes',         [$chat, 'apiMensajes'])             ->name('chat.api_mensajes');
+        Route::get('chat/{id}/api-sidebar',          [$chat, 'apiConversacionSidebar'])  ->name('chat.api_sidebar');
+        Route::post('chat/{id}/mensaje',             [$chat, 'enviarMensaje'])           ->name('chat.mensaje');
+        Route::patch('chat/{id}/asignar',            [$chat, 'asignar'])                 ->name('chat.asignar');
+        Route::patch('chat/{id}/cerrar',             [$chat, 'cerrar'])                  ->name('chat.cerrar');
+        Route::patch('chat/{id}/leer',               [$chat, 'marcarLeido'])             ->name('chat.leer');
+        Route::get('chat/media/{mensajeId}',         [$chat, 'descargarMedia'])          ->name('chat.media');
+        Route::get('api/no-leidos',                  [$chat, 'apiNoLeidos'])             ->name('api.no_leidos');
 
         // ── Plantillas (admin del aliado) ─────────────────────────────────────
         Route::get('plantillas',                 [$plantilla, 'index'])          ->name('plantillas.index');

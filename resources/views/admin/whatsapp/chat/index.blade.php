@@ -143,11 +143,15 @@
 .conv-unread {
     background: #ef4444;
     color: #fff;
-    font-size: .63rem;
+    font-size: .58rem;
     font-weight: 700;
-    padding: .1rem .38rem;
+    padding: 2px 6px;
     border-radius: 999px;
-    min-width: 18px;
+    min-width: 15px;
+    height: 15px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     text-align: center;
 }
 

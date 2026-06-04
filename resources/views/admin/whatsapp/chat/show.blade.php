@@ -30,7 +30,7 @@
 .conv-preview { font-size:.74rem; color:#94a3b8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:.1rem; }
 .conv-meta { display:flex; flex-direction:column; align-items:flex-end; gap:.25rem; flex-shrink:0; }
 .conv-time { font-size:.68rem; color:#cbd5e1; }
-.conv-unread { background:#ef4444; color:#fff; font-size:#063; font-weight:700; padding:.1rem .38rem; border-radius:999px; min-width:18px; text-align:center; }
+.conv-unread { background:#ef4444; color:#fff; font-size:.58rem; font-weight:700; padding:2px 6px; border-radius:999px; min-width:15px; height:15px; display:inline-flex; align-items:center; justify-content:center; text-align:center; }
 
 /* Chat principal */
 .chat-main { flex:1; display:flex; flex-direction:column; min-width:0; }
@@ -173,10 +173,10 @@
                 </div>
             </div>
             <div class="header-actions">
-                <a x-show="conversacion.contrato_id" :href="conversacion.contrato_url" target="_blank" class="btn-sm btn-success">
-                    📄 Ver Contrato
-                </a>
                 <button class="btn-sm btn-outline" @click="modalAsignar = true">👤 Asignar</button>
+                <a x-show="conversacion.contrato_url" :href="conversacion.contrato_url" target="_blank" class="btn-sm btn-success">
+                    📄 Ver Cliente
+                </a>
                 <button class="btn-sm btn-danger" @click="cerrarConversacion()">✕ Cerrar</button>
             </div>
         </div>
@@ -560,6 +560,12 @@ function chatApp() {
                         icono_estado: '📤',
                     });
 
+                    // Actualizar ventana activa directamente — sin recargar la página
+                    if (data.ventana_activa !== undefined) {
+                        this.conversacion.ventana_activa  = data.ventana_activa;
+                        this.conversacion.ventana_minutos = data.ventana_minutos ?? 1440;
+                    }
+
                     // Actualizar barra lateral
                     let conv = this.listaConversaciones.find(c => c.id == this.convId);
                     if (conv) {
@@ -572,8 +578,6 @@ function chatApp() {
                     this.plantillaSeleccionada = '';
                     this.paramsPlantilla = [];
                     this.scrollBottom();
-                    // Recargar la página para mostrar la ventana activa actualizada
-                    setTimeout(() => location.reload(), 1500);
                 } else {
                     this.mensajeError = data.error || 'Error al enviar la plantilla.';
                 }
@@ -702,7 +706,7 @@ function chatApp() {
             if (typeof window.Echo === 'undefined') return;
 
             window.Echo.private(`whatsapp-aliado.${this.alidoId}`)
-                .listen('.mensaje.nuevo', (e) => {
+                .listen('.mensaje.nuevo', async (e) => {
                     const ahora = new Date();
                     
                     // 1. Si es de la conversación abierta actual
@@ -733,11 +737,13 @@ function chatApp() {
                     // 2. Reordenar y actualizar barra lateral en tiempo real para cualquier conversación
                     const convIdTarget = e.conversacion_id;
                     let conv = this.listaConversaciones.find(c => c.id == convIdTarget);
+
                     if (conv) {
+                        // Conversación ya conocida — actualizar en el sidebar
                         conv.preview = e.contenido || '📎 ' + e.tipo;
                         conv.ultimo_mensaje_at = ahora.toISOString();
-                        
-                        const hrs = String(ahora.getHours()).padStart(2, '0');
+
+                        const hrs  = String(ahora.getHours()).padStart(2, '0');
                         const mins = String(ahora.getMinutes()).padStart(2, '0');
                         conv.hora_display = `${hrs}:${mins}`;
 
@@ -746,8 +752,23 @@ function chatApp() {
                             conv.total_mensajes_no_leidos++;
                             this.totalNoLeidos++;
                         }
-                        
+
                         this.ordenarConversaciones();
+
+                    } else {
+                        // Conversación NUEVA (contacto que nunca había escrito)
+                        // Traemos sus datos del servidor y la agregamos al sidebar
+                        try {
+                            const sidebarResp = await fetch(`/admin/whatsapp/chat/${convIdTarget}/api-sidebar`);
+                            const sidebarData = await sidebarResp.json();
+                            if (sidebarData.ok && sidebarData.conversacion) {
+                                this.listaConversaciones.unshift(sidebarData.conversacion);
+                                this.totalNoLeidos += sidebarData.conversacion.total_mensajes_no_leidos;
+                                this.ordenarConversaciones();
+                            }
+                        } catch (err) {
+                            console.warn('No se pudo cargar la conversación nueva al sidebar:', err);
+                        }
                     }
                 });
         },
