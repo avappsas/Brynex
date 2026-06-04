@@ -399,6 +399,7 @@ Route::middleware('auth')->group(function () {
         $fc = \App\Http\Controllers\Admin\FormularioEpsController::class;
         Route::get('/',                            [$ac, 'index'])   ->name('index');
         Route::get('/exportar',                    [$ac, 'exportar'])->name('exportar');
+        Route::get('/{contrato}/historial',        [$ac, 'historial'])->name('historial');
         Route::get('/{contrato}/formulario/eps',       [$fc, 'vista'])   ->name('formulario.eps');
         Route::get('/{contrato}/formulario/eps/raw',   [$fc, 'generar']) ->name('formulario.eps.raw');
         Route::post('/{contrato}/formulario/eps/firma',[$fc, 'guardarFirma'])->name('formulario.eps.firma');

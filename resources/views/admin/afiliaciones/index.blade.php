@@ -88,6 +88,8 @@ body {
 /* ── Botones acción ── */
 .btn-docs { background:#6366f1;color:#fff;border:none;border-radius:6px;padding:0.22rem 0.5rem;font-size:0.65rem;cursor:pointer;transition:background .15s; }
 .btn-docs:hover { background:#4f46e5; }
+.btn-historial { background:#f97316;color:#fff;border:none;border-radius:6px;padding:0.22rem 0.5rem;font-size:0.65rem;cursor:pointer;transition:background .15s; }
+.btn-historial:hover { background:#ea580c; }
 .btn-enviado-ok  { color:#15803d;font-size:0.85rem; }
 .btn-enviado-no  { color:#cbd5e1;font-size:0.85rem;cursor:pointer; }
 
@@ -470,7 +472,7 @@ function sortClass($col, $currSort, $currDir) {
 
         {{-- ARL — efectiva según razón social --}}
         @php $rArl = $radicados->get('arl'); @endphp
-        <td style="font-size:0.7rem;color:#475569;max-width:60px;overflow:hidden;text-overflow:ellipsis;padding-right:0;" title="{{ $c->arl_efectiva_nombre }}">{{ $plan?->incluye_arl ? $c->arl_efectiva_nombre : '—' }}</td>
+        <td style="font-size:0.7rem;color:#475569;max-width:85px;overflow:hidden;text-overflow:ellipsis;padding-right:0;" title="{{ $c->arl_efectiva_nombre }}{{ $c->n_arl ? " ({$c->n_arl})" : '' }}">{{ $plan?->incluye_arl ? ($c->arl_efectiva_nombre . ($c->n_arl ? " ({$c->n_arl})" : '')) : '—' }}</td>
         <td style="padding-left:2px;">
             @if($plan?->incluye_arl && $rArl)
             <button class="badge-estado badge-{{ $rArl->estado }} btn-rad"
@@ -538,7 +540,7 @@ function sortClass($col, $currSort, $currDir) {
         </td>
 
         {{-- Docs --}}
-        <td style="text-align:center;">
+        <td style="text-align:center;white-space:nowrap;">
             @php $radIdDocs = $rEps?->id ?? $rArl?->id ?? $rCaja?->id ?? $rPen?->id ?? 0; @endphp
             <button class="btn-docs btn-docs-open"
                 data-rad-id="{{ $radIdDocs }}"
@@ -546,6 +548,10 @@ function sortClass($col, $currSort, $currDir) {
                 data-aliado-id="{{ $c->aliado_id }}"
                 data-nombre="{{ $c->cliente?->primer_nombre }} {{ $c->cliente?->primer_apellido }}"
                 title="Ver/subir documentos">📁</button>
+            <button class="btn-historial"
+                onclick="abrirHistorialAfiliacion({{ $c->id }})"
+                title="Ver historial completo de la afiliación"
+                style="background:#f97316;color:#fff;border:none;border-radius:6px;padding:0.22rem 0.5rem;font-size:0.65rem;cursor:pointer;transition:background .15s;margin-left:0.2rem;">📜</button>
         </td>
     </tr>
     @endforeach
@@ -702,6 +708,20 @@ function sortClass($col, $currSort, $currDir) {
         </div>
         <div id="mbit-resumen" style="background:#f8fafc;border-radius:8px;padding:0.6rem;margin-bottom:0.8rem;font-size:0.78rem;"></div>
         <div class="timeline" id="mbit-timeline">Cargando...</div>
+    </div>
+</div>
+
+{{-- ══ MODAL HISTORIAL COMPLETO DE LA AFILIACIÓN ══ --}}
+<div class="modal-bg" id="modalHistorialAfiliacion">
+    <div class="modal-box wide">
+        <div class="modal-title">
+            <span>📜 Historial de Afiliación — <span id="mhist-cotizante"></span></span>
+            <button class="modal-close" onclick="cerrarModal('modalHistorialAfiliacion')">✕</button>
+        </div>
+        <div style="background:#f8fafc;border-radius:8px;padding:0.6rem 0.8rem;margin-bottom:0.8rem;font-size:0.78rem;">
+            <strong>Cédula:</strong> <span id="mhist-cedula"></span>
+        </div>
+        <div class="timeline" id="mhist-timeline" style="max-height: 60vh; overflow-y: auto;">Cargando...</div>
     </div>
 </div>
 
@@ -1438,6 +1458,69 @@ function abrirBitacora() {
             `).join('');
         })
         .catch(() => { document.getElementById('mbit-timeline').innerHTML = '<div style="color:#ef4444;text-align:center;">Error al cargar la bitácora.</div>'; });
+}
+
+// ── Modal Historial Completo de Afiliación ──
+function abrirHistorialAfiliacion(contratoId) {
+    document.getElementById('mhist-cotizante').textContent = 'Cargando...';
+    document.getElementById('mhist-cedula').textContent = '';
+    document.getElementById('mhist-timeline').innerHTML = '<div style="text-align:center;padding:1rem;color:#94a3b8;">⏳ Cargando historial...</div>';
+    document.getElementById('modalHistorialAfiliacion').classList.add('open');
+
+    fetch(`/admin/afiliaciones/${contratoId}/historial`, { headers: { 'Accept': 'application/json' } })
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('mhist-cotizante').textContent = data.cotizante;
+            document.getElementById('mhist-cedula').textContent = data.cedula;
+
+            const hist = data.historial || [];
+            if(!hist.length) {
+                document.getElementById('mhist-timeline').innerHTML = '<div style="color:#94a3b8;text-align:center;padding:1rem;">Sin historial registrado.</div>';
+                return;
+            }
+
+            document.getElementById('mhist-timeline').innerHTML = `
+            <div style="overflow-x: auto;">
+                <table class="tbl-afil" style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.78rem;">
+                    <thead>
+                        <tr style="background: #0f172a; color: #fff;">
+                            <th style="padding: 0.5rem; font-weight: 700;">FECHA</th>
+                            <th style="padding: 0.5rem; font-weight: 700;">HORA</th>
+                            <th style="padding: 0.5rem; font-weight: 700;">USUARIO</th>
+                            <th style="padding: 0.5rem; font-weight: 700;">DESCRIPCIÓN</th>
+                            <th style="padding: 0.5rem; font-weight: 700; text-align: center;">ESTADO</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${hist.map(h => {
+                            let badgeClass = 'badge-pendiente';
+                            if (h.estado_raw === 'ok') badgeClass = 'badge-ok';
+                            else if (h.estado_raw === 'tramite') badgeClass = 'badge-tramite';
+                            else if (h.estado_raw === 'traslado') badgeClass = 'badge-traslado';
+                            else if (h.estado_raw === 'error') badgeClass = 'badge-error';
+
+                            return `
+                            <tr style="border-bottom: 1px solid #f1f5f9; background: #fff; transition: background .12s;">
+                                <td style="padding: 0.45rem 0.5rem; font-weight: 700; color: #1e40af; white-space: nowrap;">${h.fecha}</td>
+                                <td style="padding: 0.45rem 0.5rem; color: #475569; white-space: nowrap;">${h.hora}</td>
+                                <td style="padding: 0.45rem 0.5rem; font-weight: 600; color: #1e3a5f;">${h.usuario}</td>
+                                <td style="padding: 0.45rem 0.5rem; color: #334155; white-space: normal; min-width: 200px;">${h.descripcion}</td>
+                                <td style="padding: 0.45rem 0.5rem; text-align: center; white-space: nowrap;">
+                                    <span class="badge-estado ${badgeClass}" style="cursor: default; font-size: 0.65rem; padding: 0.15rem 0.4rem; min-width: 75px; display: inline-block;">
+                                        ${h.estado}
+                                    </span>
+                                </td>
+                            </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            </div>
+            `;
+        })
+        .catch(() => {
+            document.getElementById('mhist-timeline').innerHTML = '<div style="color:#ef4444;text-align:center;padding:1rem;">Error al cargar el historial.</div>';
+        });
 }
 
 // ── Modal Documentos ──

@@ -291,6 +291,144 @@ class AfiliacionController extends Controller
         ])->deleteFileAfterSend(true);
     }
 
+    /**
+     * Retorna el historial completo de una afiliación (contrato + modificaciones + movimientos de radicados).
+     */
+    public function historial($id)
+    {
+        $alidoId  = session('aliado_id_activo');
+        $contrato = Contrato::with([
+            'cliente:cedula,primer_nombre,segundo_nombre,primer_apellido,segundo_apellido',
+            'encargado:id,nombre',
+        ])->where('aliado_id', $alidoId)->findOrFail($id);
+
+        $historial = collect();
+
+        $meses = [
+            1 => 'ENERO', 2 => 'FEBRERO', 3 => 'MARZO', 4 => 'ABRIL',
+            5 => 'MAYO', 6 => 'JUNIO', 7 => 'JULIO', 8 => 'AGOSTO',
+            9 => 'SEPTIEMBRE', 10 => 'OCTUBRE', 11 => 'NOVIEMBRE', 12 => 'DICIEMBRE'
+        ];
+
+        $formatear = function($timestamp) use ($meses) {
+            $dt = \Carbon\Carbon::parse($timestamp);
+            return [
+                'fecha' => $dt->day . '-' . $meses[$dt->month] . '-' . $dt->year,
+                'hora'  => str_replace(' ', '', $dt->format('g:i A')),
+            ];
+        };
+
+        // 1. Obtener evento de creación del contrato en bitacora
+        $creadoBitacora = DB::table('bitacora')
+            ->leftJoin('users', 'bitacora.user_id', '=', 'users.id')
+            ->where('bitacora.modelo', 'Contrato')
+            ->where('bitacora.registro_id', $contrato->id)
+            ->where('bitacora.accion', 'created')
+            ->select('bitacora.created_at', 'users.nombre as usuario', 'bitacora.descripcion')
+            ->first();
+
+        if ($creadoBitacora) {
+            $fmt = $formatear($creadoBitacora->created_at);
+            $historial->push([
+                'fecha'       => $fmt['fecha'],
+                'hora'        => $fmt['hora'],
+                'usuario'     => $creadoBitacora->usuario ?? 'Sistema',
+                'descripcion' => 'SE CREÓ LA AFILIACIÓN: ' . $creadoBitacora->descripcion,
+                'estado'      => 'PENDIENTE',
+                'estado_raw'  => 'pendiente',
+                'timestamp'   => $creadoBitacora->created_at,
+            ]);
+        } else {
+            // Fallback usando el created_at del contrato
+            $fechaC = $contrato->created_at ?? $contrato->fecha_created ?? now();
+            $fmt = $formatear($fechaC);
+            $historial->push([
+                'fecha'       => $fmt['fecha'],
+                'hora'        => $fmt['hora'],
+                'usuario'     => $contrato->encargado?->nombre ?? 'Sistema',
+                'descripcion' => 'SE CREÓ LA AFILIACIÓN',
+                'estado'      => 'PENDIENTE',
+                'estado_raw'  => 'pendiente',
+                'timestamp'   => $fechaC,
+            ]);
+        }
+
+        // 2. Obtener actualizaciones del contrato en bitacora
+        $actualizacionesBitacora = DB::table('bitacora')
+            ->leftJoin('users', 'bitacora.user_id', '=', 'users.id')
+            ->where('bitacora.modelo', 'Contrato')
+            ->where('bitacora.registro_id', $contrato->id)
+            ->where('bitacora.accion', 'updated')
+            ->select('bitacora.created_at', 'users.nombre as usuario', 'bitacora.descripcion')
+            ->get();
+
+        foreach ($actualizacionesBitacora as $act) {
+            $fmt = $formatear($act->created_at);
+            $historial->push([
+                'fecha'       => $fmt['fecha'],
+                'hora'        => $fmt['hora'],
+                'usuario'     => $act->usuario ?? 'Sistema',
+                'descripcion' => 'MODIFICACIÓN AFILIACIÓN: ' . $act->descripcion,
+                'estado'      => 'VIGENTE',
+                'estado_raw'  => 'tramite',
+                'timestamp'   => $act->created_at,
+            ]);
+        }
+
+        // 3. Obtener movimientos de radicados asociados al contrato
+        $movimientosRadicados = RadicadoMovimiento::with(['user:id,nombre', 'radicado'])
+            ->where('contrato_id', $contrato->id)
+            ->get();
+
+        $estadoMap = [
+            'pendiente' => 'PENDIENTE',
+            'tramite'   => 'EN TRAMITE',
+            'traslado'  => 'TRASLADO',
+            'error'     => 'ERROR',
+            'ok'        => 'OK',
+        ];
+
+        foreach ($movimientosRadicados as $m) {
+            $fmt = $formatear($m->created_at);
+            $entidad = strtoupper($m->entidadLabel());
+            
+            // Descripción personalizada
+            $accion = "SE ACTUALIZÓ ESTADO DE {$entidad}";
+            if ($m->estado_nuevo === 'tramite') {
+                $accion = "RE RADICÓ {$entidad}";
+            } else if ($m->estado_nuevo === 'ok') {
+                $accion = "RE RADICÓ {$entidad}"; // Para coincidir con el estilo del usuario que quiere ver "RE RADICO ARL , OK"
+            } else if ($m->estado_nuevo === 'error') {
+                $accion = "ERROR EN {$entidad}";
+            } else if ($m->estado_nuevo === 'traslado') {
+                $accion = "TRASLADO EN {$entidad}";
+            }
+
+            if ($m->observacion) {
+                $accion .= " (" . $m->observacion . ")";
+            }
+
+            $historial->push([
+                'fecha'       => $fmt['fecha'],
+                'hora'        => $fmt['hora'],
+                'usuario'     => $m->user?->nombre ?? 'Sistema',
+                'descripcion' => $accion,
+                'estado'      => $estadoMap[$m->estado_nuevo] ?? strtoupper($m->estado_nuevo),
+                'estado_raw'  => $m->estado_nuevo,
+                'timestamp'   => $m->created_at,
+            ]);
+        }
+
+        // Ordenar historial cronológicamente (ascendente)
+        $historialOrdenado = $historial->sortBy('timestamp')->values();
+
+        return response()->json([
+            'cotizante' => $contrato->cliente ? trim($contrato->cliente->primer_nombre . ' ' . $contrato->cliente->primer_apellido) : 'Cotizante',
+            'cedula'    => $contrato->cedula,
+            'historial' => $historialOrdenado,
+        ]);
+    }
+
     // ── Helpers privados ──────────────────────────────────────────────────
 
     private function resolverAliado(Request $request, User $user): int
