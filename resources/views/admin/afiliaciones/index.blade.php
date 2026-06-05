@@ -81,6 +81,22 @@ body {
 /* Alerta días en trámite */
 .alert-dias { background:#fef2f2;color:#b91c1c;border-radius:4px;padding:0.1rem 0.35rem;font-size:0.6rem;font-weight:700;margin-left:0.2rem;border:1px solid #fca5a5; }
 
+/* Badge redondo para el nivel de ARL */
+.arl-nivel-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #cbd5e1;
+    color: #334155;
+    font-size: 0.72rem;
+    font-weight: 800;
+    margin-left: 0.2rem;
+    vertical-align: middle;
+}
+
 /* ── Factura badge ── */
 .fact-badge { background:#f0fdf4;color:#15803d;font-size:0.68rem;font-weight:700;padding:0.15rem 0.45rem;border-radius:6px;border:1px solid #86efac; }
 .fact-none  { color:#cbd5e1;font-size:0.68rem; }
@@ -478,7 +494,16 @@ function sortClass($col, $currSort, $currDir) {
 
         {{-- ARL — efectiva según razón social --}}
         @php $rArl = $radicados->get('arl'); @endphp
-        <td style="font-size:0.7rem;color:#475569;max-width:85px;overflow:hidden;text-overflow:ellipsis;padding-right:0;" title="{{ $c->arl_efectiva_nombre }}{{ $c->n_arl ? " ({$c->n_arl})" : '' }}">{{ $plan?->incluye_arl ? ($c->arl_efectiva_nombre . ($c->n_arl ? " ({$c->n_arl})" : '')) : '—' }}</td>
+        <td style="font-size:0.7rem;color:#475569;max-width:85px;overflow:hidden;text-overflow:ellipsis;padding-right:0;" title="{{ $c->arl_efectiva_nombre }}{{ $c->n_arl ? " ({$c->n_arl})" : '' }}">
+            @if($plan?->incluye_arl)
+                {{ $c->arl_efectiva_nombre }}
+                @if($c->n_arl)
+                    <span class="arl-nivel-badge" title="Nivel de Riesgo {{ $c->n_arl }}">{{ $c->n_arl }}</span>
+                @endif
+            @else
+                —
+            @endif
+        </td>
         <td style="padding-left:2px;">
             @if($plan?->incluye_arl && $rArl)
             <button class="badge-estado badge-{{ $rArl->estado }} btn-rad"
@@ -535,11 +560,7 @@ function sortClass($col, $currSort, $currDir) {
 
         {{-- Empresa --}}
         @php
-            $esBrynexUser = auth()->user()?->es_brynex;
-            $codEmpresa   = $c->cliente?->empresa?->label ?? $c->cliente?->empresa?->empresa ?? '—';
-            $labelEmpresa = $esBrynexUser
-                ? trim(($c->aliado?->nombre ?? '') . ' · ' . $codEmpresa)
-                : $codEmpresa;
+            $labelEmpresa = $c->cliente?->empresa?->label ?? $c->cliente?->empresa?->empresa ?? '—';
         @endphp
         <td style="font-size:0.65rem;color:#475569;max-width:145px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ $labelEmpresa }}">
             {{ $labelEmpresa ?: '—' }}
@@ -1329,8 +1350,9 @@ function copiarDatosCotizante() {
 
 function togglePdfSection(estado) {
     const sec = document.getElementById('seccionPdf');
-    sec.style.display = (estado === 'ok') ? 'block' : 'none';
-    if(estado === 'ok' && radicadoActivo?.ruta_pdf) {
+    const permitePdf = (estado === 'ok' || estado === 'tramite');
+    sec.style.display = permitePdf ? 'block' : 'none';
+    if(permitePdf && radicadoActivo?.ruta_pdf) {
         document.getElementById('pdfActual').innerHTML =
             '<a class="pdf-link" href="{{ route("admin.radicados.pdf.download", ":id") }}" target="_blank">'.replace(':id', radicadoActivo.id) +
             '📄 Ver PDF actual</a>';
