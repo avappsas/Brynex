@@ -781,6 +781,19 @@ class PlanoPagoController extends Controller
         $rs = RazonSocial::where('aliado_id', $aliadoId)
             ->findOrFail($validated['razon_social_id']);
 
+        // Validar si ya existe un pago de planilla confirmado con este número de planilla para el aliado
+        $existeGasto = Gasto::where('aliado_id', $aliadoId)
+            ->where('tipo', 'pago_planilla')
+            ->where('numero_planilla', $validated['numero_planilla'])
+            ->exists();
+
+        if ($existeGasto) {
+            return response()->json([
+                'ok' => false,
+                'mensaje' => 'La planilla N° ' . $validated['numero_planilla'] . ' ya tiene un pago confirmado registrado.',
+            ], 422);
+        }
+
         DB::beginTransaction();
         try {
             // ── a) Crear gasto tipo pago_planilla ──────────────────────

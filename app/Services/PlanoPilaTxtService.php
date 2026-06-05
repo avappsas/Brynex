@@ -429,11 +429,30 @@ class PlanoPilaTxtService
             . $this->A($exonerado, 1)                           // 76 exonerado 506
             . $this->A($codArl, 6)                              // 77 código ARL 507-512
             . $this->A((string)$nivel, 1)                       // 78 clase de riesgo 513
-            . ' ';                                               // 79 ind tarifa especial 514
+            . ' '                                               // 79 ind tarifa especial 514
+            . $this->A($fechaIng, 10)                           // 80 fecha ingreso 515-524
+            . $this->A($fechaRet, 10)                           // 81 fecha retiro 525-534
+            . str_repeat(' ', 10)                               // 82 fecha VSP 535-544
+            . str_repeat(' ', 10)                               // 83 fecha SLN ini 545-554
+            . str_repeat(' ', 10)                               // 84 fecha SLN fin 555-564
+            . str_repeat(' ', 10)                               // 85 fecha IGE ini 565-574
+            . str_repeat(' ', 10)                               // 86 fecha IGE fin 575-584
+            . str_repeat(' ', 10)                               // 87 fecha LMA ini 585-594
+            . str_repeat(' ', 10)                               // 88 fecha LMA fin 595-604
+            . str_repeat(' ', 10)                               // 89 fecha VAC ini 605-614
+            . str_repeat(' ', 10)                               // 90 fecha VAC fin 615-624
+            . str_repeat(' ', 10)                               // 91 fecha VCT ini 625-634
+            . str_repeat(' ', 10)                               // 92 fecha VCT fin 635-644
+            . str_repeat(' ', 10)                               // 93 fecha IRL ini 645-654
+            . str_repeat(' ', 10)                               // 94 fecha IRL fin 655-664
+            . $this->N((string)$ibcOtros, 9)                    // 95 IBC otros paraf 665-673
+            . $this->N((string)$c['horasLaboradas'], 3)         // 96 horas laboradas 674-676 (tipo 51: dias_caja×8; otros: num_dias×8)
+            . str_repeat(' ', 10)                               // 97 fecha radicación 677-686
+            . self::ACTECO_ARL[$nivel];                         // 98 actividad económica 687-693
         
-        if (strlen($linea) !== 514) {
+        if (strlen($linea) !== 693) {
             throw new \RuntimeException(
-                "Tipo 2 generó " . strlen($linea) . " chars (esperado 514) en cotizante " . $p->no_identifi
+                "Tipo 2 generó " . strlen($linea) . " chars (esperado 693) en cotizante " . $p->no_identifi
             );
         }
         return $linea;
