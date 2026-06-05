@@ -343,7 +343,9 @@ function sortClass($col, $currSort, $currDir) {
         $ctxPension        = $c->pension?->razon_social ?? ($c->cliente?->pension?->razon_social ?? '—');
         $ctxEps            = $c->eps?->nombre ?? ($c->cliente?->eps?->nombre ?? '—');
         $ctxSalario        = $c->salario ?? '';
-        $ctxFechaIngreso   = $c->fecha_ingreso ? $c->fecha_ingreso->format('d/m/Y') : '—';
+        $ctxFechaIngreso   = ((int)$c->tipo_modalidad_id === 15)
+            ? ($c->fecha_arl ? $c->fecha_arl->format('d/m/Y') : '—')
+            : ($c->fecha_ingreso ? $c->fecha_ingreso->format('d/m/Y') : '—');
         $ctxCargo          = $c->cargo ?? '';
         $ctxDireccion      = $c->cliente?->direccion_vivienda ?? '';
         $ctxBarrio         = $c->cliente?->barrio ?? '';
@@ -390,7 +392,11 @@ function sortClass($col, $currSort, $currDir) {
 
         {{-- Día ingreso --}}
         <td style="text-align:center;font-weight:700;color:#1e40af;">
-            {{ $c->fecha_ingreso?->format('d') ?? '—' }}
+            @if((int)$c->tipo_modalidad_id === 15)
+                {{ $c->fecha_arl?->format('d') ?? '—' }}
+            @else
+                {{ $c->fecha_ingreso?->format('d') ?? '—' }}
+            @endif
         </td>
 
         {{-- Factura --}}

@@ -217,12 +217,20 @@ $esIngRet   = (int)($c->tipo_modalidad_id) === 12;
 $fIng       = $c->fecha_ingreso ? $c->fecha_ingreso->format('d/m/Y') : '—';
 $fRet       = ($esRetirado && $c->fecha_retiro) ? $c->fecha_retiro->format('d/m/Y') : null;
 $dias       = $fact ? (int)$fact->dias_cotizados : ($c->dias_cotizar ?? 30);
-// Detectar si este período debe ser afiliación pura (I VENC, empresa)
+// Detectar si este período debe ser afiliación pura (I VENC, empresa, ARL)
 // vs I ACT primer mes (viene del controlador como es_ind_act_primer_mes)
 $esIndep          = $c->tipoModalidad?->esIndependiente() ?? false;
 $esIndActPrimerMes = $c->es_ind_act_primer_mes ?? false; // flag del controller
+$esArlModalidad   = (int)($c->tipo_modalidad_id) === 15;
 $esAfil = false;
-if ($c->fecha_ingreso) {
+if ($esArlModalidad) {
+    if ($c->fecha_arl) {
+        $fArlC = $c->fecha_arl;
+        if ((int)$fArlC->month === $mes && (int)$fArlC->year === $anio) {
+            $esAfil = true;
+        }
+    }
+} elseif ($c->fecha_ingreso) {
     $fIngC = $c->fecha_ingreso;
     if ((int)$fIngC->month === $mes && (int)$fIngC->year === $anio) {
         // I ACT: NO es afiliación pura (cobra SS también)
@@ -252,6 +260,10 @@ $cotiz = $c->cotizacion_calc ?? $c->calcularCotizacion($dias); // pre-calculado 
 if (!$fact) {
     if ($esRetirado) {
         // Retirado sin factura aún → mostrar todo en 0
+        $vEps = $vArl = $vPen = $vCaja = $vIva = $vAdm = $vSS = 0;
+        $vTot = 0;
+    } elseif ($esArlModalidad && !$esAfil) {
+        // ARL fuera de su mes de ARL → cobro es 0, no paga planilla
         $vEps = $vArl = $vPen = $vCaja = $vIva = $vAdm = $vSS = 0;
         $vTot = 0;
     } elseif ($esIndActPrimerMes) {
@@ -321,9 +333,6 @@ $totAdmon+=$vAdm;$totIva+=$vIva;$totTotal+=$vTot;$totMora+=$vMora;
                     @if($esIndActPrimerMes)&#9889;@elseif($esAfil)&#128204;@elseif($esRetirado)&#128683;@else&#9741;@endif
                 </a>
             </span>
-            @if($esRetirado && !$esIngRet)
-            <span style="font-size:.55rem;background:#fee2e2;color:#dc2626;border-radius:4px;padding:.05rem .3rem;font-weight:800;letter-spacing:.03em;">RETIRO</span>
-            @endif
         </span>
     </td>
     <td style="font-family:monospace;font-size:.75rem">{{ $c->cedula }}</td>
@@ -384,9 +393,13 @@ $totAdmon+=$vAdm;$totIva+=$vIva;$totTotal+=$vTot;$totMora+=$vMora;
         $totProxPendiente= ($totProxPendiente ?? 0) + $c->saldo_proximo_pendiente;
     @endphp
     <td style="text-align:center">
-        @if($fact)
+        @if($esRetirado)
+        <span style="display:inline-block;padding:.16rem .5rem;border-radius:20px;font-size:.63rem;font-weight:800;background:#fee2e2;color:#dc2626">
+            RETIRO
+        </span>
+        @elseif($fact)
         @php $colores=$estadoBg($fact->estado); @endphp
-        @if($esRetirado || (int)$fact->numero_factura === 0)
+        @if((int)$fact->numero_factura === 0)
         <span style="display:inline-block;padding:.16rem .5rem;border-radius:20px;font-size:.63rem;font-weight:800;background:#fee2e2;color:#dc2626">
             RETIRO
         </span>

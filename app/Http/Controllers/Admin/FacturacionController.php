@@ -148,7 +148,22 @@ class FacturacionController extends Controller
         $contratos = $contratos->map(function ($c) use ($mes, $anio, $hoy, $facturasExistentes, $saldosTotales, $saldosPrevios, $ivaClientes) {
             $diasCotizar = 30;
             $esIndActPrimerMes = false; // I Act (id=11) en su mes de ingreso → afiliación + planilla juntas
-            if ($c->fecha_ingreso) {
+
+            $esArlModalidad = (int)($c->tipo_modalidad_id) === 15;
+            if ($esArlModalidad) {
+                if ($c->fecha_arl) {
+                    $fArl = $c->fecha_arl;
+                    $mesArl  = (int)$fArl->month;
+                    $anioArl = (int)$fArl->year;
+                    if ($mesArl === $mes && $anioArl === $anio) {
+                        $diasCotizar = 0;
+                    } else {
+                        $diasCotizar = 0; // en otros meses no se cobra planilla, por ende días = 0
+                    }
+                } else {
+                    $diasCotizar = 0;
+                }
+            } elseif ($c->fecha_ingreso) {
                 $fIng = $c->fecha_ingreso;
                 $mesIngreso  = (int)$fIng->month;
                 $anioIngreso = (int)$fIng->year;
@@ -431,109 +446,133 @@ class FacturacionController extends Controller
             
             $esIndep = $c->tipoModalidad?->esIndependiente() ?? false;
             $esIndAct = (int)($c->tipo_modalidad_id) === 11;
+            $esArl = (int)($c->tipo_modalidad_id) === 15;
             $tipoForzado = $validated['tipo'];
+            $esMesIng = false;
 
-            if ($c->fecha_ingreso) {
+            if ($esArl) {
+                if ($c->fecha_arl) {
+                    $mesArl = (int)$c->fecha_arl->month;
+                    $anioArl = (int)$c->fecha_arl->year;
+                    $esMesIng = ($mes === $mesArl && $anio === $anioArl);
+                }
+            } elseif ($c->fecha_ingreso) {
                 $mesIng = (int)$c->fecha_ingreso->month;
                 $anioIng = (int)$c->fecha_ingreso->year;
                 $esMesIng = ($mes === $mesIng && $anio === $anioIng);
+            }
 
-                if ($esMesIng) {
-                    if (!$esIndep) {
-                        $tipoForzado = 'afiliacion';
-                    } elseif (!$esIndAct) {
-                        $tipoForzado = 'afiliacion';
-                    }
+            if ($esMesIng) {
+                if ($esArl) {
+                    $tipoForzado = 'afiliacion';
+                } elseif (!$esIndep) {
+                    $tipoForzado = 'afiliacion';
+                } elseif (!$esIndAct) {
+                    $tipoForzado = 'afiliacion';
                 }
             }
 
-            if ((int)$c->tipo_modalidad_id === 15) {
+            if ($esArl) {
                 $tipoForzado = 'afiliacion';
             }
 
             $esIndActPrimerMes = $esIndAct && isset($esMesIng) && $esMesIng;
             $esAfiliacion = $tipoForzado === 'afiliacion';
 
-            if ($esIndActPrimerMes) {
-                $diasCotizar = max(1, 30 - (int)$c->fecha_ingreso->day + 1);
-            } elseif ($esAfiliacion) {
+            if ($esArl && !$esMesIng) {
                 $diasCotizar = 0;
-            } else {
-                $diasCotizar = $this->calcularDias($c, $mes, $anio);
-            }
-
-            $esRetiro    = !empty($validated['es_retiro']);
-            $diasRetiro  = $esRetiro ? (int)($validated['dias_retiro'] ?? $diasCotizar) : null;
-            if ($esRetiro && $diasRetiro !== null && !$esAfiliacion) {
-                $diasCotizar = $diasRetiro;
-            }
-
-            $tieneIva = $c->cliente ? (strtoupper(trim($c->cliente->iva ?? '')) === 'SI') : false;
-
-            if ($esAfiliacion && !$esIndActPrimerMes) {
                 $calcSS = ['eps' => 0, 'arl' => 0, 'afp' => 0, 'caja' => 0];
+                $afiliacion = 0;
+                $seguro = 0;
+                $admon = 0;
+                $adminAsesor = 0;
+                $otrosAdmon = 0;
+                $totalSS = 0;
+                $ivaBase = 0;
+                $iva = 0;
+                $total = 0;
+                $moraCliente = 0;
             } else {
-                $cotiz = $c->calcularCotizacion($diasCotizar, $tieneIva);
-                $calcSS = [
-                    'eps'  => (int)($cotiz['eps']  ?? 0),
-                    'arl'  => (int)($cotiz['arl']  ?? 0),
-                    'afp'  => (int)($cotiz['pen']  ?? 0),
-                    'caja' => (int)($cotiz['caja']  ?? 0),
-                ];
-            }
-
-            // Override manual
-            $esModoIndividual = count($validated['contratos']) === 1;
-            if (!$esAfiliacion) {
-                if ($esModoIndividual) {
-                    if (isset($validated['v_eps_manual']))  $calcSS['eps']  = intval($validated['v_eps_manual']);
-                    if (isset($validated['v_arl_manual']))  $calcSS['arl']  = intval($validated['v_arl_manual']);
-                    if (isset($validated['v_afp_manual']))  $calcSS['afp']  = intval($validated['v_afp_manual']);
-                    if (isset($validated['v_caja_manual'])) $calcSS['caja'] = intval($validated['v_caja_manual']);
-                } elseif (!empty($manualSsPorContrato[(string)$cId])) {
-                    $ssMap = $manualSsPorContrato[(string)$cId];
-                    if (isset($ssMap['eps']))  $calcSS['eps']  = intval($ssMap['eps']);
-                    if (isset($ssMap['arl']))  $calcSS['arl']  = intval($ssMap['arl']);
-                    if (isset($ssMap['afp']))  $calcSS['afp']  = intval($ssMap['afp']);
-                    if (isset($ssMap['caja'])) $calcSS['caja'] = intval($ssMap['caja']);
+                if ($esIndActPrimerMes) {
+                    $diasCotizar = max(1, 30 - (int)$c->fecha_ingreso->day + 1);
+                } elseif ($esAfiliacion) {
+                    $diasCotizar = 0;
+                } else {
+                    $diasCotizar = $this->calcularDias($c, $mes, $anio);
                 }
-            }
 
-            $afiliacion = ($esAfiliacion || $esIndActPrimerMes) ? (int)($c->costo_afiliacion ?? 0) : 0;
-            $seguro     = (int)($c->seguro ?? 0);
-            $admon       = ($esAfiliacion && !$esIndActPrimerMes) ? 0 : intval($c->administracion ?? 0);
-            $adminAsesor = ($esAfiliacion && !$esIndActPrimerMes) ? 0 : intval($c->admon_asesor   ?? 0);
-            $otrosAdmon  = intval($validated['otros_admon'] ?? 0);
-
-            $totalSS  = $calcSS['eps'] + $calcSS['arl'] + $calcSS['afp'] + $calcSS['caja'];
-            $ivaBase  = $admon + $adminAsesor;
-            $iva      = 0;
-
-            if (!$esAfiliacion || $esIndActPrimerMes) {
-                if ($tieneIva) {
-                    $cfgIva = \App\Models\ConfiguracionBrynex::porcentajeIva();
-                    $iva    = (int) round($ivaBase * $cfgIva / 100);
+                $esRetiro    = !empty($validated['es_retiro']);
+                $diasRetiro  = $esRetiro ? (int)($validated['dias_retiro'] ?? $diasCotizar) : null;
+                if ($esRetiro && $diasRetiro !== null && !$esAfiliacion) {
+                    $diasCotizar = $diasRetiro;
                 }
-            }
 
-            $total = $totalSS + $admon + $adminAsesor + $otrosAdmon + $seguro + $afiliacion + $iva;
+                $tieneIva = $c->cliente ? (strtoupper(trim($c->cliente->iva ?? '')) === 'SI') : false;
 
-            $moraCliente = 0;
-            if ($esModoIndividual) {
-                $moraCliente = $esAfiliacion ? 0 : (int)($validated['mora'] ?? 0);
-            } else {
+                if ($esAfiliacion && !$esIndActPrimerMes) {
+                    $calcSS = ['eps' => 0, 'arl' => 0, 'afp' => 0, 'caja' => 0];
+                } else {
+                    $cotiz = $c->calcularCotizacion($diasCotizar, $tieneIva);
+                    $calcSS = [
+                        'eps'  => (int)($cotiz['eps']  ?? 0),
+                        'arl'  => (int)($cotiz['arl']  ?? 0),
+                        'afp'  => (int)($cotiz['pen']  ?? 0),
+                        'caja' => (int)($cotiz['caja']  ?? 0),
+                    ];
+                }
+
+                // Override manual
+                $esModoIndividual = count($validated['contratos']) === 1;
                 if (!$esAfiliacion) {
-                    $rs       = $c->razonSocial;
-                    $rsNit    = $rs ? (int)($rs->nit ?: $rs->id) : 0;
-                    $rsDiaH   = $rs ? ($rs->dia_habil ?? null) : null;
-                    if ($rsNit && $totalSS > 0) {
-                        $moraInfo   = MoraClienteService::calcular($aliadoId, $rsNit, $rsDiaH, $totalSS, $mes, $anio);
-                        $moraCliente = $moraInfo['mora'];
+                    if ($esModoIndividual) {
+                        if (isset($validated['v_eps_manual']))  $calcSS['eps']  = intval($validated['v_eps_manual']);
+                        if (isset($validated['v_arl_manual']))  $calcSS['arl']  = intval($validated['v_arl_manual']);
+                        if (isset($validated['v_afp_manual']))  $calcSS['afp']  = intval($validated['v_afp_manual']);
+                        if (isset($validated['v_caja_manual'])) $calcSS['caja'] = intval($validated['v_caja_manual']);
+                    } elseif (!empty($manualSsPorContrato[(string)$cId])) {
+                        $ssMap = $manualSsPorContrato[(string)$cId];
+                        if (isset($ssMap['eps']))  $calcSS['eps']  = intval($ssMap['eps']);
+                        if (isset($ssMap['arl']))  $calcSS['arl']  = intval($ssMap['arl']);
+                        if (isset($ssMap['afp']))  $calcSS['afp']  = intval($ssMap['afp']);
+                        if (isset($ssMap['caja'])) $calcSS['caja'] = intval($ssMap['caja']);
                     }
                 }
-            }
 
-            $total += $moraCliente;
+                $afiliacion = ($esAfiliacion || $esIndActPrimerMes) ? (int)($c->costo_afiliacion ?? 0) : 0;
+                $seguro     = (int)($c->seguro ?? 0);
+                $admon       = ($esAfiliacion && !$esIndActPrimerMes) ? 0 : intval($c->administracion ?? 0);
+                $adminAsesor = ($esAfiliacion && !$esIndActPrimerMes) ? 0 : intval($c->admon_asesor   ?? 0);
+                $otrosAdmon  = intval($validated['otros_admon'] ?? 0);
+
+                $totalSS  = $calcSS['eps'] + $calcSS['arl'] + $calcSS['afp'] + $calcSS['caja'];
+                $ivaBase  = $admon + $adminAsesor;
+                $iva      = 0;
+
+                if (!$esAfiliacion || $esIndActPrimerMes) {
+                    if ($tieneIva) {
+                        $cfgIva = \App\Models\ConfiguracionBrynex::porcentajeIva();
+                        $iva    = (int) round($ivaBase * $cfgIva / 100);
+                    }
+                }
+
+                $total = $totalSS + $admon + $adminAsesor + $otrosAdmon + $seguro + $afiliacion + $iva;
+
+                $moraCliente = 0;
+                if ($esModoIndividual) {
+                    $moraCliente = $esAfiliacion ? 0 : (int)($validated['mora'] ?? 0);
+                } else {
+                    if (!$esAfiliacion) {
+                        $rs       = $c->razonSocial;
+                        $rsNit    = $rs ? (int)($rs->nit ?: $rs->id) : 0;
+                        $rsDiaH   = $rs ? ($rs->dia_habil ?? null) : null;
+                        if ($rsNit && $totalSS > 0) {
+                            $moraInfo   = MoraClienteService::calcular($aliadoId, $rsNit, $rsDiaH, $totalSS, $mes, $anio);
+                            $moraCliente = $moraInfo['mora'];
+                        }
+                    }
+                }
+                $total += $moraCliente;
+            }
             $totalesRealesPorContrato[$cId] = max(0, $total);
         }
         $granTotalReal = array_sum($totalesRealesPorContrato) ?: 1; // evitar división por 0
@@ -1244,13 +1283,24 @@ class FacturacionController extends Controller
         // Detectar tipo
         $esIndependiente = $contrato->tipoModalidad?->esIndependiente() ?? false;
         $esIndAct        = (int)($contrato->tipo_modalidad_id) === 11;
-        $esMesIngreso    = $contrato->fecha_ingreso
-            && (int)$contrato->fecha_ingreso->month === $mes
-            && (int)$contrato->fecha_ingreso->year  === $anio;
+        $esArl           = (int)($contrato->tipo_modalidad_id) === 15;
+        $esMesIngreso    = false;
+
+        if ($esArl) {
+            if ($contrato->fecha_arl) {
+                $esMesIngreso = (int)$contrato->fecha_arl->month === $mes
+                    && (int)$contrato->fecha_arl->year  === $anio;
+            }
+        } elseif ($contrato->fecha_ingreso) {
+            $esMesIngreso = (int)$contrato->fecha_ingreso->month === $mes
+                && (int)$contrato->fecha_ingreso->year  === $anio;
+        }
 
         $esAfiliacion = false;
         if ($esMesIngreso) {
-            if (!$esIndependiente) {
+            if ($esArl) {
+                $esAfiliacion = true;
+            } elseif (!$esIndependiente) {
                 $esAfiliacion = true; // empresa: afiliación pura
             } elseif (!$esIndAct) {
                 $esAfiliacion = true; // I Venc: afiliación pura
@@ -1258,45 +1308,56 @@ class FacturacionController extends Controller
         }
         $esIndActPrimerMes = $esIndAct && $esMesIngreso;
 
-        // Calcular días
-        if ($esIndActPrimerMes) {
-            $diasCotizar = max(1, 30 - (int)$contrato->fecha_ingreso->day + 1);
-        } elseif ($esAfiliacion) {
+        if ($esArl && !$esMesIngreso) {
             $diasCotizar = 0;
-        } else {
-            $diasCotizar = $this->calcularDias($contrato, $mes, $anio);
-        }
-
-        // Calcular SS
-        if ($esAfiliacion && !$esIndActPrimerMes) {
             $calcSS = ['eps' => 0, 'arl' => 0, 'afp' => 0, 'caja' => 0, 'ss' => 0];
+            $afiliacion  = 0;
+            $seguro      = 0;
+            $admon       = 0;
+            $admonAsesor = 0;
+            $iva         = 0;
+            $total       = 0;
         } else {
-            $cotizacion = $contrato->calcularCotizacion($diasCotizar);
-            $calcSS = [
-                'eps'  => (int)($cotizacion['eps']  ?? 0),
-                'arl'  => (int)($cotizacion['arl']  ?? 0),
-                'afp'  => (int)($cotizacion['pen']  ?? 0),
-                'caja' => (int)($cotizacion['caja'] ?? 0),
-                'ss'   => (int)($cotizacion['ss']   ?? 0),
-            ];
-        }
-
-        $afiliacion  = ($esAfiliacion || $esIndActPrimerMes) ? (int)($contrato->costo_afiliacion ?? 0) : 0;
-        $seguro      = (int)($contrato->seguro ?? 0);
-        $admon       = ($esAfiliacion && !$esIndActPrimerMes) ? 0 : (int)($contrato->administracion ?? 0);
-        $admonAsesor = ($esAfiliacion && !$esIndActPrimerMes) ? 0 : (int)($contrato->admon_asesor   ?? 0);
-
-        // IVA
-        $iva = 0;
-        if (!$esAfiliacion || $esIndActPrimerMes) {
-            $clienteIva = DB::table('clientes')->where('cedula', $contrato->cedula)->value('iva');
-            if (strtoupper(trim($clienteIva ?? '')) === 'SI') {
-                $cfgIva = \App\Models\ConfiguracionBrynex::porcentajeIva();
-                $iva    = (int) round(($admon + $admonAsesor) * $cfgIva / 100);
+            // Calcular días
+            if ($esIndActPrimerMes) {
+                $diasCotizar = max(1, 30 - (int)$contrato->fecha_ingreso->day + 1);
+            } elseif ($esAfiliacion) {
+                $diasCotizar = 0;
+            } else {
+                $diasCotizar = $this->calcularDias($contrato, $mes, $anio);
             }
-        }
 
-        $total = $calcSS['ss'] + $admon + $admonAsesor + $seguro + $afiliacion + $iva;
+            // Calcular SS
+            if ($esAfiliacion && !$esIndActPrimerMes) {
+                $calcSS = ['eps' => 0, 'arl' => 0, 'afp' => 0, 'caja' => 0, 'ss' => 0];
+            } else {
+                $cotizacion = $contrato->calcularCotizacion($diasCotizar);
+                $calcSS = [
+                    'eps'  => (int)($cotizacion['eps']  ?? 0),
+                    'arl'  => (int)($cotizacion['arl']  ?? 0),
+                    'afp'  => (int)($cotizacion['pen']  ?? 0),
+                    'caja' => (int)($cotizacion['caja'] ?? 0),
+                    'ss'   => (int)($cotizacion['ss']   ?? 0),
+                ];
+            }
+
+            $afiliacion  = ($esAfiliacion || $esIndActPrimerMes) ? (int)($contrato->costo_afiliacion ?? 0) : 0;
+            $seguro      = (int)($contrato->seguro ?? 0);
+            $admon       = ($esAfiliacion && !$esIndActPrimerMes) ? 0 : (int)($contrato->administracion ?? 0);
+            $admonAsesor = ($esAfiliacion && !$esIndActPrimerMes) ? 0 : (int)($contrato->admon_asesor   ?? 0);
+
+            // IVA
+            $iva = 0;
+            if (!$esAfiliacion || $esIndActPrimerMes) {
+                $clienteIva = DB::table('clientes')->where('cedula', $contrato->cedula)->value('iva');
+                if (strtoupper(trim($clienteIva ?? '')) === 'SI') {
+                    $cfgIva = \App\Models\ConfiguracionBrynex::porcentajeIva();
+                    $iva    = (int) round(($admon + $admonAsesor) * $cfgIva / 100);
+                }
+            }
+
+            $total = $calcSS['ss'] + $admon + $admonAsesor + $seguro + $afiliacion + $iva;
+        }
 
         // Mora estimada — las afiliaciones nunca generan mora (no hay pago de planilla)
         $mora = 0;

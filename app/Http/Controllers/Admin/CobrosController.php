@@ -228,9 +228,13 @@ class CobrosController extends Controller
         $flagsPorContrato = []; // [esAfil, esIndActPrimerMes, totalEstimado, ...]
 
         foreach ($contratos as $c) {
+            $esArl = (int)($c->tipo_modalidad_id) === 15;
             $esAfil = false;
             $esIndActPrimerMes = false;
-            if ($c->fecha_ingreso) {
+            if ($esArl) {
+                // Gestión ARL siempre es cobro de afiliación, no planilla
+                $esAfil = true;
+            } elseif ($c->fecha_ingreso) {
                 $fIng     = $c->fecha_ingreso;
                 $esIndAct = (int)($c->tipo_modalidad_id) === 11;
                 if ((int)$fIng->month === $mes && (int)$fIng->year === $anio) {
@@ -258,7 +262,20 @@ class CobrosController extends Controller
             } elseif ($esAfil) {
                 $vEps = $vArl = $vPen = $vCaja = $vSS = 0;
                 $totalEstimado = (int)(($c->costo_afiliacion ?? 0) + ($c->seguro ?? 0));
+            } elseif ($esArl) {
+                // ARL fuera de su mes de ARL → cobro es 0, no paga planilla
+                $vEps = $vArl = $vPen = $vCaja = $vSS = 0;
+                $totalEstimado = 0;
             } else {
+                $diasCotizar = 30;
+                if ($c->fecha_ingreso) {
+                    $mesAnt = $mes === 1 ? 12 : $mes - 1;
+                    $anioAnt = $mes === 1 ? $anio - 1 : $anio;
+                    if ((int)$c->fecha_ingreso->month === $mesAnt && (int)$c->fecha_ingreso->year === $anioAnt) {
+                        $diasCotizar = max(1, 30 - $c->fecha_ingreso->day + 1);
+                    }
+                }
+
                 if ($esIndep) {
                     $pctEps = ConfiguracionBrynex::pctSaludIndependiente();
                     $pctPen = ConfiguracionBrynex::pctPensionIndependiente();
@@ -269,11 +286,11 @@ class CobrosController extends Controller
                     $pctCaj = ConfiguracionBrynex::pctCajaDependiente();
                 }
                 $pctArl = $getArlPct((int)($c->n_arl ?? 1));
-                $vEps  = ($plan?->incluye_eps)    ? $r100($ibc * $pctEps / 100) : 0;
-                $vArl  = ($plan?->incluye_arl)    ? $r100($ibc * $pctArl / 100) : 0;
-                $vPen  = ($plan?->incluye_pension) ? $r100($ibc * $pctPen / 100) : 0;
-                $vCaja = ($plan?->incluye_caja)   ? $r100($ibc * $pctCaj / 100) : 0;
-                if ($vCaja === 0 && $c->aplicaCargoSinCcf()) {
+                $vEps  = ($plan?->incluye_eps)    ? $r100($ibc * $pctEps / 100 * $diasCotizar / 30) : 0;
+                $vArl  = ($plan?->incluye_arl)    ? $r100($ibc * $pctArl / 100 * $diasCotizar / 30) : 0;
+                $vPen  = ($plan?->incluye_pension) ? $r100($ibc * $pctPen / 100 * $diasCotizar / 30) : 0;
+                $vCaja = ($plan?->incluye_caja)   ? $r100($ibc * $pctCaj / 100 * $diasCotizar / 30) : 0;
+                if ($vCaja === 0 && $c->aplicaCargoSinCcf() && $diasCotizar === 30) {
                     $vCaja = \App\Models\Contrato::CARGO_SIN_CCF;
                 }
                 $vSS   = $vEps + $vArl + $vPen + $vCaja;
@@ -334,6 +351,10 @@ class CobrosController extends Controller
             $vCaja             = $flags['vCaja'];
             $vSS               = $flags['vSS'];
             $totalEstimado     = $flags['totalEstimado'];
+
+            if ($esAfil) {
+                $c->administracion = 0;
+            }
 
             // ── Datos de la factura (solo estado y número) ───────
             $facturaEmitida  = $fact && !in_array($fact->estado, ['pre_factura', 'anulada']);
@@ -729,8 +750,12 @@ class CobrosController extends Controller
                 $pagada = $fact && in_array($fact->estado, ['pagada', 'abono', 'prestamo']);
 
                 // ¿Es afiliación?
+                $esArl = (int)($c->tipo_modalidad_id) === 15;
                 $esAfil = false;
-                if ($c->fecha_ingreso) {
+                if ($esArl) {
+                    // Gestión ARL siempre es cobro de afiliación, no planilla
+                    $esAfil = true;
+                } elseif ($c->fecha_ingreso) {
                     $fIng    = $c->fecha_ingreso;
                     $esIndep = $c->tipoModalidad?->esIndependiente() ?? false;
                     if ((int)$fIng->month === $mes && (int)$fIng->year === $anio) {
@@ -746,7 +771,9 @@ class CobrosController extends Controller
                     $pagados++;
                 } elseif ($esAfil) {
                     $afil_pend++;
-                    $admon_pend += (int)($c->administracion ?? 0);
+                    // Para afiliación (AFIL) no se cobra la administración
+                } elseif ($esArl) {
+                    // Si es ARL y no es su mes de cobro, no se cobra nada (no se paga planilla)
                 } elseif ($esIndep) {
                     $indep_pend++;
                     $admon_pend += (int)($c->administracion ?? 0);

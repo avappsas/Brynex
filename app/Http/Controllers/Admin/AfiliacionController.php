@@ -60,8 +60,18 @@ class AfiliacionController extends Controller
         // Capturar IDs del período sin filtros opcionales (para poblar selects dinámicos)
         $baseIds = Contrato::where('aliado_id', $alidoId)
             ->whereIn('estado', ['vigente', 'retirado'])
-            ->whereMonth('fecha_ingreso', $mes)
-            ->whereYear('fecha_ingreso', $anio)
+            ->where(function ($q) use ($mes, $anio) {
+                $q->where(function ($sub) use ($mes, $anio) {
+                    $sub->where('tipo_modalidad_id', '!=', 15)
+                        ->whereMonth('fecha_ingreso', $mes)
+                        ->whereYear('fecha_ingreso', $anio);
+                })
+                ->orWhere(function ($sub) use ($mes, $anio) {
+                    $sub->where('tipo_modalidad_id', 15)
+                        ->whereMonth('fecha_arl', $mes)
+                        ->whereYear('fecha_arl', $anio);
+                });
+            })
             ->pluck('id');
         $baseContratos = Contrato::whereIn('id', $baseIds)
             ->get(['id','razon_social_id','tipo_modalidad_id','eps_id','arl_id','caja_id','pension_id']);
@@ -85,8 +95,18 @@ class AfiliacionController extends Controller
         ])
         ->where('aliado_id', $alidoId)
         ->whereIn('estado', ['vigente', 'retirado'])
-        ->whereMonth('fecha_ingreso', $mes)
-        ->whereYear('fecha_ingreso', $anio);
+        ->where(function ($q) use ($mes, $anio) {
+            $q->where(function ($sub) use ($mes, $anio) {
+                $sub->where('tipo_modalidad_id', '!=', 15)
+                    ->whereMonth('fecha_ingreso', $mes)
+                    ->whereYear('fecha_ingreso', $anio);
+            })
+            ->orWhere(function ($sub) use ($mes, $anio) {
+                $sub->where('tipo_modalidad_id', 15)
+                    ->whereMonth('fecha_arl', $mes)
+                    ->whereYear('fecha_arl', $anio);
+            });
+        });
 
         // Filtros opcionales
         if ($encId)     $query->where('encargado_id', $encId);
@@ -217,12 +237,22 @@ class AfiliacionController extends Controller
             'radicados',
         ])
         ->where('aliado_id', $alidoId)
-        ->whereMonth('fecha_ingreso', $mes)
-        ->whereYear('fecha_ingreso', $anio);
+        ->where(function ($q) use ($mes, $anio) {
+            $q->where(function ($sub) use ($mes, $anio) {
+                $sub->where('tipo_modalidad_id', '!=', 15)
+                    ->whereMonth('fecha_ingreso', $mes)
+                    ->whereYear('fecha_ingreso', $anio);
+            })
+            ->orWhere(function ($sub) use ($mes, $anio) {
+                $sub->where('tipo_modalidad_id', 15)
+                    ->whereMonth('fecha_arl', $mes)
+                    ->whereYear('fecha_arl', $anio);
+            });
+        });
 
         if ($encId) $query->where('encargado_id', $encId);
 
-        $contratos = $query->orderBy('fecha_ingreso')->get();
+        $contratos = $query->orderBy(DB::raw("CASE WHEN tipo_modalidad_id = 15 THEN fecha_arl ELSE fecha_ingreso END"))->get();
 
         // Obtener facturas
         $contratoIds = $contratos->pluck('id');
@@ -258,7 +288,7 @@ class AfiliacionController extends Controller
 
             $sheet->fromArray([
                 $c->razonSocial?->razon_social ?? '—',
-                $c->fecha_ingreso?->format('d') ?? '',
+                ((int)$c->tipo_modalidad_id === 15 ? ($c->fecha_arl?->format('d') ?? '') : ($c->fecha_ingreso?->format('d') ?? '')),
                 $facturas->get($c->id) ?? '',
                 $c->cedula,
                 trim(($c->cliente?->primer_nombre ?? '') . ' ' . ($c->cliente?->primer_apellido ?? '')),
