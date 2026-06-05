@@ -442,6 +442,7 @@ class InformeController extends Controller
         $aid  = $this->aliadoId();
         $mes  = (int)$request->input('mes', now()->month);
         $anio = (int)$request->input('anio', now()->year);
+        $esMesActual = ($mes == now()->month && $anio == now()->year);
 
         // ── Ingresos base CAJA: dinero recibido este mes (fecha_pago) ────────────
         // Se usa fecha_pago (no mes/anio del período) para reflejar el efectivo
@@ -742,10 +743,21 @@ class InformeController extends Controller
         // Saldo planillas (excedente operativo)
         $saldoPlanillas = $subtotalOperativo - $saldoSS;
 
-        if ($pagadoSSReg == 0.0) {
-            $sobrantePlanilla = 0.0;
+        $sobrantePlanillaRaw = ($pagadoSSReg == 0.0) ? 0.0 : max(0.0, $saldoPlanillas);
+
+        // Solo contar como ingreso real si el mes ya cerró
+        if ($esMesActual) {
+            $sobrantePlanilla = 0.0;                   // NO suma a ingresos
+
+            // Solo se muestra/calcula como provisional después del 28 de cada mes
+            if (now()->day >= 28) {
+                $sobrantePlanillaProvisional = $sobrantePlanillaRaw;
+            } else {
+                $sobrantePlanillaProvisional = 0.0;
+            }
         } else {
-            $sobrantePlanilla = max(0.0, $saldoPlanillas);
+            $sobrantePlanilla            = $sobrantePlanillaRaw;
+            $sobrantePlanillaProvisional = 0.0;
         }
 
         $moraGanancia = 0.0;
@@ -870,7 +882,7 @@ class InformeController extends Controller
         $saldoSS = $ingresosSS['ss_futuras'] + $subtotalRetiros;
 
         // Bancos: saldo al cierre del mes filtrado (si es mes pasado) o saldo actual (mes en curso)
-        $esMesActual = ($mes == now()->month && $anio == now()->year);
+        // $esMesActual ya está definido al inicio del método
         $bancos = BancoCuenta::where('aliado_id',$aid)->where('activo',true)->get();
         $bancoIds = $bancos->pluck('id')->toArray();
 
@@ -1080,6 +1092,44 @@ class InformeController extends Controller
             ->orderBy('a.fecha')
             ->get();
 
+        // Planos del período sin gasto de pago_planilla asociado (Opción B)
+        $ssPendientePago = (float) DB::table('planos as p')
+            ->join('facturas as f', 'f.id', '=', 'p.factura_id')
+            ->where('p.aliado_id', $aid)
+            ->whereNull('p.deleted_at')
+            ->whereNull('f.deleted_at')
+            ->where('p.mes_plano', $mes)
+            ->where('p.anio_plano', $anio)
+            ->where('f.numero_factura', '>', 0)
+            ->whereNotNull('p.numero_planilla')
+            ->whereNotIn('p.numero_planilla', function($query) use ($aid) {
+                $query->select('numero_planilla')
+                    ->from('gastos')
+                    ->where('aliado_id', $aid)
+                    ->where('tipo', 'pago_planilla')
+                    ->whereNotNull('numero_planilla');
+            })
+            ->sum('f.total_ss');
+
+        $cantPlanillasPendientes = DB::table('planos as p')
+            ->join('facturas as f', 'f.id', '=', 'p.factura_id')
+            ->where('p.aliado_id', $aid)
+            ->whereNull('p.deleted_at')
+            ->whereNull('f.deleted_at')
+            ->where('p.mes_plano', $mes)
+            ->where('p.anio_plano', $anio)
+            ->where('f.numero_factura', '>', 0)
+            ->whereNotNull('p.numero_planilla')
+            ->whereNotIn('p.numero_planilla', function($query) use ($aid) {
+                $query->select('numero_planilla')
+                    ->from('gastos')
+                    ->where('aliado_id', $aid)
+                    ->where('tipo', 'pago_planilla')
+                    ->whereNotNull('numero_planilla');
+            })
+            ->distinct()
+            ->count('p.numero_planilla');
+
         $totalSScanalRaw   = $recaudoSS + $moraRecogida + $saldoSSMesAnterior;
         $subtotalOperativo = $totalSScanalRaw - $pagadoSSReg;
         $ssFuturasRegular  = max(0.0, (float)$ingresosSS['ss_futuras'] - $ssPrestamosMesSiguiente);
@@ -1101,7 +1151,8 @@ class InformeController extends Controller
             'saldoTotalMesAnterior', 'abonosCobradosMes', 'abonosDetalleMes', 'abonosMesesAnteriores',
             'mesSig', 'anioSig', 'ssPrestamosMesSiguiente',
             'pagadoSSReg', 'pagadoSSRetiro', 'moraUtilizada', 'moraGanancia', 'sobrantePlanilla', 'subtotalRetiros', 'subtotalOperativo',
-            'ssActuales', 'distRetiroAcumulado', 'retirosCobradosMesActual', 'totalSScanalRaw', 'ssFuturasRegular', 'saldoPlanillas'
+            'ssActuales', 'distRetiroAcumulado', 'retirosCobradosMesActual', 'totalSScanalRaw', 'ssFuturasRegular', 'saldoPlanillas',
+            'sobrantePlanillaProvisional', 'ssPendientePago', 'cantPlanillasPendientes'
         ));
     }
 

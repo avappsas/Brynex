@@ -173,6 +173,7 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
                     @endif
                 </div>
                 @endforeach
+
  
                 @if($desgloseAdmon['admin_asesor'] > 0)
                 <div class="fc-note" title="Comisión ganada por asesores en planillas — no pagada aún">
@@ -571,6 +572,47 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
                         </div>
                     </div>
                 </div>
+
+                {{-- Tarjeta SS Pendiente de Pago --}}
+                @if(($ssPendientePago ?? 0) > 0 || ($cantPlanillasPendientes ?? 0) > 0)
+                <div class="bank-card" style="border-top-color:#f59e0b; cursor:default;">
+                    <div style="font-size:.65rem;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:.04em;">📋 Proyección</div>
+                    <div style="font-size:.78rem;font-weight:700;color:#334155;margin-top:.1rem;">SS Pendiente de Pago</div>
+                    <div style="margin-top:.55rem;">
+                        <div style="font-size:.6rem;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:.03em;margin-bottom:.2rem;">Estimado por pagar</div>
+                        <div style="font-size:1.3rem;font-weight:900;color:#f59e0b;line-height:1.1;">{{ $fmt($ssPendientePago) }}</div>
+                    </div>
+                    <div style="margin-top:auto;padding-top:.6rem;border-top:1px dashed #fde68a;display:flex;flex-direction:column;gap:.22rem;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;">
+                            <span style="font-size:.65rem;color:#475569;font-weight:700;">PLANILLAS PENDIENTES</span>
+                            <span style="font-size:.72rem;font-weight:800;color:#f59e0b;font-family:monospace;">{{ $cantPlanillasPendientes }}</span>
+                        </div>
+                        <div style="font-size:.58rem;color:#94a3b8;font-style:italic;margin-top:.1rem;">
+                            Planos del período sin gasto de pago registrado
+                        </div>
+                    </div>
+                </div>
+                @endif
+
+                {{-- Tarjeta Excedente Planilla Provisional (Opción A) --}}
+                @if(($sobrantePlanillaProvisional ?? 0) > 0)
+                <div class="bank-card" style="border-top-color:#14b8a6; cursor:default;">
+                    <div style="font-size:.65rem;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:.04em;">📋 Proyección</div>
+                    <div style="font-size:.78rem;font-weight:700;color:#334155;margin-top:.1rem;">Excedente Planilla</div>
+                    <div style="margin-top:.55rem;">
+                        <div style="font-size:.6rem;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:.03em;margin-bottom:.2rem;">Sobrante estimado</div>
+                        <div style="font-size:1.3rem;font-weight:900;color:#14b8a6;line-height:1.1;">{{ $fmt($sobrantePlanillaProvisional) }}</div>
+                    </div>
+                    <div style="margin-top:auto;padding-top:.6rem;border-top:1px dashed #99f6e4;display:flex;flex-direction:column;gap:.22rem;">
+                        <div style="font-size:.58rem;color:#0d9488;font-weight:700;text-transform:uppercase;letter-spacing:.03em;">
+                            ⚠️ MES EN CURSO (Día {{ now()->day }})
+                        </div>
+                        <div style="font-size:.58rem;color:#94a3b8;font-style:italic;margin-top:.1rem;">
+                            No suma a ingresos de administración hasta el cierre del mes.
+                        </div>
+                    </div>
+                </div>
+                @endif
 
             </div>
         </div>

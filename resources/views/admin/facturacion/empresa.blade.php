@@ -224,12 +224,8 @@ $esIndActPrimerMes = $c->es_ind_act_primer_mes ?? false; // flag del controller
 $esArlModalidad   = (int)($c->tipo_modalidad_id) === 15;
 $esAfil = false;
 if ($esArlModalidad) {
-    if ($c->fecha_arl) {
-        $fArlC = $c->fecha_arl;
-        if ((int)$fArlC->month === $mes && (int)$fArlC->year === $anio) {
-            $esAfil = true;
-        }
-    }
+    // Gestión ARL siempre es cobro de afiliación, no planilla
+    $esAfil = true;
 } elseif ($c->fecha_ingreso) {
     $fIngC = $c->fecha_ingreso;
     if ((int)$fIngC->month === $mes && (int)$fIngC->year === $anio) {

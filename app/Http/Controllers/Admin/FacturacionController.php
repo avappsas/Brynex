@@ -151,8 +151,8 @@ class FacturacionController extends Controller
 
             $esArlModalidad = (int)($c->tipo_modalidad_id) === 15;
             if ($esArlModalidad) {
-                if ($c->fecha_arl) {
-                    $fArl = $c->fecha_arl;
+                $fArl = $c->fecha_arl ?? $c->fecha_ingreso;
+                if ($fArl) {
                     $mesArl  = (int)$fArl->month;
                     $anioArl = (int)$fArl->year;
                     if ($mesArl === $mes && $anioArl === $anio) {
@@ -451,11 +451,8 @@ class FacturacionController extends Controller
             $esMesIng = false;
 
             if ($esArl) {
-                if ($c->fecha_arl) {
-                    $mesArl = (int)$c->fecha_arl->month;
-                    $anioArl = (int)$c->fecha_arl->year;
-                    $esMesIng = ($mes === $mesArl && $anio === $anioArl);
-                }
+                // Gestión ARL siempre es cobro de afiliación, no planilla
+                $esMesIng = true;
             } elseif ($c->fecha_ingreso) {
                 $mesIng = (int)$c->fecha_ingreso->month;
                 $anioIng = (int)$c->fecha_ingreso->year;
@@ -1287,10 +1284,8 @@ class FacturacionController extends Controller
         $esMesIngreso    = false;
 
         if ($esArl) {
-            if ($contrato->fecha_arl) {
-                $esMesIngreso = (int)$contrato->fecha_arl->month === $mes
-                    && (int)$contrato->fecha_arl->year  === $anio;
-            }
+            // Gestión ARL siempre es cobro de afiliación, no planilla
+            $esMesIngreso = true;
         } elseif ($contrato->fecha_ingreso) {
             $esMesIngreso = (int)$contrato->fecha_ingreso->month === $mes
                 && (int)$contrato->fecha_ingreso->year  === $anio;
