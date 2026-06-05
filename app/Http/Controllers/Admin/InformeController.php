@@ -599,15 +599,15 @@ class InformeController extends Controller
             ->whereNotNull('fecha_pago')
             ->whereMonth('fecha_pago', $mes)->whereYear('fecha_pago', $anio)
             ->selectRaw("
-                SUM(CASE WHEN estado IN ('pagada','abono','prestamo') AND numero_factura > 0 THEN total_ss ELSE 0 END) AS recaudo_ss,
+                SUM(CASE WHEN estado IN ('pagada','abono','prestamo') AND numero_factura > 0 THEN total_ss + otros ELSE 0 END) AS recaudo_ss,
                 SUM(CASE WHEN estado IN ('pagada','abono','prestamo') AND numero_factura = 0 THEN total_ss ELSE 0 END) AS costo_retiros,
                 SUM(CASE WHEN estado IN ('pagada','abono','prestamo') THEN mora ELSE 0 END) AS mora_recogida,
                 SUM(CASE WHEN estado IN ('pagada','abono','prestamo') AND numero_factura > 0 AND tipo = 'planilla' THEN v_eps ELSE 0 END) AS ss_eps,
                 SUM(CASE WHEN estado IN ('pagada','abono','prestamo') AND numero_factura > 0 AND tipo = 'planilla' THEN v_arl ELSE 0 END) AS ss_arl,
                 SUM(CASE WHEN estado IN ('pagada','abono','prestamo') AND numero_factura > 0 AND tipo = 'planilla' THEN v_afp ELSE 0 END) AS ss_afp,
                 SUM(CASE WHEN estado IN ('pagada','abono','prestamo') AND numero_factura > 0 AND tipo = 'planilla' THEN v_caja ELSE 0 END) AS ss_caja,
-                SUM(CASE WHEN estado IN ('pagada','abono','prestamo') AND numero_factura > 0 AND tipo = 'planilla' AND anio = ? AND mes = ? THEN total_ss ELSE 0 END) AS ss_actuales,
-                SUM(CASE WHEN estado IN ('pagada','abono','prestamo') AND numero_factura > 0 AND tipo = 'planilla' AND (anio > ? OR (anio = ? AND mes > ?)) THEN total_ss ELSE 0 END) AS ss_futuras,
+                SUM(CASE WHEN estado IN ('pagada','abono','prestamo') AND numero_factura > 0 AND tipo = 'planilla' AND anio = ? AND mes = ? THEN total_ss + otros ELSE 0 END) AS ss_actuales,
+                SUM(CASE WHEN estado IN ('pagada','abono','prestamo') AND numero_factura > 0 AND tipo = 'planilla' AND (anio > ? OR (anio = ? AND mes > ?)) THEN total_ss + otros ELSE 0 END) AS ss_futuras,
                 SUM(CASE WHEN estado IN ('pagada','abono','prestamo') THEN retiro ELSE 0 END) AS retiro_campo,
                 SUM(CASE WHEN estado IN ('pagada','abono','prestamo') THEN c_asesor ELSE 0 END) AS comisiones_asesor
             ", [$anio, $mes, $anio, $anio, $mes])
@@ -691,8 +691,6 @@ class InformeController extends Controller
                 ->whereIn('p2.numero_planilla', $planillasMes)
                 ->whereNull('p2.deleted_at')
                 ->whereNull('f.deleted_at')
-                ->whereMonth('f.fecha_pago', $mes)
-                ->whereYear('f.fecha_pago', $anio)
                 ->groupBy('p2.numero_planilla')
                 ->selectRaw("
                     p2.numero_planilla,
@@ -1030,7 +1028,7 @@ class InformeController extends Controller
             ->sum('valor');
 
         $efSalidas = $efGastos + $efConsignaciones;
-        $saldoEfectivoActual = $saldoEfectivoMesAnt + ($efEntradas + $efAnticipos) - $efSalidas;
+        $saldoEfectivoActual = ($efEntradas + $efAnticipos) - $efSalidas;
 
         $efMes = (object)[
             'entradas'       => $efEntradas + $efAnticipos,
@@ -1452,7 +1450,41 @@ class InformeController extends Controller
             ->orderBy('fecha')
             ->get();
 
-        // ── Efectivo por asesor en el mes (facturas + anticipos del mes) ─────
+        // ── Abonos en efectivo del mes ──
+        $abonos = DB::table('abonos as a')
+            ->join('facturas as f', 'f.id', '=', 'a.factura_id')
+            ->leftJoin('clientes as cl', function($j) use ($aid) {
+                $j->on('cl.cedula', '=', 'f.cedula')->where('cl.aliado_id', $aid);
+            })
+            ->leftJoin('empresas as em', 'em.id', '=', 'f.empresa_id')
+            ->leftJoin('users as u', 'u.id', '=', 'a.usuario_id')
+            ->where('f.aliado_id', $aid)
+            ->whereMonth('a.fecha', $mes)->whereYear('a.fecha', $anio)
+            ->where('a.forma_pago', 'efectivo')
+            ->where('a.valor_efectivo', '>', 0)
+            ->selectRaw("
+                f.numero_factura,
+                CONVERT(VARCHAR(10), a.fecha, 120) AS fecha,
+                a.valor_efectivo AS valor,
+                a.forma_pago,
+                f.empresa_id,
+                CASE
+                    WHEN f.empresa_id IS NOT NULL AND f.empresa_id > 0 THEN UPPER(ISNULL(em.empresa, '—'))
+                    ELSE LTRIM(RTRIM(
+                        ISNULL(cl.primer_nombre,'') + ' ' +
+                        ISNULL(cl.segundo_nombre,'') + ' ' +
+                        ISNULL(cl.primer_apellido,'') + ' ' +
+                        ISNULL(cl.segundo_apellido,'')
+                    ))
+                END as nombre_cliente,
+                ISNULL(u.nombre, '—') AS usuario_nombre
+            ")
+            ->orderBy('a.fecha')
+            ->get();
+
+        $entradas = $entradas->concat($abonos)->sortBy('fecha')->values();
+
+        // ── Efectivo por asesor en el mes (facturas + anticipos + abonos del mes) ─────
         // Se agrupa por usuario del mes — así la suma de asesores = total ingresos.
         $efectivoFacturasAsesor = DB::table('facturas AS f')
             ->join('users AS u', 'u.id', '=', 'f.usuario_id')
@@ -1478,6 +1510,19 @@ class InformeController extends Controller
             ->whereNotIn('a.estado', ['devuelto'])
             ->groupBy('a.usuario_id', 'u.nombre')
             ->selectRaw('a.usuario_id, u.nombre AS asesor_nombre, SUM(a.valor) AS anticipos_ef')
+            ->get()
+            ->keyBy('usuario_id');
+
+        $efectivoAbonosAsesor = DB::table('abonos AS a')
+            ->join('facturas AS f', 'f.id', '=', 'a.factura_id')
+            ->join('users AS u', 'u.id', '=', 'a.usuario_id')
+            ->where('f.aliado_id', $aid)
+            ->whereMonth('a.fecha', $mes)
+            ->whereYear('a.fecha', $anio)
+            ->where('a.forma_pago', 'efectivo')
+            ->where('a.valor_efectivo', '>', 0)
+            ->groupBy('a.usuario_id', 'u.nombre')
+            ->selectRaw('a.usuario_id, u.nombre AS asesor_nombre, SUM(a.valor_efectivo) AS abonos_ef')
             ->get()
             ->keyBy('usuario_id');
 
@@ -1509,29 +1554,34 @@ class InformeController extends Controller
             ->merge($efectivoAnticiposAsesor->keys())
             ->merge($efectivoGastosAsesor->keys())
             ->merge($efectivoConsignacionesAsesor->keys())
+            ->merge($efectivoAbonosAsesor->keys())
             ->unique();
 
         $porAsesor = $todosUsuarios->map(function ($uid) use (
-            $efectivoFacturasAsesor, $efectivoAnticiposAsesor, $efectivoGastosAsesor, $efectivoConsignacionesAsesor
+            $efectivoFacturasAsesor, $efectivoAnticiposAsesor, $efectivoGastosAsesor, $efectivoConsignacionesAsesor, $efectivoAbonosAsesor
         ) {
             $nombre     = $efectivoFacturasAsesor[$uid]->asesor_nombre
                        ?? $efectivoAnticiposAsesor[$uid]->asesor_nombre
                        ?? $efectivoGastosAsesor[$uid]->asesor_nombre
                        ?? $efectivoConsignacionesAsesor[$uid]->asesor_nombre
+                       ?? $efectivoAbonosAsesor[$uid]->asesor_nombre
                        ?? '—';
             $ingresosEf = (float)($efectivoFacturasAsesor[$uid]->ingresos_ef ?? 0);
+            $abonosEf   = (float)($efectivoAbonosAsesor[$uid]->abonos_ef ?? 0);
             $anticiposEf= (float)($efectivoAnticiposAsesor[$uid]->anticipos_ef ?? 0);
             $gastosEf   = (float)($efectivoGastosAsesor[$uid]->gastos_ef ?? 0);
             $consignacionesEf = (float)($efectivoConsignacionesAsesor[$uid]->consignaciones_ef ?? 0);
 
+            $ingTotal = $ingresosEf + $abonosEf;
+
             return [
                 'usuario_id'        => $uid,
                 'asesor_nombre'     => $nombre,
-                'ingresos_ef'       => $ingresosEf,
+                'ingresos_ef'       => $ingTotal,
                 'anticipos_ef'      => $anticiposEf,
                 'gastos_ef'         => $gastosEf,
                 'consignaciones_ef' => $consignacionesEf,
-                'saldo_caja'        => $ingresosEf + $anticiposEf - $gastosEf - $consignacionesEf,
+                'saldo_caja'        => $ingTotal + $anticiposEf - $gastosEf - $consignacionesEf,
             ];
         })->sortBy('asesor_nombre')->values();
 
@@ -2074,14 +2124,14 @@ class InformeController extends Controller
             ->whereIn('estado',['pagada','abono','prestamo'])
             ->selectRaw('DAY(fecha_pago) AS dia, tipo,
                 COUNT(*) AS cant_filas,
-                SUM(admon+seguro+mensajeria+otros+iva+retiro) AS ing_planilla,
+                SUM(admon+seguro+mensajeria+ISNULL(otros_admon,0)+iva+retiro) AS ing_planilla,
                 SUM(afiliacion+admon+seguro+iva) AS ing_afil,
                 SUM(admon+otros) AS ing_tramite,
                 SUM(mora) AS mora_dia,
                 SUM(ISNULL(dist_retiro,0)) AS dist_retiro_dia,
                 SUM(ISNULL(dist_asesor,0)) AS dist_asesor_dia,
                 SUM(ISNULL(dist_encargado,0)) AS dist_encargado_dia,
-                SUM(CASE WHEN numero_factura > 0 THEN total_ss ELSE 0 END) AS ss_dia')
+                SUM(CASE WHEN numero_factura > 0 THEN total_ss + otros ELSE 0 END) AS ss_dia')
             ->groupByRaw('DAY(fecha_pago), tipo')
             ->get()->groupBy('dia');
 

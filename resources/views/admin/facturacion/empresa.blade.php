@@ -63,6 +63,60 @@ table.fac-tbl{width:100%;border-collapse:collapse;font-size:.78rem}
 .btn-guardar{width:100%;padding:.65rem;background:#2563eb;color:#fff;font-size:.92rem;font-weight:700;border:none;border-radius:8px;cursor:pointer;margin-top:.45rem}
 .btn-guardar:hover{background:#1d4ed8}
 .btn-cancelar{margin-right:.5rem;padding:.48rem 1.1rem;background:#f1f5f9;color:#475569;border:none;border-radius:7px;cursor:pointer;font-weight:600}
+/* Estilos para filtros y ordenación en tabla */
+.tbl-header-select {
+    background: transparent;
+    color: #94a3b8;
+    border: none;
+    font-size: .63rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    outline: none;
+    cursor: pointer;
+    padding: 0;
+    margin: 0;
+    width: auto;
+    max-width: 100%;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    transition: color .15s;
+}
+.tbl-header-select:focus {
+    color: #fff;
+    background: #0f172a;
+}
+.tbl-header-select option {
+    background: #0f172a;
+    color: #fff;
+    font-size: .75rem;
+    text-transform: none;
+    letter-spacing: normal;
+}
+.tbl-header-select.active-filter {
+    color: #3b82f6 !important;
+    text-shadow: 0 0 1px rgba(59, 130, 246, 0.5);
+}
+.sort-icon {
+    display: inline-block;
+    width: 0;
+    height: 0;
+    margin-left: 4px;
+    vertical-align: middle;
+    border-right: 4px solid transparent;
+    border-left: 4px solid transparent;
+    border-top: 4px solid #64748b;
+    transition: transform 0.2s ease, border-color 0.2s ease;
+}
+.sort-icon.asc {
+    transform: rotate(180deg);
+    border-top-color: #3b82f6;
+}
+.sort-icon.desc {
+    transform: rotate(0deg);
+    border-top-color: #3b82f6;
+}
 </style>
 
 {{-- Header empresa --}}
@@ -71,11 +125,16 @@ table.fac-tbl{width:100%;border-collapse:collapse;font-size:.78rem}
         {{-- Info empresa --}}
         <div>
             <a href="{{ route('admin.facturacion.index') }}" style="color:#94a3b8;text-decoration:none;font-size:.8rem;">← Empresas</a>
-            <div class="fac-h-nom" style="margin-top:.2rem;">🏢 {{ $empresa->empresa }}</div>
+            <div class="fac-h-nom" style="margin-top:.2rem; display:inline-flex; align-items:center; gap:.5rem; flex-wrap:wrap;">
+                <span>🏢 {{ $empresa->empresa }}</span>
+                @if($empresa->asesor || $empresa->contacto)
+                    <span style="font-size:1rem; font-weight:500; color:#cbd5e1; margin-left:.3rem;">
+                        · 👤 {{ $empresa->asesor ? $empresa->asesor->nombre : $empresa->contacto }}
+                    </span>
+                @endif
+            </div>
             <div class="fac-h-meta">
                 @if($empresa->nit)<span>NIT: {{ $empresa->nit }}</span>@endif
-                @if($empresa->asesor)<span>👤 {{ $empresa->asesor->nombre }}</span>
-                @elseif($empresa->contacto)<span>👤 {{ $empresa->contacto }}</span>@endif
                 @if($empresa->celular)<span>📞 {{ $empresa->celular }}</span>@endif
 {{-- IVA oculto del encabezado --}}
             </div>
@@ -182,20 +241,78 @@ table.fac-tbl{width:100%;border-collapse:collapse;font-size:.78rem}
 <div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden;">
 <div class="tbl-wrap">
 <table class="fac-tbl" id="tblTrab">
-<thead><tr>
-    <th>TIPO</th><th>CÉDULA</th><th>NOMBRE</th><th>RAZÓN SOCIAL</th>
-    <th style="text-align:center">INGRESO / RETIRO</th><th style="text-align:center">DÍAS</th>
-    <th class="num-col">EPS</th><th class="num-col">ARL</th>
-    <th class="num-col">CAJA</th><th class="num-col">PENSIÓN</th>
-    <th class="num-col">ADMON</th><th class="num-col" style="display:none">IVA</th>
-    <th class="num-col" style="color:#34d399">TOTAL</th>
-    <th class="num-col" title="Mora estimada al cliente" style="color:#fbbf24">⚠️ MORA</th>
-    <th style="text-align:center">ESTADO</th><th style="text-align:center">NP</th>
+<thead>
+<tr style="user-select: none;">
+    <th>
+        <select id="filter-tipo" class="tbl-header-select" onchange="aplicarFiltrosTabla()" title="Filtrar por Tipo">
+            <option value="todos">TIPO ▾</option>
+        </select>
+    </th>
+    <th onclick="ordenarTabla('cedula')" style="cursor:pointer; text-align:left;" title="Clic para ordenar por Cédula">
+        CÉDULA <span id="sort-icon-cedula" class="sort-icon"></span>
+    </th>
+    <th onclick="ordenarTabla('nombre')" style="cursor:pointer; text-align:left;" title="Clic para ordenar por Nombre">
+        NOMBRE <span id="sort-icon-nombre" class="sort-icon"></span>
+    </th>
+    <th>
+        <select id="filter-rs" class="tbl-header-select" onchange="aplicarFiltrosTabla()" style="text-align:left;" title="Filtrar por Razón Social">
+            <option value="todos">RAZÓN SOCIAL ▾</option>
+        </select>
+    </th>
+    <th onclick="ordenarTabla('fecha')" style="cursor:pointer; text-align:center;" title="Clic para ordenar por Ingreso / Retiro">
+        ING/RET <span id="sort-icon-fecha" class="sort-icon"></span>
+    </th>
+    <th onclick="ordenarTabla('dias')" style="cursor:pointer; text-align:center;" title="Clic para ordenar por Días">
+        DÍAS <span id="sort-icon-dias" class="sort-icon"></span>
+    </th>
+    <th class="num-col">
+        <select id="filter-eps" class="tbl-header-select" onchange="aplicarFiltrosTabla()" style="text-align:right;" title="Filtrar por EPS">
+            <option value="todos">EPS ▾</option>
+        </select>
+    </th>
+    <th class="num-col">
+        <select id="filter-arl" class="tbl-header-select" onchange="aplicarFiltrosTabla()" style="text-align:right;" title="Filtrar por ARL">
+            <option value="todos">ARL ▾</option>
+        </select>
+    </th>
+    <th class="num-col">
+        <select id="filter-caja" class="tbl-header-select" onchange="aplicarFiltrosTabla()" style="text-align:right;" title="Filtrar por Caja">
+            <option value="todos">CAJA ▾</option>
+        </select>
+    </th>
+    <th class="num-col">
+        <select id="filter-pension" class="tbl-header-select" onchange="aplicarFiltrosTabla()" style="text-align:right;" title="Filtrar por Pensión">
+            <option value="todos">PENSIÓN ▾</option>
+        </select>
+    </th>
+    <th class="num-col">
+        <select id="filter-admon" class="tbl-header-select" onchange="aplicarFiltrosTabla()" style="text-align:right;" title="Filtrar por Admon">
+            <option value="todos">ADMON ▾</option>
+        </select>
+    </th>
+    <th class="num-col" style="display:none">IVA</th>
+    <th onclick="ordenarTabla('total')" style="cursor:pointer;" class="num-col" title="Clic para ordenar por Total">
+        TOTAL <span id="sort-icon-total" class="sort-icon"></span>
+    </th>
+    <th onclick="ordenarTabla('mora')" style="cursor:pointer;" class="num-col" title="Clic para ordenar por Mora">
+        ⚠️ MORA <span id="sort-icon-mora" class="sort-icon"></span>
+    </th>
+    <th style="text-align:center">
+        <select id="filter-estado" class="tbl-header-select" onchange="aplicarFiltrosTabla()" title="Filtrar por Estado">
+            <option value="todos">ESTADO ▾</option>
+        </select>
+    </th>
+    <th style="text-align:center">
+        <select id="filter-np" class="tbl-header-select" onchange="aplicarFiltrosTabla()" title="Filtrar por Número de Planilla">
+            <option value="todos">NP ▾</option>
+        </select>
+    </th>
     <th style="text-align:center">
         <input type="checkbox" id="chkAll" onchange="toggleAll(this)" title="Seleccionar todos"
                style="width:1rem;height:1rem;cursor:pointer;vertical-align:middle;"> SEL
     </th>
-</tr></thead>
+</tr>
+</thead>
 <tbody>
 @php
 $totEps=$totArl=$totCaja=$totPen=$totAdmon=$totIva=$totTotal=$totMora=0;
@@ -316,7 +433,12 @@ $totAdmon+=$vAdm;$totIva+=$vIva;$totTotal+=$vTot;$totMora+=$vMora;
     data-esafil="{{ $esAfil ? '1' : '0' }}"
     data-esindact="{{ $esIndActPrimerMes ? '1' : '0' }}"
     data-afiliacion="{{ $vAfiliacion }}"
-    data-tipo="{{ ($esAfil && !$esIndActPrimerMes) ? 'afiliacion' : 'planilla' }}">
+    data-tipo="{{ ($esAfil && !$esIndActPrimerMes) ? 'afiliacion' : 'planilla' }}"
+    data-tipomod="{{ $tipoMod }}"
+    data-rs="{{ $rs }}"
+    data-fecha_ingreso_retiro="{{ $esRetirado && $c->fecha_retiro ? $c->fecha_retiro->format('Y-m-d') : ($c->fecha_ingreso ? $c->fecha_ingreso->format('Y-m-d') : '') }}"
+    data-vmora="{{ $vMora }}"
+    data-np="{{ $fact?->np ?? '' }}">
 
     <td style="font-size:.75rem;font-weight:700;text-align:center;white-space:nowrap;" title="{{ $tipoNom }}{{ $esIndActPrimerMes ? ' · Afiliación + Planilla' : '' }}{{ $esRetirado ? ' · RETIRADO' : '' }}">
         <span style="display:inline-flex;align-items:center;gap:3px;flex-direction:column;">
@@ -593,6 +715,74 @@ const BANCOS = [
     @endforeach
 ];
 
+// ─── Ordenación de columnas ──────────────────────────────────────────
+let _sortCampo = null;
+let _sortAsc = true;
+
+function ordenarTabla(campo) {
+    const tbody = document.querySelector('#tblTrab tbody');
+    if (!tbody) return;
+    const filas = Array.from(tbody.querySelectorAll('tr'));
+    if (filas.length <= 1 && filas[0]?.cells?.length === 1 && filas[0]?.cells[0]?.colSpan > 1) {
+        return; // Fila vacía
+    }
+
+    if (_sortCampo === campo) {
+        _sortAsc = !_sortAsc;
+    } else {
+        _sortCampo = campo;
+        _sortAsc = true;
+    }
+
+    // Actualizar iconos visuales
+    document.querySelectorAll('.sort-icon').forEach(icon => {
+        icon.classList.remove('asc', 'desc');
+    });
+    const activeIcon = document.getElementById(`sort-icon-${campo}`);
+    if (activeIcon) {
+        activeIcon.classList.add(_sortAsc ? 'asc' : 'desc');
+    }
+
+    filas.sort((a, b) => {
+        let valA, valB;
+        switch (campo) {
+            case 'cedula':
+                valA = parseInt(a.dataset.cedula) || 0;
+                valB = parseInt(b.dataset.cedula) || 0;
+                break;
+            case 'nombre':
+                valA = (a.dataset.nombre || '').toLowerCase();
+                valB = (b.dataset.nombre || '').toLowerCase();
+                return _sortAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+            case 'fecha':
+                valA = a.dataset.fecha_ingreso_retiro || '';
+                valB = b.dataset.fecha_ingreso_retiro || '';
+                break;
+            case 'dias':
+                valA = parseInt(a.dataset.dias) || 0;
+                valB = parseInt(b.dataset.dias) || 0;
+                break;
+            case 'total':
+                valA = parseInt(a.dataset.vtot) || 0;
+                valB = parseInt(b.dataset.vtot) || 0;
+                break;
+            case 'mora':
+                valA = parseInt(a.dataset.vmora) || 0;
+                valB = parseInt(b.dataset.vmora) || 0;
+                break;
+            default:
+                return 0;
+        }
+
+        if (valA < valB) return _sortAsc ? -1 : 1;
+        if (valA > valB) return _sortAsc ? 1 : -1;
+        return 0;
+    });
+
+    // Reinsertar en el DOM
+    filas.forEach(fila => tbody.appendChild(fila));
+}
+
 // ─── Estado del filtro activo (para combinarlo con la búsqueda) ───────
 let _filtroActivo = 'todos';
 
@@ -601,51 +791,214 @@ function filtrar(btn, tipo) {
     _filtroActivo = tipo;
     document.querySelectorAll('.fil-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    _aplicarFiltros();
+    aplicarFiltrosTabla();
 }
 
 // ─── Búsqueda por nombre / cédula ───────────────────────────────────
 function buscar(q) {
     const btnLimp = document.getElementById('btn-limpiar-bus');
     btnLimp.style.display = q.trim() ? 'block' : 'none';
-    _aplicarFiltros();
+    aplicarFiltrosTabla();
 }
 function limpiarBuscar() {
     const inp = document.getElementById('inp-buscar');
     inp.value = '';
     document.getElementById('btn-limpiar-bus').style.display = 'none';
     inp.focus();
-    _aplicarFiltros();
+    aplicarFiltrosTabla();
 }
 
-// ─── Motor combinado: estado + texto ─────────────────────────────────
-function _aplicarFiltros() {
+// ─── Títulos originales de las columnas para los filtros ──────────────
+const TITULOS_FILTROS = {
+    'filter-tipo': 'TIPO',
+    'filter-rs': 'RAZÓN SOCIAL',
+    'filter-eps': 'EPS',
+    'filter-arl': 'ARL',
+    'filter-caja': 'CAJA',
+    'filter-pension': 'PENSIÓN',
+    'filter-admon': 'ADMON',
+    'filter-estado': 'ESTADO',
+    'filter-np': 'NP'
+};
+
+// ─── Inicializar y autopoblar los filtros dropdown ───────────────────
+function inicializarFiltrosTabla() {
+    const filas = Array.from(document.querySelectorAll('#tblTrab tbody tr'));
+    if (filas.length <= 1 && filas[0]?.cells?.length === 1 && filas[0]?.cells[0]?.colSpan > 1) {
+        return; // Fila vacía
+    }
+
+    const tipos = new Set();
+    const razones = new Set();
+    const epsVals = new Set();
+    const arlVals = new Set();
+    const cajaVals = new Set();
+    const penVals = new Set();
+    const admVals = new Set();
+    const estados = new Set();
+    const npVals = new Set();
+
+    filas.forEach(tr => {
+        if (tr.dataset.tipomod) tipos.add(tr.dataset.tipomod.trim());
+        if (tr.dataset.rs) razones.add(tr.dataset.rs.trim());
+
+        const eps = parseInt(tr.dataset.veps) || 0;
+        if (eps > 0) epsVals.add(eps);
+
+        const arl = parseInt(tr.dataset.varl) || 0;
+        if (arl > 0) arlVals.add(arl);
+
+        const caja = parseInt(tr.dataset.vcaja) || 0;
+        if (caja > 0) cajaVals.add(caja);
+
+        const pen = parseInt(tr.dataset.vpen) || 0;
+        if (pen > 0) penVals.add(pen);
+
+        const adm = parseInt(tr.dataset.vadmon) || 0;
+        if (adm > 0) admVals.add(adm);
+
+        if (tr.cells[14]) {
+            const txt = tr.cells[14].textContent.trim().replace(/\s+/g, ' ');
+            if (txt && txt !== '—') estados.add(txt);
+        }
+
+        const np = (tr.dataset.np || '').trim();
+        if (np) npVals.add(np);
+    });
+
+    const setOptions = (id, set, isNum = false) => {
+        const sel = document.getElementById(id);
+        if (!sel) return;
+        const selectedVal = sel.value;
+        const titulo = TITULOS_FILTROS[id] || 'FILTRO';
+        let html = `<option value="todos">${titulo} ▾</option>`;
+        if (isNum || id === 'filter-np') {
+            html += '<option value="-">-</option>';
+        }
+        
+        let sortedArr = Array.from(set);
+        if (isNum) {
+            sortedArr.sort((a, b) => a - b);
+        } else {
+            sortedArr.sort();
+        }
+
+        sortedArr.forEach(v => {
+            const label = isNum ? numFmt(v) : v;
+            html += `<option value="${v}">${label}</option>`;
+        });
+        sel.innerHTML = html;
+        if (Array.from(set).includes(isNum ? parseInt(selectedVal) : selectedVal) || selectedVal === '-' || selectedVal === 'todos') {
+            sel.value = selectedVal;
+        }
+    };
+
+    setOptions('filter-tipo', tipos);
+    setOptions('filter-rs', razones);
+    setOptions('filter-eps', epsVals, true);
+    setOptions('filter-arl', arlVals, true);
+    setOptions('filter-caja', cajaVals, true);
+    setOptions('filter-pension', penVals, true);
+    setOptions('filter-admon', admVals, true);
+    setOptions('filter-estado', estados);
+    setOptions('filter-np', npVals);
+}
+
+// ─── Motor combinado de filtros: buscador + estado + dropdowns ──────
+function aplicarFiltrosTabla() {
     const q = (document.getElementById('inp-buscar')?.value || '').trim().toLowerCase();
-    // Dividir la búsqueda en palabras (tokens) para coincidencia parcial y desordenada
-    // Ejemplo: "brayan garcia" → tokens ["brayan","garcia"]
-    // Coincide con "Brayan Humberto Garcia" porque ambos tokens están en el nombre
     const tokens = q ? q.split(/\s+/).filter(t => t.length > 0) : [];
 
+    const fTipo = document.getElementById('filter-tipo')?.value || 'todos';
+    const fRS = document.getElementById('filter-rs')?.value || 'todos';
+    const fEps = document.getElementById('filter-eps')?.value || 'todos';
+    const fArl = document.getElementById('filter-arl')?.value || 'todos';
+    const fCaja = document.getElementById('filter-caja')?.value || 'todos';
+    const fPen = document.getElementById('filter-pension')?.value || 'todos';
+    const fAdm = document.getElementById('filter-admon')?.value || 'todos';
+    const fEst = document.getElementById('filter-estado')?.value || 'todos';
+    const fNP = document.getElementById('filter-np')?.value || 'todos';
+
+    // Manejar estilo visual si el filtro está activo
+    const toggleActiveFilter = (id, val) => {
+        const sel = document.getElementById(id);
+        if (sel) {
+            if (val !== 'todos') {
+                sel.classList.add('active-filter');
+            } else {
+                sel.classList.remove('active-filter');
+            }
+        }
+    };
+    toggleActiveFilter('filter-tipo', fTipo);
+    toggleActiveFilter('filter-rs', fRS);
+    toggleActiveFilter('filter-eps', fEps);
+    toggleActiveFilter('filter-arl', fArl);
+    toggleActiveFilter('filter-caja', fCaja);
+    toggleActiveFilter('filter-pension', fPen);
+    toggleActiveFilter('filter-admon', fAdm);
+    toggleActiveFilter('filter-estado', fEst);
+    toggleActiveFilter('filter-np', fNP);
+
     document.querySelectorAll('#tblTrab tbody tr').forEach(tr => {
+        if (tr.cells.length === 1 && tr.cells[0].colSpan > 1) return; // Fila vacía
+
         const est = tr.dataset.estado;
 
-        // 1) Filtro de estado
-        let showEstado = true;
-        if (_filtroActivo === 'pendiente') showEstado = !['pagada','prestamo'].includes(est);
-        else if (_filtroActivo === 'pago')  showEstado = est === 'pagada';
+        // 1) Botones de estado superior
+        let showEstadoBtn = true;
+        if (_filtroActivo === 'pendiente') showEstadoBtn = !['pagada','prestamo'].includes(est);
+        else if (_filtroActivo === 'pago')  showEstadoBtn = est === 'pagada';
 
-        // 2) Filtro de texto (nombre + cédula)
+        // 2) Buscador global
         let showTexto = true;
         if (tokens.length > 0) {
             const nombre  = (tr.dataset.nombre  || '').toLowerCase();
             const cedula  = (tr.dataset.cedula  || '').toLowerCase();
             const haystack = nombre + ' ' + cedula;
-            // Todos los tokens deben aparecer en el haystack
             showTexto = tokens.every(t => haystack.includes(t));
         }
 
-        tr.style.display = (showEstado && showTexto) ? '' : 'none';
+        // 3) Dropdowns
+        let showTipo = fTipo === 'todos' || tr.dataset.tipomod === fTipo;
+        let showRS = fRS === 'todos' || tr.dataset.rs === fRS;
+
+        const vEps = parseInt(tr.dataset.veps) || 0;
+        let showEps = fEps === 'todos' || (fEps === '-' ? vEps === 0 : vEps === parseInt(fEps));
+
+        const vArl = parseInt(tr.dataset.varl) || 0;
+        let showArl = fArl === 'todos' || (fArl === '-' ? vArl === 0 : vArl === parseInt(fArl));
+
+        const vCaja = parseInt(tr.dataset.vcaja) || 0;
+        let showCaja = fCaja === 'todos' || (fCaja === '-' ? vCaja === 0 : vCaja === parseInt(fCaja));
+
+        const vPen = parseInt(tr.dataset.vpen) || 0;
+        let showPen = fPen === 'todos' || (fPen === '-' ? vPen === 0 : vPen === parseInt(fPen));
+
+        const vAdm = parseInt(tr.dataset.vadmon) || 0;
+        let showAdm = fAdm === 'todos' || (fAdm === '-' ? vAdm === 0 : vAdm === parseInt(fAdm));
+
+        let trEst = '';
+        if (tr.cells[14]) {
+            trEst = tr.cells[14].textContent.trim().replace(/\s+/g, ' ');
+        }
+        let showEst = fEst === 'todos' || trEst === fEst;
+
+        const trNP = (tr.dataset.np || '').trim();
+        let showNP = fNP === 'todos' || (fNP === '-' ? !trNP : trNP === fNP);
+
+        const visible = showEstadoBtn && showTexto && showTipo && showRS && showEps && showArl && showCaja && showPen && showAdm && showEst && showNP;
+        tr.style.display = visible ? '' : 'none';
     });
+
+    // Deseleccionar checkboxes de filas ocultas
+    document.querySelectorAll('.chk-row:checked').forEach(c => {
+        const fila = c.closest('tr');
+        if (fila && fila.style.display === 'none') {
+            c.checked = false;
+        }
+    });
+    onCheckChange();
 }
 
 // ─── Checkboxes ───────────────────────────────────────────────
@@ -821,7 +1174,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (inp) { inp.value = ''; }
     const btnLimp = document.getElementById('btn-limpiar-bus');
     if (btnLimp) btnLimp.style.display = 'none';
-    _aplicarFiltros();
+    inicializarFiltrosTabla();
+    aplicarFiltrosTabla();
 });
 </script>
 
