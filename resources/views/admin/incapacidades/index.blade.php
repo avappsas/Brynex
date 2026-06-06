@@ -420,7 +420,8 @@ function abrirModalCrear(){
     const b2=document.getElementById('contratoInfoBoxInactivo'); if(b2) b2.style.display='none';
     const qr=document.getElementById('quienRemiteSelect'); if(qr) qr.innerHTML='<option value="">Seleccionar...</option>';
     const cs=document.getElementById('contratoSelect'); if(cs) cs.innerHTML='<option value="">Sin contrato</option>';
-    _contratosData=[]; _clienteEpsId=null; _clienteArlId=null; _clienteNombre=''; _empresaNombre='';
+    const infoRsBox = document.getElementById('infoRazonSocialBox'); if(infoRsBox) infoRsBox.style.display = 'none';
+    _contratosData=[]; _clienteEpsId=null; _clienteArlId=null; _clienteAfpId=null; _clienteNombre=''; _empresaNombre='';
     abrirModal('modalCrear');
 }
 
@@ -429,7 +430,134 @@ function abrirModalProroga(padreId){
     abrirModalCrear();
     document.getElementById('modalCrearTitle').textContent = '➕ Registrar Prórroga';
     document.getElementById('padreId').value = padreId;
+
+    fetch(`/admin/incapacidades/${padreId}/show`)
+        .then(r=>r.json()).then(data=>{
+            const inc = data.incapacidad;
+            if(!inc) return;
+
+            // Asegurar que el padreId no se pierda al restaurar
+            document.getElementById('padreId').value = padreId;
+
+            const f = document.getElementById('formCrear');
+            f.querySelector('[name=cedula_usuario]').value          = inc.cedula_usuario;
+            f.querySelector('[name=tipo_incapacidad]').value        = inc.tipo_incapacidad;
+            f.querySelector('[name=tipo_entidad]').value            = inc.tipo_entidad;
+            f.querySelector('[name=diagnostico]') && (f.querySelector('[name=diagnostico]').value = inc.diagnostico||'');
+
+            // Encargado
+            const qrSel = document.getElementById('quienRecibeSelect');
+            if (qrSel && inc.quien_recibe_id) qrSel.value = inc.quien_recibe_id;
+
+            // Quién remite
+            const qrmSel = document.getElementById('quienRemiteSelect');
+            if (qrmSel && inc.quien_remite) {
+                if (!qrmSel.querySelector(`option[value="${inc.quien_remite}"]`)) {
+                    const opt = document.createElement('option');
+                    opt.value = inc.quien_remite;
+                    opt.textContent = inc.quien_remite;
+                    qrmSel.appendChild(opt);
+                }
+                qrmSel.value = inc.quien_remite;
+            }
+
+            // Nombre cliente
+            _clienteNombre = data.cliente
+                ? [data.cliente.primer_nombre, data.cliente.primer_apellido].filter(Boolean).join(' ')
+                : inc.cedula_usuario;
+            document.getElementById('nombreCliente').value = _clienteNombre;
+
+            _empresaNombre = data.empresa || '';
+
+            // Razón social hidden e inputs informativos
+            const rsH = document.getElementById('razonSocialHidden');
+            if (rsH) rsH.value = inc.razon_social_id || '';
+            const rsInput = document.getElementById('razonSocialInput');
+            const rsNitInput = document.getElementById('razonSocialNitInput');
+            if (rsInput) rsInput.value = inc.razon_social_nombre || 'Sin razón social';
+            if (rsNitInput) rsNitInput.value = (inc.razon_social && inc.razon_social.nit) ? inc.razon_social.nit : 'Sin registrar';
+
+            // Sugerir la fecha de inicio de la prórroga (un día después del fin de la incapacidad padre)
+            if (inc.fecha_terminacion) {
+                const parts = inc.fecha_terminacion.substring(0, 10).split('-');
+                if (parts.length === 3) {
+                    const year = parseInt(parts[0], 10);
+                    const month = parseInt(parts[1], 10);
+                    const day = parseInt(parts[2], 10);
+                    const nextDate = new Date(year, month - 1, day + 1);
+                    
+                    const yyyy = nextDate.getFullYear();
+                    const mm = String(nextDate.getMonth() + 1).padStart(2, '0');
+                    const dd = String(nextDate.getDate()).padStart(2, '0');
+                    document.getElementById('fechaInicioInput').value = `${yyyy}-${mm}-${dd}`;
+                }
+            }
+
+            // Inicializar fallbacks desde los datos del cliente
+            _fallbackEpsId = data.cliente ? data.cliente.eps_id : null;
+            _fallbackPensionId = data.cliente ? data.cliente.pension_id : null;
+
+            // Cargar y seleccionar el contrato de manera temporal
+            const csEl = document.getElementById('contratoSelect');
+            if (csEl && inc.contrato_id) {
+                const label = inc.razon_social_nombre
+                    ? `Contrato #${inc.contrato_id} — ${inc.razon_social_nombre}`
+                    : `Contrato #${inc.contrato_id}`;
+                csEl.innerHTML = `<option value="">Sin contrato</option>
+                    <option value="${inc.contrato_id}" selected>${label}</option>`;
+                
+                const infoBox = document.getElementById('contratoInfoBox');
+                const infoTxt = document.getElementById('contratoInfoText');
+                if (infoBox && infoTxt) {
+                    infoTxt.textContent = label;
+                    infoBox.style.display = 'block';
+                }
+            }
+
+            // Cargar todos los contratos del cliente en segundo plano para poblar el selector completo
+            _contratosData = [];
+            _clienteEpsId = null;
+            _clienteArlId = null;
+            _clienteAfpId = null;
+            fetch(`/admin/incapacidades/api/contratos?cedula=${encodeURIComponent(inc.cedula_usuario)}`)
+                .then(r=>r.json()).then(contratos=>{
+                    _contratosData = contratos;
+                    
+                    const csEl = document.getElementById('contratoSelect');
+                    if (csEl) {
+                        csEl.innerHTML = '<option value="">Sin contrato especifico</option>';
+                        contratos.forEach(c=>{
+                            const vigente = c.estado === 'vigente';
+                            const estadoEmoji = vigente ? '🟢' : '🔴';
+                            const rsNombre = c.razon_social_nombre || 'Sin razón social';
+                            const opt = document.createElement('option');
+                            opt.value = c.id;
+                            opt.textContent = `${estadoEmoji} Contrato #${c.id} — ${c.estado.toUpperCase()} (${c.fecha_ingreso?.substring(0,10)||''}) — [${rsNombre}]`;
+                            if (c.id == inc.contrato_id) {
+                                opt.selected = true;
+                            }
+                            if (vigente) {
+                                opt.style.color = '#059669';
+                                opt.style.fontWeight = '600';
+                            } else {
+                                opt.style.color = '#ef4444';
+                            }
+                            csEl.appendChild(opt);
+                        });
+                    }
+                    
+                    const c = contratos.find(x => x.id == inc.contrato_id);
+                    if (c) {
+                        _clienteEpsId = c.eps_id || null;
+                        _clienteArlId = c.arl_id || null;
+                        _clienteAfpId = c.pension_id || null;
+                    }
+                });
+
+            actualizarListaEntidades(inc.tipo_entidad, inc.entidad_responsable_id);
+        });
 }
+
 
 function abrirModalEditar(id){
     fetch(`/admin/incapacidades/${id}/show`)
@@ -460,9 +588,17 @@ function abrirModalEditar(id){
             const frEl = f.querySelector('[name=fecha_radicado]');
             if (frEl) frEl.value = inc.fecha_radicado?.substring(0,10) || '';
 
-            // Razón social hidden
+            // Razón social hidden e inputs informativos
             const rsH = document.getElementById('razonSocialHidden');
             if (rsH) rsH.value = inc.razon_social_id || '';
+            const rsInput = document.getElementById('razonSocialInput');
+            const rsNitInput = document.getElementById('razonSocialNitInput');
+            if (rsInput) rsInput.value = inc.razon_social_nombre || 'Sin razón social';
+            if (rsNitInput) rsNitInput.value = (inc.razon_social && inc.razon_social.nit) ? inc.razon_social.nit : 'Sin registrar';
+            
+            // Inicializar fallbacks desde los datos del cliente
+            _fallbackEpsId = data.cliente ? data.cliente.eps_id : null;
+            _fallbackPensionId = data.cliente ? data.cliente.pension_id : null;
 
             // Contrato — inyectar la opción actual en el select para que quede seleccionada
             const csEl = document.getElementById('contratoSelect');
@@ -481,6 +617,47 @@ function abrirModalEditar(id){
                     infoBox.style.display = 'block';
                 }
             }
+
+            // Cargar todos los contratos del cliente en segundo plano para autoselección de EPS/ARL/AFP
+            _contratosData = [];
+            _clienteEpsId = null;
+            _clienteArlId = null;
+            _clienteAfpId = null;
+            fetch(`/admin/incapacidades/api/contratos?cedula=${encodeURIComponent(inc.cedula_usuario)}`)
+                .then(r=>r.json()).then(contratos=>{
+                    _contratosData = contratos;
+                    
+                    // Repoblar el select de forma interactiva
+                    const csEl = document.getElementById('contratoSelect');
+                    if (csEl) {
+                        csEl.innerHTML = '<option value="">Sin contrato especifico</option>';
+                        contratos.forEach(c=>{
+                            const vigente = c.estado === 'vigente';
+                            const estadoEmoji = vigente ? '🟢' : '🔴';
+                            const rsNombre = c.razon_social_nombre || 'Sin razón social';
+                            const opt = document.createElement('option');
+                            opt.value = c.id;
+                            opt.textContent = `${estadoEmoji} Contrato #${c.id} — ${c.estado.toUpperCase()} (${c.fecha_ingreso?.substring(0,10)||''}) — [${rsNombre}]`;
+                            if (c.id == inc.contrato_id) {
+                                opt.selected = true;
+                            }
+                            if (vigente) {
+                                opt.style.color = '#059669';
+                                opt.style.fontWeight = '600';
+                            } else {
+                                opt.style.color = '#ef4444';
+                            }
+                            csEl.appendChild(opt);
+                        });
+                    }
+                    
+                    const c = contratos.find(x => x.id == inc.contrato_id);
+                    if (c) {
+                        _clienteEpsId = c.eps_id || null;
+                        _clienteArlId = c.arl_id || null;
+                        _clienteAfpId = c.pension_id || null;
+                    }
+                });
 
             // Encargado
             const qrSel = document.getElementById('quienRecibeSelect');
@@ -1670,7 +1847,7 @@ function buscarCliente(val){
                 box.innerHTML = data.map(c=>{
                     const emp = (c.empresa_nombre||'').replace(/'/g,"\\'");
                     const nom = `${c.primer_nombre||''} ${c.primer_apellido||''}`.trim().replace(/'/g,"\\'");
-                    return `<div onclick="seleccionarCliente('${c.cedula}','${nom}','${emp}')"
+                    return `<div onclick="seleccionarCliente('${c.cedula}','${nom}','${emp}', ${c.eps_id || 'null'}, ${c.pension_id || 'null'})"
                          style="padding:.45rem .75rem;cursor:pointer;font-size:.82rem;border-bottom:1px solid #f1f5f9"
                          onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
                         <strong>${c.cedula}</strong> \u2014 ${c.primer_nombre||''} ${c.primer_apellido||''}
@@ -1686,15 +1863,20 @@ function buscarCliente(val){
 let _contratosData = [];
 let _clienteEpsId  = null;
 let _clienteArlId  = null;
+let _clienteAfpId  = null;
+let _fallbackEpsId = null;
+let _fallbackPensionId = null;
 let _clienteNombre = '';
 let _empresaNombre = '';
 
-function seleccionarCliente(cedula, nombre, empresaNombre){
+function seleccionarCliente(cedula, nombre, empresaNombre, clienteEpsId = null, clientePensionId = null){
     document.getElementById('cedulaInput').value = cedula;
     document.getElementById('nombreCliente').value = nombre;
     document.getElementById('clienteSugerencias').style.display='none';
     _clienteNombre = nombre;
     _empresaNombre = empresaNombre || '';
+    _fallbackEpsId = clienteEpsId;
+    _fallbackPensionId = clientePensionId;
     // Poblar Quien Remite inmediatamente con afiliado y empresa
     const qrSel = document.getElementById('quienRemiteSelect');
     if(qrSel){
@@ -1710,31 +1892,54 @@ function seleccionarCliente(cedula, nombre, empresaNombre){
             let primeraVigente = null;
             contratos.forEach(c=>{
                 const vigente = c.estado === 'vigente';
+                const estadoEmoji = vigente ? '🟢' : '🔴';
+                const rsNombre = c.razon_social_nombre || 'Sin razón social';
                 const opt = document.createElement('option');
                 opt.value = c.id;
-                opt.textContent = `#${c.id} - ${c.estado.charAt(0).toUpperCase()+c.estado.slice(1)} (${c.fecha_ingreso?.substring(0,10)||''})`;
-                if(vigente){ opt.style.color='#059669'; opt.style.fontWeight='600'; if(!primeraVigente) primeraVigente = c.id; }
+                opt.textContent = `${estadoEmoji} Contrato #${c.id} — ${c.estado.toUpperCase()} (${c.fecha_ingreso?.substring(0,10)||''}) — [${rsNombre}]`;
+                if(vigente){ 
+                    opt.style.color='#059669'; 
+                    opt.style.fontWeight='600'; 
+                    if(!primeraVigente) primeraVigente = c.id; 
+                } else {
+                    opt.style.color='#ef4444';
+                }
                 sel.appendChild(opt);
             });
             if(primeraVigente){ sel.value = primeraVigente; contratoSeleccionado(sel); }
+            else if(contratos.length > 0){ sel.value = contratos[0].id; contratoSeleccionado(sel); }
         });
 }
 
 
 function contratoSeleccionado(sel){
+    console.log('contratoSeleccionado disparado con valor:', sel.value);
+    console.log('Colección _contratosData actual:', _contratosData);
     const id = parseInt(sel.value);
-    const c  = _contratosData.find(x=>x.id===id);
+    const c  = _contratosData.find(x=>x.id==sel.value);
+    console.log('Contrato encontrado:', c);
     const boxOk   = document.getElementById('contratoInfoBox');
     const boxWarn = document.getElementById('contratoInfoBoxInactivo');
     const txtOk   = document.getElementById('contratoInfoText');
     const txtWarn = document.getElementById('contratoInfoTextInactivo');
+    
+    const rsInput = document.getElementById('razonSocialInput');
+    const rsNitInput = document.getElementById('razonSocialNitInput');
+    
     if(c){
         const rsH = document.getElementById('razonSocialHidden');
         if(rsH) rsH.value = c.razon_social_id || '';
-        _clienteEpsId = c.eps_id || null;
+        _clienteEpsId = c.eps_id || _fallbackEpsId || null;
         _clienteArlId = c.arl_id || null;
-        // rsNombre es solo para mostrar en el info box — NO sobreescribe _empresaNombre
+        _clienteAfpId = c.pension_id || _fallbackPensionId || null;
+        
+        console.log('Entidades resueltas para autocompletado — EPS:', _clienteEpsId, 'ARL:', _clienteArlId, 'AFP:', _clienteAfpId);
+        
         const rsNombre = c.razon_social_nombre || 'Sin razón social';
+        const rsNit    = c.razon_social_nit    || 'Sin registrar';
+        if(rsInput) rsInput.value = rsNombre;
+        if(rsNitInput) rsNitInput.value = rsNit;
+        
         const salario  = c.salario ? '$'+Number(c.salario).toLocaleString('es-CO') : 'No registrado';
         const txt = `${rsNombre} — Ingreso: ${c.fecha_ingreso?.substring(0,7)||'?'} — Salario: ${salario}`;
         if(c.estado === 'vigente'){
@@ -1744,9 +1949,12 @@ function contratoSeleccionado(sel){
             if(boxWarn){ boxWarn.style.display='block'; if(txtWarn) txtWarn.textContent=txt; }
             if(boxOk) boxOk.style.display='none';
         }
+        
         const tipoEnt = document.getElementById('tipoEntidadSelect')?.value;
         if(tipoEnt === 'eps' && _clienteEpsId) actualizarListaEntidades('eps', _clienteEpsId);
-        if(tipoEnt === 'arl' && _clienteArlId) actualizarListaEntidades('arl', _clienteArlId);
+        else if(tipoEnt === 'arl' && _clienteArlId) actualizarListaEntidades('arl', _clienteArlId);
+        else if(tipoEnt === 'afp' && _clienteAfpId) actualizarListaEntidades('afp', _clienteAfpId);
+        
         // Quien Remite: usa _empresaNombre (empresa real del cliente), NO razón social
         const qrSel = document.getElementById('quienRemiteSelect');
         if(qrSel){
@@ -1754,7 +1962,11 @@ function contratoSeleccionado(sel){
                 + (_empresaNombre ? `<option value="${_empresaNombre}">${_empresaNombre} (Empresa)</option>` : '');
         }
     } else {
-        _clienteEpsId = null;
+        _clienteEpsId = _fallbackEpsId || null;
+        _clienteArlId = null;
+        _clienteAfpId = _fallbackPensionId || null;
+        if(rsInput) rsInput.value = '';
+        if(rsNitInput) rsNitInput.value = '';
         if(boxOk)   boxOk.style.display='none';
         if(boxWarn) boxWarn.style.display='none';
     }
@@ -1820,7 +2032,12 @@ function actualizarListaEntidades(tipo, selId=null){
     const lista = listas[tipo]||[];
     sel.innerHTML = '<option value="">Seleccionar...</option>';
     lista.forEach(e=>{ sel.innerHTML+=`<option value="${e.id}" ${selId&&e.id==selId?'selected':''}>${e.nombre}</option>`; });
-    if(tipo === 'eps' && _clienteEpsId && !selId) sel.value = _clienteEpsId;
+    
+    if(!selId){
+        if(tipo === 'eps' && _clienteEpsId) sel.value = _clienteEpsId;
+        if(tipo === 'arl' && _clienteArlId) sel.value = _clienteArlId;
+        if(tipo === 'afp' && _clienteAfpId) sel.value = _clienteAfpId;
+    }
 }
 
 

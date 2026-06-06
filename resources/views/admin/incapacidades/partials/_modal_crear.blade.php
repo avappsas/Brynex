@@ -52,6 +52,8 @@
                     </div>
                 </div>
 
+
+
                 {{-- Info box contrato vigente (RS + salario) --}}
                 <div id="contratoInfoBox"
                      style="display:none;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;
@@ -128,6 +130,18 @@
 
                 {{-- Tipo Entidad + Entidad en una fila --}}
                 <div class="section-title" style="margin-top:.7rem">🏦 Entidad Responsable</div>
+                
+                {{-- Inputs informativos de Razón Social y NIT --}}
+                <div style="display:grid;grid-template-columns:3fr 2fr;gap:.6rem;margin-bottom:.65rem">
+                    <div class="form-group">
+                        <label>Razón Social</label>
+                        <input type="text" id="razonSocialInput" readonly style="background:#f8fafc;color:#475569;font-weight:500" placeholder="Sin contrato seleccionado">
+                    </div>
+                    <div class="form-group">
+                        <label>NIT Razón Social</label>
+                        <input type="text" id="razonSocialNitInput" readonly style="background:#f8fafc;color:#475569;font-weight:500" placeholder="Sin registrar">
+                    </div>
+                </div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">
                     <div class="form-group">
                         <label>Tipo Entidad *</label>

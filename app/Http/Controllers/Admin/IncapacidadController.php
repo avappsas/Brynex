@@ -360,8 +360,9 @@ class IncapacidadController extends Controller
             ->where('cedula', $inc->cedula_usuario)
             ->select('cedula', 'primer_nombre', 'segundo_nombre',
                      'primer_apellido', 'segundo_apellido',
-                     'celular', 'correo', 'cod_empresa')
+                     'celular', 'correo', 'cod_empresa', 'eps_id', 'pension_id')
             ->first();
+
 
         // Empresa del cliente
         $empresa = null;
@@ -972,7 +973,7 @@ class IncapacidadController extends Controller
             ->where('c.cedula', 'like', '%' . $cedula . '%')
             ->select('c.cedula', 'c.primer_nombre', 'c.segundo_nombre',
                      'c.primer_apellido', 'c.segundo_apellido',
-                     'c.celular', 'c.cod_empresa',
+                     'c.celular', 'c.cod_empresa', 'c.eps_id', 'c.pension_id',
                      'e.empresa as empresa_nombre')
             ->distinct()
             ->limit(10)
@@ -996,7 +997,8 @@ class IncapacidadController extends Controller
             ->orderByDesc('c.fecha_ingreso')
             ->get(['c.id', 'c.cedula', 'c.fecha_ingreso', 'c.estado',
                    'c.razon_social_id', 'rs.razon_social as razon_social_nombre',
-                   'c.eps_id', 'c.arl_id', 'c.salario']);
+                   'rs.nit as razon_social_nit',
+                   'c.eps_id', 'c.arl_id', 'c.pension_id', 'c.salario']);
 
         return response()->json($contratos);
     }
