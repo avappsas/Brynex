@@ -6,7 +6,7 @@ use Carbon\Carbon;
 $meses=['Enero','Febrero','Marzo','Abril','Mayo','Junio',
         'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 $fmt   = fn($v) => '$'.number_format($v ?? 0, 0, ',', '.');
-$esGrupo = $grupoNp && $grupoNp->count() > 0;
+$esGrupo = $grupoNp && $grupoNp->count() > 0 && !request()->boolean('individual');
 $filas   = $esGrupo ? $grupoNp : collect([$factura]);
 
 // Empresa (factura siempre a nombre de la empresa, no del trabajador)
@@ -489,6 +489,9 @@ $estadoCls = fn($e) => match($e) {
 
 {{-- Botonera (no se imprime) --}}
 <div class="no-print" style="max-width:1150px;margin:0 auto .65rem;display:flex;gap:.5rem;justify-content:flex-end;flex-wrap:wrap;">
+    @if($grupoNp && $grupoNp->count() > 1 && request()->boolean('individual'))
+    <a href="{{ route('admin.facturacion.recibo', $factura->id) }}?modal={{ request()->get('modal', 0) }}" class="btn-a" style="background:#1e3a5f;color:#fff;text-decoration:none;display:inline-flex;align-items:center;gap:.3rem">🏢 Ver Recibo Empresa</a>
+    @endif
     <button class="btn-a" id="btnToggleVista" style="background:#f1f5f9;color:#475569" onclick="toggleVistaDet()">📋 Vista detallada</button>
     <button class="btn-a" style="background:#0f172a;color:#fff" onclick="window.print()">🖨 Imprimir</button>
     @if((auth()->user()?->hasRole('admin') || auth()->user()?->hasRole('superadmin')) && !request()->boolean('no_anular'))
@@ -637,7 +640,10 @@ $tIva += $vIvaG; $tOtros += $vOtrG;
 <tr>
     <td style="text-align:center;color:#94a3b8;font-weight:700;font-size:.72rem">{{ $idx+1 }}</td>
     <td>
-        <div style="font-weight:700;font-size:.78rem;color:#0f172a">{{ $nom ?: '—' }}</div>
+        <div style="font-weight:700;font-size:.78rem;color:#0f172a;display:flex;align-items:center;gap:.35rem">
+            {{ $nom ?: '—' }}
+            <a href="{{ route('admin.facturacion.recibo', $f->id) }}?modal={{ request()->get('modal', 0) }}&individual=1" class="no-print" title="Ver recibo individual" style="text-decoration:none;font-size:.85rem;cursor:pointer">👤</a>
+        </div>
         <div style="font-size:.63rem;color:#94a3b8">CC {{ $f->cedula }}</div>
     </td>
     <td>
@@ -850,6 +856,8 @@ $sal1 = (int)($factura->contrato?->salario ?? 0);
 $aliadoObj  = \App\Models\Aliado::find($factura->aliado_id);
 $logoAliado = $aliadoObj?->logo ? asset('storage/'.$aliadoObj->logo) : null;
 $nomAliado  = $aliadoObj?->nombre ?? $aliadoObj?->razon_social ?? 'BryNex';
+
+$empresaCliente = $cli1?->empresa ?? ($cli1?->cod_empresa ? \App\Models\Empresa::find($cli1->cod_empresa) : null);
 @endphp
 
 {{-- HEADER TIPO FACTURA (con margen superior) --}}
@@ -871,7 +879,14 @@ $nomAliado  = $aliadoObj?->nombre ?? $aliadoObj?->razon_social ?? 'BryNex';
             {{-- Con razón social → DEPENDIENTE --}}
             <div style="font-size:1.1rem;font-weight:900;color:#0f172a;line-height:1.1">{{ $nom1 ?: 'CC '.$factura->cedula }}</div>
             <div style="font-size:.68rem;color:#64748b;margin-top:.12rem">C.C. {{ $factura->cedula }}</div>
-            <div style="font-size:.65rem;font-weight:800;color:#1d4ed8;text-transform:uppercase;letter-spacing:.07em;margin-top:.2rem">Dependiente</div>
+            <div style="margin-top:.28rem">
+                <span style="font-size:.62rem;font-weight:800;color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe;padding:.15rem .5rem;border-radius:20px;text-transform:uppercase;letter-spacing:.05em;display:inline-block">Dependiente</span>
+            </div>
+            @if($empresaCliente)
+            <div style="margin-top:.24rem">
+                <span style="font-size:.62rem;font-weight:800;color:#1e3a5f;background:#e8f0fe;border:1px solid #93c5fd;padding:.15rem .5rem;border-radius:20px;text-transform:uppercase;letter-spacing:.05em;display:inline-block">Facturado a la empresa: {{ $empresaCliente->empresa }}</span>
+            </div>
+            @endif
         @else
             {{-- Sin razón social → INDEPENDIENTE --}}
             <div style="font-size:1.1rem;font-weight:900;color:#0f172a;line-height:1.1">{{ $nom1 ?: 'CC '.$factura->cedula }}</div>
@@ -918,6 +933,18 @@ $nomAliado  = $aliadoObj?->nombre ?? $aliadoObj?->razon_social ?? 'BryNex';
     <div class="fact-cliente-row">
         <span class="fact-cliente-lbl">Nombres</span>
         <span class="fact-cliente-val">{{ $nom1 }}</span>
+    </div>
+    @endif
+
+    @if($empresaCliente)
+    <div class="fact-cliente-row">
+        <span class="fact-cliente-lbl">Empresa</span>
+        <span class="fact-cliente-val" style="color:#1d4ed8">{{ $empresaCliente->empresa }}</span>
+    </div>
+    @elseif($rs1)
+    <div class="fact-cliente-row">
+        <span class="fact-cliente-lbl">Razón Social</span>
+        <span class="fact-cliente-val" style="color:#1d4ed8">{{ $rs1 }}</span>
     </div>
     @endif
 

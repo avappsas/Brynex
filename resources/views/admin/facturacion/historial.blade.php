@@ -239,7 +239,7 @@ table.hi-tbl{width:100%;border-collapse:collapse;font-size:.77rem}
                     <div style="display:flex;gap:.3rem;align-items:center;flex-wrap:wrap">
                         {{-- Recibo — pasa datos del plano para mostrarlo en el header del modal --}}
                         <button onclick="abrirRecibo(
-                                    '{{ route('admin.facturacion.recibo', $f->id) }}?modal=1',
+                                    '{{ route('admin.facturacion.recibo', $f->id) }}?modal=1&individual=1',
                                     {{ $f->plano ? json_encode($f->plano) : 'null' }},
                                     '{{ ($meses[$f->mes] ?? '') . ' ' . $f->anio }}'
                                 )"
