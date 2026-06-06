@@ -353,6 +353,7 @@ class IncapacidadController extends Controller
             'documentos.user',
             'prorrogas.gestiones.user',
             'prorrogas.documentos',
+            'abonos.bancoCuenta',
         ])->findOrFail($id);
 
         // Datos del cliente
@@ -412,7 +413,17 @@ class IncapacidadController extends Controller
             'tipo'    => 'required|string|in:llamada,correo,whatsapp,portal,otro',
             'tramite' => 'required|string',
             'alcance' => 'nullable|string|in:esta_incapacidad,toda_la_familia', // default: esta_incapacidad
+            
+            // Opcionales para pago al afiliado (estado pagada_afiliado)
+            'forma_pago'          => 'nullable|string|in:transferencia_bancaria,efectivo',
+            'banco_cuenta_id'     => 'nullable|integer',
+            'valor_pago_afiliado' => 'nullable|numeric|min:0',
+            'fecha_pago_afiliado' => 'nullable|date',
+            'descuento_admon'     => 'nullable|numeric|min:0',
+            'descuento_4x1000'    => 'nullable|numeric|min:0',
+            'descuento_otros'     => 'nullable|numeric|min:0',
         ]);
+
 
         $inc    = Incapacidad::findOrFail($id);
         $alcance = $request->input('alcance', 'esta_incapacidad');
@@ -522,6 +533,71 @@ class IncapacidadController extends Controller
                         'updated_at'      => now(),
                     ]);
                 }
+
+                // Si pagada_afiliado, registrar abono pago_cliente + gasto admin tipo pago_incapacidad
+                if ($nuevoEstado === 'pagada_afiliado' && $request->filled('valor_pago_afiliado')) {
+                    $valorNeto = $request->valor_pago_afiliado;
+                    $fechaPago = $request->fecha_pago_afiliado ?? now()->toDateString();
+                    $formaPago = $request->forma_pago ?? 'transferencia_bancaria';
+                    $bancoId   = $request->banco_cuenta_id ?: null;
+                    
+                    $admon     = $request->input('descuento_admon', 0);
+                    $x1000     = $request->input('descuento_4x1000', 0);
+                    $otros     = $request->input('descuento_otros', 0);
+                    $valorBruto = (float)$valorNeto + (float)$admon + (float)$x1000 + (float)$otros;
+
+                    $obsAbono = "Pago al afiliado (Neto: \${$valorNeto} · Admon: \${$admon} · 4x1000: \${$x1000} · Otros: \${$otros}) — Incapacidad #{$incActualizar->id}";
+
+                    // 1. Guardar abono tipo pago_cliente
+                    DB::table('abonos_incapacidades')->insert([
+                        'aliado_id'       => $incActualizar->aliado_id,
+                        'incapacidad_id'  => $incActualizar->id,
+                        'razon_social_id' => $incActualizar->razon_social_id ?? null,
+                        'tipo'            => 'pago_cliente',
+                        'valor'           => $valorNeto,
+                        'fecha'           => $fechaPago,
+                        'banco_cuenta_id' => $bancoId,
+                        'usuario_id'      => Auth::id(),
+                        'observacion'     => $obsAbono,
+                        'created_at'      => now(),
+                        'updated_at'      => now(),
+                    ]);
+
+                    // 2. Obtener el nombre del cliente/afiliado para el gasto
+                    $clienteObj = DB::table('clientes')->where('cedula', $incActualizar->cedula_usuario)->first();
+                    $nombreCliente = $clienteObj 
+                        ? trim("{$clienteObj->primer_nombre} " . ($clienteObj->segundo_nombre ? "{$clienteObj->segundo_nombre} " : "") . "{$clienteObj->primer_apellido}")
+                        : $incActualizar->cedula_usuario;
+
+                    // 3. Crear Gasto administrativo en la tabla gastos
+                    // Esto descontará automáticamente el banco_origen_id en los informes de Consignacion::saldoBanco()
+                    DB::table('gastos')->insert([
+                        'aliado_id'       => $incActualizar->aliado_id,
+                        'usuario_id'      => Auth::id(),
+                        'cuadre_id'       => null,
+                        'fecha'           => $fechaPago,
+                        'tipo'            => 'pago_incapacidad',
+                        'descripcion'     => "Pago incapacidad #{$incActualizar->id} al afiliado (Bruto: \${$valorBruto} - Neto: \${$valorNeto} - Admon: \${$admon} - 4x1000: \${$x1000} - Otros: \${$otros})",
+                        'pagado_a'        => $nombreCliente,
+                        'cc_pagado_a'     => $incActualizar->cedula_usuario,
+                        'forma_pago'      => $formaPago,
+                        'banco_origen_id' => $formaPago === 'transferencia_bancaria' ? $bancoId : null,
+                        'valor'           => $valorNeto, // El valor neto es lo que realmente sale del banco para el afiliado
+                        'recibo_caja'     => null,
+                        'lugar'           => null,
+                        'observacion'     => $obsAbono,
+                        'created_at'      => now(),
+                        'updated_at'      => now(),
+                    ]);
+
+                    // 4. Actualizar la incapacidad con la fecha de pago y estado de pago
+                    $incActualizar->estado_pago = 'pagado_afiliado';
+                    $incActualizar->valor_pago  = $valorNeto;
+                    $incActualizar->fecha_pago  = $fechaPago;
+                    $incActualizar->pagado_a    = 'cliente';
+                    $incActualizar->detalle_pago = $obsAbono;
+                }
+
                 $incActualizar->saveQuietly();
             }
         }

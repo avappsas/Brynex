@@ -40,6 +40,7 @@ class Gasto extends BaseModel
         'otros'                => 'Otros',
         'otro_oficina'         => 'Otro gasto oficina', // legacy
         'otro_admin'           => 'Otro gasto admin',   // legacy
+        'pago_incapacidad'     => 'Pago Incapacidad Afiliado',
         // ADMIN (ocultos del select normal)
         'transferencia_banco'  => 'Pago desde banco',
         'pago_planilla'        => 'Pago Planilla SS',
@@ -50,7 +51,7 @@ class Gasto extends BaseModel
         '💱 Movimientos' => ['efectivo_banco', 'banco_banco'],
         '🏢 Gastos Sede' => ['facturas', 'arriendo', 'papeleria', 'viaticos', 'servicios'],
         '👥 Nómina'      => ['salarios', 'vales', 'comisiones_nomina', 'nomina'],
-        '📦 Otros'       => ['otros', 'otro_oficina', 'otro_admin'],
+        '📦 Otros'       => ['otros', 'otro_oficina', 'otro_admin', 'pago_incapacidad'],
     ];
 
     // ── Tipos de Nómina (muestran select de usuario) ─────────────────

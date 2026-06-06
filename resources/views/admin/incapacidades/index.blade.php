@@ -1030,7 +1030,7 @@ function _mostrarModalGestion(incId, familia, inc = {}) {
             <h3 style="color:#fff;font-size:1rem;font-weight:700;margin:0">📞 Registrar Gestión</h3>
             <div id="gModalSubtitle" style="font-size:.75rem;color:rgba(255,255,255,.75);margin-top:.1rem">Incapacidad #${incId}</div>
         </div>
-        <button class="btn-close-modal" onclick="document.getElementById('modalGestion').classList.remove('open')">×</button>
+        <button class="btn-close-modal" onclick="cerrarModalGestion()">×</button>
     </div>
     <div class="modal-body" style="display:flex;flex-direction:column;gap:.75rem">
 
@@ -1076,6 +1076,75 @@ function _mostrarModalGestion(incId, familia, inc = {}) {
             </div>
         </div>
 
+        <div id="gPanelPagoAfiliado" style="display:none;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:.75rem .9rem">
+            <div style="font-size:.72rem;font-weight:700;color:#15803d;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.6rem">
+                🏦 Registrar Pago al Afiliado
+            </div>
+            <div style="display:flex;flex-direction:column;gap:.55rem">
+                <!-- Cuenta de origen -->
+                <div class="form-group" style="margin:0">
+                    <label style="font-weight:600;font-size:.8rem">Cuenta Bancaria de Origen</label>
+                    <input type="text" id="gCuentaOrigenAfiliado" class="form-control" readonly style="background:#f8fafc;color:#475569;font-weight:500">
+                    <input type="hidden" id="gBancoOrigenIdAfiliado" value="">
+                </div>
+                
+                <!-- Valores y deducciones -->
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem">
+                    <div class="form-group" style="margin:0">
+                        <label style="font-weight:600;font-size:.8rem">Valor Recibido EPS *</label>
+                        <input type="number" id="gValorRecibidoEps" class="form-control" readonly style="background:#f8fafc;color:#475569;font-weight:600">
+                    </div>
+                    <div class="form-group" style="margin:0">
+                        <label style="font-weight:600;font-size:.8rem">Fecha de Pago *</label>
+                        <input type="date" id="gFechaPagoAfiliado" class="form-control">
+                    </div>
+                </div>
+
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.4rem">
+                    <div class="form-group" style="margin:0">
+                        <label style="font-weight:600;font-size:.76rem">Descuento Admon</label>
+                        <input type="number" id="gDescuentoAdmon" class="form-control" value="0" min="0" oninput="_calcularNetoAfiliado()">
+                    </div>
+                    <div class="form-group" style="margin:0">
+                        <label style="font-weight:600;font-size:.76rem">Descuento 4x1000</label>
+                        <input type="number" id="gDescuento4x1000" class="form-control" value="0" min="0" oninput="_calcularNetoAfiliado()">
+                    </div>
+                    <div class="form-group" style="margin:0">
+                        <label style="font-weight:600;font-size:.76rem">Otros Descuentos</label>
+                        <input type="number" id="gDescuentoOtros" class="form-control" value="0" min="0" oninput="_calcularNetoAfiliado()">
+                    </div>
+                </div>
+
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem">
+                    <div class="form-group" style="margin:0">
+                        <label style="font-weight:600;font-size:.8rem">Forma de Pago *</label>
+                        <select id="gFormaPagoAfiliado" class="form-control" onchange="_cambioFormaPagoAfiliado(this.value)">
+                            <option value="transferencia_bancaria">🏦 Transferencia Bancaria</option>
+                            <option value="efectivo">💵 Efectivo</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin:0">
+                        <label style="font-weight:600;font-size:.8rem;color:#15803d">Neto a Transferir</label>
+                        <input type="number" id="gValorPagoAfiliado" class="form-control" readonly style="background:#f0fdf4;color:#166534;font-weight:700">
+                    </div>
+                </div>
+
+                <!-- Foto del comprobante de soporte para el gasto -->
+                <div class="form-group" style="margin:.3rem 0 0">
+                    <label style="font-size:.78rem;font-weight:600">Soporte del Gasto / Transferencia <span style="color:#94a3b8">(opcional)</span></label>
+                    <div id="_mFotoZoneAfiliado" onclick="document.getElementById('_mFotoInputAfiliado').click()"
+                        style="border:2px dashed #bbf7d0;border-radius:8px;padding:.6rem;text-align:center;
+                               cursor:pointer;font-size:.78rem;color:#15803d;background:#f9fdfa;margin-top:.25rem"
+                        ondragover="event.preventDefault()" ondrop="_dropFotoAfiliado(event)">
+                        <div id="_mFotoPreviewAfiliado">📷 Haz clic, arrastra o <kbd style="background:#e2e8f0;padding:.1rem .3rem;border-radius:4px;font-size:.85em">Ctrl+V</kbd> para pegar comprobante</div>
+                    </div>
+                    <input type="file" id="_mFotoInputAfiliado" accept="image/*,application/pdf" style="display:none"
+                        onchange="_previewFotoAfiliado(this)">
+                </div>
+            </div>
+        </div>
+
+
         <div id="gCamposRadicada" style="display:none;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:.65rem .85rem">
             <div style="font-size:.72rem;font-weight:700;color:#065f46;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.5rem">📋 Datos del Radicado</div>
             <div id="gCamposRadicadaInner">
@@ -1093,7 +1162,7 @@ function _mostrarModalGestion(incId, familia, inc = {}) {
         </div>
     </div>
     <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="document.getElementById('modalGestion').classList.remove('open')">Cancelar</button>
+        <button class="btn btn-secondary" onclick="cerrarModalGestion()">Cancelar</button>
         <button class="btn btn-primary" onclick="enviarGestion(${incId})">💾 Guardar Gestión</button>
     </div>`;
 
@@ -1113,23 +1182,27 @@ function _mostrarModalGestion(incId, familia, inc = {}) {
         const sel = document.getElementById('gEstado');
         if (sel) {
             window._gToggle = (val) => {
-                // Normalizar: si val='' (opcion "no cambiar"), usar el estado actual del inc seleccionado
                 const alcEl2 = document.getElementById('gAlcance');
                 const alcVal2 = alcEl2 ? alcEl2.value : '';
                 let selEstado = val;
-                if (!selEstado) {
-                    // Usar el estado del miembro seleccionado en el alcance
-                    if (alcVal2.startsWith('incapacidad_')) {
-                        const tId2 = parseInt(alcVal2.replace('incapacidad_', ''));
-                        selEstado = (window._familiaEstadosMap || {})[tId2] || estadoActual;
-                    } else {
-                        selEstado = estadoActual;
-                    }
+                
+                let incEstadoActual = estadoActual;
+                if (alcVal2.startsWith('incapacidad_')) {
+                    const tId2 = parseInt(alcVal2.replace('incapacidad_', ''));
+                    incEstadoActual = (window._familiaEstadosMap || {})[tId2] || estadoActual;
                 }
-                const alerta   = document.getElementById('gAlertaCierre');
-                const radicado = document.getElementById('gCamposRadicada');
-                const pagoRS   = document.getElementById('gPanelPagoRS');
+                
+                if (!selEstado) {
+                    selEstado = incEstadoActual;
+                }
+
+                const alerta       = document.getElementById('gAlertaCierre');
+                const radicado     = document.getElementById('gCamposRadicada');
+                const pagoRS       = document.getElementById('gPanelPagoRS');
+                const pagoAfiliado = document.getElementById('gPanelPagoAfiliado');
+
                 if (alerta) alerta.style.display = selEstado === 'cierre_exitoso' ? 'block' : 'none';
+                
                 if (radicado) {
                     radicado.style.display = selEstado === 'radicada' ? 'block' : 'none';
                     if (selEstado === 'radicada') {
@@ -1153,9 +1226,21 @@ function _mostrarModalGestion(incId, familia, inc = {}) {
                             </div>`;
                     }
                 }
+                
+                // Mostrar Pago RS solo si el nuevo estado es pagada_razon_social y NO lo estaba previamente
                 if (pagoRS) {
-                    pagoRS.style.display = selEstado === 'pagada_razon_social' ? 'block' : 'none';
-                    if (selEstado === 'pagada_razon_social') _cargarCuentasRS(incId);
+                    const debeMostrarRS = selEstado === 'pagada_razon_social' && incEstadoActual !== 'pagada_razon_social';
+                    pagoRS.style.display = debeMostrarRS ? 'block' : 'none';
+                    if (debeMostrarRS) _cargarCuentasRS(incId);
+                }
+
+                // Mostrar Pago al Afiliado solo si el nuevo estado es pagada_afiliado y NO lo estaba previamente
+                if (pagoAfiliado) {
+                    const debeMostrarAfiliado = selEstado === 'pagada_afiliado' && incEstadoActual !== 'pagada_afiliado';
+                    pagoAfiliado.style.display = debeMostrarAfiliado ? 'block' : 'none';
+                    if (debeMostrarAfiliado) {
+                        _cargarDatosPagoAfiliado(inc, incId);
+                    }
                 }
             };
             window._gToggle(sel.value);
@@ -1579,8 +1664,9 @@ function enviarGestion(incId) {
         alcance = 'esta_incapacidad';
     }
 
-    const estadoNuevo = document.getElementById('gEstado').value || null;
-    const esPagoRS    = estadoNuevo === 'pagada_razon_social';
+    const estadoNuevo    = document.getElementById('gEstado').value || null;
+    const esPagoRS       = estadoNuevo === 'pagada_razon_social';
+    const esPagoAfiliado = estadoNuevo === 'pagada_afiliado';
 
     const body = {
         tipo:            document.getElementById('gTipo').value,
@@ -1592,11 +1678,18 @@ function enviarGestion(incId) {
         fecha_radicado:  estadoNuevo === 'radicada' ? (document.getElementById('gFechaRadicado')?.value || null) : null,
         // Pago a Razón Social
         forma_pago_rs:   esPagoRS ? (document.getElementById('gFormaPagoRS')?.value || null) : null,
-        banco_cuenta_id: esPagoRS ? (document.getElementById('gBancoCuentaId')?.value || null) : null,
+        banco_cuenta_id: esPagoRS ? (document.getElementById('gBancoCuentaId')?.value || null) : (esPagoAfiliado ? (document.getElementById('gBancoOrigenIdAfiliado')?.value || null) : null),
         valor_pago_rs:   esPagoRS ? (document.getElementById('gValorPagoRS')?.value || null) : null,
         fecha_pago_rs:   esPagoRS ? (document.getElementById('gFechaPagoRS')?.value || null) : null,
         ref_pago_rs:     esPagoRS ? (document.getElementById('gRefPagoRS')?.value || null) : null,
-        _token:          TOKEN,
+        // Pago al Afiliado (Gasto)
+        forma_pago:          esPagoAfiliado ? (document.getElementById('gFormaPagoAfiliado')?.value || null) : null,
+        valor_pago_afiliado: esPagoAfiliado ? (document.getElementById('gValorPagoAfiliado')?.value || null) : null,
+        fecha_pago_afiliado: esPagoAfiliado ? (document.getElementById('gFechaPagoAfiliado')?.value || null) : null,
+        descuento_admon:     esPagoAfiliado ? (document.getElementById('gDescuentoAdmon')?.value || 0) : 0,
+        descuento_4x1000:    esPagoAfiliado ? (document.getElementById('gDescuento4x1000')?.value || 0) : 0,
+        descuento_otros:     esPagoAfiliado ? (document.getElementById('gDescuentoOtros')?.value || 0) : 0,
+        _token:              TOKEN,
     };
 
     // Validar campos de radicado solo si el input existe (no hay radicado previo)
@@ -1610,6 +1703,18 @@ function enviarGestion(incId) {
     if (esPagoRS) {
         if (!body.forma_pago_rs) { alert('Selecciona la forma en que se recibió el pago.'); return; }
         if (!body.valor_pago_rs || Number(body.valor_pago_rs) <= 0) { alert('Ingresa el valor recibido.'); return; }
+    }
+
+    // Validar pago al afiliado
+    if (esPagoAfiliado) {
+        if (body.forma_pago === 'transferencia_bancaria' && !body.banco_cuenta_id) {
+            alert('No se detectó la cuenta bancaria de origen (Razón Social) asignada.');
+            return;
+        }
+        if (body.valor_pago_afiliado === null || Number(body.valor_pago_afiliado) < 0) {
+            alert('El valor neto a transferir al afiliado no es válido.');
+            return;
+        }
     }
 
     const btn = document.querySelector('#modalGestion .btn-primary');
@@ -1626,7 +1731,7 @@ function enviarGestion(incId) {
     }).then(({ d, status }) => {
         if (btn) { btn.disabled = false; btn.textContent = '💾 Guardar Gestión'; }
         if (d.ok) {
-            // Foto comprobante
+            // Foto comprobante Razón Social
             if (d.consignacion_id && window._rsFotoFile) {
                 const fd = new FormData();
                 fd.append('imagen', window._rsFotoFile);
@@ -1634,9 +1739,17 @@ function enviarGestion(incId) {
                 fetch(`/admin/facturacion/consignacion/${d.consignacion_id}/imagen`, { method: 'POST', body: fd }).catch(() => {});
                 window._rsFotoFile = null;
             }
+            // Foto comprobante Afiliado (Gasto)
+            if (d.gasto_id && window._afiliadoFotoFile) {
+                const fd = new FormData();
+                fd.append('imagen', window._afiliadoFotoFile);
+                fd.append('_token', TOKEN);
+                fetch(`/admin/informes/gastos/${d.gasto_id}/imagen`, { method: 'POST', body: fd }).catch(() => {});
+                window._afiliadoFotoFile = null;
+            }
             // Mensaje de éxito
             alert('✅ Gestión guardada correctamente');
-            document.getElementById('modalGestion').classList.remove('open');
+            cerrarModalGestion();
             // Recargar detalle del padre y abrir pestaña Prórrogas si se guardó en una prórroga
             const detalleEl  = document.getElementById('modalDetalle');
             const detalleId  = parseInt(detalleEl?.dataset?.incId || incId);
@@ -1663,6 +1776,144 @@ function enviarGestion(incId) {
 }
 
 
+
+
+function cerrarModalGestion() {
+    document.getElementById('modalGestion')?.classList.remove('open');
+    if (window._afiliadoPasteHandler) {
+        document.removeEventListener('paste', window._afiliadoPasteHandler);
+        window._afiliadoPasteHandler = null;
+    }
+    window._afiliadoFotoFile = null;
+}
+
+function _cargarDatosPagoAfiliado(inc, incId) {
+    const abonoEps = (inc.abonos || []).find(a => a.tipo === 'pago_eps');
+    const today = new Date().toISOString().substring(0,10);
+    
+    document.getElementById('gFechaPagoAfiliado').value = today;
+    document.getElementById('gDescuentoAdmon').value = 0;
+    document.getElementById('gDescuentoOtros').value = 0;
+    document.getElementById('gFormaPagoAfiliado').value = 'transferencia_bancaria';
+    
+    // Limpiar vista previa de la foto al cargar
+    const prev = document.getElementById('_mFotoPreviewAfiliado');
+    if (prev) prev.innerHTML = '📷 Haz clic, arrastra o Ctrl+V para pegar soporte';
+    window._afiliadoFotoFile = null;
+    
+    let valorEps = 0;
+    if (abonoEps) {
+        valorEps = Math.round(Number(abonoEps.valor || 0));
+        document.getElementById('gValorRecibidoEps').value = valorEps;
+        document.getElementById('gDescuento4x1000').value = Math.round(valorEps * 0.004);
+        
+        document.getElementById('gBancoOrigenIdAfiliado').value = abonoEps.banco_cuenta_id || '';
+        if (abonoEps.banco_cuenta) {
+            document.getElementById('gCuentaOrigenAfiliado').value = `${abonoEps.banco_cuenta.banco} · ****${(abonoEps.banco_cuenta.numero_cuenta || '').slice(-4)} (${abonoEps.banco_cuenta.nombre})`;
+        } else {
+            document.getElementById('gCuentaOrigenAfiliado').value = 'Cuenta no registrada en abono';
+        }
+        _calcularNetoAfiliado();
+    } else {
+        valorEps = Math.round(Number(inc.valor_esperado || 0));
+        document.getElementById('gValorRecibidoEps').value = valorEps;
+        document.getElementById('gDescuento4x1000').value = Math.round(valorEps * 0.004);
+        
+        document.getElementById('gCuentaOrigenAfiliado').value = 'Buscando cuenta de Razón Social...';
+        document.getElementById('gBancoOrigenIdAfiliado').value = '';
+        
+        fetch(`/admin/incapacidades/${incId}/cuentas-rs`)
+            .then(r => r.json()).then(d => {
+                if (d.ok && d.cuentas && d.cuentas.length > 0) {
+                    const c = d.cuentas[0];
+                    document.getElementById('gBancoOrigenIdAfiliado').value = c.id;
+                    document.getElementById('gCuentaOrigenAfiliado').value = `${c.banco} · ****${(c.numero_cuenta||'').slice(-4)} (${c.nombre})`;
+                } else {
+                    document.getElementById('gCuentaOrigenAfiliado').value = 'Sin cuenta asignada a Razón Social';
+                }
+                _calcularNetoAfiliado();
+            }).catch(() => {
+                document.getElementById('gCuentaOrigenAfiliado').value = 'Error al consultar cuentas';
+                _calcularNetoAfiliado();
+            });
+    }
+
+    // Configurar listener para Ctrl+V en este panel
+    if (window._afiliadoPasteHandler) {
+        document.removeEventListener('paste', window._afiliadoPasteHandler);
+    }
+    window._afiliadoPasteHandler = (e) => {
+        const pagoAfiliado = document.getElementById('gPanelPagoAfiliado');
+        if (!pagoAfiliado || pagoAfiliado.style.display === 'none') return;
+        
+        const items = e.clipboardData?.items;
+        if (!items) return;
+        for (const item of items) {
+            if (item.type.startsWith('image/')) {
+                const file = item.getAsFile();
+                if (!file) continue;
+                const dt = new DataTransfer();
+                dt.items.add(file);
+                const inp = document.getElementById('_mFotoInputAfiliado');
+                if (inp) { inp.files = dt.files; _previewFotoAfiliado(inp); }
+                
+                const zone = document.getElementById('_mFotoZoneAfiliado');
+                if (zone) {
+                    zone.style.borderColor = '#22c55e';
+                    zone.style.background  = '#f0fdf4';
+                    setTimeout(() => {
+                        if (zone) { zone.style.borderColor = '#bbf7d0'; zone.style.background = '#f0fdf4'; }
+                    }, 800);
+                }
+                e.preventDefault();
+                break;
+            }
+        }
+    };
+    document.addEventListener('paste', window._afiliadoPasteHandler);
+}
+
+function _calcularNetoAfiliado() {
+    const bruto = Number(document.getElementById('gValorRecibidoEps').value || 0);
+    const admon = Number(document.getElementById('gDescuentoAdmon').value || 0);
+    const x1000 = Number(document.getElementById('gDescuento4x1000').value || 0);
+    const otros = Number(document.getElementById('gDescuentoOtros').value || 0);
+    
+    const neto = bruto - admon - x1000 - otros;
+    document.getElementById('gValorPagoAfiliado').value = neto >= 0 ? neto : 0;
+}
+
+function _cambioFormaPagoAfiliado(val) {
+    const cuentaInp = document.getElementById('gCuentaOrigenAfiliado');
+    if (val === 'efectivo') {
+        if (cuentaInp) cuentaInp.style.opacity = '0.5';
+    } else {
+        if (cuentaInp) cuentaInp.style.opacity = '1';
+    }
+}
+
+function _previewFotoAfiliado(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const prev = document.getElementById('_mFotoPreviewAfiliado');
+    if (!prev) return;
+    if (file.type.startsWith('image/')) {
+        const url = URL.createObjectURL(file);
+        prev.innerHTML = `<img src="${url}" style="max-height:80px;border-radius:6px;object-fit:contain"> <div style="margin-top:.2rem;font-size:.72rem;color:#15803d">${file.name}</div>`;
+    } else {
+        prev.innerHTML = `📄 ${file.name}`;
+    }
+    window._afiliadoFotoFile = file;
+}
+
+function _dropFotoAfiliado(e) {
+    e.preventDefault();
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+    const input = document.getElementById('_mFotoInputAfiliado');
+    const dt = new DataTransfer(); dt.items.add(file); input.files = dt.files;
+    _previewFotoAfiliado(input);
+}
 
 
 // ── Pago al afiliado ─────────────────────────────────────────────────────────
