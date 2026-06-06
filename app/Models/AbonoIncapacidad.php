@@ -14,15 +14,16 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  *                    Indica al aliado cuánto dinero personal tiene comprometido
  *                    y cuánto debe recuperar cuando la EPS pague.
  *
- *   'pago_eps'     → Lo que la EPS/ARL/AFP consignó a la Razón Social.
- *                    SÍ descuenta el saldo_pendiente.
- *                    Genera un registro paralelo en consignaciones.
+ *   'entrada_incapacidad' → Lo que la EPS/ARL/AFP consignó a la Razón Social.
+ *                           SÍ descuenta el saldo_pendiente.
+ *                           Genera un registro paralelo en consignaciones.
+ *                           Aparece en Canal 5 del informe financiero.
  *
  *   'pago_cliente' → Lo que el aliado transfirió al cliente o empresa.
  *                    SÍ descuenta el saldo_pendiente.
  *
  * Fórmulas (calculadas en Incapacidad model):
- *   saldo_pendiente = valor_esperado - SUM(pago_eps) - SUM(pago_cliente)
+ *   saldo_pendiente = valor_esperado - SUM(entrada_incapacidad) - SUM(pago_cliente)
  *   total_prestado  = SUM(abono)   ← informativo
  */
 class AbonoIncapacidad extends BaseModel
@@ -51,9 +52,9 @@ class AbonoIncapacidad extends BaseModel
     // ── Catálogos ─────────────────────────────────────────────────────────────
 
     const TIPOS = [
-        'abono'        => ['label' => '💵 Préstamo/Anticipo del Aliado', 'descuenta' => false, 'color' => 'warning'],
-        'pago_eps'     => ['label' => '📥 Pago recibido de EPS/ARL',     'descuenta' => true,  'color' => 'info'],
-        'pago_cliente' => ['label' => '💸 Pago al Cliente/Empresa',      'descuenta' => true,  'color' => 'success'],
+        'abono'                => ['label' => '💵 Préstamo/Anticipo del Aliado', 'descuenta' => false, 'color' => 'warning'],
+        'entrada_incapacidad'  => ['label' => '📥 Entradas Incapacidad',          'descuenta' => true,  'color' => 'info'],
+        'pago_cliente'         => ['label' => '💸 Pago al Cliente/Empresa',       'descuenta' => true,  'color' => 'success'],
     ];
 
     // ── Relaciones ────────────────────────────────────────────────────────────

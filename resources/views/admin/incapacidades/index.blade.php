@@ -1788,7 +1788,7 @@ function cerrarModalGestion() {
 }
 
 function _cargarDatosPagoAfiliado(inc, incId) {
-    const abonoEps = (inc.abonos || []).find(a => a.tipo === 'pago_eps');
+    const abonoEps = (inc.abonos || []).find(a => a.tipo === 'entrada_incapacidad');
     const today = new Date().toISOString().substring(0,10);
     
     document.getElementById('gFechaPagoAfiliado').value = today;
@@ -2501,7 +2501,7 @@ function verPdfDoc(url, titulo) {
     ov.classList.add('open');
 }
 
-// Cerrar modal de detalle al clic en overlay
+// Cerrar modal de detalle al clic en overlay y abrir automáticamente si viene abrir_incId de la URL
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('modalDetalle')?.addEventListener('click', e => {
         if (e.target === document.getElementById('modalDetalle')) cerrarModal('modalDetalle');
@@ -2509,6 +2509,15 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('modalCrear')?.addEventListener('click', e => {
         if (e.target === document.getElementById('modalCrear')) cerrarModal('modalCrear');
     });
+
+    // Auto-abrir modal si se proporciona abrir_incId en la URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const abrirIncId = urlParams.get('abrir_incId');
+    if (abrirIncId) {
+        setTimeout(() => {
+            verDetalle(abrirIncId);
+        }, 300);
+    }
 });
 </script>
 @endpush

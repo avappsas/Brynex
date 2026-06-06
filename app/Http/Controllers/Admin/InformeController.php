@@ -820,14 +820,78 @@ class InformeController extends Controller
         // Comisiones asesor (acumuladas en facturas del mes)
         $comisionesAsesor = (float)($facturasData->comisiones_asesor ?? 0);
 
-        // Gastos operativos (sin planillas SS, traslados efectivo→banco ni banco→banco)
+        // ── CANAL 5: Gastos de incapacidades (excluidos del Canal 1) ────────
+        $tiposIncapacidad = \App\Models\Gasto::TIPOS_INCAPACIDAD;
+
+        // Gastos operativos (sin planillas SS, traslados, ni gastos de incapacidad)
         $gastosOp = DB::table('gastos')->where('aliado_id',$aid)
             ->where('tipo','!=','pago_planilla')
             ->where('tipo','!=','efectivo_banco')
             ->where('forma_pago','!=','banco_banco')
+            ->whereNotIn('tipo', $tiposIncapacidad)
             ->whereMonth('fecha',$mes)->whereYear('fecha',$anio)
             ->selectRaw('ISNULL(SUM(CAST(valor AS BIGINT)), 0) AS total')
             ->value('total');
+
+        // ── Canal 5: Saldo acumulado histórico (desde junio 2026) ────────────
+        $fechaCorteCanal5 = '2026-06-01';
+        $fechaInicioMesActual = \Carbon\Carbon::createFromDate($anio, $mes, 1)->startOfMonth()->toDateString();
+
+        $canal5EntradaHistorica = (float) DB::table('abonos_incapacidades')
+            ->where('aliado_id', $aid)
+            ->where('tipo', 'entrada_incapacidad')
+            ->where('fecha', '>=', $fechaCorteCanal5)
+            ->where('fecha', '<', $fechaInicioMesActual)
+            ->sum('valor');
+
+        $canal5EgresoHistorico = (float) DB::table('gastos')
+            ->where('aliado_id', $aid)
+            ->whereIn('tipo', $tiposIncapacidad)
+            ->where('fecha', '>=', $fechaCorteCanal5)
+            ->where('fecha', '<', $fechaInicioMesActual)
+            ->sum('valor');
+
+        $canal5SaldoAnterior = $canal5EntradaHistorica - $canal5EgresoHistorico;
+
+        // ── Canal 5: Movimientos del mes actual ──────────────────────────────
+        $canal5EntradaMes = (float) DB::table('abonos_incapacidades')
+            ->where('aliado_id', $aid)
+            ->where('tipo', 'entrada_incapacidad')
+            ->whereMonth('fecha', $mes)->whereYear('fecha', $anio)
+            ->sum('valor');
+
+        $canal5PagoAfiliado = (float) DB::table('gastos')
+            ->where('aliado_id', $aid)->where('tipo', 'pago_incapacidad')
+            ->whereMonth('fecha', $mes)->whereYear('fecha', $anio)
+            ->sum('valor');
+
+        $canal5Cuatropormil = (float) DB::table('gastos')
+            ->where('aliado_id', $aid)->where('tipo', 'cuatropormil_incapacidad')
+            ->whereMonth('fecha', $mes)->whereYear('fecha', $anio)
+            ->sum('valor');
+
+        $canal5OtrosDesc = (float) DB::table('gastos')
+            ->where('aliado_id', $aid)->where('tipo', 'otros_incapacidad')
+            ->whereMonth('fecha', $mes)->whereYear('fecha', $anio)
+            ->sum('valor');
+
+        // Ganancia admon → pasa al Canal 1 como ingreso
+        $canal5GananciaAdmon = (float) DB::table('gastos')
+            ->where('aliado_id', $aid)->where('tipo', 'admon_incapacidad')
+            ->whereMonth('fecha', $mes)->whereYear('fecha', $anio)
+            ->sum('valor');
+
+        $canal5EgresosMes     = $canal5PagoAfiliado + $canal5Cuatropormil + $canal5OtrosDesc + $canal5GananciaAdmon;
+        $canal5SaldoMes       = $canal5EntradaMes - $canal5EgresosMes;
+        $canal5SaldoAcumulado = $canal5SaldoAnterior + $canal5SaldoMes;
+
+        // Hay movimientos de Canal 5 este mes o hay saldo acumulado
+        $canal5Visible = ($canal5EntradaMes > 0 || abs($canal5SaldoAcumulado) > 0
+                          || $canal5EgresosMes > 0 || $canal5SaldoAnterior != 0);
+
+        // ── Sumar ganancia admon de incapacidades al Canal 1 ────────────────
+        $ingresos['admon_incapacidades'] = $canal5GananciaAdmon;
+        $ingresos['total'] += $canal5GananciaAdmon;
 
         // La mora utilizada ya fue descontada de la mora ganada en ingresos, no se debe sumar a los gastos operativos para evitar doble resta
         $gastosOpActualizado = $gastosOp;
@@ -1134,6 +1198,38 @@ class InformeController extends Controller
         $saldoSS           = $ssFuturasRegular + $subtotalRetiros;
         $saldoPlanillas    = $subtotalOperativo - $saldoSS;
 
+        // ── Incapacidades Canal 5: Con movimientos en el mes o con saldo vivo ──
+        $canal5Incapacidades = DB::table('incapacidades')
+            ->where('incapacidades.aliado_id', $aid)
+            ->whereNull('incapacidades.deleted_at')
+            ->select([
+                'incapacidades.id',
+                'incapacidades.cedula_usuario',
+                'incapacidades.estado',
+                'incapacidades.valor_esperado',
+                // Nombre completo del cliente por subconsulta TOP 1 única para evitar duplicidades
+                DB::raw("(SELECT TOP 1 LTRIM(RTRIM(
+                    ISNULL(c.primer_nombre,'') + ' ' + 
+                    ISNULL(c.segundo_nombre,'') + ' ' + 
+                    ISNULL(c.primer_apellido,'') + ' ' + 
+                    ISNULL(c.segundo_apellido,'')
+                )) FROM clientes c WHERE c.cedula = incapacidades.cedula_usuario AND c.aliado_id = {$aid}) as nombre_cliente"),
+                // Total entradas histórico de esta incapacidad
+                DB::raw("(SELECT ISNULL(SUM(valor), 0) FROM abonos_incapacidades WHERE incapacidad_id = incapacidades.id AND tipo = 'entrada_incapacidad') as total_entradas_historico"),
+                // Total pagos histórico al afiliado de esta incapacidad
+                DB::raw("(SELECT ISNULL(SUM(valor), 0) FROM abonos_incapacidades WHERE incapacidad_id = incapacidades.id AND tipo = 'pago_cliente') as total_pagos_historico"),
+                // Entradas de esta incapacidad en el mes seleccionado
+                DB::raw("(SELECT ISNULL(SUM(valor), 0) FROM abonos_incapacidades WHERE incapacidad_id = incapacidades.id AND tipo = 'entrada_incapacidad' AND MONTH(fecha) = {$mes} AND YEAR(fecha) = {$anio}) as entradas_mes"),
+                // Pagos de esta incapacidad en el mes seleccionado
+                DB::raw("(SELECT ISNULL(SUM(valor), 0) FROM abonos_incapacidades WHERE incapacidad_id = incapacidades.id AND tipo = 'pago_cliente' AND MONTH(fecha) = {$mes} AND YEAR(fecha) = {$anio}) as pagos_mes"),
+            ])
+            ->where(function($query) use ($mes, $anio) {
+                $query->whereRaw("(SELECT ISNULL(SUM(valor), 0) FROM abonos_incapacidades WHERE incapacidad_id = incapacidades.id AND tipo = 'entrada_incapacidad' AND MONTH(fecha) = {$mes} AND YEAR(fecha) = {$anio}) > 0")
+                      ->orWhereRaw("(SELECT ISNULL(SUM(valor), 0) FROM abonos_incapacidades WHERE incapacidad_id = incapacidades.id AND tipo = 'pago_cliente' AND MONTH(fecha) = {$mes} AND YEAR(fecha) = {$anio}) > 0")
+                      ->orWhereRaw("(SELECT ISNULL(SUM(valor), 0) FROM abonos_incapacidades WHERE incapacidad_id = incapacidades.id AND tipo = 'entrada_incapacidad') > (SELECT ISNULL(SUM(valor), 0) FROM abonos_incapacidades WHERE incapacidad_id = incapacidades.id AND tipo = 'pago_cliente')");
+            })
+            ->get();
+
         return view('admin.informes.financiero', compact(
             'mes','anio','ingresos','egresos','utilidad',
             'recaudoSS','pagadoSSRaw','saldoSS',
@@ -1150,7 +1246,12 @@ class InformeController extends Controller
             'mesSig', 'anioSig', 'ssPrestamosMesSiguiente',
             'pagadoSSReg', 'pagadoSSRetiro', 'moraUtilizada', 'moraGanancia', 'sobrantePlanilla', 'subtotalRetiros', 'subtotalOperativo',
             'ssActuales', 'distRetiroAcumulado', 'retirosCobradosMesActual', 'totalSScanalRaw', 'ssFuturasRegular', 'saldoPlanillas',
-            'sobrantePlanillaProvisional', 'ssPendientePago', 'cantPlanillasPendientes'
+            'sobrantePlanillaProvisional', 'ssPendientePago', 'cantPlanillasPendientes',
+            // Canal 5 Incapacidades
+            'canal5EntradaMes', 'canal5PagoAfiliado', 'canal5Cuatropormil',
+            'canal5OtrosDesc', 'canal5GananciaAdmon', 'canal5EgresosMes',
+            'canal5SaldoMes', 'canal5SaldoAcumulado', 'canal5SaldoAnterior',
+            'canal5Visible', 'canal5Incapacidades'
         ));
     }
 

@@ -37,21 +37,34 @@ class Gasto extends BaseModel
         'comisiones_nomina'    => 'Comisiones',
         'nomina'               => 'Pago nómina',       // legacy
         // OTROS
-        'otros'                => 'Otros',
-        'otro_oficina'         => 'Otro gasto oficina', // legacy
-        'otro_admin'           => 'Otro gasto admin',   // legacy
-        'pago_incapacidad'     => 'Pago Incapacidad Afiliado',
+        'otros'                    => 'Otros',
+        'otro_oficina'             => 'Otro gasto oficina', // legacy
+        'otro_admin'               => 'Otro gasto admin',   // legacy
+        // INCAPACIDADES (Canal 5 — no afectan Canal 1)
+        'pago_incapacidad'         => 'Pago Incapacidad Afiliado',
+        'cuatropormil_incapacidad' => '4x1000 Incapacidad',
+        'otros_incapacidad'        => 'Otros Desc. Incapacidad',
+        'admon_incapacidad'        => 'Ganancia Admon Incapacidad',
         // ADMIN (ocultos del select normal)
         'transferencia_banco'  => 'Pago desde banco',
         'pago_planilla'        => 'Pago Planilla SS',
     ];
 
-    // ── Agrupación para <optgroup> en el select ──────────────────────
+    // ── Agrupación para <optgroup> en el select ──────────────────────────────────────
     const TIPOS_GRUPOS = [
         '💱 Movimientos' => ['efectivo_banco', 'banco_banco'],
         '🏢 Gastos Sede' => ['facturas', 'arriendo', 'papeleria', 'viaticos', 'servicios'],
         '👥 Nómina'      => ['salarios', 'vales', 'comisiones_nomina', 'nomina'],
-        '📦 Otros'       => ['otros', 'otro_oficina', 'otro_admin', 'pago_incapacidad'],
+        '📦 Otros'       => ['otros', 'otro_oficina', 'otro_admin'],
+        '🏥 Incapacidades' => ['pago_incapacidad', 'cuatropormil_incapacidad', 'otros_incapacidad', 'admon_incapacidad'],
+    ];
+
+    // ── Tipos de incapacidad (excluidos de gastosOp Canal 1) ───────────────────────
+    const TIPOS_INCAPACIDAD = [
+        'pago_incapacidad',
+        'cuatropormil_incapacidad',
+        'otros_incapacidad',
+        'admon_incapacidad',
     ];
 
     // ── Tipos de Nómina (muestran select de usuario) ─────────────────

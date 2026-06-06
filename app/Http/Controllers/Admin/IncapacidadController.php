@@ -569,26 +569,91 @@ class IncapacidadController extends Controller
                         ? trim("{$clienteObj->primer_nombre} " . ($clienteObj->segundo_nombre ? "{$clienteObj->segundo_nombre} " : "") . "{$clienteObj->primer_apellido}")
                         : $incActualizar->cedula_usuario;
 
-                    // 3. Crear Gasto administrativo en la tabla gastos
-                    // Esto descontará automáticamente el banco_origen_id en los informes de Consignacion::saldoBanco()
+                    // 3. Crear Gasto tipo pago_incapacidad (neto al afiliado — Canal 5)
                     DB::table('gastos')->insert([
                         'aliado_id'       => $incActualizar->aliado_id,
                         'usuario_id'      => Auth::id(),
                         'cuadre_id'       => null,
                         'fecha'           => $fechaPago,
                         'tipo'            => 'pago_incapacidad',
-                        'descripcion'     => "Pago incapacidad #{$incActualizar->id} al afiliado (Bruto: \${$valorBruto} - Neto: \${$valorNeto} - Admon: \${$admon} - 4x1000: \${$x1000} - Otros: \${$otros})",
+                        'descripcion'     => "Pago incapacidad #{$incActualizar->id} al afiliado (Neto: \${$valorNeto})",
                         'pagado_a'        => $nombreCliente,
                         'cc_pagado_a'     => $incActualizar->cedula_usuario,
                         'forma_pago'      => $formaPago,
                         'banco_origen_id' => $formaPago === 'transferencia_bancaria' ? $bancoId : null,
-                        'valor'           => $valorNeto, // El valor neto es lo que realmente sale del banco para el afiliado
+                        'valor'           => $valorNeto,
                         'recibo_caja'     => null,
                         'lugar'           => null,
                         'observacion'     => $obsAbono,
                         'created_at'      => now(),
                         'updated_at'      => now(),
                     ]);
+
+                    // 3b. Gasto tipo cuatropormil_incapacidad (Canal 5)
+                    if ((float)$x1000 > 0) {
+                        DB::table('gastos')->insert([
+                            'aliado_id'       => $incActualizar->aliado_id,
+                            'usuario_id'      => Auth::id(),
+                            'cuadre_id'       => null,
+                            'fecha'           => $fechaPago,
+                            'tipo'            => 'cuatropormil_incapacidad',
+                            'descripcion'     => "4x1000 incapacidad #{$incActualizar->id}",
+                            'pagado_a'        => 'DIAN',
+                            'cc_pagado_a'     => null,
+                            'forma_pago'      => $formaPago,
+                            'banco_origen_id' => $formaPago === 'transferencia_bancaria' ? $bancoId : null,
+                            'valor'           => (int)$x1000,
+                            'recibo_caja'     => null,
+                            'lugar'           => null,
+                            'observacion'     => "4x1000 cobrado en pago de incapacidad #{$incActualizar->id}",
+                            'created_at'      => now(),
+                            'updated_at'      => now(),
+                        ]);
+                    }
+
+                    // 3c. Gasto tipo otros_incapacidad (Canal 5)
+                    if ((float)$otros > 0) {
+                        DB::table('gastos')->insert([
+                            'aliado_id'       => $incActualizar->aliado_id,
+                            'usuario_id'      => Auth::id(),
+                            'cuadre_id'       => null,
+                            'fecha'           => $fechaPago,
+                            'tipo'            => 'otros_incapacidad',
+                            'descripcion'     => "Otros descuentos incapacidad #{$incActualizar->id}",
+                            'pagado_a'        => $nombreCliente,
+                            'cc_pagado_a'     => $incActualizar->cedula_usuario,
+                            'forma_pago'      => $formaPago,
+                            'banco_origen_id' => $formaPago === 'transferencia_bancaria' ? $bancoId : null,
+                            'valor'           => (int)$otros,
+                            'recibo_caja'     => null,
+                            'lugar'           => null,
+                            'observacion'     => "Otros descuentos pago incapacidad #{$incActualizar->id}",
+                            'created_at'      => now(),
+                            'updated_at'      => now(),
+                        ]);
+                    }
+
+                    // 3d. Gasto tipo admon_incapacidad (ganancia → Canal 1)
+                    if ((float)$admon > 0) {
+                        DB::table('gastos')->insert([
+                            'aliado_id'       => $incActualizar->aliado_id,
+                            'usuario_id'      => Auth::id(),
+                            'cuadre_id'       => null,
+                            'fecha'           => $fechaPago,
+                            'tipo'            => 'admon_incapacidad',
+                            'descripcion'     => "Ganancia admon incapacidad #{$incActualizar->id}",
+                            'pagado_a'        => null,
+                            'cc_pagado_a'     => null,
+                            'forma_pago'      => 'interno',
+                            'banco_origen_id' => null,
+                            'valor'           => (int)$admon,
+                            'recibo_caja'     => null,
+                            'lugar'           => null,
+                            'observacion'     => "Comisión admon incapacidad #{$incActualizar->id} — pasa a Canal 1",
+                            'created_at'      => now(),
+                            'updated_at'      => now(),
+                        ]);
+                    }
 
                     // 4. Actualizar la incapacidad con la fecha de pago y estado de pago
                     $incActualizar->estado_pago = 'pagado_afiliado';
@@ -675,7 +740,7 @@ class IncapacidadController extends Controller
     public function storeAbono(Request $request, int $id)
     {
         $request->validate([
-            'tipo'  => 'required|in:abono,pago_eps,pago_cliente',
+            'tipo'  => 'required|in:abono,entrada_incapacidad,pago_cliente',
             'valor' => 'required|numeric|min:1',
             'fecha' => 'required|date',
         ]);
@@ -683,9 +748,9 @@ class IncapacidadController extends Controller
         $inc     = Incapacidad::findOrFail($id);
         $alidoId = session('aliado_id_activo') ?? Auth::user()->aliado_id;
 
-        // Si es pago_eps → crear también en consignaciones
+        // Si es entrada_incapacidad → crear también en consignaciones (Canal 5 entrada bancaria)
         $consignacionId = null;
-        if ($request->tipo === 'pago_eps' && $request->banco_cuenta_id) {
+        if ($request->tipo === 'entrada_incapacidad' && $request->banco_cuenta_id) {
             $cons = DB::table('consignaciones')->insertGetId([
                 'aliado_id'      => $alidoId,
                 'incapacidad_id' => $inc->id,

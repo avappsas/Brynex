@@ -290,7 +290,7 @@ class Incapacidad extends BaseModel
 
     /**
      * Saldo pendiente de cobro a la EPS/ARL/AFP.
-     * saldo = valor_esperado - SUM(pago_eps) - SUM(pago_cliente)
+     * saldo = valor_esperado - SUM(entrada_incapacidad) - SUM(pago_cliente)
      *
      * Los préstamos del aliado (tipo='abono') NO descuentan este saldo,
      * son solo informativos para que el aliado sepa cuánto recuperar.
@@ -303,12 +303,12 @@ class Incapacidad extends BaseModel
 
         if ($this->relationLoaded('abonos')) {
             $pagado = $this->abonos
-                ->whereIn('tipo', ['pago_eps', 'pago_cliente'])
+                ->whereIn('tipo', ['entrada_incapacidad', 'pago_cliente'])
                 ->sum('valor');
         } else {
             $pagado = DB::table('abonos_incapacidades')
                 ->where('incapacidad_id', $this->id)
-                ->whereIn('tipo', ['pago_eps', 'pago_cliente'])
+                ->whereIn('tipo', ['entrada_incapacidad', 'pago_cliente'])
                 ->sum('valor');
         }
 
@@ -332,16 +332,16 @@ class Incapacidad extends BaseModel
     }
 
     /**
-     * Total recibido de la EPS/ARL.
+     * Total recibido de incapacidad (entradas de EPS/ARL/AFP).
      */
     public function getTotalPagoEpsAttribute(): float
     {
         if ($this->relationLoaded('abonos')) {
-            return (float) $this->abonos->where('tipo', 'pago_eps')->sum('valor');
+            return (float) $this->abonos->where('tipo', 'entrada_incapacidad')->sum('valor');
         }
         return (float) DB::table('abonos_incapacidades')
             ->where('incapacidad_id', $this->id)
-            ->where('tipo', 'pago_eps')
+            ->where('tipo', 'entrada_incapacidad')
             ->sum('valor');
     }
 

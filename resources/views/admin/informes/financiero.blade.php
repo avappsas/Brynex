@@ -175,6 +175,12 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
                 @endforeach
 
  
+                @if(($ingresos['admon_incapacidades'] ?? 0) > 0)
+                <div class="fc-row" title="Ganancia de administración generada en pagos de incapacidades">
+                    <div class="fc-row-label"><span class="fc-dot" style="background:#f97316;"></span>💊 Admon Incapacidades</div>
+                    <span class="fc-row-val" style="color:#f97316;">{{ $fmt($ingresos['admon_incapacidades']) }}</span>
+                </div>
+                @endif
                 @if($desgloseAdmon['admin_asesor'] > 0)
                 <div class="fc-note" title="Comisión ganada por asesores en planillas — no pagada aún">
                     <span>↳ Comisión asesor <em>(ganada, pendiente)</em></span>
@@ -187,7 +193,7 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
                     <div class="fc-footer-l">Total Administración</div>
                     <div class="fc-footer-sub">admon + seguro + iva + otros + trámites + comisiones + excedentes</div>
                 </div>
-                <div class="fc-footer-v">{{ $fmt($ingresos['planillas'] + $ingresos['tramites'] + $sobrantePlanilla) }}</div>
+                <div class="fc-footer-v">{{ $fmt($ingresos['planillas'] + $ingresos['tramites'] + $sobrantePlanilla + ($ingresos['admon_incapacidades'] ?? 0)) }}</div>
             </div>
         </div>
 
@@ -336,12 +342,200 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
             </div>
         </div>
 
+        {{-- ══ Card Canal 5: INCAPACIDADES (solo si hay movimientos) ══ --}}
+        @if($canal5Visible ?? false)
+        @php
+            $c5SaldoColor  = ($canal5SaldoAcumulado ?? 0) >= 0 ? '#16a34a' : '#dc2626';
+            $c5SaldoBg     = ($canal5SaldoAcumulado ?? 0) >= 0 ? '#f0fdf4' : '#fef2f2';
+            $c5SaldoPrefix = ($canal5SaldoAcumulado ?? 0) >= 0 ? '+' : '';
+        @endphp
+        <div class="fc-card">
+            <div class="fc-header" style="background:linear-gradient(135deg,#78350f,#d97706);">
+                <div class="fc-label">Canal 5</div>
+                <div class="fc-title">🏥 Incapacidades</div>
+            </div>
+            <div class="fc-body">
+
+                {{-- Saldo anterior arrastrado --}}
+                @if(($canal5SaldoAnterior ?? 0) != 0)
+                <div class="fc-section-label">Saldo arrastrado</div>
+                <div class="fc-row">
+                    <div class="fc-row-label"><span class="fc-dot" style="background:#f59e0b;"></span>Saldo mes anterior</div>
+                    <span class="fc-row-val" style="color:#f59e0b;">{{ $fmt($canal5SaldoAnterior) }}</span>
+                </div>
+                @endif
+
+                {{-- Entradas del mes --}}
+                <div class="fc-section-label">Entradas incapacidad</div>
+                <div class="fc-row">
+                    <div class="fc-row-label"><span class="fc-dot" style="background:#16a34a;"></span>Entradas incapacidad</div>
+                    @if(($canal5EntradaMes ?? 0) > 0)
+                        <span class="fc-row-val" style="color:#16a34a;">{{ $fmt($canal5EntradaMes) }}</span>
+                    @else
+                        <span class="fc-row-zero">&mdash;</span>
+                    @endif
+                </div>
+
+                {{-- Egresos del mes --}}
+                <div class="fc-section-label">Egresos del mes</div>
+                <div class="fc-row">
+                    <div class="fc-row-label"><span class="fc-dot" style="background:#dc2626;"></span>Pago al afiliado (neto)</div>
+                    @if(($canal5PagoAfiliado ?? 0) > 0)
+                        <span class="fc-row-val" style="color:#dc2626;">{{ $fmt($canal5PagoAfiliado) }}</span>
+                    @else
+                        <span class="fc-row-zero">&mdash;</span>
+                    @endif
+                </div>
+                @if(($canal5Cuatropormil ?? 0) > 0)
+                <div class="fc-row">
+                    <div class="fc-row-label"><span class="fc-dot" style="background:#f43f5e;"></span>4x1000</div>
+                    <span class="fc-row-val" style="color:#f43f5e;">{{ $fmt($canal5Cuatropormil) }}</span>
+                </div>
+                @endif
+                @if(($canal5OtrosDesc ?? 0) > 0)
+                <div class="fc-row">
+                    <div class="fc-row-label"><span class="fc-dot" style="background:#94a3b8;"></span>Otros descuentos</div>
+                    <span class="fc-row-val" style="color:#94a3b8;">{{ $fmt($canal5OtrosDesc) }}</span>
+                </div>
+                @endif
+
+                {{-- Ganancia admon → Canal 1 --}}
+                @if(($canal5GananciaAdmon ?? 0) > 0)
+                <div class="fc-row" title="Esta ganancia se transfiere automáticamente al Canal 1" style="border-top:1px dashed #e2e8f0;margin-top:.35rem;padding-top:.35rem;">
+                    <div class="fc-row-label"><span class="fc-dot" style="background:#2563eb;"></span>
+                        <span style="font-size:.68rem;">💼 Ganancia Admon <span style="color:#94a3b8;">→ Canal 1</span></span>
+                    </div>
+                    <span class="fc-row-val" style="color:#2563eb;">{{ $fmt($canal5GananciaAdmon) }}</span>
+                </div>
+                @endif
+
+                <div style="margin-top:auto;"></div>
+            </div>
+
+            {{-- Footer: Saldo Acumulado --}}
+            <div style="padding:.85rem 1.15rem;background:{{ $c5SaldoBg }};border-top:2px solid {{ $c5SaldoColor }};border-radius:0 0 16px 16px;display:flex;justify-content:space-between;align-items:center;">
+                <div>
+                    <div style="font-size:.64rem;font-weight:700;text-transform:uppercase;color:{{ $c5SaldoColor }};letter-spacing:.06em;">
+                        {{ ($canal5SaldoAcumulado ?? 0) >= 0 ? 'Saldo Disponible' : '⚠️ Saldo Negativo' }}
+                    </div>
+                    <div style="font-size:.58rem;color:#64748b;margin-top:.1rem;">
+                        {{ ($canal5SaldoAcumulado ?? 0) < 0 ? 'Empresa adelantó pago al afiliado' : 'Pendiente de pagar al afiliado' }}
+                    </div>
+                </div>
+                <div style="font-size:1.18rem;font-weight:900;color:{{ $c5SaldoColor }};font-family:monospace;">
+                    {{ $c5SaldoPrefix }}{{ $fmt($canal5SaldoAcumulado ?? 0) }}
+                </div>
+            </div>
+        </div>
+
+        {{-- ══ Card Ancha: Detalle de Incapacidades en Canal 5 (ocupa 2 columnas) ══ --}}
+        <div class="fc-card" style="grid-column: span 2; display: flex; flex-direction: column;">
+            <div class="fc-header" style="background:linear-gradient(135deg,#475569,#334155);">
+                <div class="fc-label">Movimientos y Saldo</div>
+                <div class="fc-title">📋 Detalle de Incapacidades (Canal 5)</div>
+            </div>
+            <div class="fc-body" style="padding: 0; overflow-y: auto; max-height: 298px; flex: 1;">
+                @if(count($canal5Incapacidades) > 0)
+                    <table style="width:100%; border-collapse:collapse; text-align:left; font-size:.78rem;">
+                        <thead>
+                            <tr style="background:#f8fafc; border-bottom:2px solid #e2e8f0; color:#475569; font-weight:700; text-transform:uppercase; font-size:.65rem; letter-spacing:0.5px; position: sticky; top: 0; z-index: 10;">
+                                <th style="padding:.65rem .85rem;">Incapacidad / Cliente</th>
+                                <th style="padding:.65rem .85rem; text-align:center;">Estado</th>
+                                <th style="padding:.65rem .85rem; text-align:right;">Entras Mes</th>
+                                <th style="padding:.65rem .85rem; text-align:right;">Pagos Mes</th>
+                                <th style="padding:.65rem .85rem; text-align:right;">Saldo Canal 5</th>
+                                <th style="padding:.65rem .85rem; text-align:center;">Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody style="color:#334155;">
+                            @foreach($canal5Incapacidades as $inc)
+                                @php
+                                    $nombreCompleto = $inc->nombre_cliente;
+                                    if (empty($nombreCompleto)) {
+                                        $nombreCompleto = "C.C. {$inc->cedula_usuario}";
+                                    }
+                                    $saldoCanal5 = (float)$inc->total_entradas_historico - (float)$inc->total_pagos_historico;
+                                    
+                                    // Determinar estados y badges
+                                    $estadosLabels = [
+                                        'recibido' => '📬 Recibido',
+                                        'transcripcion_ips' => '🏥 Transcripción',
+                                        'radicada' => '📋 Radicada',
+                                        'negada' => '🚫 Negada',
+                                        'derecho_peticion' => '📄 D. Petición',
+                                        'derecho_peticion_radicado' => '📄 D.P. Radicado',
+                                        'tutela' => '⚖️ Tutela',
+                                        'tutela_radicada' => '📜 Tutela Radicada',
+                                        'rechazado' => '❌ Rechazado',
+                                        'en_liquidacion' => '💰 Liq.',
+                                        'pagada_razon_social' => '🏢 Pag. Razón Social',
+                                        'pagada_afiliado' => '🏦 Pag. Afiliado',
+                                        'cierre_exitoso' => '✅ Cierre Exitoso'
+                                    ];
+                                    $estadoLabel = $estadosLabels[$inc->estado] ?? $inc->estado;
+                                    
+                                    $badgeColors = [
+                                        'recibido' => 'background:#f1f5f9;color:#475569;',
+                                        'transcripcion_ips' => 'background:#e0f2fe;color:#0369a1;',
+                                        'radicada' => 'background:#dbeafe;color:#1d4ed8;',
+                                        'negada' => 'background:#fee2e2;color:#b91c1c;',
+                                        'derecho_peticion' => 'background:#fef3c7;color:#b45309;',
+                                        'derecho_peticion_radicado' => 'background:#fef3c7;color:#b45309;',
+                                        'tutela' => 'background:#fef3c7;color:#b45309;',
+                                        'tutela_radicada' => 'background:#fef3c7;color:#b45309;',
+                                        'rechazado' => 'background:#fee2e2;color:#b91c1c;',
+                                        'en_liquidacion' => 'background:#e0f2fe;color:#0369a1;',
+                                        'pagada_razon_social' => 'background:#e0f2fe;color:#0369a1;',
+                                        'pagada_afiliado' => 'background:#d1fae5;color:#065f46;',
+                                        'cierre_exitoso' => 'background:#d1fae5;color:#065f46;'
+                                    ];
+                                    $badgeStyle = $badgeColors[$inc->estado] ?? 'background:#f1f5f9;color:#475569;';
+                                @endphp
+                                <tr style="border-bottom:1px solid #f1f5f9; cursor: pointer; transition: background-color 0.15s;" 
+                                    onmouseover="this.style.backgroundColor='#f8fafc'" 
+                                    onmouseout="this.style.backgroundColor=''"
+                                    onclick="window.open('{{ route('admin.incapacidades.index') }}?abrir_incId={{ $inc->id }}', '_blank')">
+                                    <td style="padding:.65rem .85rem;">
+                                        <div style="font-weight:700; color:#1e293b;">{{ $nombreCompleto }}</div>
+                                        <div style="font-size:.65rem; color:#64748b; margin-top:.1rem;">
+                                            C.C. {{ $inc->cedula_usuario }} · <b>#{{ $inc->id }}</b>
+                                        </div>
+                                    </td>
+                                    <td style="padding:.65rem .85rem; text-align:center; white-space:nowrap;">
+                                        <span style="display:inline-block; font-size:.65rem; font-weight:700; padding:.15rem .45rem; border-radius:6px; {{ $badgeStyle }}">
+                                            {{ $estadoLabel }}
+                                        </span>
+                                    </td>
+                                    <td style="padding:.65rem .85rem; text-align:right; font-family:monospace; font-weight:600; color:#16a34a; white-space:nowrap;">
+                                        {{ $inc->entradas_mes > 0 ? $fmt($inc->entradas_mes) : '—' }}
+                                    </td>
+                                    <td style="padding:.65rem .85rem; text-align:right; font-family:monospace; font-weight:600; color:#2563eb; white-space:nowrap;">
+                                        {{ $inc->pagos_mes > 0 ? $fmt($inc->pagos_mes) : '—' }}
+                                    </td>
+                                    <td style="padding:.65rem .85rem; text-align:right; font-family:monospace; font-weight:700; color:{{ $saldoCanal5 >= 0 ? '#16a34a' : '#dc2626' }}; white-space:nowrap;">
+                                        {{ $saldoCanal5 > 0 ? '+' : '' }}{{ $fmt($saldoCanal5) }}
+                                    </td>
+                                    <td style="padding:.65rem .85rem; text-align:center;" onclick="event.stopPropagation();">
+                                        <a href="{{ route('admin.incapacidades.index') }}?abrir_incId={{ $inc->id }}" target="_blank" class="btn btn-info btn-sm" style="font-size:.65rem; padding:.2rem .4rem; line-height:1; display:inline-block; border-radius:4px; text-decoration:none; background:#0ea5e9; color:#fff; border:none; box-shadow: 0 1px 2px rgba(0,0,0,0.1);">
+                                            👁 Abrir
+                                        </a>
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                @else
+                    <div style="text-align:center; padding:3rem 1.5rem; color:#94a3b8; font-size:.85rem;">
+                        <div>📭</div>
+                        <div style="margin-top:.5rem;">No hay incapacidades con saldo vivo ni movimientos en este mes.</div>
+                    </div>
+                @endif
+            </div>
+        </div>
+        @endif
+
     </div>
 
-
-
-
-    {{-- Gráficas --}}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;margin-bottom:1.5rem;">
         <div style="background:#fff;border-radius:14px;padding:1.25rem;box-shadow:0 1px 8px rgba(0,0,0,.06);">
             <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;color:#94a3b8;margin-bottom:.85rem;">Tendencia 6 Meses</div>
