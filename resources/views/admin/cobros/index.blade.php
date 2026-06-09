@@ -439,6 +439,7 @@ function sortClassC($col, $cs, $cd) {
 <input type="hidden" name="tipo"   value="{{ $soloInd }}">
 <input type="hidden" name="afil_plan" value="{{ $afilPlan }}">
 <input type="hidden" name="empresa_cliente" value="{{ $empresaCliente }}">
+<input type="hidden" name="tipo_modal" value="{{ $tipoModalFiltro }}">
 <div class="filtros">
     {{-- Buscar --}}
     <input type="text" name="buscar" value="{{ $buscar }}" placeholder="🔍 Nombre o cédula..." style="min-width:180px;">
@@ -498,10 +499,13 @@ function sortClassC($col, $cs, $cd) {
     <th>
         <form method="GET" action="{{ route('admin.cobros.index') }}" style="margin:0">
             @foreach(request()->except(['tipo_modal','page']) as $k => $v)<input type="hidden" name="{{ $k }}" value="{{ $v }}">@endforeach
-            <select name="tipo_modal" onchange="this.form.submit()" class="th-select">
+            <select name="tipo_modal" onchange="this.form.submit()" class="th-select {{ $tipoModalFiltro ? 'activo' : '' }}">
                 <option value="">↓ Modalidad</option>
-                <option value="dependiente">Dependiente</option>
-                <option value="independiente">Independiente</option>
+                @foreach($modalidadesDisponibles as $tm)
+                    <option value="{{ $tm->id }}" {{ $tipoModalFiltro == $tm->id ? 'selected' : '' }}>
+                        {{ $tm->tipo_modalidad ?: $tm->nombre }}
+                    </option>
+                @endforeach
             </select>
         </form>
     </th>

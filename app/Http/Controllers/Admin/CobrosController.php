@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\{Contrato, Factura, BitacoraCobro, ConfiguracionBrynex, ArlTarifa, Empresa, BancoCuenta};
+use App\Models\{Contrato, Factura, BitacoraCobro, ConfiguracionBrynex, ArlTarifa, Empresa, BancoCuenta, TipoModalidad};
 use App\Models\{WhatsappConfig, WhatsappEnvioMasivo, WhatsappEnvioMasivoDetalle, WhatsappMensaje};
 use App\Services\MoraClienteService;
 use Illuminate\Http\Request;
@@ -157,6 +157,16 @@ class CobrosController extends Controller
                        ->orWhere('primer_apellido','like', "%$buscar%"));
             });
         }
+
+        // --- Obtener modalidades únicas presentes en la consulta actual (antes de filtrar por modalidad) ---
+        $modalidadesIds = (clone $q)->pluck('tipo_modalidad_id')->unique()->filter()->values()->toArray();
+        $modalidadesDisponibles = TipoModalidad::whereIn('id', $modalidadesIds)
+            ->orderBy('tipo_modalidad')
+            ->get();
+
+        // Filtro: tipo modalidad
+        $tipoModalFiltro = $request->get('tipo_modal');
+        if ($tipoModalFiltro) $q->where('tipo_modalidad_id', $tipoModalFiltro);
 
         // Ordenamiento
         $sortMap = [
@@ -526,12 +536,15 @@ class CobrosController extends Controller
         $bancos       = BancoCuenta::where('aliado_id', $aliadoId)->where('activo', true)->orderBy('nombre')->get();
         $cuentasCobro = BancoCuenta::paraCobro($aliadoId);
 
+        // Modalidades disponibles pre-calculadas arriba según consulta
+
         return compact(
             'contratos', 'mes', 'anio',
             'totalAdmon', 'totalPendientes', 'sinLlamar', 'prometieronPago', 'totalSS',
             'razonesDisponibles', 'asesoresDisponibles',
             'rsId', 'asesorId', 'buscar', 'soloInd', 'soloPend', 'sort', 'dir',
-            'bancos', 'cuentasCobro', 'afilPlan', 'empresaCliente', 'opcionesEmpresaCliente'
+            'bancos', 'cuentasCobro', 'afilPlan', 'empresaCliente', 'opcionesEmpresaCliente',
+            'tipoModalFiltro', 'modalidadesDisponibles'
         );
     }
 
