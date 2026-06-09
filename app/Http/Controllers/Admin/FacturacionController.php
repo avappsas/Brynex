@@ -1940,15 +1940,22 @@ class FacturacionController extends Controller
         $mesIngreso  = (int)$fIng->month;
         $anioIngreso = (int)$fIng->year;
 
-        // ① Mes de ingreso → afiliación, no hay días de planilla
+        // ① Mes de ingreso → afiliación, no hay días de planilla (excepto I Act que cotiza proporcional)
         if ($mesIngreso === $mes && $anioIngreso === $anio) {
+            if ((int)$contrato->tipo_modalidad_id === 11) {
+                return max(1, 30 - $fIng->day + 1);
+            }
             return 0;
         }
 
-        // ② Mes siguiente al ingreso → primera planilla: días activos del mes de ingreso
+        // ② Mes siguiente al ingreso → primera planilla: días activos del mes de ingreso (mes vencido)
+        // Para I Act (ID 11), como ya cotizó proporcional en el propio mes de ingreso, el mes siguiente es completo (30 días).
         $mesAnterior  = $mes === 1 ? 12 : $mes - 1;
         $anioAnterior = $mes === 1 ? $anio - 1 : $anio;
         if ($mesIngreso === $mesAnterior && $anioIngreso === $anioAnterior) {
+            if ((int)$contrato->tipo_modalidad_id === 11) {
+                return 30;
+            }
             return max(1, 30 - $fIng->day + 1);
         }
 
