@@ -446,8 +446,8 @@ class ExcelAportesEnLineaService
                 $sheet->getStyle("{$cl}19:{$cl}{$lastRow}")
                     ->getNumberFormat()->setFormatCode('#,##0');
             }
-            // Porcentajes (cols BA=53, BN=66, CG=85, CJ=88, CL=90)
-            $pctCols = [53, 66, 85, 88, 90];
+            // Porcentajes (cols BA=53, BN=66, CG=85, CJ=88, CL=90, CN=92, CP=94)
+            $pctCols = [53, 66, 85, 88, 90, 92, 94];
             foreach ($pctCols as $ci) {
                 $cl = $this->col($ci);
                 $sheet->getStyle("{$cl}19:{$cl}{$lastRow}")
@@ -468,11 +468,11 @@ class ExcelAportesEnLineaService
         $tipoDoc      = strtoupper(trim($p->tipo_doc ?? 'CC'));
         $esExtranjero = !in_array($tipoDoc, ['CC','TI','RC','SC','NUIP']) ? 'SI' : 'NO';
 
-        // Fechas → ING y RET como SI/NO
+        // Fechas → ING y RET como novedad
         $fechaIng = !empty($p->fecha_ing) ? $p->fecha_ing : null;
         $fechaRet = !empty($p->fecha_ret) ? $p->fecha_ret : null;
-        $esIng    = $fechaIng ? 'SI' : 'NO';
-        $esRet    = $fechaRet ? 'SI' : 'NO';
+        $esIng    = $fechaIng ? 'Todos los sistemas (ARL, AFP, CCF, EPS)' : 'NO';
+        $esRet    = $fechaRet ? 'Todos los sistemas (ARL, AFP, CCF, EPS)' : 'NO';
 
         // Salario integral → SI/NO
         $esIntegral = strtoupper(trim($p->tipo_p ?? '')) === 'I' ? 'SI' : 'NO';
