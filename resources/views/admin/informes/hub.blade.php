@@ -73,6 +73,17 @@
             <div style="font-size:.82rem;color:rgba(255,255,255,.6);margin-top:.2rem;">Historial de cobros mensuales · Saldo pendiente · Cuentas en PDF</div>
         </div>
     </a>
+
+    {{-- Reporte de Ingresos y Retiros (Consolidado Mensual) --}}
+    <a href="{{ route('admin.informes.consolidado_mensual') }}" style="display:flex;align-items:center;gap:1.25rem;background:linear-gradient(135deg,#0d9488,#0f766e);border-radius:14px;padding:1.5rem 1.75rem;text-decoration:none;border:2px solid transparent;box-shadow:0 4px 20px rgba(13,148,136,.3);transition:all .18s;margin-top:1rem;"
+       onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 12px 32px rgba(13,148,136,.4)'"
+       onmouseout="this.style.transform='';this.style.boxShadow='0 4px 20px rgba(13,148,136,.3)'">
+        <div style="font-size:2.5rem;">📈</div>
+        <div>
+            <div style="font-size:1rem;font-weight:700;color:#fff;">Reporte de Ingresos y Retiros</div>
+            <div style="font-size:.82rem;color:rgba(255,255,255,.8);margin-top:.2rem;">Administración y afiliaciones históricas por mes · 6 meses de tendencia</div>
+        </div>
+    </a>
     @endrole
 
 </div>

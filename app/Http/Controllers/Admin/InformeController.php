@@ -2759,6 +2759,138 @@ class InformeController extends Controller
         $nombreArchivo = 'Cuenta_de_Cobro_Brynex_' . str_replace(' ', '_', $cobro->aliado->nombre) . '_' . $cobro->anio . '_' . str_pad($cobro->mes, 2, '0', STR_PAD_LEFT) . '.pdf';
         return $pdf->download($nombreArchivo);
     }
+
+    public function consolidadoMensual()
+    {
+        if (!Auth::user()->hasRole(['admin', 'superadmin', 'contador'])) {
+            abort(403, 'Acceso restringido.');
+        }
+
+        $aid = $this->aliadoId();
+        $nombresMeses = [
+            1 => 'Enero', 2 => 'Febrero', 3 => 'Marzo', 4 => 'Abril',
+            5 => 'Mayo', 6 => 'Junio', 7 => 'Julio', 8 => 'Agosto',
+            9 => 'Septiembre', 10 => 'Octubre', 11 => 'Noviembre', 12 => 'Diciembre'
+        ];
+
+        $meses = [];
+        $fechaIteracion = now()->startOfMonth();
+
+        // Calculamos 7 meses para tener la variación del sexto mes
+        for ($i = 0; $i < 7; $i++) {
+            $mesVal = $fechaIteracion->month;
+            $anioVal = $fechaIteracion->year;
+
+            $primerDia = \Carbon\Carbon::create($anioVal, $mesVal, 1)->startOfDay();
+            $ultimoDia = $primerDia->copy()->endOfMonth();
+
+            // 1. Admon Vigentes (contratos activos en el período, excluyendo los ingresados en este mes)
+            $admonVigentes = DB::table('contratos as c')
+                ->where('c.aliado_id', $aid)
+                ->where('c.fecha_ingreso', '<', $primerDia->toDateString())
+                ->where(function ($q) use ($primerDia) {
+                    $q->where(function ($sub) use ($primerDia) {
+                        $sub->where('c.estado', 'vigente')
+                            ->where(function ($q2) use ($primerDia) {
+                                $q2->whereNull('c.fecha_retiro')
+                                   ->orWhere('c.fecha_retiro', '>=', $primerDia->toDateString());
+                            });
+                    })
+                    ->orWhere(function ($sub) use ($primerDia) {
+                        $sub->where('c.estado', 'retirado')
+                            ->whereNotNull('c.fecha_retiro')
+                            ->where('c.fecha_retiro', '>=', $primerDia->toDateString());
+                    });
+                })
+                ->count();
+
+            // 2. Afiliaciones del Mes (nuevos contratos ingresados en el período por fecha de ingreso)
+            $afilPorFecha = DB::table('contratos as c')
+                ->where('c.aliado_id', $aid)
+                ->where('c.fecha_ingreso', '>=', $primerDia->toDateString())
+                ->where('c.fecha_ingreso', '<=', $ultimoDia->toDateString())
+                ->count();
+
+            // 3. Afiliaciones facturadas
+            $afilFacturadas = DB::table('facturas')
+                ->where('aliado_id', $aid)
+                ->whereNull('deleted_at')
+                ->where('tipo', 'afiliacion')
+                ->where('numero_factura', '>', 0)
+                ->where('mes', $mesVal)
+                ->where('anio', $anioVal)
+                ->count();
+
+            // 4. Retiros
+            $mesAnteriorVal  = $mesVal  === 1 ? 12 : $mesVal  - 1;
+            $anioAnteriorVal = $mesVal  === 1 ? $anioVal - 1 : $anioVal;
+
+            $retiradosRaw = DB::table('contratos as c')
+                ->where('c.aliado_id', $aid)
+                ->where('c.estado', 'retirado')
+                ->where(function ($q) use ($mesVal, $anioVal, $mesAnteriorVal, $anioAnteriorVal) {
+                    $q->where(function ($q1) use ($mesVal, $anioVal) {
+                        $q1->where('c.tipo_modalidad_id', 11)
+                           ->whereMonth('c.fecha_retiro', $mesVal)
+                           ->whereYear('c.fecha_retiro', $anioVal);
+                    })->orWhere(function ($q2) use ($mesAnteriorVal, $anioAnteriorVal) {
+                        $q2->where(function ($q3) {
+                            $q3->whereNull('c.tipo_modalidad_id')
+                               ->orWhere('c.tipo_modalidad_id', '<>', 11);
+                        })
+                        ->whereMonth('c.fecha_retiro', $mesAnteriorVal)
+                        ->whereYear('c.fecha_retiro', $anioAnteriorVal);
+                    });
+                })
+                ->select('c.id',
+                    DB::raw("(SELECT TOP 1 total_ss FROM facturas WHERE contrato_id = c.id AND numero_factura = 0 AND deleted_at IS NULL ORDER BY id DESC) as costo_ss")
+                )
+                ->get();
+
+            $retirosReales = 0;
+            $retirosInformativos = 0;
+            foreach ($retiradosRaw as $r) {
+                if (($r->costo_ss ?? 0) > 0) {
+                    $retirosReales++;
+                } else {
+                    $retirosInformativos++;
+                }
+            }
+
+            $label = $nombresMeses[$mesVal] . ' ' . $anioVal;
+
+            $totalRetiros = $retirosReales + $retirosInformativos;
+
+            $meses[] = [
+                'label'            => $label,
+                'mes'              => $mesVal,
+                'anio'             => $anioVal,
+                'admon_vigentes'   => $admonVigentes,
+                'afil_por_fecha'   => $afilPorFecha,
+                'afil_facturadas'  => $afilFacturadas,
+                'retiros_reales'   => $retirosReales,
+                'retiros_inform'   => $retirosInformativos,
+                'total_retiros'    => $totalRetiros,
+                'total_activos'    => $admonVigentes + $afilPorFecha + $totalRetiros,
+                'neto_periodo'     => $admonVigentes + $afilPorFecha,
+            ];
+
+            $fechaIteracion->subMonth();
+        }
+
+        // Calcular la variación para los primeros 6 meses sobre el Balance Neto
+        for ($k = 0; $k < 6; $k++) {
+            $meses[$k]['variacion'] = $meses[$k]['neto_periodo'] - $meses[$k+1]['neto_periodo'];
+        }
+
+        // Nos quedamos solo con los 6 meses más recientes
+        $mesesFinal = array_slice($meses, 0, 6);
+
+        // Los KPIs del mes actual son el primer elemento
+        $kpisActual = $mesesFinal[0];
+
+        return view('admin.informes.consolidado_mensual', compact('mesesFinal', 'kpisActual'));
+    }
 }
 
 

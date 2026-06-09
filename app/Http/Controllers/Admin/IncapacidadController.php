@@ -314,8 +314,15 @@ class IncapacidadController extends Controller
             $rsNombre = $rs?->razon_social;
         }
 
+        $contratoId = $request->contrato_id ?: $inc->contrato_id;
+        $salarioBase = $inc->salario_base;
+        if ($contratoId && $contratoId != $inc->contrato_id) {
+            $sal = DB::table('contratos')->where('id', $contratoId)->value('salario');
+            $salarioBase = is_numeric($sal) && $sal > 0 ? (float)$sal : $inc->salario_base;
+        }
+
         $inc->update([
-            'contrato_id'             => $request->contrato_id ?: $inc->contrato_id,
+            'contrato_id'             => $contratoId,
             'quien_recibe_id'         => $request->quien_recibe_id ?: $inc->quien_recibe_id,
             'tipo_incapacidad'        => $request->tipo_incapacidad,
             'dias_incapacidad'        => $request->dias_incapacidad,
@@ -335,6 +342,7 @@ class IncapacidadController extends Controller
             'diagnostico'             => $request->diagnostico,
             'concepto_rehabilitacion' => $request->concepto_rehabilitacion,
             'observacion'             => $request->observacion,
+            'salario_base'            => $salarioBase,
         ]);
 
         // Recalcular valor esperado
@@ -379,10 +387,10 @@ class IncapacidadController extends Controller
         $totalValorEsperado = (float) ($inc->valor_esperado ?? 0)
             + (float) $inc->prorrogas->sum('valor_esperado');
 
-        // Total ya pagado (abonos tipo pago_eps en la incapacidad original)
+        // Total ya pagado (abonos tipo entrada_incapacidad en la incapacidad original)
         $totalPagado = DB::table('abonos_incapacidades')
             ->where('incapacidad_id', $inc->id)
-            ->whereIn('tipo', ['pago_eps', 'pago_cliente'])
+            ->whereIn('tipo', ['entrada_incapacidad', 'pago_cliente'])
             ->sum('valor');
 
         // Contar prórrogas con estado NO final (pendientes de gestión)
@@ -522,7 +530,7 @@ class IncapacidadController extends Controller
                         'aliado_id'       => $incActualizar->aliado_id,
                         'incapacidad_id'  => $incActualizar->id,
                         'razon_social_id' => $incActualizar->razon_social_id ?? null,
-                        'tipo'            => 'pago_eps',
+                        'tipo'            => 'entrada_incapacidad',
                         'valor'           => $request->valor_pago_rs,
                         'fecha'           => $request->fecha_pago_rs ?? now()->toDateString(),
                         'banco_cuenta_id' => $request->banco_cuenta_id ?: null,

@@ -229,27 +229,27 @@ tbody td{padding:.6rem .85rem;vertical-align:middle;}
                 $estadoCfg   = \App\Models\Incapacidad::ESTADOS[$estadoGrupo] ?? ['label'=>$estadoGrupo,'color'=>'secondary'];
                 $ult         = $inc->latestGestion;
             @endphp
-            <tr style="{{ $estadoGrupo === 'pagada' ? 'opacity:.65' : '' }}">
-                <td>
+            <tr id="inc-row-{{ $inc->id }}" style="{{ $estadoGrupo === 'pagada' ? 'opacity:.65' : '' }}">
+                <td class="td-semaforo">
                     <span class="semaforo sem-{{ $color }}" title="{{ $diasGestion }} días sin gestión">
                         {{ $icono }}
                     </span>
                     @if($alert180)<br><span class="alerta-180" title="Más de 180 días en EPS">⚠️180d</span>@endif
                 </td>
-                <td>
+                <td class="td-cliente">
                     <div style="font-weight:600;font-size:.83rem">{{ $inc->_nombre_cliente_cache ?? $inc->cedula_usuario }}</div>
                     <div style="font-size:.72rem;color:#64748b">{{ $inc->cedula_usuario }}</div>
                 </td>
-                <td>
+                <td class="td-entidad">
                     <span class="badge badge-secondary">{{ strtoupper($inc->entidad_grupo) }}</span>
                     <div style="font-size:.7rem;color:#64748b;margin-top:.2rem">{{ Str::limit($inc->entidad_nombre,22) }}</div>
                 </td>
-                <td><span class="badge badge-{{ $estadoCfg['color'] }}">{{ $estadoCfg['label'] }}</span></td>
-                <td style="text-align:center">
+                <td class="td-estado"><span class="badge badge-{{ $estadoCfg['color'] }}">{{ $estadoCfg['label'] }}</span></td>
+                <td class="td-dias" style="text-align:center">
                     <strong>{{ $totalDias }}</strong><span style="color:#94a3b8;font-size:.7rem">d</span>
                     <div style="font-size:.68rem;color:#64748b">{{ $inc->fecha_inicio?->format('d/m/y') }}</div>
                 </td>
-                <td style="text-align:right">
+                <td class="td-valor" style="text-align:right">
                     @php
                     $estadosPagados = ['pagada','pagada_afiliado','pagada_razon_social','cierre_exitoso'];
                     $valPendiente = 0;
@@ -262,7 +262,7 @@ tbody td{padding:.6rem .85rem;vertical-align:middle;}
                 <span style="font-weight:700;color:#059669;font-size:.83rem">${{ number_format($valPendiente,0,',','.') }}</span>
                 @else<span style="color:#94a3b8;font-size:.75rem">—</span>@endif
                 </td>
-                <td style="text-align:center">
+                <td class="td-familia" style="text-align:center">
                     @if($numPrr > 0)
                     <span class="badge badge-primary">+{{ $numPrr }} prórr.</span>
                     @php
@@ -274,7 +274,7 @@ tbody td{padding:.6rem .85rem;vertical-align:middle;}
                     @endif
                     @else<span style="color:#94a3b8;font-size:.72rem">Original</span>@endif
                 </td>
-                <td>
+                <td class="td-gestion">
                     @if($ult)
                     <div style="font-size:.72rem;font-weight:600;color:#2563eb">{{ $ult->tipoIcono() }} {{ $ult->tipoLabel() }}</div>
                     <div style="font-size:.68rem;color:#94a3b8">{{ $ult->created_at->format('d/m/y H:i') }}</div>
@@ -398,10 +398,151 @@ function formatFechaLarga(str){
 // ── Modales ──────────────────────────────────────────────────────────────────
 function cerrarModal(id){
     document.getElementById(id).classList.remove('open');
-    if (id === 'modalDetalle') _docsFamiliaLoaded = null;
+    if (id === 'modalDetalle') {
+        _docsFamiliaLoaded = null;
+        const incId = document.getElementById('modalDetalle').dataset.incId;
+        if (incId) {
+            actualizarFilaIncapacidad(incId);
+        }
+    }
     if (id === 'modalCrear') { const p = document.getElementById('editarDocsPanel'); if(p) p.remove(); }
 }
 function abrirModal(id) { document.getElementById(id).classList.add('open'); }
+
+function actualizarFilaIncapacidad(id) {
+    const row = document.getElementById('inc-row-' + id);
+    if (!row) return;
+
+    fetch(`/admin/incapacidades/${id}/show`)
+        .then(r => r.json())
+        .then(data => {
+            if (!data || !data.incapacidad) return;
+            const inc = data.incapacidad;
+
+            // Determinar opacidad de fila según estado
+            const estadosPagados = ['pagada','pagada_afiliado','pagada_razon_social','cierre_exitoso'];
+            if (estadosPagados.includes(inc.estado)) {
+                row.style.opacity = '0.65';
+            } else {
+                row.style.opacity = '1';
+            }
+
+            // 1. Semáforo
+            const semTd = row.querySelector('.td-semaforo');
+            if (semTd) {
+                semTd.innerHTML = `
+                    <span class="semaforo sem-${data.semaforo}" title="${data.dias_gestion} días sin gestión">
+                        ${data.icono}
+                    </span>
+                    ${data.alerta_180 ? '<br><span class="alerta-180" title="Más de 180 días en EPS">⚠️180d</span>' : ''}
+                `;
+            }
+
+            // 2. Estado
+            const configEstados = {
+                recibido:                  {label: '📬 Recibido',                     color: 'secondary'},
+                transcripcion_ips:         {label: '🏥 Transcripción IPS',            color: 'info'},
+                radicada:                  {label: '📋 Radicada',                     color: 'primary'},
+                negada:                    {label: '🚫 Negada',                       color: 'danger'},
+                derecho_peticion:          {label: '📄 Derecho de Petición',          color: 'warning'},
+                derecho_peticion_radicado: {label: '📄 D. Petición Radicado',         color: 'warning'},
+                tutela:                    {label: '⚖️ Tutela',                        color: 'warning'},
+                tutela_radicada:           {label: '📜 Tutela Radicada',              color: 'warning'},
+                rechazado:                 {label: '❌ Rechazado',                    color: 'danger'},
+                en_liquidacion:            {label: '💰 En Liquidación',              color: 'info'},
+                pagada_razon_social:       {label: '🏢 Pagada a Razón Social',       color: 'info'},
+                pagada_afiliado:           {label: '🏦 Pagada al Afiliado',          color: 'success'},
+                cierre_exitoso:            {label: '✅ Cierre Exitoso',              color: 'success'}
+            };
+            const cfg = configEstados[inc.estado] || {label: inc.estado, color: 'secondary'};
+            const estTd = row.querySelector('.td-estado');
+            if (estTd) {
+                estTd.innerHTML = `<span class="badge badge-${cfg.color}">${cfg.label}</span>`;
+            }
+
+            // 3. Días
+            const diasTd = row.querySelector('.td-dias');
+            if (diasTd) {
+                let fIni = '—';
+                if (inc.fecha_inicio) {
+                    const pts = inc.fecha_inicio.substring(0, 10).split('-');
+                    if (pts.length === 3) fIni = `${pts[2]}/${pts[1]}/${pts[0].substring(2, 4)}`;
+                }
+                diasTd.innerHTML = `<strong>${data.familia_dias}</strong><span style="color:#94a3b8;font-size:.7rem">d</span>
+                                    <div style="font-size:.68rem;color:#64748b">${fIni}</div>`;
+            }
+
+            // 4. Valor Esperado / Pendiente
+            let valPendiente = 0;
+            if (!estadosPagados.includes(inc.estado)) {
+                valPendiente += parseFloat(inc.valor_esperado || 0);
+            }
+            if (inc.prorrogas) {
+                inc.prorrogas.forEach(p => {
+                    if (!estadosPagados.includes(p.estado)) {
+                        valPendiente += parseFloat(p.valor_esperado || 0);
+                    }
+                });
+            }
+
+            const valTd = row.querySelector('.td-valor');
+            if (valTd) {
+                if (valPendiente > 0) {
+                    const fmtVal = new Intl.NumberFormat('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(valPendiente);
+                    valTd.innerHTML = `<span style="font-weight:700;color:#059669;font-size:.83rem">$${fmtVal}</span>`;
+                } else {
+                    valTd.innerHTML = `<span style="color:#94a3b8;font-size:.75rem">—</span>`;
+                }
+            }
+
+            // 5. Familia
+            const famTd = row.querySelector('.td-familia');
+            if (famTd) {
+                if (data.num_prorrogas > 0) {
+                    famTd.innerHTML = `
+                        <span class="badge badge-primary">+${data.num_prorrogas} prórr.</span>
+                        ${data.prorrogas_pendientes > 0 ? '<span style="display:block;font-size:.68rem;color:#d97706;font-weight:700;margin-top:.15rem">⚠️ Prórr. activa</span>' : ''}
+                    `;
+                } else {
+                    famTd.innerHTML = `<span style="color:#94a3b8;font-size:.72rem">Original</span>`;
+                }
+            }
+
+            // 6. Última gestión
+            const gestTd = row.querySelector('.td-gestion');
+            if (gestTd) {
+                let ult = null;
+                if (inc.gestiones && inc.gestiones.length > 0) {
+                    ult = inc.gestiones.reduce((a, b) => new Date(a.created_at) > new Date(b.created_at) ? a : b);
+                }
+                if (ult) {
+                    const icon = {llamada:'📞',correo:'📧',whatsapp:'💬',portal:'🌐',radico:'📋',tutela:'⚖️',
+                                  transcripcion_ips:'🏥',respuesta_entidad:'📩',autorizacion:'✅',
+                                  liquidacion:'💰',pago_afiliado:'🏦',otro:'📝'}[ult.tipo] || '📝';
+                    const labels = {llamada:'Llamada',correo:'Correo',whatsapp:'WhatsApp',portal:'Portal Web',radico:'Radicado',tutela:'Tutela',
+                                    transcripcion_ips:'Transcripción IPS',respuesta_entidad:'Respuesta Entidad',autorizacion:'Autorización',
+                                    liquidacion:'Liquidación',pago_afiliado:'Pago Afiliado',otro:'Otro'};
+                    const label = labels[ult.tipo] || ult.tipo;
+                    
+                    let fGest = '—';
+                    if (ult.created_at) {
+                        const dateObj = new Date(ult.created_at);
+                        const meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+                        const h = String(dateObj.getHours()).padStart(2, '0');
+                        const m = String(dateObj.getMinutes()).padStart(2, '0');
+                        fGest = `${dateObj.getDate()} ${meses[dateObj.getMonth()]} ${h}:${m}`;
+                    }
+                    
+                    gestTd.innerHTML = `
+                        <div style="font-size:.72rem;font-weight:600;color:#2563eb">${icon} ${label}</div>
+                        <div style="font-size:.68rem;color:#94a3b8">${fGest}</div>
+                    `;
+                } else {
+                    gestTd.innerHTML = `<span style="color:#ef4444;font-size:.72rem">Sin gestión</span>`;
+                }
+            }
+        }).catch(() => {});
+}
 
 function abrirModalCrear(){
     document.getElementById('modalCrearTitle').textContent = '➕ Nueva Incapacidad';

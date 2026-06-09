@@ -234,6 +234,10 @@ class Incapacidad extends BaseModel
      */
     public function calcularValorEsperado(bool $persistir = false): ?float
     {
+        if ($this->salario_base === null || (float)$this->salario_base <= 0) {
+            $this->resolverYGuardarSalario();
+        }
+
         $salario = (float) ($this->salario_base ?? 0);
         $dias    = (int)   ($this->dias_incapacidad ?? 0);
 
