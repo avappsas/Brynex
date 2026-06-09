@@ -1524,6 +1524,30 @@ class FacturacionController extends Controller
                     }
                 }
 
+                // ── Restaurar anticipos aplicados a esta factura ──────────────────
+                // Al anular, los anticipos que se aplicaron en el momento de facturar
+                // deben quedar nuevamente disponibles para ser usados en una re-facturación.
+                \App\Models\Anticipo::where('factura_id', $f->id)->each(function ($ant) use ($aliadoId, $f) {
+                    Bitacora::registrar(
+                        accion:      'updated',
+                        modelo:      'Anticipo',
+                        registroId:  $ant->id,
+                        descripcion: "Anticipo #{$ant->id} revertido a disponible por anulación de factura #{$f->numero_factura}.",
+                        detalle:     [
+                            'valor_aplicado_revertido' => $ant->valor_aplicado,
+                            'estado_anterior'          => $ant->estado,
+                            'factura_id_anulada'       => $f->id,
+                        ],
+                        alidoId: $aliadoId
+                    );
+
+                    $ant->update([
+                        'valor_aplicado' => 0,
+                        'estado'         => \App\Models\Anticipo::ESTADO_DISPONIBLE,
+                        'factura_id'     => null,
+                    ]);
+                });
+
                 // Las consignaciones se eliminan físicamente (quedan en el snapshot de la bitácora)
                 DB::table('consignaciones')->where('factura_id', $f->id)->delete();
                 DB::table('abonos')->where('factura_id', $f->id)->delete();
