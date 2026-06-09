@@ -232,8 +232,8 @@ class FacturacionController extends Controller
             if ($c->es_ind_act_primer_mes === false && $c->cotizacion_calc['ss'] == 0) continue;
             if ((int)$c->tipo_modalidad_id === 15) continue; // ARL: siempre afiliación
             $rs = $c->razonSocial;
-            if (!$rs) continue;
-            $rsNit = (int)($rs->nit ?: $rs->id);
+            $esIndep = $c->esIndependiente() || ($rs && $rs->es_independiente);
+            $rsNit = $esIndep ? (int)$c->cedula : ($rs ? (int)($rs->nit ?: $rs->id) : 0);
             if (!$rsNit) continue;
             // Reutilizar la cotización ya calculada en el map() (cero queries extra)
             $vSS = (int)($c->cotizacion_calc['ss'] ?? 0);
@@ -241,7 +241,7 @@ class FacturacionController extends Controller
             $filasMora[$c->id] = [
                 'contrato_id'  => $c->id,
                 'rs_nit'       => $rsNit,
-                'rs_dia_habil' => $rs->dia_habil ?? null,
+                'rs_dia_habil' => $esIndep ? null : ($rs->dia_habil ?? null),
                 'total_ss'     => $vSS,
                 'mes'          => $mes,
                 'anio'         => $anio,
@@ -560,8 +560,9 @@ class FacturacionController extends Controller
                 } else {
                     if (!$esAfiliacion) {
                         $rs       = $c->razonSocial;
-                        $rsNit    = $rs ? (int)($rs->nit ?: $rs->id) : 0;
-                        $rsDiaH   = $rs ? ($rs->dia_habil ?? null) : null;
+                        $esIndep  = $c->esIndependiente() || ($rs && $rs->es_independiente);
+                        $rsNit    = $esIndep ? (int)$c->cedula : ($rs ? (int)($rs->nit ?: $rs->id) : 0);
+                        $rsDiaH   = $esIndep ? null : ($rs ? ($rs->dia_habil ?? null) : null);
                         if ($rsNit && $totalSS > 0) {
                             $moraInfo   = MoraClienteService::calcular($aliadoId, $rsNit, $rsDiaH, $totalSS, $mes, $anio);
                             $moraCliente = $moraInfo['mora'];
@@ -798,8 +799,9 @@ class FacturacionController extends Controller
                     // Afiliaciones nunca generan mora (no hay pago de planilla)
                     if (!$esAfiliacion) {
                         $rs       = $contrato->razonSocial;
-                        $rsNit    = $rs ? (int)($rs->nit ?: $rs->id) : 0;
-                        $rsDiaH   = $rs ? ($rs->dia_habil ?? null) : null;
+                        $esIndep  = $contrato->esIndependiente() || ($rs && $rs->es_independiente);
+                        $rsNit    = $esIndep ? (int)$contrato->cedula : ($rs ? (int)($rs->nit ?: $rs->id) : 0);
+                        $rsDiaH   = $esIndep ? null : ($rs ? ($rs->dia_habil ?? null) : null);
                         if ($rsNit && $totalSS > 0) {
                             $moraInfo   = MoraClienteService::calcular($aliadoId, $rsNit, $rsDiaH, $totalSS, $mes, $anio);
                             $moraCliente = $moraInfo['mora']; // aplicar tramos automáticamente
@@ -1359,8 +1361,9 @@ class FacturacionController extends Controller
         if (!$esAfiliacion) {
             try {
                 $rs    = $contrato->razonSocial;
-                $rsNit = $rs ? (int)($rs->nit ?: $rs->id) : 0;
-                $rsDia = $rs ? ($rs->dia_habil ?? null) : null;
+                $esIndep = $contrato->esIndependiente() || ($rs && $rs->es_independiente);
+                $rsNit = $esIndep ? (int)$contrato->cedula : ($rs ? (int)($rs->nit ?: $rs->id) : 0);
+                $rsDia = $esIndep ? null : ($rs ? ($rs->dia_habil ?? null) : null);
                 if ($rsNit && $calcSS['ss'] > 0) {
                     $moraInfo = MoraClienteService::calcular($aliadoId, $rsNit, $rsDia, $calcSS['ss'], $mes, $anio);
                     $mora = (int)($moraInfo['mora'] ?? 0);
@@ -1856,8 +1859,9 @@ class FacturacionController extends Controller
     {
         try {
             $rs      = $contrato->razonSocial;
-            $rsNit   = $rs ? (int)($rs->nit ?: $rs->id) : 0;
-            $rsDiaH  = $rs ? ($rs->dia_habil ?? null) : null;
+            $esIndependiente = $contrato->esIndependiente() || ($rs && $rs->es_independiente);
+            $rsNit   = $esIndependiente ? (int)$contrato->cedula : ($rs ? (int)($rs->nit ?: $rs->id) : 0);
+            $rsDiaH  = $esIndependiente ? null : ($rs ? ($rs->dia_habil ?? null) : null);
 
             if (!$rsNit) {
                 return ['mora_cliente' => 0, 'mora_dias' => 0, 'mora_fecha_vence' => null, 'mora_dia_habil' => 0, 'mora_info' => ''];

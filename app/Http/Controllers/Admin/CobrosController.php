@@ -310,8 +310,9 @@ class CobrosController extends Controller
         $moraLoteInput = [];
         foreach ($contratos as $c) {
             $rsObj  = $c->razonSocial;
-            $rsNit  = $rsObj ? (int)($rsObj->nit ?: $rsObj->id) : 0;
-            $rsDiaH = $rsObj ? ($rsObj->dia_habil ?? null) : null;
+            $esIndep = $c->esIndependiente() || ($rsObj && $rsObj->es_independiente);
+            $rsNit  = $esIndep ? (int)$c->cedula : ($rsObj ? (int)($rsObj->nit ?: $rsObj->id) : 0);
+            $rsDiaH = $esIndep ? null : ($rsObj ? ($rsObj->dia_habil ?? null) : null);
             $vSS    = $vSsPorContrato[$c->id] ?? 0;
             $moraLoteInput[] = [
                 '_contrato_id' => $c->id,
@@ -711,8 +712,9 @@ class CobrosController extends Controller
         foreach ($contratosActivos as $c) {
             if (isset($cedulasPagadasEmp[(string)$c->cedula])) continue; // ya pagó
             $rsObj   = $c->razonSocial;
-            $rsNit   = $rsObj ? (int)($rsObj->nit ?: $rsObj->id) : 0;
-            $rsDiaH  = $rsObj ? ($rsObj->dia_habil ?? null) : null;
+            $esIndep = $c->esIndependiente() || ($rsObj && $rsObj->es_independiente);
+            $rsNit   = $esIndep ? (int)$c->cedula : ($rsObj ? (int)($rsObj->nit ?: $rsObj->id) : 0);
+            $rsDiaH  = $esIndep ? null : ($rsObj ? ($rsObj->dia_habil ?? null) : null);
             $vSsCont = (float)($c->salario ?? 0) * 0.285; // estimación ~28.5%
             if ($rsNit && $vSsCont > 0) {
                 $moraEmpLoteInput[] = [

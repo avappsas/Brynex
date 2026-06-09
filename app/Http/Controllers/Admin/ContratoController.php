@@ -384,12 +384,23 @@ class ContratoController extends Controller
         $moraRetiro = 0;
         try {
             $rsRetiro   = $contrato->razonSocial;
-            $rsNitRet   = $rsRetiro ? (int)($rsRetiro->nit ?: $rsRetiro->id) : 0;
-            $rsDiaHRet  = $rsRetiro ? ($rsRetiro->dia_habil ?? null) : null;
+            $esIndep    = $contrato->esIndependiente() || ($rsRetiro && $rsRetiro->es_independiente);
+            $rsNitRet   = $esIndep ? (int)$contrato->cedula : ($rsRetiro ? (int)($rsRetiro->nit ?: $rsRetiro->id) : 0);
+            $rsDiaHRet  = $esIndep ? null : ($rsRetiro ? ($rsRetiro->dia_habil ?? null) : null);
+
             $mesRet     = (int)($validated['mes_plano']  ?? now()->month);
             $anioRet    = (int)($validated['anio_plano'] ?? now()->year);
+
+            // La planilla de mes_plano (periodo cotizado) vence y se paga en el mes siguiente
+            $mesVence   = $mesRet + 1;
+            $anioVence  = $anioRet;
+            if ($mesVence > 12) {
+                $mesVence  = 1;
+                $anioVence++;
+            }
+
             if ($rsNitRet && $totalSsRetiro > 0) {
-                $moraInfo   = MoraClienteService::calcular($alidoId, $rsNitRet, $rsDiaHRet, $totalSsRetiro, $mesRet, $anioRet);
+                $moraInfo   = MoraClienteService::calcular($alidoId, $rsNitRet, $rsDiaHRet, $totalSsRetiro, $mesVence, $anioVence);
                 $moraRetiro = (int) round($moraInfo['mora_real'] ?? 0); // solo el interés real
             }
         } catch (\Throwable) {}

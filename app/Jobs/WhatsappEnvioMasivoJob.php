@@ -258,8 +258,8 @@ class WhatsappEnvioMasivoJob implements ShouldQueue
                         // Estimar mora en lote (fallback)
                         $moraLoteInput = [[
                             '_contrato_id' => $contrato->id,
-                            'rs_nit'       => $contrato->razonSocial ? (int)($contrato->razonSocial->nit ?: $contrato->razonSocial->id) : 0,
-                            'rs_dia_habil' => $contrato->razonSocial ? $contrato->razonSocial->dia_habil : null,
+                            'rs_nit'       => ($contrato->esIndependiente() || ($contrato->razonSocial && $contrato->razonSocial->es_independiente)) ? (int)$contrato->cedula : ($contrato->razonSocial ? (int)($contrato->razonSocial->nit ?: $contrato->razonSocial->id) : 0),
+                            'rs_dia_habil' => ($contrato->esIndependiente() || ($contrato->razonSocial && $contrato->razonSocial->es_independiente)) ? null : ($contrato->razonSocial ? $contrato->razonSocial->dia_habil : null),
                             'total_ss'     => ($esAfil || $esIrAlerta) ? 0 : $vSS,
                             'mes'          => $mesEnvio,
                             'anio'         => $anioEnvio,
