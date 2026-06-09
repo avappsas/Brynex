@@ -1711,10 +1711,15 @@ class FacturacionController extends Controller
                 'saldo'  => $f->saldo_pendiente_prestamo,
             ])->values();
 
+        $targetMes  = $existe ? $mesSiguiente  : $mes;
+        $targetAnio = $existe ? $anioSiguiente : $anio;
+        $diasSugeridos = $this->calcularDias($contrato, $targetMes, $targetAnio);
+
         return response()->json([
             'pagado'                   => $existe,
-            'mes'                      => $existe ? $mesSiguiente  : $mes,
-            'anio'                     => $existe ? $anioSiguiente : $anio,
+            'mes'                      => $targetMes,
+            'anio'                     => $targetAnio,
+            'dias_sugeridos'           => $diasSugeridos,
             'saldo_a_favor'            => $saldo['a_favor']   ?? 0,
             'saldo_pendiente'          => $saldo['pendiente'] ?? 0,
             // Información de gap para advertencia en UI
@@ -1727,7 +1732,7 @@ class FacturacionController extends Controller
             'prestamos_pendientes'     => $prestamosPendientes,
             // ── Mora pre-calculada para el modal ─────────────────────────
             // El JS la inyecta en el campo editable con MF.setMora()
-            ...$this->_calcularMoraParaModal($aliadoId, $contrato, $mesSiguiente ?? $mes, $anioSiguiente ?? $anio),
+            ...$this->_calcularMoraParaModal($aliadoId, $contrato, $targetMes, $targetAnio),
         ]);
     }
 
@@ -1940,22 +1945,31 @@ class FacturacionController extends Controller
         $mesIngreso  = (int)$fIng->month;
         $anioIngreso = (int)$fIng->year;
 
-        // ① Mes de ingreso → afiliación, no hay días de planilla (excepto I Act que cotiza proporcional)
+        // ① Mes de ingreso → afiliación, no hay días de planilla
         if ($mesIngreso === $mes && $anioIngreso === $anio) {
-            if ((int)$contrato->tipo_modalidad_id === 11) {
-                return max(1, 30 - $fIng->day + 1);
-            }
             return 0;
         }
 
-        // ② Mes siguiente al ingreso → primera planilla: días activos del mes de ingreso (mes vencido)
-        // Para I Act (ID 11), como ya cotizó proporcional en el propio mes de ingreso, el mes siguiente es completo (30 días).
+        // ② Mes siguiente al ingreso → primera planilla: días activos del mes de ingreso
         $mesAnterior  = $mes === 1 ? 12 : $mes - 1;
         $anioAnterior = $mes === 1 ? $anio - 1 : $anio;
         if ($mesIngreso === $mesAnterior && $anioIngreso === $anioAnterior) {
+            // EXCEPCIÓN 1: Independiente Activo (11) ya cobró su planilla en el mes de ingreso.
             if ((int)$contrato->tipo_modalidad_id === 11) {
                 return 30;
             }
+            // EXCEPCIÓN 2: Si ya existe una factura de tipo 'planilla' o 'afiliacion' pagada para el mes de ingreso.
+            $existePlanillaIngreso = Factura::where('aliado_id', $contrato->aliado_id)
+                ->where('contrato_id', $contrato->id)
+                ->where('mes', $mesIngreso)
+                ->where('anio', $anioIngreso)
+                ->whereIn('tipo', ['planilla', 'afiliacion'])
+                ->whereIn('estado', ['pagada', 'pre_factura', 'abono', 'prestamo'])
+                ->exists();
+            if ($existePlanillaIngreso) {
+                return 30;
+            }
+
             return max(1, 30 - $fIng->day + 1);
         }
 

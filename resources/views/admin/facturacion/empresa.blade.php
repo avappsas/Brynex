@@ -677,7 +677,7 @@ $totAdmon+=$vAdm;$totIva+=$vIva;$totTotal+=$vTot;$totMora+=$vMora;
 </div>
 
 @push('scripts')
-<script src="{{ asset('js/modal_facturar.js') }}"></script>
+<script src="/js/modal_facturar_v2.js?v={{ time() }}"></script>
 <script>
 const CSRF    = document.querySelector('meta[name="csrf-token"]').content;
 const URL_FAC = '{{ route('admin.facturacion.facturar') }}';

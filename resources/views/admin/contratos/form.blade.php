@@ -1196,7 +1196,7 @@ select:disabled { background:#f1f5f9;color:#1e293b;cursor:not-allowed;opacity:1;
 
 
 @push('scripts')
-<script src="{{ asset('js/modal_facturar.js') }}"></script>
+<script src="/js/modal_facturar_v2.js?v={{ time() }}"></script>
 <script>
 const MODALIDADES_MODO_ARL  = @json($modalidadesModoArl ?? []);
 const MODALIDADES_ARL_LIBRE = @json($modalidadesArlLibre ?? []);
@@ -1441,7 +1441,7 @@ function _initOptsStore() {
 }
 
 // ── Filtrado 1: RS → Modalidades ─────────────────────────────────
-function filtrarModalidades(soloIndependiente) {
+function filtrarModalidades(soloIndependiente, evitarRecalcular = false) {
     const selMod = document.getElementById('sel_modalidad');
     if (!selMod) return;
 
@@ -1474,13 +1474,13 @@ function filtrarModalidades(soloIndependiente) {
         if (alpineComp) { alpineComp.tipoModalidadId = ''; alpineComp.planId = ''; }
     }
     // Filtrar planes y mostrar nota
-    filtrarPlanes(selMod.value);
+    filtrarPlanes(selMod.value, evitarRecalcular);
     const divNota = document.getElementById('nota-plan-modalidad');
     if (divNota) divNota.style.display = (!selMod.value ? 'block' : 'none');
 }
 
 // ── Filtrado 2: Modalidad → Planes ───────────────────────────────
-function filtrarPlanes(modalidadId) {
+function filtrarPlanes(modalidadId, evitarRecalcular = false) {
     const selPlan = document.getElementById('sel_plan');
     if (!selPlan) return;
     const divNota    = document.getElementById('nota-plan-modalidad');
@@ -1600,7 +1600,7 @@ function filtrarPlanes(modalidadId) {
         const alpineComp = document.querySelector('[x-data]')?._x_dataStack?.[0];
         if (alpineComp) {
             alpineComp.planId = String(planesAgregados[0]);
-            alpineComp.recalcular();
+            if (!evitarRecalcular) alpineComp.recalcular();
         }
         bloquearEntidadesPorPlan(String(planesAgregados[0]));
         // Actualizar hidden si rsLock
@@ -1611,7 +1611,7 @@ function filtrarPlanes(modalidadId) {
     }
 }
 
-function actualizarBloqueoArl() {
+function actualizarBloqueoArl(evitarRecalcular = false) {
     const midId   = parseInt(document.querySelector('select[name=tipo_modalidad_id]')?.value || 0);
     const selRS   = document.getElementById('sel_rs');
     const arlSel  = document.getElementById('sel_arl');
@@ -1627,7 +1627,7 @@ function actualizarBloqueoArl() {
     arlSel.style.background = libre ? '#fff' : '#f8fafc';
     if (lbl) lbl.textContent = libre ? '(editable)' : '(de la R.Social)';
     // Restricción de niveles ARL para modalidad id=8 con RS no-independiente
-    actualizarNivelesArl();
+    actualizarNivelesArl(evitarRecalcular);
 }
 
 /**
@@ -1635,7 +1635,7 @@ function actualizarBloqueoArl() {
  * sólo se permiten los niveles de ARL 4 y 5.
  * En cualquier otro caso se restauran todos los niveles (1 al 5).
  */
-function actualizarNivelesArl() {
+function actualizarNivelesArl(evitarRecalcular = false) {
     const selMod    = document.querySelector('select[name=tipo_modalidad_id]');
     const selRS     = document.getElementById('sel_rs');
     const selNivel  = document.querySelector('select[name=n_arl]');
@@ -1670,7 +1670,7 @@ function actualizarNivelesArl() {
     const alpineComp = document.querySelector('[x-data]')?._x_dataStack?.[0];
     if (alpineComp) {
         alpineComp.nivelArl = parseInt(selNivel.value);
-        alpineComp.recalcular();
+        if (!evitarRecalcular) alpineComp.recalcular();
     }
 
     // Indicador visual: marcar el selector con borde si está restringido
@@ -1921,13 +1921,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (selRS?.value) {
         const esIndepRS = selRS.options[selRS.selectedIndex]?.dataset?.independiente === '1';
-        filtrarModalidades(esIndepRS);   // filtra modalidades sin disparar selectOnChange
+        filtrarModalidades(esIndepRS, true);   // filtra modalidades sin disparar selectOnChange ni cotizar
     }
     if (selMod?.value) {
-        filtrarPlanes(selMod.value);     // filtra planes sin limpiar selección
+        filtrarPlanes(selMod.value, true);     // filtra planes sin limpiar selección ni cotizar
     }
 
-    actualizarBloqueoArl();  // incluye actualizarNivelesArl()
+    actualizarBloqueoArl(true);  // incluye actualizarNivelesArl() y evita cotizar
     // ⚡ Asignar ARL de la RS ANTES de bloquearEntidadesPorPlan para que el
     //    estilo se calcule con el valor ya presente (evita borde rojo falso).
     if (ARL_ID_RS && !document.getElementById('sel_arl').value) {
@@ -1952,90 +1952,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const panelOpInit = document.getElementById('panel-operador-planilla');
     if (panelOpInit) panelOpInit.style.display = esIndepInit ? '' : 'none';
 
-    // ── Cotizador inicial: disparo directo con vanilla JS ─────────
-    const cotizarInicial = () => {
-        const fechaInp   = document.querySelector('input[name=fecha_ingreso]')?.value || '';
-        // Calcular dias antes del fetch (igual que Alpine)
-        let diasInit = 30;
-        if (fechaInp) {
-            const f = new Date(fechaInp + 'T00:00:00');
-            const h = new Date();
-            if (f.getFullYear() === h.getFullYear() && f.getMonth() === h.getMonth()) {
-                diasInit = Math.max(1, 30 - f.getDate() + 1);
-            }
-        }
-        // Sincronizar el select de dias
-        const selDias = document.getElementById('sel_dias_cotizar');
-        if (selDias) selDias.value = diasInit;
-
-        const salario     = parseInt(document.getElementById('inp_salario')?.dataset.raw || 0);
-        const planIdVal   = document.getElementById('sel_plan')?.value || '';
-        const modalidadId = document.querySelector('select[name=tipo_modalidad_id]')?.value || '';
-        const nArl        = parseInt(document.querySelector('select[name=n_arl]')?.value || 1);
-        const admon       = parseInt(document.getElementById('inp_admon')?.dataset.raw || 0);
-        const admonAse    = parseInt(document.getElementById('inp_admon_asesor')?.dataset.raw || 0);
-        const seguro      = parseInt(document.getElementById('inp_seguro')?.dataset.raw || 0);
-        const pctCaja     = parseFloat(document.querySelector('select[name=porcentaje_caja]')?.value || 2);
-        const cedula      = document.querySelector('input[name=cedula]')?.value || '';
-
-        if (!salario || !planIdVal) return;
-
-        // Calcular IBC correcto: independiente = 40% con piso en salario mínimo
-        const esIndepInit = MODALIDADES_INDEP.includes(parseInt(modalidadId));
-        let ibcInicial = salario;
-        if (esIndepInit && salario > 0) {
-            const raw40 = Math.round(salario * {{ $pctIbcSugerido }} / 100);
-            ibcInicial  = Math.max(raw40, SALARIO_MINIMO);
-        }
-        // Si Alpine ya calculó el IBC correcto, respetarlo (evitar sobrescribir)
-        const alpineData = document.querySelector('[x-data]')?._x_dataStack?.[0];
-        const ibcAlpine  = alpineData?.ibc;
-        if (ibcAlpine && ibcAlpine > 0 && esIndepInit) ibcInicial = ibcAlpine;
-
-        fetch(URL_COTIZAR, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
-            },
-            body: JSON.stringify({
-                tipo_modalidad_id: modalidadId,
-                plan_id:           planIdVal,
-                n_arl:             nArl,
-                salario:           salario,
-                ibc:               ibcInicial,
-                administracion:    admon,
-                admon_asesor:      admonAse,
-                seguro:            seguro,
-                porcentaje_caja:   pctCaja || 2,
-                dias:              diasInit,
-                cedula
-            }),
-        })
-        .then(r => r.json())
-        .then(d => {
-            const fmt = v => '$' + Math.round(v||0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-            // Solo actualizar si Alpine aún no tomó el control
-            const alpine = document.querySelector('[x-data]')?._x_dataStack?.[0];
-            if (!alpine?.result?.total) {
-                document.querySelectorAll('[x-text="fmt(result.eps)"]').forEach(el => el.textContent = fmt(d.eps));
-                document.querySelectorAll('[x-text="fmt(result.arl)"]').forEach(el => el.textContent = fmt(d.arl));
-                document.querySelectorAll('[x-text="fmt(result.pen)"]').forEach(el => el.textContent = fmt(d.pen));
-                document.querySelectorAll('[x-text="fmt(result.caja)"]').forEach(el => el.textContent = fmt(d.caja));
-                document.querySelectorAll('[x-text="fmt(result.ss)"]').forEach(el => el.textContent = fmt(d.ss));
-                document.querySelectorAll('[x-text="fmt(result.seguro)"]').forEach(el => el.textContent = fmt(d.seguro));
-                document.querySelectorAll('[x-text="fmt(result.admon)"]').forEach(el => el.textContent = fmt(d.admon));
-                document.querySelectorAll('[x-text="fmt(result.iva)"]').forEach(el => el.textContent = fmt(d.iva));
-                document.querySelectorAll('[x-text="fmt(result.total)"]').forEach(el => el.textContent = fmt(d.total));
-            }
-            // IBC: siempre mostrar el calculado (no el salario completo)
-            document.querySelectorAll('[x-text="fmt(ibc)"]').forEach(el => el.textContent = fmt(ibcInicial));
-        })
-        .catch(err => console.error('Cotizador inicial error:', err));
-    };
-
-    // Esperar un poco para que Alpine inicialice también
-    setTimeout(cotizarInicial, 400);
 });
 
 // ── Alpine.js cotizador ──────────────────────────────────────────
@@ -2181,28 +2097,29 @@ function cotizador() {
         //   ③ Cualquier otro mes → 30 (mes completo)
         // Esto permite que al facturar en mayo un contrato que ingresó el 24-abril,
         // se pre-seleccionen 7 días en lugar de 30.
-        calcularDiasDesde(fechaStr) {
+        calcularDiasDesde(fechaStr, mesFacturar = null, anioFacturar = null) {
             if (!fechaStr) { this.diasCotizar = 30; return; }
             const fecha  = new Date(fechaStr + 'T00:00:00'); // evitar timezone
-            const hoy    = new Date();
+            
+            const inpMes = document.getElementById('mf-mes');
+            const inpAnio = document.getElementById('mf-anio');
+            
+            const targetMes  = mesFacturar !== null ? mesFacturar - 1 : (inpMes ? parseInt(inpMes.value) - 1 : new Date().getMonth());
+            const targetAnio = anioFacturar !== null ? anioFacturar : (inpAnio ? parseInt(inpAnio.value) : new Date().getFullYear());
+
             const fAnio  = fecha.getFullYear();
             const fMes   = fecha.getMonth(); // 0-based
-            const hAnio  = hoy.getFullYear();
-            const hMes   = hoy.getMonth();   // 0-based
 
-            // ① Ingresó en el mes actual (I Act mes actual, creación en el mismo mes, etc.)
-            if (fAnio === hAnio && fMes === hMes) {
+            // ① Ingresó en el mes de facturación seleccionado
+            if (fAnio === targetAnio && fMes === targetMes) {
                 const dia = fecha.getDate();
                 this.diasCotizar = Math.max(1, 30 - dia + 1);
             }
-            // ② Ingresó en el mes anterior → primera planilla (mes vencido)
-            // Aplica a: empresa, dependiente, I Venc (id=10)
-            // NO aplica a I Act (id=11): su primera planilla es el mismo mes de ingreso,
-            // así que el mes siguiente ya es una planilla normal de 30 días.
+            // ② Ingresó en el mes anterior al mes de facturación seleccionado
             else {
                 const esIndAct   = parseInt(this.tipoModalidadId || 0) === 11;
-                const mesAntMes  = hMes === 0 ? 11 : hMes - 1;
-                const mesAntAnio = hMes === 0 ? hAnio - 1 : hAnio;
+                const mesAntMes  = targetMes === 0 ? 11 : targetMes - 1;
+                const mesAntAnio = targetMes === 0 ? targetAnio - 1 : targetAnio;
                 if (!esIndAct && fAnio === mesAntAnio && fMes === mesAntMes) {
                     const dia = fecha.getDate();
                     this.diasCotizar = Math.max(1, 30 - dia + 1);
@@ -2320,8 +2237,8 @@ function cotizador() {
             const salRaw  = parseInt(document.getElementById('inp_salario')?.dataset.raw || this.salario || 0);
             if (salRaw > 0 && salRaw !== this.salario) this.salario = salRaw;
             const ibcVal  = (this.esIndependiente && this.ibc > 0) ? this.ibc : (salRaw || this.salario);
-            if (!this.planId || !this.salario) return;
-            fetch(URL_COTIZAR, {
+            if (!this.planId || !this.salario) return Promise.resolve();
+            return fetch(URL_COTIZAR, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -2367,6 +2284,11 @@ function cotizador() {
                     this.diasArl  = d.dias_arl  ?? 0;
                     this.diasAfp  = d.dias_afp  ?? 0;
                     this.diasCaja = d.dias_caja ?? 0;
+                }
+
+                // Sincronizar el modal de facturar si está abierto
+                if (typeof MF !== 'undefined' && document.getElementById('mf-overlay')?.style.display === 'flex') {
+                    MF.actualizarValoresDesdeAlpine();
                 }
             })
             .catch(err => console.warn('Cotizador error:', err));
@@ -2425,6 +2347,20 @@ if (typeof MF !== 'undefined' && FC_CONTRATO_ID) {
             }
             @else
             alert(data.mensaje || 'Factura generada correctamente.');
+            if (data.mes_facturado && data.anio_facturado) {
+                let sigMes = data.mes_facturado + 1;
+                let sigAnio = data.anio_facturado;
+                if (sigMes > 12) { sigMes = 1; sigAnio++; }
+
+                // Pre-establecer en el DOM los nuevos valores de mes y año
+                const inpMes  = document.getElementById('mf-mes');
+                const inpAnio = document.getElementById('mf-anio');
+                if (inpMes)  inpMes.value  = sigMes;
+                if (inpAnio) inpAnio.value = sigAnio;
+
+                // Volver a abrir de forma automática
+                abrirModalFacturarContrato();
+            }
             @endif
         }
     });

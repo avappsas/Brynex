@@ -27,6 +27,7 @@
  */
 
 const MF = (function () {
+    console.log('[MF] modal_facturar.js inicializado y cargado correctamente.');
 
     // ── Estado interno ────────────────────────────────────────────
     let _cfg = {};
@@ -693,7 +694,7 @@ const MF = (function () {
     }
 
     // ── Verificar mes pagado (individual) ─────────────────────────
-    async function _verificarMesPagado() {
+    async function _verificarMesPagado(originalMes = null, originalAnio = null) {
         if (_modo !== 'individual' || !_cfg.contratoId) return;
         const mes = parseInt(el('mf-mes')?.value);
         const anio = parseInt(el('mf-anio')?.value);
@@ -707,15 +708,20 @@ const MF = (function () {
             if (data.pagado) {
                 setVal('mf-mes', data.mes);
                 setVal('mf-anio', data.anio);
-                if (avisoMes) {
-                    avisoMes.style.display = 'block';
-                    avisoMes.style.background = '#fef3c7';
-                    avisoMes.style.borderColor = '#f59e0b';
-                    avisoMes.style.color = '#78350f';
-                    avisoMes.textContent = 'El mes ' + meses[mes - 1] + ' ya está facturado. Facturando ' + meses[data.mes - 1] + ' ' + data.anio;
-                }
+                // Si el mes consultado ya está pagado, volvemos a verificar el período sugerido recursivamente
+                return _verificarMesPagado(originalMes || mes, originalAnio || anio);
             } else {
-                if (avisoMes) avisoMes.style.display = 'none';
+                if (originalMes) {
+                    if (avisoMes) {
+                        avisoMes.style.display = 'block';
+                        avisoMes.style.background = '#fef3c7';
+                        avisoMes.style.borderColor = '#f59e0b';
+                        avisoMes.style.color = '#78350f';
+                        avisoMes.textContent = 'El mes ' + meses[originalMes - 1] + ' ya está facturado. Facturando ' + meses[mes - 1] + ' ' + anio;
+                    }
+                } else {
+                    if (avisoMes) avisoMes.style.display = 'none';
+                }
             }
 
             // ── Aviso de gap (mes sin facturar antes del periodo seleccionado)
@@ -808,6 +814,39 @@ const MF = (function () {
                 `;
             } else {
                 prestPanel.style.display = 'none';
+            }
+
+            // Sincronizar los días de cotización en Alpine con el valor sugerido del servidor
+            const elAlpine = document.querySelector('[x-data]');
+            console.log('[MF DEBUG] elAlpine encontrado:', elAlpine);
+            if (elAlpine) {
+                const alpineComp = elAlpine._x_dataStack?.[0];
+                console.log('[MF DEBUG] alpineComp:', alpineComp);
+                if (alpineComp) {
+                    const diasSugeridos = parseInt(data.dias_sugeridos) || 30;
+                    console.log('[MF DEBUG] Seteando diasCotizar a:', diasSugeridos);
+                    alpineComp.diasCotizar = diasSugeridos;
+                    const sel = document.getElementById('sel_dias_cotizar');
+                    if (sel) sel.value = diasSugeridos;
+                    
+                    try {
+                        console.log('[MF DEBUG] Llamando a alpineComp.recalcular()...');
+                        const p = alpineComp.recalcular();
+                        if (p instanceof Promise) {
+                            console.log('[MF DEBUG] Esperando resolucion de recalcular...');
+                            await p;
+                            console.log('[MF DEBUG] recalcular resuelto.');
+                        } else {
+                            console.log('[MF DEBUG] recalcular se ejecuto de forma sincrona.');
+                        }
+                    } catch (errRecalc) {
+                        console.error('[MF DEBUG] Error al ejecutar alpineComp.recalcular():', errRecalc);
+                    }
+                } else {
+                    console.warn('[MF DEBUG] No se pudo obtener alpineComp de _x_dataStack');
+                }
+            } else {
+                console.warn('[MF DEBUG] No se encontro ningun elemento [x-data]');
             }
 
             recalc();
@@ -1224,11 +1263,21 @@ const MF = (function () {
             setVal('mf-retiro-fecha', fechaStr);
             onRetiroFecha();
         } else {
-            // Restaurar dias del cotizador a 30
-            const diasSel = document.getElementById('sel_dias_cotizar');
-            if (diasSel) {
-                diasSel.value = 30;
-                diasSel.dispatchEvent(new Event('change'));
+            // Restaurar dias del cotizador según el período seleccionado
+            const elAlpine = document.querySelector('[x-data]');
+            const alpineComp = elAlpine ? (window.Alpine && typeof window.Alpine.$data === 'function' ? window.Alpine.$data(elAlpine) : elAlpine._x_dataStack?.[0]) : null;
+            if (alpineComp) {
+                const fechaIng = document.querySelector('input[name=fecha_ingreso]')?.value;
+                const mes  = parseInt(el('mf-mes')?.value  || new Date().getMonth() + 1);
+                const anio = parseInt(el('mf-anio')?.value || new Date().getFullYear());
+                alpineComp.calcularDiasDesde(fechaIng, mes, anio);
+                alpineComp.recalcular();
+            } else {
+                const diasSel = document.getElementById('sel_dias_cotizar');
+                if (diasSel) {
+                    diasSel.value = 30;
+                    diasSel.dispatchEvent(new Event('change'));
+                }
             }
             setText('mf-retiro-dias-num', '—');
         }
@@ -1658,11 +1707,17 @@ const MF = (function () {
                 });
                 if (uploads.length) await Promise.all(uploads);
 
+                // Capturar el período que se acaba de facturar antes de cerrar/resetear
+                const mesFacturado = parseInt(el('mf-mes')?.value);
+                const anioFacturado = parseInt(el('mf-anio')?.value);
+
                 cerrar();
                 // Notificar al contexto padre (onExito maneja cómo mostrar el recibo).
                 // No abrir window.open aquí: cada vista define su propia forma de
                 // mostrar el recibo (modal iframe en empresa.blade.php, etc.).
                 if (typeof _cfg.onExito === 'function') {
+                    data.mes_facturado = mesFacturado;
+                    data.anio_facturado = anioFacturado;
                     _cfg.onExito(data);
                 } else {
                     // Fallback si no hay onExito: abrir en pestaña nueva
@@ -1737,6 +1792,25 @@ const MF = (function () {
         recalc();
     }
 
+    function actualizarValoresDesdeAlpine() {
+        if (_modo !== 'individual') return;
+        const r = (_cfg.getAlpineResult && _cfg.getAlpineResult()) || {};
+        
+        setText('mf-v-eps', fmt(ceil(r.eps || 0)));
+        setText('mf-v-arl', fmt(ceil(r.arl || 0)));
+        setText('mf-v-afp', fmt(ceil(r.pen || 0)));
+        setText('mf-v-caja', fmt(ceil(r.caja || 0)));
+        setText('mf-v-ss', fmt(ceil((r.eps || 0) + (r.arl || 0) + (r.pen || 0) + (r.caja || 0))));
+        setText('mf-v-admon', fmt(ceil(r.admon || 0)));
+        setText('mf-v-seg', fmt(ceil(r.seguro || 0)));
+        setText('mf-v-iva', fmt(ceil(r.iva || 0)));
+
+        _total = Math.ceil((r.eps || 0) + (r.arl || 0) + (r.pen || 0) + (r.caja || 0))
+            + ceil(r.admon || 0) + ceil(r.seguro || 0) + ceil(r.iva || 0);
+
+        recalc();
+    }
+
     // ── API pública ───────────────────────────────────────────────
     // ── Abrir modal de anticipo desde el footer del modal facturar ────
     function _abrirAnticipo() {
@@ -1759,7 +1833,7 @@ const MF = (function () {
         ANT.abrir(contratoId, empresaId, onRegistrado);
     }
 
-    return { init, abrir, cerrar, detectarTipo, actualizarTipo, cambiarPeriodo, onEstado, recalc, distRecalc, addConsig, guardar, toggleRetiro, onRetiroFecha, setMora, seleccionarSegundoContrato, _abrirAnticipo };
+    return { init, abrir, cerrar, detectarTipo, actualizarTipo, cambiarPeriodo, onEstado, recalc, distRecalc, addConsig, guardar, toggleRetiro, onRetiroFecha, setMora, seleccionarSegundoContrato, _abrirAnticipo, actualizarValoresDesdeAlpine };
 
 })();
 
