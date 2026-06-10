@@ -226,13 +226,11 @@ class Contrato extends BaseModel
             $caja  = ($plan && $plan->incluye_caja)     ? $r($ibc * $pctCaja / 100) : 0;
 
             if ($dias < 30) {
-                // EPS: ceil al centena superior (garantiza cobertura completa en salud).
-                // ARL/AFP/CAJA: round al centena más cercano (evita el efecto
-                // de doble-ceil que infla valores pequeños, e.g. 306.67 → 400 en vez de 300).
+                // EPS/ARL/AFP/CAJA: siempre usar ceil al centena superior para consistencia en retiros y facturación.
                 $eps  = (int)(ceil($eps  * $dias / 30 / 100) * 100);
-                $arl  = (int)(round($arl  * $dias / 30 / 100) * 100);
-                $pen  = (int)(round($pen  * $dias / 30 / 100) * 100);
-                $caja = (int)(round($caja * $dias / 30 / 100) * 100);
+                $arl  = (int)(ceil($arl  * $dias / 30 / 100) * 100);
+                $pen  = (int)(ceil($pen  * $dias / 30 / 100) * 100);
+                $caja = (int)(ceil($caja * $dias / 30 / 100) * 100);
             }
 
             // ── Cargo sin-CCF: dependiente E o Ingreso-Retiro sin caja ─────

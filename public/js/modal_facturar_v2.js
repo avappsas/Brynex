@@ -386,7 +386,7 @@ const MF = (function () {
         // Blindar inputs numéricos contra negativos y caracteres no válidos
         const inputsNum = [
             'mf-otros', 'mf-otros-admon', 'mf-mora', 'mf-efectivo', 'mf-prestamo',
-            'mf-dist-asesor', 'mf-dist-retiro', 'mf-dist-encargado', 'ant-valor'
+            'mf-dist-asesor', 'mf-dist-retiro', 'mf-dist-encargado', 'mf-dist-admon', 'ant-valor'
         ];
         inputsNum.forEach(id => {
             const inp = el(id);
@@ -1183,32 +1183,33 @@ const MF = (function () {
         const d = _cfg.distDefaults || {};
         setVal('mf-dist-asesor',    d.asesor    || 0);
         setVal('mf-dist-encargado', d.encargado || 0);
+        setVal('mf-dist-admon',     d.admon     || 0); // Gasto/Admon editable inicia en el default
 
-        // ── Auto-calcular retiro = SS de 1 día cotizado ───────────────
-        // Solo si no viene un default manual desde el servidor
+        // ── Auto-calcular retiro = SS de 1 día cotizado (con Math.ceil) ──
         let autoRetiro = 0;
-        if (!d.retiro) {
-            if (_modo === 'individual') {
-                // Calcular SS de 1 día: SS_total / días_cotizados actuales
-                // Los valores del DOM reflejan el SS de los días configurados en el cotizador,
-                // NO necesariamente 1 día. Para afiliación la reserva de retiro = SS de 1 día.
-                const r = (_cfg.getAlpineResult && _cfg.getAlpineResult()) || {};
-                const ssTotal = (r.eps || 0) + (r.arl || 0) + (r.pen || 0) + (r.caja || 0);
-                const diasActuales = (_cfg.getDias && _cfg.getDias())
-                    || parseInt(document.getElementById('sel_dias_cotizar')?.value)
-                    || 30;
-                autoRetiro = Math.ceil(ssTotal / Math.max(1, diasActuales));
-            } else {
-                // Masivo: sumar SS de cada contrato seleccionado (afiliaciones = 1 día c/u)
-                _selContratos.forEach(c => {
-                    autoRetiro += Math.ceil(c.eps  || 0)
-                               + Math.ceil(c.arl  || 0)
-                               + Math.ceil(c.afp  || 0)
-                               + Math.ceil(c.caja || 0);
-                });
-            }
+        const salarioMinimo = _cfg.salarioMinimo || 1423500;
+        if (_modo === 'individual') {
+            const elAlpine = document.querySelector('[x-data]');
+            const alpineComp = elAlpine?._x_dataStack?.[0];
+            const salario = alpineComp ? parseInt(alpineComp.salario) : salarioMinimo;
+            
+            const pctEps = _cfg.esIndependiente ? 12.5 : 4.0;
+            const pctPen = 16.0;
+            
+            const valorUnDia = (salario * (pctEps + pctPen) / 100) / 30;
+            autoRetiro = Math.ceil(valorUnDia / 100) * 100;
+        } else {
+            // Masivo: sumamos para cada contrato de tipo afiliación (1 día por contrato)
+            _selContratos.forEach(c => {
+                if (c.tipo === 'afiliacion') {
+                    const pctEps = 4.0; // En masivo (empresa) siempre es Razón Social (4%)
+                    const pctPen = 16.0;
+                    const valorUnDia = (salarioMinimo * (pctEps + pctPen) / 100) / 30;
+                    autoRetiro += Math.ceil(valorUnDia / 100) * 100;
+                }
+            });
         }
-        setVal('mf-dist-retiro', d.retiro || autoRetiro || 0);
+        setVal('mf-dist-retiro', autoRetiro || 0);
         distRecalc();
     }
 
@@ -1217,19 +1218,22 @@ const MF = (function () {
         const asesor = parse(el('mf-dist-asesor')?.value);
         const retiro = parse(el('mf-dist-retiro')?.value);
         const encargado = parse(el('mf-dist-encargado')?.value);
-        const admon = total - asesor - retiro - encargado;
+        const admon = parse(el('mf-dist-admon')?.value); // Gasto/Admon es input
+        
+        // Utilidad = total - asesor - retiro - encargado - gasto/admon
+        const utilidad = total - asesor - retiro - encargado - admon;
 
-        const elAdmon = el('mf-dist-admon');
+        const elUtilidad = el('mf-dist-utilidad');
         const elAviso = el('mf-dist-aviso');
 
-        if (elAdmon) {
-            elAdmon.textContent = fmt(Math.max(0, admon));
-            elAdmon.style.color = admon < 0 ? '#dc2626' : '#1d4ed8';
+        if (elUtilidad) {
+            elUtilidad.textContent = fmt(Math.max(0, utilidad));
+            elUtilidad.style.color = utilidad < 0 ? '#dc2626' : '#16a34a';
         }
         if (elAviso) {
-            if (admon < 0) {
+            if (utilidad < 0) {
                 elAviso.style.display = 'block';
-                elAviso.textContent = '⚠️ La suma distribuida supera el costo de afiliación en ' + fmt(-admon);
+                elAviso.textContent = '⚠️ La suma distribuida supera el costo de afiliación en ' + fmt(-utilidad);
             } else {
                 elAviso.style.display = 'none';
             }
@@ -1558,14 +1562,15 @@ const MF = (function () {
         const tipoActual = el('mf-tipo')?.value;
 
         // Validar distribución si es afiliación
-        let distAsesor = 0, distRetiro = 0, distEncargado = 0, distAdmon = 0;
+        let distAsesor = 0, distRetiro = 0, distEncargado = 0, distAdmon = 0, distUtilidad = 0;
         if (tipoActual === 'afiliacion') {
             distAsesor = parse(el('mf-dist-asesor')?.value);
             distRetiro = parse(el('mf-dist-retiro')?.value);
             distEncargado = parse(el('mf-dist-encargado')?.value);
-            distAdmon = Math.max(0, _totalAfil - distAsesor - distRetiro - distEncargado);
-            if ((distAsesor + distRetiro + distEncargado) > _totalAfil) {
-                alert('La distribución supera el costo de afiliación. Corrija los valores.');
+            distAdmon = parse(el('mf-dist-admon')?.value);
+            distUtilidad = _totalAfil - distAsesor - distRetiro - distEncargado - distAdmon;
+            if ((distAsesor + distRetiro + distEncargado + distAdmon) > _totalAfil) {
+                alert('La suma de la distribución supera el costo de afiliación (' + fmt(_totalAfil) + '). Corrija los valores.');
                 return;
             }
         }
@@ -1663,6 +1668,7 @@ const MF = (function () {
                 dist_retiro: distRetiro,
                 dist_encargado: distEncargado,
                 dist_admon: distAdmon,
+                dist_utilidad: distUtilidad,
             };
 
 

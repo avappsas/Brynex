@@ -388,12 +388,19 @@ function abrirRecibo(url, planoJson, periodo) {
 function _verPlanoDesdeRecibo() {
     if (_planoDatos) verPlano(_planoDatos, _planoPeriodo);
 }
-function cerrarRecibo() {
+function cerrarRecibo(huboCambio = false) {
     document.getElementById('recibo-modal-ov').style.display = 'none';
     document.getElementById('recibo-frame').src = '';
     _planoDatos = null;
     const btnP = document.getElementById('btn-plano-recibo');
     if (btnP) btnP.style.display = 'none';
+
+    if (huboCambio) {
+        if (window.parent && typeof window.parent.registrarCambioHistorial === 'function') {
+            window.parent.registrarCambioHistorial();
+        }
+        location.reload();
+    }
 }
 
 // ── Modal Anular ─────────────────────────────────────
@@ -433,6 +440,11 @@ async function confirmarAnular() {
             toast.textContent = '✅ ' + data.mensaje;
             toast.style.cssText = 'position:fixed;bottom:1.5rem;right:1.5rem;background:#0f172a;color:#e2e8f0;border-left:4px solid #10b981;border-radius:10px;padding:.65rem 1.1rem;font-size:.82rem;font-weight:500;z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.3)';
             document.body.appendChild(toast);
+
+            if (window.parent && typeof window.parent.registrarCambioHistorial === 'function') {
+                window.parent.registrarCambioHistorial();
+            }
+
             setTimeout(() => location.reload(), 1800);
         } else {
             alert('❌ ' + (data.message || data.mensaje || 'Error al anular.'));

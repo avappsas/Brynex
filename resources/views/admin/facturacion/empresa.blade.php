@@ -695,6 +695,7 @@ MF.init({
     urlConsignacionImagen: '{{ route('admin.facturacion.consignacion.imagen.subir', ['id' => '__ID__']) }}',
     csrf: CSRF,
     empresaId: {{ $empresa->id }}, // para identificar pagos de empresa
+    salarioMinimo: {{ (int) \App\Models\ConfiguracionBrynex::obtener('salario_minimo', 1423500) }},
     onExito: (data) => {
         MF.cerrar();
         if (data.recibo_url) {

@@ -727,7 +727,7 @@
 {{-- MODAL RETIRO --}}
 @if($esEdicion && $contrato->estaVigente())
 <div id="modal-retiro" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:999;align-items:center;justify-content:center;">
-  <div style="background:#fff;border-radius:14px;padding:1.5rem;max-width:460px;width:92%;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+  <div style="background:#fff;border-radius:14px;padding:1.5rem;max-width:720px;width:95%;box-shadow:0 20px 60px rgba(0,0,0,0.3);transition: max-width 0.2s ease;">
     <h3 style="margin:0 0 1rem;color:#dc2626;font-size:0.95rem;">&#128683; Retirar Contrato #{{ $contrato->id }}</h3>
 
     {{-- Selector de tipo de retiro --}}
@@ -742,6 +742,19 @@
           Genera plano con días cotizados. EPS, ARL, Pensión y Caja se calculan automáticamente (registro de costo, no ingreso).
         </p>
       </label>
+      @if($tienePlanillaConDias ?? false)
+      <label id="mr-lbl-info"
+        style="cursor:not-allowed;border:2px solid #e2e8f0;border-radius:10px;padding:0.6rem 0.8rem;background:#f8fafc;opacity:0.5;transition:.15s;"
+        title="No disponible: El contrato ya tiene planillas pagadas con días cotizados > 0">
+        <div style="display:flex;align-items:center;gap:0.4rem;">
+          <input type="radio" name="_tipo_retiro_ui" value="informativo" disabled>
+          <strong style="font-size:0.78rem;color:#94a3b8;">Retiro Informativo</strong>
+        </div>
+        <p style="font-size:0.65rem;color:#94a3b8;margin:.25rem 0 0 1.2rem;line-height:1.3;">
+          No disponible: El contrato ya tiene planillas pagadas con días cotizados.
+        </p>
+      </label>
+      @else
       <label id="mr-lbl-info" onclick="mrTipo('informativo')"
         style="cursor:pointer;border:2px solid #e2e8f0;border-radius:10px;padding:0.6rem 0.8rem;background:#f8fafc;transition:.15s;">
         <div style="display:flex;align-items:center;gap:0.4rem;">
@@ -752,114 +765,183 @@
           Solo marca el retiro (0 días). El cliente paga por sus propios medios.
         </p>
       </label>
+      @endif
     </div>
 
     <form method="POST" action="{{ route('admin.contratos.retirar', $contrato->id) }}" onsubmit="return mrOnSubmit()">
       @csrf @method('PATCH')
       <input type="hidden" name="back_url" value="{{ $backUrl ?? '' }}">
       <input type="hidden" name="tipo_retiro" id="mr-tipo-hidden" value="real">
+      <input type="hidden" name="valor_ss" id="mr-valor-ss" value="0">
+      <input type="hidden" name="mora" id="mr-mora" value="0">
       @if(request()->has('iframe'))
       <input type="hidden" name="iframe" value="1">
       @endif
 
-      <div style="margin-bottom:0.7rem;">
-        <label class="lb">Motivo *</label>
-        <select name="motivo_retiro_id" required style="{{ $S }}">
-          <option value="">-- Seleccione --</option>
-          @foreach($motivosRetiro as $mr)
-          <option value="{{ $mr->id }}">{{ $mr->nombre }}</option>
-          @endforeach
-        </select>
-      </div>
+      {{-- Layout de Dos Columnas --}}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.2rem;margin-bottom:1rem;align-items:start;">
+        
+        {{-- Columna Izquierda: Entradas (Motivo, Fechas/Días, Mes/Año, Observación) --}}
+        <div style="display:flex;flex-direction:column;gap:0.7rem;">
+          <div>
+            <label class="lb" style="display:flex;justify-content:space-between;align-items:center;">
+              <span>Motivo *</span>
+              <span id="mr-motivo-alert" style="font-size:0.65rem;color:#dc2626;font-weight:600;display:inline;">(Selección obligatoria)</span>
+            </label>
+            <select name="motivo_retiro_id" id="mr-motivo" required onchange="mrValidarMotivoStyle(this)" style="{{ $S }};border:1.5px solid #fca5a5;background:#fffafb;transition:all 0.2s ease;">
+              <option value="">-- Seleccione --</option>
+              @foreach($motivosRetiro as $mr)
+              <option value="{{ $mr->id }}">{{ $mr->nombre }}</option>
+              @endforeach
+            </select>
+          </div>
 
-      {{-- Mes/Año del plano --}}
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-bottom:0.5rem;">
-        <div>
-          <label class="lb">Mes del Plano *</label>
-          <select name="mes_plano" id="mr-mes" onchange="mrSetDefault()" style="{{ $S }}">
-            <option value="1">Enero</option>
-            <option value="2">Febrero</option>
-            <option value="3">Marzo</option>
-            <option value="4">Abril</option>
-            <option value="5">Mayo</option>
-            <option value="6">Junio</option>
-            <option value="7">Julio</option>
-            <option value="8">Agosto</option>
-            <option value="9">Septiembre</option>
-            <option value="10">Octubre</option>
-            <option value="11">Noviembre</option>
-            <option value="12">Diciembre</option>
-          </select>
-        </div>
-        <div>
-          <label class="lb">Año del Plano *</label>
-          <select name="anio_plano" id="mr-anio" onchange="mrOnAnioChange()" style="{{ $S }}">
-            @for($y = now()->year - 2; $y <= now()->year + 1; $y++)
-            <option value="{{ $y }}">{{ $y }}</option>
-            @endfor
-          </select>
-        </div>
-      </div>
-      {{-- Error inline: mes anterior al ingreso --}}
-      <div id="mr-mes-error" style="display:none;background:#fef2f2;border:1px solid #fecaca;border-radius:7px;padding:0.35rem 0.65rem;font-size:0.72rem;color:#dc2626;margin-bottom:0.4rem;">
-        &#9888; El mes del plano no puede ser anterior al mes de ingreso del contrato.
-      </div>
+          {{-- Sección Fechas y Días --}}
+          <div style="display:grid;grid-template-columns:1.1fr 1.2fr 0.7fr;gap:0.5rem;">
+            <div>
+              <label class="lb" style="color:#64748b;">Fecha Ingreso</label>
+              <div style="padding:0.45rem 0.5rem;background:#f8fafc;border:1px solid #cbd5e1;border-radius:7px;font-size:0.78rem;color:#475569;font-weight:600;height:32px;box-sizing:border-box;display:flex;align-items:center;white-space:nowrap;overflow:hidden;">
+                {{ $contrato->fecha_ingreso ? sqldate($contrato->fecha_ingreso)->format('d/m/Y') : 'No registra' }}
+              </div>
+            </div>
+            <div>
+              <label class="lb">Fecha Retiro *</label>
+              <input type="date" name="fecha_retiro" id="mr-fecha" required
+                     oninput="mrCalcDias()" style="{{ $I }};height:32px;box-sizing:border-box;">
+            </div>
+            <div id="mr-dias-wrap">
+              <label class="lb" style="white-space:nowrap;">Días pagar</label>
+              <input type="number" name="num_dias" id="mr-num-dias"
+                     value="1" oninput="mrCalcFecha()" style="{{ $I }};height:32px;box-sizing:border-box;width:100%;font-weight:700;text-align:center;">
+            </div>
+          </div>
 
-      {{-- Fecha + Días (bidireccional) --}}
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-bottom:0.7rem;">
-        <div>
-          <label class="lb">Fecha Retiro *</label>
-          <input type="date" name="fecha_retiro" id="mr-fecha" required
-                 oninput="mrCalcDias()" style="{{ $I }}">
+          {{-- Mes/Año del plano --}}
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;">
+            <div>
+              <label class="lb">Mes del Plano *</label>
+              <select name="mes_plano" id="mr-mes" onchange="mrSetDefault(); mrActualizarCostos(); mrActualizarPeriodoInfo(); mrValidarPeriodoConsecutivo();" style="{{ $S }}">
+                <option value="1">Enero</option>
+                <option value="2">Febrero</option>
+                <option value="3">Marzo</option>
+                <option value="4">Abril</option>
+                <option value="5">Mayo</option>
+                <option value="6">Junio</option>
+                <option value="7">Julio</option>
+                <option value="8">Agosto</option>
+                <option value="9">Septiembre</option>
+                <option value="10">Octubre</option>
+                <option value="11">Noviembre</option>
+                <option value="12">Diciembre</option>
+              </select>
+            </div>
+            <div>
+              <label class="lb">Año del Plano *</label>
+              <select name="anio_plano" id="mr-anio" onchange="mrOnAnioChange(); mrActualizarCostos(); mrActualizarPeriodoInfo(); mrValidarPeriodoConsecutivo();" style="{{ $S }}">
+                @for($y = now()->year - 2; $y <= now()->year + 1; $y++)
+                <option value="{{ $y }}">{{ $y }}</option>
+                @endfor
+              </select>
+            </div>
+          </div>
+
+          {{-- Error periodo no consecutivo --}}
+          <div id="mr-periodo-error" style="display:none;background:#fef2f2;border:1px solid #fecaca;border-radius:7px;padding:0.45rem 0.65rem;font-size:0.72rem;color:#dc2626;line-height:1.4;">
+          </div>
+
+          {{-- Error mes de ingreso --}}
+          <div id="mr-mes-error" style="display:none;background:#fef2f2;border:1px solid #fecaca;border-radius:7px;padding:0.35rem 0.65rem;font-size:0.72rem;color:#dc2626;">
+            &#9888; El mes del plano no puede ser anterior al mes de ingreso del contrato.
+          </div>
+
+          <div>
+            <label class="lb">Observación</label>
+            <textarea name="observacion" style="width:100%;height:64px;padding:0.5rem;border:1px solid #cbd5e1;border-radius:7px;font-size:0.8rem;resize:none;box-sizing:border-box;font-family:inherit;"></textarea>
+          </div>
         </div>
-        <div id="mr-dias-wrap">
-          <label class="lb">Días a pagar</label>
-          <div style="display:flex;align-items:center;gap:0.4rem;">
-            <input type="number" name="num_dias" id="mr-num-dias"
-                   value="1" oninput="mrCalcFecha()" style="{{ $I }};width:70px;font-weight:700;">
-            <span style="font-size:0.7rem;color:#6b7280;">/30</span>
+
+        {{-- Columna Derecha: Salidas (Notas de Periodo, Desglose o Explicación) --}}
+        <div style="display:flex;flex-direction:column;gap:0.7rem;">
+          
+          {{-- Campo informativo de aplicación de retiro --}}
+          <div id="mr-periodo-aplicar-box" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:0.45rem 0.65rem;font-size:0.72rem;color:#166534;display:flex;flex-direction:column;gap:0.15rem;transition: all 0.2s ease;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <span><strong>Mes del Plano:</strong> <span id="mr-info-mes-plano">-</span></span>
+              <span id="mr-info-tipo-periodo" style="font-size:0.62rem;font-weight:700;background:#dcfce7;padding:0.08rem 0.35rem;border-radius:4px;color:#166534;text-transform:uppercase;letter-spacing:0.3px;">Mes Vencido</span>
+            </div>
+            <div style="margin-top:0.1rem;border-top:1px dashed rgba(22, 101, 52, 0.15);padding-top:0.15rem;display:flex;justify-content:space-between;align-items:center;">
+              <span><strong>Mes a aplicar retiro:</strong></span>
+              <span id="mr-info-mes-aplicar" style="font-weight:700;font-size:0.78rem;color:#15803d;">-</span>
+            </div>
+          </div>
+
+          {{-- Tarjeta Desglose Premium (Retiro Real) --}}
+          <div id="mr-desglose-box" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:0.6rem 0.8rem;font-size:0.72rem;color:#334155;box-shadow:inset 0 1px 3px rgba(0,0,0,0.02);display:none;">
+            <div style="font-weight:700;margin-bottom:0.4rem;color:#475569;display:flex;align-items:center;justify-content:space-between;">
+              <span>Desglose Estimado por Entidad</span>
+              <span style="font-size:0.6rem;font-weight:normal;color:#94a3b8;">Valores informativos</span>
+            </div>
+            <table style="width:100%;border-collapse:collapse;font-size:0.72rem;">
+              <thead>
+                <tr style="border-bottom:1px solid #e2e8f0;text-align:left;color:#64748b;font-weight:600;font-size:0.68rem;">
+                  <th style="padding:0.2rem 0;text-transform:uppercase;letter-spacing:0.2px;">Entidad</th>
+                  <th style="padding:0.2rem 0;text-align:right;text-transform:uppercase;letter-spacing:0.2px;">Aporte</th>
+                  <th style="padding:0.2rem 0;text-align:right;text-transform:uppercase;letter-spacing:0.2px;">Mora</th>
+                  <th style="padding:0.2rem 0;text-align:right;text-transform:uppercase;letter-spacing:0.2px;">Total</th>
+                </tr>
+              </thead>
+              <tbody style="line-height:1.4;">
+                <tr style="border-bottom:1px dashed #e2e8f0;">
+                  <td style="padding:0.3rem 0;font-weight:500;display:flex;align-items:center;gap:0.3rem;"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#3b82f6;"></span> EPS</td>
+                  <td style="padding:0.3rem 0;text-align:right;" id="mr-desglose-eps-val">$0</td>
+                  <td style="padding:0.3rem 0;text-align:right;color:#ef4444;" id="mr-desglose-eps-mora">$0</td>
+                  <td style="padding:0.3rem 0;text-align:right;font-weight:600;" id="mr-desglose-eps-total">$0</td>
+                </tr>
+                <tr style="border-bottom:1px dashed #e2e8f0;">
+                  <td style="padding:0.3rem 0;font-weight:500;display:flex;align-items:center;gap:0.3rem;"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#f59e0b;"></span> ARL</td>
+                  <td style="padding:0.3rem 0;text-align:right;" id="mr-desglose-arl-val">$0</td>
+                  <td style="padding:0.3rem 0;text-align:right;color:#ef4444;" id="mr-desglose-arl-mora">$0</td>
+                  <td style="padding:0.3rem 0;text-align:right;font-weight:600;" id="mr-desglose-arl-total">$0</td>
+                </tr>
+                <tr style="border-bottom:1px dashed #e2e8f0;">
+                  <td style="padding:0.3rem 0;font-weight:500;display:flex;align-items:center;gap:0.3rem;"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#10b981;"></span> Pensión</td>
+                  <td style="padding:0.3rem 0;text-align:right;" id="mr-desglose-pen-val">$0</td>
+                  <td style="padding:0.3rem 0;text-align:right;color:#ef4444;" id="mr-desglose-pen-mora">$0</td>
+                  <td style="padding:0.3rem 0;text-align:right;font-weight:600;" id="mr-desglose-pen-total">$0</td>
+                </tr>
+                <tr style="border-bottom:1px dashed #cbd5e1;">
+                  <td style="padding:0.3rem 0;font-weight:500;display:flex;align-items:center;gap:0.3rem;"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#8b5cf6;"></span> Caja</td>
+                  <td style="padding:0.3rem 0;text-align:right;" id="mr-desglose-caja-val">$0</td>
+                  <td style="padding:0.3rem 0;text-align:right;color:#ef4444;" id="mr-desglose-caja-mora">$0</td>
+                  <td style="padding:0.3rem 0;text-align:right;font-weight:600;" id="mr-desglose-caja-total">$0</td>
+                </tr>
+                <tr style="font-weight:700;color:#1e293b;background:#f1f5f9;font-size:0.74rem;">
+                  <td style="padding:0.35rem 0.4rem;border-radius:4px 0 0 4px;">TOTAL RETIRO</td>
+                  <td style="padding:0.35rem 0.2rem;text-align:right;" id="mr-desglose-tot-val">$0</td>
+                  <td style="padding:0.35rem 0.2rem;text-align:right;color:#ef4444;" id="mr-desglose-tot-mora">$0</td>
+                  <td style="padding:0.35rem 0.4rem;text-align:right;color:#dc2626;border-radius:0 4px 4px 0;" id="mr-desglose-tot-total">$0</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          {{-- Explicacion Retiro Informativo --}}
+          <div id="mr-info-explicacion-box" style="display:none;background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:0.8rem;font-size:0.72rem;color:#0369a1;line-height:1.45;box-shadow:inset 0 1px 2px rgba(0,0,0,0.01);">
+            <div style="display:flex;align-items:center;gap:0.4rem;color:#0284c7;font-weight:700;margin-bottom:0.35rem;">
+              <svg style="width:16px;height:16px;flex-shrink:0;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+              <span>Retiro Informativo</span>
+            </div>
+            <p style="margin:0 0 0.4rem;">
+              Este tipo de retiro se utiliza principalmente para <strong>corrección de errores</strong> (por ejemplo, si se afilió a la persona por equivocación).
+            </p>
+            <p style="margin:0;">
+              Se registrará con el periodo de plano seleccionado. Dado que cotiza <strong>0 días</strong>, no generará valor de seguridad social (gasto) en la factura ni se incluirán días cotizados en el plano.
+            </p>
           </div>
         </div>
       </div>
 
-      <div style="margin-bottom:1rem;">
-        <label class="lb">Observacion</label>
-        <textarea name="observacion" rows="2" style="width:100%;padding:0.5rem;border:1px solid #cbd5e1;border-radius:7px;font-size:0.8rem;resize:none;box-sizing:border-box;"></textarea>
-      </div>
-
-      {{-- ⚠️ Mora real informativa — solo si aplica mora en el período actual --}}
-      @php
-        $mrMoraInfo = null;
-        try {
-            if ($esEdicion && $contrato->razonSocial && $contrato->estaVigente()) {
-                $mrAliadoId = session('aliado_id_activo');
-                $mrRs       = $contrato->razonSocial;
-                $mrNit      = (int)($mrRs->nit ?: $mrRs->id);
-                $mrDiaH     = $mrRs->dia_habil ?? null;
-                // Estimación SS mes actual con salario del contrato
-                $mrSalario  = (float)($contrato->salario ?? 0);
-                $mrSS       = round($mrSalario * 0.285);
-                if ($mrNit && $mrSS > 0) {
-                    $mrCalc = \App\Services\MoraClienteService::calcular($mrAliadoId, $mrNit, $mrDiaH, $mrSS, now()->month, now()->year);
-                    if ($mrCalc['aplica'] && ($mrCalc['mora_real'] ?? 0) > 0) {
-                        $mrMoraInfo = ['dias' => $mrCalc['dias_mora'], 'mora_real' => (int)round($mrCalc['mora_real'])];
-                    }
-                }
-            }
-        } catch (\Throwable) {}
-      @endphp
-      @if($mrMoraInfo)
-      <div style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:9px;padding:0.55rem 0.8rem;margin-bottom:0.85rem;font-size:0.75rem;color:#92400e;display:flex;align-items:center;gap:0.5rem;">
-        <span style="font-size:1rem;">⚠️</span>
-        <div>
-          <strong>Mora real estimada: ${{ number_format($mrMoraInfo['mora_real'], 0, '', '.') }}</strong>
-          <span style="color:#b45309;"> · {{ $mrMoraInfo['dias'] }} días de mora</span>
-          <div style="font-size:0.65rem;color:#a16207;margin-top:0.1rem;">Interés real sin mínimos · Se registrará en "Otros" de la factura. El aliado asume este costo.</div>
-        </div>
-      </div>
-      @endif
-
-      <div style="display:flex;gap:0.6rem;justify-content:flex-end;">
+      <div style="display:flex;gap:0.6rem;justify-content:flex-end;border-top:1px solid #f1f5f9;padding-top:0.8rem;">
         <button type="button" onclick="document.getElementById('modal-retiro').style.display='none'"
             style="padding:0.45rem 1rem;border:1px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer;font-size:0.82rem;">Cancelar</button>
         <button type="submit" id="mr-submit-btn"
@@ -876,10 +958,122 @@ const MR = {
     fechaIngreso: @if($contrato->fecha_ingreso)'{{ sqldate($contrato->fecha_ingreso)->format('Y-m-d') }}'@else null @endif,
     // ¿Es independiente mes actual? (tipo_modalidad_id = 11)
     esMesActual: {{ (int)($contrato->tipo_modalidad_id) === 11 ? 'true' : 'false' }},
+    // ¿Tiene planillas pagadas con días cotizados > 0?
+    tienePlanillaConDias: {{ ($tienePlanillaConDias ?? false) ? 'true' : 'false' }},
 };
 
 // Planos ya generados para este contrato
 const PLANOS_EXISTENTES = @json($planosExistentes ?? []);
+
+// Desglose de cotización en memoria
+window._mrUltimoDesglose = null;
+
+// ── Formatear moneda en pesos colombianos ─────────────────────────────────
+function mrFormatearMoneda(val) {
+    return '$' + Math.round(val).toLocaleString('es-CO');
+}
+
+// ── Renderizar la tabla de desglose por entidad ───────────────────────────
+function mrRenderizarDesglose(desglose) {
+    const box = document.getElementById('mr-desglose-box');
+    if (!box) return;
+    if (!desglose) {
+        box.style.display = 'none';
+        return;
+    }
+    box.style.display = 'block';
+
+    // EPS
+    document.getElementById('mr-desglose-eps-val').textContent = mrFormatearMoneda(desglose.eps.valor);
+    document.getElementById('mr-desglose-eps-mora').textContent = mrFormatearMoneda(desglose.eps.mora);
+    document.getElementById('mr-desglose-eps-total').textContent = mrFormatearMoneda(desglose.eps.valor + desglose.eps.mora);
+    
+    // ARL
+    document.getElementById('mr-desglose-arl-val').textContent = mrFormatearMoneda(desglose.arl.valor);
+    document.getElementById('mr-desglose-arl-mora').textContent = mrFormatearMoneda(desglose.arl.mora);
+    document.getElementById('mr-desglose-arl-total').textContent = mrFormatearMoneda(desglose.arl.valor + desglose.arl.mora);
+    
+    // Pensión
+    document.getElementById('mr-desglose-pen-val').textContent = mrFormatearMoneda(desglose.pen.valor);
+    document.getElementById('mr-desglose-pen-mora').textContent = mrFormatearMoneda(desglose.pen.mora);
+    document.getElementById('mr-desglose-pen-total').textContent = mrFormatearMoneda(desglose.pen.valor + desglose.pen.mora);
+    
+    // Caja
+    document.getElementById('mr-desglose-caja-val').textContent = mrFormatearMoneda(desglose.caja.valor);
+    document.getElementById('mr-desglose-caja-mora').textContent = mrFormatearMoneda(desglose.caja.mora);
+    document.getElementById('mr-desglose-caja-total').textContent = mrFormatearMoneda(desglose.caja.valor + desglose.caja.mora);
+    
+    // Totales
+    const totVal = desglose.eps.valor + desglose.arl.valor + desglose.pen.valor + desglose.caja.valor;
+    const totMora = desglose.eps.mora + desglose.arl.mora + desglose.pen.mora + desglose.caja.mora;
+    document.getElementById('mr-desglose-tot-val').textContent = mrFormatearMoneda(totVal);
+    document.getElementById('mr-desglose-tot-mora').textContent = mrFormatearMoneda(totMora);
+    document.getElementById('mr-desglose-tot-total').textContent = mrFormatearMoneda(totVal + totMora);
+}
+
+// ── Redistribución proporcional manual al editar inputs ───────────────────
+function mrRedistribuirManual() {
+    const valorManual = parseFloat(document.getElementById('mr-valor-ss')?.value || 0);
+    const moraManual = parseFloat(document.getElementById('mr-mora')?.value || 0);
+    
+    const desgloseBase = window._mrUltimoDesglose;
+    if (!desgloseBase) return;
+    
+    const vEpsBase = desgloseBase.eps.valor;
+    const vArlBase = desgloseBase.arl.valor;
+    const vPenBase = desgloseBase.pen.valor;
+    const vCajaBase = desgloseBase.caja.valor;
+    const totalSsBase = vEpsBase + vArlBase + vPenBase + vCajaBase;
+    
+    let vEps = 0, vArl = 0, vPen = 0, vCaja = 0;
+    if (totalSsBase > 0) {
+        const factorSs = valorManual / totalSsBase;
+        vEps  = Math.round(vEpsBase * factorSs);
+        vArl  = Math.round(vArlBase * factorSs);
+        vPen  = Math.round(vPenBase * factorSs);
+        vCaja = Math.round(vCajaBase * factorSs);
+        
+        // Ajustar remanente de SS
+        const sumaSs = vEps + vArl + vPen + vCaja;
+        const diffSs = valorManual - sumaSs;
+        if (diffSs !== 0) {
+            if (vPen >= vEps && vPen >= vArl && vPen >= vCaja) vPen += diffSs;
+            else if (vEps >= vArl && vEps >= vCaja) vEps += diffSs;
+            else vArl += diffSs;
+        }
+    } else {
+        vEps = valorManual;
+    }
+    
+    let mEps = 0, mArl = 0, mPen = 0, mCaja = 0;
+    if (totalSsBase > 0) {
+        const factorMora = moraManual / totalSsBase;
+        mEps  = Math.round(vEpsBase * factorMora);
+        mArl  = Math.round(vArlBase * factorMora);
+        mPen  = Math.round(vPenBase * factorMora);
+        mCaja = Math.round(vCajaBase * factorMora);
+        
+        // Ajustar remanente de Mora
+        const sumaMora = mEps + mArl + mPen + mCaja;
+        const diffMora = moraManual - sumaMora;
+        if (diffMora !== 0) {
+            if (vPen >= vEps && vPen >= vArl && vPen >= vCaja) mPen += diffMora;
+            else if (vEps >= vArl && vEps >= vCaja) mEps += diffMora;
+            else mArl += diffMora;
+        }
+    } else {
+        mEps = moraManual;
+    }
+    
+    const desgloseRedistribuido = {
+        eps: { valor: vEps, mora: mEps },
+        arl: { valor: vArl, mora: mArl },
+        pen: { valor: vPen, mora: mPen },
+        caja: { valor: vCaja, mora: mCaja }
+    };
+    
+    mrRenderizarDesglose(desgloseRedistribuido);
+}
 
 // ── Leer mes/año seleccionados (fuente de verdad) ─────────────────────────
 function mrMesPlan() {
@@ -895,21 +1089,105 @@ function mrMesPlan() {
     return { anio: m === 0 ? hoy.getFullYear() - 1 : hoy.getFullYear(), mes: m === 0 ? 12 : m };
 }
 
-// ── Inhabilitar meses que ya tienen planilla para el año seleccionado ───
+// ── Actualizar campo informativo del período de aplicación ───────────────
+function mrActualizarPeriodoInfo() {
+    const { anio, mes } = mrMesPlan();
+    const meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+    
+    const mesEl = document.getElementById('mr-info-mes-plano');
+    const aplicarEl = document.getElementById('mr-info-mes-aplicar');
+    const tipoEl = document.getElementById('mr-info-tipo-periodo');
+    const boxEl = document.getElementById('mr-periodo-aplicar-box');
+    
+    if (!mesEl || !aplicarEl || !tipoEl || !boxEl) return;
+    
+    mesEl.textContent = `${meses[mes - 1]} ${anio}`;
+    
+    let mesAplicar = mes;
+    let anioAplicar = anio;
+    
+    if (MR.esMesActual) {
+        tipoEl.textContent = "Mes Actual";
+        tipoEl.style.background = "#dbeafe";
+        tipoEl.style.color = "#1e40af";
+        boxEl.style.background = "#eff6ff";
+        boxEl.style.borderColor = "#bfdbfe";
+        boxEl.style.color = "#1e3a8a";
+    } else {
+        mesAplicar++;
+        if (mesAplicar > 12) {
+            mesAplicar = 1;
+            anioAplicar++;
+        }
+        tipoEl.textContent = "Mes Vencido";
+        tipoEl.style.background = "#dcfce7";
+        tipoEl.style.color = "#166534";
+        boxEl.style.background = "#f0fdf4";
+        boxEl.style.borderColor = "#bbf7d0";
+        boxEl.style.color = "#14532d";
+    }
+    
+    aplicarEl.textContent = `${meses[mesAplicar - 1]} ${anioAplicar}`;
+}
+
+// ── Inhabilitar meses que ya tienen planilla o menores al ingreso ──────────
 function mrActualizarMesesDisponibles() {
     const anioEl = document.getElementById('mr-anio');
     const mesEl  = document.getElementById('mr-mes');
     if (!anioEl || !mesEl) return;
     const anioSel = parseInt(anioEl.value, 10);
 
+    let ingrAnio = null;
+    let ingrMes = null;
+    if (MR.fechaIngreso) {
+        const parts = MR.fechaIngreso.split('-');
+        ingrAnio = parseInt(parts[0], 10);
+        ingrMes  = parseInt(parts[1], 10);
+    }
+
     Array.from(mesEl.options).forEach(opt => {
         const mesVal = parseInt(opt.value, 10);
+        
+        // 1. Ya tiene planilla generada
         const yaTiene = PLANOS_EXISTENTES.some(p => p.mes === mesVal && p.anio === anioSel);
-        opt.disabled = yaTiene;
-        if (yaTiene) {
+        
+        // 2. Es anterior a la fecha de ingreso
+        let esAnteriorIngreso = false;
+        if (ingrAnio !== null && ingrMes !== null) {
+            const refSel = anioSel * 100 + mesVal;
+            const refIngr = ingrAnio * 100 + ingrMes;
+            if (refSel < refIngr) {
+                esAnteriorIngreso = true;
+            }
+        }
+
+        const deshabilitar = yaTiene || esAnteriorIngreso;
+        opt.disabled = deshabilitar;
+
+        if (deshabilitar) {
             opt.style.color = '#94a3b8';
             opt.style.textDecoration = 'line-through';
         } else {
+            opt.style.color = '';
+            opt.style.textDecoration = '';
+        }
+    });
+}
+
+// ── Inhabilitar años menores al de ingreso del contrato ───────────────────
+function mrActualizarAniosDisponibles() {
+    const anioEl = document.getElementById('mr-anio');
+    if (!anioEl || !MR.fechaIngreso) return;
+    const [ingrAnio] = MR.fechaIngreso.split('-').map(Number);
+
+    Array.from(anioEl.options).forEach(opt => {
+        const anioVal = parseInt(opt.value, 10);
+        if (anioVal < ingrAnio) {
+            opt.disabled = true;
+            opt.style.color = '#94a3b8';
+            opt.style.textDecoration = 'line-through';
+        } else {
+            opt.disabled = false;
             opt.style.color = '';
             opt.style.textDecoration = '';
         }
@@ -932,47 +1210,47 @@ function mrOnAnioChange() {
 
 // ── Inicializar selects al abrir el modal ────────────────────────────────
 function mrInitSelects() {
-    const hoy = new Date();
-    let mesDef, anioDef;
-    if (MR.esMesActual) {
-        mesDef  = hoy.getMonth() + 1;
-        anioDef = hoy.getFullYear();
-    } else {
-        const m = hoy.getMonth(); // 0-based
-        mesDef  = m === 0 ? 12 : m;
-        anioDef = m === 0 ? hoy.getFullYear() - 1 : hoy.getFullYear();
-    }
-
-    // Si el mes vencido calculado es ANTERIOR a fecha_ingreso, avanzar al mes de ingreso
-    if (MR.fechaIngreso) {
-        const [fAnio, fMes] = MR.fechaIngreso.split('-').map(Number);
-        const defVal  = anioDef * 100 + mesDef;
-        const ingrVal = fAnio   * 100 + fMes;
-        if (defVal < ingrVal) {
-            mesDef  = fMes;
-            anioDef = fAnio;
-        }
-    }
-
-    // Si el periodo actual (mesDef, anioDef) ya tiene planilla, avanzar consecutivamente al siguiente mes disponible
-    let bucleSeguridad = 0;
-    while (PLANOS_EXISTENTES.some(p => p.mes === mesDef && p.anio === anioDef) && bucleSeguridad < 24) {
-        mesDef++;
-        if (mesDef > 12) {
-            mesDef = 1;
-            anioDef++;
-        }
-        bucleSeguridad++;
-    }
+    const esperado = mrGetPeriodoEsperado();
+    const mesDef = esperado.mes;
+    const anioDef = esperado.anio;
 
     const mesEl  = document.getElementById('mr-mes');
     const anioEl = document.getElementById('mr-anio');
+    
+    // Inhabilitar años menores al de ingreso
+    mrActualizarAniosDisponibles();
+    
     if (anioEl) anioEl.value = anioDef;
     
     // Actualizar deshabilitados antes de asignar el valor del mes
     mrActualizarMesesDisponibles();
 
     if (mesEl)  mesEl.value  = mesDef;
+    mrActualizarPeriodoInfo();
+
+    // Inicializar el estilo del motivo como obligatorio
+    const motivoEl = document.getElementById('mr-motivo');
+    if (motivoEl) {
+        motivoEl.value = "";
+        mrValidarMotivoStyle(motivoEl);
+    }
+
+    // Validar consecutividad
+    mrValidarPeriodoConsecutivo();
+}
+
+// ── Validar estilo del select de Motivo obligatoriedad ───────────────────
+function mrValidarMotivoStyle(el) {
+    const alertEl = document.getElementById('mr-motivo-alert');
+    if (el.value) {
+        el.style.borderColor = '#cbd5e1';
+        el.style.background = '#ffffff';
+        if (alertEl) alertEl.style.display = 'none';
+    } else {
+        el.style.borderColor = '#fca5a5';
+        el.style.background = '#fffafb';
+        if (alertEl) alertEl.style.display = 'inline';
+    }
 }
 
 // ── Validar que mes_plano no sea anterior al mes de ingreso ───────────────
@@ -1006,6 +1284,45 @@ function mrGetBaseDate() {
     return new Date(anio, mes - 1, 1);
 }
 
+// ── Calcular Costo de Retiro y Mora en Tiempo Real ────────────────────────
+async function mrActualizarCostos() {
+    const valorSsEl = document.getElementById('mr-valor-ss');
+    const moraEl = document.getElementById('mr-mora');
+    if (!valorSsEl || !moraEl) return;
+
+    const tipoRetiro = document.getElementById('mr-tipo-hidden')?.value || 'real';
+    if (tipoRetiro === 'informativo') {
+        valorSsEl.value = 0;
+        moraEl.value = 0;
+        window._mrUltimoDesglose = null;
+        mrRenderizarDesglose(null);
+        return;
+    }
+
+    const { anio, mes } = mrMesPlan();
+    const dias = parseInt(document.getElementById('mr-num-dias')?.value || 1, 10);
+    const url = `/admin/contratos/api/calcular-retiro/{{ $contrato->id ?? 0 }}?dias=${dias}&mes_plano=${mes}&anio_plano=${anio}&tipo_retiro=${tipoRetiro}`;
+
+    // Atenuar el desglose mientras se realiza la consulta para indicar carga
+    const desgloseBox = document.getElementById('mr-desglose-box');
+    if (desgloseBox) desgloseBox.style.opacity = '0.5';
+
+    try {
+        const resp = await fetch(url);
+        const data = await resp.json();
+        if (data.ok) {
+            valorSsEl.value = data.costo_ss;
+            moraEl.value = data.mora;
+            window._mrUltimoDesglose = data.desglose;
+            mrRenderizarDesglose(data.desglose);
+        }
+    } catch (e) {
+        console.error('Error al calcular costos del retiro:', e);
+    } finally {
+        if (desgloseBox) desgloseBox.style.opacity = '1';
+    }
+}
+
 // ── Establecer fecha/días según mes/año seleccionado ─────────────────────
 function mrSetDefault() {
     // Ocultar error previo al cambiar el select
@@ -1021,6 +1338,7 @@ function mrSetDefault() {
     const diasEl  = document.getElementById('mr-num-dias');
     if (fechaEl) fechaEl.value = `${yB}-${mB}-${dB}`;
     if (diasEl)  diasEl.value  = 1;
+    mrActualizarCostos();
 }
 
 // ── Fecha → Días (diferencia con la fecha base, máx 30) ───────────────────
@@ -1033,7 +1351,26 @@ function mrCalcDias() {
     const y = parseInt(parts[0], 10);
     const m = parseInt(parts[1], 10);
     const d = parseInt(parts[2], 10);
-    
+
+    // Sincronizar selectores de mes y año con la fecha seleccionada
+    const mesEl = document.getElementById('mr-mes');
+    const anioEl = document.getElementById('mr-anio');
+    if (mesEl && anioEl) {
+        let cambioDetectado = false;
+        if (parseInt(mesEl.value, 10) !== m) {
+            mesEl.value = m;
+            cambioDetectado = true;
+        }
+        if (parseInt(anioEl.value, 10) !== y) {
+            anioEl.value = y;
+            cambioDetectado = true;
+        }
+        if (cambioDetectado) {
+            mrActualizarMesesDisponibles();
+            mrActualizarPeriodoInfo();
+        }
+    }
+
     const selectedDate = new Date(y, m - 1, d);
     const baseDate = mrGetBaseDate();
 
@@ -1045,6 +1382,7 @@ function mrCalcDias() {
         document.getElementById('mr-fecha').value = `${yB}-${mB}-${dB}`;
         const input = document.getElementById('mr-num-dias');
         if (input) input.value = 1;
+        mrActualizarCostos();
         return;
     }
 
@@ -1055,6 +1393,7 @@ function mrCalcDias() {
 
     const input = document.getElementById('mr-num-dias');
     if (input) input.value = dias;
+    mrActualizarCostos();
 }
 
 // ── Días → Fecha (suma días a la fecha base en el mes seleccionado) ───────
@@ -1083,6 +1422,7 @@ function mrCalcFecha() {
         const d = String(targetDate.getDate()).padStart(2, '0');
         fechaEl.value = `${y}-${m}-${d}`;
     }
+    mrActualizarCostos();
 }
 
 // ── Toggle tipo retiro ────────────────────────────────────────────────────
@@ -1090,38 +1430,122 @@ function mrTipo(tipo) {
     document.getElementById('mr-tipo-hidden').value = tipo;
     const lblReal  = document.getElementById('mr-lbl-real');
     const lblInfo  = document.getElementById('mr-lbl-info');
-    const diasWrap = document.getElementById('mr-dias-wrap');
     const numDias  = document.getElementById('mr-num-dias');
+    const diasWrap = document.getElementById('mr-dias-wrap');
+    const desgloseBox = document.getElementById('mr-desglose-box');
+    const explicacionBox = document.getElementById('mr-info-explicacion-box');
 
     if (tipo === 'real') {
         lblReal.style.borderColor = '#ef4444';
         lblReal.style.background  = '#fff5f5';
         lblInfo.style.borderColor = '#e2e8f0';
         lblInfo.style.background  = '#f8fafc';
-        diasWrap.style.display    = 'block';
+        
+        if (diasWrap) diasWrap.style.display = 'block';
+        if (explicacionBox) explicacionBox.style.display = 'none';
+        
         numDias.disabled = false;
         numDias.required = true;
         if (!numDias.value || numDias.value == 0) numDias.value = 1;
         mrSetDefault();
     } else {
-        lblInfo.style.borderColor = '#3b82f6';
-        lblInfo.style.background  = '#eff6ff';
+        lblInfo.style.borderColor = '#0284c7';
+        lblInfo.style.background  = '#f0f9ff';
         lblReal.style.borderColor = '#e2e8f0';
         lblReal.style.background  = '#f8fafc';
-        diasWrap.style.display    = 'none';
-        // Deshabilitar: el browser ignora campos disabled en la validación nativa
+        
+        if (diasWrap) diasWrap.style.display = 'none';
+        if (desgloseBox) desgloseBox.style.display = 'none';
+        if (explicacionBox) explicacionBox.style.display = 'block';
+        
         numDias.disabled = true;
         numDias.required = false;
         numDias.value    = 0;
+        mrActualizarCostos();
     }
 }
 
+// ── Obtener Periodo Consecutivo Esperado ──────────────────────────────────
+function mrGetPeriodoEsperado() {
+    let mesEsp = null;
+    let anioEsp = null;
+
+    if (PLANOS_EXISTENTES && PLANOS_EXISTENTES.length > 0) {
+        let maxVal = 0;
+        let ultimoPlano = null;
+        PLANOS_EXISTENTES.forEach(p => {
+            const val = p.anio * 100 + p.mes;
+            if (val > maxVal) {
+                maxVal = val;
+                ultimoPlano = p;
+            }
+        });
+        if (ultimoPlano) {
+            mesEsp = ultimoPlano.mes + 1;
+            anioEsp = ultimoPlano.anio;
+            if (mesEsp > 12) {
+                mesEsp = 1;
+                anioEsp++;
+            }
+        }
+    } else {
+        if (MR.fechaIngreso) {
+            const parts = MR.fechaIngreso.split('-');
+            anioEsp = parseInt(parts[0], 10);
+            mesEsp  = parseInt(parts[1], 10);
+        } else {
+            const hoy = new Date();
+            anioEsp = hoy.getFullYear();
+            mesEsp = hoy.getMonth() + 1;
+        }
+    }
+    return { mes: mesEsp, anio: anioEsp };
+}
+
+// ── Validar que el periodo seleccionado sea consecutivo ───────────────────
+function mrValidarPeriodoConsecutivo() {
+    const esperado = mrGetPeriodoEsperado();
+    const { anio, mes } = mrMesPlan();
+    
+    const errEl = document.getElementById('mr-periodo-error');
+    const btn = document.getElementById('mr-submit-btn');
+    
+    const esInvalido = (anio !== esperado.anio || mes !== esperado.mes);
+    
+    if (errEl) {
+        if (esInvalido) {
+            const meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+            errEl.innerHTML = `&#9888; Debe seleccionar <strong>${meses[esperado.mes - 1]} de ${esperado.anio}</strong> para el retiro, ya que es el periodo consecutivo correspondiente (o generar la planilla del mes anterior primero).`;
+            errEl.style.display = 'block';
+        } else {
+            errEl.style.display = 'none';
+        }
+    }
+    
+    if (btn) {
+        btn.disabled = esInvalido;
+        if (esInvalido) {
+            btn.style.background = '#94a3b8';
+            btn.style.cursor = 'not-allowed';
+            btn.style.opacity = '0.6';
+        } else {
+            btn.style.background = '#dc2626';
+            btn.style.cursor = 'pointer';
+            btn.style.opacity = '1';
+        }
+    }
+    
+    return !esInvalido;
+}
+
 // ── Init: establecer defaults al cargar ──────────────────────────────────
-document.addEventListener('DOMContentLoaded', function() { mrSetDefault(); });
+document.addEventListener('DOMContentLoaded', function() { mrInitSelects(); });
 
 // ── Submit con loading state ──────────────────────────────────────────────
 function mrOnSubmit() {
-    if (!mrValidarMes()) return false; // bloquea si mes inválido
+    if (!mrValidarMes()) return false;
+    if (!mrValidarPeriodoConsecutivo()) return false; // Bloquea si no es consecutivo
+    
     const btn = document.getElementById('mr-submit-btn');
     if (btn) {
         btn.disabled = true;
@@ -2329,6 +2753,7 @@ if (typeof MF !== 'undefined' && FC_CONTRATO_ID) {
         esIndependiente:   FC_ES_INDEP,
         costoAfiliacion:   FC_COSTO_AFIL,
         arlNivel:          FC_ARL_NIVEL,
+        salarioMinimo:     SALARIO_MINIMO,
         distDefaults:      FC_DIST_DEFAULTS,
         getAlpineResult:   () => document.querySelector('[x-data]')?._x_dataStack?.[0]?.result || {},
         getDias:           () => parseInt(document.querySelector('[x-data]')?._x_dataStack?.[0]?.diasCotizar) || 30,
@@ -2435,11 +2860,17 @@ if (window.parent !== window) {
 // ── Modal Historial de Pagos ───────────────────────────────────────────────
 @if($esEdicion)
 const HISTORIAL_URL = '{{ route('admin.facturacion.historial', $contrato->cedula) }}';
+let historialCambiosRealizados = false;
+
+function registrarCambioHistorial() {
+    historialCambiosRealizados = true;
+}
 
 function abrirHistorialPagos() {
     const modal  = document.getElementById('modal-historial');
     const iframe = document.getElementById('historial-frame');
     if (!modal || !iframe) return;
+    historialCambiosRealizados = false; // resetear al abrir
     iframe.src = HISTORIAL_URL + '?iframe=1';
     modal.style.display = 'flex';
     document.body.style.overflow = 'hidden';
@@ -2451,6 +2882,10 @@ function cerrarHistorial() {
     if (modal)  modal.style.display = 'none';
     if (iframe) iframe.src = '';
     document.body.style.overflow = '';
+    
+    if (historialCambiosRealizados) {
+        window.location.reload();
+    }
 }
 @endif
 </script>

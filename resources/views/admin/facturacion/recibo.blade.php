@@ -1578,7 +1578,7 @@ async function confirmarAnulacion() {
             setTimeout(() => {
                 if (window.parent && window.parent !== window && typeof window.parent.cerrarRecibo === 'function') {
                     // Estamos dentro del iframe del modal recibo → cerrar y recargar la página padre
-                    window.parent.cerrarRecibo();
+                    window.parent.cerrarRecibo(true);
                 } else if (window.opener) {
                     // Popup independiente → recargar abridor y cerrarse
                     window.opener.location.reload();

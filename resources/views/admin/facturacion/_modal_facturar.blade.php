@@ -231,7 +231,7 @@
 .mf-dist-inp:focus { border-color: #7c3aed; }
 .mf-dist-total-row { display: flex; justify-content: space-between; align-items: center; border-top: 1px dashed #ddd6fe; padding-top: .28rem; margin-top: .18rem; }
 .mf-dist-total-lbl { font-size: .71rem; font-weight: 700; color: #4c1d95; }
-#mf-dist-admon { font-size: .82rem; font-weight: 900; color: #1d4ed8; font-family: monospace; }
+#mf-dist-utilidad { font-size: .82rem; font-weight: 900; color: #16a34a; font-family: monospace; }
 /* Afiliacion label */
 #mf-detalle-afil { font-size: .8rem; font-weight: 700; color: #7c3aed; padding: .35rem 0; }
 
@@ -705,10 +705,13 @@
 
                     <span class="mf-dist-lbl">👤 Encargado</span>
                     <input type="text" id="mf-dist-encargado" value="0" oninput="MF.distRecalc()" class="mf-dist-inp">
+
+                    <span class="mf-dist-lbl">🏢 Gasto/Admon</span>
+                    <input type="text" id="mf-dist-admon" value="0" oninput="MF.distRecalc()" class="mf-dist-inp">
                 </div>
                 <div class="mf-dist-total-row">
-                    <span class="mf-dist-total-lbl">🏢 Empresa/Admon</span>
-                    <span id="mf-dist-admon">$0</span>
+                    <span class="mf-dist-total-lbl">📈 Utilidad</span>
+                    <span id="mf-dist-utilidad">$0</span>
                 </div>
                 <div id="mf-dist-aviso" style="display:none;margin-top:.3rem;font-size:.67rem;color:#dc2626;font-weight:700;"></div>
             </div>

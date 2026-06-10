@@ -812,7 +812,7 @@ class FacturacionController extends Controller
                 $total += $moraCliente;
 
                 // ─── Calcular distribución de afiliación ───────────────────
-                $distAdmon = $distAsesor = $distRetiro = $distUtilidad = 0;
+                $distAdmon = $distAsesor = $distRetiro = $distUtilidad = $distEncargado = 0;
                 if ($esAfiliacion && $afiliacion > 0) {
                     // Si el frontend envió valores manuales, usarlos
                     $hasManual = isset($validated['dist_asesor']) || isset($validated['dist_retiro'])
@@ -821,7 +821,6 @@ class FacturacionController extends Controller
                     if ($hasManual) {
                         $distAsesor   = (int)($validated['dist_asesor']    ?? 0);
                         $distRetiro   = (int)($validated['dist_retiro']    ?? 0);
-                        // dist_encargado se suma al dist_admon (internamente no hay campo separado en la tabla)
                         $distEncargado = (int)($validated['dist_encargado'] ?? 0);
                         $distAdmonRaw  = (int)($validated['dist_admon']     ?? 0);
                         // dist_admon en la tabla = empresa admon puro
@@ -921,6 +920,7 @@ class FacturacionController extends Controller
                     'dist_asesor'      => $distAsesor,
                     'dist_retiro'      => $distRetiro,
                     'dist_utilidad'    => $distUtilidad,
+                    'dist_encargado'   => $distEncargado,
                     'np'               => $np,
                     'n_plano'          => $nPlanoFactura,
                     'empresa_id'        => $validated['empresa_id'] ?? null,

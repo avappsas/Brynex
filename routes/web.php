@@ -107,6 +107,7 @@ Route::middleware('auth')->group(function () {
         Route::patch('contratos/{contrato}/retirar',     [\App\Http\Controllers\Admin\ContratoController::class, 'retirar'])->name('contratos.retirar');
         Route::post('contratos/{contrato}/duplicar-ir',  [\App\Http\Controllers\Admin\ContratoController::class, 'duplicarIngresoRetiro'])->name('contratos.duplicar-ir');
         // APIs reactivas del cotizador
+        Route::get('contratos/api/calcular-retiro/{contrato}', [\App\Http\Controllers\Admin\ContratoController::class, 'apiCalcularRetiro'])->name('contratos.calcular_retiro');
         Route::post('contratos/api/cotizar',             [\App\Http\Controllers\Admin\ContratoController::class, 'cotizar'])->name('contratos.cotizar');
         Route::get('contratos/api/tarifas',              [\App\Http\Controllers\Admin\ContratoController::class, 'tarifasPorPlan'])->name('contratos.tarifas');
         Route::patch('contratos/api/radicado/{id}',      [\App\Http\Controllers\Admin\ContratoController::class, 'actualizarRadicado'])->name('contratos.radicado.update');

@@ -162,9 +162,16 @@ class ContratoController extends Controller
                 'razon_social' => $c->razonSocial?->razon_social ?? 'Sin RS',
             ]);
 
+        // Verificar si el contrato tiene planillas con días cotizados > 0
+        $tienePlanillaConDias = \App\Models\Factura::where('contrato_id', $contrato->id)
+            ->where('tipo', 'planilla')
+            ->where('dias_cotizados', '>', 0)
+            ->where('numero_factura', '>', 0)
+            ->exists();
+
         return view('admin.contratos.form', array_merge(
             $this->datosFormulario($alidoId, $cliente, $contrato->razon_social_id, $contrato->id),
-            compact('contrato', 'cliente', 'backUrl', 'radicadosPorTipo', 'rsBloquedaPorAfiliacion', 'otrosContratosVigentes')
+            compact('contrato', 'cliente', 'backUrl', 'radicadosPorTipo', 'rsBloquedaPorAfiliacion', 'otrosContratosVigentes', 'tienePlanillaConDias')
         ));
     }
 
@@ -324,6 +331,8 @@ class ContratoController extends Controller
             'mes_plano'        => 'required|integer|between:1,12',
             'anio_plano'       => 'required|integer|min:2020|max:2099',
             'observacion'      => 'nullable|string|max:500',
+            'valor_ss'         => 'nullable|numeric|min:0',
+            'mora'             => 'nullable|numeric|min:0',
         ]);
 
         $tipoRetiro  = $validated['tipo_retiro'];
@@ -332,30 +341,63 @@ class ContratoController extends Controller
             ? max(1, min(30, (int)($validated['num_dias'] ?? 1)))
             : 0;
 
-        // Validar que mes_plano no sea anterior al mes de ingreso
-        if ($contrato->fecha_ingreso) {
-            $ingreso = \Carbon\Carbon::parse($contrato->fecha_ingreso);
-            $planoPeriodo = \Carbon\Carbon::createFromDate($validated['anio_plano'], $validated['mes_plano'], 1);
-            if ($planoPeriodo->lt($ingreso->startOfMonth())) {
+        // Por seguridad: bloquear retiro informativo si tiene planillas con días > 0
+        if ($tipoRetiro === 'informativo') {
+            $tienePlanillaConDias = \App\Models\Factura::where('contrato_id', $contrato->id)
+                ->where('tipo', 'planilla')
+                ->where('dias_cotizados', '>', 0)
+                ->where('numero_factura', '>', 0)
+                ->exists();
+            if ($tienePlanillaConDias) {
                 return redirect()
                     ->route('admin.contratos.edit', [$id, 'back' => $request->input('back_url')])
-                    ->withErrors(['mes_plano' => 'El mes del plano no puede ser anterior al mes de ingreso del contrato.']);
+                    ->withErrors(['tipo_retiro' => 'No se puede aplicar retiro informativo porque el contrato ya tiene planillas pagadas con días cotizados.']);
             }
         }
 
+        // Validar que mes_plano sea exactamente el periodo consecutivo permitido
+        $ultimoPlano = DB::table('planos')
+            ->where('contrato_id', $contrato->id)
+            ->where('num_dias', '>', 0)
+            ->whereNull('deleted_at')
+            ->orderBy('anio_plano', 'desc')
+            ->orderBy('mes_plano', 'desc')
+            ->first();
+
+        $mesEsperado = null;
+        $anioEsperado = null;
+
+        if ($ultimoPlano) {
+            $mesEsperado = (int)$ultimoPlano->mes_plano + 1;
+            $anioEsperado = (int)$ultimoPlano->anio_plano;
+            if ($mesEsperado > 12) {
+                $mesEsperado = 1;
+                $anioEsperado++;
+            }
+        } else {
+            if ($contrato->fecha_ingreso) {
+                $ingreso = \Carbon\Carbon::parse($contrato->fecha_ingreso);
+                $mesEsperado = $ingreso->month;
+                $anioEsperado = $ingreso->year;
+            } else {
+                $mesEsperado = now()->month;
+                $anioEsperado = now()->year;
+            }
+        }
+
+        if ((int)$validated['mes_plano'] !== $mesEsperado || (int)$validated['anio_plano'] !== $anioEsperado) {
+            $mesesNombres = [1=>'Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+            $nombreMes = $mesesNombres[$mesEsperado] ?? '';
+            return redirect()
+                ->route('admin.contratos.edit', [$id, 'back' => $request->input('back_url')])
+                ->withErrors(['mes_plano' => "El retiro debe aplicarse exactamente en el periodo consecutivo: {$nombreMes} de {$anioEsperado}. No se permiten saltos de periodos sin planilla."]);
+        }
+
         // ── Calcular SS del retiro real usando calcularCotizacion() del modelo ─
-        // Delegar al modelo centraliza TODAS las reglas del plan:
-        //   • Cargo sin-CCF $100 para modalidades 0/12 sin caja
-        //   • Tiempo Parcial (IBC por entidad, factores por días)
-        //   • Prorrateo por num_dias
-        //   • Flags incluye_eps / incluye_arl / incluye_pension / incluye_caja
-        //   • Fallback plan→IDs del contrato (contratos legacy sin plan_id)
-        // Solo aplica para retiro real con días cotizados.
         $vEpsRetiro = 0; $vArlRetiro = 0; $vAfpRetiro = 0; $vCajaRetiro = 0; $totalSsRetiro = 0;
 
         if ($tipoRetiro === 'real' && $numDias > 0) {
             // ── Fallback IBC: contratos legacy con ibc/salario = 0 → usar SM ──
-            // calcularCotizacion() no tiene este guard; se inyecta temporalmente.
             $ibcOriginal = (float)($contrato->ibc ?? 0);
             $salOriginal = (float)($contrato->salario ?? 0);
             if ($ibcOriginal <= 0 && $salOriginal <= 0) {
@@ -372,6 +414,33 @@ class ContratoController extends Controller
             $vCajaRetiro = (int)($cotizacion['caja'] ?? 0);
             $totalSsRetiro = $vEpsRetiro + $vArlRetiro + $vAfpRetiro + $vCajaRetiro;
 
+            // Si el usuario ingresó un valor total manual en el modal, lo usamos y distribuimos proporcionalmente
+            if ($request->has('valor_ss') && !is_null($request->input('valor_ss'))) {
+                $valorSsManual = (int)$request->input('valor_ss');
+                if ($valorSsManual >= 0) {
+                    if ($totalSsRetiro > 0) {
+                        $factor = $valorSsManual / $totalSsRetiro;
+                        $vEpsRetiro  = (int)round($vEpsRetiro * $factor);
+                        $vArlRetiro  = (int)round($vArlRetiro * $factor);
+                        $vAfpRetiro  = (int)round($vAfpRetiro * $factor);
+                        $vCajaRetiro = (int)round($vCajaRetiro * $factor);
+
+                        // Ajustar remanentes
+                        $sumaTemp = $vEpsRetiro + $vArlRetiro + $vAfpRetiro + $vCajaRetiro;
+                        $diff = $valorSsManual - $sumaTemp;
+                        if ($diff !== 0) {
+                            if ($vEpsRetiro > 0) $vEpsRetiro += $diff;
+                            elseif ($vAfpRetiro > 0) $vAfpRetiro += $diff;
+                            elseif ($vArlRetiro > 0) $vArlRetiro += $diff;
+                            else $vEpsRetiro += $diff;
+                        }
+                    } else {
+                        $vEpsRetiro = $valorSsManual;
+                    }
+                    $totalSsRetiro = $valorSsManual;
+                }
+            }
+
             // Restaurar valores originales (evita mutar el objeto si se reutiliza)
             $contrato->ibc     = $ibcOriginal;
             $contrato->salario = $salOriginal;
@@ -379,34 +448,67 @@ class ContratoController extends Controller
 
 
         // ── Mora real del retiro (sin tramos mínimos) ─────────────────────────
-        // En retiro NO se cobra al cliente el mínimo: solo el interés real calculado.
-        // Se guarda en facturas.mora para conciliación. El aliado la recibe como 'otros'.
         $moraRetiro = 0;
-        try {
-            $rsRetiro   = $contrato->razonSocial;
-            $esIndep    = $contrato->esIndependiente() || ($rsRetiro && $rsRetiro->es_independiente);
-            $rsNitRet   = $esIndep ? (int)$contrato->cedula : ($rsRetiro ? (int)($rsRetiro->nit ?: $rsRetiro->id) : 0);
-            $rsDiaHRet  = $esIndep ? null : ($rsRetiro ? ($rsRetiro->dia_habil ?? null) : null);
+        $esMesActual = (int)($contrato->tipo_modalidad_id) === 11;
 
-            $mesRet     = (int)($validated['mes_plano']  ?? now()->month);
-            $anioRet    = (int)($validated['anio_plano'] ?? now()->year);
+        if ($request->has('mora') && !is_null($request->input('mora'))) {
+            $moraRetiro = (int)$request->input('mora');
+        } else {
+            try {
+                $rsRetiro   = $contrato->razonSocial;
+                $esIndep    = $contrato->esIndependiente() || ($rsRetiro && $rsRetiro->es_independiente);
+                $rsNitRet   = $esIndep ? (int)$contrato->cedula : ($rsRetiro ? (int)($rsRetiro->nit ?: $rsRetiro->id) : 0);
+                $rsDiaHRet  = $esIndep ? null : ($rsRetiro ? ($rsRetiro->dia_habil ?? null) : null);
 
-            // La planilla de mes_plano (periodo cotizado) vence y se paga en el mes siguiente
-            $mesVence   = $mesRet + 1;
-            $anioVence  = $anioRet;
-            if ($mesVence > 12) {
-                $mesVence  = 1;
-                $anioVence++;
+                $mesRet     = (int)($validated['mes_plano']  ?? now()->month);
+                $anioRet    = (int)($validated['anio_plano'] ?? now()->year);
+
+                if ($tipoRetiro === 'real') {
+                    if ($esMesActual) {
+                        $mesVence   = $mesRet;
+                        $anioVence  = $anioRet;
+                    } else {
+                        // La planilla de mes_plano (periodo cotizado) vence y se paga en el mes siguiente
+                        $mesVence   = $mesRet + 1;
+                        $anioVence  = $anioRet;
+                        if ($mesVence > 12) {
+                            $mesVence  = 1;
+                            $anioVence++;
+                        }
+                    }
+                } else {
+                    // Retiro Informativo: vence en el mismo mes del plano (o no aplica mora)
+                    $mesVence   = $mesRet;
+                    $anioVence  = $anioRet;
+                }
+
+                if ($rsNitRet && $totalSsRetiro > 0) {
+                    $periodoActualNum = now()->year * 100 + now()->month;
+                    $periodoVenceNum = $anioVence * 100 + $mesVence;
+
+                    if ($periodoVenceNum > $periodoActualNum) {
+                        $moraRetiro = 0;
+                    } else {
+                        $moraInfo   = MoraClienteService::calcular($alidoId, $rsNitRet, $rsDiaHRet, $totalSsRetiro, $mesVence, $anioVence);
+                        $moraRetiro = (int) round($moraInfo['mora_real'] ?? 0); // solo el interés real
+                    }
+                }
+            } catch (\Throwable) {}
+        }
+
+        $mesFactura = (int)$validated['mes_plano'];
+        $anioFactura = (int)$validated['anio_plano'];
+        if ($tipoRetiro === 'real' && !$esMesActual) {
+            $mesFactura++;
+            if ($mesFactura > 12) {
+                $mesFactura = 1;
+                $anioFactura++;
             }
-
-            if ($rsNitRet && $totalSsRetiro > 0) {
-                $moraInfo   = MoraClienteService::calcular($alidoId, $rsNitRet, $rsDiaHRet, $totalSsRetiro, $mesVence, $anioVence);
-                $moraRetiro = (int) round($moraInfo['mora_real'] ?? 0); // solo el interés real
-            }
-        } catch (\Throwable) {}
+        }
 
         DB::transaction(function () use ($contrato, $validated, $alidoId, $tipoRetiro, $fechaRetiro, $numDias,
-                                         $vEpsRetiro, $vArlRetiro, $vAfpRetiro, $vCajaRetiro, $totalSsRetiro, $moraRetiro) {
+                                         $vEpsRetiro, $vArlRetiro, $vAfpRetiro, $vCajaRetiro, $totalSsRetiro, $moraRetiro,
+                                         $mesFactura, $anioFactura) {
             // 1) Actualizar contrato → retirado
             $contrato->update([
                 'estado'           => 'retirado',
@@ -427,8 +529,8 @@ class ContratoController extends Controller
                 'contrato_id'      => $contrato->id,
                 'razon_social_id'  => $contrato->razon_social_id,
                 'empresa_id'       => null,
-                'mes'              => now()->month,
-                'anio'             => now()->year,
+                'mes'              => $mesFactura,
+                'anio'             => $anioFactura,
                 'fecha_pago'       => now()->toDateString(),
                 'estado'           => 'pagada',
                 'forma_pago'       => 'efectivo',
@@ -531,6 +633,118 @@ class ContratoController extends Controller
         return redirect()
             ->route('admin.contratos.edit', $retiroParams)
             ->with('success', 'Contrato retirado correctamente.');
+    }
+
+    // ─── API: Calcular Costo Retiro y Mora (devuelve JSON) ───────────
+    public function apiCalcularRetiro(Request $request, int $contratoId)
+    {
+        $aliadoId = session('aliado_id_activo');
+        $contrato = Contrato::where('aliado_id', $aliadoId)
+            ->with(['eps', 'arl', 'pension', 'caja', 'tipoModalidad', 'razonSocial', 'cliente'])
+            ->findOrFail($contratoId);
+
+        $dias = (int) $request->get('dias', 1);
+        $mesPlano = (int) $request->get('mes_plano', now()->month);
+        $anioPlano = (int) $request->get('anio_plano', now()->year);
+        $tipoRetiro = $request->get('tipo_retiro', 'real');
+
+        $costoSs = 0;
+        $mora = 0;
+        $esMesActual = (int)($contrato->tipo_modalidad_id) === 11;
+
+        $desglose = [
+            'eps'  => ['valor' => 0, 'mora' => 0],
+            'arl'  => ['valor' => 0, 'mora' => 0],
+            'pen'  => ['valor' => 0, 'mora' => 0],
+            'caja' => ['valor' => 0, 'mora' => 0],
+        ];
+
+        if ($tipoRetiro === 'real' && $dias > 0) {
+            $ibcOriginal = (float)($contrato->ibc ?? 0);
+            $salOriginal = (float)($contrato->salario ?? 0);
+            if ($ibcOriginal <= 0 && $salOriginal <= 0) {
+                $sm = (float) \App\Models\ConfiguracionBrynex::obtener('salario_minimo', 1423500);
+                $contrato->ibc     = $sm;
+                $contrato->salario = $sm;
+            }
+
+            $cotizacion = $contrato->calcularCotizacion($dias);
+            $vEps  = (int)($cotizacion['eps'] ?? 0);
+            $vArl  = (int)($cotizacion['arl'] ?? 0);
+            $vPen  = (int)($cotizacion['pen'] ?? 0);
+            $vCaja = (int)($cotizacion['caja'] ?? 0);
+            $costoSs = $vEps + $vArl + $vPen + $vCaja;
+
+            // Restaurar
+            $contrato->ibc     = $ibcOriginal;
+            $contrato->salario = $salOriginal;
+
+            // Calcular mora
+            if ($esMesActual) {
+                $mesVence = $mesPlano;
+                $anioVence = $anioPlano;
+            } else {
+                $mesVence = $mesPlano + 1;
+                $anioVence = $anioPlano;
+                if ($mesVence > 12) {
+                    $mesVence = 1;
+                    $anioVence++;
+                }
+            }
+
+            $rsRetiro = $contrato->razonSocial;
+            $esIndep = $contrato->esIndependiente() || ($rsRetiro && $rsRetiro->es_independiente);
+            $rsNitRet = $esIndep ? (int)$contrato->cedula : ($rsRetiro ? (int)($rsRetiro->nit ?: $rsRetiro->id) : 0);
+            $rsDiaHRet = $esIndep ? null : ($rsRetiro ? ($rsRetiro->dia_habil ?? null) : null);
+
+            if ($rsNitRet && $costoSs > 0) {
+                $periodoActualNum = now()->year * 100 + now()->month;
+                $periodoVenceNum = $anioVence * 100 + $mesVence;
+
+                if ($periodoVenceNum > $periodoActualNum) {
+                    $mora = 0;
+                } else {
+                    $moraInfo = \App\Services\MoraClienteService::calcular($aliadoId, $rsNitRet, $rsDiaHRet, $costoSs, $mesVence, $anioVence);
+                    $mora = (int) round($moraInfo['mora_real'] ?? 0);
+                }
+            }
+
+            // Prorratear la mora proporcionalmente por entidad
+            $mEps = 0; $mArl = 0; $mPen = 0; $mCaja = 0;
+            if ($mora > 0 && $costoSs > 0) {
+                $mEps  = (int) round($mora * ($vEps  / $costoSs));
+                $mArl  = (int) round($mora * ($vArl  / $costoSs));
+                $mPen  = (int) round($mora * ($vPen  / $costoSs));
+                $mCaja = (int) round($mora * ($vCaja / $costoSs));
+
+                // Ajustar remanentes con la diferencia
+                $sumaMora = $mEps + $mArl + $mPen + $mCaja;
+                $diff = $mora - $sumaMora;
+                if ($diff !== 0) {
+                    if ($vPen >= $vEps && $vPen >= $vArl && $vPen >= $vCaja) {
+                        $mPen += $diff;
+                    } elseif ($vEps >= $vArl && $vEps >= $vCaja) {
+                        $mEps += $diff;
+                    } else {
+                        $mArl += $diff;
+                    }
+                }
+            }
+
+            $desglose = [
+                'eps'  => ['valor' => $vEps,  'mora' => $mEps],
+                'arl'  => ['valor' => $vArl,  'mora' => $mArl],
+                'pen'  => ['valor' => $vPen,  'mora' => $mPen],
+                'caja' => ['valor' => $vCaja, 'mora' => $mCaja],
+            ];
+        }
+
+        return response()->json([
+            'ok' => true,
+            'costo_ss' => $costoSs,
+            'mora' => $mora,
+            'desglose' => $desglose
+        ]);
     }
 
     // ─── API: Cotizador (devuelve JSON) ───────────────────────────────
