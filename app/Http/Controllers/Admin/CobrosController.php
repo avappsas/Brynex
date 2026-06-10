@@ -1252,6 +1252,43 @@ class CobrosController extends Controller
         );
 
         if ($res['ok']) {
+            // Normalizar el número para el registro de la conversación
+            $numeroNormalizado = preg_replace('/[^0-9]/', '', $validated['celular_prueba']);
+            if (strlen($numeroNormalizado) === 10) {
+                $numeroNormalizado = '57' . $numeroNormalizado;
+            }
+
+            // Obtener o crear conversación para que el webhook de respuesta sepa a qué aliado dirigirla
+            $conversacion = \App\Models\WhatsappConversacion::firstOrCreate(
+                [
+                    'aliado_id'     => $aliadoId,
+                    'wa_contact_id' => $numeroNormalizado,
+                ],
+                [
+                    'nombre_contacto' => 'Contacto de Prueba',
+                    'estado'          => 'abierta',
+                ]
+            );
+
+            if ($conversacion->estado === 'cerrada') {
+                $conversacion->update(['estado' => 'abierta']);
+            }
+
+            // Guardar el mensaje de prueba saliente
+            \App\Models\WhatsappMensaje::create([
+                'conversacion_id'      => $conversacion->id,
+                'aliado_id'            => $aliadoId,
+                'wa_message_id'        => $res['wa_message_id'] ?? 'prueba_' . uniqid(),
+                'direccion'            => 'saliente',
+                'tipo'                 => 'template',
+                'plantilla_id'         => $plantilla->id,
+                'plantilla_parametros' => $params,
+                'estado'               => 'enviado',
+                'usuario_id'           => Auth::id(),
+            ]);
+
+            $conversacion->update(['ultimo_mensaje_at' => now()]);
+
             return response()->json(['ok' => true, 'mensaje' => '¡Mensaje de prueba enviado correctamente!']);
         }
 

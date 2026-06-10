@@ -34,16 +34,22 @@ class WhatsappMasivoController extends Controller
             'parametros'   => 'nullable|array',
         ]);
 
-        // Verificar que la plantilla es del aliado y está aprobada
-        $plantilla = WhatsappPlantilla::delAliado($alidoId)
-            ->aprobadas()
-            ->findOrFail($validated['plantilla_id']);
-
         // Verificar credenciales
         $config = WhatsappConfig::paraAliado($alidoId);
         if (!$config->credencialesCompletas()) {
             return response()->json(['ok' => false, 'error' => 'No hay credenciales de WhatsApp configuradas.'], 422);
         }
+
+        $effectiveAliadoId = $alidoId;
+        if ($config->usa_cuenta_brynex) {
+            $aliadoBrynex = \App\Models\Aliado::where('nombre', 'BryNex')->first();
+            $effectiveAliadoId = $aliadoBrynex ? $aliadoBrynex->id : 1;
+        }
+
+        // Verificar que la plantilla es del aliado y está aprobada
+        $plantilla = WhatsappPlantilla::delAliado($effectiveAliadoId)
+            ->aprobadas()
+            ->findOrFail($validated['plantilla_id']);
 
         $mes  = $validated['mes'];
         $anio = $validated['anio'];
@@ -138,14 +144,20 @@ class WhatsappMasivoController extends Controller
             'parametros'   => 'nullable|array',
         ]);
 
-        $plantilla = WhatsappPlantilla::delAliado($alidoId)
-            ->aprobadas()
-            ->findOrFail($validated['plantilla_id']);
-
         $config = WhatsappConfig::paraAliado($alidoId);
         if (!$config->credencialesCompletas()) {
             return response()->json(['ok' => false, 'error' => 'No hay credenciales de WhatsApp configuradas.'], 422);
         }
+
+        $effectiveAliadoId = $alidoId;
+        if ($config->usa_cuenta_brynex) {
+            $aliadoBrynex = \App\Models\Aliado::where('nombre', 'BryNex')->first();
+            $effectiveAliadoId = $aliadoBrynex ? $aliadoBrynex->id : 1;
+        }
+
+        $plantilla = WhatsappPlantilla::delAliado($effectiveAliadoId)
+            ->aprobadas()
+            ->findOrFail($validated['plantilla_id']);
 
         // Obtener empresas seleccionadas con sus contactos
         $empresas = Empresa::whereIn('id', $validated['empresa_ids'])

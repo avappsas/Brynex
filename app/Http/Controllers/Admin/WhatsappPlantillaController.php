@@ -23,7 +23,14 @@ class WhatsappPlantillaController extends Controller
     public function index()
     {
         $alidoId    = session('aliado_id_activo');
-        $plantillas = WhatsappPlantilla::delAliado($alidoId)
+        $config     = WhatsappConfig::paraAliado($alidoId);
+        $effectiveAliadoId = $alidoId;
+        if ($config->usa_cuenta_brynex) {
+            $aliadoBrynex = \App\Models\Aliado::where('nombre', 'BryNex')->first();
+            $effectiveAliadoId = $aliadoBrynex ? $aliadoBrynex->id : 1;
+        }
+
+        $plantillas = WhatsappPlantilla::delAliado($effectiveAliadoId)
             ->orderByRaw("CASE estado WHEN 'approved' THEN 0 WHEN 'pending' THEN 1 ELSE 2 END")
             ->orderBy('nombre_display')
             ->get();
@@ -45,16 +52,21 @@ class WhatsappPlantillaController extends Controller
     public function store(Request $request)
     {
         $alidoId = session('aliado_id_activo');
+        $config  = WhatsappConfig::paraAliado($alidoId);
+        $effectiveAliadoId = $alidoId;
+        if ($config->usa_cuenta_brynex) {
+            $aliadoBrynex = \App\Models\Aliado::where('nombre', 'BryNex')->first();
+            $effectiveAliadoId = $aliadoBrynex ? $aliadoBrynex->id : 1;
+        }
 
         $validated = $this->validarFormularioPlantilla($request);
-        $validated['aliado_id'] = $alidoId;
+        $validated['aliado_id'] = $effectiveAliadoId;
         $validated['estado']    = 'pending';
 
         $plantilla = WhatsappPlantilla::create($validated);
 
         // Si el usuario eligió crear también en Meta
         if ($request->boolean('crear_en_meta')) {
-            $config = WhatsappConfig::paraAliado($alidoId);
             if ($config->credencialesCompletas()) {
                 $resultado = $this->apiService->crearPlantillaEnMeta($plantilla, $config);
                 if ($resultado['ok']) {
@@ -84,7 +96,14 @@ class WhatsappPlantillaController extends Controller
     public function edit(int $id)
     {
         $alidoId   = session('aliado_id_activo');
-        $plantilla = WhatsappPlantilla::delAliado($alidoId)->findOrFail($id);
+        $config    = WhatsappConfig::paraAliado($alidoId);
+        $effectiveAliadoId = $alidoId;
+        if ($config->usa_cuenta_brynex) {
+            $aliadoBrynex = \App\Models\Aliado::where('nombre', 'BryNex')->first();
+            $effectiveAliadoId = $aliadoBrynex ? $aliadoBrynex->id : 1;
+        }
+
+        $plantilla = WhatsappPlantilla::delAliado($effectiveAliadoId)->findOrFail($id);
 
         return view('admin.whatsapp.plantillas.form', compact('plantilla'));
     }
@@ -95,7 +114,14 @@ class WhatsappPlantillaController extends Controller
     public function update(Request $request, int $id)
     {
         $alidoId   = session('aliado_id_activo');
-        $plantilla = WhatsappPlantilla::delAliado($alidoId)->findOrFail($id);
+        $config    = WhatsappConfig::paraAliado($alidoId);
+        $effectiveAliadoId = $alidoId;
+        if ($config->usa_cuenta_brynex) {
+            $aliadoBrynex = \App\Models\Aliado::where('nombre', 'BryNex')->first();
+            $effectiveAliadoId = $aliadoBrynex ? $aliadoBrynex->id : 1;
+        }
+
+        $plantilla = WhatsappPlantilla::delAliado($effectiveAliadoId)->findOrFail($id);
 
         $validated = $this->validarFormularioPlantilla($request);
         $plantilla->update($validated);
@@ -111,7 +137,14 @@ class WhatsappPlantillaController extends Controller
     public function destroy(int $id)
     {
         $alidoId   = session('aliado_id_activo');
-        $plantilla = WhatsappPlantilla::delAliado($alidoId)->findOrFail($id);
+        $config    = WhatsappConfig::paraAliado($alidoId);
+        $effectiveAliadoId = $alidoId;
+        if ($config->usa_cuenta_brynex) {
+            $aliadoBrynex = \App\Models\Aliado::where('nombre', 'BryNex')->first();
+            $effectiveAliadoId = $aliadoBrynex ? $aliadoBrynex->id : 1;
+        }
+
+        $plantilla = WhatsappPlantilla::delAliado($effectiveAliadoId)->findOrFail($id);
         $plantilla->delete();
 
         return response()->json(['ok' => true]);
@@ -131,7 +164,11 @@ class WhatsappPlantillaController extends Controller
                 ->with('warning', 'No hay credenciales de WhatsApp configuradas para este aliado.');
         }
 
-        $actualizadas = $this->apiService->sincronizarEstadoPlantillas($alidoId, $config);
+        $aliadoBrynex = \App\Models\Aliado::where('nombre', 'BryNex')->first();
+        $brynexId = $aliadoBrynex ? $aliadoBrynex->id : 1;
+        $targetAliadoId = $config->usa_cuenta_brynex ? $brynexId : $alidoId;
+
+        $actualizadas = $this->apiService->sincronizarEstadoPlantillas($targetAliadoId, $config);
 
         return redirect()
             ->route('admin.whatsapp.plantillas.index')
@@ -152,8 +189,12 @@ class WhatsappPlantillaController extends Controller
                 ->with('warning', 'No hay credenciales de WhatsApp configuradas para este aliado.');
         }
 
+        $aliadoBrynex = \App\Models\Aliado::where('nombre', 'BryNex')->first();
+        $brynexId = $aliadoBrynex ? $aliadoBrynex->id : 1;
+        $targetAliadoId = $config->usa_cuenta_brynex ? $brynexId : $alidoId;
+
         $templatesMetaRaw = $this->apiService->obtenerPlantillasDeMeta($config);
-        $plantillasLocales = WhatsappPlantilla::delAliado($alidoId)->pluck('nombre')->toArray();
+        $plantillasLocales = WhatsappPlantilla::delAliado($targetAliadoId)->pluck('nombre')->toArray();
 
         $plantillasDisponibles = [];
         foreach ($templatesMetaRaw as $tmpl) {
@@ -199,6 +240,10 @@ class WhatsappPlantillaController extends Controller
             'plantillas.*' => 'required|string',
         ]);
 
+        $aliadoBrynex = \App\Models\Aliado::where('nombre', 'BryNex')->first();
+        $brynexId = $aliadoBrynex ? $aliadoBrynex->id : 1;
+        $targetAliadoId = $config->usa_cuenta_brynex ? $brynexId : $alidoId;
+
         $seleccionadas = $request->input('plantillas');
         $templatesMetaRaw = $this->apiService->obtenerPlantillasDeMeta($config);
 
@@ -209,7 +254,7 @@ class WhatsappPlantillaController extends Controller
                 $parsed = $this->parsearComponentesMeta($tmpl['components'] ?? []);
 
                 $plantillaExistente = WhatsappPlantilla::withTrashed()
-                    ->where('aliado_id', $alidoId)
+                    ->where('aliado_id', $targetAliadoId)
                     ->where('nombre', $nombre)
                     ->first();
 
@@ -235,7 +280,7 @@ class WhatsappPlantillaController extends Controller
                     $plantillaExistente->update($datosPlantilla);
                 } else {
                     WhatsappPlantilla::create(array_merge([
-                        'aliado_id' => $alidoId,
+                        'aliado_id' => $targetAliadoId,
                         'nombre'    => $nombre,
                     ], $datosPlantilla));
                 }
@@ -291,8 +336,14 @@ class WhatsappPlantillaController extends Controller
     public function apiListarAprobadas()
     {
         $alidoId = session('aliado_id_activo');
+        $config  = WhatsappConfig::paraAliado($alidoId);
+        $effectiveAliadoId = $alidoId;
+        if ($config->usa_cuenta_brynex) {
+            $aliadoBrynex = \App\Models\Aliado::where('nombre', 'BryNex')->first();
+            $effectiveAliadoId = $aliadoBrynex ? $aliadoBrynex->id : 1;
+        }
 
-        $plantillas = WhatsappPlantilla::delAliado($alidoId)
+        $plantillas = WhatsappPlantilla::delAliado($effectiveAliadoId)
             ->aprobadas()
             ->select('id', 'nombre', 'nombre_display', 'cuerpo', 'variables_mapa', 'botones')
             ->get()

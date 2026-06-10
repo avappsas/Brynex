@@ -69,7 +69,14 @@ class WhatsappChatController extends Controller
             ->orderBy('nombre')
             ->get(['id', 'nombre']);
 
-        $plantillas = \App\Models\WhatsappPlantilla::delAliado($alidoId)
+        $config = WhatsappConfig::paraAliado($alidoId);
+        $effectiveAliadoId = $alidoId;
+        if ($config->usa_cuenta_brynex) {
+            $aliadoBrynex = \App\Models\Aliado::where('nombre', 'BryNex')->first();
+            $effectiveAliadoId = $aliadoBrynex ? $aliadoBrynex->id : 1;
+        }
+
+        $plantillas = \App\Models\WhatsappPlantilla::delAliado($effectiveAliadoId)
             ->aprobadas()
             ->select('id', 'nombre', 'nombre_display', 'cuerpo', 'variables_mapa')
             ->get();
@@ -459,7 +466,13 @@ class WhatsappChatController extends Controller
 
     private function enviarTemplate(WhatsappConversacion $conv, array $data, WhatsappConfig $config, int $alidoId): array
     {
-        $plantilla = \App\Models\WhatsappPlantilla::delAliado($alidoId)->findOrFail($data['plantilla_id']);
+        $effectiveAliadoId = $alidoId;
+        if ($config->usa_cuenta_brynex) {
+            $aliadoBrynex = \App\Models\Aliado::where('nombre', 'BryNex')->first();
+            $effectiveAliadoId = $aliadoBrynex ? $aliadoBrynex->id : 1;
+        }
+
+        $plantilla = \App\Models\WhatsappPlantilla::delAliado($effectiveAliadoId)->findOrFail($data['plantilla_id']);
         $params    = $data['parametros'] ?? [];
 
         $resultado = $this->apiService->enviarTemplate($conv->wa_contact_id, $plantilla, $params, $config);

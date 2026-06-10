@@ -324,10 +324,11 @@ class WhatsappWebhookService
             $waFrom = $msg['from'] ?? null;
             if (!$waFrom) continue;
 
-            // Buscar si ya existe una conversación activa para este número
+            // Buscar si ya existe una conversación activa para este número (ordenando por la más reciente)
             $convExistente = WhatsappConversacion::where('wa_contact_id', $waFrom)
                 ->whereIn('aliado_id', array_column($configs, 'aliado_id'))
                 ->whereIn('estado', ['abierta', 'asignada'])
+                ->orderByDesc('ultimo_mensaje_at')
                 ->first();
 
             if ($convExistente) {

@@ -303,13 +303,17 @@ class WhatsappConfigController extends Controller
             return redirect()->back()->with('warning', 'No se encontraron plantillas en la cuenta de Meta o el token/configuración no es correcto.');
         }
 
+        $aliadoBrynex = Aliado::where('nombre', 'BryNex')->first();
+        $brynexId = $aliadoBrynex ? $aliadoBrynex->id : 1;
+        $targetAliadoId = $config->usa_cuenta_brynex ? $brynexId : $alidoId;
+
         $importadas = 0;
         foreach ($templatesMetaRaw as $tmpl) {
             $nombre = $tmpl['name'] ?? '';
             $parsed = $this->parsearComponentesMeta($tmpl['components'] ?? []);
 
             $plantillaExistente = \App\Models\WhatsappPlantilla::withTrashed()
-                ->where('aliado_id', $alidoId)
+                ->where('aliado_id', $targetAliadoId)
                 ->where('nombre', $nombre)
                 ->first();
 
@@ -335,7 +339,7 @@ class WhatsappConfigController extends Controller
                 $plantillaExistente->update($datosPlantilla);
             } else {
                 \App\Models\WhatsappPlantilla::create(array_merge([
-                    'aliado_id' => $alidoId,
+                    'aliado_id' => $targetAliadoId,
                     'nombre'    => $nombre,
                 ], $datosPlantilla));
             }
