@@ -37,7 +37,7 @@ class WhatsappWebhookService
 
                 // Si no encontramos config específica, buscar si es el número Brynex
                 if (!$config) {
-                    $brynexPhoneId = config('services.whatsapp.phone_number_id');
+                    $brynexPhoneId = \App\Models\ConfiguracionBrynex::obtener('whatsapp_global_phone_number_id') ?: config('services.whatsapp.phone_number_id');
                     if ($phoneNumberId === $brynexPhoneId) {
                         // Buscar aliados que usen la cuenta Brynex — procesar para todos
                         $configs = WhatsappConfig::where('usa_cuenta_brynex', true)
@@ -324,11 +324,11 @@ class WhatsappWebhookService
             $waFrom = $msg['from'] ?? null;
             if (!$waFrom) continue;
 
-            // Buscar si ya existe una conversación activa para este número (ordenando por la más reciente)
+            // Buscar si ya existe una conversación activa para este número (ordenando por la más reciente usando COALESCE para evitar problemas con NULLs)
             $convExistente = WhatsappConversacion::where('wa_contact_id', $waFrom)
                 ->whereIn('aliado_id', array_column($configs, 'aliado_id'))
                 ->whereIn('estado', ['abierta', 'asignada'])
-                ->orderByDesc('ultimo_mensaje_at')
+                ->orderByRaw('COALESCE(ultimo_mensaje_at, updated_at) DESC')
                 ->first();
 
             if ($convExistente) {
