@@ -4,6 +4,28 @@
 
 @push('styles')
 <style>
+/* ── Tareas: layout de altura completa, solo tbody scrollea ── */
+html, body {
+    height: 100%;
+    overflow: hidden;
+}
+body {
+    display: flex;
+    flex-direction: column;
+}
+.header {
+    flex-shrink: 0;
+}
+.contenido {
+    flex: 1 !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    display: flex !important;
+    flex-direction: column !important;
+    padding: 0.75rem 1rem !important;
+    gap: 0.5rem;
+}
+
 :root {
     --verde:   #10b981; --amarillo: #f59e0b;
     --rojo:    #ef4444; --azul:     #3b82f6;
@@ -12,24 +34,43 @@
 .tareas-header { display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-bottom:1.25rem; flex-wrap:wrap; }
 .tareas-title  { font-size:1.35rem; font-weight:700; color:#1e293b; }
 
-/* Tarjetas resumen */
-.resumen-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:.75rem; margin-bottom:1.25rem; }
-.resumen-card { background:#fff; border-radius:12px; padding:.85rem 1rem; box-shadow:0 1px 6px rgba(0,0,0,.07); border-left:4px solid #e2e8f0; cursor:pointer; transition:transform .15s; }
-.resumen-card:hover { transform:translateY(-2px); }
-.resumen-card .rc-num  { font-size:1.8rem; font-weight:800; line-height:1; }
-.resumen-card .rc-lbl  { font-size:.72rem; color:#64748b; margin-top:.2rem; font-weight:500; }
-.resumen-card.pendiente { border-color:var(--amarillo); } .resumen-card.pendiente .rc-num { color:var(--amarillo); }
-.resumen-card.en_gestion{ border-color:var(--azul); }     .resumen-card.en_gestion .rc-num{ color:var(--azul); }
-.resumen-card.en_espera { border-color:var(--naranja); }  .resumen-card.en_espera .rc-num { color:var(--naranja); }
-.resumen-card.vencidas  { border-color:var(--rojo); }     .resumen-card.vencidas .rc-num  { color:var(--rojo); }
-.resumen-card.cerradas  { border-color:var(--gris); }     .resumen-card.cerradas .rc-num  { color:var(--gris); }
-
-/* Tipos resumen */
-.tipos-strip { display:flex; gap:.5rem; flex-wrap:wrap; margin-bottom:1rem; }
-.tipo-badge  { background:#f1f5f9; border:1px solid #e2e8f0; border-radius:99px; padding:.28rem .75rem; font-size:.72rem; font-weight:600; color:#334155; cursor:pointer; transition:background .15s; }
-.tipo-badge:hover, .tipo-badge.activo { background:#dbeafe; border-color:#93c5fd; color:#1d4ed8; }
-.tipo-badge .count { background:#e2e8f0; border-radius:99px; padding:.05rem .42rem; margin-left:.3rem; font-size:.65rem; }
-.tipo-badge.activo .count { background:#bfdbfe; }
+/* Tarjetas resumen mini */
+.resumen-card-mini {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-left: 3.5px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 0.3rem 0.6rem;
+    cursor: pointer;
+    transition: transform 0.1s ease, box-shadow 0.1s ease;
+    box-sizing: border-box;
+    font-size: 0.73rem;
+}
+.resumen-card-mini:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+}
+.resumen-card-mini .rc-num {
+    font-size: 0.95rem;
+    font-weight: 800;
+}
+.resumen-card-mini .rc-lbl {
+    font-weight: 600;
+    color: #475569;
+}
+.resumen-card-mini.pendiente { border-left-color: var(--amarillo); }
+.resumen-card-mini.pendiente .rc-num { color: var(--amarillo); }
+.resumen-card-mini.en_gestion { border-left-color: var(--azul); }
+.resumen-card-mini.en_gestion .rc-num { color: var(--azul); }
+.resumen-card-mini.en_espera { border-left-color: var(--naranja); }
+.resumen-card-mini.en_espera .rc-num { color: var(--naranja); }
+.resumen-card-mini.vencidas { border-left-color: var(--rojo); }
+.resumen-card-mini.vencidas .rc-num { color: var(--rojo); }
+.resumen-card-mini.cerradas { border-left-color: var(--gris); }
+.resumen-card-mini.cerradas .rc-num { color: var(--gris); }
 
 /* Filtros */
 .filtros-bar { display:flex; gap:.6rem; flex-wrap:wrap; margin-bottom:1rem; align-items:center; }
@@ -41,7 +82,7 @@
 .btn-nueva:hover { background:linear-gradient(135deg,#1d4ed8,#1e3a8a); }
 
 /* Tabla */
-.tabla-wrap { background:#fff; border-radius:14px; box-shadow:0 2px 12px rgba(0,0,0,.07); overflow-x:auto; }
+.tabla-wrap { background:#fff; border-radius:14px; box-shadow:0 2px 12px rgba(0,0,0,.07); overflow-x:auto; overflow-y:auto; flex:1; min-height:0; }
 .tbl-tareas { width:100%; border-collapse:collapse; font-size:.8rem; }
 .tbl-tareas thead th { background:linear-gradient(135deg,#0a1628,#0d2550); color:rgba(255,255,255,.85); padding:.65rem .75rem; white-space:nowrap; font-weight:600; font-size:.73rem; letter-spacing:.04em; }
 .tbl-tareas thead th:first-child { border-radius:0; }
@@ -140,6 +181,112 @@
 @keyframes slideIn { from{transform:translateY(20px);opacity:0} to{transform:translateY(0);opacity:1} }
 
 .pag-wrap { display:flex; justify-content:space-between; align-items:center; padding:.75rem 1rem; border-top:1px solid #f1f5f9; font-size:.78rem; color:#64748b; }
+
+/* Pestañas del modal unificado */
+.modal-tabs {
+    display: flex;
+    border-bottom: 2px solid #e2e8f0;
+    margin-bottom: 1rem;
+    gap: 0.25rem;
+    background: #f8fafc;
+    padding: 0.25rem 0.25rem 0 0.25rem;
+    border-radius: 8px 8px 0 0;
+}
+.modal-tab {
+    padding: 0.5rem 0.85rem;
+    cursor: pointer;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #64748b;
+    border: none;
+    border-bottom: 3px solid transparent;
+    background: transparent;
+    transition: all 0.15s;
+    outline: none;
+    border-radius: 6px 6px 0 0;
+}
+.modal-tab:hover {
+    color: #1e293b;
+    background: #f1f5f9;
+}
+.modal-tab.active {
+    color: #2563eb;
+    border-bottom-color: #2563eb;
+    background: #fff;
+}
+.tab-content {
+    display: none;
+    animation: fadeInTab 0.2s ease;
+}
+.tab-content.active {
+    display: block;
+}
+@keyframes fadeInTab {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Selector de sub-acciones */
+.acciones-selector {
+    display: flex;
+    gap: 0.4rem;
+    margin-bottom: 1rem;
+    background: #f1f5f9;
+    padding: 0.25rem;
+    border-radius: 8px;
+    align-items: center;
+}
+.btn-subaccion {
+    flex: 1;
+    border: none;
+    background: transparent;
+    color: #475569;
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 0.45rem 0.5rem;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: center;
+    white-space: nowrap;
+}
+.btn-subaccion:hover {
+    color: #1e293b;
+    background: rgba(255,255,255,0.4);
+}
+.btn-subaccion.active {
+    background: #fff;
+    color: #0f172a;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+.subaccion-content {
+    display: none;
+}
+.subaccion-content.active {
+    display: block;
+}
+
+/* Layout de dos columnas en pestaña Historial */
+.historial-layout {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1.25rem;
+}
+@media (min-width: 768px) {
+    .historial-layout {
+        grid-template-columns: 1.2fr 1fr;
+    }
+}
+.historial-col {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 1rem;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
 </style>
 @endpush
 
@@ -149,158 +296,163 @@
     $estados = \App\Models\Tarea::ESTADOS;
 @endphp
 
-<div class="tareas-header">
-    <div>
-        <div class="tareas-title">📌 Gestión de Tareas</div>
-        <div style="font-size:.78rem;color:#64748b;">Seguimiento y control de trámites por cliente</div>
-    </div>
-    <div style="display:flex;gap:.6rem;align-items:center;">
-        <button type="button" onclick="abrirModalClavesGlobal()" style="background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#1c1917;border:none;border-radius:9px;padding:.48rem 1rem;font-size:.8rem;font-weight:800;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,0.15);display:inline-flex;align-items:center;gap:0.35rem;height:36px;white-space:nowrap;">🔑 Claves</button>
-        <a href="{{ route('admin.tareas.reporte') }}" style="background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;border-radius:9px;padding:.48rem 1rem;font-size:.8rem;text-decoration:none;font-weight:600;display:inline-flex;align-items:center;height:36px;box-sizing:border-box;">📊 Reporte</a>
-        <button class="btn-nueva" onclick="abrirModalNueva()" style="height:36px;align-items:center;box-sizing:border-box;">＋ Nueva Tarea</button>
-    </div>
-</div>
-
-{{-- Resumen por estado --}}
-<div class="resumen-grid">
-    <div class="resumen-card pendiente" onclick="filtrarEstado('pendiente')">
-        <div class="rc-num">{{ $resumenEstados['pendiente'] ?? 0 }}</div>
-        <div class="rc-lbl">⏳ Pendientes</div>
-    </div>
-    <div class="resumen-card en_gestion" onclick="filtrarEstado('en_gestion')">
-        <div class="rc-num">{{ $resumenEstados['en_gestion'] ?? 0 }}</div>
-        <div class="rc-lbl">🔵 En Gestión</div>
-    </div>
-    <div class="resumen-card en_espera" onclick="filtrarEstado('en_espera')">
-        <div class="rc-num">{{ $resumenEstados['en_espera'] ?? 0 }}</div>
-        <div class="rc-lbl">🟠 En Espera</div>
-    </div>
-    <div class="resumen-card vencidas">
-        <div class="rc-num">{{ $vencidas }}</div>
-        <div class="rc-lbl">🔴 Vencidas</div>
-    </div>
-    <div class="resumen-card cerradas" onclick="filtrarEstado('cerrada')">
-        <div class="rc-num">{{ $resumenEstados['cerrada'] ?? 0 }}</div>
-        <div class="rc-lbl">✅ Cerradas</div>
-    </div>
-</div>
-
-{{-- Tipos strip --}}
-<div class="tipos-strip">
-    <span class="tipo-badge {{ !request('tipo') ? 'activo' : '' }}" onclick="filtrarTipo('')">Todos</span>
-    @foreach($tipos as $key => $label)
-        <span class="tipo-badge {{ request('tipo') === $key ? 'activo' : '' }}" onclick="filtrarTipo('{{ $key }}')">
-            {{ $label }} @if(($resumenTipos[$key] ?? 0) > 0)<span class="count">{{ $resumenTipos[$key] }}</span>@endif
-        </span>
-    @endforeach
-</div>
-
-{{-- Filtros --}}
-<form method="GET" id="filtrosForm">
-<div class="filtros-bar">
-    <select name="encargado_id" onchange="this.form.submit()">
-        <option value="">👤 Todos los encargados</option>
-        @foreach($trabajadores as $t)
-            <option value="{{ $t->id }}" {{ request('encargado_id') == $t->id ? 'selected' : '' }}>{{ $t->nombre }}</option>
-        @endforeach
-    </select>
-    <select name="estado" onchange="this.form.submit()">
-        <option value="">📌 Todos los estados</option>
-        @foreach($estados as $k => $v)
-            <option value="{{ $k }}" {{ request('estado') === $k ? 'selected' : '' }}>{{ $v }}</option>
-        @endforeach
-    </select>
-    <select name="semaforo" onchange="this.form.submit()">
-        <option value="">🚦 Todos</option>
-        <option value="urgente" {{ request('semaforo') === 'urgente' ? 'selected' : '' }}>🔴 Urgentes / Vencidas</option>
-        <option value="en_espera" {{ request('semaforo') === 'en_espera' ? 'selected' : '' }}>🔵 En espera - Recordar</option>
-    </select>
-    <input name="cedula" value="{{ request('cedula') }}" placeholder="🔍 Cédula..." style="width:160px;" onchange="this.form.submit()">
-    <input type="hidden" name="tipo" value="{{ request('tipo') }}" id="hiddenTipo">
-    <input type="hidden" name="cerradas" value="{{ request('cerradas') }}" id="hiddenCerradas">
-    <label style="font-size:.78rem;color:#64748b;display:flex;align-items:center;gap:.3rem;cursor:pointer;">
-        <input type="checkbox" name="cerradas" value="1" {{ request('cerradas') ? 'checked' : '' }} onchange="this.form.submit()"> Ver cerradas
-    </label>
-    <a href="{{ route('admin.tareas.index') }}" class="btn-limpiar">✕ Limpiar</a>
-</div>
-</form>
-
-{{-- Tabla --}}
-<div class="tabla-wrap">
-<table class="tbl-tareas">
-    <thead>
-        <tr>
-            <th>🚦</th>
-            <th>Tipo</th>
-            <th>Cliente / Cédula</th>
-            <th>Empresa / Entidad</th>
-            <th>Tarea</th>
-            <th>Encargado</th>
-            <th>Estado</th>
-            <th>Límite</th>
-            <th>Días</th>
-            <th>Acciones</th>
-        </tr>
-    </thead>
-    <tbody>
-    @forelse($tareas as $t)
-    @php
-        $color = $t->colorSemaforo();
-        $dias  = $t->diasRestantes();
-        $diasText = $t->estado === 'cerrada' ? '—' : ($dias < 0 ? abs($dias).'d venc.' : $dias.'d');
-    @endphp
-    <tr>
-        <td>
-            <span class="semaforo {{ $color }}">
-                {{ $t->iconoSemaforo() }}
-                @if($color === 'rojo') Vencida
-                @elseif($color === 'amarillo') Urgente
-                @elseif($color === 'azul') Recordar
-                @elseif($color === 'naranja') Espera
-                @elseif($color === 'verde') OK
-                @else —
-                @endif
-            </span>
-        </td>
-        <td style="font-size:.73rem;font-weight:600;color:#475569;">{{ $t->tipoLabel() }}</td>
-        <td>
-            <div style="font-weight:600;font-size:.8rem;">{{ $t->nombre_cliente }}</div>
-            <div style="font-size:.7rem;color:#94a3b8;">{{ $t->cedula }}</div>
-        </td>
-        <td style="font-size:.78rem;">
-            @if($t->razonSocial) <div style="font-weight:600;">{{ $t->razonSocial->razon_social }}</div> @endif
-            @if($t->entidad) <div style="color:#94a3b8;font-size:.7rem;">{{ $t->entidad }}</div> @endif
-        </td>
-        <td style="max-width:220px;">
-            <div style="font-size:.78rem;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px;" title="{{ $t->tarea }}">{{ Str::limit($t->tarea, 60) }}</div>
-            @if($t->numero_radicado)<div style="font-size:.68rem;color:#94a3b8;">📄 {{ $t->numero_radicado }}</div>@endif
-        </td>
-        <td style="font-size:.78rem;font-weight:600;">{{ $t->encargado?->nombre ?? '—' }}</td>
-        <td><span class="badge {{ $t->estado }}">{{ $t->estadoLabel() }}</span></td>
-        <td style="font-size:.75rem;white-space:nowrap;">{{ $t->fecha_limite?->format('d/m/y') ?? '—' }}</td>
-        <td style="font-size:.75rem;font-weight:700;color:{{ $color === 'rojo' ? '#ef4444' : ($color === 'amarillo' ? '#f59e0b' : '#64748b') }};">{{ $diasText }}</td>
-        <td>
-            <div style="display:flex;gap:.3rem;">
-                <button class="btn-accion ver"      onclick="verDetalle({{ $t->id }})"         title="Ver detalle">👁</button>
-                @if($t->estado !== 'cerrada')
-                <button class="btn-accion gestion"  onclick="abrirGestion({{ $t->id }}, '{{ addslashes($t->nombre_cliente) }}')" title="Registrar gestión">📋</button>
-                <button class="btn-accion traslado" onclick="abrirTraslado({{ $t->id }}, '{{ addslashes($t->nombre_cliente) }}')" title="Trasladar">🔀</button>
-                <button class="btn-accion cerrar"   onclick="abrirCerrar({{ $t->id }}, '{{ addslashes($t->nombre_cliente) }}')" title="Cerrar tarea">🏁</button>
-                @endif
+<div class="tar-wrap" style="flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 0.4rem; overflow: hidden;">
+    {{-- Fila 1: Tareas Header (KPIs a la izquierda, botones clave a la derecha) --}}
+    <div class="tareas-header-row" style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem; flex-wrap:wrap; background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:0.4rem 0.8rem;">
+        {{-- KPIs a la izquierda --}}
+        <div style="display:flex; align-items:center; gap:0.45rem; flex-wrap:wrap;">
+            <div class="resumen-card-mini pendiente" onclick="filtrarEstado('pendiente')" title="Tareas Pendientes">
+                <span class="rc-num">{{ $resumenEstados['pendiente'] ?? 0 }}</span>
+                <span class="rc-lbl">⏳ Pendientes</span>
             </div>
-        </td>
-    </tr>
-    @empty
-    <tr><td colspan="10" style="text-align:center;padding:2.5rem;color:#94a3b8;font-size:.85rem;">No hay tareas con los filtros actuales.</td></tr>
-    @endforelse
-    </tbody>
-</table>
-@if($tareas->hasPages())
-<div class="pag-wrap">
-    <span>Mostrando {{ $tareas->firstItem() }}–{{ $tareas->lastItem() }} de {{ $tareas->total() }}</span>
-    <div style="display:flex;gap:.3rem;">{{ $tareas->links() }}</div>
-</div>
-@endif
+            <div class="resumen-card-mini en_gestion" onclick="filtrarEstado('en_gestion')" title="Tareas En Gestión">
+                <span class="rc-num">{{ $resumenEstados['en_gestion'] ?? 0 }}</span>
+                <span class="rc-lbl">🔵 En Gestión</span>
+            </div>
+            <div class="resumen-card-mini en_espera" onclick="filtrarEstado('en_espera')" title="Tareas En Espera">
+                <span class="rc-num">{{ $resumenEstados['en_espera'] ?? 0 }}</span>
+                <span class="rc-lbl">🟠 En Espera</span>
+            </div>
+            <div class="resumen-card-mini vencidas" title="Tareas Vencidas">
+                <span class="rc-num">{{ $vencidas }}</span>
+                <span class="rc-lbl">🔴 Vencidas</span>
+            </div>
+            <div class="resumen-card-mini cerradas" onclick="filtrarEstado('cerrada')" title="Tareas Cerradas">
+                <span class="rc-num">{{ $resumenEstados['cerrada'] ?? 0 }}</span>
+                <span class="rc-lbl">✅ Cerradas</span>
+            </div>
+        </div>
+
+        {{-- Botones clave a la derecha --}}
+        <div style="display:flex; gap:0.4rem; align-items:center;">
+            <button type="button" onclick="abrirModalClavesGlobal()" style="background:linear-gradient(135deg,#fbbf24,#f59e0b); color:#1c1917; border:none; border-radius:8px; padding:0.35rem 0.8rem; font-size:0.75rem; font-weight:800; cursor:pointer; box-shadow:0 1px 4px rgba(0,0,0,0.1); display:inline-flex; align-items:center; gap:0.25rem; height:30px; white-space:nowrap;">🔑 Claves</button>
+            <a href="{{ route('admin.tareas.reporte') }}" style="background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; border-radius:8px; padding:0.35rem 0.8rem; font-size:0.75rem; text-decoration:none; font-weight:600; display:inline-flex; align-items:center; height:30px; box-sizing:border-box;">📊 Reporte</a>
+            <button class="btn-nueva" onclick="abrirModalNueva()" style="height:30px; align-items:center; box-sizing:border-box; padding:0.35rem 0.8rem; font-size:0.75rem; border-radius:8px;">＋ Nueva Tarea</button>
+        </div>
+    </div>
+
+    {{-- Fila 2: Filtros --}}
+    <form method="GET" id="filtrosForm" style="margin:0;">
+    <div class="filtros-bar" style="display:flex; gap:0.4rem; flex-wrap:wrap; align-items:center; background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:0.4rem 0.8rem; margin-bottom:0.1rem;">
+        <select name="encargado_id" onchange="this.form.submit()" style="padding:0.3rem 0.5rem; font-size:0.75rem; height:28px; box-sizing:border-box;">
+            <option value="">👤 Todos los encargados</option>
+            @foreach($trabajadores as $t)
+                <option value="{{ $t->id }}" {{ request('encargado_id') == $t->id ? 'selected' : '' }}>{{ $t->nombre }}</option>
+            @endforeach
+        </select>
+        
+        <select name="tipo" onchange="this.form.submit()" style="padding:0.3rem 0.5rem; font-size:0.75rem; height:28px; box-sizing:border-box;">
+            <option value="">📋 Todos los tipos</option>
+            @foreach($tipos as $key => $label)
+                @php $cnt = $resumenTipos[$key] ?? 0; @endphp
+                <option value="{{ $key }}" {{ request('tipo') === $key ? 'selected' : '' }}>
+                    {{ $label }} {{ $cnt > 0 ? "($cnt)" : '' }}
+                </option>
+            @endforeach
+        </select>
+
+        <select name="estado" onchange="this.form.submit()" style="padding:0.3rem 0.5rem; font-size:0.75rem; height:28px; box-sizing:border-box;">
+            <option value="">📌 Todos los estados</option>
+            @foreach($estados as $k => $v)
+                <option value="{{ $k }}" {{ request('estado') === $k ? 'selected' : '' }}>{{ $v }}</option>
+            @endforeach
+        </select>
+
+        <select name="semaforo" onchange="this.form.submit()" style="padding:0.3rem 0.5rem; font-size:0.75rem; height:28px; box-sizing:border-box;">
+            <option value="">🚦 Todos los semáforos</option>
+            <option value="urgente" {{ request('semaforo') === 'urgente' ? 'selected' : '' }}>🔴 Urgentes / Vencidas</option>
+            <option value="en_espera" {{ request('semaforo') === 'en_espera' ? 'selected' : '' }}>🔵 En espera - Recordar</option>
+        </select>
+
+        <input name="cedula" value="{{ request('cedula') }}" placeholder="🔍 Cédula..." style="width:130px; padding:0.3rem 0.5rem; font-size:0.75rem; height:28px; box-sizing:border-box;" onchange="this.form.submit()">
+        
+        <input type="hidden" name="cerradas" value="{{ request('cerradas') }}" id="hiddenCerradas">
+        
+        <label style="font-size:.72rem; color:#64748b; display:flex; align-items:center; gap:.25rem; cursor:pointer; user-select:none; height:28px; margin:0;">
+            <input type="checkbox" name="cerradas" value="1" {{ request('cerradas') ? 'checked' : '' }} onchange="this.form.submit()"> Ver cerradas
+        </label>
+        
+        <a href="{{ route('admin.tareas.index') }}" class="btn-limpiar" style="padding:0.3rem 0.6rem; font-size:0.75rem; height:28px; box-sizing:border-box; display:inline-flex; align-items:center; justify-content:center;">✕ Limpiar</a>
+    </div>
+    </form>
+
+    {{-- Tabla --}}
+    <div class="tabla-wrap" style="overflow-x:auto; overflow-y:auto; border-radius:12px; border:1px solid #e2e8f0; background:#fff; flex:1; min-height:0;">
+    <table class="tbl-tareas">
+        <thead>
+            <tr>
+                <th>🚦</th>
+                <th>Tipo</th>
+                <th>Cliente / Cédula</th>
+                <th>Tarea</th>
+                <th>Encargado</th>
+                <th>Estado</th>
+                <th>Límite</th>
+                <th>Días</th>
+                <th>Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+        @forelse($tareas as $t)
+        @php
+            $color = $t->colorSemaforo();
+            $dias  = $t->diasRestantes();
+            $diasText = $t->estado === 'cerrada' ? '—' : ($dias < 0 ? abs($dias).'d venc.' : $dias.'d');
+        @endphp
+        <tr style="border-left: 3.5px solid {{ $color === 'rojo' ? '#ef4444' : ($color === 'amarillo' ? '#f59e0b' : ($color === 'azul' ? '#3b82f6' : ($color === 'naranja' ? '#f97316' : 'transparent'))) }};">
+            <td>
+                <span class="semaforo {{ $color }}">
+                    {{ $t->iconoSemaforo() }}
+                    @if($color === 'rojo') Vencida
+                    @elseif($color === 'amarillo') Urgente
+                    @elseif($color === 'azul') Recordar
+                    @elseif($color === 'naranja') Espera
+                    @elseif($color === 'verde') OK
+                    @else —
+                    @endif
+                </span>
+            </td>
+            <td style="font-size:.73rem;font-weight:600;color:#475569;">{{ $t->tipoLabel() }}</td>
+            <td>
+                <div style="font-weight:600;font-size:.8rem;">{{ $t->nombre_cliente }}</div>
+                <div style="font-size:.7rem;color:#94a3b8;">{{ $t->cedula }}</div>
+            </td>
+            <td style="max-width:220px;">
+                <div style="font-size:.78rem;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px;" title="{{ $t->tarea }}">{{ Str::limit($t->tarea, 60) }}</div>
+                <div style="display:flex;align-items:center;gap:0.4rem;margin-top:0.2rem;flex-wrap:wrap;">
+                    @if($t->numero_radicado)
+                        <span style="font-size:.68rem;color:#64748b;background:#f1f5f9;padding:0.05rem 0.25rem;border-radius:4px;">📄 {{ $t->numero_radicado }}</span>
+                    @endif
+                    @if($t->documentos_count > 0)
+                        <span style="font-size:0.65rem;color:#2563eb;background:#eff6ff;padding:0.05rem 0.25rem;border-radius:4px;font-weight:700;" title="{{ $t->documentos_count }} documentos adjuntos">📎 {{ $t->documentos_count }}</span>
+                    @endif
+                    @if($t->gestiones_count > 0)
+                        <span style="font-size:0.65rem;color:#16a34a;background:#f0fdf4;padding:0.05rem 0.25rem;border-radius:4px;font-weight:700;" title="{{ $t->gestiones_count }} gestiones registradas">💬 {{ $t->gestiones_count }}</span>
+                    @endif
+                </div>
+            </td>
+            <td style="font-size:.78rem;font-weight:600;">{{ $t->encargado?->nombre ?? '—' }}</td>
+            <td><span class="badge {{ $t->estado }}">{{ $t->estadoLabel() }}</span></td>
+            <td style="font-size:.75rem;white-space:nowrap;">{{ $t->fecha_limite?->format('d/m/y') ?? '—' }}</td>
+            <td style="font-size:.75rem;font-weight:700;color:{{ $color === 'rojo' ? '#ef4444' : ($color === 'amarillo' ? '#f59e0b' : '#64748b') }};">{{ $diasText }}</td>
+            <td>
+                <button class="btn-accion ver" onclick="abrirModalUnico({{ $t->id }})" style="width: auto; padding: 0 .5rem; display: inline-flex; align-items: center; gap: .25rem; font-size: .75rem; font-weight: 700;" title="Gestionar Tarea">
+                    ⚙️ Gestionar
+                </button>
+            </td>
+        </tr>
+        @empty
+        <tr><td colspan="10" style="text-align:center;padding:2.5rem;color:#94a3b8;font-size:.85rem;">No hay tareas con los filtros actuales.</td></tr>
+        @endforelse
+        </tbody>
+    </table>
+    @if($tareas->hasPages())
+    <div class="pag-wrap">
+        <span>Mostrando {{ $tareas->firstItem() }}–{{ $tareas->lastItem() }} de {{ $tareas->total() }}</span>
+        <div style="display:flex;gap:.3rem;">{{ $tareas->links() }}</div>
+    </div>
+    @endif
+    </div>
 </div>
 
 {{-- ══════════ MODAL NUEVA / EDITAR TAREA ══════════ --}}
@@ -347,9 +499,10 @@
         <div class="form-row col2">
             <div class="form-group">
                 <label>Contrato (opcional)</label>
-                <select name="contrato_id" id="selectContrato">
+                <select name="contrato_id" id="selectContrato" onchange="actualizarInfoContratoNueva(this)">
                     <option value="">— Sin contrato —</option>
                 </select>
+                <div id="nuevaContratoDetalleInfo" style="margin-top:0.4rem; font-size:0.75rem; display:none; padding:0.4rem 0.6rem; border-radius:6px; background:#f0f9ff; border:1px solid #bae6fd; color:#0369a1; font-weight:600;"></div>
             </div>
             <div class="form-group">
                 <label>Empresa (opcional)</label>
@@ -402,146 +555,256 @@
 </div>
 </div>
 
-{{-- ══════════ MODAL REGISTRAR GESTIÓN ══════════ --}}
-<div class="modal-overlay" id="modalGestion">
-<div class="modal-box sm">
-    <div class="modal-head">
-        <h3>📋 Registrar Gestión</h3>
-        <button class="btn-modal-close" onclick="cerrarModal('modalGestion')">✕</button>
-    </div>
-    <div class="modal-body">
-        <div style="background:#f8fafc;border-radius:8px;padding:.6rem .85rem;margin-bottom:1rem;font-size:.8rem;">
-            <strong id="gestionClienteNombre"></strong>
-        </div>
-        <div class="form-row">
-            <div class="form-group">
-                <label>Tipo de Acción</label>
-                <select id="gestionTipoAccion">
-                    <option value="tramite_realizado">📋 Trámite realizado</option>
-                    <option value="nota">📝 Nota / Observación</option>
-                    <option value="cambio_estado">🔄 Cambio de estado</option>
-                </select>
-            </div>
-        </div>
-        <div class="form-row" id="rowNuevoEstado" style="display:none;">
-            <div class="form-group">
-                <label>Nuevo Estado</label>
-                <select id="gestionNuevoEstado">
-                    @foreach($estados as $k => $v)
-                        @if($k !== 'cerrada')
-                        <option value="{{ $k }}">{{ $v }}</option>
-                        @endif
-                    @endforeach
-                </select>
-            </div>
-        </div>
-        <div class="form-row">
-            <div class="form-group">
-                <label>Observación / Trámite realizado *</label>
-                <textarea id="gestionObservacion" placeholder="Describa lo que se realizó..." style="min-height:100px;"></textarea>
-            </div>
-        </div>
-        <div class="form-row">
-            <div class="form-group">
-                <label>¿Recordar en cuántos días? <span style="color:#94a3b8;">(0 = sin recordatorio)</span></label>
-                <input type="number" id="gestionRecordarDias" min="0" max="365" value="0" placeholder="Ej: 8">
-                <div style="font-size:.72rem;color:#94a3b8;margin-top:.25rem;" id="gestionFechaAlertaPreview"></div>
-            </div>
-        </div>
-    </div>
-    <div class="modal-foot">
-        <button class="btn-secondary" onclick="cerrarModal('modalGestion')">Cancelar</button>
-        <button class="btn-primary" onclick="enviarGestion()">💾 Guardar Gestión</button>
-    </div>
-</div>
-</div>
-
-{{-- ══════════ MODAL TRASLADAR ══════════ --}}
-<div class="modal-overlay" id="modalTraslado">
-<div class="modal-box sm">
-    <div class="modal-head">
-        <h3>🔀 Trasladar Tarea</h3>
-        <button class="btn-modal-close" onclick="cerrarModal('modalTraslado')">✕</button>
-    </div>
-    <div class="modal-body">
-        <div style="background:#fff7ed;border-radius:8px;padding:.6rem .85rem;margin-bottom:1rem;font-size:.8rem;border:1px solid #fed7aa;">
-            ⚠️ El traslado quedará registrado en la bitácora de la tarea.<br>
-            <strong id="trasladoClienteNombre"></strong>
-        </div>
-        <div class="form-row">
-            <div class="form-group">
-                <label>Nuevo Encargado *</label>
-                <select id="trasladoEncargado">
-                    @foreach($trabajadores as $t)
-                        <option value="{{ $t->id }}">{{ $t->nombre }}</option>
-                    @endforeach
-                </select>
-            </div>
-        </div>
-        <div class="form-row">
-            <div class="form-group">
-                <label>Motivo del traslado *</label>
-                <textarea id="trasladoObservacion" placeholder="Motivo del traslado..." style="min-height:80px;"></textarea>
-            </div>
-        </div>
-    </div>
-    <div class="modal-foot">
-        <button class="btn-secondary" onclick="cerrarModal('modalTraslado')">Cancelar</button>
-        <button class="btn-primary" onclick="enviarTraslado()">🔀 Trasladar</button>
-    </div>
-</div>
-</div>
-
-{{-- ══════════ MODAL CERRAR TAREA ══════════ --}}
-<div class="modal-overlay" id="modalCerrar">
-<div class="modal-box sm">
-    <div class="modal-head">
-        <h3>🏁 Cerrar Tarea</h3>
-        <button class="btn-modal-close" onclick="cerrarModal('modalCerrar')">✕</button>
-    </div>
-    <div class="modal-body">
-        <div style="background:#f8fafc;border-radius:8px;padding:.6rem .85rem;margin-bottom:1rem;font-size:.8rem;">
-            <strong id="cerrarClienteNombre"></strong>
-        </div>
-        <div class="form-row">
-            <div class="form-group">
-                <label>Resultado *</label>
-                <div style="display:flex;gap:.75rem;margin-top:.3rem;">
-                    <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:.85rem;font-weight:400;">
-                        <input type="radio" name="cerrarResultado" value="positivo" checked> ✅ Positivo (logrado)
-                    </label>
-                    <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:.85rem;font-weight:400;">
-                        <input type="radio" name="cerrarResultado" value="negativo"> ❌ Negativo
-                    </label>
-                </div>
-            </div>
-        </div>
-        <div class="form-row">
-            <div class="form-group">
-                <label>Observación de cierre *</label>
-                <textarea id="cerrarObservacion" placeholder="Describa el resultado final..." style="min-height:80px;"></textarea>
-            </div>
-        </div>
-    </div>
-    <div class="modal-foot">
-        <button class="btn-secondary" onclick="cerrarModal('modalCerrar')">Cancelar</button>
-        <button class="btn-danger" onclick="enviarCerrar()">🏁 Cerrar Tarea</button>
-    </div>
-</div>
-</div>
-
-{{-- ══════════ MODAL DETALLE ══════════ --}}
-<div class="modal-overlay" id="modalDetalle">
+{{-- ══════════ MODAL UNIFICADO (EDICIÓN, ACCIONES E HISTORIAL) ══════════ --}}
+<div class="modal-overlay" id="modalUnificado">
 <div class="modal-box lg">
     <div class="modal-head">
-        <h3>👁 Detalle de la Tarea</h3>
-        <button class="btn-modal-close" onclick="cerrarModal('modalDetalle')">✕</button>
+        <h3 id="modalUnificadoTitulo">⚙️ Gestionar Tarea</h3>
+        <button class="btn-modal-close" onclick="cerrarModal('modalUnificado')">✕</button>
     </div>
-    <div class="modal-body" id="detalleContenido">
-        <div style="text-align:center;padding:2rem;color:#94a3b8;">Cargando...</div>
+    
+    <div class="modal-tabs">
+        <button class="modal-tab active" id="tabBtnEditar" onclick="cambiarTab('editar')">📝 Datos y Editar</button>
+        <button class="modal-tab" id="tabBtnAcciones" onclick="cambiarTab('acciones')">⚡ Acciones</button>
+        <button class="modal-tab" id="tabBtnHistorial" onclick="cambiarTab('historial')">📁 Historial y Documentos</button>
     </div>
-    <div class="modal-foot" id="detalleFooter">
-        <button class="btn-secondary" onclick="cerrarModal('modalDetalle')">Cerrar</button>
+    
+    <div class="modal-body">
+        
+        {{-- PESTAÑA 1: DATOS Y EDITAR --}}
+        <div id="tab-editar" class="tab-content active">
+            <form id="formEditar" method="POST" action="">
+                @csrf
+                @method('PUT')
+                <div class="form-row col2">
+                    <div class="form-group">
+                        <label>Tipo de Tarea *</label>
+                        <select name="tipo" id="editTipo" required>
+                            <option value="">— Seleccionar —</option>
+                            @foreach($tipos as $k => $v)
+                                <option value="{{ $k }}">{{ $v }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Encargado *</label>
+                        <select name="encargado_id" id="editEncargado" required>
+                            <option value="">— Seleccionar —</option>
+                            @foreach($trabajadores as $t)
+                                <option value="{{ $t->id }}">{{ $t->nombre }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row col2">
+                    <div class="form-group autocomplete-wrap">
+                        <label>Cédula del Cliente *</label>
+                        <input type="text" name="cedula" id="editCedula" placeholder="Buscar cédula..." required autocomplete="off" oninput="buscarClienteEdicion(this.value)">
+                        <div class="autocomplete-list" id="listaCedulasEdicion" style="display:none;"></div>
+                    </div>
+                    <div class="form-group">
+                        <label>Nombre del Cliente</label>
+                        <input type="text" id="editNombreClienteDisplay" readonly placeholder="Cargando..." style="background:#f8fafc;">
+                    </div>
+                </div>
+                <div class="form-row col2">
+                    <div class="form-group">
+                        <label>Contrato (opcional)</label>
+                        <select name="contrato_id" id="editContrato" onchange="actualizarInfoContratoEdicion(this)">
+                            <option value="">— Sin contrato —</option>
+                        </select>
+                        <div id="editContratoDetalleInfo" style="margin-top:0.4rem; font-size:0.75rem; display:none; padding:0.4rem 0.6rem; border-radius:6px; background:#f0f9ff; border:1px solid #bae6fd; color:#0369a1; font-weight:600;"></div>
+                    </div>
+                    <div class="form-group">
+                        <label>Empresa (opcional)</label>
+                        <select name="razon_social_id" id="editRazonSocial">
+                            <option value="">— Sin empresa —</option>
+                            @foreach($razonesSociales as $rs)
+                                <option value="{{ $rs->id }}">{{ $rs->razon_social }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Entidad donde se realiza el trámite</label>
+                        <input type="text" name="entidad" id="editEntidad" placeholder="Ej: Nueva EPS, Compensar, Porvenir...">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Descripción de la Tarea *</label>
+                        <textarea name="tarea" id="editTarea" required placeholder="Detalle la tarea..."></textarea>
+                    </div>
+                </div>
+                <div class="form-row col3">
+                    <div class="form-group">
+                        <label>Fecha Radicado</label>
+                        <input type="date" name="fecha_radicado" id="editFechaRadicado">
+                    </div>
+                    <div class="form-group">
+                        <label>Número Radicado</label>
+                        <input type="text" name="numero_radicado" id="editNumeroRadicado" placeholder="N° radicado">
+                    </div>
+                    <div class="form-group">
+                        <label>Correo Entidad</label>
+                        <input type="email" name="correo" id="editCorreo" placeholder="correo@entidad.com">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Observación adicional</label>
+                        <textarea name="observacion" id="editObservacion" placeholder="Información adicional..." style="min-height:60px;"></textarea>
+                    </div>
+                </div>
+            </form>
+            <div id="msgEdicionCerrada" style="display:none;background:#fef2f2;border:1px solid #fecaca;color:#991b1b;border-radius:10px;padding:.75rem 1rem;font-size:.8rem;font-weight:600;margin-top:.5rem;">
+                ⚠️ Esta tarea está cerrada. Los datos se muestran en modo de solo lectura.
+            </div>
+        </div>
+        
+        {{-- PESTAÑA 2: ACCIONES --}}
+        <div id="tab-acciones" class="tab-content">
+            <div id="accionesDisponibles">
+                <div class="acciones-selector">
+                    <button class="btn-subaccion active" id="btnSubGestion" onclick="mostrarSubAccion('gestion')">📋 Registrar Gestión</button>
+                    <button class="btn-subaccion" id="btnSubTraslado" onclick="mostrarSubAccion('traslado')">🔀 Trasladar</button>
+                    <button class="btn-subaccion" id="btnSubCerrar" onclick="mostrarSubAccion('cerrar')">🏁 Cerrar Tarea</button>
+                </div>
+                
+                {{-- SUB-ACCIÓN: REGISTRAR GESTIÓN --}}
+                <div id="sub-gestion" class="subaccion-content active">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Tipo de Acción</label>
+                            <select id="uniGestionTipoAccion" onchange="actualizarEstadoGestionVisibilidad(this.value)">
+                                <option value="tramite_realizado">📋 Trámite realizado</option>
+                                <option value="nota">📝 Nota / Observación</option>
+                                <option value="cambio_estado">🔄 Cambio de estado</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row" id="uniRowNuevoEstado" style="display:none;">
+                        <div class="form-group">
+                            <label>Nuevo Estado</label>
+                            <select id="uniGestionNuevoEstado">
+                                @foreach($estados as $k => $v)
+                                    @if($k !== 'cerrada')
+                                    <option value="{{ $k }}">{{ $v }}</option>
+                                    @endif
+                                @endforeach
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Observación / Trámite realizado *</label>
+                            <textarea id="uniGestionObservacion" placeholder="Describa lo que se realizó..." style="min-height:90px;"></textarea>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>¿Recordar en cuántos días? <span style="color:#94a3b8;">(0 = sin recordatorio)</span></label>
+                            <input type="number" id="uniGestionRecordarDias" min="0" max="365" value="0" placeholder="Ej: 8" oninput="actualizarAlertaPreview(this.value)">
+                            <div style="font-size:.72rem;color:#94a3b8;margin-top:.25rem;" id="uniGestionFechaAlertaPreview"></div>
+                        </div>
+                    </div>
+                    <div style="display:flex;justify-content:flex-end;margin-top:.5rem;">
+                        <button class="btn-primary" onclick="enviarGestionUnificada()">💾 Guardar Gestión</button>
+                    </div>
+                </div>
+                
+                {{-- SUB-ACCIÓN: TRASLADAR --}}
+                <div id="sub-traslado" class="subaccion-content">
+                    <div style="background:#fff7ed;border-radius:8px;padding:.6rem .85rem;margin-bottom:.75rem;font-size:.75rem;border:1px solid #fed7aa;color:#9a3412;">
+                        ⚠️ El traslado cambiará el encargado de la tarea y se registrará en la bitácora.
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Nuevo Encargado *</label>
+                            <select id="uniTrasladoEncargado">
+                                @foreach($trabajadores as $t)
+                                    <option value="{{ $t->id }}">{{ $t->nombre }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Motivo del traslado *</label>
+                            <textarea id="uniTrasladoObservacion" placeholder="Escriba el motivo detalladamente..." style="min-height:80px;"></textarea>
+                        </div>
+                    </div>
+                    <div style="display:flex;justify-content:flex-end;margin-top:.5rem;">
+                        <button class="btn-primary" onclick="enviarTrasladoUnificado()">🔀 Trasladar Tarea</button>
+                    </div>
+                </div>
+                
+                {{-- SUB-ACCIÓN: CERRAR TAREA --}}
+                <div id="sub-cerrar" class="subaccion-content">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Resultado *</label>
+                            <div style="display:flex;gap:.75rem;margin-top:.3rem;">
+                                <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:.85rem;font-weight:400;">
+                                    <input type="radio" name="uniCerrarResultado" value="positivo" checked> ✅ Positivo (logrado)
+                                </label>
+                                <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:.85rem;font-weight:400;">
+                                    <input type="radio" name="uniCerrarResultado" value="negativo"> ❌ Negativo (no logrado)
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Observación de cierre *</label>
+                            <textarea id="uniCerrarObservacion" placeholder="Describa el resultado final..." style="min-height:80px;"></textarea>
+                        </div>
+                    </div>
+                    <div style="display:flex;justify-content:flex-end;margin-top:.5rem;">
+                        <button class="btn-danger" onclick="enviarCerrarUnificado()">🏁 Cerrar Tarea Definitivamente</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="msgAccionesBloqueadas" style="display:none;background:#f8fafc;border:1px solid #e2e8f0;color:#475569;border-radius:10px;padding:1.5rem;text-align:center;font-size:.85rem;font-weight:600;">
+                🔒 Esta tarea está cerrada y no se pueden realizar nuevas acciones (gestiones, traslados o cierres).
+            </div>
+        </div>
+        
+        {{-- PESTAÑA 3: HISTORIAL Y DOCUMENTOS --}}
+        <div id="tab-historial" class="tab-content">
+            <div class="historial-layout">
+                
+                {{-- Columna Documentos --}}
+                <div class="historial-col">
+                    <div style="display:flex;align-items:center;justify-content:space-between;">
+                        <strong style="font-size:.82rem;">📎 Documentos Adjuntos</strong>
+                        <label style="background:#eff6ff;color:#2563eb;border:none;border-radius:7px;padding:.3rem .75rem;font-size:.75rem;cursor:pointer;font-weight:600;display:inline-flex;align-items:center;gap:.25rem;">
+                            ➕ Subir archivo <input type="file" style="display:none;" onchange="subirDocumentoUnificado(this)">
+                        </label>
+                    </div>
+                    <div id="uniDocsLista" class="docs-list" style="max-height:280px;overflow-y:auto;padding-right:0.25rem;">
+                        <!-- Se llena dinámicamente -->
+                    </div>
+                </div>
+                
+                {{-- Columna Bitácora --}}
+                <div class="historial-col">
+                    <strong style="font-size:.82rem;">📋 Línea de Tiempo de Gestiones</strong>
+                    <div id="uniTimelineLista" class="timeline" style="max-height:280px;overflow-y:auto;padding-right:0.25rem;">
+                        <!-- Se llena dinámicamente -->
+                    </div>
+                </div>
+                
+            </div>
+        </div>
+        
+    </div>
+    
+    <div class="modal-foot">
+        <button class="btn-secondary" onclick="cerrarModal('modalUnificado')">Cerrar</button>
+        <button class="btn-primary" id="uniBtnGuardarEditar" onclick="enviarEditarUnificado()">💾 Guardar Cambios</button>
     </div>
 </div>
 </div>
@@ -602,208 +865,403 @@ function seleccionarCliente(cedula, nombre) {
         .then(r => r.json()).then(data => {
             const sel = document.getElementById('selectContrato');
             sel.innerHTML = '<option value="">— Sin contrato —</option>' +
-                data.map(c => `<option value="${c.id}">${c.id} — ${c.fecha_ingreso}</option>`).join('');
+                data.map(c => {
+                    const est = c.estado === 'vigente' ? '🟢 Vigente' : '🔴 Retirado';
+                    const rs = c.razon_social ? ` · ${c.razon_social}` : ' · Sin empresa';
+                    const fIng = c.fecha_ingreso ? ` (Ingreso: ${c.fecha_ingreso})` : '';
+                    return `<option value="${c.id}">ID: ${c.id} | ${est}${rs}${fIng}</option>`;
+                }).join('');
+            
+            actualizarInfoContratoNueva(sel);
         });
 }
 
-// Gestión
-function abrirGestion(id, nombre) {
-    tareaIdActivo = id;
-    document.getElementById('gestionClienteNombre').textContent = nombre;
-    document.getElementById('gestionObservacion').value = '';
-    document.getElementById('gestionRecordarDias').value = 0;
-    document.getElementById('gestionFechaAlertaPreview').textContent = '';
-    document.getElementById('modalGestion').classList.add('open');
+function actualizarInfoContratoNueva(select) {
+    const infoDiv = document.getElementById('nuevaContratoDetalleInfo');
+    const selectedOption = select.options[select.selectedIndex];
+    if (selectedOption && selectedOption.value) {
+        infoDiv.textContent = `📋 Detalle: ${selectedOption.text}`;
+        infoDiv.style.display = 'block';
+    } else {
+        infoDiv.style.display = 'none';
+    }
 }
-document.getElementById('gestionTipoAccion')?.addEventListener('change', function() {
-    document.getElementById('rowNuevoEstado').style.display = this.value === 'cambio_estado' ? '' : 'none';
-});
-document.getElementById('gestionRecordarDias')?.addEventListener('input', function() {
-    const dias = parseInt(this.value) || 0;
-    const prev = document.getElementById('gestionFechaAlertaPreview');
+
+// Autocompletado cédula Edición
+let cedulaEdicionTimer = null;
+function buscarClienteEdicion(val) {
+    clearTimeout(cedulaEdicionTimer);
+    if (val.length < 3) { document.getElementById('listaCedulasEdicion').style.display='none'; return; }
+    cedulaEdicionTimer = setTimeout(() => {
+        fetch(`{{ route('admin.tareas.api.clientes') }}?cedula=${encodeURIComponent(val)}`)
+            .then(r => r.json()).then(data => {
+                const list = document.getElementById('listaCedulasEdicion');
+                if (!data.length) { list.style.display='none'; return; }
+                list.innerHTML = data.map(c =>
+                    `<div class="autocomplete-item" onclick="seleccionarClienteEdicion('${c.cedula}','${c.primer_nombre} ${c.segundo_nombre??''} ${c.primer_apellido} ${c.segundo_apellido??''}')">
+                        <strong>${c.cedula}</strong> — ${c.primer_nombre} ${c.primer_apellido}
+                    </div>`
+                ).join('');
+                list.style.display = 'block';
+            });
+    }, 350);
+}
+function seleccionarClienteEdicion(cedula, nombre) {
+    document.getElementById('editCedula').value = cedula;
+    document.getElementById('editNombreClienteDisplay').value = nombre.trim();
+    document.getElementById('listaCedulasEdicion').style.display = 'none';
+    cargarContratosEdicion(cedula, null);
+}
+
+function cargarContratosEdicion(cedula, contratoIdSeleccionado) {
+    fetch(`{{ route('admin.tareas.api.contratos') }}?cedula=${cedula}`)
+        .then(r => r.json())
+        .then(data => {
+            const sel = document.getElementById('editContrato');
+            sel.innerHTML = '<option value="">— Sin contrato —</option>' +
+                data.map(c => {
+                    const est = c.estado === 'vigente' ? '🟢 Vigente' : '🔴 Retirado';
+                    const rs = c.razon_social ? ` · ${c.razon_social}` : ' · Sin empresa';
+                    const fIng = c.fecha_ingreso ? ` (Ingreso: ${c.fecha_ingreso})` : '';
+                    return `<option value="${c.id}" ${c.id == contratoIdSeleccionado ? 'selected' : ''}>ID: ${c.id} | ${est}${rs}${fIng}</option>`;
+                }).join('');
+            
+            actualizarInfoContratoEdicion(sel);
+        });
+}
+
+function actualizarInfoContratoEdicion(select) {
+    const infoDiv = document.getElementById('editContratoDetalleInfo');
+    const selectedOption = select.options[select.selectedIndex];
+    if (selectedOption && selectedOption.value) {
+        infoDiv.textContent = `📋 Detalle: ${selectedOption.text}`;
+        infoDiv.style.display = 'block';
+    } else {
+        infoDiv.style.display = 'none';
+    }
+}
+
+// Modal Único Unificado
+function abrirModalUnico(id) {
+    tareaIdActivo = id;
+    
+    // Abrir modal e ir a la primera pestaña
+    document.getElementById('modalUnificado').classList.add('open');
+    cambiarTab('editar');
+    
+    // Mostrar estado de carga
+    document.getElementById('editNombreClienteDisplay').value = 'Cargando...';
+    document.getElementById('uniDocsLista').innerHTML = '<div style="text-align:center;padding:1rem;color:#94a3b8;font-size:.78rem;">⏳ Cargando documentos...</div>';
+    document.getElementById('uniTimelineLista').innerHTML = '<div style="text-align:center;padding:1rem;color:#94a3b8;font-size:.78rem;">⏳ Cargando historial...</div>';
+    
+    // Obtener datos vía AJAX
+    fetch(`/admin/tareas/${id}/show`)
+        .then(r => r.json())
+        .then(data => {
+            const t = data.tarea;
+            const c = data.cliente;
+            
+            const clienteNombre = c ? (c.primer_nombre + ' ' + (c.segundo_nombre ?? '') + ' ' + c.primer_apellido + ' ' + (c.segundo_apellido ?? '')).trim() : t.cedula;
+            document.getElementById('modalUnificadoTitulo').innerHTML = `⚙️ Gestionar Tarea: <span style="color: #fbbf24;">${t.tipo}</span> <span style="font-size:0.75rem; opacity:0.85; margin-left:0.5rem; font-weight:normal;">(${clienteNombre})</span>`;
+            
+            // Llenar Formulario de Edición
+            document.getElementById('formEditar').action = `/admin/tareas/${t.id}`;
+            document.getElementById('editTipo').value = t.tipo;
+            document.getElementById('editEncargado').value = t.encargado_id;
+            document.getElementById('editCedula').value = t.cedula;
+            document.getElementById('editNombreClienteDisplay').value = clienteNombre;
+            document.getElementById('editEntidad').value = t.entidad ?? '';
+            document.getElementById('editTarea').value = t.tarea;
+            document.getElementById('editFechaRadicado').value = t.fecha_radicado ? t.fecha_radicado.split(' ')[0] : '';
+            document.getElementById('editNumeroRadicado').value = t.numero_radicado ?? '';
+            document.getElementById('editCorreo').value = t.correo ?? '';
+            document.getElementById('editObservacion').value = t.observacion ?? '';
+            document.getElementById('editRazonSocial').value = t.razon_social_id ?? '';
+            
+            cargarContratosEdicion(t.cedula, t.contrato_id);
+            
+            // Si la tarea está cerrada, deshabilitar inputs
+            const esCerrada = (t.estado === 'cerrada');
+            const inputs = document.getElementById('formEditar').querySelectorAll('input, select, textarea');
+            inputs.forEach(el => el.disabled = esCerrada);
+            
+            if (esCerrada) {
+                document.getElementById('msgEdicionCerrada').style.display = 'block';
+                document.getElementById('uniBtnGuardarEditar').style.display = 'none';
+                document.getElementById('accionesDisponibles').style.display = 'none';
+                document.getElementById('msgAccionesBloqueadas').style.display = 'block';
+            } else {
+                document.getElementById('msgEdicionCerrada').style.display = 'none';
+                document.getElementById('uniBtnGuardarEditar').style.display = '';
+                document.getElementById('accionesDisponibles').style.display = 'block';
+                document.getElementById('msgAccionesBloqueadas').style.display = 'none';
+                
+                // Limpiar acciones
+                document.getElementById('uniGestionTipoAccion').value = 'tramite_realizado';
+                actualizarEstadoGestionVisibilidad('tramite_realizado');
+                document.getElementById('uniGestionObservacion').value = '';
+                document.getElementById('uniGestionRecordarDias').value = 0;
+                document.getElementById('uniGestionFechaAlertaPreview').textContent = '';
+                
+                document.getElementById('uniTrasladoEncargado').value = t.encargado_id;
+                document.getElementById('uniTrasladoObservacion').value = '';
+                
+                document.getElementById('uniCerrarObservacion').value = '';
+                document.querySelector('input[name="uniCerrarResultado"][value="positivo"]').checked = true;
+                
+                mostrarSubAccion('gestion');
+            }
+            
+            // Llenar Documentos
+            let docsHtml = '';
+            (t.documentos ?? []).forEach(d => {
+                docsHtml += `
+                <div class="doc-item" style="padding: 0.45rem 0.6rem; margin-bottom:0.35rem; border-radius:8px; display:flex; align-items:center; gap:0.5rem;">
+                    <div class="doc-icon" style="font-size:1.1rem; line-height:1;">📎</div>
+                    <div class="doc-info" style="flex:1; min-width:0;">
+                        <div class="doc-name" style="font-size:0.75rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${d.nombre}">${d.nombre}</div>
+                        <div class="doc-meta" style="font-size:0.62rem; color:#94a3b8;">Subido por ${d.user?.nombre ?? '?'}</div>
+                    </div>
+                    <a href="/admin/tareas/documento/${d.id}" class="btn-download" style="padding:0.2rem 0.45rem; font-size:0.68rem;" target="_blank">⬇ Descargar</a>
+                </div>`;
+            });
+            if (!(t.documentos ?? []).length) {
+                docsHtml = '<div style="font-size:.73rem;color:#94a3b8;padding:1.5rem;text-align:center;">Sin documentos adjuntos.</div>';
+            }
+            document.getElementById('uniDocsLista').innerHTML = docsHtml;
+            
+            // Llenar Historial/Timeline
+            let timelineHtml = '';
+            (t.gestiones ?? []).forEach(g => {
+                const iconosAccion = {tramite_realizado:'📋', traslado:'🔀', cambio_estado:'🔄', nota:'📝'};
+                const ico = iconosAccion[g.tipo_accion] ?? '📌';
+                const fecha = new Date(g.created_at).toLocaleString('es-CO', {day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+                let trasladoInfo = '';
+                if (g.tipo_accion === 'traslado') {
+                    trasladoInfo = `<div style="font-size:.68rem;margin-top:.15rem;color:#ea580c;">De: <strong>${g.encargado_anterior?.nombre??'?'}</strong> → <strong>${g.encargado_nuevo?.nombre??'?'}</strong></div>`;
+                }
+                timelineHtml += `
+                <div class="tl-item" style="gap:0.5rem; margin-bottom:0.6rem; display:flex; align-items:flex-start;">
+                    <div class="tl-dot ${g.tipo_accion}" style="width:26px; height:26px; font-size:0.75rem; display:flex; align-items:center; justify-content:center; border-radius:50%; flex-shrink:0;">${ico}</div>
+                    <div class="tl-content" style="flex:1; min-width:0;">
+                        <div class="tl-meta" style="font-size:0.65rem; color:#94a3b8;">${g.user?.nombre ?? '?'} · ${fecha}</div>
+                        <div class="tl-obs" style="font-size:0.75rem; padding:0.35rem 0.55rem; border-radius:6px; background:#f8fafc; border-left:3px solid #e2e8f0; word-break:break-word;">
+                            ${g.observacion}
+                            ${trasladoInfo}
+                        </div>
+                        ${g.fecha_alerta ? `<div class="tl-alerta" style="font-size:0.62rem; padding:0.1rem 0.35rem; margin-top:0.2rem; background:#fef3c7; color:#92400e; border-radius:4px; display:inline-block;">🔔 Recordar: ${g.fecha_alerta}</div>` : ''}
+                    </div>
+                </div>`;
+            });
+            if (!(t.gestiones ?? []).length) {
+                timelineHtml = '<div style="font-size:.73rem;color:#94a3b8;padding:1.5rem;text-align:center;">Sin gestiones registradas.</div>';
+            }
+            document.getElementById('uniTimelineLista').innerHTML = timelineHtml;
+        });
+}
+
+function cambiarTab(tabName) {
+    document.querySelectorAll('.modal-tab').forEach(btn => btn.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    
+    if (tabName === 'editar') {
+        document.getElementById('tabBtnEditar').classList.add('active');
+        document.getElementById('tab-editar').classList.add('active');
+        document.getElementById('uniBtnGuardarEditar').style.display = document.getElementById('msgEdicionCerrada').style.display === 'block' ? 'none' : '';
+    } else if (tabName === 'acciones') {
+        document.getElementById('tabBtnAcciones').classList.add('active');
+        document.getElementById('tab-acciones').classList.add('active');
+        document.getElementById('uniBtnGuardarEditar').style.display = 'none';
+    } else if (tabName === 'historial') {
+        document.getElementById('tabBtnHistorial').classList.add('active');
+        document.getElementById('tab-historial').classList.add('active');
+        document.getElementById('uniBtnGuardarEditar').style.display = 'none';
+    }
+}
+
+function mostrarSubAccion(subName) {
+    document.querySelectorAll('.btn-subaccion').forEach(btn => btn.classList.remove('active'));
+    document.querySelectorAll('.subaccion-content').forEach(c => c.classList.remove('active'));
+    
+    if (subName === 'gestion') {
+        document.getElementById('btnSubGestion').classList.add('active');
+        document.getElementById('sub-gestion').classList.add('active');
+    } else if (subName === 'traslado') {
+        document.getElementById('btnSubTraslado').classList.add('active');
+        document.getElementById('sub-traslado').classList.add('active');
+    } else if (subName === 'cerrar') {
+        document.getElementById('btnSubCerrar').classList.add('active');
+        document.getElementById('sub-cerrar').classList.add('active');
+    }
+}
+
+function actualizarEstadoGestionVisibilidad(val) {
+    document.getElementById('uniRowNuevoEstado').style.display = (val === 'cambio_estado') ? '' : 'none';
+}
+
+function actualizarAlertaPreview(val) {
+    const dias = parseInt(val) || 0;
+    const prev = document.getElementById('uniGestionFechaAlertaPreview');
     if (dias > 0) {
-        const fecha = new Date(); fecha.setDate(fecha.getDate() + dias);
+        const fecha = new Date();
+        fecha.setDate(fecha.getDate() + dias);
         prev.textContent = `🔔 Alerta el: ${fecha.toLocaleDateString('es-CO', {day:'2-digit',month:'short',year:'numeric'})}`;
     } else {
         prev.textContent = '';
     }
-});
-function enviarGestion() {
-    const obs = document.getElementById('gestionObservacion').value.trim();
+}
+
+function enviarEditarUnificado() {
+    const f = document.getElementById('formEditar');
+    if (!f.reportValidity()) return;
+    
+    const fd = new FormData(f);
+    const id = tareaIdActivo;
+    
+    fetch(`/admin/tareas/${id}`, {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+        },
+        body: fd
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (d.ok) {
+            cerrarModal('modalUnificado');
+            mostrarToast('✅ ' + d.message);
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            mostrarToast('❌ ' + (d.message ?? 'Error al guardar cambios'));
+        }
+    })
+    .catch(err => {
+        console.error(err);
+        mostrarToast('❌ Error de comunicación');
+    });
+}
+
+function enviarGestionUnificada() {
+    const obs = document.getElementById('uniGestionObservacion').value.trim();
     if (!obs) { mostrarToast('⚠️ Escriba la observación'); return; }
+    
     const body = {
-        tipo_accion: document.getElementById('gestionTipoAccion').value,
+        tipo_accion: document.getElementById('uniGestionTipoAccion').value,
         observacion: obs,
-        recordar_dias: document.getElementById('gestionRecordarDias').value,
-        nuevo_estado: document.getElementById('gestionNuevoEstado')?.value,
+        recordar_dias: document.getElementById('uniGestionRecordarDias').value,
+        nuevo_estado: document.getElementById('uniGestionNuevoEstado')?.value,
         _token: '{{ csrf_token() }}'
     };
-    fetch(`/admin/tareas/${tareaIdActivo}/gestion`, { method:'POST', headers:{'Content-Type':'application/json','X-CSRF-TOKEN':'{{ csrf_token() }}'}, body:JSON.stringify(body) })
-        .then(r => r.json()).then(d => {
-            if (d.ok) { cerrarModal('modalGestion'); mostrarToast('✅ ' + d.message); setTimeout(() => location.reload(), 1200); }
-            else mostrarToast('❌ Error');
-        });
-}
-
-// Traslado
-function abrirTraslado(id, nombre) {
-    tareaIdActivo = id;
-    document.getElementById('trasladoClienteNombre').textContent = nombre;
-    document.getElementById('trasladoObservacion').value = '';
-    document.getElementById('modalTraslado').classList.add('open');
-}
-function enviarTraslado() {
-    const obs = document.getElementById('trasladoObservacion').value.trim();
-    const enc = document.getElementById('trasladoEncargado').value;
-    if (!obs || !enc) { mostrarToast('⚠️ Complete todos los campos'); return; }
-    fetch(`/admin/tareas/${tareaIdActivo}/trasladar`, {
-        method:'PATCH',
-        headers:{'Content-Type':'application/json','X-CSRF-TOKEN':'{{ csrf_token() }}'},
-        body: JSON.stringify({ encargado_id: enc, observacion: obs })
-    }).then(r => r.json()).then(d => {
-        if (d.ok) { cerrarModal('modalTraslado'); mostrarToast('✅ ' + d.message); setTimeout(() => location.reload(), 1200); }
-        else mostrarToast('❌ Error');
-    });
-}
-
-// Cerrar
-function abrirCerrar(id, nombre) {
-    tareaIdActivo = id;
-    document.getElementById('cerrarClienteNombre').textContent = nombre;
-    document.getElementById('cerrarObservacion').value = '';
-    document.getElementById('modalCerrar').classList.add('open');
-}
-function enviarCerrar() {
-    const obs = document.getElementById('cerrarObservacion').value.trim();
-    const resultado = document.querySelector('input[name="cerrarResultado"]:checked')?.value;
-    if (!obs || !resultado) { mostrarToast('⚠️ Complete todos los campos'); return; }
-    fetch(`/admin/tareas/${tareaIdActivo}/cerrar`, {
-        method:'PATCH',
-        headers:{'Content-Type':'application/json','X-CSRF-TOKEN':'{{ csrf_token() }}'},
-        body: JSON.stringify({ resultado, observacion: obs })
-    }).then(r => r.json()).then(d => {
-        if (d.ok) { cerrarModal('modalCerrar'); mostrarToast('🏁 ' + d.message); setTimeout(() => location.reload(), 1200); }
-        else mostrarToast('❌ Error');
-    });
-}
-
-// Ver Detalle
-function verDetalle(id) {
-    tareaIdActivo = id;
-    document.getElementById('detalleContenido').innerHTML = '<div style="text-align:center;padding:2rem;color:#94a3b8;">⏳ Cargando...</div>';
-    document.getElementById('modalDetalle').classList.add('open');
-    fetch(`/admin/tareas/${id}/show`).then(r => r.json()).then(renderDetalle);
-}
-function renderDetalle(data) {
-    const t = data.tarea;
-    const c = data.cliente;
-    const semaforo = `<span class="semaforo ${data.semaforo}">${data.icono} ${data.semaforo}</span>`;
-    let html = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.25rem;">
-        <div>
-            <div style="font-size:.72rem;color:#94a3b8;margin-bottom:.2rem;">CLIENTE</div>
-            <div style="font-weight:700;font-size:.95rem;">${c ? (c.primer_nombre+' '+(c.segundo_nombre??'')+' '+c.primer_apellido+' '+(c.segundo_apellido??'')).trim() : t.cedula}</div>
-            <div style="font-size:.75rem;color:#64748b;">CC: ${t.cedula} ${c?.celular ? '· 📱 '+c.celular : ''}</div>
-        </div>
-        <div>
-            <div style="font-size:.72rem;color:#94a3b8;margin-bottom:.2rem;">SEMÁFORO / ESTADO</div>
-            ${semaforo}
-            <span class="badge ${t.estado}" style="margin-left:.4rem;">${t.estado}</span>
-        </div>
-        <div>
-            <div style="font-size:.72rem;color:#94a3b8;margin-bottom:.2rem;">TIPO</div>
-            <div style="font-weight:600;font-size:.85rem;">${t.tipo}</div>
-        </div>
-        <div>
-            <div style="font-size:.72rem;color:#94a3b8;margin-bottom:.2rem;">ENCARGADO</div>
-            <div style="font-weight:600;font-size:.85rem;">${t.encargado?.nombre ?? '—'}</div>
-        </div>
-        <div>
-            <div style="font-size:.72rem;color:#94a3b8;margin-bottom:.2rem;">ENTIDAD</div>
-            <div style="font-size:.82rem;">${t.entidad ?? '—'}</div>
-        </div>
-        <div>
-            <div style="font-size:.72rem;color:#94a3b8;margin-bottom:.2rem;">EMPRESA</div>
-            <div style="font-size:.82rem;">${t.razon_social?.razon_social ?? '—'}</div>
-        </div>
-    </div>
-    <div style="background:#f8fafc;border-radius:10px;padding:.85rem 1rem;margin-bottom:1.25rem;">
-        <div style="font-size:.72rem;color:#94a3b8;margin-bottom:.3rem;">TAREA</div>
-        <div style="font-size:.85rem;color:#1e293b;">${t.tarea}</div>
-        ${t.observacion ? `<div style="font-size:.78rem;color:#64748b;margin-top:.4rem;padding-top:.4rem;border-top:1px solid #e2e8f0;">${t.observacion}</div>` : ''}
-    </div>`;
-
-    // Documentos
-    html += `<div style="margin-bottom:1.25rem;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.6rem;">
-            <strong style="font-size:.82rem;">📎 Documentos adjuntos (${t.documentos?.length ?? 0})</strong>
-            <label style="background:#eff6ff;color:#2563eb;border:none;border-radius:7px;padding:.3rem .75rem;font-size:.75rem;cursor:pointer;font-weight:600;">
-                ➕ Subir <input type="file" style="display:none;" onchange="subirDoc(this)">
-            </label>
-        </div>
-        <div class="docs-list">`;
-    (t.documentos ?? []).forEach(d => {
-        html += `<div class="doc-item">
-            <div class="doc-icon">${d.icono ?? '📎'}</div>
-            <div class="doc-info">
-                <div class="doc-name">${d.nombre}</div>
-                <div class="doc-meta">Subido por ${d.user?.nombre ?? '?'}</div>
-            </div>
-            <a href="/admin/tareas/documento/${d.id}" class="btn-download" target="_blank">⬇ Descargar</a>
-        </div>`;
-    });
-    if (!(t.documentos?.length)) html += `<div style="font-size:.78rem;color:#94a3b8;padding:.5rem;">Sin documentos adjuntos.</div>`;
-    html += `</div></div>`;
-
-    // Línea de tiempo gestiones
-    html += `<div><strong style="font-size:.82rem;">📋 Línea de tiempo (${t.gestiones?.length ?? 0} gestiones)</strong>
-    <div class="timeline" style="margin-top:.75rem;">`;
-    (t.gestiones ?? []).forEach(g => {
-        const iconosAccion = {tramite_realizado:'📋', traslado:'🔀', cambio_estado:'🔄', nota:'📝'};
-        const ico = iconosAccion[g.tipo_accion] ?? '📌';
-        const fecha = new Date(g.created_at).toLocaleString('es-CO', {day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
-        let trasladoInfo = '';
-        if (g.tipo_accion === 'traslado') {
-            trasladoInfo = `<div style="font-size:.72rem;margin-top:.25rem;color:#ea580c;">De: <strong>${g.encargado_anterior?.nombre??'?'}</strong> → <strong>${g.encargado_nuevo?.nombre??'?'}</strong></div>`;
+    
+    fetch(`/admin/tareas/${tareaIdActivo}/gestion`, { 
+        method: 'POST', 
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+        }, 
+        body: JSON.stringify(body) 
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (d.ok) { 
+            cerrarModal('modalUnificado'); 
+            mostrarToast('✅ ' + d.message); 
+            setTimeout(() => location.reload(), 1000); 
+        } else {
+            mostrarToast('❌ Error al guardar gestión');
         }
-        html += `<div class="tl-item">
-            <div class="tl-dot ${g.tipo_accion}">${ico}</div>
-            <div class="tl-content">
-                <div class="tl-meta">${g.user?.nombre ?? '?'} · ${fecha}</div>
-                <div class="tl-obs">${g.observacion}${trasladoInfo}</div>
-                ${g.fecha_alerta ? `<div class="tl-alerta">🔔 Recordar el: ${g.fecha_alerta}</div>` : ''}
-            </div>
-        </div>`;
+    })
+    .catch(err => {
+        console.error(err);
+        mostrarToast('❌ Error de comunicación');
     });
-    if (!(t.gestiones?.length)) html += '<div style="font-size:.78rem;color:#94a3b8;">Sin gestiones registradas.</div>';
-    html += `</div></div>`;
-
-    document.getElementById('detalleContenido').innerHTML = html;
-
-    // Footer con acciones si no está cerrada
-    if (t.estado !== 'cerrada') {
-        document.getElementById('detalleFooter').innerHTML = `
-            <button class="btn-secondary" onclick="cerrarModal('modalDetalle')">Cerrar</button>
-            <button class="btn-success" onclick="cerrarModal('modalDetalle');abrirGestion(${t.id},'${c?c.primer_nombre+' '+c.primer_apellido:t.cedula}')">📋 Registrar Gestión</button>
-        `;
-    } else {
-        document.getElementById('detalleFooter').innerHTML = `<button class="btn-secondary" onclick="cerrarModal('modalDetalle')">Cerrar</button>`;
-    }
 }
 
-// Subir documento desde detalle
-function subirDoc(input) {
+function enviarTrasladoUnificado() {
+    const obs = document.getElementById('uniTrasladoObservacion').value.trim();
+    const enc = document.getElementById('uniTrasladoEncargado').value;
+    if (!obs || !enc) { mostrarToast('⚠️ Complete todos los campos'); return; }
+    
+    fetch(`/admin/tareas/${tareaIdActivo}/trasladar`, {
+        method: 'PATCH',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify({ encargado_id: enc, observacion: obs })
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (d.ok) { 
+            cerrarModal('modalUnificado'); 
+            mostrarToast('✅ ' + d.message); 
+            setTimeout(() => location.reload(), 1000); 
+        } else {
+            mostrarToast('❌ Error al trasladar');
+        }
+    })
+    .catch(err => {
+        console.error(err);
+        mostrarToast('❌ Error de comunicación');
+    });
+}
+
+function enviarCerrarUnificado() {
+    const obs = document.getElementById('uniCerrarObservacion').value.trim();
+    const resultado = document.querySelector('input[name="uniCerrarResultado"]:checked')?.value;
+    if (!obs || !resultado) { mostrarToast('⚠️ Complete todos los campos'); return; }
+    
+    fetch(`/admin/tareas/${tareaIdActivo}/cerrar`, {
+        method: 'PATCH',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify({ resultado, observacion: obs })
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (d.ok) { 
+            cerrarModal('modalUnificado'); 
+            mostrarToast('🏁 ' + d.message); 
+            setTimeout(() => location.reload(), 1000); 
+        } else {
+            mostrarToast('❌ Error al cerrar tarea');
+        }
+    })
+    .catch(err => {
+        console.error(err);
+        mostrarToast('❌ Error de comunicación');
+    });
+}
+
+function subirDocumentoUnificado(input) {
     if (!input.files.length || !tareaIdActivo) return;
+    
     const nombre = prompt('Nombre del documento:', input.files[0].name.replace(/\.[^.]+$/, ''));
     if (!nombre) return;
+    
     const fd = new FormData();
     fd.append('archivo', input.files[0]);
     fd.append('nombre', nombre);
     fd.append('_token', '{{ csrf_token() }}');
+    
+    // Mostrar spinner en la lista de documentos
+    document.getElementById('uniDocsLista').innerHTML = '<div style="text-align:center;padding:1rem;color:#94a3b8;font-size:.78rem;">⏳ Subiendo archivo...</div>';
+    
     fetch(`/admin/tareas/${tareaIdActivo}/documento`, { method:'POST', body:fd })
-        .then(r => r.json()).then(d => {
-            if (d.ok) { mostrarToast('✅ ' + d.message); verDetalle(tareaIdActivo); }
-            else mostrarToast('❌ Error al subir');
+        .then(r => r.json())
+        .then(d => {
+            if (d.ok) { 
+                mostrarToast('✅ ' + d.message); 
+                abrirModalUnico(tareaIdActivo); 
+            } else {
+                mostrarToast('❌ Error al subir');
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            mostrarToast('❌ Error de red al subir archivo');
         });
 }
 

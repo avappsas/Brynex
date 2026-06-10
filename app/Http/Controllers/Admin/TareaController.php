@@ -21,7 +21,8 @@ class TareaController extends Controller
         $alidoId   = session('aliado_id_activo') ?? Auth::user()->aliado_id;
         $user      = Auth::user();
 
-        $query = Tarea::with(['encargado', 'creadoPor', 'razonSocial'])
+        $query = Tarea::with(['encargado', 'creadoPor', 'razonSocial', 'cliente'])
+            ->withCount(['documentos', 'gestiones'])
             ->where('aliado_id', $alidoId);
 
         // Filtros
@@ -492,11 +493,18 @@ class TareaController extends Controller
         $cedula  = $request->get('cedula');
         $alidoId = session('aliado_id_activo') ?? Auth::user()->aliado_id;
 
-        $contratos = DB::table('contratos')
-            ->where('cedula', $cedula)
-            ->where('aliado_id', $alidoId)
-            ->orderByDesc('fecha_ingreso')
-            ->get(['id', 'cedula', 'fecha_ingreso', 'estado']);
+        $contratos = DB::table('contratos as c')
+            ->leftJoin('razones_sociales as rs', 'rs.id', '=', 'c.razon_social_id')
+            ->where('c.cedula', $cedula)
+            ->where('c.aliado_id', $alidoId)
+            ->orderByDesc('c.fecha_ingreso')
+            ->get([
+                'c.id',
+                'c.cedula',
+                'c.fecha_ingreso',
+                'c.estado',
+                'rs.razon_social as razon_social'
+            ]);
 
         return response()->json($contratos);
     }

@@ -151,9 +151,17 @@ class Tarea extends BaseModel
         return self::ESTADOS[$this->estado] ?? ucfirst($this->estado);
     }
 
+    public function cliente(): BelongsTo
+    {
+        return $this->belongsTo(Cliente::class, 'cedula', 'cedula');
+    }
+
     // ── Helpers del cliente ─────────────────────────────────────────────────
     public function getClienteAttribute()
     {
+        if ($this->relationLoaded('cliente')) {
+            return $this->getRelation('cliente');
+        }
         return DB::table('clientes')
             ->where('cedula', $this->cedula)
             ->select('id', 'cedula', 'primer_nombre', 'segundo_nombre', 'primer_apellido', 'segundo_apellido', 'celular', 'correo')
