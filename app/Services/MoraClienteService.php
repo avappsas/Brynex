@@ -40,23 +40,75 @@ class MoraClienteService
     ];
 
     /**
-     * Festivos colombianos fijos + móviles aproximados (Ley Emiliani).
-     * Para mayor precisión en producción, conectar a una API de festivos.
+     * Calcula dinámicamente todos los festivos de Colombia para un año dado,
+     * aplicando la Ley Emiliani (Ley 51 de 1983) para los festivos móviles
+     * y calculando las fechas variables basadas en el Domingo de Pascua (Easter).
      *
      * @return array<string> Fechas en formato Y-m-d
      */
     public static function festivosColombia(int $anio): array
     {
-        return [
-            // Fijos
-            "{$anio}-01-01", "{$anio}-05-01", "{$anio}-07-04",
-            "{$anio}-07-20", "{$anio}-08-07", "{$anio}-12-08", "{$anio}-12-25",
-            // Móviles aproximados (Ley Emiliani — varían cada año)
-            "{$anio}-01-06", "{$anio}-03-23", "{$anio}-03-24",
-            "{$anio}-05-29", "{$anio}-06-19", "{$anio}-06-23",
-            "{$anio}-06-30", "{$anio}-08-18", "{$anio}-10-13",
-            "{$anio}-11-03", "{$anio}-11-17",
+        // 1. Festivos fijos (no se trasladan)
+        $fijos = [
+            "{$anio}-01-01", // Año Nuevo
+            "{$anio}-05-01", // Día del Trabajo
+            "{$anio}-07-20", // Grito de Independencia
+            "{$anio}-08-07", // Batalla de Boyacá
+            "{$anio}-12-08", // Inmaculada Concepción
+            "{$anio}-12-25", // Navidad
         ];
+
+        // 2. Festivos sujetos a la Ley Emiliani (se trasladan al siguiente lunes)
+        $emiliani = [
+            "{$anio}-01-06", // Reyes Magos
+            "{$anio}-03-19", // San José
+            "{$anio}-06-29", // San Pedro y San Pablo
+            "{$anio}-08-15", // Asunción de la Virgen
+            "{$anio}-10-12", // Día de la Raza
+            "{$anio}-11-01", // Todos los Santos
+            "{$anio}-11-11", // Independencia de Cartagena
+        ];
+
+        $fechas = [];
+
+        foreach ($fijos as $fechaStr) {
+            $fechas[] = $fechaStr;
+        }
+
+        foreach ($emiliani as $fechaStr) {
+            $date = Carbon::createFromFormat('Y-m-d', $fechaStr)->startOfDay();
+            if ($date->dayOfWeek !== Carbon::MONDAY) {
+                $date->next(Carbon::MONDAY);
+            }
+            $fechas[] = $date->format('Y-m-d');
+        }
+
+        // 3. Festivos móviles respecto a la Pascua (Semana Santa)
+        $diasDesdeMarzo21 = easter_days($anio);
+        $pascua = Carbon::create($anio, 3, 21)->startOfDay()->addDays($diasDesdeMarzo21);
+
+        // Jueves Santo (Pascua - 3 días)
+        $juevesSanto = $pascua->copy()->subDays(3);
+        $fechas[] = $juevesSanto->format('Y-m-d');
+
+        // Viernes Santo (Pascua - 2 días)
+        $viernesSanto = $pascua->copy()->subDays(2);
+        $fechas[] = $viernesSanto->format('Y-m-d');
+
+        // Ascensión del Señor (Pascua + 43 días: originalmente +39 pero trasladado a lunes)
+        $ascension = $pascua->copy()->addDays(43);
+        $fechas[] = $ascension->format('Y-m-d');
+
+        // Corpus Christi (Pascua + 64 días: originalmente +60 pero trasladado a lunes)
+        $corpus = $pascua->copy()->addDays(64);
+        $fechas[] = $corpus->format('Y-m-d');
+
+        // Sagrado Corazón de Jesús (Pascua + 71 días: originalmente +68 pero trasladado a lunes)
+        $sagradoCorazon = $pascua->copy()->addDays(71);
+        $fechas[] = $sagradoCorazon->format('Y-m-d');
+
+        sort($fechas);
+        return array_values(array_unique($fechas));
     }
 
     /**

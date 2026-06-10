@@ -1503,21 +1503,93 @@ function getNthDiaHabil(anio, mes, n, festivos) {
     return null;
 }
 
-// Festivos Colombia fijos + móviles aproximados
+// Festivos Colombia fijos + móviles dinámicos (Ley Emiliani & Pascua)
 function getFestivosColombia(anio) {
+    const list = [];
+    
+    // Fijos (Fixed)
     const fijos = [
-        `${anio}-01-01`, `${anio}-05-01`, `${anio}-07-04`,
-        `${anio}-07-20`, `${anio}-08-07`, `${anio}-12-08`, `${anio}-12-25`,
+        new Date(anio, 0, 1),   // Año Nuevo
+        new Date(anio, 4, 1),   // Día del Trabajo
+        new Date(anio, 6, 20),  // Grito de Independencia
+        new Date(anio, 7, 7),   // Batalla de Boyacá
+        new Date(anio, 11, 8),  // Inmaculada Concepción
+        new Date(anio, 11, 25), // Navidad
     ];
-    // Festivos que se trasladan al siguiente lunes (Ley Emiliani)
-    // Aproximaciones; para exactitud se requeriría un calendario externo
-    const mobiles = [
-        `${anio}-01-06`, `${anio}-03-23`, `${anio}-03-24`,
-        `${anio}-05-29`, `${anio}-06-19`, `${anio}-06-23`,
-        `${anio}-06-30`, `${anio}-08-18`, `${anio}-10-13`,
-        `${anio}-11-03`, `${anio}-11-17`,
+    
+    // Ley Emiliani (Moved to next Monday)
+    const emiliani = [
+        new Date(anio, 0, 6),   // Reyes Magos
+        new Date(anio, 2, 19),  // San José
+        new Date(anio, 5, 29),  // San Pedro y San Pablo
+        new Date(anio, 7, 15),  // Asunción de la Virgen
+        new Date(anio, 9, 12),  // Día de la Raza
+        new Date(anio, 10, 1),  // Todos los Santos
+        new Date(anio, 10, 11), // Independencia de Cartagena
     ];
-    return new Set([...fijos, ...mobiles]);
+    
+    // Algoritmo Meeus/Jones/Butcher para Domingo de Pascua (Easter Sunday)
+    const a = anio % 19;
+    const b = Math.floor(anio / 100);
+    const c = anio % 100;
+    const d = Math.floor(b / 4);
+    const e = b % 4;
+    const f = Math.floor((b + 8) / 25);
+    const g = Math.floor((b - f + 1) / 3);
+    const h = (19 * a + b - d - g + 15) % 30;
+    const i = Math.floor(c / 4);
+    const k = c % 4;
+    const l = (32 + 2 * e + 2 * i - h - k) % 7;
+    const m = Math.floor((a + 11 * h + 22 * l) / 451);
+    const month = Math.floor((h + l - 7 * m + 114) / 31);
+    const day = ((h + l - 7 * m + 114) % 31) + 1;
+    const pascua = new Date(anio, month - 1, day);
+    
+    // Jueves Santo: pascua - 3
+    const juevesSanto = new Date(pascua);
+    juevesSanto.setDate(pascua.getDate() - 3);
+    
+    // Viernes Santo: pascua - 2
+    const viernesSanto = new Date(pascua);
+    viernesSanto.setDate(pascua.getDate() - 2);
+    
+    // Ascensión del Señor: pascua + 43
+    const ascension = new Date(pascua);
+    ascension.setDate(pascua.getDate() + 43);
+    
+    // Corpus Christi: pascua + 64
+    const corpus = new Date(pascua);
+    corpus.setDate(pascua.getDate() + 64);
+    
+    // Sagrado Corazón de Jesús: pascua + 71
+    const sagradoCorazon = new Date(pascua);
+    sagradoCorazon.setDate(pascua.getDate() + 71);
+    
+    const moveToMonday = (dt) => {
+        const dow = dt.getDay(); // 0=Sun, 1=Mon, ...
+        if (dow === 1) return dt;
+        const diff = (8 - dow) % 7;
+        const res = new Date(dt);
+        res.setDate(dt.getDate() + (diff === 0 ? 7 : diff));
+        return res;
+    };
+    
+    const formatDate = (dt) => {
+        const y = dt.getFullYear();
+        const m = String(dt.getMonth() + 1).padStart(2, '0');
+        const d = String(dt.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+    };
+    
+    fijos.forEach(dt => list.push(formatDate(dt)));
+    emiliani.forEach(dt => list.push(formatDate(moveToMonday(dt))));
+    list.push(formatDate(juevesSanto));
+    list.push(formatDate(viernesSanto));
+    list.push(formatDate(ascension));
+    list.push(formatDate(corpus));
+    list.push(formatDate(sagradoCorazon));
+    
+    return new Set(list);
 }
 
 function fmtNum(n) {

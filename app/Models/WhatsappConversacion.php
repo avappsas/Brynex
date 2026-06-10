@@ -195,8 +195,49 @@ class WhatsappConversacion extends BaseModel
     /**
      * Nombre para mostrar: usa nombre_contacto si existe, sino el número.
      */
+    /**
+     * Nombre para mostrar: usa nombre_contacto si existe, sino busca al cliente real.
+     */
     public function nombreMostrar(): string
     {
+        // Si el nombre es 'Contacto de Prueba' o está vacío, intentar buscar el cliente real
+        if (!$this->nombre_contacto || strtolower(trim($this->nombre_contacto)) === 'contacto de prueba') {
+            $nombreReal = null;
+
+            // 1. Intentar buscar a través del contrato asociado
+            if ($this->contrato_id) {
+                $contrato = $this->contrato;
+                if ($contrato) {
+                    $cliente = \App\Models\Cliente::where('cedula', $contrato->cedula)->first();
+                    if ($cliente) {
+                        $nombreReal = trim(($cliente->primer_nombre ?? '') . ' ' . ($cliente->primer_apellido ?? ''));
+                    }
+                }
+            }
+
+            // 2. Si no se encontró por contrato, buscar por número de celular en la BD
+            if (empty($nombreReal)) {
+                $phone10 = preg_replace('/^\+?57/', '', $this->wa_contact_id);
+                if (strlen($phone10) >= 10) {
+                    $cliente = \App\Models\Cliente::where('aliado_id', $this->aliado_id)
+                        ->where(function ($q) use ($phone10) {
+                            $q->where('celular', 'like', "%{$phone10}%")
+                              ->orWhere('telefono', 'like', "%{$phone10}%");
+                        })
+                        ->first();
+                    if ($cliente) {
+                        $nombreReal = trim(($cliente->primer_nombre ?? '') . ' ' . ($cliente->primer_apellido ?? ''));
+                    }
+                }
+            }
+
+            // Si logramos resolver el nombre real, lo persistimos en BD para evitar futuras consultas
+            if (!empty($nombreReal)) {
+                $this->update(['nombre_contacto' => $nombreReal]);
+                $this->nombre_contacto = $nombreReal; // Actualizar en memoria
+            }
+        }
+
         $nombre = $this->nombre_contacto ?: $this->wa_contact_id;
         if ($this->nombre_contacto) {
             return mb_convert_case($nombre, MB_CASE_TITLE, 'UTF-8');

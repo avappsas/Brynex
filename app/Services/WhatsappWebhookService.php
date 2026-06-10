@@ -216,6 +216,48 @@ class WhatsappWebhookService
             ->first();
 
         if ($conversacion) {
+            // Si la conversación ya existe pero tiene un nombre genérico o vacío, intentar corregirlo
+            $nombreActual = $conversacion->nombre_contacto;
+            if (!$nombreActual || strtolower(trim($nombreActual)) === 'contacto de prueba') {
+                $nombreContacto = null;
+                $contacts = $changeValue['contacts'] ?? $msgData['contacts'] ?? [];
+                foreach ($contacts as $contact) {
+                    if (($contact['wa_id'] ?? '') === $waFrom) {
+                        $nombreContacto = $contact['profile']['name'] ?? null;
+                        break;
+                    }
+                }
+                if (!$nombreContacto && !empty($contacts)) {
+                    $nombreContacto = $contacts[0]['profile']['name'] ?? $msgData['profile']['name'] ?? null;
+                }
+
+                // Buscar en BD por número celular
+                $numeroLimpio = preg_replace('/[^0-9]/', '', $waFrom);
+                $clienteConCelular = \App\Models\Cliente::where('aliado_id', $alidoId)
+                    ->where(function ($q) use ($numeroLimpio) {
+                        $q->where('celular', $numeroLimpio)
+                          ->orWhere('celular', '+57' . $numeroLimpio)
+                          ->orWhere('celular', 'like', '%' . substr($numeroLimpio, -10));
+                    })
+                    ->first();
+
+                $nuevoNombre = null;
+                if ($clienteConCelular) {
+                    $nuevoNombre = trim(
+                        ($clienteConCelular->primer_nombre ?? '') . ' ' .
+                        ($clienteConCelular->primer_apellido ?? '')
+                    );
+                }
+
+                if (!$nuevoNombre) {
+                    $nuevoNombre = $nombreContacto;
+                }
+
+                if ($nuevoNombre && $nuevoNombre !== $nombreActual) {
+                    $conversacion->update(['nombre_contacto' => $nuevoNombre]);
+                }
+            }
+
             // Si la conversación estaba cerrada, la reabrimos asignada al último agente que le contestó
             if ($conversacion->estado === 'cerrada') {
                 $ultimoMensajeSaliente = WhatsappMensaje::where('conversacion_id', $conversacion->id)
