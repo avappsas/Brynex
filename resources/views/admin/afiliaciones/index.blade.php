@@ -78,6 +78,8 @@ body {
 .badge-error     { background:#fee2e2;color:#b91c1c;border-color:#fca5a5; }
 .badge-ok        { background:#dcfce7;color:#15803d;border-color:#86efac; }
 
+.badge-programado { background:#f3e8ff;color:#6b21a8;border-color:#c084fc; }
+
 /* Alerta días en trámite */
 .alert-dias { background:#fef2f2;color:#b91c1c;border-radius:4px;padding:0.1rem 0.35rem;font-size:0.6rem;font-weight:700;margin-left:0.2rem;border:1px solid #fca5a5; }
 
@@ -166,14 +168,77 @@ body {
 }
 </style>
 
+@php
+    $totalFuturas = 0;
+    $totalErrores = 0;
+    $totalPendientes = 0;
+    $totalTraslados = 0;
+    $totalTramites = 0;
+    $totalOks = 0;
+
+    foreach($contratos as $c) {
+        $rads = $c->radicados->keyBy('tipo');
+        $plan = $c->plan;
+        $esFuturo = $c->fecha_ingreso && now()->startOfDay()->diffInDays(\Carbon\Carbon::parse($c->fecha_ingreso)->startOfDay(), false) > 1;
+
+        if ($esFuturo) {
+            $totalFuturas++;
+            continue;
+        }
+
+        $estados = [];
+
+        if ($plan?->incluye_eps) {
+            $r = $rads->get('eps');
+            $estados[] = $r ? $r->estado : 'pendiente';
+        }
+        if ($plan?->incluye_arl) {
+            $r = $rads->get('arl');
+            $estados[] = $r ? $r->estado : 'pendiente';
+        }
+        if ($plan?->incluye_caja) {
+            $r = $rads->get('caja');
+            $estados[] = $r ? $r->estado : 'pendiente';
+        }
+        if ($plan?->incluye_pension) {
+            $r = $rads->get('pension');
+            $estados[] = $r ? $r->estado : 'pendiente';
+        }
+
+        if (in_array('error', $estados)) {
+            $totalErrores++;
+        } elseif (in_array('pendiente', $estados)) {
+            $totalPendientes++;
+        } elseif (in_array('traslado', $estados)) {
+            $totalTraslados++;
+        } elseif (in_array('tramite', $estados)) {
+            $totalTramites++;
+        } else {
+            $totalOks++;
+        }
+    }
+@endphp
+
 {{-- ══ HEADER + FILTROS UNIFICADOS ══ --}}
 <form method="GET" action="{{ route('admin.afiliaciones.index') }}" id="formFiltros" style="flex-shrink:0;">
-<div class="afil-header" style="flex-wrap:wrap;gap:0.5rem;">
-    <div>
-        <div class="afil-title">📋 Módulo de Afiliaciones</div>
-        <div class="afil-sub">Seguimiento de radicados por entidad — {{ now()->format('d/m/Y') }}</div>
+<div class="afil-header" style="flex-wrap:wrap;gap:0.5rem;padding:0.6rem 1.2rem;">
+    <div style="display:flex;align-items:center;gap:0.5rem;">
+        <div class="afil-title" style="white-space:nowrap;margin:0;">📋 Afiliaciones</div>
+        <span style="background:rgba(255,255,255,0.15);color:#fff;font-size:0.75rem;font-weight:800;padding:0.2rem 0.55rem;border-radius:20px;white-space:nowrap;letter-spacing:0.02em;">
+            [{{ $contratos->count() }}] registros
+        </span>
     </div>
+
     <div style="display:flex;align-items:center;gap:0.4rem;flex-wrap:wrap;margin-left:auto;">
+        {{-- Buscador --}}
+        <div style="display:inline-flex;align-items:center;position:relative;">
+            <input type="text" name="buscar" value="{{ request('buscar') }}" placeholder="🔍 Buscar..." style="font-size:0.78rem;padding:0.3rem 1.4rem 0.3rem 0.5rem;border:1px solid #334155;background:#1e3a5f;color:#e2e8f0;border-radius:6px;width:130px;" title="Buscar por parte del nombre o número de documento">
+            @if(request('buscar'))
+            <a href="{{ route('admin.afiliaciones.index', request()->except(['buscar', 'page'])) }}" style="position:absolute;right:6px;color:#f87171;font-size:0.75rem;text-decoration:none;font-weight:bold;" title="Limpiar búsqueda">✕</a>
+            @endif
+        </div>
+        <span style="color:#4b6a8b;font-size:0.9rem;">|</span>
+
         {{-- Período --}}
         <select name="mes" onchange="this.form.submit()" style="font-size:0.8rem;padding:0.3rem 0.5rem;border:1px solid #334155;background:#1e3a5f;color:#e2e8f0;border-radius:6px;">
             @foreach(['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'] as $i => $m)
@@ -222,12 +287,8 @@ body {
             <option value="ok"         {{ $estadoRad === 'ok'         ? 'selected' : '' }}>✅ OK</option>
         </select>
 
-        <span style="background:rgba(255,255,255,0.15);color:#fff;font-size:0.88rem;font-weight:800;padding:0.3rem 0.7rem;border-radius:20px;white-space:nowrap;letter-spacing:0.02em;">
-            {{ $contratos->count() }} <span style="font-size:0.7rem;font-weight:500;opacity:0.75;">registros</span>
-        </span>
         <button type="button" onclick="abrirModalClavesGlobal()" class="btn-export" style="background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#1c1917;border:none;font-weight:800;cursor:pointer;">🔑 Claves</button>
         <a href="{{ route('admin.gestion-arl.index') }}" class="btn-export" style="background:#f97316;">🛡️ ARL</a>
-        <a href="{{ route('admin.afiliaciones.exportar', request()->query()) }}" class="btn-export">📥 Excel</a>
     </div>
 </div>
 </form>
@@ -390,6 +451,7 @@ function sortClass($col, $currSort, $currDir) {
             'celular'         => $ctxCelular,
             'correo'          => $ctxCorreo,
         ]);
+        $esFuturo = $c->fecha_ingreso && now()->startOfDay()->diffInDays(\Carbon\Carbon::parse($c->fecha_ingreso)->startOfDay(), false) > 1;
     @endphp
     <tr>
         {{-- Empresa --}}
@@ -476,17 +538,21 @@ function sortClass($col, $currSort, $currDir) {
         <td style="font-size:0.7rem;color:#475569;max-width:60px;overflow:hidden;text-overflow:ellipsis;padding-right:0;" title="{{ $c->eps?->nombre }}">{{ $plan?->incluye_eps ? ($c->eps?->nombre ?? '[Ninguna]') : '—' }}</td>
         <td style="padding-left:2px;">
             @if($plan?->incluye_eps && $rEps)
-            <button class="badge-estado badge-{{ $rEps->estado }} btn-rad"
+            <button class="badge-estado badge-{{ $rEps->estadoClaseEfectiva() }} btn-rad"
                 data-rad-id="{{ $rEps->id }}"
                 data-contrato-id="{{ $c->id }}"
                 data-eps-formulario="{{ $c->eps?->formulario_pdf ? '1' : '0' }}"
                 data-rad='{{ json_encode(['id'=>$rEps->id,'tipo'=>$rEps->tipo,'estado'=>$rEps->estado,'numero_radicado'=>$rEps->numero_radicado,'canal_envio'=>$rEps->canal_envio,'canal_envio_cliente'=>$rEps->canal_envio_cliente,'enviado_al_cliente'=>$rEps->enviado_al_cliente,'ruta_pdf'=>$rEps->ruta_pdf]) }}'
                 data-ctx='{{ $contexto }}'>
-                {{ $rEps->estadoIcono() }}{{ strtoupper(substr($rEps->estado,0,1)) }}
+                {{ $rEps->estadoTextoEfectivo() }}
                 @if($rEps->tieneAlertaDias())<span class="alert-dias">{{ $rEps->diasEnEstado() }}d</span>@endif
             </button>
             @elseif($plan?->incluye_eps)
-            <span class="badge-estado badge-pendiente">⏳P</span>
+                @if($esFuturo)
+                <span class="badge-estado badge-programado">📅F</span>
+                @else
+                <span class="badge-estado badge-pendiente">⏳P</span>
+                @endif
             @else
             <span class="badge-estado badge-inactivo">–</span>
             @endif
@@ -506,15 +572,19 @@ function sortClass($col, $currSort, $currDir) {
         </td>
         <td style="padding-left:2px;">
             @if($plan?->incluye_arl && $rArl)
-            <button class="badge-estado badge-{{ $rArl->estado }} btn-rad"
+            <button class="badge-estado badge-{{ $rArl->estadoClaseEfectiva() }} btn-rad"
                 data-rad-id="{{ $rArl->id }}"
                 data-rad='{{ json_encode(['id'=>$rArl->id,'tipo'=>$rArl->tipo,'estado'=>$rArl->estado,'numero_radicado'=>$rArl->numero_radicado,'canal_envio'=>$rArl->canal_envio,'canal_envio_cliente'=>$rArl->canal_envio_cliente,'enviado_al_cliente'=>$rArl->enviado_al_cliente,'ruta_pdf'=>$rArl->ruta_pdf]) }}'
                 data-ctx='{{ $contexto }}'>
-                {{ $rArl->estadoIcono() }}{{ strtoupper(substr($rArl->estado,0,1)) }}
+                {{ $rArl->estadoTextoEfectivo() }}
                 @if($rArl->tieneAlertaDias())<span class="alert-dias">{{ $rArl->diasEnEstado() }}d</span>@endif
             </button>
             @elseif($plan?->incluye_arl)
-            <span class="badge-estado badge-pendiente">⏳P</span>
+                @if($esFuturo)
+                <span class="badge-estado badge-programado">📅F</span>
+                @else
+                <span class="badge-estado badge-pendiente">⏳P</span>
+                @endif
             @else
             <span class="badge-estado badge-inactivo">–</span>
             @endif
@@ -525,15 +595,19 @@ function sortClass($col, $currSort, $currDir) {
         <td style="font-size:0.7rem;color:#475569;max-width:60px;overflow:hidden;text-overflow:ellipsis;padding-right:0;" title="{{ $c->caja?->nombre }}">{{ $plan?->incluye_caja ? ($c->caja?->nombre ?? '[Ninguna]') : '—' }}</td>
         <td style="padding-left:2px;">
             @if($plan?->incluye_caja && $rCaja)
-            <button class="badge-estado badge-{{ $rCaja->estado }} btn-rad"
+            <button class="badge-estado badge-{{ $rCaja->estadoClaseEfectiva() }} btn-rad"
                 data-rad-id="{{ $rCaja->id }}"
                 data-rad='{{ json_encode(['id'=>$rCaja->id,'tipo'=>$rCaja->tipo,'estado'=>$rCaja->estado,'numero_radicado'=>$rCaja->numero_radicado,'canal_envio'=>$rCaja->canal_envio,'canal_envio_cliente'=>$rCaja->canal_envio_cliente,'enviado_al_cliente'=>$rCaja->enviado_al_cliente,'ruta_pdf'=>$rCaja->ruta_pdf]) }}'
                 data-ctx='{{ $contexto }}'>
-                {{ $rCaja->estadoIcono() }}{{ strtoupper(substr($rCaja->estado,0,1)) }}
+                {{ $rCaja->estadoTextoEfectivo() }}
                 @if($rCaja->tieneAlertaDias())<span class="alert-dias">{{ $rCaja->diasEnEstado() }}d</span>@endif
             </button>
             @elseif($plan?->incluye_caja)
-            <span class="badge-estado badge-pendiente">⏳P</span>
+                @if($esFuturo)
+                <span class="badge-estado badge-programado">📅F</span>
+                @else
+                <span class="badge-estado badge-pendiente">⏳P</span>
+                @endif
             @else
             <span class="badge-estado badge-inactivo">–</span>
             @endif
@@ -544,15 +618,19 @@ function sortClass($col, $currSort, $currDir) {
         <td style="font-size:0.7rem;color:#475569;max-width:60px;overflow:hidden;text-overflow:ellipsis;padding-right:0;" title="{{ $c->pension?->razon_social }}">{{ $plan?->incluye_pension ? ($c->pension?->razon_social ?? '[Ninguna]') : '—' }}</td>
         <td style="padding-left:2px;">
             @if($plan?->incluye_pension && $rPen)
-            <button class="badge-estado badge-{{ $rPen->estado }} btn-rad"
+            <button class="badge-estado badge-{{ $rPen->estadoClaseEfectiva() }} btn-rad"
                 data-rad-id="{{ $rPen->id }}"
                 data-rad='{{ json_encode(['id'=>$rPen->id,'tipo'=>$rPen->tipo,'estado'=>$rPen->estado,'numero_radicado'=>$rPen->numero_radicado,'canal_envio'=>$rPen->canal_envio,'canal_envio_cliente'=>$rPen->canal_envio_cliente,'enviado_al_cliente'=>$rPen->enviado_al_cliente,'ruta_pdf'=>$rPen->ruta_pdf]) }}'
                 data-ctx='{{ $contexto }}'>
-                {{ $rPen->estadoIcono() }}{{ strtoupper(substr($rPen->estado,0,1)) }}
+                {{ $rPen->estadoTextoEfectivo() }}
                 @if($rPen->tieneAlertaDias())<span class="alert-dias">{{ $rPen->diasEnEstado() }}d</span>@endif
             </button>
             @elseif($plan?->incluye_pension)
-            <span class="badge-estado badge-pendiente">⏳P</span>
+                @if($esFuturo)
+                <span class="badge-estado badge-programado">📅F</span>
+                @else
+                <span class="badge-estado badge-pendiente">⏳P</span>
+                @endif
             @else
             <span class="badge-estado badge-inactivo">–</span>
             @endif
@@ -585,6 +663,21 @@ function sortClass($col, $currSort, $currDir) {
     </tbody>
 </table>
 </div>
+<div style="margin-top:0.15rem;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;flex-shrink:0;">
+    {{-- Card resumen de estados horizontal y compacto (abajo a la izquierda) --}}
+    <div style="display:flex;align-items:center;gap:0.3rem;background:#f8fafc;padding:0.2rem 0.5rem;border-radius:8px;border:1px solid #e2e8f0;flex-wrap:wrap;">
+        <span style="color:#6b21a8;font-size:0.68rem;font-weight:700;padding:0.1rem 0.35rem;border-radius:4px;background:#f3e8ff;border:1px solid #c084fc;" title="Afiliaciones Futuras">📅 Futuras: <strong>{{ $totalFuturas }}</strong></span>
+        <span style="color:#b91c1c;font-size:0.68rem;font-weight:700;padding:0.1rem 0.35rem;border-radius:4px;background:#fee2e2;border:1px solid #fca5a5;" title="Radicados con Error">🔴 Errores: <strong>{{ $totalErrores }}</strong></span>
+        <span style="color:#b45309;font-size:0.68rem;font-weight:700;padding:0.1rem 0.35rem;border-radius:4px;background:#fef3c7;border:1px solid #fcd34d;" title="Radicados Pendientes">⏳ Pendientes: <strong>{{ $totalPendientes }}</strong></span>
+        <span style="color:#c2410c;font-size:0.68rem;font-weight:700;padding:0.1rem 0.35rem;border-radius:4px;background:#fed7aa;border:1px solid #fb923c;" title="Radicados en Traslado">🔄 Traslados: <strong>{{ $totalTraslados }}</strong></span>
+        <span style="color:#1e40af;font-size:0.68rem;font-weight:700;padding:0.1rem 0.35rem;border-radius:4px;background:#dbeafe;border:1px solid #93c5fd;" title="Radicados en Trámite">🔵 Trámite: <strong>{{ $totalTramites }}</strong></span>
+        <span style="color:#15803d;font-size:0.68rem;font-weight:700;padding:0.1rem 0.35rem;border-radius:4px;background:#dcfce7;border:1px solid #86efac;" title="Radicados OK">✅ OK: <strong>{{ $totalOks }}</strong></span>
+    </div>
+
+    <a href="{{ route('admin.afiliaciones.exportar', request()->query()) }}" class="btn-export" style="background:#15803d;padding:0.35rem 1rem;font-size:0.8rem;display:inline-flex;align-items:center;gap:0.4rem;border-radius:8px;text-decoration:none;font-weight:700;color:#fff;box-shadow:0 2px 8px rgba(21,128,61,0.2);transition:all 0.15s;" onmouseover="this.style.transform='scale(1.02)';this.style.boxShadow='0 4px 12px rgba(21,128,61,0.3)';" onmouseout="this.style.transform='none';this.style.boxShadow='0 2px 8px rgba(21,128,61,0.2)';">
+        📥 Descargar Excel de Afiliaciones
+    </a>
+</div>
 @endif
 
 {{-- ══ MODAL GESTIÓN RADICADO ══ --}}
@@ -601,6 +694,11 @@ function sortClass($col, $currSort, $currDir) {
             <div style="border-left:1px solid #bae6fd;padding-left:0.8rem;"><span style="color:#64748b;">Razón Social:</span> <strong id="mrad-empresa"></strong></div>
             <div style="border-left:1px solid #bae6fd;padding-left:0.8rem;"><span style="color:#64748b;">Modalidad:</span> <span id="mrad-modalidad" style="font-weight:600;"></span></div>
             <div style="border-left:1px solid #bae6fd;padding-left:0.8rem;"><span style="color:#64748b;">Empresa cliente:</span> <strong id="mrad-empresa-cliente"></strong></div>
+        </div>
+
+        {{-- Alerta Fecha Futura --}}
+        <div id="mrad-alerta-futura" style="display:none; background:#fef3c7; border:1px solid #fcd34d; border-radius:8px; padding:0.5rem 0.75rem; margin-bottom:0.75rem; color:#b45309; font-size:0.75rem; font-weight:600; align-items:center; gap:0.4rem;">
+            ⚠️ <span id="mrad-alerta-futura-texto">Advertencia: La fecha de ingreso de este contrato es futura.</span>
         </div>
 
         {{-- Info del radicado --}}
@@ -1222,6 +1320,27 @@ function abrirModalRadicado(radId, radData, ctx = {}, contratoId = null, epsForm
     document.getElementById('mrad-enviado').checked = !!radData.enviado_al_cliente;
     document.getElementById('mrad-canal-cliente').value = radData.canal_envio_cliente || '';
 
+    // Alerta de fecha futura
+    const alertaFutura = document.getElementById('mrad-alerta-futura');
+    if (alertaFutura) alertaFutura.style.display = 'none';
+
+    if (ctx.fecha_ingreso && ctx.fecha_ingreso !== '—') {
+        const parts = ctx.fecha_ingreso.split('/');
+        if (parts.length === 3) {
+            const dateIngreso = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+            const hoy = new Date();
+            hoy.setHours(0,0,0,0);
+            dateIngreso.setHours(0,0,0,0);
+
+            if (dateIngreso > hoy) {
+                if (alertaFutura) {
+                    document.getElementById('mrad-alerta-futura-texto').textContent = 'Advertencia: La fecha de ingreso de este contrato es futura (' + ctx.fecha_ingreso + ').';
+                    alertaFutura.style.display = 'flex';
+                }
+            }
+        }
+    }
+
     // ── Botón PDF Formulario EPS / Ver Datos ──
     const secFormulario = document.getElementById('seccionFormularioEps');
     const btnPdf        = document.getElementById('btnFormularioPdf');
@@ -1373,6 +1492,24 @@ async function guardarRadicado(e) {
     const btn      = document.getElementById('btnGuardarRadicado');
 
     // Observación ya no es obligatoria
+
+    // Confirmación si la fecha de ingreso es futura y el estado es 'ok' (Finalizado)
+    const btnVerDatos = document.getElementById('btnVerDatosCotizante');
+    if (btnVerDatos && btnVerDatos._ctx && btnVerDatos._ctx.fecha_ingreso && btnVerDatos._ctx.fecha_ingreso !== '—' && estado === 'ok') {
+        const parts = btnVerDatos._ctx.fecha_ingreso.split('/');
+        if (parts.length === 3) {
+            const dateIngreso = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+            const hoy = new Date();
+            hoy.setHours(0,0,0,0);
+            dateIngreso.setHours(0,0,0,0);
+
+            if (dateIngreso > hoy) {
+                if (!confirm('⚠️ Advertencia: La fecha de ingreso de este contrato es futura (' + btnVerDatos._ctx.fecha_ingreso + '). ¿Estás seguro de que deseas finalizar (OK) este radicado de todas formas?')) {
+                    return;
+                }
+            }
+        }
+    }
 
     btn.disabled = true;
     btn.textContent = 'Guardando...';

@@ -93,6 +93,43 @@ class Radicado extends BaseModel
     public function esFinalizado(): bool { return $this->estado === self::ESTADO_OK; }
 
     /**
+     * Determina si el radicado está programado/futuro (es decir, está pendiente
+     * pero la fecha de ingreso del contrato es futura, faltando más de 1 día).
+     */
+    public function esFuturoProgramado(): bool
+    {
+        if ($this->estado !== self::ESTADO_PENDIENTE) {
+            return false;
+        }
+
+        $contrato = $this->contrato;
+        if (!$contrato || !$contrato->fecha_ingreso) {
+            return false;
+        }
+
+        $hoy = now()->startOfDay();
+        $ingreso = \Carbon\Carbon::parse($contrato->fecha_ingreso)->startOfDay();
+
+        return $hoy->diffInDays($ingreso, false) > 1;
+    }
+
+    public function estadoClaseEfectiva(): string
+    {
+        if ($this->esFuturoProgramado()) {
+            return 'programado';
+        }
+        return $this->estado;
+    }
+
+    public function estadoTextoEfectivo(): string
+    {
+        if ($this->esFuturoProgramado()) {
+            return '📅F';
+        }
+        return $this->estadoIcono() . strtoupper(substr($this->estado, 0, 1));
+    }
+
+    /**
      * Calcula los días transcurridos desde el inicio del estado actual.
      * Si hay movimientos, toma la fecha del último; si no, usa created_at.
      */

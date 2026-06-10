@@ -1,6 +1,32 @@
 @extends('layouts.app')
 @section('modulo', 'Cobros')
 
+@push('styles')
+<style>
+/* ── Cobros: layout de altura completa, solo tbody scrollea ── */
+html, body {
+    height: 100%;
+    overflow: hidden;
+}
+body {
+    display: flex;
+    flex-direction: column;
+}
+.header {
+    flex-shrink: 0;
+}
+.contenido {
+    flex: 1 !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    display: flex !important;
+    flex-direction: column !important;
+    padding: 0.75rem 1rem !important;
+    gap: 0.5rem;
+}
+</style>
+@endpush
+
 @php
 $meses = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 $fmt   = fn($v) => '$' . number_format($v ?? 0, 0, ',', '.');
@@ -33,36 +59,28 @@ function sortClassC($col, $cs, $cd) {
 
 <style>
 /* ── Layout ── */
-.cob-wrap { display:flex; flex-direction:column; gap:.8rem; }
+.cob-wrap {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    overflow: hidden;
+}
 
 /* ── Header ── */
 .cob-header {
     background: linear-gradient(135deg,#0f172a 0%,#1e3a5f 60%,#1e40af 100%);
-    border-radius:14px; padding:1rem 1.4rem; color:#fff;
-    display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:.7rem;
+    border-radius:12px; padding:0.6rem 1.2rem; color:#fff;
+    display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:.5rem;
 }
-.cob-title { font-size:1.3rem; font-weight:800; letter-spacing:.02em; }
-.cob-sub   { font-size:.77rem; color:#94a3b8; margin-top:.15rem; }
-
-/* ── Cards ── */
-.cards-row { display:grid; grid-template-columns: repeat(6, 1fr); gap:.7rem; }
-.card-item {
-    background:#fff; border:1px solid #e2e8f0; border-radius:12px;
-    padding:.8rem 1rem; display:flex; flex-direction:column; gap:.2rem;
-}
-.card-item .ci-label { font-size:.65rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:#64748b; }
-.card-item .ci-val   { font-size:1.45rem; font-weight:800; color:#0f172a; font-family:monospace; }
-.card-item .ci-sub   { font-size:.68rem; color:#94a3b8; }
-.card-admon { border-top:3px solid #2563eb; }
-.card-total { border-top:3px solid #0f172a; }
-.card-sem-r { border-top:3px solid #dc2626; }
-.card-sem-a { border-top:3px solid #d97706; }
-.card-prom  { border-top:3px solid #7c3aed; }
+.cob-title { font-size:1.2rem; font-weight:800; letter-spacing:.02em; }
+.cob-sub   { font-size:.72rem; color:#94a3b8; margin-top:.15rem; }
 
 /* ── Filtros ── */
 .filtros {
     background:#fff; border:1px solid #e2e8f0; border-radius:12px;
-    padding:.75rem 1rem; display:flex; flex-wrap:wrap; gap:.5rem; align-items:center;
+    padding:0.4rem 0.8rem; display:flex; flex-wrap:wrap; gap:.5rem; align-items:center;
 }
 .filtros select, .filtros input {
     padding:.38rem .7rem; border:1px solid #cbd5e1; border-radius:8px;
@@ -81,7 +99,15 @@ function sortClassC($col, $cs, $cd) {
 .fil-sep { width:1px; height:22px; background:#e2e8f0; }
 
 /* ── Tabla ── */
-.tbl-wrap { overflow-x:auto; border-radius:12px; border:1px solid #e2e8f0; background:#fff; }
+.tbl-wrap {
+    overflow-x: auto;
+    overflow-y: auto;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    background: #fff;
+    flex: 1;
+    min-height: 0;
+}
 .tbl-cob  { width:100%; border-collapse:collapse; font-size:.775rem; white-space:nowrap; }
 .tbl-cob thead th {
     background:#0f172a; color:#fff; padding:.5rem .55rem;
@@ -363,14 +389,19 @@ function sortClassC($col, $cs, $cd) {
         </select>
         {{-- Estado --}}
         <select name="estado" onchange="this.form.submit()" style="font-size:.78rem;padding:.3rem .5rem;border:1px solid #334155;border-radius:6px;
-            {{ $soloPend==='pendiente' ? 'background:#b45309;color:#fff;' : 'background:#1e3a5f;color:#e2e8f0;' }}">
+            @if($soloPend==='pendiente') background:#b45309;color:#fff;
+            @elseif($soloPend==='pagado') background:#15803d;color:#fff;
+            @else background:#1e3a5f;color:#e2e8f0;
+            @endif">
             <option value="pendiente" {{ $soloPend==='pendiente'?'selected':'' }}>⏳ Pendientes</option>
+            <option value="pagado"    {{ $soloPend==='pagado'?'selected':'' }}>✅ Ya pagos</option>
             <option value="todos"     {{ $soloPend==='todos'?'selected':'' }}>📋 Todos</option>
         </select>
         {{-- Tipo --}}
         <select name="tipo" onchange="this.form.submit()" style="font-size:.78rem;padding:.3rem .5rem;border:1px solid #334155;background:#1e3a5f;color:#e2e8f0;border-radius:6px;">
             <option value="individual" {{ $soloInd==='individual'?'selected':'' }}>👤 Individual</option>
-            <option value="todos"      {{ $soloInd==='todos'?'selected':'' }}>🏢 Todos</option>
+            <option value="empresas"   {{ $soloInd==='empresas'?'selected':'' }}>🏢 Empresas</option>
+            <option value="todos"      {{ $soloInd==='todos'?'selected':'' }}>📋 Todos</option>
         </select>
         <span style="background:rgba(255,255,255,.15);color:#fff;font-size:.85rem;font-weight:800;padding:.3rem .7rem;border-radius:20px;white-space:nowrap;">
             {{ $contratos->count() }} <span style="font-size:.7rem;font-weight:500;opacity:.75;">registros</span>
@@ -389,49 +420,7 @@ function sortClassC($col, $cs, $cd) {
 </div>
 </form>
 
-{{-- ══ CARDS RESUMEN ══ --}}
-<div class="cards-row">
-    <div class="card-item card-admon">
-        <div class="ci-label">💰 Admon por cobrar</div>
-        <div class="ci-val" style="color:#1e40af;">{{ $fmt($totalAdmon) }}</div>
-        <div class="ci-sub">Solo administración</div>
-    </div>
-    <div class="card-item card-total">
-        <div class="ci-label">📋 Contratos</div>
-        <div class="ci-val">{{ $totalPendientes }}</div>
-        <div class="ci-sub">Con pago pendiente</div>
-    </div>
-    <div class="card-item card-sem-r">
-        <div class="ci-label">🔴 Sin gestionar</div>
-        <div class="ci-val" style="color:#dc2626;">{{ $sinLlamar }}</div>
-        <div class="ci-sub">Nunca llamado o >7 días</div>
-    </div>
-    <div class="card-item card-sem-a">
-        <div class="ci-label">🤝 Prometieron pago</div>
-        <div class="ci-val" style="color:#d97706;">{{ $prometieronPago }}</div>
-        <div class="ci-sub">Última llamada = promesa</div>
-    </div>
-    <div class="card-item card-prom">
-        <div class="ci-label">📊 Total SS estimado</div>
-        <div class="ci-val" style="color:#7c3aed; font-size:1.1rem;">{{ $fmt($totalSS) }}</div>
-        <div class="ci-sub">EPS+ARL+AFP+Caja</div>
-    </div>
-    {{-- Tarjeta Préstamos --}}
-    <a href="{{ route('admin.prestamos.index') }}" id="card-prestamos"
-       style="text-decoration:none;"
-       title="Ver módulo Préstamos">
-        <div class="card-item" style="border-top:3px solid #4f46e5;cursor:pointer;transition:transform .15s,box-shadow .15s;"
-             onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 20px rgba(79,70,229,.15)'"
-             onmouseout="this.style.transform='';this.style.boxShadow=''">
-            <div class="ci-label" style="color:#4f46e5;">💳 Préstamos del Mes</div>
-            <div class="ci-val" id="kpi-prest-val" style="color:#4f46e5;font-size:1.1rem;">—</div>
-            <div class="ci-sub" id="kpi-prest-sub">Cargando…</div>
-            <div style="margin-top:.35rem;font-size:.65rem;font-weight:700;color:#6d28d9;">→ Ver módulo Préstamos</div>
-        </div>
-    </a>
-</div>
-
-{{-- ══ FILTROS SECUNDARIOS ══ --}}
+{{-- ══ FILTROS SECUNDARIOS Y METRICAS UNIFICADAS ══ --}}
 <form method="GET" action="{{ route('admin.cobros.index') }}" id="formFiltros2">
 <input type="hidden" name="mes"    value="{{ $mes }}">
 <input type="hidden" name="anio"   value="{{ $anio }}">
@@ -440,26 +429,41 @@ function sortClassC($col, $cs, $cd) {
 <input type="hidden" name="afil_plan" value="{{ $afilPlan }}">
 <input type="hidden" name="empresa_cliente" value="{{ $empresaCliente }}">
 <input type="hidden" name="tipo_modal" value="{{ $tipoModalFiltro }}">
-<div class="filtros">
-    {{-- Buscar --}}
-    <input type="text" name="buscar" value="{{ $buscar }}" placeholder="🔍 Nombre o cédula..." style="min-width:180px;">
-    <div class="fil-sep"></div>
-    {{-- Razón Social --}}
-    <select name="razon_social_id" onchange="this.form.submit()">
-        <option value="">— Razón Social —</option>
-        @foreach($razonesDisponibles as $rs)
-        <option value="{{ $rs->id }}" {{ $rsId==$rs->id?'selected':'' }}>{{ $rs->razon_social }}</option>
-        @endforeach
-    </select>
-    {{-- Asesor --}}
-    <select name="asesor_id" onchange="this.form.submit()">
-        <option value="">— Asesor —</option>
-        @foreach($asesoresDisponibles as $as)
-        <option value="{{ $as->id }}" {{ $asesorId==$as->id?'selected':'' }}>{{ $as->nombre }}</option>
-        @endforeach
-    </select>
-    <button type="submit" class="btn-filtrar">Filtrar</button>
-    <a href="{{ route('admin.cobros.index') }}" class="btn-limpiar">✕ Limpiar</a>
+
+<div class="filtros" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.4rem;padding:0.4rem 0.8rem;background:#fff;border:1px solid #e2e8f0;border-radius:12px;margin-bottom:0.1rem;">
+    {{-- Filtros a la izquierda --}}
+    <div style="display:flex;align-items:center;gap:0.35rem;flex-wrap:wrap;">
+        <input type="text" name="buscar" value="{{ $buscar }}" placeholder="🔍 Nombre o cédula..." style="min-width:130px;padding:0.3rem 0.5rem;font-size:0.75rem;height:28px;box-sizing:border-box;">
+        <select name="razon_social_id" onchange="this.form.submit()" style="padding:0.3rem 0.5rem;font-size:0.75rem;height:28px;max-width:250px;box-sizing:border-box;" title="Filtrar por Razón Social">
+            <option value="">— Razón Social —</option>
+            @foreach($razonesDisponibles as $rs)
+            <option value="{{ $rs->id }}" {{ $rsId==$rs->id?'selected':'' }}>{{ $rs->razon_social }}</option>
+            @endforeach
+        </select>
+        <select name="asesor_id" onchange="this.form.submit()" style="padding:0.3rem 0.5rem;font-size:0.75rem;height:28px;box-sizing:border-box;">
+            <option value="">— Asesor —</option>
+            @foreach($asesoresDisponibles as $as)
+            <option value="{{ $as->id }}" {{ $asesorId==$as->id?'selected':'' }}>{{ $as->nombre }}</option>
+            @endforeach
+        </select>
+        <button type="submit" class="btn-filtrar" style="padding:0.3rem 0.75rem;font-size:0.75rem;height:28px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;">Filtrar</button>
+        <a href="{{ route('admin.cobros.index') }}" class="btn-limpiar" style="padding:0.3rem 0.6rem;font-size:0.75rem;height:28px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;">✕ Limpiar</a>
+    </div>
+
+    {{-- Cards de resumen (mini-kpis) a la derecha --}}
+    <div class="mini-kpis" style="display:flex;align-items:center;gap:0.3rem;flex-wrap:wrap;">
+        <span style="background:#eff6ff;color:#1e40af;padding:0.25rem 0.45rem;border-radius:6px;font-size:0.7rem;font-weight:700;border:1px solid #bfdbfe;" title="Administración por cobrar">Admon: <strong>{{ $fmt($totalAdmon) }}</strong></span>
+        <span style="background:#f8fafc;color:#0f172a;padding:0.25rem 0.45rem;border-radius:6px;font-size:0.7rem;font-weight:700;border:1px solid #e2e8f0;" title="Contratos con pago pendiente">Contratos: <strong>{{ $totalPendientes }}</strong></span>
+        <span style="background:#fee2e2;color:#dc2626;padding:0.25rem 0.45rem;border-radius:6px;font-size:0.7rem;font-weight:700;border:1px solid #fca5a5;" title="Nunca llamado o >7 días sin llamar">🔴 Sin llamar: <strong>{{ $sinLlamar }}</strong></span>
+        <span style="background:#fff7ed;color:#d97706;padding:0.25rem 0.45rem;border-radius:6px;font-size:0.7rem;font-weight:700;border:1px solid #fed7aa;" title="Última llamada es promesa de pago">🤝 Promesas: <strong>{{ $prometieronPago }}</strong></span>
+        <span style="background:#f5f3ff;color:#7c3aed;padding:0.25rem 0.45rem;border-radius:6px;font-size:0.7rem;font-weight:700;border:1px solid #ddd6fe;" title="Total Seguridad Social estimado (EPS+ARL+AFP+Caja)">📊 SS: <strong>{{ $fmt($totalSS) }}</strong></span>
+        <a href="{{ route('admin.prestamos.index') }}" style="text-decoration:none;" title="Ver módulo Préstamos">
+            <span style="background:#f5f3ff;color:#4f46e5;padding:0.25rem 0.45rem;border-radius:6px;font-size:0.7rem;font-weight:700;border:1px solid #c7d2fe;display:inline-flex;align-items:center;gap:0.2rem;">
+                💳 Préstamos: <strong id="kpi-prest-val">—</strong>
+                <span id="kpi-prest-sub" style="display:none;"></span>
+            </span>
+        </a>
+    </div>
 </div>
 </form>
 
@@ -543,16 +547,22 @@ function sortClassC($col, $cs, $cd) {
     @endif
     <th class="num-col" title="Total estimado (SS+Admon+Seguro)">Total</th>
     {{-- Mora estimada al cliente --}}
+    @if($soloPend !== 'pagado')
     <th class="num-col" title="Mora estimada por pago tardío" style="color:#fbbf24;">⚠️ Mora</th>
+    @endif
     {{-- Factura: solo cuando filtro = todos --}}
     @if($soloPend === 'todos')
     <th style="text-align:center">Factura</th>
+    @endif
+    @if($soloPend === 'todos' || $soloPend === 'pagado')
     <th title="N° Planilla">
         <a href="{{ sortUrlC('n_planilla', $sort, $dir) }}" class="{{ sortClassC('n_planilla', $sort, $dir) }}">N° Planilla</a>
     </th>
     @endif
     {{-- Semáforo siempre --}}
+    @if($soloPend !== 'pagado')
     <th style="text-align:center;min-width:90px">Semáforo</th>
+    @endif
     {{-- Gestión: solo cuando filtro = pendientes --}}
     @if($soloPend === 'pendiente')
     <th style="min-width:120px">Última gestión</th>
@@ -694,6 +704,7 @@ $rowStyle    = $esIrAlerta
     </td>
 
     {{-- Mora estimada --}}
+    @if($soloPend !== 'pagado')
     <td class="num-col">
         @if(($c->mora_estimada ?? 0) > 0)
             <span style="display:inline-block;padding:.12rem .42rem;border-radius:20px;font-size:.62rem;font-weight:700;background:#fef3c7;color:#92400e;" title="Mora estimada por pago tardío">
@@ -703,8 +714,9 @@ $rowStyle    = $esIrAlerta
             <span style="color:#cbd5e1;font-size:.7rem;">—</span>
         @endif
     </td>
+    @endif
 
-    {{-- Factura y N° Planilla: solo cuando filtro = todos --}}
+    {{-- Factura y N° Planilla --}}
     @if($soloPend === 'todos')
     <td style="text-align:center;">
         @if($c->fact_id)
@@ -718,12 +730,29 @@ $rowStyle    = $esIrAlerta
             <span style="color:#cbd5e1;font-size:.7rem;">Sin factura</span>
         @endif
     </td>
-    <td style="text-align:center;font-size:.72rem;color:#64748b;font-weight:700;">
-        {{ $c->fact_n_plano ?? '—' }}
+    @endif
+    @if($soloPend === 'todos' || $soloPend === 'pagado')
+    <td style="text-align:center;font-size:.72rem;">
+        @if($c->es_afil)
+            <span style="background:#f3e8ff; color:#6b21a8; border: 1px solid #d8b4fe; font-weight:700; padding:0.15rem 0.45rem; border-radius:6px; font-size:0.68rem; display:inline-block;" title="Cobro de afiliación, no requiere número de planilla">
+                Afiliación
+            </span>
+        @elseif($c->fact_n_planilla)
+            <span style="background:#dcfce7; color:#166534; border: 1px solid #bbf7d0; font-weight:700; padding:0.15rem 0.45rem; border-radius:6px; font-size:0.68rem; display:inline-block;" title="Número de planilla oficial (operador)">
+                {{ $c->fact_n_planilla }}
+            </span>
+        @elseif($c->fact_local_plano)
+            <span style="color:#475569; font-weight:600;" title="Plano interno del sistema">
+                NP {{ $c->fact_local_plano }}
+            </span>
+        @else
+            <span style="color:#cbd5e1;">—</span>
+        @endif
     </td>
     @endif
 
-    {{-- Semáforo (siempre) --}}
+    {{-- Semáforo --}}
+    @if($soloPend !== 'pagado')
     <td style="text-align:center;">
         <span class="sem-dot" style="color:{{ $semColor }};" title="{{ $semTip }}">
             {{ $semIco }}
@@ -732,6 +761,7 @@ $rowStyle    = $esIrAlerta
             @endif
         </span>
     </td>
+    @endif
 
     {{-- Gestión: solo cuando filtro = pendientes --}}
     @if($soloPend === 'pendiente')

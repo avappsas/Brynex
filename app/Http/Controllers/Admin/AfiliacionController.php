@@ -35,8 +35,8 @@ class AfiliacionController extends Controller
         $user    = Auth::user();
         $mes     = (int) $request->get('mes', now()->month);
         $anio    = (int) $request->get('anio', now()->year);
-        // Encargado: default = usuario autenticado si no se filtra explícitamente
-        $encId   = $request->has('encargado_id') ? $request->get('encargado_id') : $user->id;
+        // Encargado: default = todos si no se filtra explícitamente (se usa string vacío para no filtrar)
+        $encId   = $request->has('encargado_id') ? $request->get('encargado_id') : '';
 
         // ── Nuevos filtros ──
         $rsId       = $request->get('razon_social_id');
@@ -59,7 +59,7 @@ class AfiliacionController extends Controller
 
         // Capturar IDs del período sin filtros opcionales (para poblar selects dinámicos)
         $baseIds = Contrato::where('aliado_id', $alidoId)
-            ->whereIn('estado', ['vigente', 'retirado'])
+            ->where('estado', 'vigente')
             ->whereMonth('fecha_ingreso', $mes)
             ->whereYear('fecha_ingreso', $anio)
             ->pluck('id');
@@ -84,9 +84,38 @@ class AfiliacionController extends Controller
             'radicados' => fn($q) => $q->with(['movimientos' => fn($m) => $m->reorder()->orderByDesc('id')->limit(3)]),
         ])
         ->where('aliado_id', $alidoId)
-        ->whereIn('estado', ['vigente', 'retirado'])
+        ->where('estado', 'vigente')
         ->whereMonth('fecha_ingreso', $mes)
         ->whereYear('fecha_ingreso', $anio);
+
+        // Búsqueda inteligente por nombre tokenizado y cédula
+        $buscar = $request->get('buscar');
+        if ($buscar) {
+            $query->where(function ($q) use ($buscar) {
+                // Coincidencia directa en cédula (contrato)
+                $q->where('cedula', 'LIKE', "%{$buscar}%")
+                  ->orWhereHas('cliente', function ($qCli) use ($buscar) {
+                      $qCli->where(function ($qId) use ($buscar) {
+                          $qId->where('cedula', 'LIKE', "%{$buscar}%")
+                              ->orWhere('celular', 'LIKE', "%{$buscar}%");
+                      });
+
+                      if (!ctype_digit(str_replace(' ', '', $buscar))) {
+                          $palabras = array_filter(explode(' ', trim($buscar)));
+                          $qCli->orWhere(function ($inner) use ($palabras) {
+                              foreach ($palabras as $palabra) {
+                                  $inner->where(function ($sub) use ($palabra) {
+                                      $sub->where('primer_nombre',    'LIKE', "%{$palabra}%")
+                                          ->orWhere('segundo_nombre',  'LIKE', "%{$palabra}%")
+                                          ->orWhere('primer_apellido', 'LIKE', "%{$palabra}%")
+                                          ->orWhere('segundo_apellido','LIKE', "%{$palabra}%");
+                                  });
+                              }
+                          });
+                      }
+                  });
+            });
+        }
 
         // Filtros opcionales
         if ($encId)     $query->where('encargado_id', $encId);
@@ -206,6 +235,15 @@ class AfiliacionController extends Controller
         $encId   = $request->get('encargado_id');
         $alidoId = $this->resolverAliado($request, $user);
 
+        // Filtros adicionales
+        $rsId       = $request->get('razon_social_id');
+        $tipoModId  = $request->get('tipo_modalidad_id');
+        $epsF       = $request->get('eps_id');
+        $arlF       = $request->get('arl_id');
+        $cajaF      = $request->get('caja_id');
+        $pensionF   = $request->get('pension_id');
+        $estadoRad  = $request->get('estado_rad');
+
         $query = Contrato::with([
             'cliente:cedula,primer_nombre,primer_apellido',
             'razonSocial:id,razon_social',
@@ -217,10 +255,51 @@ class AfiliacionController extends Controller
             'radicados',
         ])
         ->where('aliado_id', $alidoId)
+        ->where('estado', 'vigente')
         ->whereMonth('fecha_ingreso', $mes)
         ->whereYear('fecha_ingreso', $anio);
 
-        if ($encId) $query->where('encargado_id', $encId);
+        // Búsqueda inteligente por nombre tokenizado y cédula
+        $buscar = $request->get('buscar');
+        if ($buscar) {
+            $query->where(function ($q) use ($buscar) {
+                // Coincidencia directa en cédula (contrato)
+                $q->where('cedula', 'LIKE', "%{$buscar}%")
+                  ->orWhereHas('cliente', function ($qCli) use ($buscar) {
+                      $qCli->where(function ($qId) use ($buscar) {
+                          $qId->where('cedula', 'LIKE', "%{$buscar}%")
+                              ->orWhere('celular', 'LIKE', "%{$buscar}%");
+                      });
+
+                      if (!ctype_digit(str_replace(' ', '', $buscar))) {
+                          $palabras = array_filter(explode(' ', trim($buscar)));
+                          $qCli->orWhere(function ($inner) use ($palabras) {
+                              foreach ($palabras as $palabra) {
+                                  $inner->where(function ($sub) use ($palabra) {
+                                      $sub->where('primer_nombre',    'LIKE', "%{$palabra}%")
+                                          ->orWhere('segundo_nombre',  'LIKE', "%{$palabra}%")
+                                          ->orWhere('primer_apellido', 'LIKE', "%{$palabra}%")
+                                          ->orWhere('segundo_apellido','LIKE', "%{$palabra}%");
+                                  });
+                              }
+                          });
+                      }
+                  });
+            });
+        }
+
+        if ($encId)     $query->where('encargado_id', $encId);
+        if ($rsId)      $query->where('razon_social_id', $rsId);
+        if ($epsF)      $query->where('eps_id', $epsF);
+        if ($arlF)      $query->where('arl_id', $arlF);
+        if ($cajaF)     $query->where('caja_id', $cajaF);
+        if ($pensionF)  $query->where('pension_id', $pensionF);
+        if ($tipoModId) $query->where('tipo_modalidad_id', $tipoModId);
+        
+        $estadosPermitidos = ['pendiente','tramite','traslado','error','ok'];
+        if ($estadoRad && in_array($estadoRad, $estadosPermitidos)) {
+            $query->whereHas('radicados', fn($q) => $q->where('estado', $estadoRad));
+        }
 
         $contratos = $query->orderBy('fecha_ingreso', 'asc')->get();
 

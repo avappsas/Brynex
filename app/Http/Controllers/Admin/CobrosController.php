@@ -128,7 +128,7 @@ class CobrosController extends Controller
             ->whereIn('estado', ['vigente', 'activo'])
             ->with(['cliente.empresa', 'tipoModalidad', 'razonSocial', 'asesor', 'plan', 'eps', 'arl', 'pension', 'caja']);
 
-        // Filtro: solo individuales (cod_empresa = 1 = Individual)
+        // Filtro: tipo (individual / empresas / todos)
         if ($soloInd === 'individual') {
             // Subquery nativa: evita cargar cédulas a PHP y enviar un whereIn masivo
             $q->whereIn('cedula', function ($sub) use ($aliadoId) {
@@ -140,7 +140,18 @@ class CobrosController extends Controller
                            ->orWhereNull('cod_empresa');
                     });
             });
+        } elseif ($soloInd === 'empresas') {
+            $q->whereIn('cedula', function ($sub) use ($aliadoId) {
+                $sub->from('clientes')
+                    ->select('cedula')
+                    ->where('aliado_id', $aliadoId)
+                    ->where('cod_empresa', '>', 1)
+                    ->whereNotNull('cod_empresa');
+            });
         }
+
+        // Capturar razones sociales disponibles en este período y tipo antes de aplicar filtros opcionales (búsqueda, RS, asesor)
+        $rsIdsUsados = (clone $q)->pluck('razon_social_id')->filter()->unique()->toArray();
 
         // Filtro: razón social
         if ($rsId) $q->where('razon_social_id', $rsId);
@@ -373,7 +384,9 @@ class CobrosController extends Controller
             $facturaEstado   = $fact?->estado;
             $facturaNumero   = $fact?->numero_factura;
             $facturaId       = $fact?->id;
-            $facturaNPlano   = $fact?->plano?->numero_planilla ?? $fact?->n_plano;
+            $facturaNPlanilla = $fact?->plano?->numero_planilla;
+            $facturaLocalPlano = $fact?->n_plano;
+            $facturaNPlano   = $facturaNPlanilla ?? $facturaLocalPlano;
             $facturaSaldoPend= 0; // saldo_pendiente eliminado — derivar de saldo_proximo si se necesita
 
             // ── Semáforo ─────────────────────────────────────────
@@ -407,6 +420,8 @@ class CobrosController extends Controller
             $c->fact_estado      = $facturaEstado;
             $c->fact_numero      = $facturaNumero;
             $c->fact_id          = $facturaId;
+            $c->fact_n_planilla  = $facturaNPlanilla;
+            $c->fact_local_plano = $facturaLocalPlano;
             $c->fact_n_plano     = $facturaNPlano;
             $c->fact_saldo_pend  = $facturaSaldoPend;
             // ── Entidades para cuenta de cobro individual ─────────────
@@ -468,10 +483,25 @@ class CobrosController extends Controller
 
         // ── Ordenamiento en colección (campos calculados en PHP) ────
         if ($sort === 'n_planilla') {
-            $contratos = $dir === 'asc'
-                ? $contratos->sortBy('fact_n_plano', SORT_NATURAL)
-                : $contratos->sortByDesc('fact_n_plano', SORT_NATURAL);
-            $contratos = $contratos->values();
+            $contratos = $contratos->sort(function ($a, $b) use ($dir) {
+                // 1. Agrupar afiliaciones juntas
+                $aAfil = $a->es_afil ? 1 : 0;
+                $bAfil = $b->es_afil ? 1 : 0;
+                if ($aAfil !== $bAfil) {
+                    return $dir === 'asc' ? ($bAfil <=> $aAfil) : ($aAfil <=> $bAfil);
+                }
+                
+                // 2. Ordenar por planilla/plano
+                $aVal = $a->fact_n_plano;
+                $bVal = $b->fact_n_plano;
+                
+                if ($aVal === null && $bVal === null) return 0;
+                if ($aVal === null) return 1;
+                if ($bVal === null) return -1;
+                
+                $res = strnatcasecmp((string)$aVal, (string)$bVal);
+                return $dir === 'asc' ? $res : -$res;
+            })->values();
         }
 
         // ── Extraer opciones únicas de Empresa/Cliente para el filtro ──
@@ -486,6 +516,10 @@ class CobrosController extends Controller
                     return in_array($c->fact_estado, ['pre_factura', 'abono']);
                 }
                 return true; // sin factura → pendiente
+            })->values();
+        } elseif ($soloPend === 'pagado') {
+            $contratos = $contratos->filter(function ($c) {
+                return (bool)($c->fact_pagada ?? false);
             })->values();
         }
 
@@ -525,7 +559,7 @@ class CobrosController extends Controller
 
         // ── Datos para filtros ──────────────────────────────────────
         $razonesDisponibles = DB::table('razones_sociales')
-            ->where('aliado_id', $aliadoId)
+            ->whereIn('id', $rsIdsUsados)
             ->orderBy('razon_social')
             ->get(['id', 'razon_social']);
 
