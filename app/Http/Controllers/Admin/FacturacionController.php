@@ -1958,12 +1958,12 @@ class FacturacionController extends Controller
             if ((int)$contrato->tipo_modalidad_id === 11) {
                 return 30;
             }
-            // EXCEPCIÓN 2: Si ya existe una factura de tipo 'planilla' o 'afiliacion' pagada para el mes de ingreso.
+            // EXCEPCIÓN 2: Si ya existe una factura de tipo 'planilla' pagada para el mes de ingreso.
             $existePlanillaIngreso = Factura::where('aliado_id', $contrato->aliado_id)
                 ->where('contrato_id', $contrato->id)
                 ->where('mes', $mesIngreso)
                 ->where('anio', $anioIngreso)
-                ->whereIn('tipo', ['planilla', 'afiliacion'])
+                ->where('tipo', 'planilla')
                 ->whereIn('estado', ['pagada', 'pre_factura', 'abono', 'prestamo'])
                 ->exists();
             if ($existePlanillaIngreso) {
