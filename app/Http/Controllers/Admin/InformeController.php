@@ -2903,6 +2903,10 @@ class InformeController extends Controller
         $anio = (int) $request->input('anio');
         $tipo = $request->input('tipo'); // 'admon_vigentes', 'afiliaciones', 'retiros_reales', 'retiros_informativos'
 
+        if ($tipo === 'retiros_inform') {
+            $tipo = 'retiros_informativos';
+        }
+
         if (!$mes || !$anio || !$tipo) {
             return response()->json(['error' => 'Parámetros inválidos.'], 400);
         }

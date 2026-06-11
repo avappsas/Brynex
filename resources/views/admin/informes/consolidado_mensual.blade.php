@@ -75,7 +75,7 @@
                 <div style="font-size:0.75rem;color:#475569; cursor:pointer;" onclick="abrirDetalle({{ $kpisActual['mes'] }}, {{ $kpisActual['anio'] }}, 'retiros_reales')">
                     Reales: <strong style="color:#b45309;">{{ $kpisActual['retiros_reales'] }}</strong>
                 </div>
-                <div style="font-size:0.75rem;color:#475569; cursor:pointer;" onclick="abrirDetalle({{ $kpisActual['mes'] }}, {{ $kpisActual['anio'] }}, 'retiros_inform')">
+                <div style="font-size:0.75rem;color:#475569; cursor:pointer;" onclick="abrirDetalle({{ $kpisActual['mes'] }}, {{ $kpisActual['anio'] }}, 'retiros_informativos')">
                     Informativos: <strong style="color:#78350f;">{{ $kpisActual['retiros_inform'] }}</strong>
                 </div>
             </div>
@@ -149,7 +149,7 @@
                         <td style="text-align: right; color: #d97706;" class="clickable-cell" onclick="abrirDetalle({{ $mes['mes'] }}, {{ $mes['anio'] }}, 'retiros_reales')">
                             {{ number_format($mes['retiros_reales'], 0, ',', '.') }}
                         </td>
-                        <td style="text-align: right; color: #78350f;" class="clickable-cell" onclick="abrirDetalle({{ $mes['mes'] }}, {{ $mes['anio'] }}, 'retiros_inform')">
+                        <td style="text-align: right; color: #78350f;" class="clickable-cell" onclick="abrirDetalle({{ $mes['mes'] }}, {{ $mes['anio'] }}, 'retiros_informativos')">
                             {{ number_format($mes['retiros_inform'], 0, ',', '.') }}
                         </td>
                         <td style="text-align: right; font-weight: 600; color: #ef4444;">

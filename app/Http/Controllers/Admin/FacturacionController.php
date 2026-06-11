@@ -608,14 +608,17 @@ class FacturacionController extends Controller
             $saldoEmpresaAplicar = max(0, (int)$histSaldo);
         }
 
-        $cedulasLote = $contratosCargados->pluck('cedula')->toArray();
+        // ── Anti-duplicado: verificar por contrato_id (no por cédula+RS)
+        // Permite contratos distintos aunque compartan la misma Razón Social.
+        // Bloquea solo si el MISMO contrato ya tiene una factura del MISMO tipo en el período.
+        $contratoIdsLote = $contratosCargados->pluck('id')->toArray();
         $facturasDuplicadasLote = Factura::where('aliado_id', $aliadoId)
-            ->whereIn('cedula', $cedulasLote)
+            ->whereIn('contrato_id', $contratoIdsLote)
             ->where('mes', $mes)
             ->where('anio', $anio)
             ->whereNotIn('estado', ['anulada'])
-            ->get(['id', 'cedula', 'razon_social_id', 'estado'])
-            ->groupBy('cedula');
+            ->get(['id', 'contrato_id', 'tipo', 'estado'])
+            ->groupBy('contrato_id');
 
         DB::transaction(function () use (
             $validated, $aliadoId, $np, $mes, $anio,
@@ -632,22 +635,21 @@ class FacturacionController extends Controller
                 if (!$contrato) continue;
 
 
-                // ─── Validación anti-duplicado ─────────────────────────────
-                // Solo bloquea si ya existe factura para la MISMA cedula+mes+año+razon_social.
-                // Permite facturar al mismo cliente desde distinta Razón Social.
-                $facturasDup = $facturasDuplicadasLote->get($contrato->cedula) ?: collect();
+                // ─── Validación anti-duplicado por CONTRATO ───────────────
+                // Bloquea si el MISMO contrato_id ya tiene una factura del MISMO tipo
+                // en el mismo período (ej: 2 planillas del mismo contrato en junio).
+                // Permite contratos distintos aunque compartan la misma Razón Social
+                // (ej: retiro contrato anterior + afiliación/planilla contrato nuevo).
+                $facturasDup   = $facturasDuplicadasLote->get($contrato->id) ?: collect();
+                $tipoSolicitado = $validated['tipo'];
 
-                $yaExiste = $facturasDup->contains(function ($f) use ($contrato) {
-                    // Comparar como enteros para evitar fallos int vs string
-                    return (int)$f->razon_social_id === (int)$contrato->razon_social_id;
-                });
+                $yaExiste = $facturasDup->contains(fn($f) => $f->tipo === $tipoSolicitado);
 
                 if ($yaExiste) {
-                    $rsNombre = $contrato->razonSocial?->razon_social ?? 'Individual';
                     $omitidos[] = [
                         'cedula'  => $contrato->cedula,
                         'nombre'  => $contrato->cliente?->primer_nombre . ' ' . $contrato->cliente?->primer_apellido,
-                        'motivo'  => "Ya existe una factura para {$mes}/{$anio} bajo '{$rsNombre}'",
+                        'motivo'  => "Ya existe una {$tipoSolicitado} para {$mes}/{$anio} en este contrato",
                     ];
                     $contratosPendientes--; // descontar aunque se omita
                     continue; // saltar este contrato
