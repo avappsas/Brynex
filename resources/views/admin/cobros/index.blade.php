@@ -394,7 +394,7 @@ function sortClassC($col, $cs, $cd) {
             @else background:#1e3a5f;color:#e2e8f0;
             @endif">
             <option value="pendiente" {{ $soloPend==='pendiente'?'selected':'' }}>⏳ Pendientes</option>
-            <option value="pagado"    {{ $soloPend==='pagado'?'selected':'' }}>✅ Ya pagos</option>
+            <option value="pagado"    {{ $soloPend==='pagado'?'selected':'' }}>📤 Facturados</option>
             <option value="todos"     {{ $soloPend==='todos'?'selected':'' }}>📋 Todos</option>
         </select>
         {{-- Tipo --}}
@@ -517,10 +517,11 @@ function sortClassC($col, $cs, $cd) {
         <form method="GET" action="{{ route('admin.cobros.index') }}" style="margin:0">
             @foreach(request()->except(['afil_plan','page']) as $k => $v)<input type="hidden" name="{{ $k }}" value="{{ $v }}">@endforeach
             <select name="afil_plan" onchange="this.form.submit()" class="th-select {{ $afilPlan ? 'activo' : '' }}">
-                <option value="">↓ AFIL/PLAN</option>
+                <option value="">↓ Tipo</option>
                 <option value="todos" {{ $afilPlan === 'todos' ? 'selected' : '' }}>Todos</option>
                 <option value="afil"  {{ $afilPlan === 'afil'  ? 'selected' : '' }}>📌 AFIL</option>
                 <option value="plan"  {{ $afilPlan === 'plan'  ? 'selected' : '' }}>📄 PLAN</option>
+                <option value="retiro" {{ $afilPlan === 'retiro' ? 'selected' : '' }}>🔴 RETIRO</option>
             </select>
         </form>
     </th>
@@ -587,11 +588,18 @@ $fIngMes    = $c->fecha_ingreso?->month ?? 0;
 $fIngAnio   = $c->fecha_ingreso?->year ?? 0;
 [$semIco, $semColor, $semBg, $semTip] = $semLabel($c->semaforo);
 // Ingreso-Retiro: alerta si planilla > 5 días
-$esIrAlerta  = $c->es_ir_alerta ?? false;
-$diasIrEstim = $c->dias_cotiz_estim ?? 30;
-$rowStyle    = $esIrAlerta
-    ? 'background:linear-gradient(90deg,#fff7ed 0%,#fffbf7 100%);border-left:3px solid #f97316;'
-    : '';
+$esIrAlerta       = $c->es_ir_alerta ?? false;
+$diasIrEstim      = $c->dias_cotiz_estim ?? 30;
+$esRetiro         = $c->es_retiro ?? false;
+$esRetiroInformativo = $esRetiro && ($c->es_retiro_informativo ?? false);
+$esRetiroPosterior = $c->es_retiro_posterior ?? false;
+$rowStyle = $esRetiro
+    ? 'background:linear-gradient(90deg,#fff0f0 0%,#fff5f5 100%);border-left:3px solid #dc2626;'
+    : ($esRetiroPosterior
+        ? 'background:linear-gradient(90deg,#fdf2f8 0%,#fef9fb 100%);border-left:3px solid #9333ea;'
+        : ($esIrAlerta
+            ? 'background:linear-gradient(90deg,#fff7ed 0%,#fffbf7 100%);border-left:3px solid #f97316;'
+            : ''));
 @endphp
 <tr data-cid="{{ $c->id }}" style="{{ $rowStyle }}">
     {{-- N° Contrato --}}
@@ -664,9 +672,20 @@ $rowStyle    = $esIrAlerta
     {{-- Tipo Modalidad --}}
     <td style="text-align:center;font-size:.72rem;font-weight:700;" title="{{ $tipoNom }}">{{ $tipoMod }}</td>
 
-    {{-- AFIL / PLAN --}}
+    {{-- TIPO (AFIL / PLAN / RETIRO / RETIRO INF. / ret.) --}}
     <td style="text-align:center;">
-        @if($c->es_ind_act_primer_mes ?? false)
+        @if($esRetiroInformativo)
+            <span class="badge-tipo" style="background:#fef2f2;color:#b91c1c;border:1px solid #fca5a5;font-size:.6rem;" title="Retiro informativo — sin costo SS">⚪ RETIRO INF.</span>
+        @elseif($esRetiro)
+            <span class="badge-tipo" style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;" title="Retiro marcado en este periodo">🔴 RETIRO</span>
+        @elseif($esRetiroPosterior)
+            {{-- Tenian planilla en el periodo pero se retiraron despues --}}
+            @if($c->es_afil)
+                <span class="badge-tipo badge-afil" title="Afiliación del periodo — contrato ya retirado">📌 AFIL <span style="font-size:.55rem;opacity:.7;">ret.</span></span>
+            @else
+                <span class="badge-tipo badge-plan" title="Planilla del periodo — contrato ya retirado">📄 PLAN <span style="font-size:.55rem;opacity:.7;">ret.</span></span>
+            @endif
+        @elseif($c->es_ind_act_primer_mes ?? false)
             <span class="badge-tipo" style="background:#f3e8ff;color:#7c3aed;" title="I ACT · Cobra Afiliación + Planilla juntas este mes">⚡ ACT</span>
         @elseif($c->es_afil)
             <span class="badge-tipo badge-afil">📌 AFIL</span>
@@ -733,20 +752,44 @@ $rowStyle    = $esIrAlerta
     @endif
     @if($soloPend === 'todos' || $soloPend === 'pagado')
     <td style="text-align:center;font-size:.72rem;">
-        @if($c->es_afil)
+        @if($c->es_afil && !$esRetiro)
             <span style="background:#f3e8ff; color:#6b21a8; border: 1px solid #d8b4fe; font-weight:700; padding:0.15rem 0.45rem; border-radius:6px; font-size:0.68rem; display:inline-block;" title="Cobro de afiliación, no requiere número de planilla">
                 Afiliación
             </span>
         @elseif($c->fact_n_planilla)
-            <span style="background:#dcfce7; color:#166534; border: 1px solid #bbf7d0; font-weight:700; padding:0.15rem 0.45rem; border-radius:6px; font-size:0.68rem; display:inline-block;" title="Número de planilla oficial (operador)">
-                {{ $c->fact_n_planilla }}
+            {{-- Rojo para RETIRO, verde para el resto --}}
+            @if($esRetiro)
+                <span style="background:#fee2e2; color:#dc2626; border: 1px solid #fca5a5; font-weight:700; padding:0.15rem 0.45rem; border-radius:6px; font-size:0.68rem; display:inline-block;" title="{{ $esRetiroInformativo ? 'Planilla retiro informativo' : 'Planilla del retiro' }}">
+                    {{ $c->fact_n_planilla }}
+                </span>
+            @else
+                <span style="background:#dcfce7; color:#166534; border: 1px solid #bbf7d0; font-weight:700; padding:0.15rem 0.45rem; border-radius:6px; font-size:0.68rem; display:inline-block;" title="Número de planilla oficial (operador)">
+                    {{ $c->fact_n_planilla }}
+                </span>
+            @endif
+        @elseif($esRetiroInformativo)
+            {{-- Retiro informativo sin planilla registrada: mostrar etiqueta en rojo --}}
+            <span style="background:#fee2e2; color:#b91c1c; border: 1px solid #fca5a5; font-weight:700; padding:0.15rem 0.45rem; border-radius:6px; font-size:0.65rem; display:inline-block;" title="Retiro informativo — sin planilla SS">
+                Retiro Inf.
             </span>
         @elseif($c->fact_local_plano)
-            <span style="color:#475569; font-weight:600;" title="Plano interno del sistema">
-                NP {{ $c->fact_local_plano }}
-            </span>
+            @if($esRetiro)
+                <span style="color:#dc2626; font-weight:600;" title="Plano interno del sistema (retiro)">
+                    NP {{ $c->fact_local_plano }}
+                </span>
+            @else
+                <span style="color:#475569; font-weight:600;" title="Plano interno del sistema">
+                    NP {{ $c->fact_local_plano }}
+                </span>
+            @endif
         @else
-            <span style="color:#cbd5e1;">—</span>
+            @if($esRetiroInformativo)
+                <span style="background:#fee2e2; color:#b91c1c; border: 1px solid #fca5a5; font-weight:700; padding:0.15rem 0.45rem; border-radius:6px; font-size:0.65rem; display:inline-block;">
+                    Retiro Inf.
+                </span>
+            @else
+                <span style="color:#cbd5e1;">—</span>
+            @endif
         @endif
     </td>
     @endif
@@ -781,9 +824,10 @@ $rowStyle    = $esIrAlerta
     </td>
     @endif
 
-    {{-- Acciones: Llamar + Cuenta de Cobro --}}
+    {{-- Acciones: Llamar + Cuenta de Cobro o Recibo --}}
     <td style="text-align:center;white-space:nowrap;">
-        {{-- Botón llamar --}}
+        {{-- Botón llamar: solo para vigentes, no para retirados --}}
+        @if(!$esRetiro && !$esRetiroPosterior)
         <button class="btn-llamar btn-abrir-modal"
             data-contrato-id="{{ $c->id }}"
             data-nombre="{{ $nombre }}"
@@ -796,7 +840,17 @@ $rowStyle    = $esIrAlerta
             title="Registrar llamada de cobro">
             📞
         </button>
-        {{-- Botón cuenta de cobro individual --}}
+        @else
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50%;background:#fee2e2;color:#dc2626;font-size:.75rem;" title="Contrato retirado — sin gestión de cobro">✓</span>
+        @endif
+        {{-- Botón: si ya tiene factura emitida → 📄 abrir recibo; sino → 🧭 cuenta de cobro --}}
+        @if($c->fact_id && $c->fact_emitida)
+        <a href="{{ route('admin.facturacion.recibo', $c->fact_id) }}" target="_blank"
+            style="display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:7px;background:linear-gradient(135deg,#0f766e,#14b8a6);color:#fff;font-size:.9rem;text-decoration:none;cursor:pointer;"
+            title="Abrir recibo #{{ $c->fact_numero }}">
+            📄
+        </a>
+        @else
         <button class="btn-cc-ind"
             data-nombre="{{ $nombre }}"
             data-cedula="{{ $c->cedula }}"
@@ -820,6 +874,7 @@ $rowStyle    = $esIrAlerta
             title="Ver cuenta de cobro individual">
             🧾
         </button>
+        @endif
     </td>
 </tr>
 @endforeach

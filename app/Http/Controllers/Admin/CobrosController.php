@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\{Contrato, Factura, BitacoraCobro, ConfiguracionBrynex, ArlTarifa, Empresa, BancoCuenta, TipoModalidad};
 use App\Models\{WhatsappConfig, WhatsappEnvioMasivo, WhatsappEnvioMasivoDetalle, WhatsappMensaje};
 use App\Services\MoraClienteService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\{Auth, DB, Log};
 
@@ -123,9 +124,14 @@ class CobrosController extends Controller
         $dir      = $request->get('dir', 'asc') === 'desc' ? 'desc' : 'asc';
         $afilPlan = $request->get('afil_plan');
 
+        // ── Último día del periodo consultado (para excluir contratos futuros) ──
+        $ultimoDiaPeriodo = Carbon::create($anio, $mes, 1)->endOfMonth()->toDateString();
+
         // ── Contratos vigentes del aliado ───────────────────────────
+        // Solo incluir vigentes cuya fecha_ingreso <= último día del periodo consultado
         $q = Contrato::where('aliado_id', $aliadoId)
             ->whereIn('estado', ['vigente', 'activo'])
+            ->where('contratos.fecha_ingreso', '<=', $ultimoDiaPeriodo)
             ->with(['cliente.empresa', 'tipoModalidad', 'razonSocial', 'asesor', 'plan', 'eps', 'arl', 'pension', 'caja']);
 
         // Filtro: tipo (individual / empresas / todos)
@@ -191,9 +197,171 @@ class CobrosController extends Controller
 
         $contratos = $q->get();
 
+        // ── Contratos RETIRADOS con factura de retiro en este periodo ──────
+        // Criterio: estado=retirado + EXISTS factura (numero_factura=0, tipo=planilla, mes/anio del periodo)
+        $qRet = Contrato::where('aliado_id', $aliadoId)
+            ->where('estado', 'retirado')
+            ->whereHas('facturas', fn($fq) => $fq
+                ->where('mes', $mes)
+                ->where('anio', $anio)
+                ->where('numero_factura', 0)
+                ->where('tipo', 'planilla')
+                ->whereNull('deleted_at')
+            )
+            ->with(['cliente.empresa', 'tipoModalidad', 'razonSocial', 'asesor', 'plan', 'eps', 'arl', 'pension', 'caja']);
+
+        // Aplicar los mismos filtros de tipo individual/empresa
+        if ($soloInd === 'individual') {
+            $qRet->whereIn('cedula', function ($sub) use ($aliadoId) {
+                $sub->from('clientes')->select('cedula')->where('aliado_id', $aliadoId)
+                    ->where(function ($sq) { $sq->where('cod_empresa', 1)->orWhereNull('cod_empresa'); });
+            });
+        } elseif ($soloInd === 'empresas') {
+            $qRet->whereIn('cedula', function ($sub) use ($aliadoId) {
+                $sub->from('clientes')->select('cedula')->where('aliado_id', $aliadoId)
+                    ->where('cod_empresa', '>', 1)->whereNotNull('cod_empresa');
+            });
+        }
+        if ($rsId)     $qRet->where('razon_social_id', $rsId);
+        if ($asesorId) $qRet->where('asesor_id', $asesorId);
+        if ($buscar) {
+            $qRet->where(function ($sq) use ($buscar) {
+                $sq->where('cedula', 'like', "%$buscar%")
+                   ->orWhereHas('cliente', fn($cq) => $cq
+                       ->where('primer_nombre',   'like', "%$buscar%")
+                       ->orWhere('primer_apellido','like', "%$buscar%"));
+            });
+        }
+        if ($tipoModalFiltro) $qRet->where('tipo_modalidad_id', $tipoModalFiltro);
+
+        $contratosRetirados = $qRet->get();
+
+        // Marcar cada retirado (con factura de retiro en el periodo) para identificarlo más adelante
+        $contratosRetirados->each(fn($c) => $c->_es_retirado_periodo = true);
+
+        // ── TERCER GRUPO: Retirados con PLANILLA NORMAL en el periodo ─────────
+        // Estos son contratos que estaban vigentes en el mes consultado (tenían planilla
+        // o afiliación pagada en ese mes) pero se retiraron DESPUÉS (mes siguiente, etc.).
+        // El informe consolidado los cuenta en ADMON VIGENTES o AFILIACIONES del mes.
+        // Su factura de retiro (numero_factura=0) es de un mes POSTERIOR, no del periodo.
+        $idsYaCaptados = $contratos->pluck('id')->merge($contratosRetirados->pluck('id'))->unique()->toArray();
+
+        $qRetNormal = Contrato::where('aliado_id', $aliadoId)
+            ->where('estado', 'retirado')
+            ->whereNotIn('contratos.id', $idsYaCaptados)
+            ->whereHas('facturas', fn($fq) => $fq
+                ->where('mes', $mes)
+                ->where('anio', $anio)
+                ->where('numero_factura', '>', 0)
+                ->whereIn('tipo', ['planilla', 'afiliacion'])
+                ->whereNull('deleted_at')
+            )
+            ->with(['cliente.empresa', 'tipoModalidad', 'razonSocial', 'asesor', 'plan', 'eps', 'arl', 'pension', 'caja']);
+
+        // Aplicar los mismos filtros opcionales
+        if ($soloInd === 'individual') {
+            $qRetNormal->whereIn('cedula', function ($sub) use ($aliadoId) {
+                $sub->from('clientes')->select('cedula')->where('aliado_id', $aliadoId)
+                    ->where(function ($sq) { $sq->where('cod_empresa', 1)->orWhereNull('cod_empresa'); });
+            });
+        } elseif ($soloInd === 'empresas') {
+            $qRetNormal->whereIn('cedula', function ($sub) use ($aliadoId) {
+                $sub->from('clientes')->select('cedula')->where('aliado_id', $aliadoId)
+                    ->where('cod_empresa', '>', 1)->whereNotNull('cod_empresa');
+            });
+        }
+        if ($rsId)     $qRetNormal->where('razon_social_id', $rsId);
+        if ($asesorId) $qRetNormal->where('asesor_id', $asesorId);
+        if ($buscar) {
+            $qRetNormal->where(function ($sq) use ($buscar) {
+                $sq->where('cedula', 'like', "%$buscar%")
+                   ->orWhereHas('cliente', fn($cq) => $cq
+                       ->where('primer_nombre',   'like', "%$buscar%")
+                       ->orWhere('primer_apellido','like', "%$buscar%"));
+            });
+        }
+        if ($tipoModalFiltro) $qRetNormal->where('tipo_modalidad_id', $tipoModalFiltro);
+
+        $contratosRetNormal = $qRetNormal->get();
+        // Marcar como "retirado posterior al periodo" para tratamiento diferenciado
+        $contratosRetNormal->each(fn($c) => $c->_es_retirado_posterior = true);
+
+        // ── CUARTO GRUPO: Retiros Informativos por fecha_retiro (igual que InformeController) ──
+        // Criterio (igual al informe consolidado):
+        //   - tipo_modalidad=11: fecha_retiro en el mes consultado
+        //   - Otros: fecha_retiro en el mes ANTERIOR al consultado
+        // Estos tienen factura retiro con total_ss=0. Su invoice puede ser de CUALQUIER mes.
+        $mesAntInf  = $mes === 1 ? 12 : $mes - 1;
+        $anioAntInf = $mes === 1 ? $anio - 1 : $anio;
+
+        $idsYaCaptadosTodos = $contratos->pluck('id')
+            ->merge($contratosRetirados->pluck('id'))
+            ->merge($contratosRetNormal->pluck('id'))
+            ->unique()->toArray();
+
+        $qRetInf = Contrato::where('aliado_id', $aliadoId)
+            ->where('estado', 'retirado')
+            ->whereNotIn('contratos.id', $idsYaCaptadosTodos)
+            ->where(function ($q) use ($mes, $anio, $mesAntInf, $anioAntInf) {
+                // tipo_modalidad=11 (Ind.Act.): fecha_retiro en el mes consultado
+                $q->where(function ($q1) use ($mes, $anio) {
+                    $q1->where('tipo_modalidad_id', 11)
+                       ->whereMonth('fecha_retiro', $mes)
+                       ->whereYear('fecha_retiro', $anio);
+                // Resto: fecha_retiro en el mes ANTERIOR
+                })->orWhere(function ($q2) use ($mesAntInf, $anioAntInf) {
+                    $q2->where(function ($q3) {
+                        $q3->whereNull('tipo_modalidad_id')
+                           ->orWhere('tipo_modalidad_id', '<>', 11);
+                    })
+                    ->whereMonth('fecha_retiro', $mesAntInf)
+                    ->whereYear('fecha_retiro', $anioAntInf);
+                });
+            })
+            // Solo los que tengan factura retiro con total_ss=0 (informativos)
+            ->whereHas('facturas', fn($fq) => $fq
+                ->where('numero_factura', 0)
+                ->where('tipo', 'planilla')
+                ->whereNull('deleted_at')
+                ->where('total_ss', '<=', 0)
+            )
+            ->with(['cliente.empresa', 'tipoModalidad', 'razonSocial', 'asesor', 'plan', 'eps', 'arl', 'pension', 'caja']);
+
+        // Aplicar filtros opcionales
+        if ($soloInd === 'individual') {
+            $qRetInf->whereIn('cedula', function ($sub) use ($aliadoId) {
+                $sub->from('clientes')->select('cedula')->where('aliado_id', $aliadoId)
+                    ->where(function ($sq) { $sq->where('cod_empresa', 1)->orWhereNull('cod_empresa'); });
+            });
+        } elseif ($soloInd === 'empresas') {
+            $qRetInf->whereIn('cedula', function ($sub) use ($aliadoId) {
+                $sub->from('clientes')->select('cedula')->where('aliado_id', $aliadoId)
+                    ->where('cod_empresa', '>', 1)->whereNotNull('cod_empresa');
+            });
+        }
+        if ($rsId)     $qRetInf->where('razon_social_id', $rsId);
+        if ($asesorId) $qRetInf->where('asesor_id', $asesorId);
+        if ($buscar) {
+            $qRetInf->where(function ($sq) use ($buscar) {
+                $sq->where('cedula', 'like', "%$buscar%")
+                   ->orWhereHas('cliente', fn($cq) => $cq
+                       ->where('primer_nombre',   'like', "%$buscar%")
+                       ->orWhere('primer_apellido','like', "%$buscar%"));
+            });
+        }
+        if ($tipoModalFiltro) $qRetInf->where('tipo_modalidad_id', $tipoModalFiltro);
+
+        $contratosRetInf = $qRetInf->get();
+        $contratosRetInf->each(fn($c) => $c->_es_retiro_informativo_directo = true);
+
+        // Unir vigentes + retirados-con-factura-retiro + retirados-con-planilla-normal + informativos
+        $contratos = $contratos->concat($contratosRetirados)->concat($contratosRetNormal)->concat($contratosRetInf);
+
+
         // ── Facturas del mes para estos contratos ───────────────────
         // Indexamos por contrato_id (primario) para soportar múltiples contratos
         // vigentes del mismo cliente (caso Ingreso-Retiro con nuevo contrato).
+        // También incluimos facturas de retiro (numero_factura=0) del periodo.
         $contratoIds = $contratos->pluck('id')->toArray();
         $cedulas     = $contratos->pluck('cedula')->toArray();
         $facturasBruto = Factura::where('aliado_id', $aliadoId)
@@ -204,15 +372,40 @@ class CobrosController extends Controller
             ->with('plano')
             ->get();
 
-        // Índice principal: contrato_id → factura (1 factura por contrato)
-        $facturasPorContrato = $facturasBruto
-            ->filter(fn($f) => !empty($f->contrato_id))
-            ->keyBy(fn($f) => (int) $f->contrato_id);
+        // Para los retiros informativos (4° grupo), cargar su factura de retiro
+        // SIN filtrar por mes/anio (puede ser de cualquier periodo)
+        $idsInformativos = $contratosRetInf->pluck('id')->toArray();
+        $facturasRetInf  = collect();
+        if (!empty($idsInformativos)) {
+            $facturasRetInf = Factura::where('aliado_id', $aliadoId)
+                ->where('numero_factura', 0)
+                ->where('tipo', 'planilla')
+                ->whereIn('contrato_id', $idsInformativos)
+                ->whereNull('deleted_at')
+                ->with('plano')
+                ->get()
+                // Una factura por contrato (la más reciente)
+                ->sortByDesc('id')
+                ->unique('contrato_id');
+        }
+
+        // Índice principal: contrato_id → factura
+        // Para retirados: priorizar la factura de retiro (numero_factura=0) sobre otras
+        $facturasPorContrato = collect();
+        // Primero añadir facturas normales (numero_factura > 0)
+        $facturasBruto->filter(fn($f) => !empty($f->contrato_id) && (int)$f->numero_factura > 0)
+            ->each(fn($f) => $facturasPorContrato->put((int)$f->contrato_id, $f));
+        // Luego sobreescribir con facturas de retiro (numero_factura=0) para contratos retirados
+        $facturasBruto->filter(fn($f) => !empty($f->contrato_id) && (int)$f->numero_factura === 0)
+            ->each(fn($f) => $facturasPorContrato->put((int)$f->contrato_id, $f));
+        // Agregar facturas de retiro de informativos (pueden ser de otro periodo)
+        $facturasRetInf->each(fn($f) => $facturasPorContrato->put((int)$f->contrato_id, $f));
 
         // Índice secundario: cedula → factura (para facturas sin contrato_id)
         $facturasPorCedula = $facturasBruto
             ->filter(fn($f) => empty($f->contrato_id))
             ->keyBy(fn($f) => (string) $f->cedula);
+
 
         // ── Última llamada de cobro por contrato ────────────────────
         $contratoIds  = $contratos->pluck('id')->toArray();
@@ -356,10 +549,184 @@ class CobrosController extends Controller
         }
 
         // ── Segunda pasada: enriquecer modelos con datos calculados ─────
+        // IDs de retirados-con-factura-retiro (badge RETIRO)
+        $contratosRetiradosIds = $contratosRetirados->pluck('id')->flip()->all();
+        // IDs de retirados-con-planilla-normal-del-periodo (tratados como vigentes con factura real)
+        $contratosRetNormalIds = $contratosRetNormal->pluck('id')->flip()->all();
+        // IDs de retiros informativos directos (4° grupo, por fecha_retiro)
+        $contratosRetInfIds = $contratosRetInf->pluck('id')->flip()->all();
+
         $contratos = $contratos->map(function ($c) use (
             $mes, $anio, $facturasPorContrato, $facturasPorCedula, $ultimasLlamadas, $flagsPorContrato,
-            $moraPorContrato, $cedulasConPrestamo, $morasDiasPorContrato, $arlPorNit
+            $moraPorContrato, $cedulasConPrestamo, $morasDiasPorContrato, $arlPorNit,
+            $contratosRetiradosIds, $contratosRetNormalIds, $contratosRetInfIds
         ) {
+            $esRetiradoPeriodo   = isset($contratosRetiradosIds[$c->id]);
+            $esRetiradoPosterior = isset($contratosRetNormalIds[$c->id]);
+            $esRetiroInfDirecto  = isset($contratosRetInfIds[$c->id]);
+
+            // ── Camino rápido para contratos RETIRADOS del periodo ──────────
+            if ($esRetiradoPeriodo) {
+                // Buscar su factura de retiro (numero_factura=0) del periodo
+                $fact = $facturasPorContrato->get((int) $c->id)
+                     ?? $facturasPorCedula->get((string) $c->cedula);
+
+                $empresa = $c->cliente?->empresa;
+                $arlObj  = $c->arl;
+
+                $c->es_retiro           = true;
+                $c->es_afil             = false;
+                $c->es_ind_act_primer_mes = false;
+                $c->es_ir_alerta        = false;
+                $c->dias_cotiz_estim    = $fact?->dias_cotizados ?? 0;
+                // Valores reales de la factura de retiro
+                $c->v_eps               = (int)($fact?->v_eps  ?? 0);
+                $c->v_arl               = (int)($fact?->v_arl  ?? 0);
+                $c->v_pen               = (int)($fact?->v_afp  ?? 0);
+                $c->v_caja              = (int)($fact?->v_caja ?? 0);
+                $c->v_ss                = (int)($fact?->total_ss ?? 0);
+                $c->total_estimado      = $c->v_ss;
+                // Retiro informativo = factura de retiro con total_ss=0 (no se pagó SS)
+                $c->es_retiro_informativo = ($c->v_ss === 0);
+                $c->mora_estimada       = 0; // retirado no genera mora
+                $c->mora_dias           = 0;
+                // Factura
+                $c->fact_emitida        = (bool)$fact;
+                $c->fact_pagada         = $fact && in_array($fact->estado, ['pagada', 'abono', 'prestamo']);
+                $c->fact_estado         = $fact?->estado;
+                $c->fact_numero         = $fact?->numero_factura;
+                $c->fact_id             = $fact?->id;
+                $c->fact_n_planilla     = $fact?->plano?->numero_planilla;
+                $c->fact_local_plano    = $fact?->n_plano;
+                $c->fact_n_plano        = $c->fact_n_planilla ?? $c->fact_local_plano;
+                $c->fact_saldo_pend     = 0;
+                // Entidades
+                $c->eps_nombre          = $c->eps?->nombre         ?? 'Ninguna';
+                $c->arl_nombre          = $arlObj?->nombre_arl     ?? $arlObj?->razon_social ?? 'Ninguna';
+                $c->afp_nombre          = $c->pension?->razon_social ?? 'Ninguna';
+                $c->caja_nombre         = $c->caja?->nombre        ?? 'Ninguna';
+                $c->plan_nombre         = $c->plan?->nombre        ?? 'Estándar';
+                $c->tipo_mod_nombre     = $c->tipoModalidad?->nombre ?? '—';
+                $c->dias_cotizados      = $fact?->dias_cotizados ?? 0;
+                // Semáforo y llamadas — no aplica para retirados
+                $c->ultima_llamada      = null;
+                $c->dias_sin_llamar     = null;
+                $c->semaforo            = 'gris';
+                $c->tiene_prestamo      = false;
+                $c->es_empresa          = $empresa && $empresa->id != 1;
+                $c->nombre_empresa      = $c->es_empresa ? $empresa->empresa : null;
+                $c->administracion      = 0; // retiro no cobra admon
+                return $c;
+            }
+
+            // ── Retiros Informativos directos (4° grupo: por fecha_retiro) ──────────
+            if ($esRetiroInfDirecto) {
+                $fact    = $facturasPorContrato->get((int) $c->id)
+                        ?? $facturasPorCedula->get((string) $c->cedula);
+                $empresa = $c->cliente?->empresa;
+                $arlObj  = $c->arl;
+
+                $c->es_retiro              = true;
+                $c->es_retiro_informativo  = true;
+                $c->es_afil                = false;
+                $c->es_ind_act_primer_mes  = false;
+                $c->es_ir_alerta           = false;
+                $c->dias_cotiz_estim       = $fact?->dias_cotizados ?? 0;
+                $c->v_eps                  = (int)($fact?->v_eps   ?? 0);
+                $c->v_arl                  = (int)($fact?->v_arl   ?? 0);
+                $c->v_pen                  = (int)($fact?->v_afp   ?? 0);
+                $c->v_caja                 = (int)($fact?->v_caja  ?? 0);
+                $c->v_ss                   = (int)($fact?->total_ss ?? 0);
+                $c->total_estimado         = 0;
+                $c->mora_estimada          = 0;
+                $c->mora_dias              = 0;
+                $c->fact_emitida           = (bool)$fact;
+                $c->fact_pagada            = $fact && in_array($fact->estado, ['pagada', 'abono', 'prestamo']);
+                $c->fact_estado            = $fact?->estado;
+                $c->fact_numero            = $fact?->numero_factura;
+                $c->fact_id                = $fact?->id;
+                $c->fact_n_planilla        = $fact?->plano?->numero_planilla;
+                $c->fact_local_plano       = $fact?->n_plano;
+                $c->fact_n_plano           = $c->fact_n_planilla ?? $c->fact_local_plano;
+                $c->fact_saldo_pend        = 0;
+                $c->eps_nombre             = $c->eps?->nombre         ?? 'Ninguna';
+                $c->arl_nombre             = $arlObj?->nombre_arl     ?? $arlObj?->razon_social ?? 'Ninguna';
+                $c->afp_nombre             = $c->pension?->razon_social ?? 'Ninguna';
+                $c->caja_nombre            = $c->caja?->nombre        ?? 'Ninguna';
+                $c->plan_nombre            = $c->plan?->nombre        ?? 'Estándar';
+                $c->tipo_mod_nombre        = $c->tipoModalidad?->nombre ?? '—';
+                $c->dias_cotizados         = $fact?->dias_cotizados ?? 0;
+                $c->ultima_llamada         = null;
+                $c->dias_sin_llamar        = null;
+                $c->semaforo               = 'gris';
+                $c->tiene_prestamo         = false;
+                $c->es_empresa             = $empresa && $empresa->id != 1;
+                $c->nombre_empresa         = $c->es_empresa ? $empresa->empresa : null;
+                $c->administracion         = 0;
+                return $c;
+            }
+
+            // ── Camino para RETIRADOS POSTERIORES con planilla normal en el periodo ─────
+            // Eran vigentes en el mes consultado, se retiraron después.
+            // Se muestran con su factura real del periodo, badge PLAN normal.
+            if ($esRetiradoPosterior) {
+                $fact    = $facturasPorContrato->get((int) $c->id)
+                        ?? $facturasPorCedula->get((string) $c->cedula);
+                $empresa = $c->cliente?->empresa;
+                $arlObj  = $c->arl ?? ($c->razonSocial?->arl_nit ? ($arlPorNit->get($c->razonSocial->arl_nit) ?? null) : null);
+
+                // Determinar tipo de factura para badge correcto
+                $esAfilFact = $fact?->tipo === 'afiliacion' || ($fact && (int)$fact->afiliacion > 0 && (int)$fact->total_ss === 0);
+
+                $c->es_retiro             = false;
+                $c->es_retiro_posterior   = true;  // marcador para badge diferenciado
+                $c->es_afil               = $esAfilFact;
+                $c->es_ind_act_primer_mes = false;
+                $c->es_ir_alerta          = false;
+                $c->dias_cotiz_estim      = $fact?->dias_cotizados ?? 30;
+                // Usar valores reales de la factura
+                $c->v_eps               = (int)($fact?->v_eps    ?? 0);
+                $c->v_arl               = (int)($fact?->v_arl    ?? 0);
+                $c->v_pen               = (int)($fact?->v_afp    ?? 0);
+                $c->v_caja              = (int)($fact?->v_caja   ?? 0);
+                $c->v_ss                = (int)($fact?->total_ss ?? 0);
+                $c->total_estimado      = (int)($fact?->total    ?? $fact?->total_ss ?? 0);
+                $c->mora_estimada       = 0; // ya está retirado, sin mora
+                $c->mora_dias           = 0;
+                // Factura
+                $c->fact_emitida        = (bool)$fact;
+                $c->fact_pagada         = $fact && in_array($fact->estado, ['pagada', 'abono', 'prestamo']);
+                $c->fact_estado         = $fact?->estado;
+                $c->fact_numero         = $fact?->numero_factura;
+                $c->fact_id             = $fact?->id;
+                $c->fact_n_planilla     = $fact?->plano?->numero_planilla;
+                $c->fact_local_plano    = $fact?->n_plano;
+                $c->fact_n_plano        = $c->fact_n_planilla ?? $c->fact_local_plano;
+                $c->fact_saldo_pend     = 0;
+                // Entidades
+                $pensionRaw = $c->pension?->razon_social ?? null;
+                if ($pensionRaw) {
+                    $pensionRaw = preg_replace('/^\d+[-\d]*_/u', '', $pensionRaw);
+                    $pensionRaw = preg_replace('/\s*-\s*\d{6,}\s*$/u', '', $pensionRaw);
+                    $pensionRaw = trim($pensionRaw);
+                }
+                $c->eps_nombre       = $c->eps?->nombre         ?? 'Ninguna';
+                $c->arl_nombre       = $arlObj?->nombre_arl     ?? $arlObj?->razon_social ?? 'Ninguna';
+                $c->afp_nombre       = $pensionRaw ?: 'Ninguna';
+                $c->caja_nombre      = $c->caja?->nombre        ?? 'Ninguna';
+                $c->plan_nombre      = $c->plan?->nombre        ?? 'Estándar';
+                $c->tipo_mod_nombre  = $c->tipoModalidad?->nombre ?? '—';
+                $c->dias_cotizados   = $fact?->dias_cotizados ?? 30;
+                $c->ultima_llamada   = null;
+                $c->dias_sin_llamar  = null;
+                $c->semaforo         = 'gris';
+                $c->tiene_prestamo   = false;
+                $c->es_empresa       = $empresa && $empresa->id != 1;
+                $c->nombre_empresa   = $c->es_empresa ? $empresa->empresa : null;
+                return $c;
+            }
+
+            // ── Camino normal para contratos VIGENTES ──────────────────────
             // Buscar factura: primero por contrato_id, fallback por cédula
             $fact = $facturasPorContrato->get((int) $c->id)
                  ?? $facturasPorCedula->get((string) $c->cedula);
@@ -478,6 +845,7 @@ class CobrosController extends Controller
                 $c->es_afil        = true; // mostrar badge AFIL en la columna
             }
 
+            $c->es_retiro = false; // marcar explícitamente vigentes
             return $c;
         });
 
@@ -512,6 +880,8 @@ class CobrosController extends Controller
         // ── Filtro estado de pago ───────────────────────────────────
         if ($soloPend === 'pendiente') {
             $contratos = $contratos->filter(function ($c) {
+                // Retirados del periodo siempre están «pagados», nunca pendientes
+                if ($c->es_retiro ?? false) return false;
                 if ($c->fact_emitida) {
                     return in_array($c->fact_estado, ['pre_factura', 'abono']);
                 }
@@ -523,13 +893,15 @@ class CobrosController extends Controller
             })->values();
         }
 
-        // ── Filtro AFIL/PLAN ────────────────────────────────────────
+        // ── Filtro TIPO (antes AFIL/PLAN, ahora incluye RETIRO) ────────────────────────────────────────
         if ($afilPlan && $afilPlan !== 'todos') {
             $contratos = $contratos->filter(function ($c) use ($afilPlan) {
-                if ($afilPlan === 'afil') {
-                    return (bool)($c->es_afil ?? false);
+                if ($afilPlan === 'retiro') {
+                    return (bool)($c->es_retiro ?? false);
+                } elseif ($afilPlan === 'afil') {
+                    return !($c->es_retiro ?? false) && (bool)($c->es_afil ?? false);
                 } elseif ($afilPlan === 'plan') {
-                    return !($c->es_afil ?? false);
+                    return !($c->es_retiro ?? false) && !($c->es_afil ?? false);
                 }
                 return true;
             })->values();

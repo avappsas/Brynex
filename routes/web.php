@@ -247,6 +247,7 @@ Route::middleware('auth')->group(function () {
             $ic = \App\Http\Controllers\Admin\InformeController::class;
             Route::get('/',                       [$ic, 'hub'])                  ->name('hub');
             Route::get('/consolidado-mensual',     [$ic, 'consolidadoMensual'])   ->name('consolidado_mensual');
+            Route::get('/consolidado-mensual/detalle', [$ic, 'consolidadoMensualDetalle'])->name('consolidado_mensual_detalle');
             Route::get('/brynex-cobros',           [$ic, 'brynexCobros'])         ->name('brynex_cobros');
             Route::get('/brynex-cobros/{cobro}/pdf', [$ic, 'brynexCobroPdf'])       ->name('brynex_cobros.pdf');
             Route::get('/clientes-activos',       [$ic, 'clientesActivos'])      ->name('clientes_activos');

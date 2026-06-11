@@ -28,7 +28,7 @@
             <div style="position: absolute; right: -10px; top: -10px; font-size: 5.5rem; opacity: 0.04; pointer-events: none; font-weight: 900;">📋</div>
             <div>
                 <span style="font-size:0.72rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;">Admon Vigentes</span>
-                <div style="font-size:2.4rem;font-weight:900;color:#0d9488;margin-top:0.25rem;line-height:1.1;">
+                <div style="font-size:2.4rem;font-weight:900;color:#0d9488;margin-top:0.25rem;line-height:1.1; cursor:pointer;" onclick="abrirDetalle({{ $kpisActual['mes'] }}, {{ $kpisActual['anio'] }}, 'admon_vigentes')">
                     {{ number_format($kpisActual['admon_vigentes'], 0, ',', '.') }}
                 </div>
                 <div style="font-size:0.72rem;color:#94a3b8;margin-top:0.2rem;">Contratos activos en el mes</div>
@@ -50,7 +50,7 @@
             <div style="position: absolute; right: -10px; top: -10px; font-size: 5.5rem; opacity: 0.04; pointer-events: none; font-weight: 900;">👥</div>
             <div>
                 <span style="font-size:0.72rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;">Afiliaciones del Mes</span>
-                <div style="font-size:2.4rem;font-weight:900;color:#6366f1;margin-top:0.25rem;line-height:1.1;">
+                <div style="font-size:2.4rem;font-weight:900;color:#6366f1;margin-top:0.25rem;line-height:1.1; cursor:pointer;" onclick="abrirDetalle({{ $kpisActual['mes'] }}, {{ $kpisActual['anio'] }}, 'afiliaciones')">
                     {{ number_format($kpisActual['afil_por_fecha'], 0, ',', '.') }}
                 </div>
                 <div style="font-size:0.72rem;color:#94a3b8;margin-top:0.2rem;">Nuevas afiliaciones por fecha de ingreso</div>
@@ -72,10 +72,10 @@
                 <div style="font-size:0.72rem;color:#94a3b8;margin-top:0.2rem;">Total contratos retirados este período</div>
             </div>
             <div style="margin-top: 1rem; display: flex; justify-content: space-between; border-top: 1px solid #f1f5f9; padding-top: 0.75rem;">
-                <div style="font-size:0.75rem;color:#475569;">
+                <div style="font-size:0.75rem;color:#475569; cursor:pointer;" onclick="abrirDetalle({{ $kpisActual['mes'] }}, {{ $kpisActual['anio'] }}, 'retiros_reales')">
                     Reales: <strong style="color:#b45309;">{{ $kpisActual['retiros_reales'] }}</strong>
                 </div>
-                <div style="font-size:0.75rem;color:#475569;">
+                <div style="font-size:0.75rem;color:#475569; cursor:pointer;" onclick="abrirDetalle({{ $kpisActual['mes'] }}, {{ $kpisActual['anio'] }}, 'retiros_inform')">
                     Informativos: <strong style="color:#78350f;">{{ $kpisActual['retiros_inform'] }}</strong>
                 </div>
             </div>
@@ -137,19 +137,19 @@
                     @foreach($mesesFinal as $mes)
                     <tr>
                         <td style="font-weight: 600;">{{ $mes['label'] }}</td>
-                        <td style="text-align: right; font-weight: 700; color: #0d9488;">
+                        <td style="text-align: right; font-weight: 700; color: #0d9488;" class="clickable-cell" onclick="abrirDetalle({{ $mes['mes'] }}, {{ $mes['anio'] }}, 'admon_vigentes')">
                             {{ number_format($mes['admon_vigentes'], 0, ',', '.') }}
                         </td>
-                        <td style="text-align: right; font-weight: 600; color: #6366f1;">
+                        <td style="text-align: right; font-weight: 600; color: #6366f1;" class="clickable-cell" onclick="abrirDetalle({{ $mes['mes'] }}, {{ $mes['anio'] }}, 'afiliaciones')">
                             {{ number_format($mes['afil_por_fecha'], 0, ',', '.') }}
                         </td>
                         <td style="text-align: right; color: #1d4ed8;">
                             {{ number_format($mes['afil_facturadas'], 0, ',', '.') }}
                         </td>
-                        <td style="text-align: right; color: #d97706;">
+                        <td style="text-align: right; color: #d97706;" class="clickable-cell" onclick="abrirDetalle({{ $mes['mes'] }}, {{ $mes['anio'] }}, 'retiros_reales')">
                             {{ number_format($mes['retiros_reales'], 0, ',', '.') }}
                         </td>
-                        <td style="text-align: right; color: #78350f;">
+                        <td style="text-align: right; color: #78350f;" class="clickable-cell" onclick="abrirDetalle({{ $mes['mes'] }}, {{ $mes['anio'] }}, 'retiros_inform')">
                             {{ number_format($mes['retiros_inform'], 0, ',', '.') }}
                         </td>
                         <td style="text-align: right; font-weight: 600; color: #ef4444;">
@@ -399,6 +399,445 @@
                 }
             }
         });
+    });
+</script>
+
+{{-- Modal de Detalle Consolidado Mensual --}}
+<div id="modalDetalle" class="modal-overlay" style="display: none;">
+    <div class="modal-card">
+        <div class="modal-header">
+            <div>
+                <h3 id="modalTitulo" class="modal-title">Detalle de Personas</h3>
+                <p id="modalSubtitulo" class="modal-subtitle">Cargando...</p>
+            </div>
+            <button class="modal-close-btn" onclick="cerrarModal()">&times;</button>
+        </div>
+        
+        <div class="modal-body">
+            {{-- Buscador y Contador unificados --}}
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
+                <span style="font-size: 0.82rem; color: #64748b; font-weight: 600;">
+                    Usa los campos de cada columna para filtrar los datos o haz clic en los títulos para ordenar.
+                </span>
+                <span id="modalCounter" class="modal-counter">0 registros</span>
+            </div>
+
+            {{-- Spinner de carga --}}
+            <div id="modalLoading" class="modal-loader-container">
+                <div class="modal-loader"></div>
+                <p>Cargando información...</p>
+            </div>
+
+            {{-- Contenedor de la tabla con filtros y ordenamientos --}}
+            <div id="modalTableContainer" style="display: none; max-height: 480px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 12px; background: #fff;">
+                <table class="modal-table">
+                    <thead>
+                        <tr>
+                            <th onclick="ordenarPor('cedula')">Cédula <span id="sort-icon-cedula" class="sort-indicator">↕</span></th>
+                            <th onclick="ordenarPor('nombre_completo')">Nombre Completo <span id="sort-icon-nombre_completo" class="sort-indicator">↕</span></th>
+                            <th onclick="ordenarPor('fecha_ingreso')">Fecha Ingreso <span id="sort-icon-fecha_ingreso" class="sort-indicator">↕</span></th>
+                            <th onclick="ordenarPor('fecha_retiro')">Fecha Retiro <span id="sort-icon-fecha_retiro" class="sort-indicator">↕</span></th>
+                            <th onclick="ordenarPor('facturas')">Factura(s) <span id="sort-icon-facturas" class="sort-indicator">↕</span></th>
+                        </tr>
+                        <tr style="background-color: #f8fafc; border-bottom: 2px solid #e2e8f0;">
+                            <td style="padding: 0.4rem 0.5rem;"><input type="text" id="filtro-cedula" placeholder="🔍 Cédula..." class="modal-filter-input" oninput="aplicarFiltrosModal()"></td>
+                            <td style="padding: 0.4rem 0.5rem;"><input type="text" id="filtro-nombre" placeholder="🔍 Nombre..." class="modal-filter-input" oninput="aplicarFiltrosModal()"></td>
+                            <td style="padding: 0.4rem 0.5rem;"><input type="text" id="filtro-ingreso" placeholder="🔍 Ingreso..." class="modal-filter-input" oninput="aplicarFiltrosModal()"></td>
+                            <td style="padding: 0.4rem 0.5rem;"><input type="text" id="filtro-retiro" placeholder="🔍 Retiro..." class="modal-filter-input" oninput="aplicarFiltrosModal()"></td>
+                            <td style="padding: 0.4rem 0.5rem;"><input type="text" id="filtro-facturas" placeholder="🔍 Factura..." class="modal-filter-input" oninput="aplicarFiltrosModal()"></td>
+                        </tr>
+                    </thead>
+                    <tbody id="modalTableBody">
+                        {{-- Filas dinámicas --}}
+                    </tbody>
+                </table>
+            </div>
+            
+            {{-- Mensaje de no resultados --}}
+            <div id="modalNoResults" class="modal-no-results" style="display: none;">
+                No se encontraron personas con los criterios especificados.
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* Estilos del modal y filtros */
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(15, 23, 42, 0.45);
+        backdrop-filter: blur(8px);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 9999;
+        opacity: 0;
+        transition: opacity 0.25s ease;
+    }
+    .modal-overlay.active {
+        opacity: 1;
+    }
+    .modal-card {
+        background: #ffffff;
+        border-radius: 20px;
+        width: 92%;
+        max-width: 900px;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15);
+        border: 1px solid rgba(226, 232, 240, 0.8);
+        overflow: hidden;
+        transform: scale(0.96);
+        transition: transform 0.25s ease;
+        display: flex;
+        flex-direction: column;
+        max-height: 85vh;
+    }
+    .modal-overlay.active .modal-card {
+        transform: scale(1);
+    }
+    .modal-header {
+        padding: 1.25rem 1.5rem;
+        background: linear-gradient(135deg, #f8fafc, #f1f5f9);
+        border-bottom: 1px solid #e2e8f0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .modal-title {
+        margin: 0;
+        font-size: 1.15rem;
+        font-weight: 800;
+        color: #0f172a;
+        letter-spacing: -0.02em;
+    }
+    .modal-subtitle {
+        margin: 0.15rem 0 0;
+        font-size: 0.8rem;
+        color: #64748b;
+        font-weight: 500;
+    }
+    .modal-close-btn {
+        background: none;
+        border: none;
+        font-size: 1.75rem;
+        color: #94a3b8;
+        cursor: pointer;
+        transition: color 0.2s, transform 0.2s;
+        line-height: 1;
+        padding: 0.25rem;
+    }
+    .modal-close-btn:hover {
+        color: #ef4444;
+        transform: scale(1.1);
+    }
+    .modal-body {
+        padding: 1.5rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        overflow: hidden;
+    }
+    .modal-filter-input {
+        width: 100%;
+        padding: 0.35rem 0.5rem;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        font-size: 0.75rem;
+        font-family: inherit;
+        outline: none;
+        background-color: #ffffff;
+        box-sizing: border-box;
+    }
+    .modal-filter-input:focus {
+        border-color: #0d9488;
+        box-shadow: 0 0 0 2px rgba(13, 148, 136, 0.12);
+    }
+    .modal-counter {
+        font-size: 0.72rem;
+        font-weight: 800;
+        color: #0d9488;
+        background: rgba(13, 148, 136, 0.08);
+        border: 1px solid rgba(13, 148, 136, 0.2);
+        padding: 0.3rem 0.65rem;
+        border-radius: 8px;
+        white-space: nowrap;
+        letter-spacing: 0.02em;
+    }
+    .modal-loader-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 3rem 0;
+        color: #64748b;
+        font-size: 0.88rem;
+        gap: 0.75rem;
+    }
+    .modal-loader {
+        width: 32px;
+        height: 32px;
+        border: 3px solid #f1f5f9;
+        border-top: 3px solid #0d9488;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    .modal-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    .modal-table th {
+        position: sticky;
+        top: 0;
+        background: #f8fafc;
+        color: #475569;
+        font-size: 0.7rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        padding: 0.75rem 1rem;
+        text-align: left;
+        border-bottom: 2px solid #e2e8f0;
+        z-index: 10;
+        cursor: pointer;
+        user-select: none;
+        transition: background-color 0.15s, color 0.15s;
+    }
+    .modal-table th:hover {
+        background-color: #f1f5f9;
+        color: #0d9488;
+    }
+    .modal-table td {
+        padding: 0.75rem 1rem;
+        font-size: 0.8rem;
+        color: #334155;
+        border-bottom: 1px solid #f1f5f9;
+    }
+    .modal-table tr:hover td {
+        background-color: #f8fafc;
+    }
+    .modal-no-results {
+        text-align: center;
+        padding: 3rem 0;
+        color: #64748b;
+        font-size: 0.85rem;
+        font-weight: 500;
+    }
+    .sort-indicator {
+        font-size: 0.72rem;
+        margin-left: 0.25rem;
+        color: #94a3b8;
+        display: inline-block;
+        transition: color 0.15s;
+    }
+    .sort-indicator.active {
+        color: #0d9488;
+        font-weight: bold;
+    }
+    
+    /* Puntero e interactividad para las celdas cliqueables */
+    .clickable-cell {
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .clickable-cell:hover {
+        background-color: rgba(13, 148, 136, 0.08) !important;
+        text-decoration: underline;
+    }
+</style>
+
+<script>
+    let personasOriginal = [];
+    let personasFiltradas = [];
+    let sortColumna = '';
+    let sortDireccion = 'asc';
+
+    function abrirDetalle(mes, anio, tipo) {
+        const modal = document.getElementById('modalDetalle');
+        const loader = document.getElementById('modalLoading');
+        const tableContainer = document.getElementById('modalTableContainer');
+        const noResults = document.getElementById('modalNoResults');
+        
+        // Reset filters
+        document.getElementById('filtro-cedula').value = '';
+        document.getElementById('filtro-nombre').value = '';
+        document.getElementById('filtro-ingreso').value = '';
+        document.getElementById('filtro-retiro').value = '';
+        document.getElementById('filtro-facturas').value = '';
+        
+        // Reset sort
+        sortColumna = '';
+        sortDireccion = 'asc';
+        actualizarIndicadoresOrden();
+        
+        loader.style.display = 'flex';
+        tableContainer.style.display = 'none';
+        noResults.style.display = 'none';
+        document.getElementById('modalCounter').textContent = '0 registros';
+        
+        // Mostrar overlay
+        modal.style.display = 'flex';
+        setTimeout(() => modal.classList.add('active'), 10);
+        
+        // Fetch data
+        const url = `{{ route('admin.informes.consolidado_mensual_detalle') }}?mes=${mes}&anio=${anio}&tipo=${tipo}`;
+        
+        fetch(url)
+            .then(res => {
+                if (!res.ok) throw new Error('Error al obtener datos.');
+                return res.json();
+            })
+            .then(data => {
+                document.getElementById('modalTitulo').textContent = data.tipo_label;
+                document.getElementById('modalSubtitulo').textContent = `${data.mes_label} · Resumen Mensual`;
+                
+                personasOriginal = data.personas;
+                personasFiltradas = [...personasOriginal];
+                loader.style.display = 'none';
+                
+                renderPersonas(personasFiltradas);
+            })
+            .catch(err => {
+                loader.style.display = 'none';
+                noResults.textContent = 'Ocurrió un error al cargar la información. Intente nuevamente.';
+                noResults.style.display = 'block';
+                console.error(err);
+            });
+    }
+
+    function renderPersonas(personas) {
+        const tableBody = document.getElementById('modalTableBody');
+        const tableContainer = document.getElementById('modalTableContainer');
+        const noResults = document.getElementById('modalNoResults');
+        const counter = document.getElementById('modalCounter');
+        
+        tableBody.innerHTML = '';
+        counter.textContent = `${personas.length} ${personas.length === 1 ? 'registro' : 'registros'}`;
+        
+        if (personas.length === 0) {
+            tableContainer.style.display = 'none';
+            noResults.textContent = 'No se encontraron registros.';
+            noResults.style.display = 'block';
+            return;
+        }
+        
+        noResults.style.display = 'none';
+        tableContainer.style.display = 'block';
+        
+        personas.forEach(p => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td style="font-weight: 700; color: #475569;">${p.cedula}</td>
+                <td style="font-weight: 600; color: #1e293b;">${p.nombre_completo}</td>
+                <td>${p.fecha_ingreso}</td>
+                <td>${p.fecha_retiro}</td>
+                <td>
+                    <span style="background: rgba(13, 148, 136, 0.08); color: #0f766e; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 6px; font-size: 0.72rem; font-family: monospace;">
+                        ${p.facturas}
+                    </span>
+                </td>
+            `;
+            tableBody.appendChild(tr);
+        });
+    }
+
+    function aplicarFiltrosModal() {
+        const cedula = document.getElementById('filtro-cedula').value.toLowerCase().trim();
+        const nombre = document.getElementById('filtro-nombre').value.toLowerCase().trim();
+        const ingreso = document.getElementById('filtro-ingreso').value.toLowerCase().trim();
+        const retiro = document.getElementById('filtro-retiro').value.toLowerCase().trim();
+        const facturas = document.getElementById('filtro-facturas').value.toLowerCase().trim();
+
+        personasFiltradas = personasOriginal.filter(p => {
+            return p.cedula.toLowerCase().includes(cedula) &&
+                   p.nombre_completo.toLowerCase().includes(nombre) &&
+                   p.fecha_ingreso.toLowerCase().includes(ingreso) &&
+                   p.fecha_retiro.toLowerCase().includes(retiro) &&
+                   p.facturas.toLowerCase().includes(facturas);
+        });
+
+        // Si hay un ordenamiento activo, mantenerlo al filtrar
+        if (sortColumna) {
+            ejecutarOrdenamiento();
+        } else {
+            renderPersonas(personasFiltradas);
+        }
+    }
+
+    function ordenarPor(columna) {
+        if (sortColumna === columna) {
+            sortDireccion = sortDireccion === 'asc' ? 'desc' : 'asc';
+        } else {
+            sortColumna = columna;
+            sortDireccion = 'asc';
+        }
+
+        actualizarIndicadoresOrden();
+        ejecutarOrdenamiento();
+    }
+
+    function ejecutarOrdenamiento() {
+        personasFiltradas.sort((a, b) => {
+            let valA = (a[sortColumna] || '').toString().toLowerCase();
+            let valB = (b[sortColumna] || '').toString().toLowerCase();
+
+            // Si es fecha, intentar formatear para ordenar cronológicamente
+            if (sortColumna === 'fecha_ingreso' || sortColumna === 'fecha_retiro') {
+                valA = parsearFechaParaOrden(valA);
+                valB = parsearFechaParaOrden(valB);
+            }
+
+            if (valA < valB) return sortDireccion === 'asc' ? -1 : 1;
+            if (valA > valB) return sortDireccion === 'asc' ? 1 : -1;
+            return 0;
+        });
+
+        renderPersonas(personasFiltradas);
+    }
+
+    function parsearFechaParaOrden(fechaStr) {
+        if (!fechaStr || fechaStr === '—') return '0000-00-00';
+        
+        // Extrae la fecha en formato DD/MM/AAAA si viene con el texto adicional de retiro
+        const match = fechaStr.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+        if (match) {
+            return `${match[3]}-${match[2]}-${match[1]}`;
+        }
+        return fechaStr;
+    }
+
+    function actualizarIndicadoresOrden() {
+        const columnas = ['cedula', 'nombre_completo', 'fecha_ingreso', 'fecha_retiro', 'facturas'];
+        columnas.forEach(col => {
+            const el = document.getElementById(`sort-icon-${col}`);
+            if (!el) return;
+            if (col === sortColumna) {
+                el.textContent = sortDireccion === 'asc' ? ' ▲' : ' ▼';
+                el.classList.add('active');
+            } else {
+                el.textContent = ' ↕';
+                el.classList.remove('active');
+            }
+        });
+    }
+
+    function cerrarModal() {
+        const modal = document.getElementById('modalDetalle');
+        modal.classList.remove('active');
+        setTimeout(() => modal.style.display = 'none', 300);
+    }
+
+    // Cerrar al hacer clic fuera del card
+    document.getElementById('modalDetalle').addEventListener('click', function(e) {
+        if (e.target === this) {
+            cerrarModal();
+        }
     });
 </script>
 

@@ -2891,6 +2891,158 @@ class InformeController extends Controller
 
         return view('admin.informes.consolidado_mensual', compact('mesesFinal', 'kpisActual'));
     }
+
+    public function consolidadoMensualDetalle(Request $request)
+    {
+        if (!Auth::user()->hasRole(['admin', 'superadmin', 'contador'])) {
+            return response()->json(['error' => 'Acceso restringido.'], 403);
+        }
+
+        $aid = $this->aliadoId();
+        $mes = (int) $request->input('mes');
+        $anio = (int) $request->input('anio');
+        $tipo = $request->input('tipo'); // 'admon_vigentes', 'afiliaciones', 'retiros_reales', 'retiros_informativos'
+
+        if (!$mes || !$anio || !$tipo) {
+            return response()->json(['error' => 'Parámetros inválidos.'], 400);
+        }
+
+        $nombresMeses = [
+            1 => 'Enero', 2 => 'Febrero', 3 => 'Marzo', 4 => 'Abril',
+            5 => 'Mayo', 6 => 'Junio', 7 => 'Julio', 8 => 'Agosto',
+            9 => 'Septiembre', 10 => 'Octubre', 11 => 'Noviembre', 12 => 'Diciembre'
+        ];
+
+        $primerDia = \Carbon\Carbon::create($anio, $mes, 1)->startOfDay();
+        $ultimoDia = $primerDia->copy()->endOfMonth();
+
+        $query = DB::table('contratos as c')
+            ->join('clientes as cl', function($j) use($aid){ 
+                $j->on('cl.cedula','=','c.cedula')->where('cl.aliado_id',$aid); 
+            });
+
+        if ($tipo === 'admon_vigentes') {
+            $query->where('c.aliado_id', $aid)
+                ->where('c.fecha_ingreso', '<', $primerDia->toDateString())
+                ->where(function ($q) use ($primerDia) {
+                    $q->where(function ($sub) use ($primerDia) {
+                        $sub->where('c.estado', 'vigente')
+                            ->where(function ($q2) use ($primerDia) {
+                                $q2->whereNull('c.fecha_retiro')
+                                   ->orWhere('c.fecha_retiro', '>=', $primerDia->toDateString());
+                            });
+                    })
+                    ->orWhere(function ($sub) use ($primerDia) {
+                        $sub->where('c.estado', 'retirado')
+                            ->whereNotNull('c.fecha_retiro')
+                            ->where('c.fecha_retiro', '>=', $primerDia->toDateString());
+                    });
+                });
+        } elseif ($tipo === 'afiliaciones') {
+            $query->where('c.aliado_id', $aid)
+                ->where('c.fecha_ingreso', '>=', $primerDia->toDateString())
+                ->where('c.fecha_ingreso', '<=', $ultimoDia->toDateString());
+        } elseif ($tipo === 'retiros_reales' || $tipo === 'retiros_informativos') {
+            $mesAnteriorVal  = $mes  === 1 ? 12 : $mes  - 1;
+            $anioAnteriorVal = $mes  === 1 ? $anio - 1 : $anio;
+
+            $query->where('c.aliado_id', $aid)
+                ->where('c.estado', 'retirado')
+                ->where(function ($q) use ($mes, $anio, $mesAnteriorVal, $anioAnteriorVal) {
+                    $q->where(function ($q1) use ($mes, $anio) {
+                        $q1->where('c.tipo_modalidad_id', 11)
+                           ->whereMonth('c.fecha_retiro', $mes)
+                           ->whereYear('c.fecha_retiro', $anio);
+                    })->orWhere(function ($q2) use ($mesAnteriorVal, $anioAnteriorVal) {
+                        $q2->where(function ($q3) {
+                            $q3->whereNull('c.tipo_modalidad_id')
+                               ->orWhere('c.tipo_modalidad_id', '<>', 11);
+                        })
+                        ->whereMonth('c.fecha_retiro', $mesAnteriorVal)
+                        ->whereYear('c.fecha_retiro', $anioAnteriorVal);
+                    });
+                });
+        } else {
+            return response()->json(['error' => 'Tipo de detalle no soportado.'], 400);
+        }
+
+        $query->select(
+            'c.id', 'c.cedula', 'c.fecha_ingreso', 'c.fecha_retiro',
+            DB::raw("LTRIM(RTRIM(cl.primer_nombre+' '+ISNULL(cl.segundo_nombre,'')+' '+cl.primer_apellido+' '+ISNULL(cl.segundo_apellido,''))) AS nombre_completo"),
+            DB::raw("(SELECT TOP 1 mes FROM facturas WHERE contrato_id = c.id AND numero_factura = 0 AND tipo <> 'afiliacion' AND deleted_at IS NULL ORDER BY id DESC) as mes_factura_retiro")
+        );
+
+        if ($tipo === 'retiros_reales' || $tipo === 'retiros_informativos') {
+            $query->addSelect(DB::raw("(SELECT TOP 1 total_ss FROM facturas WHERE contrato_id = c.id AND numero_factura = 0 AND deleted_at IS NULL ORDER BY id DESC) as costo_ss"));
+        }
+
+        $contratos = $query->orderBy('cl.primer_apellido')->get();
+
+        // Filtrar retiros reales o informativos
+        if ($tipo === 'retiros_reales') {
+            $contratos = $contratos->filter(fn($c) => ($c->costo_ss ?? 0) > 0);
+        } elseif ($tipo === 'retiros_informativos') {
+            $contratos = $contratos->filter(fn($c) => ($c->costo_ss ?? 0) <= 0);
+        }
+
+        // Obtener facturas de este período
+        $facturas = DB::table('facturas')
+            ->where('aliado_id', $aid)
+            ->where('mes', $mes)
+            ->where('anio', $anio)
+            ->whereNull('deleted_at')
+            ->select('contrato_id', 'numero_factura', 'tipo')
+            ->get()
+            ->groupBy('contrato_id');
+
+        $personas = [];
+        foreach ($contratos as $c) {
+            // Formatear facturas
+            $facturasContrato = [];
+            if (isset($facturas[$c->id])) {
+                foreach ($facturas[$c->id] as $f) {
+                    if ((int)$f->numero_factura === 0) {
+                        if ($f->tipo === 'afiliacion') {
+                            $facturasContrato[] = 'Afil. Pre';
+                        } else {
+                            $facturasContrato[] = 'Retiro';
+                        }
+                    } else {
+                        $facturasContrato[] = '#' . str_pad($f->numero_factura, 6, '0', STR_PAD_LEFT);
+                    }
+                }
+            }
+
+            // Formatear fecha de retiro
+            $fechaRetiroStr = '—';
+            if ($c->fecha_retiro) {
+                $fechaRet = \Carbon\Carbon::parse($c->fecha_retiro);
+                $mesMarcado = $c->mes_factura_retiro ?: $fechaRet->month;
+                $fechaRetiroStr = $fechaRet->format('d/m/Y') . ' (Marcado en ' . $nombresMeses[$mesMarcado] . ')';
+            }
+
+            $personas[] = [
+                'cedula' => $c->cedula,
+                'nombre_completo' => $c->nombre_completo,
+                'fecha_ingreso' => $c->fecha_ingreso ? \Carbon\Carbon::parse($c->fecha_ingreso)->format('d/m/Y') : '—',
+                'fecha_retiro' => $fechaRetiroStr,
+                'facturas' => !empty($facturasContrato) ? implode(', ', $facturasContrato) : '—',
+            ];
+        }
+
+        $tiposLabel = [
+            'admon_vigentes' => 'Administraciones Vigentes',
+            'afiliaciones' => 'Afiliaciones del Mes',
+            'retiros_reales' => 'Retiros Reales',
+            'retiros_informativos' => 'Retiros Informativos',
+        ];
+
+        return response()->json([
+            'mes_label' => $nombresMeses[$mes] . ' ' . $anio,
+            'tipo_label' => $tiposLabel[$tipo],
+            'personas' => array_values($personas),
+        ]);
+    }
 }
 
 

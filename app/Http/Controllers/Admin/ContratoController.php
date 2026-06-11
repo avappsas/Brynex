@@ -397,10 +397,13 @@ class ContratoController extends Controller
         $vEpsRetiro = 0; $vArlRetiro = 0; $vAfpRetiro = 0; $vCajaRetiro = 0; $totalSsRetiro = 0;
 
         if ($tipoRetiro === 'real' && $numDias > 0) {
-            // ── Fallback IBC: contratos legacy con ibc/salario = 0 → usar SM ──
+            // Fallback para contratos legacy donde ambos campos son 0: usar SM.
+            // Si solo ibc=0 (dependiente) o solo salario=0 (independiente),
+            // calcularCotizacion() lo resuelve internámente según modalidad.
             $ibcOriginal = (float)($contrato->ibc ?? 0);
             $salOriginal = (float)($contrato->salario ?? 0);
             if ($ibcOriginal <= 0 && $salOriginal <= 0) {
+                // Ninguna base registrada → usar salario mínimo del sistema
                 $sm = (float) ConfiguracionBrynex::obtener('salario_minimo', 1423500);
                 $contrato->ibc     = $sm;
                 $contrato->salario = $sm;
@@ -662,6 +665,9 @@ class ContratoController extends Controller
         if ($tipoRetiro === 'real' && $dias > 0) {
             $ibcOriginal = (float)($contrato->ibc ?? 0);
             $salOriginal = (float)($contrato->salario ?? 0);
+            // Fallback solo cuando ambos son 0 (legacy sin ningún dato).
+            // Si solo ibc=0 (dependiente) o solo salario=0 (independiente),
+            // calcularCotizacion() lo resuelve internámente según modalidad.
             if ($ibcOriginal <= 0 && $salOriginal <= 0) {
                 $sm = (float) \App\Models\ConfiguracionBrynex::obtener('salario_minimo', 1423500);
                 $contrato->ibc     = $sm;
@@ -1185,7 +1191,9 @@ class ContratoController extends Controller
             // Calcular la cotización para el retiro real (aportes a seguridad social)
             $vEpsRetiro = 0; $vArlRetiro = 0; $vAfpRetiro = 0; $vCajaRetiro = 0; $totalSsRetiro = 0;
             if ($numDias > 0) {
-                // Fallback IBC si ibc/salario son 0 en contratos legacy
+                // Fallback solo cuando ambos son 0 (legacy sin ningún dato).
+                // Si solo ibc=0 (dependiente) o solo salario=0 (independiente),
+                // calcularCotizacion() lo resuelve internámente según modalidad.
                 $ibcOriginal = (float)($original->ibc ?? 0);
                 $salOriginal = (float)($original->salario ?? 0);
                 if ($ibcOriginal <= 0 && $salOriginal <= 0) {

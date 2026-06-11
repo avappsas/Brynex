@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\BaseModel;
+use App\Models\Factura;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\DB;
@@ -122,6 +123,11 @@ class Contrato extends BaseModel
         return $this->hasMany(Radicado::class);
     }
 
+    public function facturas(): HasMany
+    {
+        return $this->hasMany(Factura::class, 'contrato_id');
+    }
+
     // ── Helpers de estado ──
 
     public function estaVigente(): bool
@@ -173,12 +179,21 @@ class Contrato extends BaseModel
      */
     public function calcularCotizacion(int $dias = 30, ?bool $ivaCliente = null): array
     {
-        $ibc        = (float) ($this->ibc ?? $this->salario ?? 0);
-        $alidoId    = $this->aliado_id;
-        $nivelArl   = (int) ($this->n_arl ?? 1);
-        $esIndep    = $this->esIndependiente();
-        $mod        = $this->tipoModalidad;
-        $esTP       = $mod && $mod->esTiempoParcial();
+        $ibcRaw   = (float) ($this->ibc ?? 0);
+        $salRaw   = (float) ($this->salario ?? 0);
+        $alidoId  = $this->aliado_id;
+        $nivelArl = (int) ($this->n_arl ?? 1);
+        $esIndep  = $this->esIndependiente();
+        $mod      = $this->tipoModalidad;
+        $esTP     = $mod && $mod->esTiempoParcial();
+
+        // Independientes cotizan sobre IBC; dependientes (razón social) sobre salario.
+        // Si el campo principal es 0 (legacy), usar el otro como fallback.
+        if ($esIndep) {
+            $ibc = $ibcRaw > 0 ? $ibcRaw : $salRaw;
+        } else {
+            $ibc = $salRaw > 0 ? $salRaw : $ibcRaw;
+        }
 
         // Obtener porcentajes
         if ($esIndep) {
