@@ -256,7 +256,8 @@ class ExcelAsopagosService
         $vCaj = $this->cienSuperior((int)($p->v_caja ?? 0));
 
         // ── Tarifa ARL decimal (0 si no hay tarifa) ────────────────────────────────
-        $tarifaArl = ($p->tarifa_arl !== null) ? round((float)$p->tarifa_arl / 100, 6) : 0;
+        $nivelRiesgo = max(1, min(5, (int)($p->nivel_riesgo ?? 1)));
+        $tarifaArl   = PilaCotizanteCalculator::TARIFAS_ARL[$nivelRiesgo] ?? 0.00522;
 
         // ── Fechas ingreso / retiro ─────────────────────────────────────────
         $fechaIng = null; $fechaRet = null;
