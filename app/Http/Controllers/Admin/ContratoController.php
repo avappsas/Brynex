@@ -202,12 +202,46 @@ class ContratoController extends Controller
                 ->withErrors(['razon_social_id' => 'No se puede cambiar la Razón Social: ya existe una afiliación en trámite u OK. Para cambiarla, marque retiro del contrato.']);
         }
 
-        // Si hay afiliaciones activas, preservar también modalidad, plan, encargado y fecha_ingreso
-        if ($rsBloquedaPorAfiliacion) {
-            $data['tipo_modalidad_id'] = $contrato->tipo_modalidad_id;
-            $data['plan_id']           = $contrato->plan_id;
-            $data['fecha_ingreso']     = $contrato->fecha_ingreso;
-            $data['encargado_id']      = $contrato->encargado_id;
+        // ── Protección de ENTIDADES con radicados activos ──────────────
+        // Regla: si el contrato tiene radicados en estado 'tramite' u 'ok'
+        // para una entidad (eps, arl, pension, caja), el nuevo plan seleccionado
+        // DEBE incluir esa misma entidad. Si el nuevo plan elimina una entidad
+        // que ya tiene una afiliación en curso, se bloquea el cambio.
+        //
+        // Ejemplo BLOQUEADO: contrato con EPS ok → nuevo plan sin EPS.
+        // Ejemplo PERMITIDO:  contrato I Venc → I Act (mismo plan, mismas entidades).
+        // Ejemplo PERMITIDO:  agregar CAJA a un plan que antes no la tenía.
+        $tiposConRadicadoActivo = $contrato->radicados
+            ->whereIn('estado', $estadosBloqueantes)
+            ->pluck('tipo')
+            ->unique()
+            ->values()
+            ->toArray(); // ej: ['eps', 'arl']
+
+        if (!empty($tiposConRadicadoActivo) && isset($data['plan_id']) && (int)$data['plan_id'] !== (int)$contrato->plan_id) {
+            $nuevoPlan = \App\Models\PlanContrato::find($data['plan_id']);
+            if ($nuevoPlan) {
+                $mapaNuevoPlan = [
+                    'eps'     => (bool) $nuevoPlan->incluye_eps,
+                    'arl'     => (bool) $nuevoPlan->incluye_arl,
+                    'pension' => (bool) $nuevoPlan->incluye_pension,
+                    'caja'    => (bool) $nuevoPlan->incluye_caja,
+                ];
+                $entidadesExcluidas = array_filter(
+                    $tiposConRadicadoActivo,
+                    fn($tipo) => !($mapaNuevoPlan[$tipo] ?? false)
+                );
+                if (!empty($entidadesExcluidas)) {
+                    $nombresEntidades = array_map(fn($t) => strtoupper($t), $entidadesExcluidas);
+                    return redirect()
+                        ->route('admin.contratos.edit', array_filter([
+                            $id,
+                            'back'   => $request->input('back_url'),
+                            'iframe' => $request->input('iframe') ? '1' : null,
+                        ]))
+                        ->withErrors(['plan_id' => 'No se puede cambiar al plan "' . $nuevoPlan->nombre . '": ya existe afiliación activa (tramite/ok) en ' . implode(', ', $nombresEntidades) . '. El nuevo plan debe incluir esas entidades.']);
+                }
+            }
         }
 
         // Protección razón social: solo admin puede cambiarla si está bloqueada

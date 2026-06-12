@@ -2728,6 +2728,7 @@ const FC_CONTRATO_ID   = {{ $esEdicion ? $contrato->id : 'null' }};
 const FC_FECHA_ING_MES = {{ $contrato->fecha_ingreso ? $contrato->fecha_ingreso->month : 0 }};
 const FC_FECHA_ING_ANO = {{ $contrato->fecha_ingreso ? $contrato->fecha_ingreso->year : 0 }};
 const FC_ES_INDEP      = {{ $contrato->tipoModalidad?->esIndependiente() ? 'true' : 'false' }};
+const FC_TIPO_MODALIDAD_ID = {{ (int)($contrato->tipo_modalidad_id ?? 0) }};
 const FC_COSTO_AFIL    = {{ (int)($contrato->costo_afiliacion ?? 0) }};
 const FC_ARL_NIVEL     = {!! json_encode($contrato->n_arl ?? '') !!};
 const FC_DIST_DEFAULTS = {
@@ -2751,6 +2752,7 @@ if (typeof MF !== 'undefined' && FC_CONTRATO_ID) {
         fechaIngresoMes:   FC_FECHA_ING_MES,
         fechaIngresoAnio:  FC_FECHA_ING_ANO,
         esIndependiente:   FC_ES_INDEP,
+        tipoModalidadId:   FC_TIPO_MODALIDAD_ID,
         costoAfiliacion:   FC_COSTO_AFIL,
         arlNivel:          FC_ARL_NIVEL,
         salarioMinimo:     SALARIO_MINIMO,
@@ -2772,7 +2774,8 @@ if (typeof MF !== 'undefined' && FC_CONTRATO_ID) {
             }
             @else
             alert(data.mensaje || 'Factura generada correctamente.');
-            if (data.mes_facturado && data.anio_facturado) {
+            // No reabrir modal si fue modo "ambos" (afil + planilla ya generadas)
+            if (!data.indep_ambos && data.mes_facturado && data.anio_facturado) {
                 let sigMes = data.mes_facturado + 1;
                 let sigAnio = data.anio_facturado;
                 if (sigMes > 12) { sigMes = 1; sigAnio++; }

@@ -54,6 +54,7 @@ body{display:flex;flex-direction:column}
 .btn-renovar {background:#0d9488;color:#fff}.btn-renovar:hover{background:#0f766e}
 .btn-facturar{background:#1e40af;color:#fff}.btn-facturar:hover{background:#1d4ed8}
 .btn-retirar {background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0}.btn-retirar:hover{background:#fee2e2;color:#b91c1c}
+.btn-contrato{background:#64748b;color:#fff;text-decoration:none}.btn-contrato:hover{background:#475569;color:#fff}
 
 /* ── Select en th ── */
 .th-select{width:100%;background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,.15);color:#fff;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:.22rem .2rem;cursor:pointer;outline:none;appearance:auto}
@@ -189,7 +190,7 @@ body{display:flex;flex-direction:column}
                 <a href="{{ $su('dias_fact') }}" class="{{ $sc('dias_fact') }}" title="Ordenar por días sin facturar">⏱ Sin fact.{{ $si('dias_fact') }}</a>
             </th>
             <th>
-                <a href="{{ $su('cedula') }}" class="{{ $sc('cedula') }}" title="Ordenar por cédula">Cédula{{ $si('cedula') }}</a>
+                <a href="{{ $su('cedula') }}" class="{{ $sc('cedula') }}" title="Ordenar por documento">Documento{{ $si('cedula') }}</a>
             </th>
             <th>
                 <a href="{{ $su('nombre') }}" class="{{ $sc('nombre') }}" title="Ordenar por nombre">Nombres{{ $si('nombre') }}</a>
@@ -295,8 +296,12 @@ body{display:flex;flex-direction:column}
             @endif
         </td>
 
-        {{-- Cédula --}}
-        <td style="font-family:monospace;font-size:.77rem;font-weight:700;color:#3b82f6;">{{ $c->cedula }}</td>
+        {{-- Documento --}}
+        <td style="font-family:monospace;font-size:.77rem;font-weight:700;">
+            <a href="/admin/clientes/{{ $c->cliente?->id }}/edit" style="color:#3b82f6;text-decoration:none;" title="Ver ficha del cliente">
+                {{ strtoupper($c->cliente?->tipo_doc ?? 'CC') }} {{ $c->cedula }}
+            </a>
+        </td>
 
         {{-- Nombres --}}
         <td style="font-weight:600;color:#1e3a5f;max-width:140px;overflow:hidden;text-overflow:ellipsis;" title="{{ $nombreCompleto }}">
@@ -315,10 +320,21 @@ body{display:flex;flex-direction:column}
         </td>
 
         {{-- Empresa --}}
-        <td style="font-size:.65rem;color:#475569;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ $empresa }}">{{ $empresa }}</td>
+        <td style="font-size:.65rem;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ $empresa }}">
+            @if($c->cliente?->empresa?->id)
+                <a href="/admin/facturacion/empresa/{{ $c->cliente->empresa->id }}" style="color:#3b82f6;text-decoration:none;" title="Ver Empresa">
+                    {{ $empresa }}
+                </a>
+            @else
+                —
+            @endif
+        </td>
 
         {{-- Acciones --}}
         <td style="white-space:nowrap;">
+            <a class="btn-accion btn-contrato" href="/admin/contratos/{{ $c->id }}/edit" title="Ver/Editar Contrato">
+                📄
+            </a>
             <button class="btn-accion btn-renovar" onclick="abrirRenovar({{ $ctx }})" title="Registrar renovación en portal ARL">
                 📅 Renovar
             </button>

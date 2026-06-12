@@ -955,10 +955,66 @@ const MF = (function () {
                     setText('mf-v-afil', fmt(_totalAfil));
                 }
             }
+
+            // Mostrar aviso informativo sobre el período de la planilla
+            _mostrarAvisoPeriodoPlanilla();
+
             recalc(); // recalc() ya suma mf-v-afil al total
         } else {
+            // Ocultar aviso si cambia de 'ambos' a 'afiliacion'
+            const av = el('mf-aviso-tipo-plan');
+            if (av) av.style.display = 'none';
             _setTipo('afiliacion');
         }
+    }
+
+    /**
+     * Calcula y muestra al usuario en qué período quedará la planilla
+     * cuando selecciona 'Planilla + Afiliación' (modo ambos).
+     * - I Venc (id=10): planilla va al MES SIGUIENTE
+     * - I Act  (id=11): planilla va al MISMO MES
+     */
+    function _mostrarAvisoPeriodoPlanilla() {
+        const meses = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+        const mes   = parseInt(el('mf-mes')?.value  || new Date().getMonth() + 1);
+        const anio  = parseInt(el('mf-anio')?.value || new Date().getFullYear());
+
+        // Detectar si es I Venc (tipo_modalidad_id=10) o I Act (tipo_modalidad_id=11)
+        const esIndVenc = (_cfg.tipoModalidadId == 10);
+
+        let mesPlan, anioPlan;
+        if (esIndVenc) {
+            mesPlan  = mes === 12 ? 1 : mes + 1;
+            anioPlan = mes === 12 ? anio + 1 : anio;
+        } else {
+            mesPlan  = mes;
+            anioPlan = anio;
+        }
+
+        // Crear o actualizar el aviso
+        let av = el('mf-aviso-tipo-plan');
+        if (!av) {
+            av = document.createElement('div');
+            av.id = 'mf-aviso-tipo-plan';
+            av.style.cssText = [
+                'margin:.3rem 0',
+                'padding:.45rem .7rem',
+                'border-radius:8px',
+                'font-size:.77rem',
+                'font-weight:600',
+                'border:1.5px solid #818cf8',
+                'background:#eef2ff',
+                'color:#3730a3',
+            ].join(';');
+            // Insertar despues del aviso de tipo
+            const avisoTipo = el('mf-aviso-tipo');
+            if (avisoTipo) avisoTipo.parentNode.insertBefore(av, avisoTipo.nextSibling);
+        }
+        av.innerHTML =
+            '\uD83D\uDDC2 Se crear\u00e1n <strong>2 registros</strong> con el mismo recibo:' +
+            ' <span style="color:#7c3aed">Afiliaci\u00f3n</span> en <strong>' + meses[mes-1] + '&nbsp;' + anio + '</strong>' +
+            ' + <span style="color:#0369a1">Planilla</span> en <strong>' + meses[mesPlan-1] + '&nbsp;' + anioPlan + '</strong>';
+        av.style.display = 'block';
     }
 
     function _setTipo(tipo) {
@@ -1642,7 +1698,7 @@ const MF = (function () {
                 es_retiro:    _esRetiro,
                 fecha_retiro: _esRetiro ? (el('mf-retiro-fecha')?.value || null) : null,
                 dias_retiro:  _esRetiro ? parseInt(el('mf-retiro-dias-num')?.textContent || '0') || null : null,
-                // SS manual — SOLO en modo individual (1 contrato).
+                // SS manual— SOLO en modo individual (1 contrato).
                 // En masivo, el modal muestra TOTALES del batch, no valores individuales.
                 // El servidor calcula SS por contrato individualmente con los días reales.
                 // Multi-contrato: enviamos manual_ss_por_contrato para C1; C2 auto-calcula.
@@ -1669,6 +1725,8 @@ const MF = (function () {
                 dist_encargado: distEncargado,
                 dist_admon: distAdmon,
                 dist_utilidad: distUtilidad,
+                // Modo independiente: 'normal' | 'ambos' (afiliación + planilla en mismo recibo)
+                indep_modo: document.querySelector('input[name="mf_indep_modo"]:checked')?.value || 'normal',
             };
 
 

@@ -52,7 +52,7 @@ class GestionArlController extends Controller
 
         // ── Query base ────────────────────────────────────────────────
         $query = Contrato::with([
-            'cliente:id,cedula,primer_nombre,segundo_nombre,primer_apellido,segundo_apellido,cod_empresa',
+            'cliente:id,cedula,tipo_doc,primer_nombre,segundo_nombre,primer_apellido,segundo_apellido,cod_empresa',
             'cliente.empresa:id,empresa',
             'razonSocial:id,razon_social,arl_nit',
             'arl:id,nombre_arl,razon_social',

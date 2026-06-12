@@ -1027,45 +1027,21 @@ function onCheckChange(){
 function abrirCuentaCobro(tipo) {
     if (!selec.length) return;
     const ids = selec.map(r => r.dataset.contrato);
-    // Guardar en ventana para que la vista pueda redirigir al detallado
     window.__ccContratos = ids;
-    // Crear form dinámico y enviarlo a nueva pestaña
-    const form = document.createElement('form');
-    form.method = 'POST';
-    form.action = '{{ route("admin.facturacion.cuenta_cobro.preview") }}';
-    form.target = '_blank';
-    form.style.display = 'none';
-    // CSRF
-    const csrf = document.createElement('input');
-    csrf.type='hidden'; csrf.name='_token';
-    csrf.value = CSRF;
-    form.appendChild(csrf);
-    // Tipo de vista
-    const tInput = document.createElement('input');
-    tInput.type='hidden'; tInput.name='tipo'; tInput.value = tipo;
-    form.appendChild(tInput);
-    // Mes y año
-    const mesInput = document.createElement('input');
-    mesInput.type='hidden'; mesInput.name='mes';
-    mesInput.value = new URLSearchParams(location.search).get('mes') || '{{ $mes }}';
-    form.appendChild(mesInput);
-    const anioInput = document.createElement('input');
-    anioInput.type='hidden'; anioInput.name='anio';
-    anioInput.value = new URLSearchParams(location.search).get('anio') || '{{ $anio }}';
-    form.appendChild(anioInput);
-    // Empresa
-    const empInput = document.createElement('input');
-    empInput.type='hidden'; empInput.name='empresa_id'; empInput.value='{{ $empresa->id }}';
-    form.appendChild(empInput);
-    // Contratos seleccionados
-    ids.forEach(id => {
-        const inp = document.createElement('input');
-        inp.type='hidden'; inp.name='contratos[]'; inp.value=id;
-        form.appendChild(inp);
+
+    const queryParams = new URLSearchParams({
+        tipo: tipo,
+        mes: new URLSearchParams(location.search).get('mes') || '{{ $mes }}',
+        anio: new URLSearchParams(location.search).get('anio') || '{{ $anio }}',
+        empresa_id: '{{ $empresa->id }}'
     });
-    document.body.appendChild(form);
-    form.submit();
-    document.body.removeChild(form);
+
+    let url = '{{ route("admin.facturacion.cuenta_cobro.preview") }}?' + queryParams.toString();
+    ids.forEach(id => {
+        url += '&contratos[]=' + id;
+    });
+
+    window.open(url, '_blank');
 }
 
 // ─── Resumen ─────────────────────────────────────────────

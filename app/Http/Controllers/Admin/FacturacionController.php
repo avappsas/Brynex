@@ -350,6 +350,8 @@ class FacturacionController extends Controller
             // Cartera pendiente: marcar si el usuario incluyó deuda de préstamo anterior
             'incluir_cartera'      => 'boolean',
             'valor_cartera'        => 'nullable|integer|min:0',
+            // Modo independiente: 'normal' | 'ambos' (afiliación + planilla en mismo recibo)
+            'indep_modo'           => 'nullable|in:normal,ambos',
         ]);
 
         // Decodificar manual_ss_por_contrato si viene como JSON string
@@ -628,21 +630,143 @@ class FacturacionController extends Controller
             $totalAnticipo, $anticiposSeleccionados,
             $consignacionesData, $totalesRealesPorContrato, $granTotalReal, $batchNumeroFactura,
             &$efAcum, &$csAcum, &$prAcum, &$sfAcum, &$antAcum,
-            $saldoEmpresaAplicar, &$contratosPendientes, $contratosCargados, $facturasDuplicadasLote
+            $saldoEmpresaAplicar, &$contratosPendientes, $contratosCargados, $facturasDuplicadasLote,
+            $manualSsPorContrato
         ) {
             foreach ($validated['contratos'] as $contratoId) {
                 $contrato = $contratosCargados->get($contratoId);
                 if (!$contrato) continue;
 
-
                 // ─── Validación anti-duplicado por CONTRATO ───────────────
                 // Bloquea si el MISMO contrato_id ya tiene una factura del MISMO tipo
                 // en el mismo período (ej: 2 planillas del mismo contrato en junio).
-                // Permite contratos distintos aunque compartan la misma Razón Social
-                // (ej: retiro contrato anterior + afiliación/planilla contrato nuevo).
-                $facturasDup   = $facturasDuplicadasLote->get($contrato->id) ?: collect();
+                // Permite contratos distintos aunque compartan la misma Razón Social.
+                $facturasDup    = $facturasDuplicadasLote->get($contrato->id) ?: collect();
                 $tipoSolicitado = $validated['tipo'];
 
+                // ─── Detectar modo "ambos" (afiliación + planilla) ────────
+                $indepModo      = $validated['indep_modo'] ?? 'normal';
+                $esIndVenc      = (int)($contrato->tipo_modalidad_id) === 10;
+                $esIndActCheck  = (int)($contrato->tipo_modalidad_id) === 11;
+                $esIndepCheck   = $contrato->tipoModalidad?->esIndependiente() ?? false;
+                $esMesIngresoCheck = false;
+                if ($contrato->fecha_ingreso) {
+                    $esMesIngresoCheck = ((int)$contrato->fecha_ingreso->month === $mes
+                                      && (int)$contrato->fecha_ingreso->year  === $anio);
+                }
+
+                $esAmbos = ($indepModo === 'ambos')
+                    && $esIndepCheck
+                    && ($esIndVenc || $esIndActCheck)
+                    && $esMesIngresoCheck;
+
+                if ($esAmbos) {
+                    // ── Verificar que no existan ya afiliación NI planilla para este contrato ──
+                    $yaAfil = $facturasDup->contains(fn($f) => $f->tipo === 'afiliacion');
+                    if ($yaAfil) {
+                        $omitidos[] = [
+                            'cedula'  => $contrato->cedula,
+                            'nombre'  => $contrato->cliente?->primer_nombre . ' ' . $contrato->cliente?->primer_apellido,
+                            'motivo'  => "Ya existe una afiliación para {$mes}/{$anio} en este contrato",
+                        ];
+                        $contratosPendientes--;
+                        continue;
+                    }
+
+                    // Para I Venc: verificar que no exista planilla en el mes siguiente
+                    if ($esIndVenc) {
+                        $mesPlan  = $mes === 12 ? 1 : $mes + 1;
+                        $anioPlan = $mes === 12 ? $anio + 1 : $anio;
+                        $yaPlana  = Factura::where('aliado_id', $aliadoId)
+                            ->where('contrato_id', $contrato->id)
+                            ->where('mes', $mesPlan)
+                            ->where('anio', $anioPlan)
+                            ->where('tipo', 'planilla')
+                            ->whereNull('deleted_at')
+                            ->exists();
+                        if ($yaPlana) {
+                            $omitidos[] = [
+                                'cedula'  => $contrato->cedula,
+                                'nombre'  => $contrato->cliente?->primer_nombre . ' ' . $contrato->cliente?->primer_apellido,
+                                'motivo'  => "Ya existe una planilla para {$mesPlan}/{$anioPlan} en este contrato",
+                            ];
+                            $contratosPendientes--;
+                            continue;
+                        }
+                    }
+
+                    // ── Calcular proporción de pago para distribución ──────
+                    $costoContrato = $totalesRealesPorContrato[$contratoId] ?? 0;
+                    $proporcion    = $granTotalReal > 0 ? ($costoContrato / $granTotalReal) : 0;
+                    $contratosPendientes--;
+                    $esUltimoNoOmitido = ($contratosPendientes === 0);
+
+                    if ($esUltimoNoOmitido) {
+                        $vConsig     = $totalPagoConsig     - $csAcum;
+                        $vEfectivo   = $totalPagoEfectivo   - $efAcum;
+                        $vPrestamo   = $totalPagoPrestamo   - $prAcum;
+                        $vSaldoFavor = $saldoEmpresaAplicar - $sfAcum;
+                        $vAnticipo   = $totalAnticipo        - $antAcum;
+                    } else {
+                        $vConsig     = (int) round($totalPagoConsig     * $proporcion);
+                        $vEfectivo   = (int) round($totalPagoEfectivo   * $proporcion);
+                        $vPrestamo   = (int) round($totalPagoPrestamo   * $proporcion);
+                        $vSaldoFavor = (int) round($saldoEmpresaAplicar * $proporcion);
+                        $vAnticipo   = (int) round($totalAnticipo        * $proporcion);
+                        $csAcum  += $vConsig;
+                        $efAcum  += $vEfectivo;
+                        $prAcum  += $vPrestamo;
+                        $sfAcum  += $vSaldoFavor;
+                        $antAcum += $vAnticipo;
+                    }
+
+                    // ── Crear par afiliación + planilla ───────────────────
+                    $idsCreados = $this->_crearParAfilPlanilla(
+                        contrato: $contrato,
+                        validated: $validated,
+                        mes: $mes,
+                        anio: $anio,
+                        aliadoId: $aliadoId,
+                        batchNumeroFactura: $batchNumeroFactura,
+                        np: $np,
+                        nPlanosPorRS: $nPlanosPorRS,
+                        vConsig: $vConsig,
+                        vEfectivo: $vEfectivo,
+                        vPrestamo: $vPrestamo,
+                        vAnticipo: $vAnticipo,
+                        esFirstOfBatch: empty($facturasCreadas),
+                        consignacionesData: $consignacionesData,
+                        esIndVenc: $esIndVenc,
+                        manualSsPorContrato: $manualSsPorContrato,
+                    );
+
+                    // Si es un retiro y el par se creó con éxito, retirar contrato
+                    $esRetiro    = !empty($validated['es_retiro']);
+                    $fechaRetiro = $esRetiro ? ($validated['fecha_retiro'] ?? null) : null;
+                    if ($esRetiro && $fechaRetiro && !empty($idsCreados)) {
+                        $contrato->update([
+                            'estado'       => 'retirado',
+                            'fecha_retiro' => $fechaRetiro,
+                        ]);
+
+                        Bitacora::registrar(
+                            accion: 'updated',
+                            modelo: 'Contrato',
+                            registroId: $contrato->id,
+                            descripcion: "Contrato marcado como retirado con fecha {$fechaRetiro} por facturación de retiro en par Afil+Planilla (Facturas: " . implode(', ', $idsCreados) . ").",
+                            detalle: [
+                                'fecha_retiro' => $fechaRetiro,
+                                'factura_ids'  => $idsCreados,
+                            ],
+                            alidoId: $aliadoId
+                        );
+                    }
+
+                    array_push($facturasCreadas, ...$idsCreados);
+                    continue; // saltar la lógica normal del foreach
+                }
+
+                // ─── Validación anti-duplicado (flujo normal) ─────────────
                 $yaExiste = $facturasDup->contains(fn($f) => $f->tipo === $tipoSolicitado);
 
                 if ($yaExiste) {
@@ -994,6 +1118,26 @@ class FacturacionController extends Controller
                 }
                 $factura->update(['saldo_proximo' => $saldoProximo]);
 
+                // Si es un retiro y la factura se generó en estado pagada/prestamo, retirar contrato
+                if ($esRetiro && $fechaRetiro && in_array($factura->estado, [Factura::ESTADO_PAGADA, Factura::ESTADO_PRESTAMO])) {
+                    $contrato->update([
+                        'estado'       => 'retirado',
+                        'fecha_retiro' => $fechaRetiro,
+                    ]);
+
+                    Bitacora::registrar(
+                        accion: 'updated',
+                        modelo: 'Contrato',
+                        registroId: $contrato->id,
+                        descripcion: "Contrato marcado como retirado con fecha {$fechaRetiro} por facturación de retiro en factura #{$factura->id}.",
+                        detalle: [
+                            'fecha_retiro' => $fechaRetiro,
+                            'factura_id'   => $factura->id,
+                        ],
+                        alidoId: $aliadoId
+                    );
+                }
+
                 // Si está pagada o en préstamo, generar plano
                 if (in_array($factura->estado, [Factura::ESTADO_PAGADA, Factura::ESTADO_PRESTAMO])) {
                     Plano::generarDesdeContrato($contrato, $factura, $fechaRetiro ?? null);
@@ -1017,7 +1161,7 @@ class FacturacionController extends Controller
         });
 
 
-        $primera = count($facturasCreadas) === 1 ? $facturasCreadas[0] : null;
+        $primera = !empty($facturasCreadas) ? $facturasCreadas[0] : null;
 
         // Si no se creó ninguna (todos eran duplicados) → error
         if (empty($facturasCreadas) && !empty($omitidos)) {
@@ -1047,6 +1191,9 @@ class FacturacionController extends Controller
             'facturas'        => $facturasCreadas,
             'omitidos'        => $omitidos,
             'recibo_url'      => $primera ? route('admin.facturacion.recibo', $primera) : null,
+            // Indica al frontend que se usó modo "ambos" (afil + planilla ya creadas)
+            // para que NO reabra el modal automáticamente al siguiente mes.
+            'indep_ambos'     => (($validated['indep_modo'] ?? 'normal') === 'ambos') && count($facturasCreadas) >= 2,
             // IDs de consignaciones creadas (solo las de la primera factura del batch)
             // El JS los usa para subir las imágenes de soporte después de crear la factura.
             'consignacion_ids' => \App\Models\Consignacion::whereIn('factura_id', $facturasCreadas)
@@ -1194,7 +1341,283 @@ class FacturacionController extends Controller
         }
     }
 
-    // ─── Registrar abono ─────────────────────────────────────────────
+    // ─── Crear par Afiliación + Planilla (independientes mes ingreso) ───────────
+    /**
+     * Crea 2 registros Factura con el mismo numero_factura:
+     *   1) Afiliación  → mes=X, tipo=afiliacion, dias=0, SS=0
+     *   2) Planilla    → mes=X (I Act) | mes=X+1 (I Venc), tipo=planilla, SS calculado
+     *
+     * Ambos registros comparten: numero_factura, np, estado, forma_pago, fecha_pago.
+     * El pago (efectivo + consig) se divide proporcionalmente según el costo de cada uno.
+     * Las consignaciones se guardan en la primera factura (afiliación), igual que el batch.
+     *
+     * @return array  [$idFactAfiliacion, $idFactPlanilla]
+     */
+    private function _crearParAfilPlanilla(
+        \App\Models\Contrato $contrato,
+        array $validated,
+        int $mes,
+        int $anio,
+        int $aliadoId,
+        int $batchNumeroFactura,
+        ?int $np,
+        array &$nPlanosPorRS,
+        int $vConsig,
+        int $vEfectivo,
+        int $vPrestamo,
+        int $vAnticipo,
+        bool $esFirstOfBatch,
+        array $consignacionesData,
+        bool $esIndVenc,
+        array $manualSsPorContrato = [],
+    ): array {
+        // ── Datos comunes ────────────────────────────────────────────────────────
+        $tieneIva       = $contrato->cliente
+            ? (strtoupper(trim($contrato->cliente->iva ?? '')) === 'SI')
+            : false;
+        $costoAfiliacion = (int)($contrato->costo_afiliacion ?? 0);
+        $seguro          = (int)($contrato->seguro ?? 0);
+        $admon           = (int)($contrato->administracion ?? 0);
+        $adminAsesor     = (int)($contrato->admon_asesor ?? 0);
+
+        // ── n_plano compartido por RS ────────────────────────────────────────────
+        $rsId = $contrato->razon_social_id;
+        if ($rsId && !isset($nPlanosPorRS[$rsId])) {
+            $nPlanosPorRS[$rsId] = static::_nPlanoParaRS($aliadoId, $rsId, $mes, $anio);
+        }
+        $nPlanoFactura = $rsId ? ($nPlanosPorRS[$rsId] ?? null) : null;
+
+        // ── Mes/Año de la planilla ───────────────────────────────────────────────
+        // I Venc → mes siguiente (paga adelantado al ingresar)
+        // I Act  → mismo mes
+        if ($esIndVenc) {
+            $mesPlan  = $mes === 12 ? 1  : $mes + 1;
+            $anioPlan = $mes === 12 ? $anio + 1 : $anio;
+        } else {
+            $mesPlan  = $mes;
+            $anioPlan = $anio;
+        }
+
+        // ── Días proporcionales para la planilla ─────────────────────────────────
+        $diaIngreso = $contrato->fecha_ingreso ? (int)$contrato->fecha_ingreso->day : 1;
+        $diasPlan   = max(1, 30 - $diaIngreso + 1);
+
+        // ── Calcular SS de la planilla ───────────────────────────────────────────
+        $cotiz = $contrato->calcularCotizacion($diasPlan, $tieneIva);
+        $calcSS = [
+            'eps'  => (int)($cotiz['eps']  ?? 0),
+            'arl'  => (int)($cotiz['arl']  ?? 0),
+            'afp'  => (int)($cotiz['pen']  ?? 0),
+            'caja' => (int)($cotiz['caja'] ?? 0),
+        ];
+
+        // Override manual de SS (modo individual, 1 contrato)
+        $esModoIndividual = count($validated['contratos']) === 1;
+        if ($esModoIndividual) {
+            if (isset($validated['v_eps_manual']))  $calcSS['eps']  = intval($validated['v_eps_manual']);
+            if (isset($validated['v_arl_manual']))  $calcSS['arl']  = intval($validated['v_arl_manual']);
+            if (isset($validated['v_afp_manual']))  $calcSS['afp']  = intval($validated['v_afp_manual']);
+            if (isset($validated['v_caja_manual'])) $calcSS['caja'] = intval($validated['v_caja_manual']);
+        } elseif (!empty($manualSsPorContrato[(string)$contrato->id])) {
+            $ssMap = $manualSsPorContrato[(string)$contrato->id];
+            if (isset($ssMap['eps']))  $calcSS['eps']  = intval($ssMap['eps']);
+            if (isset($ssMap['arl']))  $calcSS['arl']  = intval($ssMap['arl']);
+            if (isset($ssMap['afp']))  $calcSS['afp']  = intval($ssMap['afp']);
+            if (isset($ssMap['caja'])) $calcSS['caja'] = intval($ssMap['caja']);
+        }
+
+        $totalSS = $calcSS['eps'] + $calcSS['arl'] + $calcSS['afp'] + $calcSS['caja'];
+
+        // IVA de la planilla (sobre admon)
+        $iva = 0;
+        if ($tieneIva && ($admon + $adminAsesor) > 0) {
+            $cfgIva = \App\Models\ConfiguracionBrynex::porcentajeIva();
+            $iva    = (int) round(($admon + $adminAsesor) * $cfgIva / 100);
+        }
+
+        // ── Totales de cada registro ─────────────────────────────────────────────
+        $totalAfil = $costoAfiliacion; // afiliación: solo costo_afiliacion (sin admon, sin SS)
+        $totalPlan = $totalSS + $admon + $adminAsesor + $seguro + $iva
+                   + (int)($validated['otros_admon'] ?? 0);
+
+        $totalAmbos = max(1, $totalAfil + $totalPlan);
+
+        // ── Distribución proporcional del pago entre los 2 registros ────────────
+        $propAfil   = $totalAfil / $totalAmbos;
+        $propPlan   = 1 - $propAfil;
+
+        $vConsigAfil   = (int) round($vConsig   * $propAfil);
+        $vEfectAfil    = (int) round($vEfectivo * $propAfil);
+        $vPrestAfil    = (int) round($vPrestamo * $propAfil);
+        $vAntAfil      = (int) round($vAnticipo * $propAfil);
+
+        $vConsigPlan   = $vConsig   - $vConsigAfil;
+        $vEfectPlan    = $vEfectivo - $vEfectAfil;
+        $vPrestPlan    = $vPrestamo - $vPrestAfil;
+        $vAntPlan      = $vAnticipo - $vAntAfil;
+
+        // ── Distribución de afiliación ────────────────────────────────────────────
+        $distAsesor = $distRetiro = $distEncargado = $distAdmon = $distUtilidad = 0;
+        if ($costoAfiliacion > 0) {
+            $hasManual = isset($validated['dist_asesor']) || isset($validated['dist_retiro'])
+                      || isset($validated['dist_encargado']) || isset($validated['dist_admon']);
+            if ($hasManual) {
+                $distAsesor    = (int)($validated['dist_asesor']    ?? 0);
+                $distRetiro    = (int)($validated['dist_retiro']    ?? 0);
+                $distEncargado = (int)($validated['dist_encargado'] ?? 0);
+                $distAdmon     = (int)($validated['dist_admon']     ?? 0);
+                $distUtilidad  = max(0, $costoAfiliacion - $distAsesor - $distRetiro - $distEncargado - $distAdmon);
+            } else {
+                $cfg = \App\Models\ConfiguracionAliado::paraAliado($aliadoId, $contrato->plan_id);
+                if ($cfg) {
+                    $dist          = $cfg->calcularDistribucion($costoAfiliacion, $contrato->asesor ?? null);
+                    $distAdmon     = $dist['admon'];
+                    $distAsesor    = $dist['asesor'];
+                    $distRetiro    = $dist['retiro'];
+                    $distUtilidad  = $dist['utilidad'];
+                }
+            }
+        }
+
+        $estado    = $validated['estado'];
+        $formaPago = $validated['forma_pago'];
+
+        // ────────────────────────────────────────────────────────────────────────
+        // REGISTRO 1: AFILIACIÓN
+        // ────────────────────────────────────────────────────────────────────────
+        $factAfil = Factura::create([
+            'aliado_id'        => $aliadoId,
+            'numero_factura'   => $batchNumeroFactura,
+            'tipo'             => 'afiliacion',
+            'cedula'           => $contrato->cedula,
+            'contrato_id'      => $contrato->id,
+            'mes'              => $mes,
+            'anio'             => $anio,
+            'fecha_pago'       => now()->toDateString(),
+            'estado'           => $estado,
+            'es_prestamo'      => $estado === 'prestamo',
+            'forma_pago'       => $formaPago,
+            'valor_consignado' => $vConsigAfil,
+            'valor_efectivo'   => $vEfectAfil,
+            'valor_prestamo'   => $vPrestAfil,
+            'anticipo_aplicado'=> $vAntAfil,
+            'otros'            => 0,
+            'otros_admon'      => 0,
+            'mensajeria'       => 0,
+            'dias_cotizados'   => 0,
+            'v_eps'            => 0,
+            'v_arl'            => 0,
+            'v_afp'            => 0,
+            'v_caja'           => 0,
+            'total_ss'         => 0,
+            'admon'            => 0,
+            'admin_asesor'     => 0,
+            'seguro'           => 0,
+            'afiliacion'       => $costoAfiliacion,
+            'iva'              => 0,
+            'mora'             => 0,
+            'total'            => max(0, $totalAfil),
+            'dist_admon'       => $distAdmon,
+            'dist_asesor'      => $distAsesor,
+            'dist_retiro'      => $distRetiro,
+            'dist_utilidad'    => $distUtilidad,
+            'dist_encargado'   => $distEncargado,
+            'np'               => $np,
+            'n_plano'          => $nPlanoFactura,
+            'empresa_id'       => $validated['empresa_id'] ?? null,
+            'razon_social_id'  => $contrato->razon_social_id,
+            'usuario_id'       => \Illuminate\Support\Facades\Auth::id(),
+            'observacion'      => $validated['observacion'] ?? null,
+        ]);
+
+        // Saldo próximo de la afiliación
+        $pagadoAfil = $vConsigAfil + $vEfectAfil + $vAntAfil;
+        $factAfil->update(['saldo_proximo' => $pagadoAfil - $totalAfil]);
+
+        // Consignaciones: solo en la PRIMERA factura de todo el batch
+        if ($esFirstOfBatch) {
+            foreach ($consignacionesData as $cs) {
+                $valorCs = (int)$cs['valor'];
+                if ($valorCs <= 0) continue;
+                \App\Models\Consignacion::create([
+                    'aliado_id'       => $aliadoId,
+                    'factura_id'      => $factAfil->id,
+                    'banco_cuenta_id' => (int) $cs['banco_cuenta_id'],
+                    'fecha'           => $cs['fecha'] ?? now()->toDateString(),
+                    'valor'           => $valorCs,
+                    'referencia'      => $cs['referencia'] ?? null,
+                    'confirmado'      => false,
+                    'usuario_id'      => \Illuminate\Support\Facades\Auth::id(),
+                ]);
+            }
+        }
+
+        // Plano de afiliación
+        if (in_array($factAfil->estado, [Factura::ESTADO_PAGADA, Factura::ESTADO_PRESTAMO])) {
+            Plano::generarDesdeContrato($contrato, $factAfil);
+        }
+
+        // ────────────────────────────────────────────────────────────────────────
+        // REGISTRO 2: PLANILLA
+        // ────────────────────────────────────────────────────────────────────────
+        $factPlan = Factura::create([
+            'aliado_id'        => $aliadoId,
+            'numero_factura'   => $batchNumeroFactura,
+            'tipo'             => 'planilla',
+            'cedula'           => $contrato->cedula,
+            'contrato_id'      => $contrato->id,
+            'mes'              => $mesPlan,
+            'anio'             => $anioPlan,
+            'fecha_pago'       => now()->toDateString(),
+            'estado'           => $estado,
+            'es_prestamo'      => $estado === 'prestamo',
+            'forma_pago'       => $formaPago,
+            'valor_consignado' => $vConsigPlan,
+            'valor_efectivo'   => $vEfectPlan,
+            'valor_prestamo'   => $vPrestPlan,
+            'anticipo_aplicado'=> $vAntPlan,
+            'otros'            => (int)($validated['otros'] ?? 0),
+            'otros_admon'      => (int)($validated['otros_admon'] ?? 0),
+            'mensajeria'       => 0,
+            'dias_cotizados'   => $diasPlan,
+            'v_eps'            => $calcSS['eps'],
+            'v_arl'            => $calcSS['arl'],
+            'v_afp'            => $calcSS['afp'],
+            'v_caja'           => $calcSS['caja'],
+            'total_ss'         => $totalSS,
+            'admon'            => $admon,
+            'admin_asesor'     => $adminAsesor,
+            'seguro'           => $seguro,
+            'afiliacion'       => 0, // ya se cobró en el registro de afiliación
+            'iva'              => $iva,
+            'mora'             => 0,
+            'total'            => max(0, $totalPlan),
+            'dist_admon'       => 0,
+            'dist_asesor'      => 0,
+            'dist_retiro'      => 0,
+            'dist_utilidad'    => 0,
+            'dist_encargado'   => 0,
+            'np'               => $np,
+            'n_plano'          => $nPlanoFactura,
+            'empresa_id'       => $validated['empresa_id'] ?? null,
+            'razon_social_id'  => $contrato->razon_social_id,
+            'usuario_id'       => \Illuminate\Support\Facades\Auth::id(),
+            'observacion'      => $validated['observacion'] ?? null,
+        ]);
+
+        // Saldo próximo de la planilla
+        $pagadoPlan = $vConsigPlan + $vEfectPlan + $vAntPlan;
+        $factPlan->update(['saldo_proximo' => $pagadoPlan - $totalPlan]);
+
+        // Plano de planilla
+        if (in_array($factPlan->estado, [Factura::ESTADO_PAGADA, Factura::ESTADO_PRESTAMO])) {
+            Plano::generarDesdeContrato($contrato, $factPlan);
+        }
+
+        return [$factAfil->id, $factPlan->id];
+    }
+
+
 
     public function abonar(Request $request, int $facturaId)
     {
@@ -1504,11 +1927,11 @@ class FacturacionController extends Controller
                 // duplicados cuando se re-factura el mismo período tras una anulación.
                 Plano::where('factura_id', $f->id)->each(fn($p) => $p->delete());
 
-                // ── Reversar retiro si la factura es de retiro ──────────────
-                // Las facturas de retiro se identifican por numero_factura = 0.
+                // ── Reversar retiro si la factura es de retiro o causó retiro ──
+                // Las facturas de retiro se identifican por numero_factura = 0 o si el plano tiene fecha_ret.
                 // Al anularlas, el contrato debe volver a estado "vigente",
                 // sin fecha de retiro ni motivo de retiro.
-                if ((int)$f->numero_factura === 0 && $f->contrato_id) {
+                if (((int)$f->numero_factura === 0 || ($f->plano && $f->plano->fecha_ret)) && $f->contrato_id) {
                     $contratoRetiro = \App\Models\Contrato::find($f->contrato_id);
                     if ($contratoRetiro && $contratoRetiro->estado === 'retirado') {
                         $contratoRetiro->update([
@@ -1522,7 +1945,7 @@ class FacturacionController extends Controller
                             accion: 'updated',
                             modelo: 'Contrato',
                             registroId: $contratoRetiro->id,
-                            descripcion: "Contrato revertido a vigente por anulación de factura de retiro #{$f->id}. Motivo: {$motivo}",
+                            descripcion: "Contrato revertido a vigente por anulación de factura de retiro #{$f->id} (Nº Factura: {$f->numero_factura}). Motivo: {$motivo}",
                             detalle: ['revertido_por_anulacion_factura_id' => $f->id],
                             alidoId: $aliadoId
                         );
@@ -2640,13 +3063,63 @@ class FacturacionController extends Controller
                               ($c->cliente?->segundo_apellido ?? ''))
                       ?: '—';
 
-            $dias = $this->calcularDias($c, $mes, $anio);
+            $diasCotizar = 30;
+            $esIndActPrimerMes = false;
 
-            // ¿Es afiliación?
-            $esAfil = $c->fecha_ingreso
-                && (int)$c->fecha_ingreso->month === $mes
-                && (int)$c->fecha_ingreso->year  === $anio;
-            if ($fact) $esAfil = $fact->tipo === 'afiliacion';
+            $esArlModalidad = (int)($c->tipo_modalidad_id) === 15;
+            if ($esArlModalidad) {
+                $fArl = $c->fecha_arl ?? $c->fecha_ingreso;
+                if ($fArl) {
+                    $mesArl  = (int)$fArl->month;
+                    $anioArl = (int)$fArl->year;
+                    if ($mesArl === $mes && $anioArl === $anio) {
+                        $diasCotizar = 0;
+                    } else {
+                        $diasCotizar = 0;
+                    }
+                } else {
+                    $diasCotizar = 0;
+                }
+            } elseif ($c->fecha_ingreso) {
+                $fIng = $c->fecha_ingreso;
+                $mesIngreso  = (int)$fIng->month;
+                $anioIngreso = (int)$fIng->year;
+                $esIndAct = (int)($c->tipo_modalidad_id) === 11;
+
+                if ($mesIngreso === $mes && $anioIngreso === $anio) {
+                    if ($esIndAct) {
+                        $esIndActPrimerMes = true;
+                        $diasCotizar = max(1, 30 - $fIng->day + 1);
+                    } else {
+                        $diasCotizar = 0;
+                    }
+                } else {
+                    $mesAnterior  = $mes === 1 ? 12 : $mes - 1;
+                    $anioAnterior = $mes === 1 ? $anio - 1 : $anio;
+
+                    if ($mesIngreso === $mesAnterior && $anioIngreso === $anioAnterior) {
+                        $diasCotizar = max(1, 30 - $fIng->day + 1);
+                    }
+                }
+            }
+
+            // ¿Es afiliación pura?
+            $esAfil = false;
+            if ($esArlModalidad) {
+                $esAfil = true;
+            } elseif ($c->fecha_ingreso) {
+                $fIngC = $c->fecha_ingreso;
+                if ((int)$fIngC->month === $mes && (int)$fIngC->year === $anio) {
+                    if (!$esIndActPrimerMes) {
+                        $esAfil = true;
+                    }
+                }
+            }
+            if ($fact) {
+                $esAfil = $fact->tipo === 'afiliacion' && !($fact->afiliacion > 0 && $fact->total_ss > 0);
+            }
+
+            $esRetirado = $c->estado === 'retirado';
 
             if ($fact) {
                 $vEps  = $r100($fact->v_eps);
@@ -2657,23 +3130,43 @@ class FacturacionController extends Controller
                 $vIva  = $r100($fact->iva);
                 $vTot  = (int)$fact->total;
                 $estado = $fact->estado;
+            } elseif ($esRetirado) {
+                $vEps = $vArl = $vAFP = $vCaja = $vIva = $vAdm = 0;
+                $vTot = 0;
+                $estado = 'sin_factura';
+            } elseif ($esArlModalidad && !$esAfil) {
+                $vEps = $vArl = $vAFP = $vCaja = $vIva = $vAdm = 0;
+                $vTot = 0;
+                $estado = 'sin_factura';
+            } elseif ($esIndActPrimerMes) {
+                $tieneIva = $c->cliente ? (strtoupper(trim($c->cliente->iva ?? '')) === 'SI') : false;
+                $cotiz = $c->calcularCotizacion($diasCotizar, $tieneIva);
+                $vEps  = $r100($cotiz['eps']??0);
+                $vArl  = $r100($cotiz['arl']??0);
+                $vAFP  = $r100($cotiz['pen']??0);
+                $vCaja = $r100($cotiz['caja']??0);
+                $vIva  = $r100($cotiz['iva']??0);
+                $vSS   = $r100($cotiz['ss']);
+                $vAdm  = (int)(($c->administracion??0) + ($c->admon_asesor??0));
+                $vTot  = $vSS + $vAdm + $vIva + (int)(($c->costo_afiliacion ?? 0) + ($c->seguro ?? 0));
+                $estado = 'sin_factura';
             } elseif ($esAfil) {
-                $vEps=$vArl=$vAFP=$vCaja=$vAdm=$vIva=0;
+                $vEps = $vArl = $vAFP = $vCaja = $vIva = $vAdm = 0;
                 $vTot = (int)(($c->costo_afiliacion ?? 0) + ($c->seguro ?? 0));
                 $estado = 'sin_factura';
             } else {
-                $cotiz = $c->calcularCotizacion($dias);
+                $tieneIva = $c->cliente ? (strtoupper(trim($c->cliente->iva ?? '')) === 'SI') : false;
+                $cotiz = $c->calcularCotizacion($diasCotizar, $tieneIva);
                 $vEps  = $r100($cotiz['eps']  ?? 0);
                 $vArl  = $r100($cotiz['arl']  ?? 0);
                 $vAFP  = $r100($cotiz['pen']  ?? 0);
                 $vCaja = $r100($cotiz['caja'] ?? 0);
                 $vAdm  = (int)(($c->administracion ?? 0) + ($c->admon_asesor ?? 0));
                 $vIva  = $r100($cotiz['iva']  ?? 0);
-                $vTot  = $vEps + $vArl + $vAFP + $vCaja + $vAdm + $vIva;
+                $vSS   = $r100($cotiz['ss']   ?? 0);
+                $vTot  = $vSS + $vAdm + $vIva;
                 $estado = 'sin_factura';
             }
-
-            $saldo = Factura::saldoClienteMesPrevio($aliadoId, $c->cedula, $mes, $anio);
 
             return (object)[
                 'cedula'         => $c->cedula,
@@ -2686,7 +3179,7 @@ class FacturacionController extends Controller
                 'afp_nombre'     => $c->pension?->nombre ?? '—',
                 'caja_nombre'    => $c->caja?->nombre ?? '—',
                 'es_afil'        => $esAfil,
-                'dias'           => $dias,
+                'dias'           => $diasCotizar,
                 'v_eps'          => $vEps,
                 'v_arl'          => $vArl,
                 'v_afp'          => $vAFP,
@@ -2695,7 +3188,6 @@ class FacturacionController extends Controller
                 'v_iva'          => $vIva,
                 'v_total'        => $vTot,
                 'estado'         => $estado,
-                // saldo_proximo: neto acumulado hasta este período por contrato
                 'saldo_proximo'  => (int) Factura::saldoClienteMesPrevio(
                     $aliadoId, $c->cedula, $mes, $anio, $c->id
                 )['a_favor'] - (int) Factura::saldoClienteMesPrevio(

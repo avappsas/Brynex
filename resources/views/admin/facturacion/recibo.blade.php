@@ -9,11 +9,33 @@ $fmt   = fn($v) => '$'.number_format($v ?? 0, 0, ',', '.');
 $esGrupo = $grupoNp && $grupoNp->count() > 0 && !request()->boolean('individual');
 $filas   = $esGrupo ? $grupoNp : collect([$factura]);
 
+// ── Detectar par Afiliación + Planilla (independientes, modo "ambos") ──
+// Cuando el mismo numero_factura tiene 2 registros del mismo contrato
+// con tipos afiliacion y planilla, redirigimos la referencia al registro
+// de planilla para que el recibo se vea como planilla (con SS, entidades)
+// mientras que totAfil suma el valor de la afiliación como ítem extra.
+$esPar = false;
+if ($filas->count() === 2) {
+    $tipos       = $filas->pluck('tipo')->sort()->values()->toArray();
+    $contratoIds = $filas->pluck('contrato_id')->unique();
+    if ($contratoIds->count() === 1
+        && in_array('afiliacion', $tipos)
+        && in_array('planilla',   $tipos)
+    ) {
+        $esPar       = true;
+        $factPlanRef = $filas->firstWhere('tipo', 'planilla');
+        if ($factPlanRef) {
+            $factura = $factPlanRef; // usar planilla como referencia de la vista
+        }
+    }
+}
+
 // Empresa (factura siempre a nombre de la empresa, no del trabajador)
 $empresaObj = null;
 if ($esGrupo) {
     $codEmp = $filas->first()->contrato?->cliente?->cod_empresa;
     if ($codEmp) $empresaObj = \App\Models\Empresa::find($codEmp);
+
 }
 
 // Totales del grupo
@@ -826,7 +848,7 @@ $vPen1    = (int)($factura->v_afp  ?? 0);
 $vCaj1    = (int)($factura->v_caja ?? 0);
 $vAdm1    = (int)($factura->admon  ?? 0) + (int)($factura->admin_asesor ?? 0);
 $vSeg1    = (int)($factura->seguro ?? 0);
-$vAfil1   = (int)($factura->afiliacion ?? 0);
+$vAfil1   = $esPar ? $totAfil : (int)($factura->afiliacion ?? 0);
 $vMens1   = (int)($factura->mensajeria ?? 0);
 $vOtros1  = (int)($factura->otros ?? 0);
 $vIva1    = (int)($factura->iva ?? 0);
@@ -980,6 +1002,12 @@ $empresaCliente = $cli1?->empresa ?? ($cli1?->cod_empresa ? \App\Models\Empresa:
         <span class="fact-cliente-lbl">Período</span>
         <span class="fact-cliente-val" style="color:#0f172a;font-weight:700">
             {{ $meses[$factura->mes-1] }} {{ $factura->anio }}
+            @if($esPar)
+                @php $filaAfil = $filas->firstWhere('tipo','afiliacion'); @endphp
+                @if($filaAfil)
+                <span style="font-size:.65rem;background:#ede9fe;color:#7c3aed;padding:.1rem .4rem;border-radius:4px;margin-left:.3rem;font-weight:700">+ Afil: {{ $meses[$filaAfil->mes-1] }} {{ $filaAfil->anio }}</span>
+                @endif
+            @endif
         </span>
     </div>
     <div class="fact-cliente-row">

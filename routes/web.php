@@ -196,8 +196,7 @@ Route::middleware('auth')->group(function () {
             Route::get('consignacion/{id}/imagen',      [$fc, 'verImagenConsignacion'])  ->name('consignacion.imagen.ver');
             // Otro ingreso (trámites: traslado EPS, inclusión beneficiarios, etc.)
             Route::post('otro-ingreso',                 [$fc, 'facturarOtroIngreso'])    ->name('otro_ingreso.store');
-            // Cuenta de Cobro
-            Route::post('cuenta-cobro',                 [$fc, 'cuentaCobroPreview'])     ->name('cuenta_cobro.preview');
+            Route::match(['get', 'post'], 'cuenta-cobro', [$fc, 'cuentaCobroPreview'])->name('cuenta_cobro.preview');
 
             // ── Facturación Electrónica (Dataico) — solo admin + superadmin ──
             $fe = \App\Http\Controllers\Admin\FacturacionElectronicaController::class;
