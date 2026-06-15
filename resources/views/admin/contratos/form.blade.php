@@ -1595,6 +1595,30 @@ function mrOnSubmit() {
 </div>
 @endif
 
+{{-- ══ MODAL RECIBO (iframe) ══ --}}
+@if($esEdicion)
+<div id="recibo-modal-ov"
+     onclick="if(event.target.id==='recibo-modal-ov')cerrarRecibo()"
+     style="display:none;position:fixed;inset:0;background:rgba(10,16,30,.72);backdrop-filter:blur(5px);z-index:10600;align-items:center;justify-content:center;padding:.5rem">
+  <div style="position:relative;width:min(1100px,97vw);height:93vh;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 28px 80px rgba(0,0,0,.55);display:flex;flex-direction:column">
+    {{-- Header --}}
+    <div style="background:linear-gradient(135deg,#0f172a,#1e3a5f);padding:.55rem 1rem;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+      <div style="display:flex;align-items:center;gap:.55rem">
+        <span style="font-size:1.1rem">🧾</span>
+        <span style="color:#fff;font-size:.92rem;font-weight:700;letter-spacing:.02em">Recibo de Pago</span>
+      </div>
+      <button type="button" onclick="cerrarRecibo()"
+              style="background:rgba(255,255,255,.15);color:#fff;border:none;border-radius:7px;width:30px;height:30px;font-size:1rem;cursor:pointer;font-weight:700;line-height:1;transition:background .15s"
+              onmouseover="this.style.background='rgba(255,255,255,.28)'" onmouseout="this.style.background='rgba(255,255,255,.15)'">&#x2715;</button>
+    </div>
+    {{-- iframe --}}
+    <div style="flex:1;overflow:hidden;background:#e8edf2;padding:.35rem 0 0;">
+      <iframe id="recibo-frame" src="" style="width:100%;height:100%;border:none;display:block"></iframe>
+    </div>
+  </div>
+</div>
+@endif
+
 <style>
 .lb  { display:block;font-size:0.67rem;font-weight:700;color:#475569;margin-bottom:0.15rem;text-transform:uppercase;letter-spacing:0.03em; }
 .cp  { background:#fff;border-radius:11px;border:1px solid #e2e8f0;padding:0.8rem 0.95rem; }
@@ -2763,33 +2787,23 @@ if (typeof MF !== 'undefined' && FC_CONTRATO_ID) {
         otrosContratos:         FC_OTROS_CONTRATOS,
         urlCotizacionContrato:  FC_URL_COTIZACION,
         onExito: (data) => {
-            if (data.recibo_url) window.open(data.recibo_url, '_blank');
-            @if(request()->has('iframe'))
-            // Modo iframe: notificar al padre para actualizar solo esta fila
-            if (window.parent !== window) {
-                window.parent.postMessage(
-                    { type: 'brynex:iframe_done', accion: 'facturacion', contratoId: FC_CONTRATO_ID, mensaje: data.mensaje },
-                    window.location.origin
-                );
+            if (data.recibo_url) {
+                let url = data.recibo_url;
+                url += (url.includes('?') ? '&' : '?') + 'individual=1&modal=1';
+                abrirRecibo(url, data);
+            } else {
+                @if(request()->has('iframe'))
+                if (window.parent !== window) {
+                    window.parent.postMessage(
+                        { type: 'brynex:iframe_done', accion: 'facturacion', contratoId: FC_CONTRATO_ID, mensaje: data.mensaje },
+                        window.location.origin
+                    );
+                }
+                @else
+                alert(data.mensaje || 'Factura generada correctamente.');
+                window.location.reload();
+                @endif
             }
-            @else
-            alert(data.mensaje || 'Factura generada correctamente.');
-            // No reabrir modal si fue modo "ambos" (afil + planilla ya generadas)
-            if (!data.indep_ambos && data.mes_facturado && data.anio_facturado) {
-                let sigMes = data.mes_facturado + 1;
-                let sigAnio = data.anio_facturado;
-                if (sigMes > 12) { sigMes = 1; sigAnio++; }
-
-                // Pre-establecer en el DOM los nuevos valores de mes y año
-                const inpMes  = document.getElementById('mf-mes');
-                const inpAnio = document.getElementById('mf-anio');
-                if (inpMes)  inpMes.value  = sigMes;
-                if (inpAnio) inpAnio.value = sigAnio;
-
-                // Volver a abrir de forma automática
-                abrirModalFacturarContrato();
-            }
-            @endif
         }
     });
 }
@@ -2889,6 +2903,43 @@ function cerrarHistorial() {
     if (historialCambiosRealizados) {
         window.location.reload();
     }
+}
+
+let _facturaData = null;
+
+function abrirRecibo(url, data) {
+    _facturaData = data;
+    const frame = document.getElementById('recibo-frame');
+    const modal = document.getElementById('recibo-modal-ov');
+    if (frame && modal) {
+        frame.src = url;
+        modal.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+    }
+}
+
+function cerrarRecibo() {
+    const frame = document.getElementById('recibo-frame');
+    const modal = document.getElementById('recibo-modal-ov');
+    if (modal) modal.style.display = 'none';
+    if (frame) frame.src = '';
+    document.body.style.overflow = '';
+    
+    @if(request()->has('iframe'))
+        if (window.parent !== window) {
+            window.parent.postMessage(
+                { 
+                    type: 'brynex:iframe_done', 
+                    accion: 'facturacion', 
+                    contratoId: FC_CONTRATO_ID, 
+                    mensaje: (_facturaData && _facturaData.mensaje) || 'Factura generada correctamente.' 
+                },
+                window.location.origin
+            );
+        }
+    @else
+        window.location.reload();
+    @endif
 }
 @endif
 </script>
