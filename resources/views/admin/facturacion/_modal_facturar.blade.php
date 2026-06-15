@@ -551,7 +551,7 @@
             <div style="font-size:.57rem;font-weight:800;color:#7c3aed;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.3rem;">⚡ Primer mes — ¿Qué se cobra?</div>
             <div style="display:flex;gap:.75rem;align-items:center;">
                 <label style="display:flex;align-items:center;gap:.3rem;font-size:.78rem;font-weight:700;color:#6d28d9;cursor:pointer;white-space:nowrap;">
-                    <input type="radio" name="mf_indep_modo" value="afiliacion" checked onchange="MF.actualizarTipo()" style="accent-color:#7c3aed;"> Solo Afiliación
+                    <input type="radio" name="mf_indep_modo" value="normal" checked onchange="MF.actualizarTipo()" style="accent-color:#7c3aed;"> Solo Afiliación
                 </label>
                 <label style="display:flex;align-items:center;gap:.3rem;font-size:.78rem;font-weight:700;color:#6d28d9;cursor:pointer;white-space:nowrap;">
                     <input type="radio" name="mf_indep_modo" value="ambos" onchange="MF.actualizarTipo()" style="accent-color:#7c3aed;"> Planilla + Afiliación

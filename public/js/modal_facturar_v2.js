@@ -413,7 +413,7 @@ const MF = (function () {
         // Mora: pre-cargar desde _cfg si viene del servidor, si no 0
         _mora = parseInt(_cfg.moraCalculada || 0);
         setVal('mf-mora', _mora);
-        document.querySelectorAll('input[name="mf_indep_modo"]').forEach(r => { if (r.value === 'afiliacion') r.checked = true; });
+        document.querySelectorAll('input[name="mf_indep_modo"]').forEach(r => { if (r.value === 'normal') r.checked = true; });
         _saldoFavor = 0; _saldoPendiente = 0;
         // Reset checkbox cartera
         const chkCart = document.getElementById('mf-chk-cartera');
