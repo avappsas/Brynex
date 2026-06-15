@@ -566,7 +566,7 @@ const MF = (function () {
 
         try {
             const url = _cfg.urlCotizacionContrato + '/' + contratoId + '?mes=' + mes + '&anio=' + anio;
-            const data = await fetch(url, { headers: { 'X-CSRF-TOKEN': _cfg.csrf } }).then(r => r.json());
+            const data = await fetch(url, { headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': _cfg.csrf } }).then(r => r.json());
 
             if (spinner) spinner.style.display = 'none';
 
@@ -700,7 +700,7 @@ const MF = (function () {
         const anio = parseInt(el('mf-anio')?.value);
         try {
             const url = _cfg.urlMesPagado + '/' + _cfg.contratoId + '?mes=' + mes + '&anio=' + anio;
-            const data = await fetch(url, { headers: { 'X-CSRF-TOKEN': _cfg.csrf } }).then(r => r.json());
+            const data = await fetch(url, { headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': _cfg.csrf } }).then(r => r.json());
             const avisoMes = el('mf-aviso-mes');
             const saldoPanel = el('mf-saldos-panel');
             const meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
@@ -868,7 +868,7 @@ const MF = (function () {
         try {
             const params = ids.map(id => 'contratos[]=' + id).join('&');
             const url = _cfg.urlSaldosContratos + '?' + params + '&mes=' + mes + '&anio=' + anio;
-            const data = await fetch(url, { headers: { 'X-CSRF-TOKEN': _cfg.csrf } }).then(r => r.json());
+            const data = await fetch(url, { headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': _cfg.csrf } }).then(r => r.json());
 
             _saldoFavor = parseInt(data.total_a_favor || 0);
             _saldoPendiente = parseInt(data.total_pendiente || 0);
@@ -1732,7 +1732,11 @@ const MF = (function () {
 
             const res = await fetch(_cfg.urlFacturar, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': _cfg.csrf },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': _cfg.csrf
+                },
                 body: JSON.stringify(body),
             });
 
