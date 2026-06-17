@@ -66,6 +66,14 @@
             <div class="c-desc">Gestionar cuentas bancarias del aliado. Marcar cuáles aparecen en la <strong>Cuenta de Cobro</strong> (campo 💳 Para Cobro).</div>
         </a>
 
+        <a class="cfg-card" href="{{ route('admin.facturacion.electronica.index') }}"
+           style="--c:#2563eb;--bc:#93c5fd">
+            <span class="c-badge" style="background:#dbeafe;color:#1e40af">Electrónica</span>
+            <div class="c-icon">🧾</div>
+            <div class="c-title">Facturación Electrónica</div>
+            <div class="c-desc">Gestión y control de Facturación Electrónica a través del proveedor tecnológico Dataico.</div>
+        </a>
+
 
         {{-- ── USUARIOS Y ACCESO ────────────────────────────── --}}
         <hr class="cfg-sep">

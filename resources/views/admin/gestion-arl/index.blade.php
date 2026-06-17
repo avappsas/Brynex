@@ -249,6 +249,7 @@ body{display:flex;flex-direction:column}
             'n_arl'         => $c->n_arl ?? 1,
             'semaforo'      => $sem,
             'dias_restantes'=> $diasR,
+            'empresa_id'    => $c->cliente?->empresa?->id ?? null,
         ]);
     @endphp
     <tr id="row-{{ $c->id }}">
@@ -377,7 +378,7 @@ body{display:flex;flex-direction:column}
 
 {{-- ══ MODAL RETIRO (iframe contrato form) ══ --}}
 <div class="modal-bg" id="modalRetirar">
-<div class="modal-box wide" style="max-width:1200px;padding:0;overflow:hidden;">
+<div class="modal-box wide" style="max-width:96vw;width:96vw;padding:0;overflow:hidden;">
     <div style="background:#0f172a;color:#fff;padding:.75rem 1rem;display:flex;align-items:center;justify-content:space-between;">
         <strong style="font-size:.9rem;">❌ Retiro Informativo — <span id="retirar-nombre"></span></strong>
         <button class="modal-close" onclick="cerrarModal('modalRetirar')" style="color:#94a3b8;font-size:1.2rem;">✕</button>
@@ -388,12 +389,12 @@ body{display:flex;flex-direction:column}
 
 {{-- ══ MODAL FACTURAR (iframe partial) ══ --}}
 <div class="modal-bg" id="modalFacturar">
-<div class="modal-box wide" style="max-width:780px;padding:0;overflow:hidden;">
+<div class="modal-box wide" style="max-width:96vw;width:96vw;padding:0;overflow:hidden;">
     <div style="background:#1e40af;color:#fff;padding:.75rem 1rem;display:flex;align-items:center;justify-content:space-between;">
         <strong style="font-size:.9rem;">💳 Facturar ARL — <span id="facturar-nombre"></span></strong>
         <button class="modal-close" onclick="cerrarModal('modalFacturar')" style="color:#bfdbfe;font-size:1.2rem;">✕</button>
     </div>
-    <iframe id="facturar-iframe" src="" style="width:100%;height:600px;border:none;"></iframe>
+    <iframe id="facturar-iframe" src="" style="width:100%;height:780px;border:none;"></iframe>
 </div>
 </div>
 
@@ -448,11 +449,16 @@ async function guardarRenovacion() {
     }
 }
 
-/* ── Modal Facturar (iframe hacia la vista de facturación individual) ── */
+/* ── Modal Facturar (iframe hacia la vista de facturación individual o empresa) ── */
 function abrirFacturar(ctx) {
-    document.getElementById('facturar-nombre').textContent = ctx.nombre;
-    // Abre el contrato en la vista de facturación con iframe
-    const url = `/admin/facturacion?cedula=${ctx.cedula}&contrato_id=${ctx.id}&tipo=afiliacion&iframe=1`;
+    let url;
+    if (ctx.empresa_id && parseInt(ctx.empresa_id) > 1) {
+        document.getElementById('facturar-nombre').textContent = ctx.razon_social;
+        url = `/admin/facturacion/empresa/${ctx.empresa_id}?iframe=1`;
+    } else {
+        document.getElementById('facturar-nombre').textContent = ctx.nombre;
+        url = `/admin/contratos/${ctx.id}/edit?iframe=1&facturar=1`;
+    }
     document.getElementById('facturar-iframe').src = url;
     document.getElementById('modalFacturar').classList.add('open');
 }

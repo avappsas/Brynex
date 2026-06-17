@@ -951,6 +951,11 @@ class FacturacionController extends Controller
                         $distAdmonRaw  = (int)($validated['dist_admon']     ?? 0);
                         // dist_admon en la tabla = empresa admon puro
                         $distAdmon    = $distAdmonRaw;
+                        
+                        if ((int)$contrato->tipo_modalidad_id === 15) {
+                            $distRetiro = 0;
+                        }
+
                         // Recalcular utilidad = total - todos los demás
                         $distUtilidad = max(0, $afiliacion - $distAsesor - $distRetiro - $distEncargado - $distAdmon);
                     } else {
@@ -961,6 +966,11 @@ class FacturacionController extends Controller
                             $distAsesor   = $dist['asesor'];
                             $distRetiro   = $dist['retiro'];
                             $distUtilidad = $dist['utilidad'];
+                            
+                            if ((int)$contrato->tipo_modalidad_id === 15) {
+                                $distUtilidad += $distRetiro;
+                                $distRetiro = 0;
+                            }
                         }
                     }
                 }
@@ -1466,6 +1476,11 @@ class FacturacionController extends Controller
                 $distRetiro    = (int)($validated['dist_retiro']    ?? 0);
                 $distEncargado = (int)($validated['dist_encargado'] ?? 0);
                 $distAdmon     = (int)($validated['dist_admon']     ?? 0);
+
+                if ((int)$contrato->tipo_modalidad_id === 15) {
+                    $distRetiro = 0;
+                }
+
                 $distUtilidad  = max(0, $costoAfiliacion - $distAsesor - $distRetiro - $distEncargado - $distAdmon);
             } else {
                 $cfg = \App\Models\ConfiguracionAliado::paraAliado($aliadoId, $contrato->plan_id);
@@ -1475,6 +1490,11 @@ class FacturacionController extends Controller
                     $distAsesor    = $dist['asesor'];
                     $distRetiro    = $dist['retiro'];
                     $distUtilidad  = $dist['utilidad'];
+
+                    if ((int)$contrato->tipo_modalidad_id === 15) {
+                        $distUtilidad += $distRetiro;
+                        $distRetiro = 0;
+                    }
                 }
             }
         }
@@ -2358,6 +2378,13 @@ class FacturacionController extends Controller
 
     private function calcularDias(Contrato $contrato, int $mes, int $anio): int
     {
+        // ── GESTIÓN ARL (id=15): SIEMPRE días=0, nunca planilla ─────────────
+        // Los contratos ARL se facturan como afiliación todos los meses.
+        // No hay SS que cotizar, por ende días_cotizados = 0 siempre.
+        if ((int)$contrato->tipo_modalidad_id === 15) {
+            return 0;
+        }
+
         // Tiempo Parcial: se devuelve 30 porque ARL cotiza mensual completo.
         // AFP y CAJA usan sus propios días; ver calcularSS().
         $mod = $contrato->tipoModalidad;

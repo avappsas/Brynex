@@ -682,8 +682,13 @@ const MF = (function () {
             if (arlBadge) arlBadge.textContent = _cfg.arlNivel ? 'Nivel ' + _cfg.arlNivel : '';
 
             // Días: leer directamente de Alpine (síncrono) antes de que el DOM se actualice
-            const dias = (_cfg.getDias && _cfg.getDias()) || parseInt(document.getElementById('sel_dias_cotizar')?.value) || 30;
-            setText('mf-badge-dias', '📅 ' + dias + ' día' + (dias === 1 ? '' : 's'));
+            const dias = (_cfg.getDias && _cfg.getDias());
+            if (parseInt(_cfg.tipoModalidadId || 0) === 15) {
+                setText('mf-badge-dias', '🛡️ ARL — Afiliación');
+            } else {
+                const diasN = dias || parseInt(document.getElementById('sel_dias_cotizar')?.value) || 30;
+                setText('mf-badge-dias', '📅 ' + diasN + ' día' + (diasN === 1 ? '' : 's'));
+            }
 
             _total = Math.ceil((r.eps || 0) + (r.arl || 0) + (r.pen || 0) + (r.caja || 0))
                 + ceil(r.admon || 0) + ceil(r.seguro || 0) + ceil(r.iva || 0);
@@ -912,12 +917,28 @@ const MF = (function () {
         if (_modo !== 'individual') return;
         const mes = parseInt(el('mf-mes')?.value);
         const anio = parseInt(el('mf-anio')?.value);
+
+        const avisoEl   = el('mf-aviso-tipo');
+        const indepOpts = el('mf-indep-opts');
+
+        // ── GESTIÓN ARL (id=15): SIEMPRE afiliación ─────────────────────────
+        // Los contratos ARL nunca pagan planilla SS. Cada mes es afiliación pura.
+        if (parseInt(_cfg.tipoModalidadId || 0) === 15) {
+            if (avisoEl) {
+                avisoEl.style.display = 'block';
+                avisoEl.style.background = '#f0fdf4';
+                avisoEl.style.borderColor = '#86efac';
+                avisoEl.style.color = '#15803d';
+                avisoEl.innerHTML = '🛡️ <strong>Gestión ARL</strong> — Se factura siempre como <strong>AFILIACIÓN</strong> (sin planilla SS)';
+            }
+            if (indepOpts) indepOpts.style.display = 'none';
+            _setTipo('afiliacion');
+            return;
+        }
+
         const esPrimMes = _cfg.fechaIngresoMes > 0
             && mes === _cfg.fechaIngresoMes
             && anio === _cfg.fechaIngresoAnio;
-
-        const avisoEl = el('mf-aviso-tipo');
-        const indepOpts = el('mf-indep-opts');
 
         if (!esPrimMes) {
             if (avisoEl) avisoEl.style.display = 'none';
@@ -929,6 +950,9 @@ const MF = (function () {
         if (!_cfg.esIndependiente) {
             if (avisoEl) {
                 avisoEl.style.display = 'block';
+                avisoEl.style.background = '';
+                avisoEl.style.borderColor = '';
+                avisoEl.style.color = '';
                 avisoEl.innerHTML = 'Mes de afiliación — Se factura como <strong>AFILIACIÓN</strong> (primer mes del contrato)';
             }
             if (indepOpts) indepOpts.style.display = 'none';
@@ -939,6 +963,7 @@ const MF = (function () {
             actualizarTipo();
         }
     }
+
 
     function actualizarTipo() {
         const modo = document.querySelector('input[name="mf_indep_modo"]:checked')?.value || 'afiliacion';
@@ -1102,8 +1127,12 @@ const MF = (function () {
     function recalc() {
         // Actualizar badge de días con el valor real de Alpine (individual)
         if (_modo === 'individual') {
-            const dias = (_cfg.getDias && _cfg.getDias()) || parseInt(document.getElementById('sel_dias_cotizar')?.value) || 30;
-            setText('mf-badge-dias', '📅 ' + dias + ' día' + (dias === 1 ? '' : 's'));
+            if (parseInt(_cfg.tipoModalidadId || 0) === 15) {
+                setText('mf-badge-dias', '🛡️ ARL — Afiliación');
+            } else {
+                const dias = (_cfg.getDias && _cfg.getDias()) || parseInt(document.getElementById('sel_dias_cotizar')?.value) || 30;
+                setText('mf-badge-dias', '📅 ' + dias + ' día' + (dias === 1 ? '' : 's'));
+            }
         }
         const tipo = el('mf-tipo')?.value;
         let totalBruto = _total;
@@ -1244,20 +1273,30 @@ const MF = (function () {
         // ── Auto-calcular retiro = SS de 1 día cotizado (con Math.ceil) ──
         let autoRetiro = 0;
         const salarioMinimo = _cfg.salarioMinimo || 1423500;
+        const esArl = _modo === 'individual' && parseInt(_cfg.tipoModalidadId || 0) === 15;
+
+        // Deshabilitar input retiro si es ARL
+        const rInput = el('mf-dist-retiro');
+        if (rInput) {
+            rInput.disabled = esArl;
+        }
+
         if (_modo === 'individual') {
-            const elAlpine = document.querySelector('[x-data]');
-            const alpineComp = elAlpine?._x_dataStack?.[0];
-            const salario = alpineComp ? parseInt(alpineComp.salario) : salarioMinimo;
-            
-            const pctEps = _cfg.esIndependiente ? 12.5 : 4.0;
-            const pctPen = 16.0;
-            
-            const valorUnDia = (salario * (pctEps + pctPen) / 100) / 30;
-            autoRetiro = Math.ceil(valorUnDia / 100) * 100;
+            if (!esArl) {
+                const elAlpine = document.querySelector('[x-data]');
+                const alpineComp = elAlpine?._x_dataStack?.[0];
+                const salario = alpineComp ? parseInt(alpineComp.salario) : salarioMinimo;
+                
+                const pctEps = _cfg.esIndependiente ? 12.5 : 4.0;
+                const pctPen = 16.0;
+                
+                const valorUnDia = (salario * (pctEps + pctPen) / 100) / 30;
+                autoRetiro = Math.ceil(valorUnDia / 100) * 100;
+            }
         } else {
-            // Masivo: sumamos para cada contrato de tipo afiliación (1 día por contrato)
+            // Masivo: sumamos para cada contrato de tipo afiliación (1 día por contrato) que NO sea ARL
             _selContratos.forEach(c => {
-                if (c.tipo === 'afiliacion') {
+                if (c.tipo === 'afiliacion' && parseInt(c.tipo_modalidad_id || 0) !== 15) {
                     const pctEps = 4.0; // En masivo (empresa) siempre es Razón Social (4%)
                     const pctPen = 16.0;
                     const valorUnDia = (salarioMinimo * (pctEps + pctPen) / 100) / 30;
@@ -1272,7 +1311,14 @@ const MF = (function () {
     function distRecalc() {
         const total = _totalAfil;
         const asesor = parse(el('mf-dist-asesor')?.value);
-        const retiro = parse(el('mf-dist-retiro')?.value);
+        let retiro = parse(el('mf-dist-retiro')?.value);
+        
+        // Si es ARL en individual, forzar retiro = 0 siempre
+        if (_modo === 'individual' && parseInt(_cfg.tipoModalidadId || 0) === 15) {
+            retiro = 0;
+            setVal('mf-dist-retiro', '0');
+        }
+
         const encargado = parse(el('mf-dist-encargado')?.value);
         const admon = parse(el('mf-dist-admon')?.value); // Gasto/Admon es input
         

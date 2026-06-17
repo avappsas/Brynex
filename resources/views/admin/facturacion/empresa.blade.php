@@ -435,6 +435,7 @@ $totAdmon+=$vAdm;$totIva+=$vIva;$totTotal+=$vTot;$totMora+=$vMora;
     data-afiliacion="{{ $vAfiliacion }}"
     data-tipo="{{ ($esAfil && !$esIndActPrimerMes) ? 'afiliacion' : 'planilla' }}"
     data-tipomod="{{ $tipoMod }}"
+    data-tipo_modalidad_id="{{ $c->tipo_modalidad_id }}"
     data-rs="{{ $rs }}"
     data-fecha_ingreso_retiro="{{ $esRetirado && $c->fecha_retiro ? $c->fecha_retiro->format('Y-m-d') : ($c->fecha_ingreso ? $c->fecha_ingreso->format('Y-m-d') : '') }}"
     data-vmora="{{ $vMora }}"
@@ -1061,6 +1062,7 @@ function _buildContratosSelec() {
         tipo:      r.dataset.tipo   || 'planilla',
         afiliacion: parseInt(r.dataset.afiliacion || 0),
         esindact:  r.dataset.esindact === '1',   // I ACT primer mes: afil + planilla juntas
+        tipo_modalidad_id: parseInt(r.dataset.tipo_modalidad_id || 0),
     }));
 }
 

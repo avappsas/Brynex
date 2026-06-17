@@ -2546,6 +2546,15 @@ function cotizador() {
         // Esto permite que al facturar en mayo un contrato que ingresó el 24-abril,
         // se pre-seleccionen 7 días en lugar de 30.
         calcularDiasDesde(fechaStr, mesFacturar = null, anioFacturar = null) {
+            // ── GESTIÓN ARL (id=15): días siempre = 0 ─────────────────────────
+            // Los contratos ARL se facturan como afiliación cada mes.
+            // No hay SS ni planilla, por ende días_cotizados = 0 siempre.
+            if (parseInt(this.tipoModalidadId || 0) === 15) {
+                this.diasCotizar = 0;
+                const sel = document.getElementById('sel_dias_cotizar');
+                if (sel) sel.value = 0;
+                return;
+            }
             if (!fechaStr) { this.diasCotizar = 30; return; }
             const fecha  = new Date(fechaStr + 'T00:00:00'); // evitar timezone
             
@@ -2622,6 +2631,8 @@ function cotizador() {
             }
             actualizarBloqueoArl();
             filtrarPlanes(e.target.value);
+            // Recalcular días según la nueva modalidad (especialmente ARL → 0 días)
+            this.calcularDiasDesde(document.querySelector('input[name=fecha_ingreso]')?.value);
             this.recalcular();
         },
 
@@ -2782,7 +2793,13 @@ if (typeof MF !== 'undefined' && FC_CONTRATO_ID) {
         salarioMinimo:     SALARIO_MINIMO,
         distDefaults:      FC_DIST_DEFAULTS,
         getAlpineResult:   () => document.querySelector('[x-data]')?._x_dataStack?.[0]?.result || {},
-        getDias:           () => parseInt(document.querySelector('[x-data]')?._x_dataStack?.[0]?.diasCotizar) || 30,
+        getDias:           () => {
+            const alpine = document.querySelector('[x-data]')?._x_dataStack?.[0];
+            if (!alpine) return 30;
+            // ARL (id=15): siempre 0 días — nunca planilla
+            if (parseInt(alpine.tipoModalidadId || 0) === 15) return 0;
+            return parseInt(alpine.diasCotizar) || 30;
+        },
         // Multi-contrato
         otrosContratos:         FC_OTROS_CONTRATOS,
         urlCotizacionContrato:  FC_URL_COTIZACION,
@@ -3364,6 +3381,33 @@ async function confirmarDuplicarIR() {
 
 // Inicializar fecha al cargar
 document.addEventListener('DOMContentLoaded', mirActualizarFecha);
+
+// Auto-abrir modal si viene de url (?facturar=1 o ?abrir_retiro=...)
+document.addEventListener('DOMContentLoaded', function() {
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('facturar') === '1') {
+        setTimeout(() => {
+            if (typeof abrirModalFacturarContrato === 'function') abrirModalFacturarContrato();
+        }, 400);
+    }
+    if (urlParams.get('abrir_retiro') === 'informativo' || urlParams.get('abrir_retiro') === '1') {
+        setTimeout(() => {
+            const m = document.getElementById('modal-retiro');
+            if (m) {
+                m.style.display = 'flex';
+                if (typeof mrInitSelects === 'function') mrInitSelects();
+                if (typeof mrSetDefault === 'function') mrSetDefault();
+                if (urlParams.get('abrir_retiro') === 'informativo') {
+                    const rInfo = document.querySelector('input[name="_tipo_retiro_ui"][value="informativo"]');
+                    if (rInfo) {
+                        rInfo.checked = true;
+                        if (typeof mrTipo === 'function') mrTipo('informativo');
+                    }
+                }
+            }
+        }, 400);
+    }
+});
 </script>
 @endpush
 @endif
