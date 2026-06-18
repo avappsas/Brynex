@@ -334,12 +334,168 @@ table.hi-tbl{width:100%;border-collapse:collapse;font-size:.77rem}
 </div>
 </div>
 
+{{-- ══ SECCIÓN ANTICIPOS DEL CLIENTE ══════════════════════════════════════════ --}}
+<div style="margin-top:1.2rem;">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;margin-bottom:.65rem;">
+        <div style="font-size:.8rem;font-weight:800;color:#0f172a;display:flex;align-items:center;gap:.4rem;">
+            💰 Anticipos del Cliente
+        </div>
+        <button id="btn-toggle-anticipos"
+            onclick="toggleAnticiposCliente()"
+            style="display:inline-flex;align-items:center;gap:.35rem;padding:.3rem .85rem;border-radius:20px;font-size:.72rem;font-weight:700;border:1.5px solid #d97706;background:#fff;color:#92400e;cursor:pointer;transition:all .15s;">
+            💰 Ver Anticipos
+        </button>
+    </div>
+
+    <div id="sec-anticipos-cliente" style="display:none;">
+        <div id="ant-cli-loading" style="text-align:center;padding:1.5rem;color:#94a3b8;font-size:.82rem;">
+            ⏳ Cargando anticipos...
+        </div>
+        <div id="ant-cli-wrap" style="display:none;background:#fff;border:1.5px solid #e2e8f0;border-radius:14px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.04);">
+            <table style="width:100%;border-collapse:collapse;font-size:.78rem;">
+                <thead>
+                    <tr style="background:#fef3c7;">
+                        <th style="padding:.45rem .75rem;font-size:.6rem;font-weight:800;color:#78350f;text-transform:uppercase;letter-spacing:.05em;text-align:left;white-space:nowrap;">Fecha</th>
+                        <th style="padding:.45rem .75rem;font-size:.6rem;font-weight:800;color:#78350f;text-transform:uppercase;letter-spacing:.05em;text-align:left;">Forma</th>
+                        <th style="padding:.45rem .75rem;font-size:.6rem;font-weight:800;color:#78350f;text-transform:uppercase;letter-spacing:.05em;text-align:right;">Valor</th>
+                        <th style="padding:.45rem .75rem;font-size:.6rem;font-weight:800;color:#78350f;text-transform:uppercase;letter-spacing:.05em;text-align:right;">Aplicado</th>
+                        <th style="padding:.45rem .75rem;font-size:.6rem;font-weight:800;color:#78350f;text-transform:uppercase;letter-spacing:.05em;text-align:right;">Disponible</th>
+                        <th style="padding:.45rem .75rem;font-size:.6rem;font-weight:800;color:#78350f;text-transform:uppercase;letter-spacing:.05em;">Estado</th>
+                        <th style="padding:.45rem .75rem;font-size:.6rem;font-weight:800;color:#78350f;text-transform:uppercase;letter-spacing:.05em;">Factura</th>
+                        <th style="padding:.45rem .75rem;font-size:.6rem;font-weight:800;color:#78350f;text-transform:uppercase;letter-spacing:.05em;">Plan</th>
+                        <th style="padding:.45rem .75rem;font-size:.6rem;font-weight:800;color:#78350f;text-transform:uppercase;letter-spacing:.05em;">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="ant-cli-tbody"></tbody>
+            </table>
+            <div id="ant-cli-empty" style="display:none;padding:2rem;text-align:center;color:#94a3b8;font-size:.85rem;">
+                <div style="font-size:1.8rem;margin-bottom:.5rem;">💰</div>
+                Este cliente no tiene anticipos registrados.
+            </div>
+        </div>
+    </div>
+</div>
+{{-- ══ FIN SECCIÓN ANTICIPOS ══════════════════════════════════════════════ --}}
+
 @push('scripts')
 <script>
 const HI_MESES = @json($meses_full);
 const HI_FMT   = v => '$' + Math.ceil(v||0).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'.');
 const ANULAR_URL = '{{ rtrim(route("admin.facturacion.anular", ["id" => 0]), "/0") }}';
 const CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]')?.content || '{{ csrf_token() }}';
+const CEDULA_CLIENTE = '{{ $cedula }}';
+const ANTICIPO_CEDULA_URL = '{{ rtrim(route("admin.anticipos.api.cliente", ["cedula" => "CEDULA_PLH"]), "/CEDULA_PLH") }}';
+
+// ── Anticipos del cliente ──────────────────────────────────────────
+let _anticipsLoaded = false;
+
+function toggleAnticiposCliente() {
+    const sec = document.getElementById('sec-anticipos-cliente');
+    const btn = document.getElementById('btn-toggle-anticipos');
+    const visible = sec.style.display !== 'none';
+
+    if (visible) {
+        sec.style.display = 'none';
+        btn.textContent = '💰 Ver Anticipos';
+        btn.style.background = '#fff';
+        btn.style.color = '#92400e';
+    } else {
+        sec.style.display = 'block';
+        btn.textContent = '▲ Ocultar Anticipos';
+        btn.style.background = '#fef3c7';
+        btn.style.color = '#78350f';
+        if (!_anticipsLoaded) cargarAnticiposCliente();
+    }
+}
+
+async function cargarAnticiposCliente() {
+    const url = ANTICIPO_CEDULA_URL + '/' + CEDULA_CLIENTE;
+    try {
+        const resp = await fetch(url, {
+            headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': CSRF_TOKEN }
+        });
+        const data = await resp.json();
+        _anticipsLoaded = true;
+
+        document.getElementById('ant-cli-loading').style.display = 'none';
+        document.getElementById('ant-cli-wrap').style.display = 'block';
+
+        const tbody = document.getElementById('ant-cli-tbody');
+        const empty = document.getElementById('ant-cli-empty');
+
+        if (!data.ok || !data.anticipos || data.anticipos.length === 0) {
+            empty.style.display = 'block';
+            return;
+        }
+
+        const estadoBadge = {
+            disponible: 'background:#dcfce7;color:#15803d',
+            parcial:    'background:#fef3c7;color:#92400e',
+            aplicado:   'background:#f1f5f9;color:#64748b',
+            devuelto:   'background:#fee2e2;color:#991b1b',
+            anulado:    'background:#fce7f3;color:#831843;text-decoration:line-through',
+            distribuido:'background:#ede9fe;color:#6d28d9',
+        };
+
+        const formaEmoji = {
+            efectivo: '💵', transferencia: '↔️', nequi: '📱', consignacion: '🏦'
+        };
+
+        tbody.innerHTML = data.anticipos.map(a => {
+            const badge = estadoBadge[a.estado] || estadoBadge.aplicado;
+            const emoji = formaEmoji[a.forma_pago] || '💳';
+            const facturaHtml = a.factura_numero
+                ? `<a href="${a.factura_recibo_url}" target="_blank"
+                      style="font-size:.68rem;color:#1d4ed8;font-weight:700;text-decoration:none;
+                             background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;padding:.08rem .3rem;">
+                      #${a.factura_numero} <span style="opacity:.7">${a.factura_mes}/${a.factura_anio}</span>
+                   </a>`
+                : `<span style="color:#94a3b8;font-size:.68rem;">—</span>`;
+
+            const anuladoStyle = a.anulado ? 'opacity:.7;' : '';
+
+            return `<tr style="border-bottom:1px solid #f1f5f9;${a.anulado ? 'background:#fff5f5;' : ''}">
+                <td style="padding:.38rem .75rem;font-family:monospace;font-size:.72rem;${anuladoStyle}">${a.fecha_pago}</td>
+                <td style="padding:.38rem .75rem;">
+                    <span style="display:inline-flex;align-items:center;gap:.2rem;font-size:.68rem;font-weight:700;
+                                 color:#475569;background:#f8fafc;border:1px solid #e2e8f0;padding:.06rem .35rem;border-radius:4px;">
+                        ${emoji} ${a.forma_label}
+                    </span>
+                </td>
+                <td style="padding:.38rem .75rem;text-align:right;font-family:monospace;font-weight:700;color:#1e40af;font-size:.72rem;${a.anulado ? 'text-decoration:line-through;opacity:.6;' : ''}">
+                    ${HI_FMT(a.valor)}
+                </td>
+                <td style="padding:.38rem .75rem;text-align:right;font-family:monospace;font-size:.72rem;color:#15803d;">
+                    ${a.valor_aplicado > 0 ? HI_FMT(a.valor_aplicado) : '<span style="color:#94a3b8;">—</span>'}
+                </td>
+                <td style="padding:.38rem .75rem;text-align:right;font-family:monospace;font-size:.72rem;color:#d97706;font-weight:800;">
+                    ${(!a.anulado && a.valor_disponible > 0) ? HI_FMT(a.valor_disponible) : '<span style="color:#94a3b8;">$0</span>'}
+                </td>
+                <td style="padding:.38rem .75rem;">
+                    <span style="display:inline-flex;align-items:center;padding:.12rem .45rem;border-radius:20px;font-size:.62rem;font-weight:800;${badge}">
+                        ${a.estado_label}
+                    </span>
+                    ${a.motivo_anulacion ? `<div style="font-size:.58rem;color:#94a3b8;margin-top:.1rem;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${a.motivo_anulacion}">${a.motivo_anulacion}</div>` : ''}
+                </td>
+                <td style="padding:.38rem .75rem;">${facturaHtml}</td>
+                <td style="padding:.38rem .75rem;font-size:.68rem;color:#64748b;">${a.plan_nombre || '—'}</td>
+                <td style="padding:.38rem .75rem;">
+                    <a href="${a.recibo_url}" target="_blank"
+                       style="display:inline-flex;align-items:center;gap:.2rem;padding:.18rem .48rem;border-radius:5px;
+                              font-size:.65rem;font-weight:700;text-decoration:none;
+                              background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;">
+                        🧾 Recibo
+                    </a>
+                </td>
+            </tr>`;
+        }).join('');
+
+    } catch(e) {
+        document.getElementById('ant-cli-loading').innerHTML =
+            `<span style="color:#be123c;">❌ Error al cargar anticipos: ${e.message}</span>`;
+    }
+}
+
 
 function toggleGrupo(hdr) {
     hdr.closest('.hi-group').classList.toggle('open');

@@ -286,12 +286,23 @@ class FacturacionController extends Controller
         $anticiposEmpresa       = \App\Models\Anticipo::disponiblesParaEmpresa($aliadoId, $empresa->id);
         $totalAnticipoDisponible = (int)$anticiposEmpresa->sum('valor_disponible');
 
+        // Cargar anticipos individuales de contratos asociados en batch
+        $anticiposPorContrato = \App\Models\Anticipo::aliado($aliadoId)
+            ->whereIn('contrato_id', $contratoIds)
+            ->conSaldo()
+            ->get()
+            ->groupBy('contrato_id');
+
+        $saldoAnticipoPorContrato = $anticiposPorContrato->map(fn($group) => $group->sum('valor_disponible'));
+        $hayAnticipos = $saldoAnticipoPorContrato->isNotEmpty() || $totalAnticipoDisponible > 0;
+
         return view('admin.facturacion.empresa', compact(
             'empresa', 'contratos', 'facturasExistentes',
             'mes', 'anio', 'bancos', 'planosActuales', 'asesores',
             'saldoEmpresaFavor', 'saldoEmpresaPendiente',
             'moraPorContrato',
-            'anticiposEmpresa', 'totalAnticipoDisponible'
+            'anticiposEmpresa', 'totalAnticipoDisponible',
+            'saldoAnticipoPorContrato', 'hayAnticipos'
         ));
     }
 

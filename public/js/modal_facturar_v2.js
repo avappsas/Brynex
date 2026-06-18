@@ -495,8 +495,8 @@ const MF = (function () {
             // Mostrar aviso si hay contratos I ACT primer mes (afiliación + planilla juntas)
             _mostrarAvisoIndActMasivo();
             _fetchSaldosMasivo().then(() => recalc());
-            // Cargar anticipos disponibles de la empresa
-            if (window.MF_ANT) MF_ANT.cargar(null, _cfg.empresaId || null);
+            // Cargar anticipos disponibles de la empresa, filtrados por los contratos seleccionados para facturar
+            if (window.MF_ANT) MF_ANT.cargar(null, _cfg.empresaId || null, _selContratos.map(c => c.id));
         }
     }
 

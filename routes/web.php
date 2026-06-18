@@ -290,13 +290,18 @@ Route::middleware('auth')->group(function () {
         // ── Anticipos (Pagos sin Factura) ────────────────────────────────
         Route::prefix('anticipos')->name('anticipos.')->group(function () {
             $ac = \App\Http\Controllers\Admin\AnticipoController::class;
-            Route::post('/',                        [$ac, 'store'])       ->name('store');
-            Route::get('/informe',                  [$ac, 'informe'])     ->name('informe');
-            Route::post('/{id}/devolver',           [$ac, 'devolver'])    ->name('devolver');
-            Route::delete('/{id}',                  [$ac, 'destroy'])     ->name('destroy');
+            Route::post('/',                        [$ac, 'store'])            ->name('store');
+            Route::post('/distribuir',              [$ac, 'storeDistribuido']) ->name('distribuir');
+            Route::get('/informe',                  [$ac, 'informe'])          ->name('informe');
+            Route::get('/{id}/recibo',              [$ac, 'reciboAnticipo'])   ->name('recibo');
+            Route::post('/{id}/anular',             [$ac, 'anular'])           ->name('anular');
+            Route::post('/{id}/devolver',           [$ac, 'devolver'])         ->name('devolver');
+            Route::delete('/{id}',                  [$ac, 'destroy'])          ->name('destroy');
             // APIs para modal facturar
-            Route::get('/api/contrato/{id}',        [$ac, 'porContrato']) ->name('api.contrato');
-            Route::get('/api/empresa/{id}',         [$ac, 'porEmpresa'])  ->name('api.empresa');
+            Route::get('/api/contrato/{id}',        [$ac, 'porContrato'])      ->name('api.contrato');
+            Route::get('/api/empresa/{id}',         [$ac, 'porEmpresa'])       ->name('api.empresa');
+            Route::get('/api/contratos-empresa/{id}', [$ac, 'contratosEmpresa'])->name('api.contratos_empresa');
+            Route::get('/api/cliente/{cedula}',     [$ac, 'porCliente'])       ->name('api.cliente');
         });
 
         // ── Préstamos / Cartera ──────────────────────────────────────────

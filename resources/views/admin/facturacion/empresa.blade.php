@@ -188,6 +188,12 @@ table.fac-tbl{width:100%;border-collapse:collapse;font-size:.78rem}
 
         <button class="btn-act btn-exp" onclick="exportarExcel()">📊 Excel</button>
 
+        <button class="btn-act" onclick="MAD.abrir({{ $empresa->id }}, '{{ addslashes($empresa->razon_social) }}')"
+            style="background:linear-gradient(135deg,#b45309,#d97706);color:#fff;"
+            title="Registrar anticipo de la empresa para ser distribuido entre contratos">
+            🪙 Registrar Anticipo
+        </button>
+
         <button class="btn-act" onclick="OI_abrirEmpresa()"
             style="background:linear-gradient(135deg,#065f46,#047857);color:#fff;"
             title="Registrar trámite / otro ingreso para esta empresa"
@@ -297,6 +303,11 @@ table.fac-tbl{width:100%;border-collapse:collapse;font-size:.78rem}
     <th onclick="ordenarTabla('mora')" style="cursor:pointer;" class="num-col" title="Clic para ordenar por Mora">
         ⚠️ MORA <span id="sort-icon-mora" class="sort-icon"></span>
     </th>
+    @if($hayAnticipos)
+    <th class="num-col" style="color:#b45309;" title="Anticipo disponible asignado a este contrato">
+        🟡 ANTICIPO
+    </th>
+    @endif
     <th style="text-align:center">
         <select id="filter-estado" class="tbl-header-select" onchange="aplicarFiltrosTabla()" title="Filtrar por Estado">
             <option value="todos">ESTADO ▾</option>
@@ -505,6 +516,21 @@ $totAdmon+=$vAdm;$totIva+=$vIva;$totTotal+=$vTot;$totMora+=$vMora;
             <span style="color:#cbd5e1;font-size:.7rem">—</span>
         @endif
     </td>
+    @if($hayAnticipos)
+    @php
+        $vAnticipo = $saldoAnticipoPorContrato->get($c->id, 0);
+    @endphp
+    <td class="num-col">
+        @if($vAnticipo > 0)
+            <span style="display:inline-block;padding:.1rem .4rem;border-radius:20px;font-size:.62rem;font-weight:700;background:#fef3c7;color:#b45309;"
+                  title="Anticipo disponible asignado a este contrato">
+                ${{ number_format($vAnticipo,0,',','.') }}
+            </span>
+        @else
+            <span style="color:#cbd5e1;font-size:.7rem">—</span>
+        @endif
+    </td>
+    @endif
     @php
         $totAFavor    += $c->saldo_a_favor;
         $totPendiente += $c->saldo_pendiente;
@@ -633,9 +659,8 @@ $totAdmon+=$vAdm;$totIva+=$vIva;$totTotal+=$vTot;$totMora+=$vMora;
     'bancos' => $bancos, 'oiMes' => $oiMes, 'oiAnio' => $oiAnio, 'oiEmpresaId' => $oiEmpresaId
 ])
 
-
-
-
+{{-- ═══ MODAL ANTICIPO DISTRIBUIDO ═════════════════════════════════ --}}
+@include('admin.facturacion._modal_anticipo_distribuido', ['bancos' => $bancos])
 
 {{-- ═══ MODAL ABONAR ═════════════════════════════════════════════ --}}
 <div id="modalAbonar" class="modal-overlay" style="display:none;" onclick="cerrarSi(event,'modalAbonar')">

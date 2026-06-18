@@ -1201,21 +1201,55 @@ window.MF_ANT = {
     _seleccionados: new Set(),
 
     // Carga anticipos disponibles para un contrato o empresa
-    async cargar(contratoId, empresaId) {
+    async cargar(contratoId, empresaId, contratoIdsSeleccionados = null) {
         this._anticipos = [];
         this._seleccionados.clear();
         this._render();
 
         let url = null;
-        if (contratoId) url = `/admin/anticipos/api/contrato/${contratoId}`;
-        else if (empresaId) url = `/admin/anticipos/api/empresa/${empresaId}`;
-        if (!url) { document.getElementById('mf-anticipo-panel').style.display = 'none'; return; }
+        let esModoEmpresa = false;
+
+        if (contratoId) {
+            url = `/admin/anticipos/api/contrato/${contratoId}`;
+        } else if (empresaId) {
+            url = `/admin/anticipos/api/empresa/${empresaId}`;
+            esModoEmpresa = true;
+        }
+        
+        if (!url) {
+            document.getElementById('mf-anticipo-panel').style.display = 'none';
+            return;
+        }
 
         try {
             const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
             const data = await res.json();
-            this._anticipos = data.anticipos || [];
+            
+            if (esModoEmpresa) {
+                // Para empresa, aplanamos individuales y empresariales marcando su origen
+                let individuales = (data.individuales || []).map(a => ({ ...a, tipo_anticipo: 'individual' }));
+                
+                // Si se especifican contratos seleccionados para facturar, filtramos los individuales
+                if (contratoIdsSeleccionados && contratoIdsSeleccionados.length > 0) {
+                    individuales = individuales.filter(a => contratoIdsSeleccionados.includes(a.contrato_id));
+                }
+
+                const empresariales = (data.empresariales || []).map(a => ({ ...a, tipo_anticipo: 'empresa' }));
+                this._anticipos = [...individuales, ...empresariales];
+            } else {
+                // Para contrato individual, todos se tratan como individuales
+                this._anticipos = (data.anticipos || []).map(a => ({ ...a, tipo_anticipo: 'individual' }));
+            }
+
+            // Preseleccionar automáticamente los anticipos individuales
+            this._anticipos.forEach(a => {
+                if (a.tipo_anticipo === 'individual') {
+                    this._seleccionados.add(a.id);
+                }
+            });
+
         } catch(e) {
+            console.error("Error al cargar anticipos:", e);
             this._anticipos = [];
         }
 
@@ -1236,21 +1270,42 @@ window.MF_ANT = {
         const totalDisp = this._anticipos.reduce((s,a) => s + a.valor_disponible, 0);
         badge.textContent = '$' + totalDisp.toLocaleString('es-CO');
 
-        body.innerHTML = this._anticipos.map(a => `
-            <div class="mf-ant-row">
-                <input type="checkbox" class="mf-ant-cb"
-                    id="mf-ant-${a.id}"
-                    data-id="${a.id}" data-val="${a.valor_disponible}"
-                    data-forma="${a.forma_pago}"
-                    onchange="MF_ANT.toggle(${a.id}, this.checked)">
-                <div class="mf-ant-info">
-                    <span>${a.forma_label}${a.referencia ? ' · <em>' + a.referencia + '</em>' : ''}</span>
-                    <span class="mf-ant-fecha">${a.fecha_pago}</span>
-                </div>
-                <span class="mf-ant-monto">$${a.valor_disponible.toLocaleString('es-CO')}</span>
-            </div>
-        `).join('');
+        const individuales = this._anticipos.filter(a => a.tipo_anticipo === 'individual');
+        const empresariales = this._anticipos.filter(a => a.tipo_anticipo === 'empresa');
 
+        const renderRow = (a) => {
+            const isChecked = this._seleccionados.has(a.id) ? 'checked' : '';
+            return `
+                <div class="mf-ant-row">
+                    <input type="checkbox" class="mf-ant-cb"
+                        id="mf-ant-${a.id}"
+                        data-id="${a.id}" data-val="${a.valor_disponible}"
+                        data-forma="${a.forma_pago}"
+                        ${isChecked}
+                        onchange="MF_ANT.toggle(${a.id}, this.checked)">
+                    <div class="mf-ant-info">
+                        <span>
+                            ${a.forma_label}${a.referencia ? ' · <em>' + a.referencia + '</em>' : ''}
+                            ${a.cliente_nombre && a.tipo_anticipo === 'individual' ? ' · <b style="color:#b45309;">' + a.cliente_nombre + '</b>' : ''}
+                        </span>
+                        <span class="mf-ant-fecha">${a.fecha_pago}</span>
+                    </div>
+                    <span class="mf-ant-monto">$${a.valor_disponible.toLocaleString('es-CO')}</span>
+                </div>
+            `;
+        };
+
+        let html = '';
+        if (individuales.length > 0) {
+            html += `<div style="font-size:.55rem;font-weight:800;color:#92400e;text-transform:uppercase;margin:.2rem 0 .15rem;border-bottom:1px dashed #fcd34d;padding-bottom:.05rem;letter-spacing:.04em;">── Anticipos Individuales ──</div>`;
+            html += individuales.map(renderRow).join('');
+        }
+        if (empresariales.length > 0) {
+            html += `<div style="font-size:.55rem;font-weight:800;color:#92400e;text-transform:uppercase;margin:.4rem 0 .15rem;border-bottom:1px dashed #fcd34d;padding-bottom:.05rem;letter-spacing:.04em;">── Anticipos de Empresa ──</div>`;
+            html += empresariales.map(renderRow).join('');
+        }
+
+        body.innerHTML = html;
         this._actualizarSubtotal();
     },
 
