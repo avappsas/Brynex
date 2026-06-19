@@ -183,6 +183,8 @@
 }
 .tabla-planos tbody tr { border-bottom:1px solid #f1f5f9; }
 .tabla-planos tbody tr:hover { background:#f8fafc; }
+.tabla-planos tbody tr.ya-pago td { background:#f0fdf4; }
+.tabla-planos tbody tr.ya-pago:hover td { background:#dcfce7; }
 .tabla-planos tbody td {
     padding:.4rem .45rem; color:#334155;
     white-space:nowrap; overflow:hidden;
@@ -424,6 +426,90 @@
 .rs-row.sel .rp { color:#1d4ed8; }
 .rs-row .rc { text-align:right; font-size:.68rem; color:#16a34a; white-space:nowrap; }
 .rs-row.sel .rc { color:#1d4ed8; }
+
+/* Nuevos botones de descarga en modal */
+.btn-descarga-principal {
+    width: 100%;
+    justify-content: center;
+    padding: .75rem 1rem;
+    background: linear-gradient(135deg, #10b981, #059669);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: .92rem;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
+    transition: all .2s ease-in-out;
+}
+.btn-descarga-principal:hover:not(:disabled) {
+    background: linear-gradient(135deg, #059669, #047857);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(16, 185, 129, 0.3);
+}
+.btn-descarga-principal:active:not(:disabled) {
+    transform: translateY(0);
+}
+.btn-descarga-principal:disabled {
+    background: #cbd5e1;
+    color: #94a3b8;
+    box-shadow: none;
+    cursor: not-allowed;
+    filter: grayscale(.8);
+    opacity: .6;
+}
+
+.contenedor-descargas-secundarias {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: .75rem;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: .5rem;
+}
+
+.btn-descarga-secundario {
+    width: 100%;
+    justify-content: center;
+    padding: .5rem .75rem;
+    background: #fff;
+    color: #334155;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: .8rem;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    transition: all .15s ease-in-out;
+}
+.btn-descarga-secundario:hover:not(:disabled) {
+    background: #f1f5f9;
+    border-color: #94a3b8;
+    color: #0f172a;
+    transform: translateY(-0.5px);
+}
+.btn-descarga-secundario:active:not(:disabled) {
+    transform: translateY(0);
+}
+.btn-descarga-secundario:disabled {
+    background: #cbd5e1;
+    color: #94a3b8;
+    border-color: #cbd5e1;
+    box-shadow: none;
+    cursor: not-allowed;
+    filter: grayscale(.8);
+    opacity: .6;
+}
+.btn-descarga-secundario:last-child {
+    grid-column: span 2;
+}
 </style>
 @endpush
 
@@ -666,7 +752,7 @@
             };
             $clienteNombre = trim(($p->primer_nombre ?? '').' '.($p->primer_ape ?? ''));
         @endphp
-        <tr id="fila-plano-{{ $p->id }}">
+        <tr id="fila-plano-{{ $p->id }}" class="{{ $p->numero_planilla ? 'ya-pago' : '' }}">
             <td style="color:#94a3b8">{{ $i++ }}</td>
             <td>
                 @if($p->contrato_id ?? null)
@@ -929,7 +1015,7 @@
             </div>
             @endif
 
-            {{-- ── Operadores activos del aliado ─────────────────────── --}}
+            {{-- ── Operadores activos del aliado (Oculto a petición del usuario) ──
             @if($operadores->count())
             <div style="margin-bottom:1rem">
                 <div style="font-size:.7rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.4rem">🏦 Operadores activos del aliado</div>
@@ -943,41 +1029,58 @@
                 <div style="font-size:.72rem;color:#94a3b8;margin-top:.35rem">Descargue el formato Excel correspondiente al operador con el que realizará el pago.</div>
             </div>
             @endif
+            --}}
 
             {{-- ── Botones de descarga (deshabilitados si pagado) ────── --}}
             @php $pagado = $planoPagado; @endphp
 
-            <button class="btn-accion btn-pagar" style="width:100%;justify-content:center;padding:.55rem;
-                {{ $pagado ? 'opacity:.4;cursor:not-allowed;filter:grayscale(.6)' : '' }}"
-                    onclick="ejecutarDescarga('xlsx')"
-                    @if($pagado) disabled @endif>
-                📊 Descargar Excel (Simple, Arus)
-            </button>
-            <button class="btn-asopagos" style="width:100%;justify-content:center;padding:.55rem;margin-top:.5rem;
-                {{ $pagado ? 'opacity:.4;cursor:not-allowed;filter:grayscale(.6)' : '' }}"
-                    onclick="ejecutarDescargaAsopagos()"
-                    @if($pagado) disabled @endif>
-                📌 Descargar Excel Asopagos
-            </button>
-            <button class="btn-accion" style="width:100%;justify-content:center;padding:.55rem;margin-top:.5rem;
-                background:{{ $pagado ? '#94a3b8' : 'linear-gradient(135deg,#059669,#047857)' }};
-                color:#fff;border:none;border-radius:8px;cursor:{{ $pagado ? 'not-allowed' : 'pointer' }};
-                font-size:.85rem;display:flex;align-items:center;gap:.4rem;
-                {{ $pagado ? 'opacity:.4;filter:grayscale(.6)' : '' }}"
-                    onclick="ejecutarDescargaMiPlanilla()"
-                    @if($pagado) disabled @endif>
-                📄 Descargar TXT MiPlanilla
-            </button>
-            <button class="btn-accion" style="width:100%;justify-content:center;padding:.55rem;margin-top:.5rem;
-                background:{{ $pagado ? '#94a3b8' : 'linear-gradient(135deg,#7c3aed,#5b21b6)' }};
-                color:#fff;border:none;border-radius:8px;cursor:{{ $pagado ? 'not-allowed' : 'pointer' }};
-                font-size:.85rem;display:flex;align-items:center;gap:.4rem;
-                {{ $pagado ? 'opacity:.4;filter:grayscale(.6)' : '' }}"
-                    id="btn-aportes-en-linea"
-                    onclick="ejecutarDescargaAportesEnLinea()"
-                    @if($pagado) disabled @endif>
-                📊 Descargar Aportes en Línea
-            </button>
+            <div style="margin-top: 1rem; display: flex; flex-direction: column; gap: 1rem;">
+                
+                {{-- Formato Principal Recomendado --}}
+                <div>
+                    <div style="font-size: .72rem; font-weight: 700; color: #059669; text-transform: uppercase; letter-spacing: .05em; margin-bottom: .4rem; display: flex; align-items: center; gap: .3rem;">
+                        <span>⭐</span> Opción Recomendada (Formato Universal)
+                    </div>
+                    <button class="btn-descarga-principal"
+                            onclick="ejecutarDescargaMiPlanilla()"
+                            @if($pagado) disabled @endif>
+                        📄 Descargar Txt para todos los operadores
+                    </button>
+                    <div style="font-size: .7rem; color: #64748b; margin-top: .35rem; text-align: center; line-height: 1.3;">
+                        Este archivo plano (PILA) sirve para <strong>cualquier operador</strong> (MiPlanilla, Aportes en Línea, Arus, Asopagos, etc.).
+                    </div>
+                </div>
+
+                {{-- Separador Visual --}}
+                <div style="display: flex; align-items: center; text-align: center; margin: .2rem 0;">
+                    <div style="flex-grow: 1; border-top: 1px solid #e2e8f0;"></div>
+                    <span style="padding: 0 .75rem; font-size: .68rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: .05em;">Otras opciones en Excel</span>
+                    <div style="flex-grow: 1; border-top: 1px solid #e2e8f0;"></div>
+                </div>
+
+                {{-- Formatos Alternativos en contenedor agrupado --}}
+                <div class="contenedor-descargas-secundarias">
+                    <button class="btn-descarga-secundario"
+                            onclick="ejecutarDescarga('xlsx')"
+                            @if($pagado) disabled @endif>
+                        📊 Excel Simple (Arus)
+                    </button>
+
+                    <button class="btn-descarga-secundario"
+                            onclick="ejecutarDescargaAsopagos()"
+                            @if($pagado) disabled @endif>
+                        📌 Excel Asopagos
+                    </button>
+
+                    <button class="btn-descarga-secundario"
+                            id="btn-aportes-en-linea"
+                            onclick="ejecutarDescargaAportesEnLinea()"
+                            @if($pagado) disabled @endif>
+                        📈 Excel Aportes en Línea
+                    </button>
+                </div>
+
+            </div>
 
             <div style="border-top:1px solid #f1f5f9;padding-top:1rem;margin-top:1rem">
                 <div class="aviso-modal">
@@ -2161,6 +2264,10 @@ async function ejecutarConfirmarPago() {
                 const tdAccion   = document.getElementById('accion-'   + _planoIdActual);
                 if (tdPlanilla) tdPlanilla.innerHTML = chip;
                 if (tdAccion)   tdAccion.innerHTML   = chip;
+                
+                const fila = document.getElementById('fila-plano-' + _planoIdActual);
+                if (fila) fila.classList.add('ya-pago');
+                
                 setTimeout(() => cerrarModal('modal-pago'), 1800);
             } else {
                 setTimeout(() => location.reload(), 2500);

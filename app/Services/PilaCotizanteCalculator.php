@@ -199,9 +199,16 @@ class PilaCotizanteCalculator
             // Extranjero: mismas reglas que bloque normal
             $esExtranjero = $esExtranjeroDoc && !$tienePension;
 
-            // Subtipo: 0 siempre para tipo 51
-            // (PILA no permite subtipo 3/4 para cotizante 51, y extranjeros usan subtipo 0)
+            // Subtipo cotizante para tipo 51:
+            //   - Extranjero sin AFP → subtipo 0 (igual que bloque normal)
+            //   - Sin AFP, no extranjero → subtipo 3 si exento por edad (H≥55/F≥50), 4 si no exento
+            //   - Con AFP → subtipo 0
             $subtipoCotizante = 0;
+            if (!$tienePension && !$esExtranjero && $edad !== null) {
+                $isExento         = ($genero === 'M' && $edad >= self::EDAD_EXENTO_M)
+                                 || ($genero === 'F' && $edad >= self::EDAD_EXENTO_F);
+                $subtipoCotizante = $isExento ? 3 : 4;
+            }
 
             // Caja
             $codCajPila = $p->cod_caj_pila ?? $p->codigo_caj ?? null;
@@ -230,7 +237,7 @@ class PilaCotizanteCalculator
 
             return [
                 'tipoCotizante'    => 51,
-                'subtipoCotizante' => 0,          // tipo 51 no admite subtipo 3/4
+                'subtipoCotizante' => $subtipoCotizante, // 0 con AFP o extranjero; 3 exento edad; 4 sin AFP sin edad exenta
                 'tienePension'     => $tienePension,
                 'esKMatriz'        => false,
                 'esTiempoParcial'  => true,

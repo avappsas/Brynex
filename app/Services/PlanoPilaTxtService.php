@@ -396,7 +396,7 @@ class PlanoPilaTxtService
             . $this->N((string)$c['ibcEps'], 9)                 // 43 IBC salud 211-219
             . $this->N((string)$c['ibcArl'], 9)                 // 44 IBC riesgos 220-228
             . $this->N((string)$ibcCaj, 9)                      // 45 IBC CCF 229-237
-            . ($tienePension ? '0.16000' : '0000000')           // 46 tarifa pensión 238-244
+            . ($tienePension ? '0.16000' : '0.00000')           // 46 tarifa pensión 238-244
             . $this->N((string)$vAfp, 9)                        // 47 cotización pensión 245-253
             . $this->N('0', 9)                                  // 48 aporte vol afiliado 254-262
             . $this->N('0', 9)                                  // 49 aporte vol aportante 263-271
