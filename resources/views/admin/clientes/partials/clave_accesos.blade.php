@@ -127,6 +127,7 @@
                         <option value="DIAN">DIAN</option>
                         <option value="MinTrabajo">Min. Trabajo (PILA)</option>
                         <option value="Banco">Banco / Entidad Financiera</option>
+                        <option value="Operadores">Operadores</option>
                         <option value="Otro">Otro</option>
                     </select>
                 </div>
@@ -335,7 +336,7 @@
                 'EPS': ['#dcfce7','#15803d'], 'ARL': ['#fce7f3','#9d174d'],
                 'AFP': ['#e0e7ff','#3730a3'], 'CAJA': ['#fff7ed','#c2410c'],
                 'DIAN': ['#fef9c3','#713f12'], 'MinTrabajo': ['#f0fdf4','#166534'],
-                'Banco': ['#f5f3ff','#6d28d9'], 'Otro': ['#f1f5f9','#475569']
+                'Banco': ['#f5f3ff','#6d28d9'], 'Operadores': ['#f3e8ff','#7e22ce'], 'Otro': ['#f1f5f9','#475569']
             };
             var c = colores[tipo] || ['#f1f5f9','#475569'];
             return '<span style="background:' + c[0] + ';color:' + c[1] + ';padding:0.15rem 0.5rem;border-radius:999px;font-size:0.68rem;font-weight:700;white-space:nowrap;">' + (tipo||'—') + '</span>';

@@ -110,12 +110,15 @@
     color: #fff;
     border: none;
     border-radius: 8px;
-    padding: 0.5rem 1.25rem;
-    font-size: 0.82rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.95rem;
     font-weight: 700;
     cursor: pointer;
     transition: all 0.15s;
     height: 38px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .btn-filtrar-global:hover {
@@ -259,6 +262,7 @@
                     <option value="DIAN" {{ request('tipo') === 'DIAN' ? 'selected' : '' }}>DIAN</option>
                     <option value="MinTrabajo" {{ request('tipo') === 'MinTrabajo' ? 'selected' : '' }}>Min. Trabajo (PILA)</option>
                     <option value="Banco" {{ request('tipo') === 'Banco' ? 'selected' : '' }}>Banco / Entidad Financiera</option>
+                    <option value="Operadores" {{ request('tipo') === 'Operadores' ? 'selected' : '' }}>Operadores</option>
                     <option value="Otro" {{ request('tipo') === 'Otro' ? 'selected' : '' }}>Otro</option>
                 </select>
             </div>
@@ -277,7 +281,7 @@
 
             {{-- Botones --}}
             <div style="display:flex;gap:0.4rem;grid-column: span 1;align-items:end;">
-                <button type="submit" class="btn-filtrar-global" style="flex:1;">🔍 Filtrar</button>
+                <button type="submit" class="btn-filtrar-global" style="flex:1;" title="Filtrar">🔍</button>
                 <a href="{{ route('admin.clave_accesos.global', request()->has('iframe') ? ['iframe' => 1] : []) }}" class="btn-limpiar-global" style="flex:1;">🔄 Limpiar</a>
             </div>
             @if(request()->has('iframe'))
@@ -326,7 +330,7 @@
                             'EPS' => ['#dcfce7','#15803d'], 'ARL' => ['#fce7f3','#9d174d'],
                             'AFP' => ['#e0e7ff','#3730a3'], 'CAJA' => ['#fff7ed','#c2410c'],
                             'DIAN' => ['#fef9c3','#713f12'], 'MinTrabajo' => ['#f0fdf4','#166534'],
-                            'Banco' => ['#f5f3ff','#6d28d9'], 'Otro' => ['#f1f5f9','#475569']
+                            'Banco' => ['#f5f3ff','#6d28d9'], 'Operadores' => ['#f3e8ff','#7e22ce'], 'Otro' => ['#f1f5f9','#475569']
                         ];
                         $col = $colores[$c->tipo] ?? ['#f1f5f9','#475569'];
                         $masked = $c->contrasena ? str_repeat('•', min(strlen($c->contrasena), 8)) . ' 👁' : '—';
@@ -449,6 +453,7 @@
                         <option value="DIAN">DIAN</option>
                         <option value="MinTrabajo">Min. Trabajo (PILA)</option>
                         <option value="Banco">Banco / Entidad Financiera</option>
+                        <option value="Operadores">Operadores</option>
                         <option value="Otro">Otro</option>
                     </select>
                 </div>

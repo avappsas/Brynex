@@ -509,7 +509,7 @@ class AnticipoController extends Controller
 
         $contratos = Contrato::where('aliado_id', $aliadoId)
             ->whereIn('cedula', $cedulas)
-            ->whereIn('estado', ['vigente', 'activo'])
+            ->whereIn('estado', ['vigente', 'activo', 'retirado'])
             ->with(['cliente', 'plan'])
             ->get();
 

@@ -1174,10 +1174,22 @@ window.ANT = {
             // Éxito
             this.cerrar();
 
-            // Toast de confirmación (el anticipo queda disponible en el panel MF_ANT)
+            // Cerrar el modal de facturar (si existe)
+            if (typeof MF !== 'undefined' && typeof MF.cerrar === 'function') {
+                MF.cerrar();
+            }
+
+            // Abrir el recibo de anticipo
+            if (typeof abrirRecibo === 'function') {
+                abrirRecibo(`/admin/anticipos/${data.anticipo_id}/recibo?modal=1`);
+            } else {
+                window.open(`/admin/anticipos/${data.anticipo_id}/recibo`, '_blank');
+            }
+
+            // Toast de confirmación
             const toast = document.createElement('div');
             toast.style.cssText = 'position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;background:linear-gradient(135deg,#78350f,#d97706);color:#fff;padding:.65rem 1.2rem;border-radius:10px;font-size:.83rem;font-weight:700;box-shadow:0 6px 20px rgba(0,0,0,.25);display:flex;align-items:center;gap:.5rem;';
-            toast.innerHTML = '💰 Anticipo registrado — ya está disponible para aplicar';
+            toast.innerHTML = '💰 Anticipo registrado exitosamente';
             document.body.appendChild(toast);
             setTimeout(() => toast.remove(), 3500);
 

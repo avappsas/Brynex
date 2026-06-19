@@ -209,14 +209,9 @@
                 <span>Datos del Pago</span>
             </div>
             <div class="ad-step-line"></div>
-            <div class="ad-step-indicator" id="ad-ind-2">
-                <span class="ad-step-num">2</span>
-                <span>Seleccionar Clientes</span>
-            </div>
-            <div class="ad-step-line"></div>
             <div class="ad-step-indicator" id="ad-ind-3">
-                <span class="ad-step-num">3</span>
-                <span>Distribuir Montos</span>
+                <span class="ad-step-num">2</span>
+                <span id="ad-step-3-label">Distribución / Confirmación</span>
             </div>
         </div>
 
@@ -250,21 +245,35 @@
                             <label class="ad-label">Cuenta de Destino</label>
                             <select id="ad-banco" name="banco_cuenta_id" class="ad-select">
                                 <option value="">Seleccione Cuenta...</option>
-                                @foreach($adBancos as $b)
-                                    <option value="{{ $b->id }}">{{ $b->descripcion }}</option>
+                                @php
+                                    $bancosOrdenados = $adBancos->sortByDesc('cobro');
+                                @endphp
+                                @foreach($bancosOrdenados as $b)
+                                    <option value="{{ $b->id }}">
+                                        {{ $b->banco }} — {{ $b->nombre }} | {{ $b->tipo_cuenta }} {{ $b->numero_cuenta }} @if($b->cobro) ⭐ (Cobro) @endif
+                                    </option>
                                 @endforeach
                             </select>
                         </div>
                     </div>
 
-                    <div class="ad-form-grid">
+                    <div class="ad-form-grid" id="ad-trans-fields-group" style="display: none;">
                         <div class="ad-form-group">
                             <label class="ad-label">Referencia / Comprobante</label>
                             <input type="text" id="ad-referencia" name="referencia" class="ad-input" placeholder="N° de transferencia o nequi">
                         </div>
                         <div class="ad-form-group">
                             <label class="ad-label">Soporte de Pago (Imagen/PDF)</label>
-                            <input type="file" id="ad-imagen" name="imagen" class="ad-input" accept="image/*,application/pdf">
+                            <input type="file" id="ad-imagen" name="imagen" class="ad-input" accept="image/*,application/pdf" onchange="MAD.mostrarPreview(this)">
+                            
+                            <!-- Contenedor de previsualización premium -->
+                            <div id="ad-preview-container" style="display: none; margin-top: .4rem; position: relative; border-radius: 8px; border: 1.5px dashed #d97706; overflow: hidden; background: #fffbeb; padding: .4rem;">
+                                <div style="display: flex; align-items: center; gap: .5rem;">
+                                    <img id="ad-preview-img" style="max-width: 60px; max-height: 60px; object-fit: cover; border-radius: 4px; display: none;" />
+                                    <div id="ad-preview-fileinfo" style="font-size: .7rem; color: #92400e; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></div>
+                                    <button type="button" onclick="MAD.eliminarSoporte()" style="background: #dc2626; color: white; border: none; border-radius: 5px; padding: .2rem .4rem; cursor: pointer; font-size: .65rem; font-weight: 700;">✕ Quitar</button>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -274,39 +283,9 @@
                     </div>
                 </div>
 
-                <!-- PASO 2: Selección de clientes -->
-                <div class="ad-step-content" id="ad-step-2">
-                    <div style="display: flex; gap: .7rem; align-items: center; margin-bottom: .6rem;">
-                        <div style="flex: 1;">
-                            <input type="text" id="ad-search" placeholder="🔍 Buscar por nombre o cédula..." class="ad-clients-search" onkeyup="MAD.filtrarClientes()">
-                        </div>
-                        <div>
-                            <button type="button" class="ad-btn ad-btn-secondary" style="padding: .35rem .7rem; font-size: .72rem;" onclick="MAD.seleccionarTodos(true)">
-                                Seleccionar Todos
-                            </button>
-                        </div>
-                        <div>
-                            <button type="button" class="ad-btn ad-btn-secondary" style="padding: .35rem .7rem; font-size: .72rem;" onclick="MAD.seleccionarTodos(false)">
-                                Limpiar
-                            </button>
-                        </div>
-                    </div>
-
-                    <div id="ad-clients-list-container">
-                        <!-- Clientes cargados dinámicamente -->
-                        <div style="text-align: center; padding: 2rem; color: #64748b; font-size: .8rem;">
-                            Cargando contratos vigentes...
-                        </div>
-                    </div>
-                    
-                    <div style="margin-top: .5rem; font-size: .7rem; font-weight: 700; color: #475569;" id="ad-selected-count">
-                        Clientes seleccionados: 0
-                    </div>
-                </div>
-
                 <!-- PASO 3: Distribución y validación -->
                 <div class="ad-step-content" id="ad-step-3">
-                    <div style="margin-bottom: .5rem; font-size: .72rem; color: #475569;">
+                    <div style="margin-bottom: .5rem; font-size: .72rem; color: #475569;" id="ad-dist-instr-label">
                         Distribuye el valor total del anticipo entre los clientes seleccionados. Por defecto se dividirá equitativamente.
                     </div>
 
@@ -373,6 +352,8 @@
 const MAD = {
     empresaId: null,
     contratos: [], // lista completa de contratos desde la API
+    contratosSeleccionadosOriginales: [], // IDs seleccionados en la tabla principal
+    cargandoContratos: false,
     pasoActivo: 1,
     meses: @json($meses),
 
@@ -380,49 +361,54 @@ const MAD = {
         this.empresaId = empresaId;
         this.pasoActivo = 1;
         this.contratos = [];
+        this.cargandoContratos = true;
         
+        // Capturar selección previa de la tabla principal
+        const checkboxes = document.querySelectorAll('.chk-row:checked');
+        this.contratosSeleccionadosOriginales = [...checkboxes].map(chk => parseInt(chk.value));
+
         // Reset campos del form
         document.getElementById('ad-form').reset();
         document.getElementById('ad-empresa-id').value = empresaId;
         document.getElementById('ad-title-label').innerText = `Registrar Anticipo: ${empresaNombre}`;
         document.getElementById('ad-imagen').value = '';
+        this.eliminarSoporte();
         
-        // Ocultar grupo banco
+        // Ocultar grupo banco y campos transferencia
         document.getElementById('ad-banco-group').style.display = 'none';
+        document.getElementById('ad-trans-fields-group').style.display = 'none';
         
-        // Cargar contratos de la empresa
-        const listContainer = document.getElementById('ad-clients-list-container');
-        listContainer.innerHTML = `
-            <div style="text-align: center; padding: 2rem; color: #64748b; font-size: .8rem;">
-                <i class="fa fa-spinner fa-spin" style="margin-right: .3rem;"></i> Cargando contratos vigentes...
-            </div>
-        `;
-        document.getElementById('ad-selected-count').innerText = 'Clientes seleccionados: 0';
-        
+        // Configurar botón Siguiente como cargando
+        const btnSig = document.getElementById('ad-btn-sig');
+        if (btnSig) {
+            btnSig.setAttribute('disabled', 'disabled');
+            btnSig.innerText = 'Cargando contratos...';
+        }
+
         document.getElementById('ad-overlay').style.display = 'flex';
         this.irAPaso(1);
 
         fetch(`/admin/anticipos/api/contratos-empresa/${empresaId}`)
             .then(res => res.json())
             .then(data => {
+                this.cargandoContratos = false;
+                if (btnSig) {
+                    btnSig.removeAttribute('disabled');
+                    btnSig.innerText = 'Siguiente →';
+                }
                 if (data.ok && data.contratos) {
                     this.contratos = data.contratos;
-                    this.renderizarClientes();
                 } else {
-                    listContainer.innerHTML = `
-                        <div style="text-align: center; padding: 2rem; color: #dc2626; font-size: .8rem;">
-                            Error al cargar contratos: ${data.mensaje || 'Respuesta no válida'}
-                        </div>
-                    `;
+                    console.error("Error al cargar contratos de la empresa para anticipos:", data.mensaje);
                 }
             })
             .catch(err => {
-                console.error(err);
-                listContainer.innerHTML = `
-                    <div style="text-align: center; padding: 2rem; color: #dc2626; font-size: .8rem;">
-                        Error de red al cargar contratos.
-                    </div>
-                `;
+                this.cargandoContratos = false;
+                if (btnSig) {
+                    btnSig.removeAttribute('disabled');
+                    btnSig.innerText = 'Siguiente →';
+                }
+                console.error("Error de red al cargar contratos de la empresa:", err);
             });
     },
 
@@ -440,130 +426,37 @@ const MAD = {
         const forma = document.getElementById('ad-forma-pago').value;
         const bGroup = document.getElementById('ad-banco-group');
         const bancoInput = document.getElementById('ad-banco');
+        const transFields = document.getElementById('ad-trans-fields-group');
+        const refInput = document.getElementById('ad-referencia');
+        const imgInput = document.getElementById('ad-imagen');
         
         if (forma === 'transferencia') {
             bGroup.style.display = 'flex';
+            transFields.style.display = 'grid';
             bancoInput.setAttribute('required', 'required');
         } else {
             bGroup.style.display = 'none';
+            transFields.style.display = 'none';
             bancoInput.removeAttribute('required');
             bancoInput.value = '';
+            refInput.value = '';
+            imgInput.value = '';
+            this.eliminarSoporte();
         }
-    },
-
-    renderizarClientes: function() {
-        const listContainer = document.getElementById('ad-clients-list-container');
-        if (this.contratos.length === 0) {
-            listContainer.innerHTML = `
-                <div style="text-align: center; padding: 2.5rem; color: #64748b; font-size: .8rem;">
-                     No se encontraron contratos vigentes o activos para esta empresa.
-                </div>
-            `;
-            return;
-        }
-
-        let html = '';
-        this.contratos.forEach(c => {
-            html += `
-                <div class="ad-client-item" id="ad-item-${c.id}" onclick="MAD.toggleSeleccionCliente(${c.id})">
-                    <input type="checkbox" class="ad-client-checkbox" id="ad-chk-${c.id}" value="${c.id}" onclick="event.stopPropagation(); MAD.actualizarConteoSeleccionados();">
-                    <div class="ad-client-details">
-                        <div class="ad-client-name">${c.cliente_nombre}</div>
-                        <div class="ad-client-sub">
-                            <span>CC: <b>${c.cedula}</b></span>
-                            <span>Contrato N°: <b>${c.id}</b></span>
-                            <span class="ad-client-plan">${c.plan_nombre}</span>
-                        </div>
-                    </div>
-                </div>
-            `;
-        });
-        listContainer.innerHTML = html;
-        this.actualizarConteoSeleccionados();
-    },
-
-    toggleSeleccionCliente: function(contratoId) {
-        const chk = document.getElementById(`ad-chk-${contratoId}`);
-        if (chk) {
-            chk.checked = !chk.checked;
-            const item = document.getElementById(`ad-item-${contratoId}`);
-            if (chk.checked) {
-                item.classList.add('selected');
-            } else {
-                item.classList.remove('selected');
-            }
-            this.actualizarConteoSeleccionados();
-        }
-    },
-
-    seleccionarTodos: function(select) {
-        this.contratos.forEach(c => {
-            const chk = document.getElementById(`ad-chk-${c.id}`);
-            const item = document.getElementById(`ad-item-${c.id}`);
-            if (chk && item) {
-                chk.checked = select;
-                if (select) {
-                    item.classList.add('selected');
-                } else {
-                    item.classList.remove('selected');
-                }
-            }
-        });
-        this.actualizarConteoSeleccionados();
-    },
-
-    filtrarClientes: function() {
-        const term = document.getElementById('ad-search').value.toLowerCase().trim();
-        this.contratos.forEach(c => {
-            const item = document.getElementById(`ad-item-${c.id}`);
-            if (item) {
-                const text = (c.cliente_nombre + ' ' + c.cedula).toLowerCase();
-                if (text.includes(term)) {
-                    item.style.display = 'flex';
-                } else {
-                    item.style.display = 'none';
-                }
-            }
-        });
-    },
-
-    actualizarConteoSeleccionados: function() {
-        let count = 0;
-        this.contratos.forEach(c => {
-            const chk = document.getElementById(`ad-chk-${c.id}`);
-            const item = document.getElementById(`ad-item-${c.id}`);
-            if (chk) {
-                if (chk.checked) {
-                    count++;
-                    if (item) item.classList.add('selected');
-                } else {
-                    if (item) item.classList.remove('selected');
-                }
-            }
-        });
-        document.getElementById('ad-selected-count').innerText = `Clientes seleccionados: ${count}`;
     },
 
     obtenerSeleccionados: function() {
-        const seleccionados = [];
-        this.contratos.forEach(c => {
-            const chk = document.getElementById(`ad-chk-${c.id}`);
-            if (chk && chk.checked) {
-                seleccionados.push(c);
-            }
-        });
-        return seleccionados;
+        const idsOriginales = this.contratosSeleccionadosOriginales.map(id => parseInt(id));
+        return this.contratos.filter(c => idsOriginales.includes(parseInt(c.id)));
     },
 
     irAPaso: function(paso) {
         // Ocultar todos
         document.getElementById('ad-step-1').classList.remove('active');
-        document.getElementById('ad-step-2').classList.remove('active');
         document.getElementById('ad-step-3').classList.remove('active');
         
         // Desactivar indicadores
         document.getElementById('ad-ind-1').classList.remove('active', 'completed');
-        document.getElementById('ad-ind-2').classList.remove('active', 'completed');
         document.getElementById('ad-ind-3').classList.remove('active', 'completed');
         
         // Mostrar paso activo
@@ -580,26 +473,22 @@ const MAD = {
             btnSig.style.display = 'block';
             btnRegistrar.style.display = 'none';
             document.getElementById('ad-ind-1').classList.add('active');
-        } else if (paso === 2) {
-            btnAtras.style.display = 'block';
-            btnSig.style.display = 'block';
-            btnRegistrar.style.display = 'none';
-            document.getElementById('ad-ind-1').classList.add('completed');
-            document.getElementById('ad-ind-2').classList.add('active');
         } else if (paso === 3) {
             btnAtras.style.display = 'block';
             btnSig.style.display = 'none';
             btnRegistrar.style.display = 'block';
             document.getElementById('ad-ind-1').classList.add('completed');
-            document.getElementById('ad-ind-2').classList.add('completed');
             document.getElementById('ad-ind-3').classList.add('active');
             
-            // Generar tabla de distribución y balance
+            // Generar tabla de distribución o mensaje de abono libre y balance
             this.generarDistribucion();
         }
     },
 
     siguiente: function() {
+        if (this.cargandoContratos) {
+            return;
+        }
         if (this.pasoActivo === 1) {
             // Validar campos de Paso 1
             const valorInput = document.getElementById('ad-valor');
@@ -620,21 +509,13 @@ const MAD = {
                 return;
             }
             
-            this.irAPaso(2);
-        } else if (this.pasoActivo === 2) {
-            // Validar que al menos un cliente esté seleccionado
-            const seleccionados = this.obtenerSeleccionados();
-            if (seleccionados.length === 0) {
-                alert('Debe seleccionar al menos un cliente para distribuir el anticipo.');
-                return;
-            }
             this.irAPaso(3);
         }
     },
 
     atras: function() {
-        if (this.pasoActivo > 1) {
-            this.irAPaso(this.pasoActivo - 1);
+        if (this.pasoActivo === 3) {
+            this.irAPaso(1);
         }
     },
 
@@ -642,9 +523,49 @@ const MAD = {
         const seleccionados = this.obtenerSeleccionados();
         const totalValor = parseInt(document.getElementById('ad-valor').value || 0);
         const tbody = document.getElementById('ad-dist-tbody');
+        const tableContainer = document.getElementById('ad-dist-table-container');
+        const instLabel = document.getElementById('ad-dist-instr-label');
+        const btnRegistrar = document.getElementById('ad-btn-registrar');
+        
         tbody.innerHTML = '';
+        
+        // Remover mensaje previo de abono a nivel de empresa si existe
+        const msgEmpresa = document.getElementById('ad-empresa-abono-msg');
+        if (msgEmpresa) msgEmpresa.remove();
 
-        if (seleccionados.length === 0) return;
+        if (seleccionados.length === 0) {
+            // Caso: Sin clientes seleccionados -> Anticipo general a nivel de empresa
+            tableContainer.style.display = 'none';
+            if (instLabel) instLabel.style.display = 'none';
+            
+            const infoDiv = document.createElement('div');
+            infoDiv.id = 'ad-empresa-abono-msg';
+            infoDiv.style.cssText = 'padding: 1.5rem; background: #fffbeb; border: 1.5px dashed #d97706; border-radius: 12px; text-align: center; color: #92400e; margin-bottom: 0.9rem;';
+            infoDiv.innerHTML = `
+                <div style="font-size: 2.2rem; margin-bottom: .4rem;">🏢</div>
+                <h4 style="margin: 0 0 .3rem 0; font-weight: 800; font-size: .85rem; text-transform: uppercase; letter-spacing: .02em;">Anticipo Libre de Empresa</h4>
+                <p style="font-size: .78rem; margin: 0; line-height: 1.4; color: #b45309; max-width: 480px; margin-inline: auto;">
+                    Este abono no se distribuirá entre clientes individuales. El monto total de <b>$${new Intl.NumberFormat('es-CO').format(totalValor)}</b> quedará disponible como saldo a favor de la empresa para ser aplicado en facturaciones generales.
+                </p>
+            `;
+            tableContainer.parentNode.insertBefore(infoDiv, tableContainer);
+
+            // Ajustar balance
+            const formatPesos = (val) => '$' + new Intl.NumberFormat('es-CO').format(val);
+            document.getElementById('ad-bal-total').innerText = formatPesos(totalValor);
+            document.getElementById('ad-bal-suma').innerText = formatPesos(0);
+            
+            const restanteEl = document.getElementById('ad-bal-restante');
+            restanteEl.innerText = formatPesos(0);
+            restanteEl.className = 'ad-balance-val match';
+            
+            btnRegistrar.removeAttribute('disabled');
+            return;
+        }
+
+        // Caso: Con clientes seleccionados -> Distribución normal
+        tableContainer.style.display = 'block';
+        if (instLabel) instLabel.style.display = 'block';
 
         // Distribución equitativa por defecto
         const baseMonto = Math.floor(totalValor / seleccionados.length);
@@ -652,7 +573,6 @@ const MAD = {
 
         // Generar filas
         seleccionados.forEach((c, index) => {
-            // El último elemento recibe el residuo del redondeo
             const monto = baseMonto + (index === seleccionados.length - 1 ? residuo : 0);
 
             // Generar opciones de meses (año actual y año siguiente)
@@ -724,54 +644,99 @@ const MAD = {
         }
     },
 
+    mostrarPreview: function(input) {
+        const container = document.getElementById('ad-preview-container');
+        const img = document.getElementById('ad-preview-img');
+        const info = document.getElementById('ad-preview-fileinfo');
+        
+        if (input.files && input.files[0]) {
+            const file = input.files[0];
+            info.innerText = `${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+            
+            if (file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    img.src = e.target.result;
+                    img.style.display = 'block';
+                };
+                reader.readAsDataURL(file);
+            } else {
+                img.style.display = 'none';
+                img.src = '';
+            }
+            container.style.display = 'block';
+        } else {
+            this.eliminarSoporte();
+        }
+    },
+
+    eliminarSoporte: function() {
+        const input = document.getElementById('ad-imagen');
+        if (input) input.value = '';
+        
+        const container = document.getElementById('ad-preview-container');
+        const img = document.getElementById('ad-preview-img');
+        const info = document.getElementById('ad-preview-fileinfo');
+        
+        if (container) container.style.display = 'none';
+        if (img) {
+            img.src = '';
+            img.style.display = 'none';
+        }
+        if (info) info.innerText = '';
+    },
+
     registrar: function() {
         const totalValor = parseInt(document.getElementById('ad-valor').value || 0);
-        const inputs = document.querySelectorAll('.ad-dist-val-input');
-        let suma = 0;
-        const distribucion = [];
-
-        inputs.forEach(input => {
-            const contratoId = input.dataset.contrato;
-            const valor = parseInt(input.value || 0);
-            const mes = document.getElementById(`ad-periodo-mes-${contratoId}`).value;
-            const anio = document.getElementById(`ad-periodo-anio-${contratoId}`).value;
-            
-            suma += valor;
-            distribucion.push({
-                contrato_id: parseInt(contratoId),
-                valor: valor,
-                periodo_mes: parseInt(mes),
-                periodo_anio: parseInt(anio)
-            });
-        });
-
-        if (suma !== totalValor) {
-            alert('La distribución no está balanceada. La diferencia debe ser cero.');
-            return;
-        }
-
-        // Crear FormData para enviar imagen, inputs y arreglo
+        const seleccionados = this.obtenerSeleccionados();
         const formEl = document.getElementById('ad-form');
         const formData = new FormData(formEl);
+        const btnReg = document.getElementById('ad-btn-registrar');
+
+        let endpoint = '/admin/anticipos';
         
-        // Laravel no procesa arrays complejos en FormData de forma directa sin estructurarlos:
-        distribucion.forEach((item, index) => {
-            formData.append(`distribucion[${index}][contrato_id]`, item.contrato_id);
-            formData.append(`distribucion[${index}][valor]`, item.valor);
-            formData.append(`distribucion[${index}][periodo_mes]`, item.periodo_mes);
-            formData.append(`distribucion[${index}][periodo_anio]`, item.periodo_anio);
-        });
+        if (seleccionados.length > 0) {
+            endpoint = '/admin/anticipos/distribuir';
+            const inputs = document.querySelectorAll('.ad-dist-val-input');
+            let suma = 0;
+            const distribucion = [];
+
+            inputs.forEach(input => {
+                const contratoId = input.dataset.contrato;
+                const valor = parseInt(input.value || 0);
+                const mes = document.getElementById(`ad-periodo-mes-${contratoId}`).value;
+                const anio = document.getElementById(`ad-periodo-anio-${contratoId}`).value;
+                
+                suma += valor;
+                distribucion.push({
+                    contrato_id: parseInt(contratoId),
+                    valor: valor,
+                    periodo_mes: parseInt(mes),
+                    periodo_anio: parseInt(anio)
+                });
+            });
+
+            if (suma !== totalValor) {
+                alert('La distribución no está balanceada. La diferencia debe ser cero.');
+                return;
+            }
+
+            distribucion.forEach((item, index) => {
+                formData.append(`distribucion[${index}][contrato_id]`, item.contrato_id);
+                formData.append(`distribucion[${index}][valor]`, item.valor);
+                formData.append(`distribucion[${index}][periodo_mes]`, item.periodo_mes);
+                formData.append(`distribucion[${index}][periodo_anio]`, item.periodo_anio);
+            });
+        }
 
         // Deshabilitar botón
-        const btnReg = document.getElementById('ad-btn-registrar');
         btnReg.setAttribute('disabled', 'disabled');
         btnReg.innerText = 'Guardando...';
 
-        fetch('/admin/anticipos/distribuir', {
+        fetch(endpoint, {
             method: 'POST',
             body: formData,
             headers: {
-                // Laravel CSRF token - lo obtenemos del meta tag de la página
                 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
             }
         })
@@ -780,20 +745,18 @@ const MAD = {
             if (data.ok && data.anticipo_id) {
                 this.cerrar();
                 
-                // Mostrar alerta de éxito
                 if (typeof Swal !== 'undefined') {
                     Swal.fire({
                         icon: 'success',
                         title: 'Anticipo Guardado',
-                        text: 'El anticipo distribuido ha sido guardado exitosamente.',
+                        text: 'El anticipo ha sido guardado exitosamente.',
                         confirmButtonText: 'Ver Recibo',
                         confirmButtonColor: '#d97706'
                     }).then((result) => {
-                        // Abrir el recibo de anticipo
                         abrirRecibo(`/admin/anticipos/${data.anticipo_id}/recibo?modal=1`);
                     });
                 } else {
-                    alert('Anticipo distribuido registrado con éxito.');
+                    alert('Anticipo registrado con éxito.');
                     abrirRecibo(`/admin/anticipos/${data.anticipo_id}/recibo?modal=1`);
                 }
             } else {
@@ -804,10 +767,36 @@ const MAD = {
         })
         .catch(err => {
             console.error(err);
-            alert('Error de red al intentar registrar el anticipo distribuido.');
+            alert('Error de red al intentar registrar el anticipo.');
             btnReg.removeAttribute('disabled');
             btnReg.innerText = '✓ Registrar Anticipo';
         });
     }
 };
+
+// Captura de pegado (Ctrl + V) para imágenes de soporte
+document.addEventListener('paste', function(e) {
+    const overlay = document.getElementById('ad-overlay');
+    if (!overlay || overlay.style.display !== 'flex') return;
+    if (MAD.pasoActivo !== 1) return;
+
+    const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+    for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image') !== -1) {
+            const blob = items[i].getAsFile();
+            if (!blob) continue;
+            
+            const file = new File([blob], "soporte_pegado_" + Date.now() + ".png", { type: blob.type });
+            const fileInput = document.getElementById('ad-imagen');
+            if (fileInput) {
+                const dt = new DataTransfer();
+                dt.items.add(file);
+                fileInput.files = dt.files;
+                MAD.mostrarPreview(fileInput);
+            }
+            e.preventDefault();
+            break;
+        }
+    }
+});
 </script>
