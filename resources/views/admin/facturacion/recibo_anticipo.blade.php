@@ -415,7 +415,14 @@
                     </div>
                     <div class="fact-cliente-row">
                         <span class="fact-cliente-lbl">ARL:</span>
-                        <span class="fact-cliente-val">{{ $anticipo->contrato?->arl?->nombre_arl ?? '—' }}</span>
+                        @php
+                            $arlNom = $anticipo->contrato?->arl?->nombre_arl;
+                            if (!$arlNom) {
+                                $arlNit = $anticipo->contrato?->razonSocial?->arl_nit;
+                                $arlNom = $arlNit ? (\App\Models\Arl::where('nit', $arlNit)->value('nombre_arl') ?? $arlNit) : '—';
+                            }
+                        @endphp
+                        <span class="fact-cliente-val">{{ $arlNom }}</span>
                     </div>
                     <div class="fact-cliente-row">
                         <span class="fact-cliente-lbl">Pensión:</span>
@@ -441,7 +448,6 @@
                             <th>Identificación</th>
                             <th>Contrato N°</th>
                             <th>Plan / Convenio</th>
-                            <th style="text-align: center; width: 140px;">Mes Recomendado</th>
                             <th style="text-align: right; width: 150px; padding-right: 1.5rem;">Valor Asignado</th>
                         </tr>
                     </thead>
@@ -464,9 +470,6 @@
                                     <td style="color: #b45309; font-weight: 600;">
                                         {{ $hijo->contrato?->plan?->nombre ?? '—' }}
                                     </td>
-                                    <td style="text-align: center; font-weight: 700; color: #475569;">
-                                        {{ $hijo->periodo_mes ? ($meses[$hijo->periodo_mes] . ' ' . $hijo->periodo_anio) : '—' }}
-                                    </td>
                                     <td class="right" style="padding-right: 1.5rem;">
                                         {{ $fmt($hijo->valor) }}
                                     </td>
@@ -486,9 +489,6 @@
                                 </td>
                                 <td style="color: #b45309; font-weight: 600;">
                                     {{ $anticipo->contrato?->plan?->nombre ?? '—' }}
-                                </td>
-                                <td style="text-align: center; font-weight: 700; color: #475569;">
-                                    {{ $anticipo->periodo_mes ? ($meses[$anticipo->periodo_mes] . ' ' . $anticipo->periodo_anio) : '—' }}
                                 </td>
                                 <td class="right" style="padding-right: 1.5rem;">
                                     {{ $fmt($anticipo->valor) }}
