@@ -833,21 +833,18 @@ class InformeController extends Controller
             ->selectRaw('ISNULL(SUM(CAST(valor AS BIGINT)), 0) AS total')
             ->value('total');
 
-        // ── Canal 5: Saldo acumulado histórico (desde junio 2026) ────────────
-        $fechaCorteCanal5 = '2026-06-01';
+        // ── Canal 5: Saldo acumulado histórico ───────────────────────────────
         $fechaInicioMesActual = \Carbon\Carbon::createFromDate($anio, $mes, 1)->startOfMonth()->toDateString();
 
         $canal5EntradaHistorica = (float) DB::table('abonos_incapacidades')
             ->where('aliado_id', $aid)
             ->where('tipo', 'entrada_incapacidad')
-            ->where('fecha', '>=', $fechaCorteCanal5)
             ->where('fecha', '<', $fechaInicioMesActual)
             ->sum('valor');
 
         $canal5EgresoHistorico = (float) DB::table('gastos')
             ->where('aliado_id', $aid)
             ->whereIn('tipo', $tiposIncapacidad)
-            ->where('fecha', '>=', $fechaCorteCanal5)
             ->where('fecha', '<', $fechaInicioMesActual)
             ->sum('valor');
 
@@ -1224,9 +1221,17 @@ class InformeController extends Controller
                 DB::raw("(SELECT ISNULL(SUM(valor), 0) FROM abonos_incapacidades WHERE incapacidad_id = incapacidades.id AND tipo = 'pago_cliente' AND MONTH(fecha) = {$mes} AND YEAR(fecha) = {$anio}) as pagos_mes"),
             ])
             ->where(function($query) use ($mes, $anio) {
-                $query->whereRaw("(SELECT ISNULL(SUM(valor), 0) FROM abonos_incapacidades WHERE incapacidad_id = incapacidades.id AND tipo = 'entrada_incapacidad' AND MONTH(fecha) = {$mes} AND YEAR(fecha) = {$anio}) > 0")
-                      ->orWhereRaw("(SELECT ISNULL(SUM(valor), 0) FROM abonos_incapacidades WHERE incapacidad_id = incapacidades.id AND tipo = 'pago_cliente' AND MONTH(fecha) = {$mes} AND YEAR(fecha) = {$anio}) > 0")
-                      ->orWhereRaw("(SELECT ISNULL(SUM(valor), 0) FROM abonos_incapacidades WHERE incapacidad_id = incapacidades.id AND tipo = 'entrada_incapacidad') > (SELECT ISNULL(SUM(valor), 0) FROM abonos_incapacidades WHERE incapacidad_id = incapacidades.id AND tipo = 'pago_cliente')");
+                $query->where(function($q) use ($mes, $anio) {
+                    $q->whereRaw("(SELECT ISNULL(SUM(valor), 0) FROM abonos_incapacidades WHERE incapacidad_id = incapacidades.id AND tipo = 'entrada_incapacidad' AND MONTH(fecha) = {$mes} AND YEAR(fecha) = {$anio}) > 0")
+                      ->orWhereRaw("(SELECT ISNULL(SUM(valor), 0) FROM abonos_incapacidades WHERE incapacidad_id = incapacidades.id AND tipo = 'pago_cliente' AND MONTH(fecha) = {$mes} AND YEAR(fecha) = {$anio}) > 0");
+                })
+                ->orWhere(function($q) {
+                    $q->where('incapacidades.estado', '!=', 'cierre_exitoso')
+                      ->where(function($sub) {
+                          $sub->whereRaw("(SELECT ISNULL(SUM(valor), 0) FROM abonos_incapacidades WHERE incapacidad_id = incapacidades.id AND tipo = 'entrada_incapacidad') > 0")
+                              ->orWhereRaw("(SELECT ISNULL(SUM(valor), 0) FROM abonos_incapacidades WHERE incapacidad_id = incapacidades.id AND tipo = 'pago_cliente') > 0");
+                      });
+                });
             })
             ->get();
 

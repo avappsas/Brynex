@@ -34,17 +34,17 @@ class IncapacidadController extends Controller
         $hayBusqueda = strlen($busqueda) > 0;
 
         if ($hayBusqueda) {
-            // Buscar por cédula directa o por nombre en tabla clientes
-            $cedulasPorNombre = DB::table('clientes')
-                ->where(function($q) use ($busqueda) {
-                    $q->where('cedula', 'like', '%'.$busqueda.'%')
-                      ->orWhere(DB::raw("CONCAT(primer_nombre,' ',primer_apellido)"), 'like', '%'.$busqueda.'%')
-                      ->orWhere(DB::raw("CONCAT(primer_nombre,' ',segundo_nombre,' ',primer_apellido,' ',segundo_apellido)"), 'like', '%'.$busqueda.'%');
-                })->pluck('cedula');
-
-            $query->where(function($q) use ($busqueda, $cedulasPorNombre) {
+            $query->where(function($q) use ($busqueda) {
                 $q->where('cedula_usuario', 'like', '%'.$busqueda.'%')
-                  ->orWhereIn('cedula_usuario', $cedulasPorNombre);
+                  ->orWhereIn('cedula_usuario', function($subquery) use ($busqueda) {
+                      $subquery->select('cedula')
+                          ->from('clientes')
+                          ->where(function($sub) use ($busqueda) {
+                              $sub->where('cedula', 'like', '%'.$busqueda.'%')
+                                  ->orWhere(DB::raw("CONCAT(primer_nombre,' ',primer_apellido)"), 'like', '%'.$busqueda.'%')
+                                  ->orWhere(DB::raw("CONCAT(primer_nombre,' ',segundo_nombre,' ',primer_apellido,' ',segundo_apellido)"), 'like', '%'.$busqueda.'%');
+                          });
+                  });
             });
         }
 
@@ -1049,47 +1049,126 @@ class IncapacidadController extends Controller
         ]);
     }
 
-    // ── REGISTRAR PAGO AL AFILIADO ───────────────────────────────────────────
+    // ── REGISTRAR PAGO AL AFILIADO (ANTICIPO / PRÉSTAMO) ─────────────────────
     public function registrarPago(Request $request, int $id)
     {
         $request->validate([
             'valor_pago'  => 'required|numeric|min:0',
             'fecha_pago'  => 'required|date',
             'pagado_a'    => 'required|in:cliente,empresa',
+            'forma_pago'  => 'nullable|in:efectivo,transferencia_bancaria',
+            'banco_cuenta_id' => 'nullable|integer',
+            'detalle_pago' => 'nullable|string',
         ]);
 
         $inc = Incapacidad::findOrFail($id);
-        $inc->update([
-            'estado_pago'  => 'pagado_afiliado',
-            'valor_pago'   => $request->valor_pago,
-            'fecha_pago'   => $request->fecha_pago,
-            'pagado_a'     => $request->pagado_a,
-            'detalle_pago' => $request->detalle_pago,
-            'estado'       => 'pagado_afiliado',
-        ]);
+        
+        $aliadoId = session('aliado_id_activo') ?? Auth::user()->aliado_id;
+        $usuarioId = Auth::id();
 
-        // Gestión automática
-        GestionIncapacidad::create([
-            'incapacidad_id'   => $inc->id,
-            'user_id'          => Auth::id(),
-            'aplica_a_familia' => false,
-            'tipo'             => 'pago_afiliado',
-            'tramite'          => "💰 Pago registrado al " . ($request->pagado_a === 'cliente' ? 'cliente afiliado' : 'empresa'),
-            'respuesta'        => 'Valor: $' . number_format($request->valor_pago, 0, ',', '.'),
-            'estado_resultado' => 'pagado_afiliado',
-            'created_at'       => now(),
-        ]);
+        // 1. Calcular saldos antes de aplicar este abono
+        $saldoPendiente = $inc->saldo_pendiente;
+        $nuevoSaldo = max(0, $saldoPendiente - $request->valor_pago);
+        $cubreTotal = $nuevoSaldo <= 0;
 
-        return response()->json(['ok' => true, 'message' => 'Pago al afiliado registrado.']);
+        $formaPago = $request->forma_pago ?: 'transferencia_bancaria';
+        $bancoId = $request->banco_cuenta_id ?: null;
+        $obsAbono = $request->detalle_pago ?: "Anticipo / Préstamo al afiliado — Incapacidad #{$inc->id}";
+
+        DB::beginTransaction();
+        try {
+            // 2. Registrar el Abono (tipo pago_cliente)
+            DB::table('abonos_incapacidades')->insert([
+                'aliado_id'       => $aliadoId,
+                'incapacidad_id'  => $inc->id,
+                'razon_social_id' => $inc->razon_social_id ?? null,
+                'tipo'            => 'pago_cliente',
+                'valor'           => $request->valor_pago,
+                'fecha'           => $request->fecha_pago,
+                'banco_cuenta_id' => $formaPago === 'transferencia_bancaria' ? $bancoId : null,
+                'usuario_id'      => $usuarioId,
+                'observacion'     => $obsAbono,
+                'created_at'      => now(),
+                'updated_at'      => now(),
+            ]);
+
+            // 3. Obtener el nombre del cliente/afiliado para el gasto
+            $clienteObj = DB::table('clientes')->where('cedula', $inc->cedula_usuario)->first();
+            $nombreCliente = $clienteObj 
+                ? trim("{$clienteObj->primer_nombre} " . ($clienteObj->segundo_nombre ? "{$clienteObj->segundo_nombre} " : "") . "{$clienteObj->primer_apellido}")
+                : $inc->cedula_usuario;
+
+            // 4. Obtener cuadre abierto
+            $cuadre = \App\Models\Cuadre::where('aliado_id', $aliadoId)
+                ->where('usuario_id', $usuarioId)
+                ->where('estado', 'abierto')
+                ->latest('fecha_inicio')
+                ->first();
+            $cuadreId = $cuadre ? $cuadre->id : null;
+
+            // 5. Registrar el Gasto (tipo pago_incapacidad)
+            DB::table('gastos')->insert([
+                'aliado_id'       => $aliadoId,
+                'usuario_id'      => $usuarioId,
+                'cuadre_id'       => $cuadreId,
+                'fecha'           => $request->fecha_pago,
+                'tipo'            => 'pago_incapacidad',
+                'descripcion'     => "Anticipo/Préstamo incapacidad #{$inc->id} al afiliado (Neto: \${$request->valor_pago})",
+                'pagado_a'        => $nombreCliente,
+                'cc_pagado_a'     => $inc->cedula_usuario,
+                'forma_pago'      => $formaPago,
+                'banco_origen_id' => $formaPago === 'transferencia_bancaria' ? $bancoId : null,
+                'valor'           => $request->valor_pago,
+                'recibo_caja'     => null,
+                'lugar'           => null,
+                'observacion'     => $obsAbono,
+                'created_at'      => now(),
+                'updated_at'      => now(),
+            ]);
+
+            // 6. Actualizar incapacidad
+            $updateData = [
+                'valor_pago'   => (float)$inc->total_pago_cliente + $request->valor_pago,
+                'fecha_pago'   => $request->fecha_pago,
+                'pagado_a'     => $request->pagado_a,
+                'detalle_pago' => $obsAbono,
+            ];
+
+            if ($cubreTotal) {
+                $updateData['estado_pago'] = 'pagado_afiliado';
+                $updateData['estado'] = 'pagada_afiliado';
+            }
+
+            $inc->update($updateData);
+
+            // 7. Registrar Gestión automática
+            GestionIncapacidad::create([
+                'incapacidad_id'   => $inc->id,
+                'user_id'          => $usuarioId,
+                'aplica_a_familia' => false,
+                'tipo'             => 'pago_afiliado',
+                'tramite'          => "💰 Anticipo/Préstamo registrado al " . ($request->pagado_a === 'cliente' ? 'cliente afiliado' : 'empresa'),
+                'respuesta'        => 'Valor: $' . number_format($request->valor_pago, 0, ',', '.'),
+                'estado_resultado' => $cubreTotal ? 'pagada_afiliado' : $inc->estado,
+                'created_at'       => now(),
+            ]);
+
+            DB::commit();
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json(['ok' => false, 'message' => 'Error al registrar el anticipo: ' . $e->getMessage()], 500);
+        }
+
+        return response()->json(['ok' => true, 'message' => 'Anticipo/Préstamo al afiliado registrado correctamente.']);
     }
 
     // ── CALCULAR VALOR ESPERADO (API) ────────────────────────────────────────
     public function calcularValor(int $id)
     {
         $inc   = Incapacidad::findOrFail($id);
-        $smmlv = $this->getSmmlv();
-        $valor = $inc->calcularValorEsperado($smmlv);
+        $valor = $inc->calcularValorEsperado(persistir: true);
 
+        // Opcional: asegurarnos explícitamente (redundante pero seguro)
         $inc->update(['valor_esperado' => $valor]);
 
         return response()->json([

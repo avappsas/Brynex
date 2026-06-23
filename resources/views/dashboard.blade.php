@@ -38,6 +38,7 @@
                 ['icono'=>'📌', 'nombre'=>'Tareas',        'color'=>'#f59e0b', 'url'=>route('admin.tareas.index')],
                 ['icono'=>'🏥', 'nombre'=>'Incapacidades', 'color'=>'#ef4444', 'url'=>route('admin.incapacidades.index')],
                 ['icono'=>'🧾', 'nombre'=>'Cuadre Caja',  'color'=>'#14b8a6', 'url'=>route('admin.cuadre-diario.index')],
+                ['icono'=>'💬', 'nombre'=>'Cotizaciones', 'color'=>'#ec4899', 'url'=>route('admin.cotizaciones.index')],
             ];
             // Informes solo para admin, superadmin y contador
             if(auth()->user()?->hasRole(['admin','superadmin','contador'])){

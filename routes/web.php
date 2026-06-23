@@ -68,6 +68,13 @@ Route::middleware('auth')->group(function () {
         Route::patch('comisiones/{comision}/pagar', [\App\Http\Controllers\Admin\AsesorController::class, 'marcarPagada'])
              ->name('asesores.comisiones.pagar');
 
+        // Cotizaciones y Prospectos
+        Route::post('cotizaciones/{id}/gestion', [\App\Http\Controllers\Admin\CotizacionController::class, 'registrarGestion'])->name('cotizaciones.gestion');
+        Route::post('cotizaciones/{id}/cotizar', [\App\Http\Controllers\Admin\CotizacionController::class, 'cotizar'])->name('cotizaciones.cotizar');
+        Route::post('cotizaciones/{id}/convertir', [\App\Http\Controllers\Admin\CotizacionController::class, 'convertirACliente'])->name('cotizaciones.convertir');
+        Route::get('cotizaciones/{id}/pdf', [\App\Http\Controllers\Admin\CotizacionController::class, 'descargarPdf'])->name('cotizaciones.pdf');
+        Route::resource('cotizaciones', \App\Http\Controllers\Admin\CotizacionController::class);
+
         // Clientes (todos los roles con acceso)
         Route::get('clientes/buscar-cedula', [\App\Http\Controllers\Admin\ClienteController::class, 'buscarPorCedula'])
              ->name('clientes.buscar_cedula');

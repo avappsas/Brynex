@@ -133,7 +133,7 @@ class ContratoController extends Controller
     public function edit(int $id)
     {
         $alidoId  = session('aliado_id_activo');
-        $contrato = Contrato::where('aliado_id', $alidoId)->with(['cliente','radicados.user','plan'])->findOrFail($id);
+        $contrato = Contrato::where('aliado_id', $alidoId)->with(['cliente','radicados.user','plan','razonSocial'])->findOrFail($id);
         $cliente  = $contrato->cliente;
 
         // URL de retorno: viene como ?back=... o se toma del referrer
@@ -163,11 +163,17 @@ class ContratoController extends Controller
             ]);
 
         // Verificar si el contrato tiene planillas con días cotizados > 0
-        $tienePlanillaConDias = \App\Models\Factura::where('contrato_id', $contrato->id)
-            ->where('tipo', 'planilla')
-            ->where('dias_cotizados', '>', 0)
-            ->where('numero_factura', '>', 0)
-            ->exists();
+        // Para independientes (es_independiente=1): siempre se permite retiro informativo
+        // porque el cliente paga la SS por sus propios medios.
+        $rsEdit = $contrato->razonSocial;
+        $esIndependienteEdit = $contrato->esIndependiente() || ($rsEdit && $rsEdit->es_independiente);
+        $tienePlanillaConDias = $esIndependienteEdit
+            ? false
+            : \App\Models\Factura::where('contrato_id', $contrato->id)
+                ->where('tipo', 'planilla')
+                ->where('dias_cotizados', '>', 0)
+                ->where('numero_factura', '>', 0)
+                ->exists();
 
         return view('admin.contratos.form', array_merge(
             $this->datosFormulario($alidoId, $cliente, $contrato->razon_social_id, $contrato->id),
@@ -376,16 +382,23 @@ class ContratoController extends Controller
             : 0;
 
         // Por seguridad: bloquear retiro informativo si tiene planillas con días > 0
+        // Excepción: contratos de RS independiente (es_independiente=1) siempre pueden
+        // hacer retiro informativo porque el cliente paga la SS por sus propios medios.
         if ($tipoRetiro === 'informativo') {
-            $tienePlanillaConDias = \App\Models\Factura::where('contrato_id', $contrato->id)
-                ->where('tipo', 'planilla')
-                ->where('dias_cotizados', '>', 0)
-                ->where('numero_factura', '>', 0)
-                ->exists();
-            if ($tienePlanillaConDias) {
-                return redirect()
-                    ->route('admin.contratos.edit', [$id, 'back' => $request->input('back_url')])
-                    ->withErrors(['tipo_retiro' => 'No se puede aplicar retiro informativo porque el contrato ya tiene planillas pagadas con días cotizados.']);
+            $rsRetiroCheck = $contrato->razonSocial;
+            $esIndependienteRetiro = $contrato->esIndependiente() || ($rsRetiroCheck && $rsRetiroCheck->es_independiente);
+
+            if (!$esIndependienteRetiro) {
+                $tienePlanillaConDias = \App\Models\Factura::where('contrato_id', $contrato->id)
+                    ->where('tipo', 'planilla')
+                    ->where('dias_cotizados', '>', 0)
+                    ->where('numero_factura', '>', 0)
+                    ->exists();
+                if ($tienePlanillaConDias) {
+                    return redirect()
+                        ->route('admin.contratos.edit', [$id, 'back' => $request->input('back_url')])
+                        ->withErrors(['tipo_retiro' => 'No se puede aplicar retiro informativo porque el contrato ya tiene planillas pagadas con días cotizados.']);
+                }
             }
         }
 

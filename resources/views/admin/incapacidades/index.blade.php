@@ -953,9 +953,9 @@ function verDetalle(id){
                 <tbody>
                 ${_filaOrig}
                 ${(inc.prorrogas||[]).map((p)=>{
-                    const ec=colorEstadoPago(p.estado_pago); const bcp=(_bcMap[ec]||_bcMap.secondary).split(';');
-                    return _renderFila(false,p.id,p.numero_proroga,labelTipo(p.tipo_incapacidad),p.dias_incapacidad,p.fecha_inicio,p.fecha_terminacion,p.tipo_entidad,p.entidad_nombre,_badge(labelEstadoPago(p.estado_pago),bcp[0],bcp[1]||'color:#475569'),p.valor_esperado,
-                        `<button class="btn btn-info btn-sm" onclick="registrarGestion(${p.id})" title="Gestión">📞</button><button class="btn btn-primary btn-sm" onclick="registrarPago(${p.id})" title="Pago">💰</button><button class="btn btn-warning btn-sm" onclick="cerrarModal('modalDetalle');abrirModalEditar(${p.id})" title="Editar">✏️</button>`);
+                    const ec=colorEstado(p.estado); const bcp=(_bcMap[ec]||_bcMap.secondary).split(';');
+                    return _renderFila(false,p.id,p.numero_proroga,labelTipo(p.tipo_incapacidad),p.dias_incapacidad,p.fecha_inicio,p.fecha_terminacion,p.tipo_entidad,p.entidad_nombre,_badge(labelEstado(p.estado),bcp[0],bcp[1]||'color:#475569'),p.valor_esperado,
+                        `<button class="btn btn-info btn-sm" onclick="registrarGestion(${p.id})" title="Gestión">📞</button><button class="btn btn-primary btn-sm" onclick="registrarPago(${p.id})" title="Anticipo / Préstamo">💰</button><button class="btn btn-warning btn-sm" onclick="cerrarModal('modalDetalle');abrirModalEditar(${p.id})" title="Editar">✏️</button><button class="btn btn-secondary btn-sm" onclick="recalcularValor(${p.id})" title="Recalcular Valor">🔄</button>`);
                 }).join('')}
                 </tbody></table></div>`;
 
@@ -975,7 +975,7 @@ function verDetalle(id){
                     <button class="tab-btn" onclick="switchTab(this,'tabDocumentos');cargarDocsFamilia(${inc.id})">📎 Documentos</button>
                     ${data.num_prorrogas>0?`<button class="tab-btn" onclick="switchTab(this,'tabProrrogas')">📄 Prórrogas (${data.num_prorrogas})</button>`:''}
                     <button class="tab-btn" onclick="switchTab(this,'tabGestiones')">📞 Gestiones (${(inc.gestiones||[]).length})</button>
-                    <button class="tab-btn" onclick="switchTab(this,'tabPago')">💰 Pago</button>
+                    <button class="tab-btn" onclick="switchTab(this,'tabPago')">💰 Anticipo/Préstamo</button>
                 </div>
 
                 <div id="tabInfo" class="tab-pane active">
@@ -1040,13 +1040,13 @@ function verDetalle(id){
 
                 <div id="tabPago" class="tab-pane">
                     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.75rem;margin-bottom:1rem">
-                        <div class="kpi"><div class="num" style="font-size:.95rem">${labelEstadoPago(inc.estado_pago)}</div><div class="lbl">Estado Pago</div></div>
-                        <div class="kpi"><div class="num" style="font-size:1.1rem">${inc.valor_pago?'$'+Number(inc.valor_pago).toLocaleString('es-CO'):'—'}</div><div class="lbl">Valor Pagado</div></div>
+                        <div class="kpi"><div class="num" style="font-size:.95rem">${labelEstadoPago(inc.estado_pago)}</div><div class="lbl">Estado Pago/Anticipo</div></div>
+                        <div class="kpi"><div class="num" style="font-size:1.1rem">${inc.valor_pago?'$'+Number(inc.valor_pago).toLocaleString('es-CO'):'—'}</div><div class="lbl">Total Anticipado</div></div>
                         <div class="kpi"><div class="num" style="font-size:1.1rem">${val}</div><div class="lbl">Valor Esperado</div></div>
                         <div class="kpi"><div class="num" style="font-size:.95rem">${inc.pagado_a==='cliente'?'Afiliado':inc.pagado_a==='empresa'?'Empresa':'—'}</div><div class="lbl">Pagado a</div></div>
                     </div>
                     ${inc.detalle_pago?`<p style="font-size:.82rem;color:#374151"><strong>Detalle:</strong> ${inc.detalle_pago}</p>`:''}
-                    <button class="btn btn-success" onclick="registrarPago(${inc.id})" style="margin-top:.8rem">💰 Registrar Pago al Afiliado</button>
+                    <button class="btn btn-success" onclick="registrarPago(${inc.id})" style="margin-top:.8rem">💰 Registrar Anticipo / Préstamo al Afiliado</button>
                 </div>
 
                 <div id="tabDocumentos" class="tab-pane">
@@ -1076,6 +1076,26 @@ function iconoTipoGestion(tipo){
 }
 
 // ── Gestión inline ───────────────────────────────────────────────────────────
+function recalcularValor(incId) {
+    if (!confirm('¿Seguro que deseas recalcular el valor esperado de esta incapacidad/prórroga?')) return;
+    fetch(`/admin/incapacidades/${incId}/calcular-valor`, { method: 'POST', headers: {'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content} })
+        .then(r => r.json())
+        .then(d => {
+            if (d.ok) {
+                alert('Valor recalculado: ' + d.valor_formato);
+                // Recargar el modal de detalle
+                const detalleEl = document.getElementById('modalDetalle');
+                if (detalleEl && detalleEl.classList.contains('open')) {
+                    const padreId = detalleEl.dataset.incId || incId;
+                    verDetalle(padreId);
+                }
+            } else {
+                alert('Error al recalcular: ' + d.message);
+            }
+        })
+        .catch(e => alert('Error de red: ' + e.message));
+}
+
 function registrarGestion(incId) {
     Promise.all([
         fetch(`/admin/incapacidades/${incId}/show`).then(r => r.json()).catch(() => ({})),
@@ -2057,49 +2077,126 @@ function _dropFotoAfiliado(e) {
 }
 
 
-// ── Pago al afiliado ─────────────────────────────────────────────────────────
+// ── Pago al afiliado (Anticipo / Préstamo) ──────────────────────────────────
 function registrarPago(incId){
-    const html = `<div style="padding:1rem">
-        <h4 style="margin-bottom:1rem">💰 Registrar Pago — Incapacidad #${incId}</h4>
-        <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">
-            <div class="form-group"><label>Valor Pagado *</label><input type="number" id="pValor" style="width:100%;padding:.4rem;border:1px solid #d1d5db;border-radius:6px" min="0" step="100"></div>
-            <div class="form-group"><label>Fecha de Pago *</label><input type="date" id="pFecha" value="${new Date().toISOString().substring(0,10)}" style="width:100%;padding:.4rem;border:1px solid #d1d5db;border-radius:6px"></div>
-        </div>
-        <div class="form-group"><label>Pagado a *</label>
-            <select id="pPagadoA" style="width:100%;padding:.4rem;border:1px solid #d1d5db;border-radius:6px">
-                <option value="cliente">Cliente (afiliado)</option>
-                <option value="empresa">Empresa</option>
-            </select></div>
-        <div class="form-group"><label>Detalle / Observación</label><textarea id="pDetalle" style="width:100%;min-height:50px;padding:.4rem;border:1px solid #d1d5db;border-radius:6px"></textarea></div>
-        <div style="display:flex;gap:.5rem;justify-content:flex-end">
-            <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').classList.remove('open')">Cancelar</button>
-            <button class="btn btn-success" onclick="enviarPago(${incId})">💾 Registrar Pago</button>
-        </div>
-    </div>`;
-
     let overlay = document.getElementById('modalPago');
     if(!overlay){
         overlay = document.createElement('div');
         overlay.id = 'modalPago';
         overlay.className = 'modal-overlay';
-        overlay.innerHTML = `<div class="modal" style="max-width:520px">${html}</div>`;
+        overlay.innerHTML = `<div class="modal" style="max-width:520px"><div style="padding:2rem;text-align:center;color:#64748b">⏳ Cargando opciones...</div></div>`;
         document.body.appendChild(overlay);
-    } else { overlay.querySelector('.modal').innerHTML = html; }
+    } else {
+        overlay.querySelector('.modal').innerHTML = `<div style="padding:2rem;text-align:center;color:#64748b">⏳ Cargando opciones...</div>`;
+    }
     overlay.classList.add('open');
+
+    fetch(`/admin/incapacidades/${incId}/cuentas-rs`)
+        .then(r => r.json())
+        .then(d => {
+            const cuentas = d.cuentas || [];
+            const cuentasOpts = cuentas.length
+                ? cuentas.map(c => `<option value="${c.id}">${c.banco} · ${c.tipo_cuenta||''} · ****${(c.numero_cuenta||'').slice(-4)} (${c.nombre})</option>`).join('')
+                : '<option value="">Sin cuentas registradas</option>';
+
+            const html = `<div style="padding:1rem">
+                <h4 style="margin-bottom:1rem;color:#0f172a;font-weight:700">💰 Registrar Anticipo / Préstamo — Incapacidad #${incId}</h4>
+                <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem;margin-bottom:.8rem">
+                    <div class="form-group">
+                        <label style="font-weight:600;font-size:.85rem;color:#475569;margin-bottom:.3rem;display:block">Valor Anticipado *</label>
+                        <input type="number" id="pValor" style="width:100%;padding:.5rem;border:1px solid #d1d5db;border-radius:6px;font-size:.9rem" min="0" step="1000" placeholder="Ej. 150000">
+                    </div>
+                    <div class="form-group">
+                        <label style="font-weight:600;font-size:.85rem;color:#475569;margin-bottom:.3rem;display:block">Fecha de Pago *</label>
+                        <input type="date" id="pFecha" value="${new Date().toISOString().substring(0,10)}" style="width:100%;padding:.5rem;border:1px solid #d1d5db;border-radius:6px;font-size:.9rem">
+                    </div>
+                </div>
+                
+                <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem;margin-bottom:.8rem">
+                    <div class="form-group">
+                        <label style="font-weight:600;font-size:.85rem;color:#475569;margin-bottom:.3rem;display:block">Forma de Pago *</label>
+                        <select id="pFormaPago" style="width:100%;padding:.5rem;border:1px solid #d1d5db;border-radius:6px;font-size:.9rem" onchange="toggleBancoOrigen(this.value)">
+                            <option value="transferencia_bancaria">Transferencia Bancaria</option>
+                            <option value="efectivo">Efectivo</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="pBancoGroup">
+                        <label style="font-weight:600;font-size:.85rem;color:#475569;margin-bottom:.3rem;display:block">Banco Origen *</label>
+                        <select id="pBancoCuentaId" style="width:100%;padding:.5rem;border:1px solid #d1d5db;border-radius:6px;font-size:.9rem">
+                            ${cuentasOpts}
+                        </select>
+                    </div>
+                </div>
+
+                <input type="hidden" id="pPagadoA" value="cliente">
+
+                <div class="form-group" style="margin-bottom:1rem">
+                    <label style="font-weight:600;font-size:.85rem;color:#475569;margin-bottom:.3rem;display:block">Detalle / Observación</label>
+                    <textarea id="pDetalle" style="width:100%;min-height:55px;padding:.5rem;border:1px solid #d1d5db;border-radius:6px;font-size:.9rem" placeholder="Detalles sobre el préstamo/anticipo..."></textarea>
+                </div>
+                
+                <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:1.2rem">
+                    <button class="btn btn-secondary" onclick="document.getElementById('modalPago').classList.remove('open')">Cancelar</button>
+                    <button class="btn btn-success" onclick="enviarPago(${incId})" style="background-color:#16a34a;border-color:#16a34a">💾 Registrar Anticipo</button>
+                </div>
+            </div>`;
+
+            overlay.querySelector('.modal').innerHTML = html;
+        })
+        .catch(err => {
+            overlay.querySelector('.modal').innerHTML = `<div style="padding:2rem;text-align:center;color:#ef4444">Error al cargar las cuentas bancarias.</div>`;
+        });
+}
+
+function toggleBancoOrigen(val) {
+    const group = document.getElementById('pBancoGroup');
+    if (group) {
+        group.style.display = val === 'transferencia_bancaria' ? 'block' : 'none';
+    }
 }
 
 function enviarPago(incId){
+    const valor = document.getElementById('pValor').value;
+    const fecha = document.getElementById('pFecha').value;
+    const formaPago = document.getElementById('pFormaPago').value;
+    const bancoId = document.getElementById('pBancoCuentaId')?.value || null;
+    const pagadoA = document.getElementById('pPagadoA').value;
+    const detalle = document.getElementById('pDetalle').value;
+
+    if (!valor || Number(valor) <= 0) {
+        alert('Por favor ingrese un valor válido para el anticipo.');
+        return;
+    }
+    if (!fecha) {
+        alert('Por favor ingrese la fecha del anticipo.');
+        return;
+    }
+    if (formaPago === 'transferencia_bancaria' && !bancoId) {
+        alert('Por favor seleccione una cuenta de banco origen.');
+        return;
+    }
+
     fetch(`/admin/incapacidades/${incId}/pago`,{
         method:'POST', headers:{'Content-Type':'application/json','X-CSRF-TOKEN':TOKEN},
         body: JSON.stringify({
-            valor_pago: document.getElementById('pValor').value,
-            fecha_pago: document.getElementById('pFecha').value,
-            pagado_a:   document.getElementById('pPagadoA').value,
-            detalle_pago: document.getElementById('pDetalle').value,
+            valor_pago: valor,
+            fecha_pago: fecha,
+            pagado_a:   pagadoA,
+            forma_pago: formaPago,
+            banco_cuenta_id: bancoId,
+            detalle_pago: detalle,
             _token: TOKEN
         })
     }).then(r=>r.json()).then(d=>{
-        if(d.ok){ document.getElementById('modalPago').classList.remove('open'); verDetalle(incId); }
+        if(d.ok){ 
+            document.getElementById('modalPago').classList.remove('open'); 
+            verDetalle(incId); 
+            if (typeof window.recargarTabla === 'function') {
+                window.recargarTabla();
+            } else {
+                location.reload();
+            }
+        }
         else alert('Error: '+(d.message||''));
     });
 }

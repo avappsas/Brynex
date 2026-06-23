@@ -441,8 +441,8 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
                             <tr style="background:#f8fafc; border-bottom:2px solid #e2e8f0; color:#475569; font-weight:700; text-transform:uppercase; font-size:.65rem; letter-spacing:0.5px; position: sticky; top: 0; z-index: 10;">
                                 <th style="padding:.65rem .85rem;">Incapacidad / Cliente</th>
                                 <th style="padding:.65rem .85rem; text-align:center;">Estado</th>
-                                <th style="padding:.65rem .85rem; text-align:right;">Entras Mes</th>
-                                <th style="padding:.65rem .85rem; text-align:right;">Pagos Mes</th>
+                                <th style="padding:.65rem .85rem; text-align:right;">Total Recibido EPS</th>
+                                <th style="padding:.65rem .85rem; text-align:right;">Total Pagos/Ant.</th>
                                 <th style="padding:.65rem .85rem; text-align:right;">Saldo Canal 5</th>
                                 <th style="padding:.65rem .85rem; text-align:center;">Acción</th>
                             </tr>
@@ -507,10 +507,10 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
                                         </span>
                                     </td>
                                     <td style="padding:.65rem .85rem; text-align:right; font-family:monospace; font-weight:600; color:#16a34a; white-space:nowrap;">
-                                        {{ $inc->entradas_mes > 0 ? $fmt($inc->entradas_mes) : '—' }}
+                                        {{ $inc->total_entradas_historico > 0 ? $fmt($inc->total_entradas_historico) : '—' }}
                                     </td>
                                     <td style="padding:.65rem .85rem; text-align:right; font-family:monospace; font-weight:600; color:#2563eb; white-space:nowrap;">
-                                        {{ $inc->pagos_mes > 0 ? $fmt($inc->pagos_mes) : '—' }}
+                                        {{ $inc->total_pagos_historico > 0 ? $fmt($inc->total_pagos_historico) : '—' }}
                                     </td>
                                     <td style="padding:.65rem .85rem; text-align:right; font-family:monospace; font-weight:700; color:{{ $saldoCanal5 >= 0 ? '#16a34a' : '#dc2626' }}; white-space:nowrap;">
                                         {{ $saldoCanal5 > 0 ? '+' : '' }}{{ $fmt($saldoCanal5) }}
