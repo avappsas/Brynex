@@ -621,7 +621,7 @@ const MF = (function () {
     function _calcularResumenInicial() {
         if (_modo === 'masivo') {
             // Sumar todos los contratos seleccionados
-            let eps = 0, arl = 0, afp = 0, caja = 0, admon = 0, seg = 0, iva = 0, afil = 0;
+            let eps = 0, arl = 0, afp = 0, caja = 0, admon = 0, seg = 0, iva = 0, afil = 0, mora = 0;
             let maxArlNivel = 0;
             _selContratos.forEach(c => {
                 eps += c.eps || 0;
@@ -632,6 +632,7 @@ const MF = (function () {
                 seg += c.seg || 0;
                 iva += c.iva || 0;
                 afil += c.afiliacion || 0;   // afiliación (I ACT primer mes + I VENC afil pura)
+                mora += c.mora || 0;         // mora acumulada de todos los contratos seleccionados
                 if ((c.arl_nivel || 0) > maxArlNivel) maxArlNivel = c.arl_nivel;
             });
             const ss = eps + arl + afp + caja;
@@ -644,6 +645,14 @@ const MF = (function () {
             setText('mf-v-admon', fmt(ceil(admon)));
             setText('mf-v-seg', fmt(ceil(seg)));
             setText('mf-v-iva', fmt(ceil(iva)));
+
+            // ── Mora: sumar la mora de TODOS los contratos seleccionados ──
+            // Si varios clientes tienen mora y el pagador manda el total completo,
+            // el campo mf-mora debe reflejar esa suma para que el saldo cuadre.
+            _mora = mora;
+            setVal('mf-mora', mora);
+            const rowMora = el('mf-row-mora');
+            if (rowMora) rowMora.style.display = mora > 0 ? '' : 'none';
 
             // Afiliación: mostrar fila siempre que haya valor (I ACT o I VENC afil)
             const rowAfil = el('mf-row-afil');
@@ -1425,7 +1434,8 @@ const MF = (function () {
         const row = document.createElement('div');
         row.className = 'mf-consig-row';
         // Grid: banco | monto | fecha | referencia | imagen | del
-        row.style.gridTemplateColumns = '2fr 90px 100px 100px 34px 22px';
+        // Banco fijo 110px: compacto en la fila, completo al desplegar
+        row.style.gridTemplateColumns = 'minmax(180px, 1.8fr) 88px 115px minmax(50px, 0.5fr) 34px 22px';
         row.innerHTML = `
             <select class="mf-consig-sel mf-consig-banco">${bancoOptions(banco || '')}</select>
             <input type="text" class="mf-consig-monto-inp mf-consig-monto" value="${monto || '0'}" placeholder="$0" oninput="MF.recalc()">
@@ -1450,6 +1460,19 @@ const MF = (function () {
             montoInp.addEventListener('input', function() {
                 this.value = this.value.replace(/[^0-9]/g, '');
             });
+        }
+
+        // Al seleccionar un banco: poner el texto completo en `title` para hover
+        // El CSS text-overflow:ellipsis muestra el texto recortado en la celda
+        const bancoSel = row.querySelector('.mf-consig-banco');
+        if (bancoSel) {
+            const _updateBancoTitle = () => {
+                const opt = bancoSel.options[bancoSel.selectedIndex];
+                bancoSel.title = opt ? opt.text : '';
+            };
+            bancoSel.addEventListener('change', _updateBancoTitle);
+            // Aplicar title al banco pre-seleccionado si viene de edición
+            if (banco) _updateBancoTitle();
         }
 
         el('mf-consig-list').appendChild(row);

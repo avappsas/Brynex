@@ -274,7 +274,7 @@
     max-height: 140px; overflow-y: auto;
 }
 .mf-consig-row {
-    display: grid; grid-template-columns: 2fr 90px 100px 22px;
+    display: grid; grid-template-columns: minmax(180px, 1.8fr) 88px 115px minmax(50px, 0.5fr) 34px 22px;
     gap: .25rem; align-items: center;
 }
 .mf-consig-sel, .mf-consig-monto-inp, .mf-consig-fecha-inp {
@@ -283,6 +283,15 @@
     transition: border-color .15s;
 }
 .mf-consig-sel:focus, .mf-consig-monto-inp:focus, .mf-consig-fecha-inp:focus { border-color: #3b82f6; }
+/* Select de banco: compacto cuando está cerrado, completo al abrir */
+.mf-consig-banco {
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: pointer;
+}
 .mf-consig-monto-inp { text-align: right; font-weight: 700; font-family: monospace; }
 .mf-consig-del {
     padding: 2px 5px; border: none; background: #fee2e2; color: #dc2626;
@@ -792,7 +801,7 @@
                     <button class="mf-consig-add-btn" onclick="MF.addConsig()">＋ Agregar</button>
                 </div>
                 {{-- Cabecera --}}
-                <div style="display:grid;grid-template-columns:2fr 90px 100px 100px 34px 22px;gap:.25rem;padding:.22rem .6rem .15rem;background:#f8fafc;border-bottom:1px solid #f1f5f9;">
+                <div id="mf-consig-hdr" style="display:grid;grid-template-columns:minmax(180px,1.8fr) 88px 115px minmax(50px,0.5fr) 34px 22px;gap:.25rem;padding:.22rem .6rem .15rem;background:#f8fafc;border-bottom:1px solid #f1f5f9;">
                     <span style="font-size:.57rem;font-weight:700;color:#94a3b8;text-transform:uppercase;">Banco</span>
                     <span style="font-size:.57rem;font-weight:700;color:#94a3b8;text-transform:uppercase;text-align:right;">Valor</span>
                     <span style="font-size:.57rem;font-weight:700;color:#94a3b8;text-transform:uppercase;text-align:center;">Fecha</span>
@@ -901,7 +910,7 @@
 window._MF_BANCOS = [
     {id:'', label:'-- Seleccionar banco --'},
     @foreach($mfBancos as $b)
-    {id:{{ $b->id }}, label:{!! json_encode($b->nombre . ' — ' . $b->tipo_cuenta) !!}},
+    {id:{{ $b->id }}, label:{!! json_encode(strtoupper($b->banco) . '   ' . $b->nombre . '   # ' . $b->numero_cuenta) !!}},
     @endforeach
 ];
 </script>
@@ -954,7 +963,7 @@ window._MF_BANCOS = [
                 style="width:100%;padding:.38rem .55rem;border:1.5px solid #e2e8f0;border-radius:7px;font-size:.82rem;outline:none;background:#fff;box-sizing:border-box;">
                 <option value="">— Seleccionar banco —</option>
                 @foreach($mfBancos as $b)
-                <option value="{{ $b->id }}">{{ $b->nombre }} — {{ $b->tipo_cuenta }}</option>
+                <option value="{{ $b->id }}">{{ strtoupper($b->banco) }}   {{ $b->nombre }}   # {{ $b->numero_cuenta }}</option>
                 @endforeach
             </select>
         </div>

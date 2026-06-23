@@ -688,7 +688,7 @@ $totAdmon+=$vAdm;$totIva+=$vIva;$totTotal+=$vTot;$totMora+=$vMora;
         <select id="ab_banco" class="finp">
             <option value="">-- Seleccionar --</option>
             @foreach($bancos as $b)
-            <option value="{{ $b->id }}">{{ $b->banco }} — {{ $b->nombre }} | {{ $b->numero_cuenta }}</option>
+            <option value="{{ $b->id }}">{{ strtoupper($b->banco) }}   {{ $b->nombre }}   # {{ $b->numero_cuenta }}</option>
             @endforeach
         </select>
     </div>
@@ -738,7 +738,7 @@ MF.init({
 const BANCOS = [
     {id:'', label:'-- Seleccionar banco --'},
     @foreach($bancos as $b)
-    {id:{{ $b->id }}, label:{!! json_encode($b->banco . ' — ' . $b->nombre . ' | ' . $b->tipo_cuenta . ' ' . $b->numero_cuenta) !!}},
+    {id:{{ $b->id }}, label:{!! json_encode(strtoupper($b->banco) . '   ' . $b->nombre . '   # ' . $b->numero_cuenta) !!}},
     @endforeach
 ];
 
@@ -1081,6 +1081,7 @@ function _buildContratosSelec() {
         admon:     parseInt(r.dataset.vadmon || 0),
         seg:       parseInt(r.dataset.seguro || 0),
         iva:       parseInt(r.dataset.viva   || 0),
+        mora:      parseInt(r.dataset.vmora  || 0),   // mora pre-calculada del contrato
         arl_nivel: parseInt(r.dataset.arlnivel || 1),
         dias:      parseInt(r.dataset.dias   || 30),
         nombre:    r.dataset.nombre || '',
