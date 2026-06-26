@@ -496,6 +496,22 @@ class IncapacidadController extends Controller
                 }
                 // Si pagada_razon_social, registrar abono + consignación
                 if ($nuevoEstado === 'pagada_razon_social' && $request->filled('valor_pago_rs')) {
+                    if ($request->forma_pago_rs === 'transferencia') {
+                        if (!$request->banco_cuenta_id) {
+                            return response()->json([
+                                'ok'      => false,
+                                'message' => 'Debes seleccionar la cuenta bancaria de destino para el pago por transferencia.',
+                            ], 422);
+                        }
+                        $cuenta = DB::table('banco_cuentas')->where('id', $request->banco_cuenta_id)->first();
+                        if (!$cuenta || empty(trim((string)$cuenta->nit))) {
+                            return response()->json([
+                                'ok'      => false,
+                                'message' => 'La cuenta bancaria de destino seleccionada debe tener un NIT configurado.',
+                            ], 422);
+                        }
+                    }
+
                     $formaLabel = match($request->forma_pago_rs ?? 'otro') {
                         'transferencia' => 'Transferencia/Consignación bancaria',
                         'opi'           => 'OPI (Orden de Pago Inmediata - ARL)',

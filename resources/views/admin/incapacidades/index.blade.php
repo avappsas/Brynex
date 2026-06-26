@@ -1422,12 +1422,13 @@ function _cargarCuentasRS(incId) {
     fetch(`/admin/incapacidades/${incId}/cuentas-rs`)
         .then(r => r.json()).then(d => {
             if (!d.ok) { box.innerHTML = '<div style="color:#ef4444;font-size:.8rem">Error al cargar.</div>'; return; }
-            // Guardar cuentas en variable global para usarlas en el mini-modal
+            // Guardar cuentas en variable global para usarlas en el mini-modal (filtrando que tengan NIT)
+            const cuentasConNit = (d.cuentas || []).filter(c => c.nit && c.nit.toString().trim() !== '');
             window._rsIncId      = incId;
-            window._rsCuentas    = d.cuentas || [];
-            window._rsCuentaOpts = window._rsCuentas.length
-                ? window._rsCuentas.map(c =>
-                    `<option value="${c.id}">${c.banco} · ${c.tipo_cuenta||''} · ****${(c.numero_cuenta||'').slice(-4)} (${c.nombre})</option>`
+            window._rsCuentas    = cuentasConNit;
+            window._rsCuentaOpts = cuentasConNit.length
+                ? cuentasConNit.map(c =>
+                    `<option value="${c.id}">${c.banco} · ${c.tipo_cuenta||''} · ****${(c.numero_cuenta||'').slice(-4)} (${c.nombre}) [NIT: ${c.nit}]</option>`
                   ).join('')
                 : '';
 
@@ -1509,7 +1510,8 @@ function _abrirMiniModalRS(forma) {
         cuerpo = `
         ${sinCuenta ? `
         <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:.5rem .7rem;font-size:.79rem;color:#c2410c;margin-bottom:.6rem">
-            ⚠️ <strong>Sin cuenta bancaria configurada</strong> para esta Razón Social.<br>
+            ⚠️ <strong>Sin cuenta bancaria con NIT configurada</strong> para esta Razón Social.<br>
+            Asegúrate de que la cuenta bancaria de la Razón Social tenga su NIT asignado.<br>
             <a href="/admin/configuracion/cuentas" target="_blank" style="color:#2563eb;text-decoration:underline">→ Configurar cuenta</a>
         </div>` : `
         <div class="form-group" style="margin:0 0 .5rem">
@@ -1725,7 +1727,7 @@ function _dropFotoRS(e) {
 
 function _confirmarFormaRS(forma) {
     if (forma === 'transferencia' && window._miniModalSinCuenta) {
-        alert('Debes configurar una cuenta bancaria para esta Razón Social antes de continuar.');
+        alert('Debes configurar una cuenta bancaria con NIT para esta Razón Social antes de continuar.');
         return;
     }
 
@@ -1863,6 +1865,10 @@ function enviarGestion(incId) {
     // Validar pago RS
     if (esPagoRS) {
         if (!body.forma_pago_rs) { alert('Selecciona la forma en que se recibió el pago.'); return; }
+        if (body.forma_pago_rs === 'transferencia' && !body.banco_cuenta_id) {
+            alert('Debes seleccionar una cuenta bancaria con NIT para la Razón Social.');
+            return;
+        }
         if (!body.valor_pago_rs || Number(body.valor_pago_rs) <= 0) { alert('Ingresa el valor recibido.'); return; }
     }
 
@@ -1971,10 +1977,24 @@ function _cargarDatosPagoAfiliado(inc, incId) {
         document.getElementById('gBancoOrigenIdAfiliado').value = abonoEps.banco_cuenta_id || '';
         if (abonoEps.banco_cuenta) {
             document.getElementById('gCuentaOrigenAfiliado').value = `${abonoEps.banco_cuenta.banco} · ****${(abonoEps.banco_cuenta.numero_cuenta || '').slice(-4)} (${abonoEps.banco_cuenta.nombre})`;
+            _calcularNetoAfiliado();
         } else {
-            document.getElementById('gCuentaOrigenAfiliado').value = 'Cuenta no registrada en abono';
+            document.getElementById('gCuentaOrigenAfiliado').value = 'Buscando cuenta de Razón Social...';
+            fetch(`/admin/incapacidades/${incId}/cuentas-rs`)
+                .then(r => r.json()).then(d => {
+                    if (d.ok && d.cuentas && d.cuentas.length > 0) {
+                        const c = d.cuentas[0];
+                        document.getElementById('gBancoOrigenIdAfiliado').value = c.id;
+                        document.getElementById('gCuentaOrigenAfiliado').value = `${c.banco} · ****${(c.numero_cuenta||'').slice(-4)} (${c.nombre})`;
+                    } else {
+                        document.getElementById('gCuentaOrigenAfiliado').value = 'Sin cuenta asignada a Razón Social';
+                    }
+                    _calcularNetoAfiliado();
+                }).catch(() => {
+                    document.getElementById('gCuentaOrigenAfiliado').value = 'Error al consultar cuentas';
+                    _calcularNetoAfiliado();
+                });
         }
-        _calcularNetoAfiliado();
     } else {
         valorEps = Math.round(Number(inc.valor_esperado || 0));
         document.getElementById('gValorRecibidoEps').value = valorEps;

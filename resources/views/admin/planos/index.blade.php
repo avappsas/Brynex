@@ -1200,7 +1200,9 @@
                     <select id="pago-banco">
                         <option value="">— Seleccione banco —</option>
                         @foreach($bancos as $b)
-                        <option value="{{ $b->id }}">{{ $b->nombre }}</option>
+                        <option value="{{ $b->id }}">
+                            {{ $b->banco ? $b->banco . ' ' : '' }}{{ $b->nombre }}{{ $b->numero_cuenta ? ' #' . $b->numero_cuenta : '' }}
+                        </option>
                         @endforeach
                     </select>
                 </div>
@@ -1434,6 +1436,7 @@ const CTX = {
                ->values()
     ) !!},
 };
+window.CTX_TOTAL_PAGAR = CTX.totalSS;
 
 // ── Cálculo de Mora PILA Colombia ────────────────────────────────────
 // Decreto 1990/2016 | Art. 635 ET | Tasa usura Superfinanciera
@@ -1531,6 +1534,7 @@ const CTX = {
         document.getElementById('mora-valor').textContent = '$ 0';
         document.getElementById('mora-valor').className   = 'mv verde';
         document.getElementById('mora-total').textContent = '$ ' + fmtNum(CTX.totalSS);
+        window.CTX_TOTAL_PAGAR = CTX.totalSS;
 
         mostrarEl('mora-info-txt');
         document.getElementById('mora-info-txt').textContent =
