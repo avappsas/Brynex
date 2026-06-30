@@ -45,7 +45,7 @@
             </div>
         </div>
 
-        <!-- Tarjeta Afiliaciones del Mes (Con sub-info Facturadas) -->
+        <!-- Tarjeta Afiliaciones del Mes -->
         <div class="card-kpi" style="padding:1.5rem; position: relative; overflow: hidden; display: flex; flex-direction: column; justify-content: space-between; min-height: 140px;">
             <div style="position: absolute; right: -10px; top: -10px; font-size: 5.5rem; opacity: 0.04; pointer-events: none; font-weight: 900;">👥</div>
             <div>
@@ -55,9 +55,8 @@
                 </div>
                 <div style="font-size:0.72rem;color:#94a3b8;margin-top:0.2rem;">Nuevas afiliaciones por fecha de ingreso</div>
             </div>
-            <div style="margin-top: 1rem; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #f1f5f9; padding-top: 0.75rem;">
-                <span style="font-size:0.75rem;color:#94a3b8;">Afiliaciones Facturadas:</span>
-                <strong style="font-size:0.8rem;color:#4f46e5;">{{ number_format($kpisActual['afil_facturadas'], 0, ',', '.') }}</strong>
+            <div style="margin-top: 1rem; display: flex; align-items: center; gap: 0.5rem; border-top: 1px solid #f1f5f9; padding-top: 0.75rem;">
+                <span style="font-size:0.75rem;color:#94a3b8;">Ingresos del período actual</span>
             </div>
         </div>
 
@@ -83,16 +82,16 @@
 
     </div>
 
-    {{-- Nota explicativa del cambio de lógica --}}
+    {{-- Nota explicativa --}}
     <div style="background: linear-gradient(135deg, rgba(13,148,136,0.06), rgba(99,102,241,0.06)); border: 1px solid rgba(13,148,136,0.2); border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 2rem; display: flex; gap: 0.75rem; align-items: flex-start;">
         <span style="font-size: 1.2rem; flex-shrink: 0;">💡</span>
         <div>
             <p style="margin:0; font-size: 0.82rem; color: #0f766e; font-weight: 700;">¿Cómo se interpretan los datos del mes?</p>
             <p style="margin:0.25rem 0 0; font-size: 0.78rem; color: #475569; line-height: 1.5;">
-                <strong>Admon Vigentes</strong>: Contratos activos durante el mes (excluyendo ingresos del mismo mes). 
-                <strong>Afiliaciones del Mes</strong>: Contratos nuevos creados en el mes con fecha de ingreso del mes.
-                <strong>Total Activos</strong>: Suma consolidada de Admon Vigentes y Afiliaciones del Mes.
-                <strong>Balance Neto</strong>: Contratos totales del mes menos los retiros del período. Representa el saldo final del mes.
+                <strong>Admon Vigentes</strong>: Contratos activos continuos durante el mes (incluye contratos con retiro y facturación regular). 
+                <strong>Afiliaciones del Mes</strong>: Contratos nuevos ingresados en el mes.
+                <strong>Total Activos</strong>: Suma de Admon Vigentes + Afiliaciones del Mes.
+                <strong>Variación</strong>: Diferencia de Total Activos de este mes comparado con el mes anterior.
             </p>
         </div>
     </div>
@@ -124,12 +123,9 @@
                         <th>Mes / Año</th>
                         <th style="text-align: right;">Admon (Vigentes)</th>
                         <th style="text-align: right;">Afil. Fecha Ingreso</th>
-                        <th style="text-align: right;">Afil. Facturadas</th>
                         <th style="text-align: right;">Retiros Reales</th>
                         <th style="text-align: right;">Retiros Informativos</th>
-                        <th style="text-align: right; color: #ef4444; font-weight: 700;">Total Retiros</th>
-                        <th style="text-align: right; background-color: rgba(13, 148, 136, 0.02); color: #0d9488;">Total Activos</th>
-                        <th style="text-align: right; background-color: rgba(99, 102, 241, 0.03); color: #4f46e5; font-weight: 700;">Balance Neto</th>
+                        <th style="text-align: right; background-color: rgba(13, 148, 136, 0.04); color: #0d9488; font-weight: 800;">Total Activos</th>
                         <th style="text-align: center;">Variación</th>
                     </tr>
                 </thead>
@@ -143,23 +139,14 @@
                         <td style="text-align: right; font-weight: 600; color: #6366f1;" class="clickable-cell" onclick="abrirDetalle({{ $mes['mes'] }}, {{ $mes['anio'] }}, 'afiliaciones')">
                             {{ number_format($mes['afil_por_fecha'], 0, ',', '.') }}
                         </td>
-                        <td style="text-align: right; color: #1d4ed8;">
-                            {{ number_format($mes['afil_facturadas'], 0, ',', '.') }}
-                        </td>
                         <td style="text-align: right; color: #d97706;" class="clickable-cell" onclick="abrirDetalle({{ $mes['mes'] }}, {{ $mes['anio'] }}, 'retiros_reales')">
                             {{ number_format($mes['retiros_reales'], 0, ',', '.') }}
                         </td>
                         <td style="text-align: right; color: #78350f;" class="clickable-cell" onclick="abrirDetalle({{ $mes['mes'] }}, {{ $mes['anio'] }}, 'retiros_informativos')">
                             {{ number_format($mes['retiros_inform'], 0, ',', '.') }}
                         </td>
-                        <td style="text-align: right; font-weight: 600; color: #ef4444;">
-                            {{ number_format($mes['total_retiros'], 0, ',', '.') }}
-                        </td>
-                        <td style="text-align: right; font-weight: 700; color: #0d9488; background-color: rgba(13, 148, 136, 0.02);">
+                        <td style="text-align: right; font-weight: 800; color: #0d9488; background-color: rgba(13, 148, 136, 0.04); font-size: 0.95rem;">
                             {{ number_format($mes['total_activos'], 0, ',', '.') }}
-                        </td>
-                        <td style="text-align: right; font-weight: 800; color: #4f46e5; background-color: rgba(99, 102, 241, 0.03); font-size: 0.95rem;">
-                            {{ number_format($mes['neto_periodo'], 0, ',', '.') }}
                         </td>
                         <td style="text-align: center;">
                             @if($mes['variacion'] > 0)
@@ -176,13 +163,10 @@
             </table>
         </div>
         <p style="font-size: 0.72rem; color: #94a3b8; margin-top: 1rem; line-height: 1.5;">
-            * <strong>Admon (Vigentes)</strong>: Contratos activos durante el mes, excluyendo ingresos nuevos del mismo mes. 
+            * <strong>Admon (Vigentes)</strong>: Contratos activos continuos durante el mes (incluye contratos con retiro y facturación regular). 
             * <strong>Afil. Fecha Ingreso</strong>: Nuevos contratos ingresados en el mes. 
-            * <strong>Afil. Facturadas</strong>: Facturas de afiliación liquidadas con número de factura mayor a 0.
-            * <strong>Total Retiros</strong>: Suma de retiros reales e informativos del período.
             * <strong>Total Activos</strong>: Suma de Admon (Vigentes) y Afil. Fecha Ingreso.
-            * <strong>Balance Neto</strong>: Total Activos - Total Retiros. Muestra el saldo neto de contratos del mes.
-            * <strong>Variación</strong>: Diferencia del Balance Neto de este mes comparado con el mes anterior.
+            * <strong>Variación</strong>: Diferencia del Total Activos de este mes comparado con el mes anterior.
         </p>
     </div>
 
@@ -281,8 +265,7 @@
         const labels            = datos.map(d => d.label);
         const dataAdmonVigentes = datos.map(d => d.admon_vigentes);
         const dataAfilFecha     = datos.map(d => d.afil_por_fecha);
-        const dataRetiros       = datos.map(d => d.total_retiros);
-        const dataBalanceNeto   = datos.map(d => d.neto_periodo);
+        const dataTotalActivos  = datos.map(d => d.total_activos);
 
         const ctx = document.getElementById('consolidadoChart').getContext('2d');
 
@@ -312,22 +295,12 @@
                         categoryPercentage: 0.6,
                     },
                     {
-                        label: 'Total Retiros',
-                        data: dataRetiros,
-                        backgroundColor: 'rgba(239, 68, 68, 0.85)',
-                        borderColor: '#ef4444',
-                        borderWidth: 1,
-                        borderRadius: 6,
-                        barPercentage: 0.55,
-                        categoryPercentage: 0.6,
-                    },
-                    {
-                        label: 'Balance Neto',
-                        data: dataBalanceNeto,
+                        label: 'Total Activos',
+                        data: dataTotalActivos,
                         type: 'line',
-                        borderColor: '#f59e0b',
+                        borderColor: '#0d9488',
                         borderWidth: 3,
-                        pointBackgroundColor: '#f59e0b',
+                        pointBackgroundColor: '#0d9488',
                         pointBorderColor: '#fff',
                         pointBorderWidth: 2,
                         pointRadius: 5,
@@ -435,16 +408,20 @@
                         <tr>
                             <th onclick="ordenarPor('cedula')">Cédula <span id="sort-icon-cedula" class="sort-indicator">↕</span></th>
                             <th onclick="ordenarPor('nombre_completo')">Nombre Completo <span id="sort-icon-nombre_completo" class="sort-indicator">↕</span></th>
+                            <th onclick="ordenarPor('modalidad')">Plan y Modalidad <span id="sort-icon-modalidad" class="sort-indicator">↕</span></th>
                             <th onclick="ordenarPor('fecha_ingreso')">Fecha Ingreso <span id="sort-icon-fecha_ingreso" class="sort-indicator">↕</span></th>
                             <th onclick="ordenarPor('fecha_retiro')">Fecha Retiro <span id="sort-icon-fecha_retiro" class="sort-indicator">↕</span></th>
                             <th onclick="ordenarPor('facturas')">Factura(s) <span id="sort-icon-facturas" class="sort-indicator">↕</span></th>
+                            <th onclick="ordenarPor('fecha_factura')">Fecha Factura <span id="sort-icon-fecha_factura" class="sort-indicator">↕</span></th>
                         </tr>
                         <tr style="background-color: #f8fafc; border-bottom: 2px solid #e2e8f0;">
                             <td style="padding: 0.4rem 0.5rem;"><input type="text" id="filtro-cedula" placeholder="🔍 Cédula..." class="modal-filter-input" oninput="aplicarFiltrosModal()"></td>
                             <td style="padding: 0.4rem 0.5rem;"><input type="text" id="filtro-nombre" placeholder="🔍 Nombre..." class="modal-filter-input" oninput="aplicarFiltrosModal()"></td>
+                            <td style="padding: 0.4rem 0.5rem;"><input type="text" id="filtro-modalidad" placeholder="🔍 Plan/Mod..." class="modal-filter-input" oninput="aplicarFiltrosModal()"></td>
                             <td style="padding: 0.4rem 0.5rem;"><input type="text" id="filtro-ingreso" placeholder="🔍 Ingreso..." class="modal-filter-input" oninput="aplicarFiltrosModal()"></td>
                             <td style="padding: 0.4rem 0.5rem;"><input type="text" id="filtro-retiro" placeholder="🔍 Retiro..." class="modal-filter-input" oninput="aplicarFiltrosModal()"></td>
                             <td style="padding: 0.4rem 0.5rem;"><input type="text" id="filtro-facturas" placeholder="🔍 Factura..." class="modal-filter-input" oninput="aplicarFiltrosModal()"></td>
+                            <td style="padding: 0.4rem 0.5rem;"><input type="text" id="filtro-fecha-factura" placeholder="🔍 Fecha Fact..." class="modal-filter-input" oninput="aplicarFiltrosModal()"></td>
                         </tr>
                     </thead>
                     <tbody id="modalTableBody">
@@ -667,9 +644,11 @@
         // Reset filters
         document.getElementById('filtro-cedula').value = '';
         document.getElementById('filtro-nombre').value = '';
+        document.getElementById('filtro-modalidad').value = '';
         document.getElementById('filtro-ingreso').value = '';
         document.getElementById('filtro-retiro').value = '';
         document.getElementById('filtro-facturas').value = '';
+        document.getElementById('filtro-fecha-factura').value = '';
         
         // Reset sort
         sortColumna = '';
@@ -735,6 +714,10 @@
             tr.innerHTML = `
                 <td style="font-weight: 700; color: #475569;">${p.cedula}</td>
                 <td style="font-weight: 600; color: #1e293b;">${p.nombre_completo}</td>
+                <td>
+                    <div style="font-weight: 700; color: #1e293b; font-size: 0.78rem;">${p.modalidad || '—'}</div>
+                    <div style="color: #0f766e; font-size: 0.72rem; font-weight: 600;">${p.plan || '—'}</div>
+                </td>
                 <td>${p.fecha_ingreso}</td>
                 <td>${p.fecha_retiro}</td>
                 <td>
@@ -742,6 +725,7 @@
                         ${p.facturas}
                     </span>
                 </td>
+                <td style="color: #64748b; font-weight: 600; font-size: 0.78rem;">${p.fecha_factura || '—'}</td>
             `;
             tableBody.appendChild(tr);
         });
@@ -750,16 +734,20 @@
     function aplicarFiltrosModal() {
         const cedula = document.getElementById('filtro-cedula').value.toLowerCase().trim();
         const nombre = document.getElementById('filtro-nombre').value.toLowerCase().trim();
+        const modalidad = document.getElementById('filtro-modalidad').value.toLowerCase().trim();
         const ingreso = document.getElementById('filtro-ingreso').value.toLowerCase().trim();
         const retiro = document.getElementById('filtro-retiro').value.toLowerCase().trim();
         const facturas = document.getElementById('filtro-facturas').value.toLowerCase().trim();
+        const fechaFactura = document.getElementById('filtro-fecha-factura').value.toLowerCase().trim();
 
         personasFiltradas = personasOriginal.filter(p => {
             return p.cedula.toLowerCase().includes(cedula) &&
                    p.nombre_completo.toLowerCase().includes(nombre) &&
+                   ((p.modalidad || '') + ' ' + (p.plan || '')).toLowerCase().includes(modalidad) &&
                    p.fecha_ingreso.toLowerCase().includes(ingreso) &&
                    p.fecha_retiro.toLowerCase().includes(retiro) &&
-                   p.facturas.toLowerCase().includes(facturas);
+                   p.facturas.toLowerCase().includes(facturas) &&
+                   (p.fecha_factura || '').toLowerCase().includes(fechaFactura);
         });
 
         // Si hay un ordenamiento activo, mantenerlo al filtrar
@@ -788,7 +776,7 @@
             let valB = (b[sortColumna] || '').toString().toLowerCase();
 
             // Si es fecha, intentar formatear para ordenar cronológicamente
-            if (sortColumna === 'fecha_ingreso' || sortColumna === 'fecha_retiro') {
+            if (sortColumna === 'fecha_ingreso' || sortColumna === 'fecha_retiro' || sortColumna === 'fecha_factura') {
                 valA = parsearFechaParaOrden(valA);
                 valB = parsearFechaParaOrden(valB);
             }
@@ -813,7 +801,7 @@
     }
 
     function actualizarIndicadoresOrden() {
-        const columnas = ['cedula', 'nombre_completo', 'fecha_ingreso', 'fecha_retiro', 'facturas'];
+        const columnas = ['cedula', 'nombre_completo', 'modalidad', 'fecha_ingreso', 'fecha_retiro', 'facturas', 'fecha_factura'];
         columnas.forEach(col => {
             const el = document.getElementById(`sort-icon-${col}`);
             if (!el) return;

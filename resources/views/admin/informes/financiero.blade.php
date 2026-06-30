@@ -788,25 +788,6 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
                 </div>
                 @endif
 
-                {{-- Tarjeta Excedente Planilla Provisional (Opción A) --}}
-                @if(($sobrantePlanillaProvisional ?? 0) > 0)
-                <div class="bank-card" style="border-top-color:#14b8a6; cursor:default;">
-                    <div style="font-size:.65rem;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:.04em;">📋 Proyección</div>
-                    <div style="font-size:.78rem;font-weight:700;color:#334155;margin-top:.1rem;">Excedente Planilla</div>
-                    <div style="margin-top:.55rem;">
-                        <div style="font-size:.6rem;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:.03em;margin-bottom:.2rem;">Sobrante estimado</div>
-                        <div style="font-size:1.3rem;font-weight:900;color:#14b8a6;line-height:1.1;">{{ $fmt($sobrantePlanillaProvisional) }}</div>
-                    </div>
-                    <div style="margin-top:auto;padding-top:.6rem;border-top:1px dashed #99f6e4;display:flex;flex-direction:column;gap:.22rem;">
-                        <div style="font-size:.58rem;color:#0d9488;font-weight:700;text-transform:uppercase;letter-spacing:.03em;">
-                            ⚠️ MES EN CURSO (Día {{ now()->day }})
-                        </div>
-                        <div style="font-size:.58rem;color:#94a3b8;font-style:italic;margin-top:.1rem;">
-                            No suma a ingresos de administración hasta el cierre del mes.
-                        </div>
-                    </div>
-                </div>
-                @endif
 
             </div>
         </div>
@@ -947,21 +928,12 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
                     </div>
                     @endif
 
-                    {{-- SS RECAUDADO MES SIGUIENTE --}}
-                    @if($ssFuturasRegular > 0)
-                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: .78rem;">
-                        <span style="color: #475569; display: flex; align-items: center; gap: .35rem;">
-                            <span style="font-size: .9rem;">📥</span> Ss recaudo {{ $mesesEs[$mesSig] }} (Regular)
-                        </span>
-                        <span style="font-family: monospace; font-weight: 700; color: #0f766e;">
-                            {{ $fmt($ssFuturasRegular) }}
-                        </span>
-                    </div>
-                    @endif
 
-                    {{-- SUBTOTAL DE INGRESOS SS (Línea de corte a la derecha) --}}
+
+
+                    {{-- SUBTOTAL DE INGRESOS SS (sin Julio — solo el mes actual) --}}
                     <div style="display: flex; justify-content: flex-end; align-items: center; font-size: .78rem; border-top: 1px solid #e2e8f0; margin-top: .1rem; padding-top: .15rem; font-weight: 700; font-family: monospace; color: #334155;">
-                        {{ $fmt($totalSScanalRaw) }}
+                        {{ $fmt($totalSSMesActual) }}
                     </div>
 
                     {{-- GASTOS PLANILLA MES ACTUAL --}}
@@ -974,15 +946,9 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
                         </span>
                     </div>
 
-                    {{-- SALDO PLANILLAS --}}
-                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: .78rem; border-top: 1px solid #e2e8f0; margin-top: .15rem; padding-top: .25rem; font-weight: 800;">
-                        <span style="color: #0f766e;">Saldo planillas</span>
-                        <span style="font-family: monospace; color: {{ $saldoPlanillas >= 0 ? '#16a34a' : '#dc2626' }};">
-                            {{ $fmt($saldoPlanillas) }}
-                        </span>
-                    </div>
-                </div>
  
+                </div>{{-- /sección 1 items SS --}}
+
                 <div style="margin-top: .15rem; border-top: 1px solid #f1f5f9; padding-top: .15rem;"></div>
 
                 {{-- Sección 2: Retiros --}}
@@ -1031,13 +997,21 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
                         </div>
                     </div>
                 </div>
- 
+
+                {{-- SALDO PLANILLAS (después de absorber retiros) --}}
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: .78rem; border-top: 2px solid #0f766e; margin-top: .2rem; padding-top: .3rem; font-weight: 800;">
+                    <span style="color: #0f766e;">Saldo planillas</span>
+                    <span style="font-family: monospace; font-size: .88rem; color: {{ $saldoPlanillas >= 0 ? '#16a34a' : '#dc2626' }};">
+                        {{ $fmt($saldoPlanillas) }}
+                    </span>
+                </div>
+
             </div>
  
             {{-- Bloque 4: Saldo SS para el Siguiente Mes --}}
             <div style="padding:.75rem 1.1rem;background:{{ $ssBg }};border-top:2px solid {{ $ssBorder }};margin-top:auto;">
                 <div style="display:flex;justify-content:space-between;align-items:center;">
-                    <div style="font-size:.8rem;font-weight:800;color:#334155;">saldo proximo mes</div>
+                    <div style="font-size:.8rem;font-weight:800;color:#334155;">saldo próximo mes</div>
                     <div style="font-size:1.05rem;font-weight:900;color:{{ $ssColor }};font-family:monospace;">{{ $fmt($saldoSS) }}</div>
                 </div>
             </div>
@@ -1273,6 +1247,10 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
                 <div style="color:rgba(255,255,255,.65);font-size:.74rem;margin-top:.15rem;">Todos los gastos registrados en el período · haz clic en ✏️ para editar</div>
             </div>
             <div style="display:flex;gap:.5rem;align-items:center;">
+                @if($esAdmin)
+                <button onclick="abrirModalGasto()"
+                   style="background:#22c55e;color:#fff;border:none;border-radius:8px;padding:.3rem .8rem;font-size:.75rem;font-weight:700;cursor:pointer;white-space:nowrap;">➕ Registrar Gasto</button>
+                @endif
                 <a href="{{ route('admin.informes.gastos.index', ['mes'=>$mes,'anio'=>$anio]) }}"
                    style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);color:#fff;border-radius:8px;padding:.3rem .8rem;font-size:.75rem;font-weight:700;text-decoration:none;white-space:nowrap;">→ Módulo Gastos</a>
                 <button onclick="document.getElementById('modalGastos').style.display='none'"
@@ -2753,6 +2731,34 @@ function fmtFecha(fechaStr) {
     return date.getDate() + ' ' + meses[date.getMonth()];
 }
 
+function abrirModalGasto() {
+    const form = document.getElementById('modal-gasto-form');
+    if (form) {
+        form.reset();
+        const hide = ['modal-gasto-banco-origen','modal-gasto-banco-destino','modal-gasto-blq-usuario'];
+        hide.forEach(id => { const el = document.getElementById(id); if(el) el.style.display='none'; });
+        const zone = document.getElementById('modal-gasto-paste-zone');
+        if (zone) {
+            zone.style.borderColor = '#cbd5e1';
+            zone.innerHTML = '<div style="font-size:1.3rem">📎</div><p style="font-size:.75rem;color:#64748b;margin:0">Pega imagen (Ctrl+V) o arrastra aquí</p><p style="font-size:.68rem;color:#94a3b8;margin:0">Clic para seleccionar archivo</p>';
+        }
+        const b64 = document.getElementById('modal-gasto-base64');
+        if (b64) b64.value = '';
+    }
+    document.getElementById('modal-gasto').style.display = 'flex';
+}
 </script>
+
+@if($esAdmin)
+@include('admin.partials.modal_gasto', [
+    'formAction'  => route('admin.informes.gastos.store'),
+    'bancos'      => $bancos,
+    'esAdmin'     => true,
+    'modalId'     => 'modal-gasto',
+    'imagenPaste' => true,
+    'usuarios'    => $usuarios,
+])
+@endif
+
 @endpush
 @endsection

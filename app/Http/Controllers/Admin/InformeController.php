@@ -734,12 +734,17 @@ class InformeController extends Controller
 
         // SS futura regular excluyendo los préstamos del mes siguiente
         $ssFuturasRegular = max(0.0, (float)$ingresosSS['ss_futuras'] - $ssPrestamosMesSiguiente);
-        
-        // Saldo próximo mes consolidado
-        $saldoSS = $ssFuturasRegular + $subtotalRetiros;
-        
-        // Saldo planillas (excedente operativo)
-        $saldoPlanillas = $subtotalOperativo - $saldoSS;
+
+        // Subtotal solo del mes actual: se excluye Julio (ss_futuras) del total del canal
+        // para que el "Saldo planillas" refleje el excedente puro del mes (sin mezclar arrastre de Julio)
+        $totalSSMesActual = $totalSScanalRaw - $ssFuturasRegular;
+
+        // Saldo planillas = excedente real del mes actual + neto de retiros
+        // Julio se muestra por separado al final como arrastre garantizado al próximo mes
+        $saldoPlanillas = ($totalSSMesActual - $pagadoSSReg) + $subtotalRetiros;
+
+        // Saldo próximo mes = únicamente lo recaudado para Julio (ssFuturasRegular)
+        $saldoSS = $ssFuturasRegular;
 
         $sobrantePlanillaRaw = ($pagadoSSReg == 0.0) ? 0.0 : max(0.0, $saldoPlanillas);
 
@@ -1192,8 +1197,9 @@ class InformeController extends Controller
         $totalSScanalRaw   = $recaudoSS + $moraRecogida + $saldoSSMesAnterior;
         $subtotalOperativo = $totalSScanalRaw - $pagadoSSReg;
         $ssFuturasRegular  = max(0.0, (float)$ingresosSS['ss_futuras'] - $ssPrestamosMesSiguiente);
-        $saldoSS           = $ssFuturasRegular + $subtotalRetiros;
-        $saldoPlanillas    = $subtotalOperativo - $saldoSS;
+        $totalSSMesActual  = $totalSScanalRaw - $ssFuturasRegular;
+        $saldoPlanillas    = ($totalSSMesActual - $pagadoSSReg) + $subtotalRetiros;
+        $saldoSS           = $ssFuturasRegular;
 
         // ── Incapacidades Canal 5: Con movimientos en el mes o con saldo vivo ──
         $canal5Incapacidades = DB::table('incapacidades')
@@ -1235,8 +1241,12 @@ class InformeController extends Controller
             })
             ->get();
 
+        $usuarios = DB::table('users')->where('aliado_id', $aid)->where('activo', 1)->orderBy('nombre')->get(['id', 'nombre']);
+        $esAdmin = Auth::user()->hasRole('superadmin');
+
         return view('admin.informes.financiero', compact(
             'mes','anio','ingresos','egresos','utilidad',
+            'usuarios', 'esAdmin',
             'recaudoSS','pagadoSSRaw','saldoSS',
             'saldoSSMesAnterior','recaudoSSPrev','pagadoSSPrev','mesAnt','anioAnt',
             'ingresosSS','egresosSSDetalle',
@@ -1250,7 +1260,7 @@ class InformeController extends Controller
             'saldoTotalMesAnterior', 'abonosCobradosMes', 'abonosDetalleMes', 'abonosMesesAnteriores',
             'mesSig', 'anioSig', 'ssPrestamosMesSiguiente',
             'pagadoSSReg', 'pagadoSSRetiro', 'moraUtilizada', 'moraGanancia', 'sobrantePlanilla', 'subtotalRetiros', 'subtotalOperativo',
-            'ssActuales', 'distRetiroAcumulado', 'retirosCobradosMesActual', 'totalSScanalRaw', 'ssFuturasRegular', 'saldoPlanillas',
+            'ssActuales', 'distRetiroAcumulado', 'retirosCobradosMesActual', 'totalSScanalRaw', 'totalSSMesActual', 'ssFuturasRegular', 'saldoPlanillas',
             'sobrantePlanillaProvisional', 'ssPendientePago', 'cantPlanillasPendientes',
             // Canal 5 Incapacidades
             'canal5EntradaMes', 'canal5PagoAfiliado', 'canal5Cuatropormil',
@@ -1386,6 +1396,7 @@ class InformeController extends Controller
         $mes  = (int)$request->input('mes',  now()->month);
         $anio = (int)$request->input('anio', now()->year);
 
+        $tiposIncapacidad = \App\Models\Gasto::TIPOS_INCAPACIDAD;
         $gastos = DB::table('gastos AS g')
             ->leftJoin('users AS u',         'u.id',  '=', 'g.usuario_id')
             ->leftJoin('banco_cuentas AS bc', 'bc.id', '=', 'g.banco_origen_id')
@@ -1393,6 +1404,7 @@ class InformeController extends Controller
             ->where('g.tipo', '!=', 'pago_planilla')
             ->where('g.tipo', '!=', 'efectivo_banco')   // traslado interno
             ->where('g.forma_pago', '!=', 'banco_banco') // transferencia entre cuentas, no es egreso
+            ->whereNotIn('g.tipo', $tiposIncapacidad)
             ->whereMonth('g.fecha', $mes)
             ->whereYear('g.fecha', $anio)
             ->select(
@@ -2241,11 +2253,13 @@ class InformeController extends Controller
             ->groupByRaw('DAY(fecha_pago), tipo')
             ->get()->groupBy('dia');
 
+        $tiposIncapacidad = \App\Models\Gasto::TIPOS_INCAPACIDAD;
         $gastosDia = DB::table('gastos')
             ->where('aliado_id',$aid)
             ->where('tipo','!=','pago_planilla')
             ->where('tipo','!=','efectivo_banco')   // traslado interno, no es egreso real
             ->where('forma_pago','!=','banco_banco') // transferencia entre cuentas, no es egreso
+            ->whereNotIn('tipo', $tiposIncapacidad)
             ->whereMonth('fecha',$mes)->whereYear('fecha',$anio)
             ->selectRaw('DAY(fecha) AS dia, ISNULL(SUM(CAST(valor AS BIGINT)), 0) AS total')
             ->groupByRaw('DAY(fecha)')
@@ -2308,9 +2322,12 @@ class InformeController extends Controller
             ")
             ->first();
 
+        $tiposIncapacidad = \App\Models\Gasto::TIPOS_INCAPACIDAD;
         $gastosOp = DB::table('gastos')->where('aliado_id', $aid)
             ->where('tipo', '!=', 'pago_planilla')
             ->where('tipo', '!=', 'efectivo_banco')
+            ->where('forma_pago', '!=', 'banco_banco')
+            ->whereNotIn('tipo', $tiposIncapacidad)
             ->whereMonth('fecha', $mes)->whereYear('fecha', $anio)
             ->sum('valor');
 
@@ -2357,10 +2374,13 @@ class InformeController extends Controller
             ->get()
             ->keyBy(function($r) { return $r->anio . '-' . $r->mes; });
 
+        $tiposIncapacidad = \App\Models\Gasto::TIPOS_INCAPACIDAD;
         $gastosPeriodos = DB::table('gastos')
             ->where('aliado_id', $aid)
             ->where('tipo', '!=', 'pago_planilla')
             ->where('tipo', '!=', 'efectivo_banco')
+            ->where('forma_pago', '!=', 'banco_banco')
+            ->whereNotIn('tipo', $tiposIncapacidad)
             ->whereBetween('fecha', [$fechaInicio, $fechaFin])
             ->groupByRaw('YEAR(fecha), MONTH(fecha)')
             ->selectRaw('
@@ -2570,9 +2590,13 @@ class InformeController extends Controller
         // ── Gastos del día (no pago_planilla) ─────────────────────────
         $gastos = [];
         if ($tipo === 'todos' || $tipo === 'gastos') {
+            $tiposIncapacidad = \App\Models\Gasto::TIPOS_INCAPACIDAD;
             $gastos = DB::table('gastos AS g')
                 ->where('g.aliado_id', $aid)
                 ->where('g.tipo', '!=', 'pago_planilla')
+                ->where('g.tipo', '!=', 'efectivo_banco')
+                ->where('g.forma_pago', '!=', 'banco_banco')
+                ->whereNotIn('g.tipo', $tiposIncapacidad)
                 ->whereRaw('DAY(g.fecha) = ?', [$dia])
                 ->whereMonth('g.fecha', $mes)
                 ->whereYear('g.fecha', $anio)
@@ -2789,66 +2813,55 @@ class InformeController extends Controller
             $primerDia = \Carbon\Carbon::create($anioVal, $mesVal, 1)->startOfDay();
             $ultimoDia = $primerDia->copy()->endOfMonth();
 
-            // 1. Admon Vigentes (contratos activos en el período, excluyendo los ingresados en este mes)
+            // 1. Admon Vigentes (factura regular de administración en M)
             $admonVigentes = DB::table('contratos as c')
                 ->where('c.aliado_id', $aid)
                 ->where('c.fecha_ingreso', '<', $primerDia->toDateString())
-                ->where(function ($q) use ($primerDia) {
-                    $q->where(function ($sub) use ($primerDia) {
-                        $sub->where('c.estado', 'vigente')
-                            ->where(function ($q2) use ($primerDia) {
-                                $q2->whereNull('c.fecha_retiro')
-                                   ->orWhere('c.fecha_retiro', '>=', $primerDia->toDateString());
-                            });
-                    })
-                    ->orWhere(function ($sub) use ($primerDia) {
-                        $sub->where('c.estado', 'retirado')
-                            ->whereNotNull('c.fecha_retiro')
-                            ->where('c.fecha_retiro', '>=', $primerDia->toDateString());
-                    });
+                ->whereExists(function($sq) use ($mesVal, $anioVal) {
+                    $sq->select(DB::raw(1))
+                       ->from('facturas as f')
+                       ->whereColumn('f.contrato_id', 'c.id')
+                       ->where('f.numero_factura', '>', 0)
+                       ->where('f.tipo', '<>', 'afiliacion')
+                       ->where('f.mes', $mesVal)
+                       ->where('f.anio', $anioVal)
+                       ->whereNull('f.deleted_at');
                 })
                 ->count();
 
-            // 2. Afiliaciones del Mes (nuevos contratos ingresados en el período por fecha de ingreso)
+            // 3. Afiliaciones del Mes (nuevos contratos ingresados en el período por fecha de ingreso)
             $afilPorFecha = DB::table('contratos as c')
                 ->where('c.aliado_id', $aid)
                 ->where('c.fecha_ingreso', '>=', $primerDia->toDateString())
                 ->where('c.fecha_ingreso', '<=', $ultimoDia->toDateString())
                 ->count();
 
-            // 3. Afiliaciones facturadas
-            $afilFacturadas = DB::table('facturas')
-                ->where('aliado_id', $aid)
-                ->whereNull('deleted_at')
-                ->where('tipo', 'afiliacion')
-                ->where('numero_factura', '>', 0)
-                ->where('mes', $mesVal)
-                ->where('anio', $anioVal)
-                ->count();
-
-            // 4. Retiros
-            $mesAnteriorVal  = $mesVal  === 1 ? 12 : $mesVal  - 1;
-            $anioAnteriorVal = $mesVal  === 1 ? $anioVal - 1 : $anioVal;
-
+            // 4. Retiros Puros (guiados estrictamente por el período mes/año de la factura de retiro #0)
             $retiradosRaw = DB::table('contratos as c')
                 ->where('c.aliado_id', $aid)
                 ->where('c.estado', 'retirado')
-                ->where(function ($q) use ($mesVal, $anioVal, $mesAnteriorVal, $anioAnteriorVal) {
-                    $q->where(function ($q1) use ($mesVal, $anioVal) {
-                        $q1->where('c.tipo_modalidad_id', 11)
-                           ->whereMonth('c.fecha_retiro', $mesVal)
-                           ->whereYear('c.fecha_retiro', $anioVal);
-                    })->orWhere(function ($q2) use ($mesAnteriorVal, $anioAnteriorVal) {
-                        $q2->where(function ($q3) {
-                            $q3->whereNull('c.tipo_modalidad_id')
-                               ->orWhere('c.tipo_modalidad_id', '<>', 11);
-                        })
-                        ->whereMonth('c.fecha_retiro', $mesAnteriorVal)
-                        ->whereYear('c.fecha_retiro', $anioAnteriorVal);
-                    });
+                ->whereExists(function($sq) use ($mesVal, $anioVal) {
+                    $sq->select(DB::raw(1))
+                       ->from('facturas as f')
+                       ->whereColumn('f.contrato_id', 'c.id')
+                       ->where('f.numero_factura', 0)
+                       ->where('f.tipo', '<>', 'afiliacion')
+                       ->where('f.mes', $mesVal)
+                       ->where('f.anio', $anioVal)
+                       ->whereNull('f.deleted_at');
+                })
+                ->whereNotExists(function($sq) use ($mesVal, $anioVal) {
+                    $sq->select(DB::raw(1))
+                       ->from('facturas as f')
+                       ->whereColumn('f.contrato_id', 'c.id')
+                       ->where('f.numero_factura', '>', 0)
+                       ->where('f.tipo', '<>', 'afiliacion')
+                       ->where('f.mes', $mesVal)
+                       ->where('f.anio', $anioVal)
+                       ->whereNull('f.deleted_at');
                 })
                 ->select('c.id',
-                    DB::raw("(SELECT TOP 1 total_ss FROM facturas WHERE contrato_id = c.id AND numero_factura = 0 AND deleted_at IS NULL ORDER BY id DESC) as costo_ss")
+                    DB::raw("(SELECT TOP 1 total_ss FROM facturas WHERE contrato_id = c.id AND numero_factura = 0 AND tipo <> 'afiliacion' AND mes = {$mesVal} AND anio = {$anioVal} AND deleted_at IS NULL ORDER BY id DESC) as costo_ss")
                 )
                 ->get();
 
@@ -2865,6 +2878,7 @@ class InformeController extends Controller
             $label = $nombresMeses[$mesVal] . ' ' . $anioVal;
 
             $totalRetiros = $retirosReales + $retirosInformativos;
+            $totalActivos = $admonVigentes + $afilPorFecha;
 
             $meses[] = [
                 'label'            => $label,
@@ -2872,20 +2886,19 @@ class InformeController extends Controller
                 'anio'             => $anioVal,
                 'admon_vigentes'   => $admonVigentes,
                 'afil_por_fecha'   => $afilPorFecha,
-                'afil_facturadas'  => $afilFacturadas,
                 'retiros_reales'   => $retirosReales,
                 'retiros_inform'   => $retirosInformativos,
                 'total_retiros'    => $totalRetiros,
-                'total_activos'    => $admonVigentes + $afilPorFecha + $totalRetiros,
-                'neto_periodo'     => $admonVigentes + $afilPorFecha,
+                'total_activos'    => $totalActivos,
+                'neto_periodo'     => $totalActivos - $totalRetiros,
             ];
 
             $fechaIteracion->subMonth();
         }
 
-        // Calcular la variación para los primeros 6 meses sobre el Balance Neto
+        // Calcular la variación para los primeros 6 meses sobre Total Activos
         for ($k = 0; $k < 6; $k++) {
-            $meses[$k]['variacion'] = $meses[$k]['neto_periodo'] - $meses[$k+1]['neto_periodo'];
+            $meses[$k]['variacion'] = $meses[$k]['total_activos'] - $meses[$k+1]['total_activos'];
         }
 
         // Nos quedamos solo con los 6 meses más recientes
@@ -2928,55 +2941,57 @@ class InformeController extends Controller
         $query = DB::table('contratos as c')
             ->join('clientes as cl', function($j) use($aid){ 
                 $j->on('cl.cedula','=','c.cedula')->where('cl.aliado_id',$aid); 
-            });
+            })
+            ->leftJoin('planes_contrato as pl', 'pl.id', '=', 'c.plan_id')
+            ->leftJoin('tipo_modalidad as tm', 'tm.id', '=', 'c.tipo_modalidad_id');
 
         if ($tipo === 'admon_vigentes') {
             $query->where('c.aliado_id', $aid)
                 ->where('c.fecha_ingreso', '<', $primerDia->toDateString())
-                ->where(function ($q) use ($primerDia) {
-                    $q->where(function ($sub) use ($primerDia) {
-                        $sub->where('c.estado', 'vigente')
-                            ->where(function ($q2) use ($primerDia) {
-                                $q2->whereNull('c.fecha_retiro')
-                                   ->orWhere('c.fecha_retiro', '>=', $primerDia->toDateString());
-                            });
-                    })
-                    ->orWhere(function ($sub) use ($primerDia) {
-                        $sub->where('c.estado', 'retirado')
-                            ->whereNotNull('c.fecha_retiro')
-                            ->where('c.fecha_retiro', '>=', $primerDia->toDateString());
-                    });
+                ->whereExists(function($sq) use ($mes, $anio) {
+                    $sq->select(DB::raw(1))
+                       ->from('facturas as f')
+                       ->whereColumn('f.contrato_id', 'c.id')
+                       ->where('f.numero_factura', '>', 0)
+                       ->where('f.tipo', '<>', 'afiliacion')
+                       ->where('f.mes', $mes)
+                       ->where('f.anio', $anio)
+                       ->whereNull('f.deleted_at');
                 });
         } elseif ($tipo === 'afiliaciones') {
             $query->where('c.aliado_id', $aid)
                 ->where('c.fecha_ingreso', '>=', $primerDia->toDateString())
                 ->where('c.fecha_ingreso', '<=', $ultimoDia->toDateString());
         } elseif ($tipo === 'retiros_reales' || $tipo === 'retiros_informativos') {
-            $mesAnteriorVal  = $mes  === 1 ? 12 : $mes  - 1;
-            $anioAnteriorVal = $mes  === 1 ? $anio - 1 : $anio;
-
             $query->where('c.aliado_id', $aid)
                 ->where('c.estado', 'retirado')
-                ->where(function ($q) use ($mes, $anio, $mesAnteriorVal, $anioAnteriorVal) {
-                    $q->where(function ($q1) use ($mes, $anio) {
-                        $q1->where('c.tipo_modalidad_id', 11)
-                           ->whereMonth('c.fecha_retiro', $mes)
-                           ->whereYear('c.fecha_retiro', $anio);
-                    })->orWhere(function ($q2) use ($mesAnteriorVal, $anioAnteriorVal) {
-                        $q2->where(function ($q3) {
-                            $q3->whereNull('c.tipo_modalidad_id')
-                               ->orWhere('c.tipo_modalidad_id', '<>', 11);
-                        })
-                        ->whereMonth('c.fecha_retiro', $mesAnteriorVal)
-                        ->whereYear('c.fecha_retiro', $anioAnteriorVal);
-                    });
+                ->whereExists(function($sq) use ($mes, $anio) {
+                    $sq->select(DB::raw(1))
+                       ->from('facturas as f')
+                       ->whereColumn('f.contrato_id', 'c.id')
+                       ->where('f.numero_factura', 0)
+                       ->where('f.tipo', '<>', 'afiliacion')
+                       ->where('f.mes', $mes)
+                       ->where('f.anio', $anio)
+                       ->whereNull('f.deleted_at');
+                })->whereNotExists(function($sq) use ($mes, $anio) {
+                    $sq->select(DB::raw(1))
+                       ->from('facturas as f')
+                       ->whereColumn('f.contrato_id', 'c.id')
+                       ->where('f.numero_factura', '>', 0)
+                       ->where('f.tipo', '<>', 'afiliacion')
+                       ->where('f.mes', $mes)
+                       ->where('f.anio', $anio)
+                       ->whereNull('f.deleted_at');
                 });
         } else {
             return response()->json(['error' => 'Tipo de detalle no soportado.'], 400);
         }
 
         $query->select(
-            'c.id', 'c.cedula', 'c.fecha_ingreso', 'c.fecha_retiro',
+            'c.id', 'c.cedula', 'c.estado', 'c.fecha_ingreso', 'c.fecha_retiro',
+            'pl.nombre as plan_nombre',
+            DB::raw("ISNULL(NULLIF(tm.observacion, ''), tm.tipo_modalidad) as modalidad_nombre"),
             DB::raw("LTRIM(RTRIM(cl.primer_nombre+' '+ISNULL(cl.segundo_nombre,'')+' '+cl.primer_apellido+' '+ISNULL(cl.segundo_apellido,''))) AS nombre_completo"),
             DB::raw("(SELECT TOP 1 mes FROM facturas WHERE contrato_id = c.id AND numero_factura = 0 AND tipo <> 'afiliacion' AND deleted_at IS NULL ORDER BY id DESC) as mes_factura_retiro")
         );
@@ -3000,14 +3015,15 @@ class InformeController extends Controller
             ->where('mes', $mes)
             ->where('anio', $anio)
             ->whereNull('deleted_at')
-            ->select('contrato_id', 'numero_factura', 'tipo')
+            ->select('contrato_id', 'numero_factura', 'tipo', 'created_at')
             ->get()
             ->groupBy('contrato_id');
 
         $personas = [];
         foreach ($contratos as $c) {
-            // Formatear facturas
+            // Formatear facturas y extraer fechas de generación
             $facturasContrato = [];
+            $fechasFacturaContrato = [];
             if (isset($facturas[$c->id])) {
                 foreach ($facturas[$c->id] as $f) {
                     if ((int)$f->numero_factura === 0) {
@@ -3019,15 +3035,17 @@ class InformeController extends Controller
                     } else {
                         $facturasContrato[] = '#' . str_pad($f->numero_factura, 6, '0', STR_PAD_LEFT);
                     }
+                    if ($f->created_at) {
+                        $fechasFacturaContrato[] = \Carbon\Carbon::parse($f->created_at)->format('d/m/Y');
+                    }
                 }
             }
 
             // Formatear fecha de retiro
             $fechaRetiroStr = '—';
-            if ($c->fecha_retiro) {
-                $fechaRet = \Carbon\Carbon::parse($c->fecha_retiro);
-                $mesMarcado = $c->mes_factura_retiro ?: $fechaRet->month;
-                $fechaRetiroStr = $fechaRet->format('d/m/Y') . ' (Marcado en ' . $nombresMeses[$mesMarcado] . ')';
+            if ($c->fecha_retiro || ($c->estado ?? null) === 'retirado') {
+                $mesMarcado = $c->mes_factura_retiro ?: $mes;
+                $fechaRetiroStr = 'Retirado en ' . $nombresMeses[$mesMarcado];
             }
 
             $personas[] = [
@@ -3036,6 +3054,9 @@ class InformeController extends Controller
                 'fecha_ingreso' => $c->fecha_ingreso ? \Carbon\Carbon::parse($c->fecha_ingreso)->format('d/m/Y') : '—',
                 'fecha_retiro' => $fechaRetiroStr,
                 'facturas' => !empty($facturasContrato) ? implode(', ', $facturasContrato) : '—',
+                'fecha_factura' => !empty($fechasFacturaContrato) ? implode(', ', array_unique($fechasFacturaContrato)) : '—',
+                'plan' => $c->plan_nombre ?: '—',
+                'modalidad' => $c->modalidad_nombre ?: '—',
             ];
         }
 
