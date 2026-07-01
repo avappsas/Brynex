@@ -67,10 +67,15 @@ class AlidoController extends Controller
         $modulosInput = $request->input('modulos', []);
         foreach (\App\Models\BrynexModulo::all() as $mod) {
             $activo = isset($modulosInput[$mod->id]) ? 1 : 0;
-            \App\Models\BrynexModuloAliado::updateOrCreate(
-                ['aliado_id' => $aliado->id, 'modulo_id' => $mod->id],
-                ['activo' => $activo]
-            );
+            $moduloAliado = \App\Models\BrynexModuloAliado::firstOrNew([
+                'aliado_id' => $aliado->id,
+                'modulo_id' => $mod->id
+            ]);
+            if (!$moduloAliado->exists) {
+                $moduloAliado->fecha_inicio = now();
+            }
+            $moduloAliado->activo = $activo;
+            $moduloAliado->save();
         }
 
         return redirect()->route('admin.aliados.index')
@@ -129,10 +134,15 @@ class AlidoController extends Controller
         $modulosInput = $request->input('modulos', []);
         foreach (\App\Models\BrynexModulo::all() as $mod) {
             $activo = isset($modulosInput[$mod->id]) ? 1 : 0;
-            \App\Models\BrynexModuloAliado::updateOrCreate(
-                ['aliado_id' => $aliado->id, 'modulo_id' => $mod->id],
-                ['activo' => $activo]
-            );
+            $moduloAliado = \App\Models\BrynexModuloAliado::firstOrNew([
+                'aliado_id' => $aliado->id,
+                'modulo_id' => $mod->id
+            ]);
+            if (!$moduloAliado->exists) {
+                $moduloAliado->fecha_inicio = now();
+            }
+            $moduloAliado->activo = $activo;
+            $moduloAliado->save();
         }
 
         return redirect()->route('admin.aliados.edit', $aliado)
