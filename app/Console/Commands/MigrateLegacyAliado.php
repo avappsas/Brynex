@@ -1903,9 +1903,7 @@ class MigrateLegacyAliado extends Command
 
             $empresasBorradas = 0;
             foreach ($empresas as $emp) {
-                DB::table('clientes')->where('empresa_id', $emp->id)->update(['empresa_id' => null]);
-                DB::table('contratos')->where('empresa_id', $emp->id)->update(['empresa_id' => null]);
-                DB::table('facturas')->where('empresa_id', $emp->id)->update(['empresa_id' => null]);
+                DB::table('clientes')->where('cod_empresa', $emp->id)->update(['cod_empresa' => null]);
                 DB::table('empresas')->where('id', $emp->id)->delete();
                 $empresasBorradas++;
             }
