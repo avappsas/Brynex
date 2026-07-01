@@ -54,6 +54,7 @@ class MigrateLegacyAliado extends Command
             '13'          => fn() => $this->step13_Incapacidades(),
             '14'          => fn() => $this->step14_GestionesIncapacidad(),
             '15'          => fn() => $this->step15_Tareas(),
+            '16'          => fn() => $this->step16_Fixes(),
             'fix-modalidad'        => fn() => $this->stepFixModalidad(),
             'fix-plan'             => fn() => $this->stepFixPlan(),
             'fix-narl'             => fn() => $this->stepFixNarl(),
@@ -67,7 +68,7 @@ class MigrateLegacyAliado extends Command
 
         if ($step === 'all') {
             // Secuencia canónica de migración: solo los 14 pasos de datos, en orden
-            $migracionOrder = ['01','02','03','04','05','06','07','08','09','10','11','12','13','14','15'];
+            $migracionOrder = ['01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16'];
             foreach ($migracionOrder as $key) {
                 if (!isset($steps[$key])) continue;
                 $this->info("\n" . str_repeat('─', 60));
@@ -1836,6 +1837,21 @@ class MigrateLegacyAliado extends Command
         DB::statement('ALTER TABLE gastos WITH CHECK CHECK CONSTRAINT ALL');
         $this->info('  📊 Total gastos: ' . DB::table('gastos')->count());
     }
+    private function step16_Fixes(): void
+    {
+        $this->info("\n🔧 Iniciando todos los fixers (Paso 16)...");
+        $this->stepFixModalidad();
+        $this->stepFixPlan();
+        $this->stepFixNarl();
+        $this->stepFixValoresFacturas();
+        $this->stepFixPlanos();
+        $this->stepFixFacturasRetiro();
+        $this->stepFixFacturasPendientes();
+        $this->stepFixIncapacidadesPago();
+        $this->stepFixGestionesPagadas();
+        $this->info("  ✅ Todos los fixers completados.");
+    }
+
     // ─── FIX-MODALIDAD: copia el campo Tipo del legacy directamente ──────────────
     // Para TODOS los contratos: busca en la BD legacy por id_legacy y copia Tipo
     // exactamente tal como viene. Solo usa inferencia como último fallback.
@@ -1917,73 +1933,79 @@ class MigrateLegacyAliado extends Command
             ->groupBy('tipo_modalidad_id')
             ->map(fn($rows) => $rows->pluck('plan_id')->all());
 
-        // Solo contratos migrados SIN plan asignado (los que ya tienen plan se saltan)
-        $contratos = DB::table('contratos')
-            ->whereNotNull('tipo_modalidad_id')
-            ->whereNotNull('id_legacy')
-            ->whereNull('plan_id')
-            ->select('id', 'tipo_modalidad_id', 'eps_id', 'arl_id', 'pension_id', 'caja_id')
-            ->get();
+        foreach ($this->dbs as $db => $key) {
+            $aliadoId = $this->ids[$key] ?? null;
+            if (!$aliadoId) continue;
 
-        $this->line("  ℹ  Contratos sin plan: {$contratos->count()}");
-        $total = $contratos->count();
-        $updated = 0; $sin_plan = 0; $procesados = 0;
+            // Solo contratos migrados SIN plan asignado (los que ya tienen plan se saltan)
+            $contratos = DB::table('contratos')
+                ->where('aliado_id', $aliadoId)
+                ->whereNotNull('tipo_modalidad_id')
+                ->whereNotNull('id_legacy')
+                ->whereNull('plan_id')
+                ->select('id', 'tipo_modalidad_id', 'eps_id', 'arl_id', 'pension_id', 'caja_id')
+                ->get();
 
-        foreach ($contratos as $c) {
-            $procesados++;
-            $planIds = $modalidadPlanes[$c->tipo_modalidad_id] ?? [];
-            if (empty($planIds)) { $sin_plan++; continue; }
+            $this->line("  ℹ  Contratos sin plan ($db): {$contratos->count()}");
+            $total = $contratos->count();
+            $updated = 0; $sin_plan = 0; $procesados = 0;
 
-            // Entidades: 1 si tiene, 0 si no
-            $hasEps     = $c->eps_id     !== null ? 1 : 0;
-            $hasArl     = $c->arl_id     !== null ? 1 : 0;
-            $hasPension = $c->pension_id !== null ? 1 : 0;
-            $hasCaja    = $c->caja_id    !== null ? 1 : 0;
+            foreach ($contratos as $c) {
+                $procesados++;
+                $planIds = $modalidadPlanes[$c->tipo_modalidad_id] ?? [];
+                if (empty($planIds)) { $sin_plan++; continue; }
 
-            $candidatos = $planesAll->whereIn('id', $planIds);
+                // Entidades: 1 si tiene, 0 si no
+                $hasEps     = $c->eps_id     !== null ? 1 : 0;
+                $hasArl     = $c->arl_id     !== null ? 1 : 0;
+                $hasPension = $c->pension_id !== null ? 1 : 0;
+                $hasCaja    = $c->caja_id    !== null ? 1 : 0;
 
-            // Nivel 1: coincidencia EXACTA de entidades
-            $planElegido = $candidatos->first(fn($p) =>
-                $p->incluye_eps     === $hasEps
-                && $p->incluye_arl     === $hasArl
-                && $p->incluye_pension === $hasPension
-                && $p->incluye_caja    === $hasCaja
-            );
+                $candidatos = $planesAll->whereIn('id', $planIds);
 
-            // Nivel 2: plan que al menos incluya las entidades que el contrato TIENE
-            // (nunca quitar algo que ya tiene; puede tener entidades extra)
-            if (!$planElegido) {
+                // Nivel 1: coincidencia EXACTA de entidades
                 $planElegido = $candidatos->first(fn($p) =>
-                    ($hasEps     === 0 || $p->incluye_eps     === 1)
-                    && ($hasArl     === 0 || $p->incluye_arl     === 1)
-                    && ($hasPension === 0 || $p->incluye_pension === 1)
-                    && ($hasCaja    === 0 || $p->incluye_caja    === 1)
+                    $p->incluye_eps     === $hasEps
+                    && $p->incluye_arl     === $hasArl
+                    && $p->incluye_pension === $hasPension
+                    && $p->incluye_caja    === $hasCaja
                 );
+
+                // Nivel 2: plan que al menos incluya las entidades que el contrato TIENE
+                // (nunca quitar algo que ya tiene; puede tener entidades extra)
+                if (!$planElegido) {
+                    $planElegido = $candidatos->first(fn($p) =>
+                        ($hasEps     === 0 || $p->incluye_eps     === 1)
+                        && ($hasArl     === 0 || $p->incluye_arl     === 1)
+                        && ($hasPension === 0 || $p->incluye_pension === 1)
+                        && ($hasCaja    === 0 || $p->incluye_caja    === 1)
+                    );
+                }
+
+                // Nivel 3: plan con más entidades (preserva datos, nunca elimina)
+                if (!$planElegido) {
+                    $planElegido = $candidatos
+                        ->sortByDesc(fn($p) => $p->incluye_eps + $p->incluye_arl + $p->incluye_pension + $p->incluye_caja)
+                        ->first();
+                }
+
+                if ($planElegido) {
+                    DB::table('contratos')->where('id', $c->id)
+                        ->update(['plan_id' => $planElegido->id]);
+                    $updated++;
+                } else {
+                    $sin_plan++;
+                }
+
+                if ($procesados % 200 === 0) {
+                    $this->line("    → $procesados / $total procesados ($updated con plan)...");
+                }
             }
 
-            // Nivel 3: plan con más entidades (preserva datos, nunca elimina)
-            if (!$planElegido) {
-                $planElegido = $candidatos
-                    ->sortByDesc(fn($p) => $p->incluye_eps + $p->incluye_arl + $p->incluye_pension + $p->incluye_caja)
-                    ->first();
-            }
-
-            if ($planElegido) {
-                DB::table('contratos')->where('id', $c->id)
-                    ->update(['plan_id' => $planElegido->id]);
-                $updated++;
-            } else {
-                $sin_plan++;
-            }
-
-            if ($procesados % 200 === 0) {
-                $this->line("    → $procesados / $total procesados ($updated con plan)...");
-            }
+            $this->info("  ✅ $updated contratos con plan | $sin_plan sin plan disponible ($db)");
+            $still = DB::table('contratos')->where('aliado_id', $aliadoId)->whereNull('plan_id')->whereNotNull('tipo_modalidad_id')->count();
+            $this->line("  ℹ  Aún sin plan ($db): $still");
         }
-
-        $this->info("  ✅ $updated contratos con plan | $sin_plan sin plan disponible");
-        $still = DB::table('contratos')->whereNull('plan_id')->whereNotNull('tipo_modalidad_id')->count();
-        $this->line("  ℹ  Aún sin plan: $still");
     }
 
     // ─── FIX-NARL: copia N_ARL del legacy directamente ────────────────────────
@@ -2983,17 +3005,18 @@ class MigrateLegacyAliado extends Command
     //   Solo toca filas donde total_ss = 0, seguro de re-ejecutar.
     private function stepFixFacturasRetiro(): void
     {
-        // ── Fase 1: tipo fix (idempotente) ────────────────────────────────────
-        $updatedTipo = DB::table('facturas')
-            ->where('tipo', 'retiro')
-            ->update(['tipo' => 'planilla', 'updated_at' => now()]);
-        $this->info("  ✅ Fase 1 — tipo='retiro'→'planilla': $updatedTipo corregidas");
-
-        // ── Fase 2: SS recalc via tabla temporal en BryNex ───────────────────
         foreach ($this->dbs as $db => $key) {
             $aliadoId = (int)($this->ids[$key] ?? 0);
             if (!$aliadoId) { $this->warn("  ⚠ Aliado '$key' no encontrado, se omite"); continue; }
 
+            // ── Fase 1: tipo fix (idempotente) ────────────────────────────────────
+            $updatedTipo = DB::table('facturas')
+                ->where('aliado_id', $aliadoId)
+                ->where('tipo', 'retiro')
+                ->update(['tipo' => 'planilla', 'updated_at' => now()]);
+            $this->info("  ✅ $db Fase 1 — tipo='retiro'→'planilla': $updatedTipo corregidas");
+
+            // ── Fase 2: SS recalc via tabla temporal en BryNex ───────────────────
             // ¿Hay facturas pendientes de SS para este aliado?
             $pendientes = DB::table('facturas')
                 ->where('aliado_id', $aliadoId)
