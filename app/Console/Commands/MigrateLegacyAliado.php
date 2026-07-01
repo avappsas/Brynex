@@ -58,6 +58,7 @@ class MigrateLegacyAliado extends Command
             'fix-modalidad'        => fn() => $this->stepFixModalidad(),
             'fix-plan'             => fn() => $this->stepFixPlan(),
             'fix-narl'             => fn() => $this->stepFixNarl(),
+            'fix-limpieza-legacy'  => fn() => $this->stepFixLimpiezaLegacy(),
             'fix-valoresfacturas'  => fn() => $this->stepFixValoresFacturas(),
             'fix-planos'           => fn() => $this->stepFixPlanos(),
             'fix-facturas-retiro'  => fn() => $this->stepFixFacturasRetiro(),
@@ -248,6 +249,14 @@ class MigrateLegacyAliado extends Command
             $count = 0; $skipped = 0;
             foreach ($rows as $r) {
                 if (isset($yaExisten[$r->Id])) { $skipped++; continue; }
+                
+                // Omitir la empresa "INDIVIDUAL"
+                $empresaName = trim($r->Empresa ?? '');
+                if (strtolower($empresaName) === 'individual') {
+                    $skipped++;
+                    continue;
+                }
+
                 DB::table('empresas')->insert([
                     'id'       => $nextId++,  // secuencial, empieza en 1
                     'aliado_id'           => $aliadoId,
@@ -323,6 +332,14 @@ class MigrateLegacyAliado extends Command
                 $id = $this->col($r, 'ID');
                 if ($id === null) continue;
                 if (isset($bancosExisten[$id])) { $skipped++; continue; }
+                
+                // Omitir banco "EFECTIVO"
+                $bancoName = trim($this->col($r, 'BANCO') ?? '');
+                if (strtolower($bancoName) === 'efectivo') {
+                    $skipped++;
+                    continue;
+                }
+
                 DB::table('banco_cuentas')->insert([
                     'aliado_id'     => $aliadoId,
                     'id_legacy'     => $id,
@@ -1851,6 +1868,7 @@ class MigrateLegacyAliado extends Command
     private function step16_Fixes(): void
     {
         $this->info("\n🔧 Iniciando todos los fixers (Paso 16)...");
+        $this->stepFixLimpiezaLegacy();
         $this->stepFixModalidad();
         $this->stepFixPlan();
         $this->stepFixNarl();
@@ -1861,6 +1879,43 @@ class MigrateLegacyAliado extends Command
         $this->stepFixIncapacidadesPago();
         $this->stepFixGestionesPagadas();
         $this->info("  ✅ Todos los fixers completados.");
+    }
+
+    // ─── FIX-LIMPIEZA-LEGACY: Limpia la BD de basura del legacy (INDIVIDUAL, EFECTIVO) ──
+    private function stepFixLimpiezaLegacy(): void
+    {
+        $this->info('🔧 fix-limpieza-legacy: Eliminando empresas "INDIVIDUAL" y bancos "EFECTIVO"...');
+        foreach ($this->dbs as $db => $key) {
+            $aliadoId = $this->ids[$key] ?? null;
+            if (!$aliadoId) continue;
+
+            // 1. Eliminar bancos "EFECTIVO"
+            $bancosBorrados = DB::table('banco_cuentas')
+                ->where('aliado_id', $aliadoId)
+                ->whereRaw("LOWER(banco) = 'efectivo'")
+                ->delete();
+
+            // 2. Eliminar empresa "INDIVIDUAL" y desvincularla
+            $empresas = DB::table('empresas')
+                ->where('aliado_id', $aliadoId)
+                ->whereRaw("LOWER(empresa) = 'individual'")
+                ->get();
+
+            $empresasBorradas = 0;
+            foreach ($empresas as $emp) {
+                DB::table('clientes')->where('empresa_id', $emp->id)->update(['empresa_id' => null]);
+                DB::table('contratos')->where('empresa_id', $emp->id)->update(['empresa_id' => null]);
+                DB::table('facturas')->where('empresa_id', $emp->id)->update(['empresa_id' => null]);
+                DB::table('empresas')->where('id', $emp->id)->delete();
+                $empresasBorradas++;
+            }
+
+            if ($bancosBorrados > 0 || $empresasBorradas > 0) {
+                $this->info("  ✅ $db → $bancosBorrados bancos 'EFECTIVO' y $empresasBorradas empresas 'INDIVIDUAL' eliminados");
+            } else {
+                $this->line("  ✔ $db → limpio, nada que borrar");
+            }
+        }
     }
 
     // ─── FIX-MODALIDAD: copia el campo Tipo del legacy directamente ──────────────
