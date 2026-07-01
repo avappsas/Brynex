@@ -134,7 +134,7 @@ class MigrateLegacyAliado extends Command
             // Skip check por id_legacy
             $yaExisten = DB::table('razones_sociales')
                 ->where('aliado_id', $aliadoId)
-                ->pluck('id_legacy')->filter()->flip()->all();
+                ->pluck('id_legacy')->filter(fn($val) => $val !== null)->flip()->all();
 
             $rows  = DB::connection('sqlsrv_legacy')->select("SELECT * FROM [$db].dbo.Razon_Social");
             $count = 0; $skipped = 0;
@@ -195,7 +195,7 @@ class MigrateLegacyAliado extends Command
             // Cargar id_legacy ya migrados para reanudar
             $yaExisten = DB::table('users')
                 ->where('aliado_id', $aliadoId)
-                ->pluck('id_legacy')->filter()->flip()->all();
+                ->pluck('id_legacy')->filter(fn($val) => $val !== null)->flip()->all();
             $existingCount = count($yaExisten);
             if ($existingCount > 0) {
                 $this->line("  ℹ  $db: $existingCount usuarios ya migrados, insertando faltantes...");
@@ -242,7 +242,7 @@ class MigrateLegacyAliado extends Command
             if (!$aliadoId) { $this->warn("  ⚠ Aliado '$key' no encontrado, se omite"); continue; }
 
             $yaExisten = DB::table('empresas')->where('aliado_id', $aliadoId)
-                ->pluck('id_legacy')->filter()->flip()->all();
+                ->pluck('id_legacy')->filter(fn($val) => $val !== null)->flip()->all();
             if (count($yaExisten) > 0) $this->line("  ℹ  $db: " . count($yaExisten) . " empresas ya migradas, insertando faltantes...");
 
             $rows  = DB::connection('sqlsrv_legacy')->select("SELECT * FROM [$db].dbo.Empresas");
@@ -326,7 +326,7 @@ class MigrateLegacyAliado extends Command
 
             // Bancos
             $bancosExisten = DB::table('banco_cuentas')->where('aliado_id', $aliadoId)
-                ->pluck('id_legacy')->filter()->flip()->all();
+                ->pluck('id_legacy')->filter(fn($val) => $val !== null)->flip()->all();
             $rows  = DB::connection('sqlsrv_legacy')->select("SELECT * FROM [$db].dbo.Bancos_cuentas");
             $count = 0; $skipped = 0;
             foreach ($rows as $r) {
@@ -353,6 +353,7 @@ class MigrateLegacyAliado extends Command
                     'created_at'    => now(),
                     'updated_at'    => now(),
                 ]);
+                $bancosExisten[$id] = true;
                 $count++;
             }
             $this->info("  ✅ $db → $count cuentas bancarias, $skipped omitidas");
@@ -504,7 +505,7 @@ class MigrateLegacyAliado extends Command
             // Cargar contratos ya migrados para reanudar
             $yaExisten = DB::table('contratos')
                 ->where('aliado_id', $aliadoId)
-                ->pluck('id_legacy')->filter()->flip()->all();
+                ->pluck('id_legacy')->filter(fn($val) => $val !== null)->flip()->all();
             $existingCount = count($yaExisten);
 
             // ── Precargar planes para asignar plan_id inline (fix-plan integrado) ────
@@ -802,7 +803,7 @@ class MigrateLegacyAliado extends Command
             if (!$aliadoId) { $this->warn("  ⚠ Aliado '$key' no encontrado, se omite"); continue; }
 
             $yaExisten = DB::table('facturas')->where('aliado_id', $aliadoId)
-                ->pluck('id_legacy')->filter()->flip()->all();
+                ->pluck('id_legacy')->filter(fn($val) => $val !== null)->flip()->all();
             $total = DB::connection('sqlsrv_legacy')
                 ->selectOne("SELECT COUNT(*) as cnt FROM [$db].dbo.FACTURACION")->cnt;
             $this->line("  ⏳ $db: $total facturas, " . ($total - count($yaExisten)) . " faltantes...");
@@ -1068,7 +1069,7 @@ class MigrateLegacyAliado extends Command
             // Skip check: por factura_id (cuando existe) O por clave compuesta cedula+mes+año+rs
             $facturasMigradas = DB::table('planos')
                 ->where('aliado_id', $aliadoId)
-                ->pluck('factura_id')->filter()->flip()->all();
+                ->pluck('factura_id')->filter(fn($val) => $val !== null)->flip()->all();
 
             // Clave compuesta para evitar duplicados cuando factura_id es null
             $clavesMigradas = DB::table('planos')
@@ -1488,7 +1489,7 @@ class MigrateLegacyAliado extends Command
 
             // Cargar los id_legacy ya migrados (para skip eficiente O(1))
             $yaExisten = DB::table('facturas')->where('aliado_id', $aliadoId)
-                ->pluck('id_legacy')->filter()->flip()->all();
+                ->pluck('id_legacy')->filter(fn($val) => $val !== null)->flip()->all();
 
             // Contar cuántas hay en legacy
             $totalLegacy = DB::connection('sqlsrv_legacy')
@@ -1795,7 +1796,7 @@ class MigrateLegacyAliado extends Command
             // Re-entrant por id_legacy
             $yaExisten = DB::table('gastos')
                 ->where('aliado_id', $aliadoId)
-                ->pluck('id_legacy')->filter()->flip()->all();
+                ->pluck('id_legacy')->filter(fn($val) => $val !== null)->flip()->all();
 
             $rows  = DB::connection('sqlsrv_legacy')->select("SELECT * FROM [$db].dbo.Gastos");
             $count = 0;
@@ -2174,7 +2175,7 @@ class MigrateLegacyAliado extends Command
             // Re-entrant: saltar los ya migrados por id_legacy
             $yaExisten = DB::table('incapacidades')
                 ->where('aliado_id', $aliadoId)
-                ->pluck('id_legacy')->filter()->flip()->all();
+                ->pluck('id_legacy')->filter(fn($val) => $val !== null)->flip()->all();
 
             $rows = DB::connection('sqlsrv_legacy')
                 ->select("SELECT * FROM [$db].dbo.Incapacidades");
