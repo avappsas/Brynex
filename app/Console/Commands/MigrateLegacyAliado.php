@@ -3024,71 +3024,69 @@ class MigrateLegacyAliado extends Command
                 ->selectOne("SELECT COUNT(*) as cnt FROM [$db].dbo.PLANOS")->cnt;
             $this->line("  ⏳ $db: $total planos a revisar...");
 
-            $updated = 0; $offset = 0; $chunk = 500;
+            // Precargar mapas para O(1) lookup sin queries
+            $facturasMap = DB::table('facturas')
+                ->where('aliado_id', $aliadoId)
+                ->whereNotNull('id_legacy')
+                ->pluck('id', 'id_legacy');
+
+            $rsMap = DB::table('razones_sociales')
+                ->where('aliado_id', $aliadoId)
+                ->whereNotNull('id_legacy')
+                ->pluck('id', 'id_legacy');
+
+            $updated = 0; $offset = 0; $chunk = 1000;
             while (true) {
                 $rows = $this->legacySelect(
                     "SELECT * FROM [$db].dbo.PLANOS ORDER BY Id OFFSET $offset ROWS FETCH NEXT $chunk ROWS ONLY"
                 );
                 if (empty($rows)) break;
 
-                foreach ($rows as $r) {
-                    // factura_id: PLANOS.id_facturacion → FACTURACION.Id = facturas.id_legacy → id BryNex
-                    $facturaId = DB::table('facturas')
-                        ->where('aliado_id', $aliadoId)
-                        ->where('id_legacy', $this->col($r, 'id_facturacion') ?? $this->col($r, 'Id_Facturacion') ?? $this->col($r, 'ID_FACTURACION'))
-                        ->value('id');
+                DB::beginTransaction();
+                try {
+                    foreach ($rows as $r) {
+                        $idFactLegacy = $this->col($r, 'id_facturacion') ?? $this->col($r, 'Id_Facturacion') ?? $this->col($r, 'ID_FACTURACION');
+                        $facturaId = $idFactLegacy ? ($facturasMap[$idFactLegacy] ?? null) : null;
+                        
+                        if (!$facturaId) continue;
 
-                    if (!$facturaId) continue; // Sin factura migrada → saltar
+                        $nit = $this->col($r, 'Nit_Empresa') ?? $this->col($r, 'NIT');
+                        $razonSocialId = (is_numeric($nit) && (int)$nit > 0) ? ($rsMap[(int)$nit] ?? null) : null;
 
-                    // Resolver razon_social_id: id_legacy = NIT del plano → id BryNex
-                    $nit = $this->col($r, 'Nit_Empresa') ?? $this->col($r, 'NIT');
-                    $razonSocialId = (is_numeric($nit) && (int)$nit > 0)
-                        ? DB::table('razones_sociales')
+                        $noIdentifi = (string)(
+                            $this->col($r, 'NO_IDENTIFI') ?? $this->col($r, 'No_Identifi') ?? $this->col($r, 'Cedula') ?? ''
+                        );
+
+                        $fIngRaw = $this->col($r, 'FECHA ING') ?? $this->col($r, 'fecha_ing') ?? $this->col($r, 'Fecha_Ingreso');
+                        $fechaIng = $fIngRaw ? substr($fIngRaw, 0, 10) : null;
+
+                        $fRetRaw = $this->col($r, 'FECHA RET') ?? $this->col($r, 'fecha_ret') ?? $this->col($r, 'Fecha_Retiro');
+                        $fechaRet = $fRetRaw ? substr($fRetRaw, 0, 10) : null;
+
+                        $data = ['updated_at' => now()];
+                        if ($noIdentifi !== '')  $data['no_identifi']     = $noIdentifi;
+                        if ($fechaIng)           $data['fecha_ing']       = $fechaIng;
+                        if ($fechaRet)           $data['fecha_ret']       = $fechaRet;
+                        if ($razonSocialId)      $data['razon_social_id'] = $razonSocialId;
+                        if (is_numeric($nit) && (int)$nit > 0) {
+                            $data['razon_social'] = (string)(int)$nit;
+                        }
+
+                        $affected = DB::table('planos')
                             ->where('aliado_id', $aliadoId)
-                            ->where('id_legacy', (int)$nit)
-                            ->value('id')
-                        : null;
+                            ->where('factura_id', $facturaId)
+                            ->update($data);
 
-                    // no_identifi: NO_IDENTIFI es el campo estándar PILA
-                    $noIdentifi = (string)(
-                        $this->col($r, 'NO_IDENTIFI')
-                        ?? $this->col($r, 'No_Identifi')
-                        ?? $this->col($r, 'Cedula')
-                        ?? ''
-                    );
-
-                    // fecha_ing: 'FECHA ING' con espacio
-                    $fIngRaw = $this->col($r, 'FECHA ING')
-                            ?? $this->col($r, 'fecha_ing')
-                            ?? $this->col($r, 'Fecha_Ingreso');
-                    $fechaIng = $fIngRaw ? substr($fIngRaw, 0, 10) : null;
-
-                    // fecha_ret: 'FECHA RET' con espacio
-                    $fRetRaw = $this->col($r, 'FECHA RET')
-                            ?? $this->col($r, 'fecha_ret')
-                            ?? $this->col($r, 'Fecha_Retiro');
-                    $fechaRet = $fRetRaw ? substr($fRetRaw, 0, 10) : null;
-
-                    // Construir datos a actualizar (solo los que tengan valor)
-                    $data = ['updated_at' => now()];
-                    if ($noIdentifi !== '')  $data['no_identifi']     = $noIdentifi;
-                    if ($fechaIng)           $data['fecha_ing']       = $fechaIng;
-                    if ($fechaRet)           $data['fecha_ret']       = $fechaRet;
-                    if ($razonSocialId)      $data['razon_social_id'] = $razonSocialId;
-                    // razon_social = NIT como string
-                    if (is_numeric($nit) && (int)$nit > 0) {
-                        $data['razon_social'] = (string)(int)$nit;
+                        $updated += $affected;
                     }
-
-                    $affected = DB::table('planos')
-                        ->where('aliado_id', $aliadoId)
-                        ->where('factura_id', $facturaId)
-                        ->update($data);
-
-                    $updated += $affected;
+                    DB::commit();
+                } catch (\Exception $e) {
+                    DB::rollBack();
+                    throw $e;
                 }
 
                 $offset += $chunk;
+                $this->line("    → $offset / $total procesados ($updated actualizados)...");
                 if (count($rows) < $chunk) break;
             }
             $this->info("  ✅ $db → $updated planos actualizados");
