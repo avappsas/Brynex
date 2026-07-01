@@ -1955,6 +1955,10 @@ function filtrarPlanes(modalidadId, evitarRecalcular = false) {
     const aplicarAfpObligatorio = REGLA_AFP_ACTIVA && modalidadAfpOblig && !CLIENTE_EXENTO_AFP;
 
 
+    const selRS      = document.getElementById('sel_rs');
+    const esIndepRS  = selRS?.options[selRS.selectedIndex]?.dataset?.independiente === '1';
+    const esIndepMod = MODALIDADES_INDEP.includes(modalidadIdInt);
+
     let planActualPermitido = false;
     let planesAgregados     = [];
 
@@ -1969,7 +1973,13 @@ function filtrarPlanes(modalidadId, evitarRecalcular = false) {
 
         // ── Regla AFP obligatorio: ocultar planes sin AFP si aplica la regla ──
         // Un plan sin AFP tiene incluye_pension = false (data-pen !== '1')
-        if (aplicarAfpObligatorio && el.dataset.pen !== '1') return;
+        // Excepto si es el plan "Solo ARL" y la RS es independiente o la modalidad es independiente
+        const esSoloArlPlan = el.dataset.arl  === '1'
+            && el.dataset.eps  !== '1'
+            && el.dataset.pen  !== '1'
+            && el.dataset.caja !== '1';
+        const exceptuarSoloArl = esSoloArlPlan && (esIndepRS || esIndepMod);
+        if (aplicarAfpObligatorio && el.dataset.pen !== '1' && !exceptuarSoloArl) return;
 
         // Resaltar sin-AFP cuando el cliente puede omitirlo
         if (CLIENTE_EXENTO_AFP) {
