@@ -95,7 +95,7 @@ class Consignacion extends BaseModel
 
             $entradas = (int) static::where('aliado_id', $aliadoId)
                 ->where('banco_cuenta_id', $bancoCuentaId)
-                ->where('fecha', '>=', '2026-05-01')
+                ->where('fecha', '>=', '2026-07-01')
                 ->where('fecha', '>=', $baseDate)
                 ->selectRaw('ISNULL(SUM(CAST(valor AS BIGINT)), 0) AS total')
                 ->value('total');
@@ -103,7 +103,7 @@ class Consignacion extends BaseModel
             $salidas = (int) DB::table('gastos')
                 ->where('aliado_id', $aliadoId)
                 ->where('banco_origen_id', $bancoCuentaId)
-                ->where('fecha', '>=', '2026-05-01')
+                ->where('fecha', '>=', '2026-07-01')
                 ->where('tipo', '!=', 'ajuste_apertura')
                 ->where('tipo', '!=', 'efectivo_banco')
                 ->where('fecha', '>=', $baseDate)
@@ -117,14 +117,14 @@ class Consignacion extends BaseModel
         // Usa selectRaw + alias para compatibilidad con SQL Server (no value(DB::raw()))
         $entradas = (int) static::where('aliado_id', $aliadoId)
             ->where('banco_cuenta_id', $bancoCuentaId)
-            ->where('fecha', '>=', '2026-05-01')
+            ->where('fecha', '>=', '2026-07-01')
             ->selectRaw('ISNULL(SUM(CAST(valor AS BIGINT)), 0) AS total')
             ->value('total');
 
         $salidas = (int) DB::table('gastos')
             ->where('aliado_id', $aliadoId)
             ->where('banco_origen_id', $bancoCuentaId)
-            ->where('fecha', '>=', '2026-05-01')
+            ->where('fecha', '>=', '2026-07-01')
             ->where('tipo', '!=', 'efectivo_banco')
             ->selectRaw('ISNULL(SUM(CAST(valor AS BIGINT)), 0) AS total')
             ->value('total');
@@ -151,12 +151,12 @@ class Consignacion extends BaseModel
             ->where('tipo', 'saldo_inicial');
         
         if ($fechaFin) {
-            if ($fechaFin >= '2026-05-01') {
-                $ledgersQuery->where('fecha', '>=', '2026-05-01')
+            if ($fechaFin >= '2026-07-01') {
+                $ledgersQuery->where('fecha', '>=', '2026-07-01')
                              ->where('fecha', '<=', $fechaFin);
             }
         } else {
-            $ledgersQuery->where('fecha', '>=', '2026-05-01');
+            $ledgersQuery->where('fecha', '>=', '2026-07-01');
         }
 
         $ledgers = $ledgersQuery->orderByDesc('fecha')
@@ -179,7 +179,7 @@ class Consignacion extends BaseModel
         if (!empty($bancosSinLedger)) {
             $entradasQuery = DB::table('consignaciones')
                 ->where('aliado_id', $aliadoId)
-                ->where('fecha', '>=', '2026-05-01')
+                ->where('fecha', '>=', '2026-07-01')
                 ->whereIn('banco_cuenta_id', $bancosSinLedger);
             
             if ($fechaFin) {
@@ -194,7 +194,7 @@ class Consignacion extends BaseModel
 
             $salidasQuery = DB::table('gastos')
                 ->where('aliado_id', $aliadoId)
-                ->where('fecha', '>=', '2026-05-01')
+                ->where('fecha', '>=', '2026-07-01')
                 ->where('tipo', '!=', 'efectivo_banco')
                 ->whereIn('banco_origen_id', $bancosSinLedger);
 
@@ -223,7 +223,7 @@ class Consignacion extends BaseModel
 
             $entradasQuery = static::where('aliado_id', $aliadoId)
                 ->where('banco_cuenta_id', $bancoId)
-                ->where('fecha', '>=', '2026-05-01')
+                ->where('fecha', '>=', '2026-07-01')
                 ->where('fecha', '>=', $baseDate);
             
             if ($fechaFin) {
@@ -237,7 +237,7 @@ class Consignacion extends BaseModel
             $salidasQuery = DB::table('gastos')
                 ->where('aliado_id', $aliadoId)
                 ->where('banco_origen_id', $bancoId)
-                ->where('fecha', '>=', '2026-05-01')
+                ->where('fecha', '>=', '2026-07-01')
                 ->where('tipo', '!=', 'ajuste_apertura')
                 ->where('tipo', '!=', 'efectivo_banco')
                 ->where('fecha', '>=', $baseDate);
@@ -314,7 +314,7 @@ class Consignacion extends BaseModel
         // Fallback: sumar todo hasta el cierre del mes
         $entradas = (int) static::where('aliado_id', $aliadoId)
             ->where('banco_cuenta_id', $bancoCuentaId)
-            ->where('fecha', '>=', '2026-05-01')
+            ->where('fecha', '>=', '2026-07-01')
             ->where('fecha', '<=', $fechaFin)
             ->selectRaw('ISNULL(SUM(CAST(valor AS BIGINT)), 0) AS total')
             ->value('total');
@@ -322,7 +322,7 @@ class Consignacion extends BaseModel
         $salidas = (int) DB::table('gastos')
             ->where('aliado_id', $aliadoId)
             ->where('banco_origen_id', $bancoCuentaId)
-            ->where('fecha', '>=', '2026-05-01')
+            ->where('fecha', '>=', '2026-07-01')
             ->where('fecha', '<=', $fechaFin)
             ->selectRaw('ISNULL(SUM(CAST(valor AS BIGINT)), 0) AS total')
             ->value('total');

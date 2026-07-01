@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\DB;
 class ComisionesController extends Controller
 {
     // Corte histórico: solo facturas desde mayo 2026 en adelante
-    private const CORTE_MES  = 5;
+    private const CORTE_MES  = 7;
     private const CORTE_ANIO = 2026;
 
     private function aliadoId(): int

@@ -623,7 +623,7 @@ class InformeController extends Controller
 
         $cobradoDistRetPrev = DB::table('facturas')
             ->where('aliado_id', $aid)->whereNull('deleted_at')->whereNotNull('fecha_pago')
-            ->where('fecha_pago', '>=', '2026-05-01')
+            ->where('fecha_pago', '>=', '2026-07-01')
             ->where('fecha_pago', '<', $fechaInicioMes)
             ->where('numero_factura', '>', 0)
             ->whereIn('estado', ['pagada','abono','prestamo'])
@@ -640,7 +640,7 @@ class InformeController extends Controller
                     ->from('gastos')
                     ->where('aliado_id', $aid)
                     ->where('tipo', 'pago_planilla')
-                    ->where('fecha', '>=', '2026-05-01')
+                    ->where('fecha', '>=', '2026-07-01')
                     ->where('fecha', '<', $fechaInicioMes)
                     ->whereNotNull('numero_planilla');
             })
@@ -966,7 +966,7 @@ class InformeController extends Controller
 
         // Calcular el arrastre de efectivo secuencialmente mes a mes para respetar la regla de no saldo negativo físico
         $saldoEfectivoMesAnt = 0.0;
-        $start = \Carbon\Carbon::createFromDate(2026, 5, 1)->startOfMonth();
+        $start = \Carbon\Carbon::createFromDate(2026, 7, 1)->startOfMonth();
         $end = \Carbon\Carbon::createFromDate($anioAnt, $mesAnt, 1)->startOfMonth();
 
         if ($end->greaterThanOrEqualTo($start)) {
@@ -2285,7 +2285,7 @@ class InformeController extends Controller
             $gastos          = (int)($gastosDia[$d] ?? 0);
             $afilNeto = $afil;
             $fechaFiltro = \Carbon\Carbon::createFromDate($anio, $mes, $d);
-            $fechaCorte = \Carbon\Carbon::createFromDate(2026, 5, 1);
+            $fechaCorte = \Carbon\Carbon::createFromDate(2026, 7, 1);
             if ($fechaFiltro->greaterThanOrEqualTo($fechaCorte)) {
                 $afilNeto = max(0.0, $afil - $distAsesorDia - $distRetiroDia - $distEncargadoDia);
             }
@@ -2336,7 +2336,7 @@ class InformeController extends Controller
         $distAses = (float)($factData->dist_asesor ?? 0);
         $distEncarg = (float)($factData->dist_encargado ?? 0);
         $fechaPeriodo = \Carbon\Carbon::createFromDate($anio, $mes, 1);
-        $fechaCorte = \Carbon\Carbon::createFromDate(2026, 5, 1);
+        $fechaCorte = \Carbon\Carbon::createFromDate(2026, 7, 1);
         if ($fechaPeriodo->greaterThanOrEqualTo($fechaCorte)) {
             $ing = max(0.0, $ing - $distRet - $distAses - $distEncarg);
         }
@@ -2411,7 +2411,7 @@ class InformeController extends Controller
             $distAses = (float)($factData->dist_asesor ?? 0);
             $distEncarg = (float)($factData->dist_encargado ?? 0);
             $fechaPeriodo = \Carbon\Carbon::createFromDate($a, $m, 1);
-            $fechaCorte = \Carbon\Carbon::createFromDate(2026, 5, 1);
+            $fechaCorte = \Carbon\Carbon::createFromDate(2026, 7, 1);
             if ($fechaPeriodo->greaterThanOrEqualTo($fechaCorte)) {
                 $ing = max(0.0, $ing - $distRet - $distAses - $distEncarg);
             }
