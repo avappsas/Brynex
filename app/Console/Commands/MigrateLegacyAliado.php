@@ -1956,24 +1956,30 @@ class MigrateLegacyAliado extends Command
 
             $this->line("  ⏳ $db: {$contratos->count()} contratos a actualizar...");
 
+            $updates = []; // [tipo_modalidad_id => [id1, id2...]]
             foreach ($contratos as $c) {
                 $tipoLegacy = $tipoMap[$c->id_legacy] ?? null;
 
                 if ($tipoLegacy !== null && is_numeric($tipoLegacy) && in_array((int)$tipoLegacy, $validIds, true)) {
-                    DB::table('contratos')->where('id', $c->id)
-                        ->update(['tipo_modalidad_id' => (int)$tipoLegacy]);
+                    $updates[(int)$tipoLegacy][] = $c->id;
                     $updated++;
                 } else {
                     $modalidadId = $this->resolveTipoModalidad(
                         null, $c->eps_id, $c->arl_id, $c->pension_id, $c->caja_id
                     );
                     if ($modalidadId !== null) {
-                        DB::table('contratos')->where('id', $c->id)
-                            ->update(['tipo_modalidad_id' => $modalidadId]);
+                        $updates[$modalidadId][] = $c->id;
                         $fallback++;
                     } else {
                         $sin_dato++;
                     }
+                }
+            }
+            
+            // Ejecutar bulk updates agrupados por tipo_modalidad_id
+            foreach ($updates as $modId => $ids) {
+                foreach (array_chunk($ids, 1000) as $chunkIds) {
+                    DB::table('contratos')->whereIn('id', $chunkIds)->update(['tipo_modalidad_id' => $modId]);
                 }
             }
             $this->info("  ✅ $db → desde legacy: $updated | fallback: $fallback | sin dato: $sin_dato");
@@ -2023,6 +2029,7 @@ class MigrateLegacyAliado extends Command
             $total = $contratos->count();
             $updated = 0; $sin_plan = 0; $procesados = 0;
 
+            $planUpdates = []; // [plan_id => [id1, id2...]]
             foreach ($contratos as $c) {
                 $procesados++;
                 $planIds = $modalidadPlanes[$c->tipo_modalidad_id] ?? [];
@@ -2045,7 +2052,6 @@ class MigrateLegacyAliado extends Command
                 );
 
                 // Nivel 2: plan que al menos incluya las entidades que el contrato TIENE
-                // (nunca quitar algo que ya tiene; puede tener entidades extra)
                 if (!$planElegido) {
                     $planElegido = $candidatos->first(fn($p) =>
                         ($hasEps     === 0 || $p->incluye_eps     === 1)
@@ -2055,7 +2061,7 @@ class MigrateLegacyAliado extends Command
                     );
                 }
 
-                // Nivel 3: plan con más entidades (preserva datos, nunca elimina)
+                // Nivel 3: plan con más entidades
                 if (!$planElegido) {
                     $planElegido = $candidatos
                         ->sortByDesc(fn($p) => $p->incluye_eps + $p->incluye_arl + $p->incluye_pension + $p->incluye_caja)
@@ -2063,15 +2069,21 @@ class MigrateLegacyAliado extends Command
                 }
 
                 if ($planElegido) {
-                    DB::table('contratos')->where('id', $c->id)
-                        ->update(['plan_id' => $planElegido->id]);
+                    $planUpdates[$planElegido->id][] = $c->id;
                     $updated++;
                 } else {
                     $sin_plan++;
                 }
 
-                if ($procesados % 200 === 0) {
-                    $this->line("    → $procesados / $total procesados ($updated con plan)...");
+                if ($procesados % 5000 === 0) {
+                    $this->line("    → $procesados / $total procesados en memoria...");
+                }
+            }
+            
+            // Ejecutar bulk updates
+            foreach ($planUpdates as $planId => $ids) {
+                foreach (array_chunk($ids, 1000) as $chunkIds) {
+                    DB::table('contratos')->whereIn('id', $chunkIds)->update(['plan_id' => $planId]);
                 }
             }
 
@@ -2135,17 +2147,32 @@ class MigrateLegacyAliado extends Command
             $this->line("  ⧳ $db: {$contratos->count()} contratos...");
             $updDb = 0;
 
+            $narlUpdates = []; // ["narl_arlid" => ['n_arl'=>x, 'arl_id'=>y, 'ids'=>[]]]
             foreach ($contratos as $c) {
                 $narl   = $narlMap[$c->id_legacy] ?? null;
                 $arlNit = $rsArlNitMap[$c->razon_social_id] ?? null;
                 $arlId  = $arlNit ? $lookupArlId((int)$arlNit) : null;
 
-                DB::table('contratos')->where('id', $c->id)
-                    ->update([
-                        'n_arl'  => $narl,
-                        'arl_id' => $arlId,
+                if ($narl !== null || $arlId !== null) {
+                    $key = ($narl ?? 'null') . '_' . ($arlId ?? 'null');
+                    if (!isset($narlUpdates[$key])) {
+                        $narlUpdates[$key] = ['n_arl' => $narl, 'arl_id' => $arlId, 'ids' => []];
+                    }
+                    $narlUpdates[$key]['ids'][] = $c->id;
+                    $updDb++; 
+                } else {
+                    $sin_dato++;
+                }
+            }
+            
+            // Bulk updates
+            foreach ($narlUpdates as $group) {
+                foreach (array_chunk($group['ids'], 1000) as $chunkIds) {
+                    DB::table('contratos')->whereIn('id', $chunkIds)->update([
+                        'n_arl'  => $group['n_arl'],
+                        'arl_id' => $group['arl_id']
                     ]);
-                if ($narl !== null || $arlId !== null) $updDb++; else $sin_dato++;
+                }
             }
             $updated += $updDb;
             $this->info("  ✅ $db → $updDb contratos actualizados (n_arl + arl_id)");
