@@ -150,13 +150,10 @@ class Consignacion extends BaseModel
             ->whereIn('banco_cuenta_id', $bancoCuentaIds)
             ->where('tipo', 'saldo_inicial');
         
+        // Siempre aplicar el corte de julio 2026
+        $ledgersQuery->where('fecha', '>=', '2026-07-01');
         if ($fechaFin) {
-            if ($fechaFin >= '2026-07-01') {
-                $ledgersQuery->where('fecha', '>=', '2026-07-01')
-                             ->where('fecha', '<=', $fechaFin);
-            }
-        } else {
-            $ledgersQuery->where('fecha', '>=', '2026-07-01');
+            $ledgersQuery->where('fecha', '<=', $fechaFin);
         }
 
         $ledgers = $ledgersQuery->orderByDesc('fecha')

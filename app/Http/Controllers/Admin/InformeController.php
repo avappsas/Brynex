@@ -961,8 +961,14 @@ class InformeController extends Controller
 
         // ── Calulo de arrastre del mes anterior (Bancos + Efectivo) ──
         $fechaFinMesAnt = \Carbon\Carbon::createFromDate($anioAnt, $mesAnt, 1)->endOfMonth()->toDateString();
-        $saldosBancosMesAnt = \App\Models\Consignacion::saldosBancosOptimizados($aid, $bancoIds, $fechaFinMesAnt);
-        $totalBancosMesAnt = (float)collect($saldosBancosMesAnt)->sum();
+        // Si el mes anterior es anterior al corte de julio 2026, el arrastre es $0
+        $fechaCorte = '2026-07-01';
+        if ($fechaFinMesAnt < $fechaCorte) {
+            $totalBancosMesAnt = 0.0;
+        } else {
+            $saldosBancosMesAnt = \App\Models\Consignacion::saldosBancosOptimizados($aid, $bancoIds, $fechaFinMesAnt);
+            $totalBancosMesAnt = (float)collect($saldosBancosMesAnt)->sum();
+        }
 
         // Calcular el arrastre de efectivo secuencialmente mes a mes para respetar la regla de no saldo negativo físico
         $saldoEfectivoMesAnt = 0.0;
