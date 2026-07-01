@@ -663,6 +663,22 @@ const MF = (function () {
                 if (rowAfil) rowAfil.style.display = 'none';
             }
 
+            // Detección de retiros facturables de meses anteriores
+            let countRetirosFacturables = 0;
+            _selContratos.forEach(c => {
+                if (c.es_retiro_facturable) countRetirosFacturables++;
+            });
+            const cardRF = el('mf-retiros-facturables-card');
+            const countRF = el('mf-retiros-facturables-count');
+            if (cardRF && countRF) {
+                if (countRetirosFacturables > 0) {
+                    countRF.textContent = countRetirosFacturables;
+                    cardRF.style.display = 'block';
+                } else {
+                    cardRF.style.display = 'none';
+                }
+            }
+
             const arlBadge = el('mf-arl-badge');
             if (arlBadge) arlBadge.textContent = maxArlNivel ? 'N' + maxArlNivel : '';
 
@@ -1151,7 +1167,27 @@ const MF = (function () {
             const arl  = parse(el('mf-v-arl')?.textContent);
             const afp  = parse(el('mf-v-afp')?.textContent);
             const caja = parse(el('mf-v-caja')?.textContent);
-            const admon  = parse(el('mf-v-admon')?.textContent);
+            let admon  = parse(el('mf-v-admon')?.textContent);
+
+            // Si hay retiros facturables, recalcular admon dinámicamente según checkbox (modo masivo)
+            if (_modo === 'masivo') {
+                const cardRF = el('mf-retiros-facturables-card');
+                const chkAdmonFull = el('mf-retiros-admon-completa');
+                if (cardRF && cardRF.style.display !== 'none' && chkAdmonFull) {
+                    let sumAdmon = 0;
+                    _selContratos.forEach(c => {
+                        if (c.es_retiro_facturable && !chkAdmonFull.checked) {
+                            // Proporcional a los días de retiro
+                            sumAdmon += Math.round((c.admon / 30) * c.dias_retiro);
+                        } else {
+                            sumAdmon += c.admon;
+                        }
+                    });
+                    admon = Math.ceil(sumAdmon);
+                    setText('mf-v-admon', fmt(admon));
+                }
+            }
+
             const seg    = parse(el('mf-v-seg')?.textContent);
             const iva    = parse(el('mf-v-iva')?.textContent);
             const otros  = parse(el('mf-otros')?.value);
@@ -1767,6 +1803,7 @@ const MF = (function () {
                 es_retiro:    _esRetiro,
                 fecha_retiro: _esRetiro ? (el('mf-retiro-fecha')?.value || null) : null,
                 dias_retiro:  _esRetiro ? parseInt(el('mf-retiro-dias-num')?.textContent || '0') || null : null,
+                incluir_admon_retiro_corto: _modo === 'masivo' && el('mf-retiros-admon-completa') ? el('mf-retiros-admon-completa').checked : false,
                 // SS manual— SOLO en modo individual (1 contrato).
                 // En masivo, el modal muestra TOTALES del batch, no valores individuales.
                 // El servidor calcula SS por contrato individualmente con los días reales.

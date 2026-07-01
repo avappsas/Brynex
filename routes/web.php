@@ -205,6 +205,11 @@ Route::middleware('auth')->group(function () {
             Route::post('otro-ingreso',                 [$fc, 'facturarOtroIngreso'])    ->name('otro_ingreso.store');
             Route::match(['get', 'post'], 'cuenta-cobro', [$fc, 'cuentaCobroPreview'])->name('cuenta_cobro.preview');
 
+            // ── Cobros adicionales por empresa (parafiscales, pendientes, etc.) ──
+            Route::get( 'empresa/{empresaId}/cobros-adicionales',        [$fc, 'cobrosAdicionalesIndex'])  ->name('cobros_adicionales.index');
+            Route::post('empresa/{empresaId}/cobros-adicionales',        [$fc, 'cobrosAdicionalesStore'])  ->name('cobros_adicionales.store');
+            Route::delete('cobros-adicionales/{cobroId}',                [$fc, 'cobrosAdicionalesDestroy'])->name('cobros_adicionales.destroy');
+
             // ── Facturación Electrónica (Dataico) — solo admin + superadmin ──
             $fe = \App\Http\Controllers\Admin\FacturacionElectronicaController::class;
             Route::get( 'electronica',          [$fe, 'index'])   ->name('electronica.index');

@@ -149,6 +149,11 @@ table.tbl-det tfoot .num { color: #34d399; }
     <div class="doc-title">Cuenta de Cobro — Detallada</div>
     <div class="doc-subtitle">Desglose por entidad — {{ $meses[$mes] }} {{ $anio }}</div>
 
+    {{-- Fecha actual --}}
+    <div style="margin-bottom: 1.2rem; font-size: .8rem; font-weight: 500; color: #1e293b;">
+        {{ $aliado->ciudad ?? 'Bogotá D.C.' }}, {{ now()->translatedFormat('d \d\e F \d\e Y') }}
+    </div>
+
     <div class="destinatario">
         <div>Señores:</div>
         <div class="empresa-dest">{{ $empresa->empresa ?? '' }}</div>
@@ -341,7 +346,7 @@ table.tbl-det tfoot .num { color: #34d399; }
     <div style="margin:.8rem 0 .6rem;line-height:1.6;font-size:10px;">
         Agradecemos la atención prestada,<br><br>
         Atentamente<br><br>
-        <strong>{{ $aliado?->contacto ?? ($aliado?->nombre ?? '#¿Nombre?') }}</strong><br>
+        <strong>{{ auth()->user()?->nombre ?? ($aliado?->contacto ?? ($aliado?->nombre ?? 'Asesor')) }}</strong><br>
         <em>Tu asesor de Confianza</em>
     </div>
 

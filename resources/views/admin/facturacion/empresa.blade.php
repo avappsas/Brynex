@@ -332,6 +332,8 @@ $totAFavor=$totPendiente=0;
 @forelse($contratos as $c)
 @php
 $fact  = $c->factura_exist;
+$factRetiroPreview = (!$fact && ($c->tiene_retiro_facturable ?? false)) ? ($c->factura_retiro_0 ?? null) : null;
+// Para retiro facturable usamos la factura_0 como fuente de valores de preview
 $yaP   = $fact && in_array($fact->estado,['pagada','prestamo']);
 // Nombre: solo primer nombre + primer apellido
 $nombre = trim(($c->cliente?->primer_nombre ?? '') . ' ' . ($c->cliente?->primer_apellido ?? ''));
@@ -344,7 +346,11 @@ $esRetirado = $c->estado === 'retirado';
 $esIngRet   = (int)($c->tipo_modalidad_id) === 12;
 $fIng       = $c->fecha_ingreso ? $c->fecha_ingreso->format('d/m/Y') : '—';
 $fRet       = ($esRetirado && $c->fecha_retiro) ? $c->fecha_retiro->format('d/m/Y') : null;
-$dias       = $fact ? (int)$fact->dias_cotizados : ($c->dias_cotizar ?? 30);
+$dias = $fact
+    ? (int)$fact->dias_cotizados
+    : ($factRetiroPreview
+        ? (int)$factRetiroPreview->dias_cotizados  // usar días reales del retiro marcado
+        : ($c->dias_cotizar ?? 30));
 // Detectar si este período debe ser afiliación pura (I VENC, empresa, ARL)
 // vs I ACT primer mes (viene del controlador como es_ind_act_primer_mes)
 $esIndep          = $c->tipoModalidad?->esIndependiente() ?? false;
@@ -372,7 +378,7 @@ if ($fact) {
 // Tiempo Parcial: detectar y obtener días por entidad
 $esTP     = $c->tipoModalidad?->esTiempoParcial() ?? false;
 $diasTP   = $esTP ? $c->tipoModalidad->diasPorEntidad() : null;
-// Valores: si hay factura usar los reales; si es retirado sin factura → 0; si es activo sin factura → estimar
+// Valores: si hay factura usar los reales; si es retirado facturable → usar factura_0; si activo sin factura → estimar
 $vEps  = $fact ? $r100($fact->v_eps)  : 0;
 $vArl  = $fact ? $r100($fact->v_arl)  : 0;
 $vCaja = $fact ? $r100($fact->v_caja) : 0;
@@ -382,8 +388,20 @@ $vIva  = $fact ? $r100($fact->iva)    : 0;
 // Total y SS
 $cotiz = $c->cotizacion_calc ?? $c->calcularCotizacion($dias); // pre-calculado en controller
 if (!$fact) {
-    if ($esRetirado) {
-        // Retirado sin factura aún → mostrar todo en 0
+    if ($esRetirado && $factRetiroPreview) {
+        // Retiro facturable: mostrar valores reales de la factura_0
+        $vEps  = $r100($factRetiroPreview->v_eps);
+        $vArl  = $r100($factRetiroPreview->v_arl);
+        $vPen  = $r100($factRetiroPreview->v_afp);
+        $vCaja = $r100($factRetiroPreview->v_caja);
+        $vIva  = $r100($factRetiroPreview->iva);
+        $vSS   = $r100($factRetiroPreview->total_ss);
+        // Admon: el valor base de contrato (30 días); se recalculará por JS según el checkbox
+        $vAdm  = (int)(($c->administracion??0) + ($c->admon_asesor??0));
+        $vAdmProporcional = (int)(($vAdm / 30) * $dias); // proporcional a días de retiro
+        $vTot  = $vSS + $vAdm + $vIva; // total con admon completa (JS ajusta si es proporcional)
+    } elseif ($esRetirado && !$factRetiroPreview) {
+        // Retirado sin retiro facturable — ya fue cobrado o es retiro masivo → 0
         $vEps = $vArl = $vPen = $vCaja = $vIva = $vAdm = $vSS = 0;
         $vTot = 0;
     } elseif ($esArlModalidad && !$esAfil) {
@@ -450,7 +468,12 @@ $totAdmon+=$vAdm;$totIva+=$vIva;$totTotal+=$vTot;$totMora+=$vMora;
     data-rs="{{ $rs }}"
     data-fecha_ingreso_retiro="{{ $esRetirado && $c->fecha_retiro ? $c->fecha_retiro->format('Y-m-d') : ($c->fecha_ingreso ? $c->fecha_ingreso->format('Y-m-d') : '') }}"
     data-vmora="{{ $vMora }}"
-    data-np="{{ $fact?->np ?? '' }}">
+    data-np="{{ $fact?->np ?? '' }}"
+    data-es-retiro-facturable="{{ ($factRetiroPreview ?? null) ? '1' : '0' }}"
+    data-dias-retiro="{{ ($factRetiroPreview ?? null) ? (int)$factRetiroPreview->dias_cotizados : 0 }}"
+    data-admon-full="{{ ($factRetiroPreview ?? null) ? (int)(($c->administracion??0) + ($c->admon_asesor??0)) : 0 }}"
+    data-admon-proporcional="{{ ($factRetiroPreview ?? null) ? ($vAdmProporcional ?? 0) : 0 }}"
+    data-vss-retiro="{{ ($factRetiroPreview ?? null) ? $r100($factRetiroPreview->total_ss) : 0 }}">
 
     <td style="font-size:.75rem;font-weight:700;text-align:center;white-space:nowrap;" title="{{ $tipoNom }}{{ $esIndActPrimerMes ? ' · Afiliación + Planilla' : '' }}{{ $esRetirado ? ' · RETIRADO' : '' }}">
         <span style="display:inline-flex;align-items:center;gap:3px;flex-direction:column;">
@@ -500,9 +523,9 @@ $totAdmon+=$vAdm;$totIva+=$vIva;$totTotal+=$vTot;$totMora+=$vMora;
     <td class="num-col">{{ $vArl>0?'$'.number_format($vArl,0,',','.'):'—' }}</td>
     <td class="num-col">{{ $vCaja>0?'$'.number_format($vCaja,0,',','.'):'—' }}</td>
     <td class="num-col">{{ $vPen>0?'$'.number_format($vPen,0,',','.'):'—' }}</td>
-    <td class="num-col">${{ number_format($vAdm,0,',','.') }}</td>
+    <td class="num-col celda-admon">${{ number_format($vAdm,0,',','.') }}</td>
     <td class="num-col" style="display:none">{{ $vIva>0?'$'.number_format($vIva,0,',','.'):'—' }}</td>
-    <td class="num-col" style="font-weight:700;color:{{ $yaP?'#16a34a':'#0f172a' }}">
+    <td class="num-col celda-tot" style="font-weight:700;color:{{ $yaP?'#16a34a':'#0f172a' }}">
         ${{ number_format($vTot,0,',','.') }}
     </td>
     {{-- Mora: real si ya facturada, estimada si no --}}
@@ -539,9 +562,23 @@ $totAdmon+=$vAdm;$totIva+=$vIva;$totTotal+=$vTot;$totMora+=$vMora;
     @endphp
     <td style="text-align:center">
         @if($esRetirado)
-        <span style="display:inline-block;padding:.16rem .5rem;border-radius:20px;font-size:.63rem;font-weight:800;background:#fee2e2;color:#dc2626">
-            RETIRO
-        </span>
+            @php
+                $factRetiro0 = $c->factura_retiro_0 ?? null;
+                $tieneRetiroFacturable = $c->tiene_retiro_facturable ?? false;
+                $numeroPlanillaRet = $factRetiro0 ? (\App\Models\Plano::where('factura_id', $factRetiro0->id)->whereNull('deleted_at')->value('numero_planilla') ?? null) : null;
+            @endphp
+            @if($tieneRetiroFacturable)
+                {{-- Retiro marcado pero no cobrado aún — mostrar en naranja --}}
+                <span style="display:inline-block;padding:.16rem .5rem;border-radius:20px;font-size:.63rem;font-weight:800;background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;"
+                      title="Retiro marcado — pendiente de facturar{{ $numeroPlanillaRet ? ' ⚠ Planilla pagada: '.$numeroPlanillaRet : '' }}">
+                    RETIRO★
+                </span>
+            @else
+                {{-- Retirado sin factura 0 (ya cobrado o retiro masivo) --}}
+                <span style="display:inline-block;padding:.16rem .5rem;border-radius:20px;font-size:.63rem;font-weight:800;background:#fee2e2;color:#dc2626">
+                    RETIRO
+                </span>
+            @endif
         @elseif($fact)
         @php $colores=$estadoBg($fact->estado); @endphp
         @if((int)$fact->numero_factura === 0)
@@ -557,10 +594,18 @@ $totAdmon+=$vAdm;$totIva+=$vIva;$totTotal+=$vTot;$totMora+=$vMora;
     </td>
     <td style="text-align:center;font-weight:700;color:#2563eb;font-size:.8rem">{{ $fact?->np ?? '—' }}</td>
     <td style="text-align:center;white-space:nowrap;">
-        @if($fact)
+        @if($fact && (int)$fact->numero_factura !== 0)
             <button onclick="abrirRecibo('{{ route('admin.facturacion.recibo',$fact->id) }}?modal=1')"
                class="btn-sm" style="background:#eff6ff;color:#1d4ed8;" title="Ver recibo">🖨</button>
-        @else
+        @elseif($tieneRetiroFacturable ?? false)
+            {{-- Retiro facturable: mostrar checkbox igual que un activo sin factura --}}
+            <input type="checkbox" class="chk-row" value="{{ $c->id }}"
+                   data-es-retiro-facturable="1"
+                   data-dias-retiro="{{ $factRetiro0?->dias_cotizados ?? 0 }}"
+                   onchange="onCheckChange()"
+                   style="width:1.1rem;height:1.1rem;cursor:pointer;accent-color:#c2410c;"
+                   title="Seleccionar para facturar retiro ({{ $factRetiro0?->dias_cotizados ?? 0 }} días){{ isset($numeroPlanillaRet) && $numeroPlanillaRet ? ' ⚠ Ya tiene planilla: '.$numeroPlanillaRet : '' }}">
+        @elseif(!$esRetirado && !$fact)
             <input type="checkbox" class="chk-row" value="{{ $c->id }}"
                    onchange="onCheckChange()"
                    style="width:1.1rem;height:1.1rem;cursor:pointer;accent-color:#2563eb;"
@@ -579,9 +624,9 @@ $totAdmon+=$vAdm;$totIva+=$vIva;$totTotal+=$vTot;$totMora+=$vMora;
     <td class="num-col tot-val">${{ number_format($totArl,  0,',','.') }}</td>
     <td class="num-col tot-val">${{ number_format($totCaja, 0,',','.') }}</td>
     <td class="num-col tot-val">${{ number_format($totPen,  0,',','.') }}</td>
-    <td class="num-col tot-val">${{ number_format($totAdmon,0,',','.') }}</td>
+    <td class="num-col tot-val" id="tot-admon-val">${{ number_format($totAdmon,0,',','.') }}</td>
     <td class="num-col tot-val" style="display:none">${{ number_format($totIva,  0,',','.') }}</td>
-    <td class="num-col tot-val" style="font-size:.9rem">${{ number_format($totTotal,0,',','.') }}</td>
+    <td class="num-col tot-val" id="tot-general-val" style="font-size:.9rem">${{ number_format($totTotal,0,',','.') }}</td>
     <td class="num-col tot-val" style="color:#fbbf24;font-weight:800;">
         {{ $totMora > 0 ? '$'.number_format($totMora,0,',','.') : '—' }}
     </td>
@@ -591,6 +636,71 @@ $totAdmon+=$vAdm;$totIva+=$vIva;$totTotal+=$vTot;$totMora+=$vMora;
 </table>
 </div>
 </div>
+
+{{-- ─── Checkbox: cobrar administración completa en retiros ──────────────────── --}}
+<div id="panel-admon-retiro" style="display:none;align-items:center;gap:.65rem;margin-top:.5rem;padding:.5rem .9rem;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;width:fit-content;">
+    <input type="checkbox" id="chk-admon-retiro" checked onchange="actualizarAdmonRetiro(this.checked)"
+           style="width:1rem;height:1rem;cursor:pointer;accent-color:#ea580c;flex-shrink:0;">
+    <label for="chk-admon-retiro" style="font-size:.73rem;font-weight:700;color:#c2410c;cursor:pointer;user-select:none;">
+        💼 Cobrar administración en retiros cortos
+    </label>
+    <span style="font-size:.65rem;color:#9a3412;font-weight:500;">
+        — Desmarcado: sin admon si ≤ 3 días (ya facturado antes de retirarse)
+    </span>
+</div>
+<script>
+function actualizarAdmonRetiro(admonCompleta) {
+    document.querySelectorAll('tr[data-es-retiro-facturable="1"]').forEach(function(tr) {
+        const admonFull = parseInt(tr.dataset.admonFull || 0);
+        const diasRet   = parseInt(tr.dataset.diasRetiro || 0);
+        const vss       = parseInt(tr.dataset.vssRetiro || 0);
+        const viva      = parseInt(tr.dataset.viva || 0);
+
+        // Regla: marcado = admon completa siempre
+        // Desmarcado: si días <= 3 → sin admon; si días > 3 → admon completa igualmente
+        let nuevoAdmon;
+        if (admonCompleta) {
+            nuevoAdmon = admonFull;
+        } else {
+            nuevoAdmon = diasRet <= 3 ? 0 : admonFull;
+        }
+
+        const nuevoTot = vss + nuevoAdmon + viva;
+        tr.dataset.vadmon = nuevoAdmon;
+        tr.dataset.vtot   = nuevoTot;
+
+        const celdaAdmon = tr.querySelector('.celda-admon');
+        if (celdaAdmon) celdaAdmon.textContent = '$' + nuevoAdmon.toLocaleString('es-CO');
+        const celdaTot = tr.querySelector('.celda-tot');
+        if (celdaTot) celdaTot.textContent = '$' + nuevoTot.toLocaleString('es-CO');
+    });
+
+    // Recalcular dinámicamente la suma acumulada de administración y total general en el tfoot de la tabla
+    let totalAdmonAcum = 0;
+    let totalGeneralAcum = 0;
+    document.querySelectorAll('tbody tr[data-vadmon]').forEach(function(tr) {
+        totalAdmonAcum += parseInt(tr.dataset.vadmon || 0);
+        totalGeneralAcum += parseInt(tr.dataset.vtot || 0);
+    });
+
+    const elTotAdmon = document.getElementById('tot-admon-val');
+    if (elTotAdmon) elTotAdmon.textContent = '$' + totalAdmonAcum.toLocaleString('es-CO');
+    const elTotGen = document.getElementById('tot-general-val');
+    if (elTotGen) elTotGen.textContent = '$' + totalGeneralAcum.toLocaleString('es-CO');
+}
+
+// Mostrar/ocultar el panel según si hay retiros seleccionados en la selección actual
+function actualizarVisibilidadPanelAdmon() {
+    const panel = document.getElementById('panel-admon-retiro');
+    if (!panel) return;
+    const chksRetiro = document.querySelectorAll('.chk-row:checked[data-es-retiro-facturable="1"]');
+    panel.style.display = chksRetiro.length > 0 ? 'flex' : 'none';
+}
+// Inicializar visibilidad al cargar la página
+document.addEventListener('DOMContentLoaded', function() {
+    actualizarVisibilidadPanelAdmon();
+});
+</script>
 
 {{-- ─── Panel saldo neto de la EMPRESA (calculado en el controlador) ─────────
      Usa empresa_id: suma TODOS los saldo_proximo hasta e incluyendo el mes actual.
@@ -1046,7 +1156,12 @@ function onCheckChange(){
     const sinSel = n===0;
     document.getElementById('btnFacturarSel').disabled=sinSel;
     document.getElementById('btnCuentaCobro').disabled=sinSel;
-    actualizarResumen();
+    if (typeof actualizarResumen === 'function') {
+        actualizarResumen();
+    }
+    if (typeof actualizarVisibilidadPanelAdmon === 'function') {
+        actualizarVisibilidadPanelAdmon();
+    }
 }
 
 // ─── Cuenta de Cobro ─────────────────────────────────────────────
@@ -1055,11 +1170,16 @@ function abrirCuentaCobro(tipo) {
     const ids = selec.map(r => r.dataset.contrato);
     window.__ccContratos = ids;
 
+    // Leer si se cobra admon completa en retiros
+    const chkAdmonRetiro = document.getElementById('chk-admon-retiro');
+    const admonCompletaEnRetiros = chkAdmonRetiro ? (chkAdmonRetiro.checked ? '1' : '0') : '1';
+
     const queryParams = new URLSearchParams({
         tipo: tipo,
         mes: new URLSearchParams(location.search).get('mes') || '{{ $mes }}',
         anio: new URLSearchParams(location.search).get('anio') || '{{ $anio }}',
-        empresa_id: '{{ $empresa->id }}'
+        empresa_id: '{{ $empresa->id }}',
+        admon_retiro_completa: admonCompletaEnRetiros,
     });
 
     let url = '{{ route("admin.facturacion.cuenta_cobro.preview") }}?' + queryParams.toString();
@@ -1072,24 +1192,36 @@ function abrirCuentaCobro(tipo) {
 
 // ─── Resumen ─────────────────────────────────────────────
 function _buildContratosSelec() {
-    return selec.map(r => ({
-        id:        r.dataset.contrato,
-        eps:       parseInt(r.dataset.veps   || 0),
-        arl:       parseInt(r.dataset.varl   || 0),
-        afp:       parseInt(r.dataset.vpen   || 0),
-        caja:      parseInt(r.dataset.vcaja  || 0),
-        admon:     parseInt(r.dataset.vadmon || 0),
-        seg:       parseInt(r.dataset.seguro || 0),
-        iva:       parseInt(r.dataset.viva   || 0),
-        mora:      parseInt(r.dataset.vmora  || 0),   // mora pre-calculada del contrato
-        arl_nivel: parseInt(r.dataset.arlnivel || 1),
-        dias:      parseInt(r.dataset.dias   || 30),
-        nombre:    r.dataset.nombre || '',
-        tipo:      r.dataset.tipo   || 'planilla',
-        afiliacion: parseInt(r.dataset.afiliacion || 0),
-        esindact:  r.dataset.esindact === '1',   // I ACT primer mes: afil + planilla juntas
-        tipo_modalidad_id: parseInt(r.dataset.tipo_modalidad_id || 0),
-    }));
+    // Leer si el checkbox de admon completa en retiros está activo
+    const chkAdmonRetiro = document.getElementById('chk-admon-retiro');
+    const admonCompletaEnRetiros = chkAdmonRetiro ? chkAdmonRetiro.checked : true;
+
+    return selec.map(r => {
+        const esRetFacturable = r.getAttribute('data-es-retiro-facturable') === "1";
+        const diasRet = esRetFacturable ? parseInt(r.getAttribute('data-dias-retiro') || 0) : 0;
+
+        return {
+            id:        r.dataset.contrato,
+            eps:       parseInt(r.dataset.veps   || 0),
+            arl:       parseInt(r.dataset.varl   || 0),
+            afp:       parseInt(r.dataset.vpen   || 0),
+            caja:      parseInt(r.dataset.vcaja  || 0),
+            admon:     parseInt(r.dataset.vadmon || 0),  // ya fue actualizado por actualizarAdmonRetiro()
+            seg:       parseInt(r.dataset.seguro || 0),
+            iva:       parseInt(r.dataset.viva   || 0),
+            mora:      parseInt(r.dataset.vmora  || 0),
+            arl_nivel: parseInt(r.dataset.arlnivel || 1),
+            dias:      esRetFacturable ? diasRet : parseInt(r.dataset.dias || 30),
+            nombre:    r.dataset.nombre || '',
+            tipo:      r.dataset.tipo   || 'planilla',
+            afiliacion: parseInt(r.dataset.afiliacion || 0),
+            esindact:  r.dataset.esindact === '1',
+            tipo_modalidad_id: parseInt(r.dataset.tipo_modalidad_id || 0),
+            es_retiro_facturable: esRetFacturable,
+            dias_retiro: diasRet,
+            incluir_admon_retiro_corto: esRetFacturable ? admonCompletaEnRetiros : true,
+        };
+    });
 }
 
 // ─── Abrir modal facturar ───────────────────────────────────

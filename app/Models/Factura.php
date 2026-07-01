@@ -35,6 +35,9 @@ class Factura extends BaseModel
         'descripcion_tramite','admon_asesor_oi',
         // ── Facturación Electrónica (Dataico) ─────────────────
         'fe_marcada','fe_marcada_at','fe_marcada_por',
+        // ── Retiro facturado: enlace con la factura 0 de origen ──
+        // Permite reactivar la factura 0 si se anula la factura real del retiro.
+        'factura_retiro_origen_id',
     ];
 
     protected $casts = [

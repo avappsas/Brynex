@@ -83,6 +83,11 @@ class FacturacionController extends Controller
                                         ->whereYear('fecha_retiro', $anioAnterior);
                                  });
                          });
+                  })
+                  ->orWhereHas('facturas', function ($qFact) {
+                      // Incluir siempre los contratos retirados que tienen un retiro marcado (factura 0) pendiente de cobrar
+                      $qFact->where('numero_factura', 0)
+                            ->whereNull('deleted_at');
                   });
             })
             ->with([
@@ -101,8 +106,19 @@ class FacturacionController extends Controller
             ->whereIn('tipo', ['planilla', 'afiliacion'])
             ->whereIn('cedula', $contratos->pluck('cedula'))
             ->whereNotNull('contrato_id')
+            ->where('numero_factura', '>', 0) // Excluir la factura temporal de retiro (número 0)
             ->get()
             ->keyBy('contrato_id');  // ← clave: por contrato, no por cédula
+
+        // ── Facturas de retiro con numero_factura=0 (marcadas pero aún no cobradas) ───
+        // Son las que genera el sistema al marcar un retiro individual desde el contrato.
+        // Se indexan por contrato_id para saber cuál contrato retirado ya tiene retiro marcado.
+        $facturasRetiro0 = Factura::where('aliado_id', $aliadoId)
+            ->whereIn('contrato_id', $contratos->pluck('id'))
+            ->where('numero_factura', 0)
+            ->whereNull('deleted_at')
+            ->get()
+            ->keyBy('contrato_id');
 
         $contratoIds = $contratos->pluck('id')->all();
 
@@ -145,7 +161,7 @@ class FacturacionController extends Controller
         // Calcular días cotizados para cada contrato según fecha_ingreso
         $hoy = now();
 
-        $contratos = $contratos->map(function ($c) use ($mes, $anio, $hoy, $facturasExistentes, $saldosTotales, $saldosPrevios, $ivaClientes) {
+        $contratos = $contratos->map(function ($c) use ($mes, $anio, $hoy, $facturasExistentes, $facturasRetiro0, $saldosTotales, $saldosPrevios, $ivaClientes) {
             $diasCotizar = 30;
             $esIndActPrimerMes = false; // I Act (id=11) en su mes de ingreso → afiliación + planilla juntas
 
@@ -196,6 +212,15 @@ class FacturacionController extends Controller
             $c->dias_cotizar          = $diasCotizar;
             $c->es_ind_act_primer_mes = $esIndActPrimerMes;
             $c->factura_exist         = $facturasExistentes->get($c->id);
+
+            // ── Retiro facturable: factura con numero_factura=0 aún no cobrada ──
+            // Si el contrato está retirado y tiene una factura 0 (sin borrar),
+            // se puede seleccionar para incluirlo en la facturación de la empresa.
+            $facturaRetiro0 = $facturasRetiro0->get($c->id);
+            $c->factura_retiro_0      = $facturaRetiro0;  // null si no tiene
+            $c->tiene_retiro_facturable = $c->estado === 'retirado'
+                && $facturaRetiro0 !== null
+                && $c->factura_exist === null; // no tiene ya una factura real en este período
 
             // ── Cotización pre-calculada aquí (evita N+1 en el blade) ──────────
             // El plan ya fue eager-loaded. El IVA viene del batch pre-cargado.
@@ -296,13 +321,25 @@ class FacturacionController extends Controller
         $saldoAnticipoPorContrato = $anticiposPorContrato->map(fn($group) => $group->sum('valor_disponible'));
         $hayAnticipos = $saldoAnticipoPorContrato->isNotEmpty() || $totalAnticipoDisponible > 0;
 
+        // ─── Cobros adicionales de la empresa ────────────────────────
+        $cobrosAdicionales = \App\Models\CobrosAdicionalEmpresa::where('aliado_id', $aliadoId)
+            ->where('empresa_id', $empresa->id)
+            ->where('activo', true)
+            ->orderBy('tipo') // recurrentes primero
+            ->orderBy('descripcion')
+            ->get();
+
+        // Cobros recurrentes activos (para mostrar como recordatorio en modal de facturación)
+        $cobrosRecurrentes = $cobrosAdicionales->where('tipo', 'recurrente')->values();
+
         return view('admin.facturacion.empresa', compact(
             'empresa', 'contratos', 'facturasExistentes',
             'mes', 'anio', 'bancos', 'planosActuales', 'asesores',
             'saldoEmpresaFavor', 'saldoEmpresaPendiente',
             'moraPorContrato',
             'anticiposEmpresa', 'totalAnticipoDisponible',
-            'saldoAnticipoPorContrato', 'hayAnticipos'
+            'saldoAnticipoPorContrato', 'hayAnticipos',
+            'cobrosAdicionales', 'cobrosRecurrentes'
         ));
     }
 
@@ -363,6 +400,8 @@ class FacturacionController extends Controller
             'valor_cartera'        => 'nullable|integer|min:0',
             // Modo independiente: 'normal' | 'ambos' (afiliación + planilla en mismo recibo)
             'indep_modo'           => 'nullable|in:normal,ambos',
+            // Retiro desde empresa: incluir administración aunque sean ≤3 días
+            'incluir_admon_retiro_corto' => 'boolean',
         ]);
 
         // Decodificar manual_ss_por_contrato si viene como JSON string
@@ -624,14 +663,26 @@ class FacturacionController extends Controller
         // ── Anti-duplicado: verificar por contrato_id (no por cédula+RS)
         // Permite contratos distintos aunque compartan la misma Razón Social.
         // Bloquea solo si el MISMO contrato ya tiene una factura del MISMO tipo en el período.
+        // EXCEPCIÓN: contratos retirados con factura numero_factura=0 → se procesan con lógica de retiro facturable.
         $contratoIdsLote = $contratosCargados->pluck('id')->toArray();
         $facturasDuplicadasLote = Factura::where('aliado_id', $aliadoId)
             ->whereIn('contrato_id', $contratoIdsLote)
             ->where('mes', $mes)
             ->where('anio', $anio)
             ->whereNotIn('estado', ['anulada'])
-            ->get(['id', 'contrato_id', 'tipo', 'estado'])
+            ->get(['id', 'contrato_id', 'tipo', 'estado', 'numero_factura'])
             ->groupBy('contrato_id');
+
+        // ── Pre-cargar facturas de retiro con numero_factura=0 (para el flujo de retiro facturable) ──
+        $facturasRetiro0Lote = Factura::withTrashed()
+            ->where('aliado_id', $aliadoId)
+            ->whereIn('contrato_id', $contratoIdsLote)
+            ->where('numero_factura', 0)
+            ->whereNull('deleted_at')
+            ->get()
+            ->keyBy('contrato_id');
+
+        $incluirAdmonRetiroCorto = !empty($validated['incluir_admon_retiro_corto']);
 
         DB::transaction(function () use (
             $validated, $aliadoId, $np, $mes, $anio,
@@ -642,7 +693,7 @@ class FacturacionController extends Controller
             $consignacionesData, $totalesRealesPorContrato, $granTotalReal, $batchNumeroFactura,
             &$efAcum, &$csAcum, &$prAcum, &$sfAcum, &$antAcum,
             $saldoEmpresaAplicar, &$contratosPendientes, $contratosCargados, $facturasDuplicadasLote,
-            $manualSsPorContrato
+            $manualSsPorContrato, $facturasRetiro0Lote, $incluirAdmonRetiroCorto
         ) {
             foreach ($validated['contratos'] as $contratoId) {
                 $contrato = $contratosCargados->get($contratoId);
@@ -778,6 +829,167 @@ class FacturacionController extends Controller
                 }
 
                 // ─── Validación anti-duplicado (flujo normal) ─────────────
+                // EXCEPCIÓN: contratos retirados con factura 0 pendiente no se bloquean aquí
+                // — se procesan en el bloque de retiro facturable de más abajo.
+                $tieneRetiroFacturable = $contrato->estado === 'retirado'
+                    && $facturasRetiro0Lote->has($contrato->id);
+
+                // ── FLUJO ESPECIAL: Retiro facturable (contrato retirado con factura 0) ──────────
+                // El usuario seleccionó un contrato retirado desde la vista empresa.
+                // La factura 0 (creada al marcar el retiro individual) se anula y se crea una real.
+                if ($tieneRetiroFacturable) {
+                    $facturaRetiroOrigen = $facturasRetiro0Lote->get($contrato->id);
+
+                    // Calcular distribución de pago proporcional
+                    $costoContrato = $totalesRealesPorContrato[$contratoId] ?? 0;
+                    $proporcion    = $granTotalReal > 0 ? ($costoContrato / $granTotalReal) : 0;
+                    $contratosPendientes--;
+                    $esUltimoNoOmitido = ($contratosPendientes === 0);
+
+                    if ($esUltimoNoOmitido) {
+                        $vConsig     = $totalPagoConsig     - $csAcum;
+                        $vEfectivo   = $totalPagoEfectivo   - $efAcum;
+                        $vPrestamo   = $totalPagoPrestamo   - $prAcum;
+                        $vSaldoFavor = $saldoEmpresaAplicar - $sfAcum;
+                        $vAnticipo   = $totalAnticipo        - $antAcum;
+                    } else {
+                        $vConsig     = (int) round($totalPagoConsig     * $proporcion);
+                        $vEfectivo   = (int) round($totalPagoEfectivo   * $proporcion);
+                        $vPrestamo   = (int) round($totalPagoPrestamo   * $proporcion);
+                        $vSaldoFavor = (int) round($saldoEmpresaAplicar * $proporcion);
+                        $vAnticipo   = (int) round($totalAnticipo        * $proporcion);
+                        $csAcum  += $vConsig;
+                        $efAcum  += $vEfectivo;
+                        $prAcum  += $vPrestamo;
+                        $sfAcum  += $vSaldoFavor;
+                        $antAcum += $vAnticipo;
+                    }
+
+                    // Tomar SS de la factura 0 (ya calculados al marcar el retiro)
+                    $diasRetiroReal = (int)($facturaRetiroOrigen->dias_cotizados ?? 0);
+                    $vEpsRet  = (int)($facturaRetiroOrigen->v_eps  ?? 0);
+                    $vArlRet  = (int)($facturaRetiroOrigen->v_arl  ?? 0);
+                    $vAfpRet  = (int)($facturaRetiroOrigen->v_afp  ?? 0);
+                    $vCajaRet = (int)($facturaRetiroOrigen->v_caja ?? 0);
+                    $totalSSRet = $vEpsRet + $vArlRet + $vAfpRet + $vCajaRet;
+
+                    // Admon: solo se cobra si días > 3, o si el usuario marcó "incluir admon retiro corto"
+                    $admonRetiro = 0;
+                    $adminAsesorRetiro = 0;
+                    if ($diasRetiroReal > 3 || $incluirAdmonRetiroCorto) {
+                        $admonRetiro       = intval($contrato->administracion ?? 0);
+                        $adminAsesorRetiro = intval($contrato->admon_asesor   ?? 0);
+                    }
+
+                    $totalRetiro = $totalSSRet + $admonRetiro + $adminAsesorRetiro;
+
+                    // n_plano: reutilizar el del plano de retiro existente
+                    $rsIdRet = $contrato->razon_social_id;
+                    if ($rsIdRet && !isset($nPlanosPorRS[$rsIdRet])) {
+                        $nPlanosPorRS[$rsIdRet] = static::_nPlanoParaRS($aliadoId, $rsIdRet, $mes, $anio);
+                    }
+                    $nPlanoRetiro = $rsIdRet ? ($nPlanosPorRS[$rsIdRet] ?? null) : null;
+
+                    // Crear factura real del retiro
+                    $facturaReal = Factura::create([
+                        'aliado_id'               => $aliadoId,
+                        'numero_factura'          => $batchNumeroFactura,
+                        'tipo'                    => 'planilla',
+                        'cedula'                  => $contrato->cedula,
+                        'contrato_id'             => $contrato->id,
+                        'empresa_id'              => $validated['empresa_id'] ?? null,
+                        'mes'                     => $mes,
+                        'anio'                    => $anio,
+                        'fecha_pago'              => now()->toDateString(),
+                        'estado'                  => $validated['estado'],
+                        'es_prestamo'             => $validated['estado'] === 'prestamo',
+                        'forma_pago'              => $validated['forma_pago'],
+                        'valor_consignado'        => $vConsig,
+                        'valor_efectivo'          => $vEfectivo,
+                        'valor_prestamo'          => $vPrestamo,
+                        'dias_cotizados'          => $diasRetiroReal,
+                        'v_eps'                   => $vEpsRet,
+                        'v_arl'                   => $vArlRet,
+                        'v_afp'                   => $vAfpRet,
+                        'v_caja'                  => $vCajaRet,
+                        'total_ss'                => $totalSSRet,
+                        'admon'                   => $admonRetiro,
+                        'admin_asesor'            => $adminAsesorRetiro,
+                        'seguro'                  => 0,
+                        'afiliacion'              => 0,
+                        'iva'                     => 0,
+                        'mora'                    => 0,
+                        'otros'                   => 0,
+                        'otros_admon'             => 0,
+                        'mensajeria'              => 0,
+                        'total'                   => $totalRetiro,
+                        'anticipo_aplicado'       => $vAnticipo,
+                        'np'                      => $np,
+                        'n_plano'                 => $nPlanoRetiro,
+                        'razon_social_id'         => $contrato->razon_social_id,
+                        'usuario_id'              => Auth::id(),
+                        'observacion'             => $validated['observacion'] ?? null,
+                        // Enlace con la factura 0 original para poder reactivarla si se anula esta
+                        'factura_retiro_origen_id' => $facturaRetiroOrigen->id,
+                    ]);
+
+                    // saldo_proximo de la factura real del retiro
+                    $pagadoRealRet = (int)$facturaReal->valor_consignado
+                                  + (int)$facturaReal->valor_efectivo
+                                  + (int)$facturaReal->anticipo_aplicado;
+                    $facturaReal->update(['saldo_proximo' => $pagadoRealRet - $totalRetiro]);
+
+                    // Soft-delete de la factura 0 (motivo: cobrada en la factura real)
+                    $facturaRetiroOrigen->motivo_anulacion = "Cobrado en factura #{$batchNumeroFactura}";
+                    $facturaRetiroOrigen->anulado_por      = Auth::id();
+                    $facturaRetiroOrigen->save();
+                    $facturaRetiroOrigen->delete(); // SoftDeletes → deleted_at
+
+                    // Actualizar el plano de retiro: ahora apunta a la factura real
+                    Plano::where('factura_id', $facturaRetiroOrigen->id)
+                        ->whereNull('deleted_at')
+                        ->update([
+                            'factura_id'     => $facturaReal->id,
+                            'numero_factura' => $batchNumeroFactura,
+                            'n_plano'        => $nPlanoRetiro,
+                        ]);
+
+                    // Bitácora
+                    Bitacora::registrar(
+                        accion: 'updated',
+                        modelo: 'Factura',
+                        registroId: $facturaReal->id,
+                        descripcion: "Retiro de {$contrato->cedula} cobrado en factura #{$batchNumeroFactura}. Factura origen (retiro) #{$facturaRetiroOrigen->id} anulada.",
+                        detalle: [
+                            'factura_retiro_origen_id' => $facturaRetiroOrigen->id,
+                            'dias_retiro' => $diasRetiroReal,
+                            'admon_cobrada' => $admonRetiro,
+                        ],
+                        alidoId: $aliadoId
+                    );
+
+                    // Guardar consignaciones (solo primera factura del lote)
+                    if (empty($facturasCreadas)) {
+                        foreach ($consignacionesData as $cs) {
+                            $valorCs = (int)$cs['valor'];
+                            if ($valorCs <= 0) continue;
+                            \App\Models\Consignacion::create([
+                                'aliado_id'       => $aliadoId,
+                                'factura_id'      => $facturaReal->id,
+                                'banco_cuenta_id' => (int) $cs['banco_cuenta_id'],
+                                'fecha'           => $cs['fecha'] ?? now()->toDateString(),
+                                'valor'           => $valorCs,
+                                'referencia'      => $cs['referencia'] ?? null,
+                                'confirmado'      => false,
+                                'usuario_id'      => Auth::id(),
+                            ]);
+                        }
+                    }
+
+                    $facturasCreadas[] = $facturaReal->id;
+                    continue; // saltar la lógica normal del foreach
+                }
+
                 $yaExiste = $facturasDup->contains(fn($f) => $f->tipo === $tipoSolicitado);
 
                 if ($yaExiste) {
@@ -1958,11 +2170,47 @@ class FacturacionController extends Controller
                 // duplicados cuando se re-factura el mismo período tras una anulación.
                 Plano::where('factura_id', $f->id)->each(fn($p) => $p->delete());
 
-                // ── Reversar retiro si la factura es de retiro o causó retiro ──
-                // Las facturas de retiro se identifican por numero_factura = 0 o si el plano tiene fecha_ret.
-                // Al anularlas, el contrato debe volver a estado "vigente",
-                // sin fecha de retiro ni motivo de retiro.
-                if (((int)$f->numero_factura === 0 || ($f->plano && $f->plano->fecha_ret)) && $f->contrato_id) {
+                // \u2500\u2500 Reversar retiro: dos casos seg\u00fan el tipo de factura de retiro \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+                // CASO 1: Factura de retiro facturado desde empresa (factura_retiro_origen_id != null)
+                //   \u2192 Reactivar la factura 0 original, restaurar el plano, NO revertir el contrato
+                // CASO 2: Factura de retiro original (numero_factura = 0 o plano con fecha_ret)
+                //   \u2192 Revertir el contrato a vigente (comportamiento original)
+
+                if ($f->factura_retiro_origen_id && $f->contrato_id) {
+                    // CASO 1: Anular retiro facturado desde empresa
+                    // Restaurar la factura 0 original (reactivar soft-delete)
+                    $facturaOrigenRestore = Factura::withTrashed()
+                        ->find($f->factura_retiro_origen_id);
+
+                    if ($facturaOrigenRestore) {
+                        $facturaOrigenRestore->restore(); // quitar deleted_at
+                        $facturaOrigenRestore->update([
+                            'motivo_anulacion' => null,
+                            'anulado_por'      => null,
+                        ]);
+
+                        // Restaurar el plano al estado original (apuntar a factura 0)
+                        Plano::where('factura_id', $f->id)
+                            ->whereNull('deleted_at')
+                            ->update([
+                                'factura_id'     => $facturaOrigenRestore->id,
+                                'numero_factura' => 0,
+                            ]);
+
+                        Bitacora::registrar(
+                            accion: 'updated',
+                            modelo: 'Factura',
+                            registroId: $facturaOrigenRestore->id,
+                            descripcion: "Factura de retiro (origen) #{$facturaOrigenRestore->id} reactivada por anulaci\u00f3n de factura real #{$f->id}. Contrato {$f->contrato_id} permanece retirado.",
+                            detalle: [
+                                'factura_anulada_id' => $f->id,
+                                'motivo' => $motivo,
+                            ],
+                            alidoId: $aliadoId
+                        );
+                    }
+                } elseif (((int)$f->numero_factura === 0 || ($f->plano && $f->plano->fecha_ret)) && $f->contrato_id) {
+                    // CASO 2: Factura de retiro original (numero_factura=0) \u2192 revertir contrato a vigente
                     $contratoRetiro = \App\Models\Contrato::find($f->contrato_id);
                     if ($contratoRetiro && $contratoRetiro->estado === 'retirado') {
                         $contratoRetiro->update([
@@ -1971,12 +2219,12 @@ class FacturacionController extends Controller
                             'motivo_retiro_id' => null,
                         ]);
 
-                        // Registrar reversión en bitácora
+                        // Registrar reversi\u00f3n en bit\u00e1cora
                         Bitacora::registrar(
                             accion: 'updated',
                             modelo: 'Contrato',
                             registroId: $contratoRetiro->id,
-                            descripcion: "Contrato revertido a vigente por anulación de factura de retiro #{$f->id} (Nº Factura: {$f->numero_factura}). Motivo: {$motivo}",
+                            descripcion: "Contrato revertido a vigente por anulaci\u00f3n de factura de retiro #{$f->id} (N\u00ba Factura: {$f->numero_factura}). Motivo: {$motivo}",
                             detalle: ['revertido_por_anulacion_factura_id' => $f->id],
                             alidoId: $aliadoId
                         );
@@ -3071,6 +3319,7 @@ class FacturacionController extends Controller
         $tipo        = $request->input('tipo', 'simple'); // simple | detallada
 
         $empresa = Empresa::where('aliado_id', $aliadoId)->find($empresaId);
+        $admonRetiroCompleta = $request->input('admon_retiro_completa', '1') === '1'; // checkbox de admon en retiros
 
         // Cuentas bancarias marcadas para cobro
         $cuentasCobro = BancoCuenta::paraCobro($aliadoId);
@@ -3087,13 +3336,23 @@ class FacturacionController extends Controller
             ->whereIn('tipo', ['planilla', 'afiliacion'])
             ->whereIn('cedula', $contratos->pluck('cedula'))
             ->whereNotNull('contrato_id')
+            ->where('numero_factura', '>', 0)  // excluir factura temporal de retiro (número 0)
             ->get()
-            ->keyBy('contrato_id');  // ← por contrato, no por cédula
+            ->keyBy('contrato_id');
+
+        // Facturas de retiro 0 pendientes (para retiros aún no facturados formalmente)
+        $facturasRetiro0 = Factura::where('aliado_id', $aliadoId)
+            ->whereIn('contrato_id', $contratos->pluck('id'))
+            ->where('numero_factura', 0)
+            ->whereNull('deleted_at')
+            ->get()
+            ->keyBy('contrato_id');
 
         $r100 = fn($v) => (int)(ceil(($v ?? 0) / 100) * 100);
 
-        $items = $contratos->map(function ($c) use ($mes, $anio, $facturasExistentes, $r100, $aliadoId) {
-            $fact   = $facturasExistentes->get($c->id);  // ← busca por contrato->id
+        $items = $contratos->map(function ($c) use ($mes, $anio, $facturasExistentes, $facturasRetiro0, $admonRetiroCompleta, $r100, $aliadoId) {
+            $fact         = $facturasExistentes->get($c->id);
+            $factRetiro0  = $facturasRetiro0->get($c->id);
             $nombre = $c->cliente?->nombre_completo
                       ?? trim(($c->cliente?->primer_nombre ?? '') . ' ' .
                               ($c->cliente?->segundo_nombre ?? '') . ' ' .
@@ -3168,6 +3427,21 @@ class FacturacionController extends Controller
                 $vIva  = $r100($fact->iva);
                 $vTot  = (int)$fact->total;
                 $estado = $fact->estado;
+                $diasCotizar = (int)$fact->dias_cotizados;
+            } elseif ($esRetirado && $factRetiro0) {
+                // Retiro pendiente de facturar: usar valores de la factura temporal
+                $vEps  = $r100($factRetiro0->v_eps);
+                $vArl  = $r100($factRetiro0->v_arl);
+                $vAFP  = $r100($factRetiro0->v_afp);
+                $vCaja = $r100($factRetiro0->v_caja);
+                $vIva  = $r100($factRetiro0->iva);
+                $diasCotizar = (int)$factRetiro0->dias_cotizados;
+                $vAdmonBase = (int)(($c->administracion ?? 0) + ($c->admon_asesor ?? 0));
+                $vAdm = $admonRetiroCompleta
+                    ? $vAdmonBase
+                    : ($diasCotizar <= 3 ? 0 : $vAdmonBase);
+                $vTot  = $r100($factRetiro0->total_ss) + $vAdm + $vIva;
+                $estado = 'sin_factura';
             } elseif ($esRetirado) {
                 $vEps = $vArl = $vAFP = $vCaja = $vIva = $vAdm = 0;
                 $vTot = 0;
@@ -3252,12 +3526,93 @@ class FacturacionController extends Controller
             ? 'admin.facturacion.cuenta_cobro_detallada'
             : 'admin.facturacion.cuenta_cobro_simple';
 
+        // ─── Cobros adicionales a incluir en la cuenta de cobro ────────────────
+        $cobrosAdicionalesIds = $request->input('cobros_adicionales_ids', []);
+        $cobrosAdicionalesCC  = collect();
+        if ($empresa) {
+            $qCobros = \App\Models\CobrosAdicionalEmpresa::where('aliado_id', $aliadoId)
+                ->where('empresa_id', $empresa->id)
+                ->where('activo', true);
+            if (!empty($cobrosAdicionalesIds)) {
+                $qCobros->whereIn('id', $cobrosAdicionalesIds);
+            }
+            $cobrosAdicionalesCC = $qCobros->get();
+        }
+        $totalCobrosAdicionales = (int)$cobrosAdicionalesCC->sum('valor');
+        $totalGeneral += $totalCobrosAdicionales;
+
         return view($vista, compact(
             'aliado','empresa','items','cuentasCobro',
-            'mes','anio','meses','totalGeneral','totalFavor','totalPendiente'
+            'mes','anio','meses','totalGeneral','totalFavor','totalPendiente',
+            'cobrosAdicionalesCC', 'totalCobrosAdicionales'
         ));
     }
+
+    // ─── CRUD: Cobros Adicionales por Empresa ────────────────────────────
+
+    /** Listar cobros adicionales de una empresa (JSON). */
+    public function cobrosAdicionalesIndex(Request $request, int $empresaId)
+    {
+        $aliadoId = session('aliado_id_activo');
+        $empresa  = Empresa::where('aliado_id', $aliadoId)->findOrFail($empresaId);
+        $cobros   = \App\Models\CobrosAdicionalEmpresa::where('aliado_id', $aliadoId)
+            ->where('empresa_id', $empresa->id)
+            ->where('activo', true)
+            ->orderBy('tipo')->orderBy('descripcion')->get();
+        return response()->json(['ok' => true, 'cobros' => $cobros]);
+    }
+
+    /** Crear un cobro adicional para una empresa. */
+    public function cobrosAdicionalesStore(Request $request, int $empresaId)
+    {
+        $aliadoId = session('aliado_id_activo');
+        $empresa  = Empresa::where('aliado_id', $aliadoId)->findOrFail($empresaId);
+        $validated = $request->validate([
+            'descripcion' => 'required|string|max:300',
+            'valor'       => 'required|numeric|min:0',
+            'tipo'        => 'required|in:unica_vez,recurrente',
+        ]);
+        $cobro = \App\Models\CobrosAdicionalEmpresa::create([
+            'aliado_id'   => $aliadoId,
+            'empresa_id'  => $empresa->id,
+            'descripcion' => trim($validated['descripcion']),
+            'valor'       => (float)$validated['valor'],
+            'tipo'        => $validated['tipo'],
+            'activo'      => true,
+        ]);
+        Bitacora::registrar(
+            accion: 'created',
+            modelo: 'CobrosAdicionalEmpresa',
+            registroId: $cobro->id,
+            descripcion: "Cobro adicional '{$cobro->descripcion}' ({$cobro->tipo}) creado para empresa #{$empresa->id}.",
+            detalle: $cobro->toArray(),
+            alidoId: $aliadoId
+        );
+        return response()->json(['ok' => true, 'cobro' => $cobro]);
+    }
+
+    /**
+     * Eliminar un cobro adicional.
+     * Recurrentes → desactivar (mantener historial). Únicos → eliminar.
+     */
+    public function cobrosAdicionalesDestroy(int $cobroId)
+    {
+        $aliadoId = session('aliado_id_activo');
+        $cobro    = \App\Models\CobrosAdicionalEmpresa::where('aliado_id', $aliadoId)
+            ->findOrFail($cobroId);
+        Bitacora::registrar(
+            accion: 'deleted',
+            modelo: 'CobrosAdicionalEmpresa',
+            registroId: $cobro->id,
+            descripcion: "Cobro adicional '{$cobro->descripcion}' eliminado de empresa #{$cobro->empresa_id}.",
+            detalle: $cobro->toArray(),
+            alidoId: $aliadoId
+        );
+        if ($cobro->tipo === \App\Models\CobrosAdicionalEmpresa::TIPO_RECURRENTE) {
+            $cobro->update(['activo' => false]);
+        } else {
+            $cobro->delete();
+        }
+        return response()->json(['ok' => true]);
+    }
 }
-
-
-

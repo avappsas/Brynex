@@ -861,6 +861,26 @@
                 </div>
             </div>
 
+            {{-- ── Aviso de cobro de Retiros de meses anteriores ── --}}
+            <div id="mf-retiros-facturables-card" style="display:none; background:#fff7ed; border:1px solid #fed7aa; border-radius:10px; padding:.6rem .8rem; margin-top:.4rem;">
+                <div style="font-size:.75rem; font-weight:800; color:#c2410c; display:flex; align-items:center; gap:.4rem; margin-bottom:.3rem;">
+                    <span>⚠️</span> Cobro de Retiros Anteriores
+                </div>
+                <div style="font-size:.7rem; color:#9a3412; line-height:1.4;">
+                    Has seleccionado <strong id="mf-retiros-facturables-count">0</strong> retiro(s) pendiente(s) de meses pasados para facturar en este lote.
+                </div>
+                <div style="margin-top:.5rem; display:flex; align-items:center; gap:.4rem;">
+                    <input type="checkbox" id="mf-retiros-admon-completa" checked onchange="MF.recalc()"
+                           style="width:1rem;height:1rem;cursor:pointer;accent-color:#ea580c;">
+                    <label for="mf-retiros-admon-completa" style="font-size:.7rem; font-weight:700; color:#c2410c; cursor:pointer;">
+                        Cobrar administración completa (30 días)
+                    </label>
+                </div>
+                <div style="font-size:.62rem; color:#9a3412; margin-top:.2rem; padding-left:1.4rem;">
+                    Si se desmarca, la administración se cobrará proporcional a los días de retiro.
+                </div>
+            </div>
+
             {{-- ── ANTICIPOS disponibles (se muestra si el cliente tiene saldo) ── --}}
             <div id="mf-anticipo-panel">
                 <div id="mf-anticipo-hdr" onclick="MF_ANT.toggleBody()">

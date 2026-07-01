@@ -1955,13 +1955,6 @@ function filtrarPlanes(modalidadId, evitarRecalcular = false) {
     const aplicarAfpObligatorio = REGLA_AFP_ACTIVA && modalidadAfpOblig && !CLIENTE_EXENTO_AFP;
 
 
-    // ── Regla: RS independiente + modalidad independiente → excluir planes "solo ARL"
-    // Un plan "solo ARL" es aquel con arl=1 pero sin EPS, Pensión ni Caja.
-    const selRS      = document.getElementById('sel_rs');
-    const esIndepRS  = selRS?.options[selRS.selectedIndex]?.dataset?.independiente === '1';
-    const esIndepMod = MODALIDADES_INDEP.includes(modalidadIdInt);
-    const excluirSoloArl = esIndepRS && esIndepMod;
-
     let planActualPermitido = false;
     let planesAgregados     = [];
 
@@ -1973,14 +1966,6 @@ function filtrarPlanes(modalidadId, evitarRecalcular = false) {
 
         // ── Filtro Tiempo Parcial: solo planes sin EPS ──────────
         if (esTP && el.dataset.eps === '1') return;
-
-        // ── Filtro Independiente: excluir planes que son SOLO ARL ──────
-        // (independiente no puede cotizar únicamente la ARL)
-        if (excluirSoloArl
-            && el.dataset.arl  === '1'
-            && el.dataset.eps  !== '1'
-            && el.dataset.pen  !== '1'
-            && el.dataset.caja !== '1') return;
 
         // ── Regla AFP obligatorio: ocultar planes sin AFP si aplica la regla ──
         // Un plan sin AFP tiene incluye_pension = false (data-pen !== '1')

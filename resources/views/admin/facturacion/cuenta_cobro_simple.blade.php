@@ -171,7 +171,10 @@ table.tbl-cc .num { text-align: right; font-family: monospace; }
         </div>
     </div>
 
-    <div class="doc-title">Cuenta de Cobro</div>
+    {{-- Fecha actual --}}
+    <div style="margin-bottom: 1.2rem; font-size: .8rem; font-weight: 500; color: #1e293b;">
+        {{ $aliado->ciudad ?? 'Bogotá D.C.' }}, {{ now()->translatedFormat('d \d\e F \d\e Y') }}
+    </div>
 
     {{-- Destinatario --}}
     <div class="destinatario">
@@ -279,7 +282,7 @@ table.tbl-cc .num { text-align: right; font-family: monospace; }
         <br>
         Atentamente<br>
         <br>
-        <strong>{{ $aliado?->contacto ?? ($aliado?->nombre ?? '#¿Nombre?') }}</strong><br>
+        <strong>{{ auth()->user()?->nombre ?? ($aliado?->contacto ?? ($aliado?->nombre ?? 'Asesor')) }}</strong><br>
         <em>Tu asesor de Confianza</em>
     </div>
 
