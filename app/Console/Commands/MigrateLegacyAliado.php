@@ -947,10 +947,11 @@ class MigrateLegacyAliado extends Command
                                 ->where('id_legacy', (int)$codBanco)
                                 ->value('id');
                         }
-                        // Fallback: primera cuenta del aliado
+                        // Fallback: primera cuenta del aliado que NO sea efectivo
                         if (!$bancoCuentaId) {
                             $bancoCuentaId = DB::table('banco_cuentas')
                                 ->where('aliado_id', $aliadoId)
+                                ->whereRaw("LOWER(banco) != 'efectivo'")
                                 ->value('id');
                         }
                         if ($bancoCuentaId) {
@@ -1889,11 +1890,17 @@ class MigrateLegacyAliado extends Command
             $aliadoId = $this->ids[$key] ?? null;
             if (!$aliadoId) continue;
 
-            // 1. Eliminar bancos "EFECTIVO"
-            $bancosBorrados = DB::table('banco_cuentas')
+            // 1. Eliminar bancos "EFECTIVO" y sus consignaciones
+            $bancosEfectivo = DB::table('banco_cuentas')
                 ->where('aliado_id', $aliadoId)
                 ->whereRaw("LOWER(banco) = 'efectivo'")
-                ->delete();
+                ->pluck('id');
+
+            $bancosBorrados = 0;
+            if ($bancosEfectivo->isNotEmpty()) {
+                DB::table('consignaciones')->whereIn('banco_cuenta_id', $bancosEfectivo)->delete();
+                $bancosBorrados = DB::table('banco_cuentas')->whereIn('id', $bancosEfectivo)->delete();
+            }
 
             // 2. Eliminar empresa "INDIVIDUAL" y desvincularla
             $empresas = DB::table('empresas')
