@@ -820,6 +820,17 @@ class MigrateLegacyAliado extends Command
                     $valPago  = $this->parseDecimalLegacy($r->Pago);
                     $valTotal = $valPago > 0 ? $valPago : $valCons;  // total real
 
+                    // Si aún sigue en 0, intentar columnas alternativas (mismo rescate que fix-valoresfacturas)
+                    if ($valTotal === 0) {
+                        foreach (['Total', 'Valor', 'Valor_Factura', 'TOTAL', 'VALOR'] as $alt) {
+                            $v = $this->parseDecimalLegacy($this->col($r, $alt));
+                            if ($v > 0) {
+                                $valTotal = $v;
+                                break;
+                            }
+                        }
+                    }
+
                     $valEfect = max(0, $valTotal - $valCons);
 
                     // ── FORMA_PAGO ────────────────────────────────────────────
@@ -2811,19 +2822,25 @@ class MigrateLegacyAliado extends Command
             $actualizadas = 0;
             $sinLegacy    = 0;
 
-            foreach ($facturasCero as $fac) {
-                // Buscar el registro original en el legacy
-                $rows = $this->legacySelect(
-                    "SELECT TOP 1 * FROM [$db].dbo.FACTURACION WHERE Id_Factura = {$fac->id_legacy}"
-                );
+            // ── OPTIMIZACIÓN BULK: traer todas las facturas en 1 solo query en vez de N queries ──
+            $idsLegacy = $facturasCero->pluck('id_legacy')->toArray();
+            $legacyRows = [];
+            foreach (array_chunk($idsLegacy, 500) as $chunk) {
+                $inIds = implode(',', $chunk);
+                $rows = $this->legacySelect("SELECT * FROM [$db].dbo.FACTURACION WHERE Id_Factura IN ($inIds)");
+                foreach ($rows as $r) {
+                    $legacyRows[$r->Id_Factura] = $r;
+                }
+            }
 
-                if (empty($rows)) {
+            foreach ($facturasCero as $fac) {
+                if (!isset($legacyRows[$fac->id_legacy])) {
                     $sinLegacy++;
                     $this->warn("    ⚠ id_legacy={$fac->id_legacy} no encontrado en legacy.");
                     continue;
                 }
 
-                $r = $rows[0];
+                $r = $legacyRows[$fac->id_legacy];
 
                 // ── Recalcular valores ──────────────────────────────────────
                 // BUG ORIGINAL: En legacy, facturas 100% consignación tienen
