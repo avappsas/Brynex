@@ -1014,6 +1014,11 @@ class InformeController extends Controller
                 $curr->addMonth();
             }
         }
+
+        // Para julio de 2026, el saldo inicial de la caja es el recaudo de SS de junio
+        if ($mes == 7 && $anio == 2026) {
+            $saldoEfectivoMesAnt = $ssMesAnteriorParaActual;
+        }
         $saldoTotalMesAnterior = $totalBancosMesAnt + $saldoEfectivoMesAnt;
 
         // ── Desglose de ingresos y egresos del mes por banco ──
@@ -1100,7 +1105,7 @@ class InformeController extends Controller
             ->sum('valor');
 
         $efSalidas = $efGastos + $efConsignaciones;
-        $saldoEfectivoActual = ($efEntradas + $efAnticipos) - $efSalidas;
+        $saldoEfectivoActual = $saldoEfectivoMesAnt + ($efEntradas + $efAnticipos) - $efSalidas;
 
         $efMes = (object)[
             'entradas'       => $efEntradas + $efAnticipos,
