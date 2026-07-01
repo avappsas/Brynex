@@ -59,8 +59,9 @@ class MigrateLegacyAliado extends Command
             'fix-plan'             => fn() => $this->stepFixPlan(),
             'fix-narl'             => fn() => $this->stepFixNarl(),
             'fix-limpieza-legacy'  => fn() => $this->stepFixLimpiezaLegacy(),
-            'fix-valoresfacturas'  => fn() => $this->stepFixValoresFacturas(),
             'fix-planos'           => fn() => $this->stepFixPlanos(),
+            'fix-estadosrs'        => fn() => $this->stepFixEstadosRS(),
+            'fix-valoresfacturas'  => fn() => $this->stepFixValoresFacturas(),
             'fix-facturas-retiro'  => fn() => $this->stepFixFacturasRetiro(),
             'fix-facturas-pendientes'    => fn() => $this->stepFixFacturasPendientes(),
             'fix-incapacidades-pago'     => fn() => $this->stepFixIncapacidadesPago(),
@@ -1253,7 +1254,10 @@ class MigrateLegacyAliado extends Command
                 
                 // Ejecutar bulk insert para este chunk
                 if (!empty($inserts)) {
-                    foreach (array_chunk($inserts, 500) as $batch) {
+                    // SQL Server tiene un límite estricto de 2100 parámetros.
+                    // Con ~35 columnas por plano, max rows = 2100 / 35 = 60.
+                    // Usamos chunks de 50 para estar 100% seguros.
+                    foreach (array_chunk($inserts, 50) as $batch) {
                         DB::table('planos')->insert($batch);
                     }
                 }
@@ -1886,6 +1890,7 @@ class MigrateLegacyAliado extends Command
         $this->stepFixPlan();
         $this->stepFixNarl();
         $this->stepFixValoresFacturas();
+        $this->stepFixEstadosRS();
         $this->stepFixPlanos();
         $this->stepFixFacturasRetiro();
         $this->stepFixFacturasPendientes();
@@ -3008,6 +3013,59 @@ class MigrateLegacyAliado extends Command
         $this->info("   Actualizadas  : $totalActualizadas");
         $this->info("   Sin legacy    : $totalSinLegacy");
         $this->info("   Aún con total=0: $aun0");
+    }
+
+    // ─── FIX-ESTADOSRS ─────────────────────────────────────────────────────────
+    // Asigna estado 'Activa' o 'Inactiva' a razones sociales que quedaron vacías
+    // basado en si tienen algún contrato activo en BryNex.
+    private function stepFixEstadosRS(): void
+    {
+        $this->info('🔧 fix-estadosrs: Corrigiendo estados vacíos en razones_sociales...');
+
+        foreach ($this->dbs as $db => $key) {
+            $aliadoId = $this->ids[$key] ?? null;
+            if (!$aliadoId) continue;
+
+            $rsVacias = DB::table('razones_sociales')
+                ->where('aliado_id', $aliadoId)
+                ->where(function ($q) {
+                    $q->where('estado', '')
+                      ->orWhereNull('estado');
+                })
+                ->get();
+
+            if ($rsVacias->isEmpty()) {
+                $this->line("  ✔ $db → sin razones sociales con estado vacío.");
+                continue;
+            }
+
+            $this->line("  ⏳ $db: {$rsVacias->count()} razones sociales sin estado...");
+            $act = 0;
+            $inact = 0;
+
+            DB::beginTransaction();
+            try {
+                foreach ($rsVacias as $rs) {
+                    $hasActive = DB::table('contratos')
+                        ->where('razon_social_id', $rs->id)
+                        ->whereIn('estado', ['activo', 'vigente'])
+                        ->exists();
+
+                    $estado = $hasActive ? 'Activa' : 'Inactiva';
+                    DB::table('razones_sociales')
+                        ->where('id', $rs->id)
+                        ->update(['estado' => $estado]);
+
+                    if ($hasActive) $act++; else $inact++;
+                }
+                DB::commit();
+            } catch (\Exception $e) {
+                DB::rollBack();
+                throw $e;
+            }
+
+            $this->info("  ✅ $db → $act activadas | $inact inactivadas");
+        }
     }
 
     // ─── FIX-PLANOS: actualiza campos de planos ya migrados desde el legacy ────────────────────
