@@ -2880,6 +2880,28 @@ class InformeController extends Controller
             $totalRetiros = $retirosReales + $retirosInformativos;
             $totalActivos = $admonVigentes + $afilPorFecha;
 
+            // WA Enviados: total destinatarios de lotes masivos del período (individuales + empresas)
+            $waEnviados = DB::table('whatsapp_envios_masivos as e')
+                ->where('e.aliado_id', $aid)
+                ->where('e.mes', $mesVal)
+                ->where('e.anio', $anioVal)
+                ->sum('e.total_destinatarios') ?: 0;
+
+            // Respuestas Clientes: conversaciones iniciadas por el cliente (primer mensaje entrante pasadas 24h de inactividad)
+            $respuestasClientes = DB::table('whatsapp_mensajes as m')
+                ->where('m.aliado_id', $aid)
+                ->where('m.direccion', 'entrante')
+                ->whereBetween('m.created_at', [$primerDia->toDateTimeString(), $ultimoDia->toDateTimeString()])
+                ->whereNotExists(function($sq) {
+                    $sq->select(DB::raw(1))
+                       ->from('whatsapp_mensajes as prev')
+                       ->whereColumn('prev.conversacion_id', 'm.conversacion_id')
+                       ->whereColumn('prev.id', '<>', 'm.id')
+                       ->whereRaw('prev.created_at >= DATEADD(hour, -24, m.created_at)')
+                       ->whereRaw('prev.created_at < m.created_at');
+                })
+                ->count();
+
             $meses[] = [
                 'label'            => $label,
                 'mes'              => $mesVal,
@@ -2891,6 +2913,8 @@ class InformeController extends Controller
                 'total_retiros'    => $totalRetiros,
                 'total_activos'    => $totalActivos,
                 'neto_periodo'     => $totalActivos - $totalRetiros,
+                'wa_enviados'        => (int) $waEnviados,
+                'respuestas_clientes' => $respuestasClientes,
             ];
 
             $fechaIteracion->subMonth();
@@ -3071,6 +3095,86 @@ class InformeController extends Controller
             'mes_label' => $nombresMeses[$mes] . ' ' . $anio,
             'tipo_label' => $tiposLabel[$tipo],
             'personas' => array_values($personas),
+        ]);
+    }
+
+    public function consolidadoMensualWhatsapp(Request $request)
+    {
+        if (!Auth::user()->hasRole(['admin', 'superadmin', 'contador'])) {
+            return response()->json(['error' => 'Acceso restringido.'], 403);
+        }
+
+        $aid  = $this->aliadoId();
+        $mes  = (int) $request->input('mes');
+        $anio = (int) $request->input('anio');
+
+        if (!$mes || !$anio) {
+            return response()->json(['error' => 'Parámetros inválidos.'], 400);
+        }
+
+        $nombresMeses = [
+            1=>'Enero', 2=>'Febrero', 3=>'Marzo', 4=>'Abril',
+            5=>'Mayo', 6=>'Junio', 7=>'Julio', 8=>'Agosto',
+            9=>'Septiembre', 10=>'Octubre', 11=>'Noviembre', 12=>'Diciembre'
+        ];
+
+        $primerDia = \Carbon\Carbon::create($anio, $mes, 1)->startOfDay();
+        $ultimoDia = $primerDia->copy()->endOfMonth();
+
+        // === Sección 1: Lotes de envío masivo ===
+        $lotes = DB::table('whatsapp_envios_masivos as e')
+            ->join('whatsapp_plantillas as p', 'p.id', '=', 'e.plantilla_id')
+            ->join('users as u', 'u.id', '=', 'e.usuario_id')
+            ->where('e.aliado_id', $aid)
+            ->where('e.mes', $mes)
+            ->where('e.anio', $anio)
+            ->select(
+                'e.id as lote_id',
+                DB::raw('CAST(e.created_at AS DATE) as fecha_envio'),
+                'p.nombre_display as plantilla',
+                'e.tipo_envio',
+                'e.total_destinatarios',
+                'e.total_enviados',
+                'e.total_fallidos',
+                'e.total_omitidos',
+                'e.estado'
+            )
+            ->orderBy('e.created_at', 'desc')
+            ->get();
+
+        // === Sección 2: Resumen de conversaciones iniciadas por el cliente ===
+        $conversaciones = DB::table('whatsapp_conversaciones as conv')
+            ->join('whatsapp_mensajes as m', 'm.conversacion_id', '=', 'conv.id')
+            ->where('conv.aliado_id', $aid)
+            ->whereNull('conv.deleted_at')
+            ->where('m.direccion', 'entrante')
+            ->whereBetween('m.created_at', [$primerDia->toDateTimeString(), $ultimoDia->toDateTimeString()])
+            ->whereNotExists(function($sq) {
+                $sq->select(DB::raw(1))
+                   ->from('whatsapp_mensajes as prev')
+                   ->whereColumn('prev.conversacion_id', 'm.conversacion_id')
+                   ->whereColumn('prev.id', '<>', 'm.id')
+                   ->whereRaw('prev.created_at >= DATEADD(hour, -24, m.created_at)')
+                   ->whereRaw('prev.created_at < m.created_at');
+            })
+            ->select(
+                'conv.id',
+                'conv.nombre_contacto',
+                'conv.wa_contact_id',
+                'conv.estado',
+                DB::raw('CAST(m.created_at AS DATE) as fecha_primera_respuesta')
+            )
+            ->orderBy('m.created_at', 'desc')
+            ->get();
+
+        return response()->json([
+            'mes_label'       => $nombresMeses[$mes] . ' ' . $anio,
+            'lotes'           => $lotes,
+            'total_lotes'     => $lotes->count(),
+            'total_enviados'  => $lotes->sum('total_destinatarios'),
+            'total_fallidos'  => $lotes->sum('total_fallidos'),
+            'conversaciones'  => $conversaciones,
+            'total_conv'      => $conversaciones->count(),
         ]);
     }
 }

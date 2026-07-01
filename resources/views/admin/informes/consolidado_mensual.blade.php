@@ -127,6 +127,7 @@
                         <th style="text-align: right;">Retiros Informativos</th>
                         <th style="text-align: right; background-color: rgba(13, 148, 136, 0.04); color: #0d9488; font-weight: 800;">Total Activos</th>
                         <th style="text-align: center;">Variación</th>
+                        <th style="text-align: right;">WA (Plan. / Rec.)</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -157,6 +158,11 @@
                                 <span class="trend-badge trend-neutral">■ 0</span>
                             @endif
                         </td>
+                        <td style="text-align: right; font-weight: 700; color: #0f766e;" class="clickable-cell" onclick="abrirModalWa({{ $mes['mes'] }}, {{ $mes['anio'] }})">
+                            <span style="color: #059669;">{{ number_format($mes['wa_enviados'], 0, ',', '.') }}</span>
+                            <span style="color: #64748b; font-weight: 500;">/</span>
+                            <span style="color: #7c3aed;">{{ number_format($mes['respuestas_clientes'], 0, ',', '.') }}</span>
+                        </td>
                     </tr>
                     @endforeach
                 </tbody>
@@ -165,6 +171,7 @@
         <p style="font-size: 0.72rem; color: #94a3b8; margin-top: 1rem; line-height: 1.5;">
             * <strong>Admon (Vigentes)</strong>: Contratos activos continuos durante el mes (incluye contratos con retiro y facturación regular). 
             * <strong>Afil. Fecha Ingreso</strong>: Nuevos contratos ingresados en el mes. 
+            * <strong>WA (Plan. / Rec.)</strong>: Relación de WhatsApps del mes (Enviados en plantilla masiva / Recibidos iniciados por el cliente tras 24h de inactividad). 
             * <strong>Total Activos</strong>: Suma de Admon (Vigentes) y Afil. Fecha Ingreso.
             * <strong>Variación</strong>: Diferencia del Total Activos de este mes comparado con el mes anterior.
         </p>
@@ -433,6 +440,93 @@
             {{-- Mensaje de no resultados --}}
             <div id="modalNoResults" class="modal-no-results" style="display: none;">
                 No se encontraron personas con los criterios especificados.
+            </div>
+        </div>
+    </div>
+</div>
+
+{{-- Modal de WhatsApp Consolidado Mensual --}}
+<div id="modalWhatsapp" class="modal-overlay" style="display: none;">
+    <div class="modal-card" style="max-width: 900px;">
+        <div class="modal-header">
+            <div>
+                <h3 class="modal-title">Detalle de WhatsApps de Planilla</h3>
+                <p id="modalWaSubtitulo" class="modal-subtitle">Cargando...</p>
+            </div>
+            <button class="modal-close-btn" onclick="cerrarModalWa()">&times;</button>
+        </div>
+        
+        <div class="modal-body" style="overflow-y: auto; padding: 1.5rem 1.5rem 2rem;">
+            {{-- Spinner de carga --}}
+            <div id="modalWaLoading" class="modal-loader-container" style="padding: 2.5rem 0;">
+                <div class="modal-loader"></div>
+                <p style="margin-top: 0.75rem; color: #64748b; font-size: 0.85rem;">Cargando información...</p>
+            </div>
+
+            <div id="modalWaContent" style="display: none; flex-direction: column; gap: 1.75rem;">
+                
+                {{-- Sección 1: Envíos Masivos (Lotes) --}}
+                <div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; border-bottom: 2px solid #e2e8f0; padding-bottom: 0.5rem;">
+                        <h4 style="margin: 0; font-size: 0.95rem; font-weight: 800; color: #0f766e; display: flex; align-items: center; gap: 0.5rem;">
+                            <span>📋</span> Lotes de Envíos Masivos
+                        </h4>
+                        <span id="modalWaLotesCounter" class="modal-counter">0 lotes</span>
+                    </div>
+                    
+                    <div id="modalWaLotesTableContainer" style="max-height: 220px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 10px; background: #fff;">
+                        <table class="modal-table">
+                            <thead>
+                                <tr style="position: sticky; top: 0; background: #f8fafc; z-index: 10;">
+                                    <th style="padding: 0.5rem 0.75rem; font-size: 0.65rem;">Fecha</th>
+                                    <th style="padding: 0.5rem 0.75rem; font-size: 0.65rem; text-align: center;">Lote ID</th>
+                                    <th style="padding: 0.5rem 0.75rem; font-size: 0.65rem;">Plantilla</th>
+                                    <th style="padding: 0.5rem 0.75rem; font-size: 0.65rem;">Tipo</th>
+                                    <th style="padding: 0.5rem 0.75rem; font-size: 0.65rem; text-align: right;">Destinatarios</th>
+                                    <th style="padding: 0.5rem 0.75rem; font-size: 0.65rem; text-align: right;">Enviados</th>
+                                    <th style="padding: 0.5rem 0.75rem; font-size: 0.65rem; text-align: right;">Fallidos</th>
+                                    <th style="padding: 0.5rem 0.75rem; font-size: 0.65rem; text-align: center;">Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody id="modalWaLotesTableBody">
+                                {{-- Filas dinámicas --}}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div id="modalWaLotesNoResults" class="modal-no-results" style="display: none; padding: 1.5rem; text-align: center; color: #64748b; font-size: 0.8rem;">
+                        No se registraron lotes de envíos masivos este mes.
+                    </div>
+                </div>
+
+                {{-- Sección 2: Respuestas / Conversaciones del Cliente --}}
+                <div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; border-bottom: 2px solid #e2e8f0; padding-bottom: 0.5rem;">
+                        <h4 style="margin: 0; font-size: 0.95rem; font-weight: 800; color: #7c3aed; display: flex; align-items: center; gap: 0.5rem;">
+                            <span>💬</span> Conversaciones Iniciadas por Clientes
+                        </h4>
+                        <span id="modalWaConvCounter" class="modal-counter" style="background: rgba(124, 58, 237, 0.08); border-color: rgba(124, 58, 237, 0.2); color: #7c3aed;">0 conversaciones</span>
+                    </div>
+
+                    <div id="modalWaConvTableContainer" style="max-height: 220px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 10px; background: #fff;">
+                        <table class="modal-table">
+                            <thead>
+                                <tr style="position: sticky; top: 0; background: #f8fafc; z-index: 10;">
+                                    <th style="padding: 0.5rem 0.75rem; font-size: 0.65rem;">Cliente</th>
+                                    <th style="padding: 0.5rem 0.75rem; font-size: 0.65rem;">Número WhatsApp</th>
+                                    <th style="padding: 0.5rem 0.75rem; font-size: 0.65rem;">Fecha Primera Respuesta</th>
+                                    <th style="padding: 0.5rem 0.75rem; font-size: 0.65rem; text-align: center;">Estado Chat</th>
+                                </tr>
+                            </thead>
+                            <tbody id="modalWaConvTableBody">
+                                {{-- Filas dinámicas --}}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div id="modalWaConvNoResults" class="modal-no-results" style="display: none; padding: 1.5rem; text-align: center; color: #64748b; font-size: 0.8rem;">
+                        No se registraron conversaciones iniciadas por clientes este mes.
+                    </div>
+                </div>
+
             </div>
         </div>
     </div>
@@ -825,6 +919,158 @@
     document.getElementById('modalDetalle').addEventListener('click', function(e) {
         if (e.target === this) {
             cerrarModal();
+        }
+    });
+
+    function abrirModalWa(mes, anio) {
+        const modal = document.getElementById('modalWhatsapp');
+        const loader = document.getElementById('modalWaLoading');
+        const content = document.getElementById('modalWaContent');
+        const lotesTableBody = document.getElementById('modalWaLotesTableBody');
+        const convTableBody = document.getElementById('modalWaConvTableBody');
+        const lotesTableContainer = document.getElementById('modalWaLotesTableContainer');
+        const convTableContainer = document.getElementById('modalWaConvTableContainer');
+        const lotesNoResults = document.getElementById('modalWaLotesNoResults');
+        const convNoResults = document.getElementById('modalWaConvNoResults');
+        
+        loader.style.display = 'flex';
+        content.style.display = 'none';
+        lotesNoResults.style.display = 'none';
+        convNoResults.style.display = 'none';
+        lotesTableBody.innerHTML = '';
+        convTableBody.innerHTML = '';
+        document.getElementById('modalWaLotesCounter').textContent = '0 lotes';
+        document.getElementById('modalWaConvCounter').textContent = '0 conversaciones';
+        
+        // Mostrar overlay
+        modal.style.display = 'flex';
+        setTimeout(() => modal.classList.add('active'), 10);
+        
+        // Fetch data
+        const url = `{{ route('admin.informes.consolidado_mensual_whatsapp') }}?mes=${mes}&anio=${anio}`;
+        
+        fetch(url)
+            .then(res => {
+                if (!res.ok) throw new Error('Error al obtener datos.');
+                return res.json();
+            })
+            .then(data => {
+                document.getElementById('modalWaSubtitulo').textContent = `${data.mes_label} · Resumen de WhatsApp`;
+                loader.style.display = 'none';
+                content.style.display = 'flex';
+                
+                // 1. Renderizar lotes
+                if (data.lotes && data.lotes.length > 0) {
+                    lotesTableContainer.style.display = 'block';
+                    lotesNoResults.style.display = 'none';
+                    let htmlLotes = '';
+                    data.lotes.forEach(l => {
+                        const fecha = new Date(l.fecha_envio + 'T00:00:00');
+                        const fechaFormateada = fecha.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                        const tipo = l.tipo_envio === 'empresa' ? '🏢 Empresa' : '👤 Individual';
+                        
+                        let badgeColor = '#64748b';
+                        let badgeBg = '#f1f5f9';
+                        if (l.estado === 'completado') {
+                            badgeColor = '#10b981';
+                            badgeBg = '#ecfdf5';
+                        } else if (l.estado === 'procesando') {
+                            badgeColor = '#3b82f6';
+                            badgeBg = '#eff6ff';
+                        } else if (l.estado === 'fallido') {
+                            badgeColor = '#ef4444';
+                            badgeBg = '#fef2f2';
+                        }
+                        
+                        htmlLotes += `
+                            <tr>
+                                <td style="padding: 0.6rem 0.75rem;">${fechaFormateada}</td>
+                                <td style="text-align: center; font-weight: 700; color: #64748b; padding: 0.6rem 0.75rem;">#${l.lote_id}</td>
+                                <td style="padding: 0.6rem 0.75rem; font-weight: 600; color: #334155;">${l.plantilla}</td>
+                                <td style="padding: 0.6rem 0.75rem;">${tipo}</td>
+                                <td style="text-align: right; padding: 0.6rem 0.75rem; font-weight: 600; color: #0d9488;">${new Intl.NumberFormat('es-CO').format(l.total_destinatarios)}</td>
+                                <td style="text-align: right; padding: 0.6rem 0.75rem; color: #10b981; font-weight: 600;">${new Intl.NumberFormat('es-CO').format(l.total_enviados)}</td>
+                                <td style="text-align: right; padding: 0.6rem 0.75rem; color: #ef4444; font-weight: 600;">${new Intl.NumberFormat('es-CO').format(l.total_fallidos)}</td>
+                                <td style="text-align: center; padding: 0.6rem 0.75rem;">
+                                    <span style="display: inline-block; padding: 0.2rem 0.5rem; border-radius: 6px; font-size: 0.68rem; font-weight: 700; color: ${badgeColor}; background: ${badgeBg}; text-transform: uppercase; letter-spacing: 0.02em;">
+                                        ${l.estado}
+                                    </span>
+                                </td>
+                            </tr>
+                        `;
+                    });
+                    lotesTableBody.innerHTML = htmlLotes;
+                    document.getElementById('modalWaLotesCounter').textContent = `${data.total_lotes} ${data.total_lotes === 1 ? 'lote' : 'lotes'}`;
+                } else {
+                    lotesTableContainer.style.display = 'none';
+                    lotesNoResults.style.display = 'block';
+                }
+                
+                // 2. Renderizar conversaciones
+                if (data.conversaciones && data.conversaciones.length > 0) {
+                    convTableContainer.style.display = 'block';
+                    convNoResults.style.display = 'none';
+                    let htmlConv = '';
+                    data.conversaciones.forEach(c => {
+                        const fecha = c.fecha_primera_respuesta ? new Date(c.fecha_primera_respuesta + 'T00:00:00') : null;
+                        const fechaFormateada = fecha ? fecha.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—';
+                        const numLink = `https://wa.me/${c.wa_contact_id.replace(/\+/g, '')}`;
+                        
+                        let badgeColor = '#64748b';
+                        let badgeBg = '#f1f5f9';
+                        if (c.estado === 'abierta') {
+                            badgeColor = '#3b82f6';
+                            badgeBg = '#eff6ff';
+                        } else if (c.estado === 'asignada') {
+                            badgeColor = '#7c3aed';
+                            badgeBg = '#f5f3ff';
+                        } else if (c.estado === 'cerrada') {
+                            badgeColor = '#10b981';
+                            badgeBg = '#ecfdf5';
+                        }
+
+                        htmlConv += `
+                            <tr>
+                                <td style="padding: 0.6rem 0.75rem; font-weight: 600; color: #1e293b;">${c.nombre_contacto || 'Cliente de WhatsApp'}</td>
+                                <td style="padding: 0.6rem 0.75rem;">
+                                    <a href="${numLink}" target="_blank" style="color: #2563eb; font-weight: 600; text-decoration: none; font-family: monospace;">
+                                        ${c.wa_contact_id}
+                                    </a>
+                                </td>
+                                <td style="padding: 0.6rem 0.75rem; color: #475569; font-weight: 500;">${fechaFormateada}</td>
+                                <td style="text-align: center; padding: 0.6rem 0.75rem;">
+                                    <span style="display: inline-block; padding: 0.2rem 0.5rem; border-radius: 6px; font-size: 0.68rem; font-weight: 700; color: ${badgeColor}; background: ${badgeBg}; text-transform: uppercase; letter-spacing: 0.02em;">
+                                        ${c.estado}
+                                    </span>
+                                </td>
+                            </tr>
+                        `;
+                    });
+                    convTableBody.innerHTML = htmlConv;
+                    document.getElementById('modalWaConvCounter').textContent = `${data.total_conv} ${data.total_conv === 1 ? 'conversación' : 'conversaciones'}`;
+                } else {
+                    convTableContainer.style.display = 'none';
+                    convNoResults.style.display = 'block';
+                }
+            })
+            .catch(err => {
+                loader.style.display = 'none';
+                lotesNoResults.textContent = 'Ocurrió un error al cargar la información. Intente nuevamente.';
+                lotesNoResults.style.display = 'block';
+                console.error(err);
+            });
+    }
+
+    function cerrarModalWa() {
+        const modal = document.getElementById('modalWhatsapp');
+        modal.classList.remove('active');
+        setTimeout(() => modal.style.display = 'none', 300);
+    }
+
+    // Cerrar al hacer clic fuera del card
+    document.getElementById('modalWhatsapp').addEventListener('click', function(e) {
+        if (e.target === this) {
+            cerrarModalWa();
         }
     });
 </script>
