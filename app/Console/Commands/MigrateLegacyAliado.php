@@ -296,7 +296,7 @@ class MigrateLegacyAliado extends Command
 
             // Asesores
             $asesoresExisten = DB::table('asesores')->where('aliado_id', $aliadoId)
-                ->pluck('id_legacy')->filter()->flip()->all();
+                ->pluck('id_legacy')->filter(fn($val) => $val !== null)->flip()->all();
             $rows  = DB::connection('sqlsrv_legacy')->select("SELECT * FROM [$db].dbo.Asesores");
             $count = 0; $skipped = 0;
             foreach ($rows as $r) {
@@ -319,6 +319,7 @@ class MigrateLegacyAliado extends Command
                     'created_at'         => now(),
                     'updated_at'         => now(),
                 ]);
+                $asesoresExisten[$id] = true;
                 $count++;
             }
             $this->info("  ✅ $db → $count asesores, $skipped omitidos");
