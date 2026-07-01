@@ -216,7 +216,7 @@ class MigrateLegacyAliado extends Command
                     'email'      => strtolower(str_replace(' ', '.', $login)) . "_{$key}_{$r->Id_usuario}@legacy.local",
                     'password'   => bcrypt($r->Password ?? 'changeme123'),
                     'cedula'     => $cedula,
-                    'activo'     => 1,
+                    'activo'     => strtoupper(trim($r->Jefe ?? '')) === 'ACTIVO' ? 1 : 0,
                     'es_brynex'  => 0,
                     'created_at' => now(),
                     'updated_at' => now(),
