@@ -1122,6 +1122,8 @@ class MigrateLegacyAliado extends Command
                       AND Id_Facturacion > 0
                     ORDER BY Id OFFSET $offset ROWS FETCH NEXT $chunk ROWS ONLY");
                 if (empty($rows)) break;
+                
+                $inserts = [];
                 foreach ($rows as $r) {
                     // ── Skip por id_legacy (más confiable que clave compuesta) ──
                     $idLeg = $this->col($r, 'Id') ?? $this->col($r, 'id');
@@ -1154,7 +1156,7 @@ class MigrateLegacyAliado extends Command
                     // razon_social_id: por NIT del plano, con fallback al contrato
                     $rsIdFinal = $rsId ?? ($contratoId ? ($contratosRsMap[$contratoId] ?? null) : null);
 
-                    DB::table('planos')->insert([
+                    $inserts[] = [
                         'id_legacy'          => $idLeg,        // PLANOS.Id del legacy
                         'aliado_id'          => $aliadoId,
                         'factura_id'         => $facturaId,
@@ -1242,12 +1244,20 @@ class MigrateLegacyAliado extends Command
                         'num_dias'           => is_numeric($this->col($r, 'D') ?? $this->col($r, 'Num_Dias') ?? $this->col($r, 'N_Dias')) ? (int)($this->col($r, 'D') ?? $this->col($r, 'Num_Dias') ?? $this->col($r, 'N_Dias')) : 30,
                         'created_at'         => now(),
                         'updated_at'         => now(),
-                    ]);
+                    ];
                     $count++;
                     // Actualizar set en memoria para evitar duplicados dentro del mismo run
                     if ($idLeg) $idLegacyMigrados[$idLeg] = true;
-                    if ($count % 200 === 0) $this->line("    → $count / $total...");
+                    if ($count % 5000 === 0) $this->line("    → $count / $total procesados...");
                 }
+                
+                // Ejecutar bulk insert para este chunk
+                if (!empty($inserts)) {
+                    foreach (array_chunk($inserts, 500) as $batch) {
+                        DB::table('planos')->insert($batch);
+                    }
+                }
+                
                 $offset += $chunk;
                 if (count($rows) < $chunk) break;
             }
@@ -2925,61 +2935,52 @@ class MigrateLegacyAliado extends Command
             foreach ($facturasCero as $fac) {
                 if (!isset($legacyRows[$fac->id_legacy])) {
                     $sinLegacy++;
-                    $this->warn("    ⚠ id_legacy={$fac->id_legacy} no encontrado en legacy.");
+                    // $this->warn("    ⚠ id_legacy={$fac->id_legacy} no encontrado en legacy.");
                     continue;
                 }
 
                 $r = $legacyRows[$fac->id_legacy];
 
-                // ── Recalcular valores ──────────────────────────────────────
-                // BUG ORIGINAL: En legacy, facturas 100% consignación tienen
-                // Pago = 0 y el valor real está en Valor_Consignado.
-                // Regla: total = Pago si Pago > 0, si no = Valor_Consignado.
-                $valCons  = is_numeric($r->Valor_Consignado) ? (int)$r->Valor_Consignado : 0;
-                $valTotal = is_numeric($r->Pago) && (int)$r->Pago > 0
-                    ? (int)$r->Pago
-                    : $valCons;   // ← corrección del bug: Pago=0 → usar Valor_Consignado
-
-                // Si aún sigue en 0, intentar columnas alternativas
-                if ($valTotal === 0) {
-                    foreach (['Total', 'Valor', 'Valor_Factura', 'TOTAL', 'VALOR'] as $alt) {
-                        $v = $this->col($r, $alt);
-                        if (is_numeric($v) && (int)$v > 0) {
-                            $valTotal = (int)$v;
-                            break;
+                $actualizadas++;
+                if ($actualizadas % 5000 === 0) {
+                    $this->line("    → $actualizadas actualizadas en memoria...");
+                }
+            }
+            
+            // Ejecutar bulk updates (transacción para no colapsar la BD)
+            $this->line("    → Guardando $actualizadas facturas en base de datos...");
+            DB::beginTransaction();
+            try {
+                foreach ($facturasCero as $fac) {
+                    if (!isset($legacyRows[$fac->id_legacy])) continue;
+                    $r = $legacyRows[$fac->id_legacy];
+                    
+                    $valCons  = is_numeric($r->Valor_Consignado) ? (int)$r->Valor_Consignado : 0;
+                    $valTotal = is_numeric($r->Pago) && (int)$r->Pago > 0 ? (int)$r->Pago : $valCons;
+                    if ($valTotal === 0) {
+                        foreach (['Total', 'Valor', 'Valor_Factura', 'TOTAL', 'VALOR'] as $alt) {
+                            $v = $this->col($r, $alt);
+                            if (is_numeric($v) && (int)$v > 0) { $valTotal = (int)$v; break; }
                         }
                     }
-                }
-
-                $valEfect = max(0, $valTotal - $valCons);
-
-                $codBanco = $this->col($r, 'Consignacion') ?? $this->col($r, 'COD') ?? null;
-                if ($valCons > 0 && is_numeric($codBanco) && (int)$codBanco > 0) {
-                    $formaPago = $valEfect > 0 ? 'mixto' : 'consignacion';
-                } else {
-                    $formaPago = 'efectivo';
-                    $valCons   = 0;
-                    $valEfect  = $valTotal;
-                }
-
-                $vEps   = is_numeric($r->V_EPS)  ? (int)$r->V_EPS  : 0;
-                $vArl   = is_numeric($r->V_Arl)  ? (int)$r->V_Arl  : 0;
-                $vAfp   = is_numeric($r->V_AFP)  ? (int)$r->V_AFP  : 0;
-                $vCaja  = is_numeric($r->V_CAJA) ? (int)$r->V_CAJA : 0;
-                $totalSS = $vEps + $vArl + $vAfp + $vCaja;
-
-                DB::table('facturas')
-                    ->where('id', $fac->id)
-                    ->update([
+                    $valEfect = max(0, $valTotal - $valCons);
+                    $codBanco = $this->col($r, 'Consignacion') ?? $this->col($r, 'COD') ?? null;
+                    if ($valCons > 0 && is_numeric($codBanco) && (int)$codBanco > 0) {
+                        $formaPago = $valEfect > 0 ? 'mixto' : 'consignacion';
+                    } else {
+                        $formaPago = 'efectivo'; $valCons = 0; $valEfect = $valTotal;
+                    }
+                    
+                    DB::table('facturas')->where('id', $fac->id)->update([
                         'total'              => $valTotal,
                         'valor_consignado'   => $valCons,
                         'valor_efectivo'     => $valEfect,
                         'forma_pago'         => $formaPago,
-                        'v_eps'              => $vEps,
-                        'v_arl'              => $vArl,
-                        'v_afp'              => $vAfp,
-                        'v_caja'             => $vCaja,
-                        'total_ss'           => $totalSS,
+                        'v_eps'              => is_numeric($r->V_EPS)  ? (int)$r->V_EPS  : 0,
+                        'v_arl'              => is_numeric($r->V_Arl)  ? (int)$r->V_Arl  : 0,
+                        'v_afp'              => is_numeric($r->V_AFP)  ? (int)$r->V_AFP  : 0,
+                        'v_caja'             => is_numeric($r->V_CAJA) ? (int)$r->V_CAJA : 0,
+                        'total_ss'           => (is_numeric($r->V_EPS) ? (int)$r->V_EPS : 0) + (is_numeric($r->V_Arl) ? (int)$r->V_Arl : 0) + (is_numeric($r->V_AFP) ? (int)$r->V_AFP : 0) + (is_numeric($r->V_CAJA) ? (int)$r->V_CAJA : 0),
                         'admon'              => is_numeric($r->Admon)        ? (int)$r->Admon        : 0,
                         'admin_asesor'       => is_numeric($r->admin_asesor) ? (int)$r->admin_asesor : 0,
                         'seguro'             => is_numeric($r->seguro)       ? (int)$r->seguro       : 0,
@@ -2989,11 +2990,11 @@ class MigrateLegacyAliado extends Command
                         'iva'                => is_numeric($r->Iva)          ? (int)$r->Iva          : 0,
                         'updated_at'         => now(),
                     ]);
-
-                $actualizadas++;
-                if ($actualizadas % 100 === 0) {
-                    $this->line("    → $actualizadas actualizadas...");
                 }
+                DB::commit();
+            } catch (\Exception $e) {
+                DB::rollBack();
+                throw $e;
             }
 
             $totalActualizadas += $actualizadas;
