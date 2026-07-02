@@ -72,27 +72,17 @@ class FacturacionController extends Controller
                   ->orWhere(function ($q2) use ($mes, $anio, $mesAnterior, $anioAnterior) {
                       $q2->where('estado', 'retirado')
                          ->where(function ($q3) use ($mes, $anio, $mesAnterior, $anioAnterior) {
-                             // Caso A: Modalidad 11 (Independiente Activo) -> fecha_retiro <= mes consultado
+                             // Caso A: Modalidad 11 (Independiente Activo) -> fecha_retiro exactamente en el mes consultado
                              $q3->where(function ($qa) use ($mes, $anio) {
                                      $qa->where('tipo_modalidad_id', 11)
-                                        ->where(function ($qDate) use ($mes, $anio) {
-                                            $qDate->whereYear('fecha_retiro', '<', $anio)
-                                                  ->orWhere(function ($qMonth) use ($mes, $anio) {
-                                                      $qMonth->whereYear('fecha_retiro', $anio)
-                                                             ->whereMonth('fecha_retiro', '<=', $mes);
-                                                  });
-                                        });
+                                        ->whereMonth('fecha_retiro', $mes)
+                                        ->whereYear('fecha_retiro', $anio);
                                  })
-                                // Caso B: Otras modalidades (dependientes, etc) -> fecha_retiro <= mes anterior consultado
+                                // Caso B: Otras modalidades (dependientes, etc) -> fecha_retiro exactamente en el mes anterior
                                 ->orWhere(function ($qb) use ($mesAnterior, $anioAnterior) {
                                      $qb->where('tipo_modalidad_id', '!=', 11)
-                                        ->where(function ($qDate) use ($mesAnterior, $anioAnterior) {
-                                            $qDate->whereYear('fecha_retiro', '<', $anioAnterior)
-                                                  ->orWhere(function ($qMonth) use ($mesAnterior, $anioAnterior) {
-                                                      $qMonth->whereYear('fecha_retiro', $anioAnterior)
-                                                             ->whereMonth('fecha_retiro', '<=', $mesAnterior);
-                                                  });
-                                        });
+                                        ->whereMonth('fecha_retiro', $mesAnterior)
+                                        ->whereYear('fecha_retiro', $anioAnterior);
                                  });
                          });
                   });

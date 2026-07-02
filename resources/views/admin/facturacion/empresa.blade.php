@@ -260,8 +260,8 @@ table.fac-tbl{width:100%;border-collapse:collapse;font-size:.78rem}
     <th onclick="ordenarTabla('nombre')" style="cursor:pointer; text-align:left;" title="Clic para ordenar por Nombre">
         NOMBRE <span id="sort-icon-nombre" class="sort-icon"></span>
     </th>
-    <th>
-        <select id="filter-rs" class="tbl-header-select" onchange="aplicarFiltrosTabla()" style="text-align:left;" title="Filtrar por Razón Social">
+    <th style="max-width:105px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+        <select id="filter-rs" class="tbl-header-select" onchange="aplicarFiltrosTabla()" style="text-align:left; max-width:105px; text-overflow:ellipsis; overflow:hidden;" title="Filtrar por Razón Social">
             <option value="todos">RAZÓN SOCIAL ▾</option>
         </select>
     </th>
@@ -501,7 +501,7 @@ $totAdmon+=$vAdm;$totIva+=$vIva;$totTotal+=$vTot;$totMora+=$vMora;
             {{ $nombre }}
         @endif
     </td>
-    <td style="font-size:.7rem;color:#64748b;max-width:130px;overflow:hidden;text-overflow:ellipsis" title="{{ $rs }}">{{ Str::limit($rs,16) }}</td>
+    <td style="font-size:.7rem;color:#64748b;max-width:105px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ $rs }}">{{ Str::limit($rs,12) }}</td>
     <td style="text-align:center;font-size:.75rem;">
         @if($esRetirado && $fRet)
             <span style="color:#dc2626;font-weight:700;">{{ $fRet }}</span>
