@@ -193,6 +193,7 @@ class ContratoController extends Controller
                 ->where('aliado_id', $alidoIdIr)
                 ->where('estado', 'vigente')
                 ->pluck('razon_social_id')
+                ->filter() // excluir NULLs para evitar error en flip()
                 ->flip();
 
             $ultimosRetiros = DB::table('contratos')
@@ -210,6 +211,7 @@ class ContratoController extends Controller
                 ->where('aliado_id', $alidoIdIr)
                 ->pluck('razon_social_id')
                 ->unique()
+                ->filter() // excluir NULLs para evitar error en flip()
                 ->flip();
 
             $ahora = \Carbon\Carbon::now();
