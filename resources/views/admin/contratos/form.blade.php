@@ -1992,13 +1992,13 @@ function filtrarPlanes(modalidadId, evitarRecalcular = false) {
         const exceptuarSoloArl = esSoloArlPlan && (esIndepRS || esIndepMod);
         if (aplicarAfpObligatorio && el.dataset.pen !== '1' && !exceptuarSoloArl) return;
 
-        // Resaltar sin-AFP cuando el cliente puede omitirlo
-        if (CLIENTE_EXENTO_AFP) {
-            const sinAfp = el.dataset.pen !== '1';
-            el.textContent = (sinAfp ? '⭐ ' : '') + text;
-        } else {
-            el.textContent = text;  // restaurar texto original
+        // ── Filtro Independientes: NO pueden tener ARL+CCF ni ARL+AFP+CCF ──────────
+        // Es decir, si no tienen EPS pero SÍ tienen Caja y ARL, se bloquea.
+        if (esIndepMod && el.dataset.eps !== '1' && el.dataset.arl === '1' && el.dataset.caja === '1') {
+            return;
         }
+
+        el.textContent = text;  // restaurar texto original
 
         selPlan.appendChild(el);
         planesAgregados.push(planId);
