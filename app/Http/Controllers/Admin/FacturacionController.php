@@ -72,22 +72,29 @@ class FacturacionController extends Controller
                   ->orWhere(function ($q2) use ($mes, $anio, $mesAnterior, $anioAnterior) {
                       $q2->where('estado', 'retirado')
                          ->where(function ($q3) use ($mes, $anio, $mesAnterior, $anioAnterior) {
-                             // Retirado en el mes actual
+                             // Caso A: Modalidad 11 (Independiente Activo) -> fecha_retiro <= mes consultado
                              $q3->where(function ($qa) use ($mes, $anio) {
-                                     $qa->whereMonth('fecha_retiro', $mes)
-                                        ->whereYear('fecha_retiro', $anio);
+                                     $qa->where('tipo_modalidad_id', 11)
+                                        ->where(function ($qDate) use ($mes, $anio) {
+                                            $qDate->whereYear('fecha_retiro', '<', $anio)
+                                                  ->orWhere(function ($qMonth) use ($mes, $anio) {
+                                                      $qMonth->whereYear('fecha_retiro', $anio)
+                                                             ->whereMonth('fecha_retiro', '<=', $mes);
+                                                  });
+                                        });
                                  })
-                                // O retirado el mes anterior
+                                // Caso B: Otras modalidades (dependientes, etc) -> fecha_retiro <= mes anterior consultado
                                 ->orWhere(function ($qb) use ($mesAnterior, $anioAnterior) {
-                                     $qb->whereMonth('fecha_retiro', $mesAnterior)
-                                        ->whereYear('fecha_retiro', $anioAnterior);
+                                     $qb->where('tipo_modalidad_id', '!=', 11)
+                                        ->where(function ($qDate) use ($mesAnterior, $anioAnterior) {
+                                            $qDate->whereYear('fecha_retiro', '<', $anioAnterior)
+                                                  ->orWhere(function ($qMonth) use ($mesAnterior, $anioAnterior) {
+                                                      $qMonth->whereYear('fecha_retiro', $anioAnterior)
+                                                             ->whereMonth('fecha_retiro', '<=', $mesAnterior);
+                                                  });
+                                        });
                                  });
                          });
-                  })
-                  ->orWhereHas('facturas', function ($qFact) {
-                      // Incluir siempre los contratos retirados que tienen un retiro marcado (factura 0) pendiente de cobrar
-                      $qFact->where('numero_factura', 0)
-                            ->whereNull('deleted_at');
                   });
             })
             ->with([
