@@ -1139,7 +1139,7 @@ class ContratoController extends Controller
         //   - Dependiente E (0), I Venc (10), I Act (11)
         //   - TODAS las modalidades con es_tiempo_parcial=1 (independiente del ID)
         //     → el plan "ARL+CCF" sin AFP (APTP) solo es válido para clientes exentos
-        $idsTP = TipoModalidad::where('es_tiempo_parcial', true)->pluck('id')->toArray();
+        $idsTP = TipoModalidad::where('es_tiempo_parcial', true)->pluck('id')->map(fn($id) => (int)$id)->toArray();
         $modalidadesAfpObligatorio = array_values(array_unique(array_merge([0, 10, 11], $idsTP)));
 
         return [

@@ -117,9 +117,37 @@
                                 @endforeach
                             </select>
                         </div>
-                        <div>
+                        <div x-data="verificarCedula()">
                             <label class="lbl-campo">Cédula *</label>
-                            <input type="text" name="cedula" value="{{ old('cedula', $cliente->cedula ?: '') }}" required class="inp-campo" style="font-family:monospace;font-weight:700;">
+                            <input
+                                type="text"
+                                name="cedula"
+                                value="{{ old('cedula', $cliente->cedula ?: '') }}"
+                                required
+                                class="inp-campo"
+                                style="font-family:monospace;font-weight:700;"
+                                @if(!isset($cliente->id) || !$cliente->id)
+                                x-on:blur="verificar($event.target.value)"
+                                :class="{ 'border-red-500': duplicado }"
+                                @endif
+                            >
+                            {{-- Alerta de duplicado en tiempo real (solo en creación) --}}
+                            @if(!isset($cliente->id) || !$cliente->id)
+                            <div
+                                x-show="duplicado"
+                                x-cloak
+                                style="margin-top:4px;padding:6px 10px;background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;font-size:0.75rem;color:#b91c1c;line-height:1.4;"
+                            >
+                                ⚠️ <strong>Cliente duplicado.</strong>
+                                Ya existe <strong x-text="clienteNombre"></strong>
+                                con esta cédula.
+                                <a :href="clienteUrl" target="_blank" style="color:#1d4ed8;text-decoration:underline;font-weight:600;">Abrir perfil →</a>
+                            </div>
+                            @endif
+                            {{-- Error de servidor --}}
+                            @error('cedula')
+                                <div style="margin-top:4px;padding:5px 10px;background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;font-size:0.75rem;color:#b91c1c;">⚠️ {{ $message }}</div>
+                            @enderror
                         </div>
                         <div>
                             <label class="lbl-campo">1er Nombre *</label>
@@ -539,6 +567,30 @@ function showTab(tabName) {
     } else if (tabName === 'claves') {
         if (typeof abrirPanelClaves === 'function') abrirPanelClaves();
     }
+}
+
+// ─── Alpine: Verificar cédula duplicada al crear cliente ──────────────
+function verificarCedula() {
+    return {
+        duplicado:    false,
+        clienteNombre: '',
+        clienteUrl:   '#',
+        verificar(cedula) {
+            if (!cedula || cedula.length < 5) { this.duplicado = false; return; }
+            fetch(`{{ route('admin.clientes.buscar_cedula') }}?cedula=${encodeURIComponent(cedula)}`)
+                .then(r => r.json())
+                .then(data => {
+                    if (data && data.encontrado) {
+                        this.duplicado     = true;
+                        this.clienteNombre = data.nombre  || 'este cliente';
+                        this.clienteUrl    = data.url_editar || '#';
+                    } else {
+                        this.duplicado = false;
+                    }
+                })
+                .catch(() => { this.duplicado = false; });
+        }
+    };
 }
 
 @if(isset($cliente->id) && $cliente->id && isset($bancos))

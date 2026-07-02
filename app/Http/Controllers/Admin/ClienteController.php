@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Cliente;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 class ClienteController extends Controller
 {
@@ -120,13 +121,30 @@ class ClienteController extends Controller
     // ─── Guardar nuevo ────────────────────────────────────────────────
     public function store(Request $request)
     {
+        $aliadoId = session('aliado_id_activo');
+
+        // Verificar duplicado: cédula ya registrada en este aliado
+        $cedula = $request->input('cedula');
+        $clienteExistente = Cliente::where('cedula', $cedula)
+            ->where('aliado_id', $aliadoId)
+            ->first();
+
+        if ($clienteExistente) {
+            return redirect()->back()
+                ->withInput()
+                ->withErrors([
+                    'cedula' => "Ya existe un cliente con la cédula {$cedula} en este aliado. "
+                              . "Puedes editarlo desde su perfil (ID #{$clienteExistente->id}).",
+                ]);
+        }
+
         $data = $this->validarCliente($request);
         $data = $this->limpiarDatos($data);
 
         // Obtener siguiente ID (la tabla no es autoincrement)
         $maxId = DB::table('clientes')->max('id') ?? 0;
         $data['id'] = $maxId + 1;
-        $data['aliado_id'] = session('aliado_id_activo');
+        $data['aliado_id'] = $aliadoId;
 
         Cliente::create($data);
 
@@ -237,9 +255,12 @@ class ClienteController extends Controller
 
         if ($cliente) {
             return response()->json([
-                'encontrado' => true,
-                'id'         => $cliente->id,
-                'nombre'     => $cliente->nombre_completo,
+                'encontrado'     => true,
+                'id'             => $cliente->id,
+                'nombre'         => $cliente->nombre_completo,
+                'url_editar'     => route('admin.clientes.edit', $cliente->id),
+                'eps'            => $cliente->eps_nombre ?? null,
+                'celular'        => $cliente->celular ?? null,
             ]);
         }
 
@@ -250,10 +271,20 @@ class ClienteController extends Controller
 
     private function validarCliente(Request $request, ?int $id = null): array
     {
+        $aliadoId = session('aliado_id_activo');
+
+        // Regla unique compuesta (cedula + aliado_id):
+        // - En store ($id=null): la cédula no debe existir en este aliado.
+        // - En update ($id!=null): ignorar el propio registro, pero no permitir
+        //   cambiar a una cédula que ya usa OTRO cliente del mismo aliado.
+        $reglaCedula = Rule::unique('clientes', 'cedula')
+            ->where('aliado_id', $aliadoId)
+            ->when($id !== null, fn($rule) => $rule->ignore($id));
+
         return $request->validate([
             'tipo_doc'            => 'nullable|string|max:10',
             'cod_empresa'         => 'nullable|integer',
-            'cedula'              => 'required|numeric',
+            'cedula'              => ['required', 'numeric', $reglaCedula],
             'primer_nombre'       => 'required|string|max:55',
             'segundo_nombre'      => 'nullable|string|max:55',
             'primer_apellido'     => 'required|string|max:55',
@@ -280,6 +311,7 @@ class ClienteController extends Controller
             'observacion'         => 'nullable|string',
         ], [
             'cedula.required'          => 'La cédula es obligatoria.',
+            'cedula.unique'            => 'Ya existe un cliente con esta cédula registrado en este aliado.',
             'primer_nombre.required'   => 'El primer nombre es obligatorio.',
             'primer_apellido.required' => 'El primer apellido es obligatorio.',
         ]);

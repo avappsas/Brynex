@@ -1965,11 +1965,22 @@ function filtrarPlanes(modalidadId, evitarRecalcular = false) {
     _OPTS_PLAN.forEach(({ el, value, text }) => {
         if (!value) { selPlan.appendChild(el); return; }  // opción vacía siempre
         const planId = parseInt(value);
-        const permitido = permitidos.includes(planId);
+        let permitido = permitidos.includes(planId);
+        
+        // ── Excepción Tiempo Parcial ──
+        // Si no hay planes configurados para esta modalidad TP, permitimos por defecto (y luego se filtran los de EPS)
+        if (esTP && permitidos.length === 0) {
+            permitido = true;
+        }
+
         if (!permitido) return;
 
-        // ── Filtro Tiempo Parcial: solo planes sin EPS ──────────
-        if (esTP && el.dataset.eps === '1') return;
+        // ── Filtro Tiempo Parcial específico ──────────
+        // Para Tiempo Parcial, solo se permiten planes que NO tengan EPS y que SÍ tengan ARL y CCF
+        // (por ejemplo: ARL+AFP+CCF o ARL+CCF). Los planes como Solo ARL o Solo AFP quedan excluidos.
+        if (esTP && (el.dataset.eps === '1' || el.dataset.arl !== '1' || el.dataset.caja !== '1')) {
+            return;
+        }
 
         // ── Regla AFP obligatorio: ocultar planes sin AFP si aplica la regla ──
         // Un plan sin AFP tiene incluye_pension = false (data-pen !== '1')
