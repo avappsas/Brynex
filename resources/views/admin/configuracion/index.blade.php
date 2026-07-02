@@ -175,6 +175,31 @@
   </div>
 </div>
 
+{{-- ══ SECCIÓN 2.6: Parámetros Especiales ══ --}}
+<div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:1rem 1.25rem;margin-bottom:1rem;">
+  <div style="font-size:0.72rem;font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.85rem;">
+    ⚙️ Parámetros Especiales
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;">
+    {{-- Campo: Día de ingreso Ingreso-Retiro --}}
+    <div style="background:#f0f9ff;border-radius:9px;padding:0.85rem;border:1.5px solid #bae6fd;">
+      <div style="font-size:0.62rem;font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:0.55rem;">📅 Día de Ingreso (Plan Ingreso-Retiro)</div>
+      <div style="font-size:0.72rem;color:#0c4a6e;margin-bottom:0.5rem;line-height:1.4;">
+        Día del mes en que se afiliará el contrato al duplicar en el flujo <strong>Ingreso-Retiro</strong>.
+        <br><em>Valor por defecto: 26. Rango: 1 al 28.</em>
+      </div>
+      <div style="display:flex;align-items:center;gap:0.35rem;">
+        <input type="number" step="1" min="1" max="28"
+            name="configs[global][dia_ingreso_ir]"
+            value="{{ $globalMoraCfg?->dia_ingreso_ir ?? 26 }}"
+            placeholder="Ej: 26"
+            style="flex:1;padding:0.45rem 0.6rem;border:2px solid #bae6fd;border-radius:7px;font-size:0.9rem;font-family:monospace;font-weight:700;color:#0369a1;background:#fff;text-align:center;">
+        <span style="color:#0369a1;font-size:0.75rem;white-space:nowrap;">día del mes</span>
+      </div>
+    </div>
+  </div>
+</div>
+
 {{-- ══ SECCIÓN 3: Tarifas de Administración (Global y Por Plan) ══ --}}
 <div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:1rem 1.25rem;margin-bottom:1rem;">
   <div style="font-size:0.72rem;font-weight:700;color:#7c3aed;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.85rem;">

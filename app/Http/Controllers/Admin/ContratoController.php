@@ -175,9 +175,100 @@ class ContratoController extends Controller
                 ->where('numero_factura', '>', 0)
                 ->exists();
 
+        // ── Modal Duplicar (Plan Ingreso-Retiro) ─────────────
+        $rsIrOpciones = [];
+        $rsIrPreviewId = null;
+        $rsIrHayDisponible = false;
+
+        if ($contrato->estaVigente() && (int)$contrato->tipo_modalidad_id === 12) {
+            $alidoIdIr = $alidoId;
+            $todasRsIr = \App\Models\RazonSocial::where('aliado_id', $alidoIdIr)
+                ->where('es_independiente', false)
+                ->where('estado', 'Activa')
+                ->whereRaw("UPPER(razon_social) NOT LIKE '%RAZON SOCIAL%'")
+                ->get(['id', 'razon_social']);
+
+            $rsVigentesIrSet = DB::table('contratos')
+                ->where('cedula', $contrato->cedula)
+                ->where('aliado_id', $alidoIdIr)
+                ->where('estado', 'vigente')
+                ->pluck('razon_social_id')
+                ->flip();
+
+            $ultimosRetiros = DB::table('contratos')
+                ->where('cedula', $contrato->cedula)
+                ->where('aliado_id', $alidoIdIr)
+                ->where('estado', 'retirado')
+                ->whereNotNull('fecha_retiro')
+                ->select('razon_social_id', DB::raw('MAX(fecha_retiro) as ultimo_retiro'))
+                ->groupBy('razon_social_id')
+                ->get()
+                ->keyBy('razon_social_id');
+
+            $rsConHistIr = DB::table('contratos')
+                ->where('cedula', $contrato->cedula)
+                ->where('aliado_id', $alidoIdIr)
+                ->pluck('razon_social_id')
+                ->unique()
+                ->flip();
+
+            $ahora = \Carbon\Carbon::now();
+
+            foreach ($todasRsIr as $rsItem) {
+                $esActual  = (int)$rsItem->id === (int)$contrato->razon_social_id;
+                $esVigente = isset($rsVigentesIrSet[$rsItem->id]);
+                $bloqueada = $esActual || $esVigente;
+
+                $tiempoTexto = null;
+                $ultimoRet = $ultimosRetiros->get($rsItem->id);
+                if ($ultimoRet && $ultimoRet->ultimo_retiro) {
+                    $fechaRet = \Carbon\Carbon::parse($ultimoRet->ultimo_retiro);
+                    $meses = (int)$fechaRet->diffInMonths($ahora);
+                    $anios = (int)floor($meses / 12);
+                    $mesesRest = $meses % 12;
+                    if ($anios > 0 && $mesesRest > 0) $tiempoTexto = "Retirado hace {$anios}a {$mesesRest}m";
+                    elseif ($anios > 0) $tiempoTexto = "Retirado hace {$anios} año" . ($anios > 1 ? 's' : '');
+                    elseif ($meses > 0) $tiempoTexto = "Retirado hace {$meses} mes" . ($meses > 1 ? 'es' : '');
+                    else $tiempoTexto = 'Retirado este mes';
+                }
+
+                if ($bloqueada) {
+                    $prioridad = 99;
+                } elseif (!isset($rsConHistIr[$rsItem->id])) {
+                    $prioridad = 0;
+                } else {
+                    $prioridad = $ultimoRet ? \Carbon\Carbon::parse($ultimoRet->ultimo_retiro)->timestamp : 50;
+                }
+
+                $rsIrOpciones[] = [
+                    'id'          => $rsItem->id,
+                    'nombre'      => $rsItem->razon_social,
+                    'bloqueada'   => $bloqueada,
+                    'es_actual'   => $esActual,
+                    'es_vigente'  => $esVigente,
+                    'nunca_usada' => !isset($rsConHistIr[$rsItem->id]),
+                    'tiempo'      => $tiempoTexto,
+                    'prioridad'   => $prioridad,
+                ];
+            }
+
+            usort($rsIrOpciones, fn($a, $b) => $a['bloqueada'] <=> $b['bloqueada'] ?: $a['prioridad'] <=> $b['prioridad']);
+
+            foreach ($rsIrOpciones as $op) {
+                if (!$op['bloqueada']) {
+                    $rsIrPreviewId = $op['id'];
+                    break;
+                }
+            }
+            $rsIrHayDisponible = $rsIrPreviewId !== null;
+        }
+
+        $cfgAliado = \App\Models\ConfiguracionAliado::paraAliado($alidoId);
+        $diaIngresoIr = max(1, min(28, (int)($cfgAliado?->dia_ingreso_ir ?? 26)));
+
         return view('admin.contratos.form', array_merge(
             $this->datosFormulario($alidoId, $cliente, $contrato->razon_social_id, $contrato->id),
-            compact('contrato', 'cliente', 'backUrl', 'radicadosPorTipo', 'rsBloquedaPorAfiliacion', 'otrosContratosVigentes', 'tienePlanillaConDias')
+            compact('contrato', 'cliente', 'backUrl', 'radicadosPorTipo', 'rsBloquedaPorAfiliacion', 'otrosContratosVigentes', 'tienePlanillaConDias', 'rsIrOpciones', 'rsIrPreviewId', 'rsIrHayDisponible', 'diaIngresoIr')
         ));
     }
 
@@ -1208,12 +1299,28 @@ class ContratoController extends Controller
             }
 
             // ── 1. Marcar retiro en contrato original ─────────────────────
-            $original->update([
-                'estado'           => 'retirado',
-                'motivo_retiro_id' => $validated['motivo_retiro_id'],
-                'fecha_retiro'     => $fechaRetiro,
-                'observacion'      => $validated['observacion'] ?? $original->observacion,
-            ]);
+            // Se usa DB::table directamente (no Eloquent) para garantizar que el UPDATE
+            // persista en SQL Server dentro de la transacción, ya que el modelo $original
+            // fue hidratado fuera del scope de la transacción.
+            $filasAfectadas = DB::table('contratos')
+                ->where('id', $original->id)
+                ->where('aliado_id', $alidoId)
+                ->where('estado', 'vigente') // Safety check: solo si sigue vigente
+                ->update([
+                    'estado'           => 'retirado',
+                    'motivo_retiro_id' => (int)$validated['motivo_retiro_id'],
+                    'fecha_retiro'     => $fechaRetiro,
+                    'observacion'      => $validated['observacion'] ?? $original->observacion,
+                    'updated_at'       => now(),
+                ]);
+
+            if ($filasAfectadas === 0) {
+                throw new \RuntimeException('No se pudo marcar el retiro del contrato original. Puede que ya haya sido retirado por otra operación.');
+            }
+
+            // Refrescar el objeto en memoria para que el resto del closure use el estado actualizado
+            $original->refresh();
+
 
             // ── 2. Crear plano de retiro con n_plano = 0 ─────────────────
             $cliente = $original->cliente;
@@ -1336,8 +1443,10 @@ class ContratoController extends Controller
                 'usuario_id'        => \Illuminate\Support\Facades\Auth::id(),
             ]);
 
-            // ── 3. Crear nuevo contrato (fecha_ingreso = 26 del mes actual) ──
-            $nuevaFechaIngreso = now()->startOfMonth()->addDays(25)->toDateString(); // día 26
+            // ── 3. Crear nuevo contrato ──
+            $cfgAliado = \App\Models\ConfiguracionAliado::paraAliado($alidoId);
+            $diaIngreso = max(1, min(28, (int)($cfgAliado?->dia_ingreso_ir ?? 26)));
+            $nuevaFechaIngreso = now()->startOfMonth()->addDays($diaIngreso - 1)->toDateString();
 
             // Derivar arl_nit_cotizante de la nueva RS
             $nuevaRsRow = DB::table('razones_sociales')->where('id', $nuevaRsId)->first();

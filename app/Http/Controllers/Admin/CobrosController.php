@@ -480,6 +480,10 @@ class CobrosController extends Controller
                 // ARL fuera de su mes de ARL → cobro es 0, no paga planilla
                 $vEps = $vArl = $vPen = $vCaja = $vSS = 0;
                 $totalEstimado = 0;
+            } elseif ((int)($c->tipo_modalidad_id) === 12) {
+                // Plan Ingreso-Retiro: si no es su primer mes (esAfil), siempre cobra costo_afiliacion + seguro, no planilla
+                $vEps = $vArl = $vPen = $vCaja = $vSS = 0;
+                $totalEstimado = (int)(($c->costo_afiliacion ?? 0) + ($c->seguro ?? 0));
             } else {
                 $diasCotizar = 30;
                 if ($c->fecha_ingreso) {
@@ -822,7 +826,7 @@ class CobrosController extends Controller
             $c->es_empresa    = $empresa && $empresa->id != 1;
             $c->nombre_empresa = $c->es_empresa ? $empresa->empresa : null;
 
-            // ── Detección Plan Ingreso-Retiro: planilla > 5 días ──────────
+            // ── Detección Plan Ingreso-Retiro: siempre cobra afiliación ──────────
             $esIngresoRetiro  = (int)($c->tipo_modalidad_id) === 12;
             $diasCotizEstim   = 30; // default: mes completo
             if ($esIngresoRetiro && !$esAfil && !$esIndActPrimerMes && $c->fecha_ingreso) {
@@ -834,7 +838,7 @@ class CobrosController extends Controller
                     $diasCotizEstim = max(1, 30 - $fIng2->day + 1);
                 }
             }
-            $c->es_ir_alerta     = $esIngresoRetiro && !$esAfil && !$esIndActPrimerMes && ($diasCotizEstim > 5);
+            $c->es_ir_alerta     = $esIngresoRetiro && !$esAfil && !$esIndActPrimerMes;
             $c->dias_cotiz_estim = $diasCotizEstim;
 
             // ── Cuando debe rotar RS: el cobro es AFILIACIÓN del nuevo contrato ──

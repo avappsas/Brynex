@@ -12,7 +12,7 @@ class ConfiguracionAliado extends BaseModel
         'aliado_id', 'plan_id',
         'administracion', 'costo_afiliacion', 'admon_asesor',
         'seguro_valor', 'encargado_default_id', 'activo',
-        'dist_admon_pct', 'dist_retiro_pct',
+        'dist_admon_pct', 'dist_retiro_pct', 'dia_ingreso_ir',
     ];
     protected $casts = [
         'administracion'   => 'decimal:2',
@@ -21,6 +21,7 @@ class ConfiguracionAliado extends BaseModel
         'seguro_valor'     => 'decimal:2',
         'dist_admon_pct'   => 'decimal:2',
         'dist_retiro_pct'  => 'decimal:2',
+        'dia_ingreso_ir'   => 'integer',
         'activo'           => 'boolean',
     ];
 

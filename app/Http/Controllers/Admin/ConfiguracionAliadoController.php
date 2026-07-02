@@ -73,6 +73,7 @@ class ConfiguracionAliadoController extends Controller
             'configs.*.dist_retiro_pct'         => 'nullable|numeric|min:0|max:100',
             'configs.*.seguro_valor'            => 'nullable|numeric|min:0',
             'configs.*.encargado_default_id'    => 'nullable|exists:users,id',
+            'configs.*.dia_ingreso_ir'          => 'nullable|integer|min:1|max:28',
             // Mora al cliente
             'configs.*.mora_dia_habil_inicio'   => 'nullable|integer|min:2|max:16',
             'configs.*.mora_minimo'             => 'nullable|numeric|min:0',
@@ -105,6 +106,8 @@ class ConfiguracionAliadoController extends Controller
                         'dist_retiro_pct'         => $data['dist_retiro_pct']       ?? 0,
                         'seguro_valor'            => $data['seguro_valor']          ?? 0,
                         'encargado_default_id'    => $data['encargado_default_id'] ?: null,
+                        'dia_ingreso_ir'          => (($data['dia_ingreso_ir'] ?? null) !== '' && ($data['dia_ingreso_ir'] ?? null) !== null)
+                                                     ? (int) $data['dia_ingreso_ir'] : 26,
                         // Mora al cliente
                         'mora_dia_habil_inicio'   => (($data['mora_dia_habil_inicio'] ?? null) !== '' && ($data['mora_dia_habil_inicio'] ?? null) !== null)
                                                      ? (int) $data['mora_dia_habil_inicio'] : null,

@@ -2965,101 +2965,6 @@ function cerrarRecibo() {
 ════════════════════════════════════════════════════════════════════════ --}}
 @if($esEdicion && $contrato->estaVigente() && (int)$contrato->tipo_modalidad_id === 12)
 @php
-    // ── Construir lista completa de RS candidatas con estado, prioridad y tiempo ──
-    $rsIrOpciones   = [];  // array de opciones para el select
-    $rsIrPreviewId  = null; // ID de la RS sugerida automáticamente
-    $ahora = \Carbon\Carbon::now();
-    try {
-        $alidoIdIr = session('aliado_id_activo');
-        // Todas las RS dependientes activas del aliado (incluso la actual para mostrar)
-        $todasRsIr = \App\Models\RazonSocial::where('aliado_id', $alidoIdIr)
-            ->where('es_independiente', false)
-            ->where('estado', 'Activa')
-            ->whereRaw("UPPER(razon_social) NOT LIKE '%RAZON SOCIAL%'")
-            ->get(['id', 'razon_social']);
-
-        // RS vigentes del cliente (no se pueden asignar)
-        $rsVigentesIrSet = \Illuminate\Support\Facades\DB::table('contratos')
-            ->where('cedula', $contrato->cedula)
-            ->where('aliado_id', $alidoIdIr)
-            ->where('estado', 'vigente')
-            ->pluck('razon_social_id')
-            ->flip(); // O(1) lookup
-
-        // Último retiro de este cliente por RS (para saber tiempo transcurrido)
-        $ultimosRetiros = \Illuminate\Support\Facades\DB::table('contratos')
-            ->where('cedula', $contrato->cedula)
-            ->where('aliado_id', $alidoIdIr)
-            ->where('estado', 'retirado')
-            ->whereNotNull('fecha_retiro')
-            ->select('razon_social_id', \Illuminate\Support\Facades\DB::raw('MAX(fecha_retiro) as ultimo_retiro'))
-            ->groupBy('razon_social_id')
-            ->get()
-            ->keyBy('razon_social_id');
-
-        // RS donde cliente tiene historial (vigente o retirado)
-        $rsConHistIr = \Illuminate\Support\Facades\DB::table('contratos')
-            ->where('cedula', $contrato->cedula)
-            ->where('aliado_id', $alidoIdIr)
-            ->pluck('razon_social_id')
-            ->unique()
-            ->flip();
-
-        foreach ($todasRsIr as $rsItem) {
-            $esActual   = (int)$rsItem->id === (int)$contrato->razon_social_id;
-            $esVigente  = isset($rsVigentesIrSet[$rsItem->id]);
-            $bloqueada  = $esActual || $esVigente;
-
-            // Calcular tiempo desde último retiro
-            $tiempoTexto = null;
-            $ultimoRet   = $ultimosRetiros->get($rsItem->id);
-            if ($ultimoRet && $ultimoRet->ultimo_retiro) {
-                $fechaRet    = \Carbon\Carbon::parse($ultimoRet->ultimo_retiro);
-                $meses       = (int)$fechaRet->diffInMonths($ahora);
-                $anios       = (int)floor($meses / 12);
-                $mesesRest   = $meses % 12;
-                if ($anios > 0 && $mesesRest > 0)  $tiempoTexto = "Retirado hace {$anios}a {$mesesRest}m";
-                elseif ($anios > 0)                  $tiempoTexto = "Retirado hace {$anios} año" . ($anios > 1 ? 's' : '');
-                elseif ($meses > 0)                  $tiempoTexto = "Retirado hace {$meses} mes" . ($meses > 1 ? 'es' : '');
-                else                                  $tiempoTexto = 'Retirado este mes';
-            }
-
-            // Determinar prioridad (menor = mejor)
-            if ($bloqueada) {
-                $prioridad = 99; // no seleccionable
-            } elseif (!isset($rsConHistIr[$rsItem->id])) {
-                $prioridad = 0;  // nunca usada → mejor opción
-            } else {
-                // Entre las ya usadas: menor fecha_retiro = más tiempo sin usar = mejor
-                $prioridad = $ultimoRet
-                    ? \Carbon\Carbon::parse($ultimoRet->ultimo_retiro)->timestamp
-                    : 50;
-            }
-
-            $rsIrOpciones[] = [
-                'id'          => $rsItem->id,
-                'nombre'      => $rsItem->razon_social,
-                'bloqueada'   => $bloqueada,
-                'es_actual'   => $esActual,
-                'es_vigente'  => $esVigente,
-                'nunca_usada' => !isset($rsConHistIr[$rsItem->id]),
-                'tiempo'      => $tiempoTexto,
-                'prioridad'   => $prioridad,
-            ];
-        }
-
-        // Ordenar: bloqueadas al final, luego por prioridad ASC
-        usort($rsIrOpciones, fn($a, $b) =>
-            $a['bloqueada'] <=> $b['bloqueada'] ?: $a['prioridad'] <=> $b['prioridad']
-        );
-
-        // La primera no-bloqueada es la sugerida automáticamente
-        foreach ($rsIrOpciones as $op) {
-            if (!$op['bloqueada']) { $rsIrPreviewId = $op['id']; break; }
-        }
-    } catch (\Throwable $e) {}
-
-    $rsIrHayDisponible = $rsIrPreviewId !== null;
     $fIngresoDia = $contrato->fecha_ingreso ? $contrato->fecha_ingreso->format('d/m/Y') : '—';
     $fIngresoCO  = $contrato->fecha_ingreso ? $contrato->fecha_ingreso->toDateString() : null;
 @endphp
@@ -3137,7 +3042,7 @@ function cerrarRecibo() {
         {{-- Alerta informativa --}}
         <div class="mir-alert">
             ℹ️ Se marcará <strong>retiro</strong> en la RS actual y se creará un <strong>nuevo contrato</strong>
-            con fecha de ingreso <strong>26 del mes actual</strong>, asignando automáticamente la siguiente RS disponible.
+            con fecha de ingreso <strong>{{ $diaIngresoIr ?? 26 }} del mes actual</strong>, asignando automáticamente la siguiente RS disponible.
         </div>
 
         {{-- RS actual --}}
@@ -3191,33 +3096,33 @@ function cerrarRecibo() {
 
         <hr style="border:none;border-top:1px solid #f1f5f9;margin:.8rem 0;">
 
-        {{-- Días y Fecha de retiro --}}
-        <div class="mir-row">
-            <div class="mir-fg" style="margin-bottom:0;" id="mir-dias-wrapper">
-                <label class="mir-label">Días cotizados en retiro (1–3) *</label>
-                <input type="number" id="mir-num-dias" class="mir-input"
-                    min="1" max="3" value="1"
-                    oninput="mirActualizarFecha()"
-                    style="width:100%;box-sizing:border-box;">
-            </div>
-            <div class="mir-fg" style="margin-bottom:0;">
-                <label class="mir-label">Fecha de retiro (calculada)</label>
-                <div class="mir-fecha-display" id="mir-fecha-display">{{ $fIngresoDia }}</div>
-            </div>
+        {{-- Días cotizados en retiro --}}
+        <div class="mir-fg" id="mir-dias-wrapper" style="margin-bottom:.4rem;">
+            <label class="mir-label">Días cotizados en retiro (1–3) *</label>
+            <input type="number" id="mir-num-dias" class="mir-input"
+                min="1" max="3" value="1"
+                oninput="mirActualizarFecha()"
+                style="width:100%;box-sizing:border-box;">
         </div>
-        <div id="mir-dias-hint" style="font-size:.68rem;color:#94a3b8;margin-top:.2rem;margin-bottom:.75rem;">
+        <div id="mir-dias-hint" style="font-size:.68rem;color:#94a3b8;margin-top:-.2rem;margin-bottom:.75rem;">
             1 día = fecha ingreso · 2 días = fecha ingreso +1 día · 3 días = fecha ingreso +2 días
         </div>
 
-        {{-- Motivo retiro (pre-selecciona id=2) --}}
-        <div class="mir-fg">
-            <label class="mir-label">Motivo de retiro *</label>
-            <select id="mir-motivo" class="mir-select" style="width:100%;">
-                <option value="">— Seleccione motivo —</option>
-                @foreach($motivosRetiro as $mr)
-                <option value="{{ $mr->id }}" {{ $mr->id == 2 ? 'selected' : '' }}>{{ $mr->nombre }}</option>
-                @endforeach
-            </select>
+        {{-- Fecha y Motivo de retiro en la misma fila --}}
+        <div class="mir-row" style="margin-bottom:.75rem;">
+            <div class="mir-fg" style="margin-bottom:0;">
+                <label class="mir-label">Fecha de retiro</label>
+                <div class="mir-fecha-display" id="mir-fecha-display">{{ $fIngresoDia }}</div>
+            </div>
+            <div class="mir-fg" style="margin-bottom:0;">
+                <label class="mir-label">Motivo de retiro *</label>
+                <select id="mir-motivo" class="mir-select" style="width:100%;">
+                    <option value="">— Seleccione motivo —</option>
+                    @foreach($motivosRetiro as $mr)
+                    <option value="{{ $mr->id }}" {{ $mr->id == 2 ? 'selected' : '' }}>{{ $mr->nombre }}</option>
+                    @endforeach
+                </select>
+            </div>
         </div>
 
         {{-- Observación --}}
