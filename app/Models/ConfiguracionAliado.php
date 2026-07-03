@@ -13,6 +13,7 @@ class ConfiguracionAliado extends BaseModel
         'administracion', 'costo_afiliacion', 'admon_asesor',
         'seguro_valor', 'encargado_default_id', 'activo',
         'dist_admon_pct', 'dist_retiro_pct', 'dia_ingreso_ir',
+        'mora_dia_habil_inicio', 'mora_minimo', 'mora_segundo',
     ];
     protected $casts = [
         'administracion'   => 'decimal:2',

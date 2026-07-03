@@ -1525,7 +1525,14 @@ class CobrosController extends Controller
         foreach ($contratosValidosPreview as $c) {
             $nombreCliente = $c->cliente?->nombre_corto ?? 'Cliente';
             $nombreAliadoEfectivo  = $config->nombre_cuenta ?: $nombreAliado;
-            $plazoDias     = '10';
+            
+            // Obtener el día hábil configurado por el aliado
+            $cfgAliado = DB::table('configuracion_aliado')
+                ->where('aliado_id', $aliadoId)
+                ->whereNull('plan_id')
+                ->first(['mora_dia_habil_inicio']);
+            $plazoDias = $cfgAliado?->mora_dia_habil_inicio ? (string)$cfgAliado->mora_dia_habil_inicio : '10';
+
             $celularSoporte = $config->numero_telefono ?: 'no tiene configurado';
 
             $valorCobro = (float)($c->total_estimado ?? 0) + (float)($c->mora_estimada ?? 0);
@@ -1647,10 +1654,17 @@ class CobrosController extends Controller
         $aliado = \App\Models\Aliado::find($aliadoId);
         $nombreAliado = $aliado ? $aliado->nombre : 'BryNex Global';
 
+        // Obtener el día hábil configurado por el aliado
+        $cfgAliado = DB::table('configuracion_aliado')
+            ->where('aliado_id', $aliadoId)
+            ->whereNull('plan_id')
+            ->first(['mora_dia_habil_inicio']);
+        $plazoDias = $cfgAliado?->mora_dia_habil_inicio ? (string)$cfgAliado->mora_dia_habil_inicio : '10';
+
         $cantVars = $plantilla->cantidadVariables();
         $params   = $cantVars <= 5
-            ? ['Juan Pérez (PRUEBA)', $nombreAliado, '10', $cuentasText, $config->numero_telefono ?: 'no tiene configurado']
-            : ['Juan Pérez (PRUEBA)', $nombreAliado, '10', $cuentasText, $config->numero_telefono ?: 'no tiene configurado', '$150.000'];
+            ? ['Juan Pérez (PRUEBA)', $nombreAliado, $plazoDias, $cuentasText, $config->numero_telefono ?: 'no tiene configurado']
+            : ['Juan Pérez (PRUEBA)', $nombreAliado, $plazoDias, $cuentasText, $config->numero_telefono ?: 'no tiene configurado', '$150.000'];
 
         $apiService = app(\App\Services\WhatsappApiService::class);
 
@@ -2436,7 +2450,14 @@ class CobrosController extends Controller
         foreach ($empresasValidasPreview as $e) {
             $nombreContacto = $e->contacto ?: $e->empresa;
             $nombreAliadoEfectivo = $config->nombre_cuenta ?: $nombreAliado;
-            $plazoDias = '10';
+            
+            // Obtener el día hábil configurado por el aliado
+            $cfgAliado = DB::table('configuracion_aliado')
+                ->where('aliado_id', $aliadoId)
+                ->whereNull('plan_id')
+                ->first(['mora_dia_habil_inicio']);
+            $plazoDias = $cfgAliado?->mora_dia_habil_inicio ? (string)$cfgAliado->mora_dia_habil_inicio : '10';
+
             $celularSoporte = $config->numero_telefono ?: 'no tiene configurado';
 
             $valorCobro = (float)($e->admon_pend ?? 0);

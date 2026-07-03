@@ -171,7 +171,13 @@ class WhatsappEnvioMasivoJob implements ShouldQueue
             if ($empresa) {
                 $nombreContacto = $empresa->contacto ?: $detalle->nombre_destinatario;
                 $nombreAliado  = $empresa->aliado?->nombre ?? 'BryNex';
-                $plazoDias     = '10';
+                
+                // Obtener el día hábil configurado por el aliado
+                $cfgAliado = \Illuminate\Support\Facades\DB::table('configuracion_aliado')
+                    ->where('aliado_id', $empresa->aliado_id ?: ($detalle->envio?->aliado_id ?: session('aliado_id_activo')))
+                    ->whereNull('plan_id')
+                    ->first(['mora_dia_habil_inicio']);
+                $plazoDias = $cfgAliado?->mora_dia_habil_inicio ? (string)$cfgAliado->mora_dia_habil_inicio : '10';
 
                 // Obtener cuentas para cobro
                 $cuentasCobro = \App\Models\BancoCuenta::paraCobro($empresa->aliado_id ?: ($detalle->envio?->aliado_id ?: session('aliado_id_activo')));
@@ -212,7 +218,13 @@ class WhatsappEnvioMasivoJob implements ShouldQueue
             if ($contrato) {
                 $nombreCliente = $contrato->cliente?->nombre_corto ?? $detalle->nombre_destinatario;
                 $nombreAliado  = $contrato->aliado?->nombre ?? 'BryNex';
-                $plazoDias     = '10'; // Días por defecto
+                
+                // Obtener el día hábil configurado por el aliado
+                $cfgAliado = \Illuminate\Support\Facades\DB::table('configuracion_aliado')
+                    ->where('aliado_id', $contrato->aliado_id)
+                    ->whereNull('plan_id')
+                    ->first(['mora_dia_habil_inicio']);
+                $plazoDias = $cfgAliado?->mora_dia_habil_inicio ? (string)$cfgAliado->mora_dia_habil_inicio : '10';
 
                 // Obtener cuentas para cobro
                 $cuentasCobro = \App\Models\BancoCuenta::paraCobro($contrato->aliado_id);
