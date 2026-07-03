@@ -125,6 +125,14 @@
                     </div>
                     <div class="hc-arrow">→</div>
                 </a>
+                <a href="{{ route('brynex.backups') }}" class="hub-card">
+                    <div class="hc-icon">💾</div>
+                    <div class="hc-body">
+                        <div class="hc-name">Copias de Seguridad</div>
+                        <div class="hc-desc">Gestión y descarga de backups de base de datos y documentos</div>
+                    </div>
+                    <div class="hc-arrow">→</div>
+                </a>
             </div>
         </div>
         @endrole
