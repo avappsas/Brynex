@@ -55,7 +55,14 @@ class Contrato extends BaseModel
 
     public function cliente(): BelongsTo
     {
-        return $this->belongsTo(Cliente::class, 'cedula', 'cedula');
+        $relation = $this->belongsTo(Cliente::class, 'cedula', 'cedula');
+
+        $aliadoId = $this->aliado_id ?? session('aliado_id_activo');
+        if ($aliadoId) {
+            $relation->where('clientes.aliado_id', $aliadoId);
+        }
+
+        return $relation;
     }
 
     public function razonSocial(): BelongsTo
