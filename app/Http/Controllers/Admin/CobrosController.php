@@ -1350,10 +1350,17 @@ class CobrosController extends Controller
         $aliadoId = session('aliado_id_activo');
         $config = WhatsappConfig::paraAliado($aliadoId);
 
+        // Si usa la cuenta global de Brynex, las plantillas están asociadas al aliado BryNex
+        $effectiveAliadoId = $aliadoId;
+        if ($config && $config->usa_cuenta_brynex) {
+            $aliadoBrynex = \App\Models\Aliado::where('nombre', 'BryNex')->first();
+            $effectiveAliadoId = $aliadoBrynex ? $aliadoBrynex->id : 1;
+        }
+
         // Si el usuario elige una plantilla específica, usarla; si no, la del config
         $plantillaId = $request->get('plantilla_id');
         if ($plantillaId) {
-            $plantilla = \App\Models\WhatsappPlantilla::delAliado($aliadoId)->find($plantillaId);
+            $plantilla = \App\Models\WhatsappPlantilla::delAliado($effectiveAliadoId)->find($plantillaId);
             if (!$plantilla) {
                 return response()->json(['ok' => false, 'mensaje' => 'Plantilla no encontrada.'], 422);
             }
@@ -1551,7 +1558,7 @@ class CobrosController extends Controller
             ];
         }
 
-        $plantillasDisponibles = \App\Models\WhatsappPlantilla::delAliado($aliadoId)->aprobadas()->get(['id', 'nombre_display', 'nombre']);
+        $plantillasDisponibles = \App\Models\WhatsappPlantilla::delAliado($effectiveAliadoId)->aprobadas()->get(['id', 'nombre_display', 'nombre']);
 
         return response()->json([
             'ok'             => true,
@@ -1603,10 +1610,17 @@ class CobrosController extends Controller
             return response()->json(['ok' => false, 'mensaje' => 'Las credenciales de WhatsApp del aliado están incompletas.'], 422);
         }
 
+        // Si usa la cuenta global de Brynex, las plantillas están asociadas al aliado BryNex
+        $effectiveAliadoId = $aliadoId;
+        if ($config && $config->usa_cuenta_brynex) {
+            $aliadoBrynex = \App\Models\Aliado::where('nombre', 'BryNex')->first();
+            $effectiveAliadoId = $aliadoBrynex ? $aliadoBrynex->id : 1;
+        }
+
         // Usar la plantilla seleccionada o la por defecto de la configuración
         $plantillaId = $request->get('plantilla_id');
         if ($plantillaId) {
-            $plantilla = \App\Models\WhatsappPlantilla::delAliado($aliadoId)->find($plantillaId);
+            $plantilla = \App\Models\WhatsappPlantilla::delAliado($effectiveAliadoId)->find($plantillaId);
             if (!$plantilla) {
                 return response()->json(['ok' => false, 'mensaje' => 'Plantilla de prueba no encontrada.'], 422);
             }
@@ -1712,10 +1726,17 @@ class CobrosController extends Controller
         $aliadoId = session('aliado_id_activo');
         $config   = WhatsappConfig::paraAliado($aliadoId);
 
+        // Si usa la cuenta global de Brynex, las plantillas están asociadas al aliado BryNex
+        $effectiveAliadoId = $aliadoId;
+        if ($config && $config->usa_cuenta_brynex) {
+            $aliadoBrynex = \App\Models\Aliado::where('nombre', 'BryNex')->first();
+            $effectiveAliadoId = $aliadoBrynex ? $aliadoBrynex->id : 1;
+        }
+
         // Plantilla: usar la solicitada o la configurada por defecto
         $plantillaId = $request->get('plantilla_id');
         if ($plantillaId) {
-            $plantilla = \App\Models\WhatsappPlantilla::delAliado($aliadoId)->find($plantillaId);
+            $plantilla = \App\Models\WhatsappPlantilla::delAliado($effectiveAliadoId)->find($plantillaId);
             if (!$plantilla) {
                 return response()->json(['ok' => false, 'mensaje' => 'Plantilla no encontrada.'], 422);
             }
@@ -2320,9 +2341,16 @@ class CobrosController extends Controller
         $aliadoId = session('aliado_id_activo');
         $config = WhatsappConfig::paraAliado($aliadoId);
 
+        // Si usa la cuenta global de Brynex, las plantillas están asociadas al aliado BryNex
+        $effectiveAliadoId = $aliadoId;
+        if ($config && $config->usa_cuenta_brynex) {
+            $aliadoBrynex = \App\Models\Aliado::where('nombre', 'BryNex')->first();
+            $effectiveAliadoId = $aliadoBrynex ? $aliadoBrynex->id : 1;
+        }
+
         $plantillaId = $request->get('plantilla_id');
         if ($plantillaId) {
-            $plantilla = \App\Models\WhatsappPlantilla::delAliado($aliadoId)->find($plantillaId);
+            $plantilla = \App\Models\WhatsappPlantilla::delAliado($effectiveAliadoId)->find($plantillaId);
         } else {
             $plantilla = $config->cobroPlantilla;
         }
@@ -2462,7 +2490,7 @@ class CobrosController extends Controller
             ->orderByDesc('created_at')
             ->first();
 
-        $plantillasDisponibles = \App\Models\WhatsappPlantilla::delAliado($aliadoId)->aprobadas()->get(['id', 'nombre_display', 'nombre']);
+        $plantillasDisponibles = \App\Models\WhatsappPlantilla::delAliado($effectiveAliadoId)->aprobadas()->get(['id', 'nombre_display', 'nombre']);
 
         return response()->json([
             'ok'             => true,
@@ -2500,9 +2528,16 @@ class CobrosController extends Controller
         $aliadoId = session('aliado_id_activo');
         $config   = WhatsappConfig::paraAliado($aliadoId);
 
+        // Si usa la cuenta global de Brynex, las plantillas están asociadas al aliado BryNex
+        $effectiveAliadoId = $aliadoId;
+        if ($config && $config->usa_cuenta_brynex) {
+            $aliadoBrynex = \App\Models\Aliado::where('nombre', 'BryNex')->first();
+            $effectiveAliadoId = $aliadoBrynex ? $aliadoBrynex->id : 1;
+        }
+
         $plantillaId = $request->get('plantilla_id');
         if ($plantillaId) {
-            $plantilla = \App\Models\WhatsappPlantilla::delAliado($aliadoId)->find($plantillaId);
+            $plantilla = \App\Models\WhatsappPlantilla::delAliado($effectiveAliadoId)->find($plantillaId);
         } else {
             $plantilla = $config->cobroPlantilla;
         }
