@@ -1088,8 +1088,8 @@ class CobrosController extends Controller
                     ->where('aliado_id', $aliadoId)
                     ->whereIn('cod_empresa', $empresaIds);
             })
-            ->whereIn('estado', ['vigente', 'activo'])  // igual que index()
-            ->with('tipoModalidad')
+            ->whereIn('estado', ['vigente', 'activo'])
+            ->with(['tipoModalidad', 'razonSocial'])   // << eager load razonSocial para evitar N+1
             ->get();
 
         // Cédulas reales de contratos activos (ya filtradas, número manejable por empresa)
@@ -1117,8 +1117,9 @@ class CobrosController extends Controller
         $ultimasLlamadasEmp = BitacoraCobro::where('aliado_id', $aliadoId)
             ->whereIn('empresa_id', $empresaIds)
             ->whereNotNull('empresa_id')
+            ->where('fecha_llamada', '>=', now()->subDays(30)) // solo últimos 30 días para semáforo
             ->orderByDesc('fecha_llamada')
-            ->get()
+            ->get(['empresa_id', 'fecha_llamada', 'resultado'])  // solo 3 columnas necesarias
             ->groupBy('empresa_id')
             ->map(fn($g) => $g->first());
 
@@ -1349,14 +1350,22 @@ class CobrosController extends Controller
         $aliadoId = session('aliado_id_activo');
         $config = WhatsappConfig::paraAliado($aliadoId);
 
-        if (!$config || !$config->cobro_plantilla_id || !$config->cobroPlantilla) {
-            return response()->json([
-                'ok'     => false,
-                'mensaje' => 'No has configurado la plantilla de WhatsApp para cobros. Ve a la configuración de WhatsApp para asignarla.',
-            ], 422);
+        // Si el usuario elige una plantilla específica, usarla; si no, la del config
+        $plantillaId = $request->get('plantilla_id');
+        if ($plantillaId) {
+            $plantilla = \App\Models\WhatsappPlantilla::delAliado($aliadoId)->find($plantillaId);
+            if (!$plantilla) {
+                return response()->json(['ok' => false, 'mensaje' => 'Plantilla no encontrada.'], 422);
+            }
+        } else {
+            if (!$config || !$config->cobro_plantilla_id || !$config->cobroPlantilla) {
+                return response()->json([
+                    'ok'      => false,
+                    'mensaje' => 'No has configurado la plantilla de WhatsApp para cobros. Ve a la configuración de WhatsApp para asignarla.',
+                ], 422);
+            }
+            $plantilla = $config->cobroPlantilla;
         }
-
-        $plantilla = $config->cobroPlantilla;
 
         // Cuentas de cobro
         $cuentasCobro = BancoCuenta::paraCobro($aliadoId);
@@ -1542,6 +1551,8 @@ class CobrosController extends Controller
             ];
         }
 
+        $plantillasDisponibles = \App\Models\WhatsappPlantilla::delAliado($aliadoId)->aprobadas()->get(['id', 'nombre_display', 'nombre']);
+
         return response()->json([
             'ok'             => true,
             'plantilla_id'   => $plantilla->id,
@@ -1552,6 +1563,7 @@ class CobrosController extends Controller
             'header_imagen'  => $config->cobro_header_imagen ? asset('storage/' . $config->cobro_header_imagen) : null,
             'botones'        => $plantilla->botones,
             'cant_clientes'  => $cantClientes,
+            'plantillas'     => $plantillasDisponibles,
             'resumen_envios' => [
                 'solo_uno'            => $cantSoloUnContrato,
                 'varios'              => $cantVariosContratos,
@@ -1576,20 +1588,34 @@ class CobrosController extends Controller
     {
         $validated = $request->validate([
             'celular_prueba' => 'required|string',
+            'plantilla_id'   => 'nullable|integer',
+        ]);
+
+        \Illuminate\Support\Facades\Log::info('WhatsApp Prueba: recibiendo petición', [
+            'request_all' => $request->all(),
+            'validated'   => $validated,
         ]);
 
         $aliadoId = session('aliado_id_activo');
         $config   = WhatsappConfig::paraAliado($aliadoId);
 
-        if (!$config || !$config->cobro_plantilla_id || !$config->cobroPlantilla) {
-            return response()->json(['ok' => false, 'mensaje' => 'Plantilla de cobros no configurada.'], 422);
-        }
-
         if (!$config->credencialesCompletas()) {
             return response()->json(['ok' => false, 'mensaje' => 'Las credenciales de WhatsApp del aliado están incompletas.'], 422);
         }
 
-        $plantilla = $config->cobroPlantilla;
+        // Usar la plantilla seleccionada o la por defecto de la configuración
+        $plantillaId = $request->get('plantilla_id');
+        if ($plantillaId) {
+            $plantilla = \App\Models\WhatsappPlantilla::delAliado($aliadoId)->find($plantillaId);
+            if (!$plantilla) {
+                return response()->json(['ok' => false, 'mensaje' => 'Plantilla de prueba no encontrada.'], 422);
+            }
+        } else {
+            if (!$config || !$config->cobro_plantilla_id || !$config->cobroPlantilla) {
+                return response()->json(['ok' => false, 'mensaje' => 'Plantilla de cobros no configurada.'], 422);
+            }
+            $plantilla = $config->cobroPlantilla;
+        }
 
         $cuentasCobro = BancoCuenta::paraCobro($aliadoId);
         $cuentasText = $cuentasCobro->map(function($bc) {
@@ -1686,11 +1712,21 @@ class CobrosController extends Controller
         $aliadoId = session('aliado_id_activo');
         $config   = WhatsappConfig::paraAliado($aliadoId);
 
-        if (!$config || !$config->cobro_plantilla_id || !$config->cobroPlantilla) {
-            return response()->json(['ok' => false, 'mensaje' => 'Plantilla de cobros no configurada.'], 422);
+        // Plantilla: usar la solicitada o la configurada por defecto
+        $plantillaId = $request->get('plantilla_id');
+        if ($plantillaId) {
+            $plantilla = \App\Models\WhatsappPlantilla::delAliado($aliadoId)->find($plantillaId);
+            if (!$plantilla) {
+                return response()->json(['ok' => false, 'mensaje' => 'Plantilla no encontrada.'], 422);
+            }
+        } else {
+            if (!$config || !$config->cobro_plantilla_id || !$config->cobroPlantilla) {
+                return response()->json(['ok' => false, 'mensaje' => 'Plantilla de cobros no configurada.'], 422);
+            }
+            $plantilla = $config->cobroPlantilla;
         }
 
-        if (!$config->credencialesCompletas()) {
+        if (!$config || !$config->credencialesCompletas()) {
             return response()->json(['ok' => false, 'mensaje' => 'Las credenciales de WhatsApp del aliado están incompletas.'], 422);
         }
 
@@ -1716,11 +1752,10 @@ class CobrosController extends Controller
             }
         }
 
-        $plantilla = $config->cobroPlantilla;
-
         // ── Obtener contratos del filtro actual ──────────────────────────
         $data      = $this->obtenerDatosCobros($request);
         $contratos = $data['contratos'];
+
 
         // ── Excluir ya pagados ───────────────────────────────────────────
         $contratos = $contratos->filter(fn($c) => !($c->fact_pagada ?? false))->values();
@@ -2067,5 +2102,537 @@ class CobrosController extends Controller
             'mensaje' => "Se reintentará el envío a {$fallidos} destinatarios fallidos en segundo plano.",
         ]);
     }
+
+    /**
+     * Obtiene el listado de empresas con cobros pendientes y datos necesarios.
+     */
+    private function obtenerEmpresasConDatosCobro(Request $request): array
+    {
+        $aliadoId = session('aliado_id_activo');
+        $user     = Auth::user();
+        $mes      = (int) $request->get('mes',  now()->month);
+        $anio     = (int) $request->get('anio', now()->year);
+        $buscar         = $request->get('buscar');
+        $semaforoFiltro = $request->get('semaforo');
+        $soloPlant      = $request->get('solo_plant');
+        $soloPend       = $request->get('solo_pend');
+
+        $empresaIdsClientes = DB::table('clientes')
+            ->where('aliado_id', $aliadoId)
+            ->where('cod_empresa', '>', 1)
+            ->whereNotNull('cod_empresa')
+            ->pluck('cod_empresa')
+            ->unique()
+            ->toArray();
+
+        $q = Empresa::whereIn('id', $empresaIdsClientes)
+            ->where('id', '!=', 1);
+
+        $esAdmin = $user->hasRole('admin') || $user->hasRole('superadmin') || $user->hasRole('usuario');
+        if (!$esAdmin) {
+            $q->where('encargado_id', $user->id);
+        }
+
+        if ($buscar) {
+            $q->where('empresa', 'like', "%$buscar%");
+        }
+
+        $encargadoFiltro = $request->get('encargado_id');
+        if ($encargadoFiltro && $esAdmin) {
+            $q->where('encargado_id', $encargadoFiltro);
+        }
+
+        $empresas = $q->get();
+        $empresaIds = $empresas->pluck('id')->toArray();
+
+        $clientesPorEmpresa = DB::table('clientes')
+            ->where('aliado_id', $aliadoId)
+            ->whereIn('cod_empresa', $empresaIds)
+            ->select('cedula', 'cod_empresa')
+            ->get()
+            ->groupBy('cod_empresa');
+
+        $contratosActivos = Contrato::where('aliado_id', $aliadoId)
+            ->whereIn('cedula', function ($sub) use ($aliadoId, $empresaIds) {
+                $sub->from('clientes')
+                    ->select('cedula')
+                    ->where('aliado_id', $aliadoId)
+                    ->whereIn('cod_empresa', $empresaIds);
+            })
+            ->whereIn('estado', ['vigente', 'activo'])
+            ->with(['tipoModalidad', 'razonSocial'])  // eager load para evitar N+1
+            ->get();
+
+        $cedulasActivas = $contratosActivos->pluck('cedula')->unique()->values()->toArray();
+
+        $factQuery = Factura::where('aliado_id', $aliadoId)
+            ->periodo($mes, $anio)
+            ->whereIn('tipo', ['planilla', 'afiliacion'])
+            ->whereNull('deleted_at');
+
+        if (count($cedulasActivas) > 500) {
+            $factQuery->whereIn('cedula', function ($sub) use ($aliadoId, $empresaIds) {
+                $sub->from('clientes')->select('cedula')
+                    ->where('aliado_id', $aliadoId)
+                    ->whereIn('cod_empresa', $empresaIds);
+            });
+        } else {
+            $factQuery->whereIn('cedula', $cedulasActivas);
+        }
+
+        $facturasMes = $factQuery->get()->keyBy(fn($f) => (string) $f->cedula);
+
+        $ultimasLlamadasEmp = BitacoraCobro::where('aliado_id', $aliadoId)
+            ->whereIn('empresa_id', $empresaIds)
+            ->whereNotNull('empresa_id')
+            ->where('fecha_llamada', '>=', now()->subDays(30))
+            ->orderByDesc('fecha_llamada')
+            ->get(['empresa_id', 'fecha_llamada', 'resultado'])
+            ->groupBy('empresa_id')
+            ->map(fn($g) => $g->first());
+
+        $cedulasPagadasEmp = $facturasMes
+            ->filter(fn($f) => in_array($f->estado, ['pagada', 'abono', 'prestamo']))
+            ->keys()
+            ->flip()
+            ->all();
+
+        $moraEmpLoteInput = [];
+        foreach ($contratosActivos as $c) {
+            if (isset($cedulasPagadasEmp[(string)$c->cedula])) continue;
+            $rsObj   = $c->razonSocial;
+            $esIndep = $c->esIndependiente() || ($rsObj && $rsObj->es_independiente);
+            $rsNit   = $esIndep ? (int)$c->cedula : ($rsObj ? (int)($rsObj->nit ?: $rsObj->id) : 0);
+            $rsDiaH  = $esIndep ? null : ($rsObj ? ($rsObj->dia_habil ?? null) : null);
+            $vSsCont = (float)($c->salario ?? 0) * 0.285;
+            if ($rsNit && $vSsCont > 0) {
+                $moraEmpLoteInput[] = [
+                    '_contrato_id' => $c->id,
+                    'rs_nit'       => $rsNit,
+                    'rs_dia_habil' => $rsDiaH,
+                    'total_ss'     => $vSsCont,
+                    'mes'          => $mes,
+                    'anio'         => $anio,
+                ];
+            }
+        }
+
+        $moraEmpLoteOutput = MoraClienteService::calcularLote($aliadoId, $moraEmpLoteInput);
+        $moraEmpPorContrato = [];
+        foreach ($moraEmpLoteOutput as $fila) {
+            $moraEmpPorContrato[$fila['_contrato_id']] = (int)($fila['mora'] ?? 0);
+        }
+
+        $empresas = $empresas->map(function ($emp) use (
+            $mes, $anio, $clientesPorEmpresa, $contratosActivos,
+            $facturasMes, $ultimasLlamadasEmp, $cedulasPagadasEmp, $moraEmpPorContrato
+        ) {
+            $cedulas  = $clientesPorEmpresa->get($emp->id)?->pluck('cedula')->toArray() ?? [];
+            $contrEmp = $contratosActivos->whereIn('cedula', $cedulas);
+            $cant = $contrEmp->count();
+
+            $pagados = 0; $afil_pend = 0; $indep_pend = 0; $plan_pend = 0; $admon_pend = 0;
+
+            foreach ($contrEmp as $c) {
+                $fact = $facturasMes->get((string) $c->cedula);
+                $pagada = $fact && in_array($fact->estado, ['pagada', 'abono', 'prestamo']);
+
+                $esArl = (int)($c->tipo_modalidad_id) === 15;
+                $esAfil = false;
+                if ($esArl) {
+                    $esAfil = true;
+                } elseif ($c->fecha_ingreso) {
+                    $fIng    = $c->fecha_ingreso;
+                    $esIndep = $c->tipoModalidad?->esIndependiente() ?? false;
+                    if ((int)$fIng->month === $mes && (int)$fIng->year === $anio) {
+                        if (!$esIndep || !($c->cobrar_planilla_primer_mes ?? false)) {
+                            $esAfil = true;
+                        }
+                    }
+                }
+
+                $esIndep = $c->tipoModalidad?->esIndependiente() ?? false;
+
+                if ($pagada) {
+                    $pagados++;
+                } elseif ($esAfil) {
+                    $afil_pend++;
+                } elseif ($esArl) {
+                } elseif ($esIndep) {
+                    $indep_pend++;
+                    $admon_pend += (int)($c->administracion ?? 0);
+                } else {
+                    $plan_pend++;
+                    $admon_pend += (int)($c->administracion ?? 0);
+                }
+            }
+
+            $totalPend = $afil_pend + $indep_pend + $plan_pend;
+
+            $ultimaLlamada = $ultimasLlamadasEmp->get($emp->id);
+            $diasSinLlamar = $ultimaLlamada ? (int)$ultimaLlamada->fecha_llamada->diffInDays(now()) : null;
+
+            $semaforo = match(true) {
+                $diasSinLlamar === null => 'gris',
+                $diasSinLlamar < 3      => 'verde',
+                $diasSinLlamar <= 7     => 'amarillo',
+                default                 => 'rojo',
+            };
+
+            $moraEmpEst = 0;
+            foreach ($contrEmp->all() as $cMora) {
+                if (!isset($cedulasPagadasEmp[(string)$cMora->cedula])) {
+                    $moraEmpEst += $moraEmpPorContrato[$cMora->id] ?? 0;
+                }
+            }
+
+            $emp->cant          = $cant;
+            $emp->pagados       = $pagados;
+            $emp->afil_pend     = $afil_pend;
+            $emp->indep_pend    = $indep_pend;
+            $emp->plan_pend     = $plan_pend;
+            $emp->total_pend    = $totalPend;
+            $emp->admon_pend    = $admon_pend;
+            $emp->mora_estimada = $moraEmpEst;
+            $emp->ultima_llamada = $ultimaLlamada;
+            $emp->dias_sin_llamar = $diasSinLlamar;
+            $emp->semaforo      = $semaforo;
+
+            return $emp;
+        })->filter(fn($emp) => $emp->cant > 0)
+          ->when($semaforoFiltro, fn($col) => $col->where('semaforo', $semaforoFiltro))
+          ->when($soloPlant,      fn($col) => $col->where('plan_pend', '>', 0))
+          ->when($soloPend,       fn($col) => $col->where('total_pend', '>', 0))
+          ->values();
+
+        return [
+            'empresas' => $empresas,
+            'mes'      => $mes,
+            'anio'     => $anio,
+        ];
+    }
+
+    /**
+     * Previsualiza los mensajes de WhatsApp para cobros masivos a empresas.
+     */
+    public function previsualizarWhatsAppEmpresas(Request $request)
+    {
+        $aliadoId = session('aliado_id_activo');
+        $config = WhatsappConfig::paraAliado($aliadoId);
+
+        $plantillaId = $request->get('plantilla_id');
+        if ($plantillaId) {
+            $plantilla = \App\Models\WhatsappPlantilla::delAliado($aliadoId)->find($plantillaId);
+        } else {
+            $plantilla = $config->cobroPlantilla;
+        }
+
+        if (!$plantilla) {
+            return response()->json([
+                'ok'      => false,
+                'mensaje' => 'La plantilla seleccionada no existe o no está configurada.',
+            ], 422);
+        }
+
+        $incluirValor = $request->get('incluir_valor', '1') === '1';
+
+        // Cuentas de cobro
+        $cuentasCobro = BancoCuenta::paraCobro($aliadoId);
+        $cuentasText = $cuentasCobro->map(function($bc) {
+            $tipoPart = $bc->tipo_cuenta ? " {$bc->tipo_cuenta}" : "";
+            $llavePart = $bc->llave ? " o llave {$bc->llave}" : "";
+            return "{$bc->banco}{$tipoPart} {$bc->numero_cuenta} {$bc->nombre}{$llavePart}";
+        })->join("  •  ");
+
+        if (!empty($cuentasText)) {
+            $cuentasText = "•  " . $cuentasText;
+        } else {
+            $cuentasText = 'no tiene configurada';
+        }
+
+        $aliado = \App\Models\Aliado::find($aliadoId);
+        $nombreAliado = $aliado ? $aliado->nombre : 'BryNex Global';
+
+        $dataResult = $this->obtenerEmpresasConDatosCobro($request);
+        $empresas = $dataResult['empresas'];
+
+        // Filtrar solo empresas con pendientes
+        $empresas = $empresas->filter(fn($e) => $e->total_pend > 0)->values();
+
+        $normalizarCelular = function (?string $raw): string {
+            $raw = preg_replace('/\D/', '', $raw ?? '');
+            if (empty($raw)) return '';
+            if (strlen($raw) === 12) return $raw;
+            if (strlen($raw) === 10) return '57' . $raw;
+            if (str_starts_with($raw, '57') && strlen($raw) === 12) return $raw;
+            return $raw;
+        };
+
+        $lotesHoyIds = WhatsappEnvioMasivo::where('aliado_id', $aliadoId)
+            ->whereDate('created_at', today())
+            ->pluck('id');
+
+        $detallesHoy = WhatsappEnvioMasivoDetalle::whereIn('envio_id', $lotesHoyIds)
+            ->whereNotNull('empresa_id')
+            ->whereIn('estado', ['pendiente', 'enviado', 'entregado', 'leido'])
+            ->pluck('empresa_id')
+            ->toArray();
+
+        $empresaIdsEnviadosSet = array_flip($detallesHoy);
+
+        $cantSoloUnContrato = 0;
+        $cantSinCelular = 0;
+        $cantYaEnviadosHoy = 0;
+
+        foreach ($empresas as $e) {
+            if (isset($empresaIdsEnviadosSet[$e->id])) {
+                $cantYaEnviadosHoy++;
+                continue;
+            }
+            $num = $normalizarCelular($e->telefono ?: $e->celular);
+            if (empty($num)) {
+                $cantSinCelular++;
+            } else {
+                $cantSoloUnContrato++;
+            }
+        }
+
+        $totalEnviosValidos = $cantSoloUnContrato;
+        $totalDestinatarios = $empresas->count();
+
+        $previsualizacionesReales = [];
+        $empresasValidasPreview = $empresas
+            ->filter(fn($e) => !isset($empresaIdsEnviadosSet[$e->id]) && !empty($normalizarCelular($e->telefono ?: $e->celular)))
+            ->take(30);
+
+        foreach ($empresasValidasPreview as $e) {
+            $nombreContacto = $e->contacto ?: $e->empresa;
+            $nombreAliadoEfectivo = $config->nombre_cuenta ?: $nombreAliado;
+            $plazoDias = '10';
+            $celularSoporte = $config->numero_telefono ?: 'no tiene configurado';
+
+            $valorCobro = (float)($e->admon_pend ?? 0);
+            $valorFormateado = '$' . number_format($valorCobro, 0, ',', '.');
+
+            $cantVars = $plantilla->cantidadVariables();
+            if ($cantVars <= 5 || !$incluirValor) {
+                $params = [$nombreContacto, $nombreAliadoEfectivo, $plazoDias, $cuentasText, $celularSoporte];
+            } else {
+                $params = [$nombreContacto, $nombreAliadoEfectivo, $plazoDias, $cuentasText, $celularSoporte, $valorFormateado];
+            }
+
+            $cuerpoReal = $plantilla->cuerpo;
+            foreach ($params as $i => $val) {
+                $cuerpoReal = str_replace('{{' . ($i + 1) . '}}', $val, $cuerpoReal);
+            }
+
+            $previsualizacionesReales[] = [
+                'nombre' => $e->empresa,
+                'celular' => $normalizarCelular($e->telefono ?: $e->celular),
+                'cuerpo' => $cuerpoReal,
+                'valor'  => $valorFormateado
+            ];
+        }
+
+        if (empty($previsualizacionesReales)) {
+            $paramsPrueba = [
+                'Contacto Empresa (PRUEBA)',
+                $config->nombre_cuenta ?: $nombreAliado,
+                '10',
+                $cuentasText,
+                $config->numero_telefono ?: 'no tiene configurado',
+                '$500.000'
+            ];
+            $cuerpoPrevisualizado = $plantilla->cuerpo;
+            foreach ($paramsPrueba as $i => $val) {
+                $cuerpoPrevisualizado = str_replace('{{' . ($i + 1) . '}}', $val, $cuerpoPrevisualizado);
+            }
+
+            $previsualizacionesReales[] = [
+                'nombre' => 'Empresa de Prueba',
+                'celular' => 'Prueba',
+                'cuerpo' => $cuerpoPrevisualizado,
+                'valor'  => '$500.000'
+            ];
+        }
+
+        $envioHoy = WhatsappEnvioMasivo::where('aliado_id', $aliadoId)
+            ->where('tipo_envio', 'empresa')
+            ->whereDate('created_at', today())
+            ->orderByDesc('created_at')
+            ->first();
+
+        $plantillasDisponibles = \App\Models\WhatsappPlantilla::delAliado($aliadoId)->aprobadas()->get(['id', 'nombre_display', 'nombre']);
+
+        return response()->json([
+            'ok'             => true,
+            'plantilla_id'   => $plantilla->id,
+            'nombre_display' => $plantilla->nombre_display,
+            'cuerpo'         => $previsualizacionesReales[0]['cuerpo'],
+            'footer'         => $plantilla->footer,
+            'header_tipo'    => $plantilla->header_tipo,
+            'header_imagen'  => $config->cobro_header_imagen ? asset('storage/' . $config->cobro_header_imagen) : null,
+            'botones'        => $plantilla->botones,
+            'cant_clientes'  => $totalDestinatarios,
+            'plantillas'     => $plantillasDisponibles,
+            'resumen_envios' => [
+                'solo_uno'            => $cantSoloUnContrato,
+                'varios'              => 0,
+                'sin_celular'         => $cantSinCelular,
+                'ya_enviados_hoy'     => $cantYaEnviadosHoy,
+                'envios_validos'      => $totalEnviosValidos,
+                'total_destinatarios' => $totalDestinatarios,
+            ],
+            'envio_hoy'      => $envioHoy ? [
+                'hora'    => $envioHoy->created_at->format('H:i'),
+                'enviados'=> $envioHoy->total_enviados,
+                'estado'  => $envioHoy->estado,
+            ] : null,
+            'previsualizaciones' => $previsualizacionesReales,
+        ]);
+    }
+
+    /**
+     * Envía masivamente cobros a empresas vía WhatsApp.
+     */
+    public function enviarWhatsAppEmpresas(Request $request)
+    {
+        $aliadoId = session('aliado_id_activo');
+        $config   = WhatsappConfig::paraAliado($aliadoId);
+
+        $plantillaId = $request->get('plantilla_id');
+        if ($plantillaId) {
+            $plantilla = \App\Models\WhatsappPlantilla::delAliado($aliadoId)->find($plantillaId);
+        } else {
+            $plantilla = $config->cobroPlantilla;
+        }
+
+        if (!$plantilla) {
+            return response()->json(['ok' => false, 'mensaje' => 'Plantilla no encontrada.'], 422);
+        }
+
+        if (!$config->credencialesCompletas()) {
+            return response()->json(['ok' => false, 'mensaje' => 'Las credenciales de WhatsApp del aliado están incompletas.'], 422);
+        }
+
+        $incluirValor = $request->get('incluir_valor', '1') === '1';
+
+        $dataResult = $this->obtenerEmpresasConDatosCobro($request);
+        $empresas = $dataResult['empresas'];
+
+        $empresas = $empresas->filter(fn($e) => $e->total_pend > 0)->values();
+
+        if ($empresas->isEmpty()) {
+            return response()->json(['ok' => false, 'mensaje' => 'No hay empresas pendientes de pago para enviar cobros.'], 422);
+        }
+
+        $lotesHoyIds = WhatsappEnvioMasivo::where('aliado_id', $aliadoId)
+            ->whereDate('created_at', today())
+            ->pluck('id');
+
+        $detallesHoy = WhatsappEnvioMasivoDetalle::whereIn('envio_id', $lotesHoyIds)
+            ->whereNotNull('empresa_id')
+            ->whereIn('estado', ['pendiente', 'enviado', 'entregado', 'leido'])
+            ->pluck('empresa_id')
+            ->toArray();
+
+        $empresaIdsEnviadosSet = array_flip($detallesHoy);
+
+        $normalizarCelular = function (?string $raw): string {
+            $raw = preg_replace('/\D/', '', $raw ?? '');
+            if (empty($raw)) return '';
+            if (strlen($raw) === 12) return $raw;
+            if (strlen($raw) === 10) return '57' . $raw;
+            if (str_starts_with($raw, '57') && strlen($raw) === 12) return $raw;
+            return $raw;
+        };
+
+        $envio = WhatsappEnvioMasivo::create([
+            'aliado_id'           => $aliadoId,
+            'plantilla_id'        => $plantilla->id,
+            'usuario_id'          => Auth::id(),
+            'mes'                 => $dataResult['mes'] ?? now()->month,
+            'anio'                => $dataResult['anio'] ?? now()->year,
+            'tipo_envio'          => 'empresa',
+            'total_destinatarios' => $empresas->count(),
+            'estado'              => 'pendiente',
+        ]);
+
+        $destinatariosProgramados = 0;
+        $destinatariosOmitidos = 0;
+
+        foreach ($empresas as $e) {
+            $num = $normalizarCelular($e->telefono ?: $e->celular);
+            $sinNumero = empty($num);
+            $valorCobro = $incluirValor ? (float)($e->admon_pend ?? 0) : 0.0;
+
+            if (isset($empresaIdsEnviadosSet[$e->id])) {
+                WhatsappEnvioMasivoDetalle::create([
+                    'envio_id'           => $envio->id,
+                    'empresa_id'         => $e->id,
+                    'wa_numero'          => $sinNumero ? 'sin_numero' : $num,
+                    'nombre_destinatario'=> $e->empresa,
+                    'valor_cobro'        => $valorCobro,
+                    'estado'             => 'omitido',
+                    'error'              => 'Ya enviado hoy',
+                ]);
+                $destinatariosOmitidos++;
+                continue;
+            }
+
+            WhatsappEnvioMasivoDetalle::create([
+                'envio_id'           => $envio->id,
+                'empresa_id'         => $e->id,
+                'wa_numero'          => $sinNumero ? 'sin_numero' : $num,
+                'nombre_destinatario'=> $e->empresa,
+                'valor_cobro'        => $valorCobro,
+                'estado'             => $sinNumero ? 'fallido' : 'pendiente',
+                'error'              => $sinNumero ? 'Número celular vacío o inválido' : null,
+            ]);
+
+            if (!$sinNumero) {
+                $destinatariosProgramados++;
+            }
+
+            BitacoraCobro::create([
+                'aliado_id'     => $aliadoId,
+                'contrato_id'   => 0,
+                'empresa_id'    => $e->id,
+                'usuario_id'    => Auth::id(),
+                'fecha_llamada' => now(),
+                'resultado'     => 'whatsapp',
+                'observacion'   => 'WhatsApp de cobro a empresa programado (envío masivo)',
+            ]);
+        }
+
+        if ($destinatariosProgramados === 0) {
+            $envio->update([
+                'estado'         => 'fallido',
+                'total_omitidos' => $destinatariosOmitidos,
+            ]);
+            return response()->json([
+                'ok' => false,
+                'mensaje' => 'No hay nuevas empresas pendientes de envío hoy.'
+            ], 422);
+        }
+
+        $envio->update([
+            'total_omitidos' => $destinatariosOmitidos,
+        ]);
+
+        $headerImageUrl = null;
+        if ($config->cobro_header_imagen) {
+            $headerImageUrl = url('storage/' . $config->cobro_header_imagen);
+        }
+
+        dispatch(new \App\Jobs\WhatsappEnvioMasivoJob($envio->id, [], $headerImageUrl));
+
+        return response()->json([
+            'ok'      => true,
+            'mensaje' => "Se ha programado el envío masivo a {$destinatariosProgramados} empresas en segundo plano.",
+            'lote_id' => $envio->id,
+        ]);
+    }
 }
+
 

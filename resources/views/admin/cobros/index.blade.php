@@ -1481,6 +1481,7 @@ let cantEnviosValidosMasivo = 0;
 let waTabActiva = 'preview';
 let waPreviews = [];
 let waPreviewIndexAct = 0;
+let waPlantillaIdActual = null;  // plantilla seleccionada en el modal individual
 
 async function abrirModalWhatsAppMasivo() {
     const modal   = document.getElementById('modalWaMasivo');
@@ -1495,7 +1496,10 @@ async function abrirModalWhatsAppMasivo() {
 
     try {
         const queryParams = new URLSearchParams(window.location.search);
-        const r = await fetch(`{{ route('admin.cobros.whatsapp.previsualizar') }}?${queryParams.toString()}`);
+        if (waPlantillaIdActual) queryParams.set('plantilla_id', waPlantillaIdActual);
+        const r = await fetch(`{{ route('admin.cobros.whatsapp.previsualizar') }}?${queryParams.toString()}`, {
+            headers: { 'Accept': 'application/json' }
+        });
         const data = await r.json();
 
         if (!data.ok) {
@@ -1536,6 +1540,16 @@ async function abrirModalWhatsAppMasivo() {
         cantClientesMasivo = data.cant_clientes;
         cantEnviosValidosMasivo = resumen ? resumen.envios_validos : cantClientesMasivo;
         document.getElementById('waDestinatariosCount').textContent = cantClientesMasivo;
+
+        // Poblar/actualizar el selector de plantillas
+        const selPlant = document.getElementById('waPlantillaSelectInd');
+        if (data.plantillas && selPlant) {
+            const valorActual = waPlantillaIdActual || data.plantilla_id;
+            selPlant.innerHTML = data.plantillas.map(p =>
+                `<option value="${p.id}" ${p.id == valorActual ? 'selected' : ''}>${p.nombre_display || p.nombre}</option>`
+            ).join('');
+            waPlantillaIdActual = parseInt(selPlant.value);
+        }
 
         const resCont = document.getElementById('waResumenEnvios');
         if (resumen) {
@@ -1790,7 +1804,7 @@ async function enviarMensajePruebaWa() {
         const r = await fetch(`{{ route('admin.cobros.whatsapp.prueba') }}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json' },
-            body: JSON.stringify({ celular_prueba: celular })
+            body: JSON.stringify({ celular_prueba: celular, plantilla_id: waPlantillaIdActual })
         });
         const data = await r.json();
         if (!data.ok) throw new Error(data.mensaje || 'Error al enviar');
@@ -1810,6 +1824,7 @@ async function confirmarEnvioMasivoWa() {
     btn.disabled = true; btn.textContent = 'Procesando envío...';
     try {
         const queryParams = new URLSearchParams(window.location.search);
+        if (waPlantillaIdActual) queryParams.set('plantilla_id', waPlantillaIdActual);
         const r = await fetch(`{{ route('admin.cobros.whatsapp.enviar_filtro') }}?${queryParams.toString()}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json' }
@@ -1968,6 +1983,18 @@ async function confirmarEnvioMasivoWa() {
                     <div style="display:flex;flex-direction:column;justify-content:space-between;">
                         <div>
                             <div style="font-size:.68rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.55rem;">Detalles del Envío</div>
+
+                            {{-- Selector de plantilla --}}
+                            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:.7rem .8rem;margin-bottom:.85rem;">
+                                <label style="font-size:.68rem;font-weight:700;color:#475569;display:block;margin-bottom:.3rem;">📋 Plantilla a usar</label>
+                                <select id="waPlantillaSelectInd"
+                                    onchange="waPlantillaIdActual = parseInt(this.value); abrirModalWhatsAppMasivo();"
+                                    style="width:100%;padding:.4rem .6rem;border-radius:8px;border:1px solid #cbd5e1;font-size:.8rem;background:#fff;color:#0f172a;">
+                                    <option value="">Cargando plantillas...</option>
+                                </select>
+                                <small style="color:#64748b;font-size:.68rem;margin-top:.2rem;display:block;">Cambia la plantilla para ver la previsualización actualizada.</small>
+                            </div>
+
                             <div style="background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;padding:.8rem;border-radius:10px;margin-bottom:1rem;">
                                 <div style="font-size:1.1rem;font-weight:800;border-bottom:1px solid rgba(22,101,52,.12);padding-bottom:.4rem;margin-bottom:.4rem;">
                                     <span id="waDestinatariosCount">0</span> contratos pendientes

@@ -48,6 +48,9 @@ class MoraClienteService
      */
     public static function festivosColombia(int $anio): array
     {
+        if (isset(self::$cacheFestivos[$anio])) {
+            return self::$cacheFestivos[$anio];
+        }
         // 1. Festivos fijos (no se trasladan)
         $fijos = [
             "{$anio}-01-01", // Año Nuevo
@@ -108,7 +111,8 @@ class MoraClienteService
         $fechas[] = $sagradoCorazon->format('Y-m-d');
 
         sort($fechas);
-        return array_values(array_unique($fechas));
+        self::$cacheFestivos[$anio] = array_values(array_unique($fechas));
+        return self::$cacheFestivos[$anio];
     }
 
     /**
@@ -117,6 +121,11 @@ class MoraClienteService
      */
     public static function getNthDiaHabil(int $anio, int $mes, int $n): ?Carbon
     {
+        $cacheKey = "{$anio}-{$mes}-{$n}";
+        if (array_key_exists($cacheKey, self::$cacheDiaHabil)) {
+            return self::$cacheDiaHabil[$cacheKey];
+        }
+
         $festivos = array_flip(self::festivosColombia($anio));
         $fecha    = Carbon::create($anio, $mes, 1);
         $cont     = 0;
@@ -128,16 +137,20 @@ class MoraClienteService
             if ($dow !== Carbon::SUNDAY && $dow !== Carbon::SATURDAY && !isset($festivos[$key])) {
                 $cont++;
                 if ($cont === $n) {
-                    return $fecha->copy();
+                    self::$cacheDiaHabil[$cacheKey] = $fecha->copy();
+                    return self::$cacheDiaHabil[$cacheKey];
                 }
             }
             $fecha->addDay();
         }
 
+        self::$cacheDiaHabil[$cacheKey] = null;
         return null; // mes muy corto o n demasiado grande
     }
 
     private static array $cacheConfigAliado = [];
+    private static array $cacheFestivos      = [];
+    private static array $cacheDiaHabil      = [];
 
     /**
      * Obtiene y cachea la configuración del aliado (sin plan específico) en memoria.

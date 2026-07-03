@@ -248,6 +248,8 @@ Route::middleware('auth')->group(function () {
             Route::get('/{contratoId}/llamadas',     [$cb, 'historialLlamadas'])      ->name('llamadas');
             // Empresas
             Route::get('/empresas',                  [$cb, 'empresas'])               ->name('empresas');
+            Route::get('/empresas/whatsapp/previsualizar', [$cb, 'previsualizarWhatsAppEmpresas'])->name('empresas.whatsapp.previsualizar');
+            Route::post('/empresas/whatsapp/enviar',        [$cb, 'enviarWhatsAppEmpresas'])->name('empresas.whatsapp.enviar');
             Route::post('/empresa/{id}/llamada',     [$cb, 'registrarLlamadaEmpresa'])->name('empresa.llamada.store');
             Route::get('/empresa/{id}/llamadas',     [$cb, 'historialEmpresa'])       ->name('empresa.llamadas');
             Route::patch('/empresa/{id}/encargado',  [$cb, 'asignarEncargado'])       ->name('empresa.encargado');

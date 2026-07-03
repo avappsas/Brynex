@@ -165,7 +165,44 @@ class WhatsappEnvioMasivoJob implements ShouldQueue
             return array_values($parametrosGlobales);
         }
 
-        // Determinar el contrato primario para datos del cliente
+        // Determinar si es un envío a empresa o si hay un contrato primario
+        if ($detalle->empresa_id) {
+            $empresa = \App\Models\Empresa::find($detalle->empresa_id);
+            if ($empresa) {
+                $nombreContacto = $empresa->contacto ?: $detalle->nombre_destinatario;
+                $nombreAliado  = $empresa->aliado?->nombre ?? 'BryNex';
+                $plazoDias     = '10';
+
+                // Obtener cuentas para cobro
+                $cuentasCobro = \App\Models\BancoCuenta::paraCobro($empresa->aliado_id ?: ($detalle->envio?->aliado_id ?: session('aliado_id_activo')));
+                $cuentasText = $cuentasCobro->map(function($bc) {
+                    $tipoPart = $bc->tipo_cuenta ? " {$bc->tipo_cuenta}" : "";
+                    $llavePart = $bc->llave ? " o llave {$bc->llave}" : "";
+                    return "{$bc->banco}{$tipoPart} {$bc->numero_cuenta} {$bc->nombre}{$llavePart}";
+                })->join("  •  ");
+
+                if (!empty($cuentasText)) {
+                    $cuentasText = "•  " . $cuentasText;
+                } else {
+                    $cuentasText = 'no tiene configurada';
+                }
+
+                // Celular de soporte
+                $configAliado   = \App\Models\WhatsappConfig::where('aliado_id', $empresa->aliado_id ?: ($detalle->envio?->aliado_id ?: session('aliado_id_activo')))->first();
+                $celularSoporte = $configAliado?->numero_telefono ?: 'no tiene configurado';
+
+                $valorCobro = $detalle->valor_cobro !== null ? (float) $detalle->valor_cobro : 0.0;
+                $valorFormateado = '$' . number_format($valorCobro, 0, ',', '.');
+
+                $cantVars = $plantilla->cantidadVariables();
+                if ($cantVars <= 5) {
+                    return [$nombreContacto, $nombreAliado, $plazoDias, $cuentasText, $celularSoporte];
+                } else {
+                    return [$nombreContacto, $nombreAliado, $plazoDias, $cuentasText, $celularSoporte, $valorFormateado];
+                }
+            }
+        }
+
         $contratoIdPrimario = $detalle->contratoIdPrimario();
 
         if ($contratoIdPrimario) {
