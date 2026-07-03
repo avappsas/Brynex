@@ -774,6 +774,9 @@
                     <a href="{{ route('admin.bitacora.index') }}" class="panel-item {{ request()->routeIs('admin.bitacora*') ? 'activo' : '' }}">
                         <div class="pi">👁️</div> Auditoría
                     </a>
+                    <a href="{{ route('brynex.backups') }}" class="panel-item {{ request()->routeIs('brynex.backups*') ? 'activo' : '' }}">
+                        <div class="pi">💾</div> Copias de Seguridad
+                    </a>
                 </div>
             </div>
             @endif

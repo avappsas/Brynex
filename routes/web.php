@@ -340,6 +340,13 @@ Route::middleware('auth')->group(function () {
         Route::get('/accesos',  [$bx, 'accesos'])       ->name('accesos');
         Route::post('/accesos', [$bx, 'toggleAcceso'])  ->name('accesos.toggle');
 
+        // Copias de Seguridad (Backups)
+        $bbc = \App\Http\Controllers\BrynexBackupController::class;
+        Route::get('/backups',           [$bbc, 'backups'])        ->name('backups');
+        Route::get('/backups/descargar', [$bbc, 'descargarBackup'])->name('backups.descargar');
+        Route::post('/backups/crear',    [$bbc, 'crearBackupManual'])->name('backups.crear');
+
+
         // ── Módulo Consumo & Cobros ───────────────────────────────────────────
         $cx = \App\Http\Controllers\BrynexConsumoController::class;
         Route::get('consumo',                                    [$cx, 'index'])             ->name('consumo.index');
