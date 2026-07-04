@@ -24,7 +24,7 @@ return new class extends Migration
             $table->timestamps();
 
             // Claves foráneas internas
-            $table->foreign('categoria_id')->references('id')->on('finanzas_categorias_gasto')->onDelete('restrict');
+            $table->foreign('categoria_id')->references('id')->on('finanzas_categorias_gasto')->noActionOnDelete();
 
             // Índices para búsquedas eficientes
             $table->index(['user_id', 'fecha'], 'ix_gasto_user_fecha');
