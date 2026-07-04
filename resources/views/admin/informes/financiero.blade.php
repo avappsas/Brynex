@@ -1518,6 +1518,14 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
                 </div>
             </div>
             <div style="margin-bottom:.8rem;">
+                <label style="font-size:.75rem;font-weight:600;color:#374151;display:block;margin-bottom:.3rem;">Banco / Cuenta</label>
+                <select id="editConsigBanco" style="width:100%;padding:.5rem .7rem;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;">
+                    @foreach($bancos as $b)
+                        <option value="{{ $b->id }}">{{ $b->nombre }} ({{ $b->banco }})</option>
+                    @endforeach
+                </select>
+            </div>
+            <div style="margin-bottom:.8rem;">
                 <label style="font-size:.75rem;font-weight:600;color:#374151;display:block;margin-bottom:.3rem;">Referencia</label>
                 <input type="text" id="editConsigRef" maxlength="100" placeholder="Numero de referencia..." style="width:100%;padding:.5rem .7rem;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;">
             </div>
@@ -1527,30 +1535,53 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
             </div>
             <div style="margin-bottom:.9rem;">
                 <div style="font-size:.75rem;font-weight:600;color:#374151;margin-bottom:.4rem;">Imagen de soporte</div>
-                <div id="editConsigDropZone"
-                     onclick="document.getElementById('editConsigImagen').click()"
-                     style="border:2px dashed #7c3aed;border-radius:10px;padding:.8rem;text-align:center;cursor:pointer;background:#faf5ff;transition:background .15s;position:relative;">
-                    <span id="editConsigDropLabel" style="font-size:.75rem;color:#6d28d9;font-weight:600;">
-                        📎 Clic, arrastra o pega (Ctrl+V) el comprobante
-                    </span>
-                    <input type="file" id="editConsigImagen" accept="image/*,.pdf" style="display:none;"
-                           onchange="editConsigOnFile(this.files[0])">
-                </div>
-                <div id="editConsigPreview" style="display:none;margin-top:.5rem;position:relative;">
-                    <img id="editConsigImgEl" src="" alt="preview"
-                         style="max-width:100%;max-height:130px;border-radius:8px;border:1px solid #e2e8f0;object-fit:contain;display:block;">
-                    <div id="editConsigPdfEl" style="display:none;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:.5rem;font-size:.75rem;color:#374151;font-weight:600;">
-                        📄 <span id="editConsigPdfName"></span>
+                
+                {{-- Contenedor cuando ya existe soporte --}}
+                <div id="editConsigHasSoporte" style="display:none;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:.65rem .85rem;align-items:center;justify-content:space-between;margin-bottom:.5rem;">
+                    <div style="display:flex;align-items:center;gap:.5rem;">
+                        <span style="font-size:1.1rem;">📄</span>
+                        <div>
+                            <div style="font-size:.78rem;font-weight:700;color:#334155;">Soporte cargado</div>
+                            <div style="font-size:.65rem;color:#64748b;">La consignación ya tiene un comprobante adjunto.</div>
+                        </div>
                     </div>
-                    <button type="button" onclick="editConsigClearFile()"
-                            style="position:absolute;top:4px;right:4px;background:#dc2626;color:#fff;border:none;border-radius:50%;width:20px;height:20px;cursor:pointer;font-size:.7rem;font-weight:800;">×</button>
+                    <div style="display:flex;gap:.4rem;">
+                        <a id="editConsigVerSoporteBtn" href="#" target="_blank" style="display:inline-flex;align-items:center;background:#7c3aed;color:#fff;border-radius:8px;padding:.35rem .75rem;font-size:.72rem;font-weight:700;text-decoration:none;">
+                            👁️ Ver soporte
+                        </a>
+                        <button type="button" onclick="mostrarCambiarSoporte()" style="background:#475569;color:#fff;border:none;border-radius:8px;padding:.35rem .75rem;font-size:.72rem;font-weight:700;cursor:pointer;">
+                            🔄 Cambiar soporte
+                        </button>
+                    </div>
                 </div>
-                <div style="display:flex;align-items:center;justify-content:space-between;margin-top:.45rem;">
-                    <span id="editConsigImgStatus" style="font-size:.72rem;color:#94a3b8;"></span>
-                    <button onclick="subirImgConsig()" id="btnSubirImg"
-                            style="background:#7c3aed;color:#fff;border:none;border-radius:8px;padding:.38rem .9rem;font-size:.78rem;font-weight:700;cursor:pointer;">
-                        ↑ Subir imagen
-                    </button>
+
+                {{-- Contenedor para subir nuevo soporte --}}
+                <div id="editConsigUploadContainer">
+                    <div id="editConsigDropZone"
+                         onclick="document.getElementById('editConsigImagen').click()"
+                         style="border:2px dashed #7c3aed;border-radius:10px;padding:.8rem;text-align:center;cursor:pointer;background:#faf5ff;transition:background .15s;position:relative;">
+                        <span id="editConsigDropLabel" style="font-size:.75rem;color:#6d28d9;font-weight:600;">
+                            📎 Clic, arrastra o pega (Ctrl+V) el comprobante
+                        </span>
+                        <input type="file" id="editConsigImagen" accept="image/*,.pdf" style="display:none;"
+                               onchange="editConsigOnFile(this.files[0])">
+                    </div>
+                    <div id="editConsigPreview" style="display:none;margin-top:.5rem;position:relative;">
+                        <img id="editConsigImgEl" src="" alt="preview"
+                             style="max-width:100%;max-height:130px;border-radius:8px;border:1px solid #e2e8f0;object-fit:contain;display:block;">
+                        <div id="editConsigPdfEl" style="display:none;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:.5rem;font-size:.75rem;color:#374151;font-weight:600;">
+                            📄 <span id="editConsigPdfName"></span>
+                        </div>
+                        <button type="button" onclick="editConsigClearFile()"
+                                style="position:absolute;top:4px;right:4px;background:#dc2626;color:#fff;border:none;border-radius:50%;width:20px;height:20px;cursor:pointer;font-size:.7rem;font-weight:800;">×</button>
+                    </div>
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:.45rem;">
+                        <span id="editConsigImgStatus" style="font-size:.72rem;color:#94a3b8;"></span>
+                        <button onclick="subirImgConsig()" id="btnSubirImg"
+                                style="background:#7c3aed;color:#fff;border:none;border-radius:8px;padding:.38rem .9rem;font-size:.78rem;font-weight:700;cursor:pointer;">
+                            ↑ Subir imagen
+                        </button>
+                    </div>
                 </div>
             </div>
             <div id="editConsigError" style="display:none;background:#fef2f2;border:1px solid #fca5a5;color:#dc2626;border-radius:8px;padding:.5rem .8rem;font-size:.78rem;margin-bottom:.8rem;"></div>
@@ -1838,7 +1869,7 @@ function verMovimientosBanco(bancoId, label) {
                     const tipoLbl = (e.tipo&&e.tipo!=='cliente')?'<span style="font-size:.6rem;color:#94a3b8;display:block;">'+e.tipo+'</span>':'';
                     let sopBtn = '<span style="color:#cbd5e1;font-size:.72rem;">Sin foto</span>';
                     if (e.imagen_path) {
-                        const url = e.imagen_path.startsWith('http')?e.imagen_path:'/storage/'+e.imagen_path;
+                        const url = (e.imagen_path.startsWith('http') || e.imagen_path.startsWith('/storage')) ? e.imagen_path : '/storage/'+e.imagen_path;
                         sopBtn = '<a href="'+url+'" target="_blank" style="display:inline-flex;align-items:center;background:#7c3aed;color:#fff;border-radius:7px;padding:.2rem .45rem;font-size:.68rem;font-weight:700;text-decoration:none;white-space:nowrap;">📷 Ver</a>';
                     }
                     html += '<div style="display:grid;grid-template-columns:115px 1fr 85px 105px 75px 68px 36px;gap:.3rem;padding:.42rem .75rem;background:'+bg+';border-bottom:1px solid #f0fdf4;align-items:center;font-size:.77rem;">'
@@ -1935,11 +1966,23 @@ function abrirEditarConsig(id) {
     document.getElementById('editConsigFecha').value = (e.fecha||'').substring(0,10);
     const vRaw = parseInt(e.valor)||0;
     document.getElementById('editConsigValor').value = vRaw > 0 ? '$ '+vRaw.toLocaleString('es-CO') : '';
+    document.getElementById('editConsigBanco').value = e.banco_cuenta_id || '';
     document.getElementById('editConsigRef').value   = e.referencia||'';
     document.getElementById('editConsigObs').value   = e.observacion||'';
     document.getElementById('editConsigError').style.display = 'none';
     editConsigClearFile();
     document.getElementById('editConsigSub').textContent = 'Consignacion #'+id;
+
+    // Controlar visibilidad del soporte existente
+    if (e.imagen_path) {
+        document.getElementById('editConsigHasSoporte').style.display = 'flex';
+        document.getElementById('editConsigUploadContainer').style.display = 'none';
+        const url = (e.imagen_path.startsWith('http') || e.imagen_path.startsWith('/storage')) ? e.imagen_path : '/storage/' + e.imagen_path;
+        document.getElementById('editConsigVerSoporteBtn').href = url;
+    } else {
+        document.getElementById('editConsigHasSoporte').style.display = 'none';
+        document.getElementById('editConsigUploadContainer').style.display = 'block';
+    }
 
     // Drag & drop en drop zone
     const dz = document.getElementById('editConsigDropZone');
@@ -1962,10 +2005,15 @@ function cerrarEditarConsig() {
     if (_editConsigPasteHandler) { document.removeEventListener('paste', _editConsigPasteHandler); _editConsigPasteHandler = null; }
     editConsigClearFile();
 }
+function mostrarCambiarSoporte() {
+    document.getElementById('editConsigHasSoporte').style.display = 'none';
+    document.getElementById('editConsigUploadContainer').style.display = 'block';
+}
 function guardarConsig() {
     const id=document.getElementById('editConsigId').value;
     const fecha=document.getElementById('editConsigFecha').value;
     const valor=document.getElementById('editConsigValor').value;
+    const bancoCuentaId=document.getElementById('editConsigBanco').value;
     const ref=document.getElementById('editConsigRef').value;
     const obs=document.getElementById('editConsigObs').value;
     const err=document.getElementById('editConsigError');
@@ -1976,10 +2024,20 @@ function guardarConsig() {
     fetch('{{ route("admin.informes.financiero.consignacion.editar","_X_") }}'.replace('_X_',id),{
         method:'PATCH',
         headers:{'Content-Type':'application/json','X-CSRF-TOKEN':document.querySelector('meta[name="csrf-token"]')?.content||'','Accept':'application/json'},
-        body:JSON.stringify({fecha,valor:valorNum,referencia:ref,observacion:obs})
+        body:JSON.stringify({banco_cuenta_id:bancoCuentaId,fecha,valor:valorNum,referencia:ref,observacion:obs})
     }).then(r=>r.json()).then(d=>{
         btn.disabled=false;btn.textContent='Guardar';
-        if(d.ok){cerrarEditarConsig();if(_bancoActualId)verMovimientosBanco(_bancoActualId,_bancoActualLabel);}
+        if(d.ok){
+            const oldBancoId = _consigMap[id]?.banco_cuenta_id;
+            const newBancoId = d.consig.banco_cuenta_id;
+            cerrarEditarConsig();
+            if (oldBancoId && oldBancoId != newBancoId) {
+                // Si cambió de banco, recargamos para actualizar balances
+                window.location.reload();
+            } else {
+                if(_bancoActualId)verMovimientosBanco(_bancoActualId,_bancoActualLabel);
+            }
+        }
         else{err.textContent=d.mensaje||'Error.';err.style.display='block';}
     }).catch(()=>{btn.disabled=false;btn.textContent='Guardar';err.textContent='Error de conexion.';err.style.display='block';});
 }
@@ -1992,7 +2050,22 @@ function subirImgConsig() {
     stat.textContent='Subiendo...';btn.disabled=true;
     const fd=new FormData();fd.append('imagen',file);fd.append('_token',document.querySelector('meta[name="csrf-token"]')?.content||'');
     fetch('{{ route("admin.informes.financiero.consignacion.imagen","_X_") }}'.replace('_X_',id),{method:'POST',body:fd,headers:{'Accept':'application/json'}})
-    .then(r=>r.json()).then(d=>{btn.disabled=false;if(d.ok){stat.textContent='OK';stat.style.color='#16a34a';document.getElementById('editConsigImagen').value='';}else{stat.textContent='Error: '+(d.message||'');stat.style.color='#dc2626';}})
+    .then(r=>r.json()).then(d=>{
+        btn.disabled=false;
+        if(d.ok){
+            stat.textContent='OK';stat.style.color='#16a34a';
+            document.getElementById('editConsigImagen').value='';
+            if(_consigMap[id]) {
+                _consigMap[id].imagen_path = d.url;
+            }
+            // Mostrar de nuevo el soporte cargado
+            document.getElementById('editConsigHasSoporte').style.display = 'flex';
+            document.getElementById('editConsigUploadContainer').style.display = 'none';
+            document.getElementById('editConsigVerSoporteBtn').href = d.url;
+        }else{
+            stat.textContent='Error: '+(d.message||'');stat.style.color='#dc2626';
+        }
+    })
     .catch(()=>{btn.disabled=false;stat.textContent='Error.';stat.style.color='#dc2626';});
 }
 document.getElementById('modalEditarConsig').addEventListener('click',function(ev){if(ev.target===this)cerrarEditarConsig();});

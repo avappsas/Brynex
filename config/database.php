@@ -111,6 +111,21 @@ return [
 
         ],
 
+        // Módulo de Finanzas (Base de datos propia separada)
+        'finanzas' => [
+            'driver'                   => 'sqlsrv',
+            'host'                     => env('FINANZAS_DB_HOST', env('DB_HOST', '207.244.249.160')),
+            'port'                     => env('FINANZAS_DB_PORT', env('DB_PORT', '1433')),
+            'database'                 => env('FINANZAS_DB_DATABASE', 'BryNex_Finanzas'),
+            'username'                 => env('FINANZAS_DB_USERNAME', env('DB_USERNAME')),
+            'password'                 => env('FINANZAS_DB_PASSWORD', env('DB_PASSWORD')),
+            'charset'                  => 'utf8',
+            'prefix'                   => '',
+            'prefix_indexes'           => true,
+            'encrypt'                  => env('FINANZAS_DB_ENCRYPT', 'no'),
+            'trust_server_certificate' => 'true',
+        ],
+
     ],
 
     /*

@@ -1298,6 +1298,13 @@ class InformeController extends Controller
             ->firstOrFail();
 
         $validated = $request->validate([
+            'banco_cuenta_id' => [
+                'required',
+                'integer',
+                \Illuminate\Validation\Rule::exists('banco_cuentas', 'id')->where(function ($query) use ($aid) {
+                    $query->where('aliado_id', $aid);
+                }),
+            ],
             'fecha'       => 'required|date',
             'valor'       => 'required|numeric|min:1',
             'referencia'  => 'nullable|string|max:100',
@@ -1306,24 +1313,27 @@ class InformeController extends Controller
 
         // Capturar valores anteriores para la bitácora
         $antes = [
-            'fecha'       => $consig->fecha,
-            'valor'       => $consig->valor,
-            'referencia'  => $consig->referencia,
-            'observacion' => $consig->observacion,
+            'banco_cuenta_id' => $consig->banco_cuenta_id,
+            'fecha'           => $consig->fecha,
+            'valor'           => $consig->valor,
+            'referencia'      => $consig->referencia,
+            'observacion'     => $consig->observacion,
         ];
 
         $consig->update([
-            'fecha'       => $validated['fecha'],
-            'valor'       => (int)$validated['valor'],
-            'referencia'  => $validated['referencia'] ?? null,
-            'observacion' => $validated['observacion'] ?? null,
+            'banco_cuenta_id' => $validated['banco_cuenta_id'],
+            'fecha'           => $validated['fecha'],
+            'valor'           => (int)$validated['valor'],
+            'referencia'      => $validated['referencia'] ?? null,
+            'observacion'     => $validated['observacion'] ?? null,
         ]);
 
         $despues = [
-            'fecha'       => $validated['fecha'],
-            'valor'       => (int)$validated['valor'],
-            'referencia'  => $validated['referencia'] ?? null,
-            'observacion' => $validated['observacion'] ?? null,
+            'banco_cuenta_id' => $validated['banco_cuenta_id'],
+            'fecha'           => $validated['fecha'],
+            'valor'           => (int)$validated['valor'],
+            'referencia'      => $validated['referencia'] ?? null,
+            'observacion'     => $validated['observacion'] ?? null,
         ];
 
         \App\Models\Bitacora::registrar(
@@ -1339,11 +1349,12 @@ class InformeController extends Controller
             'ok'      => true,
             'mensaje' => 'Consignación actualizada correctamente.',
             'consig'  => [
-                'id'          => $consig->id,
-                'fecha'       => $consig->fresh()->fecha,
-                'valor'       => $consig->fresh()->valor,
-                'referencia'  => $consig->fresh()->referencia,
-                'observacion' => $consig->fresh()->observacion,
+                'id'              => $consig->id,
+                'banco_cuenta_id' => $consig->fresh()->banco_cuenta_id,
+                'fecha'           => $consig->fresh()->fecha,
+                'valor'           => $consig->fresh()->valor,
+                'referencia'      => $consig->fresh()->referencia,
+                'observacion'     => $consig->fresh()->observacion,
             ],
         ]);
     }
@@ -1467,6 +1478,8 @@ class InformeController extends Controller
             ->whereYear('cs.fecha', $anio)
             ->selectRaw("
                 cs.id,
+                cs.banco_cuenta_id,
+                cs.observacion,
                 CONVERT(VARCHAR(10), cs.fecha, 120) AS fecha,
                 cs.created_at,
                 cs.valor,
