@@ -54,4 +54,11 @@ return [
         'webhook_verify_token' => env('WHATSAPP_WEBHOOK_VERIFY_TOKEN', 'brynex_wh_secret_2026'),
     ],
 
+    'suaporte' => [
+        'base_url' => env('SUAPORTE_API_URL', 'https://www.suaporte.com.co/api'),
+        'auth_url' => env('SUAPORTE_AUTH_URL', 'https://www.suaporte.com.co/auth'),
+        'usuario' => env('SUAPORTE_USUARIO'),
+        'clave_secreta' => env('SUAPORTE_CLAVE_SECRETA'),
+    ],
+
 ];

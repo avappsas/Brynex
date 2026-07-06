@@ -168,6 +168,13 @@ Route::middleware('auth')->group(function () {
         Route::post('configuracion/eps/{eps}/formulario',      [$ef, 'guardar'])  ->name('configuracion.eps.formulario.guardar');
         Route::post('configuracion/eps/{eps}/formulario/pdf',  [$ef, 'subirPdf']) ->name('configuracion.eps.formulario.pdf');
 
+        // Planillas de Pago SS — mapeo visual de coordenadas
+        $opf = \App\Http\Controllers\Admin\OperadorPlanillaFormularioController::class;
+        Route::get ('configuracion/operadores/{operador}/formulario',     [$opf, 'editor'])  ->name('configuracion.operadores.formulario');
+        Route::get ('configuracion/operadores/{operador}/formulario/pdf', [$opf, 'verPdf'])  ->name('configuracion.operadores.formulario.vpdf');
+        Route::post('configuracion/operadores/{operador}/formulario',     [$opf, 'guardar']) ->name('configuracion.operadores.formulario.guardar');
+        Route::post('configuracion/operadores/{operador}/formulario/pdf', [$opf, 'subirPdf'])->name('configuracion.operadores.formulario.pdf');
+
         // API utilitaria: ciudades por departamento (para selects dinámicos)
         Route::get('api/departamentos/{id}/ciudades', function ($id) {
             return \App\Models\Ciudad::where('departamento_id', $id)
@@ -226,6 +233,7 @@ Route::middleware('auth')->group(function () {
             Route::get('/descargar-asopagos',   [$pp, 'descargarAsopagos'])->name('descargar_asopagos');
             Route::get('/descargar-miplanilla',       [$pp, 'descargarMiPlanilla'])    ->name('descargar_miplanilla');
             Route::get('/descargar-aportes-en-linea', [$pp, 'descargarAportesEnLinea'])->name('descargar_aportes_en_linea');
+            Route::get('/certificado-pdf',      [$pp, 'descargarCertificadoPdf'])->name('certificado_pdf');
             Route::patch('/n-plano',            [$pp, 'actualizarNPlano']) ->name('n_plano.update');
             Route::patch('/{id}/mover',         [$pp, 'moverPlano'])       ->name('mover');
             Route::post('/confirmar-pago',      [$pp, 'confirmarPago'])    ->name('confirmar_pago');

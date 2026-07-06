@@ -907,4 +907,39 @@ class PlanoPagoController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * Genera y descarga el Reporte Individual de Aportes en PDF con formato Suaporte
+     * buscando por cédula (no_identifi) y número de planilla.
+     */
+    public function descargarCertificadoPdf(Request $request)
+    {
+        $aliadoId = session('aliado_id_activo');
+        $cedula = $request->input('cedula');
+        $numeroPlanilla = $request->input('numero_planilla');
+
+        if (!$cedula || !$numeroPlanilla) {
+            abort(400, 'Debe suministrar la cédula y el número de planilla.');
+        }
+
+        // Buscar el cotizante y sus aportes en la tabla de planos
+        $plano = \App\Models\Plano::with('razonSocial')
+            ->where('aliado_id', $aliadoId)
+            ->where('no_identifi', $cedula)
+            ->where('numero_planilla', $numeroPlanilla)
+            ->whereNull('deleted_at')
+            ->first();
+
+        if (!$plano) {
+            abort(404, 'No se encontró ningún registro de planilla de pago con esos datos.');
+        }
+
+        // Generar el PDF de planilla rellenando la plantilla correspondiente al operador configurado de forma dinámica
+        $pdfContent = (new \App\Services\PlanillaFormularioService())->generar($plano);
+
+        return response($pdfContent)
+            ->header('Content-Type', 'application/pdf')
+            ->header('Content-Disposition', "attachment; filename=\"IndividualesCertificado_{$cedula}_{$numeroPlanilla}.pdf\"");
+    }
 }
+

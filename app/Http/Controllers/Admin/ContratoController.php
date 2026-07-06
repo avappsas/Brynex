@@ -701,9 +701,19 @@ class ContratoController extends Controller
                 'observacion' => $validated['observacion'] ?? null,
             ]);
 
-            // 3) Mes/año del plano: viene del select del modal (controlado por el usuario)
-            $mesPlan  = (int) $validated['mes_plano'];
-            $anioPlan = (int) $validated['anio_plano'];
+            // 3) Mes/año del plano:
+            //    - Dependientes (tipo_modalidad_id ≠ 11): mes vencido = mes_formulario - 1
+            //    - Independientes mes actual (tipo 11) o retiro informativo: mes = mes_formulario
+            $esIndepMesActualRet = (int)$contrato->tipo_modalidad_id === 11;
+            if ($tipoRetiro === 'real' && !$esIndepMesActualRet) {
+                $mesPlan  = (int)$validated['mes_plano'] > 1 ? (int)$validated['mes_plano'] - 1 : 12;
+                $anioPlan = (int)$validated['mes_plano'] > 1
+                    ? (int)$validated['anio_plano']
+                    : (int)$validated['anio_plano'] - 1;
+            } else {
+                $mesPlan  = (int)$validated['mes_plano'];
+                $anioPlan = (int)$validated['anio_plano'];
+            }
 
             // n_plano del plano de retiro = plano actual de la RS.
             // NOTA: El plano 100 es exclusivo del flujo "Duplicar Contrato" (IR rotation).

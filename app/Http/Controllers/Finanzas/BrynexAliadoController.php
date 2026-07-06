@@ -25,9 +25,8 @@ class BrynexAliadoController extends Controller
         $user = Auth::user();
         $anio = $request->input('anio', now()->year);
 
-        // Obtener IDs de aliados con pagos registrados en este año
-        $aliadoIdsConPagos = BrynexPago::where('user_id', $user->id)
-            ->where('anio', $anio)
+        // Obtener IDs de aliados con pagos registrados en este año (sin filtrar por user_id para visibilidad global)
+        $aliadoIdsConPagos = BrynexPago::where('anio', $anio)
             ->pluck('aliado_id')
             ->toArray();
 
@@ -50,9 +49,8 @@ class BrynexAliadoController extends Controller
             ->orderBy('nombre')
             ->get();
 
-        // Obtener pagos registrados de este año con sus recibos y soportes
+        // Obtener pagos registrados de este año con sus recibos y soportes (sin filtrar por user_id para visibilidad global)
         $pagos = BrynexPago::with('recibo')
-            ->where('user_id', $user->id)
             ->where('anio', $anio)
             ->get()
             ->groupBy(['aliado_id', 'mes']);

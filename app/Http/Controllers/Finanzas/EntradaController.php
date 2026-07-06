@@ -79,10 +79,9 @@ class EntradaController extends Controller
             ->pluck('total', 'mes')
             ->toArray();
 
-        // 5. Obtener cobros a aliados de Brynex (tabla finanzas_brynex_pagos)
+        // 5. Obtener cobros a aliados de Brynex (tabla finanzas_brynex_pagos) (sin filtrar por user_id para consolidación global)
         $brynexPagosValores = \Illuminate\Support\Facades\DB::connection('finanzas')
             ->table('finanzas_brynex_pagos')
-            ->where('user_id', $user->id)
             ->where('anio', $anio)
             ->selectRaw("mes, SUM(monto) as total")
             ->groupBy("mes")

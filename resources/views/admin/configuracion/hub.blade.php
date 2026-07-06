@@ -133,6 +133,16 @@
         </a>
         @endif
 
+        @if(Auth::user()->hasAnyRole(['superadmin', 'admin']) && Auth::user()->es_brynex && ($primerOperador ?? null))
+        <a class="cfg-card" href="{{ route('admin.configuracion.operadores.formulario', $primerOperador) }}"
+           style="--c:#0f172a;--bc:#94a3b8">
+            <span class="c-badge" style="background:#f1f5f9;color:#475569">Solo BryNex</span>
+            <div class="c-icon">📑</div>
+            <div class="c-title">Editor de Planillas de Pago</div>
+            <div class="c-desc">Sube el PDF de planilla en blanco y arrastra los campos para rellenar los datos y aportes del plano de forma configurable.</div>
+        </a>
+        @endif
+
         {{-- ── CONTRATOS ────────────────────────────────────── --}}
         <hr class="cfg-sep">
         <div class="cfg-sep-label">📑 Contratos y Afiliaciones</div>

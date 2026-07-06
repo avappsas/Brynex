@@ -16,7 +16,6 @@ class ConfiguracionAliadoController extends Controller
     {
         $this->middleware(['auth', 'role:superadmin|admin']);
     }
-
     /** Hub central de configuración */
     public function hub()
     {
@@ -26,7 +25,10 @@ class ConfiguracionAliadoController extends Controller
             ?? \App\Models\Eps::select('id','nombre','formulario_pdf')
                ->orderBy('nombre')->first();
 
-        return view('admin.configuracion.hub', compact('primeraEps'));
+        // Obtener el primer operador de planilla disponible para el editor de planillas
+        $primerOperador = \App\Models\OperadorPlanilla::orderBy('nombre')->first();
+
+        return view('admin.configuracion.hub', compact('primeraEps', 'primerOperador'));
     }
 
     /**
