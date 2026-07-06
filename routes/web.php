@@ -182,6 +182,7 @@ Route::middleware('auth')->group(function () {
             Route::get('empresa/crear',                 [$fc, 'createEmpresa'])     ->name('empresa.create');
             Route::post('empresa',                      [$fc, 'storeEmpresa'])      ->name('empresa.store');
             Route::get('empresa/{id}',                  [$fc, 'empresa'])           ->name('empresa');
+            Route::get('empresa/{id}/exportar',         [$fc, 'exportarEmpresaExcel'])->name('empresa.exportar');
             Route::get('empresa/{id}/historial',        [$fc, 'historialEmpresa'])  ->name('empresa.historial');
             Route::get('empresa/{id}/editar',           [$fc, 'editEmpresa'])       ->name('empresa.edit');
             Route::put('empresa/{id}/editar',           [$fc, 'updateEmpresa'])     ->name('empresa.update');
@@ -546,6 +547,96 @@ Route::middleware('auth')->group(function () {
         Route::post('configuracion/{id}/copiar-plantilla', [$config, 'copiarPlantillaGlobal'])->name('config.copiar_plantilla');
         Route::post('configuracion/{id}/sincronizar-meta', [$config, 'sincronizarPlantillasMeta'])->name('config.sincronizar_meta');
         Route::post('configuracion/verificar',   [$config, 'verificarWebhook'])  ->name('config.verificar');
+    });
+
+    // ============================================
+    // MÓDULO FINANZAS PERSONALES (BD separada)
+    // ============================================
+    Route::prefix('finanzas')->name('finanzas.')->middleware(['finanzas.access'])->group(function () {
+        $ns = \App\Http\Controllers\Finanzas\FinanzasDashboardController::class;
+        $ent = \App\Http\Controllers\Finanzas\EntradaController::class;
+        $gas = \App\Http\Controllers\Finanzas\GastoController::class;
+        $pre = \App\Http\Controllers\Finanzas\PrestamoController::class;
+        $inv = \App\Http\Controllers\Finanzas\InversionController::class;
+        $pat = \App\Http\Controllers\Finanzas\PatrimonioController::class;
+        $pro = \App\Http\Controllers\Finanzas\ProyectoController::class;
+
+        // Dashboard
+        Route::get('/', [$ns, 'index'])->name('dashboard');
+
+        // Entradas / Fuentes
+        Route::get('/entradas',                  [$ent, 'index'])->name('entradas.index');
+        Route::post('/entradas',                 [$ent, 'store'])->name('entradas.store');
+        Route::get('/entradas/detalle-esporadico', [$ent, 'getDetalleEsporadico'])->name('entradas.detalle-esporadico');
+        Route::put('/entradas/esporadico/{id}',   [$ent, 'updateEsporadico'])->name('entradas.update-esporadico');
+        Route::delete('/entradas/esporadico/{id}', [$ent, 'destroyEsporadico'])->name('entradas.destroy-esporadico');
+        Route::get('/fuentes',                   [$ent, 'fuentesIndex'])->name('fuentes.index');
+        Route::post('/fuentes',                  [$ent, 'fuenteStore'])->name('fuentes.store');
+        Route::put('/fuentes/{fuente}',          [$ent, 'fuenteUpdate'])->name('fuentes.update');
+        Route::delete('/fuentes/{fuente}',       [$ent, 'fuenteDestroy'])->name('fuentes.destroy');
+
+        // App Líderes / Otras App
+        Route::get('/app-lideres',               [\App\Http\Controllers\Finanzas\AppLiderController::class, 'index'])->name('app-lideres.index');
+        Route::post('/app-lideres/aliados',      [\App\Http\Controllers\Finanzas\AppLiderController::class, 'storeAliado'])->name('app-lideres.store-aliado');
+        Route::post('/app-lideres/update',       [\App\Http\Controllers\Finanzas\AppLiderController::class, 'updateAliado'])->name('app-lideres.update-aliado');
+        Route::post('/app-lideres/save-cell',    [\App\Http\Controllers\Finanzas\AppLiderController::class, 'saveCell'])->name('app-lideres.save-cell');
+        Route::post('/app-lideres/recibos',      [\App\Http\Controllers\Finanzas\AppLiderController::class, 'registrarRecibo'])->name('app-lideres.registrar-recibo');
+        Route::delete('/app-lideres/recibos/{id}', [\App\Http\Controllers\Finanzas\AppLiderController::class, 'deleteRecibo'])->name('app-lideres.delete-recibo');
+        Route::get('/app-lideres/recibos/{id}/soporte', [\App\Http\Controllers\Finanzas\AppLiderController::class, 'descargarSoporte'])->name('app-lideres.descargar-soporte');
+
+        // Brynex Aliados
+        Route::get('/brynex-aliados',               [\App\Http\Controllers\Finanzas\BrynexAliadoController::class, 'index'])->name('brynex-aliados.index');
+        Route::post('/brynex-aliados/aliados',      [\App\Http\Controllers\Finanzas\BrynexAliadoController::class, 'storeAliado'])->name('brynex-aliados.store-aliado');
+        Route::post('/brynex-aliados/update',       [\App\Http\Controllers\Finanzas\BrynexAliadoController::class, 'updateAliado'])->name('brynex-aliados.update-aliado');
+        Route::post('/brynex-aliados/save-cell',    [\App\Http\Controllers\Finanzas\BrynexAliadoController::class, 'saveCell'])->name('brynex-aliados.save-cell');
+        Route::post('/brynex-aliados/recibos',      [\App\Http\Controllers\Finanzas\BrynexAliadoController::class, 'registrarRecibo'])->name('brynex-aliados.registrar-recibo');
+        Route::delete('/brynex-aliados/recibos/{id}', [\App\Http\Controllers\Finanzas\BrynexAliadoController::class, 'deleteRecibo'])->name('brynex-aliados.delete-recibo');
+        Route::get('/brynex-aliados/recibos/{recibo}/soporte', [\App\Http\Controllers\Finanzas\BrynexAliadoController::class, 'descargarSoporte'])->name('brynex-aliados.descargar-soporte');
+
+        // Gastos / Categorías
+        Route::get('/gastos',                    [$gas, 'index'])->name('gastos.index');
+        Route::post('/gastos',                   [$gas, 'store'])->name('gastos.store');
+        Route::put('/gastos/{gasto}',            [$gas, 'update'])->name('gastos.update');
+        Route::delete('/gastos/{gasto}',         [$gas, 'destroy'])->name('gastos.destroy');
+        Route::get('/gastos/informe',            [$gas, 'informe'])->name('gastos.informe');
+        Route::get('/categorias',                [$gas, 'categoriasIndex'])->name('categorias.index');
+        Route::post('/categorias',               [$gas, 'categoriaStore'])->name('categorias.store');
+        Route::put('/categorias/{cat}',          [$gas, 'categoriaUpdate'])->name('categorias.update');
+        Route::delete('/categorias/{cat}',       [$gas, 'categoriaDestroy'])->name('categorias.destroy');
+
+        // Préstamos
+        Route::get('/prestamos',                 [$pre, 'index'])->name('prestamos.index');
+        Route::get('/prestamos/crear',           [$pre, 'create'])->name('prestamos.create');
+        Route::post('/prestamos',                [$pre, 'store'])->name('prestamos.store');
+        Route::get('/prestamos/{prestamo}',      [$pre, 'show'])->name('prestamos.show');
+        Route::get('/prestamos/{prestamo}/edit', [$pre, 'edit'])->name('prestamos.edit');
+        Route::put('/prestamos/{prestamo}',      [$pre, 'update'])->name('prestamos.update');
+        Route::post('/prestamos/{prestamo}/pago',         [$pre, 'registrarPago'])->name('prestamos.pago');
+        Route::post('/prestamos/{prestamo}/liquidar',     [$pre, 'liquidarMes'])->name('prestamos.liquidar');
+        Route::post('/prestamos/{prestamo}/whatsapp',     [$pre, 'enviarWhatsapp'])->name('prestamos.whatsapp');
+        Route::post('/prestamos/{prestamo}/toggle-alertas',[$pre, 'toggleAlertas'])->name('prestamos.toggle-alertas');
+        Route::get('/cuenta-corriente',          [$pre, 'cuentaCorriente'])->name('prestamos.cuenta-corriente');
+
+        // Inversiones
+        Route::get('/inversiones',               [$inv, 'index'])->name('inversiones.index');
+        Route::post('/inversiones',              [$inv, 'store'])->name('inversiones.store');
+        Route::put('/inversiones/{inv}',         [$inv, 'update'])->name('inversiones.update');
+        Route::delete('/inversiones/{inv}',      [$inv, 'destroy'])->name('inversiones.destroy');
+        Route::get('/inversiones/precio-usdt',   [$inv, 'precioUsdt'])->name('inversiones.precio-usdt');
+
+        // Patrimonio
+        Route::get('/patrimonio',                [$pat, 'index'])->name('patrimonio.index');
+        Route::post('/patrimonio',               [$pat, 'store'])->name('patrimonio.store');
+        Route::get('/patrimonio/{pat}',          [$pat, 'show'])->name('patrimonio.show');
+        Route::put('/patrimonio/{pat}',          [$pat, 'update'])->name('patrimonio.update');
+        Route::post('/patrimonio/{pat}/gasto',   [$pat, 'agregarGasto'])->name('patrimonio.gasto');
+
+        // Proyectos
+        Route::get('/proyectos',                 [$pro, 'index'])->name('proyectos.index');
+        Route::post('/proyectos',                [$pro, 'store'])->name('proyectos.store');
+        Route::get('/proyectos/{proyecto}',      [$pro, 'show'])->name('proyectos.show');
+        Route::put('/proyectos/{proyecto}',      [$pro, 'update'])->name('proyectos.update');
+        Route::post('/proyectos/{proyecto}/movimiento', [$pro, 'agregarMovimiento'])->name('proyectos.movimiento');
     });
 });
 

@@ -1305,7 +1305,7 @@ function OI_abrirEmpresa() {
         asesorNombre: {!! json_encode($empresa->asesor?->nombre ?? '') !!},
     });
 }
-// ─── Exportación a Excel en el lado del cliente ──────────────────────
+// ─── Exportación a Excel en el lado del cliente (redirección al backend) ──────────────────────
 function exportarExcel() {
     const btn = document.querySelector('.btn-exp');
     if (!btn) return;
@@ -1315,137 +1315,19 @@ function exportarExcel() {
     btn.innerHTML = '⏳ Exportando...';
     btn.style.opacity = '0.7';
 
+    const urlParams = new URLSearchParams(window.location.search);
+    const mes = urlParams.get('mes') || '{{ $mes }}';
+    const anio = urlParams.get('anio') || '{{ $anio }}';
+
+    // Redireccionar a la ruta del backend
+    window.location.href = `{{ route('admin.facturacion.empresa.exportar', $empresa->id) }}?mes=${mes}&anio=${anio}`;
+
     setTimeout(() => {
-        _ejecutarExportacionExcel();
-        
-        // Restaurar botón
+        // Restaurar botón después de iniciar la descarga
         btn.disabled = false;
         btn.innerHTML = originalText;
         btn.style.opacity = '1';
-    }, 600); // Dar un delay de 600ms para efecto visual
-}
-
-function _ejecutarExportacionExcel() {
-    const table = document.getElementById("tblTrab");
-    if (!table) return;
-
-    let html = `
-    <html>
-    <head>
-        <meta charset="utf-8">
-        <style>
-            table { border-collapse: collapse; }
-            th { background: #1e3a5f; color: #ffffff; font-weight: bold; border: 1px solid #cccccc; text-transform: uppercase; font-size: 11px; }
-            td { border: 1px solid #cccccc; font-size: 11px; }
-            .num { mso-number-format: "\\#\\,\\#\\#0"; }
-            .text-center { text-align: center; }
-            .font-bold { font-weight: bold; }
-        </style>
-    </head>
-    <body>
-        <table>
-    `;
-
-    // Procesar cabecera (excluyendo la columna de selección y las cabeceras complejas de dropdown)
-    html += '<thead><tr>';
-    const headers = table.querySelectorAll('thead tr th');
-    headers.forEach((th, index) => {
-        if (index === 0) return; // Omitir columna de checkbox TIPO
-        if (index === headers.length - 1) return; // Omitir columna de checkbox SEL
-        
-        let text = "";
-        const select = th.querySelector('select');
-        if (select) {
-            text = select.options[select.selectedIndex].text.replace(' ▾', '');
-        } else {
-            text = th.innerText.trim().replace(/\s+/g, ' ');
-        }
-        html += `<th style="padding: 6px;">${text}</th>`;
-    });
-    html += '</tr></thead><tbody>';
-
-    // Procesar filas del body (solo las que estén visibles)
-    const rows = table.querySelectorAll('tbody tr');
-    rows.forEach(tr => {
-        if (tr.style.display === 'none') return; // Saltar filtrados
-        
-        html += '<tr>';
-        const cells = tr.querySelectorAll('td');
-        cells.forEach((td, index) => {
-            if (index === 0) return; // Omitir checkbox TIPO
-            if (index === cells.length - 1) return; // Omitir checkbox SEL
-            
-            let text = td.innerText.trim().replace(/\s+/g, ' ');
-            
-            // Si tiene badges (como TP o Retiro), remover caracteres especiales de control visual
-            text = text.replace(/⏱/g, '').replace(/⚡/g, '').replace(/📌/g, '').replace(/🚫/g, '').replace(/★/g, '');
-            
-            // Columnas numéricas: EPS, ARL, CAJA, PENSION, ADMON, MORA, TOTAL, etc.
-            const isNumericCol = [6, 7, 8, 9, 10, 11, 12, 13].includes(index);
-            if (isNumericCol) {
-                const rawNum = text.replace(/[^0-9-]/g, '');
-                if (rawNum === '') {
-                    html += `<td style="padding: 5px; text-align:right;">—</td>`;
-                } else {
-                    html += `<td class="num" style="padding: 5px; text-align:right;">${rawNum}</td>`;
-                }
-            } else if ([1, 4, 5].includes(index)) { // Cédula, Ing/Ret, Días
-                html += `<td class="text-center" style="padding: 5px;">${text}</td>`;
-            } else {
-                html += `<td style="padding: 5px;">${text}</td>`;
-            }
-        });
-        html += '</tr>';
-    });
-
-    // Procesar pie de página (totales)
-    const tfoot = table.querySelector('tfoot');
-    if (tfoot) {
-        const tfRows = tfoot.querySelectorAll('tr');
-        tfRows.forEach(tr => {
-            html += '<tr>';
-            const cells = tr.querySelectorAll('td');
-            cells.forEach((td) => {
-                let text = td.innerText.trim().replace(/\s+/g, ' ');
-                const colspan = td.getAttribute('colspan');
-                // Ajustar colspan porque quitamos 2 columnas (la primera y la última)
-                let finalColspan = colspan ? parseInt(colspan) : 1;
-                if (finalColspan > 1) {
-                    finalColspan = finalColspan - 1; // ajustar por la columna de tipo
-                }
-                const colspanAttr = finalColspan > 1 ? ` colspan="${finalColspan}"` : '';
-                
-                if (text.includes('$')) {
-                    const rawNum = text.replace(/[^0-9-]/g, '');
-                    html += `<td class="num font-bold" style="padding: 6px; text-align:right; background: #e2e8f0;"${colspanAttr}>${rawNum}</td>`;
-                } else {
-                    html += `<td class="font-bold" style="padding: 6px; background: #e2e8f0;"${colspanAttr}>${text}</td>`;
-                }
-            });
-            html += '</tr>';
-        });
-    }
-
-    html += `
-        </table>
-    </body>
-    </html>
-    `;
-
-    const blob = new Blob([html], { type: "application/vnd.ms-excel;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    
-    const a = document.createElement("a");
-    a.href = url;
-    
-    const nomEmpresa = '{{ addslashes($empresa->empresa) }}'.replace(/[^a-zA-Z0-9]/g, '_');
-    const mesNom = '{{ $meses[$mes] }}';
-    a.download = `Planilla_${nomEmpresa}_${mesNom}_{{ $anio }}.xls`;
-    
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    }, 2000); // 2 segundos de feedback visual
 }
 
 // ─── Forzar campo buscador vacío al cargar (evita autorrelleno del navegador) ───

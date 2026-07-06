@@ -135,6 +135,22 @@
                 </a>
             </div>
         </div>
+
+        @if(auth()->user()->cedula === '1143944458')
+        <div class="hub-section" style="border:1px solid #c084fc">
+            <div class="hub-section-title" style="color:#a855f7">💰 Finanzas Personales <span class="badge-sa" style="background:#a855f7">Privado</span></div>
+            <div class="hub-cards">
+                <a href="{{ route('finanzas.dashboard') }}" class="hub-card" style="border-color:#d8b4fe;background:#faf5ff">
+                    <div class="hc-icon">💰</div>
+                    <div class="hc-body">
+                        <div class="hc-name" style="color:#7e22ce">Finanzas Personales</div>
+                        <div class="hc-desc">Módulo privado de contabilidad personal, préstamos, inversiones y patrimonio</div>
+                    </div>
+                    <div class="hc-arrow" style="color:#a855f7">→</div>
+                </a>
+            </div>
+        </div>
+        @endif
         @endrole
 
     </div>

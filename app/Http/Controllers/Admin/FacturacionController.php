@@ -8,6 +8,9 @@ use App\Models\Bitacora;
 use App\Services\MoraClienteService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\{Auth, DB};
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use PhpOffice\PhpSpreadsheet\Style\{Alignment, Border, Fill, Font, NumberFormat};
 
 class FacturacionController extends Controller
 {
@@ -44,24 +47,34 @@ class FacturacionController extends Controller
     public function empresa(Request $request, int $empresaId)
     {
         $aliadoId = session('aliado_id_activo');
+        $mes  = (int) $request->get('mes',  now()->month);
+        $anio = (int) $request->get('anio', now()->year);
+
+        $datos = $this->getDatosEmpresaPeriodo($empresaId, $mes, $anio, $aliadoId);
+
+        return view('admin.facturacion.empresa', array_merge($datos, [
+            'mes'  => $mes,
+            'anio' => $anio,
+        ]));
+    }
+
+    /**
+     * Obtiene y pre-calcula los datos de facturación para los contratos de una empresa en un período dado.
+     */
+    private function getDatosEmpresaPeriodo(int $empresaId, int $mes, int $anio, int $aliadoId): array
+    {
         $empresa  = Empresa::where('aliado_id', $aliadoId)->findOrFail($empresaId);
 
         // Pre-cargar configuración global en 1 query (evita N+1 en calcularCotizacion)
         \App\Models\ConfiguracionBrynex::precargar();
 
-        $mes  = (int) $request->get('mes',  now()->month);
-        $anio = (int) $request->get('anio', now()->year);
-
         // Traer todos los contratos vigentes cuyos clientes pertenecen a esta empresa
-        // La relación es: contratos.cedula → clientes.cedula → clientes.cod_empresa
         $cedulasEmpresa = DB::table('clientes')
             ->where('aliado_id', $aliadoId)
             ->where('cod_empresa', $empresaId)
             ->pluck('cedula');
 
-        // Retirados visibles en este período:
-        //  - fecha_retiro en el mes ANTERIOR (retiro se reporta en planilla del mes siguiente)
-        //  - fecha_retiro en el mes ACTUAL   (retiro en el mismo mes que se consulta)
+        // Retirados visibles en este período
         $mesAnterior  = $mes  === 1 ? 12 : $mes  - 1;
         $anioAnterior = $mes  === 1 ? $anio - 1 : $anio;
 
@@ -72,13 +85,11 @@ class FacturacionController extends Controller
                   ->orWhere(function ($q2) use ($mes, $anio, $mesAnterior, $anioAnterior) {
                       $q2->where('estado', 'retirado')
                          ->where(function ($q3) use ($mes, $anio, $mesAnterior, $anioAnterior) {
-                             // Caso A: Modalidad 11 (Independiente Activo) -> fecha_retiro exactamente en el mes consultado
                              $q3->where(function ($qa) use ($mes, $anio) {
                                      $qa->where('tipo_modalidad_id', 11)
                                         ->whereMonth('fecha_retiro', $mes)
                                         ->whereYear('fecha_retiro', $anio);
                                  })
-                                // Caso B: Otras modalidades (dependientes, etc) -> fecha_retiro exactamente en el mes anterior
                                 ->orWhere(function ($qb) use ($mesAnterior, $anioAnterior) {
                                      $qb->where('tipo_modalidad_id', '!=', 11)
                                         ->whereMonth('fecha_retiro', $mesAnterior)
@@ -90,26 +101,20 @@ class FacturacionController extends Controller
             ->with([
                 'cliente'      => fn($q) => $q->where('aliado_id', $aliadoId),
                 'tipoModalidad', 'razonSocial', 'eps', 'arl', 'pension', 'caja', 'asesor',
-                'plan', // ← eager-load del plan para evitar N+1 en calcularCotizacion()
+                'plan',
             ])
             ->orderBy('cedula')
             ->get();
 
-        // Facturas ya generadas para este periodo (solo planilla/afiliacion, no otro_ingreso)
-        // ⚠️ Se indexa por CONTRATO_ID (no por cédula) para evitar cruzar pagos
-        //    entre contratos distintos del mismo trabajador (ej: BRYGAR vs Independiente)
         $facturasExistentes = Factura::where('aliado_id', $aliadoId)
             ->periodo($mes, $anio)
             ->whereIn('tipo', ['planilla', 'afiliacion'])
             ->whereIn('cedula', $contratos->pluck('cedula'))
             ->whereNotNull('contrato_id')
-            ->where('numero_factura', '>', 0) // Excluir la factura temporal de retiro (número 0)
+            ->where('numero_factura', '>', 0)
             ->get()
-            ->keyBy('contrato_id');  // ← clave: por contrato, no por cédula
+            ->keyBy('contrato_id');
 
-        // ── Facturas de retiro con numero_factura=0 (marcadas pero aún no cobradas) ───
-        // Son las que genera el sistema al marcar un retiro individual desde el contrato.
-        // Se indexan por contrato_id para saber cuál contrato retirado ya tiene retiro marcado.
         $facturasRetiro0 = Factura::where('aliado_id', $aliadoId)
             ->whereIn('contrato_id', $contratos->pluck('id'))
             ->where('numero_factura', 0)
@@ -119,8 +124,6 @@ class FacturacionController extends Controller
 
         $contratoIds = $contratos->pluck('id')->all();
 
-        // ── BATCH 1: saldo_proximo acumulado por contrato (1 query) ──────────
-        // Sustituye el sum() individual dentro del map() (era N queries).
         $saldosTotales = DB::table('facturas')
             ->where('aliado_id', $aliadoId)
             ->whereIn('contrato_id', $contratoIds)
@@ -131,8 +134,6 @@ class FacturacionController extends Controller
             ->select('contrato_id', DB::raw('SUM(saldo_proximo) as suma'))
             ->pluck('suma', 'contrato_id');
 
-        // ── BATCH 2: saldo previo al período actual por contrato (1 query) ───
-        // Sustituye Factura::saldoClienteMesPrevio() individual (era N queries).
         $saldosPrevios = DB::table('facturas')
             ->where('aliado_id', $aliadoId)
             ->whereIn('contrato_id', $contratoIds)
@@ -146,8 +147,6 @@ class FacturacionController extends Controller
             ->select('contrato_id', DB::raw('SUM(saldo_proximo) as suma'))
             ->pluck('suma', 'contrato_id');
 
-        // ── Pre-cargar IVA de clientes en batch (1 query) ────────────────────
-        // Evita N queries individuales dentro de calcularCotizacion() en el map() y en el blade.
         $ivaClientes = DB::table('clientes')
             ->where('aliado_id', $aliadoId)
             ->where('cod_empresa', $empresaId)
@@ -155,12 +154,11 @@ class FacturacionController extends Controller
             ->map(fn($v) => strtoupper(trim($v ?? '')) === 'SI')
             ->toArray();
 
-        // Calcular días cotizados para cada contrato según fecha_ingreso
         $hoy = now();
 
         $contratos = $contratos->map(function ($c) use ($mes, $anio, $hoy, $facturasExistentes, $facturasRetiro0, $saldosTotales, $saldosPrevios, $ivaClientes) {
             $diasCotizar = 30;
-            $esIndActPrimerMes = false; // I Act (id=11) en su mes de ingreso → afiliación + planilla juntas
+            $esIndActPrimerMes = false;
 
             $esArlModalidad = (int)($c->tipo_modalidad_id) === 15;
             if ($esArlModalidad) {
@@ -171,7 +169,7 @@ class FacturacionController extends Controller
                     if ($mesArl === $mes && $anioArl === $anio) {
                         $diasCotizar = 0;
                     } else {
-                        $diasCotizar = 0; // en otros meses no se cobra planilla, por ende días = 0
+                        $diasCotizar = 0;
                     }
                 } else {
                     $diasCotizar = 0;
@@ -180,62 +178,45 @@ class FacturacionController extends Controller
                 $fIng = $c->fecha_ingreso;
                 $mesIngreso  = (int)$fIng->month;
                 $anioIngreso = (int)$fIng->year;
-                // I Act = tipo_modalidad_id 11 (cobra afiliación + planilla el mismo mes)
-                // I Venc = tipo_modalidad_id 10 (solo afiliación el primer mes)
                 $esIndAct = (int)($c->tipo_modalidad_id) === 11;
 
                 if ($mesIngreso === $mes && $anioIngreso === $anio) {
                     if ($esIndAct) {
-                        // I Act: primer mes cobra afiliación + planilla juntas
-                        // → días = días activos del mes de ingreso
                         $esIndActPrimerMes = true;
                         $diasCotizar = max(1, 30 - $fIng->day + 1);
                     } else {
-                        // I Venc, empresa, dependiente: solo afiliación, días = 0
                         $diasCotizar = 0;
                     }
                 } else {
-                    // Calcular el mes anterior al período actual
                     $mesAnterior  = $mes === 1 ? 12 : $mes - 1;
                     $anioAnterior = $mes === 1 ? $anio - 1 : $anio;
 
                     if ($mesIngreso === $mesAnterior && $anioIngreso === $anioAnterior) {
-                        // Primera planilla: cubrir los días activos del mes de ingreso
                         $diasCotizar = max(1, 30 - $fIng->day + 1);
                     }
-                    // else: mes normal → 30 días
                 }
             }
             $c->dias_cotizar          = $diasCotizar;
             $c->es_ind_act_primer_mes = $esIndActPrimerMes;
             $c->factura_exist         = $facturasExistentes->get($c->id);
 
-            // ── Retiro facturable: factura con numero_factura=0 aún no cobrada ──
-            // Si el contrato está retirado y tiene una factura 0 (sin borrar),
-            // se puede seleccionar para incluirlo en la facturación de la empresa.
             $facturaRetiro0 = $facturasRetiro0->get($c->id);
-            $c->factura_retiro_0      = $facturaRetiro0;  // null si no tiene
+            $c->factura_retiro_0      = $facturaRetiro0;
             $c->tiene_retiro_facturable = $c->estado === 'retirado'
                 && $facturaRetiro0 !== null
-                && $c->factura_exist === null; // no tiene ya una factura real en este período
+                && $c->factura_exist === null;
 
-            // ── Cotización pre-calculada aquí (evita N+1 en el blade) ──────────
-            // El plan ya fue eager-loaded. El IVA viene del batch pre-cargado.
-            // El blade usa $c->cotizacion_calc directamente, sin tocar la BD.
             $ivaFlag = $ivaClientes[$c->cedula] ?? null;
             $c->cotizacion_calc = $c->calcularCotizacion($diasCotizar, $ivaFlag);
 
-            // 1a) Saldo para FACTURAR (batch pre-calculado)
             $sumaPrev = (int)($saldosPrevios[$c->id] ?? 0);
             $c->saldo_a_favor_facturar   = $sumaPrev > 0 ? $sumaPrev : 0;
             $c->saldo_pendiente_facturar = $sumaPrev < 0 ? abs($sumaPrev) : 0;
 
-            // 1b) Saldo REAL (batch pre-calculado)
             $sumaTotal = (int)($saldosTotales[$c->id] ?? 0);
             $c->saldo_a_favor   = $sumaTotal > 0 ? $sumaTotal : 0;
             $c->saldo_pendiente = $sumaTotal < 0 ? abs($sumaTotal) : 0;
 
-            // 2) Saldo generado ESTE periodo
             $sp = $c->factura_exist ? (int)($c->factura_exist->saldo_proximo ?? 0) : 0;
             $c->saldo_proximo_favor     = $sp > 0 ? $sp : 0;
             $c->saldo_proximo_pendiente = $sp < 0 ? abs($sp) : 0;
@@ -243,21 +224,16 @@ class FacturacionController extends Controller
             return $c;
         });
 
-        // ── BATCH 3: mora pre-calculada para contratos SIN factura (1 call) ──
-        // Evita que la vista llame MoraClienteService::calcular() por fila.
-        // La cotización ya fue calculada en el map() anterior (cotizacion_calc).
         $filasMora = [];
         foreach ($contratos as $c) {
-            if ($c->factura_exist) continue; // si ya tiene factura, la mora viene de ella
+            if ($c->factura_exist) continue;
             if ($c->estado === 'retirado') continue;
-            // Afiliaciones nunca tienen mora (no hay pago de planilla)
             if ($c->es_ind_act_primer_mes === false && $c->cotizacion_calc['ss'] == 0) continue;
-            if ((int)$c->tipo_modalidad_id === 15) continue; // ARL: siempre afiliación
+            if ((int)$c->tipo_modalidad_id === 15) continue;
             $rs = $c->razonSocial;
             $esIndep = $c->esIndependiente() || ($rs && $rs->es_independiente);
             $rsNit = $esIndep ? (int)$c->cedula : ($rs ? (int)($rs->nit ?: $rs->id) : 0);
             if (!$rsNit) continue;
-            // Reutilizar la cotización ya calculada en el map() (cero queries extra)
             $vSS = (int)($c->cotizacion_calc['ss'] ?? 0);
             if ($vSS <= 0) continue;
             $filasMora[$c->id] = [
@@ -277,13 +253,11 @@ class FacturacionController extends Controller
             }
         }
 
-        // Cuentas bancarias + asesores
         $bancos   = BancoCuenta::activas($aliadoId);
         $asesores = \App\Models\Asesor::where('aliado_id', $aliadoId)
             ->orderBy('nombre')
             ->get(['id', 'nombre']);
 
-        // N_PLANO actual por razón social
         $planosActuales = DB::table('planos')
             ->where('aliado_id', $aliadoId)
             ->where('mes_plano', $mes)->where('anio_plano', $anio)
@@ -291,9 +265,6 @@ class FacturacionController extends Controller
             ->groupBy('razon_social')
             ->get()->keyBy('razon_social');
 
-        // ─── Saldo neto de la EMPRESA por empresa_id ─────────────────
-        // Sin límite de fecha: suma TODOS los saldo_proximo (incluyendo meses futuros ya registrados).
-        // Así si mayo ya consumió el saldo de abril, la empresa también lo refleja.
         $saldoNetoEmpresa = Factura::where('aliado_id', $aliadoId)
             ->where('empresa_id', $empresa->id)
             ->whereNotNull('saldo_proximo')
@@ -304,11 +275,9 @@ class FacturacionController extends Controller
         $saldoEmpresaFavor    = $saldoNetoEmpresa > 0 ? (int)$saldoNetoEmpresa : 0;
         $saldoEmpresaPendiente = $saldoNetoEmpresa < 0 ? (int)abs($saldoNetoEmpresa) : 0;
 
-        // ─── Anticipos disponibles de la empresa (aún no aplicados) ──────────
         $anticiposEmpresa       = \App\Models\Anticipo::disponiblesParaEmpresa($aliadoId, $empresa->id);
         $totalAnticipoDisponible = (int)$anticiposEmpresa->sum('valor_disponible');
 
-        // Cargar anticipos individuales de contratos asociados en batch
         $anticiposPorContrato = \App\Models\Anticipo::aliado($aliadoId)
             ->whereIn('contrato_id', $contratoIds)
             ->conSaldo()
@@ -318,26 +287,328 @@ class FacturacionController extends Controller
         $saldoAnticipoPorContrato = $anticiposPorContrato->map(fn($group) => $group->sum('valor_disponible'));
         $hayAnticipos = $saldoAnticipoPorContrato->isNotEmpty() || $totalAnticipoDisponible > 0;
 
-        // ─── Cobros adicionales de la empresa ────────────────────────
         $cobrosAdicionales = \App\Models\CobrosAdicionalEmpresa::where('aliado_id', $aliadoId)
             ->where('empresa_id', $empresa->id)
             ->where('activo', true)
-            ->orderBy('tipo') // recurrentes primero
+            ->orderBy('tipo')
             ->orderBy('descripcion')
             ->get();
-
-        // Cobros recurrentes activos (para mostrar como recordatorio en modal de facturación)
         $cobrosRecurrentes = $cobrosAdicionales->where('tipo', 'recurrente')->values();
 
-        return view('admin.facturacion.empresa', compact(
-            'empresa', 'contratos', 'facturasExistentes',
-            'mes', 'anio', 'bancos', 'planosActuales', 'asesores',
-            'saldoEmpresaFavor', 'saldoEmpresaPendiente',
-            'moraPorContrato',
-            'anticiposEmpresa', 'totalAnticipoDisponible',
-            'saldoAnticipoPorContrato', 'hayAnticipos',
-            'cobrosAdicionales', 'cobrosRecurrentes'
-        ));
+        $meses = [
+            1 => 'Enero', 2 => 'Febrero', 3 => 'Marzo', 4 => 'Abril',
+            5 => 'Mayo', 6 => 'Junio', 7 => 'Julio', 8 => 'Agosto',
+            9 => 'Septiembre', 10 => 'Octubre', 11 => 'Noviembre', 12 => 'Diciembre'
+        ];
+
+        return compact(
+            'empresa', 'contratos', 'facturasExistentes', 'bancos', 'planosActuales', 'asesores',
+            'saldoEmpresaFavor', 'saldoEmpresaPendiente', 'moraPorContrato',
+            'anticiposEmpresa', 'totalAnticipoDisponible', 'saldoAnticipoPorContrato', 'hayAnticipos',
+            'cobrosAdicionales', 'cobrosRecurrentes', 'meses'
+        );
+    }
+
+    /**
+     * Exporta la planilla de facturación de una empresa a formato XLSX.
+     */
+    public function exportarEmpresaExcel(Request $request, int $empresaId)
+    {
+        $aliadoId = session('aliado_id_activo');
+        $mes  = (int) $request->get('mes',  now()->month);
+        $anio = (int) $request->get('anio', now()->year);
+
+        $datos = $this->getDatosEmpresaPeriodo($empresaId, $mes, $anio, $aliadoId);
+
+        $empresa = $datos['empresa'];
+        $contratos = $datos['contratos'];
+        $facturasExistentes = $datos['facturasExistentes'];
+        $moraPorContrato = $datos['moraPorContrato'];
+        $saldoAnticipoPorContrato = $datos['saldoAnticipoPorContrato'];
+        $meses = $datos['meses'];
+
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Facturación');
+
+        // Título principal
+        $sheet->setCellValue('A1', 'PLANILLA DE COBRO - ' . $empresa->empresa);
+        $sheet->mergeCells('A1:R1');
+        $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(14);
+        
+        $sheet->setCellValue('A2', 'Periodo: ' . $meses[$mes] . ' de ' . $anio);
+        $sheet->mergeCells('A2:R2');
+        $sheet->getStyle('A2')->getFont()->setBold(true)->setSize(11);
+
+        // Cabeceras
+        $headers = [
+            'TIPO', 'CÉDULA', 'NOMBRE', 'RAZÓN SOCIAL', 'ING/RET', 'DÍAS',
+            'EPS', 'ARL', 'CAJA', 'PENSIÓN', 'ADMON', 'ADMON ASESOR', 'AFILIACIÓN',
+            'TOTAL', 'MORA', 'ANTICIPO', 'ESTADO', 'NP'
+        ];
+
+        $col = 'A';
+        foreach ($headers as $header) {
+            $sheet->setCellValue($col . '4', $header);
+            $col++;
+        }
+
+        // Estilo cabecera
+        $headerStyle = [
+            'font' => [
+                'bold' => true,
+                'color' => ['rgb' => 'FFFFFF'],
+                'size' => 10,
+            ],
+            'alignment' => [
+                'horizontal' => Alignment::HORIZONTAL_CENTER,
+                'vertical' => Alignment::VERTICAL_CENTER,
+            ],
+            'fill' => [
+                'fillType' => Fill::FILL_SOLID,
+                'startColor' => ['rgb' => '1E3A8A'],
+            ],
+            'borders' => [
+                'allBorders' => [
+                    'borderStyle' => Border::BORDER_THIN,
+                    'color' => ['rgb' => 'CCCCCC'],
+                ],
+            ],
+        ];
+        $sheet->getStyle('A4:R4')->applyFromArray($headerStyle);
+        $sheet->getRowDimension(4)->setRowHeight(25);
+
+        $r100 = fn($val) => (int) round($val ?? 0);
+        $row = 5;
+
+        foreach ($contratos as $c) {
+            $fact  = $c->factura_exist;
+            $factRetiroPreview = (!$fact && ($c->tiene_retiro_facturable ?? false)) ? ($c->factura_retiro_0 ?? null) : null;
+            $esRetirado = $c->estado === 'retirado';
+            
+            $nombre = trim(($c->cliente?->primer_nombre ?? '') . ' ' . ($c->cliente?->primer_apellido ?? ''));
+            if (!$nombre) $nombre = $c->cliente?->nombre_completo ?? '—';
+            
+            $tipoMod = $c->tipoModalidad?->tipo_modalidad ?? '—';
+            $rs = $c->razonSocial?->razon_social ?? '—';
+            
+            $fIng = $c->fecha_ingreso ? $c->fecha_ingreso->format('d/m/Y') : '—';
+            $fRet = ($esRetirado && $c->fecha_retiro) ? $c->fecha_retiro->format('d/m/Y') : null;
+            
+            $dias = $fact
+                ? (int)$fact->dias_cotizados
+                : ($factRetiroPreview
+                    ? (int)$factRetiroPreview->dias_cotizados
+                    : ($c->dias_cotizar ?? 30));
+
+            $esIndActPrimerMes = $c->es_ind_act_primer_mes ?? false;
+            $esArlModalidad = (int)($c->tipo_modalidad_id) === 15;
+            
+            $esAfil = false;
+            if ($esArlModalidad) {
+                $esAfil = true;
+            } elseif ($c->fecha_ingreso) {
+                $fIngC = $c->fecha_ingreso;
+                if ((int)$fIngC->month === $mes && (int)$fIngC->year === $anio) {
+                    if (!$esIndActPrimerMes) {
+                        $esAfil = true;
+                    }
+                }
+            }
+            if ($fact) {
+                $esAfil = $fact->tipo === 'afiliacion' && !($fact->afiliacion > 0 && $fact->total_ss > 0);
+            }
+
+            $cotiz = $c->cotizacion_calc ?? $c->calcularCotizacion($dias);
+
+            $vEps  = $fact ? $r100($fact->v_eps)  : 0;
+            $vArl  = $fact ? $r100($fact->v_arl)  : 0;
+            $vCaja = $fact ? $r100($fact->v_caja) : 0;
+            $vPen  = $fact ? $r100($fact->v_afp)  : 0;
+            $vIva  = $fact ? $r100($fact->iva)    : 0;
+
+            $vAdmonBase = 0;
+            $vAdmonAsesor = 0;
+            if ($fact) {
+                $vAdmonBase = (int)$fact->admon;
+                $vAdmonAsesor = (int)$fact->admin_asesor;
+            } else {
+                if ($esRetirado) {
+                    if ($factRetiroPreview) {
+                        $vAdmonBase = (int)($c->administracion ?? 0);
+                        $vAdmonAsesor = (int)($c->admon_asesor ?? 0);
+                        $vAdmonBase = (int) round(($vAdmonBase / 30) * $dias);
+                        $vAdmonAsesor = (int) round(($vAdmonAsesor / 30) * $dias);
+                    } else {
+                        $vAdmonBase = 0;
+                        $vAdmonAsesor = 0;
+                    }
+                } elseif ($esArlModalidad && !$esAfil) {
+                    $vAdmonBase = 0;
+                    $vAdmonAsesor = 0;
+                } elseif ($esAfil) {
+                    $vAdmonBase = 0;
+                    $vAdmonAsesor = 0;
+                } else {
+                    $vAdmonBase = (int)($c->administracion ?? 0);
+                    $vAdmonAsesor = (int)($c->admon_asesor ?? 0);
+                }
+            }
+
+            $vAfiliacion = ($esAfil || $esIndActPrimerMes) ? (int)($c->costo_afiliacion ?? 0) : 0;
+            if ($fact) {
+                $vAfiliacion = (int)$fact->afiliacion;
+            }
+
+            if (!$fact) {
+                if ($esRetirado && $factRetiroPreview) {
+                    $vEps  = $r100($factRetiroPreview->v_eps);
+                    $vArl  = $r100($factRetiroPreview->v_arl);
+                    $vPen  = $r100($factRetiroPreview->v_afp);
+                    $vCaja = $r100($factRetiroPreview->v_caja);
+                    $vIva  = $r100($factRetiroPreview->iva);
+                    $vSS   = $r100($factRetiroPreview->total_ss);
+                    $vTot  = $vSS + ($vAdmonBase + $vAdmonAsesor) + $vIva;
+                } elseif ($esRetirado && !$factRetiroPreview) {
+                    $vEps = $vArl = $vPen = $vCaja = $vIva = $vSS = 0;
+                    $vTot = 0;
+                } elseif ($esArlModalidad && !$esAfil) {
+                    $vEps = $vArl = $vPen = $vCaja = $vIva = $vSS = 0;
+                    $vTot = 0;
+                } elseif ($esIndActPrimerMes) {
+                    $vEps  = $r100($cotiz['eps']??0);
+                    $vArl  = $r100($cotiz['arl']??0);
+                    $vPen  = $r100($cotiz['pen']??0);
+                    $vCaja = $r100($cotiz['caja']??0);
+                    $vIva  = $r100($cotiz['iva']??0);
+                    $vSS   = $r100($cotiz['ss']);
+                    $vTot  = $vSS + ($vAdmonBase + $vAdmonAsesor) + $vIva + (int)(($c->costo_afiliacion ?? 0) + ($c->seguro ?? 0));
+                } elseif ($esAfil) {
+                    $vEps  = 0; $vArl  = 0; $vPen  = 0; $vCaja = 0;
+                    $vSS   = 0; $vIva  = 0;
+                    $vTot  = (int)(($c->costo_afiliacion ?? 0) + ($c->seguro ?? 0));
+                } else {
+                    $vEps  = $r100($cotiz['eps']??0);
+                    $vArl  = $r100($cotiz['arl']??0);
+                    $vPen  = $r100($cotiz['pen']??0);
+                    $vCaja = $r100($cotiz['caja']??0);
+                    $vIva  = $r100($cotiz['iva']??0);
+                    $vSS   = $r100($cotiz['ss']);
+                    $vTot  = $vSS + ($vAdmonBase + $vAdmonAsesor) + $vIva;
+                }
+            } else {
+                $vSS = $r100($fact->total_ss);
+                $vTot = (int)$fact->total;
+            }
+
+            $vMora = 0;
+            if ($fact && ($fact->mora ?? 0) > 0) {
+                $vMora = (int)$fact->mora;
+            } elseif (!$fact) {
+                $vMora = (int)($moraPorContrato[$c->id] ?? 0);
+            }
+
+            $vAnticipo = $saldoAnticipoPorContrato->get($c->id, 0);
+
+            $sheet->setCellValue('A' . $row, $tipoMod);
+            $sheet->setCellValue('B' . $row, $c->cedula);
+            $sheet->setCellValue('C' . $row, $nombre);
+            $sheet->setCellValue('D' . $row, $rs);
+            
+            $fechaCol = ($esRetirado && $fRet) ? $fRet : $fIng;
+            $sheet->setCellValue('E' . $row, $fechaCol);
+            $sheet->setCellValue('F' . $row, $dias);
+            
+            $sheet->setCellValue('G' . $row, $vEps);
+            $sheet->setCellValue('H' . $row, $vArl);
+            $sheet->setCellValue('I' . $row, $vCaja);
+            $sheet->setCellValue('J' . $row, $vPen);
+            $sheet->setCellValue('K' . $row, $vAdmonBase);
+            $sheet->setCellValue('L' . $row, $vAdmonAsesor);
+            $sheet->setCellValue('M' . $row, $vAfiliacion);
+            $sheet->setCellValue('N' . $row, $vTot);
+            $sheet->setCellValue('O' . $row, $vMora);
+            $sheet->setCellValue('P' . $row, $vAnticipo);
+            
+            $estadoTxt = $fact ? strtoupper($fact->estado) : ($esRetirado ? 'RETIRO' : 'PENDIENTE');
+            $sheet->setCellValue('Q' . $row, $estadoTxt);
+            $sheet->setCellValue('R' . $row, $fact?->np ?? '');
+
+            // Alineación de texto corto
+            $sheet->getStyle('A' . $row)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            $sheet->getStyle('B' . $row)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            $sheet->getStyle('E' . $row)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            $sheet->getStyle('F' . $row)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            $sheet->getStyle('Q' . $row)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            $sheet->getStyle('R' . $row)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+
+            // Formato de moneda para columnas de dinero (G a P)
+            $sheet->getStyle('G' . $row . ':P' . $row)
+                ->getNumberFormat()
+                ->setFormatCode('$#,##0');
+
+            // Bordes para los datos
+            $sheet->getStyle('A' . $row . ':R' . $row)->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN);
+            
+            $row++;
+        }
+
+        // Fila de totales
+        $sheet->setCellValue('A' . $row, 'TOTALES');
+        $sheet->mergeCells('A' . $row . ':E' . $row);
+        $sheet->getStyle('A' . $row)->getFont()->setBold(true);
+        $sheet->getStyle('A' . $row)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+
+        // Suma de Días (F)
+        $sheet->setCellValue('F' . $row, "=SUM(F5:F" . ($row - 1) . ")");
+        $sheet->getStyle('F' . $row)->getFont()->setBold(true);
+        $sheet->getStyle('F' . $row)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+
+        // Sumas por columnas con fórmulas de Excel (G a P)
+        $columnasMoneda = ['G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P'];
+        foreach ($columnasMoneda as $colChar) {
+            $sheet->setCellValue($colChar . $row, "=SUM(" . $colChar . "5:" . $colChar . ($row - 1) . ")");
+            $sheet->getStyle($colChar . $row)->getFont()->setBold(true);
+            $sheet->getStyle($colChar . $row)->getNumberFormat()->setFormatCode('$#,##0');
+        }
+
+        // Estilo de fila de totales
+        $totalStyle = [
+            'fill' => [
+                'fillType' => Fill::FILL_SOLID,
+                'startColor' => ['rgb' => 'E2E8F0'],
+            ],
+            'borders' => [
+                'allBorders' => [
+                    'borderStyle' => Border::BORDER_THIN,
+                    'color' => ['rgb' => '999999'],
+                ],
+            ],
+        ];
+        $sheet->getStyle('A' . $row . ':R' . $row)->applyFromArray($totalStyle);
+        $sheet->getStyle('A' . $row . ':R' . $row)->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN);
+
+        // Auto-ajustar ancho de columnas
+        foreach (range('A', 'R') as $colChar) {
+            $sheet->getColumnDimension($colChar)->setAutoSize(true);
+        }
+
+        $writer = new Xlsx($spreadsheet);
+        $nomEmpresaClean = preg_replace('/[^a-zA-Z0-9]/', '_', $empresa->empresa);
+        $mesNom = $meses[$mes];
+        $filename = "Planilla_{$nomEmpresaClean}_{$mesNom}_{$anio}.xlsx";
+
+        return response()->stream(
+            function () use ($writer) {
+                $writer->save('php://output');
+            },
+            200,
+            [
+                'Content-Type'        => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+                'Cache-Control'       => 'max-age=0',
+            ]
+        );
     }
 
     // ─── Facturar (crear factura) ────────────────────────────────────

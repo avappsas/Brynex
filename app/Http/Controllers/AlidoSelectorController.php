@@ -28,14 +28,21 @@ class AlidoSelectorController extends Controller
         // Superadmin BryNex → todos los aliados activos
         // BryNex regular    → solo los del pivot aliado_user
         // Otros             → solo su propio aliado
+        $today = now()->toDateString();
+
+        $queryActivos = Aliado::where('activo', true)
+            ->where(function ($q) use ($today) {
+                $q->whereNull('brynex_fecha_fin')
+                  ->orWhere('brynex_fecha_fin', '>=', $today);
+            });
+
         if ($user->es_brynex && $user->hasRole('superadmin')) {
-            $aliados = Aliado::where('activo', true)->orderBy('nombre')->get();
+            $aliados = $queryActivos->orderBy('nombre')->get();
         } elseif ($user->es_brynex) {
-            $propios  = Aliado::where('activo', true)->where('id', $user->aliado_id)->get();
             $pivotIds = $user->aliados()->where('aliados.activo', true)->wherePivot('activo', true)->pluck('aliados.id');
-            $aliados  = Aliado::where('activo', true)->whereIn('id', $pivotIds->push($user->aliado_id))->orderBy('nombre')->get();
+            $aliados  = $queryActivos->whereIn('id', $pivotIds->push($user->aliado_id))->orderBy('nombre')->get();
         } else {
-            $aliados = Aliado::where('activo', true)->where('id', $user->aliado_id)->get();
+            $aliados = $queryActivos->where('id', $user->aliado_id)->get();
         }
 
         return view('auth.selector-aliado', compact('aliados'));

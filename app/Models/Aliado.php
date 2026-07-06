@@ -12,6 +12,8 @@ class Aliado extends BaseModel
 {
     use SoftDeletes;
 
+    protected $connection = 'sqlsrv';
+
     protected $table = 'aliados';
 
     protected $fillable = [
@@ -30,11 +32,15 @@ class Aliado extends BaseModel
         'activo',
         'afiliaciones_brynex',
         'encargado_afil_id',
+        'brynex_fecha_inicio',
+        'brynex_fecha_fin',
     ];
 
     protected $casts = [
         'activo'              => 'boolean',
         'afiliaciones_brynex' => 'boolean',
+        'brynex_fecha_inicio' => 'date',
+        'brynex_fecha_fin'    => 'date',
     ];
 
     // Usuario BryNex asignado por defecto como encargado de afiliación

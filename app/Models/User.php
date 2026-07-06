@@ -16,6 +16,8 @@ class User extends Authenticatable
     use HasSqlServerDates;
     use Notifiable, HasRoles, SoftDeletes;
 
+    protected $connection = 'sqlsrv';
+
     protected $fillable = [
         'aliado_id',
         'nombre',
