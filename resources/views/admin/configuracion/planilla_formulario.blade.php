@@ -125,6 +125,24 @@
         @endforeach
     </div>
 
+    <!-- Datos de Previsualización Real -->
+    <hr style="border-color:#1e3a5f;margin:0.25rem 0;">
+    <div style="font-size:0.62rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.2rem;">
+        🔍 Datos de Previsualización Real
+    </div>
+    <div style="display:flex;flex-direction:column;gap:0.35rem;background:#1e293b;padding:0.45rem;border-radius:8px;margin-bottom:0.5rem;">
+        <div style="display:flex;gap:0.3rem;">
+            <input type="text" id="ejemploCedula" placeholder="Cédula" value="1058846712" 
+                   style="flex:1;background:#0f172a;border:1px solid #334155;color:#e2e8f0;border-radius:5px;padding:0.18rem 0.35rem;font-size:0.7rem;">
+            <input type="text" id="ejemploPlanilla" placeholder="Planilla" value="86667957"
+                   style="flex:1;background:#0f172a;border:1px solid #334155;color:#e2e8f0;border-radius:5px;padding:0.18rem 0.35rem;font-size:0.7rem;">
+        </div>
+        <button type="button" onclick="cargarDatosReales()" 
+                style="width:100%;background:#059669;color:#fff;border:none;border-radius:5px;padding:0.25rem;font-size:0.7rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:0.2rem;">
+            🔄 Cargar Datos Reales
+        </button>
+    </div>
+
     <form id="formMapeo" action="{{ route('admin.configuracion.operadores.formulario.guardar', $operador) }}" method="POST">
         @csrf
         <input type="hidden" name="formulario_campos" id="inputMapeoJson" value="">
@@ -455,6 +473,45 @@ function marcarMapeado(clave) {
     if (el) el.classList.add('mapeado');
 }
 
+let datosReales = null;
+
+function cargarDatosReales() {
+    const ced = document.getElementById('ejemploCedula').value.trim();
+    const pla = document.getElementById('ejemploPlanilla').value.trim();
+    if (!ced || !pla) {
+        mostrarToast("Ingresa Cédula y Planilla", "#7f1d1d");
+        return;
+    }
+
+    const status = document.getElementById('statusCampo');
+    status.textContent = "⏳ Cargando datos reales de la planilla...";
+
+    fetch(`/admin/configuracion/operadores/datos-ejemplo?cedula=${ced}&numero_planilla=${pla}`)
+        .then(res => {
+            if (!res.ok) throw new Error("No se encontraron registros.");
+            return res.json();
+        })
+        .then(json => {
+            datosReales = json;
+            dibujarRectangulos();
+            mostrarToast("Datos reales cargados correctamente");
+            status.textContent = "✅ Datos reales aplicados sobre el visor";
+        })
+        .catch(err => {
+            console.error(err);
+            mostrarToast("Error al cargar datos del plano", "#7f1d1d");
+            status.textContent = "❌ Error: no se encontró el plano";
+        });
+}
+
+function mostrarToast(msg, bg = "#15803d") {
+    const toast = document.getElementById('toast');
+    toast.textContent = msg;
+    toast.style.background = bg;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 2500);
+}
+
 function dibujarRectangulos() {
     rectsLayer.innerHTML = '';
     mapeo.forEach(r => {
@@ -464,7 +521,7 @@ function dibujarRectangulos() {
         el.className = 'rect-overlay';
         if (campoActivo === r.dato) el.classList.add('activo');
         
-        // Estilos e interactividad
+        // Estilos e interactividad del contenedor
         el.style.left   = (r.x * zoom) + 'px';
         el.style.top    = (r.y * zoom) + 'px';
         el.style.width  = (r.w * zoom) + 'px';
@@ -472,7 +529,7 @@ function dibujarRectangulos() {
         el.style.borderColor = (campoActivo === r.dato) ? '#3b82f6' : '#16a34a';
         el.style.backgroundColor = (campoActivo === r.dato) ? 'rgba(59, 130, 246, 0.15)' : 'rgba(22, 163, 74, 0.1)';
         
-        // Label
+        // Label flotante
         const label = document.createElement('span');
         label.className = 'rect-label';
         label.style.backgroundColor = (campoActivo === r.dato) ? '#2563eb' : '#15803d';
@@ -482,9 +539,28 @@ function dibujarRectangulos() {
         // Texto interior simulado
         const pr = document.createElement('span');
         pr.className = 'rect-preview-text';
-        pr.textContent = r.dato;
-        el.appendChild(pr);
+        
+        // Cargar dato real si está disponible
+        const valorReal = datosReales ? (datosReales[r.dato] ?? '') : null;
+        pr.textContent = (valorReal !== null) ? valorReal : r.dato;
 
+        // Estilos de previsualización de texto real exactos
+        pr.style.fontSize = ((r.font_size ?? 7.5) * zoom) + 'px';
+        pr.style.fontWeight = r.bold ? 'bold' : 'normal';
+        pr.style.fontStyle = r.italic ? 'italic' : 'normal';
+        
+        const align = r.align ?? 'left';
+        pr.style.textAlign = align;
+        el.style.justifyContent = 'center'; // Alinear verticalmente al centro
+        
+        // Si hay datos reales cargados, usar color distintivo (verde brillante si es normal, blanco si está activo)
+        if (datosReales) {
+            pr.style.color = (campoActivo === r.dato) ? '#fff' : '#4ade80';
+        } else {
+            pr.style.color = (campoActivo === r.dato) ? '#fff' : 'rgba(255,255,255,0.7)';
+        }
+
+        el.appendChild(pr);
         rectsLayer.appendChild(el);
     });
 }

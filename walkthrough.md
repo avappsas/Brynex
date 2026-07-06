@@ -12,26 +12,23 @@ He diseñado e implementado el nuevo módulo que permite subir archivos PDF de p
 * **Modelo Eloquent:** Creado [OperadorPlanillaTemplate.php](file:///Users/brayangarcia/Documents/GitHub/Brynex/app/Models/OperadorPlanillaTemplate.php).
 
 ### 2. Capa de Negocio (Servicio PDF Dinámico)
-* **Nuevo Servicio:** Creado [PlanillaFormularioService.php](file:///Users/brayangarcia/Documents/GitHub/Brynex/app/Services/PlanillaFormularioService.php) que:
-  1. Autodetecta el operador por el que se reportó o pagó el plano (consultando el historial de la API `operador_planillas_api` o el operador por defecto asignado al cliente).
-  2. Si existe una plantilla configurada en BD, carga el archivo PDF base desde `storage/app/formularios/planillas/` y reemplaza los datos dinámicos usando las coordenadas del JSON.
-  3. Si no existe plantilla en BD para el operador, se apoya de forma segura en el renderizado estructurado por código en `SuaportePdfService` (fallback).
+* **Nuevo Servicio:** Creado [PlanillaFormularioService.php](file:///Users/brayangarcia/Documents/GitHub/Brynex/app/Services/PlanillaFormularioService.php) que maneja el rellenado dinámico por coordenadas configuradas en BD.
+* **Visibilidad:** Cambiado el método `ensamblarDatos` a `public` para permitir la previsualización en tiempo real en la UI del administrador.
 
-### 3. Editor Visual de Planillas (Admin UI)
-* **Rutas:** Registradas en [web.php](file:///Users/brayangarcia/Documents/GitHub/Brynex/routes/web.php).
-* **Controlador Administrativo:** Creado [OperadorPlanillaFormularioController.php](file:///Users/brayangarcia/Documents/GitHub/Brynex/app/Http/Controllers/Admin/OperadorPlanillaFormularioController.php).
-* **Hub de Configuración:** Añadida la tarjeta de "Editor de Planillas de Pago" en [hub.blade.php](file:///Users/brayangarcia/Documents/GitHub/Brynex/resources/views/admin/configuracion/hub.blade.php).
-* **Lienzo Interactivo:** Creada la vista [planilla_formulario.blade.php](file:///Users/brayangarcia/Documents/GitHub/Brynex/resources/views/admin/configuracion/planilla_formulario.blade.php) que permite a los administradores subir el PDF del operador, elegir el campo (Aportante, Afiliado, Aportes, Totales), arrastrar y dibujar el área interactiva sobre el canvas, y calibrar tamaño de fuente, estilos (negrita, cursiva), alineación y limpieza de celda.
+### 3. Previsualización Real en Tiempo Real (Mejora de UX)
+* **Nueva Ruta de API:** Registrada `GET admin/configuracion/operadores/datos-ejemplo` para obtener los datos de cotizantes de prueba.
+* **Acción en el Controlador:** Implementado el método `obtenerDatosEjemplo` en [OperadorPlanillaFormularioController.php](file:///Users/brayangarcia/Documents/GitHub/Brynex/app/Http/Controllers/Admin/OperadorPlanillaFormularioController.php).
+* **Controles Visuales (Visor):** 
+  - Añadido un formulario flotante en [planilla_formulario.blade.php](file:///Users/brayangarcia/Documents/GitHub/Brynex/resources/views/admin/configuracion/planilla_formulario.blade.php) para ingresar la Cédula y Planilla (precargado con la planilla de prueba `1058846712` / `86667957`).
+  - Al cargar los datos, el visor interactivo reemplaza los nombres técnicos de las celdas por los valores reales de la planilla (ej: `HIGINIO OSPINA FABIAN ALFONSO`), escalando y aplicando en el canvas la alineación de texto y tamaño de fuente configurados para validar el resultado antes de descargar.
 
 ### 4. Siembra Inicial (Seeder)
-* **Script de Siembra:** Creado y ejecutado [sembrar_planilla_suaporte.php](file:///Users/brayangarcia/.gemini/antigravity/brain/300d20ea-4d33-4511-a7d6-8bad5ac1c292/scratch/sembrar_planilla_suaporte.php) para inicializar al operador Enlace (Suaporte) en la tabla de plantillas con las coordenadas de alineación y tapado exactas que calibramos para el afiliado y la liquidación.
+* **Script de Siembra:** Ejecutado `sembrar_planilla_suaporte.php` para sembrar el operador Enlace (Suaporte) con el mapeo completo de 42 celdas.
 
 ---
 
 ## Verificación de Correctitud
 
-1. **Migración de base de datos:** Ejecutada con éxito.
-2. **Siembra de plantilla:** Copió el PDF base y guardó el JSON con 42 campos mapeados.
-3. **Compilación Tinker:** Ejecutado con éxito:
-   `(new \App\Services\PlanillaFormularioService())->generar($plano)`
-   generando el PDF rellenado dinámicamente desde base de datos sin ningún tipo de error.
+1. **Ruta API de Ejemplo:** Retorna el JSON estructurado de claves y valores para la cédula y número de planilla de prueba.
+2. **Editor Visual:** Carga la planilla de Higinio Ospina en tiempo real, adaptando los textos del canvas según el zoom, alineación y tamaño de fuente.
+3. **Generación final:** Probada y compilada la generación por coordenadas desde base de datos de manera correcta.

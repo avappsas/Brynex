@@ -174,6 +174,7 @@ Route::middleware('auth')->group(function () {
         Route::get ('configuracion/operadores/{operador}/formulario/pdf', [$opf, 'verPdf'])  ->name('configuracion.operadores.formulario.vpdf');
         Route::post('configuracion/operadores/{operador}/formulario',     [$opf, 'guardar']) ->name('configuracion.operadores.formulario.guardar');
         Route::post('configuracion/operadores/{operador}/formulario/pdf', [$opf, 'subirPdf'])->name('configuracion.operadores.formulario.pdf');
+        Route::get ('configuracion/operadores/datos-ejemplo',             [$opf, 'obtenerDatosEjemplo'])->name('configuracion.operadores.ejemplo');
 
         // API utilitaria: ciudades por departamento (para selects dinámicos)
         Route::get('api/departamentos/{id}/ciudades', function ($id) {

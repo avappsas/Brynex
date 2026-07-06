@@ -82,7 +82,7 @@ class PlanillaFormularioService
     /**
      * Ensambla todos los datos dinámicos del cotizante y aportante para rellenar la plantilla.
      */
-    protected function ensamblarDatos(Plano $plano): array
+    public function ensamblarDatos(Plano $plano): array
     {
         $c = PilaCotizanteCalculator::calcular($plano);
 

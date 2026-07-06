@@ -201,4 +201,36 @@ class OperadorPlanillaFormularioController extends Controller
             'total.final' => '💰 Total Final Planilla',
         ];
     }
+
+    /**
+     * Obtiene los datos dinámicos de un plano de ejemplo para la previsualización en tiempo real.
+     * GET /admin/configuracion/operadores/datos-ejemplo
+     */
+    public function obtenerDatosEjemplo(Request $request)
+    {
+        $aliadoId = session('aliado_id_activo');
+        $cedula = $request->input('cedula');
+        $numeroPlanilla = $request->input('numero_planilla');
+
+        if (!$cedula || !$numeroPlanilla) {
+            return response()->json(['error' => 'Debe suministrar cédula y número de planilla.'], 400);
+        }
+
+        $plano = \App\Models\Plano::with('razonSocial')
+            ->where('aliado_id', $aliadoId)
+            ->where('no_identifi', $cedula)
+            ->where('numero_planilla', $numeroPlanilla)
+            ->whereNull('deleted_at')
+            ->first();
+
+        if (!$plano) {
+            return response()->json(['error' => 'No se encontró el registro de planilla de pago solicitado.'], 404);
+        }
+
+        // Ensamblar los datos reales usando el servicio
+        $service = new \App\Services\PlanillaFormularioService();
+        $datos = $service->ensamblarDatos($plano);
+
+        return response()->json($datos);
+    }
 }
