@@ -3220,20 +3220,36 @@ class FacturacionController extends Controller
             ->toArray();
 
         $soportesPlanilla = collect();
+        $operadoresPlanillaInfo = collect();
+        $gastosPlanilla = collect();
         if (!empty($numeroPlanillas)) {
-            $soportesPlanilla = \App\Models\Gasto::where('aliado_id', $aliadoId)
+            $gastosPlanilla = \App\Models\Gasto::where('aliado_id', $aliadoId)
                 ->where('tipo', 'pago_planilla')
                 ->whereIn('numero_planilla', $numeroPlanillas)
-                ->whereNotNull('imagen_path')
                 ->get(['numero_planilla', 'imagen_path', 'descripcion', 'pagado_a'])
                 ->keyBy('numero_planilla');
+
+            // Filtrar los que tienen soporte con imagen
+            $soportesPlanilla = $gastosPlanilla->filter(fn($g) => !empty($g->imagen_path));
+
+            // Cargar operadores (ID y Nombre) desde la API de planillas
+            $operadoresPlanillaInfo = \DB::table('operador_planillas_api')
+                ->where('operador_planillas_api.aliado_id', $aliadoId)
+                ->whereIn('operador_planillas_api.numero_planilla', $numeroPlanillas)
+                ->join('operadores_planilla', 'operadores_planilla.id', '=', 'operador_planillas_api.operador_planilla_id')
+                ->select('operadores_planilla.id', 'operadores_planilla.nombre', 'operador_planillas_api.numero_planilla')
+                ->get()
+                ->keyBy('numero_planilla');
         }
+
+        $operadoresTodosMap = \DB::table('operadores_planilla')->pluck('id', 'nombre');
 
         return view('admin.facturacion.historial', compact(
             'cliente', 'contrato', 'cedula', 'agrupado',
             'filtroAnio', 'filtroRs', 'sinFiltros',
             'aniosDisp', 'rsSocDisp', 'meses', 'contratosporRS',
-            'soportesPlanilla'
+            'soportesPlanilla', 'operadoresPlanillaInfo', 'gastosPlanilla',
+            'operadoresTodosMap'
         ));
     }
 

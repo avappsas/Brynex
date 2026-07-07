@@ -934,12 +934,17 @@ class PlanoPagoController extends Controller
             abort(404, 'No se encontró ningún registro de planilla de pago con esos datos.');
         }
 
+        $forceOperadorId = $request->input('forzar_operador_id');
+        if ($forceOperadorId) {
+            $forceOperadorId = (int) $forceOperadorId;
+        }
+
         // Generar el PDF de planilla rellenando la plantilla correspondiente al operador configurado de forma dinámica
-        $pdfContent = (new \App\Services\PlanillaFormularioService())->generar($plano);
+        $pdfContent = (new \App\Services\PlanillaFormularioService())->generar($plano, $forceOperadorId);
 
         return response($pdfContent)
             ->header('Content-Type', 'application/pdf')
-            ->header('Content-Disposition', "attachment; filename=\"IndividualesCertificado_{$cedula}_{$numeroPlanilla}.pdf\"")
+            ->header('Content-Disposition', "inline; filename=\"IndividualesCertificado_{$cedula}_{$numeroPlanilla}.pdf\"")
             ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
             ->header('Pragma', 'no-cache')
             ->header('Expires', 'Sat, 26 Jul 1997 05:00:00 GMT');

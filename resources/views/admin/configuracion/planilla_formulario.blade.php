@@ -149,7 +149,7 @@
         <button type="button" class="btn-guardar" onclick="guardarMapeo()">💾 Guardar Configuración</button>
         <button type="button" class="btn-guardar" onclick="descargarPdfPrueba()" 
                 style="background:linear-gradient(135deg,#0369a1,#0284c7);margin-top:0.35rem;display:flex;align-items:center;justify-content:center;gap:0.25rem;">
-            📄 Descargar PDF de Prueba
+            👁️ Previsualizar PDF de Prueba
         </button>
     </form>
 </div>
@@ -172,11 +172,13 @@
         </div>
     </div>
 
-    <div class="canvas-wrap" id="canvasWrap">
-        <canvas id="pdfCanvas"></canvas>
-        <div id="rectPreview"></div>
-        <!-- Capa de rectángulos mapeados colocados vía JS -->
-        <div id="rectsLayer" style="position:absolute;inset:0;pointer-events:none;"></div>
+    <div class="canvas-wrap" id="canvasWrap" style="text-align:center;padding:1rem;overflow:auto;">
+        <div id="canvasContainer" style="position:relative;display:inline-block;text-align:left;box-shadow:0 4px 20px rgba(0,0,0,0.15);user-select:none;">
+            <canvas id="pdfCanvas"></canvas>
+            <div id="rectPreview" style="position:absolute;border:2px dashed #facc15;pointer-events:none;display:none;box-sizing:border-box;z-index:10;"></div>
+            <!-- Capa de rectángulos mapeados colocados vía JS -->
+            <div id="rectsLayer" style="position:absolute;inset:0;pointer-events:none;z-index:5;"></div>
+        </div>
     </div>
 
     {{-- Configuración flotante del campo activo --}}
@@ -277,9 +279,12 @@ function renderizarPagina() {
             pdfWidth  = mediaBox[2] - mediaBox[0];
             pdfHeight = mediaBox[3] - mediaBox[1];
             
-            // Redimensionar las capas
-            rectsLayer.style.width  = canvas.width + 'px';
-            rectsLayer.style.height = canvas.height + 'px';
+            // Redimensionar el contenedor de contención exacto
+            const container = document.getElementById('canvasContainer');
+            if (container) {
+                container.style.width  = canvas.width + 'px';
+                container.style.height = canvas.height + 'px';
+            }
             
             dibujarRectangulos();
             actualizarContador();
@@ -317,9 +322,10 @@ function previewDe(clave) {
 
 // Eventos de ratón
 canvasWrap.addEventListener('mousemove', e => {
-    const wr = canvasWrap.getBoundingClientRect();
-    const mx = e.clientX - wr.left + canvasWrap.scrollLeft;
-    const my = e.clientY - wr.top  + canvasWrap.scrollTop;
+    if (!pdfDoc) return;
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
 
     if (drag.active) {
         if (drag.mode === 'draw') {
@@ -345,9 +351,9 @@ canvasWrap.addEventListener('mousemove', e => {
 canvasWrap.addEventListener('mousedown', e => {
     if (!pdfDoc) return;
     e.preventDefault();
-    const wr = canvasWrap.getBoundingClientRect();
-    const mx = e.clientX - wr.left + canvasWrap.scrollLeft;
-    const my = e.clientY - wr.top  + canvasWrap.scrollTop;
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
 
     const bajo = rectEnPunto(mx, my);
     if (bajo) {
@@ -377,9 +383,9 @@ canvasWrap.addEventListener('mouseup', e => {
     if (drag.mode === 'move') return;
 
     preview.style.display = 'none';
-    const wr   = canvasWrap.getBoundingClientRect();
-    const curX = e.clientX - wr.left + canvasWrap.scrollLeft;
-    const curY = e.clientY - wr.top  + canvasWrap.scrollTop;
+    const rect = canvas.getBoundingClientRect();
+    const curX = e.clientX - rect.left;
+    const curY = e.clientY - rect.top;
     const pxX  = Math.min(drag.startX, curX);
     const pxY  = Math.min(drag.startY, curY);
     const pxW  = Math.abs(curX - drag.startX);
@@ -573,7 +579,6 @@ function dibujarRectangulos() {
         
         const align = r.align ?? 'left';
         pr.style.textAlign = align;
-        el.style.justifyContent = 'center'; // Alinear verticalmente al centro
         
         // Si hay datos reales cargados, usar color distintivo (verde brillante si es normal, blanco si está activo)
         if (datosReales) {
@@ -604,13 +609,29 @@ function descargarPdfPrueba() {
         mostrarToast("Ingresa Cédula y Planilla", "#7f1d1d");
         return;
     }
-    
-    // Primero, guardar mapeo para asegurar que la descarga use la configuración que el usuario tiene en pantalla
+    // Primero, guardar mapeo vía fetch para asegurar que la descarga use la configuración que el usuario tiene en pantalla
     document.getElementById('inputMapeoJson').value = JSON.stringify(mapeo);
+    const form = document.getElementById('formMapeo');
+    const formData = new FormData(form);
     
-    // Abrir la descarga en una pestaña nueva con parámetro anticaché dinámico
-    const url = `/admin/planos/certificado-pdf?cedula=${ced}&numero_planilla=${pla}&t=${Date.now()}`;
-    window.open(url, '_blank');
+    mostrarToast("Guardando configuración...", "#0369a1");
+    
+    fetch(form.action, {
+        method: 'POST',
+        body: formData,
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    }).then(response => {
+        if (response.ok) {
+            mostrarToast("Generando PDF...", "#15803d");
+            // Abrir la descarga con el operador forzado para no mezclar plantillas
+            const url = `/admin/planos/certificado-pdf?cedula=${ced}&numero_planilla=${pla}&forzar_operador_id={{ $operador->id }}&t=${Date.now()}`;
+            window.open(url, '_blank');
+        } else {
+            mostrarToast("Error al guardar antes de previsualizar", "#7f1d1d");
+        }
+    }).catch(error => {
+        mostrarToast("Error de conexión al guardar", "#7f1d1d");
+    });
 }
 </script>
 @endsection

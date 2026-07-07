@@ -634,18 +634,28 @@
             {{-- N° Plano --}}
             <div class="filtro-inline">
                 <span class="fi-label">Plano</span>
-                <select name="n_plano" id="sel-nplano" onchange="autoSubmit()" style="width:90px">
+                <select name="n_plano" id="sel-nplano" onchange="checkOtroPlano(this)" style="width:95px">
                     <option value="">Todos</option>
-                    @for($np = 1; $np <= 20; $np++)
+                    @php
+                        $maxNp = 40;
+                        $nPlanoFiltroInt = ($nPlanoFiltro !== null && $nPlanoFiltro !== '') ? (int)$nPlanoFiltro : null;
+                    @endphp
+                    @for($np = 1; $np <= $maxNp; $np++)
                     <option value="{{ $np }}"
                         {{ (string)$nPlanoFiltro === (string)$np ? 'selected' : '' }}>
                         P{{ $np }}{{ ($rsSeleccionada && $rsSeleccionada->n_plano == $np) ? ' ⭐' : '' }}
                     </option>
                     @endfor
+                    @if($nPlanoFiltroInt && $nPlanoFiltroInt !== 100 && ($nPlanoFiltroInt < 1 || $nPlanoFiltroInt > $maxNp))
+                    <option value="{{ $nPlanoFiltroInt }}" selected>
+                        P{{ $nPlanoFiltroInt }}{{ ($rsSeleccionada && $rsSeleccionada->n_plano == $nPlanoFiltroInt) ? ' ⭐' : '' }}
+                    </option>
+                    @endif
                     <option value="100" {{ (string)$nPlanoFiltro === '100' ? 'selected' : '' }}
                         style="color:#92400e;font-weight:700;background:#fefce8">
                         P100 — IR
                     </option>
+                    <option value="otro" style="color:#2563eb; font-weight:600; background:#eff6ff;">✍️ Otro...</option>
                 </select>
             </div>
 
@@ -1742,9 +1752,62 @@ function selRs(val, nplano, label) {
     // Si se elige "— Todas —" (val vacío), dejar el selector en "Todos" (vacío).
     const selNplano = document.getElementById('sel-nplano');
     if (selNplano) {
-        selNplano.value = val && nplano ? String(nplano) : '';
+        if (val && nplano) {
+            let nStr = String(nplano);
+            let existe = false;
+            for (let i = 0; i < selNplano.options.length; i++) {
+                if (selNplano.options[i].value === nStr) {
+                    existe = true;
+                    break;
+                }
+            }
+            if (!existe && nStr !== '100' && nStr !== '0') {
+                let opt = document.createElement('option');
+                opt.value = nStr;
+                opt.textContent = 'P' + nStr + ' ⭐';
+                selNplano.insertBefore(opt, selNplano.options[selNplano.options.length - 1]);
+            }
+            selNplano.value = nStr;
+        } else {
+            selNplano.value = '';
+        }
     }
     autoSubmit();
+}
+
+function checkOtroPlano(el) {
+    if (el.value === 'otro') {
+        let val = prompt("Ingrese el número de plano deseado (ej. 30, 45, etc.):");
+        if (val) {
+            val = val.trim();
+            let num = parseInt(val, 10);
+            if (!isNaN(num) && num > 0) {
+                let existe = false;
+                for (let i = 0; i < el.options.length; i++) {
+                    if (el.options[i].value == String(num)) {
+                        el.value = String(num);
+                        existe = true;
+                        break;
+                    }
+                }
+                if (!existe) {
+                    let opt = document.createElement('option');
+                    opt.value = String(num);
+                    opt.textContent = 'P' + num;
+                    el.insertBefore(opt, el.options[el.options.length - 1]);
+                    el.value = String(num);
+                }
+                autoSubmit();
+            } else {
+                mostrarToast('El número de plano debe ser un entero positivo.', 'error');
+                el.value = '';
+            }
+        } else {
+            el.value = '';
+        }
+    } else {
+        autoSubmit();
+    }
 }
 function filtrarRs(q) {
     q = q.trim().toLowerCase();

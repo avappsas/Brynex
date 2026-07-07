@@ -9,15 +9,15 @@ use setasign\Fpdi\Fpdi;
 class PlanillaFormularioService
 {
     /**
-     * Generar el PDF rellenando la plantilla asignada al operador de planilla.
-     *
+     * Ensambla los datos del plano y genera el PDF rellenado.
      * @param Plano $plano
+     * @param int|null $forceOperadorId Si se provee, ignora la autodetección y fuerza este operador.
      * @return string Contenido binario del PDF.
      */
-    public function generar(Plano $plano): string
+    public function generar(Plano $plano, ?int $forceOperadorId = null): string
     {
-        // 1. Intentar autodetectar el operador por el que se pagó la planilla
-        $operadorPlanillaId = $this->detectarOperadorId($plano);
+        // 1. Intentar autodetectar el operador por el que se pagó la planilla (o usar el forzado)
+        $operadorPlanillaId = $forceOperadorId ?? $this->detectarOperadorId($plano);
 
         // 2. Buscar si hay una plantilla configurada en base de datos para ese operador
         $template = null;
@@ -118,18 +118,21 @@ class PlanillaFormularioService
             }
         }
 
-        // Periodo de Servicio: es el mes actual del plano
-        $perSer = $plano->anio_plano . str_pad($plano->mes_plano, 2, '0', STR_PAD_LEFT);
-
-        // Periodo de Cotización: es el mes vencido (mes anterior)
-        $mesCotizacion = $plano->mes_plano > 1 ? $plano->mes_plano - 1 : 12;
-        $anioCotizacion = $plano->mes_plano > 1 ? $plano->anio_plano : $plano->anio_plano - 1;
-        // Para modalidad especial independiente / específica, cotizan el mismo mes
-        if ($plano->tipo_modalidad_id == 11) {
-            $mesCotizacion = $plano->mes_plano;
-            $anioCotizacion = $plano->anio_plano;
+        // Periodo de Cotización: es el mes del plano (ej: 06)
+        $perCot = $plano->anio_plano . str_pad($plano->mes_plano, 2, '0', STR_PAD_LEFT);
+        
+        // Periodo de Servicio: es el mes en que se EFECTÚA el pago / factura (ej: 07).
+        // Se asume mes_plano + 1, o el mes real de la fecha de pago si existe.
+        $mesPago = $plano->mes_plano == 12 ? 1 : $plano->mes_plano + 1;
+        $anioPago = $plano->mes_plano == 12 ? $plano->anio_plano + 1 : $plano->anio_plano;
+        
+        if ($plano->fecha_pago) {
+            $dtPago = \Carbon\Carbon::parse($plano->fecha_pago);
+            $mesPago = $dtPago->month;
+            $anioPago = $dtPago->year;
         }
-        $perCot = $anioCotizacion . str_pad($mesCotizacion, 2, '0', STR_PAD_LEFT);
+
+        $perSer = $anioPago . str_pad($mesPago, 2, '0', STR_PAD_LEFT);
 
         $granTotal = $c['vAfp'] + $c['vEps'] + $c['vArl'] + $c['vCcf'];
         
@@ -313,20 +316,34 @@ class PlanillaFormularioService
                 $pdf->Rect($x, $y, $w, $h, 'F');
             }
 
-            // Escribir el nuevo texto
-            // El Y de la línea de base es el Y del rectángulo más el alto del texto (para centrar verticalmente)
-            $yBase = $y + ($h > 0 ? ($h * 0.8) : $fontSize);
-            
-            // Alineación de texto
+            // Lógica idéntica a formularios EPS: anclar texto al fondo de la caja
+            $cellH = $fontSize + 1; // celda justa alrededor del texto
+            $textY = $y + $h - $cellH; // anclar al fondo del rect
+
+            // Ajuste global milimétrico para coincidir con la vista HTML
+            // El HTML tiene un padding-left de 2px (1.5pt), mientras que FPDF usa 2.83pt por defecto.
+            $pdf->setCMargin(1.5);
+
             $align = $c['align'] ?? 'left';
+            $alignFpdf = 'L';
             if ($align === 'right') {
-                $pdf->SetXY($x, $y);
-                $pdf->Cell($w, $h, $valor, 0, 0, 'R');
+                $alignFpdf = 'R';
             } elseif ($align === 'center') {
-                $pdf->SetXY($x, $y);
-                $pdf->Cell($w, $h, $valor, 0, 0, 'C');
+                $alignFpdf = 'C';
+            }
+
+            // Restauramos el Y original ya que el +1.5 lo bajó demasiado
+            $textY = $y + $h - $cellH;
+
+            $pdf->SetXY($x, $textY);
+            
+            // FPDF solo soporta ISO-8859-1 (Latin-1). Convertimos el texto para soportar tildes y ñ.
+            $valorIso = mb_convert_encoding((string)$valor, 'ISO-8859-1', 'UTF-8');
+            
+            if ($w > 0) {
+                $pdf->Cell($w, $cellH, $valorIso, 0, 0, $alignFpdf);
             } else {
-                $pdf->Text($x + 2, $yBase, $valor);
+                $pdf->Write($cellH, $valorIso);
             }
 
             // Restaurar espaciado a 0
@@ -345,5 +362,10 @@ class BrynexFpdi extends Fpdi
     public function SetCharSpacing($spacing)
     {
         $this->_out(sprintf('%.3F Tc', $spacing));
+    }
+
+    public function setCMargin($margin)
+    {
+        $this->cMargin = $margin;
     }
 }

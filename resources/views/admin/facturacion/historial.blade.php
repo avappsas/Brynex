@@ -156,13 +156,12 @@ table.hi-tbl{width:100%;border-collapse:collapse;font-size:.77rem}
                 <th>Fecha</th>
                 <th>Período</th>
                 <th>Tipo</th>
-                <th class="num">SS</th>
-                <th class="num">Admon</th>
                 <th class="num">Total</th>
                 <th>Estado</th>
-                <th>NP</th>
-                <th>N° Planilla</th>
+                <th>Plano</th>
                 <th>Origen</th>
+                <th>N° Planilla</th>
+                <th>Operador</th>
                 <th>Acciones</th>
             </tr></thead>
             <tbody>
@@ -186,7 +185,24 @@ table.hi-tbl{width:100%;border-collapse:collapse;font-size:.77rem}
             $numeroPlanillaOp = $f->plano?->numero_planilla;
             // Puede anular: admin/superadmin + si tiene planilla solo superadmin BryNex
             $puedeAnular = $esAdmin && (!$numeroPlanillaOp || $esSuperBrynex);
-            @endphp
+            
+             // Nombre y ID del operador
+             $nombreOp = '—';
+             $operadorId = null;
+             if ($numeroPlanillaOp) {
+                 $opInfo = $operadoresPlanillaInfo->get($numeroPlanillaOp);
+                 $nombreOp = $opInfo?->nombre 
+                          ?? $gastosPlanilla->get($numeroPlanillaOp)?->pagado_a 
+                          ?? $cliente->operadorPlanilla?->nombre 
+                          ?? 'Desconocido';
+                 
+                 // Buscar ID del operador basado en el nombre registrado en gastos si no está en la API
+                 $gastoOpNombre = $gastosPlanilla->get($numeroPlanillaOp)?->pagado_a;
+                 $operadorId = $opInfo?->id 
+                            ?? ($gastoOpNombre ? ($operadoresTodosMap->get($gastoOpNombre) ?? null) : null)
+                            ?? $cliente->operador_planilla_id;
+             }
+             @endphp
             @php
             $vSS = ($f->v_eps ?? 0) + ($f->v_afp ?? 0) + ($f->v_arl ?? 0) + ($f->v_caja ?? 0);
             @endphp
@@ -195,15 +211,20 @@ table.hi-tbl{width:100%;border-collapse:collapse;font-size:.77rem}
                 <td style="color:#64748b;font-size:.72rem">{{ $f->fecha_pago?->format('d/m/Y') ?? '—' }}</td>
                 <td style="font-weight:600;color:#0f172a">{{ $meses[$f->mes] ?? '' }} {{ $f->anio }}</td>
                 <td><span class="badge {{ $tipoBadge[0] }}">{{ $tipoBadge[1] }}</span></td>
-                {{-- SS = EPS + Pensión + ARL + Caja agrupado --}}
-                <td class="num" title="EPS: {{ $fmt($f->v_eps??0) }} · Pensión: {{ $fmt($f->v_afp??0) }} · ARL: {{ $fmt($f->v_arl??0) }} · Caja: {{ $fmt($f->v_caja??0) }}">
-                    {{ $vSS > 0 ? $fmt($vSS) : '—' }}
-                </td>
-                <td class="num">{{ $fmt(($f->admon ?? 0) + ($f->admin_asesor ?? 0)) }}</td>
                 <td class="num" style="font-weight:900;color:{{ $f->estado==='pagada'?'#16a34a':'#0f172a' }}">{{ $fmt($f->total) }}</td>
                 <td><span class="badge {{ $estadoBadge[0] }}">{{ $estadoBadge[1] }}</span></td>
-                {{-- NP — al lado de Estado --}}
+                {{-- Número de Plano (NP) --}}
                 <td style="font-weight:700;color:#1d4ed8;font-family:monospace;font-size:.76rem">{{ $f->n_plano ?? '—' }}</td>
+                {{-- Origen --}}
+                <td>
+                    @if($esPorEmpresa)
+                    <span class="badge badge-emp" title="{{ $f->empresa?->empresa ?? 'Empresa' }}">
+                        🏢 {{ Str::limit($f->empresa?->empresa ?? 'Empresa', 12) }}
+                    </span>
+                    @else
+                    <span class="badge badge-ind">👤 Individual</span>
+                    @endif
+                </td>
                 {{-- Nº Planilla operador --}}
                 <td style="white-space:nowrap">
                     @if($numeroPlanillaOp)
@@ -226,18 +247,17 @@ table.hi-tbl{width:100%;border-collapse:collapse;font-size:.77rem}
                     <span style="color:#cbd5e1;font-size:.7rem">—</span>
                     @endif
                 </td>
+                {{-- Operador --}}
                 <td>
-                    @if($esPorEmpresa)
-                    <span class="badge badge-emp" title="{{ $f->empresa?->empresa ?? 'Empresa' }}">
-                        🏢 {{ Str::limit($f->empresa?->empresa ?? 'Empresa', 12) }}
-                    </span>
+                    @if($numeroPlanillaOp)
+                        <span style="font-size:0.7rem; color:#475569; font-weight:600;">{{ Str::limit($nombreOp, 15) }}</span>
                     @else
-                    <span class="badge badge-ind">👤 Individual</span>
+                        <span style="color:#cbd5e1;font-size:.7rem">—</span>
                     @endif
                 </td>
                 <td>
                     <div style="display:flex;gap:.3rem;align-items:center;flex-wrap:wrap">
-                        {{-- Recibo — pasa datos del plano para mostrarlo en el header del modal --}}
+                        {{-- Recibo --}}
                         <button onclick="abrirRecibo(
                                     '{{ route('admin.facturacion.recibo', $f->id) }}?modal=1&individual=1',
                                     {{ $f->plano ? json_encode($f->plano) : 'null' }},
@@ -246,7 +266,16 @@ table.hi-tbl{width:100%;border-collapse:collapse;font-size:.77rem}
                                 class="btn-act-sm btn-recibo" title="Ver recibo">
                             📄 Recibo
                         </button>
-                        {{-- Plano — movido DENTRO del modal recibo; aquí queda como acceso rápido secundario --}}
+                        
+                        {{-- PDF Planilla --}}
+                        @if($numeroPlanillaOp)
+                        <a href="{{ route('admin.planos.certificado_pdf') }}?cedula={{ $f->cedula }}&numero_planilla={{ $numeroPlanillaOp }}{{ $operadorId ? '&forzar_operador_id=' . $operadorId : '' }}"
+                           onclick="this.href = this.href.split('&t=')[0] + '&t=' + new Date().getTime()"
+                           target="_blank" class="btn-act-sm" style="background:#0f172a;color:#fff;border-color:#0f172a;" title="Descargar PDF Planilla">
+                            ⬇️ Planilla
+                        </a>
+                        @endif
+                        
                         @if($f->plano)
                         <button type="button" class="btn-act-sm btn-plano"
                             onclick="verPlano({{ json_encode($f->plano) }}, '{{ $meses[$f->mes] ?? '' }} {{ $f->anio }}')"
