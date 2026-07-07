@@ -158,6 +158,7 @@ class OperadorPlanillaFormularioController extends Controller
             // Aportes Detallados (Fila Sección III)
             'aporte.novedad_ing' => 'ING (X si ingresó)',
             'aporte.novedad_ret' => 'RET (X si se retiró)',
+            'aporte.novedad_irp' => 'IRP (Días de incapacidad por riesgos profesionales, 0 por defecto)',
             'aporte.dias_afp'    => 'Días AFP',
             'aporte.dias_eps'    => 'Días EPS',
             'aporte.dias_arl'    => 'Días ARL',

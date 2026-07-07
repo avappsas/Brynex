@@ -189,6 +189,7 @@ class PlanillaFormularioService
             // Aportes Detallados
             'aporte.novedad_ing'  => !empty($plano->fecha_ing) ? 'X' : '',
             'aporte.novedad_ret'  => !empty($plano->fecha_ret) ? 'X' : '',
+            'aporte.novedad_irp'  => (string)$this->calcularNovedadIrp($plano),
             'aporte.dias_afp'     => $c['diasPension'],
             'aporte.dias_eps'     => $c['diasSalud'],
             'aporte.dias_arl'     => $c['diasArl'],
@@ -255,6 +256,59 @@ class PlanillaFormularioService
             'total.men'   => '$ 0',
             'total.final' => '$ ' . number_format($granTotal, 0, ',', '.'),
         ];
+    }
+
+    /**
+     * Calcula la cantidad de días de incapacidad por riesgos profesionales (IRP) del cotizante en el periodo.
+     */
+    protected function calcularNovedadIrp(Plano $plano): int
+    {
+        if (!$plano->contrato_id || !$plano->mes_plano || !$plano->anio_plano) {
+            return 0;
+        }
+
+        try {
+            $inicioMes = \Carbon\Carbon::create($plano->anio_plano, $plano->mes_plano, 1)->startOfMonth();
+            $finMes = \Carbon\Carbon::create($plano->anio_plano, $plano->mes_plano, 1)->endOfMonth();
+
+            $incapacidades = \DB::table('incapacidades')
+                ->where('contrato_id', $plano->contrato_id)
+                ->where(function($q) {
+                    $q->where('tipo_entidad', 'arl')
+                      ->orWhere('tipo_incapacidad', 'accidente_laboral');
+                })
+                ->where(function($q) use ($inicioMes, $finMes) {
+                    $q->whereBetween('fecha_inicio', [$inicioMes->format('Y-m-d'), $finMes->format('Y-m-d')])
+                      ->orWhereBetween('fecha_terminacion', [$inicioMes->format('Y-m-d'), $finMes->format('Y-m-d')])
+                      ->orWhere(function($inner) use ($inicioMes, $finMes) {
+                          $inner->where('fecha_inicio', '<=', $inicioMes->format('Y-m-d'))
+                                ->where('fecha_terminacion', '>=', $finMes->format('Y-m-d'));
+                      });
+                })
+                ->whereNull('deleted_at')
+                ->get(['fecha_inicio', 'fecha_terminacion']);
+
+            if ($incapacidades->isEmpty()) {
+                return 0;
+            }
+
+            $diasTotales = 0;
+            foreach ($incapacidades as $inc) {
+                $ini = \Carbon\Carbon::parse($inc->fecha_inicio);
+                $fin = \Carbon\Carbon::parse($inc->fecha_terminacion);
+
+                $rangoInicio = $ini->greaterThan($inicioMes) ? $ini : $inicioMes;
+                $rangoFin = $fin->lessThan($finMes) ? $fin : $finMes;
+
+                if ($rangoInicio->lessThanOrEqualTo($rangoFin)) {
+                    $diasTotales += $rangoInicio->diffInDays($rangoFin) + 1;
+                }
+            }
+
+            return min(30, $diasTotales);
+        } catch (\Exception $e) {
+            return 0;
+        }
     }
 
     /**
