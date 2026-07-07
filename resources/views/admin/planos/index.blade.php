@@ -510,6 +510,36 @@
 .btn-descarga-secundario:last-child {
     grid-column: span 2;
 }
+
+/* ── Ordenamiento de Tabla ───────────────────────────────────────────── */
+.tabla-planos thead th.sortable {
+    cursor: pointer;
+    user-select: none;
+    position: relative;
+    padding-right: 1.25rem !important;
+}
+.tabla-planos thead th.sortable:hover {
+    background: rgba(255, 255, 255, 0.15) !important;
+}
+.tabla-planos thead th.sortable::after {
+    content: ' ↕';
+    font-size: 0.65rem;
+    opacity: 0.4;
+    position: absolute;
+    right: 0.35rem;
+    top: 50%;
+    transform: translateY(-50%);
+}
+.tabla-planos thead th.sortable.asc::after {
+    content: ' ▲';
+    opacity: 0.9;
+    color: #10b981;
+}
+.tabla-planos thead th.sortable.desc::after {
+    content: ' ▼';
+    opacity: 0.9;
+    color: #10b981;
+}
 </style>
 @endpush
 
@@ -730,27 +760,27 @@
 <table class="tabla-planos">
     <thead>
         <tr>
-            <th>#</th>
-            <th>Tipo</th>
-            <th>No. ID</th>
-            <th>Nombre</th>
-            <th>Fec. Ing</th>
-            <th>Fec. Ret</th>
-            <th>Días</th>
-            <th>EPS</th>
-            <th title="Valor EPS">V.EPS</th>
-            <th>ARL</th>
-            <th title="Valor ARL">V.ARL</th>
-            <th>CAJA</th>
-            <th title="Valor Caja">V.CAJA</th>
-            <th>PENSION</th>
-            <th title="Valor Pensión">V.AFP</th>
-            <th title="Total Seguridad Social"><b>TOTAL SS</b></th>
-            @if(!$esIndependiente)<th>Planilla</th>@endif
-            @if(!$esIndependiente)<th>Empresa</th>@endif
-            <th>Envío</th>
+            <th class="sortable">#</th>
+            <th class="sortable">Tipo</th>
+            <th class="sortable">No. ID</th>
+            <th class="sortable">Nombre</th>
+            <th class="sortable">Fec. Ing</th>
+            <th class="sortable">Fec. Ret</th>
+            <th class="sortable">Días</th>
+            <th class="sortable">EPS</th>
+            <th class="sortable" title="Valor EPS">V.EPS</th>
+            <th class="sortable">ARL</th>
+            <th class="sortable" title="Valor ARL">V.ARL</th>
+            <th class="sortable">CAJA</th>
+            <th class="sortable" title="Valor Caja">V.CAJA</th>
+            <th class="sortable">PENSION</th>
+            <th class="sortable" title="Valor Pensión">V.AFP</th>
+            <th class="sortable" title="Total Seguridad Social"><b>TOTAL SS</b></th>
+            @if(!$esIndependiente)<th class="sortable">Planilla</th>@endif
+            @if(!$esIndependiente)<th class="sortable">Empresa</th>@endif
+            <th class="sortable">Envío</th>
             <th title="Acciones">⋯</th>
-            @if($esIndependiente)<th>Operador</th><th>Pago</th>@endif
+            @if($esIndependiente)<th class="sortable">Operador</th><th class="sortable">Pago</th>@endif
         </tr>
     </thead>
     <tbody>
@@ -763,8 +793,8 @@
             $clienteNombre = trim(($p->primer_nombre ?? '').' '.($p->primer_ape ?? ''));
         @endphp
         <tr id="fila-plano-{{ $p->id }}" class="{{ $p->numero_planilla ? 'ya-pago' : '' }}">
-            <td style="color:#94a3b8">{{ $i++ }}</td>
-            <td>
+            <td style="color:#94a3b8" data-order="{{ $i }}">{{ $i++ }}</td>
+            <td data-order="{{ $p->tipo_modal_nombre ?? $p->tipo_p }}">
                 @if($p->contrato_id ?? null)
                 <a href="{{ url('/admin/contratos/'.$p->contrato_id.'/edit') }}" style="text-decoration:none" title="Ver contrato">
                     <span class="chip-tipo {{ $tipoClass }}">{{ $p->tipo_modal_nombre ?? $p->tipo_p }}</span>
@@ -773,43 +803,43 @@
                 <span class="chip-tipo {{ $tipoClass }}">{{ $p->tipo_modal_nombre ?? $p->tipo_p }}</span>
                 @endif
             </td>
-            <td style="white-space:nowrap">
+            <td style="white-space:nowrap" data-order="{{ $p->no_identifi }}">
                 @if($p->tipo_doc)
                 <span style="display:inline-block;background:#e0f2fe;color:#0369a1;font-size:.62rem;font-weight:700;padding:.05rem .3rem;border-radius:3px;margin-right:.25rem;letter-spacing:.03em">{{ $p->tipo_doc }}</span>
                 @endif
                 {{ $p->no_identifi }}
             </td>
-            <td class="td-nombre" title="{{ $p->nombre_completo ?? $clienteNombre }}">
+            <td class="td-nombre" title="{{ $p->nombre_completo ?? $clienteNombre }}" data-order="{{ $p->nombre_completo ?? $clienteNombre }}">
                 <a href="{{ ($p->cliente_id ?? null) ? url('/admin/clientes/'.$p->cliente_id.'/edit') : '#' }}"
                    style="color:#1d4ed8;text-decoration:none;font-weight:600"
                    title="{{ $p->nombre_completo ?? $clienteNombre }}">
                     {{ $p->primer_nombre }} {{ $p->primer_ape }}
                 </a>
             </td>
-            <td>{{ $p->fecha_ing ? sqldate($p->fecha_ing)->format('d-') . strtolower(sqldate($p->fecha_ing)->locale('es')->isoFormat('MMM')) : '—' }}</td>
-            <td>{{ $p->fecha_ret ? sqldate($p->fecha_ret)->format('d-') . strtolower(sqldate($p->fecha_ret)->locale('es')->isoFormat('MMM')) : '—' }}</td>
-            <td>{{ $p->num_dias }}</td>
-            <td title="{{ $p->nombre_eps ?? $p->cod_eps }}" style="font-size:.72rem;white-space:nowrap">
+            <td data-order="{{ $p->fecha_ing ?? '' }}">{{ $p->fecha_ing ? sqldate($p->fecha_ing)->format('d-') . strtolower(sqldate($p->fecha_ing)->locale('es')->isoFormat('MMM')) : '—' }}</td>
+            <td data-order="{{ $p->fecha_ret ?? '' }}">{{ $p->fecha_ret ? sqldate($p->fecha_ret)->format('d-') . strtolower(sqldate($p->fecha_ret)->locale('es')->isoFormat('MMM')) : '—' }}</td>
+            <td data-order="{{ $p->num_dias }}">{{ $p->num_dias }}</td>
+            <td title="{{ $p->nombre_eps ?? $p->cod_eps }}" style="font-size:.72rem;white-space:nowrap" data-order="{{ $p->nombre_eps ?? $p->cod_eps ?? '' }}">
                 {{ $p->nombre_eps ? \Illuminate\Support\Str::limit($p->nombre_eps, 9, '…') : ($p->cod_eps ?? '—') }}
             </td>
-            <td>{{ number_format($p->v_eps ?? 0,0,',','.') }}</td>
-            <td title="{{ $p->nombre_arl ?? $p->cod_arl }}" style="font-size:.72rem;white-space:nowrap">
+            <td data-order="{{ $p->v_eps ?? 0 }}">{{ number_format($p->v_eps ?? 0,0,',','.') }}</td>
+            <td title="{{ $p->nombre_arl ?? $p->cod_arl }}" style="font-size:.72rem;white-space:nowrap" data-order="{{ $p->nombre_arl ?? $p->cod_arl ?? '' }}">
                 {{ $p->nombre_arl ? \Illuminate\Support\Str::limit($p->nombre_arl, 9, '…') : ($p->cod_arl ?? '—') }}
             </td>
-            <td>{{ number_format($p->v_arl ?? 0,0,',','.') }}</td>
-            <td title="{{ $p->nombre_caja ?? $p->cod_caja }}" style="font-size:.72rem;white-space:nowrap">
+            <td data-order="{{ $p->v_arl ?? 0 }}">{{ number_format($p->v_arl ?? 0,0,',','.') }}</td>
+            <td title="{{ $p->nombre_caja ?? $p->cod_caja }}" style="font-size:.72rem;white-space:nowrap" data-order="{{ $p->nombre_caja ?? $p->cod_caja ?? '' }}">
                 {{ $p->nombre_caja ? \Illuminate\Support\Str::limit($p->nombre_caja, 9, '…') : ($p->cod_caja ? \Illuminate\Support\Str::limit($p->cod_caja,9,'…') : '—') }}
             </td>
-            <td>{{ number_format($p->v_caja ?? 0,0,',','.') }}</td>
-            <td title="{{ $p->nombre_afp ?? $p->cod_afp }}" style="font-size:.72rem;white-space:nowrap">
+            <td data-order="{{ $p->v_caja ?? 0 }}">{{ number_format($p->v_caja ?? 0,0,',','.') }}</td>
+            <td title="{{ $p->nombre_afp ?? $p->cod_afp }}" style="font-size:.72rem;white-space:nowrap" data-order="{{ $p->nombre_afp ?? $p->cod_afp ?? '' }}">
                 {{ $p->nombre_afp ? \Illuminate\Support\Str::limit($p->nombre_afp, 9, '…') : ($p->cod_afp ?? '—') }}
             </td>
-            <td>{{ number_format($p->v_afp ?? 0,0,',','.') }}</td>
-            <td style="font-weight:700;color:var(--azul-vivo)">
+            <td data-order="{{ $p->v_afp ?? 0 }}">{{ number_format($p->v_afp ?? 0,0,',','.') }}</td>
+            <td style="font-weight:700;color:var(--azul-vivo)" data-order="{{ $p->total_ss ?? 0 }}">
                 {{ number_format($p->total_ss ?? 0,0,',','.') }}
             </td>
             @if(!$esIndependiente)
-            <td id="planilla-{{ $p->id }}" style="text-align:center">
+            <td id="planilla-{{ $p->id }}" style="text-align:center" data-order="{{ $p->numero_planilla ?? '' }}">
                 @if($p->numero_planilla)
                 @php
                     $horaConf = $p->updated_at ? sqldate($p->updated_at, 'd/m/y H:i') : '';
@@ -822,8 +852,8 @@
                 @endif
             </td>
             @endif
-            @if(!$esIndependiente)<td class="td-empresa" title="{{ $p->nombre_empresa }}">{{ $p->nombre_empresa ? \Illuminate\Support\Str::limit($p->nombre_empresa,14,'…') : '—' }}</td>@endif
-            <td class="td-envio" title="{{ $p->envio_planilla }}">{{ $p->envio_planilla ? 'Sí' : 'No' }}</td>
+            @if(!$esIndependiente)<td class="td-empresa" title="{{ $p->nombre_empresa }}" data-order="{{ $p->nombre_empresa ?? '' }}">{{ $p->nombre_empresa ? \Illuminate\Support\Str::limit($p->nombre_empresa,14,'…') : '—' }}</td>@endif
+            <td class="td-envio" title="{{ $p->envio_planilla }}" data-order="{{ $p->envio_planilla ? 1 : 0 }}">{{ $p->envio_planilla ? 'Sí' : 'No' }}</td>
             <td style="text-align:center">
                 <button type="button"
                     onclick="abrirModalMover({{ $p->id }}, {{ $p->n_plano }})"
@@ -832,7 +862,7 @@
             </td>
             @if($esIndependiente)
             {{-- Columna Operador (texto informativo) --}}
-            <td style="font-size:.72rem;color:#374151;white-space:nowrap">
+            <td style="font-size:.72rem;color:#374151;white-space:nowrap" data-order="{{ $p->operador_cliente_nombre ?? '' }}">
                 @if($p->operador_cliente_nombre ?? null)
                 <span style="display:inline-flex;align-items:center;gap:.2rem;background:#f0f9ff;color:#0284c7;border:1px solid #bae6fd;border-radius:6px;padding:.1rem .4rem;font-size:.67rem;font-weight:600">
                     🏦 {{ $p->operador_cliente_nombre }}
@@ -842,7 +872,7 @@
                 @endif
             </td>
             {{-- Columna Acción: Pagar / Pagado --}}
-            <td id="accion-{{ $p->id }}">
+            <td id="accion-{{ $p->id }}" data-order="{{ $p->numero_planilla ?? '' }}">
                 @if($p->numero_planilla)
                 <span style="display:inline-flex;align-items:center;gap:.25rem;background:#dcfce7;color:#15803d;border:1px solid #bbf7d0;border-radius:20px;padding:.15rem .55rem;font-size:.67rem;font-weight:700;font-family:monospace;white-space:nowrap"
                       title="Planilla: {{ $p->numero_planilla }}">✅ {{ $p->numero_planilla }}</span>
@@ -2677,5 +2707,71 @@ function renderResumen(data, dia) {
     document.getElementById('res-tabla').style.display = 'table';
     document.getElementById('res-foot').style.display  = 'flex';
 }
+
+// ── Ordenamiento interactivo de tabla de planos ──────────────────────
+document.addEventListener('DOMContentLoaded', function () {
+    const table = document.querySelector('.tabla-planos');
+    if (!table) return;
+
+    const headers = table.querySelectorAll('thead th.sortable');
+    const tbody = table.querySelector('tbody');
+
+    headers.forEach(header => {
+        header.addEventListener('click', function () {
+            const columnIndex = Array.from(header.parentNode.children).indexOf(header);
+            const isAsc = header.classList.contains('asc');
+            const direction = isAsc ? 'desc' : 'asc';
+
+            // Limpiar clases en todos los headers
+            headers.forEach(h => h.classList.remove('asc', 'desc'));
+            header.classList.add(direction);
+
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            
+            rows.sort((a, b) => {
+                const cellA = a.children[columnIndex];
+                const cellB = b.children[columnIndex];
+                if (!cellA || !cellB) return 0;
+
+                const valA = (cellA.getAttribute('data-order') || cellA.textContent).trim();
+                const valB = (cellB.getAttribute('data-order') || cellB.textContent).trim();
+
+                // Manejo de vacíos: colocar siempre al final
+                const isEmptyA = valA === '' || valA === '—';
+                const isEmptyB = valB === '' || valB === '—';
+                if (isEmptyA && !isEmptyB) return 1;
+                if (!isEmptyA && isEmptyB) return -1;
+                if (isEmptyA && isEmptyB) return 0;
+
+                // Comprobar si son números
+                const numA = parseFloat(valA);
+                const numB = parseFloat(valB);
+                const isNumA = !isNaN(numA) && /^-?[0-9.]+$/.test(valA);
+                const isNumB = !isNaN(numB) && /^-?[0-9.]+$/.test(valB);
+
+                if (isNumA && isNumB) {
+                    return direction === 'asc' ? numA - numB : numB - numA;
+                }
+
+                // Ordenamiento de texto en español
+                return direction === 'asc'
+                    ? valA.localeCompare(valB, 'es', { numeric: true, sensitivity: 'base' })
+                    : valB.localeCompare(valA, 'es', { numeric: true, sensitivity: 'base' });
+            });
+
+            // Reinsertar las filas ordenadas en el tbody
+            rows.forEach(row => tbody.appendChild(row));
+
+            // Re-numerar la primera columna secuencial (#)
+            let i = 1;
+            tbody.querySelectorAll('tr').forEach(row => {
+                const firstCell = row.querySelector('td');
+                if (firstCell) {
+                    firstCell.textContent = i++;
+                }
+            });
+        });
+    });
+});
 </script>
 @endpush
