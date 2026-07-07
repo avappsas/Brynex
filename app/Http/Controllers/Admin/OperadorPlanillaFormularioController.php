@@ -51,7 +51,15 @@ class OperadorPlanillaFormularioController extends Controller
 
         $ruta = storage_path('app/formularios/planillas/' . $template->formulario_pdf);
         if (!file_exists($ruta)) {
-            abort(404, 'Archivo PDF no encontrado.');
+            // Autocopia en local para prevenir 404 si el archivo físico de producción no existe en la laptop
+            $sourcePdf = resource_path('pdf/certificado_suaporte_template.pdf');
+            if (file_exists($sourcePdf)) {
+                $dir = dirname($ruta);
+                if (!is_dir($dir)) mkdir($dir, 0755, true);
+                copy($sourcePdf, $ruta);
+            } else {
+                abort(404, 'Archivo PDF no encontrado.');
+            }
         }
 
         return response()->file($ruta, ['Content-Type' => 'application/pdf']);
@@ -115,6 +123,11 @@ class OperadorPlanillaFormularioController extends Controller
             'aportante.razon_social'         => 'Razón social del aportante',
             'aportante.nit'                  => 'NIT de la empresa',
             'aportante.direccion'            => 'Dirección de la empresa',
+            'aportante.tipo_aportante'       => 'Tipo Aportante (EMPLEADOR)',
+            'aportante.tipo_persona'         => 'Tipo Persona (JURÍDICA)',
+            'aportante.sucursal'             => 'Sucursal (SUCURSAL)',
+            'aportante.departamento'         => 'Departamento Aportante (VALLE DEL CAUCA)',
+            'aportante.ciudad'               => 'Ciudad Aportante (CALI)',
             'aportante.telefono'             => 'Teléfono de la empresa',
             'aportante.afiliados'            => 'Total afiliados en el plano',
             'aportante.representante'        => 'Nombre del representante legal',
@@ -127,6 +140,9 @@ class OperadorPlanillaFormularioController extends Controller
             'plano.periodo_cotizacion'      => 'Periodo Cotización (aaaamm)',
             'plano.periodo_servicio'        => 'Periodo Servicio (aaaamm)',
             'plano.fecha_pago_completa'     => 'Barra Estado Pago (PAGADA AAAA-MM-DD HH:MM:SS)',
+            'plano.fecha_pago_estado'       => 'Estado Pago (PAGADA)',
+            'plano.fecha_pago_fecha'        => 'Fecha Pago (AAAA-MM-DD)',
+            'plano.fecha_pago_hora'         => 'Hora Pago (HH:MM:SS.0)',
 
             // Afiliado
             'afiliado.tipo_doc'             => 'Tipo doc del afiliado (CC, CE)',
@@ -146,6 +162,7 @@ class OperadorPlanillaFormularioController extends Controller
             'aporte.dias_eps'    => 'Días EPS',
             'aporte.dias_arl'    => 'Días ARL',
             'aporte.dias_ccf'    => 'Días CCF',
+            'aporte.tipo_salario' => 'Tipo Salario (F)',
             'aporte.salario'     => 'Salario base',
 
             // Pensión
@@ -185,8 +202,14 @@ class OperadorPlanillaFormularioController extends Controller
             // Totales
             'total.afp_nombre' => 'Nombre AFP en Totales',
             'total.eps_nombre' => 'Nombre EPS en Totales',
-            'total.arl_nombre' => 'Nombre ARL en Totales',
-            'total.ccf_nombre' => 'Nombre Caja en Totales',
+            'total.arl_nombre'  => 'Nombre ARL en Totales',
+            'total.ccf_nombre'  => 'Nombre Caja en Totales',
+            'total.fsp_nombre'  => 'Etiqueta FSP SOLIDARIDAD',
+            'total.fsps_nombre' => 'Etiqueta FSP SUBSISTENCIA',
+            'total.sena_nombre' => 'Etiqueta SENA',
+            'total.icbf_nombre' => 'Etiqueta ICBF',
+            'total.esap_nombre' => 'Etiqueta ESAP',
+            'total.men_nombre'  => 'Etiqueta MEN',
             
             'total.afp'   => 'Total Aporte Pensión',
             'total.fsp'   => 'Total Aporte FSP',

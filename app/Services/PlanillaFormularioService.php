@@ -32,8 +32,15 @@ class PlanillaFormularioService
 
         $rutaPdf = storage_path('app/formularios/planillas/' . $template->formulario_pdf);
         if (!file_exists($rutaPdf)) {
-            // Fallback si el archivo en storage se borró
-            return SuaportePdfService::generar($plano);
+            // Autocopia en tiempo real (en local o producción) para prevenir fallbacks al código estático viejo
+            $sourcePdf = resource_path('pdf/certificado_suaporte_template.pdf');
+            if (file_exists($sourcePdf)) {
+                $dir = dirname($rutaPdf);
+                if (!is_dir($dir)) mkdir($dir, 0755, true);
+                copy($sourcePdf, $rutaPdf);
+            } else {
+                return SuaportePdfService::generar($plano);
+            }
         }
 
         $campos = $template->formulario_campos ?? [];
@@ -91,15 +98,38 @@ class PlanillaFormularioService
         $nombreArl = $plano->nombre_arl ?: 'ARL SURA';
         $nombreCaja = $plano->nombre_caja ?: ($c['sinCaja'] ? 'COMCAJA' : 'COMCAJA');
 
-        $perCot = $plano->anio_plano . str_pad($plano->mes_plano, 2, '0', STR_PAD_LEFT);
-
-        $mesServicio = $plano->mes_plano > 1 ? $plano->mes_plano - 1 : 12;
-        $anioServicio = $plano->mes_plano > 1 ? $plano->anio_plano : $plano->anio_plano - 1;
-        if ($plano->tipo_modalidad_id == 11) {
-            $mesServicio = $plano->mes_plano;
-            $anioServicio = $plano->anio_plano;
+        // Resolver el código de PILA real de AFP si es que viene como NIT
+        $codAfpPilaReal = $c['codAfpPila'];
+        if (!empty($c['codAfpPila'])) {
+            $nitAfpLimpio = preg_replace('/[^0-9]/', '', $c['codAfpPila']);
+            $pension = \App\Models\Pension::where('nit', $nitAfpLimpio)->orWhere('codigo', $c['codAfpPila'])->first();
+            if ($pension && !empty($pension->codigo)) {
+                $codAfpPilaReal = $pension->codigo;
+            }
         }
-        $perSer = $anioServicio . str_pad($mesServicio, 2, '0', STR_PAD_LEFT);
+
+        // Resolver el código de PILA real de EPS si es que viene como NIT
+        $codEpsPilaReal = $c['codEpsPila'];
+        if (!empty($c['codEpsPila'])) {
+            $nitEpsLimpio = preg_replace('/[^0-9]/', '', $c['codEpsPila']);
+            $epsObj = \App\Models\Eps::where('nit', $nitEpsLimpio)->orWhere('codigo', $c['codEpsPila'])->first();
+            if ($epsObj && !empty($epsObj->codigo)) {
+                $codEpsPilaReal = $epsObj->codigo;
+            }
+        }
+
+        // Periodo de Servicio: es el mes actual del plano
+        $perSer = $plano->anio_plano . str_pad($plano->mes_plano, 2, '0', STR_PAD_LEFT);
+
+        // Periodo de Cotización: es el mes vencido (mes anterior)
+        $mesCotizacion = $plano->mes_plano > 1 ? $plano->mes_plano - 1 : 12;
+        $anioCotizacion = $plano->mes_plano > 1 ? $plano->anio_plano : $plano->anio_plano - 1;
+        // Para modalidad especial independiente / específica, cotizan el mismo mes
+        if ($plano->tipo_modalidad_id == 11) {
+            $mesCotizacion = $plano->mes_plano;
+            $anioCotizacion = $plano->anio_plano;
+        }
+        $perCot = $anioCotizacion . str_pad($mesCotizacion, 2, '0', STR_PAD_LEFT);
 
         $granTotal = $c['vAfp'] + $c['vEps'] + $c['vArl'] + $c['vCcf'];
         
@@ -107,27 +137,40 @@ class PlanillaFormularioService
             ->where('aliado_id', $plano->aliado_id)
             ->count();
 
-        $fechaPago = $plano->fecha_pago 
-            ? \Carbon\Carbon::parse($plano->fecha_pago)->format('Y-m-d H:i:s.0') 
-            : '2026-07-03 14:03:12.0';
+        if ($plano->fecha_pago) {
+            $dt = \Carbon\Carbon::parse($plano->fecha_pago);
+            $pagoFecha = $dt->format('Y-m-d');
+            $pagoHora  = $dt->format('H:i:s.0');
+        } else {
+            $pagoFecha = '2026-07-03';
+            $pagoHora  = '14:03:12.0';
+        }
 
         return [
             // Aportante
             'aportante.razon_social'         => strtoupper($plano->razon_social),
             'aportante.nit'                  => 'NI ' . ($plano->razonSocial?->nit ?? '901918923'),
             'aportante.direccion'            => strtoupper($plano->razonSocial?->direccion ?? 'CR 39 #43 - 04'),
+            'aportante.tipo_aportante'       => 'EMPLEADOR',
+            'aportante.tipo_persona'         => 'JURÍDICA',
+            'aportante.sucursal'             => 'SUCURSAL',
+            'aportante.departamento'         => 'VALLE DEL CAUCA',
+            'aportante.ciudad'               => 'CALI',
             'aportante.telefono'             => $plano->razonSocial?->telefono ?? '5555555',
             'aportante.afiliados'            => (string)max(1, $afiliadosCount),
             'aportante.representante'        => strtoupper($plano->razonSocial?->representante_legal ?? 'GARCIA VIDAL BRAYAN HUMBERTO'),
             'aportante.cedula_representante' => 'CC ' . ($plano->razonSocial?->representante_cedula ?? '1143944458'),
 
             // Metadatos
-            'plano.fecha_creacion'          => now()->format('Y-m-d, h:i:s p. m.'),
+            'plano.fecha_creacion'          => now()->format('Y-m-d, h:i:s') . ' ' . (now()->format('a') === 'am' ? 'a. m.' : 'p. m.'),
             'plano.tipo_planilla'           => 'E',
             'plano.numero_planilla'         => $plano->numero_planilla,
             'plano.periodo_cotizacion'      => $perCot,
             'plano.periodo_servicio'        => $perSer,
-            'plano.fecha_pago_completa'     => "PAGADA {$fechaPago}",
+            'plano.fecha_pago_completa'     => "PAGADA {$pagoFecha} {$pagoHora}",
+            'plano.fecha_pago_estado'       => 'PAGADA',
+            'plano.fecha_pago_fecha'        => $pagoFecha,
+            'plano.fecha_pago_hora'         => $pagoHora,
 
             // Afiliado
             'afiliado.tipo_doc'             => $plano->tipo_doc,
@@ -141,16 +184,17 @@ class PlanillaFormularioService
             'afiliado.subtipo_cotizante'    => str_pad($c['subtipoCotizante'], 2, '0', STR_PAD_LEFT),
 
             // Aportes Detallados
-            'aporte.novedad_ing' => !empty($plano->fecha_ing) ? 'X' : '',
-            'aporte.novedad_ret' => !empty($plano->fecha_ret) ? 'X' : '',
-            'aporte.dias_afp'    => $c['diasPension'],
-            'aporte.dias_eps'    => $c['diasSalud'],
-            'aporte.dias_arl'    => $c['diasArl'],
-            'aporte.dias_ccf'    => $c['diasCcf'],
-            'aporte.salario'     => '$ ' . number_format($c['ibcFull'], 0, ',', '.'),
+            'aporte.novedad_ing'  => !empty($plano->fecha_ing) ? 'X' : '',
+            'aporte.novedad_ret'  => !empty($plano->fecha_ret) ? 'X' : '',
+            'aporte.dias_afp'     => $c['diasPension'],
+            'aporte.dias_eps'     => $c['diasSalud'],
+            'aporte.dias_arl'     => $c['diasArl'],
+            'aporte.dias_ccf'     => $c['diasCcf'],
+            'aporte.tipo_salario' => 'F',
+            'aporte.salario'      => '$ ' . number_format($c['ibcFull'], 0, ',', '.'),
             
             // Pensión
-            'aporte.afp_codigo'  => $c['codAfpPila'],
+            'aporte.afp_codigo'  => $codAfpPilaReal,
             'aporte.afp_tarifa'  => number_format($c['tarifaAfpDecimal'] * 100, 0) . ' %',
             'aporte.afp_ibc'     => '$ ' . number_format($c['ibcAfp'], 0, ',', '.'),
             'aporte.afp_aporte'  => '$ ' . number_format($c['vAfp'], 0, ',', '.'),
@@ -158,7 +202,7 @@ class PlanillaFormularioService
             'aporte.afp_fsps'    => '$ 0',
 
             // Salud
-            'aporte.eps_codigo'  => $c['codEpsPila'],
+            'aporte.eps_codigo'  => $codEpsPilaReal,
             'aporte.eps_tarifa'  => number_format(floatval($c['tarifaEpsStr']) * 100, 0) . ' %',
             'aporte.eps_ibc'     => '$ ' . number_format($c['ibcEps'], 0, ',', '.'),
             'aporte.eps_aporte'  => '$ ' . number_format($c['vEps'], 0, ',', '.'),
@@ -183,11 +227,17 @@ class PlanillaFormularioService
             'aporte.icbf_tarifa' => '0 %',
             'aporte.icbf_aporte' => '$ 0',
 
-            // Totales Administradoras
-            'total.afp_nombre' => $nombreAfp,
-            'total.eps_nombre' => $nombreEps,
-            'total.arl_nombre' => 'ARL ' . $nombreArl,
-            'total.ccf_nombre' => $nombreCaja,
+            // Totales Administradoras (Nombres fijos o calculados)
+            'total.afp_nombre'  => $nombreAfp,
+            'total.eps_nombre'  => $nombreEps,
+            'total.arl_nombre'  => 'ARL ' . $nombreArl,
+            'total.ccf_nombre'  => $nombreCaja,
+            'total.fsp_nombre'  => 'FSP SOLIDARIDAD',
+            'total.fsps_nombre' => 'FSP SUBSISTENCIA',
+            'total.sena_nombre' => 'SENA',
+            'total.icbf_nombre' => 'ICBF',
+            'total.esap_nombre' => 'ESAP',
+            'total.men_nombre'  => 'MEN',
 
             // Totales Valores
             'total.afp'   => '$ ' . number_format($c['vAfp'], 0, ',', '.'),
@@ -209,7 +259,7 @@ class PlanillaFormularioService
      */
     protected function rellenarPdf(string $rutaPdf, array $campos, array $datos): string
     {
-        $pdf = new Fpdi('L', 'pt');
+        $pdf = new BrynexFpdi('L', 'pt');
         $pdf->SetAutoPageBreak(false);
 
         $pdf->setSourceFile($rutaPdf);
@@ -247,6 +297,10 @@ class PlanillaFormularioService
             $fontSize = floatval($c['font_size'] ?? 7.5);
             $pdf->SetFont($fontFamily, $fontStyle, $fontSize);
 
+            // Aplicar espaciado de caracteres (letter spacing / Tc)
+            $charSpacing = floatval($c['letter_spacing'] ?? 0);
+            $pdf->SetCharSpacing($charSpacing);
+
             // Determinar si debemos dibujar un rectángulo blanco antes para limpiar el original
             $limpiar = !empty($c['limpiar']) || !isset($c['limpiar']); // Limpiar por defecto si no se indica
             if ($limpiar && $w > 0 && $h > 0) {
@@ -274,8 +328,22 @@ class PlanillaFormularioService
             } else {
                 $pdf->Text($x + 2, $yBase, $valor);
             }
+
+            // Restaurar espaciado a 0
+            $pdf->SetCharSpacing(0);
         }
 
         return $pdf->Output('S');
+    }
+}
+
+/**
+ * Subclase de FPDI para extender sus capacidades de FPDF con soporte a espaciado de caracteres (Tc).
+ */
+class BrynexFpdi extends Fpdi
+{
+    public function SetCharSpacing($spacing)
+    {
+        $this->_out(sprintf('%.3F Tc', $spacing));
     }
 }

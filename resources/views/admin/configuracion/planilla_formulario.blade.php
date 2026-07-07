@@ -147,6 +147,10 @@
         @csrf
         <input type="hidden" name="formulario_campos" id="inputMapeoJson" value="">
         <button type="button" class="btn-guardar" onclick="guardarMapeo()">💾 Guardar Configuración</button>
+        <button type="button" class="btn-guardar" onclick="descargarPdfPrueba()" 
+                style="background:linear-gradient(135deg,#0369a1,#0284c7);margin-top:0.35rem;display:flex;align-items:center;justify-content:center;gap:0.25rem;">
+            📄 Descargar PDF de Prueba
+        </button>
     </form>
 </div>
 
@@ -202,19 +206,19 @@
             </select>
         </div>
 
-        <div style="display:flex;align-items:center;gap:0.4rem;">
-            <label style="display:inline-flex;align-items:center;gap:0.2rem;cursor:pointer;">
-                <input type="checkbox" id="cfgLimpiar" checked onchange="actualizarEstiloCampo()">
-                <span>Limpiar Celda</span>
-            </label>
-        </div>
-
         <div style="display:flex;align-items:center;gap:0.3rem;">
             <label>Fondo Limpieza:</label>
             <select id="cfgColorFondo" onchange="actualizarEstiloCampo()">
+                <option value="transparente">Transparente (Sin limpieza)</option>
                 <option value="blanco">Blanco</option>
                 <option value="gris">Gris de pago</option>
             </select>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:0.3rem;">
+            <label>Espaciado:</label>
+            <input type="number" id="cfgLetterSpacing" value="0.0" step="0.1" min="-2.0" max="10.0" onchange="actualizarEstiloCampo()">
+            <label>pt</label>
         </div>
 
         <button class="btn-del-campo" onclick="eliminarCampoActivo()" style="margin-left:auto;">🗑 Eliminar Campo</button>
@@ -289,7 +293,7 @@ function cambiarOperador() {
     window.location.href = `/admin/configuracion/operadores/${id}/formulario`;
 }
 
-function zoomIn() { zoom = Math.min(2.5, zoom + 0.15); renderizarPagina(); actualizarZoomLabel(); }
+function zoomIn() { zoom = Math.min(4.5, zoom + 0.15); renderizarPagina(); actualizarZoomLabel(); }
 function zoomOut() { zoom = Math.max(0.5, zoom - 0.15); renderizarPagina(); actualizarZoomLabel(); }
 function actualizarZoomLabel() { document.getElementById('zoomText').textContent = Math.round(zoom * 100) + '%'; }
 
@@ -387,6 +391,7 @@ canvasWrap.addEventListener('mouseup', e => {
     const ptW = Math.round((pxW / zoom) * 10) / 10;
     const ptH = Math.round((pxH / zoom) * 10) / 10;
 
+    const fondoVal = document.getElementById('cfgColorFondo').value;
     const obj = {
         dato        : campoActivo,
         pagina      : pageNum,
@@ -398,8 +403,9 @@ canvasWrap.addEventListener('mouseup', e => {
         bold        : document.getElementById('cfgStyle').value.includes('B'),
         italic      : document.getElementById('cfgStyle').value.includes('I'),
         align       : document.getElementById('cfgAlign').value,
-        limpiar     : document.getElementById('cfgLimpiar').checked,
-        color_fondo : document.getElementById('cfgColorFondo').value,
+        limpiar     : (fondoVal !== 'transparente'),
+        color_fondo : fondoVal,
+        letter_spacing: parseFloat(document.getElementById('cfgLetterSpacing').value) || 0,
     };
 
     const idx = mapeo.findIndex(m => m.dato === campoActivo);
@@ -435,9 +441,20 @@ function seleccionarCampo(clave, etiqueta) {
         if (existente.italic) estiloVal += 'I';
         document.getElementById('cfgStyle').value = estiloVal;
         document.getElementById('cfgAlign').value = existente.align ?? 'left';
-        document.getElementById('cfgLimpiar').checked = existente.limpiar !== false;
-        document.getElementById('cfgColorFondo').value = existente.color_fondo ?? 'blanco';
+        
+        // Sincronizar el selector unificado
+        if (existente.limpiar === false) {
+            document.getElementById('cfgColorFondo').value = 'transparente';
+        } else {
+            document.getElementById('cfgColorFondo').value = existente.color_fondo ?? 'blanco';
+        }
+        
+        document.getElementById('cfgLetterSpacing').value = existente.letter_spacing ?? 0.0;
         if (existente.pagina !== pageNum) { pageNum = existente.pagina; renderizarPagina(); }
+    } else {
+        // Inicializar a valores por defecto si el campo es nuevo
+        document.getElementById('cfgColorFondo').value = 'transparente';
+        document.getElementById('cfgLetterSpacing').value = 0.0;
     }
 }
 
@@ -450,8 +467,12 @@ function actualizarEstiloCampo() {
         m.bold        = style.includes('B');
         m.italic      = style.includes('I');
         m.align       = document.getElementById('cfgAlign').value;
-        m.limpiar     = document.getElementById('cfgLimpiar').checked;
-        m.color_fondo = document.getElementById('cfgColorFondo').value;
+        
+        const fondoVal = document.getElementById('cfgColorFondo').value;
+        m.limpiar     = (fondoVal !== 'transparente');
+        m.color_fondo = fondoVal;
+        
+        m.letter_spacing = parseFloat(document.getElementById('cfgLetterSpacing').value) || 0;
         dibujarRectangulos();
     }
 }
@@ -548,6 +569,7 @@ function dibujarRectangulos() {
         pr.style.fontSize = ((r.font_size ?? 7.5) * zoom) + 'px';
         pr.style.fontWeight = r.bold ? 'bold' : 'normal';
         pr.style.fontStyle = r.italic ? 'italic' : 'normal';
+        pr.style.letterSpacing = ((r.letter_spacing ?? 0) * zoom) + 'px';
         
         const align = r.align ?? 'left';
         pr.style.textAlign = align;
@@ -573,6 +595,22 @@ function actualizarContador() {
 function guardarMapeo() {
     document.getElementById('inputMapeoJson').value = JSON.stringify(mapeo);
     document.getElementById('formMapeo').submit();
+}
+
+function descargarPdfPrueba() {
+    const ced = document.getElementById('ejemploCedula').value.trim();
+    const pla = document.getElementById('ejemploPlanilla').value.trim();
+    if (!ced || !pla) {
+        mostrarToast("Ingresa Cédula y Planilla", "#7f1d1d");
+        return;
+    }
+    
+    // Primero, guardar mapeo para asegurar que la descarga use la configuración que el usuario tiene en pantalla
+    document.getElementById('inputMapeoJson').value = JSON.stringify(mapeo);
+    
+    // Abrir la descarga en una pestaña nueva con parámetro anticaché dinámico
+    const url = `/admin/planos/certificado-pdf?cedula=${ced}&numero_planilla=${pla}&t=${Date.now()}`;
+    window.open(url, '_blank');
 }
 </script>
 @endsection
