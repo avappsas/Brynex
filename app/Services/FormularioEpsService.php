@@ -319,6 +319,10 @@ class FormularioEpsService
                 $pdf->SetXY($x, $textY);
 
                 if ($w > 0) {
+                    // Truncar el texto si excede el ancho disponible para evitar solapamientos
+                    while ($pdf->GetStringWidth($valor) > ($w - 2) && mb_strlen($valor) > 0) {
+                        $valor = mb_substr($valor, 0, -1);
+                    }
                     $pdf->Cell($w, $cellH, $valor, 0, 0, $align);
                 } else {
                     $pdf->Write($cellH, $valor);

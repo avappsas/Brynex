@@ -10,6 +10,13 @@ if (!$nombre) $nombre = $cliente->nombre_completo ?? ('CC ' . $cedula);
 $esAdmin       = in_array(auth()->user()->rol ?? '', ['superadmin','admin']);
 // SuperAdmin de BryNex: puede anular facturas con planilla pagada
 $esSuperBrynex = auth()->user()->es_brynex && auth()->user()->hasRole('superadmin');
+
+// Obtener los operadores que tienen plantillas de formulario PDF configuradas
+$operadoresConfiguradosIds = \DB::table('operador_planillas_templates')
+    ->whereNotNull('formulario_pdf')
+    ->where('formulario_pdf', '<>', '')
+    ->pluck('operador_planilla_id')
+    ->toArray();
 @endphp
 
 @section('contenido')
@@ -41,11 +48,11 @@ $esSuperBrynex = auth()->user()->es_brynex && auth()->user()->hasRole('superadmi
 .hi-year-total{font-size:.7rem;font-weight:800;color:#475569}
 /* Tabla */
 table.hi-tbl{width:100%;border-collapse:collapse;font-size:.77rem}
-.hi-tbl th{background:#f8fafc;color:#64748b;font-size:.6rem;text-transform:uppercase;letter-spacing:.05em;padding:.35rem .6rem;text-align:left;border-bottom:1px solid #f1f5f9;white-space:nowrap}
-.hi-tbl td{padding:.3rem .6rem;border-bottom:1px solid #f8fafc;white-space:nowrap;vertical-align:middle}
+.hi-tbl th{background:#f8fafc;color:#64748b;font-size:.6rem;text-transform:uppercase;letter-spacing:.05em;padding:.35rem .6rem;text-align:center;border-bottom:1px solid #f1f5f9;white-space:nowrap}
+.hi-tbl td{padding:.3rem .6rem;border-bottom:1px solid #f8fafc;white-space:nowrap;vertical-align:middle;text-align:center}
 .hi-tbl tr:last-child td{border-bottom:none}
 .hi-tbl tr:hover td{background:#fafafa}
-.num{font-family:monospace;text-align:right;font-weight:700}
+.num{font-family:monospace;text-align:center;font-weight:700}
 /* Badges */
 .badge{display:inline-flex;align-items:center;gap:.25rem;padding:.12rem .5rem;border-radius:20px;font-size:.65rem;font-weight:700}
 .badge-pago    {background:#dcfce7;color:#15803d}
@@ -256,7 +263,7 @@ table.hi-tbl{width:100%;border-collapse:collapse;font-size:.77rem}
                     @endif
                 </td>
                 <td>
-                    <div style="display:flex;gap:.3rem;align-items:center;flex-wrap:wrap">
+                    <div style="display:flex;gap:.3rem;align-items:center;justify-content:center;flex-wrap:wrap">
                         {{-- Recibo --}}
                         <button onclick="abrirRecibo(
                                     '{{ route('admin.facturacion.recibo', $f->id) }}?modal=1&individual=1',
@@ -268,7 +275,7 @@ table.hi-tbl{width:100%;border-collapse:collapse;font-size:.77rem}
                         </button>
                         
                         {{-- PDF Planilla --}}
-                        @if($numeroPlanillaOp)
+                        @if($numeroPlanillaOp && in_array($operadorId, $operadoresConfiguradosIds))
                         <a href="{{ route('admin.planos.certificado_pdf') }}?cedula={{ $f->cedula }}&numero_planilla={{ $numeroPlanillaOp }}{{ $operadorId ? '&forzar_operador_id=' . $operadorId : '' }}"
                            onclick="this.href = this.href.split('&t=')[0] + '&t=' + new Date().getTime()"
                            target="_blank" class="btn-act-sm" style="background:#0f172a;color:#fff;border-color:#0f172a;" title="Descargar PDF Planilla">
