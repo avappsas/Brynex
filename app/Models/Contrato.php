@@ -21,7 +21,7 @@ class Contrato extends BaseModel
         'razon_social_id', 'razon_social_bloqueada',
         'plan_id', 'tipo_modalidad_id',
         'eps_id', 'pension_id', 'arl_id', 'n_arl', 'arl_modo', 'arl_nit_cotizante', 'caja_id',
-        'cargo', 'fecha_ingreso', 'fecha_retiro', 'actividad_economica_id',
+        'cargo', 'fecha_ingreso', 'fecha_retiro', 'fecha_retiro_pendiente', 'retiro_pendiente_cobrar_admon', 'actividad_economica_id',
         'salario', 'ibc', 'porcentaje_caja',
         'administracion', 'admon_asesor', 'costo_afiliacion', 'seguro',
         'asesor_id', 'encargado_id',
@@ -32,8 +32,10 @@ class Contrato extends BaseModel
     ];
 
     protected $casts = [
-        'fecha_ingreso'           => 'date',
-        'fecha_retiro'            => 'date',
+        'fecha_ingreso'                  => 'date',
+        'fecha_retiro'                   => 'date',
+        'fecha_retiro_pendiente'         => 'date',
+        'retiro_pendiente_cobrar_admon'  => 'boolean',
         'fecha_arl'               => 'date',
         'razon_social_bloqueada'  => 'boolean',
         'salario'                 => 'decimal:2',

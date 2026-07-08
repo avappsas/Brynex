@@ -213,6 +213,8 @@ Route::middleware('auth')->group(function () {
             // Otro ingreso (trámites: traslado EPS, inclusión beneficiarios, etc.)
             Route::post('otro-ingreso',                 [$fc, 'facturarOtroIngreso'])    ->name('otro_ingreso.store');
             Route::match(['get', 'post'], 'cuenta-cobro', [$fc, 'cuentaCobroPreview'])->name('cuenta_cobro.preview');
+            Route::post('contrato/{contrato}/retiro-pendiente', [$fc, 'guardarRetiroPendiente'])->name('contrato.retiro_pendiente');
+
 
             // ── Cobros adicionales por empresa (parafiscales, pendientes, etc.) ──
             Route::get( 'empresa/{empresaId}/cobros-adicionales',        [$fc, 'cobrosAdicionalesIndex'])  ->name('cobros_adicionales.index');

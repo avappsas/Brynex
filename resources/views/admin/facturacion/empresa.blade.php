@@ -328,7 +328,14 @@ table.fac-tbl{width:100%;border-collapse:collapse;font-size:.78rem}
 @php
 $totEps=$totArl=$totCaja=$totPen=$totAdmon=$totIva=$totTotal=$totMora=0;
 $totAFavor=$totPendiente=0;
+
+// Calcular fecha predeterminada (30 del mes anterior al período actual consultado)
+$tmpFechaPred = \Carbon\Carbon::create((int)($anio ?? now()->year), (int)($mes ?? now()->month), 1)->subMonth();
+$ultimoDiaPred = $tmpFechaPred->endOfMonth()->day;
+$diaSugeridoPred = min(30, $ultimoDiaPred);
+$fechaPredeterminada = \Carbon\Carbon::create((int)($anio ?? now()->year), (int)($mes ?? now()->month), 1)->subMonth()->day($diaSugeridoPred)->format('Y-m-d');
 @endphp
+
 @forelse($contratos as $c)
 @php
 $fact  = $c->factura_exist;
@@ -346,6 +353,11 @@ $esRetirado = $c->estado === 'retirado';
 $esIngRet   = (int)($c->tipo_modalidad_id) === 12;
 $fIng       = $c->fecha_ingreso ? $c->fecha_ingreso->format('d/m/Y') : '—';
 $fRet       = ($esRetirado && $c->fecha_retiro) ? $c->fecha_retiro->format('d/m/Y') : null;
+// Retiro pendiente (nuevo flujo desde vista empresa)
+$tieneRetiroPendiente = $c->tiene_retiro_pendiente ?? false; // seteado por controller
+$fechaRetiroPendienteStr = $tieneRetiroPendiente && $c->fecha_retiro_pendiente ? $c->fecha_retiro_pendiente->format('Y-m-d') : '';
+$diasRetiroPendiente = $tieneRetiroPendiente ? (int) ($c->fecha_retiro_pendiente?->day ?? 0) : 0;
+$cobrarAdmonRetiroPendiente = $tieneRetiroPendiente ? (bool) ($c->retiro_pendiente_cobrar_admon ?? false) : false;
 $dias = $fact
     ? (int)$fact->dias_cotizados
     : ($factRetiroPreview
@@ -378,7 +390,9 @@ if ($fact) {
 // Tiempo Parcial: detectar y obtener días por entidad
 $esTP     = $c->tipoModalidad?->esTiempoParcial() ?? false;
 $diasTP   = $esTP ? $c->tipoModalidad->diasPorEntidad() : null;
-// Valores: si hay factura usar los reales; si es retirado facturable → usar factura_0; si activo sin factura → estimar
+// Valores: si hay factura usar los reales; si es retirado facturable → usar factura_0;
+// Si es retiro pendiente → calcular SS proporcional con los días del retiro pendiente;
+// si activo sin factura → estimar
 $vEps  = $fact ? $r100($fact->v_eps)  : 0;
 $vArl  = $fact ? $r100($fact->v_arl)  : 0;
 $vCaja = $fact ? $r100($fact->v_caja) : 0;
@@ -400,6 +414,19 @@ if (!$fact) {
         $vAdm  = (int)(($c->administracion??0) + ($c->admon_asesor??0));
         $vAdmProporcional = (int)(($vAdm / 30) * $dias); // proporcional a días de retiro
         $vTot  = $vSS + $vAdm + $vIva; // total con admon completa (JS ajusta si es proporcional)
+    } elseif ($tieneRetiroPendiente) {
+        // Retiro pendiente nuevo: calcular SS proporcional con los días del retiro
+        $cotizRetPend = $c->calcularCotizacion($diasRetiroPendiente);
+        $vEps  = $r100($cotizRetPend['eps']  ?? 0);
+        $vArl  = $r100($cotizRetPend['arl']  ?? 0);
+        $vPen  = $r100($cotizRetPend['pen']  ?? 0);
+        $vCaja = $r100($cotizRetPend['caja'] ?? 0);
+        $vIva  = $r100($cotizRetPend['iva']  ?? 0);
+        $vSS   = $r100($cotizRetPend['ss']   ?? 0);
+        $vAdm  = $cobrarAdmonRetiroPendiente
+            ? (int)(($c->administracion??0) + ($c->admon_asesor??0))
+            : 0;
+        $vTot  = $vSS + $vAdm + $vIva;
     } elseif ($esRetirado && !$factRetiroPreview) {
         // Retirado sin retiro facturable — ya fue cobrado o es retiro masivo → 0
         $vEps = $vArl = $vPen = $vCaja = $vIva = $vAdm = $vSS = 0;
@@ -467,6 +494,9 @@ $totAdmon+=$vAdm;$totIva+=$vIva;$totTotal+=$vTot;$totMora+=$vMora;
     data-tipo_modalidad_id="{{ $c->tipo_modalidad_id }}"
     data-rs="{{ $rs }}"
     data-fecha_ingreso_retiro="{{ $esRetirado && $c->fecha_retiro ? $c->fecha_retiro->format('Y-m-d') : ($c->fecha_ingreso ? $c->fecha_ingreso->format('Y-m-d') : '') }}"
+    data-tiene-retiro-pendiente="{{ $tieneRetiroPendiente ? '1' : '0' }}"
+    data-fecha-retiro-pendiente="{{ $fechaRetiroPendienteStr }}"
+    data-cobrar-admon-ret-pend="{{ $cobrarAdmonRetiroPendiente ? '1' : '0' }}"
     data-vmora="{{ $vMora }}"
     data-np="{{ $fact?->np ?? '' }}"
     data-es-retiro-facturable="{{ ($factRetiroPreview ?? null) ? '1' : '0' }}"
@@ -509,14 +539,23 @@ $totAdmon+=$vAdm;$totIva+=$vIva;$totTotal+=$vTot;$totMora+=$vMora;
             <span style="color:#64748b;">{{ $fIng }}</span>
         @endif
     </td>
-    <td style="text-align:center;font-weight:700;color:{{ $dias===0?'#9333ea':($dias<30?'#d97706':'#0f172a') }}">
+    <td style="text-align:center;font-weight:700;color:{{ ($tieneRetiroPendiente || $dias < 30) && $dias > 0 ? '#d97706' : ($dias===0?'#9333ea':'#0f172a') }};position:relative;">
         @if($esTP && $diasTP)
             <span title="T. Parcial: ARL {{ $diasTP['arl'] }}d · AFP {{ $diasTP['afp'] }}d · CAJA {{ $diasTP['caja'] }}d"
                   style="font-size:.62rem;background:#fef3c7;color:#78350f;border-radius:6px;padding:.1rem .35rem;font-weight:700;cursor:help;white-space:nowrap;">
-                ⏱TP
+              ⏱TP
             </span>
         @else
             {{ $dias === 0 ? '—' : $dias }}
+        @endif
+        @if(!$esRetirado && !$esAfil && !$esTP && !$yaP && !(isset($fact) && $fact))
+            <button
+                type="button"
+                onclick="abrirModalRetiroPendiente({{ $c->id }}, '{{ addslashes($nombre) }}', '{{ addslashes($rs) }}', {{ (int)(($c->administracion??0)+($c->admon_asesor??0)) }}, '{{ $fechaRetiroPendienteStr }}', {{ $cobrarAdmonRetiroPendiente ? 'true' : 'false' }})"
+                title="{{ $tieneRetiroPendiente ? 'Editar retiro pendiente ('.$diasRetiroPendiente.' días)' : 'Registrar fecha de retiro' }}"
+                style="background:none;border:none;cursor:pointer;font-size:.8rem;padding:0 0 0 3px;line-height:1;color:{{ $tieneRetiroPendiente ? '#c2410c' : '#94a3b8' }};vertical-align:middle;">
+                {{ $tieneRetiroPendiente ? '✏️' : '🗓' }}
+            </button>
         @endif
     </td>
     <td class="num-col">{{ (!$esTP && $vEps>0)?'$'.number_format($vEps,0,',','.'):'—' }}</td>
@@ -579,6 +618,12 @@ $totAdmon+=$vAdm;$totIva+=$vIva;$totTotal+=$vTot;$totMora+=$vMora;
                     RETIRO
                 </span>
             @endif
+        @elseif($tieneRetiroPendiente)
+            {{-- Retiro pendiente: registrado desde vista empresa, aún no facturado --}}
+            <span style="display:inline-block;padding:.16rem .5rem;border-radius:20px;font-size:.63rem;font-weight:800;background:#fff7ed;color:#b45309;border:1px solid #fcd34d;"
+                  title="Retiro pendiente — {{ $diasRetiroPendiente }} días — {{ $cobrarAdmonRetiroPendiente ? 'Con admon' : 'Sin admon' }} — pendiente de facturar">
+                Retiro Pd.
+            </span>
         @elseif($fact)
         @php $colores=$estadoBg($fact->estado); @endphp
         @if((int)$fact->numero_factura === 0)
@@ -1365,5 +1410,226 @@ document.addEventListener('DOMContentLoaded', () => {
 
 {{-- Panel Claves y Accesos de la Empresa --}}
 @include('admin.facturacion.partials.clave_accesos_empresa')
+
+{{-- ═══════════════════════════════════════════════════════════════════════════
+     MODAL: Registrar / Editar Retiro Pendiente
+     Se abre al hacer clic en el ícono 🗓/✏️ junto a la columna DÍAS.
+     Guarda la fecha de retiro y la decisión de cobrar admon via AJAX.
+     El contrato permanece 'vigente' hasta que se facture.
+═══════════════════════════════════════════════════════════════════════════ --}}
+<div id="modal-retiro-pendiente-ov"
+     onclick="if(event.target.id==='modal-retiro-pendiente-ov')cerrarModalRetiroPendiente()"
+     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;align-items:center;justify-content:center;">
+    <div style="background:#fff;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.4);width:100%;max-width:460px;overflow:hidden;">
+
+        {{-- Header --}}
+        <div style="background:linear-gradient(135deg,#78350f,#b45309);padding:.75rem 1.1rem;display:flex;align-items:center;justify-content:space-between;">
+            <div style="display:flex;align-items:center;gap:.5rem;">
+                <span style="font-size:1.1rem;">📅</span>
+                <span style="color:#fff;font-size:.95rem;font-weight:700;">Registrar Retiro Pendiente</span>
+            </div>
+            <button onclick="cerrarModalRetiroPendiente()"
+                    style="background:rgba(255,255,255,.2);color:#fff;border:none;border-radius:6px;width:28px;height:28px;font-size:1rem;cursor:pointer;font-weight:700;">✕</button>
+        </div>
+
+        {{-- Body --}}
+        <div style="padding:1.25rem 1.4rem;">
+            {{-- Info del trabajador --}}
+            <div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:.6rem .9rem;margin-bottom:1rem;">
+                <div style="font-size:.78rem;color:#78350f;font-weight:600;" id="rp-nombre-label">—</div>
+                <div style="font-size:.72rem;color:#92400e;" id="rp-rs-label">—</div>
+            </div>
+
+            {{-- Fecha de retiro --}}
+            <div style="margin-bottom:1rem;">
+                <label for="rp-fecha" style="display:block;font-size:.8rem;font-weight:600;color:#374151;margin-bottom:.3rem;">
+                    📅 Fecha del último día trabajado
+                </label>
+                <input type="date" id="rp-fecha"
+                       oninput="rpCalcularDias()"
+                       style="width:100%;border:1.5px solid #d1d5db;border-radius:8px;padding:.5rem .75rem;font-size:.9rem;color:#111827;outline:none;box-sizing:border-box;"
+                       onfocus="this.style.borderColor='#b45309'" onblur="this.style.borderColor='#d1d5db'">
+            </div>
+
+            {{-- Días calculados --}}
+            <div id="rp-dias-box" style="display:none;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:.6rem .9rem;margin-bottom:1rem;">
+                <div style="font-size:.8rem;color:#166534;">
+                    📊 Días a cotizar: <strong id="rp-dias-valor" style="font-size:1rem;color:#15803d;">0</strong>
+                </div>
+                <div id="rp-admon-hint" style="font-size:.72rem;color:#15803d;margin-top:.2rem;"></div>
+            </div>
+
+            {{-- Checkbox admon --}}
+            <div id="rp-admon-box" style="display:none;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:.65rem .9rem;margin-bottom:1.2rem;">
+                <label style="display:flex;align-items:center;gap:.55rem;cursor:pointer;">
+                    <input type="checkbox" id="rp-cobrar-admon"
+                           style="width:1rem;height:1rem;accent-color:#2563eb;cursor:pointer;">
+                    <span style="font-size:.82rem;color:#1e40af;font-weight:600;">💼 Cobrar administración en este retiro</span>
+                </label>
+                <div id="rp-admon-valor-label" style="font-size:.72rem;color:#3b82f6;margin-top:.3rem;margin-left:1.55rem;"></div>
+            </div>
+
+            {{-- Alerta si ya tiene retiro pendiente --}}
+            <div id="rp-alerta-existente" style="display:none;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:.55rem .8rem;margin-bottom:1rem;font-size:.75rem;color:#c2410c;">
+                ⚠️ Este contrato ya tiene un retiro pendiente registrado. Al guardar se reemplazará.
+            </div>
+
+            {{-- Botones --}}
+            <div style="display:flex;gap:.6rem;flex-wrap:wrap;">
+                <button id="rp-btn-guardar"
+                        onclick="rpGuardar()"
+                        style="flex:1;background:linear-gradient(135deg,#b45309,#d97706);color:#fff;border:none;border-radius:8px;padding:.55rem .8rem;font-size:.85rem;font-weight:700;cursor:pointer;min-width:120px;">
+                    ✅ Guardar Retiro
+                </button>
+                <button id="rp-btn-quitar"
+                        onclick="rpQuitarRetiro()"
+                        style="display:none;background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;border-radius:8px;padding:.55rem .8rem;font-size:.82rem;font-weight:600;cursor:pointer;">
+                    🗑 Quitar Retiro
+                </button>
+                <button onclick="cerrarModalRetiroPendiente()"
+                        style="background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;border-radius:8px;padding:.55rem .8rem;font-size:.82rem;cursor:pointer;">
+                    Cancelar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// ── Retiro Pendiente — Estado del modal ──────────────────────────────────────
+var _rpContratoId = null;
+var _rpAdmonTotal = 0;
+var _rpTieneRetiroActual = false;
+
+function abrirModalRetiroPendiente(contratoId, nombre, rs, admonTotal, fechaActual, cobrarAdmonActual) {
+    _rpContratoId    = contratoId;
+    _rpAdmonTotal    = admonTotal;
+    _rpTieneRetiroActual = !!fechaActual;
+
+    document.getElementById('rp-nombre-label').textContent = nombre;
+    document.getElementById('rp-rs-label').textContent     = rs;
+
+    var fechaInput = document.getElementById('rp-fecha');
+    fechaInput.value = fechaActual || '{{ $fechaPredeterminada }}';
+
+    // Mostrar botón quitar solo si ya tiene retiro pendiente
+    document.getElementById('rp-btn-quitar').style.display  = fechaActual ? 'inline-block' : 'none';
+    document.getElementById('rp-alerta-existente').style.display = fechaActual ? 'block' : 'none';
+
+    // Si hay un valor de fecha (sea la predeterminada o la existente), calcular días de inmediato
+    if (fechaInput.value) {
+        rpCalcularDias();
+        if (fechaActual) {
+            document.getElementById('rp-cobrar-admon').checked = !!cobrarAdmonActual;
+        }
+    } else {
+        document.getElementById('rp-dias-box').style.display  = 'none';
+        document.getElementById('rp-admon-box').style.display = 'none';
+    }
+
+
+    var ov = document.getElementById('modal-retiro-pendiente-ov');
+    ov.style.display = 'flex';
+}
+
+function cerrarModalRetiroPendiente() {
+    document.getElementById('modal-retiro-pendiente-ov').style.display = 'none';
+    _rpContratoId = null;
+}
+
+function rpCalcularDias() {
+    var fecha = document.getElementById('rp-fecha').value;
+    if (!fecha) {
+        document.getElementById('rp-dias-box').style.display  = 'none';
+        document.getElementById('rp-admon-box').style.display = 'none';
+        return;
+    }
+    // Extraer el día del mes directamente del string YYYY-MM-DD (evita problemas de zona horaria)
+    var parts = fecha.split('-');
+    var dia = parseInt(parts[2], 10);
+
+    document.getElementById('rp-dias-valor').textContent = dia;
+    document.getElementById('rp-dias-box').style.display  = 'block';
+    document.getElementById('rp-admon-box').style.display = 'block';
+
+    // Sugerencia de admon: marcado si > 3 días, desmarcado si ≤ 3
+    var chk = document.getElementById('rp-cobrar-admon');
+    if (!_rpTieneRetiroActual) {
+        chk.checked = (dia > 3);
+    }
+
+    // Label del hint
+    var hint = document.getElementById('rp-admon-hint');
+    if (dia <= 3) {
+        hint.textContent = '⚠️ ≤ 3 días: se sugiere NO cobrar administración.';
+        hint.style.color = '#b45309';
+    } else {
+        hint.textContent = '✅ ' + dia + ' días: se sugiere SÍ cobrar administración.';
+        hint.style.color = '#166534';
+    }
+
+    // Mostrar valor de admon
+    document.getElementById('rp-admon-valor-label').textContent =
+        'Valor admon: $' + Number(_rpAdmonTotal).toLocaleString('es-CO') + ' (completo mensual)';
+}
+
+function rpGuardar() {
+    var fecha = document.getElementById('rp-fecha').value;
+    if (!fecha) { alert('Por favor selecciona la fecha del último día trabajado.'); return; }
+
+    var cobrarAdmon = document.getElementById('rp-cobrar-admon').checked ? 1 : 0;
+    var btn = document.getElementById('rp-btn-guardar');
+    btn.disabled = true;
+    btn.textContent = 'Guardando…';
+
+    fetch('{{ route("admin.facturacion.contrato.retiro_pendiente", ["contrato" => ":cid"]) }}'.replace(':cid', _rpContratoId), {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '{{ csrf_token() }}'
+        },
+        body: JSON.stringify({ fecha_retiro: fecha, cobrar_admon: cobrarAdmon })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        btn.disabled = false;
+        btn.textContent = '✅ Guardar Retiro';
+        if (data.ok) {
+            cerrarModalRetiroPendiente();
+            location.reload();
+        } else {
+            alert(data.mensaje || 'Error al guardar el retiro.');
+        }
+    })
+    .catch(function() {
+        btn.disabled = false;
+        btn.textContent = '✅ Guardar Retiro';
+        alert('Error de conexión. Intenta de nuevo.');
+    });
+}
+
+function rpQuitarRetiro() {
+    if (!confirm('¿Seguro que deseas quitar el retiro pendiente de este contrato? Volverá a los 30 días normales.')) return;
+
+    fetch('{{ route("admin.facturacion.contrato.retiro_pendiente", ["contrato" => ":cid"]) }}'.replace(':cid', _rpContratoId), {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '{{ csrf_token() }}'
+        },
+        body: JSON.stringify({ fecha_retiro: '', cobrar_admon: 0 })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.ok) {
+            cerrarModalRetiroPendiente();
+            location.reload();
+        } else {
+            alert(data.mensaje || 'Error al quitar el retiro.');
+        }
+    })
+    .catch(function() { alert('Error de conexión.'); });
+}
+</script>
 
 @endsection

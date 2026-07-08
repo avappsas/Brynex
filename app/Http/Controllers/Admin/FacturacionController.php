@@ -198,6 +198,17 @@ class FacturacionController extends Controller
             }
             $c->dias_cotizar          = $diasCotizar;
             $c->es_ind_act_primer_mes = $esIndActPrimerMes;
+
+            // ── Retiro Pendiente (registrado desde vista empresa, aún no facturado) ──
+            // Si el contrato vigente tiene fecha_retiro_pendiente, los días cotizables
+            // son los días del mes hasta esa fecha (ej: día 20 = 20 días).
+            if ($c->estado === 'vigente' && $c->fecha_retiro_pendiente) {
+                $c->dias_cotizar = (int) $c->fecha_retiro_pendiente->day;
+                $c->tiene_retiro_pendiente = true;
+            } else {
+                $c->tiene_retiro_pendiente = false;
+            }
+
             $c->factura_exist         = $facturasExistentes->get($c->id);
 
             $facturaRetiro0 = $facturasRetiro0->get($c->id);
@@ -1326,7 +1337,20 @@ class FacturacionController extends Controller
                     $diasCotizar = $diasRetiro;
                 }
 
-                $tieneIva = $contrato->cliente ? (strtoupper(trim($contrato->cliente->iva ?? '')) === 'SI') : false;
+                // ── Retiro Pendiente desde vista empresa ─────────────────────────────────
+                // Si el contrato vigente tiene fecha_retiro_pendiente, se procesa como retiro:
+                // los días cotizados son los del día del mes de esa fecha, se marca el contrato
+                // como retirado al crear la factura, y se limpia el campo fecha_retiro_pendiente.
+                $tieneRetiroPendiente = ($contrato->estado === 'vigente' && $contrato->fecha_retiro_pendiente !== null);
+                if ($tieneRetiroPendiente && !$esRetiro && !$esAfiliacion) {
+                    $esRetiro       = true;
+                    $fechaRetiro    = $contrato->fecha_retiro_pendiente->toDateString();
+                    $diasRetiro     = (int) $contrato->fecha_retiro_pendiente->day;
+                    $diasCotizar    = $diasRetiro;
+                    // La decisión de cobrar admon ya fue tomada por el aliado al registrar el retiro
+                    $cobrarAdmonRetiroPendiente = (bool) ($contrato->retiro_pendiente_cobrar_admon ?? false);
+                }
+
 
                 // ── Fuente de verdad: calcularCotizacion() del modelo ──────────────────────
                 // Usar el mismo método que la UI para que total facturado = estimación exacta.
@@ -1378,9 +1402,22 @@ class FacturacionController extends Controller
                 // Admon:
                 // • Afiliación pura (I VENC, empresa): sin admon mensual
                 // • I ACT primer mes y planilla normal: con admon completa
-                $admon       = ($esAfiliacion && !$esIndActPrimerMes) ? 0 : intval($contrato->administracion ?? 0);
-                $adminAsesor = ($esAfiliacion && !$esIndActPrimerMes) ? 0 : intval($contrato->admon_asesor   ?? 0);
+                // • Retiro Pendiente: usa la decisión guardada por el aliado (retiro_pendiente_cobrar_admon)
+                if ($esAfiliacion && !$esIndActPrimerMes) {
+                    $admon       = 0;
+                    $adminAsesor = 0;
+                } elseif (isset($tieneRetiroPendiente) && $tieneRetiroPendiente) {
+                    // Usar la decisión del aliado al registrar el retiro pendiente
+                    $admon       = (isset($cobrarAdmonRetiroPendiente) && $cobrarAdmonRetiroPendiente)
+                        ? intval($contrato->administracion ?? 0) : 0;
+                    $adminAsesor = (isset($cobrarAdmonRetiroPendiente) && $cobrarAdmonRetiroPendiente)
+                        ? intval($contrato->admon_asesor   ?? 0) : 0;
+                } else {
+                    $admon       = intval($contrato->administracion ?? 0);
+                    $adminAsesor = intval($contrato->admon_asesor   ?? 0);
+                }
                 $otrosAdmon  = intval($validated['otros_admon'] ?? 0);
+
 
                 $totalSS  = $calcSS['eps'] + $calcSS['arl'] + $calcSS['afp'] + $calcSS['caja'];
                 $ivaBase  = $admon + $adminAsesor;
@@ -1621,10 +1658,16 @@ class FacturacionController extends Controller
 
                 // Si es un retiro y la factura se generó en estado pagada/prestamo, retirar contrato
                 if ($esRetiro && $fechaRetiro && in_array($factura->estado, [Factura::ESTADO_PAGADA, Factura::ESTADO_PRESTAMO])) {
-                    $contrato->update([
+                    $updateData = [
                         'estado'       => 'retirado',
                         'fecha_retiro' => $fechaRetiro,
-                    ]);
+                    ];
+                    // Si era un retiro pendiente, limpiar los campos de pendiente
+                    if (isset($tieneRetiroPendiente) && $tieneRetiroPendiente) {
+                        $updateData['fecha_retiro_pendiente']        = null;
+                        $updateData['retiro_pendiente_cobrar_admon'] = null;
+                    }
+                    $contrato->update($updateData);
 
                     Bitacora::registrar(
                         accion: 'updated',
@@ -1638,6 +1681,7 @@ class FacturacionController extends Controller
                         alidoId: $aliadoId
                     );
                 }
+
 
                 // Si está pagada o en préstamo, generar plano
                 if (in_array($factura->estado, [Factura::ESTADO_PAGADA, Factura::ESTADO_PRESTAMO])) {
@@ -3700,7 +3744,13 @@ class FacturacionController extends Controller
                 $esAfil = $fact->tipo === 'afiliacion' && !($fact->afiliacion > 0 && $fact->total_ss > 0);
             }
 
+            // ── Retiro Pendiente: sobreescribir días si el contrato vigente tiene fecha_retiro_pendiente ──
+            if ($c->estado === 'vigente' && $c->fecha_retiro_pendiente) {
+                $diasCotizar = (int) $c->fecha_retiro_pendiente->day;
+            }
+
             $esRetirado = $c->estado === 'retirado';
+
 
             if ($fact) {
                 $vEps  = $r100($fact->v_eps);
@@ -3898,5 +3948,77 @@ class FacturacionController extends Controller
             $cobro->delete();
         }
         return response()->json(['ok' => true]);
+    }
+
+    // ─── Retiro Pendiente desde Vista Empresa ──────────────────────────────────
+    // Guarda o limpia la fecha de retiro pendiente de un contrato vigente.
+    // El estado del contrato NO cambia aquí; lo hace al momento de facturar.
+    public function guardarRetiroPendiente(Request $request, int $contrato): \Illuminate\Http\JsonResponse
+    {
+        $aliadoId = session('aliado_id_activo');
+
+        $c = \App\Models\Contrato::where('aliado_id', $aliadoId)
+            ->where('id', $contrato)
+            ->firstOrFail();
+
+        // Seguridad: solo se puede registrar retiro pendiente en contratos vigentes
+        if ($c->estado !== 'vigente') {
+            return response()->json(['ok' => false, 'mensaje' => 'Solo se puede registrar retiro pendiente en contratos vigentes.'], 422);
+        }
+
+        $fechaStr = $request->input('fecha_retiro'); // null para limpiar
+
+        if ($fechaStr === null || $fechaStr === '') {
+            // Limpiar retiro pendiente
+            $c->update([
+                'fecha_retiro_pendiente'        => null,
+                'retiro_pendiente_cobrar_admon' => null,
+            ]);
+
+            \App\Models\Bitacora::registrar(
+                accion: 'updated',
+                modelo: 'Contrato',
+                registroId: $c->id,
+                descripcion: "Retiro pendiente cancelado para contrato #{$c->id} (cédula {$c->cedula}).",
+                detalle: [],
+                alidoId: $aliadoId
+            );
+
+            return response()->json(['ok' => true, 'mensaje' => 'Retiro pendiente cancelado.', 'dias' => 30]);
+        }
+
+        $request->validate([
+            'fecha_retiro'       => 'required|date',
+            'cobrar_admon'       => 'required|boolean',
+        ]);
+
+        $fecha = \Carbon\Carbon::parse($fechaStr);
+        $dias  = (int) $fecha->day; // día del mes = días trabajados (incluye el último)
+        $cobrarAdmon = (bool) $request->input('cobrar_admon');
+
+        $c->update([
+            'fecha_retiro_pendiente'        => $fecha->toDateString(),
+            'retiro_pendiente_cobrar_admon' => $cobrarAdmon ? 1 : 0,
+        ]);
+
+        \App\Models\Bitacora::registrar(
+            accion: 'updated',
+            modelo: 'Contrato',
+            registroId: $c->id,
+            descripcion: "Retiro pendiente registrado para contrato #{$c->id} (cédula {$c->cedula}): fecha {$fecha->toDateString()}, días {$dias}, admon " . ($cobrarAdmon ? 'SÍ' : 'NO') . ".",
+            detalle: [
+                'fecha_retiro_pendiente'        => $fecha->toDateString(),
+                'dias'                          => $dias,
+                'retiro_pendiente_cobrar_admon' => $cobrarAdmon,
+            ],
+            alidoId: $aliadoId
+        );
+
+        return response()->json([
+            'ok'    => true,
+            'dias'  => $dias,
+            'fecha' => $fecha->format('d/m/Y'),
+            'cobrar_admon' => $cobrarAdmon,
+        ]);
     }
 }
