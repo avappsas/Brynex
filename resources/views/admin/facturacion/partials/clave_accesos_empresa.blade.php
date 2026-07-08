@@ -222,6 +222,7 @@
 
         // ── Renderizar tabla ─────────────────────────────────────────
         renderTabla: function(claves) {
+            ECA.clavesActuales = claves;
             var tbody = document.getElementById('eca-tbody');
             tbody.innerHTML = '';
             if (!claves || claves.length === 0) {
@@ -252,11 +253,18 @@
                     '<td class="eca-td" style="font-size:0.73rem;color:#64748b;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + (c.observacion||'') + '">' + (c.observacion||'') + '</td>' +
                     '<td class="eca-td" style="text-align:center;">' + estadoBadge + '</td>' +
                     '<td class="eca-td" style="text-align:center;white-space:nowrap;">' +
-                        '<button onclick="ECA.abrirModal(' + JSON.stringify(c) + ')" style="background:#fef3c7;border:1px solid #fde68a;border-radius:5px;padding:0.18rem 0.55rem;font-size:0.7rem;font-weight:600;cursor:pointer;color:#92400e;" title="Editar">✏️</button> ' +
+                        '<button onclick="ECA.abrirModalPorId(' + c.id + ')" style="background:#fef3c7;border:1px solid #fde68a;border-radius:5px;padding:0.18rem 0.55rem;font-size:0.7rem;font-weight:600;cursor:pointer;color:#92400e;" title="Editar">✏️</button> ' +
                         '<button onclick="ECA.eliminar(' + c.id + ')" style="background:#fee2e2;border:1px solid #fca5a5;border-radius:5px;padding:0.18rem 0.55rem;font-size:0.7rem;font-weight:600;cursor:pointer;color:#dc2626;" title="Eliminar">🗑</button>' +
                     '</td>';
                 tbody.appendChild(tr);
             });
+        },
+
+        abrirModalPorId: function(id) {
+            var clave = ECA.clavesActuales.find(x => x.id == id);
+            if (clave) {
+                ECA.abrirModal(clave);
+            }
         },
 
         // ── Badge de tipo ────────────────────────────────────────────

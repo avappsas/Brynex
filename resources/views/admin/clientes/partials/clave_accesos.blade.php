@@ -292,6 +292,7 @@
 
         // ── Renderizar tabla ─────────────────────────────────────────
         renderTabla: function(claves) {
+            CA.clavesActuales = claves;
             var tbody = document.getElementById('ca-tbody');
             tbody.innerHTML = '';
             if (!claves || claves.length === 0) {
@@ -306,7 +307,7 @@
 
                 var tipoBadge = CA.tipoBadge(c.tipo);
                 var linkBtn   = c.link_acceso
-                    ? '<a href="' + c.link_acceso + '" target="_blank" title="Abrir link" style="display:inline-flex;align-items:center;gap:0.2rem;background:#eff6ff;color:#2563eb;padding:0.18rem 0.5rem;border-radius:5px;font-size:0.7rem;font-weight:600;border:1px solid #bfdbfe;text-decoration:none;">🔗 Abrir</a>'
+                    ? '<a href="' + c.link_acceso + '" target="_blank" title="Abrir link" style="display:inline-flex;align-items:center;gap:0.2rem;background:#eff6ff;color:#2563eb;padding:0.18rem 0.55rem;border-radius:5px;font-size:0.7rem;font-weight:600;border:1px solid #bfdbfe;text-decoration:none;">🔗 Abrir</a>'
                     : '<span style="color:#cbd5e1;font-size:0.72rem;">—</span>';
                 var estadoBadge = c.activo
                     ? '<span style="background:#dcfce7;color:#16a34a;padding:0.12rem 0.45rem;border-radius:999px;font-size:0.65rem;font-weight:700;">ACTIVO</span>'
@@ -322,11 +323,18 @@
                     '<td class="ca-td" style="font-size:0.73rem;color:#64748b;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + (c.observacion||'') + '">' + (c.observacion||'') + '</td>' +
                     '<td class="ca-td" style="text-align:center;">' + estadoBadge + '</td>' +
                     '<td class="ca-td" style="text-align:center;white-space:nowrap;">' +
-                        '<button onclick="CA.abrirModal(' + JSON.stringify(c) + ')" style="background:#fef3c7;border:1px solid #fde68a;border-radius:5px;padding:0.18rem 0.55rem;font-size:0.7rem;font-weight:600;cursor:pointer;color:#92400e;" title="Editar">✏️</button> ' +
+                        '<button onclick="CA.abrirModalPorId(' + c.id + ')" style="background:#fef3c7;border:1px solid #fde68a;border-radius:5px;padding:0.18rem 0.55rem;font-size:0.7rem;font-weight:600;cursor:pointer;color:#92400e;" title="Editar">✏️</button> ' +
                         '<button onclick="CA.eliminar(' + c.id + ')" style="background:#fee2e2;border:1px solid #fca5a5;border-radius:5px;padding:0.18rem 0.55rem;font-size:0.7rem;font-weight:600;cursor:pointer;color:#dc2626;" title="Eliminar">🗑</button>' +
                     '</td>';
                 tbody.appendChild(tr);
             });
+        },
+
+        abrirModalPorId: function(id) {
+            var clave = CA.clavesActuales.find(x => x.id == id);
+            if (clave) {
+                CA.abrirModal(clave);
+            }
         },
 
         // ── Badge de tipo ────────────────────────────────────────────
