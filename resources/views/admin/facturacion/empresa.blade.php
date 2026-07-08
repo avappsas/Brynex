@@ -608,10 +608,11 @@ $totAdmon+=$vAdm;$totIva+=$vIva;$totTotal+=$vTot;$totMora+=$vMora;
             @endphp
             @if($tieneRetiroFacturable)
                 {{-- Retiro marcado pero no cobrado aún — mostrar en naranja --}}
-                <span style="display:inline-block;padding:.16rem .5rem;border-radius:20px;font-size:.63rem;font-weight:800;background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;"
+                <span style="display:inline-block;padding:.16rem .5rem;border-radius:20px;font-size:.63rem;font-weight:800;background:#fee2e2;color:#dc2626;"
                       title="Retiro marcado — pendiente de facturar{{ $numeroPlanillaRet ? ' ⚠ Planilla pagada: '.$numeroPlanillaRet : '' }}">
-                    RETIRO★
+                    RETIRO
                 </span>
+
             @else
                 {{-- Retirado sin factura 0 (ya cobrado o retiro masivo) --}}
                 <span style="display:inline-block;padding:.16rem .5rem;border-radius:20px;font-size:.63rem;font-weight:800;background:#fee2e2;color:#dc2626">
@@ -1173,15 +1174,9 @@ function aplicarFiltrosTabla() {
         tr.style.display = visible ? '' : 'none';
     });
 
-    // Deseleccionar checkboxes de filas ocultas
-    document.querySelectorAll('.chk-row:checked').forEach(c => {
-        const fila = c.closest('tr');
-        if (fila && fila.style.display === 'none') {
-            c.checked = false;
-        }
-    });
     onCheckChange();
 }
+
 
 // ─── Checkboxes ───────────────────────────────────────────────
 function toggleAll(chk){

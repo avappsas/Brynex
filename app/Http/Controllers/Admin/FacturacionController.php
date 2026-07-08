@@ -3820,8 +3820,10 @@ class FacturacionController extends Controller
                 'cedula'         => $c->cedula,
                 'nombre'         => $nombre,
                 'fecha_ingreso'  => $c->fecha_ingreso,
-                'razon_social'   => $c->razonSocial?->razon_social ?? '—',
+                'razon_social'   => $this->limpiarRazonSocialCuentaCobro($c->razonSocial?->razon_social),
+                'modalidad'      => $c->tipoModalidad?->nombre ?? '—',
                 'eps_nombre'     => $c->eps?->nombre ?? '—',
+
                 'arl_nombre'     => $c->arl?->nombre ?? '—',
                 'n_arl'          => $c->n_arl ?? 1,
                 'afp_nombre'     => $c->pension?->nombre ?? '—',
@@ -4023,4 +4025,28 @@ class FacturacionController extends Controller
             'cobrar_admon' => $cobrarAdmon,
         ]);
     }
+
+    // Limpia y recorta sufijos o términos de tipos de sociedad en las razones sociales para simplificar cuentas de cobro
+    private function limpiarRazonSocialCuentaCobro(?string $razon): string
+    {
+        if (!$razon) return '—';
+        $patrones = [
+            '/\bSOCIEDAD POR ACCIONES SIMPLIFICADAS\b/i',
+            '/\bSOCIADAD POR ACCIONES SIMPLIFICADAS\b/i', // typo común
+            '/\bSOCIEDAD ANONIMA\b/i',
+            '/\bSOCIADAD ANONIMA\b/i', // typo común
+            '/\bS\.A\.S\.\b/i',
+            '/\bS\.A\.S\b/i',
+            '/\bSAS\b/i',
+            '/\bS\.A\.\b/i',
+            '/\bS\.A\b/i',
+            '/\bSA\b/i',
+            '/\bLTDA\b/i',
+            '/\bLIMITADA\b/i',
+        ];
+        $limpio = preg_replace($patrones, '', $razon);
+        $limpio = trim(preg_replace('/\s+/', ' ', $limpio));
+        return rtrim($limpio, ', -') ?: '—';
+    }
 }
+

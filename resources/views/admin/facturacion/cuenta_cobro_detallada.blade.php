@@ -222,7 +222,9 @@ table.tbl-det tfoot .num { color: #34d399; }
             <td style="font-family:monospace;">{{ $item->cedula }}</td>
             <td style="min-width:160px;">
                 <div style="font-weight:700;">{{ $item->nombre }}</div>
-                <div style="font-size:8.5px;color:#dc2626;font-weight:600;">{{ $item->razon_social }}</div>
+                <div style="font-size:8.5px;color:#dc2626;font-weight:600;">{{ $item->modalidad }} / {{ $item->razon_social }}</div>
+
+
                 @if($item->es_afil)<span style="font-size:8px;color:#7c3aed;font-weight:700;">📌 Afiliación</span>@endif
                 @if($itemAFavor > 0)
                     <div class="saldo-info saldo-favor">✅ A favor: ${{ number_format($itemAFavor,0,',','.') }}</div>
