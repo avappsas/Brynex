@@ -167,6 +167,7 @@
     border:1px solid #e2e8f0;
     box-shadow:0 2px 8px rgba(0,0,0,.06);
     overflow:hidden;
+    overflow-x:auto;
 }
 .tabla-planos {
     width:100%; border-collapse:collapse; font-size:.76rem;
@@ -793,7 +794,7 @@
             $clienteNombre = trim(($p->primer_nombre ?? '').' '.($p->primer_ape ?? ''));
         @endphp
         <tr id="fila-plano-{{ $p->id }}" class="{{ $p->numero_planilla ? 'ya-pago' : '' }}">
-            <td style="color:#94a3b8" data-order="{{ $i }}">{{ $i++ }}</td>
+            <td style="color:#1d4ed8;cursor:pointer;font-weight:600" data-order="{{ $i }}" onclick="abrirModalMover({{ $p->id }}, {{ $p->n_plano }})" title="Editar número de plano de este registro (Plano actual: P{{ $p->n_plano }})">{{ $i++ }}</td>
             <td data-order="{{ $p->tipo_modal_nombre ?? $p->tipo_p }}">
                 @if($p->contrato_id ?? null)
                 <a href="{{ url('/admin/contratos/'.$p->contrato_id.'/edit') }}" style="text-decoration:none" title="Ver contrato">
