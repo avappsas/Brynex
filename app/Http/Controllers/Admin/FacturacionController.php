@@ -1354,6 +1354,8 @@ class FacturacionController extends Controller
 
                 // ── Fuente de verdad: calcularCotizacion() del modelo ──────────────────────
                 // Usar el mismo método que la UI para que total facturado = estimación exacta.
+                $tieneIva = $contrato->cliente ? (strtoupper(trim($contrato->cliente->iva ?? '')) === 'SI') : false;
+
                 if ($esAfiliacion && !$esIndActPrimerMes) {
                     $calcSS = ['eps' => 0, 'arl' => 0, 'afp' => 0, 'caja' => 0];
                 } else {
