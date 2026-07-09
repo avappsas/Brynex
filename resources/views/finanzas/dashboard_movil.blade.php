@@ -1218,17 +1218,45 @@
                 
                 <div class="bs-body" style="padding-bottom: 2rem;">
                     <div style="display:flex; flex-direction:column; gap:0.75rem;">
-                        @foreach($consolidado['cuentas'] ?? [] as $banco => $val)
-                            <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.03); border:1px solid var(--borde-tarjeta); padding:0.75rem 1rem; border-radius:12px;">
-                                <span style="font-weight:600; font-size:0.82rem; color:var(--texto-secundario);">{{ $banco }}</span>
-                                <span style="font-weight:700; font-size:0.9rem; color:var(--texto-principal);">${{ number_format($val, 0, ',', '.') }} COP</span>
-                            </div>
-                        @endforeach
                         
-                        <div style="display:flex; justify-content:space-between; align-items:center; background:var(--azul-vivo-bg); border:1px solid var(--azul-vivo); padding:1rem; border-radius:14px; margin-top:0.5rem;">
-                            <span style="font-weight:700; font-size:0.88rem; color:#fff;">Total Disponible</span>
-                            <span style="font-weight:800; font-size:1.05rem; color:#fff;">${{ number_format($consolidado['total_bancos'], 0, ',', '.') }} COP</span>
+                        {{-- Liquidez Personal --}}
+                        <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.03); border:1px solid var(--borde-tarjeta); padding:0.75rem 1rem; border-radius:12px;">
+                            <span style="font-weight:600; font-size:0.82rem; color:var(--texto-secundario);">💵 Liquidez Personal</span>
+                            <span style="font-weight:700; font-size:0.9rem; color:var(--texto-principal);">${{ number_format($consolidado['liquidez_personal'] ?? 0, 0, ',', '.') }} COP</span>
                         </div>
+
+                        {{-- Préstamos por Cobrar (Cartera) --}}
+                        <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.03); border:1px solid var(--borde-tarjeta); padding:0.75rem 1rem; border-radius:12px;">
+                            <span style="font-weight:600; font-size:0.82rem; color:var(--texto-secundario);">🤝 Préstamos Cartera</span>
+                            <span style="font-weight:700; font-size:0.9rem; color:var(--texto-principal);">${{ number_format($consolidado['prestado_cartera'] ?? 0, 0, ',', '.') }} COP</span>
+                        </div>
+
+                        {{-- Inversiones Cripto --}}
+                        <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.03); border:1px solid var(--borde-tarjeta); padding:0.75rem 1rem; border-radius:12px;">
+                            <span style="font-weight:600; font-size:0.82rem; color:var(--texto-secundario);">🪙 Inversiones Cripto</span>
+                            <span style="font-weight:700; font-size:0.9rem; color:var(--texto-principal);">${{ number_format($consolidado['inversiones_cripto'] ?? 0, 0, ',', '.') }} COP</span>
+                        </div>
+
+                        {{-- Patrimonio --}}
+                        <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.03); border:1px solid var(--borde-tarjeta); padding:0.75rem 1rem; border-radius:12px;">
+                            <span style="font-weight:600; font-size:0.82rem; color:var(--texto-secundario);">🏠 Patrimonio Activo</span>
+                            <span style="font-weight:700; font-size:0.9rem; color:var(--texto-principal);">${{ number_format($consolidado['patrimonio_total'] ?? 0, 0, ',', '.') }} COP</span>
+                        </div>
+
+                        {{-- Proyectos --}}
+                        @if(($consolidado['total_saldo_proyectos'] ?? 0) > 0)
+                            <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.03); border:1px solid var(--borde-tarjeta); padding:0.75rem 1rem; border-radius:12px;">
+                                <span style="font-weight:600; font-size:0.82rem; color:var(--texto-secundario);">📁 Saldo Proyectos</span>
+                                <span style="font-weight:700; font-size:0.9rem; color:var(--texto-principal);">${{ number_format($consolidado['total_saldo_proyectos'], 0, ',', '.') }} COP</span>
+                            </div>
+                        @endif
+                        
+                        {{-- Balance / Liquidez Global --}}
+                        <div style="display:flex; justify-content:space-between; align-items:center; background:var(--azul-vivo-bg); border:1px solid var(--azul-vivo); padding:1rem; border-radius:14px; margin-top:0.5rem;">
+                            <span style="font-weight:700; font-size:0.88rem; color:#fff;">Liquidez Global</span>
+                            <span style="font-weight:800; font-size:1.05rem; color:#fff;">${{ number_format($consolidado['liquidez_global'] ?? 0, 0, ',', '.') }} COP</span>
+                        </div>
+
                     </div>
                 </div>
                 
