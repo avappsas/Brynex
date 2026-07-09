@@ -205,7 +205,7 @@ class TareaController extends Controller
         $cliente = DB::table('clientes')
             ->where('aliado_id', $alidoId)
             ->where('cedula', $tarea->cedula)
-            ->select('cedula', 'primer_nombre', 'segundo_nombre', 'primer_apellido', 'segundo_apellido', 'celular', 'correo')
+            ->select('id', 'cedula', 'primer_nombre', 'segundo_nombre', 'primer_apellido', 'segundo_apellido', 'celular', 'correo')
             ->first();
 
         return response()->json([

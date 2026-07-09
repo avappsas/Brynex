@@ -197,10 +197,10 @@ table.tbl-cc .num { text-align: right; font-family: monospace; }
         <thead>
             <tr>
                 <th style="text-align:center;width:28px;">No</th>
-                <th>Plan / Razón Social</th>
+                <th>Razón Social</th>
                 <th style="text-align:center;">Documento</th>
                 <th>Nombre</th>
-                <th style="text-align:center;">Ingreso</th>
+                <th style="text-align:center;">Ingreso / Plan</th>
                 <th class="num">Total</th>
                 <th style="text-align:center;">Estado</th>
             </tr>
@@ -232,8 +232,8 @@ table.tbl-cc .num { text-align: right; font-family: monospace; }
         <tr>
             <td style="text-align:center;color:#64748b;">{{ $no++ }}</td>
             <td>
-                <div style="font-weight:700;font-size:10px;color:#dc2626;">{{ $item->modalidad }} / {{ $item->razon_social }}</div>
-                @if($item->es_afil)<span style="font-size:9px;color:#7c3aed;font-weight:700;">📌 Afiliación</span>@endif
+                <div style="font-weight:800;font-size:10.5px;color:#1e3a5f;text-transform:uppercase;">{{ $item->razon_social }}</div>
+                @if($item->es_afil)<span style="font-size:8.5px;color:#7c3aed;font-weight:700;margin-top:2px;display:inline-block;">📌 Afiliación</span>@endif
             </td>
 
 
@@ -247,8 +247,9 @@ table.tbl-cc .num { text-align: right; font-family: monospace; }
                     <div class="saldo-info saldo-pendiente">⚠️ Pendiente: ${{ number_format($itemPendiente,0,',','.') }}</div>
                 @endif
             </td>
-            <td style="text-align:center;color:#64748b;">
-                {{ $item->fecha_ingreso ? $item->fecha_ingreso->format('d/m/Y') : '—' }}
+            <td style="text-align:center;color:#64748b;white-space:nowrap;">
+                <div>{{ $item->fecha_ingreso ? $item->fecha_ingreso->format('d/m/Y') : '—' }}</div>
+                <div style="font-size:9.5px;color:#d97706;font-weight:700;margin-top:2px;">Plan: {{ $item->modalidad }}</div>
             </td>
             <td class="num" style="font-weight:700;">${{ number_format($item->v_total,0,',','.') }}</td>
             <td style="text-align:center;">

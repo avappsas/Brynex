@@ -175,8 +175,8 @@ table.tbl-det tfoot .num { color: #34d399; }
             <tr>
                 <th style="text-align:center;width:22px;">#</th>
                 <th>Documento</th>
-                <th>Nombre</th>
-                <th style="text-align:center;">Ingreso</th>
+                <th>Razón Social / Nombre</th>
+                <th style="text-align:center;">Ingreso / Plan</th>
                 <th style="text-align:center;">Días</th>
                 <th class="num">EPS</th>
                 <th class="num">ARL</th>
@@ -222,12 +222,12 @@ table.tbl-det tfoot .num { color: #34d399; }
         <tr>
             <td style="text-align:center;color:#94a3b8;">{{ $no++ }}</td>
             <td style="font-family:monospace;">{{ $item->cedula }}</td>
-            <td style="min-width:160px;">
-                <div style="font-weight:700;">{{ $item->nombre }}</div>
-                <div style="font-size:8.5px;color:#dc2626;font-weight:600;">{{ $item->modalidad }} / {{ $item->razon_social }}</div>
-
-
-                @if($item->es_afil)<span style="font-size:8px;color:#7c3aed;font-weight:700;">📌 Afiliación</span>@endif
+            <td style="min-width:190px;">
+                <div style="font-weight:800;font-size:9.5px;color:#1e3a5f;text-transform:uppercase;">{{ $item->razon_social }}</div>
+                <div style="font-size:8.5px;color:#0f172a;font-weight:700;margin-top:2px;">
+                    {{ $item->nombre }}
+                    @if($item->es_afil)<span style="font-size:8px;color:#7c3aed;font-weight:700;margin-left:4px;">(📌 Afiliación)</span>@endif
+                </div>
                 @if($itemAFavor > 0)
                     <div class="saldo-info saldo-favor">✅ A favor: ${{ number_format($itemAFavor,0,',','.') }}</div>
                 @endif
@@ -236,7 +236,8 @@ table.tbl-det tfoot .num { color: #34d399; }
                 @endif
             </td>
             <td style="text-align:center;color:#64748b;white-space:nowrap;">
-                {{ $item->fecha_ingreso ? $item->fecha_ingreso->format('d/m/Y') : '—' }}
+                <div>{{ $item->fecha_ingreso ? $item->fecha_ingreso->format('d/m/Y') : '—' }}</div>
+                <div style="font-size:8px;color:#d97706;font-weight:700;margin-top:2px;">Plan: {{ $item->modalidad }}</div>
             </td>
             <td style="text-align:center;font-weight:700;color:{{ $item->dias < 30 ? '#d97706' : '#0f172a' }}">
                 {{ $item->es_afil ? '—' : $item->dias }}

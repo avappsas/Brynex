@@ -3821,7 +3821,7 @@ class FacturacionController extends Controller
                 'nombre'         => $nombre,
                 'fecha_ingreso'  => $c->fecha_ingreso,
                 'razon_social'   => $this->limpiarRazonSocialCuentaCobro($c->razonSocial?->razon_social),
-                'modalidad'      => $c->tipoModalidad?->nombre ?? '—',
+                'modalidad'      => $c->tipoModalidad?->tipo_modalidad ?? '—',
                 'eps_nombre'     => $c->eps?->nombre ?? '—',
 
                 'arl_nombre'     => $c->arl?->nombre ?? '—',

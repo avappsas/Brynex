@@ -175,6 +175,8 @@ body {
 .btn-secondary { background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; border-radius:9px; padding:.5rem 1rem; font-size:.82rem; cursor:pointer; }
 .btn-danger    { background:#fef2f2; color:#dc2626; border:1px solid #fecaca; border-radius:9px; padding:.5rem 1rem; font-size:.82rem; cursor:pointer; font-weight:700; }
 .btn-success   { background:#f0fdf4; color:#16a34a; border:1px solid #bbf7d0; border-radius:9px; padding:.5rem 1rem; font-size:.82rem; cursor:pointer; font-weight:700; }
+.btn-glass     { background:rgba(37,99,235,0.08); border:1px solid rgba(37,99,235,0.2); color:#2563eb; border-radius:8px; padding:0.35rem 0.85rem; font-size:0.75rem; font-weight:700; cursor:pointer; transition:all 0.2s ease; display:inline-flex; align-items:center; gap:0.3rem; }
+.btn-glass:hover { background:rgba(37,99,235,0.15); border-color:rgba(37,99,235,0.35); color:#1d4ed8; transform:translateY(-1px); }
 
 .toast { position:fixed; bottom:1.5rem; right:1.5rem; background:#1e293b; color:#fff; padding:.75rem 1.25rem; border-radius:10px; font-size:.82rem; z-index:9999; box-shadow:0 4px 20px rgba(0,0,0,.25); display:none; }
 .toast.show { display:block; animation:slideIn .25s ease; }
@@ -496,7 +498,7 @@ body {
                 <input type="text" id="nombreClienteDisplay" readonly placeholder="Se carga al seleccionar cédula..." style="background:#f8fafc;">
             </div>
         </div>
-        <div class="form-row col2">
+        <div class="form-row">
             <div class="form-group">
                 <label>Contrato (opcional)</label>
                 <select name="contrato_id" id="selectContrato" onchange="actualizarInfoContratoNueva(this)">
@@ -504,15 +506,7 @@ body {
                 </select>
                 <div id="nuevaContratoDetalleInfo" style="margin-top:0.4rem; font-size:0.75rem; display:none; padding:0.4rem 0.6rem; border-radius:6px; background:#f0f9ff; border:1px solid #bae6fd; color:#0369a1; font-weight:600;"></div>
             </div>
-            <div class="form-group">
-                <label>Empresa (opcional)</label>
-                <select name="razon_social_id">
-                    <option value="">— Sin empresa —</option>
-                    @foreach($razonesSociales as $rs)
-                        <option value="{{ $rs->id }}">{{ $rs->razon_social }}</option>
-                    @endforeach
-                </select>
-            </div>
+            <input type="hidden" name="razon_social_id" value="">
         </div>
         <div class="form-row">
             <div class="form-group">
@@ -526,20 +520,10 @@ body {
                 <textarea name="tarea" required placeholder="Detalle la tarea a realizar..."></textarea>
             </div>
         </div>
-        <div class="form-row col3">
-            <div class="form-group">
-                <label>Fecha Radicado</label>
-                <input type="date" name="fecha_radicado">
-            </div>
-            <div class="form-group">
-                <label>Número Radicado</label>
-                <input type="text" name="numero_radicado" placeholder="N° radicado">
-            </div>
-            <div class="form-group">
-                <label>Correo Entidad</label>
-                <input type="email" name="correo" placeholder="correo@entidad.com">
-            </div>
-        </div>
+        {{-- Ocultar campos que no se usan --}}
+        <input type="hidden" name="fecha_radicado" value="">
+        <input type="hidden" name="numero_radicado" value="">
+        <input type="hidden" name="correo" value="">
         <div class="form-row">
             <div class="form-group">
                 <label>Observación adicional</label>
@@ -555,7 +539,7 @@ body {
 </div>
 </div>
 
-{{-- ══════════ MODAL UNIFICADO (EDICIÓN, ACCIONES E HISTORIAL) ══════════ --}}
+{{-- ══════════ MODAL UNIFICADO (DETALLES, GESTIONES Y ACCIONES) ══════════ --}}
 <div class="modal-overlay" id="modalUnificado">
 <div class="modal-box lg">
     <div class="modal-head">
@@ -563,128 +547,169 @@ body {
         <button class="btn-modal-close" onclick="cerrarModal('modalUnificado')">✕</button>
     </div>
     
-    <div class="modal-tabs">
-        <button class="modal-tab active" id="tabBtnEditar" onclick="cambiarTab('editar')">📝 Datos y Editar</button>
-        <button class="modal-tab" id="tabBtnAcciones" onclick="cambiarTab('acciones')">⚡ Acciones</button>
-        <button class="modal-tab" id="tabBtnHistorial" onclick="cambiarTab('historial')">📁 Historial y Documentos</button>
+    <div class="modal-tabs" style="display: flex; justify-content: space-between; align-items: center; padding-right: 1.25rem;">
+        <div style="display: flex; gap: 0.25rem;">
+            <button class="modal-tab active" id="tabBtnDetalles" onclick="cambiarTab('detalles')">📝 Gestión y Detalles</button>
+            <button class="modal-tab" id="tabBtnAcciones" onclick="cambiarTab('acciones')">⚡ Acciones</button>
+        </div>
+        <div>
+            <button type="button" class="btn-glass" id="btnHabilitarEditar" onclick="toggleEdicionInline(true)" style="padding:0.25rem 0.65rem; font-size:0.72rem; display:flex; align-items:center; gap:0.25rem;">
+                ✏️ Editar Datos
+            </button>
+        </div>
     </div>
     
     <div class="modal-body">
         
-        {{-- PESTAÑA 1: DATOS Y EDITAR --}}
-        <div id="tab-editar" class="tab-content active">
-            <form id="formEditar" method="POST" action="">
-                @csrf
-                @method('PUT')
-                <div class="form-row col2">
-                    <div class="form-group">
-                        <label>Tipo de Tarea *</label>
-                        <select name="tipo" id="editTipo" required>
-                            <option value="">— Seleccionar —</option>
-                            @foreach($tipos as $k => $v)
-                                <option value="{{ $k }}">{{ $v }}</option>
-                            @endforeach
-                        </select>
+        {{-- PESTAÑA 1: GESTIÓN Y DETALLES --}}
+        <div id="tab-detalles" class="tab-content active">
+            
+            {{-- Visualización de Detalles (Modo Solo Lectura) --}}
+            <div id="contenedorDetalles" class="detalle-tarea-container" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:1.25rem; margin-bottom:1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+                <div class="form-row col3" style="margin-bottom:0.75rem; gap:1rem;">
+                    <div>
+                        <span style="font-size:0.68rem; font-weight:700; color:#64748b; display:block; letter-spacing: 0.05em; margin-bottom: 0.15rem;">TIPO DE TAREA</span>
+                        <span id="detTipo" style="font-size:0.82rem; font-weight:700; color:#1e293b;">—</span>
                     </div>
-                    <div class="form-group">
-                        <label>Encargado *</label>
-                        <select name="encargado_id" id="editEncargado" required>
-                            <option value="">— Seleccionar —</option>
-                            @foreach($trabajadores as $t)
-                                <option value="{{ $t->id }}">{{ $t->nombre }}</option>
-                            @endforeach
-                        </select>
+                    <div>
+                        <span style="font-size:0.68rem; font-weight:700; color:#64748b; display:block; letter-spacing: 0.05em; margin-bottom: 0.15rem;">ENCARGADO</span>
+                        <span id="detEncargado" style="font-size:0.82rem; font-weight:700; color:#1e293b;">—</span>
+                    </div>
+                    <div>
+                        <span style="font-size:0.68rem; font-weight:700; color:#64748b; display:block; letter-spacing: 0.05em; margin-bottom: 0.15rem;">CLIENTE</span>
+                        <span style="font-size:0.82rem; font-weight:700; color:#1e293b; display:flex; align-items:center; gap:0.35rem;">
+                            <span id="detClienteNombre">Cargando...</span>
+                            <a href="#" id="linkFichaCliente" target="_blank" title="Ver ficha del cliente" style="color:#2563eb; font-size:0.82rem; display:inline-flex; align-items:center; text-decoration:none;"><i class="fas fa-external-link-alt"></i></a>
+                        </span>
+                        <span id="detClienteCedula" style="font-size:0.7rem; color:#94a3b8; display:block;">—</span>
                     </div>
                 </div>
-                <div class="form-row col2">
-                    <div class="form-group autocomplete-wrap">
-                        <label>Cédula del Cliente *</label>
-                        <input type="text" name="cedula" id="editCedula" placeholder="Buscar cédula..." required autocomplete="off" oninput="buscarClienteEdicion(this.value)">
-                        <div class="autocomplete-list" id="listaCedulasEdicion" style="display:none;"></div>
+                <div class="form-row col3" style="margin-bottom:0.75rem; gap:1rem;">
+                    <div style="grid-column: span 2;">
+                        <span style="font-size:0.68rem; font-weight:700; color:#64748b; display:block; letter-spacing: 0.05em; margin-bottom: 0.15rem;">CONTRATO / ASOCIADO</span>
+                        <span id="detContrato" style="font-size:0.82rem; font-weight:600; color:#334155;">—</span>
                     </div>
-                    <div class="form-group">
-                        <label>Nombre del Cliente</label>
-                        <input type="text" id="editNombreClienteDisplay" readonly placeholder="Cargando..." style="background:#f8fafc;">
-                    </div>
-                </div>
-                <div class="form-row col2">
-                    <div class="form-group">
-                        <label>Contrato (opcional)</label>
-                        <select name="contrato_id" id="editContrato" onchange="actualizarInfoContratoEdicion(this)">
-                            <option value="">— Sin contrato —</option>
-                        </select>
-                        <div id="editContratoDetalleInfo" style="margin-top:0.4rem; font-size:0.75rem; display:none; padding:0.4rem 0.6rem; border-radius:6px; background:#f0f9ff; border:1px solid #bae6fd; color:#0369a1; font-weight:600;"></div>
-                    </div>
-                    <div class="form-group">
-                        <label>Empresa (opcional)</label>
-                        <select name="razon_social_id" id="editRazonSocial">
-                            <option value="">— Sin empresa —</option>
-                            @foreach($razonesSociales as $rs)
-                                <option value="{{ $rs->id }}">{{ $rs->razon_social }}</option>
-                            @endforeach
-                        </select>
+                    <div style="grid-column: span 1;">
+                        <span style="font-size:0.68rem; font-weight:700; color:#64748b; display:block; letter-spacing: 0.05em; margin-bottom: 0.15rem;">ENTIDAD</span>
+                        <span id="detEntidad" style="font-size:0.82rem; font-weight:600; color:#334155;">—</span>
                     </div>
                 </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Entidad donde se realiza el trámite</label>
-                        <input type="text" name="entidad" id="editEntidad" placeholder="Ej: Nueva EPS, Compensar, Porvenir...">
-                    </div>
+                <div style="margin-bottom:0.5rem;">
+                    <span style="font-size:0.68rem; font-weight:700; color:#64748b; display:block; letter-spacing: 0.05em; margin-bottom: 0.2rem;">DESCRIPCIÓN DE LA TAREA</span>
+                    <div id="detTarea" style="font-size:0.82rem; color:#1e293b; background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:0.5rem 0.75rem; font-family:inherit; white-space:pre-wrap; border-left: 3px solid var(--azul-btn);">—</div>
                 </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Descripción de la Tarea *</label>
-                        <textarea name="tarea" id="editTarea" required placeholder="Detalle la tarea..."></textarea>
-                    </div>
+                <div id="detObservacionRow" style="margin-top:0.75rem; display:none;">
+                    <span style="font-size:0.68rem; font-weight:700; color:#64748b; display:block; letter-spacing: 0.05em; margin-bottom: 0.2rem;">OBSERVACIÓN ADICIONAL</span>
+                    <div id="detObservacion" style="font-size:0.8rem; color:#475569; background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:0.5rem 0.75rem; white-space:pre-wrap;">—</div>
                 </div>
-                <div class="form-row col3">
-                    <div class="form-group">
-                        <label>Fecha Radicado</label>
-                        <input type="date" name="fecha_radicado" id="editFechaRadicado">
+            </div>
+
+            {{-- Formulario de Edición (Habilitable inline) --}}
+            <div id="contenedorFormEditar" class="detalle-tarea-container" style="background:#f0f9ff; border:1px solid #bae6fd; border-radius:12px; padding:1.25rem; margin-bottom:1rem; display:none; box-shadow: 0 1px 4px rgba(59,130,246,0.05);">
+                <form id="formEditar" method="POST" action="">
+                    @csrf
+                    @method('PUT')
+                    <div class="form-row col2">
+                        <div class="form-group">
+                            <label>Tipo de Tarea *</label>
+                            <select name="tipo" id="editTipo" required>
+                                <option value="">— Seleccionar —</option>
+                                @foreach($tipos as $k => $v)
+                                    <option value="{{ $k }}">{{ $v }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Encargado *</label>
+                            <select name="encargado_id" id="editEncargado" required>
+                                <option value="">— Seleccionar —</option>
+                                @foreach($trabajadores as $t)
+                                    <option value="{{ $t->id }}">{{ $t->nombre }}</option>
+                                @endforeach
+                            </select>
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label>Número Radicado</label>
-                        <input type="text" name="numero_radicado" id="editNumeroRadicado" placeholder="N° radicado">
+                    <div class="form-row col2">
+                        <div class="form-group autocomplete-wrap">
+                            <label>Cédula del Cliente *</label>
+                            <input type="text" name="cedula" id="editCedula" placeholder="Buscar cédula..." required autocomplete="off" oninput="buscarClienteEdicion(this.value)">
+                            <div class="autocomplete-list" id="listaCedulasEdicion" style="display:none;"></div>
+                        </div>
+                        <div class="form-group">
+                            <label>Nombre del Cliente</label>
+                            <input type="text" id="editNombreClienteDisplay" readonly placeholder="Cargando..." style="background:#f8fafc;">
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label>Correo Entidad</label>
-                        <input type="email" name="correo" id="editCorreo" placeholder="correo@entidad.com">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Contrato (opcional)</label>
+                            <select name="contrato_id" id="editContrato" onchange="actualizarInfoContratoEdicion(this)">
+                                <option value="">— Sin contrato —</option>
+                            </select>
+                            <div id="editContratoDetalleInfo" style="margin-top:0.4rem; font-size:0.75rem; display:none; padding:0.4rem 0.6rem; border-radius:6px; background:#f0f9ff; border:1px solid #bae6fd; color:#0369a1; font-weight:600;"></div>
+                        </div>
+                        <input type="hidden" name="razon_social_id" id="editRazonSocial" value="">
                     </div>
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Observación adicional</label>
-                        <textarea name="observacion" id="editObservacion" placeholder="Información adicional..." style="min-height:60px;"></textarea>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Entidad donde se realiza el trámite</label>
+                            <input type="text" name="entidad" id="editEntidad" placeholder="Ej: Nueva EPS, Compensar, Porvenir...">
+                        </div>
                     </div>
-                </div>
-            </form>
-            <div id="msgEdicionCerrada" style="display:none;background:#fef2f2;border:1px solid #fecaca;color:#991b1b;border-radius:10px;padding:.75rem 1rem;font-size:.8rem;font-weight:600;margin-top:.5rem;">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Descripción de la Tarea *</label>
+                            <textarea name="tarea" id="editTarea" required placeholder="Detalle la tarea..."></textarea>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Observación adicional</label>
+                            <textarea name="observacion" id="editObservacion" placeholder="Información adicional..." style="min-height:60px;"></textarea>
+                        </div>
+                    </div>
+                    {{-- Ocultar campos que no se usan --}}
+                    <input type="hidden" name="fecha_radicado" id="editFechaRadicado" value="">
+                    <input type="hidden" name="numero_radicado" id="editNumeroRadicado" value="">
+                    <input type="hidden" name="correo" id="editCorreo" value="">
+                    
+                    <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:0.5rem;">
+                        <button type="button" class="btn-secondary" onclick="toggleEdicionInline(false)" style="padding:0.35rem 0.75rem; font-size:0.78rem;">Cancelar</button>
+                        <button type="button" class="btn-primary" onclick="enviarEditarUnificado()" style="padding:0.35rem 0.75rem; font-size:0.78rem;">💾 Guardar Cambios</button>
+                    </div>
+                </form>
+            </div>
+
+            <div id="msgEdicionCerrada" style="display:none;background:#fef2f2;border:1px solid #fecaca;color:#991b1b;border-radius:10px;padding:.75rem 1rem;font-size:.8rem;font-weight:600;margin-bottom:1rem;">
                 ⚠️ Esta tarea está cerrada. Los datos se muestran en modo de solo lectura.
             </div>
-        </div>
-        
-        {{-- PESTAÑA 2: ACCIONES --}}
-        <div id="tab-acciones" class="tab-content">
-            <div id="accionesDisponibles">
-                <div class="acciones-selector">
-                    <button class="btn-subaccion active" id="btnSubGestion" onclick="mostrarSubAccion('gestion')">📋 Registrar Gestión</button>
-                    <button class="btn-subaccion" id="btnSubTraslado" onclick="mostrarSubAccion('traslado')">🔀 Trasladar</button>
-                    <button class="btn-subaccion" id="btnSubCerrar" onclick="mostrarSubAccion('cerrar')">🏁 Cerrar Tarea</button>
+
+            {{-- ──────────────── SECCIÓN GESTIONES (TABLA Y FORM INLINE) ──────────────── --}}
+            <div style="border-top:1px solid #e2e8f0; padding-top:1.25rem; margin-top:1.5rem;">
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.75rem; flex-wrap:wrap; gap:0.5rem;">
+                    <strong style="font-size:0.85rem; color:#1e293b; display:flex; align-items:center; gap:0.35rem;">
+                        📋 Gestiones Realizadas 
+                        <span id="cantGestionesBadge" class="badge-info" style="font-size:0.68rem; padding:0.1rem 0.45rem; border-radius:999px;">0</span>
+                    </strong>
+                    <button type="button" class="btn-accion" id="btnNuevaGestionInline" onclick="toggleNuevaGestionForm(true)" style="width:auto; padding:0.35rem 0.75rem; font-size:0.75rem; display:inline-flex; align-items:center; gap:0.3rem;">
+                        ➕ Registrar Gestión
+                    </button>
                 </div>
-                
-                {{-- SUB-ACCIÓN: REGISTRAR GESTIÓN --}}
-                <div id="sub-gestion" class="subaccion-content active">
+
+                {{-- Formulario Inline Colapsable para Nueva Gestión --}}
+                <div id="formNuevaGestionInline" style="display:none; background:#f0f9ff; border:1px solid #bae6fd; border-radius:12px; padding:1.25rem; margin-bottom:1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.02); animation: fadeInTab 0.2s ease;">
+                    <h4 style="font-size:0.78rem; font-weight:700; color:#0369a1; margin-bottom:0.75rem; display:flex; align-items:center; gap:0.25rem;">💬 Registrar Gestión</h4>
                     <div class="form-row">
                         <div class="form-group">
                             <label>Tipo de Acción</label>
                             <select id="uniGestionTipoAccion" onchange="actualizarEstadoGestionVisibilidad(this.value)">
+                                <option value="cambio_estado" selected>🔄 Cambio de estado</option>
                                 <option value="tramite_realizado">📋 Trámite realizado</option>
                                 <option value="nota">📝 Nota / Observación</option>
-                                <option value="cambio_estado">🔄 Cambio de estado</option>
                             </select>
                         </div>
                     </div>
-                    <div class="form-row" id="uniRowNuevoEstado" style="display:none;">
+                    <div class="form-row" id="uniRowNuevoEstado">
                         <div class="form-group">
                             <label>Nuevo Estado</label>
                             <select id="uniGestionNuevoEstado">
@@ -699,23 +724,47 @@ body {
                     <div class="form-row">
                         <div class="form-group">
                             <label>Observación / Trámite realizado *</label>
-                            <textarea id="uniGestionObservacion" placeholder="Describa lo que se realizó..." style="min-height:90px;"></textarea>
+                            <textarea id="uniGestionObservacion" placeholder="Describa detalladamente el trámite o la nota..." style="min-height:75px;"></textarea>
                         </div>
                     </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>¿Recordar en cuántos días? <span style="color:#94a3b8;">(0 = sin recordatorio)</span></label>
-                            <input type="number" id="uniGestionRecordarDias" min="0" max="365" value="0" placeholder="Ej: 8" oninput="actualizarAlertaPreview(this.value)">
-                            <div style="font-size:.72rem;color:#94a3b8;margin-top:.25rem;" id="uniGestionFechaAlertaPreview"></div>
-                        </div>
+                    {{-- Ocultar campo de recordatorio a petición del usuario --}}
+                    <input type="hidden" id="uniGestionRecordarDias" value="0">
+                    <div style="display:flex; justify-content:flex-end; gap:0.4rem; margin-top:0.5rem;">
+                        <button type="button" class="btn-secondary" onclick="toggleNuevaGestionForm(false)" style="padding:0.35rem 0.75rem; font-size:0.75rem;">Cancelar</button>
+                        <button type="button" class="btn-primary" onclick="enviarGestionUnificada()" style="padding:0.35rem 0.75rem; font-size:0.75rem;">💾 Guardar Gestión</button>
                     </div>
-                    <div style="display:flex;justify-content:flex-end;margin-top:.5rem;">
-                        <button class="btn-primary" onclick="enviarGestionUnificada()">💾 Guardar Gestión</button>
-                    </div>
+                </div>
+
+                {{-- Tabla de Gestiones --}}
+                <div style="background:#fff; border:1px solid #e2e8f0; border-radius:10px; overflow-x:auto;">
+                    <table class="tabla-brynex" style="width:100%; font-size:0.75rem; border-collapse:collapse; min-width:600px;" id="tablaGestiones">
+                        <thead>
+                            <tr style="background:#f8fafc; border-bottom:1px solid #e2e8f0;">
+                                <th style="padding:0.5rem 0.75rem; text-align:left; font-weight:600; color:#475569; width:45px;">Acción</th>
+                                <th style="padding:0.5rem 0.75rem; text-align:left; font-weight:600; color:#475569;">Observación / Detalle</th>
+                                <th style="padding:0.5rem 0.75rem; text-align:left; font-weight:600; color:#475569; width:170px;">Usuario / Fecha</th>
+                                <th style="padding:0.5rem 0.75rem; text-align:left; font-weight:600; color:#475569; width:125px;">Recordatorio</th>
+                            </tr>
+                        </thead>
+                        <tbody id="uniTablaGestionesBody">
+                            <!-- Se llena dinámicamente -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        {{-- PESTAÑA 2: ACCIONES --}}
+        <div id="tab-acciones" class="tab-content">
+            <div id="accionesDisponibles">
+                <div class="acciones-selector">
+                    <button class="btn-subaccion active" id="btnSubTraslado" onclick="mostrarSubAccion('traslado')">🔀 Trasladar</button>
+                    <button class="btn-subaccion" id="btnSubCerrar" onclick="mostrarSubAccion('cerrar')">🏁 Cerrar Tarea</button>
+                    <button class="btn-subaccion" id="btnSubDocumentos" onclick="mostrarSubAccion('documentos')">📎 Adjuntar Documentos</button>
                 </div>
                 
                 {{-- SUB-ACCIÓN: TRASLADAR --}}
-                <div id="sub-traslado" class="subaccion-content">
+                <div id="sub-traslado" class="subaccion-content active">
                     <div style="background:#fff7ed;border-radius:8px;padding:.6rem .85rem;margin-bottom:.75rem;font-size:.75rem;border:1px solid #fed7aa;color:#9a3412;">
                         ⚠️ El traslado cambiará el encargado de la tarea y se registrará en la bitácora.
                     </div>
@@ -745,13 +794,22 @@ body {
                     <div class="form-row">
                         <div class="form-group">
                             <label>Resultado *</label>
-                            <div style="display:flex;gap:.75rem;margin-top:.3rem;">
-                                <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:.85rem;font-weight:400;">
-                                    <input type="radio" name="uniCerrarResultado" value="positivo" checked> ✅ Positivo (logrado)
-                                </label>
-                                <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:.85rem;font-weight:400;">
-                                    <input type="radio" name="uniCerrarResultado" value="negativo"> ❌ Negativo (no logrado)
-                                </label>
+                            <div style="display:flex; gap:1rem; margin-top:0.4rem; max-width: 480px;">
+                                <!-- Tarjeta Positivo -->
+                                <div id="cardCerrarPositivo" onclick="seleccionarResultadoCierre('positivo')" style="flex:1; border:2px solid #22c55e; background:rgba(34,197,94,0.06); border-radius:10px; padding:0.6rem 0.85rem; cursor:pointer; text-align:center; transition:all 0.15s ease;">
+                                    <span style="font-size:1rem; display:block; margin-bottom:0.15rem;">✅</span>
+                                    <strong style="font-weight:700; font-size:0.78rem; color:#15803d; display:block; margin-bottom: 0.1rem;">Positivo</strong>
+                                    <span style="font-size:0.65rem; color:#166534; display:block;">(Logrado con éxito)</span>
+                                    <input type="radio" name="uniCerrarResultado" id="radioCerrarPositivo" value="positivo" checked style="display:none;">
+                                </div>
+                                
+                                <!-- Tarjeta Negativo -->
+                                <div id="cardCerrarNegativo" onclick="seleccionarResultadoCierre('negativo')" style="flex:1; border:2px solid #e2e8f0; background:#f8fafc; border-radius:10px; padding:0.6rem 0.85rem; cursor:pointer; text-align:center; transition:all 0.15s ease;">
+                                    <span style="font-size:1rem; display:block; margin-bottom:0.15rem;">❌</span>
+                                    <strong style="font-weight:700; font-size:0.78rem; color:#475569; display:block; margin-bottom: 0.1rem;">Negativo</strong>
+                                    <span style="font-size:0.65rem; color:#64748b; display:block;">(No logrado)</span>
+                                    <input type="radio" name="uniCerrarResultado" id="radioCerrarNegativo" value="negativo" style="display:none;">
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -765,6 +823,28 @@ body {
                         <button class="btn-danger" onclick="enviarCerrarUnificado()">🏁 Cerrar Tarea Definitivamente</button>
                     </div>
                 </div>
+
+                {{-- SUB-ACCIÓN: DOCUMENTOS ADJUNTOS --}}
+                <div id="sub-documentos" class="subaccion-content">
+                    <div style="display:grid; grid-template-columns:1fr; gap:1rem;">
+                        <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:1rem; display:flex; align-items:center; justify-content:space-between;">
+                            <div>
+                                <strong style="font-size:0.82rem; color:#1e293b;">Subir Archivo Adjunto</strong>
+                                <span style="display:block; font-size:0.68rem; color:#64748b;">Límite de tamaño: 10MB</span>
+                            </div>
+                            <label style="background:var(--azul-btn); color:#fff; border-radius:8px; padding:0.45rem 1rem; font-size:0.78rem; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:0.25rem;">
+                                ➕ Seleccionar y Subir <input type="file" style="display:none;" onchange="subirDocumentoUnificado(this)">
+                            </label>
+                        </div>
+                        
+                        <div style="background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:1rem;">
+                            <strong style="font-size:.82rem; display:block; margin-bottom:0.75rem; color:#1e293b;">📎 Lista de Archivos Adjuntos</strong>
+                            <div id="uniDocsLista" class="docs-list" style="max-height:220px; overflow-y:auto; padding-right:0.25rem;">
+                                <!-- Se llena dinámicamente -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
             
             <div id="msgAccionesBloqueadas" style="display:none;background:#f8fafc;border:1px solid #e2e8f0;color:#475569;border-radius:10px;padding:1.5rem;text-align:center;font-size:.85rem;font-weight:600;">
@@ -772,39 +852,10 @@ body {
             </div>
         </div>
         
-        {{-- PESTAÑA 3: HISTORIAL Y DOCUMENTOS --}}
-        <div id="tab-historial" class="tab-content">
-            <div class="historial-layout">
-                
-                {{-- Columna Documentos --}}
-                <div class="historial-col">
-                    <div style="display:flex;align-items:center;justify-content:space-between;">
-                        <strong style="font-size:.82rem;">📎 Documentos Adjuntos</strong>
-                        <label style="background:#eff6ff;color:#2563eb;border:none;border-radius:7px;padding:.3rem .75rem;font-size:.75rem;cursor:pointer;font-weight:600;display:inline-flex;align-items:center;gap:.25rem;">
-                            ➕ Subir archivo <input type="file" style="display:none;" onchange="subirDocumentoUnificado(this)">
-                        </label>
-                    </div>
-                    <div id="uniDocsLista" class="docs-list" style="max-height:280px;overflow-y:auto;padding-right:0.25rem;">
-                        <!-- Se llena dinámicamente -->
-                    </div>
-                </div>
-                
-                {{-- Columna Bitácora --}}
-                <div class="historial-col">
-                    <strong style="font-size:.82rem;">📋 Línea de Tiempo de Gestiones</strong>
-                    <div id="uniTimelineLista" class="timeline" style="max-height:280px;overflow-y:auto;padding-right:0.25rem;">
-                        <!-- Se llena dinámicamente -->
-                    </div>
-                </div>
-                
-            </div>
-        </div>
-        
     </div>
     
     <div class="modal-foot">
         <button class="btn-secondary" onclick="cerrarModal('modalUnificado')">Cerrar</button>
-        <button class="btn-primary" id="uniBtnGuardarEditar" onclick="enviarEditarUnificado()">💾 Guardar Cambios</button>
     </div>
 </div>
 </div>
@@ -824,6 +875,40 @@ function abrirModalNueva() {
 }
 function cerrarModal(id) {
     document.getElementById(id).classList.remove('open');
+}
+
+// Selector visual de resultado de cierre
+function seleccionarResultadoCierre(val) {
+    const cardPos = document.getElementById('cardCerrarPositivo');
+    const cardNeg = document.getElementById('cardCerrarNegativo');
+    const radioPos = document.getElementById('radioCerrarPositivo');
+    const radioNeg = document.getElementById('radioCerrarNegativo');
+    
+    if (!cardPos || !cardNeg || !radioPos || !radioNeg) return;
+    
+    if (val === 'positivo') {
+        cardPos.style.borderColor = '#22c55e';
+        cardPos.style.background = 'rgba(34,197,94,0.06)';
+        cardPos.querySelector('strong').style.color = '#15803d';
+        cardPos.querySelector('span:last-child').style.color = '#166534';
+        radioPos.checked = true;
+        
+        cardNeg.style.borderColor = '#e2e8f0';
+        cardNeg.style.background = '#f8fafc';
+        cardNeg.querySelector('strong').style.color = '#475569';
+        cardNeg.querySelector('span:last-child').style.color = '#64748b';
+    } else {
+        cardNeg.style.borderColor = '#ef4444';
+        cardNeg.style.background = 'rgba(239,68,68,0.06)';
+        cardNeg.querySelector('strong').style.color = '#b91c1c';
+        cardNeg.querySelector('span:last-child').style.color = '#991b1b';
+        radioNeg.checked = true;
+        
+        cardPos.style.borderColor = '#e2e8f0';
+        cardPos.style.background = '#f8fafc';
+        cardPos.querySelector('strong').style.color = '#475569';
+        cardPos.querySelector('span:last-child').style.color = '#64748b';
+    }
 }
 
 // Filtros rápidos
@@ -927,6 +1012,13 @@ function cargarContratosEdicion(cedula, contratoIdSeleccionado) {
                 }).join('');
             
             actualizarInfoContratoEdicion(sel);
+            
+            // También actualizar la visualización de solo lectura en la pestaña Detalles del modal
+            const selectedOption = sel.options[sel.selectedIndex];
+            const detContrato = document.getElementById('detContrato');
+            if (detContrato) {
+                detContrato.textContent = (selectedOption && selectedOption.value) ? selectedOption.text : '—';
+            }
         });
 }
 
@@ -941,18 +1033,57 @@ function actualizarInfoContratoEdicion(select) {
     }
 }
 
+// Toggle para edición inline
+function toggleEdicionInline(editMode) {
+    if (editMode) {
+        document.getElementById('contenedorDetalles').style.display = 'none';
+        document.getElementById('contenedorFormEditar').style.display = 'block';
+        document.getElementById('btnHabilitarEditar').style.display = 'none';
+    } else {
+        document.getElementById('contenedorDetalles').style.display = 'block';
+        document.getElementById('contenedorFormEditar').style.display = 'none';
+        document.getElementById('btnHabilitarEditar').style.display = 'inline-flex';
+    }
+}
+
+// Toggle para formulario inline de nueva gestión
+function toggleNuevaGestionForm(show) {
+    const f = document.getElementById('formNuevaGestionInline');
+    if (show === undefined) {
+        show = (f.style.display === 'none');
+    }
+    f.style.display = show ? 'block' : 'none';
+    if (show) {
+        document.getElementById('uniGestionTipoAccion').value = 'cambio_estado';
+        actualizarEstadoGestionVisibilidad('cambio_estado');
+        document.getElementById('uniGestionObservacion').value = '';
+        document.getElementById('uniGestionRecordarDias').value = 0;
+        document.getElementById('uniGestionFechaAlertaPreview').textContent = '';
+    }
+}
+
 // Modal Único Unificado
 function abrirModalUnico(id) {
     tareaIdActivo = id;
     
     // Abrir modal e ir a la primera pestaña
     document.getElementById('modalUnificado').classList.add('open');
-    cambiarTab('editar');
+    cambiarTab('detalles');
+    toggleEdicionInline(false);
+    toggleNuevaGestionForm(false);
     
     // Mostrar estado de carga
-    document.getElementById('editNombreClienteDisplay').value = 'Cargando...';
-    document.getElementById('uniDocsLista').innerHTML = '<div style="text-align:center;padding:1rem;color:#94a3b8;font-size:.78rem;">⏳ Cargando documentos...</div>';
-    document.getElementById('uniTimelineLista').innerHTML = '<div style="text-align:center;padding:1rem;color:#94a3b8;font-size:.78rem;">⏳ Cargando historial...</div>';
+    document.getElementById('detClienteNombre').textContent = 'Cargando...';
+    document.getElementById('detClienteCedula').textContent = '—';
+    document.getElementById('detTipo').textContent = '—';
+    document.getElementById('detEncargado').textContent = '—';
+    document.getElementById('detContrato').textContent = '—';
+    document.getElementById('detEntidad').textContent = '—';
+    document.getElementById('detTarea').textContent = '—';
+    document.getElementById('detObservacionRow').style.display = 'none';
+    
+    document.getElementById('uniDocsLista').innerHTML = '<div style="text-align:center;padding:1rem;color:#94a3b8;font-size:.75rem;">⏳ Cargando documentos...</div>';
+    document.getElementById('uniTablaGestionesBody').innerHTML = '<tr><td colspan="4" style="text-align:center;padding:1.5rem;color:#94a3b8;font-size:.75rem;">⏳ Cargando gestiones...</td></tr>';
     
     // Obtener datos vía AJAX
     fetch(`/admin/tareas/${id}/show`)
@@ -962,7 +1093,31 @@ function abrirModalUnico(id) {
             const c = data.cliente;
             
             const clienteNombre = c ? (c.primer_nombre + ' ' + (c.segundo_nombre ?? '') + ' ' + c.primer_apellido + ' ' + (c.segundo_apellido ?? '')).trim() : t.cedula;
-            document.getElementById('modalUnificadoTitulo').innerHTML = `⚙️ Gestionar Tarea: <span style="color: #fbbf24;">${t.tipo}</span> <span style="font-size:0.75rem; opacity:0.85; margin-left:0.5rem; font-weight:normal;">(${clienteNombre})</span>`;
+            document.getElementById('modalUnificadoTitulo').innerHTML = `⚙️ Tarea: <span style="color: #fbbf24; font-weight:700;">${t.tipo}</span> <span style="font-size:0.75rem; opacity:0.85; margin-left:0.5rem; font-weight:normal;">(${clienteNombre})</span>`;
+            
+            // Llenar Ficha de Detalles (Solo Lectura)
+            document.getElementById('detTipo').textContent = t.tipo;
+            document.getElementById('detEncargado').textContent = t.encargado ? t.encargado.nombre : '—';
+            document.getElementById('detClienteNombre').textContent = clienteNombre;
+            document.getElementById('detClienteCedula').textContent = `C.C. ${t.cedula}`;
+            document.getElementById('detEntidad').textContent = t.entidad ? t.entidad : '—';
+            document.getElementById('detTarea').textContent = t.tarea;
+            
+            if (t.observacion && t.observacion.trim()) {
+                document.getElementById('detObservacion').textContent = t.observacion;
+                document.getElementById('detObservacionRow').style.display = 'block';
+            } else {
+                document.getElementById('detObservacionRow').style.display = 'none';
+            }
+            
+            // Enlace a la ficha del cliente
+            const linkFicha = document.getElementById('linkFichaCliente');
+            if (c && c.id) {
+                linkFicha.href = `/admin/clientes/${c.id}/edit`;
+                linkFicha.style.display = 'inline-flex';
+            } else {
+                linkFicha.style.display = 'none';
+            }
             
             // Llenar Formulario de Edición
             document.getElementById('formEditar').action = `/admin/tareas/${t.id}`;
@@ -972,91 +1127,107 @@ function abrirModalUnico(id) {
             document.getElementById('editNombreClienteDisplay').value = clienteNombre;
             document.getElementById('editEntidad').value = t.entidad ?? '';
             document.getElementById('editTarea').value = t.tarea;
-            document.getElementById('editFechaRadicado').value = t.fecha_radicado ? t.fecha_radicado.split(' ')[0] : '';
-            document.getElementById('editNumeroRadicado').value = t.numero_radicado ?? '';
-            document.getElementById('editCorreo').value = t.correo ?? '';
             document.getElementById('editObservacion').value = t.observacion ?? '';
             document.getElementById('editRazonSocial').value = t.razon_social_id ?? '';
             
+            // Ocultar fecha, numero radicado y correo del form (se pasan en hidden vacios)
+            document.getElementById('editFechaRadicado').value = '';
+            document.getElementById('editNumeroRadicado').value = '';
+            document.getElementById('editCorreo').value = '';
+            
             cargarContratosEdicion(t.cedula, t.contrato_id);
             
-            // Si la tarea está cerrada, deshabilitar inputs
+            // Si la tarea está cerrada, deshabilitar inputs de edición y ocultar botones
             const esCerrada = (t.estado === 'cerrada');
             const inputs = document.getElementById('formEditar').querySelectorAll('input, select, textarea');
             inputs.forEach(el => el.disabled = esCerrada);
             
             if (esCerrada) {
                 document.getElementById('msgEdicionCerrada').style.display = 'block';
-                document.getElementById('uniBtnGuardarEditar').style.display = 'none';
+                document.getElementById('btnHabilitarEditar').style.display = 'none';
+                document.getElementById('btnNuevaGestionInline').style.display = 'none';
                 document.getElementById('accionesDisponibles').style.display = 'none';
                 document.getElementById('msgAccionesBloqueadas').style.display = 'block';
             } else {
                 document.getElementById('msgEdicionCerrada').style.display = 'none';
-                document.getElementById('uniBtnGuardarEditar').style.display = '';
+                document.getElementById('btnHabilitarEditar').style.display = 'inline-flex';
+                document.getElementById('btnNuevaGestionInline').style.display = 'inline-flex';
                 document.getElementById('accionesDisponibles').style.display = 'block';
                 document.getElementById('msgAccionesBloqueadas').style.display = 'none';
                 
-                // Limpiar acciones
-                document.getElementById('uniGestionTipoAccion').value = 'tramite_realizado';
-                actualizarEstadoGestionVisibilidad('tramite_realizado');
-                document.getElementById('uniGestionObservacion').value = '';
-                document.getElementById('uniGestionRecordarDias').value = 0;
-                document.getElementById('uniGestionFechaAlertaPreview').textContent = '';
-                
+                // Configurar Valores de Acciones
                 document.getElementById('uniTrasladoEncargado').value = t.encargado_id;
                 document.getElementById('uniTrasladoObservacion').value = '';
-                
                 document.getElementById('uniCerrarObservacion').value = '';
-                document.querySelector('input[name="uniCerrarResultado"][value="positivo"]').checked = true;
+                seleccionarResultadoCierre('positivo');
                 
-                mostrarSubAccion('gestion');
+                mostrarSubAccion('traslado');
             }
             
-            // Llenar Documentos
+            // Llenar Documentos Adjuntos
             let docsHtml = '';
             (t.documentos ?? []).forEach(d => {
                 docsHtml += `
-                <div class="doc-item" style="padding: 0.45rem 0.6rem; margin-bottom:0.35rem; border-radius:8px; display:flex; align-items:center; gap:0.5rem;">
+                <div class="doc-item" style="padding: 0.45rem 0.6rem; margin-bottom:0.35rem; border-radius:8px; display:flex; align-items:center; gap:0.5rem; border: 1px solid #e2e8f0; background:#f8fafc;">
                     <div class="doc-icon" style="font-size:1.1rem; line-height:1;">📎</div>
                     <div class="doc-info" style="flex:1; min-width:0;">
-                        <div class="doc-name" style="font-size:0.75rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${d.nombre}">${d.nombre}</div>
+                        <div class="doc-name" style="font-size:0.75rem; font-weight:600; color:#1e293b; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${d.nombre}">${d.nombre}</div>
                         <div class="doc-meta" style="font-size:0.62rem; color:#94a3b8;">Subido por ${d.user?.nombre ?? '?'}</div>
                     </div>
-                    <a href="/admin/tareas/documento/${d.id}" class="btn-download" style="padding:0.2rem 0.45rem; font-size:0.68rem;" target="_blank">⬇ Descargar</a>
+                    <a href="/admin/tareas/documento/${d.id}" class="btn-download" style="padding:0.25rem 0.5rem; font-size:0.68rem; font-weight:700; border-radius:6px; background:rgba(37,99,235,0.1); color:#2563eb;" target="_blank">⬇ Descargar</a>
                 </div>`;
             });
             if (!(t.documentos ?? []).length) {
-                docsHtml = '<div style="font-size:.73rem;color:#94a3b8;padding:1.5rem;text-align:center;">Sin documentos adjuntos.</div>';
+                docsHtml = '<div style="font-size:.75rem;color:#94a3b8;padding:1.5rem;text-align:center;">Sin documentos adjuntos.</div>';
             }
             document.getElementById('uniDocsLista').innerHTML = docsHtml;
             
-            // Llenar Historial/Timeline
-            let timelineHtml = '';
-            (t.gestiones ?? []).forEach(g => {
-                const iconosAccion = {tramite_realizado:'📋', traslado:'🔀', cambio_estado:'🔄', nota:'📝'};
-                const ico = iconosAccion[g.tipo_accion] ?? '📌';
+            // Llenar Tabla de Gestiones
+            let gestionesHtml = '';
+            const listGestiones = t.gestiones ?? [];
+            document.getElementById('cantGestionesBadge').textContent = listGestiones.length;
+            
+            listGestiones.forEach(g => {
+                const pastillasAccion = {
+                    tramite_realizado: '<span class="badge-info" style="padding: 0.15rem 0.45rem; border-radius:6px; font-size:0.65rem; font-weight:700;">📋 Trámite</span>',
+                    traslado: '<span class="badge-warn" style="padding: 0.15rem 0.45rem; border-radius:6px; font-size:0.65rem; font-weight:700; background:rgba(249,115,22,0.12); color:#ea580c; border:1px solid rgba(249,115,22,0.25);">🔀 Traslado</span>',
+                    cambio_estado: '<span class="badge-ok" style="padding: 0.15rem 0.45rem; border-radius:6px; font-size:0.65rem; font-weight:700;">🔄 Estado</span>',
+                    nota: '<span class="badge-info" style="padding: 0.15rem 0.45rem; border-radius:6px; font-size:0.65rem; font-weight:700; background:rgba(107,114,128,0.1); color:#4b5563; border:1px solid rgba(107,114,128,0.25);">📝 Observ.</span>'
+                };
+                const pastilla = pastillasAccion[g.tipo_accion] ?? '<span class="badge-info">📌 Gestión</span>';
+                
                 const fecha = new Date(g.created_at).toLocaleString('es-CO', {day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
-                let trasladoInfo = '';
+                
+                let trasladoDetalle = '';
                 if (g.tipo_accion === 'traslado') {
-                    trasladoInfo = `<div style="font-size:.68rem;margin-top:.15rem;color:#ea580c;">De: <strong>${g.encargado_anterior?.nombre??'?'}</strong> → <strong>${g.encargado_nuevo?.nombre??'?'}</strong></div>`;
+                    trasladoDetalle = `<div style="font-size:0.68rem; margin-top:0.25rem; color:#ea580c; font-weight:600;">Asignación: ${g.encargado_anterior?.nombre ?? '?'} → ${g.encargado_nuevo?.nombre ?? '?'}</div>`;
                 }
-                timelineHtml += `
-                <div class="tl-item" style="gap:0.5rem; margin-bottom:0.6rem; display:flex; align-items:flex-start;">
-                    <div class="tl-dot ${g.tipo_accion}" style="width:26px; height:26px; font-size:0.75rem; display:flex; align-items:center; justify-content:center; border-radius:50%; flex-shrink:0;">${ico}</div>
-                    <div class="tl-content" style="flex:1; min-width:0;">
-                        <div class="tl-meta" style="font-size:0.65rem; color:#94a3b8;">${g.user?.nombre ?? '?'} · ${fecha}</div>
-                        <div class="tl-obs" style="font-size:0.75rem; padding:0.35rem 0.55rem; border-radius:6px; background:#f8fafc; border-left:3px solid #e2e8f0; word-break:break-word;">
-                            ${g.observacion}
-                            ${trasladoInfo}
-                        </div>
-                        ${g.fecha_alerta ? `<div class="tl-alerta" style="font-size:0.62rem; padding:0.1rem 0.35rem; margin-top:0.2rem; background:#fef3c7; color:#92400e; border-radius:4px; display:inline-block;">🔔 Recordar: ${g.fecha_alerta}</div>` : ''}
-                    </div>
-                </div>`;
+                
+                let recordatorioHtml = '—';
+                if (g.fecha_alerta) {
+                    const fAlerta = new Date(g.fecha_alerta).toLocaleDateString('es-CO', {day:'2-digit',month:'short',year:'numeric'});
+                    recordatorioHtml = `<div style="color:#d97706; font-weight:600; display:flex; align-items:center; gap:0.2rem;"><i class="fas fa-bell"></i> ${fAlerta}</div>`;
+                }
+                
+                gestionesHtml += `
+                <tr style="border-bottom:1px solid #f1f5f9;">
+                    <td style="padding:0.6rem 0.75rem; vertical-align:top;">${pastilla}</td>
+                    <td style="padding:0.6rem 0.75rem; vertical-align:top; font-size:0.78rem; color:#334155; font-weight:500; word-break:break-word;">
+                        ${g.observacion}
+                        ${trasladoDetalle}
+                    </td>
+                    <td style="padding:0.6rem 0.75rem; vertical-align:top; color:#475569; font-size:0.7rem;">
+                        <div style="font-weight:700; color:#1e293b;">${g.user?.nombre ?? '?'}</div>
+                        <div style="color:#94a3b8; font-size:0.65rem;">${fecha}</div>
+                    </td>
+                    <td style="padding:0.6rem 0.75rem; vertical-align:top; font-size:0.72rem;">${recordatorioHtml}</td>
+                </tr>`;
             });
-            if (!(t.gestiones ?? []).length) {
-                timelineHtml = '<div style="font-size:.73rem;color:#94a3b8;padding:1.5rem;text-align:center;">Sin gestiones registradas.</div>';
+            
+            if (!listGestiones.length) {
+                gestionesHtml = '<tr><td colspan="4" style="text-align:center;padding:2rem;color:#94a3b8;font-size:.78rem;">No se han registrado gestiones en esta tarea.</td></tr>';
             }
-            document.getElementById('uniTimelineLista').innerHTML = timelineHtml;
+            document.getElementById('uniTablaGestionesBody').innerHTML = gestionesHtml;
         });
 }
 
@@ -1064,18 +1235,18 @@ function cambiarTab(tabName) {
     document.querySelectorAll('.modal-tab').forEach(btn => btn.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
     
-    if (tabName === 'editar') {
-        document.getElementById('tabBtnEditar').classList.add('active');
-        document.getElementById('tab-editar').classList.add('active');
-        document.getElementById('uniBtnGuardarEditar').style.display = document.getElementById('msgEdicionCerrada').style.display === 'block' ? 'none' : '';
+    if (tabName === 'detalles') {
+        document.getElementById('tabBtnDetalles').classList.add('active');
+        document.getElementById('tab-detalles').classList.add('active');
+        // Mostrar botón Editar Datos si no se está editando y la tarea no está cerrada
+        const esCerrada = document.getElementById('msgEdicionCerrada').style.display === 'block';
+        const formVisible = document.getElementById('contenedorFormEditar').style.display === 'block';
+        document.getElementById('btnHabilitarEditar').style.display = (esCerrada || formVisible) ? 'none' : 'inline-flex';
     } else if (tabName === 'acciones') {
         document.getElementById('tabBtnAcciones').classList.add('active');
         document.getElementById('tab-acciones').classList.add('active');
-        document.getElementById('uniBtnGuardarEditar').style.display = 'none';
-    } else if (tabName === 'historial') {
-        document.getElementById('tabBtnHistorial').classList.add('active');
-        document.getElementById('tab-historial').classList.add('active');
-        document.getElementById('uniBtnGuardarEditar').style.display = 'none';
+        // Ocultar botón Editar Datos en la pestaña de acciones
+        document.getElementById('btnHabilitarEditar').style.display = 'none';
     }
 }
 
@@ -1083,15 +1254,15 @@ function mostrarSubAccion(subName) {
     document.querySelectorAll('.btn-subaccion').forEach(btn => btn.classList.remove('active'));
     document.querySelectorAll('.subaccion-content').forEach(c => c.classList.remove('active'));
     
-    if (subName === 'gestion') {
-        document.getElementById('btnSubGestion').classList.add('active');
-        document.getElementById('sub-gestion').classList.add('active');
-    } else if (subName === 'traslado') {
+    if (subName === 'traslado') {
         document.getElementById('btnSubTraslado').classList.add('active');
         document.getElementById('sub-traslado').classList.add('active');
     } else if (subName === 'cerrar') {
         document.getElementById('btnSubCerrar').classList.add('active');
         document.getElementById('sub-cerrar').classList.add('active');
+    } else if (subName === 'documentos') {
+        document.getElementById('btnSubDocumentos').classList.add('active');
+        document.getElementById('sub-documentos').classList.add('active');
     }
 }
 
@@ -1105,9 +1276,9 @@ function actualizarAlertaPreview(val) {
     if (dias > 0) {
         const fecha = new Date();
         fecha.setDate(fecha.getDate() + dias);
-        prev.textContent = `🔔 Alerta el: ${fecha.toLocaleDateString('es-CO', {day:'2-digit',month:'short',year:'numeric'})}`;
+        prev.innerHTML = `<i class="fas fa-bell"></i> Recordatorio: ${fecha.toLocaleDateString('es-CO', {day:'2-digit',month:'short',year:'numeric'})}`;
     } else {
-        prev.textContent = '';
+        prev.innerHTML = '';
     }
 }
 
@@ -1128,9 +1299,10 @@ function enviarEditarUnificado() {
     .then(r => r.json())
     .then(d => {
         if (d.ok) {
-            cerrarModal('modalUnificado');
             mostrarToast('✅ ' + d.message);
-            setTimeout(() => location.reload(), 1000);
+            // Volver a cargar para ver los cambios sin cerrar el modal de golpe
+            abrirModalUnico(id);
+            setTimeout(() => location.reload(), 1200);
         } else {
             mostrarToast('❌ ' + (d.message ?? 'Error al guardar cambios'));
         }
@@ -1164,9 +1336,11 @@ function enviarGestionUnificada() {
     .then(r => r.json())
     .then(d => {
         if (d.ok) { 
-            cerrarModal('modalUnificado'); 
             mostrarToast('✅ ' + d.message); 
-            setTimeout(() => location.reload(), 1000); 
+            toggleNuevaGestionForm(false);
+            // Recargar datos del modal
+            abrirModalUnico(tareaIdActivo);
+            setTimeout(() => location.reload(), 1200); 
         } else {
             mostrarToast('❌ Error al guardar gestión');
         }
@@ -1193,9 +1367,9 @@ function enviarTrasladoUnificado() {
     .then(r => r.json())
     .then(d => {
         if (d.ok) { 
-            cerrarModal('modalUnificado'); 
             mostrarToast('✅ ' + d.message); 
-            setTimeout(() => location.reload(), 1000); 
+            abrirModalUnico(tareaIdActivo);
+            setTimeout(() => location.reload(), 1200); 
         } else {
             mostrarToast('❌ Error al trasladar');
         }
@@ -1222,9 +1396,9 @@ function enviarCerrarUnificado() {
     .then(r => r.json())
     .then(d => {
         if (d.ok) { 
-            cerrarModal('modalUnificado'); 
             mostrarToast('🏁 ' + d.message); 
-            setTimeout(() => location.reload(), 1000); 
+            abrirModalUnico(tareaIdActivo);
+            setTimeout(() => location.reload(), 1200); 
         } else {
             mostrarToast('❌ Error al cerrar tarea');
         }
@@ -1246,8 +1420,7 @@ function subirDocumentoUnificado(input) {
     fd.append('nombre', nombre);
     fd.append('_token', '{{ csrf_token() }}');
     
-    // Mostrar spinner en la lista de documentos
-    document.getElementById('uniDocsLista').innerHTML = '<div style="text-align:center;padding:1rem;color:#94a3b8;font-size:.78rem;">⏳ Subiendo archivo...</div>';
+    document.getElementById('uniDocsLista').innerHTML = '<div style="text-align:center;padding:1rem;color:#94a3b8;font-size:.75rem;">⏳ Subiendo archivo...</div>';
     
     fetch(`/admin/tareas/${tareaIdActivo}/documento`, { method:'POST', body:fd })
         .then(r => r.json())
