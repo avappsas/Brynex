@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="csrf-token" content="{{ csrf_token() }}">
 <title>Cuenta de Cobro Detallada – {{ $empresa->empresa ?? '' }} – {{ $meses[$mes] }} {{ $anio }}</title>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
@@ -107,6 +108,7 @@ table.tbl-det tfoot .num { color: #34d399; }
 
 <div class="acciones-bar">
     <button class="btn-ac btn-print" onclick="window.print()">🖨 Imprimir / Descargar PDF</button>
+    <button class="btn-ac" onclick="MCA.abrir({{ $empresa->id }})" style="background:#0284c7;color:#fff;">⚙️ Cobros Adicionales</button>
     <form id="frmSimple" method="POST" action="{{ route('admin.facturacion.cuenta_cobro.preview') }}" target="_blank" style="display:inline;">
         @csrf
         <input type="hidden" name="tipo" value="simple">
@@ -298,6 +300,30 @@ table.tbl-det tfoot .num { color: #34d399; }
             </td>
         </tr>
         @endforeach
+        @if(isset($cobrosAdicionalesCC) && $cobrosAdicionalesCC->isNotEmpty())
+        <tr>
+            <td colspan="13" style="background:#f8fafc;font-weight:800;font-size:8.5px;color:#1e3a5f;padding:.45rem .6rem;text-transform:uppercase;border-top:1.5px solid #cbd5e1;border-bottom:1.5px solid #cbd5e1;letter-spacing:.05em;">
+                💼 Cobros Adicionales de la Empresa
+            </td>
+        </tr>
+        @foreach($cobrosAdicionalesCC as $cobro)
+        <tr>
+            <td style="text-align:center;color:#94a3b8;font-size:9px;">—</td>
+            <td style="font-family:monospace;color:#94a3b8;">—</td>
+            <td colspan="3">
+                <div style="font-weight:700;font-size:10px;color:#2563eb;">{{ $cobro->descripcion }}</div>
+                <span style="font-size:8px;color:#64748b;font-weight:600;">
+                    Concepto Adicional ({{ $cobro->tipo === 'recurrente' ? 'Recurrente' : 'Única vez' }})
+                </span>
+            </td>
+            <td colspan="6" style="color:#cbd5e1;text-align:center;">—</td>
+            <td class="num" style="font-weight:800;color:#0f172a;">${{ number_format($cobro->valor, 0, ',', '.') }}</td>
+            <td style="text-align:center;">
+                <span class="estado-badge est-vigente" style="background:#e0f2fe;color:#0369a1;">Activo</span>
+            </td>
+        </tr>
+        @endforeach
+        @endif
         </tbody>
         <tfoot>
             <tr>
@@ -389,5 +415,6 @@ table.tbl-det tfoot .num { color: #34d399; }
     </div>
 
 </div>
+@include('admin.facturacion._modal_cobros_adicionales')
 </body>
 </html>

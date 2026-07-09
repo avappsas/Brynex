@@ -146,6 +146,10 @@ table.fac-tbl{width:100%;border-collapse:collapse;font-size:.78rem}
                style="display:inline-flex;align-items:center;gap:.35rem;padding:.38rem .85rem;font-size:.8rem;font-weight:600;border-radius:7px;background:rgba(255,255,255,.1);color:#cbd5e1;text-decoration:none;transition:background .15s;"
                onmouseover="this.style.background='rgba(255,255,255,.2)'" onmouseout="this.style.background='rgba(255,255,255,.1)'"
                title="Historial de facturación">📋 Historial</a>
+            <button type="button" onclick="MCA.abrir({{ $empresa->id }})"
+               style="display:inline-flex;align-items:center;gap:.35rem;padding:.38rem .85rem;font-size:.8rem;font-weight:600;border-radius:7px;background:rgba(255,255,255,.1);color:#cbd5e1;border:none;cursor:pointer;transition:background .15s;"
+               onmouseover="this.style.background='rgba(255,255,255,.2)'" onmouseout="this.style.background='rgba(255,255,255,.1)'"
+               title="Administrar cobros adicionales (recurrentes o de única vez) de la empresa">⚙️ Cobros Adicionales</button>
             <button type="button" onclick="abrirClavesEmpresa()"
                style="display:inline-flex;align-items:center;gap:.35rem;padding:.38rem .85rem;font-size:.8rem;font-weight:600;border-radius:7px;background:#fef9c3;color:#92400e;border:1px solid #fde68a;cursor:pointer;transition:background .15s;"
                onmouseover="this.style.background='#fde68a'" onmouseout="this.style.background='#fef9c3'"
@@ -202,6 +206,7 @@ table.fac-tbl{width:100%;border-collapse:collapse;font-size:.78rem}
             data-empresa-asesor-nombre="{{ $empresa->asesor?->nombre ?? '' }}">
             💼 Otro Ingreso
         </button>
+
 
         <button class="btn-act" id="btnCuentaCobro" onclick="abrirCuentaCobro('simple')" disabled
             style="background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;"
@@ -817,6 +822,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
 {{-- ═══ MODAL ANTICIPO DISTRIBUIDO ═════════════════════════════════ --}}
 @include('admin.facturacion._modal_anticipo_distribuido', ['bancos' => $bancos])
+
+{{-- ═══ MODAL COBROS ADICIONALES DE LA EMPRESA ════════════════════ --}}
+@include('admin.facturacion._modal_cobros_adicionales')
 
 {{-- ═══ MODAL ABONAR ═════════════════════════════════════════════ --}}
 <div id="modalAbonar" class="modal-overlay" style="display:none;" onclick="cerrarSi(event,'modalAbonar')">
