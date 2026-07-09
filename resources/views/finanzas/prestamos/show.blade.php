@@ -78,8 +78,8 @@
                 @if($prestamo->soporte_path)
                     <div class="fdcg-row" style="margin-top:0.75rem;">
                         <span>Archivo Soporte:</span>
-                        <a href="{{ route('admin.whatsapp.chat.media', ['mensajeId' => 'soporte_' . $prestamo->id]) }}?path={{ urlencode($prestamo->soporte_path) }}" target="_blank" class="badge-info" style="text-decoration:none;">
-                            📄 Descargar Soporte
+                        <a href="{{ route('finanzas.prestamos.descargar-soporte', $prestamo->id) }}" target="_blank" class="badge-info" style="text-decoration:none;">
+                            📄 Ver Soporte
                         </a>
                     </div>
                 @endif
@@ -174,7 +174,7 @@
                             {{ $mov->observacion ?: '-' }}
                             @if($mov->soporte_path)
                                 <div style="margin-top: 0.2rem;">
-                                    <a href="{{ route('admin.whatsapp.chat.media', ['mensajeId' => 'soporte_mov_' . $mov->id]) }}?path={{ urlencode($mov->soporte_path) }}" target="_blank" class="badge-info" style="font-size:0.65rem; padding: 0.05rem 0.25rem;">
+                                    <a href="{{ route('finanzas.prestamos.movimiento.descargar-soporte', $mov->id) }}" target="_blank" class="badge-info" style="font-size:0.65rem; padding: 0.05rem 0.25rem;">
                                         📄 Soporte
                                     </a>
                                 </div>

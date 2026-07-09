@@ -399,4 +399,35 @@ class PrestamoController extends Controller
         $userAgent = $request->header('User-Agent', '');
         return (bool) preg_match('/(android|bb\d+|meego).+mobile|avantgo|bada\/|blackberry|blazer|compal|elaine|fennec|hiptop|iemobile|ip(hone|od)|iris|kindle|lge |maemo|midp|mmp|mobile.+firefox|netfront|opera m(ob|in)i|palm( os)?|phone|p(ixi|re)\/|plucker|pocket|psp|series(4|6)0|symbian|treo|up\.(browser|link)|vodafone|wap|windows ce|xda|xiino/i', $userAgent);
     }
+
+    /**
+     * Visualiza/Descarga el soporte principal de un préstamo.
+     */
+    public function descargarSoporte($id)
+    {
+        $prestamo = Prestamo::where('user_id', Auth::id())->findOrFail($id);
+
+        if (!$prestamo->soporte_path || !Storage::disk('local')->exists($prestamo->soporte_path)) {
+            abort(404, 'Archivo de soporte no encontrado.');
+        }
+
+        return Storage::disk('local')->response($prestamo->soporte_path);
+    }
+
+    /**
+     * Visualiza/Descarga el soporte de un movimiento individual de préstamo.
+     */
+    public function descargarSoporteMovimiento($id)
+    {
+        $movimiento = PrestamoMovimiento::findOrFail($id);
+        
+        // Validar que el movimiento pertenezca a un préstamo del usuario actual
+        $prestamo = Prestamo::where('user_id', Auth::id())->findOrFail($movimiento->prestamo_id);
+
+        if (!$movimiento->soporte_path || !Storage::disk('local')->exists($movimiento->soporte_path)) {
+            abort(404, 'Archivo de soporte no encontrado.');
+        }
+
+        return Storage::disk('local')->response($movimiento->soporte_path);
+    }
 }
