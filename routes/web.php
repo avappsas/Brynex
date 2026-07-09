@@ -611,6 +611,7 @@ Route::middleware('auth')->group(function () {
         Route::put('/gastos/{gasto}',            [$gas, 'update'])->name('gastos.update');
         Route::delete('/gastos/{gasto}',         [$gas, 'destroy'])->name('gastos.destroy');
         Route::get('/gastos/informe',            [$gas, 'informe'])->name('gastos.informe');
+        Route::get('/gastos/{gasto}/soporte',    [$gas, 'descargarSoporte'])->name('gastos.descargar-soporte');
         Route::get('/categorias',                [$gas, 'categoriasIndex'])->name('categorias.index');
         Route::post('/categorias',               [$gas, 'categoriaStore'])->name('categorias.store');
         Route::put('/categorias/{cat}',          [$gas, 'categoriaUpdate'])->name('categorias.update');

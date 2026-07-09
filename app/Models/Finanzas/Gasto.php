@@ -32,6 +32,7 @@ class Gasto extends BaseFinanzasModel
         'tipo_movimiento', // gasto | prestamo | inversion
         'es_patrimonio',
         'patrimonio_id',
+        'soporte_path',
     ];
 
     protected $casts = [

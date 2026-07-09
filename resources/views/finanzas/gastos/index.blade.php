@@ -98,6 +98,11 @@
                                     🏠 {{ $gasto->patrimonio->nombre }}
                                 </a>
                             @endif
+                            @if($gasto->soporte_path)
+                                <a href="{{ route('finanzas.gastos.descargar-soporte', $gasto->id) }}" class="badge-soporte-link" title="Descargar soporte de pago">
+                                    📎 Soporte
+                                </a>
+                            @endif
                         </td>
                         <td>
                             <span class="tipo-tag-bx {{ $gasto->tipo_movimiento }}" style="{{ $gasto->tipo_movimiento === 'ingreso_esporadico' ? 'background:#d1fae5; color:#065f46;' : '' }}">
@@ -131,46 +136,214 @@
 
     {{-- Modal Crear --}}
     <div x-show="openCrear" class="modal-overlay-bx" @click.self="openCrear = false" x-cloak>
-        <div class="modal-box-bx">
+        <div class="modal-box-bx" style="max-width: 480px;">
             <div class="modal-head-bx" style="background:linear-gradient(135deg, #3b82f6, #1d4ed8);" :style="tipo === 'ingreso_esporadico' ? 'background:linear-gradient(135deg, #10b981, #047857);' : (tipo === 'gasto' ? 'background:linear-gradient(135deg, #ef4444, #b91c1c);' : 'background:linear-gradient(135deg, #4f46e5, #4338ca);')">
                 <h3 style="color:#fff;" x-text="tipo === 'ingreso_esporadico' ? '📥 Registrar Entrada' : '📤 Registrar Nuevo Gasto'">📥 Registrar Transacción</h3>
                 <button @click="openCrear = false" class="modal-close-bx">&times;</button>
             </div>
-            <form action="{{ route('finanzas.gastos.store') }}" method="POST">
+            <form action="{{ route('finanzas.gastos.store') }}" method="POST" enctype="multipart/form-data" 
+                  x-data="{
+                      categoriaOpen: false,
+                      categoriaSearch: '',
+                      categoriaIdSelected: '',
+                      categoriaIconSelected: '',
+                      categorias: {{ json_encode($categorias->map(fn($c) => ['id' => $c->id, 'nombre' => $c->nombre, 'icono' => $c->icono, 'color' => $c->color]) ?? []) }},
+                      soportePreview: null,
+                      soporteName: '',
+                      cargando: false,
+                      tipo: 'gasto',
+                      montoLimpio: '',
+                      montoFormateado: '',
+                      formatearMonto() {
+                          let valor = this.montoFormateado.replace(/\D/g, '');
+                          this.montoLimpio = valor;
+                          if (valor) {
+                              this.montoFormateado = new Intl.NumberFormat('es-CO', { maximumFractionDigits: 0 }).format(valor);
+                          } else {
+                              this.montoFormateado = '';
+                          }
+                      },
+                      
+                      get filtradas() {
+                          if (!this.categoriaSearch) return this.categorias;
+                          return this.categorias.filter(c => c.nombre.toLowerCase().includes(this.categoriaSearch.toLowerCase()));
+                      },
+                      select(cat) {
+                          this.categoriaIdSelected = cat.id;
+                          this.categoriaIconSelected = cat.icono;
+                          this.categoriaSearch = cat.nombre;
+                          this.categoriaOpen = false;
+                      },
+                      clearCategoria() {
+                          this.categoriaIdSelected = '';
+                          this.categoriaIconSelected = '';
+                          this.categoriaSearch = '';
+                      },
+                      async pegarSoporte() {
+                          try {
+                              const clipboardItems = await navigator.clipboard.read();
+                              for (const item of clipboardItems) {
+                                  for (const type of item.types) {
+                                      if (type.startsWith('image/')) {
+                                          const blob = await item.getType(type);
+                                          const file = new File([blob], 'soporte_crear_' + Date.now() + '.png', { type: type });
+                                          const dt = new DataTransfer();
+                                          dt.items.add(file);
+                                          this.$refs.soporteInputCrear.files = dt.files;
+                                          this.soporteName = file.name;
+                                          this.soportePreview = URL.createObjectURL(blob);
+                                          return;
+                                      }
+                                  }
+                              }
+                              alert('No se encontró ninguna imagen en el portapapeles. Copia una imagen primero.');
+                          } catch (err) {
+                              alert('No se pudo acceder al portapapeles. Intenta subir el archivo seleccionándolo.');
+                          }
+                      },
+                      handleFileChange(e) {
+                          const file = e.target.files[0];
+                          if (file) {
+                              this.soporteName = file.name;
+                              this.soportePreview = URL.createObjectURL(file);
+                          }
+                      },
+                      limpiarSoporte() {
+                          this.$refs.soporteInputCrear.value = '';
+                          this.soporteName = '';
+                          this.soportePreview = null;
+                      },
+                      handlePaste(e) {
+                          if (!openCrear) return;
+                          const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+                          for (const item of items) {
+                              if (item.kind === 'file' && item.type.startsWith('image/')) {
+                                  const blob = item.getAsFile();
+                                  const file = new File([blob], 'soporte_crear_' + Date.now() + '.png', { type: item.type });
+                                  const dt = new DataTransfer();
+                                  dt.items.add(file);
+                                  this.$refs.soporteInputCrear.files = dt.files;
+                                  this.soporteName = file.name;
+                                  this.soportePreview = URL.createObjectURL(blob);
+                              }
+                          }
+                      }
+                  }"
+                  @paste.window="handlePaste($event)"
+                  @submit="cargando = true"
+            >
                 @csrf
-                <div class="modal-body-bx" x-data="{ tipo: 'gasto' }">
-                    <div class="form-group-bx">
-                        <label class="form-label-bx">Fecha</label>
-                        <input type="date" name="fecha" value="{{ now()->toDateString() }}" class="form-input-bx" required>
-                    </div>
-                    <div class="form-group-bx" style="margin-top:1rem;">
-                        <label class="form-label-bx">Monto ($ COP)</label>
-                        <input type="number" name="monto" placeholder="Ej: 50000" class="form-input-bx" required min="1">
-                    </div>
-                    <div class="form-group-bx" style="margin-top:1rem;">
-                        <label class="form-label-bx">Tipo de Movimiento</label>
-                        <select name="tipo_movimiento" x-model="tipo" class="form-select-bx" required>
-                            <option value="gasto">Gasto Habitual</option>
-                            <option value="ingreso_esporadico">Entrada</option>
-                            <option value="prestamo">Desembolso Préstamo</option>
-                            <option value="inversion">Inversión (Cripto/USDT)</option>
-                        </select>
-                        <div x-show="tipo === 'ingreso_esporadico'" x-cloak style="margin-top:0.4rem; font-size:0.75rem; color:#10b981; font-weight:500;">
-                            💡 Este ingreso se sumará automáticamente bajo la fuente "OTRAS ENTRADAS" de este mes.
+                <div class="modal-body-bx">
+                    
+                    {{-- Fecha y Monto en la misma fila --}}
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        <div class="form-group-bx">
+                            <label class="form-label-bx">Fecha</label>
+                            <input type="date" name="fecha" value="{{ now()->toDateString() }}" class="form-input-bx" style="font-size: 1.15rem; font-weight: 700; color: #1e293b;" required>
+                        </div>
+                        <div class="form-group-bx">
+                            <label class="form-label-bx">Monto ($ COP)</label>
+                            <input type="text" 
+                                   x-model="montoFormateado" 
+                                   @input="formatearMonto()" 
+                                   placeholder="Ej: 50.000" 
+                                   class="form-input-bx" 
+                                   style="font-size: 1.15rem; font-weight: 700; color: #1e293b;"
+                                   required>
+                            <input type="hidden" name="monto" :value="montoLimpio">
                         </div>
                     </div>
-                    <div class="form-group-bx" style="margin-top:1rem;">
-                        <label class="form-label-bx">Categoría</label>
-                        <select name="categoria_id" class="form-select-bx" required>
-                            @foreach($categorias as $cat)
-                                <option value="{{ $cat->id }}" :selected="tipo === 'ingreso_esporadico' && '{{ strtoupper($cat->nombre) }}' === 'ENTRADA'">{{ $cat->icono }} {{ $cat->nombre }}</option>
-                            @endforeach
-                        </select>
+
+                    {{-- Tipo de Movimiento --}}
+                    {{-- Tipo de Movimiento y Categoría en la misma fila --}}
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem;">
+                        {{-- Tipo de Movimiento --}}
+                        <div class="form-group-bx">
+                            <label class="form-label-bx">Tipo de Movimiento</label>
+                            <select name="tipo_movimiento" x-model="tipo" class="form-select-bx" required style="height: 100%;">
+                                <option value="gasto">Gasto Habitual</option>
+                                <option value="ingreso_esporadico">Entrada</option>
+                                <option value="prestamo">Desembolso Préstamo</option>
+                                <option value="inversion">Inversión (Cripto/USDT)</option>
+                            </select>
+                        </div>
+
+                        {{-- Categoría (Combobox buscable y editable) --}}
+                        <div class="form-group-bx" style="position: relative;">
+                            <label class="form-label-bx">Categoría</label>
+                            <div class="combobox-container-bx" @click.away="categoriaOpen = false" style="width: 100%;">
+                                <div class="combobox-input-wrapper-bx" style="position: relative; display: flex; align-items: center; width: 100%;">
+                                    <span x-show="categoriaIconSelected" class="combobox-icon-bx" x-text="categoriaIconSelected" style="position: absolute; left: 0.75rem; font-size: 0.95rem; z-index: 5;"></span>
+                                    <input type="text" 
+                                           x-model="categoriaSearch" 
+                                           @focus="categoriaOpen = true"
+                                           @input="categoriaOpen = true; categoriaIdSelected = ''; categoriaIconSelected = ''"
+                                           placeholder="Seleccione o escriba..."
+                                           class="form-input-bx" 
+                                           :style="categoriaIconSelected ? 'padding-left: 2.25rem; width: 100%; flex: 1;' : 'padding-left: 0.75rem; width: 100%; flex: 1;'"
+                                           autocomplete="off">
+                                    <button type="button" x-show="categoriaSearch" @click="clearCategoria()" class="combobox-clear-btn-bx" style="position: absolute; right: 0.75rem; background: none; border: none; font-size: 1.1rem; color: #94a3b8; cursor: pointer;">&times;</button>
+                                </div>
+
+                                {{-- Inputs ocultos --}}
+                                <input type="hidden" name="categoria_id" :value="categoriaIdSelected">
+                                <input type="hidden" name="nueva_categoria" :value="!categoriaIdSelected && categoriaSearch ? categoriaSearch : ''">
+
+                                {{-- Lista desplegable --}}
+                                <div x-show="categoriaOpen" 
+                                     x-cloak 
+                                     class="combobox-dropdown-bx">
+                                    <template x-for="cat in filtradas" :key="cat.id">
+                                        <div @click="select(cat)" class="combobox-item-bx">
+                                            <span x-text="cat.icono" style="margin-right: 0.5rem;"></span>
+                                            <span x-text="cat.nombre" style="font-weight: 500;"></span>
+                                        </div>
+                                    </template>
+                                    <div x-show="categoriaSearch && filtradas.length === 0" 
+                                         @click="categoriaOpen = false"
+                                         class="combobox-item-bx" 
+                                         style="color: var(--azul-btn); font-weight: 600;">
+                                        <span>➕ Crear: "</span><span x-text="categoriaSearch"></span><span>"</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
+                    <div x-show="tipo === 'ingreso_esporadico'" x-cloak style="margin-top:0.4rem; font-size:0.75rem; color:#10b981; font-weight:500;">
+                        💡 Este ingreso se sumará automáticamente bajo la fuente "OTRAS ENTRADAS" de este mes.
+                    </div>
+
+                    {{-- Descripción --}}
                     <div class="form-group-bx" style="margin-top:1rem;">
                         <label class="form-label-bx">Descripción</label>
                         <input type="text" name="descripcion" placeholder="Ej: almuerzo, venta de equipo, etc." class="form-input-bx">
                     </div>
+
+                    {{-- Soporte de Pago --}}
+                    <div class="form-group-bx" style="margin-top:1rem;">
+                        <label class="form-label-bx">Soporte de Pago (Opcional)</label>
+                        <input type="file" name="soporte" x-ref="soporteInputCrear" accept="image/*" style="display: none;" @change="handleFileChange($event)">
+                        
+                        <div style="display: flex; gap: 0.5rem; margin-top: 0.25rem;">
+                            <button type="button" @click="pegarSoporte()" class="btn-glass-bx" style="display: flex; align-items: center; gap: 0.35rem; padding: 0.4rem 0.75rem; font-size: 0.75rem; background: #e2e8f0;">
+                                📋 Pegar Soporte
+                            </button>
+                            <button type="button" @click="$refs.soporteInputCrear.click()" class="btn-glass-bx" style="display: flex; align-items: center; gap: 0.35rem; padding: 0.4rem 0.75rem; font-size: 0.75rem; background: #e2e8f0;">
+                                📸 Tomar Foto / Subir
+                            </button>
+                        </div>
+
+                        {{-- Previsualización de Soporte --}}
+                        <div x-show="soportePreview" x-cloak style="margin-top: 0.75rem; position: relative; display: inline-block;">
+                            <img :src="soportePreview" style="max-height: 100px; border-radius: 8px; border: 1px solid #cbd5e1;">
+                            <button type="button" @click="limpiarSoporte()" class="btn-icon-bx" style="position: absolute; top: -5px; right: -5px; background: #ef4444; color: white; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; font-size: 0.7rem;">
+                                &times;
+                            </button>
+                            <div style="font-size: 0.65rem; color: #64748b; margin-top: 0.25rem;" x-text="soporteName"></div>
+                        </div>
+                    </div>
+
+                    {{-- Patrimonio --}}
                     <div x-data="{ esPatrimonio: false }" x-show="tipo !== 'ingreso_esporadico'" style="margin-top:1rem;">
                         <div style="display:flex; align-items:center; gap:0.5rem;">
                             <input type="checkbox" name="es_patrimonio" value="1" x-model="esPatrimonio" id="es_patrimonio_check" style="cursor:pointer; width:16px; height:16px;">
@@ -191,7 +364,10 @@
                 </div>
                 <div class="modal-foot-bx">
                     <button type="button" @click="openCrear = false" class="btn-glass-bx">Cancelar</button>
-                    <button type="submit" class="btn-fin success" :style="tipo === 'ingreso_esporadico' ? 'background:#10b981;' : (tipo === 'gasto' ? 'background:#ef4444;' : 'background:#4f46e5;')">Registrar Transacción</button>
+                    <button type="submit" :disabled="cargando" class="btn-accion-premium" :style="tipo === 'ingreso_esporadico' ? 'background:linear-gradient(135deg, #10b981, #047857);' : (tipo === 'gasto' ? 'background:linear-gradient(135deg, #ef4444, #b91c1c);' : 'background:linear-gradient(135deg, #4f46e5, #4338ca);')" style="color: white; display: flex; align-items: center; gap: 0.5rem;">
+                        <span x-show="!cargando">Registrar Transacción</span>
+                        <span x-show="cargando" x-cloak><i class="fas fa-spinner fa-spin"></i> Registrando...</span>
+                    </button>
                 </div>
             </form>
         </div>
@@ -199,45 +375,255 @@
 
     {{-- Modal Editar --}}
     <div x-show="openEditar" class="modal-overlay-bx" @click.self="openEditar = false" x-cloak>
-        <div class="modal-box-bx">
+        <div class="modal-box-bx" style="max-width: 480px;">
             <div class="modal-head-bx" style="background:linear-gradient(135deg, #3b82f6, #1d4ed8);" :style="selectedGasto.tipo_movimiento === 'ingreso_esporadico' ? 'background:linear-gradient(135deg, #10b981, #047857);' : (selectedGasto.tipo_movimiento === 'gasto' ? 'background:linear-gradient(135deg, #ef4444, #b91c1c);' : 'background:linear-gradient(135deg, #4f46e5, #4338ca);')">
                 <h3 style="color:#fff;" x-text="selectedGasto.tipo_movimiento === 'ingreso_esporadico' ? '✏️ Editar Entrada' : '✏️ Editar Transacción'">✏️ Editar Transacción</h3>
                 <button @click="openEditar = false" class="modal-close-bx">&times;</button>
             </div>
-            <form :action="'{{ route('finanzas.gastos.index') }}/' + selectedGasto.id" method="POST">
+            <form :action="'{{ route('finanzas.gastos.index') }}/' + selectedGasto.id" method="POST" enctype="multipart/form-data"
+                  x-data="{
+                      categoriaOpen: false,
+                      categoriaSearch: '',
+                      categoriaIdSelected: '',
+                      categoriaIconSelected: '',
+                      categorias: {{ json_encode($categorias->map(fn($c) => ['id' => $c->id, 'nombre' => $c->nombre, 'icono' => $c->icono, 'color' => $c->color]) ?? []) }},
+                      soportePreview: null,
+                      soporteName: '',
+                      gastoSoporteActual: null,
+                      eliminarSoporteAnterior: false,
+                      cargando: false,
+                      montoLimpio: '',
+                      montoFormateado: '',
+                      formatearMonto() {
+                          let valor = this.montoFormateado.replace(/\D/g, '');
+                          this.montoLimpio = valor;
+                          if (valor) {
+                              this.montoFormateado = new Intl.NumberFormat('es-CO', { maximumFractionDigits: 0 }).format(valor);
+                          } else {
+                              this.montoFormateado = '';
+                          }
+                      },
+                      
+                      init() {
+                          this.$watch('selectedGasto', (value) => {
+                              if (value && value.id) {
+                                  this.categoriaIdSelected = value.categoria_id || '';
+                                  this.eliminarSoporteAnterior = false;
+                                  this.soportePreview = null;
+                                  this.soporteName = '';
+                                  
+                                  let found = this.categorias.find(c => c.id == this.categoriaIdSelected);
+                                  if (found) {
+                                      this.categoriaIconSelected = found.icono;
+                                      this.categoriaSearch = found.nombre;
+                                  } else {
+                                      this.categoriaIconSelected = '';
+                                      this.categoriaSearch = '';
+                                  }
+                                  
+                                  this.gastoSoporteActual = value.soporte_path || null;
+                                  
+                                  // Formatear monto inicial
+                                  this.montoLimpio = value.monto ? Math.round(value.monto).toString() : '';
+                                  this.montoFormateado = this.montoLimpio ? new Intl.NumberFormat('es-CO', { maximumFractionDigits: 0 }).format(this.montoLimpio) : '';
+                              }
+                          });
+                      },
+                      get filtradas() {
+                          if (!this.categoriaSearch) return this.categorias;
+                          return this.categorias.filter(c => c.nombre.toLowerCase().includes(this.categoriaSearch.toLowerCase()));
+                      },
+                      select(cat) {
+                          this.categoriaIdSelected = cat.id;
+                          this.categoriaIconSelected = cat.icono;
+                          this.categoriaSearch = cat.nombre;
+                          this.categoriaOpen = false;
+                      },
+                      clearCategoria() {
+                          this.categoriaIdSelected = '';
+                          this.categoriaIconSelected = '';
+                          this.categoriaSearch = '';
+                      },
+                      async pegarSoporte() {
+                          try {
+                              const clipboardItems = await navigator.clipboard.read();
+                              for (const item of clipboardItems) {
+                                  for (const type of item.types) {
+                                      if (type.startsWith('image/')) {
+                                          const blob = await item.getType(type);
+                                          const file = new File([blob], 'soporte_editar_' + Date.now() + '.png', { type: type });
+                                          const dt = new DataTransfer();
+                                          dt.items.add(file);
+                                          this.$refs.soporteInputEditar.files = dt.files;
+                                          this.soporteName = file.name;
+                                          this.soportePreview = URL.createObjectURL(blob);
+                                          this.eliminarSoporteAnterior = true;
+                                          return;
+                                      }
+                                  }
+                              }
+                              alert('No se encontró ninguna imagen en el portapapeles. Copia una imagen primero.');
+                          } catch (err) {
+                              alert('No se pudo acceder al portapapeles. Intenta subir el archivo seleccionándolo.');
+                          }
+                      },
+                      handleFileChange(e) {
+                          const file = e.target.files[0];
+                          if (file) {
+                              this.soporteName = file.name;
+                              this.soportePreview = URL.createObjectURL(file);
+                              this.eliminarSoporteAnterior = true;
+                          }
+                      },
+                      limpiarSoporte() {
+                          this.$refs.soporteInputEditar.value = '';
+                          this.soporteName = '';
+                          this.soportePreview = null;
+                          if (this.gastoSoporteActual) {
+                              this.eliminarSoporteAnterior = true;
+                          }
+                      },
+                      handlePaste(e) {
+                          if (!openEditar) return;
+                          const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+                          for (const item of items) {
+                              if (item.kind === 'file' && item.type.startsWith('image/')) {
+                                  const blob = item.getAsFile();
+                                  const file = new File([blob], 'soporte_editar_' + Date.now() + '.png', { type: item.type });
+                                  const dt = new DataTransfer();
+                                  dt.items.add(file);
+                                  this.$refs.soporteInputEditar.files = dt.files;
+                                  this.soporteName = file.name;
+                                  this.soportePreview = URL.createObjectURL(blob);
+                                  this.eliminarSoporteAnterior = true;
+                              }
+                          }
+                      }
+                  }"
+                  @paste.window="handlePaste($event)"
+                  @submit="cargando = true"
+            >
                 @csrf
                 @method('PUT')
                 <div class="modal-body-bx">
-                    <div class="form-group-bx">
-                        <label class="form-label-bx">Fecha</label>
-                        <input type="date" name="fecha" x-model="selectedGasto.fecha" class="form-input-bx" required>
+                    
+                    {{-- Fecha y Monto en la misma fila --}}
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        <div class="form-group-bx">
+                            <label class="form-label-bx">Fecha</label>
+                            <input type="date" name="fecha" x-model="selectedGasto.fecha" class="form-input-bx" style="font-size: 1.15rem; font-weight: 700; color: #1e293b;" required>
+                        </div>
+                        <div class="form-group-bx">
+                            <label class="form-label-bx">Monto ($ COP)</label>
+                            <input type="text" 
+                                   x-model="montoFormateado" 
+                                   @input="formatearMonto()" 
+                                   placeholder="Ej: 50.000" 
+                                   class="form-input-bx" 
+                                   style="font-size: 1.15rem; font-weight: 700; color: #1e293b;"
+                                   required>
+                            <input type="hidden" name="monto" :value="montoLimpio">
+                        </div>
                     </div>
-                    <div class="form-group-bx" style="margin-top:1rem;">
-                        <label class="form-label-bx">Monto ($ COP)</label>
-                        <input type="number" name="monto" x-model="selectedGasto.monto" class="form-input-bx" required min="1">
+
+                    {{-- Tipo de Movimiento y Categoría en la misma fila --}}
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem;">
+                        {{-- Tipo de Movimiento --}}
+                        <div class="form-group-bx">
+                            <label class="form-label-bx">Tipo de Movimiento</label>
+                            <select name="tipo_movimiento" x-model="selectedGasto.tipo_movimiento" class="form-select-bx" required style="height: 100%;">
+                                <option value="gasto">Gasto Habitual</option>
+                                <option value="ingreso_esporadico">Entrada</option>
+                                <option value="prestamo">Desembolso Préstamo</option>
+                                <option value="inversion">Inversión (Cripto/USDT)</option>
+                            </select>
+                        </div>
+
+                        {{-- Categoría (Combobox buscable y editable) --}}
+                        <div class="form-group-bx" style="position: relative;">
+                            <label class="form-label-bx">Categoría</label>
+                            <div class="combobox-container-bx" @click.away="categoriaOpen = false" style="width: 100%;">
+                                <div class="combobox-input-wrapper-bx" style="position: relative; display: flex; align-items: center; width: 100%;">
+                                    <span x-show="categoriaIconSelected" class="combobox-icon-bx" x-text="categoriaIconSelected" style="position: absolute; left: 0.75rem; font-size: 0.95rem; z-index: 5;"></span>
+                                    <input type="text" 
+                                           x-model="categoriaSearch" 
+                                           @focus="categoriaOpen = true"
+                                           @input="categoriaOpen = true; categoriaIdSelected = ''; categoriaIconSelected = ''"
+                                           placeholder="Seleccione o escriba..."
+                                           class="form-input-bx" 
+                                           :style="categoriaIconSelected ? 'padding-left: 2.25rem; width: 100%; flex: 1;' : 'padding-left: 0.75rem; width: 100%; flex: 1;'"
+                                           autocomplete="off">
+                                    <button type="button" x-show="categoriaSearch" @click="clearCategoria()" class="combobox-clear-btn-bx" style="position: absolute; right: 0.75rem; background: none; border: none; font-size: 1.1rem; color: #94a3b8; cursor: pointer;">&times;</button>
+                                </div>
+
+                                {{-- Inputs ocultos --}}
+                                <input type="hidden" name="categoria_id" :value="categoriaIdSelected">
+                                <input type="hidden" name="nueva_categoria" :value="!categoriaIdSelected && categoriaSearch ? categoriaSearch : ''">
+
+                                {{-- Lista desplegable --}}
+                                <div x-show="categoriaOpen" 
+                                     x-cloak 
+                                     class="combobox-dropdown-bx">
+                                    <template x-for="cat in filtradas" :key="cat.id">
+                                        <div @click="select(cat)" class="combobox-item-bx">
+                                            <span x-text="cat.icono" style="margin-right: 0.5rem;"></span>
+                                            <span x-text="cat.nombre" style="font-weight: 500;"></span>
+                                        </div>
+                                    </template>
+                                    <div x-show="categoriaSearch && filtradas.length === 0" 
+                                         @click="categoriaOpen = false"
+                                         class="combobox-item-bx" 
+                                         style="color: var(--azul-btn); font-weight: 600;">
+                                        <span>➕ Crear: "</span><span x-text="categoriaSearch"></span><span>"</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="form-group-bx" style="margin-top:1rem;">
-                        <label class="form-label-bx">Tipo de Movimiento</label>
-                        <select name="tipo_movimiento" x-model="selectedGasto.tipo_movimiento" class="form-select-bx" required>
-                            <option value="gasto">Gasto Habitual</option>
-                            <option value="ingreso_esporadico">Entrada</option>
-                            <option value="prestamo">Desembolso Préstamo</option>
-                            <option value="inversion">Inversión (Cripto/USDT)</option>
-                        </select>
-                    </div>
-                    <div class="form-group-bx" style="margin-top:1rem;">
-                        <label class="form-label-bx">Categoría</label>
-                        <select name="categoria_id" x-model="selectedGasto.categoria_id" class="form-select-bx" required>
-                            @foreach($categorias as $cat)
-                                <option value="{{ $cat->id }}">{{ $cat->icono }} {{ $cat->nombre }}</option>
-                            @endforeach
-                        </select>
-                    </div>
+
+                    {{-- Descripción --}}
                     <div class="form-group-bx" style="margin-top:1rem;">
                         <label class="form-label-bx">Descripción</label>
                         <input type="text" name="descripcion" x-model="selectedGasto.descripcion" class="form-input-bx">
                     </div>
-                    <div x-data="{ esPatrimonio: false }" x-show="selectedGasto.tipo_movimiento !== 'ingreso_esporadico'" style="margin-top:1rem;">
+
+                    {{-- Soporte de Pago --}}
+                    <div class="form-group-bx" style="margin-top:1rem;">
+                        <label class="form-label-bx">Soporte de Pago</label>
+                        <input type="file" name="soporte" x-ref="soporteInputEditar" accept="image/*" style="display: none;" @change="handleFileChange($event)">
+                        
+                        {{-- Visualización de Soporte Anterior --}}
+                        <div x-show="gastoSoporteActual && !eliminarSoporteAnterior" x-cloak style="margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                            <a :href="'{{ route('finanzas.gastos.index') }}/' + selectedGasto.id + '/soporte'" target="_blank" class="badge-soporte-link" style="margin-left: 0;">
+                                📎 Descargar Soporte Actual
+                            </a>
+                            <button type="button" @click="eliminarSoporteAnterior = true" class="btn-icon-bx" style="color: #ef4444; font-size: 0.75rem; padding: 0.1rem 0.3rem;" title="Eliminar soporte actual">
+                                ❌ Eliminar actual
+                            </button>
+                        </div>
+                        <input type="hidden" name="eliminar_soporte" :value="eliminarSoporteAnterior ? 1 : 0">
+
+                        <div style="display: flex; gap: 0.5rem; margin-top: 0.25rem;">
+                            <button type="button" @click="pegarSoporte()" class="btn-glass-bx" style="display: flex; align-items: center; gap: 0.35rem; padding: 0.4rem 0.75rem; font-size: 0.75rem; background: #e2e8f0;">
+                                📋 Pegar Nuevo Soporte
+                            </button>
+                            <button type="button" @click="$refs.soporteInputEditar.click()" class="btn-glass-bx" style="display: flex; align-items: center; gap: 0.35rem; padding: 0.4rem 0.75rem; font-size: 0.75rem; background: #e2e8f0;">
+                                📸 Tomar Foto / Subir Nuevo
+                            </button>
+                        </div>
+
+                        {{-- Previsualización de Nuevo Soporte --}}
+                        <div x-show="soportePreview" x-cloak style="margin-top: 0.75rem; position: relative; display: inline-block;">
+                            <img :src="soportePreview" style="max-height: 100px; border-radius: 8px; border: 1px solid #cbd5e1;">
+                            <button type="button" @click="limpiarSoporte()" class="btn-icon-bx" style="position: absolute; top: -5px; right: -5px; background: #ef4444; color: white; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; font-size: 0.7rem;">
+                                &times;
+                            </button>
+                            <div style="font-size: 0.65rem; color: #64748b; margin-top: 0.25rem;" x-text="soporteName"></div>
+                        </div>
+                    </div>
+
+                    {{-- Patrimonio --}}
+                    <div x-data="{ esPatrimonio: false }" x-init="$watch('selectedGasto', val => esPatrimonio = val.es_patrimonio == 1)" x-show="selectedGasto.tipo_movimiento !== 'ingreso_esporadico'" style="margin-top:1rem;">
                         <div style="display:flex; align-items:center; gap:0.5rem;">
                             <input type="checkbox" name="es_patrimonio" value="1" x-model="esPatrimonio" :checked="selectedGasto.es_patrimonio == 1" id="es_patrimonio_check_edit" style="cursor:pointer; width:16px; height:16px;">
                             <label for="es_patrimonio_check_edit" style="font-size:0.8rem; color:#475569; cursor:pointer; font-weight:500;">
@@ -257,7 +643,10 @@
                 </div>
                 <div class="modal-foot-bx">
                     <button type="button" @click="openEditar = false" class="btn-glass-bx">Cancelar</button>
-                    <button type="submit" class="btn-fin success" :style="selectedGasto.tipo_movimiento === 'ingreso_esporadico' ? 'background:#10b981;' : (selectedGasto.tipo_movimiento === 'gasto' ? 'background:#ef4444;' : 'background:#4f46e5;')">Guardar Cambios</button>
+                    <button type="submit" :disabled="cargando" class="btn-accion-premium" :style="selectedGasto.tipo_movimiento === 'ingreso_esporadico' ? 'background:linear-gradient(135deg, #10b981, #047857);' : (selectedGasto.tipo_movimiento === 'gasto' ? 'background:linear-gradient(135deg, #ef4444, #b91c1c);' : 'background:linear-gradient(135deg, #4f46e5, #4338ca);')" style="color: white; display: flex; align-items: center; gap: 0.5rem;">
+                        <span x-show="!cargando">Guardar Cambios</span>
+                        <span x-show="cargando" x-cloak><i class="fas fa-spinner fa-spin"></i> Guardando...</span>
+                    </button>
                 </div>
             </form>
         </div>
@@ -311,5 +700,71 @@
 .form-label-bx { font-size: 0.78rem; font-weight: 600; color: #334155; }
 .form-input-bx { padding: 0.5rem 0.75rem; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.82rem; outline: none; }
 .form-select-bx { padding: 0.5rem 0.75rem; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.82rem; outline: none; background: #fff; cursor: pointer; }
+
+/* Combobox */
+.combobox-container-bx { position: relative; width: 100%; }
+.combobox-dropdown-bx {
+    position: absolute;
+    z-index: 1000;
+    width: 100%;
+    max-height: 200px;
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    margin-top: 0.25rem;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+}
+.combobox-item-bx {
+    padding: 0.5rem 0.75rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    font-size: 0.82rem;
+    color: #334155;
+    transition: background 0.1s;
+}
+.combobox-item-bx:hover {
+    background: #f1f5f9;
+}
+
+/* Botón Premium */
+.btn-accion-premium {
+    border: none;
+    padding: 0.5rem 1.25rem;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.1s, opacity 0.15s;
+}
+.btn-accion-premium:hover:not(:disabled) {
+    transform: translateY(-1px);
+    opacity: 0.95;
+}
+.btn-accion-premium:active:not(:disabled) {
+    transform: translateY(0);
+}
+.btn-accion-premium:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.badge-soporte-link {
+    display: inline-block;
+    background: #e0f2fe;
+    color: #0369a1;
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-decoration: none;
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    border: 1px solid #bae6fd;
+    margin-left: 5px;
+    transition: background 0.15s;
+}
+.badge-soporte-link:hover {
+    background: #bae6fd;
+}
 </style>
 @endpush

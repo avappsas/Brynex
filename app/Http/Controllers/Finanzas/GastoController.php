@@ -9,6 +9,7 @@ use App\Models\Finanzas\Patrimonio;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 class GastoController extends Controller
 {
@@ -67,26 +68,58 @@ class GastoController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'categoria_id' => 'required|integer',
+            'categoria_id' => 'required_without:nueva_categoria|nullable|integer',
+            'nueva_categoria' => 'required_without:categoria_id|nullable|string|max:50',
             'fecha' => 'required|date',
             'monto' => 'required|numeric|min:1',
             'descripcion' => 'nullable|string|max:255',
             'tipo_movimiento' => 'required|string|in:gasto,prestamo,inversion,ingreso_esporadico',
             'es_patrimonio' => 'nullable|boolean',
             'patrimonio_id' => 'nullable|integer',
+            'soporte' => 'nullable|file|mimes:jpeg,png,jpg,webp|max:10240',
         ]);
 
         $user = Auth::user();
+        $categoriaId = $request->categoria_id;
+
+        // Si viene nueva categoría, la creamos al vuelo
+        if (empty($categoriaId) && $request->filled('nueva_categoria')) {
+            $catExistente = CategoriaGasto::where('user_id', $user->id)
+                ->where('nombre', trim($request->nueva_categoria))
+                ->first();
+
+            if ($catExistente) {
+                $categoriaId = $catExistente->id;
+            } else {
+                $nuevaCat = CategoriaGasto::create([
+                    'user_id' => $user->id,
+                    'nombre' => trim($request->nueva_categoria),
+                    'icono' => '📂',
+                    'color' => '#64748b',
+                    'es_recurrente' => false,
+                    'activo' => true,
+                    'orden' => 50,
+                ]);
+                $categoriaId = $nuevaCat->id;
+            }
+        }
+
+        // Manejo del archivo de soporte
+        $soportePath = null;
+        if ($request->hasFile('soporte')) {
+            $soportePath = $request->file('soporte')->store('finanzas/gastos_soportes', 'local');
+        }
 
         Gasto::create([
             'user_id' => $user->id,
-            'categoria_id' => $request->categoria_id,
+            'categoria_id' => $categoriaId,
             'fecha' => $request->fecha,
             'monto' => $request->monto,
             'descripcion' => $request->descripcion,
             'tipo_movimiento' => $request->tipo_movimiento,
             'es_patrimonio' => $request->has('es_patrimonio') ? (bool) $request->es_patrimonio : false,
             'patrimonio_id' => $request->patrimonio_id,
+            'soporte_path' => $soportePath,
         ]);
 
         return redirect()->route('finanzas.gastos.index')->with('success', 'Transacción registrada con éxito.');
@@ -97,23 +130,69 @@ class GastoController extends Controller
         $gasto = Gasto::where('user_id', Auth::id())->findOrFail($id);
 
         $request->validate([
-            'categoria_id' => 'required|integer',
+            'categoria_id' => 'required_without:nueva_categoria|nullable|integer',
+            'nueva_categoria' => 'required_without:categoria_id|nullable|string|max:50',
             'fecha' => 'required|date',
             'monto' => 'required|numeric|min:1',
             'descripcion' => 'nullable|string|max:255',
             'tipo_movimiento' => 'required|string|in:gasto,prestamo,inversion,ingreso_esporadico',
             'es_patrimonio' => 'nullable|boolean',
             'patrimonio_id' => 'nullable|integer',
+            'soporte' => 'nullable|file|mimes:jpeg,png,jpg,webp|max:10240',
+            'eliminar_soporte' => 'nullable|boolean',
         ]);
 
+        $categoriaId = $request->categoria_id;
+
+        // Si viene nueva categoría, la creamos al vuelo
+        if (empty($categoriaId) && $request->filled('nueva_categoria')) {
+            $catExistente = CategoriaGasto::where('user_id', Auth::id())
+                ->where('nombre', trim($request->nueva_categoria))
+                ->first();
+
+            if ($catExistente) {
+                $categoriaId = $catExistente->id;
+            } else {
+                $nuevaCat = CategoriaGasto::create([
+                    'user_id' => Auth::id(),
+                    'nombre' => trim($request->nueva_categoria),
+                    'icono' => '📂',
+                    'color' => '#64748b',
+                    'es_recurrente' => false,
+                    'activo' => true,
+                    'orden' => 50,
+                ]);
+                $categoriaId = $nuevaCat->id;
+            }
+        }
+
+        // Manejo del archivo de soporte
+        $soportePath = $gasto->soporte_path;
+
+        if ($request->boolean('eliminar_soporte')) {
+            if ($gasto->soporte_path) {
+                Storage::disk('local')->delete($gasto->soporte_path);
+            }
+            $soportePath = null;
+        }
+
+        if ($request->hasFile('soporte')) {
+            // Eliminar soporte anterior
+            if ($gasto->soporte_path) {
+                Storage::disk('local')->delete($gasto->soporte_path);
+            }
+            $soportePath = $request->file('soporte')->store('finanzas/gastos_soportes', 'local');
+        }
+
         $gasto->update([
-            'categoria_id' => $request->categoria_id,
+            'categoria_id' => $categoriaId,
             'fecha' => $request->fecha,
             'monto' => $request->monto,
             'descripcion' => $request->descripcion,
             'tipo_movimiento' => $request->tipo_movimiento,
             'es_patrimonio' => $request->has('es_patrimonio') ? (bool) $request->es_patrimonio : false,
             'patrimonio_id' => $request->patrimonio_id,
+            'soporte_path' => $soportePath,
         ]);
 
         return redirect()->route('finanzas.gastos.index')->with('success', 'Transacción actualizada.');
@@ -122,9 +201,28 @@ class GastoController extends Controller
     public function destroy($id)
     {
         $gasto = Gasto::where('user_id', Auth::id())->findOrFail($id);
+
+        if ($gasto->soporte_path) {
+            Storage::disk('local')->delete($gasto->soporte_path);
+        }
+
         $gasto->delete();
 
         return redirect()->route('finanzas.gastos.index')->with('success', 'Gasto eliminado.');
+    }
+
+    /**
+     * Descarga de forma segura el archivo de soporte de un gasto.
+     */
+    public function descargarSoporte($id)
+    {
+        $gasto = Gasto::where('user_id', Auth::id())->findOrFail($id);
+
+        if (!$gasto->soporte_path || !Storage::disk('local')->exists($gasto->soporte_path)) {
+            abort(404, 'Archivo de soporte no encontrado.');
+        }
+
+        return Storage::disk('local')->download($gasto->soporte_path);
     }
 
     /**

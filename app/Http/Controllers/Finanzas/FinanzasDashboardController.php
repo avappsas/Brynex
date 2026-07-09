@@ -44,6 +44,40 @@ class FinanzasDashboardController extends Controller
         // 5. Consolidado global e histórico
         $consolidado = $this->alertaService->getConsolidadoGlobal($user->id);
 
+        // Si es dispositivo móvil, cargar la vista dedicada para celular
+        if ($this->isMobileDevice($request)) {
+            // Cargar transacciones de este mes para la pestaña Historial
+            $transacciones = \App\Models\Finanzas\Gasto::with('categoria')
+                ->where('user_id', $user->id)
+                ->whereYear('fecha', $anio)
+                ->whereMonth('fecha', $mes)
+                ->orderBy('fecha', 'desc')
+                ->get();
+
+            // Cargar categorías y bienes para los modales bottom-sheet de celular
+            $categorias = \App\Models\Finanzas\CategoriaGasto::where('user_id', $user->id)
+                ->activas()
+                ->orderBy('orden')
+                ->get();
+
+            $patrimonios = \App\Models\Finanzas\Patrimonio::where('user_id', $user->id)
+                ->activos()
+                ->get();
+
+            return view('finanzas.dashboard_movil', compact(
+                'resumen',
+                'prestamosMora',
+                'gastosFaltantes',
+                'criptoPrecio',
+                'consolidado',
+                'anio',
+                'mes',
+                'transacciones',
+                'categorias',
+                'patrimonios'
+            ));
+        }
+
         return view('finanzas.dashboard', compact(
             'resumen',
             'prestamosMora',
@@ -53,5 +87,14 @@ class FinanzasDashboardController extends Controller
             'anio',
             'mes'
         ));
+    }
+
+    /**
+     * Detecta si el dispositivo es un celular analizando el User-Agent.
+     */
+    private function isMobileDevice(Request $request): bool
+    {
+        $userAgent = $request->header('User-Agent');
+        return (bool) preg_match('/(android|bb\d+|meego).+mobile|avantgo|bada\/|blackberry|blazer|compal|elaine|fennec|hiptop|iemobile|ip(hone|od)|iris|kindle|lge |maemo|midp|mmp|mobile.+firefox|netfront|opera m(ob|in)i|palm( os)?|phone|p(ixi|re)\/|plucker|pocket|psp|series(4|6)0|symbian|treo|up\.(browser|link)|vodafone|wap|windows ce|xda|xiino/i', $userAgent);
     }
 }
