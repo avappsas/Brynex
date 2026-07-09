@@ -4,7 +4,7 @@
 @section('modulo', 'Préstamos Otorgados')
 
 @section('contenido')
-<div class="finanzas-container">
+<div class="finanzas-container" x-data="{ buscar: '' }">
 
     {{-- Breadcrumb --}}
     <div class="fin-top-bar">
@@ -18,7 +18,7 @@
         
         <div style="display:flex; gap:0.5rem; align-items:center;">
             <a href="{{ route('finanzas.prestamos.cuenta-corriente') }}" class="btn-fin-link success">💼 Cuenta Corriente (Servicios)</a>
-            <a href="{{ route('finanzas.prestamos.create') }}" class="btn-fin success" style="background:#f59e0b; text-decoration:none; display:inline-block; line-height:22px; text-align:center;">
+            <a href="{{ route('finanzas.prestamos.create') }}" class="btn-fin success">
                 ➕ Nuevo Préstamo
             </a>
         </div>
@@ -42,16 +42,34 @@
         </div>
     </div>
 
+    {{-- Buscador de Préstamos --}}
+    <div style="margin-top: 1.25rem; margin-bottom: 0.5rem; max-width: 480px;">
+        <div style="position: relative; display: flex; align-items: center;">
+            <span style="position: absolute; left: 0.75rem; color: #94a3b8; font-size: 0.9rem;">🔍</span>
+            <input type="text" 
+                   x-model="buscar" 
+                   placeholder="Buscar deudor por nombre, cédula o celular..." 
+                   style="width: 100%; padding: 0.6rem 0.9rem 0.6rem 2.2rem; border-radius: 10px; border: 1px solid #cbd5e1; font-size: 0.85rem; outline: none; box-sizing: border-box;"
+                   @input="buscar = $event.target.value">
+        </div>
+        <div x-show="buscar.length > 0 && buscar.length <= 5" x-cloak style="font-size: 0.7rem; color: #64748b; margin-top: 0.25rem; font-weight: 500;">
+            ⚠️ Escribe más de 5 caracteres para comenzar a filtrar...
+        </div>
+    </div>
+
     {{-- Grid de Préstamos --}}
     <div class="prestamos-grid">
         @forelse($prestamos as $p)
             @php
                 $diasMora = $p->dias_mora;
-                // Definir semáforo de mora
-                $claseMora = 'ok'; // Sin mora
+                // Semáforo de mora:
+                // Verde: < 25 días (Al día / Normal)
+                // Naranja: 25 a 35 días (Próximo a vencer / Mora temprana)
+                // Rojo: > 35 días (Mora grave, pasados 5 días del mes de mora)
+                $claseMora = 'ok';
                 $colorMora = '#22c55e';
-                if ($diasMora > 0) {
-                    if ($diasMora < $p->dias_mora_alerta) {
+                if ($diasMora >= 25) {
+                    if ($diasMora <= 35) {
                         $claseMora = 'warning';
                         $colorMora = '#f59e0b';
                     } else {
@@ -60,7 +78,12 @@
                     }
                 }
             @endphp
-            <div class="prestamo-card" style="border-top: 4px solid {{ $colorMora }}">
+            <div class="prestamo-card" 
+                 x-show="buscar.length <= 5 || 
+                         '{{ strtolower($p->nombre_deudor) }}'.includes(buscar.toLowerCase()) || 
+                         '{{ $p->cedula_deudor }}'.includes(buscar) || 
+                         '{{ $p->telefono_deudor }}'.includes(buscar)"
+                 style="border-top: 4px solid {{ $colorMora }}">
                 <div class="pc-header">
                     <div>
                         <h3>👤 {{ $p->nombre_deudor }}</h3>
@@ -68,10 +91,14 @@
                     </div>
                     @if($p->estado === 'pagado')
                         <span class="badge-ok-bx">Pagado</span>
-                    @elseif($diasMora > 0)
-                        <span class="badge-err-bx" style="background:rgba(239,68,68,0.1); border-color:#fca5a5; color:#b91c1c;">Mora: {{ $diasMora }} días</span>
+                    @elseif($diasMora > 35)
+                        <span class="badge-err-bx" style="background:rgba(239,68,68,0.1); border-color:#fca5a5; color:#b91c1c;">Mora Grave: {{ $diasMora - 30 }} días</span>
+                    @elseif($diasMora >= 30)
+                        <span class="badge-ok-bx" style="background:rgba(245,158,11,0.1); color:#b45309; border-color:#fde68a;">Mora Temprana: {{ $diasMora - 30 }} días</span>
+                    @elseif($diasMora >= 25)
+                        <span class="badge-ok-bx" style="background:rgba(245,158,11,0.1); color:#b45309; border-color:#fde68a;">Próximo a Vencer ({{ 30 - $diasMora }}d)</span>
                     @else
-                        <span class="badge-ok-bx" style="background:rgba(34,197,94,0.1); color:#166534;">Al día</span>
+                        <span class="badge-ok-bx" style="background:rgba(34,197,94,0.1); color:#166534;">Al día ({{ $diasMora }}d)</span>
                     @endif
                 </div>
 
@@ -99,7 +126,7 @@
                     @if($p->estado !== 'pagado')
                         <form action="{{ route('finanzas.prestamos.whatsapp', $p->id) }}" method="POST" style="display:inline;">
                             @csrf
-                            <button type="submit" class="btn-fin-card success" {{ !$p->telefono_deudor ? 'disabled' : '' }}>
+                            <button type="submit" class="btn-fin-card success">
                                 🟢 Cobrar WhatsApp
                             </button>
                         </form>
@@ -119,37 +146,53 @@
 @push('styles')
 <style>
 .finanzas-container { max-width: 1040px; margin: 0 auto; padding: 0.5rem; }
+
+/* Top Bar & Breadcrumb */
+.fin-top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; }
+.breadcrumb-bx { display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; color: #64748b; }
+.breadcrumb-bx a { color: var(--azul-btn); text-decoration: none; font-weight: 500; }
+.select-fin { padding: 0.35rem 0.75rem; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.8rem; background: #fff; cursor: pointer; outline: none; }
+
+/* Header Section */
+.fin-header-section { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 1rem; }
+.header-text h1 { font-size: 1.4rem; font-weight: 800; color: #0f172a; }
+.header-text p { font-size: 0.85rem; color: #64748b; margin-top: 0.2rem; }
+
+.btn-fin { padding: 0.5rem 1.25rem; border: none; border-radius: 9px; font-size: 0.82rem; font-weight: 600; cursor: pointer; transition: all 0.15s; text-decoration: none; display: inline-flex; align-items: center; gap: 0.35rem; }
+.btn-fin.success { background: linear-gradient(135deg, #f59e0b, #d97706); color: #fff; }
+.btn-fin.success:hover { background: linear-gradient(135deg, #d97706, #b45309); transform: translateY(-1px); }
+
 .btn-fin-link { text-decoration: none; padding: 0.4rem 0.85rem; border-radius: 8px; font-size: 0.78rem; font-weight: 600; text-align: center; }
 .btn-fin-link.success { background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.3); color: #166534; }
 
 /* Filtro de Estado */
-.btn-state-filtro { display: inline-block; padding: 0.4rem 0.8rem; text-decoration: none; border-radius: 8px; border: 1px solid #cbd5e1; background: #fff; color: #475569; font-size: 0.78rem; font-weight: 600; transition: all 0.15s; }
+.btn-state-filtro { display: inline-block; padding: 0.45rem 0.9rem; text-decoration: none; border-radius: 8px; border: 1px solid #cbd5e1; background: #fff; color: #475569; font-size: 0.78rem; font-weight: 600; transition: all 0.15s; }
 .btn-state-filtro:hover { border-color: #94a3b8; }
 .btn-state-filtro.activo { background: var(--azul-btn); color: #fff; border-color: var(--azul-btn); }
 
 /* Grid de Tarjetas */
 .prestamos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(310px, 1fr)); gap: 1.25rem; margin-top: 1.5rem; }
-.prestamo-card { background: #fff; border-radius: 12px; border: 1px solid #e2e8f0; padding: 1.25rem; box-shadow: 0 4px 12px rgba(0,0,0,0.04); display: flex; flex-direction: column; justify-content: space-between; height: 100%; transition: transform 0.2s; }
-.prestamo-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.06); }
+.prestamo-card { background: #fff; border-radius: 14px; border: 1px solid #e2e8f0; padding: 1.25rem; box-shadow: 0 4px 14px rgba(0,0,0,0.03); display: flex; flex-direction: column; justify-content: space-between; height: 100%; transition: all 0.2s; position: relative; }
+.prestamo-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.07); }
 
-.pc-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.75rem; }
-.pc-header h3 { font-size: 0.95rem; font-weight: 700; color: #0f172a; }
-.pc-header small { font-size: 0.7rem; color: #64748b; display: block; margin-top: 0.1rem; }
+.pc-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.85rem; }
+.pc-header h3 { font-size: 0.98rem; font-weight: 700; color: #0f172a; }
+.pc-header small { font-size: 0.72rem; color: #64748b; display: block; margin-top: 0.15rem; }
 
-.pc-body { display: flex; flex-direction: column; gap: 0.35rem; margin-bottom: 1rem; }
-.pc-item { display: flex; justify-content: space-between; font-size: 0.78rem; }
+.pc-body { display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 1.15rem; }
+.pc-item { display: flex; justify-content: space-between; font-size: 0.8rem; }
 .pci-label { color: #64748b; }
 .pci-val { color: #334155; font-weight: 600; }
 
-.pc-footer { display: flex; gap: 0.5rem; border-top: 1px solid #f1f5f9; padding-top: 0.75rem; margin-top: auto; }
-.btn-fin-card { flex: 1; padding: 0.4rem; border: none; border-radius: 7px; font-size: 0.75rem; font-weight: 600; text-align: center; text-decoration: none; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.15s; }
-.btn-fin-card.primary { background: rgba(59,130,246,0.1); color: var(--azul-btn); }
-.btn-fin-card.primary:hover { background: rgba(59,130,246,0.18); }
-.btn-fin-card.success { background: rgba(34,197,94,0.1); color: #166534; }
-.btn-fin-card.success:hover { background: rgba(34,197,94,0.18); }
+.pc-footer { display: flex; gap: 0.5rem; border-top: 1px solid #f1f5f9; padding-top: 0.85rem; margin-top: auto; }
+.btn-fin-card { flex: 1; padding: 0.45rem; border: none; border-radius: 8px; font-size: 0.78rem; font-weight: 600; text-align: center; text-decoration: none; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.15s; }
+.btn-fin-card.primary { background: rgba(59,130,246,0.08); color: var(--azul-btn); border: 1px solid rgba(59,130,246,0.15); }
+.btn-fin-card.primary:hover { background: rgba(59,130,246,0.15); }
+.btn-fin-card.success { background: rgba(34,197,94,0.08); color: #166534; border: 1px solid rgba(34,197,94,0.15); }
+.btn-fin-card.success:hover { background: rgba(34,197,94,0.15); }
 .btn-fin-card.success:disabled { opacity: 0.4; cursor: not-allowed; }
 
-.badge-ok-bx { background: rgba(34,197,94,0.12); color: #166534; border: 1px solid rgba(34,197,94,0.3); border-radius: 999px; padding: 0.15rem 0.5rem; font-size: 0.7rem; font-weight: 600; }
-.badge-err-bx { border: 1px solid; border-radius: 999px; padding: 0.15rem 0.5rem; font-size: 0.7rem; font-weight: 600; }
+.badge-ok-bx { background: rgba(34,197,94,0.08); color: #166534; border: 1px solid rgba(34,197,94,0.25); border-radius: 6px; padding: 0.15rem 0.5rem; font-size: 0.68rem; font-weight: 600; }
+.badge-err-bx { border: 1px solid; border-radius: 6px; padding: 0.15rem 0.5rem; font-size: 0.68rem; font-weight: 600; }
 </style>
 @endpush

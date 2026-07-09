@@ -107,8 +107,8 @@
             'color' => '#10b981'
         ])
         @include('finanzas.partials._kpi_card', [
-            'label' => 'Total Egresos (Salidas)',
-            'value' => '$' . number_format($resumen['salidas'], 0, ',', '.'),
+            'label' => 'Gastos Habituales',
+            'value' => '$' . number_format($resumen['gastos_habituales'], 0, ',', '.'),
             'change' => $resumen['gastos_cambio'],
             'icon' => '📤',
             'color' => '#ef4444'

@@ -491,7 +491,15 @@
     activeTab: '{{ request()->input('tab', 'inicio') }}',
     openGasto: false,
     openEntrada: false,
-    openConsolidado: false
+    openConsolidado: false,
+    openEditarGasto: false,
+    selectedGasto: {},
+    abrirEditar(item) {
+        let gastoClon = Object.assign({}, item);
+        gastoClon.fecha = item.raw_fecha;
+        this.selectedGasto = gastoClon;
+        this.openEditarGasto = true;
+    }
 }">
 
     <div class="app-container">
@@ -545,8 +553,8 @@
                         <p style="color: var(--verde-neon);">${{ number_format($resumen['entradas'], 0, ',', '.') }}</p>
                     </div>
                     <div class="balance-subcol">
-                        <h3>📤 Egresos</h3>
-                        <p style="color: var(--rojo-coral);">${{ number_format($resumen['salidas'], 0, ',', '.') }}</p>
+                        <h3>📤 Gastos</h3>
+                        <p style="color: var(--rojo-coral);">${{ number_format($resumen['gastos_habituales'], 0, ',', '.') }}</p>
                     </div>
                 </div>
             </div>
@@ -630,12 +638,15 @@
                 'fecha' => Carbon\Carbon::parse($t->fecha)->format('d/m/Y'),
                 'raw_fecha' => $t->fecha,
                 'categoria' => $t->categoria->nombre ?? 'Sin Categoria',
+                'categoria_id' => $t->categoria_id,
                 'icono' => $t->categoria->icono ?? '📂',
                 'color' => $t->categoria->color ?? '#64748b',
                 'descripcion' => $t->descripcion ?: '',
                 'tipo_movimiento' => $t->tipo_movimiento,
                 'monto' => $t->monto,
-                'soporte_path' => $t->soporte_path
+                'soporte_path' => $t->soporte_path,
+                'es_patrimonio' => $t->es_patrimonio,
+                'patrimonio_id' => $t->patrimonio_id
             ])) }},
             get filtradas() {
                 return this.transacciones.filter(t => {
@@ -669,7 +680,7 @@
             <!-- Lista de Movimientos -->
             <div class="list-container">
                 <template x-for="item in filtradas" :key="item.id">
-                    <div class="list-item-tactile">
+                    <div class="list-item-tactile" @click="abrirEditar(item)" style="cursor: pointer;">
                         <div class="lit-left">
                             <div class="lit-icon" :style="'background: ' + item.color + '22; color: ' + item.color">
                                 <span x-text="item.icono"></span>
@@ -679,7 +690,7 @@
                                 <div class="lit-desc">
                                     <span x-text="item.descripcion || '-'"></span>
                                     <template x-if="item.soporte_path">
-                                        <a :href="'/finanzas/gastos/' + item.id + '/soporte'" target="_blank" class="badge-soporte-link" style="margin-left: 3px;">
+                                        <a :href="'/finanzas/gastos/' + item.id + '/soporte'" @click.stop target="_blank" class="badge-soporte-link" style="margin-left: 3px;">
                                             📎 Soporte
                                         </a>
                                     </template>
@@ -1280,6 +1291,302 @@
                 <div class="bs-foot">
                     <button type="button" @click="openConsolidado = false" class="btn-glass-bx" style="width: 100%;">Cerrar</button>
                 </div>
+            </div>
+        </div>
+
+        <!-- BOTTOM SHEET: EDITAR TRANSACCIÓN -->
+        <div x-show="openEditarGasto" x-cloak class="bottom-sheet-overlay" @click.self="openEditarGasto = false">
+            <div class="bottom-sheet-box" 
+                 x-show="openEditarGasto"
+                 x-transition:enter="transition ease-out duration-300 transform"
+                 x-transition:enter-start="translate-y-full"
+                 x-transition:enter-end="translate-y-0"
+                 x-transition:leave="transition ease-in duration-200 transform"
+                 x-transition:leave-start="translate-y-0"
+                 x-transition:leave-end="translate-y-full"
+                 x-data="{
+                     categoriaOpen: false,
+                     categoriaSearch: '',
+                     categoriaIdSelected: '',
+                     categoriaIconSelected: '',
+                     categorias: {{ json_encode($categorias->map(fn($c) => ['id' => $c->id, 'nombre' => $c->nombre, 'icono' => $c->icono, 'color' => $c->color]) ?? []) }},
+                     soportePreview: null,
+                     soporteName: '',
+                     cargando: false,
+                     tipo: 'gasto',
+                     montoLimpio: '',
+                     montoFormateado: '',
+                     gastoSoporteActual: null,
+                     eliminarSoporteAnterior: false,
+                     formatearMonto() {
+                         let valor = this.montoFormateado.replace(/\D/g, '');
+                         this.montoLimpio = valor;
+                         if (valor) {
+                             this.montoFormateado = new Intl.NumberFormat('es-CO', { maximumFractionDigits: 0 }).format(valor);
+                         } else {
+                             this.montoFormateado = '';
+                         }
+                     },
+                     get filtradas() {
+                         if (!this.categoriaSearch) return this.categorias;
+                         return this.categorias.filter(c => c.nombre.toLowerCase().includes(this.categoriaSearch.toLowerCase()));
+                     },
+                     select(cat) {
+                         this.categoriaIdSelected = cat.id;
+                         this.categoriaIconSelected = cat.icono;
+                         this.categoriaSearch = cat.nombre;
+                         this.categoriaOpen = false;
+                      },
+                      clearCategoria() {
+                          this.categoriaIdSelected = '';
+                          this.categoriaIconSelected = '';
+                          this.categoriaSearch = '';
+                      },
+                      async pegarSoporte() {
+                          try {
+                              const clipboardItems = await navigator.clipboard.read();
+                              for (const item of clipboardItems) {
+                                  for (const type of item.types) {
+                                      if (type.startsWith('image/')) {
+                                          const blob = await item.getType(type);
+                                          const file = new File([blob], 'soporte_movil_' + Date.now() + '.png', { type: type });
+                                          const dt = new DataTransfer();
+                                          dt.items.add(file);
+                                          this.$refs.soporteInputMovilEdit.files = dt.files;
+                                          this.soporteName = file.name;
+                                          this.soportePreview = URL.createObjectURL(blob);
+                                          return;
+                                      }
+                                  }
+                              }
+                              alert('No se encontró ninguna imagen en el portapapeles. Copia una imagen primero.');
+                          } catch (err) {
+                              alert('No se pudo acceder al portapapeles. Sube el archivo seleccionándolo.');
+                          }
+                      },
+                      handleFileChange(e) {
+                          const file = e.target.files[0];
+                          if (file) {
+                              this.soporteName = file.name;
+                              this.soportePreview = URL.createObjectURL(file);
+                          }
+                      },
+                      limpiarSoporte() {
+                          this.$refs.soporteInputMovilEdit.value = '';
+                          this.soporteName = '';
+                          this.soportePreview = null;
+                      },
+                      init() {
+                          this.$watch('selectedGasto', (value) => {
+                              if (value && value.id) {
+                                  this.categoriaIdSelected = value.categoria_id || '';
+                                  this.eliminarSoporteAnterior = false;
+                                  this.soportePreview = null;
+                                  this.soporteName = '';
+                                  
+                                  let found = this.categorias.find(c => c.id == this.categoriaIdSelected);
+                                  if (found) {
+                                      this.categoriaIconSelected = found.icono;
+                                      this.categoriaSearch = found.nombre;
+                                  } else {
+                                      this.categoriaIconSelected = '';
+                                      this.categoriaSearch = value.categoria || '';
+                                  }
+                                  
+                                  this.gastoSoporteActual = value.soporte_path || null;
+                                  this.tipo = value.tipo_movimiento || 'gasto';
+                                  
+                                  this.montoLimpio = value.monto ? Math.round(value.monto).toString() : '';
+                                  this.montoFormateado = this.montoLimpio ? new Intl.NumberFormat('es-CO', { maximumFractionDigits: 0 }).format(this.montoLimpio) : '';
+                              }
+                          });
+                      },
+                      handlePaste(e) {
+                          if (!openEditarGasto) return;
+                          const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+                          for (const item of items) {
+                              if (item.kind === 'file' && item.type.startsWith('image/')) {
+                                  const blob = item.getAsFile();
+                                  const file = new File([blob], 'soporte_movil_' + Date.now() + '.png', { type: item.type });
+                                  const dt = new DataTransfer();
+                                  dt.items.add(file);
+                                  this.$refs.soporteInputMovilEdit.files = dt.files;
+                                  this.soporteName = file.name;
+                                  this.soportePreview = URL.createObjectURL(blob);
+                              }
+                          }
+                      }
+                 }"
+                 @paste.window="handlePaste($event)"
+            >
+                <div class="bs-handle"></div>
+                <div class="bs-header">
+                    <h3 style="display: flex; align-items: center; gap: 0.35rem; color: var(--azul-vivo);">
+                        ✏️ Editar Transacción
+                    </h3>
+                    <button @click="openEditarGasto = false" class="bs-close">&times;</button>
+                </div>
+                
+                <form :action="'/finanzas/gastos/' + selectedGasto.id" method="POST" enctype="multipart/form-data" @submit="cargando = true">
+                    @csrf
+                    @method('PUT')
+                    <div class="bs-body">
+                        
+                        {{-- Fecha y Monto en la misma fila --}}
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                            <div class="form-group-bx">
+                                <label class="form-label-bx">Fecha</label>
+                                <input type="date" name="fecha" x-model="selectedGasto.fecha" class="form-input-bx" style="font-size: 1.15rem; font-weight: 700; color: #f8fafc;" required>
+                            </div>
+                            <div class="form-group-bx">
+                                <label class="form-label-bx">Monto ($ COP)</label>
+                                <input type="text" 
+                                       x-model="montoFormateado" 
+                                       @input="formatearMonto()" 
+                                       placeholder="Ej: 50.000" 
+                                       class="form-input-bx" 
+                                       style="font-size: 1.15rem; font-weight: 700; color: #f8fafc;"
+                                       required>
+                                <input type="hidden" name="monto" :value="montoLimpio">
+                            </div>
+                        </div>
+
+                        {{-- Tipo de Movimiento y Categoría en la misma fila --}}
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; position: relative;">
+                            {{-- Tipo de Movimiento --}}
+                            <div class="form-group-bx">
+                                <label class="form-label-bx">Movimiento</label>
+                                <select name="tipo_movimiento" x-model="tipo" class="form-select-bx" required>
+                                    <option value="gasto">Gasto Habitual</option>
+                                    <option value="ingreso_esporadico">Entrada</option>
+                                    <option value="prestamo">Desembolso Préstamo</option>
+                                    <option value="inversion">Inversión (Cripto/USDT)</option>
+                                </select>
+                            </div>
+
+                            {{-- Categoría (Combobox) --}}
+                            <div class="form-group-bx" style="position: relative;">
+                                <label class="form-label-bx">Categoría</label>
+                                <div class="combobox-container-bx" @click.away="categoriaOpen = false" style="width: 100%;">
+                                    <div class="combobox-input-wrapper-bx" style="position: relative; width: 100%;">
+                                        <span x-show="categoriaIconSelected" class="combobox-icon-bx" x-text="categoriaIconSelected" style="position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); font-size: 0.95rem; z-index: 5;"></span>
+                                        <input type="text" 
+                                               x-model="categoriaSearch" 
+                                               @focus="categoriaOpen = true"
+                                               @input="categoriaOpen = true; categoriaIdSelected = ''; categoriaIconSelected = ''"
+                                               placeholder="Seleccione..."
+                                               class="form-input-bx" 
+                                               style="width: 100% !important; display: block; box-sizing: border-box;"
+                                               :style="categoriaIconSelected ? 'padding-left: 2.25rem; padding-right: 2.25rem;' : 'padding-left: 0.75rem; padding-right: 2.25rem;'"
+                                               autocomplete="off">
+                                        <button type="button" x-show="categoriaSearch" @click="clearCategoria()" class="combobox-clear-btn-bx" style="position: absolute; right: 0.75rem; top: 50%; transform: translateY(-50%); background: none; border: none; font-size: 1.1rem; color: #94a3b8; cursor: pointer; z-index: 5; padding: 0.2rem;">&times;</button>
+                                    </div>
+
+                                    <input type="hidden" name="categoria_id" :value="categoriaIdSelected">
+                                    <input type="hidden" name="nueva_categoria" :value="!categoriaIdSelected && categoriaSearch ? categoriaSearch : ''">
+
+                                    <div x-show="categoriaOpen" x-cloak class="combobox-dropdown-bx">
+                                        <template x-for="cat in filtradas" :key="cat.id">
+                                            <div @click="select(cat)" class="combobox-item-bx">
+                                                <span x-text="cat.icono" style="margin-right: 0.5rem;"></span>
+                                                <span x-text="cat.nombre" style="font-weight: 500;"></span>
+                                            </div>
+                                        </template>
+                                        <div x-show="categoriaSearch && filtradas.length === 0" 
+                                             @click="categoriaOpen = false"
+                                             class="combobox-item-bx" 
+                                             style="color: var(--azul-vivo); font-weight: 600;">
+                                            <span>➕ Crear: "</span><span x-text="categoriaSearch"></span><span>"</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {{-- Descripción --}}
+                        <div class="form-group-bx">
+                            <label class="form-label-bx">Descripción / Observación</label>
+                            <input type="text" name="descripcion" x-model="selectedGasto.descripcion" class="form-input-bx">
+                        </div>
+
+                        {{-- Soporte de Pago --}}
+                        <div class="form-group-bx">
+                            <label class="form-label-bx">Soporte de Pago</label>
+                            
+                            {{-- Soporte Anterior Existente --}}
+                            <div x-show="gastoSoporteActual && !eliminarSoporteAnterior" x-cloak style="display:flex; justify-content:space-between; align-items:center; background:rgba(59,130,246,0.06); padding:0.6rem; border-radius:10px; border:1px solid rgba(59,130,246,0.15); margin-bottom:0.75rem;">
+                                <a :href="'/finanzas/gastos/' + selectedGasto.id + '/soporte'" target="_blank" style="color:var(--azul-vivo); font-size:0.8rem; font-weight:600; text-decoration:none; display:flex; align-items:center; gap:0.35rem;">
+                                    📎 Descargar soporte actual
+                                </a>
+                                <button type="button" @click="eliminarSoporteAnterior = true" style="background:rgba(244,63,94,0.12); color:var(--rojo-coral); border:none; padding:0.25rem 0.5rem; border-radius:6px; font-size:0.65rem; font-weight:700; cursor:pointer;">
+                                    Eliminar
+                                </button>
+                            </div>
+                            <input type="hidden" name="eliminar_soporte" :value="eliminarSoporteAnterior ? 1 : 0">
+
+                            <input type="file" name="soporte" x-ref="soporteInputMovilEdit" accept="image/*" style="display: none;" @change="handleFileChange($event)">
+                            
+                            <div style="display: flex; gap: 0.5rem; margin-top: 0.25rem;">
+                                <button type="button" @click="pegarSoporte()" class="btn-glass-bx" style="display: flex; align-items: center; gap: 0.35rem; padding: 0.45rem 0.85rem; font-size: 0.72rem; background: rgba(255,255,255,0.06); flex: 1; justify-content: center;">
+                                    📋 Pegar Imagen
+                                </button>
+                                <button type="button" @click="$refs.soporteInputMovilEdit.click()" class="btn-glass-bx" style="display: flex; align-items: center; gap: 0.35rem; padding: 0.45rem 0.85rem; font-size: 0.72rem; background: rgba(255,255,255,0.06); flex: 1; justify-content: center;">
+                                    📸 Cámara / Subir
+                                </button>
+                            </div>
+
+                            <div x-show="soportePreview" x-cloak style="margin-top: 0.75rem; position: relative; display: inline-block;">
+                                <img :src="soportePreview" style="max-height: 100px; border-radius: 8px; border: 1px solid var(--borde-tarjeta);">
+                                <button type="button" @click="limpiarSoporte()" class="btn-icon-bx" style="position: absolute; top: -5px; right: -5px; background: var(--rojo-coral); color: white; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border: none; font-size: 0.7rem;">
+                                    &times;
+                                </button>
+                                <div style="font-size: 0.6rem; color: var(--texto-secundario); margin-top: 0.25rem;" x-text="soporteName"></div>
+                            </div>
+                        </div>
+
+                        {{-- Patrimonio --}}
+                        <div x-data="{ esPatrimonio: false }" x-init="$watch('selectedGasto', val => esPatrimonio = val.es_patrimonio ? true : false)">
+                            <div style="display:flex; align-items:center; gap:0.5rem; margin-top:0.5rem;">
+                                <input type="checkbox" name="es_patrimonio" value="1" x-model="esPatrimonio" id="es_patrimonio_check_movil_edit" style="cursor:pointer; width:16px; height:16px;">
+                                <label for="es_patrimonio_check_movil_edit" style="font-size:0.78rem; color:var(--texto-secundario); cursor:pointer; font-weight:500;">
+                                    ¿Asociar a un bien de Patrimonio?
+                                </label>
+                            </div>
+
+                            <div x-show="esPatrimonio" x-cloak style="margin-top:0.75rem; padding-left:1rem; border-left:2px solid #a855f7;">
+                                <label class="form-label-bx" style="color:#a855f7;">Seleccionar Bien</label>
+                                <select name="patrimonio_id" class="form-select-bx" x-model="selectedGasto.patrimonio_id">
+                                    <option value="">-- Seleccionar Bien --</option>
+                                    @foreach($patrimonios ?? [] as $pat)
+                                        <option value="{{ $pat->id }}">{{ $pat->nombre }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                        </div>
+
+                    </div>
+                    
+                    <div class="bs-foot" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                        <div>
+                            <button type="button" @click="if(confirm('¿Seguro que deseas eliminar esta transacción?')) { $refs.formEliminarGastoMovil.submit(); }" class="btn-accion-premium" style="background: rgba(244,63,94,0.12); color: var(--rojo-coral); border: 1px solid rgba(244,63,94,0.25); display: flex; align-items: center; gap: 0.3rem; padding: 0.6rem 1rem;">
+                                🗑&nbsp;Borrar
+                            </button>
+                        </div>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button type="button" @click="openEditarGasto = false" class="btn-glass-bx">Cancelar</button>
+                            <button type="submit" :disabled="cargando" class="btn-accion-premium" style="background: linear-gradient(135deg, #3b82f6, #1d4ed8); display: flex; align-items: center; gap: 0.35rem;">
+                                <span x-show="!cargando">💾 Guardar</span>
+                                <span x-show="cargando" x-cloak><i class="fas fa-spinner fa-spin"></i> Guardando...</span>
+                            </button>
+                        </div>
+                    </div>
+                </form>
+                
+                {{-- Formulario oculto de borrado --}}
+                <form :action="'/finanzas/gastos/' + selectedGasto.id" method="POST" x-ref="formEliminarGastoMovil" style="display:none;">
+                    @csrf
+                    @method('DELETE')
+                </form>
             </div>
         </div>
 

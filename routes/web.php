@@ -629,6 +629,8 @@ Route::middleware('auth')->group(function () {
         Route::post('/prestamos/{prestamo}/whatsapp',     [$pre, 'enviarWhatsapp'])->name('prestamos.whatsapp');
         Route::post('/prestamos/{prestamo}/toggle-alertas',[$pre, 'toggleAlertas'])->name('prestamos.toggle-alertas');
         Route::get('/cuenta-corriente',          [$pre, 'cuentaCorriente'])->name('prestamos.cuenta-corriente');
+        Route::post('/prestamos-movimiento/{movimiento}', [$pre, 'updateMovimiento'])->name('prestamos.movimiento.update');
+        Route::delete('/prestamos-movimiento/{movimiento}', [$pre, 'destroyMovimiento'])->name('prestamos.movimiento.destroy');
 
         // Inversiones
         Route::get('/inversiones',               [$inv, 'index'])->name('inversiones.index');

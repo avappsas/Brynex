@@ -106,8 +106,8 @@ class FinanzasAlertaService
         // Salidas totales = Gastos habituales + Préstamos nuevos + Inversiones nuevas
         $salidasTotalesActual = $gastosActual + $prestadoActual + $invertidoActual;
 
-        // Balance neto del mes
-        $balanceActual = $entradasActual - $salidasTotalesActual;
+        // Balance neto del mes = Entradas del mes - Gastos habituales (se excluyen préstamos e inversiones del balance operativo del mes)
+        $balanceActual = $entradasActual - $gastosActual;
 
         // 5. Total Cartera (Préstamos activos saldo actual)
         $totalCartera = (float) Prestamo::activos()->where('user_id', $userId)->sum('saldo_actual');

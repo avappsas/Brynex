@@ -63,7 +63,7 @@ class GastoController extends Controller
         $categorias = CategoriaGasto::whereIn('id', $categoriasUsadasIds)->orderBy('orden')->get();
 
         // Egresos son gasto, prestamo e inversion
-        $totalGastos = $gastos->where('tipo_movimiento', '!=', 'ingreso_esporadico')->sum('monto');
+        $totalGastos = $gastos->where('tipo_movimiento', 'gasto')->sum('monto');
         $totalIngresos = $gastos->where('tipo_movimiento', 'ingreso_esporadico')->sum('monto');
 
         return view('finanzas.gastos.index', compact(
@@ -215,7 +215,7 @@ class GastoController extends Controller
         ]);
 
         if ($this->isMobileDevice($request)) {
-            return redirect()->route('finanzas.dashboard')->with('success', 'Transacción actualizada.');
+            return redirect()->route('finanzas.dashboard', ['tab' => 'historial'])->with('success', 'Transacción actualizada.');
         }
         return redirect()->route('finanzas.gastos.index')->with('success', 'Transacción actualizada.');
     }
@@ -231,7 +231,7 @@ class GastoController extends Controller
         $gasto->delete();
 
         if ($this->isMobileDevice(request())) {
-            return redirect()->route('finanzas.dashboard')->with('success', 'Gasto eliminado.');
+            return redirect()->route('finanzas.dashboard', ['tab' => 'historial'])->with('success', 'Gasto eliminado.');
         }
         return redirect()->route('finanzas.gastos.index')->with('success', 'Gasto eliminado.');
     }

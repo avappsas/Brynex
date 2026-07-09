@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Finanzas;
 
 use App\Http\Controllers\Controller;
 use App\Models\Finanzas\Prestamo;
+use App\Models\Finanzas\PrestamoMovimiento;
 use App\Models\Finanzas\Gasto;
 use App\Models\Finanzas\CategoriaGasto;
 use App\Services\Finanzas\PrestamoLiquidacionService;
@@ -31,6 +32,10 @@ class PrestamoController extends Controller
      */
     public function index(Request $request)
     {
+        if ($this->isMobileDevice($request)) {
+            return redirect()->route('finanzas.dashboard', ['tab' => 'deudas']);
+        }
+
         $estado = $request->input('estado', 'activo');
 
         $query = Prestamo::where('user_id', Auth::id())
@@ -137,11 +142,15 @@ class PrestamoController extends Controller
      */
     public function show($id)
     {
-        $prestamo = Prestamo::where('user_id', Auth::id())
-            ->with(['movimientos' => function ($q) {
-                $q->orderBy('fecha', 'desc')->orderBy('id', 'desc');
-            }])
-            ->findOrFail($id);
+        $prestamo = Prestamo::where('user_id', Auth::id())->findOrFail($id);
+
+        // Forzar recálculo para sincronizar saldos e inconsistencias de fechas de corte
+        $this->recalcularSaldos($prestamo);
+
+        // Cargar las relaciones ordenadas para visualización
+        $prestamo->load(['movimientos' => function ($q) {
+            $q->orderBy('fecha', 'desc')->orderBy('id', 'desc');
+        }]);
 
         return view('finanzas.prestamos.show', compact('prestamo'));
     }
@@ -271,5 +280,110 @@ class PrestamoController extends Controller
         $saldoTotalPendiente = $prestamos->whereIn('estado', ['activo', 'mora'])->sum('saldo_actual');
 
         return view('finanzas.prestamos.cuenta-corriente', compact('grupos', 'saldoTotalPendiente'));
+    }
+
+    /**
+     * Actualiza un movimiento específico de un préstamo y recalcula los saldos.
+     */
+    public function updateMovimiento(Request $request, $id)
+    {
+        $movimiento = PrestamoMovimiento::findOrFail($id);
+        $prestamo = Prestamo::where('user_id', Auth::id())->findOrFail($movimiento->prestamo_id);
+
+        $request->validate([
+            'fecha' => 'required|date',
+            'monto' => 'required|numeric|min:0',
+            'observacion' => 'nullable|string|max:255',
+            'soporte' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:10240'
+        ]);
+
+        $movimiento->fecha = $request->input('fecha');
+        $movimiento->monto = (float) $request->input('monto');
+        $movimiento->observacion = $request->input('observacion');
+
+        // Manejar archivo de soporte
+        if ($request->hasFile('soporte')) {
+            // Eliminar soporte previo si existe
+            if ($movimiento->soporte_path) {
+                \Illuminate\Support\Facades\Storage::disk('local')->delete($movimiento->soporte_path);
+            }
+            $path = $request->file('soporte')->store('finanzas/prestamos/soportes', 'local');
+            $movimiento->soporte_path = $path;
+        }
+
+        if ($request->boolean('eliminar_soporte') && $movimiento->soporte_path) {
+            \Illuminate\Support\Facades\Storage::disk('local')->delete($movimiento->soporte_path);
+            $movimiento->soporte_path = null;
+        }
+
+        $movimiento->save();
+
+        // Recalcular toda la cadena de saldos de este préstamo
+        $this->recalcularSaldos($prestamo);
+
+        return redirect()->route('finanzas.prestamos.show', $prestamo->id)
+            ->with('success', 'Movimiento actualizado correctamente y saldos recalculados.');
+    }
+
+    /**
+     * Elimina un movimiento específico de un préstamo y recalcula los saldos.
+     */
+    public function destroyMovimiento($id)
+    {
+        $movimiento = PrestamoMovimiento::findOrFail($id);
+        $prestamo = Prestamo::where('user_id', Auth::id())->findOrFail($movimiento->prestamo_id);
+
+        // Eliminar soporte físico si existe
+        if ($movimiento->soporte_path) {
+            \Illuminate\Support\Facades\Storage::disk('local')->delete($movimiento->soporte_path);
+        }
+
+        $movimiento->delete();
+
+        // Recalcular saldos tras la eliminación
+        $this->recalcularSaldos($prestamo);
+
+        return redirect()->route('finanzas.prestamos.show', $prestamo->id)
+            ->with('success', 'Movimiento eliminado correctamente y saldos recalculados.');
+    }
+
+    /**
+     * Recalcula cronológicamente los saldos de los movimientos del préstamo.
+     */
+    private function recalcularSaldos(Prestamo $prestamo)
+    {
+        $movimientos = $prestamo->movimientos()->orderBy('fecha', 'asc')->orderBy('id', 'asc')->get();
+        $saldo = 0.00;
+        $ultimoCorteFecha = null;
+
+        foreach ($movimientos as $mov) {
+            $mov->saldo_antes = $saldo;
+            
+            if (in_array($mov->tipo, ['desembolso', 'interes_mensual', 'capitalizacion'])) {
+                $mov->saldo_despues = $saldo + $mov->monto;
+            } else {
+                // abono_capital, abono_interes, pago_total
+                $mov->saldo_despues = $saldo - $mov->monto;
+            }
+            
+            $mov->save();
+            $saldo = $mov->saldo_despues;
+
+            if ($mov->tipo === 'interes_mensual') {
+                $ultimoCorteFecha = $mov->fecha;
+            }
+        }
+
+        $prestamo->update([
+            'saldo_actual' => $saldo,
+            'ultimo_corte' => $ultimoCorteFecha,
+            'estado' => $saldo <= 0 ? 'pagado' : ($prestamo->dias_mora > 35 ? 'mora' : 'activo')
+        ]);
+    }
+
+    private function isMobileDevice(Request $request): bool
+    {
+        $userAgent = $request->header('User-Agent', '');
+        return (bool) preg_match('/(android|bb\d+|meego).+mobile|avantgo|bada\/|blackberry|blazer|compal|elaine|fennec|hiptop|iemobile|ip(hone|od)|iris|kindle|lge |maemo|midp|mmp|mobile.+firefox|netfront|opera m(ob|in)i|palm( os)?|phone|p(ixi|re)\/|plucker|pocket|psp|series(4|6)0|symbian|treo|up\.(browser|link)|vodafone|wap|windows ce|xda|xiino/i', $userAgent);
     }
 }

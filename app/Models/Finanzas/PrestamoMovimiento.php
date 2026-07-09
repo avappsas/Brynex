@@ -30,6 +30,7 @@ class PrestamoMovimiento extends BaseFinanzasModel
         'saldo_despues',
         'dias_periodo',
         'observacion',
+        'soporte_path',
     ];
 
     protected $casts = [
