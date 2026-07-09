@@ -505,6 +505,41 @@ class PlanoPagoController extends Controller
         ]);
     }
 
+    // ── 3c. Mover múltiples registros de plano a otro n_plano ─────────
+    public function moverPlanoMasivo(Request $request)
+    {
+        $aliadoId = session('aliado_id_activo');
+
+        if (!$aliadoId) {
+            return response()->json(['ok' => false, 'mensaje' => 'Sesión expirada.'], 401);
+        }
+
+        $ids = $request->input('ids');
+        if (!is_array($ids) || empty($ids)) {
+            return response()->json(['ok' => false, 'mensaje' => 'Debe seleccionar al menos un registro.'], 422);
+        }
+
+        $nPlano = (int) $request->input('n_plano');
+        if ($nPlano < 1) {
+            return response()->json(['ok' => false, 'mensaje' => 'N_PLANO debe ser ≥ 1.'], 422);
+        }
+
+        $updated = DB::table('planos')
+            ->whereIn('id', $ids)
+            ->where('aliado_id', $aliadoId)
+            ->whereNull('deleted_at')
+            ->update(['n_plano' => $nPlano]);
+
+        if (!$updated) {
+            return response()->json(['ok' => false, 'mensaje' => 'No se encontraron registros elegibles para mover.'], 404);
+        }
+
+        return response()->json([
+            'ok'      => true,
+            'mensaje' => "{$updated} registros movidos correctamente al plano P{$nPlano}.",
+        ]);
+    }
+
     // ── 4. Descargar XLSX planilla SS (formato ayuda NI) ──────────────
     public function descargar(Request $request)
     {

@@ -166,11 +166,11 @@
     background:#fff; border-radius:12px;
     border:1px solid #e2e8f0;
     box-shadow:0 2px 8px rgba(0,0,0,.06);
-    overflow:hidden;
-    overflow-x:auto;
+    overflow:auto;
+    max-height: calc(100vh - 240px); /* Altura optimizada para extenderse hasta el tope de la pantalla */
 }
 .tabla-planos {
-    width:100%; border-collapse:collapse; font-size:.76rem;
+    width:100%; border-collapse:separate; border-spacing:0; font-size:.76rem;
 }
 .tabla-planos thead tr {
     background:linear-gradient(135deg,var(--azul-oscuro),var(--azul-medio));
@@ -181,15 +181,20 @@
     font-weight:600; font-size:.68rem;
     text-transform:uppercase; letter-spacing:.04em;
     white-space:nowrap; border-right:1px solid rgba(255,255,255,.07);
+    position: sticky !important;
+    top: 0;
+    z-index: 10;
+    background: linear-gradient(135deg,var(--azul-oscuro),var(--azul-medio)) !important;
 }
 .tabla-planos tbody tr { border-bottom:1px solid #f1f5f9; }
-.tabla-planos tbody tr:hover { background:#f8fafc; }
+.tabla-planos tbody tr:hover td { background:#f8fafc !important; }
 .tabla-planos tbody tr.ya-pago td { background:#f0fdf4; }
 .tabla-planos tbody tr.ya-pago:hover td { background:#dcfce7; }
 .tabla-planos tbody td {
     padding:.4rem .45rem; color:#334155;
     white-space:nowrap; overflow:hidden;
     max-width:140px; text-overflow:ellipsis;
+    border-bottom:1px solid #f1f5f9; /* Línea divisoria en celdas para border-collapse:separate */
 }
 .tabla-planos tbody td.td-nombre { max-width:130px; }
 .tabla-planos tbody td.td-empresa { max-width:90px; }
@@ -201,6 +206,11 @@
 .tabla-planos tfoot td {
     padding:.5rem .45rem; font-weight:700;
     font-size:.78rem; white-space:nowrap;
+    position: sticky;
+    bottom: 0;
+    z-index: 10;
+    background: linear-gradient(135deg,#0a1628,#0d2550) !important;
+    box-shadow: 0 -2px 5px rgba(0,0,0,0.15);
 }
 .chip-tipo {
     display:inline-block; padding:.1rem .4rem;
@@ -516,7 +526,6 @@
 .tabla-planos thead th.sortable {
     cursor: pointer;
     user-select: none;
-    position: relative;
     padding-right: 1.25rem !important;
 }
 .tabla-planos thead th.sortable:hover {
@@ -550,6 +559,39 @@
         📄 Planos de Seguridad Social – Pago al Operador
     </div>
     <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap">
+        {{-- Filtros de Año y Mes arriba al lado del Resumen --}}
+        <div class="filtro-inline" style="background:#fff;border:1px solid #cbd5e1;border-radius:8px;padding:.2rem .45rem;display:flex;align-items:center;gap:.3rem;box-shadow:0 1px 3px rgba(0,0,0,.05)">
+            <span style="font-size:.65rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.04em">Año</span>
+            <select name="anio" form="frm-filtros" onchange="autoSubmit()" style="border:none;background:transparent;font-size:.78rem;font-weight:700;color:#1e293b;outline:none;cursor:pointer;padding:0 .1rem">
+                @for($y = now()->year; $y >= now()->year - 3; $y--)
+                <option value="{{ $y }}" {{ $anio == $y ? 'selected' : '' }}>{{ $y }}</option>
+                @endfor
+            </select>
+        </div>
+
+        <div class="filtro-inline" style="background:#fff;border:1px solid #cbd5e1;border-radius:8px;padding:.2rem .45rem;display:flex;align-items:center;gap:.3rem;box-shadow:0 1px 3px rgba(0,0,0,.05)">
+            <span style="font-size:.65rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.04em">Mes</span>
+            <select name="mes" form="frm-filtros" onchange="autoSubmit()" style="border:none;background:transparent;font-size:.78rem;font-weight:700;color:#1e293b;outline:none;cursor:pointer;padding:0 .1rem">
+                @php
+                $meses = ['','Ene','Feb','Mar','Abr','May','Jun',
+                          'Jul','Ago','Sep','Oct','Nov','Dic'];
+                @endphp
+                @for($m = 1; $m <= 12; $m++)
+                <option value="{{ $m }}" {{ $mes == $m ? 'selected' : '' }}>{{ $meses[$m] }}</option>
+                @endfor
+            </select>
+        </div>
+
+        {{-- Opción de Selección Masiva (al lado derecho de mes) --}}
+        <label style="display:inline-flex;align-items:center;gap:.35rem;padding:.3rem .8rem;
+                      border-radius:8px;border:1px solid #cbd5e1;background:#f8fafc;
+                      color:#475569;font-size:.78rem;font-weight:700;cursor:pointer;
+                      transition:all .15s;user-select:none"
+               onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='#f8fafc'">
+            <input type="checkbox" id="chk-seleccion-masiva" onchange="toggleSeleccionMasiva(this.checked)" style="width:.9rem;height:.9rem;cursor:pointer">
+            📦 Selección Masiva
+        </label>
+
         @if($rsSeleccionada)
         <span class="badge-plano">
             N_PLANO actual:
@@ -572,34 +614,6 @@
 <div class="filtros-panel">
     <form method="GET" action="{{ route('admin.planos.index') }}" id="frm-filtros">
         <div class="filtros-grid" style="display:flex;align-items:center;gap:.5rem">
-
-            {{-- Año --}}
-            <div class="filtro-inline">
-                <span class="fi-label">Año</span>
-                <select name="anio" onchange="autoSubmit()">
-                    @for($y = now()->year; $y >= now()->year - 3; $y--)
-                    <option value="{{ $y }}" {{ $anio == $y ? 'selected' : '' }}>{{ $y }}</option>
-                    @endfor
-                </select>
-            </div>
-
-            <div class="filtro-sep"></div>
-
-            {{-- Mes --}}
-            <div class="filtro-inline">
-                <span class="fi-label">Mes</span>
-                <select name="mes" onchange="autoSubmit()">
-                    @php
-                    $meses = ['','Ene','Feb','Mar','Abr','May','Jun',
-                              'Jul','Ago','Sep','Oct','Nov','Dic'];
-                    @endphp
-                    @for($m = 1; $m <= 12; $m++)
-                    <option value="{{ $m }}" {{ $mes == $m ? 'selected' : '' }}>{{ $meses[$m] }}</option>
-                    @endfor
-                </select>
-            </div>
-
-            <div class="filtro-sep"></div>
 
             {{-- Razon Social — Custom Dropdown --}}
             <div class="filtro-inline">
@@ -761,7 +775,7 @@
 <table class="tabla-planos">
     <thead>
         <tr>
-            <th class="sortable">#</th>
+            <th class="sortable" id="th-numero-plano">#</th>
             <th class="sortable">Tipo</th>
             <th class="sortable">No. ID</th>
             <th class="sortable">Nombre</th>
@@ -794,7 +808,7 @@
             $clienteNombre = trim(($p->primer_nombre ?? '').' '.($p->primer_ape ?? ''));
         @endphp
         <tr id="fila-plano-{{ $p->id }}" class="{{ $p->numero_planilla ? 'ya-pago' : '' }}">
-            <td style="color:#1d4ed8;cursor:pointer;font-weight:600" data-order="{{ $i }}" onclick="abrirModalMover({{ $p->id }}, {{ $p->n_plano }})" title="Editar número de plano de este registro (Plano actual: P{{ $p->n_plano }})">{{ $i++ }}</td>
+            <td class="td-numero-plano" style="color:#1d4ed8;cursor:pointer;font-weight:600" data-order="{{ $i }}" data-numero="{{ $i }}" data-id="{{ $p->id }}" data-nplano="{{ $p->n_plano }}" onclick="manejarClicCeldaNumero(this, event)" title="Editar número de plano de este registro (Plano actual: P{{ $p->n_plano }})">{{ $i++ }}</td>
             <td data-order="{{ $p->tipo_modal_nombre ?? $p->tipo_p }}">
                 @if($p->contrato_id ?? null)
                 <a href="{{ url('/admin/contratos/'.$p->contrato_id.'/edit') }}" style="text-decoration:none" title="Ver contrato">
@@ -2576,6 +2590,22 @@ function resaltarError(fieldId, msg) {
     </div>
 </div>
 
+{{-- Barra de acción masiva flotante --}}
+<div id="bar-accion-masiva" style="display:none;position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:#0a1628;color:#fff;border-radius:12px;padding:.6rem 1.2rem;box-shadow:0 10px 30px rgba(0,0,0,.35);align-items:center;gap:1rem;z-index:9999;border:1px solid rgba(255,255,255,.1)">
+    <span style="font-size:.8rem;font-weight:700" id="txt-seleccionados-cant">0 seleccionados</span>
+    <div style="width:1px;height:20px;background:rgba(255,255,255,.2)"></div>
+    <span style="font-size:.72rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em">Mover al plano:</span>
+    <select id="masivo-plano-nuevo" style="background:#1e293b;color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:6px;padding:.2rem .4rem;font-size:.78rem;font-weight:700;outline:none;cursor:pointer">
+        @for($np = 1; $np <= 40; $np++)
+        <option value="{{ $np }}">P{{ $np }}</option>
+        @endfor
+    </select>
+    <button type="button" onclick="guardarMoverMasivo()" style="background:#10b981;color:#fff;border:none;border-radius:6px;padding:.35rem .9rem;font-size:.78rem;font-weight:700;cursor:pointer;transition:all .15s;display:inline-flex;align-items:center;gap:.3rem" onmouseover="this.style.background='#059669'" onmouseout="this.style.background='#10b981'">
+        🔄 Mover
+    </button>
+    <button type="button" onclick="cancelarSeleccionMasiva()" style="background:transparent;color:#94a3b8;border:none;cursor:pointer;font-size:.85rem;padding:.2rem" title="Cancelar selección">✕</button>
+</div>
+
 @push('scripts')
 <script>
 // ── Modal Resumen Planos ──────────────────────────────────────────────
@@ -2709,6 +2739,132 @@ function renderResumen(data, dia) {
     document.getElementById('res-foot').style.display  = 'flex';
 }
 
+// ── Selección y Movimiento Masivo de Planos ───────────────────────────
+function toggleSeleccionMasiva(activo) {
+    const th = document.getElementById('th-numero-plano');
+    const celdas = document.querySelectorAll('.td-numero-plano');
+    const bar = document.getElementById('bar-accion-masiva');
+
+    if (activo) {
+        // Cabecera: cambiar '#' por un checkbox de seleccionar todos
+        th.innerHTML = '<input type="checkbox" id="chk-seleccionar-todos" onchange="seleccionarTodosPlanos(this.checked)" style="width:.95rem;height:.95rem;cursor:pointer;margin:0 auto;display:block">';
+        
+        // Celdas: cambiar el número secuencial por un checkbox
+        celdas.forEach(td => {
+            const id = td.getAttribute('data-id');
+            const num = td.getAttribute('data-numero');
+            td.innerHTML = `<input type="checkbox" class="chk-registro-plano" value="${id}" onchange="actualizarBotonMoverMasivo(event)" style="width:.95rem;height:.95rem;cursor:pointer;margin:0 auto;display:block">`;
+            td.style.textAlign = 'center';
+            td.title = 'Seleccionar para mover plano';
+        });
+
+        // Mostrar la barra si hay seleccionados
+        actualizarBotonMoverMasivo();
+    } else {
+        // Restaurar cabecera
+        th.innerHTML = '#';
+
+        // Restaurar celdas con su número original
+        celdas.forEach(td => {
+            const num = td.getAttribute('data-numero');
+            td.innerHTML = num;
+            td.style.textAlign = 'left';
+            td.title = `Editar número de plano de este registro (Plano actual: P${td.getAttribute('data-nplano')})`;
+        });
+
+        // Ocular barra flotante y desmarcar todos
+        bar.style.display = 'none';
+        const chkTodos = document.getElementById('chk-seleccionar-todos');
+        if (chkTodos) chkTodos.checked = false;
+    }
+}
+
+function seleccionarTodosPlanos(checked) {
+    const checkboxes = document.querySelectorAll('.chk-registro-plano');
+    checkboxes.forEach(chk => {
+        chk.checked = checked;
+    });
+    actualizarBotonMoverMasivo();
+}
+
+function actualizarBotonMoverMasivo(event) {
+    if (event) {
+        event.stopPropagation();
+    }
+    const checkboxes = document.querySelectorAll('.chk-registro-plano');
+    const seleccionados = Array.from(checkboxes).filter(chk => chk.checked);
+    const bar = document.getElementById('bar-accion-masiva');
+    const txtCant = document.getElementById('txt-seleccionados-cant');
+
+    if (seleccionados.length > 0) {
+        txtCant.textContent = `${seleccionados.length} ${seleccionados.length === 1 ? 'seleccionado' : 'seleccionados'}`;
+        bar.style.display = 'flex';
+    } else {
+        bar.style.display = 'none';
+        const chkTodos = document.getElementById('chk-seleccionar-todos');
+        if (chkTodos) chkTodos.checked = false;
+    }
+}
+
+function cancelarSeleccionMasiva() {
+    document.getElementById('chk-seleccion-masiva').checked = false;
+    toggleSeleccionMasiva(false);
+}
+
+function manejarClicCeldaNumero(td, event) {
+    const isMasiva = document.getElementById('chk-seleccion-masiva').checked;
+    const id = td.getAttribute('data-id');
+    const nplano = td.getAttribute('data-nplano');
+    
+    if (!isMasiva) {
+        abrirModalMover(id, parseInt(nplano));
+    } else {
+        // Si el clic no fue directamente en el checkbox, lo alternamos
+        const chk = td.querySelector('.chk-registro-plano');
+        if (chk && event.target !== chk) {
+            chk.checked = !chk.checked;
+            actualizarBotonMoverMasivo();
+        }
+    }
+}
+
+async function guardarMoverMasivo() {
+    const checkboxes = document.querySelectorAll('.chk-registro-plano');
+    const ids = Array.from(checkboxes).filter(chk => chk.checked).map(chk => parseInt(chk.value));
+    const nPlano = parseInt(document.getElementById('masivo-plano-nuevo').value);
+
+    if (ids.length === 0) {
+        mostrarToast('Debe seleccionar al menos un registro.', 'error');
+        return;
+    }
+    if (!nPlano || nPlano < 1) {
+        mostrarToast('N_PLANO inválido.', 'error');
+        return;
+    }
+
+    try {
+        const resp = await fetch(`/admin/planos/mover-masivo`, {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': CTX.csrfToken,
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({ ids: ids, n_plano: nPlano })
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            mostrarToast(data.mensaje, 'success');
+            cancelarSeleccionMasiva();
+            setTimeout(() => location.reload(), 700);
+        } else {
+            mostrarToast(data.mensaje || 'Error al mover los registros.', 'error');
+        }
+    } catch (e) {
+        mostrarToast('Error de conexión.', 'error');
+    }
+}
+
 // ── Ordenamiento interactivo de tabla de planos ──────────────────────
 document.addEventListener('DOMContentLoaded', function () {
     const table = document.querySelector('.tabla-planos');
@@ -2763,12 +2919,19 @@ document.addEventListener('DOMContentLoaded', function () {
             // Reinsertar las filas ordenadas en el tbody
             rows.forEach(row => tbody.appendChild(row));
 
-            // Re-numerar la primera columna secuencial (#)
+            // Re-numerar la primera columna secuencial (#) si no está activo el modo de selección masiva
             let i = 1;
             tbody.querySelectorAll('tr').forEach(row => {
                 const firstCell = row.querySelector('td');
                 if (firstCell) {
-                    firstCell.textContent = i++;
+                    // Actualizar el atributo data-numero
+                    firstCell.setAttribute('data-numero', i);
+                    // Solo sobreescribir con texto si no estamos en selección masiva
+                    const isMasiva = document.getElementById('chk-seleccion-masiva').checked;
+                    if (!isMasiva) {
+                        firstCell.textContent = i;
+                    }
+                    i++;
                 }
             });
         });

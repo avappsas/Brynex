@@ -21,6 +21,17 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.8rem}
 .finp{width:100%;padding:.36rem .48rem;border:1px solid #cbd5e1;border-radius:6px;font-size:.82rem;box-sizing:border-box}
 .finp:focus{outline:none;border-color:#3b82f6}
 .form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.6rem;padding:1rem}
+
+/* th-select para filtros de cabecera como en cobros */
+.th-select {
+    width:100%; background:transparent; border:none; border-bottom:1px solid rgba(255,255,255,.15);
+    color:#fff; font-size:.65rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em;
+    padding:.2rem .2rem; cursor:pointer; outline:none; appearance:auto; -webkit-appearance:auto;
+}
+.th-select:hover { border-bottom-color:rgba(255,255,255,.5); }
+.th-select:focus { border-bottom-color:#3b82f6; }
+.th-select option { background:#0f172a; color:#fff; font-weight:600; text-transform:none; }
+.th-select.activo { border-bottom-color:#3b82f6; color:#93c5fd; }
 </style>
 
 <div class="cc-header">
@@ -47,7 +58,12 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.8rem}
 {{-- Tabla de cuentas --}}
 <div class="card">
     <div class="card-head">
-        <span>📋 Cuentas registradas</span>
+        <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;flex:1">
+            <span>📋 Cuentas registradas</span>
+            <input type="text" id="filtro-titular" placeholder="🔍 Buscar por titular..." 
+                   style="padding:.25rem .6rem;font-size:.78rem;border:1px solid #cbd5e1;border-radius:6px;width:100%;max-width:240px;outline:none;font-weight:normal"
+                   oninput="filtrarCuentas()">
+        </div>
         <button onclick="document.getElementById('formNueva').style.display=document.getElementById('formNueva').style.display==='none'?'block':'none'"
                 style="background:#2563eb;color:#fff;border:none;border-radius:7px;padding:.3rem .8rem;font-size:.78rem;cursor:pointer;font-weight:700">
             ➕ Nueva cuenta
@@ -108,18 +124,49 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.8rem}
     <table class="tbl">
         <thead>
             <tr>
-                <th>Banco</th>
+                <th>
+                    <select id="filtro-banco" onchange="filtrarCuentas()" class="th-select">
+                        <option value="">↓ Banco</option>
+                        @foreach($cuentas->pluck('banco')->unique()->sort() as $banco)
+                            <option value="{{ $banco }}">{{ $banco }}</option>
+                        @endforeach
+                    </select>
+                </th>
                 <th>Titular</th>
-                <th>Tipo</th>
+                <th>
+                    <select id="filtro-tipo" onchange="filtrarCuentas()" class="th-select">
+                        <option value="">↓ Tipo</option>
+                        <option value="Ahorros">Ahorros</option>
+                        <option value="Corriente">Corriente</option>
+                        <option value="Ninguno">Ninguno</option>
+                    </select>
+                </th>
                 <th>Número</th>
-                <th style="text-align:center">Para Cobro</th>
-                <th style="text-align:center">Activa</th>
+                <th style="text-align:center">
+                    <select id="filtro-cobro" onchange="filtrarCuentas()" class="th-select">
+                        <option value="">↓ Para Cobro</option>
+                        <option value="1">Cobro ✓</option>
+                        <option value="0">Sin cobro</option>
+                    </select>
+                </th>
+                <th style="text-align:center">
+                    <select id="filtro-activo" onchange="filtrarCuentas()" class="th-select">
+                        <option value="">↓ Estado</option>
+                        <option value="1">Activa</option>
+                        <option value="0">Inactiva</option>
+                    </select>
+                </th>
                 <th style="text-align:center">Acciones</th>
             </tr>
         </thead>
         <tbody>
         @forelse($cuentas as $c)
-        <tr id="row-{{ $c->id }}">
+        <tr id="row-{{ $c->id }}"
+            data-banco="{{ strtolower($c->banco) }}"
+            data-titular="{{ strtolower($c->nombre ?? '') }}"
+            data-tipo="{{ $c->tipo_cuenta ?? '' }}"
+            data-cobro="{{ $c->cobro ? '1' : '0' }}"
+            data-activo="{{ $c->activo ? '1' : '0' }}">
             <td style="font-weight:700;color:#0f172a">{{ $c->banco }}</td>
             <td style="font-size:.75rem;color:#475569">{{ $c->nombre ?? '—' }}<br>
                 @if($c->nit)<span style="color:#94a3b8;font-size:.7rem">{{ $c->nit }}</span>@endif
@@ -243,6 +290,13 @@ async function toggleCobro(id, btn, data) {
         btn.classList.toggle('off', esCobro);
         btn.textContent = !esCobro ? '💳 Cobro ✓' : '💳 Sin cobro';
         btn.title = !esCobro ? 'Quitar de Cuenta de Cobro' : 'Incluir en Cuenta de Cobro';
+        
+        // Actualizar data-cobro en la fila y refrescar filtros
+        const row = document.getElementById(`row-${id}`);
+        if(row) {
+            row.setAttribute('data-cobro', esCobro ? '0' : '1');
+        }
+        filtrarCuentas();
     }
 }
 
@@ -266,6 +320,85 @@ function cerrarModal() {
 async function eliminarCuenta(id) {
     // Ahora delega al modal inteligente (se invoca desde el row)
     // Esta función ya no se usa directamente; la reemplaza abrirModalCuenta
+}
+
+function filtrarCuentas() {
+    const txtTitular = document.getElementById('filtro-titular').value.toLowerCase().trim();
+    const selBanco   = document.getElementById('filtro-banco').value;
+    const selTipo    = document.getElementById('filtro-tipo').value;
+    const selCobro   = document.getElementById('filtro-cobro').value;
+    const selActivo  = document.getElementById('filtro-activo').value;
+
+    const rows = document.querySelectorAll('table.tbl tbody tr[id^="row-"]');
+    
+    // Marcar como activo/inactivo las clases de los select según si están filtrando
+    document.getElementById('filtro-banco').classList.toggle('activo', !!selBanco);
+    document.getElementById('filtro-tipo').classList.toggle('activo', !!selTipo);
+    document.getElementById('filtro-cobro').classList.toggle('activo', !!selCobro);
+    document.getElementById('filtro-activo').classList.toggle('activo', !!selActivo);
+
+    rows.forEach(row => {
+        const banco   = row.getAttribute('data-banco');
+        const titular = row.getAttribute('data-titular');
+        const tipo    = row.getAttribute('data-tipo');
+        const cobro   = row.getAttribute('data-cobro');
+        const activo  = row.getAttribute('data-activo');
+
+        let matchTitular = true;
+        if (txtTitular) {
+            matchTitular = titular.includes(txtTitular);
+        }
+
+        let matchBanco = true;
+        if (selBanco) {
+            matchBanco = (banco === selBanco.toLowerCase());
+        }
+
+        let matchTipo = true;
+        if (selTipo) {
+            if (selTipo === 'Ninguno') {
+                matchTipo = (tipo === '');
+            } else {
+                matchTipo = (tipo === selTipo);
+            }
+        }
+
+        let matchCobro = true;
+        if (selCobro) {
+            matchCobro = (cobro === selCobro);
+        }
+
+        let matchActivo = true;
+        if (selActivo) {
+            matchActivo = (activo === selActivo);
+        }
+
+        if (matchTitular && matchBanco && matchTipo && matchCobro && matchActivo) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+
+    // Controlar el mensaje de "sin resultados"
+    const visibleRows = Array.from(rows).filter(r => r.style.display !== 'none');
+    let noResultRow = document.getElementById('no-result-row');
+    
+    if (visibleRows.length === 0) {
+        if (!noResultRow) {
+            const tbody = document.querySelector('table.tbl tbody');
+            noResultRow = document.createElement('tr');
+            noResultRow.id = 'no-result-row';
+            noResultRow.innerHTML = '<td colspan="7" style="text-align:center;padding:2rem;color:#94a3b8">No se encontraron cuentas con los filtros aplicados.</td>';
+            tbody.appendChild(noResultRow);
+        } else {
+            noResultRow.style.display = '';
+        }
+    } else {
+        if (noResultRow) {
+            noResultRow.style.display = 'none';
+        }
+    }
 }
 </script>
 
