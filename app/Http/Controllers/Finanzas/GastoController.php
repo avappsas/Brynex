@@ -28,8 +28,13 @@ class GastoController extends Controller
         $mes = $request->input('mes', now()->month);
         $categoriaId = $request->input('categoria_id');
 
-        // Categorías para los selectores
-        $categorias = CategoriaGasto::where('user_id', $user)->activas()->orderBy('orden')->get();
+        if ($this->isMobileDevice($request)) {
+            return redirect()->route('finanzas.dashboard', [
+                'mes' => $mes,
+                'anio' => $anio,
+                'tab' => 'historial'
+            ]);
+        }
 
         // Bienes de patrimonio en caso de marcar el gasto como adquisición
         $patrimonios = Patrimonio::where('user_id', $user)->activos()->get();
@@ -45,7 +50,18 @@ class GastoController extends Controller
         }
 
         $gastos = $query->orderBy('fecha', 'desc')->get();
-        
+
+        // Obtener solo las categorías que tienen transacciones en este mes y año seleccionados
+        $categoriasUsadasIds = Gasto::where('user_id', $user)
+            ->whereYear('fecha', $anio)
+            ->whereMonth('fecha', $mes)
+            ->pluck('categoria_id')
+            ->unique()
+            ->filter()
+            ->toArray();
+
+        $categorias = CategoriaGasto::whereIn('id', $categoriasUsadasIds)->orderBy('orden')->get();
+
         // Egresos son gasto, prestamo e inversion
         $totalGastos = $gastos->where('tipo_movimiento', '!=', 'ingreso_esporadico')->sum('monto');
         $totalIngresos = $gastos->where('tipo_movimiento', 'ingreso_esporadico')->sum('monto');
@@ -122,6 +138,9 @@ class GastoController extends Controller
             'soporte_path' => $soportePath,
         ]);
 
+        if ($this->isMobileDevice($request)) {
+            return redirect()->route('finanzas.dashboard')->with('success', 'Transacción registrada con éxito.');
+        }
         return redirect()->route('finanzas.gastos.index')->with('success', 'Transacción registrada con éxito.');
     }
 
@@ -195,6 +214,9 @@ class GastoController extends Controller
             'soporte_path' => $soportePath,
         ]);
 
+        if ($this->isMobileDevice($request)) {
+            return redirect()->route('finanzas.dashboard')->with('success', 'Transacción actualizada.');
+        }
         return redirect()->route('finanzas.gastos.index')->with('success', 'Transacción actualizada.');
     }
 
@@ -208,6 +230,9 @@ class GastoController extends Controller
 
         $gasto->delete();
 
+        if ($this->isMobileDevice(request())) {
+            return redirect()->route('finanzas.dashboard')->with('success', 'Gasto eliminado.');
+        }
         return redirect()->route('finanzas.gastos.index')->with('success', 'Gasto eliminado.');
     }
 
@@ -312,5 +337,14 @@ class GastoController extends Controller
         $categoria->update(['activo' => false]);
 
         return redirect()->route('finanzas.categorias.index')->with('success', 'Categoría desactivada.');
+    }
+
+    /**
+     * Detecta si el dispositivo es un celular analizando el User-Agent.
+     */
+    private function isMobileDevice(Request $request): bool
+    {
+        $userAgent = $request->header('User-Agent');
+        return (bool) preg_match('/(android|bb\d+|meego).+mobile|avantgo|bada\/|blackberry|blazer|compal|elaine|fennec|hiptop|iemobile|ip(hone|od)|iris|kindle|lge |maemo|midp|mmp|mobile.+firefox|netfront|opera m(ob|in)i|palm( os)?|phone|p(ixi|re)\/|plucker|pocket|psp|series(4|6)0|symbian|treo|up\.(browser|link)|vodafone|wap|windows ce|xda|xiino/i', $userAgent);
     }
 }

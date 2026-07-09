@@ -346,11 +346,27 @@
             background: rgba(255, 255, 255, 0.04);
             border: 1px solid var(--borde-tarjeta);
             color: var(--texto-principal);
-            padding: 0.65rem 0.9rem;
+            padding: 0 0.9rem;
+            height: 46px;
             border-radius: 12px;
             font-size: 0.85rem;
             outline: none;
             width: 100%;
+            box-sizing: border-box;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+        .form-select-bx {
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2394a3b8'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 0.75rem center;
+            background-size: 1rem;
+            padding-right: 2.25rem;
+        }
+        /* Alinear fecha en iOS Safari */
+        input[type="date"].form-input-bx {
+            display: flex;
+            align-items: center;
         }
         .form-input-bx:focus, .form-select-bx:focus {
             border-color: var(--azul-vivo);
@@ -472,7 +488,7 @@
     </style>
 </head>
 <body x-data="{ 
-    activeTab: 'inicio',
+    activeTab: '{{ request()->input('tab', 'inicio') }}',
     openGasto: false,
     openEntrada: false,
     openConsolidado: false
@@ -923,7 +939,7 @@
                             {{-- Tipo de Movimiento --}}
                             <div class="form-group-bx">
                                 <label class="form-label-bx">Movimiento</label>
-                                <select name="tipo_movimiento" x-model="tipo" class="form-select-bx" required style="height: 100%;">
+                                <select name="tipo_movimiento" x-model="tipo" class="form-select-bx" required>
                                     <option value="gasto">Gasto Habitual</option>
                                     <option value="prestamo">Desembolso Préstamo</option>
                                     <option value="inversion">Inversión (Cripto/USDT)</option>
@@ -934,17 +950,18 @@
                             <div class="form-group-bx" style="position: relative;">
                                 <label class="form-label-bx">Categoría</label>
                                 <div class="combobox-container-bx" @click.away="categoriaOpen = false" style="width: 100%;">
-                                    <div class="combobox-input-wrapper-bx" style="position: relative; display: flex; align-items: center; width: 100%;">
-                                        <span x-show="categoriaIconSelected" class="combobox-icon-bx" x-text="categoriaIconSelected" style="position: absolute; left: 0.75rem; font-size: 0.95rem; z-index: 5;"></span>
+                                    <div class="combobox-input-wrapper-bx" style="position: relative; width: 100%;">
+                                        <span x-show="categoriaIconSelected" class="combobox-icon-bx" x-text="categoriaIconSelected" style="position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); font-size: 0.95rem; z-index: 5;"></span>
                                         <input type="text" 
                                                x-model="categoriaSearch" 
                                                @focus="categoriaOpen = true"
                                                @input="categoriaOpen = true; categoriaIdSelected = ''; categoriaIconSelected = ''"
                                                placeholder="Seleccione..."
                                                class="form-input-bx" 
-                                               :style="categoriaIconSelected ? 'padding-left: 2.25rem; width: 100%; flex: 1;' : 'padding-left: 0.75rem; width: 100%; flex: 1;'"
+                                               style="width: 100% !important; display: block; box-sizing: border-box;"
+                                               :style="categoriaIconSelected ? 'padding-left: 2.25rem; padding-right: 2.25rem;' : 'padding-left: 0.75rem; padding-right: 2.25rem;'"
                                                autocomplete="off">
-                                        <button type="button" x-show="categoriaSearch" @click="clearCategoria()" class="combobox-clear-btn-bx" style="position: absolute; right: 0.75rem; background: none; border: none; font-size: 1.1rem; color: #94a3b8; cursor: pointer;">&times;</button>
+                                        <button type="button" x-show="categoriaSearch" @click="clearCategoria()" class="combobox-clear-btn-bx" style="position: absolute; right: 0.75rem; top: 50%; transform: translateY(-50%); background: none; border: none; font-size: 1.1rem; color: #94a3b8; cursor: pointer; z-index: 5; padding: 0.2rem;">&times;</button>
                                     </div>
 
                                     <input type="hidden" name="categoria_id" :value="categoriaIdSelected">

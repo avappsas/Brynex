@@ -56,20 +56,21 @@
         </div>
     </div>
 
-    {{-- Categoría Filtro Rápido --}}
-    <div class="filtros-categoria-bx">
-        <a href="{{ route('finanzas.gastos.index', ['anio' => $anio, 'mes' => $mes]) }}" class="cat-filter-btn {{ !$categoriaId ? 'activo' : '' }}">
-            📂 Todos
-        </a>
-        @foreach($categorias as $cat)
-            <a href="{{ route('finanzas.gastos.index', ['anio' => $anio, 'mes' => $mes, 'categoria_id' => $cat->id]) }}" class="cat-filter-btn {{ $categoriaId == $cat->id ? 'activo' : '' }}" style="border-left:3px solid {{ $cat->color }};">
-                {{ $cat->icono }} {{ $cat->nombre }}
-            </a>
-        @endforeach
+    {{-- Filtro de Categoría Simple con Select --}}
+    <div class="filtros-dropdown-bx" style="margin-top:1rem; margin-bottom:1.25rem; display:flex; gap:0.5rem; align-items:center;">
+        <label style="font-size:0.8rem; font-weight:700; color:#475569;">Filtrar por Categoría:</label>
+        <select onchange="window.location.href=this.value" class="select-fin" style="padding:0.45rem 0.75rem; border-radius:8px; border:1px solid #cbd5e1; font-size:0.8rem; outline:none; background:#fff; font-weight:700; cursor:pointer;">
+            <option value="{{ route('finanzas.gastos.index', ['anio' => $anio, 'mes' => $mes]) }}" @selected(!$categoriaId)>📂 Todas las categorías</option>
+            @foreach($categorias as $cat)
+                <option value="{{ route('finanzas.gastos.index', ['anio' => $anio, 'mes' => $mes, 'categoria_id' => $cat->id]) }}" @selected($categoriaId == $cat->id)>
+                    {{ $cat->icono }} {{ $cat->nombre }}
+                </option>
+            @endforeach
+        </select>
     </div>
 
-    {{-- Listado de Gastos --}}
-    <div class="card-tabla-bx" style="margin-top:1rem;">
+    {{-- Listado de Gastos (Escritorio) --}}
+    <div class="card-tabla-bx desktop-only" style="margin-top:1rem;">
         <table class="tabla-brynex-bx">
             <thead>
                 <tr>
@@ -132,6 +133,71 @@
                 @endforelse
             </tbody>
         </table>
+    </div>
+
+    {{-- Listado de Gastos (Móvil) --}}
+    <div class="mobile-only" style="display:none; margin-top:1rem;">
+        <div style="display:flex; flex-direction:column; gap:0.75rem;">
+            @forelse($gastos as $gasto)
+                <div style="background:#fff; border:1px solid #cbd5e1; border-radius:12px; padding:0.85rem; box-shadow:0 2px 8px rgba(0,0,0,0.03); display:flex; flex-direction:column; gap:0.5rem;">
+                    
+                    {{-- Fila Superior: Categoria y Monto --}}
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span style="display:flex; align-items:center; gap:0.4rem;">
+                            <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:{{ $gasto->categoria->color ?? '#64748b' }}"></span>
+                            <strong style="font-size:0.85rem; color:#1e293b;">{{ $gasto->categoria->icono ?? '📂' }} {{ $gasto->categoria->nombre ?? 'Sin Categoria' }}</strong>
+                        </span>
+                        <strong style="font-size:0.95rem; color:{{ $gasto->tipo_movimiento === 'ingreso_esporadico' ? '#10b981' : '#ef4444' }};">
+                            {{ $gasto->tipo_movimiento === 'ingreso_esporadico' ? '+' : '-' }} ${{ number_format($gasto->monto, 0, ',', '.') }}
+                        </strong>
+                    </div>
+
+                    {{-- Fila Media: Descripcion y Badges --}}
+                    @if($gasto->descripcion || $gasto->es_patrimonio || $gasto->soporte_path)
+                        <div style="font-size:0.78rem; color:#475569;">
+                            {{ $gasto->descripcion ?: '-' }}
+                            
+                            @if($gasto->es_patrimonio && $gasto->patrimonio)
+                                <a href="{{ route('finanzas.patrimonio.show', $gasto->patrimonio_id) }}" class="badge-patrimonio-link" style="margin-left: 5px;">
+                                    🏠 {{ $gasto->patrimonio->nombre }}
+                                </a>
+                            @endif
+                            
+                            @if($gasto->soporte_path)
+                                <a href="{{ route('finanzas.gastos.descargar-soporte', $gasto->id) }}" class="badge-soporte-link" style="margin-left: 5px;">
+                                    📎 Soporte
+                                </a>
+                            @endif
+                        </div>
+                    @endif
+
+                    {{-- Fila Inferior: Info de fecha/tipo y Acciones --}}
+                    <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid #f1f5f9; padding-top:0.5rem; margin-top:0.25rem;">
+                        <div style="display:flex; align-items:center; gap:0.4rem; font-size:0.7rem; color:#94a3b8; font-weight:600;">
+                            <span>{{ Carbon\Carbon::parse($gasto->fecha)->format('d/m/Y') }}</span>
+                            <span>•</span>
+                            <span class="tipo-tag-bx {{ $gasto->tipo_movimiento }}" style="font-size:0.6rem; padding:0.1rem 0.3rem; {{ $gasto->tipo_movimiento === 'ingreso_esporadico' ? 'background:#d1fae5; color:#065f46;' : '' }}">
+                                {{ $gasto->tipo_movimiento === 'ingreso_esporadico' ? 'Entrada' : $gasto->tipo_movimiento }}
+                            </span>
+                        </div>
+                        
+                        <div style="display:flex; gap:0.4rem;">
+                            <button @click="selectedGasto = {{ json_encode($gasto) }}; openEditar = true" class="btn-glass-bx" style="padding: 0.3rem 0.6rem; font-size: 0.72rem; border-color:#cbd5e1; color:#334155; font-weight:600;" title="Editar">✏️ Editar</button>
+                            <form action="{{ route('finanzas.gastos.destroy', $gasto->id) }}" method="POST" onsubmit="return confirm('¿Seguro que deseas eliminar este gasto?')" style="display:inline; margin:0;">
+                                @csrf
+                                @method('DELETE')
+                                <button type="submit" class="btn-glass-bx" style="padding: 0.3rem 0.6rem; font-size: 0.72rem; background:#fef2f2; color:#ef4444; border-color:#fee2e2; font-weight:600;" title="Eliminar">🗑️ Borrar</button>
+                            </form>
+                        </div>
+                    </div>
+
+                </div>
+            @empty
+                <div style="text-align:center; padding:2rem; color:#64748b; font-size:0.8rem; background:#fff; border:1px solid #cbd5e1; border-radius:12px;">
+                    No se encontraron transacciones registradas.
+                </div>
+            @endforelse
+        </div>
     </div>
 
     {{-- Modal Crear --}}
@@ -657,16 +723,37 @@
 
 @push('styles')
 <style>
+/* Responsive Desktop vs Móvil */
+@media (max-width: 768px) {
+    .desktop-only { display: none !important; }
+    .mobile-only { display: block !important; }
+}
+@media (min-width: 769px) {
+    .desktop-only { display: block !important; }
+    .mobile-only { display: none !important; }
+}
+
 .finanzas-container { max-width: 1040px; margin: 0 auto; padding: 0.5rem; }
+
+/* Top Bar & Breadcrumb */
+.fin-top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; }
+.breadcrumb-bx { display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; color: #64748b; }
+.breadcrumb-bx a { color: var(--azul-btn); text-decoration: none; font-weight: 500; }
+.period-selector-bx { display: flex; gap: 0.5rem; }
+.select-fin { padding: 0.35rem 0.75rem; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.8rem; background: #fff; cursor: pointer; outline: none; }
+
+/* Header Section */
+.fin-header-section { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 1rem; }
+.header-text h1 { font-size: 1.4rem; font-weight: 800; color: #0f172a; }
+.header-text p { font-size: 0.85rem; color: #64748b; margin-top: 0.2rem; }
+
+.btn-fin { padding: 0.5rem 1.25rem; border: none; border-radius: 9px; font-size: 0.82rem; font-weight: 600; cursor: pointer; transition: all 0.15s; text-decoration: none; display: inline-flex; align-items: center; gap: 0.35rem; }
+.btn-fin.success { background: linear-gradient(135deg, #4f46e5, #4338ca); color: #fff; }
+.btn-fin.success:hover { background: linear-gradient(135deg, #4338ca, #3730a3); transform: translateY(-1px); }
+
 .btn-fin-link { text-decoration: none; padding: 0.4rem 0.85rem; border-radius: 8px; font-size: 0.78rem; font-weight: 600; text-align: center; }
 .btn-fin-link.primary { background: rgba(59,130,246,0.1); border: 1px solid rgba(59,130,246,0.3); color: var(--azul-btn); }
 .btn-fin-link.success { background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.3); color: #166534; }
-
-/* Filtro Rápido Categorías */
-.filtros-categoria-bx { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; }
-.cat-filter-btn { display: flex; align-items: center; gap: 0.35rem; text-decoration: none; padding: 0.4rem 0.75rem; background: #fff; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.78rem; color: #475569; font-weight: 500; transition: all 0.15s; }
-.cat-filter-btn:hover { background: #f8fafc; border-color: #94a3b8; }
-.cat-filter-btn.activo { background: var(--azul-btn); color: #fff; border-color: var(--azul-btn); }
 
 .badge-patrimonio-link { display: inline-block; background: #f3e8ff; color: #6b21a8; font-size: 0.68rem; font-weight: 600; text-decoration: none; padding: 0.1rem 0.4rem; border-radius: 4px; border: 1px solid #d8b4fe; margin-left: 5px; }
 
