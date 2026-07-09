@@ -200,19 +200,49 @@
     </div>
 
     {{-- Modal Registrar Pago --}}
-    <div x-show="openAbono" class="modal-overlay-bx" @click.self="openAbono = false" x-cloak>
+    <div x-show="openAbono" class="modal-overlay-bx" @click.self="openAbono = false" x-cloak x-data="{ 
+        imagePreview: null, 
+        handleFile(e) { 
+            const file = e.target.files[0]; 
+            if(file && file.type.startsWith('image/')) { 
+                this.imagePreview = URL.createObjectURL(file); 
+            } else {
+                this.imagePreview = null;
+            }
+        }, 
+        initPaste() { 
+            window.addEventListener('paste', (e) => { 
+                if (!openAbono) return; 
+                const items = (e.clipboardData || e.originalEvent.clipboardData).items; 
+                for (let index in items) { 
+                    const item = items[index]; 
+                    if (item.kind === 'file') { 
+                        const blob = item.getAsFile(); 
+                        if (blob.type.startsWith('image/')) {
+                            const fileInput = this.$refs.soporteInputAbono; 
+                            const dataTransfer = new DataTransfer(); 
+                            dataTransfer.items.add(blob); 
+                            fileInput.files = dataTransfer.files; 
+                            this.imagePreview = URL.createObjectURL(blob); 
+                        }
+                    } 
+                } 
+            }); 
+        } 
+    }" x-init="initPaste()">
         <div class="modal-box-bx">
             <div class="modal-head-bx" style="background:linear-gradient(135deg, #15803d, #166534);">
                 <h3>💵 Registrar Abono / Pago</h3>
                 <button @click="openAbono = false" class="modal-close-bx">&times;</button>
             </div>
-            <form action="{{ route('finanzas.prestamos.pago', $prestamo->id) }}" method="POST">
+            <form action="{{ route('finanzas.prestamos.pago', $prestamo->id) }}" method="POST" enctype="multipart/form-data">
                 @csrf
                 <div class="modal-body-bx">
                     <div class="form-group-bx">
                         <label class="form-label-bx">Fecha de Recepción</label>
                         <input type="date" name="fecha" value="{{ now()->toDateString() }}" class="form-input-bx" required>
                     </div>
+                    
                     <div class="form-group-bx" style="margin-top:1rem;">
                         <label class="form-label-bx">Monto Recibido ($ COP)</label>
                         <input type="number" name="monto" placeholder="Ej: 200000" class="form-input-bx" required min="1">
@@ -220,6 +250,20 @@
                             El sistema abonará este pago automáticamente priorizando intereses acumulados y luego abono a capital.
                         </small>
                     </div>
+                    
+                    <div class="form-group-bx" style="margin-top:1rem;">
+                        <label class="form-label-bx">Archivo Soporte (Opcional - Adjuntar o Pegar captura)</label>
+                        <input type="file" name="soporte" x-ref="soporteInputAbono" @change="handleFile" class="form-input-bx" style="padding:0.35rem 0.5rem;" accept="image/*,application/pdf">
+                        
+                        <template x-if="imagePreview">
+                            <div style="margin-top:0.75rem; border:1px solid #cbd5e1; padding:0.5rem; border-radius:8px; background:#f8fafc; text-align:center; position:relative;">
+                                <span style="font-size:0.72rem; color:#475569; display:block; margin-bottom:0.4rem; font-weight:600;">📸 Vista Previa del Soporte:</span>
+                                <img :src="imagePreview" style="max-height:160px; max-width:100%; border-radius:6px; box-shadow:0 2px 4px rgba(0,0,0,0.08);">
+                                <button type="button" @click="imagePreview = null; $refs.soporteInputAbono.value = ''" style="position:absolute; top:4px; right:4px; border:none; background:#ef4444; color:#fff; border-radius:50%; width:20px; height:20px; font-size:0.75rem; cursor:pointer; display:flex; align-items:center; justify-content:center;">&times;</button>
+                            </div>
+                        </template>
+                    </div>
+
                     <div class="form-group-bx" style="margin-top:1rem;">
                         <label class="form-label-bx">Observaciones (Opcional)</label>
                         <input type="text" name="observacion" placeholder="Ej: Abono en efectivo, transferencia Bancolombia" class="form-input-bx">

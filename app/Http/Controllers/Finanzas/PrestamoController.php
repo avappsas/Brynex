@@ -217,9 +217,15 @@ class PrestamoController extends Controller
             'monto' => 'required|numeric|min:1',
             'fecha' => 'required|date',
             'observacion' => 'nullable|string|max:255',
+            'soporte' => 'nullable|file|mimes:jpeg,png,jpg,pdf|max:10240',
         ]);
 
-        $res = $this->liquidacionService->registrarPago($prestamo, $request->monto, $request->fecha, $request->observacion);
+        $soportePath = null;
+        if ($request->hasFile('soporte')) {
+            $soportePath = $request->file('soporte')->store('finanzas/prestamos', 'local');
+        }
+
+        $res = $this->liquidacionService->registrarPago($prestamo, $request->monto, $request->fecha, $request->observacion, $soportePath);
 
         if ($res['success']) {
             return redirect()->route('finanzas.prestamos.show', $prestamo->id)
