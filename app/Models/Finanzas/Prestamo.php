@@ -112,7 +112,14 @@ class Prestamo extends BaseFinanzasModel
             return 0;
         }
 
-        $referencia = $this->ultimo_corte ? Carbon::parse($this->ultimo_corte) : Carbon::parse($this->fecha_desembolso);
+        // Buscar el último movimiento de tipo abono o pago total
+        $ultimoAbono = $this->movimientos()
+            ->whereIn('tipo', ['abono_capital', 'abono_interes', 'pago_total'])
+            ->orderBy('fecha', 'desc')
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $referencia = $ultimoAbono ? Carbon::parse($ultimoAbono->fecha) : Carbon::parse($this->fecha_desembolso);
         $dias = $referencia->diffInDays(Carbon::now(), false);
 
         return $dias > 0 ? (int) $dias : 0;

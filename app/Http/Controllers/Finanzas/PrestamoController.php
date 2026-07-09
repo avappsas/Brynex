@@ -114,10 +114,17 @@ class PrestamoController extends Controller
         // Registrar el movimiento de desembolso inicial en el historial
         $this->liquidacionService->registrarDesembolso($prestamo);
 
-        // Crear una categoría temporal de Gasto "Otros" o similar si no existe,
-        // o mapear como tipo_movimiento = 'prestamo' en la tabla de gastos
+        // Asegurar la existencia de la categoría "Otros" para asociar el egreso del préstamo
         $categoriaOtros = CategoriaGasto::where('user_id', $user->id)->where('nombre', 'Otros')->first();
-        $catId = $categoriaOtros ? $categoriaOtros->id : 1; // Fallback al id 1 de categoría
+        if (!$categoriaOtros) {
+            $categoriaOtros = CategoriaGasto::create([
+                'user_id' => $user->id,
+                'nombre' => 'Otros',
+                'icono' => '📁',
+                'orden' => 99,
+            ]);
+        }
+        $catId = $categoriaOtros->id;
 
         Gasto::create([
             'user_id' => $user->id,

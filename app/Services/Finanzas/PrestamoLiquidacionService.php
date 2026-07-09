@@ -225,8 +225,15 @@ class PrestamoLiquidacionService
             return 'pagado';
         }
 
-        $ultimoCorte = $prestamo->ultimo_corte ? Carbon::parse($prestamo->ultimo_corte) : Carbon::parse($prestamo->fecha_desembolso);
-        $diasTranscurridos = $ultimoCorte->diffInDays($fechaReferencia, false);
+        // Buscar el último movimiento de tipo abono o pago total
+        $ultimoAbono = $prestamo->movimientos()
+            ->whereIn('tipo', ['abono_capital', 'abono_interes', 'pago_total'])
+            ->orderBy('fecha', 'desc')
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $referencia = $ultimoAbono ? Carbon::parse($ultimoAbono->fecha) : Carbon::parse($prestamo->fecha_desembolso);
+        $diasTranscurridos = $referencia->diffInDays($fechaReferencia, false);
 
         if ($diasTranscurridos >= $prestamo->dias_mora_alerta) {
             return 'mora';
