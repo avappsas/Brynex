@@ -14,12 +14,14 @@ class Consignacion extends BaseModel
         'confirmado', 'observacion', 'usuario_id',
         // Cuadre diario - traslados internos
         'cuadre_id', 'gasto_id',
+        'no_aparece', 'usuario_validador_id', 'fecha_validacion',
     ];
 
     protected $casts = [
         'fecha'      => 'date',
         'confirmado' => 'boolean',
         'valor'      => 'integer',
+        'no_aparece' => 'boolean',
     ];
 
     // ── Tipos de consignación ────────────────────────────────────────
@@ -52,6 +54,11 @@ class Consignacion extends BaseModel
     public function anticipo()
     {
         return $this->belongsTo(Anticipo::class, 'anticipo_id');
+    }
+
+    public function usuarioValidador()
+    {
+        return $this->belongsTo(User::class, 'usuario_validador_id');
     }
 
     // ── Scopes ───────────────────────────────────────────────────────

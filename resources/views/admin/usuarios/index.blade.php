@@ -23,6 +23,26 @@
         </div>
     @endif
 
+    {{-- Buscador superior --}}
+    <form method="GET" action="{{ route('admin.usuarios.index') }}" id="filter-form" style="background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;padding:0.75rem 1rem;margin-bottom:1.25rem;display:flex;gap:0.75rem;align-items:center;">
+        <div style="position:relative;flex:1;">
+            <span style="position:absolute;left:0.75rem;top:52%;transform:translateY(-50%);color:#94a3b8;font-size:0.9rem;">🔍</span>
+            <input type="text" name="q" value="{{ $buscar }}" placeholder="Buscar por cédula o parte del nombre..."
+                style="width:100%;padding:0.55rem 0.75rem 0.55rem 2.2rem;border:1px solid #cbd5e1;border-radius:8px;font-size:0.85rem;outline:none;transition:border-color 0.15s;"
+                onfocus="this.style.borderColor='var(--acento)'" onblur="this.style.borderColor='#cbd5e1'">
+        </div>
+        <button type="submit" style="padding:0.55rem 1.25rem;background:var(--azul-btn);color:#fff;border:none;border-radius:8px;font-size:0.85rem;font-weight:600;cursor:pointer;transition:background 0.15s;"
+            onmouseover="this.style.background='var(--acento)'" onmouseout="this.style.background='var(--azul-btn)'">
+            Buscar
+        </button>
+        @if($buscar || $filtroRol || $filtroEstado)
+        <a href="{{ route('admin.usuarios.index') }}" style="padding:0.55rem 1rem;border:1px solid #cbd5e1;border-radius:8px;color:#475569;text-decoration:none;font-size:0.85rem;background:#fff;transition:background 0.15s;text-align:center;display:inline-block;"
+            onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='#fff'">
+            Limpiar Filtros
+        </a>
+        @endif
+    </form>
+
     <div style="overflow-x:auto;">
         <table style="width:100%;border-collapse:collapse;font-size:0.85rem;">
             <thead>
@@ -30,9 +50,29 @@
                     <th style="padding:0.7rem 1rem;text-align:left;color:#475569;font-weight:600;">Nombre</th>
                     <th style="padding:0.7rem 1rem;text-align:left;color:#475569;font-weight:600;">Cédula</th>
                     <th style="padding:0.7rem 1rem;text-align:left;color:#475569;font-weight:600;">Aliado</th>
-                    <th style="padding:0.7rem 1rem;text-align:center;color:#475569;font-weight:600;">Rol</th>
+                    <th style="padding:0.7rem 1rem;text-align:center;color:#475569;font-weight:600;">
+                        <div style="display:inline-flex;flex-direction:column;align-items:center;gap:0.2rem;">
+                            <span>Rol</span>
+                            <select name="rol" form="filter-form" onchange="this.form.submit()" style="padding:0.15rem 0.35rem;border:1px solid #cbd5e1;border-radius:6px;font-size:0.72rem;background:#fff;color:#334155;font-weight:normal;cursor:pointer;outline:none;">
+                                <option value="">Todos</option>
+                                @foreach($roles as $r)
+                                    <option value="{{ $r }}" @selected($filtroRol === $r)>{{ ucfirst($r) }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                    </th>
                     <th style="padding:0.7rem 1rem;text-align:center;color:#475569;font-weight:600;">BryNex</th>
-                    <th style="padding:0.7rem 1rem;text-align:center;color:#475569;font-weight:600;">Estado</th>
+                    <th style="padding:0.7rem 1rem;text-align:center;color:#475569;font-weight:600;">
+                        <div style="display:inline-flex;flex-direction:column;align-items:center;gap:0.2rem;">
+                            <span>Estado</span>
+                            <select name="estado" form="filter-form" onchange="this.form.submit()" style="padding:0.15rem 0.35rem;border:1px solid #cbd5e1;border-radius:6px;font-size:0.72rem;background:#fff;color:#334155;font-weight:normal;cursor:pointer;outline:none;">
+                                <option value="">Todos</option>
+                                <option value="activo" @selected($filtroEstado === 'activo')>Activos</option>
+                                <option value="pausado" @selected($filtroEstado === 'pausado')>Pausados</option>
+                                <option value="inactivo" @selected($filtroEstado === 'inactivo')>Inactivos</option>
+                            </select>
+                        </div>
+                    </th>
                     <th style="padding:0.7rem 1rem;text-align:center;color:#475569;font-weight:600;">Acciones</th>
                 </tr>
             </thead>

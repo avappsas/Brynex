@@ -221,6 +221,48 @@ class PrestamoLiquidacionService
     }
 
     /**
+     * Registra un desembolso adicional (anexa valor al préstamo).
+     */
+    public function registrarDesembolsoAdicional(Prestamo $prestamo, float $monto, string $fecha, ?string $observacion = null, ?string $soportePath = null): array
+    {
+        if ($monto <= 0) {
+            return ['success' => false, 'message' => 'El monto debe ser mayor a cero.'];
+        }
+
+        return DB::transaction(function () use ($prestamo, $monto, $fecha, $observacion, $soportePath) {
+            $saldoAntes = $prestamo->saldo_actual;
+            $nuevoSaldo = $saldoAntes + $monto;
+            $nuevoMontoOriginal = $prestamo->monto_original + $monto;
+
+            // Registrar movimiento de desembolso (suma saldo)
+            PrestamoMovimiento::create([
+                'prestamo_id'  => $prestamo->id,
+                'tipo'         => 'desembolso',
+                'fecha'        => $fecha,
+                'monto'        => $monto,
+                'saldo_antes'  => $saldoAntes,
+                'saldo_despues'=> $nuevoSaldo,
+                'observacion'  => $observacion ?: "Desembolso adicional de capital.",
+                'soporte_path' => $soportePath,
+            ]);
+
+            $nuevoEstado = $nuevoSaldo <= 0 ? 'pagado' : $this->evaluarEstado($prestamo, Carbon::parse($fecha));
+
+            $prestamo->update([
+                'monto_original'=> $nuevoMontoOriginal,
+                'saldo_actual'  => $nuevoSaldo,
+                'estado'        => $nuevoEstado,
+            ]);
+
+            return [
+                'success' => true,
+                'saldo_anterior' => $saldoAntes,
+                'nuevo_saldo' => $nuevoSaldo,
+            ];
+        });
+    }
+
+    /**
      * Evalúa si un préstamo debe pasar a estado 'mora' en base a la fecha de vencimiento
      */
     private function evaluarEstado(Prestamo $prestamo, Carbon $fechaReferencia): string

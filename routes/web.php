@@ -386,6 +386,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/consignacion/{csId}/imagen',            [$cd, 'subirImagenConsignacion'])->name('consignacion.imagen');
         Route::post('/consignacion/{csId}/confirmar',          [$cd, 'confirmarConsignacion'])->name('consignacion.confirmar');
         Route::patch('/consignacion/{csId}/confirmar/reversar', [$cd, 'reversarConsignacion']) ->name('consignacion.reversar');
+        Route::post('/consignacion/{csId}/no-aparece',          [$cd, 'noApareceConsignacion'])->name('consignacion.no-aparece');
         Route::get('/{id}',                      [$cd, 'ver'])                  ->name('ver');
         Route::post('/{id}/gasto',               [$cd, 'registrarGasto'])       ->name('gasto.store');
         Route::post('/{id}/cerrar',              [$cd, 'cerrar'])               ->name('cerrar');
@@ -625,6 +626,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/prestamos/{prestamo}/edit', [$pre, 'edit'])->name('prestamos.edit');
         Route::put('/prestamos/{prestamo}',      [$pre, 'update'])->name('prestamos.update');
         Route::post('/prestamos/{prestamo}/pago',         [$pre, 'registrarPago'])->name('prestamos.pago');
+        Route::post('/prestamos/{prestamo}/anexar',       [$pre, 'anexarValor'])->name('prestamos.anexar');
         Route::post('/prestamos/{prestamo}/liquidar',     [$pre, 'liquidarMes'])->name('prestamos.liquidar');
         Route::post('/prestamos/{prestamo}/whatsapp',     [$pre, 'enviarWhatsapp'])->name('prestamos.whatsapp');
         Route::post('/prestamos/{prestamo}/toggle-alertas',[$pre, 'toggleAlertas'])->name('prestamos.toggle-alertas');

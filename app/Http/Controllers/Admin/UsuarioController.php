@@ -18,13 +18,18 @@ class UsuarioController extends Controller
         $this->middleware(['auth', 'role:superadmin|admin']);
     }
 
-    public function index()
+    public function index(Request $request)
     {
         $alidoActivoId = session('aliado_id_activo');
         $esBrynex      = auth()->user()->es_brynex;
 
-        // SuperAdmin BryNex ve todos los usuarios del aliado activo
-        // Admin normal ve solo usuarios de su aliado
+        $buscar       = $request->input('q');
+        $filtroRol    = $request->input('rol');
+        $filtroEstado = $request->input('estado');
+
+        // Obtener los roles para el filtro
+        $roles = Role::orderBy('name')->pluck('name');
+
         $usuarios = User::with(['aliado', 'roles'])
             ->when(!auth()->user()->hasRole('superadmin') || !$esBrynex, fn($q) =>
                 $q->where('aliado_id', $alidoActivoId)
@@ -32,11 +37,31 @@ class UsuarioController extends Controller
             ->when(auth()->user()->hasRole('superadmin') && $esBrynex, fn($q) =>
                 $q->where('aliado_id', $alidoActivoId)
             )
-            ->withTrashed()
+            ->when($buscar, function ($q) use ($buscar) {
+                $q->where(function ($sub) use ($buscar) {
+                    $sub->where('nombre', 'like', "%{$buscar}%")
+                        ->orWhere('cedula', 'like', "%{$buscar}%");
+                });
+            })
+            ->when($filtroRol, function ($q) use ($filtroRol) {
+                $q->whereHas('roles', fn($sub) => $sub->where('name', $filtroRol));
+            })
+            ->when($filtroEstado, function ($q) use ($filtroEstado) {
+                if ($filtroEstado === 'activo') {
+                    $q->where('activo', 1);
+                } elseif ($filtroEstado === 'pausado') {
+                    $q->where('activo', 0);
+                } elseif ($filtroEstado === 'inactivo') {
+                    $q->onlyTrashed();
+                }
+            }, function ($q) {
+                $q->withTrashed();
+            })
+            ->orderByRaw('CASE WHEN deleted_at IS NULL AND activo = 1 THEN 0 WHEN deleted_at IS NULL AND activo = 0 THEN 1 ELSE 2 END')
             ->orderBy('nombre')
             ->get();
 
-        return view('admin.usuarios.index', compact('usuarios'));
+        return view('admin.usuarios.index', compact('usuarios', 'roles', 'buscar', 'filtroRol', 'filtroEstado'));
     }
 
     public function create()

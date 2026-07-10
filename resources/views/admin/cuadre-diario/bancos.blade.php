@@ -25,6 +25,14 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.78rem}
 .modal-head{background:#1e3a5f;padding:.75rem 1rem;display:flex;justify-content:space-between;align-items:center}
 .modal-body{padding:1rem;overflow-y:auto;flex:1}
 .btn-close{background:rgba(255,255,255,.18);color:#fff;border:none;border-radius:5px;width:28px;height:28px;cursor:pointer;font-weight:800;font-size:1rem}
+.btn-filtro.active{background:#1e3a5f !important;color:#fff !important;border-color:#1e3a5f !important}
+/* Toast Notification */
+.toast-notif{position:fixed;bottom:20px;right:20px;background:#0f172a;color:#fff;padding:.75rem 1.25rem;border-radius:8px;box-shadow:0 10px 25px rgba(0,0,0,.2);z-index:99999;font-size:.82rem;font-weight:600;display:flex;align-items:center;gap:.5rem;transform:translateY(150%);transition:transform .3s cubic-bezier(0.16,1,0.3,1)}
+.toast-notif.show{transform:translateY(0)}
+.zoomable-img{max-width:100%;max-height:100%;object-fit:contain;cursor:zoom-in;transition:width .15s ease,height .15s ease}
+.zoomable-img.zoomed{max-width:none !important;max-height:none !important;width:180% !important;height:auto !important;cursor:zoom-out}
+.img-zoom-wrapper{height:360px;width:100%;overflow:auto;display:flex;align-items:center;justify-content:center;border-radius:6px;background:#fff;position:relative;user-select:none}
+.img-zoom-wrapper.zoomed-mode{display:block !important;cursor:grab}
 </style>
 
 {{-- HEADER --}}
@@ -70,11 +78,32 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.78rem}
             @endif
         </div>
         <div style="text-align:right">
-            <div style="font-size:1.3rem;font-weight:800;color:{{ $sb['saldo'] >= 0 ? '#1d4ed8' : '#dc2626' }}">
+            <div id="saldo-banco-{{ $sb['banco']->id }}" style="font-size:1.3rem;font-weight:800;color:{{ $sb['saldo'] >= 0 ? '#1d4ed8' : '#dc2626' }}">
                 {{ $fmt($sb['saldo']) }}
             </div>
             <div style="font-size:.68rem;color:#94a3b8">Saldo total histórico</div>
         </div>
+    </div>
+
+    {{-- Filtros de estado interactivos --}}
+    <div style="padding:.5rem 1rem;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+        <span style="font-size:.68rem;font-weight:700;color:#64748b;text-transform:uppercase">Filtrar:</span>
+        <button type="button" class="btn-filtro active" onclick="filtrarTabla({{ $sb['banco']->id }}, 'todos', this)" 
+                style="padding:.2rem .6rem;font-size:.7rem;border-radius:20px;border:1px solid #cbd5e1;background:#fff;color:#475569;cursor:pointer;font-weight:600">
+            Todos
+        </button>
+        <button type="button" class="btn-filtro" onclick="filtrarTabla({{ $sb['banco']->id }}, 'pendiente', this)"
+                style="padding:.2rem .6rem;font-size:.7rem;border-radius:20px;border:1px solid #cbd5e1;background:#fff;color:#475569;cursor:pointer;font-weight:600">
+            🕐 Pendientes
+        </button>
+        <button type="button" class="btn-filtro" onclick="filtrarTabla({{ $sb['banco']->id }}, 'no_aparece', this)"
+                style="padding:.2rem .6rem;font-size:.7rem;border-radius:20px;border:1px solid #cbd5e1;background:#fff;color:#475569;cursor:pointer;font-weight:600">
+            ❌ No confirmados
+        </button>
+        <button type="button" class="btn-filtro" onclick="filtrarTabla({{ $sb['banco']->id }}, 'verificado', this)"
+                style="padding:.2rem .6rem;font-size:.7rem;border-radius:20px;border:1px solid #cbd5e1;background:#fff;color:#475569;cursor:pointer;font-weight:600">
+            ✅ Verificados
+        </button>
     </div>
 
     <div style="overflow-x:auto">
@@ -92,7 +121,11 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.78rem}
         </tr></thead>
         <tbody>
         @foreach($sb['movimientos'] as $mov)
-        <tr>
+        @php
+            $estadoFila = $mov->es_salida ? 'verificado' : ($mov->confirmado ? 'verificado' : ($mov->no_aparece ? 'no_aparece' : 'pendiente'));
+            $rowId = $mov->es_salida ? 'gasto-row-' . $mov->id : 'consignacion-row-' . $mov->cs_id;
+        @endphp
+        <tr id="{{ $rowId }}" data-estado="{{ $estadoFila }}">
             {{-- Fecha --}}
             <td style="font-size:.73rem;white-space:nowrap;color:#64748b">
                 {{ sqldate($mov->fecha)->format('d/m/Y') }}
@@ -159,7 +192,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.78rem}
             </td>
 
             {{-- Descripción — izquierda --}}
-            <td style="text-align:left;font-size:.73rem;color:#64748b;max-width:180px;padding-left:.8rem">
+            <td class="celda-descripcion" style="text-align:left;font-size:.73rem;color:#64748b;max-width:180px;padding-left:.8rem">
                 {{ $mov->descripcion ? \Str::limit($mov->descripcion, 55) : '—' }}
             </td>
 
@@ -177,16 +210,21 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.78rem}
             {{-- Estado (clic abre modal — solo admin/superadmin pueden cambiar) --}}
             <td>
                 @if(!$mov->es_salida)
+                @php
+                    $bgEstado = '#fef3c7'; $colEstado = '#b45309'; $txtEstado = '🕐 Pendiente';
+                    if ($mov->confirmado) { $bgEstado = '#dcfce7'; $colEstado = '#15803d'; $txtEstado = '✅ Verificado'; }
+                    elseif ($mov->no_aparece) { $bgEstado = '#fee2e2'; $colEstado = '#dc2626'; $txtEstado = '❌ No aparece'; }
+                @endphp
                 @if(auth()->user()->hasRole(['admin','superadmin']))
                 <button type="button"
-                        onclick="abrirModalEstado({{ $mov->cs_id }}, {{ $mov->confirmado ? 'true' : 'false' }})"
-                        class="btn-sm"
-                        style="background:{{ $mov->confirmado ? '#dcfce7' : '#fef3c7' }};color:{{ $mov->confirmado ? '#15803d' : '#b45309' }}">
-                    {{ $mov->confirmado ? '✅ Verificado' : '🕐 Pendiente' }}
+                        onclick="abrirModalEstado({{ $mov->cs_id }}, {{ $mov->confirmado ? 'true' : 'false' }}, {{ $mov->no_aparece ? 'true' : 'false' }}, {{ $mov->imagen_path ? "'".asset('storage/' . $mov->imagen_path)."'" : 'null' }})"
+                        class="btn-sm btn-estado-clic"
+                        style="background:{{ $bgEstado }};color:{{ $colEstado }}">
+                    {{ $txtEstado }}
                 </button>
                 @else
-                <span class="badge" style="background:{{ $mov->confirmado ? '#dcfce7' : '#fef3c7' }};color:{{ $mov->confirmado ? '#15803d' : '#b45309' }}">
-                    {{ $mov->confirmado ? '✅ Verificado' : '🕐 Pendiente' }}
+                <span class="badge" style="background:{{ $bgEstado }};color:{{ $colEstado }}">
+                    {{ $txtEstado }}
                 </span>
                 @endif
                 @else
@@ -197,13 +235,9 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.78rem}
             {{-- Imagen --}}
             <td style="white-space:nowrap">
                 @if($mov->imagen_path ?? null)
-                <button type="button" class="btn-sm" style="background:#dbeafe;color:#1d4ed8;margin-bottom:.15rem"
-                        onclick="verImagen('{{ asset('storage/' . $mov->imagen_path) }}')">
+                <button type="button" class="btn-sm" style="background:#dbeafe;color:#1d4ed8"
+                        onclick="verImagen('{{ asset('storage/' . $mov->imagen_path) }}', {{ $mov->id }}, {{ $mov->es_gasto ? 'true' : 'false' }})">
                     🖼 Ver
-                </button>
-                <button type="button" class="btn-sm" style="background:#fef3c7;color:#b45309"
-                        onclick="abrirSubirImagen({{ $mov->id }}, {{ $mov->es_gasto ? 'true' : 'false' }}, true)">
-                    🔄
                 </button>
                 @else
                 <button type="button" class="btn-sm" style="background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0"
@@ -222,28 +256,42 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.78rem}
 
 {{-- ═══ MODAL: Estado consignación ═══ --}}
 <div id="modal-estado" class="modal-bg" onclick="if(event.target===this)cerrarModal('modal-estado')">
-    <div class="modal-box" style="width:min(380px,96vw)">
+    <div class="modal-box" id="modal-estado-box" style="width:min(820px,96vw);transition:width .22s cubic-bezier(0.16,1,0.3,1)">
         <div class="modal-head">
             <span style="color:#fff;font-weight:700;font-size:.9rem">🏦 Estado de consignación</span>
             <button onclick="cerrarModal('modal-estado')" class="btn-close">×</button>
         </div>
-        <div class="modal-body" style="display:flex;flex-direction:column;gap:.8rem">
-            <p style="font-size:.83rem;color:#374151;margin:0">¿Cambiar el estado de esta consignación?</p>
-            <div id="estado-actual" style="text-align:center;font-size:.85rem;font-weight:600;padding:.5rem;border-radius:8px"></div>
-            <div style="display:flex;gap:.6rem">
-                <form id="form-verificar" method="POST" style="flex:1">
-                    @csrf
-                    <button type="submit" style="width:100%;padding:.6rem;background:#16a34a;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:.85rem">
+        <div class="modal-body" style="display:flex;gap:1.2rem;padding:1.2rem;flex-wrap:wrap">
+            <!-- Columna Izquierda: Visor del comprobante -->
+            <div id="modal-estado-comp-container" style="flex:1.4;border:1px solid #e2e8f0;border-radius:10px;padding:.5rem;text-align:center;background:#f8fafc;display:none;min-width:280px">
+                <div style="font-size:.7rem;font-weight:700;color:#64748b;margin-bottom:.4rem;text-transform:uppercase">Comprobante Adjunto (Clic para Zoom):</div>
+                <div id="modal-estado-img-wrapper" class="img-zoom-wrapper">
+                    <img id="modal-estado-img" src="" onclick="toggleZoomImg(this)" class="zoomable-img" style="display:none" alt="Comprobante">
+                    <iframe id="modal-estado-pdf" src="" style="width:100%;height:100%;border:none;display:none"></iframe>
+                </div>
+            </div>
+
+            <!-- Columna Derecha: Opciones y estado -->
+            <div id="modal-estado-opciones" style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:1rem;min-width:240px">
+                <div>
+                    <p style="font-size:.88rem;color:#1e293b;margin:0 0 .5rem 0;font-weight:700">¿Cambiar el estado de esta consignación?</p>
+                    <div id="estado-actual" style="text-align:center;font-size:.85rem;font-weight:600;padding:.6rem;border-radius:8px"></div>
+                </div>
+                
+                <div style="display:flex;flex-direction:column;gap:.5rem">
+                    <button type="button" onclick="cambiarEstadoConsignacion('verificar')" 
+                            style="width:100%;padding:.7rem;background:#16a34a;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:.85rem">
                         ✅ Marcar Verificado
                     </button>
-                </form>
-                <form id="form-pendiente" method="POST" style="flex:1">
-                    @csrf
-                    @method('PATCH')
-                    <button type="submit" style="width:100%;padding:.6rem;background:#f59e0b;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:.85rem">
+                    <button type="button" onclick="cambiarEstadoConsignacion('pendiente')" 
+                            style="width:100%;padding:.7rem;background:#f59e0b;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:.85rem">
                         🕐 Marcar Pendiente
                     </button>
-                </form>
+                    <button type="button" onclick="cambiarEstadoConsignacion('no-aparece')" 
+                            style="width:100%;padding:.7rem;background:#dc2626;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:.85rem">
+                        ❌ No aparece en banco
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -254,11 +302,18 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.78rem}
     <div class="modal-box">
         <div class="modal-head">
             <span style="color:#fff;font-weight:700;font-size:.9rem">🖼 Comprobante</span>
-            <button onclick="cerrarModal('modal-img')" class="btn-close">×</button>
+            <div style="display:flex;gap:.5rem;align-items:center">
+                @if(auth()->user()->hasRole(['admin','superadmin']))
+                <button id="btn-reemplazar-modal-img" type="button" class="btn-sm" style="background:#f59e0b;color:#fff;font-weight:700;display:none">
+                    🔄 Reemplazar
+                </button>
+                @endif
+                <button onclick="cerrarModal('modal-img')" class="btn-close">×</button>
+            </div>
         </div>
-        <div class="modal-body" style="text-align:center;padding:.5rem">
-            <img id="img-preview" src="" style="max-width:100%;max-height:70vh;border-radius:8px;display:none" alt="comprobante">
-            <iframe id="pdf-preview" src="" style="display:none;width:100%;height:70vh;border:none"></iframe>
+        <div class="modal-body img-zoom-wrapper" id="modal-img-wrapper" style="height:70vh">
+            <img id="img-preview" src="" onclick="toggleZoomImg(this)" class="zoomable-img" style="display:none" alt="comprobante">
+            <iframe id="pdf-preview" src="" style="display:none;width:100%;height:100%;border:none"></iframe>
         </div>
     </div>
 </div>
@@ -350,36 +405,89 @@ function cerrarModal(id) {
     if (id === 'modal-img') {
         document.getElementById('img-preview').src = '';
         document.getElementById('pdf-preview').src = '';
+        resetZoomImg('img-preview', 'modal-img-wrapper');
     }
     if (id === 'modal-recibo') document.getElementById('iframe-recibo').src = '';
     if (id === 'modal-subir') {
         clearFileSubir();
         if (_subirPasteHandler) { document.removeEventListener('paste', _subirPasteHandler); _subirPasteHandler = null; }
     }
+    if (id === 'modal-estado') {
+        resetZoomImg('modal-estado-img', 'modal-estado-img-wrapper');
+    }
 }
 
-function abrirModalEstado(csId, esVerificado) {
-    const base = `${baseUrl}/cuadre-diario/consignacion/${csId}/confirmar`;
-    document.getElementById('form-verificar').action = base;
-    document.getElementById('form-pendiente').action = `${base}/reversar`;
+let _currentCsId = null;
+
+function abrirModalEstado(csId, esVerificado, noAparece, imagenUrl) {
+    resetZoomImg('modal-estado-img', 'modal-estado-img-wrapper');
+    _currentCsId = csId;
+    
+    // Configurar estado actual en el modal
     const div = document.getElementById('estado-actual');
     if (esVerificado) {
         div.textContent = '✅ Estado actual: Verificado';
         div.style.background = '#dcfce7'; div.style.color = '#15803d';
+    } else if (noAparece) {
+        div.textContent = '❌ Estado actual: No aparece en banco';
+        div.style.background = '#fee2e2'; div.style.color = '#dc2626';
     } else {
         div.textContent = '🕐 Estado actual: Pendiente de verificar';
         div.style.background = '#fef3c7'; div.style.color = '#b45309';
     }
+    
+    // Configurar visor de imagen/PDF y tamaño del modal
+    const box = document.getElementById('modal-estado-box');
+    const container = document.getElementById('modal-estado-comp-container');
+    const img = document.getElementById('modal-estado-img');
+    const pdf = document.getElementById('modal-estado-pdf');
+    
+    if (imagenUrl) {
+        if (box) box.style.width = 'min(820px, 96vw)';
+        container.style.display = 'block';
+        const isPdf = imagenUrl.toLowerCase().endsWith('.pdf');
+        if (isPdf) {
+            img.style.display = 'none';
+            pdf.style.display = 'block';
+            pdf.src = imagenUrl;
+        } else {
+            pdf.style.display = 'none';
+            img.style.display = 'block';
+            img.src = imagenUrl;
+        }
+    } else {
+        if (box) box.style.width = 'min(380px, 96vw)';
+        container.style.display = 'none';
+        img.src = '';
+        pdf.src = '';
+    }
+    
     document.getElementById('modal-estado').classList.add('open');
 }
 
-function verImagen(url) {
+function verImagen(url, id, esGasto) {
+    resetZoomImg('img-preview', 'modal-img-wrapper');
     const isPdf = url.toLowerCase().endsWith('.pdf');
     const img = document.getElementById('img-preview');
     const pdf = document.getElementById('pdf-preview');
     img.style.display = isPdf ? 'none' : 'block';
     pdf.style.display = isPdf ? 'block' : 'none';
     if (isPdf) { pdf.src = url; } else { img.src = url; }
+    
+    // Configurar botón reemplazar si se proveen ID y esGasto
+    const btnReemplazar = document.getElementById('btn-reemplazar-modal-img');
+    if (btnReemplazar) {
+        if (id !== undefined && esGasto !== undefined) {
+            btnReemplazar.style.display = 'inline-block';
+            btnReemplazar.onclick = () => {
+                cerrarModal('modal-img');
+                abrirSubirImagen(id, esGasto, true);
+            };
+        } else {
+            btnReemplazar.style.display = 'none';
+        }
+    }
+    
     document.getElementById('modal-img').classList.add('open');
 }
 
@@ -475,6 +583,231 @@ function abrirRecibo(facturaId) {
     document.getElementById('iframe-recibo').src = url;
     document.getElementById('btn-abrir-recibo').href = url;
     document.getElementById('modal-recibo').classList.add('open');
+}
+
+// ── Lógica de Filtros Interactivos ──
+function filtrarTabla(bancoId, estado, btn) {
+    const contenedor = btn.parentElement;
+    contenedor.querySelectorAll('.btn-filtro').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+
+    // Buscar la tabla correspondiente
+    const tabla = contenedor.nextElementSibling.querySelector('table.tbl');
+    if (!tabla) return;
+    const filas = tabla.querySelectorAll('tbody tr');
+    filas.forEach(tr => {
+        const estFila = tr.getAttribute('data-estado');
+        if (estado === 'todos' || estFila === estado) {
+            tr.style.display = '';
+        } else {
+            tr.style.display = 'none';
+        }
+    });
+}
+
+// ── Actualización de Estado vía Fetch (AJAX) ──
+function cambiarEstadoConsignacion(accion) {
+    if (!_currentCsId) return;
+
+    let url = '';
+    let method = 'POST';
+    
+    if (accion === 'verificar') {
+        url = `${baseUrl}/cuadre-diario/consignacion/${_currentCsId}/confirmar`;
+    } else if (accion === 'pendiente') {
+        url = `${baseUrl}/cuadre-diario/consignacion/${_currentCsId}/confirmar/reversar`;
+    } else if (accion === 'no-aparece') {
+        url = `${baseUrl}/cuadre-diario/consignacion/${_currentCsId}/no-aparece`;
+    }
+
+    const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '{{ csrf_token() }}';
+    
+    const headers = {
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': token
+    };
+
+    const body = new FormData();
+    if (accion === 'pendiente') {
+        body.append('_method', 'PATCH');
+    }
+
+    fetch(url, {
+        method: 'POST',
+        headers: headers,
+        body: body
+    })
+    .then(res => {
+        if (!res.ok) throw new Error('Error al actualizar el estado.');
+        return res.json();
+    })
+    .then(data => {
+        if (data.success) {
+            const tr = document.getElementById(`consignacion-row-${_currentCsId}`);
+            if (tr) {
+                // 1. Actualizar el atributo data-estado
+                let nuevoEst = 'pendiente';
+                if (accion === 'verificar') nuevoEst = 'verificado';
+                else if (accion === 'no-aparece') nuevoEst = 'no_aparece';
+                tr.setAttribute('data-estado', nuevoEst);
+
+                // 2. Actualizar el botón de Estado en la fila
+                const btnEstado = tr.querySelector('.btn-estado-clic');
+                if (btnEstado) {
+                    if (accion === 'verificar') {
+                        btnEstado.style.background = '#dcfce7';
+                        btnEstado.style.color = '#15803d';
+                        btnEstado.innerHTML = '✅ Verificado';
+                        btnEstado.setAttribute('onclick', `abrirModalEstado(${data.consignacion.id}, true, false, ${data.consignacion.imagen_url ? "'"+data.consignacion.imagen_url+"'" : 'null'})`);
+                    } else if (accion === 'no-aparece') {
+                        btnEstado.style.background = '#fee2e2';
+                        btnEstado.style.color = '#dc2626';
+                        btnEstado.innerHTML = '❌ No aparece';
+                        btnEstado.setAttribute('onclick', `abrirModalEstado(${data.consignacion.id}, false, true, ${data.consignacion.imagen_url ? "'"+data.consignacion.imagen_url+"'" : 'null'})`);
+                    } else {
+                        btnEstado.style.background = '#fef3c7';
+                        btnEstado.style.color = '#b45309';
+                        btnEstado.innerHTML = '🕐 Pendiente';
+                        btnEstado.setAttribute('onclick', `abrirModalEstado(${data.consignacion.id}, false, false, ${data.consignacion.imagen_url ? "'"+data.consignacion.imagen_url+"'" : 'null'})`);
+                    }
+                }
+
+                // 3. Actualizar la celda de descripción
+                const tdDesc = tr.querySelector('.celda-descripcion');
+                if (tdDesc) {
+                    const descText = data.consignacion.descripcion || '—';
+                    tdDesc.textContent = descText.length > 55 ? descText.substring(0, 52) + '...' : descText;
+                    tdDesc.setAttribute('title', descText);
+                }
+            }
+
+            // 4. Actualizar el saldo del banco
+            if (data.nuevo_saldo !== undefined && data.banco_id) {
+                const divSaldo = document.getElementById(`saldo-banco-${data.banco_id}`);
+                if (divSaldo) {
+                    const fmtVal = '$' + new Intl.NumberFormat('es-CO', { maximumFractionDigits: 0 }).format(Math.abs(data.nuevo_saldo));
+                    divSaldo.textContent = fmtVal;
+                    divSaldo.style.color = data.nuevo_saldo >= 0 ? '#1d4ed8' : '#dc2626';
+                }
+            }
+
+            cerrarModal('modal-estado');
+            mostrarToast(data.message);
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(err => {
+        console.error(err);
+        alert('Ocurrió un error al procesar el cambio de estado.');
+    });
+}
+
+// ── Lógica de Zoom Interactivo en Imágenes ──
+function toggleZoomImg(img) {
+    const wrapper = img.parentElement;
+    if (!img.classList.contains('zoomed')) {
+        // Activar Zoom (Redimensionamiento real del DOM)
+        img.classList.add('zoomed');
+        if (wrapper) {
+            wrapper.classList.add('zoomed-mode');
+            // Centrar el scroll inicialmente
+            setTimeout(() => {
+                wrapper.scrollLeft = (img.offsetWidth - wrapper.offsetWidth) / 2;
+                wrapper.scrollTop = (img.offsetHeight - wrapper.offsetHeight) / 2;
+            }, 100);
+        }
+    } else {
+        // Desactivar Zoom
+        img.classList.remove('zoomed');
+        if (wrapper) {
+            wrapper.classList.remove('zoomed-mode');
+            wrapper.style.cursor = '';
+        }
+    }
+}
+
+function resetZoomImg(imgId, wrapperId) {
+    const img = document.getElementById(imgId);
+    if (img) {
+        img.classList.remove('zoomed');
+    }
+    const wrapper = document.getElementById(wrapperId);
+    if (wrapper) {
+        wrapper.classList.remove('zoomed-mode');
+        wrapper.style.cursor = '';
+        wrapper.scrollLeft = 0;
+        wrapper.scrollTop = 0;
+    }
+}
+
+// ── Arrastre de imagen con el mouse (Drag to Scroll) ──
+function initDragScroll(wrapper) {
+    let isDown = false;
+    let startX, startY;
+    let scrollLeft, scrollTop;
+
+    wrapper.addEventListener('mousedown', (e) => {
+        const img = wrapper.querySelector('img.zoomable-img');
+        if (img && img.classList.contains('zoomed')) {
+            isDown = true;
+            wrapper.style.cursor = 'grabbing';
+            startX = e.pageX - wrapper.offsetLeft;
+            startY = e.pageY - wrapper.offsetTop;
+            scrollLeft = wrapper.scrollLeft;
+            scrollTop = wrapper.scrollTop;
+            e.preventDefault();
+        }
+    });
+
+    wrapper.addEventListener('mouseleave', () => {
+        isDown = false;
+        const img = wrapper.querySelector('img.zoomable-img');
+        if (img && img.classList.contains('zoomed')) {
+            wrapper.style.cursor = 'grab';
+        }
+    });
+
+    wrapper.addEventListener('mouseup', () => {
+        isDown = false;
+        const img = wrapper.querySelector('img.zoomable-img');
+        if (img && img.classList.contains('zoomed')) {
+            wrapper.style.cursor = 'grab';
+        }
+    });
+
+    wrapper.addEventListener('mousemove', (e) => {
+        if (!isDown) return;
+        e.preventDefault();
+        const x = e.pageX - wrapper.offsetLeft;
+        const y = e.pageY - wrapper.offsetTop;
+        const walkX = (x - startX) * 1.5; // multiplicador de velocidad
+        const walkY = (y - startY) * 1.5;
+        wrapper.scrollLeft = scrollLeft - walkX;
+        wrapper.scrollTop = scrollTop - walkY;
+    });
+}
+
+// Inicializar Drag to Scroll al renderizar la vista
+const wr1 = document.getElementById('modal-estado-img-wrapper');
+const wr2 = document.getElementById('modal-img-wrapper');
+if (wr1) initDragScroll(wr1);
+if (wr2) initDragScroll(wr2);
+
+// ── Mostrar Toast de Notificación ──
+function mostrarToast(mensaje) {
+    let toast = document.getElementById('app-toast-notif');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'app-toast-notif';
+        toast.className = 'toast-notif';
+        document.body.appendChild(toast);
+    }
+    toast.innerHTML = `<span>ℹ️</span> <span>${mensaje}</span>`;
+    toast.classList.add('show');
+    setTimeout(() => {
+        toast.classList.remove('show');
+    }, 3500);
 }
 </script>
 @endsection

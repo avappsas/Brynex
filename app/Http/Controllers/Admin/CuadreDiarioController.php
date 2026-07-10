@@ -473,6 +473,7 @@ class CuadreDiarioController extends Controller
                 cs.observacion,
                 cs.valor,
                 cs.confirmado,
+                cs.no_aparece,
                 cs.imagen_path,
                 CONVERT(VARCHAR(10), cs.fecha, 120) AS fecha,
                 f.numero_factura,
@@ -553,6 +554,7 @@ class CuadreDiarioController extends Controller
                     'fecha'                => $c->fecha,
                     'tipo'                 => $c->tipo ?? 'cliente',
                     'confirmado'           => (bool)$c->confirmado,
+                    'no_aparece'           => (bool)($c->no_aparece ?? false),
                     'factura_id'           => $c->factura_id,
                     'num_factura'          => $c->numero_factura ?? $c->factura_id,
                     'anticipo_factura_id'  => $anticFact,
@@ -577,9 +579,11 @@ class CuadreDiarioController extends Controller
 
             $movSalidas = ($todasSalidas[$bc->id] ?? collect())->map(fn($g) => (object)[
                 'id'               => $g->id,
+                'cs_id'            => null,
                 'fecha'            => $g->fecha,
                 'tipo'             => $g->tipo,
                 'confirmado'       => true,
+                'no_aparece'       => false,
                 'factura_id'       => null,
                 'num_factura'      => $g->tipo === 'pago_planilla' ? ($g->numero_planilla ?? null) : null,
                 'pagador'          => $g->pagado_a,
@@ -617,8 +621,80 @@ class CuadreDiarioController extends Controller
         }
         $aliadoId = session('aliado_id_activo');
         $cs = Consignacion::where('aliado_id', $aliadoId)->findOrFail($csId);
-        $cs->update(['confirmado' => true]);
+
+        $observacion = $cs->observacion ?? '';
+        $observacion = preg_replace('/\s*[-·]?\s*(?:Validado|Marcado no aparece) por:.*$/u', '', $observacion);
+        $firma = 'Validado por: ' . Auth::user()->nombre;
+        $nuevaObservacion = trim($observacion . ($observacion ? ' - ' : '') . $firma);
+
+        $cs->update([
+            'confirmado' => true,
+            'no_aparece' => false,
+            'usuario_validador_id' => Auth::id(),
+            'fecha_validacion' => now(),
+            'observacion' => $nuevaObservacion,
+        ]);
+
+        if ($request->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Consignación verificada ✅',
+                'banco_id' => $cs->banco_cuenta_id,
+                'consignacion' => [
+                    'id' => $cs->id,
+                    'confirmado' => true,
+                    'no_aparece' => false,
+                    'observacion' => $cs->observacion,
+                    'descripcion' => $cs->observacion,
+                    'imagen_url' => $cs->imagen_path ? Storage::url($cs->imagen_path) : null,
+                ],
+                'nuevo_saldo' => Consignacion::saldoBanco($aliadoId, $cs->banco_cuenta_id)
+            ]);
+        }
+
         return back()->with('success', 'Consignación verificada ✅');
+    }
+
+    // ── Marcar consignación como no aparece en banco ──────────────────
+    public function noApareceConsignacion(Request $request, int $csId)
+    {
+        if (!Auth::user()->hasRole(['admin', 'superadmin'])) {
+            abort(403);
+        }
+        $aliadoId = session('aliado_id_activo');
+        $cs = Consignacion::where('aliado_id', $aliadoId)->findOrFail($csId);
+
+        $observacion = $cs->observacion ?? '';
+        $observacion = preg_replace('/\s*[-·]?\s*(?:Validado|Marcado no aparece) por:.*$/u', '', $observacion);
+        $firma = 'Marcado no aparece por: ' . Auth::user()->nombre;
+        $nuevaObservacion = trim($observacion . ($observacion ? ' - ' : '') . $firma);
+
+        $cs->update([
+            'confirmado' => false,
+            'no_aparece' => true,
+            'usuario_validador_id' => Auth::id(),
+            'fecha_validacion' => now(),
+            'observacion' => $nuevaObservacion,
+        ]);
+
+        if ($request->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Consignación marcada como no aparece en banco ❌',
+                'banco_id' => $cs->banco_cuenta_id,
+                'consignacion' => [
+                    'id' => $cs->id,
+                    'confirmado' => false,
+                    'no_aparece' => true,
+                    'observacion' => $cs->observacion,
+                    'descripcion' => $cs->observacion,
+                    'imagen_url' => $cs->imagen_path ? Storage::url($cs->imagen_path) : null,
+                ],
+                'nuevo_saldo' => Consignacion::saldoBanco($aliadoId, $cs->banco_cuenta_id)
+            ]);
+        }
+
+        return back()->with('success', 'Consignación marcada como no aparece en banco ❌');
     }
 
     // ── Subir imagen de gasto ─────────────────────────────────────────
@@ -659,7 +735,35 @@ class CuadreDiarioController extends Controller
         }
         $aliadoId = session('aliado_id_activo');
         $cs = Consignacion::where('aliado_id', $aliadoId)->findOrFail($csId);
-        $cs->update(['confirmado' => false]);
+
+        $observacion = $cs->observacion ?? '';
+        $nuevaObservacion = trim(preg_replace('/\s*[-·]?\s*(?:Validado|Marcado no aparece) por:.*$/u', '', $observacion));
+
+        $cs->update([
+            'confirmado' => false,
+            'no_aparece' => false,
+            'usuario_validador_id' => null,
+            'fecha_validacion' => null,
+            'observacion' => $nuevaObservacion ?: null,
+        ]);
+
+        if ($request->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Consignación marcada como pendiente 🕐',
+                'banco_id' => $cs->banco_cuenta_id,
+                'consignacion' => [
+                    'id' => $cs->id,
+                    'confirmado' => false,
+                    'no_aparece' => false,
+                    'observacion' => $cs->observacion,
+                    'descripcion' => $cs->observacion ?: '—',
+                    'imagen_url' => $cs->imagen_path ? Storage::url($cs->imagen_path) : null,
+                ],
+                'nuevo_saldo' => Consignacion::saldoBanco($aliadoId, $cs->banco_cuenta_id)
+            ]);
+        }
+
         return back()->with('success', 'Consignación marcada como pendiente.');
     }
 

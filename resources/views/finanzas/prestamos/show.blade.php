@@ -4,7 +4,7 @@
 @section('modulo', 'Ficha del Préstamo')
 
 @section('contenido')
-<div class="finanzas-container" x-data="{ openAbono: false, openLiquidar: false, openEditarMov: false, movEditar: { id: null, fecha: '', monto: 0, observacion: '', soporte_path: '' } }">
+<div class="finanzas-container" x-data="{ openAbono: false, openLiquidar: false, openAnexar: false, openEditarMov: false, movEditar: { id: null, fecha: '', monto: 0, observacion: '', soporte_path: '' } }">
 
     {{-- Breadcrumb --}}
     <div class="fin-top-bar">
@@ -100,6 +100,11 @@
                     {{-- Liquidar Intereses --}}
                     <button @click="openLiquidar = true" class="btn-fac-action blue">
                         ⚙️ Liquidar Intereses Manual
+                    </button>
+                    
+                    {{-- Anexar Valor Préstamo --}}
+                    <button @click="openAnexar = true" class="btn-fac-action orange">
+                        ➕ Anexar Valor Préstamo
                     </button>
 
                     {{-- Cobrar por WhatsApp --}}
@@ -303,6 +308,84 @@
         </div>
     </div>
 
+    {{-- Modal Anexar Valor Préstamo --}}
+    <div x-show="openAnexar" class="modal-overlay-bx" @click.self="openAnexar = false" x-cloak x-data="{ 
+        imagePreview: null, 
+        handleFile(e) { 
+            const file = e.target.files[0]; 
+            if(file && file.type.startsWith('image/')) { 
+                this.imagePreview = URL.createObjectURL(file); 
+            } else {
+                this.imagePreview = null;
+            }
+        }, 
+        initPaste() { 
+            window.addEventListener('paste', (e) => { 
+                if (!openAnexar) return; 
+                const items = (e.clipboardData || e.originalEvent.clipboardData).items; 
+                for (let index in items) { 
+                    const item = items[index]; 
+                    if (item.kind === 'file') { 
+                        const blob = item.getAsFile(); 
+                        if (blob.type.startsWith('image/')) {
+                            const fileInput = this.$refs.soporteInputAnexar; 
+                            const dataTransfer = new DataTransfer(); 
+                            dataTransfer.items.add(blob); 
+                            fileInput.files = dataTransfer.files; 
+                            this.imagePreview = URL.createObjectURL(blob); 
+                        }
+                    } 
+                } 
+            }); 
+        } 
+    }" x-init="initPaste()">
+        <div class="modal-box-bx">
+            <div class="modal-head-bx" style="background:linear-gradient(135deg, #f97316, #ea580c);">
+                <h3>➕ Anexar Valor (Capital)</h3>
+                <button @click="openAnexar = false" class="modal-close-bx">&times;</button>
+            </div>
+            <form action="{{ route('finanzas.prestamos.anexar', $prestamo->id) }}" method="POST" enctype="multipart/form-data">
+                @csrf
+                <div class="modal-body-bx">
+                    <div class="form-group-bx">
+                        <label class="form-label-bx">Fecha del Desembolso Adicional</label>
+                        <input type="date" name="fecha" value="{{ now()->toDateString() }}" class="form-input-bx" required>
+                    </div>
+                    
+                    <div class="form-group-bx" style="margin-top:1rem;">
+                        <label class="form-label-bx">Monto Adicional ($ COP)</label>
+                        <input type="number" name="monto" placeholder="Ej: 500000" class="form-input-bx" required min="1">
+                        <small style="color:#64748b; font-size:0.7rem; display:block; margin-top:0.25rem;">
+                            Este valor se sumará al capital original y al saldo actual del préstamo.
+                        </small>
+                    </div>
+                    
+                    <div class="form-group-bx" style="margin-top:1rem;">
+                        <label class="form-label-bx">Archivo Soporte (Opcional - Adjuntar o Pegar captura)</label>
+                        <input type="file" name="soporte" x-ref="soporteInputAnexar" @change="handleFile" class="form-input-bx" style="padding:0.35rem 0.5rem;" accept="image/*,application/pdf">
+                        
+                        <template x-if="imagePreview">
+                            <div style="margin-top:0.75rem; border:1px solid #cbd5e1; padding:0.5rem; border-radius:8px; background:#f8fafc; text-align:center; position:relative;">
+                                <span style="font-size:0.72rem; color:#475569; display:block; margin-bottom:0.4rem; font-weight:600;">📸 Vista Previa del Soporte:</span>
+                                <img :src="imagePreview" style="max-height:160px; max-width:100%; border-radius:6px; box-shadow:0 2px 4px rgba(0,0,0,0.08);">
+                                <button type="button" @click="imagePreview = null; $refs.soporteInputAnexar.value = ''" style="position:absolute; top:4px; right:4px; border:none; background:#ef4444; color:#fff; border-radius:50%; width:20px; height:20px; font-size:0.75rem; cursor:pointer; display:flex; align-items:center; justify-content:center;">&times;</button>
+                            </div>
+                        </template>
+                    </div>
+
+                    <div class="form-group-bx" style="margin-top:1rem;">
+                        <label class="form-label-bx">Observaciones (Opcional)</label>
+                        <input type="text" name="observacion" placeholder="Ej: Desembolso adicional transferencia" class="form-input-bx">
+                    </div>
+                </div>
+                <div class="modal-foot-bx">
+                    <button type="button" @click="openAnexar = false" class="btn-glass-bx">Cancelar</button>
+                    <button type="submit" class="btn-fin success" style="background:#ea580c;">Anexar Valor</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     {{-- Modal Editar Movimiento --}}
     <div x-show="openEditarMov" class="modal-overlay-bx" @click.self="openEditarMov = false" x-cloak>
         <div class="modal-box-bx" style="max-width: 480px;">
@@ -422,6 +505,8 @@
 .btn-fac-action.green:hover { background: linear-gradient(135deg, #059669, #047857); transform: translateY(-1px); box-shadow: 0 4px 10px rgba(16,185,129,0.2); }
 .btn-fac-action.blue { background: linear-gradient(135deg, #3b82f6, #1d4ed8); color: #fff; }
 .btn-fac-action.blue:hover { background: linear-gradient(135deg, #2563eb, #1e3a8a); transform: translateY(-1px); box-shadow: 0 4px 10px rgba(59,130,246,0.2); }
+.btn-fac-action.orange { background: linear-gradient(135deg, #f97316, #ea580c); color: #fff; }
+.btn-fac-action.orange:hover { background: linear-gradient(135deg, #ea580c, #c2410c); transform: translateY(-1px); box-shadow: 0 4px 10px rgba(249,115,22,0.2); }
 .btn-fac-action.success { background: rgba(34,197,94,0.08); color: #166534; border: 1px solid rgba(34,197,94,0.18); }
 .btn-fac-action.success:hover { background: rgba(34,197,94,0.15); transform: translateY(-1px); }
 .btn-fac-action.success:disabled { opacity: 0.4; cursor: not-allowed; }

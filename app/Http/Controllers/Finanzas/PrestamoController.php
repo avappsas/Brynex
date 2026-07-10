@@ -236,6 +236,67 @@ class PrestamoController extends Controller
     }
 
     /**
+     * Registra un desembolso adicional (anexa valor al préstamo).
+     */
+    public function anexarValor(Request $request, $id)
+    {
+        $prestamo = Prestamo::where('user_id', Auth::id())->findOrFail($id);
+
+        $request->validate([
+            'monto' => 'required|numeric|min:1',
+            'fecha' => 'required|date',
+            'observacion' => 'nullable|string|max:255',
+            'soporte' => 'nullable|file|mimes:jpeg,png,jpg,pdf|max:10240', // 10MB max
+        ]);
+
+        $soportePath = null;
+        if ($request->hasFile('soporte')) {
+            $soportePath = $request->file('soporte')->store('finanzas/prestamos', 'local');
+        }
+
+        $res = $this->liquidacionService->registrarDesembolsoAdicional(
+            $prestamo, 
+            (float) $request->monto, 
+            $request->fecha, 
+            $request->observacion, 
+            $soportePath
+        );
+
+        if ($res['success']) {
+            // Registrar el egreso correspondiente en finanzas_gastos
+            $user = Auth::user();
+            $categoriaOtros = CategoriaGasto::where('user_id', $user->id)->where('nombre', 'Otros')->first();
+            
+            if (!$categoriaOtros) {
+                $categoriaOtros = CategoriaGasto::create([
+                    'user_id' => $user->id,
+                    'nombre' => 'Otros',
+                    'icono' => '📁',
+                    'orden' => 99,
+                ]);
+            }
+            
+            $catId = $categoriaOtros->id;
+
+            Gasto::create([
+                'user_id' => $user->id,
+                'categoria_id' => $catId,
+                'fecha' => $request->fecha,
+                'monto' => (float) $request->monto,
+                'descripcion' => "Desembolso adicional a: {$prestamo->nombre_deudor}. Obs: {$request->observacion}",
+                'tipo_movimiento' => 'prestamo',
+                'es_patrimonio' => false,
+                'patrimonio_id' => null,
+            ]);
+
+            return redirect()->route('finanzas.prestamos.show', $prestamo->id)
+                ->with('success', "Desembolso adicional registrado con éxito por \$" . number_format($request->monto, 0, ',', '.') . " COP.");
+        }
+
+        return redirect()->route('finanzas.prestamos.show', $prestamo->id)->with('error', $res['message']);
+    }
+
+    /**
      * Realiza el corte y liquidación mensual de intereses manualmente a la fecha seleccionada.
      */
     public function liquidarMes(Request $request, $id)
