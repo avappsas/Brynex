@@ -139,7 +139,7 @@ class OperadorPlanillaFormularioController extends Controller
             'plano.numero_planilla'         => 'Número de Planilla PILA',
             'plano.periodo_cotizacion'      => 'Periodo Cotización (aaaamm)',
             'plano.periodo_servicio'        => 'Periodo Servicio (aaaamm)',
-            'plano.fecha_pago_completa'     => 'Fecha y Hora de Pago (AAAA-MM-DD   HH:MM:SS.0)',
+            'plano.fecha_pago_completa'     => 'Fecha y Hora de Pago (AAAA-MM-DD HH:MM:SS.0)',
             'plano.fecha_pago_estado'       => 'Estado Pago (PAGADA)',
             'plano.fecha_pago_fecha'        => 'Fecha Pago (AAAA-MM-DD)',
             'plano.fecha_pago_hora'         => 'Hora Pago (HH:MM:SS.0)',

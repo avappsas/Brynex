@@ -190,7 +190,7 @@ class PlanillaFormularioService
             'plano.numero_planilla'         => $plano->numero_planilla,
             'plano.periodo_cotizacion'      => $perCot,
             'plano.periodo_servicio'        => $perSer,
-            'plano.fecha_pago_completa'     => "{$pagoFecha}    {$pagoHora}",
+            'plano.fecha_pago_completa'     => "{$pagoFecha} {$pagoHora}",
             'plano.fecha_pago_estado'       => 'PAGADA',
             'plano.fecha_pago_fecha'        => $pagoFecha,
             'plano.fecha_pago_hora'         => $pagoHora,
