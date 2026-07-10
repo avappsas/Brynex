@@ -129,6 +129,7 @@ class OperadorPlanillaFormularioController extends Controller
             'aportante.departamento'         => 'Departamento Aportante (VALLE DEL CAUCA)',
             'aportante.ciudad'               => 'Ciudad Aportante (CALI)',
             'aportante.telefono'             => 'Teléfono de la empresa',
+            'aportante.forma_presentacion'   => 'Forma de Presentación (ÚNICO/COLECTIVO)',
             'aportante.afiliados'            => 'Total afiliados en el plano',
             'aportante.representante'        => 'Nombre del representante legal',
             'aportante.cedula_representante' => 'Cédula del representante legal',

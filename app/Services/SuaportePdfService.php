@@ -38,10 +38,16 @@ class SuaportePdfService
         // 3. Obtener los datos calculados de Brynex
         $c = PilaCotizanteCalculator::calcular($plano);
 
+        $esIndependiente = (bool)($plano->razonSocial?->es_independiente ?? false);
+        $sinCajaCcf = ($c['codCcfPila'] == 'CCF68');
+
         $nombreAfp = $plano->nombre_afp ?: 'PORVENIR';
         $nombreEps = $plano->nombre_eps ?: 'NUEVA EPS';
         $nombreArl = $plano->nombre_arl ?: 'ARL SURA';
         $nombreCaja = $plano->nombre_caja ?: ($c['sinCaja'] ? 'COMCAJA' : 'COMCAJA');
+        if ($esIndependiente && $sinCajaCcf) {
+            $nombreCaja = 'NINGUNA CCF';
+        }
 
         $perCot = $plano->anio_plano . str_pad($plano->mes_plano, 2, '0', STR_PAD_LEFT);
 
@@ -99,7 +105,8 @@ class SuaportePdfService
         $pdf->Text(246.56, 45.54, 'Fecha creación reporte:');
         $pdf->Text(346.56, 45.54, now()->format('Y-m-d, h:i:s p. m.'));
         $pdf->Text(425.00, 45.54, 'Tipo Planilla:');
-        $pdf->Text(490.00, 45.54, 'E');
+        $tipoPlanilla = $esIndependiente ? 'I' : 'E';
+        $pdf->Text(490.00, 45.54, $tipoPlanilla);
         $pdf->Text(545.00, 45.54, 'Número Planilla:');
         $pdf->Text(680.00, 45.54, $plano->numero_planilla);
         $pdf->Text(425.00, 61.54, 'Periodo Cotización:');
@@ -138,29 +145,67 @@ class SuaportePdfService
 
         $pdf->Text(390, 131, "PAGADA   {$pagoFecha}    {$pagoHora}");
 
-        // --- SECCIÓN I ---
-        $pdf->SetFont('Arial', '', 7.5);
-        $pdf->Text(117, 140.40, $plano->razon_social);
-        $pdf->Text(117, 153.40, 'NI ' . ($plano->razonSocial?->nit ?? '901918923'));
-        $pdf->Text(491, 153.40, $plano->razonSocial?->direccion ?? 'CR 39 #43 - 04');
-        $pdf->Text(491, 166.40, $plano->razonSocial?->telefono ?? '5555555');
-        
-        $afiliadosCount = Plano::where('numero_planilla', $plano->numero_planilla)
+        $esIndependiente = (bool)($plano->razonSocial?->es_independiente ?? false);
+        $clienteObj = $plano->contrato?->cliente;
+
+        $razonSocialAportante = $esIndependiente
+            ? strtoupper(trim(implode(' ', array_filter([$plano->primer_nombre, $plano->segundo_nombre, $plano->primer_ape, $plano->segundo_ape]))))
+            : strtoupper($plano->razon_social);
+
+        $nitAportante = $esIndependiente
+            ? (($plano->tipo_doc ?? 'CC') . ' ' . ($plano->no_identifi ?? ''))
+            : ('NI ' . ($plano->razonSocial?->nit ?? '901918923'));
+
+        $direccionAportante = $esIndependiente
+            ? strtoupper($clienteObj?->direccion_vivienda ?? $clienteObj?->direccion_cobro ?? 'CR 39 #43 - 04')
+            : strtoupper($plano->razonSocial?->direccion ?? 'CR 39 #43 - 04');
+
+        $telefonoAportante = $esIndependiente
+            ? ($clienteObj?->celular ?? $clienteObj?->telefono ?? '5555555')
+            : ($plano->razonSocial?->telefonos ?? $plano->razonSocial?->telefono ?? '5555555');
+
+        $representanteVal = $esIndependiente
+            ? ''
+            : strtoupper($plano->razonSocial?->nombre_rep ?? $plano->razonSocial?->representante_legal ?? 'GARCIA VIDAL BRAYAN HUMBERTO');
+
+        $representanteCedVal = $esIndependiente
+            ? ''
+            : ('CC ' . ($plano->razonSocial?->cedula_rep ?? $plano->razonSocial?->representante_cedula ?? '1143944458'));
+
+        $afiliadosCount = $esIndependiente ? 1 : Plano::where('numero_planilla', $plano->numero_planilla)
             ->where('aliado_id', $plano->aliado_id)
             ->count();
+
+        $exoneradoVal = $esIndependiente ? 'N' : 'S';
+
+        $ciudadAfiliado = $esIndependiente
+            ? (($clienteObj?->municipio?->id ?? '76001') . '000 - ' . ($clienteObj?->departamento?->id ?? '76'))
+            : '94001000 - 94';
+
+        $deptoAfiliado = $esIndependiente
+            ? strtoupper($clienteObj?->departamento?->nombre ?? 'VALLE DEL CAUCA')
+            : 'GUAINIA';
+
+        // --- SECCIÓN I ---
+        $pdf->SetFont('Arial', '', 7.5);
+        $pdf->Text(117, 140.40, $razonSocialAportante);
+        $pdf->Text(117, 153.40, $nitAportante);
+        $pdf->Text(491, 153.40, $direccionAportante);
+        $pdf->Text(491, 166.40, $telefonoAportante);
+        
         $pdf->Text(600, 179.40, (string)max(1, $afiliadosCount));
         
-        $pdf->Text(117, 205.40, $plano->razonSocial?->representante_legal ?? 'GARCIA VIDAL BRAYAN HUMBERTO');
-        $pdf->Text(491, 205.40, 'CC ' . ($plano->razonSocial?->representante_cedula ?? '1143944458'));
+        $pdf->Text(117, 205.40, $representanteVal);
+        $pdf->Text(491, 205.40, $representanteCedVal);
 
         // --- SECCIÓN II ---
         $pdf->Text(65.00, 238.90, $plano->tipo_doc . ' ' . $plano->no_identifi);
-        $pdf->Text(241, 238.90, 'S');
+        $pdf->Text(241, 238.90, $exoneradoVal);
         $pdf->SetFont('Arial', 'B', 7.5);
         $pdf->Text(254, 257.90, $plano->primer_ape . ' ' . $plano->segundo_ape . ' ' . $plano->primer_nombre . ' ' . $plano->segundo_nombre);
         $pdf->SetFont('Arial', '', 7.5);
-        $pdf->Text(520, 257.90, '94001000 - 94');
-        $pdf->Text(680, 257.90, 'GUAINIA');
+        $pdf->Text(520, 257.90, $ciudadAfiliado);
+        $pdf->Text(680, 257.90, $deptoAfiliado);
         
         // Tipo / Subtipo Cotizante
         $pdf->Text(12, 251.90, str_pad($c['tipoCotizante'], 2, '0', STR_PAD_LEFT));
@@ -206,10 +251,10 @@ class SuaportePdfService
         $pdf->Text(583.72, $yRow, '$ ' . number_format($c['vArl'], 0, ',', '.'));
 
         // Caja
-        $pdf->Text(610.67, $yRow, ($c['codCcfPila'] == 'CCF68' ? 'CCF66' : $c['codCcfPila']));
-        $pdf->Text(633.55, $yRow, '4 %');
-        $pdf->Text(657.00, $yRow, '$ ' . number_format($c['ibcCcf'], 0, ',', '.'));
-        $pdf->Text(684.50, $yRow, '$ ' . number_format($c['vCcf'], 0, ',', '.'));
+        $pdf->Text(610.67, $yRow, ($esIndependiente && $sinCajaCcf ? 'NIN-CC' : ($c['codCcfPila'] == 'CCF68' ? 'CCF66' : $c['codCcfPila'])));
+        $pdf->Text(633.55, $yRow, ($esIndependiente && $sinCajaCcf ? '0 %' : '4 %'));
+        $pdf->Text(657.00, $yRow, ($esIndependiente && $sinCajaCcf ? '$ 0' : '$ ' . number_format($c['ibcCcf'], 0, ',', '.')));
+        $pdf->Text(684.50, $yRow, ($esIndependiente && $sinCajaCcf ? '$ 0' : '$ ' . number_format($c['vCcf'], 0, ',', '.')));
 
         // Parafiscales
         $pdf->Text(708.55, $yRow, '0 %');
@@ -240,7 +285,7 @@ class SuaportePdfService
         $pdf->Text(189.83, $yVal, '$ 0');
         $pdf->Text(252.32, $yVal, '$ ' . number_format($c['vEps'], 0, ',', '.'));
         $pdf->Text(322.32, $yVal, '$ ' . number_format($c['vArl'], 0, ',', '.'));
-        $pdf->Text(396.49, $yVal, '$ ' . number_format($c['vCcf'], 0, ',', '.'));
+        $pdf->Text(396.49, $yVal, ($esIndependiente && $sinCajaCcf ? '$ 0' : '$ ' . number_format($c['vCcf'], 0, ',', '.')));
         $pdf->Text(469.33, $yVal, '$ 0');
         $pdf->Text(539.33, $yVal, '$ 0');
         $pdf->Text(604.83, $yVal, '$ 0');

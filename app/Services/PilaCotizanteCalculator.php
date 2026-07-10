@@ -218,8 +218,9 @@ class PilaCotizanteCalculator
                 $codCcfFin = ($cajaObj && !empty($cajaObj->codigo)) ? $cajaObj->codigo : $codCajRaw;
             }
             $sinCaja    = ($codCcfFin === 'CCF68');
-            $ibcCcfTp   = $sinCaja ? 100 : $ibcCajaTp;
-            $vCcfTp     = $sinCaja ? 100 : self::roundPila($ibcCajaTp * 0.04);
+            $esIndependiente = (bool)($p->razonSocial?->es_independiente ?? false);
+            $ibcCcfTp   = $sinCaja ? ($esIndependiente ? 0 : 100) : $ibcCajaTp;
+            $vCcfTp     = $sinCaja ? ($esIndependiente ? 0 : 100) : self::roundPila($ibcCajaTp * 0.04);
 
             $vArlTp = self::roundPila($ibcArlTp * $tasaArl);
             $vAfpTp = $tienePension ? self::roundPila($ibcAfpTp * 0.16) : 0;
@@ -323,18 +324,20 @@ class PilaCotizanteCalculator
             $codCcfFin = ($cajaObj && !empty($cajaObj->codigo)) ? $cajaObj->codigo : $codCajRaw;
         }
 
+        $esIndependiente = (bool)($p->razonSocial?->es_independiente ?? false);
+
         // ── IBC por subsistema ──────────────────────────────────────────────
         $ibcAfp = $tienePension ? $ibcProp : 0;
         $ibcEps = $ibcProp;
         $ibcArl = $ibcProp;
-        $ibcCcf = ($codCcfFin === 'CCF68') ? 100 : $ibcProp;
+        $ibcCcf = ($codCcfFin === 'CCF68') ? ($esIndependiente ? 0 : 100) : $ibcProp;
 
         // ── Cotizaciones ───────────────────────────────────────────────────
         $vAfp = $tienePension ? self::roundPila($ibcProp * 0.16) : 0;
         $vEps = self::roundPila($ibcProp * ($exonerado === 'S' ? 0.04 : 0.125));
         $vArl = self::roundPila($ibcProp * $tasaArl);
         $vCcf = ($codCcfFin === 'CCF68')
-            ? 100
+            ? ($esIndependiente ? 0 : 100)
             : self::roundPila($ibcProp * 0.04);
 
         // ── Tarifas EPS/SENA/ICBF ──────────────────────────────────────────

@@ -96,7 +96,14 @@ class PlanillaFormularioService
         $nombreAfp = $plano->nombre_afp ?: 'PORVENIR';
         $nombreEps = $plano->nombre_eps ?: 'NUEVA EPS';
         $nombreArl = $plano->nombre_arl ?: 'ARL SURA';
+
+        $esIndependiente = (bool)($plano->razonSocial?->es_independiente ?? false);
+        $sinCajaCcf = ($c['codCcfPila'] == 'CCF68');
+
         $nombreCaja = $plano->nombre_caja ?: ($c['sinCaja'] ? 'COMCAJA' : 'COMCAJA');
+        if ($esIndependiente && $sinCajaCcf) {
+            $nombreCaja = 'NINGUNA CCF';
+        }
 
         // Resolver el código de PILA real de AFP si es que viene como NIT
         $codAfpPilaReal = $c['codAfpPila'];
@@ -168,25 +175,77 @@ class PlanillaFormularioService
             $pagoHora  = '14:03:12.0';
             $pagoHoraSinMs = '14:03:12';
         }
+        $clienteObj = $plano->contrato?->cliente;
+
+        $razonSocialAportante = $esIndependiente
+            ? strtoupper(trim(implode(' ', array_filter([$plano->primer_nombre, $plano->segundo_nombre, $plano->primer_ape, $plano->segundo_ape]))))
+            : strtoupper($plano->razon_social);
+
+        $nitAportante = $esIndependiente
+            ? (($plano->tipo_doc ?? 'CC') . ' ' . ($plano->no_identifi ?? ''))
+            : ('NI ' . ($plano->razonSocial?->nit ?? '901918923'));
+
+        $direccionAportante = $esIndependiente
+            ? strtoupper($clienteObj?->direccion_vivienda ?? $clienteObj?->direccion_cobro ?? 'CR 39 #43 - 04')
+            : strtoupper($plano->razonSocial?->direccion ?? 'CR 39 #43 - 04');
+
+        $tipoAportante = $esIndependiente ? 'INDEPENDIENTE' : 'EMPLEADOR';
+        $tipoPersona = $esIndependiente ? 'NATURAL' : 'JURÍDICA';
+
+        $telefonoAportante = $esIndependiente
+            ? ($clienteObj?->celular ?? $clienteObj?->telefono ?? '5555555')
+            : ($plano->razonSocial?->telefonos ?? $plano->razonSocial?->telefono ?? '5555555');
+
+        $afiliadosCountVal = $esIndependiente ? '1' : (string)max(1, $afiliadosCount);
+
+        $representanteVal = $esIndependiente
+            ? ''
+            : strtoupper($plano->razonSocial?->nombre_rep ?? $plano->razonSocial?->representante_legal ?? 'GARCIA VIDAL BRAYAN HUMBERTO');
+
+        $representanteCedVal = $esIndependiente
+            ? ''
+            : ('CC ' . ($plano->razonSocial?->cedula_rep ?? $plano->razonSocial?->representante_cedula ?? '1143944458'));
+
+        $exoneradoVal = $esIndependiente ? 'N' : 'S';
+
+        $tipoPlanilla = $esIndependiente ? 'I' : 'E';
+        $formaPresentacion = $esIndependiente ? 'ÚNICO' : ($plano->razonSocial?->forma_presentacion ?? 'ÚNICO');
+
+        $departamentoAportante = $esIndependiente
+            ? strtoupper($clienteObj?->departamento?->nombre ?? 'VALLE DEL CAUCA')
+            : 'VALLE DEL CAUCA';
+
+        $ciudadAportante = $esIndependiente
+            ? strtoupper($clienteObj?->municipio?->nombre ?? 'CALI')
+            : 'CALI';
+
+        $ciudadAfiliado = $esIndependiente
+            ? (($clienteObj?->municipio?->id ?? '76001') . '000 - ' . ($clienteObj?->departamento?->id ?? '76'))
+            : '94001000 - 94';
+
+        $ubicacionLaboralAfiliado = $esIndependiente
+            ? strtoupper($clienteObj?->departamento?->nombre ?? 'VALLE DEL CAUCA')
+            : 'GUAINIA';
 
         return [
             // Aportante
-            'aportante.razon_social'         => strtoupper($plano->razon_social),
-            'aportante.nit'                  => 'NI ' . ($plano->razonSocial?->nit ?? '901918923'),
-            'aportante.direccion'            => strtoupper($plano->razonSocial?->direccion ?? 'CR 39 #43 - 04'),
-            'aportante.tipo_aportante'       => 'EMPLEADOR',
-            'aportante.tipo_persona'         => 'JURÍDICA',
-            'aportante.sucursal'             => 'SUCURSAL',
-            'aportante.departamento'         => 'VALLE DEL CAUCA',
-            'aportante.ciudad'               => 'CALI',
-            'aportante.telefono'             => $plano->razonSocial?->telefono ?? '5555555',
-            'aportante.afiliados'            => (string)max(1, $afiliadosCount),
-            'aportante.representante'        => strtoupper($plano->razonSocial?->representante_legal ?? 'GARCIA VIDAL BRAYAN HUMBERTO'),
-            'aportante.cedula_representante' => 'CC ' . ($plano->razonSocial?->representante_cedula ?? '1143944458'),
+            'aportante.razon_social'         => $razonSocialAportante,
+            'aportante.nit'                  => $nitAportante,
+            'aportante.direccion'            => $direccionAportante,
+            'aportante.tipo_aportante'       => $tipoAportante,
+            'aportante.tipo_persona'         => $tipoPersona,
+            'aportante.sucursal'             => $esIndependiente ? 'ÚNICO' : 'SUCURSAL',
+            'aportante.departamento'         => $departamentoAportante,
+            'aportante.ciudad'               => $ciudadAportante,
+            'aportante.telefono'             => $telefonoAportante,
+            'aportante.forma_presentacion'   => $formaPresentacion,
+            'aportante.afiliados'            => $afiliadosCountVal,
+            'aportante.representante'        => $representanteVal,
+            'aportante.cedula_representante' => $representanteCedVal,
 
             // Metadatos
             'plano.fecha_creacion'          => now()->format('Y-m-d, h:i:s') . ' ' . (now()->format('a') === 'am' ? 'a. m.' : 'p. m.'),
-            'plano.tipo_planilla'           => 'E',
+            'plano.tipo_planilla'           => $tipoPlanilla,
             'plano.numero_planilla'         => $plano->numero_planilla,
             'plano.periodo_cotizacion'      => $perCot,
             'plano.periodo_servicio'        => $perSer,
@@ -200,9 +259,9 @@ class PlanillaFormularioService
             'afiliado.cedula'               => $plano->no_identifi,
             'afiliado.tipo_doc_cedula'      => $plano->tipo_doc . ' ' . $plano->no_identifi,
             'afiliado.nombre_completo'      => strtoupper($plano->primer_ape . ' ' . $plano->segundo_ape . ' ' . $plano->primer_nombre . ' ' . $plano->segundo_nombre),
-            'afiliado.exonerado'            => 'S',
-            'afiliado.ciudad'               => '94001000 - 94',
-            'afiliado.ubicacion_laboral'    => 'GUAINIA',
+            'afiliado.exonerado'            => $exoneradoVal,
+            'afiliado.ciudad'               => $ciudadAfiliado,
+            'afiliado.ubicacion_laboral'    => $ubicacionLaboralAfiliado,
             'afiliado.tipo_cotizante'       => str_pad($c['tipoCotizante'], 2, '0', STR_PAD_LEFT),
             'afiliado.subtipo_cotizante'    => str_pad($c['subtipoCotizante'], 2, '0', STR_PAD_LEFT),
 
@@ -240,10 +299,10 @@ class PlanillaFormularioService
             'aporte.arl_aporte'  => '$ ' . number_format($c['vArl'], 0, ',', '.'),
 
             // Caja
-            'aporte.ccf_codigo'  => ($c['codCcfPila'] == 'CCF68' ? 'CCF66' : $c['codCcfPila']),
-            'aporte.ccf_tarifa'  => '4 %',
-            'aporte.ccf_ibc'     => '$ ' . number_format($c['ibcCcf'], 0, ',', '.'),
-            'aporte.ccf_aporte'  => '$ ' . number_format($c['vCcf'], 0, ',', '.'),
+            'aporte.ccf_codigo'  => ($esIndependiente && $sinCajaCcf ? 'NIN-CC' : ($c['codCcfPila'] == 'CCF68' ? 'CCF66' : $c['codCcfPila'])),
+            'aporte.ccf_tarifa'  => ($esIndependiente && $sinCajaCcf ? '0 %' : '4 %'),
+            'aporte.ccf_ibc'     => ($esIndependiente && $sinCajaCcf ? '$ 0' : '$ ' . number_format($c['ibcCcf'], 0, ',', '.')),
+            'aporte.ccf_aporte'  => ($esIndependiente && $sinCajaCcf ? '$ 0' : '$ ' . number_format($c['vCcf'], 0, ',', '.')),
 
             // Parafiscales
             'aporte.sena_tarifa' => '0 %',
@@ -269,7 +328,7 @@ class PlanillaFormularioService
             'total.fsps'  => '$ 0',
             'total.eps'   => '$ ' . number_format($c['vEps'], 0, ',', '.'),
             'total.arl'   => '$ ' . number_format($c['vArl'], 0, ',', '.'),
-            'total.ccf'   => '$ ' . number_format($c['vCcf'], 0, ',', '.'),
+            'total.ccf'   => ($esIndependiente && $sinCajaCcf ? '$ 0' : '$ ' . number_format($c['vCcf'], 0, ',', '.')),
             'total.sena'  => '$ 0',
             'total.icbf'  => '$ 0',
             'total.esap'  => '$ 0',
