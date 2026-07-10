@@ -526,8 +526,13 @@ class FacturacionController extends Controller
             $sheet->setCellValue('C' . $row, $nombre);
             $sheet->setCellValue('D' . $row, $rs);
             
-            $fechaCol = ($esRetirado && $fRet) ? $fRet : $fIng;
-            $sheet->setCellValue('E' . $row, $fechaCol);
+            $fechaObj = ($esRetirado && $c->fecha_retiro) ? $c->fecha_retiro : $c->fecha_ingreso;
+            if ($fechaObj instanceof \DateTimeInterface) {
+                $sheet->setCellValue('E' . $row, \PhpOffice\PhpSpreadsheet\Shared\Date::PHPToExcel($fechaObj));
+                $sheet->getStyle('E' . $row)->getNumberFormat()->setFormatCode('dd/mm/yyyy');
+            } else {
+                $sheet->setCellValue('E' . $row, '—');
+            }
             $sheet->setCellValue('F' . $row, $dias);
             
             $sheet->setCellValue('G' . $row, $vEps);
