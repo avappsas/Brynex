@@ -192,21 +192,17 @@ class BrynexAliadoController extends Controller
 
         // Registrar los cobros individuales en finanzas_brynex_pagos
         foreach ($items as $item) {
-            BrynexPago::updateOrCreate(
-                [
-                    'aliado_id' => $request->aliado_id,
-                    'anio' => $request->anio,
-                    'mes' => $item['mes'],
-                ],
-                [
-                    'user_id' => $user->id,
-                    'recibo_id' => $recibo->id,
-                    'monto' => $item['monto'],
-                    'estado' => $item['estado'],
-                    'saldo_pendiente' => $item['saldo_pendiente'],
-                    'observacion' => "Pago registrado el {$request->fecha_pago} en {$request->banco}. Estado: " . ($item['estado'] === 'pendiente' ? 'Abono parcial' : 'Completo') . ".",
-                ]
-            );
+            BrynexPago::create([
+                'aliado_id' => $request->aliado_id,
+                'anio' => $request->anio,
+                'mes' => $item['mes'],
+                'user_id' => $user->id,
+                'recibo_id' => $recibo->id,
+                'monto' => $item['monto'],
+                'estado' => $item['estado'],
+                'saldo_pendiente' => $item['saldo_pendiente'],
+                'observacion' => "Pago registrado el {$request->fecha_pago} en {$request->banco}. Estado: " . ($item['estado'] === 'pendiente' ? 'Abono parcial' : 'Completo') . ".",
+            ]);
         }
 
         return redirect()->back()->with('success', 'Recibo de pago registrado y distribuido con éxito.');

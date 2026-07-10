@@ -160,6 +160,12 @@
         <button onclick="zoomOut()">🔎-</button>
         <button onclick="zoomIn()">🔎+</button>
         <span id="zoomText" style="font-size:0.75rem;color:#fff;min-width:38px;">100%</span>
+        <button id="btnCuadricula" type="button" onclick="toggleCuadricula()" style="background:#334155;color:#94a3b8;border:none;border-radius:6px;padding:0.25rem 0.6rem;font-size:0.72rem;cursor:pointer;display:inline-flex;align-items:center;gap:0.25rem;margin-left:0.5rem;" title="Mostrar/Ocultar Cuadrícula">
+            <i class="fas fa-th"></i> <span id="txtCuadricula">Cuadrícula Off</span>
+        </button>
+        <button id="btnGuias" type="button" onclick="toggleGuias()" style="background:#334155;color:#94a3b8;border:none;border-radius:6px;padding:0.25rem 0.6rem;font-size:0.72rem;cursor:pointer;display:inline-flex;align-items:center;gap:0.25rem;margin-left:0.5rem;" title="Mostrar/Ocultar Guías de Alineación">
+            <i class="fas fa-arrows-alt"></i> <span id="txtGuias">Guías Off</span>
+        </button>
         
         <div style="margin-left:1rem;display:flex;align-items:center;gap:0.4rem;">
             <button onclick="pagAnterior()">◀</button>
@@ -178,6 +184,11 @@
             <div id="rectPreview" style="position:absolute;border:2px dashed #facc15;pointer-events:none;display:none;box-sizing:border-box;z-index:10;"></div>
             <!-- Capa de rectángulos mapeados colocados vía JS -->
             <div id="rectsLayer" style="position:absolute;inset:0;pointer-events:none;z-index:5;"></div>
+            <!-- Capa de cuadrícula -->
+            <div id="gridOverlay" style="position:absolute;inset:0;pointer-events:none;z-index:4;display:none;background-image:linear-gradient(to right, rgba(147, 197, 253, 0.15) 1px, transparent 1px), linear-gradient(to bottom, rgba(147, 197, 253, 0.15) 1px, transparent 1px);"></div>
+            <!-- Guías de alineación -->
+            <div id="guideHorizontal" style="position:absolute;left:0;right:0;height:4px;background:transparent;border-top:1.5px dashed #ef4444;cursor:ns-resize;z-index:15;display:none;top:50%;"></div>
+            <div id="guideVertical" style="position:absolute;top:0;bottom:0;width:4px;background:transparent;border-left:1.5px dashed #ef4444;cursor:ew-resize;z-index:15;display:none;left:50%;"></div>
         </div>
     </div>
 
@@ -243,6 +254,10 @@ let pdfDoc = null,
     pdfWidth = 0,
     pdfHeight = 0,
     campoActivo = null,
+    mostrarCuadricula = false,
+    mostrarGuias = false,
+    guideX = 150,
+    guideY = 150,
     mapeo = @json($mapeados);
 
 const canvas = document.getElementById('pdfCanvas');
@@ -288,6 +303,8 @@ function renderizarPagina() {
             
             dibujarRectangulos();
             actualizarContador();
+            actualizarCuadricula();
+            actualizarGuias();
         });
     });
     document.getElementById('pageNumSpan').textContent = pageNum;
@@ -301,6 +318,81 @@ function cambiarOperador() {
 function zoomIn() { zoom = Math.min(4.5, zoom + 0.15); renderizarPagina(); actualizarZoomLabel(); }
 function zoomOut() { zoom = Math.max(0.5, zoom - 0.15); renderizarPagina(); actualizarZoomLabel(); }
 function actualizarZoomLabel() { document.getElementById('zoomText').textContent = Math.round(zoom * 100) + '%'; }
+
+function toggleCuadricula() {
+    mostrarCuadricula = !mostrarCuadricula;
+    const overlay = document.getElementById('gridOverlay');
+    const btn = document.getElementById('btnCuadricula');
+    const txt = document.getElementById('txtCuadricula');
+    if (mostrarCuadricula) {
+        overlay.style.display = 'block';
+        btn.style.background = '#1e3a5f';
+        btn.style.color = '#fff';
+        txt.textContent = 'Cuadrícula On';
+        actualizarCuadricula();
+    } else {
+        overlay.style.display = 'none';
+        btn.style.background = '#334155';
+        btn.style.color = '#94a3b8';
+        txt.textContent = 'Cuadrícula Off';
+    }
+}
+
+function actualizarCuadricula() {
+    const overlay = document.getElementById('gridOverlay');
+    if (overlay) {
+        if (mostrarCuadricula) {
+            const size = 10 * zoom; // 10 puntos del PDF original escalado con zoom
+            overlay.style.backgroundSize = `${size}px ${size}px`;
+        }
+    }
+}
+
+function toggleGuias() {
+    mostrarGuias = !mostrarGuias;
+    const gh = document.getElementById('guideHorizontal');
+    const gv = document.getElementById('guideVertical');
+    const btn = document.getElementById('btnGuias');
+    const txt = document.getElementById('txtGuias');
+    if (mostrarGuias) {
+        gh.style.display = 'block';
+        gv.style.display = 'block';
+        btn.style.background = '#1e3a5f';
+        btn.style.color = '#fff';
+        txt.textContent = 'Guías On';
+        actualizarGuias();
+    } else {
+        gh.style.display = 'none';
+        gv.style.display = 'none';
+        btn.style.background = '#334155';
+        btn.style.color = '#94a3b8';
+        txt.textContent = 'Guías Off';
+    }
+}
+
+function actualizarGuias() {
+    const gh = document.getElementById('guideHorizontal');
+    const gv = document.getElementById('guideVertical');
+    if (gh && gv) {
+        gh.style.top = (guideY * zoom) + 'px';
+        gv.style.left = (guideX * zoom) + 'px';
+    }
+}
+
+// Configurar los listeners de arrastre de las guías
+document.getElementById('guideHorizontal').addEventListener('mousedown', e => {
+    e.stopPropagation();
+    e.preventDefault();
+    drag.active = true;
+    drag.mode = 'guideH';
+});
+
+document.getElementById('guideVertical').addEventListener('mousedown', e => {
+    e.stopPropagation();
+    e.preventDefault();
+    drag.active = true;
+    drag.mode = 'guideV';
+});
 
 function pagAnterior() { if (pageNum > 1) { pageNum--; renderizarPagina(); } }
 function pagSiguiente() { if (pdfDoc && pageNum < pdfDoc.numPages) { pageNum++; renderizarPagina(); } }
@@ -328,7 +420,21 @@ canvasWrap.addEventListener('mousemove', e => {
     const my = e.clientY - rect.top;
 
     if (drag.active) {
-        if (drag.mode === 'draw') {
+        if (drag.mode === 'guideH') {
+            let newY = my / zoom;
+            if (mostrarCuadricula) {
+                newY = Math.round(newY / 5) * 5;
+            }
+            guideY = Math.max(0, Math.min(pdfHeight, newY));
+            actualizarGuias();
+        } else if (drag.mode === 'guideV') {
+            let newX = mx / zoom;
+            if (mostrarCuadricula) {
+                newX = Math.round(newX / 5) * 5;
+            }
+            guideX = Math.max(0, Math.min(pdfWidth, newX));
+            actualizarGuias();
+        } else if (drag.mode === 'draw') {
             const x = Math.min(drag.startX, mx), y = Math.min(drag.startY, my);
             preview.style.left   = x + 'px'; preview.style.top    = y + 'px';
             preview.style.width  = Math.abs(mx - drag.startX) + 'px';
@@ -337,8 +443,17 @@ canvasWrap.addEventListener('mousemove', e => {
             // Mover rectángulo
             const m = mapeo.find(r => r.dato === drag.movingDato);
             if (m) {
-                m.x = Math.max(0, Math.round(((mx - drag.offX) / zoom) * 10) / 10);
-                m.y = Math.max(0, Math.round(((my - drag.offY) / zoom) * 10) / 10);
+                let newX = (mx - drag.offX) / zoom;
+                let newY = (my - drag.offY) / zoom;
+                if (mostrarCuadricula) {
+                    newX = Math.round(newX / 5) * 5;
+                    newY = Math.round(newY / 5) * 5;
+                } else {
+                    newX = Math.round(newX * 10) / 10;
+                    newY = Math.round(newY * 10) / 10;
+                }
+                m.x = Math.max(0, newX);
+                m.y = Math.max(0, newY);
                 dibujarRectangulos();
             }
         }
@@ -377,10 +492,11 @@ canvasWrap.addEventListener('mousedown', e => {
 
 canvasWrap.addEventListener('mouseup', e => {
     if (!drag.active) return;
+    const oldMode = drag.mode;
     drag.active = false;
     canvasWrap.style.cursor = campoActivo ? 'crosshair' : 'default';
 
-    if (drag.mode === 'move') return;
+    if (oldMode === 'move' || oldMode === 'guideH' || oldMode === 'guideV') return;
 
     preview.style.display = 'none';
     const rect = canvas.getBoundingClientRect();
@@ -392,10 +508,22 @@ canvasWrap.addEventListener('mouseup', e => {
     const pxH  = Math.abs(curY - drag.startY);
     if (pxW < 5 || pxH < 5) return;
 
-    const ptX = Math.round((pxX / zoom) * 10) / 10;
-    const ptY = Math.round((pxY / zoom) * 10) / 10;
-    const ptW = Math.round((pxW / zoom) * 10) / 10;
-    const ptH = Math.round((pxH / zoom) * 10) / 10;
+    let ptX = (pxX / zoom);
+    let ptY = (pxY / zoom);
+    let ptW = (pxW / zoom);
+    let ptH = (pxH / zoom);
+
+    if (mostrarCuadricula) {
+        ptX = Math.round(ptX / 5) * 5;
+        ptY = Math.round(ptY / 5) * 5;
+        ptW = Math.max(5, Math.round(ptW / 5) * 5);
+        ptH = Math.max(5, Math.round(ptH / 5) * 5);
+    } else {
+        ptX = Math.round(ptX * 10) / 10;
+        ptY = Math.round(ptY * 10) / 10;
+        ptW = Math.round(ptW * 10) / 10;
+        ptH = Math.round(ptH * 10) / 10;
+    }
 
     const fondoVal = document.getElementById('cfgColorFondo').value;
     const obj = {

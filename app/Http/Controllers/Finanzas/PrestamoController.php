@@ -408,6 +408,10 @@ class PrestamoController extends Controller
         $prestamo = Prestamo::where('user_id', Auth::id())->findOrFail($id);
 
         if (!$prestamo->soporte_path || !Storage::disk('local')->exists($prestamo->soporte_path)) {
+            // Si el archivo no existe localmente, pero estamos en desarrollo local, redirigimos a producción
+            if (config('app.env') === 'local' || request()->getHost() === '127.0.0.1' || request()->getHost() === 'localhost') {
+                return redirect('https://brynex.co/finanzas/prestamos/' . $prestamo->id . '/soporte');
+            }
             abort(404, 'Archivo de soporte no encontrado.');
         }
 
@@ -425,6 +429,10 @@ class PrestamoController extends Controller
         $prestamo = Prestamo::where('user_id', Auth::id())->findOrFail($movimiento->prestamo_id);
 
         if (!$movimiento->soporte_path || !Storage::disk('local')->exists($movimiento->soporte_path)) {
+            // Si el archivo no existe localmente, pero estamos en desarrollo local, redirigimos a producción
+            if (config('app.env') === 'local' || request()->getHost() === '127.0.0.1' || request()->getHost() === 'localhost') {
+                return redirect('https://brynex.co/finanzas/prestamos-movimiento/' . $movimiento->id . '/soporte');
+            }
             abort(404, 'Archivo de soporte no encontrado.');
         }
 

@@ -121,13 +121,31 @@ class PlanillaFormularioService
         // Periodo de Cotización: es el mes del plano (ej: 06)
         $perCot = $plano->anio_plano . str_pad($plano->mes_plano, 2, '0', STR_PAD_LEFT);
         
+        // Buscar el gasto de tipo pago_planilla asociado al número de planilla y aliado
+        $gasto = null;
+        if (!empty($plano->numero_planilla)) {
+            $gasto = \App\Models\Gasto::where('aliado_id', $plano->aliado_id)
+                ->where('numero_planilla', $plano->numero_planilla)
+                ->where('tipo', 'pago_planilla')
+                ->first();
+        }
+
+        $fechaPagoParaCarbon = null;
+        if ($gasto) {
+            $fechaPagoParaCarbon = $gasto->created_at ?? $gasto->fecha;
+        } elseif ($plano->fecha_pago) {
+            $fechaPagoParaCarbon = $plano->fecha_pago;
+        } elseif ($plano->factura?->fecha_pago) {
+            $fechaPagoParaCarbon = $plano->factura->fecha_pago;
+        }
+
         // Periodo de Servicio: es el mes en que se EFECTÚA el pago / factura (ej: 07).
         // Se asume mes_plano + 1, o el mes real de la fecha de pago si existe.
         $mesPago = $plano->mes_plano == 12 ? 1 : $plano->mes_plano + 1;
         $anioPago = $plano->mes_plano == 12 ? $plano->anio_plano + 1 : $plano->anio_plano;
         
-        if ($plano->fecha_pago) {
-            $dtPago = \Carbon\Carbon::parse($plano->fecha_pago);
+        if ($fechaPagoParaCarbon) {
+            $dtPago = \Carbon\Carbon::parse($fechaPagoParaCarbon);
             $mesPago = $dtPago->month;
             $anioPago = $dtPago->year;
         }
@@ -140,13 +158,15 @@ class PlanillaFormularioService
             ->where('aliado_id', $plano->aliado_id)
             ->count();
 
-        if ($plano->fecha_pago) {
-            $dt = \Carbon\Carbon::parse($plano->fecha_pago);
+        if ($fechaPagoParaCarbon) {
+            $dt = \Carbon\Carbon::parse($fechaPagoParaCarbon);
             $pagoFecha = $dt->format('Y-m-d');
             $pagoHora  = $dt->format('H:i:s.0');
+            $pagoHoraSinMs = $dt->format('H:i:s');
         } else {
             $pagoFecha = '2026-07-03';
             $pagoHora  = '14:03:12.0';
+            $pagoHoraSinMs = '14:03:12';
         }
 
         return [
@@ -170,7 +190,7 @@ class PlanillaFormularioService
             'plano.numero_planilla'         => $plano->numero_planilla,
             'plano.periodo_cotizacion'      => $perCot,
             'plano.periodo_servicio'        => $perSer,
-            'plano.fecha_pago_completa'     => "PAGADA {$pagoFecha} {$pagoHora}",
+            'plano.fecha_pago_completa'     => "{$pagoFecha}    {$pagoHora}",
             'plano.fecha_pago_estado'       => 'PAGADA',
             'plano.fecha_pago_fecha'        => $pagoFecha,
             'plano.fecha_pago_hora'         => $pagoHora,

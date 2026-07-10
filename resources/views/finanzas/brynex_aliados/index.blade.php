@@ -74,35 +74,40 @@
                         </td>
                         @foreach(range(1,12) as $mesNum)
                             @php
-                                $pagoObj = isset($pagos[$aliado->id][$mesNum]) ? $pagos[$aliado->id][$mesNum]->first() : null;
-                                $monto = $pagoObj ? $pagoObj->monto : 0;
+                                $mesPagos = isset($pagos[$aliado->id][$mesNum]) ? $pagos[$aliado->id][$mesNum] : collect();
+                                $monto = $mesPagos->sum('monto');
                                 $totalAliado += $monto;
+                                $ultimoPago = $mesPagos->last();
                             @endphp
                             <td class="excel-cell" 
                                 @click="abrirPago({
                                     id: {{ $aliado->id }},
                                     nombre: '{{ addslashes($aliado->nombre) }}'
                                 }, {{ $mesNum }}, '{{ ucfirst(\Carbon\Carbon::create()->month($mesNum)->locale('es')->monthName) }}', 
-                                @if($pagoObj) {
-                                    id: {{ $pagoObj->id }},
-                                    monto: {{ $pagoObj->monto }},
-                                    estado: '{{ $pagoObj->estado }}',
-                                    saldo_pendiente: {{ $pagoObj->saldo_pendiente }},
-                                    recibo: @if($pagoObj->recibo) {
-                                        id: {{ $pagoObj->recibo->id }},
-                                        monto_total: {{ $pagoObj->recibo->monto_total }},
-                                        fecha_pago: '{{ $pagoObj->recibo->fecha_pago->toDateString() }}',
-                                        banco: '{{ addslashes($pagoObj->recibo->banco) }}',
-                                        observacion: '{{ addslashes($pagoObj->recibo->observacion) }}',
-                                        soporte_url: '{{ $pagoObj->recibo->soporte_path ? route('finanzas.brynex-aliados.descargar-soporte', $pagoObj->recibo->id) : '' }}'
-                                    } @else null @endif
-                                } @else null @endif)"
+                                {{ json_encode($mesPagos->map(function($p) {
+                                    return [
+                                        'id' => $p->id,
+                                        'monto' => $p->monto,
+                                        'estado' => $p->estado,
+                                        'saldo_pendiente' => $p->saldo_pendiente,
+                                        'observacion' => $p->observacion,
+                                        'recibo' => $p->recibo ? [
+                                            'id' => $p->recibo->id,
+                                            'monto_total' => $p->recibo->monto_total,
+                                            'fecha_pago' => $p->recibo->fecha_pago->toDateString(),
+                                            'banco' => $p->recibo->banco,
+                                            'observacion' => $p->recibo->observacion,
+                                            'soporte_url' => $p->recibo->soporte_path ? route('finanzas.brynex-aliados.descargar-soporte', $p->recibo->id) : ''
+                                        ] : null
+                                    ];
+                                })->toArray()) }}
+                                )"
                             >
                                 <div class="cell-val" style="display:flex; flex-direction:column; align-items:flex-end; justify-content:center; padding:0.25rem 0.5rem; min-height:35px; box-sizing:border-box;">
-                                    <span style="font-weight:600; font-size:0.78rem; color: {{ $pagoObj && $pagoObj->estado === 'pendiente' ? '#d97706' : '#0f172a' }}">
+                                    <span style="font-weight:600; font-size:0.78rem; color: {{ $ultimoPago && $ultimoPago->estado === 'pendiente' ? '#d97706' : '#0f172a' }}">
                                         {{ $monto > 0 ? '$' . number_format($monto, 0, ',', '.') : '-' }}
                                     </span>
-                                    @if($pagoObj && $pagoObj->estado === 'pendiente')
+                                    @if($ultimoPago && $ultimoPago->estado === 'pendiente')
                                         <span style="font-size:0.58rem; color:#d97706; font-weight:700; line-height:1; margin-top:1px;">Abono</span>
                                     @endif
                                 </div>
@@ -131,8 +136,8 @@
                             @php
                                 $totalMes = 0;
                                 foreach($aliados as $aliado) {
-                                    $pagoObj = isset($pagos[$aliado->id][$mesNum]) ? $pagos[$aliado->id][$mesNum]->first() : null;
-                                    $totalMes += $pagoObj ? $pagoObj->monto : 0;
+                                    $mesPagos = isset($pagos[$aliado->id][$mesNum]) ? $pagos[$aliado->id][$mesNum] : collect();
+                                    $totalMes += $mesPagos->sum('monto');
                                 }
                                 $totalGeneral += $totalMes;
                             @endphp
@@ -249,8 +254,10 @@
          class="modal-overlay-bx" 
          @click.self="openPagoModal = false">
         
-        <div class="modal-box-bx" style="max-width:500px;">
-            <div class="modal-head-bx" style="background: linear-gradient(135deg, #0f172a, #334155); color: #fff; display: flex; align-items: center; justify-content: space-between; padding: 1rem; border-bottom: 1px solid #cbd5e1;">
+        <div class="modal-box-bx" style="max-width:500px; max-height: 90vh; display: flex; flex-direction: column;">
+            
+            <!-- Header (Fixed) -->
+            <div class="modal-head-bx" style="flex-shrink: 0; background: linear-gradient(135deg, #0f172a, #334155); color: #fff; display: flex; align-items: center; justify-content: space-between; padding: 1rem; border-bottom: 1px solid #cbd5e1;">
                 <div>
                     <h3 style="color:#fff; margin:0; font-size:1.1rem;" x-text="'💵 Pago - ' + pagoAliadoNombre"></h3>
                     <p style="margin: 2px 0 0 0; font-size: 0.75rem; color: #cbd5e1;" x-text="'Mes de servicio: ' + pagoMesNombre + ' ' + {{ $anio }}"></p>
@@ -258,71 +265,79 @@
                 <button @click="openPagoModal = false" class="modal-close-bx" style="background:none; border:none; font-size:1.5rem; cursor:pointer; color:rgba(255,255,255,0.7);">&times;</button>
             </div>
             
-            {{-- CASO A: MOSTRAR DETALLE DEL PAGO Y RECIBO EXISTENTE --}}
-            <div x-show="pagoReciboId" style="padding:1.25rem;">
-                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem; margin-bottom: 1.25rem;">
-                    <div style="display:flex; justify-content:space-between; margin-bottom:0.5rem; border-bottom:1px solid #f1f5f9; padding-bottom:0.5rem;">
-                        <span style="font-size:0.75rem; color:#64748b; font-weight:600;">Banco / Cuenta:</span>
-                        <span style="font-size:0.78rem; color:#0f172a; font-weight:700;" x-text="pagoBanco"></span>
-                    </div>
-                    <div style="display:flex; justify-content:space-between; margin-bottom:0.5rem; border-bottom:1px solid #f1f5f9; padding-bottom:0.5rem;">
-                        <span style="font-size:0.75rem; color:#64748b; font-weight:600;">Fecha de Pago:</span>
-                        <span style="font-size:0.78rem; color:#0f172a; font-weight:700;" x-text="pagoFecha"></span>
-                    </div>
-                    <div style="display:flex; justify-content:space-between; margin-bottom:0.5rem; border-bottom:1px solid #f1f5f9; padding-bottom:0.5rem;">
-                        <span style="font-size:0.75rem; color:#64748b; font-weight:600;">Valor del Recibo:</span>
-                        <span style="font-size:0.85rem; color:#10b981; font-weight:800;" x-text="formatMoney(pagoMontoTotalRecibo)"></span>
-                    </div>
-                    <div style="display:flex; justify-content:space-between; margin-bottom:0.5rem; border-bottom:1px solid #f1f5f9; padding-bottom:0.5rem;">
-                        <span style="font-size:0.75rem; color:#64748b; font-weight:600;">Distribución mensual:</span>
-                        <span style="font-size:0.78rem; color:#0f172a; font-weight:700;" x-text="formatMoney(pagoMonto)"></span>
-                    </div>
-                    <div style="display:flex; justify-content:space-between; margin-bottom:0.5rem; border-bottom:1px solid #f1f5f9; padding-bottom:0.5rem;">
-                        <span style="font-size:0.75rem; color:#64748b; font-weight:600;">Estado de este mes:</span>
-                        <span style="font-size:0.75rem; font-weight:700; padding: 0.15rem 0.45rem; border-radius: 6px;" 
-                              :style="pagoEstado === 'pendiente' ? 'background:rgba(217,119,6,0.1); color:#d97706;' : 'background:rgba(16,185,129,0.1); color:#10b981;'" 
-                              x-text="pagoEstado === 'pendiente' ? 'Abono parcial' : 'Pago completo'"></span>
-                    </div>
-                    <div style="display:flex; justify-content:space-between;" x-show="pagoEstado === 'pendiente'">
-                        <span style="font-size:0.75rem; color:#ef4444; font-weight:600;">Saldo Pendiente:</span>
-                        <span style="font-size:0.78rem; color:#ef4444; font-weight:700;" x-text="formatMoney(pagoSaldoPendiente)"></span>
-                    </div>
-                </div>
-
-                <template x-if="pagoObservacion">
-                    <div style="margin-bottom:1rem;">
-                        <span style="display:block; font-size:0.72rem; color:#64748b; font-weight:600; margin-bottom:2px;">Observación:</span>
-                        <p style="margin:0; font-size:0.78rem; color:#334155; background:#f1f5f9; padding:0.5rem; border-radius:6px;" x-text="pagoObservacion"></p>
-                    </div>
-                </template>
-
-                <template x-if="pagoSoporteUrl">
-                    <div style="margin-bottom:1.5rem; text-align:center;">
-                        <a :href="pagoSoporteUrl" target="_blank" class="btn-glass-bx" style="display:inline-flex; align-items:center; gap:0.35rem; padding:0.5rem 1rem; border:1px solid #3b82f6; border-radius:8px; font-size:0.78rem; font-weight:600; text-decoration:none; color:#1d4ed8; background:rgba(59,130,246,0.1); cursor:pointer;">
-                            📄 Ver / Descargar Soporte de Pago
-                        </a>
-                    </div>
-                </template>
-
-                <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid #cbd5e1; padding-top:1rem; background:#fff;">
-                    <form :action="'{{ route('finanzas.brynex-aliados.delete-recibo', '') }}/' + pagoReciboId" method="POST" onsubmit="return confirm('¿Estás seguro de eliminar este recibo? Se borrarán todos los pagos distribuidos con él.');">
-                        @csrf
-                        @method('DELETE')
-                        <button type="submit" style="padding:0.45rem 1rem; border:1px solid #ef4444; border-radius:8px; font-size:0.78rem; font-weight:600; cursor:pointer; background:#fff; color:#ef4444;">
-                            🗑️ Eliminar Pago
-                        </button>
-                    </form>
-                    <button type="button" @click="openPagoModal = false" class="btn-glass-bx" style="padding:0.45rem 1rem; border:1px solid #cbd5e1; border-radius:8px; font-size:0.78rem; font-weight:600; cursor:pointer; background:#f1f5f9; color:#475569;">Cerrar</button>
-                </div>
-            </div>
-
-            {{-- CASO B: REGISTRAR UN PAGO NUEVO (CON SOPORTE Y SELECCIÓN DE MESES) --}}
-            <form x-show="!pagoReciboId" action="{{ route('finanzas.brynex-aliados.registrar-recibo') }}" method="POST" enctype="multipart/form-data">
+            <!-- Formulario oculto global para eliminar pagos/recibos sin anidar forms -->
+            <form id="delete-recibo-form" action="" method="POST" style="display:none;">
                 @csrf
-                <input type="hidden" name="aliado_id" x-model="pagoAliadoId">
-                <input type="hidden" name="anio" value="{{ $anio }}">
+                @method('DELETE')
+            </form>
+
+            <!-- Cuerpo Scrollable (Lista de pagos + Formulario de carga en el mismo flujo) -->
+            <div style="flex-grow: 1; overflow-y: auto; padding: 1.25rem;">
                 
-                <div class="modal-body-bx" style="padding:1.25rem; max-height: 420px; overflow-y: auto;">
+                {{-- LISTADO DE PAGOS YA REGISTRADOS EN ESTE MES --}}
+                <template x-if="pagosMes.length > 0">
+                    <div style="margin-bottom: 1.25rem;">
+                        <h4 style="margin: 0 0 0.5rem 0; font-size: 0.85rem; color: #475569; font-weight: 700;">Pagos Registrados:</h4>
+                        <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                            <template x-for="(pago, pIdx) in pagosMes" :key="pago.id">
+                                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.75rem;">
+                                    <div style="display:flex; justify-content:space-between; margin-bottom:0.25rem;">
+                                        <span style="font-size:0.72rem; color:#64748b; font-weight:600;">Monto Distribuido:</span>
+                                        <span style="font-size:0.75rem; color:#10b981; font-weight:800;" x-text="formatMoney(pago.monto)"></span>
+                                    </div>
+                                    <div style="display:flex; justify-content:space-between; margin-bottom:0.25rem;" x-show="pago.recibo">
+                                        <span style="font-size:0.72rem; color:#64748b; font-weight:600;">Banco / Fecha:</span>
+                                        <span style="font-size:0.72rem; color:#0f172a; font-weight:600;" x-text="pago.recibo ? pago.recibo.banco + ' (' + pago.recibo.fecha_pago + ')' : ''"></span>
+                                    </div>
+                                    <div style="display:flex; justify-content:space-between; margin-bottom:0.25rem;">
+                                        <span style="font-size:0.72rem; color:#64748b; font-weight:600;">Estado:</span>
+                                        <span style="font-size:0.7rem; font-weight:700; padding: 0.1rem 0.35rem; border-radius: 4px;" 
+                                              :style="pago.estado === 'pendiente' ? 'background:rgba(217,119,6,0.1); color:#d97706;' : 'background:rgba(16,185,129,0.1); color:#10b981;'" 
+                                              x-text="pago.estado === 'pendiente' ? 'Abono parcial' : 'Pago completo'"></span>
+                                    </div>
+                                    <div style="display:flex; justify-content:space-between; margin-bottom:0.25rem;" x-show="pago.estado === 'pendiente'">
+                                        <span style="font-size:0.72rem; color:#ef4444; font-weight:600;">Saldo Pendiente:</span>
+                                        <span style="font-size:0.72rem; color:#ef4444; font-weight:700;" x-text="formatMoney(pago.saldo_pendiente)"></span>
+                                    </div>
+                                    <div style="margin-top: 0.25rem; font-size: 0.72rem; color: #475569;" x-show="pago.observacion">
+                                        <span style="font-weight:600; color:#64748b;">Obs:</span> <span x-text="pago.observacion"></span>
+                                    </div>
+                                    
+                                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:0.5rem; border-top:1px solid #e2e8f0; padding-top:0.5rem;">
+                                        <div>
+                                            <template x-if="pago.recibo && pago.recibo.soporte_url">
+                                                <a :href="pago.recibo.soporte_url" target="_blank" style="font-size:0.7rem; font-weight:600; text-decoration:none; color:#1d4ed8;">
+                                                    📄 Ver Soporte
+                                                </a>
+                                            </template>
+                                        </div>
+                                        <button type="button" @click="eliminarRecibo(pago.recibo ? pago.recibo.id : '')" style="background:none; border:none; color:#ef4444; font-size:0.7rem; font-weight:600; cursor:pointer; padding:0;">
+                                            🗑️ Eliminar Pago
+                                        </button>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+
+                <template x-if="pagosMes.length > 0 && pagosMes[pagosMes.length - 1].estado === 'pendiente'">
+                    <div style="border-top: 1px solid #cbd5e1; padding-top: 0.75rem; margin-bottom: 1rem;">
+                        <h4 style="margin: 0; font-size: 0.85rem; color: #d97706; font-weight: 700;">📝 Registrar Pago de Saldo Restante / Nuevo Abono:</h4>
+                    </div>
+                </template>
+
+                {{-- CASO B: REGISTRAR UN PAGO NUEVO (CON SOPORTE Y SELECCIÓN DE MESES) --}}
+                <form id="registrar-recibo-form" 
+                      x-show="pagosMes.length === 0 || (pagosMes.length > 0 && pagosMes[pagosMes.length - 1].estado === 'pendiente')" 
+                      action="{{ route('finanzas.brynex-aliados.registrar-recibo') }}" 
+                      method="POST" 
+                      enctype="multipart/form-data"
+                      style="margin: 0;">
+                    @csrf
+                    <input type="hidden" name="aliado_id" x-model="pagoAliadoId">
+                    <input type="hidden" name="anio" value="{{ $anio }}">
+                    
                     <div style="display:flex; gap:0.5rem; margin-bottom:1rem;">
                         <div style="flex:1;">
                             <label style="display:block; margin-bottom:0.35rem; font-size:0.8rem; font-weight:600; color:#334155;">Fecha de Pago:</label>
@@ -342,14 +357,50 @@
                         </div>
                     </div>
 
-                    <div style="margin-bottom:1rem;">
-                        <label style="display:block; margin-bottom:0.35rem; font-size:0.8rem; font-weight:600; color:#334155;">Adjuntar Soporte de Pago:</label>
-                        <input type="file" name="soporte" accept="image/*,application/pdf" style="width:100%; padding:0.35rem; border:1px solid #cbd5e1; border-radius:8px; font-size:0.8rem; outline:none; box-sizing:border-box; background:#f8fafc;">
+                    <div style="margin-bottom:1rem;" 
+                         @paste.window="handlePaste($event)"
+                         @dragover.prevent="dragOver = true"
+                         @dragleave.prevent="dragOver = false"
+                         @drop.prevent="handleDrop($event)">
+                        <label style="display:block; margin-bottom:0.35rem; font-size:0.8rem; font-weight:600; color:#334155;">Soporte de Pago (PDF o Imagen):</label>
+                        
+                        <div :style="dragOver ? 'border-color: #3b82f6; background: rgba(59, 130, 246, 0.05);' : 'border-color: #cbd5e1;'"
+                             style="border: 2px dashed; border-radius: 10px; padding: 1rem; text-align: center; cursor: pointer; position: relative; transition: all 0.2s;"
+                             @click="$refs.soporteInput.click()">
+                            
+                            <input type="file" 
+                                   name="soporte" 
+                                   x-ref="soporteInput"
+                                   accept="image/*,application/pdf" 
+                                   style="display: none;" 
+                                   @change="handleFileSelected($event)">
+                            
+                            <div x-show="!soportePreviewUrl" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.25rem;">
+                                <span style="font-size: 1.5rem;">📁</span>
+                                <span style="font-size: 0.78rem; font-weight: 600; color: #475569;">Arrastra un archivo, búscalo o pega un pantallazo (Ctrl+V)</span>
+                                <span style="font-size: 0.65rem; color: #94a3b8;">Formatos permitidos: JPG, PNG, PDF (Máx. 10MB)</span>
+                            </div>
+
+                            <div x-show="soportePreviewUrl" style="display: flex; flex-direction: column; align-items: center; gap: 0.5rem;" @click.stop>
+                                <template x-if="soporteEsImagen">
+                                    <img :src="soportePreviewUrl" style="max-height: 120px; border-radius: 6px; border: 1px solid #e2e8f0; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                                </template>
+                                <template x-if="!soporteEsImagen">
+                                    <div style="display: flex; align-items: center; gap: 0.5rem; background: #f1f5f9; padding: 0.5rem 0.75rem; border-radius: 6px; border: 1px solid #cbd5e1;">
+                                        <span style="font-size: 1.2rem;">📄</span>
+                                        <span style="font-size: 0.75rem; font-weight: 600; color: #334155;" x-text="soporteFileName"></span>
+                                    </div>
+                                </template>
+                                <button type="button" @click="quitarSoporte()" style="background: #ef4444; color: #fff; border: none; padding: 0.2rem 0.6rem; border-radius: 6px; font-size: 0.7rem; font-weight: 600; cursor: pointer; transition: background 0.1s;">
+                                    Quitar soporte
+                                </button>
+                            </div>
+                        </div>
                     </div>
 
                     <div style="margin-bottom:1rem;">
                         <label style="display:block; margin-bottom:0.35rem; font-size:0.8rem; font-weight:600; color:#334155;">Observación:</label>
-                        <textarea name="observacion" rows="2" placeholder="Ej. Pago correspondiente a varias mensualidades..." style="width:100%; padding:0.5rem; border:1px solid #cbd5e1; border-radius:8px; font-size:0.8rem; outline:none; box-sizing:border-box; resize:none;"></textarea>
+                        <textarea name="observacion" rows="2" placeholder="Ej. Pago correspondiente a varias mensualidades o saldo restante..." style="width:100%; padding:0.5rem; border:1px solid #cbd5e1; border-radius:8px; font-size:0.8rem; outline:none; box-sizing:border-box; resize:none;"></textarea>
                     </div>
 
                     {{-- Formulario Dinámico de Meses --}}
@@ -404,13 +455,25 @@
                             <span style="font-size:0.95rem; font-weight:800; color:#10b981;" x-text="formatMoney(montoTotalAbono)"></span>
                         </div>
                     </div>
-                </div>
-                
-                <div class="modal-foot-bx" style="display:flex; justify-content:end; gap:0.5rem; padding:1rem; border-top:1px solid #cbd5e1; background:#f8fafc;">
-                    <button type="button" @click="openPagoModal = false" class="btn-glass-bx" style="padding:0.45rem 1rem; border:1px solid #cbd5e1; border-radius:8px; font-size:0.78rem; font-weight:600; cursor:pointer; background:#fff; color:#475569;">Cancelar</button>
-                    <button type="submit" class="btn-glass-bx" style="padding:0.45rem 1rem; border:none; border-radius:8px; font-size:0.78rem; font-weight:600; cursor:pointer; background:#10b981; color:#fff;">Registrar Pago</button>
-                </div>
-            </form>
+                </form>
+
+            </div>
+
+            <!-- Footer fijo inferior (Visible siempre) -->
+            <div x-show="pagosMes.length === 0 || (pagosMes.length > 0 && pagosMes[pagosMes.length - 1].estado === 'pendiente')" 
+                 class="modal-foot-bx" 
+                 style="flex-shrink: 0; display:flex; justify-content:end; gap:0.5rem; padding:1rem; border-top:1px solid #cbd5e1; background:#f8fafc;">
+                <button type="button" @click="openPagoModal = false" class="btn-glass-bx" style="padding:0.45rem 1rem; border:1px solid #cbd5e1; border-radius:8px; font-size:0.78rem; font-weight:600; cursor:pointer; background:#fff; color:#475569;">Cancelar</button>
+                <button type="submit" form="registrar-recibo-form" class="btn-glass-bx" style="padding:0.45rem 1rem; border:none; border-radius:8px; font-size:0.78rem; font-weight:600; cursor:pointer; background:#10b981; color:#fff;">Registrar Pago</button>
+            </div>
+
+            <div x-show="pagosMes.length > 0 && pagosMes[pagosMes.length - 1].estado === 'completo'" 
+                 class="modal-foot-bx" 
+                 style="flex-shrink: 0; display:flex; justify-content:end; padding:1rem; border-top:1px solid #cbd5e1; background:#f8fafc;">
+                <button type="button" @click="openPagoModal = false" class="btn-glass-bx" style="padding:0.45rem 1rem; border:1px solid #cbd5e1; border-radius:8px; font-size:0.78rem; font-weight:600; cursor:pointer; background:#fff; color:#475569;">Cerrar</button>
+            </div>
+        </div>
+    </div>
         </div>
     </div>
 
@@ -505,15 +568,12 @@ function brynexAliadosGrid() {
         pagoAliadoNombre: '',
         pagoMes: null,
         pagoMesNombre: '',
-        pagoReciboId: null,
-        pagoFecha: '',
-        pagoBanco: '',
-        pagoMonto: 0,
-        pagoMontoTotalRecibo: 0,
-        pagoObservacion: '',
-        pagoSoporteUrl: '',
-        pagoEstado: 'completo',
-        pagoSaldoPendiente: 0,
+        pagosMes: [],
+        
+        dragOver: false,
+        soportePreviewUrl: '',
+        soporteEsImagen: false,
+        soporteFileName: '',
         
         itemsAbono: [],
         montoTotalAbono: 0,
@@ -527,42 +587,110 @@ function brynexAliadosGrid() {
             this.openEditAliadoModal = true;
         },
 
-        abrirPago(aliado, mesNum, mesNombre, pagoObj) {
+        abrirPago(aliado, mesNum, mesNombre, pagosList) {
             this.pagoAliadoId = aliado.id;
             this.pagoAliadoNombre = aliado.nombre;
             this.pagoMes = mesNum;
             this.pagoMesNombre = mesNombre;
+            this.pagosMes = pagosList || [];
+            this.quitarSoporte();
 
-            if (pagoObj && pagoObj.recibo) {
-                this.pagoReciboId = pagoObj.recibo.id;
-                this.pagoFecha = pagoObj.recibo.fecha_pago;
-                this.pagoBanco = pagoObj.recibo.banco;
-                this.pagoMonto = pagoObj.monto;
-                this.pagoMontoTotalRecibo = pagoObj.recibo.monto_total;
-                this.pagoObservacion = pagoObj.recibo.observacion;
-                this.pagoSoporteUrl = pagoObj.recibo.soporte_url;
-                this.pagoEstado = pagoObj.estado;
-                this.pagoSaldoPendiente = pagoObj.saldo_pendiente;
+            if (this.pagosMes.length > 0) {
+                const ultimoPago = this.pagosMes[this.pagosMes.length - 1];
+                if (ultimoPago.estado === 'pendiente' && ultimoPago.saldo_pendiente > 0) {
+                    this.itemsAbono = [{
+                        mes: mesNum,
+                        monto: this.formatMoney(ultimoPago.saldo_pendiente),
+                        estado: 'completo',
+                        saldo_pendiente: ''
+                    }];
+                } else {
+                    this.itemsAbono = [];
+                }
             } else {
-                this.pagoReciboId = null;
-                this.pagoFecha = '';
-                this.pagoBanco = 'Bancolombia';
-                this.pagoMonto = 0;
-                this.pagoMontoTotalRecibo = 0;
-                this.pagoObservacion = '';
-                this.pagoSoporteUrl = '';
-                this.pagoEstado = 'completo';
-                this.pagoSaldoPendiente = 0;
-                
                 this.itemsAbono = [{
                     mes: mesNum,
                     monto: '',
                     estado: 'completo',
                     saldo_pendiente: ''
                 }];
-                this.montoTotalAbono = 0;
             }
+            this.calcularTotalAbono();
             this.openPagoModal = true;
+        },
+
+        handleFileSelected(event) {
+            const files = event.target.files;
+            if (files && files.length > 0) {
+                this.procesarArchivoSoporte(files[0]);
+            }
+        },
+
+        handlePaste(event) {
+            if (!this.openPagoModal) return;
+            const isFormVisible = this.pagosMes.length === 0 || (this.pagosMes.length > 0 && this.pagosMes[this.pagosMes.length - 1].estado === 'pendiente');
+            if (!isFormVisible) return;
+
+            const clipboardItems = event.clipboardData.items;
+            for (let i = 0; i < clipboardItems.length; i++) {
+                if (clipboardItems[i].type.indexOf('image') !== -1) {
+                    const file = clipboardItems[i].getAsFile();
+                    this.procesarArchivoSoporte(file);
+                    
+                    const dataTransfer = new DataTransfer();
+                    dataTransfer.items.add(file);
+                    if (this.$refs.soporteInput) {
+                        this.$refs.soporteInput.files = dataTransfer.files;
+                    }
+                    break;
+                }
+            }
+        },
+
+        handleDrop(event) {
+            this.dragOver = false;
+            const files = event.dataTransfer.files;
+            if (files && files.length > 0) {
+                this.procesarArchivoSoporte(files[0]);
+                
+                const dataTransfer = new DataTransfer();
+                dataTransfer.items.add(files[0]);
+                if (this.$refs.soporteInput) {
+                    this.$refs.soporteInput.files = dataTransfer.files;
+                }
+            }
+        },
+
+        procesarArchivoSoporte(file) {
+            if (!file) return;
+            this.soporteFileName = file.name || 'soporte_pegado.png';
+            this.soporteEsImagen = file.type.startsWith('image/');
+            
+            if (this.soportePreviewUrl) {
+                URL.revokeObjectURL(this.soportePreviewUrl);
+            }
+            this.soportePreviewUrl = URL.createObjectURL(file);
+        },
+
+        quitarSoporte() {
+            if (this.soportePreviewUrl) {
+                URL.revokeObjectURL(this.soportePreviewUrl);
+            }
+            this.soportePreviewUrl = '';
+            this.soporteEsImagen = false;
+            this.soporteFileName = '';
+            if (this.$refs.soporteInput) {
+                this.$refs.soporteInput.value = '';
+            }
+        },
+
+        eliminarRecibo(reciboId) {
+            if (!reciboId) return;
+            if (confirm('¿Estás seguro de eliminar este pago? Se borrarán todos los pagos distribuidos con su respectivo recibo.')) {
+                const form = document.getElementById('delete-recibo-form');
+                form.action = "{{ route('finanzas.brynex-aliados.delete-recibo', '') }}/" + reciboId;
+                form.submit();
+            }
         },
 
         agregarFilaAbono() {

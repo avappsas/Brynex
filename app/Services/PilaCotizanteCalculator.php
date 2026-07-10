@@ -211,8 +211,12 @@ class PilaCotizanteCalculator
             }
 
             // Caja
-            $codCajPila = $p->cod_caj_pila ?? $p->codigo_caj ?? null;
-            $codCcfFin  = $codCajPila ?: (empty($codCajRaw) ? 'CCF68' : $codCajRaw);
+            $codCcfFin = 'CCF68';
+            if (!empty($codCajRaw)) {
+                $nitCajaLimpio = preg_replace('/[^0-9]/', '', (string)$codCajRaw);
+                $cajaObj = \App\Models\Caja::where('nit', $nitCajaLimpio)->orWhere('codigo', $codCajRaw)->first();
+                $codCcfFin = ($cajaObj && !empty($cajaObj->codigo)) ? $cajaObj->codigo : $codCajRaw;
+            }
             $sinCaja    = ($codCcfFin === 'CCF68');
             $ibcCcfTp   = $sinCaja ? 100 : $ibcCajaTp;
             $vCcfTp     = $sinCaja ? 100 : self::roundPila($ibcCajaTp * 0.04);
@@ -312,8 +316,12 @@ class PilaCotizanteCalculator
         $exonerado = (!$esIndep && !$esKMatriz && !$esTiempoParcial) ? 'S' : 'N';
 
         // ── Código CCF ─────────────────────────────────────────────────────
-        $codCajPila = $p->cod_caj_pila ?? $p->codigo_caj ?? null;
-        $codCcfFin  = $codCajPila ?: (empty($codCajRaw) ? 'CCF68' : $codCajRaw);
+        $codCcfFin = 'CCF68';
+        if (!empty($codCajRaw)) {
+            $nitCajaLimpio = preg_replace('/[^0-9]/', '', (string)$codCajRaw);
+            $cajaObj = \App\Models\Caja::where('nit', $nitCajaLimpio)->orWhere('codigo', $codCajRaw)->first();
+            $codCcfFin = ($cajaObj && !empty($cajaObj->codigo)) ? $cajaObj->codigo : $codCajRaw;
+        }
 
         // ── IBC por subsistema ──────────────────────────────────────────────
         $ibcAfp = $tienePension ? $ibcProp : 0;

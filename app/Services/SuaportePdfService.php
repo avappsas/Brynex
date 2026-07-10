@@ -109,8 +109,34 @@ class SuaportePdfService
 
         // --- BARRA ESTADO PAGO ---
         $pdf->SetFont('Arial', 'B', 8.5);
-        $fechaPago = $plano->fecha_pago ? \Carbon\Carbon::parse($plano->fecha_pago)->format('Y-m-d H:i:s.0') : '2026-07-03 14:03:12.0';
-        $pdf->Text(390, 131, "PAGADA {$fechaPago}");
+
+        $gasto = null;
+        if (!empty($plano->numero_planilla)) {
+            $gasto = \App\Models\Gasto::where('aliado_id', $plano->aliado_id)
+                ->where('numero_planilla', $plano->numero_planilla)
+                ->where('tipo', 'pago_planilla')
+                ->first();
+        }
+
+        $fechaPagoParaCarbon = null;
+        if ($gasto) {
+            $fechaPagoParaCarbon = $gasto->created_at ?? $gasto->fecha;
+        } elseif ($plano->fecha_pago) {
+            $fechaPagoParaCarbon = $plano->fecha_pago;
+        } elseif ($plano->factura?->fecha_pago) {
+            $fechaPagoParaCarbon = $plano->factura->fecha_pago;
+        }
+
+        if ($fechaPagoParaCarbon) {
+            $dt = \Carbon\Carbon::parse($fechaPagoParaCarbon);
+            $pagoFecha = $dt->format('Y-m-d');
+            $pagoHora  = $dt->format('H:i:s.0');
+        } else {
+            $pagoFecha = '2026-07-03';
+            $pagoHora  = '14:03:12.0';
+        }
+
+        $pdf->Text(390, 131, "PAGADA   {$pagoFecha}    {$pagoHora}");
 
         // --- SECCIÓN I ---
         $pdf->SetFont('Arial', '', 7.5);
