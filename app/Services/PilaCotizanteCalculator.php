@@ -91,11 +91,15 @@ class PilaCotizanteCalculator
         $esIndep         = in_array($tipoModalidad, self::TIPOS_INDEPENDIENTE);
         $esTiempoParcial = (bool)($p->es_tiempo_parcial ?? false);
 
+        $esRazonSocialIndependiente = (bool)($p->razonSocial?->es_independiente ?? false);
+
         // ── Tipo cotizante ───────────────────────────────────────────────────
         if ($esKMatriz) {
             $tipoCotizante = 23;
         } elseif ($esTiempoParcial) {
             $tipoCotizante = 51;
+        } elseif ($esRazonSocialIndependiente) {
+            $tipoCotizante = 59;
         } elseif ($esIndep) {
             $tipoCotizante = 2;
         } else {
@@ -314,7 +318,7 @@ class PilaCotizanteCalculator
         // ── Exonerado SENA/ICBF ────────────────────────────────────────────────
         // Dependientes → S (empresa paga 4% EPS, exonerado de SENA/ICBF)
         // Independientes/K/TP → N
-        $exonerado = (!$esIndep && !$esKMatriz && !$esTiempoParcial) ? 'S' : 'N';
+        $exonerado = (!$esIndep && !$esKMatriz && !$esTiempoParcial && !$esIndependiente) ? 'S' : 'N';
 
         // ── Código CCF ─────────────────────────────────────────────────────
         $codCcfFin = 'CCF68';
