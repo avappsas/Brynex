@@ -1,4 +1,4 @@
-@extends('layouts.app')
+@extends(request()->boolean('modal') ? 'layouts.modal' : 'layouts.app')
 @section('modulo', 'Recibo de Abono')
 
 @php

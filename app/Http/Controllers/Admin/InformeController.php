@@ -1309,6 +1309,7 @@ class InformeController extends Controller
             'valor'       => 'required|numeric|min:1',
             'referencia'  => 'nullable|string|max:100',
             'observacion' => 'nullable|string|max:500',
+            'estado'      => 'nullable|string|in:pendiente,verificado,no_aparece',
         ]);
 
         // Capturar valores anteriores para la bitácora
@@ -1318,22 +1319,70 @@ class InformeController extends Controller
             'valor'           => $consig->valor,
             'referencia'      => $consig->referencia,
             'observacion'     => $consig->observacion,
+            'confirmado'      => $consig->confirmado,
+            'no_aparece'      => $consig->no_aparece,
         ];
 
-        $consig->update([
+        $updateData = [
             'banco_cuenta_id' => $validated['banco_cuenta_id'],
             'fecha'           => $validated['fecha'],
             'valor'           => (int)$validated['valor'],
             'referencia'      => $validated['referencia'] ?? null,
-            'observacion'     => $validated['observacion'] ?? null,
-        ]);
+        ];
+
+        // Procesar estado de validación si es admin/superadmin
+        if (Auth::user()->hasRole(['admin', 'superadmin']) && isset($validated['estado'])) {
+            $nuevoEstado = $validated['estado'];
+            
+            // Limpiar firmas anteriores de la observación enviada
+            $observacionBase = $validated['observacion'] ?? '';
+            $regexFirma = '/\s*\[Soporte\s*-\s*Validado\s*por:\s*[^\]]+\]/i';
+            $observacionLimpia = preg_replace($regexFirma, '', $observacionBase);
+
+            if ($nuevoEstado === 'verificado') {
+                $updateData['confirmado'] = 1;
+                $updateData['no_aparece'] = 0;
+                
+                // Si cambia a verificado, setear validador y estampar firma
+                if (!$consig->confirmado) {
+                    $updateData['usuario_validador_id'] = Auth::id();
+                    $updateData['fecha_validacion'] = now();
+                } else {
+                    $updateData['usuario_validador_id'] = $consig->usuario_validador_id ?? Auth::id();
+                    $updateData['fecha_validacion'] = $consig->fecha_validacion ?? now();
+                }
+                
+                $nombreValidador = \App\Models\User::find($updateData['usuario_validador_id'])->nombre ?? Auth::user()->nombre;
+                $updateData['observacion'] = trim($observacionLimpia) . ' [Soporte - Validado por: ' . $nombreValidador . ']';
+            } elseif ($nuevoEstado === 'no_aparece') {
+                $updateData['confirmado'] = 0;
+                $updateData['no_aparece'] = 1;
+                $updateData['usuario_validador_id'] = null;
+                $updateData['fecha_validacion'] = null;
+                $updateData['observacion'] = trim($observacionLimpia) ?: null;
+            } else {
+                // pendiente
+                $updateData['confirmado'] = 0;
+                $updateData['no_aparece'] = 0;
+                $updateData['usuario_validador_id'] = null;
+                $updateData['fecha_validacion'] = null;
+                $updateData['observacion'] = trim($observacionLimpia) ?: null;
+            }
+        } else {
+            $updateData['observacion'] = $validated['observacion'] ?? null;
+        }
+
+        $consig->update($updateData);
+        $fresh = $consig->fresh();
 
         $despues = [
-            'banco_cuenta_id' => $validated['banco_cuenta_id'],
-            'fecha'           => $validated['fecha'],
-            'valor'           => (int)$validated['valor'],
-            'referencia'      => $validated['referencia'] ?? null,
-            'observacion'     => $validated['observacion'] ?? null,
+            'banco_cuenta_id' => $fresh->banco_cuenta_id,
+            'fecha'           => $fresh->fecha,
+            'valor'           => $fresh->valor,
+            'referencia'      => $fresh->referencia,
+            'observacion'     => $fresh->observacion,
+            'confirmado'      => $fresh->confirmado,
+            'no_aparece'      => $fresh->no_aparece,
         ];
 
         \App\Models\Bitacora::registrar(
@@ -1349,12 +1398,14 @@ class InformeController extends Controller
             'ok'      => true,
             'mensaje' => 'Consignación actualizada correctamente.',
             'consig'  => [
-                'id'              => $consig->id,
-                'banco_cuenta_id' => $consig->fresh()->banco_cuenta_id,
-                'fecha'           => $consig->fresh()->fecha,
-                'valor'           => $consig->fresh()->valor,
-                'referencia'      => $consig->fresh()->referencia,
-                'observacion'     => $consig->fresh()->observacion,
+                'id'              => $fresh->id,
+                'banco_cuenta_id' => $fresh->banco_cuenta_id,
+                'fecha'           => $fresh->fecha,
+                'valor'           => $fresh->valor,
+                'referencia'      => $fresh->referencia,
+                'observacion'     => $fresh->observacion,
+                'confirmado'      => $fresh->confirmado,
+                'no_aparece'      => $fresh->no_aparece,
             ],
         ]);
     }
@@ -1486,6 +1537,9 @@ class InformeController extends Controller
                 cs.tipo,
                 cs.referencia,
                 cs.imagen_path,
+                cs.confirmado,
+                cs.no_aparece,
+                cs.anticipo_id,
                 f.numero_factura,
                 f.empresa_id,
                 CASE
@@ -1503,6 +1557,37 @@ class InformeController extends Controller
             ->orderBy('cs.fecha')
             ->orderBy('cs.created_at')
             ->get();
+
+        // Cargar anticipos en lote para resolver pagador
+        $anticIds = $entradas->where('tipo', 'anticipo')->pluck('anticipo_id')->filter()->unique();
+        $anticipos = collect();
+        if ($anticIds->isNotEmpty()) {
+            $anticipos = \App\Models\Anticipo::whereIn('id', $anticIds)
+                ->with(['cliente', 'empresa'])
+                ->get()
+                ->keyBy('id');
+        }
+
+        $entradas = $entradas->map(function ($c) use ($anticipos) {
+            $c->confirmado = (int)$c->confirmado;
+            $c->no_aparece = (int)$c->no_aparece;
+
+            $pagador = trim($c->nombre_cliente ?? '');
+            if ($pagador === '' || $pagador === '— — — —') $pagador = null;
+
+            if (($c->tipo ?? '') === 'anticipo' && $c->anticipo_id) {
+                $ant = $anticipos[$c->anticipo_id] ?? null;
+                if ($ant && !$pagador) {
+                    if ($ant->empresa) {
+                        $pagador = trim($ant->empresa->empresa);
+                    } elseif ($ant->cliente) {
+                        $pagador = trim($ant->cliente->nombre_completo);
+                    }
+                }
+            }
+            $c->nombre_cliente = $pagador ?: '—';
+            return $c;
+        });
 
         $salidas = DB::table('gastos')
             ->where('aliado_id', $aid)->where('banco_origen_id', $bancoId)

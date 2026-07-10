@@ -1529,6 +1529,18 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
                 <label style="font-size:.75rem;font-weight:600;color:#374151;display:block;margin-bottom:.3rem;">Referencia</label>
                 <input type="text" id="editConsigRef" maxlength="100" placeholder="Numero de referencia..." style="width:100%;padding:.5rem .7rem;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;">
             </div>
+            @if(auth()->user()->hasRole(['admin', 'superadmin']))
+            <div style="margin-bottom:.8rem;">
+                <label style="font-size:.75rem;font-weight:600;color:#374151;display:block;margin-bottom:.3rem;">Estado de Validación</label>
+                <select id="editConsigEstado" style="width:100%;padding:.5rem .7rem;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;font-weight:700;">
+                    <option value="pendiente" style="color:#b45309;">🕐 Pendiente</option>
+                    <option value="verificado" style="color:#15803d;">✅ Verificado</option>
+                    <option value="no_aparece" style="color:#b91c1c;">❌ No aparece en banco</option>
+                </select>
+            </div>
+            @else
+            <input type="hidden" id="editConsigEstado" value="">
+            @endif
             <div style="margin-bottom:.9rem;">
                 <label style="font-size:.75rem;font-weight:600;color:#374151;display:block;margin-bottom:.3rem;">Observacion</label>
                 <textarea id="editConsigObs" rows="2" maxlength="500" style="width:100%;padding:.5rem .7rem;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;resize:vertical;"></textarea>
@@ -1851,10 +1863,11 @@ function verMovimientosBanco(bancoId, label) {
                 html += '<div style="color:#94a3b8;font-size:.82rem;margin-bottom:1.25rem;padding:.5rem;">Sin entradas en este periodo.</div>';
             } else {
                 html += '<div style="border-radius:10px;overflow:hidden;border:1px solid #bbf7d0;margin-bottom:1.25rem;">'
-                      + '<div style="display:grid;grid-template-columns:115px 1fr 85px 105px 75px 68px 36px;gap:.3rem;padding:.42rem .75rem;background:#f0fdf4;font-size:.63rem;font-weight:700;text-transform:uppercase;color:#15803d;border-bottom:2px solid #86efac;">'
+                      + '<div style="display:grid;grid-template-columns:110px 1fr 75px 95px 68px 90px 65px 32px;gap:.3rem;padding:.42rem .75rem;background:#f0fdf4;font-size:.63rem;font-weight:700;text-transform:uppercase;color:#15803d;border-bottom:2px solid #86efac;">'
                       + '<span>Fecha</span><span>Cliente / Empresa</span><span>Referencia</span>'
                       + '<span style="text-align:right;">Valor</span><span style="text-align:center;">Factura</span>'
-                      + '<span style="text-align:center;">Soporte</span><span style="text-align:center;">Ed.</span>'
+                      + '<span style="text-align:center;">Estado</span><span style="text-align:center;">Soporte</span>'
+                      + '<span style="text-align:center;">Ed.</span>'
                       + '</div>';
 
                 data.entradas.forEach((e,i) => {
@@ -1867,12 +1880,22 @@ function verMovimientosBanco(bancoId, label) {
                     const refTxt  = e.referencia?'<span style="font-size:.74rem;color:#475569;">'+e.referencia+'</span>':'<span style="color:#cbd5e1;">—</span>';
                     const factTxt = e.numero_factura?'<span style="background:#dbeafe;color:#1e40af;border-radius:5px;padding:.1rem .35rem;font-size:.7rem;font-weight:700;">#'+e.numero_factura+'</span>':'<span style="color:#94a3b8;">—</span>';
                     const tipoLbl = (e.tipo&&e.tipo!=='cliente')?'<span style="font-size:.6rem;color:#94a3b8;display:block;">'+e.tipo+'</span>':'';
+                    
+                    let estadoLbl = '';
+                    if (e.confirmado) {
+                        estadoLbl = '<span style="background:#dcfce7;color:#15803d;border-radius:5px;padding:.15rem .35rem;font-size:.65rem;font-weight:700;white-space:nowrap;">✅ Verificado</span>';
+                    } else if (e.no_aparece) {
+                        estadoLbl = '<span style="background:#fee2e2;color:#b91c1c;border-radius:5px;padding:.15rem .35rem;font-size:.65rem;font-weight:700;white-space:nowrap;">❌ No aparece</span>';
+                    } else {
+                        estadoLbl = '<span style="background:#fef3c7;color:#b45309;border-radius:5px;padding:.15rem .35rem;font-size:.65rem;font-weight:700;white-space:nowrap;">🕐 Pendiente</span>';
+                    }
+
                     let sopBtn = '<span style="color:#cbd5e1;font-size:.72rem;">Sin foto</span>';
                     if (e.imagen_path) {
                         const url = (e.imagen_path.startsWith('http') || e.imagen_path.startsWith('/storage')) ? e.imagen_path : '/storage/'+e.imagen_path;
                         sopBtn = '<a href="'+url+'" target="_blank" style="display:inline-flex;align-items:center;background:#7c3aed;color:#fff;border-radius:7px;padding:.2rem .45rem;font-size:.68rem;font-weight:700;text-decoration:none;white-space:nowrap;">📷 Ver</a>';
                     }
-                    html += '<div style="display:grid;grid-template-columns:115px 1fr 85px 105px 75px 68px 36px;gap:.3rem;padding:.42rem .75rem;background:'+bg+';border-bottom:1px solid #f0fdf4;align-items:center;font-size:.77rem;">'
+                    html += '<div style="display:grid;grid-template-columns:110px 1fr 75px 95px 68px 90px 65px 32px;gap:.3rem;padding:.42rem .75rem;background:'+bg+';border-bottom:1px solid #f0fdf4;align-items:center;font-size:.77rem;">'
                         +'<div>'
                             +'<div style="font-weight:700;color:#0d2550;">'+fechaStr+'</div>'
                             +(horaStr?'<div style="font-size:.63rem;color:#6366f1;font-weight:600;">🕐 '+horaStr+'</div>':'')
@@ -1884,6 +1907,7 @@ function verMovimientosBanco(bancoId, label) {
                         +'<div>'+refTxt+'</div>'
                         +'<div style="text-align:right;font-weight:800;color:#16a34a;font-family:monospace;">'+fmtN(e.valor)+'</div>'
                         +'<div style="text-align:center;">'+factTxt+'</div>'
+                        +'<div style="text-align:center;">'+estadoLbl+'</div>'
                         +'<div style="text-align:center;">'+sopBtn+'</div>'
                         +'<div style="text-align:center;"><button onclick="abrirEditarConsig('+e.id+')" style="background:#f59e0b;border:none;color:#fff;border-radius:7px;width:26px;height:26px;cursor:pointer;font-size:.72rem;display:inline-flex;align-items:center;justify-content:center;" title="Editar">✏️</button></div>'
                         +'</div>';
@@ -1968,6 +1992,18 @@ function abrirEditarConsig(id) {
     document.getElementById('editConsigValor').value = vRaw > 0 ? '$ '+vRaw.toLocaleString('es-CO') : '';
     document.getElementById('editConsigBanco').value = e.banco_cuenta_id || '';
     document.getElementById('editConsigRef').value   = e.referencia||'';
+    
+    const elEstado = document.getElementById('editConsigEstado');
+    if (elEstado) {
+        let estVal = 'pendiente';
+        if (e.confirmado) {
+            estVal = 'verificado';
+        } else if (e.no_aparece) {
+            estVal = 'no_aparece';
+        }
+        elEstado.value = estVal;
+    }
+
     document.getElementById('editConsigObs').value   = e.observacion||'';
     document.getElementById('editConsigError').style.display = 'none';
     editConsigClearFile();
@@ -2016,6 +2052,7 @@ function guardarConsig() {
     const bancoCuentaId=document.getElementById('editConsigBanco').value;
     const ref=document.getElementById('editConsigRef').value;
     const obs=document.getElementById('editConsigObs').value;
+    const estado=document.getElementById('editConsigEstado')?.value || '';
     const err=document.getElementById('editConsigError');
     const btn=document.getElementById('btnGuardarConsig');
     const valorNum = editConsigGetValorRaw();
@@ -2024,7 +2061,7 @@ function guardarConsig() {
     fetch('{{ route("admin.informes.financiero.consignacion.editar","_X_") }}'.replace('_X_',id),{
         method:'PATCH',
         headers:{'Content-Type':'application/json','X-CSRF-TOKEN':document.querySelector('meta[name="csrf-token"]')?.content||'','Accept':'application/json'},
-        body:JSON.stringify({banco_cuenta_id:bancoCuentaId,fecha,valor:valorNum,referencia:ref,observacion:obs})
+        body:JSON.stringify({banco_cuenta_id:bancoCuentaId,fecha,valor:valorNum,referencia:ref,observacion:obs,estado})
     }).then(r=>r.json()).then(d=>{
         btn.disabled=false;btn.textContent='Guardar';
         if(d.ok){

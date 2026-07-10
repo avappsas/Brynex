@@ -265,6 +265,9 @@ class AnticipoController extends Controller
             // Soft delete (pone deleted_at = now())
             $anticipo->delete();
 
+            // Eliminar consignación bancaria asociada (si existe)
+            DB::table('consignaciones')->where('anticipo_id', $anticipo->id)->delete();
+
             DB::commit();
         } catch (\Exception $e) {
             DB::rollBack();

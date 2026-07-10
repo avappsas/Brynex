@@ -468,6 +468,7 @@ class CuadreDiarioController extends Controller
                 cs.id,
                 cs.banco_cuenta_id,
                 cs.factura_id,
+                cs.anticipo_id,
                 cs.tipo,
                 cs.referencia,
                 cs.observacion,
@@ -496,11 +497,11 @@ class CuadreDiarioController extends Controller
             ->get();
 
         // ── 2. Cargar anticipos relacionados (batch) ─────────────────────────
-        $anticIds = $todasConsigRaw->where('tipo', 'anticipo')->pluck('id');
+        $anticIds = $todasConsigRaw->where('tipo', 'anticipo')->pluck('anticipo_id')->filter()->unique();
         $anticipos = collect();
         if ($anticIds->isNotEmpty()) {
             $anticipos = \App\Models\Anticipo::whereIn('id', $anticIds)
-                ->with('factura')
+                ->with(['factura', 'cliente', 'empresa'])
                 ->get()
                 ->keyBy('id');
         }
@@ -540,11 +541,22 @@ class CuadreDiarioController extends Controller
 
                 // Trazabilidad anticipo
                 $anticFact = $anticFactNum = null;
-                if (($c->tipo ?? '') === 'anticipo') {
-                    $ant = $anticipos[$c->id] ?? null;
+                if (($c->tipo ?? '') === 'anticipo' && $c->anticipo_id) {
+                    $ant = $anticipos[$c->anticipo_id] ?? null;
                     if ($ant) {
                         $anticFact    = $ant->factura_id;
                         $anticFactNum = $ant->factura?->numero_factura;
+
+                        // Si no se obtuvo pagador del join (porque es anticipo disponible sin factura), resolverlo del anticipo
+                        if (!$pagador) {
+                            if ($ant->empresa) {
+                                $pagador   = trim($ant->empresa->empresa);
+                                $esEmpresa = true;
+                            } elseif ($ant->cliente) {
+                                $pagador   = trim($ant->cliente->nombre_completo);
+                                $esEmpresa = false;
+                            }
+                        }
                     }
                 }
 
@@ -557,6 +569,7 @@ class CuadreDiarioController extends Controller
                     'no_aparece'           => (bool)($c->no_aparece ?? false),
                     'factura_id'           => $c->factura_id,
                     'num_factura'          => $c->numero_factura ?? $c->factura_id,
+                    'anticipo_id'          => $c->anticipo_id,
                     'anticipo_factura_id'  => $anticFact,
                     'anticipo_factura_num' => $anticFactNum,
                     'pagador'              => $pagador ?: null,

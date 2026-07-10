@@ -54,6 +54,7 @@ class Anticipo extends BaseModel
 
     // ── Relaciones ────────────────────────────────────────────────────
     public function contrato()    { return $this->belongsTo(Contrato::class); }
+    public function cliente()     { return $this->belongsTo(Cliente::class, 'cedula', 'cedula'); }
     public function empresa()     { return $this->belongsTo(Empresa::class); }
     public function factura()     { return $this->belongsTo(Factura::class); }
     public function usuario()     { return $this->belongsTo(User::class, 'usuario_id'); }

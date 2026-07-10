@@ -153,24 +153,34 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.78rem}
                 @endif
             </td>
 
-            {{-- Factura --}}
+            {{-- Factura / Anticipo --}}
             <td>
-                @if($mov->num_factura)
-                <a href="#" onclick="abrirRecibo({{ $mov->factura_id }}); return false;"
-                   style="font-weight:700;font-size:.78rem;color:#2563eb;text-decoration:none">
-                    📋 #{{ $mov->num_factura }}
-                </a>
-                @elseif(($mov->tipo ?? '') === 'anticipo' && $mov->anticipo_factura_id ?? null)
-                {{-- Anticipo ya aplicado: mostrar enlace a la factura donde se usó --}}
-                <div style="display:flex;flex-direction:column;align-items:center;gap:.1rem;">
-                    <span style="font-size:.6rem;color:#92400e;font-weight:700;background:#fef3c7;border-radius:3px;padding:0 4px;">Aplicado →</span>
-                    <a href="#" onclick="abrirRecibo({{ $mov->anticipo_factura_id }}); return false;"
-                       style="font-weight:700;font-size:.72rem;color:#92400e;text-decoration:none;">
-                        📋 #{{ $mov->anticipo_factura_num }}
+                @if(($mov->tipo ?? '') === 'anticipo' && ($mov->anticipo_id ?? null))
+                    <div style="display:flex;flex-direction:column;align-items:center;gap:.15rem">
+                        <a href="#" onclick="abrirReciboAnticipo({{ $mov->anticipo_id }}); return false;"
+                           title="Ver Recibo de Anticipo"
+                           style="font-weight:700;font-size:.78rem;color:#b45309;text-decoration:none;background:#fef3c7;border-radius:4px;padding:1px 5px;border:1px solid #fde68a">
+                            💰 #{{ $mov->anticipo_id }}
+                        </a>
+                        @if($mov->anticipo_factura_id ?? null)
+                            <div style="display:flex;align-items:center;gap:.1rem;font-size:.62rem;color:#64748b">
+                                <span>Aplicado →</span>
+                                <a href="#" onclick="abrirRecibo({{ $mov->anticipo_factura_id }}); return false;"
+                                   style="font-weight:700;color:#2563eb;text-decoration:none">
+                                    📋 #{{ $mov->anticipo_factura_num }}
+                                </a>
+                            </div>
+                        @else
+                            <span style="font-size:.6rem;color:#047857;font-weight:700;background:#dcfce7;border-radius:3px;padding:0 4px;border:1px solid #bbf7d0">Disponible</span>
+                        @endif
+                    </div>
+                @elseif($mov->num_factura)
+                    <a href="#" onclick="abrirRecibo({{ $mov->factura_id }}); return false;"
+                       style="font-weight:700;font-size:.78rem;color:#2563eb;text-decoration:none">
+                        📋 #{{ $mov->num_factura }}
                     </a>
-                </div>
                 @else
-                <span style="color:#cbd5e1;font-size:.72rem">—</span>
+                    <span style="color:#cbd5e1;font-size:.72rem">—</span>
                 @endif
             </td>
 
@@ -579,7 +589,7 @@ function subirComprobanteSubmit() {
 }
 
 function abrirRecibo(facturaId) {
-    const url = `${baseUrl}/admin/facturacion/recibo/${facturaId}`;
+    const url = `${baseUrl}/admin/facturacion/recibo/${facturaId}?modal=1`;
     document.getElementById('iframe-recibo').src = url;
     document.getElementById('btn-abrir-recibo').href = url;
     document.getElementById('modal-recibo').classList.add('open');
@@ -808,6 +818,14 @@ function mostrarToast(mensaje) {
     setTimeout(() => {
         toast.classList.remove('show');
     }, 3500);
+}
+
+// ── Abrir Recibo de Anticipo ──
+function abrirReciboAnticipo(anticipoId) {
+    const url = `${baseUrl}/admin/anticipos/${anticipoId}/recibo?modal=1`;
+    document.getElementById('iframe-recibo').src = url;
+    document.getElementById('btn-abrir-recibo').href = url;
+    document.getElementById('modal-recibo').classList.add('open');
 }
 </script>
 @endsection
