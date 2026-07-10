@@ -91,14 +91,14 @@ class PilaCotizanteCalculator
         $esIndep         = in_array($tipoModalidad, self::TIPOS_INDEPENDIENTE);
         $esTiempoParcial = (bool)($p->es_tiempo_parcial ?? false);
 
-        $esRazonSocialIndependiente = (bool)($p->razonSocial?->es_independiente ?? false);
+        $esIndependiente = (bool)($p->razonSocial?->es_independiente ?? false);
 
         // ── Tipo cotizante ───────────────────────────────────────────────────
         if ($esKMatriz) {
             $tipoCotizante = 23;
         } elseif ($esTiempoParcial) {
             $tipoCotizante = 51;
-        } elseif ($esRazonSocialIndependiente) {
+        } elseif ($esIndependiente) {
             $tipoCotizante = 59;
         } elseif ($esIndep) {
             $tipoCotizante = 2;
@@ -222,7 +222,6 @@ class PilaCotizanteCalculator
                 $codCcfFin = ($cajaObj && !empty($cajaObj->codigo)) ? $cajaObj->codigo : $codCajRaw;
             }
             $sinCaja    = ($codCcfFin === 'CCF68');
-            $esIndependiente = (bool)($p->razonSocial?->es_independiente ?? false);
             $ibcCcfTp   = $sinCaja ? ($esIndependiente ? 0 : 100) : $ibcCajaTp;
             $vCcfTp     = $sinCaja ? ($esIndependiente ? 0 : 100) : self::roundPila($ibcCajaTp * 0.04);
 
@@ -327,8 +326,6 @@ class PilaCotizanteCalculator
             $cajaObj = \App\Models\Caja::where('nit', $nitCajaLimpio)->orWhere('codigo', $codCajRaw)->first();
             $codCcfFin = ($cajaObj && !empty($cajaObj->codigo)) ? $cajaObj->codigo : $codCajRaw;
         }
-
-        $esIndependiente = (bool)($p->razonSocial?->es_independiente ?? false);
 
         // ── IBC por subsistema ──────────────────────────────────────────────
         $ibcAfp = $tienePension ? $ibcProp : 0;
