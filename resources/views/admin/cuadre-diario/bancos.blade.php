@@ -339,7 +339,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: .78rem; min-width
                 @endphp
                 @if(auth()->user()->hasRole(['admin','superadmin']))
                 <button type="button"
-                        onclick="abrirModalEstado({{ $mov->cs_id }}, {{ $mov->confirmado ? 'true' : 'false' }}, {{ $mov->no_aparece ? 'true' : 'false' }}, {{ $mov->imagen_path ? "'".asset('storage/' . $mov->imagen_path)."'" : 'null' }})"
+                        onclick="abrirModalEstado({{ $mov->cs_id }}, {{ $mov->confirmado ? 'true' : 'false' }}, {{ $mov->no_aparece ? 'true' : 'false' }}, {{ $mov->imagen_path ? "'".asset('storage/' . $mov->imagen_path)."'" : 'null' }}, {{ $mov->referencia ? "'".addslashes($mov->referencia)."'" : 'null' }})"
                         class="btn-sm btn-estado-clic"
                         style="background:{{ $bgEstado }};color:{{ $colEstado }}">
                     {{ $txtEstado }}
@@ -397,19 +397,32 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: .78rem; min-width
             <div id="modal-estado-opciones" style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:1rem;min-width:240px">
                 <div>
                     <p style="font-size:.88rem;color:#1e293b;margin:0 0 .5rem 0;font-weight:700">¿Cambiar el estado de esta consignación?</p>
+                    {{-- Referencia --}}
+                    <div id="modal-estado-referencia" style="display:none;margin-bottom:.5rem;background:#f1f5f9;border-radius:7px;padding:.4rem .75rem;font-size:.78rem;color:#334155;display:flex;align-items:center;gap:.4rem">
+                        <span style="font-weight:700;color:#64748b;font-size:.7rem;text-transform:uppercase;letter-spacing:.03em">Ref.:</span>
+                        <span id="modal-estado-ref-valor" style="font-weight:700;color:#0f172a;font-family:monospace"></span>
+                    </div>
                     <div id="estado-actual" style="text-align:center;font-size:.85rem;font-weight:600;padding:.6rem;border-radius:8px"></div>
                 </div>
                 
+                {{-- Observación libre --}}
+                <div>
+                    <label style="font-size:.72rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.03em;display:block;margin-bottom:.3rem">Observación:</label>
+                    <textarea id="modal-estado-obs" rows="2"
+                              style="width:100%;border:1px solid #e2e8f0;border-radius:8px;padding:.45rem .6rem;font-size:.8rem;color:#1e293b;resize:vertical;font-family:inherit;outline:none;transition:border-color .15s;box-sizing:border-box"
+                              onfocus="this.style.borderColor='#3b82f6'" onblur="this.style.borderColor='#e2e8f0'"></textarea>
+                </div>
+                
                 <div style="display:flex;flex-direction:column;gap:.5rem">
-                    <button type="button" onclick="cambiarEstadoConsignacion('verificar')" 
+                    <button type="button" onclick="cambiarEstadoConsignacion('verificar')"
                             style="width:100%;padding:.7rem;background:#16a34a;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:.85rem">
                         ✅ Marcar Verificado
                     </button>
-                    <button type="button" onclick="cambiarEstadoConsignacion('pendiente')" 
+                    <button type="button" onclick="cambiarEstadoConsignacion('pendiente')"
                             style="width:100%;padding:.7rem;background:#f59e0b;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:.85rem">
                         🕐 Marcar Pendiente
                     </button>
-                    <button type="button" onclick="cambiarEstadoConsignacion('no-aparece')" 
+                    <button type="button" onclick="cambiarEstadoConsignacion('no-aparece')"
                             style="width:100%;padding:.7rem;background:#dc2626;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:.85rem">
                         ❌ No aparece en banco
                     </button>
@@ -536,15 +549,27 @@ function cerrarModal(id) {
     }
     if (id === 'modal-estado') {
         resetZoomImg('modal-estado-img', 'modal-estado-img-wrapper');
+        const obs = document.getElementById('modal-estado-obs');
+        if (obs) obs.value = '';
     }
 }
 
 let _currentCsId = null;
 
-function abrirModalEstado(csId, esVerificado, noAparece, imagenUrl) {
+function abrirModalEstado(csId, esVerificado, noAparece, imagenUrl, referencia) {
     resetZoomImg('modal-estado-img', 'modal-estado-img-wrapper');
     _currentCsId = csId;
-    
+
+    // Mostrar / ocultar referencia
+    const refContainer = document.getElementById('modal-estado-referencia');
+    const refValor = document.getElementById('modal-estado-ref-valor');
+    if (referencia && refContainer && refValor) {
+        refValor.textContent = referencia;
+        refContainer.style.display = 'flex';
+    } else if (refContainer) {
+        refContainer.style.display = 'none';
+    }
+
     // Configurar estado actual en el modal
     const div = document.getElementById('estado-actual');
     if (esVerificado) {
@@ -753,6 +778,10 @@ function cambiarEstadoConsignacion(accion) {
     if (accion === 'pendiente') {
         body.append('_method', 'PATCH');
     }
+    // Agregar observacion libre del usuario si la escribió
+    const obsInput = document.getElementById('modal-estado-obs');
+    const obsVal = obsInput ? obsInput.value.trim() : '';
+    if (obsVal) body.append('observacion_extra', obsVal);
 
     fetch(url, {
         method: 'POST',

@@ -614,7 +614,24 @@ class CuadreDiarioController extends Controller
                 'referencia'       => $g->numero_planilla ?? null,
             ]);
 
-            $movimientos = $movEntradas->merge($movSalidas)->sortByDesc('fecha')->values();
+            $movimientos = $movEntradas->merge($movSalidas)
+                ->sort(function ($a, $b) {
+                    $fA = $a->fecha instanceof \Carbon\Carbon ? $a->fecha->toDateString() : $a->fecha;
+                    $fB = $b->fecha instanceof \Carbon\Carbon ? $b->fecha->toDateString() : $b->fecha;
+                    
+                    if ($fA !== $fB) {
+                        return strcmp($fB, $fA);
+                    }
+                    
+                    // Si son del mismo día, entradas (es_salida = false) van primero que salidas (es_salida = true)
+                    if ($a->es_salida !== $b->es_salida) {
+                        return $a->es_salida ? 1 : -1;
+                    }
+                    
+                    // Si son del mismo día y del mismo tipo, ordenar por valor de mayor a menor
+                    return $b->valor <=> $a->valor;
+                })
+                ->values();
 
             return [
                 'banco'       => $bc,
@@ -637,6 +654,13 @@ class CuadreDiarioController extends Controller
 
         $observacion = $cs->observacion ?? '';
         $observacion = preg_replace('/\s*[-·]?\s*(?:Validado|Marcado no aparece) por:.*$/u', '', $observacion);
+
+        // Nota libre del usuario (ej: "llevo al 8-julio")
+        $notaExtra = trim($request->input('observacion_extra', ''));
+        if ($notaExtra) {
+            $observacion = trim($observacion . ($observacion ? ' | ' : '') . $notaExtra);
+        }
+
         $firma = 'Validado por: ' . Auth::user()->nombre;
         $nuevaObservacion = trim($observacion . ($observacion ? ' - ' : '') . $firma);
 
@@ -679,6 +703,13 @@ class CuadreDiarioController extends Controller
 
         $observacion = $cs->observacion ?? '';
         $observacion = preg_replace('/\s*[-·]?\s*(?:Validado|Marcado no aparece) por:.*$/u', '', $observacion);
+
+        // Nota libre del usuario (ej: "llevo al 8-julio")
+        $notaExtra = trim($request->input('observacion_extra', ''));
+        if ($notaExtra) {
+            $observacion = trim($observacion . ($observacion ? ' | ' : '') . $notaExtra);
+        }
+
         $firma = 'Marcado no aparece por: ' . Auth::user()->nombre;
         $nuevaObservacion = trim($observacion . ($observacion ? ' - ' : '') . $firma);
 
@@ -751,6 +782,12 @@ class CuadreDiarioController extends Controller
 
         $observacion = $cs->observacion ?? '';
         $nuevaObservacion = trim(preg_replace('/\s*[-·]?\s*(?:Validado|Marcado no aparece) por:.*$/u', '', $observacion));
+
+        // Nota libre del usuario (si la proporcionó al reversar)
+        $notaExtra = trim($request->input('observacion_extra', ''));
+        if ($notaExtra) {
+            $nuevaObservacion = trim($nuevaObservacion . ($nuevaObservacion ? ' | ' : '') . $notaExtra);
+        }
 
         $cs->update([
             'confirmado' => false,
