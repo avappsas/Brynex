@@ -218,6 +218,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: .78rem; min-width
             <th style="text-align:left;padding-left:.8rem">Descripción</th>
             <th>Registró</th>
             <th>Fecha</th>
+            <th>Referencia</th>
             <th style="text-align:right;padding-right:.8rem">Valor</th>
             <th>Estado</th>
             <th>Img.</th>
@@ -233,7 +234,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: .78rem; min-width
         @if($fechaActual !== $fechaMov)
             @php $fechaActual = $fechaMov; @endphp
             <tr class="fecha-separador-row" data-fecha="{{ $fechaMov }}">
-                <td colspan="9">📅 {{ $fechaMov }}</td>
+                <td colspan="10">📅 {{ $fechaMov }}</td>
             </tr>
         @endif
         <tr id="{{ $rowId }}" class="mov-row" data-estado="{{ $estadoFila }}" data-fecha-grupo="{{ $fechaMov }}">
@@ -321,6 +322,11 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: .78rem; min-width
             {{-- Fecha --}}
             <td style="font-size:.73rem;white-space:nowrap;color:#64748b">
                 {{ sqldate($mov->fecha)->format('d/m/Y') }}
+            </td>
+
+            {{-- Referencia --}}
+            <td style="font-size:.74rem;font-family:monospace;font-weight:600;color:#334155;white-space:nowrap">
+                {{ $mov->referencia ?: '—' }}
             </td>
 
             {{-- Valor — alineado a la derecha con número visible --}}
