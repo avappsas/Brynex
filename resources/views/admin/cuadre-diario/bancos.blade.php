@@ -10,44 +10,168 @@ $saldosConMov = $saldos->filter(fn($sb) => $sb['movimientos']->isNotEmpty());
 
 @section('contenido')
 <style>
-.bk-header{background:linear-gradient(135deg,#0f172a,#1e3a5f);border-radius:14px;color:#fff;padding:1rem 1.4rem;margin-bottom:1rem}
-table.tbl{width:100%;border-collapse:collapse;font-size:.78rem}
-.tbl th{background:#0f172a;color:#94a3b8;font-size:.62rem;text-transform:uppercase;padding:.45rem .55rem;
-        position:sticky;top:0;white-space:nowrap;text-align:center}
-.tbl td{padding:.38rem .55rem;border-bottom:1px solid #f1f5f9;vertical-align:middle;text-align:center}
-.tbl tr:hover td{background:#f8fafc}
-.badge{padding:.1rem .4rem;border-radius:12px;font-size:.65rem;font-weight:700;white-space:nowrap;display:inline-block}
-.btn-sm{padding:.18rem .5rem;font-size:.71rem;border-radius:6px;border:none;cursor:pointer;font-weight:600}
-.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center}
-.modal-bg.open{display:flex}
-.modal-box{background:#fff;border-radius:14px;width:min(580px,96vw);max-height:90vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.35)}
-.modal-box.lg{width:min(900px,98vw);max-height:94vh}
-.modal-head{background:#1e3a5f;padding:.75rem 1rem;display:flex;justify-content:space-between;align-items:center}
-.modal-body{padding:1rem;overflow-y:auto;flex:1}
-.btn-close{background:rgba(255,255,255,.18);color:#fff;border:none;border-radius:5px;width:28px;height:28px;cursor:pointer;font-weight:800;font-size:1rem}
-.btn-filtro.active{background:#1e3a5f !important;color:#fff !important;border-color:#1e3a5f !important}
-/* Toast Notification */
-.toast-notif{position:fixed;bottom:20px;right:20px;background:#0f172a;color:#fff;padding:.75rem 1.25rem;border-radius:8px;box-shadow:0 10px 25px rgba(0,0,0,.2);z-index:99999;font-size:.82rem;font-weight:600;display:flex;align-items:center;gap:.5rem;transform:translateY(150%);transition:transform .3s cubic-bezier(0.16,1,0.3,1)}
-.toast-notif.show{transform:translateY(0)}
-.zoomable-img{max-width:100%;max-height:100%;object-fit:contain;cursor:zoom-in;transition:width .15s ease,height .15s ease}
-.zoomable-img.zoomed{max-width:none !important;max-height:none !important;width:180% !important;height:auto !important;cursor:zoom-out}
-.img-zoom-wrapper{height:360px;width:100%;overflow:auto;display:flex;align-items:center;justify-content:center;border-radius:6px;background:#fff;position:relative;user-select:none}
-.img-zoom-wrapper.zoomed-mode{display:block !important;cursor:grab}
+/* ── Header de la página (NO sticky — el navbar no es fixed) ── */
+.bk-page-header {
+    background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%);
+    border-radius: 14px;
+    color: #fff;
+    padding: .85rem 1.4rem;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: .6rem;
+    box-shadow: 0 4px 20px rgba(15,23,42,.2);
+}
+.bk-page-header__left { display: flex; flex-direction: column; gap: .12rem; }
+.bk-page-header__right { display: flex; align-items: center; gap: .8rem; flex-wrap: wrap; }
+
+/* Filtros globales */
+.filtros-globales { display: flex; align-items: center; gap: .35rem; flex-wrap: wrap; }
+.btn-filtro-g {
+    padding: .22rem .65rem;
+    font-size: .71rem;
+    border-radius: 20px;
+    border: 1px solid rgba(255,255,255,.25);
+    background: rgba(255,255,255,.08);
+    color: rgba(255,255,255,.75);
+    cursor: pointer;
+    font-weight: 600;
+    transition: all .15s;
+    white-space: nowrap;
+}
+.btn-filtro-g:hover { background: rgba(255,255,255,.18); color: #fff; }
+.btn-filtro-g.active { background: #3b82f6; border-color: #3b82f6; color: #fff; }
+
+/* ── Card de banco ──
+   CRÍTICO: sin overflow aquí — el overflow rompe position:sticky de los hijos.
+   El scroll horizontal se maneja en el wrapper exterior de la página. */
+.banco-card {
+    background: #fff;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    margin-bottom: 1rem;
+}
+
+/* Header sticky del banco — se pega al top del viewport al hacer scroll */
+.banco-card-sticky {
+    position: sticky;
+    top: 0;
+    z-index: 90;
+    background: #fff;
+    border-bottom: 2px solid #e2e8f0;
+    padding: .55rem 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: .4rem;
+    border-radius: 12px 12px 0 0;
+    transition: box-shadow .2s;
+}
+.banco-card-sticky.is-stuck {
+    box-shadow: 0 4px 16px rgba(15,23,42,.13);
+    border-radius: 0;
+}
+.banco-nombre {
+    font-size: .88rem;
+    font-weight: 800;
+    color: #0f172a;
+    display: flex;
+    align-items: center;
+    gap: .35rem;
+}
+.banco-cuenta {
+    font-size: .68rem;
+    color: #94a3b8;
+    font-weight: 500;
+    margin-top: .1rem;
+}
+.banco-saldo {
+    font-size: 1.15rem;
+    font-weight: 800;
+    font-family: monospace;
+}
+
+/* ── Tabla ── */
+table.tbl { width: 100%; border-collapse: collapse; font-size: .78rem; min-width: 780px; }
+.tbl thead th {
+    background: #1e293b;
+    color: #94a3b8;
+    font-size: .6rem;
+    text-transform: uppercase;
+    padding: .38rem .55rem;
+    white-space: nowrap;
+    text-align: center;
+    letter-spacing: .04em;
+    position: sticky;
+    /* top se calcula dinámicamente por JS según la altura real del banco-card-sticky */
+    top: 0;
+    z-index: 80;
+}
+.tbl td { padding: .38rem .55rem; border-bottom: 1px solid #f1f5f9; vertical-align: middle; text-align: center; }
+.tbl tr.mov-row:hover td { background: #f8fafc; }
+.tbl tr.fecha-separador-row td {
+    background: linear-gradient(90deg, #f0f9ff, #f8fafc);
+    padding: .3rem 1rem;
+    font-size: .67rem;
+    font-weight: 800;
+    color: #0369a1;
+    text-align: left;
+    border-top: 1px solid #bae6fd;
+    border-bottom: 1px solid #bae6fd;
+    letter-spacing: .03em;
+}
+
+/* ── Badges y botones ── */
+.badge { padding: .1rem .4rem; border-radius: 12px; font-size: .65rem; font-weight: 700; white-space: nowrap; display: inline-block; }
+.btn-sm { padding: .18rem .5rem; font-size: .71rem; border-radius: 6px; border: none; cursor: pointer; font-weight: 600; }
+.btn-estado-clic { white-space: nowrap; }
+
+/* ── Modales ── */
+.modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 9999; align-items: center; justify-content: center; }
+.modal-bg.open { display: flex; }
+.modal-box { background: #fff; border-radius: 14px; width: min(580px,96vw); max-height: 90vh; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,.35); }
+.modal-box.lg { width: min(900px,98vw); max-height: 94vh; }
+.modal-head { background: #1e3a5f; padding: .75rem 1rem; display: flex; justify-content: space-between; align-items: center; }
+.modal-body { padding: 1rem; overflow-y: auto; flex: 1; }
+.btn-close { background: rgba(255,255,255,.18); color: #fff; border: none; border-radius: 5px; width: 28px; height: 28px; cursor: pointer; font-weight: 800; font-size: 1rem; }
+
+/* ── Toast ── */
+.toast-notif { position: fixed; bottom: 20px; right: 20px; background: #0f172a; color: #fff; padding: .75rem 1.25rem; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,.2); z-index: 99999; font-size: .82rem; font-weight: 600; display: flex; align-items: center; gap: .5rem; transform: translateY(150%); transition: transform .3s cubic-bezier(0.16,1,0.3,1); }
+.toast-notif.show { transform: translateY(0); }
+
+/* ── Zoom de imágenes ── */
+.zoomable-img { max-width: 100%; max-height: 100%; object-fit: contain; cursor: zoom-in; transition: width .15s ease, height .15s ease; }
+.zoomable-img.zoomed { max-width: none !important; max-height: none !important; width: 180% !important; height: auto !important; cursor: zoom-out; }
+.img-zoom-wrapper { height: 360px; width: 100%; overflow: auto; display: flex; align-items: center; justify-content: center; border-radius: 6px; background: #fff; position: relative; user-select: none; }
+.img-zoom-wrapper.zoomed-mode { display: block !important; cursor: grab; }
 </style>
 
-{{-- HEADER --}}
-<div class="bk-header">
-    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.6rem">
-        <div>
-            <a href="{{ route('admin.cuadre-diario.index') }}" style="color:#94a3b8;font-size:.78rem;text-decoration:none">← Cuadre Diario</a>
-            <div style="font-size:1.1rem;font-weight:800;margin-top:.2rem">🏦 Saldos Bancarios</div>
+
+{{-- ═══ PAGE HEADER STICKY (Título + Mes + Filtros Globales) ═══ --}}
+<div class="bk-page-header">
+    <div class="bk-page-header__left">
+        <a href="{{ route('admin.cuadre-diario.index') }}" style="color:rgba(255,255,255,.55);font-size:.75rem;text-decoration:none;display:flex;align-items:center;gap:.25rem;">← Cuadre Diario</a>
+        <div style="font-size:1.05rem;font-weight:800;letter-spacing:-.01em;">🏦 Saldos Bancarios</div>
+    </div>
+    <div class="bk-page-header__right">
+        {{-- Filtros globales --}}
+        <div class="filtros-globales" id="filtros-globales-bar">
+            <span style="font-size:.68rem;font-weight:700;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.05em">Filtrar:</span>
+            <button type="button" class="btn-filtro-g active" onclick="filtrarTodos('todos', this)">Todos</button>
+            <button type="button" class="btn-filtro-g" onclick="filtrarTodos('pendiente', this)">🕐 Pendientes</button>
+            <button type="button" class="btn-filtro-g" onclick="filtrarTodos('no_aparece', this)">❌ No confirmados</button>
+            <button type="button" class="btn-filtro-g" onclick="filtrarTodos('verificado', this)">✅ Verificados</button>
         </div>
-        <form method="GET" style="display:flex;align-items:center;gap:.5rem">
-            <label style="font-size:.78rem;color:#94a3b8">Mes:</label>
+        {{-- Selector de mes --}}
+        <form method="GET" style="display:flex;align-items:center;gap:.4rem">
+            <label style="font-size:.72rem;color:rgba(255,255,255,.55)">Mes:</label>
             <select name="mes" onchange="this.form.submit()"
-                    style="border-radius:7px;padding:.3rem .6rem;font-size:.82rem;border:1px solid #334155;background:#0f172a;color:#fff">
+                    style="border-radius:7px;padding:.3rem .6rem;font-size:.8rem;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.1);color:#fff;outline:none">
                 @foreach($meses as $m)
-                <option value="{{ $m }}" @selected($m === $mes)>
+                <option value="{{ $m }}" @selected($m === $mes) style="background:#0f172a">
                     {{ \Carbon\Carbon::createFromFormat('Y-m', $m)->locale('es')->isoFormat('MMMM YYYY') }}
                 </option>
                 @endforeach
@@ -56,8 +180,6 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.78rem}
     </div>
 </div>
 
-
-
 @if($saldosConMov->isEmpty())
 <div style="background:#fff;border-radius:12px;border:2px dashed #e2e8f0;padding:2rem;text-align:center;color:#94a3b8">
     Sin movimientos bancarios en este mes
@@ -65,71 +187,56 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.78rem}
 @endif
 
 @foreach($saldosConMov as $sb)
-<div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden;margin-bottom:.9rem">
-    {{-- Header banco --}}
-    <div style="padding:.7rem 1rem;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.4rem">
+<div class="banco-card" id="banco-card-{{ $sb['banco']->id }}">
+    {{-- Header sticky del banco --}}
+    <div class="banco-card-sticky" id="banco-header-{{ $sb['banco']->id }}">
         <div>
-            <span style="font-size:.93rem;font-weight:800">🏦 {{ $sb['banco']->banco }}
+            <div class="banco-nombre">
+                🏦
+                {{ $sb['banco']->banco }}
                 @php $nSinB = trim(str_ireplace($sb['banco']->banco, '', $sb['banco']->nombre ?? '')); @endphp
-                @if($nSinB)<span style="font-weight:600"> {{ $nSinB }}</span>@endif
-            </span>
+                @if($nSinB)<span style="font-weight:500;color:#475569">{{ $nSinB }}</span>@endif
+            </div>
             @if($sb['banco']->numero_cuenta)
-            <span style="font-size:.72rem;color:#64748b;margin-left:.5rem">— {{ $sb['banco']->numero_cuenta }}</span>
+            <div class="banco-cuenta">Cta. {{ $sb['banco']->numero_cuenta }}</div>
             @endif
         </div>
         <div style="text-align:right">
-            <div id="saldo-banco-{{ $sb['banco']->id }}" style="font-size:1.3rem;font-weight:800;color:{{ $sb['saldo'] >= 0 ? '#1d4ed8' : '#dc2626' }}">
+            <div id="saldo-banco-{{ $sb['banco']->id }}" class="banco-saldo" style="color:{{ $sb['saldo'] >= 0 ? '#1d4ed8' : '#dc2626' }}">
                 {{ $fmt($sb['saldo']) }}
             </div>
-            <div style="font-size:.68rem;color:#94a3b8">Saldo total histórico</div>
+            <div style="font-size:.62rem;color:#94a3b8">Saldo histórico</div>
         </div>
     </div>
 
-    {{-- Filtros de estado interactivos --}}
-    <div style="padding:.5rem 1rem;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
-        <span style="font-size:.68rem;font-weight:700;color:#64748b;text-transform:uppercase">Filtrar:</span>
-        <button type="button" class="btn-filtro active" onclick="filtrarTabla({{ $sb['banco']->id }}, 'todos', this)" 
-                style="padding:.2rem .6rem;font-size:.7rem;border-radius:20px;border:1px solid #cbd5e1;background:#fff;color:#475569;cursor:pointer;font-weight:600">
-            Todos
-        </button>
-        <button type="button" class="btn-filtro" onclick="filtrarTabla({{ $sb['banco']->id }}, 'pendiente', this)"
-                style="padding:.2rem .6rem;font-size:.7rem;border-radius:20px;border:1px solid #cbd5e1;background:#fff;color:#475569;cursor:pointer;font-weight:600">
-            🕐 Pendientes
-        </button>
-        <button type="button" class="btn-filtro" onclick="filtrarTabla({{ $sb['banco']->id }}, 'no_aparece', this)"
-                style="padding:.2rem .6rem;font-size:.7rem;border-radius:20px;border:1px solid #cbd5e1;background:#fff;color:#475569;cursor:pointer;font-weight:600">
-            ❌ No confirmados
-        </button>
-        <button type="button" class="btn-filtro" onclick="filtrarTabla({{ $sb['banco']->id }}, 'verificado', this)"
-                style="padding:.2rem .6rem;font-size:.7rem;border-radius:20px;border:1px solid #cbd5e1;background:#fff;color:#475569;cursor:pointer;font-weight:600">
-            ✅ Verificados
-        </button>
-    </div>
-
-    <div style="overflow-x:auto">
-    <table class="tbl">
+    {{-- Tabla de movimientos (sin overflow-x aqui para que el sticky del thead funcione) --}}
+    <table class="tbl" data-banco-id="{{ $sb['banco']->id }}">
         <thead><tr>
-            <th>Fecha</th>
             <th>Tipo</th>
             <th>Fact.</th>
             <th style="text-align:left;padding-left:.8rem">Cliente / Empresa</th>
             <th style="text-align:left;padding-left:.8rem">Descripción</th>
             <th>Registró</th>
+            <th>Fecha</th>
             <th style="text-align:right;padding-right:.8rem">Valor</th>
             <th>Estado</th>
             <th>Img.</th>
         </tr></thead>
         <tbody>
+        @php $fechaActual = null; @endphp
         @foreach($sb['movimientos'] as $mov)
         @php
             $estadoFila = $mov->es_salida ? 'verificado' : ($mov->confirmado ? 'verificado' : ($mov->no_aparece ? 'no_aparece' : 'pendiente'));
             $rowId = $mov->es_salida ? 'gasto-row-' . $mov->id : 'consignacion-row-' . $mov->cs_id;
+            $fechaMov = sqldate($mov->fecha)->format('d/m/Y');
         @endphp
-        <tr id="{{ $rowId }}" data-estado="{{ $estadoFila }}">
-            {{-- Fecha --}}
-            <td style="font-size:.73rem;white-space:nowrap;color:#64748b">
-                {{ sqldate($mov->fecha)->format('d/m/Y') }}
-            </td>
+        @if($fechaActual !== $fechaMov)
+            @php $fechaActual = $fechaMov; @endphp
+            <tr class="fecha-separador-row" data-fecha="{{ $fechaMov }}">
+                <td colspan="9">📅 {{ $fechaMov }}</td>
+            </tr>
+        @endif
+        <tr id="{{ $rowId }}" class="mov-row" data-estado="{{ $estadoFila }}" data-fecha-grupo="{{ $fechaMov }}">
 
             {{-- Tipo --}}
             <td>
@@ -211,6 +318,11 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.78rem}
                 {{ $mov->usuario ?? '—' }}
             </td>
 
+            {{-- Fecha --}}
+            <td style="font-size:.73rem;white-space:nowrap;color:#64748b">
+                {{ sqldate($mov->fecha)->format('d/m/Y') }}
+            </td>
+
             {{-- Valor — alineado a la derecha con número visible --}}
             <td style="text-align:right;padding-right:.8rem;font-family:monospace;font-weight:700;font-size:.85rem;
                        color:{{ $mov->es_salida ? '#dc2626' : '#15803d' }};white-space:nowrap">
@@ -260,9 +372,9 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.78rem}
         @endforeach
         </tbody>
     </table>
-    </div>
 </div>
 @endforeach
+
 
 {{-- ═══ MODAL: Estado consignación ═══ --}}
 <div id="modal-estado" class="modal-bg" onclick="if(event.target===this)cerrarModal('modal-estado')">
@@ -595,25 +707,25 @@ function abrirRecibo(facturaId) {
     document.getElementById('modal-recibo').classList.add('open');
 }
 
-// ── Lógica de Filtros Interactivos ──
-function filtrarTabla(bancoId, estado, btn) {
-    const contenedor = btn.parentElement;
-    contenedor.querySelectorAll('.btn-filtro').forEach(b => b.classList.remove('active'));
+// ── Filtrar TODOS los bancos a la vez ──
+function filtrarTodos(estado, btn) {
+    document.querySelectorAll('.btn-filtro-g').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-
-    // Buscar la tabla correspondiente
-    const tabla = contenedor.nextElementSibling.querySelector('table.tbl');
-    if (!tabla) return;
-    const filas = tabla.querySelectorAll('tbody tr');
-    filas.forEach(tr => {
-        const estFila = tr.getAttribute('data-estado');
-        if (estado === 'todos' || estFila === estado) {
-            tr.style.display = '';
-        } else {
-            tr.style.display = 'none';
-        }
+    document.querySelectorAll('table.tbl').forEach(tabla => {
+        const filas = tabla.querySelectorAll('tbody tr.mov-row');
+        filas.forEach(tr => {
+            const estFila = tr.getAttribute('data-estado');
+            tr.style.display = (estado === 'todos' || estFila === estado) ? '' : 'none';
+        });
+        // Separadores
+        tabla.querySelectorAll('tbody tr.fecha-separador-row').forEach(sep => {
+            const fecha = sep.getAttribute('data-fecha');
+            const visibles = tabla.querySelectorAll(`tr.mov-row[data-fecha-grupo="${fecha}"]:not([style*="display: none"])`);
+            sep.style.display = visibles.length > 0 ? '' : 'none';
+        });
     });
 }
+
 
 // ── Actualización de Estado vía Fetch (AJAX) ──
 function cambiarEstadoConsignacion(accion) {
@@ -798,7 +910,32 @@ function initDragScroll(wrapper) {
     });
 }
 
-// Inicializar Drag to Scroll al renderizar la vista
+// ── Sticky: sombra en el header del banco cuando está pegado ──
+(function initBancoStickyHeaders() {
+    document.querySelectorAll('.banco-card-sticky').forEach(header => {
+        const sentinel = document.createElement('div');
+        sentinel.style.cssText = 'height:1px;pointer-events:none';
+        header.parentElement.insertBefore(sentinel, header);
+        new IntersectionObserver(entries => {
+            header.classList.toggle('is-stuck', !entries[0].isIntersecting);
+        }, { threshold: 0 }).observe(sentinel);
+    });
+})();
+// ── Ajustar top del <thead> al tamaño real del header del banco ──
+(function ajustarTheadTop() {
+    function recalcular() {
+        document.querySelectorAll('.banco-card').forEach(card => {
+            const stickyH = card.querySelector('.banco-card-sticky');
+            const ths     = card.querySelectorAll('thead th');
+            if (!stickyH || !ths.length) return;
+            const alturaHeader = stickyH.offsetHeight;
+            ths.forEach(th => th.style.top = alturaHeader + 'px');
+        });
+    }
+    // Calcular al cargar y también si cambia el tamaño de ventana
+    recalcular();
+    window.addEventListener('resize', recalcular);
+})();
 const wr1 = document.getElementById('modal-estado-img-wrapper');
 const wr2 = document.getElementById('modal-img-wrapper');
 if (wr1) initDragScroll(wr1);
@@ -815,9 +952,7 @@ function mostrarToast(mensaje) {
     }
     toast.innerHTML = `<span>ℹ️</span> <span>${mensaje}</span>`;
     toast.classList.add('show');
-    setTimeout(() => {
-        toast.classList.remove('show');
-    }, 3500);
+    setTimeout(() => { toast.classList.remove('show'); }, 3500);
 }
 
 // ── Abrir Recibo de Anticipo ──
