@@ -4,7 +4,7 @@
 @section('modulo', 'Ficha del Préstamo')
 
 @section('contenido')
-<div class="finanzas-container" x-data="{ openAbono: false, openLiquidar: false, openAnexar: false, openEditarMov: false, movEditar: { id: null, fecha: '', monto: 0, observacion: '', soporte_path: '' } }">
+<div class="finanzas-container" x-data="{ openAbono: false, openLiquidar: false, openAnexar: false, openEditarMov: false, openCastigar: false, openReactivar: false, movEditar: { id: null, fecha: '', monto: 0, observacion: '', soporte_path: '' } }">
 
     {{-- Breadcrumb --}}
     <div class="fin-top-bar">
@@ -30,6 +30,17 @@
             <p>Monitoreo completo de amortización, cobros e intereses acumulados.</p>
         </div>
     </div>
+
+    {{-- Banner de Préstamo Inactivo --}}
+    @if($prestamo->estado === 'castigado')
+        <div style="background:linear-gradient(135deg, rgba(124,45,18,0.08), rgba(194,65,12,0.06)); border:1px solid rgba(194,65,12,0.25); border-left: 4px solid #ea580c; border-radius:12px; padding:1rem 1.25rem; margin-bottom:1rem; display:flex; align-items:flex-start; gap:0.75rem;">
+            <span style="font-size:1.4rem; line-height:1;">⛔</span>
+            <div>
+                <strong style="font-size:0.88rem; color:#7c2d12; display:block;">Préstamo Inactivado / Castigado</strong>
+                <p style="font-size:0.78rem; color:#9a3412; margin:0.2rem 0 0;">Este préstamo fue marcado como inactivo. Los intereses están congelados (tasa 0%) y no generará alertas de cobro automáticas. El saldo pendiente queda registrado para efectos contables.</p>
+            </div>
+        </div>
+    @endif
 
     {{-- Grid de Detalles Técnicos --}}
     <div class="prestamo-ficha-grid">
@@ -91,7 +102,7 @@
             <h3>⚡ Acciones Disponibles</h3>
             <div class="fac-list">
                 
-                @if($prestamo->estado !== 'pagado')
+                @if($prestamo->estado !== 'pagado' && $prestamo->estado !== 'castigado')
                     {{-- Registrar Pago --}}
                     <button @click="openAbono = true" class="btn-fac-action green">
                         💵 Registrar Abono / Pago
@@ -114,22 +125,41 @@
                             🟢 Cobrar por WhatsApp
                         </button>
                     </form>
+
+                    {{-- Inactivar / Castigar Préstamo --}}
+                    <div style="border-top:1px dashed #e2e8f0; padding-top:0.6rem; margin-top:0.25rem;">
+                        <button @click="openCastigar = true" class="btn-fac-action" style="width:100%; background:rgba(239,68,68,0.07); color:#b91c1c; border:1px solid rgba(239,68,68,0.2); font-weight:700;">
+                            ⛔ Inactivar Préstamo
+                        </button>
+                    </div>
+                @endif
+
+                @if($prestamo->estado === 'castigado')
+                    {{-- Reactivar Préstamo --}}
+                    <div style="background:rgba(245,158,11,0.06); border:1px solid rgba(245,158,11,0.2); border-radius:10px; padding:0.85rem; text-align:center;">
+                        <p style="font-size:0.75rem; color:#92400e; margin:0 0 0.6rem; font-weight:500;">Este préstamo está inactivo. ¿Hubo un acuerdo de pago?</p>
+                        <button @click="openReactivar = true" class="btn-fac-action" style="background:linear-gradient(135deg,#f59e0b,#d97706); color:#fff; border:none;">
+                            🔄 Reactivar Préstamo
+                        </button>
+                    </div>
                 @endif
 
                 {{-- Activar/Desactivar Alertas --}}
+                @if($prestamo->estado !== 'castigado')
                 <form action="{{ route('finanzas.prestamos.toggle-alertas', $prestamo->id) }}" method="POST" style="display:block;">
                     @csrf
                     <button type="submit" class="btn-fac-action ghost" style="width:100%;">
                         🔔 {{ $prestamo->alertas_activas ? 'Desactivar Recordatorios' : 'Activar Recordatorios' }}
                     </button>
                 </form>
+                @endif
 
             </div>
 
             @if($prestamo->observaciones)
                 <div class="fac-notes-bx">
                     <strong>Anotaciones:</strong>
-                    <p>{{ $prestamo->observaciones }}</p>
+                    <p style="white-space:pre-line;">{{ $prestamo->observaciones }}</p>
                 </div>
             @endif
         </div>
@@ -454,6 +484,65 @@
             <form x-ref="deleteForm" method="POST" style="display:none;">
                 @csrf
                 @method('DELETE')
+            </form>
+        </div>
+    </div>
+
+    {{-- Modal Inactivar / Castigar Préstamo --}}
+    <div x-show="openCastigar" class="modal-overlay-bx" @click.self="openCastigar = false" x-cloak>
+        <div class="modal-box-bx" style="max-width:460px;">
+            <div class="modal-head-bx" style="background:linear-gradient(135deg, #7c2d12, #b91c1c);">
+                <h3>⛔ Inactivar Préstamo</h3>
+                <button @click="openCastigar = false" class="modal-close-bx">&times;</button>
+            </div>
+            <form action="{{ route('finanzas.prestamos.castigar', $prestamo->id) }}" method="POST">
+                @csrf
+                <div class="modal-body-bx">
+                    <div style="background:rgba(239,68,68,0.06); border:1px solid rgba(239,68,68,0.2); border-radius:10px; padding:0.85rem; margin-bottom:1rem;">
+                        <p style="font-size:0.8rem; color:#7c2d12; margin:0; line-height:1.5;">
+                            ⚠️ <strong>Esto hará lo siguiente:</strong><br>
+                            • Cambia el estado a <strong>Inactivo/Castigado</strong><br>
+                            • Congela la tasa de interés en <strong>0%</strong> (sin nuevos cargos)<br>
+                            • Desactiva alertas automáticas de cobro<br>
+                            • El saldo deudor queda registrado para efectos contables<br>
+                            • Puedes <strong>reactivarlo</strong> si la persona llega a un acuerdo
+                        </p>
+                    </div>
+                    <div class="form-group-bx">
+                        <label class="form-label-bx">Motivo de la Inactivación <span style="color:#ef4444;">*</span></label>
+                        <textarea name="motivo" rows="3" placeholder="Ej: El deudor manifiesta no tener capacidad de pago. Se acuerda mantener el saldo pendiente sin intereses hasta nuevo aviso." class="form-input-bx" style="height:auto; padding:0.65rem;" required></textarea>
+                        <small style="color:#64748b; font-size:0.7rem;">Este motivo quedará registrado en las observaciones del préstamo con la fecha de hoy.</small>
+                    </div>
+                </div>
+                <div class="modal-foot-bx">
+                    <button type="button" @click="openCastigar = false" class="btn-glass-bx">Cancelar</button>
+                    <button type="submit" class="btn-fin" style="background:linear-gradient(135deg,#b91c1c,#7f1d1d); color:#fff;">⛔ Confirmar Inactivación</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {{-- Modal Reactivar Préstamo --}}
+    <div x-show="openReactivar" class="modal-overlay-bx" @click.self="openReactivar = false" x-cloak>
+        <div class="modal-box-bx" style="max-width:440px;">
+            <div class="modal-head-bx" style="background:linear-gradient(135deg, #d97706, #b45309);">
+                <h3>🔄 Reactivar Préstamo</h3>
+                <button @click="openReactivar = false" class="modal-close-bx">&times;</button>
+            </div>
+            <form action="{{ route('finanzas.prestamos.reactivar', $prestamo->id) }}" method="POST">
+                @csrf
+                <div class="modal-body-bx">
+                    <p style="font-size:0.8rem; color:#64748b; margin:0 0 1rem;">Al reactivar, el préstamo volverá a aparecer en la lista de cobros activos. Define la nueva tasa de interés para continuar el seguimiento.</p>
+                    <div class="form-group-bx">
+                        <label class="form-label-bx">Nueva Tasa de Interés Mensual (%)</label>
+                        <input type="number" step="0.001" min="0" max="100" name="tasa_interes_mensual" value="{{ $prestamo->tasa_interes_mensual }}" placeholder="Ej: 3" class="form-input-bx" required>
+                        <small style="color:#64748b; font-size:0.7rem;">Puedes dejarlo en 0% si el acuerdo no genera intereses.</small>
+                    </div>
+                </div>
+                <div class="modal-foot-bx">
+                    <button type="button" @click="openReactivar = false" class="btn-glass-bx">Cancelar</button>
+                    <button type="submit" class="btn-fin" style="background:linear-gradient(135deg,#f59e0b,#d97706); color:#fff;">🔄 Confirmar Reactivación</button>
+                </div>
             </form>
         </div>
     </div>

@@ -39,6 +39,9 @@
             <a href="{{ route('finanzas.prestamos.index', ['estado' => 'pagado']) }}" class="btn-state-filtro {{ $estado === 'pagado' ? 'activo' : '' }}">
                 ✅ Pagados
             </a>
+            <a href="{{ route('finanzas.prestamos.index', ['estado' => 'castigado']) }}" class="btn-state-filtro {{ $estado === 'castigado' ? 'activo castigado-tab' : '' }}">
+                ⛔ Inactivos
+            </a>
         </div>
     </div>
 
@@ -62,13 +65,16 @@
         @forelse($prestamos as $p)
             @php
                 $diasMora = $p->dias_mora;
+                $esCastigado = $p->estado === 'castigado';
                 // Semáforo de mora:
                 // Verde: < 25 días (Al día / Normal)
                 // Naranja: 25 a 35 días (Próximo a vencer / Mora temprana)
                 // Rojo: > 35 días (Mora grave, pasados 5 días del mes de mora)
                 $claseMora = 'ok';
                 $colorMora = '#22c55e';
-                if ($diasMora >= 25) {
+                if ($esCastigado) {
+                    $colorMora = '#9ca3af'; // Gris para inactivos
+                } elseif ($diasMora >= 25) {
                     if ($diasMora <= 35) {
                         $claseMora = 'warning';
                         $colorMora = '#f59e0b';
@@ -78,7 +84,7 @@
                     }
                 }
             @endphp
-            <div class="prestamo-card" 
+            <div class="prestamo-card {{ $esCastigado ? 'card-castigada' : '' }}" 
                  x-show="buscar.length <= 5 || 
                          '{{ strtolower($p->nombre_deudor) }}'.includes(buscar.toLowerCase()) || 
                          '{{ $p->cedula_deudor }}'.includes(buscar) || 
@@ -89,7 +95,9 @@
                         <h3>👤 {{ $p->nombre_deudor }}</h3>
                         <small>Ref: {{ $p->descripcion ?: 'Préstamo' }}</small>
                     </div>
-                    @if($p->estado === 'pagado')
+                    @if($p->estado === 'castigado')
+                        <span class="badge-err-bx" style="background:rgba(156,163,175,0.15); border-color:#d1d5db; color:#4b5563;">⛔ Inactivo</span>
+                    @elseif($p->estado === 'pagado')
                         <span class="badge-ok-bx">Pagado</span>
                     @elseif($diasMora > 35)
                         <span class="badge-err-bx" style="background:rgba(239,68,68,0.1); border-color:#fca5a5; color:#b91c1c;">Mora Grave: {{ $diasMora - 30 }} días</span>
@@ -123,13 +131,16 @@
                     <a href="{{ route('finanzas.prestamos.show', $p->id) }}" class="btn-fin-card primary">
                         👁️ Ver Ficha
                     </a>
-                    @if($p->estado !== 'pagado')
+                    @if($p->estado !== 'pagado' && $p->estado !== 'castigado')
                         <form action="{{ route('finanzas.prestamos.whatsapp', $p->id) }}" method="POST" style="display:inline;">
                             @csrf
                             <button type="submit" class="btn-fin-card success">
                                 🟢 Cobrar WhatsApp
                             </button>
                         </form>
+                    @endif
+                    @if($p->estado === 'castigado')
+                        <span class="btn-fin-card" style="background:rgba(156,163,175,0.1); color:#6b7280; border:1px solid #d1d5db; font-size:0.72rem;">📄 Saldo pendiente contable</span>
                     @endif
                 </div>
             </div>
@@ -169,6 +180,10 @@
 .btn-state-filtro { display: inline-block; padding: 0.45rem 0.9rem; text-decoration: none; border-radius: 8px; border: 1px solid #cbd5e1; background: #fff; color: #475569; font-size: 0.78rem; font-weight: 600; transition: all 0.15s; }
 .btn-state-filtro:hover { border-color: #94a3b8; }
 .btn-state-filtro.activo { background: var(--azul-btn); color: #fff; border-color: var(--azul-btn); }
+.btn-state-filtro.activo.castigado-tab { background: #6b7280; border-color: #6b7280; }
+
+/* Tarjeta Castigada */
+.card-castigada { opacity: 0.75; filter: grayscale(0.35); }
 
 /* Grid de Tarjetas */
 .prestamos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(310px, 1fr)); gap: 1.25rem; margin-top: 1.5rem; }

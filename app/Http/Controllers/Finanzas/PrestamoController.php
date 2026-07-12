@@ -45,6 +45,8 @@ class PrestamoController extends Controller
             $query->whereIn('estado', ['activo', 'mora']);
         } elseif ($estado === 'pagado') {
             $query->where('estado', 'pagado');
+        } elseif ($estado === 'castigado') {
+            $query->where('estado', 'castigado');
         }
 
         $prestamos = $query->orderBy('fecha_desembolso', 'desc')->get();
@@ -329,6 +331,69 @@ class PrestamoController extends Controller
         }
 
         return redirect()->route('finanzas.prestamos.show', $prestamo->id)->with('error', $res['message'] . ' Detalles: ' . ($res['error'] ?? 'ninguno'));
+    }
+
+    /**
+     * Castiga (inactiva) un préstamo: congela intereses, desactiva alertas y registra el motivo.
+     * El préstamo queda en estado 'castigado' y no genera más cargos ni aparece en cobros activos.
+     */
+    public function castigar(Request $request, $id)
+    {
+        $prestamo = Prestamo::where('user_id', Auth::id())->findOrFail($id);
+
+        if ($prestamo->estado === 'castigado') {
+            return redirect()->route('finanzas.prestamos.show', $prestamo->id)
+                ->with('error', 'El préstamo ya se encuentra inactivo/castigado.');
+        }
+
+        $motivo = $request->input('motivo', 'Sin motivo especificado.');
+        $fecha  = now()->format('d/m/Y');
+
+        // Congelar intereses poniendo tasa a 0, desactivar alertas y registrar el motivo
+        $notaHistorica = "[{$fecha}] INACTIVADO — Motivo: {$motivo}";
+        $observacionesActualizadas = $prestamo->observaciones
+            ? $prestamo->observaciones . "\n" . $notaHistorica
+            : $notaHistorica;
+
+        $prestamo->update([
+            'estado'              => 'castigado',
+            'tasa_interes_mensual' => 0,
+            'alertas_activas'    => false,
+            'observaciones'      => $observacionesActualizadas,
+        ]);
+
+        return redirect()->route('finanzas.prestamos.show', $prestamo->id)
+            ->with('success', 'Préstamo inactivado/castigado correctamente. Los intereses han sido congelados y no aparecerá en la lista de cobros activos.');
+    }
+
+    /**
+     * Reactiva un préstamo castigado, permitiendo volver a gestionar cobros.
+     */
+    public function reactivar(Request $request, $id)
+    {
+        $prestamo = Prestamo::where('user_id', Auth::id())->findOrFail($id);
+
+        if ($prestamo->estado !== 'castigado') {
+            return redirect()->route('finanzas.prestamos.show', $prestamo->id)
+                ->with('error', 'Solo se pueden reactivar préstamos en estado castigado.');
+        }
+
+        $fecha  = now()->format('d/m/Y');
+        $tasaNueva = (float) $request->input('tasa_interes_mensual', 0);
+        $notaHistorica = "[{$fecha}] REACTIVADO — Nueva tasa: {$tasaNueva}%";
+        $observacionesActualizadas = $prestamo->observaciones
+            ? $prestamo->observaciones . "\n" . $notaHistorica
+            : $notaHistorica;
+
+        $prestamo->update([
+            'estado'               => $prestamo->saldo_actual > 0 ? 'mora' : 'activo',
+            'tasa_interes_mensual' => $tasaNueva,
+            'alertas_activas'     => true,
+            'observaciones'       => $observacionesActualizadas,
+        ]);
+
+        return redirect()->route('finanzas.prestamos.show', $prestamo->id)
+            ->with('success', 'Préstamo reactivado correctamente. Recuerda ejecutar una liquidación de intereses si corresponde.');
     }
 
     /**
