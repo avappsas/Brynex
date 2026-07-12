@@ -541,8 +541,8 @@
             </form>
         </header>
 
-        <!-- Widget Cotización Cripto (Fijo en la parte superior del Dashboard) -->
-        <div class="cripto-bar">
+        <!-- Widget Cotización Cripto (oculto en móvil) -->
+        <div class="cripto-bar" style="display:none">
             <div class="cripto-bar-left">
                 <span>🪙</span> USDT (Tether):
             </div>
@@ -725,12 +725,31 @@
         </div>
 
         <!-- SECCIÓN 3: PRÉSTAMOS / DEUDAS (MORA) -->
-        <div x-show="activeTab === 'deudas'">
+        <div x-show="activeTab === 'deudas'" x-data="{ busquedaPres: '' }">
             <div class="list-title-row">
                 <h3>Préstamos Activos</h3>
                 <a href="{{ route('finanzas.prestamos.create') }}" style="background: none; border: 1px solid var(--naranja); color: var(--naranja); font-size: 0.72rem; font-weight: 600; padding: 0.3rem 0.65rem; border-radius: 8px; text-decoration: none;">
                     + Nuevo
                 </a>
+            </div>
+
+            {{-- Buscador por nombre --}}
+            <div style="padding: 0 0 0.75rem 0; position: relative;">
+                <i class="fas fa-search" style="position:absolute; left:0.8rem; top:50%; transform:translateY(-50%); color:var(--texto-secundario); font-size:0.8rem; pointer-events:none;"></i>
+                <input
+                    type="text"
+                    x-model="busquedaPres"
+                    placeholder="Buscar por nombre..."
+                    style="width:100%; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:var(--texto-principal); padding:0.55rem 0.75rem 0.55rem 2.2rem; border-radius:10px; font-size:0.82rem; outline:none; font-family:inherit;"
+                    @focus="$el.style.borderColor='var(--azul-vivo)'"
+                    @blur="$el.style.borderColor='rgba(255,255,255,0.1)'"
+                >
+                <button
+                    x-show="busquedaPres !== ''"
+                    @click="busquedaPres = ''"
+                    type="button"
+                    style="position:absolute; right:0.7rem; top:50%; transform:translateY(-50%); background:none; border:none; color:var(--texto-secundario); font-size:1rem; cursor:pointer; line-height:1;"
+                    x-cloak>&times;</button>
             </div>
 
             <div class="list-container">
@@ -762,6 +781,7 @@
                         }
                     @endphp
                     <a href="{{ route('finanzas.prestamos.show', $pres->id) }}"
+                       x-show="busquedaPres === '' || '{{ strtolower($pres->nombre_deudor) }}'.includes(busquedaPres.toLowerCase())"
                        style="text-decoration:none; display:block; border-left: 3px solid {{ $colorMora }};"
                        class="list-item-tactile prestamo-item-link">
                         <div class="lit-left" style="flex:1; min-width:0;">
@@ -791,6 +811,12 @@
                         No tienes préstamos activos registrados.
                     </div>
                 @endforelse
+                <div x-show="busquedaPres !== '' && {{ $prestamosDeudas->count() }} > 0"
+                     style="text-align:center; padding:1.5rem 0 0.5rem; color:var(--texto-secundario); font-size:0.72rem; display:none;"
+                     id="no-results-pres"
+                     x-cloak>
+                    Sin resultados para "<span x-text="busquedaPres"></span>"
+                </div>
             </div>
         </div>
 

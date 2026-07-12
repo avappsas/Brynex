@@ -159,6 +159,11 @@ class PrestamoController extends Controller
             $q->orderBy('fecha', 'desc')->orderBy('id', 'desc');
         }]);
 
+        // Vista optimizada para dispositivos móviles
+        if ($this->isMobileDevice(request())) {
+            return view('finanzas.prestamos.show_movil', compact('prestamo'));
+        }
+
         return view('finanzas.prestamos.show', compact('prestamo'));
     }
 
