@@ -518,10 +518,15 @@ class PrestamoController extends Controller
             }
         }
 
+        // Preservar estado 'castigado': no sobreescribir con 'activo'/'mora' si el préstamo fue inactivado
+        $estadoCalculado = $saldo <= 0
+            ? 'pagado'
+            : ($prestamo->estado === 'castigado' ? 'castigado' : ($prestamo->dias_mora > 35 ? 'mora' : 'activo'));
+
         $prestamo->update([
             'saldo_actual' => $saldo,
             'ultimo_corte' => $ultimoCorteFecha,
-            'estado' => $saldo <= 0 ? 'pagado' : ($prestamo->dias_mora > 35 ? 'mora' : 'activo')
+            'estado'       => $estadoCalculado,
         ]);
     }
 
