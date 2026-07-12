@@ -472,6 +472,20 @@
         .link-item-tactile div h4 { font-size: 0.75rem; font-weight: 700; }
         .link-item-tactile div p { font-size: 0.6rem; color: var(--texto-secundario); }
 
+        /* Préstamo item como link */
+        .prestamo-item-link {
+            cursor: pointer;
+            transition: transform 0.1s, opacity 0.1s;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .prestamo-item-link:active {
+            transform: scale(0.98);
+            opacity: 0.9;
+        }
+        .prestamo-item-link .lit-name {
+            color: var(--texto-principal);
+        }
+
         /* Badge Soporte */
         .badge-soporte-link {
             display: inline-flex;
@@ -714,31 +728,67 @@
         <div x-show="activeTab === 'deudas'">
             <div class="list-title-row">
                 <h3>Préstamos Activos</h3>
+                <a href="{{ route('finanzas.prestamos.create') }}" style="background: none; border: 1px solid var(--naranja); color: var(--naranja); font-size: 0.72rem; font-weight: 600; padding: 0.3rem 0.65rem; border-radius: 8px; text-decoration: none;">
+                    + Nuevo
+                </a>
             </div>
 
             <div class="list-container">
                 @php
-                    $prestamos = \App\Models\Finanzas\Prestamo::where('user_id', auth()->id())->activos()->get();
+                    $prestamosDeudas = \App\Models\Finanzas\Prestamo::where('user_id', auth()->id())
+                        ->where('es_cuenta_corriente', false)
+                        ->whereIn('estado', ['activo', 'mora'])
+                        ->orderBy('fecha_desembolso', 'desc')
+                        ->get();
                 @endphp
-                @forelse($prestamos as $pres)
-                    <div class="list-item-tactile">
-                        <div class="lit-left">
-                            <div class="lit-icon" style="background: var(--naranja-bg); color: var(--naranja)">
+                @forelse($prestamosDeudas as $pres)
+                    @php
+                        $diasMora = $pres->dias_mora;
+                        $colorMora  = '#22c55e';
+                        $bgMora     = 'rgba(34,197,94,0.12)';
+                        $labelMora  = 'Al día (' . $diasMora . 'd)';
+                        if ($diasMora >= 35) {
+                            $colorMora = '#f43f5e';
+                            $bgMora    = 'rgba(244,63,94,0.12)';
+                            $labelMora = 'Mora grave: ' . ($diasMora - 30) . 'd venc.';
+                        } elseif ($diasMora >= 30) {
+                            $colorMora = '#f59e0b';
+                            $bgMora    = 'rgba(245,158,11,0.12)';
+                            $labelMora = 'Mora: ' . ($diasMora - 30) . 'd venc.';
+                        } elseif ($diasMora >= 25) {
+                            $colorMora = '#f59e0b';
+                            $bgMora    = 'rgba(245,158,11,0.12)';
+                            $labelMora = 'Próx. vencer (' . (30 - $diasMora) . 'd)';
+                        }
+                    @endphp
+                    <a href="{{ route('finanzas.prestamos.show', $pres->id) }}"
+                       style="text-decoration:none; display:block; border-left: 3px solid {{ $colorMora }};"
+                       class="list-item-tactile prestamo-item-link">
+                        <div class="lit-left" style="flex:1; min-width:0;">
+                            <div class="lit-icon" style="background: {{ $bgMora }}; color: {{ $colorMora }}; font-size:1.2rem; flex-shrink:0;">
                                 🤝
                             </div>
-                            <div class="lit-body">
+                            <div class="lit-body" style="min-width:0;">
                                 <div class="lit-name">{{ $pres->nombre_deudor }}</div>
-                                <div class="lit-desc">Interés: {{ $pres->tasa_interes }}% | Historial</div>
+                                <div class="lit-desc" style="display:flex; align-items:center; gap:0.3rem; flex-wrap:wrap;">
+                                    <span style="color:{{ $colorMora }}; font-weight:600; font-size:0.68rem; background:{{ $bgMora }}; padding:0.05rem 0.35rem; border-radius:4px;">
+                                        {{ $labelMora }}
+                                    </span>
+                                    <span style="opacity:0.6;">{{ $pres->tasa_interes_mensual }}% /mes</span>
+                                </div>
                             </div>
                         </div>
-                        <div class="lit-right">
+                        <div class="lit-right" style="display:flex; flex-direction:column; align-items:flex-end; gap:0.2rem; flex-shrink:0;">
                             <div class="lit-amount" style="color: var(--naranja);">${{ number_format($pres->saldo_actual, 0, ',', '.') }}</div>
-                            <div class="lit-date">Fecha: {{ Carbon\Carbon::parse($pres->fecha_prestamo)->format('d/m/Y') }}</div>
+                            <div class="lit-date">{{ \Carbon\Carbon::parse($pres->fecha_desembolso)->format('d/m/Y') }}</div>
+                            <div style="color: var(--azul-vivo); font-size:0.65rem; font-weight:700; display:flex; align-items:center; gap:0.15rem; margin-top:0.1rem;">
+                                Ver detalle <i class="fas fa-chevron-right" style="font-size:0.55rem;"></i>
+                            </div>
                         </div>
-                    </div>
+                    </a>
                 @empty
                     <div style="text-align:center; padding:2rem; color:var(--texto-secundario); font-size:0.8rem;">
-                        No tienes préstamos registrados activos.
+                        No tienes préstamos activos registrados.
                     </div>
                 @endforelse
             </div>

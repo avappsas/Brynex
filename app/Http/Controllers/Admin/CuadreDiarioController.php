@@ -817,6 +817,66 @@ class CuadreDiarioController extends Controller
         return back()->with('success', 'Consignación marcada como pendiente.');
     }
 
+    // ── Anular consignación duplicada + convertir factura a préstamo ──
+    /**
+     * Acción exclusiva de SUPERADMIN.
+     * Úsala cuando una consignación fue registrada por error en una factura
+     * cuyo plano ya fue pagado al operador (no se puede anular la factura).
+     *
+     * En una sola transacción:
+     *  1. Convierte la factura → estado='prestamo', valor_consignado=0,
+     *     valor_efectivo=0, valor_prestamo=total, saldo_proximo=-total
+     *  2. Soft-delete de la consignación (queda en BD para auditoría)
+     */
+    public function anularConsignacionPrestamo(Request $request, int $csId)
+    {
+        if (!Auth::user()->hasRole('superadmin')) {
+            abort(403, 'Solo superadmin puede realizar esta operación.');
+        }
+
+        $aliadoId = session('aliado_id_activo');
+        $cs = Consignacion::where('aliado_id', $aliadoId)->findOrFail($csId);
+
+        if (!$cs->factura_id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Esta consignación no está asociada a una factura.',
+            ], 422);
+        }
+
+        $factura = Factura::where('aliado_id', $aliadoId)->findOrFail($cs->factura_id);
+
+        DB::transaction(function () use ($cs, $factura, $aliadoId) {
+            $totalFactura = (int)($factura->total ?? 0);
+            $firma        = 'Convertida a préstamo por: ' . Auth::user()->nombre . ' el ' . now()->format('d/m/Y H:i');
+
+            // 1. Convertir factura a préstamo
+            $factura->update([
+                'estado'           => 'prestamo',
+                'es_prestamo'      => true,
+                'forma_pago'       => 'prestamo',
+                'valor_consignado' => 0,
+                'valor_efectivo'   => 0,
+                'valor_prestamo'   => $totalFactura,
+                // saldo_proximo negativo = el cliente debe el total
+                'saldo_proximo'    => -$totalFactura,
+            ]);
+
+            // 2. Soft-delete de la consignación (deleted_at = now())
+            $cs->update([
+                'observacion' => trim(($cs->observacion ? $cs->observacion . ' | ' : '') . $firma),
+            ]);
+            $cs->delete(); // SoftDeletes → pone deleted_at
+        });
+
+        return response()->json([
+            'success'    => true,
+            'message'    => '✅ Consignación anulada y factura convertida a préstamo.',
+            'banco_id'   => $cs->banco_cuenta_id,
+            'nuevo_saldo' => Consignacion::saldoBanco($aliadoId, $cs->banco_cuenta_id),
+        ]);
+    }
+
     // ── Calcular datos del período ────────────────────────────────────
     private function calcularPeriodo(Cuadre $cuadre, int $aliadoId, int $usuarioId): array
     {

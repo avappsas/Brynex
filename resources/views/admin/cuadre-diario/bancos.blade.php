@@ -237,7 +237,16 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: .78rem; min-width
                 <td colspan="10">📅 {{ $fechaMov }}</td>
             </tr>
         @endif
-        <tr id="{{ $rowId }}" class="mov-row" data-estado="{{ $estadoFila }}" data-fecha-grupo="{{ $fechaMov }}">
+        <tr id="{{ $rowId }}" class="mov-row" data-estado="{{ $estadoFila }}" data-fecha-grupo="{{ $fechaMov }}"
+            @if(!$mov->es_salida)
+                data-cs-id="{{ $mov->cs_id }}"
+                data-factura-id="{{ $mov->factura_id ?? '' }}"
+                data-num-factura="{{ $mov->num_factura ?? '' }}"
+                data-valor-fmt="{{ $fmt($mov->valor) }}"
+                data-referencia="{{ $mov->referencia ?? '' }}"
+                data-imagen-url="{{ $mov->imagen_path ? asset('storage/' . $mov->imagen_path) : '' }}"
+            @endif
+        >
 
             {{-- Tipo --}}
             <td>
@@ -345,7 +354,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: .78rem; min-width
                 @endphp
                 @if(auth()->user()->hasRole(['admin','superadmin']))
                 <button type="button"
-                        onclick="abrirModalEstado({{ $mov->cs_id }}, {{ $mov->confirmado ? 'true' : 'false' }}, {{ $mov->no_aparece ? 'true' : 'false' }}, {{ $mov->imagen_path ? "'".asset('storage/' . $mov->imagen_path)."'" : 'null' }}, {{ $mov->referencia ? "'".addslashes($mov->referencia)."'" : 'null' }})"
+                        onclick="abrirModalEstado({{ $mov->cs_id }}, {{ $mov->confirmado ? 'true' : 'false' }}, {{ $mov->no_aparece ? 'true' : 'false' }})"
                         class="btn-sm btn-estado-clic"
                         style="background:{{ $bgEstado }};color:{{ $colEstado }}">
                     {{ $txtEstado }}
@@ -381,6 +390,51 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: .78rem; min-width
 </div>
 @endforeach
 
+
+{{-- ═══ MODAL: Anular consignación duplicada + convertir a préstamo ═══ --}}
+<div id="modal-anular-prestamo" class="modal-bg" onclick="if(event.target===this)cerrarModal('modal-anular-prestamo')">
+    <div class="modal-box" style="width:min(460px,96vw)">
+        <div class="modal-head" style="background:#7f1d1d">
+            <span style="color:#fff;font-weight:700;font-size:.9rem">⚠️ Anular Consignación Duplicada</span>
+            <button onclick="cerrarModal('modal-anular-prestamo')" class="btn-close">×</button>
+        </div>
+        <div class="modal-body" style="display:flex;flex-direction:column;gap:1rem">
+            <div style="background:#fff1f2;border:1px solid #fecdd3;border-radius:8px;padding:.75rem 1rem;font-size:.82rem;color:#9f1239">
+                <strong>⚠️ Esta acción es irreversible.</strong><br>
+                Convierte la factura a <strong>préstamo</strong> y anula la consignación bancaria.
+                Úsalo solo cuando el plano ya fue pagado y la consignación está duplicada.
+            </div>
+
+            <div style="background:#f8fafc;border-radius:8px;padding:.7rem 1rem;font-size:.83rem">
+                <div style="display:flex;justify-content:space-between;margin-bottom:.3rem">
+                    <span style="color:#64748b">Factura:</span>
+                    <strong id="ap-num-factura" style="color:#0f172a"></strong>
+                </div>
+                <div style="display:flex;justify-content:space-between">
+                    <span style="color:#64748b">Valor consignación:</span>
+                    <strong id="ap-valor" style="color:#dc2626"></strong>
+                </div>
+            </div>
+
+            <div>
+                <label style="font-size:.75rem;font-weight:700;color:#7f1d1d;display:block;margin-bottom:.35rem">
+                    Confirmar: escribe el número de factura para continuar
+                </label>
+                <input id="ap-confirm-input" type="text" autocomplete="off"
+                       placeholder="Ej: 13127"
+                       style="width:100%;border:2px solid #fecdd3;border-radius:8px;padding:.5rem .75rem;font-size:.9rem;font-weight:700;color:#0f172a;outline:none;box-sizing:border-box;transition:border-color .15s"
+                       oninput="validarConfirmAnular(this.value)"
+                       onfocus="this.style.borderColor='#be123c'" onblur="this.style.borderColor='#fecdd3'">
+            </div>
+
+            <button id="ap-btn-confirmar" type="button" onclick="confirmarAnularPrestamo()"
+                    disabled
+                    style="width:100%;padding:.75rem;background:#9f1239;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:not-allowed;font-size:.88rem;opacity:.5;transition:all .2s">
+                🗑️ Convertir a Préstamo y Anular Consignación
+            </button>
+        </div>
+    </div>
+</div>
 
 {{-- ═══ MODAL: Estado consignación ═══ --}}
 <div id="modal-estado" class="modal-bg" onclick="if(event.target===this)cerrarModal('modal-estado')">
@@ -432,6 +486,13 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: .78rem; min-width
                             style="width:100%;padding:.7rem;background:#dc2626;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:.85rem">
                         ❌ No aparece en banco
                     </button>
+                    
+                    @if(auth()->user()->hasRole('superadmin'))
+                    <button type="button" id="modal-estado-btn-anular-prestamo" onclick="irAAnularDesdeEstado()"
+                            style="display:none;width:100%;padding:.65rem;background:#fff1f2;color:#be123c;border:1px dashed #fecdd3;border-radius:8px;font-weight:700;cursor:pointer;font-size:.8rem;margin-top:.4rem">
+                        ⚠️ Convertir a Préstamo y Anular
+                    </button>
+                    @endif
                 </div>
             </div>
         </div>
@@ -558,13 +619,24 @@ function cerrarModal(id) {
         const obs = document.getElementById('modal-estado-obs');
         if (obs) obs.value = '';
     }
+    if (id === 'modal-anular-prestamo') {
+        const input = document.getElementById('ap-confirm-input');
+        if (input) input.value = '';
+    }
 }
 
 let _currentCsId = null;
 
-function abrirModalEstado(csId, esVerificado, noAparece, imagenUrl, referencia) {
+function abrirModalEstado(csId, esVerificado, noAparece) {
     resetZoomImg('modal-estado-img', 'modal-estado-img-wrapper');
     _currentCsId = csId;
+
+    const tr = document.getElementById(`consignacion-row-${csId}`);
+    const referencia = tr ? tr.getAttribute('data-referencia') : '';
+    const imagenUrl = tr ? tr.getAttribute('data-imagen-url') : '';
+    const facturaId = tr ? tr.getAttribute('data-factura-id') : '';
+    const numFactura = tr ? tr.getAttribute('data-num-factura') : '';
+    const valorFmt = tr ? tr.getAttribute('data-valor-fmt') : '';
 
     // Mostrar / ocultar referencia
     const refContainer = document.getElementById('modal-estado-referencia');
@@ -613,6 +685,20 @@ function abrirModalEstado(csId, esVerificado, noAparece, imagenUrl, referencia) 
         container.style.display = 'none';
         img.src = '';
         pdf.src = '';
+    }
+
+    // Controlar visibilidad del botón de anulación para superadmin
+    const btnAnular = document.getElementById('modal-estado-btn-anular-prestamo');
+    if (btnAnular) {
+        if (facturaId) {
+            btnAnular.style.display = 'block';
+            btnAnular.dataset.csId = csId;
+            btnAnular.dataset.facturaId = facturaId;
+            btnAnular.dataset.numFactura = numFactura;
+            btnAnular.dataset.valorFmt = valorFmt;
+        } else {
+            btnAnular.style.display = 'none';
+        }
     }
     
     document.getElementById('modal-estado').classList.add('open');
@@ -996,6 +1082,124 @@ function abrirReciboAnticipo(anticipoId) {
     document.getElementById('iframe-recibo').src = url;
     document.getElementById('btn-abrir-recibo').href = url;
     document.getElementById('modal-recibo').classList.add('open');
+}
+
+// ── Anular Consignación y Convertir a Préstamo (Superadmin) ──
+let _apCsId = null;
+let _apFacturaId = null;
+let _apNumFactura = '';
+
+function abrirModalAnularPrestamo(csId, facturaId, numFactura, valor) {
+    _apCsId = csId;
+    _apFacturaId = facturaId;
+    _apNumFactura = numFactura.toString().trim();
+    
+    document.getElementById('ap-num-factura').textContent = '#' + numFactura;
+    document.getElementById('ap-valor').textContent = '$' + valor;
+    
+    const input = document.getElementById('ap-confirm-input');
+    if (input) input.value = '';
+    
+    const btn = document.getElementById('ap-btn-confirmar');
+    if (btn) {
+        btn.disabled = true;
+        btn.style.cursor = 'not-allowed';
+        btn.style.opacity = '0.5';
+    }
+    
+    document.getElementById('modal-anular-prestamo').classList.add('open');
+}
+
+function validarConfirmAnular(val) {
+    const btn = document.getElementById('ap-btn-confirmar');
+    if (!btn) return;
+    if (val.toString().trim() === _apNumFactura) {
+        btn.disabled = false;
+        btn.style.cursor = 'pointer';
+        btn.style.opacity = '1';
+    } else {
+        btn.disabled = true;
+        btn.style.cursor = 'not-allowed';
+        btn.style.opacity = '0.5';
+    }
+}
+
+function confirmarAnularPrestamo() {
+    if (!_apCsId || !_apFacturaId) return;
+    
+    const url = `${baseUrl}/cuadre-diario/consignacion/${_apCsId}/anular-prestamo`;
+    const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '{{ csrf_token() }}';
+    
+    const btn = document.getElementById('ap-btn-confirmar');
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Procesando...';
+    }
+    
+    fetch(url, {
+        method: 'POST',
+        headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': token
+        },
+        body: JSON.stringify({
+            _method: 'DELETE'
+        })
+    })
+    .then(res => {
+        if (!res.ok) throw new Error('Error al procesar la solicitud.');
+        return res.json();
+    })
+    .then(data => {
+        if (data.success) {
+            // Eliminar la fila del DOM
+            const tr = document.getElementById(`consignacion-row-${_apCsId}`);
+            if (tr) {
+                tr.style.transition = 'all 0.3s ease';
+                tr.style.opacity = '0';
+                setTimeout(() => {
+                    tr.remove();
+                }, 300);
+            }
+            
+            // Actualizar el saldo del banco
+            if (data.nuevo_saldo !== undefined && data.banco_id) {
+                const divSaldo = document.getElementById(`saldo-banco-${data.banco_id}`);
+                if (divSaldo) {
+                    const fmtVal = '$' + new Intl.NumberFormat('es-CO', { maximumFractionDigits: 0 }).format(Math.abs(data.nuevo_saldo));
+                    divSaldo.textContent = fmtVal;
+                    divSaldo.style.color = data.nuevo_saldo >= 0 ? '#1d4ed8' : '#dc2626';
+                }
+            }
+            
+            cerrarModal('modal-anular-prestamo');
+            mostrarToast(data.message);
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(err => {
+        console.error(err);
+        alert('Ocurrió un error al anular la consignación y convertir a préstamo.');
+    })
+    .finally(() => {
+        if (btn) btn.textContent = '🗑️ Convertir a Préstamo y Anular Consignación';
+    });
+}
+
+function irAAnularDesdeEstado() {
+    const btnAnular = document.getElementById('modal-estado-btn-anular-prestamo');
+    if (!btnAnular) return;
+    const csId = btnAnular.dataset.csId;
+    const facturaId = btnAnular.dataset.facturaId;
+    const numFactura = btnAnular.dataset.numFactura;
+    const valorFmt = btnAnular.dataset.valorFmt;
+    
+    cerrarModal('modal-estado');
+    setTimeout(() => {
+        abrirModalAnularPrestamo(csId, facturaId, numFactura, valorFmt);
+    }, 250);
 }
 </script>
 @endsection

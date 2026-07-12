@@ -387,6 +387,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/consignacion/{csId}/confirmar',          [$cd, 'confirmarConsignacion'])->name('consignacion.confirmar');
         Route::patch('/consignacion/{csId}/confirmar/reversar', [$cd, 'reversarConsignacion']) ->name('consignacion.reversar');
         Route::post('/consignacion/{csId}/no-aparece',          [$cd, 'noApareceConsignacion'])->name('consignacion.no-aparece');
+        Route::delete('/consignacion/{csId}/anular-prestamo',   [$cd, 'anularConsignacionPrestamo'])->name('consignacion.anular-prestamo');
         Route::get('/{id}',                      [$cd, 'ver'])                  ->name('ver');
         Route::post('/{id}/gasto',               [$cd, 'registrarGasto'])       ->name('gasto.store');
         Route::post('/{id}/cerrar',              [$cd, 'cerrar'])               ->name('cerrar');

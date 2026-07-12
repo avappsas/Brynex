@@ -397,8 +397,7 @@ class FacturacionController extends Controller
             $factRetiroPreview = (!$fact && ($c->tiene_retiro_facturable ?? false)) ? ($c->factura_retiro_0 ?? null) : null;
             $esRetirado = $c->estado === 'retirado';
             
-            $nombre = trim(($c->cliente?->primer_nombre ?? '') . ' ' . ($c->cliente?->primer_apellido ?? ''));
-            if (!$nombre) $nombre = $c->cliente?->nombre_completo ?? '—';
+            $nombre = $c->cliente?->nombre_completo ?: '—';
             
             $tipoMod = $c->tipoModalidad?->tipo_modalidad ?? '—';
             $rs = $c->razonSocial?->razon_social ?? '—';

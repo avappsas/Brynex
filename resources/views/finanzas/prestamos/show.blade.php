@@ -141,6 +141,7 @@
         <div style="padding:1rem; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center;">
             <h3 style="font-size:0.9rem; font-weight:700; color:#334155;">📜 Historial de Movimientos</h3>
         </div>
+        <div class="tabla-scroll-wrapper">
         <table class="tabla-brynex-bx">
             <thead>
                 <tr>
@@ -202,7 +203,9 @@
                 @endforelse
             </tbody>
         </table>
+        </div>
     </div>
+
 
     {{-- Modal Registrar Pago --}}
     <div x-show="openAbono" class="modal-overlay-bx" @click.self="openAbono = false" x-cloak x-data="{ 
@@ -479,6 +482,17 @@
 .prestamo-ficha-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 1.25rem; margin-top: 1rem; }
 @media (max-width: 768px) {
     .prestamo-ficha-grid { grid-template-columns: 1fr; }
+    .fin-top-bar { flex-wrap: wrap; gap: 0.5rem; }
+    .fin-top-bar .breadcrumb-bx { font-size: 0.72rem; max-width: calc(100% - 130px); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .header-text h1 { font-size: 1.1rem; }
+    /* Tabla scrolleable en móvil */
+    .card-tabla-bx { overflow: hidden; }
+    .card-tabla-bx .tabla-scroll-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .tabla-brynex-bx { min-width: 620px; }
+    /* Modales en pantalla completa móvil */
+    .modal-overlay-bx { padding: 0; align-items: flex-end; }
+    .modal-box-bx { border-bottom-left-radius: 0; border-bottom-right-radius: 0; max-height: 90vh; overflow-y: auto; }
+    .fdc-grid { grid-template-columns: 1fr 1fr; }
 }
 
 .ficha-datos-card, .ficha-acciones-card { background: #fff; border-radius: 16px; border: 1px solid #e2e8f0; padding: 1.25rem; box-shadow: 0 4px 14px rgba(0,0,0,0.03); }

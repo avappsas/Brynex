@@ -3,10 +3,13 @@
 namespace App\Models;
 
 use App\Models\BaseModel;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\DB;
 
 class Consignacion extends BaseModel
 {
+    use SoftDeletes;
+
     protected $table    = 'consignaciones';
     protected $fillable = [
         'aliado_id', 'factura_id', 'anticipo_id', 'banco_cuenta_id',
