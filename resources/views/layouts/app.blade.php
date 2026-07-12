@@ -582,10 +582,199 @@
             font-weight: 600;
         }
 
+        /* ── Botón hamburguesa (solo visible en móvil) ────────────────────── */
+        .btn-hamburguesa {
+            display: none;
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.15);
+            color: #fff;
+            padding: 0.4rem 0.6rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1.15rem;
+            line-height: 1;
+            transition: background 0.15s, border-color 0.15s;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        .btn-hamburguesa:hover { background: rgba(59,130,246,0.25); border-color: rgba(59,130,246,0.4); }
+
+        /* ── Overlay oscuro del drawer ──────────────────────────────────────── */
+        .mobile-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.55);
+            z-index: 1000;
+            backdrop-filter: blur(2px);
+            -webkit-backdrop-filter: blur(2px);
+        }
+        .mobile-overlay.open { display: block; }
+
+        /* ── Drawer lateral ─────────────────────────────────────────────────── */
+        .mobile-drawer {
+            position: fixed;
+            top: 0;
+            left: -100%;
+            width: min(290px, 88vw);
+            height: 100%;
+            background: linear-gradient(160deg, #0a1628 0%, #0d2550 100%);
+            z-index: 1001;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 4px 0 32px rgba(0,0,0,0.6);
+            transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            overflow-y: auto;
+            overflow-x: hidden;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(59,130,246,0.3) transparent;
+        }
+        .mobile-drawer.open { left: 0; }
+
+        /* Cabecera del drawer */
+        .drawer-header {
+            padding: 1rem 1.1rem;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(0,0,0,0.2);
+            flex-shrink: 0;
+        }
+        .drawer-header-left {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+        }
+        .drawer-title {
+            color: #fff;
+            font-size: 0.88rem;
+            font-weight: 700;
+        }
+        .drawer-empresa {
+            color: rgba(255,255,255,0.45);
+            font-size: 0.7rem;
+        }
+        .drawer-close {
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: rgba(255,255,255,0.5);
+            font-size: 1rem;
+            cursor: pointer;
+            padding: 0.25rem 0.5rem;
+            border-radius: 6px;
+            transition: color 0.15s, background 0.15s;
+            line-height: 1;
+        }
+        .drawer-close:hover { color: #fff; background: rgba(255,255,255,0.12); }
+
+        /* Secciones del drawer */
+        .drawer-section {
+            padding: 0.4rem 0.65rem;
+        }
+        .drawer-section-label {
+            font-size: 0.6rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: rgba(255,255,255,0.3);
+            padding: 0.6rem 0.5rem 0.2rem;
+        }
+        .drawer-sep {
+            height: 1px;
+            background: rgba(255,255,255,0.07);
+            margin: 0.2rem 0.65rem;
+        }
+
+        /* Ítems de navegación del drawer */
+        .drawer-item {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.6rem 0.75rem;
+            border-radius: 8px;
+            text-decoration: none;
+            color: rgba(255,255,255,0.72);
+            font-size: 0.84rem;
+            font-weight: 500;
+            transition: background 0.12s, color 0.12s;
+            margin-bottom: 0.05rem;
+            width: 100%;
+            background: none;
+            border: none;
+            cursor: pointer;
+            text-align: left;
+            box-sizing: border-box;
+            border-left: 3px solid transparent;
+        }
+        .drawer-item:hover {
+            background: rgba(59,130,246,0.15);
+            color: #93c5fd;
+        }
+        .drawer-item.activo {
+            background: rgba(59,130,246,0.18);
+            color: #93c5fd;
+            border-left-color: #3b82f6;
+        }
+        .drawer-item.danger { color: rgba(252,165,165,0.8); }
+        .drawer-item.danger:hover { background: rgba(239,68,68,0.12); color: #fca5a5; }
+        .di-icon {
+            font-size: 1rem;
+            width: 26px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+
+        /* Footer del drawer */
+        .drawer-footer {
+            margin-top: auto;
+            padding: 0.65rem;
+            border-top: 1px solid rgba(255,255,255,0.08);
+            flex-shrink: 0;
+        }
+        .drawer-user-card {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            padding: 0.55rem 0.75rem;
+            margin-bottom: 0.4rem;
+            background: rgba(255,255,255,0.04);
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.07);
+        }
+        .drawer-user-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #2563eb, #1e40af);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-size: 0.85rem;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+        .du-nombre { color: #fff; font-size: 0.82rem; font-weight: 600; }
+        .du-rol { color: rgba(255,255,255,0.4); font-size: 0.68rem; text-transform: capitalize; }
+
         /* ── Responsive ─────────────────────────────────────────────────── */
-        @media (max-width: 640px) {
+        @media (max-width: 768px) {
             .user-info { display: none; }
-            .menu-item .label { font-size: 0.55rem; }
+            .menu-iconos { display: none !important; }
+            .btn-hamburguesa { display: flex; }
+            .header { padding: 0.55rem 0.9rem; gap: 0.5rem; }
+            .header-aliado-info h2 { font-size: 0.82rem; }
+            .header-aliado-info small { display: none; }
+            .header-logo { gap: 0.5rem; }
+            .header-logo img.logo-aliado { height: 36px; }
+            .contenido { padding: 0.9rem 0.7rem; }
+        }
+        @media (max-width: 480px) {
+            .header { padding: 0.5rem 0.65rem; }
+            .header-logo img.logo-aliado { height: 32px; }
+            .contenido { padding: 0.75rem 0.5rem; }
         }
     </style>
     @stack('styles')
@@ -817,8 +1006,173 @@
                     </button>
                 </div>
             </div>
+
+            {{-- Botón hamburguesa (solo visible en móvil) --}}
+            <button class="btn-hamburguesa" id="btnHamburguesa" onclick="abrirDrawer()" aria-label="Abrir menú">
+                ☰
+            </button>
         </div>
     </header>
+    @endunless
+
+    {{-- ═══════════════════════════════════════════════════════════════════ --}}
+    {{-- MENÚ MÓVIL: Overlay + Drawer lateral (solo visible en pantallas pequeñas) --}}
+    {{-- ═══════════════════════════════════════════════════════════════════ --}}
+    @unless(request()->has('iframe'))
+    <div class="mobile-overlay" id="mobileOverlay" onclick="cerrarDrawer()"></div>
+
+    <nav class="mobile-drawer" id="mobileDrawer" aria-label="Menú de navegación">
+
+        {{-- Cabecera del drawer --}}
+        <div class="drawer-header">
+            <div class="drawer-header-left">
+                <div>
+                    <div class="drawer-title">{{ $alidoActivo->nombre ?? 'BryNex' }}</div>
+                    <div class="drawer-empresa">Panel de gestión</div>
+                </div>
+            </div>
+            <button class="drawer-close" onclick="cerrarDrawer()" aria-label="Cerrar menú">✕</button>
+        </div>
+
+        {{-- Navegación principal --}}
+        <div class="drawer-section">
+            <div class="drawer-section-label">Navegación</div>
+
+            <a href="{{ route('dashboard') }}" class="drawer-item {{ request()->routeIs('dashboard') ? 'activo' : '' }}">
+                <span class="di-icon">🏠</span> Inicio
+            </a>
+            <a href="{{ route('admin.clientes.index') }}" class="drawer-item {{ request()->routeIs('admin.clientes*') ? 'activo' : '' }}">
+                <span class="di-icon">👥</span> Clientes
+            </a>
+            <a href="{{ route('admin.facturacion.index') }}" class="drawer-item {{ request()->routeIs('admin.facturacion*') ? 'activo' : '' }}">
+                <span class="di-icon">🏢</span> Empresas
+            </a>
+            @role('superadmin|admin|usuario')
+            <a href="{{ route('admin.afiliaciones.index') }}" class="drawer-item {{ request()->routeIs('admin.afiliaciones*') ? 'activo' : '' }}">
+                <span class="di-icon">🤝</span> Afiliaciones
+            </a>
+            @endrole
+            @role('superadmin|admin|usuario')
+            <a href="{{ route('admin.planos.index') }}" class="drawer-item {{ request()->routeIs('admin.planos*') ? 'activo' : '' }}">
+                <span class="di-icon">📄</span> Planos SS
+            </a>
+            @endrole
+            @role('superadmin|admin|usuario')
+            <a href="{{ route('admin.cobros.index') }}" class="drawer-item {{ request()->routeIs('admin.cobros*') ? 'activo' : '' }}">
+                <span class="di-icon">💰</span> Cobros
+            </a>
+            @endrole
+            @role('superadmin|admin|usuario|contador')
+            <a href="{{ route('admin.prestamos.index') }}" class="drawer-item {{ request()->routeIs('admin.prestamos*') ? 'activo' : '' }}">
+                <span class="di-icon">📋</span> Préstamos
+            </a>
+            @endrole
+            <a href="{{ route('admin.tareas.index') }}" class="drawer-item {{ request()->routeIs('admin.tareas*') ? 'activo' : '' }}">
+                <span class="di-icon">📌</span> Tareas
+            </a>
+            <a href="{{ route('admin.incapacidades.index') }}" class="drawer-item {{ request()->routeIs('admin.incapacidades*') ? 'activo' : '' }}">
+                <span class="di-icon">🏥</span> Incapacidades
+            </a>
+            @role('superadmin|admin|usuario')
+            <a href="{{ route('admin.whatsapp.chat.index') }}" class="drawer-item {{ request()->routeIs('admin.whatsapp*') ? 'activo' : '' }}">
+                <span class="di-icon">💬</span> WhatsApp
+            </a>
+            @endrole
+        </div>
+
+        {{-- Sección financiero --}}
+        @role('superadmin|admin|usuario')
+        <div class="drawer-sep"></div>
+        <div class="drawer-section">
+            <div class="drawer-section-label">Financiero</div>
+            <a href="{{ route('admin.cuadre-diario.index') }}" class="drawer-item {{ request()->routeIs('admin.cuadre-diario*') ? 'activo' : '' }}">
+                <span class="di-icon">🧾</span> Cuadre Caja
+            </a>
+            <a href="{{ route('admin.cotizaciones.index') }}" class="drawer-item {{ request()->routeIs('admin.cotizaciones*') ? 'activo' : '' }}">
+                <span class="di-icon">💼</span> Cotizaciones
+            </a>
+        </div>
+        @endrole
+
+        {{-- Sección reportes --}}
+        @role('superadmin|admin|contador')
+        <div class="drawer-sep"></div>
+        <div class="drawer-section">
+            <div class="drawer-section-label">Reportes</div>
+            <a href="{{ route('admin.informes.hub') }}" class="drawer-item {{ request()->routeIs('admin.informes*') && !request()->routeIs('admin.informes.comisiones*') ? 'activo' : '' }}">
+                <span class="di-icon">📊</span> Informes
+            </a>
+            <a href="{{ route('admin.informes.comisiones.index') }}" class="drawer-item {{ request()->routeIs('admin.informes.comisiones*') ? 'activo' : '' }}">
+                <span class="di-icon">💼</span> Comisiones
+            </a>
+        </div>
+        @endrole
+
+        {{-- Sección administración --}}
+        @role('admin|superadmin')
+        <div class="drawer-sep"></div>
+        <div class="drawer-section">
+            <div class="drawer-section-label">Administración</div>
+            <a href="{{ route('admin.asesores.index') }}" class="drawer-item {{ request()->routeIs('admin.asesores*') ? 'activo' : '' }}">
+                <span class="di-icon">🤝</span> Asesores
+            </a>
+            <a href="{{ route('admin.usuarios.index') }}" class="drawer-item {{ request()->routeIs('admin.usuarios*') ? 'activo' : '' }}">
+                <span class="di-icon">👥</span> Usuarios
+            </a>
+            <a href="{{ route('admin.configuracion.hub') }}" class="drawer-item {{ request()->routeIs('admin.configuracion*') ? 'activo' : '' }}">
+                <span class="di-icon">⚙️</span> Configuración
+            </a>
+            <a href="{{ route('admin.bitacora.index') }}" class="drawer-item {{ request()->routeIs('admin.bitacora*') ? 'activo' : '' }}">
+                <span class="di-icon">👁️</span> Auditoría
+            </a>
+            <a href="{{ route('admin.traslados.index') }}" class="drawer-item {{ request()->routeIs('admin.traslados*') ? 'activo' : '' }}">
+                <span class="di-icon">🔄</span> Traslados RS
+            </a>
+        </div>
+        @endrole
+
+        @if(Auth::user()->hasRole('superadmin') && Auth::user()->es_brynex)
+        <div class="drawer-sep"></div>
+        <div class="drawer-section">
+            <div class="drawer-section-label">BryNex Global</div>
+            <a href="{{ route('brynex.hub') }}" class="drawer-item {{ request()->routeIs('brynex.hub') ? 'activo' : '' }}">
+                <span class="di-icon">🔵</span> Hub BryNex
+            </a>
+            <a href="{{ route('admin.aliados.index') }}" class="drawer-item {{ request()->routeIs('admin.aliados*') ? 'activo' : '' }}">
+                <span class="di-icon">🏢</span> Aliados
+            </a>
+            <a href="{{ route('brynex.accesos') }}" class="drawer-item {{ request()->routeIs('brynex.accesos') ? 'activo' : '' }}">
+                <span class="di-icon">🔐</span> Accesos de Usuarios
+            </a>
+            <a href="{{ route('brynex.backups') }}" class="drawer-item {{ request()->routeIs('brynex.backups*') ? 'activo' : '' }}">
+                <span class="di-icon">💾</span> Copias de Seguridad
+            </a>
+        </div>
+        @endif
+
+        {{-- Footer con info del usuario --}}
+        <div class="drawer-footer">
+            <div class="drawer-user-card">
+                <div class="drawer-user-avatar">
+                    {{ strtoupper(substr(Auth::user()->nombre, 0, 1)) }}
+                </div>
+                <div>
+                    <div class="du-nombre">{{ Auth::user()->nombre }}</div>
+                    <div class="du-rol">{{ Auth::user()->getRoleNames()->first() ?? 'usuario' }}</div>
+                </div>
+            </div>
+            @if (Auth::check() && Auth::user()->es_brynex)
+            <a href="{{ route('aliado.selector') }}" class="drawer-item">
+                <span class="di-icon">⇄</span> Cambiar aliado
+            </a>
+            @endif
+            <div class="drawer-sep" style="margin: 0.4rem 0"></div>
+            <button type="button" class="drawer-item danger" onclick="cerrarSesion()">
+                <span class="di-icon">⏻</span> Salir del sistema
+            </button>
+        </div>
+
+    </nav>
     @endunless
 
 
@@ -840,6 +1194,22 @@
             const dd = document.getElementById('userDropdown');
             dd.classList.toggle('open');
         }
+
+        // ── Drawer móvil ───────────────────────────────────────────────
+        function abrirDrawer() {
+            document.getElementById('mobileDrawer').classList.add('open');
+            document.getElementById('mobileOverlay').classList.add('open');
+            document.body.style.overflow = 'hidden';
+        }
+        function cerrarDrawer() {
+            document.getElementById('mobileDrawer').classList.remove('open');
+            document.getElementById('mobileOverlay').classList.remove('open');
+            document.body.style.overflow = '';
+        }
+        // Cerrar drawer con tecla Escape
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') cerrarDrawer();
+        });
 
         // Cerrar al hacer clic fuera
         document.addEventListener('click', function(e) {

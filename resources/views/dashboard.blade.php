@@ -2,11 +2,44 @@
 
 @section('modulo', 'Dashboard')
 
+@push('styles')
+<style>
+    /* ── Dashboard responsive ─────────────────────────────────────────── */
+    @media (max-width: 768px) {
+        .dash-bienvenida {
+            padding: 1.1rem 1.25rem !important;
+        }
+        .dash-bienvenida h1 {
+            font-size: 1.05rem !important;
+        }
+        .dash-modulos {
+            grid-template-columns: repeat(3, 1fr) !important;
+            gap: 0.65rem !important;
+        }
+        .dash-modulo-item {
+            padding: 1.1rem 0.5rem !important;
+            gap: 0.5rem !important;
+        }
+        .dash-modulo-item .mod-icon {
+            font-size: 1.6rem !important;
+        }
+        .dash-modulo-item .mod-label {
+            font-size: 0.72rem !important;
+        }
+    }
+    @media (max-width: 380px) {
+        .dash-modulos {
+            grid-template-columns: repeat(2, 1fr) !important;
+        }
+    }
+</style>
+@endpush
+
 @section('contenido')
 <div style="display:flex; flex-direction:column; gap:1.5rem;">
 
     {{-- Bienvenida --}}
-    <div style="background:#fff; border-radius:14px; padding:1.5rem 1.75rem; box-shadow:0 1px 8px rgba(0,0,0,0.06); border-left:4px solid #2563eb;">
+    <div class="dash-bienvenida" style="background:#fff; border-radius:14px; padding:1.5rem 1.75rem; box-shadow:0 1px 8px rgba(0,0,0,0.06); border-left:4px solid #2563eb;">
         <h1 style="font-size:1.25rem; font-weight:700; color:#0d2550; margin-bottom:0.25rem;">
             Bienvenido, {{ Auth::user()->nombre }} 👋
         </h1>
@@ -25,7 +58,7 @@
     </div>
 
     {{-- Accesos rápidos --}}
-    <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:1rem;">
+    <div class="dash-modulos" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:1rem;">
         @php
             $modulos = [
                 ['icono'=>'👥', 'nombre'=>'Clientes',      'color'=>'#3b82f6', 'url'=>route('admin.clientes.index')],
@@ -52,7 +85,7 @@
         @endphp
 
         @foreach ($modulos as $mod)
-        <a href="{{ $mod['url'] }}" style="
+        <a href="{{ $mod['url'] }}" class="dash-modulo-item" style="
             display:flex; flex-direction:column; align-items:center; gap:0.75rem;
             background:#fff; border-radius:14px; padding:1.5rem 1rem;
             text-decoration:none; border:2px solid transparent;
@@ -62,8 +95,8 @@
         "
         onmouseover="this.style.borderColor='{{ $mod['color'] }}'; this.style.transform='translateY(-3px)'; this.style.boxShadow='0 8px 24px rgba(0,0,0,0.1)'"
         onmouseout="this.style.borderColor='transparent'; this.style.transform=''; this.style.boxShadow='0 1px 6px rgba(0,0,0,0.06)'">
-            <div style="font-size:2rem;">{{ $mod['icono'] }}</div>
-            <div style="font-size:0.8rem; font-weight:600; color:#334155; text-align:center;">{{ $mod['nombre'] }}</div>
+            <div class="mod-icon" style="font-size:2rem;">{{ $mod['icono'] }}</div>
+            <div class="mod-label" style="font-size:0.8rem; font-weight:600; color:#334155; text-align:center;">{{ $mod['nombre'] }}</div>
         </a>
         @endforeach
     </div>
