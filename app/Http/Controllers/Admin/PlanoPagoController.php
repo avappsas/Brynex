@@ -489,21 +489,42 @@ class PlanoPagoController extends Controller
             return response()->json(['ok' => false, 'mensaje' => 'N_PLANO debe ser ≥ 1.'], 422);
         }
 
-        $updated = DB::table('planos')
+        // Obtener el factura_id del plano antes de actualizar
+        $plano = DB::table('planos')
             ->where('id', $id)
             ->where('aliado_id', $aliadoId)
             ->whereNull('deleted_at')
-            ->update(['n_plano' => $nPlano]);
+            ->select('id', 'factura_id')
+            ->first();
 
-        if (!$updated) {
+        if (!$plano) {
             return response()->json(['ok' => false, 'mensaje' => 'Registro no encontrado o sin cambios.'], 404);
         }
+
+        DB::transaction(function () use ($id, $aliadoId, $nPlano, $plano) {
+            // 1) Actualizar el plano
+            DB::table('planos')
+                ->where('id', $id)
+                ->where('aliado_id', $aliadoId)
+                ->whereNull('deleted_at')
+                ->update(['n_plano' => $nPlano]);
+
+            // 2) Sincronizar facturas.n_plano para mantener consistencia con historial
+            if ($plano->factura_id) {
+                DB::table('facturas')
+                    ->where('id', $plano->factura_id)
+                    ->where('aliado_id', $aliadoId)
+                    ->whereNull('deleted_at')
+                    ->update(['n_plano' => $nPlano]);
+            }
+        });
 
         return response()->json([
             'ok'      => true,
             'mensaje' => "Registro movido al plano P{$nPlano}.",
         ]);
     }
+
 
     // ── 3c. Mover múltiples registros de plano a otro n_plano ─────────
     public function moverPlanoMasivo(Request $request)
@@ -524,11 +545,34 @@ class PlanoPagoController extends Controller
             return response()->json(['ok' => false, 'mensaje' => 'N_PLANO debe ser ≥ 1.'], 422);
         }
 
-        $updated = DB::table('planos')
+        // Obtener los factura_id de los planos antes de actualizar
+        $facturaIds = DB::table('planos')
             ->whereIn('id', $ids)
             ->where('aliado_id', $aliadoId)
             ->whereNull('deleted_at')
-            ->update(['n_plano' => $nPlano]);
+            ->whereNotNull('factura_id')
+            ->pluck('factura_id')
+            ->toArray();
+
+        $updated = DB::transaction(function () use ($ids, $aliadoId, $nPlano, $facturaIds) {
+            // 1) Actualizar los planos
+            $cnt = DB::table('planos')
+                ->whereIn('id', $ids)
+                ->where('aliado_id', $aliadoId)
+                ->whereNull('deleted_at')
+                ->update(['n_plano' => $nPlano]);
+
+            // 2) Sincronizar facturas.n_plano para mantener consistencia con historial
+            if (!empty($facturaIds)) {
+                DB::table('facturas')
+                    ->whereIn('id', $facturaIds)
+                    ->where('aliado_id', $aliadoId)
+                    ->whereNull('deleted_at')
+                    ->update(['n_plano' => $nPlano]);
+            }
+
+            return $cnt;
+        });
 
         if (!$updated) {
             return response()->json(['ok' => false, 'mensaje' => 'No se encontraron registros elegibles para mover.'], 404);
@@ -539,6 +583,7 @@ class PlanoPagoController extends Controller
             'mensaje' => "{$updated} registros movidos correctamente al plano P{$nPlano}.",
         ]);
     }
+
 
     // ── 4. Descargar XLSX planilla SS (formato ayuda NI) ──────────────
     public function descargar(Request $request)

@@ -660,7 +660,15 @@ class ContratoController extends Controller
                 'observacion'      => $validated['observacion'] ?? $contrato->observacion,
             ]);
 
-            // 2) Crear factura de retiro (numero_factura=0, total=$0, pero SS calculado)
+            // 2) n_plano del retiro = plano actual de la RS.
+            //    NOTA: El plano 100 es exclusivo del flujo "Duplicar Contrato" (IR rotation).
+            //    El retiro normal — incluso en IR (id=12) — usa el n_plano de la RS.
+            //    Se calcula ANTES de Factura::create() para que la factura también lo reciba.
+            $nPlano = $contrato->razon_social_id
+                ? (\App\Models\RazonSocial::find($contrato->razon_social_id)?->n_plano ?? 1)
+                : 1;
+
+            // 3) Crear factura de retiro (numero_factura=0, total=$0, pero SS calculado)
             //    El total sigue en $0 porque el dinero no entró como ingreso.
             //    Los campos v_eps/v_arl/v_afp/v_caja reflejan el COSTO del retiro en SS.
             //    Se excluyen de ingresos en informes filtrando WHERE numero_factura = 0.
@@ -684,43 +692,33 @@ class ContratoController extends Controller
                 'otros_admon'      => 0,
                 'mensajeria'       => 0,
                 'dias_cotizados'   => $numDias,
-                'v_eps'       => $vEpsRetiro,
-                'v_arl'       => $vArlRetiro,
-                'v_afp'       => $vAfpRetiro,
-                'v_caja'      => $vCajaRetiro,
-                'total_ss'    => $totalSsRetiro,
-                'mora'        => $moraRetiro,  // campo dedicado mora (no es ingreso)
-                'admon'       => 0,
-                'admin_asesor'=> 0,
-                'seguro'      => 0,
-                'afiliacion'  => 0,
-                'iva'         => 0,
-                'total'       => 0,   // el cliente no paga
-                'saldo_proximo'=> 0,
-                'usuario_id'  => Auth::id(),
-                'observacion' => $validated['observacion'] ?? null,
+                'v_eps'            => $vEpsRetiro,
+                'v_arl'            => $vArlRetiro,
+                'v_afp'            => $vAfpRetiro,
+                'v_caja'           => $vCajaRetiro,
+                'total_ss'         => $totalSsRetiro,
+                'mora'             => $moraRetiro,  // campo dedicado mora (no es ingreso)
+                'admon'            => 0,
+                'admin_asesor'     => 0,
+                'seguro'           => 0,
+                'afiliacion'       => 0,
+                'iva'              => 0,
+                'total'            => 0,   // el cliente no paga
+                'saldo_proximo'    => 0,
+                'n_plano'          => $nPlano, // ← FIX: la factura también debe tener el n_plano
+                'usuario_id'       => Auth::id(),
+                'observacion'      => $validated['observacion'] ?? null,
             ]);
 
-            // 3) Mes/año del plano:
-            //    - Dependientes (tipo_modalidad_id ≠ 11): mes vencido = mes_formulario - 1
-            //    - Independientes mes actual (tipo 11) o retiro informativo: mes = mes_formulario
-            $esIndepMesActualRet = (int)$contrato->tipo_modalidad_id === 11;
-            if ($tipoRetiro === 'real' && !$esIndepMesActualRet) {
-                $mesPlan  = (int)$validated['mes_plano'] > 1 ? (int)$validated['mes_plano'] - 1 : 12;
-                $anioPlan = (int)$validated['mes_plano'] > 1
-                    ? (int)$validated['anio_plano']
-                    : (int)$validated['anio_plano'] - 1;
-            } else {
-                $mesPlan  = (int)$validated['mes_plano'];
-                $anioPlan = (int)$validated['anio_plano'];
-            }
+            // 4) Mes/año del plano:
+            //    validated['mes_plano'] = mes de cotización (vencido) que ingresa el usuario.
+            //    El módulo de planos con mes=7 busca mes_plano=6 (mesVencido = mes-1),
+            //    que coincide con validated['mes_plano'] cuando el usuario ingresa Junio=6
+            //    y la factura queda registrada en Julio (mesFactura = mes_plano + 1).
+            //    NO se resta 1: validated['mes_plano'] ya ES el mes de cotización correcto.
+            $mesPlan  = (int)$validated['mes_plano'];
+            $anioPlan = (int)$validated['anio_plano'];
 
-            // n_plano del plano de retiro = plano actual de la RS.
-            // NOTA: El plano 100 es exclusivo del flujo "Duplicar Contrato" (IR rotation).
-            // El retiro normal — incluso en IR (id=12) — usa el n_plano de la RS.
-            $nPlano = $contrato->razon_social_id
-                ? (\App\Models\RazonSocial::find($contrato->razon_social_id)?->n_plano ?? 1)
-                : 1;
 
             // 4) Crear plano con fecha_ret y num_dias
             $cliente = $contrato->cliente;
