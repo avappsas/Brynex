@@ -890,24 +890,24 @@ function seleccionarResultadoCierre(val) {
         cardPos.style.borderColor = '#22c55e';
         cardPos.style.background = 'rgba(34,197,94,0.06)';
         cardPos.querySelector('strong').style.color = '#15803d';
-        cardPos.querySelector('span:last-child').style.color = '#166534';
+        cardPos.querySelector('span:last-of-type').style.color = '#166534';
         radioPos.checked = true;
         
         cardNeg.style.borderColor = '#e2e8f0';
         cardNeg.style.background = '#f8fafc';
         cardNeg.querySelector('strong').style.color = '#475569';
-        cardNeg.querySelector('span:last-child').style.color = '#64748b';
+        cardNeg.querySelector('span:last-of-type').style.color = '#64748b';
     } else {
         cardNeg.style.borderColor = '#ef4444';
         cardNeg.style.background = 'rgba(239,68,68,0.06)';
         cardNeg.querySelector('strong').style.color = '#b91c1c';
-        cardNeg.querySelector('span:last-child').style.color = '#991b1b';
+        cardNeg.querySelector('span:last-of-type').style.color = '#991b1b';
         radioNeg.checked = true;
         
         cardPos.style.borderColor = '#e2e8f0';
         cardPos.style.background = '#f8fafc';
         cardPos.querySelector('strong').style.color = '#475569';
-        cardPos.querySelector('span:last-child').style.color = '#64748b';
+        cardPos.querySelector('span:last-of-type').style.color = '#64748b';
     }
 }
 

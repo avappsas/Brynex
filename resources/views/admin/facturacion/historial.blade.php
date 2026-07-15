@@ -217,6 +217,53 @@ table.hi-tbl{width:100%;border-collapse:collapse;font-size:.77rem}
              @endphp
             @php
             $vSS = ($f->v_eps ?? 0) + ($f->v_afp ?? 0) + ($f->v_arl ?? 0) + ($f->v_caja ?? 0);
+            // Datos normalizados del plano para el modal — evita serializar la relación completa
+            $planoModal = null;
+            if ($f->plano) {
+                $p = $f->plano;
+                $ibcSalud = (float)($p->ibc_salud ?? 0);
+                // Tarifas calculadas desde valores de factura ÷ IBC (la tabla planos no las almacena)
+                $tarEps   = $ibcSalud > 0 ? round(($f->v_eps  ?? 0) / $ibcSalud * 100, 2) : 0;
+                $tarAfp   = $ibcSalud > 0 ? round(($f->v_afp  ?? 0) / $ibcSalud * 100, 2) : 0;
+                $tarArl   = $ibcSalud > 0 ? round(($f->v_arl  ?? 0) / $ibcSalud * 100, 2) : 0;
+                $tarCaja  = $ibcSalud > 0 ? round(($f->v_caja ?? 0) / $ibcSalud * 100, 2) : 0;
+                $planoModal = [
+                    // Identificación
+                    'razon_social_nombre' => $p->razon_social // campo string legacy
+                                         ?? $f->plano->razonSocial?->razon_social
+                                         ?? $f->razonSocial?->razon_social
+                                         ?? '—',
+                    'n_plano'      => $p->n_plano,
+                    'tipo_p'       => $p->tipo_p ?? $p->tipo_reg,
+                    // Días: num_dias es el campo real de la tabla planos
+                    'num_dias'     => (int)($p->num_dias ?? $f->dias_cotizados ?? 0),
+                    'ibc_salud'    => $ibcSalud,
+                    'salario_basico' => (float)($p->salario_basico ?? 0),
+                    'ing'          => (bool)($p->ing ?? false),
+                    'fecha_ing'    => $p->fecha_ing ?? null,
+                    // Entidades (snapshots del plano)
+                    'nombre_eps'   => $p->nombre_eps,
+                    'cod_eps'      => $p->cod_eps,
+                    'nombre_afp'   => $p->nombre_afp,
+                    'cod_afp'      => $p->cod_afp,
+                    'nombre_arl'   => $p->nombre_arl,
+                    'cod_arl'      => $p->cod_arl,
+                    'nivel_riesgo' => $p->nivel_riesgo ?? '',
+                    'nombre_caja'  => $p->nombre_caja,
+                    'cod_caja'     => $p->cod_caja,
+                    // Valores SS — tomados de la factura (fuente de verdad)
+                    'val_eps'      => (float)($f->v_eps  ?? 0),
+                    'val_afp'      => (float)($f->v_afp  ?? 0),
+                    'val_arl'      => (float)($f->v_arl  ?? 0),
+                    'val_caja'     => (float)($f->v_caja ?? 0),
+                    'total_cot'    => (float)($f->total_ss ?? $vSS),
+                    // Tarifas calculadas
+                    'tar_salud'    => $tarEps,
+                    'tar_pension'  => $tarAfp,
+                    'tar_arl'      => $tarArl,
+                    'tar_caja'     => $tarCaja,
+                ];
+            }
             @endphp
             <tr>
                 <td style="font-family:monospace;font-weight:800;color:#1d4ed8;font-size:.76rem">#{{ $f->numero_factura ?? '—' }}</td>
@@ -272,7 +319,7 @@ table.hi-tbl{width:100%;border-collapse:collapse;font-size:.77rem}
                         {{-- Recibo --}}
                         <button onclick="abrirRecibo(
                                     '{{ route('admin.facturacion.recibo', $f->id) }}?modal=1&individual=1',
-                                    {{ $f->plano ? json_encode($f->plano) : 'null' }},
+                                    {{ $planoModal ? json_encode($planoModal) : 'null' }},
                                     '{{ ($meses[$f->mes] ?? '') . ' ' . $f->anio }}'
                                 )"
                                 class="btn-act-sm btn-recibo" title="Ver recibo">
@@ -290,7 +337,7 @@ table.hi-tbl{width:100%;border-collapse:collapse;font-size:.77rem}
                         
                         @if($f->plano)
                         <button type="button" class="btn-act-sm btn-plano"
-                            onclick="verPlano({{ json_encode($f->plano) }}, '{{ $meses[$f->mes] ?? '' }} {{ $f->anio }}')"
+                            onclick="verPlano({{ $planoModal ? json_encode($planoModal) : 'null' }}, '{{ $meses[$f->mes] ?? '' }} {{ $f->anio }}')"
                             title="Ver datos del plano — también disponible dentro del recibo">
                             📋
                         </button>
@@ -548,10 +595,10 @@ function cerrarPlano() {
 
 function verPlano(p, periodo) {
     document.getElementById('mp-periodo').textContent = periodo;
-    document.getElementById('mp-rs').textContent      = p.razon_social || '—';
+    document.getElementById('mp-rs').textContent      = p.razon_social_nombre || '—';
     document.getElementById('mp-nplano').textContent  = p.n_plano || '—';
     document.getElementById('mp-tipo').textContent    = p.tipo_p || '—';
-    document.getElementById('mp-dias').textContent    = (p.num_dias_salud || 0) + ' días';
+    document.getElementById('mp-dias').textContent    = (p.num_dias || 0) + ' días';
     document.getElementById('mp-ibc').textContent     = HI_FMT(p.ibc_salud);
     document.getElementById('mp-sal').textContent     = HI_FMT(p.salario_basico);
     document.getElementById('mp-ing').textContent     = p.ing ? 'Sí (Afiliación)' : 'No';
