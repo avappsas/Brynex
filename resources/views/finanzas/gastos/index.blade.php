@@ -37,6 +37,9 @@
                 @if($categoriaId)
                     <input type="hidden" name="categoria_id" value="{{ $categoriaId }}">
                 @endif
+                @if(request('tipo'))
+                    <input type="hidden" name="tipo" value="{{ request('tipo') }}">
+                @endif
             </form>
         </div>
     </div>
@@ -44,11 +47,18 @@
     {{-- Header --}}
     <div class="fin-header-section">
         <div class="header-text">
-            <h1>📤 Transacciones Diarias</h1>
-            <p>Monitorea tus gastos e ingresos esporádicos. 
-                Egresos: <strong style="color:#ef4444; font-size:1.15rem;">${{ number_format($totalGastos, 0, ',', '.') }} COP</strong> | 
-                Entradas: <strong style="color:#10b981; font-size:1.15rem;">${{ number_format($totalIngresos ?? 0, 0, ',', '.') }} COP</strong>
-            </p>
+            @if(request('tipo') === 'prestamo')
+                <h1>🤝 Transacciones Diarias (Préstamos)</h1>
+                <p>Monitorea tus préstamos del mes seleccionado.
+                    Total Préstamos: <strong style="color:#f59e0b; font-size:1.15rem;">${{ number_format($totalPrestamos, 0, ',', '.') }} COP</strong>
+                </p>
+            @else
+                <h1>📤 Transacciones Diarias</h1>
+                <p>Monitorea tus gastos e ingresos esporádicos. 
+                    Egresos: <strong style="color:#ef4444; font-size:1.15rem;">${{ number_format($totalGastos, 0, ',', '.') }} COP</strong> | 
+                    Entradas: <strong style="color:#10b981; font-size:1.15rem;">${{ number_format($totalIngresos ?? 0, 0, ',', '.') }} COP</strong>
+                </p>
+            @endif
         </div>
         <div>
             <button @click="openCrear = true" class="btn-fin success" style="background:linear-gradient(135deg, #4f46e5, #4338ca);">
@@ -57,17 +67,31 @@
         </div>
     </div>
 
-    {{-- Filtro de Categoría Simple con Select --}}
-    <div class="filtros-dropdown-bx" style="margin-top:1rem; margin-bottom:1.25rem; display:flex; gap:0.5rem; align-items:center;">
-        <label style="font-size:0.8rem; font-weight:700; color:#475569;">Filtrar por Categoría:</label>
-        <select onchange="window.location.href=this.value" class="select-fin" style="padding:0.45rem 0.75rem; border-radius:8px; border:1px solid #cbd5e1; font-size:0.8rem; outline:none; background:#fff; font-weight:700; cursor:pointer;">
-            <option value="{{ route('finanzas.gastos.index', ['anio' => $anio, 'mes' => $mes]) }}" @selected(!$categoriaId)>📂 Todas las categorías</option>
-            @foreach($categorias as $cat)
-                <option value="{{ route('finanzas.gastos.index', ['anio' => $anio, 'mes' => $mes, 'categoria_id' => $cat->id]) }}" @selected($categoriaId == $cat->id)>
-                    {{ $cat->icono }} {{ $cat->nombre }}
-                </option>
-            @endforeach
-        </select>
+    {{-- Filtro de Categoría Simple con Select + Filtros de Tipo --}}
+    <div style="margin-top:1rem; margin-bottom:1.25rem; display:flex; flex-wrap:wrap; gap:1rem; align-items:center; background:#fff; padding:0.75rem 1rem; border-radius:12px; border:1px solid #e2e8f0; box-shadow:0 1px 3px rgba(0,0,0,0.02);">
+        <div style="display:flex; gap:0.5rem; align-items:center;">
+            <label style="font-size:0.8rem; font-weight:700; color:#475569;">Categoría:</label>
+            <select onchange="window.location.href=this.value" class="select-fin" style="padding:0.4rem 0.75rem; border-radius:8px; border:1px solid #cbd5e1; font-size:0.8rem; outline:none; background:#fff; font-weight:700; cursor:pointer;">
+                <option value="{{ route('finanzas.gastos.index', ['anio' => $anio, 'mes' => $mes, 'tipo' => request('tipo')]) }}" @selected(!$categoriaId)>📂 Todas las categorías</option>
+                @foreach($categorias as $cat)
+                    <option value="{{ route('finanzas.gastos.index', ['anio' => $anio, 'mes' => $mes, 'categoria_id' => $cat->id, 'tipo' => request('tipo')]) }}" @selected($categoriaId == $cat->id)>
+                        {{ $cat->icono }} {{ $cat->nombre }}
+                    </option>
+                @endforeach
+            </select>
+        </div>
+
+        <div style="display:flex; gap:0.4rem; align-items:center;">
+            <span style="font-size:0.8rem; font-weight:700; color:#475569; margin-right:0.25rem;">Vista:</span>
+            <a href="{{ route('finanzas.gastos.index', ['anio' => $anio, 'mes' => $mes, 'categoria_id' => $categoriaId]) }}"
+               style="padding:0.4rem 0.85rem; border-radius:8px; font-size:0.78rem; text-decoration:none; font-weight:700; border:1px solid #cbd5e1; transition:all 0.15s; display:flex; align-items:center; gap:0.25rem; {{ !request('tipo') ? 'background:#4f46e5; color:#fff; border-color:#4f46e5; box-shadow:0 2px 4px rgba(79,70,229,0.2);' : 'background:#fff; color:#475569;' }}">
+                💼 General (Excluir Préstamos)
+            </a>
+            <a href="{{ route('finanzas.gastos.index', ['anio' => $anio, 'mes' => $mes, 'categoria_id' => $categoriaId, 'tipo' => 'prestamo']) }}"
+               style="padding:0.4rem 0.85rem; border-radius:8px; font-size:0.78rem; text-decoration:none; font-weight:700; border:1px solid #cbd5e1; transition:all 0.15s; display:flex; align-items:center; gap:0.25rem; {{ request('tipo') === 'prestamo' ? 'background:#f59e0b; color:#fff; border-color:#f59e0b; box-shadow:0 2px 4px rgba(245,158,11,0.2);' : 'background:#fff; color:#475569;' }}">
+                🤝 Préstamos <span style="font-size:0.72rem; padding:0.1rem 0.35rem; border-radius:6px; background:{{ request('tipo') === 'prestamo' ? 'rgba(255,255,255,0.2)' : '#f1f5f9' }}">${{ number_format($totalPrestamos, 0, ',', '.') }}</span>
+            </a>
+        </div>
     </div>
 
     {{-- Listado de Gastos (Escritorio) --}}

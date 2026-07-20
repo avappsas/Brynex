@@ -47,7 +47,15 @@ class GastoController extends Controller
         // Cuentas activas para el selector de origen del dinero
         $cuentas = \App\Models\Finanzas\Cuenta::where('user_id', $user)->activas()->orderBy('orden')->get();
 
-        // Gastos filtrados del período (incluye ingresos esporádicos)
+        // Query base para el cálculo de totales generales (sin filtros de tipo ni categoría)
+        $basePeriodQuery = Gasto::where('user_id', $user)
+            ->whereYear('fecha', $anio)
+            ->whereMonth('fecha', $mes)
+            ->get();
+
+        $totalPrestamos = $basePeriodQuery->where('tipo_movimiento', 'prestamo')->sum('monto');
+
+        // Gastos filtrados del período
         $query = Gasto::with('categoria')
             ->where('user_id', $user)
             ->whereYear('fecha', $anio)
@@ -55,6 +63,15 @@ class GastoController extends Controller
 
         if ($categoriaId) {
             $query->where('categoria_id', $categoriaId);
+        }
+
+        // Filtro por tipo de movimiento
+        $tipo = $request->input('tipo');
+        if ($tipo) {
+            $query->where('tipo_movimiento', $tipo);
+        } else {
+            // Por defecto, excluimos los préstamos del listado general
+            $query->where('tipo_movimiento', '!=', 'prestamo');
         }
 
         $gastos = $query->orderBy('fecha', 'desc')->get();
@@ -81,6 +98,7 @@ class GastoController extends Controller
             'cuentas',
             'totalGastos',
             'totalIngresos',
+            'totalPrestamos',
             'anio',
             'mes',
             'categoriaId'

@@ -24,11 +24,33 @@
         </div>
     </div>
 
-    {{-- Header --}}
-    <div class="fin-header-section">
-        <div class="header-text">
-            <h1>🏗️ Proyectos de Negocio</h1>
-            <p>Monitorea y calcula la rentabilidad neta de proyectos comerciales individuales (ej: CuentaFacil) ingresando sus propios flujos de caja.</p>
+    {{-- Header Banner con Gradiente --}}
+    <div style="background: linear-gradient(135deg, #0a1628 0%, #0d2550 60%, #1e40af 100%); border-radius: 14px; padding: 1.5rem 2rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; box-shadow: 0 4px 15px rgba(0,0,0,0.15); margin-bottom: 1.5rem; color: #fff;">
+        <div>
+            <h1 style="font-size: 1.4rem; font-weight: 700; color: #fff; margin: 0; display: flex; align-items: center; gap: 0.5rem;">
+                🏗️ Proyectos de Negocio
+            </h1>
+            <p style="font-size: 0.8rem; color: rgba(255,255,255,0.75); margin: 0.25rem 0 0 0; font-weight: 400;">
+                Monitorea y calcula la rentabilidad neta de proyectos comerciales individuales ingresando sus propios flujos de caja.
+            </p>
+        </div>
+        
+        {{-- Selector de Año --}}
+        <div style="background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.15); border-radius: 10px; padding: 0.6rem 1.25rem; min-width: 180px;">
+            <form method="GET" action="{{ route('finanzas.proyectos.index') }}" id="filterForm">
+                <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                    <label style="font-size: 0.62rem; color: rgba(255,255,255,0.7); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Año de Consulta</label>
+                    <select name="anio" onchange="document.getElementById('filterForm').submit()" style="padding: 0.35rem; font-size: 0.8rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); background: rgba(10, 22, 40, 0.85); color: #fff; width: 100%; cursor: pointer;">
+                        <option value="todos" @selected($anio === 'todos')>Todos los Años</option>
+                        @foreach($aniosDisponibles as $a)
+                            <option value="{{ $a }}" @selected($anio !== 'todos' && (int)$anio === (int)$a)>Año {{ $a }}</option>
+                        @endforeach
+                        @if(!in_array(date('Y'), $aniosDisponibles))
+                            <option value="{{ date('Y') }}" @selected($anio !== 'todos' && (int)$anio === (int)date('Y'))>Año {{ date('Y') }}</option>
+                        @endif
+                    </select>
+                </div>
+            </form>
         </div>
     </div>
 
@@ -39,25 +61,28 @@
                 <tr>
                     <th>Nombre del Proyecto</th>
                     <th>Descripción</th>
-                    <th style="text-align:right;">Ingresos Totales</th>
-                    <th style="text-align:right;">Egresos Totales</th>
-                    <th style="text-align:right;">Balance Neto</th>
+                    <th style="text-align:right;">
+                        @if($anio === 'todos') Ingresos (Histórico) @else Ingresos ({{ $anio }}) @endif
+                    </th>
+                    <th style="text-align:right;">
+                        @if($anio === 'todos') Egresos (Histórico) @else Egresos ({{ $anio }}) @endif
+                    </th>
+                    <th style="text-align:right;">
+                        @if($anio === 'todos') Balance Neto (Histórico) @else Balance Neto ({{ $anio }}) @endif
+                    </th>
                     <th style="text-align:center;">Estado</th>
                     <th style="text-align:center; width:15%;">Acciones</th>
                 </tr>
             </thead>
             <tbody>
                 @forelse($proyectos as $proy)
-                    @php
-                        $balance = $proy->ingresos_total - $proy->egresos_total;
-                    @endphp
                     <tr>
                         <td><strong>{{ $proy->nombre }}</strong></td>
                         <td style="color:#64748b; font-size:0.75rem;">{{ $proy->descripcion ?: '-' }}</td>
-                        <td style="text-align:right; color:#16a34a; font-weight:600;">${{ number_format($proy->ingresos_total, 0, ',', '.') }}</td>
-                        <td style="text-align:right; color:#b91c1c;">${{ number_format($proy->egresos_total, 0, ',', '.') }}</td>
-                        <td style="text-align:right; font-weight:700; color:{{ $balance >= 0 ? '#16a34a' : '#b91c1c' }};">
-                            ${{ number_format($balance, 0, ',', '.') }} COP
+                        <td style="text-align:right; color:#16a34a; font-weight:600;">${{ number_format($proy->periodo_entradas, 0, ',', '.') }}</td>
+                        <td style="text-align:right; color:#b91c1c;">${{ number_format($proy->periodo_salidas, 0, ',', '.') }}</td>
+                        <td style="text-align:right; font-weight:700; color:{{ $proy->periodo_balance >= 0 ? '#16a34a' : '#b91c1c' }};">
+                            ${{ number_format($proy->periodo_balance, 0, ',', '.') }} COP
                         </td>
                         <td style="text-align:center;">
                             @if($proy->activo)
@@ -68,7 +93,7 @@
                         </td>
                         <td style="text-align:center;">
                             <div style="display:flex; justify-content:center; gap:0.4rem;">
-                                <a href="{{ route('finanzas.proyectos.show', $proy->id) }}" class="btn-fin-small primary" style="background:#166534; color:#fff; text-decoration:none; padding:0.25rem 0.5rem;">
+                                <a href="{{ route('finanzas.proyectos.show', $proy->id) }}?anio={{ $anio }}" class="btn-fin-small primary" style="background:#166534; color:#fff; text-decoration:none; padding:0.25rem 0.5rem;">
                                     Ficha
                                 </a>
                                 <button @click="selectedProyecto = {{ json_encode($proy) }}; openEditar = true" class="btn-icon-bx edit" title="Editar">✏️</button>

@@ -22,14 +22,50 @@ class ProyectoController extends Controller
     /**
      * Muestra la lista de proyectos con sus balances consolidados (Entradas - Salidas).
      */
-    public function index()
+    public function index(Request $request)
     {
+        // Obtener el año de consulta, por defecto el actual
+        $anioActual = (int) date('Y');
+        $anio = $request->get('anio');
+
+        // Determinar qué años tienen movimientos en total para llenar el select
+        $aniosDisponibles = DB::connection('finanzas')
+            ->table('finanzas_proyecto_movimientos')
+            ->selectRaw('YEAR(fecha) as anio')
+            ->distinct()
+            ->orderBy('anio', 'desc')
+            ->pluck('anio')
+            ->toArray();
+
+        if ($anio === null) {
+            if (!empty($aniosDisponibles)) {
+                $anio = in_array($anioActual, $aniosDisponibles) ? $anioActual : $aniosDisponibles[0];
+            } else {
+                $anio = $anioActual;
+            }
+        }
+
         $proyectos = Proyecto::where('user_id', Auth::id())
             ->orderBy('activo', 'desc')
             ->orderBy('nombre')
             ->get();
 
-        return view('finanzas.proyectos.index', compact('proyectos'));
+        // Para cada proyecto, cargaremos dinámicamente las entradas y salidas de ese año específico (o total)
+        foreach ($proyectos as $proy) {
+            $queryEntradas = $proy->movimientos()->where('tipo', 'ingreso');
+            $querySalidas = $proy->movimientos()->where('tipo', 'egreso');
+
+            if ($anio !== 'todos') {
+                $queryEntradas->whereYear('fecha', (int) $anio);
+                $querySalidas->whereYear('fecha', (int) $anio);
+            }
+
+            $proy->periodo_entradas = (float) $queryEntradas->sum('monto');
+            $proy->periodo_salidas = (float) $querySalidas->sum('monto');
+            $proy->periodo_balance = $proy->periodo_entradas - $proy->periodo_salidas;
+        }
+
+        return view('finanzas.proyectos.index', compact('proyectos', 'anio', 'aniosDisponibles'));
     }
 
     public function store(Request $request)
@@ -54,17 +90,71 @@ class ProyectoController extends Controller
     /**
      * Muestra el detalle del proyecto con todo su historial de movimientos.
      */
-    public function show($id)
+    public function show(Request $request, $id)
     {
-        $proyecto = Proyecto::where('user_id', Auth::id())
-            ->with(['movimientos' => function ($q) {
-                $q->orderBy('fecha', 'desc')->orderBy('id', 'desc');
-            }])
-            ->findOrFail($id);
+        $proyecto = Proyecto::where('user_id', Auth::id())->findOrFail($id);
 
+        // Años disponibles en los movimientos de este proyecto para el filtro
+        $aniosDisponibles = $proyecto->movimientos()
+            ->selectRaw('YEAR(fecha) as anio')
+            ->distinct()
+            ->orderBy('anio', 'desc')
+            ->pluck('anio')
+            ->toArray();
+
+        // Determinar año seleccionado: si no se provee, por defecto el actual
+        // o el más reciente si el actual no tiene datos.
+        $anioActual = (int) date('Y');
+        $anio = $request->get('anio');
+
+        if ($anio === null) {
+            if (!empty($aniosDisponibles)) {
+                $anio = in_array($anioActual, $aniosDisponibles) ? $anioActual : $aniosDisponibles[0];
+            } else {
+                $anio = $anioActual;
+            }
+        }
+
+        // Obtener movimientos ordenados cronológicamente
+        $queryMovs = $proyecto->movimientos()
+            ->orderBy('fecha', 'asc')
+            ->orderBy('id', 'asc');
+
+        if ($anio !== 'todos') {
+            $queryMovs->whereYear('fecha', (int) $anio);
+        }
+
+        $movimientos = $queryMovs->get();
+
+        // Calcular saldos acumulados e históricos del período
+        $saldoAcumulado = 0;
+        $totalEntradas = 0;
+        $totalSalidas = 0;
+
+        foreach ($movimientos as $mov) {
+            if ($mov->tipo === 'ingreso' || $mov->tipo === 'entrada') {
+                $totalEntradas += $mov->monto;
+                $saldoAcumulado += $mov->monto;
+            } else {
+                $totalSalidas += $mov->monto;
+                $saldoAcumulado -= $mov->monto;
+            }
+            $mov->saldo_acumulado = $saldoAcumulado;
+        }
+
+        $balancePeriodo = $totalEntradas - $totalSalidas;
         $cuentas = \App\Models\Finanzas\Cuenta::where('user_id', Auth::id())->activas()->orderBy('orden')->get();
 
-        return view('finanzas.proyectos.show', compact('proyecto', 'cuentas'));
+        return view('finanzas.proyectos.show', compact(
+            'proyecto',
+            'cuentas',
+            'movimientos',
+            'anio',
+            'aniosDisponibles',
+            'totalEntradas',
+            'totalSalidas',
+            'balancePeriodo'
+        ));
     }
 
     public function update(Request $request, $id)
@@ -91,16 +181,23 @@ class ProyectoController extends Controller
         $proyecto = Proyecto::where('user_id', Auth::id())->findOrFail($id);
 
         $request->validate([
-            'tipo' => 'required|string|in:entrada,salida',
+            'tipo' => 'required|string|in:entrada,salida,ingreso,egreso',
             'monto' => 'required|numeric|min:1',
             'fecha' => 'required|date',
             'observacion' => 'nullable|string|max:255',
             'cuenta_id' => 'nullable|integer',
         ]);
 
+        $tipo = $request->tipo;
+        if ($tipo === 'entrada') {
+            $tipo = 'ingreso';
+        } elseif ($tipo === 'salida') {
+            $tipo = 'egreso';
+        }
+
         ProyectoMovimiento::create([
             'proyecto_id' => $proyecto->id,
-            'tipo'        => $request->tipo,
+            'tipo'        => $tipo,
             'monto'       => $request->monto,
             'fecha'       => $request->fecha,
             'observacion' => $request->observacion,
@@ -113,6 +210,45 @@ class ProyectoController extends Controller
         );
 
         return redirect()->route('finanzas.proyectos.show', $proyecto->id)->with('success', 'Movimiento registrado con éxito.');
+    }
+
+    /**
+     * Actualiza un movimiento de proyecto existente.
+     */
+    public function actualizarMovimiento(Request $request, $id)
+    {
+        $movimiento = ProyectoMovimiento::findOrFail($id);
+        $proyecto = Proyecto::where('user_id', Auth::id())->findOrFail($movimiento->proyecto_id);
+
+        $request->validate([
+            'tipo' => 'required|string|in:entrada,salida,ingreso,egreso',
+            'monto' => 'required|numeric|min:1',
+            'fecha' => 'required|date',
+            'observacion' => 'nullable|string|max:255',
+            'cuenta_id' => 'nullable|integer',
+        ]);
+
+        $tipo = $request->tipo;
+        if ($tipo === 'entrada') {
+            $tipo = 'ingreso';
+        } elseif ($tipo === 'salida') {
+            $tipo = 'egreso';
+        }
+
+        $movimiento->update([
+            'tipo'        => $tipo,
+            'monto'       => $request->monto,
+            'fecha'       => $request->fecha,
+            'observacion' => $request->observacion,
+            'cuenta_id'   => $this->resolverCuenta($request->cuenta_id),
+        ]);
+
+        $this->invalidarCacheFinanzas(
+            (int) date('Y', strtotime($request->fecha)),
+            (int) date('n', strtotime($request->fecha))
+        );
+
+        return redirect()->route('finanzas.proyectos.show', $proyecto->id)->with('success', 'Movimiento actualizado con éxito.');
     }
 
     /**

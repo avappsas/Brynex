@@ -129,10 +129,10 @@
                 <h3>📂 Módulos Financieros</h3>
                 <div class="modulos-list">
                     @php $modulos = [
-                        ['finanzas.cuentas.index','💳','eef2ff','4338ca','Cuentas y Bolsillos','Banco, efectivo y transferencias'],
                         ['finanzas.entradas.index','📥','d1fae5','065f46','Entradas / Fuentes','Ingresos fijos y variables'],
                         ['finanzas.gastos.index','💸','e0f2fe','0369a1','Transacciones Diarias','Gastos cotidianos e ingresos extras'],
                         ['finanzas.prestamos.index','🤝','fef3c7','92400e','Préstamos a Terceros','Control de deudas e intereses'],
+                        ['finanzas.cuentas.index','💳','eef2ff','4338ca','Cuentas y Bolsillos','Banco, efectivo y transferencias'],
                         ['finanzas.prestamos.cuenta-corriente','💼','f3e8ff','6b21a8','Cuenta Corriente (Servicios)','Cliente recurrente de trabajos'],
                         ['finanzas.inversiones.index','🪙','e0f2fe','075985','Inversiones Cripto','Binance USDT y rentabilidades'],
                         ['finanzas.patrimonio.index','🏠','e0f7fa','006064','Patrimonio Físico','Vehículos, apartamentos y gastos'],

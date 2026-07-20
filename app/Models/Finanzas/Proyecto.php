@@ -68,7 +68,7 @@ class Proyecto extends BaseFinanzasModel
      */
     public function getEntradasTotalAttribute(): float
     {
-        return (float) $this->movimientos()->where('tipo', 'entrada')->sum('monto');
+        return (float) $this->movimientos()->where('tipo', 'ingreso')->sum('monto');
     }
 
     /**
@@ -76,6 +76,6 @@ class Proyecto extends BaseFinanzasModel
      */
     public function getSalidasTotalAttribute(): float
     {
-        return (float) $this->movimientos()->where('tipo', 'salida')->sum('monto');
+        return (float) $this->movimientos()->where('tipo', 'egreso')->sum('monto');
     }
 }
