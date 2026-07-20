@@ -4,6 +4,7 @@
 @section('modulo', 'Editar Préstamo')
 
 @section('contenido')
+@include('finanzas.partials._responsive_fin')
 <div class="finanzas-container" style="max-width: 600px;">
 
     {{-- Breadcrumb --}}
@@ -266,4 +267,8 @@ textarea.form-input-bx {
     transform: translateY(0);
 }
 </style>
+@endpush
+
+@push('styles')
+@include('finanzas.partials._responsive_movil')
 @endpush

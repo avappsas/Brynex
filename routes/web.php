@@ -243,6 +243,15 @@ Route::middleware('auth')->group(function () {
             Route::post('/confirmar-pago',      [$pp, 'confirmarPago'])    ->name('confirmar_pago');
             Route::get('/api/razon/{id}',       [$pp, 'apiRazonSocial'])   ->name('api.razon');
             Route::get('/api/resumen',           [$pp, 'apiResumenPlanos']) ->name('api.resumen');
+
+            // Envío de planillas por WhatsApp
+            Route::get('/envio-planillas',                     [$pp, 'enviosPlanillaIndex'])->name('envio_planillas');
+            Route::get('/envio-planillas/api',                 [$pp, 'enviosPlanillaApi'])->name('envio_planillas.api');
+            Route::post('/envio-planillas/enviar',             [$pp, 'enviosPlanillaEnviar'])->name('envio_planillas.enviar');
+            Route::post('/envio-planillas/{detalleId}/reenviar', [$pp, 'enviosPlanillaReenviar'])->name('envio_planillas.reenviar');
+            Route::get('/envio-planillas/historial',           [$pp, 'enviosPlanillaHistorial'])->name('envio_planillas.historial');
+            Route::get('/envio-planillas/{loteId}/detalle',    [$pp, 'enviosPlanillaLoteDetalle'])->name('envio_planillas.lote_detalle');
+            Route::post('/envio-planillas/crear-plantilla',    [$pp, 'enviosPlanillaCrearPlantilla'])->name('envio_planillas.crear_plantilla');
         });
 
         // ── Cobros ───────────────────────────────────────────────────────
@@ -574,9 +583,18 @@ Route::middleware('auth')->group(function () {
         $inv = \App\Http\Controllers\Finanzas\InversionController::class;
         $pat = \App\Http\Controllers\Finanzas\PatrimonioController::class;
         $pro = \App\Http\Controllers\Finanzas\ProyectoController::class;
+        $cta = \App\Http\Controllers\Finanzas\CuentaController::class;
 
         // Dashboard
         Route::get('/', [$ns, 'index'])->name('dashboard');
+
+        // Cuentas / Bolsillos
+        Route::get('/cuentas',                   [$cta, 'index'])->name('cuentas.index');
+        Route::post('/cuentas',                  [$cta, 'store'])->name('cuentas.store');
+        Route::put('/cuentas/{cuenta}',          [$cta, 'update'])->name('cuentas.update');
+        Route::delete('/cuentas/{cuenta}',       [$cta, 'destroy'])->name('cuentas.destroy');
+        Route::post('/cuentas/transferir',       [$cta, 'transferir'])->name('cuentas.transferir');
+        Route::delete('/cuentas/transferencia/{id}', [$cta, 'eliminarTransferencia'])->name('cuentas.transferencia.destroy');
 
         // Entradas / Fuentes
         Route::get('/entradas',                  [$ent, 'index'])->name('entradas.index');
@@ -659,6 +677,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/proyectos/{proyecto}',      [$pro, 'show'])->name('proyectos.show');
         Route::put('/proyectos/{proyecto}',      [$pro, 'update'])->name('proyectos.update');
         Route::post('/proyectos/{proyecto}/movimiento', [$pro, 'agregarMovimiento'])->name('proyectos.movimiento');
+        Route::delete('/proyectos-movimiento/{movimiento}', [$pro, 'eliminarMovimiento'])->name('proyectos.movimiento.destroy');
     });
 });
 

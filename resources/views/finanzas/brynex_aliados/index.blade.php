@@ -4,6 +4,7 @@
 @section('modulo', 'Cobros Aliados Brynex')
 
 @section('contenido')
+@include('finanzas.partials._responsive_fin')
 <div class="finanzas-container" x-data="brynexAliadosGrid()">
 
     {{-- Breadcrumb & Period Selector --}}
@@ -782,4 +783,8 @@ function brynexAliadosGrid() {
     }
 }
 </script>
+@endpush
+
+@push('styles')
+@include('finanzas.partials._responsive_movil')
 @endpush

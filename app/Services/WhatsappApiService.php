@@ -189,18 +189,51 @@ class WhatsappApiService
 
         // Header
         if ($plantilla->header_tipo) {
-            $componentes[] = [
+            $headerComp = [
                 'type'   => 'HEADER',
                 'format' => $plantilla->header_tipo,
                 'text'   => $plantilla->header_tipo === 'TEXT' ? $plantilla->header_valor : null,
             ];
+
+            if (in_array($plantilla->header_tipo, ['DOCUMENT', 'IMAGE', 'VIDEO'])) {
+                // Agregar ejemplo para el header multimedia (exigido por Meta)
+                $ejemploUrl = 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf';
+                if ($plantilla->header_tipo === 'IMAGE') {
+                    $ejemploUrl = 'https://brynex.co/public/img/logo-brynex.png';
+                }
+                $headerComp['example'] = [
+                    'header_handle' => [$ejemploUrl]
+                ];
+            }
+            $componentes[] = $headerComp;
         }
 
         // Body
-        $componentes[] = [
+        $bodyComp = [
             'type' => 'BODY',
             'text' => $plantilla->cuerpo,
         ];
+
+        // Parsear si el cuerpo tiene variables de tipo {{1}}, {{2}}, etc. y agregar ejemplos (exigido por Meta)
+        preg_match_all('/\{\{(\d+)\}\}/', $plantilla->cuerpo, $matches);
+        if (!empty($matches[1])) {
+            $cantVariables = count(array_unique($matches[1]));
+            if ($cantVariables > 0) {
+                $muestras = [];
+                for ($v = 1; $v <= $cantVariables; $v++) {
+                    $muestras[] = match($v) {
+                        1 => 'Juan Perez',
+                        2 => 'ARUS Enlace',
+                        3 => '86659838',
+                        default => 'Ejemplo ' . $v
+                    };
+                }
+                $bodyComp['example'] = [
+                    'body_text' => [$muestras]
+                ];
+            }
+        }
+        $componentes[] = $bodyComp;
 
         // Footer
         if ($plantilla->footer) {
@@ -355,7 +388,59 @@ class WhatsappApiService
         }
     }
 
-    private function subirMedia(string $pathLocal, string $mimeType, array $creds): ?string
+    public function enviarTemplateConDocumento(
+        string $to,
+        WhatsappPlantilla $plantilla,
+        array $bodyParams,
+        string $mediaId,
+        string $filename,
+        WhatsappConfig $config
+    ): array {
+        $creds = $config->credencialesEfectivas();
+
+        $componentes = [
+            [
+                'type' => 'header',
+                'parameters' => [
+                    [
+                        'type' => 'document',
+                        'document' => [
+                            'id' => $mediaId,
+                            'filename' => $filename,
+                        ]
+                    ]
+                ]
+            ]
+        ];
+
+        if (!empty($bodyParams)) {
+            $bodyParamsFormatted = array_map(fn($val) => ['type' => 'text', 'text' => (string)$val], $bodyParams);
+            $componentes[] = ['type' => 'body', 'parameters' => $bodyParamsFormatted];
+        }
+
+        $payload = [
+            'messaging_product' => 'whatsapp',
+            'to'                => $this->normalizarNumero($to),
+            'type'              => 'template',
+            'template'          => [
+                'name'       => $plantilla->nombre,
+                'language'   => ['code' => $plantilla->idioma],
+                'components' => $componentes,
+            ],
+        ];
+
+        Log::debug('WhatsApp: enviando template con documento', [
+            'to'          => $to,
+            'plantilla'   => $plantilla->nombre,
+            'media_id'    => $mediaId,
+            'filename'    => $filename,
+            'componentes' => $componentes,
+        ]);
+
+        return $this->llamarApi($creds, $payload);
+    }
+
+    public function subirMedia(string $pathLocal, string $mimeType, array $creds): ?string
     {
         try {
             $contenido = Storage::disk('local')->get($pathLocal);

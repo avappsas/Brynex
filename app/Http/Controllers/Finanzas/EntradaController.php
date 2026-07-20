@@ -11,6 +11,8 @@ use Illuminate\Support\Facades\Auth;
 
 class EntradaController extends Controller
 {
+    use \App\Http\Controllers\Finanzas\Concerns\ResuelveCuenta;
+
     public function __construct()
     {
         $this->middleware('auth');
@@ -36,13 +38,15 @@ class EntradaController extends Controller
             ->get()
             ->groupBy(['fuente_id', 'mes']);
 
-        // 1. Obtener intereses generados por mes para este año
+        // 1. Obtener intereses generados por mes para este año (solo préstamos del usuario)
         $intereses = \Illuminate\Support\Facades\DB::connection('finanzas')
             ->table('finanzas_prestamo_movimientos')
-            ->whereYear('fecha', $anio)
-            ->where('tipo', 'interes_mensual')
-            ->selectRaw("MONTH(fecha) as mes, SUM(monto) as total")
-            ->groupByRaw("MONTH(fecha)")
+            ->join('finanzas_prestamos', 'finanzas_prestamo_movimientos.prestamo_id', '=', 'finanzas_prestamos.id')
+            ->where('finanzas_prestamos.user_id', $user->id)
+            ->whereYear('finanzas_prestamo_movimientos.fecha', $anio)
+            ->where('finanzas_prestamo_movimientos.tipo', 'interes_mensual')
+            ->selectRaw("MONTH(finanzas_prestamo_movimientos.fecha) as mes, SUM(finanzas_prestamo_movimientos.monto) as total")
+            ->groupByRaw("MONTH(finanzas_prestamo_movimientos.fecha)")
             ->pluck('total', 'mes')
             ->toArray();
 
@@ -56,14 +60,14 @@ class EntradaController extends Controller
             ->pluck('total', 'mes')
             ->toArray();
 
-        // 3. Obtener ingresos de Proyectos (entradas de flujo de caja de proyectos)
+        // 3. Obtener el NETO mensual de Proyectos (entradas - salidas de cada mes).
+        // Lo que queda del proyecto es lo que aporta a la entrada global (puede ser negativo).
         $proyectos = \Illuminate\Support\Facades\DB::connection('finanzas')
             ->table('finanzas_proyecto_movimientos')
             ->join('finanzas_proyectos', 'finanzas_proyecto_movimientos.proyecto_id', '=', 'finanzas_proyectos.id')
             ->where('finanzas_proyectos.user_id', $user->id)
             ->whereYear('finanzas_proyecto_movimientos.fecha', $anio)
-            ->where('finanzas_proyecto_movimientos.tipo', 'entrada')
-            ->selectRaw("MONTH(finanzas_proyecto_movimientos.fecha) as mes, SUM(finanzas_proyecto_movimientos.monto) as total")
+            ->selectRaw("MONTH(finanzas_proyecto_movimientos.fecha) as mes, SUM(CASE WHEN finanzas_proyecto_movimientos.tipo = 'entrada' THEN finanzas_proyecto_movimientos.monto ELSE -finanzas_proyecto_movimientos.monto END) as total")
             ->groupByRaw("MONTH(finanzas_proyecto_movimientos.fecha)")
             ->pluck('total', 'mes')
             ->toArray();
@@ -132,13 +136,13 @@ class EntradaController extends Controller
                 $entradas->put($fuente->id, collect());
                 for ($m = 1; $m <= 12; $m++) {
                     $total = $proyectos[$m] ?? 0;
-                    if ($total > 0) {
+                    if ($total != 0) {
                         $entradaObj = new Entrada([
                             'fuente_id' => $fuente->id,
                             'anio' => $anio,
                             'mes' => $m,
                             'monto' => $total,
-                            'observacion' => 'Calculado automáticamente de flujos de proyectos.',
+                            'observacion' => 'Neto de proyectos del mes (entradas - gastos del proyecto).',
                         ]);
                         $entradaObj->is_calculated = true;
                         
@@ -187,7 +191,9 @@ class EntradaController extends Controller
             ->orderBy('orden')
             ->get();
 
-        return view('finanzas.entradas.index', compact('fuentes', 'entradas', 'anio', 'categorias'));
+        $cuentas = \App\Models\Finanzas\Cuenta::where('user_id', $user->id)->activas()->orderBy('orden')->get();
+
+        return view('finanzas.entradas.index', compact('fuentes', 'entradas', 'anio', 'categorias', 'cuentas'));
     }
 
     /**
@@ -201,6 +207,7 @@ class EntradaController extends Controller
             'mes' => 'required|integer|between:1,12',
             'monto' => 'required|numeric|min:0',
             'observacion' => 'nullable|string|max:500',
+            'cuenta_id' => 'nullable|integer',
         ]);
 
         $user = Auth::user();
@@ -228,6 +235,7 @@ class EntradaController extends Controller
                 'user_id' => $user->id,
                 'monto' => $request->monto,
                 'observacion' => $request->observacion,
+                'cuenta_id' => $this->resolverCuenta($request->cuenta_id),
             ]
         );
 

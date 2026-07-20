@@ -118,7 +118,7 @@ class PrestamoLiquidacionService
      * @param string|null $observacion
      * @return array
      */
-    public function registrarPago(Prestamo $prestamo, float $monto, ?string $fecha = null, ?string $observacion = null, ?string $soportePath = null): array
+    public function registrarPago(Prestamo $prestamo, float $monto, ?string $fecha = null, ?string $observacion = null, ?string $soportePath = null, ?int $cuentaId = null): array
     {
         $fechaPago = $fecha ? Carbon::parse($fecha) : Carbon::now();
 
@@ -126,7 +126,7 @@ class PrestamoLiquidacionService
             return ['success' => false, 'message' => 'El monto del pago debe ser mayor a cero.'];
         }
 
-        return DB::transaction(function () use ($prestamo, $monto, $fechaPago, $observacion, $soportePath) {
+        return DB::transaction(function () use ($prestamo, $monto, $fechaPago, $observacion, $soportePath, $cuentaId) {
             // Liquidar únicamente intereses de meses completos a la fecha antes de aplicar el abono
             $interesPrevio = $this->liquidarPeriodo($prestamo, $fechaPago->toDateString(), true);
 
@@ -168,6 +168,7 @@ class PrestamoLiquidacionService
                     'saldo_despues' => $saldoAntes - $abonoInteres,
                     'observacion' => $observacion ?: "Abono a intereses acumulados.",
                     'soporte_path' => $soportePath,
+                    'cuenta_id' => $cuentaId,
                 ]);
             }
 
@@ -183,6 +184,7 @@ class PrestamoLiquidacionService
                     'saldo_despues' => $nuevoSaldo,
                     'observacion' => $observacion ?: "Abono a capital.",
                     'soporte_path' => $soportePath,
+                    'cuenta_id' => $cuentaId,
                 ]);
             }
 

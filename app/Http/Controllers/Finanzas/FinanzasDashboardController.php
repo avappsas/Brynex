@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Finanzas;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Finanzas\Concerns\DetectaDispositivoMovil;
 use App\Services\Finanzas\CriptoApiService;
 use App\Services\Finanzas\FinanzasAlertaService;
 use Illuminate\Http\Request;
@@ -10,6 +11,8 @@ use Illuminate\Support\Facades\Auth;
 
 class FinanzasDashboardController extends Controller
 {
+    use DetectaDispositivoMovil;
+
     protected FinanzasAlertaService $alertaService;
     protected CriptoApiService $criptoService;
 
@@ -44,6 +47,12 @@ class FinanzasDashboardController extends Controller
         // 5. Consolidado global e histórico
         $consolidado = $this->alertaService->getConsolidadoGlobal($user->id);
 
+        // 6. Cuentas / bolsillos con su saldo actual
+        $cuentas = \App\Models\Finanzas\Cuenta::conSaldos($user->id);
+
+        // 7. Evolución mensual del año para las gráficas
+        $evolucion = $this->alertaService->getEvolucionAnual($user->id, (int) $anio);
+
         // Si es dispositivo móvil, cargar la vista dedicada para celular
         if ($this->isMobileDevice($request)) {
             // Cargar transacciones de este mes para la pestaña Historial
@@ -70,6 +79,8 @@ class FinanzasDashboardController extends Controller
                 'gastosFaltantes',
                 'criptoPrecio',
                 'consolidado',
+                'cuentas',
+                'evolucion',
                 'anio',
                 'mes',
                 'transacciones',
@@ -84,17 +95,11 @@ class FinanzasDashboardController extends Controller
             'gastosFaltantes',
             'criptoPrecio',
             'consolidado',
+            'cuentas',
+            'evolucion',
             'anio',
             'mes'
         ));
     }
 
-    /**
-     * Detecta si el dispositivo es un celular analizando el User-Agent.
-     */
-    private function isMobileDevice(Request $request): bool
-    {
-        $userAgent = $request->header('User-Agent');
-        return (bool) preg_match('/(android|bb\d+|meego).+mobile|avantgo|bada\/|blackberry|blazer|compal|elaine|fennec|hiptop|iemobile|ip(hone|od)|iris|kindle|lge |maemo|midp|mmp|mobile.+firefox|netfront|opera m(ob|in)i|palm( os)?|phone|p(ixi|re)\/|plucker|pocket|psp|series(4|6)0|symbian|treo|up\.(browser|link)|vodafone|wap|windows ce|xda|xiino/i', $userAgent);
-    }
 }

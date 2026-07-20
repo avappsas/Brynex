@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Finanzas;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Finanzas\Concerns\DetectaDispositivoMovil;
 use App\Models\Finanzas\CategoriaGasto;
 use App\Models\Finanzas\Gasto;
 use App\Models\Finanzas\Patrimonio;
@@ -13,6 +14,9 @@ use Illuminate\Support\Facades\Storage;
 
 class GastoController extends Controller
 {
+    use DetectaDispositivoMovil;
+    use \App\Http\Controllers\Finanzas\Concerns\ResuelveCuenta;
+
     public function __construct()
     {
         $this->middleware('auth');
@@ -38,6 +42,9 @@ class GastoController extends Controller
 
         // Bienes de patrimonio en caso de marcar el gasto como adquisición
         $patrimonios = Patrimonio::where('user_id', $user)->activos()->get();
+
+        // Cuentas activas para el selector de origen del dinero
+        $cuentas = \App\Models\Finanzas\Cuenta::where('user_id', $user)->activas()->orderBy('orden')->get();
 
         // Gastos filtrados del período (incluye ingresos esporádicos)
         $query = Gasto::with('categoria')
@@ -70,6 +77,7 @@ class GastoController extends Controller
             'gastos',
             'categorias',
             'patrimonios',
+            'cuentas',
             'totalGastos',
             'totalIngresos',
             'anio',
@@ -86,6 +94,7 @@ class GastoController extends Controller
         $request->validate([
             'categoria_id' => 'required_without:nueva_categoria|nullable|integer',
             'nueva_categoria' => 'required_without:categoria_id|nullable|string|max:50',
+            'cuenta_id' => 'nullable|integer',
             'fecha' => 'required|date',
             'monto' => 'required|numeric|min:1',
             'descripcion' => 'nullable|string|max:255',
@@ -97,6 +106,7 @@ class GastoController extends Controller
 
         $user = Auth::user();
         $categoriaId = $request->categoria_id;
+        $cuentaId = $this->resolverCuenta($request->cuenta_id);
 
         // Si viene nueva categoría, la creamos al vuelo
         if (empty($categoriaId) && $request->filled('nueva_categoria')) {
@@ -129,6 +139,7 @@ class GastoController extends Controller
         Gasto::create([
             'user_id' => $user->id,
             'categoria_id' => $categoriaId,
+            'cuenta_id' => $cuentaId,
             'fecha' => $request->fecha,
             'monto' => $request->monto,
             'descripcion' => $request->descripcion,
@@ -151,6 +162,7 @@ class GastoController extends Controller
         $request->validate([
             'categoria_id' => 'required_without:nueva_categoria|nullable|integer',
             'nueva_categoria' => 'required_without:categoria_id|nullable|string|max:50',
+            'cuenta_id' => 'nullable|integer',
             'fecha' => 'required|date',
             'monto' => 'required|numeric|min:1',
             'descripcion' => 'nullable|string|max:255',
@@ -205,6 +217,7 @@ class GastoController extends Controller
 
         $gasto->update([
             'categoria_id' => $categoriaId,
+            'cuenta_id' => $this->resolverCuenta($request->cuenta_id) ?? $gasto->cuenta_id,
             'fecha' => $request->fecha,
             'monto' => $request->monto,
             'descripcion' => $request->descripcion,
@@ -339,12 +352,4 @@ class GastoController extends Controller
         return redirect()->route('finanzas.categorias.index')->with('success', 'Categoría desactivada.');
     }
 
-    /**
-     * Detecta si el dispositivo es un celular analizando el User-Agent.
-     */
-    private function isMobileDevice(Request $request): bool
-    {
-        $userAgent = $request->header('User-Agent');
-        return (bool) preg_match('/(android|bb\d+|meego).+mobile|avantgo|bada\/|blackberry|blazer|compal|elaine|fennec|hiptop|iemobile|ip(hone|od)|iris|kindle|lge |maemo|midp|mmp|mobile.+firefox|netfront|opera m(ob|in)i|palm( os)?|phone|p(ixi|re)\/|plucker|pocket|psp|series(4|6)0|symbian|treo|up\.(browser|link)|vodafone|wap|windows ce|xda|xiino/i', $userAgent);
-    }
 }

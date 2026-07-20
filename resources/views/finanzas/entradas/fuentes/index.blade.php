@@ -4,6 +4,7 @@
 @section('modulo', 'Fuentes de Ingreso')
 
 @section('contenido')
+@include('finanzas.partials._responsive_fin')
 <div class="finanzas-container" x-data="{ openCrear: false, openEditar: false, selectedFuente: {} }">
 
     {{-- Breadcrumb --}}
@@ -202,4 +203,8 @@
 .modal-foot-bx { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 1rem; border-top: 1px solid #cbd5e1; background: #f8fafc; }
 .btn-glass-bx { padding: 0.45rem 1rem; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.78rem; font-weight: 600; cursor: pointer; background: #fff; color: #475569; }
 </style>
+@endpush
+
+@push('styles')
+@include('finanzas.partials._responsive_movil')
 @endpush

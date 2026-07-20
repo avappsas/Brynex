@@ -463,8 +463,36 @@
                 <p style="margin-top: 0.75rem; color: #64748b; font-size: 0.85rem;">Cargando información...</p>
             </div>
 
-            <div id="modalWaContent" style="display: none; flex-direction: column; gap: 1.75rem;">
+            <div id="modalWaContent" style="display: none; flex-direction: column; gap: 1.5rem;">
                 
+                {{-- Tarjetas de contadores superiores --}}
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 0.25rem;">
+                    <div style="background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.15); padding: 0.75rem 1rem; border-radius: 12px; display: flex; flex-direction: column; gap: 0.25rem;">
+                        <span style="font-size: 0.65rem; font-weight: 700; color: #3b82f6; text-transform: uppercase; letter-spacing: 0.05em;">Lotes de Planillas</span>
+                        <div style="display: flex; align-items: baseline; gap: 0.4rem;">
+                            <span id="statPlanillasLotes" style="font-size: 1.3rem; font-weight: 800; color: #1e3a8a;">0</span>
+                            <span style="font-size: 0.72rem; color: #64748b;">lotes</span>
+                        </div>
+                        <span id="statPlanillasDetalle" style="font-size: 0.7rem; color: #64748b; margin-top: 0.1rem;">0 enviados</span>
+                    </div>
+                    <div style="background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.15); padding: 0.75rem 1rem; border-radius: 12px; display: flex; flex-direction: column; gap: 0.25rem;">
+                        <span style="font-size: 0.65rem; font-weight: 700; color: #10b981; text-transform: uppercase; letter-spacing: 0.05em;">Lotes de Cobros</span>
+                        <div style="display: flex; align-items: baseline; gap: 0.4rem;">
+                            <span id="statCobrosLotes" style="font-size: 1.3rem; font-weight: 800; color: #065f46;">0</span>
+                            <span style="font-size: 0.72rem; color: #64748b;">lotes</span>
+                        </div>
+                        <span id="statCobrosDetalle" style="font-size: 0.7rem; color: #64748b; margin-top: 0.1rem;">0 enviados</span>
+                    </div>
+                    <div style="background: rgba(245, 158, 11, 0.05); border: 1px solid rgba(245, 158, 11, 0.15); padding: 0.75rem 1rem; border-radius: 12px; display: flex; flex-direction: column; gap: 0.25rem;">
+                        <span style="font-size: 0.65rem; font-weight: 700; color: #f59e0b; text-transform: uppercase; letter-spacing: 0.05em;">Envíos Individuales</span>
+                        <div style="display: flex; align-items: baseline; gap: 0.4rem;">
+                            <span id="statIndividuales" style="font-size: 1.3rem; font-weight: 800; color: #78350f;">0</span>
+                            <span style="font-size: 0.72rem; color: #64748b;">envíos</span>
+                        </div>
+                        <span style="font-size: 0.7rem; color: #64748b; margin-top: 0.1rem;">Planillas (manuales / reenvíos)</span>
+                    </div>
+                </div>
+
                 {{-- Sección 1: Envíos Masivos (Lotes) --}}
                 <div>
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; border-bottom: 2px solid #e2e8f0; padding-bottom: 0.5rem;">
@@ -481,6 +509,7 @@
                                     <th style="padding: 0.5rem 0.75rem; font-size: 0.65rem;">Fecha</th>
                                     <th style="padding: 0.5rem 0.75rem; font-size: 0.65rem; text-align: center;">Lote ID</th>
                                     <th style="padding: 0.5rem 0.75rem; font-size: 0.65rem;">Plantilla</th>
+                                    <th style="padding: 0.5rem 0.75rem; font-size: 0.65rem;">Módulo</th>
                                     <th style="padding: 0.5rem 0.75rem; font-size: 0.65rem;">Tipo</th>
                                     <th style="padding: 0.5rem 0.75rem; font-size: 0.65rem; text-align: right;">Destinatarios</th>
                                     <th style="padding: 0.5rem 0.75rem; font-size: 0.65rem; text-align: right;">Enviados</th>
@@ -959,6 +988,13 @@
                 loader.style.display = 'none';
                 content.style.display = 'flex';
                 
+                // Rellenar tarjetas superiores de contadores
+                document.getElementById('statPlanillasLotes').textContent = data.lotes_planillas_cant;
+                document.getElementById('statPlanillasDetalle').textContent = `${new Intl.NumberFormat('es-CO').format(data.lotes_planillas_env)} enviados`;
+                document.getElementById('statCobrosLotes').textContent = data.lotes_cobros_cant;
+                document.getElementById('statCobrosDetalle').textContent = `${new Intl.NumberFormat('es-CO').format(data.lotes_cobros_env)} enviados`;
+                document.getElementById('statIndividuales').textContent = data.individuales_cant;
+
                 // 1. Renderizar lotes
                 if (data.lotes && data.lotes.length > 0) {
                     lotesTableContainer.style.display = 'block';
@@ -981,12 +1017,16 @@
                             badgeColor = '#ef4444';
                             badgeBg = '#fef2f2';
                         }
+
+                        const moduloText = l.tipo_lote === 'planilla' ? '📥 Planillas' : '💰 Cobros';
+                        const moduloColor = l.tipo_lote === 'planilla' ? '#3b82f6' : '#10b981';
                         
                         htmlLotes += `
                             <tr>
                                 <td style="padding: 0.6rem 0.75rem;">${fechaFormateada}</td>
                                 <td style="text-align: center; font-weight: 700; color: #64748b; padding: 0.6rem 0.75rem;">#${l.lote_id}</td>
                                 <td style="padding: 0.6rem 0.75rem; font-weight: 600; color: #334155;">${l.plantilla}</td>
+                                <td style="padding: 0.6rem 0.75rem; font-weight: 600; color: ${moduloColor};">${moduloText}</td>
                                 <td style="padding: 0.6rem 0.75rem;">${tipo}</td>
                                 <td style="text-align: right; padding: 0.6rem 0.75rem; font-weight: 600; color: #0d9488;">${new Intl.NumberFormat('es-CO').format(l.total_destinatarios)}</td>
                                 <td style="text-align: right; padding: 0.6rem 0.75rem; color: #10b981; font-weight: 600;">${new Intl.NumberFormat('es-CO').format(l.total_enviados)}</td>

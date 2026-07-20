@@ -4,6 +4,7 @@
 @section('modulo', 'Aliados de App Líderes')
 
 @section('contenido')
+@include('finanzas.partials._responsive_fin')
 <div class="finanzas-container" x-data="{ openCrear: false, openEditar: false, selectedAliado: {} }">
 
     {{-- Breadcrumb --}}

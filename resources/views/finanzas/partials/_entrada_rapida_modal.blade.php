@@ -44,6 +44,18 @@
                     <input type="number" name="monto" placeholder="Ej: 380000" class="form-input-bx" required min="1">
                 </div>
 
+                {{-- Cuenta / Bolsillo --}}
+                @if(isset($cuentas) && $cuentas->isNotEmpty())
+                <div class="form-group-bx">
+                    <label class="form-label-bx">¿A qué cuenta entró el dinero?</label>
+                    <select name="cuenta_id" class="form-select-bx" required>
+                        @foreach($cuentas as $cta)
+                            <option value="{{ $cta->id }}">{{ $cta->icono }} {{ $cta->nombre }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                @endif
+
                 {{-- Descripción --}}
                 <div class="form-group-bx">
                     <label class="form-label-bx">Descripción / Detalle</label>

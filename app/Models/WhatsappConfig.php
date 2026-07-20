@@ -22,6 +22,7 @@ class WhatsappConfig extends BaseModel
         'webhook_verificado',
         'cobro_plantilla_id',
         'cobro_header_imagen',
+        'planilla_envio_plantilla_id',
     ];
 
     protected $casts = [
@@ -40,6 +41,11 @@ class WhatsappConfig extends BaseModel
     public function cobroPlantilla(): BelongsTo
     {
         return $this->belongsTo(WhatsappPlantilla::class, 'cobro_plantilla_id');
+    }
+
+    public function planillaEnvioPlantilla(): BelongsTo
+    {
+        return $this->belongsTo(WhatsappPlantilla::class, 'planilla_envio_plantilla_id');
     }
 
     // ── Accesor/Mutador para token encriptado ────────────────────────

@@ -2989,12 +2989,29 @@ class InformeController extends Controller
             $totalRetiros = $retirosReales + $retirosInformativos;
             $totalActivos = $admonVigentes + $afilPorFecha;
 
-            // WA Enviados: total destinatarios de lotes masivos del período (individuales + empresas)
-            $waEnviados = DB::table('whatsapp_envios_masivos as e')
+            // WA Enviados: total destinatarios de lotes masivos de cobros
+            $waEnviadosCobros = DB::table('whatsapp_envios_masivos as e')
                 ->where('e.aliado_id', $aid)
                 ->where('e.mes', $mesVal)
                 ->where('e.anio', $anioVal)
                 ->sum('e.total_destinatarios') ?: 0;
+
+            // WA Enviados: total destinatarios de lotes de planillas
+            $waEnviadosPlanillas = DB::table('planilla_envios_whatsapp as pe')
+                ->where('pe.aliado_id', $aid)
+                ->where('pe.mes', $mesVal)
+                ->where('pe.anio', $anioVal)
+                ->sum('pe.total_destinatarios') ?: 0;
+
+            // WA Enviados: reenvíos/envíos individuales de planillas
+            $waEnviadosIndividuales = DB::table('planilla_envios_whatsapp_detalle as ped')
+                ->join('planos as p', 'p.id', '=', 'ped.plano_id')
+                ->where('p.aliado_id', $aid)
+                ->where('ped.envio_id', 0)
+                ->whereBetween('ped.created_at', [$primerDia->toDateTimeString(), $ultimoDia->toDateTimeString()])
+                ->count();
+
+            $waEnviados = $waEnviadosCobros + $waEnviadosPlanillas + $waEnviadosIndividuales;
 
             // Respuestas Clientes: conversaciones iniciadas por el cliente (primer mensaje entrante pasadas 24h de inactividad)
             $respuestasClientes = DB::table('whatsapp_mensajes as m')
@@ -3230,10 +3247,9 @@ class InformeController extends Controller
         $primerDia = \Carbon\Carbon::create($anio, $mes, 1)->startOfDay();
         $ultimoDia = $primerDia->copy()->endOfMonth();
 
-        // === Sección 1: Lotes de envío masivo ===
-        $lotes = DB::table('whatsapp_envios_masivos as e')
+        // 1. Lotes de cobro masivos
+        $lotesCobro = DB::table('whatsapp_envios_masivos as e')
             ->join('whatsapp_plantillas as p', 'p.id', '=', 'e.plantilla_id')
-            ->join('users as u', 'u.id', '=', 'e.usuario_id')
             ->where('e.aliado_id', $aid)
             ->where('e.mes', $mes)
             ->where('e.anio', $anio)
@@ -3246,12 +3262,46 @@ class InformeController extends Controller
                 'e.total_enviados',
                 'e.total_fallidos',
                 'e.total_omitidos',
-                'e.estado'
+                'e.estado',
+                DB::raw("'cobro' as tipo_lote")
             )
-            ->orderBy('e.created_at', 'desc')
             ->get();
 
-        // === Sección 2: Resumen de conversaciones iniciadas por el cliente ===
+        // 2. Lotes de planilla masivos
+        $lotesPlanilla = DB::table('planilla_envios_whatsapp as pe')
+            ->leftJoin('whatsapp_plantillas as p', 'p.id', '=', 'pe.plantilla_id')
+            ->where('pe.aliado_id', $aid)
+            ->where('pe.mes', $mes)
+            ->where('pe.anio', $anio)
+            ->select(
+                'pe.id as lote_id',
+                DB::raw('CAST(pe.created_at AS DATE) as fecha_envio'),
+                DB::raw("COALESCE(p.nombre_display, 'Envío Planilla') as plantilla"),
+                'pe.tipo_envio',
+                'pe.total_destinatarios',
+                'pe.total_enviados',
+                'pe.total_fallidos',
+                'pe.total_omitidos',
+                'pe.estado',
+                DB::raw("'planilla' as tipo_lote")
+            )
+            ->get();
+
+        // 3. Unificar todos los lotes
+        $lotesUnificados = collect($lotesCobro)
+            ->concat($lotesPlanilla)
+            ->sortByDesc(fn($l) => $l->fecha_envio . '_' . $l->lote_id)
+            ->values();
+
+        // 4. Envíos individuales de planillas
+        $individualesCount = DB::table('planilla_envios_whatsapp_detalle as ped')
+            ->join('planos as p', 'p.id', '=', 'ped.plano_id')
+            ->where('p.aliado_id', $aid)
+            ->where('ped.envio_id', 0)
+            ->whereBetween('ped.created_at', [$primerDia->toDateTimeString(), $ultimoDia->toDateTimeString()])
+            ->count();
+
+        // 5. Resumen de conversaciones iniciadas por el cliente
         $conversaciones = DB::table('whatsapp_conversaciones as conv')
             ->join('whatsapp_mensajes as m', 'm.conversacion_id', '=', 'conv.id')
             ->where('conv.aliado_id', $aid)
@@ -3277,13 +3327,20 @@ class InformeController extends Controller
             ->get();
 
         return response()->json([
-            'mes_label'       => $nombresMeses[$mes] . ' ' . $anio,
-            'lotes'           => $lotes,
-            'total_lotes'     => $lotes->count(),
-            'total_enviados'  => $lotes->sum('total_destinatarios'),
-            'total_fallidos'  => $lotes->sum('total_fallidos'),
-            'conversaciones'  => $conversaciones,
-            'total_conv'      => $conversaciones->count(),
+            'mes_label'           => $nombresMeses[$mes] . ' ' . $anio,
+            'lotes'               => $lotesUnificados,
+            'total_lotes'         => $lotesUnificados->count(),
+            'total_enviados'      => $lotesUnificados->sum('total_destinatarios') + $individualesCount,
+            'total_fallidos'      => $lotesUnificados->sum('total_fallidos'),
+            'conversaciones'      => $conversaciones,
+            'total_conv'          => $conversaciones->count(),
+            
+            // Estadísticas detalladas
+            'lotes_planillas_cant' => $lotesPlanilla->count(),
+            'lotes_planillas_env'  => $lotesPlanilla->sum('total_enviados'),
+            'lotes_cobros_cant'    => $lotesCobro->count(),
+            'lotes_cobros_env'     => $lotesCobro->sum('total_enviados'),
+            'individuales_cant'    => $individualesCount
         ]);
     }
 }

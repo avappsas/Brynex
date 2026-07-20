@@ -76,7 +76,8 @@
                     <label class="form-label">Idioma</label>
                     <select name="idioma" class="form-control">
                         <option value="es_CO" {{ old('idioma', $plantilla?->idioma ?? 'es_CO') === 'es_CO' ? 'selected' : '' }}>Español Colombia (es_CO)</option>
-                        <option value="es" {{ old('idioma', $plantilla?->idioma) === 'es' ? 'selected' : '' }}>Español (es)</option>
+                        <option value="es_ES" {{ old('idioma', $plantilla?->idioma) === 'es_ES' ? 'selected' : '' }}>Español España (es_ES)</option>
+                        <option value="es" {{ old('idioma', $plantilla?->idioma) === 'es' ? 'selected' : '' }}>Español General (es)</option>
                         <option value="en_US" {{ old('idioma', $plantilla?->idioma) === 'en_US' ? 'selected' : '' }}>Inglés US (en_US)</option>
                     </select>
                 </div>

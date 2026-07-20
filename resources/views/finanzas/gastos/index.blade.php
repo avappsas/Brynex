@@ -4,6 +4,7 @@
 @section('modulo', 'Gestión de Gastos')
 
 @section('contenido')
+@include('finanzas.partials._responsive_fin')
 <div class="finanzas-container" x-data="{ openCrear: false, openEditar: false, selectedGasto: {} }">
 
     {{-- Breadcrumb & Period Selector --}}
@@ -379,6 +380,18 @@
                         💡 Este ingreso se sumará automáticamente bajo la fuente "OTRAS ENTRADAS" de este mes.
                     </div>
 
+                    {{-- Cuenta / Bolsillo --}}
+                    @if(isset($cuentas) && $cuentas->isNotEmpty())
+                    <div class="form-group-bx" style="margin-top:1rem;">
+                        <label class="form-label-bx" x-text="tipo === 'ingreso_esporadico' ? '¿A qué cuenta entró el dinero?' : '¿De qué cuenta salió el dinero?'"></label>
+                        <select name="cuenta_id" class="form-select-bx" required>
+                            @foreach($cuentas as $cta)
+                                <option value="{{ $cta->id }}">{{ $cta->icono }} {{ $cta->nombre }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    @endif
+
                     {{-- Descripción --}}
                     <div class="form-group-bx" style="margin-top:1rem;">
                         <label class="form-label-bx">Descripción</label>
@@ -647,6 +660,18 @@
                         </div>
                     </div>
 
+                    {{-- Cuenta / Bolsillo --}}
+                    @if(isset($cuentas) && $cuentas->isNotEmpty())
+                    <div class="form-group-bx" style="margin-top:1rem;">
+                        <label class="form-label-bx">Cuenta / Bolsillo</label>
+                        <select name="cuenta_id" x-model="selectedGasto.cuenta_id" class="form-select-bx">
+                            @foreach($cuentas as $cta)
+                                <option value="{{ $cta->id }}">{{ $cta->icono }} {{ $cta->nombre }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    @endif
+
                     {{-- Descripción --}}
                     <div class="form-group-bx" style="margin-top:1rem;">
                         <label class="form-label-bx">Descripción</label>
@@ -854,4 +879,8 @@
     background: #bae6fd;
 }
 </style>
+@endpush
+
+@push('styles')
+@include('finanzas.partials._responsive_movil')
 @endpush

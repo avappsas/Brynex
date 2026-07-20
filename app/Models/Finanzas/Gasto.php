@@ -26,6 +26,7 @@ class Gasto extends BaseFinanzasModel
     protected $fillable = [
         'user_id',
         'categoria_id',
+        'cuenta_id',
         'fecha',
         'monto',
         'descripcion',
@@ -57,6 +58,14 @@ class Gasto extends BaseFinanzasModel
     public function categoria()
     {
         return $this->belongsTo(CategoriaGasto::class, 'categoria_id');
+    }
+
+    /**
+     * Cuenta / bolsillo desde donde salió (o entró) el dinero
+     */
+    public function cuenta()
+    {
+        return $this->belongsTo(Cuenta::class, 'cuenta_id');
     }
 
     /**

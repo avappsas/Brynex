@@ -83,6 +83,7 @@ class WhatsappConfigController extends Controller
             'activo'              => 'boolean',
             'cobro_plantilla_id'  => 'nullable|exists:whatsapp_plantillas,id',
             'cobro_header_imagen' => 'nullable|image|max:2048',
+            'planilla_envio_plantilla_id' => 'nullable|exists:whatsapp_plantillas,id',
         ]);
 
         // Solo actualizar el token si se proporcionó uno nuevo (no sobreescribir con vacío)

@@ -4,6 +4,7 @@
 @section('modulo', 'Informe Anual de Gastos')
 
 @section('contenido')
+@include('finanzas.partials._responsive_fin')
 <div class="finanzas-container">
 
     {{-- Breadcrumb --}}
@@ -124,4 +125,8 @@
 .total-row td:first-child { text-align: left; }
 .gran-total-cell { background: #e2e8f0; color: #b91c1c; font-weight: 800; }
 </style>
+@endpush
+
+@push('styles')
+@include('finanzas.partials._responsive_movil')
 @endpush

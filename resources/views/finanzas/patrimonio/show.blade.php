@@ -4,6 +4,7 @@
 @section('modulo', 'Detalle de Bien Patrimonial')
 
 @section('contenido')
+@include('finanzas.partials._responsive_fin')
 <div class="finanzas-container" x-data="{ openGasto: false }">
 
     {{-- Breadcrumb --}}
@@ -232,4 +233,8 @@
 .form-select-bx { padding: 0.5rem 0.75rem; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.82rem; outline: none; background: #fff; cursor: pointer; }
 .badge-info { background: rgba(59,130,246,0.12); color: #2563eb; border: 1px solid rgba(59,130,246,0.3); border-radius: 4px; padding: 0.15rem 0.45rem; font-size: 0.72rem; font-weight: 600; }
 </style>
+@endpush
+
+@push('styles')
+@include('finanzas.partials._responsive_movil')
 @endpush

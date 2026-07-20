@@ -11,6 +11,8 @@ use Illuminate\Support\Facades\DB;
 
 class ProyectoController extends Controller
 {
+    use \App\Http\Controllers\Finanzas\Concerns\ResuelveCuenta;
+
     public function __construct()
     {
         $this->middleware('auth');
@@ -57,7 +59,9 @@ class ProyectoController extends Controller
             }])
             ->findOrFail($id);
 
-        return view('finanzas.proyectos.show', compact('proyecto'));
+        $cuentas = \App\Models\Finanzas\Cuenta::where('user_id', Auth::id())->activas()->orderBy('orden')->get();
+
+        return view('finanzas.proyectos.show', compact('proyecto', 'cuentas'));
     }
 
     public function update(Request $request, $id)
@@ -87,6 +91,7 @@ class ProyectoController extends Controller
             'monto' => 'required|numeric|min:1',
             'fecha' => 'required|date',
             'observacion' => 'nullable|string|max:255',
+            'cuenta_id' => 'nullable|integer',
         ]);
 
         ProyectoMovimiento::create([
@@ -95,8 +100,22 @@ class ProyectoController extends Controller
             'monto' => $request->monto,
             'fecha' => $request->fecha,
             'observacion' => $request->observacion,
+            'cuenta_id' => $this->resolverCuenta($request->cuenta_id),
         ]);
 
         return redirect()->route('finanzas.proyectos.show', $proyecto->id)->with('success', 'Movimiento registrado con éxito.');
+    }
+
+    /**
+     * Elimina (revierte) un movimiento del proyecto validando la propiedad del usuario.
+     */
+    public function eliminarMovimiento($id)
+    {
+        $movimiento = ProyectoMovimiento::findOrFail($id);
+        $proyecto = Proyecto::where('user_id', Auth::id())->findOrFail($movimiento->proyecto_id);
+
+        $movimiento->delete();
+
+        return redirect()->route('finanzas.proyectos.show', $proyecto->id)->with('success', 'Movimiento eliminado con éxito.');
     }
 }

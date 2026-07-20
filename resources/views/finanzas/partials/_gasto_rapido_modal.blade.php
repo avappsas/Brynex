@@ -188,6 +188,18 @@ class="modal-overlay"
                     </div>
                 </div>
 
+                {{-- Cuenta / Bolsillo --}}
+                @if(isset($cuentas) && $cuentas->isNotEmpty())
+                <div class="form-group-bx">
+                    <label class="form-label-bx">¿De qué cuenta salió el dinero?</label>
+                    <select name="cuenta_id" class="form-select-bx" required>
+                        @foreach($cuentas as $cta)
+                            <option value="{{ $cta->id }}">{{ $cta->icono }} {{ $cta->nombre }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                @endif
+
                 {{-- Descripción --}}
                 <div class="form-group-bx">
                     <label class="form-label-bx">Descripción / Observación</label>

@@ -112,8 +112,28 @@ class FinanzasAlertaService
         // 5. Total Cartera (Préstamos activos saldo actual)
         $totalCartera = (float) Prestamo::activos()->where('user_id', $userId)->sum('saldo_actual');
 
-        // 6. Patrimonio Total
-        $totalPatrimonio = (float) Patrimonio::activos()->where('user_id', $userId)->sum('valor_compra');
+        // 5.1 Intereses CAUSADOS del mes (liquidados al saldo, aunque no los hayan pagado)
+        $interesesCausados = (float) \Illuminate\Support\Facades\DB::connection('finanzas')
+            ->table('finanzas_prestamo_movimientos')
+            ->join('finanzas_prestamos', 'finanzas_prestamo_movimientos.prestamo_id', '=', 'finanzas_prestamos.id')
+            ->where('finanzas_prestamos.user_id', $userId)
+            ->whereYear('finanzas_prestamo_movimientos.fecha', $anio)
+            ->whereMonth('finanzas_prestamo_movimientos.fecha', $mes)
+            ->where('finanzas_prestamo_movimientos.tipo', 'interes_mensual')
+            ->sum('finanzas_prestamo_movimientos.monto');
+
+        // 5.2 Intereses COBRADOS del mes (lo que realmente pagaron los deudores)
+        $interesesCobrados = (float) \Illuminate\Support\Facades\DB::connection('finanzas')
+            ->table('finanzas_prestamo_movimientos')
+            ->join('finanzas_prestamos', 'finanzas_prestamo_movimientos.prestamo_id', '=', 'finanzas_prestamos.id')
+            ->where('finanzas_prestamos.user_id', $userId)
+            ->whereYear('finanzas_prestamo_movimientos.fecha', $anio)
+            ->whereMonth('finanzas_prestamo_movimientos.fecha', $mes)
+            ->whereIn('finanzas_prestamo_movimientos.tipo', ['abono_interes', 'pago_total'])
+            ->sum('finanzas_prestamo_movimientos.monto');
+
+        // 6. Patrimonio Total (valor actual, consistente con el consolidado global)
+        $totalPatrimonio = (float) Patrimonio::activos()->where('user_id', $userId)->sum('valor_actual');
 
         // Calcular porcentajes de cambio
         $cambioEntradas = $entradasAnterior > 0 ? (($entradasActual - $entradasAnterior) / $entradasAnterior) * 100 : 0;
@@ -130,6 +150,8 @@ class FinanzasAlertaService
             'balance' => $balanceActual,
             'total_cartera' => $totalCartera,
             'total_patrimonio' => $totalPatrimonio,
+            'intereses_causados' => $interesesCausados,
+            'intereses_cobrados' => $interesesCobrados,
         ];
     }
 
@@ -147,13 +169,15 @@ class FinanzasAlertaService
         
         $total = 0.00;
         
-        // 1. Obtener intereses generados para este mes y año
+        // 1. Obtener intereses generados para este mes y año (solo préstamos del usuario)
         $intereses = (float) \Illuminate\Support\Facades\DB::connection('finanzas')
             ->table('finanzas_prestamo_movimientos')
-            ->whereYear('fecha', $anio)
-            ->whereMonth('fecha', $mes)
-            ->where('tipo', 'interes_mensual')
-            ->sum('monto');
+            ->join('finanzas_prestamos', 'finanzas_prestamo_movimientos.prestamo_id', '=', 'finanzas_prestamos.id')
+            ->where('finanzas_prestamos.user_id', $userId)
+            ->whereYear('finanzas_prestamo_movimientos.fecha', $anio)
+            ->whereMonth('finanzas_prestamo_movimientos.fecha', $mes)
+            ->where('finanzas_prestamo_movimientos.tipo', 'interes_mensual')
+            ->sum('finanzas_prestamo_movimientos.monto');
 
         // 2. Obtener utilidad mensual de OTRAS APP (tabla finanzas_app_lideres_pagos)
         $appLideres = (float) \Illuminate\Support\Facades\DB::connection('finanzas')
@@ -163,15 +187,15 @@ class FinanzasAlertaService
             ->where('mes', $mes)
             ->sum('monto');
 
-        // 3. Obtener ingresos de Proyectos
+        // 3. Obtener el NETO mensual de Proyectos (entradas - salidas del mes, puede ser negativo)
         $proyectos = (float) \Illuminate\Support\Facades\DB::connection('finanzas')
             ->table('finanzas_proyecto_movimientos')
             ->join('finanzas_proyectos', 'finanzas_proyecto_movimientos.proyecto_id', '=', 'finanzas_proyectos.id')
             ->where('finanzas_proyectos.user_id', $userId)
             ->whereYear('finanzas_proyecto_movimientos.fecha', $anio)
             ->whereMonth('finanzas_proyecto_movimientos.fecha', $mes)
-            ->where('finanzas_proyecto_movimientos.tipo', 'entrada')
-            ->sum('finanzas_proyecto_movimientos.monto');
+            ->selectRaw("COALESCE(SUM(CASE WHEN finanzas_proyecto_movimientos.tipo = 'entrada' THEN finanzas_proyecto_movimientos.monto ELSE -finanzas_proyecto_movimientos.monto END), 0) as total")
+            ->value('total');
 
         // 4. Obtener ingresos esporádicos
         $esporadicos = (float) \Illuminate\Support\Facades\DB::connection('finanzas')
@@ -217,6 +241,66 @@ class FinanzasAlertaService
         
         self::$entradasCache[$cacheKey] = $total;
         return $total;
+    }
+
+    /**
+     * Evolución mes a mes del año: entradas, salidas, intereses causados/cobrados
+     * y liquidez acumulada del año. Alimenta las gráficas de los dashboards.
+     */
+    public function getEvolucionAnual(int $userId, int $anio): array
+    {
+        $conn = \Illuminate\Support\Facades\DB::connection('finanzas');
+
+        // Salidas por mes (gastos + préstamos otorgados + inversiones)
+        $salidasMes = $conn->table('finanzas_gastos')
+            ->where('user_id', $userId)
+            ->whereYear('fecha', $anio)
+            ->whereIn('tipo_movimiento', ['gasto', 'prestamo', 'inversion'])
+            ->selectRaw('MONTH(fecha) as mes, SUM(monto) as total')
+            ->groupByRaw('MONTH(fecha)')
+            ->pluck('total', 'mes');
+
+        // Intereses causados por mes
+        $causadosMes = $conn->table('finanzas_prestamo_movimientos')
+            ->join('finanzas_prestamos', 'finanzas_prestamo_movimientos.prestamo_id', '=', 'finanzas_prestamos.id')
+            ->where('finanzas_prestamos.user_id', $userId)
+            ->whereYear('finanzas_prestamo_movimientos.fecha', $anio)
+            ->where('finanzas_prestamo_movimientos.tipo', 'interes_mensual')
+            ->selectRaw('MONTH(finanzas_prestamo_movimientos.fecha) as mes, SUM(finanzas_prestamo_movimientos.monto) as total')
+            ->groupByRaw('MONTH(finanzas_prestamo_movimientos.fecha)')
+            ->pluck('total', 'mes');
+
+        // Intereses cobrados por mes
+        $cobradosMes = $conn->table('finanzas_prestamo_movimientos')
+            ->join('finanzas_prestamos', 'finanzas_prestamo_movimientos.prestamo_id', '=', 'finanzas_prestamos.id')
+            ->where('finanzas_prestamos.user_id', $userId)
+            ->whereYear('finanzas_prestamo_movimientos.fecha', $anio)
+            ->whereIn('finanzas_prestamo_movimientos.tipo', ['abono_interes', 'pago_total'])
+            ->selectRaw('MONTH(finanzas_prestamo_movimientos.fecha) as mes, SUM(finanzas_prestamo_movimientos.monto) as total')
+            ->groupByRaw('MONTH(finanzas_prestamo_movimientos.fecha)')
+            ->pluck('total', 'mes');
+
+        $meses = [];
+        $liquidezAcumulada = 0.00;
+        $mesLimite = ($anio == now()->year) ? now()->month : 12;
+
+        for ($m = 1; $m <= $mesLimite; $m++) {
+            $entradas = $this->calculateTotalEntradas($userId, $anio, $m);
+            $salidas = (float) ($salidasMes[$m] ?? 0);
+            $liquidezAcumulada += ($entradas - $salidas);
+
+            $meses[] = [
+                'mes' => $m,
+                'label' => ucfirst(Carbon::create($anio, $m, 1)->locale('es')->shortMonthName),
+                'entradas' => round($entradas, 2),
+                'salidas' => round($salidas, 2),
+                'intereses_causados' => round((float) ($causadosMes[$m] ?? 0), 2),
+                'intereses_cobrados' => round((float) ($cobradosMes[$m] ?? 0), 2),
+                'liquidez_acumulada' => round($liquidezAcumulada, 2),
+            ];
+        }
+
+        return $meses;
     }
 
     /**

@@ -4,6 +4,7 @@
 @section('modulo', 'Nuevo Préstamo')
 
 @section('contenido')
+@include('finanzas.partials._responsive_fin')
 <div class="finanzas-container" style="max-width: 600px;">
 
     {{-- Breadcrumb --}}
@@ -75,6 +76,18 @@
                         <input type="number" name="dias_mora_alerta" value="30" class="form-input-bx" required min="1">
                     </div>
                 </div>
+
+                {{-- Cuenta de origen del desembolso --}}
+                @if(isset($cuentas) && $cuentas->isNotEmpty())
+                <div class="form-group-bx" style="margin-top:1rem;">
+                    <label class="form-label-bx">¿De qué cuenta salió el dinero?</label>
+                    <select name="cuenta_id" class="form-select-bx" required>
+                        @foreach($cuentas as $cta)
+                            <option value="{{ $cta->id }}">{{ $cta->icono }} {{ $cta->nombre }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                @endif
 
                 {{-- Cuenta corriente --}}
                 <div x-data="{ esCC: false }" style="margin-top:1rem; background:#f8fafc; padding:0.75rem; border-radius:9px; border:1px dashed #cbd5e1;">
@@ -270,4 +283,8 @@ textarea.form-input-bx {
     transform: translateY(0);
 }
 </style>
+@endpush
+
+@push('styles')
+@include('finanzas.partials._responsive_movil')
 @endpush

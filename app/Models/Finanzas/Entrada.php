@@ -28,6 +28,7 @@ class Entrada extends BaseFinanzasModel
         'mes',
         'monto',
         'observacion',
+        'cuenta_id',
     ];
 
     protected $casts = [
@@ -36,7 +37,13 @@ class Entrada extends BaseFinanzasModel
         'anio' => 'integer',
         'mes' => 'integer',
         'monto' => 'float',
+        'cuenta_id' => 'integer',
     ];
+
+    public function cuenta()
+    {
+        return $this->belongsTo(Cuenta::class, 'cuenta_id');
+    }
 
     /**
      * Relación con el usuario

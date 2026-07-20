@@ -22,6 +22,17 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/reset-n-plano.log'));
+
+        // ── Liquidación automática de intereses de préstamos (Finanzas) ──
+        // Diario a la 1:00 AM Colombia: liquida los meses calendario completos
+        // vencidos de cada préstamo activo/mora con tasa > 0.
+        // Ejecución manual: php artisan finanzas:liquidar-intereses
+        $schedule->command('finanzas:liquidar-intereses')
+            ->dailyAt('01:00')
+            ->timezone('America/Bogota')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo(storage_path('logs/finanzas-liquidacion.log'));
     }
 
     /**

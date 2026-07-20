@@ -31,6 +31,7 @@ class PrestamoMovimiento extends BaseFinanzasModel
         'dias_periodo',
         'observacion',
         'soporte_path',
+        'cuenta_id',
     ];
 
     protected $casts = [
@@ -39,7 +40,13 @@ class PrestamoMovimiento extends BaseFinanzasModel
         'saldo_antes' => 'float',
         'saldo_despues' => 'float',
         'dias_periodo' => 'integer',
+        'cuenta_id' => 'integer',
     ];
+
+    public function cuenta()
+    {
+        return $this->belongsTo(Cuenta::class, 'cuenta_id');
+    }
 
     /**
      * Relación con el préstamo

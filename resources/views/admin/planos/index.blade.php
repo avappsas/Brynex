@@ -753,6 +753,11 @@
 
             {{-- Botones --}}
             <div style="margin-left:auto;display:flex;gap:.4rem;align-items:center">
+                @if(auth()->user()->hasRole(['admin', 'superadmin']))
+                <a href="{{ route('admin.planos.envio_planillas') }}" class="btn-accion" style="background: #25d366; color: #fff; border: none; text-decoration: none; display: inline-flex; align-items: center; gap: 0.3rem; font-weight: 700; padding: 0.35rem 0.75rem; border-radius: 6px; box-shadow: 0 2px 5px rgba(37, 211, 102, 0.2);">
+                    <i class="fab fa-whatsapp"></i> Enviar WhatsApp
+                </a>
+                @endif
                 <button type="button" class="btn-accion btn-descargar" onclick="validarCompatibilidadYAbrir('descarga')"
                     @if($planos->count()==0) disabled style="opacity:.4;cursor:not-allowed" @endif>
                     📥 Descargar Plano

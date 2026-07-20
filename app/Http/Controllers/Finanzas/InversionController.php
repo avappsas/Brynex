@@ -14,6 +14,8 @@ use Illuminate\Support\Facades\DB;
 
 class InversionController extends Controller
 {
+    use \App\Http\Controllers\Finanzas\Concerns\ResuelveCuenta;
+
     protected CriptoApiService $criptoService;
 
     public function __construct(CriptoApiService $criptoService)
@@ -51,12 +53,15 @@ class InversionController extends Controller
 
         $balanceNeta = $valorTotalActual - $valorTotalInvertido;
 
+        $cuentas = \App\Models\Finanzas\Cuenta::where('user_id', $user)->activas()->orderBy('orden')->get();
+
         return view('finanzas.inversiones.index', compact(
             'inversiones',
             'precioUsdtData',
             'valorTotalInvertido',
             'valorTotalActual',
-            'balanceNeta'
+            'balanceNeta',
+            'cuentas'
         ));
     }
 
@@ -74,6 +79,7 @@ class InversionController extends Controller
             'precio_token_cop' => 'nullable|numeric|min:0',
             'observaciones' => 'nullable|string',
             'fecha' => 'required|date',
+            'cuenta_id' => 'nullable|integer',
         ]);
 
         $user = Auth::user();
@@ -109,6 +115,7 @@ class InversionController extends Controller
             Gasto::create([
                 'user_id' => $user->id,
                 'categoria_id' => $catId,
+                'cuenta_id' => $this->resolverCuenta($request->cuenta_id),
                 'fecha' => $request->fecha,
                 'monto' => $request->monto_invertido_cop,
                 'descripcion' => "Inversión registrada: {$request->nombre}",

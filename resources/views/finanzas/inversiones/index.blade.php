@@ -4,6 +4,7 @@
 @section('modulo', 'Inversiones Cripto / USDT')
 
 @section('contenido')
+@include('finanzas.partials._responsive_fin')
 <div class="finanzas-container" x-data="inversionesControl({{ json_encode($precioUsdtData) }}, {{ json_encode($inversiones) }})">
 
     {{-- Breadcrumb --}}
@@ -160,6 +161,18 @@
                         <label class="form-label-bx">Monto Invertido ($ COP)</label>
                         <input type="number" name="monto_invertido_cop" placeholder="Ej: 2000000" class="form-input-bx" required min="1">
                     </div>
+
+                    {{-- Cuenta de origen --}}
+                    @if(isset($cuentas) && $cuentas->isNotEmpty())
+                    <div class="form-group-bx" style="margin-top:1rem;">
+                        <label class="form-label-bx">¿De qué cuenta salió el dinero?</label>
+                        <select name="cuenta_id" class="form-select-bx" required>
+                            @foreach($cuentas as $cta)
+                                <option value="{{ $cta->id }}">{{ $cta->icono }} {{ $cta->nombre }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    @endif
 
                     {{-- Cripto Campos Adicionales --}}
                     <div x-show="tipo === 'cripto'" x-cloak style="margin-top:1rem; border-left:2px dashed #0284c7; padding-left:1rem;">
@@ -323,4 +336,8 @@ function inversionesControl(precioInicial, inversionesInicial) {
     }
 }
 </script>
+@endpush
+
+@push('styles')
+@include('finanzas.partials._responsive_movil')
 @endpush

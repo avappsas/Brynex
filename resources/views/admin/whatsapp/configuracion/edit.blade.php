@@ -159,6 +159,37 @@
                 <div class="form-hint">La plantilla seleccionada requiere una imagen como encabezado (HEADER). Sube una imagen PNG o JPG de máximo 2MB.</div>
             </div>
 
+            {{-- Sección de Plantilla de Envío de Planillas por WhatsApp --}}
+            <div class="section-title" style="margin-top:1.5rem">Configuración de Envío de Planillas por WhatsApp</div>
+            
+            {{-- Selector de plantillas de Planilla para Brynex Global --}}
+            <div class="form-group" x-show="usaBrynex" x-cloak>
+                <label class="form-label">Plantilla de WhatsApp para Planillas (Brynex Global)</label>
+                <select name="planilla_envio_plantilla_id" class="form-control" :disabled="!usaBrynex">
+                    <option value="">-- Seleccionar Plantilla Global --</option>
+                    @foreach($plantillasGlobales as $plantilla)
+                        <option value="{{ $plantilla->id }}" {{ old('planilla_envio_plantilla_id', $config->planilla_envio_plantilla_id) == $plantilla->id ? 'selected' : '' }}>
+                            {{ $plantilla->nombre_display }} ({{ $plantilla->nombre }})
+                        </option>
+                    @endforeach
+                </select>
+                <div class="form-hint">Selecciona la plantilla global de Brynex que se usará para notificar el pago de planillas.</div>
+            </div>
+
+            {{-- Selector de plantillas de Planilla propias del Aliado --}}
+            <div class="form-group" x-show="!usaBrynex" x-cloak>
+                <label class="form-label">Plantilla de WhatsApp para Planillas (Propia del Aliado)</label>
+                <select name="planilla_envio_plantilla_id" class="form-control" :disabled="usaBrynex">
+                    <option value="">-- Seleccionar Plantilla del Aliado --</option>
+                    @foreach($plantillasBrynex->where('aliado_id', $aliado->id) as $plantilla)
+                        <option value="{{ $plantilla->id }}" {{ old('planilla_envio_plantilla_id', $config->planilla_envio_plantilla_id) == $plantilla->id ? 'selected' : '' }}>
+                            {{ $plantilla->nombre_display }} ({{ $plantilla->nombre }})
+                        </option>
+                    @endforeach
+                </select>
+                <div class="form-hint">Selecciona una plantilla con header DOCUMENT propia del aliado para notificar el pago de planillas.</div>
+            </div>
+
             {{-- WhatsApp de Contacto / Variable {{5}} — siempre visible --}}
             <div class="form-group" style="margin-top:1rem;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:1rem;">
                 <label class="form-label" style="color:#92400e;">

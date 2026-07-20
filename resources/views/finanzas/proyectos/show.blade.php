@@ -4,6 +4,7 @@
 @section('modulo', 'Detalle del Proyecto')
 
 @section('contenido')
+@include('finanzas.partials._responsive_fin')
 <div class="finanzas-container" x-data="{ openMovimiento: false }">
 
     {{-- Breadcrumb --}}
@@ -153,18 +154,28 @@
                     <div class="form-group-bx" style="margin-top:1rem;">
                         <label class="form-label-bx">Tipo de Movimiento</label>
                         <select name="tipo" class="form-select-bx" required>
-                            <option value="ingreso">📥 Ingreso (Cobro/Venta)</option>
-                            <option value="egreso">📤 Egreso (Gastos/Servidores/APIs)</option>
+                            <option value="entrada">📥 Entrada (Cobro/Venta)</option>
+                            <option value="salida">📤 Salida (Gastos/Servidores/APIs)</option>
                         </select>
                     </div>
                     <div class="form-group-bx" style="margin-top:1rem;">
                         <label class="form-label-bx">Monto ($ COP)</label>
                         <input type="number" name="monto" placeholder="Ej: 150000" class="form-input-bx" required min="1">
-                        <small style="color:#64748b; font-size:0.7rem;">Si es ingreso, se registrará también automáticamente en la contabilidad general de entradas. Si es egreso, se creará también en gastos.</small>
+                        <small style="color:#64748b; font-size:0.7rem;">El neto del mes del proyecto (entradas - salidas) se suma automáticamente a la fuente PROYECTOS de las entradas globales.</small>
                     </div>
+                    @if(isset($cuentas) && $cuentas->isNotEmpty())
+                    <div class="form-group-bx" style="margin-top:1rem;">
+                        <label class="form-label-bx">Cuenta / Bolsillo del dinero</label>
+                        <select name="cuenta_id" class="form-select-bx" required>
+                            @foreach($cuentas as $cta)
+                                <option value="{{ $cta->id }}">{{ $cta->icono }} {{ $cta->nombre }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    @endif
                     <div class="form-group-bx" style="margin-top:1rem;">
                         <label class="form-label-bx">Concepto / Descripción</label>
-                        <input type="text" name="concepto" placeholder="Ej: Pago mensualidad cliente, Servidor AWS" class="form-input-bx" required>
+                        <input type="text" name="observacion" placeholder="Ej: Pago mensualidad cliente, Servidor AWS" class="form-input-bx" required>
                     </div>
                 </div>
                 <div class="modal-foot-bx">
@@ -244,4 +255,8 @@
 .form-input-bx { padding: 0.5rem 0.75rem; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.82rem; outline: none; }
 .form-select-bx { padding: 0.5rem 0.75rem; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.82rem; outline: none; background: #fff; cursor: pointer; }
 </style>
+@endpush
+
+@push('styles')
+@include('finanzas.partials._responsive_movil')
 @endpush

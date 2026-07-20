@@ -1029,5 +1029,385 @@ class PlanoPagoController extends Controller
             ->header('Pragma', 'no-cache')
             ->header('Expires', 'Sat, 26 Jul 1997 05:00:00 GMT');
     }
+
+    // ── Módulo de Envíos de Planillas por WhatsApp ───────────────────
+
+    public function enviosPlanillaIndex(Request $request)
+    {
+        $aliadoId = session('aliado_id_activo');
+
+        $anio = (int) $request->input('anio', now()->year);
+        $mes  = (int) $request->input('mes', now()->month);
+
+        $config = \App\Models\WhatsappConfig::paraAliado($aliadoId);
+        $plantilla = null;
+        
+        if ($config) {
+            if ($config->planilla_envio_plantilla_id) {
+                $plantilla = \App\Models\WhatsappPlantilla::find($config->planilla_envio_plantilla_id);
+            } elseif ($config->usa_cuenta_brynex || $config->usa_brynex) {
+                // Heredar la de Brynex global (aliado 1 o buscar por nombre BryNex)
+                $brynexId = \App\Models\Aliado::where('nombre', 'BryNex')->first()?->id ?: 1;
+                $configGlobal = \App\Models\WhatsappConfig::paraAliado($brynexId);
+                if ($configGlobal && $configGlobal->planilla_envio_plantilla_id) {
+                    $plantilla = \App\Models\WhatsappPlantilla::find($configGlobal->planilla_envio_plantilla_id);
+                } else {
+                    $plantilla = \App\Models\WhatsappPlantilla::where('aliado_id', $brynexId)
+                        ->where('nombre', 'envio_planilla_seguridad_social')
+                        ->first();
+                }
+            }
+        }
+
+        // Si no está configurada, buscamos si ya existe por nombre del aliado local
+        if (!$plantilla) {
+            $plantilla = \App\Models\WhatsappPlantilla::where('aliado_id', $aliadoId)
+                ->where('nombre', 'envio_planilla_seguridad_social')
+                ->first();
+        }
+
+        return view('admin.planos.envio_planillas', compact('anio', 'mes', 'config', 'plantilla'));
+    }
+
+    public function enviosPlanillaApi(Request $request)
+    {
+        $aliadoId = session('aliado_id_activo');
+
+        $anio       = (int) $request->input('anio', now()->year);
+        $mes        = (int) $request->input('mes', now()->month);
+        $tipoEnvio  = $request->input('tipo_envio', 'individual'); // 'individual' | 'empleado_empresa' | 'contacto_empresa'
+        $filtroEst  = $request->input('estado', 'pendientes'); // 'todos' | 'pendientes' | 'enviados' | 'fallidos'
+
+        $service = app(\App\Services\PlanillaWhatsappService::class);
+        $planos = $service->obtenerPlanosPagados($aliadoId, $mes, $anio);
+
+        $destinatarios = $service->obtenerDestinatarios($planos, $tipoEnvio);
+
+        // Aplicar filtros de estado
+        if ($filtroEst === 'pendientes') {
+            // Mostrar pendientes y fallidos tal como pidió el usuario
+            $destinatarios = $destinatarios->filter(fn($d) => in_array($d['envio_estado'], ['pendiente', 'fallido']));
+        } elseif ($filtroEst === 'enviados') {
+            $destinatarios = $destinatarios->filter(fn($d) => $d['envio_estado'] === 'enviado');
+        } elseif ($filtroEst === 'fallidos') {
+            $destinatarios = $destinatarios->filter(fn($d) => $d['envio_estado'] === 'fallido');
+        }
+
+        // Búsqueda de texto en las columnas
+        $q = $request->input('q');
+        if (!empty($q)) {
+            $q = lowercase(trim($q));
+            $destinatarios = $destinatarios->filter(function($d) use ($q) {
+                return stripos(lowercase($d['nombre_destinatario']), $q) !== false ||
+                       stripos(lowercase($d['cliente_cedula']), $q) !== false ||
+                       stripos(lowercase($d['numero_planilla']), $q) !== false;
+            });
+        }
+
+        return response()->json([
+            'ok' => true,
+            'data' => $destinatarios->values(),
+        ]);
+    }
+
+    public function enviosPlanillaEnviar(Request $request)
+    {
+        abort_unless(Auth::user()->hasRole(['admin', 'superadmin']), 403, 'No autorizado.');
+
+        $aliadoId = session('aliado_id_activo');
+        $usuarioId = Auth::id();
+
+        $anio      = (int) $request->input('anio', now()->year);
+        $mes       = (int) $request->input('mes', now()->month);
+        $tipoEnvio = $request->input('tipo_envio', 'individual');
+
+        $config = \App\Models\WhatsappConfig::paraAliado($aliadoId);
+        if (!$config || !$config->credencialesCompletas()) {
+            return response()->json([
+                'ok' => false,
+                'mensaje' => 'No se han configurado o completado las credenciales de WhatsApp para este aliado.'
+            ], 422);
+        }
+
+        $plantillaId = $config->planilla_envio_plantilla_id;
+        if (!$plantillaId) {
+            $plantilla = \App\Models\WhatsappPlantilla::where('aliado_id', $aliadoId)
+                ->where('nombre', 'envio_planilla_seguridad_social')
+                ->first();
+            $plantillaId = $plantilla?->id;
+        }
+
+        if (!$plantillaId) {
+            return response()->json([
+                'ok' => false,
+                'mensaje' => 'La plantilla de envío de planillas no está creada o configurada para este aliado.'
+            ], 422);
+        }
+
+        $service = app(\App\Services\PlanillaWhatsappService::class);
+        $planos = $service->obtenerPlanosPagados($aliadoId, $mes, $anio);
+        $destinatarios = $service->obtenerDestinatarios($planos, $tipoEnvio);
+
+        // Solo enviar a los que están pendientes o fallidos
+        $destinatariosAEnviar = $destinatarios->filter(fn($d) => in_array($d['envio_estado'], ['pendiente', 'fallido']))->values();
+
+        if ($destinatariosAEnviar->isEmpty()) {
+            return response()->json([
+                'ok' => false,
+                'mensaje' => 'No hay planillas pendientes de envío (o fallidas) para los filtros seleccionados.'
+            ], 422);
+        }
+
+        // Crear el lote
+        $lote = $service->crearLoteEnvio($aliadoId, $usuarioId, $plantillaId, $mes, $anio, $tipoEnvio, $destinatariosAEnviar);
+
+        // Despachar el Job
+        \App\Jobs\PlanillaEnvioWhatsappJob::dispatch($lote->id);
+
+        return response()->json([
+            'ok' => true,
+            'mensaje' => 'Lote de envío masivo creado e iniciado en segundo plano. Progreso visible en la vista.',
+            'lote_id' => $lote->id
+        ]);
+    }
+
+    public function enviosPlanillaReenviar(Request $request, $planoId)
+    {
+        abort_unless(Auth::user()->hasRole(['admin', 'superadmin']), 403, 'No autorizado.');
+
+        $aliadoId = session('aliado_id_activo');
+
+        $plano = Plano::where('aliado_id', $aliadoId)->findOrFail($planoId);
+
+        $config = \App\Models\WhatsappConfig::paraAliado($aliadoId);
+        if (!$config || !$config->credencialesCompletas()) {
+            return response()->json(['ok' => false, 'mensaje' => 'WhatsApp no configurado.'], 422);
+        }
+
+        $plantillaId = $config->planilla_envio_plantilla_id;
+        if (!$plantillaId) {
+            if ($config->usa_cuenta_brynex || $config->usa_brynex) {
+                $brynexId = \App\Models\Aliado::where('nombre', 'BryNex')->first()?->id ?: 1;
+                $configGlobal = \App\Models\WhatsappConfig::paraAliado($brynexId);
+                $plantillaId = $configGlobal?->planilla_envio_plantilla_id;
+                if (!$plantillaId) {
+                    $plantilla = \App\Models\WhatsappPlantilla::where('aliado_id', $brynexId)
+                        ->where('nombre', 'envio_planilla_seguridad_social')
+                        ->first();
+                    $plantillaId = $plantilla?->id;
+                }
+            } else {
+                $plantilla = \App\Models\WhatsappPlantilla::where('aliado_id', $aliadoId)
+                    ->where('nombre', 'envio_planilla_seguridad_social')
+                    ->first();
+                $plantillaId = $plantilla?->id;
+            }
+        }
+
+        $plantilla = \App\Models\WhatsappPlantilla::find($plantillaId);
+        if (!$plantilla) {
+            return response()->json(['ok' => false, 'mensaje' => 'Plantilla no configurada.'], 422);
+        }
+
+        // Buscar el número de celular del destinatario
+        $cliente = \App\Models\Cliente::where('cedula', $plano->no_identifi)
+            ->where('aliado_id', $aliadoId)
+            ->first();
+
+        $numeroCelular = $cliente?->celular;
+        $nombreDestinatario = $cliente ? "{$cliente->nombres}" : "Cliente";
+
+        // Si es de empresa y el cliente no tiene celular, o es tipo empresa, podemos buscar el celular de la empresa
+        $tipoEnvio = $request->input('tipo_envio', 'individual');
+        if ($tipoEnvio === 'contacto_empresa' || !$numeroCelular) {
+            $empresa = \App\Models\Empresa::find($cliente?->cod_empresa);
+            if ($empresa && $empresa->celular) {
+                $numeroCelular = $empresa->celular;
+                $nombreDestinatario = "{$empresa->contacto} ({$empresa->empresa})";
+            }
+        }
+
+        $celularPrueba = $request->input('celular_prueba');
+        $esPrueba = !empty($celularPrueba);
+
+        if ($esPrueba) {
+            $numeroCelular = $celularPrueba;
+            $nombreDestinatario = "Prueba - " . $nombreDestinatario;
+        }
+
+        if (!$numeroCelular) {
+            return response()->json(['ok' => false, 'mensaje' => 'El destinatario no posee número de celular registrado.'], 422);
+        }
+
+        // Detección del operador
+        $gasto = DB::table('gastos')
+            ->where('aliado_id', $aliadoId)
+            ->where('tipo', 'pago_planilla')
+            ->where('numero_planilla', $plano->numero_planilla)
+            ->first(['pagado_a']);
+
+        $operadorId = null;
+        $operadorNombre = 'Operador';
+        if ($gasto) {
+            $operador = DB::table('operadores_planilla')
+                ->where('nombre', trim($gasto->pagado_a))
+                ->first(['id', 'nombre']);
+            if ($operador) {
+                $operadorId = $operador->id;
+                $operadorNombre = $operador->nombre;
+            }
+        }
+
+        try {
+            $apiService = app(\App\Services\WhatsappApiService::class);
+            $formularioService = app(\App\Services\PlanillaFormularioService::class);
+
+            // Generar PDF
+            $pdfContenido = $formularioService->generar($plano, $operadorId);
+
+            // Archivo temporal
+            $nombreArchivo = "Planilla_SS_{$plano->no_identifi}_{$plano->mes_plano}_{$plano->anio_plano}.pdf";
+            $pathTemporal = "temp_planillas/{$aliadoId}/" . uniqid() . '_' . $nombreArchivo;
+            Storage::disk('local')->put($pathTemporal, $pdfContenido);
+
+            // Subir a Meta
+            $creds = $config->credencialesEfectivas();
+            $mediaId = $apiService->subirMedia($pathTemporal, 'application/pdf', $creds);
+
+            Storage::disk('local')->delete($pathTemporal);
+
+            if (!$mediaId) {
+                return response()->json(['ok' => false, 'mensaje' => 'Error al subir el PDF a Meta.'], 422);
+            }
+
+            // Parámetros
+            $bodyParams = [
+                $nombreDestinatario,
+                $operadorNombre,
+                $plano->numero_planilla ?: 'N/A'
+            ];
+
+            // Enviar
+            $resultado = $apiService->enviarTemplateConDocumento(
+                $numeroCelular,
+                $plantilla,
+                $bodyParams,
+                $mediaId,
+                $nombreArchivo,
+                $config
+            );
+
+            if ($resultado['ok']) {
+                // Registrar la conversación y mensaje
+                $conversacion = WhatsappConversacion::where('aliado_id', $aliadoId)
+                    ->where('wa_numero', $numeroCelular)
+                    ->first();
+
+                if (!$conversacion) {
+                    $conversacion = WhatsappConversacion::create([
+                        'aliado_id' => $aliadoId,
+                        'wa_number' => $numeroCelular,
+                        'nombre_contacto' => $nombreDestinatario,
+                        'estado' => 'abierta',
+                        'ultima_actividad' => now()
+                    ]);
+                }
+
+                \App\Models\WhatsappMensaje::create([
+                    'conversacion_id' => $conversacion->id,
+                    'aliado_id' => $aliadoId,
+                    'wa_message_id' => $resultado['wa_message_id'],
+                    'direccion' => 'saliente',
+                    'tipo' => 'template',
+                    'contenido' => "Reenvío: Certificado Planilla (PDF)",
+                    'plantilla_id' => $plantilla->id,
+                    'plantilla_parametros' => json_encode($bodyParams),
+                    'estado' => 'enviado',
+                    'estado_at' => now(),
+                ]);
+
+                // Registrar en planilla_envios_whatsapp_detalle si es posible (solo si no es prueba)
+                if (!$esPrueba) {
+                    DB::table('planilla_envios_whatsapp_detalle')->insert([
+                        'envio_id' => 0, // 0 indica envío individual / reenvío directo
+                        'plano_id' => $plano->id,
+                        'contrato_id' => $plano->contrato_id,
+                        'cliente_cedula' => $plano->no_identifi,
+                        'wa_numero' => $numeroCelular,
+                        'nombre_destinatario' => $nombreDestinatario,
+                        'numero_planilla' => $plano->numero_planilla,
+                        'operador_nombre' => $operadorNombre,
+                        'periodo_mes' => $plano->mes_plano,
+                        'periodo_anio' => $plano->anio_plano,
+                        'estado' => 'enviado',
+                        'wa_message_id' => $resultado['wa_message_id'],
+                        'enviado_at' => now(),
+                        'created_at' => now(),
+                        'updated_at' => now()
+                    ]);
+                }
+
+                return response()->json(['ok' => true, 'mensaje' => $esPrueba ? 'Mensaje de prueba enviado con éxito.' : 'Planilla reenviada con éxito por WhatsApp.']);
+            } else {
+                return response()->json(['ok' => false, 'mensaje' => 'Meta API Error: ' . $resultado['error']], 422);
+            }
+
+        } catch (\Exception $e) {
+            return response()->json(['ok' => false, 'mensaje' => 'Error: ' . $e->getMessage()], 500);
+        }
+    }
+
+    public function enviosPlanillaHistorial(Request $request)
+    {
+        $aliadoId = session('aliado_id_activo');
+
+        $lotes = PlanillaEnvioWhatsapp::with(['usuario'])
+            ->where('aliado_id', $aliadoId)
+            ->where('id', '>', 0)
+            ->orderBy('id', 'desc')
+            ->get();
+
+        return response()->json([
+            'ok' => true,
+            'data' => $lotes,
+        ]);
+    }
+
+    public function enviosPlanillaLoteDetalle(Request $request, $loteId)
+    {
+        $aliadoId = session('aliado_id_activo');
+
+        $lote = PlanillaEnvioWhatsapp::where('aliado_id', $aliadoId)->findOrFail($loteId);
+
+        $detalles = PlanillaEnvioWhatsappDetalle::where('envio_id', $lote->id)->get();
+
+        return response()->json([
+            'ok' => true,
+            'lote' => $lote,
+            'detalles' => $detalles,
+        ]);
+    }
+
+    public function enviosPlanillaCrearPlantilla(Request $request)
+    {
+        $aliadoId = session('aliado_id_activo');
+
+        try {
+            $service = app(\App\Services\PlanillaWhatsappService::class);
+            $plantilla = $service->crearPlantillaEnMeta($aliadoId);
+
+            return response()->json([
+                'ok' => true,
+                'mensaje' => 'Plantilla "envio_planilla_seguridad_social" creada y asociada de forma exitosa.',
+                'plantilla' => $plantilla
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'ok' => false,
+                'mensaje' => 'Error al crear la plantilla: ' . $e->getMessage()
+            ], 500);
+        }
+    }
 }
+
 

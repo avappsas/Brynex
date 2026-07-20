@@ -4,6 +4,7 @@
 @section('modulo', 'Entradas Mensuales')
 
 @section('contenido')
+@include('finanzas.partials._responsive_fin')
 <div class="finanzas-container" x-data="excelGrid()">
 
     {{-- Breadcrumb & Period Selector --}}
@@ -543,4 +544,8 @@ function excelGrid() {
     }
 }
 </script>
+@endpush
+
+@push('styles')
+@include('finanzas.partials._responsive_movil')
 @endpush

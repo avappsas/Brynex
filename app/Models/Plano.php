@@ -54,6 +54,7 @@ class Plano extends BaseModel
     public function factura()      { return $this->belongsTo(Factura::class); }
     public function contrato()     { return $this->belongsTo(Contrato::class); }
     public function razonSocial()  { return $this->belongsTo(RazonSocial::class, 'razon_social_id'); }
+    public function enviosWhatsappDetalles() { return $this->hasMany(PlanillaEnvioWhatsappDetalle::class, 'plano_id'); }
 
     /**
      * Genera el registro de plano a partir de un contrato y factura.

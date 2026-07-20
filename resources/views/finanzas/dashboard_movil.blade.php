@@ -12,6 +12,9 @@
     <!-- Alpine.js -->
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 
+    <!-- Chart.js para gráficas de evolución -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
     <style>
         :root {
             --bg-principal: #090e17;
@@ -632,6 +635,53 @@
                 @endif
             @endif
 
+            <!-- Intereses del mes: causados vs cobrados -->
+            <div class="glass-card" style="width: 100%; display:flex; gap:0.5rem;">
+                <div style="flex:1; text-align:center;">
+                    <span style="display:block; font-size:0.62rem; font-weight:700; color:var(--texto-secundario); text-transform:uppercase;">📈 Int. causados</span>
+                    <strong style="font-size:0.92rem; color:#fbbf24;">${{ number_format($resumen['intereses_causados'] ?? 0, 0, ',', '.') }}</strong>
+                </div>
+                <div style="width:1px; background:rgba(255,255,255,0.08);"></div>
+                <div style="flex:1; text-align:center;">
+                    <span style="display:block; font-size:0.62rem; font-weight:700; color:var(--texto-secundario); text-transform:uppercase;">💰 Int. cobrados</span>
+                    <strong style="font-size:0.92rem; color:var(--verde-neon, #34d399);">${{ number_format($resumen['intereses_cobrados'] ?? 0, 0, ',', '.') }}</strong>
+                </div>
+            </div>
+
+            <!-- Mis Cuentas / Bolsillos -->
+            @if(isset($cuentas) && $cuentas->isNotEmpty())
+            <div class="glass-card" style="width: 100%;">
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.5rem;">
+                    <h4 style="font-size: 0.82rem; font-weight: 700; color: var(--texto-principal);">💳 Mis Cuentas</h4>
+                    <a href="{{ route('finanzas.cuentas.index') }}" style="color: var(--azul-vivo); font-weight: 700; font-size:0.72rem; text-decoration:none;">Gestionar →</a>
+                </div>
+                <div style="display:flex; flex-direction:column; gap:0.35rem;">
+                    @foreach($cuentas as $cta)
+                        <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.78rem; padding:0.35rem 0.2rem; border-bottom:1px solid rgba(255,255,255,0.05);">
+                            <span style="color: var(--texto-secundario);">{{ $cta->icono }} {{ $cta->nombre }}</span>
+                            <strong style="color: {{ $cta->saldo_actual >= 0 ? 'var(--texto-principal)' : 'var(--rojo-coral)' }};">${{ number_format($cta->saldo_actual, 0, ',', '.') }}</strong>
+                        </div>
+                    @endforeach
+                </div>
+            </div>
+            @endif
+
+            <!-- Gráficas de evolución del año -->
+            @if(isset($evolucion) && count($evolucion) > 0)
+            <div class="glass-card" style="width: 100%;">
+                <h4 style="font-size: 0.82rem; font-weight: 700; color: var(--texto-principal); margin-bottom: 0.6rem;">📈 Entradas vs Salidas {{ $anio }}</h4>
+                <div style="height:170px; position:relative;">
+                    <canvas id="evolucionMovilChart"></canvas>
+                </div>
+            </div>
+            <div class="glass-card" style="width: 100%;">
+                <h4 style="font-size: 0.82rem; font-weight: 700; color: var(--texto-principal); margin-bottom: 0.6rem;">🤝 Intereses {{ $anio }}: causados vs cobrados</h4>
+                <div style="height:170px; position:relative;">
+                    <canvas id="interesesMovilChart"></canvas>
+                </div>
+            </div>
+            @endif
+
             <!-- Botón del Consolidado -->
             <button @click="openConsolidado = true" class="glass-card" style="width: 100%; border: none; text-align: left; display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
                 <div>
@@ -1072,6 +1122,18 @@
                             </div>
                         </div>
 
+                        {{-- Cuenta / Bolsillo --}}
+                        @if(isset($cuentas) && $cuentas->isNotEmpty())
+                        <div class="form-group-bx">
+                            <label class="form-label-bx">¿De qué cuenta salió el dinero?</label>
+                            <select name="cuenta_id" class="form-select-bx" required>
+                                @foreach($cuentas as $cta)
+                                    <option value="{{ $cta->id }}">{{ $cta->icono }} {{ $cta->nombre }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        @endif
+
                         {{-- Descripción --}}
                         <div class="form-group-bx">
                             <label class="form-label-bx">Descripción / Observación</label>
@@ -1254,6 +1316,18 @@
                                 <input type="hidden" name="monto" :value="montoLimpio">
                             </div>
                         </div>
+
+                        {{-- Cuenta / Bolsillo --}}
+                        @if(isset($cuentas) && $cuentas->isNotEmpty())
+                        <div class="form-group-bx">
+                            <label class="form-label-bx">¿A qué cuenta entró el dinero?</label>
+                            <select name="cuenta_id" class="form-select-bx" required>
+                                @foreach($cuentas as $cta)
+                                    <option value="{{ $cta->id }}">{{ $cta->icono }} {{ $cta->nombre }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        @endif
 
                         {{-- Descripción --}}
                         <div class="form-group-bx">
@@ -1579,6 +1653,18 @@
                             </div>
                         </div>
 
+                        {{-- Cuenta / Bolsillo --}}
+                        @if(isset($cuentas) && $cuentas->isNotEmpty())
+                        <div class="form-group-bx">
+                            <label class="form-label-bx">Cuenta / Bolsillo</label>
+                            <select name="cuenta_id" x-model="selectedGasto.cuenta_id" class="form-select-bx">
+                                @foreach($cuentas as $cta)
+                                    <option value="{{ $cta->id }}">{{ $cta->icono }} {{ $cta->nombre }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        @endif
+
                         {{-- Descripción --}}
                         <div class="form-group-bx">
                             <label class="form-label-bx">Descripción / Observación</label>
@@ -1667,6 +1753,56 @@
         </div>
 
     </div>
+
+    @if(isset($evolucion) && count($evolucion) > 0)
+    <script>
+    document.addEventListener("DOMContentLoaded", function() {
+        const evoData = @json($evolucion);
+        const tickMoney = v => '$' + v.toLocaleString('es-CO', {maximumFractionDigits: 0});
+        const ejeOscuro = { ticks: { color: '#94a3b8', font: { size: 8 } }, grid: { color: 'rgba(255,255,255,0.05)' } };
+
+        new Chart(document.getElementById('evolucionMovilChart').getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: evoData.map(d => d.label),
+                datasets: [
+                    { label: 'Entradas', data: evoData.map(d => d.entradas), backgroundColor: '#10b981', borderRadius: 4 },
+                    { label: 'Salidas', data: evoData.map(d => d.salidas), backgroundColor: '#f43f5e', borderRadius: 4 }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom', labels: { color: '#94a3b8', boxWidth: 10, font: { size: 9 } } } },
+                scales: {
+                    y: { beginAtZero: true, ticks: { ...ejeOscuro.ticks, callback: tickMoney }, grid: ejeOscuro.grid },
+                    x: ejeOscuro
+                }
+            }
+        });
+
+        new Chart(document.getElementById('interesesMovilChart').getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: evoData.map(d => d.label),
+                datasets: [
+                    { label: 'Causados', data: evoData.map(d => d.intereses_causados), borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.15)', fill: true, tension: 0.3 },
+                    { label: 'Cobrados', data: evoData.map(d => d.intereses_cobrados), borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.15)', fill: true, tension: 0.3 }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom', labels: { color: '#94a3b8', boxWidth: 10, font: { size: 9 } } } },
+                scales: {
+                    y: { beginAtZero: true, ticks: { ...ejeOscuro.ticks, callback: tickMoney }, grid: ejeOscuro.grid },
+                    x: ejeOscuro
+                }
+            }
+        });
+    });
+    </script>
+    @endif
 
 </body>
 </html>

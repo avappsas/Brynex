@@ -4,6 +4,7 @@
 @section('modulo', 'Préstamos Otorgados')
 
 @section('contenido')
+@include('finanzas.partials._responsive_fin')
 <div class="finanzas-container" x-data="{ buscar: '' }">
 
     {{-- Breadcrumb --}}
@@ -210,4 +211,8 @@
 .badge-ok-bx { background: rgba(34,197,94,0.08); color: #166534; border: 1px solid rgba(34,197,94,0.25); border-radius: 6px; padding: 0.15rem 0.5rem; font-size: 0.68rem; font-weight: 600; }
 .badge-err-bx { border: 1px solid; border-radius: 6px; padding: 0.15rem 0.5rem; font-size: 0.68rem; font-weight: 600; }
 </style>
+@endpush
+
+@push('styles')
+@include('finanzas.partials._responsive_movil')
 @endpush

@@ -60,9 +60,22 @@ class Proyecto extends BaseFinanzasModel
      */
     public function getBalanceAttribute(): float
     {
-        $entradas = (float) $this->movimientos()->where('tipo', 'entrada')->sum('monto');
-        $salidas = (float) $this->movimientos()->where('tipo', 'salida')->sum('monto');
+        return $this->entradas_total - $this->salidas_total;
+    }
 
-        return $entradas - $salidas;
+    /**
+     * Total histórico de entradas del proyecto
+     */
+    public function getEntradasTotalAttribute(): float
+    {
+        return (float) $this->movimientos()->where('tipo', 'entrada')->sum('monto');
+    }
+
+    /**
+     * Total histórico de salidas del proyecto
+     */
+    public function getSalidasTotalAttribute(): float
+    {
+        return (float) $this->movimientos()->where('tipo', 'salida')->sum('monto');
     }
 }

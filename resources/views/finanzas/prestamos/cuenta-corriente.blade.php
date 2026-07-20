@@ -4,6 +4,7 @@
 @section('modulo', 'Cuenta Corriente de Servicios')
 
 @section('contenido')
+@include('finanzas.partials._responsive_fin')
 <div class="finanzas-container">
 
     {{-- Breadcrumb --}}
@@ -123,4 +124,8 @@
 .btn-fin-small { padding: 0.25rem 0.5rem; border: none; border-radius: 6px; font-size: 0.72rem; font-weight: 600; cursor: pointer; }
 .btn-fin-small.primary { background: #3b82f6; color: #fff; }
 </style>
+@endpush
+
+@push('styles')
+@include('finanzas.partials._responsive_movil')
 @endpush

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Finanzas;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Finanzas\Concerns\DetectaDispositivoMovil;
 use App\Models\Finanzas\Prestamo;
 use App\Models\Finanzas\PrestamoMovimiento;
 use App\Models\Finanzas\Gasto;
@@ -15,6 +16,9 @@ use Illuminate\Support\Facades\Storage;
 
 class PrestamoController extends Controller
 {
+    use DetectaDispositivoMovil;
+    use \App\Http\Controllers\Finanzas\Concerns\ResuelveCuenta;
+
     protected PrestamoLiquidacionService $liquidacionService;
     protected FinanzasWhatsappService $whatsappService;
 
@@ -59,7 +63,8 @@ class PrestamoController extends Controller
      */
     public function create()
     {
-        return view('finanzas.prestamos.create');
+        $cuentas = \App\Models\Finanzas\Cuenta::where('user_id', Auth::id())->activas()->orderBy('orden')->get();
+        return view('finanzas.prestamos.create', compact('cuentas'));
     }
 
     /**
@@ -79,6 +84,7 @@ class PrestamoController extends Controller
             'alertas_activas' => 'nullable|boolean',
             'es_cuenta_corriente' => 'nullable|boolean',
             'cuenta_corriente_grupo' => 'nullable|string|max:50',
+            'cuenta_id' => 'nullable|integer',
             'descripcion' => 'nullable|string|max:255',
             'observaciones' => 'nullable|string',
             'soporte' => 'nullable|file|mimes:jpeg,png,jpg,pdf|max:10240', // 10MB max
@@ -131,6 +137,7 @@ class PrestamoController extends Controller
         Gasto::create([
             'user_id' => $user->id,
             'categoria_id' => $catId,
+            'cuenta_id' => $this->resolverCuenta($request->cuenta_id),
             'fecha' => $request->fecha_desembolso,
             'monto' => $request->monto_original,
             'descripcion' => "Préstamo otorgado a: {$request->nombre_deudor}",
@@ -161,12 +168,14 @@ class PrestamoController extends Controller
             $q->orderBy('fecha', 'desc')->orderBy('id', 'desc');
         }]);
 
+        $cuentas = \App\Models\Finanzas\Cuenta::where('user_id', Auth::id())->activas()->orderBy('orden')->get();
+
         // Vista optimizada para dispositivos móviles
         if ($this->isMobileDevice(request())) {
-            return view('finanzas.prestamos.show_movil', compact('prestamo'));
+            return view('finanzas.prestamos.show_movil', compact('prestamo', 'cuentas'));
         }
 
-        return view('finanzas.prestamos.show', compact('prestamo'));
+        return view('finanzas.prestamos.show', compact('prestamo', 'cuentas'));
     }
 
     /**
@@ -224,6 +233,7 @@ class PrestamoController extends Controller
             'monto' => 'required|numeric|min:1',
             'fecha' => 'required|date',
             'observacion' => 'nullable|string|max:255',
+            'cuenta_id' => 'nullable|integer',
             'soporte' => 'nullable|file|mimes:jpeg,png,jpg,pdf|max:10240',
         ]);
 
@@ -232,7 +242,9 @@ class PrestamoController extends Controller
             $soportePath = $request->file('soporte')->store('finanzas/prestamos', 'local');
         }
 
-        $res = $this->liquidacionService->registrarPago($prestamo, $request->monto, $request->fecha, $request->observacion, $soportePath);
+        $cuentaId = $this->resolverCuenta($request->cuenta_id);
+
+        $res = $this->liquidacionService->registrarPago($prestamo, $request->monto, $request->fecha, $request->observacion, $soportePath, $cuentaId);
 
         if ($res['success']) {
             return redirect()->route('finanzas.prestamos.show', $prestamo->id)
@@ -253,6 +265,7 @@ class PrestamoController extends Controller
             'monto' => 'required|numeric|min:1',
             'fecha' => 'required|date',
             'observacion' => 'nullable|string|max:255',
+            'cuenta_id' => 'nullable|integer',
             'soporte' => 'nullable|file|mimes:jpeg,png,jpg,pdf|max:10240', // 10MB max
         ]);
 
@@ -288,6 +301,7 @@ class PrestamoController extends Controller
             Gasto::create([
                 'user_id' => $user->id,
                 'categoria_id' => $catId,
+                'cuenta_id' => $this->resolverCuenta($request->cuenta_id),
                 'fecha' => $request->fecha,
                 'monto' => (float) $request->monto,
                 'descripcion' => "Desembolso adicional a: {$prestamo->nombre_deudor}. Obs: {$request->observacion}",
@@ -523,17 +537,18 @@ class PrestamoController extends Controller
             ? 'pagado'
             : ($prestamo->estado === 'castigado' ? 'castigado' : ($prestamo->dias_mora > 35 ? 'mora' : 'activo'));
 
+        // El último corte nunca retrocede: si el préstamo tiene un corte manual/administrativo
+        // más reciente que el último interés registrado (ej. borrón y cuenta nueva), se respeta.
+        $corteVigente = $prestamo->ultimo_corte;
+        if ($ultimoCorteFecha && (!$corteVigente || \Carbon\Carbon::parse($ultimoCorteFecha)->gt(\Carbon\Carbon::parse($corteVigente)))) {
+            $corteVigente = $ultimoCorteFecha;
+        }
+
         $prestamo->update([
             'saldo_actual' => $saldo,
-            'ultimo_corte' => $ultimoCorteFecha,
+            'ultimo_corte' => $corteVigente,
             'estado'       => $estadoCalculado,
         ]);
-    }
-
-    private function isMobileDevice(Request $request): bool
-    {
-        $userAgent = $request->header('User-Agent', '');
-        return (bool) preg_match('/(android|bb\d+|meego).+mobile|avantgo|bada\/|blackberry|blazer|compal|elaine|fennec|hiptop|iemobile|ip(hone|od)|iris|kindle|lge |maemo|midp|mmp|mobile.+firefox|netfront|opera m(ob|in)i|palm( os)?|phone|p(ixi|re)\/|plucker|pocket|psp|series(4|6)0|symbian|treo|up\.(browser|link)|vodafone|wap|windows ce|xda|xiino/i', $userAgent);
     }
 
     /**

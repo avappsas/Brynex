@@ -380,6 +380,15 @@
                     <input type="number" name="monto" placeholder="Ej: 200000" required min="1">
                     <small>Se abona primero a intereses acumulados y luego a capital.</small>
                 </div>
+                @if(isset($cuentas) && $cuentas->isNotEmpty())
+                <div class="fg"><label>¿A qué cuenta entró el dinero?</label>
+                    <select name="cuenta_id" required>
+                        @foreach($cuentas as $cta)
+                            <option value="{{ $cta->id }}">{{ $cta->icono }} {{ $cta->nombre }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                @endif
                 <div class="fg"><label>Observaciones (opcional)</label><input type="text" name="observacion" placeholder="Ej: Transferencia Bancolombia"></div>
                 <div class="fg">
                     <label>📸 Soporte (opcional)</label>
@@ -435,6 +444,15 @@
                     <input type="number" name="monto" placeholder="Ej: 500000" required min="1">
                     <small>Este valor se suma al capital y al saldo actual del préstamo.</small>
                 </div>
+                @if(isset($cuentas) && $cuentas->isNotEmpty())
+                <div class="fg"><label>¿De qué cuenta salió el dinero?</label>
+                    <select name="cuenta_id" required>
+                        @foreach($cuentas as $cta)
+                            <option value="{{ $cta->id }}">{{ $cta->icono }} {{ $cta->nombre }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                @endif
                 <div class="fg"><label>Observaciones (opcional)</label><input type="text" name="observacion" placeholder="Ej: Desembolso adicional"></div>
                 <div class="fg">
                     <label>📸 Soporte (opcional)</label>

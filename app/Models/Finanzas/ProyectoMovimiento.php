@@ -24,12 +24,19 @@ class ProyectoMovimiento extends BaseFinanzasModel
         'fecha',
         'monto',
         'observacion',
+        'cuenta_id',
     ];
 
     protected $casts = [
         'proyecto_id' => 'integer',
         'monto' => 'float',
+        'cuenta_id' => 'integer',
     ];
+
+    public function cuenta()
+    {
+        return $this->belongsTo(Cuenta::class, 'cuenta_id');
+    }
 
     /**
      * Relación con el proyecto

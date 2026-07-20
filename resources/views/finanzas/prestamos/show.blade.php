@@ -4,6 +4,7 @@
 @section('modulo', 'Ficha del Préstamo')
 
 @section('contenido')
+@include('finanzas.partials._responsive_fin')
 <div class="finanzas-container" x-data="{ openAbono: false, openLiquidar: false, openAnexar: false, openEditarMov: false, openCastigar: false, openReactivar: false, movEditar: { id: null, fecha: '', monto: 0, observacion: '', soporte_path: '' } }">
 
     {{-- Breadcrumb --}}
@@ -302,6 +303,17 @@
                         </template>
                     </div>
 
+                    @if(isset($cuentas) && $cuentas->isNotEmpty())
+                    <div class="form-group-bx" style="margin-top:1rem;">
+                        <label class="form-label-bx">¿A qué cuenta entró el dinero?</label>
+                        <select name="cuenta_id" class="form-select-bx" required>
+                            @foreach($cuentas as $cta)
+                                <option value="{{ $cta->id }}">{{ $cta->icono }} {{ $cta->nombre }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    @endif
+
                     <div class="form-group-bx" style="margin-top:1rem;">
                         <label class="form-label-bx">Observaciones (Opcional)</label>
                         <input type="text" name="observacion" placeholder="Ej: Abono en efectivo, transferencia Bancolombia" class="form-input-bx">
@@ -405,6 +417,17 @@
                             </div>
                         </template>
                     </div>
+
+                    @if(isset($cuentas) && $cuentas->isNotEmpty())
+                    <div class="form-group-bx" style="margin-top:1rem;">
+                        <label class="form-label-bx">¿De qué cuenta salió el dinero?</label>
+                        <select name="cuenta_id" class="form-select-bx" required>
+                            @foreach($cuentas as $cta)
+                                <option value="{{ $cta->id }}">{{ $cta->icono }} {{ $cta->nombre }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    @endif
 
                     <div class="form-group-bx" style="margin-top:1rem;">
                         <label class="form-label-bx">Observaciones (Opcional)</label>

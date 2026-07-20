@@ -4,6 +4,7 @@
 @section('modulo', 'Cobros Otras App')
 
 @section('contenido')
+@include('finanzas.partials._responsive_fin')
 <div class="finanzas-container" x-data="appLideresGrid()">
 
     {{-- Breadcrumb & Period Selector --}}
@@ -639,4 +640,8 @@ function appLideresGrid() {
     }
 }
 </script>
+@endpush
+
+@push('styles')
+@include('finanzas.partials._responsive_movil')
 @endpush

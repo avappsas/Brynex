@@ -127,6 +127,18 @@
         ])
     </div>
 
+    {{-- Intereses del mes: causados (liquidados al saldo) vs cobrados (pagados de verdad) --}}
+    <div style="display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:1.5rem; margin-top:-0.5rem;">
+        <div style="flex:1; min-width:220px; background:#fffbeb; border:1px solid #fde68a; border-radius:10px; padding:0.6rem 1rem; display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-size:0.72rem; font-weight:700; color:#92400e; text-transform:uppercase;">📈 Intereses causados (mes)</span>
+            <strong style="color:#92400e; font-size:1rem;">${{ number_format($resumen['intereses_causados'] ?? 0, 0, ',', '.') }}</strong>
+        </div>
+        <div style="flex:1; min-width:220px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; padding:0.6rem 1rem; display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-size:0.72rem; font-weight:700; color:#166534; text-transform:uppercase;">💰 Intereses cobrados (mes)</span>
+            <strong style="color:#166534; font-size:1rem;">${{ number_format($resumen['intereses_cobrados'] ?? 0, 0, ',', '.') }}</strong>
+        </div>
+    </div>
+
     {{-- Grid de Contenido (Gráficas y Alertas) --}}
     <div class="fin-dashboard-grid">
         
@@ -200,15 +212,57 @@
                 </div>
             </div>
 
+            {{-- Evolución de intereses del año --}}
+            @if(isset($evolucion) && count($evolucion) > 0)
+            <div class="chart-container-card" style="margin-top:1.25rem;">
+                <h3>🤝 Intereses de Préstamos {{ $anio }} (Causados vs Cobrados)</h3>
+                <div style="height:220px; position:relative;">
+                    <canvas id="interesesChart"></canvas>
+                </div>
+            </div>
+
+            {{-- Evolución de liquidez acumulada --}}
+            <div class="chart-container-card" style="margin-top:1.25rem;">
+                <h3>💵 Evolución de Liquidez {{ $anio }} (Acumulado del año)</h3>
+                <div style="height:220px; position:relative;">
+                    <canvas id="liquidezChart"></canvas>
+                </div>
+            </div>
+            @endif
+
         </div>
 
         {{-- Lado Derecho: Accesos Rápidos y Distribución --}}
         <div class="fin-side-panel">
-            
+
+            {{-- Saldos por Cuenta / Bolsillo --}}
+            @if(isset($cuentas) && $cuentas->isNotEmpty())
+            <div class="menu-modulos-card" style="margin-bottom:1rem;">
+                <h3>💳 Mis Cuentas</h3>
+                <div style="display:flex; flex-direction:column; gap:0.4rem; margin-top:0.5rem;">
+                    @foreach($cuentas as $cta)
+                        <div style="display:flex; justify-content:space-between; align-items:center; padding:0.45rem 0.6rem; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; font-size:0.8rem;">
+                            <span>{{ $cta->icono }} <strong>{{ $cta->nombre }}</strong></span>
+                            <span style="font-weight:700; color:{{ $cta->saldo_actual >= 0 ? '#0f172a' : '#ef4444' }};">${{ number_format($cta->saldo_actual, 0, ',', '.') }}</span>
+                        </div>
+                    @endforeach
+                    <a href="{{ route('finanzas.cuentas.index') }}" style="font-size:0.72rem; font-weight:700; color:#4f46e5; text-decoration:none; text-align:right; margin-top:0.25rem;">Administrar cuentas y transferencias →</a>
+                </div>
+            </div>
+            @endif
+
             {{-- Enlaces a Módulos --}}
             <div class="menu-modulos-card">
                 <h3>📂 Módulos Financieros</h3>
                 <div class="modulos-list">
+                    <a href="{{ route('finanzas.cuentas.index') }}" class="modulo-item-link">
+                        <span class="mil-icon" style="background:#eef2ff; color:#4338ca;">💳</span>
+                        <div class="mil-body">
+                            <h4>Cuentas y Bolsillos</h4>
+                            <p>Banco, efectivo y transferencias</p>
+                        </div>
+                        <span class="mil-arrow">→</span>
+                    </a>
                     <a href="{{ route('finanzas.entradas.index') }}" class="modulo-item-link">
                         <span class="mil-icon" style="background:#d1fae5; color:#065f46;">📥</span>
                         <div class="mil-body">
@@ -556,6 +610,71 @@ document.addEventListener("DOMContentLoaded", function() {
             }
         }
     });
+
+    // 1.1 Evolución de intereses del año: causados vs cobrados (Line)
+    @if(isset($evolucion) && count($evolucion) > 0)
+    const evolucionData = @json($evolucion);
+    const moneyTick = value => '$' + value.toLocaleString('es-CO', {maximumFractionDigits: 0});
+
+    new Chart(document.getElementById('interesesChart').getContext('2d'), {
+        type: 'line',
+        data: {
+            labels: evolucionData.map(d => d.label),
+            datasets: [
+                {
+                    label: 'Causados (liquidados)',
+                    data: evolucionData.map(d => d.intereses_causados),
+                    borderColor: '#f59e0b',
+                    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+                    fill: true,
+                    tension: 0.3,
+                },
+                {
+                    label: 'Cobrados (pagados)',
+                    data: evolucionData.map(d => d.intereses_cobrados),
+                    borderColor: '#10b981',
+                    backgroundColor: 'rgba(16, 185, 129, 0.12)',
+                    fill: true,
+                    tension: 0.3,
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } } },
+            scales: {
+                y: { beginAtZero: true, ticks: { callback: moneyTick, font: { size: 9 } } },
+                x: { ticks: { font: { size: 9 } } }
+            }
+        }
+    });
+
+    // 1.2 Liquidez acumulada del año (Line)
+    new Chart(document.getElementById('liquidezChart').getContext('2d'), {
+        type: 'line',
+        data: {
+            labels: evolucionData.map(d => d.label),
+            datasets: [{
+                label: 'Liquidez acumulada (entradas - salidas)',
+                data: evolucionData.map(d => d.liquidez_acumulada),
+                borderColor: '#3b82f6',
+                backgroundColor: 'rgba(59, 130, 246, 0.12)',
+                fill: true,
+                tension: 0.3,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } } },
+            scales: {
+                y: { ticks: { callback: moneyTick, font: { size: 9 } } },
+                x: { ticks: { font: { size: 9 } } }
+            }
+        }
+    });
+    @endif
 
     // 2. Gráfica de Categorías de Gastos de este mes (Doughnut)
     @if(count($gastosCategoria) > 0)
