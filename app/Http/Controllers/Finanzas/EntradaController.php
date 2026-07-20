@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Auth;
 class EntradaController extends Controller
 {
     use \App\Http\Controllers\Finanzas\Concerns\ResuelveCuenta;
+    use \App\Http\Controllers\Finanzas\Concerns\InvalidaFinanzasCache;
 
     public function __construct()
     {
@@ -240,8 +241,11 @@ class EntradaController extends Controller
         );
 
         if ($request->ajax()) {
+            $this->invalidarCacheFinanzas((int) $request->anio, (int) $request->mes);
             return response()->json(['success' => true, 'monto' => $entrada->monto]);
         }
+
+        $this->invalidarCacheFinanzas((int) $request->anio, (int) $request->mes);
 
         return redirect()->route('finanzas.entradas.index', ['anio' => $request->anio])
             ->with('success', 'Entrada registrada correctamente.');
@@ -276,6 +280,8 @@ class EntradaController extends Controller
             'activo' => true,
         ]);
 
+        $this->invalidarCacheFinanzas();
+
         return redirect()->route('finanzas.fuentes.index')->with('success', 'Fuente de ingreso creada con éxito.');
     }
 
@@ -292,6 +298,7 @@ class EntradaController extends Controller
         ]);
 
         $fuente->update($request->only('nombre', 'tipo', 'descripcion', 'orden', 'activo'));
+        $this->invalidarCacheFinanzas();
 
         return redirect()->route('finanzas.fuentes.index')->with('success', 'Fuente de ingreso actualizada.');
     }
@@ -302,6 +309,7 @@ class EntradaController extends Controller
 
         // Desactivar en lugar de borrar para proteger consistencia histórica
         $fuente->update(['activo' => false]);
+        $this->invalidarCacheFinanzas();
 
         return redirect()->route('finanzas.fuentes.index')->with('success', 'Fuente de ingreso desactivada.');
     }
@@ -336,6 +344,8 @@ class EntradaController extends Controller
             'observaciones' => $request->observaciones,
         ]);
 
+        $this->invalidarCacheFinanzas();
+
         return redirect()->route('finanzas.app-lideres.index')->with('success', 'Aliado de App Líderes registrado.');
     }
 
@@ -353,6 +363,7 @@ class EntradaController extends Controller
         ]);
 
         $aliado->update($request->only('nombre', 'valor_mensual', 'fecha_inicio', 'fecha_fin', 'activo', 'observaciones'));
+        $this->invalidarCacheFinanzas();
 
         return redirect()->route('finanzas.app-lideres.index')->with('success', 'Aliado de App Líderes actualizado.');
     }
@@ -361,9 +372,10 @@ class EntradaController extends Controller
     {
         $aliado = AppLiderAliado::where('user_id', Auth::id())->findOrFail($id);
         $aliado->update([
-            'activo' => false,
-            'fecha_fin' => now()->toDateString()
+            'activo'   => false,
+            'fecha_fin'=> now()->toDateString()
         ]);
+        $this->invalidarCacheFinanzas();
 
         return redirect()->route('finanzas.app-lideres.index')->with('success', 'Aliado de App Líderes desactivado.');
     }
@@ -421,6 +433,11 @@ class EntradaController extends Controller
             'descripcion' => $request->descripcion,
         ]);
 
+        $this->invalidarCacheFinanzas(
+            (int) date('Y', strtotime($request->fecha)),
+            (int) date('n', strtotime($request->fecha))
+        );
+
         return response()->json(['success' => true]);
     }
 
@@ -434,6 +451,7 @@ class EntradaController extends Controller
             ->findOrFail($id);
 
         $gasto->delete();
+        $this->invalidarCacheFinanzas();
 
         return response()->json(['success' => true]);
     }

@@ -588,6 +588,15 @@ Route::middleware('auth')->group(function () {
         // Dashboard
         Route::get('/', [$ns, 'index'])->name('dashboard');
 
+        // Dashboard API — endpoints AJAX para carga progresiva
+        Route::prefix('api')->name('api.')->group(function () use ($ns) {
+            Route::get('/resumen',     [$ns, 'apiResumen'])->name('resumen');
+            Route::get('/evolucion',   [$ns, 'apiEvolucion'])->name('evolucion');
+            Route::get('/consolidado', [$ns, 'apiConsolidado'])->name('consolidado');
+            Route::get('/cuentas',     [$ns, 'apiCuentas'])->name('cuentas');
+            Route::get('/alertas',     [$ns, 'apiAlertas'])->name('alertas');
+        });
+
         // Cuentas / Bolsillos
         Route::get('/cuentas',                   [$cta, 'index'])->name('cuentas.index');
         Route::post('/cuentas',                  [$cta, 'store'])->name('cuentas.store');

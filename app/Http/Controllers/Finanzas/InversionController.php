@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\DB;
 class InversionController extends Controller
 {
     use \App\Http\Controllers\Finanzas\Concerns\ResuelveCuenta;
+    use \App\Http\Controllers\Finanzas\Concerns\InvalidaFinanzasCache;
 
     protected CriptoApiService $criptoService;
 
@@ -125,6 +126,11 @@ class InversionController extends Controller
             ]);
         });
 
+        $this->invalidarCacheFinanzas(
+            (int) date('Y', strtotime($request->fecha)),
+            (int) date('n', strtotime($request->fecha))
+        );
+
         return redirect()->route('finanzas.inversiones.index')->with('success', 'Inversión registrada con éxito.');
     }
 
@@ -141,6 +147,7 @@ class InversionController extends Controller
         ]);
 
         $inversion->update($request->only('nombre', 'tipo', 'valor_actual_cop', 'activo', 'observaciones'));
+        $this->invalidarCacheFinanzas();
 
         return redirect()->route('finanzas.inversiones.index')->with('success', 'Inversión actualizada.');
     }
@@ -154,6 +161,8 @@ class InversionController extends Controller
             $inversion->movimientos()->delete();
             $inversion->delete();
         });
+
+        $this->invalidarCacheFinanzas();
 
         return redirect()->route('finanzas.inversiones.index')->with('success', 'Inversión eliminada.');
     }

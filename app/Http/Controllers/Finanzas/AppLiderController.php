@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Storage;
 
 class AppLiderController extends Controller
 {
+    use \App\Http\Controllers\Finanzas\Concerns\InvalidaFinanzasCache;
     public function __construct()
     {
         $this->middleware('auth');
@@ -77,6 +78,8 @@ class AppLiderController extends Controller
             'activo' => true,
         ]);
 
+        $this->invalidarCacheFinanzas();
+
         return redirect()->back()->with('success', 'Aliado de Otras App agregado con éxito.');
     }
 
@@ -98,6 +101,8 @@ class AppLiderController extends Controller
             'fecha_inicio' => $request->fecha_inicio,
             'fecha_fin' => $request->fecha_fin,
         ]);
+
+        $this->invalidarCacheFinanzas();
 
         return redirect()->back()->with('success', 'Aliado actualizado con éxito.');
     }
@@ -129,9 +134,11 @@ class AppLiderController extends Controller
             ]
         );
 
+        $this->invalidarCacheFinanzas((int) $request->anio, (int) $request->mes);
+
         return response()->json([
             'success' => true,
-            'pago' => $pago
+            'pago'    => $pago
         ]);
     }
 
@@ -206,6 +213,8 @@ class AppLiderController extends Controller
             );
         }
 
+        $this->invalidarCacheFinanzas((int) $request->anio);
+
         return redirect()->back()->with('success', 'Recibo de pago registrado y distribuido con éxito.');
     }
 
@@ -224,6 +233,7 @@ class AppLiderController extends Controller
         AppLiderPago::where('recibo_id', $recibo->id)->delete();
 
         $recibo->delete();
+        $this->invalidarCacheFinanzas();
 
         return redirect()->back()->with('success', 'Recibo de pago y cobros mensuales asociados eliminados con éxito.');
     }

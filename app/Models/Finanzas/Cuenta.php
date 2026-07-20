@@ -2,6 +2,7 @@
 
 namespace App\Models\Finanzas;
 
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -46,6 +47,13 @@ class Cuenta extends BaseFinanzasModel
      * Devuelve la colección de cuentas activas con el atributo dinámico `saldo_actual`.
      */
     public static function conSaldos(int $userId)
+    {
+        return Cache::remember("finanzas_cuentas_{$userId}", 300, function () use ($userId) {
+            return static::calcularConSaldos($userId);
+        });
+    }
+
+    private static function calcularConSaldos(int $userId)
     {
         $cuentas = static::where('user_id', $userId)
             ->activas()

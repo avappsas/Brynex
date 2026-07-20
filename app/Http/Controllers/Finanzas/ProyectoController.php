@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\DB;
 class ProyectoController extends Controller
 {
     use \App\Http\Controllers\Finanzas\Concerns\ResuelveCuenta;
+    use \App\Http\Controllers\Finanzas\Concerns\InvalidaFinanzasCache;
 
     public function __construct()
     {
@@ -39,11 +40,13 @@ class ProyectoController extends Controller
         ]);
 
         Proyecto::create([
-            'user_id' => Auth::id(),
-            'nombre' => $request->nombre,
+            'user_id'     => Auth::id(),
+            'nombre'      => $request->nombre,
             'descripcion' => $request->descripcion,
-            'activo' => true,
+            'activo'      => true,
         ]);
+
+        $this->invalidarCacheFinanzas();
 
         return redirect()->route('finanzas.proyectos.index')->with('success', 'Proyecto creado con éxito.');
     }
@@ -75,6 +78,7 @@ class ProyectoController extends Controller
         ]);
 
         $proyecto->update($request->only('nombre', 'descripcion', 'activo'));
+        $this->invalidarCacheFinanzas();
 
         return redirect()->route('finanzas.proyectos.show', $proyecto->id)->with('success', 'Proyecto actualizado.');
     }
@@ -96,12 +100,17 @@ class ProyectoController extends Controller
 
         ProyectoMovimiento::create([
             'proyecto_id' => $proyecto->id,
-            'tipo' => $request->tipo,
-            'monto' => $request->monto,
-            'fecha' => $request->fecha,
+            'tipo'        => $request->tipo,
+            'monto'       => $request->monto,
+            'fecha'       => $request->fecha,
             'observacion' => $request->observacion,
-            'cuenta_id' => $this->resolverCuenta($request->cuenta_id),
+            'cuenta_id'   => $this->resolverCuenta($request->cuenta_id),
         ]);
+
+        $this->invalidarCacheFinanzas(
+            (int) date('Y', strtotime($request->fecha)),
+            (int) date('n', strtotime($request->fecha))
+        );
 
         return redirect()->route('finanzas.proyectos.show', $proyecto->id)->with('success', 'Movimiento registrado con éxito.');
     }
@@ -115,6 +124,7 @@ class ProyectoController extends Controller
         $proyecto = Proyecto::where('user_id', Auth::id())->findOrFail($movimiento->proyecto_id);
 
         $movimiento->delete();
+        $this->invalidarCacheFinanzas();
 
         return redirect()->route('finanzas.proyectos.show', $proyecto->id)->with('success', 'Movimiento eliminado con éxito.');
     }

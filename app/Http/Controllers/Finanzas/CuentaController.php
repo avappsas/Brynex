@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Finanzas;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Finanzas\Concerns\InvalidaFinanzasCache;
 use App\Models\Finanzas\Cuenta;
 use App\Models\Finanzas\CuentaTransferencia;
 use Illuminate\Http\Request;
@@ -10,6 +11,7 @@ use Illuminate\Support\Facades\Auth;
 
 class CuentaController extends Controller
 {
+    use InvalidaFinanzasCache;
     public function __construct()
     {
         $this->middleware('auth');
@@ -57,6 +59,8 @@ class CuentaController extends Controller
             'orden' => $request->orden ?: 10,
         ]);
 
+        $this->invalidarCacheFinanzas();
+
         return redirect()->route('finanzas.cuentas.index')->with('success', 'Cuenta creada con éxito.');
     }
 
@@ -74,13 +78,15 @@ class CuentaController extends Controller
         ]);
 
         $cuenta->update([
-            'nombre' => $request->nombre,
-            'tipo' => $request->tipo,
-            'icono' => $request->icono ?: $cuenta->icono,
+            'nombre'        => $request->nombre,
+            'tipo'          => $request->tipo,
+            'icono'         => $request->icono ?: $cuenta->icono,
             'saldo_inicial' => $request->saldo_inicial ?? $cuenta->saldo_inicial,
-            'orden' => $request->orden ?? $cuenta->orden,
-            'activo' => (bool) $request->activo,
+            'orden'         => $request->orden ?? $cuenta->orden,
+            'activo'        => (bool) $request->activo,
         ]);
+
+        $this->invalidarCacheFinanzas();
 
         return redirect()->route('finanzas.cuentas.index')->with('success', 'Cuenta actualizada.');
     }
@@ -92,6 +98,7 @@ class CuentaController extends Controller
     {
         $cuenta = Cuenta::where('user_id', Auth::id())->findOrFail($id);
         $cuenta->update(['activo' => false]);
+        $this->invalidarCacheFinanzas();
 
         return redirect()->route('finanzas.cuentas.index')->with('success', 'Cuenta desactivada.');
     }
@@ -116,13 +123,15 @@ class CuentaController extends Controller
         Cuenta::where('user_id', $userId)->findOrFail($request->cuenta_destino_id);
 
         CuentaTransferencia::create([
-            'user_id' => $userId,
+            'user_id'          => $userId,
             'cuenta_origen_id' => $request->cuenta_origen_id,
-            'cuenta_destino_id' => $request->cuenta_destino_id,
-            'fecha' => $request->fecha,
-            'monto' => $request->monto,
-            'observacion' => $request->observacion,
+            'cuenta_destino_id'=> $request->cuenta_destino_id,
+            'fecha'            => $request->fecha,
+            'monto'            => $request->monto,
+            'observacion'      => $request->observacion,
         ]);
+
+        $this->invalidarCacheFinanzas();
 
         return redirect()->route('finanzas.cuentas.index')->with('success', 'Transferencia registrada.');
     }
@@ -134,6 +143,7 @@ class CuentaController extends Controller
     {
         $transferencia = CuentaTransferencia::where('user_id', Auth::id())->findOrFail($id);
         $transferencia->delete();
+        $this->invalidarCacheFinanzas();
 
         return redirect()->route('finanzas.cuentas.index')->with('success', 'Transferencia eliminada.');
     }

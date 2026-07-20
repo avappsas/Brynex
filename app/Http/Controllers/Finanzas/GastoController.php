@@ -16,6 +16,7 @@ class GastoController extends Controller
 {
     use DetectaDispositivoMovil;
     use \App\Http\Controllers\Finanzas\Concerns\ResuelveCuenta;
+    use \App\Http\Controllers\Finanzas\Concerns\InvalidaFinanzasCache;
 
     public function __construct()
     {
@@ -149,6 +150,11 @@ class GastoController extends Controller
             'soporte_path' => $soportePath,
         ]);
 
+        $this->invalidarCacheFinanzas(
+            (int) date('Y', strtotime($request->fecha)),
+            (int) date('n', strtotime($request->fecha))
+        );
+
         if ($this->isMobileDevice($request)) {
             return redirect()->route('finanzas.dashboard')->with('success', 'Transacción registrada con éxito.');
         }
@@ -227,6 +233,11 @@ class GastoController extends Controller
             'soporte_path' => $soportePath,
         ]);
 
+        $this->invalidarCacheFinanzas(
+            (int) date('Y', strtotime($request->fecha)),
+            (int) date('n', strtotime($request->fecha))
+        );
+
         if ($this->isMobileDevice($request)) {
             return redirect()->route('finanzas.dashboard', ['tab' => 'historial'])->with('success', 'Transacción actualizada.');
         }
@@ -242,6 +253,8 @@ class GastoController extends Controller
         }
 
         $gasto->delete();
+
+        $this->invalidarCacheFinanzas();
 
         if ($this->isMobileDevice(request())) {
             return redirect()->route('finanzas.dashboard', ['tab' => 'historial'])->with('success', 'Gasto eliminado.');
@@ -348,6 +361,7 @@ class GastoController extends Controller
     {
         $categoria = CategoriaGasto::where('user_id', Auth::id())->findOrFail($id);
         $categoria->update(['activo' => false]);
+        $this->invalidarCacheFinanzas();
 
         return redirect()->route('finanzas.categorias.index')->with('success', 'Categoría desactivada.');
     }

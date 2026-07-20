@@ -18,6 +18,7 @@ class PrestamoController extends Controller
 {
     use DetectaDispositivoMovil;
     use \App\Http\Controllers\Finanzas\Concerns\ResuelveCuenta;
+    use \App\Http\Controllers\Finanzas\Concerns\InvalidaFinanzasCache;
 
     protected PrestamoLiquidacionService $liquidacionService;
     protected FinanzasWhatsappService $whatsappService;
@@ -146,6 +147,11 @@ class PrestamoController extends Controller
             'patrimonio_id' => null,
         ]);
 
+        $this->invalidarCacheFinanzas(
+            (int) date('Y', strtotime($request->fecha_desembolso)),
+            (int) date('n', strtotime($request->fecha_desembolso))
+        );
+
         if ($esCC) {
             return redirect()->route('finanzas.prestamos.cuenta-corriente')->with('success', 'Préstamo registrado en Cuenta Corriente.');
         }
@@ -218,6 +224,7 @@ class PrestamoController extends Controller
         }
 
         $prestamo->update($data);
+        $this->invalidarCacheFinanzas();
 
         return redirect()->route('finanzas.prestamos.show', $prestamo->id)->with('success', 'Datos del préstamo actualizados.');
     }
@@ -247,6 +254,10 @@ class PrestamoController extends Controller
         $res = $this->liquidacionService->registrarPago($prestamo, $request->monto, $request->fecha, $request->observacion, $soportePath, $cuentaId);
 
         if ($res['success']) {
+            $this->invalidarCacheFinanzas(
+                (int) date('Y', strtotime($request->fecha)),
+                (int) date('n', strtotime($request->fecha))
+            );
             return redirect()->route('finanzas.prestamos.show', $prestamo->id)
                 ->with('success', "Pago registrado con éxito. Se abonaron \${$res['abono_interes']} a intereses y \${$res['abono_capital']} a capital.");
         }
@@ -286,29 +297,34 @@ class PrestamoController extends Controller
             // Registrar el egreso correspondiente en finanzas_gastos
             $user = Auth::user();
             $categoriaOtros = CategoriaGasto::where('user_id', $user->id)->where('nombre', 'Otros')->first();
-            
+
             if (!$categoriaOtros) {
                 $categoriaOtros = CategoriaGasto::create([
                     'user_id' => $user->id,
-                    'nombre' => 'Otros',
-                    'icono' => '📁',
-                    'orden' => 99,
+                    'nombre'  => 'Otros',
+                    'icono'   => '📁',
+                    'orden'   => 99,
                 ]);
             }
-            
+
             $catId = $categoriaOtros->id;
 
             Gasto::create([
-                'user_id' => $user->id,
-                'categoria_id' => $catId,
-                'cuenta_id' => $this->resolverCuenta($request->cuenta_id),
-                'fecha' => $request->fecha,
-                'monto' => (float) $request->monto,
-                'descripcion' => "Desembolso adicional a: {$prestamo->nombre_deudor}. Obs: {$request->observacion}",
-                'tipo_movimiento' => 'prestamo',
-                'es_patrimonio' => false,
-                'patrimonio_id' => null,
+                'user_id'        => $user->id,
+                'categoria_id'   => $catId,
+                'cuenta_id'      => $this->resolverCuenta($request->cuenta_id),
+                'fecha'          => $request->fecha,
+                'monto'          => (float) $request->monto,
+                'descripcion'    => "Desembolso adicional a: {$prestamo->nombre_deudor}. Obs: {$request->observacion}",
+                'tipo_movimiento'=> 'prestamo',
+                'es_patrimonio'  => false,
+                'patrimonio_id'  => null,
             ]);
+
+            $this->invalidarCacheFinanzas(
+                (int) date('Y', strtotime($request->fecha)),
+                (int) date('n', strtotime($request->fecha))
+            );
 
             return redirect()->route('finanzas.prestamos.show', $prestamo->id)
                 ->with('success', "Desembolso adicional registrado con éxito por \$" . number_format($request->monto, 0, ',', '.') . " COP.");
@@ -326,6 +342,7 @@ class PrestamoController extends Controller
         $fecha = $request->input('fecha', now()->toDateString());
 
         $interes = $this->liquidacionService->liquidarPeriodo($prestamo, $fecha);
+        $this->invalidarCacheFinanzas();
 
         return redirect()->route('finanzas.prestamos.show', $prestamo->id)
             ->with('success', "Liquidación ejecutada. Intereses liquidados e incorporados al saldo: \${$interes}");
@@ -371,10 +388,11 @@ class PrestamoController extends Controller
 
         $prestamo->update([
             'estado'              => 'castigado',
-            'tasa_interes_mensual' => 0,
+            'tasa_interes_mensual'=> 0,
             'alertas_activas'    => false,
             'observaciones'      => $observacionesActualizadas,
         ]);
+        $this->invalidarCacheFinanzas();
 
         return redirect()->route('finanzas.prestamos.show', $prestamo->id)
             ->with('success', 'Préstamo inactivado/castigado correctamente. Los intereses han sido congelados y no aparecerá en la lista de cobros activos.');
@@ -405,6 +423,7 @@ class PrestamoController extends Controller
             'alertas_activas'     => true,
             'observaciones'       => $observacionesActualizadas,
         ]);
+        $this->invalidarCacheFinanzas();
 
         return redirect()->route('finanzas.prestamos.show', $prestamo->id)
             ->with('success', 'Préstamo reactivado correctamente. Recuerda ejecutar una liquidación de intereses si corresponde.');
@@ -417,6 +436,7 @@ class PrestamoController extends Controller
     {
         $prestamo = Prestamo::where('user_id', Auth::id())->findOrFail($id);
         $prestamo->update(['alertas_activas' => !$prestamo->alertas_activas]);
+        $this->invalidarCacheFinanzas();
 
         return redirect()->route('finanzas.prestamos.show', $prestamo->id)
             ->with('success', $prestamo->alertas_activas ? 'Recordatorios activados.' : 'Recordatorios desactivados.');
@@ -478,6 +498,7 @@ class PrestamoController extends Controller
 
         // Recalcular toda la cadena de saldos de este préstamo
         $this->recalcularSaldos($prestamo);
+        $this->invalidarCacheFinanzas();
 
         return redirect()->route('finanzas.prestamos.show', $prestamo->id)
             ->with('success', 'Movimiento actualizado correctamente y saldos recalculados.');
@@ -500,6 +521,7 @@ class PrestamoController extends Controller
 
         // Recalcular saldos tras la eliminación
         $this->recalcularSaldos($prestamo);
+        $this->invalidarCacheFinanzas();
 
         return redirect()->route('finanzas.prestamos.show', $prestamo->id)
             ->with('success', 'Movimiento eliminado correctamente y saldos recalculados.');

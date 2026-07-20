@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\DB;
 
 class PatrimonioController extends Controller
 {
+    use \App\Http\Controllers\Finanzas\Concerns\InvalidaFinanzasCache;
     public function __construct()
     {
         $this->middleware('auth');
@@ -94,6 +95,8 @@ class PatrimonioController extends Controller
             }
         });
 
+        $this->invalidarCacheFinanzas();
+
         return redirect()->route('finanzas.patrimonio.index')->with('success', 'Bien patrimonial registrado con éxito.');
     }
 
@@ -126,6 +129,7 @@ class PatrimonioController extends Controller
         ]);
 
         $patrimonio->update($request->only('nombre', 'categoria', 'valor_compra', 'fecha_adquisicion', 'valor_actual', 'activo', 'observaciones'));
+        $this->invalidarCacheFinanzas();
 
         return redirect()->route('finanzas.patrimonio.show', $patrimonio->id)->with('success', 'Patrimonio actualizado con éxito.');
     }
@@ -178,6 +182,11 @@ class PatrimonioController extends Controller
                 'patrimonio_id' => $patrimonio->id,
             ]);
         });
+
+        $this->invalidarCacheFinanzas(
+            (int) date('Y', strtotime($request->fecha)),
+            (int) date('n', strtotime($request->fecha))
+        );
 
         return redirect()->route('finanzas.patrimonio.show', $patrimonio->id)->with('success', 'Gasto de patrimonio registrado.');
     }

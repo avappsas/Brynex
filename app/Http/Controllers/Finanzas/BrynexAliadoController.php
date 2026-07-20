@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Storage;
 
 class BrynexAliadoController extends Controller
 {
+    use \App\Http\Controllers\Finanzas\Concerns\InvalidaFinanzasCache;
     public function __construct()
     {
         $this->middleware('auth');
@@ -77,6 +78,8 @@ class BrynexAliadoController extends Controller
             'afiliaciones_brynex' => false,
         ]);
 
+        $this->invalidarCacheFinanzas();
+
         return redirect()->back()->with('success', 'Aliado agregado con éxito.');
     }
 
@@ -101,6 +104,8 @@ class BrynexAliadoController extends Controller
             'brynex_fecha_inicio' => $request->brynex_fecha_inicio,
             'brynex_fecha_fin' => $request->brynex_fecha_fin,
         ]);
+
+        $this->invalidarCacheFinanzas();
 
         return redirect()->back()->with('success', 'Aliado actualizado con éxito.');
     }
@@ -132,9 +137,11 @@ class BrynexAliadoController extends Controller
             ]
         );
 
+        $this->invalidarCacheFinanzas((int) $request->anio, (int) $request->mes);
+
         return response()->json([
             'success' => true,
-            'pago' => $pago
+            'pago'    => $pago
         ]);
     }
 
@@ -205,6 +212,8 @@ class BrynexAliadoController extends Controller
             ]);
         }
 
+        $this->invalidarCacheFinanzas((int) $request->anio);
+
         return redirect()->back()->with('success', 'Recibo de pago registrado y distribuido con éxito.');
     }
 
@@ -223,6 +232,7 @@ class BrynexAliadoController extends Controller
         BrynexPago::where('recibo_id', $recibo->id)->delete();
 
         $recibo->delete();
+        $this->invalidarCacheFinanzas();
 
         return redirect()->back()->with('success', 'Recibo de pago y cobros mensuales asociados eliminados con éxito.');
     }
