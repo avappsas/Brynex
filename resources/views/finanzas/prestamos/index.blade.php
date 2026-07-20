@@ -160,22 +160,10 @@
 .finanzas-container { max-width: 1040px; margin: 0 auto; padding: 0.5rem; }
 
 /* Top Bar & Breadcrumb */
-.fin-top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; }
-.breadcrumb-bx { display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; color: #64748b; }
-.breadcrumb-bx a { color: var(--azul-btn); text-decoration: none; font-weight: 500; }
-.select-fin { padding: 0.35rem 0.75rem; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.8rem; background: #fff; cursor: pointer; outline: none; }
 
 /* Header Section */
-.fin-header-section { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 1rem; }
-.header-text h1 { font-size: 1.4rem; font-weight: 800; color: #0f172a; }
-.header-text p { font-size: 0.85rem; color: #64748b; margin-top: 0.2rem; }
 
-.btn-fin { padding: 0.5rem 1.25rem; border: none; border-radius: 9px; font-size: 0.82rem; font-weight: 600; cursor: pointer; transition: all 0.15s; text-decoration: none; display: inline-flex; align-items: center; gap: 0.35rem; }
-.btn-fin.success { background: linear-gradient(135deg, #f59e0b, #d97706); color: #fff; }
-.btn-fin.success:hover { background: linear-gradient(135deg, #d97706, #b45309); transform: translateY(-1px); }
 
-.btn-fin-link { text-decoration: none; padding: 0.4rem 0.85rem; border-radius: 8px; font-size: 0.78rem; font-weight: 600; text-align: center; }
-.btn-fin-link.success { background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.3); color: #166534; }
 
 /* Filtro de Estado */
 .btn-state-filtro { display: inline-block; padding: 0.45rem 0.9rem; text-decoration: none; border-radius: 8px; border: 1px solid #cbd5e1; background: #fff; color: #475569; font-size: 0.78rem; font-weight: 600; transition: all 0.15s; }

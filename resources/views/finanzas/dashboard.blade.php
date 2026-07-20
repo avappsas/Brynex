@@ -489,19 +489,8 @@
 .finanzas-container { max-width: 1040px; margin: 0 auto; padding: 0.5rem; }
 
 /* Top Bar */
-.fin-top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; }
-.breadcrumb-bx { display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; color: #64748b; }
-.breadcrumb-bx a { color: var(--azul-btn); text-decoration: none; font-weight: 500; }
-.period-selector-bx { display: flex; gap: 0.5rem; }
-.select-fin { padding: 0.35rem 0.75rem; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.8rem; background: #fff; cursor: pointer; outline: none; }
 
 /* Header Section */
-.fin-header-section { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 1rem; }
-.header-text h1 { font-size: 1.4rem; font-weight: 800; color: #0f172a; }
-.header-text p { font-size: 0.85rem; color: #64748b; margin-top: 0.2rem; }
-.btn-fin { padding: 0.5rem 1.25rem; border: none; border-radius: 9px; font-size: 0.82rem; font-weight: 600; cursor: pointer; transition: all 0.15s; }
-.btn-fin.success { background: #22c55e; color: #fff; }
-.btn-fin.success:hover { background: #16a34a; transform: translateY(-1px); }
 
 /* Cripto Widget */
 .cripto-widget-bx { display: flex; align-items: center; gap: 0.5rem; background: #fff; border: 1px solid #e2e8f0; padding: 0.5rem 0.75rem; border-radius: 9px; font-size: 0.78rem; color: #334155; margin-bottom: 1rem; width: fit-content; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
@@ -510,12 +499,6 @@
 .cw-date { color: #94a3b8; font-size: 0.7rem; }
 
 /* KPIs Grid */
-.fin-kpis-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
-.kpi-card { background: #fff; border-radius: 12px; padding: 1rem; display: flex; align-items: center; gap: 1rem; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 1px solid #f1f5f9; }
-.kpi-icon { font-size: 1.7rem; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: #f8fafc; border-radius: 10px; }
-.kpi-content { display: flex; flex-direction: column; }
-.kpi-label { font-size: 0.72rem; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.025em; }
-.kpi-val { font-size: 1.25rem; font-weight: 700; color: #0f172a; margin: 0.1rem 0; }
 .kpi-change { font-size: 0.68rem; font-weight: 600; }
 .kpi-change.pos { color: #22c55e; }
 .kpi-change.neg { color: #ef4444; }

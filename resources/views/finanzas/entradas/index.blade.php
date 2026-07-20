@@ -260,53 +260,8 @@
 @push('styles')
 <style>
 .finanzas-container { max-width: 1400px; margin: 0 auto; padding: 0.5rem; }
-.btn-fin-link { text-decoration: none; padding: 0.45rem 1rem; border-radius: 8px; font-size: 0.78rem; font-weight: 600; text-align: center; }
-.btn-fin-link.primary { background: rgba(59,130,246,0.1); border: 1px solid rgba(59,130,246,0.3); color: #1d4ed8; }
-.btn-fin-link.success { background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.3); color: #166534; }
-
-.fin-top-bar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 2rem;
-    padding: 0.85rem 1.25rem;
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
-    border-radius: 12px;
-}
-.breadcrumb-bx {
-    display: flex;
-    gap: 0.5rem;
-    font-size: 0.78rem;
-    color: #64748b;
-    align-items: center;
-}
-.breadcrumb-bx a {
-    text-decoration: none;
-    color: #475569;
-    font-weight: 600;
-}
-.breadcrumb-bx a:hover {
-    color: #1e293b;
-}
-.fin-header-section {
-    margin-bottom: 1.75rem;
-    padding-left: 0.25rem;
-}
-.fin-header-section h1 {
-    font-size: 1.6rem;
-    font-weight: 800;
-    color: #0f172a;
-    margin: 0 0 0.4rem 0;
-}
-.fin-header-section p {
-    font-size: 0.82rem;
-    color: #64748b;
-    margin: 0;
-}
 
 /* Tabla Excel */
-.card-tabla { background: #fff; border-radius: 12px; border: 1px solid #cbd5e1; box-shadow: 0 4px 12px rgba(0,0,0,0.04); margin-top: 1rem; }
 .tabla-excel { width: 100%; border-collapse: collapse; font-size: 0.8rem; text-align: left; table-layout: fixed; }
 .tabla-excel th, .tabla-excel td { border: 1px solid #e2e8f0; padding: 0.6rem 0.5rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tabla-excel th { background: #f8fafc; font-weight: 700; color: #475569; text-align: center; }

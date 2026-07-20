@@ -114,10 +114,6 @@
 .cc-grupo-total strong { color: #7e22ce; font-size: 0.9rem; }
 
 /* Tabla */
-.card-tabla-bx { background: #fff; border-radius: 12px; overflow: hidden; }
-.tabla-brynex-bx { width: 100%; border-collapse: collapse; font-size: 0.8rem; text-align: left; }
-.tabla-brynex-bx th, .tabla-brynex-bx td { border-bottom: 1px solid #e2e8f0; padding: 0.65rem 0.75rem; }
-.tabla-brynex-bx th { background: #f8fafc; font-weight: 700; color: #475569; }
 
 .badge-ok-bx { background: rgba(34,197,94,0.12); color: #166534; border: 1px solid rgba(34,197,94,0.3); border-radius: 999px; padding: 0.15rem 0.5rem; font-size: 0.7rem; font-weight: 600; }
 .badge-err-bx { background: rgba(239,68,68,0.1); color: #b91c1c; border: 1px solid rgba(239,68,68,0.35); border-radius: 999px; padding: 0.15rem 0.5rem; font-size: 0.7rem; font-weight: 600; }

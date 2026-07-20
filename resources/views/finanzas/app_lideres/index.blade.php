@@ -416,9 +416,6 @@
 @push('styles')
 <style>
 .finanzas-container { max-width: 1400px; margin: 0 auto; padding: 0.5rem; }
-.btn-fin-link { text-decoration: none; padding: 0.45rem 1rem; border-radius: 8px; font-size: 0.78rem; font-weight: 600; text-align: center; }
-.btn-fin-link.primary { background: rgba(59,130,246,0.1); border: 1px solid rgba(59,130,246,0.3); color: #1d4ed8; }
-.btn-fin-link.success { background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.3); color: #166534; }
 
 .fin-top-bar {
     display: flex;
@@ -462,7 +459,6 @@
 }
 
 /* Tabla Excel */
-.card-tabla { background: #fff; border-radius: 12px; border: 1px solid #cbd5e1; box-shadow: 0 4px 12px rgba(0,0,0,0.04); margin-top: 1rem; }
 .tabla-excel { width: 100%; border-collapse: collapse; font-size: 0.8rem; text-align: left; table-layout: fixed; }
 .tabla-excel th, .tabla-excel td { border: 1px solid #e2e8f0; padding: 0.6rem 0.5rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tabla-excel th { background: #f8fafc; font-weight: 700; color: #475569; text-align: center; }
@@ -491,8 +487,6 @@
 .cell-val { padding: 0.6rem 0.5rem; color: #0f172a; font-weight: 500; }
 .cell-input { width: 100%; height: 100%; border: none; padding: 0.6rem 0.5rem; text-align: right; font-size: 0.8rem; font-weight: 600; outline: none; background: transparent; }
 
-.period-selector-bx { display: flex; align-items: center; }
-.select-fin { background: #fff; border: 1px solid #cbd5e1; border-radius: 8px; padding: 0.35rem 1.5rem 0.35rem 0.75rem; font-size: 0.78rem; font-weight: 600; color: #334155; outline: none; cursor: pointer; }
 
 [x-cloak] { display: none !important; }
 

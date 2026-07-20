@@ -578,17 +578,8 @@
 .finanzas-container { max-width: 1040px; margin: 0 auto; padding: 0.5rem; }
 
 /* Top Bar & Breadcrumb */
-.fin-top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; }
-.breadcrumb-bx { display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; color: #64748b; }
-.breadcrumb-bx a { color: var(--azul-btn); text-decoration: none; font-weight: 500; }
-.btn-fin-link { text-decoration: none; padding: 0.45rem 1rem; border-radius: 8px; font-size: 0.78rem; font-weight: 600; text-align: center; display: inline-flex; align-items: center; gap: 0.35rem; }
-.btn-fin-link.primary { background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.18); color: var(--azul-btn); transition: all 0.15s; }
-.btn-fin-link.primary:hover { background: rgba(59,130,246,0.15); transform: translateY(-1px); }
 
 /* Header Section */
-.fin-header-section { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 1rem; }
-.header-text h1 { font-size: 1.4rem; font-weight: 800; color: #0f172a; }
-.header-text p { font-size: 0.85rem; color: #64748b; margin-top: 0.2rem; }
 
 /* Ficha Grid */
 .prestamo-ficha-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 1.25rem; margin-top: 1rem; }
@@ -644,10 +635,6 @@
 .fac-notes-bx p { font-size: 0.8rem; color: #334155; margin-top: 0.3rem; line-height: 1.45; }
 
 /* Tabla */
-.card-tabla-bx { background: #fff; border-radius: 14px; border: 1px solid #cbd5e1; box-shadow: 0 4px 14px rgba(0,0,0,0.03); overflow: hidden; }
-.tabla-brynex-bx { width: 100%; border-collapse: collapse; font-size: 0.8rem; text-align: left; }
-.tabla-brynex-bx th, .tabla-brynex-bx td { border-bottom: 1px solid #e2e8f0; padding: 0.8rem 1rem; }
-.tabla-brynex-bx th { background: #f8fafc; font-weight: 700; color: #475569; }
 
 .mov-tipo-tag { display: inline-block; font-size: 0.62rem; font-weight: 700; padding: 0.15rem 0.45rem; border-radius: 6px; text-transform: uppercase; }
 .mov-tipo-tag.desembolso { background: #f1f5f9; color: #475569; }
@@ -657,27 +644,9 @@
 .mov-tipo-tag.pago_total { background: #d1fae5; color: #065f46; font-weight: 800; border: 1px solid #059669; }
 
 /* Modales */
-.modal-overlay-bx { position: fixed; inset: 0; z-index: 9998; background: rgba(15, 23, 42, 0.5); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; padding: 1rem; }
-.modal-box-bx { background: #fff; border-radius: 16px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); width: 100%; max-width: 450px; overflow: hidden; border: 1px solid #cbd5e1; }
-.modal-head-bx { display: flex; align-items: center; justify-content: space-between; padding: 1rem 1.25rem; border-bottom: 1px solid #cbd5e1; background: linear-gradient(135deg, #1e3a8a, #1d4ed8); color: #fff; }
-.modal-head-bx h3 { color:#fff; font-size:0.95rem; font-weight:700; }
-.modal-close-bx { background: none; border: none; font-size: 1.4rem; cursor: pointer; color: rgba(255,255,255,0.75); transition: color 0.15s; }
-.modal-close-bx:hover { color: #fff; }
-.modal-body-bx { padding: 1.25rem; }
-.modal-foot-bx { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 1rem 1.25rem; border-top: 1px solid #cbd5e1; background: #f8fafc; }
 
-.btn-glass-bx { padding: 0.5rem 1.1rem; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.8rem; font-weight: 600; cursor: pointer; background: #fff; color: #475569; transition: all 0.15s; }
-.btn-glass-bx:hover { background: #f8fafc; border-color: #94a3b8; }
 
-.btn-fin { padding: 0.5rem 1.25rem; border: none; border-radius: 9px; font-size: 0.82rem; font-weight: 600; cursor: pointer; transition: all 0.15s; text-decoration: none; display: inline-flex; align-items: center; gap: 0.35rem; }
-.btn-fin.success { background: linear-gradient(135deg, #10b981, #059669); color: #fff; }
-.btn-fin.success:hover { background: linear-gradient(135deg, #059669, #047857); transform: translateY(-1px); }
 
-.form-group-bx { display: flex; flex-direction: column; gap: 0.35rem; }
-.form-label-bx { font-size: 0.78rem; font-weight: 700; color: #334155; }
-.form-input-bx { padding: 0.55rem 0.85rem; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.82rem; outline: none; transition: border-color 0.15s; }
-.form-input-bx:focus { border-color: var(--azul-btn); }
-.form-select-bx { padding: 0.55rem 0.85rem; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.82rem; outline: none; background: #fff; cursor: pointer; }
 
 .badge-info { background: rgba(59,130,246,0.08); color: #2563eb; border: 1px solid rgba(59,130,246,0.22); border-radius: 6px; padding: 0.2rem 0.5rem; font-size: 0.72rem; font-weight: 600; display: inline-flex; align-items: center; gap: 0.25rem; }
 .badge-info:hover { background: rgba(59,130,246,0.15); }

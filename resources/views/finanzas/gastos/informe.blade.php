@@ -107,7 +107,6 @@
 .finanzas-container { max-width: 1040px; margin: 0 auto; padding: 0.5rem; }
 
 /* Tabla Informe */
-.card-tabla { background: #fff; border-radius: 12px; border: 1px solid #cbd5e1; box-shadow: 0 4px 12px rgba(0,0,0,0.04); margin-top: 1rem; }
 .tabla-informe { width: 100%; border-collapse: collapse; font-size: 0.8rem; text-align: left; table-layout: fixed; }
 .tabla-informe th, .tabla-informe td { border: 1px solid #e2e8f0; padding: 0.65rem 0.5rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tabla-informe th { background: #f8fafc; font-weight: 700; color: #475569; text-align: center; }

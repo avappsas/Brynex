@@ -4,6 +4,7 @@
 @section('modulo', 'Cuentas y Bolsillos')
 
 @section('contenido')
+@include('finanzas.partials._responsive_fin')
 <div class="finanzas-container" x-data="{ openCrear: false, openEditar: false, openTransferir: false, selectedCuenta: {} }">
 
     {{-- Breadcrumb --}}
@@ -17,10 +18,10 @@
         </div>
 
         <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
-            <button @click="openTransferir = true" class="btn-fin" style="background:#0284c7; color:#fff;">
+            <button @click="openTransferir = true" class="btn-fin-link primary">
                 🔁 Transferir
             </button>
-            <button @click="openCrear = true" class="btn-fin success" style="background:linear-gradient(135deg, #4f46e5, #4338ca);">
+            <button @click="openCrear = true" class="btn-fin">
                 ➕ Nueva Cuenta
             </button>
         </div>
@@ -30,9 +31,11 @@
     <div class="fin-header-section">
         <div class="header-text">
             <h1>💳 Cuentas y Bolsillos</h1>
-            <p>Controla dónde está tu dinero: banco, efectivo, billeteras. Saldo total:
-                <strong style="color:{{ $saldoTotal >= 0 ? '#10b981' : '#ef4444' }}; font-size:1.15rem;">${{ number_format($saldoTotal, 0, ',', '.') }} COP</strong>
-            </p>
+            <p>Controla dónde está tu dinero: banco, efectivo, billeteras.</p>
+        </div>
+        <div class="saldo-total-pill" style="border-color:{{ $saldoTotal >= 0 ? '#a7f3d0' : '#fecaca' }};">
+            <span>Saldo total</span>
+            <strong style="color:{{ $saldoTotal >= 0 ? '#047857' : '#b91c1c' }};">${{ number_format($saldoTotal, 0, ',', '.') }} <small>COP</small></strong>
         </div>
     </div>
 
@@ -104,7 +107,7 @@
     </div>
 
     {{-- Móvil: cards --}}
-    <div class="solo-movil" style="margin-top:0.75rem; display:flex; flex-direction:column; gap:0.5rem;">
+    <div class="solo-movil" style="margin-top:0.75rem;">
         @forelse($transferencias as $tr)
             <div class="transf-card-movil">
                 <div class="tcm-linea">
@@ -294,52 +297,30 @@
 
 @push('styles')
 <style>
-.finanzas-container { max-width: 1040px; margin: 0 auto; padding: 0.5rem; }
+/* Estilos propios de la página de Cuentas (el resto viene de la capa base del módulo) */
+.saldo-total-pill { display: flex; flex-direction: column; align-items: flex-end; background: #fff; border: 1px solid; border-radius: 12px; padding: 0.5rem 1rem; box-shadow: 0 2px 8px rgba(15,23,42,0.05); }
+.saldo-total-pill span { font-size: 0.62rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; }
+.saldo-total-pill strong { font-size: 1.15rem; font-weight: 800; }
+.saldo-total-pill strong small { font-size: 0.65rem; color: #94a3b8; }
 
 .cuentas-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 1rem; margin-top: 1rem; }
-.cuenta-card { background: #fff; border: 1px solid #cbd5e1; border-radius: 12px; padding: 1rem; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+.cuenta-card { background: #fff; border: 1px solid #eef1f6; border-top-width: 4px; border-radius: 14px; padding: 1rem 1.1rem; box-shadow: 0 2px 10px rgba(15,23,42,0.05); transition: transform 0.12s ease, box-shadow 0.12s ease; }
+.cuenta-card:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(15,23,42,0.09); }
 .cuenta-card-head { display: flex; align-items: center; gap: 0.6rem; }
 .cuenta-card-head strong { display: block; font-size: 0.9rem; color: #0f172a; }
 .cuenta-icono { font-size: 1.6rem; }
-.cuenta-tipo-tag { font-size: 0.62rem; font-weight: 700; text-transform: uppercase; color: #64748b; }
-.cuenta-saldo { font-size: 1.4rem; font-weight: 800; margin-top: 0.75rem; }
-.cuenta-saldo small { font-size: 0.7rem; color: #94a3b8; font-weight: 600; }
+.cuenta-tipo-tag { font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8; }
+.cuenta-saldo { font-size: 1.4rem; font-weight: 800; margin-top: 0.75rem; letter-spacing: -0.02em; }
+.cuenta-saldo small { font-size: 0.68rem; color: #94a3b8; font-weight: 600; }
 
-.card-tabla-bx { background: #fff; border-radius: 12px; border: 1px solid #cbd5e1; box-shadow: 0 4px 12px rgba(0,0,0,0.04); overflow: hidden; }
-.tabla-brynex-bx { width: 100%; border-collapse: collapse; font-size: 0.8rem; text-align: left; }
-.tabla-brynex-bx th, .tabla-brynex-bx td { border-bottom: 1px solid #e2e8f0; padding: 0.75rem 1rem; }
-.tabla-brynex-bx th { background: #f8fafc; font-weight: 700; color: #475569; }
-
-.btn-icon-bx { background: none; border: none; font-size: 1rem; cursor: pointer; padding: 0.2rem; border-radius: 4px; transition: background 0.1s; }
-.btn-icon-bx:hover { background: #f1f5f9; }
-
-.transf-card-movil { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 0.75rem 0.9rem; }
+.transf-card-movil { background: #fff; border: 1px solid #eef1f6; border-radius: 12px; padding: 0.75rem 0.9rem; box-shadow: 0 1px 4px rgba(15,23,42,0.04); }
 .tcm-linea { display: flex; justify-content: space-between; align-items: center; font-size: 0.82rem; }
 .tcm-linea.sub { font-size: 0.7rem; color: #94a3b8; margin-top: 0.25rem; }
 
-.modal-overlay-bx { position: fixed; inset: 0; z-index: 9998; background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; padding: 1rem; }
-.modal-box-bx { background: #fff; border-radius: 14px; box-shadow: 0 20px 40px rgba(0,0,0,0.2); width: 100%; max-width: 460px; overflow: hidden; max-height: 92vh; overflow-y: auto; }
-.modal-head-bx { display: flex; align-items: center; justify-content: space-between; padding: 1rem; border-bottom: 1px solid #cbd5e1; color: #fff; }
-.modal-head-bx h3 { color:#fff; font-size:1rem; font-weight:600; }
-.modal-close-bx { background: none; border: none; font-size: 1.3rem; cursor: pointer; color: rgba(255,255,255,0.7); }
-.modal-close-bx:hover { color: #fff; }
-.modal-body-bx { padding: 1.25rem; }
-.modal-foot-bx { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 1rem; border-top: 1px solid #cbd5e1; background: #f8fafc; }
-.btn-glass-bx { padding: 0.45rem 1rem; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.78rem; font-weight: 600; cursor: pointer; background: #fff; color: #475569; }
-
-.form-group-bx { display: flex; flex-direction: column; gap: 0.25rem; }
-.form-label-bx { font-size: 0.78rem; font-weight: 600; color: #334155; }
-.form-input-bx { padding: 0.5rem 0.75rem; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.82rem; outline: none; }
-.form-select-bx { padding: 0.5rem 0.75rem; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.82rem; outline: none; background: #fff; cursor: pointer; }
-
-/* Responsive: tabla solo en desktop, cards solo en móvil */
-.solo-movil { display: none; }
 @media (max-width: 768px) {
-    .solo-desktop { display: none; }
-    .solo-movil { display: flex; }
-    .fin-top-bar { flex-direction: column; align-items: flex-start; gap: 0.75rem; }
     .cuentas-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 0.6rem; }
     .cuenta-saldo { font-size: 1.15rem; }
+    .saldo-total-pill { align-items: flex-start; }
 }
 </style>
 @endpush
