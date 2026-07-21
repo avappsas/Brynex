@@ -99,18 +99,18 @@ x-transition:leave="transition ease-in duration-150"
 x-transition:leave-start="opacity-100"
 x-transition:leave-end="opacity-0"
 x-cloak
-class="modal-overlay"
+class="modal-overlay-bx"
 @click.self="openGastoRapido = false">
 
-    <div class="modal-box" style="max-width: 500px;">
-        <div class="modal-head" style="background: linear-gradient(135deg, var(--azul-oscuro), var(--azul-medio)); color: #fff;">
+    <div class="modal-box-bx" style="max-width: 500px;">
+        <div class="modal-head-bx" style="background: linear-gradient(135deg, var(--azul-oscuro), var(--azul-medio)); color: #fff;">
             <h3 style="color:#fff;">➕ Registrar Gasto Rápido</h3>
-            <button @click="openGastoRapido = false" class="modal-close" style="color:rgba(255,255,255,0.7);">&times;</button>
+            <button @click="openGastoRapido = false" class="modal-close-bx" style="color:rgba(255,255,255,0.7);">&times;</button>
         </div>
 
         <form action="{{ route('finanzas.gastos.store') }}" method="POST" enctype="multipart/form-data" @submit="cargando = true">
             @csrf
-            <div class="modal-body" style="display:flex; flex-direction:column; gap:1rem;">
+            <div class="modal-body-bx" style="display:flex; flex-direction:column; gap:1rem;">
                 
                 {{-- Fecha y Monto en la misma fila --}}
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
@@ -212,10 +212,10 @@ class="modal-overlay"
                     <input type="file" name="soporte" x-ref="soporteInput" accept="image/*" style="display: none;" @change="handleFileChange($event)">
                     
                     <div style="display: flex; gap: 0.5rem; margin-top: 0.25rem;">
-                        <button type="button" @click="pegarSoporte()" class="btn-glass" style="display: flex; align-items: center; gap: 0.35rem; color: #1e293b; background: #e2e8f0; border-color: #cbd5e1; padding: 0.4rem 0.75rem; font-size: 0.75rem;">
+                        <button type="button" @click="pegarSoporte()" class="btn-glass-bx" style="display: flex; align-items: center; gap: 0.35rem; color: #1e293b; background: #e2e8f0; border-color: #cbd5e1; padding: 0.4rem 0.75rem; font-size: 0.75rem;">
                             📋 Pegar Soporte
                         </button>
-                        <button type="button" @click="$refs.soporteInput.click()" class="btn-glass" style="display: flex; align-items: center; gap: 0.35rem; color: #1e293b; background: #e2e8f0; border-color: #cbd5e1; padding: 0.4rem 0.75rem; font-size: 0.75rem;">
+                        <button type="button" @click="$refs.soporteInput.click()" class="btn-glass-bx" style="display: flex; align-items: center; gap: 0.35rem; color: #1e293b; background: #e2e8f0; border-color: #cbd5e1; padding: 0.4rem 0.75rem; font-size: 0.75rem;">
                             📸 Tomar Foto / Subir
                         </button>
                     </div>
@@ -223,7 +223,7 @@ class="modal-overlay"
                     {{-- Previsualización de Soporte --}}
                     <div x-show="soportePreview" x-cloak style="margin-top: 0.75rem; position: relative; display: inline-block;">
                         <img :src="soportePreview" style="max-height: 120px; border-radius: 8px; border: 1px solid #cbd5e1; box-shadow: 0 2px 6px rgba(0,0,0,0.15);">
-                        <button type="button" @click="limpiarSoporte()" class="btn-danger" style="position: absolute; top: -5px; right: -5px; width: 22px; height: 22px; border-radius: 50%; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; border: none; cursor: pointer; background: #ef4444; color: white;">
+                        <button type="button" @click="limpiarSoporte()" class="btn-danger-bx" style="position: absolute; top: -5px; right: -5px; width: 22px; height: 22px; border-radius: 50%; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; border: none; cursor: pointer; background: #ef4444; color: white;">
                             &times;
                         </button>
                         <div style="font-size: 0.65rem; color: #64748b; margin-top: 0.25rem; font-weight: 500;" x-text="soporteName"></div>
@@ -256,9 +256,9 @@ class="modal-overlay"
 
             </div>
 
-            <div class="modal-foot">
-                <button type="button" @click="openGastoRapido = false" class="btn-glass" style="border-color:#cbd5e1; color:#475569;">Cancelar</button>
-                <button type="submit" :disabled="cargando" class="btn-accion-premium" style="background: linear-gradient(135deg, #10b981, #059669); color: white; display: flex; align-items: center; gap: 0.5rem; justify-content: center;">
+            <div class="modal-foot-bx">
+                <button type="button" @click="openGastoRapido = false" class="btn-glass-bx" style="border-color:#cbd5e1; color:#475569;">Cancelar</button>
+                <button type="submit" :disabled="cargando" class="btn-fin success" style="background: linear-gradient(135deg, #10b981, #059669); color: white; display: flex; align-items: center; gap: 0.5rem; justify-content: center;">
                     <span x-show="!cargando">💾 Guardar Gasto</span>
                     <span x-show="cargando" x-cloak style="display: flex; align-items: center; gap: 0.35rem;">
                         <i class="fas fa-spinner fa-spin"></i> Guardando...

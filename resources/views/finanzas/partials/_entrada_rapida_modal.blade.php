@@ -6,13 +6,13 @@
      x-transition:leave-start="opacity-100"
      x-transition:leave-end="opacity-0"
      x-cloak
-     class="modal-overlay"
+     class="modal-overlay-bx"
      @click.self="openEntradaRapida = false">
 
-    <div class="modal-box" style="max-width: 500px;">
-        <div class="modal-head" style="background: linear-gradient(135deg, #10b981, #047857); color: #fff;">
+    <div class="modal-box-bx" style="max-width: 500px;">
+        <div class="modal-head-bx" style="background: linear-gradient(135deg, #10b981, #047857); color: #fff;">
             <h3 style="color:#fff;">➕ Registrar Entrada Rápida</h3>
-            <button @click="openEntradaRapida = false" class="modal-close" style="color:rgba(255,255,255,0.7);">&times;</button>
+            <button @click="openEntradaRapida = false" class="modal-close-bx" style="color:rgba(255,255,255,0.7);">&times;</button>
         </div>
 
         @php
@@ -30,7 +30,7 @@
             <input type="hidden" name="tipo_movimiento" value="ingreso_esporadico">
             <input type="hidden" name="categoria_id" value="{{ $catEsporadicaId }}">
 
-            <div class="modal-body" style="display:flex; flex-direction:column; gap:1rem;">
+            <div class="modal-body-bx" style="display:flex; flex-direction:column; gap:1rem;">
                 
                 {{-- Fecha --}}
                 <div class="form-group-bx">
@@ -68,9 +68,9 @@
 
             </div>
 
-            <div class="modal-foot">
-                <button type="button" @click="openEntradaRapida = false" class="btn-glass" style="border-color:#cbd5e1; color:#475569;">Cancelar</button>
-                <button type="submit" class="btn-accion" style="background:#10b981; border:none; color:#fff; padding:0.45rem 1rem; border-radius:8px; font-weight:600; cursor:pointer;">💾 Guardar Entrada</button>
+            <div class="modal-foot-bx">
+                <button type="button" @click="openEntradaRapida = false" class="btn-glass-bx" style="border-color:#cbd5e1; color:#475569;">Cancelar</button>
+                <button type="submit" class="btn-fin success" style="background:#10b981; border:none; color:#fff; padding:0.45rem 1rem; border-radius:8px; font-weight:600; cursor:pointer;">💾 Guardar Entrada</button>
             </div>
         </form>
     </div>
