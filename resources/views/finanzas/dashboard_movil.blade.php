@@ -711,7 +711,7 @@
         <div x-show="activeTab === 'historial'" x-data="{
             filtroTipo: 'todos',
             buscarTexto: '',
-            transacciones: {!! json_encode($transacciones->map(fn($t) => [
+            transacciones: {{ json_encode($transacciones->map(fn($t) => [
                 'id' => $t->id,
                 'fecha' => Carbon\Carbon::parse($t->fecha)->format('d/m/Y'),
                 'raw_fecha' => $t->fecha,
@@ -725,7 +725,7 @@
                 'soporte_path' => $t->soporte_path,
                 'es_patrimonio' => $t->es_patrimonio,
                 'patrimonio_id' => $t->patrimonio_id
-            ])) !!},
+            ])) }},
             get filtradas() {
                 return this.transacciones.filter(t => {
                     // Filtro de tipo
@@ -971,7 +971,7 @@
                      categoriaSearch: '',
                      categoriaIdSelected: '',
                      categoriaIconSelected: '',
-                     categorias: {!! json_encode($categorias->map(fn($c) => ['id' => $c->id, 'nombre' => $c->nombre, 'icono' => $c->icono, 'color' => $c->color]) ?? []) !!},
+                     categorias: {{ json_encode($categorias->map(fn($c) => ['id' => $c->id, 'nombre' => $c->nombre, 'icono' => $c->icono, 'color' => $c->color]) ?? []) }},
                      soportePreview: null,
                      soporteName: '',
                      cargando: false,
@@ -1473,7 +1473,7 @@
                      categoriaSearch: '',
                      categoriaIdSelected: '',
                      categoriaIconSelected: '',
-                     categorias: {!! json_encode($categorias->map(fn($c) => ['id' => $c->id, 'nombre' => $c->nombre, 'icono' => $c->icono, 'color' => $c->color]) ?? []) !!},
+                     categorias: {{ json_encode($categorias->map(fn($c) => ['id' => $c->id, 'nombre' => $c->nombre, 'icono' => $c->icono, 'color' => $c->color]) ?? []) }},
                      soportePreview: null,
                      soporteName: '',
                      cargando: false,

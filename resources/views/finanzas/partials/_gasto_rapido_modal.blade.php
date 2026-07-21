@@ -3,7 +3,7 @@
     categoriaSearch: '',
     categoriaIdSelected: '',
     categoriaIconSelected: '',
-    categorias: {!! json_encode($categorias->map(fn($c) => ['id' => $c->id, 'nombre' => $c->nombre, 'icono' => $c->icono, 'color' => $c->color]) ?? []) !!},
+    categorias: {{ json_encode($categorias->map(fn($c) => ['id' => $c->id, 'nombre' => $c->nombre, 'icono' => $c->icono, 'color' => $c->color]) ?? []) }},
     soportePreview: null,
     soporteName: '',
     cargando: false,
