@@ -339,9 +339,13 @@ class PrestamoController extends Controller
     public function liquidarMes(Request $request, $id)
     {
         $prestamo = Prestamo::where('user_id', Auth::id())->findOrFail($id);
-        $fecha = $request->input('fecha', now()->toDateString());
+        
+        $fechaDesde = $request->input('fecha_desde', $prestamo->ultimo_corte);
+        $fechaHasta = $request->input('fecha_hasta', now()->toDateString());
+        
+        $mesesExcluidos = $request->input('meses_excluidos', []);
 
-        $interes = $this->liquidacionService->liquidarPeriodo($prestamo, $fecha);
+        $interes = $this->liquidacionService->liquidarPeriodo($prestamo, $fechaDesde, $fechaHasta, $mesesExcluidos);
         $this->invalidarCacheFinanzas();
 
         return redirect()->route('finanzas.prestamos.show', $prestamo->id)
@@ -559,12 +563,9 @@ class PrestamoController extends Controller
             ? 'pagado'
             : ($prestamo->estado === 'castigado' ? 'castigado' : ($prestamo->dias_mora > 35 ? 'mora' : 'activo'));
 
-        // El último corte nunca retrocede: si el préstamo tiene un corte manual/administrativo
-        // más reciente que el último interés registrado (ej. borrón y cuenta nueva), se respeta.
-        $corteVigente = $prestamo->ultimo_corte;
-        if ($ultimoCorteFecha && (!$corteVigente || \Carbon\Carbon::parse($ultimoCorteFecha)->gt(\Carbon\Carbon::parse($corteVigente)))) {
-            $corteVigente = $ultimoCorteFecha;
-        }
+        // Sincronizar el último corte con el último movimiento de intereses real que exista.
+        // Si no existen movimientos de intereses mensuales, el corte vuelve a la fecha de desembolso.
+        $corteVigente = $ultimoCorteFecha ?: $prestamo->fecha_desembolso;
 
         $prestamo->update([
             'saldo_actual' => $saldo,

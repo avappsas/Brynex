@@ -328,8 +328,71 @@
     </div>
 
     {{-- Modal Liquidar Intereses Manual --}}
-    <div x-show="openLiquidar" class="modal-overlay-bx" @click.self="openLiquidar = false" x-cloak>
-        <div class="modal-box-bx">
+    <div x-show="openLiquidar" class="modal-overlay-bx" @click.self="openLiquidar = false" x-cloak
+         x-data="{
+            fechaDesde: '{{ $prestamo->ultimo_corte ?: $prestamo->fecha_desembolso }}',
+            fechaHasta: '{{ now()->toDateString() }}',
+            meses: [],
+            calcularMeses() {
+                if (!this.fechaDesde || !this.fechaHasta) {
+                    this.meses = [];
+                    return;
+                }
+                let start = new Date(this.fechaDesde + 'T00:00:00');
+                let end = new Date(this.fechaHasta + 'T00:00:00');
+                
+                if (start >= end) {
+                    this.meses = [];
+                    return;
+                }
+                
+                let result = [];
+                let current = new Date(start);
+                
+                while (true) {
+                    let next = new Date(current);
+                    next.setMonth(next.getMonth() + 1);
+                    if (next > end) {
+                        break;
+                    }
+                    
+                    let label = next.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+                    label = label.charAt(0).toUpperCase() + label.slice(1);
+                    
+                    let yyyy = next.getFullYear();
+                    let mm = String(next.getMonth() + 1).padStart(2, '0');
+                    let dd = String(next.getDate()).padStart(2, '0');
+                    let fechaStr = `${yyyy}-${mm}-${dd}`;
+                    
+                    result.push({
+                        fecha: fechaStr,
+                        label: label,
+                        seleccionado: true
+                    });
+                    current = next;
+                }
+                
+                let diffMs = end - current;
+                let diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+                if (diffDays > 0) {
+                    let yyyy = end.getFullYear();
+                    let mm = String(end.getMonth() + 1).padStart(2, '0');
+                    let dd = String(end.getDate()).padStart(2, '0');
+                    let fechaStr = `${yyyy}-${mm}-${dd}`;
+                    result.push({
+                        fecha: fechaStr,
+                        label: `Fracción de ${diffDays} días (hasta ${end.toLocaleDateString('es-ES')})`,
+                        seleccionado: true,
+                        esFraccion: true
+                    });
+                }
+                
+                this.meses = result;
+            }
+         }"
+         x-init="$watch('openLiquidar', val => { if(val) { calcularMeses(); } }); $watch('fechaDesde', () => calcularMeses()); $watch('fechaHasta', () => calcularMeses());"
+    >
+        <div class="modal-box-bx" style="max-width: 480px;">
             <div class="modal-head-bx">
                 <h3>⚙️ Liquidar Intereses Manual</h3>
                 <button @click="openLiquidar = false" class="modal-close-bx">&times;</button>
@@ -337,17 +400,42 @@
             <form action="{{ route('finanzas.prestamos.liquidar', $prestamo->id) }}" method="POST">
                 @csrf
                 <div class="modal-body-bx">
-                    <div class="form-group-bx">
-                        <label class="form-label-bx">Fecha de Corte / Liquidación</label>
-                        <input type="date" name="fecha" value="{{ now()->toDateString() }}" class="form-input-bx" required>
-                        <small style="color:#64748b; font-size:0.7rem; display:block; margin-top:0.25rem;">
-                            Se liquidará el interés proporcional por los días transcurridos desde el último corte y se capitalizarán.
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem; margin-bottom:1rem;">
+                        <div class="form-group-bx">
+                            <label class="form-label-bx">Fecha Desde</label>
+                            <input type="date" name="fecha_desde" x-model="fechaDesde" class="form-input-bx" required>
+                        </div>
+                        <div class="form-group-bx">
+                            <label class="form-label-bx">Fecha Hasta</label>
+                            <input type="date" name="fecha_hasta" x-model="fechaHasta" class="form-input-bx" required>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group-bx" style="margin-top:0.75rem;" x-show="meses.length > 0">
+                        <label class="form-label-bx" style="margin-bottom:0.4rem; display:block;">Periodos a Liquidar:</label>
+                        <div style="max-height: 200px; overflow-y: auto; border: 1px solid #cbd5e1; border-radius: 10px; padding: 0.25rem 0.5rem; background: #f8fafc;">
+                            <template x-for="(mes, idx) in meses" :key="idx">
+                                <div style="display:flex; align-items:center; justify-content:space-between; padding:0.4rem 0.5rem; border-bottom: 1px solid #f1f5f9;">
+                                    <div style="display:flex; align-items:center; gap:0.5rem;">
+                                        <input type="checkbox" :id="'chk_' + idx" x-model="mes.seleccionado" class="form-checkbox-bx">
+                                        <label :for="'chk_' + idx" style="font-size:0.8rem; color:#334155; cursor:pointer;" x-text="mes.label"></label>
+                                    </div>
+                                    <!-- Si el checkbox no está seleccionado, se envía la fecha en meses_excluidos[] -->
+                                    <input type="hidden" name="meses_excluidos[]" :value="mes.fecha" :disabled="mes.seleccionado">
+                                </div>
+                            </template>
+                        </div>
+                        <small style="color:#64748b; font-size:0.7rem; display:block; margin-top:0.4rem;">
+                            Desmarca los meses en los que no cobrarás intereses. Los intereses de los meses marcados se capitalizarán.
                         </small>
+                    </div>
+                    <div x-show="meses.length === 0" style="padding:1rem; text-align:center; background:#fee2e2; color:#991b1b; border-radius:8px; font-size:0.8rem; font-weight:600; margin-top:0.75rem;">
+                        ⚠️ Rango de fechas inválido o menor a 1 día de diferencia.
                     </div>
                 </div>
                 <div class="modal-foot-bx">
                     <button type="button" @click="openLiquidar = false" class="btn-glass-bx">Cancelar</button>
-                    <button type="submit" class="btn-fin success">Ejecutar Liquidación</button>
+                    <button type="submit" class="btn-fin success" :disabled="meses.length === 0">Ejecutar Liquidación</button>
                 </div>
             </form>
         </div>

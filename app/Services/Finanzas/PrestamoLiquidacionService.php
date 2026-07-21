@@ -19,10 +19,15 @@ class PrestamoLiquidacionService
      * @param string|null $fecha
      * @return float Interés liquidado
      */
-    public function liquidarPeriodo(Prestamo $prestamo, ?string $fecha = null, bool $soloMesesCompletos = false): float
-    {
-        $fechaCorte = $fecha ? Carbon::parse($fecha) : Carbon::now();
-        $ultimoCorte = $prestamo->ultimo_corte ? Carbon::parse($prestamo->ultimo_corte) : Carbon::parse($prestamo->fecha_desembolso);
+    public function liquidarPeriodo(
+        Prestamo $prestamo,
+        ?string $fechaDesde = null,
+        ?string $fechaHasta = null,
+        array $mesesExcluidos = [],
+        bool $soloMesesCompletos = false
+    ): float {
+        $fechaCorte = $fechaHasta ? Carbon::parse($fechaHasta) : Carbon::now();
+        $ultimoCorte = $fechaDesde ? Carbon::parse($fechaDesde) : ($prestamo->ultimo_corte ? Carbon::parse($prestamo->ultimo_corte) : Carbon::parse($prestamo->fecha_desembolso));
 
         $diasPeriodo = $ultimoCorte->diffInDays($fechaCorte, false);
 
@@ -34,28 +39,36 @@ class PrestamoLiquidacionService
         $tasaDecimal = $prestamo->tasa_interes_mensual / 100;
         $totalInteresAcumulado = 0.00;
 
-        DB::transaction(function () use ($prestamo, $fechaCorte, $tasaDecimal, $soloMesesCompletos, &$totalInteresAcumulado) {
-            $ultimoCorteIter = $prestamo->ultimo_corte ? Carbon::parse($prestamo->ultimo_corte) : Carbon::parse($prestamo->fecha_desembolso);
+        DB::transaction(function () use ($prestamo, $fechaCorte, $ultimoCorte, $tasaDecimal, $mesesExcluidos, $soloMesesCompletos, &$totalInteresAcumulado) {
+            $ultimoCorteIter = $ultimoCorte->copy();
 
             // Iterar mes a mes calendario para mantener el mismo día del mes de cobro
             while ($ultimoCorteIter->copy()->addMonth()->startOfDay()->lte($fechaCorte->copy()->startOfDay())) {
+                $ultimoCorteIterBefore = $ultimoCorteIter->copy();
+                $ultimoCorteIter = $ultimoCorteIter->addMonth();
+                $diasPeriodo = $ultimoCorteIterBefore->diffInDays($ultimoCorteIter);
+                
+                $fechaCorteMes = $ultimoCorteIter->toDateString();
+
+                // Si este mes calendario completo está excluido, se omite el cobro pero el corte avanza
+                if (in_array($fechaCorteMes, $mesesExcluidos)) {
+                    continue;
+                }
+
                 $saldoAntes = $prestamo->saldo_actual;
                 $interesCiclo = round($saldoAntes * $tasaDecimal, 2);
 
                 if ($interesCiclo <= 0) {
-                    break;
+                    continue;
                 }
 
-                $ultimoCorteIterBefore = $ultimoCorteIter->copy();
-                $ultimoCorteIter = $ultimoCorteIter->addMonth();
-                $diasPeriodo = $ultimoCorteIterBefore->diffInDays($ultimoCorteIter);
                 $saldoDespues = $saldoAntes + $interesCiclo;
 
                 // Registrar movimiento de liquidación parcial de un mes completo
                 PrestamoMovimiento::create([
                     'prestamo_id' => $prestamo->id,
                     'tipo' => 'interes_mensual',
-                    'fecha' => $ultimoCorteIter->toDateString(),
+                    'fecha' => $fechaCorteMes,
                     'monto' => $interesCiclo,
                     'saldo_antes' => $saldoAntes,
                     'saldo_despues' => $saldoDespues,
@@ -72,28 +85,33 @@ class PrestamoLiquidacionService
             if (!$soloMesesCompletos) {
                 $diasRestantes = $ultimoCorteIter->diffInDays($fechaCorte, false);
                 if ($diasRestantes > 0) {
-                    $saldoAntes = $prestamo->saldo_actual;
-                    $interesProporcional = round($saldoAntes * $tasaDecimal * ($diasRestantes / 30), 2);
+                    $fechaCorteFraccion = $fechaCorte->toDateString();
+                    
+                    // Si la fracción restante está excluida, se omite el cobro pero el corte avanza
+                    if (!in_array($fechaCorteFraccion, $mesesExcluidos)) {
+                        $saldoAntes = $prestamo->saldo_actual;
+                        $interesProporcional = round($saldoAntes * $tasaDecimal * ($diasRestantes / 30), 2);
 
-                    if ($interesProporcional > 0) {
-                        $saldoDespues = $saldoAntes + $interesProporcional;
+                        if ($interesProporcional > 0) {
+                            $saldoDespues = $saldoAntes + $interesProporcional;
 
-                        // Registrar movimiento de liquidación proporcional final
-                        PrestamoMovimiento::create([
-                            'prestamo_id' => $prestamo->id,
-                            'tipo' => 'interes_mensual',
-                            'fecha' => $fechaCorte->toDateString(),
-                            'monto' => $interesProporcional,
-                            'saldo_antes' => $saldoAntes,
-                            'saldo_despues' => $saldoDespues,
-                            'dias_periodo' => $diasRestantes,
-                            'observacion' => "Interés proporcional liquidado por fracción de {$diasRestantes} días.",
-                        ]);
+                            // Registrar movimiento de liquidación proporcional final
+                            PrestamoMovimiento::create([
+                                'prestamo_id' => $prestamo->id,
+                                'tipo' => 'interes_mensual',
+                                'fecha' => $fechaCorteFraccion,
+                                'monto' => $interesProporcional,
+                                'saldo_antes' => $saldoAntes,
+                                'saldo_despues' => $saldoDespues,
+                                'dias_periodo' => $diasRestantes,
+                                'observacion' => "Interés proporcional liquidado por fracción de {$diasRestantes} días.",
+                            ]);
 
-                        $prestamo->saldo_actual = $saldoDespues;
-                        $totalInteresAcumulado += $interesProporcional;
-                        $ultimoCorteIter = $fechaCorte;
+                            $prestamo->saldo_actual = $saldoDespues;
+                            $totalInteresAcumulado += $interesProporcional;
+                        }
                     }
+                    $ultimoCorteIter = $fechaCorte;
                 }
             }
 
@@ -128,7 +146,7 @@ class PrestamoLiquidacionService
 
         return DB::transaction(function () use ($prestamo, $monto, $fechaPago, $observacion, $soportePath, $cuentaId) {
             // Liquidar únicamente intereses de meses completos a la fecha antes de aplicar el abono
-            $interesPrevio = $this->liquidarPeriodo($prestamo, $fechaPago->toDateString(), true);
+            $interesPrevio = $this->liquidarPeriodo($prestamo, null, $fechaPago->toDateString(), [], true);
 
             $saldoAntes = $prestamo->saldo_actual;
             $interesesPendientes = $prestamo->intereses_acumulados; // saldo_actual - monto_original

@@ -406,7 +406,70 @@
     </div>
 
     <!-- ===== BOTTOM SHEET: Liquidar ===== -->
-    <div x-show="openLiquidar" class="bs-overlay" @click.self="openLiquidar=false" x-cloak>
+    <div x-show="openLiquidar" class="bs-overlay" @click.self="openLiquidar=false" x-cloak
+         x-data="{
+            fechaDesde: '{{ $prestamo->ultimo_corte ?: $prestamo->fecha_desembolso }}',
+            fechaHasta: '{{ now()->toDateString() }}',
+            meses: [],
+            calcularMeses() {
+                if (!this.fechaDesde || !this.fechaHasta) {
+                    this.meses = [];
+                    return;
+                }
+                let start = new Date(this.fechaDesde + 'T00:00:00');
+                let end = new Date(this.fechaHasta + 'T00:00:00');
+                
+                if (start >= end) {
+                    this.meses = [];
+                    return;
+                }
+                
+                let result = [];
+                let current = new Date(start);
+                
+                while (true) {
+                    let next = new Date(current);
+                    next.setMonth(next.getMonth() + 1);
+                    if (next > end) {
+                        break;
+                    }
+                    
+                    let label = next.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+                    label = label.charAt(0).toUpperCase() + label.slice(1);
+                    
+                    let yyyy = next.getFullYear();
+                    let mm = String(next.getMonth() + 1).padStart(2, '0');
+                    let dd = String(next.getDate()).padStart(2, '0');
+                    let fechaStr = `${yyyy}-${mm}-${dd}`;
+                    
+                    result.push({
+                        fecha: fechaStr,
+                        label: label,
+                        seleccionado: true
+                    });
+                    current = next;
+                }
+                
+                let diffMs = end - current;
+                let diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+                if (diffDays > 0) {
+                    let yyyy = end.getFullYear();
+                    let mm = String(end.getMonth() + 1).padStart(2, '0');
+                    let dd = String(end.getDate()).padStart(2, '0');
+                    let fechaStr = `${yyyy}-${mm}-${dd}`;
+                    result.push({
+                        fecha: fechaStr,
+                        label: `Fracc. de ${diffDays} días (hasta ${end.toLocaleDateString('es-ES')})`,
+                        seleccionado: true,
+                        esFraccion: true
+                    });
+                }
+                
+                this.meses = result;
+            }
+         }"
+         x-init="$watch('openLiquidar', val => { if(val) { calcularMeses(); } }); $watch('fechaDesde', () => calcularMeses()); $watch('fechaHasta', () => calcularMeses());"
+    >
         <div class="bs-box">
             <div class="bs-handle"></div>
             <div class="bs-head">
@@ -415,14 +478,39 @@
             </div>
             <form action="{{ route('finanzas.prestamos.liquidar', $prestamo->id) }}" method="POST" class="bs-body">
                 @csrf
-                <div class="fg">
-                    <label>Fecha de Corte</label>
-                    <input type="date" name="fecha" value="{{ now()->toDateString() }}" required>
-                    <small>Se liquidará el interés proporcional desde el último corte hasta esta fecha y se capitalizará al saldo.</small>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem; margin-bottom:0.75rem;">
+                    <div class="fg">
+                        <label style="font-size:0.75rem;">Fecha Desde</label>
+                        <input type="date" name="fecha_desde" x-model="fechaDesde" required style="font-size:0.85rem; padding:0.4rem;">
+                    </div>
+                    <div class="fg">
+                        <label style="font-size:0.75rem;">Fecha Hasta</label>
+                        <input type="date" name="fecha_hasta" x-model="fechaHasta" required style="font-size:0.85rem; padding:0.4rem;">
+                    </div>
                 </div>
-                <div class="bs-actions">
+                
+                <div class="fg" x-show="meses.length > 0" style="margin-top:0.5rem;">
+                    <label style="font-size:0.75rem; margin-bottom:0.3rem;">Periodos a Liquidar:</label>
+                    <div style="max-height: 160px; overflow-y: auto; border: 1px solid #cbd5e1; border-radius: 10px; padding: 0.25rem 0.5rem; background: #f8fafc;">
+                        <template x-for="(mes, idx) in meses" :key="idx">
+                            <div style="display:flex; align-items:center; justify-content:space-between; padding:0.35rem 0.5rem; border-bottom: 1px solid #f1f5f9;">
+                                <div style="display:flex; align-items:center; gap:0.5rem;">
+                                    <input type="checkbox" :id="'chk_mob_' + idx" x-model="mes.seleccionado" style="width:16px; height:16px;">
+                                    <label :for="'chk_mob_' + idx" style="font-size:0.75rem; color:#334155;" x-text="mes.label"></label>
+                                </div>
+                                <input type="hidden" name="meses_excluidos[]" :value="mes.fecha" :disabled="mes.seleccionado">
+                            </div>
+                        </template>
+                    </div>
+                </div>
+                
+                <div x-show="meses.length === 0" style="padding:0.75rem; text-align:center; background:#fee2e2; color:#991b1b; border-radius:8px; font-size:0.75rem; font-weight:600; margin-bottom:0.75rem;">
+                    ⚠️ Rango inválido o menor a 1 día de diferencia.
+                </div>
+                
+                <div class="bs-actions" style="margin-top:0.75rem;">
                     <button type="button" @click="openLiquidar=false" class="btn-cancel">Cancelar</button>
-                    <button type="submit" class="btn-ok blue">Ejecutar Liquidación</button>
+                    <button type="submit" class="btn-ok blue" :disabled="meses.length === 0">Ejecutar Liquidación</button>
                 </div>
             </form>
         </div>
