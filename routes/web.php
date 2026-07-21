@@ -672,6 +672,7 @@ Route::middleware('auth')->group(function () {
         Route::put('/inversiones/{inv}',         [$inv, 'update'])->name('inversiones.update');
         Route::delete('/inversiones/{inv}',      [$inv, 'destroy'])->name('inversiones.destroy');
         Route::get('/inversiones/precio-usdt',   [$inv, 'precioUsdt'])->name('inversiones.precio-usdt');
+        Route::post('/inversiones/{inv}/movimientos', [$inv, 'storeMovimiento'])->name('inversiones.movimientos.store');
 
         // Patrimonio
         Route::get('/patrimonio',                [$pat, 'index'])->name('patrimonio.index');

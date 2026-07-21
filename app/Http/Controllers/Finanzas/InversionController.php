@@ -31,7 +31,7 @@ class InversionController extends Controller
     public function index()
     {
         $user = Auth::id();
-        $inversiones = Inversion::where('user_id', $user)->get();
+        $inversiones = Inversion::with('movimientos')->where('user_id', $user)->get();
 
         // Obtener cotización actual del USDT
         $precioUsdtData = $this->criptoService->getPrecioUsdt();
@@ -176,6 +176,88 @@ class InversionController extends Controller
         $this->invalidarCacheFinanzas();
 
         return redirect()->route('finanzas.inversiones.index')->with('success', 'Inversión eliminada.');
+    }
+
+    public function storeMovimiento(Request $request, $id)
+    {
+        $inversion = Inversion::where('user_id', Auth::id())->findOrFail($id);
+
+        $request->validate([
+            'tipo' => 'required|string|in:compra,venta,ganancia,perdida',
+            'fecha' => 'required|date',
+            'cantidad_tokens' => 'required|numeric|min:0.00000001',
+            'precio_token_cop' => 'nullable|numeric|min:0',
+            'monto_cop' => 'nullable|numeric|min:0',
+            'cuenta_id' => 'nullable|integer',
+            'observacion' => 'nullable|string|max:255',
+        ]);
+
+        $user = Auth::user();
+
+        DB::transaction(function () use ($request, $inversion, $user) {
+            $tipo = $request->tipo;
+            $cantidadTokens = (float) $request->cantidad_tokens;
+            $precioUsdtCop = $this->criptoService->getPrecioUsdt()['precio_cop'];
+            $precioTokenCop = (float) ($request->precio_token_cop ?: $precioUsdtCop);
+            $montoCop = (float) ($request->monto_cop ?: ($cantidadTokens * $precioTokenCop));
+
+            // 1. Registrar el movimiento
+            InversionMovimiento::create([
+                'inversion_id' => $inversion->id,
+                'tipo' => $tipo,
+                'fecha' => $request->fecha,
+                'monto_cop' => $montoCop,
+                'cantidad_tokens' => $cantidadTokens,
+                'precio_token_cop' => $precioTokenCop,
+                'observacion' => $request->observacion ?: ucfirst($tipo) . ' registrada.',
+            ]);
+
+            // 2. Actualizar balance de la Inversión
+            if ($tipo === 'ganancia') {
+                $inversion->cantidad_tokens = ($inversion->cantidad_tokens ?? 0) + $cantidadTokens;
+            } elseif ($tipo === 'perdida') {
+                $inversion->cantidad_tokens = max(0, ($inversion->cantidad_tokens ?? 0) - $cantidadTokens);
+            } elseif ($tipo === 'compra') {
+                $inversion->cantidad_tokens = ($inversion->cantidad_tokens ?? 0) + $cantidadTokens;
+                $inversion->monto_invertido_cop += $montoCop;
+
+                // Si salió dinero de una cuenta, registramos el Gasto
+                if ($request->cuenta_id) {
+                    $categoriaOtros = CategoriaGasto::where('user_id', $user->id)->where('nombre', 'Otros')->first();
+                    $catId = $categoriaOtros ? $categoriaOtros->id : 1;
+                    Gasto::create([
+                        'user_id' => $user->id,
+                        'categoria_id' => $catId,
+                        'cuenta_id' => $this->resolverCuenta($request->cuenta_id),
+                        'fecha' => $request->fecha,
+                        'monto' => $montoCop,
+                        'descripcion' => "Adición capital a inversión: {$inversion->nombre}",
+                        'tipo_movimiento' => 'inversion',
+                        'es_patrimonio' => false,
+                        'patrimonio_id' => null,
+                    ]);
+                }
+            } elseif ($tipo === 'venta') {
+                $inversion->cantidad_tokens = max(0, ($inversion->cantidad_tokens ?? 0) - $cantidadTokens);
+                $inversion->monto_invertido_cop = max(0, $inversion->monto_invertido_cop - $montoCop);
+            }
+
+            // Recalcular valor actual estimado en pesos
+            if (in_array($inversion->tipo, ['cripto', 'trading']) && $inversion->cantidad_tokens > 0) {
+                $inversion->valor_actual_cop = $inversion->cantidad_tokens * $precioUsdtCop;
+            } else {
+                $inversion->valor_actual_cop = max(0, ($inversion->valor_actual_cop ?? 0) + ($tipo === 'ganancia' || $tipo === 'compra' ? $montoCop : -$montoCop));
+            }
+
+            $inversion->save();
+        });
+
+        $this->invalidarCacheFinanzas(
+            (int) date('Y', strtotime($request->fecha)),
+            (int) date('n', strtotime($request->fecha))
+        );
+
+        return redirect()->route('finanzas.inversiones.index')->with('success', 'Movimiento registrado con éxito.');
     }
 
     /**
