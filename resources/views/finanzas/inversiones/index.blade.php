@@ -99,6 +99,7 @@
                         </td>
                         <td style="text-align:center;">
                             <div style="display:flex; justify-content:center; gap:0.4rem;">
+                                <button @click="selectedInversion = {{ json_encode($inv) }}; openMovimientos = true" class="btn-icon-bx show" title="Ver Historial / Ajustes" style="background:#e0f2fe; color:#0369a1; border-color:#bae6fd; font-size: 0.85rem; padding: 0.2rem 0.4rem; cursor:pointer;">📈</button>
                                 <button @click="selectedInversion = {{ json_encode($inv) }}; openEditar = true" class="btn-icon-bx edit" title="Editar">✏️</button>
                                 <form action="{{ route('finanzas.inversiones.destroy', $inv->id) }}" method="POST" onsubmit="return confirm('¿Seguro que deseas eliminar esta inversión del historial?')" style="display:inline;">
                                     @csrf
@@ -258,6 +259,127 @@
         </div>
     </div>
 
+    {{-- Modal Historial / Ajustes --}}
+    <div x-show="openMovimientos" class="modal-overlay-bx" @click.self="openMovimientos = false" x-cloak>
+        <div class="modal-box-bx" style="max-width: 650px;">
+            <div class="modal-head-bx" style="background:linear-gradient(135deg, #0284c7, #0369a1);">
+                <h3>📈 Historial y Ajustes: <span x-text="selectedInversion.nombre"></span></h3>
+                <button @click="openMovimientos = false" class="modal-close-bx">&times;</button>
+            </div>
+            
+            <div class="modal-body-bx" style="max-height: 80vh; overflow-y: auto;">
+                
+                {{-- Sección 1: Historial de Movimientos --}}
+                <div style="margin-bottom: 1.5rem;">
+                    <h4 style="margin: 0 0 0.5rem 0; font-size: 0.9rem; font-weight: 800; color: #1e293b;">📋 Historial de Transacciones</h4>
+                    
+                    <div style="overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 8px; background: #fff;">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 0.75rem; text-align: left;">
+                            <thead>
+                                <tr style="background: #f8fafc; border-bottom: 1px solid #e2e8f0; color: #475569;">
+                                    <th style="padding: 0.5rem;">Fecha</th>
+                                    <th style="padding: 0.5rem; text-align:center;">Tipo</th>
+                                    <th style="padding: 0.5rem; text-align:right;">USDT (Tokens)</th>
+                                    <th style="padding: 0.5rem; text-align:right;">Monto (COP)</th>
+                                    <th style="padding: 0.5rem;">Observación</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template x-for="mov in (selectedInversion.movimientos ?? [])" :key="mov.id">
+                                    <tr style="border-bottom: 1px solid #f1f5f9;">
+                                        <td style="padding: 0.5rem;" x-text="mov.fecha"></td>
+                                        <td style="padding: 0.5rem; text-align:center;">
+                                            <span class="tipo-tag-bx" 
+                                                  x-text="mov.tipo.toUpperCase()"
+                                                  :style="{
+                                                      'background': mov.tipo === 'ganancia' || mov.tipo === 'compra' ? '#dcfce7' : '#fee2e2',
+                                                      'color': mov.tipo === 'ganancia' || mov.tipo === 'compra' ? '#15803d' : '#b91c1c'
+                                                  }">
+                                            </span>
+                                        </td>
+                                        <td style="padding: 0.5rem; text-align:right; font-family:monospace;" x-text="(mov.tipo === 'ganancia' || mov.tipo === 'compra' ? '+' : '-') + Number(mov.cantidad_tokens).toFixed(4)"></td>
+                                        <td style="padding: 0.5rem; text-align:right; font-weight:600;" x-text="'$' + Number(mov.monto_cop).toLocaleString('es-CO', {maximumFractionDigits: 0})"></td>
+                                        <td style="padding: 0.5rem; color:#64748b;" x-text="mov.observacion || '-'"></td>
+                                    </tr>
+                                </template>
+                                <template x-if="!(selectedInversion.movimientos ?? []).length">
+                                    <tr>
+                                        <td colspan="5" style="text-align:center; padding:1rem; color:#94a3b8;">No hay movimientos registrados.</td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <hr style="border:0; border-top:1px solid #e2e8f0; margin:1.5rem 0;">
+
+                {{-- Sección 2: Formulario de Nuevo Ajuste --}}
+                <form :action="'{{ route('finanzas.inversiones.index') }}/' + selectedInversion.id + '/movimientos'" method="POST" x-data="{ tipoMov: 'ganancia' }">
+                    @csrf
+                    <h4 style="margin: 0 0 0.75rem 0; font-size: 0.9rem; font-weight: 800; color: #1e293b;">📈 Registrar Nuevo Ajuste (Mensual)</h4>
+                    
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.75rem;">
+                        <div class="form-group-bx">
+                            <label class="form-label-bx">Tipo de Ajuste</label>
+                            <select name="tipo" x-model="tipoMov" class="form-select-bx" required>
+                                <option value="ganancia">📈 Ganancia mensual (+ USDT)</option>
+                                <option value="perdida">📉 Pérdida mensual (- USDT)</option>
+                                <option value="compra">➕ Abonar capital / Compra (+ USDT & COP)</option>
+                                <option value="venta">➖ Retirar capital / Venta (- USDT & COP)</option>
+                            </select>
+                        </div>
+                        <div class="form-group-bx">
+                            <label class="form-label-bx">Fecha del Ajuste</label>
+                            <input type="date" name="fecha" value="{{ now()->toDateString() }}" class="form-input-bx" required>
+                        </div>
+                    </div>
+
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.75rem; margin-top:1rem;">
+                        <div class="form-group-bx">
+                            <label class="form-label-bx" style="color:#0284c7;">Cantidad de USDT (Tokens)</label>
+                            <input type="number" step="any" name="cantidad_tokens" placeholder="Ej: 50.50" class="form-input-bx" required min="0.00000001">
+                        </div>
+                        <div class="form-group-bx">
+                            <label class="form-label-bx">Precio USDT (COP) <span style="font-size:0.65rem; color:#64748b;">(Opcional)</span></label>
+                            <input type="number" step="any" name="precio_token_cop" placeholder="En blanco = precio en vivo" class="form-input-bx">
+                        </div>
+                    </div>
+
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.75rem; margin-top:1rem;">
+                        <div class="form-group-bx" x-show="tipoMov === 'compra' || tipoMov === 'venta'" x-cloak>
+                            <label class="form-label-bx">Monto total en Pesos (COP) <span style="font-size:0.65rem; color:#64748b;">(Opcional)</span></label>
+                            <input type="number" step="any" name="monto_cop" placeholder="Ej: 200000" class="form-input-bx">
+                        </div>
+                        
+                        @if(isset($cuentas) && $cuentas->isNotEmpty())
+                        <div class="form-group-bx" x-show="tipoMov === 'compra'" x-cloak>
+                            <label class="form-label-bx">¿De qué cuenta salió el dinero?</label>
+                            <select name="cuenta_id" class="form-select-bx">
+                                <option value="">-- No descontar de mis cuentas --</option>
+                                @foreach($cuentas as $cta)
+                                    <option value="{{ $cta->id }}">{{ $cta->icono }} {{ $cta->nombre }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        @endif
+                    </div>
+
+                    <div class="form-group-bx" style="margin-top:1rem;">
+                        <label class="form-label-bx">Observación / Concepto</label>
+                        <input type="text" name="observacion" placeholder="Ej: Rendimiento mensual Vantage, compra USDT" class="form-input-bx">
+                    </div>
+
+                    <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:1.25rem;">
+                        <button type="button" @click="openMovimientos = false" class="btn-glass-bx">Cancelar</button>
+                        <button type="submit" class="btn-fin success" style="background:#0284c7;">💾 Guardar Ajuste</button>
+                    </div>
+                </form>
+
+            </div>
+        </div>
+    </div>
+
 </div>
 @endsection
 
@@ -297,6 +419,7 @@ function inversionesControl(precioInicial, inversionesInicial) {
         inversiones: inversionesInicial,
         openCrear: false,
         openEditar: false,
+        openMovimientos: false,
         selectedInversion: {},
         refresando: false,
         
