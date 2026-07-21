@@ -95,7 +95,7 @@
                             >
                                 <div class="cell-val" style="display:flex; flex-direction:column; align-items:flex-end; justify-content:center; padding:0.25rem 0.5rem; min-height:35px; box-sizing:border-box;">
                                     <span style="font-weight:600; font-size:0.78rem; color: {{ $ultimoPago && $ultimoPago->estado === 'pendiente' ? '#d97706' : '#0f172a' }}">
-                                        {{ $monto > 0 ? '$' . number_format($monto, 0, ',', '.') : '-' }}
+                                        {{ $mesPagos->isNotEmpty() ? '$' . number_format($monto, 0, ',', '.') : '-' }}
                                     </span>
                                     @if($ultimoPago && $ultimoPago->estado === 'pendiente')
                                         <span style="font-size:0.58rem; color:#d97706; font-weight:700; line-height:1; margin-top:1px;">Abono</span>
@@ -125,14 +125,18 @@
                         @foreach(range(1,12) as $mesNum)
                             @php
                                 $totalMes = 0;
+                                $hasPagos = false;
                                 foreach($aliados as $aliado) {
                                     $mesPagos = isset($pagos[$aliado->id][$mesNum]) ? $pagos[$aliado->id][$mesNum] : collect();
+                                    if ($mesPagos->isNotEmpty()) {
+                                        $hasPagos = true;
+                                    }
                                     $totalMes += $mesPagos->sum('monto');
                                 }
                                 $totalGeneral += $totalMes;
                             @endphp
                             <td style="text-align:right; padding: 0.6rem 0.5rem; color:#0f172a;">
-                                {{ $totalMes > 0 ? '$' . number_format($totalMes, 0, ',', '.') : '-' }}
+                                {{ $hasPagos ? '$' . number_format($totalMes, 0, ',', '.') : '-' }}
                             </td>
                         @endforeach
                         <td style="text-align:right; padding: 0.6rem 0.5rem; color:#047857; font-weight:800;">
