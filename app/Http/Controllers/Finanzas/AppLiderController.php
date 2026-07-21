@@ -9,6 +9,7 @@ use App\Models\Finanzas\AppLiderRecibo;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 
 class AppLiderController extends Controller
 {
@@ -89,7 +90,11 @@ class AppLiderController extends Controller
     public function updateAliado(Request $request)
     {
         $request->validate([
-            'id' => 'required|integer|exists:finanzas_app_lideres_aliados,id',
+            'id' => [
+                'required',
+                'integer',
+                Rule::exists('finanzas_app_lideres_aliados', 'id')->connection('finanzas')
+            ],
             'nombre' => 'required|string|max:150',
             'fecha_inicio' => 'nullable|date',
             'fecha_fin' => 'nullable|date',
@@ -148,7 +153,11 @@ class AppLiderController extends Controller
     public function registrarRecibo(Request $request)
     {
         $request->validate([
-            'aliado_id' => 'required|integer|exists:finanzas_app_lideres_aliados,id',
+            'aliado_id' => [
+                'required',
+                'integer',
+                Rule::exists('finanzas_app_lideres_aliados', 'id')->connection('finanzas')
+            ],
             'fecha_pago' => 'required|date',
             'banco' => 'required|string|max:100',
             'soporte' => 'nullable|file|mimes:jpeg,png,jpg,pdf|max:10240',
