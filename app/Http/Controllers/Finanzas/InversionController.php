@@ -141,12 +141,23 @@ class InversionController extends Controller
         $request->validate([
             'nombre' => 'required|string|max:100',
             'tipo' => 'required|string|in:cripto,trading,otro',
+            'monto_invertido_cop' => 'required|numeric|min:0',
+            'cantidad_tokens' => 'nullable|numeric|min:0',
+            'precio_compra_promedio' => 'nullable|numeric|min:0',
             'valor_actual_cop' => 'nullable|numeric|min:0',
             'activo' => 'required|boolean',
             'observaciones' => 'nullable|string',
         ]);
 
-        $inversion->update($request->only('nombre', 'tipo', 'valor_actual_cop', 'activo', 'observaciones'));
+        $inversion->update($request->only('nombre', 'tipo', 'monto_invertido_cop', 'cantidad_tokens', 'precio_compra_promedio', 'valor_actual_cop', 'activo', 'observaciones'));
+
+        // Recalcular valor actual si es cripto
+        if ($inversion->tipo === 'cripto' && $inversion->cantidad_tokens > 0) {
+            $precioUsdtData = $this->criptoService->getPrecioUsdt();
+            $inversion->valor_actual_cop = $inversion->cantidad_tokens * $precioUsdtData['precio_cop'];
+            $inversion->save();
+        }
+
         $this->invalidarCacheFinanzas();
 
         return redirect()->route('finanzas.inversiones.index')->with('success', 'Inversión actualizada.');

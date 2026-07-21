@@ -215,9 +215,28 @@
                         </select>
                     </div>
                     <div class="form-group-bx" style="margin-top:1rem;">
+                        <label class="form-label-bx">Monto Invertido ($ COP)</label>
+                        <input type="number" name="monto_invertido_cop" x-model="selectedInversion.monto_invertido_cop" class="form-input-bx" required min="0">
+                    </div>
+
+                    {{-- Cripto Campos Adicionales --}}
+                    <div x-show="selectedInversion.tipo === 'cripto'" x-cloak style="margin-top:1rem; border-left:2px dashed #0284c7; padding-left:1rem;">
+                        <div style="display:flex; gap:0.5rem;">
+                            <div class="form-group-bx" style="flex:1;">
+                                <label class="form-label-bx" style="color:#0284c7;">Cantidad de Tokens</label>
+                                <input type="number" step="0.00000001" name="cantidad_tokens" x-model="selectedInversion.cantidad_tokens" placeholder="Ej: 480.5" class="form-input-bx">
+                            </div>
+                            <div class="form-group-bx" style="flex:1;">
+                                <label class="form-label-bx" style="color:#0284c7;">Precio Compra Promedio (COP)</label>
+                                <input type="number" step="0.01" name="precio_compra_promedio" x-model="selectedInversion.precio_compra_promedio" placeholder="Ej: 4150" class="form-input-bx">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group-bx" style="margin-top:1rem;" x-show="selectedInversion.tipo !== 'cripto'">
                         <label class="form-label-bx">Valor Actual ($ COP)</label>
                         <input type="number" name="valor_actual_cop" x-model="selectedInversion.valor_actual_cop" class="form-input-bx" required min="0">
-                        <small style="color:#64748b; font-size:0.7rem;">Si es Cripto, se recalcula con la cotización en vivo. Puedes forzar el valor aquí.</small>
+                        <small style="color:#64748b; font-size:0.7rem;">Puedes forzar el valor estimado actual aquí.</small>
                     </div>
                     <div class="form-group-bx" style="margin-top:1rem;">
                         <label class="form-label-bx">Estado</label>
