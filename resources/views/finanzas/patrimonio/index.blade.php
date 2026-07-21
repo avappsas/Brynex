@@ -7,30 +7,20 @@
 @include('finanzas.partials._responsive_fin')
 <div class="finanzas-container" x-data="{ openCrear: false }">
 
-    {{-- Breadcrumb --}}
-    <div class="fin-top-bar">
-        <div class="breadcrumb-bx">
-            <a href="{{ route('brynex.hub') }}">🔵 BryNex</a>
-            <span>›</span>
-            <a href="{{ route('finanzas.dashboard') }}">Finanzas Personales</a>
-            <span>›</span>
-            <span>Patrimonio</span>
-        </div>
-        
-        <div>
+    @component('finanzas.partials._header_banner', [
+        'titulo' => '🏠 Control de Patrimonio Físico',
+        'subtitulo' => 'Control de vehículos, inmuebles, tecnología u otros bienes tangibles con su depreciación o valorización.',
+        'breadcrumb' => [
+            'Finanzas Personales' => route('finanzas.dashboard'),
+            'Patrimonio' => null
+        ]
+    ])
+        @slot('opciones')
             <button @click="openCrear = true" class="btn-fin success" style="background:#006064;">
                 ➕ Registrar Bien
             </button>
-        </div>
-    </div>
-
-    {{-- Header --}}
-    <div class="fin-header-section">
-        <div class="header-text">
-            <h1>🏠 Control de Patrimonio Físico</h1>
-            <p>Control de vehículos, inmuebles, tecnología u otros bienes tangibles con su depreciación o valorización.</p>
-        </div>
-    </div>
+        @endslot
+    @endcomponent
 
     {{-- Grid de KPIs del Patrimonio --}}
     <div class="fin-kpis-grid">

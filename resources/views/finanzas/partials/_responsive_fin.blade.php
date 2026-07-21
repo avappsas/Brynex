@@ -9,6 +9,23 @@
 @push('styles')
 <style>
 [x-cloak] { display: none !important; }
+
+/* ══════════════ HEADER BANNER ══════════════ */
+.fin-banner-header {
+    background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 60%, #1e40af 100%);
+    border-radius: 14px; padding: 1.1rem 1.4rem; color: #fff;
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.8rem;
+    margin-bottom: 1.25rem;
+}
+.fin-banner-text { display: flex; flex-direction: column; gap: 0.15rem; }
+.fin-banner-breadcrumb { display: flex; align-items: center; gap: 0.4rem; font-size: 0.72rem; color: #94a3b8; margin-bottom: 0.25rem; }
+.fin-banner-breadcrumb a { color: #cbd5e1; text-decoration: none; font-weight: 500; }
+.fin-banner-breadcrumb a:hover { color: #fff; }
+.fin-banner-breadcrumb span { color: #94a3b8; }
+.fin-banner-title { font-size: 1.3rem; font-weight: 800; color: #fff; }
+.fin-banner-sub { font-size: 0.77rem; color: #94a3b8; margin-top: 0.15rem; }
+.fin-banner-options { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+
 /* ══════════════ BASE ══════════════ */
 .finanzas-container { max-width: 1080px; margin: 0 auto; padding: 0.5rem; color: #0f172a; }
 
@@ -113,6 +130,11 @@
 
 /* ══════════════ RESPONSIVE (celular) ══════════════ */
 @media (max-width: 768px) {
+    .fin-banner-header { flex-direction: column !important; align-items: stretch !important; padding: 1rem !important; gap: 0.75rem !important; }
+    .fin-banner-options { width: 100% !important; justify-content: flex-start !important; }
+    .fin-banner-title { font-size: 1.15rem !important; }
+    .fin-banner-sub { font-size: 0.72rem !important; }
+
     .solo-desktop { display: none !important; }
     .solo-movil { display: flex; flex-direction: column; gap: 0.5rem; }
 

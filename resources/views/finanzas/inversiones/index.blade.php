@@ -7,30 +7,20 @@
 @include('finanzas.partials._responsive_fin')
 <div class="finanzas-container" x-data="inversionesControl({{ json_encode($precioUsdtData) }}, {{ json_encode($inversiones) }})">
 
-    {{-- Breadcrumb --}}
-    <div class="fin-top-bar">
-        <div class="breadcrumb-bx">
-            <a href="{{ route('brynex.hub') }}">🔵 BryNex</a>
-            <span>›</span>
-            <a href="{{ route('finanzas.dashboard') }}">Finanzas Personales</a>
-            <span>›</span>
-            <span>Inversiones</span>
-        </div>
-        
-        <div>
+    @component('finanzas.partials._header_banner', [
+        'titulo' => '🪙 Portafolio de Inversiones',
+        'subtitulo' => 'Control de adquisiciones cripto (Binance USDT), acciones o fondos, con recálculo dinámico basado en la API en tiempo real.',
+        'breadcrumb' => [
+            'Finanzas Personales' => route('finanzas.dashboard'),
+            'Inversiones' => null
+        ]
+    ])
+        @slot('opciones')
             <button @click="openCrear = true" class="btn-fin success" style="background:#0284c7;">
                 ➕ Nueva Inversión
             </button>
-        </div>
-    </div>
-
-    {{-- Header --}}
-    <div class="fin-header-section">
-        <div class="header-text">
-            <h1>🪙 Portafolio de Inversiones</h1>
-            <p>Control de adquisiciones cripto (Binance USDT), acciones o fondos, con recálculo dinámico basado en la API en tiempo real.</p>
-        </div>
-    </div>
+        @endslot
+    @endcomponent
 
     {{-- Cripto Live Bar --}}
     <div class="cripto-live-header-bar">

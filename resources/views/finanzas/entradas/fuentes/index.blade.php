@@ -7,31 +7,22 @@
 @include('finanzas.partials._responsive_fin')
 <div class="finanzas-container" x-data="{ openCrear: false, openEditar: false, selectedFuente: {} }">
 
-    {{-- Breadcrumb --}}
-    <div class="fin-top-bar">
-        <div class="breadcrumb-bx">
-            <a href="{{ route('brynex.hub') }}">🔵 BryNex</a>
-            <span>›</span>
-            <a href="{{ route('finanzas.dashboard') }}">Finanzas Personales</a>
-            <span>›</span>
-            <a href="{{ route('finanzas.entradas.index') }}">Entradas Mensuales</a>
-            <span>›</span>
-            <span>Fuentes de Ingreso</span>
-        </div>
-        <div>
-            <button @click="openCrear = true" class="btn-fin success">
+    @component('finanzas.partials._header_banner', [
+        'titulo' => '⚙️ Gestión de Fuentes de Ingreso',
+        'subtitulo' => 'Define los negocios, salarios o proyectos desde los cuales recibes dinero para estructurar tu contabilidad.',
+        'breadcrumb' => [
+            'Finanzas Personales' => route('finanzas.dashboard'),
+            'Entradas Mensuales' => route('finanzas.entradas.index'),
+            'Fuentes de Ingreso' => null
+        ]
+    ])
+        @slot('opciones')
+            <a href="{{ route('finanzas.entradas.index') }}" class="btn-fin-link success" style="background:#f1f5f9; border:1px solid #cbd5e1; color:#475569;">⬅️ Volver a Entradas</a>
+            <button @click="openCrear = true" class="btn-fin success" style="margin-left:0.5rem;">
                 ➕ Nueva Fuente
             </button>
-        </div>
-    </div>
-
-    {{-- Header --}}
-    <div class="fin-header-section">
-        <div class="header-text">
-            <h1>⚙️ Gestión de Fuentes de Ingreso</h1>
-            <p>Define los negocios, salarios o proyectos desde los cuales recibes dinero para estructurar tu contabilidad.</p>
-        </div>
-    </div>
+        @endslot
+    @endcomponent
 
     {{-- Listado de Fuentes --}}
     <div class="card-tabla-bx">

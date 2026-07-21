@@ -7,44 +7,33 @@
 @include('finanzas.partials._responsive_fin')
 <div class="finanzas-container" x-data="{ buscar: '' }">
 
-    {{-- Breadcrumb --}}
-    <div class="fin-top-bar">
-        <div class="breadcrumb-bx">
-            <a href="{{ route('brynex.hub') }}">🔵 BryNex</a>
-            <span>›</span>
-            <a href="{{ route('finanzas.dashboard') }}">Finanzas Personales</a>
-            <span>›</span>
-            <span>Préstamos</span>
-        </div>
-        
-        <div style="display:flex; gap:0.5rem; align-items:center;">
+    @component('finanzas.partials._header_banner', [
+        'titulo' => '🤝 Préstamos a Terceros',
+        'subtitulo' => 'Monitorea capital, intereses acumulados, y días transcurridos de vencimiento con semáforo de alerta en mora.',
+        'breadcrumb' => [
+            'Finanzas Personales' => route('finanzas.dashboard'),
+            'Préstamos' => null
+        ]
+    ])
+        @slot('opciones')
+            <div class="period-selector-bx" style="margin: 0; display: inline-flex; gap: 0.25rem;">
+                <a href="{{ route('finanzas.prestamos.index', ['estado' => 'activo']) }}" class="btn-state-filtro {{ $estado === 'activo' ? 'activo' : '' }}">
+                    ⏳ Activos / Mora
+                </a>
+                <a href="{{ route('finanzas.prestamos.index', ['estado' => 'pagado']) }}" class="btn-state-filtro {{ $estado === 'pagado' ? 'activo' : '' }}">
+                    ✅ Pagados
+                </a>
+                <a href="{{ route('finanzas.prestamos.index', ['estado' => 'castigado']) }}" class="btn-state-filtro {{ $estado === 'castigado' ? 'activo castigado-tab' : '' }}">
+                    ⛔ Inactivos
+                </a>
+            </div>
+            
             <a href="{{ route('finanzas.prestamos.cuenta-corriente') }}" class="btn-fin-link success">💼 Cuenta Corriente (Servicios)</a>
             <a href="{{ route('finanzas.prestamos.create') }}" class="btn-fin success">
                 ➕ Nuevo Préstamo
             </a>
-        </div>
-    </div>
-
-    {{-- Header --}}
-    <div class="fin-header-section">
-        <div class="header-text">
-            <h1>🤝 Préstamos a Terceros</h1>
-            <p>Monitorea capital, intereses acumulados, y días transcurridos de vencimiento con semáforo de alerta en mora.</p>
-        </div>
-        
-        {{-- Selector Filtro de Estado --}}
-        <div class="period-selector-bx">
-            <a href="{{ route('finanzas.prestamos.index', ['estado' => 'activo']) }}" class="btn-state-filtro {{ $estado === 'activo' ? 'activo' : '' }}">
-                ⏳ Activos / Mora
-            </a>
-            <a href="{{ route('finanzas.prestamos.index', ['estado' => 'pagado']) }}" class="btn-state-filtro {{ $estado === 'pagado' ? 'activo' : '' }}">
-                ✅ Pagados
-            </a>
-            <a href="{{ route('finanzas.prestamos.index', ['estado' => 'castigado']) }}" class="btn-state-filtro {{ $estado === 'castigado' ? 'activo castigado-tab' : '' }}">
-                ⛔ Inactivos
-            </a>
-        </div>
-    </div>
+        @endslot
+    @endcomponent
 
     {{-- Buscador de Préstamos --}}
     <div style="margin-top: 1.25rem; margin-bottom: 0.5rem; max-width: 480px;">

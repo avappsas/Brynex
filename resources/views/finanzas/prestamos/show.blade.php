@@ -7,30 +7,20 @@
 @include('finanzas.partials._responsive_fin')
 <div class="finanzas-container" x-data="{ openAbono: false, openLiquidar: false, openAnexar: false, openEditarMov: false, openCastigar: false, openReactivar: false, movEditar: { id: null, fecha: '', monto: 0, observacion: '', soporte_path: '' } }">
 
-    {{-- Breadcrumb --}}
-    <div class="fin-top-bar">
-        <div class="breadcrumb-bx">
-            <a href="{{ route('brynex.hub') }}">🔵 BryNex</a>
-            <span>›</span>
-            <a href="{{ route('finanzas.dashboard') }}">Finanzas Personales</a>
-            <span>›</span>
-            <a href="{{ route('finanzas.prestamos.index') }}">Préstamos</a>
-            <span>›</span>
-            <span>{{ $prestamo->nombre_deudor }}</span>
-        </div>
-        
-        <div>
+    @component('finanzas.partials._header_banner', [
+        'titulo' => '👤 Ficha: ' . $prestamo->nombre_deudor,
+        'subtitulo' => 'Monitoreo completo de amortización, cobros e intereses acumulados.',
+        'breadcrumb' => [
+            'Finanzas Personales' => route('finanzas.dashboard'),
+            'Préstamos' => route('finanzas.prestamos.index'),
+            $prestamo->nombre_deudor => null
+        ]
+    ])
+        @slot('opciones')
+            <a href="{{ route('finanzas.prestamos.index') }}" class="btn-fin-link success" style="background:#f1f5f9; border:1px solid #cbd5e1; color:#475569;">⬅️ Volver a Préstamos</a>
             <a href="{{ route('finanzas.prestamos.edit', $prestamo->id) }}" class="btn-fin-link primary">✏️ Editar Ficha</a>
-        </div>
-    </div>
-
-    {{-- Header del Préstamo --}}
-    <div class="fin-header-section">
-        <div class="header-text">
-            <h1>👤 Ficha: {{ $prestamo->nombre_deudor }}</h1>
-            <p>Monitoreo completo de amortización, cobros e intereses acumulados.</p>
-        </div>
-    </div>
+        @endslot
+    @endcomponent
 
     {{-- Banner de Préstamo Inactivo --}}
     @if($prestamo->estado === 'castigado')

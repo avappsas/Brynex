@@ -7,37 +7,28 @@
 @include('finanzas.partials._responsive_fin')
 <div class="finanzas-container" x-data="{ openCrear: false, openEditar: false, openTransferir: false, selectedCuenta: {} }">
 
-    {{-- Breadcrumb --}}
-    <div class="fin-top-bar">
-        <div class="breadcrumb-bx">
-            <a href="{{ route('brynex.hub') }}">🔵 BryNex</a>
-            <span>›</span>
-            <a href="{{ route('finanzas.dashboard') }}">Finanzas Personales</a>
-            <span>›</span>
-            <span>Cuentas</span>
-        </div>
-
-        <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
-            <button @click="openTransferir = true" class="btn-fin-link primary">
+    @component('finanzas.partials._header_banner', [
+        'titulo' => '💳 Cuentas y Bolsillos',
+        'subtitulo' => 'Controla dónde está tu dinero: banco, efectivo, billeteras.',
+        'breadcrumb' => [
+            'Finanzas Personales' => route('finanzas.dashboard'),
+            'Cuentas' => null
+        ]
+    ])
+        @slot('opciones')
+            <div class="saldo-total-pill" style="border-color:{{ $saldoTotal >= 0 ? '#a7f3d0' : '#fecaca' }}; margin: 0; background: rgba(255, 255, 255, 0.15); backdrop-filter: blur(10px); padding: 0.35rem 0.85rem; border-radius: 8px; border: 1px solid; display: inline-flex; align-items: center; gap: 0.5rem;">
+                <span style="color:#cbd5e1; font-size:0.75rem; font-weight:600;">Saldo total:</span>
+                <strong style="color:#fff; font-size:0.95rem; font-weight:800;">${{ number_format($saldoTotal, 0, ',', '.') }} <small style="font-size:0.7rem;">COP</small></strong>
+            </div>
+            
+            <button @click="openTransferir = true" class="btn-fin-link primary" style="margin-left: 0.5rem;">
                 🔁 Transferir
             </button>
             <button @click="openCrear = true" class="btn-fin">
                 ➕ Nueva Cuenta
             </button>
-        </div>
-    </div>
-
-    {{-- Header --}}
-    <div class="fin-header-section">
-        <div class="header-text">
-            <h1>💳 Cuentas y Bolsillos</h1>
-            <p>Controla dónde está tu dinero: banco, efectivo, billeteras.</p>
-        </div>
-        <div class="saldo-total-pill" style="border-color:{{ $saldoTotal >= 0 ? '#a7f3d0' : '#fecaca' }};">
-            <span>Saldo total</span>
-            <strong style="color:{{ $saldoTotal >= 0 ? '#047857' : '#b91c1c' }};">${{ number_format($saldoTotal, 0, ',', '.') }} <small>COP</small></strong>
-        </div>
-    </div>
+        @endslot
+    @endcomponent
 
     {{-- Grid de Cuentas --}}
     <div class="cuentas-grid">

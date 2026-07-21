@@ -7,48 +7,34 @@
 @include('finanzas.partials._responsive_fin')
 <div class="finanzas-container" x-data="{ openMovimiento: false, mostrarBalanceHistorico: false, openEditar: false, itemEditar: {}, openConfirmarEliminar: false }">
 
-    {{-- Breadcrumb --}}
-    <div class="fin-top-bar">
-        <div class="breadcrumb-bx">
-            <a href="{{ route('brynex.hub') }}">🔵 BryNex</a>
-            <span>›</span>
-            <a href="{{ route('finanzas.dashboard') }}">Finanzas Personales</a>
-            <span>›</span>
-            <a href="{{ route('finanzas.proyectos.index') }}">Proyectos</a>
-            <span>›</span>
-            <span>{{ $proyecto->nombre }}</span>
-        </div>
-    </div>
-
-    {{-- Header Banner con Gradiente --}}
-    <div style="background: linear-gradient(135deg, #0a1628 0%, #0d2550 60%, #1e40af 100%); border-radius: 14px; padding: 1.5rem 2rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; box-shadow: 0 4px 15px rgba(0,0,0,0.15); margin-bottom: 1.5rem; color: #fff;">
-        <div>
-            <h1 style="font-size: 1.4rem; font-weight: 700; color: #fff; margin: 0; display: flex; align-items: center; gap: 0.5rem;">
-                🏗️ Proyecto: {{ $proyecto->nombre }}
-            </h1>
-            <p style="font-size: 0.8rem; color: rgba(255,255,255,0.75); margin: 0.25rem 0 0 0; font-weight: 400;">
-                Monitoreo individual de ingresos y egresos para balance de rentabilidad.
-            </p>
-        </div>
-        
-        {{-- Selector de Año --}}
-        <div style="background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.15); border-radius: 10px; padding: 0.6rem 1.25rem; min-width: 180px;">
-            <form method="GET" action="{{ route('finanzas.proyectos.show', $proyecto->id) }}" id="filterForm">
-                <div style="display: flex; flex-direction: column; gap: 0.25rem;">
-                    <label style="font-size: 0.62rem; color: rgba(255,255,255,0.7); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Año de Consulta</label>
-                    <select name="anio" onchange="document.getElementById('filterForm').submit()" style="padding: 0.35rem; font-size: 0.8rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); background: rgba(10, 22, 40, 0.85); color: #fff; width: 100%; cursor: pointer;">
-                        <option value="todos" @selected($anio === 'todos')>Todos los Años</option>
-                        @foreach($aniosDisponibles as $a)
-                            <option value="{{ $a }}" @selected($anio !== 'todos' && (int)$anio === (int)$a)>Año {{ $a }}</option>
-                        @endforeach
-                        @if(!in_array(date('Y'), $aniosDisponibles))
-                            <option value="{{ date('Y') }}" @selected($anio !== 'todos' && (int)$anio === (int)date('Y'))>Año {{ date('Y') }}</option>
-                        @endif
-                    </select>
-                </div>
+    @component('finanzas.partials._header_banner', [
+        'titulo' => '🏗️ Proyecto: ' . $proyecto->nombre,
+        'subtitulo' => 'Monitoreo individual de ingresos y egresos para balance de rentabilidad.',
+        'breadcrumb' => [
+            'Finanzas Personales' => route('finanzas.dashboard'),
+            'Proyectos' => route('finanzas.proyectos.index'),
+            $proyecto->nombre => null
+        ]
+    ])
+        @slot('opciones')
+            <form method="GET" action="{{ route('finanzas.proyectos.show', $proyecto->id) }}" id="filterForm" style="margin: 0; display: inline-block;">
+                <select name="anio" onchange="document.getElementById('filterForm').submit()" class="select-fin" style="font-weight: 700; background: #fff; color: #0f172a; border-color: #cbd5e1;">
+                    <option value="todos" @selected($anio === 'todos')>Todos los Años</option>
+                    @foreach($aniosDisponibles as $a)
+                        <option value="{{ $a }}" @selected($anio !== 'todos' && (int)$anio === (int)$a)>Año {{ $a }}</option>
+                    @endforeach
+                    @if(!in_array(date('Y'), $aniosDisponibles))
+                        <option value="{{ date('Y') }}" @selected($anio !== 'todos' && (int)$anio === (int)date('Y'))>Año {{ date('Y') }}</option>
+                    @endif
+                </select>
             </form>
-        </div>
-    </div>
+            
+            <a href="{{ route('finanzas.proyectos.index') }}" class="btn-fin-link success" style="background:#f1f5f9; border:1px solid #cbd5e1; color:#475569;">⬅️ Volver a Proyectos</a>
+            <button @click="openMovimiento = true" class="btn-fin success" style="background:#166534; margin-left: 0.5rem;">
+                ➕ Registrar Movimiento
+            </button>
+        @endslot
+    @endcomponent
 
     {{-- Grid de Balances --}}
     <div class="prestamo-ficha-grid" :style="mostrarBalanceHistorico ? '' : 'grid-template-columns: 1fr;'">

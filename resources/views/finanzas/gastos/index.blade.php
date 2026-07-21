@@ -6,22 +6,21 @@
 @section('contenido')
 @include('finanzas.partials._responsive_fin')
 <div class="finanzas-container" x-data="{ openCrear: false, openEditar: false, selectedGasto: {} }">
-
-    {{-- Breadcrumb & Period Selector --}}
-    <div class="fin-top-bar">
-        <div class="breadcrumb-bx">
-            <a href="{{ route('brynex.hub') }}">🔵 BryNex</a>
-            <span>›</span>
-            <a href="{{ route('finanzas.dashboard') }}">Finanzas Personales</a>
-            <span>›</span>
-            <span>Transacciones Diarias</span>
-        </div>
-        
-        <div style="display:flex; gap:0.5rem; align-items:center;">
+    @component('finanzas.partials._header_banner', [
+        'titulo' => request('tipo') === 'prestamo' ? '🤝 Transacciones Diarias (Préstamos)' : '📤 Transacciones Diarias',
+        'subtitulo' => request('tipo') === 'prestamo' 
+            ? 'Monitorea tus préstamos del mes seleccionado. Total Préstamos: $' . number_format($totalPrestamos, 0, ',', '.') . ' COP'
+            : 'Monitorea tus gastos e ingresos esporádicos. Egresos: $' . number_format($totalGastos, 0, ',', '.') . ' COP | Entradas: $' . number_format($totalIngresos ?? 0, 0, ',', '.') . ' COP',
+        'breadcrumb' => [
+            'Finanzas Personales' => route('finanzas.dashboard'),
+            'Transacciones Diarias' => null
+        ]
+    ])
+        @slot('opciones')
             <a href="{{ route('finanzas.gastos.informe') }}" class="btn-fin-link primary">📊 Informe Anual</a>
             <a href="{{ route('finanzas.categorias.index') }}" class="btn-fin-link success">⚙️ Categorías</a>
             
-            <form method="GET" action="{{ route('finanzas.gastos.index') }}" class="period-selector-bx">
+            <form method="GET" action="{{ route('finanzas.gastos.index') }}" class="period-selector-bx" style="margin: 0; display: inline-block;">
                 <select name="mes" class="select-fin" onchange="this.form.submit()">
                     @foreach(range(1,12) as $m)
                         <option value="{{ $m }}" @selected($mes == $m)>
@@ -41,31 +40,12 @@
                     <input type="hidden" name="tipo" value="{{ request('tipo') }}">
                 @endif
             </form>
-        </div>
-    </div>
-
-    {{-- Header --}}
-    <div class="fin-header-section">
-        <div class="header-text">
-            @if(request('tipo') === 'prestamo')
-                <h1>🤝 Transacciones Diarias (Préstamos)</h1>
-                <p>Monitorea tus préstamos del mes seleccionado.
-                    Total Préstamos: <strong style="color:#f59e0b; font-size:1.15rem;">${{ number_format($totalPrestamos, 0, ',', '.') }} COP</strong>
-                </p>
-            @else
-                <h1>📤 Transacciones Diarias</h1>
-                <p>Monitorea tus gastos e ingresos esporádicos. 
-                    Egresos: <strong style="color:#ef4444; font-size:1.15rem;">${{ number_format($totalGastos, 0, ',', '.') }} COP</strong> | 
-                    Entradas: <strong style="color:#10b981; font-size:1.15rem;">${{ number_format($totalIngresos ?? 0, 0, ',', '.') }} COP</strong>
-                </p>
-            @endif
-        </div>
-        <div>
-            <button @click="openCrear = true" class="btn-fin success" style="background:linear-gradient(135deg, #4f46e5, #4338ca);">
+            
+            <button @click="openCrear = true" class="btn-fin success" style="background:linear-gradient(135deg, #4f46e5, #4338ca); margin-left: 0.5rem;">
                 ➕ Registrar Transacción
             </button>
-        </div>
-    </div>
+        @endslot
+    @endcomponent
 
     {{-- Filtro de Categoría Simple con Select + Filtros de Tipo --}}
     <div style="margin-top:1rem; margin-bottom:1.25rem; display:flex; flex-wrap:wrap; gap:1rem; align-items:center; background:#fff; padding:0.75rem 1rem; border-radius:12px; border:1px solid #e2e8f0; box-shadow:0 1px 3px rgba(0,0,0,0.02);">

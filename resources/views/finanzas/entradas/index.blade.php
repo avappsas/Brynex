@@ -7,37 +7,27 @@
 @include('finanzas.partials._responsive_fin')
 <div class="finanzas-container" x-data="excelGrid()">
 
-    {{-- Breadcrumb & Period Selector --}}
-    <div class="fin-top-bar">
-        <div class="breadcrumb-bx">
-            <a href="{{ route('brynex.hub') }}">🔵 BryNex</a>
-            <span>›</span>
-            <a href="{{ route('finanzas.dashboard') }}">Finanzas Personales</a>
-            <span>›</span>
-            <span>Entradas Mensuales</span>
-        </div>
-        
-        <div style="display:flex; gap:0.5rem; align-items:center;">
+    @component('finanzas.partials._header_banner', [
+        'titulo' => '📥 Entradas Mensuales',
+        'subtitulo' => 'Haz clic en cualquier celda para ingresar o editar el monto. Los cambios se guardan automáticamente al salir de la celda.',
+        'breadcrumb' => [
+            'Finanzas Personales' => route('finanzas.dashboard'),
+            'Entradas Mensuales' => null
+        ]
+    ])
+        @slot('opciones')
             <a href="{{ route('finanzas.fuentes.index') }}" class="btn-fin-link primary">⚙️ Gestionar Fuentes</a>
             <a href="{{ route('finanzas.app-lideres.index') }}" class="btn-fin-link success">👥 App Líderes</a>
             
-            <form method="GET" action="{{ route('finanzas.entradas.index') }}" class="period-selector-bx">
+            <form method="GET" action="{{ route('finanzas.entradas.index') }}" class="period-selector-bx" style="margin: 0; display: inline-block;">
                 <select name="anio" class="select-fin" onchange="this.form.submit()">
                     @foreach(range(2020, now()->year + 1) as $a)
                         <option value="{{ $a }}" @selected($anio == $a)>{{ $a }}</option>
                     @endforeach
                 </select>
             </form>
-        </div>
-    </div>
-
-    {{-- Header --}}
-    <div class="fin-header-section">
-        <div class="header-text">
-            <h1>📥 Registro de Entradas Mensuales</h1>
-            <p>Haz clic en cualquier celda para ingresar o editar el monto. Los cambios se guardan automáticamente al salir de la celda.</p>
-        </div>
-    </div>
+        @endslot
+    @endcomponent
 
     {{-- Cuadrícula Excel --}}
     <div class="card-tabla" style="overflow-x:auto;">

@@ -7,38 +7,27 @@
 @include('finanzas.partials._responsive_fin')
 <div class="finanzas-container" x-data="brynexAliadosGrid()">
 
-    {{-- Breadcrumb & Period Selector --}}
-    <div class="fin-top-bar">
-        <div class="breadcrumb-bx">
-            <a href="{{ route('brynex.hub') }}">🔵 BryNex</a>
-            <span>›</span>
-            <a href="{{ route('finanzas.dashboard') }}">Finanzas Personales</a>
-            <span>›</span>
-            <a href="{{ route('finanzas.entradas.index') }}">Entradas Mensuales</a>
-            <span>›</span>
-            <span>Aliados Brynex</span>
-        </div>
-        
-        <div style="display:flex; gap:0.5rem; align-items:center;">
+    @component('finanzas.partials._header_banner', [
+        'titulo' => '🏢 Cobros de Aliados Brynex - ' . $anio,
+        'subtitulo' => 'Registra lo pagado por cada aliado mensualmente. Los totales se consolidan de forma automática en la fila "BRYNEX".',
+        'breadcrumb' => [
+            'Finanzas Personales' => route('finanzas.dashboard'),
+            'Entradas Mensuales' => route('finanzas.entradas.index'),
+            'Aliados Brynex' => null
+        ]
+    ])
+        @slot('opciones')
             <button @click="openAddAliadoModal = true" class="btn-fin-link success" style="cursor: pointer; border: none;">➕ Agregar Aliado</button>
             
-            <form method="GET" action="{{ route('finanzas.brynex-aliados.index') }}" class="period-selector-bx">
+            <form method="GET" action="{{ route('finanzas.brynex-aliados.index') }}" class="period-selector-bx" style="margin: 0; display: inline-block;">
                 <select name="anio" class="select-fin" onchange="this.form.submit()">
                     @foreach(range(2020, now()->year + 1) as $a)
                         <option value="{{ $a }}" @selected($anio == $a)>{{ $a }}</option>
                     @endforeach
                 </select>
             </form>
-        </div>
-    </div>
-
-    {{-- Header --}}
-    <div class="fin-header-section">
-        <div class="header-text">
-            <h1 class="fin-title">🏢 Cobros de Aliados Brynex - {{ $anio }}</h1>
-            <p class="fin-subtitle">Registra lo pagado por cada aliado mensualmente. Los totales se consolidan de forma automática en la fila "BRYNEX".</p>
-        </div>
-    </div>
+        @endslot
+    @endcomponent
 
     {{-- Cuadrícula Excel --}}
     <div class="card-tabla" style="overflow-x:auto;">

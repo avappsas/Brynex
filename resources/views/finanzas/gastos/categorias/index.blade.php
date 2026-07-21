@@ -7,31 +7,22 @@
 @include('finanzas.partials._responsive_fin')
 <div class="finanzas-container" x-data="{ openCrear: false, openEditar: false, selectedCategoria: {} }">
 
-    {{-- Breadcrumb --}}
-    <div class="fin-top-bar">
-        <div class="breadcrumb-bx">
-            <a href="{{ route('brynex.hub') }}">🔵 BryNex</a>
-            <span>›</span>
-            <a href="{{ route('finanzas.dashboard') }}">Finanzas Personales</a>
-            <span>›</span>
-            <a href="{{ route('finanzas.gastos.index') }}">Egresos / Gastos</a>
-            <span>›</span>
-            <span>Categorías</span>
-        </div>
-        <div>
-            <button @click="openCrear = true" class="btn-fin success" style="background:#ef4444;">
+    @component('finanzas.partials._header_banner', [
+        'titulo' => '⚙️ Categorías de Gasto',
+        'subtitulo' => 'Clasifica tus gastos habituales y define cuáles de ellos son recurrentes para alertas automáticas del sistema.',
+        'breadcrumb' => [
+            'Finanzas Personales' => route('finanzas.dashboard'),
+            'Egresos / Gastos' => route('finanzas.gastos.index'),
+            'Categorías' => null
+        ]
+    ])
+        @slot('opciones')
+            <a href="{{ route('finanzas.gastos.index') }}" class="btn-fin-link success" style="background:#f1f5f9; border:1px solid #cbd5e1; color:#475569;">⬅️ Volver a Gastos</a>
+            <button @click="openCrear = true" class="btn-fin success" style="background:#ef4444; margin-left:0.5rem;">
                 ➕ Nueva Categoría
             </button>
-        </div>
-    </div>
-
-    {{-- Header --}}
-    <div class="fin-header-section">
-        <div class="header-text">
-            <h1>⚙️ Categorías de Gasto</h1>
-            <p>Clasifica tus gastos habituales y define cuáles de ellos son recurrentes para alertas automáticas del sistema.</p>
-        </div>
-    </div>
+        @endslot
+    @endcomponent
 
     {{-- Listado de Categorías --}}
     <div class="card-tabla-bx">
