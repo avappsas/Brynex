@@ -93,7 +93,15 @@ class AppLiderController extends Controller
             'id' => [
                 'required',
                 'integer',
-                Rule::exists('finanzas_app_lideres_aliados', 'id')->connection('finanzas')
+                function ($attribute, $value, $fail) {
+                    $exists = \Illuminate\Support\Facades\DB::connection('finanzas')
+                        ->table('finanzas_app_lideres_aliados')
+                        ->where('id', $value)
+                        ->exists();
+                    if (!$exists) {
+                        $fail("El aliado seleccionado no es válido.");
+                    }
+                }
             ],
             'nombre' => 'required|string|max:150',
             'fecha_inicio' => 'nullable|date',
@@ -156,7 +164,15 @@ class AppLiderController extends Controller
             'aliado_id' => [
                 'required',
                 'integer',
-                Rule::exists('finanzas_app_lideres_aliados', 'id')->connection('finanzas')
+                function ($attribute, $value, $fail) {
+                    $exists = \Illuminate\Support\Facades\DB::connection('finanzas')
+                        ->table('finanzas_app_lideres_aliados')
+                        ->where('id', $value)
+                        ->exists();
+                    if (!$exists) {
+                        $fail("El aliado seleccionado no es válido.");
+                    }
+                }
             ],
             'fecha_pago' => 'required|date',
             'banco' => 'required|string|max:100',
