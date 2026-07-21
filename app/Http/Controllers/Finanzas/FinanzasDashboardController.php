@@ -10,7 +10,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Cache;
+
 
 class FinanzasDashboardController extends Controller
 {
@@ -32,12 +32,13 @@ class FinanzasDashboardController extends Controller
 
     /**
      * Muestra el dashboard de Finanzas Personales.
-     * 
+     *
      * - Escritorio (PC): Carga Shell-First inmediato. El HTML se devuelve sin queries,
      *   y los datos se cargan asíncronamente por AJAX.
-     * - Móvil (Celular): Usa Stale-While-Revalidate síncrono. Si hay caché se sirve
-     *   instantáneamente con la vista móvil completa; si no, muestra pantalla de carga
-     *   y calienta el caché en background.
+     * - Móvil (Celular): Carga directa con datos síncronos (el caché interno de cada
+     *   servicio amortigua la latencia). Se eliminó el flujo de "pantalla cargando +
+     *   exec() artisan en background" porque el exec() fallaba silenciosamente en
+     *   producción con PHP-FPM, dejando el usuario atrapado indefinidamente.
      */
     public function index(Request $request)
     {
@@ -45,39 +46,23 @@ class FinanzasDashboardController extends Controller
         $anio = (int) $request->input('anio', now()->year);
         $mes  = (int) $request->input('mes', now()->month);
 
-        // Precio cripto (caché rápido)
+        // Precio cripto (caché rápido, siempre disponible)
         $criptoPrecio = $this->criptoService->getPrecioUsdt();
 
-        // Para modales de registro rápido
+        // Para modales de registro rápido (queries ligeras)
         $categorias = \App\Models\Finanzas\CategoriaGasto::where('user_id', $user->id)
             ->activas()->orderBy('orden')->get();
         $patrimonios = \App\Models\Finanzas\Patrimonio::where('user_id', $user->id)
             ->activos()->get();
 
-        // Si es dispositivo móvil, aplicamos fallback seguro con caché
+        // Dispositivo móvil: carga directa (los servicios usan Cache::remember internamente)
         if ($this->isMobileDevice($request)) {
-            $cacheKeyResumen    = FinanzasAlertaService::cacheKeyResumen($user->id, $anio, $mes);
-            $cacheKeyConsolidado = FinanzasAlertaService::cacheKeyConsolidado($user->id);
-            $cacheKeyEvolucion  = FinanzasAlertaService::cacheKeyEvolucion($user->id, $anio);
-            $cacheCuentas       = "finanzas_cuentas_{$user->id}";
-
-            $cacheDisponible = Cache::has($cacheKeyResumen)
-                && Cache::has($cacheKeyConsolidado)
-                && Cache::has($cacheKeyEvolucion)
-                && Cache::has($cacheCuentas);
-
-            if (!$cacheDisponible) {
-                $this->lanzarPrecalentamientoBackground($user->id, $anio, $mes);
-                return view('finanzas.dashboard_cargando', compact('anio', 'mes'));
-            }
-
-            // Si hay caché, cargamos todo para renderizar la vista móvil
-            $resumen = $this->alertaService->getResumenMensual($user->id, $anio, $mes);
-            $prestamosMora = $this->alertaService->getPrestamosEnMora($user->id);
+            $resumen         = $this->alertaService->getResumenMensual($user->id, $anio, $mes);
+            $prestamosMora   = $this->alertaService->getPrestamosEnMora($user->id);
             $gastosFaltantes = $this->alertaService->getGastosRecurrentesPendientes($user->id, $anio, $mes);
-            $consolidado = $this->alertaService->getConsolidadoGlobal($user->id);
-            $cuentas = \App\Models\Finanzas\Cuenta::conSaldos($user->id);
-            $evolucion = $this->alertaService->getEvolucionAnual($user->id, $anio);
+            $consolidado     = $this->alertaService->getConsolidadoGlobal($user->id);
+            $cuentas         = \App\Models\Finanzas\Cuenta::conSaldos($user->id);
+            $evolucion       = $this->alertaService->getEvolucionAnual($user->id, $anio);
 
             $transacciones = \App\Models\Finanzas\Gasto::with('categoria')
                 ->where('user_id', $user->id)
@@ -106,22 +91,6 @@ class FinanzasDashboardController extends Controller
         return view('finanzas.dashboard', compact(
             'anio', 'mes', 'criptoPrecio', 'categorias', 'patrimonios'
         ));
-    }
-
-    /**
-     * Lanza el precalentamiento del caché en background.
-     */
-    private function lanzarPrecalentamientoBackground(int $userId, int $anio, int $mes): void
-    {
-        $artisan = base_path('artisan');
-        $php     = PHP_BINARY;
-        $cmd     = escapeshellcmd("{$php} {$artisan} finanzas:precalentar-cache {$userId} {$anio} {$mes}");
-
-        if (PHP_OS_FAMILY === 'Windows') {
-            pclose(popen("start /B {$cmd}", 'r'));
-        } else {
-            exec("{$cmd} > /dev/null 2>&1 &");
-        }
     }
 
     // ─────────────────────────────────────────────────────────────
