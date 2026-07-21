@@ -68,7 +68,7 @@ class EntradaController extends Controller
             ->join('finanzas_proyectos', 'finanzas_proyecto_movimientos.proyecto_id', '=', 'finanzas_proyectos.id')
             ->where('finanzas_proyectos.user_id', $user->id)
             ->whereYear('finanzas_proyecto_movimientos.fecha', $anio)
-            ->selectRaw("MONTH(finanzas_proyecto_movimientos.fecha) as mes, SUM(CASE WHEN finanzas_proyecto_movimientos.tipo = 'entrada' THEN finanzas_proyecto_movimientos.monto ELSE -finanzas_proyecto_movimientos.monto END) as total")
+            ->selectRaw("MONTH(finanzas_proyecto_movimientos.fecha) as mes, SUM(CASE WHEN finanzas_proyecto_movimientos.tipo IN ('ingreso', 'entrada') THEN finanzas_proyecto_movimientos.monto ELSE -finanzas_proyecto_movimientos.monto END) as total")
             ->groupByRaw("MONTH(finanzas_proyecto_movimientos.fecha)")
             ->pluck('total', 'mes')
             ->toArray();

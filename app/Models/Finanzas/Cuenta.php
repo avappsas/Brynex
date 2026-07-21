@@ -108,7 +108,7 @@ class Cuenta extends BaseFinanzasModel
             ->where('finanzas_proyectos.user_id', $userId)
             ->whereNotNull('finanzas_proyecto_movimientos.cuenta_id')
             ->groupBy('finanzas_proyecto_movimientos.cuenta_id')
-            ->selectRaw("finanzas_proyecto_movimientos.cuenta_id, SUM(CASE WHEN finanzas_proyecto_movimientos.tipo = 'entrada' THEN finanzas_proyecto_movimientos.monto ELSE -finanzas_proyecto_movimientos.monto END) as total")
+            ->selectRaw("finanzas_proyecto_movimientos.cuenta_id, SUM(CASE WHEN finanzas_proyecto_movimientos.tipo IN ('ingreso', 'entrada') THEN finanzas_proyecto_movimientos.monto ELSE -finanzas_proyecto_movimientos.monto END) as total")
             ->pluck('total', 'cuenta_id');
 
         // Transferencias entre cuentas

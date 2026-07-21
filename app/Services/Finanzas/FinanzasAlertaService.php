@@ -274,7 +274,7 @@ class FinanzasAlertaService
             ->where('finanzas_proyectos.user_id', $userId)
             ->whereYear('finanzas_proyecto_movimientos.fecha', $anio)
             ->whereMonth('finanzas_proyecto_movimientos.fecha', $mes)
-            ->selectRaw("COALESCE(SUM(CASE WHEN finanzas_proyecto_movimientos.tipo = 'entrada' THEN finanzas_proyecto_movimientos.monto ELSE -finanzas_proyecto_movimientos.monto END), 0) as total")
+            ->selectRaw("COALESCE(SUM(CASE WHEN finanzas_proyecto_movimientos.tipo IN ('ingreso', 'entrada') THEN finanzas_proyecto_movimientos.monto ELSE -finanzas_proyecto_movimientos.monto END), 0) as total")
             ->value('total');
 
         // 4. Ingresos esporádicos
