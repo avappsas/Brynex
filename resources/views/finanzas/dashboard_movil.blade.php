@@ -168,14 +168,22 @@
         .balance-amount { font-size: 1.85rem; font-weight: 800; margin: 0.4rem 0; letter-spacing: -1px; }
         .balance-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 1rem;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 0.5rem;
             margin-top: 1rem;
             border-top: 1px solid rgba(255,255,255,0.08);
             padding-top: 1rem;
         }
-        .balance-subcol h3 { font-size: 0.7rem; color: var(--texto-secundario); font-weight: 500; margin-bottom: 0.15rem; }
-        .balance-subcol p { font-size: 1rem; font-weight: 700; }
+        .balance-subcol {
+            text-decoration: none;
+            display: block;
+            transition: opacity 0.15s;
+        }
+        .balance-subcol:active {
+            opacity: 0.7;
+        }
+        .balance-subcol h3 { font-size: 0.65rem; color: var(--texto-secundario); font-weight: 500; margin-bottom: 0.15rem; }
+        .balance-subcol p { font-size: 0.85rem; font-weight: 700; white-space: nowrap; }
 
         /* Accesos Directos Gigantes */
         .quick-actions-grid {
@@ -565,14 +573,18 @@
                 </div>
                 
                 <div class="balance-grid">
-                    <div class="balance-subcol" style="border-right: 1px solid rgba(255,255,255,0.08);">
+                    <a href="{{ route('finanzas.entradas.index') }}" class="balance-subcol" style="border-right: 1px solid rgba(255,255,255,0.08);">
                         <h3>📥 Entradas</h3>
                         <p style="color: var(--verde-neon);">${{ number_format($resumen['entradas'], 0, ',', '.') }}</p>
-                    </div>
-                    <div class="balance-subcol">
+                    </a>
+                    <a href="{{ route('finanzas.gastos.index') }}" class="balance-subcol" style="border-right: 1px solid rgba(255,255,255,0.08);">
                         <h3>📤 Gastos</h3>
                         <p style="color: var(--rojo-coral);">${{ number_format($resumen['gastos_habituales'], 0, ',', '.') }}</p>
-                    </div>
+                    </a>
+                    <a href="{{ route('finanzas.prestamos.index') }}" class="balance-subcol">
+                        <h3>🤝 Préstamos</h3>
+                        <p style="color: var(--naranja);">${{ number_format($resumen['prestado'], 0, ',', '.') }}</p>
+                    </a>
                 </div>
             </div>
 
@@ -697,7 +709,7 @@
         <div x-show="activeTab === 'historial'" x-data="{
             filtroTipo: 'todos',
             buscarTexto: '',
-            transacciones: {{ json_encode($transacciones->map(fn($t) => [
+            transacciones: {!! json_encode($transacciones->map(fn($t) => [
                 'id' => $t->id,
                 'fecha' => Carbon\Carbon::parse($t->fecha)->format('d/m/Y'),
                 'raw_fecha' => $t->fecha,
@@ -711,7 +723,7 @@
                 'soporte_path' => $t->soporte_path,
                 'es_patrimonio' => $t->es_patrimonio,
                 'patrimonio_id' => $t->patrimonio_id
-            ])) }},
+            ])) !!},
             get filtradas() {
                 return this.transacciones.filter(t => {
                     // Filtro de tipo
