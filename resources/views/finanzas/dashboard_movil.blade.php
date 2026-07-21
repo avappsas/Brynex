@@ -54,6 +54,8 @@
             overflow-x: hidden;
         }
 
+        [x-cloak] { display: none !important; }
+
         /* Utilidades */
         .glass-card {
             background: var(--bg-tarjeta-glass);
@@ -969,7 +971,7 @@
                      categoriaSearch: '',
                      categoriaIdSelected: '',
                      categoriaIconSelected: '',
-                     categorias: {{ json_encode($categorias->map(fn($c) => ['id' => $c->id, 'nombre' => $c->nombre, 'icono' => $c->icono, 'color' => $c->color]) ?? []) }},
+                     categorias: {!! json_encode($categorias->map(fn($c) => ['id' => $c->id, 'nombre' => $c->nombre, 'icono' => $c->icono, 'color' => $c->color]) ?? []) !!},
                      soportePreview: null,
                      soporteName: '',
                      cargando: false,
@@ -1471,7 +1473,7 @@
                      categoriaSearch: '',
                      categoriaIdSelected: '',
                      categoriaIconSelected: '',
-                     categorias: {{ json_encode($categorias->map(fn($c) => ['id' => $c->id, 'nombre' => $c->nombre, 'icono' => $c->icono, 'color' => $c->color]) ?? []) }},
+                     categorias: {!! json_encode($categorias->map(fn($c) => ['id' => $c->id, 'nombre' => $c->nombre, 'icono' => $c->icono, 'color' => $c->color]) ?? []) !!},
                      soportePreview: null,
                      soporteName: '',
                      cargando: false,

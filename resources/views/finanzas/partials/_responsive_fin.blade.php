@@ -8,6 +8,7 @@
 --}}
 @push('styles')
 <style>
+[x-cloak] { display: none !important; }
 /* ══════════════ BASE ══════════════ */
 .finanzas-container { max-width: 1080px; margin: 0 auto; padding: 0.5rem; color: #0f172a; }
 
