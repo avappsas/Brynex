@@ -483,7 +483,7 @@
 .tabla-excel th, .tabla-excel td { border: 1px solid #e2e8f0; padding: 0.6rem 0.5rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tabla-excel th { background: #f8fafc; font-weight: 700; color: #475569; text-align: center; }
 .tabla-excel th.fuente-col { width: 150px; text-align: left; }
-.tabla-excel th.mes-col { width: 80px; }
+.tabla-excel th.mes-col { width: 100px; }
 .tabla-excel th.total-col { width: 110px; background: #f1f5f9; color: #1e293b; }
 
 .fuente-name-cell { display: flex; flex-direction: column; gap: 0.2rem; }
