@@ -42,7 +42,7 @@ class InversionController extends Controller
         $valorTotalActual = 0.00;
 
         foreach ($inversiones as $inversion) {
-            if ($inversion->tipo === 'cripto' && $inversion->cantidad_tokens > 0) {
+            if (in_array($inversion->tipo, ['cripto', 'trading']) && $inversion->cantidad_tokens > 0) {
                 // Estimamos valor actual = cantidad_tokens * precio_usdt_cop
                 $inversion->valor_actual_cop = $inversion->cantidad_tokens * $precioUsdtCop;
                 $inversion->save();
