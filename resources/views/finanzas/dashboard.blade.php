@@ -8,40 +8,33 @@
 
 <div class="finanzas-container" x-data="{ openGastoRapido: false, openEntradaRapida: false, openConsolidadoGlobal: false }">
 
-    {{-- Breadcrumb & Period Selector --}}
-    <div class="fin-top-bar">
-        <div class="breadcrumb-bx">
-            <a href="{{ route('brynex.hub') }}">🔵 BryNex</a>
-            <span>›</span>
-            <span>Finanzas Personales</span>
-        </div>
-        <form method="GET" action="{{ route('finanzas.dashboard') }}" class="period-selector-bx">
-            <select name="mes" class="select-fin" onchange="this.form.submit()">
-                @foreach(range(1,12) as $m)
-                    <option value="{{ $m }}" @selected($mes == $m)>
-                        {{ ucfirst(\Carbon\Carbon::create()->month($m)->locale('es')->monthName) }}
-                    </option>
-                @endforeach
-            </select>
-            <select name="anio" class="select-fin" onchange="this.form.submit()">
-                @foreach(range(2020, now()->year + 1) as $a)
-                    <option value="{{ $a }}" @selected($anio == $a)>{{ $a }}</option>
-                @endforeach
-            </select>
-        </form>
-    </div>
-
-    {{-- Header --}}
-    <div class="fin-header-section">
-        <div class="header-text">
-            <h1>💰 Mi Contabilidad Privada</h1>
-            <p>Resumen financiero consolidado personal, cobros y patrimonio.</p>
-        </div>
-        <div class="header-actions" style="display:flex; gap:0.5rem;">
-            <button @click="openEntradaRapida = true" class="btn-fin success" style="background:#10b981;">⚡ Entrada Rápida</button>
+    @component('finanzas.partials._header_banner', [
+        'titulo' => '💰 Mi Contabilidad Privada',
+        'subtitulo' => 'Resumen financiero consolidado personal, cobros y patrimonio.',
+        'breadcrumb' => [
+            'Finanzas Personales' => null
+        ]
+    ])
+        @slot('opciones')
+            <form method="GET" action="{{ route('finanzas.dashboard') }}" class="period-selector-bx" style="margin: 0; display: inline-block;">
+                <select name="mes" class="select-fin" onchange="this.form.submit()">
+                    @foreach(range(1,12) as $m)
+                        <option value="{{ $m }}" @selected($mes == $m)>
+                            {{ ucfirst(\Carbon\Carbon::create()->month($m)->locale('es')->monthName) }}
+                        </option>
+                    @endforeach
+                </select>
+                <select name="anio" class="select-fin" onchange="this.form.submit()">
+                    @foreach(range(2020, now()->year + 1) as $a)
+                        <option value="{{ $a }}" @selected($anio == $a)>{{ $a }}</option>
+                    @endforeach
+                </select>
+            </form>
+            
+            <button @click="openEntradaRapida = true" class="btn-fin success" style="background:#10b981; margin-left: 0.5rem;">⚡ Entrada Rápida</button>
             <button @click="openGastoRapido = true"   class="btn-fin success" style="background:#ef4444;">⚡ Gasto Rápido</button>
-        </div>
-    </div>
+        @endslot
+    @endcomponent
 
     {{-- Cripto Widget — carga en el shell (caché CoinGecko) --}}
     <div class="cripto-widget-bx">
