@@ -39,13 +39,16 @@ class EntradaController extends Controller
             ->get()
             ->groupBy(['fuente_id', 'mes']);
 
-        // 1. Obtener intereses generados por mes para este año (solo préstamos del usuario)
+        // 1. Obtener intereses COBRADOS EN EFECTIVO por mes para este año.
+        //    Se usa 'abono_interes' (pago real recibido) y NO 'interes_mensual' (causado/capitalizado).
+        //    Esto asegura que la fila INTERESES PRESTAMOS refleje ganancia real de caja,
+        //    excluyendo el capital devuelto (abono_capital), que es recuperación de activo, no ganancia.
         $intereses = \Illuminate\Support\Facades\DB::connection('finanzas')
             ->table('finanzas_prestamo_movimientos')
             ->join('finanzas_prestamos', 'finanzas_prestamo_movimientos.prestamo_id', '=', 'finanzas_prestamos.id')
             ->where('finanzas_prestamos.user_id', $user->id)
             ->whereYear('finanzas_prestamo_movimientos.fecha', $anio)
-            ->where('finanzas_prestamo_movimientos.tipo', 'interes_mensual')
+            ->where('finanzas_prestamo_movimientos.tipo', 'abono_interes')
             ->selectRaw("MONTH(finanzas_prestamo_movimientos.fecha) as mes, SUM(finanzas_prestamo_movimientos.monto) as total")
             ->groupByRaw("MONTH(finanzas_prestamo_movimientos.fecha)")
             ->pluck('total', 'mes')

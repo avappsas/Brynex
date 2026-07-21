@@ -249,14 +249,16 @@ class FinanzasAlertaService
 
         $total = 0.00;
 
-        // 1. Intereses generados para este mes y año
+        // 1. Intereses COBRADOS EN EFECTIVO para este mes y año.
+        //    Se usa 'abono_interes' (dinero real recibido), no 'interes_mensual' (causado/capitalizado),
+        //    para mantener coherencia con la vista de Entradas Mensuales.
         $intereses = (float) DB::connection('finanzas')
             ->table('finanzas_prestamo_movimientos')
             ->join('finanzas_prestamos', 'finanzas_prestamo_movimientos.prestamo_id', '=', 'finanzas_prestamos.id')
             ->where('finanzas_prestamos.user_id', $userId)
             ->whereYear('finanzas_prestamo_movimientos.fecha', $anio)
             ->whereMonth('finanzas_prestamo_movimientos.fecha', $mes)
-            ->where('finanzas_prestamo_movimientos.tipo', 'interes_mensual')
+            ->where('finanzas_prestamo_movimientos.tipo', 'abono_interes')
             ->sum('finanzas_prestamo_movimientos.monto');
 
         // 2. Utilidad mensual de OTRAS APP
@@ -446,7 +448,11 @@ class FinanzasAlertaService
             ->whereIn('finanzas_prestamo_movimientos.tipo', ['abono_interes', 'pago_total'])
             ->sum('finanzas_prestamo_movimientos.monto');
 
-        // Abonos a capital históricos
+        // Abonos a capital históricos — NO se cuentan como entrada/ingreso.
+        // El capital devuelto es recuperación de activo prestado, no ganancia.
+        // El egreso (desembolso del préstamo) ya fue registrado en finanzas_gastos con tipo 'prestamo',
+        // por lo que incluir el abono_capital como entrada duplicaría el activo en el consolidado.
+        // $abonosCapitalTotal está disponible para análisis pero no impacta la liquidez personal.
         $abonosCapitalTotal = (float) DB::connection('finanzas')
             ->table('finanzas_prestamo_movimientos')
             ->join('finanzas_prestamos', 'finanzas_prestamo_movimientos.prestamo_id', '=', 'finanzas_prestamos.id')
@@ -462,7 +468,9 @@ class FinanzasAlertaService
             ->sum('monto');
 
         $totalEntradasHistorico = $entradasManualesTotal + $brynexTotal + $otrasAppTotal
-            + $interesesTotal + $abonosCapitalTotal + $esporadicosTotal;
+            + $interesesTotal + $esporadicosTotal;
+            // Nota: $abonosCapitalTotal se excluye intencionalmente porque es recuperación de
+            // capital prestado, NO un ingreso nuevo. El egreso del préstamo ya está en finanzas_gastos.
 
         // Salidas históricas (gastos, préstamos e inversiones desembolsadas)
         $salidasTotal = (float) DB::connection('finanzas')
