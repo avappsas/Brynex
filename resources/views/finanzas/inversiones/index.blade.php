@@ -149,7 +149,7 @@
                     {{-- Monto Invertido --}}
                     <div class="form-group-bx" style="margin-top:1rem;">
                         <label class="form-label-bx">Monto Invertido ($ COP)</label>
-                        <input type="number" name="monto_invertido_cop" placeholder="Ej: 2000000" class="form-input-bx" required min="1">
+                        <input type="number" step="any" name="monto_invertido_cop" placeholder="Ej: 2000000" class="form-input-bx" required min="1">
                     </div>
 
                     {{-- Cuenta de origen --}}
@@ -164,8 +164,8 @@
                     </div>
                     @endif
 
-                    {{-- Cripto Campos Adicionales --}}
-                    <div x-show="tipo === 'cripto'" x-cloak style="margin-top:1rem; border-left:2px dashed #0284c7; padding-left:1rem;">
+                    {{-- Cripto/Trading Campos Adicionales --}}
+                    <div x-show="tipo === 'cripto' || tipo === 'trading'" x-cloak style="margin-top:1rem; border-left:2px dashed #0284c7; padding-left:1rem;">
                         <div style="display:flex; gap:0.5rem;">
                             <div class="form-group-bx" style="flex:1;">
                                 <label class="form-label-bx" style="color:#0284c7;">Cantidad de Tokens</label>
@@ -216,11 +216,11 @@
                     </div>
                     <div class="form-group-bx" style="margin-top:1rem;">
                         <label class="form-label-bx">Monto Invertido ($ COP)</label>
-                        <input type="number" name="monto_invertido_cop" x-model="selectedInversion.monto_invertido_cop" class="form-input-bx" required min="0">
+                        <input type="number" step="any" name="monto_invertido_cop" x-model="selectedInversion.monto_invertido_cop" class="form-input-bx" required min="0">
                     </div>
 
-                    {{-- Cripto Campos Adicionales --}}
-                    <div x-show="selectedInversion.tipo === 'cripto'" x-cloak style="margin-top:1rem; border-left:2px dashed #0284c7; padding-left:1rem;">
+                    {{-- Cripto/Trading Campos Adicionales --}}
+                    <div x-show="selectedInversion.tipo === 'cripto' || selectedInversion.tipo === 'trading'" x-cloak style="margin-top:1rem; border-left:2px dashed #0284c7; padding-left:1rem;">
                         <div style="display:flex; gap:0.5rem;">
                             <div class="form-group-bx" style="flex:1;">
                                 <label class="form-label-bx" style="color:#0284c7;">Cantidad de Tokens</label>
@@ -233,9 +233,9 @@
                         </div>
                     </div>
 
-                    <div class="form-group-bx" style="margin-top:1rem;" x-show="selectedInversion.tipo !== 'cripto'">
+                    <div class="form-group-bx" style="margin-top:1rem;" x-show="!( (selectedInversion.tipo === 'cripto' || selectedInversion.tipo === 'trading') && selectedInversion.cantidad_tokens > 0 )">
                         <label class="form-label-bx">Valor Actual ($ COP)</label>
-                        <input type="number" name="valor_actual_cop" x-model="selectedInversion.valor_actual_cop" class="form-input-bx" required min="0">
+                        <input type="number" step="any" name="valor_actual_cop" x-model="selectedInversion.valor_actual_cop" class="form-input-bx" required min="0">
                         <small style="color:#64748b; font-size:0.7rem;">Puedes forzar el valor estimado actual aquí.</small>
                     </div>
                     <div class="form-group-bx" style="margin-top:1rem;">
