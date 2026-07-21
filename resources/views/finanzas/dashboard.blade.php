@@ -108,17 +108,8 @@
 
         {{-- ── Panel Derecho ── --}}
         <div class="fin-side-panel">
-
-            {{-- Cuentas → /api/cuentas --}}
-            <div class="menu-modulos-card" style="margin-bottom:1rem;">
-                <h3>💳 Mis Cuentas</h3>
-                <div id="cuentas-list">
-                    @for($i=0;$i<3;$i++)<div class="sk-cuenta"></div>@endfor
-                </div>
-            </div>
-
             {{-- Módulos (estáticos) --}}
-            <div class="menu-modulos-card">
+            <div class="menu-modulos-card" style="margin-bottom:1rem;">
                 <h3>📂 Módulos Financieros</h3>
                 <div class="modulos-list">
                     @php $modulos = [
@@ -138,6 +129,14 @@
                         <span class="mil-arrow">→</span>
                     </a>
                     @endforeach
+                </div>
+            </div>
+
+            {{-- Cuentas → /api/cuentas --}}
+            <div class="menu-modulos-card" style="margin-bottom:1rem;">
+                <h3>💳 Mis Cuentas</h3>
+                <div id="cuentas-list">
+                    @for($i=0;$i<3;$i++)<div class="sk-cuenta"></div>@endfor
                 </div>
             </div>
 
@@ -359,7 +358,12 @@ async function cargarAlertas(){
     try{
         const{prestamos_mora:mora,gastos_faltantes:faltantes}=await get(`${BASE}/alertas?anio=${ANIO}&mes=${MES}`);
         const sec=$('alertas-section'); let html='';
-        if(mora.length>0) html+=`<div class="alert-card-bx error"><div class="ac-icon">⚠️</div><div class="ac-body">
+        if(faltantes.length>0) html+=`<div class="alert-card-bx warning"><div class="ac-icon">💡</div><div class="ac-body">
+            <h3>Gastos Recurrentes Pendientes</h3><p>Aún no has registrado estos gastos mensuales obligatorios:</p>
+            <div style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-top:0.5rem;">
+            ${faltantes.map(g=>`<span class="badge-warn" style="font-size:0.75rem;">${g.icono} ${g.nombre}</span>`).join('')}
+            </div></div></div>`;
+        if(mora.length>0) html+=`<div class="alert-card-bx error" ${faltantes.length>0?'style="margin-top:0.75rem;"':''}><div class="ac-icon">⚠️</div><div class="ac-body">
             <h3>Deudores en Mora (Vencidos)</h3><p>Las siguientes personas tienen préstamos activos vencidos hace más de 30 días:</p>
             <div class="ac-list" style="margin-top:0.5rem;display:flex;flex-direction:column;gap:0.5rem;">
             ${mora.map(p=>`<div style="display:flex;justify-content:space-between;align-items:center;background:rgba(239,68,68,0.06);padding:0.4rem 0.6rem;border-radius:6px;font-size:0.8rem;">
@@ -368,11 +372,6 @@ async function cargarAlertas(){
                 <div style="display:flex;gap:0.4rem;"><a href="${p.url_ficha}" class="btn-fin-small primary">Ficha</a>
                 <form action="${p.url_whatsapp}" method="POST" style="display:inline;"><input type="hidden" name="_token" value="${CSRF}">
                 <button type="submit" class="btn-fin-small success">🟢 Cobrar WA</button></form></div></div>`).join('')}
-            </div></div></div>`;
-        if(faltantes.length>0) html+=`<div class="alert-card-bx warning" style="margin-top:0.75rem;"><div class="ac-icon">💡</div><div class="ac-body">
-            <h3>Gastos Recurrentes Pendientes</h3><p>Aún no has registrado estos gastos mensuales obligatorios:</p>
-            <div style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-top:0.5rem;">
-            ${faltantes.map(g=>`<span class="badge-warn" style="font-size:0.75rem;">${g.icono} ${g.nombre}</span>`).join('')}
             </div></div></div>`;
         if(html){sec.innerHTML=html; sec.style.display='';}
     }catch(e){}
