@@ -49,7 +49,8 @@ class WhatsappResponderIaJob implements ShouldQueue
                 $conversacion->wa_contact_id,
                 $this->textoUsuario,
                 $conversacion->id,
-                $conversacion->origen_campana
+                $conversacion->origen_campana,
+                $conversacion->origen_campana_categoria
             );
         } catch (\Exception $e) {
             Log::warning('IA WhatsApp: no se pudo generar respuesta, se escala a un humano', [

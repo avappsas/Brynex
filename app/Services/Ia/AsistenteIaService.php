@@ -3,6 +3,8 @@
 namespace App\Services\Ia;
 
 use App\Models\Aliado;
+use App\Models\Cliente;
+use App\Models\Contrato;
 use App\Models\IaConfiguracionAliado;
 use App\Models\IaConsumo;
 use App\Models\IaConversacion;
@@ -10,6 +12,7 @@ use App\Models\IaMensaje;
 use App\Services\Ia\Tools\BuscarConocimientoTool;
 use App\Services\Ia\Tools\BuscarInternetTool;
 use App\Services\Ia\Tools\CatalogoModulosTool;
+use App\Services\Ia\Tools\ConsultarClienteTool;
 use App\Services\Ia\Tools\ConsultarParametrosTool;
 use App\Services\Ia\Tools\CotizarPlanPublicoTool;
 use App\Services\Ia\Tools\CotizarPlanTool;
@@ -65,8 +68,14 @@ class AsistenteIaService
      *
      * @return array{respuesta: string, conversacion_id: int}
      */
-    public function responderWhatsapp(int $alidoId, string $telefono, string $mensajeUsuario, ?int $waConversacionId, ?string $origenCampana = null): array
-    {
+    public function responderWhatsapp(
+        int $alidoId,
+        string $telefono,
+        string $mensajeUsuario,
+        ?int $waConversacionId,
+        ?string $origenCampana = null,
+        ?string $origenCampanaCategoria = null
+    ): array {
         $config = IaConfiguracionAliado::paraAliado($alidoId);
         if (!$config->activo_whatsapp) {
             throw new \RuntimeException('El asistente IA no está activo en WhatsApp para este aliado.');
@@ -78,9 +87,16 @@ class AsistenteIaService
         }
 
         $conversacion = IaConversacion::paraTelefono($alidoId, $telefono);
+        $clienteInfo = $this->resolverClienteExistente($alidoId, $telefono);
 
         $aliado = Aliado::find($alidoId);
-        $systemPrompt = $this->construirSystemPromptWhatsapp($aliado?->nombre ?? 'nuestra empresa', $config->nombreBot(), $origenCampana);
+        $systemPrompt = $this->construirSystemPromptWhatsapp(
+            $aliado?->nombre ?? 'nuestra empresa',
+            $config->nombreBot(),
+            $origenCampana,
+            $origenCampanaCategoria,
+            $clienteInfo
+        );
         $tools = $this->construirToolsWhatsapp($credenciales);
         $contextoExtra = ['canal' => 'whatsapp', 'wa_conversacion_id' => $waConversacionId];
 
@@ -137,8 +153,45 @@ class AsistenteIaService
 
         $tools[] = new PreguntarEntrenadorTool();
         $tools[] = new HablarConAsesorTool();
+        $tools[] = new ConsultarClienteTool();
 
         return $tools;
+    }
+
+    /**
+     * Verificación barata (sin saldo) de si el número que escribe ya es cliente con
+     * contrato vigente, para ajustar el tono desde el primer mensaje. El saldo y las
+     * cuentas de pago solo se consultan bajo demanda vía la tool consultar_cliente.
+     *
+     * @return array{es_cliente: bool, nombre: ?string, plan_actual: ?string}
+     */
+    private function resolverClienteExistente(int $alidoId, string $telefono): array
+    {
+        $numeroLimpio = preg_replace('/[^0-9]/', '', $telefono);
+
+        $cliente = Cliente::where('aliado_id', $alidoId)
+            ->where(function ($q) use ($numeroLimpio) {
+                $q->where('celular', $numeroLimpio)
+                  ->orWhere('celular', '+57' . $numeroLimpio)
+                  ->orWhere('celular', 'like', '%' . substr($numeroLimpio, -10));
+            })
+            ->first();
+
+        if (!$cliente) {
+            return ['es_cliente' => false, 'nombre' => null, 'plan_actual' => null];
+        }
+
+        $contrato = Contrato::where('aliado_id', $alidoId)
+            ->where('cedula', $cliente->cedula)
+            ->whereIn('estado', ['vigente', 'activo'])
+            ->with('plan:id,nombre')
+            ->first();
+
+        return [
+            'es_cliente'  => true,
+            'nombre'      => trim(($cliente->primer_nombre ?? '') . ' ' . ($cliente->primer_apellido ?? '')),
+            'plan_actual' => $contrato?->plan?->nombre,
+        ];
     }
 
     /**
@@ -298,36 +351,98 @@ class AsistenteIaService
         PROMPT;
     }
 
-    private function construirSystemPromptWhatsapp(string $nombreAliado, string $nombreBot, ?string $origenCampana = null): string
-    {
+    private function construirSystemPromptWhatsapp(
+        string $nombreAliado,
+        string $nombreBot,
+        ?string $origenCampana = null,
+        ?string $origenCampanaCategoria = null,
+        array $clienteInfo = []
+    ): string {
         $fecha = now()->translatedFormat('d \d\e F \d\e Y');
-        $contextoCampana = $origenCampana
-            ? "\nEste cliente escribió respondiendo a la campaña/plantilla \"{$origenCampana}\" que le enviamos "
-                . "hace poco: ten ese contexto presente para entender de qué puede estar hablando, pero no lo "
-                . "menciones a menos que sea natural en la conversación.\n"
-            : '';
+        $esCliente = $clienteInfo['es_cliente'] ?? false;
+
+        if ($esCliente) {
+            $nombreCliente = $clienteInfo['nombre'] ?: null;
+            $planActual    = $clienteInfo['plan_actual'] ?? null;
+            $contextoContacto = "\n## Quién te escribe: YA ES CLIENTE"
+                . ($nombreCliente ? " ({$nombreCliente})" : '')
+                . ($planActual ? ", con el plan \"{$planActual}\" activo" : ', pero sin contrato vigente activo')
+                . ". NO le ofrezcas ni le pitchees un plan nuevo — es alguien que ya confió en nosotros, trátalo "
+                . "como cliente, no como prospecto. Si pregunta por su cuenta, saldo o cómo pagar, usa "
+                . "consultar_cliente. Solo cotiza con cotizar_plan si ÉL MISMO pide expresamente cotizar algo "
+                . "nuevo o adicional (ej. afiliar a alguien más, cambiar de plan).\n";
+        } else {
+            $contextoContacto = "\n## Quién te escribe: es un PROSPECTO (no tiene contrato activo con nosotros). "
+                . "Aquí sí aplica todo el enfoque de venta de abajo.\n";
+        }
+
+        $contextoCampana = '';
+        if ($origenCampana) {
+            if ($origenCampanaCategoria === 'MARKETING') {
+                $contextoCampana = "Este contacto respondió a nuestra campaña/promoción \"{$origenCampana}\": "
+                    . "es un prospecto interesado, aprovecha ese interés inicial para cotizar y cerrar.\n";
+            } elseif ($origenCampanaCategoria === 'UTILITY') {
+                $contextoCampana = "Este contacto respondió a un recordatorio/notificación (\"{$origenCampana}\") "
+                    . "que le enviamos — probablemente es sobre su cuenta o pago, no una promoción. Prioriza "
+                    . "ayudarlo con eso antes que ofrecerle algo nuevo.\n";
+            } else {
+                $contextoCampana = "Este contacto respondió a la plantilla \"{$origenCampana}\" que le enviamos "
+                    . "hace poco: ten ese contexto presente, pero no lo menciones a menos que sea natural.\n";
+            }
+        }
 
         return <<<PROMPT
-        Eres {$nombreBot}, el asistente virtual de "{$nombreAliado}" atendiendo por WhatsApp a un cliente o
-        prospecto externo. Hoy es {$fecha}. Preséntate por tu nombre si es natural en el saludo inicial, y si
-        te preguntan quién eres, responde que eres {$nombreBot}, el asistente virtual.
-        {$contextoCampana}
-        Puedes:
-        - Dar el valor mensual de un plan de seguridad social (usa cotizar_plan; solo da el valor total, nunca
-          calcules ni inventes cifras tú mismo).
+        Eres {$nombreBot}, asesora comercial experta en seguridad social de "{$nombreAliado}", atendiendo por
+        WhatsApp a un cliente o prospecto externo. Hoy es {$fecha}. Preséntate por tu nombre si es natural en el
+        saludo inicial, y si te preguntan quién eres, responde que eres {$nombreBot}, el asistente virtual.
+        {$contextoContacto}{$contextoCampana}
+        ## Cómo cotizar (usa cotizar_plan) — simplifica al máximo, el cliente casi nunca sabe estos términos:
+        - Identifica tú misma qué plan quiere por lo que menciona (EPS/salud, ARL/ARP, AFP/fondo de pensión,
+          CCF/caja de compensación) y pásalo como componentes a la tool. NUNCA le preguntes el nombre exacto del
+          plan ni le hagas elegir de una lista — si dice "EPS y ARL", ya sabes qué cotizar.
+        - Tipo de vinculación: asume "Dependiente" por defecto, sin preguntar. Solo pregunta o ajusta si el
+          cliente menciona que es independiente, o si busca algo "más económico" — en ese caso ofrécele también
+          la opción de Tiempo Parcial u otras modalidades más baratas.
+        - Salario: usa el salario mínimo por defecto, sin preguntar. Solo pide el salario si el cliente menciona
+          uno distinto o pregunta cómo cambia el valor con otro salario.
+        - Nivel de riesgo ARL: esta es la ÚNICA pregunta que SIEMPRE debes hacer antes de cotizar (del 1 al 5,
+          según su actividad). Si el cliente no sabe, cotiza con nivel 1 y acláraselo: "Como no sabes tu nivel de
+          riesgo, te cotizo con el más bajo (nivel 1); si tu actividad es de mayor riesgo el valor de ARL puede
+          variar".
+        - Si la tool no encuentra exactamente esa combinación, te devuelve el plan más cercano disponible
+          (nota_plan): confírmaselo al cliente antes de darlo por definitivo ("tenemos EPS+ARL+CCF, ¿te sirve?").
+        - Si la tool devuelve nota_afp, coméntasela de forma natural e informativa (sin preguntar edad ni género
+          del cliente): igual se le puede dar el plan aunque no cumpla la condición.
+
+        ## Cómo vender:
+        - Primero ofrece y cotiza directamente el plan que el cliente pregunta — no lo demores con preguntas
+          innecesarias, el objetivo es darle un valor concreto lo antes posible.
+        - Si el cliente duda, pone objeciones de precio, o no confirma después de ver el valor, ofrécele
+          proactivamente una alternativa más económica (menos componentes, o Tiempo Parcial) antes de dejarlo ir.
+        - Cierra tus respuestas con una pregunta que invite a avanzar (ej. "¿te gustaría que te afiliemos hoy
+          mismo?", "¿quieres que te cuente los siguientes pasos?").
+        - Si después de la cotización el cliente parece listo para avanzar (confirma, pregunta cómo pagar o
+          afiliarse), usa hablar_con_asesor para que un humano cierre el proceso.
+
+        Fuera de cotizaciones, también puedes:
         - Responder preguntas generales de seguridad social colombiana, usando primero buscar_conocimiento y,
           si no encuentra nada y tienes buscar_internet disponible, acláralo siempre como información aún sin
           verificar por el entrenador.
-        - Si sigues sin una respuesta confiable, usa preguntar_entrenador y sé honesto: dile al cliente que no
+        - Si sigues sin una respuesta confiable, usa preguntar_entrenador y sé honesta: dile al cliente que no
           tienes certeza y que alguien del equipo lo contactará.
         - Si el cliente pide hablar con una persona, quiere negociar, se queja, o el tema lo amerita, usa
           hablar_con_asesor de inmediato y despídete brevemente.
 
         Reglas:
-        - Responde en español, con tono cordial y cercano de atención al cliente (nunca uses jerga interna).
-        - No tienes acceso a datos personales de clientes ni a información interna del negocio (comisiones,
-          configuración de precios internos, ni rutas del sistema): esas herramientas no están disponibles aquí
-          a propósito.
+        - Responde en español, con tono cordial, cercano y persuasivo de venta consultiva (nunca uses jerga interna).
+        - Con consultar_cliente solo puedes ver los datos del número que te está escribiendo en este momento —
+          nunca de otra persona. No tienes acceso a información interna del negocio (comisiones, configuración
+          de precios internos, ni rutas del sistema): esas herramientas no están disponibles aquí a propósito.
+        - El saldo PENDIENTE que da consultar_cliente es real, pero preséntalo siempre como informativo y ofrece
+          confirmarlo con un asesor (hablar_con_asesor) para mayor seguridad.
+        - Saldo A FAVOR y préstamos: NUNCA des el monto ni detalles por chat aunque los tengas disponibles. Si
+          tiene_saldo_a_favor o tiene_prestamo_activo vienen en true, solo informa que existe ese tema pendiente
+          y pasa directo con un asesor humano (hablar_con_asesor).
         - Nunca inventes precios ni normativa.
         - Sé breve: los mensajes de WhatsApp deben ser cortos y fáciles de leer en un celular.
         PROMPT;

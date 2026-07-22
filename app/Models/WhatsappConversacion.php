@@ -20,9 +20,11 @@ class WhatsappConversacion extends BaseModel
         'contrato_id',
         'empresa_id',
         'origen_campana',
+        'origen_campana_categoria',
         'estado',
         'asignado_a',
         'bot_activo',
+        'seguimiento_enviado_at',
         'pendiente_atencion',
         'pendiente_motivo',
         'ultimo_mensaje_at',
@@ -36,6 +38,7 @@ class WhatsappConversacion extends BaseModel
         'total_mensajes_no_leidos'  => 'integer',
         'bot_activo'                => 'boolean',
         'pendiente_atencion'        => 'boolean',
+        'seguimiento_enviado_at'    => 'datetime',
     ];
 
     // ── Relaciones ──────────────────────────────────────────────────
@@ -160,8 +163,11 @@ class WhatsappConversacion extends BaseModel
     public function renovarVentana(): void
     {
         $this->update([
-            'ventana_activa_hasta' => now()->addHours(24),
-            'ultimo_mensaje_at'    => now(),
+            'ventana_activa_hasta'    => now()->addHours(24),
+            'ultimo_mensaje_at'       => now(),
+            // El cliente volvió a escribir: ya no está "sin responder", se habilita
+            // un futuro seguimiento si vuelve a quedarse callado más adelante.
+            'seguimiento_enviado_at'  => null,
         ]);
     }
 

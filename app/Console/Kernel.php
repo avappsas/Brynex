@@ -33,6 +33,19 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/finanzas-liquidacion.log'));
+
+        // ── Seguimiento comercial del Asistente IA (WhatsApp) ────────────
+        // Cada 15 min, en horario comercial: revisa conversaciones que la IA
+        // dejó sin respuesta del cliente hace 2h+ y envía un único mensaje
+        // de seguimiento (no repite hasta que el cliente vuelva a escribir).
+        // Ejecución manual: php artisan whatsapp:seguimiento-ia
+        $schedule->command('whatsapp:seguimiento-ia')
+            ->everyFifteenMinutes()
+            ->between('07:00', '21:00')
+            ->timezone('America/Bogota')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo(storage_path('logs/whatsapp-seguimiento-ia.log'));
     }
 
     /**

@@ -361,23 +361,29 @@ class WhatsappWebhookService
             }
         }
 
+        $campana = $this->buscarCampanaOrigen($numeroLimpio, $alidoId);
+
         return WhatsappConversacion::create([
-            'aliado_id'       => $alidoId,
-            'wa_contact_id'   => $waFrom,
-            'nombre_contacto' => $nombreContacto,
-            'contrato_id'     => $contrato?->id,
-            'empresa_id'      => $empresa?->id,
-            'origen_campana'  => $this->buscarCampanaOrigen($numeroLimpio, $alidoId),
-            'estado'          => 'abierta',
+            'aliado_id'                 => $alidoId,
+            'wa_contact_id'             => $waFrom,
+            'nombre_contacto'           => $nombreContacto,
+            'contrato_id'               => $contrato?->id,
+            'empresa_id'                => $empresa?->id,
+            'origen_campana'            => $campana['nombre'],
+            'origen_campana_categoria'  => $campana['categoria'],
+            'estado'                    => 'abierta',
         ]);
     }
 
     /**
      * Si el número respondió recientemente (últimos 7 días) a una plantilla de un envío
-     * masivo, devuelve el nombre de la plantilla para dar contexto a la IA (ej. "el cliente
-     * respondió a la campaña X"). No aplica a conversaciones que ya existían.
+     * masivo, devuelve su nombre y categoría de Meta (MARKETING|UTILITY|AUTHENTICATION)
+     * para dar contexto a la IA (ej. "respondió a una campaña de marketing" vs "respondió
+     * a un recordatorio de cobro"). No aplica a conversaciones que ya existían.
+     *
+     * @return array{nombre: ?string, categoria: ?string}
      */
-    private function buscarCampanaOrigen(string $numeroLimpio, int $alidoId): ?string
+    private function buscarCampanaOrigen(string $numeroLimpio, int $alidoId): array
     {
         $detalle = \App\Models\WhatsappEnvioMasivoDetalle::query()
             ->where(function ($q) use ($numeroLimpio) {
@@ -388,11 +394,14 @@ class WhatsappWebhookService
             ->whereIn('estado', ['enviado', 'entregado', 'leido'])
             ->whereHas('envio', fn ($q) => $q->where('aliado_id', $alidoId))
             ->where('created_at', '>=', now()->subDays(7))
-            ->with('envio.plantilla:id,nombre_display')
+            ->with('envio.plantilla:id,nombre_display,categoria')
             ->latest()
             ->first();
 
-        return $detalle?->envio?->plantilla?->nombre_display;
+        return [
+            'nombre'    => $detalle?->envio?->plantilla?->nombre_display,
+            'categoria' => $detalle?->envio?->plantilla?->categoria,
+        ];
     }
 
     /**

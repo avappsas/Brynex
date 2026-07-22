@@ -40,13 +40,26 @@ class CotizarPlanPublicoTool implements IaToolInterface
             return $resultado;
         }
 
-        return [
+        $salida = [
             'plan'                 => $resultado['plan_nombre'] ?? null,
             'modalidad'            => $resultado['tipo_modalidad_nombre'] ?? null,
             'valor_mensual_total'  => $resultado['total'] ?? null,
             'dias_cotizados'       => $resultado['dias'] ?? null,
-            'nota'                 => 'Este valor incluye seguridad social y administración. Si el cliente quiere el '
-                . 'desglose detallado o proceder con la afiliación, ofrécele pasar con un asesor (hablar_con_asesor).',
+            'salario_usado'        => $resultado['salario_usado'] ?? null,
+            'nivel_arl_usado'      => $resultado['nivel_arl_usado'] ?? null,
+            'nivel_arl_default'    => $resultado['nivel_arl_default'] ?? null,
+            'coincidencia_exacta'  => $resultado['coincidencia_exacta'] ?? true,
+            'nota'                 => 'Este valor incluye seguridad social y administración. Si el cliente quiere '
+                . 'proceder con la afiliación o hablar el detalle con alguien, ofrécele pasar con un asesor (hablar_con_asesor).',
         ];
+
+        if (!empty($resultado['nota_plan'])) {
+            $salida['nota_plan'] = $resultado['nota_plan'];
+        }
+        if (!empty($resultado['nota_afp'])) {
+            $salida['nota_afp'] = $resultado['nota_afp'];
+        }
+
+        return $salida;
     }
 }
