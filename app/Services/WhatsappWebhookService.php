@@ -21,12 +21,26 @@ class WhatsappWebhookService
     /** Segundos de silencio a esperar antes de responder, para agrupar mensajes seguidos. */
     private const SEGUNDOS_DEBOUNCE = 6;
 
+    /**
+     * Tope máximo de espera total: aunque el cliente siga escribiendo sin pausar (lo que
+     * reiniciaría el debounce indefinidamente), a los este tiempo se fuerza la respuesta.
+     * Evita que un mensaje de hace varios minutos quede "pendiente" y se combine con algo
+     * dicho mucho después, como si fuera parte del mismo pensamiento.
+     */
+    private const SEGUNDOS_MAX_ESPERA_TOTAL = 20;
+
     public function __construct(protected WhatsappApiService $whatsappApi) {}
 
     /** Clave de cache compartida con WhatsappResponderIaJob para el debounce por conversación. */
     public static function claveDebounce(int $conversacionId): string
     {
         return "wa_debounce_conv_{$conversacionId}";
+    }
+
+    /** Marca cuándo empezó el lote de mensajes pendiente actual, para poder aplicar el tope máximo. */
+    public static function claveInicioLote(int $conversacionId): string
+    {
+        return "wa_debounce_inicio_lote_{$conversacionId}";
     }
 
     /**
@@ -160,9 +174,24 @@ class WhatsappWebhookService
                     // nuevo antes de cumplirse la espera, ese token queda desactualizado y
                     // este job se aborta solo (ver WhatsappResponderIaJob::handle()) — el
                     // job programado para el mensaje más reciente es el que agrupa todo.
+                    //
+                    // Tope máximo: si el cliente no deja de escribir, el debounce se
+                    // reiniciaría sin fin y un mensaje de hace varios minutos (ej. una
+                    // petición vieja de planilla) terminaría combinado con algo dicho mucho
+                    // después. Por eso se marca cuándo empezó el lote actual, y si ya pasó
+                    // el tope, se fuerza la respuesta casi de inmediato en vez de esperar de nuevo.
+                    $claveInicioLote = self::claveInicioLote($conversacion->id);
+                    $inicioLote = Cache::get($claveInicioLote);
+                    if (!$inicioLote) {
+                        $inicioLote = now();
+                        Cache::put($claveInicioLote, $inicioLote, now()->addSeconds(self::SEGUNDOS_MAX_ESPERA_TOTAL + self::SEGUNDOS_DEBOUNCE + 10));
+                    }
+                    $superoTope = now()->diffInSeconds($inicioLote) >= self::SEGUNDOS_MAX_ESPERA_TOTAL;
+                    $delay = $superoTope ? 1 : self::SEGUNDOS_DEBOUNCE;
+
                     Cache::put(self::claveDebounce($conversacion->id), $mensaje->id, now()->addSeconds(30));
                     WhatsappResponderIaJob::dispatch($conversacion->id, $mensaje->id)
-                        ->delay(now()->addSeconds(self::SEGUNDOS_DEBOUNCE));
+                        ->delay(now()->addSeconds($delay));
                 } elseif (in_array($tipo, ['image', 'audio', 'document', 'video'], true)) {
                     // El bot no puede leer multimedia: avisa al cliente y escala a un humano
                     // en vez de quedarse en silencio (ej. comprobantes de pago requieren revisión humana).

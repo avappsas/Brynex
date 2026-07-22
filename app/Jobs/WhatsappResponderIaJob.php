@@ -44,6 +44,10 @@ class WhatsappResponderIaJob implements ShouldQueue
             return;
         }
 
+        // Este job sí va a procesar el lote actual — liberar el marcador de "inicio de lote"
+        // para que el próximo mensaje del cliente arranque un lote nuevo, no siga acumulando.
+        Cache::forget(WhatsappWebhookService::claveInicioLote($this->conversacionId));
+
         $conversacion = WhatsappConversacion::find($this->conversacionId);
         if (!$conversacion || !$conversacion->bot_activo) return;
 
