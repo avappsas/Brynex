@@ -109,21 +109,29 @@ class PlanillaFormularioService
 
         // Resolver el código de PILA real de AFP si es que viene como NIT
         $codAfpPilaReal = $c['codAfpPila'];
-        if (!empty($c['codAfpPila'])) {
+        if ($esPlanillaY) {
+            $codAfpPilaReal = 'NIN-AF';
+        } elseif (!empty($c['codAfpPila'])) {
             $nitAfpLimpio = preg_replace('/[^0-9]/', '', $c['codAfpPila']);
-            $pension = \App\Models\Pension::where('nit', $nitAfpLimpio)->orWhere('codigo', $c['codAfpPila'])->first();
-            if ($pension && !empty($pension->codigo)) {
-                $codAfpPilaReal = $pension->codigo;
+            if ($nitAfpLimpio !== '') {
+                $pension = \App\Models\Pension::where('nit', $nitAfpLimpio)->orWhere('codigo', $c['codAfpPila'])->first();
+                if ($pension && !empty($pension->codigo)) {
+                    $codAfpPilaReal = $pension->codigo;
+                }
             }
         }
 
         // Resolver el código de PILA real de EPS si es que viene como NIT
         $codEpsPilaReal = $c['codEpsPila'];
-        if (!empty($c['codEpsPila'])) {
+        if ($esPlanillaY) {
+            $codEpsPilaReal = 'NIN-EP';
+        } elseif (!empty($c['codEpsPila'])) {
             $nitEpsLimpio = preg_replace('/[^0-9]/', '', $c['codEpsPila']);
-            $epsObj = \App\Models\Eps::where('nit', $nitEpsLimpio)->orWhere('codigo', $c['codEpsPila'])->first();
-            if ($epsObj && !empty($epsObj->codigo)) {
-                $codEpsPilaReal = $epsObj->codigo;
+            if ($nitEpsLimpio !== '') {
+                $epsObj = \App\Models\Eps::where('nit', $nitEpsLimpio)->orWhere('codigo', $c['codEpsPila'])->first();
+                if ($epsObj && !empty($epsObj->codigo)) {
+                    $codEpsPilaReal = $epsObj->codigo;
+                }
             }
         }
 
