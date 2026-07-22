@@ -205,6 +205,10 @@
                    class="sidebar-tab {{ $tab === 'general' ? 'active' : '' }}">📥 General</a>
                 <a href="{{ route('admin.whatsapp.chat.index', ['tab' => 'mias', 'buscar' => $buscar]) }}"
                    class="sidebar-tab {{ $tab === 'mias' ? 'active' : '' }}">👤 Mis chats</a>
+                <a href="{{ route('admin.whatsapp.chat.index', ['tab' => 'ia', 'buscar' => $buscar]) }}"
+                   class="sidebar-tab {{ $tab === 'ia' ? 'active' : '' }}">🤖 IA
+                    @if($totalIa > 0)<span class="sidebar-badge" style="margin-left:.25rem;">{{ $totalIa }}</span>@endif
+                </a>
             </div>
         </div>
 
@@ -225,7 +229,11 @@
                     <div class="conv-info">
                         <div class="conv-name">{{ $conv->nombreMostrar() }}</div>
                         <div class="conv-preview">
-                            @if($conv->estado === 'asignada' && $conv->asignado)
+                            @if($conv->pendiente_atencion)
+                                <span style="color:#d97706;font-weight:600">⚠️ Pendiente por atender</span>
+                            @elseif($conv->bot_activo)
+                                <span style="color:#2563eb">🤖 Atendiendo la IA</span>
+                            @elseif($conv->estado === 'asignada' && $conv->asignado)
                                 <span style="color:#10b981">● {{ $conv->asignado->nombre }}</span>
                             @else
                                 {{ $preview ?: 'Sin mensajes' }}
@@ -241,7 +249,13 @@
                 </a>
             @empty
                 <div style="text-align:center;padding:2rem 1rem;color:#94a3b8;font-size:.82rem">
-                    No hay conversaciones {{ $tab === 'mias' ? 'asignadas a ti' : 'activas' }}.
+                    @if($tab === 'mias')
+                        No hay conversaciones asignadas a ti.
+                    @elseif($tab === 'ia')
+                        No hay conversaciones que la IA esté atendiendo ahora mismo.
+                    @else
+                        No hay conversaciones activas.
+                    @endif
                 </div>
             @endforelse
         </div>

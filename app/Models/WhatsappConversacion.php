@@ -19,8 +19,12 @@ class WhatsappConversacion extends BaseModel
         'nombre_contacto',
         'contrato_id',
         'empresa_id',
+        'origen_campana',
         'estado',
         'asignado_a',
+        'bot_activo',
+        'pendiente_atencion',
+        'pendiente_motivo',
         'ultimo_mensaje_at',
         'ventana_activa_hasta',
         'total_mensajes_no_leidos',
@@ -30,6 +34,8 @@ class WhatsappConversacion extends BaseModel
         'ultimo_mensaje_at'         => 'datetime',
         'ventana_activa_hasta'      => 'datetime',
         'total_mensajes_no_leidos'  => 'integer',
+        'bot_activo'                => 'boolean',
+        'pendiente_atencion'        => 'boolean',
     ];
 
     // ── Relaciones ──────────────────────────────────────────────────
@@ -86,6 +92,18 @@ class WhatsappConversacion extends BaseModel
         return $query->where('aliado_id', $alidoId);
     }
 
+    /**
+     * Conversaciones que el Asistente IA está atendiendo activamente ahora mismo:
+     * el bot puede responder (bot_activo) Y ya participó al menos una vez. Así se
+     * excluyen las conversaciones antiguas que nunca pasaron por la IA (bot_activo
+     * es el valor por defecto para todas, no implica que la IA la haya atendido).
+     */
+    public function scopeAtendidasPorIa($query)
+    {
+        return $query->where('bot_activo', true)
+            ->whereHas('mensajes', fn ($m) => $m->where('es_bot', true));
+    }
+
     // ── Helpers de negocio ───────────────────────────────────────────
 
     /**
@@ -140,13 +158,16 @@ class WhatsappConversacion extends BaseModel
     }
 
     /**
-     * Asigna la conversación a un usuario.
+     * Asigna la conversación a un usuario. Al reclamarla, se resuelve cualquier
+     * aviso de "pendiente por atender" que tuviera.
      */
     public function asignarA(int $userId): void
     {
         $this->update([
-            'asignado_a' => $userId,
-            'estado'     => 'asignada',
+            'asignado_a'          => $userId,
+            'estado'              => 'asignada',
+            'pendiente_atencion'  => false,
+            'pendiente_motivo'    => null,
         ]);
     }
 
@@ -167,6 +188,55 @@ class WhatsappConversacion extends BaseModel
     public function cerrar(): void
     {
         $this->update(['estado' => 'cerrada']);
+    }
+
+    /** Silencia el Asistente IA en esta conversación, sin más efectos. */
+    public function desactivarBot(): void
+    {
+        if ($this->bot_activo) {
+            $this->update(['bot_activo' => false]);
+        }
+    }
+
+    /**
+     * Reactiva el Asistente IA en esta conversación. Limpia el aviso de pendiente,
+     * ya que si el bot vuelve a responder no hay nada esperando a un humano.
+     */
+    public function activarBot(): void
+    {
+        $this->update([
+            'bot_activo'          => true,
+            'pendiente_atencion'  => false,
+            'pendiente_motivo'    => null,
+        ]);
+    }
+
+    /**
+     * El Asistente IA transfiere la conversación a un humano (ej: el cliente lo pidió).
+     * Queda sin asignar en el inbox General, marcada como pendiente por atender.
+     */
+    public function escalarAHumano(?string $motivo = null): void
+    {
+        $this->update([
+            'bot_activo'          => false,
+            'pendiente_atencion'  => true,
+            'pendiente_motivo'    => $motivo,
+        ]);
+    }
+
+    /**
+     * Un usuario toma una conversación que estaba siendo atendida por la IA:
+     * apaga el bot, se la asigna a sí mismo y resuelve el pendiente.
+     */
+    public function tomarConversacion(int $userId): void
+    {
+        $this->update([
+            'bot_activo'          => false,
+            'asignado_a'          => $userId,
+            'estado'              => 'asignada',
+            'pendiente_atencion'  => false,
+            'pendiente_motivo'    => null,
+        ]);
     }
 
     /**

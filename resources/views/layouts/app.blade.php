@@ -1289,6 +1289,15 @@
         @endrole
         @endauth
     </script>
+
+    @auth
+        @php($__iaAlidoId = session('aliado_id_activo'))
+        @php($__iaConfig = $__iaAlidoId ? \App\Models\IaConfiguracionAliado::where('aliado_id', $__iaAlidoId)->where('activo_web', true)->first() : null)
+        @if($__iaConfig)
+            @include('components.asistente-ia-widget', ['nombreBot' => $__iaConfig->nombreBot()])
+        @endif
+    @endauth
+
     @stack('scripts')
 </body>
 </html>

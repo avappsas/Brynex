@@ -121,6 +121,10 @@
                    class="sidebar-tab {{ $tab === 'general' ? 'active' : '' }}">📥 General</a>
                 <a href="{{ route('admin.whatsapp.chat.show', $conversacion->id) }}?tab=mias&buscar={{ urlencode($buscar) }}"
                    class="sidebar-tab {{ $tab === 'mias' ? 'active' : '' }}">👤 Mis chats</a>
+                <a href="{{ route('admin.whatsapp.chat.show', $conversacion->id) }}?tab=ia&buscar={{ urlencode($buscar) }}"
+                   class="sidebar-tab {{ $tab === 'ia' ? 'active' : '' }}">🤖 IA
+                    @if($totalIa > 0)<span class="sidebar-badge" style="margin-left:.25rem;">{{ $totalIa }}</span>@endif
+                </a>
             </div>
         </div>
 
@@ -133,10 +137,16 @@
                     <div class="conv-info">
                         <div class="conv-name" x-text="c.nombre"></div>
                         <div class="conv-preview">
-                            <template x-if="c.asignado_nombre">
+                            <template x-if="c.pendiente_atencion">
+                                <span style="color:#d97706;font-weight:600">⚠️ Pendiente por atender</span>
+                            </template>
+                            <template x-if="!c.pendiente_atencion && c.bot_activo">
+                                <span style="color:#2563eb">🤖 Atendiendo la IA</span>
+                            </template>
+                            <template x-if="!c.pendiente_atencion && !c.bot_activo && c.asignado_nombre">
                                 <span style="color:#10b981">● <span x-text="c.asignado_nombre"></span></span>
                             </template>
-                            <template x-if="!c.asignado_nombre">
+                            <template x-if="!c.pendiente_atencion && !c.bot_activo && !c.asignado_nombre">
                                 <span x-text="c.preview || 'Sin mensajes'"></span>
                             </template>
                         </div>
@@ -173,12 +183,25 @@
                 </div>
             </div>
             <div class="header-actions">
+                <button x-show="conversacion.bot_activo" class="btn-sm btn-success" @click="toggleBot()"
+                        title="Silencia al Asistente IA en esta conversación y te la asigna a ti">
+                    🙋 Tomar conversación
+                </button>
+                <button x-show="!conversacion.bot_activo" class="btn-sm btn-outline" @click="toggleBot()"
+                        title="El Asistente IA vuelve a responder en esta conversación">
+                    🤖 Reactivar IA
+                </button>
                 <button class="btn-sm btn-outline" @click="modalAsignar = true">👤 Asignar</button>
                 <a x-show="conversacion.contrato_url" :href="conversacion.contrato_url" target="_blank" class="btn-sm btn-success">
                     📄 Ver Cliente
                 </a>
                 <button class="btn-sm btn-danger" @click="cerrarConversacion()">✕ Cerrar</button>
             </div>
+        </div>
+
+        {{-- Aviso: el cliente pidió un asesor y la conversación quedó pendiente --}}
+        <div class="ventana-bar" style="background:#fffbeb;color:#b45309;" x-show="conversacion.pendiente_atencion">
+            ⚠️ Pendiente por atender<template x-if="conversacion.pendiente_motivo"> — <span x-text="conversacion.pendiente_motivo"></span></template>
         </div>
 
         {{-- Barra de ventana activa/inactiva --}}
@@ -700,6 +723,36 @@ function chatApp() {
             });
             const data = await resp.json();
             if (data.ok) window.location = '{{ route('admin.whatsapp.chat.index') }}';
+        },
+
+        async toggleBot() {
+            const nuevoEstado = !this.conversacion.bot_activo;
+            const resp = await fetch(`/admin/whatsapp/chat/${this.convId}/toggle-bot`, {
+                method: 'PATCH',
+                headers: {
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ activo: nuevoEstado })
+            });
+            const data = await resp.json();
+            if (data.ok) {
+                this.conversacion.bot_activo = data.bot_activo;
+                this.conversacion.pendiente_atencion = data.pendiente_atencion;
+                this.conversacion.asignado_a = data.asignado_a;
+                this.conversacion.asignado_nombre = data.asignado_nombre;
+                this.conversacion.estado = data.estado;
+                this.usuarioAsignar = data.asignado_a || '';
+
+                // Reflejar el cambio en la lista lateral sin recargar
+                const convItem = this.listaConversaciones.find(c => c.id == this.convId);
+                if (convItem) {
+                    convItem.bot_activo = data.bot_activo;
+                    convItem.pendiente_atencion = data.pendiente_atencion;
+                    convItem.asignado_nombre = data.asignado_nombre;
+                }
+            }
         },
 
         conectarReverb() {

@@ -26,7 +26,7 @@ class WhatsappChatController extends Controller
         $tab     = $request->get('tab', 'general');
         $buscar  = $request->get('buscar');
 
-        ['conversaciones' => $conversaciones, 'totalNoLeidos' => $totalNoLeidos] =
+        ['conversaciones' => $conversaciones, 'totalNoLeidos' => $totalNoLeidos, 'totalIa' => $totalIa] =
             $this->cargarDatosSidebar($alidoId, $tab, $buscar);
 
         // Usuarios del aliado para la asignación
@@ -36,7 +36,7 @@ class WhatsappChatController extends Controller
             ->get(['id', 'nombre']);
 
         return view('admin.whatsapp.chat.index', compact(
-            'conversaciones', 'tab', 'buscar', 'totalNoLeidos', 'usuarios'
+            'conversaciones', 'tab', 'buscar', 'totalNoLeidos', 'totalIa', 'usuarios'
         ));
     }
 
@@ -82,7 +82,7 @@ class WhatsappChatController extends Controller
             ->get();
 
         // Sidebar — método compartido, sin duplicar lógica
-        ['conversaciones' => $conversaciones, 'totalNoLeidos' => $totalNoLeidos] =
+        ['conversaciones' => $conversaciones, 'totalNoLeidos' => $totalNoLeidos, 'totalIa' => $totalIa] =
             $this->cargarDatosSidebar($alidoId, $tab, $buscar);
 
         // Mapear conversaciones para Alpine.js
@@ -91,21 +91,24 @@ class WhatsappChatController extends Controller
         $mensajesData = $this->mapearMensajes($mensajes);
 
         $conversacionData = [
-            'id'              => $conversacion->id,
-            'nombre'          => $conversacion->nombreMostrar(),
-            'celular'         => $conversacion->wa_contact_id,
-            'contrato_id'     => $conversacion->contrato_id,
-            'contrato_url'    => $conversacion->cliente_url,
-            'estado'          => $conversacion->estado,
-            'asignado_a'      => $conversacion->asignado_a,
-            'asignado_nombre' => $conversacion->asignado?->nombre,
-            'ventana_activa'  => $conversacion->ventanaActiva(),
-            'ventana_minutos' => $conversacion->minutosVentanaRestante(),
+            'id'                 => $conversacion->id,
+            'nombre'             => $conversacion->nombreMostrar(),
+            'celular'            => $conversacion->wa_contact_id,
+            'contrato_id'        => $conversacion->contrato_id,
+            'contrato_url'       => $conversacion->cliente_url,
+            'estado'             => $conversacion->estado,
+            'asignado_a'         => $conversacion->asignado_a,
+            'asignado_nombre'    => $conversacion->asignado?->nombre,
+            'bot_activo'         => $conversacion->bot_activo,
+            'pendiente_atencion' => $conversacion->pendiente_atencion,
+            'pendiente_motivo'   => $conversacion->pendiente_motivo,
+            'ventana_activa'     => $conversacion->ventanaActiva(),
+            'ventana_minutos'    => $conversacion->minutosVentanaRestante(),
         ];
 
         return view('admin.whatsapp.chat.show', compact(
             'conversacion', 'mensajes', 'usuarios', 'plantillas',
-            'conversaciones', 'conversacionesData', 'tab', 'buscar', 'totalNoLeidos',
+            'conversaciones', 'conversacionesData', 'tab', 'buscar', 'totalNoLeidos', 'totalIa',
             'mensajesData', 'conversacionData'
         ));
     }
@@ -159,11 +162,16 @@ class WhatsappChatController extends Controller
             return response()->json(['ok' => false, 'error' => $resultado['error']], 422);
         }
 
-        // Autoasignación al agente emisor actual
+        // Autoasignación al agente emisor actual. Si un humano escribe, el bot se silencia
+        // en esta conversación hasta que alguien lo reactive explícitamente, y se resuelve
+        // cualquier aviso de "pendiente por atender".
         $conversacion->update([
-            'asignado_a'        => Auth::id(),
-            'estado'            => 'asignada',
-            'ultimo_mensaje_at' => now(),
+            'asignado_a'          => Auth::id(),
+            'estado'              => 'asignada',
+            'ultimo_mensaje_at'   => now(),
+            'bot_activo'          => false,
+            'pendiente_atencion'  => false,
+            'pendiente_motivo'    => null,
         ]);
 
         return response()->json([
@@ -196,6 +204,41 @@ class WhatsappChatController extends Controller
         }
 
         return response()->json(['ok' => true, 'mensaje' => $msg]);
+    }
+
+    /**
+     * Activa o desactiva el Asistente IA en una conversación puntual.
+     */
+    /**
+     * Reactiva la IA, o la silencia y toma la conversación para el usuario actual
+     * (apagar el bot desde el chat significa "voy a atenderla yo").
+     */
+    public function toggleBot(Request $request, int $id)
+    {
+        $alidoId      = session('aliado_id_activo');
+        $conversacion = WhatsappConversacion::delAliado($alidoId)->findOrFail($id);
+
+        $validated = $request->validate(['activo' => 'required|boolean']);
+
+        if ($validated['activo']) {
+            $conversacion->activarBot();
+            $mensaje = 'Asistente IA reactivado en esta conversación';
+        } else {
+            $conversacion->tomarConversacion(Auth::id());
+            $mensaje = 'Tomaste esta conversación — el Asistente IA ya no responderá aquí';
+        }
+
+        $conversacion->refresh();
+
+        return response()->json([
+            'ok'                 => true,
+            'bot_activo'         => $conversacion->bot_activo,
+            'pendiente_atencion' => $conversacion->pendiente_atencion,
+            'asignado_a'         => $conversacion->asignado_a,
+            'asignado_nombre'    => $conversacion->asignado?->nombre,
+            'estado'             => $conversacion->estado,
+            'mensaje'            => $mensaje,
+        ]);
     }
 
     /**
@@ -285,16 +328,19 @@ class WhatsappChatController extends Controller
         return response()->json([
             'ok'          => true,
             'conversacion' => [
-                'id'              => $conversacion->id,
-                'nombre'          => $conversacion->nombreMostrar(),
-                'celular'         => $conversacion->wa_contact_id,
-                'contrato_id'     => $conversacion->contrato_id,
-                'contrato_url'    => $conversacion->cliente_url,
-                'estado'          => $conversacion->estado,
-                'asignado_a'      => $conversacion->asignado_a,
-                'asignado_nombre' => $conversacion->asignado?->nombre,
-                'ventana_activa'  => $conversacion->ventanaActiva(),
-                'ventana_minutos' => $conversacion->minutosVentanaRestante(),
+                'id'                 => $conversacion->id,
+                'nombre'             => $conversacion->nombreMostrar(),
+                'celular'            => $conversacion->wa_contact_id,
+                'contrato_id'        => $conversacion->contrato_id,
+                'contrato_url'       => $conversacion->cliente_url,
+                'estado'             => $conversacion->estado,
+                'asignado_a'         => $conversacion->asignado_a,
+                'asignado_nombre'    => $conversacion->asignado?->nombre,
+                'bot_activo'         => $conversacion->bot_activo,
+                'pendiente_atencion' => $conversacion->pendiente_atencion,
+                'pendiente_motivo'   => $conversacion->pendiente_motivo,
+                'ventana_activa'     => $conversacion->ventanaActiva(),
+                'ventana_minutos'    => $conversacion->minutosVentanaRestante(),
             ],
             'mensajes' => $this->mapearMensajes($mensajes),
         ]);
@@ -316,6 +362,7 @@ class WhatsappChatController extends Controller
                 'id', 'aliado_id', 'wa_contact_id', 'nombre_contacto',
                 'total_mensajes_no_leidos', 'ultimo_mensaje_at',
                 'asignado_a', 'estado', 'contrato_id',
+                'bot_activo', 'pendiente_atencion', 'pendiente_motivo',
             ])
             ->find($id);
 
@@ -348,6 +395,7 @@ class WhatsappChatController extends Controller
                 'id', 'aliado_id', 'wa_contact_id', 'nombre_contacto',
                 'total_mensajes_no_leidos', 'ultimo_mensaje_at',
                 'asignado_a', 'estado', 'contrato_id',
+                'bot_activo', 'pendiente_atencion', 'pendiente_motivo',
             ])
             ->orderByDesc('ultimo_mensaje_at');
 
@@ -359,6 +407,8 @@ class WhatsappChatController extends Controller
 
         if ($tab === 'mias') {
             $query->where('asignado_a', $userId);
+        } elseif ($tab === 'ia') {
+            $query->atendidasPorIa();
         }
 
         if ($buscar) {
@@ -384,7 +434,10 @@ class WhatsappChatController extends Controller
             $totalNoLeidos = $queryNoLeidos->sum('total_mensajes_no_leidos');
         }
 
-        return compact('conversaciones', 'totalNoLeidos');
+        // Contador para la pestaña "IA" (independiente del tab actual)
+        $totalIa = WhatsappConversacion::delAliado($alidoId)->activas()->atendidasPorIa()->count();
+
+        return compact('conversaciones', 'totalNoLeidos', 'totalIa');
     }
 
     /**
@@ -414,6 +467,9 @@ class WhatsappChatController extends Controller
             'preview'                  => $c->previewUltimoMensaje(),
             'asignado_a'               => $c->asignado_a,
             'asignado_nombre'          => $c->asignado?->nombre,
+            'bot_activo'               => (bool) $c->bot_activo,
+            'pendiente_atencion'       => (bool) $c->pendiente_atencion,
+            'pendiente_motivo'         => $c->pendiente_motivo,
             'url_show'                 => route('admin.whatsapp.chat.show', $c->id),
         ];
     }

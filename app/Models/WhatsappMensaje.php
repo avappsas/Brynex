@@ -26,11 +26,13 @@ class WhatsappMensaje extends BaseModel
         'estado_at',
         'usuario_id',
         'error_detalle',
+        'es_bot',
     ];
 
     protected $casts = [
         'plantilla_parametros' => 'array',
         'estado_at'            => 'datetime',
+        'es_bot'               => 'boolean',
     ];
 
     // ── Relaciones ──────────────────────────────────────────────────

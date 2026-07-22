@@ -128,6 +128,7 @@
                         <th style="text-align: right; background-color: rgba(13, 148, 136, 0.04); color: #0d9488; font-weight: 800;">Total Activos</th>
                         <th style="text-align: center;">Variación</th>
                         <th style="text-align: right;">WA (Plan. / Rec.)</th>
+                        <th style="text-align: right;">🤖 Asistente IA</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -163,6 +164,10 @@
                             <span style="color: #64748b; font-weight: 500;">/</span>
                             <span style="color: #7c3aed;">{{ number_format($mes['respuestas_clientes'], 0, ',', '.') }}</span>
                         </td>
+                        <td style="text-align: right;">
+                            <span style="font-weight: 700; color: #0f766e;">${{ number_format($mes['ia_valor_mensual'], 0, ',', '.') }}</span>
+                            <span style="color: #94a3b8; font-weight: 500; font-size: 0.78rem;">({{ number_format($mes['ia_consultas'], 0, ',', '.') }} consultas)</span>
+                        </td>
                     </tr>
                     @endforeach
                 </tbody>
@@ -174,6 +179,7 @@
             * <strong>WA (Plan. / Rec.)</strong>: Relación de WhatsApps del mes (Enviados en plantilla masiva / Recibidos iniciados por el cliente tras 24h de inactividad). 
             * <strong>Total Activos</strong>: Suma de Admon (Vigentes) y Afil. Fecha Ingreso.
             * <strong>Variación</strong>: Diferencia del Total Activos de este mes comparado con el mes anterior.
+            * <strong>🤖 Asistente IA</strong>: Valor calculado con la tarifa configurada en BryNex para el módulo (editable en Configuración IA → activación por aliado) según las consultas reales del mes.
         </p>
     </div>
 

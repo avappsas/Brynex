@@ -83,6 +83,21 @@
             </div>
         </div>
 
+        {{-- ── Asistente Virtual IA ────────────────────────────────────────── --}}
+        <div class="hub-section" style="border:1px solid #fde68a">
+            <div class="hub-section-title" style="color:#b45309">🤖 Asistente Virtual IA</div>
+            <div class="hub-cards">
+                <a href="{{ route('brynex.ia.index') }}" class="hub-card" style="border-color:#fde68a;background:#fffbeb">
+                    <div class="hc-icon">🤖</div>
+                    <div class="hc-body">
+                        <div class="hc-name" style="color:#b45309">Configuración IA</div>
+                        <div class="hc-desc">Proveedor de IA (Claude/OpenAI), API keys y activación del asistente por aliado</div>
+                    </div>
+                    <div class="hc-arrow" style="color:#b45309">→</div>
+                </a>
+            </div>
+        </div>
+
         {{-- ── WhatsApp Business API ────────────────────────────────────────── --}}
         <div class="hub-section" style="border:1px solid #bbf7d0">
             <div class="hub-section-title" style="color:#16a34a">💬 WhatsApp Business API</div>

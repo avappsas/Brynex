@@ -5,7 +5,10 @@ namespace App\Services;
 use App\Events\WhatsappConversacionActualizada;
 use App\Events\WhatsappMensajeNuevo;
 use App\Jobs\WhatsappDescargarMediaJob;
+use App\Jobs\WhatsappEscalarMultimediaJob;
+use App\Jobs\WhatsappResponderIaJob;
 use App\Models\{
+    IaConfiguracionAliado,
     WhatsappConfig,
     WhatsappConversacion,
     WhatsappMensaje
@@ -127,6 +130,22 @@ class WhatsappWebhookService
         // Emitir evento Reverb para actualizar el chat en tiempo real
         broadcast(new WhatsappMensajeNuevo($mensaje, $conversacion))->toOthers();
         broadcast(new WhatsappConversacionActualizada($conversacion))->toOthers();
+
+        // Asistente IA: solo si el bot está activo en esta conversación y el aliado
+        // tiene la IA activada para WhatsApp. Se procesa en un Job para no bloquear
+        // la respuesta al webhook de Meta (~20s de margen).
+        if ($conversacion->bot_activo) {
+            $iaActiva = IaConfiguracionAliado::where('aliado_id', $alidoId)->value('activo_whatsapp');
+            if ($iaActiva) {
+                if ($tipo === 'text' && !empty($dataMensaje['contenido'])) {
+                    dispatch(new WhatsappResponderIaJob($conversacion->id, $dataMensaje['contenido']));
+                } elseif (in_array($tipo, ['image', 'audio', 'document', 'video'], true)) {
+                    // El bot no puede leer multimedia: avisa al cliente y escala a un humano
+                    // en vez de quedarse en silencio (ej. comprobantes de pago requieren revisión humana).
+                    dispatch(new WhatsappEscalarMultimediaJob($conversacion->id, $tipo));
+                }
+            }
+        }
     }
 
     /**
@@ -348,8 +367,32 @@ class WhatsappWebhookService
             'nombre_contacto' => $nombreContacto,
             'contrato_id'     => $contrato?->id,
             'empresa_id'      => $empresa?->id,
+            'origen_campana'  => $this->buscarCampanaOrigen($numeroLimpio, $alidoId),
             'estado'          => 'abierta',
         ]);
+    }
+
+    /**
+     * Si el número respondió recientemente (últimos 7 días) a una plantilla de un envío
+     * masivo, devuelve el nombre de la plantilla para dar contexto a la IA (ej. "el cliente
+     * respondió a la campaña X"). No aplica a conversaciones que ya existían.
+     */
+    private function buscarCampanaOrigen(string $numeroLimpio, int $alidoId): ?string
+    {
+        $detalle = \App\Models\WhatsappEnvioMasivoDetalle::query()
+            ->where(function ($q) use ($numeroLimpio) {
+                $q->where('wa_numero', $numeroLimpio)
+                  ->orWhere('wa_numero', '+57' . $numeroLimpio)
+                  ->orWhere('wa_numero', 'like', '%' . substr($numeroLimpio, -10));
+            })
+            ->whereIn('estado', ['enviado', 'entregado', 'leido'])
+            ->whereHas('envio', fn ($q) => $q->where('aliado_id', $alidoId))
+            ->where('created_at', '>=', now()->subDays(7))
+            ->with('envio.plantilla:id,nombre_display')
+            ->latest()
+            ->first();
+
+        return $detalle?->envio?->plantilla?->nombre_display;
     }
 
     /**

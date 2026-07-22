@@ -42,6 +42,13 @@ Route::middleware('auth')->group(function () {
         return view('dashboard');
     })->name('dashboard');
 
+    // ─── Asistente Virtual IA ───────────────────────────────────────
+    Route::prefix('asistente-ia')->name('asistente_ia.')->group(function () {
+        $ia = \App\Http\Controllers\AsistenteIaController::class;
+        Route::get('/activo', [$ia, 'activo'])->name('activo');
+        Route::post('/chat',  [$ia, 'chat'])  ->name('chat');
+    });
+
     // ─── Panel Administración ──────────────────────────────────────
     Route::prefix('admin')->name('admin.')->group(function () {
 
@@ -362,6 +369,24 @@ Route::middleware('auth')->group(function () {
         Route::get('/accesos',  [$bx, 'accesos'])       ->name('accesos');
         Route::post('/accesos', [$bx, 'toggleAcceso'])  ->name('accesos.toggle');
 
+        // Configuración del Asistente Virtual IA
+        $iac = \App\Http\Controllers\IaConfigController::class;
+        Route::get('/ia',                [$iac, 'index'])         ->name('ia.index');
+        Route::post('/ia/global',        [$iac, 'guardarGlobal']) ->name('ia.global');
+        Route::post('/ia/{alidoId}',     [$iac, 'guardarAliado']) ->name('ia.aliado');
+
+        // Entrenamiento / conocimiento del Asistente IA
+        Route::prefix('ia/conocimiento')->name('ia.conocimiento.')->group(function () {
+            $ick = \App\Http\Controllers\IaConocimientoController::class;
+            Route::get('/',                        [$ick, 'index'])            ->name('index');
+            Route::post('/guardar',                 [$ick, 'guardar'])          ->name('guardar');
+            Route::post('/{id}/aprobar',            [$ick, 'aprobar'])          ->name('aprobar');
+            Route::post('/{id}/rechazar',           [$ick, 'rechazar'])         ->name('rechazar');
+            Route::post('/{id}/eliminar',           [$ick, 'eliminar'])         ->name('eliminar');
+            Route::post('/preguntas/{id}/responder',[$ick, 'responderPregunta'])->name('preguntas.responder');
+            Route::post('/preguntas/{id}/descartar',[$ick, 'descartarPregunta'])->name('preguntas.descartar');
+        });
+
         // Copias de Seguridad (Backups)
         $bbc = \App\Http\Controllers\BrynexBackupController::class;
         Route::get('/backups',           [$bbc, 'backups'])        ->name('backups');
@@ -537,6 +562,7 @@ Route::middleware('auth')->group(function () {
         Route::get('chat/{id}/api-sidebar',          [$chat, 'apiConversacionSidebar'])  ->name('chat.api_sidebar');
         Route::post('chat/{id}/mensaje',             [$chat, 'enviarMensaje'])           ->name('chat.mensaje');
         Route::patch('chat/{id}/asignar',            [$chat, 'asignar'])                 ->name('chat.asignar');
+        Route::patch('chat/{id}/toggle-bot',         [$chat, 'toggleBot'])               ->name('chat.toggle_bot');
         Route::patch('chat/{id}/cerrar',             [$chat, 'cerrar'])                  ->name('chat.cerrar');
         Route::patch('chat/{id}/leer',               [$chat, 'marcarLeido'])             ->name('chat.leer');
         Route::get('chat/media/{mensajeId}',         [$chat, 'descargarMedia'])          ->name('chat.media');

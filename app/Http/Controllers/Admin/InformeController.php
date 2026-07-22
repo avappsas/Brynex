@@ -2913,6 +2913,7 @@ class InformeController extends Controller
 
         $meses = [];
         $fechaIteracion = now()->startOfMonth();
+        $iaModuloId = \App\Models\BrynexModulo::where('codigo', 'ia_asistente')->value('id');
 
         // Calculamos 7 meses para tener la variación del sexto mes
         for ($i = 0; $i < 7; $i++) {
@@ -3028,6 +3029,17 @@ class InformeController extends Controller
                 })
                 ->count();
 
+            // Asistente IA: consultas del mes (web + whatsapp) y valor configurado en BryNex
+            // (tramos de tarifa del módulo "ia_asistente", editables en /brynex/consumo/{aliado}/modulos).
+            $iaConsultas = DB::table('ia_consumo')
+                ->where('aliado_id', $aid)
+                ->whereBetween('created_at', [$primerDia->toDateTimeString(), $ultimoDia->toDateTimeString()])
+                ->count();
+
+            $iaValorMensual = $iaModuloId
+                ? (\App\Models\BrynexTramoTarifa::calcularCobro($iaModuloId, $iaConsultas, $aid, $ultimoDia->toDateString())['subtotal'] ?? 0)
+                : 0;
+
             $meses[] = [
                 'label'            => $label,
                 'mes'              => $mesVal,
@@ -3041,6 +3053,8 @@ class InformeController extends Controller
                 'neto_periodo'     => $totalActivos - $totalRetiros,
                 'wa_enviados'        => (int) $waEnviados,
                 'respuestas_clientes' => $respuestasClientes,
+                'ia_consultas'     => (int) $iaConsultas,
+                'ia_valor_mensual' => (float) $iaValorMensual,
             ];
 
             $fechaIteracion->subMonth();
