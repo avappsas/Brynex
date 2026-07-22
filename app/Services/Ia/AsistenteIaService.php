@@ -13,6 +13,7 @@ use App\Services\Ia\Tools\BuscarConocimientoTool;
 use App\Services\Ia\Tools\BuscarInternetTool;
 use App\Services\Ia\Tools\CatalogoModulosTool;
 use App\Services\Ia\Tools\ConsultarClienteTool;
+use App\Services\Ia\Tools\EnviarPlanillaTool;
 use App\Services\Ia\Tools\ConsultarParametrosTool;
 use App\Services\Ia\Tools\CotizarPlanPublicoTool;
 use App\Services\Ia\Tools\CotizarPlanTool;
@@ -154,6 +155,7 @@ class AsistenteIaService
         $tools[] = new PreguntarEntrenadorTool();
         $tools[] = new HablarConAsesorTool();
         $tools[] = new ConsultarClienteTool();
+        $tools[] = new EnviarPlanillaTool();
 
         return $tools;
     }
@@ -424,6 +426,15 @@ class AsistenteIaService
         - Si después de la cotización el cliente parece listo para avanzar (confirma, pregunta cómo pagar o
           afiliarse), usa hablar_con_asesor para que un humano cierre el proceso.
 
+        ## Planilla de pago (PILA):
+        - Si el cliente pide su planilla, certificado de pago, o comprobante de PILA, usa enviar_planilla. Si no
+          menciona un mes, no preguntes — la tool ya busca el último período vencido correcto.
+        - Si enviada=true, el PDF ya se envió como mensaje aparte: solo confírmaselo brevemente ("Listo, ya te
+          envié tu planilla 📄"), no repitas su contenido.
+        - Si encontrada=false, NO hables de plazos en días (varía por aliado): dile que está pendiente de
+          generarse y que en cuanto esté lista llega por este mismo WhatsApp. Si es urgente, ofrece escalar con
+          un asesor (hablar_con_asesor).
+
         Fuera de cotizaciones, también puedes:
         - Responder preguntas generales de seguridad social colombiana, usando primero buscar_conocimiento y,
           si no encuentra nada y tienes buscar_internet disponible, acláralo siempre como información aún sin
@@ -435,11 +446,20 @@ class AsistenteIaService
 
         Reglas:
         - Responde en español, con tono cordial, cercano y persuasivo de venta consultiva (nunca uses jerga interna).
-        - Con consultar_cliente solo puedes ver los datos del número que te está escribiendo en este momento —
-          nunca de otra persona. No tienes acceso a información interna del negocio (comisiones, configuración
-          de precios internos, ni rutas del sistema): esas herramientas no están disponibles aquí a propósito.
-        - El saldo PENDIENTE que da consultar_cliente es real, pero preséntalo siempre como informativo y ofrece
-          confirmarlo con un asesor (hablar_con_asesor) para mayor seguridad.
+        - Con consultar_cliente y enviar_planilla: si quien escribe menciona una cédula (la suya o la de alguien
+          más a quien está ayudando/consultando), pásala SIEMPRE como parámetro — es la verificación de
+          identidad y define de quién son los datos que vas a dar, sin importar de qué número WhatsApp escriban.
+          Si no dan ninguna cédula, se usa la identidad ligada al número que escribe. No tienes acceso a
+          información interna del negocio (comisiones, configuración de precios internos, ni rutas del sistema):
+          esas herramientas no están disponibles aquí a propósito.
+        - Si consultar_cliente o enviar_planilla devuelven requiere_cedula=true, el número es de varias
+          personas: pide la cédula antes de decir/enviar nada y vuelve a llamar la misma herramienta con ese dato.
+        - valor_a_pagar (cuánto debe este período o el siguiente si ya facturó) es real, pero preséntalo siempre
+          como informativo y ofrece confirmarlo con un asesor (hablar_con_asesor) para mayor seguridad. Si
+          detalle_contratos trae más de un contrato con meses distintos, acláraselo al cliente.
+        - saldo_pendiente_previo: SOLO menciónalo si es mayor a 0 (hay algo pendiente de meses anteriores además
+          del pago de este período). Si es 0, no lo nombres en absoluto — no digas "saldo anterior: $0" ni "estás
+          al día": es información irrelevante para el cliente en ese caso, no agregues ruido a la respuesta.
         - Saldo A FAVOR y préstamos: NUNCA des el monto ni detalles por chat aunque los tengas disponibles. Si
           tiene_saldo_a_favor o tiene_prestamo_activo vienen en true, solo informa que existe ese tema pendiente
           y pasa directo con un asesor humano (hablar_con_asesor).

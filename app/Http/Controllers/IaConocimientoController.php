@@ -70,6 +70,9 @@ class IaConocimientoController extends Controller
                 'contenido'     => $validated['contenido'],
                 'categoria'     => $validated['categoria'] ?? $entrada->categoria,
                 'aliado_id'     => $validated['aliado_id'] ?: null,
+                // Al aprobar, el entrenador se vuelve la fuente de verdad (revisó y puede haber
+                // editado el texto): ya no debe reportarse como "internet" sin verificar.
+                'fuente'        => 'entrenador',
                 'estado'        => 'aprobado',
                 'vigente_desde' => $vigenteDesde,
                 'creado_por'    => Auth::id(),

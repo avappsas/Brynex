@@ -2265,119 +2265,14 @@ class FacturacionController extends Controller
             ]);
         }
 
-        // Detectar tipo
-        $esIndependiente = $contrato->tipoModalidad?->esIndependiente() ?? false;
-        $esIndAct        = (int)($contrato->tipo_modalidad_id) === 11;
-        $esArl           = (int)($contrato->tipo_modalidad_id) === 15;
-        $esMesIngreso    = false;
+        $calc = \App\Services\CobroContratoService::calcular($contrato, $mes, $anio);
 
-        if ($esArl) {
-            // Gestión ARL siempre es cobro de afiliación, no planilla
-            $esMesIngreso = true;
-        } elseif ($contrato->fecha_ingreso) {
-            $esMesIngreso = (int)$contrato->fecha_ingreso->month === $mes
-                && (int)$contrato->fecha_ingreso->year  === $anio;
-        }
-
-        $esAfiliacion = false;
-        if ($esMesIngreso) {
-            if ($esArl) {
-                $esAfiliacion = true;
-            } elseif (!$esIndependiente) {
-                $esAfiliacion = true; // empresa: afiliación pura
-            } elseif (!$esIndAct) {
-                $esAfiliacion = true; // I Venc: afiliación pura
-            }
-        }
-        $esIndActPrimerMes = $esIndAct && $esMesIngreso;
-
-        if ($esArl && !$esMesIngreso) {
-            $diasCotizar = 0;
-            $calcSS = ['eps' => 0, 'arl' => 0, 'afp' => 0, 'caja' => 0, 'ss' => 0];
-            $afiliacion  = 0;
-            $seguro      = 0;
-            $admon       = 0;
-            $admonAsesor = 0;
-            $iva         = 0;
-            $total       = 0;
-        } else {
-            // Calcular días
-            if ($esIndActPrimerMes) {
-                $diasCotizar = max(1, 30 - (int)$contrato->fecha_ingreso->day + 1);
-            } elseif ($esAfiliacion) {
-                $diasCotizar = 0;
-            } else {
-                $diasCotizar = $this->calcularDias($contrato, $mes, $anio);
-            }
-
-            // Calcular SS
-            if ($esAfiliacion && !$esIndActPrimerMes) {
-                $calcSS = ['eps' => 0, 'arl' => 0, 'afp' => 0, 'caja' => 0, 'ss' => 0];
-            } else {
-                $cotizacion = $contrato->calcularCotizacion($diasCotizar);
-                $calcSS = [
-                    'eps'  => (int)($cotizacion['eps']  ?? 0),
-                    'arl'  => (int)($cotizacion['arl']  ?? 0),
-                    'afp'  => (int)($cotizacion['pen']  ?? 0),
-                    'caja' => (int)($cotizacion['caja'] ?? 0),
-                    'ss'   => (int)($cotizacion['ss']   ?? 0),
-                ];
-            }
-
-            $afiliacion  = ($esAfiliacion || $esIndActPrimerMes) ? (int)($contrato->costo_afiliacion ?? 0) : 0;
-            $seguro      = (int)($contrato->seguro ?? 0);
-            $admon       = ($esAfiliacion && !$esIndActPrimerMes) ? 0 : (int)($contrato->administracion ?? 0);
-            $admonAsesor = ($esAfiliacion && !$esIndActPrimerMes) ? 0 : (int)($contrato->admon_asesor   ?? 0);
-
-            // IVA
-            $iva = 0;
-            if (!$esAfiliacion || $esIndActPrimerMes) {
-                $clienteIva = DB::table('clientes')->where('cedula', $contrato->cedula)->value('iva');
-                if (strtoupper(trim($clienteIva ?? '')) === 'SI') {
-                    $cfgIva = \App\Models\ConfiguracionBrynex::porcentajeIva();
-                    $iva    = (int) round(($admon + $admonAsesor) * $cfgIva / 100);
-                }
-            }
-
-            $total = $calcSS['ss'] + $admon + $admonAsesor + $seguro + $afiliacion + $iva;
-        }
-
-        // Mora estimada — las afiliaciones nunca generan mora (no hay pago de planilla)
-        $mora = 0;
-        if (!$esAfiliacion) {
-            try {
-                $rs    = $contrato->razonSocial;
-                $esIndep = $contrato->esIndependiente() || ($rs && $rs->es_independiente);
-                $rsNit = $esIndep ? (int)$contrato->cedula : ($rs ? (int)($rs->nit ?: $rs->id) : 0);
-                $rsDia = $esIndep ? null : ($rs ? ($rs->dia_habil ?? null) : null);
-                if ($rsNit && $calcSS['ss'] > 0) {
-                    $moraInfo = MoraClienteService::calcular($aliadoId, $rsNit, $rsDia, $calcSS['ss'], $mes, $anio);
-                    $mora = (int)($moraInfo['mora'] ?? 0);
-                }
-            } catch (\Throwable) {}
-        }
-
-        $tipo = $esAfiliacion ? 'afiliacion' : 'planilla';
-
-        return response()->json([
+        return response()->json(array_merge($calc, [
             'ok'           => true,
             'ya_facturado' => false,
             'contrato_id'  => $contrato->id,
             'razon_social' => $contrato->razonSocial?->razon_social ?? '—',
-            'tipo'         => $tipo,
-            'eps'          => $calcSS['eps'],
-            'arl'          => $calcSS['arl'],
-            'afp'          => $calcSS['afp'],
-            'caja'         => $calcSS['caja'],
-            'ss'           => $calcSS['ss'],
-            'admon'        => $admon + $admonAsesor,
-            'seguro'       => $seguro,
-            'afiliacion'   => $afiliacion,
-            'iva'          => $iva,
-            'mora'         => $mora,
-            'total'        => $total + $mora,
-            'dias'         => $diasCotizar,
-        ]);
+        ]));
     }
 
     // ─── Recibo de factura ───────────────────────────────────────────
@@ -2953,57 +2848,10 @@ class FacturacionController extends Controller
         }
     }
 
+    /** Delega a CobroContratoService (fuente única, también usada por la tool de IA). */
     private function calcularDias(Contrato $contrato, int $mes, int $anio): int
     {
-        // ── GESTIÓN ARL (id=15): SIEMPRE días=0, nunca planilla ─────────────
-        // Los contratos ARL se facturan como afiliación todos los meses.
-        // No hay SS que cotizar, por ende días_cotizados = 0 siempre.
-        if ((int)$contrato->tipo_modalidad_id === 15) {
-            return 0;
-        }
-
-        // Tiempo Parcial: se devuelve 30 porque ARL cotiza mensual completo.
-        // AFP y CAJA usan sus propios días; ver calcularSS().
-        $mod = $contrato->tipoModalidad;
-        if ($mod && $mod->esTiempoParcial()) {
-            return 30;
-        }
-
-        if (!$contrato->fecha_ingreso) return 30;
-        $fIng        = $contrato->fecha_ingreso;
-        $mesIngreso  = (int)$fIng->month;
-        $anioIngreso = (int)$fIng->year;
-
-        // ① Mes de ingreso → afiliación, no hay días de planilla
-        if ($mesIngreso === $mes && $anioIngreso === $anio) {
-            return 0;
-        }
-
-        // ② Mes siguiente al ingreso → primera planilla: días activos del mes de ingreso
-        $mesAnterior  = $mes === 1 ? 12 : $mes - 1;
-        $anioAnterior = $mes === 1 ? $anio - 1 : $anio;
-        if ($mesIngreso === $mesAnterior && $anioIngreso === $anioAnterior) {
-            // EXCEPCIÓN 1: Independiente Activo (11) ya cobró su planilla en el mes de ingreso.
-            if ((int)$contrato->tipo_modalidad_id === 11) {
-                return 30;
-            }
-            // EXCEPCIÓN 2: Si ya existe una factura de tipo 'planilla' pagada para el mes de ingreso.
-            $existePlanillaIngreso = Factura::where('aliado_id', $contrato->aliado_id)
-                ->where('contrato_id', $contrato->id)
-                ->where('mes', $mesIngreso)
-                ->where('anio', $anioIngreso)
-                ->where('tipo', 'planilla')
-                ->whereIn('estado', ['pagada', 'pre_factura', 'abono', 'prestamo'])
-                ->exists();
-            if ($existePlanillaIngreso) {
-                return 30;
-            }
-
-            return max(1, 30 - $fIng->day + 1);
-        }
-
-        // ③ Mes normal
-        return 30;
+        return \App\Services\CobroContratoService::calcularDias($contrato, $mes, $anio);
     }
 
     private function calcularSS(Contrato $contrato, int $dias): array

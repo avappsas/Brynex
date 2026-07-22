@@ -3,17 +3,21 @@
 namespace App\Services\Ia\Tools;
 
 use App\Models\BancoCuenta;
-use App\Models\Cliente;
 use App\Models\Contrato;
 use App\Models\Factura;
 use App\Models\WhatsappConversacion;
+use App\Services\CobroContratoService;
+use App\Services\Ia\ClienteWhatsappResolver;
 
 /**
  * Solo canal WhatsApp. Da información real y específica de la cuenta del cliente que
- * escribe: su plan actual, cuánto debe (si aplica) y las cuentas de pago vigentes.
- * El saldo pendiente es real (misma lógica que usa el módulo de Facturación), pero
- * siempre se devuelve con la instrucción de aclararlo como informativo y ofrecer
- * escalar a un asesor humano para confirmarlo.
+ * escribe: su plan, cuánto debe pagar este período (o el próximo si ya facturó), saldo
+ * pendiente arrastrado, y las cuentas de pago vigentes. Si el número de WhatsApp está
+ * registrado para más de una persona, exige verificar con la cédula antes de dar nada.
+ *
+ * El valor a pagar usa CobroContratoService — la misma lógica que calcula /admin/cobros.
+ * Si el cliente tiene varios contratos vigentes, se suman en un solo total (igual que
+ * hace la pantalla de cobros).
  *
  * Saldo A FAVOR y préstamos NUNCA se detallan por chat (monto, condiciones, etc.):
  * son temas que requieren revisión humana, así que solo se informa que existen y
@@ -28,14 +32,28 @@ class ConsultarClienteTool implements IaToolInterface
 
     public function descripcion(): string
     {
-        return 'Consulta si el número que escribe es un cliente con contrato vigente, y si lo es, su plan actual, '
-            . 'su saldo (a favor o pendiente de pago) y las cuentas para pagar. Úsala cuando el cliente pregunte '
-            . 'por su cuenta, cuánto debe, si está al día, o cómo pagar.';
+        return 'Consulta si el número que escribe es un cliente con contrato vigente, y si lo es, su plan, a qué '
+            . 'EPS/ARL/fondo de pensión/caja de compensación está afiliado, cuánto debe pagar este período (o el '
+            . 'siguiente si ya facturó), saldo pendiente y las cuentas para pagar. Úsala cuando el cliente '
+            . 'pregunte por su cuenta, cuánto debe, si está al día, cómo pagar, o a qué entidad está afiliado. Si '
+            . 'devuelve requiere_cedula=true, pídele la cédula al cliente y vuelve a llamarla con ese dato.';
     }
 
     public function schema(): array
     {
-        return ['type' => 'object', 'properties' => new \stdClass()];
+        return [
+            'type'       => 'object',
+            'properties' => [
+                'cedula' => [
+                    'type'        => 'string',
+                    'description' => 'Cédula de la persona sobre la que se pregunta. Inclúyela SIEMPRE que quien '
+                        . 'escribe la mencione en su mensaje (la suya propia, o la de alguien más a quien está '
+                        . 'ayudando/consultando) — es la verificación de identidad, tiene prioridad sobre el '
+                        . 'número de WhatsApp. También inclúyela si la tool te pidió verificarla '
+                        . '(requiere_cedula=true).',
+                ],
+            ],
+        ];
     }
 
     public function ejecutar(array $input, array $contexto): array
@@ -47,48 +65,76 @@ class ConsultarClienteTool implements IaToolInterface
             return ['es_cliente' => false, 'nota' => 'No pude verificar el número en este momento.'];
         }
 
-        $numeroLimpio = preg_replace('/[^0-9]/', '', $conversacion->wa_contact_id);
+        $aliadoId = $conversacion->aliado_id;
 
-        $cliente = Cliente::where('aliado_id', $conversacion->aliado_id)
-            ->where(function ($q) use ($numeroLimpio) {
-                $q->where('celular', $numeroLimpio)
-                  ->orWhere('celular', '+57' . $numeroLimpio)
-                  ->orWhere('celular', 'like', '%' . substr($numeroLimpio, -10));
-            })
-            ->first();
+        $resuelto = ClienteWhatsappResolver::resolver($conversacion, $input['cedula'] ?? null);
+        if ($resuelto['requiere_cedula']) {
+            return ['es_cliente' => null, 'requiere_cedula' => true, 'nota' => ClienteWhatsappResolver::notaRequiereCedula()];
+        }
 
+        $cliente = $resuelto['cliente'];
         if (!$cliente) {
             return ['es_cliente' => false, 'nota' => 'No encontré ningún cliente registrado con este número.'];
         }
 
-        $contrato = Contrato::where('aliado_id', $conversacion->aliado_id)
+        // OJO: nunca restringir columnas del eager-load de 'plan' — Contrato::calcularCotizacion()
+        // lee $this->plan->incluye_eps/arl/pension/caja internamente; con columnas restringidas
+        // esos campos llegan null y el cálculo del valor a pagar da 0 silenciosamente.
+        $contratos = Contrato::where('aliado_id', $aliadoId)
             ->where('cedula', $cliente->cedula)
             ->whereIn('estado', ['vigente', 'activo'])
-            ->with('plan:id,nombre')
-            ->first();
+            ->with(['plan', 'eps', 'arl', 'pension', 'caja'])
+            ->get();
 
-        if (!$contrato) {
+        $nombreCliente = trim(($cliente->primer_nombre ?? '') . ' ' . ($cliente->primer_apellido ?? ''));
+
+        if ($contratos->isEmpty()) {
             return [
                 'es_cliente' => true,
-                'nombre'     => trim(($cliente->primer_nombre ?? '') . ' ' . ($cliente->primer_apellido ?? '')),
+                'nombre'     => $nombreCliente,
                 'nota'       => 'Es cliente registrado pero no tiene un contrato vigente activo. Ofrécele pasar con un asesor para revisar su caso.',
             ];
         }
 
-        $saldo = Factura::saldoClienteMesPrevio(
-            $conversacion->aliado_id,
-            (int) $cliente->cedula,
-            (int) now()->month,
-            (int) now()->year,
-            $contrato->id
-        );
+        $mes = (int) now()->month;
+        $anio = (int) now()->year;
+        $totalAPagar = 0;
+        $detalleContratos = [];
 
-        $tienePrestamo = Factura::aliado($conversacion->aliado_id)
+        foreach ($contratos as $contrato) {
+            $m = $mes;
+            $a = $anio;
+            $yaFacturado = CobroContratoService::yaFacturado($contrato, $m, $a);
+
+            if ($yaFacturado) {
+                $m++;
+                if ($m > 12) { $m = 1; $a++; }
+            }
+
+            $calc = CobroContratoService::calcular($contrato, $m, $a);
+            $totalAPagar += $calc['total'];
+
+            $detalleContratos[] = [
+                'contrato_id'              => $contrato->id,
+                'plan'                     => $contrato->plan->nombre ?? null,
+                'eps'                      => $contrato->eps->nombre ?? null,
+                'arl'                      => $contrato->arl->nombre ?? null,
+                'fondo_pension'            => $contrato->pension->nombre ?? null,
+                'caja_compensacion'        => $contrato->caja->nombre ?? null,
+                'ya_facturado_mes_actual'  => $yaFacturado,
+                'mes_informado'            => sprintf('%02d/%d', $m, $a),
+                'valor'                    => $calc['total'],
+            ];
+        }
+
+        $saldo = Factura::saldoClienteMesPrevio($aliadoId, (int) $cliente->cedula, $mes, $anio);
+
+        $tienePrestamo = Factura::aliado($aliadoId)
             ->where('cedula', $cliente->cedula)
             ->prestamoPendiente()
             ->exists();
 
-        $cuentas = BancoCuenta::paraCobro($conversacion->aliado_id)->map(fn ($b) => [
+        $cuentas = BancoCuenta::paraCobro($aliadoId)->map(fn ($b) => [
             'banco'         => $b->banco,
             'tipo_cuenta'   => $b->tipo_cuenta,
             'numero_cuenta' => $b->numero_cuenta,
@@ -97,10 +143,17 @@ class ConsultarClienteTool implements IaToolInterface
         ]);
 
         $notas = [
-            'El saldo pendiente es real pero preséntalo como informativo — dile al cliente que lo ideal es '
-                . 'confirmarlo con un asesor para mayor seguridad. Después de darle la información, pregúntale si '
-                . 'quiere que lo escales con un asesor humano (hablar_con_asesor) o si prefiere que sigas '
-                . 'ayudándolo con más información (ej. formas de pago).',
+            'Estos valores son reales pero preséntalos como informativos — dile al cliente que lo ideal es '
+                . 'confirmarlos con un asesor para mayor seguridad. Si hay más de un contrato en detalle_contratos '
+                . 'con meses distintos, acláraselo. Después de dar la información, pregúntale si quiere que lo '
+                . 'escales con un asesor humano (hablar_con_asesor) o si prefiere que sigas ayudándolo (ej. '
+                . 'formas de pago). saldo_pendiente_previo: menciónalo SOLO si es mayor a 0; si es 0 no lo '
+                . 'nombres para nada (ni "estás al día" ni el número), no aporta nada al cliente. '
+                . 'eps/arl/fondo_pension/caja_compensacion: si el cliente pregunta a qué entidad está afiliado, '
+                . 'usa estos campos; si alguno viene null es porque su plan no incluye eso, dilo así en vez de '
+                . 'inventar una entidad. '
+                . 'es_propia indica si es la cuenta de quien escribe (di "tu cuenta"/"debes") o de alguien más '
+                . '(nombra a la persona, ej. "María debe...", nunca digas "tu"/"tú" en ese caso).',
         ];
         if ($saldo['a_favor'] > 0) {
             $notas[] = 'Tiene saldo A FAVOR, pero NUNCA le digas el monto ni detalles por chat: solo dile que '
@@ -115,9 +168,11 @@ class ConsultarClienteTool implements IaToolInterface
 
         return [
             'es_cliente'             => true,
-            'nombre'                 => trim(($cliente->primer_nombre ?? '') . ' ' . ($cliente->primer_apellido ?? '')),
-            'plan_actual'            => $contrato->plan->nombre ?? null,
-            'saldo_pendiente'        => $saldo['pendiente'],
+            'es_propia'              => $resuelto['es_propia'],
+            'nombre'                 => $nombreCliente,
+            'valor_a_pagar'          => $totalAPagar,
+            'detalle_contratos'      => $detalleContratos,
+            'saldo_pendiente_previo' => $saldo['pendiente'],
             'tiene_saldo_a_favor'    => $saldo['a_favor'] > 0,
             'tiene_prestamo_activo'  => $tienePrestamo,
             'cuentas_pago'           => $cuentas,

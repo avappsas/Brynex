@@ -104,7 +104,8 @@ class WhatsappApiService
         string $pathLocal,
         string $mimeType,
         string $nombreArchivo,
-        WhatsappConfig $config
+        WhatsappConfig $config,
+        ?string $caption = null
     ): array {
         $creds = $config->credencialesEfectivas();
 
@@ -118,6 +119,9 @@ class WhatsappApiService
         $mediaPayload = ['id' => $mediaId];
         if ($tipo === 'document') {
             $mediaPayload['filename'] = $nombreArchivo;
+        }
+        if ($caption !== null && $caption !== '') {
+            $mediaPayload['caption'] = $caption;
         }
 
         $payload = [
