@@ -105,8 +105,13 @@ class WhatsappResponderIaJob implements ShouldQueue
             return;
         }
 
-        // La conversación pudo haber sido tomada por un humano mientras se generaba la respuesta.
-        if (!$conversacion->fresh()->bot_activo) return;
+        // La conversación pudo haber sido tomada por un humano MIENTRAS se generaba la
+        // respuesta — en ese caso sí hay que callar. Pero si fue la IA la que apagó
+        // bot_activo en este mismo turno (hablar_con_asesor), su propio mensaje de
+        // despedida SÍ debe salir: es la confirmación de que ya está gestionando el
+        // traslado a un asesor, no una respuesta huérfana después de que alguien más tomó la conversación.
+        $escalonPorEstaMismaIa = in_array('hablar_con_asesor', $resultado['herramientas_usadas'] ?? [], true);
+        if (!$escalonPorEstaMismaIa && !$conversacion->fresh()->bot_activo) return;
 
         $this->enviarYRegistrar($conversacion, $config, $whatsappApi, $nombreBot, $resultado['respuesta']);
     }

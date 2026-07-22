@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Events\WhatsappConversacionActualizada;
 use App\Http\Controllers\Controller;
 use App\Models\{IaConfiguracionAliado, User, WhatsappConfig, WhatsappConversacion, WhatsappMensaje};
 use App\Services\WhatsappApiService;
@@ -204,6 +205,10 @@ class WhatsappChatController extends Controller
             $msg = 'Conversación devuelta al inbox general';
         }
 
+        // Sin esto, otros asesores viendo el mismo inbox nunca se enteran de la asignación
+        // hasta que refrescan la página a mano — el sidebar no tenía ninguna señal en tiempo real.
+        broadcast(new WhatsappConversacionActualizada($conversacion))->toOthers();
+
         return response()->json(['ok' => true, 'mensaje' => $msg]);
     }
 
@@ -233,6 +238,10 @@ class WhatsappChatController extends Controller
         }
 
         $conversacion->refresh();
+
+        // Mismo motivo que en asignar(): sin esto, otros asesores viendo el mismo inbox no se
+        // enteran de que alguien tomó/reactivó la IA hasta que recargan la página.
+        broadcast(new WhatsappConversacionActualizada($conversacion))->toOthers();
 
         return response()->json([
             'ok'                 => true,

@@ -67,7 +67,7 @@ class AsistenteIaService
      * del asistente, con un set de herramientas restringido: nunca expone parámetros
      * internos del aliado ni navegación del sistema.
      *
-     * @return array{respuesta: string, conversacion_id: int}
+     * @return array{respuesta: string, conversacion_id: int, herramientas_usadas: string[]}
      */
     public function responderWhatsapp(
         int $alidoId,
@@ -104,9 +104,10 @@ class AsistenteIaService
         $resultado = $this->ejecutarTurno($conversacion, $mensajeUsuario, $systemPrompt, $tools, $credenciales, $contextoExtra, 'whatsapp');
 
         return [
-            'respuesta'       => $resultado['respuesta'],
-            'conversacion_id' => $conversacion->id,
-            'nombre_bot'      => $config->nombreBot(),
+            'respuesta'           => $resultado['respuesta'],
+            'conversacion_id'     => $conversacion->id,
+            'nombre_bot'          => $config->nombreBot(),
+            'herramientas_usadas' => $resultado['herramientas_usadas'],
         ];
     }
 
@@ -232,6 +233,7 @@ class AsistenteIaService
         $tokensEntradaTotal = 0;
         $tokensSalidaTotal  = 0;
         $accionesSugeridas  = [];
+        $herramientasUsadas = [];
         $textoFinal = '';
 
         $contextoTool = array_merge([
@@ -268,6 +270,8 @@ class AsistenteIaService
             ]);
 
             foreach ($resp['tool_calls'] as $toolCall) {
+                $herramientasUsadas[] = $toolCall['name'];
+
                 $herramienta = $this->buscarTool($tools, $toolCall['name']);
                 $resultado = $herramienta
                     ? $herramienta->ejecutar($toolCall['input'], $contextoTool)
@@ -306,8 +310,9 @@ class AsistenteIaService
         $this->registrarConsumo($conversacion->aliado_id, $conversacion->id, $canalConsumo, $credenciales, $tokensEntradaTotal, $tokensSalidaTotal);
 
         return [
-            'respuesta' => $textoFinal,
-            'acciones'  => array_values($accionesSugeridas),
+            'respuesta'           => $textoFinal,
+            'acciones'            => array_values($accionesSugeridas),
+            'herramientas_usadas' => $herramientasUsadas,
         ];
     }
 

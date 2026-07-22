@@ -694,18 +694,23 @@ function chatApp() {
                     body: JSON.stringify({ user_id: this.usuarioAsignar || null })
                 });
                 const data = await resp.json();
-                if (data.ok) { 
-                    this.modalAsignar = false; 
+                if (data.ok) {
+                    this.modalAsignar = false;
                     // Actualizar asignado_nombre localmente
                     const userSelected = document.querySelector(`option[value="${this.usuarioAsignar}"]`);
                     this.conversacion.asignado_nombre = userSelected ? userSelected.textContent.trim() : null;
                     this.conversacion.estado = this.usuarioAsignar ? 'asignada' : 'abierta';
-                    
+                    // asignarA() en el backend limpia pendiente_atencion al asignar — sin esto,
+                    // el badge "⚠️ Pendiente por atender" se quedaba pegado porque el template
+                    // lo revisa antes que asignado_nombre.
+                    if (this.usuarioAsignar) this.conversacion.pendiente_atencion = false;
+
                     // Actualizar en el listado lateral
                     let convItem = this.listaConversaciones.find(c => c.id == this.convId);
                     if (convItem) {
                         convItem.asignado_nombre = this.conversacion.asignado_nombre;
                         convItem.asignado_a = this.usuarioAsignar || null;
+                        if (this.usuarioAsignar) convItem.pendiente_atencion = false;
                     }
                 }
                 else alert(data.error || 'Error al asignar');
@@ -826,6 +831,30 @@ function chatApp() {
                         } catch (err) {
                             console.warn('No se pudo cargar la conversación nueva al sidebar:', err);
                         }
+                    }
+                })
+                .listen('.conversacion.actualizada', (e) => {
+                    // Mantiene sincronizados a OTROS asesores viendo el mismo inbox cuando alguien
+                    // más asigna/libera una conversación o el bot escala a un humano — antes este
+                    // evento no tenía listener y el sidebar solo se actualizaba al recargar la página.
+                    const convItem = this.listaConversaciones.find(c => c.id == e.conversacion_id);
+                    if (convItem) {
+                        convItem.estado             = e.estado;
+                        convItem.asignado_a         = e.asignado_a;
+                        convItem.asignado_nombre    = e.asignado_nombre;
+                        convItem.bot_activo         = e.bot_activo;
+                        convItem.pendiente_atencion = e.pendiente_atencion;
+                        convItem.atendida_por_ia    = e.atendida_por_ia;
+                    }
+
+                    if (e.conversacion_id == this.convId) {
+                        this.conversacion.estado             = e.estado;
+                        this.conversacion.asignado_a          = e.asignado_a;
+                        this.conversacion.asignado_nombre     = e.asignado_nombre;
+                        this.conversacion.bot_activo          = e.bot_activo;
+                        this.conversacion.pendiente_atencion  = e.pendiente_atencion;
+                        this.conversacion.atendida_por_ia     = e.atendida_por_ia;
+                        this.usuarioAsignar = e.asignado_a || '';
                     }
                 });
         },
