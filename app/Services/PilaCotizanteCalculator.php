@@ -366,14 +366,17 @@ class PilaCotizanteCalculator
         // ── Departamento / Municipio ─────────────────────────────────────────
         // Sin caja propia (CCF68): departamento 94 por defecto, municipio 1
         $sinCaja = ($codCcfFin === 'CCF68');
-        if ($sinCaja) {
+        if ($tipoModalidad === 8) {
+            $depCod = str_pad((string)($p->dep_id ?? $p->cod_departamento ?? ''), 2, '0', STR_PAD_LEFT);
+            $munCod = str_pad((string)($p->mun_id ?? $p->cod_municipio    ?? ''), 3, '0', STR_PAD_LEFT);
+        } elseif ($sinCaja) {
             $depCod = '94'; $munCod = '1';
         } else {
             $depCod = str_pad((string)($p->dep_id ?? $p->cod_departamento ?? ''), 2, '0', STR_PAD_LEFT);
             $munCod = str_pad((string)($p->mun_id ?? $p->cod_municipio    ?? ''), 3, '0', STR_PAD_LEFT);
         }
 
-        return [
+        $res = [
             'tipoCotizante'    => $tipoCotizante,
             'subtipoCotizante' => $subtipoCotizante,
             'tienePension'     => $tienePension,
@@ -416,6 +419,32 @@ class PilaCotizanteCalculator
             'munCod'           => $munCod,
             'horasLaboradas'   => $dias * 8,    // Normal: num_dias × 8
         ];
+
+        if ($tipoModalidad === 8) {
+            $res['tipoCotizante']    = 59;
+            $res['exonerado']         = 'N';
+            $res['diasPension']      = 0;
+            $res['diasSalud']        = 0;
+            $res['diasCcf']          = 0;
+            $res['codAfpPila']       = 'NIN-AF';
+            $res['tarifaAfpDecimal'] = 0.0;
+            $res['vAfp']             = 0;
+            $res['ibcAfp']           = 0;
+            $res['codEpsPila']       = 'NIN-EP';
+            $res['tarifaEpsStr']     = '0.00000';
+            $res['ibcEps']           = 0;
+            $res['vEps']             = 0;
+            $res['codCcfPila']       = 'NIN-CC';
+            $res['ibcCcf']           = 0;
+            $res['vCcf']             = 0;
+            $res['tarifaSenaStr']    = '0.00000';
+            $res['tarifaIcbfStr']    = '0.00000';
+            $res['ibcOtros']         = 0;
+            $res['vSena']            = 0;
+            $res['vIcbf']            = 0;
+        }
+
+        return $res;
     }
 
     /**

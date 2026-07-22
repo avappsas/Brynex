@@ -171,12 +171,13 @@ class PlanoPilaTxtService
         if (!empty($tiposModal)) $query->whereIn('p.tipo_modalidad_id', $tiposModal);
         $planos = $query->orderBy('p.primer_ape')->orderBy('p.primer_nombre')->get();
 
-        // Tipo de planilla: 'N' si hay algún registro con tipo_p = 16, 'K' si todos son Estudiante K (-1), 'E' en cualquier otro caso
+        // Tipo de planilla: 'N' si hay algún registro con tipo_p = 16, 'K' si todos son Estudiante K (-1), 'Y' si tiene modalidad 8, 'E' en cualquier otro caso
         $tipoPlanilla = $params['tipo_planilla'] ?? null;
         if (!$tipoPlanilla) {
             $tieneN       = $planos->count() > 0 && $planos->contains(fn($p) => (int)($p->tipo_p ?? 0) === 16);
             $todosK       = !$tieneN && $planos->count() > 0 && $planos->every(fn($p) => (int)$p->tipo_modalidad_id === -1);
-            $tipoPlanilla = $tieneN ? 'N' : ($todosK ? 'K' : 'E');
+            $tieneY       = !$tieneN && !$todosK && $planos->count() > 0 && $planos->contains(fn($p) => (int)$p->tipo_modalidad_id === 8);
+            $tipoPlanilla = $tieneN ? 'N' : ($todosK ? 'K' : ($tieneY ? 'Y' : 'E'));
         }
 
         $nit     = preg_replace('/[^0-9]/', '', (string)($rs->nit ?? ''));
@@ -348,7 +349,7 @@ class PlanoPilaTxtService
         $periodoYm = substr($fechaIng, 0, 7);
         $ing = ($fechaIng !== $blanco10 && $periodoYm >= $periodoLiq) ? 'X' : ' ';
         $periodoYmR = substr($fechaRet, 0, 7);
-        $ret = ($fechaRet !== $blanco10 && $periodoYmR >= $periodoLiq) ? 'X' : ' ';
+        $ret = ($fechaRet !== $blanco10 && $periodoYmR >= $periodoLiq) ? ((int)$p->tipo_modalidad_id === 8 ? 'T' : 'X') : ' ';
 
         $linea =
             $this->N('02', 2)                                   // 1  pos 1-2

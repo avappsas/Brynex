@@ -452,7 +452,7 @@ class ExcelPlanoNIService
         $fechaIng = !empty($p->fecha_ing) ? $p->fecha_ing : null;
         $fechaRet = !empty($p->fecha_ret) ? $p->fecha_ret : null;
         $esIng    = $fechaIng ? 'X' : null;
-        $esRet    = $fechaRet ? 'X' : null;
+        $esRet    = $fechaRet ? ((int)$p->tipo_modalidad_id === 8 ? 'T' : 'X') : null;
 
         // ── Departamento: del calculador (99 si sin caja/K, real si tiene caja) ─
         $depExcel = $c['depCod'];

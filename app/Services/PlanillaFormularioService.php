@@ -93,15 +93,17 @@ class PlanillaFormularioService
     {
         $c = PilaCotizanteCalculator::calcular($plano);
 
-        $nombreAfp = $plano->nombre_afp ?: 'PORVENIR';
-        $nombreEps = $plano->nombre_eps ?: 'NUEVA EPS';
+        $esPlanillaY = ($plano->tipo_modalidad_id == 8);
+
+        $nombreAfp = $esPlanillaY ? 'NINGUNA AFP' : ($plano->nombre_afp ?: 'PORVENIR');
+        $nombreEps = $esPlanillaY ? 'NINGUNA EPS' : ($plano->nombre_eps ?: 'NUEVA EPS');
         $nombreArl = $plano->nombre_arl ?: 'ARL SURA';
 
         $esIndependiente = (bool)($plano->razonSocial?->es_independiente ?? false);
         $sinCajaCcf = ($c['codCcfPila'] == 'CCF68');
 
-        $nombreCaja = $plano->nombre_caja ?: ($c['sinCaja'] ? 'COMCAJA' : 'COMCAJA');
-        if ($esIndependiente && $sinCajaCcf) {
+        $nombreCaja = $esPlanillaY ? 'NINGUNA CCF' : ($plano->nombre_caja ?: ($c['sinCaja'] ? 'COMCAJA' : 'COMCAJA'));
+        if ($esIndependiente && $sinCajaCcf && !$esPlanillaY) {
             $nombreCaja = 'NINGUNA CCF';
         }
 
@@ -206,9 +208,9 @@ class PlanillaFormularioService
             ? ''
             : ('CC ' . ($plano->razonSocial?->cedula_rep ?? $plano->razonSocial?->representante_cedula ?? '1143944458'));
 
-        $exoneradoVal = $esIndependiente ? 'N' : 'S';
+        $exoneradoVal = $esPlanillaY ? 'N' : ($esIndependiente ? 'N' : 'S');
 
-        $tipoPlanilla = $esIndependiente ? 'I' : 'E';
+        $tipoPlanilla = $esPlanillaY ? 'Y' : ($esIndependiente ? 'I' : 'E');
         $formaPresentacion = $esIndependiente ? 'ÚNICO' : ($plano->razonSocial?->forma_presentacion ?? 'ÚNICO');
 
         $departamentoAportante = $esIndependiente
@@ -219,11 +221,11 @@ class PlanillaFormularioService
             ? strtoupper($clienteObj?->municipio?->nombre ?? 'CALI')
             : 'CALI';
 
-        $ciudadAfiliado = $esIndependiente
+        $ciudadAfiliado = ($esIndependiente || $esPlanillaY)
             ? (($clienteObj?->municipio?->id ?? '76001') . '000 - ' . ($clienteObj?->departamento?->id ?? '76'))
             : '94001000 - 94';
 
-        $ubicacionLaboralAfiliado = $esIndependiente
+        $ubicacionLaboralAfiliado = ($esIndependiente || $esPlanillaY)
             ? strtoupper($clienteObj?->departamento?->nombre ?? 'VALLE DEL CAUCA')
             : 'GUAINIA';
 
@@ -267,7 +269,7 @@ class PlanillaFormularioService
 
             // Aportes Detallados
             'aporte.novedad_ing'  => !empty($plano->fecha_ing) ? 'X' : '',
-            'aporte.novedad_ret'  => !empty($plano->fecha_ret) ? 'X' : '',
+            'aporte.novedad_ret'  => !empty($plano->fecha_ret) ? ($esPlanillaY ? 'T' : 'X') : '',
             'aporte.novedad_irp'  => (string)$this->calcularNovedadIrp($plano),
             'aporte.dias_afp'     => $c['diasPension'],
             'aporte.dias_eps'     => $c['diasSalud'],
@@ -299,10 +301,10 @@ class PlanillaFormularioService
             'aporte.arl_aporte'  => '$ ' . number_format($c['vArl'], 0, ',', '.'),
 
             // Caja
-            'aporte.ccf_codigo'  => ($esIndependiente && $sinCajaCcf ? 'NIN-CC' : ($c['codCcfPila'] == 'CCF68' ? 'CCF66' : $c['codCcfPila'])),
-            'aporte.ccf_tarifa'  => ($esIndependiente && $sinCajaCcf ? '0 %' : '4 %'),
-            'aporte.ccf_ibc'     => ($esIndependiente && $sinCajaCcf ? '$ 0' : '$ ' . number_format($c['ibcCcf'], 0, ',', '.')),
-            'aporte.ccf_aporte'  => ($esIndependiente && $sinCajaCcf ? '$ 0' : '$ ' . number_format($c['vCcf'], 0, ',', '.')),
+            'aporte.ccf_codigo'  => ($esPlanillaY ? 'NIN-CC' : ($esIndependiente && $sinCajaCcf ? 'NIN-CC' : ($c['codCcfPila'] == 'CCF68' ? 'CCF66' : $c['codCcfPila']))),
+            'aporte.ccf_tarifa'  => ($esPlanillaY ? '0 %' : ($esIndependiente && $sinCajaCcf ? '0 %' : '4 %')),
+            'aporte.ccf_ibc'     => ($esPlanillaY ? '$ 0' : ($esIndependiente && $sinCajaCcf ? '$ 0' : '$ ' . number_format($c['ibcCcf'], 0, ',', '.'))),
+            'aporte.ccf_aporte'  => ($esPlanillaY ? '$ 0' : ($esIndependiente && $sinCajaCcf ? '$ 0' : '$ ' . number_format($c['vCcf'], 0, ',', '.'))),
 
             // Parafiscales
             'aporte.sena_tarifa' => '0 %',
@@ -328,7 +330,7 @@ class PlanillaFormularioService
             'total.fsps'  => '$ 0',
             'total.eps'   => '$ ' . number_format($c['vEps'], 0, ',', '.'),
             'total.arl'   => '$ ' . number_format($c['vArl'], 0, ',', '.'),
-            'total.ccf'   => ($esIndependiente && $sinCajaCcf ? '$ 0' : '$ ' . number_format($c['vCcf'], 0, ',', '.')),
+            'total.ccf'   => ($esPlanillaY ? '$ 0' : ($esIndependiente && $sinCajaCcf ? '$ 0' : '$ ' . number_format($c['vCcf'], 0, ',', '.'))),
             'total.sena'  => '$ 0',
             'total.icbf'  => '$ 0',
             'total.esap'  => '$ 0',

@@ -38,14 +38,15 @@ class SuaportePdfService
         // 3. Obtener los datos calculados de Brynex
         $c = PilaCotizanteCalculator::calcular($plano);
 
+        $esPlanillaY = ($plano->tipo_modalidad_id == 8);
         $esIndependiente = (bool)($plano->razonSocial?->es_independiente ?? false);
         $sinCajaCcf = ($c['codCcfPila'] == 'CCF68');
 
-        $nombreAfp = $plano->nombre_afp ?: 'PORVENIR';
-        $nombreEps = $plano->nombre_eps ?: 'NUEVA EPS';
+        $nombreAfp = $esPlanillaY ? 'NINGUNA AFP' : ($plano->nombre_afp ?: 'PORVENIR');
+        $nombreEps = $esPlanillaY ? 'NINGUNA EPS' : ($plano->nombre_eps ?: 'NUEVA EPS');
         $nombreArl = $plano->nombre_arl ?: 'ARL SURA';
-        $nombreCaja = $plano->nombre_caja ?: ($c['sinCaja'] ? 'COMCAJA' : 'COMCAJA');
-        if ($esIndependiente && $sinCajaCcf) {
+        $nombreCaja = $esPlanillaY ? 'NINGUNA CCF' : ($plano->nombre_caja ?: ($c['sinCaja'] ? 'COMCAJA' : 'COMCAJA'));
+        if ($esIndependiente && $sinCajaCcf && !$esPlanillaY) {
             $nombreCaja = 'NINGUNA CCF';
         }
 
@@ -105,7 +106,7 @@ class SuaportePdfService
         $pdf->Text(246.56, 45.54, 'Fecha creación reporte:');
         $pdf->Text(346.56, 45.54, now()->format('Y-m-d, h:i:s p. m.'));
         $pdf->Text(425.00, 45.54, 'Tipo Planilla:');
-        $tipoPlanilla = $esIndependiente ? 'I' : 'E';
+        $tipoPlanilla = $esPlanillaY ? 'Y' : ($esIndependiente ? 'I' : 'E');
         $pdf->Text(490.00, 45.54, $tipoPlanilla);
         $pdf->Text(545.00, 45.54, 'Número Planilla:');
         $pdf->Text(680.00, 45.54, $plano->numero_planilla);
@@ -176,13 +177,13 @@ class SuaportePdfService
             ->where('aliado_id', $plano->aliado_id)
             ->count();
 
-        $exoneradoVal = $esIndependiente ? 'N' : 'S';
+        $exoneradoVal = $esPlanillaY ? 'N' : ($esIndependiente ? 'N' : 'S');
 
-        $ciudadAfiliado = $esIndependiente
+        $ciudadAfiliado = ($esIndependiente || $esPlanillaY)
             ? (($clienteObj?->municipio?->id ?? '76001') . '000 - ' . ($clienteObj?->departamento?->id ?? '76'))
             : '94001000 - 94';
 
-        $deptoAfiliado = $esIndependiente
+        $deptoAfiliado = ($esIndependiente || $esPlanillaY)
             ? strtoupper($clienteObj?->departamento?->nombre ?? 'VALLE DEL CAUCA')
             : 'GUAINIA';
 
@@ -217,7 +218,7 @@ class SuaportePdfService
 
         // Novedades
         $pdf->Text(12, $yRow, !empty($plano->fecha_ing) ? 'X' : '');
-        $pdf->Text(18, $yRow, !empty($plano->fecha_ret) ? 'X' : '');
+        $pdf->Text(18, $yRow, !empty($plano->fecha_ret) ? ($esPlanillaY ? 'T' : 'X') : '');
 
         // Días de cada subsistema
         $pdf->Text(103.78, $yRow, $c['diasPension']);
@@ -251,10 +252,10 @@ class SuaportePdfService
         $pdf->Text(583.72, $yRow, '$ ' . number_format($c['vArl'], 0, ',', '.'));
 
         // Caja
-        $pdf->Text(610.67, $yRow, ($esIndependiente && $sinCajaCcf ? 'NIN-CC' : ($c['codCcfPila'] == 'CCF68' ? 'CCF66' : $c['codCcfPila'])));
-        $pdf->Text(633.55, $yRow, ($esIndependiente && $sinCajaCcf ? '0 %' : '4 %'));
-        $pdf->Text(657.00, $yRow, ($esIndependiente && $sinCajaCcf ? '$ 0' : '$ ' . number_format($c['ibcCcf'], 0, ',', '.')));
-        $pdf->Text(684.50, $yRow, ($esIndependiente && $sinCajaCcf ? '$ 0' : '$ ' . number_format($c['vCcf'], 0, ',', '.')));
+        $pdf->Text(610.67, $yRow, ($esPlanillaY ? 'NIN-CC' : ($esIndependiente && $sinCajaCcf ? 'NIN-CC' : ($c['codCcfPila'] == 'CCF68' ? 'CCF66' : $c['codCcfPila']))));
+        $pdf->Text(633.55, $yRow, ($esPlanillaY ? '0 %' : ($esIndependiente && $sinCajaCcf ? '0 %' : '4 %')));
+        $pdf->Text(657.00, $yRow, ($esPlanillaY ? '$ 0' : ($esIndependiente && $sinCajaCcf ? '$ 0' : '$ ' . number_format($c['ibcCcf'], 0, ',', '.'))));
+        $pdf->Text(684.50, $yRow, ($esPlanillaY ? '$ 0' : ($esIndependiente && $sinCajaCcf ? '$ 0' : '$ ' . number_format($c['vCcf'], 0, ',', '.'))));
 
         // Parafiscales
         $pdf->Text(708.55, $yRow, '0 %');
@@ -285,7 +286,7 @@ class SuaportePdfService
         $pdf->Text(189.83, $yVal, '$ 0');
         $pdf->Text(252.32, $yVal, '$ ' . number_format($c['vEps'], 0, ',', '.'));
         $pdf->Text(322.32, $yVal, '$ ' . number_format($c['vArl'], 0, ',', '.'));
-        $pdf->Text(396.49, $yVal, ($esIndependiente && $sinCajaCcf ? '$ 0' : '$ ' . number_format($c['vCcf'], 0, ',', '.')));
+        $pdf->Text(396.49, $yVal, ($esPlanillaY ? '$ 0' : ($esIndependiente && $sinCajaCcf ? '$ 0' : '$ ' . number_format($c['vCcf'], 0, ',', '.'))));
         $pdf->Text(469.33, $yVal, '$ 0');
         $pdf->Text(539.33, $yVal, '$ 0');
         $pdf->Text(604.83, $yVal, '$ 0');
