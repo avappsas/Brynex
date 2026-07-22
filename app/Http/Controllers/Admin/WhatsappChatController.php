@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\{User, WhatsappConfig, WhatsappConversacion, WhatsappMensaje};
+use App\Models\{IaConfiguracionAliado, User, WhatsappConfig, WhatsappConversacion, WhatsappMensaje};
 use App\Services\WhatsappApiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\{Auth, Storage};
@@ -100,6 +100,7 @@ class WhatsappChatController extends Controller
             'asignado_a'         => $conversacion->asignado_a,
             'asignado_nombre'    => $conversacion->asignado?->nombre,
             'bot_activo'         => $conversacion->bot_activo,
+            'atendida_por_ia'    => $this->esAtendidaPorIa($conversacion),
             'pendiente_atencion' => $conversacion->pendiente_atencion,
             'pendiente_motivo'   => $conversacion->pendiente_motivo,
             'ventana_activa'     => $conversacion->ventanaActiva(),
@@ -219,10 +220,13 @@ class WhatsappChatController extends Controller
         $conversacion = WhatsappConversacion::delAliado($alidoId)->findOrFail($id);
 
         $validated = $request->validate(['activo' => 'required|boolean']);
+        $iaActivaAliado = IaConfiguracionAliado::where('aliado_id', $alidoId)->value('activo_whatsapp') ?? false;
 
         if ($validated['activo']) {
             $conversacion->activarBot();
-            $mensaje = 'Asistente IA reactivado en esta conversación';
+            $mensaje = $iaActivaAliado
+                ? 'Asistente IA reactivado en esta conversación'
+                : 'Reactivado aquí, pero el Asistente IA está apagado para todo el aliado en /brynex/ia — no responderá hasta que lo actives ahí.';
         } else {
             $conversacion->tomarConversacion(Auth::id());
             $mensaje = 'Tomaste esta conversación — el Asistente IA ya no responderá aquí';
@@ -233,6 +237,7 @@ class WhatsappChatController extends Controller
         return response()->json([
             'ok'                 => true,
             'bot_activo'         => $conversacion->bot_activo,
+            'atendida_por_ia'    => $iaActivaAliado && $conversacion->bot_activo,
             'pendiente_atencion' => $conversacion->pendiente_atencion,
             'asignado_a'         => $conversacion->asignado_a,
             'asignado_nombre'    => $conversacion->asignado?->nombre,
@@ -337,6 +342,7 @@ class WhatsappChatController extends Controller
                 'asignado_a'         => $conversacion->asignado_a,
                 'asignado_nombre'    => $conversacion->asignado?->nombre,
                 'bot_activo'         => $conversacion->bot_activo,
+                'atendida_por_ia'    => $this->esAtendidaPorIa($conversacion),
                 'pendiente_atencion' => $conversacion->pendiente_atencion,
                 'pendiente_motivo'   => $conversacion->pendiente_motivo,
                 'ventana_activa'     => $conversacion->ventanaActiva(),
@@ -420,6 +426,13 @@ class WhatsappChatController extends Controller
 
         $conversaciones = $query->get();
 
+        // "Atendida por IA" de verdad = permiso en la conversación (bot_activo) Y el
+        // aliado tiene la IA de WhatsApp encendida. Sin esto, una conversación con
+        // bot_activo=true por una prueba/reactivación se etiqueta como IA aunque el
+        // interruptor general esté apagado y el bot nunca vaya a responder.
+        $iaActivaAliado = IaConfiguracionAliado::where('aliado_id', $alidoId)->value('activo_whatsapp') ?? false;
+        $conversaciones->each(fn ($c) => $c->atendida_por_ia = $iaActivaAliado && (bool) $c->bot_activo);
+
         // Badge total no leídos — reutiliza la misma colección, sin segunda query
         $totalNoLeidos = $conversaciones->sum('total_mensajes_no_leidos');
 
@@ -451,6 +464,13 @@ class WhatsappChatController extends Controller
     /**
      * Mapea UNA conversación al formato del sidebar Alpine.js.
      */
+    /** ¿La IA realmente atenderá esta conversación? (permiso local Y aliado con WhatsApp IA encendido). */
+    private function esAtendidaPorIa(WhatsappConversacion $c): bool
+    {
+        if (!$c->bot_activo) return false;
+        return (bool) IaConfiguracionAliado::where('aliado_id', $c->aliado_id)->value('activo_whatsapp');
+    }
+
     private function mapearConversacionSidebar(WhatsappConversacion $c): array
     {
         return [
@@ -468,6 +488,7 @@ class WhatsappChatController extends Controller
             'asignado_a'               => $c->asignado_a,
             'asignado_nombre'          => $c->asignado?->nombre,
             'bot_activo'               => (bool) $c->bot_activo,
+            'atendida_por_ia'          => (bool) ($c->atendida_por_ia ?? $this->esAtendidaPorIa($c)),
             'pendiente_atencion'       => (bool) $c->pendiente_atencion,
             'pendiente_motivo'         => $c->pendiente_motivo,
             'url_show'                 => route('admin.whatsapp.chat.show', $c->id),

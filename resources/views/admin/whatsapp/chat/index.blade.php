@@ -231,7 +231,7 @@
                         <div class="conv-preview">
                             @if($conv->pendiente_atencion)
                                 <span style="color:#d97706;font-weight:600">⚠️ Pendiente por atender</span>
-                            @elseif($conv->bot_activo)
+                            @elseif($conv->atendida_por_ia)
                                 <span style="color:#2563eb">🤖 Atendiendo la IA</span>
                             @elseif($conv->estado === 'asignada' && $conv->asignado)
                                 <span style="color:#10b981">● {{ $conv->asignado->nombre }}</span>

@@ -93,15 +93,23 @@ class WhatsappConversacion extends BaseModel
     }
 
     /**
-     * Conversaciones que el Asistente IA está atendiendo activamente ahora mismo:
-     * el bot puede responder (bot_activo) Y ya participó al menos una vez. Así se
-     * excluyen las conversaciones antiguas que nunca pasaron por la IA (bot_activo
-     * es el valor por defecto para todas, no implica que la IA la haya atendido).
+     * Conversaciones que el Asistente IA atenderá si el cliente escribe ahora mismo:
+     * el bot tiene permiso en esta conversación (bot_activo) Y el aliado tiene la IA
+     * de WhatsApp realmente encendida (ia_configuracion_aliado.activo_whatsapp).
+     * Sin el segundo requisito, conversaciones reactivadas en pruebas (o antiguas,
+     * donde bot_activo quedó en su valor por defecto) se etiquetarían como "atendidas
+     * por la IA" aunque el interruptor general del aliado esté apagado y nunca vaya
+     * a responder.
      */
     public function scopeAtendidasPorIa($query)
     {
         return $query->where('bot_activo', true)
-            ->whereHas('mensajes', fn ($m) => $m->where('es_bot', true));
+            ->whereExists(function ($q) {
+                $q->select(\Illuminate\Support\Facades\DB::raw(1))
+                    ->from('ia_configuracion_aliado')
+                    ->whereColumn('ia_configuracion_aliado.aliado_id', 'whatsapp_conversaciones.aliado_id')
+                    ->where('ia_configuracion_aliado.activo_whatsapp', true);
+            });
     }
 
     // ── Helpers de negocio ───────────────────────────────────────────

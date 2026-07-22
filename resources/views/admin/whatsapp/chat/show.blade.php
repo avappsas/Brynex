@@ -140,13 +140,13 @@
                             <template x-if="c.pendiente_atencion">
                                 <span style="color:#d97706;font-weight:600">⚠️ Pendiente por atender</span>
                             </template>
-                            <template x-if="!c.pendiente_atencion && c.bot_activo">
+                            <template x-if="!c.pendiente_atencion && c.atendida_por_ia">
                                 <span style="color:#2563eb">🤖 Atendiendo la IA</span>
                             </template>
-                            <template x-if="!c.pendiente_atencion && !c.bot_activo && c.asignado_nombre">
+                            <template x-if="!c.pendiente_atencion && !c.atendida_por_ia && c.asignado_nombre">
                                 <span style="color:#10b981">● <span x-text="c.asignado_nombre"></span></span>
                             </template>
-                            <template x-if="!c.pendiente_atencion && !c.bot_activo && !c.asignado_nombre">
+                            <template x-if="!c.pendiente_atencion && !c.atendida_por_ia && !c.asignado_nombre">
                                 <span x-text="c.preview || 'Sin mensajes'"></span>
                             </template>
                         </div>
@@ -739,6 +739,7 @@ function chatApp() {
             const data = await resp.json();
             if (data.ok) {
                 this.conversacion.bot_activo = data.bot_activo;
+                this.conversacion.atendida_por_ia = data.atendida_por_ia;
                 this.conversacion.pendiente_atencion = data.pendiente_atencion;
                 this.conversacion.asignado_a = data.asignado_a;
                 this.conversacion.asignado_nombre = data.asignado_nombre;
@@ -749,9 +750,12 @@ function chatApp() {
                 const convItem = this.listaConversaciones.find(c => c.id == this.convId);
                 if (convItem) {
                     convItem.bot_activo = data.bot_activo;
+                    convItem.atendida_por_ia = data.atendida_por_ia;
                     convItem.pendiente_atencion = data.pendiente_atencion;
                     convItem.asignado_nombre = data.asignado_nombre;
                 }
+
+                if (data.mensaje && data.mensaje.includes('apagado')) alert(data.mensaje);
             }
         },
 
