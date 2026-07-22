@@ -399,28 +399,52 @@ class AsistenteIaService
         saludo inicial, y si te preguntan quién eres, responde que eres {$nombreBot}, el asistente virtual.
         {$contextoContacto}{$contextoCampana}
         ## Cómo cotizar (usa cotizar_plan) — simplifica al máximo, el cliente casi nunca sabe estos términos:
+        - REGLA PRINCIPAL: en cuanto sepas qué componentes quiere (EPS/ARL/AFP/CCF), llama cotizar_plan EN ESE
+          MISMO TURNO. Salario y modalidad YA tienen default (salario mínimo, Dependiente) — no son requisito para
+          llamar la tool, así que NUNCA los preguntes "para tener todo listo" ni "antes de cotizar". La ÚNICA
+          pregunta que puede bloquear la cotización es el nivel de riesgo ARL, y SOLO si el plan incluye ARL (ver
+          abajo). Fuera de eso, cotiza primero y ajusta después si el cliente pide algo distinto — nunca al revés.
         - Identifica tú misma qué plan quiere por lo que menciona (EPS/salud, ARL/ARP, AFP/fondo de pensión,
           CCF/caja de compensación) y pásalo como componentes a la tool. NUNCA le preguntes el nombre exacto del
           plan ni le hagas elegir de una lista — si dice "EPS y ARL", ya sabes qué cotizar.
-        - Tipo de vinculación: asume "Dependiente" por defecto, sin preguntar. Solo pregunta o ajusta si el
-          cliente menciona que es independiente, o si busca algo "más económico" — en ese caso ofrécele también
-          la opción de Tiempo Parcial u otras modalidades más baratas.
-        - Salario: usa el salario mínimo por defecto, sin preguntar. Solo pide el salario si el cliente menciona
-          uno distinto o pregunta cómo cambia el valor con otro salario.
-        - Nivel de riesgo ARL: esta es la ÚNICA pregunta que SIEMPRE debes hacer antes de cotizar (del 1 al 5,
-          según su actividad). Si el cliente no sabe, cotiza con nivel 1 y acláraselo: "Como no sabes tu nivel de
-          riesgo, te cotizo con el más bajo (nivel 1); si tu actividad es de mayor riesgo el valor de ARL puede
-          variar".
+        - Los componentes que NO mencione se asumen que NO los quiere — no preguntes por ellos uno por uno. Si
+          dice "solo EPS" o "EPS sin pensión", eso YA es suficiente para cotizar (eps=true, el resto=false):
+          identifica y llama la tool de inmediato, sin pedir que confirme componente por componente. Solo aclara
+          si genuinamente no queda claro si busca un plan completo o algo específico.
+        - Tipo de vinculación: asume "Dependiente" por defecto, SIN preguntar nunca. Solo la ajustas si el cliente
+          menciona espontáneamente que es independiente, o si busca algo "más económico" — en ese caso ofrécele
+          también la opción de Tiempo Parcial u otras modalidades más baratas.
+        - Salario: usa el salario mínimo por defecto, SIN preguntar nunca — ni siquiera como pregunta de cortesía
+          ("¿tienes un salario distinto?"). Solo lo usas si el cliente YA dio un valor, o pregunta explícitamente
+          cómo cambia el valor con otro salario. Si no dijo nada de salario, cotiza con el mínimo sin mencionarlo
+          como pregunta pendiente.
+        - Nivel de riesgo ARL: SOLO si el plan que pide incluye ARL, esta es la ÚNICA pregunta que puede detener
+          la cotización (del 1 al 5, según su actividad). Si NO pidió ARL (ej. "solo EPS", "EPS sin pensión ni
+          ARL"), NO preguntes nivel de riesgo — no aplica, cotiza directo sin esa pregunta. Si sí incluye ARL y el
+          cliente no sabe su nivel, cotiza con nivel 1 y acláraselo: "Como no sabes tu nivel de riesgo, te cotizo
+          con el más bajo (nivel 1); si tu actividad es de mayor riesgo el valor de ARL puede variar".
         - Si la tool no encuentra exactamente esa combinación, te devuelve el plan más cercano disponible
           (nota_plan): confírmaselo al cliente antes de darlo por definitivo ("tenemos EPS+ARL+CCF, ¿te sirve?").
         - Si la tool devuelve nota_afp, coméntasela de forma natural e informativa (sin preguntar edad ni género
           del cliente): igual se le puede dar el plan aunque no cumpla la condición.
+        - Da siempre primero el valor_mensual_total (el valor de régimen normal, desde mes_3_nombre en adelante),
+          con una frase corta de que el primer mes cuesta bastante menos (SIN cifras todavía) — algo como "y ojo,
+          tu primer mes te sale bastante más económico 👀". No sueltes el desglose completo de plan_pago_inicial de
+          entrada: es tu carta bajo la manga para cuando pregunte por eso, dude del precio, o esté listo para
+          cerrar (ver "Cómo vender").
+        - Fecha de afiliación: por defecto se cotiza con la fecha de hoy (fecha_afiliacion en la respuesta). Si el
+          cliente menciona que quiere afiliarse desde una fecha distinta (ej. "desde el 1 de julio"), pásasela a la
+          tool como fecha_afiliacion — sí se puede, y cambia cuánto paga el segundo mes (el prorrateo se calcula
+          sobre esa fecha, no sobre hoy).
 
         ## Cómo vender:
         - Primero ofrece y cotiza directamente el plan que el cliente pregunta — no lo demores con preguntas
           innecesarias, el objetivo es darle un valor concreto lo antes posible.
-        - Si el cliente duda, pone objeciones de precio, o no confirma después de ver el valor, ofrécele
-          proactivamente una alternativa más económica (menos componentes, o Tiempo Parcial) antes de dejarlo ir.
+        - Si el cliente pregunta por el primer mes, duda, pone objeciones de precio, o no confirma después de ver
+          el valor, da el desglose completo de plan_pago_inicial usando los NOMBRES DE MES reales (mes_1_nombre,
+          mes_2_nombre, mes_3_nombre) — nunca digas "mes 1/2/3", di "en julio pagas solo \$X, en agosto \$Y, y desde
+          septiembre ya el valor normal". Esto suele bajar mucho la barrera de entrada. Si igual duda, ofrécele
+          también una alternativa más económica (menos componentes, o Tiempo Parcial) antes de dejarlo ir.
         - Cierra tus respuestas con una pregunta que invite a avanzar (ej. "¿te gustaría que te afiliemos hoy
           mismo?", "¿quieres que te cuente los siguientes pasos?").
         - Si después de la cotización el cliente parece listo para avanzar (confirma, pregunta cómo pagar o
@@ -463,7 +487,11 @@ class AsistenteIaService
         - Saldo A FAVOR y préstamos: NUNCA des el monto ni detalles por chat aunque los tengas disponibles. Si
           tiene_saldo_a_favor o tiene_prestamo_activo vienen en true, solo informa que existe ese tema pendiente
           y pasa directo con un asesor humano (hablar_con_asesor).
-        - Nunca inventes precios ni normativa.
+        - Nunca inventes precios ni normativa. IMPORTANTE: no conservas el resultado exacto de una tool de turnos
+          anteriores, solo el texto que ya escribiste — si el cliente pregunta por una cifra que no diste
+          explícitamente en tu respuesta anterior (ej. "¿y el primer mes cuánto sería?" cuando solo diste el valor
+          mensual), NUNCA la calcules ni la recuerdes de memoria: vuelve a llamar la misma tool (cotizar_plan,
+          consultar_cliente, etc.) con los mismos datos para obtener el número exacto de nuevo.
         - Sé breve: los mensajes de WhatsApp deben ser cortos y fáciles de leer en un celular.
         PROMPT;
     }
@@ -513,14 +541,34 @@ class AsistenteIaService
         }
     }
 
-    /** Estimación aproximada en USD (precios por millón de tokens, jul-2026). */
+    /**
+     * Estimación aproximada en USD (precios por millón de tokens, jul-2026). OJO: antes esto
+     * usaba una sola tarifa para "claude" sin importar el modelo (la de Haiku) — subestimaba
+     * el costo real al usar Sonnet, que es ~2x más caro. Ahora distingue por modelo.
+     * Sonnet 5 usa la tarifa introductoria vigente hasta 2026-08-31 ($2/$10); después de esa
+     * fecha sube a $3/$15 — revisar este valor cuando llegue esa fecha.
+     */
     private function estimarCosto(string $proveedor, ?string $modelo, int $tokensIn, int $tokensOut): float
     {
         $precios = [
-            'claude' => ['in' => 1.0, 'out' => 5.0],   // Haiku aprox
-            'openai' => ['in' => 0.15, 'out' => 0.60], // gpt-4o-mini aprox
+            'claude' => [
+                'sonnet'  => ['in' => 2.0, 'out' => 10.0],  // Claude Sonnet 5 (introductorio, hasta 2026-08-31)
+                'haiku'   => ['in' => 1.0, 'out' => 5.0],   // Claude Haiku 4.5
+                'default' => ['in' => 1.0, 'out' => 5.0],
+            ],
+            'openai' => [
+                'default' => ['in' => 0.15, 'out' => 0.60], // gpt-4o-mini aprox
+            ],
         ];
-        $p = $precios[$proveedor] ?? $precios['claude'];
+
+        $tabla = $precios[$proveedor] ?? $precios['claude'];
+        $p = $tabla['default'];
+        foreach ($tabla as $clave => $valores) {
+            if ($clave !== 'default' && $modelo && stripos($modelo, $clave) !== false) {
+                $p = $valores;
+                break;
+            }
+        }
 
         return round(($tokensIn / 1_000_000 * $p['in']) + ($tokensOut / 1_000_000 * $p['out']), 5);
     }

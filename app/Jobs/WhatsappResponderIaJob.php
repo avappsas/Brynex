@@ -4,19 +4,27 @@ namespace App\Jobs;
 
 use App\Events\WhatsappConversacionActualizada;
 use App\Events\WhatsappMensajeNuevo;
-use App\Models\{IaConfiguracionAliado, WhatsappConfig, WhatsappConversacion, WhatsappMensaje};
+use App\Models\{IaConfiguracionAliado, IaConversacion, IaMensaje, WhatsappConfig, WhatsappConversacion, WhatsappMensaje};
 use App\Services\Ia\AsistenteIaService;
 use App\Services\WhatsappApiService;
+use App\Services\WhatsappWebhookService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\{InteractsWithQueue, SerializesModels};
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 /**
  * Genera y envía la respuesta del Asistente IA a un mensaje entrante de WhatsApp.
  * Se ejecuta en background (igual que WhatsappDescargarMediaJob) para no bloquear
  * el webhook de Meta, que espera una respuesta rápida.
+ *
+ * Debounce: este job se dispara con delay (ver WhatsappWebhookService) para dar tiempo a
+ * que lleguen más mensajes seguidos del mismo cliente. $tokenMensajeId es el id del mensaje
+ * que originó ESTE job — si al ejecutarse ya no es el último mensaje de la conversación
+ * (llegó uno más nuevo mientras esperaba), se aborta en silencio: el job programado para
+ * ese mensaje más reciente es el que agrupa y responde todo el lote de una vez.
  *
  * Si la IA falla (sin crédito, error de proveedor, etc.), la conversación se escala
  * a un humano en vez de quedar en silencio — nadie debe quedar sin respuesta.
@@ -28,10 +36,14 @@ class WhatsappResponderIaJob implements ShouldQueue
     public int $tries = 2;
     public int $timeout = 60;
 
-    public function __construct(protected int $conversacionId, protected string $textoUsuario) {}
+    public function __construct(protected int $conversacionId, protected int $tokenMensajeId) {}
 
     public function handle(AsistenteIaService $asistenteIa, WhatsappApiService $whatsappApi): void
     {
+        if (Cache::get(WhatsappWebhookService::claveDebounce($this->conversacionId)) !== $this->tokenMensajeId) {
+            return;
+        }
+
         $conversacion = WhatsappConversacion::find($this->conversacionId);
         if (!$conversacion || !$conversacion->bot_activo) return;
 
@@ -43,11 +55,30 @@ class WhatsappResponderIaJob implements ShouldQueue
 
         $nombreBot = $iaConfig->nombreBot();
 
+        // Agrupar todos los mensajes de texto entrantes desde la última respuesta del bot,
+        // para responder de una sola vez con el contexto completo en vez de mensaje por mensaje.
+        $iaConversacion  = IaConversacion::paraTelefono($conversacion->aliado_id, $conversacion->wa_contact_id);
+        $ultimaRespuesta = IaMensaje::where('conversacion_id', $iaConversacion->id)
+            ->where('rol', 'assistant')
+            ->latest('id')
+            ->first();
+
+        $mensajesPendientes = WhatsappMensaje::where('conversacion_id', $conversacion->id)
+            ->where('direccion', 'entrante')
+            ->where('tipo', 'text')
+            ->when($ultimaRespuesta, fn ($q) => $q->where('created_at', '>', $ultimaRespuesta->created_at))
+            ->orderBy('id')
+            ->pluck('contenido');
+
+        if ($mensajesPendientes->isEmpty()) return;
+
+        $textoUsuario = $mensajesPendientes->implode("\n");
+
         try {
             $resultado = $asistenteIa->responderWhatsapp(
                 $conversacion->aliado_id,
                 $conversacion->wa_contact_id,
-                $this->textoUsuario,
+                $textoUsuario,
                 $conversacion->id,
                 $conversacion->origen_campana,
                 $conversacion->origen_campana_categoria

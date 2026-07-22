@@ -13,10 +13,22 @@ use App\Models\{
     WhatsappConversacion,
     WhatsappMensaje
 };
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class WhatsappWebhookService
 {
+    /** Segundos de silencio a esperar antes de responder, para agrupar mensajes seguidos. */
+    private const SEGUNDOS_DEBOUNCE = 6;
+
+    public function __construct(protected WhatsappApiService $whatsappApi) {}
+
+    /** Clave de cache compartida con WhatsappResponderIaJob para el debounce por conversación. */
+    public static function claveDebounce(int $conversacionId): string
+    {
+        return "wa_debounce_conv_{$conversacionId}";
+    }
+
     /**
      * Procesa el payload completo de un webhook de Meta.
      * Meta puede enviar múltiples entradas en un solo request.
@@ -138,7 +150,19 @@ class WhatsappWebhookService
             $iaActiva = IaConfiguracionAliado::where('aliado_id', $alidoId)->value('activo_whatsapp');
             if ($iaActiva) {
                 if ($tipo === 'text' && !empty($dataMensaje['contenido'])) {
-                    dispatch(new WhatsappResponderIaJob($conversacion->id, $dataMensaje['contenido']));
+                    // Indicador de "escribiendo" — gratis, no pasa por la IA ni consume tokens.
+                    // Se apaga solo al enviar la respuesta real o a los ~25s si no se envía nada.
+                    $this->whatsappApi->marcarLeidoYEscribiendo($waId, $config);
+
+                    // Debounce: si el cliente manda varios mensajes seguidos, esperamos
+                    // unos segundos de silencio y los respondemos todos juntos en un solo
+                    // turno de IA. El token es el id de este mensaje; si llega uno más
+                    // nuevo antes de cumplirse la espera, ese token queda desactualizado y
+                    // este job se aborta solo (ver WhatsappResponderIaJob::handle()) — el
+                    // job programado para el mensaje más reciente es el que agrupa todo.
+                    Cache::put(self::claveDebounce($conversacion->id), $mensaje->id, now()->addSeconds(30));
+                    WhatsappResponderIaJob::dispatch($conversacion->id, $mensaje->id)
+                        ->delay(now()->addSeconds(self::SEGUNDOS_DEBOUNCE));
                 } elseif (in_array($tipo, ['image', 'audio', 'document', 'video'], true)) {
                     // El bot no puede leer multimedia: avisa al cliente y escala a un humano
                     // en vez de quedarse en silencio (ej. comprobantes de pago requieren revisión humana).

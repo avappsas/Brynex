@@ -91,6 +91,26 @@ class WhatsappApiService
     }
 
     /**
+     * Marca un mensaje entrante como leído y activa el indicador de "escribiendo..." del
+     * lado del cliente. Es una llamada de presencia de la propia API de WhatsApp — no pasa
+     * por la IA, así que no consume tokens. Se apaga solo al enviar la respuesta real, o a
+     * los ~25s si no se envía nada.
+     */
+    public function marcarLeidoYEscribiendo(string $waMessageId, WhatsappConfig $config): array
+    {
+        $creds = $config->credencialesEfectivas();
+
+        $payload = [
+            'messaging_product' => 'whatsapp',
+            'status'            => 'read',
+            'message_id'        => $waMessageId,
+            'typing_indicator'  => ['type' => 'text'],
+        ];
+
+        return $this->llamarApi($creds, $payload);
+    }
+
+    /**
      * Envía un archivo de media (imagen, audio, documento) a un número.
      *
      * @param string $tipo     'image' | 'audio' | 'document' | 'video'

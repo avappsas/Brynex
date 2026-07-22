@@ -25,7 +25,7 @@
 </div>
 @endif
 
-<form method="POST" action="{{ route('admin.configuracion.store') }}">
+<form method="POST" action="{{ route('admin.configuracion.store') }}" enctype="multipart/form-data">
 @csrf
 
 {{-- ══ SECCIÓN 1: Porcentajes Seguridad Social — Solo Superadmin BryNex ══ --}}
@@ -118,6 +118,7 @@
   </div>
   @php
     $globalMoraCfg = $configs['global'] ?? null;
+    $globalCfg = $configs['global'] ?? null;
   @endphp
   <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;">
     {{-- Campo 1: Día hábil de inicio --}}
@@ -177,10 +178,14 @@
 
 {{-- ══ SECCIÓN 2.6: Parámetros Especiales ══ --}}
 <div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:1rem 1.25rem;margin-bottom:1rem;">
-  <div style="font-size:0.72rem;font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.85rem;">
-    ⚙️ Parámetros Especiales
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.85rem;">
+    <div style="font-size:0.72rem;font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:0.06em;">
+      ⚙️ Parámetros Especiales
+      <span style="font-size:0.65rem;color:#94a3b8;text-transform:none;font-weight:400;margin-left:0.5rem;">Configuración por aliado</span>
+    </div>
   </div>
   <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;">
+
     {{-- Campo: Día de ingreso Ingreso-Retiro --}}
     <div style="background:#f0f9ff;border-radius:9px;padding:0.85rem;border:1.5px solid #bae6fd;">
       <div style="font-size:0.62rem;font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:0.55rem;">📅 Día de Ingreso (Plan Ingreso-Retiro)</div>
@@ -197,6 +202,63 @@
         <span style="color:#0369a1;font-size:0.75rem;white-space:nowrap;">día del mes</span>
       </div>
     </div>
+
+    {{-- Card combinado: Seguro Único + Logo Aseguradora --}}
+    <div x-data="{ preview: '{{ $globalCfg?->seguro_logo ? Storage::url($globalCfg->seguro_logo) : '' }}' }"
+         style="background:#fdf4ff;border-radius:9px;padding:0.85rem;border:1.5px solid #e9d5ff;grid-column:span 2;">
+      <div style="font-size:0.62rem;font-weight:700;color:#7c3aed;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:0.65rem;">
+        🛡️ Seguro — Valor y Aseguradora
+        <span style="font-size:0.63rem;color:#9f67f5;text-transform:none;font-weight:400;margin-left:0.4rem;">Aplica igual a todos los planes</span>
+      </div>
+      <div style="display:flex;gap:1rem;align-items:flex-start;">
+
+        {{-- Valor del seguro --}}
+        <div style="flex:0 0 auto;min-width:180px;">
+          <label style="display:block;font-size:0.62rem;font-weight:700;color:#6d28d9;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:0.35rem;">Valor</label>
+          <div style="display:flex;align-items:center;gap:0.35rem;">
+            <span style="color:#7c3aed;font-size:0.95rem;font-weight:700;">$</span>
+            <input type="text"
+                name="configs[global][seguro_valor]"
+                value="{{ $globalCfg ? number_format($globalCfg->seguro_valor, 0, ',', '.') : '0' }}"
+                class="input-miles"
+                style="flex:1;padding:0.45rem 0.6rem;border:2px solid #e9d5ff;border-radius:7px;font-size:0.95rem;font-family:monospace;font-weight:700;color:#7c3aed;background:#fff;text-align:right;"
+                onfocus="this.style.borderColor='#7c3aed'" onblur="this.style.borderColor='#e9d5ff'">
+          </div>
+          <div style="font-size:0.65rem;color:#9f67f5;margin-top:0.35rem;">Déjalo en 0 si no aplica seguro.</div>
+        </div>
+
+        {{-- Separador vertical --}}
+        <div style="width:1px;background:#e9d5ff;align-self:stretch;"></div>
+
+        {{-- Logo de la aseguradora --}}
+        <div style="flex:1;">
+          <label style="display:block;font-size:0.62rem;font-weight:700;color:#6d28d9;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:0.35rem;">🏢 Logo de la Aseguradora</label>
+          <div style="display:flex;align-items:center;gap:1rem;">
+            {{-- Preview --}}
+            <div style="flex:0 0 auto;">
+              <template x-if="preview">
+                <img :src="preview" alt="Logo aseguradora"
+                     style="height:52px;max-width:140px;object-fit:contain;border-radius:7px;border:1px solid #e9d5ff;background:#fff;padding:5px;">
+              </template>
+              <template x-if="!preview">
+                <div style="height:52px;width:120px;display:flex;align-items:center;justify-content:center;background:#f5f0ff;border-radius:7px;border:1.5px dashed #c4b5fd;color:#a78bfa;font-size:0.7rem;text-align:center;padding:0.3rem;">
+                  Sin logo de aseguradora
+                </div>
+              </template>
+            </div>
+            {{-- Input file --}}
+            <div style="flex:1;">
+              <input type="file" name="seguro_logo" accept="image/png,image/jpeg,image/jpg,image/svg+xml"
+                     @change="preview = URL.createObjectURL($event.target.files[0])"
+                     style="width:100%;font-size:0.72rem;color:#6d28d9;padding:0.3rem 0;cursor:pointer;">
+              <div style="font-size:0.65rem;color:#9f67f5;margin-top:0.3rem;">PNG, JPG o SVG. Máx 2 MB. Aparece en documentos y reportes del seguro.</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -217,8 +279,6 @@
         <th style="padding:0.55rem 0.75rem;text-align:right;color:#475569;font-weight:600;font-size:0.73rem;">ADMON ASESOR</th>
         <th style="padding:0.55rem 0.75rem;text-align:right;color:#475569;font-weight:600;font-size:0.73rem;">COSTO AFILIACIÓN</th>
         <th style="padding:0.55rem 0.75rem;text-align:right;color:#7c3aed;font-weight:600;font-size:0.73rem;" title="% del costo de afiliación que va a la empresa">% ADMON AFIL</th>
-        <th style="padding:0.55rem 0.75rem;text-align:right;color:#0369a1;font-weight:600;font-size:0.73rem;" title="% del costo de afiliación reservado para retiro/novedad">% RETIRO AFIL</th>
-        <th style="padding:0.55rem 0.75rem;text-align:right;color:#475569;font-weight:600;font-size:0.73rem;">SEGURO</th>
         <th style="padding:0.55rem 0.75rem;text-align:center;color:#475569;font-weight:600;font-size:0.73rem;">ENCARGADO DEFAULT</th>
       </tr>
     </thead>
@@ -226,17 +286,17 @@
       {{-- Fila Global (aplica a todos los planes si no hay específico) --}}
       @php $globalCfg = $configs['global'] ?? null; @endphp
       <tr style="border-bottom:1px solid #f1f5f9;background:#fffbeb;">
-        <td style="padding:0.6rem 0.75rem;">
-          <div style="font-weight:700;color:#0f172a;">Todos los planes</div>
-          <div style="font-size:0.68rem;color:#94a3b8;">Usado cuando no hay config específica</div>
+        <td style="padding:0.6rem 0.75rem;white-space:nowrap;">
+          <span style="font-weight:700;color:#0f172a;font-size:0.82rem;">Todos los planes</span>
         </td>
         @foreach(['administracion','admon_asesor','costo_afiliacion'] as $campo)
         <td style="padding:0.5rem 0.75rem;text-align:right;">
           <div style="display:flex;align-items:center;justify-content:flex-end;gap:0.25rem;">
             <span style="color:#64748b;font-size:0.75rem;">$</span>
-            <input type="number" step="100" min="0"
+            <input type="text"
                 name="configs[global][{{ $campo }}]"
-                value="{{ $globalCfg ? $globalCfg->$campo : 0 }}"
+                value="{{ $globalCfg ? number_format($globalCfg->$campo, 0, ',', '.') : '0' }}"
+                class="input-miles"
                 style="width:110px;padding:0.38rem 0.5rem;border:1px solid #cbd5e1;border-radius:6px;font-size:0.83rem;font-family:monospace;text-align:right;">
           </div>
         </td>
@@ -246,31 +306,14 @@
           <div style="display:flex;align-items:center;justify-content:flex-end;gap:0.25rem;">
             <input type="number" step="1" min="0" max="100"
                 name="configs[global][dist_admon_pct]"
-                value="{{ $globalCfg?->dist_admon_pct ?? 0 }}"
+                value="{{ intval($globalCfg?->dist_admon_pct ?? 0) }}"
                 style="width:70px;padding:0.38rem 0.5rem;border:1.5px solid #c4b5fd;border-radius:6px;font-size:0.83rem;font-family:monospace;text-align:right;background:#faf5ff;">
             <span style="color:#7c3aed;font-size:0.75rem;">%</span>
           </div>
         </td>
-        {{-- % Retiro Afil --}}
-        <td style="padding:0.5rem 0.75rem;text-align:right;">
-          <div style="display:flex;align-items:center;justify-content:flex-end;gap:0.25rem;">
-            <input type="number" step="1" min="0" max="100"
-                name="configs[global][dist_retiro_pct]"
-                value="{{ $globalCfg?->dist_retiro_pct ?? 0 }}"
-                style="width:70px;padding:0.38rem 0.5rem;border:1.5px solid #bae6fd;border-radius:6px;font-size:0.83rem;font-family:monospace;text-align:right;background:#f0f9ff;">
-            <span style="color:#0369a1;font-size:0.75rem;">%</span>
-          </div>
-        </td>
-        {{-- Seguro --}}
-        <td style="padding:0.5rem 0.75rem;text-align:right;">
-          <div style="display:flex;align-items:center;justify-content:flex-end;gap:0.25rem;">
-            <span style="color:#64748b;font-size:0.75rem;">$</span>
-            <input type="number" step="100" min="0"
-                name="configs[global][seguro_valor]"
-                value="{{ $globalCfg ? $globalCfg->seguro_valor : 0 }}"
-                style="width:110px;padding:0.38rem 0.5rem;border:1px solid #cbd5e1;border-radius:6px;font-size:0.83rem;font-family:monospace;text-align:right;">
-          </div>
-        </td>
+        {{-- % Retiro Afil (oculto, se conserva el valor) --}}
+        <input type="hidden" name="configs[global][dist_retiro_pct]" value="{{ intval($globalCfg?->dist_retiro_pct ?? 0) }}">
+        {{-- Seguro global ahora en card Parámetros Especiales (hidden aquí para no duplicar) --}}
         <td style="padding:0.5rem 0.75rem;text-align:center;">
           <select name="configs[global][encargado_default_id]"
               style="padding:0.38rem 0.5rem;border:1px solid #cbd5e1;border-radius:6px;font-size:0.78rem;background:#fff;max-width:140px;">
@@ -286,23 +329,18 @@
       @foreach($planes as $plan)
       @php $cfg = $configs[$plan->id] ?? null; @endphp
       <tr style="border-bottom:1px solid #f1f5f9;" onmouseover="this.style.background='#fafbff'" onmouseout="this.style.background=''">
-        <td style="padding:0.6rem 0.75rem;">
-          <div style="font-weight:600;color:#0f172a;">{{ $plan->nombre }}</div>
-          <div style="font-size:0.67rem;color:#94a3b8;margin-top:0.15rem;">
-            @if($plan->incluye_eps) <span style="background:#dbeafe;color:#1d4ed8;padding:0 0.3rem;border-radius:3px;">EPS</span> @endif
-            @if($plan->incluye_arl) <span style="background:#d1fae5;color:#065f46;padding:0 0.3rem;border-radius:3px;">ARL</span> @endif
-            @if($plan->incluye_pension) <span style="background:#ede9fe;color:#6d28d9;padding:0 0.3rem;border-radius:3px;">AFP</span> @endif
-            @if($plan->incluye_caja) <span style="background:#fef3c7;color:#92400e;padding:0 0.3rem;border-radius:3px;">CCF</span> @endif
-          </div>
+        <td style="padding:0.55rem 0.75rem;white-space:nowrap;">
+          <span style="font-weight:600;color:#0f172a;font-size:0.82rem;">{{ $plan->nombre }}</span>
         </td>
         @foreach(['administracion','admon_asesor','costo_afiliacion'] as $campo)
         <td style="padding:0.5rem 0.75rem;text-align:right;">
           <div style="display:flex;align-items:center;justify-content:flex-end;gap:0.25rem;">
             <span style="color:#94a3b8;font-size:0.75rem;">$</span>
-            <input type="number" step="100" min="0"
+            <input type="text"
                 name="configs[{{ $plan->id }}][{{ $campo }}]"
-                value="{{ $cfg ? $cfg->$campo : '' }}"
-                placeholder="{{ $globalCfg ? $globalCfg->$campo : '0' }}"
+                value="{{ $cfg ? number_format($cfg->$campo, 0, ',', '.') : '' }}"
+                placeholder="{{ $globalCfg ? number_format($globalCfg->$campo, 0, ',', '.') : '0' }}"
+                class="input-miles"
                 style="width:110px;padding:0.38rem 0.5rem;border:1px solid #e2e8f0;border-radius:6px;font-size:0.83rem;font-family:monospace;text-align:right;background:{{ $cfg ? '#fff' : '#f8fafc' }};"
                 onfocus="this.style.borderColor='#3b82f6';this.style.background='#fff'" onblur="this.style.borderColor='#e2e8f0'">
           </div>
@@ -313,37 +351,17 @@
           <div style="display:flex;align-items:center;justify-content:flex-end;gap:0.25rem;">
             <input type="number" step="1" min="0" max="100"
                 name="configs[{{ $plan->id }}][dist_admon_pct]"
-                value="{{ $cfg?->dist_admon_pct ?? '' }}"
-                placeholder="{{ $globalCfg?->dist_admon_pct ?? '0' }}"
+                value="{{ $cfg?->dist_admon_pct !== null ? intval($cfg->dist_admon_pct) : '' }}"
+                placeholder="{{ intval($globalCfg?->dist_admon_pct ?? 0) }}"
                 style="width:70px;padding:0.38rem 0.5rem;border:1.5px solid #e2e8f0;border-radius:6px;font-size:0.83rem;font-family:monospace;text-align:right;background:{{ $cfg?->dist_admon_pct ? '#faf5ff' : '#f8fafc' }};"
                 onfocus="this.style.borderColor='#7c3aed';this.style.background='#faf5ff'" onblur="this.style.borderColor='#e2e8f0'">
             <span style="color:#7c3aed;font-size:0.75rem;">%</span>
           </div>
         </td>
-        {{-- % Retiro Afil por plan --}}
-        <td style="padding:0.5rem 0.75rem;text-align:right;">
-          <div style="display:flex;align-items:center;justify-content:flex-end;gap:0.25rem;">
-            <input type="number" step="1" min="0" max="100"
-                name="configs[{{ $plan->id }}][dist_retiro_pct]"
-                value="{{ $cfg?->dist_retiro_pct ?? '' }}"
-                placeholder="{{ $globalCfg?->dist_retiro_pct ?? '0' }}"
-                style="width:70px;padding:0.38rem 0.5rem;border:1.5px solid #e2e8f0;border-radius:6px;font-size:0.83rem;font-family:monospace;text-align:right;background:{{ $cfg?->dist_retiro_pct ? '#f0f9ff' : '#f8fafc' }};"
-                onfocus="this.style.borderColor='#0369a1';this.style.background='#f0f9ff'" onblur="this.style.borderColor='#e2e8f0'">
-            <span style="color:#0369a1;font-size:0.75rem;">%</span>
-          </div>
-        </td>
-        {{-- Seguro --}}
-        <td style="padding:0.5rem 0.75rem;text-align:right;">
-          <div style="display:flex;align-items:center;justify-content:flex-end;gap:0.25rem;">
-            <span style="color:#94a3b8;font-size:0.75rem;">$</span>
-            <input type="number" step="100" min="0"
-                name="configs[{{ $plan->id }}][seguro_valor]"
-                value="{{ $cfg ? $cfg->seguro_valor : '' }}"
-                placeholder="{{ $globalCfg ? $globalCfg->seguro_valor : '0' }}"
-                style="width:110px;padding:0.38rem 0.5rem;border:1px solid #e2e8f0;border-radius:6px;font-size:0.83rem;font-family:monospace;text-align:right;background:{{ $cfg ? '#fff' : '#f8fafc' }};"
-                onfocus="this.style.borderColor='#3b82f6';this.style.background='#fff'" onblur="this.style.borderColor='#e2e8f0'">
-          </div>
-        </td>
+        {{-- % Retiro Afil (oculto, conserva valor) --}}
+        <input type="hidden" name="configs[{{ $plan->id }}][dist_retiro_pct]" value="{{ $cfg?->dist_retiro_pct !== null ? intval($cfg->dist_retiro_pct) : '' }}">
+        {{-- Seguro por plan (oculto, se maneja globalmente) --}}
+        <input type="hidden" name="configs[{{ $plan->id }}][seguro_valor]" value="{{ $cfg ? intval($cfg->seguro_valor) : '' }}">
         <td style="padding:0.5rem 0.75rem;text-align:center;">
           <select name="configs[{{ $plan->id }}][encargado_default_id]"
               style="padding:0.38rem 0.5rem;border:1px solid #e2e8f0;border-radius:6px;font-size:0.78rem;background:#fff;max-width:140px;">
@@ -377,4 +395,47 @@
 
 </form>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const inputs = document.querySelectorAll('.input-miles');
+    
+    function formatNumber(val) {
+        val = val.toString().replace(/\D/g, '');
+        return val.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    }
+    
+    inputs.forEach(input => {
+        // Al escribir, formatear con puntos de miles
+        input.addEventListener('input', function(e) {
+            let cursorPosition = e.target.selectionStart;
+            let originalLength = e.target.value.length;
+            
+            let valClean = e.target.value.replace(/\D/g, '');
+            if (valClean === '') {
+                e.target.value = '';
+                return;
+            }
+            
+            let formatted = formatNumber(valClean);
+            e.target.value = formatted;
+            
+            // Ajustar posición del cursor tras formatear
+            let newLength = formatted.length;
+            let diff = newLength - originalLength;
+            e.target.setSelectionRange(cursorPosition + diff, cursorPosition + diff);
+        });
+    });
+    
+    // Antes de enviar el formulario, limpiar los puntos para que a Laravel le lleguen números
+    const form = document.querySelector('form');
+    if (form) {
+        form.addEventListener('submit', function() {
+            inputs.forEach(input => {
+                input.value = input.value.replace(/\D/g, '');
+            });
+        });
+    }
+});
+</script>
 @endsection

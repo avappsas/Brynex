@@ -220,10 +220,54 @@ table.aprobados th { color:#64748b; font-weight:600; font-size:.72rem; text-tran
                                 <td>{{ $ap->fuente }}</td>
                                 <td>{{ $ap->vigente_desde?->format('d/m/Y') ?? '—' }}</td>
                                 <td>{{ $ap->vigente_hasta?->format('d/m/Y') ?? 'Vigente' }}</td>
-                                <td>
-                                    <form method="POST" action="{{ route('brynex.ia.conocimiento.eliminar', $ap->id) }}" onsubmit="return confirm('¿Retirar este conocimiento?')">
+                                <td style="white-space:nowrap;">
+                                    <button type="button" class="btn btn-outline" style="padding:.25rem .6rem;font-size:.72rem;"
+                                        onclick="var r=document.getElementById('edit-{{ $ap->id }}'); r.style.display = r.style.display==='table-row' ? 'none' : 'table-row';">
+                                        Ver / Editar
+                                    </button>
+                                    <form method="POST" action="{{ route('brynex.ia.conocimiento.eliminar', $ap->id) }}" onsubmit="return confirm('¿Retirar este conocimiento?')" style="display:inline;">
                                         @csrf
                                         <button type="submit" class="btn btn-danger" style="padding:.25rem .6rem;font-size:.72rem;">Retirar</button>
+                                    </form>
+                                </td>
+                            </tr>
+                            <tr id="edit-{{ $ap->id }}" style="display:none;">
+                                <td colspan="7" style="background:#f8fafc;">
+                                    <form method="POST" action="{{ route('brynex.ia.conocimiento.guardar') }}">
+                                        @csrf
+                                        <input type="hidden" name="id" value="{{ $ap->id }}">
+                                        <div class="form-group">
+                                            <label class="form-label">Título</label>
+                                            <input type="text" name="titulo" class="form-control" value="{{ $ap->titulo }}" required>
+                                        </div>
+                                        <div class="form-group">
+                                            <label class="form-label">Contenido</label>
+                                            <textarea name="contenido" class="form-control" required>{{ $ap->contenido }}</textarea>
+                                        </div>
+                                        <div class="row-grid" style="margin-bottom:.75rem;">
+                                            <div class="form-group" style="margin-bottom:0;">
+                                                <label class="form-label">Aplica a</label>
+                                                <select name="aliado_id" class="form-control">
+                                                    <option value="">General (todos los aliados)</option>
+                                                    @foreach($aliados as $a)
+                                                        <option value="{{ $a->id }}" @selected($ap->aliado_id == $a->id)>{{ $a->nombre }}</option>
+                                                    @endforeach
+                                                </select>
+                                            </div>
+                                            <div class="form-group" style="margin-bottom:0;">
+                                                <label class="form-label">Categoría</label>
+                                                <input type="text" name="categoria" class="form-control" value="{{ $ap->categoria }}">
+                                            </div>
+                                            <div class="form-group" style="margin-bottom:0;">
+                                                <label class="form-label">Vigente desde</label>
+                                                <input type="date" name="vigente_desde" class="form-control" value="{{ $ap->vigente_desde?->toDateString() }}">
+                                            </div>
+                                            <div class="form-group" style="margin-bottom:0;">
+                                                <label class="form-label">Vigente hasta</label>
+                                                <input type="date" name="vigente_hasta" class="form-control" value="{{ $ap->vigente_hasta?->toDateString() }}">
+                                            </div>
+                                        </div>
+                                        <button type="submit" class="btn btn-success">Guardar cambios</button>
                                     </form>
                                 </td>
                             </tr>

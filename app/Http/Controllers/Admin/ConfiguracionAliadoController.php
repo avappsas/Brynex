@@ -7,8 +7,10 @@ use App\Models\ConfiguracionAliado;
 use App\Models\ArlTarifa;
 use App\Models\ConfiguracionBrynex;
 use App\Models\PlanContrato;
+use App\Models\Aliado;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 class ConfiguracionAliadoController extends Controller
 {
@@ -55,8 +57,11 @@ class ConfiguracionAliadoController extends Controller
         // Config global Brynex (salario mínimo, porcentajes SS)
         $configBrynex = ConfiguracionBrynex::all()->keyBy('clave');
 
+        // Aliado activo (para logo y parámetros especiales)
+        $aliadoActual = Aliado::find($alidoId);
+
         return view('admin.configuracion.index', compact(
-            'planes', 'usuarios', 'configs', 'arlAliado', 'arlGlobal', 'configBrynex'
+            'planes', 'usuarios', 'configs', 'arlAliado', 'arlGlobal', 'configBrynex', 'aliadoActual'
         ));
     }
 
@@ -82,6 +87,7 @@ class ConfiguracionAliadoController extends Controller
             'configs.*.mora_segundo'            => 'nullable|numeric|min:0',
             'arl.*.porcentaje'                  => 'nullable|numeric|min:0|max:100',
             'brynex.*'                          => 'nullable|numeric|min:0',
+            'seguro_logo'                       => 'nullable|image|mimes:jpg,jpeg,png,svg|max:2048',
         ]);
 
         DB::transaction(function () use ($request, $alidoId) {
@@ -135,6 +141,22 @@ class ConfiguracionAliadoController extends Controller
                 }
             }
         });
+
+        // ── 4. Logo de la aseguradora (fuera de la transacción para manejar archivos) ──
+        if ($request->hasFile('seguro_logo') && $request->file('seguro_logo')->isValid()) {
+            $configGlobal = ConfiguracionAliado::where('aliado_id', $alidoId)
+                ->whereNull('plan_id')
+                ->first();
+
+            if ($configGlobal) {
+                // Eliminar logo anterior si existe
+                if ($configGlobal->seguro_logo && Storage::disk('public')->exists($configGlobal->seguro_logo)) {
+                    Storage::disk('public')->delete($configGlobal->seguro_logo);
+                }
+                $path = $request->file('seguro_logo')->store('aliados/seguros', 'public');
+                $configGlobal->update(['seguro_logo' => $path]);
+            }
+        }
 
         return redirect()->route('admin.configuracion.index')
             ->with('success', 'Configuración guardada correctamente.');
