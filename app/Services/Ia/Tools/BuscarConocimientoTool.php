@@ -3,6 +3,7 @@
 namespace App\Services\Ia\Tools;
 
 use App\Models\IaConocimiento;
+use Illuminate\Support\Str;
 
 class BuscarConocimientoTool implements IaToolInterface
 {
@@ -34,37 +35,45 @@ class BuscarConocimientoTool implements IaToolInterface
         $consulta = trim($input['consulta'] ?? '');
         $alidoId  = $contexto['aliado_id'] ?? null;
 
-        // Buscar por PALABRAS (AND), no por la frase completa: un cliente real nunca escribe
-        // la consulta con el mismo orden/forma exacta del texto guardado (ej. "nivel de riesgo
-        // arl" vs. contenido que dice "...ARL... el nivel de riesgo..."). Exigir cada palabra
-        // por separado (en título O contenido) es mucho más tolerante que un LIKE de la frase
-        // entera. COLLATE ...CI_AI (accent-insensitive) porque la collation por defecto de la
-        // BD es CI_AS (sensible a tildes) y "compensacion" no encontraría "compensación".
+        // Buscar por PALABRAS, no por la frase completa: un cliente real nunca escribe la
+        // consulta con el mismo orden/forma exacta del texto guardado. Se filtran muletillas
+        // conocidas, pero exigir el 100% de las palabras restantes sigue siendo frágil — una
+        // sola palabra de cortesía que no anticipamos ("porfa", "confirma") rompía el match
+        // entero. Por eso ahora basta con que aparezca la MAYORÍA (60%, mínimo 1).
+        //
+        // El match se hace en PHP (no SQL) para poder normalizar tildes con Str::ascii() de
+        // forma portable, sin depender de un COLLATE específico de SQL Server — la base de
+        // conocimiento es pequeña (decenas de filas), así que traer todo y filtrar aquí es
+        // más simple y mantenible que pelear con collations.
         $stopwords = ['de', 'la', 'el', 'los', 'las', 'que', 'es', 'y', 'a', 'en', 'del', 'un',
-            'una', 'para', 'con', 'se', 'su', 'lo', 'al', 'mi', 'como', 'qué', 'cómo', 'soy'];
+            'una', 'para', 'con', 'se', 'su', 'lo', 'al', 'mi', 'como', 'qué', 'cómo', 'soy',
+            'me', 'te', 'porfa', 'porfavor', 'favor', 'puedes', 'podrias', 'podrías',
+            'confirma', 'confirmar', 'dime', 'ayudame', 'ayúdame', 'ayuda', 'necesito',
+            'quiero', 'quisiera', 'sabes', 'hola'];
 
         $palabras = collect(preg_split('/\s+/', $consulta))
-            ->map(fn ($w) => trim($w, "¿?¡!.,"))
-            ->filter(fn ($w) => $w !== '' && !in_array(mb_strtolower($w), $stopwords, true))
+            ->map(fn ($w) => Str::ascii(mb_strtolower(trim($w, "¿?¡!.,"))))
+            ->filter(fn ($w) => $w !== '' && !in_array($w, $stopwords, true))
             ->values();
 
         if ($palabras->isEmpty()) {
-            $palabras = collect([$consulta])->filter();
+            $palabras = collect([Str::ascii(mb_strtolower($consulta))])->filter();
         }
 
-        $query = IaConocimiento::vigente($alidoId);
-        foreach ($palabras as $palabra) {
-            $like = '%' . $palabra . '%';
-            $query->where(function ($q) use ($like) {
-                $q->whereRaw('titulo COLLATE Modern_Spanish_CI_AI LIKE ?', [$like])
-                  ->orWhereRaw('contenido COLLATE Modern_Spanish_CI_AI LIKE ?', [$like]);
-            });
-        }
+        $umbral = max(1, (int) ceil($palabras->count() * 0.6));
 
-        $resultados = $query
-            ->orderByDesc('vigente_desde')
-            ->limit(5)
-            ->get(['titulo', 'contenido', 'categoria', 'vigente_desde']);
+        $resultados = IaConocimiento::vigente($alidoId)
+            ->get(['titulo', 'contenido', 'categoria', 'vigente_desde'])
+            ->map(function ($c) use ($palabras) {
+                $texto = Str::ascii(mb_strtolower($c->titulo . ' ' . $c->contenido));
+                $matchCount = $palabras->filter(fn ($p) => str_contains($texto, $p))->count();
+                return ['modelo' => $c, 'match_count' => $matchCount];
+            })
+            ->filter(fn ($item) => $item['match_count'] >= $umbral)
+            ->sortByDesc('match_count')
+            ->take(5)
+            ->pluck('modelo')
+            ->values();
 
         if ($resultados->isEmpty()) {
             return [
