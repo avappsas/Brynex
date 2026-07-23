@@ -264,17 +264,17 @@
                 <h3>💵 Registrar Abono / Pago</h3>
                 <button @click="openAbono = false" class="modal-close-bx">&times;</button>
             </div>
-            <form action="{{ route('finanzas.prestamos.pago', $prestamo->id) }}" method="POST" enctype="multipart/form-data">
+            <form action="{{ route('finanzas.prestamos.pago', $prestamo->id) }}" method="POST" enctype="multipart/form-data" onsubmit="return confirmarMonto(this, 'monto', 'Vas a registrar un abono de')">
                 @csrf
                 <div class="modal-body-bx">
                     <div class="form-group-bx">
                         <label class="form-label-bx">Fecha de Recepción</label>
                         <input type="date" name="fecha" value="{{ now()->toDateString() }}" class="form-input-bx" required>
                     </div>
-                    
+
                     <div class="form-group-bx" style="margin-top:1rem;">
                         <label class="form-label-bx">Monto Recibido ($ COP)</label>
-                        <input type="number" name="monto" placeholder="Ej: 200000" class="form-input-bx" required min="1">
+                        <input type="number" name="monto" placeholder="Ej: 200000" class="form-input-bx" required min="1" autocomplete="off">
                         <small style="color:#64748b; font-size:0.7rem; display:block; margin-top:0.25rem;">
                             El sistema abonará este pago automáticamente priorizando intereses acumulados y luego abono a capital.
                         </small>
@@ -467,17 +467,17 @@
                 <h3>➕ Anexar Valor (Capital)</h3>
                 <button @click="openAnexar = false" class="modal-close-bx">&times;</button>
             </div>
-            <form action="{{ route('finanzas.prestamos.anexar', $prestamo->id) }}" method="POST" enctype="multipart/form-data">
+            <form action="{{ route('finanzas.prestamos.anexar', $prestamo->id) }}" method="POST" enctype="multipart/form-data" onsubmit="return confirmarMonto(this, 'monto', 'Vas a anexar un valor adicional de')">
                 @csrf
                 <div class="modal-body-bx">
                     <div class="form-group-bx">
                         <label class="form-label-bx">Fecha del Desembolso Adicional</label>
                         <input type="date" name="fecha" value="{{ now()->toDateString() }}" class="form-input-bx" required>
                     </div>
-                    
+
                     <div class="form-group-bx" style="margin-top:1rem;">
                         <label class="form-label-bx">Monto Adicional ($ COP)</label>
-                        <input type="number" name="monto" placeholder="Ej: 500000" class="form-input-bx" required min="1">
+                        <input type="number" name="monto" placeholder="Ej: 500000" class="form-input-bx" required min="1" autocomplete="off">
                         <small style="color:#64748b; font-size:0.7rem; display:block; margin-top:0.25rem;">
                             Este valor se sumará al capital original y al saldo actual del préstamo.
                         </small>
@@ -528,17 +528,17 @@
                 <button @click="openEditarMov = false" class="modal-close-bx">&times;</button>
             </div>
             
-            <form :action="'{{ route('finanzas.prestamos.movimiento.update', '') }}/' + movEditar.id" method="POST" enctype="multipart/form-data">
+            <form :action="'{{ route('finanzas.prestamos.movimiento.update', '') }}/' + movEditar.id" method="POST" enctype="multipart/form-data" onsubmit="return confirmarMonto(this, 'monto', 'Vas a dejar este movimiento en')">
                 @csrf
                 <div class="modal-body-bx">
                     <div class="form-group-bx">
                         <label class="form-label-bx">Fecha del Movimiento</label>
                         <input type="date" name="fecha" x-model="movEditar.fecha" class="form-input-bx" required>
                     </div>
-                    
+
                     <div class="form-group-bx" style="margin-top:1rem;">
                         <label class="form-label-bx">Monto ($ COP)</label>
-                        <input type="number" name="monto" x-model="movEditar.monto" class="form-input-bx" required min="0">
+                        <input type="number" name="monto" x-model="movEditar.monto" class="form-input-bx" required min="0" autocomplete="off">
                         <small style="color:#64748b; font-size:0.7rem; display:block; margin-top:0.25rem;">
                             ⚠️ Modificar el monto recalculará automáticamente todos los saldos posteriores.
                         </small>

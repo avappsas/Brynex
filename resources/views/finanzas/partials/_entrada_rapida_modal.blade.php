@@ -23,9 +23,9 @@
                 })->first()?->id;
         @endphp
 
-        <form action="{{ route('finanzas.gastos.store') }}" method="POST">
+        <form action="{{ route('finanzas.gastos.store') }}" method="POST" onsubmit="return confirmarMonto(this, 'monto', 'Vas a registrar una entrada de')">
             @csrf
-            
+
             {{-- Campos ocultos para forzar ingreso esporádico --}}
             <input type="hidden" name="tipo_movimiento" value="ingreso_esporadico">
             <input type="hidden" name="categoria_id" value="{{ $catEsporadicaId }}">
@@ -41,7 +41,7 @@
                 {{-- Monto --}}
                 <div class="form-group-bx">
                     <label class="form-label-bx">Monto ($ COP)</label>
-                    <input type="number" name="monto" placeholder="Ej: 380000" class="form-input-bx" required min="1">
+                    <input type="number" name="monto" placeholder="Ej: 380000" class="form-input-bx" required min="1" autocomplete="off">
                 </div>
 
                 {{-- Cuenta / Bolsillo --}}

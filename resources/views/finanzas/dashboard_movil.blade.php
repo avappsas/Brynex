@@ -1062,7 +1062,7 @@
                     <button @click="openGasto = false" class="bs-close">&times;</button>
                 </div>
                 
-                <form action="{{ route('finanzas.gastos.store') }}" method="POST" enctype="multipart/form-data" @submit="cargando = true">
+                <form action="{{ route('finanzas.gastos.store') }}" method="POST" enctype="multipart/form-data" @submit="if(!confirmarMonto($el, 'monto', 'Vas a registrar un movimiento de')){ $event.preventDefault(); } else { cargando = true; }">
                     @csrf
                     <div class="bs-body">
                         
@@ -1080,6 +1080,7 @@
                                        placeholder="Ej: 50.000" 
                                        class="form-input-bx" 
                                        style="font-size: 1.15rem; font-weight: 700; color: #f8fafc;"
+                                       autocomplete="off"
                                        required>
                                 <input type="hidden" name="monto" :value="montoLimpio">
                             </div>
@@ -1303,7 +1304,7 @@
                         })->first()?->id;
                 @endphp
 
-                <form action="{{ route('finanzas.gastos.store') }}" method="POST" enctype="multipart/form-data" @submit="cargando = true">
+                <form action="{{ route('finanzas.gastos.store') }}" method="POST" enctype="multipart/form-data" @submit="if(!confirmarMonto($el, 'monto', 'Vas a registrar una entrada de')){ $event.preventDefault(); } else { cargando = true; }">
                     @csrf
                     
                     {{-- Campos ocultos obligatorios --}}
@@ -1326,6 +1327,7 @@
                                        placeholder="Ej: 380.000" 
                                        class="form-input-bx" 
                                        style="font-size: 1.15rem; font-weight: 700; color: #f8fafc;"
+                                       autocomplete="off"
                                        required>
                                 <input type="hidden" name="monto" :value="montoLimpio">
                             </div>
@@ -1591,7 +1593,7 @@
                     <button @click="openEditarGasto = false" class="bs-close">&times;</button>
                 </div>
                 
-                <form :action="'/finanzas/gastos/' + selectedGasto.id" method="POST" enctype="multipart/form-data" @submit="cargando = true">
+                <form :action="'/finanzas/gastos/' + selectedGasto.id" method="POST" enctype="multipart/form-data" @submit="if(!confirmarMonto($el, 'monto', 'Vas a dejar este movimiento en')){ $event.preventDefault(); } else { cargando = true; }">
                     @csrf
                     @method('PUT')
                     <div class="bs-body">
@@ -1610,6 +1612,7 @@
                                        placeholder="Ej: 50.000" 
                                        class="form-input-bx" 
                                        style="font-size: 1.15rem; font-weight: 700; color: #f8fafc;"
+                                       autocomplete="off"
                                        required>
                                 <input type="hidden" name="monto" :value="montoLimpio">
                             </div>

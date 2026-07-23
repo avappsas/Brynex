@@ -147,7 +147,7 @@
                 <h3>🔧 Registrar Gasto Asociado</h3>
                 <button @click="openGasto = false" class="modal-close-bx">&times;</button>
             </div>
-            <form action="{{ route('finanzas.patrimonio.gasto', $patrimonio->id) }}" method="POST">
+            <form action="{{ route('finanzas.patrimonio.gasto', $patrimonio->id) }}" method="POST" onsubmit="return confirmarMonto(this, 'monto', 'Vas a registrar un gasto de')">
                 @csrf
                 <div class="modal-body-bx">
                     <div class="form-group-bx">
@@ -160,7 +160,7 @@
                     </div>
                     <div class="form-group-bx" style="margin-top:1rem;">
                         <label class="form-label-bx">Monto ($ COP)</label>
-                        <input type="number" name="monto" placeholder="Ej: 650000" class="form-input-bx" required min="1">
+                        <input type="number" name="monto" placeholder="Ej: 650000" class="form-input-bx" required min="1" autocomplete="off">
                         <small style="color:#64748b; font-size:0.7rem;">Este gasto se creará automáticamente también en la tabla general de gastos.</small>
                     </div>
                     <div class="form-group-bx" style="margin-top:1rem;">

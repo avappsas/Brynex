@@ -301,7 +301,7 @@
                       }
                   }"
                   @paste.window="handlePaste($event)"
-                  @submit="cargando = true"
+                  @submit="if(!confirmarMonto($el, 'monto', 'Vas a registrar un movimiento de')){ $event.preventDefault(); } else { cargando = true; }"
             >
                 @csrf
                 <div class="modal-body-bx">
@@ -320,6 +320,7 @@
                                    placeholder="Ej: 50.000" 
                                    class="form-input-bx" 
                                    style="font-size: 1.15rem; font-weight: 700; color: #1e293b;"
+                                   autocomplete="off"
                                    required>
                             <input type="hidden" name="monto" :value="montoLimpio">
                         </div>
@@ -584,7 +585,7 @@
                       }
                   }"
                   @paste.window="handlePaste($event)"
-                  @submit="cargando = true"
+                  @submit="if(!confirmarMonto($el, 'monto', 'Vas a registrar un movimiento de')){ $event.preventDefault(); } else { cargando = true; }"
             >
                 @csrf
                 @method('PUT')
@@ -604,6 +605,7 @@
                                    placeholder="Ej: 50.000" 
                                    class="form-input-bx" 
                                    style="font-size: 1.15rem; font-weight: 700; color: #1e293b;"
+                                   autocomplete="off"
                                    required>
                             <input type="hidden" name="monto" :value="montoLimpio">
                         </div>

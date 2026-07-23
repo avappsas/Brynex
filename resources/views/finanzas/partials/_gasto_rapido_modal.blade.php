@@ -108,10 +108,10 @@ class="modal-overlay-bx"
             <button @click="openGastoRapido = false" class="modal-close-bx" style="color:rgba(255,255,255,0.7);">&times;</button>
         </div>
 
-        <form action="{{ route('finanzas.gastos.store') }}" method="POST" enctype="multipart/form-data" @submit="cargando = true">
+        <form action="{{ route('finanzas.gastos.store') }}" method="POST" enctype="multipart/form-data" @submit="if(!confirmarMonto($el, 'monto', 'Vas a registrar un movimiento de')){ $event.preventDefault(); } else { cargando = true; }">
             @csrf
             <div class="modal-body-bx" style="display:flex; flex-direction:column; gap:1rem;">
-                
+
                 {{-- Fecha y Monto en la misma fila --}}
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                     {{-- Fecha --}}
@@ -123,12 +123,13 @@ class="modal-overlay-bx"
                     {{-- Monto --}}
                     <div class="form-group-bx">
                         <label class="form-label-bx">Monto ($ COP)</label>
-                        <input type="text" 
-                               x-model="montoFormateado" 
-                               @input="formatearMonto()" 
-                               placeholder="Ej: 50.000" 
-                               class="form-input-bx" 
+                        <input type="text"
+                               x-model="montoFormateado"
+                               @input="formatearMonto()"
+                               placeholder="Ej: 50.000"
+                               class="form-input-bx"
                                style="font-size: 1.15rem; font-weight: 700; color: #1e293b;"
+                               autocomplete="off"
                                required>
                         <input type="hidden" name="monto" :value="montoLimpio">
                     </div>

@@ -167,7 +167,7 @@
                     </div>
                     <div class="form-group-bx" style="margin-top:1rem;">
                         <label class="form-label-bx">Saldo inicial ($ COP)</label>
-                        <input type="number" name="saldo_inicial" value="0" step="0.01" class="form-input-bx">
+                        <input type="number" name="saldo_inicial" value="0" step="0.01" class="form-input-bx" autocomplete="off">
                         <small style="color:#64748b; font-size:0.7rem;">Lo que hay HOY en esta cuenta antes de empezar a registrar movimientos en ella.</small>
                     </div>
                 </div>
@@ -215,7 +215,7 @@
                     </div>
                     <div class="form-group-bx" style="margin-top:1rem;">
                         <label class="form-label-bx">Saldo inicial ($ COP)</label>
-                        <input type="number" name="saldo_inicial" x-model="selectedCuenta.saldo_inicial" step="0.01" class="form-input-bx">
+                        <input type="number" name="saldo_inicial" x-model="selectedCuenta.saldo_inicial" step="0.01" class="form-input-bx" autocomplete="off">
                     </div>
                     <div class="form-group-bx" style="margin-top:1rem;">
                         <label class="form-label-bx">Estado</label>
@@ -240,7 +240,7 @@
                 <h3>🔁 Transferir entre Cuentas</h3>
                 <button @click="openTransferir = false" class="modal-close-bx">&times;</button>
             </div>
-            <form action="{{ route('finanzas.cuentas.transferir') }}" method="POST">
+            <form action="{{ route('finanzas.cuentas.transferir') }}" method="POST" onsubmit="return confirmarMonto(this, 'monto', 'Vas a transferir')">
                 @csrf
                 <div class="modal-body-bx">
                     <div class="form-group-bx">
@@ -262,7 +262,7 @@
                     <div style="display:flex; gap:0.5rem; margin-top:1rem;">
                         <div class="form-group-bx" style="flex:1;">
                             <label class="form-label-bx">Monto ($ COP)</label>
-                            <input type="number" name="monto" placeholder="Ej: 500000" min="1" class="form-input-bx" required>
+                            <input type="number" name="monto" placeholder="Ej: 500000" min="1" class="form-input-bx" required autocomplete="off">
                         </div>
                         <div class="form-group-bx" style="flex:1;">
                             <label class="form-label-bx">Fecha</label>

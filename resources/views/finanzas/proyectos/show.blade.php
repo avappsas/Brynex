@@ -214,7 +214,7 @@
                 <h3>💸 Registrar Movimiento</h3>
                 <button @click="openMovimiento = false" class="modal-close-bx">&times;</button>
             </div>
-            <form action="{{ route('finanzas.proyectos.movimiento', $proyecto->id) }}" method="POST">
+            <form action="{{ route('finanzas.proyectos.movimiento', $proyecto->id) }}" method="POST" onsubmit="return confirmarMonto(this, 'monto', 'Vas a registrar un movimiento de')">
                 @csrf
                 <div class="modal-body-bx">
                     <div class="form-group-bx">
@@ -230,7 +230,7 @@
                     </div>
                     <div class="form-group-bx" style="margin-top:1rem;">
                         <label class="form-label-bx">Monto ($ COP)</label>
-                        <input type="number" name="monto" placeholder="Ej: 150000" class="form-input-bx" required min="1">
+                        <input type="number" name="monto" placeholder="Ej: 150000" class="form-input-bx" required min="1" autocomplete="off">
                         <small style="color:#64748b; font-size:0.7rem;">El neto del mes del proyecto (entradas - salidas) se suma automáticamente a la fuente PROYECTOS de las entradas globales.</small>
                     </div>
                     @if(isset($cuentas) && $cuentas->isNotEmpty())
@@ -263,7 +263,7 @@
                 <h3>✏️ Editar Movimiento</h3>
                 <button @click="openEditar = false" class="modal-close-bx">&times;</button>
             </div>
-            <form :action="'{{ route('finanzas.proyectos.movimiento.update', 'ID_TEMPORAL') }}'.replace('ID_TEMPORAL', itemEditar.id)" method="POST">
+            <form :action="'{{ route('finanzas.proyectos.movimiento.update', 'ID_TEMPORAL') }}'.replace('ID_TEMPORAL', itemEditar.id)" method="POST" onsubmit="return confirmarMonto(this, 'monto', 'Vas a dejar este movimiento en')">
                 @csrf
                 @method('PUT')
                 <div class="modal-body-bx">
@@ -280,7 +280,7 @@
                     </div>
                     <div class="form-group-bx" style="margin-top:1rem;">
                         <label class="form-label-bx">Monto ($ COP)</label>
-                        <input type="number" name="monto" x-model="itemEditar.monto" placeholder="Ej: 150000" class="form-input-bx" required min="1">
+                        <input type="number" name="monto" x-model="itemEditar.monto" placeholder="Ej: 150000" class="form-input-bx" required min="1" autocomplete="off">
                     </div>
                     @if(isset($cuentas) && $cuentas->isNotEmpty())
                     <div class="form-group-bx" style="margin-top:1rem;">

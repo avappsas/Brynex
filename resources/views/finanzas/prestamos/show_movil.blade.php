@@ -372,12 +372,12 @@
                 <h3>💵 Registrar Abono / Pago</h3>
                 <button @click="openAbono=false" class="bs-close">&times;</button>
             </div>
-            <form action="{{ route('finanzas.prestamos.pago', $prestamo->id) }}" method="POST" enctype="multipart/form-data" class="bs-body">
+            <form action="{{ route('finanzas.prestamos.pago', $prestamo->id) }}" method="POST" enctype="multipart/form-data" class="bs-body" onsubmit="return confirmarMonto(this, 'monto', 'Vas a registrar un abono de')">
                 @csrf
                 <div class="fg"><label>Fecha de Recepción</label><input type="date" name="fecha" value="{{ now()->toDateString() }}" required></div>
                 <div class="fg">
                     <label>Monto Recibido ($ COP)</label>
-                    <input type="number" name="monto" placeholder="Ej: 200000" required min="1">
+                    <input type="number" name="monto" placeholder="Ej: 200000" required min="1" autocomplete="off">
                     <small>Se abona primero a intereses acumulados y luego a capital.</small>
                 </div>
                 @if(isset($cuentas) && $cuentas->isNotEmpty())
@@ -524,12 +524,12 @@
                 <h3>➕ Anexar Capital</h3>
                 <button @click="openAnexar=false" class="bs-close">&times;</button>
             </div>
-            <form action="{{ route('finanzas.prestamos.anexar', $prestamo->id) }}" method="POST" enctype="multipart/form-data" class="bs-body">
+            <form action="{{ route('finanzas.prestamos.anexar', $prestamo->id) }}" method="POST" enctype="multipart/form-data" class="bs-body" onsubmit="return confirmarMonto(this, 'monto', 'Vas a anexar un valor adicional de')">
                 @csrf
                 <div class="fg"><label>Fecha Desembolso Adicional</label><input type="date" name="fecha" value="{{ now()->toDateString() }}" required></div>
                 <div class="fg">
                     <label>Monto Adicional ($ COP)</label>
-                    <input type="number" name="monto" placeholder="Ej: 500000" required min="1">
+                    <input type="number" name="monto" placeholder="Ej: 500000" required min="1" autocomplete="off">
                     <small>Este valor se suma al capital y al saldo actual del préstamo.</small>
                 </div>
                 @if(isset($cuentas) && $cuentas->isNotEmpty())
@@ -565,12 +565,12 @@
                 <h3>✏️ Editar Movimiento</h3>
                 <button @click="openMov=false" class="bs-close">&times;</button>
             </div>
-            <form :action="'{{ route('finanzas.prestamos.movimiento.update', '') }}/' + mov.id" method="POST" enctype="multipart/form-data" class="bs-body">
+            <form :action="'{{ route('finanzas.prestamos.movimiento.update', '') }}/' + mov.id" method="POST" enctype="multipart/form-data" class="bs-body" onsubmit="return confirmarMonto(this, 'monto', 'Vas a dejar este movimiento en')">
                 @csrf
                 <div class="fg"><label>Fecha del Movimiento</label><input type="date" name="fecha" x-model="mov.fecha" required></div>
                 <div class="fg">
                     <label>Monto ($ COP)</label>
-                    <input type="number" name="monto" x-model="mov.monto" required min="0">
+                    <input type="number" name="monto" x-model="mov.monto" required min="0" autocomplete="off">
                     <small>⚠️ Modificar el monto recalcula todos los saldos posteriores.</small>
                 </div>
                 <div class="fg"><label>Observaciones</label><input type="text" name="observacion" x-model="mov.obs" placeholder="Detalle del movimiento"></div>

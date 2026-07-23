@@ -127,7 +127,7 @@
                 <h3>🪙 Nueva Inversión / Adquisición</h3>
                 <button @click="openCrear = false" class="modal-close-bx">&times;</button>
             </div>
-            <form action="{{ route('finanzas.inversiones.store') }}" method="POST">
+            <form action="{{ route('finanzas.inversiones.store') }}" method="POST" onsubmit="return confirmarMonto(this, 'monto_invertido_cop', 'Vas a registrar una inversión de')">
                 @csrf
                 <div class="modal-body-bx" x-data="{ tipo: 'cripto' }">
                     <div class="form-group-bx">
@@ -150,7 +150,7 @@
                     {{-- Monto Invertido --}}
                     <div class="form-group-bx" style="margin-top:1rem;">
                         <label class="form-label-bx">Monto Invertido ($ COP)</label>
-                        <input type="number" step="any" name="monto_invertido_cop" placeholder="Ej: 2000000" class="form-input-bx" required min="1">
+                        <input type="number" step="any" name="monto_invertido_cop" placeholder="Ej: 2000000" class="form-input-bx" required min="1" autocomplete="off">
                     </div>
 
                     {{-- Cuenta de origen --}}
@@ -199,7 +199,7 @@
                 <h3>✏️ Editar Inversión</h3>
                 <button @click="openEditar = false" class="modal-close-bx">&times;</button>
             </div>
-            <form :action="'{{ route('finanzas.inversiones.index') }}/' + selectedInversion.id" method="POST">
+            <form :action="'{{ route('finanzas.inversiones.index') }}/' + selectedInversion.id" method="POST" onsubmit="return confirmarMonto(this, 'valor_actual_cop', 'Vas a dejar el valor actual en')">
                 @csrf
                 @method('PUT')
                 <div class="modal-body-bx">
@@ -217,7 +217,7 @@
                     </div>
                     <div class="form-group-bx" style="margin-top:1rem;">
                         <label class="form-label-bx">Monto Invertido ($ COP)</label>
-                        <input type="number" step="any" name="monto_invertido_cop" x-model="selectedInversion.monto_invertido_cop" class="form-input-bx" required min="0">
+                        <input type="number" step="any" name="monto_invertido_cop" x-model="selectedInversion.monto_invertido_cop" class="form-input-bx" required min="0" autocomplete="off">
                     </div>
 
                     {{-- Cripto/Trading Campos Adicionales --}}
@@ -236,7 +236,7 @@
 
                     <div class="form-group-bx" style="margin-top:1rem;" x-show="!( (selectedInversion.tipo === 'cripto' || selectedInversion.tipo === 'trading') && selectedInversion.cantidad_tokens > 0 )">
                         <label class="form-label-bx">Valor Actual ($ COP)</label>
-                        <input type="number" step="any" name="valor_actual_cop" x-model="selectedInversion.valor_actual_cop" class="form-input-bx" required min="0">
+                        <input type="number" step="any" name="valor_actual_cop" x-model="selectedInversion.valor_actual_cop" class="form-input-bx" required min="0" autocomplete="off">
                         <small style="color:#64748b; font-size:0.7rem;">Puedes forzar el valor estimado actual aquí.</small>
                     </div>
                     <div class="form-group-bx" style="margin-top:1rem;">

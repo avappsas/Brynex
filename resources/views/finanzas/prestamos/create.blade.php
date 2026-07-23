@@ -30,7 +30,7 @@
 
     {{-- Formulario --}}
     <div class="card-formulario-bx">
-        <form action="{{ route('finanzas.prestamos.store') }}" method="POST" enctype="multipart/form-data">
+        <form action="{{ route('finanzas.prestamos.store') }}" method="POST" enctype="multipart/form-data" onsubmit="return confirmarMonto(this, 'monto_original', 'Vas a registrar un préstamo por')">
             @csrf
             
             <div class="form-body-bx">
@@ -57,7 +57,7 @@
                 <div style="display:flex; gap:1rem; margin-top:1rem;">
                     <div class="form-group-bx" style="flex:1;">
                         <label class="form-label-bx">Monto Prestado ($ COP)</label>
-                        <input type="number" name="monto_original" placeholder="Ej: 1000000" class="form-input-bx" required min="1">
+                        <input type="number" name="monto_original" placeholder="Ej: 1000000" class="form-input-bx" required min="1" autocomplete="off">
                     </div>
                     <div class="form-group-bx" style="flex:1;">
                         <label class="form-label-bx">Tasa Interés Mensual (%)</label>
