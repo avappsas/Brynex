@@ -108,7 +108,7 @@ class="modal-overlay-bx"
             <button @click="openGastoRapido = false" class="modal-close-bx" style="color:rgba(255,255,255,0.7);">&times;</button>
         </div>
 
-        <form action="{{ route('finanzas.gastos.store') }}" method="POST" enctype="multipart/form-data" @submit="if(!confirmarMonto($el, 'monto', 'Vas a registrar un movimiento de')){ $event.preventDefault(); } else { cargando = true; }">
+        <form action="{{ route('finanzas.gastos.store') }}" method="POST" enctype="multipart/form-data" @submit="cargando = true">
             @csrf
             <div class="modal-body-bx" style="display:flex; flex-direction:column; gap:1rem;">
 

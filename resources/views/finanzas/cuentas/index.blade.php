@@ -240,7 +240,7 @@
                 <h3>🔁 Transferir entre Cuentas</h3>
                 <button @click="openTransferir = false" class="modal-close-bx">&times;</button>
             </div>
-            <form action="{{ route('finanzas.cuentas.transferir') }}" method="POST" onsubmit="return confirmarMonto(this, 'monto', 'Vas a transferir')">
+            <form action="{{ route('finanzas.cuentas.transferir') }}" method="POST">
                 @csrf
                 <div class="modal-body-bx">
                     <div class="form-group-bx">

@@ -23,7 +23,7 @@
                 })->first()?->id;
         @endphp
 
-        <form action="{{ route('finanzas.gastos.store') }}" method="POST" onsubmit="return confirmarMonto(this, 'monto', 'Vas a registrar una entrada de')">
+        <form action="{{ route('finanzas.gastos.store') }}" method="POST">
             @csrf
 
             {{-- Campos ocultos para forzar ingreso esporádico --}}

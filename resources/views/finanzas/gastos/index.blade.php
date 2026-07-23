@@ -301,7 +301,7 @@
                       }
                   }"
                   @paste.window="handlePaste($event)"
-                  @submit="if(!confirmarMonto($el, 'monto', 'Vas a registrar un movimiento de')){ $event.preventDefault(); } else { cargando = true; }"
+                  @submit="cargando = true"
             >
                 @csrf
                 <div class="modal-body-bx">
@@ -585,7 +585,7 @@
                       }
                   }"
                   @paste.window="handlePaste($event)"
-                  @submit="if(!confirmarMonto($el, 'monto', 'Vas a registrar un movimiento de')){ $event.preventDefault(); } else { cargando = true; }"
+                  @submit="cargando = true"
             >
                 @csrf
                 @method('PUT')

@@ -252,6 +252,11 @@ class FacturacionController extends Controller
                 'rs_nit'       => $rsNit,
                 'rs_dia_habil' => $esIndep ? null : ($rs->dia_habil ?? null),
                 'total_ss'     => $vSS,
+                // Desglose por entidad para mora exacta (igual que módulo planos)
+                'eps'          => (int) ($c->cotizacion_calc['eps']  ?? 0),
+                'arl'          => (int) ($c->cotizacion_calc['arl']  ?? 0),
+                'pen'          => (int) ($c->cotizacion_calc['pen']  ?? 0),
+                'caja'         => (int) ($c->cotizacion_calc['caja'] ?? 0),
                 'mes'          => $mes,
                 'anio'         => $anio,
             ];
@@ -511,11 +516,14 @@ class FacturacionController extends Controller
                 $vTot = (int)$fact->total;
             }
 
+            $yaP   = $fact && in_array($fact->estado, ['pagada', 'prestamo']);
             $vMora = 0;
-            if ($fact && ($fact->mora ?? 0) > 0) {
-                $vMora = (int)$fact->mora;
-            } elseif (!$fact) {
-                $vMora = (int)($moraPorContrato[$c->id] ?? 0);
+            if (!$yaP) {
+                if ($fact && ($fact->mora ?? 0) > 0) {
+                    $vMora = (int)$fact->mora;
+                } elseif (!$fact) {
+                    $vMora = (int)($moraPorContrato[$c->id] ?? 0);
+                }
             }
 
             $vAnticipo = $saldoAnticipoPorContrato->get($c->id, 0);
@@ -1735,6 +1743,16 @@ class FacturacionController extends Controller
         $msgOmit = !empty($omitidos)
             ? ' | ' . count($omitidos) . ' omitido(s) por duplicado.'
             : '';
+
+        // ─── Limpiar NP provisional de contratos que sí fueron facturados ──
+        // El np en contratos es un marcador provisional (asignado antes de facturar
+        // para agrupar y filtrar un listado). Al generar la factura se limpia para
+        // que no persista indefinidamente. Solo se borran los que SÍ se facturaron.
+        if (!empty($facturasCreadas)) {
+            \App\Models\Contrato::whereIn('id', $validated['contratos'])
+                ->whereNotNull('np')
+                ->update(['np' => null]);
+        }
 
         return response()->json([
             'ok'              => true,
@@ -3899,6 +3917,135 @@ class FacturacionController extends Controller
         $limpio = preg_replace($patrones, '', $razon);
         $limpio = trim(preg_replace('/\s+/', ' ', $limpio));
         return rtrim($limpio, ', -') ?: '—';
+    }
+
+    // ─── Verificar cédulas para carga masiva ─────────────────────────────────────
+    /**
+     * POST /admin/facturacion/empresa/{empresa}/verificar-cedulas
+     * Recibe un listado de cédulas y devuelve cuáles son válidas para facturar,
+     * cuáles ya tienen factura en el período y cuáles no se encuentran en la empresa.
+     */
+    public function verificarCedulas(Request $request, int $empresaId): \Illuminate\Http\JsonResponse
+    {
+        $aliadoId = session('aliado_id_activo');
+
+        $request->validate([
+            'cedulas' => 'required|array|min:1|max:500',
+            'mes'     => 'required|integer|min:1|max:12',
+            'anio'    => 'required|integer|min:2000|max:2100',
+        ]);
+
+        $mes  = (int) $request->input('mes');
+        $anio = (int) $request->input('anio');
+
+        // Normalizar cédulas: quitar espacios, guiones, y filtrar vacías
+        $cedulasInput = collect($request->input('cedulas'))
+            ->map(fn($c) => trim(preg_replace('/[^0-9]/', '', (string)$c)))
+            ->filter(fn($c) => strlen($c) >= 5)
+            ->unique()
+            ->values();
+
+        // Cargar contratos activos de la empresa para este aliado
+        $contratos = \App\Models\Contrato::where('aliado_id', $aliadoId)
+            ->where('razon_social_id', $empresaId)
+            ->where('estado', 'activo')
+            ->whereIn('cedula', $cedulasInput->all())
+            ->with('cliente:id,cedula,primer_nombre,primer_apellido,nombre_completo')
+            ->get()
+            ->keyBy('cedula');
+
+        // Cédulas que ya tienen factura en el período
+        $cedulasFacturadas = \App\Models\Factura::where('aliado_id', $aliadoId)
+            ->whereIn('cedula', $contratos->keys()->all())
+            ->where('mes', $mes)
+            ->where('anio', $anio)
+            ->whereNull('deleted_at')
+            ->pluck('cedula')
+            ->flip(); // para lookup O(1)
+
+        $exitosas      = [];
+        $yaFacturadas  = [];
+        $noEncontradas = [];
+
+        foreach ($cedulasInput as $cedula) {
+            if (!isset($contratos[$cedula])) {
+                $noEncontradas[] = $cedula;
+                continue;
+            }
+            $c = $contratos[$cedula];
+            $nombre = trim(
+                ($c->cliente?->primer_nombre ?? '') . ' ' .
+                ($c->cliente?->primer_apellido ?? '')
+            ) ?: ($c->cliente?->nombre_completo ?? '—');
+
+            if (isset($cedulasFacturadas[$cedula])) {
+                $yaFacturadas[] = ['cedula' => $cedula, 'nombre' => $nombre];
+            } else {
+                $exitosas[] = [
+                    'cedula'      => $cedula,
+                    'nombre'      => $nombre,
+                    'contrato_id' => $c->id,
+                ];
+            }
+        }
+
+        return response()->json([
+            'ok'            => true,
+            'exitosas'      => $exitosas,
+            'ya_facturadas' => $yaFacturadas,
+            'no_encontradas'=> $noEncontradas,
+            'total_input'   => $cedulasInput->count(),
+        ]);
+    }
+
+    // ─── Asignar NP provisional a contratos ──────────────────────────────────────
+    /**
+     * POST /admin/facturacion/empresa/{empresa}/asignar-np
+     * Guarda un número de NP provisional en contratos.np para los contratos indicados.
+     * Solo afecta contratos activos de la empresa y aliado correcto.
+     */
+    public function asignarNpProvisional(Request $request, int $empresaId): \Illuminate\Http\JsonResponse
+    {
+        $aliadoId = session('aliado_id_activo');
+
+        $request->validate([
+            'contrato_ids' => 'required_without:limpiar_todos|array',
+            'contrato_ids.*' => 'integer',
+            'np'           => 'required|integer|min:0|max:5', // 0 = limpiar (null)
+            'limpiar_todos' => 'nullable|boolean',
+        ]);
+
+        $np = (int) $request->input('np');
+
+        if ($request->input('limpiar_todos')) {
+            // Resetear todos los contratos activos de esta empresa
+            $actualizados = \App\Models\Contrato::where('aliado_id', $aliadoId)
+                ->where('razon_social_id', $empresaId)
+                ->where('estado', 'activo')
+                ->whereNotNull('np')
+                ->update(['np' => null]);
+
+            return response()->json([
+                'ok'           => true,
+                'actualizados' => $actualizados,
+                'np'           => null,
+            ]);
+        }
+
+        $contratoIds = $request->input('contrato_ids');
+        $npValor     = $np === 0 ? null : (string) $np; // 0 → limpiar
+
+        // Seguridad: solo actualizar contratos de la empresa y aliado correcto
+        $actualizados = \App\Models\Contrato::where('aliado_id', $aliadoId)
+            ->where('razon_social_id', $empresaId)
+            ->whereIn('id', $contratoIds)
+            ->update(['np' => $npValor]);
+
+        return response()->json([
+            'ok'          => true,
+            'actualizados' => $actualizados,
+            'np'          => $npValor,
+        ]);
     }
 }
 

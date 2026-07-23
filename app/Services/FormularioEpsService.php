@@ -217,24 +217,32 @@ class FormularioEpsService
         $pdf = new Fpdi('P', 'pt');
         $pdf->SetAutoPageBreak(false);
 
-        // If the PDF is encrypted, FPDI cannot read it. Attempt to decrypt first.
+        // If the PDF is encrypted or uses unsupported features/compression, FPDI cannot read it.
+        // Attempt to decrypt/reformat it using qpdf/GhostScript.
         $tmpDecrypted = null;
         try {
             $totalPaginas = $pdf->setSourceFile($rutaPdf);
         } catch (\Exception $e) {
-            if (stripos($e->getMessage(), 'encrypted') !== false) {
-                $tmpDecrypted = $this->descifrarPdf($rutaPdf);
-                if (!$tmpDecrypted) {
+            $tmpDecrypted = $this->descifrarPdf($rutaPdf);
+            if ($tmpDecrypted) {
+                try {
+                    $pdf = new Fpdi('P', 'pt');
+                    $pdf->SetAutoPageBreak(false);
+                    $totalPaginas = $pdf->setSourceFile($tmpDecrypted);
+                } catch (\Exception $subException) {
+                    if ($tmpDecrypted && file_exists($tmpDecrypted)) {
+                        @unlink($tmpDecrypted);
+                    }
+                    throw $e;
+                }
+            } else {
+                if (stripos($e->getMessage(), 'encrypted') !== false) {
                     throw new \RuntimeException(
                         'El PDF está cifrado y no se encontró qpdf ni GhostScript en el servidor ' .
                         'para descifrarlo. Instale qpdf (`apt install qpdf`) y vuelva a intentarlo.',
                         0, $e
                     );
                 }
-                $pdf = new Fpdi('P', 'pt');
-                $pdf->SetAutoPageBreak(false);
-                $totalPaginas = $pdf->setSourceFile($tmpDecrypted);
-            } else {
                 throw $e;
             }
         }

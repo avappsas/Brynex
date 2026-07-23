@@ -264,7 +264,7 @@
                 <h3>💵 Registrar Abono / Pago</h3>
                 <button @click="openAbono = false" class="modal-close-bx">&times;</button>
             </div>
-            <form action="{{ route('finanzas.prestamos.pago', $prestamo->id) }}" method="POST" enctype="multipart/form-data" onsubmit="return confirmarMonto(this, 'monto', 'Vas a registrar un abono de')">
+            <form action="{{ route('finanzas.prestamos.pago', $prestamo->id) }}" method="POST" enctype="multipart/form-data">
                 @csrf
                 <div class="modal-body-bx">
                     <div class="form-group-bx">
@@ -467,7 +467,7 @@
                 <h3>➕ Anexar Valor (Capital)</h3>
                 <button @click="openAnexar = false" class="modal-close-bx">&times;</button>
             </div>
-            <form action="{{ route('finanzas.prestamos.anexar', $prestamo->id) }}" method="POST" enctype="multipart/form-data" onsubmit="return confirmarMonto(this, 'monto', 'Vas a anexar un valor adicional de')">
+            <form action="{{ route('finanzas.prestamos.anexar', $prestamo->id) }}" method="POST" enctype="multipart/form-data">
                 @csrf
                 <div class="modal-body-bx">
                     <div class="form-group-bx">
@@ -528,7 +528,7 @@
                 <button @click="openEditarMov = false" class="modal-close-bx">&times;</button>
             </div>
             
-            <form :action="'{{ route('finanzas.prestamos.movimiento.update', '') }}/' + movEditar.id" method="POST" enctype="multipart/form-data" onsubmit="return confirmarMonto(this, 'monto', 'Vas a dejar este movimiento en')">
+            <form :action="'{{ route('finanzas.prestamos.movimiento.update', '') }}/' + movEditar.id" method="POST" enctype="multipart/form-data">
                 @csrf
                 <div class="modal-body-bx">
                     <div class="form-group-bx">

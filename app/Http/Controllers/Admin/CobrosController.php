@@ -532,11 +532,17 @@ class CobrosController extends Controller
             $rsNit  = $esIndep ? (int)$c->cedula : ($rsObj ? (int)($rsObj->nit ?: $rsObj->id) : 0);
             $rsDiaH = $esIndep ? null : ($rsObj ? ($rsObj->dia_habil ?? null) : null);
             $vSS    = $vSsPorContrato[$c->id] ?? 0;
+            $flags  = $flagsPorContrato[$c->id] ?? [];
             $moraLoteInput[] = [
                 '_contrato_id' => $c->id,
                 'rs_nit'       => $rsNit,
                 'rs_dia_habil' => $rsDiaH,
                 'total_ss'     => $vSS,
+                // Desglose por entidad para mora exacta (igual que módulo planos)
+                'eps'          => (int) ($flags['vEps']  ?? 0),
+                'arl'          => (int) ($flags['vArl']  ?? 0),
+                'pen'          => (int) ($flags['vPen']  ?? 0),
+                'caja'         => (int) ($flags['vCaja'] ?? 0),
                 'mes'          => $mes,
                 'anio'         => $anio,
             ];
@@ -1139,13 +1145,20 @@ class CobrosController extends Controller
             $esIndep = $c->esIndependiente() || ($rsObj && $rsObj->es_independiente);
             $rsNit   = $esIndep ? (int)$c->cedula : ($rsObj ? (int)($rsObj->nit ?: $rsObj->id) : 0);
             $rsDiaH  = $esIndep ? null : ($rsObj ? ($rsObj->dia_habil ?? null) : null);
-            $vSsCont = (float)($c->salario ?? 0) * 0.285; // estimación ~28.5%
+            // Calcular aportes exactos por entidad (evita estimación 28.5%)
+            $cotiz   = $c->calcularCotizacion(30);
+            $vSsCont = (int) ($cotiz['ss'] ?? 0);
             if ($rsNit && $vSsCont > 0) {
                 $moraEmpLoteInput[] = [
                     '_contrato_id' => $c->id,
                     'rs_nit'       => $rsNit,
                     'rs_dia_habil' => $rsDiaH,
                     'total_ss'     => $vSsCont,
+                    // Desglose por entidad para mora exacta (igual que módulo planos)
+                    'eps'          => (int) ($cotiz['eps']  ?? 0),
+                    'arl'          => (int) ($cotiz['arl']  ?? 0),
+                    'pen'          => (int) ($cotiz['pen']  ?? 0),
+                    'caja'         => (int) ($cotiz['caja'] ?? 0),
                     'mes'          => $mes,
                     'anio'         => $anio,
                 ];
@@ -2239,13 +2252,20 @@ class CobrosController extends Controller
             $esIndep = $c->esIndependiente() || ($rsObj && $rsObj->es_independiente);
             $rsNit   = $esIndep ? (int)$c->cedula : ($rsObj ? (int)($rsObj->nit ?: $rsObj->id) : 0);
             $rsDiaH  = $esIndep ? null : ($rsObj ? ($rsObj->dia_habil ?? null) : null);
-            $vSsCont = (float)($c->salario ?? 0) * 0.285;
+            // Calcular aportes exactos por entidad (evita estimación 28.5%)
+            $cotiz   = $c->calcularCotizacion(30);
+            $vSsCont = (int) ($cotiz['ss'] ?? 0);
             if ($rsNit && $vSsCont > 0) {
                 $moraEmpLoteInput[] = [
                     '_contrato_id' => $c->id,
                     'rs_nit'       => $rsNit,
                     'rs_dia_habil' => $rsDiaH,
                     'total_ss'     => $vSsCont,
+                    // Desglose por entidad para mora exacta (igual que módulo planos)
+                    'eps'          => (int) ($cotiz['eps']  ?? 0),
+                    'arl'          => (int) ($cotiz['arl']  ?? 0),
+                    'pen'          => (int) ($cotiz['pen']  ?? 0),
+                    'caja'         => (int) ($cotiz['caja'] ?? 0),
                     'mes'          => $mes,
                     'anio'         => $anio,
                 ];

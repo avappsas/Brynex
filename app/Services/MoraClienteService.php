@@ -324,7 +324,6 @@ class MoraClienteService
      */
     public static function calcularLote(int $aliadoId, array $filas): array
     {
-        // Pre-cargar config del aliado (1 query para todos)
         $cfg = DB::table('configuracion_aliado')
             ->where('aliado_id', $aliadoId)
             ->whereNull('plan_id')
@@ -353,7 +352,6 @@ class MoraClienteService
                 return $fila;
             }
 
-            // Determinar día hábil
             if (!is_null($diaHabilGlobal)) {
                 $diaH = $diaHabilGlobal;
             } elseif (!is_null($rsDiaHabil) && $rsDiaHabil >= 2 && $rsDiaHabil <= 16) {
@@ -379,8 +377,32 @@ class MoraClienteService
             }
 
             $diasAnio = (int) $fechaVence->format('L') === 1 ? 366 : 365;
-            $moraReal = $totalSS * ($tasaAnual / 100) / $diasAnio * $diasMora;
+            $factor   = ($tasaAnual / 100) / $diasAnio * $diasMora;
 
+            // ── Fórmula por entidad (igual que operador PILA) ──────────────
+            // Si la fila trae aportes desglosados (eps/arl/pen/caja), aplicar
+            // ceil(aporte × factor / 100) × 100 por administradora.
+            // Esto replica exactamente el cálculo del módulo de planos.
+            $epsAporte  = (int) ($fila['eps']  ?? 0);
+            $arlAporte  = (int) ($fila['arl']  ?? 0);
+            $penAporte  = (int) ($fila['pen']  ?? 0);
+            $cajaAporte = (int) ($fila['caja'] ?? 0);
+            $tieneDesglose = ($epsAporte + $arlAporte + $penAporte + $cajaAporte) > 0;
+
+            if ($tieneDesglose) {
+                // Mora = suma de ceil(aporte_entidad × factor / 100) × 100
+                $moraReal = 0.0;
+                foreach ([$epsAporte, $arlAporte, $penAporte, $cajaAporte] as $aporte) {
+                    if ($aporte > 0) {
+                        $moraReal += (int) ceil($aporte * $factor / 100) * 100;
+                    }
+                }
+            } else {
+                // Fallback: fórmula anterior (callers sin desglose: CobroContratoService, WhatsApp, etc.)
+                $moraReal = $totalSS * $factor;
+            }
+
+            // Aplicar tramos mínimos configurados por el aliado (en ambos casos)
             $mora = $moraReal < $moraMinimo ? $moraMinimo
                   : ($moraReal < $moraSeg  ? $moraSeg
                   : (int) round($moraReal));

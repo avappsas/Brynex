@@ -192,10 +192,21 @@ table.fac-tbl{width:100%;border-collapse:collapse;font-size:.78rem}
 
         <button class="btn-act btn-exp" onclick="exportarExcel()">📊 Excel</button>
 
+        <button onclick="abrirModalCargaCedulas()"
+            title="Cargar lista de cédulas con NP provisional"
+            style="display:inline-flex;align-items:center;justify-content:center;
+                   width:30px;height:30px;padding:0;
+                   background:linear-gradient(135deg,#0f766e,#0d9488);
+                   color:#fff;border:none;border-radius:7px;cursor:pointer;
+                   font-size:1rem;transition:opacity .15s;"
+            onmouseover="this.style.opacity='.8'" onmouseout="this.style.opacity='1'">
+            📋
+        </button>
+
         <button class="btn-act" onclick="MAD.abrir({{ $empresa->id }}, '{{ addslashes($empresa->razon_social) }}')"
             style="background:linear-gradient(135deg,#b45309,#d97706);color:#fff;"
             title="Registrar anticipo de la empresa para ser distribuido entre contratos">
-            🪙 Registrar Anticipo
+            🪙 Anticipos
         </button>
 
         <button class="btn-act" onclick="OI_abrirEmpresa()"
@@ -468,12 +479,17 @@ if (!$fact) {
     $vSS = $r100($fact->total_ss);
     $vTot = (int)$fact->total;
 }
-// Mora: si ya tiene factura usar facturas.mora; si no, usar el batch pre-calculado
+// Mora: solo mostrar si el contrato NO está pagado aún
+// - Con factura pendiente → usar mora guardada en la factura
+// - Sin factura → usar mora estimada del batch pre-calculado
+// - Ya pagado ($yaP) → ocultar mora (ya fue liquidada, no hay alerta pendiente)
 $vMora = 0;
-if ($fact && ($fact->mora ?? 0) > 0) {
-    $vMora = (int)$fact->mora;
-} elseif (!$fact) {
-    $vMora = (int)($moraPorContrato[$c->id] ?? 0);
+if (!$yaP) {
+    if ($fact && ($fact->mora ?? 0) > 0) {
+        $vMora = (int)$fact->mora;
+    } elseif (!$fact) {
+        $vMora = (int)($moraPorContrato[$c->id] ?? 0);
+    }
 }
 // Costo de afiliación para data-* (lo necesita el modal)
 $vAfiliacion = ($esAfil || $esIndActPrimerMes) ? (int)($c->costo_afiliacion ?? 0) : 0;
@@ -503,12 +519,13 @@ $totAdmon+=$vAdm;$totIva+=$vIva;$totTotal+=$vTot;$totMora+=$vMora;
     data-fecha-retiro-pendiente="{{ $fechaRetiroPendienteStr }}"
     data-cobrar-admon-ret-pend="{{ $cobrarAdmonRetiroPendiente ? '1' : '0' }}"
     data-vmora="{{ $vMora }}"
-    data-np="{{ $fact?->np ?? '' }}"
+    data-np="{{ $fact?->np ?? $c->np ?? '' }}"
     data-es-retiro-facturable="{{ ($factRetiroPreview ?? null) ? '1' : '0' }}"
     data-dias-retiro="{{ ($factRetiroPreview ?? null) ? (int)$factRetiroPreview->dias_cotizados : 0 }}"
     data-admon-full="{{ ($factRetiroPreview ?? null) ? (int)(($c->administracion??0) + ($c->admon_asesor??0)) : 0 }}"
     data-admon-proporcional="{{ ($factRetiroPreview ?? null) ? ($vAdmProporcional ?? 0) : 0 }}"
-    data-vss-retiro="{{ ($factRetiroPreview ?? null) ? $r100($factRetiroPreview->total_ss) : 0 }}">
+    data-vss-retiro="{{ ($factRetiroPreview ?? null) ? $r100($factRetiroPreview->total_ss) : 0 }}"
+    data-np-prov="{{ $c->np ?? '' }}">
 
     <td style="font-size:.75rem;font-weight:700;text-align:center;white-space:nowrap;" title="{{ $tipoNom }}{{ $esIndActPrimerMes ? ' · Afiliación + Planilla' : '' }}{{ $esRetirado ? ' · RETIRADO' : '' }}">
         <span style="display:inline-flex;align-items:center;gap:3px;flex-direction:column;">
@@ -643,7 +660,21 @@ $totAdmon+=$vAdm;$totIva+=$vIva;$totTotal+=$vTot;$totMora+=$vMora;
         @endif
         @else<span style="color:#94a3b8;font-size:.7rem">Sin factura</span>@endif
     </td>
-    <td style="text-align:center;font-weight:700;color:#2563eb;font-size:.8rem">{{ $fact?->np ?? '—' }}</td>
+    <td style="text-align:center;font-size:.8rem">
+        @php
+            $npMostrar = $fact?->np ?? $c->np ?? null;
+            $npProvisional = !$fact && $c->np;
+        @endphp
+        @if($npMostrar)
+            @if($npProvisional)
+                <span style="display:inline-block;padding:.12rem .45rem;border-radius:20px;font-size:.75rem;font-weight:800;background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;">{{ $npMostrar }}</span>
+            @else
+                <strong style="color:#2563eb;font-weight:800;">{{ $npMostrar }}</strong>
+            @endif
+        @else
+            <span style="color:#cbd5e1;font-size:.7rem">—</span>
+        @endif
+    </td>
     <td style="text-align:center;white-space:nowrap;">
         @if($fact && (int)$fact->numero_factura !== 0)
             <button onclick="abrirRecibo('{{ route('admin.facturacion.recibo',$fact->id) }}?modal=1')"
@@ -809,6 +840,264 @@ document.addEventListener('DOMContentLoaded', function() {
 
 </div>
 @endif
+
+{{-- ═══ MODAL CARGA MASIVA CÉDULAS (NP PROVISIONAL) ════════════════ --}}
+<style>
+#modalCargaCedulas .cc-modal-inner {
+    background: #fff;
+    border-radius: 16px;
+    width: min(640px, 96vw);
+    max-height: 92vh;
+    overflow-y: auto;
+    box-shadow: 0 24px 60px rgba(0,0,0,.22);
+    display: flex;
+    flex-direction: column;
+}
+#modalCargaCedulas .cc-header {
+    background: linear-gradient(135deg, #0f172a, #134e4a);
+    border-radius: 16px 16px 0 0;
+    padding: 1rem 1.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+#modalCargaCedulas .cc-header-title {
+    color: #fff;
+    font-size: .95rem;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+}
+#modalCargaCedulas .cc-header-sub {
+    color: #5eead4;
+    font-size: .68rem;
+    margin-top: .15rem;
+    font-weight: 500;
+}
+#modalCargaCedulas .cc-close {
+    background: rgba(255,255,255,.1);
+    border: none;
+    border-radius: 8px;
+    color: #cbd5e1;
+    font-size: 1.1rem;
+    width: 30px; height: 30px;
+    cursor: pointer;
+    transition: background .15s;
+    display: flex; align-items: center; justify-content: center;
+}
+#modalCargaCedulas .cc-close:hover { background: rgba(239,68,68,.35); color: #fff; }
+#modalCargaCedulas .cc-body { padding: 1.1rem 1.25rem; }
+#modalCargaCedulas .cc-label {
+    display: block;
+    font-size: .63rem;
+    font-weight: 700;
+    color: #475569;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    margin-bottom: .25rem;
+}
+#modalCargaCedulas .cc-select,
+#modalCargaCedulas .cc-textarea {
+    width: 100%;
+    box-sizing: border-box;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 8px;
+    padding: .4rem .55rem;
+    font-size: .82rem;
+    color: #1e293b;
+    transition: border-color .15s;
+    outline: none;
+}
+#modalCargaCedulas .cc-select:focus,
+#modalCargaCedulas .cc-textarea:focus { border-color: #0d9488; }
+#modalCargaCedulas .cc-textarea {
+    font-family: monospace;
+    line-height: 1.6;
+    resize: vertical;
+}
+#modalCargaCedulas .cc-footer {
+    padding: .85rem 1.25rem;
+    border-top: 1px solid #f1f5f9;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: .5rem;
+    background: #f8fafc;
+    border-radius: 0 0 16px 16px;
+}
+#modalCargaCedulas .cc-btn-prim {
+    padding: .45rem 1.3rem;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-weight: 700;
+    font-size: .82rem;
+    transition: opacity .15s;
+}
+#modalCargaCedulas .cc-btn-prim:hover { opacity: .88; }
+#modalCargaCedulas .cc-btn-prim:disabled { opacity: .45; cursor: not-allowed; }
+#modalCargaCedulas .cc-btn-sec {
+    padding: .4rem .9rem;
+    border-radius: 8px;
+    border: 1.5px solid #e2e8f0;
+    background: #fff;
+    color: #475569;
+    font-size: .8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+}
+#modalCargaCedulas .cc-btn-sec:hover { border-color: #94a3b8; background: #f8fafc; }
+#modalCargaCedulas .cc-chip-group {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: .5rem;
+    margin-bottom: .8rem;
+}
+#modalCargaCedulas .cc-chip {
+    border-radius: 10px;
+    padding: .55rem .4rem;
+    text-align: center;
+    border: 1px solid;
+}
+#modalCargaCedulas .cc-chip .cc-num { font-size: 1.5rem; font-weight: 900; line-height: 1; }
+#modalCargaCedulas .cc-chip .cc-lab { font-size: .6rem; font-weight: 700; margin-top: .15rem; }
+#modalCargaCedulas .cc-copybox { border-radius: 8px; overflow: hidden; margin-bottom: .6rem; }
+#modalCargaCedulas .cc-copybox-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: .35rem .6rem;
+    font-size: .65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+#modalCargaCedulas .cc-copybox textarea {
+    width: 100%;
+    box-sizing: border-box;
+    border: none;
+    padding: .45rem .6rem;
+    font-family: monospace;
+    font-size: .73rem;
+    resize: none;
+    outline: none;
+}
+#modalCargaCedulas .cc-copy-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: .75rem;
+    padding: 0;
+    opacity: .7;
+    transition: opacity .15s;
+}
+#modalCargaCedulas .cc-copy-btn:hover { opacity: 1; }
+</style>
+
+<div id="modalCargaCedulas" class="modal-overlay" style="display:none;" onclick="cerrarSi(event,'modalCargaCedulas')">
+<div class="cc-modal-inner" onclick="event.stopPropagation()">
+
+    {{-- Header --}}
+    <div class="cc-header">
+        <div>
+            <div class="cc-header-title">📋 Cargar Lista de Cédulas</div>
+            <div class="cc-header-sub">Asignar NP provisional · {{ $meses[$mes-1] }} {{ $anio }}</div>
+        </div>
+        <button class="cc-close" onclick="cerrar('modalCargaCedulas')">&times;</button>
+    </div>
+
+    {{-- Paso 1: Entrada --}}
+    <div id="cc-paso1" class="cc-body">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.7rem;margin-bottom:.8rem;">
+            <div>
+                <label class="cc-label">NP Provisional (1–5)</label>
+                <select id="cc-np" class="cc-select" style="font-size:.9rem;font-weight:700;text-align:center;">
+                    <option value="1">NP 1</option>
+                    <option value="2">NP 2</option>
+                    <option value="3">NP 3</option>
+                    <option value="4">NP 4</option>
+                    <option value="5">NP 5</option>
+                </select>
+            </div>
+            <div>
+                <label class="cc-label">Período activo</label>
+                <div style="padding:.4rem .55rem;background:#f0fdf4;border:1.5px solid #86efac;border-radius:8px;font-size:.88rem;font-weight:700;color:#15803d;text-align:center;">
+                    {{ $meses[$mes-1] }} {{ $anio }}
+                </div>
+            </div>
+        </div>
+
+        <div style="margin-bottom:.8rem;">
+            <label class="cc-label">Cédulas (una por línea, coma o espacio)</label>
+            <textarea id="cc-cedulas" class="cc-textarea" rows="9"
+                placeholder="1000000001&#10;1000000002&#10;1000000003..."></textarea>
+            <div style="margin-top:.3rem;font-size:.63rem;color:#94a3b8;">Separa por salto de línea, coma, punto y coma o espacio. Los dúpicados se eliminan automáticamente.</div>
+        </div>
+
+        <div class="cc-footer" style="margin:-1.1rem -1.25rem -1.1rem;flex-wrap:wrap;gap:.4rem;">
+            <button class="cc-btn-sec" onclick="document.getElementById('cc-cedulas').value=''">🗑 Limpiar Texto</button>
+            <div style="display:flex;gap:.45rem;">
+                <button id="cc-btn-reset-todos" class="cc-btn-sec"
+                    style="color:#dc2626;border-color:#fca5a5;"
+                    onclick="ccResetearNPsEmpresa('cc-btn-reset-todos')" title="Borrar el NP provisional de TODOS los contratos activos de esta empresa en la base de datos">
+                    🗑 Resetear NPs Empresa
+                </button>
+                <button id="cc-btn-verificar" class="cc-btn-prim"
+                    style="background:linear-gradient(135deg,#0f766e,#0d9488);color:#fff;"
+                    onclick="ccVerificar()">
+                    🔍 Verificar →
+                </button>
+            </div>
+        </div>
+    </div>
+
+    {{-- Paso 2: Resultado --}}
+    <div id="cc-paso2" class="cc-body" style="display:none;">
+
+        {{-- Chips resumen --}}
+        <div id="cc-resumen" class="cc-chip-group"></div>
+
+        {{-- Copybox: No encontradas --}}
+        <div id="cc-wrap-no-enc" class="cc-copybox" style="display:none;border:1px solid #fca5a5;">
+            <div class="cc-copybox-head" style="background:#fef2f2;color:#dc2626;">
+                <span>❌ No encontradas</span>
+                <button class="cc-copy-btn" onclick="ccCopiar('cc-txt-no-enc')" title="Copiar">📋 Copiar</button>
+            </div>
+            <textarea id="cc-txt-no-enc" rows="3" readonly
+                style="background:#fef2f2;color:#dc2626;"></textarea>
+        </div>
+
+        {{-- Copybox: Ya facturadas --}}
+        <div id="cc-wrap-ya-fac" class="cc-copybox" style="display:none;border:1px solid #fde68a;">
+            <div class="cc-copybox-head" style="background:#fffbeb;color:#d97706;">
+                <span>⚠️ Ya tienen factura este mes</span>
+                <button class="cc-copy-btn" onclick="ccCopiar('cc-txt-ya-fac')" title="Copiar">📋 Copiar</button>
+            </div>
+            <textarea id="cc-txt-ya-fac" rows="3" readonly
+                style="background:#fffbeb;color:#d97706;"></textarea>
+        </div>
+
+        <div class="cc-footer" style="margin:-1.1rem -1.25rem -1.1rem;flex-wrap:wrap;gap:.4rem;">
+            <button class="cc-btn-sec" onclick="ccVolver()">← Volver</button>
+            <div style="display:flex;gap:.45rem;">
+                <button id="cc-btn-limpiar-np" class="cc-btn-sec"
+                    style="color:#dc2626;border-color:#fca5a5;"
+                    onclick="ccResetearNPsEmpresa('cc-btn-limpiar-np')" title="Borrar el NP provisional de TODOS los contratos activos de esta empresa en la base de datos">
+                    🗑 Resetear NPs Empresa
+                </button>
+                <button id="cc-btn-asignar" class="cc-btn-prim"
+                    style="background:linear-gradient(135deg,#0f766e,#0d9488);color:#fff;"
+                    onclick="ccAsignar()">
+                    ✅ Asignar NP y Seleccionar
+                </button>
+            </div>
+        </div>
+    </div>
+
+</div>
+</div>
 
 {{-- ═══ MODAL FACTURAR UNIFICADO ══════════════════════════════════ --}}
 @php $mfMes = $mes; $mfAnio = $anio; @endphp
@@ -1632,6 +1921,231 @@ function rpQuitarRetiro() {
         }
     })
     .catch(function() { alert('Error de conexión.'); });
+}
+</script>
+
+<script>
+// ════════════════════════════════════════════════════════════════════════
+//  MODAL CARGA MASIVA DE CÉDULAS — NP PROVISIONAL
+// ════════════════════════════════════════════════════════════════════════
+const CC_URL_VERIFICAR = '{{ route("admin.facturacion.empresa.verificar_cedulas", $empresa->id) }}';
+const CC_URL_ASIGNAR   = '{{ route("admin.facturacion.empresa.asignar_np", $empresa->id) }}';
+const CC_MES  = {{ $mes }};
+const CC_ANIO = {{ $anio }};
+
+let _ccExitosas = [];
+
+function abrirModalCargaCedulas() {
+    ccVolver();
+    document.getElementById('cc-cedulas').value = '';
+    document.getElementById('cc-np').value = '1';
+    document.getElementById('modalCargaCedulas').style.display = 'flex';
+}
+
+function ccVolver() {
+    document.getElementById('cc-paso1').style.display = 'block';
+    document.getElementById('cc-paso2').style.display = 'none';
+    _ccExitosas = [];
+}
+
+function ccParsearCedulas() {
+    const raw = document.getElementById('cc-cedulas').value;
+    return [...new Set(
+        raw.split(/[\n,;\s]+/)
+            .map(s => s.replace(/[^0-9]/g, '').trim())
+            .filter(s => s.length >= 5)
+    )];
+}
+
+// ── Paso 1: Verificar ─────────────────────────────────────────────────
+function ccVerificar() {
+    const cedulas = ccParsearCedulas();
+    if (cedulas.length === 0) { alert('Pega al menos una cédula válida.'); return; }
+
+    const btn = document.getElementById('cc-btn-verificar');
+    btn.disabled = true;
+    btn.textContent = '⏳ Verificando…';
+
+    fetch(CC_URL_VERIFICAR, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content },
+        body: JSON.stringify({ cedulas, mes: CC_MES, anio: CC_ANIO })
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.textContent = '🔍 Verificar →';
+        if (!data.ok) { alert(data.message || 'Error al verificar.'); return; }
+
+        _ccExitosas = data.exitosas || [];
+        const ok    = _ccExitosas.length;
+        const yaFac = (data.ya_facturadas || []).length;
+        const noEnc = (data.no_encontradas || []).length;
+        const total = data.total_input;
+
+        // Chips resumen (usan clase cc-chip del CSS del modal)
+        document.getElementById('cc-resumen').innerHTML = `
+            <div class="cc-chip" style="background:#f0fdf4;border-color:#86efac;">
+                <div class="cc-num" style="color:#15803d;">${ok}</div>
+                <div class="cc-lab" style="color:#166534;">✅ Listas para facturar</div>
+            </div>
+            <div class="cc-chip" style="background:#fffbeb;border-color:#fde68a;">
+                <div class="cc-num" style="color:#d97706;">${yaFac}</div>
+                <div class="cc-lab" style="color:#92400e;">⚠️ Ya facturadas</div>
+            </div>
+            <div class="cc-chip" style="background:#fef2f2;border-color:#fca5a5;">
+                <div class="cc-num" style="color:#dc2626;">${noEnc}</div>
+                <div class="cc-lab" style="color:#991b1b;">❌ No encontradas</div>
+            </div>
+            <div style="grid-column:1/-1;text-align:center;font-size:.68rem;color:#94a3b8;margin-top:-.2rem;">${total} cédulas procesadas</div>`;
+
+        // Copybox no encontradas
+        const wNoEnc = document.getElementById('cc-wrap-no-enc');
+        if (noEnc > 0) {
+            document.getElementById('cc-txt-no-enc').value = (data.no_encontradas || []).join('\n');
+            wNoEnc.style.display = 'block';
+        } else { wNoEnc.style.display = 'none'; }
+
+        // Copybox ya facturadas
+        const wYaFac = document.getElementById('cc-wrap-ya-fac');
+        if (yaFac > 0) {
+            document.getElementById('cc-txt-ya-fac').value =
+                (data.ya_facturadas || []).map(f => `${f.cedula} - ${f.nombre}`).join('\n');
+            wYaFac.style.display = 'block';
+        } else { wYaFac.style.display = 'none'; }
+
+        document.getElementById('cc-btn-asignar').disabled    = ok === 0;
+        document.getElementById('cc-btn-limpiar-np').disabled = false;
+
+        document.getElementById('cc-paso1').style.display = 'none';
+        document.getElementById('cc-paso2').style.display = 'block';
+    })
+    .catch(() => { btn.disabled = false; btn.textContent = '🔍 Verificar →'; alert('Error de conexión.'); });
+}
+
+// ── Paso 2: Asignar NP y seleccionar ─────────────────────────────────
+// Si un contrato ya tenía NP distinto, se sobreescribe con el nuevo.
+function ccAsignar() {
+    if (_ccExitosas.length === 0) return;
+
+    const np          = parseInt(document.getElementById('cc-np').value);
+    const contratoIds = _ccExitosas.map(e => e.contrato_id);
+    const btn = document.getElementById('cc-btn-asignar');
+    btn.disabled = true; btn.textContent = '⏳ Asignando…';
+
+    fetch(CC_URL_ASIGNAR, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content },
+        body: JSON.stringify({ contrato_ids: contratoIds, np })
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.disabled = false; btn.textContent = '✅ Asignar NP y Seleccionar';
+        if (!data.ok) { alert(data.message || 'Error al asignar NP.'); return; }
+
+        // Actualizar DOM — sobreescribe cualquier NP anterior que tuviera
+        const npStr = String(np);
+        _ccExitosas.forEach(item => {
+            const tr = document.querySelector(`tr[data-contrato="${item.contrato_id}"]`);
+            if (!tr) return;
+            tr.dataset.np    = npStr;
+            tr.dataset.npProv = npStr;
+            const celdas = tr.querySelectorAll('td');
+            const idx    = celdas.length - 2; // NP | SEL
+            if (celdas[idx]) {
+                celdas[idx].innerHTML =
+                    `<span style="display:inline-block;padding:.12rem .45rem;border-radius:20px;font-size:.75rem;font-weight:800;background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;">${npStr}</span>`;
+            }
+        });
+
+        // Reinicializar filtros y aplicar NP
+        inicializarFiltrosTabla();
+        const filtroNP = document.getElementById('filter-np');
+        if (filtroNP) { filtroNP.value = npStr; filtroNP.classList.add('active-filter'); }
+        aplicarFiltrosTabla();
+
+        // Marcar checkboxes de filas visibles
+        document.querySelectorAll('.chk-row:not(:disabled)').forEach(chk => {
+            const fila = chk.closest('tr');
+            if (fila && fila.style.display !== 'none') chk.checked = true;
+        });
+        onCheckChange();
+        cerrar('modalCargaCedulas');
+    })
+    .catch(() => { btn.disabled = false; btn.textContent = '✅ Asignar NP y Seleccionar'; alert('Error de conexión.'); });
+}
+
+// ── Resetear NP de todos los contratos activos de esta empresa en la BD y DOM ──
+function ccResetearNPsEmpresa(btnId) {
+    if (!confirm('¿Seguro que deseas borrar el NP de TODOS los contratos activos de esta empresa?')) return;
+
+    const btn = document.getElementById(btnId);
+    let originalText = '';
+    if (btn) {
+        btn.disabled = true;
+        originalText = btn.textContent;
+        btn.textContent = '⏳ Limpiando…';
+    }
+
+    // 1. Limpiar DOM inmediatamente para todos los que tienen NP provisional
+    const trConNP = Array.from(document.querySelectorAll('tr[data-np-prov]'))
+        .filter(tr => tr.dataset.npProv && tr.dataset.npProv !== '');
+
+    trConNP.forEach(tr => {
+        tr.dataset.np     = '';
+        tr.dataset.npProv = '';
+        const celdas = tr.querySelectorAll('td');
+        const idx    = celdas.length - 2;
+        if (celdas[idx]) {
+            celdas[idx].innerHTML = `<span style="color:#cbd5e1;font-size:.7rem">—</span>`;
+        }
+    });
+
+    // 2. Limpiar los filtros si es necesario
+    const filtroNP = document.getElementById('filter-np');
+    if (filtroNP && filtroNP.value !== 'todos') {
+        filtroNP.value = 'todos';
+        filtroNP.classList.remove('active-filter');
+    }
+    inicializarFiltrosTabla();
+    aplicarFiltrosTabla();
+
+    // 3. Petición al backend
+    fetch(CC_URL_ASIGNAR, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content },
+        body: JSON.stringify({ np: 0, limpiar_todos: true })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = originalText;
+        }
+        if (data.ok) {
+            alert('NPs de contratos activos limpiados correctamente.');
+        } else {
+            alert(data.message || 'Error al limpiar NPs.');
+        }
+    })
+    .catch(() => {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = originalText;
+        }
+        alert('Error de conexión al limpiar NPs.');
+    });
+}
+
+// ── Copiar textarea ───────────────────────────────────────────────────
+function ccCopiar(textareaId) {
+    const ta = document.getElementById(textareaId);
+    if (!ta || !ta.value.trim()) return;
+    navigator.clipboard.writeText(ta.value.trim()).then(() => {
+        const box = ta.closest('.cc-copybox');
+        const btn = box?.querySelector('.cc-copy-btn');
+        if (btn) { const o = btn.textContent; btn.textContent = '✅ Copiado'; setTimeout(() => btn.textContent = o, 1800); }
+    }).catch(() => { ta.select(); document.execCommand('copy'); });
 }
 </script>
 

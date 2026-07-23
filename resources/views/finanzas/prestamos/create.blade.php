@@ -30,7 +30,7 @@
 
     {{-- Formulario --}}
     <div class="card-formulario-bx">
-        <form action="{{ route('finanzas.prestamos.store') }}" method="POST" enctype="multipart/form-data" onsubmit="return confirmarMonto(this, 'monto_original', 'Vas a registrar un préstamo por')">
+        <form action="{{ route('finanzas.prestamos.store') }}" method="POST" enctype="multipart/form-data">
             @csrf
             
             <div class="form-body-bx">

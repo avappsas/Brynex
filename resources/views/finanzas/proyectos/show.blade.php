@@ -214,7 +214,7 @@
                 <h3>💸 Registrar Movimiento</h3>
                 <button @click="openMovimiento = false" class="modal-close-bx">&times;</button>
             </div>
-            <form action="{{ route('finanzas.proyectos.movimiento', $proyecto->id) }}" method="POST" onsubmit="return confirmarMonto(this, 'monto', 'Vas a registrar un movimiento de')">
+            <form action="{{ route('finanzas.proyectos.movimiento', $proyecto->id) }}" method="POST">
                 @csrf
                 <div class="modal-body-bx">
                     <div class="form-group-bx">
@@ -263,7 +263,7 @@
                 <h3>✏️ Editar Movimiento</h3>
                 <button @click="openEditar = false" class="modal-close-bx">&times;</button>
             </div>
-            <form :action="'{{ route('finanzas.proyectos.movimiento.update', 'ID_TEMPORAL') }}'.replace('ID_TEMPORAL', itemEditar.id)" method="POST" onsubmit="return confirmarMonto(this, 'monto', 'Vas a dejar este movimiento en')">
+            <form :action="'{{ route('finanzas.proyectos.movimiento.update', 'ID_TEMPORAL') }}'.replace('ID_TEMPORAL', itemEditar.id)" method="POST">
                 @csrf
                 @method('PUT')
                 <div class="modal-body-bx">

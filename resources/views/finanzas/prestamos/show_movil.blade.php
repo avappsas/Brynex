@@ -372,7 +372,7 @@
                 <h3>💵 Registrar Abono / Pago</h3>
                 <button @click="openAbono=false" class="bs-close">&times;</button>
             </div>
-            <form action="{{ route('finanzas.prestamos.pago', $prestamo->id) }}" method="POST" enctype="multipart/form-data" class="bs-body" onsubmit="return confirmarMonto(this, 'monto', 'Vas a registrar un abono de')">
+            <form action="{{ route('finanzas.prestamos.pago', $prestamo->id) }}" method="POST" enctype="multipart/form-data" class="bs-body">
                 @csrf
                 <div class="fg"><label>Fecha de Recepción</label><input type="date" name="fecha" value="{{ now()->toDateString() }}" required></div>
                 <div class="fg">
@@ -524,7 +524,7 @@
                 <h3>➕ Anexar Capital</h3>
                 <button @click="openAnexar=false" class="bs-close">&times;</button>
             </div>
-            <form action="{{ route('finanzas.prestamos.anexar', $prestamo->id) }}" method="POST" enctype="multipart/form-data" class="bs-body" onsubmit="return confirmarMonto(this, 'monto', 'Vas a anexar un valor adicional de')">
+            <form action="{{ route('finanzas.prestamos.anexar', $prestamo->id) }}" method="POST" enctype="multipart/form-data" class="bs-body">
                 @csrf
                 <div class="fg"><label>Fecha Desembolso Adicional</label><input type="date" name="fecha" value="{{ now()->toDateString() }}" required></div>
                 <div class="fg">
@@ -565,7 +565,7 @@
                 <h3>✏️ Editar Movimiento</h3>
                 <button @click="openMov=false" class="bs-close">&times;</button>
             </div>
-            <form :action="'{{ route('finanzas.prestamos.movimiento.update', '') }}/' + mov.id" method="POST" enctype="multipart/form-data" class="bs-body" onsubmit="return confirmarMonto(this, 'monto', 'Vas a dejar este movimiento en')">
+            <form :action="'{{ route('finanzas.prestamos.movimiento.update', '') }}/' + mov.id" method="POST" enctype="multipart/form-data" class="bs-body">
                 @csrf
                 <div class="fg"><label>Fecha del Movimiento</label><input type="date" name="fecha" x-model="mov.fecha" required></div>
                 <div class="fg">

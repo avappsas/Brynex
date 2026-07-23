@@ -166,32 +166,3 @@
 }
 </style>
 @endpush
-
-@once
-@push('scripts')
-<script>
-/**
- * Confirmación previa a registrar cualquier movimiento de dinero.
- * Evita que una sugerencia de autocompletado del navegador (u otro error
- * de digitación) registre un monto distinto al que el usuario quiso escribir.
- *
- * Uso: <form onsubmit="return confirmarMonto(this)"> en forms normales, o
- * dentro de un manejador Alpine: @submit="if(!confirmarMonto($el)){ $event.preventDefault(); } else { ... }"
- *
- * @param {HTMLFormElement} form
- * @param {string} [campo] nombre del input a confirmar (por defecto "monto")
- * @param {string} [etiqueta] texto descriptivo del movimiento
- */
-function confirmarMonto(form, campo = 'monto', etiqueta = 'Vas a registrar un monto de') {
-    const input = form.querySelector(`[name="${campo}"]`);
-    if (!input) return true;
-
-    const valor = parseFloat(String(input.value).replace(/\./g, '').replace(',', '.'));
-    if (!valor || isNaN(valor)) return true; // deja que la validación 'required' del campo actúe
-
-    const formateado = valor.toLocaleString('es-CO', { maximumFractionDigits: 0 });
-    return window.confirm(`${etiqueta} $${formateado} COP.\n\n¿Es correcto? Verifica que el navegador no haya autocompletado un valor distinto.`);
-}
-</script>
-@endpush
-@endonce

@@ -127,7 +127,7 @@
                 <h3>🪙 Nueva Inversión / Adquisición</h3>
                 <button @click="openCrear = false" class="modal-close-bx">&times;</button>
             </div>
-            <form action="{{ route('finanzas.inversiones.store') }}" method="POST" onsubmit="return confirmarMonto(this, 'monto_invertido_cop', 'Vas a registrar una inversión de')">
+            <form action="{{ route('finanzas.inversiones.store') }}" method="POST">
                 @csrf
                 <div class="modal-body-bx" x-data="{ tipo: 'cripto' }">
                     <div class="form-group-bx">
@@ -199,7 +199,7 @@
                 <h3>✏️ Editar Inversión</h3>
                 <button @click="openEditar = false" class="modal-close-bx">&times;</button>
             </div>
-            <form :action="'{{ route('finanzas.inversiones.index') }}/' + selectedInversion.id" method="POST" onsubmit="return confirmarMonto(this, 'valor_actual_cop', 'Vas a dejar el valor actual en')">
+            <form :action="'{{ route('finanzas.inversiones.index') }}/' + selectedInversion.id" method="POST">
                 @csrf
                 @method('PUT')
                 <div class="modal-body-bx">

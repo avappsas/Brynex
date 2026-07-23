@@ -147,7 +147,7 @@
                 <h3>🔧 Registrar Gasto Asociado</h3>
                 <button @click="openGasto = false" class="modal-close-bx">&times;</button>
             </div>
-            <form action="{{ route('finanzas.patrimonio.gasto', $patrimonio->id) }}" method="POST" onsubmit="return confirmarMonto(this, 'monto', 'Vas a registrar un gasto de')">
+            <form action="{{ route('finanzas.patrimonio.gasto', $patrimonio->id) }}" method="POST">
                 @csrf
                 <div class="modal-body-bx">
                     <div class="form-group-bx">

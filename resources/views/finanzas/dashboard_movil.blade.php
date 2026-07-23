@@ -1062,7 +1062,7 @@
                     <button @click="openGasto = false" class="bs-close">&times;</button>
                 </div>
                 
-                <form action="{{ route('finanzas.gastos.store') }}" method="POST" enctype="multipart/form-data" @submit="if(!confirmarMonto($el, 'monto', 'Vas a registrar un movimiento de')){ $event.preventDefault(); } else { cargando = true; }">
+                <form action="{{ route('finanzas.gastos.store') }}" method="POST" enctype="multipart/form-data" @submit="cargando = true">
                     @csrf
                     <div class="bs-body">
                         
@@ -1304,7 +1304,7 @@
                         })->first()?->id;
                 @endphp
 
-                <form action="{{ route('finanzas.gastos.store') }}" method="POST" enctype="multipart/form-data" @submit="if(!confirmarMonto($el, 'monto', 'Vas a registrar una entrada de')){ $event.preventDefault(); } else { cargando = true; }">
+                <form action="{{ route('finanzas.gastos.store') }}" method="POST" enctype="multipart/form-data" @submit="cargando = true">
                     @csrf
                     
                     {{-- Campos ocultos obligatorios --}}
@@ -1593,7 +1593,7 @@
                     <button @click="openEditarGasto = false" class="bs-close">&times;</button>
                 </div>
                 
-                <form :action="'/finanzas/gastos/' + selectedGasto.id" method="POST" enctype="multipart/form-data" @submit="if(!confirmarMonto($el, 'monto', 'Vas a dejar este movimiento en')){ $event.preventDefault(); } else { cargando = true; }">
+                <form :action="'/finanzas/gastos/' + selectedGasto.id" method="POST" enctype="multipart/form-data" @submit="cargando = true">
                     @csrf
                     @method('PUT')
                     <div class="bs-body">
