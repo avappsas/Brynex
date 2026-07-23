@@ -4,6 +4,26 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\AlidoSelectorController;
 
+// ─── Dominio propio del aliado (Fase 6) — ej. brygar.com sirviendo directamente su página ──
+// DEBE ir antes que cualquier ruta "/" sin restricción de dominio (como el login de abajo):
+// Laravel resuelve rutas en orden de registro, y una ruta "/" sin Route::domain() responde
+// en CUALQUIER host — si este bloque quedara después, el login siempre le ganaría en brygar.com.
+// Se registra dinámicamente por cada aliado con `dominio_propio` configurado. Solo hace falta
+// mapear la RAÍZ ("/"): las rutas /aliado/{slug}/cotizar, /lead y /metrica no tienen
+// Route::domain(), así que Laravel ya las resuelve sobre el host que llegó en la petición —
+// no hace falta duplicarlas por dominio. Requiere que el DNS del dominio apunte a este
+// servidor — ver docs/plan-pagina-publica-aliado.md, Fase 6, para los pasos exactos.
+foreach (\App\Models\Aliado::whereNotNull('dominio_propio')->where('activo', true)->get(['slug', 'dominio_propio']) as $aliadoConDominio) {
+    $dominioBase = strtolower(preg_replace('/^www\./', '', $aliadoConDominio->dominio_propio));
+
+    foreach ([$dominioBase, 'www.' . $dominioBase] as $dominio) {
+        Route::domain($dominio)
+            ->get('/', [\App\Http\Controllers\Publico\PaginaAliadoController::class, 'show'])
+            ->defaults('slug', $aliadoConDominio->slug)
+            ->name("dominio.{$dominio}.show");
+    }
+}
+
 // ─── Rutas públicas ────────────────────────────────────────────────────────
 Route::get('/',      [LoginController::class, 'showLogin'])->name('login');
 Route::get('/login', [LoginController::class, 'showLogin']);
@@ -14,6 +34,31 @@ Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
 // No requiere auth — solo verificación de cédula dentro del controller
 Route::get( '/incapacidades/subir/{token}',  [\App\Http\Controllers\IncapacidadUploadController::class, 'show'])  ->name('incapacidades.subir');
 Route::post('/incapacidades/subir/{token}',  [\App\Http\Controllers\IncapacidadUploadController::class, 'upload'])->name('incapacidades.subir.post');
+
+// ─── Página web pública de aliado (brynex.co/aliado/{slug}) ────────────────
+// No requiere auth — visibilidad controlada por aliados.activo + pagina_aliado_config.activo
+// dentro del controller (404 si el aliado no existe o la página no está activa).
+Route::get('/aliado/{slug}', [\App\Http\Controllers\Publico\PaginaAliadoController::class, 'show'])->name('publico.aliado');
+
+// Vista previa firmada: permite ver la página aunque esté inactiva (usada desde el CMS admin).
+Route::get('/aliado/{slug}/preview', [\App\Http\Controllers\Publico\PaginaAliadoController::class, 'preview'])
+    ->name('publico.aliado.preview')
+    ->middleware('signed');
+
+// Cotizador "Arma tu plan" y captura de leads — throttle por IP, sin autenticación.
+Route::post('/aliado/{slug}/cotizar', [\App\Http\Controllers\Publico\PaginaAliadoController::class, 'cotizar'])
+    ->name('publico.aliado.cotizar')
+    ->middleware('throttle:30,1');
+Route::post('/aliado/{slug}/lead', [\App\Http\Controllers\Publico\PaginaAliadoController::class, 'lead'])
+    ->name('publico.aliado.lead')
+    ->middleware('throttle:10,1');
+
+// Beacon de analítica propia (clic en WhatsApp) — throttle generoso, es solo un contador.
+Route::post('/aliado/{slug}/metrica', [\App\Http\Controllers\Publico\PaginaAliadoController::class, 'registrarMetrica'])
+    ->name('publico.aliado.metrica')
+    ->middleware('throttle:60,1');
+
+Route::get('/sitemap.xml', [\App\Http\Controllers\Publico\PaginaAliadoController::class, 'sitemap'])->name('publico.sitemap');
 
 // ─── Webhook público WhatsApp (Meta Cloud API) ─────────────────────────────
 // No requiere auth — Meta llama directamente. Seguridad via HMAC en el controller.
@@ -221,6 +266,9 @@ Route::middleware('auth')->group(function () {
             Route::post('otro-ingreso',                 [$fc, 'facturarOtroIngreso'])    ->name('otro_ingreso.store');
             Route::match(['get', 'post'], 'cuenta-cobro', [$fc, 'cuentaCobroPreview'])->name('cuenta_cobro.preview');
             Route::post('contrato/{contrato}/retiro-pendiente', [$fc, 'guardarRetiroPendiente'])->name('contrato.retiro_pendiente');
+            // ── Carga masiva de cédulas con NP provisional ───────────────────────────
+            Route::post('empresa/{id}/verificar-cedulas', [$fc, 'verificarCedulas'])   ->name('empresa.verificar_cedulas');
+            Route::post('empresa/{id}/asignar-np',        [$fc, 'asignarNpProvisional'])->name('empresa.asignar_np');
 
 
             // ── Cobros adicionales por empresa (parafiscales, pendientes, etc.) ──
@@ -619,6 +667,49 @@ Route::middleware('auth')->group(function () {
         Route::patch('campanas/{id}',              [$campanas, 'update'])        ->name('campanas.update');
         Route::get('campanas/{id}/previsualizar',  [$campanas, 'previsualizar']) ->name('campanas.previsualizar');
         Route::post('campanas/{id}/lanzar-tanda',  [$campanas, 'lanzarTanda'])   ->name('campanas.lanzar_tanda');
+    });
+
+    // ─── CMS ligero de la página web pública del aliado ────────────────────────
+    Route::prefix('admin/pagina')->name('admin.pagina.')->group(function () {
+        $pag = \App\Http\Controllers\Admin\PaginaAliadoAdminController::class;
+
+        Route::get('/',              [$pag, 'edit'])       ->name('index');
+        Route::post('/',             [$pag, 'update'])     ->name('update');
+
+        Route::get('faqs',           [$pag, 'faqs'])       ->name('faqs.index');
+        Route::post('faqs',          [$pag, 'faqStore'])   ->name('faqs.store');
+        Route::put('faqs/{id}',      [$pag, 'faqUpdate'])  ->name('faqs.update');
+        Route::delete('faqs/{id}',   [$pag, 'faqDestroy']) ->name('faqs.destroy');
+
+        Route::get('leads',           [$pag, 'leads'])           ->name('leads.index');
+        Route::patch('leads/{id}',    [$pag, 'leadUpdateEstado']) ->name('leads.update');
+    });
+
+    // ─── Credenciales de redes sociales por aliado (Facebook, Instagram, ...) ──
+    Route::prefix('admin/redes-sociales')->name('admin.redes-sociales.')->group(function () {
+        $rs = \App\Http\Controllers\Admin\RedesSocialesController::class;
+
+        Route::get('/',                 [$rs, 'edit'])          ->name('index');
+        Route::post('{red}',            [$rs, 'update'])        ->name('update');
+        Route::post('{red}/probar',     [$rs, 'probarConexion'])->name('probar');
+    });
+
+    // ─── Generador de publicidad (plantillas/canvas + IA, aprobación, publicación) ─────
+    Route::prefix('admin/publicidad')->name('admin.publicidad.')->group(function () {
+        $pub = \App\Http\Controllers\Admin\PublicidadController::class;
+
+        Route::get('/',                       [$pub, 'index'])         ->name('index');
+        Route::get('crear',                   [$pub, 'create'])        ->name('create');
+        Route::post('/',                      [$pub, 'store'])         ->name('store');
+        Route::get('{id}',                    [$pub, 'show'])          ->name('show');
+        Route::delete('{id}',                 [$pub, 'destroy'])       ->name('destroy');
+        Route::post('{id}/aprobar',           [$pub, 'aprobar'])       ->name('aprobar');
+        Route::post('{id}/rechazar',          [$pub, 'rechazar'])      ->name('rechazar');
+        Route::post('{id}/reintentar/{red}',  [$pub, 'reintentar'])    ->name('reintentar');
+
+        Route::post('generar-copia',          [$pub, 'generarCopia'])  ->name('generar_copia');
+        Route::post('generar-imagen',         [$pub, 'generarImagen']) ->name('generar_imagen');
+        Route::post('subir-canvas',           [$pub, 'subirCanvas'])   ->name('subir_canvas');
     });
 
     // ============================================

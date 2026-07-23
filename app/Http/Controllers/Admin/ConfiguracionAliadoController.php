@@ -30,7 +30,10 @@ class ConfiguracionAliadoController extends Controller
         // Obtener el primer operador de planilla disponible para el editor de planillas
         $primerOperador = \App\Models\OperadorPlanilla::orderBy('nombre')->first();
 
-        return view('admin.configuracion.hub', compact('primeraEps', 'primerOperador'));
+        // Slug del aliado activo, para el link de la tarjeta "Página Web Pública"
+        $aliadoActivo = Aliado::select('id', 'slug')->find(session('aliado_id_activo'));
+
+        return view('admin.configuracion.hub', compact('primeraEps', 'primerOperador', 'aliadoActivo'));
     }
 
     /**

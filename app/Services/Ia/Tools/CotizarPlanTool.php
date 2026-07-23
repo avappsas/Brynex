@@ -2,11 +2,10 @@
 
 namespace App\Services\Ia\Tools;
 
-use App\Models\ConfiguracionAliado;
 use App\Models\ConfiguracionBrynex;
 use App\Models\PlanContrato;
 use App\Models\TipoModalidad;
-use App\Services\CotizadorService;
+use App\Services\CotizacionPublicaService;
 
 class CotizarPlanTool implements IaToolInterface
 {
@@ -66,7 +65,7 @@ class CotizarPlanTool implements IaToolInterface
             return ['error' => 'No encontré esa modalidad/tipo de vinculación.', 'modalidades_disponibles' => $disponibles];
         }
 
-        [$plan, $coincidenciaExacta] = $this->resolverPlan($componentes, $tipoModalidad->esIndependiente());
+        [$plan, $coincidenciaExacta] = CotizacionPublicaService::resolverPlan($componentes, $tipoModalidad->esIndependiente());
 
         if (!$plan) {
             return [
@@ -79,71 +78,12 @@ class CotizarPlanTool implements IaToolInterface
             ? (float) $input['salario']
             : ConfiguracionBrynex::salarioMinimo();
 
-        // administracion/admon_asesor/seguro: SIEMPRE de la config genérica del aliado (plan_id
-        // null), nunca de la fila por plan — confirmado contra contratos reales de BRYGAR: 15
-        // contratos de planes distintos tienen todos administracion=$46.000 (el valor genérico),
-        // aunque la fila de config de cada plan individual tenga administracion=0 (esas filas
-        // solo se usan para costo_afiliacion). Pasar plan_id aquí hacía que se perdiera el
-        // cargo de administración en cotizaciones nuevas.
-        $cfgGeneral = ConfiguracionAliado::paraAliado($alidoId);
-        $cfgPlan    = ConfiguracionAliado::paraAliado($alidoId, $plan->id);
-
-        $resultado = CotizadorService::calcular([
-            'tipo_modalidad_id' => $tipoModalidad->id,
-            'plan_id'           => $plan->id,
-            'n_arl'             => (int) ($input['nivel_arl'] ?? 1),
-            'salario'           => $salario,
-            'administracion'    => (float) ($cfgGeneral->administracion ?? 0),
-            'admon_asesor'      => (float) ($cfgGeneral->admon_asesor ?? 0),
-            'seguro'            => (float) ($cfgGeneral->seguro_valor ?? 0),
-            'dias'              => (int) ($input['dias'] ?? 30),
-        ], $alidoId);
-
-        // costo_afiliacion SÍ varía por plan, pero además varía contrato a contrato dentro del
-        // mismo plan en la práctica (el asesor lo ajusta al afiliar) — por eso se marca como
-        // "sugerido", no como un cobro garantizado.
-        $resultado['costo_afiliacion_sugerido'] = (float) ($cfgPlan->costo_afiliacion ?? $cfgGeneral->costo_afiliacion ?? 0);
-
-        // Plan de pago inicial (gancho de venta): replica EXACTO el esquema real de facturación
-        // (CobroContratoService::calcular/calcularDias) para quien se afilia hoy —
-        // mes 1 = SOLO el cobro de afiliación (sin SS ni administración); mes 2 = proporcional de
-        // los días restantes del mes vencido + administración COMPLETA (nunca se prorratea); mes
-        // 3 en adelante = mes completo. Solo aplica al esquema de "afiliación pura" (Dependiente e
-        // Independiente Vencido); Independiente Activo (id 11) cobra proporcional + administración
-        // + afiliación TODO junto desde el mes de ingreso, sin este diferimiento, así que se omite
-        // para no sugerirle al cliente un plan de pago que no le aplica.
-        try {
-            $fechaAfiliacion = !empty($input['fecha_afiliacion']) ? \Carbon\Carbon::parse($input['fecha_afiliacion']) : now();
-        } catch (\Throwable $e) {
-            $fechaAfiliacion = now();
-        }
-        $resultado['fecha_afiliacion'] = $fechaAfiliacion->toDateString();
-
-        if ((int) $tipoModalidad->id !== 11) {
-            $diaIngreso         = (int) $fechaAfiliacion->day;
-            $diasProporcionales = max(1, 30 - $diaIngreso + 1);
-
-            $resultadoMes2 = CotizadorService::calcular([
-                'tipo_modalidad_id' => $tipoModalidad->id,
-                'plan_id'           => $plan->id,
-                'n_arl'             => (int) ($input['nivel_arl'] ?? 1),
-                'salario'           => $salario,
-                'administracion'    => (float) ($cfgGeneral->administracion ?? 0),
-                'admon_asesor'      => (float) ($cfgGeneral->admon_asesor ?? 0),
-                'seguro'            => (float) ($cfgGeneral->seguro_valor ?? 0),
-                'dias'              => $diasProporcionales,
-            ], $alidoId);
-
-            $resultado['plan_pago_inicial'] = [
-                'mes_1_nombre'              => ucfirst($fechaAfiliacion->translatedFormat('F')),
-                'mes_1_afiliacion'          => $resultado['costo_afiliacion_sugerido'],
-                'mes_2_nombre'              => ucfirst($fechaAfiliacion->copy()->addMonthNoOverflow()->translatedFormat('F')),
-                'mes_2_dias_proporcionales' => $diasProporcionales,
-                'mes_2_valor'               => $resultadoMes2['total'],
-                'mes_3_nombre'              => ucfirst($fechaAfiliacion->copy()->addMonthsNoOverflow(2)->translatedFormat('F')),
-                'mes_3_en_adelante'         => $resultado['total'],
-            ];
-        }
+        $resultado = CotizacionPublicaService::cotizar($plan, $tipoModalidad, $alidoId, [
+            'salario'          => $salario,
+            'nivel_arl'        => (int) ($input['nivel_arl'] ?? 1),
+            'dias'             => (int) ($input['dias'] ?? 30),
+            'fecha_afiliacion' => $input['fecha_afiliacion'] ?? null,
+        ]);
 
         $resultado['coincidencia_exacta'] = $coincidenciaExacta;
         $resultado['salario_usado']       = $salario;
@@ -161,60 +101,6 @@ class CotizarPlanTool implements IaToolInterface
         }
 
         return $resultado;
-    }
-
-    /**
-     * Busca el plan cuyos componentes coincidan EXACTAMENTE con lo pedido. Si no existe,
-     * busca el plan más cercano que incluya AL MENOS lo pedido (superset con menos extras).
-     *
-     * "Solo EPS" (sin ARL/pensión/caja) NO es una combinación real bajo Dependiente: BRYGAR
-     * afilia como dependiente mediante un esquema que exige ARL junto con la EPS. Esa
-     * combinación solo aplica como Independiente (EPS sola, más cara al 12,5%) — por eso se
-     * excluye de la búsqueda cuando la modalidad no es independiente, forzando el fallback a
-     * "EPS + ARL" en vez de ofrecer algo que no se puede afiliar en la práctica.
-     *
-     * @return array{0: ?PlanContrato, 1: bool} [plan, esCoincidenciaExacta]
-     */
-    private function resolverPlan(array $componentes, bool $esIndependiente): array
-    {
-        $query = PlanContrato::where('activo', true);
-        if (!$esIndependiente) {
-            $query->where(function ($q) {
-                $q->where('incluye_eps', false)
-                  ->orWhere('incluye_arl', true)
-                  ->orWhere('incluye_pension', true)
-                  ->orWhere('incluye_caja', true);
-            });
-        }
-
-        $exacto = (clone $query)
-            ->where('incluye_eps', $componentes['incluye_eps'])
-            ->where('incluye_arl', $componentes['incluye_arl'])
-            ->where('incluye_pension', $componentes['incluye_pension'])
-            ->where('incluye_caja', $componentes['incluye_caja'])
-            ->first();
-
-        if ($exacto) {
-            return [$exacto, true];
-        }
-
-        // Buscar planes que incluyan AL MENOS lo pedido (superset), y quedarnos con
-        // el que tenga menos componentes extra (el más ajustado a lo pedido).
-        $candidatos = $query->get()->filter(function ($p) use ($componentes) {
-            return (!$componentes['incluye_eps']     || $p->incluye_eps)
-                && (!$componentes['incluye_arl']     || $p->incluye_arl)
-                && (!$componentes['incluye_pension'] || $p->incluye_pension)
-                && (!$componentes['incluye_caja']    || $p->incluye_caja);
-        });
-
-        if ($candidatos->isEmpty()) {
-            return [null, false];
-        }
-
-        $extras = fn ($p) => (int) $p->incluye_eps + (int) $p->incluye_arl + (int) $p->incluye_pension + (int) $p->incluye_caja;
-        $mejor = $candidatos->sortBy($extras)->first();
-
-        return [$mejor, false];
     }
 
     private function resolverModalidad(?string $texto): ?TipoModalidad

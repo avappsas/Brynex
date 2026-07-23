@@ -15,6 +15,7 @@ class IaConfiguracionAliado extends BaseModel
         'proveedor',
         'usa_cuenta_brynex',
         'api_key',
+        'gemini_api_key',
         'modelo',
         'nombre_bot',
         'activo_web',
@@ -47,6 +48,28 @@ class IaConfiguracionAliado extends BaseModel
         } catch (\Exception $e) {
             return null;
         }
+    }
+
+    // ── Accesor/Mutador para la clave de Gemini (solo generación de imágenes en publicidad) ──
+
+    public function setGeminiApiKeyAttribute(?string $value): void
+    {
+        $this->attributes['gemini_api_key'] = $value ? Crypt::encryptString($value) : null;
+    }
+
+    public function getGeminiApiKeyAttribute(?string $value): ?string
+    {
+        if (!$value) return null;
+        try {
+            return Crypt::decryptString($value);
+        } catch (\Exception $e) {
+            return null;
+        }
+    }
+
+    public function tieneGemini(): bool
+    {
+        return !empty($this->gemini_api_key);
     }
 
     /**

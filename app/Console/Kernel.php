@@ -46,6 +46,16 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/whatsapp-seguimiento-ia.log'));
+
+        // ── Despacho de publicidad programada (Fase 4 página web pública) ────
+        // Cada 5 min: publica las piezas aprobadas cuya fecha programada ya llegó.
+        // Ejecución manual: php artisan publicaciones:despachar
+        $schedule->command('publicaciones:despachar')
+            ->everyFiveMinutes()
+            ->timezone('America/Bogota')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo(storage_path('logs/publicaciones-despacho.log'));
     }
 
     /**

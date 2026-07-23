@@ -29,6 +29,8 @@ class Aliado extends BaseModel
         'ciudad',
         'logo',
         'color_primario',
+        'slug',
+        'dominio_propio',
         'activo',
         'afiliaciones_brynex',
         'encargado_afil_id',
@@ -73,6 +75,18 @@ class Aliado extends BaseModel
     public function whatsappConfig(): HasOne
     {
         return $this->hasOne(WhatsappConfig::class, 'aliado_id');
+    }
+
+    // Configuración de la página web pública (/aliado/{slug})
+    public function paginaConfig(): HasOne
+    {
+        return $this->hasOne(PaginaAliadoConfig::class, 'aliado_id');
+    }
+
+    // Preguntas frecuentes de la página pública
+    public function paginaFaqs(): HasMany
+    {
+        return $this->hasMany(PaginaFaq::class, 'aliado_id')->where('activo', true)->orderBy('orden');
     }
 
     // Módulos de Brynex contratados por este aliado

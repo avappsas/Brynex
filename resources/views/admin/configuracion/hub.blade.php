@@ -95,6 +95,30 @@
             <div class="c-desc">Registrar y gestionar asesores comerciales. Configure su comisión por afiliación y por planilla (fija o porcentaje).</div>
         </a>
 
+        <a class="cfg-card" href="{{ route('admin.pagina.index') }}"
+           style="--c:#2563eb;--bc:#93c5fd">
+            <span class="c-badge" style="background:#dbeafe;color:#1e40af">Público</span>
+            <div class="c-icon">🌐</div>
+            <div class="c-title">Página Web Pública</div>
+            <div class="c-desc">Edita el encabezado, secciones visibles, mensaje de WhatsApp, SEO y preguntas frecuentes de tu página{{ $aliadoActivo?->slug ? ' en brynex.co/aliado/' . $aliadoActivo->slug : '' }}.</div>
+        </a>
+
+        <a class="cfg-card" href="{{ route('admin.redes-sociales.index') }}"
+           style="--c:#db2777;--bc:#f9a8d4">
+            <span class="c-badge" style="background:#fce7f3;color:#be185d">Público</span>
+            <div class="c-icon">📲</div>
+            <div class="c-title">Redes Sociales</div>
+            <div class="c-desc">Conecta Facebook e Instagram para publicar contenido desde Brynex hacia tus cuentas.</div>
+        </a>
+
+        <a class="cfg-card" href="{{ route('admin.publicidad.index') }}"
+           style="--c:#7c3aed;--bc:#c4b5fd">
+            <span class="c-badge" style="background:#ede9fe;color:#6d28d9">Público</span>
+            <div class="c-icon">🎨</div>
+            <div class="c-title">Generador de Publicidad</div>
+            <div class="c-desc">Crea piezas con plantillas o IA, apruébalas y publícalas en la página web y en redes sociales.</div>
+        </a>
+
         @if(Auth::user()->hasRole('superadmin') && Auth::user()->es_brynex)
         <a class="cfg-card" href="{{ route('admin.aliados.index') }}"
            style="--c:#0f172a;--bc:#94a3b8">

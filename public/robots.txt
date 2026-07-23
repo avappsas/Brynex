@@ -1,2 +1,11 @@
 User-agent: *
-Disallow:
+Disallow: /admin
+Disallow: /dashboard
+Disallow: /login
+Disallow: /finanzas
+Disallow: /asistente-ia
+Disallow: /seleccionar-aliado
+Disallow: /incapacidades
+Disallow: /whatsapp
+
+Sitemap: https://brynex.co/sitemap.xml
