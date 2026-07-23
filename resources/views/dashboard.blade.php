@@ -81,6 +81,16 @@
             if(auth()->user()?->hasRole(['superadmin', 'admin', 'contador', 'usuario'])){
                 $modulos[] = ['icono'=>'💼', 'nombre'=>'Comisiones', 'color'=>'#f59e0b', 'url'=>route('admin.informes.comisiones.index')];
             }
+            // Marketing: solo si el aliado tiene el módulo contratado y activo con Brynex
+            if(auth()->user()?->hasRole(['superadmin', 'admin', 'usuario'])){
+                $moduloMarketingActivo = \App\Models\BrynexModuloAliado::where('aliado_id', session('aliado_id_activo'))
+                    ->where('modulo_id', 9)
+                    ->where('activo', true)
+                    ->exists();
+                if($moduloMarketingActivo){
+                    $modulos[] = ['icono'=>'📣', 'nombre'=>'Marketing', 'color'=>'#d946ef', 'url'=>route('admin.marketing.campanas.index')];
+                }
+            }
 
         @endphp
 

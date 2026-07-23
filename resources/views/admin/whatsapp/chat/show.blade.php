@@ -195,6 +195,9 @@
                 <a x-show="conversacion.contrato_url" :href="conversacion.contrato_url" target="_blank" class="btn-sm btn-success">
                     📄 Ver Cliente
                 </a>
+                <button class="btn-sm btn-outline" @click="noContactar()" title="Bloquea este número de futuras campañas de marketing">
+                    🚫 No contactar
+                </button>
                 <button class="btn-sm btn-danger" @click="cerrarConversacion()">✕ Cerrar</button>
             </div>
         </div>
@@ -728,6 +731,20 @@ function chatApp() {
             });
             const data = await resp.json();
             if (data.ok) window.location = '{{ route('admin.whatsapp.chat.index') }}';
+        },
+
+        async noContactar() {
+            if (!confirm('¿Bloquear este número de futuras campañas de marketing? No volverá a recibir publicidad.')) return;
+            const resp = await fetch(`/admin/whatsapp/chat/${this.convId}/no-contactar`, {
+                method: 'PATCH',
+                headers: {
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                    'Accept': 'application/json',
+                }
+            });
+            const data = await resp.json();
+            if (data.ok) alert(data.mensaje);
+            else alert(data.error || 'Error al bloquear el número');
         },
 
         async toggleBot() {

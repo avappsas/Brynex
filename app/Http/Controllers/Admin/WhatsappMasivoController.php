@@ -242,7 +242,10 @@ class WhatsappMasivoController extends Controller
     {
         $alidoId = session('aliado_id_activo');
 
+        // whereNull('campana_id'): los envíos de campañas de marketing no son cobro —
+        // tienen su propia pantalla (admin.marketing.campanas.*), no deben mezclarse aquí.
         $envios = WhatsappEnvioMasivo::where('aliado_id', $alidoId)
+            ->whereNull('campana_id')
             ->with(['plantilla:id,nombre_display', 'usuario:id,nombre'])
             ->orderByDesc('created_at')
             ->paginate(20);
@@ -257,6 +260,7 @@ class WhatsappMasivoController extends Controller
     {
         $alidoId = session('aliado_id_activo');
         $envio   = WhatsappEnvioMasivo::where('aliado_id', $alidoId)
+            ->whereNull('campana_id')
             ->with(['plantilla', 'usuario', 'detalles'])
             ->findOrFail($id);
 

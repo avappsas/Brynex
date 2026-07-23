@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Events\WhatsappConversacionActualizada;
 use App\Http\Controllers\Controller;
-use App\Models\{IaConfiguracionAliado, User, WhatsappConfig, WhatsappConversacion, WhatsappMensaje};
+use App\Models\{IaConfiguracionAliado, MarketingBloqueado, User, WhatsappConfig, WhatsappConversacion, WhatsappMensaje};
 use App\Services\WhatsappApiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\{Auth, Storage};
@@ -265,6 +265,29 @@ class WhatsappChatController extends Controller
         $conversacion->cerrar();
 
         return response()->json(['ok' => true]);
+    }
+
+    /**
+     * Bloquea el número de esta conversación para que nunca más reciba campañas de
+     * marketing (no afecta la conversación actual ni el servicio ya en curso).
+     */
+    public function noContactar(Request $request, int $id)
+    {
+        $alidoId      = session('aliado_id_activo');
+        $conversacion = WhatsappConversacion::delAliado($alidoId)->findOrFail($id);
+
+        $validated = $request->validate(['motivo' => 'nullable|string|max:500']);
+
+        MarketingBloqueado::bloquear(
+            $alidoId,
+            $conversacion->wa_contact_id,
+            'asesor',
+            $validated['motivo'] ?? 'Bloqueado manualmente desde el chat',
+            Auth::id(),
+            $conversacion->id
+        );
+
+        return response()->json(['ok' => true, 'mensaje' => 'Número bloqueado de futuras campañas de marketing']);
     }
 
     /**

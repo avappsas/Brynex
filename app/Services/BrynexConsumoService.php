@@ -131,6 +131,8 @@ class BrynexConsumoService
     /**
      * Calcula el consumo del módulo WA Plantillas.
      * Cuenta mensajes salientes de plantilla (plantilla_id NOT NULL) del mes.
+     * Excluye los que pertenecen a una campaña de marketing (ver calcularMarketing) —
+     * esos se cobran aparte, en su propio módulo, para no facturarlos dos veces.
      */
     public function calcularWaPlantillas(int $alidoId, int $mes, int $anio): array
     {
@@ -143,6 +145,13 @@ class BrynexConsumoService
             ->where('m.direccion', 'saliente')
             ->whereNotNull('m.plantilla_id')
             ->whereBetween('m.created_at', [$primerDia, $ultimoDia])
+            ->whereNotExists(function ($q) {
+                $q->select(DB::raw(1))
+                    ->from('whatsapp_envios_masivos_detalle as d')
+                    ->join('whatsapp_envios_masivos as e', 'e.id', '=', 'd.envio_id')
+                    ->whereColumn('d.wa_message_id', 'm.wa_message_id')
+                    ->whereNotNull('e.campana_id');
+            })
             ->select('m.id', 'm.created_at', 'm.estado', 'p.nombre as plantilla_nombre')
             ->orderBy('m.created_at')
             ->get();
@@ -205,6 +214,49 @@ class BrynexConsumoService
     }
 
     // ════════════════════════════════════════════════════════════════════════
+    // MÓDULO 9 — Marketing (mensajes de campañas enviados)
+    // ════════════════════════════════════════════════════════════════════════
+
+    /**
+     * Calcula el consumo del módulo Marketing: se cobra por mensaje enviado en campañas
+     * (no por token de IA, ese consumo se mide y cobra aparte en el módulo ia_asistente).
+     * Cuenta el detalle de envío masivo que sí llegó a salir (enviado/entregado/leído),
+     * ligado a una campaña (campana_id NOT NULL).
+     */
+    public function calcularMarketing(int $alidoId, int $mes, int $anio): array
+    {
+        $primerDia = Carbon::create($anio, $mes, 1)->startOfDay();
+        $ultimoDia = $primerDia->copy()->endOfMonth();
+
+        $mensajes = DB::table('whatsapp_envios_masivos_detalle as d')
+            ->join('whatsapp_envios_masivos as e', 'e.id', '=', 'd.envio_id')
+            ->join('marketing_campanas as c', 'c.id', '=', 'e.campana_id')
+            ->where('e.aliado_id', $alidoId)
+            ->whereNotNull('e.campana_id')
+            ->whereIn('d.estado', ['enviado', 'entregado', 'leido'])
+            ->whereBetween('d.created_at', [$primerDia, $ultimoDia])
+            ->select('d.id', 'd.wa_numero', 'd.estado', 'd.created_at', 'c.nombre as campana_nombre')
+            ->orderBy('d.created_at')
+            ->get();
+
+        $cantidad = $mensajes->count();
+        $calculo  = BrynexTramoTarifa::calcularCobro(
+            moduloId: 9,
+            cantidad: $cantidad,
+            alidoId:  $alidoId,
+            fecha:    $ultimoDia->toDateString()
+        );
+
+        return array_merge($calculo, [
+            'modulo_id'     => 9,
+            'modulo_codigo' => 'marketing',
+            'modulo_nombre' => 'Marketing',
+            'descripcion'   => "Mensajes de campañas de marketing enviados en {$this->nombreMes($mes)} {$anio}",
+            'contratos'     => $mensajes,
+        ]);
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
     // RESUMEN GENERAL DEL ALIADO (orquestador)
     // ════════════════════════════════════════════════════════════════════════
 
@@ -259,6 +311,13 @@ class BrynexConsumoService
         // Módulo 4 — WA Conversaciones
         if (in_array(4, $modulosActivos)) {
             $r = $this->calcularWaConversaciones($alidoId, $mes, $anio);
+            $resultados[] = $r;
+            $total += $r['subtotal'];
+        }
+
+        // Módulo 9 — Marketing
+        if (in_array(9, $modulosActivos)) {
+            $r = $this->calcularMarketing($alidoId, $mes, $anio);
             $resultados[] = $r;
             $total += $r['subtotal'];
         }

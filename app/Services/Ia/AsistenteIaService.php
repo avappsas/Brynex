@@ -9,6 +9,7 @@ use App\Models\IaConfiguracionAliado;
 use App\Models\IaConsumo;
 use App\Models\IaConversacion;
 use App\Models\IaMensaje;
+use App\Models\MarketingCampana;
 use App\Services\Ia\Tools\BuscarConocimientoTool;
 use App\Services\Ia\Tools\BuscarInternetTool;
 use App\Services\Ia\Tools\CatalogoModulosTool;
@@ -19,6 +20,7 @@ use App\Services\Ia\Tools\CotizarPlanPublicoTool;
 use App\Services\Ia\Tools\CotizarPlanTool;
 use App\Services\Ia\Tools\HablarConAsesorTool;
 use App\Services\Ia\Tools\IaToolInterface;
+use App\Services\Ia\Tools\NoContactarTool;
 use App\Services\Ia\Tools\PreguntarEntrenadorTool;
 use Illuminate\Support\Facades\Log;
 
@@ -75,7 +77,8 @@ class AsistenteIaService
         string $mensajeUsuario,
         ?int $waConversacionId,
         ?string $origenCampana = null,
-        ?string $origenCampanaCategoria = null
+        ?string $origenCampanaCategoria = null,
+        ?int $origenCampanaId = null
     ): array {
         $config = IaConfiguracionAliado::paraAliado($alidoId);
         if (!$config->activo_whatsapp) {
@@ -89,6 +92,7 @@ class AsistenteIaService
 
         $conversacion = IaConversacion::paraTelefono($alidoId, $telefono);
         $clienteInfo = $this->resolverClienteExistente($alidoId, $telefono);
+        $campana = $origenCampanaId ? MarketingCampana::find($origenCampanaId) : null;
 
         $aliado = Aliado::find($alidoId);
         $systemPrompt = $this->construirSystemPromptWhatsapp(
@@ -96,7 +100,8 @@ class AsistenteIaService
             $config->nombreBot(),
             $origenCampana,
             $origenCampanaCategoria,
-            $clienteInfo
+            $clienteInfo,
+            $campana
         );
         $tools = $this->construirToolsWhatsapp($credenciales);
         $contextoExtra = ['canal' => 'whatsapp', 'wa_conversacion_id' => $waConversacionId];
@@ -157,6 +162,7 @@ class AsistenteIaService
         $tools[] = new HablarConAsesorTool();
         $tools[] = new ConsultarClienteTool();
         $tools[] = new EnviarPlanillaTool();
+        $tools[] = new NoContactarTool();
 
         return $tools;
     }
@@ -363,7 +369,8 @@ class AsistenteIaService
         string $nombreBot,
         ?string $origenCampana = null,
         ?string $origenCampanaCategoria = null,
-        array $clienteInfo = []
+        array $clienteInfo = [],
+        ?MarketingCampana $campana = null
     ): string {
         $fecha = now()->translatedFormat('d \d\e F \d\e Y');
         $esCliente = $clienteInfo['es_cliente'] ?? false;
@@ -384,7 +391,26 @@ class AsistenteIaService
         }
 
         $contextoCampana = '';
-        if ($origenCampana) {
+        if ($campana) {
+            $guiaTexto = '';
+            if (!empty($campana->guia_botones)) {
+                $lineas = [];
+                foreach ($campana->guia_botones as $boton => $instruccion) {
+                    if (trim((string) $instruccion) === '') continue;
+                    $lineas[] = "  - Si el cliente toca/escribe \"{$boton}\": {$instruccion}";
+                }
+                if ($lineas) {
+                    $guiaTexto = "\nGuía de respuesta según el botón que haya tocado:\n" . implode("\n", $lineas) . "\n";
+                }
+            }
+
+            $contextoCampana = "\n## De dónde llegó este contacto: respondió a nuestra campaña de marketing "
+                . "\"{$origenCampana}\". Qué se está promocionando: {$campana->descripcion_ia}. NO reinicies la "
+                . "conversación desde cero ni preguntes en qué le puedes ayudar — retoma directamente ese tema, "
+                . "como si ya supieras de qué se trata, y guía la conversación hacia cerrarlo."
+                . ($campana->objetivo ? " Objetivo de esta campaña: {$campana->objetivo}." : '')
+                . $guiaTexto . "\n";
+        } elseif ($origenCampana) {
             if ($origenCampanaCategoria === 'MARKETING') {
                 $contextoCampana = "Este contacto respondió a nuestra campaña/promoción \"{$origenCampana}\": "
                     . "es un prospecto interesado, aprovecha ese interés inicial para cotizar y cerrar.\n";
@@ -472,6 +498,16 @@ class AsistenteIaService
           tienes certeza y que alguien del equipo lo contactará.
         - Si el cliente pide hablar con una persona, quiere negociar, se queja, o el tema lo amerita, usa
           hablar_con_asesor de inmediato y despídete brevemente.
+
+        ## Si pregunta de dónde salió su número, o pide que no le escriban más:
+        - Es normal que un prospecto frío pregunte esto — no te pongas a la defensiva ni des detalles internos.
+          Respóndele con algo como: "Tu número llegó a través de bases de contactos comerciales. Si prefieres
+          no recibir más mensajes, te elimino de inmediato de la lista, sin problema."
+        - Si el cliente confirma que quiere ser eliminado (o lo pide directamente sin preguntar el origen), usa
+          no_contactar de una vez — no insistas, no le ofrezcas nada más, no le preguntes por qué. Después de
+          usarla, despídete en una frase breve y con tono de disculpa.
+        - Si solo pregunta el origen pero no pide ser eliminado, no uses la tool — solo responde la pregunta y,
+          si el contexto lo permite con naturalidad, continúa con la conversación comercial.
 
         Reglas:
         - Responde en español, con tono cordial, cercano y persuasivo de venta consultiva (nunca uses jerga interna).

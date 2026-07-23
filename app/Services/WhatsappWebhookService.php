@@ -4,15 +4,18 @@ namespace App\Services;
 
 use App\Events\WhatsappConversacionActualizada;
 use App\Events\WhatsappMensajeNuevo;
+use App\Jobs\MarketingConfirmarBloqueoJob;
 use App\Jobs\WhatsappDescargarMediaJob;
 use App\Jobs\WhatsappEscalarMultimediaJob;
 use App\Jobs\WhatsappResponderIaJob;
 use App\Models\{
     IaConfiguracionAliado,
+    MarketingBloqueado,
     WhatsappConfig,
     WhatsappConversacion,
     WhatsappMensaje
 };
+use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
@@ -29,7 +32,25 @@ class WhatsappWebhookService
      */
     private const SEGUNDOS_MAX_ESPERA_TOTAL = 20;
 
+    /** Frases de botón (ya normalizadas: minúsculas, sin tildes) que se interpretan como rechazo de publicidad. */
+    private const FRASES_NO_INTERESA = [
+        'no me interesa', 'no interesa', 'no gracias', 'no quiero', 'no deseo recibir mas',
+        'dejar de recibir', 'eliminarme', 'quitarme', 'no contactar', 'unsubscribe', 'stop',
+    ];
+
     public function __construct(protected WhatsappApiService $whatsappApi) {}
+
+    /** Detecta si el texto de un botón de plantilla equivale a un rechazo de publicidad. */
+    private static function esBotonNoInteresa(string $textoBoton): bool
+    {
+        $normalizado = Str::ascii(mb_strtolower(trim($textoBoton)));
+
+        foreach (self::FRASES_NO_INTERESA as $frase) {
+            if (str_contains($normalizado, $frase)) return true;
+        }
+
+        return false;
+    }
 
     /** Clave de cache compartida con WhatsappResponderIaJob para el debounce por conversación. */
     public static function claveDebounce(int $conversacionId): string
@@ -138,6 +159,10 @@ class WhatsappWebhookService
                 $dataMensaje['contenido']      = $media['caption'] ?? null;
                 break;
 
+            case 'button':
+                $dataMensaje['contenido'] = $msg['button']['text'] ?? '';
+                break;
+
             default:
                 $dataMensaje['contenido'] = '[Tipo de mensaje no soportado: ' . $tipo . ']';
         }
@@ -157,13 +182,29 @@ class WhatsappWebhookService
         broadcast(new WhatsappMensajeNuevo($mensaje, $conversacion))->toOthers();
         broadcast(new WhatsappConversacionActualizada($conversacion))->toOthers();
 
+        // Botón "No me interesa" (u otro equivalente) de una plantilla de marketing: se
+        // bloquea de una vez, sin pasar por la IA — es un rechazo explícito, no algo que
+        // requiera interpretación.
+        $esRechazoPublicidad = $tipo === 'button' && self::esBotonNoInteresa($dataMensaje['contenido'] ?? '');
+        if ($esRechazoPublicidad) {
+            MarketingBloqueado::bloquear(
+                $alidoId,
+                $waFrom,
+                'boton_no_interesa',
+                'Tocó el botón "' . $dataMensaje['contenido'] . '" de una plantilla de marketing.',
+                null,
+                $conversacion->id
+            );
+            dispatch(new MarketingConfirmarBloqueoJob($conversacion->id));
+        }
+
         // Asistente IA: solo si el bot está activo en esta conversación y el aliado
         // tiene la IA activada para WhatsApp. Se procesa en un Job para no bloquear
         // la respuesta al webhook de Meta (~20s de margen).
-        if ($conversacion->bot_activo) {
+        if ($conversacion->bot_activo && !$esRechazoPublicidad) {
             $iaActiva = IaConfiguracionAliado::where('aliado_id', $alidoId)->value('activo_whatsapp');
             if ($iaActiva) {
-                if ($tipo === 'text' && !empty($dataMensaje['contenido'])) {
+                if (in_array($tipo, ['text', 'button'], true) && !empty($dataMensaje['contenido'])) {
                     // Indicador de "escribiendo" — gratis, no pasa por la IA ni consume tokens.
                     // Se apaga solo al enviar la respuesta real o a los ~25s si no se envía nada.
                     $this->whatsappApi->marcarLeidoYEscribiendo($waId, $config);
@@ -424,7 +465,12 @@ class WhatsappWebhookService
             'empresa_id'                => $empresa?->id,
             'origen_campana'            => $campana['nombre'],
             'origen_campana_categoria'  => $campana['categoria'],
+            'origen_campana_id'         => $campana['campana_id'],
             'estado'                    => 'abierta',
+            // Explícito porque el default de BD no se refleja en el objeto en memoria que
+            // devuelve create() — sin esto, bot_activo queda null aquí y la IA no responde
+            // al primer mensaje de un contacto nuevo (bot_activo=null es falsy en el if).
+            'bot_activo'                => true,
         ]);
     }
 
@@ -434,7 +480,11 @@ class WhatsappWebhookService
      * para dar contexto a la IA (ej. "respondió a una campaña de marketing" vs "respondió
      * a un recordatorio de cobro"). No aplica a conversaciones que ya existían.
      *
-     * @return array{nombre: ?string, categoria: ?string}
+     * Si el envío pertenece a una campaña de marketing, también se devuelve su
+     * campana_id para que la IA reciba el contexto de venta completo de esa campaña
+     * (descripción, objetivo y guía de botones) en vez de partir de cero.
+     *
+     * @return array{nombre: ?string, categoria: ?string, campana_id: ?int}
      */
     private function buscarCampanaOrigen(string $numeroLimpio, int $alidoId): array
     {
@@ -452,8 +502,9 @@ class WhatsappWebhookService
             ->first();
 
         return [
-            'nombre'    => $detalle?->envio?->plantilla?->nombre_display,
-            'categoria' => $detalle?->envio?->plantilla?->categoria,
+            'nombre'     => $detalle?->envio?->plantilla?->nombre_display,
+            'categoria'  => $detalle?->envio?->plantilla?->categoria,
+            'campana_id' => $detalle?->envio?->campana_id,
         ];
     }
 

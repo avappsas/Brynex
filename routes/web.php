@@ -564,6 +564,7 @@ Route::middleware('auth')->group(function () {
         Route::patch('chat/{id}/asignar',            [$chat, 'asignar'])                 ->name('chat.asignar');
         Route::patch('chat/{id}/toggle-bot',         [$chat, 'toggleBot'])               ->name('chat.toggle_bot');
         Route::patch('chat/{id}/cerrar',             [$chat, 'cerrar'])                  ->name('chat.cerrar');
+        Route::patch('chat/{id}/no-contactar',       [$chat, 'noContactar'])             ->name('chat.no_contactar');
         Route::patch('chat/{id}/leer',               [$chat, 'marcarLeido'])             ->name('chat.leer');
         Route::get('chat/media/{mensajeId}',         [$chat, 'descargarMedia'])          ->name('chat.media');
         Route::get('api/no-leidos',                  [$chat, 'apiNoLeidos'])             ->name('api.no_leidos');
@@ -596,6 +597,28 @@ Route::middleware('auth')->group(function () {
         Route::post('configuracion/{id}/copiar-plantilla', [$config, 'copiarPlantillaGlobal'])->name('config.copiar_plantilla');
         Route::post('configuracion/{id}/sincronizar-meta', [$config, 'sincronizarPlantillasMeta'])->name('config.sincronizar_meta');
         Route::post('configuracion/verificar',   [$config, 'verificarWebhook'])  ->name('config.verificar');
+    });
+
+    // ─── Módulo Marketing (envío masivo de campañas publicitarias) ─────────────
+    Route::prefix('admin/marketing')->name('admin.marketing.')->group(function () {
+        $listas   = \App\Http\Controllers\Admin\MarketingListaController::class;
+        $campanas = \App\Http\Controllers\Admin\MarketingCampanaController::class;
+
+        // ── Listas de contactos ────────────────────────────────────────────────
+        Route::get('listas',            [$listas, 'index'])   ->name('listas.index');
+        Route::get('listas/crear',      [$listas, 'create'])  ->name('listas.create');
+        Route::post('listas',           [$listas, 'store'])   ->name('listas.store');
+        Route::get('listas/{id}',       [$listas, 'show'])    ->name('listas.show');
+        Route::delete('listas/{id}',    [$listas, 'destroy']) ->name('listas.destroy');
+
+        // ── Campañas y lanzamiento de tandas ───────────────────────────────────
+        Route::get('campanas',                    [$campanas, 'index'])         ->name('campanas.index');
+        Route::get('campanas/crear',               [$campanas, 'create'])        ->name('campanas.create');
+        Route::post('campanas',                    [$campanas, 'store'])         ->name('campanas.store');
+        Route::get('campanas/{id}',                [$campanas, 'show'])          ->name('campanas.show');
+        Route::patch('campanas/{id}',              [$campanas, 'update'])        ->name('campanas.update');
+        Route::get('campanas/{id}/previsualizar',  [$campanas, 'previsualizar']) ->name('campanas.previsualizar');
+        Route::post('campanas/{id}/lanzar-tanda',  [$campanas, 'lanzarTanda'])   ->name('campanas.lanzar_tanda');
     });
 
     // ============================================

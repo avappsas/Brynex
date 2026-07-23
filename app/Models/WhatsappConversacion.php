@@ -21,6 +21,7 @@ class WhatsappConversacion extends BaseModel
         'empresa_id',
         'origen_campana',
         'origen_campana_categoria',
+        'origen_campana_id',
         'estado',
         'asignado_a',
         'bot_activo',
@@ -71,6 +72,11 @@ class WhatsappConversacion extends BaseModel
     public function empresa(): BelongsTo
     {
         return $this->belongsTo(Empresa::class);
+    }
+
+    public function campana(): BelongsTo
+    {
+        return $this->belongsTo(MarketingCampana::class, 'origen_campana_id');
     }
 
     // ── Scopes ──────────────────────────────────────────────────────

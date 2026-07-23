@@ -14,6 +14,7 @@ class ConfiguracionAliado extends BaseModel
         'seguro_valor', 'seguro_logo', 'encargado_default_id', 'activo',
         'dist_admon_pct', 'dist_retiro_pct', 'dia_ingreso_ir',
         'mora_dia_habil_inicio', 'mora_minimo', 'mora_segundo',
+        'marketing_max_campanas', 'marketing_dias_periodo',
     ];
     protected $casts = [
         'administracion'   => 'decimal:2',

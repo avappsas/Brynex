@@ -69,7 +69,7 @@ class WhatsappResponderIaJob implements ShouldQueue
 
         $mensajesPendientes = WhatsappMensaje::where('conversacion_id', $conversacion->id)
             ->where('direccion', 'entrante')
-            ->where('tipo', 'text')
+            ->whereIn('tipo', ['text', 'button'])
             ->when($ultimaRespuesta, fn ($q) => $q->where('created_at', '>', $ultimaRespuesta->created_at))
             ->orderBy('id')
             ->pluck('contenido');
@@ -85,7 +85,8 @@ class WhatsappResponderIaJob implements ShouldQueue
                 $textoUsuario,
                 $conversacion->id,
                 $conversacion->origen_campana,
-                $conversacion->origen_campana_categoria
+                $conversacion->origen_campana_categoria,
+                $conversacion->origen_campana_id
             );
         } catch (\Exception $e) {
             Log::warning('IA WhatsApp: no se pudo generar respuesta, se escala a un humano', [

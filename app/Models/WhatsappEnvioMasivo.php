@@ -13,6 +13,7 @@ class WhatsappEnvioMasivo extends BaseModel
     protected $fillable = [
         'aliado_id',
         'plantilla_id',
+        'campana_id',
         'usuario_id',
         'mes',
         'anio',
@@ -45,6 +46,11 @@ class WhatsappEnvioMasivo extends BaseModel
     public function plantilla(): BelongsTo
     {
         return $this->belongsTo(WhatsappPlantilla::class, 'plantilla_id');
+    }
+
+    public function campana(): BelongsTo
+    {
+        return $this->belongsTo(MarketingCampana::class, 'campana_id');
     }
 
     public function usuario(): BelongsTo

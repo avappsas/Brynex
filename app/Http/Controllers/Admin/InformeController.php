@@ -3262,11 +3262,15 @@ class InformeController extends Controller
         $ultimoDia = $primerDia->copy()->endOfMonth();
 
         // 1. Lotes de cobro masivos
+        // whereNull('e.campana_id'): los envíos de campañas de marketing viven en esta misma
+        // tabla (para reusar el motor de envío), pero NO son cobro a clientes — sin este
+        // filtro contaminarían el consolidado de cobros con lotes de publicidad fría.
         $lotesCobro = DB::table('whatsapp_envios_masivos as e')
             ->join('whatsapp_plantillas as p', 'p.id', '=', 'e.plantilla_id')
             ->where('e.aliado_id', $aid)
             ->where('e.mes', $mes)
             ->where('e.anio', $anio)
+            ->whereNull('e.campana_id')
             ->select(
                 'e.id as lote_id',
                 DB::raw('CAST(e.created_at AS DATE) as fecha_envio'),
