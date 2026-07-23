@@ -588,6 +588,13 @@
         <div class="contenedor">
             <strong>{{ $aliado->nombre }}</strong> es un intermediario privado de afiliación al sistema de seguridad social colombiano, no una entidad estatal.
             &copy; {{ now()->year }} {{ $aliado->nombre }}. Todos los derechos reservados.
+            <div style="margin-top:0.5rem;">
+                <a href="{{ route('publico.aliado.privacidad', $aliado->slug) }}" style="text-decoration:underline;">Política de privacidad</a>
+                &nbsp;·&nbsp;
+                <a href="{{ route('publico.aliado.terminos', $aliado->slug) }}" style="text-decoration:underline;">Términos del servicio</a>
+                &nbsp;·&nbsp;
+                <a href="{{ route('publico.aliado.eliminacion_datos', $aliado->slug) }}" style="text-decoration:underline;">Eliminación de datos</a>
+            </div>
         </div>
     </footer>
 

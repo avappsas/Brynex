@@ -21,6 +21,16 @@ foreach (\App\Models\Aliado::whereNotNull('dominio_propio')->where('activo', tru
             ->get('/', [\App\Http\Controllers\Publico\PaginaAliadoController::class, 'show'])
             ->defaults('slug', $aliadoConDominio->slug)
             ->name("dominio.{$dominio}.show");
+
+        Route::domain($dominio)
+            ->get('/politica-privacidad', [\App\Http\Controllers\Publico\PaginaAliadoController::class, 'politicaPrivacidad'])
+            ->defaults('slug', $aliadoConDominio->slug);
+        Route::domain($dominio)
+            ->get('/terminos-servicio', [\App\Http\Controllers\Publico\PaginaAliadoController::class, 'terminosServicio'])
+            ->defaults('slug', $aliadoConDominio->slug);
+        Route::domain($dominio)
+            ->get('/eliminacion-datos', [\App\Http\Controllers\Publico\PaginaAliadoController::class, 'eliminacionDatos'])
+            ->defaults('slug', $aliadoConDominio->slug);
     }
 }
 
@@ -44,6 +54,11 @@ Route::get('/aliado/{slug}', [\App\Http\Controllers\Publico\PaginaAliadoControll
 Route::get('/aliado/{slug}/preview', [\App\Http\Controllers\Publico\PaginaAliadoController::class, 'preview'])
     ->name('publico.aliado.preview')
     ->middleware('signed');
+
+// Páginas legales (requeridas por Meta for Developers para publicar la app de Facebook/Instagram).
+Route::get('/aliado/{slug}/politica-privacidad', [\App\Http\Controllers\Publico\PaginaAliadoController::class, 'politicaPrivacidad'])->name('publico.aliado.privacidad');
+Route::get('/aliado/{slug}/terminos-servicio', [\App\Http\Controllers\Publico\PaginaAliadoController::class, 'terminosServicio'])->name('publico.aliado.terminos');
+Route::get('/aliado/{slug}/eliminacion-datos', [\App\Http\Controllers\Publico\PaginaAliadoController::class, 'eliminacionDatos'])->name('publico.aliado.eliminacion_datos');
 
 // Cotizador "Arma tu plan" y captura de leads — throttle por IP, sin autenticación.
 Route::post('/aliado/{slug}/cotizar', [\App\Http\Controllers\Publico\PaginaAliadoController::class, 'cotizar'])

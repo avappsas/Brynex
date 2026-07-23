@@ -75,6 +75,45 @@ class PaginaAliadoController extends Controller
     }
 
     /**
+     * Páginas legales estáticas (política de privacidad, términos, eliminación de datos) —
+     * requeridas por Meta for Developers para publicar la app de Facebook/Instagram del aliado
+     * (Configuración de la app > Información básica). Contenido real, con los datos de
+     * contacto reales del aliado — nunca cacheadas (son documentos legales, siempre frescos).
+     */
+    public function politicaPrivacidad(Request $request, string $slug)
+    {
+        return $this->documentoLegal($request, $slug, 'privacidad');
+    }
+
+    public function terminosServicio(Request $request, string $slug)
+    {
+        return $this->documentoLegal($request, $slug, 'terminos');
+    }
+
+    public function eliminacionDatos(Request $request, string $slug)
+    {
+        return $this->documentoLegal($request, $slug, 'eliminacion-datos');
+    }
+
+    private function documentoLegal(Request $request, string $slug, string $tipo)
+    {
+        $aliado = Aliado::where('slug', $slug)->where('activo', true)->first();
+        if (!$aliado) {
+            abort(404);
+        }
+
+        return view('publico.aliado.legal', [
+            'aliado'          => $aliado,
+            'config'          => new PaginaAliadoConfig(['aliado_id' => $aliado->id]),
+            'tipo'            => $tipo,
+            'whatsapp'        => $aliado->whatsapp ?: $aliado->celular,
+            'colorPrimario'   => $this->colorSeguro($aliado->color_primario),
+            'textoSobreBrand' => $this->textoLegibleSobre($aliado->color_primario),
+            'urlCanonica'     => $this->urlCanonica($aliado, $request),
+        ]);
+    }
+
+    /**
      * Cotizador "Arma tu plan": recibe perfil + coberturas elegidas por el visitante y devuelve
      * el valor mensual calculado con la MISMA lógica que usa la IA (CotizacionPublicaService),
      * nunca en JS. Nunca expone el desglose interno por componente ni la comisión del asesor —
