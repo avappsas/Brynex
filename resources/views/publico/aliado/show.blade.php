@@ -382,7 +382,7 @@
                                     ${{ number_format($plan['valor_mensual'], 0, ',', '.') }}<small>/mes</small>
                                 </div>
                                 @if($plan['costo_afiliacion'] > 0)
-                                    <div class="afiliacion">+ ${{ number_format($plan['costo_afiliacion'], 0, ',', '.') }} afiliación (valor de referencia)</div>
+                                    <div class="afiliacion">Primer mes: ${{ number_format($plan['costo_afiliacion'], 0, ',', '.') }} (afiliación)</div>
                                 @endif
                             @else
                                 <div class="oculto">Cotización personalizada</div>
