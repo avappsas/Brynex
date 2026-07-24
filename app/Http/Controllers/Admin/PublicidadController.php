@@ -69,6 +69,7 @@ class PublicidadController extends Controller
             'imagen_path_generado' => 'required_without:imagen|nullable|string|max:255',
             'origen'          => 'required|in:plantilla,ia,subida',
             'plantilla_usada' => 'nullable|string|max:60',
+            'estilo_imagen'   => 'nullable|in:ilustracion,fotorrealista',
             'destinos'        => 'required|array|min:1',
             'destinos.*'      => 'in:' . implode(',', Publicacion::DESTINOS_DISPONIBLES),
             'programada_at'   => 'nullable|date|after_or_equal:now',
@@ -91,6 +92,7 @@ class PublicidadController extends Controller
             'imagen_path'     => $rutaImagen,
             'origen'          => $validated['origen'],
             'plantilla_usada' => $validated['plantilla_usada'] ?? null,
+            'estilo_imagen'   => $validated['estilo_imagen'] ?? null,
             'destinos'        => $validated['destinos'],
             'programada_at'   => $validated['programada_at'] ?? null,
             'estado'          => Publicacion::ESTADO_PENDIENTE,
@@ -103,7 +105,7 @@ class PublicidadController extends Controller
     public function show(int $id)
     {
         $aliado = $this->aliadoActivo();
-        $publicacion = Publicacion::where('aliado_id', $aliado->id)->with(['creador', 'aprobador'])->findOrFail($id);
+        $publicacion = Publicacion::where('aliado_id', $aliado->id)->with(['creador', 'aprobador', 'metricas'])->findOrFail($id);
 
         return view('admin.publicidad.show', compact('aliado', 'publicacion'));
     }
@@ -187,12 +189,28 @@ class PublicidadController extends Controller
             ->limit(15)
             ->get();
 
+        // Ranking de piezas publicadas por interacciones reales (para el card de rendimiento)
+        $ranking = Publicacion::where('aliado_id', $aliado->id)
+            ->publicadas()
+            ->with('metricas')
+            ->get()
+            ->filter(fn ($p) => $p->metricas->isNotEmpty())
+            ->map(fn ($p) => [
+                'pieza'         => $p,
+                'interacciones' => $p->metricas->sum(fn ($m) => $m->interacciones()),
+                'alcance'       => $p->metricas->sum('alcance'),
+            ])
+            ->sortByDesc('interacciones')
+            ->take(10)
+            ->values();
+
         return view('admin.publicidad.autopilot', [
             'aliado'       => $aliado,
             'config'       => $config,
             'tieneIaTexto' => !empty($iaConfig->credencialesEfectivas()['api_key']),
             'tieneGemini'  => $iaConfig->tieneGemini(),
             'piezas'       => $piezas,
+            'ranking'      => $ranking,
         ]);
     }
 

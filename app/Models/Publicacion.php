@@ -25,6 +25,7 @@ class Publicacion extends BaseModel
         'origen',
         'plantilla_usada',
         'tema',
+        'estilo_imagen',
         'estado',
         'destinos',
         'programada_at',
@@ -60,6 +61,11 @@ class Publicacion extends BaseModel
     public function aprobador(): BelongsTo
     {
         return $this->belongsTo(User::class, 'aprobado_por');
+    }
+
+    public function metricas()
+    {
+        return $this->hasMany(PublicacionMetrica::class);
     }
 
     public function scopePendientes($query)

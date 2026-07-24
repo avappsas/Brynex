@@ -80,6 +80,7 @@ class AutopilotGenerator
             'imagen_path' => $imagen['rutas'][0],
             'origen'      => 'ia_auto',
             'tema'        => $concepto['tema'],
+            'estilo_imagen' => $estilo,
             'destinos'    => $destinos,
             'estado'      => $esAuto ? Publicacion::ESTADO_APROBADA : Publicacion::ESTADO_PENDIENTE,
             'creado_por'  => null,
@@ -90,6 +91,51 @@ class AutopilotGenerator
         }
 
         return ['ok' => true, 'publicacion' => $publicacion, 'error' => null];
+    }
+
+    /**
+     * Resumen de rendimiento real por tema (interacciones en redes + leads llegados en las
+     * 48h siguientes a cada pieza) para que la IA aprenda qué contenido atrae más. Devuelve
+     * cadena vacía si aún no hay piezas medidas — el prompt no menciona rendimiento inexistente.
+     */
+    public static function resumenRendimiento(int $aliadoId): string
+    {
+        $piezas = Publicacion::where('aliado_id', $aliadoId)
+            ->publicadas()
+            ->whereNotNull('tema')
+            ->with('metricas')
+            ->get()
+            ->filter(fn ($p) => $p->metricas->isNotEmpty());
+
+        if ($piezas->isEmpty()) {
+            return '';
+        }
+
+        $porTema = $piezas->groupBy('tema')->map(function ($grupo) use ($aliadoId) {
+            $interacciones = $grupo->sum(fn ($p) => $p->metricas->sum(fn ($m) => $m->interacciones()));
+            $alcance       = $grupo->sum(fn ($p) => $p->metricas->sum('alcance'));
+            $leads = $grupo->sum(function ($p) use ($aliadoId) {
+                if (!$p->publicada_at) return 0;
+                return \App\Models\PaginaLead::where('aliado_id', $aliadoId)
+                    ->whereBetween('created_at', [$p->publicada_at, $p->publicada_at->copy()->addHours(48)])
+                    ->count();
+            });
+            $estilos = $grupo->pluck('estilo_imagen')->filter()->unique()->implode('/');
+
+            return [
+                'piezas'        => $grupo->count(),
+                'interacciones' => $interacciones,
+                'alcance'       => $alcance,
+                'leads'         => $leads,
+                'estilos'       => $estilos ?: 'n/d',
+            ];
+        })->sortByDesc('interacciones');
+
+        $lineas = $porTema->map(fn ($datos, $tema) =>
+            "- [{$tema}] ({$datos['estilos']}): {$datos['interacciones']} interacciones, alcance {$datos['alcance']}, {$datos['leads']} leads en 48h ({$datos['piezas']} pieza(s))"
+        )->implode("\n");
+
+        return "\nRENDIMIENTO REAL DE PIEZAS ANTERIORES (ordenado de mejor a peor — prioriza los ángulos y estilos que más interacciones y leads atraen, pero sigue variando el contenido):\n{$lineas}";
     }
 
     /**
@@ -123,6 +169,8 @@ class AutopilotGenerator
             ->map(fn ($p) => '- ' . ($p->tema ? "[{$p->tema}] " : '') . $p->titulo)
             ->implode("\n") ?: '- (aún no hay publicaciones)';
 
+        $rendimiento = self::resumenRendimiento($aliado->id);
+
         $catalogo = implode("\n", array_map(fn ($t) => "- {$t}", array_merge(self::CATALOGO_TEMAS, $temaPromocion)));
         $color    = $aliado->color_primario ?: '#2563eb';
         $fecha    = now('America/Bogota')->locale('es')->isoFormat('dddd D [de] MMMM [de] YYYY');
@@ -143,6 +191,7 @@ El "primer mes" es real: por el esquema de facturación, el mes de afiliación S
 
 HISTORIAL RECIENTE (NO repitas tema, mensaje ni enfoque visual de estas piezas):
 {$historial}
+{$rendimiento}
 
 Responde ÚNICAMENTE con un objeto JSON (sin bloque de código) con estas claves:
 - "tema": etiqueta corta del ángulo elegido (máx 100 caracteres)

@@ -90,6 +90,30 @@
     </button>
 </form>
 
+{{-- ── Rendimiento real (métricas de redes) ── --}}
+@if($ranking->isNotEmpty())
+<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:1.1rem 1.25rem;margin-bottom:1.5rem;">
+    <div style="font-size:.72rem;font-weight:700;color:#0891b2;text-transform:uppercase;letter-spacing:.06em;margin-bottom:.35rem;">📈 Rendimiento real</div>
+    <div style="font-size:.72rem;color:#94a3b8;margin-bottom:.75rem;">Interacciones (likes + comentarios + compartidos) y alcance en Instagram. La IA usa este ranking para aprender qué contenido atrae más.</div>
+
+    @foreach($ranking as $i => $fila)
+        <a href="{{ route('admin.publicidad.show', $fila['pieza']->id) }}"
+           style="display:flex;gap:.7rem;align-items:center;padding:.5rem 0;border-bottom:1px solid #f1f5f9;text-decoration:none;">
+            <span style="font-size:.78rem;font-weight:700;color:{{ $i < 3 ? '#0891b2' : '#94a3b8' }};width:1.4rem;text-align:center;flex-shrink:0;">{{ $i + 1 }}</span>
+            <img src="{{ asset('storage/' . $fila['pieza']->imagen_path) }}" style="width:40px;height:40px;object-fit:cover;border-radius:6px;flex-shrink:0;">
+            <div style="flex:1;min-width:0;">
+                <div style="font-size:.8rem;font-weight:600;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ $fila['pieza']->titulo }}</div>
+                <div style="font-size:.68rem;color:#94a3b8;">{{ $fila['pieza']->tema ?: 'sin tema' }}{{ $fila['pieza']->estilo_imagen ? ' · ' . $fila['pieza']->estilo_imagen : '' }}</div>
+            </div>
+            <div style="text-align:right;flex-shrink:0;">
+                <div style="font-size:.8rem;font-weight:700;color:#0f172a;">{{ $fila['interacciones'] }} <span style="font-weight:400;color:#94a3b8;font-size:.68rem;">interacciones</span></div>
+                @if($fila['alcance'])<div style="font-size:.68rem;color:#94a3b8;">alcance {{ number_format($fila['alcance'], 0, ',', '.') }}</div>@endif
+            </div>
+        </a>
+    @endforeach
+</div>
+@endif
+
 {{-- ── Historial de piezas del piloto ── --}}
 <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:1.1rem 1.25rem;">
     <div style="font-size:.72rem;font-weight:700;color:#7c3aed;text-transform:uppercase;letter-spacing:.06em;margin-bottom:.75rem;">🤖 Últimas piezas generadas por la IA</div>

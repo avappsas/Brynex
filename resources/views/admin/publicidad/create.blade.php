@@ -576,6 +576,7 @@
         } else if (fuenteImagen === 'ia') {
             if (!imagenIaSeleccionada) { mostrarAlerta('Genera y selecciona una imagen primero.'); return; }
             formData.append('imagen_path_generado', imagenIaSeleccionada.path);
+            formData.append('estilo_imagen', estiloImagenIa);
             enviar('ia', null);
         }
     });

@@ -57,6 +57,17 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/publicaciones-despacho.log'));
 
+        // ── Métricas de redes de las piezas publicadas ───────────────────────
+        // Diario a las 21:30: lee likes/comentarios/compartidos/alcance de cada
+        // pieza de los últimos 30 días — alimenta el aprendizaje del piloto.
+        // Ejecución manual: php artisan marketing:metricas
+        $schedule->command('marketing:metricas')
+            ->dailyAt('21:30')
+            ->timezone('America/Bogota')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo(storage_path('logs/marketing-metricas.log'));
+
         // ── Piloto automático de marketing (community manager IA) ────────────
         // Cada 30 min en horario diurno: genera la pieza publicitaria del día de
         // cada aliado con piloto activo (una por día, desde la hora configurada).

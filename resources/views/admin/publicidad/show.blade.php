@@ -72,6 +72,23 @@
     </div>
   @endif
 
+  {{-- ══ Métricas de redes ══ --}}
+  @if($publicacion->metricas->isNotEmpty())
+    <div style="margin-bottom:1rem;">
+      <div style="font-size:0.72rem;font-weight:700;color:#0891b2;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:0.5rem;">📈 Métricas</div>
+      <div style="display:flex;gap:0.6rem;flex-wrap:wrap;">
+        @foreach($publicacion->metricas as $m)
+          <div style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:10px;padding:0.6rem 0.9rem;font-size:0.78rem;color:#134e4a;">
+            <strong>{{ ucfirst($m->red) }}</strong>:
+            👍 {{ $m->me_gusta }} · 💬 {{ $m->comentarios }} · 🔁 {{ $m->compartidos }}
+            @if($m->alcance !== null) · 👀 alcance {{ number_format($m->alcance, 0, ',', '.') }} @endif
+            <span style="color:#94a3b8;font-size:0.68rem;"> ({{ $m->medido_at->format('d/m H:i') }})</span>
+          </div>
+        @endforeach
+      </div>
+    </div>
+  @endif
+
   {{-- ══ Acciones ══ --}}
   @if($publicacion->estado === 'pendiente')
     <div style="display:flex;gap:0.6rem;">
