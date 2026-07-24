@@ -45,6 +45,7 @@ class AlidoController extends Controller
             'color_primario'       => 'nullable|string|max:10',
             'activo'               => 'boolean',
             'logo'                 => 'nullable|image|mimes:png,jpg,jpeg,svg|max:2048',
+            'logo_oscuro'          => 'nullable|image|mimes:png,jpg,jpeg,svg|max:2048',
             'afiliaciones_brynex'  => 'boolean',
             'encargado_afil_id'    => 'nullable|exists:users,id',
         ]);
@@ -54,6 +55,12 @@ class AlidoController extends Controller
             $filename  = time() . '_' . $file->getClientOriginalName();
             $file->move(public_path('storage/logos'), $filename);
             $data['logo'] = 'logos/' . $filename;
+        }
+        if ($request->hasFile('logo_oscuro')) {
+            $file      = $request->file('logo_oscuro');
+            $filename  = time() . '_oscuro_' . $file->getClientOriginalName();
+            $file->move(public_path('storage/logos'), $filename);
+            $data['logo_oscuro'] = 'logos/' . $filename;
         }
 
         $data['activo'] = $request->boolean('activo', true);
@@ -104,6 +111,7 @@ class AlidoController extends Controller
             'color_primario'       => 'nullable|string|max:10',
             'activo'               => 'boolean',
             'logo'                 => 'nullable|image|mimes:png,jpg,jpeg,svg|max:2048',
+            'logo_oscuro'          => 'nullable|image|mimes:png,jpg,jpeg,svg|max:2048',
             'afiliaciones_brynex'  => 'boolean',
             'encargado_afil_id'    => 'nullable|exists:users,id',
         ]);
@@ -121,6 +129,18 @@ class AlidoController extends Controller
         } else {
             // Preservar el logo existente si no se sube uno nuevo
             $data['logo'] = $aliado->logo;
+        }
+        if ($request->hasFile('logo_oscuro')) {
+            if ($aliado->logo_oscuro) {
+                $oldPath = public_path('storage/' . $aliado->logo_oscuro);
+                if (file_exists($oldPath)) @unlink($oldPath);
+            }
+            $file      = $request->file('logo_oscuro');
+            $filename  = time() . '_oscuro_' . $file->getClientOriginalName();
+            $file->move(public_path('storage/logos'), $filename);
+            $data['logo_oscuro'] = 'logos/' . $filename;
+        } else {
+            $data['logo_oscuro'] = $aliado->logo_oscuro;
         }
 
         $data['activo'] = $request->boolean('activo');
