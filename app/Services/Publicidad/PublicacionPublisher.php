@@ -72,11 +72,16 @@ class PublicacionPublisher
      * conversación a esta pieza exacta (ver buscarPublicacionOrigen). Facebook linkifica
      * URLs en el caption y son clicables; Instagram no las hace clicables en el caption,
      * así que ahí el código solo sirve si el cliente lo copia/menciona igual.
+     *
+     * IMPORTANTE: el número tiene que ser el del BOT de WhatsApp (WhatsappConfig::numero_telefono,
+     * el phone_number_id que escucha el webhook), NUNCA el de un humano — si no, el mensaje
+     * del cliente nunca llega al sistema y la atribución no puede funcionar.
      */
     private static function textoConLinkRastreado(Publicacion $publicacion): string
     {
         $texto  = $publicacion->copy ?: $publicacion->titulo;
-        $numero = preg_replace('/\D/', '', $publicacion->aliado->whatsapp ?: $publicacion->aliado->celular ?: '');
+        $waConfig = \App\Models\WhatsappConfig::where('aliado_id', $publicacion->aliado_id)->where('activo', true)->first();
+        $numero = preg_replace('/\D/', '', $waConfig->numero_telefono ?? '');
         if (!$numero) {
             return $texto;
         }
