@@ -61,6 +61,13 @@ class MetaGraphPublicador implements PublicadorRed
 
         $creationId = $crear->json('id');
 
+        // La creación del contenedor es asíncrona en Meta (empieza en IN_PROGRESS mientras
+        // descarga/procesa la imagen) — publicar antes de que quede FINISHED falla con
+        // "Media ID is not available". Se espera activamente en vez de asumir que ya terminó.
+        if (!$this->esperarContenedorListo($creationId)) {
+            return ['ok' => false, 'mensaje' => 'La imagen no terminó de procesarse en Instagram a tiempo. Intenta de nuevo.', 'id_publicacion' => null];
+        }
+
         $publicar = Http::timeout(15)->asForm()->post(self::BASE_URL . "/{$this->config->identificador}/media_publish", [
             'creation_id'  => $creationId,
             'access_token' => $this->config->access_token,
@@ -71,6 +78,30 @@ class MetaGraphPublicador implements PublicadorRed
         }
 
         return ['ok' => true, 'mensaje' => 'Publicado en Instagram.', 'id_publicacion' => $publicar->json('id')];
+    }
+
+    /** Sondea status_code del contenedor hasta FINISHED (o ERROR/timeout), máx. ~15s. */
+    private function esperarContenedorListo(string $creationId): bool
+    {
+        for ($intento = 0; $intento < 8; $intento++) {
+            $resp = Http::timeout(10)->get(self::BASE_URL . "/{$creationId}", [
+                'fields'       => 'status_code',
+                'access_token' => $this->config->access_token,
+            ]);
+
+            $estado = $resp->json('status_code');
+
+            if ($estado === 'FINISHED') {
+                return true;
+            }
+            if ($estado === 'ERROR' || $estado === 'EXPIRED') {
+                return false;
+            }
+
+            usleep(1500000); // 1.5s entre sondeos
+        }
+
+        return false;
     }
 
     public function probarConexion(): array
