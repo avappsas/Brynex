@@ -26,6 +26,13 @@ class Publicacion extends BaseModel
         'plantilla_usada',
         'tema',
         'estilo_imagen',
+        'pauta_estado',
+        'pauta_presupuesto_diario_cop',
+        'pauta_gasto_total_cop',
+        'meta_campana_id',
+        'meta_adset_id',
+        'meta_ad_id',
+        'pauta_activada_at',
         'estado',
         'destinos',
         'programada_at',
@@ -37,10 +44,13 @@ class Publicacion extends BaseModel
     ];
 
     protected $casts = [
-        'destinos'              => 'array',
-        'resultado_publicacion' => 'array',
-        'programada_at'         => 'datetime',
-        'publicada_at'          => 'datetime',
+        'destinos'                     => 'array',
+        'resultado_publicacion'        => 'array',
+        'programada_at'                => 'datetime',
+        'publicada_at'                 => 'datetime',
+        'pauta_presupuesto_diario_cop' => 'decimal:2',
+        'pauta_gasto_total_cop'        => 'decimal:2',
+        'pauta_activada_at'            => 'datetime',
     ];
 
     protected $attributes = [
@@ -82,6 +92,13 @@ class Publicacion extends BaseModel
     public function listaParaPublicar(): bool
     {
         return !$this->programada_at || $this->programada_at->isPast();
+    }
+
+    /** ID del post real de Facebook ({page_id}_{post_id}) para poder ponerle pauta encima — null si no se publicó ahí. */
+    public function idPostFacebook(): ?string
+    {
+        $id = data_get($this->resultado_publicacion, 'facebook.id');
+        return (is_string($id) && str_contains($id, '_')) ? $id : null;
     }
 
     public function etiquetaEstado(): string

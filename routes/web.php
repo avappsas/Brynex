@@ -724,11 +724,18 @@ Route::middleware('auth')->group(function () {
         Route::get('autopilot',               [$pub, 'autopilot'])       ->name('autopilot');
         Route::post('autopilot',              [$pub, 'autopilotUpdate']) ->name('autopilot.update');
 
+        // Pauta pagada — config antes de {id} por el mismo motivo
+        Route::get('pauta/config',            [$pub, 'pautaConfig'])       ->name('pauta.config');
+        Route::post('pauta/config',           [$pub, 'pautaConfigUpdate']) ->name('pauta.config.update');
+
         Route::get('{id}',                    [$pub, 'show'])          ->whereNumber('id')->name('show');
         Route::delete('{id}',                 [$pub, 'destroy'])       ->whereNumber('id')->name('destroy');
         Route::post('{id}/aprobar',           [$pub, 'aprobar'])       ->whereNumber('id')->name('aprobar');
         Route::post('{id}/rechazar',          [$pub, 'rechazar'])      ->whereNumber('id')->name('rechazar');
         Route::post('{id}/reintentar/{red}',  [$pub, 'reintentar'])    ->whereNumber('id')->name('reintentar');
+        Route::post('{id}/pauta/crear',       [$pub, 'pautaCrear'])    ->whereNumber('id')->name('pauta.crear');
+        Route::post('{id}/pauta/activar',     [$pub, 'pautaActivar'])  ->whereNumber('id')->name('pauta.activar');
+        Route::post('{id}/pauta/pausar',      [$pub, 'pautaPausar'])   ->whereNumber('id')->name('pauta.pausar');
 
         Route::post('generar-copia',          [$pub, 'generarCopia'])  ->name('generar_copia');
         Route::post('generar-imagen',         [$pub, 'generarImagen']) ->name('generar_imagen');

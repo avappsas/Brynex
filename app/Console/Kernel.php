@@ -68,6 +68,18 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/marketing-metricas.log'));
 
+        // ── Sincronización de pauta pagada (gasto real + tope de seguridad) ──
+        // Cada hora: lee el gasto real de Meta y pausa automáticamente cualquier
+        // pauta que se pase de su presupuesto o del tope mensual del aliado.
+        // Solo APAGA gasto, nunca lo prende ni lo sube — eso es siempre manual.
+        // Ejecución manual: php artisan marketing:pauta-sync
+        $schedule->command('marketing:pauta-sync')
+            ->hourly()
+            ->timezone('America/Bogota')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo(storage_path('logs/marketing-pauta-sync.log'));
+
         // ── Piloto automático de marketing (community manager IA) ────────────
         // Cada 30 min en horario diurno: genera la pieza publicitaria del día de
         // cada aliado con piloto activo (una por día, desde la hora configurada).

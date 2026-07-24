@@ -5,12 +5,14 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Aliado;
 use App\Models\IaConfiguracionAliado;
+use App\Models\PautaConfig;
 use App\Models\Publicacion;
 use App\Models\RedSocialConfig;
 use App\Services\CotizacionPublicaService;
 use App\Services\Publicidad\CopiaIaGenerator;
 use App\Services\Publicidad\GeminiImagenGenerator;
 use App\Services\Publicidad\PublicacionPublisher;
+use App\Services\RedesSociales\MetaAdsService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
@@ -300,6 +302,64 @@ class PublicidadController extends Controller
         $ruta = $request->file('imagen')->store('publicidad', 'public');
 
         return response()->json(['ok' => true, 'path' => $ruta, 'url' => asset('storage/' . $ruta)]);
+    }
+
+    // ── Pauta pagada (Meta Marketing API) ──────────────────────────────────
+
+    public function pautaConfig()
+    {
+        $aliado = $this->aliadoActivo();
+        $config = PautaConfig::paraAliado($aliado->id);
+
+        return view('admin.publicidad.pauta-config', compact('aliado', 'config'));
+    }
+
+    public function pautaConfigUpdate(Request $request)
+    {
+        $aliado = $this->aliadoActivo();
+
+        $validated = $request->validate([
+            'activo'                          => 'required|boolean',
+            'ad_account_id'                    => 'nullable|string|max:30',
+            'limite_mensual_cop'                => 'nullable|numeric|min:0',
+            'presupuesto_diario_default_cop'    => 'required|numeric|min:1000',
+        ]);
+
+        PautaConfig::paraAliado($aliado->id)->update($validated);
+
+        return redirect()->route('admin.publicidad.pauta.config')->with('success', 'Configuración de pauta actualizada.');
+    }
+
+    public function pautaCrear(int $id)
+    {
+        $aliado = $this->aliadoActivo();
+        $publicacion = Publicacion::where('aliado_id', $aliado->id)->findOrFail($id);
+        $config = PautaConfig::paraAliado($aliado->id);
+
+        $presupuesto = MetaAdsService::sugerirPresupuesto($publicacion, $config);
+        $resultado = MetaAdsService::crearBorrador($publicacion, $config, $presupuesto);
+
+        return back()->with($resultado['ok'] ? 'success' : 'error', $resultado['mensaje']);
+    }
+
+    public function pautaActivar(int $id)
+    {
+        $aliado = $this->aliadoActivo();
+        $publicacion = Publicacion::where('aliado_id', $aliado->id)->findOrFail($id);
+
+        $resultado = MetaAdsService::activar($publicacion);
+
+        return back()->with($resultado['ok'] ? 'success' : 'error', $resultado['mensaje']);
+    }
+
+    public function pautaPausar(int $id)
+    {
+        $aliado = $this->aliadoActivo();
+        $publicacion = Publicacion::where('aliado_id', $aliado->id)->findOrFail($id);
+
+        $resultado = MetaAdsService::pausar($publicacion);
+
+        return back()->with($resultado['ok'] ? 'success' : 'error', $resultado['mensaje']);
     }
 
     private function aliadoActivo(): Aliado

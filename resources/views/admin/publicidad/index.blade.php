@@ -25,6 +25,10 @@
        style="background:#eff6ff;color:#1e40af;border:1px solid #bfdbfe;font-size:0.8rem;font-weight:700;padding:0.5rem 0.9rem;border-radius:8px;text-decoration:none;">
         🔗 Redes sociales
     </a>
+    <a href="{{ route('admin.publicidad.pauta.config') }}"
+       style="background:#fdf4ff;color:#a21caf;border:1px solid #f0abfc;font-size:0.8rem;font-weight:700;padding:0.5rem 0.9rem;border-radius:8px;text-decoration:none;">
+        💸 Pauta pagada
+    </a>
     <a href="{{ route('admin.publicidad.create') }}"
        style="background:#2563eb;color:#fff;font-size:0.82rem;font-weight:700;padding:0.55rem 1rem;border-radius:8px;text-decoration:none;">
         + Nueva pieza

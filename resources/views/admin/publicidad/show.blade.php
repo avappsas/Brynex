@@ -105,6 +105,51 @@
     </div>
   @endif
 
+  {{-- ══ Pauta pagada ══ --}}
+  @if($publicacion->estado === 'publicada' && $publicacion->idPostFacebook())
+    <div style="margin-bottom:1rem;border:1px solid #e2e8f0;border-radius:10px;padding:0.9rem 1rem;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;">
+        <div style="font-size:0.72rem;font-weight:700;color:#c026d3;text-transform:uppercase;letter-spacing:0.04em;">💸 Pauta pagada</div>
+        <a href="{{ route('admin.publicidad.pauta.config') }}" style="font-size:0.7rem;color:#94a3b8;text-decoration:none;">⚙️ Configurar cuenta/tope</a>
+      </div>
+
+      @if(!$publicacion->pauta_estado)
+        <p style="font-size:0.8rem;color:#64748b;margin:0 0 0.75rem;">Sin pauta todavía. Se puede crear en pausa primero — $0 hasta que la actives.</p>
+        <form method="POST" action="{{ route('admin.publicidad.pauta.crear', $publicacion->id) }}">
+          @csrf
+          <button type="submit" style="background:#faf5ff;color:#7c3aed;border:1px solid #d8b4fe;font-size:0.78rem;font-weight:700;padding:0.45rem 0.9rem;border-radius:8px;cursor:pointer;">
+            Crear pauta en pausa (sin gastar)
+          </button>
+        </form>
+      @else
+        <div style="display:flex;gap:0.6rem;flex-wrap:wrap;font-size:0.8rem;color:#334155;margin-bottom:0.75rem;">
+          <span>Estado: <strong>{{ ucfirst($publicacion->pauta_estado) }}</strong></span>
+          <span>·</span>
+          <span>Presupuesto diario: <strong>${{ number_format($publicacion->pauta_presupuesto_diario_cop, 0, ',', '.') }} COP</strong></span>
+          <span>·</span>
+          <span>Gastado real: <strong>${{ number_format($publicacion->pauta_gasto_total_cop, 0, ',', '.') }} COP</strong></span>
+        </div>
+
+        @if($publicacion->pauta_estado === 'borrador' || $publicacion->pauta_estado === 'pausada')
+          <form method="POST" action="{{ route('admin.publicidad.pauta.activar', $publicacion->id) }}"
+                onsubmit="return confirm('Esto va a gastar dinero real de la cuenta publicitaria (\${{ number_format($publicacion->pauta_presupuesto_diario_cop, 0, ',', '.') }} COP/día). ¿Activar la pauta?');">
+            @csrf
+            <button type="submit" style="background:#dc2626;color:#fff;border:none;font-size:0.78rem;font-weight:700;padding:0.5rem 1rem;border-radius:8px;cursor:pointer;">
+              ⚠️ Activar (gasta dinero real)
+            </button>
+          </form>
+        @elseif($publicacion->pauta_estado === 'activa')
+          <form method="POST" action="{{ route('admin.publicidad.pauta.pausar', $publicacion->id) }}">
+            @csrf
+            <button type="submit" style="background:#fff;color:#475569;border:1px solid #cbd5e1;font-size:0.78rem;font-weight:700;padding:0.5rem 1rem;border-radius:8px;cursor:pointer;">
+              ⏸️ Pausar pauta
+            </button>
+          </form>
+        @endif
+      @endif
+    </div>
+  @endif
+
   {{-- ══ Acciones ══ --}}
   @if($publicacion->estado === 'pendiente')
     <div style="display:flex;gap:0.6rem;">
