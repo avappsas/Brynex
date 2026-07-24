@@ -35,16 +35,7 @@ class LogoWatermarker
             $px = $anchoImg - $margen - $tamanoLogo;
             $py = $altoImg - $margen - $tamanoLogo;
 
-            // Sombra proyectada suave detrás del logo (varias pasadas con offset y
-            // opacidad decreciente, aproximando un desenfoque) — le da profundidad sin
-            // necesitar un fondo sólido que se vea pegado sobre la foto.
-            imagealphablending($imagen, true);
-            for ($o = 6; $o > 0; $o--) {
-                $alpha = 90 + (int) (30 * (6 - $o) / 6);
-                $color = imagecolorallocatealpha($imagen, 0, 0, 0, min(120, $alpha));
-                imagefilledrectangle($imagen, $px - $o + 3, $py - $o + 5, $px + $tamanoLogo + $o + 3, $py + $tamanoLogo + $o + 5, $color);
-            }
-
+            // Logo redimensionado a un canvas propio (con su transparencia real intacta).
             $logoRedim = imagecreatetruecolor($tamanoLogo, $tamanoLogo);
             imagealphablending($logoRedim, false);
             imagesavealpha($logoRedim, true);
@@ -62,6 +53,35 @@ class LogoWatermarker
                 $wDestino, $hDestino, $anchoLogoOrig, $altoLogoOrig
             );
 
+            // Sombra real con la SILUETA del logo (a partir de su propio canal alfa), no una
+            // caja detrás — se dibuja en un lienzo aparte con margen para el desenfoque, se
+            // desenfoca, y se compone antes que el logo. Sin ningún fondo sólido.
+            $margenSombra = (int) round($tamanoLogo * 0.18);
+            $offsetX = (int) round($tamanoLogo * 0.03);
+            $offsetY = (int) round($tamanoLogo * 0.045);
+            $tamSombra = $tamanoLogo + $margenSombra * 2;
+
+            $sombra = imagecreatetruecolor($tamSombra, $tamSombra);
+            imagealphablending($sombra, false);
+            imagesavealpha($sombra, true);
+            $transSombra = imagecolorallocatealpha($sombra, 0, 0, 0, 127);
+            imagefilledrectangle($sombra, 0, 0, $tamSombra, $tamSombra, $transSombra);
+            imagealphablending($sombra, true);
+
+            for ($y = 0; $y < $tamanoLogo; $y++) {
+                for ($x = 0; $x < $tamanoLogo; $x++) {
+                    $alphaOrig = (imagecolorat($logoRedim, $x, $y) >> 24) & 0x7F;
+                    if ($alphaOrig >= 110) continue; // prácticamente transparente, no aporta sombra
+                    $alphaSombra = min(105, $alphaOrig + 45);
+                    $col = imagecolorallocatealpha($sombra, 0, 0, 0, $alphaSombra);
+                    imagesetpixel($sombra, $margenSombra + $x + $offsetX, $margenSombra + $y + $offsetY, $col);
+                }
+            }
+            imagefilter($sombra, IMG_FILTER_GAUSSIAN_BLUR);
+            imagefilter($sombra, IMG_FILTER_GAUSSIAN_BLUR);
+
+            imagealphablending($imagen, true);
+            imagecopy($imagen, $sombra, $px - $margenSombra, $py - $margenSombra, 0, 0, $tamSombra, $tamSombra);
             imagecopy($imagen, $logoRedim, $px, $py, 0, 0, $tamanoLogo, $tamanoLogo);
 
             self::guardar($imagen, $pathImagen);
@@ -69,6 +89,7 @@ class LogoWatermarker
             imagedestroy($imagen);
             imagedestroy($logo);
             imagedestroy($logoRedim);
+            imagedestroy($sombra);
         } catch (\Throwable $e) {
             // No bloquear la generación de la pieza si el watermark falla — se publica sin logo.
         }
