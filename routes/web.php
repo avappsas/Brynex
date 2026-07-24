@@ -716,11 +716,16 @@ Route::middleware('auth')->group(function () {
         Route::get('/',                       [$pub, 'index'])         ->name('index');
         Route::get('crear',                   [$pub, 'create'])        ->name('create');
         Route::post('/',                      [$pub, 'store'])         ->name('store');
-        Route::get('{id}',                    [$pub, 'show'])          ->name('show');
-        Route::delete('{id}',                 [$pub, 'destroy'])       ->name('destroy');
-        Route::post('{id}/aprobar',           [$pub, 'aprobar'])       ->name('aprobar');
-        Route::post('{id}/rechazar',          [$pub, 'rechazar'])      ->name('rechazar');
-        Route::post('{id}/reintentar/{red}',  [$pub, 'reintentar'])    ->name('reintentar');
+
+        // Piloto automático (antes de {id} para que no lo capture la ruta genérica)
+        Route::get('autopilot',               [$pub, 'autopilot'])       ->name('autopilot');
+        Route::post('autopilot',              [$pub, 'autopilotUpdate']) ->name('autopilot.update');
+
+        Route::get('{id}',                    [$pub, 'show'])          ->whereNumber('id')->name('show');
+        Route::delete('{id}',                 [$pub, 'destroy'])       ->whereNumber('id')->name('destroy');
+        Route::post('{id}/aprobar',           [$pub, 'aprobar'])       ->whereNumber('id')->name('aprobar');
+        Route::post('{id}/rechazar',          [$pub, 'rechazar'])      ->whereNumber('id')->name('rechazar');
+        Route::post('{id}/reintentar/{red}',  [$pub, 'reintentar'])    ->whereNumber('id')->name('reintentar');
 
         Route::post('generar-copia',          [$pub, 'generarCopia'])  ->name('generar_copia');
         Route::post('generar-imagen',         [$pub, 'generarImagen']) ->name('generar_imagen');

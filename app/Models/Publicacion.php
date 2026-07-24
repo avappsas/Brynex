@@ -24,6 +24,7 @@ class Publicacion extends BaseModel
         'imagen_path',
         'origen',
         'plantilla_usada',
+        'tema',
         'estado',
         'destinos',
         'programada_at',

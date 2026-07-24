@@ -173,6 +173,52 @@ class PublicidadController extends Controller
         return redirect()->route('admin.publicidad.index')->with('success', 'Pieza eliminada.');
     }
 
+    // ── Piloto automático (community manager IA) ──────────────────────────
+
+    public function autopilot()
+    {
+        $aliado   = $this->aliadoActivo();
+        $config   = \App\Models\AutopilotConfig::paraAliado($aliado->id);
+        $iaConfig = IaConfiguracionAliado::paraAliado($aliado->id);
+
+        $piezas = Publicacion::where('aliado_id', $aliado->id)
+            ->where('origen', 'ia_auto')
+            ->orderByDesc('created_at')
+            ->limit(15)
+            ->get();
+
+        return view('admin.publicidad.autopilot', [
+            'aliado'       => $aliado,
+            'config'       => $config,
+            'tieneIaTexto' => !empty($iaConfig->credencialesEfectivas()['api_key']),
+            'tieneGemini'  => $iaConfig->tieneGemini(),
+            'piezas'       => $piezas,
+        ]);
+    }
+
+    public function autopilotUpdate(Request $request)
+    {
+        $aliado = $this->aliadoActivo();
+
+        $validated = $request->validate([
+            'activo'  => 'required|boolean',
+            'modo'    => 'required|in:aprobar,auto',
+            'hora'    => 'required|date_format:H:i',
+            'dias'    => 'nullable|array',
+            'dias.*'  => 'integer|between:1,7',
+        ]);
+
+        $config = \App\Models\AutopilotConfig::paraAliado($aliado->id);
+        $config->update([
+            'activo' => $validated['activo'],
+            'modo'   => $validated['modo'],
+            'hora'   => $validated['hora'],
+            'dias'   => !empty($validated['dias']) && count($validated['dias']) < 7 ? array_values($validated['dias']) : null,
+        ]);
+
+        return redirect()->route('admin.publicidad.autopilot')->with('success', 'Piloto automático actualizado.');
+    }
+
     // ── Generación asistida (AJAX) ────────────────────────────────────────
 
     public function generarCopia(Request $request)

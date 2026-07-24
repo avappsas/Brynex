@@ -56,6 +56,18 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/publicaciones-despacho.log'));
+
+        // ── Piloto automático de marketing (community manager IA) ────────────
+        // Cada 30 min en horario diurno: genera la pieza publicitaria del día de
+        // cada aliado con piloto activo (una por día, desde la hora configurada).
+        // Ejecución manual: php artisan marketing:autopilot [--aliado=slug --force]
+        $schedule->command('marketing:autopilot')
+            ->everyThirtyMinutes()
+            ->between('05:00', '21:00')
+            ->timezone('America/Bogota')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo(storage_path('logs/marketing-autopilot.log'));
     }
 
     /**

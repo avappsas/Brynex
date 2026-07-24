@@ -877,8 +877,11 @@
                 <div class="menu-dropdown-panel">
                     <div class="panel-header">Marketing</div>
 
-                    <a href="{{ route('admin.publicidad.index') }}" class="panel-item {{ request()->routeIs('admin.publicidad*') ? 'activo' : '' }}">
+                    <a href="{{ route('admin.publicidad.index') }}" class="panel-item {{ request()->routeIs('admin.publicidad*') && !request()->routeIs('admin.publicidad.autopilot*') ? 'activo' : '' }}">
                         <div class="pi">🖼️</div> Publicaciones
+                    </a>
+                    <a href="{{ route('admin.publicidad.autopilot') }}" class="panel-item {{ request()->routeIs('admin.publicidad.autopilot*') ? 'activo' : '' }}">
+                        <div class="pi">🚁</div> Piloto automático
                     </a>
                     <a href="{{ route('admin.redes-sociales.index') }}" class="panel-item {{ request()->routeIs('admin.redes-sociales*') ? 'activo' : '' }}">
                         <div class="pi">🔗</div> Redes sociales
@@ -1114,8 +1117,11 @@
         <div class="drawer-sep"></div>
         <div class="drawer-section">
             <div class="drawer-section-label">Marketing</div>
-            <a href="{{ route('admin.publicidad.index') }}" class="drawer-item {{ request()->routeIs('admin.publicidad*') ? 'activo' : '' }}">
+            <a href="{{ route('admin.publicidad.index') }}" class="drawer-item {{ request()->routeIs('admin.publicidad*') && !request()->routeIs('admin.publicidad.autopilot*') ? 'activo' : '' }}">
                 <span class="di-icon">🖼️</span> Publicaciones
+            </a>
+            <a href="{{ route('admin.publicidad.autopilot') }}" class="drawer-item {{ request()->routeIs('admin.publicidad.autopilot*') ? 'activo' : '' }}">
+                <span class="di-icon">🚁</span> Piloto automático
             </a>
             <a href="{{ route('admin.redes-sociales.index') }}" class="drawer-item {{ request()->routeIs('admin.redes-sociales*') ? 'activo' : '' }}">
                 <span class="di-icon">🔗</span> Redes sociales
