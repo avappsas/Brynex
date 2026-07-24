@@ -54,12 +54,19 @@ class GeminiImagenGenerator
                 return ['ok' => false, 'rutas' => $rutas, 'error' => "Gemini respondió con error: {$mensaje}"];
             }
 
-            $base64 = data_get($resp->json(), 'candidates.0.content.parts.0.inlineData.data');
+            $base64   = data_get($resp->json(), 'candidates.0.content.parts.0.inlineData.data');
+            $mimeType = data_get($resp->json(), 'candidates.0.content.parts.0.inlineData.mimeType', 'image/png');
             if (!$base64) {
                 return ['ok' => false, 'rutas' => $rutas, 'error' => 'Gemini no devolvió una imagen en la respuesta.'];
             }
 
-            $nombre = 'publicidad/ia/' . Str::random(20) . '.png';
+            $extension = match ($mimeType) {
+                'image/jpeg' => 'jpg',
+                'image/webp' => 'webp',
+                default => 'png',
+            };
+
+            $nombre = 'publicidad/ia/' . Str::random(20) . '.' . $extension;
             Storage::disk('public')->put($nombre, base64_decode($base64));
             $rutas[] = $nombre;
         }

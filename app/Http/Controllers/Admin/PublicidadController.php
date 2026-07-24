@@ -258,7 +258,10 @@ class PublicidadController extends Controller
         $resultado = GeminiImagenGenerator::generarVariantes($iaConfig->gemini_api_key, $validated['prompt'], 2, $modelo);
 
         if ($resultado['ok']) {
-            $resultado['urls'] = array_map(fn ($r) => asset('storage/' . $r), $resultado['rutas']);
+            foreach ($resultado['rutas'] as $ruta) {
+                \App\Services\Publicidad\LogoWatermarker::aplicar($ruta, $aliado->logo);
+            }
+            $resultado['urls'] = array_map(fn ($r) => asset('storage/' . $r) . '?v=' . time(), $resultado['rutas']);
         }
 
         return response()->json($resultado);

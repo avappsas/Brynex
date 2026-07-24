@@ -64,6 +64,8 @@ class AutopilotGenerator
             return ['ok' => false, 'publicacion' => null, 'error' => 'Imagen: ' . ($imagen['error'] ?? 'Gemini no devolvió imagen.')];
         }
 
+        LogoWatermarker::aplicar($imagen['rutas'][0], $aliado->logo);
+
         $destinos = array_merge(
             ['web'],
             RedSocialConfig::where('aliado_id', $aliado->id)->where('activo', true)->pluck('red')->all()
