@@ -59,7 +59,8 @@ class AutopilotGenerator
             ? GeminiImagenGenerator::MODELO_FOTORREALISTA
             : GeminiImagenGenerator::MODELO_ILUSTRACION;
 
-        $rutaLogo = $aliado->logo ? \Illuminate\Support\Facades\Storage::disk('public')->path($aliado->logo) : null;
+        $logoParaReferencia = $aliado->logo_marca_claro ?: $aliado->logo;
+        $rutaLogo = $logoParaReferencia ? \Illuminate\Support\Facades\Storage::disk('public')->path($logoParaReferencia) : null;
         $promptImagen = $concepto['prompt_imagen'];
         if ($rutaLogo) {
             // La imagen adjunta (aparte del prompt) es el logo real — se le pide inspirarse
@@ -72,7 +73,7 @@ class AutopilotGenerator
             return ['ok' => false, 'publicacion' => null, 'error' => 'Imagen: ' . ($imagen['error'] ?? 'Gemini no devolvió imagen.')];
         }
 
-        LogoWatermarker::aplicar($imagen['rutas'][0], $aliado->logo, $aliado->logo_oscuro);
+        LogoWatermarker::aplicar($imagen['rutas'][0], $aliado->logo_marca_claro, $aliado->logo_oscuro);
 
         $destinos = array_merge(
             ['web'],

@@ -103,7 +103,7 @@
         {{-- Logo + Color + Estado --}}
         <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:1rem;margin-bottom:1.5rem;align-items:end;">
             <div>
-                <label style="display:block;font-size:0.78rem;font-weight:600;color:#475569;margin-bottom:0.3rem;text-transform:uppercase;letter-spacing:0.04em;">Logo — fondos claros (PNG/JPG)</label>
+                <label style="display:block;font-size:0.78rem;font-weight:600;color:#475569;margin-bottom:0.3rem;text-transform:uppercase;letter-spacing:0.04em;">Logo (PNG/JPG)</label>
                 @if(isset($aliado->id) && $aliado->logo)
                     <div style="margin-bottom:0.4rem;display:flex;align-items:center;gap:0.5rem;">
                         <img id="logo-preview"
@@ -118,7 +118,7 @@
                 @endif
                 <input type="file" name="logo" accept="image/*"
                     style="width:100%;padding:0.5rem;border:1px solid #cbd5e1;border-radius:8px;font-size:0.85rem;font-family:inherit;">
-                <div style="font-size:0.68rem;color:#94a3b8;margin-top:0.25rem;">Versión oscura/de color — se usa cuando la foto de fondo es clara.</div>
+                <div style="font-size:0.68rem;color:#94a3b8;margin-top:0.25rem;">Ícono cuadrado — se usa en el panel, selector de aliado, facturación, etc.</div>
             </div>
             <div>
                 <label style="display:block;font-size:0.78rem;font-weight:600;color:#475569;margin-bottom:0.3rem;text-transform:uppercase;letter-spacing:0.04em;">Color</label>
@@ -135,17 +135,33 @@
             </div>
         </div>
 
-        {{-- Logo — fondos oscuros --}}
-        <div style="margin-bottom:1.5rem;">
-            <label style="display:block;font-size:0.78rem;font-weight:600;color:#475569;margin-bottom:0.3rem;text-transform:uppercase;letter-spacing:0.04em;">Logo — fondos oscuros (opcional)</label>
-            @if(isset($aliado->id) && $aliado->logo_oscuro)
-                <div style="margin-bottom:0.4rem;display:flex;align-items:center;gap:0.5rem;background:#0f172a;padding:0.5rem;border-radius:6px;width:fit-content;">
-                    <img src="{{ asset('storage/'.$aliado->logo_oscuro) }}" style="height:48px;object-fit:contain;">
+        {{-- Logo de marca (marketing/watermark) — separado del ícono cuadrado de arriba --}}
+        <div style="margin-bottom:1.5rem;padding:1rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+            <div style="font-size:0.78rem;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.2rem;">🖼️ Logo de marca (marketing)</div>
+            <div style="font-size:0.72rem;color:#94a3b8;margin-bottom:0.85rem;">Ícono + nombre + eslogan completo — se usa como marca de agua en las imágenes generadas. Distinto del ícono cuadrado de arriba.</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+                <div>
+                    <label style="display:block;font-size:0.78rem;font-weight:600;color:#475569;margin-bottom:0.3rem;text-transform:uppercase;letter-spacing:0.04em;">Logo — fondos claros</label>
+                    @if(isset($aliado->id) && $aliado->logo_marca_claro)
+                        <div style="margin-bottom:0.4rem;">
+                            <img src="{{ asset('storage/'.$aliado->logo_marca_claro) }}" style="height:48px;border-radius:6px;border:1px solid #e2e8f0;object-fit:contain;">
+                        </div>
+                    @endif
+                    <input type="file" name="logo_marca_claro" accept="image/*"
+                        style="width:100%;padding:0.5rem;border:1px solid #cbd5e1;border-radius:8px;font-size:0.85rem;font-family:inherit;">
                 </div>
-            @endif
-            <input type="file" name="logo_oscuro" accept="image/*"
-                style="width:100%;max-width:400px;padding:0.5rem;border:1px solid #cbd5e1;border-radius:8px;font-size:0.85rem;font-family:inherit;">
-            <div style="font-size:0.68rem;color:#94a3b8;margin-top:0.25rem;">Versión clara/blanca — se usa automáticamente cuando la foto de fondo es oscura. Si no la subes, siempre se usa el logo de arriba.</div>
+                <div>
+                    <label style="display:block;font-size:0.78rem;font-weight:600;color:#475569;margin-bottom:0.3rem;text-transform:uppercase;letter-spacing:0.04em;">Logo — fondos oscuros</label>
+                    @if(isset($aliado->id) && $aliado->logo_oscuro)
+                        <div style="margin-bottom:0.4rem;background:#0f172a;padding:0.4rem;border-radius:6px;width:fit-content;">
+                            <img src="{{ asset('storage/'.$aliado->logo_oscuro) }}" style="height:48px;object-fit:contain;">
+                        </div>
+                    @endif
+                    <input type="file" name="logo_oscuro" accept="image/*"
+                        style="width:100%;padding:0.5rem;border:1px solid #cbd5e1;border-radius:8px;font-size:0.85rem;font-family:inherit;">
+                </div>
+            </div>
+            <div style="font-size:0.68rem;color:#94a3b8;margin-top:0.6rem;">El sistema elige la variante correcta según qué tan oscura sea la esquina de cada foto. Si solo subes una, se usa siempre esa.</div>
         </div>
 
         {{-- ── Afiliaciones BryNex ── --}}

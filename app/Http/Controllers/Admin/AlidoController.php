@@ -46,6 +46,7 @@ class AlidoController extends Controller
             'activo'               => 'boolean',
             'logo'                 => 'nullable|image|mimes:png,jpg,jpeg,svg|max:2048',
             'logo_oscuro'          => 'nullable|image|mimes:png,jpg,jpeg,svg|max:2048',
+            'logo_marca_claro'     => 'nullable|image|mimes:png,jpg,jpeg,svg|max:2048',
             'afiliaciones_brynex'  => 'boolean',
             'encargado_afil_id'    => 'nullable|exists:users,id',
         ]);
@@ -61,6 +62,12 @@ class AlidoController extends Controller
             $filename  = time() . '_oscuro_' . $file->getClientOriginalName();
             $file->move(public_path('storage/logos'), $filename);
             $data['logo_oscuro'] = 'logos/' . $filename;
+        }
+        if ($request->hasFile('logo_marca_claro')) {
+            $file      = $request->file('logo_marca_claro');
+            $filename  = time() . '_marca_claro_' . $file->getClientOriginalName();
+            $file->move(public_path('storage/logos'), $filename);
+            $data['logo_marca_claro'] = 'logos/' . $filename;
         }
 
         $data['activo'] = $request->boolean('activo', true);
@@ -112,6 +119,7 @@ class AlidoController extends Controller
             'activo'               => 'boolean',
             'logo'                 => 'nullable|image|mimes:png,jpg,jpeg,svg|max:2048',
             'logo_oscuro'          => 'nullable|image|mimes:png,jpg,jpeg,svg|max:2048',
+            'logo_marca_claro'     => 'nullable|image|mimes:png,jpg,jpeg,svg|max:2048',
             'afiliaciones_brynex'  => 'boolean',
             'encargado_afil_id'    => 'nullable|exists:users,id',
         ]);
@@ -141,6 +149,18 @@ class AlidoController extends Controller
             $data['logo_oscuro'] = 'logos/' . $filename;
         } else {
             $data['logo_oscuro'] = $aliado->logo_oscuro;
+        }
+        if ($request->hasFile('logo_marca_claro')) {
+            if ($aliado->logo_marca_claro) {
+                $oldPath = public_path('storage/' . $aliado->logo_marca_claro);
+                if (file_exists($oldPath)) @unlink($oldPath);
+            }
+            $file      = $request->file('logo_marca_claro');
+            $filename  = time() . '_marca_claro_' . $file->getClientOriginalName();
+            $file->move(public_path('storage/logos'), $filename);
+            $data['logo_marca_claro'] = 'logos/' . $filename;
+        } else {
+            $data['logo_marca_claro'] = $aliado->logo_marca_claro;
         }
 
         $data['activo'] = $request->boolean('activo');

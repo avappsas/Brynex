@@ -29,6 +29,7 @@ class Aliado extends BaseModel
         'ciudad',
         'logo',
         'logo_oscuro',
+        'logo_marca_claro',
         'color_primario',
         'slug',
         'dominio_propio',

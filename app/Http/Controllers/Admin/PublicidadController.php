@@ -297,7 +297,8 @@ class PublicidadController extends Controller
             ? GeminiImagenGenerator::MODELO_FOTORREALISTA
             : GeminiImagenGenerator::MODELO_ILUSTRACION;
 
-        $rutaLogo = $aliado->logo ? Storage::disk('public')->path($aliado->logo) : null;
+        $logoParaReferencia = $aliado->logo_marca_claro ?: $aliado->logo;
+        $rutaLogo = $logoParaReferencia ? Storage::disk('public')->path($logoParaReferencia) : null;
         $prompt = $validated['prompt'] . ($rutaLogo
             ? ' Te adjunto el logo de la marca como referencia de color: usa tonos inspirados en su paleta para la escena. NO intentes dibujar ni reproducir el logo dentro de la imagen — eso se agrega después por separado.'
             : '');
@@ -306,7 +307,7 @@ class PublicidadController extends Controller
 
         if ($resultado['ok']) {
             foreach ($resultado['rutas'] as $ruta) {
-                \App\Services\Publicidad\LogoWatermarker::aplicar($ruta, $aliado->logo, $aliado->logo_oscuro);
+                \App\Services\Publicidad\LogoWatermarker::aplicar($ruta, $aliado->logo_marca_claro, $aliado->logo_oscuro);
             }
             $resultado['urls'] = array_map(fn ($r) => asset('storage/' . $r) . '?v=' . time(), $resultado['rutas']);
         }
