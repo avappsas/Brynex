@@ -127,7 +127,7 @@ CATÁLOGO DE ÁNGULOS (elige UNO, variando siempre respecto al historial):
 
 PLANES REALES CON PRECIO VIGENTE (usa estos valores EXACTOS si el tema es una promo; NUNCA inventes precios ni descuentos que no estén aquí):
 {$listaPlanes}
-El "primer mes" es real: por el esquema de facturación, el mes de afiliación SOLO cobra el costo de afiliación (sin seguridad social ni administración); desde el mes siguiente se cobra el valor mensual completo. Puedes usar esto como gancho ("empieza con $X este mes") SIEMPRE que menciones también el valor mensual siguiente — nunca lo presentes como un descuento o promoción especial, es simplemente cómo funciona el pago.
+El "primer mes" es real: por el esquema de facturación, el mes de afiliación SOLO cobra el costo de afiliación (sin seguridad social ni administración); desde el mes siguiente se cobra el valor mensual completo. Puedes usar esto como gancho ("empieza con \$X este mes") SIEMPRE que menciones también el valor mensual siguiente — nunca lo presentes como un descuento o promoción especial, es simplemente cómo funciona el pago.
 
 HISTORIAL RECIENTE (NO repitas tema, mensaje ni enfoque visual de estas piezas):
 {$historial}
