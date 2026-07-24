@@ -869,6 +869,34 @@
             @endrole
 
             @role('superadmin|admin|usuario')
+            <div class="menu-dropdown">
+                <a href="{{ route('admin.publicidad.index') }}" class="menu-dropdown-trigger {{ request()->routeIs('admin.publicidad*', 'admin.redes-sociales*', 'admin.marketing*') ? 'activo' : '' }}">
+                    <div class="icono">📣</div>
+                    <div class="label">Marketing</div>
+                </a>
+                <div class="menu-dropdown-panel">
+                    <div class="panel-header">Marketing</div>
+
+                    <a href="{{ route('admin.publicidad.index') }}" class="panel-item {{ request()->routeIs('admin.publicidad*') ? 'activo' : '' }}">
+                        <div class="pi">🖼️</div> Publicaciones
+                    </a>
+                    <a href="{{ route('admin.redes-sociales.index') }}" class="panel-item {{ request()->routeIs('admin.redes-sociales*') ? 'activo' : '' }}">
+                        <div class="pi">🔗</div> Redes sociales
+                    </a>
+
+                    <div class="panel-sep"></div>
+
+                    <a href="{{ route('admin.marketing.listas.index') }}" class="panel-item {{ request()->routeIs('admin.marketing.listas*') ? 'activo' : '' }}">
+                        <div class="pi">📋</div> Listas de contactos
+                    </a>
+                    <a href="{{ route('admin.marketing.campanas.index') }}" class="panel-item {{ request()->routeIs('admin.marketing.campanas*') ? 'activo' : '' }}">
+                        <div class="pi">📢</div> Campañas WhatsApp
+                    </a>
+                </div>
+            </div>
+            @endrole
+
+            @role('superadmin|admin|usuario')
             <div class="menu-sep"></div>
 
             <a href="{{ route('admin.cuadre-diario.index') }}"
@@ -1080,6 +1108,26 @@
             </a>
             @endrole
         </div>
+
+        {{-- Sección marketing --}}
+        @role('superadmin|admin|usuario')
+        <div class="drawer-sep"></div>
+        <div class="drawer-section">
+            <div class="drawer-section-label">Marketing</div>
+            <a href="{{ route('admin.publicidad.index') }}" class="drawer-item {{ request()->routeIs('admin.publicidad*') ? 'activo' : '' }}">
+                <span class="di-icon">🖼️</span> Publicaciones
+            </a>
+            <a href="{{ route('admin.redes-sociales.index') }}" class="drawer-item {{ request()->routeIs('admin.redes-sociales*') ? 'activo' : '' }}">
+                <span class="di-icon">🔗</span> Redes sociales
+            </a>
+            <a href="{{ route('admin.marketing.listas.index') }}" class="drawer-item {{ request()->routeIs('admin.marketing.listas*') ? 'activo' : '' }}">
+                <span class="di-icon">📋</span> Listas de contactos
+            </a>
+            <a href="{{ route('admin.marketing.campanas.index') }}" class="drawer-item {{ request()->routeIs('admin.marketing.campanas*') ? 'activo' : '' }}">
+                <span class="di-icon">📢</span> Campañas WhatsApp
+            </a>
+        </div>
+        @endrole
 
         {{-- Sección financiero --}}
         @role('superadmin|admin|usuario')

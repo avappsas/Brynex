@@ -125,6 +125,11 @@
                             <input type="text" name="modelo" class="form-control" value="{{ $cfg->modelo ?? '' }}" placeholder="Usa el global por defecto">
                         </div>
                         <div class="form-group" style="margin-bottom:0;">
+                            <label class="form-label">API key Gemini {{ $cfg && $cfg->gemini_api_key ? '(configurada)' : '(sin configurar)' }}</label>
+                            <input type="password" name="gemini_api_key" class="form-control" placeholder="{{ $cfg && $cfg->gemini_api_key ? '••••••••' : 'AIza...' }}">
+                            <div class="form-hint">Para generar imágenes con IA en Marketing → Publicaciones. Déjalo vacío para no cambiarla.</div>
+                        </div>
+                        <div class="form-group" style="margin-bottom:0;">
                             <label class="form-label">Nombre del asistente</label>
                             <input type="text" name="nombre_bot" class="form-control" value="{{ $cfg->nombre_bot ?? '' }}" placeholder="Asistente Virtual">
                             <div class="form-hint">Cómo se presenta en el widget y firma sus mensajes de WhatsApp.</div>

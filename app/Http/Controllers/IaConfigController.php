@@ -81,6 +81,7 @@ class IaConfigController extends Controller
             'nombre_bot'         => 'nullable|string|max:100',
             'activo_web'         => 'required|boolean',
             'activo_whatsapp'    => 'required|boolean',
+            'gemini_api_key'     => 'nullable|string|max:2000',
         ]);
 
         $config = IaConfiguracionAliado::paraAliado($alidoId);
@@ -92,6 +93,9 @@ class IaConfigController extends Controller
         $config->activo_whatsapp   = $validated['activo_whatsapp'];
         if (!empty($validated['api_key'])) {
             $config->api_key = $validated['api_key'];
+        }
+        if (!empty($validated['gemini_api_key'])) {
+            $config->gemini_api_key = $validated['gemini_api_key'];
         }
         $config->save();
 
