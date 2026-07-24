@@ -89,6 +89,22 @@
     </div>
   @endif
 
+  {{-- ══ Conversaciones de WhatsApp atribuidas ══ --}}
+  @if($conversacionesWa->isNotEmpty())
+    <div style="margin-bottom:1rem;">
+      <div style="font-size:0.72rem;font-weight:700;color:#16a34a;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:0.5rem;">
+        💬 Conversaciones atribuidas ({{ $conversacionesWa->count() }})
+      </div>
+      <div style="font-size:0.72rem;color:#94a3b8;margin-bottom:0.5rem;">Clientes que escribieron por WhatsApp mencionando el link de esta pieza — atribución real, no estimada.</div>
+      @foreach($conversacionesWa as $c)
+        <a href="{{ route('admin.whatsapp.chat.show', $c->id) }}"
+           style="display:block;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:0.5rem 0.85rem;margin-bottom:0.4rem;text-decoration:none;color:#166534;font-size:0.8rem;">
+          {{ $c->nombre_contacto ?: $c->wa_contact_id }} · {{ $c->created_at->format('d/m/Y H:i') }}
+        </a>
+      @endforeach
+    </div>
+  @endif
+
   {{-- ══ Acciones ══ --}}
   @if($publicacion->estado === 'pendiente')
     <div style="display:flex;gap:0.6rem;">

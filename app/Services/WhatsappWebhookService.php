@@ -456,6 +456,7 @@ class WhatsappWebhookService
         }
 
         $campana = $this->buscarCampanaOrigen($numeroLimpio, $alidoId);
+        $publicacionOrigenId = $this->buscarPublicacionOrigen($msgData['text']['body'] ?? '', $alidoId);
 
         return WhatsappConversacion::create([
             'aliado_id'                 => $alidoId,
@@ -466,6 +467,7 @@ class WhatsappWebhookService
             'origen_campana'            => $campana['nombre'],
             'origen_campana_categoria'  => $campana['categoria'],
             'origen_campana_id'         => $campana['campana_id'],
+            'origen_publicacion_id'     => $publicacionOrigenId,
             'estado'                    => 'abierta',
             // Explícito porque el default de BD no se refleja en el objeto en memoria que
             // devuelve create() — sin esto, bot_activo queda null aquí y la IA no responde
@@ -486,6 +488,23 @@ class WhatsappWebhookService
      *
      * @return array{nombre: ?string, categoria: ?string, campana_id: ?int}
      */
+    /**
+     * Si el primer mensaje del contacto trae el código "ref: P{id}" (el que se agrega
+     * automáticamente al link de WhatsApp de cada pieza publicada en redes), atribuye la
+     * conversación a esa publicación concreta — atribución real, no una correlación por
+     * ventana de tiempo. Solo se llama al CREAR una conversación nueva.
+     */
+    private function buscarPublicacionOrigen(string $texto, int $alidoId): ?int
+    {
+        if (!preg_match('/ref:\s*P(\d+)/i', $texto, $m)) {
+            return null;
+        }
+
+        return \App\Models\Publicacion::where('id', (int) $m[1])
+            ->where('aliado_id', $alidoId)
+            ->value('id');
+    }
+
     private function buscarCampanaOrigen(string $numeroLimpio, int $alidoId): array
     {
         $detalle = \App\Models\WhatsappEnvioMasivoDetalle::query()

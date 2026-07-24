@@ -107,7 +107,11 @@ class PublicidadController extends Controller
         $aliado = $this->aliadoActivo();
         $publicacion = Publicacion::where('aliado_id', $aliado->id)->with(['creador', 'aprobador', 'metricas'])->findOrFail($id);
 
-        return view('admin.publicidad.show', compact('aliado', 'publicacion'));
+        $conversacionesWa = \App\Models\WhatsappConversacion::where('origen_publicacion_id', $publicacion->id)
+            ->orderByDesc('created_at')
+            ->get(['id', 'nombre_contacto', 'wa_contact_id', 'created_at']);
+
+        return view('admin.publicidad.show', compact('aliado', 'publicacion', 'conversacionesWa'));
     }
 
     public function aprobar(int $id)
@@ -189,7 +193,8 @@ class PublicidadController extends Controller
             ->limit(15)
             ->get();
 
-        // Ranking de piezas publicadas por interacciones reales (para el card de rendimiento)
+        // Ranking de piezas publicadas por interacciones + conversaciones de WhatsApp
+        // atribuidas (real) — para el card de rendimiento.
         $ranking = Publicacion::where('aliado_id', $aliado->id)
             ->publicadas()
             ->with('metricas')
@@ -199,8 +204,9 @@ class PublicidadController extends Controller
                 'pieza'         => $p,
                 'interacciones' => $p->metricas->sum(fn ($m) => $m->interacciones()),
                 'alcance'       => $p->metricas->sum('alcance'),
+                'conversaciones_wa' => \App\Models\WhatsappConversacion::where('origen_publicacion_id', $p->id)->count(),
             ])
-            ->sortByDesc('interacciones')
+            ->sortByDesc(fn ($f) => $f['conversaciones_wa'] * 3 + $f['interacciones'])
             ->take(10)
             ->values();
 

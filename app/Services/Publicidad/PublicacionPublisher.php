@@ -59,11 +59,35 @@ class PublicacionPublisher
 
         try {
             $urlPublica = asset('storage/' . $publicacion->imagen_path);
-            $r = RedesFactory::make($config)->publicarImagen($urlPublica, $publicacion->copy ?: $publicacion->titulo);
+            $r = RedesFactory::make($config)->publicarImagen($urlPublica, self::textoConLinkRastreado($publicacion));
             return ['ok' => $r['ok'], 'mensaje' => $r['mensaje'], 'id' => $r['id_publicacion'] ?? null];
         } catch (\Throwable $e) {
             return ['ok' => false, 'mensaje' => 'Error inesperado: ' . $e->getMessage()];
         }
+    }
+
+    /**
+     * Copy + link de WhatsApp con un código de referencia ("ref: P{id}") en el mensaje
+     * precargado — si el cliente lo manda tal cual, WhatsappWebhookService atribuye la
+     * conversación a esta pieza exacta (ver buscarPublicacionOrigen). Facebook linkifica
+     * URLs en el caption y son clicables; Instagram no las hace clicables en el caption,
+     * así que ahí el código solo sirve si el cliente lo copia/menciona igual.
+     */
+    private static function textoConLinkRastreado(Publicacion $publicacion): string
+    {
+        $texto  = $publicacion->copy ?: $publicacion->titulo;
+        $numero = preg_replace('/\D/', '', $publicacion->aliado->whatsapp ?: $publicacion->aliado->celular ?: '');
+        if (!$numero) {
+            return $texto;
+        }
+        if (!str_starts_with($numero, '57')) {
+            $numero = '57' . $numero;
+        }
+
+        $mensaje = "Hola, vi esta publicación de {$publicacion->aliado->nombre} y quiero información. (ref: P{$publicacion->id})";
+        $link = 'https://wa.me/' . $numero . '?text=' . rawurlencode($mensaje);
+
+        return $texto . "\n\n👉 " . $link;
     }
 
     private static function invalidarCacheSiAplica(Publicacion $publicacion, array $destinos): void

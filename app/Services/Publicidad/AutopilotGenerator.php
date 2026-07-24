@@ -114,25 +114,31 @@ class AutopilotGenerator
         $porTema = $piezas->groupBy('tema')->map(function ($grupo) use ($aliadoId) {
             $interacciones = $grupo->sum(fn ($p) => $p->metricas->sum(fn ($m) => $m->interacciones()));
             $alcance       = $grupo->sum(fn ($p) => $p->metricas->sum('alcance'));
-            $leads = $grupo->sum(function ($p) use ($aliadoId) {
+            // Leads del formulario web en las 48h siguientes — correlación, no certeza.
+            $leadsWeb = $grupo->sum(function ($p) use ($aliadoId) {
                 if (!$p->publicada_at) return 0;
                 return \App\Models\PaginaLead::where('aliado_id', $aliadoId)
                     ->whereBetween('created_at', [$p->publicada_at, $p->publicada_at->copy()->addHours(48)])
                     ->count();
             });
+            // Conversaciones de WhatsApp con atribución REAL (el cliente mandó el link con
+            // el código de la pieza) — señal mucho más fuerte que la correlación por ventana.
+            $conversacionesWa = \App\Models\WhatsappConversacion::whereIn('origen_publicacion_id', $grupo->pluck('id'))->count();
             $estilos = $grupo->pluck('estilo_imagen')->filter()->unique()->implode('/');
 
             return [
-                'piezas'        => $grupo->count(),
-                'interacciones' => $interacciones,
-                'alcance'       => $alcance,
-                'leads'         => $leads,
-                'estilos'       => $estilos ?: 'n/d',
+                'piezas'            => $grupo->count(),
+                'interacciones'     => $interacciones,
+                'alcance'           => $alcance,
+                'leads_web'         => $leadsWeb,
+                'conversaciones_wa' => $conversacionesWa,
+                'estilos'           => $estilos ?: 'n/d',
             ];
-        })->sortByDesc('interacciones');
+        })->sortByDesc(fn ($d) => $d['conversaciones_wa'] * 3 + $d['interacciones']);
 
         $lineas = $porTema->map(fn ($datos, $tema) =>
-            "- [{$tema}] ({$datos['estilos']}): {$datos['interacciones']} interacciones, alcance {$datos['alcance']}, {$datos['leads']} leads en 48h ({$datos['piezas']} pieza(s))"
+            "- [{$tema}] ({$datos['estilos']}): {$datos['interacciones']} interacciones, alcance {$datos['alcance']}, "
+            . "{$datos['conversaciones_wa']} conversaciones de WhatsApp atribuidas (real), {$datos['leads_web']} leads web en 48h ({$datos['piezas']} pieza(s))"
         )->implode("\n");
 
         return "\nRENDIMIENTO REAL DE PIEZAS ANTERIORES (ordenado de mejor a peor — prioriza los ángulos y estilos que más interacciones y leads atraen, pero sigue variando el contenido):\n{$lineas}";

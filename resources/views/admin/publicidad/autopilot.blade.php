@@ -107,6 +107,7 @@
             </div>
             <div style="text-align:right;flex-shrink:0;">
                 <div style="font-size:.8rem;font-weight:700;color:#0f172a;">{{ $fila['interacciones'] }} <span style="font-weight:400;color:#94a3b8;font-size:.68rem;">interacciones</span></div>
+                @if($fila['conversaciones_wa'])<div style="font-size:.68rem;color:#16a34a;font-weight:600;">💬 {{ $fila['conversaciones_wa'] }} conversación(es)</div>@endif
                 @if($fila['alcance'])<div style="font-size:.68rem;color:#94a3b8;">alcance {{ number_format($fila['alcance'], 0, ',', '.') }}</div>@endif
             </div>
         </a>
