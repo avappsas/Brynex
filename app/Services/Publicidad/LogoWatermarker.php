@@ -13,8 +13,13 @@ use Illuminate\Support\Facades\Storage;
  */
 class LogoWatermarker
 {
-    /** Aplica el logo sobre la imagen en $rutaImagen (storage/app/public), si el aliado tiene logo. Falla en silencio. */
-    public static function aplicar(string $rutaImagen, ?string $rutaLogo): void
+    private const FUENTE = __DIR__ . '/../../../vendor/dompdf/dompdf/lib/fonts/DejaVuSans-Bold.ttf';
+
+    /**
+     * Aplica el logo (con su nombre al lado, igual que el encabezado del canvas) sobre la
+     * imagen en $rutaImagen (storage/app/public), si el aliado tiene logo. Falla en silencio.
+     */
+    public static function aplicar(string $rutaImagen, ?string $rutaLogo, ?string $nombreAliado = null): void
     {
         if (!$rutaLogo || !Storage::disk('public')->exists($rutaImagen) || !Storage::disk('public')->exists($rutaLogo)) {
             return;
@@ -83,6 +88,25 @@ class LogoWatermarker
             imagealphablending($imagen, true);
             imagecopy($imagen, $sombra, $px - $margenSombra, $py - $margenSombra, 0, 0, $tamSombra, $tamSombra);
             imagecopy($imagen, $logoRedim, $px, $py, 0, 0, $tamanoLogo, $tamanoLogo);
+
+            // Nombre del aliado junto al logo (a la izquierda), igual que el encabezado del
+            // canvas — texto blanco con una sombra oscura detrás (offset simple + desenfoque)
+            // para que se lea sobre cualquier fondo, sin ninguna caja.
+            if ($nombreAliado && is_file(self::FUENTE)) {
+                $texto = mb_strtoupper($nombreAliado);
+                $tamanoFuente = max(11, (int) round($tamanoLogo * 0.24));
+                $caja = imagettfbbox($tamanoFuente, 0, self::FUENTE, $texto);
+                $anchoTexto = abs($caja[2] - $caja[0]);
+                $xTexto = $px - 14 - $anchoTexto;
+                $yTexto = (int) round($py + $tamanoLogo / 2 + $tamanoFuente / 3);
+
+                if ($xTexto > 4) { // solo si cabe sin salirse por la izquierda
+                    $negro = imagecolorallocatealpha($imagen, 0, 0, 0, 40);
+                    imagettftext($imagen, $tamanoFuente, 0, $xTexto + 1, $yTexto + 2, $negro, self::FUENTE, $texto);
+                    $blanco = imagecolorallocate($imagen, 255, 255, 255);
+                    imagettftext($imagen, $tamanoFuente, 0, $xTexto, $yTexto, $blanco, self::FUENTE, $texto);
+                }
+            }
 
             self::guardar($imagen, $pathImagen);
 

@@ -306,7 +306,7 @@ class PublicidadController extends Controller
 
         if ($resultado['ok']) {
             foreach ($resultado['rutas'] as $ruta) {
-                \App\Services\Publicidad\LogoWatermarker::aplicar($ruta, $aliado->logo);
+                \App\Services\Publicidad\LogoWatermarker::aplicar($ruta, $aliado->logo, $aliado->nombre);
             }
             $resultado['urls'] = array_map(fn ($r) => asset('storage/' . $r) . '?v=' . time(), $resultado['rutas']);
         }
