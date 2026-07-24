@@ -82,8 +82,11 @@ class CotizacionPublicaService
                 'destacado'        => $def['destacado'],
                 'componentes'      => $def['componentes'],
                 'independiente'    => $def['independiente'],
-                'valor_mensual'    => $mostrarPrecios ? $resultado['total'] : null,
-                'costo_afiliacion' => $mostrarPrecios ? $resultado['costo_afiliacion_sugerido'] : null,
+                'valor_mensual'           => $mostrarPrecios ? $resultado['total'] : null,
+                'costo_afiliacion'        => $mostrarPrecios ? $resultado['costo_afiliacion_sugerido'] : null,
+                'costo_afiliacion_normal' => $mostrarPrecios ? $resultado['costo_afiliacion_normal'] : null,
+                'en_promocion'            => $resultado['en_promocion'],
+                'promocion_vence'         => $resultado['promocion_vence'],
             ];
         }
 
@@ -182,7 +185,18 @@ class CotizacionPublicaService
         // costo_afiliacion SÍ varía por plan, pero además varía contrato a contrato dentro del
         // mismo plan en la práctica (el asesor lo ajusta al afiliar) — por eso se marca como
         // "sugerido", no como un cobro garantizado.
-        $resultado['costo_afiliacion_sugerido'] = (float) ($cfgPlan->costo_afiliacion ?? $cfgGeneral->costo_afiliacion ?? 0);
+        //
+        // Si hay una promoción vigente (plan-específica primero, luego general) reemplaza el
+        // costo de afiliación normal — misma cascada plan→general que el precio normal, así
+        // que web, WhatsApp y marketing ven SIEMPRE el mismo número, y al vencer vuelve solo.
+        $cfgConPromo = collect([$cfgPlan, $cfgGeneral])->first(fn ($c) => $c?->promocionVigente());
+
+        $resultado['costo_afiliacion_normal']    = (float) ($cfgPlan->costo_afiliacion ?? $cfgGeneral->costo_afiliacion ?? 0);
+        $resultado['en_promocion']               = (bool) $cfgConPromo;
+        $resultado['promocion_vence']            = $cfgConPromo?->promocion_vencimiento?->toDateString();
+        $resultado['costo_afiliacion_sugerido']  = $cfgConPromo
+            ? (float) $cfgConPromo->promocion_costo_afiliacion
+            : $resultado['costo_afiliacion_normal'];
 
         try {
             $fechaAfiliacion = !empty($opciones['fecha_afiliacion']) ? Carbon::parse($opciones['fecha_afiliacion']) : now();

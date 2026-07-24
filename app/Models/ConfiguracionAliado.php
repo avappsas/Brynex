@@ -11,20 +11,23 @@ class ConfiguracionAliado extends BaseModel
     protected $fillable = [
         'aliado_id', 'plan_id',
         'administracion', 'costo_afiliacion', 'admon_asesor',
+        'promocion_costo_afiliacion', 'promocion_vencimiento',
         'seguro_valor', 'seguro_logo', 'encargado_default_id', 'activo',
         'dist_admon_pct', 'dist_retiro_pct', 'dia_ingreso_ir',
         'mora_dia_habil_inicio', 'mora_minimo', 'mora_segundo',
         'marketing_max_campanas', 'marketing_dias_periodo',
     ];
     protected $casts = [
-        'administracion'   => 'decimal:2',
-        'costo_afiliacion' => 'decimal:2',
-        'admon_asesor'     => 'decimal:2',
-        'seguro_valor'     => 'decimal:2',
-        'dist_admon_pct'   => 'decimal:2',
-        'dist_retiro_pct'  => 'decimal:2',
-        'dia_ingreso_ir'   => 'integer',
-        'activo'           => 'boolean',
+        'administracion'             => 'decimal:2',
+        'costo_afiliacion'           => 'decimal:2',
+        'admon_asesor'               => 'decimal:2',
+        'promocion_costo_afiliacion' => 'decimal:2',
+        'promocion_vencimiento'      => 'date',
+        'seguro_valor'               => 'decimal:2',
+        'dist_admon_pct'             => 'decimal:2',
+        'dist_retiro_pct'            => 'decimal:2',
+        'dia_ingreso_ir'             => 'integer',
+        'activo'                     => 'boolean',
     ];
 
     public function aliado(): BelongsTo
@@ -40,6 +43,14 @@ class ConfiguracionAliado extends BaseModel
     public function encargadoDefault(): BelongsTo
     {
         return $this->belongsTo(User::class, 'encargado_default_id');
+    }
+
+    /** ¿Hay una promoción de costo de afiliación activa (con precio y sin vencer) en esta fila? */
+    public function promocionVigente(): bool
+    {
+        return $this->promocion_costo_afiliacion !== null
+            && $this->promocion_vencimiento !== null
+            && $this->promocion_vencimiento->greaterThanOrEqualTo(now()->startOfDay());
     }
 
     private static array $cacheParaAliado = [];

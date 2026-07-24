@@ -278,6 +278,7 @@
         <th style="padding:0.55rem 0.75rem;text-align:right;color:#475569;font-weight:600;font-size:0.73rem;">ADMON MENSUAL</th>
         <th style="padding:0.55rem 0.75rem;text-align:right;color:#475569;font-weight:600;font-size:0.73rem;">ADMON ASESOR</th>
         <th style="padding:0.55rem 0.75rem;text-align:right;color:#475569;font-weight:600;font-size:0.73rem;">COSTO AFILIACIÓN</th>
+        <th style="padding:0.55rem 0.75rem;text-align:center;color:#b45309;font-weight:600;font-size:0.73rem;">🏷️ PROMOCIÓN</th>
         <th style="padding:0.55rem 0.75rem;text-align:right;color:#7c3aed;font-weight:600;font-size:0.73rem;" title="% del costo de afiliación que va a la empresa">% ADMON AFIL</th>
         <th style="padding:0.55rem 0.75rem;text-align:center;color:#475569;font-weight:600;font-size:0.73rem;">ENCARGADO DEFAULT</th>
       </tr>
@@ -301,6 +302,10 @@
           </div>
         </td>
         @endforeach
+        {{-- Promoción --}}
+        <td style="padding:0.5rem 0.75rem;text-align:center;">
+          @include('admin.configuracion._boton_promocion', ['key' => 'global', 'cfg' => $globalCfg])
+        </td>
         {{-- % Admon Afil --}}
         <td style="padding:0.5rem 0.75rem;text-align:right;">
           <div style="display:flex;align-items:center;justify-content:flex-end;gap:0.25rem;">
@@ -346,6 +351,10 @@
           </div>
         </td>
         @endforeach
+        {{-- Promoción --}}
+        <td style="padding:0.5rem 0.75rem;text-align:center;">
+          @include('admin.configuracion._boton_promocion', ['key' => $plan->id, 'cfg' => $cfg])
+        </td>
         {{-- % Admon Afil por plan --}}
         <td style="padding:0.5rem 0.75rem;text-align:right;">
           <div style="display:flex;align-items:center;justify-content:flex-end;gap:0.25rem;">
@@ -394,6 +403,37 @@
 </div>
 
 </form>
+
+{{-- ══ Modal: configurar promoción de afiliación ══ --}}
+<div id="modalPromocion" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,0.5);z-index:1000;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:14px;padding:1.5rem 1.75rem;width:100%;max-width:380px;box-shadow:0 20px 50px rgba(0,0,0,0.25);">
+    <div style="font-size:1rem;font-weight:700;color:#0f172a;margin-bottom:0.2rem;">🏷️ Promoción de afiliación</div>
+    <div id="modalPromocionPlan" style="font-size:0.78rem;color:#64748b;margin-bottom:1rem;"></div>
+
+    <label style="display:block;font-size:0.72rem;font-weight:600;color:#334155;margin-bottom:0.3rem;">Precio de afiliación promocional</label>
+    <div style="display:flex;align-items:center;gap:0.25rem;margin-bottom:0.9rem;">
+      <span style="color:#64748b;font-size:0.85rem;">$</span>
+      <input type="text" id="modalPromoPrecio" placeholder="Ej: 80.000"
+          style="flex:1;padding:0.5rem 0.7rem;border:1px solid #cbd5e1;border-radius:8px;font-size:0.85rem;font-family:monospace;">
+    </div>
+
+    <label style="display:block;font-size:0.72rem;font-weight:600;color:#334155;margin-bottom:0.3rem;">Vence el</label>
+    <input type="date" id="modalPromoVence"
+        style="width:100%;padding:0.5rem 0.7rem;border:1px solid #cbd5e1;border-radius:8px;font-size:0.85rem;margin-bottom:1.1rem;">
+
+    <div style="font-size:0.7rem;color:#94a3b8;margin-bottom:1.2rem;">
+      Mientras esté vigente, este precio reemplaza el costo de afiliación normal en la web, el asistente de WhatsApp y el piloto de marketing — al vencer, vuelve solo al precio normal.
+    </div>
+
+    <div style="display:flex;justify-content:space-between;gap:0.5rem;">
+      <button type="button" onclick="quitarPromocion()" style="font-size:0.78rem;color:#dc2626;background:none;border:none;cursor:pointer;padding:0.4rem 0;">Quitar promoción</button>
+      <div style="display:flex;gap:0.5rem;">
+        <button type="button" onclick="cerrarModalPromocion()" style="padding:0.5rem 1rem;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#475569;font-size:0.8rem;cursor:pointer;">Cancelar</button>
+        <button type="button" onclick="guardarModalPromocion()" style="padding:0.5rem 1.1rem;border:none;border-radius:8px;background:#7c3aed;color:#fff;font-size:0.8rem;font-weight:700;cursor:pointer;">Aplicar</button>
+      </div>
+    </div>
+  </div>
+</div>
 </div>
 
 <script>
@@ -437,5 +477,54 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
+
+// ── Modal de promoción de afiliación ──────────────────────────────────
+let promoKeyActual = null;
+
+function abrirModalPromocion(btn) {
+    promoKeyActual = btn.dataset.key;
+    document.getElementById('modalPromocionPlan').textContent = btn.closest('tr').querySelector('td').textContent.trim();
+    document.getElementById('modalPromoPrecio').value = btn.dataset.precio ? Number(btn.dataset.precio).toLocaleString('es-CO') : '';
+    document.getElementById('modalPromoVence').value = btn.dataset.vence || '';
+    document.getElementById('modalPromocion').style.display = 'flex';
+}
+
+function cerrarModalPromocion() {
+    document.getElementById('modalPromocion').style.display = 'none';
+    promoKeyActual = null;
+}
+
+function actualizarBoton(key, precio, vence) {
+    const btn = document.querySelector('.btn-promocion[data-key="' + key + '"]');
+    const vigente = precio && vence && new Date(vence + 'T00:00:00') >= new Date(new Date().toDateString());
+    if (vigente) {
+        const [y, m, d] = vence.split('-');
+        btn.textContent = '🏷️ Hasta ' + d + '/' + m + '/' + y;
+        btn.style.background = '#fef9c3'; btn.style.color = '#92400e'; btn.style.border = '1px solid #fde047';
+    } else {
+        btn.textContent = '+ Configurar';
+        btn.style.background = '#f8fafc'; btn.style.color = '#94a3b8'; btn.style.border = '1px dashed #cbd5e1';
+    }
+    btn.dataset.precio = precio || '';
+    btn.dataset.vence = vence || '';
+}
+
+function guardarModalPromocion() {
+    const precio = document.getElementById('modalPromoPrecio').value.replace(/\D/g, '');
+    const vence = document.getElementById('modalPromoVence').value;
+    if (!precio || !vence) { alert('Completa el precio promocional y la fecha de vencimiento.'); return; }
+
+    document.querySelector('.promo-input-precio[data-key="' + promoKeyActual + '"]').value = precio;
+    document.querySelector('.promo-input-vence[data-key="' + promoKeyActual + '"]').value = vence;
+    actualizarBoton(promoKeyActual, precio, vence);
+    cerrarModalPromocion();
+}
+
+function quitarPromocion() {
+    document.querySelector('.promo-input-precio[data-key="' + promoKeyActual + '"]').value = '';
+    document.querySelector('.promo-input-vence[data-key="' + promoKeyActual + '"]').value = '';
+    actualizarBoton(promoKeyActual, null, null);
+    cerrarModalPromocion();
+}
 </script>
 @endsection

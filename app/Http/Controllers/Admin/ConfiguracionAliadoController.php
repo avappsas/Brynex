@@ -79,6 +79,8 @@ class ConfiguracionAliadoController extends Controller
             'configs.*.administracion'          => 'nullable|numeric|min:0',
             'configs.*.admon_asesor'            => 'nullable|numeric|min:0',
             'configs.*.costo_afiliacion'        => 'nullable|numeric|min:0',
+            'configs.*.promocion_costo_afiliacion' => 'nullable|numeric|min:0',
+            'configs.*.promocion_vencimiento'      => 'nullable|date',
             'configs.*.dist_admon_pct'          => 'nullable|numeric|min:0|max:100',
             'configs.*.dist_retiro_pct'         => 'nullable|numeric|min:0|max:100',
             'configs.*.seguro_valor'            => 'nullable|numeric|min:0',
@@ -113,6 +115,10 @@ class ConfiguracionAliadoController extends Controller
                         'administracion'          => $data['administracion']        ?? 0,
                         'admon_asesor'            => $data['admon_asesor']          ?? 0,
                         'costo_afiliacion'        => $data['costo_afiliacion']      ?? 0,
+                        'promocion_costo_afiliacion' => ($data['promocion_costo_afiliacion'] ?? '') !== ''
+                                                     ? $data['promocion_costo_afiliacion'] : null,
+                        'promocion_vencimiento'      => ($data['promocion_vencimiento'] ?? '') !== ''
+                                                     ? $data['promocion_vencimiento'] : null,
                         'dist_admon_pct'          => $data['dist_admon_pct']        ?? 0,
                         'dist_retiro_pct'         => $data['dist_retiro_pct']       ?? 0,
                         'seguro_valor'            => $data['seguro_valor']          ?? 0,

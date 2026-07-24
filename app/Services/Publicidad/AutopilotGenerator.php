@@ -99,9 +99,21 @@ class AutopilotGenerator
     {
         $planes = CotizacionPublicaService::planesDestacadosConPrecio($aliado->id, true);
         $listaPlanes = collect($planes)
-            ->map(fn ($p) => "- {$p['nombre']}: primer mes (solo afiliación) \$" . number_format($p['costo_afiliacion'], 0, ',', '.')
-                . ' COP · desde el mes siguiente $' . number_format($p['valor_mensual'], 0, ',', '.') . ' COP/mes')
+            ->map(function ($p) {
+                $linea = "- {$p['nombre']}: primer mes (solo afiliación) \$" . number_format($p['costo_afiliacion'], 0, ',', '.')
+                    . ' COP · desde el mes siguiente $' . number_format($p['valor_mensual'], 0, ',', '.') . ' COP/mes';
+                if ($p['en_promocion']) {
+                    $linea .= ' · 🏷️ EN PROMOCIÓN (precio normal de afiliación $' . number_format($p['costo_afiliacion_normal'], 0, ',', '.')
+                        . ' COP, válida hasta ' . \Carbon\Carbon::parse($p['promocion_vence'])->translatedFormat('d \d\e F') . ')';
+                }
+                return $linea;
+            })
             ->implode("\n") ?: '- (sin planes configurados: no menciones precios)';
+
+        $hayPromocion = collect($planes)->contains('en_promocion', true);
+        $temaPromocion = $hayPromocion
+            ? ['- promoción real vigente por tiempo limitado en uno de los planes (usa el precio EN PROMOCIÓN, menciona la fecha de vencimiento)']
+            : [];
 
         $historial = Publicacion::where('aliado_id', $aliado->id)
             ->whereNotIn('estado', [Publicacion::ESTADO_RECHAZADA])
@@ -111,7 +123,7 @@ class AutopilotGenerator
             ->map(fn ($p) => '- ' . ($p->tema ? "[{$p->tema}] " : '') . $p->titulo)
             ->implode("\n") ?: '- (aún no hay publicaciones)';
 
-        $catalogo = implode("\n", array_map(fn ($t) => "- {$t}", self::CATALOGO_TEMAS));
+        $catalogo = implode("\n", array_map(fn ($t) => "- {$t}", array_merge(self::CATALOGO_TEMAS, $temaPromocion)));
         $color    = $aliado->color_primario ?: '#2563eb';
         $fecha    = now('America/Bogota')->locale('es')->isoFormat('dddd D [de] MMMM [de] YYYY');
 
