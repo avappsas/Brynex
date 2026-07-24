@@ -23,14 +23,17 @@ class PaginaAliadoController extends Controller
 {
     public function show(Request $request, string $slug)
     {
-        // Si el aliado tiene dominio propio y la visita YA viene por ese dominio,
-        // /aliado/{slug} es redundante (brygar.com/aliado/brygar) — se redirige a la raíz
-        // limpia. Los aliados sin dominio propio siguen usando /aliado/{slug} normal
-        // (brynex.co/aliado/fecop), esa ruta no se toca.
-        $dominioActual = strtolower(preg_replace('/^www\./', '', $request->getHost()));
-        $dominioAliado = Aliado::where('slug', $slug)->value('dominio_propio');
-        if ($dominioAliado && strtolower(preg_replace('/^www\./', '', $dominioAliado)) === $dominioActual) {
-            return redirect()->to('/' . ($request->getQueryString() ? '?' . $request->getQueryString() : ''), 301);
+        // Si el aliado tiene dominio propio y la visita vino por la ruta /aliado/{slug} EN ESE
+        // MISMO dominio, es redundante (brygar.com/aliado/brygar) — se redirige a la raíz
+        // limpia. OJO: la ruta domain-mapped también llama a show() para "/" con el slug como
+        // default — hay que revisar la ruta real de la request, no solo el dominio, o esto
+        // redirige "/" a "/" en bucle infinito.
+        if ($request->is('aliado/*')) {
+            $dominioActual = strtolower(preg_replace('/^www\./', '', $request->getHost()));
+            $dominioAliado = Aliado::where('slug', $slug)->value('dominio_propio');
+            if ($dominioAliado && strtolower(preg_replace('/^www\./', '', $dominioAliado)) === $dominioActual) {
+                return redirect()->to('/' . ($request->getQueryString() ? '?' . $request->getQueryString() : ''), 301);
+            }
         }
 
         $datos = Cache::remember(self::cacheKey($slug), 600, function () use ($slug) {
