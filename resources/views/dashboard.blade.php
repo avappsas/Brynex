@@ -88,7 +88,7 @@
                     ->where('activo', true)
                     ->exists();
                 if($moduloMarketingActivo){
-                    $modulos[] = ['icono'=>'📣', 'nombre'=>'Marketing', 'color'=>'#d946ef', 'url'=>route('admin.marketing.campanas.index')];
+                    $modulos[] = ['icono'=>'📣', 'nombre'=>'Marketing', 'color'=>'#d946ef', 'url'=>route('admin.marketing.index')];
                 }
             }
 

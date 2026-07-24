@@ -6,9 +6,9 @@
 
 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.1rem;flex-wrap:wrap;gap:0.5rem;">
   <div>
-    <a href="{{ route('admin.configuracion.hub') }}"
+    <a href="{{ route('admin.marketing.index') }}"
        style="font-size:.73rem;color:#64748b;text-decoration:none;display:inline-flex;align-items:center;gap:.3rem;margin-bottom:.35rem">
-        ← Volver a Configuración
+        ← Volver a Marketing
     </a>
     <h1 style="font-size:1.2rem;font-weight:700;color:#0f172a;margin:0;">🎨 Generador de Publicidad</h1>
     <p style="font-size:0.78rem;color:#64748b;margin:0;">
@@ -16,10 +16,20 @@
       Piezas para la página web y redes sociales.
     </p>
   </div>
-  <a href="{{ route('admin.publicidad.create') }}"
-     style="background:#2563eb;color:#fff;font-size:0.82rem;font-weight:700;padding:0.55rem 1rem;border-radius:8px;text-decoration:none;">
-      + Nueva pieza
-  </a>
+  <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
+    <a href="{{ route('admin.publicidad.autopilot') }}"
+       style="background:#f5f3ff;color:#7c3aed;border:1px solid #ddd6fe;font-size:0.8rem;font-weight:700;padding:0.5rem 0.9rem;border-radius:8px;text-decoration:none;">
+        🚁 Piloto automático
+    </a>
+    <a href="{{ route('admin.redes-sociales.index') }}"
+       style="background:#eff6ff;color:#1e40af;border:1px solid #bfdbfe;font-size:0.8rem;font-weight:700;padding:0.5rem 0.9rem;border-radius:8px;text-decoration:none;">
+        🔗 Redes sociales
+    </a>
+    <a href="{{ route('admin.publicidad.create') }}"
+       style="background:#2563eb;color:#fff;font-size:0.82rem;font-weight:700;padding:0.55rem 1rem;border-radius:8px;text-decoration:none;">
+        + Nueva pieza
+    </a>
+  </div>
 </div>
 
 @if(session('success'))

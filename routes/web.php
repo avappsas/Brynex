@@ -667,6 +667,9 @@ Route::middleware('auth')->group(function () {
         $listas   = \App\Http\Controllers\Admin\MarketingListaController::class;
         $campanas = \App\Http\Controllers\Admin\MarketingCampanaController::class;
 
+        // ── Hub (punto de entrada desde la tarjeta del dashboard) ──────────────
+        Route::get('/', [\App\Http\Controllers\Admin\MarketingHubController::class, 'index'])->name('index');
+
         // ── Listas de contactos ────────────────────────────────────────────────
         Route::get('listas',            [$listas, 'index'])   ->name('listas.index');
         Route::get('listas/crear',      [$listas, 'create'])  ->name('listas.create');
