@@ -201,19 +201,21 @@ class PublicidadController extends Controller
         $aliado = $this->aliadoActivo();
 
         $validated = $request->validate([
-            'activo'  => 'required|boolean',
-            'modo'    => 'required|in:aprobar,auto',
-            'hora'    => 'required|date_format:H:i',
-            'dias'    => 'nullable|array',
-            'dias.*'  => 'integer|between:1,7',
+            'activo'        => 'required|boolean',
+            'modo'          => 'required|in:aprobar,auto',
+            'hora'          => 'required|date_format:H:i',
+            'dias'          => 'nullable|array',
+            'dias.*'        => 'integer|between:1,7',
+            'estilo_imagen' => 'required|in:ilustracion,fotorrealista,alternar',
         ]);
 
         $config = \App\Models\AutopilotConfig::paraAliado($aliado->id);
         $config->update([
-            'activo' => $validated['activo'],
-            'modo'   => $validated['modo'],
-            'hora'   => $validated['hora'],
-            'dias'   => !empty($validated['dias']) && count($validated['dias']) < 7 ? array_values($validated['dias']) : null,
+            'activo'        => $validated['activo'],
+            'modo'          => $validated['modo'],
+            'hora'          => $validated['hora'],
+            'dias'          => !empty($validated['dias']) && count($validated['dias']) < 7 ? array_values($validated['dias']) : null,
+            'estilo_imagen' => $validated['estilo_imagen'],
         ]);
 
         return redirect()->route('admin.publicidad.autopilot')->with('success', 'Piloto automático actualizado.');
@@ -244,9 +246,16 @@ class PublicidadController extends Controller
             return response()->json(['ok' => false, 'rutas' => [], 'error' => 'No hay una clave de Gemini configurada (ver Asistente Virtual).']);
         }
 
-        $validated = $request->validate(['prompt' => 'required|string|max:1000']);
+        $validated = $request->validate([
+            'prompt' => 'required|string|max:1000',
+            'estilo' => 'nullable|in:ilustracion,fotorrealista',
+        ]);
 
-        $resultado = GeminiImagenGenerator::generarVariantes($iaConfig->gemini_api_key, $validated['prompt']);
+        $modelo = $validated['estilo'] === 'fotorrealista'
+            ? GeminiImagenGenerator::MODELO_FOTORREALISTA
+            : GeminiImagenGenerator::MODELO_ILUSTRACION;
+
+        $resultado = GeminiImagenGenerator::generarVariantes($iaConfig->gemini_api_key, $validated['prompt'], 2, $modelo);
 
         if ($resultado['ok']) {
             $resultado['urls'] = array_map(fn ($r) => asset('storage/' . $r), $resultado['rutas']);

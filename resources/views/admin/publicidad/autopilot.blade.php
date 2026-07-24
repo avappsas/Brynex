@@ -63,6 +63,16 @@
         </div>
     </div>
 
+    <div style="margin-bottom:1rem;">
+        <label style="display:block;font-size:.72rem;font-weight:600;color:#334155;margin-bottom:.3rem;">Estilo de imagen</label>
+        <select name="estilo_imagen" style="width:100%;padding:.5rem .7rem;border:1px solid #cbd5e1;border-radius:8px;font-size:.83rem;">
+            <option value="ilustracion" @selected($config->estilo_imagen === 'ilustracion')>🎨 Ilustración (flat design, económico)</option>
+            <option value="fotorrealista" @selected($config->estilo_imagen === 'fotorrealista')>📷 Fotorrealista (fotos de personas realistas)</option>
+            <option value="alternar" @selected($config->estilo_imagen === 'alternar')>🔀 Alternar (varía cada día entre las dos)</option>
+        </select>
+        <div class="form-hint" style="font-size:.72rem;color:#94a3b8;margin-top:.3rem;">Fotorrealista usa un modelo de Gemini más nuevo y de mayor calidad para personas; el mensaje va en el texto del post, no escrito dentro de la foto.</div>
+    </div>
+
     <label style="display:block;font-size:.72rem;font-weight:600;color:#334155;margin-bottom:.4rem;">Días activos</label>
     <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1.1rem;">
         @php($nombresDias = [1=>'Lun',2=>'Mar',3=>'Mié',4=>'Jue',5=>'Vie',6=>'Sáb',7=>'Dom'])

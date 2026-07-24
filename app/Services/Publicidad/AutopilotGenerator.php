@@ -48,12 +48,18 @@ class AutopilotGenerator
             return ['ok' => false, 'publicacion' => null, 'error' => 'No hay clave de Gemini configurada para generar la imagen (ver Asistente Virtual).'];
         }
 
-        $concepto = self::pedirConceptoALaIa($aliado, $credenciales);
+        $estilo = $config->estiloDelDia();
+
+        $concepto = self::pedirConceptoALaIa($aliado, $credenciales, $estilo);
         if (!$concepto['ok']) {
             return ['ok' => false, 'publicacion' => null, 'error' => $concepto['error']];
         }
 
-        $imagen = GeminiImagenGenerator::generarVariantes($iaConfig->gemini_api_key, $concepto['prompt_imagen'], 1);
+        $modelo = $estilo === \App\Models\AutopilotConfig::ESTILO_FOTORREALISTA
+            ? GeminiImagenGenerator::MODELO_FOTORREALISTA
+            : GeminiImagenGenerator::MODELO_ILUSTRACION;
+
+        $imagen = GeminiImagenGenerator::generarVariantes($iaConfig->gemini_api_key, $concepto['prompt_imagen'], 1, $modelo);
         if (!$imagen['ok'] || empty($imagen['rutas'])) {
             return ['ok' => false, 'publicacion' => null, 'error' => 'Imagen: ' . ($imagen['error'] ?? 'Gemini no devolvió imagen.')];
         }
@@ -87,7 +93,7 @@ class AutopilotGenerator
     /**
      * @return array{ok: bool, tema: ?string, titulo: ?string, copy: ?string, prompt_imagen: ?string, error: ?string}
      */
-    private static function pedirConceptoALaIa(Aliado $aliado, array $credenciales): array
+    private static function pedirConceptoALaIa(Aliado $aliado, array $credenciales, string $estilo): array
     {
         $planes = CotizacionPublicaService::planesDestacadosConPrecio($aliado->id, true);
         $listaPlanes = collect($planes)
@@ -106,6 +112,10 @@ class AutopilotGenerator
         $color    = $aliado->color_primario ?: '#2563eb';
         $fecha    = now('America/Bogota')->locale('es')->isoFormat('dddd D [de] MMMM [de] YYYY');
 
+        $instruccionEstilo = $estilo === \App\Models\AutopilotConfig::ESTILO_FOTORREALISTA
+            ? "Pide una FOTOGRAFÍA PROFESIONAL FOTORREALISTA (no ilustración, no dibujo): personas colombianas reales de aspecto auténtico y diverso, luz natural suave, estilo editorial de alta gama tipo campaña de marca seria, cámara full-frame, poca profundidad de campo, composición limpia con espacio negativo para superponer texto después. NO pidas texto escrito dentro de la foto (el texto se agrega aparte)."
+            : "Pide una ilustración digital plana moderna (flat design vector, NO fotografía), formato cuadrado 1:1, paleta basada en {$color} con blanco, personas colombianas diversas cuando aplique, un texto principal corto entre comillas para renderizar en la imagen (máx 6 palabras), estilo limpio corporativo con espacio en blanco.";
+
         $prompt = <<<PROMPT
 Eres el community manager de {$aliado->nombre}, una agencia colombiana de afiliación a seguridad social (EPS, ARL, pensión, caja de compensación). Hoy es {$fecha}. Debes crear el concepto de la publicación del día para redes sociales.
 
@@ -122,7 +132,7 @@ Responde ÚNICAMENTE con un objeto JSON (sin bloque de código) con estas claves
 - "tema": etiqueta corta del ángulo elegido (máx 100 caracteres)
 - "titulo": título interno de la pieza (máx 120 caracteres)
 - "copy": texto del post para Facebook/Instagram, español colombiano, cercano y profesional, 2-4 líneas, máximo 2 emojis, con llamado a la acción de escribir por WhatsApp
-- "prompt_imagen": prompt DETALLADO en español para generar la imagen con IA. Debe pedir: ilustración digital plana moderna (flat design vector, NO fotografía), formato cuadrado 1:1, paleta basada en {$color} con blanco, personas colombianas diversas cuando aplique, un texto principal corto entre comillas para renderizar en la imagen (máx 6 palabras), estilo limpio corporativo con espacio en blanco, sin marcas de agua. Varía la escena y composición respecto al historial.
+- "prompt_imagen": prompt DETALLADO en español para generar la imagen con IA. {$instruccionEstilo} Sin marcas de agua. Varía la escena y composición respecto al historial.
 PROMPT;
 
         try {

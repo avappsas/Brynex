@@ -12,12 +12,17 @@ class AutopilotConfig extends BaseModel
     public const MODO_APROBAR = 'aprobar';
     public const MODO_AUTO    = 'auto';
 
+    public const ESTILO_ILUSTRACION   = 'ilustracion';
+    public const ESTILO_FOTORREALISTA = 'fotorrealista';
+    public const ESTILO_ALTERNAR      = 'alternar';
+
     protected $fillable = [
         'aliado_id',
         'activo',
         'modo',
         'hora',
         'dias',
+        'estilo_imagen',
     ];
 
     protected $casts = [
@@ -43,11 +48,20 @@ class AutopilotConfig extends BaseModel
         return now('America/Bogota')->format('H:i') >= $this->hora;
     }
 
+    /** Estilo de imagen para la pieza de hoy (resuelve "alternar" al azar). */
+    public function estiloDelDia(): string
+    {
+        if ($this->estilo_imagen === self::ESTILO_ALTERNAR) {
+            return random_int(0, 1) ? self::ESTILO_FOTORREALISTA : self::ESTILO_ILUSTRACION;
+        }
+        return $this->estilo_imagen ?: self::ESTILO_ILUSTRACION;
+    }
+
     public static function paraAliado(int $aliadoId): static
     {
         return static::firstOrCreate(
             ['aliado_id' => $aliadoId],
-            ['activo' => false, 'modo' => self::MODO_APROBAR, 'hora' => '09:00']
+            ['activo' => false, 'modo' => self::MODO_APROBAR, 'hora' => '09:00', 'estilo_imagen' => self::ESTILO_ILUSTRACION]
         );
     }
 }

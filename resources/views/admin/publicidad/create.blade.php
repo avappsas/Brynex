@@ -93,7 +93,11 @@
             No hay una clave de Gemini configurada. Ve a <strong>Asistente Virtual</strong> para agregarla, o usa una plantilla mientras tanto.
           </p>
         @else
-          <textarea id="iaPrompt" rows="2" placeholder="Describe la imagen que quieres (ej: ilustración moderna de una familia protegida, colores azules)"
+          <div style="display:flex;gap:0.4rem;margin-bottom:0.6rem;">
+            <button type="button" class="estilo-imagen-ia activo" data-estilo="ilustracion" style="flex:1;padding:0.4rem;border-radius:8px;border:1.5px solid #7c3aed;background:#f5f3ff;color:#6d28d9;font-size:0.75rem;font-weight:700;cursor:pointer;">🎨 Ilustración</button>
+            <button type="button" class="estilo-imagen-ia" data-estilo="fotorrealista" style="flex:1;padding:0.4rem;border-radius:8px;border:1.5px solid #cbd5e1;background:#fff;color:#475569;font-size:0.75rem;font-weight:700;cursor:pointer;">📷 Fotorrealista</button>
+          </div>
+          <textarea id="iaPrompt" rows="2" placeholder="Describe la imagen que quieres (ej: familia colombiana feliz en casa, luz natural)"
                     style="width:100%;padding:0.5rem 0.7rem;border:1px solid #cbd5e1;border-radius:8px;font-size:0.83rem;font-family:inherit;margin-bottom:0.6rem;"></textarea>
           <button type="button" id="btnGenerarImagenIa" style="background:#7c3aed;color:#fff;border:none;font-size:0.8rem;font-weight:700;padding:0.5rem 1rem;border-radius:8px;cursor:pointer;">✨ Generar imágenes</button>
           <div id="resultadosImagenIa" style="display:flex;gap:0.6rem;margin-top:0.8rem;flex-wrap:wrap;"></div>
@@ -182,6 +186,19 @@
     let fuenteImagen = 'plantilla'; // plantilla|ia|subida
     let imagenIaSeleccionada = null; // {path, url}
     let archivoSubido = null;
+    let estiloImagenIa = 'ilustracion';
+
+    document.querySelectorAll('.estilo-imagen-ia').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.estilo-imagen-ia').forEach((b) => {
+                b.classList.remove('activo');
+                b.style.border = '1.5px solid #cbd5e1'; b.style.background = '#fff'; b.style.color = '#475569';
+            });
+            btn.classList.add('activo');
+            btn.style.border = '1.5px solid #7c3aed'; btn.style.background = '#f5f3ff'; btn.style.color = '#6d28d9';
+            estiloImagenIa = btn.dataset.estilo;
+        });
+    });
 
     function oscurecer(hex, factor) {
         hex = hex.replace('#', '');
@@ -432,7 +449,7 @@
             fetch(@json(route('admin.publicidad.generar_imagen')), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
-                body: JSON.stringify({ prompt }),
+                body: JSON.stringify({ prompt, estilo: estiloImagenIa }),
             })
             .then((r) => r.json())
             .then((data) => {
