@@ -29,17 +29,30 @@ class GeminiImagenGenerator
     private const BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
 
     /**
+     * @param ?string $rutaLogo Ruta absoluta (disco) del logo del aliado — si se pasa, se envía
+     *   como imagen de referencia junto al prompt (Gemini soporta texto + imagen de entrada),
+     *   para que la marca/paleta influya en el resultado sin depender de un texto descriptivo.
      * @return array{ok: bool, rutas: string[], error: ?string}
      */
-    public static function generarVariantes(string $apiKey, string $prompt, int $cantidad = 2, string $modelo = self::MODELO_ILUSTRACION): array
+    public static function generarVariantes(string $apiKey, string $prompt, int $cantidad = 2, string $modelo = self::MODELO_ILUSTRACION, ?string $rutaLogo = null): array
     {
         $rutas = [];
+
+        $parts = [['text' => $prompt]];
+        if ($rutaLogo && is_file($rutaLogo)) {
+            $mimeLogo = match (strtolower(pathinfo($rutaLogo, PATHINFO_EXTENSION))) {
+                'jpg', 'jpeg' => 'image/jpeg',
+                'webp' => 'image/webp',
+                default => 'image/png',
+            };
+            $parts[] = ['inline_data' => ['mime_type' => $mimeLogo, 'data' => base64_encode(file_get_contents($rutaLogo))]];
+        }
 
         for ($i = 0; $i < $cantidad; $i++) {
             try {
                 $resp = Http::timeout(60)->post(self::BASE_URL . '/' . $modelo . ':generateContent?key=' . $apiKey, [
                     'contents' => [
-                        ['parts' => [['text' => $prompt]]],
+                        ['parts' => $parts],
                     ],
                     'generationConfig' => [
                         'responseModalities' => ['IMAGE'],

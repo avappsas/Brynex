@@ -297,7 +297,12 @@ class PublicidadController extends Controller
             ? GeminiImagenGenerator::MODELO_FOTORREALISTA
             : GeminiImagenGenerator::MODELO_ILUSTRACION;
 
-        $resultado = GeminiImagenGenerator::generarVariantes($iaConfig->gemini_api_key, $validated['prompt'], 2, $modelo);
+        $rutaLogo = $aliado->logo ? Storage::disk('public')->path($aliado->logo) : null;
+        $prompt = $validated['prompt'] . ($rutaLogo
+            ? ' Te adjunto el logo de la marca como referencia de color: usa tonos inspirados en su paleta para la escena. NO intentes dibujar ni reproducir el logo dentro de la imagen — eso se agrega después por separado.'
+            : '');
+
+        $resultado = GeminiImagenGenerator::generarVariantes($iaConfig->gemini_api_key, $prompt, 2, $modelo, $rutaLogo);
 
         if ($resultado['ok']) {
             foreach ($resultado['rutas'] as $ruta) {

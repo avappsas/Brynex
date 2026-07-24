@@ -59,7 +59,15 @@ class AutopilotGenerator
             ? GeminiImagenGenerator::MODELO_FOTORREALISTA
             : GeminiImagenGenerator::MODELO_ILUSTRACION;
 
-        $imagen = GeminiImagenGenerator::generarVariantes($iaConfig->gemini_api_key, $concepto['prompt_imagen'], 1, $modelo);
+        $rutaLogo = $aliado->logo ? \Illuminate\Support\Facades\Storage::disk('public')->path($aliado->logo) : null;
+        $promptImagen = $concepto['prompt_imagen'];
+        if ($rutaLogo) {
+            // La imagen adjunta (aparte del prompt) es el logo real — se le pide inspirarse
+            // en su paleta, NUNCA reproducirlo literal (los modelos de imagen distorsionan
+            // logos/texto reales); el logo nítido de verdad lo agrega LogoWatermarker después.
+            $promptImagen .= ' Te adjunto el logo de la marca como referencia de color: usa tonos inspirados en su paleta para la escena. NO intentes dibujar ni reproducir el logo dentro de la imagen — eso se agrega después por separado.';
+        }
+        $imagen = GeminiImagenGenerator::generarVariantes($iaConfig->gemini_api_key, $promptImagen, 1, $modelo, $rutaLogo);
         if (!$imagen['ok'] || empty($imagen['rutas'])) {
             return ['ok' => false, 'publicacion' => null, 'error' => 'Imagen: ' . ($imagen['error'] ?? 'Gemini no devolvió imagen.')];
         }
@@ -182,8 +190,8 @@ class AutopilotGenerator
         $fecha    = now('America/Bogota')->locale('es')->isoFormat('dddd D [de] MMMM [de] YYYY');
 
         $instruccionEstilo = $estilo === \App\Models\AutopilotConfig::ESTILO_FOTORREALISTA
-            ? "Pide una FOTOGRAFÍA PROFESIONAL FOTORREALISTA (no ilustración, no dibujo): personas colombianas reales de aspecto auténtico y diverso, luz natural suave, estilo editorial de alta gama tipo campaña de marca seria, cámara full-frame, poca profundidad de campo, composición limpia con espacio negativo para superponer texto después. NO pidas texto escrito dentro de la foto (el texto se agrega aparte)."
-            : "Pide una ilustración digital plana moderna (flat design vector, NO fotografía), formato cuadrado 1:1, paleta basada en {$color} con blanco, personas colombianas diversas cuando aplique, un texto principal corto entre comillas para renderizar en la imagen (máx 6 palabras), estilo limpio corporativo con espacio en blanco.";
+            ? "Pide una FOTOGRAFÍA PROFESIONAL FOTORREALISTA (no ilustración, no dibujo): personas colombianas reales de aspecto auténtico y diverso, PLANO CERCANO (medio cuerpo o retrato, no de cuerpo entero ni de lejos) para que se sientan las expresiones, mirando a cámara o en un momento genuino de conexión (una sonrisa real, una mano en el hombro, un apretón de manos, una conversación cercana entre asesor y cliente) — nada de poses rígidas tipo banco de imágenes. Luz cálida (dorada/natural, no fría ni clínica), profundidad de campo baja, look editorial cercano y humano, transmitiendo confianza y calidez, no corporativo distante. NO pidas texto escrito dentro de la foto (el texto se agrega aparte)."
+            : "Pide una ilustración digital plana moderna (flat design vector, NO fotografía), formato cuadrado 1:1, paleta CÁLIDA basada en {$color} combinada con tonos piel/beige/dorado suaves (no solo azul corporativo frío), personas colombianas diversas con expresiones genuinas y cercanas (sonrisas reales, contacto visual, gestos de cercanía como un abrazo o una mano en el hombro) en plano cercano — evita figuras rígidas o distantes tipo clipart genérico. Un texto principal corto entre comillas para renderizar en la imagen (máx 6 palabras), estilo limpio pero cálido, con espacio en blanco.";
 
         $prompt = <<<PROMPT
 Eres el community manager de {$aliado->nombre}, una agencia colombiana de afiliación a seguridad social (EPS, ARL, pensión, caja de compensación). Hoy es {$fecha}. Debes crear el concepto de la publicación del día para redes sociales.
