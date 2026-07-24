@@ -5,10 +5,11 @@ namespace App\Services\Publicidad;
 use Illuminate\Support\Facades\Storage;
 
 /**
- * Sobrepone el logo del aliado (dentro de una insignia circular blanca, para que se
- * lea sobre cualquier fondo) en una esquina de las imágenes generadas por IA —
+ * Sobrepone el logo del aliado en una esquina de las imágenes generadas por IA —
  * ni Gemini ni Imagen pueden reproducir el logo real de la marca, así que se agrega
  * después por composición de imagen (GD), igual para ilustración que para fotorrealista.
+ * Sin disco de fondo (se veía como un sticker pegado): en su lugar, una sombra suave
+ * detrás del logo, como una marca de agua de agencia real.
  */
 class LogoWatermarker
 {
@@ -27,22 +28,24 @@ class LogoWatermarker
             $logo   = self::cargar($pathLogo);
             if (!$imagen || !$logo) return;
 
-            $anchoImg  = imagesx($imagen);
-            $altoImg   = imagesy($imagen);
-            $margen    = (int) round(min($anchoImg, $altoImg) * 0.035);
-            $diametro  = (int) round(min($anchoImg, $altoImg) * 0.16);
+            $anchoImg   = imagesx($imagen);
+            $altoImg    = imagesy($imagen);
+            $margen     = (int) round(min($anchoImg, $altoImg) * 0.045);
+            $tamanoLogo = (int) round(min($anchoImg, $altoImg) * 0.15);
+            $px = $anchoImg - $margen - $tamanoLogo;
+            $py = $altoImg - $margen - $tamanoLogo;
 
-            // Insignia circular blanca (fondo) para que el logo se lea en cualquier foto.
+            // Sombra proyectada suave detrás del logo (varias pasadas con offset y
+            // opacidad decreciente, aproximando un desenfoque) — le da profundidad sin
+            // necesitar un fondo sólido que se vea pegado sobre la foto.
             imagealphablending($imagen, true);
-            $blanco = imagecolorallocatealpha($imagen, 255, 255, 255, 15);
-            $cx = $anchoImg - $margen - (int) ($diametro / 2);
-            $cy = $altoImg - $margen - (int) ($diametro / 2);
-            imagefilledellipse($imagen, $cx, $cy, $diametro, $diametro, $blanco);
+            for ($o = 6; $o > 0; $o--) {
+                $alpha = 90 + (int) (30 * (6 - $o) / 6);
+                $color = imagecolorallocatealpha($imagen, 0, 0, 0, min(120, $alpha));
+                imagefilledrectangle($imagen, $px - $o + 3, $py - $o + 5, $px + $tamanoLogo + $o + 3, $py + $tamanoLogo + $o + 5, $color);
+            }
 
-            // Logo redimensionado dentro de la insignia, con relleno de ~14%.
-            $rellenoPct  = 0.14;
-            $tamanoLogo  = (int) round($diametro * (1 - $rellenoPct * 2));
-            $logoRedim   = imagecreatetruecolor($tamanoLogo, $tamanoLogo);
+            $logoRedim = imagecreatetruecolor($tamanoLogo, $tamanoLogo);
             imagealphablending($logoRedim, false);
             imagesavealpha($logoRedim, true);
             $transparente = imagecolorallocatealpha($logoRedim, 0, 0, 0, 127);
@@ -59,11 +62,7 @@ class LogoWatermarker
                 $wDestino, $hDestino, $anchoLogoOrig, $altoLogoOrig
             );
 
-            imagecopy(
-                $imagen, $logoRedim,
-                $cx - (int) ($tamanoLogo / 2), $cy - (int) ($tamanoLogo / 2),
-                0, 0, $tamanoLogo, $tamanoLogo
-            );
+            imagecopy($imagen, $logoRedim, $px, $py, 0, 0, $tamanoLogo, $tamanoLogo);
 
             self::guardar($imagen, $pathImagen);
 
