@@ -184,12 +184,13 @@ table.tbl-det tfoot .num { color: #34d399; }
                 <th class="num">Caja</th>
                 <th class="num">Admon</th>
                 <th class="num">IVA</th>
+                <th class="num">Mora</th>
                 <th class="num" style="color:#34d399;">Total</th>
                 <th style="text-align:center;">Estado</th>
             </tr>
         </thead>
         <tbody>
-        @php $no=1; $totEps=$totArl=$totAfp=$totCaja=$totAdmon=$totIva=$totTotal=0; $totalSaldo=0; @endphp
+        @php $no=1; $totEps=$totArl=$totAfp=$totCaja=$totAdmon=$totIva=$totMora=$totTotal=0; $totalSaldo=0; @endphp
         @foreach($items as $item)
         @php
             $totEps   += $item->v_eps;
@@ -198,6 +199,7 @@ table.tbl-det tfoot .num { color: #34d399; }
             $totCaja  += $item->v_caja;
             $totAdmon += $item->v_admon;
             $totIva   += $item->v_iva;
+            $totMora  += $item->v_mora ?? 0;
             $totTotal += $item->v_total;
             // saldo_proximo: positivo = a favor, negativo = pendiente
             $spItem = (int)($item->saldo_proximo ?? 0);
@@ -294,6 +296,14 @@ table.tbl-det tfoot .num { color: #34d399; }
                     <span style="color:#cbd5e1;">—</span>
                 @endif
             </td>
+            {{-- Mora --}}
+            <td class="num">
+                @if(isset($item->v_mora) && $item->v_mora > 0)
+                    <span class="ent-valor" style="color:#92400e;font-weight:700;">${{ number_format($item->v_mora,0,',','.') }}</span>
+                @else
+                    <span style="color:#cbd5e1;">—</span>
+                @endif
+            </td>
             {{-- Total --}}
             <td class="num" style="font-weight:800;color:#0f172a;">${{ number_format($item->v_total,0,',','.') }}</td>
             <td style="text-align:center;">
@@ -303,7 +313,7 @@ table.tbl-det tfoot .num { color: #34d399; }
         @endforeach
         @if(isset($cobrosAdicionalesCC) && $cobrosAdicionalesCC->isNotEmpty())
         <tr>
-            <td colspan="13" style="background:#f8fafc;font-weight:800;font-size:8.5px;color:#1e3a5f;padding:.45rem .6rem;text-transform:uppercase;border-top:1.5px solid #cbd5e1;border-bottom:1.5px solid #cbd5e1;letter-spacing:.05em;">
+            <td colspan="14" style="background:#f8fafc;font-weight:800;font-size:8.5px;color:#1e3a5f;padding:.45rem .6rem;text-transform:uppercase;border-top:1.5px solid #cbd5e1;border-bottom:1.5px solid #cbd5e1;letter-spacing:.05em;">
                 💼 Cobros Adicionales de la Empresa
             </td>
         </tr>
@@ -317,7 +327,7 @@ table.tbl-det tfoot .num { color: #34d399; }
                     Concepto Adicional ({{ $cobro->tipo === 'recurrente' ? 'Recurrente' : 'Única vez' }})
                 </span>
             </td>
-            <td colspan="6" style="color:#cbd5e1;text-align:center;">—</td>
+            <td colspan="7" style="color:#cbd5e1;text-align:center;">—</td>
             <td class="num" style="font-weight:800;color:#0f172a;">${{ number_format($cobro->valor, 0, ',', '.') }}</td>
             <td style="text-align:center;">
                 <span class="estado-badge est-vigente" style="background:#e0f2fe;color:#0369a1;">Activo</span>
@@ -337,6 +347,7 @@ table.tbl-det tfoot .num { color: #34d399; }
                 <td class="num">${{ number_format($totCaja, 0,',','.') }}</td>
                 <td class="num">${{ number_format($totAdmon,0,',','.') }}</td>
                 <td class="num">${{ number_format($totIva,  0,',','.') }}</td>
+                <td class="num" style="color:#b45309;">${{ number_format($totMora, 0,',','.') }}</td>
                 <td class="num" style="font-size:1rem;">${{ number_format($totTotal,0,',','.') }}</td>
                 <td></td>
             </tr>

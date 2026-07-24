@@ -246,6 +246,9 @@ table.tbl-cc .num { text-align: right; font-family: monospace; }
                 @if($itemPendiente > 0)
                     <div class="saldo-info saldo-pendiente">⚠️ Pendiente: ${{ number_format($itemPendiente,0,',','.') }}</div>
                 @endif
+                @if(isset($item->v_mora) && $item->v_mora > 0)
+                    <div class="saldo-info" style="color:#b45309;font-weight:700;">⚠️ Mora: ${{ number_format($item->v_mora,0,',','.') }}</div>
+                @endif
             </td>
             <td style="text-align:center;color:#64748b;white-space:nowrap;">
                 <div>{{ $item->fecha_ingreso ? $item->fecha_ingreso->format('d/m/Y') : '—' }}</div>

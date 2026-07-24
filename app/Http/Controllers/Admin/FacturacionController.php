@@ -3550,7 +3550,98 @@ class FacturacionController extends Controller
 
         $r100 = fn($v) => (int)(ceil(($v ?? 0) / 100) * 100);
 
-        $items = $contratos->map(function ($c) use ($mes, $anio, $facturasExistentes, $facturasRetiro0, $admonRetiroCompleta, $r100, $aliadoId) {
+        // ── Pre-calcular mora estimada por contrato en lote ──
+        $moraPorContrato = [];
+        $filasMora = [];
+        $ivaClientes = DB::table('clientes')
+            ->whereIn('cedula', $contratos->pluck('cedula'))
+            ->pluck('iva', 'cedula')
+            ->toArray();
+
+        foreach ($contratos as $c) {
+            $fact = $facturasExistentes->get($c->id);
+            if ($fact) continue;
+            if ($c->estado === 'retirado') continue;
+
+            $diasCotizar = 30;
+            $esIndActPrimerMes = false;
+            $esArlModalidad = (int)($c->tipo_modalidad_id) === 15;
+
+            if ($esArlModalidad) {
+                $diasCotizar = 0;
+            } elseif ($c->fecha_ingreso) {
+                $fIng = $c->fecha_ingreso;
+                $mesIngreso  = (int)$fIng->month;
+                $anioIngreso = (int)$fIng->year;
+                $esIndAct = (int)($c->tipo_modalidad_id) === 11;
+
+                if ($mesIngreso === $mes && $anioIngreso === $anio) {
+                    if ($esIndAct) {
+                        $esIndActPrimerMes = true;
+                        $diasCotizar = max(1, 30 - $fIng->day + 1);
+                    } else {
+                        $diasCotizar = 0;
+                    }
+                } else {
+                    $mesAnterior  = $mes === 1 ? 12 : $mes - 1;
+                    $anioAnterior = $mes === 1 ? $anio - 1 : $anio;
+                    if ($mesIngreso === $mesAnterior && $anioIngreso === $anioAnterior) {
+                        $diasCotizar = max(1, 30 - $fIng->day + 1);
+                    }
+                }
+            }
+
+            // ¿Es afiliación pura?
+            $esAfil = false;
+            if ($esArlModalidad) {
+                $esAfil = true;
+            } elseif ($c->fecha_ingreso) {
+                $fIngC = $c->fecha_ingreso;
+                if ((int)$fIngC->month === $mes && (int)$fIngC->year === $anio) {
+                    if (!$esIndActPrimerMes) {
+                        $esAfil = true;
+                    }
+                }
+            }
+
+            if ($esAfil) continue;
+
+            if ($c->estado === 'vigente' && $c->fecha_retiro_pendiente) {
+                $diasCotizar = (int) $c->fecha_retiro_pendiente->day;
+            }
+
+            $ivaFlag = $ivaClientes[$c->cedula] ?? null;
+            $cotizCalc = $c->calcularCotizacion($diasCotizar, $ivaFlag);
+            $vSS = (int)($cotizCalc['ss'] ?? 0);
+            if ($vSS <= 0) continue;
+
+            $rs = $c->razonSocial;
+            $esIndep = $c->esIndependiente() || ($rs && $rs->es_independiente);
+            $rsNit = $esIndep ? (int)$c->cedula : ($rs ? (int)($rs->nit ?: $rs->id) : 0);
+            if (!$rsNit) continue;
+
+            $filasMora[$c->id] = [
+                'contrato_id'  => $c->id,
+                'rs_nit'       => $rsNit,
+                'rs_dia_habil' => $esIndep ? null : ($rs->dia_habil ?? null),
+                'total_ss'     => $vSS,
+                'eps'          => (int) ($cotizCalc['eps']  ?? 0),
+                'arl'          => (int) ($cotizCalc['arl']  ?? 0),
+                'pen'          => (int) ($cotizCalc['pen']  ?? 0),
+                'caja'         => (int) ($cotizCalc['caja'] ?? 0),
+                'mes'          => $mes,
+                'anio'         => $anio,
+            ];
+        }
+
+        if (!empty($filasMora)) {
+            $resultadosMora = \App\Services\MoraClienteService::calcularLote($aliadoId, array_values($filasMora));
+            foreach ($resultadosMora as $fila) {
+                $moraPorContrato[$fila['contrato_id']] = (int)($fila['mora'] ?? 0);
+            }
+        }
+
+        $items = $contratos->map(function ($c) use ($mes, $anio, $facturasExistentes, $facturasRetiro0, $admonRetiroCompleta, $r100, $aliadoId, $moraPorContrato) {
             $fact         = $facturasExistentes->get($c->id);
             $factRetiro0  = $facturasRetiro0->get($c->id);
             $nombre = $c->cliente?->nombre_completo
@@ -3623,6 +3714,12 @@ class FacturacionController extends Controller
 
             $esRetirado = $c->estado === 'retirado';
 
+            $vMora = 0;
+            if ($fact && ($fact->mora ?? 0) > 0) {
+                $vMora = (int)$fact->mora;
+            } elseif (!$fact) {
+                $vMora = (int)($moraPorContrato[$c->id] ?? 0);
+            }
 
             if ($fact) {
                 $vEps  = $r100($fact->v_eps);
@@ -3666,7 +3763,7 @@ class FacturacionController extends Controller
                 $vIva  = $r100($cotiz['iva']??0);
                 $vSS   = $r100($cotiz['ss']);
                 $vAdm  = (int)(($c->administracion??0) + ($c->admon_asesor??0));
-                $vTot  = $vSS + $vAdm + $vIva + (int)(($c->costo_afiliacion ?? 0) + ($c->seguro ?? 0));
+                $vTot  = $vSS + $vAdm + $vIva + (int)(($c->costo_afiliacion ?? 0) + ($c->seguro ?? 0)) + $vMora;
                 $estado = 'sin_factura';
             } elseif ($esAfil) {
                 $vEps = $vArl = $vAFP = $vCaja = $vIva = $vAdm = 0;
@@ -3682,7 +3779,7 @@ class FacturacionController extends Controller
                 $vAdm  = (int)(($c->administracion ?? 0) + ($c->admon_asesor ?? 0));
                 $vIva  = $r100($cotiz['iva']  ?? 0);
                 $vSS   = $r100($cotiz['ss']   ?? 0);
-                $vTot  = $vSS + $vAdm + $vIva;
+                $vTot  = $vSS + $vAdm + $vIva + $vMora;
                 $estado = 'sin_factura';
             }
 
@@ -3706,6 +3803,7 @@ class FacturacionController extends Controller
                 'v_caja'         => $vCaja,
                 'v_admon'        => $vAdm,
                 'v_iva'          => $vIva,
+                'v_mora'         => $vMora,
                 'v_total'        => $vTot,
                 'estado'         => $estado,
                 'saldo_proximo'  => (int) Factura::saldoClienteMesPrevio(
