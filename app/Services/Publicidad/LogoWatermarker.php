@@ -16,8 +16,10 @@ class LogoWatermarker
     private const FUENTE = __DIR__ . '/../../../vendor/dompdf/dompdf/lib/fonts/DejaVuSans-Bold.ttf';
 
     /**
-     * Aplica el logo (con su nombre al lado, igual que el encabezado del canvas) sobre la
-     * imagen en $rutaImagen (storage/app/public), si el aliado tiene logo. Falla en silencio.
+     * Aplica una insignia (tarjeta clara redondeada, con sombra propia, logo arriba y nombre
+     * del aliado debajo — como el icono+nombre de una página de Facebook) en una esquina de
+     * la imagen en $rutaImagen (storage/app/public), si el aliado tiene logo. Falla en silencio.
+     * Todo se compone en un lienzo aparte y se pega una sola vez, para que quede alineado.
      */
     public static function aplicar(string $rutaImagen, ?string $rutaLogo, ?string $nombreAliado = null): void
     {
@@ -33,20 +35,17 @@ class LogoWatermarker
             $logo   = self::cargar($pathLogo);
             if (!$imagen || !$logo) return;
 
-            $anchoImg   = imagesx($imagen);
-            $altoImg    = imagesy($imagen);
-            $margen     = (int) round(min($anchoImg, $altoImg) * 0.045);
-            $tamanoLogo = (int) round(min($anchoImg, $altoImg) * 0.15);
-            $px = $anchoImg - $margen - $tamanoLogo;
-            $py = $altoImg - $margen - $tamanoLogo;
+            $anchoImg = imagesx($imagen);
+            $altoImg  = imagesy($imagen);
+            $margen   = (int) round(min($anchoImg, $altoImg) * 0.045);
 
-            // Logo redimensionado a un canvas propio (con su transparencia real intacta).
+            // Logo redimensionado a su propio canvas, con transparencia real intacta.
+            $tamanoLogo = (int) round(min($anchoImg, $altoImg) * 0.12);
             $logoRedim = imagecreatetruecolor($tamanoLogo, $tamanoLogo);
             imagealphablending($logoRedim, false);
             imagesavealpha($logoRedim, true);
             $transparente = imagecolorallocatealpha($logoRedim, 0, 0, 0, 127);
             imagefilledrectangle($logoRedim, 0, 0, $tamanoLogo, $tamanoLogo, $transparente);
-
             $anchoLogoOrig = imagesx($logo);
             $altoLogoOrig  = imagesy($logo);
             $escala = min($tamanoLogo / $anchoLogoOrig, $tamanoLogo / $altoLogoOrig);
@@ -58,65 +57,94 @@ class LogoWatermarker
                 $wDestino, $hDestino, $anchoLogoOrig, $altoLogoOrig
             );
 
-            // Sombra real con la SILUETA del logo (a partir de su propio canal alfa), no una
-            // caja detrás — se dibuja en un lienzo aparte con margen para el desenfoque, se
-            // desenfoca, y se compone antes que el logo. Sin ningún fondo sólido.
-            $margenSombra = (int) round($tamanoLogo * 0.18);
-            $offsetX = (int) round($tamanoLogo * 0.03);
-            $offsetY = (int) round($tamanoLogo * 0.045);
-            $tamSombra = $tamanoLogo + $margenSombra * 2;
+            // Medidas del texto (si hay nombre y fuente disponibles).
+            $texto = null;
+            $tamanoFuente = max(11, (int) round($tamanoLogo * 0.26));
+            $anchoTexto = 0;
+            if ($nombreAliado && is_file(self::FUENTE)) {
+                $texto = mb_strtoupper($nombreAliado);
+                $caja = imagettfbbox($tamanoFuente, 0, self::FUENTE, $texto);
+                $anchoTexto = abs($caja[2] - $caja[0]);
+            }
 
-            $sombra = imagecreatetruecolor($tamSombra, $tamSombra);
+            // Tarjeta: padding alrededor, logo arriba, nombre debajo.
+            $padX = (int) round($tamanoLogo * 0.32);
+            $padY = (int) round($tamanoLogo * 0.28);
+            $gap  = $texto ? (int) round($tamanoLogo * 0.14) : 0;
+            $altoTexto = $texto ? (int) round($tamanoFuente * 1.15) : 0;
+            $radio = (int) round($tamanoLogo * 0.22);
+
+            $anchoTarjeta = max($tamanoLogo, $anchoTexto) + $padX * 2;
+            $altoTarjeta  = $padY + $tamanoLogo + $gap + $altoTexto + $padY;
+
+            // ── Lienzo de la tarjeta (fondo claro sólido, logo y texto encima) ──
+            $tarjeta = imagecreatetruecolor($anchoTarjeta, $altoTarjeta);
+            imagealphablending($tarjeta, false);
+            imagesavealpha($tarjeta, true);
+            $transTarjeta = imagecolorallocatealpha($tarjeta, 0, 0, 0, 127);
+            imagefilledrectangle($tarjeta, 0, 0, $anchoTarjeta, $altoTarjeta, $transTarjeta);
+            $blancoTarjeta = imagecolorallocatealpha($tarjeta, 255, 255, 255, 6); // ~95% opaco
+            self::rectanguloRedondeado($tarjeta, 0, 0, $anchoTarjeta - 1, $altoTarjeta - 1, $radio, $blancoTarjeta);
+
+            imagealphablending($tarjeta, true);
+            $xLogo = (int) round(($anchoTarjeta - $tamanoLogo) / 2);
+            imagecopy($tarjeta, $logoRedim, $xLogo, $padY, 0, 0, $tamanoLogo, $tamanoLogo);
+            if ($texto) {
+                $xTexto = (int) round(($anchoTarjeta - $anchoTexto) / 2);
+                $yTexto = $padY + $tamanoLogo + $gap + $tamanoFuente;
+                $oscuro = imagecolorallocate($tarjeta, 30, 41, 59); // slate-800, buen contraste sobre blanco
+                imagettftext($tarjeta, $tamanoFuente, 0, $xTexto, $yTexto, $oscuro, self::FUENTE, $texto);
+            }
+
+            // ── Sombra de la tarjeta (silueta del rectángulo redondeado, desenfocada) ──
+            $margenSombra = (int) round($radio * 1.3);
+            $offsetSombra = (int) round($tamanoLogo * 0.05);
+            $tamSombraW = $anchoTarjeta + $margenSombra * 2;
+            $tamSombraH = $altoTarjeta + $margenSombra * 2;
+
+            $sombra = imagecreatetruecolor($tamSombraW, $tamSombraH);
             imagealphablending($sombra, false);
             imagesavealpha($sombra, true);
             $transSombra = imagecolorallocatealpha($sombra, 0, 0, 0, 127);
-            imagefilledrectangle($sombra, 0, 0, $tamSombra, $tamSombra, $transSombra);
-            imagealphablending($sombra, true);
-
-            for ($y = 0; $y < $tamanoLogo; $y++) {
-                for ($x = 0; $x < $tamanoLogo; $x++) {
-                    $alphaOrig = (imagecolorat($logoRedim, $x, $y) >> 24) & 0x7F;
-                    if ($alphaOrig >= 110) continue; // prácticamente transparente, no aporta sombra
-                    $alphaSombra = min(105, $alphaOrig + 45);
-                    $col = imagecolorallocatealpha($sombra, 0, 0, 0, $alphaSombra);
-                    imagesetpixel($sombra, $margenSombra + $x + $offsetX, $margenSombra + $y + $offsetY, $col);
-                }
-            }
+            imagefilledrectangle($sombra, 0, 0, $tamSombraW, $tamSombraH, $transSombra);
+            $colorSombra = imagecolorallocatealpha($sombra, 15, 23, 42, 78);
+            self::rectanguloRedondeado(
+                $sombra,
+                $margenSombra, $margenSombra + $offsetSombra,
+                $margenSombra + $anchoTarjeta - 1, $margenSombra + $offsetSombra + $altoTarjeta - 1,
+                $radio, $colorSombra
+            );
             imagefilter($sombra, IMG_FILTER_GAUSSIAN_BLUR);
             imagefilter($sombra, IMG_FILTER_GAUSSIAN_BLUR);
 
+            // ── Componer todo sobre la imagen final, en la esquina ──
+            $px = $anchoImg - $margen - $anchoTarjeta;
+            $py = $altoImg - $margen - $altoTarjeta;
             imagealphablending($imagen, true);
-            imagecopy($imagen, $sombra, $px - $margenSombra, $py - $margenSombra, 0, 0, $tamSombra, $tamSombra);
-            imagecopy($imagen, $logoRedim, $px, $py, 0, 0, $tamanoLogo, $tamanoLogo);
-
-            // Nombre del aliado junto al logo (a la izquierda), igual que el encabezado del
-            // canvas — texto blanco con una sombra oscura detrás (offset simple + desenfoque)
-            // para que se lea sobre cualquier fondo, sin ninguna caja.
-            if ($nombreAliado && is_file(self::FUENTE)) {
-                $texto = mb_strtoupper($nombreAliado);
-                $tamanoFuente = max(11, (int) round($tamanoLogo * 0.24));
-                $caja = imagettfbbox($tamanoFuente, 0, self::FUENTE, $texto);
-                $anchoTexto = abs($caja[2] - $caja[0]);
-                $xTexto = $px - 14 - $anchoTexto;
-                $yTexto = (int) round($py + $tamanoLogo / 2 + $tamanoFuente / 3);
-
-                if ($xTexto > 4) { // solo si cabe sin salirse por la izquierda
-                    $negro = imagecolorallocatealpha($imagen, 0, 0, 0, 40);
-                    imagettftext($imagen, $tamanoFuente, 0, $xTexto + 1, $yTexto + 2, $negro, self::FUENTE, $texto);
-                    $blanco = imagecolorallocate($imagen, 255, 255, 255);
-                    imagettftext($imagen, $tamanoFuente, 0, $xTexto, $yTexto, $blanco, self::FUENTE, $texto);
-                }
-            }
+            imagecopy($imagen, $sombra, $px - $margenSombra, $py - $margenSombra, 0, 0, $tamSombraW, $tamSombraH);
+            imagecopy($imagen, $tarjeta, $px, $py, 0, 0, $anchoTarjeta, $altoTarjeta);
 
             self::guardar($imagen, $pathImagen);
 
             imagedestroy($imagen);
             imagedestroy($logo);
             imagedestroy($logoRedim);
+            imagedestroy($tarjeta);
             imagedestroy($sombra);
         } catch (\Throwable $e) {
             // No bloquear la generación de la pieza si el watermark falla — se publica sin logo.
         }
+    }
+
+    /** Rectángulo relleno con esquinas redondeadas (banda cruzada + arcos en las esquinas). */
+    private static function rectanguloRedondeado($im, int $x1, int $y1, int $x2, int $y2, int $r, int $color): void
+    {
+        imagefilledrectangle($im, $x1 + $r, $y1, $x2 - $r, $y2, $color);
+        imagefilledrectangle($im, $x1, $y1 + $r, $x2, $y2 - $r, $color);
+        imagefilledellipse($im, $x1 + $r, $y1 + $r, $r * 2, $r * 2, $color);
+        imagefilledellipse($im, $x2 - $r, $y1 + $r, $r * 2, $r * 2, $color);
+        imagefilledellipse($im, $x1 + $r, $y2 - $r, $r * 2, $r * 2, $color);
+        imagefilledellipse($im, $x2 - $r, $y2 - $r, $r * 2, $r * 2, $color);
     }
 
     private static function cargar(string $path)
