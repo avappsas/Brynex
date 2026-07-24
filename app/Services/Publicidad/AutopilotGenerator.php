@@ -99,7 +99,8 @@ class AutopilotGenerator
     {
         $planes = CotizacionPublicaService::planesDestacadosConPrecio($aliado->id, true);
         $listaPlanes = collect($planes)
-            ->map(fn ($p) => "- {$p['nombre']}: \$" . number_format($p['valor_mensual'], 0, ',', '.') . ' COP/mes')
+            ->map(fn ($p) => "- {$p['nombre']}: primer mes (solo afiliación) \$" . number_format($p['costo_afiliacion'], 0, ',', '.')
+                . ' COP · desde el mes siguiente $' . number_format($p['valor_mensual'], 0, ',', '.') . ' COP/mes')
             ->implode("\n") ?: '- (sin planes configurados: no menciones precios)';
 
         $historial = Publicacion::where('aliado_id', $aliado->id)
@@ -124,8 +125,9 @@ Eres el community manager de {$aliado->nombre}, una agencia colombiana de afilia
 CATÁLOGO DE ÁNGULOS (elige UNO, variando siempre respecto al historial):
 {$catalogo}
 
-PLANES REALES CON PRECIO VIGENTE (usa estos valores EXACTOS si el tema es una promo; NUNCA inventes precios ni descuentos):
+PLANES REALES CON PRECIO VIGENTE (usa estos valores EXACTOS si el tema es una promo; NUNCA inventes precios ni descuentos que no estén aquí):
 {$listaPlanes}
+El "primer mes" es real: por el esquema de facturación, el mes de afiliación SOLO cobra el costo de afiliación (sin seguridad social ni administración); desde el mes siguiente se cobra el valor mensual completo. Puedes usar esto como gancho ("empieza con $X este mes") SIEMPRE que menciones también el valor mensual siguiente — nunca lo presentes como un descuento o promoción especial, es simplemente cómo funciona el pago.
 
 HISTORIAL RECIENTE (NO repitas tema, mensaje ni enfoque visual de estas piezas):
 {$historial}
