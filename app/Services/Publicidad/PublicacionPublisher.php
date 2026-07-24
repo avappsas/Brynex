@@ -89,8 +89,7 @@ class PublicacionPublisher
             $numero = '57' . $numero;
         }
 
-        $mensaje = "Hola, vi esta publicación de {$publicacion->aliado->nombre} y quiero información. (ref: P{$publicacion->id})";
-        $link = 'https://wa.me/' . $numero . '?text=' . rawurlencode($mensaje);
+        $link = 'https://wa.me/' . $numero . '?text=' . rawurlencode($publicacion->mensajeWhatsappRastreado());
 
         return $texto . "\n\n👉 " . $link;
     }

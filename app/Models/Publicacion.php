@@ -101,6 +101,17 @@ class Publicacion extends BaseModel
         return (is_string($id) && str_contains($id, '_')) ? $id : null;
     }
 
+    /**
+     * Mensaje precargado con el código de referencia ("ref: P{id}") — el MISMO texto se usa
+     * en el link wa.me de la publicación orgánica y en el botón nativo de la pauta pagada,
+     * para que WhatsappWebhookService::buscarPublicacionOrigen atribuya igual sin importar
+     * de dónde vino el clic.
+     */
+    public function mensajeWhatsappRastreado(): string
+    {
+        return "Hola, vi esta publicación de {$this->aliado->nombre} y quiero información. (ref: P{$this->id})";
+    }
+
     public function etiquetaEstado(): string
     {
         return match ($this->estado) {

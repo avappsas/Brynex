@@ -5,14 +5,18 @@ namespace App\Services\RedesSociales;
 use App\Models\Publicacion;
 use App\Models\PautaConfig;
 use App\Models\RedSocialConfig;
+use App\Models\WhatsappConfig;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
 
 /**
- * Pauta pagada (Meta Marketing API) sobre una pieza ya publicada orgánicamente en Facebook —
- * la "impulsa" con presupuesto real usando el post existente (object_story_id), sin crear
- * una pieza nueva. Verificado contra la cuenta real de Brygar (act_763050131388073, moneda
- * COP): los presupuestos van en COP enteros, SIN multiplicar por 100 (confirmado leyendo
- * min_daily_budget=3319 de la cuenta real — no es una currency de subunidad ×100 aquí).
+ * Pauta pagada (Meta Marketing API): anuncio "Click to WhatsApp" — un botón nativo "Enviar
+ * mensaje" que abre WhatsApp directo con el mensaje precargado (con el código de referencia
+ * de la pieza), en vez de un link largo en el texto. Es una creatividad NUEVA (no reutiliza
+ * el post orgánico como sí hacía la versión anterior) porque este formato lo exige así.
+ * Verificado contra la cuenta real de Brygar (act_763050131388073, moneda COP): los
+ * presupuestos van en COP enteros, SIN multiplicar por 100 (confirmado leyendo
+ * min_daily_budget=3319 de la cuenta real).
  *
  * Diseño de seguridad (no negociable, no lo decide la IA):
  * - crearBorrador() SIEMPRE crea todo en status=PAUSED → $0 de riesgo, se puede probar libre.
@@ -27,16 +31,12 @@ class MetaAdsService
     private const BASE_URL = 'https://graph.facebook.com/v23.0';
 
     /**
-     * Crea Campaña + Conjunto de anuncios + Anuncio, todo en PAUSED (cero gasto), impulsando
-     * el post real de Facebook de la pieza. No activa nada.
+     * Crea Campaña + Conjunto de anuncios (destino WhatsApp) + Creatividad con botón nativo
+     * "Enviar mensaje" + Anuncio, todo en PAUSED (cero gasto). No activa nada.
      * @return array{ok: bool, mensaje: string}
      */
     public static function crearBorrador(Publicacion $publicacion, PautaConfig $config, float $presupuestoDiarioCop): array
     {
-        $idPost = $publicacion->idPostFacebook();
-        if (!$idPost) {
-            return ['ok' => false, 'mensaje' => 'Esta pieza no tiene un post de Facebook publicado — no se puede impulsar.'];
-        }
         if (!$config->activo || !$config->ad_account_id) {
             return ['ok' => false, 'mensaje' => 'La pauta pagada no está configurada para este aliado.'];
         }
@@ -48,8 +48,28 @@ class MetaAdsService
         if (!$fb->credencialesCompletas()) {
             return ['ok' => false, 'mensaje' => 'Faltan credenciales de Facebook (ver Redes Sociales).'];
         }
+        $waConfig = WhatsappConfig::where('aliado_id', $publicacion->aliado_id)->where('activo', true)->first();
+        if (!$waConfig?->numero_telefono) {
+            return ['ok' => false, 'mensaje' => 'No hay un número de WhatsApp del bot configurado para este aliado.'];
+        }
+
         $token = $fb->access_token;
         $cuenta = 'act_' . ltrim($config->ad_account_id, 'act_');
+        $pageId = $fb->identificador;
+        $numeroWa = preg_replace('/\D/', '', $waConfig->numero_telefono);
+
+        // 0. Subir la imagen al catálogo de anuncios de la cuenta (hace falta el image_hash)
+        $subida = Http::asMultipart()->attach(
+            'source', Storage::disk('public')->get($publicacion->imagen_path), basename($publicacion->imagen_path)
+        )->post(self::BASE_URL . "/{$cuenta}/adimages", ['access_token' => $token]);
+        if (!$subida->successful()) {
+            return ['ok' => false, 'mensaje' => 'Imagen: ' . self::errorDeMeta($subida)];
+        }
+        $imagenes = $subida->json('images') ?? [];
+        $imageHash = data_get(reset($imagenes) ?: [], 'hash');
+        if (!$imageHash) {
+            return ['ok' => false, 'mensaje' => 'Meta no devolvió el hash de la imagen subida.'];
+        }
 
         // 1. Campaña
         $campana = Http::asForm()->post(self::BASE_URL . "/{$cuenta}/campaigns", [
@@ -57,8 +77,6 @@ class MetaAdsService
             'objective'                        => 'OUTCOME_ENGAGEMENT',
             'status'                           => 'PAUSED',
             'special_ad_categories'            => json_encode([]),
-            // El presupuesto vive en el conjunto de anuncios (no en la campaña), así que no
-            // se comparte presupuesto entre conjuntos.
             'is_adset_budget_sharing_enabled'  => 'false',
             'access_token'                     => $token,
         ]);
@@ -67,14 +85,16 @@ class MetaAdsService
         }
         $campanaId = $campana->json('id');
 
-        // 2. Conjunto de anuncios (el presupuesto y la segmentación viven aquí)
+        // 2. Conjunto de anuncios: destino WhatsApp — el clic abre un chat, no una página.
         $adset = Http::asForm()->post(self::BASE_URL . "/{$cuenta}/adsets", [
             'name'               => "Pieza #{$publicacion->id} — conjunto",
             'campaign_id'        => $campanaId,
+            'destination_type'   => 'WHATSAPP',
             'daily_budget'       => (int) round($presupuestoDiarioCop),
             'billing_event'      => 'IMPRESSIONS',
-            'optimization_goal'  => 'POST_ENGAGEMENT',
+            'optimization_goal'  => 'CONVERSATIONS',
             'bid_strategy'       => 'LOWEST_COST_WITHOUT_CAP',
+            'promoted_object'    => json_encode(['page_id' => $pageId, 'whatsapp_phone_number' => $numeroWa]),
             'targeting'          => json_encode(['geo_locations' => ['countries' => ['CO']], 'age_min' => 18, 'age_max' => 65]),
             'status'             => 'PAUSED',
             'access_token'       => $token,
@@ -85,11 +105,49 @@ class MetaAdsService
         }
         $adsetId = $adset->json('id');
 
-        // 3. Anuncio: usa el post orgánico ya publicado como creatividad (lo "impulsa")
+        // 3. Creatividad: botón "Enviar mensaje" + mensaje precargado con el código de
+        // referencia — mismo texto que usa el link orgánico, para atribuir igual.
+        $creativa = Http::asForm()->post(self::BASE_URL . "/{$cuenta}/adcreatives", [
+            'name'               => "Pieza #{$publicacion->id} — creatividad",
+            'object_story_spec'  => json_encode([
+                'page_id'   => $pageId,
+                'link_data' => [
+                    'message'      => $publicacion->copy ?: $publicacion->titulo,
+                    'name'         => $publicacion->titulo,
+                    'image_hash'   => $imageHash,
+                    'link'         => 'https://api.whatsapp.com/send',
+                    'call_to_action' => [
+                        'type'  => 'WHATSAPP_MESSAGE',
+                        'value' => ['app_destination' => 'WHATSAPP'],
+                    ],
+                    'page_welcome_message' => [
+                        'type'                => 'VISUAL_EDITOR',
+                        'version'             => 2,
+                        'landing_screen_type' => 'welcome_message',
+                        'media_type'          => 'text',
+                        'text_format'         => [
+                            'customer_action_type' => 'autofill_message',
+                            'message' => [
+                                'text'             => '¡Hola! 👋 Gracias por escribirnos.',
+                                'autofill_message' => ['content' => $publicacion->mensajeWhatsappRastreado()],
+                            ],
+                        ],
+                    ],
+                ],
+            ]),
+            'access_token' => $token,
+        ]);
+        if (!$creativa->successful()) {
+            self::borrar($campanaId, $token);
+            return ['ok' => false, 'mensaje' => 'Creatividad: ' . self::errorDeMeta($creativa)];
+        }
+        $creativaId = $creativa->json('id');
+
+        // 4. Anuncio
         $ad = Http::asForm()->post(self::BASE_URL . "/{$cuenta}/ads", [
             'name'         => "Pieza #{$publicacion->id} — anuncio",
             'adset_id'     => $adsetId,
-            'creative'     => json_encode(['object_story_id' => $idPost]),
+            'creative'     => json_encode(['creative_id' => $creativaId]),
             'status'       => 'PAUSED',
             'access_token' => $token,
         ]);
@@ -106,7 +164,7 @@ class MetaAdsService
             'meta_ad_id'                   => $ad->json('id'),
         ]);
 
-        return ['ok' => true, 'mensaje' => 'Pauta creada en pausa — $0 gastado hasta que la actives.'];
+        return ['ok' => true, 'mensaje' => 'Pauta creada en pausa (botón nativo de WhatsApp) — $0 gastado hasta que la actives.'];
     }
 
     /**

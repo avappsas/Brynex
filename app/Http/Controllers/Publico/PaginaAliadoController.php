@@ -7,6 +7,7 @@ use App\Models\Aliado;
 use App\Models\PaginaAliadoConfig;
 use App\Models\PaginaLead;
 use App\Models\Publicacion;
+use App\Models\WhatsappConfig;
 use App\Services\CotizacionPublicaService;
 use App\Services\MetricaService;
 use Illuminate\Http\Request;
@@ -106,7 +107,7 @@ class PaginaAliadoController extends Controller
             'aliado'          => $aliado,
             'config'          => new PaginaAliadoConfig(['aliado_id' => $aliado->id]),
             'tipo'            => $tipo,
-            'whatsapp'        => $aliado->whatsapp ?: $aliado->celular,
+            'whatsapp'        => $this->numeroWhatsappBot($aliado),
             'colorPrimario'   => $this->colorSeguro($aliado->color_primario),
             'textoSobreBrand' => $this->textoLegibleSobre($aliado->color_primario),
             'urlCanonica'     => $this->urlCanonica($aliado, $request),
@@ -308,6 +309,18 @@ class PaginaAliadoController extends Controller
         return route('publico.aliado', $aliado->slug);
     }
 
+    /**
+     * Número de WhatsApp para el botón de la página pública: prioriza el número real del
+     * bot (WhatsappConfig::numero_telefono, el que escucha el webhook) para que los leads
+     * de la web lleguen al mismo lugar que todo lo demás — con fallback a los campos del
+     * aliado solo si no tiene el bot configurado.
+     */
+    private function numeroWhatsappBot(Aliado $aliado): ?string
+    {
+        $numeroBot = WhatsappConfig::where('aliado_id', $aliado->id)->where('activo', true)->value('numero_telefono');
+        return $numeroBot ?: ($aliado->whatsapp ?: $aliado->celular);
+    }
+
     private function armarDatos(Aliado $aliado, PaginaAliadoConfig $config): array
     {
         return [
@@ -318,7 +331,7 @@ class PaginaAliadoController extends Controller
             'promos'          => $this->promosPublicadas($aliado),
             'colorPrimario'   => $this->colorSeguro($aliado->color_primario),
             'textoSobreBrand' => $this->textoLegibleSobre($aliado->color_primario),
-            'whatsapp'        => $aliado->whatsapp ?: $aliado->celular,
+            'whatsapp'        => $this->numeroWhatsappBot($aliado),
         ];
     }
 
