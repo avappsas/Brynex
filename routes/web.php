@@ -723,6 +723,7 @@ Route::middleware('auth')->group(function () {
         // Piloto automático (antes de {id} para que no lo capture la ruta genérica)
         Route::get('autopilot',               [$pub, 'autopilot'])       ->name('autopilot');
         Route::post('autopilot',              [$pub, 'autopilotUpdate']) ->name('autopilot.update');
+        Route::post('autopilot/generar-ahora',[$pub, 'autopilotGenerarAhora']) ->name('autopilot.generar_ahora');
 
         // Pauta pagada — config antes de {id} por el mismo motivo
         Route::get('pauta/config',            [$pub, 'pautaConfig'])       ->name('pauta.config');

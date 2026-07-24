@@ -247,6 +247,22 @@ class PublicidadController extends Controller
         return redirect()->route('admin.publicidad.autopilot')->with('success', 'Piloto automático actualizado.');
     }
 
+    /** Genera la pieza de hoy ya mismo, sin esperar a la hora programada — usa el modo/estilo ya guardados. */
+    public function autopilotGenerarAhora()
+    {
+        $aliado = $this->aliadoActivo();
+        $config = \App\Models\AutopilotConfig::paraAliado($aliado->id);
+
+        $resultado = \App\Services\Publicidad\AutopilotGenerator::generarPiezaDelDia($aliado, $config);
+
+        if (!$resultado['ok']) {
+            return redirect()->route('admin.publicidad.autopilot')->with('error', $resultado['error']);
+        }
+
+        $p = $resultado['publicacion'];
+        return redirect()->route('admin.publicidad.autopilot')->with('success', "Pieza #{$p->id} generada — [{$p->tema}] {$p->titulo} ({$p->etiquetaEstado()}).");
+    }
+
     // ── Generación asistida (AJAX) ────────────────────────────────────────
 
     public function generarCopia(Request $request)

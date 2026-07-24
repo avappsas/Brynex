@@ -9,13 +9,27 @@
     ← Volver al historial
 </a>
 
-<h1 style="font-size:1.2rem;font-weight:700;color:#0f172a;margin:0 0 .25rem;">🚁 Piloto automático de marketing</h1>
-<p style="font-size:.83rem;color:#64748b;margin:0 0 1.25rem;">
-    La IA crea cada día una pieza nueva (tema, texto e imagen) sin repetirse, usando los planes y precios reales de {{ $aliado->nombre }}.
-</p>
+<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;margin-bottom:.25rem;flex-wrap:wrap;">
+    <div>
+        <h1 style="font-size:1.2rem;font-weight:700;color:#0f172a;margin:0 0 .25rem;">🚁 Piloto automático de marketing</h1>
+        <p style="font-size:.83rem;color:#64748b;margin:0;">
+            La IA crea cada día una pieza nueva (tema, texto e imagen) sin repetirse, usando los planes y precios reales de {{ $aliado->nombre }}.
+        </p>
+    </div>
+    <form method="POST" action="{{ route('admin.publicidad.autopilot.generar_ahora') }}" style="flex-shrink:0;">
+        @csrf
+        <button type="submit" style="background:#7c3aed;color:#fff;border:none;font-size:.83rem;font-weight:700;padding:.6rem 1.1rem;border-radius:8px;cursor:pointer;white-space:nowrap;">
+            ✨ Generar pieza ahora
+        </button>
+    </form>
+</div>
+<p style="font-size:.72rem;color:#94a3b8;margin:0 0 1.25rem;">Usa el modo y el estilo de imagen ya guardados abajo — no espera a la hora programada.</p>
 
 @if(session('success'))
     <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;color:#15803d;padding:.65rem 1rem;margin-bottom:1rem;font-size:.83rem;">✅ {{ session('success') }}</div>
+@endif
+@if(session('error'))
+    <div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;color:#991b1b;padding:.65rem 1rem;margin-bottom:1rem;font-size:.83rem;">❌ {{ session('error') }}</div>
 @endif
 @if($errors->any())
     <div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;color:#991b1b;padding:.65rem 1rem;margin-bottom:1rem;font-size:.83rem;">
