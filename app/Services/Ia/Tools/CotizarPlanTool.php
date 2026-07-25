@@ -183,6 +183,16 @@ class CotizarPlanTool implements IaToolInterface
         $resultado['nivel_arl_default']   = !isset($input['nivel_arl']);
         $resultado['modalidad_usada']     = $tipoModalidad->nombre;
 
+        // Quien pide una cotización es un interesado: queda registrado en /admin/cotizaciones
+        // para que el asesor pueda hacerle seguimiento fuera del chat.
+        \App\Services\Ia\RegistroProspectoIa::registrar($contexto, $plan, $tipoModalidad, [
+            'salario'          => $salario,
+            'nivel_arl'        => $resultado['nivel_arl_usado'],
+            'total'            => $resultado['total'] ?? null,
+            'costo_afiliacion' => $resultado['costo_afiliacion_sugerido'] ?? null,
+            'es_independiente' => $esIndependiente,
+        ]);
+
         // El valor de la ARL depende del nivel de riesgo: hay que decir con cuál se calculó.
         if ($plan->incluye_arl) {
             $nivel = $resultado['nivel_arl_usado'];

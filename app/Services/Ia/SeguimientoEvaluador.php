@@ -143,6 +143,7 @@ Ante la duda, NO escribas: molestar a un cliente que ya quedó satisfecho cuesta
 
 Responde ÚNICAMENTE con un objeto JSON, sin bloque de código:
 - "seguir": true o false
+- "descartado": true SOLO si el cliente dijo claramente que no le interesa, que ya se afilió en otro lado o que no va a seguir. Si simplemente no ha respondido o quedó de pensarlo, es false.
 - "motivo": en pocas palabras, por qué (para el registro interno, no lo lee el cliente)
 - "mensaje": si "seguir" es true, el texto a enviarle a {$nombre}. Español colombiano, cercano y breve (máximo 2 líneas), que retome lo que se habló concretamente —no una frase genérica— y deje la puerta abierta sin presionar. Máximo 1 emoji. Si "seguir" es false, deja este campo vacío.
 PROMPT;
@@ -174,6 +175,13 @@ PROMPT;
         $seguir  = (bool) $datos['seguir'];
         $motivo  = mb_substr((string) ($datos['motivo'] ?? ''), 0, 200);
         $mensaje = trim((string) ($datos['mensaje'] ?? ''));
+        $descartado = (bool) ($datos['descartado'] ?? false);
+
+        // Si el cliente cerró la puerta, el prospecto se marca para que ningún asesor
+        // siga detrás de alguien que ya dijo que no.
+        if ($descartado) {
+            RegistroProspectoIa::marcarNoInteresado($conversacion, $motivo);
+        }
 
         if (!$seguir) {
             return self::no($motivo ?: 'La IA determinó que no hay nada pendiente.');
