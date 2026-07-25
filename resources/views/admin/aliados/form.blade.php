@@ -121,6 +121,13 @@
                 <div style="font-size:0.68rem;color:#94a3b8;margin-top:0.25rem;">Ícono cuadrado — se usa en el panel, selector de aliado, facturación, etc.</div>
             </div>
             <div>
+                <label style="display:block;font-size:0.78rem;font-weight:600;color:#475569;margin-bottom:0.3rem;text-transform:uppercase;letter-spacing:0.04em;">Eslogan</label>
+                <input type="text" name="eslogan" maxlength="120" value="{{ old('eslogan', $aliado->eslogan ?? '') }}"
+                    placeholder="Ej: Seguridad social sin complicaciones"
+                    style="width:100%;padding:0.5rem;border:1px solid #cbd5e1;border-radius:8px;font-size:0.85rem;font-family:inherit;">
+                <div style="font-size:0.68rem;color:#94a3b8;margin-top:0.25rem;">Va debajo del nombre en los flyers publicitarios. Si lo dejas vacío, no se muestra.</div>
+            </div>
+            <div>
                 <label style="display:block;font-size:0.78rem;font-weight:600;color:#475569;margin-bottom:0.3rem;text-transform:uppercase;letter-spacing:0.04em;">Color</label>
                 <input type="color" name="color_primario" value="{{ old('color_primario', $aliado->color_primario ?? '#2563eb') }}"
                     style="width:100%;height:40px;border:1px solid #cbd5e1;border-radius:8px;cursor:pointer;padding:2px;">

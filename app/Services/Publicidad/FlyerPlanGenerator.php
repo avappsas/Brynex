@@ -164,9 +164,10 @@ class FlyerPlanGenerator
             . 'Colores naturales y contenidos, como una foto sin filtros — NO sobresaturar. '
             . 'EVITA por completo el aspecto de render 3D, ilustración digital, imagen generada por IA, foto de banco '
             . 'de imágenes, iluminación de estudio o composición simétrica perfecta. '
-            . 'IMPORTANTE: deja la mitad inferior de la imagen visualmente tranquila (sin rostros ni detalles clave ahí), '
-            . 'porque se superpondrá un panel con texto. NO escribas ningún texto, letras, números ni logotipos dentro de '
-            . 'la imagen: todo el texto se agrega después por separado.';
+            . 'Una sola toma que llene todo el encuadre, con las personas ocupando el centro: NO dividas la imagen en '
+            . 'partes, ni dejes zonas vacías, ni hagas collage. '
+            . 'NO escribas ningún texto, letras, números ni logotipos dentro de la imagen: todo el texto se agrega '
+            . 'después por separado.';
     }
 
     private static function numeroWhatsapp(Aliado $aliado): ?string

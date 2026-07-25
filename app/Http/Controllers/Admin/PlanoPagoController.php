@@ -1272,13 +1272,15 @@ class PlanoPagoController extends Controller
                 $operadorId = $operador->id;
                 $operadorNombre = $operador->nombre;
 
-                // Validar que el operador esté autorizado
-                $codigoOp = strtoupper($operador->codigo ?? '');
-                if (!in_array($codigoOp, \App\Services\PlanillaWhatsappService::OPERADORES_AUTORIZADOS)) {
-                    return response()->json([
-                        'ok' => false,
-                        'mensaje' => "El operador '{$operador->nombre}' no tiene plantilla PDF autorizada para envío por WhatsApp. Solo ARUS Enlace, Enlace y Simple están habilitados."
-                    ], 422);
+                // Validar que el operador esté autorizado (solo para envíos reales, no pruebas)
+                if (!$esPrueba) {
+                    $codigoOp = strtoupper($operador->codigo ?? '');
+                    if (!in_array($codigoOp, \App\Services\PlanillaWhatsappService::OPERADORES_AUTORIZADOS)) {
+                        return response()->json([
+                            'ok' => false,
+                            'mensaje' => "El operador '{$operador->nombre}' no tiene plantilla PDF autorizada para envío por WhatsApp. Solo ARUS Enlace, Enlace y Simple están habilitados."
+                        ], 422);
+                    }
                 }
             }
         }

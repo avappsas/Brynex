@@ -985,7 +985,9 @@ function enviosPlanillaApp() {
                     },
                     body: JSON.stringify({
                         tipo_envio: this.tipoEnvio,
-                        celular_prueba: this.waPruebaCelular
+                        celular_prueba: this.waPruebaCelular,
+                        mes: this.filtroMes,
+                        anio: this.filtroAnio,
                     })
                 });
 

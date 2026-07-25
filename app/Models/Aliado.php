@@ -18,6 +18,7 @@ class Aliado extends BaseModel
 
     protected $fillable = [
         'nombre',
+        'eslogan',
         'nit',
         'razon_social',
         'contacto',

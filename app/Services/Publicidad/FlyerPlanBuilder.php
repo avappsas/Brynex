@@ -131,11 +131,20 @@ class FlyerPlanBuilder
             $x += $w + 24;
         }
 
-        // Nombre de la empresa y eslogan al lado del logo.
-        $nombre = mb_strtoupper($aliado->nombre);
-        $tam = self::tamanoQueCabe($nombre, self::ANCHO - $x - self::MARGEN, 34, 20, self::FUENTE_BOLD, 1.5);
-        self::texto($lienzo, $nombre, $x, $yBase + 46, $tam, self::$paleta['navy'], self::FUENTE_BOLD, 1.5);
-        self::texto($lienzo, 'Seguridad social sin complicaciones', $x, $yBase + 76, 17, self::$paleta['gris'], self::FUENTE_REGULAR, 0.6);
+        // Nombre de la empresa y, si lo tiene configurado, su eslogan debajo.
+        $anchoTexto = self::ANCHO - $x - self::MARGEN;
+        $nombre  = mb_strtoupper($aliado->nombre);
+        $eslogan = trim((string) $aliado->eslogan);
+
+        // Sin eslogan el nombre se centra verticalmente contra el logo, para que no quede
+        // colgando de la línea superior.
+        $yNombre = $eslogan !== '' ? $yBase + 46 : $yBase + 60;
+        $tam = self::tamanoQueCabe($nombre, $anchoTexto, 34, 20, self::FUENTE_BOLD, 1.5);
+        self::texto($lienzo, $nombre, $x, $yNombre, $tam, self::$paleta['navy'], self::FUENTE_BOLD, 1.5);
+
+        if ($eslogan !== '') {
+            self::texto($lienzo, $eslogan, $x, $yBase + 76, self::tamanoQueCabe($eslogan, $anchoTexto, 17, 12, self::FUENTE_REGULAR, 0.6), self::$paleta['gris'], self::FUENTE_REGULAR, 0.6);
+        }
 
         return $yBase + $altoLogo + 26;
     }
