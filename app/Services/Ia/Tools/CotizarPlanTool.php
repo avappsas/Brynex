@@ -77,7 +77,7 @@ class CotizarPlanTool implements IaToolInterface
                 'desde_exterior'  => ['type' => 'boolean', 'description' => 'true si el cliente vive fuera de Colombia o quiere pagar/cotizar desde el exterior (ej. "pagar pensión desde el exterior"). Implica que es independiente.'],
                 'tiempo_parcial_dias' => ['type' => 'integer', 'description' => 'SOLO si el cliente trabaja por días y gana menos del salario mínimo: cada cuántos días le pagan (7, 14, 21 o 30). Cambia cómo se cotiza pensión y caja (el ARL siempre se cobra el mes completo). Omite si no aplica.'],
                 'ofrecer_plan_economico_caja' => ['type' => 'boolean', 'description' => 'true SOLO si el cliente de tiempo parcial está especialmente interesado en los subsidios/beneficios de la caja de compensación Y ya mostró que el valor normal no le sirve — activa un plan especial más económico. NUNCA lo ofrezcas de entrada ni lo menciones si no se cumple lo anterior.'],
-                'cliente_exento_pension' => ['type' => 'boolean', 'description' => 'true SOLO si el cliente indicó explícitamente ser YA PENSIONADO, hombre de 55+ años, mujer de 50+ años, o extranjero con cédula de extranjería / permiso de protección temporal / permiso especial / pasaporte (CE, PT, PP, PE, PA), Y no quiere pagar pensión. Ser pensionado exime sin importar edad, género ni documento. Si no se cumple o no estás seguro, NO actives esto — el sistema agregará la pensión automáticamente al plan por normativa.'],
+                'cliente_exento_pension' => ['type' => 'boolean', 'description' => 'NO preguntes esto de entrada. Déjalo vacío en la primera cotización: si quien escribe ya es cliente, el sistema lo resuelve solo con su ficha. Solo actívalo (true) cuando la respuesta anterior te haya devuelto pregunta_exencion_pension, se lo hayas preguntado, y el cliente haya confirmado que ya está pensionado, es hombre de 55+ / mujer de 50+, o tiene documento CE/PT/PP/PE/PA. Ser pensionado exime sin importar edad, género ni documento.'],
                 'paga_por_otra_persona' => ['type' => 'boolean', 'description' => 'true si el cliente quiere pagar la SALUD de otra persona que NO pertenece a su núcleo familiar (ej. un sobrino, un amigo, un padre no beneficiario) — normalmente él ya tiene su propia planilla. Se cotiza como una planilla aparte solo para esa persona. En este caso no se exige pensión.'],
                 'ofrecer_estrategia_ingreso_retiro' => ['type' => 'boolean', 'description' => 'true SOLO si se cumplen las TRES condiciones: (1) el cliente necesita EPS, (2) NO está exento de pensión, y (3) ya dijo que no tiene con qué pagar el aporte completo de pensión. Activa una estrategia donde se afilia normal el primer mes y desde el segundo se pagan pocos días de planilla (afiliándolo en paralelo por otra razón social), para que nunca pierda el servicio de EPS. NUNCA la ofrezcas de entrada ni si el cliente sí puede pagar el plan normal.'],
                 'activar_gestion_arl_descuento' => ['type' => 'boolean', 'description' => 'true SOLO cuando el cliente pide Solo ARL (sin nada más), ya conoce el precio normal, y necesita la afiliación solo para poder trabajar (exigencia de un contratante) mostrando que el precio es un obstáculo. Da un 25% de descuento en un plan sin planilla mensual (solo afiliación). SIEMPRE di primero el precio normal.'],
@@ -132,9 +132,15 @@ class CotizarPlanTool implements IaToolInterface
         $ingresoRetiro = (bool) ($input['ofrecer_estrategia_ingreso_retiro'] ?? false);
 
         // Regla real (Configuración → Modalidades → "AFP obligatorio"): si el cliente pide un
-        // plan sin pensión y no cumple/confirma la exención, se cotiza CON pensión — más
-        // seguro que asumir que sí califica, y nunca se le pregunta edad/género directamente.
+        // plan sin pensión, primero se mira su ficha (si ya es cliente identificado) y solo si
+        // ahí no se puede determinar se le pregunta. Nunca se asume que califica.
         $exencionConfirmada = (bool) ($input['cliente_exento_pension'] ?? false);
+        $motivoExencionFicha = null;
+        if (!$exencionConfirmada) {
+            $motivoExencionFicha = $this->motivoExencionDesdeFicha($contexto);
+            $exencionConfirmada  = $motivoExencionFicha !== null;
+        }
+
         $seAgregoPensionPorNormativa = false;
         if (CotizacionPublicaService::requiereConfirmarExencionPension($componentes, $exencionConfirmada, $desdeExterior, $esUpc)) {
             $componentes['incluye_pension'] = true;
@@ -191,11 +197,23 @@ class CotizarPlanTool implements IaToolInterface
         }
 
         if ($seAgregoPensionPorNormativa) {
-            $resultado['nota_afp'] = 'Por normativa, este plan solo puede omitir la pensión si el cliente ya está '
-                . 'pensionado, es hombre de 55+ años, mujer de 50+ años, o tiene documento CE/PT/PP/PE/PA. Como no se '
-                . 'confirmó ninguna de esas condiciones, se cotizó CON pensión incluida (el valor ya lo refleja). Si el '
-                . 'cliente sí cumple alguna, puedes preguntarle de forma natural (ej. "¿ya estás pensionado?") y volver '
-                . 'a cotizar con cliente_exento_pension=true.';
+            $resultado['nota_afp'] = 'El cliente pidió un plan SIN pensión, pero en este esquema la pensión es '
+                . 'obligatoria salvo excepción, y su ficha no confirma ninguna. Se cotizó CON pensión incluida (el '
+                . 'valor ya lo refleja) para no darle un precio que no se le puede honrar.';
+            $resultado['pregunta_exencion_pension'] = [
+                'preguntar' => 'Antes de cerrar el precio, pregúntale de forma natural y en UN solo mensaje si se '
+                    . 'da alguno de estos tres casos: (1) ya está pensionado, (2) es hombre de 55 años o más / mujer '
+                    . 'de 50 o más, (3) es extranjero con cédula de extranjería, permiso de protección temporal, '
+                    . 'permiso especial o pasaporte. No le expliques la normativa ni le pidas la edad exacta: basta '
+                    . 'con saber si aplica alguno.',
+                'si_aplica' => 'Vuelve a llamar cotizar_plan con cliente_exento_pension=true y los mismos '
+                    . 'componentes (sin pensión) para darle el valor más bajo.',
+                'si_no_aplica' => 'El valor ya cotizado es el correcto: explícale que en su caso la pensión va '
+                    . 'incluida por normativa, sin entrar en tecnicismos.',
+            ];
+        } elseif ($motivoExencionFicha && !$plan->incluye_pension) {
+            $resultado['nota_afp'] = "Se pudo omitir la pensión porque la ficha del cliente indica que {$motivoExencionFicha}. "
+                . 'No necesitas preguntarle nada sobre esto ni mencionarle el motivo.';
         } elseif (!$plan->incluye_pension && $plan->id !== 2 && !$desdeExterior && !$esUpc) {
             $resultado['nota_afp'] = 'Este plan sin pensión solo aplica porque el cliente confirmó estar ya pensionado, '
                 . 'ser hombre 55+, mujer 50+, o tener documento CE/PT/PP/PE/PA. Si eso cambia, hay que cotizar con '
@@ -252,6 +270,28 @@ class CotizarPlanTool implements IaToolInterface
         }
 
         return $resultado;
+    }
+
+    /**
+     * Si quien escribe ya está identificado como cliente, su ficha decide la exención de
+     * pensión sin preguntarle nada (ahí ya está si es pensionado, su documento y su edad).
+     * Devuelve el motivo, o null si no hay cliente o no califica por ficha.
+     */
+    private function motivoExencionDesdeFicha(array $contexto): ?string
+    {
+        $conversacionId = $contexto['wa_conversacion_id'] ?? null;
+        if (!$conversacionId) {
+            return null;
+        }
+
+        $conversacion = \App\Models\WhatsappConversacion::find($conversacionId);
+        if (!$conversacion) {
+            return null;
+        }
+
+        $resuelto = \App\Services\Ia\ClienteWhatsappResolver::resolver($conversacion, null);
+
+        return $resuelto['cliente']?->motivoExencionAfp();
     }
 
     private function resolverModalidad(?string $texto): ?TipoModalidad

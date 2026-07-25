@@ -94,6 +94,48 @@ class Cliente extends BaseModel
         return $this->fecha_nacimiento->age;
     }
 
+    /** Documentos cuyo titular puede omitir el aporte a pensión. */
+    public const DOCS_EXENTOS_AFP = ['CE', 'PT', 'PP', 'PE', 'PA'];
+
+    /**
+     * ¿Este cliente puede omitir el aporte a pensión? Fuente única para el cotizador admin,
+     * la web y la IA. Devuelve el motivo (o null si no está exento) para poder explicarlo:
+     *   - Ya pensionado (fondo "PENSIONADO" en su ficha): sin importar edad, género ni documento
+     *   - Documento CE / PT / PP / PE / PA
+     *   - Hombre desde 55 años | Mujer desde 50 años
+     */
+    public function motivoExencionAfp(): ?string
+    {
+        if ((int) ($this->pension_id ?? 0) === Pension::ID_PENSIONADO) {
+            return 'ya está pensionado';
+        }
+
+        $tipoDoc = strtoupper(trim($this->tipo_doc ?? ''));
+        if (in_array($tipoDoc, self::DOCS_EXENTOS_AFP, true)) {
+            return "documento {$tipoDoc}";
+        }
+
+        $edad = $this->edad;
+        if ($edad === null) {
+            return null;
+        }
+
+        $genero = strtoupper(trim($this->genero ?? ''));
+        if ($genero === 'M' && $edad >= 55) {
+            return "hombre de {$edad} años";
+        }
+        if ($genero === 'F' && $edad >= 50) {
+            return "mujer de {$edad} años";
+        }
+
+        return null;
+    }
+
+    public function esExentoAfp(): bool
+    {
+        return $this->motivoExencionAfp() !== null;
+    }
+
     public function getEpsNombreAttribute(): string
     {
         return $this->eps?->nombre ?? '—';

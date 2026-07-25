@@ -1469,29 +1469,8 @@ class ContratoController extends Controller
      */
     private function detectarExencionAfp(?object $cliente): bool
     {
-        if (!$cliente) return false;
-
-        // Pensionado: el asesor lo registra eligiendo el fondo "PENSIONADO" en la ficha del
-        // cliente (el cliente lo informa). Ya no aporta a pensión, así que queda exento.
-        if ((int) ($cliente->pension_id ?? 0) === \App\Models\Pension::ID_PENSIONADO) {
-            return true;
-        }
-
-        $tipoDoc = strtoupper(trim($cliente->tipo_doc ?? ''));
-
-        // PT = Permiso de Protección Temporal (antes llamado PP — ambos exentos)
-        $docExentos = ['CE', 'PT', 'PP', 'PE', 'PA'];
-        if (in_array($tipoDoc, $docExentos)) {
-            return true;
-        }
-
-        // Por edad y género
-        $edad   = $cliente->edad ?? null;
-        $genero = strtoupper(trim($cliente->genero ?? ''));
-        if ($edad === null) return false;
-
-        return ($genero === 'M' && $edad >= 55)
-            || ($genero === 'F' && $edad >= 50);
+        // La regla vive en Cliente::motivoExencionAfp() — una sola fuente para admin, web e IA.
+        return $cliente instanceof \App\Models\Cliente && $cliente->esExentoAfp();
     }
 
     // ─── Validación ───────────────────────────────────────────────────
