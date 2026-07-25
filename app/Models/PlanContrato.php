@@ -10,7 +10,7 @@ class PlanContrato extends BaseModel
     public $timestamps = false;
     protected $table = 'planes_contrato';
     protected $fillable = [
-        'codigo', 'nombre',
+        'codigo', 'nombre', 'descripcion',
         'incluye_eps', 'incluye_arl', 'incluye_pension', 'incluye_caja',
         'activo',
     ];

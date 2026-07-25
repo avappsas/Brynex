@@ -33,7 +33,30 @@ class CotizarPlanTool implements IaToolInterface
             . 'ofrecer_plan_economico_caja para un plan más económico especial (NUNCA lo menciones de entrada). '
             . 'Si el cliente solo necesita ARL para poder trabajar (exigencia de un contratante) y el precio '
             . 'normal es un obstáculo, después de decirle el valor normal puedes activar '
-            . 'activar_gestion_arl_descuento para ofrecerle un plan B más económico (sin planilla mensual).';
+            . 'activar_gestion_arl_descuento para ofrecerle un plan B más económico (sin planilla mensual).'
+            . "\n\n" . $this->glosarioPlanes();
+    }
+
+    /**
+     * Glosario "para qué sirve cada plan" + dónde aplica la condición de AFP obligatorio,
+     * leído directo de planes_contrato.descripcion (editable por el entrenador/admin) para
+     * que la IA siempre lo tenga presente sin depender de que lo recuerde de otra parte.
+     */
+    private function glosarioPlanes(): string
+    {
+        $planes = PlanContrato::where('activo', true)
+            ->whereNotNull('descripcion')
+            ->orderBy('id')
+            ->get(['nombre', 'descripcion']);
+
+        if ($planes->isEmpty()) {
+            return '';
+        }
+
+        $lineas = $planes->map(fn (PlanContrato $plan) => "- {$plan->nombre}: {$plan->descripcion}");
+
+        return "Para qué sirve cada plan (interno, nunca leas el nombre exacto al cliente):\n"
+            . $lineas->implode("\n");
     }
 
     public function schema(): array
