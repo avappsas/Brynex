@@ -15,7 +15,11 @@ class ClaudeProvider implements IaProviderInterface
     {
         $payload = [
             'model'      => $modelo,
-            'max_tokens' => 1024,
+            // 1024 se quedaba corto para el JSON del piloto de marketing (tema+título+copy+
+            // prompt de imagen detallado) y Claude cortaba la respuesta a la mitad —
+            // confirmado viendo la respuesta cruda truncada. Un techo más alto no fuerza
+            // respuestas más largas, solo evita el corte cuando de verdad hacen falta.
+            'max_tokens' => 4096,
             'system'     => $systemPrompt,
             'messages'   => $this->traducirMensajes($messages),
         ];
