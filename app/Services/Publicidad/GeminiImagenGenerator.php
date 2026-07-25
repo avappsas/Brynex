@@ -32,9 +32,13 @@ class GeminiImagenGenerator
      * @param ?string $rutaLogo Ruta absoluta (disco) del logo del aliado — si se pasa, se envía
      *   como imagen de referencia junto al prompt (Gemini soporta texto + imagen de entrada),
      *   para que la marca/paleta influya en el resultado sin depender de un texto descriptivo.
+     * @param string $aspectRatio Relación de aspecto real vía la API (generationConfig.imageConfig,
+     *   no solo un texto sugerido) — 4:5 por defecto: formato vertical, el que más pantalla ocupa
+     *   en el feed de Instagram/Facebook en celular. Antes solo se pedía "1:1" en el texto del
+     *   prompt de ilustración y NUNCA para fotorrealista — por eso salían panorámicas.
      * @return array{ok: bool, rutas: string[], error: ?string}
      */
-    public static function generarVariantes(string $apiKey, string $prompt, int $cantidad = 2, string $modelo = self::MODELO_ILUSTRACION, ?string $rutaLogo = null): array
+    public static function generarVariantes(string $apiKey, string $prompt, int $cantidad = 2, string $modelo = self::MODELO_ILUSTRACION, ?string $rutaLogo = null, string $aspectRatio = '4:5'): array
     {
         $rutas = [];
 
@@ -56,6 +60,7 @@ class GeminiImagenGenerator
                     ],
                     'generationConfig' => [
                         'responseModalities' => ['IMAGE'],
+                        'imageConfig'        => ['aspectRatio' => $aspectRatio],
                     ],
                 ]);
             } catch (\Throwable $e) {
