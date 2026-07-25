@@ -14,13 +14,15 @@ use Illuminate\Support\Facades\Log;
  * interesados no se queden solo dentro del chat. El módulo de prospectos ya existía, pero
  * únicamente se alimentaba a mano: la IA cotizaba todo el día y nada de eso llegaba ahí.
  *
- * Un prospecto por celular y aliado: si vuelve a cotizar, se actualiza la cotización en vez
- * de crear otro registro. NUNCA pisa el trabajo del asesor — si ya marcó el prospecto como
- * convertido, no interesado o le asignó una próxima llamada, ese estado se respeta.
+ * Se trabaja por CICLO, no por persona: mientras el prospecto siga abierto, una nueva
+ * cotización actualiza ese mismo registro. Pero si el ciclo anterior ya se cerró —se afilió
+ * y luego se retiró, o dijo que no le interesaba— una cotización nueva abre un registro
+ * nuevo. Así el histórico queda intacto: se ve que ese número se convirtió una vez y hoy
+ * está otra vez en negociación, en vez de sobrescribir lo que pasó antes.
  */
 class RegistroProspectoIa
 {
-    /** Estados que ya son una decisión tomada por un humano: no se tocan. */
+    /** Estados que dan por terminado un ciclo: lo que venga después es un ciclo nuevo. */
     private const ESTADOS_CERRADOS = ['convertido', 'no_interesado'];
 
     /**
@@ -53,8 +55,13 @@ class RegistroProspectoIa
 
             $cliente = ClienteWhatsappResolver::resolver($conversacion, null)['cliente'] ?? null;
 
+            // Solo el ciclo ABIERTO de este número. Uno cerrado (convertido o no interesado)
+            // no se toca — si vuelve a cotizar, se abre un ciclo nuevo, dejando el anterior
+            // como historial de lo que ya pasó con esa persona.
             $prospecto = CotizacionProspecto::where('aliado_id', $aliadoId)
                 ->where('celular', $celular)
+                ->whereNotIn('estado', self::ESTADOS_CERRADOS)
+                ->orderByDesc('id')
                 ->first();
 
             $datos = [
@@ -96,12 +103,10 @@ class RegistroProspectoIa
                 return;
             }
 
-            // Ya existía: se actualiza la cotización, pero el estado solo se reactiva si el
-            // asesor no había cerrado el caso.
-            if (!in_array($prospecto->estado, self::ESTADOS_CERRADOS, true)) {
-                $datos['estado'] = 'interesado';
-            }
-
+            // El ciclo ya estaba abierto (nunca se busca uno cerrado): una cotización nueva
+            // lo reactiva como interesado sin importar si estaba en "sin respuesta" o
+            // "pendiente respuesta".
+            $datos['estado'] = 'interesado';
             $prospecto->update($datos);
         } catch (\Throwable $e) {
             // Registrar un prospecto nunca puede tumbar la respuesta al cliente.
