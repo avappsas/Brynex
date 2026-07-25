@@ -131,8 +131,10 @@ class FlyerPlanBuilder
         $ySubprecio = self::Y_PANEL + 436;
 
         // ── Nombre comercial del plan ─────────────────────────────────────
+        // Tracking negativo: en mayúsculas grandes las letras quedan mejor juntas.
         $nombre = mb_strtoupper($datos['nombre']);
-        self::texto($lienzo, $nombre, $margen, $yTitulo, self::tamanoQueCabe($nombre, $anchoUtil, 58, 34), $blanco, self::FUENTE_BOLD);
+        $tamTitulo = self::tamanoQueCabe($nombre, $anchoUtil, 58, 34, self::FUENTE_BOLD, -1.5);
+        self::texto($lienzo, $nombre, $margen, $yTitulo, $tamTitulo, $blanco, self::FUENTE_BOLD, -1.5);
 
         // Subrayado corto de acento bajo el título.
         imagefilledrectangle($lienzo, $margen, $yFilete, $margen + 96, $yFilete + 7, $acento);
@@ -147,19 +149,29 @@ class FlyerPlanBuilder
         $afiliacion = (float) ($datos['costo_afiliacion'] ?? 0);
         $mensual    = (float) ($datos['valor_mensual'] ?? 0);
 
+        // Etiquetas en versalitas espaciadas: es lo que más "termina" un diseño.
         if ($afiliacion > 0) {
             // El primer mes solo cobra afiliación: es el gancho real, y debajo el valor mensual.
-            self::texto($lienzo, 'AFÍLIATE ESTE MES POR', $margen, $yEtiqueta, 22, $acento, self::FUENTE_BOLD);
+            self::texto($lienzo, 'AFÍLIATE ESTE MES POR', $margen, $yEtiqueta, 21, $acento, self::FUENTE_BOLD, 3.5);
             $precio = '$' . self::pesos($afiliacion);
-            self::texto($lienzo, $precio, $margen, $yPrecio, self::tamanoQueCabe($precio, $anchoUtil, 82, 54), $blanco, self::FUENTE_BOLD);
             $sub = 'y desde el mes siguiente $' . self::pesos($mensual) . ' al mes';
         } else {
-            self::texto($lienzo, 'DESDE', $margen, $yEtiqueta, 22, $acento, self::FUENTE_BOLD);
+            self::texto($lienzo, 'DESDE', $margen, $yEtiqueta, 21, $acento, self::FUENTE_BOLD, 3.5);
             $precio = '$' . self::pesos($mensual);
-            self::texto($lienzo, $precio, $margen, $yPrecio, self::tamanoQueCabe($precio, $anchoUtil, 82, 54), $blanco, self::FUENTE_BOLD);
             $sub = 'al mes · sin costo de afiliación';
         }
-        self::texto($lienzo, $sub, $margen, $ySubprecio, self::tamanoQueCabe($sub, $anchoUtil, 25, 17, self::FUENTE_REGULAR), $tenue, self::FUENTE_REGULAR);
+
+        // Sombra suave bajo la cifra: le da peso y la despega del fondo.
+        $tamPrecio = self::tamanoQueCabe($precio, $anchoUtil, 82, 54, self::FUENTE_BOLD, -2);
+        $sombra = imagecolorallocatealpha($lienzo, 0, 0, 0, 95);
+        self::texto($lienzo, $precio, $margen + 3, $yPrecio + 4, $tamPrecio, $sombra, self::FUENTE_BOLD, -2);
+        self::texto($lienzo, $precio, $margen, $yPrecio, $tamPrecio, $blanco, self::FUENTE_BOLD, -2);
+
+        // El precio de la ARL cambia por nivel de riesgo: sin decir cuál, el valor engaña.
+        if (!empty($datos['nivel_arl'])) {
+            $sub .= ' · ARL riesgo ' . $datos['nivel_arl'];
+        }
+        self::texto($lienzo, $sub, $margen, $ySubprecio, self::tamanoQueCabe($sub, $anchoUtil, 25, 16, self::FUENTE_REGULAR), $tenue, self::FUENTE_REGULAR);
 
         // Sello de promoción, arriba a la derecha del panel.
         if (!empty($datos['en_promocion'])) {
@@ -231,15 +243,19 @@ class FlyerPlanBuilder
         // La foto es impredecible arriba (cielo claro o interior oscuro), así que se mide el
         // brillo real de esa esquina y se elige la variante que contrasta — con respaldo al
         // logo normal si el aliado no subió la variante o el archivo no está en este disco.
+        // El recorte configurado describe el LOCKUP de marca (ícono + nombre + eslogan). Aplicarlo
+        // al logo cuadrado de respaldo duplica parte del ícono, así que solo va con los lockups.
         $zonaClara = self::zonaClara($lienzo, $margen, $margen, 280, 110);
         $candidatos = $zonaClara
-            ? [$aliado->logo_marca_claro, $aliado->logo, $aliado->logo_oscuro]
-            : [$aliado->logo_oscuro, $aliado->logo_marca_claro, $aliado->logo];
+            ? [[$aliado->logo_marca_claro, true], [$aliado->logo, false], [$aliado->logo_oscuro, true]]
+            : [[$aliado->logo_oscuro, true], [$aliado->logo_marca_claro, true], [$aliado->logo, false]];
 
         $rutaLogo = null;
-        foreach ($candidatos as $candidato) {
+        $esLockup = false;
+        foreach ($candidatos as [$candidato, $lockup]) {
             if ($candidato && Storage::disk('public')->exists($candidato)) {
                 $rutaLogo = $candidato;
+                $esLockup = $lockup;
                 break;
             }
         }
@@ -247,7 +263,10 @@ class FlyerPlanBuilder
             return;
         }
 
-        $logo = LogoWatermarker::cargarConRecorte(Storage::disk('public')->path($rutaLogo), $aliado->logo_marca_recorte);
+        $logo = LogoWatermarker::cargarConRecorte(
+            Storage::disk('public')->path($rutaLogo),
+            $esLockup ? $aliado->logo_marca_recorte : null
+        );
         if (!$logo) {
             return;
         }
@@ -330,9 +349,26 @@ class FlyerPlanBuilder
         imagefilledellipse($lienzo, $x + $w - $r, $y + $h - $r, $d, $d, $color);
     }
 
-    private static function texto($lienzo, string $texto, int $x, int $y, int $tam, int $color, string $fuente): void
+    /**
+     * Dibuja texto. Con $tracking != 0 se pinta letra por letra para controlar el espaciado
+     * (GD no lo soporta nativo): positivo separa —para versalitas— y negativo junta, que es
+     * lo que necesitan los títulos grandes en mayúsculas.
+     */
+    private static function texto($lienzo, string $texto, int $x, int $y, int $tam, int $color, string $fuente, float $tracking = 0): void
     {
-        imagettftext($lienzo, $tam, 0, $x, $y, $color, base_path($fuente), $texto);
+        $ruta = base_path($fuente);
+
+        if (abs($tracking) < 0.01) {
+            imagettftext($lienzo, $tam, 0, $x, $y, $color, $ruta, $texto);
+            return;
+        }
+
+        $cursor = (float) $x;
+        foreach (preg_split('//u', $texto, -1, PREG_SPLIT_NO_EMPTY) as $letra) {
+            imagettftext($lienzo, $tam, 0, (int) round($cursor), $y, $color, $ruta, $letra);
+            $caja = imagettfbbox($tam, 0, $ruta, $letra);
+            $cursor += ($caja[2] - $caja[0]) + $tracking;
+        }
     }
 
     /** ¿La región es clara en promedio? Muestreo en cuadrícula, para elegir variante de logo. */
@@ -350,17 +386,29 @@ class FlyerPlanBuilder
         return $n > 0 && ($suma / $n) > 140;
     }
 
-    private static function anchoTexto(string $texto, int $tam, string $fuente): int
+    /** Ancho real del texto, contando el tracking con el que se va a dibujar. */
+    private static function anchoTexto(string $texto, int $tam, string $fuente, float $tracking = 0): int
     {
-        $caja = imagettfbbox($tam, 0, base_path($fuente), $texto);
-        return (int) abs($caja[2] - $caja[0]);
+        $ruta = base_path($fuente);
+
+        if (abs($tracking) < 0.01) {
+            $caja = imagettfbbox($tam, 0, $ruta, $texto);
+            return (int) abs($caja[2] - $caja[0]);
+        }
+
+        $total = 0.0;
+        foreach (preg_split('//u', $texto, -1, PREG_SPLIT_NO_EMPTY) as $letra) {
+            $caja = imagettfbbox($tam, 0, $ruta, $letra);
+            $total += ($caja[2] - $caja[0]) + $tracking;
+        }
+        return (int) round(max(0, $total - $tracking));
     }
 
     /** Baja el tamaño de fuente hasta que el texto quepa en el ancho dado. */
-    private static function tamanoQueCabe(string $texto, int $anchoMax, int $tamInicial, int $tamMin, string $fuente = self::FUENTE_BOLD): int
+    private static function tamanoQueCabe(string $texto, int $anchoMax, int $tamInicial, int $tamMin, string $fuente = self::FUENTE_BOLD, float $tracking = 0): int
     {
         for ($tam = $tamInicial; $tam > $tamMin; $tam--) {
-            if (self::anchoTexto($texto, $tam, $fuente) <= $anchoMax) {
+            if (self::anchoTexto($texto, $tam, $fuente, $tracking) <= $anchoMax) {
                 return $tam;
             }
         }

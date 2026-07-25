@@ -140,13 +140,22 @@ class FlyerPlanGenerator
         return implode("\n", $lineas);
     }
 
-    /** Prompt de la foto: misma calidez del piloto, pero con la escena propia de este plan. */
+    /**
+     * Prompt de la foto. Se pide explícitamente lenguaje de fotografía real (cámara, lente,
+     * apertura, piel sin retocar) y se prohíbe el look "render/IA": sin eso los modelos
+     * devuelven caras plásticas y colores sobresaturados que se notan al instante.
+     */
     private static function promptFoto(string $escena): string
     {
-        return "Fotografía profesional fotorrealista (no ilustración, no dibujo) en formato VERTICAL 4:5, de {$escena}. "
-            . 'Plano cercano (medio cuerpo o retrato) para que se sientan las expresiones, luz cálida natural o dorada, '
-            . 'profundidad de campo baja, look editorial humano y cercano que transmita confianza — nada de poses rígidas '
-            . 'tipo banco de imágenes. Personas colombianas de aspecto auténtico y diverso. '
+        return "Fotografía documental real, sin pose, de {$escena}. "
+            . 'Formato VERTICAL 4:5. Capturada con cámara full frame y lente 85mm a f/1.8: fondo desenfocado natural, '
+            . 'plano cercano (retrato o medio cuerpo). Luz natural cálida de media tarde, con sombras suaves reales. '
+            . 'Piel con textura auténtica: poros, líneas de expresión, brillo natural — NADA de piel alisada ni '
+            . 'retoque de belleza. Ropa con arrugas y uso real, entorno con desorden natural del día a día. '
+            . 'Personas colombianas de aspecto corriente y diverso, expresión espontánea y genuina, no sonrisa forzada. '
+            . 'Colores naturales y contenidos, como una foto sin filtros — NO sobresaturar. '
+            . 'EVITA por completo el aspecto de render 3D, ilustración digital, imagen generada por IA, foto de banco '
+            . 'de imágenes, iluminación de estudio o composición simétrica perfecta. '
             . 'IMPORTANTE: deja la mitad inferior de la imagen visualmente tranquila (sin rostros ni detalles clave ahí), '
             . 'porque se superpondrá un panel con texto. NO escribas ningún texto, letras, números ni logotipos dentro de '
             . 'la imagen: todo el texto se agrega después por separado.';

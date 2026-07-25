@@ -144,7 +144,14 @@ class CatalogoPlanesPromocion
      *
      * @return ?array{plan_nombre: string, valor_mensual: float, costo_afiliacion: float, en_promocion: bool, promocion_vence: mixed}
      */
-    public static function cotizar(string $clave, int $aliadoId): ?array
+    /**
+     * Nivel de riesgo ARL con el que se calculan los precios promocionales. El valor de la ARL
+     * cambia por nivel, así que el flyer SIEMPRE debe decir con cuál está cotizado; si no, el
+     * precio induce a error para quien trabaja en un riesgo más alto.
+     */
+    public const NIVEL_ARL_PROMOCIONAL = 1;
+
+    public static function cotizar(string $clave, int $aliadoId, int $nivelArl = self::NIVEL_ARL_PROMOCIONAL): ?array
     {
         $def = self::obtener($clave);
         if (!$def) {
@@ -168,7 +175,7 @@ class CatalogoPlanesPromocion
             return null;
         }
 
-        $resultado = CotizacionPublicaService::cotizar($plan, $modalidad, $aliadoId);
+        $resultado = CotizacionPublicaService::cotizar($plan, $modalidad, $aliadoId, ['nivel_arl' => $nivelArl]);
 
         return [
             'plan_nombre'      => $plan->nombre,
@@ -177,6 +184,8 @@ class CatalogoPlanesPromocion
             'costo_afiliacion' => $resultado['costo_afiliacion_sugerido'],
             'en_promocion'     => $resultado['en_promocion'],
             'promocion_vence'  => $resultado['promocion_vence'],
+            // Solo tiene sentido mostrarlo si el plan realmente incluye ARL.
+            'nivel_arl'        => $plan->incluye_arl ? $nivelArl : null,
         ];
     }
 }
