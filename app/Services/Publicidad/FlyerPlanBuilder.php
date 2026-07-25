@@ -580,10 +580,12 @@ class FlyerPlanBuilder
         }
         $alto = (int) round($tam * 2.4);
 
-        $fondo = imagecolorallocatealpha($lienzo, 255, 255, 255, 96);
         foreach ($servicios as $servicio) {
             $ancho = self::anchoTexto($servicio, $tam, self::FUENTE_BOLD) + $alto + 34;
-            self::rectRedondeado($lienzo, $x, $y, $ancho, $alto, (int) round($alto / 2), $fondo);
+            // Pastilla oscura translúcida con un filo claro: se lee sobre cualquier foto y
+            // no compite con el titular, como sí hacía el blanco.
+            self::rectRedondeadoTranslucido($lienzo, $x, $y, $ancho, $alto, (int) round($alto / 2), self::$paleta['rgb_navy'], 0.62);
+            self::bordeRedondeadoTranslucido($lienzo, $x, $y, $ancho, $alto, (int) round($alto / 2), [255, 255, 255], 0.30);
 
             $cx = $x + (int) round($alto * 0.52);
             $cy = $y + (int) round($alto / 2);
@@ -803,6 +805,22 @@ class FlyerPlanBuilder
 
         $color = imagecolorallocatealpha($capa, $rgb[0], $rgb[1], $rgb[2], (int) round(127 - $opacidad * 127));
         self::rectRedondeado($capa, 0, 0, $w - 1, $h - 1, $r, $color);
+
+        imagealphablending($lienzo, true);
+        imagecopy($lienzo, $capa, $x, $y, 0, 0, $w, $h);
+        imagedestroy($capa);
+    }
+
+    /** Contorno redondeado translúcido, compuesto aparte por el mismo motivo que el relleno. */
+    private static function bordeRedondeadoTranslucido($lienzo, int $x, int $y, int $w, int $h, int $r, array $rgb, float $opacidad): void
+    {
+        $capa = imagecreatetruecolor($w, $h);
+        imagealphablending($capa, false);
+        imagesavealpha($capa, true);
+        imagefilledrectangle($capa, 0, 0, $w, $h, imagecolorallocatealpha($capa, 0, 0, 0, 127));
+
+        $color = imagecolorallocatealpha($capa, $rgb[0], $rgb[1], $rgb[2], (int) round(127 - $opacidad * 127));
+        self::bordeRedondeado($capa, 0, 0, $w - 2, $h - 2, $r, $color);
 
         imagealphablending($lienzo, true);
         imagecopy($lienzo, $capa, $x, $y, 0, 0, $w, $h);
