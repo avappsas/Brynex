@@ -490,6 +490,107 @@ class WhatsappApiService
         }
     }
 
+    /**
+     * Crea una plantilla de WhatsApp en el WABA usando la Graph API.
+     * Usado para copiar la plantilla de BryNex a la cuenta propia de un aliado.
+     *
+     * @param array  $creds      Credenciales del aliado destino (waba_id, access_token)
+     * @param string $nombre     Nombre de la plantilla (snake_case, sin espacios)
+     * @param string $idioma     Ej: 'es_ES', 'es'
+     * @param string $categoria  'UTILITY' | 'MARKETING' | 'AUTHENTICATION'
+     * @param string $cuerpo     Texto del body con variables {{1}}, {{2}}, etc.
+     * @return array ['ok' => bool, 'template_id' => string|null, 'error' => string|null]
+     */
+    public function crearTemplateEnWaba(
+        array $creds,
+        string $nombre,
+        string $idioma,
+        string $categoria,
+        string $cuerpo
+    ): array {
+        $wabaId     = $creds['waba_id'];
+        $token      = $creds['access_token'];
+
+        if (!$wabaId || !$token) {
+            return ['ok' => false, 'template_id' => null, 'error' => 'Credenciales incompletas (waba_id o access_token faltantes).'];
+        }
+
+        // Detectar variables del body: {{1}}, {{2}}, {{3}}
+        preg_match_all('/\{\{(\d+)\}\}/', $cuerpo, $matches);
+        $variablesCount = count(array_unique($matches[1] ?? []));
+
+        $bodyComponent = [
+            'type'    => 'BODY',
+            'text'    => $cuerpo,
+        ];
+
+        if ($variablesCount > 0) {
+            $bodyComponent['example'] = [
+                'body_text' => [
+                    // Ejemplos de relleno para Meta (requerido cuando hay variables)
+                    array_values(array_map(fn($i) => "Ejemplo {$i}", range(1, $variablesCount)))
+                ]
+            ];
+        }
+
+        $components = [
+            [
+                'type'   => 'HEADER',
+                'format' => 'DOCUMENT',
+            ],
+            $bodyComponent,
+        ];
+
+        $payload = [
+            'name'       => $nombre,
+            'language'   => $idioma,
+            'category'   => $categoria,
+            'components' => $components,
+        ];
+
+        Log::debug('WhatsApp: creando template en WABA', [
+            'waba_id'  => $wabaId,
+            'nombre'   => $nombre,
+            'idioma'   => $idioma,
+            'payload'  => $payload,
+        ]);
+
+        try {
+            $response = $this->http->post(
+                "{$this->baseUrl}/{$wabaId}/message_templates",
+                [
+                    'headers' => [
+                        'Authorization' => "Bearer {$token}",
+                        'Content-Type'  => 'application/json',
+                    ],
+                    'json' => $payload,
+                ]
+            );
+
+            $body = (string) $response->getBody();
+            $data = json_decode($body, true);
+
+            Log::debug('WhatsApp: respuesta creación template', ['response' => $data]);
+
+            if (isset($data['id'])) {
+                return ['ok' => true, 'template_id' => (string)$data['id'], 'status' => $data['status'] ?? 'PENDING', 'error' => null];
+            }
+
+            return ['ok' => false, 'template_id' => null, 'error' => $data['error']['message'] ?? 'Respuesta inesperada de Meta.'];
+
+        } catch (RequestException $e) {
+            $errorMsg = $e->hasResponse()
+                ? $this->extraerError((string)$e->getResponse()->getBody())
+                : $e->getMessage();
+
+            Log::error('WhatsApp: error al crear template en WABA', ['error' => $errorMsg]);
+            return ['ok' => false, 'template_id' => null, 'error' => $errorMsg];
+        } catch (\Exception $e) {
+            Log::error('WhatsApp: excepción al crear template', ['error' => $e->getMessage()]);
+            return ['ok' => false, 'template_id' => null, 'error' => $e->getMessage()];
+        }
+    }
+
     private function normalizarNumero(string $numero): string
     {
         // Quitar cualquier carácter que no sea número

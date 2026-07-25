@@ -7,7 +7,6 @@ use App\Models\AutopilotConfig;
 use App\Models\IaConfiguracionAliado;
 use App\Models\Publicacion;
 use App\Models\RedSocialConfig;
-use App\Models\WhatsappConfig;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -26,7 +25,7 @@ class FlyerPlanGenerator
     /**
      * @return array{ok: bool, publicacion: ?Publicacion, error: ?string}
      */
-    public static function generar(Aliado $aliado, AutopilotConfig $config, ?string $claveForzada = null, ?int $nivelArl = null): array
+    public static function generar(Aliado $aliado, AutopilotConfig $config, ?string $claveForzada = null, ?int $nivelArl = null, ?string $estilo = null): array
     {
         $iaConfig = IaConfiguracionAliado::paraAliado($aliado->id);
         if (!$iaConfig->tieneGemini()) {
@@ -65,7 +64,7 @@ class FlyerPlanGenerator
         }
 
         $flyer = FlyerPlanBuilder::construir($imagen['rutas'][0], $aliado, array_merge($def, $precio, [
-            'whatsapp' => self::numeroWhatsapp($aliado),
+            'estilo' => $estilo ?: array_rand(FlyerPlanBuilder::ESTILOS),
         ]));
 
         if (!$flyer) {
@@ -168,28 +167,6 @@ class FlyerPlanGenerator
             . 'partes, ni dejes zonas vacías, ni hagas collage. '
             . 'NO escribas ningún texto, letras, números ni logotipos dentro de la imagen: todo el texto se agrega '
             . 'después por separado.';
-    }
-
-    private static function numeroWhatsapp(Aliado $aliado): ?string
-    {
-        $numero = WhatsappConfig::where('aliado_id', $aliado->id)->where('activo', true)->value('numero_telefono')
-            ?: $aliado->whatsapp
-            ?: $aliado->celular;
-
-        return $numero ? self::formatearNumero($numero) : null;
-    }
-
-    /** 573205400870 -> 320 540 0870 (más legible en el flyer que el formato E.164). */
-    private static function formatearNumero(string $numero): string
-    {
-        $limpio = preg_replace('/\D/', '', $numero);
-        if (str_starts_with($limpio, '57') && strlen($limpio) === 12) {
-            $limpio = substr($limpio, 2);
-        }
-        if (strlen($limpio) === 10) {
-            return substr($limpio, 0, 3) . ' ' . substr($limpio, 3, 3) . ' ' . substr($limpio, 6);
-        }
-        return $numero;
     }
 
     private static function error(string $mensaje): array

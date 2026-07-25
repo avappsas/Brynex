@@ -41,6 +41,12 @@
             <option value="{{ $nivel }}" @selected($nivel === 1)>Riesgo {{ $nivel }} — {{ $datos['resumen'] }}</option>
         @endforeach
     </select>
+    <select name="estilo" style="padding:.4rem .6rem;border:1px solid #fdba74;border-radius:8px;font-size:.8rem;background:#fff;">
+        <option value="">Plantilla al azar</option>
+        @foreach(\App\Services\Publicidad\FlyerPlanBuilder::ESTILOS as $clave => $etiqueta)
+            <option value="{{ $clave }}">{{ $etiqueta }}</option>
+        @endforeach
+    </select>
     <button type="submit" style="background:#ea580c;color:#fff;border:none;font-size:.8rem;font-weight:700;padding:.5rem 1rem;border-radius:8px;cursor:pointer;">
         Generar flyer
     </button>

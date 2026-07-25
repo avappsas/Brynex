@@ -204,6 +204,12 @@
                         <span x-show="creandoPlantilla" x-cloak><i class="fas fa-spinner fa-spin"></i> Creando...</span>
                     </button>
                 </template>
+                <template x-if="plantillaConfigurada">
+                    <button class="wa-pill-btn wa-pill-btn-glass" @click="crearPlantillaAutomatico(true)" :disabled="creandoPlantilla" title="Recrear la plantilla en Meta (por si fue eliminada o expiró)">
+                        <span x-show="!creandoPlantilla"><i class="fas fa-sync-alt"></i> Recrear Plantilla</span>
+                        <span x-show="creandoPlantilla" x-cloak><i class="fas fa-spinner fa-spin"></i> Recreando...</span>
+                    </button>
+                </template>
             </div>
         </div>
     </div>
@@ -600,12 +606,24 @@
                 </div>
             </div>
             
-            <div class="modal-foot" style="padding: 1rem 1.25rem; border-top: 1px solid #e5e7eb; display: flex; justify-content: flex-end; gap: 0.5rem; background: #f8fafc;">
-                <button class="wa-pill-btn wa-pill-btn-outline" @click="pruebaModalOpen = false">Cancelar</button>
-                <button class="wa-pill-btn wa-pill-btn-warn" @click="ejecutarEnvioPrueba()" :disabled="enviandoPrueba || !waPruebaCelular || !planoPruebaId">
-                    <span x-show="!enviandoPrueba"><i class="fas fa-paper-plane"></i> Enviar Prueba</span>
-                    <span x-show="enviandoPrueba" x-cloak><i class="fas fa-spinner fa-spin"></i> Enviando...</span>
-                </button>
+            <div class="modal-foot" style="padding: 1rem 1.25rem; border-top: 1px solid #e5e7eb; background: #f8fafc;">
+                {{-- Resultado del envío de prueba --}}
+                <template x-if="pruebaResultado">
+                    <div :style="pruebaResultado.ok
+                            ? 'background:#f0fdf4; border:1px solid #86efac; color:#166534; border-radius:8px; padding:0.65rem 0.85rem; font-size:0.82rem; margin-bottom:0.75rem; display:flex; align-items:flex-start; gap:0.5rem;'
+                            : 'background:#fef2f2; border:1px solid #fca5a5; color:#991b1b; border-radius:8px; padding:0.65rem 0.85rem; font-size:0.82rem; margin-bottom:0.75rem; display:flex; align-items:flex-start; gap:0.5rem;'"
+                    >
+                        <i :class="pruebaResultado.ok ? 'fas fa-check-circle' : 'fas fa-exclamation-triangle'" style="margin-top:0.1rem; flex-shrink:0;"></i>
+                        <span x-text="pruebaResultado.mensaje"></span>
+                    </div>
+                </template>
+                <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+                    <button class="wa-pill-btn wa-pill-btn-outline" @click="pruebaModalOpen = false; pruebaResultado = null;">Cerrar</button>
+                    <button class="wa-pill-btn wa-pill-btn-warn" @click="ejecutarEnvioPrueba()" :disabled="enviandoPrueba || !waPruebaCelular || !planoPruebaId">
+                        <span x-show="!enviandoPrueba"><i class="fas fa-paper-plane"></i> Enviar Prueba</span>
+                        <span x-show="enviandoPrueba" x-cloak><i class="fas fa-spinner fa-spin"></i> Enviando...</span>
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -666,6 +684,7 @@ function enviosPlanillaApp() {
         enviandoPrueba: false,
         waPruebaCelular: '',
         planoPruebaId: '',
+        pruebaResultado: null, // null | {ok: bool, mensaje: string},
 
         init() {
             this.cargarDestinatarios();
@@ -851,7 +870,7 @@ function enviosPlanillaApp() {
             }
         },
 
-        async crearPlantillaAutomatico() {
+        async crearPlantillaAutomatico(forzar = false) {
             this.creandoPlantilla = true;
             this.mensajeExito = '';
             this.mensajeError = '';
@@ -863,21 +882,35 @@ function enviosPlanillaApp() {
                     headers: {
                         'Content-Type': 'application/json',
                         'X-CSRF-TOKEN': csrfToken
-                    }
+                    },
+                    body: JSON.stringify({ forzar })
                 });
 
                 const data = await res.json();
-                
+
+                // Caso especial: ya existe en Meta, pedir confirmación para recrear
+                if (!data.ok && data.ya_existe) {
+                    this.creandoPlantilla = false;
+                    if (confirm(data.mensaje + '\n\n¿Desea recrearla de todas formas?')) {
+                        return this.crearPlantillaAutomatico(true);
+                    }
+                    return;
+                }
+
                 if (data.ok) {
-                    this.mensajeExito = data.mensaje;
                     this.plantillaConfigurada = true;
-                    this.plantillaNombre = data.plantilla.nombre_display;
+                    // Actualizar nombre si viene
+                    if (data.plantilla?.nombre_display) {
+                        this.plantillaNombre = data.plantilla.nombre_display;
+                    }
+                    const estadoIcono = (data.estado === 'APPROVED') ? '\u2705' : '\u23F3';
+                    this.mensajeExito = `${estadoIcono} ${data.mensaje}`;
                 } else {
-                    this.mensajeError = data.mensaje || 'Error al crear la plantilla.';
+                    this.mensajeError = '\u274C ' + (data.mensaje || 'Error al crear la plantilla.');
                 }
             } catch (err) {
                 console.error(err);
-                this.mensajeError = 'Error de conexión.';
+                this.mensajeError = '\u274C Error de conexión: ' + err.message;
             } finally {
                 this.creandoPlantilla = false;
             }
@@ -959,10 +992,14 @@ function enviosPlanillaApp() {
 
         abrirPruebaModal() {
             this.pruebaModalOpen = true;
+            this.pruebaResultado = null;
             this.waPruebaCelular = '';
-            if (this.filtrados.length > 0) {
-                this.planoPruebaId = this.filtrados[0].plano_id;
-                this.waPruebaCelular = this.filtrados[0].wa_numero || '';
+            // Preferir el primer destinatario con operador autorizado para la prueba
+            const autorizado = this.filtrados.find(d => d.es_operador_autorizado !== false);
+            const primero = autorizado || this.filtrados[0];
+            if (primero) {
+                this.planoPruebaId = primero.plano_id;
+                this.waPruebaCelular = primero.wa_numero || '';
             } else {
                 this.planoPruebaId = '';
             }
@@ -972,8 +1009,7 @@ function enviosPlanillaApp() {
             if (!this.waPruebaCelular || !this.planoPruebaId) return;
 
             this.enviandoPrueba = true;
-            this.mensajeExito = '';
-            this.mensajeError = '';
+            this.pruebaResultado = null;
 
             try {
                 const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
@@ -991,16 +1027,24 @@ function enviosPlanillaApp() {
                     })
                 });
 
-                const data = await res.json();
+                let data;
+                try {
+                    data = await res.json();
+                } catch (e) {
+                    data = { ok: false, mensaje: `Error HTTP ${res.status}: No se pudo leer la respuesta del servidor.` };
+                }
+
                 if (data.ok) {
-                    this.mensajeExito = data.mensaje || 'Mensaje de prueba enviado exitosamente.';
-                    this.pruebaModalOpen = false;
+                    this.pruebaResultado = { ok: true, mensaje: data.mensaje || '\u2705 Mensaje de prueba enviado exitosamente.' };
+                    this.mensajeExito = this.pruebaResultado.mensaje;
                 } else {
-                    this.mensajeError = data.mensaje || 'Error al enviar mensaje de prueba.';
+                    this.pruebaResultado = { ok: false, mensaje: data.mensaje || '\u274C Error al enviar mensaje de prueba.' };
+                    this.mensajeError = this.pruebaResultado.mensaje;
                 }
             } catch (err) {
                 console.error(err);
-                this.mensajeError = 'Error al enviar mensaje de prueba.';
+                this.pruebaResultado = { ok: false, mensaje: '\u274C Error de red: ' + err.message };
+                this.mensajeError = this.pruebaResultado.mensaje;
             } finally {
                 this.enviandoPrueba = false;
             }

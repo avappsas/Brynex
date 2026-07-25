@@ -1219,7 +1219,9 @@ class PlanoPagoController extends Controller
             ->first();
 
         // nombre_destinatario: siempre es el nombre del CLIENTE afiliado
-        $nombreDestinatario = $cliente ? trim("{$cliente->nombres} {$cliente->apellidos}") : 'Cliente';
+        $nombreDestinatario = $cliente
+            ? trim("{$cliente->primer_nombre} {$cliente->segundo_nombre} {$cliente->primer_apellido} {$cliente->segundo_apellido}")
+            : 'Cliente';
         $numeroCelular = $cliente?->celular;
 
         // Si es tipo contacto_empresa, enviar al número del contacto de empresa

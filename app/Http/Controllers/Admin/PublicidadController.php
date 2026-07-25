@@ -277,13 +277,15 @@ class PublicidadController extends Controller
         $validated = $request->validate([
             'plan'      => ['nullable', 'string', \Illuminate\Validation\Rule::in(array_keys(\App\Services\Publicidad\CatalogoPlanesPromocion::todos()))],
             'nivel_arl' => 'nullable|integer|between:1,5',
+            'estilo'    => ['nullable', 'string', \Illuminate\Validation\Rule::in(array_keys(\App\Services\Publicidad\FlyerPlanBuilder::ESTILOS))],
         ]);
 
         $resultado = \App\Services\Publicidad\FlyerPlanGenerator::generar(
             $aliado,
             $config,
             $validated['plan'] ?? null,
-            $validated['nivel_arl'] ?? null
+            $validated['nivel_arl'] ?? null,
+            $validated['estilo'] ?? null
         );
 
         if (!$resultado['ok']) {

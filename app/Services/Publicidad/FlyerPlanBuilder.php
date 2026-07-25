@@ -38,10 +38,17 @@ class FlyerPlanBuilder
 
     private static array $paleta = [];
 
+    /** Plantillas disponibles: misma información, distinta puesta en página. */
+    public const ESTILOS = [
+        'claro'     => 'Claro — foto al lado, fondo blanco con acentos',
+        'inmersivo' => 'Inmersivo — foto a toda página con texto encima',
+        'bloque'    => 'Bloque — foto arriba y panel de color abajo',
+    ];
+
     /**
      * @param string $rutaHero Ruta (disk public) de la imagen generada para este plan.
      * @param array  $datos    ['nombre','titular','gancho','servicios','valor_mensual',
-     *                          'costo_afiliacion','en_promocion','nivel_arl','cta']
+     *                          'costo_afiliacion','en_promocion','nivel_arl','cta','estilo']
      * @return ?string Ruta (disk public) del flyer generado, o null si algo falló.
      */
     public static function construir(string $rutaHero, Aliado $aliado, array $datos): ?string
@@ -57,14 +64,12 @@ class FlyerPlanBuilder
 
             self::prepararPaleta($lienzo, $aliado);
 
-            imagefilledrectangle($lienzo, 0, 0, self::ANCHO, self::ALTO, self::$paleta['fondo']);
-            self::pintarOndaSuperior($lienzo);
-
-            $yCabecera  = self::pintarCabecera($lienzo, $aliado);
-            $yBeneficios = self::pintarBloqueSuperior($lienzo, $rutaHero, $datos, $yCabecera);
-            $yCobertura = self::pintarTarjetasServicios($lienzo, $datos['servicios'], $yBeneficios);
-            self::pintarCobertura($lienzo, $yCobertura);
-            self::pintarLlamado($lienzo, $datos['cta'] ?? '¡Afíliate o Trasládate Ya!');
+            $estilo = $datos['estilo'] ?? 'claro';
+            match ($estilo) {
+                'inmersivo' => self::componerInmersivo($lienzo, $rutaHero, $aliado, $datos),
+                'bloque'    => self::componerBloque($lienzo, $rutaHero, $aliado, $datos),
+                default     => self::componerClaro($lienzo, $rutaHero, $aliado, $datos),
+            };
 
             $destino = 'publicidad/flyers/' . uniqid('flyer_', true) . '.png';
             Storage::disk('public')->makeDirectory('publicidad/flyers');
@@ -75,6 +80,115 @@ class FlyerPlanBuilder
         } catch (\Throwable $e) {
             return null;
         }
+    }
+
+    /** Plantilla 1: fondo claro, foto en tarjeta al lado del texto. */
+    private static function componerClaro($lienzo, string $rutaHero, Aliado $aliado, array $datos): void
+    {
+        imagefilledrectangle($lienzo, 0, 0, self::ANCHO, self::ALTO, self::$paleta['fondo']);
+        self::pintarFondo($lienzo);
+
+        $yCabecera   = self::pintarCabecera($lienzo, $aliado);
+        $yBeneficios = self::pintarBloqueSuperior($lienzo, $rutaHero, $datos, $yCabecera);
+        $yCobertura  = self::pintarTarjetasServicios($lienzo, $datos['servicios'], $yBeneficios);
+        self::pintarCobertura($lienzo, $yCobertura);
+        self::pintarLlamado($lienzo, $datos['cta'] ?? '¡Afíliate o Trasládate Ya!');
+    }
+
+    /** Plantilla 2: foto a toda página, oscurecida abajo, con el texto encima. */
+    private static function componerInmersivo($lienzo, string $rutaHero, Aliado $aliado, array $datos): void
+    {
+        self::pintarFotoCompleta($lienzo, $rutaHero);
+
+        // Velo oscuro: un toque arriba para el logo y una rampa fuerte desde el centro hacia
+        // abajo. Sin esta profundidad el texto blanco se pierde sobre las zonas claras de la
+        // foto (la foto es impredecible, así que el velo tiene que ser generoso).
+        $navy = self::$paleta['rgb_navy'];
+        $inicioRampa = (int) round(self::ALTO * 0.30);
+        $finRampa    = (int) round(self::ALTO * 0.60);
+
+        for ($y = 0; $y < self::ALTO; $y++) {
+            $arriba = max(0.0, 0.46 * (1 - $y / 280));
+            $abajo  = min(1.0, max(0.0, ($y - $inicioRampa) / ($finRampa - $inicioRampa))) * 0.93;
+            $opacidad = min(0.95, max($arriba, $abajo));
+            if ($opacidad <= 0.01) continue;
+
+            $col = imagecolorallocatealpha($lienzo, $navy[0], $navy[1], $navy[2], (int) round(127 - $opacidad * 127));
+            imageline($lienzo, 0, $y, self::ANCHO, $y, $col);
+        }
+
+        self::pintarCabeceraSobreFoto($lienzo, $aliado);
+
+        // Titular + precio + servicios, apilados en la mitad inferior.
+        $y = 706;
+        [$fuerte, $script] = $datos['titular'] ?? [mb_strtoupper($datos['nombre']), ''];
+        $anchoUtil = self::ANCHO - self::MARGEN * 2;
+
+        $tamFuerte = self::tamanoQueCabe($fuerte, $anchoUtil, 52, 30, self::FUENTE_BOLD, -0.5);
+        self::texto($lienzo, $fuerte, self::MARGEN, $y, $tamFuerte, self::$paleta['blanco'], self::FUENTE_BOLD, -0.5);
+
+        if ($script !== '') {
+            $tamScript = self::tamanoQueCabe($script, $anchoUtil, 80, 40, self::FUENTE_SCRIPT);
+            $y += (int) round($tamScript * 1.02) + 16;
+            self::texto($lienzo, $script, self::MARGEN - 4, $y, $tamScript, self::$paleta['acentoClaro'], self::FUENTE_SCRIPT);
+        }
+
+        $y += 46;
+        $altoChips = self::pintarFilaServiciosPlana($lienzo, $datos['servicios'], self::MARGEN, $y);
+
+        $y += $altoChips + 52;
+        self::pintarPrecioEnLinea($lienzo, self::MARGEN, $y, $datos);
+
+        self::pintarLlamado($lienzo, $datos['cta'] ?? '¡Afíliate o Trasládate Ya!');
+    }
+
+    /** Plantilla 3: foto arriba a sangre y panel de color sólido abajo. */
+    private static function componerBloque($lienzo, string $rutaHero, Aliado $aliado, array $datos): void
+    {
+        $yCorte = 612;
+
+        self::pintarFotoRecorte($lienzo, $rutaHero, 0, 0, self::ANCHO, $yCorte + 60);
+
+        // Velo superior: la cabecera va sobre la foto y esta puede ser clara justo ahí.
+        $navy = self::$paleta['rgb_navy'];
+        for ($y = 0; $y < 240; $y++) {
+            $opacidad = 0.58 * (1 - $y / 240) ** 1.4;
+            if ($opacidad <= 0.01) continue;
+            $col = imagecolorallocatealpha($lienzo, $navy[0], $navy[1], $navy[2], (int) round(127 - $opacidad * 127));
+            imageline($lienzo, 0, $y, self::ANCHO, $y, $col);
+        }
+
+        // Panel inferior en color de marca oscuro, con el borde superior inclinado.
+        $navy = self::$paleta['navy'];
+        imagefilledpolygon($lienzo, [
+            0, $yCorte + 54,
+            self::ANCHO, $yCorte - 26,
+            self::ANCHO, self::ALTO,
+            0, self::ALTO,
+        ], $navy);
+
+        self::pintarCabeceraSobreFoto($lienzo, $aliado);
+
+        $anchoUtil = self::ANCHO - self::MARGEN * 2;
+        $y = $yCorte + 118;
+
+        [$fuerte, $script] = $datos['titular'] ?? [mb_strtoupper($datos['nombre']), ''];
+        $tamFuerte = self::tamanoQueCabe($fuerte, $anchoUtil, 46, 28, self::FUENTE_BOLD, -0.5);
+        self::texto($lienzo, $fuerte, self::MARGEN, $y, $tamFuerte, self::$paleta['blanco'], self::FUENTE_BOLD, -0.5);
+
+        if ($script !== '') {
+            $tamScript = self::tamanoQueCabe($script, $anchoUtil, 70, 36, self::FUENTE_SCRIPT);
+            $y += (int) round($tamScript * 1.02) + 12;
+            self::texto($lienzo, $script, self::MARGEN - 4, $y, $tamScript, self::$paleta['acentoClaro'], self::FUENTE_SCRIPT);
+        }
+
+        $y += 42;
+        $altoChips = self::pintarFilaServiciosPlana($lienzo, $datos['servicios'], self::MARGEN, $y);
+
+        $y += $altoChips + 48;
+        self::pintarPrecioEnLinea($lienzo, self::MARGEN, $y, $datos);
+
+        self::pintarLlamado($lienzo, $datos['cta'] ?? '¡Afíliate o Trasládate Ya!');
     }
 
     private static function prepararPaleta($lienzo, Aliado $aliado): void
@@ -95,26 +209,56 @@ class FlyerPlanBuilder
             'borde'      => imagecolorallocate($lienzo, ...self::mezclar($marca, [255, 255, 255], 0.80)),
             'blanco'     => imagecolorallocate($lienzo, 255, 255, 255),
             'verde'      => imagecolorallocate($lienzo, 22, 163, 74),
+            // Sobre el azul oscuro de la caja de precio, un tono claro de marca para las
+            // etiquetas: contrasta sin robarle atención a la cifra.
+            'acentoClaro' => imagecolorallocate($lienzo, ...self::mezclar($marca, [255, 255, 255], 0.55)),
         ];
     }
 
-    /** Onda azul de fondo en la esquina superior derecha: da el aire "premium" sin ensuciar. */
-    private static function pintarOndaSuperior($lienzo): void
+    /**
+     * Fondo decorado: degradado suave de arriba a abajo, una forma grande de marca detrás de
+     * la foto y una retícula de puntos. Da presencia sin competir con el contenido.
+     */
+    private static function pintarFondo($lienzo): void
     {
-        $onda = self::$paleta['suave'];
-        imagefilledellipse($lienzo, self::ANCHO - 60, 120, 900, 620, $onda);
+        $arriba = self::mezclar(self::$paleta['rgb_marca'], [255, 255, 255], 0.90);
+        $abajo  = [255, 255, 255];
+
+        // Degradado vertical: arranca con un velo de marca y se abre a blanco hacia el centro.
+        $altoDegradado = (int) round(self::ALTO * 0.62);
+        for ($y = 0; $y < $altoDegradado; $y++) {
+            $t = ($y / $altoDegradado) ** 0.75;
+            $col = imagecolorallocate($lienzo, ...self::mezclar($arriba, $abajo, $t));
+            imageline($lienzo, 0, $y, self::ANCHO, $y, $col);
+        }
+
+        // Círculo de marca detrás de la foto (queda parcialmente fuera del lienzo).
+        $circulo = imagecolorallocate($lienzo, ...self::mezclar(self::$paleta['rgb_marca'], [255, 255, 255], 0.80));
+        imagefilledellipse($lienzo, self::ANCHO - 40, 470, 760, 760, $circulo);
+
+        // Retícula de puntos: textura sutil abajo a la izquierda.
+        $punto = imagecolorallocate($lienzo, ...self::mezclar(self::$paleta['rgb_marca'], [255, 255, 255], 0.62));
+        for ($fila = 0; $fila < 5; $fila++) {
+            for ($col = 0; $col < 7; $col++) {
+                imagefilledellipse($lienzo, 42 + $col * 26, self::ALTO - 250 + $fila * 26, 6, 6, $punto);
+            }
+        }
+
+        // Franja de marca al pie: asienta el botón y cierra la composición.
+        $franja = imagecolorallocate($lienzo, ...self::mezclar(self::$paleta['rgb_marca'], [255, 255, 255], 0.88));
+        imagefilledrectangle($lienzo, 0, self::ALTO - 176, self::ANCHO, self::ALTO, $franja);
     }
 
     /** Logo + nombre + eslogan. Devuelve la Y donde termina. */
     private static function pintarCabecera($lienzo, Aliado $aliado): int
     {
         $x = self::MARGEN;
-        $yBase = 66;
-        $altoLogo = 92;
+        $yBase = 58;
+        $altoLogo = 116;
 
         $logo = self::cargarLogo($aliado);
         if ($logo) {
-            $escala = min(230 / imagesx($logo), $altoLogo / imagesy($logo));
+            $escala = min(290 / imagesx($logo), $altoLogo / imagesy($logo));
             $w = (int) round(imagesx($logo) * $escala);
             $h = (int) round(imagesy($logo) * $escala);
 
@@ -138,15 +282,15 @@ class FlyerPlanBuilder
 
         // Sin eslogan el nombre se centra verticalmente contra el logo, para que no quede
         // colgando de la línea superior.
-        $yNombre = $eslogan !== '' ? $yBase + 46 : $yBase + 60;
-        $tam = self::tamanoQueCabe($nombre, $anchoTexto, 34, 20, self::FUENTE_BOLD, 1.5);
+        $yNombre = $eslogan !== '' ? $yBase + 58 : $yBase + 72;
+        $tam = self::tamanoQueCabe($nombre, $anchoTexto, 36, 20, self::FUENTE_BOLD, 1.5);
         self::texto($lienzo, $nombre, $x, $yNombre, $tam, self::$paleta['navy'], self::FUENTE_BOLD, 1.5);
 
         if ($eslogan !== '') {
-            self::texto($lienzo, $eslogan, $x, $yBase + 76, self::tamanoQueCabe($eslogan, $anchoTexto, 17, 12, self::FUENTE_REGULAR, 0.6), self::$paleta['gris'], self::FUENTE_REGULAR, 0.6);
+            self::texto($lienzo, $eslogan, $x, $yBase + 90, self::tamanoQueCabe($eslogan, $anchoTexto, 17, 12, self::FUENTE_REGULAR, 0.6), self::$paleta['gris'], self::FUENTE_REGULAR, 0.6);
         }
 
-        return $yBase + $altoLogo + 26;
+        return $yBase + $altoLogo + 14;
     }
 
     /**
@@ -186,7 +330,7 @@ class FlyerPlanBuilder
         }
 
         // ── Recuadro de precio, anclado al pie de la columna ──────────────
-        $altoCaja = 200;
+        $altoCaja = !empty($datos['nivel_arl']) ? 268 : 240;
         $yCaja = $y + $altoFoto - $altoCaja;
         self::pintarCajaPrecio($lienzo, self::MARGEN, $yCaja, $anchoCol, $altoCaja, $datos);
 
@@ -251,22 +395,34 @@ class FlyerPlanBuilder
         self::rectRedondeado($lienzo, $x, $y, $w, $alto, 26, self::$paleta['navy']);
 
         // Nombre del plan como cintillo dentro de la caja.
-        self::texto($lienzo, mb_strtoupper($datos['nombre']), $x + 30, $y + 42, 19, self::$paleta['blanco'], self::FUENTE_MEDIA, 2.2);
+        self::texto($lienzo, mb_strtoupper($datos['nombre']), $x + 30, $y + 40, 18, self::$paleta['blanco'], self::FUENTE_MEDIA, 2.2);
 
-        $precio = '$' . self::pesos($mensual);
-        $tamPrecio = self::tamanoQueCabe($precio, $w - 150, 74, 44, self::FUENTE_BOLD, -2);
-        self::texto($lienzo, $precio, $x + 30, $y + 118, $tamPrecio, self::$paleta['blanco'], self::FUENTE_BOLD, -2);
-
-        $anchoPrecio = self::anchoTexto($precio, $tamPrecio, self::FUENTE_BOLD, -2);
-        self::texto($lienzo, 'AL MES', $x + 42 + $anchoPrecio, $y + 116, 19, self::$paleta['blanco'], self::FUENTE_MEDIA, 2);
-
-        $pie = $afiliacion > 0
-            ? 'Afiliación este mes $' . self::pesos($afiliacion)
-            : 'Sin costo de afiliación';
-        if (!empty($datos['nivel_arl'])) {
-            $pie .= '  ·  ARL riesgo ' . $datos['nivel_arl'];
+        // El gancho comercial es lo que paga HOY: va primero y grande. El valor mensual
+        // queda debajo, más pequeño, para que no compita con él.
+        if ($afiliacion > 0) {
+            $etiqueta = 'AFÍLIATE ESTE MES POR';
+            $destacado = '$' . self::pesos($afiliacion);
+            $secundario = 'Luego $' . self::pesos($mensual) . ' al mes';
+        } else {
+            $etiqueta = 'DESDE';
+            $destacado = '$' . self::pesos($mensual);
+            $secundario = 'al mes · sin costo de afiliación';
         }
-        self::texto($lienzo, $pie, $x + 30, $y + 160, self::tamanoQueCabe($pie, $w - 60, 18, 13, self::FUENTE_REGULAR), self::$paleta['blanco'], self::FUENTE_REGULAR, 0.3);
+
+        self::texto($lienzo, $etiqueta, $x + 30, $y + 76, 17, self::$paleta['acentoClaro'], self::FUENTE_MEDIA, 2.4);
+
+        // La cifra se ancla en su línea base: hay que dejarle su propio alto por encima,
+        // o se monta sobre la etiqueta.
+        $tamPrecio = self::tamanoQueCabe($destacado, $w - 60, 82, 46, self::FUENTE_BOLD, -2);
+        $yPrecio = $y + 90 + $tamPrecio;
+        self::texto($lienzo, $destacado, $x + 30, $yPrecio, $tamPrecio, self::$paleta['blanco'], self::FUENTE_BOLD, -2);
+
+        self::texto($lienzo, $secundario, $x + 30, $yPrecio + 40, self::tamanoQueCabe($secundario, $w - 60, 21, 14, self::FUENTE_MEDIA), self::$paleta['blanco'], self::FUENTE_MEDIA, 0.3);
+
+        if (!empty($datos['nivel_arl'])) {
+            $nota = 'ARL riesgo ' . $datos['nivel_arl'];
+            self::texto($lienzo, $nota, $x + 30, $yPrecio + 72, 15, self::$paleta['acentoClaro'], self::FUENTE_REGULAR, 0.4);
+        }
 
         if (!empty($datos['en_promocion'])) {
             self::pintarSello($lienzo, 'PROMO', $x + $w - 24, $y - 18);
@@ -310,6 +466,143 @@ class FlyerPlanBuilder
         }
 
         return $y + $alto + 30;
+    }
+
+    /** Foto a sangre cubriendo todo el lienzo (plantilla inmersiva). */
+    private static function pintarFotoCompleta($lienzo, string $ruta): void
+    {
+        self::pintarFotoRecorte($lienzo, $ruta, 0, 0, self::ANCHO, self::ALTO);
+    }
+
+    /** Dibuja la foto recortada "cover" en el rectángulo dado, sin marco ni esquinas. */
+    private static function pintarFotoRecorte($lienzo, string $ruta, int $x, int $y, int $w, int $h): void
+    {
+        $foto = self::cargar(Storage::disk('public')->path($ruta));
+        if (!$foto) {
+            return;
+        }
+
+        $escala = max($w / imagesx($foto), $h / imagesy($foto));
+        $wDest = (int) round(imagesx($foto) * $escala);
+        $hDest = (int) round(imagesy($foto) * $escala);
+
+        imagecopyresampled(
+            $lienzo, $foto,
+            $x + (int) round(($w - $wDest) / 2), $y + (int) round(($h - $hDest) / 2),
+            0, 0, $wDest, $hDest, imagesx($foto), imagesy($foto)
+        );
+        imagedestroy($foto);
+    }
+
+    /** Cabecera para las plantillas con foto de fondo: logo y textos en blanco. */
+    private static function pintarCabeceraSobreFoto($lienzo, Aliado $aliado): void
+    {
+        $x = self::MARGEN;
+        $yBase = 52;
+        $altoLogo = 106;
+
+        // Sobre foto se prefiere la variante para fondos oscuros.
+        $logo = self::cargarLogo($aliado, true);
+        if ($logo) {
+            $escala = min(280 / imagesx($logo), $altoLogo / imagesy($logo));
+            $w = (int) round(imagesx($logo) * $escala);
+            $h = (int) round(imagesy($logo) * $escala);
+
+            $redim = imagecreatetruecolor($w, $h);
+            imagealphablending($redim, false);
+            imagesavealpha($redim, true);
+            imagefilledrectangle($redim, 0, 0, $w, $h, imagecolorallocatealpha($redim, 0, 0, 0, 127));
+            imagecopyresampled($redim, $logo, 0, 0, 0, 0, $w, $h, imagesx($logo), imagesy($logo));
+            imagealphablending($lienzo, true);
+            imagecopy($lienzo, $redim, $x, $yBase, 0, 0, $w, $h);
+
+            imagedestroy($logo);
+            imagedestroy($redim);
+            $x += $w + 22;
+        }
+
+        $eslogan = trim((string) $aliado->eslogan);
+        $anchoTexto = self::ANCHO - $x - self::MARGEN;
+        $nombre = mb_strtoupper($aliado->nombre);
+
+        $tam = self::tamanoQueCabe($nombre, $anchoTexto, 34, 20, self::FUENTE_BOLD, 1.5);
+        self::texto($lienzo, $nombre, $x, $yBase + ($eslogan !== '' ? 54 : 66), $tam, self::$paleta['blanco'], self::FUENTE_BOLD, 1.5);
+
+        if ($eslogan !== '') {
+            self::texto($lienzo, $eslogan, $x, $yBase + 84, self::tamanoQueCabe($eslogan, $anchoTexto, 17, 12, self::FUENTE_REGULAR, 0.6), self::$paleta['acentoClaro'], self::FUENTE_REGULAR, 0.6);
+        }
+    }
+
+    /**
+     * Fila compacta de servicios con chulo, para las plantillas sobre fondo oscuro.
+     * Devuelve su alto real (cambia si hubo que achicarla para que quepa).
+     */
+    private static function pintarFilaServiciosPlana($lienzo, array $servicios, int $x, int $y): int
+    {
+        $tam = 21;
+        $alto = 50;
+        $sep = 14;
+
+        // Se achica la fila entera antes que permitir que se salga del margen.
+        $anchoMax = self::ANCHO - self::MARGEN * 2;
+        $medir = function (int $t) use ($servicios, $sep) {
+            $alto = (int) round($t * 2.4);
+            $total = -$sep;
+            foreach ($servicios as $s) {
+                $total += self::anchoTexto($s, $t, self::FUENTE_BOLD) + $alto + 34 + $sep;
+            }
+            return $total;
+        };
+        while ($tam > 13 && $medir($tam) > $anchoMax) {
+            $tam--;
+        }
+        $alto = (int) round($tam * 2.4);
+
+        $fondo = imagecolorallocatealpha($lienzo, 255, 255, 255, 96);
+        foreach ($servicios as $servicio) {
+            $ancho = self::anchoTexto($servicio, $tam, self::FUENTE_BOLD) + $alto + 34;
+            self::rectRedondeado($lienzo, $x, $y, $ancho, $alto, (int) round($alto / 2), $fondo);
+
+            $cx = $x + (int) round($alto * 0.52);
+            $cy = $y + (int) round($alto / 2);
+            $u = $tam / 21;
+            imagesetthickness($lienzo, max(3, (int) round(4 * $u)));
+            $verde = imagecolorallocate($lienzo, 74, 222, 128);
+            imageline($lienzo, (int) ($cx - 8 * $u), (int) $cy, (int) ($cx - 2 * $u), (int) ($cy + 7 * $u), $verde);
+            imageline($lienzo, (int) ($cx - 2 * $u), (int) ($cy + 7 * $u), (int) ($cx + 9 * $u), (int) ($cy - 8 * $u), $verde);
+            imagesetthickness($lienzo, 1);
+
+            self::texto($lienzo, $servicio, $x + $alto + 12, $cy + (int) round($tam * 0.36), $tam, self::$paleta['blanco'], self::FUENTE_BOLD);
+            $x += $ancho + $sep;
+        }
+
+        return $alto;
+    }
+
+    /** Precio en una línea (sin recuadro), para las plantillas sobre fondo oscuro. */
+    private static function pintarPrecioEnLinea($lienzo, int $x, int $y, array $datos): void
+    {
+        $mensual    = (float) ($datos['valor_mensual'] ?? 0);
+        $afiliacion = (float) ($datos['costo_afiliacion'] ?? 0);
+
+        if ($afiliacion > 0) {
+            $etiqueta = 'AFÍLIATE ESTE MES POR';
+            $destacado = '$' . self::pesos($afiliacion);
+            $secundario = 'Luego $' . self::pesos($mensual) . ' al mes';
+        } else {
+            $etiqueta = 'DESDE';
+            $destacado = '$' . self::pesos($mensual);
+            $secundario = 'al mes · sin costo de afiliación';
+        }
+        if (!empty($datos['nivel_arl'])) {
+            $secundario .= '  ·  ARL riesgo ' . $datos['nivel_arl'];
+        }
+
+        self::texto($lienzo, $etiqueta, $x, $y, 17, self::$paleta['acentoClaro'], self::FUENTE_MEDIA, 2.4);
+
+        $tam = self::tamanoQueCabe($destacado, self::ANCHO - $x * 2, 88, 50, self::FUENTE_BOLD, -2);
+        self::texto($lienzo, $destacado, $x, $y + 16 + $tam, $tam, self::$paleta['blanco'], self::FUENTE_BOLD, -2);
+        self::texto($lienzo, $secundario, $x, $y + 52 + $tam, self::tamanoQueCabe($secundario, self::ANCHO - $x * 2, 21, 14, self::FUENTE_MEDIA), self::$paleta['blanco'], self::FUENTE_MEDIA, 0.3);
     }
 
     /** Íconos dibujados a mano: no dependemos de que la fuente traiga glifos. */
@@ -565,11 +858,15 @@ class FlyerPlanBuilder
         return $lineas;
     }
 
-    private static function cargarLogo(Aliado $aliado)
+    private static function cargarLogo(Aliado $aliado, bool $paraFondoOscuro = false)
     {
-        // Sobre fondo blanco va la variante para fondos claros. El recorte configurado
-        // describe el lockup de marca: aplicarlo al logo cuadrado lo duplicaría.
-        foreach ([[$aliado->logo_marca_claro, true], [$aliado->logo, false], [$aliado->logo_oscuro, true]] as [$ruta, $esLockup]) {
+        // El recorte configurado describe el lockup de marca: aplicarlo al logo cuadrado de
+        // respaldo lo duplicaría, así que solo se usa con los lockups.
+        $candidatos = $paraFondoOscuro
+            ? [[$aliado->logo_oscuro, true], [$aliado->logo_marca_claro, true], [$aliado->logo, false]]
+            : [[$aliado->logo_marca_claro, true], [$aliado->logo, false], [$aliado->logo_oscuro, true]];
+
+        foreach ($candidatos as [$ruta, $esLockup]) {
             if ($ruta && Storage::disk('public')->exists($ruta)) {
                 return LogoWatermarker::cargarConRecorte(
                     Storage::disk('public')->path($ruta),
