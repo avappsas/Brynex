@@ -30,6 +30,7 @@ class Aliado extends BaseModel
         'logo',
         'logo_oscuro',
         'logo_marca_claro',
+        'logo_marca_recorte',
         'color_primario',
         'slug',
         'dominio_propio',
@@ -45,6 +46,7 @@ class Aliado extends BaseModel
         'afiliaciones_brynex' => 'boolean',
         'brynex_fecha_inicio' => 'date',
         'brynex_fecha_fin'    => 'date',
+        'logo_marca_recorte'  => 'array',
     ];
 
     // Usuario BryNex asignado por defecto como encargado de afiliación

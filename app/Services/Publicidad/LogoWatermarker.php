@@ -20,8 +20,13 @@ class LogoWatermarker
     /**
      * @param ?string $rutaLogoClaro  Logo oscuro/de color — para fondos CLAROS (campo `logo`).
      * @param ?string $rutaLogoOscuro Logo claro/blanco — para fondos OSCUROS (campo `logo_oscuro`).
+     * @param ?array  $recorte Opcional {icono_ancho_pct, wordmark_y_inicio_pct, wordmark_y_fin_pct}
+     *   — layout ícono-izquierda + texto-derecha (nombre arriba, eslogan abajo): recompone
+     *   ícono completo + SOLO el nombre (sin el eslogan, que se vuelve ilegible al achicar).
+     *   Si no se pasa, usa el logo completo tal cual — comportamiento seguro por defecto para
+     *   cualquier aliado cuyo logo no siga ese layout específico.
      */
-    public static function aplicar(string $rutaImagen, ?string $rutaLogoClaro, ?string $rutaLogoOscuro = null): void
+    public static function aplicar(string $rutaImagen, ?string $rutaLogoClaro, ?string $rutaLogoOscuro = null, ?array $recorte = null): void
     {
         if (!$rutaLogoClaro || !Storage::disk('public')->exists($rutaImagen) || !Storage::disk('public')->exists($rutaLogoClaro)) {
             return;
@@ -43,7 +48,7 @@ class LogoWatermarker
             // Primero se necesita saber las proporciones reales del logo para calcular dónde
             // cae la esquina y poder medir su brillo — se usa `logo` (claro) como referencia
             // de proporción, asumiendo que ambas variantes comparten el mismo tamaño.
-            $logoRef = self::cargar(Storage::disk('public')->path($rutaLogoClaro));
+            $logoRef = self::cargarConRecorte(Storage::disk('public')->path($rutaLogoClaro), $recorte);
             if (!$logoRef) return;
             $escala = min($anchoLogo / imagesx($logoRef), $altoLogoMax / imagesy($logoRef));
             $wLogo = (int) round(imagesx($logoRef) * $escala);
@@ -58,7 +63,7 @@ class LogoWatermarker
                 ? $rutaLogoOscuro
                 : $rutaLogoClaro;
 
-            $logo = self::cargar(Storage::disk('public')->path($rutaElegida));
+            $logo = self::cargarConRecorte(Storage::disk('public')->path($rutaElegida), $recorte);
             if (!$logo) return;
 
             // Logo redimensionado a su propio canvas, con transparencia real intacta.
@@ -134,6 +139,72 @@ class LogoWatermarker
         }
 
         return $n > 0 && ($suma / $n) < 130;
+    }
+
+    /** Carga el logo y, si hay recorte configurado, recompone ícono completo + solo el nombre (sin eslogan). */
+    private static function cargarConRecorte(string $path, ?array $recorte)
+    {
+        $origen = self::cargar($path);
+        if (!$origen || !$recorte) {
+            return $origen;
+        }
+
+        $anchoSrc = imagesx($origen);
+        $altoSrc  = imagesy($origen);
+        $xIcono   = (int) round($anchoSrc * ((float) ($recorte['icono_ancho_pct'] ?? 0) / 100));
+        $yIni     = (int) round($altoSrc * ((float) ($recorte['wordmark_y_inicio_pct'] ?? 0) / 100));
+        $yFin     = (int) round($altoSrc * ((float) ($recorte['wordmark_y_fin_pct'] ?? 100) / 100));
+
+        if ($xIcono <= 0 || $xIcono >= $anchoSrc || $yFin <= $yIni) {
+            return $origen; // config inválida, usar el logo completo tal cual
+        }
+
+        // Ícono: columna izquierda, alto completo.
+        $icono = imagecreatetruecolor($xIcono, $altoSrc);
+        imagealphablending($icono, false);
+        imagesavealpha($icono, true);
+        $trans = imagecolorallocatealpha($icono, 0, 0, 0, 127);
+        imagefilledrectangle($icono, 0, 0, $xIcono, $altoSrc, $trans);
+        imagecopy($icono, $origen, 0, 0, 0, 0, $xIcono, $altoSrc);
+
+        // Wordmark: columna derecha, solo la franja del nombre (sin el eslogan debajo).
+        $anchoTexto = $anchoSrc - $xIcono;
+        $altoTexto  = $yFin - $yIni;
+        $wordmark = imagecreatetruecolor($anchoTexto, $altoTexto);
+        imagealphablending($wordmark, false);
+        imagesavealpha($wordmark, true);
+        $trans2 = imagecolorallocatealpha($wordmark, 0, 0, 0, 127);
+        imagefilledrectangle($wordmark, 0, 0, $anchoTexto, $altoTexto, $trans2);
+        imagecopy($wordmark, $origen, 0, 0, $xIcono, $yIni, $anchoTexto, $altoTexto);
+        imagedestroy($origen);
+
+        // Escalar el wordmark a ~42% del alto del ícono y unir lado a lado con un margen.
+        $altoWordmarkFinal  = (int) round($altoSrc * 0.42);
+        $anchoWordmarkFinal = (int) round($anchoTexto * ($altoWordmarkFinal / $altoTexto));
+        $wordmarkResize = imagecreatetruecolor($anchoWordmarkFinal, $altoWordmarkFinal);
+        imagealphablending($wordmarkResize, false);
+        imagesavealpha($wordmarkResize, true);
+        $trans3 = imagecolorallocatealpha($wordmarkResize, 0, 0, 0, 127);
+        imagefilledrectangle($wordmarkResize, 0, 0, $anchoWordmarkFinal, $altoWordmarkFinal, $trans3);
+        imagecopyresampled($wordmarkResize, $wordmark, 0, 0, 0, 0, $anchoWordmarkFinal, $altoWordmarkFinal, $anchoTexto, $altoTexto);
+        imagedestroy($wordmark);
+
+        $gap = (int) round($xIcono * 0.04);
+        $anchoFinal = $xIcono + $gap + $anchoWordmarkFinal;
+        $final = imagecreatetruecolor($anchoFinal, $altoSrc);
+        imagealphablending($final, false);
+        imagesavealpha($final, true);
+        $trans4 = imagecolorallocatealpha($final, 0, 0, 0, 127);
+        imagefilledrectangle($final, 0, 0, $anchoFinal, $altoSrc, $trans4);
+        imagealphablending($final, true);
+        imagecopy($final, $icono, 0, 0, 0, 0, $xIcono, $altoSrc);
+        $yWordmark = (int) round(($altoSrc - $altoWordmarkFinal) / 2);
+        imagecopy($final, $wordmarkResize, $xIcono + $gap, $yWordmark, 0, 0, $anchoWordmarkFinal, $altoWordmarkFinal);
+
+        imagedestroy($icono);
+        imagedestroy($wordmarkResize);
+
+        return $final;
     }
 
     private static function cargar(string $path)

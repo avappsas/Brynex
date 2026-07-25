@@ -47,6 +47,9 @@ class AlidoController extends Controller
             'logo'                 => 'nullable|image|mimes:png,jpg,jpeg,svg|max:2048',
             'logo_oscuro'          => 'nullable|image|mimes:png,jpg,jpeg,svg|max:2048',
             'logo_marca_claro'     => 'nullable|image|mimes:png,jpg,jpeg,svg|max:2048',
+            'logo_marca_recorte.icono_ancho_pct'       => 'nullable|numeric|min:0|max:100',
+            'logo_marca_recorte.wordmark_y_inicio_pct' => 'nullable|numeric|min:0|max:100',
+            'logo_marca_recorte.wordmark_y_fin_pct'    => 'nullable|numeric|min:0|max:100',
             'afiliaciones_brynex'  => 'boolean',
             'encargado_afil_id'    => 'nullable|exists:users,id',
         ]);
@@ -69,6 +72,7 @@ class AlidoController extends Controller
             $file->move(public_path('storage/logos'), $filename);
             $data['logo_marca_claro'] = 'logos/' . $filename;
         }
+        $data['logo_marca_recorte'] = array_filter($data['logo_marca_recorte'] ?? []) ?: null;
 
         $data['activo'] = $request->boolean('activo', true);
         $data['afiliaciones_brynex'] = $request->boolean('afiliaciones_brynex', false);
@@ -120,6 +124,9 @@ class AlidoController extends Controller
             'logo'                 => 'nullable|image|mimes:png,jpg,jpeg,svg|max:2048',
             'logo_oscuro'          => 'nullable|image|mimes:png,jpg,jpeg,svg|max:2048',
             'logo_marca_claro'     => 'nullable|image|mimes:png,jpg,jpeg,svg|max:2048',
+            'logo_marca_recorte.icono_ancho_pct'       => 'nullable|numeric|min:0|max:100',
+            'logo_marca_recorte.wordmark_y_inicio_pct' => 'nullable|numeric|min:0|max:100',
+            'logo_marca_recorte.wordmark_y_fin_pct'    => 'nullable|numeric|min:0|max:100',
             'afiliaciones_brynex'  => 'boolean',
             'encargado_afil_id'    => 'nullable|exists:users,id',
         ]);
@@ -162,6 +169,7 @@ class AlidoController extends Controller
         } else {
             $data['logo_marca_claro'] = $aliado->logo_marca_claro;
         }
+        $data['logo_marca_recorte'] = array_filter($data['logo_marca_recorte'] ?? []) ?: null;
 
         $data['activo'] = $request->boolean('activo');
         $data['afiliaciones_brynex'] = $request->boolean('afiliaciones_brynex', false);

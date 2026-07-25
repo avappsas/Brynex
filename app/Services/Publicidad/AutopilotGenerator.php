@@ -73,7 +73,7 @@ class AutopilotGenerator
             return ['ok' => false, 'publicacion' => null, 'error' => 'Imagen: ' . ($imagen['error'] ?? 'Gemini no devolvió imagen.')];
         }
 
-        LogoWatermarker::aplicar($imagen['rutas'][0], $aliado->logo_marca_claro, $aliado->logo_oscuro);
+        LogoWatermarker::aplicar($imagen['rutas'][0], $aliado->logo_marca_claro, $aliado->logo_oscuro, $aliado->logo_marca_recorte);
 
         $destinos = array_merge(
             ['web'],

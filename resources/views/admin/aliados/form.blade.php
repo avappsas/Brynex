@@ -162,6 +162,36 @@
                 </div>
             </div>
             <div style="font-size:0.68rem;color:#94a3b8;margin-top:0.6rem;">El sistema elige la variante correcta según qué tan oscura sea la esquina de cada foto. Si solo subes una, se usa siempre esa.</div>
+
+            @php($recorte = old('logo_marca_recorte', $aliado->logo_marca_recorte ?? []))
+            <details style="margin-top:0.85rem;">
+                <summary style="font-size:0.72rem;font-weight:600;color:#7c3aed;cursor:pointer;">⚙️ Avanzado: recortar el eslogan del watermark (opcional)</summary>
+                <div style="margin-top:0.6rem;padding:0.75rem;background:#fff;border:1px solid #e2e8f0;border-radius:8px;">
+                    <div style="font-size:0.7rem;color:#94a3b8;margin-bottom:0.6rem;">
+                        Si tu logo trae ícono a la izquierda + nombre y eslogan a la derecha, el eslogan puede volverse ilegible al achicarlo. Configura aquí en qué % del logo está cada parte para que el watermark use solo ícono + nombre. Déjalo vacío para usar el logo completo tal cual.
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.75rem;">
+                        <div>
+                            <label style="display:block;font-size:0.68rem;font-weight:600;color:#475569;margin-bottom:0.25rem;">% ancho del ícono</label>
+                            <input type="number" step="0.1" min="0" max="100" name="logo_marca_recorte[icono_ancho_pct]"
+                                value="{{ $recorte['icono_ancho_pct'] ?? '' }}" placeholder="Ej: 41.6"
+                                style="width:100%;padding:0.4rem;border:1px solid #cbd5e1;border-radius:6px;font-size:0.8rem;">
+                        </div>
+                        <div>
+                            <label style="display:block;font-size:0.68rem;font-weight:600;color:#475569;margin-bottom:0.25rem;">% donde inicia el nombre</label>
+                            <input type="number" step="0.1" min="0" max="100" name="logo_marca_recorte[wordmark_y_inicio_pct]"
+                                value="{{ $recorte['wordmark_y_inicio_pct'] ?? '' }}" placeholder="Ej: 15.6"
+                                style="width:100%;padding:0.4rem;border:1px solid #cbd5e1;border-radius:6px;font-size:0.8rem;">
+                        </div>
+                        <div>
+                            <label style="display:block;font-size:0.68rem;font-weight:600;color:#475569;margin-bottom:0.25rem;">% donde termina el nombre</label>
+                            <input type="number" step="0.1" min="0" max="100" name="logo_marca_recorte[wordmark_y_fin_pct]"
+                                value="{{ $recorte['wordmark_y_fin_pct'] ?? '' }}" placeholder="Ej: 45.2"
+                                style="width:100%;padding:0.4rem;border:1px solid #cbd5e1;border-radius:6px;font-size:0.8rem;">
+                        </div>
+                    </div>
+                </div>
+            </details>
         </div>
 
         {{-- ── Afiliaciones BryNex ── --}}
