@@ -1049,6 +1049,7 @@ class ContratoController extends Controller
             'planesPermitidos'          => $planesPermitidos,
             'modalidadesIndependientes' => $modalidadesIndependientes,
             'clienteExentoAfp'          => $this->detectarExencionAfp($cliente),
+            'clientePensionado'         => (int) ($cliente?->pension_id ?? 0) === \App\Models\Pension::ID_PENSIONADO,
             'clienteTipoDoc'            => $cliente?->tipo_doc,
             'clienteEdad'               => $cliente?->edad,
             'clienteGenero'             => $cliente?->genero,
@@ -1462,12 +1463,19 @@ class ContratoController extends Controller
     // ─── Detectar exención de AFP del cliente ─────────────────────────
     /**
      * Un cliente puede omitir AFP si:
+     * - Ya está pensionado (fondo "PENSIONADO" en su ficha) — sin importar edad, género ni documento
      * - doc: CE (Cédula Extranjería), PT (Permiso Prot. Temporal), PE (Permiso Especial), PA (Pasaporte)
      * - Hombre ≥ 55 años  |  Mujer ≥ 50 años
      */
     private function detectarExencionAfp(?object $cliente): bool
     {
         if (!$cliente) return false;
+
+        // Pensionado: el asesor lo registra eligiendo el fondo "PENSIONADO" en la ficha del
+        // cliente (el cliente lo informa). Ya no aporta a pensión, así que queda exento.
+        if ((int) ($cliente->pension_id ?? 0) === \App\Models\Pension::ID_PENSIONADO) {
+            return true;
+        }
 
         $tipoDoc = strtoupper(trim($cliente->tipo_doc ?? ''));
 

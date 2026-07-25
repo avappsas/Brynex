@@ -36,7 +36,9 @@ class CotizarPlanTool implements IaToolInterface
             . 'activar_gestion_arl_descuento para ofrecerle un plan B más económico (sin planilla mensual). '
             . 'Si lo que quiere es pagarle la salud a otra persona que no es de su núcleo familiar (un sobrino, '
             . 'un amigo, un padre no beneficiario), marca paga_por_otra_persona: se cotiza como planilla aparte '
-            . 'y ahí no se exige pensión.'
+            . 'y ahí no se exige pensión. Y si el cliente necesita EPS, NO está exento de pensión y ya dijo que no '
+            . 'le alcanza para pagarla, puedes activar ofrecer_estrategia_ingreso_retiro para plantearle un esquema '
+            . 'donde paga pocos días al mes y no pierde el servicio de salud.'
             . "\n\n" . $this->glosarioPlanes();
     }
 
@@ -75,8 +77,9 @@ class CotizarPlanTool implements IaToolInterface
                 'desde_exterior'  => ['type' => 'boolean', 'description' => 'true si el cliente vive fuera de Colombia o quiere pagar/cotizar desde el exterior (ej. "pagar pensión desde el exterior"). Implica que es independiente.'],
                 'tiempo_parcial_dias' => ['type' => 'integer', 'description' => 'SOLO si el cliente trabaja por días y gana menos del salario mínimo: cada cuántos días le pagan (7, 14, 21 o 30). Cambia cómo se cotiza pensión y caja (el ARL siempre se cobra el mes completo). Omite si no aplica.'],
                 'ofrecer_plan_economico_caja' => ['type' => 'boolean', 'description' => 'true SOLO si el cliente de tiempo parcial está especialmente interesado en los subsidios/beneficios de la caja de compensación Y ya mostró que el valor normal no le sirve — activa un plan especial más económico. NUNCA lo ofrezcas de entrada ni lo menciones si no se cumple lo anterior.'],
-                'cliente_exento_pension' => ['type' => 'boolean', 'description' => 'true SOLO si el cliente indicó explícitamente ser hombre de 55+ años, mujer de 50+ años, o extranjero con cédula de extranjería / permiso de protección temporal / permiso especial / pasaporte (CE, PT, PP, PE, PA), Y no quiere pagar pensión. Si no se cumple o no estás seguro, NO actives esto — el sistema agregará la pensión automáticamente al plan por normativa.'],
+                'cliente_exento_pension' => ['type' => 'boolean', 'description' => 'true SOLO si el cliente indicó explícitamente ser YA PENSIONADO, hombre de 55+ años, mujer de 50+ años, o extranjero con cédula de extranjería / permiso de protección temporal / permiso especial / pasaporte (CE, PT, PP, PE, PA), Y no quiere pagar pensión. Ser pensionado exime sin importar edad, género ni documento. Si no se cumple o no estás seguro, NO actives esto — el sistema agregará la pensión automáticamente al plan por normativa.'],
                 'paga_por_otra_persona' => ['type' => 'boolean', 'description' => 'true si el cliente quiere pagar la SALUD de otra persona que NO pertenece a su núcleo familiar (ej. un sobrino, un amigo, un padre no beneficiario) — normalmente él ya tiene su propia planilla. Se cotiza como una planilla aparte solo para esa persona. En este caso no se exige pensión.'],
+                'ofrecer_estrategia_ingreso_retiro' => ['type' => 'boolean', 'description' => 'true SOLO si se cumplen las TRES condiciones: (1) el cliente necesita EPS, (2) NO está exento de pensión, y (3) ya dijo que no tiene con qué pagar el aporte completo de pensión. Activa una estrategia donde se afilia normal el primer mes y desde el segundo se pagan pocos días de planilla (afiliándolo en paralelo por otra razón social), para que nunca pierda el servicio de EPS. NUNCA la ofrezcas de entrada ni si el cliente sí puede pagar el plan normal.'],
                 'activar_gestion_arl_descuento' => ['type' => 'boolean', 'description' => 'true SOLO cuando el cliente pide Solo ARL (sin nada más), ya conoce el precio normal, y necesita la afiliación solo para poder trabajar (exigencia de un contratante) mostrando que el precio es un obstáculo. Da un 25% de descuento en un plan sin planilla mensual (solo afiliación). SIEMPRE di primero el precio normal.'],
                 'salario'         => ['type' => 'number', 'description' => 'Salario o IBC mensual en pesos colombianos. Si el cliente no da un valor, OMÍTELO — se usa el salario mínimo configurado por defecto.'],
                 'nivel_arl'       => ['type' => 'integer', 'description' => 'Nivel de riesgo ARL (1 a 5). Pregúntaselo siempre al cliente; si no sabe, omite este campo y se usará el nivel 1 (el más bajo) con una aclaración.'],
@@ -126,11 +129,11 @@ class CotizarPlanTool implements IaToolInterface
 
         $tiempoParcialDias = (int) ($input['tiempo_parcial_dias'] ?? 0) ?: null;
         $ofrecerPlanEconomicoCaja = (bool) ($input['ofrecer_plan_economico_caja'] ?? false);
+        $ingresoRetiro = (bool) ($input['ofrecer_estrategia_ingreso_retiro'] ?? false);
 
         // Regla real (Configuración → Modalidades → "AFP obligatorio"): si el cliente pide un
         // plan sin pensión y no cumple/confirma la exención, se cotiza CON pensión — más
         // seguro que asumir que sí califica, y nunca se le pregunta edad/género directamente.
-
         $exencionConfirmada = (bool) ($input['cliente_exento_pension'] ?? false);
         $seAgregoPensionPorNormativa = false;
         if (CotizacionPublicaService::requiereConfirmarExencionPension($componentes, $exencionConfirmada, $desdeExterior, $esUpc)) {
@@ -150,7 +153,7 @@ class CotizarPlanTool implements IaToolInterface
         // La modalidad se resuelve contra modalidad_planes (la misma tabla del cotizador
         // admin) — interna, nunca se le pregunta al cliente.
         $tipoModalidad = CotizacionPublicaService::resolverModalidadPermitida(
-            $plan, $esIndependiente, $desdeExterior, $tiempoParcialDias, $ofrecerPlanEconomicoCaja, $esUpc
+            $plan, $esIndependiente, $desdeExterior, $tiempoParcialDias, $ofrecerPlanEconomicoCaja, $esUpc, $ingresoRetiro
         );
         if (!$tipoModalidad) {
             return ['error' => "El plan \"{$plan->nombre}\" requiere asesoría personalizada — dile al cliente que un asesor lo contactará para ese caso."];
@@ -188,13 +191,15 @@ class CotizarPlanTool implements IaToolInterface
         }
 
         if ($seAgregoPensionPorNormativa) {
-            $resultado['nota_afp'] = 'Por normativa, este plan solo puede omitir la pensión si el cliente es hombre '
-                . 'de 55+ años, mujer de 50+ años, o tiene documento CE/PT/PP/PE/PA. Como no se confirmó ninguna de '
-                . 'esas condiciones, se cotizó CON pensión incluida (el valor ya lo refleja). Si el cliente sí cumple '
-                . 'la condición, puedes preguntarle de forma natural y volver a cotizar con cliente_exento_pension=true.';
+            $resultado['nota_afp'] = 'Por normativa, este plan solo puede omitir la pensión si el cliente ya está '
+                . 'pensionado, es hombre de 55+ años, mujer de 50+ años, o tiene documento CE/PT/PP/PE/PA. Como no se '
+                . 'confirmó ninguna de esas condiciones, se cotizó CON pensión incluida (el valor ya lo refleja). Si el '
+                . 'cliente sí cumple alguna, puedes preguntarle de forma natural (ej. "¿ya estás pensionado?") y volver '
+                . 'a cotizar con cliente_exento_pension=true.';
         } elseif (!$plan->incluye_pension && $plan->id !== 2 && !$desdeExterior && !$esUpc) {
-            $resultado['nota_afp'] = 'Este plan sin pensión solo aplica porque el cliente confirmó ser hombre 55+, '
-                . 'mujer 50+, o tener documento CE/PT/PP/PE/PA. Si eso cambia, hay que cotizar con pensión incluida.';
+            $resultado['nota_afp'] = 'Este plan sin pensión solo aplica porque el cliente confirmó estar ya pensionado, '
+                . 'ser hombre 55+, mujer 50+, o tener documento CE/PT/PP/PE/PA. Si eso cambia, hay que cotizar con '
+                . 'pensión incluida.';
         }
 
         if ($esUpc) {
@@ -205,6 +210,28 @@ class CotizarPlanTool implements IaToolInterface
         if ($tiempoParcialDias) {
             $resultado['nota_tiempo_parcial'] = "Cotizado por días (cada {$tiempoParcialDias} días) — el ARL se "
                 . 'cobra el mes completo, pensión y caja se prorratean a esos días.';
+        }
+
+        // Estrategia Ingreso-Retiro: el valor cotizado es el del primer mes (afiliación normal);
+        // desde el segundo se pagan pocos días, así que se calcula ese valor recurrente aparte.
+        if ($ingresoRetiro) {
+            $diasSiguientes = 6;
+            $recurrente = CotizacionPublicaService::cotizar($plan, $tipoModalidad, $alidoId, [
+                'salario'   => $salario,
+                'nivel_arl' => (int) ($input['nivel_arl'] ?? 1),
+                'dias'      => $diasSiguientes,
+            ]);
+            $resultado['plan_estrategia_ingreso_retiro'] = [
+                'valor_primer_mes'      => $resultado['total'],
+                'dias_meses_siguientes' => $diasSiguientes,
+                'valor_meses_siguientes' => $recurrente['total'],
+                'nota' => 'Estrategia para que el cliente NO pierda el servicio de EPS cuando no puede pagar el '
+                    . 'aporte completo de pensión: el primer mes se afilia normal (queda con servicio de una vez), y '
+                    . "desde el segundo mes se pagan solo {$diasSiguientes} días de planilla, afiliándolo en paralelo "
+                    . 'por otra razón social para repetirlo el mes siguiente. Explícale claramente que la planilla NO '
+                    . 'será de 30 días. Ofrécela solo si el cliente no está exento de pensión y ya dijo que no le '
+                    . 'alcanza para el plan normal.',
+            ];
         }
 
         if ($tipoModalidad->id === (int) \App\Services\CotizacionPublicaService::MODALIDAD_GESTION_ARL_ID) {

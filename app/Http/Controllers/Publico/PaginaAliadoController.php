@@ -208,9 +208,9 @@ class PaginaAliadoController extends Controller
         ];
 
         if ($seAgregoPensionPorNormativa) {
-            $respuesta['nota_afp'] = 'Este plan incluye pensión por normativa. Si eres hombre desde 55 años, mujer '
-                . 'desde 50, o extranjero con cédula de extranjería o permiso temporal, podrías omitirla — escríbenos '
-                . 'por WhatsApp para confirmarlo.';
+            $respuesta['nota_afp'] = 'Este plan incluye pensión por normativa. Si ya estás pensionado, eres hombre '
+                . 'desde 55 años, mujer desde 50, o extranjero con cédula de extranjería o permiso temporal, podrías '
+                . 'omitirla — escríbenos por WhatsApp para confirmarlo.';
         }
 
         if ($config->mostrar_precios) {

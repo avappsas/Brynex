@@ -137,8 +137,15 @@
         <label class="lb">Plan
           {{-- Badge AFP cuando el cliente puede omitirlo --}}
           @if(!empty($clienteExentoAfp))
+          @php
+            $motivoExencion = !empty($clientePensionado)
+              ? 'Ya está pensionado'
+              : ($clienteTipoDoc && in_array($clienteTipoDoc, ['CE','PT','PP','PE','PA'])
+                  ? 'Documento: '.$clienteTipoDoc
+                  : 'Edad: '.$clienteEdad.' años ('.($clienteGenero === 'M' ? 'hombre' : 'mujer').')');
+          @endphp
           <span id="badge-exento-afp"
-              title="{{ $clienteTipoDoc && in_array($clienteTipoDoc,['CE','PT','PE','PA']) ? 'Documento: '.$clienteTipoDoc : 'Edad: '.$clienteEdad.' años ('.($clienteGenero==='M'?'hombre':'mujer').')' }}"
+              title="{{ $motivoExencion }}"
               style="background:#ede9fe;color:#7c3aed;font-size:.6rem;font-weight:700;padding:.12rem .45rem;border-radius:20px;margin-left:.4rem;cursor:help;letter-spacing:.02em;">
             📌 Puede omitir AFP
           </span>

@@ -162,6 +162,7 @@ class CotizacionPublicaService
      */
     private const MODALIDAD_EXTERIOR_ID       = 14; // "En el Exterior"
     private const MODALIDAD_UPC_ID            = 13; // "UPC" — salud de alguien fuera del núcleo familiar
+    private const MODALIDAD_INGRESO_RETIRO_ID = 12; // "Ingreso-Retiro" — estrategia de pocos días por mes
     private const PRIORIDAD_INDEPENDIENTE_IDS = [10, 11, 13, 14];
     private const PRIORIDAD_DEPENDIENTE_IDS   = [0, 7];
 
@@ -194,7 +195,8 @@ class CotizacionPublicaService
         bool $desdeExterior = false,
         ?int $tiempoParcialDias = null,
         bool $incluirSoloIa = false,
-        bool $esUpc = false
+        bool $esUpc = false,
+        bool $ingresoRetiro = false
     ): ?TipoModalidad {
         $filas = \Illuminate\Support\Facades\DB::table('modalidad_planes')
             ->where('plan_id', $plan->id)
@@ -248,6 +250,11 @@ class CotizacionPublicaService
             return TipoModalidad::find(self::MODALIDAD_UPC_ID);
         }
 
+        // Estrategia para sostener la EPS pagando pocos días al mes (ver modalidad 12).
+        if ($ingresoRetiro && in_array(self::MODALIDAD_INGRESO_RETIRO_ID, $permitidas, true)) {
+            return TipoModalidad::find(self::MODALIDAD_INGRESO_RETIRO_ID);
+        }
+
         $prioridad = $esIndependiente
             ? self::PRIORIDAD_INDEPENDIENTE_IDS
             : array_merge(self::PRIORIDAD_DEPENDIENTE_IDS, self::PRIORIDAD_INDEPENDIENTE_IDS);
@@ -271,6 +278,9 @@ class CotizacionPublicaService
      * así? Réplica de la regla que ya aplica el cotizador admin (ContratoController +
      * form.blade.php): con la config "AFP obligatorio" activa, solo pueden omitir pensión los
      * hombres desde 55 años, las mujeres desde 50, o quienes tengan documento CE/PT/PP/PE/PA.
+     *
+     * Un cliente YA PENSIONADO queda exento sin importar edad, género ni documento: en el admin
+     * se reconoce porque su ficha tiene el fondo "PENSIONADO" (Pension::ID_PENSIONADO).
      *
      * Excepciones que el admin también hace:
      *   - "Solo ARL": nunca lleva pensión por diseño (y sus modalidades son independientes o
