@@ -33,8 +33,11 @@ class CatalogoPlanesPromocion
                 'servicios' => ['ARL'],
                 'componentes' => ['incluye_eps' => false, 'incluye_arl' => true, 'incluye_pension' => false, 'incluye_caja' => false],
                 'independiente' => true,
-                'escena' => 'un trabajador colombiano con casco y elementos de seguridad en su lugar de trabajo (obra, taller o bodega), '
-                    . 'sonriendo con confianza mientras hace su labor, transmitiendo que está protegido y tranquilo',
+                // La ARL es TODO el plan y su precio depende del nivel de riesgo, así que la
+                // foto la define el riesgo cotizado (ver NivelesRiesgoArl): anunciar "riesgo 1"
+                // con un obrero de construcción —que es riesgo 5— contradice el precio.
+                'escena_por_riesgo' => true,
+                'escena' => '', // se resuelve según el nivel de riesgo
             ],
 
             'esencial' => [

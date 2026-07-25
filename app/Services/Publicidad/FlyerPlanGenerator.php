@@ -26,7 +26,7 @@ class FlyerPlanGenerator
     /**
      * @return array{ok: bool, publicacion: ?Publicacion, error: ?string}
      */
-    public static function generar(Aliado $aliado, AutopilotConfig $config, ?string $claveForzada = null): array
+    public static function generar(Aliado $aliado, AutopilotConfig $config, ?string $claveForzada = null, ?int $nivelArl = null): array
     {
         $iaConfig = IaConfiguracionAliado::paraAliado($aliado->id);
         if (!$iaConfig->tieneGemini()) {
@@ -39,14 +39,22 @@ class FlyerPlanGenerator
             return self::error("El plan \"{$clave}\" no está en el catálogo de promoción.");
         }
 
-        $precio = CatalogoPlanesPromocion::cotizar($clave, $aliado->id);
+        $nivelArl = $nivelArl ?: CatalogoPlanesPromocion::NIVEL_ARL_PROMOCIONAL;
+
+        $precio = CatalogoPlanesPromocion::cotizar($clave, $aliado->id, $nivelArl);
         if (!$precio) {
             return self::error("No se pudo cotizar el plan \"{$def['nombre']}\" para este aliado.");
         }
 
+        // En los planes donde la ARL es todo el plan, la escena la manda el nivel de riesgo:
+        // el precio anunciado y lo que se ve en la foto tienen que corresponder.
+        $escena = !empty($def['escena_por_riesgo'])
+            ? \App\Services\NivelesRiesgoArl::escena($nivelArl)
+            : $def['escena'];
+
         $imagen = GeminiImagenGenerator::generarVariantes(
             $iaConfig->gemini_api_key,
-            self::promptFoto($def['escena']),
+            self::promptFoto($escena),
             1,
             GeminiImagenGenerator::MODELO_FOTORREALISTA,
             null,

@@ -36,10 +36,17 @@
             <option value="{{ $clave }}">{{ $nombre }}</option>
         @endforeach
     </select>
+    <select name="nivel_arl" style="padding:.4rem .6rem;border:1px solid #fdba74;border-radius:8px;font-size:.8rem;background:#fff;">
+        @foreach(\App\Services\NivelesRiesgoArl::tabla() as $nivel => $datos)
+            <option value="{{ $nivel }}" @selected($nivel === 1)>Riesgo {{ $nivel }} — {{ $datos['resumen'] }}</option>
+        @endforeach
+    </select>
     <button type="submit" style="background:#ea580c;color:#fff;border:none;font-size:.8rem;font-weight:700;padding:.5rem 1rem;border-radius:8px;cursor:pointer;">
         Generar flyer
     </button>
-    <span style="font-size:.7rem;color:#9a3412;opacity:.8;">Foto propia del plan + precio real + botón de WhatsApp.</span>
+    <span style="font-size:.7rem;color:#9a3412;opacity:.8;width:100%;">
+        Foto propia del plan + precio real + botón de WhatsApp. En los planes de solo ARL la foto corresponde al riesgo elegido (riesgo 1 sale una oficina, riesgo 5 una obra).
+    </span>
 </form>
 
 @if(session('success'))

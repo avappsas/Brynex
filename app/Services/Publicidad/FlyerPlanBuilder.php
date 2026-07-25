@@ -21,8 +21,11 @@ class FlyerPlanBuilder
     /** Dónde termina la foto y empieza el panel de contenido. */
     private const Y_PANEL = 742;
 
-    private const FUENTE_BOLD    = 'vendor/dompdf/dompdf/lib/fonts/DejaVuSans-Bold.ttf';
-    private const FUENTE_REGULAR = 'vendor/dompdf/dompdf/lib/fonts/DejaVuSans.ttf';
+    // Poppins (licencia OFL, incluida en el repo para que se vea igual en local y en el
+    // servidor). DejaVu, la que trae dompdf, es legible pero no tiene terminado de marca.
+    private const FUENTE_BOLD    = 'resources/fonts/Poppins-Bold.ttf';
+    private const FUENTE_MEDIA   = 'resources/fonts/Poppins-SemiBold.ttf';
+    private const FUENTE_REGULAR = 'resources/fonts/Poppins-Medium.ttf';
 
     /**
      * @param string $rutaHero Ruta (disk public) de la imagen generada para este plan.

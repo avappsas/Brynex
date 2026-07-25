@@ -39,6 +39,7 @@ class CotizarPlanTool implements IaToolInterface
             . 'y ahí no se exige pensión. Y si el cliente necesita EPS, NO está exento de pensión y ya dijo que no '
             . 'le alcanza para pagarla, puedes activar ofrecer_estrategia_ingreso_retiro para plantearle un esquema '
             . 'donde paga pocos días al mes y no pierde el servicio de salud.'
+            . "\n\n" . \App\Services\NivelesRiesgoArl::paraPrompt()
             . "\n\n" . $this->glosarioPlanes();
     }
 
@@ -82,7 +83,7 @@ class CotizarPlanTool implements IaToolInterface
                 'ofrecer_estrategia_ingreso_retiro' => ['type' => 'boolean', 'description' => 'true SOLO si se cumplen las TRES condiciones: (1) el cliente necesita EPS, (2) NO está exento de pensión, y (3) ya dijo que no tiene con qué pagar el aporte completo de pensión. Activa una estrategia donde se afilia normal el primer mes y desde el segundo se pagan pocos días de planilla (afiliándolo en paralelo por otra razón social), para que nunca pierda el servicio de EPS. NUNCA la ofrezcas de entrada ni si el cliente sí puede pagar el plan normal.'],
                 'activar_gestion_arl_descuento' => ['type' => 'boolean', 'description' => 'true SOLO cuando el cliente pide Solo ARL (sin nada más), ya conoce el precio normal, y necesita la afiliación solo para poder trabajar (exigencia de un contratante) mostrando que el precio es un obstáculo. Da un 25% de descuento en un plan sin planilla mensual (solo afiliación). SIEMPRE di primero el precio normal.'],
                 'salario'         => ['type' => 'number', 'description' => 'Salario o IBC mensual en pesos colombianos. Si el cliente no da un valor, OMÍTELO — se usa el salario mínimo configurado por defecto.'],
-                'nivel_arl'       => ['type' => 'integer', 'description' => 'Nivel de riesgo ARL (1 a 5). Pregúntaselo siempre al cliente; si no sabe, omite este campo y se usará el nivel 1 (el más bajo) con una aclaración.'],
+                'nivel_arl'       => ['type' => 'integer', 'description' => 'Nivel de riesgo ARL (1 a 5). NO le preguntes al cliente "¿cuál es tu nivel de riesgo?" — casi nadie lo sabe. Pregúntale A QUÉ SE DEDICA y dedúcelo con la tabla de niveles que viene en esta descripción. Si la ocupación no te deja decidir entre dos niveles, pregúntale más detalle del oficio antes de cotizar (el precio cambia bastante por nivel). Si de plano no logras saberlo, omite el campo: se usará nivel 1 y debes aclararle que el valor puede subir según su oficio.'],
                 'dias'            => ['type' => 'integer', 'description' => 'Días a cotizar en el mes (1-30). Por defecto 30 (mes completo). No confundir con tiempo_parcial_dias.'],
                 'fecha_afiliacion' => ['type' => 'string', 'description' => 'Fecha en que el cliente quiere afiliarse, formato AAAA-MM-DD. Si el cliente menciona una fecha (ej. "desde el 1 de julio"), inclúyela — cambia cómo se prorratea el segundo mes. Si no menciona ninguna, OMÍTELO — se usa la fecha de hoy.'],
             ],
@@ -181,6 +182,17 @@ class CotizarPlanTool implements IaToolInterface
         $resultado['nivel_arl_usado']     = (int) ($input['nivel_arl'] ?? 1);
         $resultado['nivel_arl_default']   = !isset($input['nivel_arl']);
         $resultado['modalidad_usada']     = $tipoModalidad->nombre;
+
+        // El valor de la ARL depende del nivel de riesgo: hay que decir con cuál se calculó.
+        if ($plan->incluye_arl) {
+            $nivel = $resultado['nivel_arl_usado'];
+            $resumen = \App\Services\NivelesRiesgoArl::nivel($nivel)['resumen'] ?? '';
+            $resultado['nota_nivel_arl'] = $resultado['nivel_arl_default']
+                ? "No se identificó la ocupación, así que se cotizó con riesgo 1 ({$resumen}). Pregúntale a qué se "
+                    . 'dedica y vuelve a cotizar con el nivel correcto: en oficios de mayor riesgo el valor sube.'
+                : "Cotizado con ARL de riesgo {$nivel} ({$resumen}). Menciónaselo al cliente para que el precio le "
+                    . 'quede claro, sin hablarle de "niveles" de forma técnica.';
+        }
 
         // Si el perfil pedido no coincide con la modalidad final (ej. pidió como empleado
         // pero el plan solo existe para independientes), darle contexto a la IA para que lo

@@ -275,10 +275,16 @@ class PublicidadController extends Controller
         $config = \App\Models\AutopilotConfig::paraAliado($aliado->id);
 
         $validated = $request->validate([
-            'plan' => ['nullable', 'string', \Illuminate\Validation\Rule::in(array_keys(\App\Services\Publicidad\CatalogoPlanesPromocion::todos()))],
+            'plan'      => ['nullable', 'string', \Illuminate\Validation\Rule::in(array_keys(\App\Services\Publicidad\CatalogoPlanesPromocion::todos()))],
+            'nivel_arl' => 'nullable|integer|between:1,5',
         ]);
 
-        $resultado = \App\Services\Publicidad\FlyerPlanGenerator::generar($aliado, $config, $validated['plan'] ?? null);
+        $resultado = \App\Services\Publicidad\FlyerPlanGenerator::generar(
+            $aliado,
+            $config,
+            $validated['plan'] ?? null,
+            $validated['nivel_arl'] ?? null
+        );
 
         if (!$resultado['ok']) {
             return redirect()->route('admin.publicidad.autopilot')->with('error', $resultado['error']);
