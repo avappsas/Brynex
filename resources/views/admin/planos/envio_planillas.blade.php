@@ -789,12 +789,14 @@ function enviosPlanillaApp() {
             const savedAnio = localStorage.getItem('planilla_filtro_anio');
             const savedMes = localStorage.getItem('planilla_filtro_mes');
             const savedTipo = localStorage.getItem('planilla_tipo_envio');
-            const savedEstado = localStorage.getItem('planilla_estado_filtro');
+            const savedEstado = localStorage.getItem('planilla_estado_filter');
+            const savedEmpresa = localStorage.getItem('planilla_filtro_empresa');
 
             if (savedAnio) this.filtroAnio = parseInt(savedAnio);
             if (savedMes) this.filtroMes = parseInt(savedMes);
             if (savedTipo) this.tipoEnvio = savedTipo;
             if (savedEstado) this.estadoFiltro = savedEstado;
+            if (savedEmpresa) this.filtroEmpresa = savedEmpresa;
 
             this.cargarDestinatarios();
         },
@@ -804,7 +806,7 @@ function enviosPlanillaApp() {
             localStorage.setItem('planilla_filtro_anio', this.filtroAnio);
             localStorage.setItem('planilla_filtro_mes', this.filtroMes);
             localStorage.setItem('planilla_tipo_envio', this.tipoEnvio);
-            localStorage.setItem('planilla_estado_filtro', this.estadoFiltro);
+            localStorage.setItem('planilla_estado_filter', this.estadoFiltro);
 
             this.cargando = true;
             this.seleccionarTodos = false;
@@ -874,6 +876,9 @@ function enviosPlanillaApp() {
                 const emp = this.filtroEmpresa.toLowerCase().trim();
                 resultado = resultado.filter(d => (d.empresa_nombre || '').toLowerCase().includes(emp));
             }
+            
+            // Persistir el filtro por columna de empresa
+            localStorage.setItem('planilla_filtro_empresa', this.filtroEmpresa);
 
             this.filtrados = resultado;
             this.verificarSeleccionIndividual();
