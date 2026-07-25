@@ -38,6 +38,12 @@ class AutopilotGenerator
      */
     public static function generarPiezaDelDia(Aliado $aliado, AutopilotConfig $config): array
     {
+        // Los días marcados como promocionales llevan flyer de un plan (foto propia, precio
+        // real y botón de WhatsApp) en vez del post educativo del día.
+        if ($config->tocaFlyerHoy()) {
+            return FlyerPlanGenerator::generar($aliado, $config);
+        }
+
         $iaConfig     = IaConfiguracionAliado::paraAliado($aliado->id);
         $credenciales = $iaConfig->credencialesEfectivas();
 

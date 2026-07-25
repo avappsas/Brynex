@@ -22,12 +22,14 @@ class AutopilotConfig extends BaseModel
         'modo',
         'hora',
         'dias',
+        'dias_flyer',
         'estilo_imagen',
     ];
 
     protected $casts = [
-        'activo' => 'boolean',
-        'dias'   => 'array',
+        'activo'     => 'boolean',
+        'dias'       => 'array',
+        'dias_flyer' => 'array',
     ];
 
     public function aliado(): BelongsTo
@@ -38,8 +40,21 @@ class AutopilotConfig extends BaseModel
     /** ¿Hoy (hora Colombia) es un día activo según la config? null = todos los días. */
     public function tocaHoy(): bool
     {
+        // Un día de flyer siempre cuenta como día activo, aunque no esté en la lista normal:
+        // si no, marcar un día promocional que no esté en `dias` no publicaría nada.
+        if ($this->tocaFlyerHoy()) return true;
         if (empty($this->dias)) return true;
         return in_array(now('America/Bogota')->isoWeekday(), array_map('intval', $this->dias), true);
+    }
+
+    /**
+     * ¿Hoy toca flyer promocional de un plan (foto propia + precio real + botón de WhatsApp)
+     * en vez del post educativo? Vacío = nunca.
+     */
+    public function tocaFlyerHoy(): bool
+    {
+        if (empty($this->dias_flyer)) return false;
+        return in_array(now('America/Bogota')->isoWeekday(), array_map('intval', $this->dias_flyer), true);
     }
 
     /** ¿Ya pasó la hora configurada para generar la pieza de hoy? */

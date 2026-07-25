@@ -142,7 +142,7 @@ class LogoWatermarker
     }
 
     /** Carga el logo y, si hay recorte configurado, recompone ícono completo + solo el nombre (sin eslogan). */
-    private static function cargarConRecorte(string $path, ?array $recorte)
+    public static function cargarConRecorte(string $path, ?array $recorte)
     {
         $origen = self::cargar($path);
         if (!$origen || !$recorte) {

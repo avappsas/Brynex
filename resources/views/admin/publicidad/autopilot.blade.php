@@ -23,7 +23,24 @@
         </button>
     </form>
 </div>
-<p style="font-size:.72rem;color:#94a3b8;margin:0 0 1.25rem;">Usa el modo y el estilo de imagen ya guardados abajo — no espera a la hora programada.</p>
+<p style="font-size:.72rem;color:#94a3b8;margin:0 0 1rem;">Usa el modo y el estilo de imagen ya guardados abajo — no espera a la hora programada.</p>
+
+{{-- ── Flyer promocional de un plan, a demanda ── --}}
+<form method="POST" action="{{ route('admin.publicidad.autopilot.flyer_ahora') }}"
+      style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:.7rem .9rem;margin-bottom:1.25rem;">
+    @csrf
+    <span style="font-size:.78rem;font-weight:700;color:#9a3412;">🏷️ Flyer promocional</span>
+    <select name="plan" style="padding:.4rem .6rem;border:1px solid #fdba74;border-radius:8px;font-size:.8rem;background:#fff;">
+        <option value="">Siguiente en la rotación</option>
+        @foreach($planesPromocionables as $clave => $nombre)
+            <option value="{{ $clave }}">{{ $nombre }}</option>
+        @endforeach
+    </select>
+    <button type="submit" style="background:#ea580c;color:#fff;border:none;font-size:.8rem;font-weight:700;padding:.5rem 1rem;border-radius:8px;cursor:pointer;">
+        Generar flyer
+    </button>
+    <span style="font-size:.7rem;color:#9a3412;opacity:.8;">Foto propia del plan + precio real + botón de WhatsApp.</span>
+</form>
 
 @if(session('success'))
     <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;color:#15803d;padding:.65rem 1rem;margin-bottom:1rem;font-size:.83rem;">✅ {{ session('success') }}</div>
@@ -97,6 +114,21 @@
                 {{ $nombre }}
             </label>
         @endforeach
+    </div>
+
+    <label style="display:block;font-size:.72rem;font-weight:600;color:#334155;margin-bottom:.4rem;">Días promocionales (flyer de un plan)</label>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.4rem;">
+        @foreach($nombresDias as $num => $nombre)
+            <label style="display:inline-flex;align-items:center;gap:.3rem;font-size:.8rem;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:.35rem .6rem;cursor:pointer;">
+                <input type="checkbox" name="dias_flyer[]" value="{{ $num }}"
+                       @checked(in_array($num, array_map('intval', $config->dias_flyer ?? []), true))>
+                {{ $nombre }}
+            </label>
+        @endforeach
+    </div>
+    <div class="form-hint" style="font-size:.72rem;color:#94a3b8;margin-bottom:1.1rem;">
+        Esos días sale un flyer promocional de un plan (foto propia del plan, precio real y botón de WhatsApp) en vez del post educativo.
+        Va rotando los planes para no repetir. Lo recomendado son 2 días por semana.
     </div>
 
     <button type="submit" style="background:#2563eb;color:#fff;border:none;font-size:.85rem;font-weight:700;padding:.6rem 1.4rem;border-radius:8px;cursor:pointer;">

@@ -219,6 +219,8 @@ class PublicidadController extends Controller
             'tieneGemini'  => $iaConfig->tieneGemini(),
             'piezas'       => $piezas,
             'ranking'      => $ranking,
+            'planesPromocionables' => collect(\App\Services\Publicidad\CatalogoPlanesPromocion::todos())
+                ->map(fn ($def) => $def['nombre']),
         ]);
     }
 
@@ -232,6 +234,8 @@ class PublicidadController extends Controller
             'hora'          => 'required|date_format:H:i',
             'dias'          => 'nullable|array',
             'dias.*'        => 'integer|between:1,7',
+            'dias_flyer'    => 'nullable|array',
+            'dias_flyer.*'  => 'integer|between:1,7',
             'estilo_imagen' => 'required|in:ilustracion,fotorrealista,alternar',
         ]);
 
@@ -241,6 +245,7 @@ class PublicidadController extends Controller
             'modo'          => $validated['modo'],
             'hora'          => $validated['hora'],
             'dias'          => !empty($validated['dias']) && count($validated['dias']) < 7 ? array_values($validated['dias']) : null,
+            'dias_flyer'    => !empty($validated['dias_flyer']) ? array_values($validated['dias_flyer']) : null,
             'estilo_imagen' => $validated['estilo_imagen'],
         ]);
 
@@ -261,6 +266,26 @@ class PublicidadController extends Controller
 
         $p = $resultado['publicacion'];
         return redirect()->route('admin.publicidad.autopilot')->with('success', "Pieza #{$p->id} generada — [{$p->tema}] {$p->titulo} ({$p->etiquetaEstado()}).");
+    }
+
+    /** Genera un flyer promocional de un plan ya mismo (para probar la plantilla o adelantar la pieza). */
+    public function flyerGenerarAhora(Request $request)
+    {
+        $aliado = $this->aliadoActivo();
+        $config = \App\Models\AutopilotConfig::paraAliado($aliado->id);
+
+        $validated = $request->validate([
+            'plan' => ['nullable', 'string', \Illuminate\Validation\Rule::in(array_keys(\App\Services\Publicidad\CatalogoPlanesPromocion::todos()))],
+        ]);
+
+        $resultado = \App\Services\Publicidad\FlyerPlanGenerator::generar($aliado, $config, $validated['plan'] ?? null);
+
+        if (!$resultado['ok']) {
+            return redirect()->route('admin.publicidad.autopilot')->with('error', $resultado['error']);
+        }
+
+        $p = $resultado['publicacion'];
+        return redirect()->route('admin.publicidad.show', $p->id)->with('success', "Flyer #{$p->id} generado — {$p->titulo} ({$p->etiquetaEstado()}).");
     }
 
     // ── Generación asistida (AJAX) ────────────────────────────────────────
