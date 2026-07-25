@@ -701,9 +701,9 @@
                 </template>
 
                 <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
-                    {{-- Si ya se envió con éxito, solo mostrar botón de Aceptar para recargar --}}
+                    {{-- Si ya se envió con éxito, solo mostrar botón de Aceptar --}}
                     <template x-if="confirmarResultado && confirmarResultado.ok">
-                        <button class="wa-pill-btn wa-pill-btn-success" @click="confirmarMasivoModalOpen = false; confirmarResultado = null; cargarDestinatarios();">Aceptar</button>
+                        <button class="wa-pill-btn wa-pill-btn-success" @click="confirmarMasivoModalOpen = false; confirmarResultado = null;">Aceptar</button>
                     </template>
 
                     {{-- Si no se ha enviado o hubo error, mostrar botones normales --}}
@@ -850,7 +850,8 @@ function enviosPlanillaApp() {
                 resultado = resultado.filter(d => 
                     d.nombre_destinatario.toLowerCase().includes(search) ||
                     d.cliente_cedula.includes(search) ||
-                    (d.numero_planilla && d.numero_planilla.includes(search))
+                    (d.numero_planilla && d.numero_planilla.includes(search)) ||
+                    (d.empresa_nombre && d.empresa_nombre.toLowerCase().includes(search))
                 );
             }
 
@@ -952,6 +953,18 @@ function enviosPlanillaApp() {
                 if (data.ok) {
                     this.confirmarResultado = { ok: true, mensaje: data.mensaje || '\u2705 Lote de envío masivo completado con éxito.' };
                     this.mensajeExito = this.confirmarResultado.mensaje;
+
+                    // Actualizar localmente el estado de los destinatarios enviados en la tabla a 'procesando'
+                    seleccionadosPlanoIds.forEach(planoId => {
+                        const plano = this.destinatarios.find(d => d.plano_id === planoId);
+                        if (plano) {
+                            plano.envio_estado = 'procesando';
+                            plano.seleccionado = false; // Desmarcar
+                        }
+                    });
+                    
+                    // Volver a aplicar los filtros de la tabla localmente sin hacer fetch al backend
+                    this.aplicarFiltrosTabla();
                 } else {
                     this.confirmarResultado = { ok: false, mensaje: data.mensaje || '\u274C Error al iniciar el envío masivo.' };
                     this.mensajeError = this.confirmarResultado.mensaje;
@@ -969,6 +982,13 @@ function enviosPlanillaApp() {
             this.reenviandoId = planoId;
             this.mensajeExito = '';
             this.mensajeError = '';
+
+            // Mostrar estado de procesamiento localmente de forma inmediata
+            const planoLocal = this.destinatarios.find(d => d.plano_id === planoId);
+            if (planoLocal) {
+                planoLocal.envio_estado = 'procesando';
+                this.aplicarFiltrosTabla();
+            }
 
             try {
                 const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
@@ -989,19 +1009,25 @@ function enviosPlanillaApp() {
                 
                 if (data.ok) {
                     this.mensajeExito = `Planilla enviada con éxito a ${nombre}`;
-                    // Actualizar el estado de este plano localmente en la tabla
-                    const plano = this.destinatarios.find(d => d.plano_id === planoId);
-                    if (plano) {
-                        plano.envio_estado = 'enviado';
-                        plano.envio_state = 'enviado';
+                    // Actualizar el estado de este plano localmente en la tabla a enviado
+                    if (planoLocal) {
+                        planoLocal.envio_estado = 'enviado';
                     }
-                    this.aplicarFiltrosTabla();
                 } else {
                     this.mensajeError = data.mensaje || 'Error al reenviar planilla.';
+                    // En caso de error, volver a marcar como fallido
+                    if (planoLocal) {
+                        planoLocal.envio_estado = 'fallido';
+                    }
                 }
+                this.aplicarFiltrosTabla();
             } catch (err) {
                 console.error(err);
                 this.mensajeError = 'Error de comunicación.';
+                if (planoLocal) {
+                    planoLocal.envio_estado = 'fallido';
+                    this.aplicarFiltrosTabla();
+                }
             } finally {
                 this.reenviandoId = null;
             }
@@ -1097,7 +1123,8 @@ function enviosPlanillaApp() {
                 'enviado': 'badge-ok',
                 'pendiente': 'badge-warn',
                 'fallido': 'badge-err',
-                'omitido': 'badge-info'
+                'omitido': 'badge-info',
+                'procesando': 'badge-info'
             }[estado] || 'badge-warn';
         },
 
@@ -1106,7 +1133,8 @@ function enviosPlanillaApp() {
                 'enviado': '🟢 Enviado',
                 'pendiente': '⏳ Pendiente',
                 'fallido': '🔴 Fallido',
-                'omitido': '⚪ Omitido'
+                'omitido': '⚪ Omitido',
+                'procesando': '⚙️ En proceso'
             }[estado] || estado;
         },
 
