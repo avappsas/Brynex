@@ -79,19 +79,42 @@ class PlanillaEnvioWhatsappJob implements ShouldQueue
                     continue;
                 }
 
-                // 2. Resolver operador ID para generar el PDF
-                $operadorId = null;
+                // 2. Validar operador autorizado
+                $codigoOp = strtoupper($detalle->operador_nombre ?? '');
+                // Buscar el código del operador por nombre
+                $operadorReg = null;
                 if ($detalle->operador_nombre) {
-                    $operadorId = DB::table('operadores_planilla')
+                    $operadorReg = DB::table('operadores_planilla')
                         ->where('nombre', $detalle->operador_nombre)
-                        ->value('id');
+                        ->first(['id', 'codigo']);
+                }
+
+                $operadorId = null;
+                if ($operadorReg) {
+                    $operadorId = $operadorReg->id;
+                    $codigoOp = strtoupper($operadorReg->codigo ?? '');
+                }
+
+                // Si el operador no está autorizado, omitir este detalle
+                if (!in_array($codigoOp, \App\Services\PlanillaWhatsappService::OPERADORES_AUTORIZADOS)) {
+                    $detalle->update([
+                        'estado' => 'omitido',
+                        'error'  => 'Operador sin plantilla PDF autorizada para envío por WhatsApp',
+                    ]);
+                    $omitidos++;
+                    continue;
                 }
 
                 // 3. Generar el PDF
                 $pdfContenido = $formularioService->generar($plano, $operadorId);
 
-                // 4. Guardar archivo temporal en disk local
-                $nombreArchivo = "Planilla_SS_{$detalle->cliente_cedula}_{$detalle->periodo_mes}_{$detalle->periodo_anio}.pdf";
+                // 4. Nombre del PDF: período de servicio (mes del lote = mes del filtro UI)
+                $nombreCompleto = trim("{$plano->primer_nombre} {$plano->segundo_nombre} {$plano->primer_ape} {$plano->segundo_ape}");
+                $nombreArchivo = \App\Services\PlanillaWhatsappService::generarNombreArchivoPdf(
+                    $nombreCompleto,
+                    $envio->mes,
+                    $envio->anio
+                );
                 $pathTemporal = "temp_planillas/{$envio->aliado_id}/" . uniqid() . '_' . $nombreArchivo;
                 Storage::disk('local')->put($pathTemporal, $pdfContenido);
 

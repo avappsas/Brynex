@@ -1024,7 +1024,11 @@ class PlanoPagoController extends Controller
 
         return response($pdfContent)
             ->header('Content-Type', 'application/pdf')
-            ->header('Content-Disposition', "inline; filename=\"IndividualesCertificado_{$cedula}_{$numeroPlanilla}.pdf\"")
+            ->header('Content-Disposition', "inline; filename=\"" . \App\Services\PlanillaWhatsappService::generarNombreArchivoPdf(
+                trim("{$plano->primer_nombre} {$plano->segundo_nombre} {$plano->primer_ape} {$plano->segundo_ape}"),
+                now()->month,
+                now()->year
+            ) . "\"")
             ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
             ->header('Pragma', 'no-cache')
             ->header('Expires', 'Sat, 26 Jul 1997 05:00:00 GMT');
@@ -1214,16 +1218,17 @@ class PlanoPagoController extends Controller
             ->where('aliado_id', $aliadoId)
             ->first();
 
+        // nombre_destinatario: siempre es el nombre del CLIENTE afiliado
+        $nombreDestinatario = $cliente ? trim("{$cliente->nombres} {$cliente->apellidos}") : 'Cliente';
         $numeroCelular = $cliente?->celular;
-        $nombreDestinatario = $cliente ? "{$cliente->nombres}" : "Cliente";
 
-        // Si es de empresa y el cliente no tiene celular, o es tipo empresa, podemos buscar el celular de la empresa
+        // Si es tipo contacto_empresa, enviar al número del contacto de empresa
         $tipoEnvio = $request->input('tipo_envio', 'individual');
         if ($tipoEnvio === 'contacto_empresa' || !$numeroCelular) {
             $empresa = \App\Models\Empresa::find($cliente?->cod_empresa);
             if ($empresa && $empresa->celular) {
                 $numeroCelular = $empresa->celular;
-                $nombreDestinatario = "{$empresa->contacto} ({$empresa->empresa})";
+                // nombre sigue siendo el del CLIENTE (no el contacto de empresa)
             }
         }
 
@@ -1251,10 +1256,30 @@ class PlanoPagoController extends Controller
         if ($gasto) {
             $operador = DB::table('operadores_planilla')
                 ->where('nombre', trim($gasto->pagado_a))
-                ->first(['id', 'nombre']);
+                ->first(['id', 'nombre', 'codigo']);
+
+            if (!$operador) {
+                // Intentar búsqueda por substring
+                foreach (DB::table('operadores_planilla')->get(['id', 'nombre', 'codigo']) as $op) {
+                    if (stripos($gasto->pagado_a, $op->nombre) !== false || stripos($op->nombre, $gasto->pagado_a) !== false) {
+                        $operador = $op;
+                        break;
+                    }
+                }
+            }
+
             if ($operador) {
                 $operadorId = $operador->id;
                 $operadorNombre = $operador->nombre;
+
+                // Validar que el operador esté autorizado
+                $codigoOp = strtoupper($operador->codigo ?? '');
+                if (!in_array($codigoOp, \App\Services\PlanillaWhatsappService::OPERADORES_AUTORIZADOS)) {
+                    return response()->json([
+                        'ok' => false,
+                        'mensaje' => "El operador '{$operador->nombre}' no tiene plantilla PDF autorizada para envío por WhatsApp. Solo ARUS Enlace, Enlace y Simple están habilitados."
+                    ], 422);
+                }
             }
         }
 
@@ -1265,8 +1290,12 @@ class PlanoPagoController extends Controller
             // Generar PDF
             $pdfContenido = $formularioService->generar($plano, $operadorId);
 
-            // Archivo temporal
-            $nombreArchivo = "Planilla_SS_{$plano->no_identifi}_{$plano->mes_plano}_{$plano->anio_plano}.pdf";
+            // Nombre del archivo: usar período de servicio actual (mes del filtro UI)
+            $nombreArchivo = \App\Services\PlanillaWhatsappService::generarNombreArchivoPdf(
+                trim("{$plano->primer_nombre} {$plano->segundo_nombre} {$plano->primer_ape} {$plano->segundo_ape}"),
+                (int) $request->input('mes', now()->month),
+                (int) $request->input('anio', now()->year)
+            );
             $pathTemporal = "temp_planillas/{$aliadoId}/" . uniqid() . '_' . $nombreArchivo;
             Storage::disk('local')->put($pathTemporal, $pdfContenido);
 

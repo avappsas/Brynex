@@ -18,23 +18,24 @@ use Illuminate\Support\Facades\Auth;
 class PlanillaWhatsappService
 {
     /**
+     * Códigos de operadores autorizados para envío de PDF por WhatsApp.
+     * Solo ARUS Enlace, Enlace y Simple tienen plantilla PDF configurada.
+     */
+    public const OPERADORES_AUTORIZADOS = ['SIMPLE', 'ARUS', 'ENLACE'];
+
+    /**
      * Consulta las planillas pagadas en el periodo para el aliado y detecta su operador.
+     * Retorna TODOS los planos con gasto registrado; el campo `es_operador_autorizado`
+     * indica si el operador tiene plantilla PDF habilitada para envío.
      */
     public function obtenerPlanosPagados(int $aliadoId, int $mes, int $anio)
     {
         $mesVencido = $mes > 1 ? $mes - 1 : 12;
         $anioVencido = $mes > 1 ? $anio : $anio - 1;
 
-        // 1. Obtener operadores que tienen plantilla configurada en operador_planillas_templates
-        $operadorIdsConfigurados = DB::table('operador_planillas_templates')
-            ->pluck('operador_planilla_id')
-            ->toArray();
-
+        // 1. Cargar TODOS los operadores activos
         $operadores = DB::table('operadores_planilla')
-            ->whereIn('id', $operadorIdsConfigurados)
             ->get(['id', 'nombre', 'codigo']);
-
-        $nombresOperadores = $operadores->pluck('nombre')->toArray();
 
         // 2. Closure de periodos mixtos
         $wherePeriodo = function ($q) use ($mes, $anio, $mesVencido, $anioVencido) {
@@ -72,6 +73,7 @@ class PlanillaWhatsappService
                 'p.numero_planilla',
                 'p.mes_plano',
                 'p.anio_plano',
+                'p.tipo_modalidad_id',
                 'p.primer_nombre', 'p.segundo_nombre',
                 'p.primer_ape', 'p.segundo_ape',
                 'cl.id AS cliente_id',
@@ -91,7 +93,7 @@ class PlanillaWhatsappService
             return $plano;
         });
 
-        // 4. Cruzar con gastos tipo 'pago_planilla' y filtrar por operadores configurados
+        // 4. Cruzar con gastos tipo 'pago_planilla'
         $planosFiltrados = collect();
 
         $numerosPlanillas = $planos->pluck('numero_planilla')->filter()->unique()->toArray();
@@ -108,7 +110,7 @@ class PlanillaWhatsappService
                 ->groupBy('numero_planilla');
         }
 
-        // Cargar todos los detalles de envío en una sola query ordenados por ID desc
+        // Cargar todos los detalles de envío en una sola query
         $detallesEnvios = collect();
         if (!empty($planoIds)) {
             $detallesEnvios = DB::table('planilla_envios_whatsapp_detalle')
@@ -126,12 +128,10 @@ class PlanillaWhatsappService
                 continue; // si no hay gasto, no podemos verificar el operador de pago
             }
 
-            // Normalizar y verificar si el operador del gasto está configurado en operador_planillas_templates
-            // Ej: "Simple" o "ARUS Enlace" o "Enlace"
+            // Detectar el operador del gasto
             $operadorNombreGasto = trim($gasto->pagado_a);
-
-            // Buscamos coincidencia exacta o por substring
             $operadorDetectado = null;
+
             foreach ($operadores as $op) {
                 if (
                     strcasecmp($op->nombre, $operadorNombreGasto) === 0 ||
@@ -143,13 +143,22 @@ class PlanillaWhatsappService
                 }
             }
 
-            // Si no detectamos operador que tenga template, omitimos la planilla
+            // Si no se detecta operador, marcar como no autorizado pero mostrar igual
             if (!$operadorDetectado) {
-                continue;
+                $plano->operador_id = null;
+                $plano->operador_nombre = $operadorNombreGasto ?: 'Desconocido';
+                $plano->operador_codigo = null;
+                $plano->es_operador_autorizado = false;
+            } else {
+                $plano->operador_id = $operadorDetectado->id;
+                $plano->operador_nombre = $operadorDetectado->nombre;
+                $plano->operador_codigo = $operadorDetectado->codigo;
+                $plano->es_operador_autorizado = in_array(
+                    strtoupper($operadorDetectado->codigo),
+                    self::OPERADORES_AUTORIZADOS
+                );
             }
 
-            $plano->operador_id = $operadorDetectado->id;
-            $plano->operador_nombre = $operadorDetectado->nombre;
             $plano->fecha_pago = $gasto->fecha;
 
             // Obtener el último estado de envío para este plano
@@ -181,66 +190,115 @@ class PlanillaWhatsappService
                 // Solo clientes con cod_empresa NULL o 1 (Individual)
                 if ($codEmpresa === 0 || $codEmpresa === 1) {
                     $destinatarios->push([
-                        'plano_id'            => $plano->id,
-                        'contrato_id'         => $plano->contrato_id,
-                        'cliente_cedula'      => $plano->cedula,
-                        'empresa_id'          => null,
-                        'empresa_nombre'      => 'Individual',
-                        'wa_numero'           => $plano->cliente_celular,
-                        'nombre_destinatario' => $plano->nombre_completo,
-                        'numero_planilla'     => $plano->numero_planilla,
-                        'operador_id'         => $plano->operador_id,
-                        'operador_nombre'     => $plano->operador_nombre,
-                        'periodo_mes'         => $plano->mes_plano,
-                        'periodo_anio'        => $plano->anio_plano,
-                        'envio_estado'        => $plano->envio_estado,
-                        'envio_fecha'         => $plano->envio_fecha,
+                        'plano_id'               => $plano->id,
+                        'contrato_id'            => $plano->contrato_id,
+                        'cliente_cedula'         => $plano->cedula,
+                        'cliente_nombre'         => $plano->nombre_completo,
+                        'empresa_id'             => null,
+                        'empresa_nombre'         => 'Individual',
+                        'wa_numero'              => $plano->cliente_celular,
+                        'nombre_destinatario'    => $plano->nombre_completo,
+                        'numero_planilla'        => $plano->numero_planilla,
+                        'operador_id'            => $plano->operador_id,
+                        'operador_nombre'        => $plano->operador_nombre,
+                        'tipo_modalidad_id'      => $plano->tipo_modalidad_id,
+                        'periodo_mes'            => $plano->mes_plano,
+                        'periodo_anio'           => $plano->anio_plano,
+                        'envio_estado'           => $plano->envio_estado,
+                        'envio_fecha'            => $plano->envio_fecha,
+                        'es_operador_autorizado' => $plano->es_operador_autorizado,
                     ]);
                 }
             } elseif ($tipoEnvio === 'empleado_empresa') {
                 // Solo clientes con cod_empresa > 1 (dentro de empresa)
                 if ($codEmpresa > 1) {
                     $destinatarios->push([
-                        'plano_id'            => $plano->id,
-                        'contrato_id'         => $plano->contrato_id,
-                        'cliente_cedula'      => $plano->cedula,
-                        'empresa_id'          => $plano->empresa_id,
-                        'empresa_nombre'      => $plano->empresa_nombre ?? 'Sin Empresa',
-                        'wa_numero'           => $plano->cliente_celular,
-                        'nombre_destinatario' => $plano->nombre_completo,
-                        'numero_planilla'     => $plano->numero_planilla,
-                        'operador_id'         => $plano->operador_id,
-                        'operador_nombre'     => $plano->operador_nombre,
-                        'periodo_mes'         => $plano->mes_plano,
-                        'periodo_anio'        => $plano->anio_plano,
-                        'envio_estado'        => $plano->envio_estado,
-                        'envio_fecha'         => $plano->envio_fecha,
+                        'plano_id'               => $plano->id,
+                        'contrato_id'            => $plano->contrato_id,
+                        'cliente_cedula'         => $plano->cedula,
+                        'cliente_nombre'         => $plano->nombre_completo,
+                        'empresa_id'             => $plano->empresa_id,
+                        'empresa_nombre'         => $plano->empresa_nombre ?? 'Sin Empresa',
+                        'wa_numero'              => $plano->cliente_celular,
+                        'nombre_destinatario'    => $plano->nombre_completo,
+                        'numero_planilla'        => $plano->numero_planilla,
+                        'operador_id'            => $plano->operador_id,
+                        'operador_nombre'        => $plano->operador_nombre,
+                        'tipo_modalidad_id'      => $plano->tipo_modalidad_id,
+                        'periodo_mes'            => $plano->mes_plano,
+                        'periodo_anio'           => $plano->anio_plano,
+                        'envio_estado'           => $plano->envio_estado,
+                        'envio_fecha'            => $plano->envio_fecha,
+                        'es_operador_autorizado' => $plano->es_operador_autorizado,
                     ]);
                 }
             } elseif ($tipoEnvio === 'contacto_empresa') {
-                // Envía al contacto de la empresa
+                // Envía al contacto de la empresa con el nombre del CLIENTE afiliado
                 if ($codEmpresa > 1 && $plano->empresa_celular) {
                     $destinatarios->push([
-                        'plano_id'            => $plano->id,
-                        'contrato_id'         => $plano->contrato_id,
-                        'cliente_cedula'      => $plano->cedula,
-                        'empresa_id'          => $plano->empresa_id,
-                        'empresa_nombre'      => $plano->empresa_nombre ?? 'Sin Empresa',
-                        'wa_numero'           => $plano->empresa_celular,
-                        'nombre_destinatario' => "{$plano->empresa_contacto} ({$plano->empresa_nombre})",
-                        'numero_planilla'     => $plano->numero_planilla,
-                        'operador_id'         => $plano->operador_id,
-                        'operador_nombre'     => $plano->operador_nombre,
-                        'periodo_mes'         => $plano->mes_plano,
-                        'periodo_anio'        => $plano->anio_plano,
-                        'envio_estado'        => $plano->envio_estado,
-                        'envio_fecha'         => $plano->envio_fecha,
+                        'plano_id'               => $plano->id,
+                        'contrato_id'            => $plano->contrato_id,
+                        'cliente_cedula'         => $plano->cedula,
+                        // nombre del CLIENTE (para columna "Cliente" en tabla y saludo WA)
+                        'cliente_nombre'         => $plano->nombre_completo,
+                        'empresa_id'             => $plano->empresa_id,
+                        'empresa_nombre'         => $plano->empresa_nombre ?? 'Sin Empresa',
+                        // wa_numero = celular del CONTACTO de empresa (quien recibe)
+                        'wa_numero'              => $plano->empresa_celular,
+                        // nombre_destinatario = nombre del CLIENTE (variable {{1}} en plantilla WA)
+                        'nombre_destinatario'    => $plano->nombre_completo,
+                        // contacto_nombre para referencia de quién recibe físicamente
+                        'contacto_nombre'        => $plano->empresa_contacto,
+                        'numero_planilla'        => $plano->numero_planilla,
+                        'operador_id'            => $plano->operador_id,
+                        'operador_nombre'        => $plano->operador_nombre,
+                        'tipo_modalidad_id'      => $plano->tipo_modalidad_id,
+                        'periodo_mes'            => $plano->mes_plano,
+                        'periodo_anio'           => $plano->anio_plano,
+                        'envio_estado'           => $plano->envio_estado,
+                        'envio_fecha'            => $plano->envio_fecha,
+                        'es_operador_autorizado' => $plano->es_operador_autorizado,
                     ]);
                 }
             }
         }
 
         return $destinatarios;
+    }
+
+    /**
+     * Genera el nombre del archivo PDF de planilla con el período de SERVICIO (mes actual del filtro).
+     *
+     * Siempre usa el mes del filtro activo de la UI (mes de facturación/servicio actual),
+     * sin importar si el plano corresponde al mes vencido (dependiente) o actual (independiente).
+     *
+     * Formato: Planilla_SS_Nombre_Apellido_MesNombre_Anio.pdf
+     */
+    public static function generarNombreArchivoPdf(
+        string $nombreCompleto,
+        int $mesFiltro,
+        int $anioFiltro
+    ): string {
+        $mesesEs = [
+            1 => 'Enero', 2 => 'Febrero', 3 => 'Marzo', 4 => 'Abril',
+            5 => 'Mayo', 6 => 'Junio', 7 => 'Julio', 8 => 'Agosto',
+            9 => 'Septiembre', 10 => 'Octubre', 11 => 'Noviembre', 12 => 'Diciembre',
+        ];
+
+        // Limpiar nombre: eliminar acentos y caracteres especiales, reemplazar espacios
+        $nombreLimpio = $nombreCompleto;
+        $nombreLimpio = str_replace(
+            ['á','é','í','ó','ú','Á','É','Í','Ó','Ú','ñ','Ñ'],
+            ['a','e','i','o','u','A','E','I','O','U','n','N'],
+            $nombreLimpio
+        );
+        $nombreLimpio = preg_replace('/[^a-zA-Z0-9\s]/', '', $nombreLimpio);
+        $nombreLimpio = str_replace(' ', '_', trim($nombreLimpio));
+        $nombreLimpio = preg_replace('/_+/', '_', $nombreLimpio);
+
+        $mesNombre = $mesesEs[$mesFiltro] ?? "Mes{$mesFiltro}";
+
+        return "Planilla_SS_{$nombreLimpio}_{$mesNombre}_{$anioFiltro}.pdf";
     }
 
     /**

@@ -312,12 +312,19 @@
                         <input type="text" x-model="filtroPlanilla" @input="aplicarFiltrosTabla()" placeholder="↓ Nº Planilla" class="th-input">
                     </th>
                     <th style="min-width: 140px; padding: 0.55rem 0.6rem;">
-                        <select x-model="filtroEmpresa" @change="aplicarFiltrosTabla()" class="th-select">
-                            <option value="">↓ Empresa Cliente</option>
-                            <option value="">Todos</option>
-                            <option value="Individual">Individual</option>
-                            <option value="Empresa">Empresa</option>
-                        </select>
+                        <input
+                            type="text"
+                            x-model="filtroEmpresa"
+                            @input="aplicarFiltrosTabla()"
+                            list="empresas-datalist"
+                            placeholder="↓ Empresa Cliente"
+                            class="th-input"
+                        >
+                        <datalist id="empresas-datalist">
+                            <template x-for="emp in listaEmpresas" :key="emp">
+                                <option :value="emp" x-text="emp"></option>
+                            </template>
+                        </datalist>
                     </th>
                     <th style="min-width: 110px; color: #fff; font-size: 0.74rem; text-align: center; padding: 0.55rem 0.6rem;">
                         WhatsApp
@@ -332,28 +339,57 @@
             </thead>
             <tbody>
                 <template x-for="d in filtrados" :key="d.plano_id">
-                    <tr style="border-bottom: 1px solid #e2e8f0; font-size: 0.82rem;">
+                    <tr :style="d.es_operador_autorizado === false ? 'border-bottom: 1px solid #e2e8f0; font-size: 0.82rem; opacity: 0.55;' : 'border-bottom: 1px solid #e2e8f0; font-size: 0.82rem;'">
                         <td style="padding: 0.6rem 0.75rem; text-align: center;">
-                            <input type="checkbox" x-model="d.seleccionado" @change="verificarSeleccionIndividual()">
+                            <input
+                                type="checkbox"
+                                x-model="d.seleccionado"
+                                @change="verificarSeleccionIndividual()"
+                                :disabled="d.es_operador_autorizado === false"
+                                :title="d.es_operador_autorizado === false ? 'Operador no autorizado para envío PDF' : ''"
+                            >
                         </td>
-                        <td style="padding: 0.6rem 0.75rem; font-weight: 600; color: #1e293b;" x-text="d.nombre_destinatario"></td>
+                        {{-- Columna Cliente: siempre muestra el nombre del afiliado --}}
+                        <td style="padding: 0.6rem 0.75rem; font-weight: 600; color: #1e293b;">
+                            <span x-text="d.cliente_nombre || d.nombre_destinatario"></span>
+                            {{-- Indicador de contacto empresa cuando aplica --}}
+                            <template x-if="d.contacto_nombre">
+                                <div style="font-size: 0.65rem; color: #64748b; font-weight: 400; margin-top: 0.1rem;">
+                                    📬 <span x-text="'Envía a: ' + d.contacto_nombre"></span>
+                                </div>
+                            </template>
+                        </td>
                         <td style="padding: 0.6rem 0.75rem; color: #475569;" x-text="d.cliente_cedula"></td>
-                        <td style="padding: 0.6rem 0.75rem; color: #475569;" x-text="d.operador_nombre"></td>
+                        <td style="padding: 0.6rem 0.75rem; color: #475569;">
+                            <span x-text="d.operador_nombre"></span>
+                            <template x-if="d.es_operador_autorizado === false">
+                                <span style="display: inline-block; margin-left: 4px; font-size: 0.65rem; background: #fef3c7; color: #92400e; border: 1px solid #fde68a; border-radius: 4px; padding: 0 4px;" title="Sin plantilla PDF autorizada">⚠️ Sin PDF</span>
+                            </template>
+                        </td>
                         <td style="padding: 0.6rem 0.75rem; font-family: monospace; color: #475569;" x-text="d.numero_planilla"></td>
                         <td style="padding: 0.6rem 0.75rem; color: #475569;" x-text="d.empresa_nombre"></td>
                         <td style="padding: 0.6rem 0.75rem; color: #475569; text-align: center;" x-text="d.wa_numero || 'Sin Celular'"></td>
                         <td style="padding: 0.6rem 0.75rem; text-align: center;">
-                            <span :class="badgeEstado(d.envio_state || d.envio_estado)" x-text="etiquetaEstado(d.envio_state || d.envio_estado)"></span>
-                            <div x-show="d.envio_fecha" style="font-size: 0.65rem; color: #64748b; margin-top: 0.2rem;" x-text="formatearFecha(d.envio_fecha)"></div>
+                            <template x-if="d.es_operador_autorizado === false">
+                                <span class="badge-info" style="background: #f3f4f6; color: #6b7280; border: 1px solid #d1d5db;">⚠️ Sin envío</span>
+                            </template>
+                            <template x-if="d.es_operador_autorizado !== false">
+                                <span :class="badgeEstado(d.envio_state || d.envio_estado)" x-text="etiquetaEstado(d.envio_state || d.envio_estado)"></span>
+                            </template>
+                            <div x-show="d.envio_fecha && d.es_operador_autorizado !== false" style="font-size: 0.65rem; color: #64748b; margin-top: 0.2rem;" x-text="formatearFecha(d.envio_fecha)"></div>
                         </td>
                         <td style="padding: 0.6rem 0.75rem; text-align: center;">
                             <div style="display: flex; gap: 0.3rem; justify-content: center; align-items: center;">
                                 <a :href="`/admin/planos/certificado-pdf?cedula=${d.cliente_cedula}&numero_planilla=${d.numero_planilla}&forzar_operador_id=${d.operador_id}`" target="_blank" class="wa-pill-btn wa-pill-btn-outline" style="padding: 0 0.5rem; font-size: 0.72rem; height: 26px; border-color: #f87171; color: #dc2626 !important; background: #fef2f2;">
                                     <i class="far fa-file-pdf"></i> PDF
                                 </a>
-                                <button class="wa-pill-btn wa-pill-btn-success" style="padding: 0 0.6rem; font-size: 0.72rem; height: 26px;" 
-                                        @click="reenviarPlanillaIndividual(d.plano_id, d.nombre_destinatario)"
-                                        :disabled="reenviandoId === d.plano_id || !plantillaConfigurada">
+                                <button
+                                    class="wa-pill-btn wa-pill-btn-success"
+                                    style="padding: 0 0.6rem; font-size: 0.72rem; height: 26px;"
+                                    @click="reenviarPlanillaIndividual(d.plano_id, d.cliente_nombre || d.nombre_destinatario, d.periodo_mes, d.periodo_anio)"
+                                    :disabled="reenviandoId === d.plano_id || !plantillaConfigurada || d.es_operador_autorizado === false"
+                                    :title="d.es_operador_autorizado === false ? 'Operador no autorizado para envío PDF' : 'Enviar planilla por WhatsApp'"
+                                >
                                     <span x-show="reenviandoId !== d.plano_id"><i class="fab fa-whatsapp"></i> Enviar</span>
                                     <span x-show="reenviandoId === d.plano_id" x-cloak><i class="fas fa-spinner fa-spin"></i></span>
                                 </button>
@@ -597,6 +633,7 @@ function enviosPlanillaApp() {
         destinatarios: [],
         filtrados: [],
         listaOperadores: [],
+        listaEmpresas: [],
         seleccionadosCount: 0,
         seleccionarTodos: false,
 
@@ -650,7 +687,14 @@ function enviosPlanillaApp() {
                     
                     // Extraer operadores únicos
                     this.listaOperadores = [...new Set(this.destinatarios.map(d => d.operador_nombre))].filter(Boolean);
-                    
+
+                    // Extraer empresas únicas (sin «Individual» en la lista de autocompletado)
+                    this.listaEmpresas = [...new Set(
+                        this.destinatarios
+                            .map(d => d.empresa_nombre)
+                            .filter(e => e && e !== 'Individual')
+                    )].sort();
+
                     this.aplicarFiltrosTabla();
                 } else {
                     this.mensajeError = data.mensaje || 'Error al obtener destinatarios.';
@@ -692,12 +736,9 @@ function enviosPlanillaApp() {
                 const pla = this.filtroPlanilla.toLowerCase().trim();
                 resultado = resultado.filter(d => d.numero_planilla && d.numero_planilla.toLowerCase().includes(pla));
             }
-            if (this.filtroEmpresa !== '') {
-                if (this.filtroEmpresa === 'Individual') {
-                    resultado = resultado.filter(d => d.empresa_nombre === 'Individual');
-                } else {
-                    resultado = resultado.filter(d => d.empresa_nombre !== 'Individual');
-                }
+            if (this.filtroEmpresa.trim() !== '') {
+                const emp = this.filtroEmpresa.toLowerCase().trim();
+                resultado = resultado.filter(d => (d.empresa_nombre || '').toLowerCase().includes(emp));
             }
 
             this.filtrados = resultado;
@@ -768,7 +809,7 @@ function enviosPlanillaApp() {
             }
         },
 
-        async reenviarPlanillaIndividual(planoId, nombre) {
+        async reenviarPlanillaIndividual(planoId, nombre, periodoMes, periodoAnio) {
             this.reenviandoId = planoId;
             this.mensajeExito = '';
             this.mensajeError = '';
@@ -782,7 +823,9 @@ function enviosPlanillaApp() {
                         'X-CSRF-TOKEN': csrfToken
                     },
                     body: JSON.stringify({
-                        tipo_envio: this.tipoEnvio
+                        tipo_envio: this.tipoEnvio,
+                        mes: periodoMes || this.filtroMes,
+                        anio: periodoAnio || this.filtroAnio,
                     })
                 });
 
@@ -965,7 +1008,19 @@ function enviosPlanillaApp() {
             if (!this.planoPruebaId) return 'Planilla_SS.pdf';
             const cliente = this.filtrados.find(d => d.plano_id == this.planoPruebaId);
             if (!cliente) return 'Planilla_SS.pdf';
-            return `Planilla_SS_${cliente.cliente_cedula}_${cliente.periodo_mes || 7}_${cliente.periodo_anio || 2026}.pdf`;
+
+            const mesesEs = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
+                             'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+            const mesNombre = mesesEs[(this.filtroMes - 1)] || `Mes${this.filtroMes}`;
+
+            const nombreCompleto = (cliente.cliente_nombre || cliente.nombre_destinatario || 'Cliente');
+            const nombreLimpio = nombreCompleto
+                .replace(/[áÁ]/g,'a').replace(/[éÉ]/g,'e').replace(/[íÍ]/g,'i')
+                .replace(/[óÓ]/g,'o').replace(/[úÚ]/g,'u').replace(/[ñÑ]/g,'n')
+                .replace(/[^a-zA-Z0-9\s]/g, '')
+                .trim().replace(/\s+/g, '_');
+
+            return `Planilla_SS_${nombreLimpio}_${mesNombre}_${this.filtroAnio}.pdf`;
         },
 
         get textoPrevisualizadoFormateado() {
@@ -977,7 +1032,7 @@ function enviosPlanillaApp() {
             let txt = "Hola *{{1}}*👋,\n\nTu planilla de seguridad social ha sido pagada exitosamente. ✅\n\n*Operador:* {{2}}\n*Número de planilla:* {{3}}\n\nSi tienes alguna duda, estamos atentos. 😊";
             
             // Reemplazar variables
-            txt = txt.replace('{{1}}', cliente.nombre_destinatario || 'Cliente');
+            txt = txt.replace('{{1}}', cliente.cliente_nombre || cliente.nombre_destinatario || 'Cliente');
             txt = txt.replace('{{2}}', cliente.operador_nombre || 'Operador');
             txt = txt.replace('{{3}}', cliente.numero_planilla || 'N/A');
             

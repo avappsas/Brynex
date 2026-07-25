@@ -30,6 +30,7 @@ class CatalogoPlanesPromocion
             'solo_arl' => [
                 'nombre'    => 'Protección Laboral',
                 'gancho'    => 'Trabaja cubierto ante cualquier accidente',
+                'titular'   => ['TRABAJA', 'tranquilo'],
                 'servicios' => ['ARL'],
                 'componentes' => ['incluye_eps' => false, 'incluye_arl' => true, 'incluye_pension' => false, 'incluye_caja' => false],
                 'independiente' => true,
@@ -43,6 +44,7 @@ class CatalogoPlanesPromocion
             'esencial' => [
                 'nombre'    => 'Plan Esencial',
                 'gancho'    => 'Tu salud y tu trabajo, cubiertos',
+                'titular'   => ['CUIDA TU', 'salud'],
                 'servicios' => ['EPS', 'ARL'],
                 'componentes' => ['incluye_eps' => true, 'incluye_arl' => true, 'incluye_pension' => false, 'incluye_caja' => false],
                 'independiente' => false,
@@ -53,6 +55,7 @@ class CatalogoPlanesPromocion
             'salud_beneficios' => [
                 'nombre'    => 'Salud + Beneficios',
                 'gancho'    => 'Suma los subsidios de la caja a tu cobertura',
+                'titular'   => ['SALUD CON', 'beneficios'],
                 'servicios' => ['EPS', 'ARL', 'Caja'],
                 'componentes' => ['incluye_eps' => true, 'incluye_arl' => true, 'incluye_pension' => false, 'incluye_caja' => true],
                 'independiente' => false,
@@ -63,6 +66,7 @@ class CatalogoPlanesPromocion
             'completo' => [
                 'nombre'    => 'Plan Completo',
                 'gancho'    => 'Salud, protección y tu pensión creciendo',
+                'titular'   => ['ASEGURA TU', 'futuro'],
                 'servicios' => ['EPS', 'ARL', 'Pensión'],
                 'componentes' => ['incluye_eps' => true, 'incluye_arl' => true, 'incluye_pension' => true, 'incluye_caja' => false],
                 'independiente' => false,
@@ -73,6 +77,7 @@ class CatalogoPlanesPromocion
             'todo_incluido' => [
                 'nombre'    => 'Todo Incluido',
                 'gancho'    => 'La cobertura más completa para ti y los tuyos',
+                'titular'   => ['PROTEGE A TU', 'familia'],
                 'servicios' => ['EPS', 'ARL', 'Pensión', 'Caja'],
                 'componentes' => ['incluye_eps' => true, 'incluye_arl' => true, 'incluye_pension' => true, 'incluye_caja' => true],
                 'independiente' => false,
@@ -83,6 +88,7 @@ class CatalogoPlanesPromocion
             'independiente' => [
                 'nombre'    => 'Independiente',
                 'gancho'    => 'Trabajas por tu cuenta, pero no estás solo',
+                'titular'   => ['POR TU CUENTA,', 'protegido'],
                 'servicios' => ['EPS', 'Pensión'],
                 'componentes' => ['incluye_eps' => true, 'incluye_arl' => false, 'incluye_pension' => true, 'incluye_caja' => false],
                 'independiente' => true,
@@ -93,6 +99,7 @@ class CatalogoPlanesPromocion
             'independiente_plus' => [
                 'nombre'    => 'Independiente Plus',
                 'gancho'    => 'Tu cuenta propia, con los beneficios de la caja',
+                'titular'   => ['TU NEGOCIO Y TU', 'bienestar'],
                 'servicios' => ['EPS', 'Pensión', 'Caja'],
                 'componentes' => ['incluye_eps' => true, 'incluye_arl' => false, 'incluye_pension' => true, 'incluye_caja' => true],
                 'independiente' => true,
@@ -103,6 +110,7 @@ class CatalogoPlanesPromocion
             'pension_exterior' => [
                 'nombre'    => 'Pensión desde el Exterior',
                 'gancho'    => 'Vives fuera, tu pensión sigue creciendo en Colombia',
+                'titular'   => ['TU PENSIÓN', 'sin fronteras'],
                 'servicios' => ['Pensión'],
                 'componentes' => ['incluye_eps' => false, 'incluye_arl' => false, 'incluye_pension' => true, 'incluye_caja' => false],
                 'independiente'  => true,
@@ -114,6 +122,7 @@ class CatalogoPlanesPromocion
             'solo_salud' => [
                 'nombre'    => 'Solo Salud',
                 'gancho'    => 'Afilia a quien no está en tu grupo familiar',
+                'titular'   => ['CUIDA A LOS', 'tuyos'],
                 'servicios' => ['EPS'],
                 'componentes' => ['incluye_eps' => true, 'incluye_arl' => false, 'incluye_pension' => false, 'incluye_caja' => false],
                 'independiente' => true,
@@ -125,6 +134,7 @@ class CatalogoPlanesPromocion
             'tiempo_parcial' => [
                 'nombre'    => 'Tiempo Parcial',
                 'gancho'    => 'Trabajas por días, cotizas por días',
+                'titular'   => ['POR DÍAS, PERO', 'protegido'],
                 'servicios' => ['ARL', 'Pensión', 'Caja'],
                 'componentes' => ['incluye_eps' => false, 'incluye_arl' => true, 'incluye_pension' => true, 'incluye_caja' => true],
                 'independiente'       => false,
