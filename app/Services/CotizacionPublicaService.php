@@ -164,23 +164,63 @@ class CotizacionPublicaService
     private const PRIORIDAD_INDEPENDIENTE_IDS = [10, 11, 13, 14];
     private const PRIORIDAD_DEPENDIENTE_IDS   = [0, 7];
 
+    /** Días válidos de Tiempo Parcial -> id de modalidad (públicos, ofrecidos siempre por días parejos). */
+    private const MODALIDAD_TP_POR_DIAS = [7 => 1, 14 => 2, 21 => 3, 30 => 4];
+
+    /** ID de la modalidad "Gestión ARL" (solo afiliación/radicado, sin planilla mensual). */
+    public const MODALIDAD_GESTION_ARL_ID = 15;
+
+    /** Plan "Solo ARL" — el único exento de la regla de pensión obligatoria (nunca la incluye por diseño). */
+    private const PLAN_SOLO_ARL_ID = 2;
+
     /**
      * Resuelve la modalidad correcta para un plan consultando modalidad_planes — la MISMA
      * tabla de permitidos que usa el cotizador del admin (admin/cotizaciones/create) — en vez
      * de asumir una modalidad fija. Evita cotizar combinaciones plan+modalidad que el negocio
      * no ofrece (ej. "Solo AFP" con Independiente Vencido, que no existe).
+     *
+     * @param ?int $tiempoParcialDias Si el cliente confirmó que quiere pagar por días (7/14/21/30),
+     *   fuerza esa modalidad de Tiempo Parcial en vez de la cascada normal.
+     * @param bool $incluirSoloIa Filas marcadas solo_ia=true (planes que existen pero NUNCA se
+     *   ofrecen en la web pública) — solo la IA de WhatsApp debe pasar true, y solo cuando el
+     *   cliente ya mostró que el precio normal es un obstáculo. La web SIEMPRE usa false.
      */
-    public static function resolverModalidadPermitida(PlanContrato $plan, bool $esIndependiente, bool $desdeExterior = false): ?TipoModalidad
-    {
-        $permitidas = \Illuminate\Support\Facades\DB::table('modalidad_planes')
+    public static function resolverModalidadPermitida(
+        PlanContrato $plan,
+        bool $esIndependiente,
+        bool $desdeExterior = false,
+        ?int $tiempoParcialDias = null,
+        bool $incluirSoloIa = false
+    ): ?TipoModalidad {
+        $filas = \Illuminate\Support\Facades\DB::table('modalidad_planes')
             ->where('plan_id', $plan->id)
-            ->pluck('tipo_modalidad_id')
-            ->map(fn ($v) => (int) $v)
-            ->all();
+            ->when(!$incluirSoloIa, fn ($q) => $q->where('solo_ia', false))
+            ->get(['tipo_modalidad_id', 'solo_ia']);
+        $permitidas = $filas->map(fn ($f) => (int) $f->tipo_modalidad_id)->all();
 
         // Plan sin filas en modalidad_planes: conservar el comportamiento histórico.
         if (empty($permitidas)) {
             return self::modalidadPorDefecto($esIndependiente);
+        }
+
+        // El plan/oferta oculta (solo_ia) se prioriza primero — si $incluirSoloIa es true, ya
+        // fue una decisión deliberada de la IA (el cliente mostró que el precio normal no le
+        // sirve), así que no tiene sentido caer en la cascada normal si hay una opción oculta.
+        if ($incluirSoloIa) {
+            $idsOcultos = $filas->where('solo_ia', true)->pluck('tipo_modalidad_id')->map(fn ($v) => (int) $v)->all();
+            if (!empty($idsOcultos)) {
+                $modalidad = TipoModalidad::find($idsOcultos[0]);
+                if ($modalidad) {
+                    return $modalidad;
+                }
+            }
+        }
+
+        if ($tiempoParcialDias && isset(self::MODALIDAD_TP_POR_DIAS[$tiempoParcialDias])) {
+            $idTp = self::MODALIDAD_TP_POR_DIAS[$tiempoParcialDias];
+            if (in_array($idTp, $permitidas, true)) {
+                return TipoModalidad::find($idTp);
+            }
         }
 
         if ($desdeExterior && in_array(self::MODALIDAD_EXTERIOR_ID, $permitidas, true)) {
@@ -203,6 +243,47 @@ class CotizacionPublicaService
         // El plan solo existe en modalidades especiales (SimpleP, K, Y, ...) que no se
         // ofrecen por los canales públicos — mejor no cotizar que cotizar mal.
         return null;
+    }
+
+    /**
+     * ¿Este pedido de componentes (sin pensión) necesita confirmar exención antes de cotizarlo
+     * así? Regla real (config admin/configuracion/modalidades "AFP obligatorio"): si está activa,
+     * solo pueden omitir pensión hombres desde 55 años, mujeres desde 50, o extranjeros con
+     * CE/PT — EXCEPTO "Solo ARL", que nunca lleva pensión por diseño y no aplica esta regla.
+     * Si no se confirma la exención, hay que cotizar CON pensión (más seguro que asumir que sí
+     * califica) — nunca se le pregunta la edad/género directamente al cliente.
+     */
+    public static function requiereConfirmarExencionPension(array $componentes, bool $exencionConfirmada): bool
+    {
+        if ($componentes['incluye_pension']) {
+            return false; // ya pidió pensión, no aplica
+        }
+        if (!$componentes['incluye_eps'] && !$componentes['incluye_caja'] && $componentes['incluye_arl']) {
+            return false; // patrón de "Solo ARL" — exento por diseño
+        }
+        if (!ConfiguracionBrynex::reglaAfpObligatorio()) {
+            return false; // la regla no está activa: cualquiera puede omitir pensión
+        }
+        return !$exencionConfirmada;
+    }
+
+    /**
+     * Precio de cierre de Gestión ARL: 25% de descuento sobre el valor normal, SOLO para esta
+     * modalidad (no lleva planilla mensual, solo la afiliación/radicado) — nunca inventar este
+     * descuento en otro plan. Se ofrece como "plan B" después de decir el precio normal.
+     */
+    public static function cotizarGestionArlConDescuento(int $aliadoId, int $nivelArl): array
+    {
+        $plan      = PlanContrato::find(self::PLAN_SOLO_ARL_ID);
+        $modalidad = TipoModalidad::find(self::MODALIDAD_GESTION_ARL_ID);
+
+        $normal = self::cotizar($plan, $modalidad, $aliadoId, ['nivel_arl' => $nivelArl]);
+
+        return [
+            'valor_normal'     => $normal['total'],
+            'valor_descuento'  => (float) (ceil(($normal['total'] * 0.75) / 100) * 100),
+            'porcentaje'       => 25,
+        ];
     }
 
     /**

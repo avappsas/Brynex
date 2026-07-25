@@ -167,6 +167,16 @@ class PaginaAliadoController extends Controller
 
         $independiente = $validado['independiente'];
 
+        // Regla real (Configuración → Modalidades → "AFP obligatorio"): la web no puede
+        // confirmar la exención (edad/género/extranjería) de forma natural como la IA, así
+        // que si el plan omite pensión y no aplica el caso especial de "Solo ARL", se cotiza
+        // CON pensión y se avisa — más seguro que ofrecer un plan que no se puede honrar.
+        $seAgregoPensionPorNormativa = false;
+        if (CotizacionPublicaService::requiereConfirmarExencionPension($componentes, false)) {
+            $componentes['incluye_pension'] = true;
+            $seAgregoPensionPorNormativa = true;
+        }
+
         [$plan, $coincidenciaExacta] = CotizacionPublicaService::resolverPlan($componentes, $independiente);
         if (!$plan) {
             return response()->json(['error' => 'No tenemos un plan disponible con esa combinación. Escríbenos por WhatsApp y te asesoramos.'], 422);
@@ -196,6 +206,12 @@ class PaginaAliadoController extends Controller
                 'caja'    => (bool) $plan->incluye_caja,
             ],
         ];
+
+        if ($seAgregoPensionPorNormativa) {
+            $respuesta['nota_afp'] = 'Este plan incluye pensión por normativa. Si eres hombre desde 55 años, mujer '
+                . 'desde 50, o extranjero con cédula de extranjería/permiso temporal, podrías omitirla — escríbenos '
+                . 'por WhatsApp para confirmarlo.';
+        }
 
         if ($config->mostrar_precios) {
             $respuesta['precios_visibles']    = true;
