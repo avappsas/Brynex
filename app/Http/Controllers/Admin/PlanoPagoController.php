@@ -1118,6 +1118,10 @@ class PlanoPagoController extends Controller
     {
         abort_unless(Auth::user()->hasRole(['admin', 'superadmin']), 403, 'No autorizado.');
 
+        // Evitar timeout por procesamiento síncrono (QUEUE_CONNECTION=sync)
+        @set_time_limit(0);
+        @ini_set('max_execution_time', 0);
+
         $aliadoId = session('aliado_id_activo');
         $usuarioId = Auth::id();
 
@@ -1135,10 +1139,22 @@ class PlanoPagoController extends Controller
 
         $plantillaId = $config->planilla_envio_plantilla_id;
         if (!$plantillaId) {
-            $plantilla = \App\Models\WhatsappPlantilla::where('aliado_id', $aliadoId)
-                ->where('nombre', 'envio_planilla_seguridad_social')
-                ->first();
-            $plantillaId = $plantilla?->id;
+            if ($config->usa_cuenta_brynex || $config->usa_brynex) {
+                $brynexId = \App\Models\Aliado::where('nombre', 'BryNex')->first()?->id ?: 1;
+                $configGlobal = \App\Models\WhatsappConfig::paraAliado($brynexId);
+                $plantillaId = $configGlobal?->planilla_envio_plantilla_id;
+                if (!$plantillaId) {
+                    $plantilla = \App\Models\WhatsappPlantilla::where('aliado_id', $brynexId)
+                        ->where('nombre', 'envio_planilla_seguridad_social')
+                        ->first();
+                    $plantillaId = $plantilla?->id;
+                }
+            } else {
+                $plantilla = \App\Models\WhatsappPlantilla::where('aliado_id', $aliadoId)
+                    ->where('nombre', 'envio_planilla_seguridad_social')
+                    ->first();
+                $plantillaId = $plantilla?->id;
+            }
         }
 
         if (!$plantillaId) {

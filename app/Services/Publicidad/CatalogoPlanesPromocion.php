@@ -87,24 +87,31 @@ class CatalogoPlanesPromocion
 
             'independiente' => [
                 'nombre'    => 'Independiente',
-                'gancho'    => 'Trabajas por tu cuenta, pero no estás solo',
-                'titular'   => ['POR TU CUENTA,', 'protegido'],
+                'gancho'    => 'Salud y pensión, sin necesidad de un empleo fijo',
+                'titular'   => ['AUNQUE NO TRABAJES,', 'protegido'],
                 'servicios' => ['EPS', 'Pensión'],
                 'componentes' => ['incluye_eps' => true, 'incluye_arl' => false, 'incluye_pension' => true, 'incluye_caja' => false],
                 'independiente' => true,
-                'escena' => 'un emprendedor o trabajador independiente colombiano en su propio negocio (barbería, cafetería, taller '
-                    . 'o local pequeño), atendiendo con orgullo y confianza, ambiente real y cercano',
+                // Sin ARL: este plan es para quien NO ejerce una actividad laboral de riesgo
+                // (vive de rentas, no tiene trabajo activo, quiere aportar por su cuenta). La
+                // escena NUNCA debe mostrar a alguien trabajando — eso le corresponde a los
+                // planes que sí incluyen ARL.
+                'escena' => 'una persona colombiana adulta en un momento tranquilo de su vida diaria en casa — leyendo, '
+                    . 'tomando café, revisando su computador en la sala — con gesto sereno y autónomo, sin ningún '
+                    . 'elemento de oficio, uniforme ni lugar de trabajo',
             ],
 
             'independiente_plus' => [
                 'nombre'    => 'Independiente Plus',
-                'gancho'    => 'Tu cuenta propia, con los beneficios de la caja',
-                'titular'   => ['TU NEGOCIO Y TU', 'bienestar'],
+                'gancho'    => 'Salud, pensión y los beneficios de la caja, sin depender de un empleo',
+                'titular'   => ['TU FAMILIA PROTEGIDA,', 'sin empleo'],
                 'servicios' => ['EPS', 'Pensión', 'Caja'],
                 'componentes' => ['incluye_eps' => true, 'incluye_arl' => false, 'incluye_pension' => true, 'incluye_caja' => true],
                 'independiente' => true,
-                'escena' => 'una mujer colombiana emprendedora en su negocio propio junto a su hijo pequeño, '
-                    . 'equilibrando trabajo y familia con una sonrisa genuina, luz natural cálida',
+                // Mismo caso que 'independiente': sin ARL, nada de escenas de trabajo.
+                'escena' => 'una madre o padre colombiano disfrutando tiempo de calidad con su hijo en un parque o en '
+                    . 'la sala de su casa, ambiente relajado de fin de semana, sin ningún elemento de oficio ni '
+                    . 'lugar de trabajo',
             ],
 
             'pension_exterior' => [

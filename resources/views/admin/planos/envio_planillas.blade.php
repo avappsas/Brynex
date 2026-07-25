@@ -628,6 +628,99 @@
         </div>
     </div>
 
+    {{-- MODAL: Confirmar Envío Masivo --}}
+    <div x-show="confirmarMasivoModalOpen" class="modal-overlay" style="background: rgba(0,0,0,0.55); position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 1rem;" x-cloak @click.self="confirmarMasivoModalOpen = false">
+        <div class="modal-box" style="background: #fff; border-radius: 16px; max-width: 650px; width: 100%; box-shadow: 0 20px 60px rgba(0,0,0,0.25); display: flex; flex-direction: column; overflow: hidden; animation: mIn .18s ease;">
+            <div class="modal-head" style="display: flex; align-items: center; justify-content: space-between; padding: 1rem 1.25rem; border-bottom: 1px solid #e5e7eb; background: #f8fafc;">
+                <h3 style="margin: 0; font-size: 1.1rem; color: #1e293b; font-weight: 600; display: flex; align-items: center; gap: 0.5rem;">
+                    <i class="fas fa-check-double" style="color: #10b981;"></i> Confirmar Envío Masivo
+                </h3>
+                <button class="modal-close" style="background: none; border: none; font-size: 1.4rem; color: #94a3b8; cursor: pointer;" @click="confirmarMasivoModalOpen = false">&times;</button>
+            </div>
+            
+            <div class="modal-body" style="padding: 1.5rem; max-height: 60vh; overflow-y: auto;">
+                {{-- Banner informativo --}}
+                <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 10px; padding: 0.85rem; margin-bottom: 1.25rem; display: flex; align-items: flex-start; gap: 0.5rem;">
+                    <i class="fas fa-info-circle" style="color: #3b82f6; margin-top: 0.15rem; flex-shrink: 0;"></i>
+                    <div style="font-size: 0.82rem; color: #1e3a8a; line-height: 1.4;">
+                        <span style="font-weight: 700;">Resumen del Envío:</span>
+                        Se enviará la planilla de WhatsApp con el PDF correspondiente a los <span x-text="seleccionadosCount" style="font-weight: 700;"></span> destinatarios seleccionados.
+                        <template x-if="tipoEnvio === 'contacto_empresa'">
+                            <div style="margin-top: 0.4rem; font-weight: 600; color: #b91c1c;">
+                                ⚠️ ATENCIÓN: Se enviarán al número de contacto de la empresa. Verifique que los celulares correspondan al contacto de la empresa destino.
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                {{-- Tabla de Destinatarios --}}
+                <div style="border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.78rem;">
+                        <thead>
+                            <tr style="background: #f8fafc; border-bottom: 1px solid #cbd5e1; text-align: left; color: #475569; font-weight: 600;">
+                                <th style="padding: 0.5rem 0.75rem;">Cliente</th>
+                                <th style="padding: 0.5rem 0.75rem;">Empresa</th>
+                                <th style="padding: 0.5rem 0.75rem;">Destinatario / Celular</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="d in seleccionadosParaConfirmar" :key="d.plano_id">
+                                <tr style="border-bottom: 1px solid #f1f5f9;">
+                                    <td style="padding: 0.5rem 0.75rem; font-weight: 600; color: #1e293b;" x-text="d.cliente_nombre || d.nombre_destinatario"></td>
+                                    <td style="padding: 0.5rem 0.75rem; color: #475569;" x-text="d.empresa_nombre"></td>
+                                    <td style="padding: 0.5rem 0.75rem; color: #1e293b;">
+                                        <template x-if="tipoEnvio === 'contacto_empresa'">
+                                            <div>
+                                                <span x-text="d.contacto_nombre || 'Contacto'" style="font-weight: 600;"></span>
+                                                <span style="color: #64748b;" x-text="' (' + d.wa_numero + ')'"></span>
+                                            </div>
+                                        </template>
+                                        <template x-if="tipoEnvio !== 'contacto_empresa'">
+                                            <div>
+                                                <span x-text="d.wa_numero || 'Sin Celular'"></span>
+                                            </div>
+                                        </template>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <div class="modal-foot" style="padding: 1rem 1.25rem; border-top: 1px solid #e5e7eb; background: #f8fafc;">
+                {{-- Resultado del envío masivo --}}
+                <template x-if="confirmarResultado">
+                    <div :style="confirmarResultado.ok
+                            ? 'background:#f0fdf4; border:1px solid #86efac; color:#166534; border-radius:8px; padding:0.65rem 0.85rem; font-size:0.82rem; margin-bottom:0.75rem; display:flex; align-items:flex-start; gap:0.5rem;'
+                            : 'background:#fef2f2; border:1px solid #fca5a5; color:#991b1b; border-radius:8px; padding:0.65rem 0.85rem; font-size:0.82rem; margin-bottom:0.75rem; display:flex; align-items:flex-start; gap:0.5rem;'"
+                    >
+                        <i :class="confirmarResultado.ok ? 'fas fa-check-circle' : 'fas fa-exclamation-triangle'" style="margin-top:0.1rem; flex-shrink:0;"></i>
+                        <span x-text="confirmarResultado.mensaje"></span>
+                    </div>
+                </template>
+
+                <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+                    {{-- Si ya se envió con éxito, solo mostrar botón de Aceptar para recargar --}}
+                    <template x-if="confirmarResultado && confirmarResultado.ok">
+                        <button class="wa-pill-btn wa-pill-btn-success" @click="confirmarMasivoModalOpen = false; confirmarResultado = null; cargarDestinatarios();">Aceptar</button>
+                    </template>
+
+                    {{-- Si no se ha enviado o hubo error, mostrar botones normales --}}
+                    <template x-if="!confirmarResultado || !confirmarResultado.ok">
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button class="wa-pill-btn wa-pill-btn-outline" @click="confirmarMasivoModalOpen = false; confirmarResultado = null;" :disabled="enviandoMasivo">Cancelar</button>
+                            <button class="wa-pill-btn wa-pill-btn-success" @click="ejecutarEnvioMasivoConfirmado()" :disabled="enviandoMasivo">
+                                <span x-show="!enviandoMasivo"><i class="fas fa-paper-plane"></i> Confirmar y Enviar</span>
+                                <span x-show="enviandoMasivo" x-cloak><i class="fas fa-spinner fa-spin"></i> Enviando Lote...</span>
+                            </button>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+    </div>
+
 </div>
 
 <script>
@@ -685,6 +778,11 @@ function enviosPlanillaApp() {
         waPruebaCelular: '',
         planoPruebaId: '',
         pruebaResultado: null, // null | {ok: bool, mensaje: string},
+
+        // Modal de Confirmación Masiva
+        confirmarMasivoModalOpen: false,
+        seleccionadosParaConfirmar: [],
+        confirmarResultado: null, // null | {ok: bool, mensaje: string}
 
         init() {
             this.cargarDestinatarios();
@@ -777,24 +875,23 @@ function enviosPlanillaApp() {
             this.seleccionarTodos = this.filtrados.length > 0 && activos.length === this.filtrados.length;
         },
 
-        async lanzarEnvioMasivo() {
+        lanzarEnvioMasivo() {
             if (this.seleccionadosCount === 0) return;
             
-            // Confirmar acción
-            if (!confirm(`¿Estás seguro de enviar la plantilla de WhatsApp a los ${this.seleccionadosCount} clientes seleccionados?`)) {
-                return;
-            }
+            // Llenar datos de confirmación
+            this.confirmarResultado = null;
+            this.seleccionadosParaConfirmar = this.filtrados.filter(d => d.seleccionado);
+            this.confirmarMasivoModalOpen = true;
+        },
 
+        async ejecutarEnvioMasivoConfirmado() {
             this.enviandoMasivo = true;
+            this.confirmarResultado = null;
             this.mensajeExito = '';
             this.mensajeError = '';
 
             try {
-                // Obtener solo los seleccionados
-                const seleccionadosPlanoIds = this.filtrados
-                    .filter(d => d.seleccionado)
-                    .map(d => d.plano_id);
-
+                const seleccionadosPlanoIds = this.seleccionadosParaConfirmar.map(d => d.plano_id);
                 const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
                 
                 const res = await fetch('/admin/planos/envio-planillas/enviar', {
@@ -811,18 +908,24 @@ function enviosPlanillaApp() {
                     })
                 });
 
-                const data = await res.json();
+                let data;
+                try {
+                    data = await res.json();
+                } catch (e) {
+                    data = { ok: false, mensaje: `Error HTTP ${res.status}: No se pudo leer la respuesta del servidor.` };
+                }
                 
                 if (data.ok) {
-                    this.mensajeExito = data.mensaje;
-                    // Recargar destinatarios para reflejar el estado actual (enviando/pendiente)
-                    setTimeout(() => this.cargarDestinatarios(), 2000);
+                    this.confirmarResultado = { ok: true, mensaje: data.mensaje || '\u2705 Lote de envío masivo completado con éxito.' };
+                    this.mensajeExito = this.confirmarResultado.mensaje;
                 } else {
-                    this.mensajeError = data.mensaje || 'Error al iniciar el envío masivo.';
+                    this.confirmarResultado = { ok: false, mensaje: data.mensaje || '\u274C Error al iniciar el envío masivo.' };
+                    this.mensajeError = this.confirmarResultado.mensaje;
                 }
             } catch (err) {
                 console.error(err);
-                this.mensajeError = 'Error al enviar petición al servidor.';
+                this.confirmarResultado = { ok: false, mensaje: '\u274C Error al enviar petición al servidor: ' + err.message };
+                this.mensajeError = this.confirmarResultado.mensaje;
             } finally {
                 this.enviandoMasivo = false;
             }
