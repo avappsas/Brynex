@@ -786,6 +786,29 @@ class FlyerPlanBuilder
         imagefilledellipse($lienzo, $x + $w - $r, $y + $h - $r, $d, $d, $color);
     }
 
+    /**
+     * Rectángulo redondeado TRANSLÚCIDO. No se puede dibujar directo sobre el lienzo: la
+     * figura se arma con dos rectángulos y cuatro elipses, y donde se solapan el color
+     * semitransparente se aplica dos veces, dejando manchas más oscuras en los extremos.
+     * Se compone aparte con la mezcla apagada (los solapes se sobrescriben) y se pega de una.
+     *
+     * @param float $opacidad 0 = invisible, 1 = sólido.
+     */
+    private static function rectRedondeadoTranslucido($lienzo, int $x, int $y, int $w, int $h, int $r, array $rgb, float $opacidad): void
+    {
+        $capa = imagecreatetruecolor($w, $h);
+        imagealphablending($capa, false);
+        imagesavealpha($capa, true);
+        imagefilledrectangle($capa, 0, 0, $w, $h, imagecolorallocatealpha($capa, 0, 0, 0, 127));
+
+        $color = imagecolorallocatealpha($capa, $rgb[0], $rgb[1], $rgb[2], (int) round(127 - $opacidad * 127));
+        self::rectRedondeado($capa, 0, 0, $w - 1, $h - 1, $r, $color);
+
+        imagealphablending($lienzo, true);
+        imagecopy($lienzo, $capa, $x, $y, 0, 0, $w, $h);
+        imagedestroy($capa);
+    }
+
     private static function bordeRedondeado($lienzo, int $x, int $y, int $w, int $h, int $r, int $color): void
     {
         imagesetthickness($lienzo, 2);
