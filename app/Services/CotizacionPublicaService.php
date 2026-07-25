@@ -63,13 +63,13 @@ class CotizacionPublicaService
         $tarjetas = [];
 
         foreach (self::PLANES_DESTACADOS as $def) {
-            $modalidad = self::modalidadPorDefecto($def['independiente']);
-            if (!$modalidad) {
+            [$plan, $exacto] = self::resolverPlan($def['componentes'], $def['independiente']);
+            if (!$plan) {
                 continue;
             }
 
-            [$plan, $exacto] = self::resolverPlan($def['componentes'], $def['independiente']);
-            if (!$plan) {
+            $modalidad = self::resolverModalidadPermitida($plan, $def['independiente']);
+            if (!$modalidad) {
                 continue;
             }
 
@@ -151,6 +151,58 @@ class CotizacionPublicaService
     public static function modalidadPorDefecto(bool $esIndependiente): ?TipoModalidad
     {
         return TipoModalidad::find($esIndependiente ? self::MODALIDAD_INDEPENDIENTE_ID : self::MODALIDAD_DEPENDIENTE_ID);
+    }
+
+    /**
+     * Orden de preferencia al resolver la modalidad automáticamente. La modalidad es un
+     * detalle INTERNO — el cliente solo dice si es empleado/independiente o si está en el
+     * exterior; nunca se le pregunta "¿qué modalidad?". Si un plan no existe en las
+     * modalidades del perfil pedido (ej. "Solo AFP" solo existe como "En el Exterior"),
+     * se cae en cascada a la primera modalidad donde el plan SÍ es válido.
+     */
+    private const MODALIDAD_EXTERIOR_ID       = 14; // "En el Exterior"
+    private const PRIORIDAD_INDEPENDIENTE_IDS = [10, 11, 13, 14];
+    private const PRIORIDAD_DEPENDIENTE_IDS   = [0, 7];
+
+    /**
+     * Resuelve la modalidad correcta para un plan consultando modalidad_planes — la MISMA
+     * tabla de permitidos que usa el cotizador del admin (admin/cotizaciones/create) — en vez
+     * de asumir una modalidad fija. Evita cotizar combinaciones plan+modalidad que el negocio
+     * no ofrece (ej. "Solo AFP" con Independiente Vencido, que no existe).
+     */
+    public static function resolverModalidadPermitida(PlanContrato $plan, bool $esIndependiente, bool $desdeExterior = false): ?TipoModalidad
+    {
+        $permitidas = \Illuminate\Support\Facades\DB::table('modalidad_planes')
+            ->where('plan_id', $plan->id)
+            ->pluck('tipo_modalidad_id')
+            ->map(fn ($v) => (int) $v)
+            ->all();
+
+        // Plan sin filas en modalidad_planes: conservar el comportamiento histórico.
+        if (empty($permitidas)) {
+            return self::modalidadPorDefecto($esIndependiente);
+        }
+
+        if ($desdeExterior && in_array(self::MODALIDAD_EXTERIOR_ID, $permitidas, true)) {
+            return TipoModalidad::find(self::MODALIDAD_EXTERIOR_ID);
+        }
+
+        $prioridad = $esIndependiente
+            ? self::PRIORIDAD_INDEPENDIENTE_IDS
+            : array_merge(self::PRIORIDAD_DEPENDIENTE_IDS, self::PRIORIDAD_INDEPENDIENTE_IDS);
+
+        foreach ($prioridad as $id) {
+            if (in_array($id, $permitidas, true)) {
+                $modalidad = TipoModalidad::find($id);
+                if ($modalidad) {
+                    return $modalidad;
+                }
+            }
+        }
+
+        // El plan solo existe en modalidades especiales (SimpleP, K, Y, ...) que no se
+        // ofrecen por los canales públicos — mejor no cotizar que cotizar mal.
+        return null;
     }
 
     /**

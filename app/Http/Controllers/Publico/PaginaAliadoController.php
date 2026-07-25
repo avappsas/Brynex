@@ -166,14 +166,17 @@ class PaginaAliadoController extends Controller
         }
 
         $independiente = $validado['independiente'];
-        $modalidad = CotizacionPublicaService::modalidadPorDefecto($independiente);
-        if (!$modalidad) {
-            return response()->json(['error' => 'No se pudo determinar la modalidad.'], 422);
-        }
 
         [$plan, $coincidenciaExacta] = CotizacionPublicaService::resolverPlan($componentes, $independiente);
         if (!$plan) {
             return response()->json(['error' => 'No tenemos un plan disponible con esa combinación. Escríbenos por WhatsApp y te asesoramos.'], 422);
+        }
+
+        // La modalidad se resuelve INTERNAMENTE contra modalidad_planes (misma tabla del
+        // cotizador admin) — al visitante nunca se le pregunta ni se le muestra "modalidad".
+        $modalidad = CotizacionPublicaService::resolverModalidadPermitida($plan, $independiente);
+        if (!$modalidad) {
+            return response()->json(['error' => 'Esa combinación requiere asesoría personalizada. Escríbenos por WhatsApp y te ayudamos.'], 422);
         }
 
         $salario = $validado['salario'] ?? \App\Models\ConfiguracionBrynex::salarioMinimo();
