@@ -1416,7 +1416,7 @@ class PlanoPagoController extends Controller
     {
         $aliadoId = session('aliado_id_activo');
 
-        $lotes = PlanillaEnvioWhatsapp::with(['usuario'])
+        $lotes = \App\Models\PlanillaEnvioWhatsapp::with(['usuario'])
             ->where('aliado_id', $aliadoId)
             ->where('id', '>', 0)
             ->orderBy('id', 'desc')
@@ -1432,9 +1432,9 @@ class PlanoPagoController extends Controller
     {
         $aliadoId = session('aliado_id_activo');
 
-        $lote = PlanillaEnvioWhatsapp::where('aliado_id', $aliadoId)->findOrFail($loteId);
+        $lote = \App\Models\PlanillaEnvioWhatsapp::where('aliado_id', $aliadoId)->findOrFail($loteId);
 
-        $detalles = PlanillaEnvioWhatsappDetalle::where('envio_id', $lote->id)->get();
+        $detalles = \App\Models\PlanillaEnvioWhatsappDetalle::where('envio_id', $lote->id)->get();
 
         return response()->json([
             'ok' => true,

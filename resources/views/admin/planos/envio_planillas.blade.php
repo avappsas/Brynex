@@ -812,7 +812,7 @@ function enviosPlanillaApp() {
             this.seleccionarTodos = false;
             
             try {
-                const res = await fetch(`/admin/planos/envio-planillas/api?anio=${this.filtroAnio}&mes=${this.filtroMes}&tipo_envio=${this.tipoEnvio}&estado=${this.estadoFiltro}`);
+                const res = await fetch(`/admin/planos/envio-planillas/api?anio=${this.filtroAnio}&mes=${this.filtroMes}&tipo_envio=${this.tipoEnvio}&estado=${this.estadoFiltro}&_=${new Date().getTime()}`);
                 const data = await res.json();
                 
                 if (data.ok) {
@@ -1047,7 +1047,7 @@ function enviosPlanillaApp() {
             this.cargandoHistorial = true;
             
             try {
-                const res = await fetch('/admin/planos/envio-planillas/historial');
+                const res = await fetch(`/admin/planos/envio-planillas/historial?_=${new Date().getTime()}`);
                 const data = await res.json();
                 if (data.ok) {
                     this.historialLotes = data.data;
@@ -1066,7 +1066,7 @@ function enviosPlanillaApp() {
             this.loteDetalleId = loteId;
 
             try {
-                const res = await fetch(`/admin/planos/envio-planillas/${loteId}/detalle`);
+                const res = await fetch(`/admin/planos/envio-planillas/${loteId}/detalle?_=${new Date().getTime()}`);
                 const data = await res.json();
                 if (data.ok) {
                     this.loteDetalleObj = data.lote;
