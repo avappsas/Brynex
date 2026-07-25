@@ -1168,8 +1168,14 @@ class PlanoPagoController extends Controller
         $planos = $service->obtenerPlanosPagados($aliadoId, $mes, $anio);
         $destinatarios = $service->obtenerDestinatarios($planos, $tipoEnvio);
 
-        // Solo enviar a los que están pendientes o fallidos
-        $destinatariosAEnviar = $destinatarios->filter(fn($d) => in_array($d['envio_estado'], ['pendiente', 'fallido']))->values();
+        // Obtener los IDs seleccionados desde el request
+        $planoIdsSeleccionados = array_map('intval', (array) $request->input('plano_ids', []));
+
+        // Filtrar destinatarios que estén seleccionados y además pendientes o fallidos
+        $destinatariosAEnviar = $destinatarios->filter(function($d) use ($planoIdsSeleccionados) {
+            return in_array((int)$d['plano_id'], $planoIdsSeleccionados)
+                && in_array($d['envio_estado'], ['pendiente', 'fallido']);
+        })->values();
 
         if ($destinatariosAEnviar->isEmpty()) {
             return response()->json([
