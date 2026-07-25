@@ -132,13 +132,15 @@ table.tbl-cc .num { text-align: right; font-family: monospace; }
 {{-- Barra de acciones --}}
 <div class="acciones-bar">
     <button class="btn-ac btn-print" onclick="window.print()">🖨 Imprimir / Descargar PDF</button>
+    @if($empresa)
     <button class="btn-ac" onclick="MCA.abrir({{ $empresa->id }})" style="background:#0284c7;color:#fff;">⚙️ Cobros Adicionales</button>
+    @endif
     <form id="frmDetallada" method="POST" action="{{ route('admin.facturacion.cuenta_cobro.preview') }}" target="_blank" style="display:inline;">
         @csrf
         <input type="hidden" name="tipo" value="detallada">
         <input type="hidden" name="mes" value="{{ $mes }}">
         <input type="hidden" name="anio" value="{{ $anio }}">
-        <input type="hidden" name="empresa_id" value="{{ $empresa->id ?? '' }}">
+        <input type="hidden" name="empresa_id" value="{{ $empresa?->id ?? '' }}">
         @foreach(request()->input('contratos', []) as $cid)
         <input type="hidden" name="contratos[]" value="{{ $cid }}">
         @endforeach

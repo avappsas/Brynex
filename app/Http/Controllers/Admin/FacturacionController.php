@@ -3623,7 +3623,7 @@ class FacturacionController extends Controller
             $filasMora[$c->id] = [
                 'contrato_id'  => $c->id,
                 'rs_nit'       => $rsNit,
-                'rs_dia_habil' => $esIndep ? null : ($rs->dia_habil ?? null),
+                'rs_dia_habil' => $esIndep ? null : ($rs?->dia_habil ?? null),
                 'total_ss'     => $vSS,
                 'eps'          => (int) ($cotizCalc['eps']  ?? 0),
                 'arl'          => (int) ($cotizCalc['arl']  ?? 0),
@@ -3816,12 +3816,15 @@ class FacturacionController extends Controller
 
         $totalGeneral   = $items->sum('v_total');
         // Saldo neto de la empresa derivado de saldo_proximo acumulado
-        $saldoNetoEmpresaCC = (int) Factura::where('aliado_id', $aliadoId)
-            ->where('empresa_id', $empresa->id)
-            ->whereIn('estado', ['pagada', 'prestamo', 'abono'])
-            ->whereNotNull('saldo_proximo')
-            ->whereNull('deleted_at')
-            ->sum('saldo_proximo');
+        $saldoNetoEmpresaCC = 0;
+        if ($empresa) {
+            $saldoNetoEmpresaCC = (int) Factura::where('aliado_id', $aliadoId)
+                ->where('empresa_id', $empresa->id)
+                ->whereIn('estado', ['pagada', 'prestamo', 'abono'])
+                ->whereNotNull('saldo_proximo')
+                ->whereNull('deleted_at')
+                ->sum('saldo_proximo');
+        }
         $totalFavor     = $saldoNetoEmpresaCC > 0 ? $saldoNetoEmpresaCC : 0;
         $totalPendiente = $saldoNetoEmpresaCC < 0 ? abs($saldoNetoEmpresaCC) : 0;
 
