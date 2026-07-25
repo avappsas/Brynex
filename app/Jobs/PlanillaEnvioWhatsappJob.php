@@ -230,13 +230,13 @@ class PlanillaEnvioWhatsappJob implements ShouldQueue
         }
 
         $conversacion = WhatsappConversacion::where('aliado_id', $aliadoId)
-            ->where('wa_numero', $numeroLimpio)
+            ->where('wa_contact_id', $numeroLimpio)
             ->first();
 
         if (!$conversacion) {
             $conversacion = WhatsappConversacion::create([
                 'aliado_id'          => $aliadoId,
-                'wa_numero'          => $numeroLimpio,
+                'wa_contact_id'      => $numeroLimpio,
                 'nombre_contacto'    => $nombre,
                 'estado'             => 'abierta',
                 'mensajes_no_leidos' => 0,

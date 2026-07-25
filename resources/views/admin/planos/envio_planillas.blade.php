@@ -785,10 +785,27 @@ function enviosPlanillaApp() {
         confirmarResultado: null, // null | {ok: bool, mensaje: string}
 
         init() {
+            // Recuperar filtros persistidos en localStorage si existen
+            const savedAnio = localStorage.getItem('planilla_filtro_anio');
+            const savedMes = localStorage.getItem('planilla_filtro_mes');
+            const savedTipo = localStorage.getItem('planilla_tipo_envio');
+            const savedEstado = localStorage.getItem('planilla_estado_filtro');
+
+            if (savedAnio) this.filtroAnio = parseInt(savedAnio);
+            if (savedMes) this.filtroMes = parseInt(savedMes);
+            if (savedTipo) this.tipoEnvio = savedTipo;
+            if (savedEstado) this.estadoFiltro = savedEstado;
+
             this.cargarDestinatarios();
         },
 
         async cargarDestinatarios() {
+            // Persistir filtros actuales en localStorage
+            localStorage.setItem('planilla_filtro_anio', this.filtroAnio);
+            localStorage.setItem('planilla_filtro_mes', this.filtroMes);
+            localStorage.setItem('planilla_tipo_envio', this.tipoEnvio);
+            localStorage.setItem('planilla_estado_filtro', this.estadoFiltro);
+
             this.cargando = true;
             this.seleccionarTodos = false;
             
