@@ -1332,12 +1332,12 @@ class PlanoPagoController extends Controller
 
             if ($resultado['ok']) {
                 // Registrar la conversación y mensaje
-                $conversacion = WhatsappConversacion::where('aliado_id', $aliadoId)
+                $conversacion = \App\Models\WhatsappConversacion::where('aliado_id', $aliadoId)
                     ->where('wa_numero', $numeroCelular)
                     ->first();
 
                 if (!$conversacion) {
-                    $conversacion = WhatsappConversacion::create([
+                    $conversacion = \App\Models\WhatsappConversacion::create([
                         'aliado_id' => $aliadoId,
                         'wa_number' => $numeroCelular,
                         'nombre_contacto' => $nombreDestinatario,
