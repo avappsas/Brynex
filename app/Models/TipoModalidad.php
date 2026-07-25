@@ -13,7 +13,7 @@ class TipoModalidad extends BaseModel
     public $incrementing  = false;  // El ID NO es auto-incremental
 
     protected $fillable = [
-        'id', 'tipo_modalidad', 'observacion', 'orden', 'modalidad', 'activo',
+        'id', 'tipo_modalidad', 'observacion', 'descripcion', 'orden', 'modalidad', 'activo',
         'es_tiempo_parcial', 'dias_arl', 'dias_afp', 'dias_caja',
     ];
 

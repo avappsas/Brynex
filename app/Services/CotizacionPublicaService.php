@@ -161,6 +161,7 @@ class CotizacionPublicaService
      * se cae en cascada a la primera modalidad donde el plan SÍ es válido.
      */
     private const MODALIDAD_EXTERIOR_ID       = 14; // "En el Exterior"
+    private const MODALIDAD_UPC_ID            = 13; // "UPC" — salud de alguien fuera del núcleo familiar
     private const PRIORIDAD_INDEPENDIENTE_IDS = [10, 11, 13, 14];
     private const PRIORIDAD_DEPENDIENTE_IDS   = [0, 7];
 
@@ -184,13 +185,16 @@ class CotizacionPublicaService
      * @param bool $incluirSoloIa Filas marcadas solo_ia=true (planes que existen pero NUNCA se
      *   ofrecen en la web pública) — solo la IA de WhatsApp debe pasar true, y solo cuando el
      *   cliente ya mostró que el precio normal es un obstáculo. La web SIEMPRE usa false.
+     * @param bool $esUpc El cliente paga la salud de alguien fuera de su núcleo familiar
+     *   (ej. un sobrino) → planilla UPC aparte, modalidad 13.
      */
     public static function resolverModalidadPermitida(
         PlanContrato $plan,
         bool $esIndependiente,
         bool $desdeExterior = false,
         ?int $tiempoParcialDias = null,
-        bool $incluirSoloIa = false
+        bool $incluirSoloIa = false,
+        bool $esUpc = false
     ): ?TipoModalidad {
         $filas = \Illuminate\Support\Facades\DB::table('modalidad_planes')
             ->where('plan_id', $plan->id)
@@ -201,6 +205,18 @@ class CotizacionPublicaService
         // Plan sin filas en modalidad_planes: conservar el comportamiento histórico.
         if (empty($permitidas)) {
             return self::modalidadPorDefecto($esIndependiente);
+        }
+
+        // Mismo filtro que el cotizador admin: un plan sin EPS pero con ARL y caja
+        // (ARL+AFP+CCF, ARL+CCF) es exclusivo de Tiempo Parcial — el admin lo bloquea en las
+        // modalidades independientes aunque modalidad_planes tenga esas filas. Si al quitarlas
+        // no queda ninguna, se devuelve null: requiere asesoría, no una modalidad inventada.
+        if (!$plan->incluye_eps && $plan->incluye_arl && $plan->incluye_caja) {
+            $permitidas = array_values(array_diff($permitidas, self::PRIORIDAD_INDEPENDIENTE_IDS));
+            $filas = $filas->reject(fn ($f) => in_array((int) $f->tipo_modalidad_id, self::PRIORIDAD_INDEPENDIENTE_IDS, true));
+            if (empty($permitidas)) {
+                return null;
+            }
         }
 
         // El plan/oferta oculta (solo_ia) se prioriza primero — si $incluirSoloIa es true, ya
@@ -227,6 +243,11 @@ class CotizacionPublicaService
             return TipoModalidad::find(self::MODALIDAD_EXTERIOR_ID);
         }
 
+        // Paga la salud de alguien fuera de su núcleo familiar → planilla UPC aparte.
+        if ($esUpc && in_array(self::MODALIDAD_UPC_ID, $permitidas, true)) {
+            return TipoModalidad::find(self::MODALIDAD_UPC_ID);
+        }
+
         $prioridad = $esIndependiente
             ? self::PRIORIDAD_INDEPENDIENTE_IDS
             : array_merge(self::PRIORIDAD_DEPENDIENTE_IDS, self::PRIORIDAD_INDEPENDIENTE_IDS);
@@ -247,19 +268,36 @@ class CotizacionPublicaService
 
     /**
      * ¿Este pedido de componentes (sin pensión) necesita confirmar exención antes de cotizarlo
-     * así? Regla real (config admin/configuracion/modalidades "AFP obligatorio"): si está activa,
-     * solo pueden omitir pensión hombres desde 55 años, mujeres desde 50, o extranjeros con
-     * CE/PT — EXCEPTO "Solo ARL", que nunca lleva pensión por diseño y no aplica esta regla.
+     * así? Réplica de la regla que ya aplica el cotizador admin (ContratoController +
+     * form.blade.php): con la config "AFP obligatorio" activa, solo pueden omitir pensión los
+     * hombres desde 55 años, las mujeres desde 50, o quienes tengan documento CE/PT/PP/PE/PA.
+     *
+     * Excepciones que el admin también hace:
+     *   - "Solo ARL": nunca lleva pensión por diseño (y sus modalidades son independientes o
+     *     especiales K/Y/Gestión ARL, donde el admin lo exceptúa explícitamente).
+     *   - Modalidades UPC (13) y Exterior (14): NO están en la lista de AFP obligatorio, así que
+     *     ahí cualquier cliente puede omitir pensión sin acreditar exención.
+     *
      * Si no se confirma la exención, hay que cotizar CON pensión (más seguro que asumir que sí
      * califica) — nunca se le pregunta la edad/género directamente al cliente.
+     *
+     * @param bool $desdeExterior El cliente cotiza desde fuera del país → modalidad Exterior (14).
+     * @param bool $esUpc         Está pagando la salud de alguien fuera de su núcleo familiar → UPC (13).
      */
-    public static function requiereConfirmarExencionPension(array $componentes, bool $exencionConfirmada): bool
-    {
+    public static function requiereConfirmarExencionPension(
+        array $componentes,
+        bool $exencionConfirmada,
+        bool $desdeExterior = false,
+        bool $esUpc = false
+    ): bool {
         if ($componentes['incluye_pension']) {
             return false; // ya pidió pensión, no aplica
         }
         if (!$componentes['incluye_eps'] && !$componentes['incluye_caja'] && $componentes['incluye_arl']) {
             return false; // patrón de "Solo ARL" — exento por diseño
+        }
+        if ($desdeExterior || $esUpc) {
+            return false; // modalidades 14 y 13: el admin no exige AFP en ellas
         }
         if (!ConfiguracionBrynex::reglaAfpObligatorio()) {
             return false; // la regla no está activa: cualquiera puede omitir pensión
