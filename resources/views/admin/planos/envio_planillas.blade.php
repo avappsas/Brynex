@@ -785,6 +785,19 @@ function enviosPlanillaApp() {
         confirmarResultado: null, // null | {ok: bool, mensaje: string}
 
         init() {
+            const currentAliadoId = @json(session('aliado_id_activo'));
+            const savedAliadoId = sessionStorage.getItem('planilla_ultimo_aliado_id');
+
+            // Si cambió de aliado, limpiar los filtros de la URL para empezar en limpio
+            if (savedAliadoId && parseInt(savedAliadoId) !== parseInt(currentAliadoId)) {
+                const url = new URL(window.location.href);
+                url.search = ''; // Limpiar query string
+                window.history.replaceState({}, '', url.toString());
+            }
+
+            // Registrar el aliado actual en sessionStorage
+            sessionStorage.setItem('planilla_ultimo_aliado_id', currentAliadoId);
+
             // Recuperar filtros persistidos en los parámetros de la URL
             const urlParams = new URLSearchParams(window.location.search);
             const savedAnio = urlParams.get('anio');

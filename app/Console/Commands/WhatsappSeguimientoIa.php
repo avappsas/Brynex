@@ -5,16 +5,22 @@ namespace App\Console\Commands;
 use App\Events\WhatsappConversacionActualizada;
 use App\Events\WhatsappMensajeNuevo;
 use App\Models\{IaConfiguracionAliado, WhatsappConfig, WhatsappConversacion, WhatsappMensaje};
+use App\Services\Ia\SeguimientoEvaluador;
 use App\Services\WhatsappApiService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Seguimiento comercial automático: si el Asistente IA respondió (ej. una cotización)
- * y el cliente no volvió a escribir en un tiempo, le manda un único mensaje de
- * seguimiento para no dejar la venta enfriarse. Solo una vez por espera — cuando el
- * cliente escribe de nuevo, WhatsappConversacion::renovarVentana() limpia el flag y
- * vuelve a habilitarse para la próxima vez que se quede callado.
+ * Seguimiento comercial automático: si el Asistente IA atendió a alguien y quedó una
+ * afiliación en el aire, le manda un único mensaje para no dejar enfriar la venta.
+ *
+ * NO se le escribe a todo el que se quede callado. Antes de enviar nada, SeguimientoEvaluador
+ * revisa de qué se trató la conversación: un cliente activo que pidió su planilla y dio las
+ * gracias no tiene ninguna afiliación pendiente, y un "¿quieres avanzar con la afiliación?"
+ * horas después le queda fuera de lugar.
+ *
+ * Solo una vez por espera — cuando el cliente escribe de nuevo,
+ * WhatsappConversacion::renovarVentana() limpia el flag y vuelve a habilitarse.
  *
  * Ejecución manual: php artisan whatsapp:seguimiento-ia [--dry-run]
  */
@@ -22,15 +28,10 @@ class WhatsappSeguimientoIa extends Command
 {
     protected $signature = 'whatsapp:seguimiento-ia {--dry-run : Muestra qué enviaría sin escribir ni enviar nada}';
 
-    protected $description = 'Envía un mensaje de seguimiento a clientes que la IA atendió y no respondieron en 2 horas';
+    protected $description = 'Escribe a los prospectos con una afiliación pendiente que llevan horas sin responder';
 
     /** Espera mínima sin respuesta del cliente antes de hacer seguimiento. */
-    private const HORAS_ESPERA = 2;
-
-    private const MENSAJES = [
-        '¡Hola {nombre}! 👋 ¿Pudiste revisar la información que te compartí? Cualquier duda que tengas, con gusto te ayudo. 😊',
-        'Hola {nombre}, quedo pendiente por si quieres avanzar con la afiliación o conocer otra opción más económica. ¡Aquí estoy para ayudarte! 🙌',
-    ];
+    private const HORAS_ESPERA = 3;
 
     public function handle(WhatsappApiService $whatsappApi): int
     {
@@ -49,6 +50,7 @@ class WhatsappSeguimientoIa extends Command
             ->get();
 
         $enviados = 0;
+        $omitidos = 0;
 
         foreach ($candidatas as $conversacion) {
             $ultimoMensaje = WhatsappMensaje::where('conversacion_id', $conversacion->id)
@@ -74,14 +76,27 @@ class WhatsappSeguimientoIa extends Command
                 continue;
             }
 
-            $nombreCliente = $conversacion->nombreMostrar();
-            $textoBase = self::MENSAJES[array_rand(self::MENSAJES)];
-            $texto = str_replace('{nombre}', $nombreCliente, $textoBase);
-            $textoFirmado = "🤖 *{$iaConfig->nombreBot()}:*\n" . $texto;
+            // ¿De verdad quedó algo pendiente? Un cliente que ya resolvió su trámite no
+            // debe recibir un mensaje de venta.
+            $decision = SeguimientoEvaluador::evaluar($conversacion, $iaConfig);
 
-            $this->line("Seguimiento -> conversación #{$conversacion->id} ({$conversacion->wa_contact_id})");
+            if (!$decision['seguir']) {
+                $this->line("Omitido    -> #{$conversacion->id}: {$decision['motivo']}");
+                // Se marca igual para no volver a evaluarlo (y volver a pagar la consulta)
+                // en cada corrida. Si el cliente escribe, renovarVentana() lo reabre.
+                if (!$dryRun) {
+                    $conversacion->update(['seguimiento_enviado_at' => now()]);
+                }
+                $omitidos++;
+                continue;
+            }
+
+            $textoFirmado = "🤖 *{$iaConfig->nombreBot()}:*\n" . $decision['mensaje'];
+
+            $this->line("Seguimiento -> #{$conversacion->id} ({$conversacion->wa_contact_id}): {$decision['motivo']}");
 
             if ($dryRun) {
+                $this->line("             \"{$decision['mensaje']}\"");
                 $enviados++;
                 continue;
             }
@@ -117,7 +132,7 @@ class WhatsappSeguimientoIa extends Command
             $enviados++;
         }
 
-        $this->info(($dryRun ? '[dry-run] ' : '') . "Seguimientos procesados: {$enviados}");
+        $this->info(($dryRun ? '[dry-run] ' : '') . "Seguimientos enviados: {$enviados} · omitidos: {$omitidos}");
 
         return self::SUCCESS;
     }
