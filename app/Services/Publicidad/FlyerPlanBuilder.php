@@ -46,6 +46,12 @@ class FlyerPlanBuilder
     ];
 
     /**
+     * Las que entran en la rotación automática del piloto. "Bloque" queda disponible para
+     * elegirla a mano, pero no sale sola.
+     */
+    public const ESTILOS_ROTACION = ['claro', 'inmersivo'];
+
+    /**
      * @param string $rutaHero Ruta (disk public) de la imagen generada para este plan.
      * @param array  $datos    ['nombre','titular','gancho','servicios','valor_mensual',
      *                          'costo_afiliacion','en_promocion','nivel_arl','cta','estilo']
@@ -108,7 +114,7 @@ class FlyerPlanBuilder
         $finRampa    = (int) round(self::ALTO * 0.60);
 
         for ($y = 0; $y < self::ALTO; $y++) {
-            $arriba = max(0.0, 0.46 * (1 - $y / 280));
+            $arriba = max(0.0, 0.58 * (1 - $y / 340) ** 1.2);
             $abajo  = min(1.0, max(0.0, ($y - $inicioRampa) / ($finRampa - $inicioRampa))) * 0.93;
             $opacidad = min(0.95, max($arriba, $abajo));
             if ($opacidad <= 0.01) continue;
@@ -526,11 +532,27 @@ class FlyerPlanBuilder
         $nombre = mb_strtoupper($aliado->nombre);
 
         $tam = self::tamanoQueCabe($nombre, $anchoTexto, 34, 20, self::FUENTE_BOLD, 1.5);
-        self::texto($lienzo, $nombre, $x, $yBase + ($eslogan !== '' ? 54 : 66), $tam, self::$paleta['blanco'], self::FUENTE_BOLD, 1.5);
+        self::textoConSombra($lienzo, $nombre, $x, $yBase + ($eslogan !== '' ? 54 : 66), $tam, self::$paleta['blanco'], self::FUENTE_BOLD, 1.5);
 
         if ($eslogan !== '') {
-            self::texto($lienzo, $eslogan, $x, $yBase + 84, self::tamanoQueCabe($eslogan, $anchoTexto, 17, 12, self::FUENTE_REGULAR, 0.6), self::$paleta['acentoClaro'], self::FUENTE_REGULAR, 0.6);
+            // En blanco y con sombra: el azul claro se perdía contra las zonas luminosas de
+            // la foto, y en la cabecera el velo es tenue a propósito para no tapar la imagen.
+            $tamEslogan = self::tamanoQueCabe($eslogan, $anchoTexto, 19, 13, self::FUENTE_MEDIA, 0.6);
+            self::textoConSombra($lienzo, $eslogan, $x, $yBase + 86, $tamEslogan, self::$paleta['blanco'], self::FUENTE_MEDIA, 0.6);
         }
+    }
+
+    /**
+     * Texto con una sombra oscura difusa detrás: es lo que permite leer sobre una fotografía
+     * cuyo brillo no controlamos, sin oscurecer toda la imagen.
+     */
+    private static function textoConSombra($lienzo, string $texto, int $x, int $y, int $tam, int $color, string $fuente, float $tracking = 0): void
+    {
+        $sombra = imagecolorallocatealpha($lienzo, 0, 0, 0, 88);
+        foreach ([[2, 2], [-1, 2], [2, -1], [3, 3]] as [$dx, $dy]) {
+            self::texto($lienzo, $texto, $x + $dx, $y + $dy, $tam, $sombra, $fuente, $tracking);
+        }
+        self::texto($lienzo, $texto, $x, $y, $tam, $color, $fuente, $tracking);
     }
 
     /**

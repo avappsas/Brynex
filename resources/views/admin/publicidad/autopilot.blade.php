@@ -42,7 +42,7 @@
         @endforeach
     </select>
     <select name="estilo" style="padding:.4rem .6rem;border:1px solid #fdba74;border-radius:8px;font-size:.8rem;background:#fff;">
-        <option value="">Plantilla al azar</option>
+        <option value="">Plantilla al azar (Claro / Inmersivo)</option>
         @foreach(\App\Services\Publicidad\FlyerPlanBuilder::ESTILOS as $clave => $etiqueta)
             <option value="{{ $clave }}">{{ $etiqueta }}</option>
         @endforeach

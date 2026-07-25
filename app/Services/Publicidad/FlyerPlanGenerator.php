@@ -64,7 +64,7 @@ class FlyerPlanGenerator
         }
 
         $flyer = FlyerPlanBuilder::construir($imagen['rutas'][0], $aliado, array_merge($def, $precio, [
-            'estilo' => $estilo ?: array_rand(FlyerPlanBuilder::ESTILOS),
+            'estilo' => $estilo ?: FlyerPlanBuilder::ESTILOS_ROTACION[array_rand(FlyerPlanBuilder::ESTILOS_ROTACION)],
         ]));
 
         if (!$flyer) {
@@ -166,7 +166,9 @@ class FlyerPlanGenerator
             . 'Una sola toma que llene todo el encuadre, con las personas ocupando el centro: NO dividas la imagen en '
             . 'partes, ni dejes zonas vacías, ni hagas collage. '
             . 'NO escribas ningún texto, letras, números ni logotipos dentro de la imagen: todo el texto se agrega '
-            . 'después por separado.';
+            . 'después por separado. Evita además que aparezcan en la escena carteles, letreros, avisos de precios, '
+            . 'papeles escritos, pizarras o etiquetas legibles: los modelos los rellenan con letras sin sentido y '
+            . 'delatan que la foto es generada. Prefiere fondos limpios o desenfocados.';
     }
 
     private static function error(string $mensaje): array
