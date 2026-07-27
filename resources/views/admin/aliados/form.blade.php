@@ -170,7 +170,9 @@
             </div>
             <div style="font-size:0.68rem;color:#94a3b8;margin-top:0.6rem;">El sistema elige la variante correcta según qué tan oscura sea la esquina de cada foto. Si solo subes una, se usa siempre esa.</div>
 
-            @php($recorte = old('logo_marca_recorte', $aliado->logo_marca_recorte ?? []))
+            @php
+                $recorte = old('logo_marca_recorte', $aliado->logo_marca_recorte ?? []);
+            @endphp
             <details style="margin-top:0.85rem;">
                 <summary style="font-size:0.72rem;font-weight:600;color:#7c3aed;cursor:pointer;">⚙️ Avanzado: recortar el eslogan del watermark (opcional)</summary>
                 <div style="margin-top:0.6rem;padding:0.75rem;background:#fff;border:1px solid #e2e8f0;border-radius:8px;">
