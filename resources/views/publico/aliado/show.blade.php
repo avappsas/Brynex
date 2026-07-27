@@ -101,7 +101,7 @@
     .tab-plan.activo { background: var(--brand); border-color: var(--brand); color: var(--brand-text); }
     .panel-grupo-plan { display: none; }
     .panel-grupo-plan.activo { display: block; }
-    .selector-plan { margin-bottom: 1rem; }
+    .selector-plan { width: 100%; margin-bottom: 1rem; text-align: left; }
     .selector-plan label { display: block; font-size: 0.72rem; font-weight: 700; color: var(--tinta-suave); text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 0.3rem; }
     .selector-plan select {
         width: 100%; padding: 0.55rem 0.7rem; border: 1.5px solid var(--borde); border-radius: 10px;
@@ -134,9 +134,11 @@
         background: var(--blanco);
         border: 1.5px solid var(--borde);
         border-radius: 22px;
-        padding: 1.75rem 1.5rem;
+        padding: 2rem 1.5rem 1.75rem;
         display: flex;
         flex-direction: column;
+        align-items: center;
+        text-align: center;
         position: relative;
         width: 100%;
     }
@@ -146,19 +148,29 @@
         transform: translateY(-6px);
     }
     .card-plan .cinta {
-        position: absolute; top: -0.7rem; left: 1.5rem;
+        position: absolute; top: -0.7rem; left: 50%; transform: translateX(-50%);
         background: linear-gradient(135deg, var(--brand), var(--brand-dark));
         color: var(--brand-text);
         font-size: 0.68rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
         padding: 0.3rem 0.8rem; border-radius: 999px;
+        white-space: nowrap;
     }
-    .icono-plan { width: 84px; height: 84px; margin-bottom: 0.75rem; }
+    .icono-plan {
+        width: 96px; height: 96px;
+        margin-bottom: 1rem;
+        border-radius: 50%;
+        background: var(--brand-soft);
+        border: 1px solid var(--brand-line);
+        display: flex; align-items: center; justify-content: center;
+        padding: 16px;
+        flex-shrink: 0;
+    }
     .icono-plan img { width: 100%; height: 100%; object-fit: contain; }
-    .card-plan h3 { font-size: 1.1rem; font-weight: 800; margin-bottom: 0.4rem; }
-    .card-plan .desc-plan { font-size: 0.85rem; color: var(--tinta-suave); margin-bottom: 1.1rem; min-height: 2.6em; }
-    .chips-plan { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 1.25rem; }
+    .card-plan h3 { width: 100%; font-size: 1.1rem; font-weight: 800; margin-bottom: 0.4rem; }
+    .card-plan .desc-plan { width: 100%; font-size: 0.85rem; color: var(--tinta-suave); margin-bottom: 1.1rem; min-height: 2.6em; }
+    .chips-plan { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.4rem; margin-bottom: 1.25rem; }
     .chip { background: var(--brand-soft); color: var(--brand-dark); font-size: 0.72rem; font-weight: 600; padding: 0.28rem 0.65rem; border-radius: 999px; }
-    .precio-plan { margin-top: auto; margin-bottom: 1.1rem; }
+    .precio-plan { margin-top: auto; margin-bottom: 1.1rem; width: 100%; }
     .precio-plan .valor { font-size: 1.7rem; font-weight: 800; color: var(--tinta); }
     .precio-plan .valor small { font-size: 0.85rem; font-weight: 600; color: var(--tinta-suave); }
     .precio-plan .afiliacion { font-size: 0.78rem; color: var(--tinta-suave); margin-top: 0.2rem; }
@@ -476,7 +488,7 @@
                                                     <div class="oculto">Cotización personalizada</div>
                                                 @endif
                                             </div>
-                                            <a href="#cotizador" class="btn btn-brand" style="justify-content:center;">Cotizar este plan</a>
+                                            <a href="#cotizador" class="btn btn-brand" style="width:100%; justify-content:center;">Cotizar este plan</a>
                                         </div>
                                     </div>
                                 @endforeach
