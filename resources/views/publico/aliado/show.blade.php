@@ -367,21 +367,31 @@
                 </div>
             </div>
             <div class="hero-art" aria-hidden="true">
-                <svg viewBox="0 0 320 320" width="100%" style="max-width:320px;">
-                    <defs>
-                        <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
-                            <stop offset="0" stop-color="var(--brand)"/>
-                            <stop offset="1" stop-color="var(--brand-dark)"/>
-                        </linearGradient>
-                    </defs>
-                    <circle cx="160" cy="160" r="150" fill="var(--brand-soft)"/>
-                    <path d="M160 45 L245 80 V165 C245 220 205 255 160 275 C115 255 75 220 75 165 V80 Z"
-                          fill="url(#g1)" opacity="0.95"/>
-                    <path d="M125 165 L150 190 L200 130" stroke="white" stroke-width="10"
-                          stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-                    <circle cx="245" cy="90" r="14" fill="var(--brand-dark)" opacity="0.5"/>
-                    <circle cx="70" cy="230" r="10" fill="var(--brand)" opacity="0.4"/>
-                </svg>
+                @if($aliado->logo_marca_claro)
+                    <svg viewBox="0 0 320 320" width="100%" style="max-width:320px;">
+                        <circle cx="160" cy="160" r="150" fill="none"/>
+                        <image href="{{ asset('storage/' . $aliado->logo_marca_claro) }}"
+                               x="50" y="50" width="220" height="220" preserveAspectRatio="xMidYMid meet"/>
+                        <circle cx="245" cy="90" r="14" fill="var(--brand-dark)" opacity="0.5"/>
+                        <circle cx="70" cy="230" r="10" fill="var(--brand)" opacity="0.4"/>
+                    </svg>
+                @else
+                    <svg viewBox="0 0 320 320" width="100%" style="max-width:320px;">
+                        <defs>
+                            <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
+                                <stop offset="0" stop-color="var(--brand)"/>
+                                <stop offset="1" stop-color="var(--brand-dark)"/>
+                            </linearGradient>
+                        </defs>
+                        <circle cx="160" cy="160" r="150" fill="var(--brand-soft)"/>
+                        <path d="M160 45 L245 80 V165 C245 220 205 255 160 275 C115 255 75 220 75 165 V80 Z"
+                              fill="url(#g1)" opacity="0.95"/>
+                        <path d="M125 165 L150 190 L200 130" stroke="white" stroke-width="10"
+                              stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                        <circle cx="245" cy="90" r="14" fill="var(--brand-dark)" opacity="0.5"/>
+                        <circle cx="70" cy="230" r="10" fill="var(--brand)" opacity="0.4"/>
+                    </svg>
+                @endif
             </div>
         </div>
     </section>
