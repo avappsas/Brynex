@@ -1406,14 +1406,20 @@ class CobrosController extends Controller
         $nombreAliado = $aliado ? $aliado->nombre : 'BryNex Global';
 
         // Parámetros de prueba
-        $paramsPrueba = [
-            'Juan Pérez (PRUEBA)',
-            $nombreAliado,
-            '10',
-            $cuentasText,
-            $config->numero_telefono ?: 'no tiene configurado',
-            '$150.000',
-        ];
+        if (str_contains($plantilla->nombre, 'cierre')) {
+            $paramsPrueba = $plantilla->cantidadVariables() === 3
+                ? ['Juan Pérez (PRUEBA)', $nombreAliado, '$150.000']
+                : ['Juan Pérez (PRUEBA)', $nombreAliado];
+        } else {
+            $paramsPrueba = [
+                'Juan Pérez (PRUEBA)',
+                $nombreAliado,
+                '10',
+                $cuentasText,
+                $config->numero_telefono ?: 'no tiene configurado',
+                '$150.000',
+            ];
+        }
 
         $cuerpoPrevisualizado = $plantilla->cuerpo;
         foreach ($paramsPrueba as $i => $val) {
@@ -1675,9 +1681,15 @@ class CobrosController extends Controller
         $plazoDias = $cfgAliado?->mora_dia_habil_inicio ? (string)$cfgAliado->mora_dia_habil_inicio : '10';
 
         $cantVars = $plantilla->cantidadVariables();
-        $params   = $cantVars <= 5
-            ? ['Juan Pérez (PRUEBA)', $nombreAliado, $plazoDias, $cuentasText, $config->numero_telefono ?: 'no tiene configurado']
-            : ['Juan Pérez (PRUEBA)', $nombreAliado, $plazoDias, $cuentasText, $config->numero_telefono ?: 'no tiene configurado', '$150.000'];
+        if (str_contains($plantilla->nombre, 'cierre')) {
+            $params = $cantVars === 3
+                ? ['Juan Pérez (PRUEBA)', $nombreAliado, '$150.000']
+                : ['Juan Pérez (PRUEBA)', $nombreAliado];
+        } else {
+            $params   = $cantVars <= 5
+                ? ['Juan Pérez (PRUEBA)', $nombreAliado, $plazoDias, $cuentasText, $config->numero_telefono ?: 'no tiene configurado']
+                : ['Juan Pérez (PRUEBA)', $nombreAliado, $plazoDias, $cuentasText, $config->numero_telefono ?: 'no tiene configurado', '$150.000'];
+        }
 
         $apiService = app(\App\Services\WhatsappApiService::class);
 

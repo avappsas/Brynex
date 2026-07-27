@@ -201,10 +201,18 @@ class WhatsappEnvioMasivoJob implements ShouldQueue
                 $valorFormateado = '$' . number_format($valorCobro, 0, ',', '.');
 
                 $cantVars = $plantilla->cantidadVariables();
-                if ($cantVars <= 5) {
-                    return [$nombreContacto, $nombreAliado, $plazoDias, $cuentasText, $celularSoporte];
+                if (str_contains($plantilla->nombre, 'cierre')) {
+                    if ($cantVars === 3) {
+                        return [$nombreContacto, $nombreAliado, $valorFormateado];
+                    } else {
+                        return [$nombreContacto, $nombreAliado];
+                    }
                 } else {
-                    return [$nombreContacto, $nombreAliado, $plazoDias, $cuentasText, $celularSoporte, $valorFormateado];
+                    if ($cantVars <= 5) {
+                        return [$nombreContacto, $nombreAliado, $plazoDias, $cuentasText, $celularSoporte];
+                    } else {
+                        return [$nombreContacto, $nombreAliado, $plazoDias, $cuentasText, $celularSoporte, $valorFormateado];
+                    }
                 }
             }
         }
@@ -324,12 +332,20 @@ class WhatsappEnvioMasivoJob implements ShouldQueue
 
                 // Determinar el número de variables de la plantilla (5 o 6)
                 $cantVars = $plantilla->cantidadVariables();
-                if ($cantVars <= 5) {
-                    // Cobro sin variable de valor
-                    return [$nombreCliente, $nombreAliado, $plazoDias, $cuentasText, $celularSoporte];
+                if (str_contains($plantilla->nombre, 'cierre')) {
+                    if ($cantVars === 3) {
+                        return [$nombreCliente, $nombreAliado, $valorFormateado];
+                    } else {
+                        return [$nombreCliente, $nombreAliado];
+                    }
                 } else {
-                    // Cobro con variable de valor
-                    return [$nombreCliente, $nombreAliado, $plazoDias, $cuentasText, $celularSoporte, $valorFormateado];
+                    if ($cantVars <= 5) {
+                        // Cobro sin variable de valor
+                        return [$nombreCliente, $nombreAliado, $plazoDias, $cuentasText, $celularSoporte];
+                    } else {
+                        // Cobro con variable de valor
+                        return [$nombreCliente, $nombreAliado, $plazoDias, $cuentasText, $celularSoporte, $valorFormateado];
+                    }
                 }
             }
         }
