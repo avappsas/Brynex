@@ -35,85 +35,76 @@ class CotizacionPublicaService
      * aquí simplemente no aparece en la web (protección para planes nuevos sin copy revisado).
      *
      * `grupo` separa las tarjetas en pestañas en la página pública (empleado/independiente son
-     * los que más venden y van primero; por_dias y solo_arl son productos de nicho con su propio
-     * selector, ver `selector` abajo). `selector` marca las tarjetas cuyo precio varía según una
-     * opción que el visitante elige EN el navegador sin ida al servidor:
-     *   - 'riesgo': Solo ARL — el precio depende solo del nivel de riesgo (1-5). Se cotiza vía
-     *     modalidad K/Y/Independientes según el caso, pero el número es el MISMO sin importar
-     *     cuál — por eso es una sola tarjeta con selector, no una por modalidad.
-     *   - 'dias': planes de Tiempo Parcial — el precio depende de cuántos días de la semana
-     *     labora (7/14/21/30), resuelto contra la modalidad TP real de cada tramo.
+     * los que más venden y van primero; por_dias y solo_arl son productos de nicho). `selector`
+     * marca las tarjetas cuyo precio varía según una opción que el visitante elige EN el
+     * navegador sin ida al servidor — hoy solo 'dias' (Tiempo Parcial: 7/14/21/30, resuelto
+     * contra la modalidad TP real de cada tramo). Solo ARL NO usa selector: en vez de un dropdown
+     * de nivel de riesgo, `niveles` expande el plan en 5 tarjetas fijas (una por nivel I-V), cada
+     * una con ejemplos de profesión — así el visitante no tiene que saber su nivel de riesgo de
+     * antemano, lo reconoce por el ejemplo.
      */
     public const COPY_PUBLICO = [
         'EPS_ARL' => [
             'grupo'       => 'empleado',
             'orden'       => 1,
             'destacado'   => false,
-            'nombre'      => 'Dependiente Básico',
+            'nombre'      => 'Esencial',
             'descripcion' => 'Salud y riesgos laborales para empleados y trabajadores dependientes.',
         ],
         'EPS_ARL_CCF' => [
             'grupo'       => 'empleado',
             'orden'       => 2,
             'destacado'   => false,
-            'nombre'      => 'Dependiente con Caja',
+            'nombre'      => 'Plan Familiar',
             'descripcion' => 'Salud y riesgos laborales, más acceso a subsidios y beneficios de caja de compensación.',
         ],
         'EPS_ARL_AFP' => [
             'grupo'       => 'empleado',
             'orden'       => 3,
             'destacado'   => false,
-            'nombre'      => 'Dependiente sin Caja',
+            'nombre'      => 'Protección Total',
             'descripcion' => 'Salud, riesgos laborales y pensión — tus tres aportes principales cubiertos.',
         ],
         'EPS_ARL_AFP_CCF' => [
             'grupo'       => 'empleado',
             'orden'       => 4,
             'destacado'   => true,
-            'nombre'      => 'Dependiente Completo',
+            'nombre'      => 'Integral',
             'descripcion' => 'Salud, riesgos laborales, pensión y caja de compensación — la cobertura más completa.',
         ],
         'SOLO_EPS' => [
             'grupo'       => 'independiente',
             'orden'       => 1,
             'destacado'   => false,
-            'nombre'      => 'Independiente',
+            'nombre'      => 'Salud Independiente',
             'descripcion' => 'Para quienes trabajan por cuenta propia y necesitan afiliación a salud.',
         ],
         'EPS_AFP' => [
             'grupo'       => 'independiente',
             'orden'       => 2,
             'destacado'   => false,
-            'nombre'      => 'Independiente sin ARL',
+            'nombre'      => 'Plan Ahorro y Salud',
             'descripcion' => 'Salud y pensión para quien no ejerce una actividad laboral de riesgo.',
         ],
         'EPS_AFP_CCF' => [
             'grupo'       => 'independiente',
             'orden'       => 3,
             'destacado'   => false,
-            'nombre'      => 'Independiente con Caja',
+            'nombre'      => 'Plan Bienestar Independiente',
             'descripcion' => 'Salud, pensión y acceso a subsidios de caja de compensación.',
         ],
         'SOLO_AFP' => [
             'grupo'       => 'independiente',
             'orden'       => 4,
             'destacado'   => false,
-            'nombre'      => 'Solo Pensión',
+            'nombre'      => 'Ahorro Pensional',
             'descripcion' => 'Sigue cotizando a tu fondo de pensión, vivas donde vivas.',
-        ],
-        'SOLO_ARL' => [
-            'grupo'       => 'solo_arl',
-            'orden'       => 1,
-            'destacado'   => false,
-            'nombre'      => 'Solo ARL',
-            'descripcion' => 'Solo riesgos laborales, sin salud ni pensión — para quien ya está cubierto por otro lado.',
-            'selector'    => 'riesgo',
         ],
         'ARL_AFP_CCF' => [
             'grupo'       => 'por_dias',
             'orden'       => 1,
             'destacado'   => false,
-            'nombre'      => 'Por Días Completo',
+            'nombre'      => 'Tiempo Parcial con Pensión',
             'descripcion' => 'Riesgos laborales, pensión y caja de compensación, pagando solo los días que trabajas.',
             'selector'    => 'dias',
         ],
@@ -121,17 +112,45 @@ class CotizacionPublicaService
             'grupo'       => 'por_dias',
             'orden'       => 2,
             'destacado'   => false,
-            'nombre'      => 'Por Días Económico',
+            'nombre'      => 'Tiempo Parcial sin Pensión',
             'descripcion' => 'Riesgos laborales y caja de compensación, pagando solo los días que trabajas.',
             'selector'    => 'dias',
+        ],
+        // Un solo plan físico (SOLO_ARL) expandido en 5 tarjetas — ver nota arriba.
+        'SOLO_ARL' => [
+            'grupo' => 'solo_arl',
+            'niveles' => [
+                1 => [
+                    'orden'       => 1,
+                    'nombre'      => 'ARL Riesgo I — Administrativo y Oficina',
+                    'descripcion' => 'Para labores de bajo riesgo: personal administrativo, asesores, docentes.',
+                ],
+                2 => [
+                    'orden'       => 2,
+                    'nombre'      => 'ARL Riesgo II — Comercio y Servicios',
+                    'descripcion' => 'Para ventas, comercio al por menor, telemercadeo.',
+                ],
+                3 => [
+                    'orden'       => 3,
+                    'nombre'      => 'ARL Riesgo III — Transporte y Manufactura',
+                    'descripcion' => 'Para conductores de pasajeros, operarios de manufactura liviana, mantenimiento.',
+                ],
+                4 => [
+                    'orden'       => 4,
+                    'nombre'      => 'ARL Riesgo IV — Construcción Liviana y Carga',
+                    'descripcion' => 'Para transporte de carga, construcción liviana, vigilancia.',
+                ],
+                5 => [
+                    'orden'       => 5,
+                    'nombre'      => 'ARL Riesgo V — Construcción Pesada y Minería',
+                    'descripcion' => 'Para minería, construcción en alturas, manejo de explosivos.',
+                ],
+            ],
         ],
     ];
 
     /** Días ofrecidos en las tarjetas "por días" del grupo Tiempo Parcial. */
     private const DIAS_POR_DIAS = [7, 14, 21, 30];
-
-    /** Niveles de riesgo ofrecidos en la tarjeta "Solo ARL". */
-    private const NIVELES_RIESGO = [1, 2, 3, 4, 5];
 
     public const PLANES_DESTACADOS = [
         [
@@ -227,10 +246,15 @@ class CotizacionPublicaService
                     continue;
                 }
 
+                // Un plan físico expandido en varias tarjetas fijas (hoy: Solo ARL -> 5 niveles).
+                if (isset($copy['niveles'])) {
+                    array_push($tarjetas, ...self::tarjetasPorNivelArl($plan, $copy, $aliadoId, $mostrarPrecios));
+                    continue;
+                }
+
                 $tarjeta = match ($copy['selector'] ?? null) {
-                    'dias'   => self::tarjetaPorDias($plan, $copy, $aliadoId, $mostrarPrecios),
-                    'riesgo' => self::tarjetaPorRiesgo($plan, $copy, $aliadoId, $mostrarPrecios),
-                    default  => self::tarjetaNormal($plan, $copy, $aliadoId, $mostrarPrecios),
+                    'dias'  => self::tarjetaPorDias($plan, $copy, $aliadoId, $mostrarPrecios),
+                    default => self::tarjetaNormal($plan, $copy, $aliadoId, $mostrarPrecios),
                 };
 
                 if ($tarjeta) {
@@ -265,24 +289,37 @@ class CotizacionPublicaService
         ];
     }
 
-    /** Tarjeta "Solo ARL": un precio por cada nivel de riesgo 1-5, elegido en el navegador. */
-    private static function tarjetaPorRiesgo(PlanContrato $plan, array $copy, int $aliadoId, bool $mostrarPrecios): ?array
+    /**
+     * "Solo ARL" no se muestra como una tarjeta con selector de riesgo: se expande en 5 tarjetas
+     * FIJAS, una por nivel (I-V), cada una con su propio nombre/ejemplo de profesión (ver
+     * COPY_PUBLICO['SOLO_ARL']['niveles']) — así el visitante no tiene que saber de antemano su
+     * nivel de riesgo, lo reconoce por el ejemplo. El precio real es el mismo sin importar la
+     * modalidad (K/Y/Independientes) con la que se cotice internamente.
+     *
+     * @return array[] Lista de tarjetas (una por nivel), nunca una sola.
+     */
+    private static function tarjetasPorNivelArl(PlanContrato $plan, array $copy, int $aliadoId, bool $mostrarPrecios): array
     {
         $modalidad = self::resolverModalidadPermitida($plan, true);
         if (!$modalidad) {
-            return null;
+            return [];
         }
 
-        $precios = [];
-        foreach (self::NIVELES_RIESGO as $riesgo) {
+        $tarjetas = [];
+        foreach ($copy['niveles'] as $riesgo => $nivel) {
             $resultado = self::cotizar($plan, $modalidad, $aliadoId, ['nivel_arl' => $riesgo, 'sin_plan_pago' => true]);
-            $precios[$riesgo] = $mostrarPrecios ? $resultado['total'] : null;
+
+            $tarjetas[] = self::tarjetaBase($plan, $copy, [
+                'clave'       => $plan->codigo . '_R' . $riesgo,
+                'nombre'      => $nivel['nombre'],
+                'descripcion' => $nivel['descripcion'],
+                'orden'       => $nivel['orden'],
+            ]) + [
+                'valor_mensual' => $mostrarPrecios ? $resultado['total'] : null,
+            ];
         }
 
-        return self::tarjetaBase($plan, $copy) + [
-            'valor_mensual'      => $precios[self::NIVELES_RIESGO[0]],
-            'precios_por_riesgo' => $precios,
-        ];
+        return $tarjetas;
     }
 
     /** Tarjetas "Por días" (Tiempo Parcial): un precio por cada tramo 7/14/21/30 días. */
@@ -310,24 +347,36 @@ class CotizacionPublicaService
         ];
     }
 
-    /** Campos comunes a toda tarjeta pública, sin importar el tipo de selector. */
-    private static function tarjetaBase(PlanContrato $plan, array $copy): array
+    /**
+     * Campos comunes a toda tarjeta pública, sin importar el tipo de selector. `$overrides`
+     * reemplaza campos puntuales — usado por tarjetasPorNivelArl() para las 5 variantes de un
+     * mismo plan físico, que no comparten nombre/descripcion/orden/clave con $copy directamente.
+     */
+    private static function tarjetaBase(PlanContrato $plan, array $copy, array $overrides = []): array
     {
-        return [
-            'clave'       => $plan->codigo,
-            'nombre'      => $copy['nombre'],
-            'descripcion' => $copy['descripcion'],
-            'destacado'   => $copy['destacado'],
+        $clave = $overrides['clave'] ?? $plan->codigo;
+        $rutaImagen = "planes/iconos/{$clave}.png";
+
+        return array_merge([
+            'clave'       => $clave,
+            'nombre'      => $copy['nombre'] ?? null,
+            'descripcion' => $copy['descripcion'] ?? null,
+            'destacado'   => $copy['destacado'] ?? false,
             'grupo'       => $copy['grupo'],
-            'orden'       => $copy['orden'],
+            'orden'       => $copy['orden'] ?? 0,
             'selector'    => $copy['selector'] ?? null,
+            // Ícono ilustrado (Gemini, flat design, fondo transparente) — ver
+            // storage/app/public/planes/iconos/. La existencia se resuelve UNA VEZ aquí (dentro
+            // del cache de 10 min de planesPublicosConPrecio), no en cada render del blade — así
+            // un plan nuevo sin ícono generado todavía no rompe nada, solo no muestra imagen.
+            'imagen' => \Illuminate\Support\Facades\Storage::disk('public')->exists($rutaImagen) ? $rutaImagen : null,
             'componentes' => [
                 'incluye_eps'     => $plan->incluye_eps,
                 'incluye_arl'     => $plan->incluye_arl,
                 'incluye_pension' => $plan->incluye_pension,
                 'incluye_caja'    => $plan->incluye_caja,
             ],
-        ];
+        ], $overrides);
     }
 
     /**

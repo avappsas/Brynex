@@ -110,6 +110,7 @@
     .carrusel-planes { position: relative; padding: 0 3rem; }
     .carrusel-viewport { overflow: hidden; padding: 1.2rem 0 0.5rem; }
     .carrusel-track { display: flex; gap: 1.5rem; transition: transform 0.45s ease; }
+    .carrusel-planes.centrado .carrusel-track { justify-content: center; }
     .carrusel-slide { flex: 0 0 calc((100% - 3rem) / 3); min-width: 0; display: flex; }
     .carrusel-nav {
         position: absolute; top: 50%; transform: translateY(-50%);
@@ -151,6 +152,8 @@
         font-size: 0.68rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
         padding: 0.3rem 0.8rem; border-radius: 999px;
     }
+    .icono-plan { width: 84px; height: 84px; margin-bottom: 0.75rem; }
+    .icono-plan img { width: 100%; height: 100%; object-fit: contain; }
     .card-plan h3 { font-size: 1.1rem; font-weight: 800; margin-bottom: 0.4rem; }
     .card-plan .desc-plan { font-size: 0.85rem; color: var(--tinta-suave); margin-bottom: 1.1rem; min-height: 2.6em; }
     .chips-plan { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 1.25rem; }
@@ -405,7 +408,7 @@
     @endif
 
     @php
-        $etiquetasGrupoPlan = ['empleado' => 'Empleado', 'independiente' => 'Independiente', 'por_dias' => 'Por días', 'solo_arl' => 'Solo ARL'];
+        $etiquetasGrupoPlan = ['empleado' => 'Empleado', 'independiente' => 'Independiente', 'por_dias' => 'Tiempo Parcial', 'solo_arl' => 'Solo ARL'];
         $gruposPlanVisibles = collect(['empleado', 'independiente', 'por_dias', 'solo_arl'])
             ->filter(fn ($g) => isset($planes[$g]) && $planes[$g]->isNotEmpty())
             ->values();
@@ -436,6 +439,9 @@
                                     <div class="carrusel-slide">
                                         <div class="card-plan {{ $plan['destacado'] ? 'destacado' : '' }}">
                                             @if($plan['destacado'])<span class="cinta">Más elegido</span>@endif
+                                            @if($plan['imagen'])
+                                                <div class="icono-plan"><img src="{{ asset('storage/' . $plan['imagen']) }}" alt="" loading="lazy"></div>
+                                            @endif
                                             <h3>{{ $plan['nombre'] }}</h3>
                                             <p class="desc-plan">{{ $plan['descripcion'] }}</p>
                                             <div class="chips-plan">
@@ -445,18 +451,7 @@
                                                 @if($plan['componentes']['incluye_caja']) <span class="chip">Caja</span> @endif
                                             </div>
 
-                                            @if($plan['selector'] === 'riesgo')
-                                                <div class="selector-plan">
-                                                    <label>Nivel de riesgo</label>
-                                                    <select class="selector-precio" data-precios='@json($plan['precios_por_riesgo'])'>
-                                                        <option value="1">1 — Riesgo mínimo</option>
-                                                        <option value="2">2 — Riesgo bajo</option>
-                                                        <option value="3">3 — Riesgo medio</option>
-                                                        <option value="4">4 — Riesgo alto</option>
-                                                        <option value="5">5 — Riesgo máximo</option>
-                                                    </select>
-                                                </div>
-                                            @elseif($plan['selector'] === 'dias')
+                                            @if($plan['selector'] === 'dias')
                                                 <div class="selector-plan">
                                                     <label>Días por mes</label>
                                                     <select class="selector-precio" data-precios='@json($plan['precios_por_dias'])'>
@@ -1036,6 +1031,9 @@
         function recalcular() {
             visibles = visiblesActuales();
             indice = Math.min(indice, maxIndice());
+            // Menos tarjetas que espacios visibles (ej. "Tiempo Parcial" con solo 2) -> centrar
+            // en vez de dejarlas pegadas a la izquierda con espacio muerto a la derecha.
+            carrusel.classList.toggle('centrado', total <= visibles);
             construirDots();
             actualizarNav();
             mover();
