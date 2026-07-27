@@ -47,7 +47,18 @@
         margin-bottom: 2rem;
     }
     .hero-actions { display: flex; gap: 0.9rem; flex-wrap: wrap; }
-    .hero-art { display: flex; justify-content: center; align-items: center; }
+    .hero-art { display: flex; justify-content: center; align-items: center; position: relative; }
+    .hero-glow {
+        position: absolute; top: 50%; left: 50%;
+        width: 78%; aspect-ratio: 1;
+        transform: translate(-50%, -50%);
+        border-radius: 50%;
+        background: radial-gradient(circle, var(--brand) 0%, var(--brand-soft) 55%, transparent 72%);
+        filter: blur(38px);
+        opacity: 0.6;
+        z-index: 0;
+        pointer-events: none;
+    }
 
     @keyframes heroLogoFlotar {
         0%, 100% { transform: translateY(0); }
@@ -57,14 +68,19 @@
         0%, 100% { transform: scale(1); opacity: 1; }
         50%      { transform: scale(1.25); opacity: 0.55; }
     }
-    .hero-logo-flotante { animation: heroLogoFlotar 4.5s ease-in-out infinite; }
+    @keyframes heroGlowRespirar {
+        0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.55; }
+        50%      { transform: translate(-50%, -50%) scale(1.08); opacity: 0.75; }
+    }
+    .hero-logo-flotante { position: relative; z-index: 1; animation: heroLogoFlotar 4.5s ease-in-out infinite; }
     .hero-punto-acento {
         transform-box: fill-box; transform-origin: center;
         animation: heroPuntoPulso 3s ease-in-out infinite;
     }
     .hero-punto-acento-2 { animation-delay: 1.2s; }
+    .hero-glow { animation: heroGlowRespirar 6s ease-in-out infinite; }
     @media (prefers-reduced-motion: reduce) {
-        .hero-logo-flotante, .hero-punto-acento { animation: none; }
+        .hero-logo-flotante, .hero-punto-acento, .hero-glow { animation: none; }
     }
 
     .logo-top {
@@ -386,6 +402,7 @@
             </div>
             <div class="hero-art" aria-hidden="true">
                 @if($aliado->logo_marca_claro)
+                    <div class="hero-glow"></div>
                     <svg class="hero-logo-flotante" viewBox="0 0 320 320" width="100%" style="max-width:380px;">
                         <image href="{{ asset('storage/' . $aliado->logo_marca_claro) }}"
                                x="45" y="45" width="230" height="230" preserveAspectRatio="xMidYMid meet"/>
