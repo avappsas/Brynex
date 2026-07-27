@@ -26,7 +26,14 @@ class AlidoController extends Controller
     public function create()
     {
         $usuariosBrynex = User::where('es_brynex', true)->where('activo', true)->orderBy('nombre')->get(['id', 'nombre']);
-        return view('admin.aliados.form', ['aliado' => new Aliado(), 'usuariosBrynex' => $usuariosBrynex]);
+        $todosModulos = \App\Models\BrynexModulo::orderBy('orden')->get();
+        $modulosContratados = [];
+        return view('admin.aliados.form', [
+            'aliado' => new Aliado(),
+            'usuariosBrynex' => $usuariosBrynex,
+            'todosModulos' => $todosModulos,
+            'modulosContratados' => $modulosContratados,
+        ]);
     }
 
     public function store(Request $request)
@@ -104,7 +111,9 @@ class AlidoController extends Controller
     public function edit(Aliado $aliado)
     {
         $usuariosBrynex = User::where('es_brynex', true)->where('activo', true)->orderBy('nombre')->get(['id', 'nombre']);
-        return view('admin.aliados.form', compact('aliado', 'usuariosBrynex'));
+        $todosModulos = \App\Models\BrynexModulo::orderBy('orden')->get();
+        $modulosContratados = \App\Models\BrynexModuloAliado::where('aliado_id', $aliado->id)->pluck('activo', 'modulo_id')->toArray();
+        return view('admin.aliados.form', compact('aliado', 'usuariosBrynex', 'todosModulos', 'modulosContratados'));
     }
 
     public function update(Request $request, Aliado $aliado)

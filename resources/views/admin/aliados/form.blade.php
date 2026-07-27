@@ -241,10 +241,10 @@
 
         {{-- ── Módulos BryNex contratados ── --}}
         @php
-            $todosModulos = \App\Models\BrynexModulo::orderBy('orden')->get();
-            $modulosContratados = isset($aliado->id)
+            $todosModulos = $todosModulos ?? \App\Models\BrynexModulo::orderBy('orden')->get();
+            $modulosContratados = $modulosContratados ?? (isset($aliado->id)
                 ? \App\Models\BrynexModuloAliado::where('aliado_id', $aliado->id)->pluck('activo', 'modulo_id')->toArray()
-                : [];
+                : []);
         @endphp
         <div style="margin-bottom:1.5rem;padding:1rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
             <div style="font-size:0.78rem;font-weight:700;color:#1e3a8a;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.8rem;">

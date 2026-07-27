@@ -1,0 +1,2262 @@
+Array
+(
+    [0] => Array
+        (
+            [id] => 2006277543331441
+            [name] => cobro_cierre_sin_valor
+            [status] => APPROVED
+            [language] => es_ES
+            [category] => UTILITY
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => HEADER
+                            [format] => IMAGE
+                            [example] => Array
+                                (
+                                    [header_handle] => Array
+                                        (
+                                            [0] => https://scontent.whatsapp.net/v/t61.29466-34/579568329_2006277546664774_4635778585214974778_n.png?ccb=1-7&_nc_sid=8b1bef&_nc_ohc=uXB6hsHTDEoQ7kNvwEAkFVI&_nc_oc=AdpVDK8jFa3AWucD0DzsPvmPH2bFlpoOdKTC8--tXdPPo8RJJmEbblX6lzIe1WgZ8XA&_nc_zt=3&_nc_ht=scontent.whatsapp.net&edm=AH51TzQEAAAA&_nc_gid=R2ZjIkZ9MlKOcMiT5Op06g&_nc_tpa=Q5bMBQEJEvtvhESr5v9q5lh9gWCYDc-0XtgavXEGb9dha507Iuenq-DnumvjrDCx5NR9beqr6nwd5Q5Qqg&oh=01_Q5Aa5AHF8J5Uxnrw2uY1JEIX8ruiTcMOjD5x4if6oGfjkJ6rMA&oe=6A8F14A1
+                                        )
+
+                                )
+
+                        )
+
+                    [1] => Array
+                        (
+                            [type] => BODY
+                            [text] => 🚨 Estimado(a) *{{1}}*, le informamos que su servicio de seguridad social con *{{2}}* se encuentra moroso por falta de pago del mes en curso y está en *RIESGO DE CANCELACIÓN* ‼️
+
+✅ Para *normalizar su cobertura* y evitar la suspensión del servicio, por favor reporte su comprobante de pago o solicite su saldo actual.
+
+💬 Agradecemos *comunicarse lo más pronto posible* con su asesor de confianza.
+                            [example] => Array
+                                (
+                                    [body_text] => Array
+                                        (
+                                            [0] => Array
+                                                (
+                                                    [0] => BRAYAN
+                                                    [1] => BRYGAR
+                                                )
+
+                                        )
+
+                                )
+
+                        )
+
+                )
+
+        )
+
+    [1] => Array
+        (
+            [id] => 3189613704759879
+            [name] => cobro_cierre_con_valor
+            [status] => APPROVED
+            [language] => es_ES
+            [category] => UTILITY
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => HEADER
+                            [format] => IMAGE
+                            [example] => Array
+                                (
+                                    [header_handle] => Array
+                                        (
+                                            [0] => https://scontent.whatsapp.net/v/t61.29466-34/616229453_3189613708093212_1391897732480064559_n.png?ccb=1-7&_nc_sid=8b1bef&_nc_ohc=zq4T7thGzf0Q7kNvwHMv4Ut&_nc_oc=Adq1vfuynxPp_9-HpEEp5DrxN39E2xqUIszL3MkcKUGGwxYWMWM2fleXRt5MLuZ5ikY&_nc_zt=3&_nc_ht=scontent.whatsapp.net&edm=AH51TzQEAAAA&_nc_gid=R2ZjIkZ9MlKOcMiT5Op06g&_nc_tpa=Q5bMBQEpg6VpS-6_ZTx2xtzVYeJGCaNmROGVSxdahJiO2BfWEJK1O8UvStcWB4xYf743WdtSYoqwEUJP6g&oh=01_Q5Aa5AGRLtMQjbqIh_q0Pr3to6NsvhhPSsg9znm7KZWQBi9y-w&oe=6A8F0D75
+                                        )
+
+                                )
+
+                        )
+
+                    [1] => Array
+                        (
+                            [type] => BODY
+                            [text] => 🚨 Estimado(a) *{{1}}*, le informamos que su servicio de seguridad social con *{{2}}* se encuentra moroso por falta de pago del mes en curso y está en *RIESGO DE CANCELACIÓN* ‼️
+
+✅ Para normalizar su cobertura y evitar la suspensión, es necesario que reporte *AHORA* su comprobante de pago por valor de *{{3}}*.
+
+💬 Agradecemos *comunicarse lo más pronto posible* con su asesor de confianza.
+                            [example] => Array
+                                (
+                                    [body_text] => Array
+                                        (
+                                            [0] => Array
+                                                (
+                                                    [0] => BRAYAN
+                                                    [1] => BRYGAR
+                                                    [2] => 200.200
+                                                )
+
+                                        )
+
+                                )
+
+                        )
+
+                )
+
+        )
+
+    [2] => Array
+        (
+            [id] => 1763229131370528
+            [name] => envio_planilla_seguridad_social
+            [status] => APPROVED
+            [language] => es_ES
+            [category] => UTILITY
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => HEADER
+                            [format] => DOCUMENT
+                            [example] => Array
+                                (
+                                    [header_handle] => Array
+                                        (
+                                            [0] => https://scontent.whatsapp.net/v/t61.29466-34/637833510_1763229134703861_8367501661199715005_n.pdf?ccb=1-7&_nc_sid=8b1bef&_nc_ohc=GzgH3SkvFMwQ7kNvwGPHTzi&_nc_oc=AdrkB77naNY37h4Nq4pnLAjtj93Ce7PFf4kRkl7JBhpmiV5OriaFn_BM0nr4HX_1xBQ&_nc_zt=3&_nc_ht=scontent.whatsapp.net&edm=AH51TzQEAAAA&_nc_gid=R2ZjIkZ9MlKOcMiT5Op06g&_nc_tpa=Q5bMBQEOuLyZ8G8dxBbbvzbtefAUD46VLfx_j9f4fKpD2hDAqLSc5A_thRSOOeITMv5fPCr5NNJXChJN3A&oh=01_Q5Aa5AEQBkWUMAE-u6BbgYbGegj0F4W7cMbGRGHBe_J-5hkslQ&oe=6A8F2E96
+                                        )
+
+                                )
+
+                        )
+
+                    [1] => Array
+                        (
+                            [type] => BODY
+                            [text] => Hola *{{1}}*👋, Tu planilla de seguridad social ha sido pagada exitosamente. ✅ 
+
+Operador: *{{2}}*
+Número de planilla: *{{3}}*
+
+Si tienes alguna duda, estamos atentos. 😊
+                            [example] => Array
+                                (
+                                    [body_text] => Array
+                                        (
+                                            [0] => Array
+                                                (
+                                                    [0] => Brayan García
+                                                    [1] => Arus Enlace
+                                                    [2] => 86660573
+                                                )
+
+                                        )
+
+                                )
+
+                        )
+
+                )
+
+        )
+
+    [3] => Array
+        (
+            [id] => 1355500046428286
+            [name] => publicidad_brygar2026
+            [status] => APPROVED
+            [language] => es_ES
+            [category] => MARKETING
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => HEADER
+                            [format] => IMAGE
+                            [example] => Array
+                                (
+                                    [header_handle] => Array
+                                        (
+                                            [0] => https://scontent.whatsapp.net/v/t61.29466-34/693461425_1355500049761619_391173877775090783_n.jpg?ccb=1-7&_nc_sid=8b1bef&_nc_ohc=V8QqkwerWYAQ7kNvwGtQITh&_nc_oc=Adrvwbxf7ABfFogMOIh9EqY_U4QPj7mdgK67jX10weGh_udAXW-sj5KfJH4JtxA66Js&_nc_zt=3&_nc_ht=scontent.whatsapp.net&edm=AH51TzQEAAAA&_nc_gid=R2ZjIkZ9MlKOcMiT5Op06g&_nc_tpa=Q5bMBQEQCftWwjCjLFns6ZVdyvel341JbhfXe_TGu-vcNECb1DD4JTLtlPAJeRvIQtFyPf1avWO09xIEnw&oh=01_Q5Aa5AEsGEfCxQLe1JGVg4gGY7qddhM7VIYm7_vUJXyAycPeTQ&oe=6A8F2836
+                                        )
+
+                                )
+
+                        )
+
+                    [1] => Array
+                        (
+                            [type] => BODY
+                            [text] => Hola, te saludamos de *Brygar S.A.S.* 👋
+
+*¿Pagas mucho por tu Seguridad Social o actualmente estás sin cobertura?* Gracias a nuestras alianzas corporativas, te afiliamos a (*EPS, ARL,CAJA y/o PENSIÓN*) con todos los beneficios de ley. Disfruta de un servicio de *categoría Premium* bajo esta garantía:
+
+🛡️ *Cero Riesgos:* Pagas tu afiliación SOLO después de recibir tu radicado oficial y verificar en el sistema.
+💰 *Ahorro:* Nuestra administración mensual es un 35% más económica que el mercado.
+🎁 *Auditoría gratis*: Te ayudamos a validar que tus pagos anteriores se hayan realizado correctamente.
+
+*Selecciona una opción para avanzar*👇
+                        )
+
+                    [2] => Array
+                        (
+                            [type] => BUTTONS
+                            [buttons] => Array
+                                (
+                                    [0] => Array
+                                        (
+                                            [type] => QUICK_REPLY
+                                            [text] => Quiero la auditoría
+                                        )
+
+                                    [1] => Array
+                                        (
+                                            [type] => QUICK_REPLY
+                                            [text] => Quiero cotizar
+                                        )
+
+                                    [2] => Array
+                                        (
+                                            [type] => QUICK_REPLY
+                                            [text] => Detener envíos
+                                        )
+
+                                )
+
+                        )
+
+                )
+
+        )
+
+    [4] => Array
+        (
+            [id] => 4365660746980753
+            [name] => cobro_sin_valor_2
+            [status] => APPROVED
+            [language] => es_ES
+            [category] => UTILITY
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => HEADER
+                            [format] => IMAGE
+                            [example] => Array
+                                (
+                                    [header_handle] => Array
+                                        (
+                                            [0] => https://scontent.whatsapp.net/v/t61.29466-34/534418241_4365660750314086_2566619437314194433_n.jpg?ccb=1-7&_nc_sid=8b1bef&_nc_ohc=zEKP3RsDc1AQ7kNvwFaGitr&_nc_oc=AdovrxBbk30uVWQL0nvO9X1ojQf3fOgWpxEhtvU_2MfePJIlFg6ZJhiFwET0XKSseZw&_nc_zt=3&_nc_ht=scontent.whatsapp.net&edm=AH51TzQEAAAA&_nc_gid=R2ZjIkZ9MlKOcMiT5Op06g&_nc_tpa=Q5bMBQGaRIwSUTrNXfeYmYAeleBaqhoBcAJHcOoxYIIXAUAGM9qAJe2xwa6ivjnnAe_WjJPRx3iAtlkorA&oh=01_Q5Aa5AEjdkW2w3GuWun8daO1QTtUHz42W13O8Mwsc1dwXeNfRA&oe=6A8F2BFC
+                                        )
+
+                                )
+
+                        )
+
+                    [1] => Array
+                        (
+                            [type] => BODY
+                            [text] => 📢 *Recordatorio de pago - {{2}}*📢
+
+Hola *{{1}}* 👋, esperamos que te encuentres muy bien.
+
+Te recordamos que tu pago mensual de *seguridad social* debe realizarse antes del *día {{3}}* de cada mes, con el fin de mantener tus coberturas activas y evitar novedades en la prestación del servicio.
+
+💳 *Medios de pago:*
+*{{4}}*
+
+📲 Una vez realices el pago, por favor *envía tu comprobante al WhatsApp {{5}}*.
+
+⚠️ *Información importante:*
+Los pagos realizados después de la fecha de vencimiento generan un recargo por mora desde $2.000.
+ 
+✅ Si ya realizaste el pago, por favor haz caso omiso a este mensaje.
+
+🤝 ¡Gracias por tu puntualidad y por confiar en nosotros! Que tengas un feliz día 😊
+                            [example] => Array
+                                (
+                                    [body_text] => Array
+                                        (
+                                            [0] => Array
+                                                (
+                                                    [0] => Brayan García
+                                                    [1] => BRYGAR
+                                                    [2] => 10
+                                                    [3] => NEQUI 3117762689
+                                                    [4] => 3117762689
+                                                )
+
+                                        )
+
+                                )
+
+                        )
+
+                )
+
+        )
+
+    [5] => Array
+        (
+            [id] => 1403797241544487
+            [name] => cobro_con_valor2
+            [status] => APPROVED
+            [language] => es_ES
+            [category] => UTILITY
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => HEADER
+                            [format] => IMAGE
+                            [example] => Array
+                                (
+                                    [header_handle] => Array
+                                        (
+                                            [0] => https://scontent.whatsapp.net/v/t61.29466-34/534418241_1403797244877820_1166753893861267402_n.jpg?ccb=1-7&_nc_sid=8b1bef&_nc_ohc=TkMwPpp0spgQ7kNvwGA0_9F&_nc_oc=AdoSl4W0FIyuNVy8dvyQLFJkmGyXqLEJsdz6-zdPyKT67JdEWnc_ire6pY7xthx41Gs&_nc_zt=3&_nc_ht=scontent.whatsapp.net&edm=AH51TzQEAAAA&_nc_gid=R2ZjIkZ9MlKOcMiT5Op06g&_nc_tpa=Q5bMBQGgNTmh9SzHM9nMwe1g-GdX-zDddWCq7m0WXZ8uLzPkjV49ObteSo3xiz92FMH1vWAd1oxYxEPvpw&oh=01_Q5Aa5AF2f-DS1TIjWGBg7e9h1l4pyW-DL6q_kIBXdxeKZRCouw&oe=6A8F1612
+                                        )
+
+                                )
+
+                        )
+
+                    [1] => Array
+                        (
+                            [type] => BODY
+                            [text] => 📢 *Recordatorio de pago - {{2}}*📢
+
+Hola *{{1}}* 👋, esperamos que te encuentres muy bien.
+
+Te recordamos que tu pago de *seguridad social por valor de {{6}}* debe realizarse antes del *día {{3}}* de cada mes, para mantener tus coberturas activas y evitar novedades en la prestación del servicio.
+
+💳 *Medios de pago:*
+*{{4}}*
+
+📲 Una vez realices el pago, por favor *envía tu comprobante al WhatsApp {{5}}*.
+
+⚠️ *Información importante:*
+Los pagos realizados después de la fecha de vencimiento generan un recargo por mora desde $2.000.
+
+✅ Si ya realizaste el pago, por favor haz caso omiso a este mensaje. 
+
+🤝 ¡Gracias por tu puntualidad y por confiar en nosotros! Que tengas un feliz día 😊
+                            [example] => Array
+                                (
+                                    [body_text] => Array
+                                        (
+                                            [0] => Array
+                                                (
+                                                    [0] => Brayan garcia
+                                                    [1] => BRYGAR
+                                                    [2] => 10
+                                                    [3] => NEQUI 3117762689
+                                                    [4] => 3117762689
+                                                    [5] => $120.000
+                                                )
+
+                                        )
+
+                                )
+
+                        )
+
+                )
+
+        )
+
+    [6] => Array
+        (
+            [id] => 1412614300890555
+            [name] => cobro_sin_valor
+            [status] => APPROVED
+            [language] => es_ES
+            [category] => UTILITY
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => HEADER
+                            [format] => IMAGE
+                            [example] => Array
+                                (
+                                    [header_handle] => Array
+                                        (
+                                            [0] => https://scontent.whatsapp.net/v/t61.29466-34/637008544_1412614304223888_2439448544979712646_n.jpg?ccb=1-7&_nc_sid=8b1bef&_nc_ohc=FGVnsky_8_IQ7kNvwH9KNWN&_nc_oc=AdpFdIzycxIGzlwTmPi4lZiFaFbhzQPoEtFB0a29xE1jZ8spzrurErB1Yb_7E1ilgfQ&_nc_zt=3&_nc_ht=scontent.whatsapp.net&edm=AH51TzQEAAAA&_nc_gid=R2ZjIkZ9MlKOcMiT5Op06g&_nc_tpa=Q5bMBQFqzEIj1-28-9VIFRPC3Ic2VTLUcEoQIfTAV-yoTN1nnw9Ob_BJtg9a4qoUggvSraBQwmrCxV16lA&oh=01_Q5Aa5AGvDftZY_POJACC_Z5QEYORPtAdvSHTJQquieAibr-zhg&oe=6A8F2888
+                                        )
+
+                                )
+
+                        )
+
+                    [1] => Array
+                        (
+                            [type] => BODY
+                            [text] => Hola *{{1}}* 👋
+
+*{{2}}* te comparte este recordatorio para que realices el *pago de tu seguridad social*.
+
+🗓️ Recuerda hacer el pago dentro de los primeros *{{3}} días* de cada mes para evitar mora o retrasos.
+
+🏦 *Cuenta(s) bancaria(s):*
+*{{4}}*
+
+📲 Después de realizar el pago, por favor envía el soporte al *WhatsApp* *{{5}}*. Si ya realizaste el pago, por favor haz caso omiso a este mensaje. 
+
+¡Feliz día! 😊
+                            [example] => Array
+                                (
+                                    [body_text] => Array
+                                        (
+                                            [0] => Array
+                                                (
+                                                    [0] => Brayan García
+                                                    [1] => BRYGAR
+                                                    [2] => 10
+                                                    [3] => NEQUI 300 000 0000
+                                                    [4] => 3117762689
+                                                )
+
+                                        )
+
+                                )
+
+                        )
+
+                )
+
+        )
+
+    [7] => Array
+        (
+            [id] => 1368481708430224
+            [name] => cobro_con_valor
+            [status] => APPROVED
+            [language] => es_ES
+            [category] => UTILITY
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => HEADER
+                            [format] => IMAGE
+                            [example] => Array
+                                (
+                                    [header_handle] => Array
+                                        (
+                                            [0] => https://scontent.whatsapp.net/v/t61.29466-34/690877799_1368481711763557_6606967214870046570_n.jpg?ccb=1-7&_nc_sid=8b1bef&_nc_ohc=4ZDH8DxJesYQ7kNvwF0WB_I&_nc_oc=AdrEA-ShKhTGe3KorXbEPK3Kab4rbyNfW7L3RVxzifHWF2V3o5l-qzoFD7-QVo-eat8&_nc_zt=3&_nc_ht=scontent.whatsapp.net&edm=AH51TzQEAAAA&_nc_gid=R2ZjIkZ9MlKOcMiT5Op06g&_nc_tpa=Q5bMBQHm1Fbe6mv_Ah7smNdQtTLbWuqbhdyQwlnRydRLb7CAAQlRLol9aLcd0Z5wPhIg-OHLZk51jz47Jg&oh=01_Q5Aa5AFzKoxWkCZUB5CbbjlQvr9ec-c0ZoWGn17adKFpko1DmA&oe=6A8F2656
+                                        )
+
+                                )
+
+                        )
+
+                    [1] => Array
+                        (
+                            [type] => BODY
+                            [text] => Hola *{{1}}* 👋
+
+*{{2}}* te comparte este recordatorio para que realices el *pago de tu seguridad social*.
+
+💰 *Valor a pagar: {{6}}*
+
+🗓️ Recuerda hacer el pago dentro de los primeros *{{3}}* días de cada mes para evitar mora o retrasos.
+
+🏦 *Cuenta(s) bancaria(s):*
+*{{4}}*
+
+📲 Después de realizar el pago, por favor envía el soporte al *WhatsApp* *{{5}}*. Si ya realizaste el pago, por favor haz caso omiso a este mensaje. Si tienes alguna inquietud, también puedes escribir a ese mismo número.
+
+¡Feliz día! 😊
+                            [example] => Array
+                                (
+                                    [body_text] => Array
+                                        (
+                                            [0] => Array
+                                                (
+                                                    [0] => Brayan garcia
+                                                    [1] => BRYGAR
+                                                    [2] => 10
+                                                    [3] => Bancolombia Ahorro 00-000000-00 nit:901000000
+                                                    [4] => 3117762689
+                                                    [5] => 120.000
+                                                )
+
+                                        )
+
+                                )
+
+                        )
+
+                )
+
+        )
+
+    [8] => Array
+        (
+            [id] => 935141995695110
+            [name] => puestos
+            [status] => APPROVED
+            [language] => es_ES
+            [category] => MARKETING
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => HEADER
+                            [format] => IMAGE
+                            [example] => Array
+                                (
+                                    [header_handle] => Array
+                                        (
+                                            [0] => https://scontent.whatsapp.net/v/t61.29466-34/589185871_935141999028443_7546276896654270138_n.jpg?ccb=1-7&_nc_sid=8b1bef&_nc_ohc=twpDf0-iYsUQ7kNvwH4xnWk&_nc_oc=AdoCPbgosN_P-PXX2hUr5UG9d84zo6gfMQXfEp9VTU2oegcrLVNgenwPFW4qmZSRXdY&_nc_zt=3&_nc_ht=scontent.whatsapp.net&edm=AH51TzQEAAAA&_nc_gid=R2ZjIkZ9MlKOcMiT5Op06g&_nc_tpa=Q5bMBQFlscV4y-ziS0ZRi4a-AKHpOThtciEP5c1uTLvecn7O7SZkj76d7_UnzHLKxAqFbVNohtSDgjIcMA&oh=01_Q5Aa5AH4EFxpnbzAcEpPf3a7EO9_1Qf18JjVTfesyPH6Lt3xPg&oe=6A8F0C1A
+                                        )
+
+                                )
+
+                        )
+
+                    [1] => Array
+                        (
+                            [type] => BODY
+                            [text] => Hola *{{1}}*👋 
+
+🏫 Puesto: *{{2}}*
+📍 *{{3}}*
+🔢 Mesa: *{{4}}* 
+
+Recuerda llevar tu cédula original y salir temprano para evitar filas.
+
+Una vez *ejerzas tu derecho*, comparte tu comprobante a este numero  para llevar seguimiento del proceso e informar a nuestros testigos.
+                            [example] => Array
+                                (
+                                    [body_text] => Array
+                                        (
+                                            [0] => Array
+                                                (
+                                                    [0] => brayan
+                                                    [1] => Pablo Neruda
+                                                    [2] => calle 45
+                                                    [3] => 5
+                                                )
+
+                                        )
+
+                                )
+
+                        )
+
+                    [2] => Array
+                        (
+                            [type] => FOOTER
+                            [text] => GeoVoto
+                        )
+
+                    [3] => Array
+                        (
+                            [type] => BUTTONS
+                            [buttons] => Array
+                                (
+                                    [0] => Array
+                                        (
+                                            [type] => QUICK_REPLY
+                                            [text] => Saldré a votar
+                                        )
+
+                                    [1] => Array
+                                        (
+                                            [type] => QUICK_REPLY
+                                            [text] => Ver video
+                                        )
+
+                                )
+
+                        )
+
+                )
+
+        )
+
+    [9] => Array
+        (
+            [id] => 752043664219243
+            [name] => bienvenida_geo
+            [status] => APPROVED
+            [language] => es_ES
+            [category] => MARKETING
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => HEADER
+                            [format] => IMAGE
+                            [example] => Array
+                                (
+                                    [header_handle] => Array
+                                        (
+                                            [0] => https://scontent.whatsapp.net/v/t61.29466-34/625537661_752043667552576_3654236315131573424_n.jpg?ccb=1-7&_nc_sid=8b1bef&_nc_ohc=8JZzR9x_UA4Q7kNvwELxHLq&_nc_oc=Adq2wMqI5m4PGyF5vhae11Tqto7Z_qGJhPiV29aVqQWF44kdTAzFqUL0_6RZ05jRlEA&_nc_zt=3&_nc_ht=scontent.whatsapp.net&edm=AH51TzQEAAAA&_nc_gid=R2ZjIkZ9MlKOcMiT5Op06g&_nc_tpa=Q5bMBQG3tRQ-WgW8Yveo6Sn30-yg-X1L_d4IoIGqMf_utADxtp8DWvicLMtJ6JQro8dbRMiEwuPMonLrZA&oh=01_Q5Aa5AHewiGwjUsEoy7Fa8vMd0jUO5fKaZje1ozIQ2WbGD4SLg&oe=6A8F25F7
+                                        )
+
+                                )
+
+                        )
+
+                    [1] => Array
+                        (
+                            [type] => BODY
+                            [text] => ¡Hola *{{1}}*! 👋
+
+Te damos la bienvenida a GeoVoto. Hemos recibido tu registro a través del líder *{{2}}*.
+
+Para validar tu proceso, confírmanos: ¿Conoces a *{{3}}* y cuenta con tu apoyo para las próximas elecciones? ✅
+                            [example] => Array
+                                (
+                                    [body_text] => Array
+                                        (
+                                            [0] => Array
+                                                (
+                                                    [0] => Martin
+                                                    [1] => Brayan
+                                                    [2] => Brayan
+                                                )
+
+                                        )
+
+                                )
+
+                        )
+
+                    [2] => Array
+                        (
+                            [type] => BUTTONS
+                            [buttons] => Array
+                                (
+                                    [0] => Array
+                                        (
+                                            [type] => QUICK_REPLY
+                                            [text] => Si apoyo
+                                        )
+
+                                    [1] => Array
+                                        (
+                                            [type] => QUICK_REPLY
+                                            [text] => No, eliminar mis datos
+                                        )
+
+                                )
+
+                        )
+
+                )
+
+        )
+
+    [10] => Array
+        (
+            [id] => 26201365092782285
+            [name] => mensajeros
+            [status] => APPROVED
+            [language] => es_ES
+            [category] => MARKETING
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => BODY
+                            [text] => Hola 👋
+*MEGATRANSPORTES* está buscando *mensajeros* para la entrega de paquetes de Temu en Cali y municipios aledaños.
+
+💰 Pago: $2.000 por paquete
+📦 Cantidad: entregas según tu capacidad
+✅ Ya hay cantidad – trabajo inmediato
+
+📍 Reunión informativa:
+🗓️ Domingo 25 de enero
+📌 Dirección: Cra. 39 #43-04, Antonio Nariño
+⏰ 10:00 a.m.
+
+Escríbenos para confirmar 3023386830 - 3175225336 - 3117762689 🙌
+
+¿Te interesa?
+                        )
+
+                    [1] => Array
+                        (
+                            [type] => BUTTONS
+                            [buttons] => Array
+                                (
+                                    [0] => Array
+                                        (
+                                            [type] => QUICK_REPLY
+                                            [text] => Si me interesa
+                                        )
+
+                                    [1] => Array
+                                        (
+                                            [type] => QUICK_REPLY
+                                            [text] => No me interesa
+                                        )
+
+                                )
+
+                        )
+
+                )
+
+        )
+
+    [11] => Array
+        (
+            [id] => 1128331525555802
+            [name] => cuenta_pagos
+            [status] => APPROVED
+            [language] => es_ES
+            [category] => UTILITY
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => HEADER
+                            [format] => IMAGE
+                            [example] => Array
+                                (
+                                    [header_handle] => Array
+                                        (
+                                            [0] => https://scontent.whatsapp.net/v/t61.29466-34/534423480_1128331528889135_1987710543499379023_n.png?ccb=1-7&_nc_sid=8b1bef&_nc_ohc=TC2BcUK-mU4Q7kNvwGl-wS5&_nc_oc=AdrKG2fOcqUiMNJoPPdLRq0Rtj7O_ZaJqLXGsqb0SpICEi_LvTaGG7TYsRXE_8lN8XM&_nc_zt=3&_nc_ht=scontent.whatsapp.net&edm=AH51TzQEAAAA&_nc_gid=R2ZjIkZ9MlKOcMiT5Op06g&_nc_tpa=Q5bMBQHmKaqtmys1e8S7eJjO5lsckq3DTWvcGKyQsT9aO6TZGNenkRxmnxEkGif7kbRJ5xJakDbHg5Bpyw&oh=01_Q5Aa5AGzF0Q7BX0KkJBjXPdnGRx6fJ6YJlQSkPxazwL6anxMtw&oe=6A8F143D
+                                        )
+
+                                )
+
+                        )
+
+                    [1] => Array
+                        (
+                            [type] => BODY
+                            [text] => 📢 Aviso importante – BRYGAR S.A.S.
+
+Hola 👋
+Informamos que BRYGAR S.A.S. tiene una nueva cuenta oficial para los pagos de seguridad social 💚
+
+🏦 Bancolombia
+Cuenta de ahorros 812-000169-10
+A nombre de BRYGAR S.A.S.
+NIT: 901.918.923
+
+⚠️ Al consignar, asegúrate de que aparezca el nombre BRYGAR S.A.S..
+Si recibiste un mensaje anterior con otro número de cuenta, por favor ignóralo.
+
+Gracias por tu confianza y por seguir con nosotros 🙌
+                        )
+
+                    [2] => Array
+                        (
+                            [type] => FOOTER
+                            [text] => — Equipo BRYGAR S.A.S.
+                        )
+
+                )
+
+        )
+
+    [12] => Array
+        (
+            [id] => 739699188800571
+            [name] => cobro_1
+            [status] => APPROVED
+            [language] => es_ES
+            [category] => UTILITY
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => BODY
+                            [text] => 📢 *BRYGAR – Pago mensual*
+
+Hola *{{1}}* 😊
+Tu plan mensual es de *${{2}}*. Cancela antes del día 10 para evitar moras o interrupciones en tu atención.
+
+💳 {{3}}
+📱 {{4}}
+
+📸 RECUERDA: Envía comprobante al whastapp *{{5}}*
+
+¡Gracias por seguir confiando en nosotros!
+Que tengas un excelente día 🙌
+                            [example] => Array
+                                (
+                                    [body_text] => Array
+                                        (
+                                            [0] => Array
+                                                (
+                                                    [0] => Brayan Garcia
+                                                    [1] => 330.000
+                                                    [2] => Bancolombia Ahorro 808-000066-88 
+                                                    [3] => Nequi o Daviplata 3117762689 Brayan Garcia
+                                                    [4] => 3158204135
+                                                )
+
+                                        )
+
+                                )
+
+                        )
+
+                    [1] => Array
+                        (
+                            [type] => BUTTONS
+                            [buttons] => Array
+                                (
+                                    [0] => Array
+                                        (
+                                            [type] => URL
+                                            [text] => Contactar Whatsapp
+                                            [url] => http://brygar.avapp.digital/
+                                        )
+
+                                )
+
+                        )
+
+                )
+
+        )
+
+    [13] => Array
+        (
+            [id] => 1688202942134083
+            [name] => solo_eps
+            [status] => DISABLED
+            [language] => es_ES
+            [category] => MARKETING
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => HEADER
+                            [format] => IMAGE
+                            [example] => Array
+                                (
+                                    [header_handle] => Array
+                                        (
+                                            [0] => https://scontent.whatsapp.net/v/t61.29466-34/473397189_1688202945467416_3294427192558621465_n.jpg?ccb=1-7&_nc_sid=8b1bef&_nc_ohc=De06hqKXkLMQ7kNvwFsWOkJ&_nc_oc=Adq9RagLXeBQWHOTAiHdrTpd7Mm5nh1td2xIkU5do40_miCxajqfuOc54p54RgUx7yw&_nc_zt=3&_nc_ht=scontent.whatsapp.net&edm=AH51TzQEAAAA&_nc_gid=R2ZjIkZ9MlKOcMiT5Op06g&_nc_tpa=Q5bMBQHTDSSpm8QR1mxNPqMHPJH-2RE5BYMXg4J8ucpv_j2nLVMk7fn5ZMBdNTPEqFo4pQCJ3Uh8kiiFtg&oh=01_Q5Aa5AFuGaWLnFqEq_uPdWeY6UTqwFyyKDBXX4951lcrBt0EbA&oe=6A8F08F8
+                                        )
+
+                                )
+
+                        )
+
+                    [1] => Array
+                        (
+                            [type] => BODY
+                            [text] => ¡Hola! 👋
+Soy Briana, asistente virtual de BRYGAR, y quiero ofrecerte opciones de seguridad social confiables y económicas, con un descuento en tu primer mes. 🎉
+
+¿Por qué elegirnos?
+• 💸 Precios competitivos sin sacrificar calidad.
+• ✅ Atención personalizada para ayudarte a elegir lo mejor.
+• 🎁 Descuentos exclusivos con nuestras empresas aliadas.
+
+Manejamos varios planes con EPS, ARL, CAJAS y PENSIÓN para personas independientes, dependientes y empresas.
+Ofrecemos planes completos o personalizados según lo que más se ajuste a tus necesidades.
+                        )
+
+                    [2] => Array
+                        (
+                            [type] => BUTTONS
+                            [buttons] => Array
+                                (
+                                    [0] => Array
+                                        (
+                                            [type] => QUICK_REPLY
+                                            [text] => Mas información
+                                        )
+
+                                    [1] => Array
+                                        (
+                                            [type] => QUICK_REPLY
+                                            [text] => Detener promociones
+                                        )
+
+                                    [2] => Array
+                                        (
+                                            [type] => URL
+                                            [text] => Contactar WhatsApp
+                                            [url] => http://brygar.avapp.digital/
+                                        )
+
+                                )
+
+                        )
+
+                )
+
+        )
+
+    [14] => Array
+        (
+            [id] => 809762830757202
+            [name] => ver_lista_precios
+            [status] => APPROVED
+            [language] => es_ES
+            [category] => MARKETING
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => HEADER
+                            [format] => IMAGE
+                            [example] => Array
+                                (
+                                    [header_handle] => Array
+                                        (
+                                            [0] => https://scontent.whatsapp.net/v/t61.29466-34/344575733_809762834090535_6038192911206026240_n.jpg?ccb=1-7&_nc_sid=8b1bef&_nc_ohc=ScmlZoyAm1MQ7kNvwFF6G2a&_nc_oc=AdqmHixgjynx80I1z5dwBz-Da-ZCFoqmZEMEZNWNia7Ap9Unl1R05G5_lQtVD_9RTuU&_nc_zt=3&_nc_ht=scontent.whatsapp.net&edm=AH51TzQEAAAA&_nc_gid=R2ZjIkZ9MlKOcMiT5Op06g&_nc_tpa=Q5bMBQFAuBvbOBAp_zCTTHMqQXb8G_V8TBfTJjo_nzmUEipCgkye-P-ZU3uVJUK2nWyAVexNzv7v93PTFA&oh=01_Q5Aa5AEnABIj8CC6TjcUBzm57DO-srD0FklKg4-U7QAkShygZA&oe=6A8F35C6
+                                        )
+
+                                )
+
+                        )
+
+                    [1] => Array
+                        (
+                            [type] => BODY
+                            [text] => ¡Bienvenido! En nuestra empresa le ofrecemos:
+
+👉 Afiliaciones a la salud a los precios más económicos del mercado actual
+👉 Brindamos la mejor asesoría para asegurarnos de que esté satisfecho con su plan de salud. 
+👉Además, nos encargamos de los trámites como incapacidades o traslados por ti.
+👉Si deseas cambiar de empresa afiliadora, ¡estamos aquí para ayudarte!
+
+¡Contáctanos ahora al 315 8204135 o a través de https://wa.link/5sq59a para más información! 👍
+                        )
+
+                    [2] => Array
+                        (
+                            [type] => BUTTONS
+                            [buttons] => Array
+                                (
+                                    [0] => Array
+                                        (
+                                            [type] => QUICK_REPLY
+                                            [text] => Quiero mas info
+                                        )
+
+                                    [1] => Array
+                                        (
+                                            [type] => QUICK_REPLY
+                                            [text] => Si me interesa
+                                        )
+
+                                )
+
+                        )
+
+                )
+
+        )
+
+    [15] => Array
+        (
+            [id] => 929024718337347
+            [name] => publicidad_brygar
+            [status] => APPROVED
+            [language] => es_ES
+            [category] => MARKETING
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => HEADER
+                            [format] => IMAGE
+                            [example] => Array
+                                (
+                                    [header_handle] => Array
+                                        (
+                                            [0] => https://scontent.whatsapp.net/v/t61.29466-34/344245532_929024721670680_8761212928643464007_n.jpg?ccb=1-7&_nc_sid=8b1bef&_nc_ohc=2EyjaaPteTEQ7kNvwE7RCZl&_nc_oc=AdpyCO9HJCD1aci7jHJIIhoRGvTgzvTkgkudu8RRVXLHT4t83FPFNedHnnuf5IUytvM&_nc_zt=3&_nc_ht=scontent.whatsapp.net&edm=AH51TzQEAAAA&_nc_gid=R2ZjIkZ9MlKOcMiT5Op06g&_nc_tpa=Q5bMBQF-OU-Ywh5REoediE6sqxC9nLNuPjFZTu8074qXvL1XLCeyc_KAhwu7Sd48oveIIXvGfvXKUSJSPw&oh=01_Q5Aa5AFEr36a2FivIik0uVG4sxV_xuqBy9wqTOWat-0C5f_YYg&oe=6A8F18F0
+                                        )
+
+                                )
+
+                        )
+
+                    [1] => Array
+                        (
+                            [type] => BODY
+                            [text] => POR ESTE MES ¡AFILIATE A SOLO ARL!  POR SOLO $35.000
+
+*¿Necesita una afiliación?*
+
+Si eres empleador, independiente, contratista, empleado o de servicio doméstico. Estamos para asesorarte,  *realizamos afiliaciones al sistema de SEGURIDAD SOCIAL* (EPS, ARL, Caja de Compensación y Fondo de pensión)
+
+👉 Te afiliamos a tu EPS de preferencia. 
+👉 Afiliacion de empresas (outsorcing)
+👉 Asesorias en pensiones.
+👉 Traslados de Eps
+👉 Envio de Planillas
+👉Subsidios Caja Compensación
+y mucho mas...
+
+Soluciones Personalizadas👌
+𝗘𝘀𝗰𝗿𝗶́𝗯𝗲𝗻𝗼𝘀: 315 8204135 + https://wa.link/5sq59a
+*Pagina Web*: http://www.brygar.com/
+                        )
+
+                    [2] => Array
+                        (
+                            [type] => FOOTER
+                            [text] => ¿No te interesan? Toca Detener promociones
+                        )
+
+                    [3] => Array
+                        (
+                            [type] => BUTTONS
+                            [buttons] => Array
+                                (
+                                    [0] => Array
+                                        (
+                                            [type] => QUICK_REPLY
+                                            [text] => Si me interesa
+                                        )
+
+                                    [1] => Array
+                                        (
+                                            [type] => QUICK_REPLY
+                                            [text] => Ver lista Precios
+                                        )
+
+                                    [2] => Array
+                                        (
+                                            [type] => QUICK_REPLY
+                                            [text] => Detener promociones
+                                        )
+
+                                )
+
+                        )
+
+                )
+
+        )
+
+    [16] => Array
+        (
+            [id] => 786961222604056
+            [name] => contacto_brygar
+            [status] => APPROVED
+            [language] => es
+            [category] => MARKETING
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => HEADER
+                            [format] => TEXT
+                            [text] => ¡Atención!
+                        )
+
+                    [1] => Array
+                        (
+                            [type] => BODY
+                            [text] => Esta cuenta de WhatsApp es solo para envio de notificaciones. 
+
+Deseas hablar con un asesor?
+                        )
+
+                    [2] => Array
+                        (
+                            [type] => FOOTER
+                            [text] => Brygar
+                        )
+
+                    [3] => Array
+                        (
+                            [type] => BUTTONS
+                            [buttons] => Array
+                                (
+                                    [0] => Array
+                                        (
+                                            [type] => URL
+                                            [text] => SI, Contactar
+                                            [url] => https://hab.me/lZxxAoR
+                                        )
+
+                                )
+
+                        )
+
+                )
+
+        )
+
+    [17] => Array
+        (
+            [id] => 667949254402846
+            [name] => sample_issue_resolution
+            [status] => APPROVED
+            [language] => id
+            [category] => MARKETING
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => BODY
+                            [text] => Halo {{1}}, apakah kami bisa mengatasi masalah yang sedang Anda hadapi?
+                        )
+
+                    [1] => Array
+                        (
+                            [type] => FOOTER
+                            [text] => Pesan ini berasal dari bisnis yang tidak terverifikasi.
+                        )
+
+                    [2] => Array
+                        (
+                            [type] => BUTTONS
+                            [buttons] => Array
+                                (
+                                    [0] => Array
+                                        (
+                                            [type] => QUICK_REPLY
+                                            [text] => Ya
+                                        )
+
+                                    [1] => Array
+                                        (
+                                            [type] => QUICK_REPLY
+                                            [text] => Tidak
+                                        )
+
+                                )
+
+                        )
+
+                )
+
+        )
+
+    [18] => Array
+        (
+            [id] => 821920142279167
+            [name] => sample_issue_resolution
+            [status] => APPROVED
+            [language] => pt_BR
+            [category] => MARKETING
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => BODY
+                            [text] => Oi, {{1}}. Nós conseguimos resolver o problema que você estava enfrentando?
+                        )
+
+                    [1] => Array
+                        (
+                            [type] => FOOTER
+                            [text] => Esta mensagem é de uma empresa não verificada.
+                        )
+
+                    [2] => Array
+                        (
+                            [type] => BUTTONS
+                            [buttons] => Array
+                                (
+                                    [0] => Array
+                                        (
+                                            [type] => QUICK_REPLY
+                                            [text] => Sim
+                                        )
+
+                                    [1] => Array
+                                        (
+                                            [type] => QUICK_REPLY
+                                            [text] => Não
+                                        )
+
+                                )
+
+                        )
+
+                )
+
+        )
+
+    [19] => Array
+        (
+            [id] => 806266473830548
+            [name] => sample_shipping_confirmation
+            [status] => APPROVED
+            [language] => en_US
+            [category] => UTILITY
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => BODY
+                            [text] => Your package has been shipped. It will be delivered in {{1}} business days.
+                        )
+
+                    [1] => Array
+                        (
+                            [type] => FOOTER
+                            [text] => This message is from an unverified business.
+                        )
+
+                )
+
+        )
+
+    [20] => Array
+        (
+            [id] => 645045506975454
+            [name] => sample_flight_confirmation
+            [status] => APPROVED
+            [language] => es
+            [category] => UTILITY
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => HEADER
+                            [format] => DOCUMENT
+                        )
+
+                    [1] => Array
+                        (
+                            [type] => BODY
+                            [text] => Confirmamos tu vuelo a {{1}}-{{2}} para el {{3}}.
+                        )
+
+                    [2] => Array
+                        (
+                            [type] => FOOTER
+                            [text] => Este mensaje proviene de un negocio no verificado.
+                        )
+
+                )
+
+        )
+
+    [21] => Array
+        (
+            [id] => 826556968794561
+            [name] => sample_shipping_confirmation
+            [status] => APPROVED
+            [language] => pt_BR
+            [category] => UTILITY
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => BODY
+                            [text] => Seu pacote foi enviado. Ele será entregue em {{1}} dias úteis.
+                        )
+
+                    [1] => Array
+                        (
+                            [type] => FOOTER
+                            [text] => Esta mensagem é de uma empresa não verificada.
+                        )
+
+                )
+
+        )
+
+    [22] => Array
+        (
+            [id] => 340087184967963
+            [name] => sample_flight_confirmation
+            [status] => APPROVED
+            [language] => en_US
+            [category] => UTILITY
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => HEADER
+                            [format] => DOCUMENT
+                        )
+
+                    [1] => Array
+                        (
+                            [type] => BODY
+                            [text] => This is your flight confirmation for {{1}}-{{2}} on {{3}}.
+                        )
+
+                    [2] => Array
+                        (
+                            [type] => FOOTER
+                            [text] => This message is from an unverified business.
+                        )
+
+                )
+
+        )
+
+    [23] => Array
+        (
+            [id] => 617349429875220
+            [name] => sample_movie_ticket_confirmation
+            [status] => APPROVED
+            [language] => en_US
+            [category] => UTILITY
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => HEADER
+                            [format] => IMAGE
+                        )
+
+                    [1] => Array
+                        (
+                            [type] => BODY
+                            [text] => Your ticket for *{{1}}*
+*Time* - {{2}}
+*Venue* - {{3}}
+*Seats* - {{4}}
+                        )
+
+                    [2] => Array
+                        (
+                            [type] => FOOTER
+                            [text] => This message is from an unverified business.
+                        )
+
+                )
+
+        )
+
+    [24] => Array
+        (
+            [id] => 1233482094169148
+            [name] => sample_shipping_confirmation
+            [status] => APPROVED
+            [language] => es
+            [category] => UTILITY
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => BODY
+                            [text] => ó tu paquete. La entrega se realizará en {{1}} dí.
+                        )
+
+                    [1] => Array
+                        (
+                            [type] => FOOTER
+                            [text] => Este mensaje proviene de un negocio no verificado.
+                        )
+
+                )
+
+        )
+
+    [25] => Array
+        (
+            [id] => 633865588242555
+            [name] => sample_shipping_confirmation
+            [status] => APPROVED
+            [language] => id
+            [category] => UTILITY
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => BODY
+                            [text] => Paket Anda sudah dikirim. Paket akan sampai dalam {{1}} hari kerja.
+                        )
+
+                    [1] => Array
+                        (
+                            [type] => FOOTER
+                            [text] => Pesan ini berasal dari bisnis yang tidak terverifikasi.
+                        )
+
+                )
+
+        )
+
+    [26] => Array
+        (
+            [id] => 802335737853877
+            [name] => sample_happy_hour_announcement
+            [status] => APPROVED
+            [language] => en_US
+            [category] => MARKETING
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => HEADER
+                            [format] => VIDEO
+                        )
+
+                    [1] => Array
+                        (
+                            [type] => BODY
+                            [text] => Happy hour is here! 🍺😀🍸
+Please be merry and enjoy the day. 🎉
+Venue: {{1}}
+Time: {{2}}
+                        )
+
+                    [2] => Array
+                        (
+                            [type] => FOOTER
+                            [text] => This message is from an unverified business.
+                        )
+
+                )
+
+        )
+
+    [27] => Array
+        (
+            [id] => 1274763006668921
+            [name] => fiesta_vinculados
+            [status] => APPROVED
+            [language] => es
+            [category] => MARKETING
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => HEADER
+                            [format] => IMAGE
+                            [example] => Array
+                                (
+                                    [header_handle] => Array
+                                        (
+                                            [0] => https://scontent.whatsapp.net/v/t61.29466-34/307290453_1274763010002254_517326926649457868_n.jpg?ccb=1-7&_nc_sid=8b1bef&_nc_ohc=NO-JRMPqRRsQ7kNvwH8JRH-&_nc_oc=AdrUMLMZwJWbBFRtdkue_SWyI9kf44gcjb0csBUI-2R_L8ANB2OrHNJueSqdTNwT_3Y&_nc_zt=3&_nc_ht=scontent.whatsapp.net&edm=AH51TzQEAAAA&_nc_gid=R2ZjIkZ9MlKOcMiT5Op06g&_nc_tpa=Q5bMBQHR6LInurkXjmv67TRXzAD_3b-D7RdCb3rwkQMpEQL8bamzsXdWsh_V00Bqovxk4XkmMOREXDNl3g&oh=01_Q5Aa5AEWWR8LhfIZKGp-3Is8l5fsoapOH3erxuboLAd7auvZiQ&oe=6A8F2B28
+                                        )
+
+                                )
+
+                        )
+
+                    [1] => Array
+                        (
+                            [type] => BODY
+                            [text] => 😎𝙂𝙍𝘼𝙉 𝙍𝙀𝙀𝙉𝘾𝙐𝙀𝙉𝙏𝙍𝙊 𝘿𝙀 𝙑𝙄𝙉𝘾𝙐𝙇𝘼𝘿𝙊𝙎. 
+El próximo 30 de septiembre te invitamos a nuestra 🥳gran fiesta de reencuentro, donde podrás asistir con un acompañante.
+
+Te esperamos en la 𝗗𝗶𝘀𝗰𝗼𝘁𝗲𝗰𝗮 𝗙𝗲𝗿𝗶𝗮 𝗱𝗲 𝗖𝗮𝗹𝗶, 𝗱𝗲𝘀𝗱𝗲 𝗹𝗮𝘀 𝟳:𝟬𝟬𝗽𝗺  (Al frente del parque de la caña)
+
+Por favor confirmarnos tu  asistencia y la de tu acompañante en el siguiente Link:
+Http://eventos.Arroyave.digital
+                        )
+
+                    [2] => Array
+                        (
+                            [type] => FOOTER
+                            [text] => Organizacion Arroyave
+                        )
+
+                    [3] => Array
+                        (
+                            [type] => BUTTONS
+                            [buttons] => Array
+                                (
+                                    [0] => Array
+                                        (
+                                            [type] => URL
+                                            [text] => WhatsApp
+                                            [url] => https://wa.link/cod9la
+                                        )
+
+                                )
+
+                        )
+
+                )
+
+        )
+
+    [28] => Array
+        (
+            [id] => 5392589674130288
+            [name] => sample_purchase_feedback
+            [status] => APPROVED
+            [language] => pt_BR
+            [category] => MARKETING
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => HEADER
+                            [format] => IMAGE
+                        )
+
+                    [1] => Array
+                        (
+                            [type] => BODY
+                            [text] => Agradecemos a aquisição de {{1}}! Valorizamos seu feedback e gostaríamos de saber mais sobre sua experiência.
+                        )
+
+                    [2] => Array
+                        (
+                            [type] => FOOTER
+                            [text] => Esta mensagem é de uma empresa não verificada.
+                        )
+
+                    [3] => Array
+                        (
+                            [type] => BUTTONS
+                            [buttons] => Array
+                                (
+                                    [0] => Array
+                                        (
+                                            [type] => URL
+                                            [text] => Responder à pesquisa
+                                            [url] => https://www.example.com/
+                                        )
+
+                                )
+
+                        )
+
+                )
+
+        )
+
+    [29] => Array
+        (
+            [id] => 2066756600178451
+            [name] => sample_happy_hour_announcement
+            [status] => APPROVED
+            [language] => es
+            [category] => MARKETING
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => HEADER
+                            [format] => VIDEO
+                        )
+
+                    [1] => Array
+                        (
+                            [type] => BODY
+                            [text] => ¡Llegó el happy hour! 🍺😀🍸
+A divertirse y disfrutar. 🎉
+Lugar: {{1}}
+Hora: {{2}}
+                        )
+
+                    [2] => Array
+                        (
+                            [type] => FOOTER
+                            [text] => Este mensaje proviene de un negocio no verificado.
+                        )
+
+                )
+
+        )
+
+    [30] => Array
+        (
+            [id] => 502677854637772
+            [name] => sample_happy_hour_announcement
+            [status] => APPROVED
+            [language] => pt_BR
+            [category] => MARKETING
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => HEADER
+                            [format] => VIDEO
+                        )
+
+                    [1] => Array
+                        (
+                            [type] => BODY
+                            [text] => O happy hour chegou! 🍺😀🍸
+Seja feliz e aproveite o dia. 🎉
+Local: {{1}}
+Horário: {{2}}
+                        )
+
+                    [2] => Array
+                        (
+                            [type] => FOOTER
+                            [text] => Esta mensagem é de uma empresa não verificada.
+                        )
+
+                )
+
+        )
+
+    [31] => Array
+        (
+            [id] => 779525033340122
+            [name] => sample_purchase_feedback
+            [status] => APPROVED
+            [language] => id
+            [category] => MARKETING
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => HEADER
+                            [format] => IMAGE
+                        )
+
+                    [1] => Array
+                        (
+                            [type] => BODY
+                            [text] => Terima kasih sudah membeli {{1}}! Kami menghargai masukan Anda dan ingin mempelajari lebih lanjut terkait pengalaman Anda.
+                        )
+
+                    [2] => Array
+                        (
+                            [type] => FOOTER
+                            [text] => Pesan ini berasal dari bisnis yang tidak terverifikasi.
+                        )
+
+                    [3] => Array
+                        (
+                            [type] => BUTTONS
+                            [buttons] => Array
+                                (
+                                    [0] => Array
+                                        (
+                                            [type] => URL
+                                            [text] => Ikuti survei
+                                            [url] => https://www.example.com/
+                                        )
+
+                                )
+
+                        )
+
+                )
+
+        )
+
+    [32] => Array
+        (
+            [id] => 534405248406527
+            [name] => sample_movie_ticket_confirmation
+            [status] => APPROVED
+            [language] => id
+            [category] => UTILITY
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => HEADER
+                            [format] => IMAGE
+                        )
+
+                    [1] => Array
+                        (
+                            [type] => BODY
+                            [text] => Tiket Anda untuk *{{1}}*
+*Waktu* - {{2}}
+*Tempat* - {{3}}
+*Kursi* - {{4}}
+                        )
+
+                    [2] => Array
+                        (
+                            [type] => FOOTER
+                            [text] => Pesan ini berasal dari bisnis yang tidak terverifikasi.
+                        )
+
+                )
+
+        )
+
+    [33] => Array
+        (
+            [id] => 841073537057365
+            [name] => sample_flight_confirmation
+            [status] => APPROVED
+            [language] => pt_BR
+            [category] => UTILITY
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => HEADER
+                            [format] => DOCUMENT
+                        )
+
+                    [1] => Array
+                        (
+                            [type] => BODY
+                            [text] => Esta é a sua confirmação de voo para {{1}}-{{2}} em {{3}}.
+                        )
+
+                    [2] => Array
+                        (
+                            [type] => FOOTER
+                            [text] => Esta mensagem é de uma empresa não verificada.
+                        )
+
+                )
+
+        )
+
+    [34] => Array
+        (
+            [id] => 416401120640314
+            [name] => sample_issue_resolution
+            [status] => APPROVED
+            [language] => es
+            [category] => MARKETING
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => BODY
+                            [text] => Hola, {{1}}. ¿Pudiste solucionar el problema que tenías?
+                        )
+
+                    [1] => Array
+                        (
+                            [type] => FOOTER
+                            [text] => Este mensaje proviene de un negocio no verificado.
+                        )
+
+                    [2] => Array
+                        (
+                            [type] => BUTTONS
+                            [buttons] => Array
+                                (
+                                    [0] => Array
+                                        (
+                                            [type] => QUICK_REPLY
+                                            [text] => Sí
+                                        )
+
+                                    [1] => Array
+                                        (
+                                            [type] => QUICK_REPLY
+                                            [text] => No
+                                        )
+
+                                )
+
+                        )
+
+                )
+
+        )
+
+    [35] => Array
+        (
+            [id] => 776633000060726
+            [name] => sample_purchase_feedback
+            [status] => APPROVED
+            [language] => en_US
+            [category] => MARKETING
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => HEADER
+                            [format] => IMAGE
+                        )
+
+                    [1] => Array
+                        (
+                            [type] => BODY
+                            [text] => Thank you for purchasing {{1}}! We value your feedback and would like to learn more about your experience.
+                        )
+
+                    [2] => Array
+                        (
+                            [type] => FOOTER
+                            [text] => This message is from an unverified business.
+                        )
+
+                    [3] => Array
+                        (
+                            [type] => BUTTONS
+                            [buttons] => Array
+                                (
+                                    [0] => Array
+                                        (
+                                            [type] => URL
+                                            [text] => Take Survey
+                                            [url] => https://www.example.com/
+                                        )
+
+                                )
+
+                        )
+
+                )
+
+        )
+
+    [36] => Array
+        (
+            [id] => 3380996808807146
+            [name] => sample_happy_hour_announcement
+            [status] => APPROVED
+            [language] => id
+            [category] => MARKETING
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => HEADER
+                            [format] => VIDEO
+                        )
+
+                    [1] => Array
+                        (
+                            [type] => BODY
+                            [text] => Jam diskon telah tiba! 🍺😀🍸
+Bergembiralah dan nikmati hari Anda. 🎉
+Tempat: {{1}}
+Waktu: {{2}}
+                        )
+
+                    [2] => Array
+                        (
+                            [type] => FOOTER
+                            [text] => Pesan ini berasal dari bisnis yang tidak terverifikasi.
+                        )
+
+                )
+
+        )
+
+    [37] => Array
+        (
+            [id] => 641884697661715
+            [name] => sample_flight_confirmation
+            [status] => APPROVED
+            [language] => id
+            [category] => UTILITY
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => HEADER
+                            [format] => DOCUMENT
+                        )
+
+                    [1] => Array
+                        (
+                            [type] => BODY
+                            [text] => Ini merupakan konfirmasi penerbangan Anda untuk {{1}}-{{2}} di {{3}}.
+                        )
+
+                    [2] => Array
+                        (
+                            [type] => FOOTER
+                            [text] => Pesan ini berasal dari bisnis yang tidak terverifikasi.
+                        )
+
+                )
+
+        )
+
+    [38] => Array
+        (
+            [id] => 837583544265388
+            [name] => sample_movie_ticket_confirmation
+            [status] => APPROVED
+            [language] => pt_BR
+            [category] => UTILITY
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => HEADER
+                            [format] => IMAGE
+                        )
+
+                    [1] => Array
+                        (
+                            [type] => BODY
+                            [text] => Seu ingresso para *{{1}}*
+*Horário* - {{2}}
+*Local* - {{3}}
+*Assentos* - {{4}}
+                        )
+
+                    [2] => Array
+                        (
+                            [type] => FOOTER
+                            [text] => Esta mensagem é de uma empresa não verificada.
+                        )
+
+                )
+
+        )
+
+    [39] => Array
+        (
+            [id] => 2354343038054376
+            [name] => hello_world
+            [status] => APPROVED
+            [language] => en_US
+            [category] => MARKETING
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => HEADER
+                            [format] => TEXT
+                            [text] => Hello World
+                        )
+
+                    [1] => Array
+                        (
+                            [type] => BODY
+                            [text] => Welcome and congratulations!! This message demonstrates your ability to send a message notification from WhatsApp Business Platform’s Cloud API. Thank you for taking the time to test with us.
+                        )
+
+                    [2] => Array
+                        (
+                            [type] => FOOTER
+                            [text] => WhatsApp Business API Team
+                        )
+
+                )
+
+        )
+
+    [40] => Array
+        (
+            [id] => 821179542343417
+            [name] => sample_purchase_feedback
+            [status] => APPROVED
+            [language] => es
+            [category] => MARKETING
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => HEADER
+                            [format] => IMAGE
+                        )
+
+                    [1] => Array
+                        (
+                            [type] => BODY
+                            [text] => ¡Gracias por comprar {{1}}! Valoramos tus comentarios y nos gustaría saber cómo fue tu experiencia.
+                        )
+
+                    [2] => Array
+                        (
+                            [type] => FOOTER
+                            [text] => Este mensaje proviene de un negocio no verificado.
+                        )
+
+                    [3] => Array
+                        (
+                            [type] => BUTTONS
+                            [buttons] => Array
+                                (
+                                    [0] => Array
+                                        (
+                                            [type] => URL
+                                            [text] => Responder encuesta
+                                            [url] => https://www.example.com/
+                                        )
+
+                                )
+
+                        )
+
+                )
+
+        )
+
+    [41] => Array
+        (
+            [id] => 816291009556180
+            [name] => sample_movie_ticket_confirmation
+            [status] => APPROVED
+            [language] => es
+            [category] => UTILITY
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => HEADER
+                            [format] => IMAGE
+                        )
+
+                    [1] => Array
+                        (
+                            [type] => BODY
+                            [text] => Tu entrada para *{{1}}*
+*Hora* - {{2}}
+*Lugar* - {{3}}
+*Asientos* - {{4}}
+                        )
+
+                    [2] => Array
+                        (
+                            [type] => FOOTER
+                            [text] => Este mensaje proviene de un negocio no verificado.
+                        )
+
+                )
+
+        )
+
+    [42] => Array
+        (
+            [id] => 1841904899476334
+            [name] => sample_issue_resolution
+            [status] => APPROVED
+            [language] => en_US
+            [category] => UTILITY
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => BODY
+                            [text] => Hi {{1}}, were we able to solve the issue that you were facing?
+                        )
+
+                    [1] => Array
+                        (
+                            [type] => FOOTER
+                            [text] => This message is from an unverified business.
+                        )
+
+                    [2] => Array
+                        (
+                            [type] => BUTTONS
+                            [buttons] => Array
+                                (
+                                    [0] => Array
+                                        (
+                                            [type] => QUICK_REPLY
+                                            [text] => Yes
+                                        )
+
+                                    [1] => Array
+                                        (
+                                            [type] => QUICK_REPLY
+                                            [text] => No
+                                        )
+
+                                )
+
+                        )
+
+                )
+
+        )
+
+    [43] => Array
+        (
+            [id] => 1313709362500009
+            [name] => fiesta_vinculado
+            [status] => APPROVED
+            [language] => es
+            [category] => MARKETING
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => HEADER
+                            [format] => IMAGE
+                            [example] => Array
+                                (
+                                    [header_handle] => Array
+                                        (
+                                            [0] => https://scontent.whatsapp.net/v/t61.29466-34/266989157_1313709365833342_5460160358745782559_n.jpg?ccb=1-7&_nc_sid=8b1bef&_nc_ohc=1nj5Z15hpbEQ7kNvwFeLekU&_nc_oc=AdqbAMNkzy9KWl55zxqDAKi8bG_v3RA9gJRvtV8KHkIx0kefH3K4vlHiEFzpwYQWqVc&_nc_zt=3&_nc_ht=scontent.whatsapp.net&edm=AH51TzQEAAAA&_nc_gid=R2ZjIkZ9MlKOcMiT5Op06g&_nc_tpa=Q5bMBQEafm9ArwVoTcI_KfYdVI-AZqVAtYUzVO2T8kRfJYNGvjNhe5NFoqri0LxsgNRHkOXabamQpHwzqg&oh=01_Q5Aa5AFeja9PSyif3NgX2etBQhSrJ_n8xBHuKXXFx-eYe1EJhw&oe=6A8F388F
+                                        )
+
+                                )
+
+                        )
+
+                    [1] => Array
+                        (
+                            [type] => BODY
+                            [text] => 😎𝙂𝙍𝘼𝙉 𝙍𝙀𝙀𝙉𝘾𝙐𝙀𝙉𝙏𝙍𝙊 𝘿𝙀 𝙑𝙄𝙉𝘾𝙐𝙇𝘼𝘿𝙊𝙎. 
+El próximo 30 de septiembre te invitamos a nuestra 🥳gran fiesta de reencuentro, donde podrás asistir con un acompañante.
+
+Te esperamos en la 𝗗𝗶𝘀𝗰𝗼𝘁𝗲𝗰𝗮 𝗙𝗲𝗿𝗶𝗮 𝗱𝗲 𝗖𝗮𝗹𝗶, 𝗱𝗲𝘀𝗱𝗲 𝗹𝗮𝘀 𝟳:𝟬𝟬𝗽𝗺  (Al frente del parque de la caña)
+
+Por favor confirmarnos tu  asistencia y la de tu acompañante en el siguiente Link:
+Http://eventos.Arroyave.digital
+                        )
+
+                    [2] => Array
+                        (
+                            [type] => FOOTER
+                            [text] => Organización Arroyabe
+                        )
+
+                )
+
+        )
+
+    [44] => Array
+        (
+            [id] => 403402665297206
+            [name] => msgprueba
+            [status] => APPROVED
+            [language] => es
+            [category] => MARKETING
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => BODY
+                            [text] => Este es un mensaje de prueba
+                        )
+
+                )
+
+        )
+
+    [45] => Array
+        (
+            [id] => 1483261155496090
+            [name] => publicidad_brygar
+            [status] => APPROVED
+            [language] => es
+            [category] => MARKETING
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => HEADER
+                            [format] => IMAGE
+                            [example] => Array
+                                (
+                                    [header_handle] => Array
+                                        (
+                                            [0] => https://scontent.whatsapp.net/v/t61.29466-34/251600831_1483261158829423_8352059942958502166_n.jpg?ccb=1-7&_nc_sid=8b1bef&_nc_ohc=TnNoUYDcTYkQ7kNvwE0i6Fj&_nc_oc=AdpWWvYavZmFsCDmKFJZdEGTjoEr-jxSJEE549i7r5gRXtLlfxgjw4QS6e3vlYMfJ2g&_nc_zt=3&_nc_ht=scontent.whatsapp.net&edm=AH51TzQEAAAA&_nc_gid=R2ZjIkZ9MlKOcMiT5Op06g&_nc_tpa=Q5bMBQG_xdgO5umoZekHRpMnz3ANq2FC5IwcuuA32__G3w6xGJJBsJuc2V4aLWMmYQe1p2Mz0GHmC08Lpg&oh=01_Q5Aa5AFFkM9R1vJIpOhMfWvLP2kDBNTsSIfWB_pBdrYcg22ufg&oe=6A8F3D90
+                                        )
+
+                                )
+
+                        )
+
+                    [1] => Array
+                        (
+                            [type] => BODY
+                            [text] => POR ESTE MES ¡AFILIATE A SOLO ARL!  POR SOLO $35.000
+
+*¿Necesita una afiliación?*
+
+Si eres empleador, independiente, contratista, empleado o de servicio doméstico. Estamos para asesorarte,  *realizamos afiliaciones al sistema de SEGURIDAD SOCIAL* (EPS, ARL, Caja de Compensación y Fondo de pensión)
+
+👉 Te afiliamos a tu EPS de preferencia. 
+👉 Afiliacion de empresas (outsorcing)
+👉 Asesorias en pensiones.
+👉 Traslados de Eps
+👉 Envio de Planillas
+👉Subsidios Caja Compensación
+y mucho mas...
+
+Soluciones Personalizadas👌
+𝗘𝘀𝗰𝗿𝗶́𝗯𝗲𝗻𝗼𝘀: 315 8204135 + https://wa.link/5sq59a
+*Pagina Web*: http://www.brygar.com/
+                        )
+
+                    [2] => Array
+                        (
+                            [type] => FOOTER
+                            [text] => ¿No te interesa? Toca "Detener promociones"
+                        )
+
+                    [3] => Array
+                        (
+                            [type] => BUTTONS
+                            [buttons] => Array
+                                (
+                                    [0] => Array
+                                        (
+                                            [type] => QUICK_REPLY
+                                            [text] => Si me interesa
+                                        )
+
+                                    [1] => Array
+                                        (
+                                            [type] => QUICK_REPLY
+                                            [text] => Detener promociones
+                                        )
+
+                                )
+
+                        )
+
+                )
+
+        )
+
+    [46] => Array
+        (
+            [id] => 511753417121524
+            [name] => afiliaciones
+            [status] => APPROVED
+            [language] => es
+            [category] => MARKETING
+            [components] => Array
+                (
+                    [0] => Array
+                        (
+                            [type] => HEADER
+                            [format] => IMAGE
+                            [example] => Array
+                                (
+                                    [header_handle] => Array
+                                        (
+                                            [0] => https://scontent.whatsapp.net/v/t61.29466-34/301449897_511753420454857_615880101338127294_n.jpg?ccb=1-7&_nc_sid=8b1bef&_nc_ohc=2siIMs04O6MQ7kNvwH7Lybi&_nc_oc=AdqLAomElEWD-a_XHuXjzNQEIGOSlfP_lbhfwOHu7aP8YidB2HLGlQpbJTjlsc_2K8Y&_nc_zt=3&_nc_ht=scontent.whatsapp.net&edm=AH51TzQEAAAA&_nc_gid=R2ZjIkZ9MlKOcMiT5Op06g&_nc_tpa=Q5bMBQHVTMb5swapAIUU2oOSQcTb4OT22Ok2tB4MSbKKfsgQYFmEXpr_t6DsMzUi20rZmYxw6kF5RTGGFw&oh=01_Q5Aa5AF5RhCy2tfhlZuOkdAZM-o64YD4_j5tMqQH85_FTfjS6A&oe=6A8F0BB8
+                                        )
+
+                                )
+
+                        )
+
+                    [1] => Array
+                        (
+                            [type] => BODY
+                            [text] => POR ESTE MES ¡AFILIATE A SOLO ARL!  POR SOLO $35.000
+
+¿𝗡𝗲𝗰𝗲𝘀𝗶𝘁𝗮 𝘂𝗻𝗮 𝗮𝗳𝗶𝗹𝗶𝗮𝗰𝗶𝗼́𝗻? 
+
+Si eres empleador, independiente, contratista, empleado o de servicio doméstico. Estamos para asesorarte,  𝗿𝗲𝗮𝗹𝗶𝘇𝗮𝗺𝗼𝘀 𝗮𝗳𝗶𝗹𝗶𝗮𝗰𝗶𝗼́𝗻 𝗮𝗹 𝘀𝗶𝘀𝘁𝗲𝗺𝗮 𝗱𝗲 𝗦𝗘𝗚𝗨𝗥𝗜𝗗𝗔𝗗 𝗦𝗢𝗖𝗜𝗔𝗟 (EPS, ARL, Caja de Compensación y Fondo de pensión)
+
+👉 Te afiliamos a tu EPS de preferencia. 
+👉 Afiliacion de empresas (outsorcing)
+👉 Asesorias en pensiones.
+👉 Traslados de Eps
+👉 Envio de Planillas
+
+Soluciones Personalizadas👌
+𝗘𝘀𝗰𝗿𝗶́𝗯𝗲𝗻𝗼𝘀: 315 8204135 https://wa.link/5sq59a
+                        )
+
+                    [2] => Array
+                        (
+                            [type] => BUTTONS
+                            [buttons] => Array
+                                (
+                                    [0] => Array
+                                        (
+                                            [type] => URL
+                                            [text] => Pagina Web
+                                            [url] => http://www.brygar.com/
+                                        )
+
+                                    [1] => Array
+                                        (
+                                            [type] => PHONE_NUMBER
+                                            [text] => Llamar
+                                            [phone_number] => +573158204135
+                                        )
+
+                                )
+
+                        )
+
+                )
+
+        )
+
+)
