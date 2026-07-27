@@ -69,7 +69,7 @@
                     onfocus="this.style.borderColor='#3b82f6'" onblur="this.style.borderColor='#cbd5e1'">
             </div>
             <div>
-                <label style="display:block;font-size:0.78rem;font-weight:600;color:#475569;margin-bottom:0.3rem;text-transform:uppercase;letter-spacing:0.04em;">WhatsApp Notificaciones</label>
+                <label style="display:block;font-size:0.78rem;font-weight:600;color:#475569;margin-bottom:0.3rem;text-transform:uppercase;letter-spacing:0.04em;">WhatsApp</label>
                 <input type="text" name="whatsapp" value="{{ old('whatsapp', $aliado->whatsapp) }}" placeholder="Ej: 573001234567"
                     style="width:100%;padding:0.6rem 0.85rem;border:1px solid #cbd5e1;border-radius:8px;font-size:0.9rem;outline:none;font-family:inherit;"
                     onfocus="this.style.borderColor='#3b82f6'" onblur="this.style.borderColor='#cbd5e1'">
@@ -101,44 +101,59 @@
         </div>
 
         {{-- Logo + Color + Estado --}}
-        <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:1rem;margin-bottom:1.5rem;align-items:end;">
-            <div>
-                <label style="display:block;font-size:0.78rem;font-weight:600;color:#475569;margin-bottom:0.3rem;text-transform:uppercase;letter-spacing:0.04em;">Logo (PNG/JPG)</label>
-                @if(isset($aliado->id) && $aliado->logo)
-                    <div style="margin-bottom:0.4rem;display:flex;align-items:center;gap:0.5rem;">
-                        <img id="logo-preview"
-                             src="{{ asset('storage/'.$aliado->logo) }}"
-                             style="height:48px;border-radius:6px;border:1px solid #e2e8f0;object-fit:contain;"
-                             onerror="this.style.display='none';document.getElementById('logo-error').style.display='flex';"
-                        >
-                        <span id="logo-error" style="display:none;align-items:center;gap:0.4rem;font-size:0.75rem;color:#dc2626;background:#fee2e2;border:1px solid #fca5a5;border-radius:6px;padding:0.3rem 0.6rem;">
-                            ⚠️ Imagen no encontrada en el servidor — sube una nueva
-                        </span>
+        {{-- Logo + Eslogan + Color + Estado --}}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-bottom:1.5rem;background:#f8fafc;padding:1.25rem;border:1px solid #e2e8f0;border-radius:10px;">
+            {{-- Columna izquierda: Logo --}}
+            <div style="display:flex;flex-direction:column;justify-content:space-between;">
+                <div>
+                    <label style="display:block;font-size:0.78rem;font-weight:600;color:#475569;margin-bottom:0.4rem;text-transform:uppercase;letter-spacing:0.04em;">Logo de la Aplicación (PNG/JPG)</label>
+                    <div style="display:flex;align-items:center;gap:1rem;margin-bottom:0.5rem;">
+                        @if(isset($aliado->id) && $aliado->logo)
+                            <img id="logo-preview"
+                                 src="{{ asset('storage/'.$aliado->logo) }}"
+                                 style="height:54px;width:54px;border-radius:8px;border:1px solid #cbd5e1;object-fit:contain;background:#fff;padding:4px;"
+                                 onerror="this.style.display='none';document.getElementById('logo-error').style.display='flex';"
+                            >
+                            <span id="logo-error" style="display:none;align-items:center;gap:0.4rem;font-size:0.75rem;color:#dc2626;background:#fee2e2;border:1px solid #fca5a5;border-radius:6px;padding:0.3rem 0.6rem;">
+                                ⚠️ No encontrado
+                            </span>
+                        @endif
+                        <input type="file" name="logo" accept="image/*"
+                            style="flex:1;padding:0.4rem 0.6rem;border:1px solid #cbd5e1;border-radius:8px;font-size:0.82rem;font-family:inherit;background:#fff;">
                     </div>
-                @endif
-                <input type="file" name="logo" accept="image/*"
-                    style="width:100%;padding:0.5rem;border:1px solid #cbd5e1;border-radius:8px;font-size:0.85rem;font-family:inherit;">
-                <div style="font-size:0.68rem;color:#94a3b8;margin-top:0.25rem;">Ícono cuadrado — se usa en el panel, selector de aliado, facturación, etc.</div>
+                    <div style="font-size:0.7rem;color:#64748b;line-height:1.2;">Ícono cuadrado — se usa en el panel, selector de aliado, facturación y la web pública.</div>
+                </div>
             </div>
-            <div>
-                <label style="display:block;font-size:0.78rem;font-weight:600;color:#475569;margin-bottom:0.3rem;text-transform:uppercase;letter-spacing:0.04em;">Eslogan</label>
-                <input type="text" name="eslogan" maxlength="120" value="{{ old('eslogan', $aliado->eslogan ?? '') }}"
-                    placeholder="Ej: Seguridad social sin complicaciones"
-                    style="width:100%;padding:0.5rem;border:1px solid #cbd5e1;border-radius:8px;font-size:0.85rem;font-family:inherit;">
-                <div style="font-size:0.68rem;color:#94a3b8;margin-top:0.25rem;">Va debajo del nombre en los flyers publicitarios. Si lo dejas vacío, no se muestra.</div>
-            </div>
-            <div>
-                <label style="display:block;font-size:0.78rem;font-weight:600;color:#475569;margin-bottom:0.3rem;text-transform:uppercase;letter-spacing:0.04em;">Color</label>
-                <input type="color" name="color_primario" value="{{ old('color_primario', $aliado->color_primario ?? '#2563eb') }}"
-                    style="width:100%;height:40px;border:1px solid #cbd5e1;border-radius:8px;cursor:pointer;padding:2px;">
-            </div>
-            <div style="display:flex;flex-direction:column;gap:0.4rem;">
-                <label style="display:block;font-size:0.78rem;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:0.04em;">Activo</label>
-                <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;margin-top:0.25rem;">
-                    <input type="checkbox" name="activo" value="1" {{ old('activo', $aliado->activo ?? true) ? 'checked' : '' }}
-                        style="width:18px;height:18px;cursor:pointer;">
-                    <span style="font-size:0.85rem;color:#334155;">Sí</span>
-                </label>
+
+            {{-- Columna derecha: Eslogan, Color y Activo --}}
+            <div style="display:flex;flex-direction:column;gap:1rem;">
+                <div>
+                    <label style="display:block;font-size:0.78rem;font-weight:600;color:#475569;margin-bottom:0.3rem;text-transform:uppercase;letter-spacing:0.04em;">Eslogan del Aliado</label>
+                    <input type="text" name="eslogan" maxlength="120" value="{{ old('eslogan', $aliado->eslogan ?? '') }}"
+                        placeholder="Ej: Seguridad social sin complicaciones"
+                        style="width:100%;padding:0.55rem 0.75rem;border:1px solid #cbd5e1;border-radius:8px;font-size:0.85rem;font-family:inherit;outline:none;"
+                        onfocus="this.style.borderColor='#3b82f6'" onblur="this.style.borderColor='#cbd5e1'">
+                    <div style="font-size:0.7rem;color:#64748b;margin-top:0.25rem;">Va debajo del nombre en los flyers publicitarios. Si se deja vacío, no se muestra.</div>
+                </div>
+                
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;align-items:center;">
+                    <div>
+                        <label style="display:block;font-size:0.78rem;font-weight:600;color:#475569;margin-bottom:0.3rem;text-transform:uppercase;letter-spacing:0.04em;">Color Primario</label>
+                        <div style="display:flex;align-items:center;gap:0.5rem;">
+                            <input type="color" name="color_primario" value="{{ old('color_primario', $aliado->color_primario ?? '#2563eb') }}"
+                                style="width:45px;height:36px;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer;padding:2px;background:#fff;">
+                            <span style="font-size:0.8rem;color:#475569;font-family:monospace;">{{ old('color_primario', $aliado->color_primario ?? '#2563eb') }}</span>
+                        </div>
+                    </div>
+                    <div>
+                        <label style="display:block;font-size:0.78rem;font-weight:600;color:#475569;margin-bottom:0.3rem;text-transform:uppercase;letter-spacing:0.04em;">Estado del Aliado</label>
+                        <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;background:#fff;padding:0.45rem 0.75rem;border:1px solid #cbd5e1;border-radius:8px;width:fit-content;">
+                            <input type="checkbox" name="activo" value="1" {{ old('activo', $aliado->activo ?? true) ? 'checked' : '' }}
+                                style="width:16px;height:16px;cursor:pointer;">
+                            <span style="font-size:0.85rem;font-weight:600;color:#334155;">Aliado Activo</span>
+                        </label>
+                    </div>
+                </div>
             </div>
         </div>
 
