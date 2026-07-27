@@ -51,11 +51,9 @@
     .hero-glow {
         position: absolute; top: 50%; left: 50%;
         width: 78%; aspect-ratio: 1;
-        transform: translate(-50%, -50%);
+        transform: translate(-50%, -50%) scale(1);
         border-radius: 50%;
-        background: radial-gradient(circle, var(--brand) 0%, var(--brand-soft) 55%, transparent 72%);
-        filter: blur(38px);
-        opacity: 0.6;
+        background: var(--brand-soft);
         z-index: 0;
         pointer-events: none;
     }
@@ -69,8 +67,9 @@
         50%      { transform: scale(1.25); opacity: 0.55; }
     }
     @keyframes heroGlowRespirar {
-        0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.55; }
-        50%      { transform: translate(-50%, -50%) scale(1.08); opacity: 0.75; }
+        0%   { transform: translate(-50%, -50%) scale(1);    background: var(--brand-soft); opacity: 0.55; }
+        50%  { transform: translate(-50%, -50%) scale(1.15); background: var(--brand);      opacity: 0.3;  }
+        100% { transform: translate(-50%, -50%) scale(1);    background: var(--brand-soft); opacity: 0.55; }
     }
     .hero-logo-flotante { position: relative; z-index: 1; animation: heroLogoFlotar 4.5s ease-in-out infinite; }
     .hero-punto-acento {
