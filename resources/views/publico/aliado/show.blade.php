@@ -49,6 +49,24 @@
     .hero-actions { display: flex; gap: 0.9rem; flex-wrap: wrap; }
     .hero-art { display: flex; justify-content: center; align-items: center; }
 
+    @keyframes heroLogoFlotar {
+        0%, 100% { transform: translateY(0); }
+        50%      { transform: translateY(-10px); }
+    }
+    @keyframes heroPuntoPulso {
+        0%, 100% { transform: scale(1); opacity: 1; }
+        50%      { transform: scale(1.25); opacity: 0.55; }
+    }
+    .hero-logo-flotante { animation: heroLogoFlotar 4.5s ease-in-out infinite; }
+    .hero-punto-acento {
+        transform-box: fill-box; transform-origin: center;
+        animation: heroPuntoPulso 3s ease-in-out infinite;
+    }
+    .hero-punto-acento-2 { animation-delay: 1.2s; }
+    @media (prefers-reduced-motion: reduce) {
+        .hero-logo-flotante, .hero-punto-acento { animation: none; }
+    }
+
     .logo-top {
         display: flex; align-items: center; gap: 0.6rem;
         padding: 1.25rem 0;
@@ -329,7 +347,7 @@
 
     @media (max-width: 860px) {
         .hero-grid, .grid-contacto { grid-template-columns: 1fr; }
-        .hero-art { order: -1; max-width: 260px; margin: 0 auto 1rem; }
+        .hero-art { order: -1; max-width: 300px; margin: 0 auto 1rem; }
         .grid-servicios { grid-template-columns: repeat(2, 1fr); }
         .grid-pasos { grid-template-columns: 1fr; }
         .carrusel-planes { padding: 0 2.2rem; }
@@ -368,11 +386,11 @@
             </div>
             <div class="hero-art" aria-hidden="true">
                 @if($aliado->logo_marca_claro)
-                    <svg viewBox="0 0 320 320" width="100%" style="max-width:320px;">
+                    <svg class="hero-logo-flotante" viewBox="0 0 320 320" width="100%" style="max-width:380px;">
                         <image href="{{ asset('storage/' . $aliado->logo_marca_claro) }}"
-                               x="60" y="60" width="200" height="200" preserveAspectRatio="xMidYMid meet"/>
-                        <circle cx="275" cy="65" r="14" fill="var(--brand-dark)" opacity="0.5"/>
-                        <circle cx="55" cy="265" r="10" fill="var(--brand)" opacity="0.4"/>
+                               x="45" y="45" width="230" height="230" preserveAspectRatio="xMidYMid meet"/>
+                        <circle class="hero-punto-acento" cx="285" cy="55" r="15" fill="var(--brand-dark)" opacity="0.5"/>
+                        <circle class="hero-punto-acento hero-punto-acento-2" cx="35" cy="285" r="11" fill="var(--brand)" opacity="0.4"/>
                     </svg>
                 @else
                     <svg viewBox="0 0 320 320" width="100%" style="max-width:320px;">
