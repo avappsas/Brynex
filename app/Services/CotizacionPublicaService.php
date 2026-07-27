@@ -26,6 +26,69 @@ class CotizacionPublicaService
      * cotizador interactivo, en cambio, acepta CUALQUIER combinación (hay 11 activas en el
      * sistema) — estas 3 son solo los anclajes de marketing más comunes.
      */
+    /**
+     * Copy PÚBLICO de cada plan ofrecible en la página web, keyed por `codigo` de
+     * planes_contrato. La columna `descripcion` de esa tabla es texto INTERNO para la IA
+     * (menciona ofertas solo_ia, el plan B de Gestión ARL, reglas de exención de AFP, etc.) y
+     * NUNCA debe renderizarse en la web — por eso este mapa existe aparte, con redacción
+     * comercial corta y revisada. Un plan que exista en planes_contrato pero no tenga entrada
+     * aquí simplemente no aparece en la web (protección para planes nuevos sin copy revisado).
+     *
+     * SOLO_ARL queda deliberadamente fuera: se cotiza en la práctica por modalidades K/Y según
+     * nivel de riesgo, no por "Independientes" como resuelve el cascade genérico — publicarlo
+     * con ese precio desalinearía la percepción frente al resto de tarjetas.
+     */
+    public const COPY_PUBLICO = [
+        'EPS_ARL' => [
+            'orden'       => 1,
+            'destacado'   => false,
+            'nombre'      => 'Dependiente Básico',
+            'descripcion' => 'Salud y riesgos laborales para empleados y trabajadores dependientes.',
+        ],
+        'EPS_ARL_CCF' => [
+            'orden'       => 2,
+            'destacado'   => false,
+            'nombre'      => 'Dependiente con Caja',
+            'descripcion' => 'Salud y riesgos laborales, más acceso a subsidios y beneficios de caja de compensación.',
+        ],
+        'EPS_ARL_AFP' => [
+            'orden'       => 3,
+            'destacado'   => false,
+            'nombre'      => 'Dependiente sin Caja',
+            'descripcion' => 'Salud, riesgos laborales y pensión — tus tres aportes principales cubiertos.',
+        ],
+        'EPS_ARL_AFP_CCF' => [
+            'orden'       => 4,
+            'destacado'   => true,
+            'nombre'      => 'Dependiente Completo',
+            'descripcion' => 'Salud, riesgos laborales, pensión y caja de compensación — la cobertura más completa.',
+        ],
+        'SOLO_EPS' => [
+            'orden'       => 5,
+            'destacado'   => false,
+            'nombre'      => 'Independiente',
+            'descripcion' => 'Para quienes trabajan por cuenta propia y necesitan afiliación a salud.',
+        ],
+        'EPS_AFP' => [
+            'orden'       => 6,
+            'destacado'   => false,
+            'nombre'      => 'Independiente sin ARL',
+            'descripcion' => 'Salud y pensión para quien no ejerce una actividad laboral de riesgo.',
+        ],
+        'EPS_AFP_CCF' => [
+            'orden'       => 7,
+            'destacado'   => false,
+            'nombre'      => 'Independiente con Caja',
+            'descripcion' => 'Salud, pensión y acceso a subsidios de caja de compensación.',
+        ],
+        'SOLO_AFP' => [
+            'orden'       => 8,
+            'destacado'   => false,
+            'nombre'      => 'Solo Pensión',
+            'descripcion' => 'Sigue cotizando a tu fondo de pensión, vivas donde vivas.',
+        ],
+    ];
+
     public const PLANES_DESTACADOS = [
         [
             'clave'         => 'dependiente_basico',
@@ -91,6 +154,68 @@ class CotizacionPublicaService
         }
 
         return collect($tarjetas);
+    }
+
+    /**
+     * Todos los planes ofrecibles públicamente (no solo los 3 destacados), para el carrusel de
+     * la página web. Recorre planes_contrato activos, se salta los que no tengan copy revisado
+     * en COPY_PUBLICO y los que no resuelvan a ninguna modalidad pública (ej. los de Tiempo
+     * Parcial, que solo se cotizan por WhatsApp/admin). Cacheado 10 minutos: cada tarjeta cuesta
+     * ~12 queries a SQL Server (~2.5s) por la doble pasada de CotizadorService dentro de
+     * cotizar(), así que sin caché la página sería inviable con 8 planes.
+     */
+    public static function planesPublicosConPrecio(int $aliadoId, bool $mostrarPrecios = true): \Illuminate\Support\Collection
+    {
+        $clave = "planes_publicos:{$aliadoId}:" . ($mostrarPrecios ? 1 : 0);
+
+        return \Illuminate\Support\Facades\Cache::remember($clave, 600, function () use ($aliadoId, $mostrarPrecios) {
+            $tarjetas = [];
+
+            $planes = PlanContrato::where('activo', true)
+                ->whereIn('codigo', array_keys(self::COPY_PUBLICO))
+                ->get();
+
+            foreach ($planes as $plan) {
+                $copy = self::COPY_PUBLICO[$plan->codigo] ?? null;
+                if (!$copy) {
+                    continue;
+                }
+
+                $esIndependiente = !$plan->incluye_arl;
+                $modalidad = self::resolverModalidadPermitida($plan, $esIndependiente);
+                if (!$modalidad) {
+                    continue;
+                }
+
+                $resultado = self::cotizar($plan, $modalidad, $aliadoId, ['sin_plan_pago' => true]);
+
+                $componentes = [
+                    'incluye_eps'     => $plan->incluye_eps,
+                    'incluye_arl'     => $plan->incluye_arl,
+                    'incluye_pension' => $plan->incluye_pension,
+                    'incluye_caja'    => $plan->incluye_caja,
+                ];
+
+                $tarjetas[] = [
+                    'clave'                   => $plan->codigo,
+                    'nombre'                  => $copy['nombre'],
+                    'descripcion'             => $copy['descripcion'],
+                    'destacado'               => $copy['destacado'],
+                    'orden'                   => $copy['orden'],
+                    'componentes'             => $componentes,
+                    'independiente'           => $esIndependiente,
+                    'valor_mensual'           => $mostrarPrecios ? $resultado['total'] : null,
+                    'costo_afiliacion'        => $mostrarPrecios ? $resultado['costo_afiliacion_sugerido'] : null,
+                    'costo_afiliacion_normal' => $mostrarPrecios ? $resultado['costo_afiliacion_normal'] : null,
+                    'en_promocion'            => $resultado['en_promocion'],
+                    'promocion_vence'         => $resultado['promocion_vence'],
+                ];
+            }
+
+            usort($tarjetas, fn ($a, $b) => $a['orden'] <=> $b['orden']);
+
+            return collect($tarjetas);
+        });
     }
 
     /**
@@ -341,7 +466,9 @@ class CotizacionPublicaService
      * fallback a la genérica) + plan de pago inicial (mes 1 solo afiliación, mes 2 proporcional +
      * administración completa, mes 3 en adelante el valor mensual completo).
      *
-     * Opciones: salario, nivel_arl, dias, fecha_afiliacion (string 'AAAA-MM-DD' o null = hoy).
+     * Opciones: salario, nivel_arl, dias, fecha_afiliacion (string 'AAAA-MM-DD' o null = hoy),
+     * sin_plan_pago (bool, default false — omite el cálculo del plan de pago inicial cuando el
+     * consumidor no lo va a usar, ahorrando una segunda pasada completa por CotizadorService).
      */
     public static function cotizar(PlanContrato $plan, TipoModalidad $tipoModalidad, ?int $aliadoId, array $opciones = []): array
     {
@@ -394,7 +521,7 @@ class CotizacionPublicaService
         // Independiente Vencido); Independiente Activo (id 11) cobra proporcional + administración
         // + afiliación TODO junto desde el mes de ingreso, sin este diferimiento, así que se omite
         // para no sugerirle al cliente un plan de pago que no le aplica.
-        if ((int) $tipoModalidad->id !== 11) {
+        if (!($opciones['sin_plan_pago'] ?? false) && (int) $tipoModalidad->id !== 11) {
             $diaIngreso         = (int) $fechaAfiliacion->day;
             $diasProporcionales = max(1, 30 - $diaIngreso + 1);
 

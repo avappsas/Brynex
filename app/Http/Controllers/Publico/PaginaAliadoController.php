@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Publico;
 
 use App\Http\Controllers\Controller;
 use App\Models\Aliado;
+use App\Models\ConfiguracionBrynex;
 use App\Models\PaginaAliadoConfig;
 use App\Models\PaginaLead;
 use App\Models\Publicacion;
@@ -168,14 +169,13 @@ class PaginaAliadoController extends Controller
         $independiente = $validado['independiente'];
 
         // Regla real (Configuración → Modalidades → "AFP obligatorio"): la web no puede
-        // confirmar la exención (edad/género/extranjería) de forma natural como la IA, así
-        // que si el plan omite pensión y no aplica el caso especial de "Solo ARL", se cotiza
-        // CON pensión y se avisa — más seguro que ofrecer un plan que no se puede honrar.
-        $seAgregoPensionPorNormativa = false;
-        if (CotizacionPublicaService::requiereConfirmarExencionPension($componentes, false)) {
-            $componentes['incluye_pension'] = true;
-            $seAgregoPensionPorNormativa = true;
-        }
+        // confirmar la exención (edad/género/extranjería) de forma natural como la IA. A
+        // diferencia del flujo de WhatsApp (donde la IA sí sube el plan y lo explica en
+        // conversación), aquí se respeta LITERALMENTE lo que el visitante marcó — mostrar un
+        // valor con pensión que no pidió sería más confuso que útil sin poder explicárselo en
+        // el momento — y en vez de eso se avisa que el precio puede no aplicarle si no califica
+        // para la exención, remitiéndolo a confirmar por WhatsApp.
+        $requiereConfirmarExencionPension = CotizacionPublicaService::requiereConfirmarExencionPension($componentes, false);
 
         [$plan, $coincidenciaExacta] = CotizacionPublicaService::resolverPlan($componentes, $independiente);
         if (!$plan) {
@@ -189,7 +189,7 @@ class PaginaAliadoController extends Controller
             return response()->json(['error' => 'Esa combinación requiere asesoría personalizada. Escríbenos por WhatsApp y te ayudamos.'], 422);
         }
 
-        $salario = $validado['salario'] ?? \App\Models\ConfiguracionBrynex::salarioMinimo();
+        $salario = $validado['salario'] ?? ConfiguracionBrynex::salarioMinimo();
 
         $resultado = CotizacionPublicaService::cotizar($plan, $modalidad, $aliado->id, [
             'salario'   => $salario,
@@ -207,10 +207,10 @@ class PaginaAliadoController extends Controller
             ],
         ];
 
-        if ($seAgregoPensionPorNormativa) {
-            $respuesta['nota_afp'] = 'Este plan incluye pensión por normativa. Si ya estás pensionado, eres hombre '
-                . 'desde 55 años, mujer desde 50, o extranjero con cédula de extranjería o permiso temporal, podrías '
-                . 'omitirla — escríbenos por WhatsApp para confirmarlo.';
+        if ($requiereConfirmarExencionPension) {
+            $respuesta['nota_afp'] = 'Este valor NO incluye pensión. Solo puedes omitirla si estás exento: ya estás '
+                . 'pensionado, eres hombre desde 55 años, mujer desde 50, o extranjero con cédula de extranjería o '
+                . 'permiso temporal. Si no calificas, escríbenos por WhatsApp para confirmar el valor con pensión.';
         }
 
         if ($config->mostrar_precios) {
@@ -359,17 +359,18 @@ class PaginaAliadoController extends Controller
             'aliado'          => $aliado,
             'config'          => $config,
             'faqs'            => $aliado->paginaFaqs()->get(['id', 'pregunta', 'respuesta']),
-            'planes'          => $this->planesDestacados($aliado, $config),
+            'planes'          => $this->planesPublicos($aliado, $config),
             'promos'          => $this->promosPublicadas($aliado),
             'colorPrimario'   => $this->colorSeguro($aliado->color_primario),
             'textoSobreBrand' => $this->textoLegibleSobre($aliado->color_primario),
             'whatsapp'        => $this->numeroWhatsappBot($aliado),
+            'salarioMinimo'   => ConfiguracionBrynex::salarioMinimo(),
         ];
     }
 
-    private function planesDestacados(Aliado $aliado, PaginaAliadoConfig $config): \Illuminate\Support\Collection
+    private function planesPublicos(Aliado $aliado, PaginaAliadoConfig $config): \Illuminate\Support\Collection
     {
-        return CotizacionPublicaService::planesDestacadosConPrecio($aliado->id, $config->mostrar_precios);
+        return CotizacionPublicaService::planesPublicosConPrecio($aliado->id, $config->mostrar_precios);
     }
 
     /** Últimas piezas publicadas con destino "web" (Fase 4 — generador de publicidad). */

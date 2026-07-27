@@ -229,13 +229,17 @@ class PlanillaFormularioService
             ? strtoupper($clienteObj?->municipio?->nombre ?? 'CALI')
             : 'CALI';
 
-        $ciudadAfiliado = ($esIndependiente || $esPlanillaY)
-            ? (($clienteObj?->municipio?->id ?? '76001') . '000 - ' . ($clienteObj?->departamento?->id ?? '76'))
-            : '94001000 - 94';
+        // Ciudad y ubicación laboral: para dependientes con caja, usar datos del cliente.
+        // Solo cuando NO paga caja (sinCajaCcf) se usa el código de Guainía.
+        $ciudadAfiliado = ($sinCajaCcf && !$esIndependiente && !$esPlanillaY)
+            ? '94001000 - 94'
+            : (($clienteObj?->municipio?->id ?? '76001') . '000 - ' . ($clienteObj?->departamento?->id ?? '76'));
 
-        $ubicacionLaboralAfiliado = ($esIndependiente || $esPlanillaY)
-            ? strtoupper($clienteObj?->departamento?->nombre ?? 'VALLE DEL CAUCA')
-            : 'GUAINIA';
+        // Ubicación laboral: GUAINIA solo para dependientes que NO pagan caja (sinCajaCcf).
+        // Independientes, planilla Y y dependientes con caja usan el departamento del cliente.
+        $ubicacionLaboralAfiliado = ($sinCajaCcf && !$esIndependiente && !$esPlanillaY)
+            ? 'GUAINIA'
+            : strtoupper($clienteObj?->departamento?->nombre ?? 'VALLE DEL CAUCA');
 
         return [
             // Aportante

@@ -91,7 +91,28 @@
     .card-servicio p { font-size: 0.9rem; color: var(--tinta-suave); }
 
     .planes { background: var(--fondo); }
-    .grid-planes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; align-items: stretch; }
+    .carrusel-planes { position: relative; padding: 0 3rem; }
+    .carrusel-viewport { overflow: hidden; padding: 1.2rem 0 0.5rem; }
+    .carrusel-track { display: flex; gap: 1.5rem; transition: transform 0.45s ease; }
+    .carrusel-slide { flex: 0 0 calc((100% - 3rem) / 3); min-width: 0; display: flex; }
+    .carrusel-nav {
+        position: absolute; top: 50%; transform: translateY(-50%);
+        width: 2.6rem; height: 2.6rem; border-radius: 50%;
+        border: 1.5px solid var(--borde); background: var(--blanco);
+        color: var(--tinta); font-size: 1.3rem; line-height: 1; cursor: pointer;
+        display: flex; align-items: center; justify-content: center;
+        z-index: 2; box-shadow: 0 6px 16px -8px rgba(0,0,0,0.2);
+    }
+    .carrusel-nav:hover { border-color: var(--brand); color: var(--brand); }
+    .carrusel-nav.prev { left: 0; }
+    .carrusel-nav.next { right: 0; }
+    .carrusel-nav[disabled] { opacity: 0.35; cursor: default; }
+    .carrusel-dots { display: flex; justify-content: center; gap: 0.5rem; margin-top: 1rem; }
+    .carrusel-dots button {
+        width: 0.55rem; height: 0.55rem; border-radius: 50%; border: none;
+        background: var(--borde); cursor: pointer; padding: 0;
+    }
+    .carrusel-dots button.activo { background: var(--brand); }
     .card-plan {
         background: var(--blanco);
         border: 1.5px solid var(--borde);
@@ -100,6 +121,7 @@
         display: flex;
         flex-direction: column;
         position: relative;
+        width: 100%;
     }
     .card-plan.destacado {
         border-color: var(--brand);
@@ -157,6 +179,15 @@
     }
     .cobertura input { width: 17px; height: 17px; accent-color: var(--brand); }
     .cobertura span { font-size: 0.88rem; font-weight: 600; }
+    .cobertura-arl span { flex: 1; }
+    .cobertura-arl .nivel-arl-inline {
+        width: auto; padding: 0.35rem 0.55rem; border: 1.5px solid var(--borde); border-radius: 8px;
+        font-size: 0.8rem; font-family: inherit; background: var(--blanco); cursor: pointer;
+    }
+    .cot-aviso {
+        background: color-mix(in srgb, #d97706 10%, white); border: 1px solid color-mix(in srgb, #d97706 30%, white);
+        border-radius: 12px; padding: 0.85rem 1rem; margin-bottom: 1.25rem; font-size: 0.8rem; color: #92400e;
+    }
     .campo-cot { margin-bottom: 1rem; }
     .campo-cot label { display: block; font-size: 0.78rem; font-weight: 600; color: var(--tinta-suave); margin-bottom: 0.3rem; }
     .campo-cot input, .campo-cot select {
@@ -265,12 +296,17 @@
     }
     footer strong { color: rgba(255,255,255,0.8); }
 
+    @media (max-width: 1024px) and (min-width: 861px) {
+        .carrusel-slide { flex: 0 0 calc((100% - 1.5rem) / 2); }
+    }
+
     @media (max-width: 860px) {
         .hero-grid, .grid-contacto { grid-template-columns: 1fr; }
         .hero-art { order: -1; max-width: 260px; margin: 0 auto 1rem; }
         .grid-servicios { grid-template-columns: repeat(2, 1fr); }
         .grid-pasos { grid-template-columns: 1fr; }
-        .grid-planes { grid-template-columns: 1fr; }
+        .carrusel-planes { padding: 0 2.2rem; }
+        .carrusel-slide { flex: 0 0 100%; }
         .grid-promos { grid-template-columns: repeat(2, 1fr); }
         .card-plan.destacado { transform: none; }
         .opciones-perfil { grid-template-columns: 1fr; }
@@ -363,34 +399,43 @@
                 <h2>Planes disponibles</h2>
                 <p>Precios configurados directamente por {{ $aliado->nombre }} — se actualizan automáticamente.</p>
             </div>
-            <div class="grid-planes">
-                @foreach($planes as $plan)
-                    <div class="card-plan {{ $plan['destacado'] ? 'destacado' : '' }}">
-                        @if($plan['destacado'])<span class="cinta">Más elegido</span>@endif
-                        <h3>{{ $plan['nombre'] }}</h3>
-                        <p class="desc-plan">{{ $plan['descripcion'] }}</p>
-                        <div class="chips-plan">
-                            @if($plan['componentes']['incluye_eps']) <span class="chip">Salud (EPS)</span> @endif
-                            @if($plan['componentes']['incluye_arl']) <span class="chip">ARL</span> @endif
-                            @if($plan['componentes']['incluye_pension']) <span class="chip">Pensión</span> @endif
-                            @if($plan['componentes']['incluye_caja']) <span class="chip">Caja</span> @endif
-                        </div>
-                        <div class="precio-plan">
-                            @if($plan['valor_mensual'] !== null)
-                                <div class="valor">
-                                    @if($config->precios_modo === 'desde')Desde @endif
-                                    ${{ number_format($plan['valor_mensual'], 0, ',', '.') }}<small>/mes</small>
+            <div class="carrusel-planes" id="carruselPlanes" data-total="{{ $planes->count() }}">
+                <button type="button" class="carrusel-nav prev" aria-label="Plan anterior">‹</button>
+                <div class="carrusel-viewport">
+                    <div class="carrusel-track">
+                        @foreach($planes as $plan)
+                            <div class="carrusel-slide">
+                                <div class="card-plan {{ $plan['destacado'] ? 'destacado' : '' }}">
+                                    @if($plan['destacado'])<span class="cinta">Más elegido</span>@endif
+                                    <h3>{{ $plan['nombre'] }}</h3>
+                                    <p class="desc-plan">{{ $plan['descripcion'] }}</p>
+                                    <div class="chips-plan">
+                                        @if($plan['componentes']['incluye_eps']) <span class="chip">Salud (EPS)</span> @endif
+                                        @if($plan['componentes']['incluye_arl']) <span class="chip">ARL</span> @endif
+                                        @if($plan['componentes']['incluye_pension']) <span class="chip">Pensión</span> @endif
+                                        @if($plan['componentes']['incluye_caja']) <span class="chip">Caja</span> @endif
+                                    </div>
+                                    <div class="precio-plan">
+                                        @if($plan['valor_mensual'] !== null)
+                                            <div class="valor">
+                                                @if($config->precios_modo === 'desde')Desde @endif
+                                                ${{ number_format($plan['valor_mensual'], 0, ',', '.') }}<small>/mes</small>
+                                            </div>
+                                            @if($plan['costo_afiliacion'] > 0)
+                                                <div class="afiliacion">Primer mes: ${{ number_format($plan['costo_afiliacion'], 0, ',', '.') }} (afiliación)</div>
+                                            @endif
+                                        @else
+                                            <div class="oculto">Cotización personalizada</div>
+                                        @endif
+                                    </div>
+                                    <a href="#cotizador" class="btn btn-brand" style="justify-content:center;">Cotizar este plan</a>
                                 </div>
-                                @if($plan['costo_afiliacion'] > 0)
-                                    <div class="afiliacion">Primer mes: ${{ number_format($plan['costo_afiliacion'], 0, ',', '.') }} (afiliación)</div>
-                                @endif
-                            @else
-                                <div class="oculto">Cotización personalizada</div>
-                            @endif
-                        </div>
-                        <a href="#cotizador" class="btn btn-brand" style="justify-content:center;">Cotizar este plan</a>
+                            </div>
+                        @endforeach
                     </div>
-                @endforeach
+                </div>
+                <button type="button" class="carrusel-nav next" aria-label="Plan siguiente">›</button>
+                <div class="carrusel-dots" role="tablist"></div>
             </div>
         </div>
     </section>
@@ -409,7 +454,8 @@
                  data-lead-url="{{ route('publico.aliado.lead', $aliado->slug) }}"
                  data-whatsapp="{{ $whatsapp }}"
                  data-mensaje-base="{{ $config->whatsapp_mensaje_base ?: ('Hola ' . $aliado->nombre . ', quiero información sobre afiliación a seguridad social.') }}"
-                 data-mostrar-ahorro="{{ $config->seccionActiva('ahorro') ? '1' : '0' }}">
+                 data-mostrar-ahorro="{{ $config->seccionActiva('ahorro') ? '1' : '0' }}"
+                 data-salario-minimo="{{ (int) $salarioMinimo }}">
 
                 <div class="cotizador-pasos">
                     <span class="paso-ind activo" data-paso="1"></span>
@@ -439,23 +485,23 @@
                     <div class="cot-sub">Selecciona todo lo que quieras incluir.</div>
                     <div class="lista-coberturas">
                         <label class="cobertura"><input type="checkbox" data-cob="incluye_eps" checked> <span>Salud (EPS)</span></label>
-                        <label class="cobertura"><input type="checkbox" data-cob="incluye_arl"> <span>Riesgos laborales (ARL)</span></label>
+                        <div class="cobertura cobertura-arl" id="filaArl">
+                            <input type="checkbox" data-cob="incluye_arl" id="chkArlEntrada">
+                            <span>Riesgos laborales (ARL)</span>
+                            <select id="cotNivelArl" class="nivel-arl-inline" style="display:none;">
+                                <option value="1">Nivel 1</option>
+                                <option value="2">Nivel 2</option>
+                                <option value="3">Nivel 3</option>
+                                <option value="4">Nivel 4</option>
+                                <option value="5">Nivel 5</option>
+                            </select>
+                        </div>
                         <label class="cobertura"><input type="checkbox" data-cob="incluye_pension"> <span>Pensión (AFP)</span></label>
                         <label class="cobertura"><input type="checkbox" data-cob="incluye_caja"> <span>Caja de compensación</span></label>
                     </div>
-                    <div class="campo-cot" id="campoNivelArl" style="display:none;">
-                        <label>Nivel de riesgo ARL</label>
-                        <select id="cotNivelArl">
-                            <option value="1">1 — Riesgo mínimo</option>
-                            <option value="2">2 — Riesgo bajo</option>
-                            <option value="3">3 — Riesgo medio</option>
-                            <option value="4">4 — Riesgo alto</option>
-                            <option value="5">5 — Riesgo máximo</option>
-                        </select>
-                    </div>
                     <div class="campo-cot">
                         <label>Ingreso mensual aproximado (opcional)</label>
-                        <input type="number" id="cotSalario" placeholder="Ej: 1423500" min="0">
+                        <input type="number" id="cotSalario" min="0">
                     </div>
                     <div id="cotError"></div>
                     <div class="cot-nav">
@@ -613,9 +659,25 @@
     var whatsapp    = app.dataset.whatsapp;
     var mensajeBase = app.dataset.mensajeBase;
     var mostrarAhorro = app.dataset.mostrarAhorro === '1';
+    var salarioMinimo = app.dataset.salarioMinimo;
 
     var chkArl        = app.querySelector('[data-cob="incluye_arl"]');
-    var campoNivelArl = document.getElementById('campoNivelArl');
+    var selectNivelArl = document.getElementById('cotNivelArl');
+    var filaArl        = document.getElementById('filaArl');
+
+    var cotSalario = document.getElementById('cotSalario');
+    if (salarioMinimo && !cotSalario.value) {
+        cotSalario.value = salarioMinimo;
+    }
+
+    // La fila de ARL ya no es un <label> (para poder anidar el select de nivel de riesgo sin
+    // que un clic en el select dispare también el toggle del checkbox) — se replica a mano el
+    // comportamiento de "clic en toda la fila" de las demás coberturas.
+    filaArl.addEventListener('click', function (e) {
+        if (e.target === chkArl || e.target === selectNivelArl) return;
+        chkArl.checked = !chkArl.checked;
+        chkArl.dispatchEvent(new Event('change'));
+    });
 
     function irAPaso(n) {
         app.querySelectorAll('.cot-paso').forEach(function (el) {
@@ -635,7 +697,7 @@
             estado.independiente = btn.dataset.perfil === 'independiente';
             app.querySelector('[data-cob="incluye_eps"]').checked = true;
             chkArl.checked = !estado.independiente;
-            campoNivelArl.style.display = chkArl.checked ? 'block' : 'none';
+            selectNivelArl.style.display = chkArl.checked ? 'inline-block' : 'none';
             irAPaso(2);
         });
     });
@@ -645,7 +707,7 @@
     });
 
     chkArl.addEventListener('change', function () {
-        campoNivelArl.style.display = chkArl.checked ? 'block' : 'none';
+        selectNivelArl.style.display = chkArl.checked ? 'inline-block' : 'none';
     });
 
     document.getElementById('btnVerPlan').addEventListener('click', function () {
@@ -661,10 +723,10 @@
             return;
         }
 
-        var salarioInput = document.getElementById('cotSalario').value;
+        var salarioInput = cotSalario.value;
         estado.componentes = cobs;
         estado.salario   = salarioInput ? parseFloat(salarioInput) : null;
-        estado.nivel_arl = parseInt(document.getElementById('cotNivelArl').value || '1', 10);
+        estado.nivel_arl = parseInt(selectNivelArl.value || '1', 10);
 
         btn.disabled = true;
         btn.textContent = 'Calculando...';
@@ -726,6 +788,10 @@
         }
 
         html += '</div>';
+
+        if (data.nota_afp) {
+            html += '<div class="cot-aviso">⚠️ ' + data.nota_afp + '</div>';
+        }
 
         html += '<form class="form-lead" id="formLead">'
               + '<input type="text" name="sitio_web" style="position:absolute;left:-9999px;" tabindex="-1" autocomplete="off">'
@@ -792,6 +858,148 @@
         document.getElementById('cotResultado').innerHTML =
             '<div class="cot-ok"><div class="icono-ok">✓</div><h3>¡Listo!</h3><p>Te escribimos por WhatsApp en un momento.</p></div>';
     }
+})();
+
+(function () {
+    var carrusel = document.getElementById('carruselPlanes');
+    if (!carrusel) return;
+
+    var viewport   = carrusel.querySelector('.carrusel-viewport');
+    var track      = carrusel.querySelector('.carrusel-track');
+    var slides     = Array.prototype.slice.call(carrusel.querySelectorAll('.carrusel-slide'));
+    var btnPrev    = carrusel.querySelector('.carrusel-nav.prev');
+    var btnNext    = carrusel.querySelector('.carrusel-nav.next');
+    var dotsWrap   = carrusel.querySelector('.carrusel-dots');
+    var total      = slides.length;
+    var reducirMov = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    if (total === 0) { carrusel.style.display = 'none'; return; }
+
+    var indice = 0;
+    var timer  = null;
+    var visibles = 1;
+    var dots = [];
+
+    function visiblesActuales() {
+        var ancho = window.innerWidth;
+        if (ancho <= 860) return 1;
+        if (ancho <= 1024) return 2;
+        return 3;
+    }
+
+    function maxIndice() {
+        return Math.max(0, total - visibles);
+    }
+
+    function construirDots() {
+        dotsWrap.innerHTML = '';
+        dots = [];
+        var pasos = maxIndice() + 1;
+        if (pasos <= 1) { dotsWrap.style.display = 'none'; return; }
+        dotsWrap.style.display = 'flex';
+        for (var i = 0; i < pasos; i++) {
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.setAttribute('aria-label', 'Ir al plan ' + (i + 1));
+            (function (idx) {
+                b.addEventListener('click', function () { irA(idx); reiniciarAuto(); });
+            })(i);
+            dotsWrap.appendChild(b);
+            dots.push(b);
+        }
+    }
+
+    function actualizarDots() {
+        dots.forEach(function (d, i) { d.classList.toggle('activo', i === indice); });
+    }
+
+    function actualizarNav() {
+        var deshabilitado = maxIndice() === 0;
+        btnPrev.disabled = deshabilitado;
+        btnNext.disabled = deshabilitado;
+    }
+
+    function mover() {
+        var slide = slides[0];
+        var anchoSlide = slide.getBoundingClientRect().width;
+        var gap = 24; // 1.5rem
+        track.style.transform = 'translateX(-' + (indice * (anchoSlide + gap)) + 'px)';
+        actualizarDots();
+    }
+
+    function irA(i) {
+        indice = Math.max(0, Math.min(i, maxIndice()));
+        mover();
+    }
+
+    function siguiente() {
+        indice = indice >= maxIndice() ? 0 : indice + 1;
+        mover();
+    }
+
+    function anterior() {
+        indice = indice <= 0 ? maxIndice() : indice - 1;
+        mover();
+    }
+
+    function iniciarAuto() {
+        if (reducirMov || maxIndice() === 0) return;
+        detenerAuto();
+        timer = setInterval(siguiente, 5000);
+    }
+
+    function detenerAuto() {
+        if (timer) { clearInterval(timer); timer = null; }
+    }
+
+    function reiniciarAuto() {
+        detenerAuto();
+        iniciarAuto();
+    }
+
+    function recalcular() {
+        visibles = visiblesActuales();
+        indice = Math.min(indice, maxIndice());
+        construirDots();
+        actualizarNav();
+        mover();
+        iniciarAuto();
+    }
+
+    btnPrev.addEventListener('click', function () { anterior(); reiniciarAuto(); });
+    btnNext.addEventListener('click', function () { siguiente(); reiniciarAuto(); });
+
+    carrusel.addEventListener('mouseenter', detenerAuto);
+    carrusel.addEventListener('mouseleave', iniciarAuto);
+    carrusel.addEventListener('focusin', detenerAuto);
+    carrusel.addEventListener('focusout', iniciarAuto);
+
+    document.addEventListener('visibilitychange', function () {
+        if (document.hidden) { detenerAuto(); } else { iniciarAuto(); }
+    });
+
+    var touchStartX = null;
+    viewport.addEventListener('touchstart', function (e) {
+        touchStartX = e.touches[0].clientX;
+        detenerAuto();
+    }, { passive: true });
+    viewport.addEventListener('touchend', function (e) {
+        if (touchStartX === null) return;
+        var delta = e.changedTouches[0].clientX - touchStartX;
+        if (Math.abs(delta) > 40) {
+            if (delta < 0) { siguiente(); } else { anterior(); }
+        }
+        touchStartX = null;
+        iniciarAuto();
+    });
+
+    var resizeTimer = null;
+    window.addEventListener('resize', function () {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(recalcular, 150);
+    });
+
+    recalcular();
 })();
 </script>
 @endsection
