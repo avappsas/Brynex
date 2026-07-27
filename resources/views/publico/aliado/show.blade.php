@@ -369,11 +369,10 @@
             <div class="hero-art" aria-hidden="true">
                 @if($aliado->logo_marca_claro)
                     <svg viewBox="0 0 320 320" width="100%" style="max-width:320px;">
-                        <circle cx="160" cy="160" r="150" fill="none"/>
                         <image href="{{ asset('storage/' . $aliado->logo_marca_claro) }}"
-                               x="50" y="50" width="220" height="220" preserveAspectRatio="xMidYMid meet"/>
-                        <circle cx="245" cy="90" r="14" fill="var(--brand-dark)" opacity="0.5"/>
-                        <circle cx="70" cy="230" r="10" fill="var(--brand)" opacity="0.4"/>
+                               x="60" y="60" width="200" height="200" preserveAspectRatio="xMidYMid meet"/>
+                        <circle cx="275" cy="65" r="14" fill="var(--brand-dark)" opacity="0.5"/>
+                        <circle cx="55" cy="265" r="10" fill="var(--brand)" opacity="0.4"/>
                     </svg>
                 @else
                     <svg viewBox="0 0 320 320" width="100%" style="max-width:320px;">
