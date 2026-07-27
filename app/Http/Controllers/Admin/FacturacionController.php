@@ -4046,14 +4046,41 @@ class FacturacionController extends Controller
             ->unique()
             ->values();
 
-        // Cargar contratos activos de la empresa para este aliado
-        $contratos = \App\Models\Contrato::where('aliado_id', $aliadoId)
-            ->where('razon_social_id', $empresaId)
-            ->where('estado', 'activo')
+        // Traer las cédulas de la empresa que corresponden a la entrada
+        $cedulasEmpresa = \Illuminate\Support\Facades\DB::table('clientes')
+            ->where('aliado_id', $aliadoId)
+            ->where('cod_empresa', $empresaId)
             ->whereIn('cedula', $cedulasInput->all())
+            ->pluck('cedula');
+
+        $mesAnterior  = $mes  === 1 ? 12 : $mes  - 1;
+        $anioAnterior = $mes  === 1 ? $anio - 1 : $anio;
+
+        // Cargar contratos vigentes de la empresa para este período y aliado
+        $contratos = \App\Models\Contrato::where('aliado_id', $aliadoId)
+            ->whereIn('cedula', $cedulasEmpresa)
+            ->where(function ($q) use ($mes, $anio, $mesAnterior, $anioAnterior) {
+                $q->whereIn('estado', ['vigente', 'activo'])
+                  ->orWhere(function ($q2) use ($mes, $anio, $mesAnterior, $anioAnterior) {
+                      $q2->where('estado', 'retirado')
+                         ->where(function ($q3) use ($mes, $anio, $mesAnterior, $anioAnterior) {
+                             $q3->where(function ($qa) use ($mes, $anio) {
+                                      $qa->where('tipo_modalidad_id', 11)
+                                         ->whereMonth('fecha_retiro', $mes)
+                                         ->whereYear('fecha_retiro', $anio);
+                                  })
+                                ->orWhere(function ($qb) use ($mesAnterior, $anioAnterior) {
+                                      $qb->where('tipo_modalidad_id', '!=', 11)
+                                         ->whereMonth('fecha_retiro', $mesAnterior)
+                                         ->whereYear('fecha_retiro', $anioAnterior);
+                                  });
+                         });
+                  });
+            })
             ->with('cliente:id,cedula,primer_nombre,primer_apellido,nombre_completo')
             ->get()
             ->keyBy('cedula');
+
 
         // Cédulas que ya tienen factura en el período
         $cedulasFacturadas = \App\Models\Factura::where('aliado_id', $aliadoId)
@@ -4118,11 +4145,16 @@ class FacturacionController extends Controller
 
         $np = (int) $request->input('np');
 
+        $cedulasEmpresa = \Illuminate\Support\Facades\DB::table('clientes')
+            ->where('aliado_id', $aliadoId)
+            ->where('cod_empresa', $empresaId)
+            ->pluck('cedula');
+
         if ($request->input('limpiar_todos')) {
             // Resetear todos los contratos activos de esta empresa
             $actualizados = \App\Models\Contrato::where('aliado_id', $aliadoId)
-                ->where('razon_social_id', $empresaId)
-                ->where('estado', 'activo')
+                ->whereIn('cedula', $cedulasEmpresa)
+                ->whereIn('estado', ['activo', 'vigente'])
                 ->whereNotNull('np')
                 ->update(['np' => null]);
 
@@ -4138,7 +4170,7 @@ class FacturacionController extends Controller
 
         // Seguridad: solo actualizar contratos de la empresa y aliado correcto
         $actualizados = \App\Models\Contrato::where('aliado_id', $aliadoId)
-            ->where('razon_social_id', $empresaId)
+            ->whereIn('cedula', $cedulasEmpresa)
             ->whereIn('id', $contratoIds)
             ->update(['np' => $npValor]);
 
