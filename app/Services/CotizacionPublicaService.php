@@ -34,60 +34,104 @@ class CotizacionPublicaService
      * comercial corta y revisada. Un plan que exista en planes_contrato pero no tenga entrada
      * aquí simplemente no aparece en la web (protección para planes nuevos sin copy revisado).
      *
-     * SOLO_ARL queda deliberadamente fuera: se cotiza en la práctica por modalidades K/Y según
-     * nivel de riesgo, no por "Independientes" como resuelve el cascade genérico — publicarlo
-     * con ese precio desalinearía la percepción frente al resto de tarjetas.
+     * `grupo` separa las tarjetas en pestañas en la página pública (empleado/independiente son
+     * los que más venden y van primero; por_dias y solo_arl son productos de nicho con su propio
+     * selector, ver `selector` abajo). `selector` marca las tarjetas cuyo precio varía según una
+     * opción que el visitante elige EN el navegador sin ida al servidor:
+     *   - 'riesgo': Solo ARL — el precio depende solo del nivel de riesgo (1-5). Se cotiza vía
+     *     modalidad K/Y/Independientes según el caso, pero el número es el MISMO sin importar
+     *     cuál — por eso es una sola tarjeta con selector, no una por modalidad.
+     *   - 'dias': planes de Tiempo Parcial — el precio depende de cuántos días de la semana
+     *     labora (7/14/21/30), resuelto contra la modalidad TP real de cada tramo.
      */
     public const COPY_PUBLICO = [
         'EPS_ARL' => [
+            'grupo'       => 'empleado',
             'orden'       => 1,
             'destacado'   => false,
             'nombre'      => 'Dependiente Básico',
             'descripcion' => 'Salud y riesgos laborales para empleados y trabajadores dependientes.',
         ],
         'EPS_ARL_CCF' => [
+            'grupo'       => 'empleado',
             'orden'       => 2,
             'destacado'   => false,
             'nombre'      => 'Dependiente con Caja',
             'descripcion' => 'Salud y riesgos laborales, más acceso a subsidios y beneficios de caja de compensación.',
         ],
         'EPS_ARL_AFP' => [
+            'grupo'       => 'empleado',
             'orden'       => 3,
             'destacado'   => false,
             'nombre'      => 'Dependiente sin Caja',
             'descripcion' => 'Salud, riesgos laborales y pensión — tus tres aportes principales cubiertos.',
         ],
         'EPS_ARL_AFP_CCF' => [
+            'grupo'       => 'empleado',
             'orden'       => 4,
             'destacado'   => true,
             'nombre'      => 'Dependiente Completo',
             'descripcion' => 'Salud, riesgos laborales, pensión y caja de compensación — la cobertura más completa.',
         ],
         'SOLO_EPS' => [
-            'orden'       => 5,
+            'grupo'       => 'independiente',
+            'orden'       => 1,
             'destacado'   => false,
             'nombre'      => 'Independiente',
             'descripcion' => 'Para quienes trabajan por cuenta propia y necesitan afiliación a salud.',
         ],
         'EPS_AFP' => [
-            'orden'       => 6,
+            'grupo'       => 'independiente',
+            'orden'       => 2,
             'destacado'   => false,
             'nombre'      => 'Independiente sin ARL',
             'descripcion' => 'Salud y pensión para quien no ejerce una actividad laboral de riesgo.',
         ],
         'EPS_AFP_CCF' => [
-            'orden'       => 7,
+            'grupo'       => 'independiente',
+            'orden'       => 3,
             'destacado'   => false,
             'nombre'      => 'Independiente con Caja',
             'descripcion' => 'Salud, pensión y acceso a subsidios de caja de compensación.',
         ],
         'SOLO_AFP' => [
-            'orden'       => 8,
+            'grupo'       => 'independiente',
+            'orden'       => 4,
             'destacado'   => false,
             'nombre'      => 'Solo Pensión',
             'descripcion' => 'Sigue cotizando a tu fondo de pensión, vivas donde vivas.',
         ],
+        'SOLO_ARL' => [
+            'grupo'       => 'solo_arl',
+            'orden'       => 1,
+            'destacado'   => false,
+            'nombre'      => 'Solo ARL',
+            'descripcion' => 'Solo riesgos laborales, sin salud ni pensión — para quien ya está cubierto por otro lado.',
+            'selector'    => 'riesgo',
+        ],
+        'ARL_AFP_CCF' => [
+            'grupo'       => 'por_dias',
+            'orden'       => 1,
+            'destacado'   => false,
+            'nombre'      => 'Por Días Completo',
+            'descripcion' => 'Riesgos laborales, pensión y caja de compensación, pagando solo los días que trabajas.',
+            'selector'    => 'dias',
+        ],
+        'ARL_CCF' => [
+            'grupo'       => 'por_dias',
+            'orden'       => 2,
+            'destacado'   => false,
+            'nombre'      => 'Por Días Económico',
+            'descripcion' => 'Riesgos laborales y caja de compensación, pagando solo los días que trabajas.',
+            'selector'    => 'dias',
+        ],
     ];
+
+    /** Días ofrecidos en las tarjetas "por días" del grupo Tiempo Parcial. */
+    private const DIAS_POR_DIAS = [7, 14, 21, 30];
+
+    /** Niveles de riesgo ofrecidos en la tarjeta "Solo ARL". */
+    private const NIVELES_RIESGO = [1, 2, 3, 4, 5];
 
     public const PLANES_DESTACADOS = [
         [
@@ -157,12 +201,14 @@ class CotizacionPublicaService
     }
 
     /**
-     * Todos los planes ofrecibles públicamente (no solo los 3 destacados), para el carrusel de
-     * la página web. Recorre planes_contrato activos, se salta los que no tengan copy revisado
-     * en COPY_PUBLICO y los que no resuelvan a ninguna modalidad pública (ej. los de Tiempo
-     * Parcial, que solo se cotizan por WhatsApp/admin). Cacheado 10 minutos: cada tarjeta cuesta
-     * ~12 queries a SQL Server (~2.5s) por la doble pasada de CotizadorService dentro de
-     * cotizar(), así que sin caché la página sería inviable con 8 planes.
+     * Todos los planes ofrecibles públicamente, agrupados por pestaña (`grupo` en
+     * COPY_PUBLICO: empleado/independiente/por_dias/solo_arl) para el carrusel de la página
+     * web. Recorre planes_contrato activos, se salta los que no tengan copy revisado en
+     * COPY_PUBLICO y los que no resuelvan a ninguna modalidad pública. Cacheado 10 minutos: cada
+     * variante de precio cuesta ~12 queries a SQL Server (~2.5s) por la doble pasada de
+     * CotizadorService dentro de cotizar(), así que sin caché la página sería inviable.
+     *
+     * @return \Illuminate\Support\Collection<string, \Illuminate\Support\Collection> Keyed por grupo.
      */
     public static function planesPublicosConPrecio(int $aliadoId, bool $mostrarPrecios = true): \Illuminate\Support\Collection
     {
@@ -181,41 +227,107 @@ class CotizacionPublicaService
                     continue;
                 }
 
-                $esIndependiente = !$plan->incluye_arl;
-                $modalidad = self::resolverModalidadPermitida($plan, $esIndependiente);
-                if (!$modalidad) {
-                    continue;
+                $tarjeta = match ($copy['selector'] ?? null) {
+                    'dias'   => self::tarjetaPorDias($plan, $copy, $aliadoId, $mostrarPrecios),
+                    'riesgo' => self::tarjetaPorRiesgo($plan, $copy, $aliadoId, $mostrarPrecios),
+                    default  => self::tarjetaNormal($plan, $copy, $aliadoId, $mostrarPrecios),
+                };
+
+                if ($tarjeta) {
+                    $tarjetas[] = $tarjeta;
                 }
-
-                $resultado = self::cotizar($plan, $modalidad, $aliadoId, ['sin_plan_pago' => true]);
-
-                $componentes = [
-                    'incluye_eps'     => $plan->incluye_eps,
-                    'incluye_arl'     => $plan->incluye_arl,
-                    'incluye_pension' => $plan->incluye_pension,
-                    'incluye_caja'    => $plan->incluye_caja,
-                ];
-
-                $tarjetas[] = [
-                    'clave'                   => $plan->codigo,
-                    'nombre'                  => $copy['nombre'],
-                    'descripcion'             => $copy['descripcion'],
-                    'destacado'               => $copy['destacado'],
-                    'orden'                   => $copy['orden'],
-                    'componentes'             => $componentes,
-                    'independiente'           => $esIndependiente,
-                    'valor_mensual'           => $mostrarPrecios ? $resultado['total'] : null,
-                    'costo_afiliacion'        => $mostrarPrecios ? $resultado['costo_afiliacion_sugerido'] : null,
-                    'costo_afiliacion_normal' => $mostrarPrecios ? $resultado['costo_afiliacion_normal'] : null,
-                    'en_promocion'            => $resultado['en_promocion'],
-                    'promocion_vence'         => $resultado['promocion_vence'],
-                ];
             }
 
             usort($tarjetas, fn ($a, $b) => $a['orden'] <=> $b['orden']);
 
-            return collect($tarjetas);
+            return collect($tarjetas)->groupBy('grupo');
         });
+    }
+
+    /** Tarjeta de precio único (el caso normal: empleado/independiente). */
+    private static function tarjetaNormal(PlanContrato $plan, array $copy, int $aliadoId, bool $mostrarPrecios): ?array
+    {
+        $esIndependiente = !$plan->incluye_arl;
+        $modalidad = self::resolverModalidadPermitida($plan, $esIndependiente);
+        if (!$modalidad) {
+            return null;
+        }
+
+        $resultado = self::cotizar($plan, $modalidad, $aliadoId, ['sin_plan_pago' => true]);
+
+        return self::tarjetaBase($plan, $copy) + [
+            'independiente'           => $esIndependiente,
+            'valor_mensual'           => $mostrarPrecios ? $resultado['total'] : null,
+            'costo_afiliacion'        => $mostrarPrecios ? $resultado['costo_afiliacion_sugerido'] : null,
+            'costo_afiliacion_normal' => $mostrarPrecios ? $resultado['costo_afiliacion_normal'] : null,
+            'en_promocion'            => $resultado['en_promocion'],
+            'promocion_vence'         => $resultado['promocion_vence'],
+        ];
+    }
+
+    /** Tarjeta "Solo ARL": un precio por cada nivel de riesgo 1-5, elegido en el navegador. */
+    private static function tarjetaPorRiesgo(PlanContrato $plan, array $copy, int $aliadoId, bool $mostrarPrecios): ?array
+    {
+        $modalidad = self::resolverModalidadPermitida($plan, true);
+        if (!$modalidad) {
+            return null;
+        }
+
+        $precios = [];
+        foreach (self::NIVELES_RIESGO as $riesgo) {
+            $resultado = self::cotizar($plan, $modalidad, $aliadoId, ['nivel_arl' => $riesgo, 'sin_plan_pago' => true]);
+            $precios[$riesgo] = $mostrarPrecios ? $resultado['total'] : null;
+        }
+
+        return self::tarjetaBase($plan, $copy) + [
+            'valor_mensual'      => $precios[self::NIVELES_RIESGO[0]],
+            'precios_por_riesgo' => $precios,
+        ];
+    }
+
+    /** Tarjetas "Por días" (Tiempo Parcial): un precio por cada tramo 7/14/21/30 días. */
+    private static function tarjetaPorDias(PlanContrato $plan, array $copy, int $aliadoId, bool $mostrarPrecios): ?array
+    {
+        $precios = [];
+        foreach (self::DIAS_POR_DIAS as $dias) {
+            $modalidad = self::resolverModalidadPermitida($plan, false, false, $dias);
+            if (!$modalidad) {
+                continue;
+            }
+            $resultado = self::cotizar($plan, $modalidad, $aliadoId, ['dias' => $dias, 'sin_plan_pago' => true]);
+            $precios[$dias] = $mostrarPrecios ? $resultado['total'] : null;
+        }
+
+        if (empty($precios)) {
+            return null;
+        }
+
+        // Por defecto se muestra el precio de 30 días (mes completo) — el select de la tarjeta
+        // también abre en "30 días", así el precio grande y el selector arrancan sincronizados.
+        return self::tarjetaBase($plan, $copy) + [
+            'valor_mensual'    => $precios[30] ?? reset($precios),
+            'precios_por_dias' => $precios,
+        ];
+    }
+
+    /** Campos comunes a toda tarjeta pública, sin importar el tipo de selector. */
+    private static function tarjetaBase(PlanContrato $plan, array $copy): array
+    {
+        return [
+            'clave'       => $plan->codigo,
+            'nombre'      => $copy['nombre'],
+            'descripcion' => $copy['descripcion'],
+            'destacado'   => $copy['destacado'],
+            'grupo'       => $copy['grupo'],
+            'orden'       => $copy['orden'],
+            'selector'    => $copy['selector'] ?? null,
+            'componentes' => [
+                'incluye_eps'     => $plan->incluye_eps,
+                'incluye_arl'     => $plan->incluye_arl,
+                'incluye_pension' => $plan->incluye_pension,
+                'incluye_caja'    => $plan->incluye_caja,
+            ],
+        ];
     }
 
     /**

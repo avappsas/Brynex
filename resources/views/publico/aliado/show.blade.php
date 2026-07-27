@@ -91,6 +91,22 @@
     .card-servicio p { font-size: 0.9rem; color: var(--tinta-suave); }
 
     .planes { background: var(--fondo); }
+    .planes-tabs { display: flex; justify-content: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 2rem; }
+    .tab-plan {
+        border: 1.5px solid var(--borde); background: var(--blanco); color: var(--tinta-suave);
+        font-family: inherit; font-size: 0.85rem; font-weight: 700; padding: 0.55rem 1.15rem;
+        border-radius: 999px; cursor: pointer; transition: all .15s ease;
+    }
+    .tab-plan:hover { border-color: var(--brand); color: var(--brand-dark); }
+    .tab-plan.activo { background: var(--brand); border-color: var(--brand); color: var(--brand-text); }
+    .panel-grupo-plan { display: none; }
+    .panel-grupo-plan.activo { display: block; }
+    .selector-plan { margin-bottom: 1rem; }
+    .selector-plan label { display: block; font-size: 0.72rem; font-weight: 700; color: var(--tinta-suave); text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 0.3rem; }
+    .selector-plan select {
+        width: 100%; padding: 0.55rem 0.7rem; border: 1.5px solid var(--borde); border-radius: 10px;
+        font-size: 0.88rem; font-family: inherit; background: var(--blanco); cursor: pointer;
+    }
     .carrusel-planes { position: relative; padding: 0 3rem; }
     .carrusel-viewport { overflow: hidden; padding: 1.2rem 0 0.5rem; }
     .carrusel-track { display: flex; gap: 1.5rem; transition: transform 0.45s ease; }
@@ -163,14 +179,6 @@
     .cot-paso.activo { display: block; }
     .cot-titulo { font-size: 1.15rem; font-weight: 800; margin-bottom: 0.3rem; }
     .cot-sub { font-size: 0.85rem; color: var(--tinta-suave); margin-bottom: 1.25rem; }
-    .opciones-perfil { display: grid; grid-template-columns: 1fr 1fr; gap: 0.9rem; }
-    .opcion-perfil {
-        border: 1.5px solid var(--borde); border-radius: 16px; padding: 1.1rem;
-        background: var(--blanco); cursor: pointer; text-align: left; font-family: inherit;
-    }
-    .opcion-perfil:hover { border-color: var(--brand); }
-    .opcion-perfil strong { display: block; font-size: 0.95rem; margin-bottom: 0.25rem; }
-    .opcion-perfil span { font-size: 0.78rem; color: var(--tinta-suave); }
     .lista-coberturas { display: flex; flex-direction: column; gap: 0.6rem; margin-bottom: 1.25rem; }
     .cobertura {
         display: flex; align-items: center; gap: 0.65rem;
@@ -194,17 +202,21 @@
         width: 100%; padding: 0.6rem 0.75rem; border: 1.5px solid var(--borde); border-radius: 10px;
         font-size: 0.9rem; font-family: inherit; background: var(--blanco);
     }
+    .ayuda-cot { font-size: 0.75rem; color: var(--tinta-suave); margin-top: 0.35rem; }
     .cot-nav { display: flex; justify-content: space-between; gap: 0.75rem; margin-top: 1.25rem; }
     .cot-nav .btn-volver { background: none; border: none; color: var(--tinta-suave); font-size: 0.85rem; font-weight: 600; cursor: pointer; padding: 0.6rem; }
-    .resultado-cot { background: var(--blanco); border: 1.5px solid var(--brand-line); border-radius: 16px; padding: 1.5rem; margin-bottom: 1.25rem; }
-    .resultado-cot .plan-elegido { font-size: 0.78rem; font-weight: 700; color: var(--brand-dark); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.5rem; }
-    .resultado-cot .valor-grande { font-size: 2.1rem; font-weight: 800; color: var(--tinta); }
-    .resultado-cot .valor-grande small { font-size: 0.9rem; font-weight: 600; color: var(--tinta-suave); }
-    .resultado-cot .linea { display: flex; justify-content: space-between; font-size: 0.85rem; padding: 0.5rem 0; border-top: 1px dashed var(--borde); color: var(--tinta-suave); }
-    .caja-ahorro { background: color-mix(in srgb, #16a34a 8%, white); border: 1px solid color-mix(in srgb, #16a34a 30%, white); border-radius: 14px; padding: 1rem 1.2rem; margin-bottom: 1.25rem; }
-    .caja-ahorro .titulo-ahorro { font-size: 0.8rem; font-weight: 700; color: #15803d; margin-bottom: 0.3rem; }
-    .caja-ahorro .monto-ahorro { font-size: 1.3rem; font-weight: 800; color: #15803d; }
-    .caja-ahorro p { font-size: 0.78rem; color: #166534; margin-top: 0.3rem; }
+    .resultado-columnas { display: grid; grid-template-columns: 1fr 1fr; gap: 1.1rem; margin-bottom: 1.25rem; }
+    .resultado-columnas.una-sola { grid-template-columns: 1fr; }
+    .resultado-cot { background: var(--blanco); border: 1.5px solid var(--borde); border-radius: 16px; padding: 1.5rem; display: flex; flex-direction: column; transition: border-color .15s ease, box-shadow .15s ease; }
+    .resultado-cot.seleccionado { border-color: var(--brand); box-shadow: 0 12px 28px -18px color-mix(in srgb, var(--brand) 50%, transparent); }
+    .resultado-cot .etiqueta-perfil { font-size: 0.72rem; font-weight: 700; color: var(--tinta-suave); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.3rem; }
+    .resultado-cot .plan-elegido { font-size: 0.95rem; font-weight: 700; color: var(--brand-dark); margin-bottom: 0.5rem; }
+    .resultado-cot .valor-grande { font-size: 1.8rem; font-weight: 800; color: var(--tinta); }
+    .resultado-cot .valor-grande small { font-size: 0.85rem; font-weight: 600; color: var(--tinta-suave); }
+    .resultado-cot .linea { display: flex; justify-content: space-between; font-size: 0.82rem; padding: 0.45rem 0; border-top: 1px dashed var(--borde); color: var(--tinta-suave); }
+    .resultado-cot .base-cot { font-size: 0.76rem; color: var(--tinta-suave); margin-top: 0.4rem; }
+    .resultado-cot .btn-elegir { margin-top: 1rem; }
+    .nota-perfil { background: var(--fondo); border: 1px dashed var(--borde); border-radius: 12px; padding: 0.85rem 1rem; margin-bottom: 1.25rem; font-size: 0.8rem; color: var(--tinta-suave); }
     .form-lead .campo-cot { margin-bottom: 0.85rem; }
     .form-lead label.check {
         display: flex; align-items: flex-start; gap: 0.5rem; font-size: 0.76rem; color: var(--tinta-suave); cursor: pointer;
@@ -309,7 +321,7 @@
         .carrusel-slide { flex: 0 0 100%; }
         .grid-promos { grid-template-columns: repeat(2, 1fr); }
         .card-plan.destacado { transform: none; }
-        .opciones-perfil { grid-template-columns: 1fr; }
+        .resultado-columnas { grid-template-columns: 1fr; }
         .caja-cotizador { padding: 1.5rem 1.1rem; }
     }
 @endsection
@@ -392,51 +404,94 @@
     </section>
     @endif
 
-    @if($config->seccionActiva('planes') && $planes->isNotEmpty())
+    @php
+        $etiquetasGrupoPlan = ['empleado' => 'Empleado', 'independiente' => 'Independiente', 'por_dias' => 'Por días', 'solo_arl' => 'Solo ARL'];
+        $gruposPlanVisibles = collect(['empleado', 'independiente', 'por_dias', 'solo_arl'])
+            ->filter(fn ($g) => isset($planes[$g]) && $planes[$g]->isNotEmpty())
+            ->values();
+    @endphp
+    @if($config->seccionActiva('planes') && $gruposPlanVisibles->isNotEmpty())
     <section class="planes" id="planes">
         <div class="contenedor">
             <div class="titulo-seccion">
                 <h2>Planes disponibles</h2>
                 <p>Precios configurados directamente por {{ $aliado->nombre }} — se actualizan automáticamente.</p>
             </div>
-            <div class="carrusel-planes" id="carruselPlanes" data-total="{{ $planes->count() }}">
-                <button type="button" class="carrusel-nav prev" aria-label="Plan anterior">‹</button>
-                <div class="carrusel-viewport">
-                    <div class="carrusel-track">
-                        @foreach($planes as $plan)
-                            <div class="carrusel-slide">
-                                <div class="card-plan {{ $plan['destacado'] ? 'destacado' : '' }}">
-                                    @if($plan['destacado'])<span class="cinta">Más elegido</span>@endif
-                                    <h3>{{ $plan['nombre'] }}</h3>
-                                    <p class="desc-plan">{{ $plan['descripcion'] }}</p>
-                                    <div class="chips-plan">
-                                        @if($plan['componentes']['incluye_eps']) <span class="chip">Salud (EPS)</span> @endif
-                                        @if($plan['componentes']['incluye_arl']) <span class="chip">ARL</span> @endif
-                                        @if($plan['componentes']['incluye_pension']) <span class="chip">Pensión</span> @endif
-                                        @if($plan['componentes']['incluye_caja']) <span class="chip">Caja</span> @endif
-                                    </div>
-                                    <div class="precio-plan">
-                                        @if($plan['valor_mensual'] !== null)
-                                            <div class="valor">
-                                                @if($config->precios_modo === 'desde')Desde @endif
-                                                ${{ number_format($plan['valor_mensual'], 0, ',', '.') }}<small>/mes</small>
+
+            @if($gruposPlanVisibles->count() > 1)
+            <div class="planes-tabs" role="tablist">
+                @foreach($gruposPlanVisibles as $grupo)
+                    <button type="button" class="tab-plan {{ $loop->first ? 'activo' : '' }}" data-tab-grupo="{{ $grupo }}">{{ $etiquetasGrupoPlan[$grupo] }}</button>
+                @endforeach
+            </div>
+            @endif
+
+            @foreach($gruposPlanVisibles as $grupo)
+                <div class="panel-grupo-plan {{ $loop->first ? 'activo' : '' }}" data-panel-grupo="{{ $grupo }}">
+                    <div class="carrusel-planes" data-grupo="{{ $grupo }}">
+                        <button type="button" class="carrusel-nav prev" aria-label="Plan anterior">‹</button>
+                        <div class="carrusel-viewport">
+                            <div class="carrusel-track">
+                                @foreach($planes[$grupo] as $plan)
+                                    <div class="carrusel-slide">
+                                        <div class="card-plan {{ $plan['destacado'] ? 'destacado' : '' }}">
+                                            @if($plan['destacado'])<span class="cinta">Más elegido</span>@endif
+                                            <h3>{{ $plan['nombre'] }}</h3>
+                                            <p class="desc-plan">{{ $plan['descripcion'] }}</p>
+                                            <div class="chips-plan">
+                                                @if($plan['componentes']['incluye_eps']) <span class="chip">Salud (EPS)</span> @endif
+                                                @if($plan['componentes']['incluye_arl']) <span class="chip">ARL</span> @endif
+                                                @if($plan['componentes']['incluye_pension']) <span class="chip">Pensión</span> @endif
+                                                @if($plan['componentes']['incluye_caja']) <span class="chip">Caja</span> @endif
                                             </div>
-                                            @if($plan['costo_afiliacion'] > 0)
-                                                <div class="afiliacion">Primer mes: ${{ number_format($plan['costo_afiliacion'], 0, ',', '.') }} (afiliación)</div>
+
+                                            @if($plan['selector'] === 'riesgo')
+                                                <div class="selector-plan">
+                                                    <label>Nivel de riesgo</label>
+                                                    <select class="selector-precio" data-precios='@json($plan['precios_por_riesgo'])'>
+                                                        <option value="1">1 — Riesgo mínimo</option>
+                                                        <option value="2">2 — Riesgo bajo</option>
+                                                        <option value="3">3 — Riesgo medio</option>
+                                                        <option value="4">4 — Riesgo alto</option>
+                                                        <option value="5">5 — Riesgo máximo</option>
+                                                    </select>
+                                                </div>
+                                            @elseif($plan['selector'] === 'dias')
+                                                <div class="selector-plan">
+                                                    <label>Días por mes</label>
+                                                    <select class="selector-precio" data-precios='@json($plan['precios_por_dias'])'>
+                                                        <option value="7">7 días</option>
+                                                        <option value="14">14 días</option>
+                                                        <option value="21">21 días</option>
+                                                        <option value="30" selected>30 días</option>
+                                                    </select>
+                                                </div>
                                             @endif
-                                        @else
-                                            <div class="oculto">Cotización personalizada</div>
-                                        @endif
+
+                                            <div class="precio-plan">
+                                                @if($plan['valor_mensual'] !== null)
+                                                    <div class="valor" data-prefijo="{{ $config->precios_modo === 'desde' ? 'Desde ' : '' }}">
+                                                        @if($config->precios_modo === 'desde')Desde @endif
+                                                        ${{ number_format($plan['valor_mensual'], 0, ',', '.') }}<small>/mes</small>
+                                                    </div>
+                                                    @if(($plan['costo_afiliacion'] ?? 0) > 0)
+                                                        <div class="afiliacion">Primer mes: ${{ number_format($plan['costo_afiliacion'], 0, ',', '.') }} (afiliación)</div>
+                                                    @endif
+                                                @else
+                                                    <div class="oculto">Cotización personalizada</div>
+                                                @endif
+                                            </div>
+                                            <a href="#cotizador" class="btn btn-brand" style="justify-content:center;">Cotizar este plan</a>
+                                        </div>
                                     </div>
-                                    <a href="#cotizador" class="btn btn-brand" style="justify-content:center;">Cotizar este plan</a>
-                                </div>
+                                @endforeach
                             </div>
-                        @endforeach
+                        </div>
+                        <button type="button" class="carrusel-nav next" aria-label="Plan siguiente">›</button>
+                        <div class="carrusel-dots" role="tablist"></div>
                     </div>
                 </div>
-                <button type="button" class="carrusel-nav next" aria-label="Plan siguiente">›</button>
-                <div class="carrusel-dots" role="tablist"></div>
-            </div>
+            @endforeach
         </div>
     </section>
     @endif
@@ -454,35 +509,17 @@
                  data-lead-url="{{ route('publico.aliado.lead', $aliado->slug) }}"
                  data-whatsapp="{{ $whatsapp }}"
                  data-mensaje-base="{{ $config->whatsapp_mensaje_base ?: ('Hola ' . $aliado->nombre . ', quiero información sobre afiliación a seguridad social.') }}"
-                 data-mostrar-ahorro="{{ $config->seccionActiva('ahorro') ? '1' : '0' }}"
                  data-salario-minimo="{{ (int) $salarioMinimo }}">
 
                 <div class="cotizador-pasos">
                     <span class="paso-ind activo" data-paso="1"></span>
                     <span class="paso-ind" data-paso="2"></span>
-                    <span class="paso-ind" data-paso="3"></span>
                 </div>
 
-                {{-- Paso 1: perfil --}}
+                {{-- Paso 1: coberturas --}}
                 <div class="cot-paso activo" data-paso="1">
-                    <div class="cot-titulo">¿Cómo trabajas?</div>
-                    <div class="cot-sub">Esto define el tipo de afiliación que necesitas.</div>
-                    <div class="opciones-perfil">
-                        <button type="button" class="opcion-perfil" data-perfil="dependiente">
-                            <strong>Dependiente</strong>
-                            <span>Trabajas para alguien (empleado, empleada doméstica, etc.)</span>
-                        </button>
-                        <button type="button" class="opcion-perfil" data-perfil="independiente">
-                            <strong>Independiente</strong>
-                            <span>Trabajas por cuenta propia</span>
-                        </button>
-                    </div>
-                </div>
-
-                {{-- Paso 2: coberturas --}}
-                <div class="cot-paso" data-paso="2">
                     <div class="cot-titulo">¿Qué necesitas?</div>
-                    <div class="cot-sub">Selecciona todo lo que quieras incluir.</div>
+                    <div class="cot-sub">Selecciona todo lo que quieras incluir — te mostramos el valor como empleado y como independiente.</div>
                     <div class="lista-coberturas">
                         <label class="cobertura"><input type="checkbox" data-cob="incluye_eps" checked> <span>Salud (EPS)</span></label>
                         <div class="cobertura cobertura-arl" id="filaArl">
@@ -500,18 +537,18 @@
                         <label class="cobertura"><input type="checkbox" data-cob="incluye_caja"> <span>Caja de compensación</span></label>
                     </div>
                     <div class="campo-cot">
-                        <label>Ingreso mensual aproximado (opcional)</label>
-                        <input type="number" id="cotSalario" min="0">
+                        <label>Tus ingresos mensuales (opcional)</label>
+                        <input type="number" id="cotIngresos" min="0">
+                        <p class="ayuda-cot">Como empleado se cotiza sobre este valor; como independiente, sobre el 40% (mínimo legal).</p>
                     </div>
                     <div id="cotError"></div>
-                    <div class="cot-nav">
-                        <button type="button" class="btn-volver" data-volver="1">← Atrás</button>
+                    <div class="cot-nav" style="justify-content:flex-end;">
                         <button type="button" class="btn btn-brand" id="btnVerPlan">Ver mi plan</button>
                     </div>
                 </div>
 
-                {{-- Paso 3: resultado + captura de lead --}}
-                <div class="cot-paso" data-paso="3" id="cotPaso3">
+                {{-- Paso 2: resultado dual + captura de lead --}}
+                <div class="cot-paso" data-paso="2" id="cotPaso2">
                     <div id="cotResultado"></div>
                 </div>
 
@@ -652,22 +689,21 @@
     var app = document.getElementById('cotizadorApp');
     if (!app) return;
 
-    var estado = { independiente: null, componentes: {}, salario: null, nivel_arl: 1 };
+    var estado = { componentes: {}, ingresos: null, nivel_arl: 1, seleccionado: null, resultado: null };
     var csrfToken   = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     var cotizarUrl  = app.dataset.cotizarUrl;
     var leadUrl     = app.dataset.leadUrl;
     var whatsapp    = app.dataset.whatsapp;
     var mensajeBase = app.dataset.mensajeBase;
-    var mostrarAhorro = app.dataset.mostrarAhorro === '1';
     var salarioMinimo = app.dataset.salarioMinimo;
 
     var chkArl        = app.querySelector('[data-cob="incluye_arl"]');
     var selectNivelArl = document.getElementById('cotNivelArl');
     var filaArl        = document.getElementById('filaArl');
 
-    var cotSalario = document.getElementById('cotSalario');
-    if (salarioMinimo && !cotSalario.value) {
-        cotSalario.value = salarioMinimo;
+    var cotIngresos = document.getElementById('cotIngresos');
+    if (salarioMinimo && !cotIngresos.value) {
+        cotIngresos.value = salarioMinimo;
     }
 
     // La fila de ARL ya no es un <label> (para poder anidar el select de nivel de riesgo sin
@@ -677,6 +713,10 @@
         if (e.target === chkArl || e.target === selectNivelArl) return;
         chkArl.checked = !chkArl.checked;
         chkArl.dispatchEvent(new Event('change'));
+    });
+
+    chkArl.addEventListener('change', function () {
+        selectNivelArl.style.display = chkArl.checked ? 'inline-block' : 'none';
     });
 
     function irAPaso(n) {
@@ -692,24 +732,6 @@
         return '$' + Math.round(v).toLocaleString('es-CO');
     }
 
-    app.querySelectorAll('.opcion-perfil').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-            estado.independiente = btn.dataset.perfil === 'independiente';
-            app.querySelector('[data-cob="incluye_eps"]').checked = true;
-            chkArl.checked = !estado.independiente;
-            selectNivelArl.style.display = chkArl.checked ? 'inline-block' : 'none';
-            irAPaso(2);
-        });
-    });
-
-    app.querySelectorAll('[data-volver="1"]').forEach(function (btn) {
-        btn.addEventListener('click', function () { irAPaso(1); });
-    });
-
-    chkArl.addEventListener('change', function () {
-        selectNivelArl.style.display = chkArl.checked ? 'inline-block' : 'none';
-    });
-
     document.getElementById('btnVerPlan').addEventListener('click', function () {
         var btn = this;
         var cobs = {};
@@ -723,17 +745,19 @@
             return;
         }
 
-        var salarioInput = cotSalario.value;
+        var ingresosInput = cotIngresos.value;
         estado.componentes = cobs;
-        estado.salario   = salarioInput ? parseFloat(salarioInput) : null;
+        estado.ingresos  = ingresosInput ? parseFloat(ingresosInput) : null;
         estado.nivel_arl = parseInt(selectNivelArl.value || '1', 10);
+        estado.seleccionado = null;
+        estado.resultado = null;
 
         btn.disabled = true;
         btn.textContent = 'Calculando...';
 
-        var body = Object.assign({ independiente: estado.independiente }, cobs, {
+        var body = Object.assign({}, cobs, {
             nivel_arl: estado.nivel_arl,
-            salario: estado.salario
+            ingresos: estado.ingresos
         });
 
         fetch(cotizarUrl, {
@@ -750,7 +774,7 @@
                 return;
             }
             renderResultado(res.data);
-            irAPaso(3);
+            irAPaso(2);
         })
         .catch(function () {
             btn.disabled = false;
@@ -759,62 +783,114 @@
         });
     });
 
-    function renderResultado(data) {
-        var html = '<div class="resultado-cot">';
-        html += '<div class="plan-elegido">' + data.plan_nombre + '</div>';
+    /** Arma el HTML de UNA columna (empleado o independiente) a partir del sub-objeto que
+     *  devuelve el backend para ese perfil. `mostrarBoton` es false cuando es la única columna
+     *  disponible (no hace falta "elegir" si no hay otra opción que comparar). */
+    function renderColumna(perfil, etiqueta, info, base, precios_visibles, precios_modo, mostrarBoton) {
+        var html = '<div class="resultado-cot" data-perfil="' + perfil + '">';
+        html += '<div class="etiqueta-perfil">' + etiqueta + '</div>';
+        html += '<div class="plan-elegido">' + info.plan_nombre + '</div>';
 
-        if (data.precios_visibles) {
-            html += '<div class="valor-grande">' + (data.precios_modo === 'desde' ? 'Desde ' : '')
-                  + formatoMoneda(data.valor_mensual_total) + '<small>/mes</small></div>';
+        if (precios_visibles) {
+            html += '<div class="valor-grande">' + (precios_modo === 'desde' ? 'Desde ' : '')
+                  + formatoMoneda(info.valor_mensual_total) + '<small>/mes</small></div>';
 
-            if (data.plan_pago_inicial) {
-                var p = data.plan_pago_inicial;
+            if (info.plan_pago_inicial) {
+                var p = info.plan_pago_inicial;
                 html += '<div class="linea"><span>' + p.mes_1_nombre + ' (solo afiliación)</span><strong>' + formatoMoneda(p.mes_1_afiliacion) + '</strong></div>';
                 html += '<div class="linea"><span>' + p.mes_2_nombre + ' (proporcional)</span><strong>' + formatoMoneda(p.mes_2_valor) + '</strong></div>';
                 html += '<div class="linea"><span>' + p.mes_3_nombre + ' en adelante</span><strong>' + formatoMoneda(p.mes_3_en_adelante) + '</strong></div>';
-            } else if (data.costo_afiliacion_sugerido > 0) {
-                html += '<div class="linea"><span>Afiliación (referencia)</span><strong>' + formatoMoneda(data.costo_afiliacion_sugerido) + '</strong></div>';
+            } else if (info.costo_afiliacion_sugerido > 0) {
+                html += '<div class="linea"><span>Afiliación (referencia)</span><strong>' + formatoMoneda(info.costo_afiliacion_sugerido) + '</strong></div>';
             }
+            html += '<div class="base-cot">Base de cotización: ' + formatoMoneda(base) + '</div>';
         } else {
             html += '<div class="valor-grande" style="font-size:1.25rem;">Un asesor te confirma el valor por WhatsApp</div>';
         }
 
-        if (mostrarAhorro && data.ahorro) {
-            html += '<div class="caja-ahorro">'
-                  + '<div class="titulo-ahorro">💰 Yendo directo como independiente pagarías</div>'
-                  + '<div class="monto-ahorro">' + formatoMoneda(data.ahorro.total) + '/mes</div>'
-                  + '<p>12,5% salud + 16% pensión sobre tu ingreso base — nosotros te asesoramos sin ese sobrecosto.</p>'
-                  + '</div>';
+        if (info.nota_ajuste) {
+            html += '<div class="cot-aviso">ℹ️ ' + info.nota_ajuste + '</div>';
+        }
+        if (info.nota_afp) {
+            html += '<div class="cot-aviso">⚠️ ' + info.nota_afp + '</div>';
+        }
+
+        if (mostrarBoton) {
+            html += '<button type="button" class="btn btn-brand btn-elegir" data-perfil="' + perfil + '">Elegir este plan</button>';
         }
 
         html += '</div>';
+        return html;
+    }
 
-        if (data.nota_afp) {
-            html += '<div class="cot-aviso">⚠️ ' + data.nota_afp + '</div>';
+    function renderResultado(data) {
+        var perfiles = [
+            { key: 'dependiente',   etiqueta: 'Como empleado',      info: data.dependiente },
+            { key: 'independiente', etiqueta: 'Como independiente', info: data.independiente }
+        ].filter(function (p) { return !!p.info; });
+
+        var html = '';
+        var multiples = perfiles.length > 1;
+
+        html += '<div class="resultado-columnas' + (multiples ? '' : ' una-sola') + '">';
+        perfiles.forEach(function (p) {
+            var base = p.key === 'dependiente' ? data.base_dependiente : data.base_independiente;
+            html += renderColumna(p.key, p.etiqueta, p.info, base, data.precios_visibles, data.precios_modo, multiples);
+        });
+        html += '</div>';
+
+        if (perfiles.length === 1) {
+            var faltante = perfiles[0].key === 'dependiente' ? 'independientes' : 'empleados';
+            html += '<div class="nota-perfil">Esta combinación solo aplica para '
+                  + (perfiles[0].key === 'dependiente' ? 'empleados' : 'independientes')
+                  + ' — no está disponible para ' + faltante + '.</div>';
         }
 
-        html += '<form class="form-lead" id="formLead">'
+        html += '<div id="cotFormLeadWrap" style="display:none;">'
+              + '<form class="form-lead" id="formLead">'
               + '<input type="text" name="sitio_web" style="position:absolute;left:-9999px;" tabindex="-1" autocomplete="off">'
               + '<div class="campo-cot"><label>Tu nombre</label><input type="text" id="leadNombre" required maxlength="150"></div>'
               + '<div class="campo-cot"><label>Tu celular (WhatsApp)</label><input type="tel" id="leadCelular" required maxlength="30" placeholder="Ej: 3001234567"></div>'
               + '<label class="check"><input type="checkbox" id="leadConsiento" required> Acepto que me contacten para esta cotización.</label>'
-              + '<div class="cot-nav"><button type="button" class="btn-volver" data-volver="2">← Cambiar selección</button>'
+              + '<div class="cot-nav"><button type="button" class="btn-volver" data-volver="1">← Cambiar selección</button>'
               + '<button type="submit" class="btn btn-brand">Enviar por WhatsApp</button></div>'
-              + '</form>';
+              + '</form>'
+              + '</div>';
 
         document.getElementById('cotResultado').innerHTML = html;
 
-        document.querySelectorAll('#cotPaso3 [data-volver="2"]').forEach(function (btn) {
-            btn.addEventListener('click', function () { irAPaso(2); });
+        var formWrap = document.getElementById('cotFormLeadWrap');
+
+        function elegir(perfil) {
+            estado.seleccionado = perfil;
+            estado.resultado = perfil === 'dependiente' ? data.dependiente : data.independiente;
+            document.querySelectorAll('#cotResultado .resultado-cot').forEach(function (card) {
+                card.classList.toggle('seleccionado', card.dataset.perfil === perfil);
+            });
+            formWrap.style.display = 'block';
+        }
+
+        document.querySelectorAll('#cotResultado .btn-elegir').forEach(function (btn) {
+            btn.addEventListener('click', function () { elegir(btn.dataset.perfil); });
+        });
+
+        // Con una sola columna disponible no hace falta el paso de "elegir": se selecciona sola.
+        if (perfiles.length === 1) {
+            elegir(perfiles[0].key);
+        }
+
+        document.querySelectorAll('#cotResultado [data-volver="1"]').forEach(function (btn) {
+            btn.addEventListener('click', function () { irAPaso(1); });
         });
 
         document.getElementById('formLead').addEventListener('submit', function (e) {
             e.preventDefault();
-            enviarLead(data);
+            enviarLead();
         });
     }
 
-    function enviarLead(resultado) {
+    function enviarLead() {
+        var resultado = estado.resultado;
         var nombre    = document.getElementById('leadNombre').value;
         var celular   = document.getElementById('leadCelular').value;
         var honeypot  = document.querySelector('#formLead [name="sitio_web"]').value;
@@ -824,13 +900,13 @@
         var body = {
             nombre: nombre,
             celular: celular,
-            perfil: estado.independiente ? 'independiente' : 'dependiente',
+            perfil: estado.seleccionado,
             incluye_eps: !!estado.componentes.incluye_eps,
             incluye_arl: !!estado.componentes.incluye_arl,
             incluye_pension: !!estado.componentes.incluye_pension,
             incluye_caja: !!estado.componentes.incluye_caja,
-            ingreso_mensual: estado.salario,
-            valor_mensual_cotizado: resultado.precios_visibles ? resultado.valor_mensual_total : null,
+            ingreso_mensual: estado.ingresos,
+            valor_mensual_cotizado: resultado.valor_mensual_total || null,
             plan_interes: resultado.plan_nombre,
             origen: 'cotizador',
             consiento_datos: document.getElementById('leadConsiento').checked,
@@ -850,7 +926,7 @@
             var numero = whatsapp.replace(/\D/g, '');
             if (numero && numero.indexOf('57') !== 0) numero = '57' + numero;
             var msg = 'Hola, soy ' + nombre + '. Me interesa el plan "' + resultado.plan_nombre + '"'
-                    + (resultado.precios_visibles ? ' (' + formatoMoneda(resultado.valor_mensual_total) + '/mes)' : '')
+                    + (resultado.valor_mensual_total ? ' (' + formatoMoneda(resultado.valor_mensual_total) + '/mes)' : '')
                     + '. ' + mensajeBase;
             window.open('https://wa.me/' + numero + '?text=' + encodeURIComponent(msg), '_blank');
         }
@@ -861,145 +937,197 @@
 })();
 
 (function () {
-    var carrusel = document.getElementById('carruselPlanes');
-    if (!carrusel) return;
-
-    var viewport   = carrusel.querySelector('.carrusel-viewport');
-    var track      = carrusel.querySelector('.carrusel-track');
-    var slides     = Array.prototype.slice.call(carrusel.querySelectorAll('.carrusel-slide'));
-    var btnPrev    = carrusel.querySelector('.carrusel-nav.prev');
-    var btnNext    = carrusel.querySelector('.carrusel-nav.next');
-    var dotsWrap   = carrusel.querySelector('.carrusel-dots');
-    var total      = slides.length;
     var reducirMov = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-    if (total === 0) { carrusel.style.display = 'none'; return; }
+    /** Fábrica: cada pestaña de "Planes disponibles" tiene su propio carrusel independiente. */
+    function crearCarrusel(carrusel) {
+        var viewport = carrusel.querySelector('.carrusel-viewport');
+        var track    = carrusel.querySelector('.carrusel-track');
+        var slides   = Array.prototype.slice.call(carrusel.querySelectorAll('.carrusel-slide'));
+        var btnPrev  = carrusel.querySelector('.carrusel-nav.prev');
+        var btnNext  = carrusel.querySelector('.carrusel-nav.next');
+        var dotsWrap = carrusel.querySelector('.carrusel-dots');
+        var total    = slides.length;
 
-    var indice = 0;
-    var timer  = null;
-    var visibles = 1;
-    var dots = [];
+        if (total === 0) { carrusel.style.display = 'none'; return null; }
 
-    function visiblesActuales() {
-        var ancho = window.innerWidth;
-        if (ancho <= 860) return 1;
-        if (ancho <= 1024) return 2;
-        return 3;
-    }
+        var indice = 0;
+        var timer  = null;
+        var visibles = 1;
+        var dots = [];
 
-    function maxIndice() {
-        return Math.max(0, total - visibles);
-    }
-
-    function construirDots() {
-        dotsWrap.innerHTML = '';
-        dots = [];
-        var pasos = maxIndice() + 1;
-        if (pasos <= 1) { dotsWrap.style.display = 'none'; return; }
-        dotsWrap.style.display = 'flex';
-        for (var i = 0; i < pasos; i++) {
-            var b = document.createElement('button');
-            b.type = 'button';
-            b.setAttribute('aria-label', 'Ir al plan ' + (i + 1));
-            (function (idx) {
-                b.addEventListener('click', function () { irA(idx); reiniciarAuto(); });
-            })(i);
-            dotsWrap.appendChild(b);
-            dots.push(b);
+        function visiblesActuales() {
+            var ancho = window.innerWidth;
+            if (ancho <= 860) return 1;
+            if (ancho <= 1024) return 2;
+            return 3;
         }
+
+        function maxIndice() {
+            return Math.max(0, total - visibles);
+        }
+
+        function construirDots() {
+            dotsWrap.innerHTML = '';
+            dots = [];
+            var pasos = maxIndice() + 1;
+            if (pasos <= 1) { dotsWrap.style.display = 'none'; return; }
+            dotsWrap.style.display = 'flex';
+            for (var i = 0; i < pasos; i++) {
+                var b = document.createElement('button');
+                b.type = 'button';
+                b.setAttribute('aria-label', 'Ir al plan ' + (i + 1));
+                (function (idx) {
+                    b.addEventListener('click', function () { irA(idx); reiniciar(); });
+                })(i);
+                dotsWrap.appendChild(b);
+                dots.push(b);
+            }
+        }
+
+        function actualizarDots() {
+            dots.forEach(function (d, i) { d.classList.toggle('activo', i === indice); });
+        }
+
+        function actualizarNav() {
+            var deshabilitado = maxIndice() === 0;
+            btnPrev.disabled = deshabilitado;
+            btnNext.disabled = deshabilitado;
+        }
+
+        function mover() {
+            var slide = slides[0];
+            var anchoSlide = slide.getBoundingClientRect().width;
+            var gap = 24; // 1.5rem
+            track.style.transform = 'translateX(-' + (indice * (anchoSlide + gap)) + 'px)';
+            actualizarDots();
+        }
+
+        function irA(i) {
+            indice = Math.max(0, Math.min(i, maxIndice()));
+            mover();
+        }
+
+        function siguiente() {
+            indice = indice >= maxIndice() ? 0 : indice + 1;
+            mover();
+        }
+
+        function anterior() {
+            indice = indice <= 0 ? maxIndice() : indice - 1;
+            mover();
+        }
+
+        function iniciar() {
+            if (reducirMov || maxIndice() === 0) return;
+            detener();
+            timer = setInterval(siguiente, 5000);
+        }
+
+        function detener() {
+            if (timer) { clearInterval(timer); timer = null; }
+        }
+
+        function reiniciar() {
+            detener();
+            iniciar();
+        }
+
+        function recalcular() {
+            visibles = visiblesActuales();
+            indice = Math.min(indice, maxIndice());
+            construirDots();
+            actualizarNav();
+            mover();
+        }
+
+        btnPrev.addEventListener('click', function () { anterior(); reiniciar(); });
+        btnNext.addEventListener('click', function () { siguiente(); reiniciar(); });
+
+        carrusel.addEventListener('mouseenter', detener);
+        carrusel.addEventListener('mouseleave', iniciar);
+        carrusel.addEventListener('focusin', detener);
+        carrusel.addEventListener('focusout', iniciar);
+
+        var touchStartX = null;
+        viewport.addEventListener('touchstart', function (e) {
+            touchStartX = e.touches[0].clientX;
+            detener();
+        }, { passive: true });
+        viewport.addEventListener('touchend', function (e) {
+            if (touchStartX === null) return;
+            var delta = e.changedTouches[0].clientX - touchStartX;
+            if (Math.abs(delta) > 40) {
+                if (delta < 0) { siguiente(); } else { anterior(); }
+            }
+            touchStartX = null;
+            iniciar();
+        });
+
+        recalcular();
+
+        return { iniciar: iniciar, detener: detener, recalcular: recalcular };
     }
 
-    function actualizarDots() {
-        dots.forEach(function (d, i) { d.classList.toggle('activo', i === indice); });
-    }
-
-    function actualizarNav() {
-        var deshabilitado = maxIndice() === 0;
-        btnPrev.disabled = deshabilitado;
-        btnNext.disabled = deshabilitado;
-    }
-
-    function mover() {
-        var slide = slides[0];
-        var anchoSlide = slide.getBoundingClientRect().width;
-        var gap = 24; // 1.5rem
-        track.style.transform = 'translateX(-' + (indice * (anchoSlide + gap)) + 'px)';
-        actualizarDots();
-    }
-
-    function irA(i) {
-        indice = Math.max(0, Math.min(i, maxIndice()));
-        mover();
-    }
-
-    function siguiente() {
-        indice = indice >= maxIndice() ? 0 : indice + 1;
-        mover();
-    }
-
-    function anterior() {
-        indice = indice <= 0 ? maxIndice() : indice - 1;
-        mover();
-    }
-
-    function iniciarAuto() {
-        if (reducirMov || maxIndice() === 0) return;
-        detenerAuto();
-        timer = setInterval(siguiente, 5000);
-    }
-
-    function detenerAuto() {
-        if (timer) { clearInterval(timer); timer = null; }
-    }
-
-    function reiniciarAuto() {
-        detenerAuto();
-        iniciarAuto();
-    }
-
-    function recalcular() {
-        visibles = visiblesActuales();
-        indice = Math.min(indice, maxIndice());
-        construirDots();
-        actualizarNav();
-        mover();
-        iniciarAuto();
-    }
-
-    btnPrev.addEventListener('click', function () { anterior(); reiniciarAuto(); });
-    btnNext.addEventListener('click', function () { siguiente(); reiniciarAuto(); });
-
-    carrusel.addEventListener('mouseenter', detenerAuto);
-    carrusel.addEventListener('mouseleave', iniciarAuto);
-    carrusel.addEventListener('focusin', detenerAuto);
-    carrusel.addEventListener('focusout', iniciarAuto);
-
-    document.addEventListener('visibilitychange', function () {
-        if (document.hidden) { detenerAuto(); } else { iniciarAuto(); }
+    var instancias = {}; // grupo -> {iniciar, detener, recalcular}
+    document.querySelectorAll('.carrusel-planes').forEach(function (el) {
+        var inst = crearCarrusel(el);
+        if (inst) instancias[el.dataset.grupo] = inst;
     });
 
-    var touchStartX = null;
-    viewport.addEventListener('touchstart', function (e) {
-        touchStartX = e.touches[0].clientX;
-        detenerAuto();
-    }, { passive: true });
-    viewport.addEventListener('touchend', function (e) {
-        if (touchStartX === null) return;
-        var delta = e.changedTouches[0].clientX - touchStartX;
-        if (Math.abs(delta) > 40) {
-            if (delta < 0) { siguiente(); } else { anterior(); }
-        }
-        touchStartX = null;
-        iniciarAuto();
+    // Solo el panel visible al cargar arranca su autoplay — los demás quedan pausados hasta
+    // que su pestaña se active (evita animar carruseles ocultos y, sobre todo, evita medir
+    // anchos de slides con display:none, que darían 0).
+    document.querySelectorAll('.panel-grupo-plan.activo .carrusel-planes').forEach(function (el) {
+        var inst = instancias[el.dataset.grupo];
+        if (inst) inst.iniciar();
+    });
+
+    document.addEventListener('visibilitychange', function () {
+        document.querySelectorAll('.panel-grupo-plan.activo .carrusel-planes').forEach(function (el) {
+            var inst = instancias[el.dataset.grupo];
+            if (inst) inst[document.hidden ? 'detener' : 'iniciar']();
+        });
     });
 
     var resizeTimer = null;
     window.addEventListener('resize', function () {
         clearTimeout(resizeTimer);
-        resizeTimer = setTimeout(recalcular, 150);
+        resizeTimer = setTimeout(function () {
+            Object.keys(instancias).forEach(function (g) { instancias[g].recalcular(); });
+        }, 150);
     });
 
-    recalcular();
+    document.querySelectorAll('.tab-plan').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var grupoElegido = btn.dataset.tabGrupo;
+            document.querySelectorAll('.tab-plan').forEach(function (b) {
+                b.classList.toggle('activo', b === btn);
+            });
+            document.querySelectorAll('.panel-grupo-plan').forEach(function (panel) {
+                var activo = panel.dataset.panelGrupo === grupoElegido;
+                panel.classList.toggle('activo', activo);
+                var inst = instancias[panel.dataset.panelGrupo];
+                if (!inst) return;
+                if (activo) { inst.recalcular(); inst.iniciar(); } else { inst.detener(); }
+            });
+        });
+    });
+
+    // Selectores de nivel de riesgo / días en las tarjetas "Solo ARL" y "Por días": el precio
+    // por cada opción ya viene precalculado desde el backend (evita ida y vuelta al servidor).
+    document.querySelectorAll('.selector-precio').forEach(function (sel) {
+        sel.addEventListener('change', function () {
+            var precios = JSON.parse(sel.dataset.precios);
+            var valor = precios[sel.value];
+            if (valor === null || valor === undefined) return;
+            var card = sel.closest('.card-plan');
+            var elValor = card && card.querySelector('.precio-plan .valor');
+            if (!elValor) return;
+            var prefijo = elValor.dataset.prefijo || '';
+            elValor.innerHTML = prefijo + '$' + Math.round(valor).toLocaleString('es-CO') + '<small>/mes</small>';
+        });
+    });
 })();
 </script>
 @endsection

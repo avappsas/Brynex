@@ -129,10 +129,23 @@ class PaginaAliadoController extends Controller
     }
 
     /**
-     * Cotizador "Arma tu plan": recibe perfil + coberturas elegidas por el visitante y devuelve
-     * el valor mensual calculado con la MISMA lógica que usa la IA (CotizacionPublicaService),
-     * nunca en JS. Nunca expone el desglose interno por componente ni la comisión del asesor —
-     * mismo criterio de privacidad que CotizarPlanPublicoTool.
+     * Modalidades que representan una afiliación REAL como empleado dependiente (0 = "Dependiente
+     * E", 7 = "EPS+ARL"). Si al resolver la modalidad de un plan para el perfil dependiente el
+     * resultado cae en cualquier otra modalidad (p.ej. 10 = Independientes), es porque ese plan
+     * en la práctica NO se ofrece como dependiente — el cascade de resolverModalidadPermitida()
+     * solo lo encontró ahí de rebote (ver PRIORIDAD_DEPENDIENTE_IDS en CotizacionPublicaService).
+     * Mostrarlo como "columna empleado" sería repetir el mismo número de la columna independiente
+     * disfrazado de otra cosa — más confuso que útil.
+     */
+    private const MODALIDADES_DEPENDIENTE_REAL = [0, 7];
+
+    /**
+     * Cotizador "Arma tu plan": recibe las coberturas elegidas por el visitante y devuelve DOS
+     * cotizaciones — empleado (dependiente) e independiente — calculadas con la MISMA lógica que
+     * usa la IA (CotizacionPublicaService), nunca en JS. Si la combinación pedida no existe
+     * realmente como dependiente, esa columna viene en null y el frontend explica por qué. Nunca
+     * expone el desglose interno por componente ni la comisión del asesor — mismo criterio de
+     * privacidad que CotizarPlanPublicoTool.
      */
     public function cotizar(Request $request, string $slug)
     {
@@ -146,13 +159,12 @@ class PaginaAliadoController extends Controller
         }
 
         $validado = $request->validate([
-            'independiente'   => 'required|boolean',
             'incluye_eps'     => 'required|boolean',
             'incluye_arl'     => 'required|boolean',
             'incluye_pension' => 'required|boolean',
             'incluye_caja'    => 'required|boolean',
             'nivel_arl'       => 'nullable|integer|min:1|max:5',
-            'salario'         => 'nullable|numeric|min:0|max:999999999',
+            'ingresos'        => 'nullable|numeric|min:0|max:999999999',
         ]);
 
         $componentes = [
@@ -166,40 +178,74 @@ class PaginaAliadoController extends Controller
             return response()->json(['error' => 'Selecciona al menos una cobertura.'], 422);
         }
 
-        $independiente = $validado['independiente'];
+        $nivelArl       = $validado['nivel_arl'] ?? 1;
+        $salarioMinimo  = ConfiguracionBrynex::salarioMinimo();
+        $ingresos       = $validado['ingresos'] ?? $salarioMinimo;
 
-        // Regla real (Configuración → Modalidades → "AFP obligatorio"): la web no puede
-        // confirmar la exención (edad/género/extranjería) de forma natural como la IA. A
-        // diferencia del flujo de WhatsApp (donde la IA sí sube el plan y lo explica en
-        // conversación), aquí se respeta LITERALMENTE lo que el visitante marcó — mostrar un
-        // valor con pensión que no pidió sería más confuso que útil sin poder explicárselo en
-        // el momento — y en vez de eso se avisa que el precio puede no aplicarle si no califica
-        // para la exención, remitiéndolo a confirmar por WhatsApp.
-        $requiereConfirmarExencionPension = CotizacionPublicaService::requiereConfirmarExencionPension($componentes, false);
+        // Como empleado, el ingreso ES la base de cotización (IBC). Como independiente, la ley
+        // exige cotizar sobre el 40% de los ingresos, nunca por debajo del salario mínimo — el
+        // mismo % que ya usa la calculadora de ahorro (pctIbcIndependienteSugerido).
+        $baseDependiente   = $ingresos;
+        $baseIndependiente = max($salarioMinimo, $ingresos * ConfiguracionBrynex::pctIbcIndependienteSugerido() / 100);
 
-        [$plan, $coincidenciaExacta] = CotizacionPublicaService::resolverPlan($componentes, $independiente);
-        if (!$plan) {
+        $dependiente   = $this->cotizarPerfil($componentes, false, $aliado->id, $config, $baseDependiente, $nivelArl);
+        $independiente = $this->cotizarPerfil($componentes, true, $aliado->id, $config, $baseIndependiente, $nivelArl);
+
+        if (!$dependiente && !$independiente) {
             return response()->json(['error' => 'No tenemos un plan disponible con esa combinación. Escríbenos por WhatsApp y te asesoramos.'], 422);
         }
 
-        // La modalidad se resuelve INTERNAMENTE contra modalidad_planes (misma tabla del
-        // cotizador admin) — al visitante nunca se le pregunta ni se le muestra "modalidad".
-        $modalidad = CotizacionPublicaService::resolverModalidadPermitida($plan, $independiente);
-        if (!$modalidad) {
-            return response()->json(['error' => 'Esa combinación requiere asesoría personalizada. Escríbenos por WhatsApp y te ayudamos.'], 422);
-        }
-
-        $salario = $validado['salario'] ?? ConfiguracionBrynex::salarioMinimo();
-
-        $resultado = CotizacionPublicaService::cotizar($plan, $modalidad, $aliado->id, [
-            'salario'   => $salario,
-            'nivel_arl' => $validado['nivel_arl'] ?? 1,
+        MetricaService::registrar($aliado->id, MetricaService::COTIZACION_COMPLETADA, [
+            'plan' => ($dependiente['plan_nombre'] ?? null) ?: $independiente['plan_nombre'],
         ]);
 
-        $respuesta = [
-            'plan_nombre'          => $plan->nombre,
-            'coincidencia_exacta'  => $coincidenciaExacta,
-            'componentes_incluidos' => [
+        return response()->json([
+            'ingresos'           => $ingresos,
+            'base_dependiente'   => $baseDependiente,
+            'base_independiente' => $baseIndependiente,
+            'precios_visibles'   => (bool) $config->mostrar_precios,
+            'precios_modo'       => $config->precios_modo,
+            'dependiente'        => $dependiente,
+            'independiente'      => $independiente,
+        ]);
+    }
+
+    /**
+     * Cotiza una combinación de coberturas para UN perfil (dependiente o independiente).
+     * Devuelve null si ese perfil no aplica: sin plan, sin modalidad, o — para dependiente — si
+     * la modalidad resuelta no es una modalidad de empleado real (ver MODALIDADES_DEPENDIENTE_REAL).
+     */
+    private function cotizarPerfil(
+        array $componentes,
+        bool $independiente,
+        int $aliadoId,
+        PaginaAliadoConfig $config,
+        float $base,
+        int $nivelArl
+    ): ?array {
+        [$plan, $coincidenciaExacta] = CotizacionPublicaService::resolverPlan($componentes, $independiente);
+        if (!$plan) {
+            return null;
+        }
+
+        $modalidad = CotizacionPublicaService::resolverModalidadPermitida($plan, $independiente);
+        if (!$modalidad) {
+            return null;
+        }
+
+        if (!$independiente && !in_array((int) $modalidad->id, self::MODALIDADES_DEPENDIENTE_REAL, true)) {
+            return null;
+        }
+
+        $resultado = CotizacionPublicaService::cotizar($plan, $modalidad, $aliadoId, [
+            'salario'   => $base,
+            'nivel_arl' => $nivelArl,
+        ]);
+
+        $salida = [
+            'plan_nombre'            => $plan->nombre,
+            'coincidencia_exacta'    => $coincidenciaExacta,
+            'componentes_incluidos'  => [
                 'eps'     => (bool) $plan->incluye_eps,
                 'arl'     => (bool) $plan->incluye_arl,
                 'pension' => (bool) $plan->incluye_pension,
@@ -207,32 +253,31 @@ class PaginaAliadoController extends Controller
             ],
         ];
 
-        if ($requiereConfirmarExencionPension) {
-            $respuesta['nota_afp'] = 'Este valor NO incluye pensión. Solo puedes omitirla si estás exento: ya estás '
+        // Regla real (Configuración → Modalidades → "AFP obligatorio"): la web no puede
+        // confirmar la exención (edad/género/extranjería) de forma natural como la IA. Se
+        // respeta LITERALMENTE lo que el visitante marcó (nunca se le sube el plan en
+        // silencio) y en vez de eso se avisa que el precio puede no aplicarle si no califica
+        // para la exención, remitiéndolo a confirmar por WhatsApp.
+        if (CotizacionPublicaService::requiereConfirmarExencionPension($componentes, false)) {
+            $salida['nota_afp'] = 'Este valor NO incluye pensión. Solo puedes omitirla si estás exento: ya estás '
                 . 'pensionado, eres hombre desde 55 años, mujer desde 50, o extranjero con cédula de extranjería o '
                 . 'permiso temporal. Si no calificas, escríbenos por WhatsApp para confirmar el valor con pensión.';
         }
 
-        if ($config->mostrar_precios) {
-            $respuesta['precios_visibles']    = true;
-            $respuesta['precios_modo']        = $config->precios_modo;
-            $respuesta['valor_mensual_total'] = $resultado['total'];
-            $respuesta['costo_afiliacion_sugerido'] = $resultado['costo_afiliacion_sugerido'];
-            if (!empty($resultado['plan_pago_inicial'])) {
-                $respuesta['plan_pago_inicial'] = $resultado['plan_pago_inicial'];
-            }
-            if ($independiente) {
-                $respuesta['ahorro'] = null; // como independiente ya es la vía directa, no aplica comparación
-            } else {
-                $respuesta['ahorro'] = CotizacionPublicaService::costoDirectoIndependiente($salario);
-            }
-        } else {
-            $respuesta['precios_visibles'] = false;
+        if (!$coincidenciaExacta) {
+            $salida['nota_ajuste'] = 'No existe un plan exacto con esa combinación; el más cercano disponible es "'
+                . $plan->nombre . '".';
         }
 
-        MetricaService::registrar($aliado->id, MetricaService::COTIZACION_COMPLETADA, ['plan' => $plan->nombre]);
+        if ($config->mostrar_precios) {
+            $salida['valor_mensual_total']        = $resultado['total'];
+            $salida['costo_afiliacion_sugerido']  = $resultado['costo_afiliacion_sugerido'];
+            if (!empty($resultado['plan_pago_inicial'])) {
+                $salida['plan_pago_inicial'] = $resultado['plan_pago_inicial'];
+            }
+        }
 
-        return response()->json($respuesta);
+        return $salida;
     }
 
     /**
