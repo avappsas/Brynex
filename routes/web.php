@@ -861,6 +861,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/proyectos/{proyecto}/movimiento', [$pro, 'agregarMovimiento'])->name('proyectos.movimiento');
         Route::delete('/proyectos-movimiento/{movimiento}', [$pro, 'eliminarMovimiento'])->name('proyectos.movimiento.destroy');
         Route::put('/proyectos-movimiento/{movimiento}', [$pro, 'actualizarMovimiento'])->name('proyectos.movimiento.update');
+        Route::get('/proyectos-movimiento/{movimiento}/soporte', [$pro, 'descargarSoporteMovimiento'])->name('proyectos.movimiento.descargar-soporte');
     });
 });
 

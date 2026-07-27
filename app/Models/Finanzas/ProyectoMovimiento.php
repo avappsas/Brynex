@@ -25,6 +25,7 @@ class ProyectoMovimiento extends BaseFinanzasModel
         'monto',
         'observacion',
         'cuenta_id',
+        'soporte_path',
     ];
 
     protected $casts = [

@@ -186,6 +186,7 @@ class ProyectoController extends Controller
             'fecha' => 'required|date',
             'observacion' => 'nullable|string|max:255',
             'cuenta_id' => 'nullable|integer',
+            'soporte' => 'nullable|file|mimes:jpeg,png,jpg,webp|max:10240',
         ]);
 
         $tipo = $request->tipo;
@@ -195,6 +196,12 @@ class ProyectoController extends Controller
             $tipo = 'egreso';
         }
 
+        // Manejo del archivo de soporte
+        $soportePath = null;
+        if ($request->hasFile('soporte')) {
+            $soportePath = $request->file('soporte')->store('finanzas/proyectos_soportes', 'local');
+        }
+
         ProyectoMovimiento::create([
             'proyecto_id' => $proyecto->id,
             'tipo'        => $tipo,
@@ -202,6 +209,7 @@ class ProyectoController extends Controller
             'fecha'       => $request->fecha,
             'observacion' => $request->observacion,
             'cuenta_id'   => $this->resolverCuenta($request->cuenta_id),
+            'soporte_path'=> $soportePath,
         ]);
 
         $this->invalidarCacheFinanzas(
@@ -226,6 +234,8 @@ class ProyectoController extends Controller
             'fecha' => 'required|date',
             'observacion' => 'nullable|string|max:255',
             'cuenta_id' => 'nullable|integer',
+            'soporte' => 'nullable|file|mimes:jpeg,png,jpg,webp|max:10240',
+            'eliminar_soporte' => 'nullable|boolean',
         ]);
 
         $tipo = $request->tipo;
@@ -235,12 +245,31 @@ class ProyectoController extends Controller
             $tipo = 'egreso';
         }
 
+        // Manejo del archivo de soporte
+        $soportePath = $movimiento->soporte_path;
+
+        if ($request->boolean('eliminar_soporte')) {
+            if ($movimiento->soporte_path) {
+                \Illuminate\Support\Facades\Storage::disk('local')->delete($movimiento->soporte_path);
+            }
+            $soportePath = null;
+        }
+
+        if ($request->hasFile('soporte')) {
+            // Eliminar soporte anterior
+            if ($movimiento->soporte_path) {
+                \Illuminate\Support\Facades\Storage::disk('local')->delete($movimiento->soporte_path);
+            }
+            $soportePath = $request->file('soporte')->store('finanzas/proyectos_soportes', 'local');
+        }
+
         $movimiento->update([
             'tipo'        => $tipo,
             'monto'       => $request->monto,
             'fecha'       => $request->fecha,
             'observacion' => $request->observacion,
             'cuenta_id'   => $this->resolverCuenta($request->cuenta_id),
+            'soporte_path'=> $soportePath,
         ]);
 
         $this->invalidarCacheFinanzas(
@@ -259,9 +288,29 @@ class ProyectoController extends Controller
         $movimiento = ProyectoMovimiento::findOrFail($id);
         $proyecto = Proyecto::where('user_id', Auth::id())->findOrFail($movimiento->proyecto_id);
 
+        if ($movimiento->soporte_path) {
+            \Illuminate\Support\Facades\Storage::disk('local')->delete($movimiento->soporte_path);
+        }
+
         $movimiento->delete();
         $this->invalidarCacheFinanzas();
 
         return redirect()->route('finanzas.proyectos.show', $proyecto->id)->with('success', 'Movimiento eliminado con éxito.');
+    }
+
+    /**
+     * Descarga de forma segura el archivo de soporte de un movimiento de proyecto.
+     */
+    public function descargarSoporteMovimiento($id)
+    {
+        $movimiento = ProyectoMovimiento::findOrFail($id);
+        // Validar propiedad a través del proyecto
+        $proyecto = Proyecto::where('user_id', Auth::id())->findOrFail($movimiento->proyecto_id);
+
+        if (!$movimiento->soporte_path || !\Illuminate\Support\Facades\Storage::disk('local')->exists($movimiento->soporte_path)) {
+            abort(404, 'Archivo de soporte no encontrado.');
+        }
+
+        return \Illuminate\Support\Facades\Storage::disk('local')->download($movimiento->soporte_path);
     }
 }

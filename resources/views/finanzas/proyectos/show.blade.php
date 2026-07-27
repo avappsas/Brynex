@@ -5,7 +5,125 @@
 
 @section('contenido')
 @include('finanzas.partials._responsive_fin')
-<div class="finanzas-container" x-data="{ openMovimiento: false, mostrarBalanceHistorico: false, openEditar: false, itemEditar: {}, openConfirmarEliminar: false }">
+<div class="finanzas-container" x-data="{
+    openMovimiento: false,
+    mostrarBalanceHistorico: false,
+    openEditar: false,
+    itemEditar: {},
+    openConfirmarEliminar: false,
+    soportePreview: null,
+    soporteName: '',
+    soportePreviewEditar: null,
+    soporteNameEditar: '',
+    soporteActualEditar: null,
+    eliminarSoporteAnterior: false,
+    async pegarSoporte() {
+        try {
+            const clipboardItems = await navigator.clipboard.read();
+            for (const item of clipboardItems) {
+                for (const type of item.types) {
+                    if (type.startsWith('image/')) {
+                        const blob = await item.getType(type);
+                        const file = new File([blob], 'soporte_crear_' + Date.now() + '.png', { type: type });
+                        const dt = new DataTransfer();
+                        dt.items.add(file);
+                        this.$refs.soporteInputCrear.files = dt.files;
+                        this.soporteName = file.name;
+                        this.soportePreview = URL.createObjectURL(blob);
+                        return;
+                    }
+                }
+            }
+            alert('No se encontró ninguna imagen en el portapapeles. Copia una imagen primero.');
+        } catch (err) {
+            alert('No se pudo acceder al portapapeles. Intenta subir el archivo seleccionándolo.');
+        }
+    },
+    handleFileChange(e) {
+        const file = e.target.files[0];
+        if (file) {
+            this.soporteName = file.name;
+            this.soportePreview = URL.createObjectURL(file);
+        }
+    },
+    limpiarSoporte() {
+        if (this.$refs.soporteInputCrear) {
+            this.$refs.soporteInputCrear.value = '';
+        }
+        this.soporteName = '';
+        this.soportePreview = null;
+    },
+    async pegarSoporteEditar() {
+        try {
+            const clipboardItems = await navigator.clipboard.read();
+            for (const item of clipboardItems) {
+                for (const type of item.types) {
+                    if (type.startsWith('image/')) {
+                        const blob = await item.getType(type);
+                        const file = new File([blob], 'soporte_editar_' + Date.now() + '.png', { type: type });
+                        const dt = new DataTransfer();
+                        dt.items.add(file);
+                        this.$refs.soporteInputEditar.files = dt.files;
+                        this.soporteNameEditar = file.name;
+                        this.soportePreviewEditar = URL.createObjectURL(blob);
+                        this.eliminarSoporteAnterior = true;
+                        return;
+                    }
+                }
+            }
+            alert('No se encontró ninguna imagen en el portapapeles. Copia una imagen primero.');
+        } catch (err) {
+            alert('No se pudo acceder al portapapeles. Intenta subir el archivo seleccionándolo.');
+        }
+    },
+    handleFileChangeEditar(e) {
+        const file = e.target.files[0];
+        if (file) {
+            this.soporteNameEditar = file.name;
+            this.soportePreviewEditar = URL.createObjectURL(file);
+            this.eliminarSoporteAnterior = true;
+        }
+    },
+    limpiarSoporteEditar() {
+        if (this.$refs.soporteInputEditar) {
+            this.$refs.soporteInputEditar.value = '';
+        }
+        this.soporteNameEditar = '';
+        this.soportePreviewEditar = null;
+        this.eliminarSoporteAnterior = true;
+    },
+    handlePaste(e) {
+        if (this.openMovimiento) {
+            const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+            for (const item of items) {
+                if (item.kind === 'file' && item.type.startsWith('image/')) {
+                    const blob = item.getAsFile();
+                    const file = new File([blob], 'soporte_crear_' + Date.now() + '.png', { type: item.type });
+                    const dt = new DataTransfer();
+                    dt.items.add(file);
+                    this.$refs.soporteInputCrear.files = dt.files;
+                    this.soporteName = file.name;
+                    this.soportePreview = URL.createObjectURL(blob);
+                }
+            }
+        } else if (this.openEditar) {
+            const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+            for (const item of items) {
+                if (item.kind === 'file' && item.type.startsWith('image/')) {
+                    const blob = item.getAsFile();
+                    const file = new File([blob], 'soporte_editar_' + Date.now() + '.png', { type: item.type });
+                    const dt = new DataTransfer();
+                    dt.items.add(file);
+                    this.$refs.soporteInputEditar.files = dt.files;
+                    this.soporteNameEditar = file.name;
+                    this.soportePreviewEditar = URL.createObjectURL(blob);
+                    this.eliminarSoporteAnterior = true;
+                }
+            }
+        }
+    }
+}"
+@paste.window="handlePaste($event)">
 
     @component('finanzas.partials._header_banner', [
         'titulo' => '🏗️ Proyecto: ' . $proyecto->nombre,
@@ -144,7 +262,14 @@
                 @forelse($movimientos as $mov)
                     <tr>
                         <td>{{ Carbon\Carbon::parse($mov->fecha)->format('d/m/Y') }}</td>
-                        <td>{{ $mov->observacion }}</td>
+                        <td>
+                            {{ $mov->observacion }}
+                            @if($mov->soporte_path)
+                                <a href="{{ route('finanzas.proyectos.movimiento.descargar-soporte', $mov->id) }}" class="badge-soporte-link" title="Descargar soporte de pago" target="_blank">
+                                    📎 Soporte
+                                </a>
+                            @endif
+                        </td>
                         <td style="text-align:right; font-weight:700; color:#10b981;">
                             @if($mov->tipo === 'ingreso' || $mov->tipo === 'entrada')
                                 ${{ number_format($mov->monto, 0, ',', '.') }} COP
@@ -170,8 +295,9 @@
                                     'monto' => $mov->monto,
                                     'fecha' => $mov->fecha,
                                     'observacion' => $mov->observacion,
-                                    'cuenta_id' => $mov->cuenta_id
-                                ]) }}; openEditar = true" class="btn-icon-bx edit" style="background: rgba(59, 130, 246, 0.1); color: #3b82f6; border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 6px; padding: 0.2rem 0.5rem; cursor: pointer; font-size: 0.78rem; font-weight:600; display:inline-flex; align-items:center; gap:0.25rem;" title="Editar">
+                                    'cuenta_id' => $mov->cuenta_id,
+                                    'soporte_path' => $mov->soporte_path
+                                ]) }}; soporteActualEditar = itemEditar.soporte_path || null; soportePreviewEditar = null; soporteNameEditar = ''; eliminarSoporteAnterior = false; openEditar = true" class="btn-icon-bx edit" style="background: rgba(59, 130, 246, 0.1); color: #3b82f6; border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 6px; padding: 0.2rem 0.5rem; cursor: pointer; font-size: 0.78rem; font-weight:600; display:inline-flex; align-items:center; gap:0.25rem;" title="Editar">
                                     ✏️ Editar
                                 </button>
                             </td>
@@ -208,13 +334,13 @@
     </div>
 
     {{-- Modal Registrar Movimiento --}}
-    <div x-show="openMovimiento" class="modal-overlay-bx" @click.self="openMovimiento = false" x-cloak>
+    <div x-show="openMovimiento" class="modal-overlay-bx" @click.self="openMovimiento = false; limpiarSoporte()" x-cloak>
         <div class="modal-box-bx">
             <div class="modal-head-bx" style="background:linear-gradient(135deg, #14532d, #166534);">
                 <h3>💸 Registrar Movimiento</h3>
-                <button @click="openMovimiento = false" class="modal-close-bx">&times;</button>
+                <button @click="openMovimiento = false; limpiarSoporte()" class="modal-close-bx">&times;</button>
             </div>
-            <form action="{{ route('finanzas.proyectos.movimiento', $proyecto->id) }}" method="POST">
+            <form action="{{ route('finanzas.proyectos.movimiento', $proyecto->id) }}" method="POST" enctype="multipart/form-data">
                 @csrf
                 <div class="modal-body-bx">
                     <div class="form-group-bx">
@@ -247,9 +373,31 @@
                         <label class="form-label-bx">Concepto / Descripción</label>
                         <input type="text" name="observacion" placeholder="Ej: Pago mensualidad cliente, Servidor AWS" class="form-input-bx" required>
                     </div>
+                    <div class="form-group-bx" style="margin-top:1rem;">
+                        <label class="form-label-bx">Soporte de Pago (Opcional)</label>
+                        <input type="file" name="soporte" x-ref="soporteInputCrear" accept="image/*" style="display: none;" @change="handleFileChange($event)">
+                        
+                        <div style="display: flex; gap: 0.5rem; margin-top: 0.25rem;">
+                            <button type="button" @click="pegarSoporte()" class="btn-glass-bx" style="display: flex; align-items: center; gap: 0.35rem; padding: 0.4rem 0.75rem; font-size: 0.75rem; background: #e2e8f0;">
+                                📋 Pegar Soporte
+                            </button>
+                            <button type="button" @click="$refs.soporteInputCrear.click()" class="btn-glass-bx" style="display: flex; align-items: center; gap: 0.35rem; padding: 0.4rem 0.75rem; font-size: 0.75rem; background: #e2e8f0;">
+                                📸 Tomar Foto / Subir
+                            </button>
+                        </div>
+
+                        {{-- Previsualización de Soporte --}}
+                        <div x-show="soportePreview" x-cloak style="margin-top: 0.75rem; position: relative; display: inline-block;">
+                            <img :src="soportePreview" style="max-height: 100px; border-radius: 8px; border: 1px solid #cbd5e1;">
+                            <button type="button" @click="limpiarSoporte()" class="btn-icon-bx" style="position: absolute; top: -5px; right: -5px; background: #ef4444; color: white; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; font-size: 0.7rem;">
+                                &times;
+                            </button>
+                            <div style="font-size: 0.65rem; color: #64748b; margin-top: 0.25rem;" x-text="soporteName"></div>
+                        </div>
+                    </div>
                 </div>
                 <div class="modal-foot-bx">
-                    <button type="button" @click="openMovimiento = false" class="btn-glass-bx">Cancelar</button>
+                    <button type="button" @click="openMovimiento = false; limpiarSoporte()" class="btn-glass-bx">Cancelar</button>
                     <button type="submit" class="btn-fin success" style="background:#166534;">Registrar</button>
                 </div>
             </form>
@@ -257,13 +405,13 @@
     </div>
 
     {{-- Modal Editar Movimiento --}}
-    <div x-show="openEditar" class="modal-overlay-bx" @click.self="openEditar = false" x-cloak>
+    <div x-show="openEditar" class="modal-overlay-bx" @click.self="openEditar = false; limpiarSoporteEditar()" x-cloak>
         <div class="modal-box-bx">
             <div class="modal-head-bx" style="background:linear-gradient(135deg, #1e40af, #2563eb);">
                 <h3>✏️ Editar Movimiento</h3>
-                <button @click="openEditar = false" class="modal-close-bx">&times;</button>
+                <button @click="openEditar = false; limpiarSoporteEditar()" class="modal-close-bx">&times;</button>
             </div>
-            <form :action="'{{ route('finanzas.proyectos.movimiento.update', 'ID_TEMPORAL') }}'.replace('ID_TEMPORAL', itemEditar.id)" method="POST">
+            <form :action="'{{ route('finanzas.proyectos.movimiento.update', 'ID_TEMPORAL') }}'.replace('ID_TEMPORAL', itemEditar.id)" method="POST" enctype="multipart/form-data">
                 @csrf
                 @method('PUT')
                 <div class="modal-body-bx">
@@ -296,13 +444,47 @@
                         <label class="form-label-bx">Concepto / Descripción</label>
                         <input type="text" name="observacion" x-model="itemEditar.observacion" placeholder="Ej: Pago mensualidad cliente..." class="form-input-bx" required>
                     </div>
+                    <div class="form-group-bx" style="margin-top:1rem;">
+                        <label class="form-label-bx">Soporte de Pago (Opcional)</label>
+                        <input type="file" name="soporte" x-ref="soporteInputEditar" accept="image/*" style="display: none;" @change="handleFileChangeEditar($event)">
+                        
+                        <div style="display: flex; gap: 0.5rem; margin-top: 0.25rem;">
+                            <button type="button" @click="pegarSoporteEditar()" class="btn-glass-bx" style="display: flex; align-items: center; gap: 0.35rem; padding: 0.4rem 0.75rem; font-size: 0.75rem; background: #e2e8f0;">
+                                📋 Pegar Soporte
+                            </button>
+                            <button type="button" @click="$refs.soporteInputEditar.click()" class="btn-glass-bx" style="display: flex; align-items: center; gap: 0.35rem; padding: 0.4rem 0.75rem; font-size: 0.75rem; background: #e2e8f0;">
+                                📸 Tomar Foto / Subir
+                            </button>
+                        </div>
+
+                        {{-- Soporte Actual --}}
+                        <div x-show="soporteActualEditar && !eliminarSoporteAnterior" x-cloak style="margin-top:0.75rem; font-size:0.8rem; display:flex; align-items:center; gap:0.5rem;">
+                            <span style="color:#64748b;">Soporte actual:</span>
+                            <a :href="'{{ route('finanzas.proyectos.movimiento.descargar-soporte', 'ID_TEMPORAL') }}'.replace('ID_TEMPORAL', itemEditar.id)" target="_blank" class="badge-soporte-link" style="margin-left:0;">
+                                📎 Ver Soporte
+                            </a>
+                            <button type="button" @click="eliminarSoporteAnterior = true" class="btn-icon-bx" style="color:#ef4444; border:none; background:none; cursor:pointer; font-size:0.8rem; padding:0; display:inline-flex; align-items:center;" title="Quitar soporte">
+                                🗑️ Quitar
+                            </button>
+                        </div>
+                        <input type="hidden" name="eliminar_soporte" :value="eliminarSoporteAnterior ? 1 : 0">
+
+                        {{-- Previsualización de Nuevo Soporte --}}
+                        <div x-show="soportePreviewEditar" x-cloak style="margin-top: 0.75rem; position: relative; display: inline-block;">
+                            <img :src="soportePreviewEditar" style="max-height: 100px; border-radius: 8px; border: 1px solid #cbd5e1;">
+                            <button type="button" @click="limpiarSoporteEditar()" class="btn-icon-bx" style="position: absolute; top: -5px; right: -5px; background: #ef4444; color: white; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; font-size: 0.7rem;">
+                                &times;
+                            </button>
+                            <div style="font-size: 0.65rem; color: #64748b; margin-top: 0.25rem;" x-text="soporteNameEditar"></div>
+                        </div>
+                    </div>
                 </div>
                 <div class="modal-foot-bx" style="display:flex; justify-content:space-between; align-items:center;">
                     <button type="button" @click="openConfirmarEliminar = true" class="btn-fac-action" style="background:#dc2626; color:#fff; padding:0.45rem 1.25rem; border-radius:8px; display:inline-flex; align-items:center; gap:0.25rem;">
                         🗑️ Eliminar
                     </button>
                     <div>
-                        <button type="button" @click="openEditar = false" class="btn-glass-bx" style="margin-right:0.5rem;">Cancelar</button>
+                        <button type="button" @click="openEditar = false; limpiarSoporteEditar()" class="btn-glass-bx" style="margin-right:0.5rem;">Cancelar</button>
                         <button type="submit" class="btn-fin success" style="background:#1e40af;">Guardar Cambios</button>
                     </div>
                 </div>
@@ -384,6 +566,23 @@
 
 .badge-ok-bx { background: rgba(34,197,94,0.12); color: #166534; border: 1px solid rgba(34,197,94,0.3); border-radius: 999px; padding: 0.15rem 0.5rem; font-size: 0.7rem; font-weight: 600; }
 .badge-err-bx { border: 1px solid; border-radius: 999px; padding: 0.15rem 0.5rem; font-size: 0.7rem; font-weight: 600; }
+
+.badge-soporte-link {
+    display: inline-block;
+    background: #e0f2fe;
+    color: #0369a1;
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-decoration: none;
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    border: 1px solid #bae6fd;
+    margin-left: 5px;
+    transition: background 0.15s;
+}
+.badge-soporte-link:hover {
+    background: #bae6fd;
+}
 
 /* Modales */
 
