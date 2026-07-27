@@ -4077,7 +4077,7 @@ class FacturacionController extends Controller
                          });
                   });
             })
-            ->with('cliente:id,cedula,primer_nombre,primer_apellido,nombre_completo')
+            ->with('cliente:id,cedula,primer_nombre,segundo_nombre,primer_apellido,segundo_apellido')
             ->get()
             ->keyBy('cedula');
 
