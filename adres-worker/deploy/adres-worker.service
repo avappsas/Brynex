@@ -1,0 +1,54 @@
+[Unit]
+Description=Worker de consulta a ADRES (Brynex)
+Documentation=file:/var/www/brynex/adres-worker/README.md
+After=network-online.target
+Wants=network-online.target
+
+# Van en [Unit], no en [Service]: desde systemd 230 se movieron de sección y en
+# [Service] se ignoran en silencio. Si se cae 5 veces en un minuto es un problema
+# real (Chromium faltante, puerto ocupado) y es mejor que systemd se rinda a que
+# reinicie para siempre.
+StartLimitBurst=5
+StartLimitIntervalSec=60
+
+[Service]
+Type=simple
+
+# Mismo usuario que la app y las colas. Además Chromium se niega a arrancar
+# como root sin --no-sandbox, así que correr como www-data mantiene el sandbox
+# del navegador activo.
+User=www-data
+Group=www-data
+
+WorkingDirectory=/var/www/brynex/adres-worker
+ExecStart=/usr/bin/node servidor.mjs
+
+# El token va en un archivo aparte con permisos 0640: las unidades de systemd
+# en /etc/systemd/system son legibles por cualquiera del sistema.
+EnvironmentFile=/etc/brynex/adres-worker.env
+
+# Los navegadores se instalan en una ruta compartida y no en ~/.cache del
+# usuario que corrió el instalador. Sin esto, instalar como root deja los
+# binarios en /root/.cache y www-data no los encuentra.
+Environment=PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
+Environment=NODE_ENV=production
+
+Restart=always
+RestartSec=5
+
+# Cada consulta abre un contexto de Chromium. El tope evita que una fuga se
+# lleve el servidor por delante; si lo alcanza, systemd reinicia el worker.
+MemoryMax=1500M
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=full
+ReadWritePaths=/opt/ms-playwright
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=adres-worker
+
+[Install]
+WantedBy=multi-user.target
