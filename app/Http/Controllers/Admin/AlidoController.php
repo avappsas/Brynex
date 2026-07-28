@@ -55,6 +55,7 @@ class AlidoController extends Controller
             'logo'                 => 'nullable|image|mimes:png,jpg,jpeg,svg|max:2048',
             'logo_oscuro'          => 'nullable|image|mimes:png,jpg,jpeg,svg|max:2048',
             'logo_marca_claro'     => 'nullable|image|mimes:png,jpg,jpeg,svg|max:2048',
+            'imagen_planes'        => 'nullable|image|mimes:png,jpg,jpeg|max:5120',
             'logo_marca_recorte.alto_util_pct'         => 'nullable|numeric|min:0|max:100',
             'logo_marca_recorte.icono_ancho_pct'       => 'nullable|numeric|min:0|max:100',
             'logo_marca_recorte.wordmark_y_inicio_pct' => 'nullable|numeric|min:0|max:100',
@@ -80,6 +81,12 @@ class AlidoController extends Controller
             $filename  = time() . '_marca_claro_' . $file->getClientOriginalName();
             $file->move(public_path('storage/logos'), $filename);
             $data['logo_marca_claro'] = 'logos/' . $filename;
+        }
+        if ($request->hasFile('imagen_planes')) {
+            $file      = $request->file('imagen_planes');
+            $filename  = time() . '_planes_' . $file->getClientOriginalName();
+            $file->move(public_path('storage/planes-precios'), $filename);
+            $data['imagen_planes'] = 'planes-precios/' . $filename;
         }
         $data['logo_marca_recorte'] = array_filter($data['logo_marca_recorte'] ?? []) ?: null;
 
@@ -136,6 +143,7 @@ class AlidoController extends Controller
             'logo'                 => 'nullable|image|mimes:png,jpg,jpeg,svg|max:2048',
             'logo_oscuro'          => 'nullable|image|mimes:png,jpg,jpeg,svg|max:2048',
             'logo_marca_claro'     => 'nullable|image|mimes:png,jpg,jpeg,svg|max:2048',
+            'imagen_planes'        => 'nullable|image|mimes:png,jpg,jpeg|max:5120',
             'logo_marca_recorte.alto_util_pct'         => 'nullable|numeric|min:0|max:100',
             'logo_marca_recorte.icono_ancho_pct'       => 'nullable|numeric|min:0|max:100',
             'logo_marca_recorte.wordmark_y_inicio_pct' => 'nullable|numeric|min:0|max:100',
@@ -181,6 +189,18 @@ class AlidoController extends Controller
             $data['logo_marca_claro'] = 'logos/' . $filename;
         } else {
             $data['logo_marca_claro'] = $aliado->logo_marca_claro;
+        }
+        if ($request->hasFile('imagen_planes')) {
+            if ($aliado->imagen_planes) {
+                $oldPath = public_path('storage/' . $aliado->imagen_planes);
+                if (file_exists($oldPath)) @unlink($oldPath);
+            }
+            $file      = $request->file('imagen_planes');
+            $filename  = time() . '_planes_' . $file->getClientOriginalName();
+            $file->move(public_path('storage/planes-precios'), $filename);
+            $data['imagen_planes'] = 'planes-precios/' . $filename;
+        } else {
+            $data['imagen_planes'] = $aliado->imagen_planes;
         }
         $data['logo_marca_recorte'] = array_filter($data['logo_marca_recorte'] ?? []) ?: null;
 

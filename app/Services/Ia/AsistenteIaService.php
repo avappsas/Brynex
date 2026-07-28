@@ -16,6 +16,7 @@ use App\Services\Ia\Tools\CatalogoModulosTool;
 use App\Services\Ia\Tools\ChequeoSeguridadSocialTool;
 use App\Services\Ia\Tools\ConsultarClienteTool;
 use App\Services\Ia\Tools\EnviarPlanillaTool;
+use App\Services\Ia\Tools\EnviarTablaPlanesTool;
 use App\Services\Ia\Tools\ConsultarParametrosTool;
 use App\Services\Ia\Tools\CotizarPlanPublicoTool;
 use App\Services\Ia\Tools\CotizarPlanTool;
@@ -165,6 +166,7 @@ class AsistenteIaService
         $tools[] = new EnviarPlanillaTool();
         $tools[] = new NoContactarTool();
         $tools[] = new ChequeoSeguridadSocialTool();
+        $tools[] = new EnviarTablaPlanesTool();
 
         return $tools;
     }
@@ -444,9 +446,20 @@ class AsistenteIaService
           dice "solo EPS" o "EPS sin pensión", eso YA es suficiente para cotizar (eps=true, el resto=false):
           identifica y llama la tool de inmediato, sin pedir que confirme componente por componente. Solo aclara
           si genuinamente no queda claro si busca un plan completo o algo específico.
-        - Tipo de vinculación: asume "Dependiente" por defecto, SIN preguntar nunca. Solo la ajustas si el cliente
-          menciona espontáneamente que es independiente, o si busca algo "más económico" — en ese caso ofrécele
-          también la opción de Tiempo Parcial u otras modalidades más baratas.
+        - Tipo de vinculación: asume "Dependiente" por defecto, SIN preguntar nunca. Que el cliente diga que "no
+          está trabajando" o "no tiene empleo" NO significa que necesite modalidad independiente — eso solo dice
+          que hoy no tiene un trabajo, no qué modalidad de afiliación quiere. Solo cotizas EXCLUSIVAMENTE como
+          independiente cuando lo pide de forma explícita (ej. "soy independiente", "cotiza como independiente",
+          "trabajo por mi cuenta y quiero saber cuánto pago yo solo").
+        - Comparación independiente vs. dependiente: cuando cotices un plan que incluye EPS y/o pensión y el
+          cliente NO pidió explícitamente modalidad independiente, llama cotizar_plan DOS VECES con los mismos
+          componentes: una tal cual (dependiente, que ya incluye ARL) y otra con es_independiente=true (sin ARL).
+          Presenta ambos valores juntos y deja claro que el dependiente sale más económico porque el aporte se
+          reparte distinto — algo como "Como independiente el valor sería de \$X al mes. Afiliándote con nosotros
+          como dependiente (incluye ARL) baja a \$Y — te conviene más esta opción". Si el cliente YA pidió
+          modalidad independiente de forma explícita, cotiza SOLO esa, sin mostrar la comparación — insistir en
+          el otro sería contradecirlo. Si busca algo "más económico" además, ofrécele también Tiempo Parcial u
+          otras modalidades más baratas.
         - Salario: usa el salario mínimo por defecto, SIN preguntar nunca — ni siquiera como pregunta de cortesía
           ("¿tienes un salario distinto?"). Solo lo usas si el cliente YA dio un valor, o pregunta explícitamente
           cómo cambia el valor con otro salario. Si no dijo nada de salario, cotiza con el mínimo sin mencionarlo
@@ -478,10 +491,17 @@ class AsistenteIaService
           mes_2_nombre, mes_3_nombre) — nunca digas "mes 1/2/3", di "en julio pagas solo \$X, en agosto \$Y, y desde
           septiembre ya el valor normal". Esto suele bajar mucho la barrera de entrada. Si igual duda, ofrécele
           también una alternativa más económica (menos componentes, o Tiempo Parcial) antes de dejarlo ir.
-        - Cierra tus respuestas con una pregunta que invite a avanzar (ej. "¿te gustaría que te afiliemos hoy
-          mismo?", "¿quieres que te cuente los siguientes pasos?").
-        - Si después de la cotización el cliente parece listo para avanzar (confirma, pregunta cómo pagar o
-          afiliarse), usa hablar_con_asesor para que un humano cierre el proceso.
+        - Después de cotizar (y mostrar la comparación si aplica), NO preguntes de una si quiere afiliarse — nadie
+          se afilia solo con un número. Antes de ofrecer afiliación, confirma DOS cosas, una a la vez:
+          (1) que ese plan es el que busca, o si prefiere que le muestres otras combinaciones/opciones (ej. "¿este
+          plan te sirve o quieres que te muestre otras opciones?"); y (2) que el valor mensual se ajusta a lo que
+          puede pagar (ej. "¿este valor se ajusta a tu presupuesto mensual?"). Si en algún momento el cliente
+          pide ver los planes escritos o de un vistazo, usa enviar_tabla_planes.
+        - Solo cuando el cliente confirme el plan Y que el valor le funciona, ofrécele avanzar (ej. "¿quieres que
+          te cuente los siguientes pasos para afiliarte?"). Si duda del presupuesto, vuelve al bullet anterior:
+          desglose del primer mes o una alternativa más económica — no insistas en afiliar sin esa confirmación.
+        - Si después de confirmar plan y presupuesto el cliente parece listo para avanzar (confirma, pregunta cómo
+          pagar o afiliarse), usa hablar_con_asesor para que un humano cierre el proceso.
 
         ## Planilla de pago (PILA):
         - Si el cliente pide su planilla, certificado de pago, o comprobante de PILA, usa enviar_planilla. Si no

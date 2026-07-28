@@ -235,6 +235,21 @@
             </details>
         </div>
 
+        {{-- Imagen de la tabla de planes — el Asistente IA la envía por WhatsApp cuando el
+             cliente quiere ver las opciones escritas/de un vistazo. Es solo referencia visual:
+             el valor exacto que se ofrece siempre sale de cotizar_plan, no de esta imagen. --}}
+        <div style="margin-bottom:1.5rem;padding:1rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+            <div style="font-size:0.78rem;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.2rem;">📋 Imagen de planes (WhatsApp)</div>
+            <div style="font-size:0.72rem;color:#94a3b8;margin-bottom:0.85rem;">Tabla de planes/precios que el Asistente IA envía cuando el cliente quiere ver las opciones escritas o de un vistazo. Es una referencia visual — el valor exacto siempre lo calcula el cotizador, así que si cambian las tarifas hay que actualizar esta imagen a mano.</div>
+            @if(isset($aliado->id) && $aliado->imagen_planes)
+                <div style="margin-bottom:0.4rem;">
+                    <img src="{{ asset('storage/'.$aliado->imagen_planes) }}" style="max-height:220px;border-radius:6px;border:1px solid #e2e8f0;object-fit:contain;">
+                </div>
+            @endif
+            <input type="file" name="imagen_planes" accept="image/*"
+                style="width:100%;max-width:420px;padding:0.5rem;border:1px solid #cbd5e1;border-radius:8px;font-size:0.85rem;font-family:inherit;">
+        </div>
+
         {{-- ── Afiliaciones BryNex ── --}}
         <div style="margin-bottom:1.5rem;padding:1rem;background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;">
             <div style="font-size:0.78rem;font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.8rem;">

@@ -31,6 +31,7 @@ class Aliado extends BaseModel
         'logo',
         'logo_oscuro',
         'logo_marca_claro',
+        'imagen_planes',
         'logo_marca_recorte',
         'color_primario',
         'slug',
