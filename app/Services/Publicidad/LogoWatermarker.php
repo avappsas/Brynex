@@ -20,11 +20,15 @@ class LogoWatermarker
     /**
      * @param ?string $rutaLogoClaro  Logo oscuro/de color — para fondos CLAROS (campo `logo`).
      * @param ?string $rutaLogoOscuro Logo claro/blanco — para fondos OSCUROS (campo `logo_oscuro`).
-     * @param ?array  $recorte Opcional {icono_ancho_pct, wordmark_y_inicio_pct, wordmark_y_fin_pct}
-     *   — layout ícono-izquierda + texto-derecha (nombre arriba, eslogan abajo): recompone
-     *   ícono completo + SOLO el nombre (sin el eslogan, que se vuelve ilegible al achicar).
-     *   Si no se pasa, usa el logo completo tal cual — comportamiento seguro por defecto para
-     *   cualquier aliado cuyo logo no siga ese layout específico.
+     * @param ?array  $recorte Opcional, dos formas mutuamente excluyentes según el layout del logo:
+     *   - Vertical (ícono arriba + nombre debajo, eslogan/subtítulo al final): {alto_util_pct}
+     *     — conserva solo ese % superior del alto, cortando el eslogan que se vuelve ilegible
+     *     al achicar.
+     *   - Horizontal (ícono a la izquierda + nombre y eslogan a la derecha):
+     *     {icono_ancho_pct, wordmark_y_inicio_pct, wordmark_y_fin_pct} — recompone ícono
+     *     completo + SOLO el nombre (sin el eslogan).
+     *   Si no se pasa nada, usa el logo completo tal cual — comportamiento seguro por defecto
+     *   para cualquier aliado cuyo logo no siga ninguno de esos layouts.
      */
     public static function aplicar(string $rutaImagen, ?string $rutaLogoClaro, ?string $rutaLogoOscuro = null, ?array $recorte = null): void
     {
@@ -149,6 +153,10 @@ class LogoWatermarker
             return $origen;
         }
 
+        if (isset($recorte['alto_util_pct'])) {
+            return self::recortarVertical($origen, (float) $recorte['alto_util_pct']);
+        }
+
         $anchoSrc = imagesx($origen);
         $altoSrc  = imagesy($origen);
         $xIcono   = (int) round($anchoSrc * ((float) ($recorte['icono_ancho_pct'] ?? 0) / 100));
@@ -205,6 +213,28 @@ class LogoWatermarker
         imagedestroy($wordmarkResize);
 
         return $final;
+    }
+
+    /** Layout vertical (ícono arriba + nombre debajo): conserva solo el % superior del alto, cortando el eslogan/subtítulo final. */
+    private static function recortarVertical($origen, float $altoUtilPct)
+    {
+        $anchoSrc = imagesx($origen);
+        $altoSrc  = imagesy($origen);
+        $altoUtil = (int) round($altoSrc * ($altoUtilPct / 100));
+
+        if ($altoUtil <= 0 || $altoUtil >= $altoSrc) {
+            return $origen; // config inválida, usar el logo completo tal cual
+        }
+
+        $recortado = imagecreatetruecolor($anchoSrc, $altoUtil);
+        imagealphablending($recortado, false);
+        imagesavealpha($recortado, true);
+        $trans = imagecolorallocatealpha($recortado, 0, 0, 0, 127);
+        imagefilledrectangle($recortado, 0, 0, $anchoSrc, $altoUtil, $trans);
+        imagecopy($recortado, $origen, 0, 0, 0, 0, $anchoSrc, $altoUtil);
+        imagedestroy($origen);
+
+        return $recortado;
     }
 
     private static function cargar(string $path)

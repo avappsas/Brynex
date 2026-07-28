@@ -200,7 +200,16 @@
                 <summary style="font-size:0.72rem;font-weight:600;color:#7c3aed;cursor:pointer;">⚙️ Avanzado: recortar el eslogan del watermark (opcional)</summary>
                 <div style="margin-top:0.6rem;padding:0.75rem;background:#fff;border:1px solid #e2e8f0;border-radius:8px;">
                     <div style="font-size:0.7rem;color:#94a3b8;margin-bottom:0.6rem;">
-                        Si tu logo trae ícono a la izquierda + nombre y eslogan a la derecha, el eslogan puede volverse ilegible al achicarlo. Configura aquí en qué % del logo está cada parte para que el watermark use solo ícono + nombre. Déjalo vacío para usar el logo completo tal cual.
+                        Si tu logo trae <strong>ícono arriba + nombre debajo</strong> (con eslogan o subtítulo al final), ese texto final se vuelve ilegible al achicarlo. Indica qué % del alto ocupan ícono + nombre (sin el eslogan) — el watermark corta el resto. Déjalo vacío para usar el logo completo tal cual.
+                    </div>
+                    <div style="max-width:220px;margin-bottom:0.85rem;">
+                        <label style="display:block;font-size:0.68rem;font-weight:600;color:#475569;margin-bottom:0.25rem;">% alto útil (ícono + nombre)</label>
+                        <input type="number" step="0.1" min="0" max="100" name="logo_marca_recorte[alto_util_pct]"
+                            value="{{ $recorte['alto_util_pct'] ?? '' }}" placeholder="Ej: 81.5"
+                            style="width:100%;padding:0.4rem;border:1px solid #cbd5e1;border-radius:6px;font-size:0.8rem;">
+                    </div>
+                    <div style="font-size:0.7rem;color:#94a3b8;margin-bottom:0.6rem;">
+                        Si en cambio tu logo trae <strong>ícono a la izquierda + nombre y eslogan a la derecha</strong>, configura estos tres en su lugar (no combines ambos):
                     </div>
                     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.75rem;">
                         <div>
