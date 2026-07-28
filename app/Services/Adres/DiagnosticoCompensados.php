@@ -26,12 +26,89 @@ class DiagnosticoCompensados
 
     private const DIAS_MES_COMPLETO = 30;
 
-    /** Observaciones que NO representan un pago con cotización real. */
-    private const OBSERVACIONES_SIN_COTIZACION = ['estado emergencia'];
+    /**
+     * Observaciones que NO representan un pago con cotización real.
+     *
+     * Es una expresión regular y no una cadena fija porque ADRES publica el valor
+     * con un typo suyo: aparece literalmente "Estado Emeregencia", con una 'e' de
+     * más metida justo entre la "emer" y la "g". Ni "estado emergencia" ni
+     * siquiera "emerg" enganchan con eso. El comodín del medio cubre las dos
+     * grafías y cualquier variante parecida que aparezca después.
+     */
+    private const PATRON_SIN_COTIZACION = '/emer.{0,2}g/';
+
+    /** Observación que sí corresponde a un aporte real. */
+    private const PATRON_CON_COTIZACION = 'cotizacion';
 
     public const SEV_INFO     = 'info';
     public const SEV_ATENCION = 'atencion';
     public const SEV_ALTA     = 'alta';
+
+    /** Minúsculas y sin tildes, para comparar observaciones sin depender de cómo las escriba ADRES. */
+    private static function normalizar(?string $texto): string
+    {
+        $t = mb_strtolower(trim((string) $texto));
+
+        return strtr($t, ['á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u', 'ñ' => 'n']);
+    }
+
+    private static function esSinCotizacion(?string $observacion): bool
+    {
+        return (bool) preg_match(self::PATRON_SIN_COTIZACION, self::normalizar($observacion));
+    }
+
+    private static function esObservacionConocida(?string $observacion): bool
+    {
+        $obs = self::normalizar($observacion);
+
+        return $obs === ''
+            || str_contains($obs, self::PATRON_CON_COTIZACION)
+            || self::esSinCotizacion($observacion);
+    }
+
+    /**
+     * Junta las filas por mes.
+     *
+     * Un mismo período puede traer varias filas (se vio 06/2020 con 27 días de
+     * "Estado Emeregencia" más 1 día de "Pago con cotización"). Sin agrupar, ese
+     * mes se reportaba como dos meses incompletos distintos y el conteo de meses
+     * cotizados salía inflado.
+     *
+     * Se llevan dos totales por separado: los días que figuran compensados y los
+     * que tienen un aporte real detrás. La diferencia entre ambos es lo que hace
+     * que un mes parezca cubierto sin estarlo.
+     */
+    private static function agruparPorPeriodo(array $filas): array
+    {
+        $meses = [];
+
+        foreach ($filas as $f) {
+            $clave = sprintf('%04d-%02d', $f['anio'], $f['mes']);
+
+            if (!isset($meses[$clave])) {
+                $meses[$clave] = [
+                    'periodo'        => $f['periodo'],
+                    'anio'           => $f['anio'],
+                    'mes'            => $f['mes'],
+                    'dias'           => 0,
+                    'dias_cotizados' => 0,
+                    'eps'            => $f['eps'],
+                    'tipo_afiliado'  => $f['tipo_afiliado'],
+                    'observaciones'  => [],
+                ];
+            }
+
+            $meses[$clave]['dias'] += (int) $f['dias'];
+            if (!self::esSinCotizacion($f['observacion'])) {
+                $meses[$clave]['dias_cotizados'] += (int) $f['dias'];
+            }
+            $meses[$clave]['observaciones'][] = $f['observacion'];
+        }
+
+        ksort($meses);
+
+        return array_values($meses);
+    }
 
     /**
      * @param  array<int, array{eps:string, periodo:string, anio:int, mes:int, dias:int, tipo_afiliado:?string, observacion:?string}>  $filas
@@ -55,22 +132,24 @@ class DiagnosticoCompensados
             ];
         }
 
-        // Se ordena por fecha ascendente: ADRES los entrega del más reciente al
-        // más viejo y todos los cálculos de continuidad asumen lo contrario.
-        usort($filas, fn ($a, $b) => [$a['anio'], $a['mes']] <=> [$b['anio'], $b['mes']]);
+        // ADRES entrega del más reciente al más viejo, y todos los cálculos de
+        // continuidad asumen lo contrario. Además se juntan las filas del mismo
+        // mes: un período puede venir partido en varias.
+        $meses = self::agruparPorPeriodo($filas);
 
-        $primera = $filas[0];
-        $ultima  = $filas[count($filas) - 1];
+        $primera = $meses[0];
+        $ultima  = $meses[count($meses) - 1];
 
         $ultimoPeriodo = Carbon::create($ultima['anio'], $ultima['mes'], 1)->startOfMonth();
         $rezago = $ultimoPeriodo->diffInMonths($hoy->copy()->startOfMonth());
 
         $hallazgos = array_merge(
-            self::mesesIncompletos($filas),
-            self::huecos($filas, $hoy),
-            self::observacionesSinCotizacion($filas),
+            self::mesesIncompletos($meses),
+            self::huecos($meses, $hoy),
+            self::observacionesSinCotizacion($meses),
             self::posibleInactividad($rezago, $ultima),
-            self::cambiosDeEps($filas),
+            self::cambiosDeEps($meses),
+            self::observacionesDesconocidas($meses),
         );
 
         // Más severo primero: es el orden en que hay que contárselo a la persona.
@@ -86,9 +165,11 @@ class DiagnosticoCompensados
                 'primer_periodo'  => $primera['periodo'],
                 'ultimo_periodo'  => $ultima['periodo'],
                 'rezago_meses'    => $rezago,
-                'meses_con_aporte' => count($filas),
-                'dias_totales'    => array_sum(array_column($filas, 'dias')),
-                'eps_historicas'  => array_values(array_unique(array_column($filas, 'eps'))),
+                // Meses distintos, no filas: un mismo período puede venir partido.
+                'meses_con_aporte' => count($meses),
+                'dias_totales'    => array_sum(array_column($meses, 'dias')),
+                'dias_cotizados'  => array_sum(array_column($meses, 'dias_cotizados')),
+                'eps_historicas'  => array_values(array_unique(array_column($meses, 'eps'))),
             ],
             'hallazgos'       => array_values($hallazgos),
             'requiere_asesor' => $requiereAsesor,
@@ -174,29 +255,67 @@ class DiagnosticoCompensados
      * detrás. Es el hallazgo que nadie revisa: meses que parecen cubiertos y no lo
      * están.
      */
-    private static function observacionesSinCotizacion(array $filas): array
+    private static function observacionesSinCotizacion(array $meses): array
     {
-        $sospechosos = array_values(array_filter($filas, function ($f) {
-            $obs = mb_strtolower(trim((string) ($f['observacion'] ?? '')));
-            foreach (self::OBSERVACIONES_SIN_COTIZACION as $sin) {
-                if (str_contains($obs, $sin)) {
-                    return true;
-                }
-            }
-            return false;
-        }));
+        $sospechosos = array_values(array_filter($meses, fn ($m) => $m['dias'] > $m['dias_cotizados']));
 
         if (!$sospechosos) {
             return [];
         }
 
+        $diasSinAporte = array_sum(array_map(fn ($m) => $m['dias'] - $m['dias_cotizados'], $sospechosos));
+
+        $etiquetas = array_map(
+            fn ($m) => "{$m['periodo']} (" . ($m['dias'] - $m['dias_cotizados']) . ' de ' . $m['dias'] . ' días)',
+            array_slice($sospechosos, 0, 6)
+        );
+
         return [[
             'codigo'    => 'periodos_sin_cotizacion',
             'severidad' => self::SEV_ALTA,
-            'titulo'    => count($sospechosos) . ' meses figuran cubiertos pero sin cotización',
-            'detalle'   => 'Aparecen marcados como "Estado Emergencia". La nota de ADRES aclara que estos '
-                . 'afiliados no cuentan con un pago o cotización al sistema, aunque el período figure compensado.',
+            'titulo'    => count($sospechosos) === 1
+                ? 'Hay un mes que figura cubierto sin cotización'
+                : 'Hay ' . count($sospechosos) . ' meses que figuran cubiertos sin cotización',
+            'detalle'   => "Son {$diasSinAporte} días marcados como \"Estado Emergencia\" (art. 15 del Decreto 538 "
+                . 'de 2020). La nota de ADRES aclara que esos afiliados no cuentan con un pago ni cotización al '
+                . 'sistema, aunque el período aparezca compensado: ' . implode(', ', $etiquetas) . '.',
             'periodos'  => array_column($sospechosos, 'periodo'),
+        ]];
+    }
+
+    /**
+     * Observaciones que no reconocemos.
+     *
+     * El catálogo real de ADRES no está documentado y ya trae sorpresas (publica
+     * "Estado Emeregencia", con typo). En vez de asumir que todo lo desconocido
+     * es un aporte normal, se marca para que lo mire una persona: es preferible
+     * revisar de más a decirle a alguien que está al día cuando no lo está.
+     */
+    private static function observacionesDesconocidas(array $meses): array
+    {
+        $raras = [];
+        foreach ($meses as $m) {
+            foreach ($m['observaciones'] as $obs) {
+                if (!self::esObservacionConocida($obs)) {
+                    $raras[$m['periodo']] = trim((string) $obs);
+                }
+            }
+        }
+
+        if (!$raras) {
+            return [];
+        }
+
+        $valores = array_values(array_unique($raras));
+
+        return [[
+            'codigo'    => 'observacion_desconocida',
+            'severidad' => self::SEV_ALTA,
+            'titulo'    => 'Hay observaciones que no reconozco',
+            'detalle'   => 'ADRES reporta valores que no están en el catálogo conocido: "'
+                . implode('", "', array_slice($valores, 0, 5)) . '". No se puede concluir nada sobre esos meses '
+                . 'sin que los revise una persona.',
+            'periodos'  => array_keys($raras),
         ]];
     }
 

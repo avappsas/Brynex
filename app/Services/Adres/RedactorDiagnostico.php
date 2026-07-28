@@ -109,9 +109,16 @@ class RedactorDiagnostico
                 : 'Hay ' . count($periodos) . ' meses donde el aporte no cubrió los 30 días: '
                     . self::listaLegible($periodos) . '.',
 
-            'periodos_sin_cotizacion' => 'Hay ' . count($periodos) . ' meses marcados como "Estado Emergencia". '
-                . 'La propia nota de ADRES aclara que esos períodos figuran compensados pero no tienen un '
-                . 'pago ni cotización detrás. Es decir: parecen cubiertos, pero no lo están.',
+            'periodos_sin_cotizacion' => 'Hay ' . count($periodos) . ' '
+                . (count($periodos) === 1 ? 'mes marcado' : 'meses marcados') . ' como "Estado Emergencia": '
+                . self::listaLegible($periodos) . '. La propia nota de ADRES aclara que esos períodos figuran '
+                . 'compensados pero no tienen un pago ni cotización detrás. Es decir: parecen cubiertos, '
+                . 'pero no lo están.',
+
+            'observacion_desconocida' => 'En ' . count($periodos) . ' '
+                . (count($periodos) === 1 ? 'mes aparece una anotación' : 'meses aparecen anotaciones')
+                . ' que no reconozco, así que prefiero no sacar conclusiones sobre '
+                . (count($periodos) === 1 ? 'ese mes' : 'esos meses') . ' sin que los revise un asesor.',
 
             'posible_inactividad' => 'Tu último aporte reportado es de ' . self::periodoLegible($periodos[0] ?? '')
                 . '. Como la compensación va con un mes o dos de retraso, un rezago corto es normal — '
