@@ -61,11 +61,20 @@ sed -i "s|^ADRES_WORKER_TOKEN=.*|ADRES_WORKER_TOKEN=${TOKEN}|" /etc/brynex/adres
 unset TOKEN
 ```
 
-Si Laravel cachea configuración, refrescarla:
+**Reconstruir el caché de configuración. No es opcional.**
 
 ```bash
-cd /var/www/brynex && php artisan config:clear
+cd /var/www/brynex && sudo -u www-data php artisan config:cache
 ```
+
+Si hay un `bootstrap/cache/config.php` viejo, Laravel lee de ahí y **no** del
+`.env`: `config('services.adres_worker.token')` devuelve vacío y el worker
+responde `Token inválido` aunque los dos archivos tengan el mismo token. Pasó en
+el despliegue inicial y cuesta un rato ver de dónde viene, porque `/salud`
+—que no pide token— sigue respondiendo bien.
+
+Va con `sudo -u www-data`: si se corre como root, el caché queda con dueño root y
+después la app no puede regenerarlo.
 
 ## 4. Servicio
 
@@ -123,4 +132,6 @@ cd /var/www/brynex/adres-worker && npm install && systemctl restart adres-worker
 | `browserType.launch: Executable doesn't exist` | Los navegadores quedaron en otra ruta; reinstalar con `PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright` |
 | Arranca y muere en bucle | Puerto 8801 ocupado, o falta `ADRES_WORKER_TOKEN` en `/etc/brynex/adres-worker.env` |
 | Laravel dice "no se pudo contactar el worker" | Token distinto entre el `.env` de Laravel y el del worker |
+| `Token inválido` pero los dos archivos tienen el mismo token | Caché de config viejo: `sudo -u www-data php artisan config:cache` |
+| `psysh` no puede escribir su config al usar tinker como www-data | Anteponer `env HOME=/tmp XDG_CONFIG_HOME=/tmp` |
 | `No se encontró el tipo de documento` | ADRES redesplegó y cambió el formulario; revisar `lib/consulta.mjs` |
