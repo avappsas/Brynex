@@ -61,4 +61,13 @@ return [
         'clave_secreta' => env('SUAPORTE_CLAVE_SECRETA'),
     ],
 
+    // Worker de Node que maneja el navegador contra ADRES (ver adres-worker/).
+    // Debe escuchar solo en loopback: puede consultar el historial de salud de
+    // cualquier cédula, así que no puede quedar expuesto en red.
+    'adres_worker' => [
+        'url' => env('ADRES_WORKER_URL', 'http://127.0.0.1:8801'),
+        'token' => env('ADRES_WORKER_TOKEN'),
+        'timeout' => env('ADRES_WORKER_TIMEOUT', 90),
+    ],
+
 ];

@@ -13,6 +13,7 @@ use App\Models\MarketingCampana;
 use App\Services\Ia\Tools\BuscarConocimientoTool;
 use App\Services\Ia\Tools\BuscarInternetTool;
 use App\Services\Ia\Tools\CatalogoModulosTool;
+use App\Services\Ia\Tools\ChequeoSeguridadSocialTool;
 use App\Services\Ia\Tools\ConsultarClienteTool;
 use App\Services\Ia\Tools\EnviarPlanillaTool;
 use App\Services\Ia\Tools\ConsultarParametrosTool;
@@ -163,6 +164,7 @@ class AsistenteIaService
         $tools[] = new ConsultarClienteTool();
         $tools[] = new EnviarPlanillaTool();
         $tools[] = new NoContactarTool();
+        $tools[] = new ChequeoSeguridadSocialTool();
 
         return $tools;
     }

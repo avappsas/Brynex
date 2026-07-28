@@ -5,16 +5,19 @@ namespace App\Services;
 use App\Events\WhatsappConversacionActualizada;
 use App\Events\WhatsappMensajeNuevo;
 use App\Jobs\MarketingConfirmarBloqueoJob;
+use App\Jobs\ResolverCaptchaAdresJob;
 use App\Jobs\WhatsappDescargarMediaJob;
 use App\Jobs\WhatsappEscalarMultimediaJob;
 use App\Jobs\WhatsappResponderIaJob;
 use App\Models\{
+    AdresChequeo,
     IaConfiguracionAliado,
     MarketingBloqueado,
     WhatsappConfig,
     WhatsappConversacion,
     WhatsappMensaje
 };
+use App\Services\Adres\RespuestaCaptcha;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -198,6 +201,14 @@ class WhatsappWebhookService
             dispatch(new MarketingConfirmarBloqueoJob($conversacion->id));
         }
 
+        // Si hay un chequeo de ADRES esperando el código de seguridad, este mensaje
+        // es la respuesta y no debe llegarle a la IA: el modelo trataría de
+        // conversar con un número suelto en vez de completar la consulta.
+        if (!$esRechazoPublicidad && $tipo === 'text'
+            && $this->encaminarCaptchaAdres($conversacion, $dataMensaje['contenido'] ?? '', $waId, $config)) {
+            return;
+        }
+
         // Asistente IA: solo si el bot está activo en esta conversación y el aliado
         // tiene la IA activada para WhatsApp. Se procesa en un Job para no bloquear
         // la respuesta al webhook de Meta (~20s de margen).
@@ -240,6 +251,49 @@ class WhatsappWebhookService
                 }
             }
         }
+    }
+
+    /**
+     * Encamina la respuesta al código de seguridad de ADRES si hay un chequeo
+     * esperándola en esta conversación.
+     *
+     * No todo lo que escriba el cliente mientras espera es el código: puede decir
+     * "ya voy", "no la veo bien" o mandar una pregunta. Solo se intercepta lo que
+     * tenga forma de código; el resto sigue de largo hacia la IA, que ahí sí puede
+     * ayudarle a leerlo o reenviárselo.
+     *
+     * @return bool true si el mensaje se consumió como captcha.
+     */
+    private function encaminarCaptchaAdres(
+        WhatsappConversacion $conversacion,
+        string $texto,
+        ?string $waId = null,
+        ?WhatsappConfig $config = null
+    ): bool {
+        $chequeo = AdresChequeo::where('conversacion_id', $conversacion->id)
+            ->esperandoCaptcha()
+            ->latest('id')
+            ->first();
+
+        if (!$chequeo) {
+            return false;
+        }
+
+        if (!RespuestaCaptcha::pareceCodigo($texto)) {
+            return false;
+        }
+
+        $limpio = RespuestaCaptcha::normalizar($texto);
+
+        // La consulta tarda unos segundos: el indicador de "escribiendo" evita que
+        // parezca que el bot se quedó mudo.
+        if ($waId && $config) {
+            $this->whatsappApi->marcarLeidoYEscribiendo($waId, $config);
+        }
+
+        ResolverCaptchaAdresJob::dispatch($chequeo->id, $limpio);
+
+        return true;
     }
 
     /**
