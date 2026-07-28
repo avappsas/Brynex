@@ -76,6 +76,21 @@ el despliegue inicial y cuesta un rato ver de dónde viene, porque `/salud`
 Va con `sudo -u www-data`: si se corre como root, el caché queda con dueño root y
 después la app no puede regenerarlo.
 
+**Y reiniciar las colas. Tampoco es opcional.**
+
+```bash
+cd /var/www/brynex && sudo -u www-data php artisan queue:restart
+```
+
+Los `queue:work` son procesos largos: cargan la configuración al arrancar y la
+guardan en memoria. Regenerar el caché **no** los afecta — siguen con el token
+viejo hasta que se reinicien. Y como el chequeo de ADRES corre entero dentro de
+la cola (tanto la tool de la IA como el job que resuelve el código), sin este
+paso todo falla con `Token inválido` aunque por CLI funcione perfecto.
+
+Pasó en el despliegue inicial: la config se cacheó cinco minutos después de que
+arrancaran los workers.
+
 ## 4. Servicio
 
 ```bash
@@ -132,6 +147,6 @@ cd /var/www/brynex/adres-worker && npm install && systemctl restart adres-worker
 | `browserType.launch: Executable doesn't exist` | Los navegadores quedaron en otra ruta; reinstalar con `PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright` |
 | Arranca y muere en bucle | Puerto 8801 ocupado, o falta `ADRES_WORKER_TOKEN` en `/etc/brynex/adres-worker.env` |
 | Laravel dice "no se pudo contactar el worker" | Token distinto entre el `.env` de Laravel y el del worker |
-| `Token inválido` pero los dos archivos tienen el mismo token | Caché de config viejo: `sudo -u www-data php artisan config:cache` |
+| `Token inválido` pero los dos archivos tienen el mismo token | Caché de config viejo, o colas sin reiniciar: `config:cache` **y** `queue:restart` |
 | `psysh` no puede escribir su config al usar tinker como www-data | Anteponer `env HOME=/tmp XDG_CONFIG_HOME=/tmp` |
 | `No se encontró el tipo de documento` | ADRES redesplegó y cambió el formulario; revisar `lib/consulta.mjs` |
