@@ -180,7 +180,13 @@ class FacturacionController extends Controller
                 $anioIngreso = (int)$fIng->year;
                 $esIndAct = (int)($c->tipo_modalidad_id) === 11;
 
-                if ($mesIngreso === $mes && $anioIngreso === $anio) {
+                $periodoIngreso = $anioIngreso * 100 + $mesIngreso;
+                $periodoActual  = $anio * 100 + $mes;
+
+                if ($periodoIngreso > $periodoActual) {
+                    // Ingreso en mes futuro: el contrato aún no inicia en este período
+                    $diasCotizar = 0;
+                } elseif ($mesIngreso === $mes && $anioIngreso === $anio) {
                     if ($esIndAct) {
                         $esIndActPrimerMes = true;
                         $diasCotizar = max(1, 30 - $fIng->day + 1);
@@ -2818,6 +2824,14 @@ class FacturacionController extends Controller
                 || ($esMesIngreso && !$esIndependiente)
                 || ($esMesIngreso && $esIndependiente && !$esIndAct);
 
+            // Contrato con ingreso en mes futuro: aún no inicia → sin mora
+            if ($contrato->fecha_ingreso) {
+                $periodoIngreso = (int)$contrato->fecha_ingreso->year * 100 + (int)$contrato->fecha_ingreso->month;
+                $periodoActual  = $anio * 100 + $mes;
+                if ($periodoIngreso > $periodoActual) {
+                    return ['mora_cliente' => 0, 'mora_real' => 0, 'mora_dias' => 0, 'mora_fecha_vence' => null, 'mora_dia_habil' => 0, 'mora_info' => '✅ Ingreso futuro — sin mora', 'mora_aplica' => false];
+                }
+            }
             // Las afiliaciones nunca tienen mora (no hay pago de planilla)
             if ($esAfiliacion) {
                 return ['mora_cliente' => 0, 'mora_real' => 0, 'mora_dias' => 0, 'mora_fecha_vence' => null, 'mora_dia_habil' => 0, 'mora_info' => '✅ Afiliación — sin mora', 'mora_aplica' => false];

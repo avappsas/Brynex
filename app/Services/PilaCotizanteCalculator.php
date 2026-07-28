@@ -183,8 +183,12 @@ class PilaCotizanteCalculator
         // ── Tiempo parcial (tipo cotizante 51) ─────────────────────────────
         if ($esTiempoParcial) {
             $diasArlTp  = 30;
-            $diasAfpTp  = (int)($p->dias_afp  ?? 30);
-            $diasCajaTp = (int)($p->dias_caja ?? 30);
+
+            // En retiro (o ingreso tardío), num_dias puede ser menor que los días
+            // base del plan (ej: TP 7-14 con retiro a 7 días → $dias=7).
+            // Se usa min() para que el retiro recorte correctamente cada subsistema.
+            $diasAfpTp  = min((int)($p->dias_afp  ?? 30), $dias);
+            $diasCajaTp = min((int)($p->dias_caja ?? 30), $dias);
 
             $smmlv    = (int) ConfiguracionBrynex::salarioMinimo();
             $ibcArlTp = $smmlv;

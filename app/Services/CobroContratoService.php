@@ -168,6 +168,13 @@ class CobroContratoService
         $mesIngreso  = (int) $fIng->month;
         $anioIngreso = (int) $fIng->year;
 
+        // ⓪ Ingreso en mes futuro → el contrato aún no inicia en este período
+        $periodoIngreso = $anioIngreso * 100 + $mesIngreso;
+        $periodoActual  = $anio * 100 + $mes;
+        if ($periodoIngreso > $periodoActual) {
+            return 0;
+        }
+
         // ① Mes de ingreso → afiliación, no hay días de planilla
         if ($mesIngreso === $mes && $anioIngreso === $anio) {
             return 0;

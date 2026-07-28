@@ -385,12 +385,18 @@ $esIndep          = $c->tipoModalidad?->esIndependiente() ?? false;
 $esIndActPrimerMes = $c->es_ind_act_primer_mes ?? false; // flag del controller
 $esArlModalidad   = (int)($c->tipo_modalidad_id) === 15;
 $esAfil = false;
+$esIngresoFuturo = false;
 if ($esArlModalidad) {
     // Gestión ARL siempre es cobro de afiliación, no planilla
     $esAfil = true;
 } elseif ($c->fecha_ingreso) {
     $fIngC = $c->fecha_ingreso;
-    if ((int)$fIngC->month === $mes && (int)$fIngC->year === $anio) {
+    $periodoIngresoVista = (int)$fIngC->year * 100 + (int)$fIngC->month;
+    $periodoActualVista  = $anio * 100 + $mes;
+    if ($periodoIngresoVista > $periodoActualVista) {
+        // Ingreso en mes futuro: no facturable en este período
+        $esIngresoFuturo = true;
+    } elseif ((int)$fIngC->month === $mes && (int)$fIngC->year === $anio) {
         // I ACT: NO es afiliación pura (cobra SS también)
         // I VENC y empresa: sí es afiliación pura
         if (!$esIndActPrimerMes) {
@@ -466,6 +472,10 @@ if (!$fact) {
         $vEps  = 0; $vArl  = 0; $vPen  = 0; $vCaja = 0;
         $vSS   = 0; $vIva  = 0; $vAdm  = 0;
         $vTot  = (int)(($c->costo_afiliacion ?? 0) + ($c->seguro ?? 0));
+    } elseif ($esIngresoFuturo) {
+        // Ingreso en mes futuro: el contrato aún no inicia → todo en 0
+        $vEps = $vArl = $vPen = $vCaja = $vIva = $vAdm = $vSS = 0;
+        $vTot = 0;
     } else {
         $vEps  = $r100($cotiz['eps']??0);
         $vArl  = $r100($cotiz['arl']??0);
