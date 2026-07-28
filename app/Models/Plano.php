@@ -57,6 +57,42 @@ class Plano extends BaseModel
     public function enviosWhatsappDetalles() { return $this->hasMany(PlanillaEnvioWhatsappDetalle::class, 'plano_id'); }
 
     /**
+     * Resuelve el NIT y el nombre de la ARL a utilizar para un contrato y su razón social.
+     * Prioriza la ARL del contrato si es independiente, si tiene modalidad libre o si la RS es independiente.
+     * De lo contrario, prioriza el ARL de la razón social.
+     */
+    public static function resolverArlSnapshot(Contrato $contrato, ?RazonSocial $rs): array
+    {
+        $arl = $contrato->arl;
+        $esIndependiente = $contrato->esIndependiente()
+            || ($rs?->es_independiente)
+            || ($contrato->tipoModalidad && in_array($contrato->tipo_modalidad_id, \App\Models\TipoModalidad::IDS_ARL_LIBRE));
+
+        $codArl = null;
+        $nombreArl = null;
+
+        if ($esIndependiente && $arl) {
+            $codArl = $arl->nit ?? $arl->codigo_arl ?? null;
+            $nombreArl = $arl->nombre_arl ?? null;
+        }
+
+        if (!$codArl) {
+            $codArl = $rs?->arl_nit ?? $arl?->nit ?? $arl?->codigo_arl ?? null;
+            if ($rs?->arl_nit) {
+                $nombreArl = DB::table('arls')->where('nit', $rs->arl_nit)->value('nombre_arl');
+            }
+            if (!$nombreArl) {
+                $nombreArl = $arl?->nombre_arl ?? null;
+            }
+        }
+
+        return [
+            'cod_arl' => $codArl,
+            'nombre_arl' => $nombreArl,
+        ];
+    }
+
+    /**
      * Genera el registro de plano a partir de un contrato y factura.
      * Snapshot de los datos al momento de facturar.
      */
@@ -88,19 +124,10 @@ class Plano extends BaseModel
             }
         }
 
-        // cod_arl y nombre_arl:
-        // Prioridad 1: la RS tiene arl_nit → buscar nombre en tabla arls por ese NIT
-        // Prioridad 2: fallback al ARL del contrato individual (independientes o RS sin ARL)
-        $codArl    = $rs?->arl_nit ?? $arl?->nit ?? $arl?->codigo_arl ?? null;
-        $nombreArl = null;
-        if ($rs?->arl_nit) {
-            // Buscar el nombre real de la ARL de la RS en la tabla arls
-            $nombreArl = DB::table('arls')->where('nit', $rs->arl_nit)->value('nombre_arl');
-        }
-        // Si no se encontró por la RS, usar el ARL del contrato individual
-        if (!$nombreArl) {
-            $nombreArl = $arl?->nombre_arl ?? null;
-        }
+        // cod_arl y nombre_arl utilizando el método centralizado
+        $arlSnapshot = static::resolverArlSnapshot($contrato, $rs);
+        $codArl = $arlSnapshot['cod_arl'];
+        $nombreArl = $arlSnapshot['nombre_arl'];
 
         [$primerApe, $segundoApe] = static::splitNombre($cliente?->apellidos ?? ($cliente?->primer_apellido . ' ' . $cliente?->segundo_apellido ?? ''));
         [$primerNom, $segundoNom] = static::splitNombre($cliente?->nombres    ?? ($cliente?->primer_nombre   . ' ' . $cliente?->segundo_nombre   ?? ''));

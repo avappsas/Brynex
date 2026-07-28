@@ -284,14 +284,9 @@ class TrasladoRazonSocialController extends Controller
                     $arl      = $contratoOrigen->arl;
                     $rs       = $rsDestino;
 
-                    $codArl    = $rs->arl_nit ?? $arl?->nit ?? $arl?->codigo_arl ?? null;
-                    $nombreArl = null;
-                    if ($rs->arl_nit) {
-                        $nombreArl = DB::table('arls')->where('nit', $rs->arl_nit)->value('nombre_arl');
-                    }
-                    if (!$nombreArl) {
-                        $nombreArl = $arl?->nombre_arl ?? null;
-                    }
+                    $arlSnapshot = \App\Models\Plano::resolverArlSnapshot($contratoOrigen, $rs);
+                    $codArl = $arlSnapshot['cod_arl'];
+                    $nombreArl = $arlSnapshot['nombre_arl'];
 
                     $eps  = $contratoOrigen->eps;
                     $afp  = $contratoOrigen->pension;
@@ -456,12 +451,9 @@ class TrasladoRazonSocialController extends Controller
                     $caja     = $contrato->caja;
                     $rs       = $contrato->razonSocial;
 
-                    $codArl    = $rs?->arl_nit ?? $arl?->nit ?? $arl?->codigo_arl ?? null;
-                    $nombreArl = null;
-                    if ($rs?->arl_nit) {
-                        $nombreArl = DB::table('arls')->where('nit', $rs->arl_nit)->value('nombre_arl');
-                    }
-                    if (!$nombreArl) $nombreArl = $arl?->nombre_arl ?? null;
+                    $arlSnapshot = \App\Models\Plano::resolverArlSnapshot($contrato, $rs);
+                    $codArl = $arlSnapshot['cod_arl'];
+                    $nombreArl = $arlSnapshot['nombre_arl'];
 
                     $apellidos = $cliente?->apellidos ?? trim(($cliente?->primer_apellido ?? '') . ' ' . ($cliente?->segundo_apellido ?? ''));
                     $nombres   = $cliente?->nombres   ?? trim(($cliente?->primer_nombre   ?? '') . ' ' . ($cliente?->segundo_nombre   ?? ''));
@@ -600,12 +592,9 @@ class TrasladoRazonSocialController extends Controller
                     $caja     = $contrato->caja;
                     $rs       = $contrato->razonSocial;
 
-                    $codArl    = $rs?->arl_nit ?? $arl?->nit ?? $arl?->codigo_arl ?? null;
-                    $nombreArl = null;
-                    if ($rs?->arl_nit) {
-                        $nombreArl = DB::table('arls')->where('nit', $rs->arl_nit)->value('nombre_arl');
-                    }
-                    if (!$nombreArl) $nombreArl = $arl?->nombre_arl ?? null;
+                    $arlSnapshot = \App\Models\Plano::resolverArlSnapshot($contrato, $rs);
+                    $codArl = $arlSnapshot['cod_arl'];
+                    $nombreArl = $arlSnapshot['nombre_arl'];
 
                     $apellidos = $cliente?->apellidos ?? trim(($cliente?->primer_apellido ?? '') . ' ' . ($cliente?->segundo_apellido ?? ''));
                     $nombres   = $cliente?->nombres   ?? trim(($cliente?->primer_nombre   ?? '') . ' ' . ($cliente?->segundo_nombre   ?? ''));
