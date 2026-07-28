@@ -69,13 +69,29 @@ class RedactorDiagnostico
             . 'las certifica tu fondo, no ADRES. La compensación va uno o dos meses detrás del pago, '
             . 'así que los meses más recientes pueden no aparecer todavía._';
 
-        if (!empty($d['requiere_asesor'])) {
-            $lineas[] = '';
-            $lineas[] = 'Un asesor va a revisar esto en detalle y te escribe. '
-                . 'Prefiero que lo confirme una persona antes de sacar conclusiones.';
-        }
-
         return implode("\n", $lineas);
+    }
+
+    /**
+     * Texto que acompaña el PDF y ofrece pasar con un asesor.
+     *
+     * No se escala solo: escalarAHumano() apaga el bot, y si lo hiciéramos por
+     * nuestra cuenta el cliente respondería "sí, páseme con alguien" y nadie le
+     * contestaría. Se le pregunta, y si acepta, la IA usa hablar_con_asesor.
+     */
+    public static function ofertaAsesor(AdresChequeo $chequeo): string
+    {
+        $hayHallazgos = !empty($chequeo->diagnostico['requiere_asesor']);
+
+        $intro = $hayHallazgos
+            ? "Te dejo el reporte completo de ADRES 📄\n\n"
+                . 'Ahí está todo mes por mes, es el documento oficial. Como encontré cosas que vale la pena '
+                . 'mirar con calma, '
+            : "Te dejo el reporte completo de ADRES 📄\n\n"
+                . 'Ahí está todo mes por mes, es el documento oficial. Si quieres, ';
+
+        return $intro . '¿te comunico con un asesor para que lo revise contigo y te explique qué significa '
+            . 'cada cosa? Solo dime que sí. 🙂';
     }
 
     /**

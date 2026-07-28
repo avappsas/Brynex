@@ -12,6 +12,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\{InteractsWithQueue, SerializesModels};
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * El cliente respondió el código de seguridad de ADRES: se completa la consulta
@@ -70,14 +71,101 @@ class ResolverCaptchaAdresJob implements ShouldQueue
             return;
         }
 
-        $this->responder($whatsappApi, $conversacion, RedactorDiagnostico::paraWhatsapp($r['chequeo']));
+        $chequeo = $r['chequeo'];
 
-        // Un hallazgo grave no lo cierra el bot: puede implicar que otro operador
-        // está fallando, y esa conversación la tiene que llevar una persona.
-        if (!empty($r['chequeo']->diagnostico['requiere_asesor'])) {
-            $conversacion->escalarAHumano(
-                'Chequeo ADRES con hallazgos que requieren revisión (chequeo #' . $r['chequeo']->id . ').'
-            );
+        $this->responder($whatsappApi, $conversacion, RedactorDiagnostico::paraWhatsapp($chequeo));
+
+        // El PDF es la prueba: el cliente ve el documento oficial de ADRES, no
+        // solo lo que le decimos nosotros. Es la misma lógica del "pagas después
+        // de ver tu radicado".
+        $oferta = RedactorDiagnostico::ofertaAsesor($chequeo);
+        $enviado = $this->enviarPdf($whatsappApi, $conversacion, $chequeo, $oferta);
+
+        // Si el PDF no salió, la pregunta por el asesor no se puede perder.
+        if (!$enviado) {
+            $this->responder($whatsappApi, $conversacion, $oferta);
+        }
+
+        // No se escala aquí a propósito: escalarAHumano() apaga el bot, y el
+        // cliente acaba de recibir una pregunta. Si dice que sí, la IA lo pasa
+        // con hablar_con_asesor. El flag requiere_asesor queda en el diagnóstico
+        // para el panel interno.
+    }
+
+    /** Manda el reporte oficial de ADRES como documento adjunto. */
+    private function enviarPdf(
+        WhatsappApiService $api,
+        WhatsappConversacion $conversacion,
+        AdresChequeo $chequeo,
+        string $caption
+    ): bool {
+        if (!$chequeo->pdf_path || !Storage::disk('local')->exists($chequeo->pdf_path)) {
+            return false;
+        }
+
+        $config = WhatsappConfig::paraAliado($conversacion->aliado_id);
+        if (!$config->credencialesCompletas()) {
+            return false;
+        }
+
+        $nombre = 'Reporte ADRES - Periodos Compensados.pdf';
+
+        $envio = $api->enviarMedia(
+            $conversacion->wa_contact_id,
+            'document',
+            $chequeo->pdf_path,
+            'application/pdf',
+            $nombre,
+            $config,
+            $caption
+        );
+
+        if (!($envio['ok'] ?? false)) {
+            Log::warning('ADRES: no se pudo enviar el PDF del chequeo', [
+                'chequeo_id' => $chequeo->id,
+                'error'      => $envio['error'] ?? null,
+            ]);
+            return false;
+        }
+
+        $mensaje = WhatsappMensaje::create([
+            'conversacion_id' => $conversacion->id,
+            'aliado_id'       => $conversacion->aliado_id,
+            'wa_message_id'   => $envio['wa_message_id'],
+            'direccion'       => 'saliente',
+            'tipo'            => 'document',
+            'contenido'       => $caption,
+            'media_nombre'    => $nombre,
+            'media_mime_type' => 'application/pdf',
+            'estado'          => 'enviado',
+            'es_bot'          => true,
+        ]);
+
+        $conversacion->update(['ultimo_mensaje_at' => now()]);
+        $this->difundir($mensaje, $conversacion);
+
+        return true;
+    }
+
+    /**
+     * Refrescar el chat en vivo es un extra; entregarle los mensajes al cliente no.
+     *
+     * Este job manda dos cosas seguidas (resumen y PDF). Sin este try/catch, si
+     * Reverb está caído el broadcast del primero revienta el job y el cliente se
+     * queda sin el PDF ni la pregunta del asesor — con el resumen a medias y sin
+     * saber qué pasó. El resto de jobs de WhatsApp mandan un solo mensaje, por eso
+     * allá el broadcast suelto no hace daño.
+     */
+    private function difundir(WhatsappMensaje $mensaje, WhatsappConversacion $conversacion): void
+    {
+        try {
+            broadcast(new WhatsappMensajeNuevo($mensaje, $conversacion));
+            broadcast(new WhatsappConversacionActualizada($conversacion));
+        } catch (\Throwable $e) {
+            Log::warning('ADRES: no se pudo difundir el mensaje al chat en vivo', [
+                'conversacion_id' => $conversacion->id,
+                'error'           => $e->getMessage(),
+            ]);
         }
     }
 
@@ -114,8 +202,6 @@ class ResolverCaptchaAdresJob implements ShouldQueue
         ]);
 
         $conversacion->update(['ultimo_mensaje_at' => now()]);
-
-        broadcast(new WhatsappMensajeNuevo($mensaje, $conversacion));
-        broadcast(new WhatsappConversacionActualizada($conversacion));
+        $this->difundir($mensaje, $conversacion);
     }
 }
