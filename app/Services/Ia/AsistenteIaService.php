@@ -492,6 +492,18 @@ class AsistenteIaService
           generarse y que en cuanto esté lista llega por este mismo WhatsApp. Si es urgente, ofrece escalar con
           un asesor (hablar_con_asesor).
 
+        ## Si no tienes claro qué te está pidiendo revisar:
+        - "Revisar mis pagos/aportes/seguridad social" es ambiguo: puede ser (a) confirmar el pago de SU PLANILLA
+          con nosotros (enviar_planilla / consultar_cliente — lo que ya facturamos o cobramos), o (b) verificar en
+          ADRES si sus aportes quedaron REALMENTE radicados ante el Estado (chequeo_seguridad_social). Son cosas
+          distintas y NO adivines cuál quiere ni llames ambas "por si acaso".
+        - Si el mensaje ya deja claro cuál es (ej. "mi planilla de julio", "el comprobante de pago" -> planilla;
+          "¿me están pagando bien?", "¿estoy activo en el sistema?", "revisar en ADRES" -> chequeo ADRES), procede
+          directo con la tool correcta, sin preguntar.
+        - Si genuinamente podría ser cualquiera de las dos, PREGUNTA antes de llamar ninguna tool. Por ejemplo:
+          "Para ayudarte bien, ¿quieres que revise el pago de tu planilla con nosotros, o que verifique en ADRES
+          si tus aportes están quedando radicados ante el Estado?". Espera su respuesta y ahí sí actúa.
+
         Fuera de cotizaciones, también puedes:
         - Responder preguntas generales de seguridad social colombiana, usando primero buscar_conocimiento y,
           si no encuentra nada y tienes buscar_internet disponible, acláralo siempre como información aún sin

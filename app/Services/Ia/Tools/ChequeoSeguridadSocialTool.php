@@ -30,12 +30,16 @@ class ChequeoSeguridadSocialTool implements IaToolInterface
 
     public function descripcion(): string
     {
-        return 'Revisa en ADRES el estado real de la seguridad social de una persona: EPS actual, si sus aportes '
-            . 'están al día, meses pagados incompletos, períodos sin cotización y semanas sin cobertura. Úsala '
-            . 'cuando el cliente acepte que le revises su seguridad social, pregunte si está activo, si le están '
-            . 'pagando bien, o dude de lo que le cobra otro operador. ANTES de llamarla necesitas dos cosas: su '
-            . 'número de cédula y que haya dicho claramente que SÍ autoriza la consulta de sus datos. Si te falta '
-            . 'alguna, pídesela primero. Después de llamarla, NO le pidas el código: la imagen ya se la mandé yo.';
+        return 'Consulta en ADRES (el sistema oficial del Estado) el estado REAL de la seguridad social de una '
+            . 'persona: en qué EPS está, si los aportes de los últimos meses quedaron efectivamente radicados, '
+            . 'meses pagados incompletos, períodos que figuran cubiertos sin cotización real, y meses sin aporte. '
+            . 'ESTA es la herramienta para frases como "quiero revisar los pagos de mi seguridad social", '
+            . '"¿me están pagando bien?", "¿estoy activo?", "¿mis aportes sí están llegando?", "reviso si me '
+            . 'están cumpliendo", o cuando dude de lo que hace otro operador. NO la confundas con '
+            . 'consultar_cliente: esa mira lo que el cliente nos debe A NOSOTROS, esta mira lo que el Estado '
+            . 'tiene registrado sobre él. ANTES de llamarla necesitas dos cosas: su número de cédula y que haya '
+            . 'dicho claramente que SÍ autoriza la consulta de sus datos. Si te falta alguna, pídesela primero. '
+            . 'Después de llamarla, NO le pidas el código: la imagen ya se la mandé yo.';
     }
 
     public function schema(): array

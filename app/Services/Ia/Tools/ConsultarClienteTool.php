@@ -32,11 +32,14 @@ class ConsultarClienteTool implements IaToolInterface
 
     public function descripcion(): string
     {
-        return 'Consulta si el número que escribe es un cliente con contrato vigente, y si lo es, su plan, a qué '
-            . 'EPS/ARL/fondo de pensión/caja de compensación está afiliado, cuánto debe pagar este período (o el '
-            . 'siguiente si ya facturó), saldo pendiente y las cuentas para pagar. Úsala cuando el cliente '
-            . 'pregunte por su cuenta, cuánto debe, si está al día, cómo pagar, o a qué entidad está afiliado. Si '
-            . 'devuelve requiere_cedula=true, pídele la cédula al cliente y vuelve a llamarla con ese dato.';
+        return 'Consulta la cuenta del cliente CON NOSOTROS: si tiene contrato vigente, su plan, a qué '
+            . 'EPS/ARL/fondo de pensión/caja de compensación lo tenemos afiliado, cuánto debe pagarnos este '
+            . 'período (o el siguiente si ya facturó), saldo pendiente y las cuentas para pagar. Úsala cuando '
+            . 'pregunte cuánto nos debe, cómo pagarnos, o qué plan tiene contratado. '
+            . 'NO la uses cuando quiera verificar si sus aportes llegaron de verdad al sistema, si le están '
+            . 'pagando completo, o si está activo ante el Estado — eso es chequeo_seguridad_social, que consulta '
+            . 'ADRES. Esta herramienta solo sabe lo que hay en nuestra base, no lo que registró el Estado. '
+            . 'Si devuelve requiere_cedula=true, pídele la cédula al cliente y vuelve a llamarla con ese dato.';
     }
 
     public function schema(): array
