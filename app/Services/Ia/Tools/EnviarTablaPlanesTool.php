@@ -14,13 +14,17 @@ use Illuminate\Support\Facades\Storage;
 
 /**
  * Solo canal WhatsApp. Envía la imagen con la tabla de planes/precios del aliado (subida
- * desde /admin/aliados), para cuando el cliente quiere ver las opciones escritas o de un
- * vistazo en vez de solo escuchar un valor.
+ * desde /admin/aliados) para arrancar la conversación cuando alguien pregunta por planes o
+ * precios en general — es el vistazo inicial, antes de entrar al detalle con cotizar_plan.
  *
  * Es una imagen de REFERENCIA/orientación, no la fuente de verdad: el valor que se ofrece
  * SIEMPRE sale de cotizar_plan, nunca se lee de esta imagen (puede quedar desactualizada si
  * cambian las tarifas y nadie la reemplaza). Por eso esta tool no reemplaza la cotización, la
  * complementa.
+ *
+ * Se manda como máximo una vez cada 24h por conversación (ver HORAS_ANTES_DE_REENVIAR): si el
+ * cliente ya la recibió hoy, no tiene sentido insistir con la misma imagen — vuelve a estar
+ * disponible al día siguiente.
  *
  * La imagen vive en el disco público (donde la sube el admin); enviarMedia() necesita el
  * archivo en el disco local, así que se copia a un temporal y se borra después de enviarlo
@@ -28,6 +32,12 @@ use Illuminate\Support\Facades\Storage;
  */
 class EnviarTablaPlanesTool implements IaToolInterface
 {
+    /** Cada cuánto se le puede volver a mandar la imagen a la misma conversación. */
+    private const HORAS_ANTES_DE_REENVIAR = 24;
+
+    /** Marca el mensaje para poder encontrarlo después sin depender de una columna nueva. */
+    private const MARCADOR_MENSAJE = 'imagen: tabla de planes';
+
     public function nombre(): string
     {
         return 'enviar_tabla_planes';
@@ -35,12 +45,18 @@ class EnviarTablaPlanesTool implements IaToolInterface
 
     public function descripcion(): string
     {
-        return 'Envía por WhatsApp una imagen con la tabla de planes y precios de referencia. Úsala cuando el '
-            . 'cliente pida ver los planes "escritos", "por catálogo", "una imagen", o cuando esté indeciso '
-            . 'entre varias combinaciones y le ayude verlas todas juntas. NO la uses como reemplazo de cotizar_plan: '
-            . 'los valores exactos que le des al cliente siempre deben salir de esa tool, esta imagen es solo '
-            . 'apoyo visual y puede tener precios de referencia, no el valor final. Si el aliado no tiene esta '
-            . 'imagen configurada, te devuelve disponible=false — en ese caso sigue solo con texto, no lo menciones.';
+        return 'Envía por WhatsApp una imagen con la tabla de planes y precios de referencia. Llámala para '
+            . 'ARRANCAR la conversación cuando alguien pregunta por planes o precios en general, sin haber '
+            . 'identificado todavía un plan específico (ej. "¿qué planes tienen?", "quiero saber de precios", '
+            . '"cuánto cuesta afiliarme") — mándala primero y ya sobre eso ayúdalo a identificar qué quiere para '
+            . 'cotizar con cotizar_plan. También úsala si el cliente pide verla explícitamente o está indeciso '
+            . 'entre varias combinaciones. Se manda como máximo una vez cada 24 horas por conversación: si ya se '
+            . 'envió en ese lapso, te devuelve ya_enviada=true en vez de mandarla de nuevo — en ese caso NO la '
+            . 'llames otra vez ni le digas al cliente que ya se la mandaste, solo sigue ayudándolo (identifica qué '
+            . 'quiere y cotiza con cotizar_plan). NO la uses como reemplazo de cotizar_plan: los valores exactos '
+            . 'que le des al cliente siempre deben salir de esa tool, esta imagen es solo apoyo visual y puede '
+            . 'tener precios de referencia, no el valor final. Si el aliado no tiene esta imagen configurada, te '
+            . 'devuelve disponible=false — en ese caso sigue solo con texto, no lo menciones.';
     }
 
     public function schema(): array
@@ -55,6 +71,19 @@ class EnviarTablaPlanesTool implements IaToolInterface
 
         if (!$conversacion) {
             return ['disponible' => false, 'nota' => 'No pude identificar la conversación para enviar la imagen.'];
+        }
+
+        $ultimoEnvio = self::ultimoEnvioReciente($conversacion->id);
+        if ($ultimoEnvio) {
+            return [
+                'disponible'   => true,
+                'enviada'      => false,
+                'ya_enviada'   => true,
+                'enviada_hace' => $ultimoEnvio->diffForHumans(now(), true),
+                'nota'         => 'Ya le enviaste esta imagen hace ' . $ultimoEnvio->diffForHumans(now(), true)
+                    . ' (se manda máximo una vez cada 24h). NO la reenvíes ni le digas "ya te la mandé" — solo '
+                    . 'sigue ayudándolo: identifica qué quiere y cotiza con cotizar_plan.',
+            ];
         }
 
         $aliado = Aliado::find($conversacion->aliado_id);
@@ -98,7 +127,7 @@ class EnviarTablaPlanesTool implements IaToolInterface
                     'wa_message_id'   => $resultado['wa_message_id'],
                     'direccion'       => 'saliente',
                     'tipo'            => 'image',
-                    'contenido'       => 'Estas son nuestras opciones 👇 (imagen: tabla de planes)',
+                    'contenido'       => 'Estas son nuestras opciones 👇 (' . self::MARCADOR_MENSAJE . ')',
                     'estado'          => 'enviado',
                     'es_bot'          => true,
                 ]);
@@ -125,5 +154,28 @@ class EnviarTablaPlanesTool implements IaToolInterface
         } finally {
             Storage::disk('local')->delete($pathTemporal);
         }
+    }
+
+    /**
+     * Busca si ya se le mandó esta imagen a la conversación dentro de la ventana de reenvío.
+     *
+     * Se identifica por el marcador en `contenido` en vez de una columna dedicada: es la
+     * única tool que manda esta imagen, así que el marcador es suficiente y evita una
+     * migración solo para esto.
+     */
+    private static function ultimoEnvioReciente(int $conversacionId): ?\Carbon\Carbon
+    {
+        $ultimo = WhatsappMensaje::where('conversacion_id', $conversacionId)
+            ->where('direccion', 'saliente')
+            ->where('tipo', 'image')
+            ->where('contenido', 'like', '%' . self::MARCADOR_MENSAJE . '%')
+            ->latest('id')
+            ->first();
+
+        if (!$ultimo || $ultimo->created_at->lt(now()->subHours(self::HORAS_ANTES_DE_REENVIAR))) {
+            return null;
+        }
+
+        return $ultimo->created_at;
     }
 }
