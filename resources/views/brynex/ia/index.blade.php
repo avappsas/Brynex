@@ -442,7 +442,13 @@
                 </div>
                 <div class="form-group">
                     <label class="form-label">Modelo Gemini</label>
-                    <input type="text" name="modelo_gemini" class="form-control" value="{{ $global['modelo_gemini'] }}">
+                    <select name="modelo_gemini" class="form-control">
+                        <option value="gemini-3.6-flash" @selected($global['modelo_gemini']==='gemini-3.6-flash')>Gemini 3.6 Flash (recomendado)</option>
+                        <option value="gemini-3.5-flash" @selected($global['modelo_gemini']==='gemini-3.5-flash')>Gemini 3.5 Flash</option>
+                        <option value="gemini-3.5-flash-lite" @selected($global['modelo_gemini']==='gemini-3.5-flash-lite')>Gemini 3.5 Flash-Lite (más económico)</option>
+                        <option value="gemini-2.5-flash" @selected($global['modelo_gemini']==='gemini-2.5-flash')>Gemini 2.5 Flash</option>
+                        <option value="gemini-2.5-pro" @selected($global['modelo_gemini']==='gemini-2.5-pro')>Gemini 2.5 Pro</option>
+                    </select>
                 </div>
             </div>
 
@@ -669,7 +675,15 @@
                         </div>
                         <div class="form-group">
                             <label class="form-label">Modelo (opcional)</label>
-                            <input type="text" name="modelo" class="form-control" x-model="form.modelo" placeholder="Usa el global por defecto">
+                            <select name="modelo" class="form-control" x-model="form.modelo" x-show="form.proveedor === 'gemini'" :disabled="form.proveedor !== 'gemini'" x-cloak>
+                                <option value="">Usa el global por defecto</option>
+                                <option value="gemini-3.6-flash">Gemini 3.6 Flash (recomendado)</option>
+                                <option value="gemini-3.5-flash">Gemini 3.5 Flash</option>
+                                <option value="gemini-3.5-flash-lite">Gemini 3.5 Flash-Lite (más económico)</option>
+                                <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                                <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+                            </select>
+                            <input type="text" name="modelo" class="form-control" x-model="form.modelo" x-show="form.proveedor !== 'gemini'" :disabled="form.proveedor === 'gemini'" placeholder="Usa el global por defecto">
                         </div>
                     </div>
 
