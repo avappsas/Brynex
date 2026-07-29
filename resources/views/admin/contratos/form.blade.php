@@ -8,7 +8,7 @@
   // En creación: usar el valor del cliente como sugerencia inicial.
   $epsDefault     = old('eps_id',     $esEdicion ? ($contrato->eps_id     ?? '') : ($contrato->eps_id     ?? $clienteEpsId      ?? ''));
   $pensionDefault = old('pension_id', $esEdicion ? ($contrato->pension_id ?? '') : ($contrato->pension_id ?? $clientePensionId  ?? ''));
-  $arlDefault     = old('arl_id',     $esEdicion ? ($contrato->arl_id     ?? '') : ($contrato->arl_id     ?? $arlIdRazonSocial  ?? ''));
+  $arlDefault     = old('arl_id',     $contrato->arl_id ?: $arlIdRazonSocial ?: '');
   // intval evita que PHP emita "1750905.00" que rompe el JS de Alpine
   $defAdmon       = (int) old('administracion',   $contrato->administracion  ?? $defaultTarifas['administracion']    ?? 0);
   $defAdmonAsesor = (int) old('admon_asesor',     $contrato->admon_asesor    ?? $defaultTarifas['admon_asesor']      ?? 0);
@@ -293,7 +293,7 @@
               {{ $arlDefault == $arl->id ? 'selected' : '' }}>{{ $arl->nombre_arl }}</option>
           @endforeach
         </select>
-        @if($esEdicion && $contrato->arl_id && collect($arlList)->contains('id', (int)$contrato->arl_id))
+        @if($esEdicion && $arlDefault && collect($arlList)->contains('id', (int)$arlDefault))
         {!! $badgeEstado($rPT->get('arl')) !!}
         @endif
       </div>
