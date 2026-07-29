@@ -113,7 +113,12 @@ class GeminiProvider implements IaProviderInterface
             if ($key === 'type' && is_string($value)) {
                 $out[$key] = strtoupper($value);
             } elseif ($key === 'properties' && is_array($value)) {
-                $out[$key] = array_map(fn ($p) => $this->traducirSchema($p), $value);
+                $props = array_map(fn ($p) => $this->traducirSchema($p), $value);
+                // Una tool sin parámetros (ej. enviar_tabla_planes) llega con properties=[] — PHP
+                // serializa un array vacío como [] (lista JSON), pero Gemini exige un objeto/mapa
+                // ahí incluso vacío: sin este cast, la API rechaza TODAS las tools con 400
+                // "Cannot bind a list to map for field 'properties'" (comprobado contra la API real).
+                $out[$key] = empty($props) ? new \stdClass() : $props;
             } elseif ($key === 'items' && is_array($value)) {
                 $out[$key] = $this->traducirSchema($value);
             } else {
