@@ -845,12 +845,7 @@
             html += '<div class="valor-grande">' + (precios_modo === 'desde' ? 'Desde ' : '')
                   + formatoMoneda(info.valor_mensual_total) + '<small>/mes</small></div>';
 
-            if (info.plan_pago_inicial) {
-                var p = info.plan_pago_inicial;
-                html += '<div class="linea"><span>' + p.mes_1_nombre + ' (solo afiliación)</span><strong>' + formatoMoneda(p.mes_1_afiliacion) + '</strong></div>';
-                html += '<div class="linea"><span>' + p.mes_2_nombre + ' (proporcional)</span><strong>' + formatoMoneda(p.mes_2_valor) + '</strong></div>';
-                html += '<div class="linea"><span>' + p.mes_3_nombre + ' en adelante</span><strong>' + formatoMoneda(p.mes_3_en_adelante) + '</strong></div>';
-            } else if (info.costo_afiliacion_sugerido > 0) {
+            if (info.costo_afiliacion_sugerido > 0) {
                 html += '<div class="linea"><span>Afiliación (referencia)</span><strong>' + formatoMoneda(info.costo_afiliacion_sugerido) + '</strong></div>';
             }
             html += '<div class="base-cot">Base de cotización: ' + formatoMoneda(base) + '</div>';

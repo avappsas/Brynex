@@ -542,10 +542,15 @@ class IncapacidadController extends Controller
                         ]);
                     }
 
+                    $rsIdAbono = $incActualizar->razon_social_id;
+                    if (!$rsIdAbono && $incActualizar->contrato_id) {
+                        $rsIdAbono = DB::table('contratos')->where('id', $incActualizar->contrato_id)->value('razon_social_id') ?: null;
+                    }
+
                     DB::table('abonos_incapacidades')->insert([
                         'aliado_id'       => $incActualizar->aliado_id,
                         'incapacidad_id'  => $incActualizar->id,
-                        'razon_social_id' => $incActualizar->razon_social_id ?? null,
+                        'razon_social_id' => $rsIdAbono,
                         'tipo'            => 'entrada_incapacidad',
                         'valor'           => $request->valor_pago_rs,
                         'fecha'           => $request->fecha_pago_rs ?? now()->toDateString(),
@@ -573,10 +578,15 @@ class IncapacidadController extends Controller
                     $obsAbono = "Pago al afiliado (Neto: \${$valorNeto} · Admon: \${$admon} · 4x1000: \${$x1000} · Otros: \${$otros}) — Incapacidad #{$incActualizar->id}";
 
                     // 1. Guardar abono tipo pago_cliente
+                    $rsIdAbono = $incActualizar->razon_social_id;
+                    if (!$rsIdAbono && $incActualizar->contrato_id) {
+                        $rsIdAbono = DB::table('contratos')->where('id', $incActualizar->contrato_id)->value('razon_social_id') ?: null;
+                    }
+
                     DB::table('abonos_incapacidades')->insert([
                         'aliado_id'       => $incActualizar->aliado_id,
                         'incapacidad_id'  => $incActualizar->id,
-                        'razon_social_id' => $incActualizar->razon_social_id ?? null,
+                        'razon_social_id' => $rsIdAbono,
                         'tipo'            => 'pago_cliente',
                         'valor'           => $valorNeto,
                         'fecha'           => $fechaPago,
@@ -709,10 +719,37 @@ class IncapacidadController extends Controller
         // Obtener NIT y razon_social_id de la RS de la incapacidad
         $rsId = $inc->razon_social_id;
         $nit  = null;
+        $rs   = null;
 
+        // Fallback 1: Si no tiene razon_social_id pero tiene contrato, intentar obtener razon_social_id del contrato
+        if (!$rsId && $inc->contrato_id) {
+            $rsId = DB::table('contratos')->where('id', $inc->contrato_id)->value('razon_social_id');
+        }
+
+        // Obtener datos de la razón social si tenemos un ID
         if ($rsId) {
-            $rs  = DB::table('razones_sociales')->where('id', $rsId)->first(['nit', 'razon_social']);
+            $rs = DB::table('razones_sociales')->where('id', $rsId)->first(['id', 'nit', 'razon_social']);
             $nit = $rs?->nit ? trim((string)$rs->nit) : null;
+        }
+
+        // Fallback 2: Si no se pudo obtener el NIT pero razon_social_nombre parece ser un NIT
+        if (!$nit && $inc->razon_social_nombre) {
+            $cleanNombre = trim((string)$inc->razon_social_nombre);
+            // Si tiene formato de NIT (solo dígitos, puntos, espacios, guiones)
+            if (preg_match('/^[0-9\.\s-]+$/', $cleanNombre)) {
+                $nit = $cleanNombre;
+                // Intentar buscar la razón social por este NIT para tener el ID y nombre real
+                if (!$rsId) {
+                    $cleanNit = preg_replace('/[\.\s-]/', '', $nit);
+                    $rsMatch = DB::table('razones_sociales')
+                        ->whereRaw("REPLACE(REPLACE(REPLACE(nit, '.', ''), ' ', ''), '-', '') = ?", [$cleanNit])
+                        ->first(['id', 'nit', 'razon_social']);
+                    if ($rsMatch) {
+                        $rsId = $rsMatch->id;
+                        $rs = $rsMatch;
+                    }
+                }
+            }
         }
 
         $base = DB::table('banco_cuentas')
@@ -724,8 +761,8 @@ class IncapacidadController extends Controller
         if ($nit) {
             $cuentas = (clone $base)
                 ->where(function($q) use ($nit) {
-                    // Comparar NIT sin puntos ni espacios para evitar mismatch de formato
-                    $q->whereRaw("REPLACE(REPLACE(nit, '.', ''), ' ', '') = ?", [preg_replace('/[\.\s]/', '', $nit)]);
+                    // Comparar NIT sin puntos, espacios ni guiones para evitar mismatch de formato
+                    $q->whereRaw("REPLACE(REPLACE(REPLACE(nit, '.', ''), ' ', ''), '-', '') = ?", [preg_replace('/[\.\s-]/', '', $nit)]);
                 })
                 ->orderBy('banco')
                 ->get(['id','nombre','banco','tipo_cuenta','numero_cuenta','nit']);

@@ -56,15 +56,13 @@ class CotizarPlanPublicoTool implements IaToolInterface
         if (!empty($resultado['plan_pago_inicial'])) {
             $salida['plan_pago_inicial'] = $resultado['plan_pago_inicial'];
             $salida['nota'] = 'valor_mensual_total es el cobro recurrente desde mes_3_nombre en adelante (ya incluye '
-                . 'seguridad social y administración). NO lo abrumes con el desglose completo en la primera '
-                . 'respuesta: da solo valor_mensual_total y una frase corta de que el primer mes cuesta menos (sin '
-                . 'cifras todavía). Si pregunta por el primer mes, duda por el precio, o está listo para avanzar, '
-                . 'ahí sí da el desglose completo usando los NOMBRES DE MES reales (mes_1_nombre, mes_2_nombre, '
-                . 'mes_3_nombre), no digas "mes 1/2/3": mes_1_afiliacion es TODO lo que paga en mes_1_nombre (solo '
-                . 'la afiliación, sin SS ni administración); mes_2_valor es lo que paga en mes_2_nombre (los '
-                . 'mes_2_dias_proporcionales días del mes vencido + administración completa); desde mes_3_nombre ya '
-                . 'paga valor_mensual_total completo. Preséntalo como valor de referencia habitual ("normalmente '
-                . 'empiezas pagando solo $X"), no como cifra cerrada — el asesor confirma el valor final al afiliar '
+                . 'seguridad social y administración). Por defecto menciona SOLO costo_afiliacion_sugerido (pago '
+                . 'único de afiliación) y valor_mensual_total (mensual) — NUNCA hables de precios proporcionales ni '
+                . 'de "primer mes más económico" por iniciativa propia: confunde al cliente con cifras que no pidió. '
+                . 'La ÚNICA excepción: si pregunta puntualmente cuánto pagaría el próximo mes si se afilia hoy (o '
+                . 'desde una fecha específica), dale solo ese valor puntual (mes_2_valor, con el nombre real del '
+                . 'mes: mes_2_nombre) — no el resto del desglose ni los demás meses. Preséntalo como valor de '
+                . 'referencia habitual, no como cifra cerrada — el asesor confirma el valor final al afiliar '
                 . '(hablar_con_asesor).';
         } else {
             $salida['nota'] = 'valor_mensual_total ya incluye seguridad social y administración — es el cobro '
