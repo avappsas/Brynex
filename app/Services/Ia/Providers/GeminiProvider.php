@@ -31,7 +31,7 @@ class GeminiProvider implements IaProviderInterface
             ->post(self::BASE_URL . '/' . $modelo . ':generateContent?key=' . $apiKey, $payload);
 
         if (!$response->successful()) {
-            Log::warning('IA Gemini: error en la API', ['status' => $response->status(), 'body' => $response->body()]);
+            Log::error('IA Gemini: error en la API', ['status' => $response->status(), 'body' => $response->body()]);
             throw new \RuntimeException('Error consultando Gemini: ' . $response->status());
         }
 

@@ -34,7 +34,7 @@ class OpenAiProvider implements IaProviderInterface
         $response = Http::withToken($apiKey)->timeout(30)->post(self::API_URL, $payload);
 
         if (!$response->successful()) {
-            Log::warning('IA OpenAI: error en la API', ['status' => $response->status(), 'body' => $response->body()]);
+            Log::error('IA OpenAI: error en la API', ['status' => $response->status(), 'body' => $response->body()]);
             throw new \RuntimeException('Error consultando OpenAI: ' . $response->status());
         }
 

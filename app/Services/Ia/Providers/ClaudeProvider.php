@@ -39,7 +39,7 @@ class ClaudeProvider implements IaProviderInterface
         ])->timeout(30)->post(self::API_URL, $payload);
 
         if (!$response->successful()) {
-            Log::warning('IA Claude: error en la API', ['status' => $response->status(), 'body' => $response->body()]);
+            Log::error('IA Claude: error en la API', ['status' => $response->status(), 'body' => $response->body()]);
             throw new \RuntimeException('Error consultando Claude: ' . $response->status());
         }
 
@@ -99,7 +99,7 @@ class ClaudeProvider implements IaProviderInterface
         ])->timeout(45)->post(self::API_URL, $payload);
 
         if (!$response->successful()) {
-            Log::warning('IA Claude: error en búsqueda web', ['status' => $response->status(), 'body' => $response->body()]);
+            Log::error('IA Claude: error en búsqueda web', ['status' => $response->status(), 'body' => $response->body()]);
             throw new \RuntimeException('Error buscando en internet: ' . $response->status());
         }
 
