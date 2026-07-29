@@ -245,7 +245,7 @@ class AsistenteIaService
         $accionesSugeridas  = [];
         $herramientasUsadas = [];
         $textoFinal = '';
-        $reintentoVacioHecho = false;
+        $reintentoRespuestaSospechosaHecho = false;
 
         $contextoTool = array_merge([
             'aliado_id'       => $conversacion->aliado_id,
@@ -263,11 +263,11 @@ class AsistenteIaService
 
             if (empty($resp['tool_calls'])) {
                 // Raro pero real (visto con Gemini en pruebas): a veces el proveedor devuelve un
-                // turno en blanco, sin texto ni tool_calls, aunque el resto de la conversación
-                // esté bien formada. Un reintento evita mostrarle al cliente el mensaje genérico
-                // por lo que probablemente fue una generación vacía puntual.
-                if (empty($resp['content']) && !$reintentoVacioHecho) {
-                    $reintentoVacioHecho = true;
+                // turno en blanco (sin texto ni tool_calls), o incluso texto completo en otro
+                // alfabeto sin ninguna relación con la conversación. Un reintento evita mostrarle
+                // eso al cliente por lo que probablemente fue una generación mala puntual.
+                if ($this->respuestaSospechosa($resp['content']) && !$reintentoRespuestaSospechosaHecho) {
+                    $reintentoRespuestaSospechosaHecho = true;
                     continue;
                 }
 
@@ -334,6 +334,30 @@ class AsistenteIaService
             'acciones'            => array_values($accionesSugeridas),
             'herramientas_usadas' => $herramientasUsadas,
         ];
+    }
+
+    /**
+     * Señal barata (no un detector de idioma preciso) para decidir si vale la pena reintentar
+     * antes de mostrarle al cliente una respuesta rota: vacía, o con casi todas sus letras fuera
+     * del alfabeto latino/español (visto una vez con Gemini: devolvió un párrafo completo en
+     * japonés, sin relación con la conversación). Con poco texto (ej. solo un valor numérico como
+     * "$150.000") no hay señal suficiente, así que no la marca.
+     */
+    private function respuestaSospechosa(?string $texto): bool
+    {
+        if (empty($texto)) {
+            return true;
+        }
+
+        preg_match_all('/\p{L}/u', $texto, $todasLasLetras);
+        $totalLetras = count($todasLasLetras[0]);
+        if ($totalLetras < 20) {
+            return false;
+        }
+
+        preg_match_all('/[a-zA-ZáéíóúñüÁÉÍÓÚÑÜ]/u', $texto, $letrasLatinas);
+
+        return count($letrasLatinas[0]) / $totalLetras < 0.5;
     }
 
     /** @param IaToolInterface[] $tools */
