@@ -270,11 +270,10 @@ class PaginaAliadoController extends Controller
         }
 
         if ($config->mostrar_precios) {
-            $salida['valor_mensual_total']        = $resultado['total'];
-            $salida['costo_afiliacion_sugerido']  = $resultado['costo_afiliacion_sugerido'];
-            if (!empty($resultado['plan_pago_inicial'])) {
-                $salida['plan_pago_inicial'] = $resultado['plan_pago_inicial'];
-            }
+            // Solo afiliación (pago único) + valor mensual — el cotizador público no muestra el
+            // desglose por meses/proporcional: confunde al visitante con cifras que no pidió.
+            $salida['valor_mensual_total']       = $resultado['total'];
+            $salida['costo_afiliacion_sugerido'] = $resultado['costo_afiliacion_sugerido'];
         }
 
         return $salida;
