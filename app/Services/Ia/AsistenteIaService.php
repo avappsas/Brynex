@@ -253,6 +253,10 @@ class AsistenteIaService
             'proveedor'       => $credenciales['proveedor'],
             'api_key'         => $credenciales['api_key'],
             'modelo'          => $credenciales['modelo'],
+            // Texto crudo del cliente en ESTE turno — permite que una tool sensible (ej.
+            // chequeo_seguridad_social) verifique que un dato como la autorización de verdad
+            // se dijo ahora, en vez de confiar en que el modelo no reciclará algo de hace rato.
+            'mensaje_usuario' => $mensajeUsuario,
         ], $contextoExtra);
 
         for ($i = 0; $i < self::MAX_ITERACIONES_TOOL; $i++) {

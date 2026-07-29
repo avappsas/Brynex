@@ -38,8 +38,12 @@ class ChequeoSeguridadSocialTool implements IaToolInterface
             . 'están cumpliendo", o cuando dude de lo que hace otro operador. NO la confundas con '
             . 'consultar_cliente: esa mira lo que el cliente nos debe A NOSOTROS, esta mira lo que el Estado '
             . 'tiene registrado sobre él. ANTES de llamarla necesitas dos cosas: su número de cédula y que haya '
-            . 'dicho claramente que SÍ autoriza la consulta de sus datos. Si te falta alguna, pídesela primero. '
-            . 'Después de llamarla, NO le pidas el código: la imagen ya se la mandé yo.';
+            . 'dicho claramente que SÍ autoriza la consulta de sus datos, LAS DOS EN ESTE MISMO TURNO — nunca '
+            . 'reutilices una autorización o cédula de mensajes anteriores para justificar una llamada nueva, '
+            . 'aunque el cliente ya haya autorizado antes en la misma conversación. Si el cliente solo saluda o '
+            . 'escribe algo sin relación (ej. "hola", números sueltos sin contexto), NO la llames — pregúntale '
+            . 'primero qué necesita. Si te falta la cédula o la autorización fresca, pídesela primero. Después de '
+            . 'llamarla, NO le pidas el código: la imagen ya se la mandé yo.';
     }
 
     public function schema(): array
@@ -84,6 +88,26 @@ class ChequeoSeguridadSocialTool implements IaToolInterface
                 'ok'      => false,
                 'mensaje' => 'Falta la autorización del titular. Pregúntale explícitamente si autoriza que '
                     . 'revises su seguridad social y espera su respuesta antes de volver a llamarme.',
+            ];
+        }
+
+        // El schema exige autorizacion, pero eso solo garantiza que el campo llegue con ALGO —
+        // nada impide que el modelo reciclé un "sí, autorizo" de hace 50 mensajes para justificar
+        // una consulta nueva sin que el cliente lo haya vuelto a confirmar ahora (visto en
+        // producción: el cliente solo mandó saludos y se abrió un chequeo igual). Exigimos que la
+        // autorización realmente aparezca en lo que el cliente escribió EN ESTE turno.
+        $mensajeActual = mb_strtolower((string) ($contexto['mensaje_usuario'] ?? ''));
+        $autorizacionFresca = $mensajeActual !== '' && (
+            str_contains($mensajeActual, 'autoriz')
+            || str_contains($mensajeActual, mb_strtolower($autorizacion))
+        );
+        if (!$autorizacionFresca) {
+            return [
+                'ok'      => false,
+                'mensaje' => 'La autorización que reportaste no aparece en lo que el cliente escribió en este '
+                    . 'turno — no reuses un "sí, autorizo" de un mensaje anterior aunque esté en el historial. '
+                    . 'Pregúntale de nuevo, ahora mismo, si autoriza la consulta y espera que responda antes de '
+                    . 'volver a llamarme.',
             ];
         }
 
