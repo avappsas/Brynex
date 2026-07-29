@@ -89,7 +89,10 @@ class WhatsappResponderIaJob implements ShouldQueue
                 $conversacion->origen_campana_id
             );
         } catch (\Exception $e) {
-            Log::warning('IA WhatsApp: no se pudo generar respuesta, se escala a un humano', [
+            // error, no warning: en producción LOG_LEVEL=error, así que con warning esto
+            // quedaba invisible — cada vez que un cliente real recibía el mensaje genérico
+            // había que reproducir la llamada a mano por SSH para ver la excepción real.
+            Log::error('IA WhatsApp: no se pudo generar respuesta, se escala a un humano', [
                 'error' => $e->getMessage(),
                 'conversacion_id' => $conversacion->id,
             ]);
@@ -129,7 +132,7 @@ class WhatsappResponderIaJob implements ShouldQueue
 
         $envio = $whatsappApi->enviarTexto($conversacion->wa_contact_id, $textoFirmado, $config);
         if (!$envio['ok']) {
-            Log::warning('IA WhatsApp: fallo al enviar mensaje', [
+            Log::error('IA WhatsApp: fallo al enviar mensaje', [
                 'error' => $envio['error'] ?? null,
                 'conversacion_id' => $conversacion->id,
             ]);

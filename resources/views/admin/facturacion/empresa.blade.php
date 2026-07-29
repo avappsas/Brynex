@@ -509,9 +509,25 @@ if (!$yaP) {
 $vAfiliacion = ($esAfil || $esIndActPrimerMes) ? (int)($c->costo_afiliacion ?? 0) : 0;
 $totEps+=$vEps;$totArl+=$vArl;$totCaja+=$vCaja;$totPen+=$vPen;
 $totAdmon+=$vAdm;$totIva+=$vIva;$totTotal+=$vTot;$totMora+=$vMora;
+
+$lblEstado = 'Sin factura';
+if ($esRetirado && $esAfil && !$fact) {
+    $lblEstado = 'AFIL. PEND.';
+} elseif ($esRetirado) {
+    $lblEstado = 'RETIRO';
+} elseif ($tieneRetiroPendiente) {
+    $lblEstado = 'Retiro Pd.';
+} elseif ($fact) {
+    if ((int)$fact->numero_factura === 0) {
+        $lblEstado = 'RETIRO';
+    } else {
+        $lblEstado = $estadoLabel($fact->estado);
+    }
+}
 @endphp
 <tr class="{{ $yaP?'ya-pago':'' }}"
     data-estado="{{ $fact?->estado ?? 'sin_factura' }}"
+    data-estado-label="{{ $lblEstado }}"
     data-cedula="{{ $c->cedula }}"
     data-contrato="{{ $c->id }}"
     data-dias="{{ $dias }}"
@@ -1356,10 +1372,8 @@ function inicializarFiltrosTabla() {
         const adm = parseInt(tr.dataset.vadmon) || 0;
         if (adm > 0) admVals.add(adm);
 
-        if (tr.cells[14]) {
-            const txt = tr.cells[14].textContent.trim().replace(/\s+/g, ' ');
-            if (txt && txt !== '—') estados.add(txt);
-        }
+        const estTxt = (tr.dataset.estadoLabel || '').trim();
+        if (estTxt && estTxt !== '—') estados.add(estTxt);
 
         const np = (tr.dataset.np || '').trim();
         if (np) npVals.add(np);
@@ -1477,10 +1491,7 @@ function aplicarFiltrosTabla() {
         const vAdm = parseInt(tr.dataset.vadmon) || 0;
         let showAdm = fAdm === 'todos' || (fAdm === '-' ? vAdm === 0 : vAdm === parseInt(fAdm));
 
-        let trEst = '';
-        if (tr.cells[14]) {
-            trEst = tr.cells[14].textContent.trim().replace(/\s+/g, ' ');
-        }
+        const trEst = (tr.dataset.estadoLabel || '').trim();
         let showEst = fEst === 'todos' || trEst === fEst;
 
         const trNP = (tr.dataset.np || '').trim();

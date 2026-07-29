@@ -1593,7 +1593,7 @@ class InformeController extends Controller
             ->where('aliado_id', $aid)->where('banco_origen_id', $bancoId)
             ->whereMonth('fecha', $mes)->whereYear('fecha', $anio)
             ->where('tipo', '!=', 'efectivo_banco')   // traslados efectivo→banco no son salida del banco
-            ->select('fecha', 'valor', 'tipo', 'descripcion', 'pagado_a')
+            ->select('id', 'fecha', 'valor', 'tipo', 'descripcion', 'pagado_a', 'forma_pago', 'banco_origen_id', 'banco_destino_id', 'recibo_caja', 'observacion', 'imagen_path')
             ->orderBy('fecha')->get();
 
         return response()->json(['entradas' => $entradas, 'salidas' => $salidas]);

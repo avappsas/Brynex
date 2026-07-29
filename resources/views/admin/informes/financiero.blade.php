@@ -1612,6 +1612,7 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
 const tendencia = @json($tendencia);
 const anterior  = @json($anterior);
 const ingresos  = @json($ingresos);
+const esAdmin   = {{ $esAdmin ? 'true' : 'false' }};
 const fmt = v => '$ '+Math.round(v).toLocaleString('es-CO');
 
 // Gráfica tendencia
@@ -1808,6 +1809,7 @@ function verPrestamos() {
 // Modal movimientos banco — mejorado
 const mesesEs = ['','enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 let _consigMap = {};
+let _gastosMap = {};
 let _bancoActualId = null, _bancoActualLabel = '';
 
 function fmtFechaLargo(f) {
@@ -1826,7 +1828,7 @@ function fmtHora(c) {
 }
 
 function verMovimientosBanco(bancoId, label) {
-    _bancoActualId = bancoId; _bancoActualLabel = label; _consigMap = {};
+    _bancoActualId = bancoId; _bancoActualLabel = label; _consigMap = {}; _gastosMap = {};
     const modal = document.getElementById('modalBanco');
     document.getElementById('modalBancoTitulo').textContent = '🏦 ' + label;
     document.getElementById('modalBancoSub').textContent = 'Consignaciones y salidas del mes';
@@ -1893,7 +1895,7 @@ function verMovimientosBanco(bancoId, label) {
                     let sopBtn = '<span style="color:#cbd5e1;font-size:.72rem;">Sin foto</span>';
                     if (e.imagen_path) {
                         const url = (e.imagen_path.startsWith('http') || e.imagen_path.startsWith('/storage')) ? e.imagen_path : '/storage/'+e.imagen_path;
-                        sopBtn = '<a href="'+url+'" target="_blank" style="display:inline-flex;align-items:center;background:#7c3aed;color:#fff;border-radius:7px;padding:.2rem .45rem;font-size:.68rem;font-weight:700;text-decoration:none;white-space:nowrap;">📷 Ver</a>';
+                        sopBtn = '<button onclick="verImagenGasto(\''+url+'\')" style="display:inline-flex;align-items:center;background:#7c3aed;color:#fff;border-radius:7px;padding:.2rem .45rem;font-size:.68rem;font-weight:700;cursor:pointer;border:none;white-space:nowrap;">📷 Ver</button>';
                     }
                     html += '<div style="display:grid;grid-template-columns:110px 1fr 75px 95px 68px 90px 65px 32px;gap:.3rem;padding:.42rem .75rem;background:'+bg+';border-bottom:1px solid #f0fdf4;align-items:center;font-size:.77rem;">'
                         +'<div>'
@@ -1905,7 +1907,7 @@ function verMovimientosBanco(bancoId, label) {
                             +tipoLbl
                         +'</div>'
                         +'<div>'+refTxt+'</div>'
-                        +'<div style="text-align:right;font-weight:800;color:#16a34a;font-family:monospace;">'+fmtN(e.valor)+'</div>'
+                        +'<div style="text-align:right;font-weight:800;color:#16a34a;font-family:monospace;white-space:nowrap;">'+fmtN(e.valor)+'</div>'
                         +'<div style="text-align:center;">'+factTxt+'</div>'
                         +'<div style="text-align:center;">'+estadoLbl+'</div>'
                         +'<div style="text-align:center;">'+sopBtn+'</div>'
@@ -1920,18 +1922,32 @@ function verMovimientosBanco(bancoId, label) {
             if (!data.salidas.length) {
                 html += '<div style="color:#94a3b8;font-size:.82rem;padding:.5rem;">Sin salidas en este periodo.</div>';
             } else {
+                const cols = esAdmin ? '110px 1fr 90px 105px 65px 32px' : '110px 1fr 90px 105px 65px';
                 html += '<div style="border-radius:10px;overflow:hidden;border:1px solid #fecaca;">'
-                      + '<div style="display:grid;grid-template-columns:130px 1fr 110px;gap:.3rem;padding:.42rem .75rem;background:#fef2f2;font-size:.65rem;font-weight:700;text-transform:uppercase;color:#b91c1c;border-bottom:2px solid #fca5a5;">'
-                      + '<span>Fecha</span><span>Descripcion</span><span style="text-align:right;">Valor</span>'
+                      + '<div style="display:grid;grid-template-columns:'+cols+';gap:.3rem;padding:.42rem .75rem;background:#fef2f2;font-size:.65rem;font-weight:700;text-transform:uppercase;color:#b91c1c;border-bottom:2px solid #fca5a5;">'
+                      + '<span>Fecha</span><span>Descripción</span><span>Tipo</span><span style="text-align:right;">Valor</span><span style="text-align:center;">Soporte</span>'
+                      + (esAdmin ? '<span style="text-align:center;">Ed.</span>' : '')
                       + '</div>';
                 data.salidas.forEach((s,i) => {
+                    _gastosMap[s.id] = s;
                     const bg      = i%2===0?'#fff':'#fff5f5';
                     const fechaStr= fmtFechaLargo(s.fecha);
                     const desc    = s.descripcion||s.pagado_a||s.tipo||'—';
-                    html += '<div style="display:grid;grid-template-columns:130px 1fr 110px;gap:.3rem;padding:.45rem .75rem;background:'+bg+';border-bottom:1px solid #fff1f2;align-items:center;font-size:.78rem;">'
+                    const tipoLbl = s.tipo ? s.tipo.replace(/_/g, ' ').toUpperCase() : '—';
+                    
+                    let sopBtn = '<span style="color:#cbd5e1;font-size:.72rem;">Sin foto</span>';
+                    if (s.imagen_path) {
+                        const url = (s.imagen_path.startsWith('http') || s.imagen_path.startsWith('/storage')) ? s.imagen_path : '/storage/'+s.imagen_path;
+                        sopBtn = '<button onclick="verImagenGasto(\''+url+'\')" style="display:inline-flex;align-items:center;background:#7c3aed;color:#fff;border-radius:7px;padding:.2rem .45rem;font-size:.68rem;font-weight:700;cursor:pointer;border:none;white-space:nowrap;">📷 Ver</button>';
+                    }
+
+                    html += '<div style="display:grid;grid-template-columns:'+cols+';gap:.3rem;padding:.45rem .75rem;background:'+bg+';border-bottom:1px solid #fff1f2;align-items:center;font-size:.78rem;">'
                         +'<div style="font-weight:700;color:#0d2550;">'+fechaStr+'</div>'
-                        +'<div style="color:#334155;">'+desc+'</div>'
-                        +'<div style="text-align:right;font-weight:800;color:#dc2626;font-family:monospace;">- '+fmtN(s.valor)+'</div>'
+                        +'<div style="color:#334155;font-weight:600;">'+desc+'</div>'
+                        +'<div style="color:#475569;font-size:.72rem;">'+tipoLbl+'</div>'
+                        +'<div style="text-align:right;font-weight:800;color:#dc2626;font-family:monospace;white-space:nowrap;">'+fmtN(s.valor)+'</div>'
+                        +'<div style="text-align:center;">'+sopBtn+'</div>'
+                        + (esAdmin ? '<div style="text-align:center;"><button onclick="abrirEditarGasto('+s.id+')" style="background:#f59e0b;border:none;color:#fff;border-radius:7px;width:26px;height:26px;cursor:pointer;font-size:.72rem;display:inline-flex;align-items:center;justify-content:center;" title="Editar">✏️</button></div>' : '')
                         +'</div>';
                 });
                 html += '</div>';
@@ -2845,6 +2861,32 @@ function abrirModalGasto() {
     const form = document.getElementById('modal-gasto-form');
     if (form) {
         form.reset();
+        
+        // Limpiar _method si existe
+        const mp = form.querySelector('input[name="_method"]');
+        if (mp) mp.remove();
+        
+        // Restaurar Action original de creación
+        form.action = "{{ route('admin.informes.gastos.store') }}";
+        
+        // Restaurar Título y botón
+        const modal = document.getElementById('modal-gasto');
+        const hdr = modal.querySelector('[style*="background:#0f172a"] span');
+        if (hdr) hdr.textContent = '💼 Registrar Gasto';
+        const btn = form.querySelector('button[type="submit"]');
+        if (btn) btn.textContent = '✅ Registrar Gasto';
+
+        // Restaurar select de tipo normal
+        const selTipo = form.querySelector('select[name="tipo"]');
+        if (selTipo) {
+            selTipo.style.display = '';
+            selTipo.setAttribute('required', '');
+        }
+        const prevHidden = form.querySelector('input[name="tipo"][type="hidden"]');
+        if (prevHidden) prevHidden.remove();
+        const prevBadge = form.querySelector('#badge-tipo-planilla');
+        if (prevBadge) prevBadge.remove();
+
         const hide = ['modal-gasto-banco-origen','modal-gasto-banco-destino','modal-gasto-blq-usuario'];
         hide.forEach(id => { const el = document.getElementById(id); if(el) el.style.display='none'; });
         const zone = document.getElementById('modal-gasto-paste-zone');
@@ -2856,6 +2898,72 @@ function abrirModalGasto() {
         if (b64) b64.value = '';
     }
     document.getElementById('modal-gasto').style.display = 'flex';
+}
+
+function abrirEditarGasto(id) {
+    const g = _gastosMap[id] || {};
+    const modal = document.getElementById('modal-gasto');
+    const form  = document.getElementById('modal-gasto-form');
+    if(!modal || !form) return;
+
+    // Título y botón de guardar
+    const hdr = modal.querySelector('[style*="background:#0f172a"] span');
+    if(hdr) hdr.textContent = '✏️ Editar Gasto #' + (g.id || '');
+    const btn = form.querySelector('button[type="submit"]');
+    if(btn) btn.textContent = '💾 Guardar Cambios';
+
+    // _method PUT
+    let mp = form.querySelector('input[name="_method"]');
+    if(!mp){ mp = document.createElement('input'); mp.type='hidden'; mp.name='_method'; form.appendChild(mp); }
+    mp.value = 'PUT';
+
+    // Action para actualización del gasto
+    form.action = `/admin/informes/gastos/${g.id}`;
+
+    // ── Manejar tipo pago_planilla ────────────────────────────────────
+    const selTipo = form.querySelector('select[name="tipo"]');
+    // Limpiar estado anterior
+    const prevHidden = form.querySelector('input[name="tipo"][type="hidden"]');
+    if(prevHidden) prevHidden.remove();
+    const prevBadge = form.querySelector('#badge-tipo-planilla');
+    if(prevBadge) prevBadge.remove();
+
+    if(g.tipo === 'pago_planilla'){
+        if(selTipo){ selTipo.style.display = 'none'; selTipo.removeAttribute('required'); }
+        const ht = document.createElement('input');
+        ht.type = 'hidden'; ht.name = 'tipo'; ht.value = 'pago_planilla';
+        ht.id = 'hidden-tipo-planilla';
+        if(selTipo) selTipo.parentNode.appendChild(ht);
+        
+        const badge = document.createElement('div');
+        badge.id = 'badge-tipo-planilla';
+        badge.innerHTML = '<span style="display:inline-flex;align-items:center;gap:.4rem;background:#f0fdf4;border:1px solid #86efac;color:#15803d;border-radius:7px;padding:.35rem .7rem;font-size:.78rem;font-weight:600;">🏢 Pago Planilla <span style="color:#6b7280;font-weight:400;font-size:.72rem;">(tipo fijo — administrar desde Planos)</span></span>';
+        if(selTipo) selTipo.parentNode.insertBefore(badge, selTipo);
+    } else {
+        if(selTipo){ selTipo.style.display = ''; selTipo.setAttribute('required',''); }
+    }
+
+    // Rellenar campos del gasto
+    const set = (name, val) => {
+        const el = form.querySelector(`[name="${name}"]:not([type="hidden"])`);
+        if(el) el.value = val ?? '';
+    };
+    set('fecha',            g.fecha ? g.fecha.substring(0,10) : '');
+    if(g.tipo !== 'pago_planilla') set('tipo', g.tipo ?? '');
+    set('descripcion',      g.descripcion ?? '');
+    set('pagado_a',         g.pagado_a    ?? '');
+    set('valor',            g.valor       ?? '');
+    set('forma_pago',       g.forma_pago  ?? 'efectivo');
+    set('banco_origen_id',  g.banco_origen_id  ?? '');
+    set('banco_destino_id', g.banco_destino_id ?? '');
+    set('recibo_caja',      g.recibo_caja ?? '');
+    set('observacion',      g.observacion ?? '');
+
+    // Visibilidad de bancos
+    if(g.tipo !== 'pago_planilla') gasto_onTipoChange('modal-gasto');
+    gasto_actualizarBancos('modal-gasto');
+
+    modal.style.display = 'flex';
 }
 </script>
 
