@@ -80,7 +80,13 @@ class GeminiProvider implements IaProviderInterface
                     $parts[] = ['text' => $m['content']];
                 }
                 foreach ($m['tool_calls'] ?? [] as $tc) {
-                    $part = ['functionCall' => ['name' => $tc['name'], 'args' => $tc['input']]];
+                    // Mismo problema que con "properties": una tool sin parámetros (ej.
+                    // enviar_tabla_planes) llega con input=[] — PHP lo serializa como [] (lista)
+                    // en vez de {} (objeto), y Gemini rechaza "args" con "Proto field is not
+                    // repeating, cannot start list" al reconstruir el historial (comprobado
+                    // contra la API real, log de producción 2026-07-29 11:59:55).
+                    $args = empty($tc['input']) ? new \stdClass() : $tc['input'];
+                    $part = ['functionCall' => ['name' => $tc['name'], 'args' => $args]];
                     if (!empty($tc['_thought_signature'])) {
                         $part['thoughtSignature'] = $tc['_thought_signature'];
                     }
