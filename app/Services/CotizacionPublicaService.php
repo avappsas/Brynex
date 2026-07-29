@@ -613,10 +613,13 @@ class CotizacionPublicaService
 
         $normal = self::cotizar($plan, $modalidad, $aliadoId, ['nivel_arl' => $nivelArl]);
 
+        // Configurable por aliado (Configuración → Parámetros Especiales); 25% si no se configura.
+        $porcentaje = (int) (ConfiguracionAliado::paraAliado($aliadoId)?->arl_descuento_porcentaje ?? 25);
+
         return [
             'valor_normal'     => $normal['total'],
-            'valor_descuento'  => (float) (ceil(($normal['total'] * 0.75) / 100) * 100),
-            'porcentaje'       => 25,
+            'valor_descuento'  => (float) (ceil(($normal['total'] * (100 - $porcentaje) / 100) / 100) * 100),
+            'porcentaje'       => $porcentaje,
         ];
     }
 

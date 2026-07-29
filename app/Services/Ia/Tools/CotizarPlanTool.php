@@ -2,6 +2,7 @@
 
 namespace App\Services\Ia\Tools;
 
+use App\Models\ConfiguracionAliado;
 use App\Models\ConfiguracionBrynex;
 use App\Models\PlanContrato;
 use App\Models\TipoModalidad;
@@ -177,6 +178,16 @@ class CotizarPlanTool implements IaToolInterface
             'fecha_afiliacion' => $input['fecha_afiliacion'] ?? null,
         ]);
 
+        // Afiliación específica para Tiempo Parcial (configurable), en vez de heredar el costo
+        // completo del plan normal — no tiene sentido cobrarle la afiliación de un plan de 30
+        // días a alguien que solo va a cotizar unos pocos días al mes.
+        if ($tiempoParcialDias) {
+            $costoAfiliacionTp = ConfiguracionAliado::paraAliado($alidoId)?->tiempo_parcial_costo_afiliacion;
+            if ($costoAfiliacionTp) {
+                $resultado['costo_afiliacion_sugerido'] = (float) $costoAfiliacionTp;
+            }
+        }
+
         $resultado['coincidencia_exacta'] = $coincidenciaExacta;
         $resultado['salario_usado']       = $salario;
         $resultado['nivel_arl_usado']     = (int) ($input['nivel_arl'] ?? 1);
@@ -253,31 +264,53 @@ class CotizarPlanTool implements IaToolInterface
         }
 
         // Estrategia Ingreso-Retiro: el valor cotizado es el del primer mes (afiliación normal);
-        // desde el segundo se pagan pocos días, así que se calcula ese valor recurrente aparte.
+        // desde el segundo se pagan pocos días. Si el aliado configuró un valor mensual fijo
+        // (Configuración → Parámetros Especiales), se usa ese exacto; si no, se cae al cálculo
+        // proporcional de siempre, presentado como rango aproximado (menos preciso a propósito,
+        // porque sin ese valor configurado no hay un número real que dar).
         if ($ingresoRetiro) {
             $diasSiguientes = 6;
-            $recurrente = CotizacionPublicaService::cotizar($plan, $tipoModalidad, $alidoId, [
-                'salario'   => $salario,
-                'nivel_arl' => (int) ($input['nivel_arl'] ?? 1),
-                'dias'      => $diasSiguientes,
-            ]);
-            $resultado['plan_estrategia_ingreso_retiro'] = [
-                'valor_primer_mes'      => $resultado['total'],
-                'dias_meses_siguientes' => $diasSiguientes,
-                'valor_meses_siguientes' => $recurrente['total'],
-                'nota' => 'Estrategia para que el cliente NO pierda el servicio de EPS cuando no puede pagar el '
-                    . 'aporte completo de pensión: el primer mes se afilia normal (queda con servicio de una vez), y '
-                    . "desde el segundo mes se pagan solo {$diasSiguientes} días de planilla, afiliándolo en paralelo "
-                    . 'por otra razón social para repetirlo el mes siguiente. Explícale claramente que la planilla NO '
-                    . 'será de 30 días. Ofrécela solo si el cliente no está exento de pensión y ya dijo que no le '
-                    . 'alcanza para el plan normal. Preséntalo SIEMPRE como el rango aproximado "$100.000 a $150.000 '
-                    . 'al mes" desde el segundo mes en adelante — NUNCA uses valor_meses_siguientes ni valor_primer_mes '
-                    . 'exactos, y NUNCA menciones junto con este rango ningún otro valor del plan normal (afiliación, '
-                    . 'mensual, etc.): es una alternativa aparte, solo esa cifra aproximada, nada más. Si el cliente '
-                    . 'muestra interés (dice que sí, pregunta cómo seguir), usa hablar_con_asesor de inmediato para '
-                    . 'que un humano gestione la afiliación y confirme el valor exacto — no sigas cotizando ni le des '
-                    . 'más números tú misma.',
-            ];
+            $valorConfigurado = ConfiguracionAliado::paraAliado($alidoId)?->ingreso_retiro_valor_mensual;
+
+            if ($valorConfigurado) {
+                $resultado['plan_estrategia_ingreso_retiro'] = [
+                    'valor_primer_mes'       => $resultado['total'],
+                    'dias_meses_siguientes'  => $diasSiguientes,
+                    'valor_meses_siguientes' => (float) $valorConfigurado,
+                    'nota' => 'Estrategia para que el cliente NO pierda el servicio de EPS cuando no puede pagar el '
+                        . 'aporte completo de pensión: el primer mes se afilia normal, y desde el segundo mes se pagan '
+                        . "solo {$diasSiguientes} días de planilla, afiliándolo en paralelo por otra razón social para "
+                        . 'repetirlo el mes siguiente. Explícale que la planilla NO será de 30 días. Ofrécela solo si '
+                        . 'el cliente no está exento de pensión y ya dijo que no le alcanza para el plan normal. '
+                        . 'Desde el segundo mes el valor es valor_meses_siguientes EXACTO (es un valor configurado, '
+                        . 'no un estimado) — dilo tal cual, sin redondear ni convertirlo en rango. NUNCA menciones '
+                        . 'junto con esta cifra ningún valor del plan normal (afiliación, mensual, etc.): es una '
+                        . 'alternativa aparte. Si el cliente muestra interés (dice que sí, pregunta cómo seguir), usa '
+                        . 'hablar_con_asesor de inmediato para que un humano gestione la afiliación — no sigas '
+                        . 'cotizando ni le des más números tú misma.',
+                ];
+            } else {
+                $recurrente = CotizacionPublicaService::cotizar($plan, $tipoModalidad, $alidoId, [
+                    'salario'   => $salario,
+                    'nivel_arl' => (int) ($input['nivel_arl'] ?? 1),
+                    'dias'      => $diasSiguientes,
+                ]);
+                $resultado['plan_estrategia_ingreso_retiro'] = [
+                    'valor_primer_mes'       => $resultado['total'],
+                    'dias_meses_siguientes'  => $diasSiguientes,
+                    'valor_meses_siguientes' => $recurrente['total'],
+                    'nota' => 'Estrategia para que el cliente NO pierda el servicio de EPS cuando no puede pagar el '
+                        . 'aporte completo de pensión: el primer mes se afilia normal, y desde el segundo mes se pagan '
+                        . "solo {$diasSiguientes} días de planilla, afiliándolo en paralelo por otra razón social para "
+                        . 'repetirlo el mes siguiente. Explícale que la planilla NO será de 30 días. Ofrécela solo si '
+                        . 'el cliente no está exento de pensión y ya dijo que no le alcanza para el plan normal. Este '
+                        . 'aliado NO tiene un valor mensual configurado para esta estrategia todavía, así que '
+                        . 'preséntalo SIEMPRE como el rango aproximado "$100.000 a $150.000 al mes" desde el segundo '
+                        . 'mes — NUNCA uses valor_meses_siguientes ni valor_primer_mes exactos, y NUNCA menciones '
+                        . 'junto con este rango ningún otro valor del plan normal. Si el cliente muestra interés, usa '
+                        . 'hablar_con_asesor de inmediato — no sigas cotizando ni le des más números tú misma.',
+                ];
+            }
         }
 
         if ($tipoModalidad->id === (int) \App\Services\CotizacionPublicaService::MODALIDAD_GESTION_ARL_ID) {
