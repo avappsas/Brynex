@@ -125,9 +125,6 @@ class ConfiguracionAliadoController extends Controller
             'configs.*.mora_dia_habil_inicio'   => 'nullable|integer|min:2|max:16',
             'configs.*.mora_minimo'             => 'nullable|numeric|min:0',
             'configs.*.mora_segundo'            => 'nullable|numeric|min:0',
-            'configs.*.ingreso_retiro_valor_mensual'    => 'nullable|numeric|min:0',
-            'configs.*.tiempo_parcial_costo_afiliacion' => 'nullable|numeric|min:0',
-            'configs.*.arl_descuento_porcentaje'        => 'nullable|integer|min:0|max:100',
             'arl.*.porcentaje'                  => 'nullable|numeric|min:0|max:100',
             'arl_afiliacion.*.*.*'               => 'nullable|numeric|min:0',
             'brynex.*'                          => 'nullable|numeric|min:0',
@@ -171,12 +168,6 @@ class ConfiguracionAliadoController extends Controller
                         'mora_segundo'            => $data['mora_segundo'] ?? 5000,
                         // Un solo valor por aliado (solo tiene sentido en la fila global, pero
                         // guardarlo también en filas por plan no hace daño: nunca se leen de ahí).
-                        'ingreso_retiro_valor_mensual' => ($data['ingreso_retiro_valor_mensual'] ?? '') !== ''
-                                                     ? $data['ingreso_retiro_valor_mensual'] : null,
-                        'tiempo_parcial_costo_afiliacion' => ($data['tiempo_parcial_costo_afiliacion'] ?? '') !== ''
-                                                     ? $data['tiempo_parcial_costo_afiliacion'] : null,
-                        'arl_descuento_porcentaje' => ($data['arl_descuento_porcentaje'] ?? '') !== ''
-                                                     ? (int) $data['arl_descuento_porcentaje'] : null,
                         'activo'                  => true,
                     ]
                 );

@@ -259,58 +259,6 @@
       </div>
     </div>
 
-    {{-- Campo: Valor mensual Ingreso-Retiro --}}
-    <div style="background:#f0f9ff;border-radius:9px;padding:0.85rem;border:1.5px solid #bae6fd;">
-      <div style="font-size:0.62rem;font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:0.55rem;">💊 Valor Mensual (Plan Ingreso-Retiro)</div>
-      <div style="font-size:0.72rem;color:#0c4a6e;margin-bottom:0.5rem;line-height:1.4;">
-        Lo que paga el cliente desde el segundo mes en la estrategia Ingreso-Retiro (mantener EPS activa pagando
-        pocos días). <br><em>Vacío = la IA da un rango aproximado en vez de un valor exacto.</em>
-      </div>
-      <div style="display:flex;align-items:center;gap:0.35rem;">
-        <span style="color:#0369a1;font-size:0.95rem;font-weight:700;">$</span>
-        <input type="text"
-            name="configs[global][ingreso_retiro_valor_mensual]"
-            value="{{ $globalMoraCfg?->ingreso_retiro_valor_mensual ? number_format($globalMoraCfg->ingreso_retiro_valor_mensual, 0, ',', '.') : '' }}"
-            placeholder="Ej: 120.000"
-            class="input-miles"
-            style="flex:1;padding:0.45rem 0.6rem;border:2px solid #bae6fd;border-radius:7px;font-size:0.9rem;font-family:monospace;font-weight:700;color:#0369a1;background:#fff;text-align:right;">
-      </div>
-    </div>
-
-    {{-- Campo: Costo de afiliación Tiempo Parcial --}}
-    <div style="background:#f0fdf4;border-radius:9px;padding:0.85rem;border:1.5px solid #bbf7d0;">
-      <div style="font-size:0.62rem;font-weight:700;color:#15803d;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:0.55rem;">🗓️ Afiliación Tiempo Parcial</div>
-      <div style="font-size:0.72rem;color:#14532d;margin-bottom:0.5rem;line-height:1.4;">
-        Costo de afiliación específico para Tiempo Parcial, en vez de heredar el del plan normal completo.
-        <br><em>Vacío = usa el costo de afiliación del plan normal.</em>
-      </div>
-      <div style="display:flex;align-items:center;gap:0.35rem;">
-        <span style="color:#15803d;font-size:0.95rem;font-weight:700;">$</span>
-        <input type="text"
-            name="configs[global][tiempo_parcial_costo_afiliacion]"
-            value="{{ $globalMoraCfg?->tiempo_parcial_costo_afiliacion ? number_format($globalMoraCfg->tiempo_parcial_costo_afiliacion, 0, ',', '.') : '' }}"
-            placeholder="Ej: 50.000"
-            class="input-miles"
-            style="flex:1;padding:0.45rem 0.6rem;border:2px solid #bbf7d0;border-radius:7px;font-size:0.9rem;font-family:monospace;font-weight:700;color:#15803d;background:#fff;text-align:right;">
-      </div>
-    </div>
-
-    {{-- Campo: % descuento Plan B ARL --}}
-    <div style="background:#fff7ed;border-radius:9px;padding:0.85rem;border:1.5px solid #fed7aa;">
-      <div style="font-size:0.62rem;font-weight:700;color:#c2410c;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:0.55rem;">🦺 Descuento Plan B — Solo ARL</div>
-      <div style="font-size:0.72rem;color:#7c2d12;margin-bottom:0.5rem;line-height:1.4;">
-        % de descuento del plan de gestión de ARL sin planilla mensual (cuando el cliente solo necesita el
-        radicado). <br><em>Vacío = 25% (valor por defecto).</em>
-      </div>
-      <div style="display:flex;align-items:center;gap:0.35rem;">
-        <input type="number" step="1" min="0" max="100"
-            name="configs[global][arl_descuento_porcentaje]"
-            value="{{ $globalMoraCfg?->arl_descuento_porcentaje ?? '' }}"
-            placeholder="25"
-            style="flex:1;padding:0.45rem 0.6rem;border:2px solid #fed7aa;border-radius:7px;font-size:0.9rem;font-family:monospace;font-weight:700;color:#c2410c;background:#fff;text-align:center;">
-        <span style="color:#c2410c;font-size:0.75rem;">%</span>
-      </div>
-    </div>
 
   </div>
 </div>
