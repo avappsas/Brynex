@@ -1026,6 +1026,12 @@
 
 {{-- ── Tabla desglose por entidad (igual al operador PILA) ─────────── --}}
 @if($planos->count() > 0 && $rsSeleccionada)
+<div style="margin-top: .75rem; text-align: center;">
+    <button type="button" id="btn-toggle-desglose" onclick="toggleDesgloseEntidades()" class="btn-glass" style="display: inline-flex; align-items: center; gap: .4rem; background: rgba(30,58,138,0.06); border-color: rgba(30,58,138,0.2); color: #1e3a8a; padding: 0.4rem 1.1rem; font-size: 0.76rem; border-radius: 8px; font-weight: 600; cursor: pointer; transition: all 0.15s;" onmouseover="this.style.background='rgba(30,58,138,0.12)'" onmouseout="this.style.background='rgba(30,58,138,0.06)'">
+        <span>📊</span> <span id="btn-toggle-desglose-text">Mostrar Desglose por Administradora</span>
+    </button>
+</div>
+
 <div id="desglose-entidades-wrap" style="display:none;margin-top:.75rem">
     <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.06)">
         <div style="display:flex;align-items:center;justify-content:space-between;padding:.6rem 1rem;background:linear-gradient(135deg,#1e3a8a,#1e40af);color:#fff">
@@ -1454,6 +1460,7 @@
 
 @push('scripts')
 <script>
+let desgloseVisible = false;
 // ── Datos del contexto Blade ──────────────────────────────────────────
 const CTX = {
     razonSocialId : {{ $razonSocialId ?? 'null' }},
@@ -1717,6 +1724,22 @@ window.CTX_TOTAL_PAGAR = CTX.totalSS;
     renderDesglose(factor, detalleMora);
 })();
 
+function toggleDesgloseEntidades() {
+    const wrap = document.getElementById('desglose-entidades-wrap');
+    const text = document.getElementById('btn-toggle-desglose-text');
+    if (!wrap) return;
+
+    if (desgloseVisible) {
+        wrap.style.display = 'none';
+        if (text) text.textContent = 'Mostrar Desglose por Administradora';
+        desgloseVisible = false;
+    } else {
+        wrap.style.display = 'block';
+        if (text) text.textContent = 'Ocultar Desglose por Administradora';
+        desgloseVisible = true;
+    }
+}
+
 /**
  * renderDesglose(factor, detalleMoraEnt)
  * Rellena la tabla #tabla-desglose-entidades con los mismos datos que el operador PILA:
@@ -1783,7 +1806,11 @@ function renderDesglose(factor, detalleMoraEnt) {
         if (pTotal)   pTotal.textContent   = '$' + fmtNum(sumSinMora + sumMora);
     }
 
-    wrap.style.display = '';
+    if (desgloseVisible) {
+        wrap.style.display = 'block';
+    } else {
+        wrap.style.display = 'none';
+    }
 }
 
 function getNthDiaHabil(anio, mes, n, festivos) {
