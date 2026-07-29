@@ -279,10 +279,12 @@ class PrestamosController extends Controller
                     ->with('abonos')
                     ->get();
 
-                // Saldo ORIGINAL del lote = abs(SUM(saldo_proximo)):
-                // saldo_proximo fue calculado correctamente al facturar (efectivo+consignado+anticipo).
-                // Esta fórmula es inmune a la distribución incorrecta de valor_efectivo.
-                $saldoOriginalLote = abs((int)$lote->sum('saldo_proximo'));
+                // Saldo ORIGINAL del lote: usar valor_prestamo como fuente de verdad
+                // o fallback a abs(saldo_proximo)
+                $valorPrestamoLote = (int)$lote->sum('valor_prestamo');
+                $saldoOriginalLote = $valorPrestamoLote > 0
+                    ? $valorPrestamoLote
+                    : abs((int)$lote->sum('saldo_proximo'));
                 $totalAbonadoLote  = $lote->sum(fn($f) => (int)$f->abonos->sum('valor'));
                 $loteCompleto      = $totalAbonadoLote >= $saldoOriginalLote;
 
@@ -318,7 +320,13 @@ class PrestamosController extends Controller
                 ->with('abonos')
                 ->get();
 
-            $saldoLote    = $loteActualizado->sum('saldo_pendiente_prestamo');
+            // Calcular el saldo restante real del lote de forma unificada
+            $valorPrestamoLote = (int)$loteActualizado->sum('valor_prestamo');
+            $totalAbonadoLote  = $loteActualizado->sum(fn($f) => (int)$f->abonos->sum('valor'));
+            $saldoLote = $valorPrestamoLote > 0
+                ? max(0, $valorPrestamoLote - $totalAbonadoLote)
+                : max(0, abs((int)$loteActualizado->sum('saldo_proximo')) - $totalAbonadoLote);
+
             $loteCompleto = $saldoLote <= 0;
 
             return response()->json([
