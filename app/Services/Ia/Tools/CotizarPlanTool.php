@@ -270,7 +270,13 @@ class CotizarPlanTool implements IaToolInterface
                     . "desde el segundo mes se pagan solo {$diasSiguientes} días de planilla, afiliándolo en paralelo "
                     . 'por otra razón social para repetirlo el mes siguiente. Explícale claramente que la planilla NO '
                     . 'será de 30 días. Ofrécela solo si el cliente no está exento de pensión y ya dijo que no le '
-                    . 'alcanza para el plan normal.',
+                    . 'alcanza para el plan normal. Preséntalo SIEMPRE como el rango aproximado "$100.000 a $150.000 '
+                    . 'al mes" desde el segundo mes en adelante — NUNCA uses valor_meses_siguientes ni valor_primer_mes '
+                    . 'exactos, y NUNCA menciones junto con este rango ningún otro valor del plan normal (afiliación, '
+                    . 'mensual, etc.): es una alternativa aparte, solo esa cifra aproximada, nada más. Si el cliente '
+                    . 'muestra interés (dice que sí, pregunta cómo seguir), usa hablar_con_asesor de inmediato para '
+                    . 'que un humano gestione la afiliación y confirme el valor exacto — no sigas cotizando ni le des '
+                    . 'más números tú misma.',
             ];
         }
 

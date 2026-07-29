@@ -234,11 +234,19 @@ function simulador() {
                     correccion: msg.notaTexto,
                     contexto: contexto,
                 }),
-            }).then(() => {
-                msg.corrigiendo = false;
-                msg.notaTexto = '';
-                location.reload();
-            });
+            })
+                .then(async (r) => {
+                    if (!r.ok) {
+                        const data = await r.json().catch(() => ({}));
+                        throw new Error(data.message || ('HTTP ' + r.status));
+                    }
+                    msg.corrigiendo = false;
+                    msg.notaTexto = '';
+                    location.reload();
+                })
+                .catch((e) => {
+                    alert('No se pudo guardar la corrección: ' + e.message);
+                });
         },
 
         reiniciar() {
@@ -251,9 +259,14 @@ function simulador() {
                     'Accept': 'application/json',
                 },
                 body: JSON.stringify({ aliado_id: this.aliadoId }),
-            }).then(() => {
-                this.mensajes = [];
-            });
+            })
+                .then((r) => {
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    this.mensajes = [];
+                })
+                .catch((e) => {
+                    alert('No se pudo reiniciar: ' + e.message);
+                });
         },
     };
 }

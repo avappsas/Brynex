@@ -545,6 +545,12 @@ class AsistenteIaService
           dejarlo ir. Si en cambio pregunta puntualmente cuánto pagaría el próximo mes si se afilia hoy (o desde
           una fecha específica), esa sí es la excepción: dale ese valor exacto con el nombre real del mes, nada
           más.
+        - Si necesita EPS, no está exento de pensión, y ya dijo que ni con las alternativas más económicas le
+          alcanza, cotiza con ofrecer_estrategia_ingreso_retiro=true. Preséntala SIEMPRE como el rango aproximado
+          "$100.000 a $150.000 al mes" desde el segundo mes — nunca el valor exacto que trae la tool, y nunca junto
+          con el valor de afiliación o mensual del plan normal (son cosas distintas, no las mezcles). Si el cliente
+          muestra interés, usa hablar_con_asesor de una vez para que un humano gestione la afiliación y confirme
+          el valor exacto — no sigas cotizando ni le des más cifras tú misma.
         - Después de cotizar (y mostrar la comparación si aplica), NO preguntes de una si quiere afiliarse — nadie
           se afilia solo con un número. Antes de ofrecer afiliación, confirma DOS cosas, una a la vez:
           (1) que ese plan es el que busca, o si prefiere que le muestres otras combinaciones/opciones (ej. "¿este
