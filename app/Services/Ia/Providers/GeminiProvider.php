@@ -50,6 +50,10 @@ class GeminiProvider implements IaProviderInterface
                     'id'    => 'gemini_call_' . $i,
                     'name'  => $part['functionCall']['name'],
                     'input' => $part['functionCall']['args'] ?? [],
+                    // Firma opaca que Gemini 3.x exige reenviar junto al functionCall en el turno
+                    // siguiente (si no, responde 400 "missing a thought_signature") — comprobado
+                    // contra la API real. Claude/OpenAI ignoran esta clave extra sin problema.
+                    '_thought_signature' => $part['thoughtSignature'] ?? null,
                 ];
             }
         }
@@ -76,12 +80,19 @@ class GeminiProvider implements IaProviderInterface
                     $parts[] = ['text' => $m['content']];
                 }
                 foreach ($m['tool_calls'] ?? [] as $tc) {
-                    $parts[] = ['functionCall' => ['name' => $tc['name'], 'args' => $tc['input']]];
+                    $part = ['functionCall' => ['name' => $tc['name'], 'args' => $tc['input']]];
+                    if (!empty($tc['_thought_signature'])) {
+                        $part['thoughtSignature'] = $tc['_thought_signature'];
+                    }
+                    $parts[] = $part;
                 }
                 $out[] = ['role' => 'model', 'parts' => $parts];
             } elseif ($m['role'] === 'tool_result') {
+                // La API rechaza role:"function" con INVALID_ARGUMENT ("Role 'function' is not
+                // supported") — comprobado contra la API real, no solo con la doc. El rol válido
+                // para reenviar un functionResponse en esta generación de modelos es "user".
                 $out[] = [
-                    'role'  => 'function',
+                    'role'  => 'user',
                     'parts' => [[
                         'functionResponse' => [
                             'name'     => $m['name'],
