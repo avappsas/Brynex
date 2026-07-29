@@ -3,6 +3,7 @@
 namespace App\Services\Ia;
 
 use App\Services\Ia\Providers\ClaudeProvider;
+use App\Services\Ia\Providers\GeminiProvider;
 use App\Services\Ia\Providers\OpenAiProvider;
 
 class IaProviderFactory
@@ -11,6 +12,7 @@ class IaProviderFactory
     {
         return match ($proveedor) {
             'openai' => new OpenAiProvider(),
+            'gemini' => new GeminiProvider(),
             default  => new ClaudeProvider(),
         };
     }

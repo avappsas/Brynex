@@ -54,6 +54,7 @@
                     <select name="proveedor_default" class="form-control">
                         <option value="claude" @selected($global['proveedor_default']==='claude')>Claude (Anthropic)</option>
                         <option value="openai" @selected($global['proveedor_default']==='openai')>OpenAI</option>
+                        <option value="gemini" @selected($global['proveedor_default']==='gemini')>Gemini (Google)</option>
                     </select>
                 </div>
                 <div class="form-group" style="margin-bottom:0;">
@@ -63,6 +64,10 @@
                 <div class="form-group" style="margin-bottom:0;">
                     <label class="form-label">Modelo OpenAI</label>
                     <input type="text" name="modelo_openai" class="form-control" value="{{ $global['modelo_openai'] }}">
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                    <label class="form-label">Modelo Gemini</label>
+                    <input type="text" name="modelo_gemini" class="form-control" value="{{ $global['modelo_gemini'] }}">
                 </div>
             </div>
             <div class="row-grid">
@@ -74,6 +79,11 @@
                 <div class="form-group" style="margin-bottom:0;">
                     <label class="form-label">API Key OpenAI {{ $global['tiene_key_openai'] ? '(configurada)' : '(sin configurar)' }}</label>
                     <input type="password" name="openai_api_key" class="form-control" placeholder="sk-...">
+                    <div class="form-hint">Déjalo vacío para no cambiarla.</div>
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                    <label class="form-label">API Key Gemini {{ $global['tiene_key_gemini'] ? '(configurada)' : '(sin configurar)' }}</label>
+                    <input type="password" name="gemini_api_key" class="form-control" placeholder="AIza...">
                     <div class="form-hint">Déjalo vacío para no cambiarla.</div>
                 </div>
             </div>
@@ -107,6 +117,7 @@
                             <select name="proveedor" class="form-control">
                                 <option value="claude" @selected(($cfg->proveedor ?? 'claude')==='claude')>Claude</option>
                                 <option value="openai" @selected(($cfg->proveedor ?? '')==='openai')>OpenAI</option>
+                                <option value="gemini" @selected(($cfg->proveedor ?? '')==='gemini')>Gemini</option>
                             </select>
                         </div>
                         <div class="form-group" style="margin-bottom:0;">
@@ -119,15 +130,16 @@
                         <div class="form-group" style="margin-bottom:0;">
                             <label class="form-label">API key propia (opcional)</label>
                             <input type="password" name="api_key" class="form-control" placeholder="{{ $cfg && $cfg->api_key ? '••••••••' : 'sin configurar' }}">
+                            <div class="form-hint">Del proveedor elegido arriba (Claude, OpenAI o Gemini).</div>
                         </div>
                         <div class="form-group" style="margin-bottom:0;">
                             <label class="form-label">Modelo (opcional)</label>
                             <input type="text" name="modelo" class="form-control" value="{{ $cfg->modelo ?? '' }}" placeholder="Usa el global por defecto">
                         </div>
                         <div class="form-group" style="margin-bottom:0;">
-                            <label class="form-label">API key Gemini {{ $cfg && $cfg->gemini_api_key ? '(configurada)' : '(sin configurar)' }}</label>
+                            <label class="form-label">API key Gemini para imágenes {{ $cfg && $cfg->gemini_api_key ? '(configurada)' : '(sin configurar)' }}</label>
                             <input type="password" name="gemini_api_key" class="form-control" placeholder="{{ $cfg && $cfg->gemini_api_key ? '••••••••' : 'AIza...' }}">
-                            <div class="form-hint">Para generar imágenes con IA en Marketing → Publicaciones. Déjalo vacío para no cambiarla.</div>
+                            <div class="form-hint">Para generar imágenes con IA en Marketing → Publicaciones (independiente del asistente conversacional). Déjalo vacío para no cambiarla.</div>
                         </div>
                         <div class="form-group" style="margin-bottom:0;">
                             <label class="form-label">Nombre del asistente</label>

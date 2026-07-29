@@ -10,7 +10,7 @@ use Illuminate\Support\Str;
  * Genera imágenes publicitarias con la API de Gemini (Google Generative Language API),
  * como alternativa a las plantillas por canvas. Requiere una clave de Gemini configurada
  * en ia_configuracion_aliado.gemini_api_key — independiente de la clave del asistente
- * conversacional (que solo soporta claude|openai).
+ * conversacional (campo api_key, que se usa según el proveedor elegido: claude|openai|gemini).
  *
  * Dos modelos disponibles (misma clave, sin cuenta ni facturación adicional):
  * - ILUSTRACION (gemini-2.5-flash-image, "Nano Banana"): estilo flat design, ya verificado

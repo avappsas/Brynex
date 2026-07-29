@@ -114,7 +114,11 @@ class IaConfiguracionAliado extends BaseModel
     public static function modeloGlobalPorDefecto(string $proveedor): string
     {
         $clave = "ia_modelo_{$proveedor}_default";
-        $default = $proveedor === 'openai' ? 'gpt-4o-mini' : 'claude-haiku-4-5-20251001';
+        $default = match ($proveedor) {
+            'openai' => 'gpt-4o-mini',
+            'gemini' => 'gemini-3.6-flash',
+            default  => 'claude-haiku-4-5-20251001',
+        };
         return (string) ConfiguracionBrynex::obtener($clave, $default);
     }
 

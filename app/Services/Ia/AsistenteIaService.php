@@ -644,6 +644,10 @@ class AsistenteIaService
             'openai' => [
                 'default' => ['in' => 0.15, 'out' => 0.60], // gpt-4o-mini aprox
             ],
+            'gemini' => [
+                'flash'   => ['in' => 1.5, 'out' => 7.5], // Gemini 3.6 Flash
+                'default' => ['in' => 1.5, 'out' => 7.5],
+            ],
         ];
 
         $tabla = $precios[$proveedor] ?? $precios['claude'];

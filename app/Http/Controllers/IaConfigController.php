@@ -31,8 +31,10 @@ class IaConfigController extends Controller
             'proveedor_default'   => ConfiguracionBrynex::obtener('ia_proveedor_default', 'claude'),
             'modelo_claude'       => ConfiguracionBrynex::obtener('ia_modelo_claude_default', 'claude-haiku-4-5-20251001'),
             'modelo_openai'       => ConfiguracionBrynex::obtener('ia_modelo_openai_default', 'gpt-4o-mini'),
+            'modelo_gemini'       => ConfiguracionBrynex::obtener('ia_modelo_gemini_default', 'gemini-3.6-flash'),
             'tiene_key_claude'    => (bool) ConfiguracionBrynex::obtener('ia_global_claude_api_key'),
             'tiene_key_openai'    => (bool) ConfiguracionBrynex::obtener('ia_global_openai_api_key'),
+            'tiene_key_gemini'    => (bool) ConfiguracionBrynex::obtener('ia_global_gemini_api_key'),
         ];
 
         return view('brynex.ia.index', compact('aliados', 'configs', 'global'));
@@ -43,11 +45,13 @@ class IaConfigController extends Controller
         $this->autorizarSuperadminBrynex();
 
         $validated = $request->validate([
-            'proveedor_default'    => 'required|in:claude,openai',
+            'proveedor_default'    => 'required|in:claude,openai,gemini',
             'modelo_claude'        => 'nullable|string|max:100',
             'modelo_openai'        => 'nullable|string|max:100',
+            'modelo_gemini'        => 'nullable|string|max:100',
             'claude_api_key'       => 'nullable|string|max:2000',
             'openai_api_key'       => 'nullable|string|max:2000',
+            'gemini_api_key'       => 'nullable|string|max:2000',
         ]);
 
         ConfiguracionBrynex::establecer('ia_proveedor_default', $validated['proveedor_default']);
@@ -57,11 +61,17 @@ class IaConfigController extends Controller
         if (!empty($validated['modelo_openai'])) {
             ConfiguracionBrynex::establecer('ia_modelo_openai_default', $validated['modelo_openai']);
         }
+        if (!empty($validated['modelo_gemini'])) {
+            ConfiguracionBrynex::establecer('ia_modelo_gemini_default', $validated['modelo_gemini']);
+        }
         if (!empty($validated['claude_api_key'])) {
             ConfiguracionBrynex::establecer('ia_global_claude_api_key', Crypt::encryptString($validated['claude_api_key']));
         }
         if (!empty($validated['openai_api_key'])) {
             ConfiguracionBrynex::establecer('ia_global_openai_api_key', Crypt::encryptString($validated['openai_api_key']));
+        }
+        if (!empty($validated['gemini_api_key'])) {
+            ConfiguracionBrynex::establecer('ia_global_gemini_api_key', Crypt::encryptString($validated['gemini_api_key']));
         }
 
         return redirect()->route('brynex.ia.index')->with('success', 'Configuración global del asistente actualizada.');
@@ -74,7 +84,7 @@ class IaConfigController extends Controller
         $aliado = Aliado::findOrFail($alidoId);
 
         $validated = $request->validate([
-            'proveedor'          => 'required|in:claude,openai',
+            'proveedor'          => 'required|in:claude,openai,gemini',
             'usa_cuenta_brynex'  => 'required|boolean',
             'api_key'            => 'nullable|string|max:2000',
             'modelo'             => 'nullable|string|max:100',
