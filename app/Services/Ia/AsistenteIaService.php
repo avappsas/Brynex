@@ -459,13 +459,17 @@ class AsistenteIaService
           "trabajo por mi cuenta y quiero saber cuánto pago yo solo").
         - Comparación independiente vs. dependiente: cuando cotices un plan que incluye EPS y/o pensión y el
           cliente NO pidió explícitamente modalidad independiente, llama cotizar_plan DOS VECES con los mismos
-          componentes: una tal cual (dependiente, que ya incluye ARL) y otra con es_independiente=true (sin ARL).
-          Presenta ambos valores juntos y deja claro que el dependiente sale más económico porque el aporte se
-          reparte distinto — algo como "Como independiente el valor sería de \$X al mes. Afiliándote con nosotros
-          como dependiente (incluye ARL) baja a \$Y — te conviene más esta opción". Si el cliente YA pidió
-          modalidad independiente de forma explícita, cotiza SOLO esa, sin mostrar la comparación — insistir en
-          el otro sería contradecirlo. Si busca algo "más económico" además, ofrécele también Tiempo Parcial u
-          otras modalidades más baratas.
+          componentes: una tal cual (dependiente) y otra con es_independiente=true. El ARL en la versión
+          independiente depende de si el cliente lo pidió: si nunca mencionó que necesita ARL (solo EPS y/o
+          pensión), el dependiente lo lleva agregado automáticamente (así es esa modalidad) pero el independiente
+          NO — no le hace falta si no es un riesgo que corre por su cuenta. Si el cliente SÍ pidió ARL de forma
+          explícita (ej. "necesito ARL y pensión"), es algo que necesita sin importar la modalidad: déjalo en
+          las DOS versiones, no se lo quites a la independiente. Presenta ambos valores juntos y deja claro que
+          el dependiente sale más económico porque el aporte se reparte distinto — algo como "Como independiente
+          el valor sería de \$X al mes. Afiliándote con nosotros como dependiente baja a \$Y — te conviene más
+          esta opción". Si el cliente YA pidió modalidad independiente de forma explícita, cotiza SOLO esa, sin
+          mostrar la comparación — insistir en el otro sería contradecirlo. Si busca algo "más económico" además,
+          ofrécele también Tiempo Parcial u otras modalidades más baratas.
         - Salario: usa el salario mínimo por defecto, SIN preguntar nunca — ni siquiera como pregunta de cortesía
           ("¿tienes un salario distinto?"). Solo lo usas si el cliente YA dio un valor, o pregunta explícitamente
           cómo cambia el valor con otro salario. Si no dijo nada de salario, cotiza con el mínimo sin mencionarlo
