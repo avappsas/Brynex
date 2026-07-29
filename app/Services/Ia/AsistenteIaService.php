@@ -245,6 +245,7 @@ class AsistenteIaService
         $accionesSugeridas  = [];
         $herramientasUsadas = [];
         $textoFinal = '';
+        $reintentoVacioHecho = false;
 
         $contextoTool = array_merge([
             'aliado_id'       => $conversacion->aliado_id,
@@ -261,6 +262,15 @@ class AsistenteIaService
             $tokensSalidaTotal  += $resp['tokens_salida'];
 
             if (empty($resp['tool_calls'])) {
+                // Raro pero real (visto con Gemini en pruebas): a veces el proveedor devuelve un
+                // turno en blanco, sin texto ni tool_calls, aunque el resto de la conversación
+                // esté bien formada. Un reintento evita mostrarle al cliente el mensaje genérico
+                // por lo que probablemente fue una generación vacía puntual.
+                if (empty($resp['content']) && !$reintentoVacioHecho) {
+                    $reintentoVacioHecho = true;
+                    continue;
+                }
+
                 $textoFinal = $resp['content'] ?? 'No tengo una respuesta para eso.';
                 IaMensaje::create([
                     'conversacion_id' => $conversacion->id,
