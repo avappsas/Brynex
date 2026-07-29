@@ -283,8 +283,10 @@ class PlanoPilaTxtService
         // ── Calculador centralizado (todas las reglas de negocio PILA) ────────
         $c = PilaCotizanteCalculator::calcular($p);
 
+        $esPlanillaY = ((int)$p->tipo_modalidad_id === 8);
+
         $tipoCot   = str_pad((string)$c['tipoCotizante'], 2, '0', STR_PAD_LEFT); // '01','02','23'
-        $subtipo   = str_pad((string)$c['subtipoCotizante'], 2, '0', STR_PAD_LEFT);
+        $subtipo   = $esPlanillaY ? '00' : str_pad((string)$c['subtipoCotizante'], 2, '0', STR_PAD_LEFT);
         $exonerado = $c['exonerado'];
         $tienePension = $c['tienePension'];
 
@@ -308,7 +310,7 @@ class PlanoPilaTxtService
         $vCaj = $c['vCcf'];
 
         // ── Código AFP PILA (lookup en tabla AFP_PILA del TXT) ─────────────────
-        if ($tienePension) {
+        if ($tienePension && !$esPlanillaY) {
             $nitAfp   = preg_replace('/[^0-9]/', '', (string)($p->cod_afp ?? ''));
             $codAfpDb = $p->cod_afp_pila ?? null;
             $codAfp   = self::AFP_PILA[$nitAfp] ?? ((!empty($codAfpDb)) ? $codAfpDb : '');
@@ -317,9 +319,9 @@ class PlanoPilaTxtService
         }
 
         // ── Códigos EPS / ARL / CCF ────────────────────────────────────────────
-        $codEps = !empty($p->cod_eps_pila) ? $p->cod_eps_pila : $c['codEpsPila'];
+        $codEps = $esPlanillaY ? '' : (!empty($p->cod_eps_pila) ? $p->cod_eps_pila : $c['codEpsPila']);
         $codArl = !empty($p->cod_arl_pila) ? $p->cod_arl_pila : ($codigoArlRs ?? '');
-        $codCaj = $c['codCcfPila'];
+        $codCaj = $esPlanillaY ? '' : $c['codCcfPila'];
 
         // ── IBC por subsistema ─────────────────────────────────────────────────
         $ibcCaj = $c['ibcCcf'];

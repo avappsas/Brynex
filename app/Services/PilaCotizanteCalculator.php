@@ -426,19 +426,20 @@ class PilaCotizanteCalculator
 
         if ($tipoModalidad === 8) {
             $res['tipoCotizante']    = 59;
+            $res['subtipoCotizante'] = 0;
             $res['exonerado']         = 'N';
             $res['diasPension']      = 0;
             $res['diasSalud']        = 0;
             $res['diasCcf']          = 0;
-            $res['codAfpPila']       = 'NIN-AF';
+            $res['codAfpPila']       = '';
             $res['tarifaAfpDecimal'] = 0.0;
             $res['vAfp']             = 0;
             $res['ibcAfp']           = 0;
-            $res['codEpsPila']       = 'NIN-EP';
+            $res['codEpsPila']       = '';
             $res['tarifaEpsStr']     = '0.00000';
             $res['ibcEps']           = 0;
             $res['vEps']             = 0;
-            $res['codCcfPila']       = 'NIN-CC';
+            $res['codCcfPila']       = '';
             $res['ibcCcf']           = 0;
             $res['vCcf']             = 0;
             $res['tarifaSenaStr']    = '0.00000';

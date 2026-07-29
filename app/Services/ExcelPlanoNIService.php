@@ -464,13 +464,15 @@ class ExcelPlanoNIService
         // Horas laboradas: tipo 51 usa dias_caja (días reales) × 8; el resto usa num_dias × 8
         $horasLaboradas = $c['horasLaboradas'];
 
+        $esPlanillaY = ((int)$p->tipo_modalidad_id === 8);
+
         $valores = [
             /*  1 */ 2,                                                // Tipo de registro
             /*  2 */ $seq,                                             // Secuencia
             /*  3 */ $tipoDocNorm,                                     // Tipo documento
             /*  4 */ (string)$p->no_identifi,                          // Documento
             /*  5 */ $c['tipoCotizante'],                              // Tipo cotizante (1/2/23)
-            /*  6 */ (int)$c['subtipoCotizante'],                        // Subtipo (0/3/4) — 0 cuando no aplica excepción
+            /*  6 */ $esPlanillaY ? 0 : (int)$c['subtipoCotizante'],   // Subtipo (0/3/4) — 0 cuando no aplica excepción
             /*  7 */ $esExtranjero,                                    // Extranjero
             /*  8 */ null,                                             // Colombiano exterior
             /*  9 */ $depExcel,                                        // Departamento
@@ -495,11 +497,11 @@ class ExcelPlanoNIService
             /* 28 */ null,                                             // AVP
             /* 29 */ null,                                             // VCT
             /* 30 */ null,                                             // IRL (vacío — no aplica)
-            /* 31 */ $c['codAfpPila'] ?: null,                         // AFP
+            /* 31 */ $esPlanillaY ? null : ($c['codAfpPila'] ?: null), // AFP
             /* 32 */ null,                                             // AFP Traslado
-            /* 33 */ $c['codEpsPila'] ?: null,                         // EPS
+            /* 33 */ $esPlanillaY ? null : ($c['codEpsPila'] ?: null), // EPS
             /* 34 */ null,                                             // EPS Traslado
-            /* 35 */ $c['codCcfPila'] ?: null,                         // CCF
+            /* 35 */ $esPlanillaY ? null : ($c['codCcfPila'] ?: null), // CCF
             /* 36 */ $c['tienePension'] ? ($c['diasPension'] ?: null) : 0, // Días AFP (0 si sin pensión)
             /* 37 */ $c['diasSalud']   ?: null,                        // Días EPS
             /* 38 */ $c['diasArl'],                                    // Días ARL (30 si K)

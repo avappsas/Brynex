@@ -1024,6 +1024,45 @@
 </div>
 @endif
 
+{{-- ── Tabla desglose por entidad (igual al operador PILA) ─────────── --}}
+@if($planos->count() > 0 && $rsSeleccionada)
+<div id="desglose-entidades-wrap" style="display:none;margin-top:.75rem">
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.06)">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:.6rem 1rem;background:linear-gradient(135deg,#1e3a8a,#1e40af);color:#fff">
+            <div style="font-size:.8rem;font-weight:700;letter-spacing:.02em">📊 Desglose por Administradora</div>
+            <div style="font-size:.7rem;opacity:.85">Comparar con operador PILA</div>
+        </div>
+        <div style="overflow-x:auto">
+        <table id="tabla-desglose-entidades" style="width:100%;border-collapse:collapse;font-size:.75rem">
+            <thead>
+                <tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0">
+                    <th style="padding:.45rem .6rem;text-align:left;font-weight:700;color:#475569;white-space:nowrap">NIT</th>
+                    <th style="padding:.45rem .6rem;text-align:left;font-weight:700;color:#475569;white-space:nowrap">Tipo</th>
+                    <th style="padding:.45rem .6rem;text-align:left;font-weight:700;color:#475569">Administradora</th>
+                    <th style="padding:.45rem .6rem;text-align:right;font-weight:700;color:#475569">Afiliados</th>
+                    <th style="padding:.45rem .6rem;text-align:right;font-weight:700;color:#475569;white-space:nowrap">Valor sin mora</th>
+                    <th style="padding:.45rem .6rem;text-align:right;font-weight:700;color:#475569">Mora</th>
+                    <th style="padding:.45rem .6rem;text-align:right;font-weight:700;color:#475569">Total</th>
+                </tr>
+            </thead>
+            <tbody id="tbody-desglose-entidades">
+                <tr><td colspan="7" style="padding:.8rem;text-align:center;color:#94a3b8">Calculando...</td></tr>
+            </tbody>
+            <tfoot id="tfoot-desglose-entidades" style="display:none">
+                <tr style="background:#f0f9ff;border-top:2px solid #7dd3fc;font-weight:700">
+                    <td colspan="3" style="padding:.45rem .6rem;color:#1e40af">Subtotales</td>
+                    <td style="padding:.45rem .6rem;text-align:right;color:#1e40af" id="pie-afiliados">—</td>
+                    <td style="padding:.45rem .6rem;text-align:right;color:#1e40af" id="pie-sin-mora">—</td>
+                    <td style="padding:.45rem .6rem;text-align:right;color:#dc2626" id="pie-mora">—</td>
+                    <td style="padding:.45rem .6rem;text-align:right;color:#7c3aed" id="pie-total">—</td>
+                </tr>
+            </tfoot>
+        </table>
+        </div>
+    </div>
+</div>
+@endif
+
 {{-- ══════════════════════════════════════════════════════════════════════
      MODAL 1: Descargar Plano (TXT o XLSX) + pregunta N_PLANO
 ═══════════════════════════════════════════════════════════════════════ --}}
@@ -1445,32 +1484,51 @@ const CTX = {
         $planos
                ->flatMap(fn($p) => [
                     // EPS: ceil(v_eps/100)*100 por cotizante
-                    !empty($p->cod_eps) && ($p->v_eps ?? 0) > 0
-                        ? ['cod' => $p->cod_eps, 'tipo' => 'EPS',
-                           'valor' => (float)((int)(ceil(($p->v_eps??0)/100)*100))]
+                    ($p->v_eps ?? 0) > 0
+                        ? ['cod'    => (!empty($p->cod_eps) && trim((string)$p->cod_eps) !== '0' ? $p->cod_eps : '0'),
+                           'tipo'   => 'EPS',
+                           'nombre' => (!empty($p->cod_eps) && trim((string)$p->cod_eps) !== '0'
+                                           ? ($p->nombre_eps ?? $p->cod_eps)
+                                           : 'Sin EPS / NINGUNA'),
+                           'valor'  => (float)((int)(ceil(($p->v_eps??0)/100)*100))]
                         : null,
                     // AFP: ceil(v_afp/100)*100 por cotizante
-                    !empty($p->cod_afp) && ($p->v_afp ?? 0) > 0
-                        ? ['cod' => $p->cod_afp, 'tipo' => 'AFP',
-                           'valor' => (float)((int)(ceil(($p->v_afp??0)/100)*100))]
+                    ($p->v_afp ?? 0) > 0
+                        ? ['cod'    => (!empty($p->cod_afp) && trim((string)$p->cod_afp) !== '0' ? $p->cod_afp : '0'),
+                           'tipo'   => 'AFP',
+                           'nombre' => (!empty($p->cod_afp) && trim((string)$p->cod_afp) !== '0'
+                                           ? ($p->nombre_afp ?? $p->cod_afp)
+                                           : 'Sin AFP / NINGUNA'),
+                           'valor'  => (float)((int)(ceil(($p->v_afp??0)/100)*100))]
                         : null,
                     // ARL: ceil(v_arl/100)*100 por cotizante
-                    !empty($p->cod_arl) && ($p->v_arl ?? 0) > 0
-                        ? ['cod' => $p->cod_arl, 'tipo' => 'ARL',
-                           'valor' => (float)((int)(ceil(($p->v_arl??0)/100)*100))]
+                    ($p->v_arl ?? 0) > 0
+                        ? ['cod'    => (!empty($p->cod_arl) && trim((string)$p->cod_arl) !== '0' ? $p->cod_arl : '0'),
+                           'tipo'   => 'ARL',
+                           'nombre' => (!empty($p->cod_arl) && trim((string)$p->cod_arl) !== '0'
+                                           ? ($p->nombre_arl ?? $p->cod_arl)
+                                           : 'Sin ARL / NINGUNA'),
+                           'valor'  => (float)((int)(ceil(($p->v_arl??0)/100)*100))]
                         : null,
-                    // CCF: ceil(v_caja/100)*100 por cotizante
-                    !empty($p->cod_caja) && ($p->v_caja ?? 0) > 0
-                        ? ['cod' => $p->cod_caja, 'tipo' => 'CCF',
-                           'valor' => (float)((int)(ceil(($p->v_caja??0)/100)*100))]
+                    // CCF: con caja propia (cod_caja presente)
+                    // CCF68: sin caja propia (cod_caja vacío o '0', v_caja=$100 fijo)
+                    ($p->v_caja ?? 0) > 0
+                        ? ['cod'    => (!empty($p->cod_caja) && trim((string)$p->cod_caja) !== '0' ? $p->cod_caja : 'CCF68'),
+                           'tipo'   => 'CCF',
+                           'nombre' => (!empty($p->cod_caja) && trim((string)$p->cod_caja) !== '0'
+                                           ? ($p->nombre_caja ?? $p->cod_caja)
+                                           : 'Sin Compensación (CCF68)'),
+                           'valor'  => (float)((int)(ceil(($p->v_caja??0)/100)*100))]
                         : null,
                ])
                ->filter()
                ->groupBy(fn($e) => $e['tipo'] . '|' . $e['cod'])
                ->map(fn($g) => [
-                    'tipo'  => $g->first()['tipo'],
-                    'cod'   => $g->first()['cod'],
-                    'total' => $g->sum('valor'),   // suma de valores ya redondeados a 100
+                    'tipo'      => $g->first()['tipo'],
+                    'cod'       => $g->first()['cod'],
+                    'nombre'    => $g->first()['nombre'] ?? $g->first()['cod'],
+                    'afiliados' => $g->count(),   // personas con esta entidad
+                    'total'     => $g->sum('valor'),   // suma de valores ya redondeados a 100
                ])
                ->values()
     ) !!},
@@ -1599,6 +1657,9 @@ window.CTX_TOTAL_PAGAR = CTX.totalSS;
         mostrarEl('mora-info-txt');
         document.getElementById('mora-info-txt').textContent =
             `${infoSufijo} · Sin mora hasta ${fechaVence.toLocaleDateString('es-CO',{weekday:'long',day:'2-digit',month:'long'})}`;
+
+        // Tabla desglose sin mora
+        renderDesglose(0, {});
         return;
     }
 
@@ -1651,9 +1712,80 @@ window.CTX_TOTAL_PAGAR = CTX.totalSS;
     const detalleStr = Object.entries(detalleMora).map(([k,v]) => `${k} $${fmtNum(v)}`).join(' + ');
     document.getElementById('mora-info-txt').textContent =
         `${infoSufijo} · Tasa: ${CTX.tasaMora}% E.A. · ${detalleStr}`;
+
+    // Tabla desglose por entidad con mora
+    renderDesglose(factor, detalleMora);
 })();
 
-// Devuelve la fecha del N-ésimo día hábil del mes (lun-vie, sin festivos)
+/**
+ * renderDesglose(factor, detalleMoraEnt)
+ * Rellena la tabla #tabla-desglose-entidades con los mismos datos que el operador PILA:
+ * NIT | Tipo | Administradora | Afiliados | Valor sin mora | Mora | Total
+ *
+ * @param {number} factor          - factor de mora (tasaAnual/diasAnio*diasMora). 0 = sin mora.
+ * @param {object} detalleMoraEnt  - IGNORADO (se recalcula internamente por entidad para precisión).
+ */
+function renderDesglose(factor, detalleMoraEnt) {
+    const wrap  = document.getElementById('desglose-entidades-wrap');
+    const tbody = document.getElementById('tbody-desglose-entidades');
+    const tfoot = document.getElementById('tfoot-desglose-entidades');
+    if (!wrap || !tbody) return;
+    if (!CTX.porEntidad || !CTX.porEntidad.length) { wrap.style.display = 'none'; return; }
+
+    // Colores por tipo
+    const tipoColor = { EPS:'#0369a1', AFP:'#7c3aed', ARL:'#b45309', CCF:'#0f766e' };
+    const tipoBg    = { EPS:'#e0f2fe', AFP:'#ede9fe', ARL:'#fef3c7', CCF:'#ccfbf1' };
+
+    const ceil100 = v => Math.ceil(v * factor / 100) * 100;
+
+    let rows = '';
+    let sumSinMora = 0, sumMora = 0, sumAfil = 0;
+    // Ordenar: EPS, AFP, ARL, CCF
+    const orden = ['EPS','AFP','ARL','CCF'];
+    const entidades = [...CTX.porEntidad].sort((a,b) => orden.indexOf(a.tipo) - orden.indexOf(b.tipo));
+
+    for (const ent of entidades) {
+        const sinMora = ent.total;
+        const mEnt    = ceil100(sinMora);
+        const tot     = sinMora + mEnt;
+        sumSinMora += sinMora;
+        sumMora    += mEnt;
+        sumAfil    += ent.afiliados || 0;
+
+        const color = tipoColor[ent.tipo] || '#475569';
+        const bg    = tipoBg[ent.tipo]   || '#f8fafc';
+        const esOk  = mEnt === 0;
+        rows += `<tr style="border-bottom:1px solid #f1f5f9">
+            <td style="padding:.4rem .6rem;font-family:monospace;font-size:.7rem;color:#64748b">${ent.cod}</td>
+            <td style="padding:.4rem .6rem">
+                <span style="display:inline-block;padding:.1rem .4rem;border-radius:4px;font-size:.65rem;font-weight:700;color:${color};background:${bg}">${ent.tipo}</span>
+            </td>
+            <td style="padding:.4rem .6rem;font-weight:600;color:#0f172a">${ent.nombre || ent.cod}</td>
+            <td style="padding:.4rem .6rem;text-align:right;color:#475569">${ent.afiliados || 0}</td>
+            <td style="padding:.4rem .6rem;text-align:right;color:#1e40af;font-weight:600">$${fmtNum(sinMora)}</td>
+            <td style="padding:.4rem .6rem;text-align:right;color:${esOk?'#059669':'#dc2626'};font-weight:${esOk?'500':'700'}">${esOk?'$0':'$'+fmtNum(mEnt)}</td>
+            <td style="padding:.4rem .6rem;text-align:right;color:#7c3aed;font-weight:700">$${fmtNum(tot)}</td>
+        </tr>`;
+    }
+
+    tbody.innerHTML = rows;
+
+    // Pie de tabla
+    if (tfoot) {
+        tfoot.style.display = '';
+        const pAfil    = document.getElementById('pie-afiliados');
+        const pSinMora = document.getElementById('pie-sin-mora');
+        const pMora    = document.getElementById('pie-mora');
+        const pTotal   = document.getElementById('pie-total');
+        if (pAfil)    pAfil.textContent    = sumAfil;
+        if (pSinMora) pSinMora.textContent = '$' + fmtNum(sumSinMora);
+        if (pMora)    pMora.textContent    = sumMora > 0 ? '$' + fmtNum(sumMora) : '$0';
+        if (pTotal)   pTotal.textContent   = '$' + fmtNum(sumSinMora + sumMora);
+    }
+
+    wrap.style.display = '';
+}
+
 function getNthDiaHabil(anio, mes, n, festivos) {
     const fecha = new Date(anio, mes - 1, 1);
     let cont = 0;

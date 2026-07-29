@@ -513,6 +513,8 @@ class ExcelAportesEnLineaService
             : (int)($p->num_dias  ?? 30);  // ej: dependiente → 30×8=240
         $horas = $diasParaHoras * 8;
 
+        $esPlanillaY = ((int)$p->tipo_modalidad_id === 8);
+
         // ── Mapeo de las 98 columnas (1-based) ──────────────────────────
         $valores = [
              1 => $seq,                          // A  No.
@@ -525,7 +527,7 @@ class ExcelAportesEnLineaService
              8 => $p->nombre_departamento ?? $c['depCod'],        // H  Departamento (nombre)
              9 => $c['sinCaja'] ? 'SIN CAJA' : ($p->nombre_ciudad ?? $p->cod_municipio ?? null), // I  Ciudad (nombre)
             10 => self::tipoCotizanteLabel($c['tipoCotizante']),  // J  Tipo Cotizante (código. NOMBRE)
-            11 => self::subtipoCotizanteLabel($c['subtipoCotizante']), // K  Subtipo Cotizante (NINGUNO / código. NOMBRE)
+            11 => self::subtipoCotizanteLabel($esPlanillaY ? 0 : $c['subtipoCotizante']), // K  Subtipo Cotizante (NINGUNO / código. NOMBRE)
             12 => $horas,                         // L  Horas laboradas
             13 => $esExtranjero,                  // M  Extranjero (SI/NO)
             14 => 'NO',                            // N  Residente en el Exterior
@@ -548,7 +550,7 @@ class ExcelAportesEnLineaService
             48 => $esIntegral,                    // AV Salario Integral (SI/NO)
             49 => $esVariable,                    // AW Salario Variable (NO)
             // Pensión
-            50 => $c['tienePension'] ? ($p->nombre_afp ?? $c['codAfpPila'] ?? null) : null, // AX AFP nombre
+            50 => $esPlanillaY ? null : ($c['tienePension'] ? ($p->nombre_afp ?? $c['codAfpPila'] ?? null) : null), // AX AFP nombre
             51 => $c['tienePension'] ? $c['diasPension'] : 0,                               // AY Días
             52 => $c['tienePension'] ? $c['ibcAfp'] : 0,                                    // AZ IBC
             53 => $c['tienePension'] ? 0.16 : null,                                     // BA Tarifa
@@ -562,7 +564,7 @@ class ExcelAportesEnLineaService
             61 => $c['tienePension'] ? ($c['vAfp'] ?: null) : 0,                            // BI Total
             62 => 'NINGUNA',                      // BJ AFP Destino
             // Salud
-            63 => $p->nombre_eps ? strtoupper($p->nombre_eps) : 'NINGUNA', // BK Administradora EPS
+            63 => $esPlanillaY ? null : ($p->nombre_eps ? strtoupper($p->nombre_eps) : 'NINGUNA'), // BK Administradora EPS
             64 => $c['diasSalud'],                // BL Días
             65 => $c['ibcEps'],                   // BM IBC
             66 => $tarifaEps !== null ? (float)$tarifaEps : 0.0,                        // BN Tarifa
@@ -584,7 +586,7 @@ class ExcelAportesEnLineaService
             81 => $c['vArl'] ?: null,             // CC Valor
             // Parafiscales
             82 => $c['diasCcf'],                  // CD Días
-            83 => $p->nombre_caj ? strtoupper($p->nombre_caj) : 'NINGUNA', // CE Administradora CCF (nombre)
+            83 => $esPlanillaY ? null : ($p->nombre_caj ? strtoupper($p->nombre_caj) : 'NINGUNA'), // CE Administradora CCF (nombre)
             84 => $salarioMensual ?: 0,           // CF IBC CCF (mismo factor que salario mensual)
             85 => $tarifaCcf !== null ? (float)$tarifaCcf : null,                       // CG Tarifa CCF
             86 => $c['vCcf'] ?? 0, // CH Valor CCF redondeado (del calculador centralizado con redondeo PILA)

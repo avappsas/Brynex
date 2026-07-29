@@ -230,7 +230,7 @@ class SuaportePdfService
         $pdf->Text(181.44, $yRow, '$ ' . number_format($c['ibcFull'], 0, ',', '.'));
 
         // Pensión
-        $pdf->Text(210.33, $yRow, $c['codAfpPila']);
+        $pdf->Text(210.33, $yRow, ($esPlanillaY ? 'NIN-AF' : $c['codAfpPila']));
         $pdf->Text(244.94, $yRow, number_format($c['tarifaAfpDecimal'] * 100, 0) . ' %');
         $pdf->Text(261.44, $yRow, '$ ' . number_format($c['ibcAfp'], 0, ',', '.'));
         $pdf->Text(288.10, $yRow, '$ ' . number_format($c['vAfp'], 0, ',', '.'));
@@ -238,7 +238,7 @@ class SuaportePdfService
         $pdf->Text(334.22, $yRow, '$ 0');
 
         // Salud
-        $pdf->Text(349.66, $yRow, $c['codEpsPila']);
+        $pdf->Text(349.66, $yRow, ($esPlanillaY ? 'NIN-EP' : $c['codEpsPila']));
         $pdf->Text(393.55, $yRow, number_format(floatval($c['tarifaEpsStr']) * 100, 0) . ' %');
         $pdf->Text(411.44, $yRow, '$ ' . number_format($c['ibcEps'], 0, ',', '.'));
         $pdf->Text(444.22, $yRow, '$ ' . number_format($c['vEps'], 0, ',', '.'));

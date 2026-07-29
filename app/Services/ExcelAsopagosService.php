@@ -214,6 +214,8 @@ class ExcelAsopagosService
             }
         }
 
+        $esPlanillaY = ((int)$p->tipo_modalidad_id === 8);
+
         // Mapeo de valores exacto para las 41 columnas
         $valores = [
             1  => substr($tipoDoc, 0, 2),                                                     // Tipo de identificación
@@ -223,7 +225,7 @@ class ExcelAsopagosService
             5  => substr((string)($p->primer_nombre?? ''), 0, 20),                            // Primer nombre
             6  => substr((string)($p->segundo_nombre??''), 0, 30),                            // Segundo nombre
             7  => $c['tipoCotizante'],                                                        // Tipo de cotizante
-            8  => $c['subtipoCotizante'],                                                     // Subtipo de cotizante
+            8  => $esPlanillaY ? 0 : $c['subtipoCotizante'],                                  // Subtipo de cotizante
             9  => $c['esExtranjero'] ? 'X' : null,                                            // Extranjero no obligado a cotizar pensiones
             10 => null,                                                                       // Colombiano temporal en el exterior
             11 => strtoupper(trim($p->tipo_p ?? '')) === 'I' ? 'I' : 'F',                     // Tipo de Salario
@@ -236,9 +238,9 @@ class ExcelAsopagosService
             18 => $c['munCod'],                                                               // Código de municipio de la ubicación laboral
             19 => $c['tipoCotizante'] === 2 ? 'N' : 'S',                                      // Acogido a exoneración en parafiscales
             20 => null,                                                                       // Indicador de tarifa especial de pensión
-            21 => $c['tipoCotizante'] === 23 ? null : ($p->nombre_asopagos_eps ?: $c['codEpsPila']), // EPS (nombre)
-            22 => $c['tienePension'] ? ($p->nombre_asopagos_afp ?: $c['codAfpPila']) : 'SINAFP_SINAFP', // AFP (nombre)
-            23 => $c['tipoCotizante'] === 23 ? null : ( ($p->nombre_asopagos_caj && $p->nombre_asopagos_caj !== 'CCF68') ? $p->nombre_asopagos_caj : 'CCF68_COMCAJA' ), // Caja de compensación (nombre)
+            21 => $esPlanillaY ? null : ($c['tipoCotizante'] === 23 ? null : ($p->nombre_asopagos_eps ?: $c['codEpsPila'])), // EPS (nombre)
+            22 => $esPlanillaY ? null : ($c['tienePension'] ? ($p->nombre_asopagos_afp ?: $c['codAfpPila']) : 'SINAFP_SINAFP'), // AFP (nombre)
+            23 => $esPlanillaY ? null : ($c['tipoCotizante'] === 23 ? null : ( ($p->nombre_asopagos_caj && $p->nombre_asopagos_caj !== 'CCF68') ? $p->nombre_asopagos_caj : 'CCF68_COMCAJA' )), // Caja de compensación (nombre)
             24 => 0,                                                                          // UPC adicional
             25 => null,                                                                       // Tipo de identificación del cotizante titular UPC
             26 => null,                                                                       // Número de identificación del cotizante titular UPC
