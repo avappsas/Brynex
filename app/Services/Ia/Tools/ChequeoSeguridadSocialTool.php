@@ -23,6 +23,11 @@ use App\Services\Adres\EnvioCaptcha;
  */
 class ChequeoSeguridadSocialTool implements IaToolInterface
 {
+    // Debe ser >= al TTL real de sesión del worker (ADRES_TTL_SESION_MS, hoy 12 min en
+    // adres-worker/lib/consulta.mjs) — pasado eso, el captcha que se le mandó al cliente ya no
+    // sirve, así que un chequeo más viejo que esto se trata como abandonado, no como "en curso".
+    private const MINUTOS_SESION_WORKER = 15;
+
     public function nombre(): string
     {
         return 'chequeo_seguridad_social';
@@ -119,11 +124,24 @@ class ChequeoSeguridadSocialTool implements IaToolInterface
             ->first();
 
         if ($enCurso) {
-            return [
-                'ok'      => false,
-                'mensaje' => 'Ya hay un chequeo esperando que el cliente responda el código que se le envió. '
-                    . 'Pídele que escriba ese código; no arranques otro.',
-            ];
+            // El worker de Playwright mata la sesión del navegador a los 12 minutos
+            // (ADRES_TTL_SESION_MS) — pasado eso, el captcha que se le mandó al cliente ya no
+            // sirve para nada, aunque el registro siga en "esperando_captcha" en la BD. Sin este
+            // chequeo, un chequeo abandonado bloquearía para siempre cualquier intento nuevo en
+            // esa conversación.
+            if ($enCurso->created_at->diffInMinutes(now()) >= self::MINUTOS_SESION_WORKER) {
+                (new ChequeoService())->cancelar(
+                    $enCurso,
+                    'Cancelado automáticamente: pasaron más de ' . self::MINUTOS_SESION_WORKER
+                        . ' minutos sin respuesta (la sesión del worker ya expiró).'
+                );
+            } else {
+                return [
+                    'ok'      => false,
+                    'mensaje' => 'Ya hay un chequeo esperando que el cliente responda el código que se le envió. '
+                        . 'Pídele que escriba ese código; no arranques otro.',
+                ];
+            }
         }
 
         $servicio = new ChequeoService();
