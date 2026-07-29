@@ -80,7 +80,8 @@ class AsistenteIaService
         ?int $waConversacionId,
         ?string $origenCampana = null,
         ?string $origenCampanaCategoria = null,
-        ?int $origenCampanaId = null
+        ?int $origenCampanaId = null,
+        bool $modoPrueba = false
     ): array {
         $config = IaConfiguracionAliado::paraAliado($alidoId);
         if (!$config->activo_whatsapp) {
@@ -106,7 +107,10 @@ class AsistenteIaService
             $campana
         );
         $tools = $this->construirToolsWhatsapp($credenciales);
-        $contextoExtra = ['canal' => 'whatsapp', 'wa_conversacion_id' => $waConversacionId];
+        // modo_prueba: usado por el simulador de conversación (/brynex/ia/simulador) para que las
+        // tools con efectos externos reales (ej. chequeo_seguridad_social contra ADRES, o el
+        // registro de prospecto) se simulen en vez de ejecutarse de verdad.
+        $contextoExtra = ['canal' => 'whatsapp', 'wa_conversacion_id' => $waConversacionId, 'modo_prueba' => $modoPrueba];
 
         $resultado = $this->ejecutarTurno($conversacion, $mensajeUsuario, $systemPrompt, $tools, $credenciales, $contextoExtra, 'whatsapp');
 

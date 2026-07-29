@@ -395,7 +395,10 @@
             <h1 class="ia-title-gradient">🤖 Asistente Virtual IA</h1>
             <p style="font-size:.85rem;color:#64748b;margin:0;">Configura el proveedor de IA global y actívalo por aliado.</p>
         </div>
-        <div>
+        <div style="display:flex; gap:0.5rem;">
+            <a href="{{ route('brynex.ia.simulador.index') }}" class="btn btn-primary">
+                <i class="fas fa-flask"></i> Simulador de conversación
+            </a>
             <a href="{{ route('brynex.ia.conocimiento.index') }}" class="btn btn-secondary">
                 <i class="fas fa-brain"></i> Entrenamiento / Conocimiento
             </a>

@@ -37,6 +37,12 @@ class RegistroProspectoIa
             return;
         }
 
+        // Simulador de conversación: no ensuciar /admin/cotizaciones con prospectos falsos
+        // cada vez que un entrenador prueba una frase de cotización.
+        if ($contexto['modo_prueba'] ?? false) {
+            return;
+        }
+
         try {
             $conversacion = WhatsappConversacion::find($conversacionId);
             if (!$conversacion) {

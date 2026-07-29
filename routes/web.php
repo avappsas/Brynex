@@ -438,6 +438,17 @@ Route::middleware('auth')->group(function () {
         Route::post('/ia/global',        [$iac, 'guardarGlobal']) ->name('ia.global');
         Route::post('/ia/{alidoId}',     [$iac, 'guardarAliado']) ->name('ia.aliado');
 
+        // Simulador de conversación (probar la IA en vivo y anotar correcciones)
+        Route::prefix('ia/simulador')->name('ia.simulador.')->group(function () {
+            $ims = \App\Http\Controllers\IaSimuladorController::class;
+            Route::get('/',                  [$ims, 'index'])        ->name('index');
+            Route::get('/{alidoId}/historial',[$ims, 'historial'])    ->name('historial');
+            Route::post('/mensaje',          [$ims, 'mensaje'])       ->name('mensaje');
+            Route::post('/nota',             [$ims, 'guardarNota'])   ->name('nota');
+            Route::post('/nota/{id}/resolver',[$ims, 'resolverNota']) ->name('nota.resolver');
+            Route::post('/reiniciar',        [$ims, 'reiniciar'])     ->name('reiniciar');
+        });
+
         // Entrenamiento / conocimiento del Asistente IA
         Route::prefix('ia/conocimiento')->name('ia.conocimiento.')->group(function () {
             $ick = \App\Http\Controllers\IaConocimientoController::class;

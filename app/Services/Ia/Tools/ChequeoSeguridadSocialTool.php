@@ -72,6 +72,18 @@ class ChequeoSeguridadSocialTool implements IaToolInterface
 
     public function ejecutar(array $input, array $contexto): array
     {
+        // Simulador de conversación: nunca abrir una sesión real contra el portal de ADRES solo
+        // porque un entrenador está probando frases — es una consulta real a un sistema del Estado.
+        if ($contexto['modo_prueba'] ?? false) {
+            return [
+                'ok'      => true,
+                'chequeo_id' => null,
+                'mensaje' => 'MODO PRUEBA: aquí se habría abierto una consulta real en ADRES y enviado la imagen '
+                    . 'del captcha al cliente. No se ejecutó nada real. Responde igual que lo harías en un caso '
+                    . 'real: avísale que le mandaste la imagen y que escriba los números que ve.',
+            ];
+        }
+
         $conversacionId = $contexto['wa_conversacion_id'] ?? null;
         $conversacion = $conversacionId ? WhatsappConversacion::find($conversacionId) : null;
 
