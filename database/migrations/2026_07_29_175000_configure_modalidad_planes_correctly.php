@@ -32,11 +32,11 @@ return new class extends Migration
             // EPS + ARL + AFP + CCF: Dependiente E (0), Independientes (10), Ingreso-Retiro (12), TipoE (-4)
             6 => [0, 10, 12, -4],
 
-            // ARL + AFP + CCF: Independientes (10), Ingreso-Retiro (12), TipoE (-4)
-            11 => [10, 12, -4],
+            // ARL + AFP + CCF (Tiempo Parcial): 7, 14, 21, 30 días + variantes (7-14, 7-21, 14-21, 30-14)
+            11 => [1, 2, 3, 4, -6, -7, -8, -9],
 
-            // ARL + CCF: Independientes (10), Ingreso-Retiro (12), TipoE (-4)
-            13 => [10, 12, -4],
+            // ARL + CCF (Tiempo Parcial): 7, 14, 21, 30 días + variantes (7-14, 7-21, 14-21, 30-14)
+            13 => [1, 2, 3, 4, -6, -7, -8, -9],
         ];
 
         foreach ($configs as $planId => $modalidadIds) {
