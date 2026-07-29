@@ -247,12 +247,16 @@ class ExcelAportesEnLineaService
 
         $planos = $query->orderBy('p.primer_ape')->orderBy('p.primer_nombre')->get();
 
-        // Tipo planilla: K si todos son Estudiante K (-1), E en otro caso
+        // Tipo planilla: K si todos son Estudiante K (-1), Y si hay modalidad 8, E en otro caso
         $todosK       = $planos->count() > 0 && $planos->every(fn($p) => (int)$p->tipo_modalidad_id === -1);
-        $tipoPlanilla = $todosK ? 'K' : 'E';
+        $tieneY       = !$todosK && $planos->count() > 0 && $planos->contains(fn($p) => (int)$p->tipo_modalidad_id === 8);
+        $tipoPlanilla = $todosK ? 'K' : ($tieneY ? 'Y' : 'E');
 
         $periodoSS    = sprintf('%04d-%02d', $anioVencido, $mesVencido);
-        $periodoSalud = sprintf('%04d-%02d', $anioPago, $mesPago);
+        // Para tipo Y: periodo salud = periodo vencido (igual que sistemas diferentes a salud)
+        $periodoSalud = ($tipoPlanilla === 'Y')
+            ? $periodoSS
+            : sprintf('%04d-%02d', $anioPago, $mesPago);
 
         // ── Construir Spreadsheet ─────────────────────────────────────────
         $spreadsheet = new Spreadsheet();

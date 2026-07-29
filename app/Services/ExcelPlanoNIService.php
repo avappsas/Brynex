@@ -320,18 +320,21 @@ class ExcelPlanoNIService
 
         // Si hay registros con tipo_p = 16, Tipo Planilla = 'N' (Correcciones).
         // Si TODOS los registros cargados son Estudiante K (tipo_modalidad_id = -1)
-        // → Tipo Planilla = 'K'. Para cualquier otro caso → 'E' (Ordinaria).
+        // → Tipo Planilla = 'K'. Si hay modalidad 8 → 'Y'. Para cualquier otro caso → 'E' (Ordinaria).
         $tieneN          = $planos->count() > 0 && $planos->contains(fn($p) => (int)($p->tipo_p ?? 0) === 16);
         $todosK          = !$tieneN && $planos->count() > 0 && $planos->every(fn($p) => (int)$p->tipo_modalidad_id === -1);
-        $tipoPlanilla    = $tieneN ? 'N' : ($todosK ? 'K' : 'E');
+        $tieneY          = !$tieneN && !$todosK && $planos->count() > 0 && $planos->contains(fn($p) => (int)$p->tipo_modalidad_id === 8);
+        $tipoPlanilla    = $tieneN ? 'N' : ($todosK ? 'K' : ($tieneY ? 'Y' : 'E'));
         $totalCotizantes = $planos->count();
         $totalNomina     = $planos->sum('total_ss');
 
         // -- 5. Periodos AAAA-MM separados ------------------------------------------
         // Col 15: Sistemas diferentes a Salud (AFP, ARL, CCF) = mes VENCIDO
         $periodoSS     = sprintf('%04d-%02d', $anioVencido, $mesVencido);
-        // Col 16: Sistema de Salud (EPS) = mes ACTUAL (de pago)
-        $periodoSalud  = sprintf('%04d-%02d', $anioPago,   $mesPago);
+        // Col 16: Sistema de Salud (EPS) = mes actual; para tipo Y = mes vencido
+        $periodoSalud  = ($tipoPlanilla === 'Y')
+            ? $periodoSS
+            : sprintf('%04d-%02d', $anioPago, $mesPago);
 
         // -- 6. Construir Spreadsheet ----------------------------------------------
         $spreadsheet = new Spreadsheet();

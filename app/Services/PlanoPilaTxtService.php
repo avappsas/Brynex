@@ -240,7 +240,10 @@ class PlanoPilaTxtService
         $mesVenc  = $mes > 1 ? $mes - 1 : 12;
         $anioVenc = $mes > 1 ? $anio    : $anio - 1;
         $periodoNoSalud = sprintf('%04d-%02d', $anioVenc, $mesVenc);
-        $periodoSalud   = sprintf('%04d-%02d', $anio, $mes);
+        // Para tipo Y: ambos periodos = mes vencido (sistemas diferentes a salud)
+        $periodoSalud   = ($tipoPlanilla === 'Y')
+            ? $periodoNoSalud
+            : sprintf('%04d-%02d', $anio, $mes);
 
         $dv = str_pad(preg_replace('/[^0-9]/', '', (string)($rs->dv ?? '0')), 1, '0', STR_PAD_LEFT);
 
