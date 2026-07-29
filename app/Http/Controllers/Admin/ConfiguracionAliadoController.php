@@ -63,8 +63,43 @@ class ConfiguracionAliadoController extends Controller
         // Aliado activo (para logo y parámetros especiales)
         $aliadoActual = Aliado::find($alidoId);
 
+        // Afiliación por plan + modalidad + nivel de riesgo ARL (solo planes que incluyen ARL):
+        // para cada plan, sus modalidades compatibles (sin las ocultas "solo_ia") y, para cada una,
+        // el costo de afiliación configurado en los 5 niveles (null = usa el costo_afiliacion
+        // general del plan, ver CotizacionPublicaService::cotizar()).
+        $modalidadesArlPorPlan = [];
+        $valoresArlExistentes = \App\Models\AfiliacionArlModalidad::where('aliado_id', $alidoId)
+            ->get()
+            ->keyBy(fn ($v) => $v->plan_id . '_' . $v->tipo_modalidad_id . '_' . $v->nivel_arl);
+
+        foreach ($planes->where('incluye_arl', true) as $plan) {
+            $idsModalidad = DB::table('modalidad_planes')
+                ->where('plan_id', $plan->id)
+                ->where('solo_ia', false)
+                ->pluck('tipo_modalidad_id');
+
+            $modalidades = \App\Models\TipoModalidad::whereIn('id', $idsModalidad)
+                ->orderBy('orden')
+                ->get(['id', 'modalidad', 'observacion'])
+                ->map(function ($modalidad) use ($plan, $valoresArlExistentes) {
+                    $niveles = [];
+                    for ($n = 1; $n <= 5; $n++) {
+                        $valor = $valoresArlExistentes->get("{$plan->id}_{$modalidad->id}_{$n}");
+                        $niveles[$n] = $valor?->costo_afiliacion;
+                    }
+                    return [
+                        'id'      => $modalidad->id,
+                        'nombre'  => $modalidad->observacion ?: $modalidad->modalidad,
+                        'niveles' => $niveles,
+                    ];
+                });
+
+            $modalidadesArlPorPlan[$plan->id] = $modalidades;
+        }
+
         return view('admin.configuracion.index', compact(
-            'planes', 'usuarios', 'configs', 'arlAliado', 'arlGlobal', 'configBrynex', 'aliadoActual'
+            'planes', 'usuarios', 'configs', 'arlAliado', 'arlGlobal', 'configBrynex', 'aliadoActual',
+            'modalidadesArlPorPlan'
         ));
     }
 
@@ -94,6 +129,7 @@ class ConfiguracionAliadoController extends Controller
             'configs.*.tiempo_parcial_costo_afiliacion' => 'nullable|numeric|min:0',
             'configs.*.arl_descuento_porcentaje'        => 'nullable|integer|min:0|max:100',
             'arl.*.porcentaje'                  => 'nullable|numeric|min:0|max:100',
+            'arl_afiliacion.*.*.*'               => 'nullable|numeric|min:0',
             'brynex.*'                          => 'nullable|numeric|min:0',
             'seguro_logo'                       => 'nullable|image|mimes:jpg,jpeg,png,svg|max:2048',
         ]);
@@ -157,6 +193,28 @@ class ConfiguracionAliadoController extends Controller
                             ['aliado_id' => $alidoId, 'nivel' => $nivel],
                             ['porcentaje' => $pct, 'descripcion' => $data['descripcion'] ?? null]
                         );
+                    }
+                }
+            }
+
+            // ── 3b. Afiliación por plan + modalidad + nivel de riesgo ARL ──
+            // arl_afiliacion[plan_id][tipo_modalidad_id][nivel] = valor. Vacío = elimina la fila
+            // (vuelve a caer al costo_afiliacion general del plan, ver CotizacionPublicaService).
+            foreach ($request->input('arl_afiliacion', []) as $planId => $porModalidad) {
+                foreach ($porModalidad as $modalidadId => $porNivel) {
+                    foreach ($porNivel as $nivel => $valor) {
+                        if ($valor === null || $valor === '') {
+                            \App\Models\AfiliacionArlModalidad::where('aliado_id', $alidoId)
+                                ->where('plan_id', $planId)
+                                ->where('tipo_modalidad_id', $modalidadId)
+                                ->where('nivel_arl', $nivel)
+                                ->delete();
+                        } else {
+                            \App\Models\AfiliacionArlModalidad::updateOrCreate(
+                                ['aliado_id' => $alidoId, 'plan_id' => $planId, 'tipo_modalidad_id' => $modalidadId, 'nivel_arl' => $nivel],
+                                ['costo_afiliacion' => $valor]
+                            );
+                        }
                     }
                 }
             }

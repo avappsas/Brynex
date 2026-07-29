@@ -334,9 +334,10 @@
         <th style="padding:0.55rem 0.75rem;text-align:center;color:#b45309;font-weight:600;font-size:0.73rem;">🏷️ PROMOCIÓN</th>
         <th style="padding:0.55rem 0.75rem;text-align:right;color:#7c3aed;font-weight:600;font-size:0.73rem;" title="% del costo de afiliación que va a la empresa">% ADMON AFIL</th>
         <th style="padding:0.55rem 0.75rem;text-align:center;color:#475569;font-weight:600;font-size:0.73rem;">ENCARGADO DEFAULT</th>
+        <th style="padding:0.55rem 0.75rem;text-align:center;color:#0369a1;font-weight:600;font-size:0.73rem;">🦺 AFILIACIÓN POR RIESGO ARL</th>
       </tr>
     </thead>
-    <tbody>
+    <tbody x-data="{ arlAbierto: {} }">
       {{-- Fila Global (aplica a todos los planes si no hay específico) --}}
       @php $globalCfg = $configs['global'] ?? null; @endphp
       <tr style="border-bottom:1px solid #f1f5f9;background:#fffbeb;">
@@ -381,6 +382,7 @@
             @endforeach
           </select>
         </td>
+        <td style="padding:0.5rem 0.75rem;text-align:center;color:#cbd5e1;font-size:0.75rem;">—</td>
       </tr>
 
       {{-- Filas por Plan --}}
@@ -433,7 +435,57 @@
             @endforeach
           </select>
         </td>
+        <td style="padding:0.5rem 0.75rem;text-align:center;">
+          @if($plan->incluye_arl)
+            <button type="button" class="btn-glass" style="font-size:0.7rem;padding:0.3rem 0.6rem;"
+                @click="arlAbierto[{{ $plan->id }}] = !arlAbierto[{{ $plan->id }}]">
+              <i class="fas fa-chevron-down" :class="arlAbierto[{{ $plan->id }}] ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+              Desplegar
+            </button>
+          @else
+            <span style="color:#cbd5e1;font-size:0.75rem;">—</span>
+          @endif
+        </td>
       </tr>
+      @if($plan->incluye_arl)
+      <tr x-show="arlAbierto[{{ $plan->id }}]" x-cloak>
+        <td colspan="8" style="padding:0.85rem 1.25rem;background:#f0f9ff;border-bottom:1px solid #e2e8f0;">
+          <div style="font-size:0.68rem;color:#0369a1;margin-bottom:0.6rem;">
+            Afiliación específica por modalidad y nivel de riesgo ARL para <strong>{{ $plan->nombre }}</strong>.
+            Vacío = usa el "Costo Afiliación" general de este plan (arriba). La mensualidad siempre se calcula sola.
+          </div>
+          <div style="overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;font-size:0.78rem;">
+            <thead>
+              <tr style="background:#e0f2fe;">
+                <th style="padding:0.4rem 0.6rem;text-align:left;color:#0369a1;font-size:0.68rem;">MODALIDAD</th>
+                @for($n = 1; $n <= 5; $n++)
+                <th style="padding:0.4rem 0.6rem;text-align:center;color:#0369a1;font-size:0.68rem;">RIESGO {{ $n }}</th>
+                @endfor
+              </tr>
+            </thead>
+            <tbody>
+              @foreach($modalidadesArlPorPlan[$plan->id] ?? [] as $modalidad)
+              <tr style="border-bottom:1px solid #dbeafe;">
+                <td style="padding:0.4rem 0.6rem;white-space:nowrap;color:#0f172a;font-weight:600;">{{ $modalidad['nombre'] }}</td>
+                @for($n = 1; $n <= 5; $n++)
+                <td style="padding:0.35rem 0.5rem;text-align:center;">
+                  <input type="text"
+                      name="arl_afiliacion[{{ $plan->id }}][{{ $modalidad['id'] }}][{{ $n }}]"
+                      value="{{ $modalidad['niveles'][$n] !== null ? number_format($modalidad['niveles'][$n], 0, ',', '.') : '' }}"
+                      placeholder="{{ $cfg ? number_format($cfg->costo_afiliacion, 0, ',', '.') : '0' }}"
+                      class="input-miles"
+                      style="width:85px;padding:0.3rem 0.4rem;border:1px solid #bae6fd;border-radius:5px;font-size:0.76rem;font-family:monospace;text-align:right;background:#fff;">
+                </td>
+                @endfor
+              </tr>
+              @endforeach
+            </tbody>
+          </table>
+          </div>
+        </td>
+      </tr>
+      @endif
       @endforeach
     </tbody>
   </table>

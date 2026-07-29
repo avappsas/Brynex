@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\AfiliacionArlModalidad;
 use App\Models\ConfiguracionAliado;
 use App\Models\ConfiguracionBrynex;
 use App\Models\PlanContrato;
@@ -669,6 +670,22 @@ class CotizacionPublicaService
         $resultado['costo_afiliacion_sugerido']  = $cfgConPromo
             ? (float) $cfgConPromo->promocion_costo_afiliacion
             : $resultado['costo_afiliacion_normal'];
+
+        // Afiliación específica por nivel de riesgo ARL (Configuración → Tarifas de Administración
+        // → desplegar modalidad): el mismo plan puede cobrar afiliación distinta según el riesgo
+        // (ej. Solo ARL riesgo 5 vs riesgo 1) y según la modalidad (Independiente vs Dependiente del
+        // mismo plan EPS+ARL+AFP). Si no hay fila configurada para esta combinación exacta, se sigue
+        // usando el valor general/promocional de arriba — no rompe nada mientras no se configure.
+        if ($plan->incluye_arl) {
+            $costoPorNivel = AfiliacionArlModalidad::where('aliado_id', $aliadoId)
+                ->where('plan_id', $plan->id)
+                ->where('tipo_modalidad_id', $tipoModalidad->id)
+                ->where('nivel_arl', $nivelArl)
+                ->value('costo_afiliacion');
+            if ($costoPorNivel !== null) {
+                $resultado['costo_afiliacion_sugerido'] = (float) $costoPorNivel;
+            }
+        }
 
         try {
             $fechaAfiliacion = !empty($opciones['fecha_afiliacion']) ? Carbon::parse($opciones['fecha_afiliacion']) : now();
