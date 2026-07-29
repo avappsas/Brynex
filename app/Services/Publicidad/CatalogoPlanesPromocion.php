@@ -189,7 +189,9 @@ class CatalogoPlanesPromocion
             $def['desde_exterior'] ?? false,
             $def['tiempo_parcial_dias'] ?? null,
             false,
-            $def['es_upc'] ?? false
+            $def['es_upc'] ?? false,
+            false,
+            $nivelArl
         );
         if (!$modalidad) {
             return null;

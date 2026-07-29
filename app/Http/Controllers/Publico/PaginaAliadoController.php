@@ -228,7 +228,9 @@ class PaginaAliadoController extends Controller
             return null;
         }
 
-        $modalidad = CotizacionPublicaService::resolverModalidadPermitida($plan, $independiente);
+        $modalidad = CotizacionPublicaService::resolverModalidadPermitida(
+            $plan, $independiente, false, null, false, false, false, $nivelArl
+        );
         if (!$modalidad) {
             return null;
         }

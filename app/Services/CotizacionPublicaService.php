@@ -301,13 +301,15 @@ class CotizacionPublicaService
      */
     private static function tarjetasPorNivelArl(PlanContrato $plan, array $copy, int $aliadoId, bool $mostrarPrecios): array
     {
-        $modalidad = self::resolverModalidadPermitida($plan, true);
-        if (!$modalidad) {
-            return [];
-        }
-
         $tarjetas = [];
         foreach ($copy['niveles'] as $riesgo => $nivel) {
+            // La modalidad (K/Y) se resuelve por nivel: no cambia el valor mensual, pero si más
+            // adelante esta tarjeta expone costo_afiliacion, debe ser el de la modalidad correcta.
+            $modalidad = self::resolverModalidadPermitida($plan, true, false, null, false, false, false, $riesgo);
+            if (!$modalidad) {
+                continue;
+            }
+
             $resultado = self::cotizar($plan, $modalidad, $aliadoId, ['nivel_arl' => $riesgo, 'sin_plan_pago' => true]);
 
             $tarjetas[] = self::tarjetaBase($plan, $copy, [
@@ -463,6 +465,15 @@ class CotizacionPublicaService
     private const PLAN_SOLO_ARL_ID = 2;
 
     /**
+     * Modalidades internas de "Solo ARL" (ver PlanContrato::descripcion del plan): "Estudiante K"
+     * para riesgo 1-3, "ARL Tipo Y" para riesgo 4-5. El valor mensual no cambia entre ellas (la
+     * ARL solo depende del % de riesgo, ver CotizadorService) pero el costo de afiliación sí puede
+     * configurarse distinto para cada una (Configuración → Tarifas → desplegar modalidad).
+     */
+    private const MODALIDAD_ESTUDIANTE_K_ID = -1;
+    private const MODALIDAD_ARL_TIPO_Y_ID   = 8;
+
+    /**
      * Resuelve la modalidad correcta para un plan consultando modalidad_planes — la MISMA
      * tabla de permitidos que usa el cotizador del admin (admin/cotizaciones/create) — en vez
      * de asumir una modalidad fija. Evita cotizar combinaciones plan+modalidad que el negocio
@@ -475,6 +486,8 @@ class CotizacionPublicaService
      *   cliente ya mostró que el precio normal es un obstáculo. La web SIEMPRE usa false.
      * @param bool $esUpc El cliente paga la salud de alguien fuera de su núcleo familiar
      *   (ej. un sobrino) → planilla UPC aparte, modalidad 13.
+     * @param ?int $nivelArl Nivel de riesgo ARL (1-5). Solo se usa para "Solo ARL": decide entre
+     *   modalidad Estudiante K (riesgo 1-3) o ARL Tipo Y (riesgo 4-5) — ver constantes arriba.
      */
     public static function resolverModalidadPermitida(
         PlanContrato $plan,
@@ -483,7 +496,8 @@ class CotizacionPublicaService
         ?int $tiempoParcialDias = null,
         bool $incluirSoloIa = false,
         bool $esUpc = false,
-        bool $ingresoRetiro = false
+        bool $ingresoRetiro = false,
+        ?int $nivelArl = null
     ): ?TipoModalidad {
         $filas = \Illuminate\Support\Facades\DB::table('modalidad_planes')
             ->where('plan_id', $plan->id)
@@ -540,6 +554,16 @@ class CotizacionPublicaService
         // Estrategia para sostener la EPS pagando pocos días al mes (ver modalidad 12).
         if ($ingresoRetiro && in_array(self::MODALIDAD_INGRESO_RETIRO_ID, $permitidas, true)) {
             return TipoModalidad::find(self::MODALIDAD_INGRESO_RETIRO_ID);
+        }
+
+        // Solo ARL: la modalidad interna (K/Y) no cambia el valor mensual (la ARL solo depende
+        // del % de riesgo, ver CotizadorService) pero sí determina qué costo de afiliación
+        // configurado se usa (Estudiante K y ARL Tipo Y pueden tener valores distintos).
+        if ($plan->id === self::PLAN_SOLO_ARL_ID) {
+            $idPreferido = ($nivelArl ?? 1) >= 4 ? self::MODALIDAD_ARL_TIPO_Y_ID : self::MODALIDAD_ESTUDIANTE_K_ID;
+            if (in_array($idPreferido, $permitidas, true)) {
+                return TipoModalidad::find($idPreferido);
+            }
         }
 
         $prioridad = $esIndependiente

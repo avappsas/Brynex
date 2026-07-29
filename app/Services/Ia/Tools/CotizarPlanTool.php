@@ -164,7 +164,8 @@ class CotizarPlanTool implements IaToolInterface
         // La modalidad se resuelve contra modalidad_planes (la misma tabla del cotizador
         // admin) — interna, nunca se le pregunta al cliente.
         $tipoModalidad = CotizacionPublicaService::resolverModalidadPermitida(
-            $plan, $esIndependiente, $desdeExterior, $tiempoParcialDias, $ofrecerPlanEconomicoCaja, $esUpc, $ingresoRetiro
+            $plan, $esIndependiente, $desdeExterior, $tiempoParcialDias, $ofrecerPlanEconomicoCaja, $esUpc, $ingresoRetiro,
+            (int) ($input['nivel_arl'] ?? 1)
         );
         if (!$tipoModalidad) {
             return ['error' => "El plan \"{$plan->nombre}\" requiere asesoría personalizada — dile al cliente que un asesor lo contactará para ese caso."];
