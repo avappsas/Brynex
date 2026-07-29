@@ -645,8 +645,15 @@ class AsistenteIaService
                 'default' => ['in' => 0.15, 'out' => 0.60], // gpt-4o-mini aprox
             ],
             'gemini' => [
-                'flash'   => ['in' => 1.5, 'out' => 7.5], // Gemini 3.6 Flash
-                'default' => ['in' => 1.5, 'out' => 7.5],
+                // Ojo con el orden: "3.5-flash-lite" tiene que ir antes que "3.5-flash" porque
+                // ese nombre de modelo también contiene la subcadena "3.5-flash" (stripos matchearía
+                // el precio equivocado, mucho más caro, si "3.5-flash" fuera primero).
+                '3.6-flash'      => ['in' => 1.5,  'out' => 7.5],  // Gemini 3.6 Flash
+                '3.5-flash-lite' => ['in' => 0.3,  'out' => 2.5],  // Gemini 3.5 Flash-Lite
+                '3.5-flash'      => ['in' => 1.5,  'out' => 9.0],  // Gemini 3.5 Flash
+                '2.5-flash'      => ['in' => 0.3,  'out' => 2.5],  // Gemini 2.5 Flash
+                '2.5-pro'        => ['in' => 1.25, 'out' => 10.0], // Gemini 2.5 Pro, tramo <=200k tokens
+                'default'        => ['in' => 1.5,  'out' => 7.5],
             ],
         ];
 
