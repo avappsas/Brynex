@@ -409,6 +409,10 @@ if ($fact) {
     // I ACT primer mes puede tener tipo='planilla' con afiliación incluida
     $esAfil = $fact->tipo === 'afiliacion' && !($fact->afiliacion > 0 && $fact->total_ss > 0);
 }
+// Corrección: si es mes de afiliación (ingresó este mes), ignorar los días del retiro preview
+if ($esAfil && !$fact) {
+    $dias = 0;
+}
 // Tiempo Parcial: detectar y obtener días por entidad
 $esTP     = $c->tipoModalidad?->esTiempoParcial() ?? false;
 $diasTP   = $esTP ? $c->tipoModalidad->diasPorEntidad() : null;
@@ -419,12 +423,12 @@ $vEps  = $fact ? $r100($fact->v_eps)  : 0;
 $vArl  = $fact ? $r100($fact->v_arl)  : 0;
 $vCaja = $fact ? $r100($fact->v_caja) : 0;
 $vPen  = $fact ? $r100($fact->v_afp)  : 0;
-$vAdm  = $fact ? (int)($fact->admon + $fact->admin_asesor) : ($esRetirado ? 0 : (int)(($c->administracion??0) + ($c->admon_asesor??0)));
+$vAdm  = $fact ? (int)($fact->admon + $fact->admin_asesor) : (($esRetirado && !$esAfil) ? 0 : (int)(($c->administracion??0) + ($c->admon_asesor??0)));
 $vIva  = $fact ? $r100($fact->iva)    : 0;
 // Total y SS
 $cotiz = $c->cotizacion_calc ?? $c->calcularCotizacion($dias); // pre-calculado en controller
 if (!$fact) {
-    if ($esRetirado && $factRetiroPreview) {
+    if ($esRetirado && $factRetiroPreview && !$esAfil) {
         // Retiro facturable: mostrar valores reales de la factura_0
         $vEps  = $r100($factRetiroPreview->v_eps);
         $vArl  = $r100($factRetiroPreview->v_arl);
@@ -530,11 +534,11 @@ $totAdmon+=$vAdm;$totIva+=$vIva;$totTotal+=$vTot;$totMora+=$vMora;
     data-cobrar-admon-ret-pend="{{ $cobrarAdmonRetiroPendiente ? '1' : '0' }}"
     data-vmora="{{ $vMora }}"
     data-np="{{ $fact?->np ?? $c->np ?? '' }}"
-    data-es-retiro-facturable="{{ ($factRetiroPreview ?? null) ? '1' : '0' }}"
-    data-dias-retiro="{{ ($factRetiroPreview ?? null) ? (int)$factRetiroPreview->dias_cotizados : 0 }}"
-    data-admon-full="{{ ($factRetiroPreview ?? null) ? (int)(($c->administracion??0) + ($c->admon_asesor??0)) : 0 }}"
-    data-admon-proporcional="{{ ($factRetiroPreview ?? null) ? ($vAdmProporcional ?? 0) : 0 }}"
-    data-vss-retiro="{{ ($factRetiroPreview ?? null) ? $r100($factRetiroPreview->total_ss) : 0 }}"
+    data-es-retiro-facturable="{{ ($factRetiroPreview ?? null) && !$esAfil ? '1' : '0' }}"
+    data-dias-retiro="{{ ($factRetiroPreview ?? null) && !$esAfil ? (int)$factRetiroPreview->dias_cotizados : 0 }}"
+    data-admon-full="{{ ($factRetiroPreview ?? null) && !$esAfil ? (int)(($c->administracion??0) + ($c->admon_asesor??0)) : 0 }}"
+    data-admon-proporcional="{{ ($factRetiroPreview ?? null) && !$esAfil ? ($vAdmProporcional ?? 0) : 0 }}"
+    data-vss-retiro="{{ ($factRetiroPreview ?? null) && !$esAfil ? $r100($factRetiroPreview->total_ss) : 0 }}"
     data-np-prov="{{ $c->np ?? '' }}">
 
     <td style="font-size:.75rem;font-weight:700;text-align:center;white-space:nowrap;" title="{{ $tipoNom }}{{ $esIndActPrimerMes ? ' · Afiliación + Planilla' : '' }}{{ $esRetirado ? ' · RETIRADO' : '' }}">
@@ -632,19 +636,24 @@ $totAdmon+=$vAdm;$totIva+=$vIva;$totTotal+=$vTot;$totMora+=$vMora;
         $totProxPendiente= ($totProxPendiente ?? 0) + $c->saldo_proximo_pendiente;
     @endphp
     <td style="text-align:center">
-        @if($esRetirado)
+        @if($esRetirado && $esAfil && !$fact)
+            {{-- Retirado que ingresó este mes: afiliación pendiente de cobro --}}
+            <span style="display:inline-block;padding:.16rem .5rem;border-radius:20px;font-size:.63rem;font-weight:800;background:#ede9fe;color:#6d28d9;"
+                  title="Ingresó este mes — afiliación pendiente de facturar">
+                AFIL. PEND.
+            </span>
+        @elseif($esRetirado)
             @php
                 $factRetiro0 = $c->factura_retiro_0 ?? null;
                 $tieneRetiroFacturable = $c->tiene_retiro_facturable ?? false;
                 $numeroPlanillaRet = $factRetiro0 ? (\App\Models\Plano::where('factura_id', $factRetiro0->id)->whereNull('deleted_at')->value('numero_planilla') ?? null) : null;
             @endphp
             @if($tieneRetiroFacturable)
-                {{-- Retiro marcado pero no cobrado aún — mostrar en naranja --}}
+                {{-- Retiro marcado pero no cobrado aún — mostrar en rojo --}}
                 <span style="display:inline-block;padding:.16rem .5rem;border-radius:20px;font-size:.63rem;font-weight:800;background:#fee2e2;color:#dc2626;"
                       title="Retiro marcado — pendiente de facturar{{ $numeroPlanillaRet ? ' ⚠ Planilla pagada: '.$numeroPlanillaRet : '' }}">
                     RETIRO
                 </span>
-
             @else
                 {{-- Retirado sin factura 0 (ya cobrado o retiro masivo) --}}
                 <span style="display:inline-block;padding:.16rem .5rem;border-radius:20px;font-size:.63rem;font-weight:800;background:#fee2e2;color:#dc2626">

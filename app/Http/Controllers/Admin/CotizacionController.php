@@ -354,6 +354,7 @@ class CotizacionController extends Controller
             'modalidadesIndependientes' => [10, 11, 13, 14],
             'tipos_doc'     => [
                 'CC'  => 'CC - Cédula de Ciudadanía',
+                'TI'  => 'TI - Tarjeta de Identidad',
                 'CE'  => 'CE - Cédula de Extranjería',
                 'PA'  => 'PA - Pasaporte',
                 'PT'  => 'PT - Permiso de Protección Temporal',

@@ -86,15 +86,31 @@ class FacturacionController extends Controller
                       $q2->where('estado', 'retirado')
                          ->where(function ($q3) use ($mes, $anio, $mesAnterior, $anioAnterior) {
                              $q3->where(function ($qa) use ($mes, $anio) {
-                                     $qa->where('tipo_modalidad_id', 11)
-                                        ->whereMonth('fecha_retiro', $mes)
-                                        ->whereYear('fecha_retiro', $anio);
-                                 })
-                                ->orWhere(function ($qb) use ($mesAnterior, $anioAnterior) {
-                                     $qb->where('tipo_modalidad_id', '!=', 11)
-                                        ->whereMonth('fecha_retiro', $mesAnterior)
-                                        ->whereYear('fecha_retiro', $anioAnterior);
-                                 });
+                                      // Tipo 11 (I ACT): retiro se factura en el MES del retiro
+                                      $qa->where('tipo_modalidad_id', 11)
+                                         ->whereMonth('fecha_retiro', $mes)
+                                         ->whereYear('fecha_retiro', $anio);
+                                  })
+                                 ->orWhere(function ($qb) use ($mesAnterior, $anioAnterior) {
+                                      // Otros: retiro del mes anterior se factura este mes
+                                      $qb->where('tipo_modalidad_id', '!=', 11)
+                                         ->whereMonth('fecha_retiro', $mesAnterior)
+                                         ->whereYear('fecha_retiro', $anioAnterior);
+                                  })
+                                 ->orWhere(function ($qc) use ($mes, $anio) {
+                                      // Otros: retiro en el mes actual (se factura en el mismo mes)
+                                      // Ej: ingresó julio, se retira agosto → aparece en agosto
+                                      $qc->where('tipo_modalidad_id', '!=', 11)
+                                         ->whereMonth('fecha_retiro', $mes)
+                                         ->whereYear('fecha_retiro', $anio);
+                                  })
+                                 ->orWhere(function ($qd) use ($mes, $anio) {
+                                      // Retirado que ingresó este mes: mostrar afiliación
+                                      // aunque el retiro sea en un mes futuro
+                                      // Ej: ingresó julio, retiro agosto → aparece en julio como afiliación
+                                      $qd->whereMonth('fecha_ingreso', $mes)
+                                         ->whereYear('fecha_ingreso', $anio);
+                                  });
                          });
                   });
             })
@@ -3688,7 +3704,13 @@ class FacturacionController extends Controller
                 $anioIngreso = (int)$fIng->year;
                 $esIndAct = (int)($c->tipo_modalidad_id) === 11;
 
-                if ($mesIngreso === $mes && $anioIngreso === $anio) {
+                $periodoIngreso = $anioIngreso * 100 + $mesIngreso;
+                $periodoActual  = $anio * 100 + $mes;
+
+                if ($periodoIngreso > $periodoActual) {
+                    // Ingreso en mes futuro: el contrato aún no inicia en este período
+                    $diasCotizar = 0;
+                } elseif ($mesIngreso === $mes && $anioIngreso === $anio) {
                     if ($esIndAct) {
                         $esIndActPrimerMes = true;
                         $diasCotizar = max(1, 30 - $fIng->day + 1);

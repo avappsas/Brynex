@@ -368,6 +368,7 @@ class ClienteController extends Controller
             'ciudades'      => $ciudades,
             'tipos_doc'     => [
                 'CC'  => 'CC - Cédula de Ciudadanía',
+                'TI'  => 'TI - Tarjeta de Identidad',
                 'CE'  => 'CE - Cédula de Extranjería',
                 'PA'  => 'PA - Pasaporte',
                 'PT'  => 'PT - Permiso de Protección Temporal',
