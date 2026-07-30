@@ -71,7 +71,8 @@ class AutopilotGenerator
             . ' Compón la pieza como un anuncio publicitario profesional para redes sociales, no como una simple foto o ilustración de escena sin texto: '
             . 'decide tú el texto en español que mejor comunique el mensaje (un titular corto y contundente, y si aporta, una línea de apoyo) e intégralo en el diseño con tipografía bold, alto contraste y buena jerarquía visual. '
             . 'Agrega también íconos o elementos gráficos de apoyo si refuerzan el mensaje (alertas, chulos, sellos, flechas, badges), con un estilo coherente al resto de la pieza. '
-            . 'Cuida la ortografía y las tildes del español.';
+            . 'Cuida la ortografía y las tildes del español. '
+            . 'Deja la esquina inferior derecha completamente libre de texto, íconos o elementos gráficos — ahí se agrega el logo de la marca por separado, y no debe quedar tapado ni encimado con nada.';
         if ($rutaLogo) {
             // La imagen adjunta (aparte del prompt) es el logo real — se le pide inspirarse
             // en su paleta, NUNCA reproducirlo literal (los modelos de imagen distorsionan
@@ -100,6 +101,7 @@ class AutopilotGenerator
             'origen'      => 'ia_auto',
             'tema'        => $concepto['tema'],
             'estilo_imagen' => $estilo,
+            'costo_estimado_usd' => GeminiImagenGenerator::costoEstimadoUsd($modelo),
             'destinos'    => $destinos,
             'estado'      => $esAuto ? Publicacion::ESTADO_APROBADA : Publicacion::ESTADO_PENDIENTE,
             'creado_por'  => null,

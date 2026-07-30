@@ -89,6 +89,7 @@ class FlyerPlanGenerator
             'origen'        => 'ia_auto',
             'tema'          => self::PREFIJO_TEMA . $clave,
             'estilo_imagen' => AutopilotConfig::ESTILO_FOTORREALISTA,
+            'costo_estimado_usd' => GeminiImagenGenerator::costoEstimadoUsd(GeminiImagenGenerator::MODELO_FOTORREALISTA),
             'destinos'      => $destinos,
             'estado'        => $esAuto ? Publicacion::ESTADO_APROBADA : Publicacion::ESTADO_PENDIENTE,
             'creado_por'    => null,

@@ -81,6 +81,11 @@ $colorEstado = [
       @if($pub->destinos) · {{ implode(', ', $pub->destinos) }} @endif
     </div>
   </div>
+  @if($pub->costo_estimado_usd !== null)
+  <span style="font-size:0.72rem;color:#64748b;white-space:nowrap;" title="Costo estimado de generación con IA">
+    US${{ number_format($pub->costo_estimado_usd, 3) }}
+  </span>
+  @endif
   @php [$bg,$fg] = $colorEstado[$pub->estado] ?? ['#f1f5f9','#475569']; @endphp
   <span style="background:{{ $bg }};color:{{ $fg }};font-size:0.7rem;font-weight:700;padding:0.25rem 0.65rem;border-radius:999px;white-space:nowrap;">
     {{ $pub->etiquetaEstado() }}

@@ -28,6 +28,16 @@ class GeminiImagenGenerator
 
     private const BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
 
+    /** Precio oficial por imagen, resolución 1K/2K (ai.google.dev/gemini-api/docs/pricing, jul-2026). */
+    private const PRECIO_IMG_ILUSTRACION   = 0.039;
+    private const PRECIO_IMG_FOTORREALISTA = 0.134;
+
+    /** Costo estimado en USD de generar una imagen — para mostrarlo en el panel de admin. */
+    public static function costoEstimadoUsd(string $modelo): float
+    {
+        return $modelo === self::MODELO_FOTORREALISTA ? self::PRECIO_IMG_FOTORREALISTA : self::PRECIO_IMG_ILUSTRACION;
+    }
+
     /**
      * @param ?string $rutaLogo Ruta absoluta (disco) del logo del aliado — si se pasa, se envía
      *   como imagen de referencia junto al prompt (Gemini soporta texto + imagen de entrada),

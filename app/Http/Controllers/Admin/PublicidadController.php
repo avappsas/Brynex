@@ -103,6 +103,11 @@ class PublicidadController extends Controller
         $costoEstimado = null;
         if ($esVideo && !empty($validated['video_ia_id'])) {
             $costoEstimado = PublicidadVideoIa::where('aliado_id', $aliado->id)->find($validated['video_ia_id'])?->costo_estimado_usd;
+        } elseif (!$esVideo && $validated['origen'] === 'ia' && !empty($validated['estilo_imagen'])) {
+            $modeloImagen = $validated['estilo_imagen'] === 'fotorrealista'
+                ? GeminiImagenGenerator::MODELO_FOTORREALISTA
+                : GeminiImagenGenerator::MODELO_ILUSTRACION;
+            $costoEstimado = GeminiImagenGenerator::costoEstimadoUsd($modeloImagen);
         }
 
         Publicacion::create([
@@ -362,7 +367,8 @@ class PublicidadController extends Controller
         $instruccionTipografia = ' Compón la pieza como un anuncio publicitario profesional para redes sociales, no como una simple foto o ilustración de escena sin texto: '
             . 'decide tú el texto en español que mejor comunique el mensaje (un titular corto y contundente, y si aporta, una línea de apoyo) e intégralo en el diseño con tipografía bold, alto contraste y buena jerarquía visual. '
             . 'Agrega también íconos o elementos gráficos de apoyo si refuerzan el mensaje (alertas, chulos, sellos, flechas, badges), con un estilo coherente al resto de la pieza. '
-            . 'Cuida la ortografía y las tildes del español.';
+            . 'Cuida la ortografía y las tildes del español. '
+            . 'Deja la esquina inferior derecha completamente libre de texto, íconos o elementos gráficos — ahí se agrega el logo de la marca por separado, y no debe quedar tapado ni encimado con nada.';
 
         $prompt = $validated['prompt'] . $instruccionTipografia . ($rutaLogo
             ? ' Te adjunto el logo de la marca como referencia de color: usa tonos inspirados en su paleta para la escena. NO intentes dibujar ni reproducir el logo dentro de la imagen — eso se agrega después por separado.'
