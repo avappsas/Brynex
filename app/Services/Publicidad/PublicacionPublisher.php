@@ -58,8 +58,17 @@ class PublicacionPublisher
         }
 
         try {
-            $urlPublica = asset('storage/' . $publicacion->imagen_path);
-            $r = RedesFactory::make($config)->publicarImagen($urlPublica, self::textoConLinkRastreado($publicacion));
+            $publicador = RedesFactory::make($config);
+            $texto = self::textoConLinkRastreado($publicacion);
+
+            if ($publicacion->tipo_pieza === 'video' && $publicacion->video_path) {
+                $urlPublica = asset('storage/' . $publicacion->video_path);
+                $r = $publicador->publicarVideo($urlPublica, $texto);
+            } else {
+                $urlPublica = asset('storage/' . $publicacion->imagen_path);
+                $r = $publicador->publicarImagen($urlPublica, $texto);
+            }
+
             return ['ok' => $r['ok'], 'mensaje' => $r['mensaje'], 'id' => $r['id_publicacion'] ?? null];
         } catch (\Throwable $e) {
             return ['ok' => false, 'mensaje' => 'Error inesperado: ' . $e->getMessage()];

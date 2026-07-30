@@ -753,6 +753,10 @@ Route::middleware('auth')->group(function () {
         Route::post('generar-copia',          [$pub, 'generarCopia'])  ->name('generar_copia');
         Route::post('generar-imagen',         [$pub, 'generarImagen']) ->name('generar_imagen');
         Route::post('subir-canvas',           [$pub, 'subirCanvas'])   ->name('subir_canvas');
+
+        // Video IA (Veo + overlay) — antes de {id} por el mismo motivo que autopilot/pauta
+        Route::post('generar-video',          [$pub, 'generarVideo'])  ->name('generar_video');
+        Route::get('video/{id}/estado',       [$pub, 'estadoVideo'])   ->whereNumber('id')->name('video.estado');
     });
 
     // ============================================

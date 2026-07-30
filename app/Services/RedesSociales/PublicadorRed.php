@@ -19,6 +19,15 @@ interface PublicadorRed
     public function publicarImagen(string $urlImagenPublica, string $texto): array;
 
     /**
+     * Publica un video con texto. $urlVideoPublica debe ser una URL accesible públicamente
+     * (no un path local) — las redes sociales lo descargan desde ahí. El procesamiento del
+     * video en la red social es más lento que el de una imagen (puede tardar varios minutos).
+     *
+     * @return array{ok: bool, mensaje: string, id_publicacion: ?string}
+     */
+    public function publicarVideo(string $urlVideoPublica, string $texto): array;
+
+    /**
      * Prueba que las credenciales configuradas funcionan, sin publicar nada.
      *
      * @return array{ok: bool, mensaje: string}

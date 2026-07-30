@@ -22,8 +22,15 @@
 @endif
 
 <div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:1.5rem;margin-bottom:1rem;">
-  <img src="{{ asset('storage/' . $publicacion->imagen_path) }}" alt=""
-       style="width:100%;max-width:360px;border-radius:12px;display:block;margin:0 auto 1.25rem;">
+  @if($publicacion->tipo_pieza === 'video' && $publicacion->video_path)
+    <video controls poster="{{ asset('storage/' . $publicacion->imagen_path) }}"
+           style="width:100%;max-width:360px;border-radius:12px;display:block;margin:0 auto 1.25rem;">
+      <source src="{{ asset('storage/' . $publicacion->video_path) }}" type="video/mp4">
+    </video>
+  @else
+    <img src="{{ asset('storage/' . $publicacion->imagen_path) }}" alt=""
+         style="width:100%;max-width:360px;border-radius:12px;display:block;margin:0 auto 1.25rem;">
+  @endif
 
   <h1 style="font-size:1.1rem;font-weight:800;color:#0f172a;margin:0 0 0.4rem;">{{ $publicacion->titulo }}</h1>
   @if($publicacion->copy)

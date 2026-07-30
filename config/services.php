@@ -61,6 +61,12 @@ return [
         'clave_secreta' => env('SUAPORTE_CLAVE_SECRETA'),
     ],
 
+    // Binarios de FFmpeg para el overlay de texto animado + logo sobre video (VideoOverlayFfmpeg).
+    'ffmpeg' => [
+        'binario' => env('FFMPEG_BINARY', 'ffmpeg'),
+        'ffprobe' => env('FFPROBE_BINARY', 'ffprobe'),
+    ],
+
     // Worker de Node que maneja el navegador contra ADRES (ver adres-worker/).
     // Debe escuchar solo en loopback: puede consultar el historial de salud de
     // cualquier cédula, así que no puede quedar expuesto en red.

@@ -7,11 +7,13 @@ use App\Models\Aliado;
 use App\Models\IaConfiguracionAliado;
 use App\Models\PautaConfig;
 use App\Models\Publicacion;
+use App\Models\PublicidadVideoIa;
 use App\Models\RedSocialConfig;
 use App\Services\CotizacionPublicaService;
 use App\Services\Publicidad\CopiaIaGenerator;
 use App\Services\Publicidad\GeminiImagenGenerator;
 use App\Services\Publicidad\PublicacionPublisher;
+use App\Services\Publicidad\VeoVideoGenerator;
 use App\Services\RedesSociales\MetaAdsService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -40,11 +42,12 @@ class PublicidadController extends Controller
 
         $publicaciones = $query->paginate(20)->withQueryString();
         $pendientes    = Publicacion::where('aliado_id', $aliado->id)->pendientes()->count();
+        $tieneGemini   = IaConfiguracionAliado::paraAliado($aliado->id)->tieneGemini();
 
-        return view('admin.publicidad.index', compact('aliado', 'publicaciones', 'pendientes'));
+        return view('admin.publicidad.index', compact('aliado', 'publicaciones', 'pendientes', 'tieneGemini'));
     }
 
-    public function create()
+    public function create(Request $request)
     {
         $aliado    = $this->aliadoActivo();
         $iaConfig  = IaConfiguracionAliado::paraAliado($aliado->id);
@@ -57,6 +60,7 @@ class PublicidadController extends Controller
             'tieneGemini'  => $iaConfig->tieneGemini(),
             'redesActivas' => $redesActivas,
             'planes'       => $planes,
+            'videoIdPreseleccionado' => $request->integer('video_id') ?: null,
         ]);
     }
 
@@ -69,6 +73,8 @@ class PublicidadController extends Controller
             'copy'            => 'nullable|string|max:2000',
             'imagen'          => 'required_without:imagen_path_generado|nullable|image|max:5120',
             'imagen_path_generado' => 'required_without:imagen|nullable|string|max:255',
+            'video_path_generado'  => 'nullable|string|max:255',
+            'video_modelo'    => 'nullable|string|max:40',
             'origen'          => 'required|in:plantilla,ia,subida',
             'plantilla_usada' => 'nullable|string|max:60',
             'estilo_imagen'   => 'nullable|in:ilustracion,fotorrealista',
@@ -81,10 +87,16 @@ class PublicidadController extends Controller
             $rutaImagen = $request->file('imagen')->store('publicidad', 'public');
         } else {
             // Viene de una generación previa (IA) ya guardada en storage — solo confirmamos que exista.
+            // Para video, este mismo campo trae el poster/primer frame (ver pestaña Video IA).
             $rutaImagen = $validated['imagen_path_generado'];
             if (!Storage::disk('public')->exists($rutaImagen)) {
                 return back()->withErrors(['imagen' => 'La imagen generada ya no está disponible, genera de nuevo.'])->withInput();
             }
+        }
+
+        $esVideo = !empty($validated['video_path_generado']);
+        if ($esVideo && !Storage::disk('public')->exists($validated['video_path_generado'])) {
+            return back()->withErrors(['video' => 'El video generado ya no está disponible, genera de nuevo.'])->withInput();
         }
 
         Publicacion::create([
@@ -92,6 +104,9 @@ class PublicidadController extends Controller
             'titulo'          => $validated['titulo'],
             'copy'            => $validated['copy'] ?? null,
             'imagen_path'     => $rutaImagen,
+            'tipo_pieza'      => $esVideo ? 'video' : 'imagen',
+            'video_path'      => $esVideo ? $validated['video_path_generado'] : null,
+            'video_modelo'    => $esVideo ? ($validated['video_modelo'] ?? null) : null,
             'origen'          => $validated['origen'],
             'plantilla_usada' => $validated['plantilla_usada'] ?? null,
             'estilo_imagen'   => $validated['estilo_imagen'] ?? null,
@@ -340,12 +355,83 @@ class PublicidadController extends Controller
 
         if ($resultado['ok']) {
             foreach ($resultado['rutas'] as $ruta) {
-                \App\Services\Publicidad\LogoWatermarker::aplicar($ruta, $aliado->logo_marca_claro, $aliado->logo_oscuro, $aliado->logo_marca_recorte);
+                \App\Services\Publicidad\LogoWatermarker::aplicar($ruta, $aliado->logo_marca_claro, $aliado->logo_marca_recorte, $aliado->color_primario);
             }
             $resultado['urls'] = array_map(fn ($r) => asset('storage/' . $r) . '?v=' . time(), $resultado['rutas']);
         }
 
         return response()->json($resultado);
+    }
+
+    /**
+     * Inicia un video publicitario con IA (Veo): la IA redacta sola el prompt de la escena y
+     * las frases del texto animado (el admin solo elige Lite/Standard y opcionalmente un
+     * tema) — responde de inmediato con el id para hacer polling, la generación real (1-3
+     * min) la avanza el comando `videos:procesar` en segundo plano.
+     */
+    public function generarVideo(Request $request)
+    {
+        $aliado = $this->aliadoActivo();
+        $iaConfig = IaConfiguracionAliado::paraAliado($aliado->id);
+
+        if (!$iaConfig->tieneGemini()) {
+            return response()->json(['ok' => false, 'error' => 'No hay una clave de Gemini configurada (ver Asistente Virtual).']);
+        }
+
+        $validated = $request->validate([
+            'tema'     => 'nullable|string|max:300',
+            'nivel'    => 'required|in:lite,standard',
+            'duracion' => 'nullable|in:4,6,8',
+        ]);
+
+        $contexto = $validated['tema'] ?: 'cotizar seguridad social (EPS, ARL, pensión, caja de compensación) en Colombia';
+
+        $promptResultado = CopiaIaGenerator::generarPromptVideo($aliado->id, $aliado->nombre, $contexto);
+        if (!$promptResultado['ok']) {
+            return response()->json(['ok' => false, 'error' => $promptResultado['error']]);
+        }
+
+        $frasesResultado = CopiaIaGenerator::generarFrasesVideo($aliado->id, $aliado->nombre, $contexto);
+        $frases = $frasesResultado['ok'] ? array_slice($frasesResultado['frases'], 0, 3) : [];
+
+        $modelo = $validated['nivel'] === 'standard' ? VeoVideoGenerator::MODELO_STANDARD : VeoVideoGenerator::MODELO_LITE;
+        $duracion = (int) ($validated['duracion'] ?? 8);
+
+        $inicio = VeoVideoGenerator::iniciar($iaConfig->gemini_api_key, $promptResultado['prompt'], $modelo, '9:16', '720p', $duracion);
+        if (!$inicio['ok']) {
+            return response()->json(['ok' => false, 'error' => $inicio['error']]);
+        }
+
+        $video = PublicidadVideoIa::create([
+            'aliado_id'      => $aliado->id,
+            'prompt_video'   => $promptResultado['prompt'],
+            'frases_texto'   => $frases,
+            'modelo'         => $modelo,
+            'operation_name' => $inicio['operationName'],
+            'creado_por'     => Auth::id(),
+        ]);
+
+        return response()->json(['ok' => true, 'id' => $video->id]);
+    }
+
+    /** Polling de estado del video en generación — ver pestaña Video IA en create.blade.php. */
+    public function estadoVideo(int $id)
+    {
+        $aliado = $this->aliadoActivo();
+        $video = PublicidadVideoIa::where('aliado_id', $aliado->id)->findOrFail($id);
+
+        $listo = $video->estado === PublicidadVideoIa::ESTADO_LISTA;
+
+        return response()->json([
+            'ok'                 => true,
+            'estado'             => $video->estado,
+            'error'              => $video->error_mensaje,
+            'video_url'          => $listo ? asset('storage/' . $video->video_path) . '?v=' . time() : null,
+            'video_path'         => $listo ? $video->video_path : null,
+            'poster_url'         => $video->imagen_poster_path ? asset('storage/' . $video->imagen_poster_path) . '?v=' . time() : null,
+            'imagen_poster_path' => $video->imagen_poster_path,
+            'modelo'             => $video->modelo,
+        ]);
     }
 
     /** Sube a storage el PNG generado por canvas en el navegador (dataURL -> archivo) y devuelve su path. */

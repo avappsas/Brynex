@@ -36,6 +36,7 @@
         <button type="button" class="tab-imagen activa" data-tab="plantilla" style="flex:1;padding:0.5rem;border-radius:8px;border:1.5px solid #2563eb;background:#eff6ff;color:#1e40af;font-size:0.8rem;font-weight:700;cursor:pointer;">📐 Plantilla</button>
         <button type="button" class="tab-imagen" data-tab="ia" style="flex:1;padding:0.5rem;border-radius:8px;border:1.5px solid #cbd5e1;background:#fff;color:#475569;font-size:0.8rem;font-weight:700;cursor:pointer;">✨ Generar con IA</button>
         <button type="button" class="tab-imagen" data-tab="subida" style="flex:1;padding:0.5rem;border-radius:8px;border:1.5px solid #cbd5e1;background:#fff;color:#475569;font-size:0.8rem;font-weight:700;cursor:pointer;">📤 Subir</button>
+        <button type="button" class="tab-imagen" data-tab="video" style="flex:1;padding:0.5rem;border-radius:8px;border:1.5px solid #cbd5e1;background:#fff;color:#475569;font-size:0.8rem;font-weight:700;cursor:pointer;">🎬 Video (IA)</button>
       </div>
 
       {{-- Panel: Plantilla --}}
@@ -107,6 +108,28 @@
       {{-- Panel: Subida --}}
       <div class="panel-imagen" data-panel="subida" style="display:none;">
         <input type="file" id="fArchivoSubido" accept="image/png,image/jpeg">
+      </div>
+
+      {{-- Panel: Video IA (Veo + overlay) --}}
+      <div class="panel-imagen" data-panel="video" style="display:none;">
+        @if(!$tieneGemini)
+          <p style="font-size:0.78rem;color:#94a3b8;background:#f8fafc;border-radius:8px;padding:0.6rem 0.8rem;">
+            No hay una clave de Gemini configurada. Ve a <strong>Asistente Virtual</strong> para agregarla.
+          </p>
+        @else
+          <p style="font-size:0.74rem;color:#64748b;margin:0 0 0.6rem;">
+            La IA redacta sola la escena y el texto animado — solo elige el nivel y, si quieres, dale un tema.
+          </p>
+          <div style="display:flex;gap:0.4rem;margin-bottom:0.6rem;">
+            <button type="button" class="nivel-video-ia activo" data-nivel="lite" style="flex:1;padding:0.4rem;border-radius:8px;border:1.5px solid #7c3aed;background:#f5f3ff;color:#6d28d9;font-size:0.75rem;font-weight:700;cursor:pointer;">⚡ Lite</button>
+            <button type="button" class="nivel-video-ia" data-nivel="standard" style="flex:1;padding:0.4rem;border-radius:8px;border:1.5px solid #cbd5e1;background:#fff;color:#475569;font-size:0.75rem;font-weight:700;cursor:pointer;">🎥 Standard</button>
+          </div>
+          <input type="text" id="videoTema" maxlength="300" placeholder="Tema opcional (ej: independientes que quieren pensión)"
+                 style="width:100%;padding:0.5rem 0.7rem;border:1px solid #cbd5e1;border-radius:8px;font-size:0.83rem;margin-bottom:0.6rem;">
+          <button type="button" id="btnGenerarVideoIa" style="background:#7c3aed;color:#fff;border:none;font-size:0.8rem;font-weight:700;padding:0.5rem 1rem;border-radius:8px;cursor:pointer;">🎬 Generar video</button>
+          <div id="estadoVideoIa" style="margin-top:0.8rem;font-size:0.78rem;color:#64748b;"></div>
+          <video id="previewVideoIa" controls style="display:none;width:100%;max-width:220px;border-radius:8px;margin-top:0.6rem;"></video>
+        @endif
       </div>
     </div>
 
@@ -187,6 +210,9 @@
     let imagenIaSeleccionada = null; // {path, url}
     let archivoSubido = null;
     let estiloImagenIa = 'ilustracion';
+    let nivelVideoIa = 'lite';
+    let videoIaSeleccionado = null; // {videoPath, posterPath}
+    let pollingVideoIa = null;
 
     document.querySelectorAll('.estilo-imagen-ia').forEach((btn) => {
         btn.addEventListener('click', () => {
@@ -197,6 +223,18 @@
             btn.classList.add('activo');
             btn.style.border = '1.5px solid #7c3aed'; btn.style.background = '#f5f3ff'; btn.style.color = '#6d28d9';
             estiloImagenIa = btn.dataset.estilo;
+        });
+    });
+
+    document.querySelectorAll('.nivel-video-ia').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.nivel-video-ia').forEach((b) => {
+                b.classList.remove('activo');
+                b.style.border = '1.5px solid #cbd5e1'; b.style.background = '#fff'; b.style.color = '#475569';
+            });
+            btn.classList.add('activo');
+            btn.style.border = '1.5px solid #7c3aed'; btn.style.background = '#f5f3ff'; btn.style.color = '#6d28d9';
+            nivelVideoIa = btn.dataset.nivel;
         });
     });
 
@@ -476,6 +514,76 @@
         });
     }
 
+    // ── Generación de video con IA (Veo + overlay) ──────────────────
+    const btnGenVideo = document.getElementById('btnGenerarVideoIa');
+    if (btnGenVideo) {
+        btnGenVideo.addEventListener('click', function () {
+            const tema = document.getElementById('videoTema').value.trim();
+            const estadoEl = document.getElementById('estadoVideoIa');
+            const previewEl = document.getElementById('previewVideoIa');
+
+            btnGenVideo.disabled = true;
+            btnGenVideo.textContent = '⏳ Iniciando...';
+            previewEl.style.display = 'none';
+            videoIaSeleccionado = null;
+            estadoEl.textContent = 'Redactando la escena y el texto con IA...';
+
+            fetch(@json(route('admin.publicidad.generar_video')), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                body: JSON.stringify({ tema, nivel: nivelVideoIa }),
+            })
+            .then((r) => r.json())
+            .then((data) => {
+                if (!data.ok) {
+                    mostrarAlerta(data.error || 'No se pudo iniciar el video.');
+                    btnGenVideo.disabled = false;
+                    btnGenVideo.textContent = '🎬 Generar video';
+                    estadoEl.textContent = '';
+                    return;
+                }
+                estadoEl.textContent = 'Generando video con IA (usualmente 1-3 min)...';
+                if (pollingVideoIa) clearInterval(pollingVideoIa);
+                pollingVideoIa = setInterval(() => consultarEstadoVideo(data.id, btnGenVideo, estadoEl, previewEl), 8000);
+            })
+            .catch(() => {
+                mostrarAlerta('Error de conexión al iniciar el video.');
+                btnGenVideo.disabled = false;
+                btnGenVideo.textContent = '🎬 Generar video';
+                estadoEl.textContent = '';
+            });
+        });
+    }
+
+    function consultarEstadoVideo(id, btnGenVideo, estadoEl, previewEl) {
+        const url = @json(route('admin.publicidad.video.estado', ['id' => '__ID__'])).replace('__ID__', id);
+        fetch(url, { headers: { 'Accept': 'application/json' } })
+        .then((r) => r.json())
+        .then((data) => {
+            if (!data.ok) return;
+
+            if (data.estado === 'error') {
+                clearInterval(pollingVideoIa);
+                mostrarAlerta(data.error || 'Ocurrió un error generando el video.');
+                estadoEl.textContent = '';
+                btnGenVideo.disabled = false;
+                btnGenVideo.textContent = '🎬 Generar video';
+                return;
+            }
+
+            if (data.estado === 'lista') {
+                clearInterval(pollingVideoIa);
+                estadoEl.textContent = '✅ Video listo.';
+                previewEl.src = data.video_url;
+                previewEl.poster = data.poster_url || '';
+                previewEl.style.display = 'block';
+                videoIaSeleccionado = { videoPath: data.video_path, posterPath: data.imagen_poster_path, modelo: data.modelo };
+                btnGenVideo.disabled = false;
+                btnGenVideo.textContent = '🎬 Generar otro';
+            }
+        });
+    }
+
     // ── Generación de copy con IA ────────────────────────────────────
     const btnGenCopia = document.getElementById('btnGenerarCopia');
     if (btnGenCopia) {
@@ -578,10 +686,31 @@
             formData.append('imagen_path_generado', imagenIaSeleccionada.path);
             formData.append('estilo_imagen', estiloImagenIa);
             enviar('ia', null);
+        } else if (fuenteImagen === 'video') {
+            if (!videoIaSeleccionado) { mostrarAlerta('Genera un video y espera a que quede listo primero.'); return; }
+            formData.append('imagen_path_generado', videoIaSeleccionado.posterPath || '');
+            formData.append('video_path_generado', videoIaSeleccionado.videoPath);
+            formData.append('video_modelo', videoIaSeleccionado.modelo || '');
+            enviar('ia', null);
         }
     });
 
     redibujar();
+
+    // ── Video ya generado desde el botón rápido del listado (?video_id=) ────
+    const videoIdPreseleccionado = @json($videoIdPreseleccionado ?? null);
+    if (videoIdPreseleccionado) {
+        document.querySelector('.tab-imagen[data-tab="video"]')?.click();
+        const btnGenVideo2 = document.getElementById('btnGenerarVideoIa');
+        const estadoEl2 = document.getElementById('estadoVideoIa');
+        const previewEl2 = document.getElementById('previewVideoIa');
+        if (btnGenVideo2 && estadoEl2 && previewEl2) {
+            estadoEl2.textContent = 'Cargando video generado...';
+            consultarEstadoVideo(videoIdPreseleccionado, btnGenVideo2, estadoEl2, previewEl2);
+            if (pollingVideoIa) clearInterval(pollingVideoIa);
+            pollingVideoIa = setInterval(() => consultarEstadoVideo(videoIdPreseleccionado, btnGenVideo2, estadoEl2, previewEl2), 8000);
+        }
+    }
 })();
 </script>
 @endpush

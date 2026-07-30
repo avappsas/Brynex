@@ -32,6 +32,69 @@ class MetaGraphPublicador implements PublicadorRed
         }
     }
 
+    public function publicarVideo(string $urlVideoPublica, string $texto): array
+    {
+        if (!$this->config->credencialesCompletas()) {
+            return ['ok' => false, 'mensaje' => 'Faltan credenciales (identificador o token) para esta red.', 'id_publicacion' => null];
+        }
+
+        try {
+            return $this->config->red === RedSocialConfig::INSTAGRAM
+                ? $this->publicarVideoInstagram($urlVideoPublica, $texto)
+                : $this->publicarVideoFacebook($urlVideoPublica, $texto);
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'mensaje' => 'Error al publicar el video: ' . $e->getMessage(), 'id_publicacion' => null];
+        }
+    }
+
+    /** Facebook procesa el video en segundo plano tras subirlo — el post aparece cuando termina, sin necesidad de sondear. */
+    private function publicarVideoFacebook(string $url, string $texto): array
+    {
+        $resp = Http::timeout(30)->asForm()->post(self::BASE_URL . "/{$this->config->identificador}/videos", [
+            'file_url'     => $url,
+            'description'  => $texto,
+            'access_token' => $this->config->access_token,
+        ]);
+
+        if (!$resp->successful()) {
+            return ['ok' => false, 'mensaje' => $this->errorDeMeta($resp), 'id_publicacion' => null];
+        }
+
+        return ['ok' => true, 'mensaje' => 'Video publicado en Facebook (procesando).', 'id_publicacion' => $resp->json('id')];
+    }
+
+    /** Reel de Instagram — mismo patrón de contenedor que la imagen, pero con presupuesto de espera mucho mayor (el video tarda más en procesarse). */
+    private function publicarVideoInstagram(string $url, string $texto): array
+    {
+        $crear = Http::timeout(15)->asForm()->post(self::BASE_URL . "/{$this->config->identificador}/media", [
+            'media_type'   => 'REELS',
+            'video_url'    => $url,
+            'caption'      => $texto,
+            'access_token' => $this->config->access_token,
+        ]);
+
+        if (!$crear->successful()) {
+            return ['ok' => false, 'mensaje' => $this->errorDeMeta($crear), 'id_publicacion' => null];
+        }
+
+        $creationId = $crear->json('id');
+
+        if (!$this->esperarContenedorListo($creationId, 40, 5)) {
+            return ['ok' => false, 'mensaje' => 'El video no terminó de procesarse en Instagram a tiempo. Puedes reintentar más tarde.', 'id_publicacion' => null];
+        }
+
+        $publicar = Http::timeout(15)->asForm()->post(self::BASE_URL . "/{$this->config->identificador}/media_publish", [
+            'creation_id'  => $creationId,
+            'access_token' => $this->config->access_token,
+        ]);
+
+        if (!$publicar->successful()) {
+            return ['ok' => false, 'mensaje' => $this->errorDeMeta($publicar), 'id_publicacion' => null];
+        }
+
+        return ['ok' => true, 'mensaje' => 'Reel publicado en Instagram.', 'id_publicacion' => $publicar->json('id')];
+    }
+
     private function publicarFacebook(string $url, string $texto): array
     {
         $resp = Http::timeout(15)->asForm()->post(self::BASE_URL . "/{$this->config->identificador}/photos", [
@@ -80,10 +143,14 @@ class MetaGraphPublicador implements PublicadorRed
         return ['ok' => true, 'mensaje' => 'Publicado en Instagram.', 'id_publicacion' => $publicar->json('id')];
     }
 
-    /** Sondea status_code del contenedor hasta FINISHED (o ERROR/timeout), máx. ~15s. */
-    private function esperarContenedorListo(string $creationId): bool
+    /**
+     * Sondea status_code del contenedor hasta FINISHED (o ERROR/timeout). Por defecto ~15s
+     * (imagen); para video se pasa un presupuesto mucho mayor porque Meta tarda bastante más
+     * en procesarlo (ver publicarVideoInstagram).
+     */
+    private function esperarContenedorListo(string $creationId, int $intentos = 8, float $segundosEntreSondeos = 1.5): bool
     {
-        for ($intento = 0; $intento < 8; $intento++) {
+        for ($intento = 0; $intento < $intentos; $intento++) {
             $resp = Http::timeout(10)->get(self::BASE_URL . "/{$creationId}", [
                 'fields'       => 'status_code',
                 'access_token' => $this->config->access_token,
@@ -98,7 +165,7 @@ class MetaGraphPublicador implements PublicadorRed
                 return false;
             }
 
-            usleep(1500000); // 1.5s entre sondeos
+            usleep((int) round($segundosEntreSondeos * 1000000));
         }
 
         return false;

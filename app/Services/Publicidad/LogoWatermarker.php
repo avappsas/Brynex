@@ -3,23 +3,22 @@
 namespace App\Services\Publicidad;
 
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 /**
  * Sobrepone el logo COMPLETO del aliado (ícono + nombre + eslogan, ya diseñado como una sola
  * pieza de marca) en una esquina de las imágenes generadas por IA — ni Gemini ni Imagen
  * pueden reproducir el logo real, así que se agrega después por composición de imagen (GD).
  *
- * Dos variantes posibles por aliado: `logo` (oscuro/de color, para fondos claros) y
- * `logo_oscuro` (claro/blanco, para fondos oscuros). Se elige automáticamente según el
- * brillo REAL de la esquina de cada foto (no una regla fija) — así se lee bien sin importar
- * si esa pieza en particular salió clara u oscura ahí. Si el aliado no subió la variante
- * clara, siempre usa `logo` como respaldo.
+ * El logo se apoya sobre un círculo de vidrio esmerilado (mismo tratamiento del "hero-glow"
+ * de la página pública del aliado) en vez de flotar suelto sobre la foto: así se lee bien
+ * sobre cualquier fondo con un solo logo (`logo_marca_claro`), sin necesitar una variante
+ * oscura ni adivinar el brillo de la esquina.
  */
 class LogoWatermarker
 {
     /**
-     * @param ?string $rutaLogoClaro  Logo oscuro/de color — para fondos CLAROS (campo `logo`).
-     * @param ?string $rutaLogoOscuro Logo claro/blanco — para fondos OSCUROS (campo `logo_oscuro`).
+     * @param ?string $rutaLogoClaro Logo de marca (campo `logo_marca_claro`), el que se dibuja siempre.
      * @param ?array  $recorte Opcional, dos formas mutuamente excluyentes según el layout del logo:
      *   - Vertical (ícono arriba + nombre debajo, eslogan/subtítulo al final): {alto_util_pct}
      *     — conserva solo ese % superior del alto, cortando el eslogan que se vuelve ilegible
@@ -29,8 +28,9 @@ class LogoWatermarker
      *     completo + SOLO el nombre (sin el eslogan).
      *   Si no se pasa nada, usa el logo completo tal cual — comportamiento seguro por defecto
      *   para cualquier aliado cuyo logo no siga ninguno de esos layouts.
+     * @param ?string $colorPrimario Hex de marca del aliado, para teñir sutilmente el círculo.
      */
-    public static function aplicar(string $rutaImagen, ?string $rutaLogoClaro, ?string $rutaLogoOscuro = null, ?array $recorte = null): void
+    public static function aplicar(string $rutaImagen, ?string $rutaLogoClaro, ?array $recorte = null, ?string $colorPrimario = null): void
     {
         if (!$rutaLogoClaro || !Storage::disk('public')->exists($rutaImagen) || !Storage::disk('public')->exists($rutaLogoClaro)) {
             return;
@@ -43,106 +43,170 @@ class LogoWatermarker
 
             $anchoImg = imagesx($imagen);
             $altoImg  = imagesy($imagen);
-            $margen   = (int) round(min($anchoImg, $altoImg) * 0.04);
+            $margen   = (int) round(min($anchoImg, $altoImg) * 0.05);
 
-            // Tamaño del logo por ANCHO (el lockup completo es horizontal), con tope de alto.
-            $anchoLogo = (int) round($anchoImg * 0.28);
-            $altoLogoMax = (int) round($altoImg * 0.12);
-
-            // Primero se necesita saber las proporciones reales del logo para calcular dónde
-            // cae la esquina y poder medir su brillo — se usa `logo` (claro) como referencia
-            // de proporción, asumiendo que ambas variantes comparten el mismo tamaño.
-            $logoRef = self::cargarConRecorte(Storage::disk('public')->path($rutaLogoClaro), $recorte);
-            if (!$logoRef) return;
-            $escala = min($anchoLogo / imagesx($logoRef), $altoLogoMax / imagesy($logoRef));
-            $wLogo = (int) round(imagesx($logoRef) * $escala);
-            $hLogo = (int) round(imagesy($logoRef) * $escala);
-            imagedestroy($logoRef);
-
-            $px = $anchoImg - $margen - $wLogo;
-            $py = $altoImg - $margen - $hLogo;
-
-            $fondoOscuro = self::esquinaOscura($imagen, $px, $py, $wLogo, $hLogo);
-            $rutaElegida = ($fondoOscuro && $rutaLogoOscuro && Storage::disk('public')->exists($rutaLogoOscuro))
-                ? $rutaLogoOscuro
-                : $rutaLogoClaro;
-
-            $logo = self::cargarConRecorte(Storage::disk('public')->path($rutaElegida), $recorte);
+            $logo = self::cargarConRecorte(Storage::disk('public')->path($rutaLogoClaro), $recorte);
             if (!$logo) return;
 
-            // Logo redimensionado a su propio canvas, con transparencia real intacta.
-            $logoRedim = imagecreatetruecolor($wLogo, $hLogo);
-            imagealphablending($logoRedim, false);
-            imagesavealpha($logoRedim, true);
-            $transparente = imagecolorallocatealpha($logoRedim, 0, 0, 0, 127);
-            imagefilledrectangle($logoRedim, 0, 0, $wLogo, $hLogo, $transparente);
-            imagecopyresampled($logoRedim, $logo, 0, 0, 0, 0, $wLogo, $hLogo, imagesx($logo), imagesy($logo));
-
-            // Sombra real con la SILUETA del logo (a partir de su propio canal alfa) — sigue
-            // el contorno exacto, sin ninguna caja ni fondo sólido detrás.
-            $margenSombra = (int) round($hLogo * 0.35);
-            $offsetX = (int) round($hLogo * 0.04);
-            $offsetY = (int) round($hLogo * 0.06);
-            $tamSombraW = $wLogo + $margenSombra * 2;
-            $tamSombraH = $hLogo + $margenSombra * 2;
-
-            $sombra = imagecreatetruecolor($tamSombraW, $tamSombraH);
-            imagealphablending($sombra, false);
-            imagesavealpha($sombra, true);
-            $transSombra = imagecolorallocatealpha($sombra, 0, 0, 0, 127);
-            imagefilledrectangle($sombra, 0, 0, $tamSombraW, $tamSombraH, $transSombra);
-            imagealphablending($sombra, true);
-
-            for ($y = 0; $y < $hLogo; $y++) {
-                for ($x = 0; $x < $wLogo; $x++) {
-                    $alphaOrig = (imagecolorat($logoRedim, $x, $y) >> 24) & 0x7F;
-                    if ($alphaOrig >= 110) continue;
-                    $alphaSombra = min(100, $alphaOrig + 45);
-                    $col = imagecolorallocatealpha($sombra, 0, 0, 0, $alphaSombra);
-                    imagesetpixel($sombra, $margenSombra + $x + $offsetX, $margenSombra + $y + $offsetY, $col);
-                }
-            }
-            imagefilter($sombra, IMG_FILTER_GAUSSIAN_BLUR);
-            imagefilter($sombra, IMG_FILTER_GAUSSIAN_BLUR);
-
-            imagealphablending($imagen, true);
-            imagecopy($imagen, $sombra, $px - $margenSombra, $py - $margenSombra, 0, 0, $tamSombraW, $tamSombraH);
-            imagecopy($imagen, $logoRedim, $px, $py, 0, 0, $wLogo, $hLogo);
+            self::componerLogoEnCirculo($imagen, $anchoImg, $altoImg, $logo, $colorPrimario);
 
             self::guardar($imagen, $pathImagen);
 
             imagedestroy($imagen);
             imagedestroy($logo);
-            imagedestroy($logoRedim);
-            imagedestroy($sombra);
         } catch (\Throwable $e) {
             // No bloquear la generación de la pieza si el watermark falla — se publica sin logo.
         }
     }
 
-    /** ¿La región donde va el logo es, en promedio, oscura? Muestreo en cuadrícula (barato). */
-    private static function esquinaOscura($imagen, int $x, int $y, int $w, int $h): bool
+    /**
+     * Genera SOLO el círculo de vidrio + logo (sin ningún fondo) como un PNG transparente del
+     * tamaño exacto de un lienzo dado — para poder superponerlo sobre un VIDEO con FFmpeg (que
+     * no puede ejecutar GD), reusando el mismo tratamiento visual que `aplicar()` ya aplica
+     * sobre fotos estáticas. Devuelve la ruta absoluta del PNG temporal, o null si falla.
+     */
+    public static function generarOverlayTransparente(string $rutaLogoClaro, ?array $recorte, ?string $colorPrimario, int $anchoLienzo, int $altoLienzo): ?string
     {
-        $anchoImg = imagesx($imagen);
-        $altoImg  = imagesy($imagen);
-        $puntos = 8;
-        $suma = 0;
-        $n = 0;
-
-        for ($i = 0; $i < $puntos; $i++) {
-            for ($j = 0; $j < $puntos; $j++) {
-                $px = min($anchoImg - 1, max(0, $x + (int) round($w * $i / ($puntos - 1))));
-                $py = min($altoImg - 1, max(0, $y + (int) round($h * $j / ($puntos - 1))));
-                $rgb = imagecolorat($imagen, $px, $py);
-                $r = ($rgb >> 16) & 0xFF;
-                $g = ($rgb >> 8) & 0xFF;
-                $b = $rgb & 0xFF;
-                $suma += 0.299 * $r + 0.587 * $g + 0.114 * $b;
-                $n++;
-            }
+        if (!Storage::disk('public')->exists($rutaLogoClaro)) {
+            return null;
         }
 
-        return $n > 0 && ($suma / $n) < 130;
+        $logo = self::cargarConRecorte(Storage::disk('public')->path($rutaLogoClaro), $recorte);
+        if (!$logo) return null;
+
+        $lienzo = imagecreatetruecolor($anchoLienzo, $altoLienzo);
+        imagealphablending($lienzo, false);
+        imagesavealpha($lienzo, true);
+        imagefilledrectangle($lienzo, 0, 0, $anchoLienzo, $altoLienzo, imagecolorallocatealpha($lienzo, 0, 0, 0, 127));
+
+        self::componerLogoEnCirculo($lienzo, $anchoLienzo, $altoLienzo, $logo, $colorPrimario);
+
+        $rutaTemp = sys_get_temp_dir() . '/' . Str::random(20) . '_logo_overlay.png';
+        imagepng($lienzo, $rutaTemp);
+
+        imagedestroy($lienzo);
+        imagedestroy($logo);
+
+        return $rutaTemp;
+    }
+
+    /**
+     * Dibuja el círculo de vidrio + logo sobre el lienzo dado (foto existente o canvas en
+     * blanco) — misma lógica de tamaño/posición para ambos casos, calculada siempre sobre el
+     * logo REAL que se va a dibujar (nunca una referencia distinta), así jamás se deforma.
+     */
+    private static function componerLogoEnCirculo($lienzo, int $anchoLienzo, int $altoLienzo, $logo, ?string $colorPrimario): void
+    {
+        $margen = (int) round(min($anchoLienzo, $altoLienzo) * 0.05);
+
+        // Tamaño del logo por ANCHO, con tope de alto.
+        $anchoLogo   = (int) round($anchoLienzo * 0.24);
+        $altoLogoMax = (int) round($altoLienzo * 0.10);
+        $escala = min($anchoLogo / imagesx($logo), $altoLogoMax / imagesy($logo));
+        $wLogo = (int) round(imagesx($logo) * $escala);
+        $hLogo = (int) round(imagesy($logo) * $escala);
+
+        $diametro = (int) round(max($wLogo, $hLogo) * 1.55);
+        $cx = $anchoLienzo - $margen - (int) round($diametro / 2);
+        $cy = $altoLienzo - $margen - (int) round($diametro / 2);
+
+        imagealphablending($lienzo, true);
+        self::pintarSombraCirculo($lienzo, $cx, $cy, $diametro);
+        self::pintarCirculoVidrio($lienzo, $cx, $cy, $diametro, $colorPrimario);
+
+        // Logo redimensionado a su propio canvas, con transparencia real intacta.
+        $logoRedim = imagecreatetruecolor($wLogo, $hLogo);
+        imagealphablending($logoRedim, false);
+        imagesavealpha($logoRedim, true);
+        $transparente = imagecolorallocatealpha($logoRedim, 0, 0, 0, 127);
+        imagefilledrectangle($logoRedim, 0, 0, $wLogo, $hLogo, $transparente);
+        imagecopyresampled($logoRedim, $logo, 0, 0, 0, 0, $wLogo, $hLogo, imagesx($logo), imagesy($logo));
+
+        $px = $cx - (int) round($wLogo / 2);
+        $py = $cy - (int) round($hLogo / 2);
+
+        imagealphablending($lienzo, true);
+        imagecopy($lienzo, $logoRedim, $px, $py, 0, 0, $wLogo, $hLogo);
+        imagedestroy($logoRedim);
+    }
+
+    /**
+     * Sombra suave y difusa debajo del círculo, para despegarlo de la foto — bien esparcida
+     * (mucho margen + muchas pasadas de blur, porque IMG_FILTER_GAUSSIAN_BLUR de GD es débil
+     * y con solo 1-2 pasadas deja un semicírculo oscuro de borde duro en vez de un degradado).
+     */
+    private static function pintarSombraCirculo($imagen, int $cx, int $cy, int $diametro): void
+    {
+        $margenSombra = (int) round($diametro * 0.45);
+        $tamSombra = $diametro + $margenSombra * 2;
+
+        $sombra = imagecreatetruecolor($tamSombra, $tamSombra);
+        imagealphablending($sombra, false);
+        imagesavealpha($sombra, true);
+        imagefilledrectangle($sombra, 0, 0, $tamSombra, $tamSombra, imagecolorallocatealpha($sombra, 0, 0, 0, 127));
+        imagealphablending($sombra, true);
+        $colorSombra = imagecolorallocatealpha($sombra, 0, 0, 0, 108);
+        imagefilledellipse($sombra, (int) round($tamSombra / 2), (int) round($tamSombra / 2 + $diametro * 0.05), (int) round($diametro * 0.94), (int) round($diametro * 0.94), $colorSombra);
+        for ($i = 0; $i < 10; $i++) {
+            imagefilter($sombra, IMG_FILTER_GAUSSIAN_BLUR);
+        }
+
+        imagecopy($imagen, $sombra, $cx - (int) round($tamSombra / 2), $cy - (int) round($tamSombra / 2), 0, 0, $tamSombra, $tamSombra);
+        imagedestroy($sombra);
+    }
+
+    /**
+     * Círculo translúcido tipo "vidrio esmerilado", teñido sutilmente con el color de marca —
+     * SIN borde (el borde previo se dibujaba con `imagefilledarc`, que GD no suaviza, y se veía
+     * pixelado/poco profesional). Se probó además un acabado "esfera de vidrio" con brillo
+     * especular + sombra interna, pero se descartó (plano se ve mejor) — el círculo se dibuja
+     * por supersampling: 4x más grande y reducido con `imagecopyresampled`, porque GD no
+     * suaviza `imagefilledellipse` a tamaño normal.
+     */
+    private static function pintarCirculoVidrio($imagen, int $cx, int $cy, int $diametro, ?string $colorPrimario): void
+    {
+        [$r, $g, $b] = self::mezclar([255, 255, 255], self::hexARgb($colorPrimario ?: '#2563eb'), 0.85);
+
+        $factor = 4;
+        $grande = $diametro * $factor;
+        $centro = (int) round($grande / 2);
+
+        $temp = imagecreatetruecolor($grande, $grande);
+        imagealphablending($temp, false);
+        imagesavealpha($temp, true);
+        imagefilledrectangle($temp, 0, 0, $grande, $grande, imagecolorallocatealpha($temp, 0, 0, 0, 127));
+        $colorCirculo = imagecolorallocatealpha($temp, $r, $g, $b, 40);
+        imagefilledellipse($temp, $centro, $centro, $grande, $grande, $colorCirculo);
+
+        $circulo = imagecreatetruecolor($diametro, $diametro);
+        imagealphablending($circulo, false);
+        imagesavealpha($circulo, true);
+        imagefilledrectangle($circulo, 0, 0, $diametro, $diametro, imagecolorallocatealpha($circulo, 0, 0, 0, 127));
+        imagecopyresampled($circulo, $temp, 0, 0, 0, 0, $diametro, $diametro, $grande, $grande);
+        imagedestroy($temp);
+
+        imagealphablending($imagen, true);
+        imagecopy($imagen, $circulo, $cx - (int) round($diametro / 2), $cy - (int) round($diametro / 2), 0, 0, $diametro, $diametro);
+        imagedestroy($circulo);
+    }
+
+    private static function hexARgb(string $hex): array
+    {
+        $hex = ltrim($hex, '#');
+        if (strlen($hex) === 3) {
+            $hex = $hex[0] . $hex[0] . $hex[1] . $hex[1] . $hex[2] . $hex[2];
+        }
+        return [hexdec(substr($hex, 0, 2)), hexdec(substr($hex, 2, 2)), hexdec(substr($hex, 4, 2))];
+    }
+
+    /** Mezcla dos colores RGB según una proporción (0 = puro $b, 1 = puro $a). */
+    private static function mezclar(array $a, array $b, float $prop): array
+    {
+        return [
+            (int) round($a[0] * $prop + $b[0] * (1 - $prop)),
+            (int) round($a[1] * $prop + $b[1] * (1 - $prop)),
+            (int) round($a[2] * $prop + $b[2] * (1 - $prop)),
+        ];
     }
 
     /** Carga el logo y, si hay recorte configurado, recompone ícono completo + solo el nombre (sin eslogan). */

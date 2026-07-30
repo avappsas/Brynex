@@ -58,6 +58,17 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/publicaciones-despacho.log'));
 
+        // ── Procesamiento de video IA (Veo + overlay FFmpeg) ─────────────────
+        // Cada minuto: consulta el estado de los videos en generación en Veo (1-3 min
+        // típico), y cuando terminan les monta el overlay de texto+logo y los marca listos.
+        // Ejecución manual: php artisan videos:procesar
+        $schedule->command('videos:procesar')
+            ->everyMinute()
+            ->timezone('America/Bogota')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo(storage_path('logs/videos-procesar.log'));
+
         // ── Métricas de redes de las piezas publicadas ───────────────────────
         // Diario a las 21:30: lee likes/comentarios/compartidos/alcance de cada
         // pieza de los últimos 30 días — alimenta el aprendizaje del piloto.
