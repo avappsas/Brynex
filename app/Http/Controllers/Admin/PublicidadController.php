@@ -75,6 +75,7 @@ class PublicidadController extends Controller
             'imagen_path_generado' => 'required_without:imagen|nullable|string|max:255',
             'video_path_generado'  => 'nullable|string|max:255',
             'video_modelo'    => 'nullable|string|max:40',
+            'video_ia_id'     => 'nullable|integer',
             'origen'          => 'required|in:plantilla,ia,subida',
             'plantilla_usada' => 'nullable|string|max:60',
             'estilo_imagen'   => 'nullable|in:ilustracion,fotorrealista',
@@ -99,6 +100,11 @@ class PublicidadController extends Controller
             return back()->withErrors(['video' => 'El video generado ya no está disponible, genera de nuevo.'])->withInput();
         }
 
+        $costoEstimado = null;
+        if ($esVideo && !empty($validated['video_ia_id'])) {
+            $costoEstimado = PublicidadVideoIa::where('aliado_id', $aliado->id)->find($validated['video_ia_id'])?->costo_estimado_usd;
+        }
+
         Publicacion::create([
             'aliado_id'       => $aliado->id,
             'titulo'          => $validated['titulo'],
@@ -107,6 +113,7 @@ class PublicidadController extends Controller
             'tipo_pieza'      => $esVideo ? 'video' : 'imagen',
             'video_path'      => $esVideo ? $validated['video_path_generado'] : null,
             'video_modelo'    => $esVideo ? ($validated['video_modelo'] ?? null) : null,
+            'costo_estimado_usd' => $costoEstimado,
             'origen'          => $validated['origen'],
             'plantilla_usada' => $validated['plantilla_usada'] ?? null,
             'estilo_imagen'   => $validated['estilo_imagen'] ?? null,
@@ -128,7 +135,11 @@ class PublicidadController extends Controller
             ->orderByDesc('created_at')
             ->get(['id', 'nombre_contacto', 'wa_contact_id', 'created_at']);
 
-        return view('admin.publicidad.show', compact('aliado', 'publicacion', 'conversacionesWa'));
+        // TRM en vivo (mismo servicio de Finanzas — USDT/COP de CoinGecko, 1:1 con USD, caché
+        // de 15 min con respaldo si falla) — no hay que actualizarla a mano.
+        $trmCop = app(\App\Services\Finanzas\CriptoApiService::class)->getPrecioUsdt()['precio_cop'];
+
+        return view('admin.publicidad.show', compact('aliado', 'publicacion', 'conversacionesWa', 'trmCop'));
     }
 
     public function aprobar(int $id)
@@ -381,21 +392,60 @@ class PublicidadController extends Controller
         $validated = $request->validate([
             'tema'     => 'nullable|string|max:300',
             'nivel'    => 'required|in:lite,standard',
-            'duracion' => 'nullable|in:4,6,8',
+            'duracion' => 'nullable|in:4,6,8,16,24',
         ]);
 
         $contexto = $validated['tema'] ?: 'cotizar seguridad social (EPS, ARL, pensión, caja de compensación) en Colombia';
+        $modelo = $validated['nivel'] === 'standard' ? VeoVideoGenerator::MODELO_STANDARD : VeoVideoGenerator::MODELO_LITE;
+        $duracion = (int) ($validated['duracion'] ?? 8);
+
+        $frasesResultado = CopiaIaGenerator::generarFrasesVideo($aliado->id, $aliado->nombre, $contexto);
+        $frases = $frasesResultado['ok'] ? array_slice($frasesResultado['frases'], 0, 3) : [];
+
+        if ($duracion > 8) {
+            // Pieza de varias escenas (16s = 2 clips, 24s = 3 clips) unidas con corte simple —
+            // ver ProcesarVideosIa y VideoOverlayFfmpeg::concatenar.
+            $numEscenas = (int) ($duracion / 8);
+
+            $promptsResultado = CopiaIaGenerator::generarPromptsMultiEscena($aliado->id, $aliado->nombre, $contexto, $numEscenas);
+            if (!$promptsResultado['ok']) {
+                return response()->json(['ok' => false, 'error' => $promptsResultado['error']]);
+            }
+
+            $escenas = [];
+            foreach ($promptsResultado['prompts'] as $orden => $promptEscena) {
+                $inicioEscena = VeoVideoGenerator::iniciar($iaConfig->gemini_api_key, $promptEscena, $modelo, '9:16', '720p', 8);
+                if (!$inicioEscena['ok']) {
+                    return response()->json(['ok' => false, 'error' => "Escena " . ($orden + 1) . ": " . $inicioEscena['error']]);
+                }
+
+                $escenas[] = [
+                    'orden'            => $orden,
+                    'prompt'           => $promptEscena,
+                    'operation_name'   => $inicioEscena['operationName'],
+                    'estado'           => 'generando',
+                    'video_bruto_path' => null,
+                ];
+            }
+
+            $video = PublicidadVideoIa::create([
+                'aliado_id'          => $aliado->id,
+                'prompt_video'       => implode(' / ', $promptsResultado['prompts']),
+                'frases_texto'       => $frases,
+                'modelo'             => $modelo,
+                'duracion_seg'       => $duracion,
+                'costo_estimado_usd' => VeoVideoGenerator::costoEstimadoUsd($modelo, $duracion),
+                'escenas'            => $escenas,
+                'creado_por'         => Auth::id(),
+            ]);
+
+            return response()->json(['ok' => true, 'id' => $video->id]);
+        }
 
         $promptResultado = CopiaIaGenerator::generarPromptVideo($aliado->id, $aliado->nombre, $contexto);
         if (!$promptResultado['ok']) {
             return response()->json(['ok' => false, 'error' => $promptResultado['error']]);
         }
-
-        $frasesResultado = CopiaIaGenerator::generarFrasesVideo($aliado->id, $aliado->nombre, $contexto);
-        $frases = $frasesResultado['ok'] ? array_slice($frasesResultado['frases'], 0, 3) : [];
-
-        $modelo = $validated['nivel'] === 'standard' ? VeoVideoGenerator::MODELO_STANDARD : VeoVideoGenerator::MODELO_LITE;
-        $duracion = (int) ($validated['duracion'] ?? 8);
 
         $inicio = VeoVideoGenerator::iniciar($iaConfig->gemini_api_key, $promptResultado['prompt'], $modelo, '9:16', '720p', $duracion);
         if (!$inicio['ok']) {
@@ -403,10 +453,12 @@ class PublicidadController extends Controller
         }
 
         $video = PublicidadVideoIa::create([
-            'aliado_id'      => $aliado->id,
-            'prompt_video'   => $promptResultado['prompt'],
-            'frases_texto'   => $frases,
-            'modelo'         => $modelo,
+            'aliado_id'          => $aliado->id,
+            'prompt_video'       => $promptResultado['prompt'],
+            'frases_texto'       => $frases,
+            'modelo'             => $modelo,
+            'duracion_seg'       => $duracion,
+            'costo_estimado_usd' => VeoVideoGenerator::costoEstimadoUsd($modelo, $duracion),
             'operation_name' => $inicio['operationName'],
             'creado_por'     => Auth::id(),
         ]);
@@ -422,10 +474,18 @@ class PublicidadController extends Controller
 
         $listo = $video->estado === PublicidadVideoIa::ESTADO_LISTA;
 
+        $progreso = null;
+        if ($video->escenas && $video->estado === PublicidadVideoIa::ESTADO_GENERANDO) {
+            $total = count($video->escenas);
+            $listas = count(array_filter($video->escenas, fn ($e) => $e['estado'] === 'lista'));
+            $progreso = "Escena {$listas}/{$total} lista...";
+        }
+
         return response()->json([
             'ok'                 => true,
             'estado'             => $video->estado,
             'error'              => $video->error_mensaje,
+            'progreso'           => $progreso,
             'video_url'          => $listo ? asset('storage/' . $video->video_path) . '?v=' . time() : null,
             'video_path'         => $listo ? $video->video_path : null,
             'poster_url'         => $video->imagen_poster_path ? asset('storage/' . $video->imagen_poster_path) . '?v=' . time() : null,

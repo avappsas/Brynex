@@ -44,6 +44,11 @@
     @if($publicacion->programada_at)
       <span>·</span><span>Programada: <strong>{{ $publicacion->programada_at->format('d/m/Y H:i') }}</strong></span>
     @endif
+    @if($publicacion->costo_estimado_usd !== null)
+      @php $costoCop = $publicacion->costo_estimado_usd * $trmCop; @endphp
+      <span>·</span>
+      <span>Costo estimado: <strong>${{ number_format($costoCop, 0, ',', '.') }} COP</strong> (≈ ${{ number_format($publicacion->costo_estimado_usd, 2) }} USD, TRM ${{ number_format($trmCop, 2) }})</span>
+    @endif
   </div>
 
   <div style="font-size:0.8rem;color:#64748b;margin-bottom:1rem;">

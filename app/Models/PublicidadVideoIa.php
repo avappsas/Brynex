@@ -23,8 +23,11 @@ class PublicidadVideoIa extends BaseModel
         'prompt_video',
         'frases_texto',
         'modelo',
+        'duracion_seg',
+        'costo_estimado_usd',
         'estado',
         'operation_name',
+        'escenas',
         'video_path',
         'imagen_poster_path',
         'error_mensaje',
@@ -33,6 +36,7 @@ class PublicidadVideoIa extends BaseModel
 
     protected $casts = [
         'frases_texto' => 'array',
+        'escenas'      => 'array',
     ];
 
     protected $attributes = [

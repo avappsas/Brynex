@@ -124,6 +124,14 @@
             <button type="button" class="nivel-video-ia activo" data-nivel="lite" style="flex:1;padding:0.4rem;border-radius:8px;border:1.5px solid #7c3aed;background:#f5f3ff;color:#6d28d9;font-size:0.75rem;font-weight:700;cursor:pointer;">⚡ Lite</button>
             <button type="button" class="nivel-video-ia" data-nivel="standard" style="flex:1;padding:0.4rem;border-radius:8px;border:1.5px solid #cbd5e1;background:#fff;color:#475569;font-size:0.75rem;font-weight:700;cursor:pointer;">🎥 Standard</button>
           </div>
+          <div style="display:flex;gap:0.35rem;margin-bottom:0.6rem;">
+            <button type="button" class="duracion-video-ia" data-duracion="4" style="flex:1;padding:0.35rem;border-radius:8px;border:1.5px solid #cbd5e1;background:#fff;color:#475569;font-size:0.72rem;font-weight:700;cursor:pointer;">4s</button>
+            <button type="button" class="duracion-video-ia" data-duracion="6" style="flex:1;padding:0.35rem;border-radius:8px;border:1.5px solid #cbd5e1;background:#fff;color:#475569;font-size:0.72rem;font-weight:700;cursor:pointer;">6s</button>
+            <button type="button" class="duracion-video-ia activo" data-duracion="8" style="flex:1;padding:0.35rem;border-radius:8px;border:1.5px solid #7c3aed;background:#f5f3ff;color:#6d28d9;font-size:0.72rem;font-weight:700;cursor:pointer;">8s</button>
+            <button type="button" class="duracion-video-ia" data-duracion="16" style="flex:1;padding:0.35rem;border-radius:8px;border:1.5px solid #cbd5e1;background:#fff;color:#475569;font-size:0.72rem;font-weight:700;cursor:pointer;">16s</button>
+            <button type="button" class="duracion-video-ia" data-duracion="24" style="flex:1;padding:0.35rem;border-radius:8px;border:1.5px solid #cbd5e1;background:#fff;color:#475569;font-size:0.72rem;font-weight:700;cursor:pointer;">24s</button>
+          </div>
+          <p style="font-size:0.66rem;color:#94a3b8;margin:-0.5rem 0 0.6rem;">16s/24s son 2-3 escenas unidas con corte — tardan más y cuestan un poco más.</p>
           <input type="text" id="videoTema" maxlength="300" placeholder="Tema opcional (ej: independientes que quieren pensión)"
                  style="width:100%;padding:0.5rem 0.7rem;border:1px solid #cbd5e1;border-radius:8px;font-size:0.83rem;margin-bottom:0.6rem;">
           <button type="button" id="btnGenerarVideoIa" style="background:#7c3aed;color:#fff;border:none;font-size:0.8rem;font-weight:700;padding:0.5rem 1rem;border-radius:8px;cursor:pointer;">🎬 Generar video</button>
@@ -211,6 +219,7 @@
     let archivoSubido = null;
     let estiloImagenIa = 'ilustracion';
     let nivelVideoIa = 'lite';
+    let duracionVideoIa = '8';
     let videoIaSeleccionado = null; // {videoPath, posterPath}
     let pollingVideoIa = null;
 
@@ -235,6 +244,18 @@
             btn.classList.add('activo');
             btn.style.border = '1.5px solid #7c3aed'; btn.style.background = '#f5f3ff'; btn.style.color = '#6d28d9';
             nivelVideoIa = btn.dataset.nivel;
+        });
+    });
+
+    document.querySelectorAll('.duracion-video-ia').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.duracion-video-ia').forEach((b) => {
+                b.classList.remove('activo');
+                b.style.border = '1.5px solid #cbd5e1'; b.style.background = '#fff'; b.style.color = '#475569';
+            });
+            btn.classList.add('activo');
+            btn.style.border = '1.5px solid #7c3aed'; btn.style.background = '#f5f3ff'; btn.style.color = '#6d28d9';
+            duracionVideoIa = btn.dataset.duracion;
         });
     });
 
@@ -531,7 +552,7 @@
             fetch(@json(route('admin.publicidad.generar_video')), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
-                body: JSON.stringify({ tema, nivel: nivelVideoIa }),
+                body: JSON.stringify({ tema, nivel: nivelVideoIa, duracion: duracionVideoIa }),
             })
             .then((r) => r.json())
             .then((data) => {
@@ -577,9 +598,14 @@
                 previewEl.src = data.video_url;
                 previewEl.poster = data.poster_url || '';
                 previewEl.style.display = 'block';
-                videoIaSeleccionado = { videoPath: data.video_path, posterPath: data.imagen_poster_path, modelo: data.modelo };
+                videoIaSeleccionado = { videoPath: data.video_path, posterPath: data.imagen_poster_path, modelo: data.modelo, videoIaId: id };
                 btnGenVideo.disabled = false;
                 btnGenVideo.textContent = '🎬 Generar otro';
+                return;
+            }
+
+            if (data.progreso) {
+                estadoEl.textContent = data.progreso;
             }
         });
     }
@@ -691,6 +717,7 @@
             formData.append('imagen_path_generado', videoIaSeleccionado.posterPath || '');
             formData.append('video_path_generado', videoIaSeleccionado.videoPath);
             formData.append('video_modelo', videoIaSeleccionado.modelo || '');
+            formData.append('video_ia_id', videoIaSeleccionado.videoIaId || '');
             enviar('ia', null);
         }
     });

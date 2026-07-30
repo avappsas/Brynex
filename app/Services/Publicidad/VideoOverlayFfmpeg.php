@@ -53,8 +53,12 @@ class VideoOverlayFfmpeg
         $filtrosCapas = [];
         $mapaOverlay = '[0:v]';
 
-        // Un PNG transparente por frase, repartidas en tramos iguales del clip.
-        $tramo = count($frases) > 0 ? $duracion / count($frases) : 0;
+        // Un PNG transparente por frase, repartidas en tramos iguales — SOLO hasta antes de que
+        // aparezca el logo (deja ~2.6s finales libres), para que nunca coincidan en el tiempo:
+        // así el texto puede ir abajo (lejos de la cara, que en un plano medio/cercano suele
+        // estar arriba) sin encimarse nunca con el círculo del logo en la esquina.
+        $duracionTextos = max(1, $duracion - 2.6);
+        $tramo = count($frases) > 0 ? $duracionTextos / count($frases) : 0;
         foreach ($frases as $i => $frase) {
             $ini = round($i * $tramo, 2);
             $fin = round($ini + $tramo, 2);
@@ -123,6 +127,40 @@ class VideoOverlayFfmpeg
         }
 
         return ['ok' => true, 'videoPath' => $destinoVideoAbsoluto, 'posterPath' => $destinoPosterAbsoluto, 'error' => null];
+    }
+
+    /**
+     * Une varios clips CRUDOS (mismo formato, ej. varias escenas de Veo) en un solo video, en
+     * orden — para armar anuncios de más de una escena con un corte simple entre ellas, en vez
+     * de la extensión de Veo (que solo es un plano continuo, más cara, y solo en Standard).
+     * Re-codifica en vez de copiar el stream, para no depender de que los clips de entrada
+     * compartan exactamente los mismos parámetros de códec.
+     *
+     * @param string[] $rutasClipsAbsolutas En el orden en que deben quedar unidos.
+     * @return array{ok: bool, error: ?string}
+     */
+    public static function concatenar(array $rutasClipsAbsolutas, string $destinoAbsoluto): array
+    {
+        $binario = config('services.ffmpeg.binario', 'ffmpeg');
+
+        $listaTemp = sys_get_temp_dir() . '/' . Str::random(20) . '_lista_concat.txt';
+        $lineas = array_map(fn (string $ruta) => "file '" . str_replace("'", "'\\''", $ruta) . "'", $rutasClipsAbsolutas);
+        file_put_contents($listaTemp, implode("\n", $lineas));
+
+        $resultado = Process::timeout(180)->run([
+            $binario, '-y', '-f', 'concat', '-safe', '0', '-i', $listaTemp,
+            '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-preset', 'veryfast', '-crf', '20',
+            '-c:a', 'aac', '-b:a', '128k',
+            $destinoAbsoluto,
+        ]);
+
+        @unlink($listaTemp);
+
+        if (!$resultado->successful()) {
+            return ['ok' => false, 'error' => 'FFmpeg falló al unir los clips: ' . mb_substr($resultado->errorOutput(), -500)];
+        }
+
+        return ['ok' => true, 'error' => null];
     }
 
     /** @return array{0:int,1:int,2:float}|null [ancho, alto, duracion_seg] */
@@ -196,9 +234,11 @@ class VideoOverlayFfmpeg
         $wPastilla = $anchoMaxLinea + $padX * 2;
         $hPastilla = count($lineas) * $alturaLinea + $padY * 2 - (int) round($alturaLinea - $tamFuente);
         $xPastilla = (int) round(($anchoG - $wPastilla) / 2);
-        // Tercio superior — deliberadamente lejos de la esquina inferior derecha, donde cae el
-        // círculo del logo en los últimos ~2.3s (evita que texto y logo se encimen ahí).
-        $yPastilla = (int) round($altoG * 0.10);
+        // Tercio inferior — en un plano medio/cercano la cara suele estar en el tercio superior,
+        // así el texto no la tapa. No hace falta esquivar el logo por posición: como el texto ya
+        // se corta ~2.6s antes de que el logo aparezca (ver $duracionTextos en aplicar()), nunca
+        // coinciden en el tiempo aunque compartan la misma esquina de la pantalla.
+        $yPastilla = (int) round($altoG * 0.74);
 
         [$r, $g, $b] = self::hexARgb($colorPrimario ?: '#2563eb');
 

@@ -19,6 +19,17 @@ class VeoVideoGenerator
     public const MODELO_LITE     = 'veo-3.1-lite-generate-preview';
     public const MODELO_STANDARD = 'veo-3.1-generate-preview';
 
+    /** Precio oficial por segundo en 720p (ai.google.dev/gemini-api/docs/pricing, jul-2026). */
+    private const PRECIO_SEG_LITE     = 0.05;
+    private const PRECIO_SEG_STANDARD = 0.40;
+
+    /** Costo estimado en USD de generar un clip — para mostrarlo en el panel de admin. */
+    public static function costoEstimadoUsd(string $modelo, int $duracionSeg): float
+    {
+        $precioSeg = $modelo === self::MODELO_STANDARD ? self::PRECIO_SEG_STANDARD : self::PRECIO_SEG_LITE;
+        return round($precioSeg * $duracionSeg, 2);
+    }
+
     private const BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
 
     /**

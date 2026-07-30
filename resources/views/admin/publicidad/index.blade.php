@@ -123,7 +123,10 @@ $colorEstado = [
       <button type="button" class="mv-duracion" data-duracion="4" style="flex:1;padding:0.4rem;border-radius:8px;border:1.5px solid #cbd5e1;background:#fff;color:#475569;font-size:0.75rem;font-weight:700;cursor:pointer;">4s</button>
       <button type="button" class="mv-duracion" data-duracion="6" style="flex:1;padding:0.4rem;border-radius:8px;border:1.5px solid #cbd5e1;background:#fff;color:#475569;font-size:0.75rem;font-weight:700;cursor:pointer;">6s</button>
       <button type="button" class="mv-duracion activo" data-duracion="8" style="flex:1;padding:0.4rem;border-radius:8px;border:1.5px solid #7c3aed;background:#f5f3ff;color:#6d28d9;font-size:0.75rem;font-weight:700;cursor:pointer;">8s</button>
+      <button type="button" class="mv-duracion" data-duracion="16" style="flex:1;padding:0.4rem;border-radius:8px;border:1.5px solid #cbd5e1;background:#fff;color:#475569;font-size:0.75rem;font-weight:700;cursor:pointer;">16s</button>
+      <button type="button" class="mv-duracion" data-duracion="24" style="flex:1;padding:0.4rem;border-radius:8px;border:1.5px solid #cbd5e1;background:#fff;color:#475569;font-size:0.75rem;font-weight:700;cursor:pointer;">24s</button>
     </div>
+    <p style="font-size:0.68rem;color:#94a3b8;margin:-0.6rem 0 0.9rem;">16s/24s son 2-3 escenas unidas con corte — tardan más y cuestan un poco más.</p>
 
     <button type="button" id="btnGenerarVideoModal" style="width:100%;background:#7c3aed;color:#fff;border:none;font-size:0.85rem;font-weight:700;padding:0.6rem;border-radius:9px;cursor:pointer;">
       🎬 Generar video
@@ -235,6 +238,11 @@ $colorEstado = [
                 usarEl.style.display = 'block';
                 btn.disabled = false;
                 btn.textContent = '🎬 Generar otro';
+                return;
+            }
+
+            if (data.progreso) {
+                estadoEl.textContent = data.progreso;
             }
         });
     }

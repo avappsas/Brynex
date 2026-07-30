@@ -118,6 +118,71 @@ class CopiaIaGenerator
     }
 
     /**
+     * Igual que generarPromptVideo() pero para piezas de VARIAS escenas (16s = 2 clips, 24s =
+     * 3 clips de Veo unidos con un corte simple — ver VideoOverlayFfmpeg::concatenar). Sigue
+     * siempre el mismo molde validado: escena 1 = gancho/autoridad (con diálogo hablado),
+     * [escena intermedia = proceso/facilidad, sin diálogo, solo si son 3 escenas], última
+     * escena = pago emocional (gente disfrutando el resultado, sin diálogo) — el contraste
+     * "problema/autoridad → resultado" es lo que ya se validó que funciona bien.
+     *
+     * @return array{ok: bool, prompts: string[], error: ?string}
+     */
+    public static function generarPromptsMultiEscena(int $aliadoId, string $nombreAliado, string $contexto, int $numEscenas): array
+    {
+        $config = IaConfiguracionAliado::paraAliado($aliadoId);
+        $credenciales = $config->credencialesEfectivas();
+
+        if (empty($credenciales['api_key'])) {
+            return ['ok' => false, 'prompts' => [], 'error' => 'No hay una clave de IA configurada para este aliado (ver Asistente Virtual).'];
+        }
+
+        $rolEscenas = $numEscenas === 3
+            ? "1) GANCHO/AUTORIDAD: alguien explicando el servicio con autoridad y calidez, CON diálogo hablado. "
+              . "2) PROCESO/FACILIDAD: una escena visual que transmita simplicidad/rapidez del trámite — normalmente sin "
+              . 'diálogo, salvo que una frase corta ayude a entender el proceso. '
+              . '3) PAGO EMOCIONAL: personas disfrutando el resultado/beneficio final — puede tener una frase corta y '
+              . 'natural (no forzada) que refuerce el valor recibido, o ir sin diálogo si la imagen ya lo transmite sola.'
+            : "1) GANCHO/AUTORIDAD: alguien explicando el servicio con autoridad y calidez, CON diálogo hablado. "
+              . '2) PAGO EMOCIONAL: personas disfrutando el resultado/beneficio final — puede tener una frase corta y '
+              . 'natural que refuerce el valor recibido, o ir sin diálogo si la imagen ya lo transmite sola.';
+
+        $prompt = "Eres director creativo de anuncios en video para {$nombreAliado}, una agencia de afiliación a seguridad social "
+            . "en Colombia (EPS, ARL, pensión, caja de compensación). Vas a escribir {$numEscenas} prompts en inglés para un "
+            . "modelo de texto-a-video (Veo 3.1), uno por cada escena de un anuncio de {$numEscenas} cortes, sobre: {$contexto}. "
+            . "Cada escena dura 8 segundos. Roles de cada escena en orden: {$rolEscenas} "
+            . 'La escena de gancho/autoridad SIEMPRE lleva diálogo. Las demás escenas pueden o no llevar diálogo según '
+            . 'convenga — cuando una escena SÍ tenga diálogo, inclúyelo TEXTUAL y entre comillas dentro de su prompt, en '
+            . 'ESPAÑOL COLOMBIANO (máx. 15 palabras), natural para ese momento de la historia. No describas texto en '
+            . 'pantalla, subtítulos, logos, ni marcas en ninguna escena (eso se agrega después por separado). Cada prompt '
+            . 'máximo 60 palabras. Responde ÚNICAMENTE con un array JSON de strings en el orden de las escenas, sin texto '
+            . 'adicional ni bloque de código. Ejemplo de formato: ["prompt escena 1", "prompt escena 2"]';
+
+        try {
+            $provider = IaProviderFactory::make($credenciales['proveedor']);
+            $resp = $provider->chat(
+                $credenciales['api_key'],
+                $credenciales['modelo'],
+                'Respondes ÚNICAMENTE con JSON válido, sin texto adicional ni bloques de código markdown.',
+                [['role' => 'user', 'content' => $prompt]],
+                []
+            );
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'prompts' => [], 'error' => 'Error al generar los prompts: ' . $e->getMessage()];
+        }
+
+        $texto = trim($resp['content'] ?? '');
+        $texto = trim(preg_replace('/^```(?:json)?|```$/m', '', $texto));
+
+        $prompts = json_decode($texto, true);
+
+        if (!is_array($prompts) || count($prompts) !== $numEscenas) {
+            return ['ok' => false, 'prompts' => [], 'error' => 'La IA no devolvió las ' . $numEscenas . ' escenas esperadas.'];
+        }
+
+        return ['ok' => true, 'prompts' => array_values(array_map('strval', $prompts)), 'error' => null];
+    }
+
+    /**
      * Frases CORTAS (3-6 palabras) tipo llamado a la acción, para el texto animado que
      * VideoOverlayFfmpeg monta sobre el video — distinto de generarVariantes() (que redacta
      * el copy largo del post, no texto en pantalla).
