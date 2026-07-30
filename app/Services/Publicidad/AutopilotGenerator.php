@@ -67,7 +67,11 @@ class AutopilotGenerator
 
         $logoParaReferencia = $aliado->logo_marca_claro ?: $aliado->logo;
         $rutaLogo = $logoParaReferencia ? \Illuminate\Support\Facades\Storage::disk('public')->path($logoParaReferencia) : null;
-        $promptImagen = $concepto['prompt_imagen'];
+        $promptImagen = $concepto['prompt_imagen']
+            . ' Compón la pieza como un anuncio publicitario profesional para redes sociales, no como una simple foto o ilustración de escena sin texto: '
+            . 'decide tú el texto en español que mejor comunique el mensaje (un titular corto y contundente, y si aporta, una línea de apoyo) e intégralo en el diseño con tipografía bold, alto contraste y buena jerarquía visual. '
+            . 'Agrega también íconos o elementos gráficos de apoyo si refuerzan el mensaje (alertas, chulos, sellos, flechas, badges), con un estilo coherente al resto de la pieza. '
+            . 'Cuida la ortografía y las tildes del español.';
         if ($rutaLogo) {
             // La imagen adjunta (aparte del prompt) es el logo real — se le pide inspirarse
             // en su paleta, NUNCA reproducirlo literal (los modelos de imagen distorsionan
@@ -79,7 +83,7 @@ class AutopilotGenerator
             return ['ok' => false, 'publicacion' => null, 'error' => 'Imagen: ' . ($imagen['error'] ?? 'Gemini no devolvió imagen.')];
         }
 
-        LogoWatermarker::aplicar($imagen['rutas'][0], $aliado->logo_marca_claro, $aliado->logo_marca_recorte, $aliado->color_primario);
+        LogoWatermarker::aplicar($imagen['rutas'][0], $aliado->logo_marca_claro, $aliado->logo_marca_recorte);
 
         $destinos = array_merge(
             ['web'],
@@ -197,8 +201,8 @@ class AutopilotGenerator
         $fecha    = now('America/Bogota')->locale('es')->isoFormat('dddd D [de] MMMM [de] YYYY');
 
         $instruccionEstilo = $estilo === \App\Models\AutopilotConfig::ESTILO_FOTORREALISTA
-            ? "Pide una FOTOGRAFÍA PROFESIONAL FOTORREALISTA (no ilustración, no dibujo), formato VERTICAL 4:5 (para el feed de Instagram/Facebook en celular, NUNCA panorámica): personas colombianas reales de aspecto auténtico y diverso, PLANO CERCANO (medio cuerpo o retrato, no de cuerpo entero ni de lejos) para que se sientan las expresiones, mirando a cámara o en un momento genuino de conexión (una sonrisa real, una mano en el hombro, un apretón de manos, una conversación cercana entre asesor y cliente) — nada de poses rígidas tipo banco de imágenes. Luz cálida (dorada/natural, no fría ni clínica), profundidad de campo baja, look editorial cercano y humano, transmitiendo confianza y calidez, no corporativo distante. NO pidas texto escrito dentro de la foto (el texto se agrega aparte)."
-            : "Pide una ilustración digital plana moderna (flat design vector, NO fotografía), formato VERTICAL 4:5 (para el feed de Instagram/Facebook en celular), paleta CÁLIDA basada en {$color} combinada con tonos piel/beige/dorado suaves (no solo azul corporativo frío), personas colombianas diversas con expresiones genuinas y cercanas (sonrisas reales, contacto visual, gestos de cercanía como un abrazo o una mano en el hombro) en plano cercano — evita figuras rígidas o distantes tipo clipart genérico. Un texto principal corto entre comillas para renderizar en la imagen (máx 6 palabras), estilo limpio pero cálido, con espacio en blanco.";
+            ? "Pide una FOTOGRAFÍA PROFESIONAL FOTORREALISTA (no ilustración, no dibujo), formato VERTICAL 4:5 (para el feed de Instagram/Facebook en celular, NUNCA panorámica): personas colombianas reales de aspecto auténtico y diverso, PLANO CERCANO (medio cuerpo o retrato, no de cuerpo entero ni de lejos) para que se sientan las expresiones, mirando a cámara o en un momento genuino de conexión (una sonrisa real, una mano en el hombro, un apretón de manos, una conversación cercana entre asesor y cliente) — nada de poses rígidas tipo banco de imágenes. Luz cálida (dorada/natural, no fría ni clínica), profundidad de campo baja, look editorial cercano y humano, transmitiendo confianza y calidez, no corporativo distante."
+            : "Pide una ilustración digital plana moderna (flat design vector, NO fotografía), formato VERTICAL 4:5 (para el feed de Instagram/Facebook en celular), paleta CÁLIDA basada en {$color} combinada con tonos piel/beige/dorado suaves (no solo azul corporativo frío), personas colombianas diversas con expresiones genuinas y cercanas (sonrisas reales, contacto visual, gestos de cercanía como un abrazo o una mano en el hombro) en plano cercano — evita figuras rígidas o distantes tipo clipart genérico, estilo limpio pero cálido, con espacio en blanco.";
 
         $prompt = <<<PROMPT
 Eres el community manager de {$aliado->nombre}, una agencia colombiana de afiliación a seguridad social (EPS, ARL, pensión, caja de compensación). Hoy es {$fecha}. Debes crear el concepto de la publicación del día para redes sociales.

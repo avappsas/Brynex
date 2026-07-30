@@ -7,8 +7,8 @@ use Illuminate\Support\Str;
 
 /**
  * Monta sobre el video CRUDO de Veo (que ya trae su propio movimiento de cámara) el texto
- * animado + el logo del aliado — mismo tratamiento visual (círculo de vidrio) que
- * LogoWatermarker::aplicar() ya usa en fotos estáticas.
+ * animado + el logo del aliado — mismo tratamiento visual que LogoWatermarker::aplicar()
+ * ya usa en fotos estáticas.
  *
  * El texto se renderiza con GD (imagettftext, igual que FlyerPlanBuilder) a PNGs transparentes
  * — NO con el filtro `drawtext` de FFmpeg — porque el build de ffmpeg de Homebrew en esta
@@ -80,7 +80,7 @@ class VideoOverlayFfmpeg
 
         // Círculo del logo, superpuesto al final del clip.
         $rutaOverlayLogo = $rutaLogoClaro
-            ? LogoWatermarker::generarOverlayTransparente($rutaLogoClaro, $recorte, $colorPrimario, $ancho, $alto)
+            ? LogoWatermarker::generarOverlayTransparente($rutaLogoClaro, $recorte, $ancho, $alto)
             : null;
 
         if ($rutaOverlayLogo) {
