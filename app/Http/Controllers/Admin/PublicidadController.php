@@ -358,7 +358,13 @@ class PublicidadController extends Controller
 
         $logoParaReferencia = $aliado->logo_marca_claro ?: $aliado->logo;
         $rutaLogo = $logoParaReferencia ? Storage::disk('public')->path($logoParaReferencia) : null;
-        $prompt = $validated['prompt'] . ($rutaLogo
+
+        $instruccionTipografia = ' Compón la pieza como un anuncio publicitario profesional para redes sociales, no como una simple foto o ilustración de escena sin texto: '
+            . 'decide tú el texto en español que mejor comunique el mensaje (un titular corto y contundente, y si aporta, una línea de apoyo) e intégralo en el diseño con tipografía bold, alto contraste y buena jerarquía visual. '
+            . 'Agrega también íconos o elementos gráficos de apoyo si refuerzan el mensaje (alertas, chulos, sellos, flechas, badges), con un estilo coherente al resto de la pieza. '
+            . 'Cuida la ortografía y las tildes del español.';
+
+        $prompt = $validated['prompt'] . $instruccionTipografia . ($rutaLogo
             ? ' Te adjunto el logo de la marca como referencia de color: usa tonos inspirados en su paleta para la escena. NO intentes dibujar ni reproducir el logo dentro de la imagen — eso se agrega después por separado.'
             : '');
 
