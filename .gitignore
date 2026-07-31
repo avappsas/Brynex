@@ -31,3 +31,33 @@ yarn-error.log
 !/storage/logs/.gitkeep
 /bootstrap/cache/*
 !/bootstrap/cache/.gitkeep
+
+# Datos personales y archivos de trabajo — NUNCA versionar (Ley 1581 de 2012).
+# El repo se auto-despliega a produccion: lo que se versiona, se publica.
+/*.xlsx
+/*.xls
+/*.csv
+/*.pdf
+/*.log
+/*.txt
+/cedulas_legacy.txt
+
+# Scripts sueltos de mantenimiento. Lo que haga falta conservar va como
+# comando Artisan en app/Console/Commands/, nunca como script en la raiz
+# ni dentro de public/.
+/tmp_*.php
+/diag_*.php
+/diagnostico_*.php
+/check_*.php
+/inspect*.php
+/migrate_*.php
+/compare-*.php
+/run_script.php
+/public/*.php
+!/public/index.php
+
+# Duplicados generados por sincronizacion en la nube (" 2", " 3")
+* 2.*
+* 3.*
+*\ 2
+*\ 3
