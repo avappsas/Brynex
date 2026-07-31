@@ -48,6 +48,9 @@ class FinanzasWhatsappService
             return ['ok' => false, 'message' => 'No hay credenciales de WhatsApp configuradas en el sistema para tu aliado.'];
         }
 
+        $saldoFormateado = '$' . number_of_format_or_custom($prestamo->saldo_actual);
+        $diasMora = $prestamo->dias_mora;
+
         // Calcular interés mínimo a pagar
         $interesMinimo = $prestamo->intereses_acumulados;
         if ($interesMinimo <= 0) {
