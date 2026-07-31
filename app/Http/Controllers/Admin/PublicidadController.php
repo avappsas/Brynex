@@ -559,12 +559,13 @@ class PublicidadController extends Controller
         return back()->with($resultado['ok'] ? 'success' : 'error', $resultado['mensaje']);
     }
 
-    public function pautaActivar(int $id)
+    public function pautaActivar(Request $request, int $id)
     {
         $aliado = $this->aliadoActivo();
         $publicacion = Publicacion::where('aliado_id', $aliado->id)->findOrFail($id);
 
-        $resultado = MetaAdsService::activar($publicacion);
+        $dias = $request->integer('dias') ?: null;
+        $resultado = MetaAdsService::activar($publicacion, $dias);
 
         return back()->with($resultado['ok'] ? 'success' : 'error', $resultado['mensaje']);
     }

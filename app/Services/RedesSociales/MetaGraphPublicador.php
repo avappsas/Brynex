@@ -171,6 +171,21 @@ class MetaGraphPublicador implements PublicadorRed
         return false;
     }
 
+    /** Facebook e Instagram usan el mismo patrón: POST /{id_publicacion}/comments con `message`. */
+    public function comentar(string $idPublicacion, string $texto): array
+    {
+        $resp = Http::timeout(15)->asForm()->post(self::BASE_URL . "/{$idPublicacion}/comments", [
+            'message'      => $texto,
+            'access_token' => $this->config->access_token,
+        ]);
+
+        if (!$resp->successful()) {
+            return ['ok' => false, 'mensaje' => $this->errorDeMeta($resp)];
+        }
+
+        return ['ok' => true, 'mensaje' => 'Comentario publicado.'];
+    }
+
     public function probarConexion(): array
     {
         if (!$this->config->credencialesCompletas()) {

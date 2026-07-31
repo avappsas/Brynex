@@ -170,8 +170,12 @@ class MetaAdsService
     /**
      * ÚNICA función que mueve dinero real: pasa el conjunto de anuncios a ACTIVE.
      * Revalida el tope mensual justo antes, sin confiar en validaciones previas.
+     *
+     * @param ?int $diasDuracion Si se pasa, además le pone `end_time` nativo de Meta al AdSet
+     *   (Meta lo pausa solo, sin depender de nuestro cron `marketing:pauta-sync` ni de que
+     *   alguien se acuerde de pausarlo a mano) — ideal para pruebas cortas con tope de días.
      */
-    public static function activar(Publicacion $publicacion): array
+    public static function activar(Publicacion $publicacion, ?int $diasDuracion = null): array
     {
         if (!$publicacion->meta_adset_id) {
             return ['ok' => false, 'mensaje' => 'Esta pieza no tiene una pauta creada todavía.'];
@@ -183,10 +187,15 @@ class MetaAdsService
         }
 
         $fb = RedSocialConfig::paraAliado($publicacion->aliado_id, 'facebook');
-        $resp = Http::asForm()->post(self::BASE_URL . "/{$publicacion->meta_adset_id}", [
+        $payload = [
             'status'       => 'ACTIVE',
             'access_token' => $fb->access_token,
-        ]);
+        ];
+        if ($diasDuracion) {
+            $payload['end_time'] = now()->addDays($diasDuracion)->toIso8601String();
+        }
+
+        $resp = Http::asForm()->post(self::BASE_URL . "/{$publicacion->meta_adset_id}", $payload);
 
         if (!$resp->successful()) {
             return ['ok' => false, 'mensaje' => self::errorDeMeta($resp)];

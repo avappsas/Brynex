@@ -144,8 +144,12 @@
 
         @if($publicacion->pauta_estado === 'borrador' || $publicacion->pauta_estado === 'pausada')
           <form method="POST" action="{{ route('admin.publicidad.pauta.activar', $publicacion->id) }}"
+                style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;"
                 onsubmit="return confirm('Esto va a gastar dinero real de la cuenta publicitaria (\${{ number_format($publicacion->pauta_presupuesto_diario_cop, 0, ',', '.') }} COP/día). ¿Activar la pauta?');">
             @csrf
+            <label style="font-size:0.72rem;color:#64748b;">Días (opcional, se pausa sola):
+              <input type="number" name="dias" min="1" max="90" placeholder="sin límite" style="width:70px;padding:0.3rem 0.4rem;border:1px solid #cbd5e1;border-radius:6px;font-size:0.78rem;">
+            </label>
             <button type="submit" style="background:#dc2626;color:#fff;border:none;font-size:0.78rem;font-weight:700;padding:0.5rem 1rem;border-radius:8px;cursor:pointer;">
               ⚠️ Activar (gasta dinero real)
             </button>

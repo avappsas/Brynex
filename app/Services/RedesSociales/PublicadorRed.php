@@ -33,4 +33,13 @@ interface PublicadorRed
      * @return array{ok: bool, mensaje: string}
      */
     public function probarConexion(): array;
+
+    /**
+     * Comenta en una publicación ya hecha — se usa para poner el link de WhatsApp en el
+     * primer comentario en vez del texto principal (Meta penaliza el alcance orgánico de
+     * posts con links de salida en el cuerpo del post).
+     *
+     * @return array{ok: bool, mensaje: string}
+     */
+    public function comentar(string $idPublicacion, string $texto): array;
 }

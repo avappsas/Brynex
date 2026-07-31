@@ -57,9 +57,15 @@ class PublicacionPublisher
             return ['ok' => false, 'mensaje' => 'La red no está activa o le faltan credenciales (ver Redes Sociales).'];
         }
 
+        // `titulo` es una etiqueta interna/administrativa (a veces literalmente dice "prueba"
+        // o el nombre del prompt usado) — NUNCA debe salir como texto público si no hay copy.
+        if (!$publicacion->copy) {
+            return ['ok' => false, 'mensaje' => 'Esta pieza no tiene copy (texto de red social) — agrégalo antes de publicar aquí.'];
+        }
+
         try {
             $publicador = RedesFactory::make($config);
-            $texto = self::textoConLinkRastreado($publicacion);
+            $texto = $publicacion->copy;
 
             if ($publicacion->tipo_pieza === 'video' && $publicacion->video_path) {
                 $urlPublica = asset('storage/' . $publicacion->video_path);
@@ -69,6 +75,16 @@ class PublicacionPublisher
                 $r = $publicador->publicarImagen($urlPublica, $texto);
             }
 
+            // El link de WhatsApp va como PRIMER COMENTARIO, no en el texto del post — Meta
+            // penaliza el alcance orgánico de posts con links de salida en el cuerpo. Si el
+            // comentario falla, el post ya quedó publicado igual (no se revierte por esto).
+            if ($r['ok'] && $r['id_publicacion']) {
+                $link = self::linkWhatsappRastreado($publicacion);
+                if ($link) {
+                    $publicador->comentar($r['id_publicacion'], $link);
+                }
+            }
+
             return ['ok' => $r['ok'], 'mensaje' => $r['mensaje'], 'id' => $r['id_publicacion'] ?? null];
         } catch (\Throwable $e) {
             return ['ok' => false, 'mensaje' => 'Error inesperado: ' . $e->getMessage()];
@@ -76,31 +92,27 @@ class PublicacionPublisher
     }
 
     /**
-     * Copy + link de WhatsApp con un código de referencia ("ref: P{id}") en el mensaje
-     * precargado — si el cliente lo manda tal cual, WhatsappWebhookService atribuye la
-     * conversación a esta pieza exacta (ver buscarPublicacionOrigen). Facebook linkifica
-     * URLs en el caption y son clicables; Instagram no las hace clicables en el caption,
-     * así que ahí el código solo sirve si el cliente lo copia/menciona igual.
+     * Link de WhatsApp con un código de referencia ("ref: P{id}") en el mensaje precargado —
+     * si el cliente lo manda tal cual, WhatsappWebhookService atribuye la conversación a esta
+     * pieza exacta (ver buscarPublicacionOrigen). Se publica como primer comentario en vez de
+     * ir dentro del texto del post (ver publicarEnDestino) para no perder alcance orgánico.
      *
      * IMPORTANTE: el número tiene que ser el del BOT de WhatsApp (WhatsappConfig::numero_telefono,
      * el phone_number_id que escucha el webhook), NUNCA el de un humano — si no, el mensaje
      * del cliente nunca llega al sistema y la atribución no puede funcionar.
      */
-    private static function textoConLinkRastreado(Publicacion $publicacion): string
+    private static function linkWhatsappRastreado(Publicacion $publicacion): ?string
     {
-        $texto  = $publicacion->copy ?: $publicacion->titulo;
         $waConfig = \App\Models\WhatsappConfig::where('aliado_id', $publicacion->aliado_id)->where('activo', true)->first();
         $numero = preg_replace('/\D/', '', $waConfig->numero_telefono ?? '');
         if (!$numero) {
-            return $texto;
+            return null;
         }
         if (!str_starts_with($numero, '57')) {
             $numero = '57' . $numero;
         }
 
-        $link = 'https://wa.me/' . $numero . '?text=' . rawurlencode($publicacion->mensajeWhatsappRastreado());
-
-        return $texto . "\n\n👉 " . $link;
+        return '👉 Escríbenos: https://wa.me/' . $numero . '?text=' . rawurlencode($publicacion->mensajeWhatsappRastreado());
     }
 
     private static function invalidarCacheSiAplica(Publicacion $publicacion, array $destinos): void
