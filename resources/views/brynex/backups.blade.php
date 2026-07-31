@@ -42,7 +42,9 @@
     @if(session('error'))
         <div class="alert-bx error">
             <span style="margin-right:8px">❌</span>
-            <div>{!! session('error') !!}</div>
+            {{-- Escapado: el mensaje incluye $e->getMessage() de SQL Server,
+                 contenido que no está bajo control de la aplicación. --}}
+            <div>{{ session('error') }}</div>
         </div>
     @endif
 

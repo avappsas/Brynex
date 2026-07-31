@@ -37,13 +37,19 @@ foreach (\App\Models\Aliado::whereNotNull('dominio_propio')->where('activo', tru
 // ─── Rutas públicas ────────────────────────────────────────────────────────
 Route::get('/',      [LoginController::class, 'showLogin'])->name('login');
 Route::get('/login', [LoginController::class, 'showLogin']);
-Route::post('/login',  [LoginController::class, 'login'])->name('login.submit');
+// Throttle obligatorio: el identificador de acceso es la cédula, un dato
+// semi-público y de formato predecible. Sin límite, la fuerza bruta es trivial.
+Route::post('/login',  [LoginController::class, 'login'])->name('login.submit')
+    ->middleware('throttle:5,1');
 Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
 
 // ─── Ruta pública: subida de documentos por token (cliente) ───────────────
-// No requiere auth — solo verificación de cédula dentro del controller
+// No requiere auth — solo verificación de cédula dentro del controller.
+// Throttle: la verificación es por cédula (dato de bajo secreto), así que sin
+// límite se puede adivinar por fuerza bruta sobre un token conocido.
 Route::get( '/incapacidades/subir/{token}',  [\App\Http\Controllers\IncapacidadUploadController::class, 'show'])  ->name('incapacidades.subir');
-Route::post('/incapacidades/subir/{token}',  [\App\Http\Controllers\IncapacidadUploadController::class, 'upload'])->name('incapacidades.subir.post');
+Route::post('/incapacidades/subir/{token}',  [\App\Http\Controllers\IncapacidadUploadController::class, 'upload'])->name('incapacidades.subir.post')
+    ->middleware('throttle:10,1');
 
 // ─── Página web pública de aliado (brynex.co/aliado/{slug}) ────────────────
 // No requiere auth — visibilidad controlada por aliados.activo + pagina_aliado_config.activo

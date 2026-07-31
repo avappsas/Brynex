@@ -934,7 +934,9 @@ class IncapacidadController extends Controller
     public function storeDocumento(Request $request, int $id)
     {
         $request->validate([
-            'archivo'        => 'required|file|max:15360', // 15MB
+            // mimes obligatorio: sin él se podía subir .html/.svg/.php a un
+            // directorio servido por el servidor web (XSS almacenado / RCE).
+            'archivo'        => 'required|file|max:15360|mimes:pdf,jpg,jpeg,png,webp', // 15MB
             'tipo_documento' => 'required|string',
         ]);
 

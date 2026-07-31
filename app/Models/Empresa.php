@@ -7,7 +7,31 @@ use App\Models\BaseModel;
 class Empresa extends BaseModel
 {
     protected $table = 'empresas';
-    protected $guarded = [];
+
+    /**
+     * Lista blanca explícita. Antes era `$guarded = []`, que permitía escribir
+     * cualquier columna vía asignación masiva. `id` y `aliado_id` van incluidos
+     * a propósito: la tabla es legacy sin IDENTITY y ambos se asignan de forma
+     * deliberada al crear la empresa (ver FacturacionController::storeEmpresa).
+     */
+    protected $fillable = [
+        'id',
+        'nit',
+        'empresa',
+        'contacto',
+        'telefono',
+        'celular',
+        'direccion',
+        'observacion',
+        'cliente_de',
+        'tipo_facturacion',
+        'iva',
+        'correo',
+        'actividad_economica',
+        'aliado_id',
+        'encargado_id',
+        'asesor_id',
+    ];
 
     public function aliado()
     {

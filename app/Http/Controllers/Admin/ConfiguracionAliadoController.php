@@ -128,7 +128,9 @@ class ConfiguracionAliadoController extends Controller
             'arl.*.porcentaje'                  => 'nullable|numeric|min:0|max:100',
             'arl_afiliacion.*.*.*'               => 'nullable|numeric|min:0',
             'brynex.*'                          => 'nullable|numeric|min:0',
-            'seguro_logo'                       => 'nullable|image|mimes:jpg,jpeg,png,svg|max:2048',
+            // Sin SVG: se guarda en disco público y un SVG puede llevar <script>
+            // embebido, que se ejecuta al abrirlo directamente (XSS).
+            'seguro_logo'                       => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
         ]);
 
         DB::transaction(function () use ($request, $alidoId) {

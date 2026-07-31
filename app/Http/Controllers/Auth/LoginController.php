@@ -40,6 +40,10 @@ class LoginController extends Controller
 
         Auth::login($user, $request->boolean('remember'));
 
+        // Renovar el ID de sesión tras autenticar (previene session fixation:
+        // un ID fijado antes del login dejaría de servir). Conserva los datos.
+        $request->session()->regenerate();
+
         // Limpiar sesión de aliado anterior
         session()->forget('aliado_id_activo');
 
