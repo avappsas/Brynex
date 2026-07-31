@@ -2979,7 +2979,6 @@ class InformeController extends Controller
                        ->from('facturas as f')
                        ->whereColumn('f.contrato_id', 'c.id')
                        ->where('f.numero_factura', '>', 0)
-                       ->where('f.tipo', '<>', 'afiliacion')
                        ->where('f.mes', $mesVal)
                        ->where('f.anio', $anioVal)
                        ->whereNull('f.deleted_at');
@@ -3164,7 +3163,6 @@ class InformeController extends Controller
                        ->from('facturas as f')
                        ->whereColumn('f.contrato_id', 'c.id')
                        ->where('f.numero_factura', '>', 0)
-                       ->where('f.tipo', '<>', 'afiliacion')
                        ->where('f.mes', $mes)
                        ->where('f.anio', $anio)
                        ->whereNull('f.deleted_at');
