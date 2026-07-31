@@ -364,7 +364,7 @@ body{display:flex;flex-direction:column}
         <strong id="renovar-nombre"></strong> — <span id="renovar-rs" style="color:#475569;"></span>
     </div>
     <div style="background:#fef3c7;border-radius:8px;padding:.5rem .75rem;margin-bottom:.75rem;font-size:.75rem;color:#92400e;border:1px solid #fcd34d;">
-        💡 Registra aquí la nueva fecha de afiliación en el portal de la ARL. El semáforo se reinicia desde ese día (28 días de vigencia).
+        💡 Registra aquí la nueva fecha de afiliación en el portal de la ARL. El semáforo se reinicia desde ese día (29 días de vigencia).
     </div>
     <div class="form-group">
         <label>Nueva Fecha de Afiliación ARL *</label>

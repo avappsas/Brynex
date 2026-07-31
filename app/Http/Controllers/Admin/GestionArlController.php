@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\DB;
 class GestionArlController extends Controller
 {
     const TIPO_MODALIDAD_ARL = 15;
-    const DIAS_VIGENCIA      = 28; // máximo días ARL activa
+    const DIAS_VIGENCIA      = 29; // máximo días ARL activa
 
     // Semáforo: días restantes
     const VERDE    = 10; // >= 10 días restantes → verde
