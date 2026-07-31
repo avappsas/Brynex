@@ -12,8 +12,8 @@ Prioridad = impacto del módulo en el negocio (dinero, compliance) × qué tan s
 
 | Sección | Hallazgos |
 |---|---|
-| Estabilidad | 6 |
-| Tests | 1 (cobertura casi nula) + nota de diseño de los servicios de cálculo |
+| Estabilidad | 6 (4 corregidos: E-1, E-2, E-3, E-6) |
+| Tests | cobertura casi nula → override SQLite activado, 13 tests puros añadidos, 1 bug de conexión encontrado y corregido de paso |
 | Consistencia visual | 4 |
 | UX / profesionalismo | 3 |
 
@@ -158,18 +158,42 @@ asociada, revisar manualmente") en vez de que el único rastro sea `storage/logs
 
 ## T-1 — Cobertura real: dos tests de ejemplo, cero tests de negocio
 
-`tests/Unit/ExampleTest.php` y `tests/Feature/ExampleTest.php` son el scaffold por
-defecto de Laravel, sin modificar. Ningún cálculo de dinero, mora, PILA o comisión tiene
+**Actualizado 31/07/2026 — parcialmente resuelto.**
+
+`tests/Unit/ExampleTest.php` y `tests/Feature/ExampleTest.php` eran el scaffold por
+defecto de Laravel, sin modificar. Ningún cálculo de dinero, mora, PILA o comisión tenía
 un test.
 
-**Antes de escribir cualquier test:** descomentar en `phpunit.xml`:
+**El override de `phpunit.xml` ya se activó:**
 ```xml
 <env name="DB_CONNECTION" value="sqlite"/>
 <env name="DB_DATABASE" value=":memory:"/>
 ```
-Están comentados hoy, así que `php artisan test` corre contra la base de datos real de
-producción (ver `CLAUDE.md`). Es la razón más probable de que nadie haya escrito tests
-de integración: hacerlo hoy escribiría en la BD real.
+
+Al activarlo apareció un hallazgo que no estaba en el radar: **`User` y `Aliado` fijaban
+`protected $connection = 'sqlsrv';` a mano**, ignorando el `default` de
+`config/database.php` (y por lo tanto el override de test). En producción no cambiaba
+nada — `DB_CONNECTION` en `.env` ya es `sqlsrv` — pero en tests, `Aliado` se carga en
+**cada request** desde el bucle de dominios propios al inicio de `routes/web.php`, así
+que cualquier `Feature test` intentaba conectarse al **servidor real** de producción con
+`:memory:` como nombre de base de datos (fallaba el login, no llegó a ejecutar ninguna
+query — pero sí abría una conexión de red hacia el host real). Se quitó el `$connection`
+fijo de ambos modelos; ahora heredan el `default`, igual que los otros 90 modelos.
+Verificado que nada en el código dependía del nombre de conexión explícito.
+
+Con eso corregido, `Tests\Feature\ExampleTest` falla de forma seguro-por-defecto: ya no
+sale de la máquina, pero le falta la tabla `aliados` en el SQLite en memoria (no tiene
+`RefreshDatabase`, nunca tuvo esquema). Dejarlo así de momento — activar
+`RefreshDatabase` requiere confirmar que las migraciones corren sobre SQLite sin la
+sintaxis específica de SQL Server que usan varias (`DB::statement` con `ALTER TABLE`,
+configuración `ANSI_NULLS`, etc.); es tarea aparte, no algo para resolver a ciegas.
+
+**Tests nuevos, puros, sin tocar BD:**
+[tests/Unit/Services/MoraClienteServiceTest.php](tests/Unit/Services/MoraClienteServiceTest.php)
+(festivos de Colombia y día hábil N-ésimo — 7 tests, verificados con invariantes de la
+Ley Emiliani, no fechas memorizadas) y
+[tests/Unit/Services/PilaCotizanteCalculatorTest.php](tests/Unit/Services/PilaCotizanteCalculatorTest.php)
+(`roundPila` — 6 casos). Los 13 pasan.
 
 ### Nota de diseño encontrada al evaluar qué es testeable
 
@@ -183,15 +207,19 @@ exponer un `reset()` para tests).
 
 ### Los 10 tests de mayor valor, verificados contra el código real
 
-1. **`MoraClienteService::aplicarTramos`** — pura, sin BD. Los tramos de mora determinan
-   cuánto se le cobra de más a un cliente atrasado; un error aquí es dinero mal cobrado
-   en cada factura con mora.
-2. **`MoraClienteService::festivosColombia` + `getNthDiaHabil`** — puras. De esto depende
-   `diaHabilVencimiento`, que decide cuándo empieza a correr la mora. Un festivo mal
-   calculado corre la fecha de vencimiento de TODOS los clientes de un aliado ese mes.
-3. **`PilaCotizanteCalculator::roundPila`** — pura. Regla de redondeo PILA (múltiplo de
-   100 hacia arriba); si esto falla, el archivo PILA generado es rechazado por el operador
-   de planilla.
+1. ✅ **`MoraClienteService::festivosColombia` + `getNthDiaHabil`** — puras, **hechas**.
+   De esto depende `diaHabilVencimiento`, que decide cuándo empieza a correr la mora. Un
+   festivo mal calculado corre la fecha de vencimiento de TODOS los clientes de un aliado
+   ese mes.
+2. ✅ **`PilaCotizanteCalculator::roundPila`** — pura, **hecha**. Regla de redondeo PILA
+   (múltiplo de 100 hacia arriba); si esto falla, el archivo PILA generado es rechazado
+   por el operador de planilla.
+3. **`MoraClienteService::aplicarTramos`** — corrección: NO es pura como decía una
+   versión anterior de este hallazgo. Toca BD a través de `tramosAliado()` →
+   `getConfigAliado()` → `DB::table('configuracion_aliado')`, cacheado en una propiedad
+   estática. Necesita Feature test con la tabla `configuracion_aliado` disponible (ver
+   nota de `RefreshDatabase` arriba). Los tramos de mora determinan cuánto se le cobra de
+   más a un cliente atrasado; un error aquí es dinero mal cobrado en cada factura con mora.
 4. **`PilaCotizanteCalculator::calcularSemanasTp`** — pura. Semanas cotizadas en tiempo
    parcial; afecta directamente el IBC reportado a la EPS/AFP/ARL.
 5. **`PilaCotizanteCalculator::calcular`** con los 3 escenarios de `tipo_modalidad_id`

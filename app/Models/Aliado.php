@@ -12,7 +12,11 @@ class Aliado extends BaseModel
 {
     use SoftDeletes;
 
-    protected $connection = 'sqlsrv';
+    // Sin conexión fija: usa el 'default' de config/database.php (sqlsrv en
+    // producción vía DB_CONNECTION en .env). Fijarla a mano rompía los tests
+    // — se carga en routes/web.php en CADA request (dominios propios de
+    // aliado), así que el override a sqlite de phpunit.xml no podía aplicarse.
+    // Ver docs/auditoria-calidad.md.
 
     protected $table = 'aliados';
 

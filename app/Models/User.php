@@ -16,7 +16,10 @@ class User extends Authenticatable
     use HasSqlServerDates;
     use Notifiable, HasRoles, SoftDeletes;
 
-    protected $connection = 'sqlsrv';
+    // Sin conexión fija: usa el 'default' de config/database.php (sqlsrv en
+    // producción vía DB_CONNECTION en .env). Fijarla a mano rompía los tests
+    // — el override a sqlite de phpunit.xml no podía aplicarse a este modelo,
+    // que se carga en cada request de auth. Ver docs/auditoria-calidad.md.
 
     protected $fillable = [
         'aliado_id',
