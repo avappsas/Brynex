@@ -14,7 +14,6 @@ use Illuminate\Support\Facades\Storage;
 
 class IncapacidadController extends Controller
 {
-<<<<<<< HEAD
     /**
      * Disco donde se guardan los documentos de incapacidades.
      *
@@ -46,8 +45,6 @@ class IncapacidadController extends Controller
         return $this->incapacidadesDelAliado()->findOrFail($id);
     }
 
-=======
->>>>>>> parent of 68ac36f (whatsapp cobros)
     // ── INDEX ────────────────────────────────────────────────────────────────
     public function index(Request $request)
     {
@@ -335,7 +332,7 @@ class IncapacidadController extends Controller
             'fecha_recibido'   => 'required|date',
         ]);
 
-        $inc = Incapacidad::findOrFail($id);
+        $inc = $this->incapacidadDelAliado($id);
 
         $entidadNombre = $this->resolverNombreEntidad(
             $request->tipo_entidad,
@@ -389,7 +386,7 @@ class IncapacidadController extends Controller
     // ── SHOW (JSON para modal de detalle) ────────────────────────────────────
     public function show(int $id)
     {
-        $inc = Incapacidad::with([
+        $inc = $this->incapacidadesDelAliado()->with([
             'quienRecibe', 'creadoPor', 'razonSocial',
             'gestiones.user',
             'documentos.user',
@@ -467,7 +464,7 @@ class IncapacidadController extends Controller
         ]);
 
 
-        $inc    = Incapacidad::findOrFail($id);
+        $inc    = $this->incapacidadDelAliado($id);
         $alcance = $request->input('alcance', 'esta_incapacidad');
         $esFamilia = ($alcance === 'toda_la_familia');
 
@@ -748,7 +745,7 @@ class IncapacidadController extends Controller
     public function cuentasRazonSocial(int $id)
     {
         $aliadoId = session('aliado_id_activo');
-        $inc = Incapacidad::findOrFail($id);
+        $inc = $this->incapacidadDelAliado($id);
 
         // Obtener NIT y razon_social_id de la RS de la incapacidad
         $rsId = $inc->razon_social_id;
@@ -825,7 +822,7 @@ class IncapacidadController extends Controller
     // ── GENERAR LINK DE SUBIDA ───────────────────────────────────────────────
     public function generarLink(int $id)
     {
-        $inc  = Incapacidad::findOrFail($id);
+        $inc  = $this->incapacidadDelAliado($id);
         $link = $inc->link_subida; // genera token si no existe
         $wa   = $inc->mensaje_whatsapp_subida;
         return response()->json(['ok' => true, 'link' => $link, 'whatsapp' => $wa]);
@@ -840,7 +837,7 @@ class IncapacidadController extends Controller
             'fecha' => 'required|date',
         ]);
 
-        $inc     = Incapacidad::findOrFail($id);
+        $inc     = $this->incapacidadDelAliado($id);
         $alidoId = session('aliado_id_activo') ?? Auth::user()->aliado_id;
 
         // Si es entrada_incapacidad → crear también en consignaciones (Canal 5 entrada bancaria)
@@ -912,7 +909,7 @@ class IncapacidadController extends Controller
             'tipo_entidad'     => 'required|in:eps,arl,afp',
         ]);
 
-        $padre   = Incapacidad::findOrFail($padreId);
+        $padre   = $this->incapacidadDelAliado($padreId);
         $alidoId = session('aliado_id_activo') ?? Auth::user()->aliado_id;
         $numProrroga = Incapacidad::where('incapacidad_padre_id', $padreId)->count() + 1;
 
@@ -975,7 +972,7 @@ class IncapacidadController extends Controller
             'tipo_documento' => 'required|string',
         ]);
 
-        $inc  = Incapacidad::findOrFail($id);
+        $inc  = $this->incapacidadDelAliado($id);
         $file = $request->file('archivo');
         $ext  = strtolower($file->getClientOriginalExtension());
         $cedula = $inc->cedula_usuario;
@@ -1068,7 +1065,7 @@ class IncapacidadController extends Controller
     // ── DOCUMENTOS DE TODA LA FAMILIA (padre + prórrogas) ───────────────────
     public function documentosFamilia(int $id)
     {
-        $inc = Incapacidad::findOrFail($id);
+        $inc = $this->incapacidadDelAliado($id);
 
         // Obtener el id padre real (si es una prórroga, subir al padre)
         $padreId = $inc->incapacidad_padre_id ?? $inc->id;
@@ -1203,7 +1200,7 @@ class IncapacidadController extends Controller
             'detalle_pago' => 'nullable|string',
         ]);
 
-        $inc = Incapacidad::findOrFail($id);
+        $inc = $this->incapacidadDelAliado($id);
         
         $aliadoId = session('aliado_id_activo') ?? Auth::user()->aliado_id;
         $usuarioId = Auth::id();
@@ -1307,7 +1304,7 @@ class IncapacidadController extends Controller
     // ── CALCULAR VALOR ESPERADO (API) ────────────────────────────────────────
     public function calcularValor(int $id)
     {
-        $inc   = Incapacidad::findOrFail($id);
+        $inc   = $this->incapacidadDelAliado($id);
         $valor = $inc->calcularValorEsperado(persistir: true);
 
         // Opcional: asegurarnos explícitamente (redundante pero seguro)
@@ -1325,7 +1322,7 @@ class IncapacidadController extends Controller
     // ── DESTROY (soft delete) ────────────────────────────────────────────────
     public function destroy(int $id)
     {
-        $inc = Incapacidad::findOrFail($id);
+        $inc = $this->incapacidadDelAliado($id);
         $inc->delete();
         return redirect()->route('admin.incapacidades.index')
             ->with('success', 'Incapacidad eliminada.');
