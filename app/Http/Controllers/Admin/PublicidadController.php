@@ -372,10 +372,11 @@ class PublicidadController extends Controller
             . 'Usa tipografía bold, alto contraste, degradados modernos, sombras y buena jerarquía visual — estilo campaña premium, no plano. '
             . 'Si aporta, agrega elementos de conversión como una garantía o el proceso sin trámites — pero NUNCA generes un código QR (los que dibuja un modelo de imagen no funcionan, no escanean de verdad), y NUNCA inventes datos concretos que no te haya dado (teléfonos, precios, fechas exactas, nombres de personas, cupos, plazos) — mantén esas menciones genéricas. '
             . 'Cuida la ortografía y las tildes del español. '
+            . "NUNCA dibujes tú mismo ningún logo, isotipo, ícono de marca ni el nombre \"{$aliado->nombre}\" a modo de logo en NINGUNA parte de la imagen — ni en la esquina inferior derecha ni en ninguna otra — eso lo agrega el sistema después, por separado, con el logo real. "
             . 'Deja la esquina inferior derecha libre de texto e íconos, pero SIN dibujar ahí ningún recuadro, marco o bloque de color sólido — debe verse como parte natural del fondo/escena, nunca como un espacio en blanco marcado; ahí se superpone el logo real de la marca después, por separado.';
 
         $prompt = $validated['prompt'] . $instruccionTipografia . ($rutaLogo
-            ? ' Te adjunto el logo de la marca como referencia de color: usa tonos inspirados en su paleta para la escena. NO intentes dibujar ni reproducir el logo dentro de la imagen — eso se agrega después por separado.'
+            ? ' Te adjunto el logo de la marca SOLO como referencia de color: usa tonos inspirados en su paleta para la escena. NO intentes dibujar ni reproducir el logo, ni ningún otro logo propio, dentro de la imagen — eso se agrega después por separado.'
             : '');
 
         $resultado = GeminiImagenGenerator::generarVariantes($iaConfig->gemini_api_key, $prompt, 2, $modelo, $rutaLogo);
