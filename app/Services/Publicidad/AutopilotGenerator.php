@@ -174,7 +174,14 @@ class AutopilotGenerator
         $planes = CotizacionPublicaService::planesDestacadosConPrecio($aliado->id, true);
         $listaPlanes = collect($planes)
             ->map(function ($p) {
-                $linea = "- {$p['nombre']}: primer mes (solo afiliación) \$" . number_format($p['costo_afiliacion'], 0, ',', '.')
+                $servicios = collect([
+                    'incluye_eps'     => 'EPS',
+                    'incluye_arl'     => 'ARL',
+                    'incluye_pension' => 'Pensión',
+                    'incluye_caja'    => 'Caja de compensación',
+                ])->filter(fn ($nombre, $clave) => !empty($p['componentes'][$clave]))->values()->implode(', ');
+
+                $linea = "- {$p['nombre']} (cubre: {$servicios}): primer mes (solo afiliación) \$" . number_format($p['costo_afiliacion'], 0, ',', '.')
                     . ' COP · desde el mes siguiente $' . number_format($p['valor_mensual'], 0, ',', '.') . ' COP/mes';
                 if ($p['en_promocion']) {
                     $linea .= ' · 🏷️ EN PROMOCIÓN (precio normal de afiliación $' . number_format($p['costo_afiliacion_normal'], 0, ',', '.')
@@ -216,6 +223,7 @@ CATÁLOGO DE ÁNGULOS (elige UNO, variando siempre respecto al historial):
 PLANES REALES CON PRECIO VIGENTE (usa estos valores EXACTOS si el tema es una promo; NUNCA inventes precios ni descuentos que no estén aquí):
 {$listaPlanes}
 El "primer mes" es real: por el esquema de facturación, el mes de afiliación SOLO cobra el costo de afiliación (sin seguridad social ni administración); desde el mes siguiente se cobra el valor mensual completo. Puedes usar esto como gancho ("empieza con \$X este mes") SIEMPRE que menciones también el valor mensual siguiente — nunca lo presentes como un descuento o promoción especial, es simplemente cómo funciona el pago.
+Cada plan indica entre paréntesis qué cubre ("cubre: ..."). Si mencionas un precio, menciona ÚNICAMENTE los servicios que ese plan cubre — NUNCA digas que un plan incluye EPS, ARL, Pensión o Caja si no aparece en su "cubre:", aunque el ángulo elegido hable de seguridad social en general.
 
 HISTORIAL RECIENTE (NO repitas tema, mensaje ni enfoque visual de estas piezas):
 {$historial}

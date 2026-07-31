@@ -136,6 +136,11 @@ class WhatsappWebhookService
         // Obtener o crear la conversación
         $conversacion = $this->obtenerOCrearConversacion($waFrom, $alidoId, $msg, $changeValue);
 
+        // Si es el número personal de Brayan García, desactivar el bot por completo en esta conversación
+        if ($waFrom === '573117762689') {
+            $conversacion->update(['bot_activo' => false]);
+        }
+
         // Construir el mensaje
         $dataMensaje = [
             'conversacion_id' => $conversacion->id,
@@ -216,9 +221,16 @@ class WhatsappWebhookService
                         $this->whatsappApi->enviarTexto($numeroPersonalBrayan, $mensajeReenvio, $configReenvio);
                     } else {
                         // Buscar si hay una plantilla de notificación aprobada para Brayan (para saltar restricción de 24h)
+                        // Buscamos con nombres alternativos por si acaso hubo problemas al registrarla en Meta
                         $plantillaNotif = \App\Models\WhatsappPlantilla::delAliado($configReenvio->aliado_id)
                             ->aprobadas()
-                            ->where('nombre', 'notificacion_brynex')
+                            ->where(function ($q) {
+                                $q->where('nombre', 'notificacion_brynex')
+                                  ->orWhere('nombre', 'notificaciones_brynex')
+                                  ->orWhere('nombre', 'notificar_brynex')
+                                  ->orWhere('nombre', 'like', '%notificacion%brynex%')
+                                  ->orWhere('nombre', 'like', '%brynex%notificacion%');
+                            })
                             ->first();
 
                         if ($plantillaNotif) {
