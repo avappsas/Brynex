@@ -1180,7 +1180,7 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
             <span style="font-size:.72rem;color:#94a3b8;">Clic en un día para ver detalle</span>
         </div>
         {{-- Cabecera --}}
-        <div style="display:grid;grid-template-columns:40px 48px 1fr 48px 1fr 1fr 1fr 1fr 1fr;gap:.4rem;padding:.5rem .75rem;background:#f8fafc;border-bottom:2px solid #e2e8f0;font-size:.68rem;text-transform:uppercase;color:#64748b;font-weight:700;">
+        <div style="display:grid;grid-template-columns:40px 48px 1fr 48px 1fr 1fr 1fr 1fr 1fr 68px;gap:.4rem;padding:.5rem .75rem;background:#f8fafc;border-bottom:2px solid #e2e8f0;font-size:.68rem;text-transform:uppercase;color:#64748b;font-weight:700;">
             <span>Día</span>
             <span style="color:#3b82f6;text-align:center;">#</span>
             <span style="color:#3b82f6;">Planillas</span>
@@ -1190,6 +1190,7 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
             <span style="color:#0e7490;">SS</span>
             <span style="color:#ef4444;">Gastos</span>
             <span>Utilidad</span>
+            <span></span>
         </div>
         @php $totDia=['planillas'=>0,'afiliaciones'=>0,'tramites'=>0,'ss'=>0,'gastos'=>0,'utilidad'=>0,'cant_planillas'=>0,'cant_afiliaciones'=>0]; @endphp
         @foreach($diario as $d)
@@ -1200,7 +1201,7 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
             $hayData = $d['planillas']>0 || $d['afiliaciones']>0 || $d['tramites']>0 || $d['gastos']>0;
         @endphp
         @if($hayData)
-        <div style="display:grid;grid-template-columns:40px 48px 1fr 48px 1fr 1fr 1fr 1fr 1fr;gap:.4rem;padding:.48rem .75rem;border-bottom:1px solid #f1f5f9;font-size:.8rem;align-items:center;cursor:pointer;transition:background .12s;"
+        <div style="display:grid;grid-template-columns:40px 48px 1fr 48px 1fr 1fr 1fr 1fr 1fr 68px;gap:.4rem;padding:.48rem .75rem;border-bottom:1px solid #f1f5f9;font-size:.8rem;align-items:center;cursor:pointer;transition:background .12s;"
              onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''" onclick="verDetalleDia({{ $d['dia'] }},{{ $mes }},{{ $anio }})">
             <span style="font-weight:700;color:#0d2550;">{{ str_pad($d['dia'],2,'0',STR_PAD_LEFT) }}</span>
             <span style="text-align:center;background:#dbeafe;color:#1e40af;border-radius:6px;padding:.1rem .3rem;font-size:.72rem;font-weight:700;">{{ $d['cant_planillas']>0?$d['cant_planillas']:'' }}</span>
@@ -1211,11 +1212,18 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
             <span style="color:#0e7490;font-weight:600;">{{ $d['ss']>0?$fmt($d['ss']):'—' }}</span>
             <span style="color:#ef4444;">{{ $d['gastos']>0?'- '.$fmt($d['gastos']):'—' }}</span>
             <span style="font-weight:700;color:{{ $d['utilidad']>=0?'#10b981':'#ef4444' }};">{{ $fmt($d['utilidad']) }}</span>
+            <span>
+                <button onclick="event.stopPropagation();verDesgloseDia({{ $d['dia'] }},{{ $mes }},{{ $anio }})"
+                        title="Ver desglose de administración del día (sin seguro)"
+                        style="background:rgba(37,99,235,.1);border:1px solid rgba(37,99,235,.25);border-radius:6px;padding:.15rem .4rem;font-size:.68rem;font-weight:700;color:#1e40af;cursor:pointer;white-space:nowrap;">
+                    📋
+                </button>
+            </span>
         </div>
         @endif
         @endforeach
         {{-- Totales --}}
-        <div style="display:grid;grid-template-columns:40px 48px 1fr 48px 1fr 1fr 1fr 1fr 1fr;gap:.4rem;padding:.6rem .75rem;background:#f8fafc;font-weight:700;border-top:2px solid #e2e8f0;font-size:.8rem;">
+        <div style="display:grid;grid-template-columns:40px 48px 1fr 48px 1fr 1fr 1fr 1fr 1fr 68px;gap:.4rem;padding:.6rem .75rem;background:#f8fafc;font-weight:700;border-top:2px solid #e2e8f0;font-size:.8rem;">
             <span style="color:#0d2550;">TOT</span>
             <span style="text-align:center;background:#dbeafe;color:#1e40af;border-radius:6px;padding:.1rem .3rem;font-size:.72rem;">{{ $totDia['cant_planillas'] }}</span>
             <span style="color:#2563eb;">{{ $fmt($totDia['planillas']) }}</span>
@@ -1225,6 +1233,7 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
             <span style="color:#0e7490;">{{ $fmt($totDia['ss']) }}</span>
             <span style="color:#ef4444;">- {{ $fmt($totDia['gastos']) }}</span>
             <span style="color:{{ $totDia['utilidad']>=0?'#10b981':'#ef4444' }};">{{ $fmt($totDia['utilidad']) }}</span>
+            <span></span>
         </div>
     </div>
 
@@ -1297,6 +1306,20 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
         <div id="modalDiaSummary" style="display:grid;grid-template-columns:repeat(6,1fr);gap:.5rem;padding:.85rem 1.25rem;background:#f8fafc;border-bottom:1px solid #e2e8f0;"></div>
         {{-- Tabla --}}
         <div id="modalDiaBody" style="padding:1rem 1.25rem;max-height:55vh;overflow-y:auto;font-size:.82rem;color:#475569;">Cargando…</div>
+    </div>
+</div>
+
+{{-- Modal desglose de administración de un día (sin seguro, mensajería agrupada en otros) --}}
+<div id="modalDesgloseDia" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:flex-start;justify-content:center;padding-top:4vh;overflow-y:auto;">
+    <div style="background:#fff;border-radius:18px;width:min(560px,95vw);box-shadow:0 25px 60px rgba(0,0,0,.22);">
+        <div style="background:linear-gradient(135deg,#1e3a8a,#2563eb);border-radius:18px 18px 0 0;padding:1rem 1.5rem;display:flex;align-items:center;justify-content:space-between;">
+            <div>
+                <div id="modalDesgloseDiaTitulo" style="color:#fff;font-weight:800;font-size:1rem;">📋 Desglose del día</div>
+                <div style="color:rgba(255,255,255,.65);font-size:.7rem;margin-top:.15rem;">Efectivo · Consignación · Gastos del día</div>
+            </div>
+            <button onclick="document.getElementById('modalDesgloseDia').style.display='none'" style="background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:8px;width:32px;height:32px;cursor:pointer;font-size:1.1rem;">✕</button>
+        </div>
+        <div id="modalDesgloseDiaBody" style="padding:1rem 1.25rem;max-height:75vh;overflow-y:auto;font-size:.82rem;color:#475569;">Cargando…</div>
     </div>
 </div>
 
@@ -1761,6 +1784,18 @@ function cargarDetalleDia() {
         }).catch(()=>{ document.getElementById('modalDiaBody').innerHTML='<div style="color:#ef4444;padding:1.5rem;text-align:center;">Error al cargar detalle.</div>'; });
 }
 
+// ── Modal desglose de un día: efectivo/consignación, gastos y quién los reportó ──
+// El HTML viene ya renderizado del servidor (partial admin.informes.partials.desglose_dia)
+function verDesgloseDia(dia,mes,anio) {
+    const meses=['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    document.getElementById('modalDesgloseDiaTitulo').textContent = '📋 Desglose — '+String(dia).padStart(2,'0')+' '+meses[mes]+' '+anio;
+    document.getElementById('modalDesgloseDiaBody').innerHTML = '<div style="text-align:center;padding:1.5rem;color:#94a3b8;">⏳ Cargando…</div>';
+    document.getElementById('modalDesgloseDia').style.display = 'flex';
+    fetch(`{{ route('admin.informes.financiero.desglose_dia') }}?dia=${dia}&mes=${mes}&anio=${anio}`)
+        .then(r=>r.text()).then(html=>{ document.getElementById('modalDesgloseDiaBody').innerHTML = html; })
+        .catch(()=>{ document.getElementById('modalDesgloseDiaBody').innerHTML='<div style="color:#ef4444;padding:1.5rem;text-align:center;">Error al cargar desglose.</div>'; });
+}
+
 // ── Modal Recuperación Préstamos ──
 function abrirModalRecuperacionPrestamos() {
     document.getElementById('modalRecuperacionPrestamos').style.display = 'flex';
@@ -2124,7 +2159,7 @@ function subirImgConsig() {
 document.getElementById('modalEditarConsig').addEventListener('click',function(ev){if(ev.target===this)cerrarEditarConsig();});
 
 // Cerrar modales al clic fuera
-['modalDia','modalBanco','modalAudit','modalPrestamos','modalEfectivo','modalGastos','modalLightbox'].forEach(id=>{
+['modalDia','modalDesgloseDia','modalBanco','modalAudit','modalPrestamos','modalEfectivo','modalGastos','modalLightbox'].forEach(id=>{
     document.getElementById(id).addEventListener('click',function(e){
         if(e.target===this) this.style.display='none';
     });

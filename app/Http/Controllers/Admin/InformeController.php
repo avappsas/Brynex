@@ -2792,6 +2792,146 @@ class InformeController extends Controller
         ]);
     }
 
+    // ── Vista parcial: desglose de un día — efectivo / consignación, gastos y quién los reportó ──
+    // Seguro queda fuera del cálculo por decisión del usuario; mensajería se suma dentro de "otros".
+    public function desgloseDia(Request $request)
+    {
+        $this->checkFinanciero();
+        $aid  = $this->aliadoId();
+        $dia  = (int)$request->input('dia');
+        $mes  = (int)$request->input('mes', now()->month);
+        $anio = (int)$request->input('anio', now()->year);
+
+        // ── Ingresos del día: se separan por cuánto de cada factura quedó realmente en
+        // efectivo / consignación / préstamo, usando valor_efectivo/valor_consignado/valor_prestamo
+        // (que sí traen el split real, incluso para facturas con forma_pago='mixto'), en vez del
+        // campo categórico forma_pago que no distingue proporciones dentro de un pago mixto.
+        $filas = DB::table('facturas')
+            ->where('aliado_id', $aid)->whereNull('deleted_at')
+            ->whereNotNull('fecha_pago')
+            ->whereRaw('DAY(fecha_pago) = ?', [$dia])
+            ->whereMonth('fecha_pago', $mes)->whereYear('fecha_pago', $anio)
+            ->whereIn('estado', ['pagada', 'abono', 'prestamo'])
+            ->select([
+                'tipo', 'numero_factura', 'admon', 'iva', 'mensajeria', 'otros_admon', 'otros',
+                'retiro', 'admin_asesor', 'total_ss', 'afiliacion',
+                'dist_admon', 'dist_asesor', 'dist_retiro', 'dist_utilidad', 'dist_encargado',
+                'valor_efectivo', 'valor_consignado', 'valor_prestamo',
+            ])
+            ->get();
+
+        $camposVacios = ['admon'=>0.0,'iva'=>0.0,'otros'=>0.0,'retiro_campo'=>0.0,'admin_asesor'=>0.0,'ss'=>0.0,
+            'tramites'=>0.0,'afiliacion'=>0.0,'dist_admon'=>0.0,'dist_asesor'=>0.0,'dist_retiro'=>0.0,
+            'dist_utilidad'=>0.0,'dist_encargado'=>0.0];
+
+        $buckets = [
+            'efectivo'     => ['label' => 'EFECTIVO'] + $camposVacios,
+            'consignacion' => ['label' => 'CONSIGNACIÓN'] + $camposVacios,
+            'prestamo'     => ['label' => 'PRÉSTAMO'] + $camposVacios,
+        ];
+
+        foreach ($filas as $f) {
+            $ve = (float)$f->valor_efectivo;
+            $vc = (float)$f->valor_consignado;
+            $vp = (float)$f->valor_prestamo;
+            $totalPago = $ve + $vc + $vp;
+            $ratios = $totalPago > 0
+                ? ['efectivo' => $ve / $totalPago, 'consignacion' => $vc / $totalPago, 'prestamo' => $vp / $totalPago]
+                : ['efectivo' => 1.0, 'consignacion' => 0.0, 'prestamo' => 0.0]; // sin split registrado: se asume efectivo
+
+            if ($f->tipo === 'planilla') {
+                $otrosVal = (float)$f->mensajeria + (float)($f->otros_admon ?? 0);
+                $ssVal    = $f->numero_factura > 0 ? (float)$f->total_ss : 0.0;
+                foreach ($ratios as $bk => $r) {
+                    if ($r <= 0) continue;
+                    $buckets[$bk]['admon']        += (float)$f->admon * $r;
+                    $buckets[$bk]['iva']          += (float)$f->iva * $r;
+                    $buckets[$bk]['otros']        += $otrosVal * $r;
+                    $buckets[$bk]['retiro_campo'] += (float)$f->retiro * $r;
+                    $buckets[$bk]['admin_asesor'] += (float)($f->admin_asesor ?? 0) * $r;
+                    $buckets[$bk]['ss']           += $ssVal * $r;
+                }
+            } elseif ($f->tipo === 'afiliacion') {
+                foreach ($ratios as $bk => $r) {
+                    if ($r <= 0) continue;
+                    $buckets[$bk]['afiliacion']     += (float)$f->afiliacion * $r;
+                    $buckets[$bk]['dist_admon']     += (float)($f->dist_admon ?? 0) * $r;
+                    $buckets[$bk]['dist_asesor']    += (float)($f->dist_asesor ?? 0) * $r;
+                    $buckets[$bk]['dist_retiro']    += (float)($f->dist_retiro ?? 0) * $r;
+                    $buckets[$bk]['dist_utilidad']  += (float)($f->dist_utilidad ?? 0) * $r;
+                    $buckets[$bk]['dist_encargado'] += (float)($f->dist_encargado ?? 0) * $r;
+                }
+            } elseif ($f->tipo === 'otro_ingreso') {
+                $tramiteVal = (float)$f->admon + (float)$f->otros;
+                foreach ($ratios as $bk => $r) {
+                    if ($r <= 0) continue;
+                    $buckets[$bk]['tramites'] += $tramiteVal * $r;
+                }
+            }
+        }
+
+        foreach ($buckets as &$b) {
+            $b['dist_sin_asignar'] = max(0.0, $b['afiliacion'] - (
+                $b['dist_admon'] + $b['dist_asesor'] + $b['dist_retiro'] + $b['dist_utilidad'] + $b['dist_encargado']
+            ));
+            $b['total_admin']    = $b['admon'] + $b['iva'] + $b['otros'] + $b['retiro_campo'] + $b['tramites'];
+            // Total real de la factura completa: admon + afiliaciones + SS recaudado
+            $b['total_entradas'] = $b['total_admin'] + $b['afiliacion'] + $b['ss'];
+            $b['gasto_operativo'] = 0.0;
+        }
+        unset($b);
+
+        // ── Gastos del día: todos (para la lista final) + subtotales por forma de pago ──
+        // Se excluyen traspasos internos (efectivo_banco / banco_banco) y pago de planilla SS
+        // (ese pago se audita en el módulo de gastos/conciliación SS, no en este modal).
+        $tiposIncapacidad = \App\Models\Gasto::TIPOS_INCAPACIDAD;
+        $gastosRaw = DB::table('gastos AS g')
+            ->leftJoin('users AS u', 'u.id', '=', 'g.usuario_id')
+            ->where('g.aliado_id', $aid)
+            ->whereRaw('DAY(g.fecha) = ?', [$dia])
+            ->whereMonth('g.fecha', $mes)->whereYear('g.fecha', $anio)
+            ->where('g.tipo', '!=', 'efectivo_banco')
+            ->where('g.tipo', '!=', 'pago_planilla')
+            ->where('g.forma_pago', '!=', 'banco_banco')
+            ->select('g.id', 'g.tipo', 'g.descripcion', 'g.pagado_a', 'g.valor', 'g.forma_pago',
+                DB::raw("ISNULL(u.nombre, '—') AS usuario_nombre"))
+            ->orderBy('g.tipo')
+            ->get();
+
+        // gastos.forma_pago solo distingue 'efectivo' vs el resto (transferencia, transferencia_bancaria,
+        // interno, etc. — todos salen de una cuenta bancaria) ya que no hay gastos "a crédito".
+        foreach ($gastosRaw as $g) {
+            $bk = ($g->forma_pago ?: 'efectivo') === 'efectivo' ? 'efectivo' : 'consignacion';
+            if (!in_array($g->tipo, $tiposIncapacidad)) {
+                $buckets[$bk]['gasto_operativo'] += (float)$g->valor;
+            }
+        }
+
+        foreach ($buckets as &$b) {
+            $b['total_gastos'] = $b['gasto_operativo'];
+            $b['saldo_neto']   = $b['total_entradas'] - $b['total_gastos'];
+        }
+        unset($b);
+
+        // Solo mostrar buckets con algún movimiento ese día
+        $buckets = array_filter($buckets, fn($b) => abs($b['total_entradas']) > 0.5 || abs($b['total_gastos']) > 0.5);
+
+        $gastos = $gastosRaw->map(fn($g) => [
+            'tipo_label'  => \App\Models\Gasto::TIPOS[$g->tipo] ?? ucfirst($g->tipo),
+            'descripcion' => $g->descripcion ?: $g->pagado_a,
+            'usuario'     => $g->usuario_nombre,
+            'forma_pago'  => $g->forma_pago ?: 'efectivo',
+            'valor'       => (float)$g->valor,
+        ]);
+
+        $mesesEs = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+        return view('admin.informes.partials.desglose_dia', [
+            'dia' => $dia, 'mes' => $mes, 'anio' => $anio, 'mesesEs' => $mesesEs,
+            'buckets' => $buckets, 'gastos' => $gastos,
+        ]);
+    }
+
     // ── JSON: resumen préstamos pendientes del mes ────────────────────
     public function prestamesMes(Request $request)
     {

@@ -132,4 +132,52 @@ class Prestamo extends BaseFinanzasModel
     {
         return max(0.00, $this->saldo_actual - $this->monto_original);
     }
+
+    /**
+     * Accessor para obtener el último mensaje de cobro (saliente) enviado por WhatsApp
+     */
+    public function getUltimoMensajeCobroAttribute(): ?\App\Models\WhatsappMensaje
+    {
+        if (!$this->telefono_deudor) {
+            return null;
+        }
+
+        $numeroNormalizado = preg_replace('/[^0-9]/', '', $this->telefono_deudor);
+        if (strlen($numeroNormalizado) === 10) {
+            $numeroNormalizado = '57' . $numeroNormalizado;
+        }
+
+        $aliadoId = null;
+        if ($this->user_id) {
+            $user = \App\Models\User::find($this->user_id);
+            $aliadoId = $user ? $user->aliado_id : null;
+        }
+
+        if (!$aliadoId && auth()->check()) {
+            $aliadoId = auth()->user()->aliado_id;
+        }
+
+        if (!$aliadoId) {
+            return null;
+        }
+
+        $conversacion = \App\Models\WhatsappConversacion::where('aliado_id', $aliadoId)
+            ->where('wa_contact_id', $numeroNormalizado)
+            ->first();
+
+        if (!$conversacion) {
+            return null;
+        }
+
+        return \App\Models\WhatsappMensaje::where('conversacion_id', $conversacion->id)
+            ->where('direccion', 'saliente')
+            ->where(function ($q) {
+                $q->where('contenido', 'like', '%préstamo%')
+                  ->orWhere('contenido', 'like', '%prestamo%')
+                  ->orWhere('contenido', 'like', '%interes%')
+                  ->orWhere('contenido', 'like', '%cobro%');
+            })
+            ->latest('id')
+            ->first();
+    }
 }

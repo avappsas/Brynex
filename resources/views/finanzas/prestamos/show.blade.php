@@ -40,7 +40,7 @@
         <div class="ficha-datos-card">
             <h3>📊 Resumen de Saldos</h3>
             <div class="fdc-grid">
-                <div class="fdc-item">
+                <div class="fdc-item" {!! !$prestamo->ultimo_mensaje_cobro ? 'style="grid-column: span 2;"' : '' !!}>
                     <span class="fdc-label">Saldo Total a Cobrar</span>
                     <span class="fdc-val destacado">${{ number_format($prestamo->saldo_actual, 0, ',', '.') }} COP</span>
                 </div>
@@ -49,13 +49,28 @@
                     <span class="fdc-val">${{ number_format($prestamo->monto_original, 0, ',', '.') }} COP</span>
                 </div>
                 <div class="fdc-item">
-                    <span class="fdc-label">Intereses Acumulados</span>
-                    <span class="fdc-val text-warning">${{ number_format($prestamo->intereses_acumulados, 0, ',', '.') }} COP</span>
-                </div>
-                <div class="fdc-item">
                     <span class="fdc-label">Tasa de Interés</span>
                     <span class="fdc-val">{{ $prestamo->tasa_interes_mensual }}% Mensual</span>
                 </div>
+                <div class="fdc-item">
+                    <span class="fdc-label">Valor Interés Actual</span>
+                    <span class="fdc-val" style="color: #2563eb;">${{ number_format($prestamo->saldo_actual * ($prestamo->tasa_interes_mensual / 100), 0, ',', '.') }} COP</span>
+                </div>
+                <div class="fdc-item">
+                    <span class="fdc-label">Intereses Acumulados</span>
+                    <span class="fdc-val text-warning">${{ number_format($prestamo->intereses_acumulados, 0, ',', '.') }} COP</span>
+                </div>
+                @if($prestamo->ultimo_mensaje_cobro)
+                    <div class="fdc-item" style="background: rgba(34, 197, 94, 0.03); border-color: rgba(34, 197, 94, 0.2);">
+                        <span class="fdc-label" style="color: #166534; font-weight: 700;">🟢 Último Cobro WhatsApp</span>
+                        <span class="fdc-val" style="font-size: 0.75rem; font-weight: 500; color: #334155; line-height: 1.4; margin-top: 0.2rem; display: block; font-style: italic;" title="{{ $prestamo->ultimo_mensaje_cobro->contenido }}">
+                            "{{ mb_substr($prestamo->ultimo_mensaje_cobro->contenido, 0, 55) }}{{ strlen($prestamo->ultimo_mensaje_cobro->contenido) > 55 ? '...' : '' }}"
+                        </span>
+                        <small style="color: #64748b; font-size: 0.62rem; display: block; margin-top: 0.25rem;">
+                            Enviado: {{ $prestamo->ultimo_mensaje_cobro->created_at->format('d/m/Y H:i') }}
+                        </small>
+                    </div>
+                @endif
             </div>
             
             <div class="sep-light"></div>

@@ -115,6 +115,12 @@
                             ${{ number_format($p->saldo_actual, 0, ',', '.') }}
                         </span>
                     </div>
+                    @if($p->ultimo_mensaje_cobro)
+                        <div style="background: rgba(34, 197, 94, 0.04); border: 1px solid rgba(34, 197, 94, 0.12); border-radius: 8px; padding: 0.4rem 0.6rem; font-size: 0.72rem; color: #475569; margin-top: 0.6rem; display: flex; align-items: center; gap: 0.4rem; justify-content: space-between;">
+                            <span style="font-weight: 700; color: #166534; white-space: nowrap;">🟢 Último Cobro WA:</span>
+                            <span style="font-weight: 600; color: #15803d;">{{ $p->ultimo_mensaje_cobro->created_at->format('d/m/Y H:i') }}</span>
+                        </div>
+                    @endif
                 </div>
 
                 <div class="pc-footer">

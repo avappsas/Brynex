@@ -245,6 +245,21 @@
                 <span class="kpi-l">Días en mora</span>
                 <span class="kpi-v {{ $dias>=30?'danger':($dias>=25?'warning':'success') }}">{{ $dias }}d</span>
             </div>
+            <div class="kpi" style="grid-column: span 2;">
+                <span class="kpi-l">Valor Interés Actual</span>
+                <span class="kpi-v" style="color: var(--azul);">${{ number_format($prestamo->saldo_actual * ($prestamo->tasa_interes_mensual / 100), 0, ',', '.') }}</span>
+            </div>
+            @if($prestamo->ultimo_mensaje_cobro)
+            <div class="kpi" style="grid-column: span 2; background: rgba(16, 185, 129, 0.06); border-color: rgba(16, 185, 129, 0.25);">
+                <span class="kpi-l" style="color: var(--verde); font-weight: 700;">🟢 Último Cobro WhatsApp</span>
+                <span class="kpi-v" style="font-size: 0.78rem; font-weight: 500; color: var(--t2); line-height: 1.4; margin-top: 0.25rem; display: block; font-style: italic;">
+                    "{{ mb_substr($prestamo->ultimo_mensaje_cobro->contenido, 0, 60) }}{{ strlen($prestamo->ultimo_mensaje_cobro->contenido) > 60 ? '...' : '' }}"
+                </span>
+                <small style="color: var(--t3); display: block; margin-top: 0.3rem; font-size: 0.62rem;">
+                    Enviado: {{ $prestamo->ultimo_mensaje_cobro->created_at->format('d/m/Y H:i') }}
+                </small>
+            </div>
+            @endif
         </div>
 
         <!-- DATOS DEUDOR -->
