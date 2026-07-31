@@ -204,7 +204,24 @@ class WhatsappWebhookService
                     $aliadoBrygar = \App\Models\Aliado::where('nombre', 'like', '%brygar%')->first();
                     $configReenvio = $aliadoBrygar ? WhatsappConfig::paraAliado($aliadoBrygar->id) : $config;
 
-                    $this->whatsappApi->enviarTexto($numeroPersonalBrayan, $mensajeReenvio, $configReenvio);
+                    // Buscar si hay una plantilla de notificación aprobada para Brayan (para saltar restricción de 24h)
+                    $plantillaNotif = \App\Models\WhatsappPlantilla::delAliado($configReenvio->aliado_id)
+                        ->aprobadas()
+                        ->where('nombre', 'notificacion_brynex')
+                        ->first();
+
+                    if ($plantillaNotif) {
+                        $textoMensajeCorto = mb_substr($textoMensaje, 0, 1000);
+                        $this->whatsappApi->enviarTemplate(
+                            $numeroPersonalBrayan,
+                            $plantillaNotif,
+                            [$nombreDeudor, $textoMensajeCorto],
+                            $configReenvio
+                        );
+                    } else {
+                        // Fallback a texto libre
+                        $this->whatsappApi->enviarTexto($numeroPersonalBrayan, $mensajeReenvio, $configReenvio);
+                    }
                 }
             }
         } catch (\Exception $ex) {

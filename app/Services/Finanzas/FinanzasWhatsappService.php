@@ -74,8 +74,19 @@ class FinanzasWhatsappService
                 ]
             );
 
-            if ($conversacion->estado === 'cerrada') {
-                $conversacion->update(['estado' => 'abierta']);
+            $conversacionUpdates = [];
+            if ($prestamo->user_id) {
+                $conversacionUpdates['asignado_a'] = $prestamo->user_id;
+                $conversacionUpdates['estado'] = 'asignada';
+                $conversacionUpdates['bot_activo'] = false;
+            } else {
+                if ($conversacion->estado === 'cerrada') {
+                    $conversacionUpdates['estado'] = 'abierta';
+                }
+            }
+
+            if (!empty($conversacionUpdates)) {
+                $conversacion->update($conversacionUpdates);
             }
 
             // Buscar si hay una plantilla aprobada para recordatorio de préstamos
