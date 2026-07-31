@@ -177,6 +177,40 @@ class WhatsappWebhookService
             dispatch(new WhatsappDescargarMediaJob($mensaje->id, $config->aliado_id));
         }
 
+        // Reenvío al WhatsApp personal de Brayan García si el contacto es deudor de su préstamo
+        try {
+            $brayanUser = \App\Models\User::where('cedula', '1143944458')->first();
+            if ($brayanUser) {
+                $numeroLimpio = preg_replace('/[^0-9]/', '', $waFrom);
+                $ultimos10 = substr($numeroLimpio, -10);
+
+                $esPrestamoBrayan = \App\Models\Finanzas\Prestamo::where('user_id', $brayanUser->id)
+                    ->where(function ($q) use ($ultimos10) {
+                        $q->where('telefono_deudor', 'like', "%{$ultimos10}");
+                    })
+                    ->exists();
+
+                if ($esPrestamoBrayan) {
+                    $numeroPersonalBrayan = '573117762689';
+                    $nombreDeudor = $conversacion->nombre_contacto ?: $waFrom;
+                    $textoMensaje = $dataMensaje['contenido'] ?? '';
+                    if (empty($textoMensaje)) {
+                        $textoMensaje = '[' . ucfirst($tipo) . ']';
+                    }
+
+                    $mensajeReenvio = "🔔 *[Reenvío Préstamo]*\nDeudor: *{$nombreDeudor}* ({$waFrom})\nMensaje: \"{$textoMensaje}\"";
+
+                    // Buscar el aliado "brygar"
+                    $aliadoBrygar = \App\Models\Aliado::where('nombre', 'like', '%brygar%')->first();
+                    $configReenvio = $aliadoBrygar ? WhatsappConfig::paraAliado($aliadoBrygar->id) : $config;
+
+                    $this->whatsappApi->enviarTexto($numeroPersonalBrayan, $mensajeReenvio, $configReenvio);
+                }
+            }
+        } catch (\Exception $ex) {
+            Log::error("Error reenviando respuesta de préstamo a Brayan: " . $ex->getMessage());
+        }
+
         // Actualizar conversación
         $conversacion->renovarVentana();
         $conversacion->incrementarNoLeidos();

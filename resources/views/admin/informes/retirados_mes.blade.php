@@ -74,7 +74,7 @@
         <a href="?{{ http_build_query(array_merge(request()->query(), ['excel'=>1])) }}" style="background:#16a34a;color:#fff;border-radius:8px;padding:.45rem 1rem;font-size:.82rem;font-weight:600;text-decoration:none;">📥 Excel</a>
     </div>
 
-    <div style="background:#fff;border-radius:14px;box-shadow:0 1px 8px rgba(0,0,0,.06);overflow:hidden;">
+    <div style="background:#fff;border-radius:14px;box-shadow:0 1px 8px rgba(0,0,0,.06);overflow-x:auto;">
         <table style="width:100%;border-collapse:collapse;font-size:.83rem;">
             <thead>
                 <tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0;">
@@ -156,6 +156,7 @@
                         </form>
                     </th>
 
+                    <th style="padding:.65rem .8rem;text-align:center;font-size:.72rem;text-transform:uppercase;color:#64748b;min-width:90px;">Renovó</th>
                     <th style="padding:.65rem .8rem;text-align:right;font-size:.72rem;text-transform:uppercase;color:#64748b;min-width:90px;">Costo SS</th>
                     <th style="padding:.65rem .8rem;text-align:left;font-size:.72rem;text-transform:uppercase;color:#64748b;min-width:150px;">Observación</th>
                 </tr>
@@ -190,19 +191,26 @@
                             <span style="display:inline-block;padding:.18rem .55rem;border-radius:20px;font-size:.65rem;font-weight:700;background:#f1f5f9;color:#64748b;">⚪ Informativo</span>
                         @endif
                     </td>
+                    <td style="padding:.6rem .8rem;text-align:center;white-space:nowrap;">
+                        @if($r->tiene_contrato_vigente > 0)
+                            <span style="display:inline-block;padding:.18rem .55rem;border-radius:20px;font-size:.65rem;font-weight:700;background:#dcfce7;color:#166534;">🟢 Sí</span>
+                        @else
+                            <span style="display:inline-block;padding:.18rem .55rem;border-radius:20px;font-size:.65rem;font-weight:700;background:#fee2e2;color:#991b1b;">🔴 No</span>
+                        @endif
+                    </td>
                     <td style="padding:.6rem .8rem;text-align:right;font-family:monospace;font-weight:600;color:#1e40af;">
                         ${{ number_format($r->costo_ss ?? 0, 0, ',', '.') }}
                     </td>
                     <td style="padding:.6rem .8rem;color:#64748b;font-size:.8rem;max-width:220px;word-break:break-word;">{{ $r->observacion ?? '—' }}</td>
                 </tr>
                 @empty
-                <tr><td colspan="12" style="padding:2rem;text-align:center;color:#94a3b8;">Sin retirados para este período</td></tr>
+                <tr><td colspan="13" style="padding:2rem;text-align:center;color:#94a3b8;">Sin retirados para este período</td></tr>
                 @endforelse
             </tbody>
             <tfoot>
                 <tr style="background:#f8fafc;border-top:2px solid #cbd5e1;font-weight:700;color:#0d2550;">
                     <td style="padding:.65rem .8rem;text-align:left;" colspan="4">TOTALES ({{ $retirados->count() }} registros)</td>
-                    <td colspan="7"></td>
+                    <td colspan="8"></td>
                     <td style="padding:.65rem .8rem;text-align:right;font-family:monospace;font-weight:700;color:#1e40af;font-size:.85rem;">
                         ${{ number_format($retirados->sum('costo_ss'), 0, ',', '.') }}
                     </td>

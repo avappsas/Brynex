@@ -50,7 +50,7 @@ class WhatsappChatController extends Controller
         $tab          = $request->get('tab', 'general');
         $buscar       = $request->get('buscar');
 
-        $conversacion = WhatsappConversacion::delAliado($alidoId)->findOrFail($id);
+        $conversacion = $this->findConversacionProtected($alidoId, $id);
         $conversacion->resetNoLeidos();
 
         // Query directa desde WhatsappMensaje para evitar el ORDER BY heredado
@@ -122,7 +122,7 @@ class WhatsappChatController extends Controller
     public function enviarMensaje(Request $request, int $id)
     {
         $alidoId      = session('aliado_id_activo');
-        $conversacion = WhatsappConversacion::delAliado($alidoId)->findOrFail($id);
+        $conversacion = $this->findConversacionProtected($alidoId, $id);
         $config       = WhatsappConfig::paraAliado($alidoId);
 
         if (!$config->credencialesCompletas()) {
@@ -190,7 +190,7 @@ class WhatsappChatController extends Controller
     public function asignar(Request $request, int $id)
     {
         $alidoId      = session('aliado_id_activo');
-        $conversacion = WhatsappConversacion::delAliado($alidoId)->findOrFail($id);
+        $conversacion = $this->findConversacionProtected($alidoId, $id);
 
         $validated = $request->validate([
             'user_id' => 'nullable|integer|exists:users,id',
@@ -222,7 +222,7 @@ class WhatsappChatController extends Controller
     public function toggleBot(Request $request, int $id)
     {
         $alidoId      = session('aliado_id_activo');
-        $conversacion = WhatsappConversacion::delAliado($alidoId)->findOrFail($id);
+        $conversacion = $this->findConversacionProtected($alidoId, $id);
 
         $validated = $request->validate(['activo' => 'required|boolean']);
         $iaActivaAliado = IaConfiguracionAliado::where('aliado_id', $alidoId)->value('activo_whatsapp') ?? false;
@@ -261,7 +261,7 @@ class WhatsappChatController extends Controller
     public function cerrar(int $id)
     {
         $alidoId      = session('aliado_id_activo');
-        $conversacion = WhatsappConversacion::delAliado($alidoId)->findOrFail($id);
+        $conversacion = $this->findConversacionProtected($alidoId, $id);
         $conversacion->cerrar();
 
         return response()->json(['ok' => true]);
@@ -274,7 +274,7 @@ class WhatsappChatController extends Controller
     public function noContactar(Request $request, int $id)
     {
         $alidoId      = session('aliado_id_activo');
-        $conversacion = WhatsappConversacion::delAliado($alidoId)->findOrFail($id);
+        $conversacion = $this->findConversacionProtected($alidoId, $id);
 
         $validated = $request->validate(['motivo' => 'nullable|string|max:500']);
 
@@ -296,7 +296,7 @@ class WhatsappChatController extends Controller
     public function marcarLeido(int $id)
     {
         $alidoId      = session('aliado_id_activo');
-        $conversacion = WhatsappConversacion::delAliado($alidoId)->findOrFail($id);
+        $conversacion = $this->findConversacionProtected($alidoId, $id);
         $conversacion->resetNoLeidos();
 
         return response()->json(['ok' => true]);
@@ -341,6 +341,29 @@ class WhatsappChatController extends Controller
             });
         }
 
+        $brayanUser = \App\Models\User::where('cedula', '1143944458')->first();
+        $brayanUserId = $brayanUser ? $brayanUser->id : null;
+
+        if ($brayanUserId && $userId !== $brayanUserId) {
+            $telefonosDeudoresBrayan = \App\Models\Finanzas\Prestamo::where('user_id', $brayanUserId)
+                ->pluck('telefono_deudor')
+                ->filter()
+                ->map(fn($tel) => preg_replace('/[^0-9]/', '', $tel))
+                ->filter()
+                ->toArray();
+
+            if (!empty($telefonosDeudoresBrayan)) {
+                $query->where(function ($q) use ($telefonosDeudoresBrayan) {
+                    foreach ($telefonosDeudoresBrayan as $tel) {
+                        $ultimos10 = substr($tel, -10);
+                        if (strlen($ultimos10) === 10) {
+                            $q->where('wa_contact_id', 'not like', "%{$ultimos10}");
+                        }
+                    }
+                });
+            }
+        }
+
         return response()->json(['total' => (int) $query->sum('total_mensajes_no_leidos')]);
     }
 
@@ -351,7 +374,7 @@ class WhatsappChatController extends Controller
     public function apiMensajes(int $id)
     {
         $alidoId      = session('aliado_id_activo');
-        $conversacion = WhatsappConversacion::delAliado($alidoId)->findOrFail($id);
+        $conversacion = $this->findConversacionProtected($alidoId, $id);
         $conversacion->resetNoLeidos();
 
         $mensajes = WhatsappMensaje::where('conversacion_id', $conversacion->id)
@@ -408,6 +431,8 @@ class WhatsappChatController extends Controller
             return response()->json(['ok' => false, 'error' => 'Conversación no encontrada'], 404);
         }
 
+        $this->verificarAccesoConversacion($conversacion);
+
         return response()->json([
             'ok'           => true,
             'conversacion' => $this->mapearConversacionSidebar($conversacion),
@@ -436,6 +461,29 @@ class WhatsappChatController extends Controller
                 'bot_activo', 'pendiente_atencion', 'pendiente_motivo',
             ])
             ->orderByDesc('ultimo_mensaje_at');
+
+        $brayanUser = \App\Models\User::where('cedula', '1143944458')->first();
+        $brayanUserId = $brayanUser ? $brayanUser->id : null;
+
+        if ($brayanUserId && $userId !== $brayanUserId) {
+            $telefonosDeudoresBrayan = \App\Models\Finanzas\Prestamo::where('user_id', $brayanUserId)
+                ->pluck('telefono_deudor')
+                ->filter()
+                ->map(fn($tel) => preg_replace('/[^0-9]/', '', $tel))
+                ->filter()
+                ->toArray();
+
+            if (!empty($telefonosDeudoresBrayan)) {
+                $query->where(function ($q) use ($telefonosDeudoresBrayan) {
+                    foreach ($telefonosDeudoresBrayan as $tel) {
+                        $ultimos10 = substr($tel, -10);
+                        if (strlen($ultimos10) === 10) {
+                            $q->where('wa_contact_id', 'not like', "%{$ultimos10}");
+                        }
+                    }
+                });
+            }
+        }
 
         if (!$esAdmin) {
             $query->where(function ($q) use ($userId) {
@@ -642,5 +690,34 @@ class WhatsappChatController extends Controller
         ]);
 
         return ['ok' => true, 'mensaje' => $mensaje];
+    }
+
+    private function findConversacionProtected(int $alidoId, int $id): WhatsappConversacion
+    {
+        $conversacion = WhatsappConversacion::delAliado($alidoId)->findOrFail($id);
+        $this->verificarAccesoConversacion($conversacion);
+        return $conversacion;
+    }
+
+    private function verificarAccesoConversacion(WhatsappConversacion $conversacion): void
+    {
+        $userId = Auth::id();
+        $brayanUser = \App\Models\User::where('cedula', '1143944458')->first();
+        $brayanUserId = $brayanUser ? $brayanUser->id : null;
+
+        if ($brayanUserId && $userId !== $brayanUserId) {
+            $numeroLimpio = preg_replace('/[^0-9]/', '', $conversacion->wa_contact_id);
+            $ultimos10 = substr($numeroLimpio, -10);
+
+            $esDeudorBrayan = \App\Models\Finanzas\Prestamo::where('user_id', $brayanUserId)
+                ->where(function ($q) use ($ultimos10) {
+                    $q->where('telefono_deudor', 'like', "%{$ultimos10}");
+                })
+                ->exists();
+
+            if ($esDeudorBrayan) {
+                abort(403, 'No autorizado para acceder a esta conversación.');
+            }
+        }
     }
 }

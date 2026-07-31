@@ -17,12 +17,12 @@
 
         @php
         $cards = [
-            ['icono'=>'👥','label'=>'Clientes Activos','val'=>$kpis['clientes_activos'],'color'=>'#3b82f6','url'=>route('admin.informes.clientes_activos'),'desc'=>'Contratos vigentes'],
+            ['icono'=>'👥','label'=>'Clientes Activos','val'=>$kpis['clientes_unicos'].' / '.$kpis['clientes_activos'],'color'=>'#3b82f6','url'=>route('admin.informes.clientes_activos'),'desc'=>'Clientes únicos / Contratos'],
             ['icono'=>'🏢','label'=>'Por Razón Social','val'=>$kpis['razones_sociales'],'color'=>'#06b6d4','url'=>route('admin.informes.por_razon_social'),'desc'=>'RS activas'],
             ['icono'=>'📥','label'=>'Afiliaciones/Retiros','val'=>$kpis['afiliaciones_mes'].' / '.$kpis['retiros_mes'],'color'=>'#8b5cf6','url'=>route('admin.informes.afiliaciones_retiros'),'desc'=>'Este mes'],
             ['icono'=>'🏭','label'=>'Empresas Clientes','val'=>$kpis['empresas'],'color'=>'#0ea5e9','url'=>route('admin.informes.empresas_clientes'),'desc'=>'Empresas registradas'],
             ['icono'=>'🏥','label'=>'Por Entidades','val'=>'EPS/AFP/ARL','color'=>'#10b981','url'=>route('admin.informes.por_entidades'),'desc'=>'Ver distribución'],
-            ['icono'=>'🚪','label'=>'Retirados del Mes','val'=>$kpis['retiros_mes'],'color'=>'#f59e0b','url'=>route('admin.informes.retirados_mes'),'desc'=>'Este mes'],
+            ['icono'=>'🚪','label'=>'Retirados del Mes','val'=>$kpis['retiros_mes'],'color'=>'#f59e0b','url'=>route('admin.informes.retirados_mes'),'desc'=>'Sin renovar / Total'],
             ['icono'=>'🏨','label'=>'Incapacidades','val'=>$kpis['incapacidades'],'color'=>'#ef4444','url'=>route('admin.informes.incapacidades'),'desc'=>'Casos activos'],
             ['icono'=>'📌','label'=>'Tareas','val'=>$kpis['tareas'],'color'=>'#f97316','url'=>route('admin.informes.tareas'),'desc'=>'Tareas activas'],
         ];

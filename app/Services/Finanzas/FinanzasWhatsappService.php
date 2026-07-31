@@ -48,18 +48,15 @@ class FinanzasWhatsappService
             return ['ok' => false, 'message' => 'No hay credenciales de WhatsApp configuradas en el sistema para tu aliado.'];
         }
 
-        // Construir mensaje de texto amigable
-        $saldoFormateado = '$' . number_of_format_or_custom($prestamo->saldo_actual);
-        $diasMora = $prestamo->dias_mora;
-
-        $nombreAgente = $user->nombre;
-        $texto = "Hola *{$prestamo->nombre_deudor}*,\n\nTe recordamos que tienes un saldo pendiente de *{$saldoFormateado}* ";
-        if ($diasMora > 0) {
-            $texto .= "con *{$diasMora} días* de vencimiento.";
-        } else {
-            $texto .= "correspondiente a tu préstamo.";
+        // Calcular interés mínimo a pagar
+        $interesMinimo = $prestamo->intereses_acumulados;
+        if ($interesMinimo <= 0) {
+            $interesMinimo = round($prestamo->saldo_actual * ($prestamo->tasa_interes_mensual / 100), 0);
         }
-        $texto .= "\n\nAgradecemos tu atención. Saludos,\n*{$nombreAgente}*";
+        $interesMinimoFormateado = '$' . number_of_format_or_custom($interesMinimo);
+
+        // Construir mensaje de texto amigable (para el fallback de texto libre)
+        $texto = "Hola *{$prestamo->nombre_deudor}*, te recordamos que tienes un saldo pendiente de *{$saldoFormateado}* con *{$diasMora}* días de vencimiento correspondiente a tu préstamo , rogamos si puedas enviar mínimo *{$interesMinimoFormateado}* de los intereses si no puedes abonar a capital . Agradecemos tu atención.";
 
         try {
             // Obtener o crear conversación en base de datos principal
@@ -78,14 +75,49 @@ class FinanzasWhatsappService
                 $conversacion->update(['estado' => 'abierta']);
             }
 
-            // Intentar enviar mensaje de texto libre
-            $res = $this->apiService->enviarTexto($numeroNormalizado, $texto, $config);
+            // Buscar si hay una plantilla aprobada para recordatorio de préstamos
+            $plantilla = \App\Models\WhatsappPlantilla::delAliado($aliadoId)
+                ->aprobadas()
+                ->where('nombre', 'recordatorio_prestamo')
+                ->first();
+
+            $tipoMensaje = 'text';
+            $contenidoMensaje = $texto;
+
+            if ($plantilla) {
+                // Mapear parámetros para la plantilla de 4 variables:
+                // 1: Nombre Deudor, 2: Saldo Pendiente, 3: Días Vencimiento, 4: Interés Mínimo
+                $params = [
+                    $prestamo->nombre_deudor,
+                    $saldoFormateado,
+                    (string)$diasMora,
+                    $interesMinimoFormateado
+                ];
+
+                $res = $this->apiService->enviarTemplate($numeroNormalizado, $plantilla, $params, $config);
+                $tipoMensaje = 'template';
+                
+                // Mapear contenido del mensaje para guardar en BD
+                $contenidoMensaje = $plantilla->cuerpo;
+                foreach ($params as $index => $paramValue) {
+                    $contenidoMensaje = str_replace('{{' . ($index + 1) . '}}', $paramValue, $contenidoMensaje);
+                }
+            } else {
+                // Intentar enviar mensaje de texto libre
+                $res = $this->apiService->enviarTexto($numeroNormalizado, $texto, $config);
+            }
 
             if (!$res['ok']) {
-                // Si falla, retornamos el error detallado (puede ser por ventana de 24 horas)
+                $msgError = 'Meta API rechazó el mensaje.';
+                if (!$plantilla) {
+                    $msgError .= ' Para iniciar la conversación fuera de la ventana de 24 horas, debes crear y aprobar una plantilla llamada "recordatorio_prestamo".';
+                } else {
+                    $msgError .= ' Asegúrate de que las variables de la plantilla "recordatorio_prestamo" coincidan.';
+                }
+                
                 return [
                     'ok' => false,
-                    'message' => 'Meta API rechazó el mensaje. Es posible que debas iniciar conversación usando una plantilla de cobros.',
+                    'message' => $msgError,
                     'error' => $res['error'] ?? 'Desconocido',
                 ];
             }
@@ -96,8 +128,8 @@ class FinanzasWhatsappService
                 'aliado_id' => $aliadoId,
                 'wa_message_id' => $res['wa_message_id'] ?? 'fin_wa_' . uniqid(),
                 'direccion' => 'saliente',
-                'tipo' => 'text',
-                'contenido' => $texto,
+                'tipo' => $tipoMensaje,
+                'contenido' => $contenidoMensaje,
                 'estado' => 'enviado',
                 'usuario_id' => $user->id,
             ]);

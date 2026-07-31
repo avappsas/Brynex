@@ -6,7 +6,7 @@
     <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1.25rem;flex-wrap:wrap;">
         <a href="{{ route('admin.informes.hub') }}" style="color:#64748b;font-size:.82rem;text-decoration:none;">← Informes</a>
         <h1 style="font-size:1.2rem;font-weight:700;color:#0d2550;flex:1;">👥 Clientes Activos</h1>
-        <span style="background:#dbeafe;color:#1e40af;font-size:.82rem;font-weight:700;padding:.3rem .75rem;border-radius:999px;">{{ $total }} vigentes</span>
+        <span style="background:#dbeafe;color:#1e40af;font-size:.82rem;font-weight:700;padding:.3rem .75rem;border-radius:999px;">{{ $totalClientes }} clientes / {{ $total }} contratos</span>
     </div>
 
     <div style="background:#fff;border-radius:14px;box-shadow:0 1px 8px rgba(0,0,0,.06);padding:1.25rem;margin-bottom:1.25rem;">
@@ -79,7 +79,7 @@
         </form>
     </div>
 
-    <div style="background:#fff;border-radius:14px;box-shadow:0 1px 8px rgba(0,0,0,.06);overflow:hidden;">
+    <div style="background:#fff;border-radius:14px;box-shadow:0 1px 8px rgba(0,0,0,.06);overflow-x:auto;">
         <table style="width:100%;border-collapse:collapse;font-size:.83rem;">
             <thead>
                 <tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0;">

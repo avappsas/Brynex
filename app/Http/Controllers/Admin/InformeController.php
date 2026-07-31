@@ -40,27 +40,39 @@ class InformeController extends Controller
         $mesAnterior  = $mes === 1 ? 12 : $mes - 1;
         $anioAnterior = $mes === 1 ? $anio - 1 : $anio;
 
+        $retirosBaseQuery = DB::table('contratos AS c')
+            ->where('c.aliado_id',$aid)
+            ->where('c.estado','retirado')
+            ->where(function ($q) use ($mes, $anio, $mesAnterior, $anioAnterior) {
+                $q->where(function ($q1) use ($mes, $anio) {
+                    $q1->where('c.tipo_modalidad_id', 11)
+                       ->whereMonth('c.fecha_retiro', $mes)
+                       ->whereYear('c.fecha_retiro', $anio);
+                })->orWhere(function ($q2) use ($mesAnterior, $anioAnterior) {
+                    $q2->where(function ($q3) {
+                        $q3->whereNull('c.tipo_modalidad_id')
+                           ->orWhere('c.tipo_modalidad_id', '<>', 11);
+                    })
+                    ->whereMonth('c.fecha_retiro', $mesAnterior)
+                    ->whereYear('c.fecha_retiro', $anioAnterior);
+                });
+            });
+
+        $retirosTotal = (clone $retirosBaseQuery)->count();
+        $retirosNoRenovados = (clone $retirosBaseQuery)->whereNotExists(function ($query) use ($aid) {
+            $query->select(DB::raw(1))
+                ->from('contratos AS c2')
+                ->whereColumn('c2.cedula', 'c.cedula')
+                ->where('c2.aliado_id', $aid)
+                ->where('c2.estado', 'vigente');
+        })->count();
+
         $kpis = [
             'clientes_activos'   => DB::table('contratos')->where('aliado_id',$aid)->where('estado','vigente')->count(),
+            'clientes_unicos'    => DB::table('contratos')->where('aliado_id',$aid)->where('estado','vigente')->count(DB::raw('DISTINCT cedula')),
             'razones_sociales'   => DB::table('razones_sociales')->where('aliado_id',$aid)->where('estado','Activa')->count(),
             'afiliaciones_mes'   => DB::table('contratos')->where('aliado_id',$aid)->whereMonth('fecha_ingreso', $mes)->whereYear('fecha_ingreso', $anio)->count(),
-            'retiros_mes'        => DB::table('contratos AS c')
-                ->where('c.aliado_id',$aid)
-                ->where('c.estado','retirado')
-                ->where(function ($q) use ($mes, $anio, $mesAnterior, $anioAnterior) {
-                    $q->where(function ($q1) use ($mes, $anio) {
-                        $q1->where('c.tipo_modalidad_id', 11)
-                           ->whereMonth('c.fecha_retiro', $mes)
-                           ->whereYear('c.fecha_retiro', $anio);
-                    })->orWhere(function ($q2) use ($mesAnterior, $anioAnterior) {
-                        $q2->where(function ($q3) {
-                            $q3->whereNull('c.tipo_modalidad_id')
-                               ->orWhere('c.tipo_modalidad_id', '<>', 11);
-                        })
-                        ->whereMonth('c.fecha_retiro', $mesAnterior)
-                        ->whereYear('c.fecha_retiro', $anioAnterior);
-                    });
-                })->count(),
+            'retiros_mes'        => $retirosNoRenovados . ' / ' . $retirosTotal,
             'empresas'           => DB::table('empresas')->where('aliado_id',$aid)->count(),
             'incapacidades'      => DB::table('incapacidades')->where('aliado_id',$aid)->whereNull('deleted_at')->whereNotIn('estado',['cerrado','rechazado'])->count(),
             'tareas'             => DB::table('tareas')->where('aliado_id',$aid)->whereNull('deleted_at')->whereIn('estado',['pendiente','en_gestion','en_espera'])->count(),
@@ -189,8 +201,10 @@ class InformeController extends Controller
             ->orderBy('pl.nombre')
             ->get();
 
+        $totalClientes = DB::table('contratos')->where('aliado_id',$aid)->where('estado','vigente')->count(DB::raw('DISTINCT cedula'));
+
         return view('admin.informes.clientes_activos', compact(
-            'clientes','total','buscar',
+            'clientes','total','totalClientes','buscar',
             'razones','epsList','cajas','pensiones','modalidades','planes',
             'fRazon','fEps','fCaja','fPension','fModalidad','fPlan'
         ));
@@ -335,6 +349,7 @@ class InformeController extends Controller
                 DB::raw("LTRIM(RTRIM(cl.primer_nombre+' '+ISNULL(cl.segundo_nombre,'')+' '+cl.primer_apellido+' '+ISNULL(cl.segundo_apellido,''))) AS nombre_completo"),
                 'rs.razon_social','mr.nombre AS motivo',
                 'pl.nombre AS plan_nombre','tm.tipo_modalidad AS modalidad_nombre',
+                DB::raw("(SELECT COUNT(*) FROM contratos WHERE cedula = c.cedula AND aliado_id = c.aliado_id AND estado = 'vigente') AS tiene_contrato_vigente"),
                 DB::raw("(SELECT TOP 1 total_ss FROM facturas WHERE contrato_id = c.id AND numero_factura = 0 AND deleted_at IS NULL ORDER BY id DESC) AS costo_ss"),
                 DB::raw("(SELECT TOP 1 dias_cotizados FROM facturas WHERE contrato_id = c.id AND numero_factura = 0 AND deleted_at IS NULL ORDER BY id DESC) AS dias_retiro"))
             ->orderBy('c.fecha_retiro')->get();
@@ -379,8 +394,8 @@ class InformeController extends Controller
         $retirados = $retirados->values();
 
         if ($request->input('excel')) return $this->exportCsv($retirados,'retirados_mes',
-            ['Cédula','Nombre','Razón Social','Plan','Modalidad','Días Retiro','Fecha Retiro','Fecha Marcado Retiro','Motivo','Costo SS Retiro','Tipo Retiro','Observación'],
-            fn($r)=>[$r->cedula,$r->nombre_completo,$r->razon_social,$r->plan_nombre ?? '—',$r->modalidad_nombre ?? '—',$r->dias_retiro ?? 0,sqldate($r->fecha_retiro)?->format('d/m/Y'),sqldate($r->fecha_marcado_retiro)?->format('d/m/Y H:i'),$r->motivo,$r->costo_ss ? (int)$r->costo_ss : 0, $r->tipo_retiro, $r->observacion]);
+            ['Cédula','Nombre','Razón Social','Plan','Modalidad','Días Retiro','Fecha Retiro','Fecha Marcado Retiro','Motivo','Costo SS Retiro','Tipo Retiro','Observación','Renovó'],
+            fn($r)=>[$r->cedula,$r->nombre_completo,$r->razon_social,$r->plan_nombre ?? '—',$r->modalidad_nombre ?? '—',$r->dias_retiro ?? 0,sqldate($r->fecha_retiro)?->format('d/m/Y'),sqldate($r->fecha_marcado_retiro)?->format('d/m/Y H:i'),$r->motivo,$r->costo_ss ? (int)$r->costo_ss : 0, $r->tipo_retiro, $r->observacion, $r->tiene_contrato_vigente > 0 ? 'Sí' : 'No']);
 
         return view('admin.informes.retirados_mes', compact(
             'retirados','mes','anio',
