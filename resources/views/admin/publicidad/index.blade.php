@@ -82,8 +82,8 @@ $colorEstado = [
     </div>
   </div>
   @if($pub->costo_estimado_usd !== null)
-  <span style="font-size:0.72rem;color:#64748b;white-space:nowrap;" title="Costo estimado de generación con IA">
-    US${{ number_format($pub->costo_estimado_usd, 3) }}
+  <span style="font-size:0.72rem;color:#64748b;white-space:nowrap;" title="Costo estimado de generación con IA (≈ US${{ number_format($pub->costo_estimado_usd, 3) }}, TRM ${{ number_format($trmCop, 2) }})">
+    ${{ number_format($pub->costo_estimado_usd * $trmCop, 0, ',', '.') }} COP
   </span>
   @endif
   @php [$bg,$fg] = $colorEstado[$pub->estado] ?? ['#f1f5f9','#475569']; @endphp

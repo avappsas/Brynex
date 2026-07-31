@@ -68,9 +68,10 @@ class AutopilotGenerator
         $logoParaReferencia = $aliado->logo_marca_claro ?: $aliado->logo;
         $rutaLogo = $logoParaReferencia ? \Illuminate\Support\Facades\Storage::disk('public')->path($logoParaReferencia) : null;
         $promptImagen = $concepto['prompt_imagen']
-            . ' Compón la pieza como un anuncio publicitario profesional para redes sociales, no como una simple foto o ilustración de escena sin texto: '
-            . 'decide tú el texto en español que mejor comunique el mensaje (un titular corto y contundente, y si aporta, una línea de apoyo) e intégralo en el diseño con tipografía bold, alto contraste y buena jerarquía visual. '
-            . 'Agrega también íconos o elementos gráficos de apoyo si refuerzan el mensaje (alertas, chulos, sellos, flechas, badges), con un estilo coherente al resto de la pieza. '
+            . ' Compórtate como un director creativo experto en publicidad para redes sociales (Meta Ads): compón la pieza para llamar la atención, verse profesional y generar clics — no como una simple foto o ilustración de escena sin texto. '
+            . 'Decide tú, en español, todo el contenido: un titular principal corto y muy impactante (máximo 5 palabras, que genere curiosidad o resuelva un problema), un subtítulo que explique el beneficio principal, entre 3 y 5 beneficios clave (cada uno con un ícono relacionado + texto corto), una frase de urgencia (ej. cupos limitados, solo hoy, inscripciones abiertas) y un llamado a la acción claro. '
+            . 'Usa tipografía bold, alto contraste, degradados modernos, sombras y buena jerarquía visual — estilo campaña premium, no plano. '
+            . 'Si aporta, agrega elementos de conversión como fecha, cupo limitado, descuento o garantía — pero NUNCA generes un código QR (los que dibuja un modelo de imagen no funcionan, no escanean de verdad), y NUNCA inventes datos concretos que no te haya dado (teléfonos, precios, fechas exactas, nombres de personas) — mantén esas menciones genéricas salvo los precios reales ya incluidos arriba. '
             . 'Cuida la ortografía y las tildes del español. '
             . 'Deja la esquina inferior derecha completamente libre de texto, íconos o elementos gráficos — ahí se agrega el logo de la marca por separado, y no debe quedar tapado ni encimado con nada.';
         if ($rutaLogo) {
