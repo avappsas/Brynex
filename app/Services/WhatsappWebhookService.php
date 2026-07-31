@@ -204,23 +204,35 @@ class WhatsappWebhookService
                     $aliadoBrygar = \App\Models\Aliado::where('nombre', 'like', '%brygar%')->first();
                     $configReenvio = $aliadoBrygar ? WhatsappConfig::paraAliado($aliadoBrygar->id) : $config;
 
-                    // Buscar si hay una plantilla de notificación aprobada para Brayan (para saltar restricción de 24h)
-                    $plantillaNotif = \App\Models\WhatsappPlantilla::delAliado($configReenvio->aliado_id)
-                        ->aprobadas()
-                        ->where('nombre', 'notificacion_brynex')
+                    // Verificar si hay ventana de 24h activa con el número personal de Brayan
+                    $conversacionBrayan = \App\Models\WhatsappConversacion::where('aliado_id', $configReenvio->aliado_id)
+                        ->where('wa_contact_id', $numeroPersonalBrayan)
                         ->first();
 
-                    if ($plantillaNotif) {
-                        $textoMensajeCorto = mb_substr($textoMensaje, 0, 1000);
-                        $this->whatsappApi->enviarTemplate(
-                            $numeroPersonalBrayan,
-                            $plantillaNotif,
-                            [$nombreDeudor, $textoMensajeCorto],
-                            $configReenvio
-                        );
-                    } else {
-                        // Fallback a texto libre
+                    $ventanaActivaConBrayan = $conversacionBrayan ? $conversacionBrayan->ventanaActiva() : false;
+
+                    if ($ventanaActivaConBrayan) {
+                        // Si la ventana está activa, enviar como texto libre para ahorrar costos
                         $this->whatsappApi->enviarTexto($numeroPersonalBrayan, $mensajeReenvio, $configReenvio);
+                    } else {
+                        // Buscar si hay una plantilla de notificación aprobada para Brayan (para saltar restricción de 24h)
+                        $plantillaNotif = \App\Models\WhatsappPlantilla::delAliado($configReenvio->aliado_id)
+                            ->aprobadas()
+                            ->where('nombre', 'notificacion_brynex')
+                            ->first();
+
+                        if ($plantillaNotif) {
+                            $textoMensajeCorto = mb_substr($textoMensaje, 0, 1000);
+                            $this->whatsappApi->enviarTemplate(
+                                $numeroPersonalBrayan,
+                                $plantillaNotif,
+                                [$nombreDeudor, $textoMensajeCorto],
+                                $configReenvio
+                            );
+                        } else {
+                            // Fallback a texto libre si no existe la plantilla
+                            $this->whatsappApi->enviarTexto($numeroPersonalBrayan, $mensajeReenvio, $configReenvio);
+                        }
                     }
                 }
             }
