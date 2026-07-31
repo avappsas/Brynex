@@ -5,20 +5,52 @@
 **Contexto crítico:** el repositorio se auto-despliega a producción (brynex.co) y la base de datos local **es** la de producción. Todo lo versionado y accesible por web está publicado.
 **Datos tratados:** cédulas, salarios, historias clínicas e incapacidades de afiliados colombianos → aplica **Ley 1581 de 2012** (datos sensibles de salud, art. 5–6).
 
-**Estado:** informe de hallazgos. **No se ha modificado ningún archivo de la aplicación.**
+**Estado:** correcciones aplicadas el 31/07/2026 en la rama `seguridad/correcciones`.
 
 ---
 
 ## Resumen
 
-| Severidad | Cantidad |
-|---|---|
-| CRÍTICO | 6 |
-| ALTO | 5 |
-| MEDIO | 6 |
-| BAJO | 3 |
+| Severidad | Total | Corregido | Pendiente |
+|---|---|---|---|
+| CRÍTICO | 6 | 6 | — |
+| ALTO | 5 | 3 | 2 (A-1, A-2: estructurales) |
+| MEDIO | 6 | 5 | 1 (M-3: verificar `.env` del servidor) |
+| BAJO | 3 | 2 | 1 (B-1: sin impacto) |
 
-Los 6 críticos son explotables hoy, sin autenticación o con una cuenta de aliado cualquiera. Cuatro de ellos exponen datos personales de terceros; dos permiten modificar producción.
+Los 6 críticos eran explotables sin autenticación o con una cuenta de aliado cualquiera. Todos están cerrados en código.
+
+### Estado por hallazgo
+
+| # | Hallazgo | Estado |
+|---|---|---|
+| C-1 | `public/tmp_fix_cedula.php` | ✅ eliminado |
+| C-2 | `public/debug_saldos.php` | ✅ eliminado |
+| C-3 | `public/fix_config_cache.php` | ✅ eliminado |
+| C-4 | Documentos médicos públicos | ✅ disco privado + ruta autenticada — **falta correr la migración de archivos en el servidor** |
+| C-5 | IDOR en Incapacidades | ✅ 12 accesos filtrados por aliado |
+| C-6 | Login sin throttle / session fixation | ✅ `throttle:5,1` + `regenerate()` |
+| A-1 | Rutas sin permisos | ⬜ pendiente (estructural) |
+| A-2 | Sin aislamiento multi-tenant en modelos | ⬜ pendiente (estructural) |
+| A-3 | Upload sin `mimes` | ✅ corregido |
+| A-4 | Scripts de mantenimiento versionados | ✅ 25 eliminados |
+| A-5 | Datos personales versionados | ✅ fuera de git (siguen en disco local) |
+| M-1 | Token de WhatsApp en `.env.example` | ✅ vaciado — **falta rotarlo en Meta** |
+| M-2 | `SESSION_SECURE_COOKIE` | ✅ documentado — **falta ponerlo en el `.env` del servidor** |
+| M-3 | `APP_DEBUG=true` | ⬜ **verificar el `.env` del servidor** |
+| M-4 | Mass assignment en `Empresa` | ✅ `$fillable` explícito |
+| M-5 | XSS en flash de backups | ✅ escapado |
+| M-6 | Portal público sin throttle | ✅ `throttle:10,1` — caducidad del token no aplicada (decisión de negocio) |
+| B-1 | `whereRaw` con constantes | ⬜ no explotable, sin cambio |
+| B-2 | `/logout` fuera de `auth` | ⬜ sin impacto real |
+| B-3 | SVG en logo de aliado | ✅ eliminado de los mimes |
+
+### Acciones pendientes fuera del código
+
+1. **Ejecutar en el servidor:** `php artisan incapacidades:migrar-documentos --dry-run` y luego sin la bandera. Los documentos ya subidos siguen en el disco público del servidor; el código los sigue encontrando mientras tanto, pero siguen siendo accesibles por URL hasta que se muevan.
+2. **Rotar** `WHATSAPP_WEBHOOK_VERIFY_TOKEN` en Meta.
+3. **Revisar el `.env` del servidor:** `APP_DEBUG=false`, `APP_ENV=production`, `SESSION_SECURE_COOKIE=true`.
+4. **Revocar** el GitHub PAT en texto plano de `.claude/settings.local.json`.
 
 ---
 
