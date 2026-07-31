@@ -840,27 +840,7 @@ class IncapacidadController extends Controller
         $inc     = $this->incapacidadDelAliado($id);
         $alidoId = session('aliado_id_activo') ?? Auth::user()->aliado_id;
 
-        // Si es entrada_incapacidad → crear también en consignaciones (Canal 5 entrada bancaria)
-        $consignacionId = null;
-        if ($request->tipo === 'entrada_incapacidad' && $request->banco_cuenta_id) {
-            $cons = DB::table('consignaciones')->insertGetId([
-                'aliado_id'      => $alidoId,
-                'incapacidad_id' => $inc->id,
-                'banco_cuenta_id'=> $request->banco_cuenta_id,
-                'fecha'          => $request->fecha,
-                'valor'          => $request->valor,
-                'referencia'     => $request->referencia,
-                'confirmado'     => true,
-                'observacion'    => $request->observacion,
-                'usuario_id'     => Auth::id(),
-                'tipo'           => 'ingreso',
-                'created_at'     => now(),
-                'updated_at'     => now(),
-            ]);
-            $consignacionId = $cons;
-        }
-
-        // Guardar imagen si viene
+        // Guardar imagen si viene (I/O de disco, no participa de la transacción de BD)
         $imagenPath = null;
         if ($request->hasFile('imagen')) {
             $imagenPath = $request->file('imagen')->store(
@@ -869,27 +849,52 @@ class IncapacidadController extends Controller
             );
         }
 
-        \App\Models\AbonoIncapacidad::create([
-            'aliado_id'       => $alidoId,
-            'incapacidad_id'  => $inc->id,
-            'razon_social_id' => $request->razon_social_id ?: $inc->razon_social_id,
-            'tipo'            => $request->tipo,
-            'valor'           => $request->valor,
-            'fecha'           => $request->fecha,
-            'banco_cuenta_id' => $request->banco_cuenta_id ?: null,
-            'consignacion_id' => $consignacionId,
-            'usuario_id'      => Auth::id(),
-            'observacion'     => $request->observacion,
-            'imagen_path'     => $imagenPath,
-        ]);
-
-        // Si es pago al cliente → marcar estado_pago
-        if ($request->tipo === 'pago_cliente') {
-            $saldo = $inc->fresh()->saldo_pendiente;
-            if ($saldo <= 0) {
-                $inc->update(['estado_pago' => 'pagado_afiliado', 'estado' => 'pagada']);
+        // La entrada bancaria (consignaciones) y el abono deben registrarse juntos:
+        // sin transacción, un fallo entre las dos escrituras dejaba una consignación
+        // (dinero marcado como entrado al banco) sin ningún AbonoIncapacidad que la
+        // respalde — un fantasma contable. Ver docs/auditoria-calidad.md, hallazgo E-1.
+        DB::transaction(function () use ($request, $inc, $alidoId, $imagenPath) {
+            // Si es entrada_incapacidad → crear también en consignaciones (Canal 5 entrada bancaria)
+            $consignacionId = null;
+            if ($request->tipo === 'entrada_incapacidad' && $request->banco_cuenta_id) {
+                $consignacionId = DB::table('consignaciones')->insertGetId([
+                    'aliado_id'      => $alidoId,
+                    'incapacidad_id' => $inc->id,
+                    'banco_cuenta_id'=> $request->banco_cuenta_id,
+                    'fecha'          => $request->fecha,
+                    'valor'          => $request->valor,
+                    'referencia'     => $request->referencia,
+                    'confirmado'     => true,
+                    'observacion'    => $request->observacion,
+                    'usuario_id'     => Auth::id(),
+                    'tipo'           => 'ingreso',
+                    'created_at'     => now(),
+                    'updated_at'     => now(),
+                ]);
             }
-        }
+
+            \App\Models\AbonoIncapacidad::create([
+                'aliado_id'       => $alidoId,
+                'incapacidad_id'  => $inc->id,
+                'razon_social_id' => $request->razon_social_id ?: $inc->razon_social_id,
+                'tipo'            => $request->tipo,
+                'valor'           => $request->valor,
+                'fecha'           => $request->fecha,
+                'banco_cuenta_id' => $request->banco_cuenta_id ?: null,
+                'consignacion_id' => $consignacionId,
+                'usuario_id'      => Auth::id(),
+                'observacion'     => $request->observacion,
+                'imagen_path'     => $imagenPath,
+            ]);
+
+            // Si es pago al cliente → marcar estado_pago
+            if ($request->tipo === 'pago_cliente') {
+                $saldo = $inc->fresh()->saldo_pendiente;
+                if ($saldo <= 0) {
+                    $inc->update(['estado_pago' => 'pagado_afiliado', 'estado' => 'pagada']);
+                }
+            }
+        });
 
         $inc->refresh()->load('abonos');
         return response()->json([

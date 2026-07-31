@@ -1541,16 +1541,17 @@ class CobrosController extends Controller
             ->filter(fn($c) => !isset($contratoIdsEnviadosSet[$c->id]) && !empty($normalizarCelular($c->cliente?->celular)))
             ->take(30);
 
+        // Día hábil configurado por el aliado: no depende de $c, se calcula una sola
+        // vez fuera del loop en vez de repetir la misma consulta hasta 30 veces.
+        $cfgAliado = DB::table('configuracion_aliado')
+            ->where('aliado_id', $aliadoId)
+            ->whereNull('plan_id')
+            ->first(['mora_dia_habil_inicio']);
+        $plazoDias = $cfgAliado?->mora_dia_habil_inicio ? (string)$cfgAliado->mora_dia_habil_inicio : '10';
+
         foreach ($contratosValidosPreview as $c) {
             $nombreCliente = $c->cliente?->nombre_corto ?? 'Cliente';
             $nombreAliadoEfectivo  = $config->nombre_cuenta ?: $nombreAliado;
-            
-            // Obtener el día hábil configurado por el aliado
-            $cfgAliado = DB::table('configuracion_aliado')
-                ->where('aliado_id', $aliadoId)
-                ->whereNull('plan_id')
-                ->first(['mora_dia_habil_inicio']);
-            $plazoDias = $cfgAliado?->mora_dia_habil_inicio ? (string)$cfgAliado->mora_dia_habil_inicio : '10';
 
             $celularSoporte = $config->numero_telefono ?: 'no tiene configurado';
 
@@ -2479,16 +2480,17 @@ class CobrosController extends Controller
             ->filter(fn($e) => !isset($empresaIdsEnviadosSet[$e->id]) && !empty($normalizarCelular($e->telefono ?: $e->celular)))
             ->take(30);
 
+        // Día hábil configurado por el aliado: no depende de $e, se calcula una sola
+        // vez fuera del loop en vez de repetir la misma consulta hasta 30 veces.
+        $cfgAliado = DB::table('configuracion_aliado')
+            ->where('aliado_id', $aliadoId)
+            ->whereNull('plan_id')
+            ->first(['mora_dia_habil_inicio']);
+        $plazoDias = $cfgAliado?->mora_dia_habil_inicio ? (string)$cfgAliado->mora_dia_habil_inicio : '10';
+
         foreach ($empresasValidasPreview as $e) {
             $nombreContacto = $e->contacto ?: $e->empresa;
             $nombreAliadoEfectivo = $config->nombre_cuenta ?: $nombreAliado;
-            
-            // Obtener el día hábil configurado por el aliado
-            $cfgAliado = DB::table('configuracion_aliado')
-                ->where('aliado_id', $aliadoId)
-                ->whereNull('plan_id')
-                ->first(['mora_dia_habil_inicio']);
-            $plazoDias = $cfgAliado?->mora_dia_habil_inicio ? (string)$cfgAliado->mora_dia_habil_inicio : '10';
 
             $celularSoporte = $config->numero_telefono ?: 'no tiene configurado';
 

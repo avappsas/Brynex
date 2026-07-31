@@ -752,8 +752,14 @@ class FacturacionController extends Controller
         // ─── Validar orden secuencial de facturación ────────────────────────
         // Solo para facturas individuales (single contrato); en masivo se omite
         // la validación por desempeño, ya que empresa gestiona su propio orden.
+        // Se cargan todos los contratos de una vez (antes: 1 query por cada id
+        // seleccionado) — ver docs/auditoria-calidad.md, hallazgo E-3.
+        $contratosChk = Contrato::where('aliado_id', $aliadoId)
+            ->whereIn('id', $validated['contratos'])
+            ->get()
+            ->keyBy('id');
         foreach ($validated['contratos'] as $cId) {
-            $cChk = Contrato::where('aliado_id', $aliadoId)->find($cId);
+            $cChk = $contratosChk->get($cId);
             if ($cChk) {
                 $gap = $this->verificarOrdenFacturacion($aliadoId, $cChk, $mes, $anio);
                 if ($gap) {
@@ -1757,13 +1763,20 @@ class FacturacionController extends Controller
         // ─── Liquidar cartera pendiente de préstamos anteriores ────────────────────
         // Se ejecuta FUERA de la transacción principal para que un error aqui
         // no revierta las facturas ya creadas. Tiene su propia transacción interna.
+        $carteraLiquidada = true;
         if (!empty($validated['incluir_cartera']) && !empty($validated['valor_cartera']) && !empty($facturasCreadas)) {
-            $this->_liquidarCartera($aliadoId, $validated, $facturasCreadas);
+            $carteraLiquidada = $this->_liquidarCartera($aliadoId, $validated, $facturasCreadas);
         }
 
         // Éxito con posibles omitidos parciales
         $msgOmit = !empty($omitidos)
             ? ' | ' . count($omitidos) . ' omitido(s) por duplicado.'
+            : '';
+        // La factura sí se creó (por diseño, ver _liquidarCartera); esto solo avisa
+        // que la cartera pendiente asociada quedó sin liquidar y hay que revisarla
+        // a mano — antes ese aviso solo quedaba en el log.
+        $msgCartera = !$carteraLiquidada
+            ? ' | ⚠ No se pudo liquidar la cartera pendiente de préstamos; revísela manualmente.'
             : '';
 
         // ─── Limpiar NP provisional de contratos que sí fueron facturados ──
@@ -1778,7 +1791,8 @@ class FacturacionController extends Controller
 
         return response()->json([
             'ok'              => true,
-            'mensaje'         => count($facturasCreadas) . ' factura(s) generada(s) correctamente.' . $msgOmit,
+            'mensaje'         => count($facturasCreadas) . ' factura(s) generada(s) correctamente.' . $msgOmit . $msgCartera,
+            'cartera_liquidada' => $carteraLiquidada,
             'facturas'        => $facturasCreadas,
             'omitidos'        => $omitidos,
             'recibo_url'      => $primera ? route('admin.facturacion.recibo', $primera) : null,
@@ -1804,11 +1818,16 @@ class FacturacionController extends Controller
      * NO afecta el informe financiero: los ingresos se calculan de admon+seguro+mensajeria,
      * nunca de la tabla abonos. Sin riesgo de duplicación de ingresos.
      */
-    private function _liquidarCartera(int $aliadoId, array $validated, array $facturasCreadas): void
+    /**
+     * @return bool true si no había nada que liquidar o si liquidó correctamente;
+     *              false solo si un intento real de liquidar falló (el llamador
+     *              usa esto para avisarle al usuario, no solo dejarlo en el log).
+     */
+    private function _liquidarCartera(int $aliadoId, array $validated, array $facturasCreadas): bool
     {
         $empresaId   = $validated['empresa_id'] ?? null;
         $valorCartera = (int)($validated['valor_cartera'] ?? 0);
-        if ($valorCartera <= 0) return;
+        if ($valorCartera <= 0) return true;
 
         // Buscar cédulas de los contratos facturados
         $cedulas = Contrato::whereIn('id', $validated['contratos'])->pluck('cedula');
@@ -1827,7 +1846,7 @@ class FacturacionController extends Controller
         }
 
         $facturasPrestamo = $query->get();
-        if ($facturasPrestamo->isEmpty()) return;
+        if ($facturasPrestamo->isEmpty()) return true;
 
         // Texto de referencia para el Abono
         $nuevaFactura = Factura::find($facturasCreadas[0] ?? null);
@@ -1921,14 +1940,21 @@ class FacturacionController extends Controller
                     }
                 }
             });
+
+            return true;
         } catch (\Throwable $e) {
             // Si falla el cierre del préstamo, loguear pero NO revertir la factura ya creada.
+            // El llamador usa el false para avisarle al usuario en la respuesta —
+            // antes solo quedaba en storage/logs y nadie se enteraba (ver
+            // docs/auditoria-calidad.md, hallazgo E-6).
             \Log::warning("[_liquidarCartera] No se pudo liquidar la cartera: " . $e->getMessage(), [
                 'aliado_id'    => $aliadoId,
                 'empresa_id'   => $empresaId,
                 'valor_cartera'=> $valorCartera,
                 'facturas'     => $facturasCreadas,
             ]);
+
+            return false;
         }
     }
 

@@ -279,19 +279,28 @@ líneas de contexto.
 
 ## U-1 — Sin política consistente de paginación
 
-24 de 45 controladores admin usan `->get()` en `index()` sin `paginate()`. Verificado con
-cuidado: varios están bien así porque la consulta ya viene acotada por otro filtro (mes/año
-en `ComisionesController`, o lista de empresas de un aliado en `FacturacionController`, que
-son colecciones pequeñas por naturaleza). Pero al menos dos quedan genuinamente sin cota
-de crecimiento y ya manejan volumen alto hoy:
+24 de 45 controladores admin usan `->get()` en `index()` sin `paginate()`. Revisados con
+cuidado — la mayoría está bien así: la consulta ya viene acotada por otro filtro
+(mes/año en `ComisionesController`; y **corrección tras revisión más profunda**:
+`AfiliacionController::index` también filtra por `whereMonth/whereYear('fecha_ingreso', ...)`
+— solo trae las afiliaciones de un mes puntual, no "todos los contratos vigentes" como
+decía una versión anterior de este hallazgo).
 
-- **`AfiliacionController::index`** — todos los contratos vigentes del aliado con sus
-  radicados, sin límite. Para un aliado con miles de cotizantes activos, es una sola
-  respuesta con todo.
-- **`GestionArlController::index`** — mismo patrón, contratos con `tipo_modalidad_id = 15`.
+El único caso genuinamente sin cota de crecimiento verificado es:
 
-**Impacto:** medio (lentitud, no error). **Esfuerzo:** S por controlador — agregar
-`paginate()`, ajustar la vista para los links de página.
+- **`GestionArlController::index`** — filtra solo por `aliado_id + estado='vigente' +
+  tipo_modalidad_id=15`, sin acotar por fecha. Pero **no es una corrección aislada**: el
+  semáforo (criterio de orden por defecto) se calcula y se ordena **en PHP después**
+  de `$query->get()` (comentario en el propio código: `// semaforo se ordena en PHP
+  después`). Agregar `->paginate()` antes de ese punto paginaría la colección sin
+  ordenar todavía, rompiendo el orden por defecto de la vista. El fix real requiere
+  ordenar primero y paginar manualmente sobre la colección ya ordenada (o mover el
+  cálculo del semáforo a SQL) — no se aplicó en esta tanda por ese motivo.
+
+**Impacto:** bajo-medio hoy (en la práctica, los contratos ARL independiente vencen cada
+28 días — `GestionArlController::DIAS_VIGENCIA` — así que la tabla probablemente no crece
+sin límite en la práctica, aunque la consulta no lo garantice). **Esfuerzo:** M, no S —
+requiere tocar el ordenamiento, no solo agregar `paginate()`.
 
 ## U-2 — Validación de formularios: HTML5 básica en un tercio de las vistas
 
