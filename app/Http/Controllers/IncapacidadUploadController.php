@@ -103,10 +103,13 @@ class IncapacidadUploadController extends Controller
         $file   = $request->file('archivo');
         $cedula = $inc->cedula_usuario;
 
-        // Guardar en storage/public/incapacidades/{aliado_id}/{cedula}/{incapacidad_id}/
+        // Disco 'local' (storage/app), NO servido por el servidor web: son
+        // documentos de salud. Con 'public' quedaban accesibles por URL directa
+        // en /storage/incapacidades/{aliado}/{cedula}/... sin autenticación.
+        // Se consultan desde el admin vía IncapacidadController::verDocumento().
         $ruta = $file->store(
             "incapacidades/{$inc->aliado_id}/{$cedula}/{$inc->id}/cliente",
-            'public'
+            'local'
         );
 
         // Registrar en tabla radicados

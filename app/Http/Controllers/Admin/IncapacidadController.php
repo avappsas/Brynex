@@ -15,6 +15,18 @@ use Illuminate\Support\Facades\Storage;
 class IncapacidadController extends Controller
 {
     /**
+     * Disco donde se guardan los documentos de incapacidades.
+     *
+     * 'local' (storage/app) NO se sirve por el servidor web. Antes era 'public',
+     * lo que dejaba historias clínicas, epicrisis y cédulas accesibles en
+     * https://brynex.co/storage/incapacidades/{aliado}/{cedula}/{id}/... sin
+     * sesión y con la cédula en la ruta, es decir enumerables. Son datos
+     * sensibles de salud (Ley 1581 de 2012). Se sirven por verDocumento() /
+     * descargarDocumento(), que validan el aliado.
+     */
+    private const DISCO_DOCUMENTOS = 'local';
+
+    /**
      * Query base restringida al aliado en sesión.
      *
      * Todo acceso a una incapacidad por id debe pasar por aquí. Sin este filtro,
@@ -852,7 +864,8 @@ class IncapacidadController extends Controller
         $imagenPath = null;
         if ($request->hasFile('imagen')) {
             $imagenPath = $request->file('imagen')->store(
-                "incapacidades/{$alidoId}/{$inc->cedula_usuario}/{$id}/pagos", 'public'
+                "incapacidades/{$alidoId}/{$inc->cedula_usuario}/{$id}/pagos",
+                self::DISCO_DOCUMENTOS
             );
         }
 
@@ -966,7 +979,7 @@ class IncapacidadController extends Controller
 
         $ruta = $file->store(
             "incapacidades/{$inc->aliado_id}/{$cedula}/{$id}",
-            'public'
+            self::DISCO_DOCUMENTOS
         );
 
         // Guardar en tabla radicados reutilizando incapacidad_id
@@ -990,11 +1003,63 @@ class IncapacidadController extends Controller
         return response()->json(['ok' => true, 'message' => 'Documento subido.', 'ruta' => $ruta]);
     }
 
-    // ── DESCARGAR DOCUMENTO ──────────────────────────────────────────────────
+    // ── DESCARGAR / VER DOCUMENTO ────────────────────────────────────────────
+
+    /**
+     * Radicado de incapacidad del aliado en sesión, o 404.
+     * Antes no filtraba por aliado: cualquier usuario autenticado podía
+     * descargar el documento de una incapacidad ajena por su docId.
+     */
+    private function documentoDelAliado(int $docId): Radicado
+    {
+        return Radicado::where('tipo', 'incapacidad')
+            ->where('aliado_id', session('aliado_id_activo') ?? Auth::user()->aliado_id)
+            ->findOrFail($docId);
+    }
+
+    /**
+     * Resuelve en qué disco vive el archivo.
+     *
+     * Los documentos nuevos van al disco privado; los subidos antes de esta
+     * corrección siguen en el disco público del servidor. Se consultan ambos
+     * para no romper el historial mientras se migran (ver el comando
+     * incapacidades:migrar-documentos).
+     */
+    private function discoDelDocumento(string $ruta): ?string
+    {
+        foreach ([self::DISCO_DOCUMENTOS, 'public'] as $disco) {
+            if (Storage::disk($disco)->exists($ruta)) {
+                return $disco;
+            }
+        }
+        return null;
+    }
+
     public function descargarDocumento(int $docId)
     {
-        $doc = Radicado::where('tipo', 'incapacidad')->findOrFail($docId);
-        return Storage::disk('public')->download($doc->ruta_pdf, $doc->tipo_documento . '.pdf');
+        $doc   = $this->documentoDelAliado($docId);
+        $disco = $this->discoDelDocumento($doc->ruta_pdf);
+
+        abort_if($disco === null, 404, 'El archivo no existe.');
+
+        $ext = strtolower(pathinfo($doc->ruta_pdf, PATHINFO_EXTENSION)) ?: 'pdf';
+
+        return Storage::disk($disco)->download($doc->ruta_pdf, "{$doc->tipo_documento}.{$ext}");
+    }
+
+    /**
+     * Muestra el documento en el navegador (visor PDF / imagen) sin descargarlo.
+     * Sustituye a los enlaces directos a /storage/..., que servían historias
+     * clínicas y cédulas sin pasar por autenticación.
+     */
+    public function verDocumento(int $docId)
+    {
+        $doc   = $this->documentoDelAliado($docId);
+        $disco = $this->discoDelDocumento($doc->ruta_pdf);
+
+        abort_if($disco === null, 404, 'El archivo no existe.');
+
+        return Storage::disk($disco)->response($doc->ruta_pdf);
     }
 
     // ── DOCUMENTOS DE TODA LA FAMILIA (padre + prórrogas) ───────────────────
@@ -1055,7 +1120,7 @@ class IncapacidadController extends Controller
                         'tipo_documento'=> $d->tipo_documento,
                         'observacion'   => $d->observacion,
                         'ruta_pdf'      => $d->ruta_pdf,
-                        'url_ver'       => Storage::disk('public')->url($d->ruta_pdf),
+                        'url_ver'       => route('admin.incapacidades.documento.ver', $d->id),
                         'url_descargar' => route('admin.incapacidades.documento.download', $d->id),
                         'es_pdf'        => $ext === 'pdf',
                         'extension'     => $ext,

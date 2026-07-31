@@ -2289,7 +2289,7 @@ function cargarDocumentosExistentes(incId){
             box.innerHTML = `<div style="font-size:.72rem;font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:.05em;margin-bottom:.5rem">📁 Documentos cargados (${docs.length})</div>`
                 + docs.map(d=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:.45rem .65rem;background:#fff;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:.35rem;font-size:.8rem">
                     <div><span style="font-weight:600;color:#374151">📄 ${d.tipo_documento||'Documento'}</span><span style="color:#64748b;margin-left:.5rem">${formatFechaLarga(d.created_at)}</span>${d.observacion?`<div style="color:#94a3b8;font-size:.72rem">${d.observacion}</div>`:''}</div>
-                    <a href="/storage/${d.archivo}" target="_blank" style="color:#2563eb;font-size:.78rem;white-space:nowrap">👁 Ver</a>
+                    <a href="/admin/incapacidades/documento/${d.id}/ver" target="_blank" style="color:#2563eb;font-size:.78rem;white-space:nowrap">👁 Ver</a>
                 </div>`).join('');
         });
 }

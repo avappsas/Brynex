@@ -605,6 +605,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/{id}/gestion',           [$ic, 'storeGestion'])      ->name('gestion.store');
         Route::post('/{id}/documento',         [$ic, 'storeDocumento'])    ->name('documento.store');
         Route::get('/documento/{docId}',       [$ic, 'descargarDocumento'])->name('documento.download');
+        Route::get('/documento/{docId}/ver',   [$ic, 'verDocumento'])      ->name('documento.ver');
         Route::get('/{id}/documentos-familia', [$ic, 'documentosFamilia']) ->name('documentos.familia');
         Route::post('/{id}/pago',              [$ic, 'registrarPago'])     ->name('pago.store');
         Route::get('/api/calcular/{id}',       [$ic, 'calcularValor'])     ->name('api.calcular');
