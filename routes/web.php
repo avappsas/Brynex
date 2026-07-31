@@ -81,6 +81,11 @@ Route::post('/aliado/{slug}/metrica', [\App\Http\Controllers\Publico\PaginaAliad
 
 Route::get('/sitemap.xml', [\App\Http\Controllers\Publico\PaginaAliadoController::class, 'sitemap'])->name('publico.sitemap');
 
+// Link corto del WhatsApp rastreado que se comenta en cada pieza publicada (ver
+// PublicacionPublisher::linkWhatsappRastreado) — evita mostrar el wa.me largo con el
+// mensaje precargado codificado en la URL visible del comentario.
+Route::get('/wa/{publicacion}', [\App\Http\Controllers\Publico\WhatsappRedirectController::class, 'redirigir'])->name('publico.wa');
+
 // ─── Webhook público WhatsApp (Meta Cloud API) ─────────────────────────────
 // No requiere auth — Meta llama directamente. Seguridad via HMAC en el controller.
 Route::get( '/whatsapp/webhook', [\App\Http\Controllers\WhatsappWebhookController::class, 'verify']) ->name('whatsapp.webhook.verify');

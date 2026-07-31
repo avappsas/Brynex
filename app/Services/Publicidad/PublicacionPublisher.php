@@ -92,27 +92,24 @@ class PublicacionPublisher
     }
 
     /**
-     * Link de WhatsApp con un código de referencia ("ref: P{id}") en el mensaje precargado —
-     * si el cliente lo manda tal cual, WhatsappWebhookService atribuye la conversación a esta
-     * pieza exacta (ver buscarPublicacionOrigen). Se publica como primer comentario en vez de
-     * ir dentro del texto del post (ver publicarEnDestino) para no perder alcance orgánico.
+     * Link CORTO (vía WhatsappRedirectController) que redirige al wa.me con el código de
+     * referencia ("ref: P{id}") en el mensaje precargado — si el cliente lo manda tal cual,
+     * WhatsappWebhookService atribuye la conversación a esta pieza exacta (ver
+     * buscarPublicacionOrigen). Se publica como primer comentario en vez de ir dentro del
+     * texto del post (ver publicarEnDestino) para no perder alcance orgánico.
      *
-     * IMPORTANTE: el número tiene que ser el del BOT de WhatsApp (WhatsappConfig::numero_telefono,
-     * el phone_number_id que escucha el webhook), NUNCA el de un humano — si no, el mensaje
-     * del cliente nunca llega al sistema y la atribución no puede funcionar.
+     * Se usa un link corto propio (no el wa.me directo) porque Facebook muestra la URL tal
+     * cual se escribe — el wa.me con el mensaje codificado en el query string se ve como una
+     * cadena larga e ilegible en el comentario; el link corto delega esa redirección.
      */
     private static function linkWhatsappRastreado(Publicacion $publicacion): ?string
     {
         $waConfig = \App\Models\WhatsappConfig::where('aliado_id', $publicacion->aliado_id)->where('activo', true)->first();
-        $numero = preg_replace('/\D/', '', $waConfig->numero_telefono ?? '');
-        if (!$numero) {
+        if (!preg_replace('/\D/', '', $waConfig->numero_telefono ?? '')) {
             return null;
         }
-        if (!str_starts_with($numero, '57')) {
-            $numero = '57' . $numero;
-        }
 
-        return '👉 Escríbenos: https://wa.me/' . $numero . '?text=' . rawurlencode($publicacion->mensajeWhatsappRastreado());
+        return '👉 Escríbenos: ' . url('/wa/' . $publicacion->id);
     }
 
     private static function invalidarCacheSiAplica(Publicacion $publicacion, array $destinos): void
