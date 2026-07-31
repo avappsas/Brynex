@@ -67,15 +67,47 @@ class InformeController extends Controller
                 ->where('c2.estado', 'vigente');
         })->count();
 
+        $afiliacionesBaseQuery = DB::table('contratos AS c')
+            ->where('c.aliado_id',$aid)
+            ->whereMonth('c.fecha_ingreso', $mes)
+            ->whereYear('c.fecha_ingreso', $anio);
+
+        $afiliacionesTotal = (clone $afiliacionesBaseQuery)->count();
+        $afiliacionesNuevas = (clone $afiliacionesBaseQuery)
+            ->whereNotExists(function ($query) use ($aid, $mes, $anio, $mesAnterior, $anioAnterior) {
+                $query->select(DB::raw(1))
+                    ->from('contratos AS c2')
+                    ->whereColumn('c2.cedula', 'c.cedula')
+                    ->where('c2.aliado_id', $aid)
+                    ->where('c2.estado', 'retirado')
+                    ->where(function ($q) use ($mes, $anio, $mesAnterior, $anioAnterior) {
+                        $q->where(function ($q1) use ($mes, $anio) {
+                            $q1->where('c2.tipo_modalidad_id', 11)
+                               ->whereMonth('c2.fecha_retiro', $mes)
+                               ->whereYear('c2.fecha_retiro', $anio);
+                        })->orWhere(function ($q2) use ($mesAnterior, $anioAnterior) {
+                            $q2->where(function ($q3) {
+                                $q3->whereNull('c2.tipo_modalidad_id')
+                                   ->orWhere('c2.tipo_modalidad_id', '<>', 11);
+                            })
+                            ->whereMonth('c2.fecha_retiro', $mesAnterior)
+                            ->whereYear('c2.fecha_retiro', $anioAnterior);
+                        });
+                    });
+            })
+            ->count();
+
         $kpis = [
-            'clientes_activos'   => DB::table('contratos')->where('aliado_id',$aid)->where('estado','vigente')->count(),
-            'clientes_unicos'    => DB::table('contratos')->where('aliado_id',$aid)->where('estado','vigente')->count(DB::raw('DISTINCT cedula')),
-            'razones_sociales'   => DB::table('razones_sociales')->where('aliado_id',$aid)->where('estado','Activa')->count(),
-            'afiliaciones_mes'   => DB::table('contratos')->where('aliado_id',$aid)->whereMonth('fecha_ingreso', $mes)->whereYear('fecha_ingreso', $anio)->count(),
-            'retiros_mes'        => $retirosNoRenovados . ' / ' . $retirosTotal,
-            'empresas'           => DB::table('empresas')->where('aliado_id',$aid)->count(),
-            'incapacidades'      => DB::table('incapacidades')->where('aliado_id',$aid)->whereNull('deleted_at')->whereNotIn('estado',['cerrado','rechazado'])->count(),
-            'tareas'             => DB::table('tareas')->where('aliado_id',$aid)->whereNull('deleted_at')->whereIn('estado',['pendiente','en_gestion','en_espera'])->count(),
+            'clientes_activos'          => DB::table('contratos')->where('aliado_id',$aid)->where('estado','vigente')->count(),
+            'clientes_unicos'           => DB::table('contratos')->where('aliado_id',$aid)->where('estado','vigente')->count(DB::raw('DISTINCT cedula')),
+            'razones_sociales'          => DB::table('razones_sociales')->where('aliado_id',$aid)->where('estado','Activa')->count(),
+            'afiliaciones_mes_total'    => $afiliacionesTotal,
+            'afiliaciones_mes_nuevas'   => $afiliacionesNuevas,
+            'retiros_mes_total'         => $retirosTotal,
+            'retiros_mes_sin_renovar'   => $retirosNoRenovados,
+            'empresas'                  => DB::table('empresas')->where('aliado_id',$aid)->count(),
+            'incapacidades'             => DB::table('incapacidades')->where('aliado_id',$aid)->whereNull('deleted_at')->whereNotIn('estado',['cerrado','rechazado'])->count(),
+            'tareas'                    => DB::table('tareas')->where('aliado_id',$aid)->whereNull('deleted_at')->whereIn('estado',['pendiente','en_gestion','en_espera'])->count(),
         ];
 
         $esFinanciero = Auth::user()->hasRole(['superadmin','contador']);
