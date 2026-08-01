@@ -75,6 +75,37 @@
                 }
             @endphp
             <div class="prestamo-card {{ $esCastigado ? 'card-castigada' : '' }}" 
+                 x-data="{ 
+                     enviando: false, 
+                     ultimoEnvio: '{{ $p->ultimo_mensaje_cobro ? $p->ultimo_mensaje_cobro->created_at->format('d/m/Y H:i') : '' }}',
+                     enviarCobro(id) {
+                         this.enviando = true;
+                         fetch('{{ route('finanzas.prestamos.whatsapp', '') }}/' + id, {
+                             method: 'POST',
+                             headers: {
+                                 'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                                 'Accept': 'application/json',
+                                 'X-Requested-With': 'XMLHttpRequest'
+                             }
+                         })
+                         .then(res => {
+                             if (!res.ok) {
+                                 return res.json().then(data => { throw new Error(data.message || 'Error al enviar'); });
+                             }
+                             return res.json();
+                         })
+                         .then(data => {
+                             this.ultimoEnvio = data.fecha_envio;
+                             alert('✅ ' + data.message);
+                         })
+                         .catch(err => {
+                             alert('❌ ' + err.message);
+                         })
+                         .finally(() => {
+                             this.enviando = false;
+                         });
+                     }
+                 }"
                  x-show="buscar.length <= 5 || 
                          '{{ strtolower($p->nombre_deudor) }}'.includes(buscar.toLowerCase()) || 
                          '{{ $p->cedula_deudor }}'.includes(buscar) || 
@@ -115,12 +146,10 @@
                             ${{ number_format($p->saldo_actual, 0, ',', '.') }}
                         </span>
                     </div>
-                    @if($p->ultimo_mensaje_cobro)
-                        <div style="background: rgba(34, 197, 94, 0.04); border: 1px solid rgba(34, 197, 94, 0.12); border-radius: 8px; padding: 0.4rem 0.6rem; font-size: 0.72rem; color: #475569; margin-top: 0.6rem; display: flex; align-items: center; gap: 0.4rem; justify-content: space-between;">
-                            <span style="font-weight: 700; color: #166534; white-space: nowrap;">🟢 Último Cobro WA:</span>
-                            <span style="font-weight: 600; color: #15803d;">{{ $p->ultimo_mensaje_cobro->created_at->format('d/m/Y H:i') }}</span>
-                        </div>
-                    @endif
+                    <div x-show="ultimoEnvio" x-cloak style="background: rgba(34, 197, 94, 0.04); border: 1px solid rgba(34, 197, 94, 0.12); border-radius: 8px; padding: 0.4rem 0.6rem; font-size: 0.72rem; color: #475569; margin-top: 0.6rem; display: flex; align-items: center; gap: 0.4rem; justify-content: space-between;">
+                        <span style="font-weight: 700; color: #166534; white-space: nowrap;">🟢 Último Cobro WA:</span>
+                        <span style="font-weight: 600; color: #15803d;" x-text="ultimoEnvio"></span>
+                    </div>
                 </div>
 
                 <div class="pc-footer">
@@ -128,12 +157,19 @@
                         👁️ Ver Ficha
                     </a>
                     @if($p->estado !== 'pagado' && $p->estado !== 'castigado')
-                        <form action="{{ route('finanzas.prestamos.whatsapp', $p->id) }}" method="POST" style="display:inline;">
-                            @csrf
-                            <button type="submit" class="btn-fin-card success">
+                        @if($p->telefono_deudor)
+                            <button @click="enviarCobro({{ $p->id }})" 
+                                    class="btn-fin-card success" 
+                                    :disabled="enviando"
+                                    style="display: inline-flex; align-items: center; justify-content: center;">
+                                <span x-show="!enviando">🟢 Cobrar WhatsApp</span>
+                                <span x-show="enviando">⏳ Enviando...</span>
+                            </button>
+                        @else
+                            <button @click="alert('Este deudor no tiene un número de celular registrado. Por favor, edita su ficha para agregar su número.')" class="btn-fin-card success" style="opacity: 0.65;">
                                 🟢 Cobrar WhatsApp
                             </button>
-                        </form>
+                        @endif
                     @endif
                     @if($p->estado === 'castigado')
                         <span class="btn-fin-card" style="background:rgba(156,163,175,0.1); color:#6b7280; border:1px solid #d1d5db; font-size:0.72rem;">📄 Saldo pendiente contable</span>

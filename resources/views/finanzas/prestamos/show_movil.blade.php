@@ -151,7 +151,7 @@
 @endphp
 
 <body x-data="{
-    openAbono:false, openLiquidar:false, openAnexar:false, openMov:false,
+    openAbono:false, openLiquidar:false, openAnexar:false, openMov:false, openNoTelefono:false,
     mov:{id:null,fecha:'',monto:0,obs:'',soporte:''},
     pvAbono:null, pvAnexar:null,
     fileAbono(e){ const f=e.target.files[0]; this.pvAbono = f&&f.type.startsWith('image/') ? URL.createObjectURL(f) : null; },
@@ -310,12 +310,18 @@
             <button @click="openAnexar=true" class="btn-acc orange">
                 <i class="fas fa-plus-circle"></i>Anexar Capital
             </button>
+            @if($prestamo->telefono_deudor)
             <form action="{{ route('finanzas.prestamos.whatsapp', $prestamo->id) }}" method="POST" style="display:contents">
                 @csrf
                 <button type="submit" class="btn-acc wa">
                     <i class="fab fa-whatsapp"></i>Cobrar WA
                 </button>
             </form>
+            @else
+            <button @click="openNoTelefono = true" class="btn-acc wa" style="opacity: 0.7;">
+                <i class="fab fa-whatsapp"></i>Cobrar WA
+            </button>
+            @endif
             <form action="{{ route('finanzas.prestamos.toggle-alertas', $prestamo->id) }}" method="POST" style="display:contents">
                 @csrf
                 <button type="submit" class="btn-acc ghost full-col">
@@ -616,6 +622,29 @@
                 </div>
             </form>
             <form x-ref="delForm" method="POST" style="display:none">@csrf @method('DELETE')</form>
+        </div>
+    </div>
+
+    <!-- ===== BOTTOM SHEET: No Celular ===== -->
+    <div x-show="openNoTelefono" class="bs-overlay" @click.self="openNoTelefono=false" x-cloak>
+        <div class="bs-box">
+            <div class="bs-handle"></div>
+            <div class="bs-head">
+                <h3>⚠️ Celular no Registrado</h3>
+                <button @click="openNoTelefono=false" class="bs-close">&times;</button>
+            </div>
+            <div class="bs-body" style="text-align: center; padding: 1.5rem 1rem;">
+                <span style="font-size: 2.5rem; display: block; margin-bottom: 0.5rem;">📱❌</span>
+                <p style="font-size: 0.85rem; color: var(--t2); line-height: 1.45; margin-bottom: 1.25rem;">
+                    Este deudor no tiene un número de celular registrado. Debes ingresar su número en la ficha para poder realizar cobros por WhatsApp.
+                </p>
+                <div style="display: flex; gap: 0.5rem; justify-content: center; width: 100%;">
+                    <button type="button" @click="openNoTelefono=false" class="btn-cancel" style="flex: 1;">Cerrar</button>
+                    <a href="{{ route('finanzas.prestamos.edit', $prestamo->id) }}" class="btn-ok" style="background: var(--rojo); text-decoration: none; text-align: center; line-height: 1.25; flex: 1; display: inline-flex; align-items: center; justify-content: center;">
+                        ✏️ Editar Ficha
+                    </a>
+                </div>
+            </div>
         </div>
     </div>
 

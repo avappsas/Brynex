@@ -355,11 +355,27 @@ class PrestamoController extends Controller
     /**
      * Envía una notificación manual de cobro al deudor mediante WhatsApp.
      */
-    public function enviarWhatsapp($id)
+    public function enviarWhatsapp(Request $request, $id)
     {
         $prestamo = Prestamo::where('user_id', Auth::id())->findOrFail($id);
 
         $res = $this->whatsappService->enviarRecordatorioPrestamo($prestamo);
+
+        if ($request->expectsJson() || $request->ajax()) {
+            if ($res['ok']) {
+                $ultimoMsg = $prestamo->ultimo_mensaje_cobro;
+                $fechaEnvio = $ultimoMsg ? $ultimoMsg->created_at->format('d/m/Y H:i') : now()->format('d/m/Y H:i');
+                return response()->json([
+                    'success' => true,
+                    'message' => $res['message'],
+                    'fecha_envio' => $fechaEnvio
+                ]);
+            }
+            return response()->json([
+                'success' => false,
+                'message' => $res['message'] . ' Detalles: ' . ($res['error'] ?? 'ninguno')
+            ], 400);
+        }
 
         if ($res['ok']) {
             return redirect()->route('finanzas.prestamos.show', $prestamo->id)->with('success', $res['message']);

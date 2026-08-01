@@ -5,7 +5,7 @@
 
 @section('contenido')
 @include('finanzas.partials._responsive_fin')
-<div class="finanzas-container" x-data="{ openAbono: false, openLiquidar: false, openAnexar: false, openEditarMov: false, openCastigar: false, openReactivar: false, movEditar: { id: null, fecha: '', monto: 0, observacion: '', soporte_path: '' } }">
+<div class="finanzas-container" x-data="{ openAbono: false, openLiquidar: false, openAnexar: false, openEditarMov: false, openCastigar: false, openReactivar: false, openNoTelefono: false, movEditar: { id: null, fecha: '', monto: 0, observacion: '', soporte_path: '' } }">
 
     @component('finanzas.partials._header_banner', [
         'titulo' => '👤 Ficha: ' . $prestamo->nombre_deudor,
@@ -125,12 +125,18 @@
                     </button>
 
                     {{-- Cobrar por WhatsApp --}}
-                    <form action="{{ route('finanzas.prestamos.whatsapp', $prestamo->id) }}" method="POST" style="display:block;">
-                        @csrf
-                        <button type="submit" class="btn-fac-action success" style="width:100%;">
+                    @if($prestamo->telefono_deudor)
+                        <form action="{{ route('finanzas.prestamos.whatsapp', $prestamo->id) }}" method="POST" style="display:block;">
+                            @csrf
+                            <button type="submit" class="btn-fac-action success" style="width:100%;">
+                                🟢 Cobrar por WhatsApp
+                            </button>
+                        </form>
+                    @else
+                        <button @click="openNoTelefono = true" class="btn-fac-action success" style="width:100%; opacity: 0.7;">
                             🟢 Cobrar por WhatsApp
                         </button>
-                    </form>
+                    @endif
 
                     {{-- Inactivar / Castigar Préstamo --}}
                     <div style="border-top:1px dashed #e2e8f0; padding-top:0.6rem; margin-top:0.25rem;">
@@ -660,6 +666,28 @@
                     <button type="submit" class="btn-fin" style="background:linear-gradient(135deg,#f59e0b,#d97706); color:#fff;">🔄 Confirmar Reactivación</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    {{-- Modal No Celular --}}
+    <div x-show="openNoTelefono" class="modal-overlay-bx" @click.self="openNoTelefono = false" x-cloak>
+        <div class="modal-box-bx" style="max-width:400px;">
+            <div class="modal-head-bx" style="background:linear-gradient(135deg, #ef4444, #dc2626);">
+                <h3>⚠️ Celular no Registrado</h3>
+                <button @click="openNoTelefono = false" class="modal-close-bx">&times;</button>
+            </div>
+            <div class="modal-body-bx" style="text-align: center; padding: 1.5rem 1.25rem;">
+                <span style="font-size: 3rem; display: block; margin-bottom: 0.75rem;">📱❌</span>
+                <p style="font-size: 0.88rem; color: #334155; line-height: 1.5; margin-bottom: 1rem;">
+                    Este deudor no tiene un número de celular registrado en su ficha. Para poder enviarle recordatorios de cobro por WhatsApp, debes ingresar su número.
+                </p>
+            </div>
+            <div class="modal-foot-bx" style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+                <button type="button" @click="openNoTelefono = false" class="btn-glass-bx">Cerrar</button>
+                <a href="{{ route('finanzas.prestamos.edit', $prestamo->id) }}" class="btn-fin success" style="background: #ef4444; border-color: #ef4444; text-decoration: none; display: inline-flex; align-items: center; justify-content: center;">
+                    ✏️ Editar Ficha
+                </a>
+            </div>
         </div>
     </div>
 

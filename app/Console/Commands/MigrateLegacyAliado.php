@@ -87,6 +87,23 @@ class MigrateLegacyAliado extends Command
         $this->info("\n✅ Migración completada.");
     }
 
+    /**
+     * ID en BryNex del aliado sobre el que corre este comando.
+     *
+     * $this->dbs siempre tiene un solo elemento (handle() lo arma con el
+     * argumento recibido), así que esto identifica sin ambigüedad al aliado
+     * activo. Sirve para acotar las consultas que están fuera del
+     * foreach ($this->dbs) y que de otro modo tocarían a todos los aliados.
+     */
+    private function aliadoActualId(): ?int
+    {
+        foreach ($this->dbs as $db => $key) {
+            return $this->ids[$key] ?? null;
+        }
+
+        return null;
+    }
+
     private function loadAliados(): void
     {
         $attempts = 0;
@@ -467,7 +484,7 @@ class MigrateLegacyAliado extends Command
         }
 
         DB::statement('ALTER TABLE clientes WITH CHECK CHECK CONSTRAINT ALL');
-        $this->info('  📊 Total clientes: ' . DB::table('clientes')->count());
+        $this->info('  📊 Clientes del aliado: ' . DB::table('clientes')->where('aliado_id', $this->aliadoActualId())->count());
     }
 
     // ─── PASO 06: CONTRATOS ──────────────────────────────────────────────────
@@ -682,17 +699,32 @@ class MigrateLegacyAliado extends Command
             $this->info("  ✅ $db → $count insertados, $skipped omitidos");
         }
 
-        // Limpiar FK huérfanos antes de rehabilitar constraints
-        DB::statement("UPDATE contratos SET actividad_economica_id = NULL WHERE actividad_economica_id IS NOT NULL AND actividad_economica_id NOT IN (SELECT id FROM actividades_economicas)");
-        DB::statement("UPDATE contratos SET asesor_id      = NULL WHERE asesor_id      IS NOT NULL AND asesor_id      NOT IN (SELECT id FROM asesores)");
-        DB::statement("UPDATE contratos SET encargado_id   = NULL WHERE encargado_id   IS NOT NULL AND encargado_id   NOT IN (SELECT id FROM users)");
-        DB::statement("UPDATE contratos SET razon_social_id = NULL WHERE razon_social_id IS NOT NULL AND razon_social_id NOT IN (SELECT id FROM razones_sociales)");
+        // Limpiar FK huérfanos antes de rehabilitar constraints.
+        // Acotado al aliado activo: sin el filtro, estos UPDATE anulaban FKs
+        // de contratos de TODOS los aliados de la BD.
+        $aliadoId = $this->aliadoActualId();
+        if ($aliadoId) {
+            foreach ([
+                'actividad_economica_id' => 'actividades_economicas',
+                'asesor_id'              => 'asesores',
+                'encargado_id'           => 'users',
+                'razon_social_id'        => 'razones_sociales',
+            ] as $col => $tablaRef) {
+                DB::statement(
+                    "UPDATE contratos SET $col = NULL
+                     WHERE aliado_id = ? AND $col IS NOT NULL
+                       AND $col NOT IN (SELECT id FROM $tablaRef)",
+                    [$aliadoId]
+                );
+            }
+        }
+
         DB::statement('ALTER TABLE contratos WITH CHECK CHECK CONSTRAINT ALL');
 
         DB::statement('ALTER TABLE radicados WITH CHECK CHECK CONSTRAINT ALL');
 
-        $this->info('  📊 Total contratos: '  . DB::table('contratos')->count());
-        $this->info('  📊 Total radicados: '  . DB::table('radicados')->count());
+        $this->info('  📊 Contratos del aliado: ' . DB::table('contratos')->where('aliado_id', $aliadoId)->count());
+        $this->info('  📊 Radicados del aliado: ' . DB::table('radicados')->where('aliado_id', $aliadoId)->count());
         $this->warn('  ⚠  Sin razon_social: ' . DB::table('contratos')->whereNull('razon_social_id')->count());
     }
 
@@ -1268,7 +1300,7 @@ class MigrateLegacyAliado extends Command
             $this->info("  ✅ $db → $count planos, $skipped omitidos");
         }
         DB::statement('ALTER TABLE planos WITH CHECK CHECK CONSTRAINT ALL');
-        $this->info('  📊 Total planos: ' . DB::table('planos')->count());
+        $this->info('  📊 Planos del aliado: ' . DB::table('planos')->where('aliado_id', $this->aliadoActualId())->count());
     }
 
     // ─── PASO 15: TAREAS ──────────────────────────────────────────────────
@@ -1485,7 +1517,7 @@ class MigrateLegacyAliado extends Command
 
         DB::statement('ALTER TABLE tareas          WITH CHECK CHECK CONSTRAINT ALL');
         DB::statement('ALTER TABLE tarea_gestiones WITH CHECK CHECK CONSTRAINT ALL');
-        $this->info('  📊 Total tareas: '          . DB::table('tareas')->count());
+        $this->info('  📊 Tareas del aliado: '     . DB::table('tareas')->where('aliado_id', $this->aliadoActualId())->count());
         $this->info('  📊 Total tarea_gestiones: ' . DB::table('tarea_gestiones')->count());
     }
 
@@ -1927,7 +1959,10 @@ class MigrateLegacyAliado extends Command
 
             $empresasBorradas = 0;
             foreach ($empresas as $emp) {
-                DB::table('clientes')->where('cod_empresa', $emp->id)->update(['cod_empresa' => null]);
+                DB::table('clientes')
+                    ->where('aliado_id', $aliadoId)
+                    ->where('cod_empresa', $emp->id)
+                    ->update(['cod_empresa' => null]);
                 DB::table('empresas')->where('id', $emp->id)->delete();
                 $empresasBorradas++;
             }
@@ -2001,8 +2036,11 @@ class MigrateLegacyAliado extends Command
             $updated = 0; $fallback = 0; $sin_dato = 0;
         }
 
-        $still = DB::table('contratos')->whereNull('tipo_modalidad_id')->count();
-        $this->line("  ℹ  Total sin modalidad: $still");
+        $still = DB::table('contratos')
+            ->where('aliado_id', $this->aliadoActualId())
+            ->whereNull('tipo_modalidad_id')
+            ->count();
+        $this->line("  ℹ  Sin modalidad en este aliado: $still");
     }
 
     // ─── FIX-PLAN: asigna plan_id a todos los contratos migrados ─────────────────
@@ -2386,7 +2424,7 @@ class MigrateLegacyAliado extends Command
         }
 
         DB::statement('ALTER TABLE incapacidades WITH CHECK CHECK CONSTRAINT ALL');
-        $this->info('  📊 Total incapacidades: ' . DB::table('incapacidades')->count());
+        $this->info('  📊 Incapacidades del aliado: ' . DB::table('incapacidades')->where('aliado_id', $this->aliadoActualId())->count());
     }
 
     // ─── FIX-INCAPACIDADES-PAGO ────────────────────────────────────────────────
@@ -2565,8 +2603,15 @@ class MigrateLegacyAliado extends Command
         // ── FASE 2: Resolver salario_base faltante ─────────────────────────────
         $this->info("\n🔧 Fase 2: resolviendo salario_base faltante...");
 
-        // Todos sin salario_base (con o sin contrato_id)
+        // Todos sin salario_base (con o sin contrato_id), solo del aliado activo
+        $aliadoFix = $this->aliadoActualId();
+        if (! $aliadoFix) {
+            $this->warn('  ⚠ Sin aliado activo, se omiten las fases 2-4.');
+            return;
+        }
+
         $sinSalario = DB::table('incapacidades')
+            ->where('aliado_id', $aliadoFix)
             ->whereNull('salario_base')
             ->whereNull('deleted_at')
             ->where('dias_incapacidad', '>', 0)
@@ -2634,6 +2679,7 @@ class MigrateLegacyAliado extends Command
         $this->info("\n🔧 Fase 3: calculando valor_esperado faltante...");
 
         $sinValor = DB::table('incapacidades')
+            ->where('aliado_id', $aliadoFix)
             ->whereNull('valor_esperado')
             ->whereNull('deleted_at')
             ->where('dias_incapacidad', '>', 0)
@@ -2670,6 +2716,7 @@ class MigrateLegacyAliado extends Command
 
         // Fallback: para pagados que aún no tienen valor_esperado, usar valor_pago
         $fallback = DB::table('incapacidades')
+            ->where('aliado_id', $aliadoFix)
             ->whereNull('valor_esperado')
             ->whereNull('deleted_at')
             ->where('valor_pago', '>', 0)
@@ -2682,6 +2729,7 @@ class MigrateLegacyAliado extends Command
         $this->info("\n🔧 Fase 4: forzando recálculo con regla EPS (resta 2 días originales)...");
 
         $todos = DB::table('incapacidades')
+            ->where('aliado_id', $aliadoFix)
             ->whereNull('deleted_at')
             ->where('dias_incapacidad', '>', 0)
             ->whereNotNull('salario_base')
@@ -2714,9 +2762,9 @@ class MigrateLegacyAliado extends Command
 
         // ── RESUMEN FINAL ──────────────────────────────────────────────────────
         $this->info("\n📊 Cobertura final:");
-        $total  = DB::table('incapacidades')->whereNull('deleted_at')->count();
-        $conVal = DB::table('incapacidades')->whereNull('deleted_at')->whereNotNull('valor_esperado')->where('valor_esperado', '>', 0)->count();
-        $conSal = DB::table('incapacidades')->whereNull('deleted_at')->whereNotNull('salario_base')->where('salario_base', '>', 0)->count();
+        $total  = DB::table('incapacidades')->where('aliado_id', $aliadoFix)->whereNull('deleted_at')->count();
+        $conVal = DB::table('incapacidades')->where('aliado_id', $aliadoFix)->whereNull('deleted_at')->whereNotNull('valor_esperado')->where('valor_esperado', '>', 0)->count();
+        $conSal = DB::table('incapacidades')->where('aliado_id', $aliadoFix)->whereNull('deleted_at')->whereNotNull('salario_base')->where('salario_base', '>', 0)->count();
         $this->line("   Total              : $total");
         $this->line("   Con salario_base   : $conSal (" . ($total ? round($conSal/$total*100,1) : 0) . "%)");
         $this->line("   Con valor_esperado : $conVal (" . ($total ? round($conVal/$total*100,1) : 0) . "%)");
@@ -2811,7 +2859,10 @@ class MigrateLegacyAliado extends Command
             $this->info("  ✅ $db → $count gestiones | $sin_incap sin incapacidad encontrada");
         }
 
-        $this->info('  📊 Total gestiones incapacidad: ' . DB::table('gestiones_incapacidad')->count());
+        $this->info('  📊 Gestiones incapacidad del aliado: ' . DB::table('gestiones_incapacidad as g')
+            ->join('incapacidades as i', 'i.id', '=', 'g.incapacidad_id')
+            ->where('i.aliado_id', $this->aliadoActualId())
+            ->count());
     }
 
     // ─── FIX-GESTIONES-PAGADAS ──────────────────────────────────────────────────
@@ -2824,12 +2875,14 @@ class MigrateLegacyAliado extends Command
     {
         $this->info('🔧 fix-gestiones-pagadas: insertando gestión sintética para incapacidades pagadas sin gestión...');
 
-        // Usuario admin por defecto (fallback global)
-        $adminGlobalId = DB::table('users')->orderBy('id')->value('id') ?? 1;
-
         $totalInsertadas = 0;
 
-        foreach ($this->ids as $key => $aliadoId) {
+        // Solo el aliado activo. Antes recorría $this->ids completo, que trae
+        // TODOS los aliados de la BD, e insertaba gestiones sintéticas en cada uno.
+        foreach ($this->dbs as $db => $key) {
+            $aliadoId = $this->ids[$key] ?? null;
+            if (! $aliadoId) { $this->warn("  ⚠ Aliado '$key' no encontrado, se omite"); continue; }
+
             // Incapacidades de este aliado: pagadas, migradas del legacy, SIN ninguna gestión
             $sinGestion = DB::table('incapacidades as i')
                 ->where('i.aliado_id', $aliadoId)
@@ -2850,11 +2903,18 @@ class MigrateLegacyAliado extends Command
 
             $this->line("  ⧳ aliado $aliadoId: {$sinGestion->count()} incapacidades a procesar...");
 
-            // Usuario admin de este aliado (para firmar la gestión)
+            // Usuario admin de este aliado (para firmar la gestión).
+            // Sin fallback a un usuario de otro aliado: si el aliado no tiene
+            // usuarios, se omite en vez de firmar con alguien ajeno.
             $adminId = DB::table('users')
                 ->where('aliado_id', $aliadoId)
                 ->orderBy('id')
-                ->value('id') ?? $adminGlobalId;
+                ->value('id');
+
+            if (! $adminId) {
+                $this->warn("  ⚠ aliado $aliadoId sin usuarios propios, se omite (no se firma con un usuario ajeno)");
+                continue;
+            }
 
             $insertadas = 0;
             foreach ($sinGestion as $inc) {
@@ -3008,7 +3068,7 @@ class MigrateLegacyAliado extends Command
         }
 
         // Resumen global
-        $aun0 = DB::table('facturas')->where('total', 0)->count();
+        $aun0 = DB::table('facturas')->where('aliado_id', $this->aliadoActualId())->where('total', 0)->count();
         $this->info("\n📊 Resumen fix-valoresfacturas:");
         $this->info("   Actualizadas  : $totalActualizadas");
         $this->info("   Sin legacy    : $totalSinLegacy");
@@ -3150,12 +3210,13 @@ class MigrateLegacyAliado extends Command
             $this->info("  ✅ $db → $updated planos actualizados");
         }
 
-        // Normalizar tipo_reg en toda la tabla (códigos PILA → BryNex)
+        // Normalizar tipo_reg (códigos PILA → BryNex), solo en el aliado activo.
+        // Antes corría sobre toda la tabla planos, pisando a los demás aliados.
         DB::statement("
             UPDATE planos SET tipo_reg = 'planilla'
-            WHERE tipo_reg NOT IN ('planilla', 'afiliacion', 'retiro')
-               OR tipo_reg IS NULL
-        ");
+            WHERE aliado_id = ?
+              AND (tipo_reg NOT IN ('planilla', 'afiliacion', 'retiro') OR tipo_reg IS NULL)
+        ", [$this->aliadoActualId()]);
         $this->info('  ✅ tipo_reg normalizado (planilla/afiliacion/retiro)');
     }
 
@@ -3280,9 +3341,10 @@ class MigrateLegacyAliado extends Command
             }
         }
 
-        // Resumen final
-        $total = DB::table('facturas')->where('numero_factura', 0)->count();
-        $conSS = DB::table('facturas')->where('numero_factura', 0)->where('total_ss', '>', 0)->count();
+        // Resumen final (solo el aliado activo)
+        $aliadoResumen = $this->aliadoActualId();
+        $total = DB::table('facturas')->where('aliado_id', $aliadoResumen)->where('numero_factura', 0)->count();
+        $conSS = DB::table('facturas')->where('aliado_id', $aliadoResumen)->where('numero_factura', 0)->where('total_ss', '>', 0)->count();
         $sinSS = $total - $conSS;
         $this->info("  📊 Facturas retiro (numero_factura=0): $total total | $conSS con SS | $sinSS sin SS (genuinamente \$0)");
     }
