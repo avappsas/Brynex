@@ -7,6 +7,7 @@ use App\Models\{OperadorCredencial, OperadorPlanilla, OperadorPlanillaApi, Razon
 use App\Services\PlanoPilaTxtService;
 use App\Services\SuaporteApiService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -254,6 +255,224 @@ class PlanillaApiController extends Controller
             'url_pago'        => $resultado['url_pago'] ?? null,
             'advertencias'    => $resultado['advertencias'] ?? [],
             'message'         => "Planilla {$resultado['numero_planilla']} liquidada en Enlace Operativo.",
+        ]);
+    }
+
+    /**
+     * Liquidación puntual de UN contratista independiente (fila de `planos`),
+     * no de un lote de empresa. Todos los independientes de un aliado
+     * comparten la misma razón social genérica ("INDEPENDIENTE"), así que
+     * cada uno se liquida por su cuenta con su propia cédula como aportante
+     * — ver PlanoPilaTxtService::construir() con `plano_id`.
+     */
+    public function liquidarIndependiente(Request $request)
+    {
+        $aliadoId = session('aliado_id_activo');
+
+        $validated = $request->validate([
+            'plano_id'             => 'required|integer',
+            'operador_planilla_id' => 'required|integer',
+        ]);
+
+        $plano = DB::table('planos')
+            ->where('id', $validated['plano_id'])
+            ->where('aliado_id', $aliadoId)
+            ->whereNull('deleted_at')
+            ->first();
+
+        if (!$plano) {
+            return response()->json(['success' => false, 'message' => 'Registro no encontrado.'], 404);
+        }
+
+        if (!empty($plano->numero_planilla)) {
+            return response()->json(['success' => false, 'message' => 'Este registro ya tiene una planilla liquidada.'], 422);
+        }
+
+        $rs = RazonSocial::where('aliado_id', $aliadoId)->find($plano->razon_social_id);
+        if (!$rs || !$rs->es_independiente) {
+            return response()->json(['success' => false, 'message' => 'Este registro no pertenece a la razón social de independientes.'], 422);
+        }
+
+        $operador = $this->operadoresConApi($aliadoId)
+            ->firstWhere('id', (int) $validated['operador_planilla_id']);
+
+        if (!$operador) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Ese operador no está activo para este aliado o no tiene integración por API.',
+            ], 422);
+        }
+
+        if (empty($operador->codigo_ni)) {
+            return response()->json([
+                'success' => false,
+                'message' => "Falta el código PILA de {$operador->nombre}. Configúrelo en Configuración → Operadores de planilla antes de liquidar.",
+            ], 422);
+        }
+
+        $credencial = $this->credencial($aliadoId, $operador->id, (int) $rs->id);
+
+        if (!$credencial) {
+            return response()->json([
+                'success' => false,
+                'message' => "No hay credenciales de {$operador->nombre} configuradas para este aliado.",
+            ], 422);
+        }
+
+        if ($credencial->claveSecretaVencida()) {
+            return response()->json([
+                'success' => false,
+                'message' => "La clave secreta de {$operador->nombre} venció. Genere una nueva desde el tablero del operador.",
+            ], 422);
+        }
+
+        // El período que espera construir() es "mes de pago"; el plano guarda
+        // mes_plano/anio_plano ya sea como mes de pago (I Act, tm=11) o como
+        // mes vencido (el resto) — mismo criterio que el resto del módulo.
+        $tipoModId = (int) $plano->tipo_modalidad_id;
+        if ($tipoModId === 11) {
+            $mesPago = (int) $plano->mes_plano; $anioPago = (int) $plano->anio_plano;
+        } else {
+            $mesPago  = $plano->mes_plano == 12 ? 1 : (int) $plano->mes_plano + 1;
+            $anioPago = $plano->mes_plano == 12 ? (int) $plano->anio_plano + 1 : (int) $plano->anio_plano;
+        }
+
+        try {
+            $planoTxt = (new PlanoPilaTxtService())->construir([
+                'aliado_id'       => $aliadoId,
+                'razon_social_id' => $rs->id,
+                'mes'             => $mesPago,
+                'anio'            => $anioPago,
+                'n_plano'         => (int) $plano->n_plano,
+                'plano_id'        => $plano->id,
+                'codigo_operador' => (string) $operador->codigo_ni,
+            ]);
+        } catch (\RuntimeException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+        } catch (\Exception $e) {
+            Log::error('Enlace API: error al construir el plano de independiente', [
+                'plano_id' => $plano->id,
+                'message'  => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al generar el archivo plano: ' . $e->getMessage(),
+            ], 500);
+        }
+
+        $registro = OperadorPlanillaApi::updateOrCreate(
+            [
+                'aliado_id'            => $aliadoId,
+                'razon_social_id'      => $rs->id,
+                'plano_id'             => $plano->id,
+                'operador_planilla_id' => $operador->id,
+            ],
+            ['anio' => $anioPago, 'mes' => $mesPago, 'n_plano' => $plano->n_plano, 'estado' => 'procesando', 'mensaje_error' => null]
+        );
+
+        $nombreCotizante = trim($plano->primer_nombre . ' ' . $plano->primer_ape);
+
+        $api = new SuaporteApiService([
+            'operador'      => $operador->codigo,
+            'usuario'       => $credencial->usuario,
+            'contrasena'    => $credencial->contrasena,
+            'clave_secreta' => $credencial->clave_secreta,
+        ]);
+
+        $mapaDoc = ['C' => 'CC', 'NIT' => 'CC', 'PT' => 'CE', 'NUIP' => 'CC'];
+        $tipoDoc = $mapaDoc[strtoupper(trim($plano->tipo_doc ?? 'CC'))] ?? strtoupper(trim($plano->tipo_doc ?? 'CC'));
+
+        // Datos de contacto para registrar al contratista como aportante
+        // independiente en Enlace si todavía no existe ahí (ver
+        // SuaporteApiService::crearAportanteIndependiente). codigoMunicipio
+        // = DIVIPOLA depto(2) + municipio(3) + '000', igual que exige
+        // el formulario web de Enlace.
+        $cliente = DB::table('clientes')
+            ->where('cedula', $plano->no_identifi)
+            ->where('aliado_id', $aliadoId)
+            ->first();
+
+        $contactoAportante = [];
+        if ($cliente) {
+            $depCod  = $cliente->departamento_id ? str_pad((string) $cliente->departamento_id, 2, '0', STR_PAD_LEFT) : '';
+            $munPila = $cliente->municipio_id
+                ? DB::table('ciudades')->where('id_ciudad_t', $cliente->municipio_id)->value('Municipio')
+                : null;
+            $munCod  = ($depCod && $munPila !== null)
+                ? $depCod . str_pad((string) $munPila, 3, '0', STR_PAD_LEFT) . '000'
+                : '';
+
+            $contactoAportante = [
+                'correo'              => $cliente->correo ?? '',
+                'telefono'            => $cliente->telefono ?? '',
+                'celular'             => $cliente->celular ?? '',
+                'codigo_departamento' => $depCod,
+                'codigo_municipio'    => $munCod,
+                'direccion'           => $cliente->direccion_vivienda ?? '',
+            ];
+        }
+
+        $resultado = $api->liquidarPlanilla($plano->no_identifi, $planoTxt['contenido'], $planoTxt['filename'], [
+            'tipo_documento'     => $tipoDoc,
+            'crear_si_no_existe' => true,
+            'nombre_aportante'   => $nombreCotizante,
+            'contacto_aportante' => $contactoAportante,
+            'tipoArchivo'        => 'I',
+        ]);
+
+        if (!($resultado['success'] ?? false)) {
+            $registro->update([
+                'estado'        => 'error',
+                'mensaje_error' => $resultado['message'] ?? 'Error desconocido.',
+                'response_log'  => $resultado['response'] ?? null,
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'paso'    => $resultado['paso'] ?? null,
+                'message' => $resultado['message'] ?? 'No fue posible liquidar la planilla.',
+            ], 422);
+        }
+
+        if (!($resultado['liquidada'] ?? false)) {
+            $registro->update([
+                'estado'          => 'con_errores',
+                'api_planilla_id' => $resultado['codigo_planilla'] ?? null,
+                'mensaje_error'   => "La planilla tiene {$resultado['total_errores']} error(es).",
+                'response_log'    => $resultado['response'] ?? null,
+            ]);
+
+            return response()->json([
+                'success'          => true,
+                'liquidada'        => false,
+                'codigo_planilla'  => $resultado['codigo_planilla'] ?? null,
+                'total_errores'    => $resultado['total_errores'] ?? 0,
+                'errores_cotizante'=> $resultado['errores_cotizante'] ?? [],
+                'errores_empresa'  => $resultado['errores_empresa'] ?? [],
+                'message'          => 'El archivo tiene errores. Corríjalos y vuelva a liquidar.',
+            ]);
+        }
+
+        $registro->update([
+            'estado'          => 'validada',
+            'api_planilla_id' => $resultado['codigo_planilla'] ?? null,
+            'numero_planilla' => $resultado['numero_planilla'] ?? null,
+            'valor_total'     => $resultado['totales']['total_pagar'] ?? null,
+            'url_pago'        => $resultado['url_pago'] ?? null,
+            'mensaje_error'   => null,
+            'response_log'    => $resultado['response'] ?? null,
+        ]);
+
+        return response()->json([
+            'success'         => true,
+            'liquidada'       => true,
+            'numero_planilla' => $resultado['numero_planilla'],
+            'valor_total'     => $resultado['totales']['total_pagar'] ?? null,
+            'valor_mora'      => $resultado['totales']['valor_mora'] ?? null,
+            'fecha_limite'    => $resultado['totales']['fecha_limite'] ?? null,
+            'url_pago'        => $resultado['url_pago'] ?? null,
+            'message'         => "Planilla {$resultado['numero_planilla']} liquidada en {$operador->nombre} para {$nombreCotizante}.",
         ]);
     }
 

@@ -15,7 +15,11 @@ class OperadorPlanilla extends BaseModel
         'codigo_ni' => 'integer',
     ];
 
-    /** Scope: operadores disponibles para un aliado (globales + los del aliado) */
+    /**
+     * Scope: operadores disponibles para un aliado (globales + los del aliado),
+     * respetando el override por-aliado de `aliado_operadores_planilla`
+     * (Configuración → Operadores de planilla). Sin fila en el pivot = activo.
+     */
     public function scopeParaAliado($query, int $aliadoId)
     {
         return $query
@@ -23,6 +27,12 @@ class OperadorPlanilla extends BaseModel
                 $q->whereNull('aliado_id')->orWhere('aliado_id', $aliadoId);
             })
             ->where('activo', true)
+            ->whereNotIn('id', function ($sub) use ($aliadoId) {
+                $sub->select('operador_id')
+                    ->from('aliado_operadores_planilla')
+                    ->where('aliado_id', $aliadoId)
+                    ->where('activo', false);
+            })
             ->orderBy('orden');
     }
 

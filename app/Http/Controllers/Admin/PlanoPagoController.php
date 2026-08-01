@@ -126,6 +126,10 @@ class PlanoPagoController extends Controller
                 ->leftJoin('tipo_modalidad AS tm', 'tm.id', '=', 'p.tipo_modalidad_id')
                 // Operador asignado al cliente (para RS independientes)
                 ->leftJoin('operadores_planilla AS op_cl', 'op_cl.id', '=', 'cl.operador_planilla_id')
+                // Última liquidación por API de ESTE registro puntual (independientes:
+                // cada fila se liquida por su cuenta, ver PlanillaApiController::liquidarIndependiente)
+                ->leftJoin(DB::raw('(SELECT plano_id, MAX(id) AS max_id FROM operador_planillas_api WHERE deleted_at IS NULL AND plano_id IS NOT NULL GROUP BY plano_id) AS opa_max'), 'opa_max.plano_id', '=', 'p.id')
+                ->leftJoin('operador_planillas_api AS opa', 'opa.id', '=', 'opa_max.max_id')
                 ->where('p.aliado_id', $aliadoId)
                 ->whereNull('p.deleted_at')
                 ->where(function ($q) use ($nPlanoFiltro) {
@@ -190,6 +194,12 @@ class PlanoPagoController extends Controller
                     // Operador del cliente
                     'op_cl.id   AS operador_cliente_id',
                     'op_cl.nombre AS operador_cliente_nombre',
+                    // Última liquidación por API de este registro puntual (independientes)
+                    'opa.operador_planilla_id AS operador_liquidado_id',
+                    'opa.numero_planilla      AS numero_planilla_api',
+                    'opa.url_pago             AS url_pago_api',
+                    'opa.estado               AS estado_api',
+                    'opa.mensaje_error        AS mensaje_error_api',
                     // Empresa del cliente
                     'em.empresa AS nombre_empresa',
                     // Tipo modalidad
@@ -317,6 +327,16 @@ class PlanoPagoController extends Controller
             }
         }
 
+        // Operadores con integración de API (Enlace Operativo) para el ícono
+        // de "liquidar en línea" por independiente — igual que el resto de
+        // opciones de independientes, sin filtrar por el pivot del aliado.
+        $operadoresApiIds = DB::table('operadores_planilla')
+            ->whereNull('aliado_id')
+            ->where('activo', true)
+            ->whereIn('codigo', array_keys(\App\Services\SuaporteApiService::HOSTS))
+            ->pluck('id')
+            ->all();
+
         return view('admin.planos.index', compact(
             'planos', 'razonesSociales', 'tiposModalidad', 'modalidadesDispon',
             'cantPorRs', 'diaHoy',
@@ -324,7 +344,7 @@ class PlanoPagoController extends Controller
             'razonSocialId', 'nPlanoFiltro', 'modalidadesIds',
             'rsSeleccionada', 'nPlanoActual',
             'totalSS', 'totalAdmon', 'totalPersonas',
-            'bancos', 'operadores',
+            'bancos', 'operadores', 'operadoresApiIds',
             'planoPagado', 'numeroPlanillaPagado', 'valorPagado',
             'estadoPago',
         ) + [

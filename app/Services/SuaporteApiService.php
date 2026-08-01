@@ -263,25 +263,119 @@ class SuaporteApiService
     }
 
     /**
+     * Catálogo interno de Enlace para el tipo de vía de una dirección
+     * (usado por crearAportanteIndependiente). Capturado del formulario web
+     * de registro — no está documentado en ningún lado.
+     */
+    private const TIPO_VIA = [
+        'AUTOPISTA' => 1, 'AV' => 2, 'AVENIDA' => 2,
+        'AC' => 3, 'AVCL' => 3, 'AVCALLE' => 3,
+        'AK' => 4, 'AVCR' => 4, 'AVCARRERA' => 4,
+        'BLV' => 5, 'BULEVAR' => 5,
+        'CL' => 6, 'CALLE' => 6,
+        'CR' => 7, 'CRA' => 7, 'KR' => 7, 'CARRERA' => 7,
+        'CT' => 8, 'CARRETERA' => 8,
+        'CIRCULAR' => 9, 'CIRCUNVALAR' => 10,
+        'DG' => 12, 'DIAGONAL' => 12,
+        'KM' => 13, 'KILOMETRO' => 13,
+        'OF' => 14, 'OFICINA' => 14,
+        'PJ' => 15, 'PASAJE' => 15, 'PASEO' => 16,
+        'PT' => 17, 'PEATONAL' => 17,
+        'TV' => 18, 'TRANSVERSAL' => 18,
+        'TRONCAL' => 19, 'VARIANTE' => 20, 'VIA' => 21,
+    ];
+
+    private const CUADRANTE_VIA = ['SUR' => 1, 'NORTE' => 2, 'ESTE' => 3, 'OESTE' => 4];
+
+    /**
+     * Descompone una dirección libre colombiana ("CR 48 # 48 - 54") en los
+     * campos estructurados que pide Enlace para registrar un aportante.
+     * Devuelve null si el patrón no es reconocible con confianza — mejor
+     * dejar la dirección vacía que mandar datos mal separados a un registro
+     * real (mismo criterio que el bug de municipio del plano PILA).
+     */
+    public static function parsearDireccion(string $direccion): ?array
+    {
+        $dir = mb_strtoupper(trim($direccion), 'UTF-8');
+        $dir = preg_replace('/[.,]/', '', $dir);
+
+        $patron = '/^([A-ZÀ-Ý]+)\s+(\d+)\s*([A-Z])?\s*(SUR|NORTE|ESTE|OESTE)?\s*#\s*(\d+)\s*([A-Z])?\s*-\s*(\d+)/u';
+        if (!preg_match($patron, $dir, $m)) {
+            return null;
+        }
+
+        $tipoVialId = self::TIPO_VIA[$m[1]] ?? null;
+        if (!$tipoVialId) {
+            return null;
+        }
+
+        return [
+            'id'                     => null,
+            'tipoVialId'             => (string) $tipoVialId,
+            'numeroVial'             => $m[2],
+            'letraVial'              => $m[3] ?? '',
+            'tipoCuadranteId'        => !empty($m[4]) ? self::CUADRANTE_VIA[$m[4]] : null,
+            'numeroPlaca'            => $m[5],
+            'cuadranteViaGeneradora' => $m[6] ?? '',
+            'numeroViaGeneradora'    => $m[7],
+            'informacionAdicional'   => '',
+            'direccionCompleta'      => $dir,
+        ];
+    }
+
+    /**
+     * Busca el id interno de una actividad económica por nombre o código
+     * DANE (autocompletado del formulario de registro). Sin este id el
+     * registro de aportante lo rechaza con un mensaje genérico.
+     */
+    public function buscarActividadEconomica(string $termino): ?int
+    {
+        try {
+            $response = Http::timeout($this->timeout)
+                ->withHeaders($this->headers)
+                ->get("{$this->apiUrl}/gestion/economicactivities/find", ['name' => $termino]);
+
+            if (!$response->successful()) {
+                return null;
+            }
+
+            return $response->json()[0]['id'] ?? null;
+        } catch (\Exception $e) {
+            Log::warning('Suaporte: no se pudo resolver actividad económica', [
+                'termino' => $termino, 'message' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
+    /**
      * Crea un aportante independiente (persona natural que cotiza por su
      * cuenta). Solo requiere los 5 headers del login: no se puede autorizar
      * sobre un aportante que todavía no existe.
      *
-     * Los valores fijos (tipoAportante, clasificación, naturaleza jurídica…)
-     * salen de cómo la plataforma tiene registrados los independientes
-     * existentes; `actividadEconomicaCodigo` 7490 es el CIIU genérico de
-     * "otras actividades profesionales".
+     * Payload capturado directamente del formulario web de Enlace
+     * (suaporte.com.co/gestion/#/segment/independent) — no está
+     * documentado en ningún lado, y varios nombres de campo no coinciden
+     * con lo que uno esperaría (numeroPlaca/numeroViaGeneradora no son lo
+     * que sus nombres sugieren, ver parsearDireccion).
      *
      * @param array $datos tipo_documento, documento, nombre, codigo_arl,
-     *                     actividad_economica, contacto[]
+     *                     actividad_economica (código/nombre a buscar),
+     *                     contacto: [correo, correo_adicional, telefono,
+     *                                celular, codigo_departamento,
+     *                                codigo_municipio, direccion]
      */
     public function crearAportanteIndependiente(array $datos): array
     {
+        $actividadId = $this->buscarActividadEconomica($datos['actividad_economica'] ?? '7490')
+            ?? 405; // fallback: "Otras actividades profesionales, científicas y técnicas n.c.p."
+
         $payload = [
             'tipoIdentificacion'                   => $datos['tipo_documento'] ?? 'CC',
             'numeroIdentificacion'                 => (string) $datos['documento'],
             'razonSocial'                          => $datos['nombre'],
-            'tipoAportanteId'                      => 2,   // independiente
+            'tipoAportanteId'                      => '2',   // independiente
             'clasificacionAportanteId'             => 2,
             'digitoVerificacion'                   => 0,
             'formaPresentacionId'                  => 1,   // único
@@ -289,13 +383,39 @@ class SuaporteApiService
             'naturalezaJuridicaId'                 => 2,   // privada
             'tipoAccionId'                         => 5,   // normal
             'codigoAdministradoraRiesgosLaborales' => $datos['codigo_arl'] ?? 'NIN-AR',
-            'actividadEconomicaCodigo'             => $datos['actividad_economica'] ?? '7490',
+            'actividadEconomicaId'                 => $actividadId,
             'estado'                               => 'ACTIVE',
             'pagaEsapMin'                          => false,
+            'validacionExtra'                      => [
+                'duplicacionPlanilla'                   => 'N',
+                'tipoComprobantePagoAsistidoId'         => 1,
+                'valoresComprobante'                    => 'S',
+                'novedadIngresoRetiro'                  => 'S',
+                'exoneradoPagoParafiscal'               => 'S',
+                'reemplazaAdministradoraSaludCotizante' => 'S',
+                'reemplazaValorUpcCotizante'            => 'S',
+            ],
         ];
 
-        if (!empty($datos['contacto'])) {
-            $payload['informacionContacto'] = $datos['contacto'];
+        $contacto = $datos['contacto'] ?? [];
+        if (!empty($contacto)) {
+            $direccion = !empty($contacto['direccion']) ? self::parsearDireccion($contacto['direccion']) : null;
+
+            $payload['informacionContacto'] = [
+                'correoElectronico'          => $contacto['correo'] ?? '',
+                'correoElectronicoAdicional' => $contacto['correo_adicional'] ?? '',
+                'numeroTelefono'             => $contacto['telefono'] ?? ($contacto['celular'] ?? ''),
+                'fax'                        => '',
+                'numeroCelular'              => $contacto['celular'] ?? '',
+                'codigoDepartamento'         => $contacto['codigo_departamento'] ?? '',
+                'codigoMunicipio'            => $contacto['codigo_municipio'] ?? '',
+                'datosDireccion'             => $direccion ?? [
+                    'id' => null, 'tipoVialId' => null, 'numeroVial' => '',
+                    'letraVial' => '', 'tipoCuadranteId' => null, 'numeroPlaca' => '',
+                    'cuadranteViaGeneradora' => '', 'numeroViaGeneradora' => '',
+                    'informacionAdicional' => '', 'direccionCompleta' => $contacto['direccion'] ?? '',
+                ],
+            ];
         }
 
         try {
@@ -686,6 +806,24 @@ class SuaporteApiService
         }
 
         $aportante = $this->consultarAportante($tipoDocumento, $nit);
+
+        // Contratista independiente que liquida por primera vez en Enlace:
+        // no existe como aportante todavía. Se registra (tipoAportanteId=2)
+        // y se reintenta la consulta una sola vez.
+        if (!$aportante['success'] && !empty($opciones['crear_si_no_existe'])) {
+            $creado = $this->crearAportanteIndependiente([
+                'tipo_documento'      => $tipoDocumento,
+                'documento'           => $nit,
+                'nombre'              => $opciones['nombre_aportante'] ?? $nit,
+                'contacto'            => $opciones['contacto_aportante'] ?? [],
+                'actividad_economica' => $opciones['actividad_economica'] ?? null,
+            ]);
+
+            if ($creado['success'] ?? false) {
+                $aportante = $this->consultarAportante($tipoDocumento, $nit);
+            }
+        }
+
         if (!$aportante['success']) {
             return $aportante + ['paso' => 'consulta_aportante'];
         }

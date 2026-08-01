@@ -341,6 +341,7 @@ Route::middleware('auth')->group(function () {
             $pa = \App\Http\Controllers\Admin\PlanillaApiController::class;
             Route::get ('/api-operador/estado',    [$pa, 'estado'])   ->name('api_operador.estado');
             Route::post('/api-operador/liquidar',  [$pa, 'liquidar']) ->name('api_operador.liquidar');
+            Route::post('/api-operador/liquidar-independiente', [$pa, 'liquidarIndependiente'])->name('api_operador.liquidar_independiente');
             Route::get ('/api-operador/{codigoPlanilla}/inconsistencias', [$pa, 'inconsistencias'])
                 ->whereNumber('codigoPlanilla')->name('api_operador.inconsistencias');
 

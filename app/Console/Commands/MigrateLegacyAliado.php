@@ -141,7 +141,9 @@ class MigrateLegacyAliado extends Command
     {
         DB::statement('ALTER TABLE razones_sociales NOCHECK CONSTRAINT ALL');
 
-        // ID secuencial empezando desde el máximo actual + 1 (garantiza IDs limpios)
+        // ID secuencial empezando desde el máximo actual + 1 (garantiza IDs limpios).
+        // OJO: este max() es global A PROPÓSITO. La tabla tiene id sin IDENTITY
+        // (PK manual), así que acotarlo por aliado generaría IDs ya usados por otro.
         $nextId = (int) DB::table('razones_sociales')->max('id') + 1;
         $this->line("  ℹ  Iniciando IDs desde: $nextId");
 
@@ -199,7 +201,7 @@ class MigrateLegacyAliado extends Command
             $this->info("  ✅ $db → $count razones sociales, $skipped omitidas");
         }
         DB::statement('ALTER TABLE razones_sociales WITH CHECK CHECK CONSTRAINT ALL');
-        $this->info('  📊 Total razones_sociales: ' . DB::table('razones_sociales')->count());
+        $this->info('  📊 Razones sociales del aliado: ' . DB::table('razones_sociales')->where('aliado_id', $this->aliadoActualId())->count());
     }
 
     // ─── PASO 02: USUARIOS ───────────────────────────────────────────────────
@@ -243,7 +245,7 @@ class MigrateLegacyAliado extends Command
             $this->info("  ✅ $db → $count insertados, $skipped omitidos");
         }
         DB::statement('ALTER TABLE users WITH CHECK CHECK CONSTRAINT ALL');
-        $this->info('  📊 Total users: ' . DB::table('users')->count());
+        $this->info('  📊 Usuarios del aliado: ' . DB::table('users')->where('aliado_id', $this->aliadoActualId())->count());
     }
 
     // ─── PASO 03: EMPRESAS ───────────────────────────────────────────────────
@@ -251,7 +253,8 @@ class MigrateLegacyAliado extends Command
     {
         DB::statement('ALTER TABLE empresas NOCHECK CONSTRAINT ALL');
 
-        // ID secuencial empezando desde el máximo actual + 1
+        // ID secuencial empezando desde el máximo actual + 1.
+        // Global a propósito: id sin IDENTITY, ver nota en step01_RazonesSociales.
         $nextId = (int) DB::table('empresas')->max('id') + 1;
         $this->line("  ℹ  Iniciando IDs desde: $nextId");
 
@@ -299,7 +302,7 @@ class MigrateLegacyAliado extends Command
             $this->info("  ✅ $db → $count insertadas, $skipped omitidas");
         }
         DB::statement('ALTER TABLE empresas WITH CHECK CHECK CONSTRAINT ALL');
-        $this->info('  📊 Total empresas: ' . DB::table('empresas')->count());
+        $this->info('  📊 Empresas del aliado: ' . DB::table('empresas')->where('aliado_id', $this->aliadoActualId())->count());
     }
 
     // ─── PASO 04: ASESORES + BANCOS ──────────────────────────────────────────
@@ -386,6 +389,7 @@ class MigrateLegacyAliado extends Command
     {
         DB::statement('ALTER TABLE clientes NOCHECK CONSTRAINT ALL');
 
+        // Global a propósito: id sin IDENTITY, ver nota en step01_RazonesSociales.
         $nextId = (int) DB::table('clientes')->max('id') + 1;
         $this->line("  ℹ  Iniciando IDs desde: $nextId");
 
@@ -725,7 +729,7 @@ class MigrateLegacyAliado extends Command
 
         $this->info('  📊 Contratos del aliado: ' . DB::table('contratos')->where('aliado_id', $aliadoId)->count());
         $this->info('  📊 Radicados del aliado: ' . DB::table('radicados')->where('aliado_id', $aliadoId)->count());
-        $this->warn('  ⚠  Sin razon_social: ' . DB::table('contratos')->whereNull('razon_social_id')->count());
+        $this->warn('  ⚠  Sin razon_social en este aliado: ' . DB::table('contratos')->where('aliado_id', $this->aliadoActualId())->whereNull('razon_social_id')->count());
     }
 
     // ─── HELPER: lookup por NIT en tabla global ──────────────────────────────
@@ -1014,8 +1018,8 @@ class MigrateLegacyAliado extends Command
         }
         DB::statement('ALTER TABLE facturas      WITH CHECK CHECK CONSTRAINT ALL');
         DB::statement('ALTER TABLE consignaciones WITH CHECK CHECK CONSTRAINT ALL');
-        $this->info('  📊 Total facturas: '      . DB::table('facturas')->count());
-        $this->info('  📊 Total consignaciones: ' . DB::table('consignaciones')->count());
+        $this->info('  📊 Facturas del aliado: ' . DB::table('facturas')->where('aliado_id', $this->aliadoActualId())->count());
+        $this->info('  📊 Consignaciones del aliado: ' . DB::table('consignaciones')->where('aliado_id', $this->aliadoActualId())->count());
 
         // ── Actualizar factura_secuencias ─────────────────────────────────────
         // Después de migrar, el ultimo_numero debe reflejar el MAX numero_factura
@@ -1087,7 +1091,7 @@ class MigrateLegacyAliado extends Command
             $this->info("  ✅ $db → $count beneficiarios");
         }
         DB::statement('ALTER TABLE beneficiarios WITH CHECK CHECK CONSTRAINT ALL');
-        $this->info('  📊 Total beneficiarios: ' . DB::table('beneficiarios')->count());
+        $this->info('  📊 Beneficiarios del aliado: ' . DB::table('beneficiarios')->where('aliado_id', $this->aliadoActualId())->count());
     }
 
     // ─── PASO 09: PLANOS (PLANILLAS PILA) ────────────────────────────────────
@@ -1405,10 +1409,16 @@ class MigrateLegacyAliado extends Command
                 ->pluck('id', 'cedula');  // [cedula => contrato_id]
 
             // Usuario sistema (fallback si no hay encargado mapeado):
-            // buscar el primer superadmin del aliado
+            // buscar el primer superadmin del aliado. Sin fallback al id 1,
+            // que pertenece a otro aliado (BryNex).
             $userFallback = DB::table('users')
                 ->where('aliado_id', $aliadoId)
-                ->value('id') ?? 1;
+                ->value('id');
+
+            if (! $userFallback) {
+                $this->warn("  ⚠ $db: el aliado no tiene usuarios propios, se omiten las tareas");
+                continue;
+            }
 
             $count = 0; $skipped = 0; $offset = 0; $chunk = 500;
 
@@ -1720,7 +1730,7 @@ class MigrateLegacyAliado extends Command
 
         DB::statement('ALTER TABLE facturas      WITH CHECK CHECK CONSTRAINT ALL');
         DB::statement('ALTER TABLE consignaciones WITH CHECK CHECK CONSTRAINT ALL');
-        $this->info('  📊 Total facturas ahora: ' . DB::table('facturas')->count());
+        $this->info('  📊 Facturas del aliado ahora: ' . DB::table('facturas')->where('aliado_id', $this->aliadoActualId())->count());
 
         // Actualizar factura_secuencias
         $this->info('  🔢 Actualizando factura_secuencias...');
@@ -1818,7 +1828,7 @@ class MigrateLegacyAliado extends Command
             $this->info("  ✅ $db → $count documentos");
         }
         DB::statement('ALTER TABLE documentos_cliente WITH CHECK CHECK CONSTRAINT ALL');
-        $this->info('  📊 Total documentos_cliente: ' . DB::table('documentos_cliente')->count());
+        $this->info('  📊 Documentos del aliado: ' . DB::table('documentos_cliente')->where('aliado_id', $this->aliadoActualId())->count());
     }
 
     // ─── PASO 12: GASTOS ─────────────────────────────────────────────────────
@@ -1847,8 +1857,14 @@ class MigrateLegacyAliado extends Command
             $rows  = DB::connection('sqlsrv_legacy')->select("SELECT * FROM [$db].dbo.Gastos");
             $count = 0;
 
-            // Resolver user_id por defecto (primer usuario del aliado)
-            $defaultUserId = DB::table('users')->where('aliado_id', $aliadoId)->value('id') ?? 1;
+            // Resolver user_id por defecto (primer usuario del aliado).
+            // Sin fallback al id 1, que pertenece a otro aliado (BryNex).
+            $defaultUserId = DB::table('users')->where('aliado_id', $aliadoId)->value('id');
+
+            if (! $defaultUserId) {
+                $this->warn("  ⚠ $db: el aliado no tiene usuarios propios, se omiten los gastos");
+                continue;
+            }
 
             foreach ($rows as $r) {
                 $idLeg = $this->col($r, 'Id') ?? $this->col($r, 'Id_Gasto');
@@ -1912,7 +1928,7 @@ class MigrateLegacyAliado extends Command
         }
 
         DB::statement('ALTER TABLE gastos WITH CHECK CHECK CONSTRAINT ALL');
-        $this->info('  📊 Total gastos: ' . DB::table('gastos')->count());
+        $this->info('  📊 Gastos del aliado: ' . DB::table('gastos')->where('aliado_id', $this->aliadoActualId())->count());
     }
     private function step16_Fixes(): void
     {

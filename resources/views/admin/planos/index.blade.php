@@ -522,6 +522,43 @@
     grid-column: span 2;
 }
 
+/* Descargas manuales colapsables (colapsadas cuando hay liquidación en línea) */
+#detalle-descargas > summary {
+    list-style:none; cursor:pointer; display:flex; align-items:center; gap:.4rem;
+    font-size:.78rem; font-weight:700; color:#475569;
+    padding:.55rem .7rem; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px;
+    user-select:none;
+}
+#detalle-descargas > summary::-webkit-details-marker { display:none; }
+#detalle-descargas > summary::after {
+    content:'▾'; margin-left:auto; color:#94a3b8; transition:transform .15s;
+}
+#detalle-descargas[open] > summary::after { transform:rotate(180deg); }
+#detalle-descargas > summary:hover { background:#f1f5f9; }
+
+/* Icono "Liquidar en línea" por independiente (junto a Pagar) */
+.btn-pse-icon {
+    display:inline-flex; align-items:center; justify-content:center;
+    min-width:30px; height:22px; padding:0 .3rem; border-radius:6px;
+    background:linear-gradient(135deg,#1d4ed8,#1e3a8a);
+    color:#fff; font-size:.56rem; font-weight:800; letter-spacing:.01em;
+    border:none; cursor:pointer; box-shadow:0 1px 3px rgba(29,78,216,.35);
+    transition:transform .12s, opacity .12s; flex-shrink:0;
+}
+.btn-pse-icon:hover:not(:disabled) { transform:scale(1.06); }
+.btn-pse-icon:disabled {
+    background:#e2e8f0; color:#94a3b8; cursor:not-allowed;
+    box-shadow:none; filter:none;
+}
+.btn-pse-icon.cargando { opacity:.6; cursor:wait; }
+.chip-liquidado-api {
+    display:inline-flex; align-items:center; gap:.25rem;
+    background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;
+    border-radius:20px; padding:.1rem .5rem; font-size:.64rem; font-weight:700;
+    font-family:monospace; white-space:nowrap;
+}
+.chip-liquidado-api a { color:#1d4ed8; text-decoration:underline; font-family:sans-serif; margin-left:.15rem; }
+
 /* ── Ordenamiento de Tabla ───────────────────────────────────────────── */
 .tabla-planos thead th.sortable {
     cursor: pointer;
@@ -891,18 +928,45 @@
                 <span style="color:#cbd5e1;font-size:.67rem">— sin asignar—</span>
                 @endif
             </td>
-            {{-- Columna Acción: Pagar / Pagado --}}
+            {{-- Columna Acción: Liquidar (PSE) / Pagar / Pagado --}}
             <td id="accion-{{ $p->id }}" data-order="{{ $p->numero_planilla ?? '' }}">
                 @if($p->numero_planilla)
                 <span style="display:inline-flex;align-items:center;gap:.25rem;background:#dcfce7;color:#15803d;border:1px solid #bbf7d0;border-radius:20px;padding:.15rem .55rem;font-size:.67rem;font-weight:700;font-family:monospace;white-space:nowrap"
                       title="Planilla: {{ $p->numero_planilla }}">✅ {{ $p->numero_planilla }}</span>
                 @else
-                <button type="button"
-                    onclick="abrirModalPagoIndividual({{ $p->id }}, {{ $p->total_ss ?? 0 }}, '{{ addslashes($clienteNombre) }}', {{ $p->operador_cliente_id ?? 'null' }})"
-                    style="padding:.2rem .55rem;border-radius:6px;font-size:.68rem;font-weight:700;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8;cursor:pointer;white-space:nowrap;transition:all .15s"
-                    onmouseover="this.style.background='#dbeafe'" onmouseout="this.style.background='#eff6ff'">
-                    💳 Pagar
-                </button>
+                <div style="display:flex;align-items:center;gap:.3rem;flex-wrap:wrap">
+                    @if($p->numero_planilla_api)
+                    {{-- Ya liquidada en el operador: falta confirmar el pago manualmente --}}
+                    <span class="chip-liquidado-api" title="Liquidada en {{ $p->operador_cliente_nombre }}: {{ $p->numero_planilla_api }}">
+                        ⚡ {{ $p->numero_planilla_api }}
+                        @if($p->url_pago_api)
+                        <a href="{{ $p->url_pago_api }}" target="_blank" rel="noopener">PSE →</a>
+                        @endif
+                    </span>
+                    @else
+                    @php
+                        $puedeLiquidarApi = in_array((int) ($p->operador_cliente_id ?? 0), $operadoresApiIds ?? []);
+                        $tituloIcono = $puedeLiquidarApi
+                            ? 'Liquidar en '.$p->operador_cliente_nombre.' y generar el link de pago PSE'
+                            : ($p->operador_cliente_nombre
+                                ? 'Este contratista usa '.$p->operador_cliente_nombre.', que no tiene integración por API.'
+                                : 'Este contratista no tiene operador asignado.');
+                    @endphp
+                    <button type="button"
+                        id="btn-pse-{{ $p->id }}"
+                        class="btn-pse-icon"
+                        onclick="liquidarIndependienteRow({{ $p->id }}, {{ $p->operador_cliente_id ?? 'null' }}, this)"
+                        @if(!$puedeLiquidarApi) disabled @endif
+                        title="{{ $tituloIcono }}">PSE</button>
+                    @endif
+
+                    <button type="button"
+                        onclick="abrirModalPagoIndividual({{ $p->id }}, {{ $p->total_ss ?? 0 }}, '{{ addslashes($clienteNombre) }}', {{ $p->operador_cliente_id ?? 'null' }})"
+                        style="padding:.2rem .55rem;border-radius:6px;font-size:.68rem;font-weight:700;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8;cursor:pointer;white-space:nowrap;transition:all .15s"
+                        onmouseover="this.style.background='#dbeafe'" onmouseout="this.style.background='#eff6ff'">
+                        💳 Pagar
+                    </button>
+                </div>
                 @endif
             </td>
             @endif
@@ -1139,76 +1203,82 @@
             {{-- ── Botones de descarga (deshabilitados si pagado) ────── --}}
             @php $pagado = $planoPagado; @endphp
 
-            <div style="margin-top: 1rem; display: flex; flex-direction: column; gap: 1rem;">
+            <div style="margin-top: 1rem; display: flex; flex-direction: column; gap: .85rem;">
 
-                {{-- ── Liquidación directa por API (Enlace Operativo) ──────
-                     Se revela desde JS solo si hay credenciales configuradas
-                     para el aliado. Ver PlanillaApiController::estado(). --}}
-                <div id="bloque-enlace-api" style="display:none">
-                    <div style="font-size:.72rem;font-weight:700;color:#7c3aed;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.4rem;display:flex;align-items:center;gap:.3rem">
-                        <span>⚡</span> Liquidar en línea (sin descargar)
+                {{-- ── Liquidación directa por API (Enlace Operativo) — opción
+                     prioritaria: sin descargar ni subir nada a mano. Se revela
+                     desde JS solo si hay credenciales configuradas para el
+                     aliado. Ver PlanillaApiController::estado(). --}}
+                <div id="bloque-enlace-api" style="display:none;background:linear-gradient(135deg,#faf5ff,#f5f3ff);border:1.5px solid #ddd6fe;border-radius:12px;padding:.9rem 1rem">
+                    <div style="display:flex;align-items:center;gap:.4rem;margin-bottom:.5rem">
+                        <span style="font-size:.72rem;font-weight:700;color:#7c3aed;text-transform:uppercase;letter-spacing:.05em">⚡ Liquidar en línea</span>
+                        <span style="background:#7c3aed;color:#fff;font-size:.6rem;font-weight:800;letter-spacing:.04em;padding:.15rem .5rem;border-radius:20px">RECOMENDADO</span>
                     </div>
 
                     {{-- Un botón por operador con credenciales cargadas --}}
                     <div id="enlace-botones" style="display:flex;flex-direction:column;gap:.5rem"></div>
 
-                    <div style="font-size:.7rem;color:#64748b;margin-top:.35rem;text-align:center;line-height:1.3">
-                        Envía el plano directamente al operador y devuelve el <strong>número de planilla</strong> y el <strong>link de pago PSE</strong>.
+                    <div style="font-size:.7rem;color:#6b21a8;margin-top:.4rem;text-align:center;line-height:1.3">
+                        Envía el plano directamente al operador y devuelve el <strong>número de planilla</strong> y el <strong>link de pago PSE</strong>, sin descargar ni subir nada a mano.
                     </div>
 
                     {{-- Resultado de la última liquidación de este periodo --}}
                     <div id="enlace-ultima" style="display:none;margin-top:.6rem"></div>
+                </div>
 
-                    <div style="display:flex;align-items:center;text-align:center;margin:.9rem 0 0">
-                        <div style="flex-grow:1;border-top:1px solid #e2e8f0"></div>
-                        <span style="padding:0 .75rem;font-size:.68rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em">O descargar el archivo</span>
-                        <div style="flex-grow:1;border-top:1px solid #e2e8f0"></div>
+                {{-- Descargas manuales: colapsadas por defecto en cuanto se
+                     confirma que hay liquidación en línea disponible (ver
+                     cargarEstadoEnlace). Si no hay operador configurado
+                     quedan abiertas, porque son la única opción. --}}
+                <details id="detalle-descargas" open>
+                    <summary><span>📥</span> Descargar el archivo manualmente</summary>
+
+                    <div style="margin-top:.85rem;display:flex;flex-direction:column;gap:1rem">
+                        {{-- Formato Universal --}}
+                        <div>
+                            <div style="font-size: .72rem; font-weight: 700; color: #059669; text-transform: uppercase; letter-spacing: .05em; margin-bottom: .4rem; display: flex; align-items: center; gap: .3rem;">
+                                <span>📄</span> Formato Universal (TXT)
+                            </div>
+                            <button class="btn-descarga-principal"
+                                    onclick="ejecutarDescargaMiPlanilla()"
+                                    @if($pagado) disabled @endif>
+                                📄 Descargar Txt para todos los operadores
+                            </button>
+                            <div style="font-size: .7rem; color: #64748b; margin-top: .35rem; text-align: center; line-height: 1.3;">
+                                Este archivo plano (PILA) sirve para <strong>cualquier operador</strong> (MiPlanilla, Aportes en Línea, Arus, Asopagos, etc.).
+                            </div>
+                        </div>
+
+                        {{-- Separador Visual --}}
+                        <div style="display: flex; align-items: center; text-align: center; margin: .2rem 0;">
+                            <div style="flex-grow: 1; border-top: 1px solid #e2e8f0;"></div>
+                            <span style="padding: 0 .75rem; font-size: .68rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: .05em;">Otras opciones en Excel</span>
+                            <div style="flex-grow: 1; border-top: 1px solid #e2e8f0;"></div>
+                        </div>
+
+                        {{-- Formatos Alternativos en contenedor agrupado --}}
+                        <div class="contenedor-descargas-secundarias">
+                            <button class="btn-descarga-secundario"
+                                    onclick="ejecutarDescarga('xlsx')"
+                                    @if($pagado) disabled @endif>
+                                📊 Excel Simple (Arus)
+                            </button>
+
+                            <button class="btn-descarga-secundario"
+                                    onclick="ejecutarDescargaAsopagos()"
+                                    @if($pagado) disabled @endif>
+                                📌 Excel Asopagos
+                            </button>
+
+                            <button class="btn-descarga-secundario"
+                                    id="btn-aportes-en-linea"
+                                    onclick="ejecutarDescargaAportesEnLinea()"
+                                    @if($pagado) disabled @endif>
+                                📈 Excel Aportes en Línea
+                            </button>
+                        </div>
                     </div>
-                </div>
-
-                {{-- Formato Principal Recomendado --}}
-                <div>
-                    <div style="font-size: .72rem; font-weight: 700; color: #059669; text-transform: uppercase; letter-spacing: .05em; margin-bottom: .4rem; display: flex; align-items: center; gap: .3rem;">
-                        <span>⭐</span> Opción Recomendada (Formato Universal)
-                    </div>
-                    <button class="btn-descarga-principal"
-                            onclick="ejecutarDescargaMiPlanilla()"
-                            @if($pagado) disabled @endif>
-                        📄 Descargar Txt para todos los operadores
-                    </button>
-                    <div style="font-size: .7rem; color: #64748b; margin-top: .35rem; text-align: center; line-height: 1.3;">
-                        Este archivo plano (PILA) sirve para <strong>cualquier operador</strong> (MiPlanilla, Aportes en Línea, Arus, Asopagos, etc.).
-                    </div>
-                </div>
-
-                {{-- Separador Visual --}}
-                <div style="display: flex; align-items: center; text-align: center; margin: .2rem 0;">
-                    <div style="flex-grow: 1; border-top: 1px solid #e2e8f0;"></div>
-                    <span style="padding: 0 .75rem; font-size: .68rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: .05em;">Otras opciones en Excel</span>
-                    <div style="flex-grow: 1; border-top: 1px solid #e2e8f0;"></div>
-                </div>
-
-                {{-- Formatos Alternativos en contenedor agrupado --}}
-                <div class="contenedor-descargas-secundarias">
-                    <button class="btn-descarga-secundario"
-                            onclick="ejecutarDescarga('xlsx')"
-                            @if($pagado) disabled @endif>
-                        📊 Excel Simple (Arus)
-                    </button>
-
-                    <button class="btn-descarga-secundario"
-                            onclick="ejecutarDescargaAsopagos()"
-                            @if($pagado) disabled @endif>
-                        📌 Excel Asopagos
-                    </button>
-
-                    <button class="btn-descarga-secundario"
-                            id="btn-aportes-en-linea"
-                            onclick="ejecutarDescargaAportesEnLinea()"
-                            @if($pagado) disabled @endif>
-                        📈 Excel Aportes en Línea
-                    </button>
-                </div>
+                </details>
 
             </div>
 
@@ -1610,6 +1680,7 @@ const CTX = {
         apiRazon     : '/admin/planos/api/razon/',
         enlaceEstado   : '{{ route('admin.planos.api_operador.estado') }}',
         enlaceLiquidar : '{{ route('admin.planos.api_operador.liquidar') }}',
+        enlaceLiquidarIndependiente: '{{ route('admin.planos.api_operador.liquidar_independiente') }}',
     },
     // Tipos de modalidad presentes en los planos cargados actualmente
     // Array de objetos: { id: int, nombre: string }
@@ -2329,11 +2400,13 @@ function paramsEnlace() {
 
 // Revela el bloque de liquidación y pinta un botón por operador configurado.
 async function cargarEstadoEnlace() {
-    const bloque = document.getElementById('bloque-enlace-api');
+    const bloque   = document.getElementById('bloque-enlace-api');
+    const detalles = document.getElementById('detalle-descargas');
     if (!bloque || !CTX.razonSocialId) return;
 
     bloque.style.display = 'none';
     document.getElementById('enlace-ultima').style.display = 'none';
+    if (detalles) detalles.open = true; // por defecto abiertas hasta confirmar que hay liquidación en línea
 
     try {
         const qs   = new URLSearchParams(paramsEnlace());
@@ -2346,6 +2419,7 @@ async function cargarEstadoEnlace() {
         if (!data.disponible || !(data.operadores || []).length) return;
 
         bloque.style.display = '';
+        if (detalles) detalles.open = false; // liquidación en línea disponible: colapsar descargas manuales
 
         const cont = document.getElementById('enlace-botones');
         cont.innerHTML = '';
@@ -2484,6 +2558,67 @@ async function liquidarEnEnlace(operadorId, operadorNombre) {
     } finally {
         btn.disabled  = false;
         btn.innerHTML = orig;
+    }
+}
+
+// ── Liquidar en línea UN contratista independiente puntual ─────────────
+async function liquidarIndependienteRow(planoId, operadorId, btnEl) {
+    if (!operadorId) {
+        mostrarToast('Este contratista no tiene operador asignado.', 'error');
+        return;
+    }
+
+    const celda = document.getElementById('accion-' + planoId);
+    const orig  = btnEl.innerHTML;
+    btnEl.disabled = true;
+    btnEl.classList.add('cargando');
+    btnEl.innerHTML = '…';
+
+    try {
+        const resp = await fetch(CTX.routes.enlaceLiquidarIndependiente, {
+            method : 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept'      : 'application/json',
+                'X-CSRF-TOKEN': CTX.csrfToken,
+            },
+            body: JSON.stringify({ plano_id: planoId, operador_planilla_id: operadorId }),
+        });
+
+        const data = await resp.json();
+
+        if (!resp.ok || !data.success) {
+            mostrarToast(data.message || 'No se pudo liquidar la planilla.', 'error');
+            return;
+        }
+
+        if (!data.liquidada) {
+            mostrarToast(`La planilla tiene ${data.total_errores} error(es).`, 'error');
+            window._enlaceErrores = data;
+            verErroresEnlace();
+            return;
+        }
+
+        // Reemplaza el botón por el chip de "ya liquidado" con el link PSE.
+        if (celda) {
+            const btnPagar = celda.querySelector('button[onclick^="abrirModalPagoIndividual"]');
+            const chip = document.createElement('span');
+            chip.className = 'chip-liquidado-api';
+            chip.title = `Liquidada: ${data.numero_planilla}`;
+            chip.innerHTML = `⚡ ${data.numero_planilla}` +
+                (data.url_pago ? ` <a href="${data.url_pago}" target="_blank" rel="noopener">PSE →</a>` : '');
+            btnEl.replaceWith(chip);
+        }
+
+        mostrarToast(`Planilla ${data.numero_planilla} liquidada.`, 'success');
+    } catch (e) {
+        mostrarToast('Error de conexión al liquidar.', 'error');
+    } finally {
+        if (document.body.contains(btnEl)) {
+            btnEl.disabled = false;
+            btnEl.classList.remove('cargando');
+            btnEl.innerHTML = orig;
+        }
     }
 }
 

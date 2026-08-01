@@ -14,6 +14,7 @@ class OperadorPlanillaApi extends BaseModel
     protected $fillable = [
         'aliado_id',
         'razon_social_id',
+        'plano_id',
         'operador_planilla_id',
         'anio',
         'mes',
