@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\DB;
 use App\Models\ConfiguracionBrynex;
+use App\Services\UpcAdicionalService;
 
 class Contrato extends BaseModel
 {
@@ -166,6 +167,9 @@ class Contrato extends BaseModel
     /** IDs de modalidades que generan el cargo sin-CCF (dependiente, no independiente) */
     const IDS_SIN_CCF = [0, 12]; // 0 = Dependiente E, 12 = Ingreso-Retiro
 
+    /** Modalidad UPC: afiliar a alguien fuera del núcleo familiar del cotizante. Solo EPS. */
+    const MODALIDAD_UPC = 13;
+
     public function aplicaCargoSinCcf(): bool
     {
         $esDependienteTarget = in_array((int)$this->tipo_modalidad_id, self::IDS_SIN_CCF);
@@ -241,6 +245,26 @@ class Contrato extends BaseModel
             $arl   = ($plan && $plan->incluye_arl)     ? $r($ibcArl  * $pctArl  / 100) : 0;
             $pen   = ($plan && $plan->incluye_pension)  ? $r($ibcAfp  * $pctPen  / 100) : 0;
             $caja  = ($plan && $plan->incluye_caja)     ? $r($ibcCaja * $pctCaja / 100) : 0;
+        } elseif ((int) $this->tipo_modalidad_id === self::MODALIDAD_UPC) {
+            // ── UPC adicional: EPS no es % de IBC, es la tarifa fija por edad/
+            //    sexo/zona del beneficiario (Resolución 2764/2025). Siempre es
+            //    solo salud: nunca lleva ARL, pensión ni caja. Se prorratea por
+            //    días igual que las demás modalidades (confirmado con Brayan:
+            //    el mes de arrastre tras el ingreso cobra proporcional, no el
+            //    mes completo).
+            $cliente = $this->cliente;
+            $eps = 0;
+            if ($cliente) {
+                $upc = UpcAdicionalService::valorParaCliente($cliente);
+                $eps = (int) ($upc['valor'] ?? 0);
+            }
+            $arl  = 0;
+            $pen  = 0;
+            $caja = 0;
+
+            if ($dias < 30) {
+                $eps = (int) (ceil($eps * $dias / 30 / 100) * 100);
+            }
         } else {
             // ── Normal: calcular por mes completo y prorratear si $dias < 30 ─
             // Mes completo: ceil al centena superior para garantizar múltiplos de 100.

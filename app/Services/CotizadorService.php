@@ -3,10 +3,12 @@
 namespace App\Services;
 
 use App\Models\ArlTarifa;
+use App\Models\Cliente;
 use App\Models\ConfiguracionBrynex;
 use App\Models\Contrato;
 use App\Models\PlanContrato;
 use App\Models\TipoModalidad;
+use App\Services\UpcAdicionalService;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -53,6 +55,8 @@ class CotizadorService
         // Redondear HACIA ARRIBA al 100 mas cercano (ceil)
         $r = fn($v) => ceil($v / 100) * 100;
 
+        $upc = null; // solo se llena si la modalidad es UPC
+
         if ($esTP) {
             // ── Tiempo Parcial: IBC diferente por entidad, sin EPS ─────────
             $diasP      = $tipoModalidad->diasPorEntidad();
@@ -78,6 +82,31 @@ class CotizadorService
             $diasArl  = $diasP['arl'];
             $diasAfp  = $diasP['afp'];
             $diasCaja = $diasP['caja'];
+        } elseif ((int) ($p['tipo_modalidad_id'] ?? 0) === Contrato::MODALIDAD_UPC) {
+            // ── UPC adicional: el valor de EPS no es % de IBC, es una tarifa
+            //    fija por edad/sexo/zona del beneficiario (Resolución 2764/2025).
+            //    Siempre es solo salud: nunca lleva ARL, pensión ni caja.
+            $upc = ['valor' => null, 'zona' => 'normal', 'edad' => null, 'advertencia' => null];
+            $cliente = $cedula ? Cliente::where('cedula', $cedula)->first() : null;
+
+            if (!$cliente) {
+                $upc['advertencia'] = 'No se encontró el cliente por cédula: no se puede calcular el valor de UPC adicional.';
+            } else {
+                $upc = UpcAdicionalService::valorParaCliente($cliente);
+            }
+
+            $epsMes   = $upc['valor'] ?? 0;
+            $arlMes   = 0;
+            $penMes   = 0;
+            $cajaMes  = 0;
+            $eps      = $epsMes; // no se prorratea por días: es un valor fijo mensual
+            $arl      = 0;
+            $pen      = 0;
+            $caja     = 0;
+            $ss       = $eps;
+            $diasArl  = $dias;
+            $diasAfp  = $dias;
+            $diasCaja = $dias;
         } else {
             // ── Normal: calculos por mes completo ──────────────────────
             $epsMes  = ($plan && $plan->incluye_eps)      ? $r($ibc * $pctEps  / 100) : 0;
@@ -147,6 +176,11 @@ class CotizadorService
             'dias_arl'          => $esTP ? $diasArl  : null,
             'dias_afp'          => $esTP ? $diasAfp  : null,
             'dias_caja'         => $esTP ? $diasCaja : null,
+            // Modalidad UPC
+            'es_upc'            => (int) ($p['tipo_modalidad_id'] ?? 0) === Contrato::MODALIDAD_UPC,
+            'upc_zona'          => $upc['zona'] ?? null,
+            'upc_edad'          => $upc['edad'] ?? null,
+            'upc_advertencia'   => $upc['advertencia'] ?? null,
             // Contexto adicional útil para la IA
             'plan_nombre'          => $plan->nombre ?? null,
             'tipo_modalidad_nombre'=> $tipoModalidad->nombre ?? null,

@@ -1698,6 +1698,7 @@ foreach ($tiposModalidad as $_tm) {
 }
 @endphp
 const MODALIDADES_TP = {!! json_encode($_modalidadesTPData) !!};
+const MODALIDAD_UPC  = 13; // Afiliar a alguien fuera del núcleo familiar: no depende de salario.
 
 
 // ── Formateador de miles para campos .campo-money ────────────────
@@ -2429,6 +2430,7 @@ function cotizador() {
         tipoModalidadId: '{{ old('tipo_modalidad_id', $contrato->tipo_modalidad_id ?? '') }}',
         esIndependiente: false,
         esTiempoParcial: false,
+        esUpc: false,
         mostrarModoArl:  false,
         ibcSugFmt:       '',
         pctEps:0, pctPen:0, pctArl:0, pctCajaCalc:0,
@@ -2445,6 +2447,7 @@ function cotizador() {
         init() {
             const opt = document.querySelector(`select[name=tipo_modalidad_id] option[value="${this.tipoModalidadId}"]`);
             this.esIndependiente = opt?.dataset.independiente === '1';
+            this.esUpc = (parseInt(this.tipoModalidadId) === MODALIDAD_UPC);
             // Mostrar panel Modo ARL si la modalidad lo requiere O si la RS es independiente
             const rsSelInit = document.getElementById('sel_rs');
             const rsEsIndepInit = rsSelInit?.options[rsSelInit.selectedIndex]?.dataset?.independiente === '1';
@@ -2503,8 +2506,9 @@ function cotizador() {
                 this.recalcular();
             });
             // Disparar cotizacion inicial después de que Alpine termine de montar
+            // (UPC no depende de salario: se recalcula igual aunque esté en 0)
             setTimeout(() => {
-                if (this.salario > 0 && this.planId) this.recalcular();
+                if ((this.salario > 0 || this.esUpc) && this.planId) this.recalcular();
             }, 300);
         },
 
@@ -2608,6 +2612,18 @@ function cotizador() {
             const opt = e.target.options[e.target.selectedIndex];
             const id  = parseInt(e.target.value || 0);
             this.esIndependiente = MODALIDADES_INDEP.includes(id);
+            this.esUpc = (id === MODALIDAD_UPC);
+            if (this.esUpc) {
+                // UPC no depende de salario/IBC: el valor de EPS sale de la
+                // edad/zona del beneficiario. Si venía de otra modalidad con
+                // salario ya cargado, se limpia para no dejar un valor que
+                // ya no significa nada en pantalla.
+                this.salario = 0;
+                this.ibc     = 0;
+                this.ibcSugFmt = '';
+                const inpSalUpc = document.getElementById('inp_salario');
+                if (inpSalUpc) { inpSalUpc.dataset.raw = 0; inpSalUpc.value = ''; }
+            }
             // Mostrar panel Modo ARL si la modalidad lo requiere O si la RS es independiente
             const rsSelMC = document.getElementById('sel_rs');
             const rsEsIndepMC = rsSelMC?.options[rsSelMC.selectedIndex]?.dataset?.independiente === '1';
@@ -2709,7 +2725,8 @@ function cotizador() {
             const salRaw  = parseInt(document.getElementById('inp_salario')?.dataset.raw || this.salario || 0);
             if (salRaw > 0 && salRaw !== this.salario) this.salario = salRaw;
             const ibcVal  = (this.esIndependiente && this.ibc > 0) ? this.ibc : (salRaw || this.salario);
-            if (!this.planId || !this.salario) return Promise.resolve();
+            // UPC no depende de salario (el valor sale de la edad/zona del beneficiario).
+            if (!this.planId || (!this.salario && !this.esUpc)) return Promise.resolve();
             return fetch(URL_COTIZAR, {
                 method: 'POST',
                 headers: {
