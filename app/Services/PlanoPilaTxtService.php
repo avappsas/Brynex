@@ -385,8 +385,8 @@ class PlanoPilaTxtService
             . $this->N($subtipo, 2)                             // 6  pos 28-29
             . $this->A($esExtranjero, 1)                        // 7  pos 30
             . $this->A(' ', 1)                                  // 8  pos 31
-            . $this->A($depId, 2)                               // 9  pos 32-33
-            . $this->A($munId, 3)                               // 10 pos 34-36
+            . $this->N($depId, 2)                               // 9  pos 32-33
+            . $this->N($munId, 3)                               // 10 pos 34-36
             . $this->A($p->primer_ape    ?? '', 20)             // 11 pos 37-56
             . $this->A($p->segundo_ape   ?? '', 30)             // 12 pos 57-86
             . $this->A($p->primer_nombre ?? '', 20)             // 13 pos 87-106

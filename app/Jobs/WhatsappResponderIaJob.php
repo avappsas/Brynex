@@ -72,11 +72,12 @@ class WhatsappResponderIaJob implements ShouldQueue
             ->whereIn('tipo', ['text', 'button'])
             ->when($ultimaRespuesta, fn ($q) => $q->where('created_at', '>', $ultimaRespuesta->created_at))
             ->orderBy('id')
-            ->pluck('contenido');
+            ->get(['contenido', 'wa_message_id']);
 
         if ($mensajesPendientes->isEmpty()) return;
 
-        $textoUsuario = $mensajesPendientes->implode("\n");
+        $textoUsuario = $mensajesPendientes->pluck('contenido')->implode("\n");
+        $ultimoWaMessageId = $mensajesPendientes->last()->wa_message_id;
 
         try {
             $resultado = $asistenteIa->responderWhatsapp(
@@ -117,42 +118,73 @@ class WhatsappResponderIaJob implements ShouldQueue
         $escalonPorEstaMismaIa = in_array('hablar_con_asesor', $resultado['herramientas_usadas'] ?? [], true);
         if (!$escalonPorEstaMismaIa && !$conversacion->fresh()->bot_activo) return;
 
-        $this->enviarYRegistrar($conversacion, $config, $whatsappApi, $nombreBot, $resultado['respuesta']);
+        $this->enviarYRegistrar(
+            $conversacion,
+            $config,
+            $whatsappApi,
+            $nombreBot,
+            $resultado['respuesta'],
+            $ultimoWaMessageId
+        );
     }
 
-    /** Envía un texto firmado con el nombre del bot y registra el mensaje saliente. No relanza si falla el envío. */
+    /**
+     * Envía la respuesta de la IA como una o varias burbujas (separadas por "|||" en el texto
+     * generado) y registra cada una como mensaje saliente. Entre burbujas simula "escribiendo…"
+     * con marcarLeidoYEscribiendo() y una pausa corta, para que se sienta como una persona
+     * escribiendo varios mensajes seguidos en vez de un párrafo largo. No relanza si falla un envío.
+     */
     private function enviarYRegistrar(
         WhatsappConversacion $conversacion,
         WhatsappConfig $config,
         WhatsappApiService $whatsappApi,
         string $nombreBot,
-        string $texto
+        string $texto,
+        ?string $ultimoWaMessageId = null
     ): void {
-        $textoFirmado = "🤖 *{$nombreBot}:*\n" . $texto;
-
-        $envio = $whatsappApi->enviarTexto($conversacion->wa_contact_id, $textoFirmado, $config);
-        if (!$envio['ok']) {
-            Log::error('IA WhatsApp: fallo al enviar mensaje', [
-                'error' => $envio['error'] ?? null,
-                'conversacion_id' => $conversacion->id,
-            ]);
-            return;
+        $burbujas = array_values(array_filter(array_map('trim', explode('|||', $texto)), fn ($b) => $b !== ''));
+        if (empty($burbujas)) {
+            $burbujas = [$texto];
+        }
+        // Tope de seguridad: si la IA se pasó de 3 burbujas, se fusiona el resto en la última.
+        if (count($burbujas) > 3) {
+            $burbujas = array_merge(array_slice($burbujas, 0, 2), [implode(' ', array_slice($burbujas, 2))]);
         }
 
-        $mensajeBot = WhatsappMensaje::create([
-            'conversacion_id' => $conversacion->id,
-            'aliado_id'       => $conversacion->aliado_id,
-            'wa_message_id'   => $envio['wa_message_id'],
-            'direccion'       => 'saliente',
-            'tipo'            => 'text',
-            'contenido'       => $textoFirmado,
-            'estado'          => 'enviado',
-            'es_bot'          => true,
-        ]);
+        foreach ($burbujas as $indice => $burbuja) {
+            if ($indice > 0) {
+                if ($ultimoWaMessageId) {
+                    $whatsappApi->marcarLeidoYEscribiendo($ultimoWaMessageId, $config);
+                }
+                usleep(random_int(1200, 2500) * 1000);
+            }
 
-        $conversacion->update(['ultimo_mensaje_at' => now()]);
+            $textoFirmado = $indice === 0 ? "🤖 *{$nombreBot}:*\n" . $burbuja : $burbuja;
 
-        broadcast(new WhatsappMensajeNuevo($mensajeBot, $conversacion));
-        broadcast(new WhatsappConversacionActualizada($conversacion));
+            $envio = $whatsappApi->enviarTexto($conversacion->wa_contact_id, $textoFirmado, $config);
+            if (!$envio['ok']) {
+                Log::error('IA WhatsApp: fallo al enviar mensaje', [
+                    'error' => $envio['error'] ?? null,
+                    'conversacion_id' => $conversacion->id,
+                ]);
+                continue;
+            }
+
+            $mensajeBot = WhatsappMensaje::create([
+                'conversacion_id' => $conversacion->id,
+                'aliado_id'       => $conversacion->aliado_id,
+                'wa_message_id'   => $envio['wa_message_id'],
+                'direccion'       => 'saliente',
+                'tipo'            => 'text',
+                'contenido'       => $textoFirmado,
+                'estado'          => 'enviado',
+                'es_bot'          => true,
+            ]);
+
+            $conversacion->update(['ultimo_mensaje_at' => now()]);
+
+            broadcast(new WhatsappMensajeNuevo($mensajeBot, $conversacion));
+            broadcast(new WhatsappConversacionActualizada($conversacion));
+        }
     }
 }

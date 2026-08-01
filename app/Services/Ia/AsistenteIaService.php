@@ -642,6 +642,11 @@ class AsistenteIaService
           mensual), NUNCA la calcules ni la recuerdes de memoria: vuelve a llamar la misma tool (cotizar_plan,
           consultar_cliente, etc.) con los mismos datos para obtener el número exacto de nuevo.
         - Sé breve: los mensajes de WhatsApp deben ser cortos y fáciles de leer en un celular.
+        - Divide tu respuesta en varios mensajes cortos separados por "|||", como si fueras una persona escribiendo
+          varias burbujas seguidas en vez de un párrafo largo (máximo 3 burbujas). Por ejemplo: "¡Hola! Claro que sí,
+          contigo puedes afiliarte solo a salud sin pensión|||Y pagas después de recibir tu certificado de
+          afiliación|||¿Iniciamos con la afiliación?" — cada parte entre "|||" debe tener sentido leída sola, sin
+          cortar una frase a la mitad. No uses "|||" si la respuesta es corta y cabe natural en un solo mensaje.
         PROMPT;
     }
 

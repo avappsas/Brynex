@@ -76,7 +76,9 @@
                 </template>
                 <template x-for="(m, idx) in mensajes" :key="idx">
                     <div>
-                        <div class="msg" :class="m.rol === 'user' ? 'msg-cliente' : 'msg-ia'" x-text="m.contenido"></div>
+                        <template x-for="(burbuja, bIdx) in m.burbujas" :key="bIdx">
+                            <div class="msg" :class="m.rol === 'user' ? 'msg-cliente' : 'msg-ia'" x-text="burbuja"></div>
+                        </template>
                         <template x-if="m.rol === 'assistant'">
                             <div>
                                 <div class="msg-tools" x-show="m.tools && m.tools.length" x-text="'tools: ' + (m.tools || []).join(', ')"></div>
@@ -154,6 +156,12 @@ function simulador() {
             return document.querySelector('meta[name="csrf-token"]').content;
         },
 
+        // La IA separa sus burbujas de WhatsApp con "|||" (ver AsistenteIaService::construirSystemPromptWhatsapp).
+        partirBurbujas(texto) {
+            const partes = (texto || '').split('|||').map(s => s.trim()).filter(s => s !== '');
+            return partes.length ? partes : [texto];
+        },
+
         cambiarAliado() {
             this.mensajes = [];
             this.cargarHistorial();
@@ -166,7 +174,9 @@ function simulador() {
                 .then(r => r.json())
                 .then(data => {
                     this.mensajes = (data.mensajes || []).map(m => ({
-                        rol: m.rol, contenido: m.contenido, tools: m.tool_name ? m.tool_name.split(',') : [],
+                        rol: m.rol, contenido: (m.contenido || '').replace(/\|\|\|/g, '\n\n'),
+                        burbujas: this.partirBurbujas(m.contenido),
+                        tools: m.tool_name ? m.tool_name.split(',') : [],
                         corrigiendo: false, notaTexto: '',
                     })).filter(m => m.rol === 'user' || m.rol === 'assistant');
                     this.scrollAbajo();
@@ -182,7 +192,7 @@ function simulador() {
         enviar() {
             const texto = this.entrada.trim();
             if (!texto || this.cargando) return;
-            this.mensajes.push({ rol: 'user', contenido: texto, corrigiendo: false, notaTexto: '' });
+            this.mensajes.push({ rol: 'user', contenido: texto, burbujas: [texto], corrigiendo: false, notaTexto: '' });
             this.entrada = '';
             this.cargando = true;
             this.scrollAbajo();
@@ -200,12 +210,15 @@ function simulador() {
                     const data = await r.json();
                     if (!r.ok) throw new Error(data.error || 'Error');
                     this.mensajes.push({
-                        rol: 'assistant', contenido: data.respuesta, tools: data.herramientas_usadas || [],
+                        rol: 'assistant', contenido: data.respuesta.replace(/\|\|\|/g, '\n\n'),
+                        burbujas: this.partirBurbujas(data.respuesta),
+                        tools: data.herramientas_usadas || [],
                         corrigiendo: false, notaTexto: '',
                     });
                 })
                 .catch((e) => {
-                    this.mensajes.push({ rol: 'assistant', contenido: '⚠️ Error: ' + e.message, tools: [], corrigiendo: false, notaTexto: '' });
+                    const texto = '⚠️ Error: ' + e.message;
+                    this.mensajes.push({ rol: 'assistant', contenido: texto, burbujas: [texto], tools: [], corrigiendo: false, notaTexto: '' });
                 })
                 .finally(() => {
                     this.cargando = false;
