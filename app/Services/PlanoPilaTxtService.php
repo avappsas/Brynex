@@ -82,7 +82,30 @@ class PlanoPilaTxtService
         return (int)(ceil($val / 100) * 100);
     }
 
+    /**
+     * Genera el archivo plano y lo devuelve como descarga.
+     */
     public function generar(array $params): \Symfony\Component\HttpFoundation\StreamedResponse
+    {
+        ['filename' => $filename, 'contenido' => $contenido] = $this->construir($params);
+
+        return response()->streamDownload(function () use ($contenido) {
+            echo $contenido;
+        }, $filename, [
+            'Content-Type'        => 'text/plain; charset=latin-1',
+            'Cache-Control'       => 'max-age=0',
+            'Content-Disposition' => "attachment; filename=\"{$filename}\"",
+        ]);
+    }
+
+    /**
+     * Construye el archivo plano en memoria.
+     * Se usa tanto para la descarga como para el envío a las APIs de los
+     * operadores (ver SuaporteApiService).
+     *
+     * @return array{filename: string, contenido: string}
+     */
+    public function construir(array $params): array
     {
         $aliadoId      = $params['aliado_id'];
         $razonSocialId = $params['razon_social_id'];
@@ -220,13 +243,7 @@ class PlanoPilaTxtService
         $filename   = "{$nombreRs}_{$mesPago}_{$anioPago}_P{$nPlano}.txt";
         $contenido = implode("\r\n", $lineas);
 
-        return response()->streamDownload(function () use ($contenido) {
-            echo $contenido;
-        }, $filename, [
-            'Content-Type'        => 'text/plain; charset=latin-1',
-            'Cache-Control'       => 'max-age=0',
-            'Content-Disposition' => "attachment; filename=\"{$filename}\"",
-        ]);
+        return ['filename' => $filename, 'contenido' => $contenido];
     }
 
     // ── Registro Tipo 1 — 359 chars, 22 campos (Resolución 2388) ─────────────
@@ -332,7 +349,10 @@ class PlanoPilaTxtService
 
         // ── Tarifas (del calculador) ────────────────────────────────────────────
         $tarifaSalud = $c['tarifaEpsStr'];
-        $tarifaArl   = $c['tarifaArlStr'];
+        // El campo 61 (tarifa de riesgos) son 9 posiciones con 7 decimales,
+        // a diferencia de las demás tarifas que van en 7 con 5 decimales.
+        // Rellenarlo con espacios lo invalida: Enlace responde eo.val.2.C061.
+        $tarifaArl   = sprintf('%.7f', $c['tarifaArlDecimal']);
         $tarifaSENA  = $c['tarifaSenaStr'];
         $tarifaICBF  = $c['tarifaIcbfStr'];
         $nivel       = $c['nivelRiesgo'];
@@ -417,7 +437,7 @@ class PlanoPilaTxtService
             . $this->N('0', 9)                                  // 58 valor incapacidad 348-356
             . $this->A('', 15)                                  // 59 auth licencia 357-371
             . $this->N('0', 9)                                  // 60 valor licencia 372-380
-            . str_pad($tarifaArl, 9)                               // 61 tarifa riesgos 381-389 (9 chars)
+            . $tarifaArl                                        // 61 tarifa riesgos 381-389
             . $this->N('1', 9)                                  // 62 centro de trabajo 390-398
             . $this->N((string)$vArl, 9)                        // 63 cotización ARL 399-407
             . ($c['esKMatriz'] ? '0.00000' : '0.04000')         // 64 tarifa CCF 408-414

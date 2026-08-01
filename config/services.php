@@ -54,11 +54,27 @@ return [
         'webhook_verify_token' => env('WHATSAPP_WEBHOOK_VERIFY_TOKEN', 'brynex_wh_secret_2026'),
     ],
 
+    // APIs PILA de Enlace Operativo (SuAporte / Arus Enlace).
+    // Las credenciales reales se guardan cifradas en `operadores_credenciales`
+    // (la BD sí se sincroniza a producción, el .env no). Lo de aquí es solo
+    // fallback para pruebas locales. Ver App\Services\SuaporteApiService.
     'suaporte' => [
-        'base_url' => env('SUAPORTE_API_URL', 'https://www.suaporte.com.co/api'),
-        'auth_url' => env('SUAPORTE_AUTH_URL', 'https://www.suaporte.com.co/auth'),
-        'usuario' => env('SUAPORTE_USUARIO'),
-        'clave_secreta' => env('SUAPORTE_CLAVE_SECRETA'),
+        'api_url'       => env('SUAPORTE_API_URL', 'https://www.suaporte.com.co/api'),
+        'auth_url'      => env('SUAPORTE_AUTH_URL', 'https://www.suaporte.com.co/auth'),
+        'usuario'       => env('SUAPORTE_USUARIO'),        // tipo+número de documento, ej: CC1234567
+        'contrasena'    => env('SUAPORTE_CONTRASENA'),     // 4 dígitos numéricos
+        'clave_secreta' => env('SUAPORTE_CLAVE_SECRETA'),  // generada en el tablero, vence al año
+        'timeout'       => env('SUAPORTE_TIMEOUT', 120),
+
+        // Consultar BDUA/RUAF (afiliación a salud/pensión) es una operación
+        // de solo lectura que no exige autorización por aportante — cualquier
+        // cuenta de operador la puede consultar para cualquier cédula. Si el
+        // aliado activo no tiene credenciales propias, se usan las del aliado
+        // BryNex como respaldo, para que la verificación de cédula al crear un
+        // cliente funcione en todos los aliados sin repetir la configuración.
+        // NO aplica a liquidar planillas: eso sí exige la cuenta autorizada
+        // sobre el aportante específico.
+        'aliado_fallback_ruaf' => env('SUAPORTE_ALIADO_FALLBACK_RUAF', 1),
     ],
 
     // Binarios de FFmpeg para el overlay de texto animado + logo sobre video (VideoOverlayFfmpeg).

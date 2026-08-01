@@ -21,7 +21,7 @@ class PlanillaWhatsappService
      * Códigos de operadores autorizados para envío de PDF por WhatsApp.
      * Solo ARUS Enlace, Enlace y Simple tienen plantilla PDF configurada.
      */
-    public const OPERADORES_AUTORIZADOS = ['SIMPLE', 'ARUS', 'ENLACE'];
+    public const OPERADORES_AUTORIZADOS = ['SIMPLE', 'ARUS'];
 
     /**
      * Consulta las planillas pagadas en el periodo para el aliado y detecta su operador.

@@ -115,6 +115,16 @@ class ClienteController extends Controller
         $lookups = $this->getLookups();
         $contratos = collect();
 
+        // Pre-llenado desde el modal "Nuevo Cliente" del listado: ya consultó
+        // BDUA/RUAF y el usuario confirmó que la persona es la correcta.
+        // Deliberadamente no se toca "observacion" aquí.
+        $campos = ['cedula', 'tipo_doc', 'primer_nombre', 'segundo_nombre', 'primer_apellido', 'segundo_apellido', 'eps_id', 'pension_id'];
+        foreach (request()->only($campos) as $campo => $valor) {
+            if ($valor !== null && $valor !== '') {
+                $cliente->{$campo} = $valor;
+            }
+        }
+
         return view('admin.clientes.form', compact('cliente', 'lookups', 'contratos'));
     }
 
@@ -261,10 +271,139 @@ class ClienteController extends Controller
                 'url_editar'     => route('admin.clientes.edit', $cliente->id),
                 'eps'            => $cliente->eps_nombre ?? null,
                 'celular'        => $cliente->celular ?? null,
+                'oficial'        => $this->consultarRegistroOficial($aliadoId, $cedula),
             ]);
         }
 
-        return response()->json(['encontrado' => false]);
+        return response()->json([
+            'encontrado' => false,
+            'oficial'    => $this->consultarRegistroOficial($aliadoId, $cedula),
+        ]);
+    }
+
+    /**
+     * Busca un operador (ARUS/Simple) con credenciales para consultar BDUA/RUAF.
+     *
+     * Consultar la afiliación de una cédula es una operación de solo lectura
+     * sin autorización por aportante: cualquier cuenta de operador sirve para
+     * cualquier persona. Por eso, si el aliado activo no tiene credenciales
+     * propias, se cae a las del aliado BryNex — así la verificación funciona
+     * en todos los aliados aunque no hayan configurado su propia cuenta.
+     *
+     * Esto NO aplica a liquidar planillas (PlanillaApiController), que sí
+     * exige la autorización real del aliado sobre ese aportante específico.
+     *
+     * @return array{0: ?\App\Models\OperadorPlanilla, 1: ?\App\Models\OperadorCredencial}
+     */
+    private function credencialParaRuaf(int $aliadoId): array
+    {
+        $buscar = function (int $idParaOperadores, int $idParaCredencial) {
+            $operador = \App\Models\OperadorPlanilla::paraAliado($idParaOperadores)
+                ->whereIn('codigo', array_keys(\App\Services\SuaporteApiService::HOSTS))
+                ->get()
+                ->first(fn ($op) => \App\Models\OperadorCredencial::paraOperador($idParaCredencial, $op->id)->exists());
+
+            if (!$operador) {
+                return [null, null];
+            }
+
+            return [$operador, \App\Models\OperadorCredencial::paraOperador($idParaCredencial, $operador->id)->first()];
+        };
+
+        [$operador, $credencial] = $buscar($aliadoId, $aliadoId);
+        if ($operador && $credencial) {
+            return [$operador, $credencial];
+        }
+
+        $fallbackId = (int) config('services.suaporte.aliado_fallback_ruaf');
+        if ($fallbackId && $fallbackId !== $aliadoId) {
+            // Los operadores se buscan con el aliado real (respeta si él los
+            // desactivó); solo la credencial cae al aliado de respaldo.
+            return $buscar($aliadoId, $fallbackId);
+        }
+
+        return [null, null];
+    }
+
+    /**
+     * Consulta BDUA/RUAF a través de la API del operador de planilla para
+     * traer los datos oficiales de la persona: nombres, EPS, fondo de
+     * pensión, régimen y estado.
+     *
+     * Devuelve null si el aliado no tiene credenciales de operador cargadas,
+     * de modo que el formulario siga funcionando igual que siempre.
+     */
+    private function consultarRegistroOficial(int $aliadoId, string $cedula): ?array
+    {
+        $cedula = preg_replace('/\D/', '', $cedula);
+
+        if (strlen($cedula) < 4) {
+            return null;
+        }
+
+        // El asesor puede entrar y salir del campo varias veces: se cachea
+        // para no repetir el login contra el operador en cada blur.
+        return \Illuminate\Support\Facades\Cache::remember(
+            "ruaf_{$aliadoId}_{$cedula}",
+            600,
+            function () use ($aliadoId, $cedula) {
+                [$operador, $credencial] = $this->credencialParaRuaf($aliadoId);
+
+                if (!$operador || !$credencial) {
+                    return null;
+                }
+
+                $api = new \App\Services\SuaporteApiService([
+                    'operador'      => $operador->codigo,
+                    'usuario'       => $credencial->usuario,
+                    'contrasena'    => $credencial->contrasena,
+                    'clave_secreta' => $credencial->clave_secreta,
+                ]);
+
+                $resultado = $api->consultarAfiliacion('CC', $cedula);
+
+                if (!$resultado['success']) {
+                    return null;
+                }
+
+                $d = $resultado['afiliacion'];
+
+                // Los códigos que devuelve el registro son los mismos que usan
+                // las tablas de referencia de Brynex.
+                $epsId = !empty($d['administradoraBDUA'])
+                    ? DB::table('eps')->where('codigo', $d['administradoraBDUA'])->value('id')
+                    : null;
+
+                $pensionId = !empty($d['administradoraRUAF'])
+                    ? DB::table('pensiones')->where('codigo', $d['administradoraRUAF'])->value('id')
+                    : null;
+
+                return [
+                    'encontrado'       => $resultado['registrado'],
+                    'operador'         => $operador->nombre,
+                    'primer_nombre'    => $d['primerNombre']    ?? '',
+                    'segundo_nombre'   => $d['segundoNombre']   ?? '',
+                    'primer_apellido'  => $d['primerApellido']  ?? '',
+                    'segundo_apellido' => $d['segundoApellido'] ?? '',
+                    'eps_id'           => $epsId,
+                    'eps_nombre'       => $epsId ? DB::table('eps')->where('id', $epsId)->value('nombre') : null,
+                    'eps_codigo'       => $d['administradoraBDUA'] ?? null,
+                    'pension_id'       => $pensionId,
+                    'pension_nombre'   => $pensionId ? DB::table('pensiones')->where('id', $pensionId)->value('razon_social') : null,
+                    'pension_codigo'   => $d['administradoraRUAF'] ?? null,
+                    'estado'           => $d['estado']  ?? null,
+                    'regimen'          => $d['regimen'] ?? null,
+                    // Figurar en RUAF (aunque hoy no tenga fondo activo) es lo
+                    // que impide declarar el subtipo 03 "no obligado por edad".
+                    'en_ruaf'          => !empty($d['fechaAfiliacionRUAF']),
+                    'ruaf_desde'       => $d['fechaAfiliacionRUAF'] ?? null,
+                    // Payload crudo del operador, sin filtrar: incluye campos
+                    // que hoy no se usan (valorUPC, coincidencia, fechas sin
+                    // formatear) para que el modal pueda mostrarlos todos.
+                    'raw'              => $d,
+                ];
+            }
+        );
     }
 
     // ─── Helpers Privados ─────────────────────────────────────────────

@@ -1140,7 +1140,32 @@
             @php $pagado = $planoPagado; @endphp
 
             <div style="margin-top: 1rem; display: flex; flex-direction: column; gap: 1rem;">
-                
+
+                {{-- ── Liquidación directa por API (Enlace Operativo) ──────
+                     Se revela desde JS solo si hay credenciales configuradas
+                     para el aliado. Ver PlanillaApiController::estado(). --}}
+                <div id="bloque-enlace-api" style="display:none">
+                    <div style="font-size:.72rem;font-weight:700;color:#7c3aed;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.4rem;display:flex;align-items:center;gap:.3rem">
+                        <span>⚡</span> Liquidar en línea (sin descargar)
+                    </div>
+
+                    {{-- Un botón por operador con credenciales cargadas --}}
+                    <div id="enlace-botones" style="display:flex;flex-direction:column;gap:.5rem"></div>
+
+                    <div style="font-size:.7rem;color:#64748b;margin-top:.35rem;text-align:center;line-height:1.3">
+                        Envía el plano directamente al operador y devuelve el <strong>número de planilla</strong> y el <strong>link de pago PSE</strong>.
+                    </div>
+
+                    {{-- Resultado de la última liquidación de este periodo --}}
+                    <div id="enlace-ultima" style="display:none;margin-top:.6rem"></div>
+
+                    <div style="display:flex;align-items:center;text-align:center;margin:.9rem 0 0">
+                        <div style="flex-grow:1;border-top:1px solid #e2e8f0"></div>
+                        <span style="padding:0 .75rem;font-size:.68rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em">O descargar el archivo</span>
+                        <div style="flex-grow:1;border-top:1px solid #e2e8f0"></div>
+                    </div>
+                </div>
+
                 {{-- Formato Principal Recomendado --}}
                 <div>
                     <div style="font-size: .72rem; font-weight: 700; color: #059669; text-transform: uppercase; letter-spacing: .05em; margin-bottom: .4rem; display: flex; align-items: center; gap: .3rem;">
@@ -1397,6 +1422,37 @@
 {{-- ══════════════════════════════════════════════════════════════════════
      MODAL: Incompatibilidad de Modalidades
 ═══════════════════════════════════════════════════════════════════════ --}}
+{{-- ── Detalle de errores devueltos por Enlace Operativo ────────────── --}}
+<div class="modal-overlay" id="modal-enlace-errores">
+    <div class="modal-box" style="max-width:820px">
+        <div class="modal-head" style="background:linear-gradient(135deg,#92400e,#b45309);border-radius:16px 16px 0 0">
+            <h3 style="color:#fff;display:flex;align-items:center;gap:.5rem">⚠️ Errores reportados por el operador</h3>
+            <button class="modal-close" onclick="cerrarModal('modal-enlace-errores')" style="color:#fde68a">✕</button>
+        </div>
+        <div class="modal-body">
+            <div id="enlace-errores-resumen" style="font-size:.78rem;font-weight:700;color:#92400e;margin-bottom:.75rem"></div>
+
+            <div style="max-height:52vh;overflow:auto;border:1px solid #e2e8f0;border-radius:10px">
+                <table style="width:100%;border-collapse:collapse;font-size:.76rem">
+                    <thead>
+                        <tr style="background:#f8fafc;position:sticky;top:0">
+                            <th style="padding:.5rem;text-align:left;color:#64748b;font-size:.7rem;text-transform:uppercase;letter-spacing:.04em">Tipo</th>
+                            <th style="padding:.5rem;text-align:left;color:#64748b;font-size:.7rem;text-transform:uppercase;letter-spacing:.04em">Cotizante</th>
+                            <th style="padding:.5rem;text-align:left;color:#64748b;font-size:.7rem;text-transform:uppercase;letter-spacing:.04em">Descripción</th>
+                        </tr>
+                    </thead>
+                    <tbody id="enlace-errores-cuerpo"></tbody>
+                </table>
+            </div>
+
+            <div class="aviso-modal" style="margin-top:.85rem">
+                <strong>ℹ️ Nota</strong>
+                La validación solo lista las primeras 100 líneas con error. Corrija los datos en Brynex y vuelva a liquidar.
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="modal-overlay" id="modal-incompatibilidad">
     <div class="modal-box" style="max-width:560px">
         <div class="modal-head" style="background:linear-gradient(135deg,#7f1d1d,#991b1b);border-radius:16px 16px 0 0">
@@ -1552,6 +1608,8 @@ const CTX = {
         nPlanoUpdate : '{{ route('admin.planos.n_plano.update') }}',
         confirmarPago: '{{ route('admin.planos.confirmar_pago') }}',
         apiRazon     : '/admin/planos/api/razon/',
+        enlaceEstado   : '{{ route('admin.planos.api_operador.estado') }}',
+        enlaceLiquidar : '{{ route('admin.planos.api_operador.liquidar') }}',
     },
     // Tipos de modalidad presentes en los planos cargados actualmente
     // Array de objetos: { id: int, nombre: string }
@@ -2159,6 +2217,7 @@ function abrirModalDescarga() {
         chip.textContent = '$ ' + fmtNum(total);
     }
     document.getElementById('modal-descarga').classList.add('open');
+    cargarEstadoEnlace();
 }
 function resetModalPago() {
     document.getElementById('pago-numero').value   = '';
@@ -2254,6 +2313,214 @@ function ejecutarDescargaMiPlanilla() {
     });
     CTX.modalidadesIds.forEach(id => params.append('tipos_modalidad[]', id));
     window.location.href = CTX.routes.descargarMiPlanilla + '?' + params.toString();
+}
+
+// ── Liquidación directa por API (Enlace Operativo) ──────────────────
+// Reemplaza el paso manual de bajar el TXT y subirlo al portal del operador.
+
+function paramsEnlace() {
+    return {
+        razon_social_id: CTX.razonSocialId,
+        mes            : CTX.mes,
+        anio           : CTX.anio,
+        n_plano        : CTX.nPlanoFiltro || 1,
+    };
+}
+
+// Revela el bloque de liquidación y pinta un botón por operador configurado.
+async function cargarEstadoEnlace() {
+    const bloque = document.getElementById('bloque-enlace-api');
+    if (!bloque || !CTX.razonSocialId) return;
+
+    bloque.style.display = 'none';
+    document.getElementById('enlace-ultima').style.display = 'none';
+
+    try {
+        const qs   = new URLSearchParams(paramsEnlace());
+        const resp = await fetch(CTX.routes.enlaceEstado + '?' + qs.toString(), {
+            headers: { 'Accept': 'application/json' }
+        });
+        if (!resp.ok) return;
+
+        const data = await resp.json();
+        if (!data.disponible || !(data.operadores || []).length) return;
+
+        bloque.style.display = '';
+
+        const cont = document.getElementById('enlace-botones');
+        cont.innerHTML = '';
+
+        data.operadores.forEach(op => {
+            const btn = document.createElement('button');
+            btn.className = 'btn-descarga-principal';
+            btn.style.cssText = 'background:linear-gradient(135deg,#8b5cf6,#6d28d9);box-shadow:0 4px 12px rgba(139,92,246,.2)';
+            btn.id = 'btn-liquidar-' + op.id;
+            btn.innerHTML = `🚀 Liquidar en ${op.nombre}`;
+
+            // Motivos por los que no se puede liquidar con ese operador.
+            let bloqueo = null;
+            if (CTX.planoPagado)   bloqueo = 'Este plano ya fue confirmado como pagado.';
+            else if (op.clave_vencida) bloqueo = `La clave secreta de ${op.nombre} venció. Genere una nueva desde el tablero del operador.`;
+            else if (op.sin_codigo_ni)  bloqueo = `Falta el código PILA de ${op.nombre}. Configúrelo en Configuración → Operadores de planilla.`;
+
+            if (bloqueo) {
+                btn.disabled = true;
+                btn.title    = bloqueo;
+                btn.style.opacity = '.55';
+                btn.style.cursor  = 'not-allowed';
+            } else {
+                btn.onclick = () => liquidarEnEnlace(op.id, op.nombre);
+            }
+
+            cont.appendChild(btn);
+
+            if (bloqueo && !CTX.planoPagado) {
+                const aviso = document.createElement('div');
+                aviso.innerHTML = avisoEnlace('#fef2f2', '#fecaca', '#991b1b', '⚠️ ' + bloqueo);
+                cont.appendChild(aviso);
+            }
+        });
+
+        // Si ya se liquidó este periodo, mostrarlo en vez de arrancar en blanco.
+        const yaLiquidado = data.operadores.find(o => o.planilla);
+        if (yaLiquidado) renderEstadoEnlace(yaLiquidado.planilla, yaLiquidado.nombre);
+    } catch (e) {
+        // Silencioso: la integración es opcional, las descargas siguen sirviendo.
+        console.warn('No se pudo consultar el estado de los operadores:', e);
+    }
+}
+
+function avisoEnlace(bg, borde, color, html) {
+    return `<div style="background:${bg};border:1px solid ${borde};border-radius:10px;padding:.7rem .85rem;font-size:.76rem;color:${color};line-height:1.4">${html}</div>`;
+}
+
+// Pinta el resultado guardado de una liquidación anterior.
+function renderEstadoEnlace(p, operadorNombre) {
+    const cont = document.getElementById('enlace-ultima');
+    cont.style.display = '';
+    const enOperador = operadorNombre ? ` en ${operadorNombre}` : '';
+
+    if (p.estado === 'validada' && p.numero_planilla) {
+        cont.innerHTML = avisoEnlace('#f0fdf4', '#bbf7d0', '#166534',
+            `<strong>✅ Planilla ${p.numero_planilla}</strong> liquidada${enOperador} el ${p.fecha || ''}.` +
+            (p.valor_total ? `<br>Total a pagar: <strong>$ ${fmtNum(Math.round(p.valor_total))}</strong>` : '') +
+            (p.url_pago ? `<br><a href="${p.url_pago}" target="_blank" rel="noopener" style="color:#15803d;font-weight:700;text-decoration:underline">Ir a pagar en PSE →</a>` : ''));
+    } else if (p.estado === 'con_errores') {
+        cont.innerHTML = avisoEnlace('#fffbeb', '#fde68a', '#92400e',
+            `<strong>⚠️ Último intento con errores.</strong><br>${p.mensaje_error || ''}`);
+    } else if (p.estado === 'error') {
+        cont.innerHTML = avisoEnlace('#fef2f2', '#fecaca', '#991b1b',
+            `<strong>✗ Último intento falló.</strong><br>${p.mensaje_error || ''}`);
+    } else {
+        cont.style.display = 'none';
+    }
+}
+
+async function liquidarEnEnlace(operadorId, operadorNombre) {
+    if (!CTX.razonSocialId) {
+        mostrarToast('Seleccione una Razón Social primero.', 'error');
+        return;
+    }
+
+    const btn  = document.getElementById('btn-liquidar-' + operadorId);
+    const orig = btn.innerHTML;
+
+    btn.disabled  = true;
+    btn.innerHTML = '⏳ Enviando al operador…';
+
+    const cont = document.getElementById('enlace-ultima');
+    cont.style.display = '';
+    cont.innerHTML = avisoEnlace('#eff6ff', '#bfdbfe', '#1d4ed8',
+        `Generando el archivo plano y enviándolo a ${operadorNombre}. Esto puede tardar hasta un minuto.`);
+
+    try {
+        const body = {
+            ...paramsEnlace(),
+            operador_planilla_id: operadorId,
+            tipos_modalidad     : CTX.modalidadesIds,
+        };
+
+        const resp = await fetch(CTX.routes.enlaceLiquidar, {
+            method : 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept'      : 'application/json',
+                'X-CSRF-TOKEN': CTX.csrfToken,
+            },
+            body: JSON.stringify(body),
+        });
+
+        const data = await resp.json();
+
+        if (!resp.ok || !data.success) {
+            cont.innerHTML = avisoEnlace('#fef2f2', '#fecaca', '#991b1b',
+                `<strong>✗ No se pudo liquidar.</strong><br>${data.message || 'Error desconocido.'}`);
+            mostrarToast(data.message || 'No se pudo liquidar la planilla.', 'error');
+            return;
+        }
+
+        if (!data.liquidada) {
+            cont.innerHTML = avisoEnlace('#fffbeb', '#fde68a', '#92400e',
+                `<strong>⚠️ El archivo tiene ${data.total_errores} error(es).</strong> ` +
+                `Enlace no generó número de planilla.<br>` +
+                `<button type="button" onclick="verErroresEnlace()" style="margin-top:.4rem;background:#f59e0b;color:#fff;border:none;border-radius:8px;padding:.35rem .7rem;font-size:.74rem;font-weight:700;cursor:pointer">Ver detalle de errores</button>`);
+            window._enlaceErrores = data;
+            mostrarToast(`La planilla tiene ${data.total_errores} error(es).`, 'error');
+            return;
+        }
+
+        cont.innerHTML = avisoEnlace('#f0fdf4', '#bbf7d0', '#166534',
+            `<strong>✅ Planilla ${data.numero_planilla} liquidada en ${operadorNombre}.</strong>` +
+            (data.valor_total ? `<br>Total a pagar: <strong>$ ${fmtNum(Math.round(data.valor_total))}</strong>` : '') +
+            (data.valor_mora ? ` (mora: $ ${fmtNum(Math.round(data.valor_mora))})` : '') +
+            (data.fecha_limite ? `<br>Fecha límite: ${String(data.fecha_limite).substring(0, 10)}` : '') +
+            (data.url_pago ? `<br><a href="${data.url_pago}" target="_blank" rel="noopener" style="color:#15803d;font-weight:700;text-decoration:underline">Ir a pagar en PSE →</a>` : ''));
+
+        mostrarToast(`Planilla ${data.numero_planilla} liquidada en ${operadorNombre}.`, 'success');
+    } catch (e) {
+        cont.innerHTML = avisoEnlace('#fef2f2', '#fecaca', '#991b1b',
+            `<strong>✗ Error de conexión.</strong><br>${e.message}`);
+        mostrarToast('Error de conexión al liquidar.', 'error');
+    } finally {
+        btn.disabled  = false;
+        btn.innerHTML = orig;
+    }
+}
+
+// Detalle de errores devuelto por la validación (máximo 100 líneas).
+function verErroresEnlace() {
+    const data = window._enlaceErrores;
+    if (!data) return;
+
+    const filas = [];
+
+    (data.errores_empresa || []).forEach(e => {
+        filas.push(['Empresa', '', e.descripcion || e.mensaje || JSON.stringify(e)]);
+    });
+
+    (data.errores_cotizante || []).forEach(e => {
+        const doc = [e.tipoDocumento, e.numeroDocumento].filter(Boolean).join(' ');
+        filas.push(['Cotizante', doc || (e.linea ? 'Línea ' + e.linea : ''), e.descripcion || e.mensaje || JSON.stringify(e)]);
+    });
+
+    (data.advertencias || []).forEach(e => {
+        const doc = [e.tipoDocumento, e.numeroDocumento].filter(Boolean).join(' ');
+        filas.push(['Advertencia', doc, e.descripcion || e.mensaje || JSON.stringify(e)]);
+    });
+
+    document.getElementById('enlace-errores-cuerpo').innerHTML = filas.length
+        ? filas.map(([tipo, ref, desc]) => `
+            <tr>
+                <td style="padding:.4rem .5rem;border-bottom:1px solid #f1f5f9;font-weight:700;color:${tipo === 'Advertencia' ? '#92400e' : '#991b1b'};white-space:nowrap">${tipo}</td>
+                <td style="padding:.4rem .5rem;border-bottom:1px solid #f1f5f9;color:#475569;white-space:nowrap">${ref}</td>
+                <td style="padding:.4rem .5rem;border-bottom:1px solid #f1f5f9;color:#374151">${desc}</td>
+            </tr>`).join('')
+        : '<tr><td colspan="3" style="padding:.8rem;color:#64748b">Enlace no devolvió el detalle. Consulte la planilla en el portal.</td></tr>';
+
+    document.getElementById('enlace-errores-resumen').textContent =
+        `Código de planilla ${data.codigo_planilla} · ${data.total_errores} error(es)`;
+
+    document.getElementById('modal-enlace-errores').classList.add('open');
 }
 
 // ── Descargar Aportes en Línea (Excel AEL) ──────────────────────────

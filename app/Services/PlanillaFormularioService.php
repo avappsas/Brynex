@@ -76,10 +76,8 @@ class PlanillaFormularioService
             return (int)$cliente->operador_planilla_id;
         }
 
-        // c. Si no, retornar el operador Enlace/SuAporte por defecto
+        // c. Si no, retornar ARUS Enlace (Enlace Operativo/SuAporte) por defecto
         $operadorDefault = \DB::table('operadores_planilla')
-            ->where('codigo', 'ENLACE')
-            ->first() ?? \DB::table('operadores_planilla')
             ->where('codigo', 'ARUS')
             ->first();
 

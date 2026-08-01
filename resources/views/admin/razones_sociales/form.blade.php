@@ -560,7 +560,234 @@ function handleSelloDrop(e) {
     </form>
 </div>
 
+{{-- ── Credenciales de las APIs de los operadores ──────────────────────
+     Permiten liquidar la planilla desde Brynex sin entrar al portal del
+     operador. Los secretos se guardan cifrados y nunca se devuelven aquí. --}}
+<div class="card" id="cardCredenciales" style="margin-top: 1.2rem">
+    <div class="card-title">🔑 Credenciales de Operadores (APIs)</div>
+
+    @if(session('cred_error'))
+    <div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:9px;padding:.6rem .85rem;margin-bottom:.9rem;font-size:.78rem;color:#991b1b;line-height:1.45">
+        {{ session('cred_error') }}
+    </div>
+    @endif
+
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:.7rem .9rem;margin-bottom:1rem;font-size:.75rem;color:#475569;line-height:1.45">
+        Con estas credenciales Brynex puede <strong>liquidar la planilla directamente en el operador</strong>
+        y traer el número de planilla y el link de pago PSE, sin descargar el archivo plano.
+        Los datos quedan cifrados en la base de datos.
+    </div>
+
+    @php
+        // Solo se listan los operadores con integración ya construida. Los
+        // demás se irán sumando y aparecerán aquí automáticamente.
+        $opsConApi = ($operadoresCred ?? collect())->where('tiene_api', true);
+        $opsSinApi = ($operadoresCred ?? collect())->where('tiene_api', false);
+    @endphp
+
+    <div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:10px">
+        <table style="width:100%;border-collapse:collapse;font-size:.78rem;text-align:left">
+            <thead>
+                <tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0">
+                    <th style="padding:.5rem .75rem;color:#64748b;font-weight:700;font-size:.62rem;text-transform:uppercase">Operador</th>
+                    <th style="padding:.5rem .75rem;color:#64748b;font-weight:700;font-size:.62rem;text-transform:uppercase">Estado</th>
+                    <th style="padding:.5rem .75rem;color:#64748b;font-weight:700;font-size:.62rem;text-transform:uppercase">Usuario</th>
+                    <th style="padding:.5rem .75rem;color:#64748b;font-weight:700;font-size:.62rem;text-transform:uppercase">Clave vence</th>
+                    <th style="padding:.5rem .75rem;color:#64748b;font-weight:700;font-size:.62rem;text-transform:uppercase;text-align:right">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                @forelse($opsConApi as $op)
+                <tr style="border-bottom:1px solid #f1f5f9">
+                    <td style="padding:.55rem .75rem;font-weight:700;color:#1e293b">
+                        🏦 {{ $op->nombre }}
+                    </td>
+                    <td style="padding:.55rem .75rem">
+                        @if(!$op->configurado)
+                            <span style="color:#94a3b8;font-weight:600">— Sin configurar</span>
+                        @elseif($op->vencida)
+                            <span style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;border-radius:20px;padding:.15rem .55rem;font-size:.68rem;font-weight:700">⚠️ Clave vencida</span>
+                        @elseif($op->heredada)
+                            <span title="Credencial del aliado: la misma cuenta sirve para todas las razones sociales que ese usuario administre en el operador."
+                                  style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;border-radius:20px;padding:.15rem .55rem;font-size:.68rem;font-weight:700">🔗 Heredada del aliado</span>
+                        @else
+                            <span style="background:#dcfce7;color:#166534;border:1px solid #86efac;border-radius:20px;padding:.15rem .55rem;font-size:.68rem;font-weight:700">✓ Propia de esta RS</span>
+                        @endif
+                    </td>
+                    <td style="padding:.55rem .75rem;color:#475569">{{ $op->usuario ?: '—' }}</td>
+                    <td style="padding:.55rem .75rem;color:{{ $op->vencida ? '#dc2626' : '#94a3b8' }};font-size:.72rem">
+                        {{ $op->expira_at ? $op->expira_at->format('d/m/Y') : '—' }}
+                    </td>
+                    <td style="padding:.55rem .75rem;text-align:right;white-space:nowrap">
+                        <button type="button"
+                                onclick="abrirModalCredencial({{ $op->id }}, @js($op->nombre), {{ $op->tiene_api ? 'true' : 'false' }}, {{ $op->configurado ? 'true' : 'false' }}, @js($op->usuario), @js(optional($op->expira_at)->format('Y-m-d')), {{ $op->heredada ? 'true' : 'false' }})"
+                                style="padding:.25rem .5rem;background:#ede9fe;border:1px solid #ddd6fe;border-radius:6px;color:#6d28d9;font-size:.7rem;font-weight:700;cursor:pointer;margin-right:4px">
+                            🔑 {{ $op->configurado ? 'Editar' : 'Configurar' }}
+                        </button>
+
+                        @if($op->configurado && $op->tiene_api)
+                        <form method="POST" action="{{ route('admin.configuracion.razones.credenciales.probar', [$rs->id, $op->id]) }}" style="display:inline">
+                            @csrf
+                            <button type="submit"
+                                    style="padding:.25rem .5rem;background:#dbeafe;border:1px solid #bfdbfe;border-radius:6px;color:#1d4ed8;font-size:.7rem;font-weight:700;cursor:pointer;margin-right:4px">
+                                🔌 Probar
+                            </button>
+                        </form>
+                        @endif
+
+                        @if($op->configurado)
+                        <form method="POST" action="{{ route('admin.configuracion.razones.credenciales.destroy', [$rs->id, $op->id]) }}"
+                              style="display:inline" onsubmit="return confirm('¿Eliminar las credenciales de este operador?')">
+                            @csrf @method('DELETE')
+                            <button type="submit"
+                                    style="padding:.25rem .5rem;background:#fee2e2;border:1px solid #fca5a5;border-radius:6px;color:#dc2626;font-size:.7rem;font-weight:700;cursor:pointer">
+                                🗑️
+                            </button>
+                        </form>
+                        @endif
+                    </td>
+                </tr>
+                @empty
+                <tr>
+                    <td colspan="5" style="padding:1.2rem;text-align:center;color:#94a3b8;font-size:.8rem">
+                        No hay operadores con integración por API activos para este aliado.
+                    </td>
+                </tr>
+                @endforelse
+            </tbody>
+        </table>
+    </div>
+
+    @if($opsSinApi->isNotEmpty())
+    <div style="margin-top:.8rem;font-size:.72rem;color:#94a3b8;line-height:1.45">
+        ⏳ Todavía sin integración por API:
+        <strong>{{ $opsSinApi->pluck('nombre')->implode(', ') }}</strong>.
+        Para esos operadores se sigue descargando el archivo plano desde el módulo de planos.
+    </div>
+    @endif
+</div>
+
+{{-- Modal de credenciales --}}
+<div id="modalCredencial"
+     style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9999;align-items:center;justify-content:center;padding:1rem">
+    <div style="background:#fff;border-radius:14px;max-width:480px;width:100%;box-shadow:0 20px 45px rgba(0,0,0,.25);overflow:hidden">
+        <div style="background:linear-gradient(135deg,#6d28d9,#8b5cf6);padding:.9rem 1.1rem;display:flex;justify-content:space-between;align-items:center">
+            <h3 style="color:#fff;font-size:.9rem;font-weight:800;margin:0">🔑 Credenciales — <span id="credOperadorNombre"></span></h3>
+            <button type="button" onclick="cerrarModalCredencial()"
+                    style="background:none;border:none;color:#ddd6fe;font-size:1.1rem;cursor:pointer;line-height:1">✕</button>
+        </div>
+
+        <form method="POST" action="{{ route('admin.configuracion.razones.credenciales.store', $rs->id) }}" style="padding:1.1rem">
+            @csrf
+            <input type="hidden" name="operador_planilla_id" id="credOperadorId">
+
+            <div id="credAyudaEnlace"
+                 style="display:none;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:9px;padding:.6rem .8rem;margin-bottom:.9rem;font-size:.72rem;color:#5b21b6;line-height:1.45">
+                El <strong>usuario</strong> es la unión del tipo y el número de documento con el que se ingresa
+                al portal (ej. <code>CC1234567</code>). La <strong>contraseña</strong> son 4 dígitos numéricos.
+                La <strong>clave secreta</strong> se genera desde el tablero del operador y vence al año.
+            </div>
+
+            <div style="margin-bottom:.8rem">
+                <label style="display:block;font-size:.7rem;font-weight:700;color:#475569;margin-bottom:.25rem">Usuario *</label>
+                <input type="text" name="usuario" id="credUsuario" required autocomplete="off"
+                       placeholder="CC1234567"
+                       style="width:100%;padding:.5rem .65rem;border:1px solid #cbd5e1;border-radius:8px;font-size:.82rem">
+            </div>
+
+            <div style="margin-bottom:.8rem">
+                <label style="display:block;font-size:.7rem;font-weight:700;color:#475569;margin-bottom:.25rem">
+                    Contraseña <span id="credObligU">*</span>
+                </label>
+                <input type="password" name="contrasena" id="credContrasena" autocomplete="new-password"
+                       placeholder="••••"
+                       style="width:100%;padding:.5rem .65rem;border:1px solid #cbd5e1;border-radius:8px;font-size:.82rem">
+            </div>
+
+            <div style="margin-bottom:.8rem">
+                <label style="display:block;font-size:.7rem;font-weight:700;color:#475569;margin-bottom:.25rem">
+                    Clave secreta <span id="credObligC">*</span>
+                </label>
+                <input type="password" name="clave_secreta" id="credClaveSecreta" autocomplete="new-password"
+                       placeholder="Clave generada en el tablero del operador"
+                       style="width:100%;padding:.5rem .65rem;border:1px solid #cbd5e1;border-radius:8px;font-size:.82rem">
+            </div>
+
+            <div style="margin-bottom:1rem">
+                <label style="display:block;font-size:.7rem;font-weight:700;color:#475569;margin-bottom:.25rem">Vencimiento de la clave secreta</label>
+                <input type="date" name="clave_secreta_expira_at" id="credExpira"
+                       style="width:100%;padding:.5rem .65rem;border:1px solid #cbd5e1;border-radius:8px;font-size:.82rem">
+                <div style="font-size:.66rem;color:#94a3b8;margin-top:.2rem">Por defecto, un año desde hoy.</div>
+            </div>
+
+            {{-- Alcance. Lo normal es una sola credencial por aliado: la cuenta
+                 del operador sirve para todos los aportantes que ese usuario
+                 administre, no hace falta repetirla en cada razón social. --}}
+            <label style="display:flex;gap:.5rem;align-items:flex-start;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:9px;padding:.6rem .8rem;margin-bottom:.9rem;cursor:pointer">
+                <input type="checkbox" name="todas_razones" id="credTodasRazones" value="1" checked style="margin-top:.15rem">
+                <span style="font-size:.72rem;color:#5b21b6;line-height:1.45">
+                    <strong>Usar en todas las razones sociales</strong><br>
+                    La cuenta del operador cubre todos los aportantes que ese usuario administre.
+                    Desmarque solo si esta razón social entra con una cuenta distinta.
+                </span>
+            </label>
+
+            <div id="credAvisoEditar"
+                 style="display:none;background:#f8fafc;border:1px solid #e2e8f0;border-radius:9px;padding:.55rem .75rem;margin-bottom:.9rem;font-size:.7rem;color:#64748b">
+                Deje la contraseña y la clave secreta en blanco para conservar las actuales.
+            </div>
+
+            <div style="display:flex;justify-content:flex-end;gap:.6rem">
+                <button type="button" onclick="cerrarModalCredencial()"
+                        style="padding:.5rem .9rem;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;color:#475569;font-size:.8rem;font-weight:700;cursor:pointer">
+                    Cancelar
+                </button>
+                <button type="submit"
+                        style="padding:.5rem 1rem;background:linear-gradient(135deg,#6d28d9,#8b5cf6);border:none;border-radius:8px;color:#fff;font-size:.8rem;font-weight:700;cursor:pointer">
+                    💾 Guardar
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <script>
+function abrirModalCredencial(operadorId, nombre, tieneApi, configurado, usuario, expira, heredada) {
+    document.getElementById('credOperadorId').value      = operadorId;
+    document.getElementById('credOperadorNombre').textContent = nombre;
+    document.getElementById('credAyudaEnlace').style.display  = tieneApi ? 'block' : 'none';
+    document.getElementById('credAvisoEditar').style.display  = configurado ? 'block' : 'none';
+
+    // Al editar se respeta el alcance actual; al crear, por defecto todas.
+    document.getElementById('credTodasRazones').checked = configurado ? !!heredada : true;
+
+    // Al editar, los secretos son opcionales: en blanco se conservan.
+    document.getElementById('credObligU').style.display = configurado ? 'none' : '';
+    document.getElementById('credObligC').style.display = configurado ? 'none' : '';
+
+    document.getElementById('credUsuario').value      = usuario || '';
+    document.getElementById('credContrasena').value   = '';
+    document.getElementById('credClaveSecreta').value = '';
+
+    if (expira) {
+        document.getElementById('credExpira').value = expira;
+    } else {
+        const d = new Date();
+        d.setFullYear(d.getFullYear() + 1);
+        document.getElementById('credExpira').value = d.toISOString().substring(0, 10);
+    }
+
+    document.getElementById('modalCredencial').style.display = 'flex';
+    document.getElementById('credUsuario').focus();
+}
+
+function cerrarModalCredencial() {
+    // No dejar secretos en el DOM al cerrar.
+    document.getElementById('credContrasena').value   = '';
+    document.getElementById('credClaveSecreta').value = '';
+    document.getElementById('modalCredencial').style.display = 'none';
+}
+
 function toggleOtroDocumento(val) {
     const wrap = document.getElementById('wrapOtroDoc');
     const input = document.getElementById('inputOtroDoc');

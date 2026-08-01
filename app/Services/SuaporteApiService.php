@@ -6,208 +6,765 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Cache;
 
+/**
+ * Cliente de las APIs PILA de la plataforma Enlace Operativo.
+ *
+ * Varios operadores de información corren la MISMA plataforma con distinto
+ * dominio: ARUS Enlace (suaporte.com.co) y Simple (simple.co) publican specs
+ * OpenAPI idénticos —mismos endpoints, mismos schemas, mismos headers—, así
+ * que este cliente sirve para ambos cambiando solo el host.
+ *
+ * Documentación: https://www.suaporte.com.co/portal-apis/
+ *                https://www.simple.co/portal-apis/
+ *
+ * El flujo para liquidar una planilla son cuatro llamadas encadenadas, y la
+ * sesión NO viaja como Bearer token sino como un conjunto de headers que cada
+ * paso va acumulando:
+ *
+ *   1. POST /auth/login                          → 5 headers de sesión
+ *   2. GET  /api/gestion/aportante/{tipo}/{num}  → id interno del aportante
+ *   3. GET  /api/gestion/authorization/...       → 4 headers de autorización
+ *   4. POST /api/generadorPlanillas/.../validacion (multipart) → planilla
+ *
+ * Los 9 headers de los pasos 1 y 3 deben acompañar todas las llamadas
+ * posteriores. Ver liquidarPlanilla() para el flujo completo.
+ */
 class SuaporteApiService
 {
-    protected string $baseUrl;
-    protected string $usuario;
-    protected string $claveSecreta;
-    protected string $authUrl;
+    /**
+     * Operadores que corren la plataforma Enlace Operativo, por su `codigo`
+     * en `operadores_planilla`, con el host donde la exponen.
+     * Para sumar un operador nuevo basta agregarlo aquí.
+     */
+    public const HOSTS = [
+        'ARUS'   => 'https://www.suaporte.com.co',
+        'SIMPLE' => 'https://www.simple.co',
+    ];
 
-    public function __construct(?string $usuario = null, ?string $claveSecreta = null)
-    {
-        $this->baseUrl = config('services.suaporte.base_url', 'https://www.suaporte.com.co/api');
-        $this->authUrl = config('services.suaporte.auth_url', 'https://www.suaporte.com.co/auth');
-        $this->usuario = $usuario ?? config('services.suaporte.usuario', '');
-        $this->claveSecreta = $claveSecreta ?? config('services.suaporte.clave_secreta', '');
-    }
+    /** Headers que devuelve el login y que identifican la sesión. */
+    private const HEADERS_SESION = [
+        'token',
+        'refresh-token',
+        'refresh-token-ttl',
+        'refresh-token-date',
+        'faces',
+    ];
+
+    /** Headers que devuelve la autorización sobre un aportante. */
+    private const HEADERS_AUTORIZACION = [
+        'profiles',
+        'contributor',
+        'appId',
+        'refrescar',
+    ];
+
+    protected string $authUrl;
+    protected string $apiUrl;
+    protected string $usuario;
+    protected string $contrasena;
+    protected string $claveSecreta;
+    protected int $timeout;
+
+    /** Headers acumulados de sesión + autorización. */
+    protected array $headers = [];
 
     /**
-     * Cifra un dato sensible (como contraseña) si la API de autenticación lo requiere.
+     * @param array $credenciales usuario, contrasena, clave_secreta y
+     *                            opcionalmente `operador` (código: ARUS,
+     *                            SIMPLE…) o `host` para apuntar a otro
+     *                            dominio de la plataforma. Lo que se omita
+     *                            se toma de config/services.php.
+     */
+    public function __construct(array $credenciales = [])
+    {
+        $host = $credenciales['host'] ?? self::hostDeOperador($credenciales['operador'] ?? null);
+
+        if ($host) {
+            $host          = rtrim($host, '/');
+            $this->authUrl = "{$host}/auth";
+            $this->apiUrl  = "{$host}/api";
+        } else {
+            $this->authUrl = rtrim(config('services.suaporte.auth_url'), '/');
+            $this->apiUrl  = rtrim(config('services.suaporte.api_url'), '/');
+        }
+
+        $this->timeout      = (int) config('services.suaporte.timeout', 120);
+        $this->usuario      = $credenciales['usuario']       ?? (string) config('services.suaporte.usuario');
+        $this->contrasena   = $credenciales['contrasena']    ?? (string) config('services.suaporte.contrasena');
+        $this->claveSecreta = $credenciales['clave_secreta'] ?? (string) config('services.suaporte.clave_secreta');
+    }
+
+    /** Host de la plataforma para un código de operador, o null si no aplica. */
+    public static function hostDeOperador(?string $codigo): ?string
+    {
+        return $codigo ? (self::HOSTS[strtoupper($codigo)] ?? null) : null;
+    }
+
+    /** ¿Este operador corre sobre la plataforma Enlace Operativo? */
+    public static function soportaOperador(?string $codigo): bool
+    {
+        return $codigo !== null && isset(self::HOSTS[strtoupper($codigo)]);
+    }
+
+    // ── 0. Cifrado (opcional) ────────────────────────────────────────────
+
+    /**
+     * Cifra un dato sensible con la llave RSA pública de Enlace.
+     * El login acepta la contraseña en plano o cifrada con este servicio.
      */
     public function cifrarDato(string $dato): ?string
     {
         try {
-            $response = Http::post("{$this->authUrl}/crypto/cifrar-datos", [
-                'dato' => $dato,
-            ]);
+            $response = Http::timeout($this->timeout)
+                ->post("{$this->authUrl}/crypto/cifrar-datos", ['datoACifrar' => $dato]);
 
             if ($response->successful()) {
-                return $response->json('dato_cifrado') ?? $response->body();
+                return $response->json('datoCifrado');
             }
+
+            Log::warning('Suaporte: fallo al cifrar dato', ['status' => $response->status()]);
         } catch (\Exception $e) {
-            Log::error('Error al cifrar dato sensible para Suaporte', ['message' => $e->getMessage()]);
+            Log::error('Suaporte: excepción al cifrar dato', ['message' => $e->getMessage()]);
         }
+
         return null;
     }
 
+    // ── 1. Autenticación ─────────────────────────────────────────────────
+
     /**
-     * Obtiene el token de autenticación JWT de Suaporte.
-     * Utiliza caché parametrizada por usuario para evitar colisiones de tokens.
+     * Autentica y guarda los 5 headers de sesión.
+     * La sesión se cachea por usuario para no relogear en cada operación.
+     *
+     * @return array{success: bool, message?: string}
      */
-    public function obtenerToken(): ?string
+    public function autenticar(bool $forzar = false): array
     {
-        if (empty($this->usuario) || empty($this->claveSecreta)) {
-            Log::error('Intento de autenticación en Suaporte sin credenciales configuradas.');
-            return null;
+        if (empty($this->usuario) || empty($this->contrasena) || empty($this->claveSecreta)) {
+            return [
+                'success' => false,
+                'message' => 'Faltan credenciales de Enlace Operativo (usuario, contraseña o clave secreta).',
+            ];
         }
 
-        $cacheKey = 'suaporte_api_token_' . md5($this->usuario);
+        // El host entra en la llave: un mismo usuario puede tener sesión
+        // simultánea en ARUS y en Simple, y los tokens no son intercambiables.
+        $cacheKey = 'suaporte_sesion_' . md5($this->authUrl . '|' . $this->usuario . '|' . $this->claveSecreta);
 
-        return Cache::remember($cacheKey, 300, function () {
+        if ($forzar) {
+            Cache::forget($cacheKey);
+        }
+
+        $sesion = Cache::get($cacheKey);
+
+        if (!$sesion) {
+            // La documentación dice que el login acepta la contraseña en plano,
+            // pero en la práctica la rechaza ("El dato no tiene formato de
+            // cifrado válido"): hay que cifrarla siempre con la llave RSA.
+            // El cifrado cambia en cada llamada, así que no se puede guardar.
+            $contrasena = $this->cifrarDato($this->contrasena);
+
+            if (!$contrasena) {
+                return [
+                    'success' => false,
+                    'message' => 'No fue posible cifrar la contraseña con el servicio de Enlace Operativo.',
+                ];
+            }
+
             try {
-                $response = Http::post("{$this->authUrl}/login", [
-                    'usuario' => $this->usuario,
-                    'clave_secreta' => $this->claveSecreta,
-                ]);
+                $response = Http::timeout($this->timeout)
+                    ->withHeaders(['clave-secreta' => $this->claveSecreta])
+                    ->asJson()
+                    ->post("{$this->authUrl}/login", [
+                        'usuario'    => $this->usuario,
+                        'contrasena' => $contrasena,
+                    ]);
 
-                if ($response->successful()) {
-                    return $response->json('token') ?? $response->json('access_token');
+                if (!$response->successful()) {
+                    Log::error('Suaporte: login fallido', [
+                        'status'  => $response->status(),
+                        'usuario' => $this->usuario,
+                        'body'    => $response->body(),
+                    ]);
+
+                    return [
+                        'success' => false,
+                        'message' => $this->mensajeError($response, 'No fue posible autenticar en Enlace Operativo.'),
+                    ];
                 }
 
-                Log::error('Suaporte API login fallido', [
-                    'status' => $response->status(),
-                    'body' => $response->body()
-                ]);
+                $sesion = $this->extraerHeaders($response, self::HEADERS_SESION);
+
+                if (empty($sesion['token'])) {
+                    return [
+                        'success' => false,
+                        'message' => 'Enlace Operativo respondió sin token de sesión.',
+                    ];
+                }
+
+                // El refresh-token-ttl viene en segundos; se descuenta un margen
+                // para no usar una sesión que expire a mitad del flujo.
+                $ttl = max(60, ((int) ($sesion['refresh-token-ttl'] ?? 600)) - 60);
+                Cache::put($cacheKey, $sesion, $ttl);
             } catch (\Exception $e) {
-                Log::error('Excepción al conectar con la API de Suaporte', [
-                    'message' => $e->getMessage()
-                ]);
+                Log::error('Suaporte: excepción en login', ['message' => $e->getMessage()]);
+
+                return [
+                    'success' => false,
+                    'message' => 'Error de red al conectar con Enlace Operativo: ' . $e->getMessage(),
+                ];
             }
-
-            return null;
-        });
-    }
-
-    /**
-     * Envía la información consolidada de los cotizantes (o archivo plano en Base64) a la API de Suaporte.
-     */
-    public function enviarPlanilla(string $contenidoPlanoTxt, array $datosPlanilla): array
-    {
-        $token = $this->obtenerToken();
-
-        if (!$token) {
-            return [
-                'success' => false,
-                'message' => 'No se pudo obtener el token de autenticación con Suaporte.'
-            ];
         }
 
-        try {
-            // El formato dependerá si SuAporte recibe el TXT o JSON.
-            // Generalmente, reciben multipart o payload JSON con el plano codificado.
-            $response = Http::withToken($token)
-                ->post("{$this->baseUrl}/generadorPlanillas/cargar", [
-                    'nit_aportante' => $datosPlanilla['nit'],
-                    'periodo_pago'  => "{$datosPlanilla['anio']}-" . str_pad($datosPlanilla['mes'], 2, '0', STR_PAD_LEFT),
-                    'n_plano'       => $datosPlanilla['n_plano'],
-                    'archivo_pila'  => base64_encode($contenidoPlanoTxt),
-                    'nombre_archivo'=> "PILA_{$datosPlanilla['nit']}_{$datosPlanilla['mes']}_{$datosPlanilla['anio']}.txt"
-                ]);
+        $this->headers = $sesion;
 
-            if ($response->successful()) {
+        return ['success' => true];
+    }
+
+    // ── 2. Consulta del aportante ────────────────────────────────────────
+
+    /**
+     * Obtiene el id interno que Enlace le asigna al aportante (razón social).
+     * Ese id es el que exige el servicio de autorización.
+     *
+     * @return array{success: bool, id?: int, aportante?: array, message?: string}
+     */
+    public function consultarAportante(string $tipoDocumento, string $numeroDocumento): array
+    {
+        try {
+            $response = Http::timeout($this->timeout)
+                ->withHeaders($this->headers)
+                ->get("{$this->apiUrl}/gestion/aportante/{$tipoDocumento}/{$numeroDocumento}");
+
+            if (!$response->successful()) {
                 return [
-                    'success' => true,
-                    'planilla_id' => $response->json('planilla_id'),
-                    'numero_planilla' => $response->json('numero_planilla'),
-                    'valor_total' => $response->json('valor_total'),
-                    'response' => $response->json()
+                    'success' => false,
+                    'message' => $this->mensajeError($response, "El aportante {$tipoDocumento} {$numeroDocumento} no fue encontrado en Enlace."),
                 ];
             }
 
-            return [
-                'success' => false,
-                'message' => 'Error en la validación/carga de la planilla: ' . ($response->json('message') ?? $response->body()),
-                'response' => $response->json()
-            ];
+            $data = $response->json();
+            $id   = $data['id'] ?? ($data['data']['id'] ?? null);
 
+            if (!$id) {
+                return [
+                    'success' => false,
+                    'message' => 'Enlace no devolvió el id del aportante.',
+                    'response' => $data,
+                ];
+            }
+
+            return ['success' => true, 'id' => (int) $id, 'aportante' => $data];
         } catch (\Exception $e) {
-            Log::error('Excepción al enviar planilla a Suaporte', [
+            Log::error('Suaporte: excepción al consultar aportante', ['message' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => 'Error al consultar el aportante: ' . $e->getMessage()];
+        }
+    }
+
+    /**
+     * Crea un aportante independiente (persona natural que cotiza por su
+     * cuenta). Solo requiere los 5 headers del login: no se puede autorizar
+     * sobre un aportante que todavía no existe.
+     *
+     * Los valores fijos (tipoAportante, clasificación, naturaleza jurídica…)
+     * salen de cómo la plataforma tiene registrados los independientes
+     * existentes; `actividadEconomicaCodigo` 7490 es el CIIU genérico de
+     * "otras actividades profesionales".
+     *
+     * @param array $datos tipo_documento, documento, nombre, codigo_arl,
+     *                     actividad_economica, contacto[]
+     */
+    public function crearAportanteIndependiente(array $datos): array
+    {
+        $payload = [
+            'tipoIdentificacion'                   => $datos['tipo_documento'] ?? 'CC',
+            'numeroIdentificacion'                 => (string) $datos['documento'],
+            'razonSocial'                          => $datos['nombre'],
+            'tipoAportanteId'                      => 2,   // independiente
+            'clasificacionAportanteId'             => 2,
+            'digitoVerificacion'                   => 0,
+            'formaPresentacionId'                  => 1,   // único
+            'tipoPersonaId'                        => 1,   // natural
+            'naturalezaJuridicaId'                 => 2,   // privada
+            'tipoAccionId'                         => 5,   // normal
+            'codigoAdministradoraRiesgosLaborales' => $datos['codigo_arl'] ?? 'NIN-AR',
+            'actividadEconomicaCodigo'             => $datos['actividad_economica'] ?? '7490',
+            'estado'                               => 'ACTIVE',
+            'pagaEsapMin'                          => false,
+        ];
+
+        if (!empty($datos['contacto'])) {
+            $payload['informacionContacto'] = $datos['contacto'];
+        }
+
+        try {
+            $response = Http::timeout($this->timeout)
+                ->withHeaders($this->headers)
+                ->asJson()
+                ->post("{$this->apiUrl}/gestion/aportante", $payload);
+
+            if (!$response->successful()) {
+                Log::warning('Suaporte: no se pudo crear el aportante', [
+                    'documento' => $datos['documento'],
+                    'status'    => $response->status(),
+                    'body'      => $response->body(),
+                ]);
+
+                return [
+                    'success'  => false,
+                    'message'  => $this->mensajeError($response, 'No fue posible crear el aportante.'),
+                    'response' => $response->json(),
+                    'payload'  => $payload,
+                ];
+            }
+
+            $data = $response->json();
+
+            return [
+                'success'   => true,
+                'id'        => $data['id'] ?? ($data['data']['id'] ?? null),
+                'aportante' => $data,
+            ];
+        } catch (\Exception $e) {
+            Log::error('Suaporte: excepción al crear aportante', ['message' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => 'Error al crear el aportante: ' . $e->getMessage()];
+        }
+    }
+
+    // ── 3. Autorización sobre el aportante ───────────────────────────────
+
+    /**
+     * Autoriza al usuario autenticado sobre un aportante y acumula los
+     * 4 headers resultantes. Sin este paso los servicios de planillas
+     * responden 401/403.
+     *
+     * @return array{success: bool, message?: string}
+     */
+    public function autorizar(int $aportanteId, string $tipoDocumento, string $numeroDocumento, ?int $aplicacion = null): array
+    {
+        $query = [
+            'id'                   => $aportanteId,
+            'tipoIdentificacion'   => $tipoDocumento,
+            'numeroIdentificacion' => $numeroDocumento,
+        ];
+
+        if ($aplicacion !== null) {
+            $query['aplicacion'] = $aplicacion;
+        }
+
+        try {
+            $response = Http::timeout($this->timeout)
+                ->withHeaders($this->headers)
+                ->get("{$this->apiUrl}/gestion/authorization/user/contributor", $query);
+
+            if (!$response->successful()) {
+                Log::error('Suaporte: autorización fallida', [
+                    'status'    => $response->status(),
+                    'aportante' => "{$tipoDocumento} {$numeroDocumento}",
+                    'body'      => $response->body(),
+                ]);
+
+                return [
+                    'success' => false,
+                    'message' => $this->mensajeError(
+                        $response,
+                        "El usuario de Enlace no tiene permisos sobre el aportante {$tipoDocumento} {$numeroDocumento}."
+                    ),
+                ];
+            }
+
+            $autorizacion = $this->extraerHeaders($response, self::HEADERS_AUTORIZACION);
+
+            if (empty($autorizacion['contributor'])) {
+                return [
+                    'success' => false,
+                    'message' => 'Enlace autorizó la petición pero no devolvió los headers del aportante.',
+                ];
+            }
+
+            $this->headers = array_merge($this->headers, $autorizacion);
+
+            return ['success' => true];
+        } catch (\Exception $e) {
+            Log::error('Suaporte: excepción al autorizar', ['message' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => 'Error al autorizar sobre el aportante: ' . $e->getMessage()];
+        }
+    }
+
+    // ── 4. Validación / liquidación de la planilla ───────────────────────
+
+    /**
+     * Sube el archivo plano PILA para validación. Si el archivo no tiene
+     * errores, Enlace crea la planilla y devuelve su número; si los tiene,
+     * numeroPlanilla llega en 0 y se devuelve el detalle (máx. 100 líneas).
+     *
+     * @param array $opciones planillaUGPP, planillaNSoloNovedades, tipoArchivo
+     * @return array{success: bool, codigo_planilla?: int, numero_planilla?: int, ...}
+     */
+    public function validarPlanilla(string $contenidoTxt, string $nombreArchivo, array $opciones = []): array
+    {
+        $parametros = json_encode([
+            'planillaUGPP'           => (bool) ($opciones['planillaUGPP'] ?? false),
+            'planillaNSoloNovedades' => (bool) ($opciones['planillaNSoloNovedades'] ?? false),
+            'tipoArchivo'            => $opciones['tipoArchivo'] ?? 'I', // I = activos
+        ]);
+
+        try {
+            $response = Http::timeout($this->timeout)
+                ->withHeaders($this->headers)
+                ->attach('archivo', $contenidoTxt, $nombreArchivo)
+                ->post("{$this->apiUrl}/generadorPlanillas/v1/planillas/validacion?" . http_build_query([
+                    'parametros' => $parametros,
+                ]));
+
+            if (!$response->successful()) {
+                Log::error('Suaporte: validación de planilla fallida', [
+                    'status'  => $response->status(),
+                    'archivo' => $nombreArchivo,
+                    'body'    => $response->body(),
+                ]);
+
+                return [
+                    'success'  => false,
+                    'message'  => $this->mensajeError($response, 'Enlace rechazó el archivo plano.'),
+                    'response' => $response->json(),
+                ];
+            }
+
+            $data       = $response->json();
+            $validacion = $data['validacionPlanillas'][0] ?? [];
+
+            $numeroPlanilla = (int) ($validacion['numeroPlanilla'] ?? 0);
+            $errores        = (int) ($validacion['cantidadErroresCotizante'] ?? 0)
+                            + (int) ($validacion['cantidadErroresEmpresa'] ?? 0);
+
+            return [
+                'success'          => true,
+                'liquidada'        => $numeroPlanilla > 0,
+                'estado_validacion'=> $data['estadoValidacion'] ?? null,
+                'codigo_planilla'  => (int) ($validacion['codigoPlanilla'] ?? 0),
+                'numero_planilla'  => $numeroPlanilla,
+                'total_errores'    => $errores,
+                'errores_cotizante'=> $validacion['erroresCotizantePlanilla'] ?? [],
+                'errores_empresa'  => $validacion['erroresEmpresaPlanilla'] ?? [],
+                'advertencias'     => $validacion['advertenciasPlanilla'] ?? [],
+                'response'         => $data,
+            ];
+        } catch (\Exception $e) {
+            Log::error('Suaporte: excepción al validar planilla', [
                 'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'archivo' => $nombreArchivo,
             ]);
 
-            return [
-                'success' => false,
-                'message' => 'Excepción de red al enviar planilla: ' . $e->getMessage()
-            ];
+            return ['success' => false, 'message' => 'Error al enviar el archivo plano: ' . $e->getMessage()];
         }
     }
 
     /**
-     * Obtiene la URL de PSE (Pago) asociada a la planilla liquidada.
+     * Detalle completo de inconsistencias de una planilla con errores.
+     * La validación solo lista las primeras 100 líneas; este servicio pagina.
      */
-    public function obtenerUrlPago(string $planillaId): array
+    public function consultarInconsistencias(int $codigoPlanilla, int $registroInicial = 0, int $limite = 100): array
     {
-        $token = $this->obtenerToken();
-
-        if (!$token) {
-            return [
-                'success' => false,
-                'message' => 'No se pudo obtener el token de autenticación con Suaporte.'
-            ];
-        }
-
         try {
-            $response = Http::withToken($token)
-                ->get("{$this->baseUrl}/generadorPlanillas/planilla/{$planillaId}/url-pago");
+            $response = Http::timeout($this->timeout)
+                ->withHeaders($this->headers)
+                ->get("{$this->apiUrl}/generadorPlanillas/v1/planillas/{$codigoPlanilla}/inconsistencias", [
+                    'registro-inicial' => $registroInicial,
+                    'limite'           => $limite,
+                ]);
 
-            if ($response->successful()) {
+            if (!$response->successful()) {
                 return [
-                    'success' => true,
-                    'url_pago' => $response->json('url_pago') ?? $response->json('url_pse'),
+                    'success' => false,
+                    'message' => $this->mensajeError($response, 'No fue posible consultar las inconsistencias.'),
                 ];
             }
 
-            return [
-                'success' => false,
-                'message' => 'Error al obtener URL de pago: ' . $response->body(),
-            ];
+            return ['success' => true, 'inconsistencias' => $response->json()];
         } catch (\Exception $e) {
-            Log::error('Excepción al obtener URL de pago de Suaporte', ['message' => $e->getMessage()]);
-            return [
-                'success' => false,
-                'message' => 'Excepción al consultar URL de pago: ' . $e->getMessage()
-            ];
+            Log::error('Suaporte: excepción al consultar inconsistencias', ['message' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => 'Error al consultar inconsistencias: ' . $e->getMessage()];
         }
     }
 
     /**
-     * Consulta el estado del pago de una planilla en Enlace Operativo.
+     * Consulta la afiliación de una persona en BDUA (salud) y RUAF (pensión).
+     *
+     * A diferencia del resto, solo exige los 5 headers del login: no hay que
+     * autorizarse sobre ningún aportante, así que sirve para cualquier cédula
+     * —útil al registrar un cliente nuevo—.
+     *
+     * Cuando la persona no figura, responde 200 con los nombres vacíos y las
+     * administradoras en NIN-EP / NIN-AF.
      */
-    public function consultarEstadoPago(string $planillaId): array
+    public function consultarAfiliacion(string $tipoDocumento, string $numeroDocumento): array
     {
-        $token = $this->obtenerToken();
-
-        if (!$token) {
-            return [
-                'success' => false,
-                'message' => 'No se pudo obtener el token.'
-            ];
+        if (empty($this->headers['token'])) {
+            $auth = $this->autenticar();
+            if (!$auth['success']) {
+                return $auth;
+            }
         }
 
         try {
-            $response = Http::withToken($token)
-                ->get("{$this->baseUrl}/gestion-pagos/planilla/{$planillaId}/estado");
+            $response = Http::timeout($this->timeout)
+                ->withHeaders($this->headers)
+                ->get("{$this->apiUrl}/generadorPlanillas/v1/administradoras/bdua-ruaf/{$tipoDocumento}/{$numeroDocumento}");
 
-            if ($response->successful()) {
+            if (!$response->successful()) {
                 return [
-                    'success' => true,
-                    'estado' => $response->json('estado'), // p. ej. 'pagada', 'pendiente'
-                    'fecha_pago' => $response->json('fecha_pago'),
-                    'response' => $response->json()
+                    'success' => false,
+                    'message' => $this->mensajeError($response, 'No fue posible consultar la afiliación.'),
+                ];
+            }
+
+            $data = $response->json();
+
+            // Sin registro: nombres vacíos y administradoras "ninguna".
+            $registrado = !empty($data['primerApellido'])
+                || (!empty($data['administradoraBDUA']) && $data['administradoraBDUA'] !== 'NIN-EP');
+
+            return [
+                'success'    => true,
+                'registrado' => $registrado,
+                'afiliacion' => $data,
+            ];
+        } catch (\Exception $e) {
+            Log::error('Suaporte: excepción al consultar BDUA/RUAF', ['message' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => 'Error al consultar la afiliación: ' . $e->getMessage()];
+        }
+    }
+
+    // ── 5. Totales y pago ────────────────────────────────────────────────
+
+    /**
+     * Totales de la planilla liquidada: valor a pagar, mora, fecha límite y
+     * desglose por administradora.
+     */
+    public function consultarTotales(int $numeroPlanilla): array
+    {
+        try {
+            $response = Http::timeout($this->timeout)
+                ->withHeaders($this->headers)
+                ->get("{$this->apiUrl}/generadorPlanillas/v1/planillas/{$numeroPlanilla}/totales");
+
+            if (!$response->successful()) {
+                return [
+                    'success' => false,
+                    'message' => $this->mensajeError($response, 'No fue posible consultar los totales de la planilla.'),
+                ];
+            }
+
+            $data = $response->json();
+
+            // Una planilla inexistente (o de otro operador) NO da error: la API
+            // responde 200 con el objeto vacío y totalPagar en 0. Se detecta por
+            // la ausencia del número de planilla y del nombre del aportante.
+            if (empty($data['numeroPlanilla']) && empty($data['nombreAportante'])) {
+                return [
+                    'success' => false,
+                    'message' => "La planilla {$numeroPlanilla} no existe en este operador o no pertenece al aportante autorizado.",
+                    'totales' => $data,
                 ];
             }
 
             return [
-                'success' => false,
-                'message' => 'Error al consultar estado de pago: ' . $response->body()
+                'success'       => true,
+                'total_pagar'   => $data['totalPagar']   ?? null,
+                'total_sin_mora'=> $data['totalSinMora'] ?? null,
+                'valor_mora'    => $data['valorMora']    ?? null,
+                'fecha_limite'  => $data['fechaLimite']  ?? null,
+                'estado'        => $data['estadoPlanilla'] ?? null,
+                'totales'       => $data,
             ];
         } catch (\Exception $e) {
-            Log::error('Excepción al consultar estado de pago en Suaporte', ['message' => $e->getMessage()]);
+            Log::error('Suaporte: excepción al consultar totales', ['message' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => 'Error al consultar totales: ' . $e->getMessage()];
+        }
+    }
+
+    /**
+     * URL de pago (PSE) de una planilla liquidada. El servicio devuelve la URL
+     * como string plano, no como objeto JSON.
+     */
+    public function obtenerUrlPago(int $numeroPlanilla): array
+    {
+        try {
+            $response = Http::timeout($this->timeout)
+                ->withHeaders($this->headers)
+                ->get("{$this->apiUrl}/generadorPlanillas/v1/planillas/{$numeroPlanilla}/pago/url");
+
+            if (!$response->successful()) {
+                return [
+                    'success' => false,
+                    'message' => $this->mensajeError($response, 'No fue posible obtener la URL de pago.'),
+                ];
+            }
+
+            $url = trim($response->body(), " \t\n\r\0\x0B\"");
+
+            return ['success' => true, 'url_pago' => $url];
+        } catch (\Exception $e) {
+            Log::error('Suaporte: excepción al obtener URL de pago', ['message' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => 'Error al obtener la URL de pago: ' . $e->getMessage()];
+        }
+    }
+
+    /**
+     * ¿La planilla ya fue pagada?
+     *
+     * La plataforma no expone un campo de estado de pago: `estadoPlanilla`
+     * trae códigos internos (GU = generada, OK = …) sin documentar. El único
+     * indicador fiable es que el servicio de URL de pago se niega a operar
+     * sobre una planilla ya pagada o en trámite de pago.
+     *
+     * @return array{success: bool, pagada?: bool, estado?: string, ...}
+     */
+    public function consultarEstadoPago(int $numeroPlanilla): array
+    {
+        $totales = $this->consultarTotales($numeroPlanilla);
+
+        if (!$totales['success']) {
+            return $totales;
+        }
+
+        $pago = $this->obtenerUrlPago($numeroPlanilla);
+
+        // Con URL de pago disponible la planilla sigue pendiente.
+        if ($pago['success']) {
             return [
-                'success' => false,
-                'message' => 'Excepción al consultar pago: ' . $e->getMessage()
+                'success'      => true,
+                'pagada'       => false,
+                'estado'       => $totales['estado'],
+                'total_pagar'  => $totales['total_pagar'],
+                'valor_mora'   => $totales['valor_mora'],
+                'fecha_limite' => $totales['fecha_limite'],
+                'url_pago'     => $pago['url_pago'],
+                'totales'      => $totales['totales'],
             ];
         }
+
+        $pagada = str_contains(mb_strtolower($pago['message'] ?? ''), 'pagada');
+
+        return [
+            'success'      => true,
+            'pagada'       => $pagada,
+            'estado'       => $totales['estado'],
+            'total_pagar'  => $totales['total_pagar'],
+            'valor_mora'   => $totales['valor_mora'],
+            'fecha_limite' => $totales['fecha_limite'],
+            'mensaje'      => $pago['message'] ?? null,
+            'totales'      => $totales['totales'],
+        ];
+    }
+
+    // ── Flujo completo ───────────────────────────────────────────────────
+
+    /**
+     * Encadena el flujo completo: login → aportante → autorización →
+     * validación → totales → URL de pago.
+     *
+     * Si la planilla trae errores se detiene después de la validación y
+     * devuelve el detalle para mostrarlo al usuario.
+     */
+    public function liquidarPlanilla(string $nit, string $contenidoTxt, string $nombreArchivo, array $opciones = []): array
+    {
+        $tipoDocumento = $opciones['tipo_documento'] ?? 'NI';
+        $nit           = preg_replace('/\D/', '', $nit); // sin DV ni guiones
+
+        $auth = $this->autenticar();
+        if (!$auth['success']) {
+            return $auth + ['paso' => 'autenticacion'];
+        }
+
+        $aportante = $this->consultarAportante($tipoDocumento, $nit);
+        if (!$aportante['success']) {
+            return $aportante + ['paso' => 'consulta_aportante'];
+        }
+
+        $autorizacion = $this->autorizar($aportante['id'], $tipoDocumento, $nit, $opciones['aplicacion'] ?? null);
+        if (!$autorizacion['success']) {
+            return $autorizacion + ['paso' => 'autorizacion'];
+        }
+
+        $validacion = $this->validarPlanilla($contenidoTxt, $nombreArchivo, $opciones);
+        if (!$validacion['success']) {
+            return $validacion + ['paso' => 'validacion'];
+        }
+
+        $validacion['paso']         = 'validacion';
+        $validacion['aportante_id'] = $aportante['id'];
+
+        // Con errores no hay planilla liquidada: no tiene sentido pedir totales.
+        if (!$validacion['liquidada']) {
+            return $validacion;
+        }
+
+        $totales = $this->consultarTotales($validacion['numero_planilla']);
+        if ($totales['success']) {
+            $validacion['totales'] = $totales;
+        }
+
+        $pago = $this->obtenerUrlPago($validacion['numero_planilla']);
+        if ($pago['success']) {
+            $validacion['url_pago'] = $pago['url_pago'];
+        }
+
+        $validacion['paso'] = 'liquidada';
+
+        return $validacion;
+    }
+
+    // ── Helpers ──────────────────────────────────────────────────────────
+
+    /** Headers acumulados (sesión + autorización). */
+    public function headersSesion(): array
+    {
+        return $this->headers;
+    }
+
+    /**
+     * Restaura una sesión ya establecida (por ejemplo entre dos peticiones
+     * HTTP distintas) sin volver a autenticar.
+     */
+    public function usarHeaders(array $headers): self
+    {
+        $this->headers = $headers;
+
+        return $this;
+    }
+
+    private function extraerHeaders(\Illuminate\Http\Client\Response $response, array $nombres): array
+    {
+        $headers = [];
+
+        foreach ($nombres as $nombre) {
+            $valor = $response->header($nombre);
+            if ($valor !== '') {
+                $headers[$nombre] = $valor;
+            }
+        }
+
+        return $headers;
+    }
+
+    /** Extrae el mensaje de error de Enlace, que llega en {"message": "..."}. */
+    private function mensajeError(\Illuminate\Http\Client\Response $response, string $porDefecto): string
+    {
+        $mensaje = $response->json('message');
+
+        if (is_string($mensaje) && $mensaje !== '') {
+            return $mensaje;
+        }
+
+        return $porDefecto . ' (HTTP ' . $response->status() . ')';
     }
 }

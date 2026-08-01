@@ -220,6 +220,12 @@ Route::middleware('auth')->group(function () {
         Route::patch('configuracion/operadores-planilla/{id}/toggle',[$opc, 'toggle'])        ->name('configuracion.operadores.toggle');
         Route::post('configuracion/operadores-planilla/orden',       [$opc, 'guardarOrden'])  ->name('configuracion.operadores.orden');
 
+        // Credenciales de las APIs de operadores, a nivel de aliado
+        $opcr = \App\Http\Controllers\Admin\OperadorCredencialController::class;
+        Route::post  ('configuracion/operadores-planilla/{operador}/credenciales',        [$opcr, 'storeAliado'])  ->name('configuracion.operadores.credenciales.store');
+        Route::post  ('configuracion/operadores-planilla/{operador}/credenciales/probar', [$opcr, 'probarAliado']) ->name('configuracion.operadores.credenciales.probar');
+        Route::delete('configuracion/operadores-planilla/{operador}/credenciales',        [$opcr, 'destroyAliado'])->name('configuracion.operadores.credenciales.destroy');
+
         // CRUD de Razones Sociales (empresas de afiliación) por aliado
         $rsc = \App\Http\Controllers\Admin\RazonSocialController::class;
         Route::get( 'configuracion/razones-sociales',              [$rsc, 'index'])       ->name('configuracion.razones.index');
@@ -235,6 +241,12 @@ Route::middleware('auth')->group(function () {
 
         // Documentos de Razones Sociales
         $rsdc = \App\Http\Controllers\Admin\RazonSocialDocumentoController::class;
+        // Credenciales de las APIs de operadores, por razón social
+        $rsoc = \App\Http\Controllers\Admin\OperadorCredencialController::class;
+        Route::post  ('configuracion/razones-sociales/{id}/credenciales',                       [$rsoc, 'store'])  ->name('configuracion.razones.credenciales.store');
+        Route::post  ('configuracion/razones-sociales/{id}/credenciales/{operador}/probar',     [$rsoc, 'probar']) ->name('configuracion.razones.credenciales.probar');
+        Route::delete('configuracion/razones-sociales/{id}/credenciales/{operador}',            [$rsoc, 'destroy'])->name('configuracion.razones.credenciales.destroy');
+
         Route::post('configuracion/razones-sociales/{id}/documentos',          [$rsdc, 'store'])   ->name('configuracion.razones.documentos.store');
         Route::get('configuracion/razones-sociales/documentos/{id}/descargar', [$rsdc, 'download'])->name('configuracion.razones.documentos.download');
         Route::delete('configuracion/razones-sociales/documentos/{id}',        [$rsdc, 'destroy'])  ->name('configuracion.razones.documentos.destroy');
@@ -324,6 +336,13 @@ Route::middleware('auth')->group(function () {
             Route::post('/confirmar-pago',      [$pp, 'confirmarPago'])    ->name('confirmar_pago');
             Route::get('/api/razon/{id}',       [$pp, 'apiRazonSocial'])   ->name('api.razon');
             Route::get('/api/resumen',           [$pp, 'apiResumenPlanos']) ->name('api.resumen');
+
+            // Liquidación directa contra la API del operador (Enlace Operativo)
+            $pa = \App\Http\Controllers\Admin\PlanillaApiController::class;
+            Route::get ('/api-operador/estado',    [$pa, 'estado'])   ->name('api_operador.estado');
+            Route::post('/api-operador/liquidar',  [$pa, 'liquidar']) ->name('api_operador.liquidar');
+            Route::get ('/api-operador/{codigoPlanilla}/inconsistencias', [$pa, 'inconsistencias'])
+                ->whereNumber('codigoPlanilla')->name('api_operador.inconsistencias');
 
             // Envío de planillas por WhatsApp
             Route::get('/envio-planillas',                     [$pp, 'enviosPlanillaIndex'])->name('envio_planillas');

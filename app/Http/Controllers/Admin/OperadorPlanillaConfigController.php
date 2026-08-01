@@ -40,10 +40,14 @@ class OperadorPlanillaConfigController extends Controller
             ->where('aliado_id', $aliadoId)
             ->exists();
 
+        // Credenciales de API del aliado, por operador (sin exponer secretos)
+        $credenciales = OperadorCredencialController::estadoDelAliado($aliadoId);
+
         return view('admin.configuracion.operadores_planilla', compact(
             'operadoresGlobales',
             'pivotActivo',
-            'tieneConfig'
+            'tieneConfig',
+            'credenciales'
         ));
     }
 

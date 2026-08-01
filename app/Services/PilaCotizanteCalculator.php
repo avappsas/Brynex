@@ -199,8 +199,12 @@ class PilaCotizanteCalculator
 
             $salarioSemanal = $smmlv / 4;
 
-            $ibcAfpTp  = (int)round($salarioSemanal * $semanasAfp);
-            $ibcCajaTp = (int)round($salarioSemanal * $semanasCaja);
+            // El IBC semanal casi siempre queda fraccionado (SMMLV/4). Los
+            // operadores PILA redondean hacia arriba, no al más cercano: con
+            // round() Enlace rechaza la planilla con eo.val.2.325 / eo.val.2.326
+            // ("el IBC reportado no es correcto, deberá ser X") por 1 peso.
+            $ibcAfpTp  = (int)ceil($salarioSemanal * $semanasAfp);
+            $ibcCajaTp = (int)ceil($salarioSemanal * $semanasCaja);
 
             $tienePension = !empty($codAfpRaw);
 

@@ -113,7 +113,10 @@ class RazonSocialController extends Controller
         $arls  = DB::table('arls')->orderBy('nombre_arl')->get(['id', 'nit', 'nombre_arl']);
         $cajas = DB::table('cajas')->orderBy('nombre')->get(['id', 'nit', 'nombre']);
 
-        return view('admin.razones_sociales.form', compact('arls', 'cajas', 'rs'));
+        // Estado de las credenciales de API por operador (sin exponer secretos)
+        $operadoresCred = OperadorCredencialController::estadoPorOperador($aliadoId, $id);
+
+        return view('admin.razones_sociales.form', compact('arls', 'cajas', 'rs', 'operadoresCred'));
     }
 
     // ─── Actualizar ───────────────────────────────────────────────

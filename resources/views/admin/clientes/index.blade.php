@@ -45,6 +45,7 @@
     padding: .55rem 1.1rem; border-radius: 10px;
     transition: all .2s; white-space: nowrap;
     backdrop-filter: blur(4px);
+    font-family: inherit; cursor: pointer;
 }
 .cl-btn-new:hover { background: rgba(255,255,255,.28); transform: translateY(-1px); }
 
@@ -311,10 +312,158 @@
                 </p>
             </div>
         </div>
-        <a href="{{ route('admin.clientes.create') }}" class="cl-btn-new">
+        <button type="button" class="cl-btn-new" x-data x-on:click="$dispatch('abrir-nuevo-cliente')">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
             Nuevo Cliente
-        </a>
+        </button>
+    </div>
+
+    {{-- ══ MODAL: Nuevo Cliente — verifica cédula antes de abrir el formulario ══
+         Evita duplicados y trae los datos oficiales (BDUA/RUAF) para que el
+         asesor confirme que es la persona correcta antes de crear el registro. --}}
+    <div x-data="nuevoClienteModal()" x-on:abrir-nuevo-cliente.window="abrir()">
+    {{-- x-teleport mueve el modal a <body>: así ningún ancestro con transform,
+         filter o backdrop-filter puede "atrapar" el position:fixed y descentrarlo. --}}
+    <template x-teleport="body">
+        <div x-show="visible" x-cloak
+             x-on:keydown.escape.window="cerrar()"
+             style="position:fixed;inset:0;z-index:1000;background:rgba(15,23,42,.55);"
+             x-on:click.self="cerrar()">
+
+            <div style="position:fixed;top:50%;left:50%;transform:translate(-50%, -50%);background:#fff;border-radius:12px;max-width:480px;width:calc(100% - 2rem);box-shadow:0 20px 45px rgba(0,0,0,.25);max-height:90vh;overflow-y:auto;">
+
+                <div style="background:linear-gradient(135deg,#1e40af,#2563eb);padding:.9rem 1.15rem;display:flex;justify-content:space-between;align-items:center;">
+                    <h3 style="color:#fff;font-size:.92rem;font-weight:800;margin:0;">👤 Nuevo Cliente</h3>
+                    <button type="button" x-on:click="cerrar()" style="background:none;border:none;color:#bfdbfe;font-size:1.1rem;cursor:pointer;line-height:1;">✕</button>
+                </div>
+
+                <div style="padding:1.15rem;display:flex;flex-direction:column;gap:.9rem;">
+
+                    {{-- Paso 1: cédula --}}
+                    <div x-show="!resultado">
+                        <label style="display:block;font-size:.72rem;font-weight:700;color:#475569;margin-bottom:.3rem;">Cédula</label>
+                        <div style="display:flex;gap:.5rem;">
+                            <input type="text" x-model="cedula" x-ref="input"
+                                   x-on:keydown.enter="buscar()"
+                                   placeholder="Número de documento"
+                                   style="flex:1;padding:.55rem .7rem;border:1px solid #cbd5e1;border-radius:8px;font-family:monospace;font-weight:700;font-size:.95rem;">
+                            <button type="button" x-on:click="buscar()" :disabled="buscando"
+                                    :style="`display:inline-flex;align-items:center;justify-content:center;gap:.4rem;padding:.55rem 1.1rem;background:linear-gradient(135deg,#1e40af,#2563eb);border:none;border-radius:8px;color:#fff;font-weight:700;font-size:.82rem;white-space:nowrap;${buscando ? 'opacity:.65;cursor:wait;' : 'cursor:pointer;'}`"
+                                    onmouseover="if(!this.disabled) this.style.filter='brightness(1.08)'"
+                                    onmouseout="this.style.filter='none'">
+                                <span x-show="!buscando" style="display:inline-flex;align-items:center;gap:.4rem;">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"/></svg>
+                                    Buscar
+                                </span>
+                                <span x-show="buscando" x-cloak>⏳ Buscando…</span>
+                            </button>
+                        </div>
+                        <div style="margin-top:.5rem;font-size:.72rem;color:#94a3b8;">
+                            Se verifica si ya existe y se consulta el registro oficial de salud/pensión.
+                        </div>
+                        <div x-show="error" x-cloak style="margin-top:.5rem;padding:.5rem .7rem;background:#fef2f2;border:1px solid #fca5a5;border-radius:7px;color:#b91c1c;font-size:.78rem;" x-text="error"></div>
+                    </div>
+
+                    {{-- Paso 2a: ya existe — ir directo al perfil --}}
+                    <template x-if="resultado && resultado.encontrado">
+                        <div style="display:flex;flex-direction:column;gap:.7rem;">
+                            <div style="padding:.7rem .85rem;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;font-size:.83rem;color:#334155;line-height:1.5;">
+                                ⚠️ Ya existe <strong x-text="resultado.nombre"></strong> registrado con esta cédula.
+                            </div>
+                            <a :href="resultado.url_editar"
+                               style="display:block;text-align:center;padding:.6rem;background:linear-gradient(135deg,#1e40af,#2563eb);border-radius:8px;color:#fff;font-weight:700;font-size:.85rem;text-decoration:none;">
+                                Abrir perfil existente →
+                            </a>
+                            <button type="button" x-on:click="reiniciar()"
+                                    style="padding:.5rem;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;color:#475569;font-size:.8rem;font-weight:600;cursor:pointer;">
+                                Buscar otra cédula
+                            </button>
+                        </div>
+                    </template>
+
+                    {{-- Paso 2b: no existe, encontrado en el registro oficial — confirmar y crear --}}
+                    <template x-if="resultado && !resultado.encontrado && resultado.oficial && resultado.oficial.encontrado">
+                        <div style="display:flex;flex-direction:column;gap:.7rem;">
+                            <div style="font-size:.68rem;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;"
+                                 x-text="'✓ Encontrado — ' + (resultado.oficial.operador ?? '')"></div>
+
+                            <div style="padding:.8rem .95rem;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;font-size:.83rem;color:#334155;line-height:1.6;">
+                                <div style="font-weight:700;color:#0f172a;margin-bottom:.35rem;"
+                                     x-text="[resultado.oficial.primer_nombre, resultado.oficial.segundo_nombre, resultado.oficial.primer_apellido, resultado.oficial.segundo_apellido].filter(Boolean).join(' ')"></div>
+                                <div><span style="color:#64748b;">EPS:</span> <strong x-text="resultado.oficial.eps_nombre ?? '—'"></strong></div>
+                                <div><span style="color:#64748b;">Pensión:</span> <strong x-text="resultado.oficial.pension_nombre ?? '—'"></strong></div>
+                                <div><span style="color:#64748b;">Régimen:</span> <strong x-text="resultado.oficial.regimen ?? '—'"></strong> · <span x-text="resultado.oficial.estado ?? ''"></span></div>
+                            </div>
+
+                            {{-- Todo lo que devuelve el operador, se use o no en el formulario.
+                                 Recorre las claves dinámicamente: si el operador agrega un campo
+                                 nuevo, aparece solo, sin tocar código. --}}
+                            <details>
+                                <summary style="cursor:pointer;font-size:.72rem;color:#2563eb;font-weight:700;">Ver todos los datos del operador</summary>
+                                <div style="margin-top:.5rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:.65rem .8rem;font-size:.74rem;color:#334155;display:flex;flex-direction:column;gap:.3rem;">
+                                    <template x-for="campo in Object.keys(resultado.oficial.raw || {})" :key="campo">
+                                        <div style="display:flex;justify-content:space-between;gap:.6rem;">
+                                            <span style="color:#64748b;" x-text="etiquetaCampo(campo)"></span>
+                                            <span style="font-family:monospace;text-align:right;" x-text="formatearValor(campo, resultado.oficial.raw[campo])"></span>
+                                        </div>
+                                    </template>
+                                </div>
+                            </details>
+
+                            <div style="font-size:.78rem;color:#475569;">¿Es esta la persona que va a registrar?</div>
+
+                            <div style="display:flex;gap:.5rem;">
+                                <button type="button" x-on:click="reiniciar()"
+                                        style="flex:1;padding:.55rem;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;color:#475569;font-size:.8rem;font-weight:700;cursor:pointer;">
+                                    No es
+                                </button>
+                                <button type="button" x-on:click="crear()"
+                                        style="flex:2;padding:.55rem;background:linear-gradient(135deg,#15803d,#16a34a);border:none;border-radius:8px;color:#fff;font-size:.85rem;font-weight:700;cursor:pointer;">
+                                    ✓ Sí, crear cliente
+                                </button>
+                            </div>
+                        </div>
+                    </template>
+
+                    {{-- Paso 2c: no existe y no está en el registro oficial — crear en blanco --}}
+                    <template x-if="resultado && !resultado.encontrado && (!resultado.oficial || !resultado.oficial.encontrado)">
+                        <div style="display:flex;flex-direction:column;gap:.7rem;">
+                            <div style="padding:.7rem .85rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:.8rem;color:#64748b;line-height:1.5;">
+                                No se encontró registro oficial de salud/pensión para esta cédula.
+                                Puede continuar y diligenciar los datos a mano.
+                            </div>
+
+                            <template x-if="resultado.oficial && resultado.oficial.raw">
+                                <details>
+                                    <summary style="cursor:pointer;font-size:.72rem;color:#2563eb;font-weight:700;">Ver respuesta del operador</summary>
+                                    <div style="margin-top:.5rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:.65rem .8rem;font-size:.74rem;color:#334155;display:flex;flex-direction:column;gap:.3rem;">
+                                        <template x-for="campo in Object.keys(resultado.oficial.raw || {})" :key="campo">
+                                            <div style="display:flex;justify-content:space-between;gap:.6rem;">
+                                                <span style="color:#64748b;" x-text="etiquetaCampo(campo)"></span>
+                                                <span style="font-family:monospace;text-align:right;" x-text="formatearValor(campo, resultado.oficial.raw[campo])"></span>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </details>
+                            </template>
+
+                            <div style="display:flex;gap:.5rem;">
+                                <button type="button" x-on:click="reiniciar()"
+                                        style="flex:1;padding:.55rem;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;color:#475569;font-size:.8rem;font-weight:700;cursor:pointer;">
+                                    Buscar otra
+                                </button>
+                                <button type="button" x-on:click="crear()"
+                                        style="flex:2;padding:.55rem;background:linear-gradient(135deg,#1e40af,#2563eb);border:none;border-radius:8px;color:#fff;font-size:.85rem;font-weight:700;cursor:pointer;">
+                                    Continuar sin datos →
+                                </button>
+                            </div>
+                        </div>
+                    </template>
+
+                </div>
+            </div>
+        </div>
+    </template>
     </div>
 
     {{-- ══ FLASH ════════════════════════════════════════════════════════ --}}
@@ -556,5 +705,101 @@
     </div>
     @endif
 </div>
+
+@push('scripts')
+<script>
+// ─── Modal "Nuevo Cliente": verifica duplicado + BDUA/RUAF antes del formulario ───
+function nuevoClienteModal() {
+    return {
+        visible:   false,
+        cedula:    '',
+        buscando:  false,
+        error:     '',
+        resultado: null,
+
+        abrir() {
+            this.visible = true;
+            this.$nextTick(() => this.$refs.input && this.$refs.input.focus());
+        },
+        cerrar() {
+            this.visible = false;
+        },
+        reiniciar() {
+            this.resultado = null;
+            this.cedula    = '';
+            this.error     = '';
+            this.$nextTick(() => this.$refs.input && this.$refs.input.focus());
+        },
+
+        buscar() {
+            const cedula = this.cedula.replace(/\D/g, '');
+            if (cedula.length < 4) {
+                this.error = 'Escriba un número de documento válido.';
+                return;
+            }
+            this.error    = '';
+            this.buscando = true;
+
+            fetch(`{{ route('admin.clientes.buscar_cedula') }}?cedula=${encodeURIComponent(cedula)}`)
+                .then(r => r.json())
+                .then(data => { this.resultado = data || { encontrado: false, oficial: null }; })
+                .catch(() => { this.error = 'No se pudo consultar. Intente de nuevo.'; })
+                .finally(() => { this.buscando = false; });
+        },
+
+        /** Abre el formulario de creación con los datos confirmados. */
+        crear() {
+            const cedula = this.cedula.replace(/\D/g, '');
+            const params = new URLSearchParams({ cedula });
+
+            const o = this.resultado && this.resultado.oficial;
+            if (o && o.encontrado) {
+                if (o.primer_nombre)    params.set('primer_nombre',    o.primer_nombre);
+                if (o.segundo_nombre)   params.set('segundo_nombre',   o.segundo_nombre);
+                if (o.primer_apellido)  params.set('primer_apellido',  o.primer_apellido);
+                if (o.segundo_apellido) params.set('segundo_apellido', o.segundo_apellido);
+                if (o.eps_id)           params.set('eps_id',           o.eps_id);
+                if (o.pension_id)       params.set('pension_id',       o.pension_id);
+            }
+
+            window.location.href = `{{ route('admin.clientes.create') }}?${params.toString()}`;
+        },
+
+        /**
+         * Etiqueta legible para un campo crudo del operador. Los que no están
+         * mapeados muestran su nombre tal cual, para que ningún dato quede oculto
+         * aunque el operador agregue campos nuevos que Brynex no usa todavía.
+         */
+        etiquetaCampo(clave) {
+            const etiquetas = {
+                primerNombre:         'Primer nombre',
+                segundoNombre:        'Segundo nombre',
+                primerApellido:       'Primer apellido',
+                segundoApellido:      'Segundo apellido',
+                administradoraBDUA:   'Código EPS (BDUA)',
+                fechaAfiliacionBDUA:  'Afiliación EPS desde',
+                valorUPC:             'Valor UPC',
+                administradoraRUAF:   'Código fondo pensión (RUAF)',
+                fechaAfiliacionRUAF:  'Afiliación pensión desde',
+                coincidencia:         'Coincidencia',
+                estado:               'Estado',
+                regimen:              'Régimen',
+            };
+            return etiquetas[clave] || clave;
+        },
+
+        /** Las fechas del operador vienen AAAAMMDD; el resto se muestra tal cual. */
+        formatearValor(clave, valor) {
+            if (valor === '' || valor === null || valor === undefined) return '—';
+            const s = String(valor);
+            if (/^fecha/i.test(clave) && /^\d{8}$/.test(s)) {
+                return `${s.slice(6, 8)}/${s.slice(4, 6)}/${s.slice(0, 4)}`;
+            }
+            return s;
+        },
+    };
+}
+</script>
+@endpush
 
 @endsection
