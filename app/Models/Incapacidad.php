@@ -513,8 +513,9 @@ class Incapacidad extends BaseModel
      */
     public function colorSemaforo(): string
     {
-        // Estados finales — ya no requieren gestión
-        if (in_array($this->estado, ['pagada', 'rechazado', 'cierre_exitoso', 'pagada_afiliado', 'pagada_razon_social'])) {
+        // Estados finales — ya no requieren gestión.
+        // 'negada' incluida: la entidad ya resolvió, no hay más trámite que hacer.
+        if (in_array($this->estado, \App\Http\Controllers\Admin\IncapacidadController::ESTADOS_FINALES)) {
             return 'gris';
         }
 

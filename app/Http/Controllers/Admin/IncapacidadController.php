@@ -15,6 +15,27 @@ use Illuminate\Support\Facades\Storage;
 class IncapacidadController extends Controller
 {
     /**
+     * Estados en los que la incapacidad ya no requiere gestión.
+     *
+     * Se usa para no contarlas como activas ni pedirles seguimiento. Incluye
+     * las variantes de pago ('cierre_exitoso' y los pagos parciales) y 'negada',
+     * que es una resolución final de la entidad.
+     *
+     * Antes cada punto del módulo repetía su propia lista y no coincidían: el
+     * contador de activas solo excluía ['pagada','rechazado'], así que al
+     * normalizar las migradas a 'cierre_exitoso' las 1.617 pagadas de GiMave
+     * volvieron a contarse como activas.
+     */
+    public const ESTADOS_FINALES = [
+        'pagada',                 // legacy
+        'pagada_afiliado',
+        'pagada_razon_social',
+        'cierre_exitoso',
+        'rechazado',
+        'negada',
+    ];
+
+    /**
      * Disco donde se guardan los documentos de incapacidades.
      *
      * 'local' (storage/app) NO se sirve por el servidor web. Antes era 'public',
@@ -97,7 +118,7 @@ class IncapacidadController extends Controller
 
         // Si hay búsqueda: mostrar TODAS (pagadas, rechazadas, activas)
         // Sin búsqueda: ocultar estados finales/cerrados por defecto
-        $estadosInactivosDefault = ['pagada', 'rechazado', 'cierre_exitoso'];
+        $estadosInactivosDefault = self::ESTADOS_FINALES;
         if (!$hayBusqueda && !$request->boolean('con_cerradas')) {
             $query->whereNotIn('estado', $estadosInactivosDefault);
         }
@@ -105,7 +126,7 @@ class IncapacidadController extends Controller
         $vista = $request->get('vista', 'agrupada'); // agrupada | plana
 
         $query->orderByRaw("
-            CASE WHEN estado IN ('pagada','rechazado','cierre_exitoso') THEN 99 ELSE 0 END ASC
+            CASE WHEN estado IN ('pagada','pagada_afiliado','pagada_razon_social','cierre_exitoso','rechazado','negada') THEN 99 ELSE 0 END ASC
         ")->orderByDesc('fecha_recibido');
 
         $incapacidades = $query->paginate(40)->withQueryString();
@@ -169,14 +190,16 @@ class IncapacidadController extends Controller
             ->groupBy('estado')
             ->pluck('total', 'estado');
 
-        $estadosInactivos = ['pagada', 'rechazado'];
+        // Estados finales: ya no requieren gestión. Incluye las variantes de pagada
+        // ('cierre_exitoso' y las parciales) y 'negada', que la entidad ya resolvió.
+        $estadosInactivos = self::ESTADOS_FINALES;
         $totalActivas = $resumen->filter(fn($v, $k) => !in_array($k, $estadosInactivos))->sum();
 
         $sinGestion7dias = DB::table('incapacidades as i')
             ->where('i.aliado_id', $alidoId)
             ->whereNull('i.deleted_at')
             ->whereNull('i.incapacidad_padre_id')
-            ->whereNotIn('i.estado', ['pagada', 'rechazado'])
+            ->whereNotIn('i.estado', self::ESTADOS_FINALES)
             ->whereNotExists(function ($sub) {
                 $sub->from('gestiones_incapacidad as g')
                     ->whereColumn('g.incapacidad_id', 'i.id')
@@ -426,7 +449,7 @@ class IncapacidadController extends Controller
 
         // Contar prórrogas con estado NO final (pendientes de gestión)
         $prorrogasPendientes = $inc->prorrogas
-            ->whereNotIn('estado', ['pagada', 'pagada_afiliado', 'pagada_razon_social', 'cierre_exitoso', 'rechazado'])
+            ->whereNotIn('estado', self::ESTADOS_FINALES)
             ->count();
 
         return response()->json([
