@@ -144,7 +144,8 @@ tbody td{padding:.6rem .85rem;vertical-align:middle;}
     <div class="kpi danger"><div class="num">{{ $sinGestion7dias }}</div><div class="lbl">Sin gestión +7 días</div></div>
     <div class="kpi"><div class="num">{{ $resumen->get('recibido',0) }}</div><div class="lbl">Recibidas</div></div>
     <div class="kpi warn"><div class="num">{{ $resumen->get('radicada',0) }}</div><div class="lbl">Radicadas</div></div>
-    <div class="kpi ok"><div class="num">{{ $resumen->get('pagada',0) }}</div><div class="lbl">Pagadas</div></div>
+    <div class="kpi ok"><div class="num">{{ $totalPagadas }}</div><div class="lbl">Pagadas</div></div>
+    <div class="kpi danger"><div class="num">{{ $totalNoPagadas }}</div><div class="lbl">No pagadas</div></div>
 </div>
 
 {{-- Filtros Alpine.js auto-submit --}}

@@ -36,6 +36,18 @@ class IncapacidadController extends Controller
     ];
 
     /**
+     * Estados que cuentan como "pago completo" para el KPI de Pagadas.
+     *
+     * 'pagada' (legacy) y 'cierre_exitoso' significan lo mismo — el ciclo de pago
+     * quedó cerrado — solo que con nombres distintos según cuándo se generó.
+     * 'pagada_afiliado' y 'pagada_razon_social' quedan afuera A PROPÓSITO: son
+     * pago parcial (ej. el aliado ya le pagó al afiliado pero todavía no le
+     * reembolsa la entidad), así que la incapacidad sigue abierta hasta que
+     * ambos lados queden saldados (cierre_exitoso).
+     */
+    public const ESTADOS_PAGADA_COMPLETA = ['pagada', 'cierre_exitoso'];
+
+    /**
      * Disco donde se guardan los documentos de incapacidades.
      *
      * 'local' (storage/app) NO se sirve por el servidor web. Antes era 'public',
@@ -195,6 +207,9 @@ class IncapacidadController extends Controller
         $estadosInactivos = self::ESTADOS_FINALES;
         $totalActivas = $resumen->filter(fn($v, $k) => !in_array($k, $estadosInactivos))->sum();
 
+        $totalPagadas   = $resumen->filter(fn($v, $k) => in_array($k, self::ESTADOS_PAGADA_COMPLETA))->sum();
+        $totalNoPagadas = $resumen->get('rechazado', 0);
+
         $sinGestion7dias = DB::table('incapacidades as i')
             ->where('i.aliado_id', $alidoId)
             ->whereNull('i.deleted_at')
@@ -221,7 +236,8 @@ class IncapacidadController extends Controller
         $smmlv = $this->getSmmlv();
 
         return view('admin.incapacidades.index', compact(
-            'incapacidades', 'resumen', 'totalActivas', 'sinGestion10dias', 'sinGestion7dias',
+            'incapacidades', 'resumen', 'totalActivas', 'totalPagadas', 'totalNoPagadas',
+            'sinGestion10dias', 'sinGestion7dias',
             'trabajadores', 'epsList', 'arlList', 'pensionList', 'razonesSociales',
             'smmlv', 'vista', 'busqueda'
         ));
