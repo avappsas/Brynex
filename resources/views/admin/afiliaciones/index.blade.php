@@ -568,7 +568,11 @@ function sortClass($col, $currSort, $currDir) {
                 @if($esFuturo)
                 <span class="badge-estado badge-programado">📅F</span>
                 @else
-                <span class="badge-estado badge-pendiente">⏳P</span>
+                <button class="badge-estado badge-pendiente btn-rad-crear"
+                    data-contrato-id="{{ $c->id }}" data-tipo="eps"
+                    data-eps-formulario="{{ $c->eps?->formulario_pdf ? '1' : '0' }}"
+                    data-ctx='{{ $contexto }}'
+                    title="Sin radicado registrado — clic para abrir el trámite">⏳P</button>
                 @endif
             @else
             <span class="badge-estado badge-inactivo">–</span>
@@ -600,7 +604,10 @@ function sortClass($col, $currSort, $currDir) {
                 @if($esFuturo)
                 <span class="badge-estado badge-programado">📅F</span>
                 @else
-                <span class="badge-estado badge-pendiente">⏳P</span>
+                <button class="badge-estado badge-pendiente btn-rad-crear"
+                    data-contrato-id="{{ $c->id }}" data-tipo="arl"
+                    data-ctx='{{ $contexto }}'
+                    title="Sin radicado registrado — clic para abrir el trámite">⏳P</button>
                 @endif
             @else
             <span class="badge-estado badge-inactivo">–</span>
@@ -623,7 +630,10 @@ function sortClass($col, $currSort, $currDir) {
                 @if($esFuturo)
                 <span class="badge-estado badge-programado">📅F</span>
                 @else
-                <span class="badge-estado badge-pendiente">⏳P</span>
+                <button class="badge-estado badge-pendiente btn-rad-crear"
+                    data-contrato-id="{{ $c->id }}" data-tipo="caja"
+                    data-ctx='{{ $contexto }}'
+                    title="Sin radicado registrado — clic para abrir el trámite">⏳P</button>
                 @endif
             @else
             <span class="badge-estado badge-inactivo">–</span>
@@ -646,7 +656,10 @@ function sortClass($col, $currSort, $currDir) {
                 @if($esFuturo)
                 <span class="badge-estado badge-programado">📅F</span>
                 @else
-                <span class="badge-estado badge-pendiente">⏳P</span>
+                <button class="badge-estado badge-pendiente btn-rad-crear"
+                    data-contrato-id="{{ $c->id }}" data-tipo="pension"
+                    data-ctx='{{ $contexto }}'
+                    title="Sin radicado registrado — clic para abrir el trámite">⏳P</button>
                 @endif
             @else
             <span class="badge-estado badge-inactivo">–</span>
@@ -1307,6 +1320,13 @@ document.addEventListener('click', function(e) {
         abrirModalRadicado(radId, radData, ctx, contratoId, epsFormulario);
         return;
     }
+    // Contrato sin radicado en BD (típico de los migrados desde el legacy):
+    // se crea en 'pendiente' al vuelo y se abre el modal como siempre.
+    const crearBtn = e.target.closest('.btn-rad-crear');
+    if(crearBtn) {
+        crearRadicadoPendiente(crearBtn);
+        return;
+    }
     const docBtn = e.target.closest('.btn-docs-open');
     if(docBtn) {
         docContextCedula  = docBtn.dataset.cedula;
@@ -1314,6 +1334,52 @@ document.addEventListener('click', function(e) {
         abrirDocs(docBtn.dataset.radId, docBtn.dataset.nombre);
     }
 });
+
+async function crearRadicadoPendiente(btn) {
+    if (btn.dataset.creando === '1') return;
+    btn.dataset.creando = '1';
+    const textoOriginal = btn.textContent;
+    btn.textContent = '…';
+
+    try {
+        const resp = await fetch('{{ route('admin.radicados.crear') }}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json' },
+            body: JSON.stringify({
+                contrato_id: btn.dataset.contratoId,
+                tipo:        btn.dataset.tipo,
+            }),
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data.ok) {
+            btn.textContent = textoOriginal;
+            btn.dataset.creando = '';
+            alert(data.message || 'No se pudo abrir el trámite.');
+            return;
+        }
+
+        // El badge pasa a ser uno normal: los siguientes clics ya van directo
+        // al modal sin volver a pegarle al endpoint.
+        btn.classList.remove('btn-rad-crear');
+        btn.classList.add('btn-rad');
+        btn.dataset.radId = data.radicado.id;
+        btn.dataset.rad   = JSON.stringify(data.radicado);
+        btn.textContent   = textoOriginal;
+        delete btn.dataset.creando;
+
+        abrirModalRadicado(
+            data.radicado.id,
+            data.radicado,
+            btn.dataset.ctx ? JSON.parse(btn.dataset.ctx) : {},
+            btn.dataset.contratoId || null,
+            btn.dataset.epsFormulario === '1'
+        );
+    } catch (err) {
+        btn.textContent = textoOriginal;
+        btn.dataset.creando = '';
+        alert('No se pudo abrir el trámite.');
+    }
+}
 
 // ── Modal Radicado ──
 function abrirModalRadicado(radId, radData, ctx = {}, contratoId = null, epsFormulario = false) {

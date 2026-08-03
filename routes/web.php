@@ -647,6 +647,7 @@ Route::middleware('auth')->group(function () {
     // -- Radicados
     Route::prefix('admin/radicados')->name('admin.radicados.')->group(function () {
         $rc = \App\Http\Controllers\Admin\RadicadoController::class;
+        Route::post('crear',             [$rc, 'crearPendiente'])     ->name('crear');
         Route::patch('{id}',             [$rc, 'update'])             ->name('update');
         Route::post('{id}/pdf',          [$rc, 'subirPdf'])           ->name('pdf');
         Route::get('{id}/pdf/descargar', [$rc, 'descargarPdf'])       ->name('pdf.download');

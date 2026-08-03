@@ -681,8 +681,23 @@ class MigrateLegacyAliado extends Command
                             'caja'    => $r->Radicado_Caja ?? '',
                             'pension' => $r->Radicado_Pension ?? '',
                         ];
+                        // Servicios que el plan asignado realmente incluye: si el
+                        // legacy no trae un estado reconocible pero el plan cubre
+                        // el servicio, igual se crea el radicado en 'pendiente'.
+                        // Sin esto el contrato queda sin registro y la pantalla de
+                        // Afiliaciones no puede gestionar el trámite.
+                        $incluyePlan = [
+                            'eps'     => (bool) ($planEl->incluye_eps     ?? false),
+                            'arl'     => (bool) ($planEl->incluye_arl     ?? false),
+                            'caja'    => (bool) ($planEl->incluye_caja    ?? false),
+                            'pension' => (bool) ($planEl->incluye_pension ?? false),
+                        ];
+
                         foreach ($radicadosLegacy as $tipo => $textoEstado) {
                             $estadoRad = NormalizarRadicadosLegacy::estadoDesdeLegacy($textoEstado);
+                            if ($estadoRad === null && $incluyePlan[$tipo]) {
+                                $estadoRad = 'pendiente';
+                            }
                             if ($estadoRad !== null) {
                                 DB::table('radicados')->insert([
                                     'contrato_id'     => $contratoId,

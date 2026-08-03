@@ -85,6 +85,58 @@ class RadicadoController extends Controller
     }
 
     /**
+     * Crea al vuelo el radicado 'pendiente' de un contrato que no lo tiene.
+     *
+     * Los contratos creados desde Brynex reciben sus radicados con
+     * `Contrato::crearRadicadosPendientes()`, pero los que entraron por la
+     * migración legacy quedaron sin ellos (la migración solo los insertaba
+     * para contratos vigentes y con estado legacy reconocible). Sin registro,
+     * la pantalla de Afiliaciones pinta un badge muerto y no hay forma de
+     * gestionar el trámite. Este endpoint lo materializa en el primer clic.
+     */
+    public function crearPendiente(Request $request)
+    {
+        $alidoId = session('aliado_id_activo');
+
+        $data = $request->validate([
+            'contrato_id' => 'required|integer',
+            'tipo'        => 'required|in:eps,arl,pension,caja',
+        ]);
+
+        $contrato = Contrato::with('plan')
+            ->where('aliado_id', $alidoId)
+            ->findOrFail($data['contrato_id']);
+
+        // El tipo debe corresponder a un servicio que el plan realmente incluye.
+        if (!$contrato->plan || !in_array($data['tipo'], $contrato->plan->tiposRadicado(), true)) {
+            return response()->json([
+                'ok'      => false,
+                'message' => 'El plan del contrato no incluye este servicio.',
+            ], 422);
+        }
+
+        $radicado = $contrato->radicados()->firstOrCreate(
+            ['tipo' => $data['tipo']],
+            ['aliado_id' => $alidoId, 'estado' => Radicado::ESTADO_PENDIENTE]
+        );
+
+        return response()->json([
+            'ok'       => true,
+            'radicado' => [
+                'id'                  => $radicado->id,
+                'tipo'                => $radicado->tipo,
+                'estado'              => $radicado->estado,
+                'numero_radicado'     => $radicado->numero_radicado,
+                'canal_envio'         => $radicado->canal_envio,
+                'canal_envio_cliente' => $radicado->canal_envio_cliente,
+                'enviado_al_cliente'  => $radicado->enviado_al_cliente,
+                'ruta_pdf'            => $radicado->ruta_pdf,
+                'observacion'         => $radicado->observacion,
+            ],
+        ]);
+    }
+
+    /**
      * Sube el PDF del radicado confirmado.
      * Ruta: storage/radicados/{aliado_id}/{contrato_id}/{cedula}/
      * Máximo 3MB.

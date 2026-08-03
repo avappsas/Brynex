@@ -8,12 +8,15 @@ use App\Models\Contrato;
 use App\Models\Factura;
 use App\Models\User;
 use App\Models\Bitacora;
+use App\Traits\ResuelveArlEfectiva;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class GestionArlController extends Controller
 {
+    use ResuelveArlEfectiva;
+
     const TIPO_MODALIDAD_ARL = 15;
     const DIAS_VIGENCIA      = 29; // máximo días ARL activa
 
@@ -54,7 +57,7 @@ class GestionArlController extends Controller
         $query = Contrato::with([
             'cliente:id,cedula,tipo_doc,primer_nombre,segundo_nombre,primer_apellido,segundo_apellido,cod_empresa',
             'cliente.empresa:id,empresa',
-            'razonSocial:id,razon_social,arl_nit',
+            'razonSocial:id,razon_social,arl_nit,es_independiente',
             'arl:id,nombre_arl,razon_social',
             'tipoModalidad:id,tipo_modalidad,modalidad',
             'encargado:id,nombre',
@@ -98,11 +101,8 @@ class GestionArlController extends Controller
 
         $contratos = $query->get();
 
-        // ── ARL efectiva por NIT de razón social ──────────────────────
-        $arlsNit = $contratos->pluck('razonSocial.arl_nit')->filter()->unique();
-        $arlsPorNit = $arlsNit->isNotEmpty()
-            ? DB::table('arls')->whereIn('nit', $arlsNit)->get(['nit', 'nombre_arl', 'razon_social'])->keyBy('nit')
-            : collect();
+        // ── ARL efectiva (razón social, salvo independientes) ─────────
+        $arlsPorNit = self::arlsPorNitDeContratos($contratos);
 
         // ── Calcular semáforo + última factura de cada contrato ────────
         $contratoIds = $contratos->pluck('id');
@@ -119,13 +119,7 @@ class GestionArlController extends Controller
         $hoy = now()->startOfDay();
 
         $contratos->each(function ($c) use ($arlsPorNit, $ultimasFacturas, $hoy) {
-            // ARL efectiva
-            if ($c->razonSocial?->arl_nit) {
-                $arlRs = $arlsPorNit->get($c->razonSocial->arl_nit);
-                $c->arl_efectiva_nombre = $arlRs?->nombre_arl ?? $arlRs?->razon_social ?? '[ARL Empresa]';
-            } else {
-                $c->arl_efectiva_nombre = $c->arl?->nombre_arl ?? $c->arl?->razon_social ?? '—';
-            }
+            $c->arl_efectiva_nombre = self::arlEfectiva($c, $arlsPorNit);
 
             // Semáforo: basado en fecha_arl; usa fecha_ingreso como fallback temporal
             $fechaBase = $c->fecha_arl ?? $c->fecha_ingreso;

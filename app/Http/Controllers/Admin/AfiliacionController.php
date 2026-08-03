@@ -11,6 +11,7 @@ use App\Models\Factura;
 use App\Models\Radicado;
 use App\Models\RadicadoMovimiento;
 use App\Models\User;
+use App\Traits\ResuelveArlEfectiva;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -20,6 +21,8 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 class AfiliacionController extends Controller
 {
+    use ResuelveArlEfectiva;
+
     public function __construct()
     {
         $this->middleware('auth');
@@ -76,7 +79,7 @@ class AfiliacionController extends Controller
             'cliente.municipio:id,nombre,departamento_id',
             'cliente.municipio.departamento:id,nombre',
             'cliente.pension:id,razon_social',
-            'razonSocial:id,razon_social,nit,arl_nit',
+            'razonSocial:id,razon_social,nit,arl_nit,es_independiente',
             'eps:id,nombre,formulario_pdf',
             'arl:id,nombre_arl,razon_social',
             'caja:id,nombre',
@@ -145,26 +148,14 @@ class AfiliacionController extends Controller
         $contratos = $query->get();
 
 
-        // ARL siempre desde razón social (arl_nit). Fallback: ARL del contrato.
-        $arlsNit = $contratos
-            ->pluck('razonSocial.arl_nit')
-            ->filter()
-            ->unique();
-
-        $arlsPorNit = $arlsNit->isNotEmpty()
-            ? DB::table('arls')->whereIn('nit', $arlsNit)->get(['nit', 'nombre_arl', 'razon_social'])->keyBy('nit')
-            : collect();
+        // ARL desde la razón social (arl_nit) salvo en razones sociales de
+        // independientes, donde cada contrato lleva su propia ARL.
+        $arlsPorNit = self::arlsPorNitDeContratos($contratos);
 
         // Agregar ARL efectiva, tipo de contrato y aliado a cada contrato
         $contratos->each(function ($c) use ($arlsPorNit) {
             $esDep = $c->tipoModalidad?->modalidad === 'dependiente';
-            // ARL: prioridad = razón social, fallback = contrato
-            if ($c->razonSocial?->arl_nit) {
-                $arlRs = $arlsPorNit->get($c->razonSocial->arl_nit);
-                $c->arl_efectiva_nombre = $arlRs?->nombre_arl ?? $arlRs?->razon_social ?? '[ARL Empresa]';
-            } else {
-                $c->arl_efectiva_nombre = $c->arl?->nombre_arl ?? $c->arl?->razon_social ?? '—';
-            }
+            $c->arl_efectiva_nombre = self::arlEfectiva($c, $arlsPorNit);
             $c->es_dependiente       = $esDep;
             $c->tipo_modalidad_label = $c->tipoModalidad?->tipo_modalidad ?? ($esDep ? 'Dependiente' : 'Independiente');
         });
@@ -252,9 +243,9 @@ class AfiliacionController extends Controller
 
         $query = Contrato::with([
             'cliente:cedula,primer_nombre,primer_apellido',
-            'razonSocial:id,razon_social',
+            'razonSocial:id,razon_social,arl_nit,es_independiente',
             'eps:id,nombre,formulario_pdf',
-            'arl:id,nombre',
+            'arl:id,nombre_arl,razon_social',
             'caja:id,nombre',
             'pension:id,razon_social',
             'encargado:id,nombre',
@@ -310,6 +301,10 @@ class AfiliacionController extends Controller
 
         $contratos = $query->orderBy('fecha_ingreso', 'asc')->get();
 
+        // Misma ARL efectiva que muestra la pantalla
+        $arlsPorNit = self::arlsPorNitDeContratos($contratos);
+        $contratos->each(fn($c) => $c->arl_efectiva_nombre = self::arlEfectiva($c, $arlsPorNit));
+
         // Obtener facturas
         $contratoIds = $contratos->pluck('id');
         $facturas = Factura::whereIn('contrato_id', $contratoIds)
@@ -350,7 +345,7 @@ class AfiliacionController extends Controller
                 trim(($c->cliente?->primer_nombre ?? '') . ' ' . ($c->cliente?->primer_apellido ?? '')),
                 $c->eps?->nombre ?? '—',
                 strtoupper($radicados->get('eps')?->estado ?? '—'),
-                $c->arl?->nombre ?? '—',
+                $c->arl_efectiva_nombre,
                 strtoupper($radicados->get('arl')?->estado ?? '—'),
                 $c->caja?->nombre ?? '—',
                 strtoupper($radicados->get('caja')?->estado ?? '—'),
