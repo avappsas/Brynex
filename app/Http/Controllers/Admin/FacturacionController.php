@@ -371,16 +371,16 @@ class FacturacionController extends Controller
 
         // Título principal
         $sheet->setCellValue('A1', 'PLANILLA DE COBRO - ' . $empresa->empresa);
-        $sheet->mergeCells('A1:R1');
+        $sheet->mergeCells('A1:S1');
         $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(14);
-        
+
         $sheet->setCellValue('A2', 'Periodo: ' . $meses[$mes] . ' de ' . $anio);
-        $sheet->mergeCells('A2:R2');
+        $sheet->mergeCells('A2:S2');
         $sheet->getStyle('A2')->getFont()->setBold(true)->setSize(11);
 
         // Cabeceras
         $headers = [
-            'TIPO', 'CÉDULA', 'NOMBRE', 'RAZÓN SOCIAL', 'ING/RET', 'DÍAS',
+            'TIPO', 'CÉDULA', 'NOMBRE', 'RAZÓN SOCIAL', 'F. INGRESO', 'F. RETIRO', 'DÍAS',
             'EPS', 'ARL', 'CAJA', 'PENSIÓN', 'ADMON', 'ADMON ASESOR', 'AFILIACIÓN',
             'TOTAL', 'MORA', 'ANTICIPO', 'ESTADO', 'NP'
         ];
@@ -413,7 +413,7 @@ class FacturacionController extends Controller
                 ],
             ],
         ];
-        $sheet->getStyle('A4:R4')->applyFromArray($headerStyle);
+        $sheet->getStyle('A4:S4')->applyFromArray($headerStyle);
         $sheet->getRowDimension(4)->setRowHeight(25);
 
         $r100 = fn($val) => (int) round($val ?? 0);
@@ -428,9 +428,6 @@ class FacturacionController extends Controller
             
             $tipoMod = $c->tipoModalidad?->tipo_modalidad ?? '—';
             $rs = $c->razonSocial?->razon_social ?? '—';
-            
-            $fIng = $c->fecha_ingreso ? $c->fecha_ingreso->format('d/m/Y') : '—';
-            $fRet = ($esRetirado && $c->fecha_retiro) ? $c->fecha_retiro->format('d/m/Y') : null;
             
             $dias = $fact
                 ? (int)$fact->dias_cotizados
@@ -555,62 +552,72 @@ class FacturacionController extends Controller
             $sheet->setCellValue('C' . $row, $nombre);
             $sheet->setCellValue('D' . $row, $rs);
             
-            $fechaObj = ($esRetirado && $c->fecha_retiro) ? $c->fecha_retiro : $c->fecha_ingreso;
-            if ($fechaObj instanceof \DateTimeInterface) {
-                $sheet->setCellValue('E' . $row, \PhpOffice\PhpSpreadsheet\Shared\Date::PHPToExcel($fechaObj));
+            // E: fecha de ingreso — F: fecha de retiro (cada una en su columna)
+            if ($c->fecha_ingreso instanceof \DateTimeInterface) {
+                $sheet->setCellValue('E' . $row, \PhpOffice\PhpSpreadsheet\Shared\Date::PHPToExcel($c->fecha_ingreso));
                 $sheet->getStyle('E' . $row)->getNumberFormat()->setFormatCode('dd/mm/yyyy');
             } else {
                 $sheet->setCellValue('E' . $row, '—');
             }
-            $sheet->setCellValue('F' . $row, $dias);
-            
-            $sheet->setCellValue('G' . $row, $vEps);
-            $sheet->setCellValue('H' . $row, $vArl);
-            $sheet->setCellValue('I' . $row, $vCaja);
-            $sheet->setCellValue('J' . $row, $vPen);
-            $sheet->setCellValue('K' . $row, $vAdmonBase);
-            $sheet->setCellValue('L' . $row, $vAdmonAsesor);
-            $sheet->setCellValue('M' . $row, $vAfiliacion);
-            $sheet->setCellValue('N' . $row, $vTot);
-            $sheet->setCellValue('O' . $row, $vMora);
-            $sheet->setCellValue('P' . $row, $vAnticipo);
-            
+
+            $fechaRetiroObj = $c->fecha_retiro ?: ($c->fecha_retiro_pendiente ?? null);
+            if ($fechaRetiroObj instanceof \DateTimeInterface) {
+                $sheet->setCellValue('F' . $row, \PhpOffice\PhpSpreadsheet\Shared\Date::PHPToExcel($fechaRetiroObj));
+                $sheet->getStyle('F' . $row)->getNumberFormat()->setFormatCode('dd/mm/yyyy');
+            } else {
+                $sheet->setCellValue('F' . $row, '—');
+            }
+
+            $sheet->setCellValue('G' . $row, $dias);
+
+            $sheet->setCellValue('H' . $row, $vEps);
+            $sheet->setCellValue('I' . $row, $vArl);
+            $sheet->setCellValue('J' . $row, $vCaja);
+            $sheet->setCellValue('K' . $row, $vPen);
+            $sheet->setCellValue('L' . $row, $vAdmonBase);
+            $sheet->setCellValue('M' . $row, $vAdmonAsesor);
+            $sheet->setCellValue('N' . $row, $vAfiliacion);
+            $sheet->setCellValue('O' . $row, $vTot);
+            $sheet->setCellValue('P' . $row, $vMora);
+            $sheet->setCellValue('Q' . $row, $vAnticipo);
+
             $estadoTxt = $fact ? strtoupper($fact->estado) : ($esRetirado ? 'RETIRO' : 'PENDIENTE');
-            $sheet->setCellValue('Q' . $row, $estadoTxt);
-            $sheet->setCellValue('R' . $row, $fact?->np ?? '');
+            $sheet->setCellValue('R' . $row, $estadoTxt);
+            $sheet->setCellValue('S' . $row, $fact?->np ?? '');
 
             // Alineación de texto corto
             $sheet->getStyle('A' . $row)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
             $sheet->getStyle('B' . $row)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
             $sheet->getStyle('E' . $row)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
             $sheet->getStyle('F' . $row)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-            $sheet->getStyle('Q' . $row)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            $sheet->getStyle('G' . $row)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
             $sheet->getStyle('R' . $row)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            $sheet->getStyle('S' . $row)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
-            // Formato de moneda para columnas de dinero (G a P)
-            $sheet->getStyle('G' . $row . ':P' . $row)
+            // Formato de moneda para columnas de dinero (H a Q)
+            $sheet->getStyle('H' . $row . ':Q' . $row)
                 ->getNumberFormat()
                 ->setFormatCode('$#,##0');
 
             // Bordes para los datos
-            $sheet->getStyle('A' . $row . ':R' . $row)->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN);
+            $sheet->getStyle('A' . $row . ':S' . $row)->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN);
             
             $row++;
         }
 
         // Fila de totales
         $sheet->setCellValue('A' . $row, 'TOTALES');
-        $sheet->mergeCells('A' . $row . ':E' . $row);
+        $sheet->mergeCells('A' . $row . ':F' . $row);
         $sheet->getStyle('A' . $row)->getFont()->setBold(true);
         $sheet->getStyle('A' . $row)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
 
-        // Suma de Días (F)
-        $sheet->setCellValue('F' . $row, "=SUM(F5:F" . ($row - 1) . ")");
-        $sheet->getStyle('F' . $row)->getFont()->setBold(true);
-        $sheet->getStyle('F' . $row)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        // Suma de Días (G)
+        $sheet->setCellValue('G' . $row, "=SUM(G5:G" . ($row - 1) . ")");
+        $sheet->getStyle('G' . $row)->getFont()->setBold(true);
+        $sheet->getStyle('G' . $row)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
-        // Sumas por columnas con fórmulas de Excel (G a P)
-        $columnasMoneda = ['G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P'];
+        // Sumas por columnas con fórmulas de Excel (H a Q)
+        $columnasMoneda = ['H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q'];
         foreach ($columnasMoneda as $colChar) {
             $sheet->setCellValue($colChar . $row, "=SUM(" . $colChar . "5:" . $colChar . ($row - 1) . ")");
             $sheet->getStyle($colChar . $row)->getFont()->setBold(true);
@@ -630,11 +637,11 @@ class FacturacionController extends Controller
                 ],
             ],
         ];
-        $sheet->getStyle('A' . $row . ':R' . $row)->applyFromArray($totalStyle);
-        $sheet->getStyle('A' . $row . ':R' . $row)->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN);
+        $sheet->getStyle('A' . $row . ':S' . $row)->applyFromArray($totalStyle);
+        $sheet->getStyle('A' . $row . ':S' . $row)->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN);
 
         // Auto-ajustar ancho de columnas
-        foreach (range('A', 'R') as $colChar) {
+        foreach (range('A', 'S') as $colChar) {
             $sheet->getColumnDimension($colChar)->setAutoSize(true);
         }
 
