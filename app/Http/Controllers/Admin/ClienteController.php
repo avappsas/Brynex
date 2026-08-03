@@ -193,6 +193,32 @@ class ClienteController extends Controller
                 ->toArray();
         }
 
+        // ── Últimos 2 pagos (histórico corto bajo la tabla de contratos) ──
+        // Una sola query, TOP 2: factura de planilla + su plano (N° planilla)
+        // + el operador con el que se liquidó por API (si aplica).
+        $ultimosPagos = DB::table('facturas as f')
+            ->leftJoin('planos as p', function ($j) {
+                $j->on('p.factura_id', '=', 'f.id')->whereNull('p.deleted_at');
+            })
+            ->leftJoin(DB::raw('(SELECT plano_id, MAX(id) AS max_id
+                                   FROM operador_planillas_api
+                                  WHERE deleted_at IS NULL AND plano_id IS NOT NULL
+                               GROUP BY plano_id) AS opa_max'), 'opa_max.plano_id', '=', 'p.id')
+            ->leftJoin('operador_planillas_api as opa', 'opa.id', '=', 'opa_max.max_id')
+            ->leftJoin('operadores_planilla as op', 'op.id', '=', 'opa.operador_planilla_id')
+            ->where('f.aliado_id', $aliadoId)
+            ->where('f.cedula', $cliente->cedula)
+            ->where('f.tipo', \App\Models\Factura::TIPO_PLANILLA)
+            ->whereNull('f.deleted_at')
+            ->orderByDesc('f.anio')->orderByDesc('f.mes')->orderByDesc('f.id')
+            ->limit(2)
+            ->select(
+                'f.id', 'f.mes', 'f.anio', 'f.total', 'f.estado', 'f.numero_factura',
+                DB::raw('COALESCE(p.numero_planilla, opa.numero_planilla) AS numero_planilla'),
+                'op.nombre AS operador_nombre'
+            )
+            ->get();
+
         // Resumen del cliente para el card lateral
         $resumen = [
             'beneficiarios'   => DB::table('beneficiarios')->where('cc_cliente', $cliente->cedula)->count(),
@@ -229,7 +255,7 @@ class ClienteController extends Controller
 
         return view('admin.clientes.form', compact(
             'cliente', 'lookups', 'contratos', 'razonesMap', 'resumen', 'bancos',
-            'tieneContratoIndependiente', 'operadoresPlanilla', 'isIframe'
+            'tieneContratoIndependiente', 'operadoresPlanilla', 'isIframe', 'ultimosPagos'
         ));
     }
 

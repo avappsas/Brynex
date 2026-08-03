@@ -466,6 +466,68 @@
         @endif
     </div>
 
+    {{-- ═══════════════════ HISTORIAL DE PAGOS (últimos 2) ═══════════════════ --}}
+    @if(isset($ultimosPagos) && $ultimosPagos->count() > 0)
+    @php
+        // ¿Ya hay factura del mes en curso? Se evalúa sobre los datos ya cargados (sin query extra).
+        // Solo se alerta si el cliente tiene al menos un contrato vigente.
+        $mesActual   = (int) date('n');
+        $anioActual  = (int) date('Y');
+        $mesActualLbl = ucfirst(\Carbon\Carbon::create($anioActual, $mesActual, 1)->locale('es')->translatedFormat('F'));
+        $tieneMesActual = $ultimosPagos->contains(
+            fn($x) => (int)$x->mes === $mesActual && (int)$x->anio === $anioActual
+        );
+        $alertaPendiente = !$tieneMesActual && ($resumen['contratos_vigent'] ?? 0) > 0;
+    @endphp
+    <div style="background:{{ $alertaPendiente ? '#fffbeb' : '#fff' }};border:{{ $alertaPendiente ? '2px solid #f59e0b' : 'none' }};border-radius:14px;padding:0.6rem 1rem;box-shadow:0 1px 8px rgba(0,0,0,0.06);margin-bottom:1.5rem;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:0.4rem 1.4rem;font-size:0.74rem;color:#94a3b8;">
+        <span style="font-weight:700;color:#0f172a;white-space:nowrap;">Últimos pagos:</span>
+        {{-- Orden cronológico ascendente: el mes más viejo primero --}}
+        @foreach($ultimosPagos->reverse() as $p)
+            @php
+                $mesLabel  = ucfirst(\Carbon\Carbon::create((int)$p->anio, (int)$p->mes, 1)
+                                ->locale('es')->translatedFormat('F'));
+                $estadoLbl = match($p->estado) {
+                    'pre_factura' => 'Pre-factura',
+                    'abono'       => 'Abono',
+                    'pagada'      => 'Pagada',
+                    'prestamo'    => 'Préstamo',
+                    default       => ucfirst((string)$p->estado),
+                };
+                $estadoCol = match($p->estado) {
+                    'pagada'   => '#16a34a',
+                    'abono'    => '#d97706',
+                    'prestamo' => '#7c3aed',
+                    default    => '#64748b',
+                };
+                $opNombre = $p->operador_nombre
+                    ?: ($operadoresPlanilla ?? collect())->firstWhere('id', $cliente->operador_planilla_id)?->nombre;
+            @endphp
+            <div style="display:flex;align-items:center;gap:0.5rem;white-space:nowrap;{{ !$loop->first ? 'border-left:1px solid #e2e8f0;padding-left:1.4rem;' : '' }}">
+                <span>Mes: <b style="color:#0f172a;">{{ $mesLabel }}</b></span>
+                <span>Estado: <b style="color:{{ $estadoCol }};">{{ $estadoLbl }}</b></span>
+                <span>Valor: <b style="color:#0f172a;">${{ number_format($p->total ?? 0, 0, ',', '.') }}</b></span>
+                <span>Planilla:
+                    @if(!empty($p->numero_planilla))
+                        <b style="color:#0f172a;font-family:ui-monospace,monospace;">{{ $p->numero_planilla }}</b>
+                    @else
+                        <b style="color:#d97706;">Pendiente</b>
+                    @endif
+                </span>
+                <span>Operador: <b style="color:{{ $opNombre ? '#475569' : '#cbd5e1' }};">{{ $opNombre ?: '—' }}</b></span>
+            </div>
+        @endforeach
+
+        {{-- Mes en curso sin facturar (solo si hay contrato vigente) --}}
+        @if($alertaPendiente)
+        <div style="display:flex;align-items:center;gap:0.45rem;white-space:nowrap;border-left:1px solid #fcd34d;padding-left:1.4rem;">
+            <span style="background:#f59e0b;color:#fff;padding:0.15rem 0.6rem;border-radius:999px;font-size:0.72rem;font-weight:800;">
+                ⚠ {{ $mesActualLbl }}: PENDIENTE DE PAGO
+            </span>
+        </div>
+        @endif
+    </div>
+    @endif
+
     {{-- ═══════════════════════════ PANELES DINÁMICOS (TABS) ═══════════════════════════ --}}
     {{-- ═══════════════════════════ PANELES DINÁMICOS (TABS) ═══════════════════════════ --}}
     @if(isset($cliente->id) && $cliente->id)

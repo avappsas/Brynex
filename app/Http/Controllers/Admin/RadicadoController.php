@@ -37,10 +37,17 @@ class RadicadoController extends Controller
 
         $estadoAnterior = $radicado->estado;
 
+        // `??` solo atrapa null: el formulario manda cadena vacía cuando el campo
+        // está en blanco, así que sin este guard un guardado sin escribir nada
+        // borraba la observación ya registrada.
+        $obsNueva  = trim((string) ($data['observacion'] ?? ''));
+        $obsActual = trim((string) $radicado->observacion);
+        $obsCambio = $obsNueva !== '' && $obsNueva !== $obsActual;
+
         // Actualizar radicado
         $radicado->update([
             'estado'          => $data['estado'],
-            'observacion'     => $data['observacion'] ?? $radicado->observacion,
+            'observacion'     => $obsNueva !== '' ? $obsNueva : $radicado->observacion,
             'canal_envio'     => $data['canal_envio'] ?? $radicado->canal_envio,
             'numero_radicado' => $data['numero_radicado'] ?? $radicado->numero_radicado,
             'user_id'         => Auth::id(),
@@ -59,7 +66,9 @@ class RadicadoController extends Controller
             'user_id'        => Auth::id(),
             'estado_anterior'=> $estadoAnterior,
             'estado_nuevo'   => $data['estado'],
-            'observacion'    => $data['observacion'] ?? null,
+            // Solo se registra el texto si es nuevo: ahora el modal viene precargado
+            // con la observación actual y repetirla en cada guardado ensucia la bitácora.
+            'observacion'    => $obsCambio ? $obsNueva : null,
         ]);
 
         if ($request->expectsJson()) {

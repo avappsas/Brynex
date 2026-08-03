@@ -46,6 +46,10 @@ class AfiliacionController extends Controller
         $cajaF      = $request->get('caja_id');
         $pensionF   = $request->get('pension_id');
         $estadoRad  = $request->get('estado_rad'); // estado del radicado
+        // Estado del contrato: por defecto se muestran TODAS las afiliaciones del mes
+        // (incluidos los que ya se retiraron), porque la afiliación sí ocurrió en el período.
+        $estadoCont = $request->get('estado_contrato');
+        if (!in_array($estadoCont, ['vigente', 'retirado'], true)) $estadoCont = '';
         $sort       = $request->get('sort', 'fecha_ingreso');
         $dir        = $request->get('dir', 'asc');
 
@@ -59,7 +63,6 @@ class AfiliacionController extends Controller
 
         // Capturar IDs del período sin filtros opcionales (para poblar selects dinámicos)
         $baseIds = Contrato::where('aliado_id', $alidoId)
-            ->where('estado', 'vigente')
             ->whereMonth('fecha_ingreso', $mes)
             ->whereYear('fecha_ingreso', $anio)
             ->pluck('id');
@@ -84,9 +87,10 @@ class AfiliacionController extends Controller
             'radicados' => fn($q) => $q->with(['movimientos' => fn($m) => $m->reorder()->orderByDesc('id')->limit(3)]),
         ])
         ->where('aliado_id', $alidoId)
-        ->where('estado', 'vigente')
         ->whereMonth('fecha_ingreso', $mes)
         ->whereYear('fecha_ingreso', $anio);
+
+        if ($estadoCont) $query->where('estado', $estadoCont);
 
         // Búsqueda inteligente por nombre tokenizado y cédula
         $buscar = $request->get('buscar');
@@ -217,7 +221,7 @@ class AfiliacionController extends Controller
         return view('admin.afiliaciones.index', compact(
             'contratos', 'mes', 'anio', 'encId', 'encargados',
             'alidoId', 'alidosDisponibles', 'user',
-            'rsId', 'tipoModId', 'epsF', 'arlF', 'cajaF', 'pensionF', 'estadoRad',
+            'rsId', 'tipoModId', 'epsF', 'arlF', 'cajaF', 'pensionF', 'estadoRad', 'estadoCont',
             'sort', 'dir', 'razonesDisponibles', 'tiposModalidad',
             'epsDisponibles', 'arlDisponibles', 'cajaDisponibles', 'pensionDisponibles'
         ));
@@ -243,6 +247,8 @@ class AfiliacionController extends Controller
         $cajaF      = $request->get('caja_id');
         $pensionF   = $request->get('pension_id');
         $estadoRad  = $request->get('estado_rad');
+        $estadoCont = $request->get('estado_contrato');
+        if (!in_array($estadoCont, ['vigente', 'retirado'], true)) $estadoCont = '';
 
         $query = Contrato::with([
             'cliente:cedula,primer_nombre,primer_apellido',
@@ -255,9 +261,10 @@ class AfiliacionController extends Controller
             'radicados',
         ])
         ->where('aliado_id', $alidoId)
-        ->where('estado', 'vigente')
         ->whereMonth('fecha_ingreso', $mes)
         ->whereYear('fecha_ingreso', $anio);
+
+        if ($estadoCont) $query->where('estado', $estadoCont);
 
         // Búsqueda inteligente por nombre tokenizado y cédula
         $buscar = $request->get('buscar');
@@ -321,12 +328,12 @@ class AfiliacionController extends Controller
             'Razón Social', 'Día', 'Factura', 'Cédula', 'Nombres',
             'EPS', 'Estado EPS', 'ARL', 'Estado ARL',
             'Caja', 'Estado Caja', 'Pensión', 'Estado Pensión',
-            'Encargado', 'Observación',
+            'Encargado', 'Observación', 'Estado',
         ];
         $sheet->fromArray($headers, null, 'A1');
 
         // Estilo encabezado
-        $sheet->getStyle('A1:O1')->applyFromArray([
+        $sheet->getStyle('A1:P1')->applyFromArray([
             'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
             'fill' => ['fillType' => 'solid', 'startColor' => ['rgb' => '1e40af']],
         ]);
@@ -351,12 +358,13 @@ class AfiliacionController extends Controller
                 strtoupper($radicados->get('pension')?->estado ?? '—'),
                 $c->encargado?->nombre ?? '—',
                 $c->observacion_afiliacion ?? '',
+                strtoupper($c->estado ?? '—'),
             ], null, "A{$row}");
             $row++;
         }
 
         // Auto-ancho columnas
-        foreach (range('A', 'O') as $col) {
+        foreach (range('A', 'P') as $col) {
             $sheet->getColumnDimension($col)->setAutoSize(true);
         }
 

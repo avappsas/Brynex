@@ -287,6 +287,18 @@ body {
             <option value="ok"         {{ $estadoRad === 'ok'         ? 'selected' : '' }}>✅ OK</option>
         </select>
 
+        {{-- Estado del contrato (por defecto se muestran todas las afiliaciones del mes) --}}
+        <select name="estado_contrato" onchange="this.form.submit()" title="Estado actual del contrato"
+            style="font-size:0.78rem;padding:0.3rem 0.5rem;border:1px solid #334155;border-radius:6px;cursor:pointer;
+            @if($estadoCont === 'vigente') background:#15803d;color:#fff;
+            @elseif($estadoCont === 'retirado') background:#b91c1c;color:#fff;
+            @else background:#1e3a5f;color:#e2e8f0;
+            @endif">
+            <option value="">👤 Todos</option>
+            <option value="vigente"  {{ $estadoCont === 'vigente'  ? 'selected' : '' }}>🟢 Vigentes</option>
+            <option value="retirado" {{ $estadoCont === 'retirado' ? 'selected' : '' }}>🔴 Retirados</option>
+        </select>
+
         <button type="button" onclick="abrirModalClavesGlobal()" class="btn-export" style="background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#1c1917;border:none;font-weight:800;cursor:pointer;">🔑 Claves</button>
         <a href="{{ route('admin.gestion-arl.index') }}" class="btn-export" style="background:#f97316;">🛡️ ARL</a>
     </div>
@@ -452,8 +464,9 @@ function sortClass($col, $currSort, $currDir) {
             'correo'          => $ctxCorreo,
         ]);
         $esFuturo = $c->fecha_ingreso && now()->startOfDay()->diffInDays(\Carbon\Carbon::parse($c->fecha_ingreso)->startOfDay(), false) > 1;
+        $esRetirado = $c->estado === 'retirado';
     @endphp
-    <tr>
+    <tr @if($esRetirado) style="background:#fef2f2;" title="Contrato retirado — la afiliación sí ocurrió en este período" @endif>
         {{-- Empresa --}}
         <td>
             @if($c->razonSocial)
@@ -514,6 +527,10 @@ function sortClass($col, $currSort, $currDir) {
             @else
             {{ $c->cliente?->primer_nombre }} {{ $c->cliente?->primer_apellido }}
             @endif
+            @if($esRetirado)
+            <span style="display:inline-block;background:#fee2e2;color:#b91c1c;font-size:0.6rem;font-weight:800;padding:0.05rem 0.3rem;border-radius:4px;letter-spacing:0.02em;margin-top:0.1rem;"
+                  title="Retirado{{ $c->fecha_retiro ? ' el ' . $c->fecha_retiro->format('d/m/Y') : '' }}">RETIRADO</span>
+            @endif
         </td>
 
         {{-- Tipo Modalidad --}}
@@ -542,7 +559,7 @@ function sortClass($col, $currSort, $currDir) {
                 data-rad-id="{{ $rEps->id }}"
                 data-contrato-id="{{ $c->id }}"
                 data-eps-formulario="{{ $c->eps?->formulario_pdf ? '1' : '0' }}"
-                data-rad='{{ json_encode(['id'=>$rEps->id,'tipo'=>$rEps->tipo,'estado'=>$rEps->estado,'numero_radicado'=>$rEps->numero_radicado,'canal_envio'=>$rEps->canal_envio,'canal_envio_cliente'=>$rEps->canal_envio_cliente,'enviado_al_cliente'=>$rEps->enviado_al_cliente,'ruta_pdf'=>$rEps->ruta_pdf]) }}'
+                data-rad='{{ json_encode(['id'=>$rEps->id,'tipo'=>$rEps->tipo,'estado'=>$rEps->estado,'numero_radicado'=>$rEps->numero_radicado,'canal_envio'=>$rEps->canal_envio,'canal_envio_cliente'=>$rEps->canal_envio_cliente,'enviado_al_cliente'=>$rEps->enviado_al_cliente,'ruta_pdf'=>$rEps->ruta_pdf,'observacion'=>$rEps->observacion]) }}'
                 data-ctx='{{ $contexto }}'>
                 {{ $rEps->estadoTextoEfectivo() }}
                 @if($rEps->tieneAlertaDias())<span class="alert-dias">{{ $rEps->diasEnEstado() }}d</span>@endif
@@ -574,7 +591,7 @@ function sortClass($col, $currSort, $currDir) {
             @if($plan?->incluye_arl && $rArl)
             <button class="badge-estado badge-{{ $rArl->estadoClaseEfectiva() }} btn-rad"
                 data-rad-id="{{ $rArl->id }}"
-                data-rad='{{ json_encode(['id'=>$rArl->id,'tipo'=>$rArl->tipo,'estado'=>$rArl->estado,'numero_radicado'=>$rArl->numero_radicado,'canal_envio'=>$rArl->canal_envio,'canal_envio_cliente'=>$rArl->canal_envio_cliente,'enviado_al_cliente'=>$rArl->enviado_al_cliente,'ruta_pdf'=>$rArl->ruta_pdf]) }}'
+                data-rad='{{ json_encode(['id'=>$rArl->id,'tipo'=>$rArl->tipo,'estado'=>$rArl->estado,'numero_radicado'=>$rArl->numero_radicado,'canal_envio'=>$rArl->canal_envio,'canal_envio_cliente'=>$rArl->canal_envio_cliente,'enviado_al_cliente'=>$rArl->enviado_al_cliente,'ruta_pdf'=>$rArl->ruta_pdf,'observacion'=>$rArl->observacion]) }}'
                 data-ctx='{{ $contexto }}'>
                 {{ $rArl->estadoTextoEfectivo() }}
                 @if($rArl->tieneAlertaDias())<span class="alert-dias">{{ $rArl->diasEnEstado() }}d</span>@endif
@@ -597,7 +614,7 @@ function sortClass($col, $currSort, $currDir) {
             @if($plan?->incluye_caja && $rCaja)
             <button class="badge-estado badge-{{ $rCaja->estadoClaseEfectiva() }} btn-rad"
                 data-rad-id="{{ $rCaja->id }}"
-                data-rad='{{ json_encode(['id'=>$rCaja->id,'tipo'=>$rCaja->tipo,'estado'=>$rCaja->estado,'numero_radicado'=>$rCaja->numero_radicado,'canal_envio'=>$rCaja->canal_envio,'canal_envio_cliente'=>$rCaja->canal_envio_cliente,'enviado_al_cliente'=>$rCaja->enviado_al_cliente,'ruta_pdf'=>$rCaja->ruta_pdf]) }}'
+                data-rad='{{ json_encode(['id'=>$rCaja->id,'tipo'=>$rCaja->tipo,'estado'=>$rCaja->estado,'numero_radicado'=>$rCaja->numero_radicado,'canal_envio'=>$rCaja->canal_envio,'canal_envio_cliente'=>$rCaja->canal_envio_cliente,'enviado_al_cliente'=>$rCaja->enviado_al_cliente,'ruta_pdf'=>$rCaja->ruta_pdf,'observacion'=>$rCaja->observacion]) }}'
                 data-ctx='{{ $contexto }}'>
                 {{ $rCaja->estadoTextoEfectivo() }}
                 @if($rCaja->tieneAlertaDias())<span class="alert-dias">{{ $rCaja->diasEnEstado() }}d</span>@endif
@@ -620,7 +637,7 @@ function sortClass($col, $currSort, $currDir) {
             @if($plan?->incluye_pension && $rPen)
             <button class="badge-estado badge-{{ $rPen->estadoClaseEfectiva() }} btn-rad"
                 data-rad-id="{{ $rPen->id }}"
-                data-rad='{{ json_encode(['id'=>$rPen->id,'tipo'=>$rPen->tipo,'estado'=>$rPen->estado,'numero_radicado'=>$rPen->numero_radicado,'canal_envio'=>$rPen->canal_envio,'canal_envio_cliente'=>$rPen->canal_envio_cliente,'enviado_al_cliente'=>$rPen->enviado_al_cliente,'ruta_pdf'=>$rPen->ruta_pdf]) }}'
+                data-rad='{{ json_encode(['id'=>$rPen->id,'tipo'=>$rPen->tipo,'estado'=>$rPen->estado,'numero_radicado'=>$rPen->numero_radicado,'canal_envio'=>$rPen->canal_envio,'canal_envio_cliente'=>$rPen->canal_envio_cliente,'enviado_al_cliente'=>$rPen->enviado_al_cliente,'ruta_pdf'=>$rPen->ruta_pdf,'observacion'=>$rPen->observacion]) }}'
                 data-ctx='{{ $contexto }}'>
                 {{ $rPen->estadoTextoEfectivo() }}
                 @if($rPen->tieneAlertaDias())<span class="alert-dias">{{ $rPen->diasEnEstado() }}d</span>@endif
@@ -1317,7 +1334,9 @@ function abrirModalRadicado(radId, radData, ctx = {}, contratoId = null, epsForm
     document.getElementById('seccionNumRadicado').style.display = esArl ? 'none' : '';
     document.getElementById('mrad-canal').value = esArl ? 'portal' : (radData.canal_envio || '');
     document.getElementById('mrad-numero').value = esArl ? '' : (radData.numero_radicado || '');
-    document.getElementById('mrad-observacion').value = '';
+    // Precargar la observación guardada (viene del legacy en los contratos migrados).
+    // Antes se dejaba vacía siempre, así que nunca se veía lo ya registrado.
+    document.getElementById('mrad-observacion').value = radData.observacion || '';
     document.getElementById('mrad-enviado').checked = !!radData.enviado_al_cliente;
     document.getElementById('mrad-canal-cliente').value = radData.canal_envio_cliente || '';
 
