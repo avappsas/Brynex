@@ -1,3 +1,27 @@
+# Límites de subida para documentos de incapacidades y soportes de pago.
+#
+# El php.ini de Apache trae upload_max_filesize=6M / post_max_size=7M, por
+# debajo de los 15 MB que acepta la validación de Laravel. Un escaneo de
+# CamScanner de 8 MB lo rechazaba PHP antes de llegar al controlador: Apache
+# devolvía un 413 con página HTML y el front, que hacía r.json(), mostraba
+# "Unexpected token '<'". Al superarse post_max_size PHP además vacía $_POST
+# (incluido _token), así que otras veces salía la página de "419 Page Expired".
+#
+# Va aquí y no en un .user.ini porque brynex.co corre PHP como módulo de Apache
+# (mod_php 8.3), y mod_php NO lee los .user.ini — solo php.ini y php_value.
+# Requiere AllowOverride All, que el vhost ya tiene.
+#
+# post_max_size debe quedar por encima de upload_max_filesize: incluye el
+# archivo más los demás campos del formulario y el overhead de multipart.
+<IfModule php_module>
+    php_value upload_max_filesize 20M
+    php_value post_max_size 24M
+
+    # Recomprimir un PDF con Ghostscript o reescalar una foto de 12 MP toma
+    # segundos; los 30 s del php.ini se quedaban cortos.
+    php_value max_execution_time 120
+</IfModule>
+
 <IfModule mod_rewrite.c>
     <IfModule mod_negotiation.c>
         Options -MultiViews -Indexes

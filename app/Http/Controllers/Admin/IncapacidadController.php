@@ -7,6 +7,7 @@ use App\Models\Incapacidad;
 use App\Models\GestionIncapacidad;
 use App\Models\Radicado;
 use App\Models\User;
+use App\Services\CompresorDocumentoService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -882,7 +883,8 @@ class IncapacidadController extends Controller
         // Guardar imagen si viene (I/O de disco, no participa de la transacción de BD)
         $imagenPath = null;
         if ($request->hasFile('imagen')) {
-            $imagenPath = $request->file('imagen')->store(
+            $imagenPath = app(CompresorDocumentoService::class)->guardar(
+                $request->file('imagen'),
                 "incapacidades/{$alidoId}/{$inc->cedula_usuario}/{$id}/pagos",
                 self::DISCO_DOCUMENTOS
             );
@@ -1016,12 +1018,15 @@ class IncapacidadController extends Controller
             'tipo_documento' => 'required|string',
         ]);
 
-        $inc  = $this->incapacidadDelAliado($id);
-        $file = $request->file('archivo');
-        $ext  = strtolower($file->getClientOriginalExtension());
+        $inc    = $this->incapacidadDelAliado($id);
+        $file   = $request->file('archivo');
         $cedula = $inc->cedula_usuario;
 
-        $ruta = $file->store(
+        // Se comprime antes de guardar: los soportes llegan como fotos de celular
+        // o escaneos de CamScanner de varios MB por página. Si el servidor no
+        // puede comprimir, se guarda tal cual. Ver CompresorDocumentoService.
+        $ruta = app(CompresorDocumentoService::class)->guardar(
+            $file,
             "incapacidades/{$inc->aliado_id}/{$cedula}/{$id}",
             self::DISCO_DOCUMENTOS
         );

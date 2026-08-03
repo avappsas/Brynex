@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Incapacidad;
 use App\Models\Radicado;
+use App\Services\CompresorDocumentoService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -107,7 +108,10 @@ class IncapacidadUploadController extends Controller
         // documentos de salud. Con 'public' quedaban accesibles por URL directa
         // en /storage/incapacidades/{aliado}/{cedula}/... sin autenticación.
         // Se consultan desde el admin vía IncapacidadController::verDocumento().
-        $ruta = $file->store(
+        // Comprimido antes de guardar: el cliente sube fotos de celular de 5-10 MB
+        // que se leen igual de bien a 2200 px. Ver CompresorDocumentoService.
+        $ruta = app(CompresorDocumentoService::class)->guardar(
+            $file,
             "incapacidades/{$inc->aliado_id}/{$cedula}/{$inc->id}/cliente",
             'local'
         );
