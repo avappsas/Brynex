@@ -11,10 +11,11 @@ $totalAbonado = $factura->abonos->sum('valor');
 
 @section('contenido')
 <style>
+/* Hoja CARTA VERTICAL: el recibo queda arriba y la mitad inferior en blanco. */
+@page { size: letter portrait; margin: 12mm; }
 @media print {
     .no-print, .sidebar, nav, header { display:none!important; }
-    .ab-wrap { box-shadow:none!important;border:none!important; }
-    @page { size:A4 portrait;margin:15mm; }
+    .ab-wrap { box-shadow:none!important;border:none!important;margin-top:0!important; }
 }
 .ab-wrap { max-width:520px;margin:1.5rem auto;background:#fff;border-radius:12px;border:2px solid #0f172a;padding:1.5rem 2rem;font-size:0.85rem; }
 .ab-title{ text-align:center;font-size:1.3rem;font-weight:900;letter-spacing:0.06em;color:#0f172a;border-bottom:2px solid #0f172a;padding-bottom:0.6rem;margin-bottom:0.8rem; }

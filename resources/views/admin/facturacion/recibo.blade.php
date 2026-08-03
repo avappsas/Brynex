@@ -107,16 +107,24 @@ $estadoCls = fn($e) => match($e) {
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 
 /* ─── PRINT ──────────────────────────────────── */
+/* Hoja CARTA VERTICAL. El recibo mantiene su diseño ancho (277mm) y se
+   reduce con transform:scale para caber en el ancho útil de la carta,
+   quedando pegado arriba y dejando la mitad inferior en blanco. */
 @page {
-    size: A4 landscape;
-    margin: 8mm 10mm;
+    size: letter portrait;
+    margin: 8mm;
 }
 @media print {
     body * { visibility: hidden !important; }
     #recibo-print-area, #recibo-print-area * { visibility: visible !important; }
     #recibo-print-area {
-        position: fixed; inset: 0;
-        padding: 3mm 5mm; background: #fff; z-index: 9999;
+        position: fixed;
+        top: 0; left: 0; right: auto; bottom: auto;
+        width: 277mm;                /* ancho de diseño original */
+        height: auto;
+        transform: scale(0.721);     /* 199.9mm útiles de carta / 277mm */
+        transform-origin: top left;
+        padding: 0; background: #fff; z-index: 9999;
         box-shadow: none !important;
     }
     .no-print { display: none !important; }

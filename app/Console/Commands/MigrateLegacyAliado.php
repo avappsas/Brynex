@@ -673,20 +673,23 @@ class MigrateLegacyAliado extends Command
                     // Insertar radicados legacy en tabla radicados (eps, arl, caja, pension)
                     // SOLO si el contrato está vigente
                     if ($estadoContrato === 'vigente') {
+                        // OJO: en legacy estas columnas guardan el ESTADO del trámite
+                        // ('OK', 'TRAMITE', 'PENT', '-'...), no un número de radicado.
                         $radicadosLegacy = [
-                            'eps'     => trim($r->Radicado_EPS ?? ''),
-                            'arl'     => trim($r->Radicado_ARL ?? ''),
-                            'caja'    => trim($r->Radicado_Caja ?? ''),
-                            'pension' => trim($r->Radicado_Pension ?? ''),
+                            'eps'     => $r->Radicado_EPS ?? '',
+                            'arl'     => $r->Radicado_ARL ?? '',
+                            'caja'    => $r->Radicado_Caja ?? '',
+                            'pension' => $r->Radicado_Pension ?? '',
                         ];
-                        foreach ($radicadosLegacy as $tipo => $numero) {
-                            if ($numero !== '') {
+                        foreach ($radicadosLegacy as $tipo => $textoEstado) {
+                            $estadoRad = NormalizarRadicadosLegacy::estadoDesdeLegacy($textoEstado);
+                            if ($estadoRad !== null) {
                                 DB::table('radicados')->insert([
                                     'contrato_id'     => $contratoId,
                                     'aliado_id'       => $aliadoId,
                                     'tipo'            => $tipo,
-                                    'numero_radicado' => $numero,
-                                    'estado'          => 'confirmado',
+                                    'numero_radicado' => null,
+                                    'estado'          => $estadoRad,
                                     'created_at'      => now(),
                                     'updated_at'      => now(),
                                 ]);
