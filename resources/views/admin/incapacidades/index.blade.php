@@ -2295,33 +2295,126 @@ function cargarDocumentosExistentes(incId){
         });
 }
 
-function enviarDocumento(){
+// Tope de subida. Debe ir alineado con la regla `max:10240` del controlador.
+// El límite de PHP en public/.htaccess está deliberadamente 2 MB más arriba
+// para que rechace Laravel con un mensaje claro y no Apache con un 413 en HTML.
+const DOC_MAX_MB = 10;
+
+/**
+ * Reduce una imagen antes de subirla.
+ *
+ * Una foto de celular sale de 4-10 MB; a 2200 px y calidad 0.72 el documento se
+ * lee igual y pesa ~300 KB. Así no se choca contra el límite de subida de PHP
+ * ni se gasta disco del servidor. Los PDF se devuelven intactos: el navegador no
+ * los puede recomprimir, de eso se encarga CompresorDocumentoService en el back.
+ */
+function comprimirImagenParaSubir(file, anchoMax = 2200, calidad = 0.72){
+    if(!file.type.startsWith('image/')) return Promise.resolve(file);
+
+    return new Promise(resolve => {
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = () => {
+            URL.revokeObjectURL(url);
+            try {
+                const escala = Math.min(1, anchoMax / img.width);
+                const canvas = document.createElement('canvas');
+                canvas.width  = Math.round(img.width  * escala);
+                canvas.height = Math.round(img.height * escala);
+                const ctx = canvas.getContext('2d');
+                // Fondo blanco: los PNG con transparencia salen negros en JPEG.
+                ctx.fillStyle = '#fff';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                canvas.toBlob(blob => {
+                    // Si comprimir no ayudó, se sube el original.
+                    if(!blob || blob.size >= file.size) return resolve(file);
+                    const nombre = file.name.replace(/\.[^.]+$/, '') + '.jpg';
+                    resolve(new File([blob], nombre, { type:'image/jpeg' }));
+                }, 'image/jpeg', calidad);
+            } catch(e){ resolve(file); }
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+        img.src = url;
+    });
+}
+
+/**
+ * Lee la respuesta tolerando que NO sea JSON.
+ *
+ * Cuando PHP rechaza la subida por tamaño (413), expira el CSRF (419) o revienta
+ * (500), Laravel responde una página HTML. Al hacer r.json() a ciegas eso salía
+ * como "Unexpected token '<'", que no le dice nada al usuario. Aquí se traduce
+ * el código de estado a un mensaje accionable.
+ */
+async function leerRespuestaDocumento(r){
+    const texto = await r.text();
+    try { return { ok: r.ok, data: JSON.parse(texto) }; } catch(e){ /* no era JSON */ }
+
+    const porEstado = {
+        413: `El archivo es muy grande para el servidor. Comprímelo o divídelo (máximo ${DOC_MAX_MB} MB).`,
+        419: 'La sesión expiró. Recarga la página e intenta de nuevo.',
+        401: 'La sesión expiró. Recarga la página e intenta de nuevo.',
+        422: 'El archivo no es válido. Debe ser PDF, JPG o PNG.',
+        500: 'El servidor falló al guardar el documento. Avisa a soporte.',
+    };
+    return { ok:false, data:{ ok:false, message: porEstado[r.status] || `Error ${r.status} al subir el documento.` } };
+}
+
+async function enviarDocumento(){
     const incId = _docIncId;
-    const archivo = document.getElementById('docArchivo').files[0];
+    let archivo = document.getElementById('docArchivo').files[0];
     if(!archivo){ alert('Selecciona un archivo'); return; }
+
     const btn = document.getElementById('btnSubirDoc');
     const msg = document.getElementById('docUploadMsg');
-    btn.disabled = true; btn.textContent = '⏳ Subiendo...';
+    btn.disabled = true; btn.textContent = '⏳ Optimizando...';
     msg.textContent = '';
-    const fd = new FormData();
-    fd.append('tipo_documento', document.getElementById('docTipo').value);
-    fd.append('observacion', document.getElementById('docObs').value);
-    fd.append('archivo', archivo);
-    fd.append('_token', TOKEN);
-    fetch(`/admin/incapacidades/${incId}/documento`,{method:'POST',body:fd})
-        .then(r=>r.json()).then(d=>{
+
+    try {
+        const pesoOriginal = archivo.size;
+        archivo = await comprimirImagenParaSubir(archivo);
+
+        if(archivo.size > DOC_MAX_MB * 1024 * 1024){
             btn.disabled=false; btn.textContent='📤 Subir Documento';
-            if(d.ok){
-                // Cerrar automáticamente y refrescar la pestaña Documentos
-                cerrarModalDoc();
-            } else {
-                msg.innerHTML=`<span style="color:#ef4444">Error: ${d.message||'Error al subir'}</span>`;
-            }
-        }).catch(e=>{
-            btn.disabled=false;
-            btn.textContent='📤 Subir Documento';
-            msg.innerHTML=`<span style="color:#ef4444">Error: ${e.message}</span>`;
+            msg.innerHTML = `<span style="color:#ef4444">El archivo pesa ${(archivo.size/1048576).toFixed(1)} MB y el máximo es ${DOC_MAX_MB} MB. Reduce la calidad del escaneo o súbelo por páginas.</span>`;
+            return;
+        }
+        if(archivo.size < pesoOriginal){
+            msg.innerHTML = `<span style="color:#64748b">Optimizado: ${(pesoOriginal/1048576).toFixed(1)} MB → ${(archivo.size/1048576).toFixed(1)} MB</span>`;
+        }
+
+        btn.textContent = '⏳ Subiendo...';
+        const fd = new FormData();
+        fd.append('tipo_documento', document.getElementById('docTipo').value);
+        fd.append('observacion', document.getElementById('docObs').value);
+        fd.append('archivo', archivo);
+        fd.append('_token', TOKEN);
+
+        const r = await fetch(`/admin/incapacidades/${incId}/documento`, {
+            method: 'POST',
+            body: fd,
+            // Sin estas cabeceras Laravel responde con un redirect a HTML en vez
+            // de un 422 JSON, y el front se queda sin saber qué falló.
+            headers: { 'Accept':'application/json', 'X-Requested-With':'XMLHttpRequest', 'X-CSRF-TOKEN': TOKEN },
         });
+
+        const { data } = await leerRespuestaDocumento(r);
+        btn.disabled=false; btn.textContent='📤 Subir Documento';
+
+        if(data.ok){
+            // Cerrar automáticamente y refrescar la pestaña Documentos
+            cerrarModalDoc();
+        } else {
+            // Laravel manda los errores de validación en `errors`, no en `message`.
+            const detalle = data.errors ? Object.values(data.errors).flat().join(' ') : null;
+            msg.innerHTML=`<span style="color:#ef4444">${detalle || data.message || 'Error al subir'}</span>`;
+        }
+    } catch(e){
+        btn.disabled=false;
+        btn.textContent='📤 Subir Documento';
+        msg.innerHTML=`<span style="color:#ef4444">No se pudo conectar con el servidor: ${e.message}</span>`;
+    }
 }
 
 

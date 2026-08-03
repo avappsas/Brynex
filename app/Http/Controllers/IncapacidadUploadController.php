@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Incapacidad;
 use App\Models\Radicado;
+use App\Services\CompresorDocumentoService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -92,11 +93,11 @@ class IncapacidadUploadController extends Controller
 
         // ── Paso 2: subir archivos ───────────────────────────────────────────
         $request->validate([
-            'archivo'         => 'required|file|max:20480|mimes:pdf,jpg,jpeg,png,webp',
+            'archivo'         => 'required|file|max:10240|mimes:pdf,jpg,jpeg,png,webp',
             'tipo_documento'  => 'required|string|in:' . implode(',', array_keys(self::TIPOS_DOC)),
         ], [
             'archivo.required'  => 'Debe seleccionar un archivo.',
-            'archivo.max'       => 'El archivo no puede superar 20 MB.',
+            'archivo.max'       => 'El archivo no puede superar 10 MB.',
             'archivo.mimes'     => 'Solo se aceptan archivos PDF, JPG o PNG.',
         ]);
 
@@ -107,7 +108,10 @@ class IncapacidadUploadController extends Controller
         // documentos de salud. Con 'public' quedaban accesibles por URL directa
         // en /storage/incapacidades/{aliado}/{cedula}/... sin autenticación.
         // Se consultan desde el admin vía IncapacidadController::verDocumento().
-        $ruta = $file->store(
+        // Comprimido antes de guardar: el cliente sube fotos de celular de 5-10 MB
+        // que se leen igual de bien a 2200 px. Ver CompresorDocumentoService.
+        $ruta = app(CompresorDocumentoService::class)->guardar(
+            $file,
             "incapacidades/{$inc->aliado_id}/{$cedula}/{$inc->id}/cliente",
             'local'
         );
