@@ -13,8 +13,15 @@ $colorTipo = [
 ];
 
 $ruta     = route('admin.cuadre-diario.facturas-dia');
-$qsExport = array_filter(request()->only(['fecha','tipo','forma_pago','banco_cuenta_id','empresa_id','usuario_id']));
-$hayFiltro = request()->hasAny(['tipo','forma_pago','banco_cuenta_id','empresa_id','usuario_id']);
+$qsExport = array_filter(request()->only(['fecha','tipo','forma_pago','banco_cuenta_id','empresa_id','usuario_id','razon_social_id','sort','dir']));
+$hayFiltro = request()->hasAny(['tipo','forma_pago','banco_cuenta_id','empresa_id','usuario_id','razon_social_id']);
+
+// Enlace de ordenamiento: repite la columna → alterna asc/desc
+$sortUrl = function (string $col) use ($sort, $dir) {
+    $nuevo = ($sort === $col && $dir === 'asc') ? 'desc' : 'asc';
+    return request()->fullUrlWithQuery(['sort' => $col, 'dir' => $nuevo]);
+};
+$sortIco = fn(string $col) => $sort === $col ? ($dir === 'asc' ? ' ▲' : ' ▼') : ' ↕';
 @endphp
 
 @section('contenido')
@@ -56,6 +63,22 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.78rem}
 .th-select:focus{border-bottom-color:#3b82f6}
 .th-select option{background:#0f172a;color:#fff;font-weight:600;text-transform:none}
 .th-select.activo{border-bottom-color:#3b82f6;color:#93c5fd}
+
+/* Encabezado ordenable */
+.th-sort{color:#94a3b8;text-decoration:none;cursor:pointer;white-space:nowrap}
+.th-sort:hover{color:#fff}
+.th-sort.activo{color:#93c5fd}
+
+/* Número de factura: abre el recibo en modal */
+.link-fact{background:none;border:none;padding:0;font:inherit;font-weight:800;color:#dc2626;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+.link-fact:hover{color:#991b1b}
+
+/* Modal del recibo (mismo patrón que cuadre-diario/bancos) */
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center}
+.modal-bg.open{display:flex}
+.modal-box{background:#fff;border-radius:14px;width:min(900px,98vw);max-height:94vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+.modal-head{background:#1e3a5f;padding:.75rem 1rem;display:flex;justify-content:space-between;align-items:center}
+.btn-close{background:rgba(255,255,255,.18);color:#fff;border:none;border-radius:5px;width:28px;height:28px;cursor:pointer;font-weight:800;font-size:1rem}
 </style>
 
 <div class="fd-header">
@@ -122,7 +145,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.78rem}
     <table class="tbl">
         <thead><tr>
             <th>No.</th>
-            <th>Factura</th>
+            <th><a href="{{ $sortUrl('factura') }}" class="th-sort {{ $sort === 'factura' ? 'activo' : '' }}">Factura{{ $sortIco('factura') }}</a></th>
 
             {{-- Tipo --}}
             <th>
@@ -137,7 +160,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.78rem}
                 </form>
             </th>
 
-            <th>Cédula</th>
+            <th><a href="{{ $sortUrl('cedula') }}" class="th-sort {{ $sort === 'cedula' ? 'activo' : '' }}">Cédula{{ $sortIco('cedula') }}</a></th>
             <th>Nombres</th>
 
             {{-- Forma de pago --}}
@@ -180,7 +203,20 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.78rem}
                 </form>
             </th>
 
-            <th>Razón social</th>
+            {{-- Razón social --}}
+            <th style="min-width:130px">
+                <form method="GET" action="{{ $ruta }}" style="margin:0">
+                    @foreach(request()->except(['razon_social_id','page']) as $k => $v)<input type="hidden" name="{{ $k }}" value="{{ $v }}">@endforeach
+                    <select name="razon_social_id" onchange="this.form.submit()" class="th-select {{ request('razon_social_id') ? 'activo' : '' }}">
+                        <option value="">↓ Razón social</option>
+                        @foreach($razonesDisp as $rs)
+                        <option value="{{ $rs->id }}" @selected(request('razon_social_id') == $rs->id)>
+                            {{ \Illuminate\Support\Str::limit($rs->razon_social, 25, '…') }}
+                        </option>
+                        @endforeach
+                    </select>
+                </form>
+            </th>
 
             {{-- Banco --}}
             <th style="min-width:120px">
@@ -215,7 +251,10 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.78rem}
         @forelse($facturas as $i => $f)
         <tr>
             <td style="color:#94a3b8">{{ $i + 1 }}</td>
-            <td style="font-weight:800;color:#dc2626">{{ $f->numero_factura }}</td>
+            <td>
+                <button type="button" class="link-fact" onclick="abrirRecibo({{ $f->id }})"
+                        title="Ver recibo">{{ $f->numero_factura }}</button>
+            </td>
             <td>
                 <span class="badge-tipo" style="background:{{ $colorTipo[$f->tipo_dia] ?? '#64748b' }}">
                     {{ $tipos[$f->tipo_dia] ?? $f->tipo_dia }}
@@ -302,4 +341,42 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.78rem}
     </div>
 </div>
 @endif
+
+{{-- ═══ MODAL: Recibo de la factura ═══ --}}
+<div id="modal-recibo" class="modal-bg" onclick="if(event.target===this)cerrarRecibo()">
+    <div class="modal-box">
+        <div class="modal-head">
+            <span style="color:#fff;font-weight:700;font-size:.9rem">📋 Recibo de Factura</span>
+            <div style="display:flex;gap:.4rem;align-items:center">
+                <a id="btn-abrir-recibo" href="#" target="_blank"
+                   style="background:rgba(255,255,255,.18);color:#fff;text-decoration:none;border-radius:5px;padding:.3rem .7rem;font-size:.78rem;font-weight:600">🔗 Abrir</a>
+                <button onclick="cerrarRecibo()" class="btn-close">×</button>
+            </div>
+        </div>
+        <div style="padding:0;flex:1;overflow:hidden">
+            <iframe id="iframe-recibo" src="" style="width:100%;height:82vh;border:none"></iframe>
+        </div>
+    </div>
+</div>
+
+<script>
+const FD_BASE_URL = '{{ url('') }}';
+
+function abrirRecibo(facturaId) {
+    const url = `${FD_BASE_URL}/admin/facturacion/recibo/${facturaId}?modal=1`;
+    document.getElementById('iframe-recibo').src = url;
+    document.getElementById('btn-abrir-recibo').href = url;
+    document.getElementById('modal-recibo').classList.add('open');
+}
+
+function cerrarRecibo() {
+    document.getElementById('modal-recibo').classList.remove('open');
+    // Limpiar el src evita que el iframe siga cargado en segundo plano
+    document.getElementById('iframe-recibo').src = '';
+}
+
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') cerrarRecibo();
+});
+</script>
 @endsection

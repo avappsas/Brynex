@@ -1132,6 +1132,11 @@ class CuadreDiarioController extends Controller
         $fBanco    = $request->input('banco_cuenta_id');
         $fEmpresa  = $request->input('empresa_id');   // 'individuales' = sin empresa
         $fUsuario  = $request->input('usuario_id');
+        $fRazon    = $request->input('razon_social_id');
+
+        $sort = in_array($request->input('sort'), ['factura', 'cedula'], true)
+            ? $request->input('sort') : null;
+        $dir  = $request->input('dir') === 'desc' ? 'desc' : 'asc';
 
         // `facturas.razon_social_id` casi nunca viene poblado (7.5k de 282k filas);
         // la razón social real vive en el contrato (99.8% de cobertura), así que
@@ -1168,13 +1173,30 @@ class CuadreDiarioController extends Controller
             $query->where('empresa_id', $fEmpresa);
         }
 
-        // Hay ~24k facturas históricas con numero_factura = 0 (registros sin
-        // numerar); van al final para no encabezar el listado.
-        $facturas = $query
-            ->orderByRaw('CASE WHEN numero_factura > 0 THEN 0 ELSE 1 END')
-            ->orderBy('numero_factura')
-            ->orderBy('id')
-            ->get();
+        // Razón social: la de la factura si existe, si no la del contrato.
+        // Debe replicar el mismo respaldo que usa razon_social_texto.
+        if ($fRazon) {
+            $query->where(function ($q) use ($fRazon) {
+                $q->where('razon_social_id', $fRazon)
+                  ->orWhere(fn($q2) => $q2->whereNull('razon_social_id')
+                      ->whereHas('contrato', fn($c) => $c->where('razon_social_id', $fRazon)));
+            });
+        }
+
+        if ($sort === 'factura') {
+            $query->orderBy('numero_factura', $dir)->orderBy('id', $dir);
+        } elseif ($sort === 'cedula') {
+            $query->orderBy('cedula', $dir)->orderBy('id', $dir);
+        } else {
+            // Orden por defecto: hay ~24k facturas históricas con
+            // numero_factura = 0 (retiros sin numerar); van al final para no
+            // encabezar el listado. Al ordenar a mano se respeta el orden literal.
+            $query->orderByRaw('CASE WHEN numero_factura > 0 THEN 0 ELSE 1 END')
+                  ->orderBy('numero_factura')
+                  ->orderBy('id');
+        }
+
+        $facturas = $query->get();
 
         // ── Nombres de cliente en un solo query (evita N+1 por cédula) ──
         $nombres = $facturas->isEmpty()
@@ -1235,6 +1257,8 @@ class CuadreDiarioController extends Controller
             'porUsuario' => $porUsuario,
             'tipos'      => self::TIPOS_FACTURA_DIA,
             'formas'     => self::FORMAS_PAGO_DIA,
+            'sort'       => $sort,
+            'dir'        => $dir,
         ] + $this->opcionesFacturasDia($aliadoId, $fecha);
     }
 
@@ -1247,11 +1271,14 @@ class CuadreDiarioController extends Controller
     {
         $base = Factura::where('aliado_id', $aliadoId)
             ->whereDate('fecha_pago', $fecha)
-            ->with(['empresa:id,empresa', 'usuario:id,nombre'])
+            ->with(['empresa:id,empresa', 'usuario:id,nombre',
+                    'razonSocial:id,razon_social', 'contrato:id,razon_social_id',
+                    'contrato.razonSocial:id,razon_social'])
             // numero_factura es obligatorio aquí: etiquetaTipoFactura lo usa
             // para detectar retiros y sin él todo se clasificaría como retiro.
             ->get(['id', 'tipo', 'numero_factura', 'es_prestamo', 'estado',
-                   'factura_retiro_origen_id', 'forma_pago', 'empresa_id', 'usuario_id']);
+                   'factura_retiro_origen_id', 'forma_pago', 'empresa_id',
+                   'usuario_id', 'razon_social_id', 'contrato_id']);
 
         $bancoIds = $base->isEmpty() ? collect() : DB::table('consignaciones')
             ->whereIn('factura_id', $base->pluck('id')->all())
@@ -1273,6 +1300,9 @@ class CuadreDiarioController extends Controller
                                 ->sortBy('empresa')->values(),
             'usuariosDisp' => $base->pluck('usuario')->filter()->unique('id')
                                 ->sortBy('nombre')->values(),
+            // Mismo respaldo al contrato que usa razon_social_texto
+            'razonesDisp'  => $base->map(fn($f) => $f->razonSocial ?? $f->contrato?->razonSocial)
+                                ->filter()->unique('id')->sortBy('razon_social')->values(),
         ];
     }
 
