@@ -124,6 +124,44 @@ $numGrupo    = str_pad($filas->first()?->numero_factura ?? $factura->numero_fact
     @if($unaPersona) DETALLE DE LA LIQUIDACIÓN
     @else TRABAJADORES &mdash; {{ $filas->count() }} registros @endif
 </div>
+
+@if($unaPersona && !$esCopiaEmp)
+{{-- ── Una sola persona, copia del cliente ──────────────────────────────
+     En vez de una tabla de 6 columnas y una sola fila (muy ancha y baja,
+     que obliga a escalar el recibo hacia abajo y deja la media hoja medio
+     vacía), las entidades van como etiqueta/valor en dos columnas. --}}
+@php
+$fU = $filas->first();
+$uArlNit = $fU->contrato?->razonSocial?->arl_nit ?? null;
+$uArl    = $uArlNit ? (\App\Models\Arl::where('nit',$uArlNit)->value('nombre_arl') ?? $uArlNit) : null;
+if (!$uArl) { $uArl = $fU->contrato?->arl?->nombre_arl ?? '—'; }
+if ($fU->contrato?->n_arl) { $uArl .= ' N'.$fU->contrato->n_arl; }
+$uEntidades = [
+    ['EPS',            $fU->contrato?->eps?->nombre ?? '—', (int)($fU->v_eps ?? 0),  '#1d4ed8'],
+    ['ARL',            $uArl,                               (int)($fU->v_arl ?? 0),  '#15803d'],
+    ['Pensión',        $fU->contrato?->pension?->razon_social ?? '—', (int)($fU->v_afp ?? 0),  '#7c3aed'],
+    ['Caja de compensación', $fU->contrato?->caja?->nombre ?? $fU->contrato?->caja?->razon_social ?? 'Ninguna', (int)($fU->v_caja ?? 0), '#0369a1'],
+    ['Días cotizados', $fU->dias_cotizados ?? 30, null,                     '#0f172a'],
+];
+@endphp
+<div style="padding:.45rem .85rem .1rem">
+    <div class="liq-grid">
+        @foreach($uEntidades as [$lbl, $val, $imp, $col])
+        <div class="liq-item">
+            <span>{{ $lbl }}</span>
+            <b style="color:{{ $col }}">
+                {{ $val }}
+                @if($imp !== null && $imp > 0)<em class="g-val">{{ $fmt($imp) }}</em>@endif
+            </b>
+        </div>
+        @endforeach
+    </div>
+</div>
+<div class="liq-total">
+    <span>TOTAL A PAGAR</span>
+    <b>${{ number_format($totTotal,0,',','.') }}</b>
+</div>
+@else
 <div style="padding:0 .85rem">
 <table class="fact-table" style="font-size:.72rem;table-layout:auto;width:100%">
 <thead>
@@ -224,11 +262,14 @@ $tSS = $tEps + $tArl + $tPen + $tCaj;
 </tfoot>
 </table>
 </div>{{-- cierre div padding --}}
-{{-- RESUMEN FINANCIERO + FORMA DE PAGO (solo visible en detallado) --}}
-<div class="fact-pago-area bloque-resumen" style="margin:.75rem .85rem 0{{ $esCopiaEmp ? ';grid-template-columns:1fr' : '' }}">
+@endif
+{{-- RESUMEN FINANCIERO + FORMA DE PAGO (solo visible en detallado).
+     Nada de esto va en la copia empresa: el desglose del final ya trae el
+     resumen y la forma de pago, y así no se gasta una franja de la hoja. --}}
+@unless($esCopiaEmp)
+<div class="fact-pago-area bloque-resumen" style="margin:.75rem .85rem 0">
 
-    {{-- Columna izquierda: Resumen Financiero (no va en la copia empresa:
-         lo reemplaza el desglose detallado del final) --}}
+    {{-- Columna izquierda: Resumen Financiero --}}
     @if(!$esCopiaEmp)
     <div class="fact-pago-col">
         <div class="fact-pago-hdr">Resumen Financiero</div>
@@ -325,6 +366,7 @@ $tSS = $tEps + $tArl + $tPen + $tCaj;
     </div>
 
 </div>
+@endunless
 {{-- NOTA LEGAL — es un aviso para el cliente, no va en la copia empresa --}}
 @if(!$esCopiaEmp)
 <div style="margin:.7rem .85rem 0;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:.5rem .85rem;font-size:.68rem;color:#92400e;line-height:1.5">
@@ -922,7 +964,9 @@ $empresaCliente = $cli1?->empresa ?? ($cli1?->cod_empresa ? \App\Models\Empresa:
 
 </div>{{-- /fact-body --}}
 
-{{-- ══ FORMA DE PAGO — siempre visible (vista simple y detallada) ══ --}}
+{{-- ══ FORMA DE PAGO — siempre visible (vista simple y detallada) ══
+     En la copia empresa no se dibuja: va dentro del desglose del final. --}}
+@unless($esCopiaEmp)
 @php
 $fpLabel = match($factura->forma_pago ?? '') {
     'consignacion' => '🏦 Consignación',
@@ -1024,10 +1068,11 @@ $fpLabel = match($factura->forma_pago ?? '') {
     </div>
     @endif
 </div>
+@endunless
 
 {{-- DESGLOSE EMPRESA (solo en la copia de la empresa) --}}
 @if($esCopiaEmp)
-<div style="padding:0 1.2rem .6rem;background:#f8fafc;">
+<div style="padding:.6rem 1.2rem;background:#f8fafc;border-top:1.5px solid #e2e8f0;">
     @include('admin.facturacion._recibo_desglose_empresa')
 </div>
 @endif

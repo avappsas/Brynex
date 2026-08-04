@@ -120,8 +120,9 @@ $sAnt      = (int)($saldoAnterior ?? 0);
                 <span>Anticipo aplicado</span><b>{{ $dAnticipo > 0 ? '−'.$fmt($dAnticipo) : $fmt(0) }}</b>
             </div>
 
-            <div class="dg-row dg-sub"><span>Total factura</span><b>{{ $fmt($dTotal) }}</b></div>
-            <div class="dg-row"><span>Pagado (efvo + consig + antic.)</span><b>{{ $fmt($dPagado) }}</b></div>
+            {{-- "Total factura" no se repite aquí: ya sale en el bloque
+                 TOTAL A PAGAR del recibo. --}}
+            <div class="dg-row dg-sub"><span>Pagado (efvo + consig + antic.)</span><b>{{ $fmt($dPagado) }}</b></div>
 
             {{-- Saldo próximo: lo que realmente queda para el mes siguiente --}}
             @if($dSaldoProx > 0)
@@ -135,6 +136,41 @@ $sAnt      = (int)($saldoAnterior ?? 0);
             @else
             <div class="dg-row dg-saldo dg-cero">
                 <span>Saldo próximo</span><b>Al día</b>
+            </div>
+            @endif
+        </div>
+
+        {{-- ── Forma de pago ────────────────────────────────────
+             Va aquí dentro para no gastar una franja aparte del recibo. --}}
+        <div class="dg-col">
+            <div class="dg-col-hdr">Forma de pago</div>
+            <div class="dg-row">
+                <span>Tipo</span>
+                <b style="font-family:inherit">{{ ucfirst(str_replace('_',' ', $factura->forma_pago ?? '—')) }}</b>
+            </div>
+            @if($dEfect > 0)
+            <div class="dg-row" style="color:#15803d"><span>Efectivo</span><b>{{ $fmt($dEfect) }}</b></div>
+            @endif
+            @foreach($consignacionesGrupo as $csg)
+            <div class="dg-row">
+                <span style="color:#1d4ed8;font-weight:600">
+                    {{ $csg->bancoCuenta?->nombre ?? 'Banco' }}@if($csg->confirmado) ✓ @endif
+                    <small style="display:block;color:#94a3b8;font-size:.6rem;font-weight:400">
+                        {{ sqldate($csg->fecha)->format('d/m/Y') }}@if($csg->referencia) · Ref {{ $csg->referencia }}@endif
+                    </small>
+                </span>
+                <b>{{ $fmt($csg->valor) }}</b>
+            </div>
+            @endforeach
+            @if($dAnticipo > 0)
+            <div class="dg-row" style="color:#15803d"><span>Anticipo</span><b>{{ $fmt($dAnticipo) }}</b></div>
+            @endif
+            @if($totPrest > 0)
+            <div class="dg-row" style="color:#7c3aed"><span>Préstamo pendiente</span><b>{{ $fmt($totPrest) }}</b></div>
+            @endif
+            @if($factura->observacion)
+            <div style="margin-top:.25rem;font-size:.62rem;color:#94a3b8;font-style:italic;line-height:1.35">
+                {{ $factura->observacion }}
             </div>
             @endif
         </div>

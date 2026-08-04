@@ -103,8 +103,10 @@ copia CLIENTE arriba, copia EMPRESA abajo, para partirla por la mitad.
   `['copia' => 'cliente'|'empresa']`. Dentro del partial eso es `$esCopiaEmp`.
 - La copia cliente respeta el botón "Vista detallada"; la copia empresa
   lleva `.det` fijo (siempre detallada).
-- En la copia empresa se omiten la **nota legal** y el **Resumen
-  Financiero** (lo reemplaza el desglose completo).
+- En la copia empresa se omiten la **nota legal**, el **Resumen Financiero**
+  y la franja de **Forma de Pago**: todo eso lo absorbe el desglose del
+  final, que tiene 4 columnas (SS · Servicios · Saldos · Forma de pago).
+  Tampoco repite "Total factura", que ya sale en el bloque TOTAL A PAGAR.
 - El escalado lo hace `ajustarCopias()` en JS. No usa un ancho fijo: prueba
   varios anchos de diseño (`ANCHOS_DISENO`) y elige el que da mayor escala,
   **descartando** los que hacen crecer el alto — señal de que la tabla ya
@@ -130,10 +132,16 @@ factura. Usarlo hacía que un recibo de una sola persona saliera encabezado
 con una empresa ajena.
 
 - Con `empresa_id` → encabezado "Empresa": nombre, NIT y datos de entrega.
-- Sin `empresa_id` y 1 fila → "Afiliado": nombre, C.C. y badge
-  Dependiente/Independiente. Además la tabla **omite las columnas No /
-  Nombre / Razón Social** (ya están en el encabezado) y se titula "Detalle
-  de la liquidación". Ojo con el `colspan` del `tfoot`: cambia de 8 a 5.
+- Sin `empresa_id` y 1 fila (`$unaPersona`) → "Afiliado": nombre, C.C. y
+  badge Dependiente/Independiente. Además:
+  - En la **copia cliente** la tabla se reemplaza por `.liq-grid`: las
+    entidades como etiqueta/valor en dos columnas (EPS/ARL, Pensión/Caja,
+    Días) más una barra `.liq-total`. Una tabla de 6 columnas y una sola
+    fila es muy ancha y baja, y obliga a escalar el recibo hacia abajo
+    dejando media hoja vacía; el grid es más angosto y sube la escala.
+  - En la **copia empresa** se mantiene la tabla (hacen falta los valores
+    por entidad), pero **sin las columnas No / Nombre / Razón Social**.
+    Ojo con el `colspan` del `tfoot`: cambia de 8 a 5.
 - Sin `empresa_id` y varias filas → la razón social si todas comparten una,
   si no "N trabajadores".
 

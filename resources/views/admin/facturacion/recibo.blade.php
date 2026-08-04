@@ -643,6 +643,47 @@ $estadoCls = fn($e) => match($e) {
     .copia-slot, .copia-escala { overflow: hidden !important; }
 }
 
+/* ─── LIQUIDACIÓN DE UNA SOLA PERSONA (copia cliente) ─────────────────
+   Reemplaza la tabla de 6 columnas cuando el recibo es de un afiliado:
+   dos columnas de etiqueta/valor ocupan menos ancho y algo más de alto,
+   que es justo lo que necesita el escalado para llenar la media hoja.  */
+.liq-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0 1.1rem;
+}
+.liq-item {
+    display: flex; justify-content: space-between; align-items: baseline;
+    gap: .6rem; padding: .26rem .1rem;
+    border-bottom: 1px solid #eef2f7;
+}
+.liq-item > span {
+    color: #64748b; font-weight: 700; font-size: .64rem;
+    text-transform: uppercase; letter-spacing: .05em; white-space: nowrap;
+}
+.liq-item > b {
+    font-weight: 800; font-size: .84rem; text-align: right; line-height: 1.2;
+}
+/* Valor en pesos: sin `display` propio, para que mande la regla .g-val
+   (oculto en vista simple, visible con .det). */
+.liq-item em {
+    font-size: .64rem; color: #64748b;
+    font-style: italic; font-weight: 600; font-family: monospace;
+}
+.det .liq-item em { display: block; }
+.liq-total {
+    background: #0f172a;
+    display: flex; justify-content: space-between; align-items: center;
+    padding: .5rem .85rem; margin-top: .35rem;
+}
+.liq-total span {
+    color: #93c5fd; font-size: .74rem; font-weight: 800; letter-spacing: .08em;
+}
+.liq-total b {
+    color: #fbbf24; font-size: 1.35rem; font-weight: 900;
+    font-family: monospace; letter-spacing: -.02em;
+}
+
 /* ─── DESGLOSE COPIA EMPRESA ──────────────────────────────────────────
    Bloque que solo aparece en la copia de la empresa: administración
    separada (empresa / asesor), seguro, 4×1000 y los tres saldos.       */
@@ -661,7 +702,7 @@ $estadoCls = fn($e) => match($e) {
 }
 .desglose-emp-grid {
     display: grid;
-    grid-template-columns: 1fr 1.15fr 1.15fr;
+    grid-template-columns: 1fr 1.15fr 1.2fr 1.1fr;
     gap: 0;
 }
 .dg-col { padding: .4rem .7rem; }
