@@ -162,6 +162,11 @@ table.tbl-det tfoot .num { color: #34d399; }
         <div>Señores:</div>
         <div class="empresa-dest">{{ $empresa->empresa ?? '' }}</div>
         @if($empresa?->contacto)<div>Att. {{ $empresa->contacto }}</div>@endif
+        {{-- Datos de entrega: los usa el mensajero que lleva el documento --}}
+        @if($empresa?->direccion)<div>{{ $empresa->direccion }}</div>@endif
+        @if($empresa?->celular || $empresa?->telefono)
+        <div>Tel. {{ collect([$empresa->celular, $empresa->telefono])->filter()->implode(' / ') }}</div>
+        @endif
     </div>
 
     <div style="margin-bottom:.5rem;"><em>Cordial Saludo,</em></div>

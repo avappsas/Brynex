@@ -135,7 +135,13 @@ table.fac-tbl{width:100%;border-collapse:collapse;font-size:.78rem}
             </div>
             <div class="fac-h-meta">
                 @if($empresa->nit)<span>NIT: {{ $empresa->nit }}</span>@endif
+                {{-- Contacto propio de la empresa: arriba se muestra el asesor
+                     cuando existe, así que aquí no se pierde a quién buscar. --}}
+                @if($empresa->contacto)<span>👤 {{ $empresa->contacto }}</span>@endif
                 @if($empresa->celular)<span>📞 {{ $empresa->celular }}</span>@endif
+                @if($empresa->telefono)<span>☎️ {{ $empresa->telefono }}</span>@endif
+                {{-- Dirección de entrega: la usa quien despacha al mensajero --}}
+                @if($empresa->direccion)<span>📍 {{ $empresa->direccion }}</span>@endif
 {{-- IVA oculto del encabezado --}}
             </div>
         </div>
