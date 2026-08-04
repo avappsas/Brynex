@@ -384,6 +384,7 @@ body {
         <thead>
             <tr>
                 <th>🚦</th>
+                <th>Creada</th>
                 <th>Tipo</th>
                 <th>Cliente / Cédula</th>
                 <th>Tarea</th>
@@ -414,6 +415,7 @@ body {
                     @endif
                 </span>
             </td>
+            <td style="font-size:.75rem;white-space:nowrap;color:#64748b;" title="{{ $t->created_at?->format('d/m/Y h:i a') }}">{{ $t->created_at?->format('d/m/y') ?? '—' }}</td>
             <td style="font-size:.73rem;font-weight:600;color:#475569;">{{ $t->tipoLabel() }}</td>
             <td>
                 <div style="font-weight:600;font-size:.8rem;">{{ $t->nombre_cliente }}</div>
@@ -570,6 +572,7 @@ body {
                     <div>
                         <span style="font-size:0.68rem; font-weight:700; color:#64748b; display:block; letter-spacing: 0.05em; margin-bottom: 0.15rem;">TIPO DE TAREA</span>
                         <span id="detTipo" style="font-size:0.82rem; font-weight:700; color:#1e293b;">—</span>
+                        <span id="detCreada" style="font-size:0.7rem; color:#94a3b8; display:block;">—</span>
                     </div>
                     <div>
                         <span style="font-size:0.68rem; font-weight:700; color:#64748b; display:block; letter-spacing: 0.05em; margin-bottom: 0.15rem;">ENCARGADO</span>
@@ -1076,6 +1079,7 @@ function abrirModalUnico(id) {
     document.getElementById('detClienteNombre').textContent = 'Cargando...';
     document.getElementById('detClienteCedula').textContent = '—';
     document.getElementById('detTipo').textContent = '—';
+    document.getElementById('detCreada').textContent = '—';
     document.getElementById('detEncargado').textContent = '—';
     document.getElementById('detContrato').textContent = '—';
     document.getElementById('detEntidad').textContent = '—';
@@ -1097,6 +1101,7 @@ function abrirModalUnico(id) {
             
             // Llenar Ficha de Detalles (Solo Lectura)
             document.getElementById('detTipo').textContent = t.tipo;
+            document.getElementById('detCreada').textContent = data.creada ? `Creada: ${data.creada}` : '—';
             document.getElementById('detEncargado').textContent = t.encargado ? t.encargado.nombre : '—';
             document.getElementById('detClienteNombre').textContent = clienteNombre;
             document.getElementById('detClienteCedula').textContent = `C.C. ${t.cedula}`;

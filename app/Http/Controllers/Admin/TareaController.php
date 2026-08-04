@@ -211,6 +211,8 @@ class TareaController extends Controller
         return response()->json([
             'tarea'    => $tarea,
             'cliente'  => $cliente,
+            // Fecha de creación ya formateada: evita ambigüedad de zona horaria en el front
+            'creada'   => $tarea->created_at?->format('d/m/Y h:i a'),
             'semaforo' => $tarea->colorSemaforo(),
             'icono'    => $tarea->iconoSemaforo(),
             'dias'     => $tarea->diasRestantes(),
