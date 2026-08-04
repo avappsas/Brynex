@@ -47,7 +47,7 @@ class CompletarRuafClientes extends Command
     protected $signature = 'clientes:completar-ruaf
         {--limite=100        : Cuántos clientes procesar en esta corrida}
         {--aliado=           : Procesar solo este aliado (id)}
-        {--fase=pendientes   : pendientes | resto | todos}
+        {--fase=auto         : auto | activos | retirados | faltantes}
         {--pausa=0           : Milisegundos de espera entre consultas}
         {--aplicar           : Escribir en la BD. Sin esto solo simula}
         {--reconsultar       : Volver a consultar los que ya tienen fila}';
@@ -119,8 +119,22 @@ class CompletarRuafClientes extends Command
     }
 
     /**
-     * Orden de trabajo: primero los que no tienen ni EPS ni pensión (el hueco
-     * más grande), luego el resto. Los que ya se consultaron se saltan.
+     * A quién le toca en esta corrida.
+     *
+     * El orden importa porque el trabajo se reparte en tandas de varias horas:
+     * lo urgente son los clientes ACTIVOS a los que les falta información,
+     * porque son los que se están facturando y liquidando ahora. Los retirados
+     * se consultan al final, solo para dejar el histórico completo.
+     *
+     *   0. vigente,  sin EPS ni pensión      ← lo que hay que arreglar ya
+     *   1. vigente,  le falta uno de los dos
+     *   2. vigente,  completo                ← solo para detectar diferencias
+     *   3. retirado, sin EPS ni pensión
+     *   4. retirado, le falta uno
+     *   5. retirado, completo
+     *
+     * Los que ya tienen fila en ruaf_consultas no se vuelven a consultar, así
+     * que cada corrida sigue donde quedó la anterior.
      */
     private function clientesAProcesar(int $limite)
     {
@@ -138,19 +152,33 @@ class CompletarRuafClientes extends Command
             $q->where('c.aliado_id', (int) $aliado);
         }
 
-        $sinEps = fn ($w) => $w->whereNull('c.eps_id')->orWhere('c.eps_id', 0)->orWhere('c.eps_id', self::ID_NINGUNA);
-        $sinPen = fn ($w) => $w->whereNull('c.pension_id')->orWhere('c.pension_id', 0)->orWhere('c.pension_id', self::ID_NINGUNA);
+        $ninguna = self::ID_NINGUNA;
+        // Un contrato vigente del MISMO aliado: la cédula sola no basta, la
+        // misma persona puede estar con dos aliados distintos.
+        $vigente = "EXISTS (SELECT 1 FROM contratos k WHERE k.cedula = c.cedula
+                            AND k.aliado_id = c.aliado_id AND k.estado = 'vigente')";
+        $sinEps  = "(c.eps_id IS NULL OR c.eps_id IN (0, {$ninguna}))";
+        $sinPen  = "(c.pension_id IS NULL OR c.pension_id IN (0, {$ninguna}))";
 
         match ($this->option('fase')) {
-            // Lo que pediste primero: sin EPS ni pensión.
-            'pendientes' => $q->where(fn ($w) => $w->where($sinEps))->where(fn ($w) => $w->where($sinPen)),
-            // Los que ya tienen ambos: solo para detectar diferencias.
-            'resto'      => $q->whereNotNull('c.eps_id')->where('c.eps_id', '>', self::ID_NINGUNA)
-                              ->whereNotNull('c.pension_id')->where('c.pension_id', '>', self::ID_NINGUNA),
-            default      => null,
+            'activos'   => $q->whereRaw($vigente),
+            'retirados' => $q->whereRaw("NOT {$vigente}"),
+            'faltantes' => $q->whereRaw("({$sinEps} OR {$sinPen})"),
+            default     => null,   // auto: todos, en el orden de prioridad
         };
 
-        return $q->orderBy('c.aliado_id')->orderBy('c.id')->limit($limite)->get();
+        return $q
+            ->orderByRaw("CASE
+                WHEN {$vigente} AND {$sinEps} AND {$sinPen} THEN 0
+                WHEN {$vigente} AND ({$sinEps} OR {$sinPen})  THEN 1
+                WHEN {$vigente}                                THEN 2
+                WHEN {$sinEps} AND {$sinPen}                   THEN 3
+                WHEN {$sinEps} OR {$sinPen}                    THEN 4
+                ELSE 5 END")
+            ->orderBy('c.aliado_id')
+            ->orderBy('c.id')
+            ->limit($limite)
+            ->get();
     }
 
     private function procesar(object $c, bool $aplicar): void

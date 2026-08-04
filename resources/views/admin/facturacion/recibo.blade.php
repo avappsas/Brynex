@@ -30,12 +30,36 @@ if ($filas->count() === 2) {
     }
 }
 
-// Empresa (factura siempre a nombre de la empresa, no del trabajador)
+// ── ¿A nombre de quién va el recibo? ──────────────────────────────────
+// Se decide por facturas.empresa_id, NO por clientes.cod_empresa: ese
+// último es el canal/referido comercial del cliente y no tiene nada que
+// ver con a quién se le factura. Usarlo hacía que un recibo individual
+// saliera encabezado con una empresa ajena (p.ej. "REFERIDOS EMERMEDICA"
+// sobre un recibo de una sola persona).
 $empresaObj = null;
-if ($esGrupo) {
-    $codEmp = $filas->first()->contrato?->cliente?->cod_empresa;
-    if ($codEmp) $empresaObj = \App\Models\Empresa::find($codEmp);
+if ($esGrupo && $factura->empresa_id) {
+    $empresaObj = \App\Models\Empresa::find($factura->empresa_id);
+}
 
+// Sin empresa: el recibo es de una persona (o de un puñado sin empresa).
+// Se arma el título con el trabajador cuando es uno solo, y con la razón
+// social compartida —si la hay— cuando son varios.
+$tituloPersona = null;
+$subtituloPersona = null;
+if ($esGrupo && !$empresaObj) {
+    if ($filas->count() === 1) {
+        $cliUno = $filas->first()->contrato?->cliente;
+        $tituloPersona = trim(($cliUno?->primer_nombre ?? '').' '.($cliUno?->segundo_nombre ?? '')
+                            .' '.($cliUno?->primer_apellido ?? '').' '.($cliUno?->segundo_apellido ?? ''));
+        $tituloPersona = $tituloPersona ?: ('C.C. '.$filas->first()->cedula);
+        $subtituloPersona = 'C.C. '.$filas->first()->cedula;
+    } else {
+        $rsUnicas = $filas->map(fn($x) => $x->contrato?->razonSocial?->razon_social)
+                          ->filter()->unique()->values();
+        $tituloPersona = $rsUnicas->count() === 1
+            ? $rsUnicas->first()
+            : $filas->count().' trabajadores';
+    }
 }
 
 // Totales del grupo
@@ -112,7 +136,10 @@ $estadoCls = fn($e) => match($e) {
    quedando pegado arriba y dejando la mitad inferior en blanco. */
 @page {
     size: letter portrait;
-    margin: 8mm;
+    /* En doble copia se aprieta el margen a 6mm para ganar ancho y alto
+       útiles (cada copia dispone de más espacio antes de escalarse).
+       6mm es el mínimo seguro: por debajo hay impresoras que recortan. */
+    margin: {{ ($reciboDoble ?? false) ? '6mm' : '8mm' }};
 }
 @media print {
     body * { visibility: hidden !important; }
@@ -129,10 +156,13 @@ $estadoCls = fn($e) => match($e) {
         box-shadow: none !important;
     }
     .no-print { display: none !important; }
-    .recibo-wrap { box-shadow: none !important; border-radius: 0 !important; border: none !important; overflow: visible !important; }
-    .recibo-inner { margin: 0 !important; border: none !important; box-shadow: none !important; border-radius: 0 !important; overflow: visible !important; }
-    .recibo-inner-wrap { margin: 0 !important; overflow: visible !important; }
-    .fact-header { border: none !important; border-radius: 0 !important; }
+    /* Estas reglas reacomodan el recibo SOLO en el modo simple. En doble
+       copia no deben aplicar: cambiarían el layout respecto a lo que se ve
+       en pantalla y el escalado calculado en pantalla dejaría de servir. */
+    .hoja-fondo .recibo-wrap { box-shadow: none !important; border-radius: 0 !important; border: none !important; overflow: visible !important; }
+    .hoja-fondo .recibo-inner { margin: 0 !important; border: none !important; box-shadow: none !important; border-radius: 0 !important; overflow: visible !important; }
+    .hoja-fondo .recibo-inner-wrap { margin: 0 !important; overflow: visible !important; }
+    .hoja-fondo .fact-header { border: none !important; border-radius: 0 !important; }
     .fact-sello { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .hoja-fondo { background: #fff !important; padding: 0 !important; }
     /* Colores de fondo se imprimen */
@@ -149,23 +179,25 @@ $estadoCls = fn($e) => match($e) {
     .recibo-wrap.det .g-adm-footer { display: table-row !important; }
     .recibo-wrap.det .g-val { display: block !important; }
     .recibo-wrap.det .col-valor-det { display: table-cell !important; }
-    /* Tabla: auto-layout con fuente compacta para que entre en A4 landscape */
-    .fact-table {
+    /* Tabla: auto-layout con fuente compacta para que entre en el ancho útil.
+       Solo modo simple: en doble copia la tabla se imprime tal cual se ve y
+       es el transform:scale de cada copia el que la hace caber. */
+    .hoja-fondo .fact-table {
         table-layout: auto !important;
         width: 100% !important;
         font-size: .58rem !important;
     }
-    .fact-table td, .fact-table th {
+    .hoja-fondo .fact-table td, .hoja-fondo .fact-table th {
         overflow: visible !important;
         white-space: normal !important;
         word-break: normal !important;
         padding: .25rem .4rem !important;
     }
-    .fact-table td.right, .fact-table tfoot td.right {
+    .hoja-fondo .fact-table td.right, .hoja-fondo .fact-table tfoot td.right {
         white-space: nowrap !important;
     }
     /* Padding interno de la tabla no se corte */
-    .fact-section-title + div[style*="padding"] {
+    .hoja-fondo .fact-section-title + div[style*="padding"] {
         padding: 0 !important;
     }
 }
@@ -521,21 +553,21 @@ $estadoCls = fn($e) => match($e) {
 /* ═══════════════════════════════════════════════════════════════════════
    MODO DOBLE COPIA — dos recibos en una hoja carta, para partir al medio
    ---------------------------------------------------------------------
-   Geometría (con @page margin: 8mm sobre carta 215.9 × 279.4mm):
-     ancho útil = 215.9 − 16 = 199.9mm
-     alto  útil = 279.4 − 16 = 263.4mm
-     línea de corte = 4mm  →  slot = (263.4 − 4) / 2 = 129.7mm
-   Se usan 128.5mm por slot (261mm de total): deja ~2.4mm de holgura para
+   Geometría (con @page margin: 6mm sobre carta 215.9 × 279.4mm):
+     ancho útil = 215.9 − 12 = 203.9mm
+     alto  útil = 279.4 − 12 = 267.4mm
+     línea de corte = 4mm  →  slot = (267.4 − 4) / 2 = 131.7mm
+   Se usan 130.5mm por slot (265mm de total): deja ~2.4mm de holgura para
    que un redondeo del navegador no empuje la hoja a una segunda página.
    La MISMA geometría se usa en pantalla y en impresión, así que lo que se
    ve es lo que sale. El escalado de cada copia lo calcula ajustarCopias().
 ═══════════════════════════════════════════════════════════════════════ */
 .hoja-doble {
-    --hoja-ancho:  199.9mm;
-    --slot-alto:   128.5mm;
+    --hoja-ancho:  203.9mm;
+    --slot-alto:   130.5mm;
     --marca-alto:  4.6mm;
     --corte-alto:  4mm;
-    --diseno-ancho: 1150px;   /* ancho de diseño del recibo antes de escalar */
+    --diseno-ancho: 1150px;   /* ancho inicial; ajustarCopias() busca el mejor */
     box-sizing: border-box;
     background: #fff;
     margin: 0 auto;
@@ -570,9 +602,13 @@ $estadoCls = fn($e) => match($e) {
     margin: 0;
     transform-origin: top left;
     box-shadow: none;
-    border: none;
+    border: 1px solid #c9d2dc;   /* igual en pantalla y en papel */
     border-radius: 0;
 }
+/* Clase temporal que pone ajustarCopias() mientras mide: replica el layout
+   de impresión (sin los elementos .no-print) para que la escala calculada
+   en pantalla sea exactamente la que necesita el papel. */
+.hoja-doble.midiendo .no-print { display: none !important; }
 .linea-corte {
     height: var(--corte-alto);
     border-top: 1px dashed #cbd5e1;
@@ -586,7 +622,7 @@ $estadoCls = fn($e) => match($e) {
     .hoja-doble-fondo { background: #e8edf2; padding: 1.5rem 1.2rem; min-height: 100vh; }
     .hoja-doble {
         width: 215.9mm;          /* hoja carta completa */
-        padding: 8mm;            /* equivalente al margin del @page */
+        padding: 6mm;            /* equivalente al margin del @page */
         box-shadow: 0 2px 6px rgba(0,0,0,.14), 0 12px 44px rgba(0,0,0,.13);
     }
 }
@@ -605,8 +641,6 @@ $estadoCls = fn($e) => match($e) {
     }
     .hoja-doble-fondo { background: #fff !important; padding: 0 !important; min-height: 0 !important; }
     .copia-slot, .copia-escala { overflow: hidden !important; }
-    /* El recuadro exterior de cada copia sí se dibuja al imprimir */
-    .copia-escala > .recibo-wrap { border: 1px solid #c9d2dc !important; }
 }
 
 /* ─── DESGLOSE COPIA EMPRESA ──────────────────────────────────────────
@@ -791,25 +825,71 @@ function toggleVistaDet() {
 }
 
 // ── Modo doble copia: escalar cada recibo para que quepa en su mitad ──
-// El recibo se dibuja siempre al ancho de diseño (1150px) y aquí se le
-// calcula el transform que lo centra dentro de su slot de media hoja.
 // Se aplica en pantalla y en impresión (misma geometría), así que lo que
 // se ve en pantalla es exactamente lo que sale por la impresora.
+//
+// El recibo es fluido: al dibujarlo más angosto, el contenido se reacomoda
+// en más filas y crece de alto. Eso cambia la escala que cabe en la media
+// hoja, y no siempre el ancho más grande es el que mejor aprovecha: un
+// recibo de pocas filas dibujado a 1150px se queda limitado por el ancho
+// (~0.66) desperdiciando alto, mientras que a 900px puede subir bastante.
+// Por eso aquí se prueban varios anchos y se elige el de mayor escala.
+const ANCHOS_DISENO = [1150, 1060, 980, 900, 830, 770, 710];
+
 function ajustarCopias() {
-    document.querySelectorAll('.copia-escala').forEach(slot => {
-        const wrap = slot.querySelector('.recibo-wrap');
-        if (!wrap) return;
-        wrap.style.transform = 'none';        // medir sin escala previa
-        const dispW = slot.clientWidth;
-        const dispH = slot.clientHeight;
-        const natW  = wrap.offsetWidth;
-        const natH  = wrap.scrollHeight;
-        if (!natW || !natH || !dispW || !dispH) return;
-        const s = Math.min(dispW / natW, dispH / natH, 1);
-        const x = Math.max(0, (dispW - natW * s) / 2);
+    const hoja = document.querySelector('.hoja-doble');
+    if (!hoja) return;
+
+    const copias = [...document.querySelectorAll('.copia-escala')]
+        .map(slot => ({ slot, wrap: slot.querySelector('.recibo-wrap') }))
+        .filter(c => c.wrap && c.slot.clientWidth > 0 && c.slot.clientHeight > 0);
+    if (!copias.length) return;
+
+    // ── Pasada 1: con el layout de impresión (sin los .no-print, que en
+    //    pantalla ocupan espacio —el link 👤 de cada fila— y al imprimir
+    //    desaparecen). Aquí se elige el ancho de diseño de cada copia.
+    hoja.classList.add('midiendo');
+    for (const c of copias) {
+        const dispW = c.slot.clientWidth, dispH = c.slot.clientHeight;
+        c.wrap.style.transform = 'none';      // medir sin escala previa
+
+        // Perfil alto/escala para cada ancho candidato
+        const perfil = [];
+        for (const w of ANCHOS_DISENO) {
+            c.wrap.style.width = w + 'px';
+            const h = c.wrap.scrollHeight;
+            if (h) perfil.push({ w, h, s: Math.min(dispW / w, dispH / h) });
+        }
+        if (!perfil.length) { c.wrap.style.width = ANCHOS_DISENO[0] + 'px'; c.malo = true; continue; }
+
+        // Descartar los anchos donde el contenido empieza a comprimirse: si
+        // al estrechar crece el alto, la tabla ya está partiendo palabras
+        // ("INDEPENDIENT/E", "Ningun/a") — gana escala pero se ve mal.
+        const hMin  = Math.min(...perfil.map(p => p.h));
+        const sanos = perfil.filter(p => p.h <= hMin * 1.01);
+
+        // De los sanos, la mayor escala; a igualdad el ancho más grande
+        // (misma letra impresa, pero la tabla respira más).
+        const sMax = Math.max(...sanos.map(p => p.s));
+        c.w = Math.max(...sanos.filter(p => p.s >= sMax * 0.995).map(p => p.w));
+
+        c.wrap.style.width = c.w + 'px';
+        c.hPrint = c.wrap.scrollHeight;
+    }
+    hoja.classList.remove('midiendo');
+
+    // ── Pasada 2: mismo ancho, pero midiendo con los .no-print visibles.
+    //    La escala se calcula con el ALTO MAYOR de los dos estados, para
+    //    que la copia no se corte ni en pantalla ni en el papel.
+    for (const c of copias) {
+        if (c.malo) continue;
+        const dispW = c.slot.clientWidth, dispH = c.slot.clientHeight;
+        const natH  = Math.max(c.hPrint, c.wrap.scrollHeight);
+        const s = Math.min(dispW / c.w, dispH / natH);
+        const x = Math.max(0, (dispW - c.w * s) / 2);
         const y = Math.max(0, (dispH - natH * s) / 2);
-        wrap.style.transform = `translate(${x}px, ${y}px) scale(${s})`;
-    });
+        c.wrap.style.transform = `translate(${x}px, ${y}px) scale(${s})`;
+    }
 }
 window.addEventListener('load',   ajustarCopias);
 window.addEventListener('resize', ajustarCopias);

@@ -42,12 +42,32 @@ $numGrupo    = str_pad($filas->first()?->numero_factura ?? $factura->numero_fact
             </div>
             @endif
         @else
-            <div style="font-size:.55rem;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.07em;margin-bottom:.04rem">Empresa</div>
-            <div style="font-size:1.4rem;font-weight:900;color:#0f172a;line-height:1.15">{{ $filas->first()->contrato?->razonSocial?->razon_social ?? 'Empresa' }}</div>
+            {{-- Sin empresa_id: el recibo va a nombre de la persona (o de la
+                 razón social compartida si el lote trae varios sin empresa). --}}
+            @php
+                $rsUno   = $filas->count() === 1 ? ($filas->first()->contrato?->razonSocial?->razon_social ?? null) : null;
+                $etqCol1 = $filas->count() === 1 ? 'Afiliado' : 'Razón Social';
+            @endphp
+            <div style="font-size:.55rem;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.07em;margin-bottom:.04rem">{{ $etqCol1 }}</div>
+            <div style="font-size:1.4rem;font-weight:900;color:#0f172a;line-height:1.15;letter-spacing:-.02em">{{ $tituloPersona ?? '—' }}</div>
+            @if($subtituloPersona)
+            <div style="font-size:.65rem;color:#64748b;margin-top:.05rem">{{ $subtituloPersona }}</div>
+            @endif
+            @if($filas->count() === 1)
+                <div style="margin-top:.22rem">
+                @if($rsUno)
+                    <span style="font-size:.6rem;font-weight:800;color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe;padding:.12rem .45rem;border-radius:20px;text-transform:uppercase;letter-spacing:.05em;display:inline-block">Dependiente &middot; {{ $rsUno }}</span>
+                @else
+                    <span style="font-size:.6rem;font-weight:800;color:#15803d;background:#f0fdf4;border:1px solid #bbf7d0;padding:.12rem .45rem;border-radius:20px;text-transform:uppercase;letter-spacing:.05em;display:inline-block">Independiente</span>
+                @endif
+                </div>
+            @endif
         @endif
         <div style="font-size:.68rem;color:#64748b;margin-top:.3rem;display:flex;gap:.8rem;align-items:center">
             <span>Fecha: <strong style="color:#0f172a">{{ sqldate($factura->fecha_pago)->format('d/m/Y') }}</strong></span>
+            @if($factura->np)
             <span style="background:#1e3a5f;color:#93c5fd;font-size:.6rem;font-weight:800;padding:.1rem .45rem;border-radius:20px">NP {{ $factura->np }}</span>
+            @endif
         </div>
     </div>
 
@@ -96,14 +116,23 @@ $numGrupo    = str_pad($filas->first()?->numero_factura ?? $factura->numero_fact
 @endif
 
 {{-- TABLA TRABAJADORES --}}
-<div class="fact-section-title">TRABAJADORES &mdash; {{ $filas->count() }} registros</div>
+{{-- Cuando el recibo es de una sola persona, su nombre, cédula y razón
+     social ya salen en el encabezado: repetirlos en la tabla solo roba
+     ancho a las entidades. Se omiten las columnas No / Nombre / RS. --}}
+@php $unaPersona = ($filas->count() === 1 && !$empresaObj); @endphp
+<div class="fact-section-title">
+    @if($unaPersona) DETALLE DE LA LIQUIDACIÓN
+    @else TRABAJADORES &mdash; {{ $filas->count() }} registros @endif
+</div>
 <div style="padding:0 .85rem">
 <table class="fact-table" style="font-size:.72rem;table-layout:auto;width:100%">
 <thead>
 <tr>
+    @unless($unaPersona)
     <th style="width:22px;text-align:center">No</th>
     <th style="width:18%">Nombre / CC</th>
     <th style="width:16%">Razón Social</th>
+    @endunless
     <th style="width:36px;text-align:center">Días</th>
     <th style="width:11%">EPS</th>
     <th style="width:11%">ARL</th>
@@ -142,6 +171,7 @@ $tEps += $vEpsG; $tArl += $vArlG; $tPen += $vPenG; $tCaj += $vCajG; $tAdm += $vA
 $tIva += $vIvaG; $tOtros += $vOtrG;
 @endphp
 <tr>
+    @unless($unaPersona)
     <td style="text-align:center;color:#94a3b8;font-weight:700;font-size:.72rem">{{ $idx+1 }}</td>
     <td>
         <div style="font-weight:700;font-size:.78rem;color:#0f172a;display:flex;align-items:center;gap:.35rem">
@@ -157,6 +187,7 @@ $tIva += $vIvaG; $tOtros += $vOtrG;
             <span style="font-size:.65rem;font-weight:800;color:#15803d;text-transform:uppercase;letter-spacing:.05em">Independiente</span>
         @endif
     </td>
+    @endunless
     <td style="text-align:center;font-weight:700;color:{{ $diasG < 30 ? '#d97706' : '#0f172a' }}">{{ $diasG }}</td>
     <td class="entidad" style="font-size:.72rem">
         {{ $enEpsG }}
@@ -184,7 +215,10 @@ $tSS = $tEps + $tArl + $tPen + $tCaj;
 <tfoot>
 {{-- Fila: TOTAL FACTURA (siempre visible) --}}
 <tr style="background:#0f172a">
-    <td colspan="8" style="font-size:.78rem;font-weight:800;color:#93c5fd;letter-spacing:.07em;padding:.7rem .55rem">TOTAL &mdash; {{ $filas->count() }} trabajadores</td>
+    {{-- colspan según si se dibujaron las 3 columnas de identificación --}}
+    <td colspan="{{ $unaPersona ? 5 : 8 }}" style="font-size:.78rem;font-weight:800;color:#93c5fd;letter-spacing:.07em;padding:.7rem .55rem">
+        TOTAL @unless($unaPersona)&mdash; {{ $filas->count() }} trabajadores @endunless
+    </td>
     <td class="right" style="font-size:1.3rem;font-weight:900;color:#fbbf24;font-family:monospace;white-space:nowrap;padding:.7rem .55rem">${{ number_format($totTotal,0,',','.') }}</td>
 </tr>
 </tfoot>

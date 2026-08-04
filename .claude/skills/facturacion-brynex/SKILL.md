@@ -105,12 +105,39 @@ copia CLIENTE arriba, copia EMPRESA abajo, para partirla por la mitad.
   lleva `.det` fijo (siempre detallada).
 - En la copia empresa se omiten la **nota legal** y el **Resumen
   Financiero** (lo reemplaza el desglose completo).
-- El escalado lo hace `ajustarCopias()` en JS: mide el alto real y calcula
-  el `transform` para meter cada copia en su media hoja. La geometría en
-  pantalla y en `@media print` es la misma, así que lo que se ve es lo que
-  sale.
+- El escalado lo hace `ajustarCopias()` en JS. No usa un ancho fijo: prueba
+  varios anchos de diseño (`ANCHOS_DISENO`) y elige el que da mayor escala,
+  **descartando** los que hacen crecer el alto — señal de que la tabla ya
+  está partiendo palabras ("INDEPENDIENT/E"). A igualdad de escala toma el
+  más ancho. Con eso un recibo de pocas filas sube de ~0.66 a ~0.93.
+- La geometría en pantalla y en `@media print` es la misma, así que lo que
+  se ve es lo que sale. Para que eso se cumpla:
+  - Las reglas de `@media print` que reacomodan el recibo (quitar márgenes,
+    `font-size: .58rem` en la tabla) están acotadas a `.hoja-fondo`, o sea
+    solo al modo simple. En doble copia el recibo se imprime tal cual se ve.
+  - `ajustarCopias()` mide con la clase `.midiendo`, que oculta los
+    `.no-print` (el link 👤 de cada fila) igual que hará la impresora.
+  - `@page margin` es 6mm en doble copia y 8mm en simple (condicional en
+    Blade). El modo simple depende de 199.9mm para su `scale(0.721)`.
 - **No poner `id=` dentro de `_recibo_cuerpo.blade.php`**: se renderiza dos
   veces en la misma página y los ids quedarían duplicados.
+
+### ¿A nombre de quién sale el recibo?
+
+Lo decide **`facturas.empresa_id`**, nunca `clientes.cod_empresa` — ese
+último es el canal/referido comercial del cliente y no dice a quién se le
+factura. Usarlo hacía que un recibo de una sola persona saliera encabezado
+con una empresa ajena.
+
+- Con `empresa_id` → encabezado "Empresa": nombre, NIT y datos de entrega.
+- Sin `empresa_id` y 1 fila → "Afiliado": nombre, C.C. y badge
+  Dependiente/Independiente. Además la tabla **omite las columnas No /
+  Nombre / Razón Social** (ya están en el encabezado) y se titula "Detalle
+  de la liquidación". Ojo con el `colspan` del `tfoot`: cambia de 8 a 5.
+- Sin `empresa_id` y varias filas → la razón social si todas comparten una,
+  si no "N trabajadores".
+
+El 99,6% de los lotes sin `empresa_id` son de una sola fila.
 
 ### Saldos: solo existe `saldo_proximo`
 
