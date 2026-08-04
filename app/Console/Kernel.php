@@ -119,9 +119,15 @@ class Kernel extends ConsoleKernel
         // Solo rellena huecos: nunca sobrescribe un dato que el cliente ya
         // tiene. Las diferencias van a `clientes:informe-ruaf`.
         // Ejecución manual: php artisan clientes:completar-ruaf --limite=100
+        // Corre como www-data a propósito: el cron del servidor es de root, y
+        // este comando cachea la sesión del operador. Una tarea de root que
+        // escribe en storage/framework/cache deja directorios que Apache
+        // después no puede usar — eso fue lo que rompió la consulta de cédula
+        // el 2026-08-04. Ver docs y el commit 49c0454.
         $schedule->command('clientes:completar-ruaf --limite=1000 --pausa=250 --aplicar')
             ->hourly()
             ->timezone('America/Bogota')
+            ->user('www-data')
             ->withoutOverlapping(120)
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/completar-ruaf.log'));
