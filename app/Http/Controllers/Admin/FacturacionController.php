@@ -3932,10 +3932,14 @@ class FacturacionController extends Controller
         $totalCobrosAdicionales = (int)$cobrosAdicionalesCC->sum('valor');
         $totalGeneral += $totalCobrosAdicionales;
 
+        // IVA: se muestra como un solo renglón en la cuenta de cobro, no por trabajador
+        $totalIva = (int) $items->sum('v_iva');
+        $ivaPct   = \App\Models\ConfiguracionBrynex::porcentajeIva();
+
         return view($vista, compact(
             'aliado','empresa','items','cuentasCobro',
             'mes','anio','meses','totalGeneral','totalFavor','totalPendiente',
-            'cobrosAdicionalesCC', 'totalCobrosAdicionales'
+            'cobrosAdicionalesCC', 'totalCobrosAdicionales', 'totalIva', 'ivaPct'
         ));
     }
 

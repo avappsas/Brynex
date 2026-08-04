@@ -185,7 +185,6 @@ table.tbl-det tfoot .num { color: #34d399; }
                 <th class="num">AFP</th>
                 <th class="num">Caja</th>
                 <th class="num">Admon</th>
-                <th class="num">IVA</th>
                 <th class="num">Mora</th>
                 <th class="num" style="color:#34d399;">Total</th>
                 <th style="text-align:center;">Estado</th>
@@ -290,14 +289,6 @@ table.tbl-det tfoot .num { color: #34d399; }
                     <span style="color:#cbd5e1;">—</span>
                 @endif
             </td>
-            {{-- IVA --}}
-            <td class="num">
-                @if($item->v_iva > 0)
-                    <span class="ent-valor">${{ number_format($item->v_iva,0,',','.') }}</span>
-                @else
-                    <span style="color:#cbd5e1;">—</span>
-                @endif
-            </td>
             {{-- Mora --}}
             <td class="num">
                 @if(isset($item->v_mora) && $item->v_mora > 0)
@@ -306,16 +297,32 @@ table.tbl-det tfoot .num { color: #34d399; }
                     <span style="color:#cbd5e1;">—</span>
                 @endif
             </td>
-            {{-- Total --}}
-            <td class="num" style="font-weight:800;color:#0f172a;">${{ number_format($item->v_total,0,',','.') }}</td>
+            {{-- Total (sin IVA: el IVA va como renglón aparte al final) --}}
+            <td class="num" style="font-weight:800;color:#0f172a;">${{ number_format($item->v_total - $item->v_iva,0,',','.') }}</td>
             <td style="text-align:center;">
                 <span class="estado-badge {{ $estadoClass }}">{{ $estadoLabel }}</span>
             </td>
         </tr>
         @endforeach
+        {{-- IVA como renglón único sobre el total de administración --}}
+        @if($totIva > 0)
+        <tr>
+            <td style="text-align:center;color:#94a3b8;font-size:9px;">—</td>
+            <td style="font-family:monospace;color:#94a3b8;">—</td>
+            <td colspan="3">
+                <div style="font-weight:700;font-size:10px;color:#1e3a5f;">IVA ({{ rtrim(rtrim(number_format($ivaPct, 2, ',', '.'), '0'), ',') }}%)</div>
+                <span style="font-size:8px;color:#64748b;font-weight:600;">Sobre el valor de administración</span>
+            </td>
+            <td colspan="6" style="color:#cbd5e1;text-align:center;">—</td>
+            <td class="num" style="font-weight:800;color:#0f172a;">${{ number_format($totIva,0,',','.') }}</td>
+            <td style="text-align:center;">
+                <span class="estado-badge est-vigente" style="background:#ede9fe;color:#6d28d9;">IVA</span>
+            </td>
+        </tr>
+        @endif
         @if(isset($cobrosAdicionalesCC) && $cobrosAdicionalesCC->isNotEmpty())
         <tr>
-            <td colspan="14" style="background:#f8fafc;font-weight:800;font-size:8.5px;color:#1e3a5f;padding:.45rem .6rem;text-transform:uppercase;border-top:1.5px solid #cbd5e1;border-bottom:1.5px solid #cbd5e1;letter-spacing:.05em;">
+            <td colspan="13" style="background:#f8fafc;font-weight:800;font-size:8.5px;color:#1e3a5f;padding:.45rem .6rem;text-transform:uppercase;border-top:1.5px solid #cbd5e1;border-bottom:1.5px solid #cbd5e1;letter-spacing:.05em;">
                 💼 Cobros Adicionales de la Empresa
             </td>
         </tr>
@@ -329,7 +336,7 @@ table.tbl-det tfoot .num { color: #34d399; }
                     Concepto Adicional ({{ $cobro->tipo === 'recurrente' ? 'Recurrente' : 'Única vez' }})
                 </span>
             </td>
-            <td colspan="7" style="color:#cbd5e1;text-align:center;">—</td>
+            <td colspan="6" style="color:#cbd5e1;text-align:center;">—</td>
             <td class="num" style="font-weight:800;color:#0f172a;">${{ number_format($cobro->valor, 0, ',', '.') }}</td>
             <td style="text-align:center;">
                 <span class="estado-badge est-vigente" style="background:#e0f2fe;color:#0369a1;">Activo</span>
@@ -348,7 +355,6 @@ table.tbl-det tfoot .num { color: #34d399; }
                 <td class="num">${{ number_format($totAfp,  0,',','.') }}</td>
                 <td class="num">${{ number_format($totCaja, 0,',','.') }}</td>
                 <td class="num">${{ number_format($totAdmon,0,',','.') }}</td>
-                <td class="num">${{ number_format($totIva,  0,',','.') }}</td>
                 <td class="num" style="color:#b45309;">${{ number_format($totMora, 0,',','.') }}</td>
                 <td class="num" style="font-size:1rem;">${{ number_format($totTotal,0,',','.') }}</td>
                 <td></td>

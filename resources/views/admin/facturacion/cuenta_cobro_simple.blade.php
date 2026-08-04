@@ -208,9 +208,10 @@ table.tbl-cc .num { text-align: right; font-family: monospace; }
             </tr>
         </thead>
         <tbody>
-        @php $no = 1; $totalSaldo = 0; @endphp
+        @php $no = 1; $totalSaldo = 0; $totIva = 0; @endphp
         @foreach($items as $item)
         @php
+            $totIva += (int)($item->v_iva ?? 0);
             // saldo_proximo: positivo = a favor, negativo = pendiente
             $spItem = (int)($item->saldo_proximo ?? 0);
             $itemAFavor    = $spItem > 0 ? $spItem : 0;
@@ -256,12 +257,26 @@ table.tbl-cc .num { text-align: right; font-family: monospace; }
                 <div>{{ $item->fecha_ingreso ? $item->fecha_ingreso->format('d/m/Y') : '—' }}</div>
                 <div style="font-size:9.5px;color:#d97706;font-weight:700;margin-top:2px;">Plan: {{ $item->modalidad }}</div>
             </td>
-            <td class="num" style="font-weight:700;">${{ number_format($item->v_total,0,',','.') }}</td>
+            <td class="num" style="font-weight:700;">${{ number_format($item->v_total - (int)($item->v_iva ?? 0),0,',','.') }}</td>
             <td style="text-align:center;">
                 <span class="estado-badge {{ $estadoClass }}">{{ $estadoLabel }}</span>
             </td>
         </tr>
         @endforeach
+        {{-- IVA como renglón único, no prorrateado por trabajador --}}
+        @if($totIva > 0)
+        <tr>
+            <td style="text-align:center;color:#94a3b8;font-size:10px;">—</td>
+            <td colspan="4">
+                <div style="font-weight:700;font-size:10.5px;color:#1e3a5f;">IVA ({{ rtrim(rtrim(number_format($ivaPct ?? 19, 2, ',', '.'), '0'), ',') }}%)</div>
+                <span style="font-size:8.5px;color:#64748b;font-weight:600;">Sobre el valor de administración</span>
+            </td>
+            <td class="num" style="font-weight:700;">${{ number_format($totIva, 0, ',', '.') }}</td>
+            <td style="text-align:center;">
+                <span class="estado-badge est-vigente" style="background:#ede9fe;color:#6d28d9;">IVA</span>
+            </td>
+        </tr>
+        @endif
         @if(isset($cobrosAdicionalesCC) && $cobrosAdicionalesCC->isNotEmpty())
         <tr>
             <td colspan="7" style="background:#f8fafc;font-weight:800;font-size:9.5px;color:#1e3a5f;padding:.45rem .6rem;text-transform:uppercase;border-top:1.5px solid #cbd5e1;border-bottom:1.5px solid #cbd5e1;letter-spacing:.05em;">
