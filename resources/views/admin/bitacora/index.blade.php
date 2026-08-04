@@ -22,6 +22,9 @@
                 <label style="display:block;font-size:0.7rem;font-weight:600;color:#475569;margin-bottom:0.2rem;">MÓDULO / MODELO</label>
                 <select name="modelo" class="form-control form-control-sm">
                     <option value="">Todos</option>
+                    <option value="Contrato" {{ request('modelo')=='Contrato' ? 'selected' : '' }}>Contrato</option>
+                    <option value="Factura" {{ request('modelo')=='Factura' ? 'selected' : '' }}>Factura</option>
+                    <option value="Incapacidad" {{ request('modelo')=='Incapacidad' ? 'selected' : '' }}>Incapacidad</option>
                     <option value="Cliente" {{ request('modelo')=='Cliente' ? 'selected' : '' }}>Cliente</option>
                     <option value="Beneficiario" {{ request('modelo')=='Beneficiario' ? 'selected' : '' }}>Beneficiario</option>
                     <option value="DocumentoCliente" {{ request('modelo')=='DocumentoCliente' ? 'selected' : '' }}>Documentos</option>

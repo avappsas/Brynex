@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Bitacora;
 use App\Models\Incapacidad;
 use App\Models\GestionIncapacidad;
 use App\Models\Radicado;
@@ -77,6 +78,21 @@ class IncapacidadController extends Controller
     private function incapacidadDelAliado(int $id): Incapacidad
     {
         return $this->incapacidadesDelAliado()->findOrFail($id);
+    }
+
+    /**
+     * Normaliza un valor para compararlo y guardarlo en bitácora.
+     *
+     * Las fechas del modelo vienen como Carbon (cast 'date'), así que compararlas
+     * con === daría siempre distinto y el JSON quedaría con el objeto completo.
+     */
+    private function valorAuditable($valor): string|int|float|null
+    {
+        if ($valor === null || $valor === '') return null;
+        if ($valor instanceof \DateTimeInterface) return $valor->format('Y-m-d');
+        if (is_bool($valor)) return (int) $valor;
+        if (is_numeric($valor)) return $valor + 0;
+        return (string) $valor;
     }
 
     // ── INDEX ────────────────────────────────────────────────────────────────
@@ -348,6 +364,27 @@ class IncapacidadController extends Controller
             'updated_at'       => now(),
         ]);
 
+        Bitacora::registrar(
+            accion: 'created',
+            modelo: 'Incapacidad',
+            registroId: $incapacidad->id,
+            descripcion: "Incapacidad registrada para la cédula {$incapacidad->cedula_usuario}: {$incapacidad->dias_incapacidad} días desde "
+                . $incapacidad->fecha_inicio?->format('Y-m-d') . ' ante ' . strtoupper($incapacidad->tipo_entidad) . '.',
+            detalle: [
+                'cedula_usuario'    => $incapacidad->cedula_usuario,
+                'contrato_id'       => $incapacidad->contrato_id,
+                'tipo_incapacidad'  => $incapacidad->tipo_incapacidad,
+                'tipo_entidad'      => $incapacidad->tipo_entidad,
+                'entidad'           => $incapacidad->entidad_nombre,
+                'dias'              => $incapacidad->dias_incapacidad,
+                'fecha_inicio'      => $incapacidad->fecha_inicio?->format('Y-m-d'),
+                'fecha_terminacion' => $incapacidad->fecha_terminacion?->format('Y-m-d'),
+                'valor_esperado'    => $incapacidad->valor_esperado,
+                'prorroga_de'       => $padreId,
+            ],
+            alidoId: $alidoId
+        );
+
         // Si la petición es AJAX/JSON, retornar JSON para que el frontend abra el modal de documentos
         if ($request->expectsJson() || $request->header('X-Requested-With') === 'XMLHttpRequest') {
             return response()->json([
@@ -392,6 +429,12 @@ class IncapacidadController extends Controller
             $salarioBase = is_numeric($sal) && $sal > 0 ? (float)$sal : $inc->salario_base;
         }
 
+        // Valores previos de los campos que interesa auditar (antes del update)
+        $antes = collect(['contrato_id', 'tipo_incapacidad', 'dias_incapacidad', 'fecha_inicio',
+                          'fecha_terminacion', 'tipo_entidad', 'entidad_nombre', 'razon_social_id',
+                          'numero_radicado', 'diagnostico', 'salario_base'])
+            ->mapWithKeys(fn($c) => [$c => $this->valorAuditable($inc->$c)]);
+
         $inc->update([
             'contrato_id'             => $contratoId,
             'quien_recibe_id'         => $request->quien_recibe_id ?: $inc->quien_recibe_id,
@@ -419,6 +462,28 @@ class IncapacidadController extends Controller
         // Recalcular valor esperado
         $smmlv = $this->getSmmlv();
         $inc->update(['valor_esperado' => $inc->calcularValorEsperado($smmlv)]);
+
+        // Solo se registra si algo cambió de verdad: abrir y guardar el modal
+        // sin tocar nada no debe ensuciar la bitácora.
+        $fresco  = $inc->fresh();
+        $cambios = [];
+        foreach ($antes as $campo => $valorViejo) {
+            $valorNuevo = $this->valorAuditable($fresco->$campo);
+            if ($valorViejo !== $valorNuevo) {
+                $cambios[$campo] = ['old' => $valorViejo, 'new' => $valorNuevo];
+            }
+        }
+
+        if (!empty($cambios)) {
+            Bitacora::registrar(
+                accion: 'updated',
+                modelo: 'Incapacidad',
+                registroId: $inc->id,
+                descripcion: "Incapacidad #{$inc->id} modificada (Cédula: {$inc->cedula_usuario}). Campos: " . implode(', ', array_keys($cambios)) . '.',
+                detalle: ['cambios' => $cambios],
+                alidoId: $inc->aliado_id
+            );
+        }
 
         return response()->json(['ok' => true, 'message' => 'Incapacidad actualizada.']);
     }
@@ -938,6 +1003,34 @@ class IncapacidadController extends Controller
         });
 
         $inc->refresh()->load('abonos');
+
+        // Se registra después del commit: si la transacción falla, DB::transaction
+        // relanza y nunca se llega aquí.
+        $etiquetaTipo = match ($request->tipo) {
+            'entrada_incapacidad' => 'Entrada de la entidad',
+            'pago_cliente'        => 'Pago al afiliado',
+            default               => 'Abono',
+        };
+        Bitacora::registrar(
+            accion: 'created',
+            modelo: 'Incapacidad',
+            registroId: $inc->id,
+            descripcion: "{$etiquetaTipo} de $" . number_format((float) $request->valor, 0, ',', '.')
+                . " en incapacidad #{$inc->id} (Cédula: {$inc->cedula_usuario}). Saldo pendiente: $"
+                . number_format((float) $inc->saldo_pendiente, 0, ',', '.') . '.',
+            detalle: [
+                'tipo'            => $request->tipo,
+                'valor'           => (float) $request->valor,
+                'fecha'           => $request->fecha,
+                'banco_cuenta_id' => $request->banco_cuenta_id ?: null,
+                'referencia'      => $request->referencia,
+                'observacion'     => $request->observacion,
+                'saldo_pendiente' => $inc->saldo_pendiente,
+                'estado_pago'     => $inc->estado_pago,
+            ],
+            alidoId: $alidoId
+        );
+
         return response()->json([
             'ok'              => true,
             'message'         => 'Registrado correctamente.',
@@ -1000,6 +1093,25 @@ class IncapacidadController extends Controller
         ]);
 
         $prorroga->calcularValorEsperado(persistir: true);
+
+        Bitacora::registrar(
+            accion: 'created',
+            modelo: 'Incapacidad',
+            registroId: $prorroga->id,
+            descripcion: "Prórroga {$numProrroga} creada sobre la incapacidad #{$padreId} (Cédula: {$prorroga->cedula_usuario}): "
+                . "{$prorroga->dias_incapacidad} días desde " . $prorroga->fecha_inicio?->format('Y-m-d') . '.',
+            detalle: [
+                'incapacidad_padre_id' => $padreId,
+                'numero_proroga'       => $numProrroga,
+                'cedula_usuario'       => $prorroga->cedula_usuario,
+                'dias'                 => $prorroga->dias_incapacidad,
+                'fecha_inicio'         => $prorroga->fecha_inicio?->format('Y-m-d'),
+                'fecha_terminacion'    => $prorroga->fecha_terminacion?->format('Y-m-d'),
+                'tipo_entidad'         => $prorroga->tipo_entidad,
+                'valor_esperado'       => $prorroga->valor_esperado,
+            ],
+            alidoId: $alidoId
+        );
 
         return response()->json([
             'ok'        => true,
@@ -1350,6 +1462,28 @@ class IncapacidadController extends Controller
             return response()->json(['ok' => false, 'message' => 'Error al registrar el anticipo: ' . $e->getMessage()], 500);
         }
 
+        Bitacora::registrar(
+            accion: 'created',
+            modelo: 'Incapacidad',
+            registroId: $inc->id,
+            descripcion: 'Anticipo/Préstamo de $' . number_format((float) $request->valor_pago, 0, ',', '.')
+                . " pagado a {$request->pagado_a} por incapacidad #{$inc->id} (Cédula: {$inc->cedula_usuario})."
+                . ($cubreTotal ? ' Cubre el saldo total.' : ' Saldo restante: $' . number_format($nuevoSaldo, 0, ',', '.') . '.'),
+            detalle: [
+                'valor_pago'       => (float) $request->valor_pago,
+                'fecha_pago'       => $request->fecha_pago,
+                'pagado_a'         => $request->pagado_a,
+                'forma_pago'       => $formaPago,
+                'banco_cuenta_id'  => $formaPago === 'transferencia_bancaria' ? $bancoId : null,
+                'cuadre_id'        => $cuadreId,
+                'saldo_anterior'   => $saldoPendiente,
+                'saldo_resultante' => $nuevoSaldo,
+                'cubre_total'      => $cubreTotal,
+                'detalle_pago'     => $obsAbono,
+            ],
+            alidoId: $aliadoId
+        );
+
         return response()->json(['ok' => true, 'message' => 'Anticipo/Préstamo al afiliado registrado correctamente.']);
     }
 
@@ -1375,6 +1509,31 @@ class IncapacidadController extends Controller
     public function destroy(int $id)
     {
         $inc = $this->incapacidadDelAliado($id);
+
+        // Antes del delete: después el registro queda con deleted_at y ya no
+        // se puede reconstruir qué se borró desde el listado normal.
+        Bitacora::registrar(
+            accion: 'deleted',
+            modelo: 'Incapacidad',
+            registroId: $inc->id,
+            descripcion: "Incapacidad #{$inc->id} eliminada (Cédula: {$inc->cedula_usuario}): {$inc->dias_incapacidad} días desde "
+                . $inc->fecha_inicio?->format('Y-m-d') . ' ante ' . strtoupper((string) $inc->tipo_entidad) . '.',
+            detalle: [
+                'cedula_usuario'    => $inc->cedula_usuario,
+                'contrato_id'       => $inc->contrato_id,
+                'dias'              => $inc->dias_incapacidad,
+                'fecha_inicio'      => $inc->fecha_inicio?->format('Y-m-d'),
+                'fecha_terminacion' => $inc->fecha_terminacion?->format('Y-m-d'),
+                'tipo_entidad'      => $inc->tipo_entidad,
+                'entidad'           => $inc->entidad_nombre,
+                'estado'            => $inc->estado,
+                'estado_pago'       => $inc->estado_pago,
+                'valor_esperado'    => $inc->valor_esperado,
+                'numero_proroga'    => $inc->numero_proroga,
+            ],
+            alidoId: $inc->aliado_id
+        );
+
         $inc->delete();
         return redirect()->route('admin.incapacidades.index')
             ->with('success', 'Incapacidad eliminada.');
