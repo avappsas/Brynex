@@ -131,9 +131,19 @@ class ConfiguracionAliadoController extends Controller
             // Sin SVG: se guarda en disco público y un SVG puede llevar <script>
             // embebido, que se ejecuta al abrirlo directamente (XSS).
             'seguro_logo'                       => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
+            'recibo_doble_copia'                => 'nullable|boolean',
         ]);
 
         DB::transaction(function () use ($request, $alidoId) {
+            // ── 0. Parámetros del aliado (tabla aliados, no por plan) ──
+            // Solo si el formulario trae el campo, para que un POST parcial
+            // no apague el interruptor sin querer.
+            if ($request->has('recibo_doble_copia')) {
+                Aliado::where('id', $alidoId)->update([
+                    'recibo_doble_copia' => $request->boolean('recibo_doble_copia'),
+                ]);
+            }
+
             // ── 1. Parámetros globales BryNex (solo superadmin + es_brynex) ──
             if (auth()->user()->hasRole('superadmin') && auth()->user()->es_brynex && $request->has('brynex')) {
                 foreach ($request->input('brynex', []) as $clave => $valor) {

@@ -45,11 +45,13 @@ class Aliado extends BaseModel
         'encargado_afil_id',
         'brynex_fecha_inicio',
         'brynex_fecha_fin',
+        'recibo_doble_copia',
     ];
 
     protected $casts = [
         'activo'              => 'boolean',
         'afiliaciones_brynex' => 'boolean',
+        'recibo_doble_copia'  => 'boolean',
         'brynex_fecha_inicio' => 'date',
         'brynex_fecha_fin'    => 'date',
         'logo_marca_recorte'  => 'array',

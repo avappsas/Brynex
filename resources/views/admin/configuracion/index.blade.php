@@ -259,6 +259,31 @@
       </div>
     </div>
 
+    {{-- Card: Recibo doble copia (cliente + empresa en la misma hoja) --}}
+    <div x-data="{ doble: {{ $aliadoActual?->recibo_doble_copia ? 'true' : 'false' }} }"
+         style="background:#f0fdf4;border-radius:9px;padding:0.85rem;border:1.5px solid #bbf7d0;grid-column:span 3;">
+      <div style="font-size:0.62rem;font-weight:700;color:#15803d;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:0.55rem;">
+        🖨️ Recibo — Doble copia por hoja
+      </div>
+      <div style="display:flex;align-items:flex-start;gap:1rem;">
+        <label style="display:flex;align-items:center;gap:0.55rem;cursor:pointer;flex-shrink:0;">
+          {{-- Hidden: un checkbox desmarcado no se envía --}}
+          <input type="hidden" name="recibo_doble_copia" value="0">
+          <input type="checkbox" name="recibo_doble_copia" value="1" x-model="doble"
+                 style="width:18px;height:18px;accent-color:#15803d;cursor:pointer;">
+          <span x-text="doble ? 'Activado' : 'Desactivado'"
+                :style="doble ? 'color:#15803d;font-weight:700;font-size:0.82rem' : 'color:#94a3b8;font-weight:600;font-size:0.82rem'"></span>
+        </label>
+        <div style="font-size:0.72rem;color:#166534;line-height:1.45;">
+          Al imprimir un recibo se generan <strong>dos copias en la misma hoja carta</strong>:
+          la <strong>copia CLIENTE</strong> arriba y la <strong>copia EMPRESA</strong> abajo,
+          para partir la hoja por la mitad.
+          <br>
+          La copia EMPRESA <em>siempre</em> sale detallada, con el desglose de administración
+          (empresa y asesor), seguro, 4×1000, y los saldos (anterior, anticipo aplicado y próximo).
+        </div>
+      </div>
+    </div>
 
   </div>
 </div>

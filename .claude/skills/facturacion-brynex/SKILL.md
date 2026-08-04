@@ -87,8 +87,53 @@ resources/views/admin/facturacion/
 ├── index.blade.php          ← Lista de facturas por empresa/mes
 ├── empresa.blade.php        ← Detalle de empresa con sus facturas
 ├── show.blade.php           ← Detalle individual de factura
+├── recibo.blade.php         ← Recibo: estilos + layout de la hoja
+├── _recibo_cuerpo.blade.php ← Cuerpo del recibo (grupo NP e individual)
+├── _recibo_desglose_empresa.blade.php ← Desglose de la copia empresa
 └── partials/                ← Componentes reutilizables
 ```
+
+## Recibo: doble copia por hoja
+
+`aliados.recibo_doble_copia` (switch en Configuración → Parámetros
+Especiales) hace que el recibo salga **dos veces en la misma hoja carta**:
+copia CLIENTE arriba, copia EMPRESA abajo, para partirla por la mitad.
+
+- El cuerpo del recibo se incluye dos veces desde `recibo.blade.php`, con
+  `['copia' => 'cliente'|'empresa']`. Dentro del partial eso es `$esCopiaEmp`.
+- La copia cliente respeta el botón "Vista detallada"; la copia empresa
+  lleva `.det` fijo (siempre detallada).
+- En la copia empresa se omiten la **nota legal** y el **Resumen
+  Financiero** (lo reemplaza el desglose completo).
+- El escalado lo hace `ajustarCopias()` en JS: mide el alto real y calcula
+  el `transform` para meter cada copia en su media hoja. La geometría en
+  pantalla y en `@media print` es la misma, así que lo que se ve es lo que
+  sale.
+- **No poner `id=` dentro de `_recibo_cuerpo.blade.php`**: se renderiza dos
+  veces en la misma página y los ids quedarían duplicados.
+
+### Saldos: solo existe `saldo_proximo`
+
+`saldo_a_favor` y `saldo_pendiente` se eliminaron de `facturas` en la
+migración `2026_04_20_220000`. Queda una sola columna:
+
+```
+saldo_proximo = (valor_efectivo + valor_consignado + anticipo_aplicado) − total
+    negativo → quedó PENDIENTE      positivo → quedó A FAVOR
+```
+
+El *saldo anterior acumulado* no está guardado: se calcula sumando los
+`saldo_proximo` de las facturas previas (por `empresa_id` si la factura es
+de empresa, si no por `cedula` con `empresa_id IS NULL`). Lo hace
+`FacturacionController@recibo` y lo pasa como `$saldoAnterior`.
+
+### Cuadre del desglose
+
+`SS + servicios` debe dar `total`. A nivel de **lote** (`numero_factura`)
+siempre cuadra; en filas sueltas puede no cuadrar porque hay registros con
+`total = 0` cuyo valor quedó consolidado en otra fila del lote. Por eso el
+desglose calcula la diferencia y la muestra como fila **"Ajuste"** en vez de
+dejar el recibo descuadrado.
 
 ## Rutas Principales
 
