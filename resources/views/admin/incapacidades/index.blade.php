@@ -126,73 +126,168 @@ tbody td{padding:.6rem .85rem;vertical-align:middle;}
 .badge-primary{background:#eff6ff;color:#1d4ed8;}
 .alerta-180{background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;padding:.3rem .6rem;font-size:.72rem;color:#991b1b;font-weight:600;}
 
+/* ── Barra superior: título + KPIs + filtros + acciones, todo en una fila ── */
+.barra-top{display:flex;align-items:center;gap:.7rem;flex-wrap:wrap;margin-bottom:.9rem;
+           background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:.5rem .85rem;
+           box-shadow:0 1px 4px rgba(0,0,0,.05);}
+.barra-titulo{display:flex;align-items:center;gap:.45rem;flex-shrink:0;}
+.barra-titulo-icon{font-size:1.15rem;line-height:1;}
+.barra-titulo h1{font-size:1rem;font-weight:800;color:#0f172a;letter-spacing:-.01em;margin:0;}
+.barra-sep{width:1px;height:26px;background:#e2e8f0;flex-shrink:0;}
+.barra-top .kpi-bar{display:flex;gap:.4rem;margin:0;flex-wrap:wrap;}
+.barra-top .kpi{display:flex;align-items:baseline;gap:.32rem;padding:.3rem .65rem;border-radius:9px;
+                background:#f8fafc;border:1px solid #e2e8f0;box-shadow:none;}
+.barra-top .kpi .num{font-size:1rem;font-weight:800;line-height:1;}
+.barra-top .kpi .lbl{font-size:.68rem;color:#64748b;margin:0;white-space:nowrap;}
+.barra-top .kpi-sep{display:inline-block;width:1px;height:12px;background:#cbd5e1;margin:0 .2rem;}
+.barra-top-form{display:flex;align-items:center;gap:.4rem;margin:0;margin-left:auto;}
+.barra-top-form input,.barra-top-form select{border:1px solid #cbd5e1;border-radius:8px;padding:.35rem .6rem;font-size:.78rem;background:#fff;}
+.barra-top-form input{width:180px;}
+.barra-acciones{display:flex;gap:.35rem;flex-shrink:0;}
+.btn-claves{background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#1c1917;border:none;box-shadow:0 1px 4px rgba(0,0,0,.12);}
+@media (max-width:1100px){ .barra-top-form{margin-left:0;} }
+
+/* ── Encabezados oscuros, como en cobros ────────────────────────────────── */
+/* Acotado a .table-wrap: los modales tienen sus propias tablas claras */
+.table-wrap table thead th{background:#0f172a;color:#fff;border-bottom:none;position:sticky;top:0;z-index:2;}
+.th-orden{color:#cbd5e1;text-decoration:none;display:inline-flex;align-items:center;gap:.25rem;}
+.th-orden:hover{color:#fff;}
+.th-orden-caret{font-size:.6rem;opacity:.45;}
+.th-orden:hover .th-orden-caret{opacity:.85;}
+.th-orden.sort-asc,.th-orden.sort-desc{color:#93c5fd;}
+.th-orden.sort-asc .th-orden-caret,.th-orden.sort-desc .th-orden-caret{opacity:0;width:0;}
+.th-orden.sort-asc::after{content:'\2191';color:#3b82f6;}
+.th-orden.sort-desc::after{content:'\2193';color:#3b82f6;}
+
+/* ── Filtros desplegables en los encabezados de columna ─────────────────── */
+.th-filtro{position:relative;display:inline-block;}
+.th-filtro-btn{background:none;border:none;padding:0;cursor:pointer;font:inherit;color:#cbd5e1;text-transform:inherit;letter-spacing:inherit;display:inline-flex;align-items:center;gap:.28rem;}
+.th-filtro-btn:hover{color:#fff;}
+.th-filtro-btn.activo{color:#93c5fd;}
+.th-filtro-icon{opacity:.55;flex-shrink:0;}
+.th-filtro-btn:hover .th-filtro-icon{opacity:.9;}
+.th-filtro-btn.activo .th-filtro-icon{opacity:1;color:#3b82f6;}
+.th-filtro-caret{font-size:.6rem;opacity:.55;}
+.th-filtro-btn.activo .th-filtro-caret{opacity:1;}
+.th-filtro-txt{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.td-cliente{max-width:190px;}
+/* position:fixed: el menú debe escapar del overflow de .table-wrap */
+.th-filtro-menu{display:none;position:fixed;z-index:2500;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.16);padding:.3rem;min-width:190px;max-height:320px;overflow-y:auto;text-transform:none;letter-spacing:normal;}
+.th-filtro-menu.open{display:block;}
+.th-filtro-menu a{display:block;padding:.4rem .6rem;border-radius:7px;font-size:.78rem;font-weight:500;color:#334155;text-decoration:none;white-space:nowrap;}
+.th-filtro-menu a:hover{background:#f1f5f9;}
+.th-filtro-menu a.activo{background:#eff6ff;color:#1d4ed8;font-weight:700;}
+
 </style>
 @endpush
 
 @section('contenido')
-<div class="page-header">
-    <h1>🏥 Incapacidades</h1>
-    <div style="display:flex;gap:0.4rem;">
-        <button class="btn btn-warning" onclick="abrirModalClavesGlobal()" style="background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#1c1917;border:none;box-shadow:0 2px 6px rgba(0,0,0,0.15);">🔑 Claves y Accesos</button>
-        <button class="btn btn-primary" onclick="abrirModalCrear()">➕ Nueva Incapacidad</button>
+{{-- Todo en una sola fila: título · KPIs · filtros · acciones.
+     Los filtros de entidad, estado y tipo viven en los encabezados. --}}
+<div class="barra-top" x-data="filtrosInc()" x-init="init()">
+    <div class="barra-titulo">
+        <span class="barra-titulo-icon">🏥</span>
+        <h1>Incapacidades</h1>
+    </div>
+
+    <div class="barra-sep"></div>
+
+    <div class="kpi-bar">
+        <div class="kpi ok"><span class="num">{{ $totalActivas }}</span><span class="lbl">Activas</span></div>
+        <div class="kpi danger"><span class="num">{{ $sinGestion7dias }}</span><span class="lbl">Sin gestión +7d</span></div>
+        <div class="kpi">
+            <span class="num" style="color:#059669">{{ $totalPagadas }}</span>
+            <span class="lbl">Pagadas</span>
+            <span class="kpi-sep"></span>
+            <span class="num" style="color:#dc2626">{{ $totalNoPagadas }}</span>
+            <span class="lbl">No pagadas</span>
+        </div>
+    </div>
+
+    <form id="filtro-form" method="GET" class="barra-top-form">
+        {{-- Los filtros de columna viajan como hidden para no perderse al buscar --}}
+        @foreach(['tipo_entidad', 'estado', 'tipo_incapacidad', 'con_cerradas', 'orden', 'dir'] as $h)
+            @if(request()->filled($h))<input type="hidden" name="{{ $h }}" value="{{ request($h) }}">@endif
+        @endforeach
+        <input id="inp-busqueda" name="busqueda" value="{{ $busqueda }}"
+               placeholder="🔍 Nombre o cédula..." x-model="busqueda"
+               @input="debouncedSubmit()" autocomplete="off">
+        <select name="vista" @change="$el.form.submit()">
+            <option value="agrupada" @selected($vista=='agrupada')>📁 Agrupada</option>
+            <option value="plana"    @selected($vista=='plana')>📋 Plana</option>
+        </select>
+        <a href="{{ route('admin.incapacidades.index') }}" class="btn btn-secondary btn-sm" title="Limpiar filtros">✕</a>
+    </form>
+
+    <div class="barra-acciones">
+        <button class="btn btn-sm btn-claves" onclick="abrirModalClavesGlobal()">🔑 Claves</button>
+        <button class="btn btn-sm btn-primary" onclick="abrirModalCrear()">➕ Nueva</button>
     </div>
 </div>
 
-{{-- KPIs --}}
-<div class="kpi-bar">
-    <div class="kpi ok"><div class="num">{{ $totalActivas }}</div><div class="lbl">Activas</div></div>
-    <div class="kpi danger"><div class="num">{{ $sinGestion7dias }}</div><div class="lbl">Sin gestión +7 días</div></div>
-    <div class="kpi"><div class="num">{{ $resumen->get('recibido',0) }}</div><div class="lbl">Recibidas</div></div>
-    <div class="kpi warn"><div class="num">{{ $resumen->get('radicada',0) }}</div><div class="lbl">Radicadas</div></div>
-    <div class="kpi ok"><div class="num">{{ $totalPagadas }}</div><div class="lbl">Pagadas</div></div>
-    <div class="kpi danger"><div class="num">{{ $totalNoPagadas }}</div><div class="lbl">No pagadas</div></div>
-</div>
+@php
+    // Filtro desplegable en el encabezado de una columna. Solo lista los
+    // valores que el aliado tiene cargados (los arma el controlador).
+    $thFiltro = function (string $param, string $label, array $opciones, array $extra = []) {
+        $actual = request($param);
+        $items  = [];
+        $items[] = [
+            'url'    => request()->fullUrlWithQuery([$param => null, 'page' => null]),
+            'label'  => 'Todos',
+            'activo' => ! filled($actual),
+        ];
+        foreach ($opciones as $valor => $texto) {
+            $items[] = [
+                'url'    => request()->fullUrlWithQuery([$param => $valor, 'page' => null]),
+                'label'  => $texto,
+                'activo' => (string) $actual === (string) $valor,
+            ];
+        }
+        foreach ($extra as $ex) {
+            $items[] = $ex;
+        }
 
-{{-- Filtros Alpine.js auto-submit --}}
-<div class="filter-bar" x-data="filtrosInc()" x-init="init()">
-    <form id="filtro-form" method="GET" style="display:contents">
-        <div style="flex:1;min-width:220px">
-            <label>🔍 Nombre o cédula</label>
-            <input id="inp-busqueda" name="busqueda" value="{{ $busqueda }}"
-                   placeholder="Buscar..." x-model="busqueda"
-                   @input="debouncedSubmit()" autocomplete="off">
-        </div>
-        <div>
-            <label>Entidad</label>
-            <select name="tipo_entidad" @change="$el.form.submit()">
-                <option value="">Todas</option>
-                @foreach(\App\Models\Incapacidad::TIPOS_ENTIDAD as $k=>$v)
-                <option value="{{ $k }}" @selected(request('tipo_entidad')==$k)>{{ $v }}</option>
-                @endforeach
-            </select>
-        </div>
-        <div>
-            <label>Estado</label>
-            <select name="estado" @change="$el.form.submit()">
-                <option value="">Todos</option>
-                @foreach(\App\Models\Incapacidad::ESTADOS as $k=>$cfg)
-                <option value="{{ $k }}" @selected(request('estado')==$k)>{{ $cfg['label'] }}</option>
-                @endforeach
-            </select>
-        </div>
-        <div>
-            <label>Vista</label>
-            <select name="vista" @change="$el.form.submit()">
-                <option value="agrupada" @selected($vista=='agrupada')>📁 Agrupada</option>
-                <option value="plana"    @selected($vista=='plana')>📋 Plana</option>
-            </select>
-        </div>
-        <div style="display:flex;align-items:flex-end">
-            <label style="display:flex;align-items:center;gap:.3rem;font-size:.78rem;cursor:pointer">
-                <input type="checkbox" name="con_cerradas" value="1"
-                       @checked(request('con_cerradas')) @change="$el.form.submit()"> Ver cerradas (pagadas/rechazadas)
-            </label>
-        </div>
-        <div style="display:flex;align-items:flex-end">
-            <a href="{{ route('admin.incapacidades.index') }}" class="btn btn-secondary btn-sm">✕</a>
-        </div>
-    </form>
-</div>
+        $activo = filled($actual);
+        $texto  = $activo ? ($opciones[$actual] ?? $actual) : $label;
+
+        // Embudo en SVG y no emoji: no existe un emoji de "filtro" que se vea
+        // igual en Windows y Mac, y el icono tiene que leerse como "aquí se filtra".
+        $embudo = '<svg class="th-filtro-icon" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true">'
+                . '<path fill="currentColor" d="M1.5 2h13l-5 6v5.2l-3 1.8V8z"/></svg>';
+
+        $html = '<div class="th-filtro">'
+              . '<button type="button" class="th-filtro-btn' . ($activo ? ' activo' : '') . '" title="Filtrar por ' . e($label) . '">'
+              . $embudo . '<span class="th-filtro-txt">' . e($texto) . '</span><span class="th-filtro-caret">▾</span></button>'
+              . '<div class="th-filtro-menu">';
+        foreach ($items as $it) {
+            $html .= '<a href="' . e($it['url']) . '"' . (! empty($it['activo']) ? ' class="activo"' : '') . '>'
+                   . e($it['label']) . '</a>';
+        }
+
+        return $html . '</div></div>';
+    };
+
+    // Encabezado ordenable: primer clic asc, segundo desc.
+    $ordenActual = request('orden');
+    $dirActual   = strtolower(request('dir')) === 'desc' ? 'desc' : 'asc';
+    $thOrden = function (string $clave, string $label) use ($ordenActual, $dirActual) {
+        $activo    = $ordenActual === $clave;
+        $siguiente = ($activo && $dirActual === 'asc') ? 'desc' : 'asc';
+        $clase     = 'th-orden' . ($activo ? ' sort-' . $dirActual : '');
+        $url = request()->fullUrlWithQuery(['orden' => $clave, 'dir' => $siguiente, 'page' => null]);
+
+        return '<a href="' . e($url) . '" class="' . $clase . '" title="Ordenar por ' . e($label) . '">'
+             . e($label) . '<span class="th-orden-caret">⇅</span></a>';
+    };
+
+    // "Ver cerradas" perdió su casilla en la barra: se ofrece como una opción
+    // más del menú de Estado, que es donde el usuario la busca.
+    $extraEstado = [[
+        'url'    => request()->fullUrlWithQuery(['con_cerradas' => request()->boolean('con_cerradas') ? null : 1, 'page' => null]),
+        'label'  => (request()->boolean('con_cerradas') ? '✓ ' : '') . 'Incluir cerradas',
+        'activo' => request()->boolean('con_cerradas'),
+    ]];
+@endphp
 
 @if($busqueda)
 <div style="background:#dbeafe;border:1px solid #93c5fd;border-radius:8px;padding:.5rem .9rem;font-size:.8rem;color:#1e40af;margin-bottom:.75rem">
@@ -208,11 +303,11 @@ tbody td{padding:.6rem .85rem;vertical-align:middle;}
         <table>
             <thead><tr>
                 <th>🚦</th>
-                <th>Cliente</th>
-                <th>Entidad</th>
-                <th>Estado</th>
+                <th>{!! $thOrden('cliente', 'Cliente') !!}</th>
+                <th>{!! $thFiltro('tipo_entidad', 'Entidad', $opcionesColumna['entidad']) !!}</th>
+                <th>{!! $thFiltro('estado', 'Estado', $opcionesColumna['estado'], $extraEstado) !!}</th>
                 <th style="text-align:center">Días</th>
-                <th style="text-align:right">Valor Esperado</th>
+                <th style="text-align:right">{!! $thOrden('valor', 'Valor Esperado') !!}</th>
                 <th style="text-align:center">Familia</th>
                 <th>Última Gestión</th>
                 <th>Acciones</th>
@@ -237,15 +332,17 @@ tbody td{padding:.6rem .85rem;vertical-align:middle;}
                     </span>
                     @if($alert180)<br><span class="alerta-180" title="Más de 180 días en EPS">⚠️180d</span>@endif
                 </td>
+                {{-- Nombre y cédula en el mismo bloque: la cédula no se gana
+                     una línea propia, el nombre envuelve y usa el ancho --}}
                 <td class="td-cliente">
-                    <div style="display:flex;align-items:center;gap:.35rem">
+                    <div style="display:flex;align-items:flex-start;gap:.3rem">
                         <button type="button" class="btn-ficha-cliente"
                                 data-cedula="{{ $inc->cedula_usuario }}"
                                 data-nombre="{{ $inc->_nombre_cliente_cache ?? $inc->cedula_usuario }}"
-                                title="Ver ficha del cliente">👤</button>
-                        <div>
-                            <div style="font-weight:600;font-size:.83rem">{{ $inc->_nombre_cliente_cache ?? $inc->cedula_usuario }}</div>
-                            <div style="font-size:.72rem;color:#64748b">{{ $inc->cedula_usuario }}</div>
+                                title="Ver ficha del cliente" style="margin-top:.05rem">👤</button>
+                        <div style="font-weight:600;font-size:.78rem;color:#1e293b;line-height:1.25;max-width:170px">
+                            {{ $inc->_nombre_cliente_cache ?? $inc->cedula_usuario }}
+                            <span style="font-weight:500;color:#94a3b8;white-space:nowrap">{{ $inc->_tipo_doc_cache ?: 'CC' }} {{ $inc->cedula_usuario }}</span>
                         </div>
                     </div>
                 </td>
@@ -260,7 +357,9 @@ tbody td{padding:.6rem .85rem;vertical-align:middle;}
                 </td>
                 <td class="td-valor" style="text-align:right">
                     @php
-                    $estadosPagados = ['pagada','pagada_afiliado','pagada_razon_social','cierre_exitoso'];
+                    // Misma lista que usa el orden por valor en el controlador,
+                    // para que lo que se ve y lo que se ordena no se separen.
+                    $estadosPagados = \App\Http\Controllers\Admin\IncapacidadController::ESTADOS_SIN_PENDIENTE;
                     $valPendiente = 0;
                     if (!in_array($inc->estado, $estadosPagados)) $valPendiente += (float)($inc->valor_esperado ?? 0);
                     foreach ($inc->prorrogas as $p) {
@@ -290,11 +389,8 @@ tbody td{padding:.6rem .85rem;vertical-align:middle;}
                     @else<span style="color:#ef4444;font-size:.72rem">Sin gestión</span>@endif
                 </td>
                 <td>
-                    <div style="display:flex;gap:.3rem;flex-wrap:wrap">
-                        <button class="btn btn-info btn-sm" onclick="verDetalle({{ $inc->id }})">👁 Ver</button>
-                        <button class="btn btn-success btn-sm" onclick="abrirModalGestion({{ $inc->id }},true)"
-                                title="Gestión de seguimiento">📞</button>
-                    </div>
+                    {{-- Solo "Ver": la gestión se hace dentro del detalle --}}
+                    <button class="btn btn-info btn-sm" onclick="verDetalle({{ $inc->id }})">👁 Ver</button>
                 </td>
             </tr>
             @empty
@@ -314,8 +410,13 @@ tbody td{padding:.6rem .85rem;vertical-align:middle;}
     <div class="table-wrap">
         <table>
             <thead><tr>
-                <th>🚦</th><th>Cliente</th><th>Tipo</th><th>Entidad</th>
-                <th>Días</th><th>Estado</th><th>Valor</th><th>Última Gestión</th><th>Acciones</th>
+                <th>🚦</th>
+                <th>{!! $thOrden('cliente', 'Cliente') !!}</th>
+                <th>{!! $thFiltro('tipo_incapacidad', 'Tipo', $opcionesColumna['tipo']) !!}</th>
+                <th>{!! $thFiltro('tipo_entidad', 'Entidad', $opcionesColumna['entidad']) !!}</th>
+                <th>Días</th>
+                <th>{!! $thFiltro('estado', 'Estado', $opcionesColumna['estado'], $extraEstado) !!}</th>
+                <th>{!! $thOrden('valor', 'Valor') !!}</th><th>Última Gestión</th><th>Acciones</th>
             </tr></thead>
             <tbody>
             @forelse($incapacidades as $inc)
@@ -330,15 +431,15 @@ tbody td{padding:.6rem .85rem;vertical-align:middle;}
             @endphp
             <tr>
                 <td><span class="semaforo sem-{{ $color }}" title="{{ $diasGestion }} días sin gestión">{{ $icono }} {{ $diasGestion }} días</span></td>
-                <td>
-                    <div style="display:flex;align-items:center;gap:.35rem">
+                <td class="td-cliente">
+                    <div style="display:flex;align-items:flex-start;gap:.3rem">
                         <button type="button" class="btn-ficha-cliente"
                                 data-cedula="{{ $inc->cedula_usuario }}"
                                 data-nombre="{{ $inc->_nombre_cliente_cache ?? $inc->cedula_usuario }}"
-                                title="Ver ficha del cliente">👤</button>
-                        <div>
-                            <div style="font-weight:600;font-size:.82rem">{{ $inc->_nombre_cliente_cache ?? $inc->cedula_usuario }}</div>
-                            <div style="font-size:.72rem;color:#64748b">{{ $inc->cedula_usuario }}</div>
+                                title="Ver ficha del cliente" style="margin-top:.05rem">👤</button>
+                        <div style="font-weight:600;font-size:.78rem;color:#1e293b;line-height:1.25;max-width:170px">
+                            {{ $inc->_nombre_cliente_cache ?? $inc->cedula_usuario }}
+                            <span style="font-weight:500;color:#94a3b8;white-space:nowrap">{{ $inc->_tipo_doc_cache ?: 'CC' }} {{ $inc->cedula_usuario }}</span>
                         </div>
                     </div>
                 </td>
@@ -2676,6 +2777,35 @@ function calcularFechaFin(){
 document.addEventListener('click', e=>{
     if(!e.target.closest('#cedulaInput')) document.getElementById('clienteSugerencias').style.display='none';
 });
+
+// ── Filtros desplegables en los encabezados de columna ──────────────────────
+// El menú es position:fixed y se posiciona a mano: dentro del <th> quedaría
+// recortado por el overflow-x de .table-wrap.
+document.addEventListener('click', e => {
+    const btn = e.target.closest('.th-filtro-btn');
+    const abierto = document.querySelector('.th-filtro-menu.open');
+
+    if (abierto && (!btn || abierto.previousElementSibling !== btn)) {
+        abierto.classList.remove('open');
+    }
+    if (!btn) return;
+
+    const menu = btn.nextElementSibling;
+    if (!menu) return;
+    if (menu.classList.contains('open')) { menu.classList.remove('open'); return; }
+
+    const r = btn.getBoundingClientRect();
+    menu.style.top  = (r.bottom + 4) + 'px';
+    menu.style.left = Math.min(r.left, window.innerWidth - 210) + 'px';
+    menu.classList.add('open');
+});
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') document.querySelector('.th-filtro-menu.open')?.classList.remove('open');
+});
+// Un menú fixed no sigue al contenido: se cierra al desplazar o redimensionar.
+['scroll', 'resize'].forEach(ev => window.addEventListener(ev, () => {
+    document.querySelector('.th-filtro-menu.open')?.classList.remove('open');
+}, true));
 
 // ── Alpine.js: filtros con debounce ─────────────────────────────────────────
 function filtrosInc(){

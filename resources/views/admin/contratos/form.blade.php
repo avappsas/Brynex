@@ -770,7 +770,7 @@
           Genera plano con días cotizados. EPS, ARL, Pensión y Caja se calculan automáticamente (registro de costo, no ingreso).
         </p>
       </label>
-      @if($tienePlanillaConDias ?? false)
+      @if($retiroInfoBloqueado ?? ($tienePlanillaConDias ?? false))
       <label id="mr-lbl-info"
         style="cursor:not-allowed;border:2px solid #e2e8f0;border-radius:10px;padding:0.6rem 0.8rem;background:#f8fafc;opacity:0.5;transition:.15s;"
         title="No disponible: El contrato ya tiene planillas pagadas con días cotizados > 0">
@@ -780,6 +780,21 @@
         </div>
         <p style="font-size:0.65rem;color:#94a3b8;margin:.25rem 0 0 1.2rem;line-height:1.3;">
           No disponible: El contrato ya tiene planillas pagadas con días cotizados.
+        </p>
+      </label>
+      @elseif($retiroInfoForzado ?? false)
+      {{-- Superadmin: hay planillas con días cotizados, pero se permite forzarlo
+           (contratos migrados o retirados en la planilla fuera del sistema). --}}
+      <label id="mr-lbl-info" onclick="mrTipo('informativo')"
+        style="cursor:pointer;border:2px solid #f59e0b;border-radius:10px;padding:0.6rem 0.8rem;background:#fffbeb;transition:.15s;">
+        <div style="display:flex;align-items:center;gap:0.4rem;">
+          <input type="radio" name="_tipo_retiro_ui" value="informativo" onclick="event.stopPropagation();mrTipo('informativo')">
+          <strong style="font-size:0.78rem;color:#b45309;">Retiro Informativo</strong>
+          <span style="background:#fef3c7;color:#92400e;font-size:0.55rem;font-weight:700;padding:.1rem .35rem;border-radius:20px;letter-spacing:.02em;">SUPERADMIN</span>
+        </div>
+        <p style="font-size:0.65rem;color:#92400e;margin:.25rem 0 0 1.2rem;line-height:1.3;">
+          &#9888;&#65039; El contrato ya tiene planillas pagadas con días cotizados. Se pedirá
+          confirmación y quedará en la bitácora.
         </p>
       </label>
       @else
@@ -1453,6 +1468,10 @@ function mrCalcFecha() {
     mrActualizarCostos();
 }
 
+// ¿El superadmin está forzando un retiro informativo sobre un contrato con
+// planillas pagadas con días cotizados? (para el resto la opción va disabled)
+const RETIRO_INFO_FORZADO = {{ ($retiroInfoForzado ?? false) ? 'true' : 'false' }};
+
 // ── Toggle tipo retiro ────────────────────────────────────────────────────
 function mrTipo(tipo) {
     document.getElementById('mr-tipo-hidden').value = tipo;
@@ -1477,11 +1496,13 @@ function mrTipo(tipo) {
         if (!numDias.value || numDias.value == 0) numDias.value = 1;
         mrSetDefault();
     } else {
-        lblInfo.style.borderColor = '#0284c7';
-        lblInfo.style.background  = '#f0f9ff';
+        // Si el superadmin lo está forzando, se mantiene el ámbar de advertencia
+        // en vez del azul de selección normal.
+        lblInfo.style.borderColor = RETIRO_INFO_FORZADO ? '#d97706' : '#0284c7';
+        lblInfo.style.background  = RETIRO_INFO_FORZADO ? '#fef3c7' : '#f0f9ff';
         lblReal.style.borderColor = '#e2e8f0';
         lblReal.style.background  = '#f8fafc';
-        
+
         if (diasWrap) diasWrap.style.display = 'none';
         if (desgloseBox) desgloseBox.style.display = 'none';
         if (explicacionBox) explicacionBox.style.display = 'block';
@@ -1573,7 +1594,23 @@ document.addEventListener('DOMContentLoaded', function() { mrInitSelects(); });
 function mrOnSubmit() {
     if (!mrValidarMes()) return false;
     if (!mrValidarPeriodoConsecutivo()) return false; // Bloquea si no es consecutivo
-    
+
+    // Confirmación del superadmin: el retiro informativo no genera plano ni días
+    // cotizados, así que sobre un contrato que ya cotizó es una decisión manual.
+    if (RETIRO_INFO_FORZADO && document.getElementById('mr-tipo-hidden')?.value === 'informativo') {
+        const fecha = document.getElementById('mr-fecha')?.value || '(sin fecha)';
+        const ok = confirm(
+            '⚠️ Este contrato ya tiene planillas pagadas con días cotizados.\n\n'
+          + 'Para cualquier otro usuario el retiro informativo estaría bloqueado.\n\n'
+          + 'Se marcará el retiro con 0 días y NO se generará plano ni cobro de\n'
+          + 'seguridad social. Úselo solo si el retiro ya se aplicó en la planilla\n'
+          + 'por fuera del sistema, o si el contrato viene migrado.\n\n'
+          + 'Fecha de retiro: ' + fecha + '\n\n'
+          + 'Quedará registrado en la bitácora a su nombre.\n\n¿Confirma el retiro informativo?'
+        );
+        if (!ok) return false;
+    }
+
     const btn = document.getElementById('mr-submit-btn');
     if (btn) {
         btn.disabled = true;
@@ -1724,17 +1761,17 @@ const REGLA_AFP_ACTIVA           = {{ ($reglaAfpActiva ?? false) ? 'true' : 'fal
 const MODALIDADES_AFP_OBLIGATORIO = @json($modalidadesAfpObligatorio ?? [0,10,11]);
 @php
 // Construir mapa de días TP antes de inyectarlo como JS
-// factor_salario: fraccion del salario mínimo a usar como salario mensual
-$_factorMap = [7 => 0.25, 14 => 0.50, 21 => 0.75, 30 => 1.00];
+// factor_salario: fraccion del salario mínimo a usar como salario mensual.
+// El factor sale de TipoModalidad::factorSalario() — misma fuente que usa la
+// validación del backend, para que el piso del form y el del servidor coincidan.
 $_modalidadesTPData = [];
 foreach ($tiposModalidad as $_tm) {
     if ($_tm->esTiempoParcial()) {
-        $_factor = $_factorMap[$_tm->dias_afp] ?? 1.0;
         $_modalidadesTPData[$_tm->id] = [
             'dias_arl'       => 30,                // ARL siempre 30 días
             'dias_afp'       => $_tm->dias_afp,
             'dias_caja'      => $_tm->dias_caja,
-            'factor_salario' => $_factor,
+            'factor_salario' => $_tm->factorSalario(),
         ];
     }
 }
@@ -2779,6 +2816,18 @@ function cotizador() {
                 }
             } else {
                 this.diasArl = this.diasAfp = this.diasCaja = 0;
+                // ── Salir de Tiempo Parcial: restaurar el salario al mínimo ──
+                // Sin esto el salario quedaba pegado en la fracción del SMMLV
+                // (ej. 437.726 al venir de TP 7) y se guardaba un dependiente
+                // cotizando sobre un cuarto del mínimo.
+                if (!this.esUpc && this.salario < SALARIO_MINIMO) {
+                    this.salario = SALARIO_MINIMO;
+                    const inpSalTC = document.getElementById('inp_salario');
+                    if (inpSalTC) {
+                        inpSalTC.dataset.raw = SALARIO_MINIMO;
+                        inpSalTC.value       = numFmt(SALARIO_MINIMO);
+                    }
+                }
             }
             if (!this.esIndependiente) {
                 // Dependiente: IBC = salario

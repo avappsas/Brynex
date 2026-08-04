@@ -23,6 +23,7 @@ use App\Models\BancoCuenta;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use App\Services\MoraClienteService;
 
 class ContratoController extends Controller
@@ -182,6 +183,12 @@ class ContratoController extends Controller
                 ->where('numero_factura', '>', 0)
                 ->exists();
 
+        // El superadmin sí puede marcar retiro informativo aunque haya planillas
+        // con días cotizados: hay contratos migrados y otros a los que ya se les
+        // marcó el retiro directamente en la planilla, fuera del sistema.
+        $retiroInfoBloqueado = $tienePlanillaConDias && !$puedeForzarBloqueo;
+        $retiroInfoForzado   = $tienePlanillaConDias && $puedeForzarBloqueo;
+
         // ── Modal Duplicar (Plan Ingreso-Retiro) ─────────────
         $rsIrOpciones = [];
         $rsIrPreviewId = null;
@@ -277,7 +284,7 @@ class ContratoController extends Controller
 
         return view('admin.contratos.form', array_merge(
             $this->datosFormulario($alidoId, $cliente, $contrato->razon_social_id, $contrato->id),
-            compact('contrato', 'cliente', 'backUrl', 'radicadosPorTipo', 'rsBloquedaPorAfiliacion', 'rsDesbloqueoSuperadmin', 'otrosContratosVigentes', 'tienePlanillaConDias', 'rsIrOpciones', 'rsIrPreviewId', 'rsIrHayDisponible', 'diaIngresoIr')
+            compact('contrato', 'cliente', 'backUrl', 'radicadosPorTipo', 'rsBloquedaPorAfiliacion', 'rsDesbloqueoSuperadmin', 'otrosContratosVigentes', 'tienePlanillaConDias', 'retiroInfoBloqueado', 'retiroInfoForzado', 'rsIrOpciones', 'rsIrPreviewId', 'rsIrHayDisponible', 'diaIngresoIr')
         ));
     }
 
@@ -520,8 +527,12 @@ class ContratoController extends Controller
             : 0;
 
         // Por seguridad: bloquear retiro informativo si tiene planillas con días > 0
-        // Excepción: contratos de RS independiente (es_independiente=1) siempre pueden
+        // Excepción 1: contratos de RS independiente (es_independiente=1) siempre pueden
         // hacer retiro informativo porque el cliente paga la SS por sus propios medios.
+        // Excepción 2: el superadmin puede forzarlo — hay contratos migrados y otros a
+        // los que ya se les marcó el retiro en la planilla fuera del sistema. Queda en
+        // bitácora quién lo hizo.
+        $retiroInfoForzado = false;
         if ($tipoRetiro === 'informativo') {
             $rsRetiroCheck = $contrato->razonSocial;
             $esIndependienteRetiro = $contrato->esIndependiente() || ($rsRetiroCheck && $rsRetiroCheck->es_independiente);
@@ -533,9 +544,12 @@ class ContratoController extends Controller
                     ->where('numero_factura', '>', 0)
                     ->exists();
                 if ($tienePlanillaConDias) {
-                    return redirect()
-                        ->route('admin.contratos.edit', [$id, 'back' => $request->input('back_url')])
-                        ->withErrors(['tipo_retiro' => 'No se puede aplicar retiro informativo porque el contrato ya tiene planillas pagadas con días cotizados.']);
+                    if (!Auth::user()->hasRole('superadmin')) {
+                        return redirect()
+                            ->route('admin.contratos.edit', [$id, 'back' => $request->input('back_url')])
+                            ->withErrors(['tipo_retiro' => 'No se puede aplicar retiro informativo porque el contrato ya tiene planillas pagadas con días cotizados.']);
+                    }
+                    $retiroInfoForzado = true;
                 }
             }
         }
@@ -817,6 +831,28 @@ class ContratoController extends Controller
                 'usuario_id'        => Auth::id(),
             ]);
         });
+
+        // Se registra ya aplicado el retiro: si la transacción falla, relanza y
+        // no se llega aquí.
+        if ($retiroInfoForzado) {
+            \App\Models\Bitacora::registrar(
+                accion: 'updated',
+                modelo: 'Contrato',
+                registroId: $contrato->id,
+                descripcion: "Superadmin aplicó retiro informativo a un contrato con planillas pagadas con días cotizados (Cédula: {$contrato->cedula}). Fecha de retiro: {$fechaRetiro}.",
+                detalle: [
+                    'cedula'          => $contrato->cedula,
+                    'fecha_retiro'    => $fechaRetiro,
+                    'razon_social_id' => $contrato->razon_social_id,
+                    'plan_id'         => $contrato->plan_id,
+                    'mes_plano'       => $validated['mes_plano'] ?? null,
+                    'anio_plano'      => $validated['anio_plano'] ?? null,
+                    'motivo_retiro_id'=> $validated['motivo_retiro_id'] ?? null,
+                    'observacion'     => $validated['observacion'] ?? null,
+                ],
+                alidoId: $alidoId
+            );
+        }
 
         $retiroParams = [$id, 'back' => $request->input('back_url')];
         if ($request->input('iframe')) {
@@ -1515,7 +1551,7 @@ class ContratoController extends Controller
     // ─── Validación ───────────────────────────────────────────────────
     private function validar(Request $request, ?Contrato $contrato = null): array
     {
-        return $request->validate([
+        $data = $request->validate([
             'cedula'               => 'required|digits_between:6,15',
             'razon_social_id'      => 'nullable|exists:razones_sociales,id',
             'plan_id'              => 'nullable|exists:planes_contrato,id',
@@ -1549,6 +1585,50 @@ class ContratoController extends Controller
             'observacion_afiliacion' => 'nullable|string',
             'operador_planilla_id'      => 'nullable|integer',
             'cobra_planilla_primer_mes' => 'boolean',
+        ]);
+
+        $this->validarSalarioMinimo($data);
+
+        return $data;
+    }
+
+    /**
+     * El salario no puede quedar por debajo del mínimo legal de su modalidad.
+     * Tiempo Parcial cotiza sobre una fracción del SMMLV (¼, ½, ¾); el resto
+     * de modalidades sobre el SMMLV completo. UPC (13) no depende del salario.
+     *
+     * Sin este piso se guardaban dependientes con salario de tiempo parcial
+     * (el formulario dejaba pegado el valor al cambiar de modalidad).
+     */
+    private function validarSalarioMinimo(array $data): void
+    {
+        $modalidad = !empty($data['tipo_modalidad_id'])
+            ? TipoModalidad::find($data['tipo_modalidad_id'])
+            : null;
+
+        // Sin modalidad definida se exige el SMMLV completo.
+        $minimo = $modalidad
+            ? $modalidad->salarioMinimoPermitido()
+            : ConfiguracionBrynex::salarioMinimo();
+
+        if ($minimo <= 0) {
+            return;  // UPC: el valor de EPS sale de la edad/zona, no del salario
+        }
+
+        $salario = (float) ($data['salario'] ?? 0);
+
+        // Tolerancia de $1 por el redondeo de la fracción del mínimo
+        if ($salario >= $minimo - 1) {
+            return;
+        }
+
+        $etiqueta = $modalidad && $modalidad->esTiempoParcial()
+            ? "mínimo de {$modalidad->nombre}"
+            : 'salario mínimo legal';
+
+        throw ValidationException::withMessages([
+            'salario' => "El salario no puede ser menor al $etiqueta ("
+                . number_format($minimo, 0, ',', '.') . ').',
         ]);
     }
 }

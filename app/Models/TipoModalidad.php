@@ -47,6 +47,9 @@ class TipoModalidad extends BaseModel
     /** IDs que corresponden a modalidades independientes (I Venc=10, I Act=11, UPC=13, En el Exterior=14) */
     const IDS_INDEPENDIENTE = [10, 11, 13, 14];
 
+    /** UPC: afiliar a alguien fuera del núcleo familiar — no depende del salario */
+    const ID_UPC = 13;
+
     /** IDs que requieren el campo "Modo ARL" */
     const IDS_MODO_ARL = [10, 11, -1];
 
@@ -88,5 +91,33 @@ class TipoModalidad extends BaseModel
             ];
         }
         return ['arl' => 30, 'afp' => 30, 'caja' => 30];
+    }
+
+    /** Fracción del SMMLV según los días AFP del plan de Tiempo Parcial */
+    const FACTOR_SALARIO_POR_DIAS = [7 => 0.25, 14 => 0.50, 21 => 0.75, 30 => 1.00];
+
+    /**
+     * Fracción del salario mínimo que corresponde a esta modalidad.
+     * Tiempo completo → 1.0; Tiempo Parcial → 0.25 / 0.50 / 0.75 según días AFP.
+     */
+    public function factorSalario(): float
+    {
+        if (! $this->esTiempoParcial()) {
+            return 1.0;
+        }
+        return self::FACTOR_SALARIO_POR_DIAS[$this->dias_afp] ?? 1.0;
+    }
+
+    /**
+     * Salario mínimo legal que puede tener un contrato en esta modalidad.
+     * UPC (13) no depende del salario: no tiene piso.
+     */
+    public function salarioMinimoPermitido(): float
+    {
+        // (int) obligatorio: el id no es IDENTITY y llega como string
+        if ((int) $this->id === self::ID_UPC) {
+            return 0.0;
+        }
+        return round(ConfiguracionBrynex::salarioMinimo() * $this->factorSalario());
     }
 }

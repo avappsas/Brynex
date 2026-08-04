@@ -446,7 +446,7 @@ body {
                             data-nombre="{{ $t->nombre_cliente }}"
                             title="Ver ficha del cliente"
                             style="margin-top:.05rem;">👤</button>
-                    <div style="font-size:.76rem;font-weight:600;color:#1e293b;line-height:1.25;">
+                    <div style="font-size:.76rem;font-weight:600;color:#1e293b;line-height:1.25;max-width:165px;">
                         {{ $t->nombre_cliente }}
                         <span style="font-weight:500;color:#94a3b8;white-space:nowrap;">{{ $t->cliente?->tipo_doc ?: 'CC' }} {{ $t->cedula }}</span>
                     </div>
