@@ -145,9 +145,16 @@ class ContratoController extends Controller
         // ── ¿La RS está bloqueada por afiliaciones activas? ─────────────
         // Si algún radicado está en tramite u ok, no se puede cambiar la RS
         $estadosBloqueantes = ['tramite', 'ok'];
-        $rsBloquedaPorAfiliacion = $contrato->radicados
+        $hayAfiliacionActiva = $contrato->radicados
             ->whereIn('estado', $estadosBloqueantes)
             ->isNotEmpty();
+
+        // El superadmin no queda bloqueado: la vista le deja los campos
+        // editables y le advierte antes de guardar (ver $rsDesbloqueoSuperadmin
+        // en form.blade.php). El cambio forzado queda en bitácora.
+        $puedeForzarBloqueo      = Auth::user()->hasRole('superadmin');
+        $rsBloquedaPorAfiliacion = $hayAfiliacionActiva && !$puedeForzarBloqueo;
+        $rsDesbloqueoSuperadmin  = $hayAfiliacionActiva && $puedeForzarBloqueo;
 
         // ── Otros contratos vigentes del mismo cliente (para modal multi-contrato) ──
         // Se excluye el contrato actual. Solo se muestran vigentes (no activo, no retirado).
@@ -270,7 +277,7 @@ class ContratoController extends Controller
 
         return view('admin.contratos.form', array_merge(
             $this->datosFormulario($alidoId, $cliente, $contrato->razon_social_id, $contrato->id),
-            compact('contrato', 'cliente', 'backUrl', 'radicadosPorTipo', 'rsBloquedaPorAfiliacion', 'otrosContratosVigentes', 'tienePlanillaConDias', 'rsIrOpciones', 'rsIrPreviewId', 'rsIrHayDisponible', 'diaIngresoIr')
+            compact('contrato', 'cliente', 'backUrl', 'radicadosPorTipo', 'rsBloquedaPorAfiliacion', 'rsDesbloqueoSuperadmin', 'otrosContratosVigentes', 'tienePlanillaConDias', 'rsIrOpciones', 'rsIrPreviewId', 'rsIrHayDisponible', 'diaIngresoIr')
         ));
     }
 
@@ -284,10 +291,15 @@ class ContratoController extends Controller
         // ── Protección RS por afiliaciones activas (tramite u ok) ──────
         // Si la RS ya tiene afiliaciones en proceso o confirmadas, NO se puede cambiar.
         // La única vía para desligar es marcar retiro del contrato.
+        // Excepción: el superadmin sí puede forzarlo (la vista ya le advirtió);
+        // el cambio queda registrado en bitácora más abajo.
         $estadosBloqueantes = ['tramite', 'ok'];
-        $rsBloquedaPorAfiliacion = $contrato->radicados
+        $hayAfiliacionActiva = $contrato->radicados
             ->whereIn('estado', $estadosBloqueantes)
             ->isNotEmpty();
+
+        $puedeForzarBloqueo      = Auth::user()->hasRole('superadmin');
+        $rsBloquedaPorAfiliacion = $hayAfiliacionActiva && !$puedeForzarBloqueo;
 
         if ($rsBloquedaPorAfiliacion &&
             isset($data['razon_social_id']) &&
@@ -317,7 +329,7 @@ class ContratoController extends Controller
             ->values()
             ->toArray(); // ej: ['eps', 'arl']
 
-        if (!empty($tiposConRadicadoActivo) && isset($data['plan_id']) && (int)$data['plan_id'] !== (int)$contrato->plan_id) {
+        if (!empty($tiposConRadicadoActivo) && !$puedeForzarBloqueo && isset($data['plan_id']) && (int)$data['plan_id'] !== (int)$contrato->plan_id) {
             $nuevoPlan = \App\Models\PlanContrato::find($data['plan_id']);
             if ($nuevoPlan) {
                 $mapaNuevoPlan = [
@@ -386,7 +398,31 @@ class ContratoController extends Controller
             }
         }
 
-        DB::transaction(function () use ($contrato, $data, $alidoId) {
+        // ── Rastro de cambios forzados por superadmin ──────────────────
+        // Si el contrato tenía afiliaciones activas y el usuario es superadmin,
+        // los campos que normalmente estarían bloqueados sí pudieron cambiar.
+        // Se deja constancia en bitácora de qué se tocó y quién lo tocó.
+        $cambiosForzados = [];
+        if ($hayAfiliacionActiva && $puedeForzarBloqueo) {
+            $camposProtegidos = ['razon_social_id', 'plan_id', 'fecha_ingreso', 'tipo_modalidad_id', 'encargado_id'];
+            foreach ($camposProtegidos as $campo) {
+                if (!array_key_exists($campo, $data)) continue;
+                $viejo = $contrato->$campo;
+                $nuevo = $data[$campo];
+                if ($campo === 'fecha_ingreso') {
+                    $viejo = $viejo ? \Carbon\Carbon::parse($viejo)->format('Y-m-d') : null;
+                    $nuevo = $nuevo ? \Carbon\Carbon::parse($nuevo)->format('Y-m-d') : null;
+                } else {
+                    $viejo = $viejo === null ? null : (int) $viejo;
+                    $nuevo = $nuevo === null || $nuevo === '' ? null : (int) $nuevo;
+                }
+                if ($viejo !== $nuevo) {
+                    $cambiosForzados[$campo] = ['old' => $viejo, 'new' => $nuevo];
+                }
+            }
+        }
+
+        DB::transaction(function () use ($contrato, $data, $alidoId, $cambiosForzados) {
             $oldPlanId = $contrato->plan_id;
 
             // Detectar cambios en campos sensibles de tarifa
@@ -411,6 +447,15 @@ class ContratoController extends Controller
                     'updated', 'Contrato', $contrato->id,
                     "Tarifas de contrato modificadas (Cédula: {$contrato->cedula}).",
                     ['cambios' => $cambios],
+                    $alidoId
+                );
+            }
+
+            if (!empty($cambiosForzados)) {
+                \App\Models\Bitacora::registrar(
+                    'updated', 'Contrato', $contrato->id,
+                    'Superadmin modificó campos protegidos de un contrato con afiliaciones en trámite u OK (Cédula: '.$contrato->cedula.').',
+                    ['cambios_forzados' => $cambiosForzados],
                     $alidoId
                 );
             }

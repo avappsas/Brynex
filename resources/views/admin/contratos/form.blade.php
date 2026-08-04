@@ -20,6 +20,20 @@
   $S = 'width:100%;padding:0.38rem 0.5rem;border:1px solid #cbd5e1;border-radius:6px;font-size:0.82rem;background:#fff;box-sizing:border-box;';
   $I = 'width:100%;padding:0.38rem 0.5rem;border:1px solid #cbd5e1;border-radius:6px;font-size:0.82rem;box-sizing:border-box;';
   $M = 'width:100%;padding:0.38rem 0.5rem;border:1px solid #cbd5e1;border-radius:6px;font-size:0.82rem;font-family:monospace;box-sizing:border-box;';
+
+  // ── Bloqueo por afiliaciones en trámite u OK ──────────────────────
+  // $rsLock: campos deshabilitados (usuario normal).
+  // $rsWarn: mismos campos editables porque es superadmin, marcados en ámbar
+  //          y con confirmación antes de guardar (ver RS_WARN en el JS).
+  $rsLock = $esEdicion && ($rsBloquedaPorAfiliacion ?? false);
+  $rsWarn = $esEdicion && ($rsDesbloqueoSuperadmin  ?? false);
+  // Con $rsWarn el formulario se ve exactamente igual que uno sin bloqueo.
+  // El aviso y el resaltado ámbar solo aparecen cuando el superadmin toca uno
+  // de los campos protegidos (marcados con data-prot, ver activarAvisoProtegidos).
+  $prot = $rsWarn ? 'data-prot="1"' : '';
+  $tipLock = $rsLock
+    ? '🔒 Bloqueado — hay afiliaciones en trámite u OK'
+    : '⚠️ Hay afiliaciones en trámite u OK — desbloqueado por ser superadmin';
 @endphp
 
 <div style="max-width:1240px;margin:0 auto;" x-data="cotizador()">
@@ -60,6 +74,17 @@
 </div>
 @endif
 
+@if($rsWarn)
+{{-- Oculto al cargar: lo revela activarAvisoProtegidos() cuando el superadmin
+     toca Razón Social, Modalidad, Plan, F. Ingreso o Encargado. --}}
+<div id="aviso-protegidos" style="display:none;background:#fffbeb;border:1px solid #fcd34d;border-left:4px solid #f59e0b;border-radius:8px;color:#92400e;padding:0.55rem 1rem;margin-bottom:0.65rem;font-size:0.8rem;line-height:1.45;">
+  <strong>&#9888;&#65039; Este contrato ya tiene afiliaciones en trámite u OK.</strong>
+  Para cualquier otro usuario estos campos estarían bloqueados. Puede modificarlos por ser superadmin,
+  pero el cambio no se sincroniza con lo ya radicado ante las entidades: los radicados existentes debe
+  gestionarlos desde Afiliaciones. Se le pedirá confirmación al guardar y quedará registrado en la bitácora.
+</div>
+@endif
+
 <form method="POST"
       action="{{ $esEdicion ? route('admin.contratos.update', $contrato->id) : route('admin.contratos.store') }}"
       id="form-contrato">
@@ -80,15 +105,11 @@
   <div class="cp">
     <div class="pt" style="color:#2563eb;">&#127970; Contrato</div>
     <div style="display:grid;grid-template-columns:1.6fr 1.2fr 1.2fr 120px;gap:0.5rem;">
-@php
-            // ¿Hay radicados que bloquean la RS?
-            $rsLock = $esEdicion && ($rsBloquedaPorAfiliacion ?? false);
-          @endphp
       <div>
         <label class="lb">Razon Social <span id="badge-rs-nit" style="font-weight:400;color:#64748b;font-size:0.63rem;background:#f1f5f9;padding:0.1rem 0.45rem;border-radius:6px;margin-left:4px;font-family:monospace;letter-spacing:0.02em;display:none;"></span></label>
-        <div class="{{ $rsLock ? 'tip-lock' : '' }}" data-tip="🔒 Bloqueado — hay afiliaciones en trámite u OK">
+        <div class="{{ $rsLock ? 'tip-lock' : '' }}" data-tip="{{ $tipLock }}">
         <select name="razon_social_id" id="sel_rs" style="{{ $S }}{{ $rsLock ? 'background:#f1f5f9;color:#1e293b;cursor:not-allowed;opacity:1;' : '' }}"
-            onchange="onRazonSocialChange(this)"
+            onchange="onRazonSocialChange(this)" {!! $prot !!}
             {{ $rsLock ? 'disabled' : '' }}>
           <option value="">-- Ninguna --</option>
           @foreach($razonesSociales as $rs)
@@ -121,7 +142,7 @@
       <div>
         <label class="lb">Modalidad</label>
         {{-- Modalidad NO se bloquea con rsLock: cambiarla (ej. IR → Dependiente) no afecta los radicados existentes --}}
-        <select name="tipo_modalidad_id" id="sel_modalidad" x-model="tipoModalidadId" @change="onModalidadChange"
+        <select name="tipo_modalidad_id" id="sel_modalidad" x-model="tipoModalidadId" @change="onModalidadChange" {!! $prot !!}
             style="{{ $S }}">
           <option value="">-- Modalidad --</option>
           @foreach($tiposModalidad as $tm)
@@ -151,8 +172,8 @@
           </span>
           @endif
         </label>
-        <div class="{{ $rsLock ? 'tip-lock' : '' }}" data-tip="🔒 Bloqueado — hay afiliaciones en trámite u OK">
-        <select name="plan_id" id="sel_plan" x-model="planId" @change="onPlanChange"
+        <div class="{{ $rsLock ? 'tip-lock' : '' }}" data-tip="{{ $tipLock }}">
+        <select name="plan_id" id="sel_plan" x-model="planId" @change="onPlanChange" {!! $prot !!}
             style="{{ $S }}{{ $rsLock ? 'background:#f1f5f9;color:#1e293b;cursor:not-allowed;opacity:1;' : '' }}"
             {{ $rsLock ? 'disabled' : '' }}>
           <option value="">-- Plan --</option>
@@ -183,8 +204,8 @@
       </div>
       <div>
         <label class="lb">F. Ingreso</label>
-        <div class="{{ $rsLock ? 'tip-lock' : '' }}" data-tip="🔒 Bloqueado — hay afiliaciones en trámite u OK">
-        <input type="date" name="fecha_ingreso"
+        <div class="{{ $rsLock ? 'tip-lock' : '' }}" data-tip="{{ $tipLock }}">
+        <input type="date" name="fecha_ingreso" {!! $prot !!}
             value="{{ old('fecha_ingreso', isset($contrato->fecha_ingreso) ? $contrato->fecha_ingreso->format('Y-m-d') : now()->format('Y-m-d')) }}"
             @change="calcularDiasDesde($event.target.value); recalcular()"
             style="{{ $I }}{{ $rsLock ? 'background:#f1f5f9;color:#1e293b;cursor:not-allowed;opacity:1;' : '' }}"
@@ -449,8 +470,8 @@
       </div>
       <div>
         <label class="lb">Encargado Afiliacion</label>
-        <div class="{{ $rsLock ? 'tip-lock' : '' }}" data-tip="🔒 Bloqueado — hay afiliaciones en trámite u OK">
-        <select name="encargado_id" style="{{ $S }}{{ $rsLock ? 'background:#f1f5f9;color:#1e293b;cursor:not-allowed;opacity:1;' : '' }}"
+        <div class="{{ $rsLock ? 'tip-lock' : '' }}" data-tip="{{ $tipLock }}">
+        <select name="encargado_id" {!! $prot !!} style="{{ $S }}{{ $rsLock ? 'background:#f1f5f9;color:#1e293b;cursor:not-allowed;opacity:1;' : '' }}"
             {{ $rsLock ? 'disabled' : '' }}>
           <option value="">-- Responsable --</option>
           @foreach($usuarios as $usr)
@@ -1646,6 +1667,10 @@ select:disabled { background:#f1f5f9;color:#1e293b;cursor:not-allowed;opacity:1;
   z-index:9999; box-shadow:0 4px 12px rgba(0,0,0,0.25);
 }
 .tip-lock:hover::after { opacity:1; }
+/* ── Campos protegidos que el superadmin decidió tocar ────── */
+.prot-activo { border-color:#f59e0b !important;background:#fffbeb !important; }
+#aviso-protegidos { animation: aviso-in 0.25s ease; }
+@keyframes aviso-in { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:none; } }
 @keyframes spin-btn { to { transform: rotate(360deg); } }
 </style>
 
@@ -1673,6 +1698,23 @@ const CLIENTE_TIPO_DOC           = @json($clienteTipoDoc ?? null);
 const ES_EDICION                 = {{ ($esEdicion ?? false) ? 'true' : 'false' }};
 const RS_LOCK                    = {{ ($rsLock ?? false) ? 'true' : 'false' }};  // hay radicados → plan bloqueado
 const PLAN_ORIGINAL_ID           = {{ ($rsLock && $esEdicion) ? (int)old('plan_id', $contrato->plan_id ?? 0) : 0 }};  // plan guardado en BD (inmutable)
+// ── Superadmin sobre contrato con afiliaciones en trámite u OK ─────
+// Los campos NO se bloquean, pero se confirma antes de guardar.
+const RS_WARN                    = {{ ($rsWarn ?? false) ? 'true' : 'false' }};
+@php
+// Valores guardados en BD de los campos protegidos, para comparar en el submit
+$_protegidos = [];
+if ($esEdicion) {
+    $_protegidos = [
+        ['name' => 'razon_social_id',   'label' => 'Razón Social', 'valor' => (string) ($contrato->razon_social_id ?? '')],
+        ['name' => 'plan_id',           'label' => 'Plan',         'valor' => (string) ($contrato->plan_id ?? '')],
+        ['name' => 'tipo_modalidad_id', 'label' => 'Modalidad',    'valor' => (string) ($contrato->tipo_modalidad_id ?? '')],
+        ['name' => 'fecha_ingreso',     'label' => 'F. Ingreso',   'valor' => $contrato->fecha_ingreso ? $contrato->fecha_ingreso->format('Y-m-d') : ''],
+        ['name' => 'encargado_id',      'label' => 'Encargado',    'valor' => (string) ($contrato->encargado_id ?? '')],
+    ];
+}
+@endphp
+const VALORES_PROTEGIDOS = @json($_protegidos);
 // 🔍 Debug AFP — revisar en consola del navegador
 console.log('[AFP] tipo_doc en BD:', CLIENTE_TIPO_DOC, '| exento AFP:', CLIENTE_EXENTO_AFP);
 // ── Regla AFP obligatorio ──────────────────────────────────────────────────
@@ -2286,8 +2328,89 @@ function bloquearEntidadesPorPlan(planId) {
 
 }
 
+/**
+ * Superadmin sobre un contrato con afiliaciones en trámite u OK: el formulario
+ * se ve normal hasta que toca uno de los campos protegidos (data-prot). En ese
+ * momento se revela el aviso y los campos quedan resaltados en ámbar.
+ */
+let _avisoProtegidosVisible = false;
+function activarAvisoProtegidos() {
+    if (_avisoProtegidosVisible) return;
+    _avisoProtegidosVisible = true;
+
+    const aviso = document.getElementById('aviso-protegidos');
+    if (aviso) {
+        aviso.style.display = 'block';
+        aviso.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+    document.querySelectorAll('[data-prot]').forEach(el => {
+        el.classList.add('prot-activo');
+        // Tooltip al pasar el mouse, igual que en los campos bloqueados
+        const cont = el.parentElement;
+        if (cont && !cont.classList.contains('tip-lock')) {
+            cont.dataset.tip = '⚠️ Editable solo por ser superadmin — hay afiliaciones en trámite u OK';
+            cont.classList.add('tip-lock');
+        }
+    });
+}
+
+function initAvisoProtegidos() {
+    document.querySelectorAll('[data-prot]').forEach(el => {
+        // mousedown cubre el clic sobre el select; focus cubre navegación por teclado
+        el.addEventListener('mousedown', activarAvisoProtegidos);
+        el.addEventListener('focus',     activarAvisoProtegidos);
+    });
+}
+
+/**
+ * Superadmin editando un contrato con afiliaciones en trámite u OK.
+ * Compara los campos protegidos contra lo guardado en BD, lista lo que cambió
+ * y pide confirmación explícita. Devuelve true si se puede guardar.
+ */
+function confirmarCambiosProtegidos(form) {
+    // Texto legible de un valor: la etiqueta del <option> cuando aplica
+    const etiqueta = (el, valor) => {
+        const v = String(valor ?? '');
+        if (!el || el.tagName !== 'SELECT') return v || '(vacío)';
+        const opt = Array.from(el.options).find(o => o.value === v);
+        return opt ? opt.text.trim() : (v || '(vacío)');
+    };
+
+    const cambios = [];
+    VALORES_PROTEGIDOS.forEach(campo => {
+        const el = form.querySelector('[name="' + campo.name + '"]');
+        if (!el) return;
+        const actual = String(el.value ?? '');
+        if (actual === String(campo.valor ?? '')) return;
+        cambios.push({
+            label:  campo.label,
+            esPlan: campo.name === 'plan_id',
+            antes:  etiqueta(el, campo.valor),
+            ahora:  etiqueta(el, actual),
+        });
+    });
+
+    if (!cambios.length) return true;
+
+    let msg = '⚠️ Este contrato tiene afiliaciones en trámite u OK.\n\n'
+            + 'Va a modificar:\n\n'
+            + cambios.map(c => '  • ' + c.label + ':\n        ' + c.antes + '\n     →  ' + c.ahora).join('\n\n')
+            + '\n\n';
+
+    if (cambios.some(c => c.esPlan)) {
+        msg += 'Cambiar el PLAN altera las entidades cubiertas (EPS / AFP / ARL / Caja).\n'
+             + 'Los radicados ya generados NO se anulan ni se corrigen ante las\n'
+             + 'entidades: debe gestionarlos manualmente desde Afiliaciones.\n\n';
+    }
+
+    msg += 'El cambio quedará registrado en la bitácora a su nombre.\n\n¿Confirma que desea guardar?';
+
+    return confirm(msg);
+}
+
 // Validacion al enviar el formulario
 document.addEventListener('DOMContentLoaded', () => {
+    if (RS_WARN) initAvisoProtegidos();
     const form = document.getElementById('form-contrato');
     if (form) {
         form.addEventListener('submit', function(e) {
@@ -2330,6 +2453,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (hayError) {
                 e.preventDefault();
                 alert('Por favor seleccione todas las entidades requeridas por el plan (marcadas en rojo).');
+                return;
+            }
+
+            // ── Confirmación del superadmin sobre campos protegidos ────
+            // Se pregunta de último, cuando el resto del formulario ya es válido.
+            if (RS_WARN && !confirmarCambiosProtegidos(form)) {
+                e.preventDefault();
             }
         });
     }
