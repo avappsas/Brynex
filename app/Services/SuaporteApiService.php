@@ -2,9 +2,9 @@
 
 namespace App\Services;
 
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Cache;
 
 /**
  * Cliente de las APIs PILA de la plataforma Enlace Operativo.
@@ -37,7 +37,7 @@ class SuaporteApiService
      * Para sumar un operador nuevo basta agregarlo aquí.
      */
     public const HOSTS = [
-        'ARUS'   => 'https://www.suaporte.com.co',
+        'ARUS' => 'https://www.suaporte.com.co',
         'SIMPLE' => 'https://www.simple.co',
     ];
 
@@ -59,38 +59,43 @@ class SuaporteApiService
     ];
 
     protected string $authUrl;
+
     protected string $apiUrl;
+
     protected string $usuario;
+
     protected string $contrasena;
+
     protected string $claveSecreta;
+
     protected int $timeout;
 
     /** Headers acumulados de sesión + autorización. */
     protected array $headers = [];
 
     /**
-     * @param array $credenciales usuario, contrasena, clave_secreta y
-     *                            opcionalmente `operador` (código: ARUS,
-     *                            SIMPLE…) o `host` para apuntar a otro
-     *                            dominio de la plataforma. Lo que se omita
-     *                            se toma de config/services.php.
+     * @param  array  $credenciales  usuario, contrasena, clave_secreta y
+     *                               opcionalmente `operador` (código: ARUS,
+     *                               SIMPLE…) o `host` para apuntar a otro
+     *                               dominio de la plataforma. Lo que se omita
+     *                               se toma de config/services.php.
      */
     public function __construct(array $credenciales = [])
     {
         $host = $credenciales['host'] ?? self::hostDeOperador($credenciales['operador'] ?? null);
 
         if ($host) {
-            $host          = rtrim($host, '/');
+            $host = rtrim($host, '/');
             $this->authUrl = "{$host}/auth";
-            $this->apiUrl  = "{$host}/api";
+            $this->apiUrl = "{$host}/api";
         } else {
             $this->authUrl = rtrim(config('services.suaporte.auth_url'), '/');
-            $this->apiUrl  = rtrim(config('services.suaporte.api_url'), '/');
+            $this->apiUrl = rtrim(config('services.suaporte.api_url'), '/');
         }
 
-        $this->timeout      = (int) config('services.suaporte.timeout', 120);
-        $this->usuario      = $credenciales['usuario']       ?? (string) config('services.suaporte.usuario');
-        $this->contrasena   = $credenciales['contrasena']    ?? (string) config('services.suaporte.contrasena');
+        $this->timeout = (int) config('services.suaporte.timeout', 120);
+        $this->usuario = $credenciales['usuario'] ?? (string) config('services.suaporte.usuario');
+        $this->contrasena = $credenciales['contrasena'] ?? (string) config('services.suaporte.contrasena');
         $this->claveSecreta = $credenciales['clave_secreta'] ?? (string) config('services.suaporte.clave_secreta');
     }
 
@@ -189,7 +194,7 @@ class SuaporteApiService
 
         // El host entra en la llave: un mismo usuario puede tener sesión
         // simultánea en ARUS y en Simple, y los tokens no son intercambiables.
-        $cacheKey = 'suaporte_sesion_' . md5($this->authUrl . '|' . $this->usuario . '|' . $this->claveSecreta);
+        $cacheKey = 'suaporte_sesion_'.md5($this->authUrl.'|'.$this->usuario.'|'.$this->claveSecreta);
 
         if ($forzar) {
             $this->cacheOlvidar($cacheKey);
@@ -197,14 +202,14 @@ class SuaporteApiService
 
         $sesion = $this->cacheLeer($cacheKey);
 
-        if (!$sesion) {
+        if (! $sesion) {
             // La documentación dice que el login acepta la contraseña en plano,
             // pero en la práctica la rechaza ("El dato no tiene formato de
             // cifrado válido"): hay que cifrarla siempre con la llave RSA.
             // El cifrado cambia en cada llamada, así que no se puede guardar.
             $contrasena = $this->cifrarDato($this->contrasena);
 
-            if (!$contrasena) {
+            if (! $contrasena) {
                 return [
                     'success' => false,
                     'message' => 'No fue posible cifrar la contraseña con el servicio de Enlace Operativo.',
@@ -216,15 +221,15 @@ class SuaporteApiService
                     ->withHeaders(['clave-secreta' => $this->claveSecreta])
                     ->asJson()
                     ->post("{$this->authUrl}/login", [
-                        'usuario'    => $this->usuario,
+                        'usuario' => $this->usuario,
                         'contrasena' => $contrasena,
                     ]);
 
-                if (!$response->successful()) {
+                if (! $response->successful()) {
                     Log::error('Suaporte: login fallido', [
-                        'status'  => $response->status(),
+                        'status' => $response->status(),
                         'usuario' => $this->usuario,
-                        'body'    => $response->body(),
+                        'body' => $response->body(),
                     ]);
 
                     return [
@@ -251,7 +256,7 @@ class SuaporteApiService
 
                 return [
                     'success' => false,
-                    'message' => 'Error de red al conectar con Enlace Operativo: ' . $e->getMessage(),
+                    'message' => 'Error de red al conectar con Enlace Operativo: '.$e->getMessage(),
                 ];
             }
         }
@@ -276,7 +281,7 @@ class SuaporteApiService
                 ->withHeaders($this->headers)
                 ->get("{$this->apiUrl}/gestion/aportante/{$tipoDocumento}/{$numeroDocumento}");
 
-            if (!$response->successful()) {
+            if (! $response->successful()) {
                 return [
                     'success' => false,
                     'message' => $this->mensajeError($response, "El aportante {$tipoDocumento} {$numeroDocumento} no fue encontrado en Enlace."),
@@ -284,9 +289,9 @@ class SuaporteApiService
             }
 
             $data = $response->json();
-            $id   = $data['id'] ?? ($data['data']['id'] ?? null);
+            $id = $data['id'] ?? ($data['data']['id'] ?? null);
 
-            if (!$id) {
+            if (! $id) {
                 return [
                     'success' => false,
                     'message' => 'Enlace no devolvió el id del aportante.',
@@ -298,7 +303,7 @@ class SuaporteApiService
         } catch (\Exception $e) {
             Log::error('Suaporte: excepción al consultar aportante', ['message' => $e->getMessage()]);
 
-            return ['success' => false, 'message' => 'Error al consultar el aportante: ' . $e->getMessage()];
+            return ['success' => false, 'message' => 'Error al consultar el aportante: '.$e->getMessage()];
         }
     }
 
@@ -340,26 +345,26 @@ class SuaporteApiService
         $dir = preg_replace('/[.,]/', '', $dir);
 
         $patron = '/^([A-ZÀ-Ý]+)\s+(\d+)\s*([A-Z])?\s*(SUR|NORTE|ESTE|OESTE)?\s*#\s*(\d+)\s*([A-Z])?\s*-\s*(\d+)/u';
-        if (!preg_match($patron, $dir, $m)) {
+        if (! preg_match($patron, $dir, $m)) {
             return null;
         }
 
         $tipoVialId = self::TIPO_VIA[$m[1]] ?? null;
-        if (!$tipoVialId) {
+        if (! $tipoVialId) {
             return null;
         }
 
         return [
-            'id'                     => null,
-            'tipoVialId'             => (string) $tipoVialId,
-            'numeroVial'             => $m[2],
-            'letraVial'              => $m[3] ?? '',
-            'tipoCuadranteId'        => !empty($m[4]) ? self::CUADRANTE_VIA[$m[4]] : null,
-            'numeroPlaca'            => $m[5],
+            'id' => null,
+            'tipoVialId' => (string) $tipoVialId,
+            'numeroVial' => $m[2],
+            'letraVial' => $m[3] ?? '',
+            'tipoCuadranteId' => ! empty($m[4]) ? self::CUADRANTE_VIA[$m[4]] : null,
+            'numeroPlaca' => $m[5],
             'cuadranteViaGeneradora' => $m[6] ?? '',
-            'numeroViaGeneradora'    => $m[7],
-            'informacionAdicional'   => '',
-            'direccionCompleta'      => $dir,
+            'numeroViaGeneradora' => $m[7],
+            'informacionAdicional' => '',
+            'direccionCompleta' => $dir,
         ];
     }
 
@@ -375,7 +380,7 @@ class SuaporteApiService
                 ->withHeaders($this->headers)
                 ->get("{$this->apiUrl}/gestion/economicactivities/find", ['name' => $termino]);
 
-            if (!$response->successful()) {
+            if (! $response->successful()) {
                 return null;
             }
 
@@ -400,11 +405,11 @@ class SuaporteApiService
      * con lo que uno esperaría (numeroPlaca/numeroViaGeneradora no son lo
      * que sus nombres sugieren, ver parsearDireccion).
      *
-     * @param array $datos tipo_documento, documento, nombre, codigo_arl,
-     *                     actividad_economica (código/nombre a buscar),
-     *                     contacto: [correo, correo_adicional, telefono,
-     *                                celular, codigo_departamento,
-     *                                codigo_municipio, direccion]
+     * @param  array  $datos  tipo_documento, documento, nombre, codigo_arl,
+     *                        actividad_economica (código/nombre a buscar),
+     *                        contacto: [correo, correo_adicional, telefono,
+     *                        celular, codigo_departamento,
+     *                        codigo_municipio, direccion]
      */
     public function crearAportanteIndependiente(array $datos): array
     {
@@ -412,44 +417,44 @@ class SuaporteApiService
             ?? 405; // fallback: "Otras actividades profesionales, científicas y técnicas n.c.p."
 
         $payload = [
-            'tipoIdentificacion'                   => $datos['tipo_documento'] ?? 'CC',
-            'numeroIdentificacion'                 => (string) $datos['documento'],
-            'razonSocial'                          => $datos['nombre'],
-            'tipoAportanteId'                      => '2',   // independiente
-            'clasificacionAportanteId'             => 2,
-            'digitoVerificacion'                   => 0,
-            'formaPresentacionId'                  => 1,   // único
-            'tipoPersonaId'                        => 1,   // natural
-            'naturalezaJuridicaId'                 => 2,   // privada
-            'tipoAccionId'                         => 5,   // normal
+            'tipoIdentificacion' => $datos['tipo_documento'] ?? 'CC',
+            'numeroIdentificacion' => (string) $datos['documento'],
+            'razonSocial' => $datos['nombre'],
+            'tipoAportanteId' => '2',   // independiente
+            'clasificacionAportanteId' => 2,
+            'digitoVerificacion' => 0,
+            'formaPresentacionId' => 1,   // único
+            'tipoPersonaId' => 1,   // natural
+            'naturalezaJuridicaId' => 2,   // privada
+            'tipoAccionId' => 5,   // normal
             'codigoAdministradoraRiesgosLaborales' => $datos['codigo_arl'] ?? 'NIN-AR',
-            'actividadEconomicaId'                 => $actividadId,
-            'estado'                               => 'ACTIVE',
-            'pagaEsapMin'                          => false,
-            'validacionExtra'                      => [
-                'duplicacionPlanilla'                   => 'N',
-                'tipoComprobantePagoAsistidoId'         => 1,
-                'valoresComprobante'                    => 'S',
-                'novedadIngresoRetiro'                  => 'S',
-                'exoneradoPagoParafiscal'               => 'S',
+            'actividadEconomicaId' => $actividadId,
+            'estado' => 'ACTIVE',
+            'pagaEsapMin' => false,
+            'validacionExtra' => [
+                'duplicacionPlanilla' => 'N',
+                'tipoComprobantePagoAsistidoId' => 1,
+                'valoresComprobante' => 'S',
+                'novedadIngresoRetiro' => 'S',
+                'exoneradoPagoParafiscal' => 'S',
                 'reemplazaAdministradoraSaludCotizante' => 'S',
-                'reemplazaValorUpcCotizante'            => 'S',
+                'reemplazaValorUpcCotizante' => 'S',
             ],
         ];
 
         $contacto = $datos['contacto'] ?? [];
-        if (!empty($contacto)) {
-            $direccion = !empty($contacto['direccion']) ? self::parsearDireccion($contacto['direccion']) : null;
+        if (! empty($contacto)) {
+            $direccion = ! empty($contacto['direccion']) ? self::parsearDireccion($contacto['direccion']) : null;
 
             $payload['informacionContacto'] = [
-                'correoElectronico'          => $contacto['correo'] ?? '',
+                'correoElectronico' => $contacto['correo'] ?? '',
                 'correoElectronicoAdicional' => $contacto['correo_adicional'] ?? '',
-                'numeroTelefono'             => $contacto['telefono'] ?? ($contacto['celular'] ?? ''),
-                'fax'                        => '',
-                'numeroCelular'              => $contacto['celular'] ?? '',
-                'codigoDepartamento'         => $contacto['codigo_departamento'] ?? '',
-                'codigoMunicipio'            => $contacto['codigo_municipio'] ?? '',
-                'datosDireccion'             => $direccion ?? [
+                'numeroTelefono' => $contacto['telefono'] ?? ($contacto['celular'] ?? ''),
+                'fax' => '',
+                'numeroCelular' => $contacto['celular'] ?? '',
+                'codigoDepartamento' => $contacto['codigo_departamento'] ?? '',
+                'codigoMunicipio' => $contacto['codigo_municipio'] ?? '',
+                'datosDireccion' => $direccion ?? [
                     'id' => null, 'tipoVialId' => null, 'numeroVial' => '',
                     'letraVial' => '', 'tipoCuadranteId' => null, 'numeroPlaca' => '',
                     'cuadranteViaGeneradora' => '', 'numeroViaGeneradora' => '',
@@ -464,32 +469,32 @@ class SuaporteApiService
                 ->asJson()
                 ->post("{$this->apiUrl}/gestion/aportante", $payload);
 
-            if (!$response->successful()) {
+            if (! $response->successful()) {
                 Log::warning('Suaporte: no se pudo crear el aportante', [
                     'documento' => $datos['documento'],
-                    'status'    => $response->status(),
-                    'body'      => $response->body(),
+                    'status' => $response->status(),
+                    'body' => $response->body(),
                 ]);
 
                 return [
-                    'success'  => false,
-                    'message'  => $this->mensajeError($response, 'No fue posible crear el aportante.'),
+                    'success' => false,
+                    'message' => $this->mensajeError($response, 'No fue posible crear el aportante.'),
                     'response' => $response->json(),
-                    'payload'  => $payload,
+                    'payload' => $payload,
                 ];
             }
 
             $data = $response->json();
 
             return [
-                'success'   => true,
-                'id'        => $data['id'] ?? ($data['data']['id'] ?? null),
+                'success' => true,
+                'id' => $data['id'] ?? ($data['data']['id'] ?? null),
                 'aportante' => $data,
             ];
         } catch (\Exception $e) {
             Log::error('Suaporte: excepción al crear aportante', ['message' => $e->getMessage()]);
 
-            return ['success' => false, 'message' => 'Error al crear el aportante: ' . $e->getMessage()];
+            return ['success' => false, 'message' => 'Error al crear el aportante: '.$e->getMessage()];
         }
     }
 
@@ -505,8 +510,8 @@ class SuaporteApiService
     public function autorizar(int $aportanteId, string $tipoDocumento, string $numeroDocumento, ?int $aplicacion = null): array
     {
         $query = [
-            'id'                   => $aportanteId,
-            'tipoIdentificacion'   => $tipoDocumento,
+            'id' => $aportanteId,
+            'tipoIdentificacion' => $tipoDocumento,
             'numeroIdentificacion' => $numeroDocumento,
         ];
 
@@ -519,11 +524,11 @@ class SuaporteApiService
                 ->withHeaders($this->headers)
                 ->get("{$this->apiUrl}/gestion/authorization/user/contributor", $query);
 
-            if (!$response->successful()) {
+            if (! $response->successful()) {
                 Log::error('Suaporte: autorización fallida', [
-                    'status'    => $response->status(),
+                    'status' => $response->status(),
                     'aportante' => "{$tipoDocumento} {$numeroDocumento}",
-                    'body'      => $response->body(),
+                    'body' => $response->body(),
                 ]);
 
                 return [
@@ -550,7 +555,7 @@ class SuaporteApiService
         } catch (\Exception $e) {
             Log::error('Suaporte: excepción al autorizar', ['message' => $e->getMessage()]);
 
-            return ['success' => false, 'message' => 'Error al autorizar sobre el aportante: ' . $e->getMessage()];
+            return ['success' => false, 'message' => 'Error al autorizar sobre el aportante: '.$e->getMessage()];
         }
     }
 
@@ -561,57 +566,57 @@ class SuaporteApiService
      * errores, Enlace crea la planilla y devuelve su número; si los tiene,
      * numeroPlanilla llega en 0 y se devuelve el detalle (máx. 100 líneas).
      *
-     * @param array $opciones planillaUGPP, planillaNSoloNovedades, tipoArchivo
+     * @param  array  $opciones  planillaUGPP, planillaNSoloNovedades, tipoArchivo
      * @return array{success: bool, codigo_planilla?: int, numero_planilla?: int, ...}
      */
     public function validarPlanilla(string $contenidoTxt, string $nombreArchivo, array $opciones = []): array
     {
         $parametros = json_encode([
-            'planillaUGPP'           => (bool) ($opciones['planillaUGPP'] ?? false),
+            'planillaUGPP' => (bool) ($opciones['planillaUGPP'] ?? false),
             'planillaNSoloNovedades' => (bool) ($opciones['planillaNSoloNovedades'] ?? false),
-            'tipoArchivo'            => $opciones['tipoArchivo'] ?? 'I', // I = activos
+            'tipoArchivo' => $opciones['tipoArchivo'] ?? 'I', // I = activos
         ]);
 
         try {
             $response = Http::timeout($this->timeout)
                 ->withHeaders($this->headers)
                 ->attach('archivo', $contenidoTxt, $nombreArchivo)
-                ->post("{$this->apiUrl}/generadorPlanillas/v1/planillas/validacion?" . http_build_query([
+                ->post("{$this->apiUrl}/generadorPlanillas/v1/planillas/validacion?".http_build_query([
                     'parametros' => $parametros,
                 ]));
 
-            if (!$response->successful()) {
+            if (! $response->successful()) {
                 Log::error('Suaporte: validación de planilla fallida', [
-                    'status'  => $response->status(),
+                    'status' => $response->status(),
                     'archivo' => $nombreArchivo,
-                    'body'    => $response->body(),
+                    'body' => $response->body(),
                 ]);
 
                 return [
-                    'success'  => false,
-                    'message'  => $this->mensajeError($response, 'Enlace rechazó el archivo plano.'),
+                    'success' => false,
+                    'message' => $this->mensajeError($response, 'Enlace rechazó el archivo plano.'),
                     'response' => $response->json(),
                 ];
             }
 
-            $data       = $response->json();
+            $data = $response->json();
             $validacion = $data['validacionPlanillas'][0] ?? [];
 
             $numeroPlanilla = (int) ($validacion['numeroPlanilla'] ?? 0);
-            $errores        = (int) ($validacion['cantidadErroresCotizante'] ?? 0)
+            $errores = (int) ($validacion['cantidadErroresCotizante'] ?? 0)
                             + (int) ($validacion['cantidadErroresEmpresa'] ?? 0);
 
             return [
-                'success'          => true,
-                'liquidada'        => $numeroPlanilla > 0,
-                'estado_validacion'=> $data['estadoValidacion'] ?? null,
-                'codigo_planilla'  => (int) ($validacion['codigoPlanilla'] ?? 0),
-                'numero_planilla'  => $numeroPlanilla,
-                'total_errores'    => $errores,
-                'errores_cotizante'=> $validacion['erroresCotizantePlanilla'] ?? [],
-                'errores_empresa'  => $validacion['erroresEmpresaPlanilla'] ?? [],
-                'advertencias'     => $validacion['advertenciasPlanilla'] ?? [],
-                'response'         => $data,
+                'success' => true,
+                'liquidada' => $numeroPlanilla > 0,
+                'estado_validacion' => $data['estadoValidacion'] ?? null,
+                'codigo_planilla' => (int) ($validacion['codigoPlanilla'] ?? 0),
+                'numero_planilla' => $numeroPlanilla,
+                'total_errores' => $errores,
+                'errores_cotizante' => $validacion['erroresCotizantePlanilla'] ?? [],
+                'errores_empresa' => $validacion['erroresEmpresaPlanilla'] ?? [],
+                'advertencias' => $validacion['advertenciasPlanilla'] ?? [],
+                'response' => $data,
             ];
         } catch (\Exception $e) {
             Log::error('Suaporte: excepción al validar planilla', [
@@ -619,7 +624,7 @@ class SuaporteApiService
                 'archivo' => $nombreArchivo,
             ]);
 
-            return ['success' => false, 'message' => 'Error al enviar el archivo plano: ' . $e->getMessage()];
+            return ['success' => false, 'message' => 'Error al enviar el archivo plano: '.$e->getMessage()];
         }
     }
 
@@ -634,10 +639,10 @@ class SuaporteApiService
                 ->withHeaders($this->headers)
                 ->get("{$this->apiUrl}/generadorPlanillas/v1/planillas/{$codigoPlanilla}/inconsistencias", [
                     'registro-inicial' => $registroInicial,
-                    'limite'           => $limite,
+                    'limite' => $limite,
                 ]);
 
-            if (!$response->successful()) {
+            if (! $response->successful()) {
                 return [
                     'success' => false,
                     'message' => $this->mensajeError($response, 'No fue posible consultar las inconsistencias.'),
@@ -648,7 +653,7 @@ class SuaporteApiService
         } catch (\Exception $e) {
             Log::error('Suaporte: excepción al consultar inconsistencias', ['message' => $e->getMessage()]);
 
-            return ['success' => false, 'message' => 'Error al consultar inconsistencias: ' . $e->getMessage()];
+            return ['success' => false, 'message' => 'Error al consultar inconsistencias: '.$e->getMessage()];
         }
     }
 
@@ -662,11 +667,11 @@ class SuaporteApiService
      * Cuando la persona no figura, responde 200 con los nombres vacíos y las
      * administradoras en NIN-EP / NIN-AF.
      */
-    public function consultarAfiliacion(string $tipoDocumento, string $numeroDocumento): array
+    public function consultarAfiliacion(string $tipoDocumento, string $numeroDocumento, bool $reintento = false): array
     {
         if (empty($this->headers['token'])) {
             $auth = $this->autenticar();
-            if (!$auth['success']) {
+            if (! $auth['success']) {
                 return $auth;
             }
         }
@@ -676,7 +681,27 @@ class SuaporteApiService
                 ->withHeaders($this->headers)
                 ->get("{$this->apiUrl}/generadorPlanillas/v1/administradoras/bdua-ruaf/{$tipoDocumento}/{$numeroDocumento}");
 
-            if (!$response->successful()) {
+            // La sesión de Enlace dura ~10 minutos y el token queda en memoria:
+            // en un proceso largo (el barrido de clientes) se vence a mitad de
+            // camino y a partir de ahí TODO responde "Unauthorized request".
+            // Pasó el 2026-08-04: de una tanda de 1.000, las primeras 333
+            // funcionaron y las 667 restantes fallaron seguidas.
+            //
+            // Ante un 401 se fuerza un login nuevo y se reintenta una sola vez.
+            // El flag evita la recursión infinita si la credencial ya no sirve.
+            if ($response->status() === 401 && ! $reintento) {
+                Log::info('Suaporte: sesión vencida, reautenticando', ['usuario' => $this->usuario]);
+
+                $auth = $this->autenticar(true);
+
+                if (! $auth['success']) {
+                    return $auth;
+                }
+
+                return $this->consultarAfiliacion($tipoDocumento, $numeroDocumento, true);
+            }
+
+            if (! $response->successful()) {
                 return [
                     'success' => false,
                     'message' => $this->mensajeError($response, 'No fue posible consultar la afiliación.'),
@@ -686,18 +711,18 @@ class SuaporteApiService
             $data = $response->json();
 
             // Sin registro: nombres vacíos y administradoras "ninguna".
-            $registrado = !empty($data['primerApellido'])
-                || (!empty($data['administradoraBDUA']) && $data['administradoraBDUA'] !== 'NIN-EP');
+            $registrado = ! empty($data['primerApellido'])
+                || (! empty($data['administradoraBDUA']) && $data['administradoraBDUA'] !== 'NIN-EP');
 
             return [
-                'success'    => true,
+                'success' => true,
                 'registrado' => $registrado,
                 'afiliacion' => $data,
             ];
         } catch (\Exception $e) {
             Log::error('Suaporte: excepción al consultar BDUA/RUAF', ['message' => $e->getMessage()]);
 
-            return ['success' => false, 'message' => 'Error al consultar la afiliación: ' . $e->getMessage()];
+            return ['success' => false, 'message' => 'Error al consultar la afiliación: '.$e->getMessage()];
         }
     }
 
@@ -714,7 +739,7 @@ class SuaporteApiService
                 ->withHeaders($this->headers)
                 ->get("{$this->apiUrl}/generadorPlanillas/v1/planillas/{$numeroPlanilla}/totales");
 
-            if (!$response->successful()) {
+            if (! $response->successful()) {
                 return [
                     'success' => false,
                     'message' => $this->mensajeError($response, 'No fue posible consultar los totales de la planilla.'),
@@ -735,18 +760,18 @@ class SuaporteApiService
             }
 
             return [
-                'success'       => true,
-                'total_pagar'   => $data['totalPagar']   ?? null,
-                'total_sin_mora'=> $data['totalSinMora'] ?? null,
-                'valor_mora'    => $data['valorMora']    ?? null,
-                'fecha_limite'  => $data['fechaLimite']  ?? null,
-                'estado'        => $data['estadoPlanilla'] ?? null,
-                'totales'       => $data,
+                'success' => true,
+                'total_pagar' => $data['totalPagar'] ?? null,
+                'total_sin_mora' => $data['totalSinMora'] ?? null,
+                'valor_mora' => $data['valorMora'] ?? null,
+                'fecha_limite' => $data['fechaLimite'] ?? null,
+                'estado' => $data['estadoPlanilla'] ?? null,
+                'totales' => $data,
             ];
         } catch (\Exception $e) {
             Log::error('Suaporte: excepción al consultar totales', ['message' => $e->getMessage()]);
 
-            return ['success' => false, 'message' => 'Error al consultar totales: ' . $e->getMessage()];
+            return ['success' => false, 'message' => 'Error al consultar totales: '.$e->getMessage()];
         }
     }
 
@@ -761,7 +786,7 @@ class SuaporteApiService
                 ->withHeaders($this->headers)
                 ->get("{$this->apiUrl}/generadorPlanillas/v1/planillas/{$numeroPlanilla}/pago/url");
 
-            if (!$response->successful()) {
+            if (! $response->successful()) {
                 return [
                     'success' => false,
                     'message' => $this->mensajeError($response, 'No fue posible obtener la URL de pago.'),
@@ -774,7 +799,7 @@ class SuaporteApiService
         } catch (\Exception $e) {
             Log::error('Suaporte: excepción al obtener URL de pago', ['message' => $e->getMessage()]);
 
-            return ['success' => false, 'message' => 'Error al obtener la URL de pago: ' . $e->getMessage()];
+            return ['success' => false, 'message' => 'Error al obtener la URL de pago: '.$e->getMessage()];
         }
     }
 
@@ -792,7 +817,7 @@ class SuaporteApiService
     {
         $totales = $this->consultarTotales($numeroPlanilla);
 
-        if (!$totales['success']) {
+        if (! $totales['success']) {
             return $totales;
         }
 
@@ -801,28 +826,28 @@ class SuaporteApiService
         // Con URL de pago disponible la planilla sigue pendiente.
         if ($pago['success']) {
             return [
-                'success'      => true,
-                'pagada'       => false,
-                'estado'       => $totales['estado'],
-                'total_pagar'  => $totales['total_pagar'],
-                'valor_mora'   => $totales['valor_mora'],
+                'success' => true,
+                'pagada' => false,
+                'estado' => $totales['estado'],
+                'total_pagar' => $totales['total_pagar'],
+                'valor_mora' => $totales['valor_mora'],
                 'fecha_limite' => $totales['fecha_limite'],
-                'url_pago'     => $pago['url_pago'],
-                'totales'      => $totales['totales'],
+                'url_pago' => $pago['url_pago'],
+                'totales' => $totales['totales'],
             ];
         }
 
         $pagada = str_contains(mb_strtolower($pago['message'] ?? ''), 'pagada');
 
         return [
-            'success'      => true,
-            'pagada'       => $pagada,
-            'estado'       => $totales['estado'],
-            'total_pagar'  => $totales['total_pagar'],
-            'valor_mora'   => $totales['valor_mora'],
+            'success' => true,
+            'pagada' => $pagada,
+            'estado' => $totales['estado'],
+            'total_pagar' => $totales['total_pagar'],
+            'valor_mora' => $totales['valor_mora'],
             'fecha_limite' => $totales['fecha_limite'],
-            'mensaje'      => $pago['message'] ?? null,
-            'totales'      => $totales['totales'],
+            'mensaje' => $pago['message'] ?? null,
+            'totales' => $totales['totales'],
         ];
     }
 
@@ -838,10 +863,10 @@ class SuaporteApiService
     public function liquidarPlanilla(string $nit, string $contenidoTxt, string $nombreArchivo, array $opciones = []): array
     {
         $tipoDocumento = $opciones['tipo_documento'] ?? 'NI';
-        $nit           = preg_replace('/\D/', '', $nit); // sin DV ni guiones
+        $nit = preg_replace('/\D/', '', $nit); // sin DV ni guiones
 
         $auth = $this->autenticar();
-        if (!$auth['success']) {
+        if (! $auth['success']) {
             return $auth + ['paso' => 'autenticacion'];
         }
 
@@ -850,12 +875,12 @@ class SuaporteApiService
         // Contratista independiente que liquida por primera vez en Enlace:
         // no existe como aportante todavía. Se registra (tipoAportanteId=2)
         // y se reintenta la consulta una sola vez.
-        if (!$aportante['success'] && !empty($opciones['crear_si_no_existe'])) {
+        if (! $aportante['success'] && ! empty($opciones['crear_si_no_existe'])) {
             $creado = $this->crearAportanteIndependiente([
-                'tipo_documento'      => $tipoDocumento,
-                'documento'           => $nit,
-                'nombre'              => $opciones['nombre_aportante'] ?? $nit,
-                'contacto'            => $opciones['contacto_aportante'] ?? [],
+                'tipo_documento' => $tipoDocumento,
+                'documento' => $nit,
+                'nombre' => $opciones['nombre_aportante'] ?? $nit,
+                'contacto' => $opciones['contacto_aportante'] ?? [],
                 'actividad_economica' => $opciones['actividad_economica'] ?? null,
             ]);
 
@@ -864,25 +889,25 @@ class SuaporteApiService
             }
         }
 
-        if (!$aportante['success']) {
+        if (! $aportante['success']) {
             return $aportante + ['paso' => 'consulta_aportante'];
         }
 
         $autorizacion = $this->autorizar($aportante['id'], $tipoDocumento, $nit, $opciones['aplicacion'] ?? null);
-        if (!$autorizacion['success']) {
+        if (! $autorizacion['success']) {
             return $autorizacion + ['paso' => 'autorizacion'];
         }
 
         $validacion = $this->validarPlanilla($contenidoTxt, $nombreArchivo, $opciones);
-        if (!$validacion['success']) {
+        if (! $validacion['success']) {
             return $validacion + ['paso' => 'validacion'];
         }
 
-        $validacion['paso']         = 'validacion';
+        $validacion['paso'] = 'validacion';
         $validacion['aportante_id'] = $aportante['id'];
 
         // Con errores no hay planilla liquidada: no tiene sentido pedir totales.
-        if (!$validacion['liquidada']) {
+        if (! $validacion['liquidada']) {
             return $validacion;
         }
 
@@ -943,6 +968,6 @@ class SuaporteApiService
             return $mensaje;
         }
 
-        return $porDefecto . ' (HTTP ' . $response->status() . ')';
+        return $porDefecto.' (HTTP '.$response->status().')';
     }
 }

@@ -145,10 +145,15 @@ class CompletarRuafClientes extends Command
             ->select('c.id', 'c.aliado_id', 'c.cedula', 'c.tipo_doc', 'c.eps_id', 'c.pension_id',
                 'c.primer_nombre', 'c.segundo_nombre', 'c.primer_apellido', 'c.segundo_apellido');
 
+        // Se salta a los ya consultados, PERO no a los que quedaron en error:
+        // un error es del momento (sesión vencida, caída del operador), no del
+        // cliente, y dejarlos fuera los perdería para siempre. Los no hallados
+        // sí se dan por resueltos: el registro respondió, solo que sin datos.
         if (! $this->option('reconsultar')) {
             $q->whereNotExists(fn ($s) => $s->select(DB::raw(1))
                 ->from('ruaf_consultas as r')
-                ->whereColumn('r.cliente_id', 'c.id'));
+                ->whereColumn('r.cliente_id', 'c.id')
+                ->where('r.estado', '<>', 'error'));
         }
 
         if ($aliado = $this->option('aliado')) {
