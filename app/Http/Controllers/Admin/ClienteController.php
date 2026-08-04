@@ -107,7 +107,12 @@ class ClienteController extends Controller
             ->orderBy('empresa')
             ->get(['id', 'empresa']);
 
-        return view('admin.clientes.index', compact('clientes', 'buscar', 'filtroEmpresa', 'empresas', 'ultimosContratos'));
+        // El modal "Nuevo Cliente" deja escoger el tipo de documento antes de
+        // consultar: BDUA/RUAF responde por tipo + número, y un tipo distinto
+        // del real devuelve vacío (no error), que parece "no registrado".
+        $tiposDoc = $this->getLookups()['tipos_doc'];
+
+        return view('admin.clientes.index', compact('clientes', 'buscar', 'filtroEmpresa', 'empresas', 'ultimosContratos', 'tiposDoc'));
     }
 
     // ─── Crear nuevo cliente ──────────────────────────────────────────
@@ -287,6 +292,19 @@ class ClienteController extends Controller
         $aliadoId  = session('aliado_id_activo');
         if (!$cedula) return response()->json(null);
 
+        // El tipo llega del selector del modal. Se valida contra el catálogo
+        // porque va directo en la URL del operador; cualquier cosa rara cae
+        // a CC, que es el 94% de los clientes.
+        $tipoDoc = strtoupper((string) $request->get('tipo_doc', 'CC'));
+        if (!array_key_exists($tipoDoc, $this->getLookups()['tipos_doc'])) {
+            $tipoDoc = 'CC';
+        }
+
+        // El duplicado se busca solo por número, a propósito: el mismo número
+        // con otro tipo puede ser la misma persona que cambió de documento
+        // (TI → CC al cumplir 18, PE → CC al cedularse), y crear un segundo
+        // registro sería peor que avisar de más. Por eso se devuelve el
+        // tipo_doc del que ya existe: si no coincide, el asesor lo ve.
         $cliente = Cliente::where('cedula', $cedula)
             ->where('aliado_id', $aliadoId)
             ->first();
@@ -296,16 +314,17 @@ class ClienteController extends Controller
                 'encontrado'     => true,
                 'id'             => $cliente->id,
                 'nombre'         => $cliente->nombre_completo,
+                'tipo_doc'       => $cliente->tipo_doc ?: 'CC',
                 'url_editar'     => route('admin.clientes.edit', $cliente->id),
                 'eps'            => $cliente->eps_nombre ?? null,
                 'celular'        => $cliente->celular ?? null,
-                'oficial'        => $this->consultarRegistroOficial($aliadoId, $cedula),
+                'oficial'        => $this->consultarRegistroOficial($aliadoId, $cedula, $tipoDoc),
             ]);
         }
 
         return response()->json([
             'encontrado' => false,
-            'oficial'    => $this->consultarRegistroOficial($aliadoId, $cedula),
+            'oficial'    => $this->consultarRegistroOficial($aliadoId, $cedula, $tipoDoc),
         ]);
     }
 
@@ -360,8 +379,14 @@ class ClienteController extends Controller
      *
      * Devuelve null si el aliado no tiene credenciales de operador cargadas,
      * de modo que el formulario siga funcionando igual que siempre.
+     *
+     * El registro responde por tipo + número, y son espacios independientes:
+     * el mismo número existe como CC de una persona y como CE de otra. Con el
+     * tipo equivocado la respuesta llega vacía, sin error, e indistinguible de
+     * "esta persona no está registrada" — por eso el tipo lo escoge el asesor
+     * y no se asume.
      */
-    private function consultarRegistroOficial(int $aliadoId, string $cedula): ?array
+    private function consultarRegistroOficial(int $aliadoId, string $cedula, string $tipoDoc = 'CC'): ?array
     {
         $cedula = preg_replace('/\D/', '', $cedula);
 
@@ -382,7 +407,10 @@ class ClienteController extends Controller
         //
         // Por eso NO se usa Cache::remember: si la escritura falla después de
         // consultar, se devuelve igual el resultado en vez de perderlo.
-        $llave = "ruaf_{$aliadoId}_{$cedula}";
+        //
+        // El tipo entra en la llave: CC 104915 y CE 104915 son dos personas
+        // distintas y no pueden compartir entrada de caché.
+        $llave = "ruaf_{$aliadoId}_{$tipoDoc}_{$cedula}";
 
         try {
             $cacheado = Cache::get($llave);
@@ -395,7 +423,7 @@ class ClienteController extends Controller
             return $cacheado;
         }
 
-        $resultado = $this->consultarRegistroOficialEnOperador($aliadoId, $cedula);
+        $resultado = $this->consultarRegistroOficialEnOperador($aliadoId, $cedula, $tipoDoc);
 
         // Un null (sin credenciales, o el operador falló) no se cachea a
         // propósito: el siguiente intento vuelve a preguntar.
@@ -415,7 +443,7 @@ class ClienteController extends Controller
      * consultarRegistroOficial() solo para que el manejo de la caché quede
      * legible; no llamar directamente.
      */
-    private function consultarRegistroOficialEnOperador(int $aliadoId, string $cedula): ?array
+    private function consultarRegistroOficialEnOperador(int $aliadoId, string $cedula, string $tipoDoc = 'CC'): ?array
     {
         [$operador, $credencial] = $this->credencialParaRuaf($aliadoId);
 
@@ -430,12 +458,13 @@ class ClienteController extends Controller
             'clave_secreta' => $credencial->clave_secreta,
         ]);
 
-        $resultado = $api->consultarAfiliacion('CC', $cedula);
+        $resultado = $api->consultarAfiliacion($tipoDoc, $cedula);
 
         if (!$resultado['success']) {
             Log::warning('RUAF: el operador no respondió la consulta', [
                 'aliado_id' => $aliadoId,
                 'operador'  => $operador->codigo,
+                'tipo_doc'  => $tipoDoc,
                 'message'   => $resultado['message'] ?? null,
             ]);
 
@@ -457,6 +486,7 @@ class ClienteController extends Controller
         return [
             'encontrado'       => $resultado['registrado'],
             'operador'         => $operador->nombre,
+            'tipo_doc'         => $tipoDoc,
             'primer_nombre'    => $d['primerNombre']    ?? '',
             'segundo_nombre'   => $d['segundoNombre']   ?? '',
             'primer_apellido'  => $d['primerApellido']  ?? '',

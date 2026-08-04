@@ -339,14 +339,27 @@
 
                 <div style="padding:1.15rem;display:flex;flex-direction:column;gap:.9rem;">
 
-                    {{-- Paso 1: cédula --}}
+                    {{-- Paso 1: tipo de documento + número.
+                         El tipo importa: el registro oficial responde por tipo +
+                         número, y con el tipo equivocado devuelve vacío igual que
+                         si la persona no existiera. --}}
                     <div x-show="!resultado">
-                        <label style="display:block;font-size:.72rem;font-weight:700;color:#475569;margin-bottom:.3rem;">Cédula</label>
+                        <label style="display:block;font-size:.72rem;font-weight:700;color:#475569;margin-bottom:.3rem;">Documento</label>
                         <div style="display:flex;gap:.5rem;">
+                            <select x-model="tipoDoc"
+                                    x-on:change="error = ''"
+                                    style="flex:0 0 76px;padding:.55rem .35rem;border:1px solid #cbd5e1;border-radius:8px;font-weight:700;font-size:.85rem;background:#f8fafc;color:#0f172a;cursor:pointer;">
+                                @foreach($tiposDoc as $k => $v)
+                                    <option value="{{ $k }}" title="{{ $v }}">{{ $k }}</option>
+                                @endforeach
+                            </select>
+                            {{-- min-width:0 es necesario: sin él un flex item no baja de su
+                                 ancho de contenido, y en móvil el número monoespaciado
+                                 empujaría el botón "Buscar" fuera del modal. --}}
                             <input type="text" x-model="cedula" x-ref="input"
                                    x-on:keydown.enter="buscar()"
                                    placeholder="Número de documento"
-                                   style="flex:1;padding:.55rem .7rem;border:1px solid #cbd5e1;border-radius:8px;font-family:monospace;font-weight:700;font-size:.95rem;">
+                                   style="flex:1;min-width:0;padding:.55rem .7rem;border:1px solid #cbd5e1;border-radius:8px;font-family:monospace;font-weight:700;font-size:.95rem;">
                             <button type="button" x-on:click="buscar()" :disabled="buscando"
                                     :style="`display:inline-flex;align-items:center;justify-content:center;gap:.4rem;padding:.55rem 1.1rem;background:linear-gradient(135deg,#1e40af,#2563eb);border:none;border-radius:8px;color:#fff;font-weight:700;font-size:.82rem;white-space:nowrap;${buscando ? 'opacity:.65;cursor:wait;' : 'cursor:pointer;'}`"
                                     onmouseover="if(!this.disabled) this.style.filter='brightness(1.08)'"
@@ -360,6 +373,9 @@
                         </div>
                         <div style="margin-top:.5rem;font-size:.72rem;color:#94a3b8;">
                             Se verifica si ya existe y se consulta el registro oficial de salud/pensión.
+                            <template x-if="tipoDoc !== 'CC'">
+                                <span style="color:#b45309;">Verifique el tipo: con el tipo equivocado el registro responde vacío.</span>
+                            </template>
                         </div>
                         <div x-show="error" x-cloak style="margin-top:.5rem;padding:.5rem .7rem;background:#fef2f2;border:1px solid #fca5a5;border-radius:7px;color:#b91c1c;font-size:.78rem;" x-text="error"></div>
                     </div>
@@ -368,7 +384,18 @@
                     <template x-if="resultado && resultado.encontrado">
                         <div style="display:flex;flex-direction:column;gap:.7rem;">
                             <div style="padding:.7rem .85rem;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;font-size:.83rem;color:#334155;line-height:1.5;">
-                                ⚠️ Ya existe <strong x-text="resultado.nombre"></strong> registrado con esta cédula.
+                                ⚠️ Ya existe <strong x-text="resultado.nombre"></strong> registrado con este número
+                                (<strong x-text="resultado.tipo_doc"></strong>).
+                                {{-- El duplicado se detecta solo por número. Si el tipo no coincide
+                                     puede ser la misma persona que cambió de documento (TI → CC al
+                                     cumplir 18, PE → CC al cedularse) o dos personas distintas: eso
+                                     lo decide el asesor viendo el nombre, no el sistema. --}}
+                                <template x-if="resultado.tipo_doc !== tipoDoc">
+                                    <span style="display:block;margin-top:.35rem;color:#b45309;">
+                                        Usted buscó como <strong x-text="tipoDoc"></strong>. Si no es la misma
+                                        persona, revise el tipo antes de continuar.
+                                    </span>
+                                </template>
                             </div>
                             <a :href="resultado.url_editar"
                                style="display:block;text-align:center;padding:.6rem;background:linear-gradient(135deg,#1e40af,#2563eb);border-radius:8px;color:#fff;font-weight:700;font-size:.85rem;text-decoration:none;">
@@ -429,8 +456,22 @@
                     <template x-if="resultado && !resultado.encontrado && (!resultado.oficial || !resultado.oficial.encontrado)">
                         <div style="display:flex;flex-direction:column;gap:.7rem;">
                             <div style="padding:.7rem .85rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:.8rem;color:#64748b;line-height:1.5;">
-                                No se encontró registro oficial de salud/pensión para esta cédula.
+                                No se encontró registro oficial de salud/pensión para
+                                <strong x-text="tipoDoc"></strong> <strong x-text="cedula"></strong>.
                                 Puede continuar y diligenciar los datos a mano.
+                            </div>
+
+                            {{-- La causa más común de un vacío es el tipo equivocado: el registro
+                                 no distingue "no existe" de "no existe con ESE tipo". --}}
+                            <div style="padding:.6rem .8rem;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;font-size:.76rem;color:#78350f;line-height:1.5;">
+                                ¿Seguro que es <strong x-text="tipoDoc"></strong>? Pruebe otro tipo antes de continuar:
+                                <div style="display:flex;flex-wrap:wrap;gap:.3rem;margin-top:.45rem;">
+                                    <template x-for="t in otrosTipos()" :key="t">
+                                        <button type="button" x-on:click="buscarCon(t)"
+                                                style="padding:.25rem .6rem;background:#fff;border:1px solid #fcd34d;border-radius:999px;color:#92400e;font-size:.72rem;font-weight:700;cursor:pointer;"
+                                                x-text="t"></button>
+                                    </template>
+                                </div>
                             </div>
 
                             <template x-if="resultado.oficial && resultado.oficial.raw">
@@ -713,9 +754,20 @@ function nuevoClienteModal() {
     return {
         visible:   false,
         cedula:    '',
+        // CC por defecto: es el 94% de los clientes. El resto (PT, PE, CE, TI,
+        // PA) hay que escogerlo, porque el registro oficial consulta por tipo +
+        // número y con el tipo equivocado responde vacío sin decir por qué.
+        tipoDoc:   'CC',
         buscando:  false,
         error:     '',
         resultado: null,
+
+        tiposDoc: @json(array_keys($tiposDoc)),
+
+        /** Los demás tipos, para el atajo "pruebe otro tipo" cuando no hay registro. */
+        otrosTipos() {
+            return this.tiposDoc.filter(t => t !== this.tipoDoc);
+        },
 
         abrir() {
             this.visible = true;
@@ -727,8 +779,16 @@ function nuevoClienteModal() {
         reiniciar() {
             this.resultado = null;
             this.cedula    = '';
+            this.tipoDoc   = 'CC';
             this.error     = '';
             this.$nextTick(() => this.$refs.input && this.$refs.input.focus());
+        },
+
+        /** Repite la búsqueda con otro tipo, sin borrar el número escrito. */
+        buscarCon(tipo) {
+            this.tipoDoc   = tipo;
+            this.resultado = null;
+            this.buscar();
         },
 
         buscar() {
@@ -740,7 +800,9 @@ function nuevoClienteModal() {
             this.error    = '';
             this.buscando = true;
 
-            fetch(`{{ route('admin.clientes.buscar_cedula') }}?cedula=${encodeURIComponent(cedula)}`)
+            const params = new URLSearchParams({ cedula, tipo_doc: this.tipoDoc });
+
+            fetch(`{{ route('admin.clientes.buscar_cedula') }}?${params.toString()}`)
                 .then(r => r.json())
                 .then(data => { this.resultado = data || { encontrado: false, oficial: null }; })
                 .catch(() => { this.error = 'No se pudo consultar. Intente de nuevo.'; })
@@ -750,7 +812,9 @@ function nuevoClienteModal() {
         /** Abre el formulario de creación con los datos confirmados. */
         crear() {
             const cedula = this.cedula.replace(/\D/g, '');
-            const params = new URLSearchParams({ cedula });
+            // El tipo con el que se verificó viaja al formulario: si se
+            // confirmó a la persona como PT, crearla como CC sería otro dato.
+            const params = new URLSearchParams({ cedula, tipo_doc: this.tipoDoc });
 
             const o = this.resultado && this.resultado.oficial;
             if (o && o.encontrado) {
