@@ -21,14 +21,14 @@ class ClienteController extends Controller
     public function index(Request $request)
     {
         $aliadoId = session('aliado_id_activo');
-        $buscar   = $request->get('buscar');
+        $buscar = $request->get('buscar');
         $filtroEmpresa = $request->get('empresa');
 
         $query = Cliente::with(['empresa'])
             ->where('clientes.aliado_id', $aliadoId)
             ->select('id', 'cedula', 'cod_empresa', 'primer_nombre', 'segundo_nombre',
-                     'primer_apellido', 'segundo_apellido',
-                     'celular', 'telefono', 'correo', 'municipio_id', 'eps_id', 'pension_id');
+                'primer_apellido', 'segundo_apellido',
+                'celular', 'telefono', 'correo', 'municipio_id', 'eps_id', 'pension_id');
 
         // Búsqueda inteligente: toda la lógica de búsqueda se envuelve en UN SOLO where()
         // para que el orWhere de nombre NO escape el filtro aliado_id de la query raíz.
@@ -37,21 +37,21 @@ class ClienteController extends Controller
             $query->where(function ($q) use ($buscar) {
                 // Coincidencia directa en cédula o celular
                 $q->where(function ($inner) use ($buscar) {
-                    $inner->where('cedula',  'LIKE', "%{$buscar}%")
-                          ->orWhere('celular', 'LIKE', "%{$buscar}%");
+                    $inner->where('cedula', 'LIKE', "%{$buscar}%")
+                        ->orWhere('celular', 'LIKE', "%{$buscar}%");
                 });
 
                 // Si no es puramente numérico, también buscar por nombre tokenizado
-                if (!ctype_digit(str_replace(' ', '', $buscar))) {
+                if (! ctype_digit(str_replace(' ', '', $buscar))) {
                     $palabras = array_filter(explode(' ', trim($buscar)));
                     $q->orWhere(function ($inner) use ($palabras) {
                         foreach ($palabras as $palabra) {
                             // Cada palabra debe matchear en ALGUNO de los 4 campos de nombre
                             $inner->where(function ($sub) use ($palabra) {
-                                $sub->where('primer_nombre',    'LIKE', "%{$palabra}%")
-                                    ->orWhere('segundo_nombre',  'LIKE', "%{$palabra}%")
+                                $sub->where('primer_nombre', 'LIKE', "%{$palabra}%")
+                                    ->orWhere('segundo_nombre', 'LIKE', "%{$palabra}%")
                                     ->orWhere('primer_apellido', 'LIKE', "%{$palabra}%")
-                                    ->orWhere('segundo_apellido','LIKE', "%{$palabra}%");
+                                    ->orWhere('segundo_apellido', 'LIKE', "%{$palabra}%");
                             });
                         }
                     });
@@ -69,7 +69,7 @@ class ClienteController extends Controller
         // Cargar último contrato de cada cliente (por cédula) en una sola consulta
         $cedulas = $clientes->pluck('cedula')->filter()->values()->toArray();
         $ultimosContratos = [];
-        if (!empty($cedulas)) {
+        if (! empty($cedulas)) {
             // Subquery con prioridad: primero contrato vigente/activo, luego el de mayor ID.
             // Evita mostrar "retirado" cuando el cliente tiene un contrato más antiguo pero vigente.
             // Lógica:
@@ -91,11 +91,11 @@ class ClienteController extends Controller
                                 c2.id DESC
                         )
                     ) AS pref"),
-                    fn($j) => $j->on('c.cedula', '=', 'pref.cedula')->on('c.id', '=', 'pref.pref_id')
+                    fn ($j) => $j->on('c.cedula', '=', 'pref.cedula')->on('c.id', '=', 'pref.pref_id')
                 )
                 ->leftJoin('tipo_modalidad as tm', 'tm.id', '=', 'c.tipo_modalidad_id')
                 ->select('c.cedula', 'c.estado', 'c.fecha_ingreso', 'c.fecha_retiro',
-                         DB::raw("COALESCE(tm.observacion, tm.tipo_modalidad) AS modalidad"))
+                    DB::raw('COALESCE(tm.observacion, tm.tipo_modalidad) AS modalidad'))
                 ->whereIn('c.cedula', $cedulas)
                 ->get()
                 ->keyBy('cedula');
@@ -118,7 +118,7 @@ class ClienteController extends Controller
     // ─── Crear nuevo cliente ──────────────────────────────────────────
     public function create()
     {
-        $cliente = new Cliente();
+        $cliente = new Cliente;
         $lookups = $this->getLookups();
         $contratos = collect();
 
@@ -151,7 +151,7 @@ class ClienteController extends Controller
                 ->withInput()
                 ->withErrors([
                     'cedula' => "Ya existe un cliente con la cédula {$cedula} en este aliado. "
-                              . "Puedes editarlo desde su perfil (ID #{$clienteExistente->id}).",
+                              ."Puedes editarlo desde su perfil (ID #{$clienteExistente->id}).",
                 ]);
         }
 
@@ -167,6 +167,40 @@ class ClienteController extends Controller
 
         return redirect()->route('admin.clientes.edit', $data['id'])
             ->with('success', 'Cliente creado exitosamente.');
+    }
+
+    // ─── Ficha del cliente resuelta por cédula ────────────────────────
+    // Los módulos que listan por cédula (tareas, incapacidades, cobros)
+    // no tienen el id del cliente a la mano. Esta ruta lo resuelve dentro
+    // del aliado activo y redirige a la ficha normal, conservando ?iframe=1
+    // para que el modal reutilizable la muestre sin layout.
+    public function fichaPorCedula(string $cedula, Request $request)
+    {
+        $cliente = Cliente::where('aliado_id', session('aliado_id_activo'))
+            ->where('cedula', $cedula)
+            ->first();
+
+        // La cédula puede venir de un registro viejo sin ficha de cliente en
+        // este aliado; dentro del iframe un 404 se ve como un error del sistema,
+        // así que se responde con un aviso legible.
+        if (! $cliente) {
+            if ($request->boolean('iframe')) {
+                return response(
+                    '<div style="font-family:Inter,sans-serif;padding:3rem;text-align:center;color:#64748b">'
+                    .'<div style="font-size:2rem;margin-bottom:.75rem">🔍</div>'
+                    .'<div style="font-weight:700;color:#0f172a">No se encontró la ficha del cliente</div>'
+                    .'<div style="font-size:.85rem;margin-top:.35rem">La cédula '.e($cedula)
+                    .' no tiene un cliente registrado en este aliado.</div></div>',
+                    404
+                );
+            }
+            abort(404);
+        }
+
+        return redirect()->route(
+            'admin.clientes.edit',
+            $request->boolean('iframe') ? [$cliente->id, 'iframe' => 1] : [$cliente->id]
+        );
     }
 
     // ─── Editar cliente existente ─────────────────────────────────────
@@ -193,7 +227,7 @@ class ClienteController extends Controller
         // Precargar razones_sociales para evitar N+1 en la vista
         $razonSocialIds = $contratos->pluck('razon_social_id')->filter()->unique()->values()->toArray();
         $razonesMap = [];
-        if (!empty($razonSocialIds)) {
+        if (! empty($razonSocialIds)) {
             $razonesMap = DB::table('razones_sociales')
                 ->whereIn('id', $razonSocialIds)
                 ->pluck('razon_social', 'id')
@@ -228,14 +262,14 @@ class ClienteController extends Controller
 
         // Resumen del cliente para el card lateral
         $resumen = [
-            'beneficiarios'   => DB::table('beneficiarios')->where('cc_cliente', $cliente->cedula)->count(),
-            'incapacidades'    => DB::table('incapacidades')->where('cedula_usuario', $cliente->cedula)->count(),
+            'beneficiarios' => DB::table('beneficiarios')->where('cc_cliente', $cliente->cedula)->count(),
+            'incapacidades' => DB::table('incapacidades')->where('cedula_usuario', $cliente->cedula)->count(),
             'contratos_vigent' => $contratos->where('estado', 'vigente')->count(),
-            'claves'           => DB::table('clave_accesos')
-                                    ->where('aliado_id', session('aliado_id_activo'))
-                                    ->where('cedula', $cliente->cedula)
-                                    ->where('activo', 1)
-                                    ->count(),
+            'claves' => DB::table('clave_accesos')
+                ->where('aliado_id', session('aliado_id_activo'))
+                ->where('cedula', $cliente->cedula)
+                ->where('activo', 1)
+                ->count(),
         ];
 
         // ¿Tiene al menos un contrato con RS independiente?
@@ -243,7 +277,7 @@ class ClienteController extends Controller
         $tieneContratoIndependiente = false;
         if ($contratos->count() > 0) {
             $rsIds = $contratos->pluck('razon_social_id')->filter()->unique()->values()->toArray();
-            if (!empty($rsIds)) {
+            if (! empty($rsIds)) {
                 $tieneContratoIndependiente = DB::table('razones_sociales')
                     ->whereIn('id', $rsIds)
                     ->where('es_independiente', true)
@@ -288,15 +322,17 @@ class ClienteController extends Controller
     // ─── Buscar cliente por cédula (AJAX) ─────────────────────────────
     public function buscarPorCedula(Request $request)
     {
-        $cedula    = $request->get('cedula');
-        $aliadoId  = session('aliado_id_activo');
-        if (!$cedula) return response()->json(null);
+        $cedula = $request->get('cedula');
+        $aliadoId = session('aliado_id_activo');
+        if (! $cedula) {
+            return response()->json(null);
+        }
 
         // El tipo llega del selector del modal. Se valida contra el catálogo
         // porque va directo en la URL del operador; cualquier cosa rara cae
         // a CC, que es el 94% de los clientes.
         $tipoDoc = strtoupper((string) $request->get('tipo_doc', 'CC'));
-        if (!array_key_exists($tipoDoc, $this->getLookups()['tipos_doc'])) {
+        if (! array_key_exists($tipoDoc, $this->getLookups()['tipos_doc'])) {
             $tipoDoc = 'CC';
         }
 
@@ -311,20 +347,20 @@ class ClienteController extends Controller
 
         if ($cliente) {
             return response()->json([
-                'encontrado'     => true,
-                'id'             => $cliente->id,
-                'nombre'         => $cliente->nombre_completo,
-                'tipo_doc'       => $cliente->tipo_doc ?: 'CC',
-                'url_editar'     => route('admin.clientes.edit', $cliente->id),
-                'eps'            => $cliente->eps_nombre ?? null,
-                'celular'        => $cliente->celular ?? null,
-                'oficial'        => $this->consultarRegistroOficial($aliadoId, $cedula, $tipoDoc),
+                'encontrado' => true,
+                'id' => $cliente->id,
+                'nombre' => $cliente->nombre_completo,
+                'tipo_doc' => $cliente->tipo_doc ?: 'CC',
+                'url_editar' => route('admin.clientes.edit', $cliente->id),
+                'eps' => $cliente->eps_nombre ?? null,
+                'celular' => $cliente->celular ?? null,
+                'oficial' => $this->consultarRegistroOficial($aliadoId, $cedula, $tipoDoc),
             ]);
         }
 
         return response()->json([
             'encontrado' => false,
-            'oficial'    => $this->consultarRegistroOficial($aliadoId, $cedula, $tipoDoc),
+            'oficial' => $this->consultarRegistroOficial($aliadoId, $cedula, $tipoDoc),
         ]);
     }
 
@@ -350,7 +386,7 @@ class ClienteController extends Controller
                 ->get()
                 ->first(fn ($op) => \App\Models\OperadorCredencial::paraOperador($idParaCredencial, $op->id)->exists());
 
-            if (!$operador) {
+            if (! $operador) {
                 return [null, null];
             }
 
@@ -447,25 +483,25 @@ class ClienteController extends Controller
     {
         [$operador, $credencial] = $this->credencialParaRuaf($aliadoId);
 
-        if (!$operador || !$credencial) {
+        if (! $operador || ! $credencial) {
             return null;
         }
 
         $api = new \App\Services\SuaporteApiService([
-            'operador'      => $operador->codigo,
-            'usuario'       => $credencial->usuario,
-            'contrasena'    => $credencial->contrasena,
+            'operador' => $operador->codigo,
+            'usuario' => $credencial->usuario,
+            'contrasena' => $credencial->contrasena,
             'clave_secreta' => $credencial->clave_secreta,
         ]);
 
         $resultado = $api->consultarAfiliacion($tipoDoc, $cedula);
 
-        if (!$resultado['success']) {
+        if (! $resultado['success']) {
             Log::warning('RUAF: el operador no respondió la consulta', [
                 'aliado_id' => $aliadoId,
-                'operador'  => $operador->codigo,
-                'tipo_doc'  => $tipoDoc,
-                'message'   => $resultado['message'] ?? null,
+                'operador' => $operador->codigo,
+                'tipo_doc' => $tipoDoc,
+                'message' => $resultado['message'] ?? null,
             ]);
 
             return null;
@@ -475,38 +511,38 @@ class ClienteController extends Controller
 
         // Los códigos que devuelve el registro son los mismos que usan
         // las tablas de referencia de Brynex.
-        $epsId = !empty($d['administradoraBDUA'])
+        $epsId = ! empty($d['administradoraBDUA'])
             ? DB::table('eps')->where('codigo', $d['administradoraBDUA'])->value('id')
             : null;
 
-        $pensionId = !empty($d['administradoraRUAF'])
+        $pensionId = ! empty($d['administradoraRUAF'])
             ? DB::table('pensiones')->where('codigo', $d['administradoraRUAF'])->value('id')
             : null;
 
         return [
-            'encontrado'       => $resultado['registrado'],
-            'operador'         => $operador->nombre,
-            'tipo_doc'         => $tipoDoc,
-            'primer_nombre'    => $d['primerNombre']    ?? '',
-            'segundo_nombre'   => $d['segundoNombre']   ?? '',
-            'primer_apellido'  => $d['primerApellido']  ?? '',
+            'encontrado' => $resultado['registrado'],
+            'operador' => $operador->nombre,
+            'tipo_doc' => $tipoDoc,
+            'primer_nombre' => $d['primerNombre'] ?? '',
+            'segundo_nombre' => $d['segundoNombre'] ?? '',
+            'primer_apellido' => $d['primerApellido'] ?? '',
             'segundo_apellido' => $d['segundoApellido'] ?? '',
-            'eps_id'           => $epsId,
-            'eps_nombre'       => $epsId ? DB::table('eps')->where('id', $epsId)->value('nombre') : null,
-            'eps_codigo'       => $d['administradoraBDUA'] ?? null,
-            'pension_id'       => $pensionId,
-            'pension_nombre'   => $pensionId ? DB::table('pensiones')->where('id', $pensionId)->value('razon_social') : null,
-            'pension_codigo'   => $d['administradoraRUAF'] ?? null,
-            'estado'           => $d['estado']  ?? null,
-            'regimen'          => $d['regimen'] ?? null,
+            'eps_id' => $epsId,
+            'eps_nombre' => $epsId ? DB::table('eps')->where('id', $epsId)->value('nombre') : null,
+            'eps_codigo' => $d['administradoraBDUA'] ?? null,
+            'pension_id' => $pensionId,
+            'pension_nombre' => $pensionId ? DB::table('pensiones')->where('id', $pensionId)->value('razon_social') : null,
+            'pension_codigo' => $d['administradoraRUAF'] ?? null,
+            'estado' => $d['estado'] ?? null,
+            'regimen' => $d['regimen'] ?? null,
             // Figurar en RUAF (aunque hoy no tenga fondo activo) es lo
             // que impide declarar el subtipo 03 "no obligado por edad".
-            'en_ruaf'          => !empty($d['fechaAfiliacionRUAF']),
-            'ruaf_desde'       => $d['fechaAfiliacionRUAF'] ?? null,
+            'en_ruaf' => ! empty($d['fechaAfiliacionRUAF']),
+            'ruaf_desde' => $d['fechaAfiliacionRUAF'] ?? null,
             // Payload crudo del operador, sin filtrar: incluye campos
             // que hoy no se usan (valorUPC, coincidencia, fechas sin
             // formatear) para que el modal pueda mostrarlos todos.
-            'raw'              => $d,
+            'raw' => $d,
         ];
     }
 
@@ -522,40 +558,40 @@ class ClienteController extends Controller
         //   cambiar a una cédula que ya usa OTRO cliente del mismo aliado.
         $reglaCedula = Rule::unique('clientes', 'cedula')
             ->where('aliado_id', $aliadoId)
-            ->when($id !== null, fn($rule) => $rule->ignore($id));
+            ->when($id !== null, fn ($rule) => $rule->ignore($id));
 
         return $request->validate([
-            'tipo_doc'            => 'nullable|string|max:10',
-            'cod_empresa'         => 'nullable|integer',
-            'cedula'              => ['required', 'numeric', $reglaCedula],
-            'primer_nombre'       => 'required|string|max:55',
-            'segundo_nombre'      => 'nullable|string|max:55',
-            'primer_apellido'     => 'required|string|max:55',
-            'segundo_apellido'    => 'nullable|string|max:55',
-            'genero'              => 'nullable|string|max:10',
-            'fecha_nacimiento'    => 'nullable|date',
-            'fecha_expedicion'    => 'nullable|date',
-            'telefono'            => 'nullable|string|max:20',
-            'celular'             => 'nullable|string|max:20',
-            'correo'              => 'nullable|string|max:100',
-            'rh'                  => 'nullable|string|max:10',
-            'departamento_id'     => 'nullable|integer',
-            'municipio_id'        => 'nullable|integer',
-            'direccion_vivienda'  => 'nullable|string|max:150',
-            'direccion_cobro'     => 'nullable|string|max:150',
-            'ocupacion'           => 'nullable|string|max:80',
-            'referido'            => 'nullable|string|max:80',
-            'eps_id'              => 'nullable|integer',
-            'pension_id'          => 'nullable|integer',
+            'tipo_doc' => 'nullable|string|max:10',
+            'cod_empresa' => 'nullable|integer',
+            'cedula' => ['required', 'numeric', $reglaCedula],
+            'primer_nombre' => 'required|string|max:55',
+            'segundo_nombre' => 'nullable|string|max:55',
+            'primer_apellido' => 'required|string|max:55',
+            'segundo_apellido' => 'nullable|string|max:55',
+            'genero' => 'nullable|string|max:10',
+            'fecha_nacimiento' => 'nullable|date',
+            'fecha_expedicion' => 'nullable|date',
+            'telefono' => 'nullable|string|max:20',
+            'celular' => 'nullable|string|max:20',
+            'correo' => 'nullable|string|max:100',
+            'rh' => 'nullable|string|max:10',
+            'departamento_id' => 'nullable|integer',
+            'municipio_id' => 'nullable|integer',
+            'direccion_vivienda' => 'nullable|string|max:150',
+            'direccion_cobro' => 'nullable|string|max:150',
+            'ocupacion' => 'nullable|string|max:80',
+            'referido' => 'nullable|string|max:80',
+            'eps_id' => 'nullable|integer',
+            'pension_id' => 'nullable|integer',
             'operador_planilla_id' => 'nullable|integer',
-            'sisben'              => 'nullable|string|max:50',
-            'ips'                 => 'nullable|string|max:100',
-            'iva'                 => 'nullable|string|max:20',
-            'observacion'         => 'nullable|string',
+            'sisben' => 'nullable|string|max:50',
+            'ips' => 'nullable|string|max:100',
+            'iva' => 'nullable|string|max:20',
+            'observacion' => 'nullable|string',
         ], [
-            'cedula.required'          => 'La cédula es obligatoria.',
-            'cedula.unique'            => 'Ya existe un cliente con esta cédula registrado en este aliado.',
-            'primer_nombre.required'   => 'El primer nombre es obligatorio.',
+            'cedula.required' => 'La cédula es obligatoria.',
+            'cedula.unique' => 'Ya existe un cliente con esta cédula registrado en este aliado.',
+            'primer_nombre.required' => 'El primer nombre es obligatorio.',
             'primer_apellido.required' => 'El primer apellido es obligatorio.',
         ]);
     }
@@ -582,6 +618,7 @@ class ClienteController extends Controller
         if (empty($data['cod_empresa'])) {
             $data['cod_empresa'] = null;
         }
+
         return $data;
     }
 
@@ -598,28 +635,28 @@ class ClienteController extends Controller
             ->get();
 
         return [
-            'eps'           => Cliente::listaEps(),
-            'pension'       => Cliente::listaPension(),
-            'arl'           => DB::table('arls')->orderBy('nombre_arl')->pluck('nombre_arl', 'id')->toArray(),
-            'caja'          => DB::table('cajas')->orderBy('nombre')->pluck('nombre', 'id')->toArray(),
-            'razon_social'  => Cliente::listaRazonSocial(),
-            'asesores'      => Cliente::listaAsesores(),
-            'empresas'      => \App\Models\Empresa::where('aliado_id', session('aliado_id_activo'))
-                                ->orderBy('empresa')
-                                ->get(['id', 'empresa']),
+            'eps' => Cliente::listaEps(),
+            'pension' => Cliente::listaPension(),
+            'arl' => DB::table('arls')->orderBy('nombre_arl')->pluck('nombre_arl', 'id')->toArray(),
+            'caja' => DB::table('cajas')->orderBy('nombre')->pluck('nombre', 'id')->toArray(),
+            'razon_social' => Cliente::listaRazonSocial(),
+            'asesores' => Cliente::listaAsesores(),
+            'empresas' => \App\Models\Empresa::where('aliado_id', session('aliado_id_activo'))
+                ->orderBy('empresa')
+                ->get(['id', 'empresa']),
             'departamentos' => $departamentos,
-            'ciudades'      => $ciudades,
-            'tipos_doc'     => [
-                'CC'  => 'CC - Cédula de Ciudadanía',
-                'TI'  => 'TI - Tarjeta de Identidad',
-                'CE'  => 'CE - Cédula de Extranjería',
-                'PA'  => 'PA - Pasaporte',
-                'PT'  => 'PT - Permiso de Protección Temporal',
-                'PE'  => 'PE - Permiso Especial de Permanencia',
+            'ciudades' => $ciudades,
+            'tipos_doc' => [
+                'CC' => 'CC - Cédula de Ciudadanía',
+                'TI' => 'TI - Tarjeta de Identidad',
+                'CE' => 'CE - Cédula de Extranjería',
+                'PA' => 'PA - Pasaporte',
+                'PT' => 'PT - Permiso de Protección Temporal',
+                'PE' => 'PE - Permiso Especial de Permanencia',
             ],
-            'generos'       => ['M' => 'Masculino', 'F' => 'Femenino'],
-            'rh'            => ['O+' => 'O+', 'O-' => 'O-', 'A+' => 'A+', 'A-' => 'A-', 'B+' => 'B+', 'B-' => 'B-', 'AB+' => 'AB+', 'AB-' => 'AB-'],
-            'sisben'        => ['NC' => 'NC - Sin Sisben', 'A' => 'A', 'B' => 'B', 'C' => 'C', 'D' => 'D'],
+            'generos' => ['M' => 'Masculino', 'F' => 'Femenino'],
+            'rh' => ['O+' => 'O+', 'O-' => 'O-', 'A+' => 'A+', 'A-' => 'A-', 'B+' => 'B+', 'B-' => 'B-', 'AB+' => 'AB+', 'AB-' => 'AB-'],
+            'sisben' => ['NC' => 'NC - Sin Sisben', 'A' => 'A', 'B' => 'B', 'C' => 'C', 'D' => 'D'],
         ];
     }
 }

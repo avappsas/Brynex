@@ -238,8 +238,16 @@ tbody td{padding:.6rem .85rem;vertical-align:middle;}
                     @if($alert180)<br><span class="alerta-180" title="Más de 180 días en EPS">⚠️180d</span>@endif
                 </td>
                 <td class="td-cliente">
-                    <div style="font-weight:600;font-size:.83rem">{{ $inc->_nombre_cliente_cache ?? $inc->cedula_usuario }}</div>
-                    <div style="font-size:.72rem;color:#64748b">{{ $inc->cedula_usuario }}</div>
+                    <div style="display:flex;align-items:center;gap:.35rem">
+                        <button type="button" class="btn-ficha-cliente"
+                                data-cedula="{{ $inc->cedula_usuario }}"
+                                data-nombre="{{ $inc->_nombre_cliente_cache ?? $inc->cedula_usuario }}"
+                                title="Ver ficha del cliente">👤</button>
+                        <div>
+                            <div style="font-weight:600;font-size:.83rem">{{ $inc->_nombre_cliente_cache ?? $inc->cedula_usuario }}</div>
+                            <div style="font-size:.72rem;color:#64748b">{{ $inc->cedula_usuario }}</div>
+                        </div>
+                    </div>
                 </td>
                 <td class="td-entidad">
                     <span class="badge badge-secondary">{{ strtoupper($inc->entidad_grupo) }}</span>
@@ -323,8 +331,16 @@ tbody td{padding:.6rem .85rem;vertical-align:middle;}
             <tr>
                 <td><span class="semaforo sem-{{ $color }}" title="{{ $diasGestion }} días sin gestión">{{ $icono }} {{ $diasGestion }} días</span></td>
                 <td>
-                    <div style="font-weight:600;font-size:.82rem">{{ $inc->_nombre_cliente_cache ?? $inc->cedula_usuario }}</div>
-                    <div style="font-size:.72rem;color:#64748b">{{ $inc->cedula_usuario }}</div>
+                    <div style="display:flex;align-items:center;gap:.35rem">
+                        <button type="button" class="btn-ficha-cliente"
+                                data-cedula="{{ $inc->cedula_usuario }}"
+                                data-nombre="{{ $inc->_nombre_cliente_cache ?? $inc->cedula_usuario }}"
+                                title="Ver ficha del cliente">👤</button>
+                        <div>
+                            <div style="font-weight:600;font-size:.82rem">{{ $inc->_nombre_cliente_cache ?? $inc->cedula_usuario }}</div>
+                            <div style="font-size:.72rem;color:#64748b">{{ $inc->cedula_usuario }}</div>
+                        </div>
+                    </div>
                 </td>
                 <td style="font-size:.78rem">{{ $inc->tipoIncapacidadLabel() }}<br>
                     @if($inc->incapacidad_padre_id)<span class="badge badge-info">Prórroga {{ $inc->numero_proroga }}</span>@endif
@@ -364,6 +380,7 @@ tbody td{padding:.6rem .85rem;vertical-align:middle;}
 @include('admin.incapacidades.partials._modal_crear', ['trabajadores' => $trabajadores, 'razonesSociales' => $razonesSociales])
 @include('admin.incapacidades.partials._modal_detalle')
 @include('admin.partials._modal_claves_globales')
+@include('components.modal-cliente')
 
 @endsection
 

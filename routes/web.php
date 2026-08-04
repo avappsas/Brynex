@@ -156,6 +156,9 @@ Route::middleware('auth')->group(function () {
         // Clientes (todos los roles con acceso)
         Route::get('clientes/buscar-cedula', [\App\Http\Controllers\Admin\ClienteController::class, 'buscarPorCedula'])
              ->name('clientes.buscar_cedula');
+        // Ficha por cédula (la usa el modal reutilizable de cliente)
+        Route::get('clientes/ficha/{cedula}', [\App\Http\Controllers\Admin\ClienteController::class, 'fichaPorCedula'])
+             ->name('clientes.ficha_cedula');
         Route::resource('clientes', \App\Http\Controllers\Admin\ClienteController::class)
              ->parameters(['clientes' => 'cliente'])
              ->except(['show', 'destroy']);

@@ -2,10 +2,10 @@
 
 namespace App\Models;
 
-use App\Models\BaseModel;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\DB;
 
 class Tarea extends BaseModel
@@ -24,34 +24,37 @@ class Tarea extends BaseModel
     ];
 
     protected $casts = [
-        'fecha_limite'   => 'date',
-        'fecha_alerta'   => 'date',
+        'fecha_limite' => 'date',
+        'fecha_alerta' => 'date',
         'fecha_radicado' => 'date',
     ];
 
     // ── Constantes de Tipo ──────────────────────────────────────────────────
     const TIPOS = [
-        'traslado_eps'           => '🔄 Traslado EPS',
-        'inclusion_beneficiarios'=> '👥 Inclusión Beneficiarios',
-        'exclusion'              => '❌ Exclusión',
-        'subsidios'              => '💰 Subsidios',
-        'actualizar_documentos'  => '📄 Actualizar Documentos',
-        'devolucion_aportes'     => '💵 Devolución de Aportes',
-        'solicitud_documentos'   => '📋 Solicitud Documentos',
-        'otros'                  => '📝 Otros',
+        'traslado_eps' => '🔄 Traslado EPS',
+        'inclusion_beneficiarios' => '👥 Inclusión Beneficiarios',
+        'exclusion' => '❌ Exclusión',
+        'subsidios' => '💰 Subsidios',
+        'actualizar_documentos' => '📄 Actualizar Documentos',
+        'devolucion_aportes' => '💵 Devolución de Aportes',
+        'solicitud_documentos' => '📋 Solicitud Documentos',
+        'otros' => '📝 Otros',
     ];
 
     // ── Constantes de Estado ────────────────────────────────────────────────
-    const ESTADO_PENDIENTE  = 'pendiente';
+    const ESTADO_PENDIENTE = 'pendiente';
+
     const ESTADO_EN_GESTION = 'en_gestion';
-    const ESTADO_EN_ESPERA  = 'en_espera';
-    const ESTADO_CERRADA    = 'cerrada';
+
+    const ESTADO_EN_ESPERA = 'en_espera';
+
+    const ESTADO_CERRADA = 'cerrada';
 
     const ESTADOS = [
-        'pendiente'  => '⏳ Pendiente',
+        'pendiente' => '⏳ Pendiente',
         'en_gestion' => '🔵 En Gestión',
-        'en_espera'  => '🟠 En Espera',
-        'cerrada'    => '✅ Cerrada',
+        'en_espera' => '🟠 En Espera',
+        'cerrada' => '✅ Cerrada',
     ];
 
     const ESTADOS_ACTIVOS = ['pendiente', 'en_gestion', 'en_espera'];
@@ -82,6 +85,16 @@ class Tarea extends BaseModel
         return $this->hasMany(TareaGestion::class)->orderByDesc('id');
     }
 
+    /**
+     * Última gestión registrada. Se resuelve por MAX(id) y no por created_at
+     * porque tarea_gestiones tiene $timestamps = false y varias filas viejas
+     * comparten la misma fecha.
+     */
+    public function ultimaGestion(): HasOne
+    {
+        return $this->hasOne(TareaGestion::class)->ofMany('id', 'max');
+    }
+
     public function documentos(): HasMany
     {
         return $this->hasMany(TareaDocumento::class)->orderByDesc('id');
@@ -103,10 +116,11 @@ class Tarea extends BaseModel
             if ($this->fecha_alerta && $this->fecha_alerta->isPast()) {
                 return 'azul';
             }
+
             return 'naranja';
         }
 
-        if (!$this->fecha_limite) {
+        if (! $this->fecha_limite) {
             return 'verde';
         }
 
@@ -125,19 +139,22 @@ class Tarea extends BaseModel
 
     public function iconoSemaforo(): string
     {
-        return match($this->colorSemaforo()) {
-            'verde'   => '🟢',
-            'amarillo'=> '🟡',
-            'rojo'    => '🔴',
-            'azul'    => '🔵',
+        return match ($this->colorSemaforo()) {
+            'verde' => '🟢',
+            'amarillo' => '🟡',
+            'rojo' => '🔴',
+            'azul' => '🔵',
             'naranja' => '🟠',
-            default   => '⚫',
+            default => '⚫',
         };
     }
 
     public function diasRestantes(): int
     {
-        if (!$this->fecha_limite) return 999;
+        if (! $this->fecha_limite) {
+            return 999;
+        }
+
         return (int) now()->startOfDay()->diffInDays($this->fecha_limite->startOfDay(), false);
     }
 
@@ -162,6 +179,7 @@ class Tarea extends BaseModel
         if ($this->relationLoaded('cliente')) {
             return $this->getRelation('cliente');
         }
+
         return DB::table('clientes')
             ->where('cedula', $this->cedula)
             ->select('id', 'cedula', 'primer_nombre', 'segundo_nombre', 'primer_apellido', 'segundo_apellido', 'celular', 'correo')
@@ -171,8 +189,11 @@ class Tarea extends BaseModel
     public function getNombreClienteAttribute(): string
     {
         $c = $this->cliente;
-        if (!$c) return $this->cedula;
-        return trim(($c->primer_nombre ?? '') . ' ' . ($c->segundo_nombre ?? '') . ' ' .
-                    ($c->primer_apellido ?? '') . ' ' . ($c->segundo_apellido ?? ''));
+        if (! $c) {
+            return $this->cedula;
+        }
+
+        return trim(($c->primer_nombre ?? '').' '.($c->segundo_nombre ?? '').' '.
+                    ($c->primer_apellido ?? '').' '.($c->segundo_apellido ?? ''));
     }
 }

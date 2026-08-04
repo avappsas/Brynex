@@ -4,8 +4,8 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Tarea;
-use App\Models\TareaGestion;
 use App\Models\TareaDocumento;
+use App\Models\TareaGestion;
 use App\Models\TareaSemaforoConfig;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -15,13 +15,26 @@ use Illuminate\Support\Facades\Storage;
 
 class TareaController extends Controller
 {
+    /**
+     * Columnas ordenables desde los encabezados de la tabla.
+     * Whitelist: la clave llega por URL y no puede ir directo al orderBy.
+     */
+    const ORDENES = [
+        'creada' => 'tareas.created_at',
+        'tipo' => 'tareas.tipo',
+        'cliente' => 'tareas.cedula',
+        'encargado' => 'tareas.encargado_id',
+        'estado' => 'tareas.estado',
+        'limite' => 'tareas.fecha_limite',
+    ];
+
     // ── INDEX ───────────────────────────────────────────────────────────────
     public function index(Request $request)
     {
-        $alidoId   = session('aliado_id_activo') ?? Auth::user()->aliado_id;
-        $user      = Auth::user();
+        $alidoId = session('aliado_id_activo') ?? Auth::user()->aliado_id;
+        $user = Auth::user();
 
-        $query = Tarea::with(['encargado', 'creadoPor', 'razonSocial', 'cliente'])
+        $query = Tarea::with(['encargado', 'creadoPor', 'razonSocial', 'cliente', 'ultimaGestion.user'])
             ->withCount(['documentos', 'gestiones'])
             ->where('aliado_id', $alidoId);
 
@@ -36,38 +49,73 @@ class TareaController extends Controller
             $query->where('estado', $request->estado);
         }
         if ($request->filled('cedula')) {
-            $query->where('cedula', 'like', '%' . $request->cedula . '%');
+            $query->where('cedula', 'like', '%'.$request->cedula.'%');
         }
         // Filtro semáforo
         if ($request->filled('semaforo')) {
             $hoy = now()->toDateString();
             if ($request->semaforo === 'urgente') {
                 $query->where('estado', '!=', 'cerrada')
-                      ->where(function ($q) use ($hoy) {
-                          $q->where('fecha_limite', '<=', $hoy)
+                    ->where(function ($q) use ($hoy) {
+                        $q->where('fecha_limite', '<=', $hoy)
                             ->orWhereNull('fecha_limite');
-                      });
+                    });
             } elseif ($request->semaforo === 'en_espera') {
                 $query->where('estado', 'en_espera')->where('fecha_alerta', '<=', $hoy);
             }
         }
 
-        // Ordenar por urgencia: rojo > naranja > amarillo > verde > cerradas
-        $query->orderByRaw("
-            CASE
-                WHEN estado = 'cerrada' THEN 5
-                WHEN estado = 'en_espera' AND fecha_alerta <= CAST(GETDATE() AS DATE) THEN 1
-                WHEN fecha_limite < CAST(GETDATE() AS DATE) THEN 1
-                WHEN fecha_limite <= DATEADD(day, 5, CAST(GETDATE() AS DATE)) THEN 2
-                ELSE 3
-            END ASC
-        ")->orderBy('fecha_limite', 'asc');
+        // Orden: si el usuario hizo clic en un encabezado manda su criterio;
+        // si no, el orden por urgencia de siempre (rojo > naranja > amarillo >
+        // verde > cerradas).
+        $orden = $request->get('orden');
+        $dir = strtolower($request->get('dir')) === 'desc' ? 'desc' : 'asc';
+
+        if (isset(self::ORDENES[$orden])) {
+            $columna = self::ORDENES[$orden];
+
+            if ($orden === 'encargado') {
+                // El nombre vive en users; se ordena con subquery correlacionada
+                // para no meter un join que duplique filas.
+                $query->orderBy(
+                    User::select('nombre')->whereColumn('users.id', 'tareas.encargado_id'),
+                    $dir
+                );
+            } elseif ($orden === 'cliente') {
+                $query->orderBy(
+                    // limit(1): la misma cédula puede tener más de una ficha y
+                    // SQL Server revienta si la subconsulta devuelve varias filas.
+                    DB::table('clientes')
+                        ->select('primer_apellido')
+                        ->whereColumn('clientes.cedula', 'tareas.cedula')
+                        ->where('clientes.aliado_id', $alidoId)
+                        ->limit(1),
+                    $dir
+                );
+            } else {
+                $query->orderBy($columna, $dir);
+            }
+
+            // Desempate estable: sin esto SQL Server puede repetir/saltar filas
+            // entre páginas cuando hay empates en la columna elegida.
+            $query->orderBy('tareas.id', 'desc');
+        } else {
+            $query->orderByRaw("
+                CASE
+                    WHEN estado = 'cerrada' THEN 5
+                    WHEN estado = 'en_espera' AND fecha_alerta <= CAST(GETDATE() AS DATE) THEN 1
+                    WHEN fecha_limite < CAST(GETDATE() AS DATE) THEN 1
+                    WHEN fecha_limite <= DATEADD(day, 5, CAST(GETDATE() AS DATE)) THEN 2
+                    ELSE 3
+                END ASC
+            ")->orderBy('fecha_limite', 'asc');
+        }
 
         // Paginación: ocultar cerradas por defecto, salvo que
         // se pida explícitamente (cerradas=true) o se filtre por estado=cerrada
         $mostrarCerradas = $request->boolean('cerradas', false)
             || $request->get('estado') === 'cerrada';
-        if (!$mostrarCerradas) {
+        if (! $mostrarCerradas) {
             $query->where('estado', '!=', 'cerrada');
         }
 
@@ -111,9 +159,9 @@ class TareaController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'tipo'    => 'required|string',
-            'cedula'  => 'required|string|max:20',
-            'tarea'   => 'required|string',
+            'tipo' => 'required|string',
+            'cedula' => 'required|string|max:20',
+            'tarea' => 'required|string',
             'encargado_id' => 'required|exists:users,id',
         ]);
 
@@ -123,31 +171,31 @@ class TareaController extends Controller
         $fechaLimite = TareaSemaforoConfig::fechaLimiteParaTipo($request->tipo, $alidoId);
 
         $tarea = Tarea::create([
-            'aliado_id'      => $alidoId,
-            'tipo'           => $request->tipo,
-            'estado'         => Tarea::ESTADO_PENDIENTE,
-            'cedula'         => $request->cedula,
-            'contrato_id'    => $request->contrato_id ?: null,
-            'razon_social_id'=> $request->razon_social_id ?: null,
-            'entidad'        => $request->entidad,
-            'tarea'          => $request->tarea,
-            'observacion'    => $request->observacion,
-            'encargado_id'   => $request->encargado_id,
-            'creado_por'     => Auth::id(),
-            'fecha_limite'   => $fechaLimite,
+            'aliado_id' => $alidoId,
+            'tipo' => $request->tipo,
+            'estado' => Tarea::ESTADO_PENDIENTE,
+            'cedula' => $request->cedula,
+            'contrato_id' => $request->contrato_id ?: null,
+            'razon_social_id' => $request->razon_social_id ?: null,
+            'entidad' => $request->entidad,
+            'tarea' => $request->tarea,
+            'observacion' => $request->observacion,
+            'encargado_id' => $request->encargado_id,
+            'creado_por' => Auth::id(),
+            'fecha_limite' => $fechaLimite,
             'fecha_radicado' => $request->fecha_radicado ?: null,
-            'numero_radicado'=> $request->numero_radicado,
-            'correo'         => $request->correo,
+            'numero_radicado' => $request->numero_radicado,
+            'correo' => $request->correo,
         ]);
 
         // Registro inicial en bitácora
         TareaGestion::create([
-            'tarea_id'    => $tarea->id,
-            'user_id'     => Auth::id(),
+            'tarea_id' => $tarea->id,
+            'user_id' => Auth::id(),
             'tipo_accion' => 'tramite_realizado',
-            'observacion' => '✅ Tarea creada: ' . $tarea->tarea,
-            'estado_tarea'=> Tarea::ESTADO_PENDIENTE,
-            'created_at'  => now(),
+            'observacion' => '✅ Tarea creada: '.$tarea->tarea,
+            'estado_tarea' => Tarea::ESTADO_PENDIENTE,
+            'created_at' => now(),
         ]);
 
         return redirect()->route('admin.tareas.index')->with('success', 'Tarea creada correctamente.');
@@ -157,26 +205,26 @@ class TareaController extends Controller
     public function update(Request $request, int $id)
     {
         $request->validate([
-            'tipo'         => 'required|string',
-            'cedula'       => 'required|string|max:20',
-            'tarea'        => 'required|string',
+            'tipo' => 'required|string',
+            'cedula' => 'required|string|max:20',
+            'tarea' => 'required|string',
             'encargado_id' => 'required|exists:users,id',
         ]);
 
         $alidoId = session('aliado_id_activo') ?? Auth::user()->aliado_id;
         $tarea = Tarea::where('aliado_id', $alidoId)->findOrFail($id);
         $tarea->update([
-            'tipo'           => $request->tipo,
-            'cedula'         => $request->cedula,
-            'contrato_id'    => $request->contrato_id ?: null,
-            'razon_social_id'=> $request->razon_social_id ?: null,
-            'entidad'        => $request->entidad,
-            'tarea'          => $request->tarea,
-            'observacion'    => $request->observacion,
-            'encargado_id'   => $request->encargado_id,
+            'tipo' => $request->tipo,
+            'cedula' => $request->cedula,
+            'contrato_id' => $request->contrato_id ?: null,
+            'razon_social_id' => $request->razon_social_id ?: null,
+            'entidad' => $request->entidad,
+            'tarea' => $request->tarea,
+            'observacion' => $request->observacion,
+            'encargado_id' => $request->encargado_id,
             'fecha_radicado' => $request->fecha_radicado ?: null,
-            'numero_radicado'=> $request->numero_radicado,
-            'correo'         => $request->correo,
+            'numero_radicado' => $request->numero_radicado,
+            'correo' => $request->correo,
         ]);
 
         return response()->json(['ok' => true, 'message' => 'Tarea actualizada.']);
@@ -188,6 +236,7 @@ class TareaController extends Controller
         $alidoId = session('aliado_id_activo') ?? Auth::user()->aliado_id;
         $tarea = Tarea::where('aliado_id', $alidoId)->findOrFail($id);
         $tarea->delete();
+
         return redirect()->route('admin.tareas.index')->with('success', 'Tarea eliminada.');
     }
 
@@ -209,13 +258,13 @@ class TareaController extends Controller
             ->first();
 
         return response()->json([
-            'tarea'    => $tarea,
-            'cliente'  => $cliente,
+            'tarea' => $tarea,
+            'cliente' => $cliente,
             // Fecha de creación ya formateada: evita ambigüedad de zona horaria en el front
-            'creada'   => $tarea->created_at?->format('d/m/Y h:i a'),
+            'creada' => $tarea->created_at?->format('d/m/Y h:i a'),
             'semaforo' => $tarea->colorSemaforo(),
-            'icono'    => $tarea->iconoSemaforo(),
-            'dias'     => $tarea->diasRestantes(),
+            'icono' => $tarea->iconoSemaforo(),
+            'dias' => $tarea->diasRestantes(),
         ]);
     }
 
@@ -223,20 +272,20 @@ class TareaController extends Controller
     public function gestion(Request $request, int $id)
     {
         $request->validate([
-            'tipo_accion'  => 'required|string',
-            'observacion'  => 'required|string',
+            'tipo_accion' => 'required|string',
+            'observacion' => 'required|string',
         ]);
 
         $alidoId = session('aliado_id_activo') ?? Auth::user()->aliado_id;
         $tarea = Tarea::findOrFail($id);
-        abort_if((int)$tarea->aliado_id !== (int)$alidoId, 403);
+        abort_if((int) $tarea->aliado_id !== (int) $alidoId, 403);
 
         // Calcular fecha_alerta si pide recordatorio
         $fechaAlerta = null;
         $recordarDias = null;
-        if ($request->filled('recordar_dias') && (int)$request->recordar_dias > 0) {
-            $recordarDias = (int)$request->recordar_dias;
-            $fechaAlerta  = now()->addDays($recordarDias)->toDateString();
+        if ($request->filled('recordar_dias') && (int) $request->recordar_dias > 0) {
+            $recordarDias = (int) $request->recordar_dias;
+            $fechaAlerta = now()->addDays($recordarDias)->toDateString();
         }
 
         // Cambiar estado según tipo_accion
@@ -253,27 +302,27 @@ class TareaController extends Controller
 
         // Grabar gestión en bitácora
         TareaGestion::create([
-            'tarea_id'    => $tarea->id,
-            'user_id'     => Auth::id(),
+            'tarea_id' => $tarea->id,
+            'user_id' => Auth::id(),
             'tipo_accion' => $request->tipo_accion,
             'observacion' => $request->observacion,
-            'recordar_dias'=> $recordarDias,
+            'recordar_dias' => $recordarDias,
             'fecha_alerta' => $fechaAlerta,
             'estado_tarea' => $nuevoEstado,
-            'created_at'   => now(),
+            'created_at' => now(),
         ]);
 
         // Actualizar tarea
         $tarea->update([
-            'estado'      => $nuevoEstado,
-            'fecha_alerta'=> $fechaAlerta ?? $tarea->fecha_alerta,
+            'estado' => $nuevoEstado,
+            'fecha_alerta' => $fechaAlerta ?? $tarea->fecha_alerta,
         ]);
 
         return response()->json([
-            'ok'      => true,
+            'ok' => true,
             'message' => 'Gestión registrada.',
-            'estado'  => $nuevoEstado,
-            'alerta'  => $fechaAlerta,
+            'estado' => $nuevoEstado,
+            'alerta' => $fechaAlerta,
         ]);
     }
 
@@ -282,7 +331,7 @@ class TareaController extends Controller
     {
         $request->validate([
             'encargado_id' => 'required|exists:users,id',
-            'observacion'  => 'required|string',
+            'observacion' => 'required|string',
         ]);
 
         $alidoId = session('aliado_id_activo') ?? Auth::user()->aliado_id;
@@ -291,14 +340,14 @@ class TareaController extends Controller
 
         // Bitácora de traslado
         TareaGestion::create([
-            'tarea_id'           => $tarea->id,
-            'user_id'            => Auth::id(),
-            'tipo_accion'        => 'traslado',
-            'observacion'        => $request->observacion,
+            'tarea_id' => $tarea->id,
+            'user_id' => Auth::id(),
+            'tipo_accion' => 'traslado',
+            'observacion' => $request->observacion,
             'encargado_anterior' => $anterior,
-            'encargado_nuevo'    => $request->encargado_id,
-            'estado_tarea'       => $tarea->estado,
-            'created_at'         => now(),
+            'encargado_nuevo' => $request->encargado_id,
+            'estado_tarea' => $tarea->estado,
+            'created_at' => now(),
         ]);
 
         $tarea->update(['encargado_id' => $request->encargado_id]);
@@ -310,7 +359,7 @@ class TareaController extends Controller
     public function cerrar(Request $request, int $id)
     {
         $request->validate([
-            'resultado'   => 'required|in:positivo,negativo',
+            'resultado' => 'required|in:positivo,negativo',
             'observacion' => 'required|string',
         ]);
 
@@ -318,16 +367,16 @@ class TareaController extends Controller
         $tarea = Tarea::where('aliado_id', $alidoId)->findOrFail($id);
 
         TareaGestion::create([
-            'tarea_id'    => $tarea->id,
-            'user_id'     => Auth::id(),
+            'tarea_id' => $tarea->id,
+            'user_id' => Auth::id(),
             'tipo_accion' => 'cambio_estado',
-            'observacion' => '🏁 Tarea cerrada (' . ($request->resultado === 'positivo' ? '✅ Positiva' : '❌ Negativa') . '): ' . $request->observacion,
-            'estado_tarea'=> Tarea::ESTADO_CERRADA,
-            'created_at'  => now(),
+            'observacion' => '🏁 Tarea cerrada ('.($request->resultado === 'positivo' ? '✅ Positiva' : '❌ Negativa').'): '.$request->observacion,
+            'estado_tarea' => Tarea::ESTADO_CERRADA,
+            'created_at' => now(),
         ]);
 
         $tarea->update([
-            'estado'    => Tarea::ESTADO_CERRADA,
+            'estado' => Tarea::ESTADO_CERRADA,
             'resultado' => $request->resultado,
         ]);
 
@@ -339,32 +388,32 @@ class TareaController extends Controller
     {
         $request->validate([
             'archivo' => 'required|file|max:10240',
-            'nombre'  => 'required|string|max:200',
+            'nombre' => 'required|string|max:200',
         ]);
 
         $alidoId = session('aliado_id_activo') ?? Auth::user()->aliado_id;
         $tarea = Tarea::where('aliado_id', $alidoId)->findOrFail($id);
-        $file  = $request->file('archivo');
-        $ext   = strtolower($file->getClientOriginalExtension());
-        $ruta  = $file->store("tareas/{$tarea->id}", 'public');
+        $file = $request->file('archivo');
+        $ext = strtolower($file->getClientOriginalExtension());
+        $ruta = $file->store("tareas/{$tarea->id}", 'public');
 
         TareaDocumento::create([
-            'tarea_id'    => $tarea->id,
-            'user_id'     => Auth::id(),
-            'nombre'      => $request->nombre,
-            'ruta'        => $ruta,
-            'tipo_archivo'=> $ext,
-            'created_at'  => now(),
+            'tarea_id' => $tarea->id,
+            'user_id' => Auth::id(),
+            'nombre' => $request->nombre,
+            'ruta' => $ruta,
+            'tipo_archivo' => $ext,
+            'created_at' => now(),
         ]);
 
         // Registrar en bitácora
         TareaGestion::create([
-            'tarea_id'    => $tarea->id,
-            'user_id'     => Auth::id(),
+            'tarea_id' => $tarea->id,
+            'user_id' => Auth::id(),
             'tipo_accion' => 'nota',
-            'observacion' => '📎 Documento adjuntado: ' . $request->nombre,
-            'estado_tarea'=> $tarea->estado,
-            'created_at'  => now(),
+            'observacion' => '📎 Documento adjuntado: '.$request->nombre,
+            'estado_tarea' => $tarea->estado,
+            'created_at' => now(),
         ]);
 
         return response()->json(['ok' => true, 'message' => 'Documento subido correctamente.']);
@@ -374,9 +423,10 @@ class TareaController extends Controller
     public function descargarDocumento(int $docId)
     {
         $alidoId = session('aliado_id_activo') ?? Auth::user()->aliado_id;
-        $doc = TareaDocumento::whereHas('tarea', fn($q) => $q->where('aliado_id', $alidoId))
+        $doc = TareaDocumento::whereHas('tarea', fn ($q) => $q->where('aliado_id', $alidoId))
             ->findOrFail($docId);
-        return Storage::disk('public')->download($doc->ruta, $doc->nombre . '.' . $doc->tipo_archivo);
+
+        return Storage::disk('public')->download($doc->ruta, $doc->nombre.'.'.$doc->tipo_archivo);
     }
 
     // ── REPORTE ──────────────────────────────────────────────────────────────
@@ -384,7 +434,7 @@ class TareaController extends Controller
     {
         $alidoId = session('aliado_id_activo') ?? Auth::user()->aliado_id;
 
-        $mes  = $request->get('mes', now()->month);
+        $mes = $request->get('mes', now()->month);
         $anio = $request->get('anio', now()->year);
 
         $trabajadores = User::where('aliado_id', $alidoId)->where('activo', true)->orderBy('nombre')->get();
@@ -398,7 +448,9 @@ class TareaController extends Controller
                 ->where('encargado_id', $worker->id)
                 ->count();
 
-            if ($tareasTotales === 0) continue;
+            if ($tareasTotales === 0) {
+                continue;
+            }
 
             $cerradasPositivo = DB::table('tareas')
                 ->where('aliado_id', $alidoId)
@@ -459,18 +511,18 @@ class TareaController extends Controller
                 : 100;
 
             $datos[] = [
-                'trabajador'        => $worker,
-                'total'             => $tareasTotales,
+                'trabajador' => $worker,
+                'total' => $tareasTotales,
                 'cerradas_positivo' => $cerradasPositivo,
                 'cerradas_negativo' => $cerradasNegativo,
-                'vencidas'          => $vencidas,
-                'avg_gestiones'     => $avgGestiones,
-                'puntualidad'       => $puntualidad,
+                'vencidas' => $vencidas,
+                'avg_gestiones' => $avgGestiones,
+                'puntualidad' => $puntualidad,
             ];
         }
 
         // Ordenar por más tareas totales
-        usort($datos, fn($a, $b) => $b['total'] <=> $a['total']);
+        usort($datos, fn ($a, $b) => $b['total'] <=> $a['total']);
 
         return view('admin.tareas.reporte', compact('datos', 'trabajadores', 'mes', 'anio'));
     }
@@ -482,7 +534,7 @@ class TareaController extends Controller
         $cedula = $request->get('cedula');
         $cliente = DB::table('clientes')
             ->where('aliado_id', $alidoId)
-            ->where('cedula', 'like', '%' . $cedula . '%')
+            ->where('cedula', 'like', '%'.$cedula.'%')
             ->limit(10)
             ->get(['cedula', 'primer_nombre', 'segundo_nombre', 'primer_apellido', 'segundo_apellido', 'celular']);
 
@@ -492,7 +544,7 @@ class TareaController extends Controller
     // ── API: contratos por cédula ────────────────────────────────────────────
     public function contratosPorCedula(Request $request)
     {
-        $cedula  = $request->get('cedula');
+        $cedula = $request->get('cedula');
         $alidoId = session('aliado_id_activo') ?? Auth::user()->aliado_id;
 
         $contratos = DB::table('contratos as c')
@@ -505,7 +557,7 @@ class TareaController extends Controller
                 'c.cedula',
                 'c.fecha_ingreso',
                 'c.estado',
-                'rs.razon_social as razon_social'
+                'rs.razon_social as razon_social',
             ]);
 
         return response()->json($contratos);

@@ -86,6 +86,13 @@ body {
 .tbl-tareas { width:100%; border-collapse:collapse; font-size:.8rem; }
 .tbl-tareas thead th { background:linear-gradient(135deg,#0a1628,#0d2550); color:rgba(255,255,255,.85); padding:.65rem .75rem; white-space:nowrap; font-weight:600; font-size:.73rem; letter-spacing:.04em; }
 .tbl-tareas thead th:first-child { border-radius:0; }
+/* Encabezados ordenables */
+.th-sort { color:inherit; text-decoration:none; display:inline-flex; align-items:center; gap:.3rem; cursor:pointer; }
+.th-sort:hover { color:#fff; }
+.th-sort .th-arrow { font-size:.58rem; opacity:.4; }
+.th-sort:hover .th-arrow { opacity:.8; }
+.th-sort.activo { color:#fbbf24; }
+.th-sort.activo .th-arrow { opacity:1; }
 .tbl-tareas tbody tr { border-bottom:1px solid #f1f5f9; transition:background .12s; }
 .tbl-tareas tbody tr:hover { background:#f8fafc; }
 .tbl-tareas td { padding:.6rem .75rem; vertical-align:middle; color:#334155; }
@@ -381,16 +388,29 @@ body {
     {{-- Tabla --}}
     <div class="tabla-wrap" style="overflow-x:auto; overflow-y:auto; border-radius:12px; border:1px solid #e2e8f0; background:#fff; flex:1; min-height:0;">
     <table class="tbl-tareas">
+        @php
+            // Encabezados ordenables: primer clic asc, segundo desc.
+            $ordenActual = request('orden');
+            $dirActual   = strtolower(request('dir')) === 'desc' ? 'desc' : 'asc';
+            $thSort = function (string $clave, string $label) use ($ordenActual, $dirActual) {
+                $activo    = $ordenActual === $clave;
+                $siguiente = ($activo && $dirActual === 'asc') ? 'desc' : 'asc';
+                $flecha    = $activo ? ($dirActual === 'asc' ? '▲' : '▼') : '⇅';
+                $url = request()->fullUrlWithQuery(['orden' => $clave, 'dir' => $siguiente, 'page' => null]);
+                return '<a href="' . e($url) . '" class="th-sort' . ($activo ? ' activo' : '') . '">'
+                     . e($label) . '<span class="th-arrow">' . $flecha . '</span></a>';
+            };
+        @endphp
         <thead>
             <tr>
                 <th>🚦</th>
-                <th>Creada</th>
-                <th>Tipo</th>
-                <th>Cliente / Cédula</th>
-                <th>Tarea</th>
-                <th>Encargado</th>
-                <th>Estado</th>
-                <th>Límite</th>
+                <th>{!! $thSort('creada', 'Creada') !!}</th>
+                <th>{!! $thSort('tipo', 'Tipo') !!}</th>
+                <th>{!! $thSort('cliente', 'Cliente / Cédula') !!}</th>
+                <th>Tarea / Última gestión</th>
+                <th>{!! $thSort('encargado', 'Encargado') !!}</th>
+                <th>{!! $thSort('estado', 'Estado') !!}</th>
+                <th>{!! $thSort('limite', 'Límite') !!}</th>
                 <th>Días</th>
                 <th>Acciones</th>
             </tr>
@@ -417,12 +437,23 @@ body {
             </td>
             <td style="font-size:.75rem;white-space:nowrap;color:#64748b;" title="{{ $t->created_at?->format('d/m/Y h:i a') }}">{{ $t->created_at?->format('d/m/y') ?? '—' }}</td>
             <td style="font-size:.73rem;font-weight:600;color:#475569;">{{ $t->tipoLabel() }}</td>
-            <td>
-                <div style="font-weight:600;font-size:.8rem;">{{ $t->nombre_cliente }}</div>
-                <div style="font-size:.7rem;color:#94a3b8;">{{ $t->cedula }}</div>
+            {{-- Cliente: nombre y cédula en el mismo bloque para no gastar
+                 una línea entera solo con el número --}}
+            <td style="max-width:185px;">
+                <div style="display:flex;align-items:flex-start;gap:.3rem;">
+                    <button type="button" class="btn-ficha-cliente"
+                            data-cedula="{{ $t->cedula }}"
+                            data-nombre="{{ $t->nombre_cliente }}"
+                            title="Ver ficha del cliente"
+                            style="margin-top:.05rem;">👤</button>
+                    <div style="font-size:.76rem;font-weight:600;color:#1e293b;line-height:1.25;">
+                        {{ $t->nombre_cliente }}
+                        <span style="font-weight:500;color:#94a3b8;white-space:nowrap;">{{ $t->cliente?->tipo_doc ?: 'CC' }} {{ $t->cedula }}</span>
+                    </div>
+                </div>
             </td>
-            <td style="max-width:220px;">
-                <div style="font-size:.78rem;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px;" title="{{ $t->tarea }}">{{ Str::limit($t->tarea, 60) }}</div>
+            <td style="max-width:340px;">
+                <div style="font-size:.78rem;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:340px;" title="{{ $t->tarea }}">{{ Str::limit($t->tarea, 75) }}</div>
                 <div style="display:flex;align-items:center;gap:0.4rem;margin-top:0.2rem;flex-wrap:wrap;">
                     @if($t->numero_radicado)
                         <span style="font-size:.68rem;color:#64748b;background:#f1f5f9;padding:0.05rem 0.25rem;border-radius:4px;">📄 {{ $t->numero_radicado }}</span>
@@ -430,10 +461,25 @@ body {
                     @if($t->documentos_count > 0)
                         <span style="font-size:0.65rem;color:#2563eb;background:#eff6ff;padding:0.05rem 0.25rem;border-radius:4px;font-weight:700;" title="{{ $t->documentos_count }} documentos adjuntos">📎 {{ $t->documentos_count }}</span>
                     @endif
-                    @if($t->gestiones_count > 0)
-                        <span style="font-size:0.65rem;color:#16a34a;background:#f0fdf4;padding:0.05rem 0.25rem;border-radius:4px;font-weight:700;" title="{{ $t->gestiones_count }} gestiones registradas">💬 {{ $t->gestiones_count }}</span>
-                    @endif
                 </div>
+                {{-- Última gestión: reemplaza al contador 💬 N, que no decía nada --}}
+                @if($t->ultimaGestion)
+                    @php
+                        $ug     = $t->ultimaGestion;
+                        $ugText = trim($ug->observacion ?: (\App\Models\TareaGestion::TIPOS_ACCION[$ug->tipo_accion] ?? $ug->tipo_accion));
+                        $ugTitle = ($ug->created_at?->format('d/m/Y h:i a') ?? '')
+                                 . ' · ' . ($ug->user?->nombre ?? '?')
+                                 . ' · ' . $ugText;
+                    @endphp
+                    <div style="display:flex;align-items:baseline;gap:.3rem;margin-top:.25rem;max-width:340px;" title="{{ $ugTitle }}">
+                        <span style="font-size:.65rem;color:#16a34a;flex-shrink:0;">💬</span>
+                        <span style="font-size:.68rem;color:#94a3b8;white-space:nowrap;flex-shrink:0;">{{ $ug->created_at?->format('d/m/y') ?? '' }}</span>
+                        <span style="font-size:.7rem;color:#475569;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ $ugText }}</span>
+                        @if($t->gestiones_count > 1)
+                            <span style="font-size:.6rem;color:#cbd5e1;flex-shrink:0;" title="{{ $t->gestiones_count }} gestiones en total">+{{ $t->gestiones_count - 1 }}</span>
+                        @endif
+                    </div>
+                @endif
             </td>
             <td style="font-size:.78rem;font-weight:600;">{{ $t->encargado?->nombre ?? '—' }}</td>
             <td><span class="badge {{ $t->estado }}">{{ $t->estadoLabel() }}</span></td>
@@ -866,6 +912,8 @@ body {
 <div class="toast" id="toast"></div>
 
 {{-- @include('admin.partials._modal_claves_globales') --}}
+
+@include('components.modal-cliente')
 
 @endsection
 
