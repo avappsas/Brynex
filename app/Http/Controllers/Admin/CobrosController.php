@@ -504,12 +504,32 @@ class CobrosController extends Controller
                     $pctCaj = ConfiguracionBrynex::pctCajaDependiente();
                 }
                 $pctArl = $getArlPct((int)($c->n_arl ?? 1));
-                $vEps  = ($plan?->incluye_eps)    ? $r100($ibc * $pctEps / 100 * $diasCotizar / 30) : 0;
-                $vArl  = ($plan?->incluye_arl)    ? $r100($ibc * $pctArl / 100 * $diasCotizar / 30) : 0;
-                $vPen  = ($plan?->incluye_pension) ? $r100($ibc * $pctPen / 100 * $diasCotizar / 30) : 0;
-                $vCaja = ($plan?->incluye_caja)   ? $r100($ibc * $pctCaj / 100 * $diasCotizar / 30) : 0;
-                if ($vCaja === 0 && $c->aplicaCargoSinCcf() && $diasCotizar === 30) {
-                    $vCaja = \App\Models\Contrato::CARGO_SIN_CCF;
+
+                if ($c->tipoModalidad?->esTiempoParcial()) {
+                    // ── Tiempo Parcial: IBC distinto por entidad y sin EPS ─────
+                    // Misma regla que Contrato::calcularCotizacion(): la ARL
+                    // cotiza siempre sobre el SM completo (mes entero) y AFP/CAJA
+                    // sobre el SM prorrateado por sus días. Nunca se prorratea
+                    // por $diasCotizar.
+                    $diasP     = $c->tipoModalidad->diasPorEntidad();
+                    $factorMap = [7 => 0.25, 14 => 0.50, 21 => 0.75, 30 => 1.00];
+                    $sm        = (float) ConfiguracionBrynex::obtener('salario_minimo', 1423500);
+                    $ibcAfp    = round($sm * ($factorMap[$diasP['afp']]  ?? 1.0));
+                    $ibcCaja   = round($sm * ($factorMap[$diasP['caja']] ?? 1.0));
+
+                    $diasCotizar = 30;
+                    $vEps  = 0;
+                    $vArl  = ($plan?->incluye_arl)     ? $r100($sm      * $pctArl / 100) : 0;
+                    $vPen  = ($plan?->incluye_pension) ? $r100($ibcAfp  * $pctPen / 100) : 0;
+                    $vCaja = ($plan?->incluye_caja)    ? $r100($ibcCaja * $pctCaj / 100) : 0;
+                } else {
+                    $vEps  = ($plan?->incluye_eps)    ? $r100($ibc * $pctEps / 100 * $diasCotizar / 30) : 0;
+                    $vArl  = ($plan?->incluye_arl)    ? $r100($ibc * $pctArl / 100 * $diasCotizar / 30) : 0;
+                    $vPen  = ($plan?->incluye_pension) ? $r100($ibc * $pctPen / 100 * $diasCotizar / 30) : 0;
+                    $vCaja = ($plan?->incluye_caja)   ? $r100($ibc * $pctCaj / 100 * $diasCotizar / 30) : 0;
+                    if ($vCaja === 0 && $c->aplicaCargoSinCcf() && $diasCotizar === 30) {
+                        $vCaja = \App\Models\Contrato::CARGO_SIN_CCF;
+                    }
                 }
                 $vSS   = $vEps + $vArl + $vPen + $vCaja;
                 $totalEstimado = $vSS + (int)($c->administracion ?? 0) + (int)($c->seguro ?? 0);
