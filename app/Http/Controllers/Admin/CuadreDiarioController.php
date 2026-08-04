@@ -199,7 +199,10 @@ class CuadreDiarioController extends Controller
     // ── Consolidado Admin ────────────────────────────────────────────
     public function consolidado(Request $request)
     {
-        $this->authorize('viewAny', Cuadre::class);
+        if (!Auth::user()->hasRole(['admin', 'superadmin'])) {
+            abort(403, 'Solo administradores pueden ver el consolidado.');
+        }
+
         $aliadoId = session('aliado_id_activo');
         $fecha    = $request->input('fecha', today()->toDateString());
         $usuarioFiltro = $request->input('usuario_id');
@@ -1010,5 +1013,303 @@ class CuadreDiarioController extends Controller
             ->with(['empresa', 'contrato', 'consignaciones.bancoCuenta'])
             ->orderBy('fecha_pago')
             ->get();
+    }
+
+    // ═════════════════════════════════════════════════════════════════
+    //  Facturas del día
+    // ═════════════════════════════════════════════════════════════════
+
+    /**
+     * Tipos "de negocio" del listado. No son los valores de `facturas.tipo`:
+     * en BD solo existen planilla / afiliacion / otro_ingreso. Préstamo y
+     * retiro se derivan de otras columnas (ver etiquetaTipoFactura).
+     */
+    private const TIPOS_FACTURA_DIA = [
+        'planilla'     => 'Planilla',
+        'afiliacion'   => 'Afiliación',
+        'retiro'       => 'Retiro',
+        'prestamo'     => 'Préstamo',
+        'otro_ingreso' => 'Otro ingreso',
+    ];
+
+    private const FORMAS_PAGO_DIA = [
+        'efectivo'     => 'Efectivo',
+        'consignacion' => 'Consignación',
+        'mixto'        => 'Mixta',
+        'prestamo'     => 'Préstamo',
+    ];
+
+    /** Vista: todas las facturas de un día, con filtros. Solo admin. */
+    public function facturasDia(Request $request)
+    {
+        if (!Auth::user()->hasRole(['admin', 'superadmin'])) {
+            abort(403, 'Solo administradores pueden ver las facturas del día.');
+        }
+
+        return view('admin.cuadre-diario.facturas-dia', $this->datosFacturasDia($request));
+    }
+
+    /** Exporta a Excel el listado del día respetando los filtros activos. */
+    public function exportarFacturasDia(Request $request)
+    {
+        if (!Auth::user()->hasRole(['admin', 'superadmin'])) {
+            abort(403, 'Solo administradores pueden exportar las facturas del día.');
+        }
+
+        $datos    = $this->datosFacturasDia($request);
+        $facturas = $datos['facturas'];
+
+        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Facturas del día');
+
+        $headers = [
+            'No.', 'Factura', 'Tipo', 'Cédula', 'Nombres', 'Forma pago',
+            'Pago total', 'Efectivo', 'Consignado', 'Admón empresa', 'Admón asesor',
+            'Seguro', 'Seg. social', 'IVA',
+            'Empresa', 'Razón social', 'Banco', 'Facturó',
+        ];
+        $sheet->fromArray($headers, null, 'A1');
+        $sheet->getStyle('A1:R1')->applyFromArray([
+            'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
+            'fill' => ['fillType' => 'solid', 'startColor' => ['rgb' => '1e40af']],
+        ]);
+
+        $row = 2;
+        foreach ($facturas as $i => $f) {
+            $sheet->fromArray([
+                $i + 1,
+                $f->numero_factura,
+                self::TIPOS_FACTURA_DIA[$f->tipo_dia] ?? $f->tipo_dia,
+                $f->cedula,
+                $f->nombre_cliente,
+                self::FORMAS_PAGO_DIA[$f->forma_pago] ?? $f->forma_pago,
+                (int) $f->total,
+                (int) $f->valor_efectivo,
+                (int) $f->valor_consignado,
+                (int) $f->admon,
+                (int) $f->admin_asesor,
+                (int) $f->seguro,
+                (int) $f->total_ss,
+                (int) $f->iva,
+                $f->empresa?->empresa ?? 'INDIVIDUALES',
+                $f->razon_social_texto,
+                $f->banco_texto ?: '—',
+                $f->usuario?->nombre ?? '—',
+                // strictNullComparison: sin esto fromArray compara con != y
+                // descarta los 0, dejando las celdas de valores en blanco.
+            ], null, "A{$row}", true);
+
+            $sheet->getStyle("G{$row}:N{$row}")->getNumberFormat()->setFormatCode('$#,##0');
+            $row++;
+        }
+
+        foreach (range('A', 'R') as $col) {
+            $sheet->getColumnDimension($col)->setAutoSize(true);
+        }
+
+        $writer   = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+        $filename = 'facturas_del_dia_' . $datos['fecha'] . '.xlsx';
+        $tmpPath  = tempnam(sys_get_temp_dir(), 'facdia');
+        $writer->save($tmpPath);
+
+        return response()->download($tmpPath, $filename, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ])->deleteFileAfterSend(true);
+    }
+
+    /**
+     * Datos compartidos por la vista y la exportación.
+     * Las facturas anuladas quedan fuera (SoftDeletes del modelo).
+     */
+    private function datosFacturasDia(Request $request): array
+    {
+        $aliadoId = session('aliado_id_activo');
+        $fecha    = $request->input('fecha', today()->toDateString());
+
+        $fTipo     = $request->input('tipo');
+        $fForma    = $request->input('forma_pago');
+        $fBanco    = $request->input('banco_cuenta_id');
+        $fEmpresa  = $request->input('empresa_id');   // 'individuales' = sin empresa
+        $fUsuario  = $request->input('usuario_id');
+
+        // `facturas.razon_social_id` casi nunca viene poblado (7.5k de 282k filas);
+        // la razón social real vive en el contrato (99.8% de cobertura), así que
+        // se carga también para usarla como respaldo.
+        $query = Factura::where('aliado_id', $aliadoId)
+            ->whereDate('fecha_pago', $fecha)
+            ->with(['empresa', 'razonSocial', 'usuario', 'contrato.razonSocial', 'consignaciones.bancoCuenta']);
+
+        // ── Tipo derivado (misma precedencia que etiquetaTipoFactura) ──
+        if ($fTipo && isset(self::TIPOS_FACTURA_DIA[$fTipo])) {
+            if ($fTipo === 'retiro') {
+                $query->where(fn($q) => $this->filtroEsRetiro($q));
+            } elseif ($fTipo === 'prestamo') {
+                $query->where(fn($q) => $this->filtroNoEsRetiro($q))
+                      ->where(fn($q) => $this->filtroEsPrestamo($q));
+            } else {
+                $query->where('tipo', $fTipo)
+                      ->where(fn($q) => $this->filtroNoEsRetiro($q))
+                      ->where(fn($q) => $this->filtroNoEsPrestamo($q));
+            }
+        }
+
+        if ($fForma)   { $query->where('forma_pago', $fForma); }
+        if ($fUsuario) { $query->where('usuario_id', $fUsuario); }
+
+        if ($fBanco) {
+            $query->whereHas('consignaciones',
+                fn($q) => $q->where('banco_cuenta_id', $fBanco));
+        }
+
+        if ($fEmpresa === 'individuales') {
+            $query->whereNull('empresa_id');
+        } elseif ($fEmpresa) {
+            $query->where('empresa_id', $fEmpresa);
+        }
+
+        // Hay ~24k facturas históricas con numero_factura = 0 (registros sin
+        // numerar); van al final para no encabezar el listado.
+        $facturas = $query
+            ->orderByRaw('CASE WHEN numero_factura > 0 THEN 0 ELSE 1 END')
+            ->orderBy('numero_factura')
+            ->orderBy('id')
+            ->get();
+
+        // ── Nombres de cliente en un solo query (evita N+1 por cédula) ──
+        $nombres = $facturas->isEmpty()
+            ? collect()
+            : \App\Models\Cliente::where('aliado_id', $aliadoId)
+                ->whereIn('cedula', $facturas->pluck('cedula')->unique()->all())
+                ->get(['cedula', 'primer_nombre', 'segundo_nombre', 'primer_apellido', 'segundo_apellido'])
+                ->keyBy('cedula');
+
+        foreach ($facturas as $f) {
+            $f->tipo_dia       = $this->etiquetaTipoFactura($f);
+            // nombre_corto = primer nombre + primer apellido
+            $f->nombre_cliente = $nombres->get($f->cedula)?->nombre_corto ?? '—';
+
+            $f->razon_social_texto = $f->razonSocial?->razon_social
+                ?? $f->contrato?->razonSocial?->razon_social
+                ?? '—';
+
+            // Cuenta destino: se muestra el titular, que es lo que identifica la
+            // cuenta en la operación. Las facturas sincronizadas desde el legacy
+            // no traen consignaciones, así que aquí puede quedar vacío.
+            $f->banco_texto = $f->consignaciones
+                ->pluck('bancoCuenta')->filter()
+                ->map(fn($bc) => $bc->nombre ?: $bc->banco)
+                ->unique()->implode(', ');
+        }
+
+        $totales = [
+            'cantidad'   => $facturas->count(),
+            'total'      => (int) $facturas->sum('total'),
+            'efectivo'   => (int) $facturas->sum('valor_efectivo'),
+            'consignado' => (int) $facturas->sum('valor_consignado'),
+            'admon'      => (int) $facturas->sum('admon'),
+            'asesor'     => (int) $facturas->sum('admin_asesor'),
+            'seg_social' => (int) $facturas->sum('total_ss'),
+            'iva'        => (int) $facturas->sum('iva'),
+            'pendiente'  => (int) $facturas->sum(fn($f) => min(0, (int)($f->saldo_proximo ?? 0))) * -1,
+        ];
+
+        // Cuánto recibió cada quien: desglose por el usuario que facturó.
+        // Solo quien movió plata — sin esto aparecen los usuarios cuyas
+        // facturas del día son todas de valor 0 (retiros, por ejemplo).
+        $porUsuario = $facturas
+            ->groupBy(fn($f) => $f->usuario?->nombre ?? 'Sin usuario')
+            ->map(fn($g) => [
+                'cantidad'   => $g->count(),
+                'total'      => (int) $g->sum('total'),
+                'efectivo'   => (int) $g->sum('valor_efectivo'),
+                'consignado' => (int) $g->sum('valor_consignado'),
+            ])
+            ->filter(fn($t) => $t['efectivo'] > 0 || $t['consignado'] > 0)
+            ->sortByDesc('total');
+
+        return [
+            'fecha'      => $fecha,
+            'facturas'   => $facturas,
+            'totales'    => $totales,
+            'porUsuario' => $porUsuario,
+            'tipos'      => self::TIPOS_FACTURA_DIA,
+            'formas'     => self::FORMAS_PAGO_DIA,
+        ] + $this->opcionesFacturasDia($aliadoId, $fecha);
+    }
+
+    /**
+     * Opciones de los desplegables del encabezado: solo lo que realmente
+     * existe ese día, sin aplicar los filtros activos (así nunca queda un
+     * desplegable vacío del que no se pueda salir).
+     */
+    private function opcionesFacturasDia(int $aliadoId, string $fecha): array
+    {
+        $base = Factura::where('aliado_id', $aliadoId)
+            ->whereDate('fecha_pago', $fecha)
+            ->with(['empresa:id,empresa', 'usuario:id,nombre'])
+            // numero_factura es obligatorio aquí: etiquetaTipoFactura lo usa
+            // para detectar retiros y sin él todo se clasificaría como retiro.
+            ->get(['id', 'tipo', 'numero_factura', 'es_prestamo', 'estado',
+                   'factura_retiro_origen_id', 'forma_pago', 'empresa_id', 'usuario_id']);
+
+        $bancoIds = $base->isEmpty() ? collect() : DB::table('consignaciones')
+            ->whereIn('factura_id', $base->pluck('id')->all())
+            ->whereNull('deleted_at')
+            ->whereNotNull('banco_cuenta_id')
+            ->distinct()->pluck('banco_cuenta_id');
+
+        $tiposDisp = $base->map(fn($f) => $this->etiquetaTipoFactura($f))->unique();
+        $formasDisp = $base->pluck('forma_pago')->filter()->unique();
+
+        return [
+            'tiposDisp'  => collect(self::TIPOS_FACTURA_DIA)
+                                ->filter(fn($l, $k) => $tiposDisp->contains($k)),
+            'formasDisp' => collect(self::FORMAS_PAGO_DIA)
+                                ->filter(fn($l, $k) => $formasDisp->contains($k)),
+            'bancosDisp' => BancoCuenta::whereIn('id', $bancoIds)->orderBy('nombre')->get(),
+            'hayIndiv'   => $base->contains(fn($f) => $f->empresa_id === null),
+            'empresasDisp' => $base->pluck('empresa')->filter()->unique('id')
+                                ->sortBy('empresa')->values(),
+            'usuariosDisp' => $base->pluck('usuario')->filter()->unique('id')
+                                ->sortBy('nombre')->values(),
+        ];
+    }
+
+    /**
+     * Etiqueta de tipo mostrada en el listado.
+     * Precedencia: retiro → préstamo → valor de `facturas.tipo`.
+     *
+     * Un retiro es la "factura 0": numero_factura = 0, sin cobro asociado.
+     * `factura_retiro_origen_id` marca el caso inverso (el retiro que sí se
+     * facturó desde empresa y por eso tiene número propio); también es retiro.
+     */
+    private function etiquetaTipoFactura(Factura $f): string
+    {
+        if ((int) $f->numero_factura === 0 || $f->factura_retiro_origen_id)  return 'retiro';
+        if ($f->es_prestamo || $f->estado === Factura::ESTADO_PRESTAMO)      return 'prestamo';
+
+        return $f->tipo ?: 'otro_ingreso';
+    }
+
+    private function filtroEsRetiro($q)
+    {
+        return $q->where('numero_factura', 0)->orWhereNotNull('factura_retiro_origen_id');
+    }
+
+    private function filtroNoEsRetiro($q)
+    {
+        return $q->where('numero_factura', '!=', 0)->whereNull('factura_retiro_origen_id');
+    }
+
+    private function filtroEsPrestamo($q)
+    {
+        return $q->where('es_prestamo', true)->orWhere('estado', Factura::ESTADO_PRESTAMO);
+    }
+
+    private function filtroNoEsPrestamo($q)
+    {
+        return $q->where(fn($s) => $s->where('es_prestamo', false)->orWhereNull('es_prestamo'))
+                 ->where('estado', '!=', Factura::ESTADO_PRESTAMO);
     }
 }

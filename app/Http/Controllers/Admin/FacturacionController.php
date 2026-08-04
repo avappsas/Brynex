@@ -2948,85 +2948,24 @@ class FacturacionController extends Controller
         return \App\Services\CobroContratoService::calcularDias($contrato, $mes, $anio);
     }
 
+    /**
+     * SS de un contrato para N días.
+     *
+     * Delega en Contrato::calcularCotizacion() — fuente única de verdad, la misma
+     * que usan la UI, los retiros y el cotizador. Antes tenía su propia aritmética
+     * y prorrateaba ARL/AFP/CAJA con round() al centena más cercano en vez de ceil,
+     * lo que dejaba la factura $100 por debajo de lo que liquida el operador PILA.
+     */
     private function calcularSS(Contrato $contrato, int $dias): array
     {
-        $aliadoId = session('aliado_id_activo');
-        $ibc      = (int)($contrato->ibc ?? $contrato->salario ?? 0);
-        $nArl     = (int)($contrato->n_arl ?? 1);
-        $plan     = $contrato->plan;
-        $mod      = $contrato->tipoModalidad;
-        $esTP     = $mod && $mod->esTiempoParcial();
-        $esIndep  = $contrato->esIndependiente(); // detectar modalidad real
+        $c = $contrato->calcularCotizacion($dias);
 
-        // CRÍTICO: usar porcentajes según modalidad.
-        // Antes usaba siempre dependiente → SS incorrecto para I ACT/I VENC.
-        // Eso causaba mismatch entre granTotal y sum(totales_reales) en ~$75k.
-        if ($esIndep) {
-            $pctEps = \App\Models\ConfiguracionBrynex::pctSaludIndependiente();
-            $pctPen = \App\Models\ConfiguracionBrynex::pctPensionIndependiente();
-            $pctCaj = (float)($contrato->porcentaje_caja
-                       ?? \App\Models\ConfiguracionBrynex::pctCajaIndependienteAlto());
-        } else {
-            $pctEps = \App\Models\ConfiguracionBrynex::pctSaludDependiente();
-            $pctPen = \App\Models\ConfiguracionBrynex::pctPensionDependiente();
-            $pctCaj = \App\Models\ConfiguracionBrynex::pctCajaDependiente();
-        }
-        $pctArl = \App\Models\ArlTarifa::porcentajePara($nArl, $aliadoId);
-
-        $r = fn($v) => (int)(ceil($v / 100) * 100);
-
-        if ($esTP) {
-            // Tiempo Parcial: IBC diferente por entidad
-            // ARL  = SM_completo × tasaArl
-            // AFP  = SM × factor_afp × pctPen
-            // CAJA = SM × factor_caja × pctCaja
-            $diasP      = $mod->diasPorEntidad();
-            $factorMap  = [7 => 0.25, 14 => 0.50, 21 => 0.75, 30 => 1.00];
-            $factorAfp  = $factorMap[$diasP['afp']]  ?? 1.0;
-            $factorCaja = $factorMap[$diasP['caja']] ?? 1.0;
-
-            $sm      = (float) \App\Models\ConfiguracionBrynex::obtener('salario_minimo', 1423500);
-            $ibcArl  = $sm;
-            $ibcAfp  = round($sm * $factorAfp);
-            $ibcCaja = round($sm * $factorCaja);
-
-            return [
-                'eps'  => 0,
-                'arl'  => ($plan?->incluye_arl)     ? $r($ibcArl  * $pctArl / 100) : 0,
-                'afp'  => ($plan?->incluye_pension) ? $r($ibcAfp  * $pctPen / 100) : 0,
-                'caja' => ($plan?->incluye_caja)    ? $r($ibcCaja * $pctCaj / 100) : 0,
-            ];
-        }
-
-        // Normal: mes completo → round() igual que calcularCotizacion() del modelo.
-        // El saldo_proximo en batches empresa se fija directamente a -credit_i,
-        // por lo que el balance de empresa es correcto con round() o ceil().
-        // Usar round() hace que total almacenado = estimación UI → recibo exacto.
-        $epsMes  = ($plan?->incluye_eps)     ? (int) round($ibc * $pctEps / 100) : 0;
-        $arlMes  = ($plan?->incluye_arl)     ? (int) round($ibc * $pctArl / 100) : 0;
-        $afpMes  = ($plan?->incluye_pension) ? (int) round($ibc * $pctPen / 100) : 0;
-        $cajaMes = ($plan?->incluye_caja)    ? (int) round($ibc * $pctCaj / 100) : 0;
-
-        if ($dias < 30) {
-            // EPS: ceil al centena superior; ARL/AFP/CAJA: round al centena más cercano.
-            // Mismo criterio que Contrato::calcularCotizacion() (fuente de verdad).
-            $rRound = fn($v) => (int)(round($v / 100) * 100);
-            return [
-                'eps'  => $r($epsMes       * $dias / 30),
-                'arl'  => $rRound($arlMes  * $dias / 30),
-                'afp'  => $rRound($afpMes  * $dias / 30),
-                'caja' => $rRound($cajaMes * $dias / 30),
-            ];
-        }
-
-        // ── Cargo sin-CCF: dependiente E o Ingreso-Retiro sin caja ───────
-        // Se cobra $100 fijos a la caja cuando el plan no incluye CCF.
-        // Solo aplica en planilla (dias > 0, garantizado porque dias=30 aqui).
-        if ($cajaMes === 0 && $contrato->aplicaCargoSinCcf()) {
-            $cajaMes = \App\Models\Contrato::CARGO_SIN_CCF;
-        }
-
-        return ['eps' => $epsMes, 'arl' => $arlMes, 'afp' => $afpMes, 'caja' => $cajaMes];
+        return [
+            'eps'  => (int)($c['eps']  ?? 0),
+            'arl'  => (int)($c['arl']  ?? 0),
+            'afp'  => (int)($c['pen']  ?? 0),
+            'caja' => (int)($c['caja'] ?? 0),
+        ];
     }
 
     // ─── API: Saldos para N contratos (modo masivo empresa) ─────────

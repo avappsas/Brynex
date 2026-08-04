@@ -50,6 +50,12 @@ $esSuperAdmin = auth()->user()->hasRole('superadmin');
             </a>
             @endif
             @if($esAdmin)
+            <a href="{{ route('admin.cuadre-diario.facturas-dia') }}"
+               style="padding:.35rem .85rem;font-size:.78rem;font-weight:600;border-radius:7px;background:rgba(255,255,255,.12);color:#cbd5e1;text-decoration:none">
+                🧾 Facturas del día
+            </a>
+            @endif
+            @if($esAdmin)
             <a href="{{ route('admin.cuadre-diario.bancos') }}"
                style="padding:.35rem .85rem;font-size:.78rem;font-weight:600;border-radius:7px;background:rgba(255,255,255,.12);color:#cbd5e1;text-decoration:none">
                 🏦 Bancos

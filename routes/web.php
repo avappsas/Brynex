@@ -520,6 +520,8 @@ Route::middleware('auth')->group(function () {
         Route::get('/',                          [$cd, 'index'])                ->name('index');
         Route::post('/abrir',                    [$cd, 'abrir'])                ->name('abrir');
         Route::get('/consolidado',               [$cd, 'consolidado'])          ->name('consolidado');
+        Route::get('/facturas-dia',              [$cd, 'facturasDia'])          ->name('facturas-dia');
+        Route::get('/facturas-dia/exportar',     [$cd, 'exportarFacturasDia'])  ->name('facturas-dia.exportar');
         Route::get('/bancos',                    [$cd, 'bancos'])               ->name('bancos');
         Route::delete('/gasto/{gastoId}',        [$cd, 'eliminarGasto'])        ->name('gasto.destroy');
         Route::post('/gasto/{gastoId}/imagen',               [$cd, 'subirImagenGasto'])       ->name('gasto.imagen');

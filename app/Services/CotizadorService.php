@@ -122,14 +122,17 @@ class CotizadorService
             }
 
             // Prorratear por dias cotizados (dias/30); admon y seguro siempre completos.
-            $rRound = fn($v) => (int)(round($v / 100) * 100);
-            $eps  = $dias < 30 ? $r($epsMes       * $dias / 30) : $epsMes;
-            $arl  = $dias < 30 ? $rRound($arlMes  * $dias / 30) : $arlMes;
-            $pen  = $dias < 30 ? $rRound($penMes  * $dias / 30) : $penMes;
+            // ceil al centena superior en TODOS los subsistemas: es la regla que
+            // aplica el operador PILA (Res. 2388). Con round() la cotización queda
+            // $100 por debajo de lo que liquida Enlace en ARL/AFP/CAJA.
+            // Fuente única: Contrato::calcularCotizacion().
+            $eps  = $dias < 30 ? $r($epsMes  * $dias / 30) : $epsMes;
+            $arl  = $dias < 30 ? $r($arlMes  * $dias / 30) : $arlMes;
+            $pen  = $dias < 30 ? $r($penMes  * $dias / 30) : $penMes;
             // Cargo sin-CCF es fijo: NO se prorratea por días
             $caja = ($cajaMes === Contrato::CARGO_SIN_CCF)
                 ? $cajaMes
-                : ($dias < 30 ? $rRound($cajaMes * $dias / 30) : $cajaMes);
+                : ($dias < 30 ? $r($cajaMes * $dias / 30) : $cajaMes);
             $ss   = $eps + $arl + $pen + $caja;
             $diasArl  = $dias;
             $diasAfp  = $dias;
