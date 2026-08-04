@@ -9,6 +9,20 @@ class Kernel extends ConsoleKernel
 {
     /**
      * Define the application's command schedule.
+     *
+     * TODAS las tareas llevan ->user('www-data'). No es opcional ni cosmético:
+     * el cron del servidor es de root, y `withoutOverlapping()` guarda su
+     * mutex en la CACHÉ (`framework/schedule-<hash>`). Con CACHE_DRIVER=file
+     * eso significa que cada corrida escribe en storage/framework/cache — así
+     * que cualquier tarea de root, haga lo que haga, va dejando directorios
+     * con dueño root ahí dentro. Cuando a Apache (www-data) le toca una llave
+     * de caché que cae en uno de esos directorios, no puede crear el archivo
+     * y la petición revienta con un 500.
+     *
+     * Eso fue lo que rompió la consulta de cédula del modal de clientes el
+     * 2026-08-04 (ver commit 49c0454): 7 de 118 shards habían quedado de root.
+     *
+     * Al agregar una tarea nueva, ponerle ->user('www-data') también.
      */
     protected function schedule(Schedule $schedule): void
     {
@@ -19,6 +33,7 @@ class Kernel extends ConsoleKernel
         $schedule->command('planos:reset-mensual')
             ->monthlyOn(1, '00:01')
             ->timezone('America/Bogota')
+            ->user('www-data')
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/reset-n-plano.log'));
@@ -30,6 +45,7 @@ class Kernel extends ConsoleKernel
         $schedule->command('finanzas:liquidar-intereses')
             ->dailyAt('01:00')
             ->timezone('America/Bogota')
+            ->user('www-data')
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/finanzas-liquidacion.log'));
@@ -44,6 +60,7 @@ class Kernel extends ConsoleKernel
             ->everyFifteenMinutes()
             ->between('07:00', '21:00')
             ->timezone('America/Bogota')
+            ->user('www-data')
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/whatsapp-seguimiento-ia.log'));
@@ -54,6 +71,7 @@ class Kernel extends ConsoleKernel
         $schedule->command('publicaciones:despachar')
             ->everyFiveMinutes()
             ->timezone('America/Bogota')
+            ->user('www-data')
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/publicaciones-despacho.log'));
@@ -65,6 +83,7 @@ class Kernel extends ConsoleKernel
         $schedule->command('videos:procesar')
             ->everyMinute()
             ->timezone('America/Bogota')
+            ->user('www-data')
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/videos-procesar.log'));
@@ -76,6 +95,7 @@ class Kernel extends ConsoleKernel
         $schedule->command('marketing:metricas')
             ->dailyAt('21:30')
             ->timezone('America/Bogota')
+            ->user('www-data')
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/marketing-metricas.log'));
@@ -88,6 +108,7 @@ class Kernel extends ConsoleKernel
         $schedule->command('marketing:pauta-sync')
             ->hourly()
             ->timezone('America/Bogota')
+            ->user('www-data')
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/marketing-pauta-sync.log'));
@@ -100,6 +121,7 @@ class Kernel extends ConsoleKernel
             ->everyThirtyMinutes()
             ->between('05:00', '21:00')
             ->timezone('America/Bogota')
+            ->user('www-data')
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/marketing-autopilot.log'));
@@ -119,11 +141,6 @@ class Kernel extends ConsoleKernel
         // Solo rellena huecos: nunca sobrescribe un dato que el cliente ya
         // tiene. Las diferencias van a `clientes:informe-ruaf`.
         // Ejecución manual: php artisan clientes:completar-ruaf --limite=100
-        // Corre como www-data a propósito: el cron del servidor es de root, y
-        // este comando cachea la sesión del operador. Una tarea de root que
-        // escribe en storage/framework/cache deja directorios que Apache
-        // después no puede usar — eso fue lo que rompió la consulta de cédula
-        // el 2026-08-04. Ver docs y el commit 49c0454.
         $schedule->command('clientes:completar-ruaf --limite=1000 --pausa=250 --aplicar')
             ->hourly()
             ->timezone('America/Bogota')

@@ -194,6 +194,10 @@ class CompletarRuafClientes extends Command
             'eps_id_antes' => $c->eps_id,
             'pension_id_antes' => $c->pension_id,
             'nombre_antes' => $this->nombreDe($c),
+            // Se guarda pase lo que pase, también en los no hallados y en los
+            // errores: saber cuándo se preguntó por última vez es lo que
+            // permite decidir a quién vale la pena volver a consultar.
+            'consultado_at' => now(),
             'created_at' => now(),
             'updated_at' => now(),
         ];
@@ -230,6 +234,14 @@ class CompletarRuafClientes extends Command
         $fila['estado'] = 'hallado';
         $fila['payload'] = json_encode($d, JSON_UNESCAPED_UNICODE);
         $fila['nombre_ruaf'] = $this->nombreRuaf($d);
+
+        // Estado y régimen de salud según el registro. No se escriben en
+        // `clientes` (ahí no hay dónde), pero quedan aquí para consultarlos:
+        // un cliente vigente en Brynex que el registro marca Retirado, o un
+        // Subsidiado al que se le está cotizando como independiente, son cosas
+        // que el aliado necesita ver.
+        $fila['estado_eps'] = $d['estado'] ?? null;
+        $fila['regimen'] = $d['regimen'] ?? null;
 
         // ── Salvaguarda de identidad ──────────────────────────────────────
         // Si Brynex ya tiene nombre, tiene que parecerse al del registro. Si

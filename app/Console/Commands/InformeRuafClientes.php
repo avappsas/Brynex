@@ -62,8 +62,21 @@ class InformeRuafClientes extends Command
                 'nota' => 'El registro devolvió una persona distinta para ese número. Suele ser el tipo de documento equivocado (el mismo número puede ser CC de una persona y CE de otra). NO se escribió ningún dato.',
                 'cols' => ['nombre'],
             ],
+            // Un cliente que Brynex tiene con contrato vigente pero el registro
+            // marca como Retirado de salud es un problema de afiliación real:
+            // se le está cobrando y liquidando sin estar activo.
+            'Retirados en salud' => [
+                'filtro' => fn ($q) => $q->where('r.estado_eps', 'Retirado')
+                    ->whereExists(fn ($s) => $s->select(DB::raw(1))
+                        ->from('contratos as k')
+                        ->whereColumn('k.cedula', 'c.cedula')
+                        ->whereColumn('k.aliado_id', 'c.aliado_id')
+                        ->where('k.estado', 'vigente')),
+                'nota' => 'Tienen contrato VIGENTE en Brynex, pero el registro oficial los marca como retirados de salud. Revisar la afiliación.',
+                'cols' => ['estado'],
+            ],
             'No están en el registro' => [
-                'filtro' => fn ($q) => $q->where('estado', 'no_hallado'),
+                'filtro' => fn ($q) => $q->where('r.estado', 'no_hallado'),
                 'nota' => 'El registro oficial no tiene a esta persona con ese tipo y número de documento. Verificar los datos del documento.',
                 'cols' => [],
             ],
@@ -123,7 +136,8 @@ class InformeRuafClientes extends Command
                 ->get([
                     'r.tipo_doc', 'r.cedula', 'r.nombre_antes', 'r.nombre_ruaf',
                     'r.eps_id_antes', 'r.eps_id_ruaf', 'r.pension_id_antes', 'r.pension_id_ruaf',
-                    'r.similitud_nombre', 'c.celular',
+                    'r.similitud_nombre', 'r.estado_eps', 'r.regimen', 'r.consultado_at',
+                    'c.celular',
                 ]);
 
             if ($filas->isNotEmpty()) {
@@ -166,6 +180,14 @@ class InformeRuafClientes extends Command
             if (in_array('nombre', $def['cols'], true)) {
                 $cabeceras = array_merge($cabeceras, ['Nombre según el registro', 'Parecido']);
             }
+            if (in_array('estado', $def['cols'], true)) {
+                $cabeceras = array_merge($cabeceras, ['EPS', 'Estado en salud']);
+            }
+
+            // Estado, régimen y fecha van en TODAS las hojas: son el contexto
+            // que el aliado necesita para decidir sobre cualquiera de estos
+            // casos, y la fecha deja claro a qué día corresponde el dato.
+            $cabeceras = array_merge($cabeceras, ['Régimen', 'Consultado']);
 
             $col = 'A';
 
@@ -201,6 +223,13 @@ class InformeRuafClientes extends Command
                     $valores[] = $r->nombre_ruaf;
                     $valores[] = $r->similitud_nombre !== null ? $r->similitud_nombre.'%' : '';
                 }
+                if (in_array('estado', $def['cols'], true)) {
+                    $valores[] = $epsNombre[$r->eps_id_ruaf] ?? ($epsNombre[$r->eps_id_antes] ?? '(sin dato)');
+                    $valores[] = $r->estado_eps ?: '(sin dato)';
+                }
+
+                $valores[] = $r->regimen ?: '';
+                $valores[] = $r->consultado_at ? substr((string) $r->consultado_at, 0, 10) : '';
 
                 $col = 'A';
 
