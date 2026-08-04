@@ -24,7 +24,9 @@
         $pagadorNombre = $anticipo->empresa?->empresa ?? '—';
         $pagadorDocumento = $anticipo->empresa?->nit ?? '—';
         $pagadorDireccion = $anticipo->empresa?->direccion ?? '—';
-        $pagadorTelefono = $anticipo->empresa?->telefono ?? '—';
+        // Celular primero: muchas empresas solo tienen celular, no fijo
+        // (mismo orden que se usa para el pagador individual, abajo).
+        $pagadorTelefono = $anticipo->empresa?->celular ?: ($anticipo->empresa?->telefono ?: '—');
         $pagadorTipo = 'Empresa';
     } else {
         $pagadorNombre = $anticipo->contrato?->cliente?->nombre_completo ?? '—';

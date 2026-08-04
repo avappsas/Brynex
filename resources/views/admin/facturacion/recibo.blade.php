@@ -567,6 +567,16 @@ $numGrupo    = str_pad($filas->first()?->numero_factura ?? $factura->numero_fact
             <div style="font-size:.55rem;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.07em;margin-bottom:.04rem">Empresa</div>
             <div style="font-size:1.4rem;font-weight:900;color:#0f172a;line-height:1.15;letter-spacing:-.02em">{{ $empresaObj->empresa }}</div>
             <div style="font-size:.65rem;color:#64748b;margin-top:.05rem">NIT: {{ $empresaObj->nit ?? '—' }}</div>
+            {{-- Datos de entrega: los usa el mensajero que lleva el recibo --}}
+            @if($empresaObj->contacto || $empresaObj->direccion || $empresaObj->celular || $empresaObj->telefono)
+            <div style="font-size:.63rem;color:#64748b;margin-top:.12rem;line-height:1.45">
+                @if($empresaObj->contacto)<div>Att. {{ $empresaObj->contacto }}</div>@endif
+                @if($empresaObj->direccion)<div>{{ $empresaObj->direccion }}</div>@endif
+                @if($empresaObj->celular || $empresaObj->telefono)
+                <div>Tel. {{ collect([$empresaObj->celular, $empresaObj->telefono])->filter()->implode(' / ') }}</div>
+                @endif
+            </div>
+            @endif
         @else
             <div style="font-size:.55rem;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.07em;margin-bottom:.04rem">Empresa</div>
             <div style="font-size:1.4rem;font-weight:900;color:#0f172a;line-height:1.15">{{ $filas->first()->contrato?->razonSocial?->razon_social ?? 'Empresa' }}</div>
@@ -905,6 +915,16 @@ $empresaCliente = $cli1?->empresa ?? ($cli1?->cod_empresa ? \App\Models\Empresa:
             {{-- Otro ingreso de empresa --}}
             <div style="font-size:1.15rem;font-weight:900;color:#0f172a;line-height:1.1">{{ $factura->empresa->empresa }}</div>
             <div style="font-size:.68rem;color:#64748b;margin-top:.15rem">NIT: {{ $factura->empresa->nit ?? '—' }}</div>
+            {{-- Datos de entrega: los usa el mensajero que lleva el recibo --}}
+            @if($factura->empresa->contacto || $factura->empresa->direccion || $factura->empresa->celular || $factura->empresa->telefono)
+            <div style="font-size:.63rem;color:#64748b;margin-top:.12rem;line-height:1.45">
+                @if($factura->empresa->contacto)<div>Att. {{ $factura->empresa->contacto }}</div>@endif
+                @if($factura->empresa->direccion)<div>{{ $factura->empresa->direccion }}</div>@endif
+                @if($factura->empresa->celular || $factura->empresa->telefono)
+                <div>Tel. {{ collect([$factura->empresa->celular, $factura->empresa->telefono])->filter()->implode(' / ') }}</div>
+                @endif
+            </div>
+            @endif
         @elseif($rs1)
             {{-- Con razón social → DEPENDIENTE --}}
             <div style="font-size:1.1rem;font-weight:900;color:#0f172a;line-height:1.1">{{ $nom1 ?: 'CC '.$factura->cedula }}</div>
