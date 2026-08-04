@@ -73,18 +73,21 @@ class CompletarRuafClientes extends Command
     private const UMBRAL_IDENTIDAD = 55;
 
     private array $apis = [];
+
     private array $epsPorCodigo;
+
     private array $pensionPorCodigo;
+
     private array $contadores = [];
 
     public function handle(): int
     {
         $aplicar = (bool) $this->option('aplicar');
-        $limite  = max(1, (int) $this->option('limite'));
-        $pausa   = max(0, (int) $this->option('pausa')) * 1000;
+        $limite = max(1, (int) $this->option('limite'));
+        $pausa = max(0, (int) $this->option('pausa')) * 1000;
 
         // Los códigos que devuelve el registro son los mismos de los catálogos.
-        $this->epsPorCodigo     = DB::table('eps')->pluck('id', 'codigo')->toArray();
+        $this->epsPorCodigo = DB::table('eps')->pluck('id', 'codigo')->toArray();
         $this->pensionPorCodigo = DB::table('pensiones')->pluck('id', 'codigo')->toArray();
 
         $clientes = $this->clientesAProcesar($limite);
@@ -157,14 +160,14 @@ class CompletarRuafClientes extends Command
         // misma persona puede estar con dos aliados distintos.
         $vigente = "EXISTS (SELECT 1 FROM contratos k WHERE k.cedula = c.cedula
                             AND k.aliado_id = c.aliado_id AND k.estado = 'vigente')";
-        $sinEps  = "(c.eps_id IS NULL OR c.eps_id IN (0, {$ninguna}))";
-        $sinPen  = "(c.pension_id IS NULL OR c.pension_id IN (0, {$ninguna}))";
+        $sinEps = "(c.eps_id IS NULL OR c.eps_id IN (0, {$ninguna}))";
+        $sinPen = "(c.pension_id IS NULL OR c.pension_id IN (0, {$ninguna}))";
 
         match ($this->option('fase')) {
-            'activos'   => $q->whereRaw($vigente),
+            'activos' => $q->whereRaw($vigente),
             'retirados' => $q->whereRaw("NOT {$vigente}"),
             'faltantes' => $q->whereRaw("({$sinEps} OR {$sinPen})"),
-            default     => null,   // auto: todos, en el orden de prioridad
+            default => null,   // auto: todos, en el orden de prioridad
         };
 
         return $q
@@ -185,12 +188,12 @@ class CompletarRuafClientes extends Command
     {
         $fila = [
             'cliente_id' => $c->id,
-            'aliado_id'  => $c->aliado_id,
-            'tipo_doc'   => $c->tipo_doc ?: 'CC',
-            'cedula'     => (string) $c->cedula,
-            'eps_id_antes'     => $c->eps_id,
+            'aliado_id' => $c->aliado_id,
+            'tipo_doc' => $c->tipo_doc ?: 'CC',
+            'cedula' => (string) $c->cedula,
+            'eps_id_antes' => $c->eps_id,
             'pension_id_antes' => $c->pension_id,
-            'nombre_antes'     => $this->nombreDe($c),
+            'nombre_antes' => $this->nombreDe($c),
             'created_at' => now(),
             'updated_at' => now(),
         ];
@@ -224,17 +227,35 @@ class CompletarRuafClientes extends Command
         $d = $r['afiliacion'];
         $this->cuenta('hallado');
 
-        $fila['estado']      = 'hallado';
-        $fila['payload']     = json_encode($d, JSON_UNESCAPED_UNICODE);
+        $fila['estado'] = 'hallado';
+        $fila['payload'] = json_encode($d, JSON_UNESCAPED_UNICODE);
         $fila['nombre_ruaf'] = $this->nombreRuaf($d);
 
         // ── Salvaguarda de identidad ──────────────────────────────────────
         // Si Brynex ya tiene nombre, tiene que parecerse al del registro. Si
         // no se parece, el tipo de documento probablemente está mal y estamos
-        // viendo a otra persona: no se escribe nada.
-        $similitud = $this->similitud($fila['nombre_antes'], $fila['nombre_ruaf']);
+        // viendo a OTRA PERSONA: no se escribe nada.
+        //
+        // Hay que distinguir dos cosas que se ven igual pero no lo son:
+        //
+        //   a) El registro devuelve un nombre real y distinto → otra persona.
+        //      Se bloquea todo.
+        //   b) El registro devuelve relleno (NOMBRE_INGRESO_BDUA) → sí es la
+        //      persona correcta, el BDUA simplemente no tiene su nombre. La
+        //      EPS y la pensión de esa cédula son válidas y se escriben; solo
+        //      los nombres se descartan.
+        //
+        // Confundirlas cuesta caro: en una muestra de 20, tres clientes eran
+        // del caso (b) y bloquearlos habría perdido su EPS y su pensión.
+        $ruafSinNombre = $this->limpiarNombre($fila['nombre_ruaf']) === null;
+        $similitud = $ruafSinNombre ? null : $this->similitud($fila['nombre_antes'], $fila['nombre_ruaf']);
         $fila['similitud_nombre'] = $similitud;
-        $dudosa = $fila['nombre_antes'] !== '' && $similitud !== null && $similitud < self::UMBRAL_IDENTIDAD;
+
+        $dudosa = ! $ruafSinNombre
+            && $fila['nombre_antes'] !== ''
+            && $similitud !== null
+            && $similitud < self::UMBRAL_IDENTIDAD;
+
         $fila['identidad_dudosa'] = $dudosa;
 
         if ($dudosa) {
@@ -244,6 +265,11 @@ class CompletarRuafClientes extends Command
             $this->cuenta('identidad_dudosa');
 
             return;
+        }
+
+        if ($ruafSinNombre) {
+            $fila['mensaje'] = 'El registro no tiene el nombre de esta persona; se usó solo EPS/pensión';
+            $this->cuenta('ruaf_sin_nombre');
         }
 
         $cambios = [];
@@ -286,9 +312,9 @@ class CompletarRuafClientes extends Command
 
         // ── Nombres: campo por campo, solo los vacíos ─────────────────────
         $mapa = [
-            'primer_nombre'    => 'primerNombre',
-            'segundo_nombre'   => 'segundoNombre',
-            'primer_apellido'  => 'primerApellido',
+            'primer_nombre' => 'primerNombre',
+            'segundo_nombre' => 'segundoNombre',
+            'primer_apellido' => 'primerApellido',
             'segundo_apellido' => 'segundoApellido',
         ];
         $escritos = [];
@@ -322,6 +348,7 @@ class CompletarRuafClientes extends Command
             }
             if (in_array($valor, $yaTiene, true)) {
                 $desalineado = true;    // ese apellido ya está, en otra casilla
+
                 continue;
             }
 
@@ -343,11 +370,13 @@ class CompletarRuafClientes extends Command
         }
 
         if ($escritos) {
-            $fila['accion_nombre']   = 'lleno';
+            $fila['accion_nombre'] = 'lleno';
             $fila['campos_escritos'] = implode(',', $escritos);
             $this->cuenta('nombres_llenados');
         } elseif ($desalineado) {
             $fila['accion_nombre'] = 'desalineado';
+        } elseif ($ruafSinNombre) {
+            $fila['accion_nombre'] = 'sin_dato';
         } elseif ($fila['nombre_antes'] !== '' && $similitud !== null && $similitud < 100) {
             $fila['accion_nombre'] = 'difiere';
             $this->cuenta('nombre_difiere');
@@ -366,12 +395,19 @@ class CompletarRuafClientes extends Command
     }
 
     /**
-     * La bitácora se escribe siempre, incluso simulando: así una simulación
-     * ya deja armado el informe de diferencias, y la siguiente corrida sabe
-     * por dónde iba. Para reconsultar, borrar la fila o usar --reconsultar.
+     * La bitácora SOLO se escribe cuando se está aplicando de verdad.
+     *
+     * Si una simulación dejara la fila, esos clientes quedarían marcados como
+     * ya procesados y la corrida real los saltaría: se habrían "quemado" sin
+     * que nadie les completara nada. Simular no deja rastro, a costa de
+     * repetir esas consultas después.
      */
     private function guardar(array $fila): void
     {
+        if (! $this->option('aplicar')) {
+            return;
+        }
+
         DB::table('ruaf_consultas')->updateOrInsert(
             ['cliente_id' => $fila['cliente_id']],
             $fila
@@ -407,9 +443,9 @@ class CompletarRuafClientes extends Command
 
             return $this->apis[$aliadoId] = [
                 new SuaporteApiService([
-                    'operador'      => $op->codigo,
-                    'usuario'       => $cred->usuario,
-                    'contrasena'    => $cred->contrasena,
+                    'operador' => $op->codigo,
+                    'usuario' => $cred->usuario,
+                    'contrasena' => $cred->contrasena,
                     'clave_secreta' => $cred->clave_secreta,
                 ]),
                 $op->codigo,
@@ -534,6 +570,7 @@ class CompletarRuafClientes extends Command
             ['Errores del operador',         $c['error'] ?? 0],
             ['Sin credencial',               $c['sin_credencial'] ?? 0],
             ['― Identidad dudosa (omitidos)', $c['identidad_dudosa'] ?? 0],
+            ['― Registro sin nombre (solo EPS/pensión)', $c['ruaf_sin_nombre'] ?? 0],
             ['EPS llenadas',                 $c['eps_llenada'] ?? 0],
             ['Pensiones llenadas',           $c['pension_llenada'] ?? 0],
             ['Nombres completados',          $c['nombres_llenados'] ?? 0],
@@ -555,6 +592,6 @@ class CompletarRuafClientes extends Command
         $pendientes = DB::table('clientes')
             ->whereNotExists(fn ($s) => $s->select(DB::raw(1))->from('ruaf_consultas as r')->whereColumn('r.cliente_id', 'clientes.id'))
             ->count();
-        $this->line("Clientes sin consultar todavía: ".number_format($pendientes));
+        $this->line('Clientes sin consultar todavía: '.number_format($pendientes));
     }
 }

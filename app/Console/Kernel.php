@@ -103,6 +103,28 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/marketing-autopilot.log'));
+
+        // ── Completar EPS/pensión/nombres desde el registro oficial ──────────
+        // Una tanda por hora hasta terminar los ~31.000 clientes. Se reparte en
+        // tandas a propósito: 31.000 consultas seguidas contra el operador se
+        // verían como abuso y pueden costar el bloqueo de la cuenta. Con 1.000
+        // por hora y 250 ms entre consultas son ~4 minutos de trabajo por hora,
+        // y el barrido completo toma poco más de un día.
+        //
+        // El orden lo decide el comando: primero los clientes VIGENTES a los
+        // que les falta información, de últimos los retirados que ya están
+        // completos. Cuando no queden pendientes la corrida no hace nada, así
+        // que la tarea puede quedarse programada sin efecto.
+        //
+        // Solo rellena huecos: nunca sobrescribe un dato que el cliente ya
+        // tiene. Las diferencias van a `clientes:informe-ruaf`.
+        // Ejecución manual: php artisan clientes:completar-ruaf --limite=100
+        $schedule->command('clientes:completar-ruaf --limite=1000 --pausa=250 --aplicar')
+            ->hourly()
+            ->timezone('America/Bogota')
+            ->withoutOverlapping(120)
+            ->runInBackground()
+            ->appendOutputTo(storage_path('logs/completar-ruaf.log'));
     }
 
     /**

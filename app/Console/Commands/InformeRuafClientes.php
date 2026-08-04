@@ -39,33 +39,33 @@ class InformeRuafClientes extends Command
         return [
             'EPS distinta' => [
                 'filtro' => fn ($q) => $q->where('accion_eps', 'difiere'),
-                'nota'   => 'La EPS registrada en Brynex no es la que reporta el registro oficial. No se modificó nada.',
-                'cols'   => ['eps'],
+                'nota' => 'La EPS registrada en Brynex no es la que reporta el registro oficial. No se modificó nada.',
+                'cols' => ['eps'],
             ],
             'Pensión distinta' => [
                 'filtro' => fn ($q) => $q->where('accion_pension', 'difiere'),
-                'nota'   => 'El fondo de pensión de Brynex no es el que reporta el registro oficial. No se modificó nada.',
-                'cols'   => ['pension'],
+                'nota' => 'El fondo de pensión de Brynex no es el que reporta el registro oficial. No se modificó nada.',
+                'cols' => ['pension'],
             ],
             'Nombre distinto' => [
                 'filtro' => fn ($q) => $q->where('accion_nombre', 'difiere'),
-                'nota'   => 'El nombre difiere del registro oficial. Los campos que ya tenían dato NO se sobrescribieron.',
-                'cols'   => ['nombre'],
+                'nota' => 'El nombre difiere del registro oficial. Los campos que ya tenían dato NO se sobrescribieron.',
+                'cols' => ['nombre'],
             ],
             'Nombre desalineado' => [
                 'filtro' => fn ($q) => $q->where('accion_nombre', 'desalineado'),
-                'nota'   => 'Un apellido está en la casilla equivocada (p. ej. el segundo apellido guardado como primero). Hay que reordenarlos a mano.',
-                'cols'   => ['nombre'],
+                'nota' => 'Un apellido está en la casilla equivocada (p. ej. el segundo apellido guardado como primero). Hay que reordenarlos a mano.',
+                'cols' => ['nombre'],
             ],
             'Revisar tipo de documento' => [
                 'filtro' => fn ($q) => $q->where('identidad_dudosa', 1),
-                'nota'   => 'El registro devolvió una persona distinta para ese número. Suele ser el tipo de documento equivocado (el mismo número puede ser CC de una persona y CE de otra). NO se escribió ningún dato.',
-                'cols'   => ['nombre'],
+                'nota' => 'El registro devolvió una persona distinta para ese número. Suele ser el tipo de documento equivocado (el mismo número puede ser CC de una persona y CE de otra). NO se escribió ningún dato.',
+                'cols' => ['nombre'],
             ],
             'No están en el registro' => [
                 'filtro' => fn ($q) => $q->where('estado', 'no_hallado'),
-                'nota'   => 'El registro oficial no tiene a esta persona con ese tipo y número de documento. Verificar los datos del documento.',
-                'cols'   => [],
+                'nota' => 'El registro oficial no tiene a esta persona con ese tipo y número de documento. Verificar los datos del documento.',
+                'cols' => [],
             ],
         ];
     }
@@ -138,7 +138,7 @@ class InformeRuafClientes extends Command
         $epsNombre = DB::table('eps')->pluck('nombre', 'id');
         $penNombre = DB::table('pensiones')->pluck('razon_social', 'id');
 
-        $libro = new Spreadsheet();
+        $libro = new Spreadsheet;
         $libro->removeSheetByIndex(0);
 
         foreach ($datos as $titulo => [$def, $filas]) {
