@@ -130,6 +130,46 @@ class SuaporteApiService
         return null;
     }
 
+    // ── 0b. Caché tolerante a fallos ─────────────────────────────────────
+
+    /**
+     * La sesión se cachea solo para no relogear en cada operación: es una
+     * optimización, nunca un requisito. Con `CACHE_DRIVER=file` basta un
+     * directorio de `storage/framework/cache` que el usuario de Apache no
+     * pueda escribir (lo deja cualquier artisan corrido como root) para que
+     * el driver lance ErrorException; sin estos wrappers esa excepción sube
+     * hasta el `catch` del login y se reporta como "error de red", dejando
+     * inservible una credencial que funciona.
+     */
+    private function cacheLeer(string $llave)
+    {
+        try {
+            return Cache::get($llave);
+        } catch (\Throwable $e) {
+            Log::warning('Suaporte: no se pudo leer la caché de sesión', ['message' => $e->getMessage()]);
+
+            return null;
+        }
+    }
+
+    private function cacheGuardar(string $llave, $valor, int $ttl): void
+    {
+        try {
+            Cache::put($llave, $valor, $ttl);
+        } catch (\Throwable $e) {
+            Log::warning('Suaporte: no se pudo guardar la caché de sesión', ['message' => $e->getMessage()]);
+        }
+    }
+
+    private function cacheOlvidar(string $llave): void
+    {
+        try {
+            Cache::forget($llave);
+        } catch (\Throwable $e) {
+            Log::warning('Suaporte: no se pudo limpiar la caché de sesión', ['message' => $e->getMessage()]);
+        }
+    }
+
     // ── 1. Autenticación ─────────────────────────────────────────────────
 
     /**
@@ -152,10 +192,10 @@ class SuaporteApiService
         $cacheKey = 'suaporte_sesion_' . md5($this->authUrl . '|' . $this->usuario . '|' . $this->claveSecreta);
 
         if ($forzar) {
-            Cache::forget($cacheKey);
+            $this->cacheOlvidar($cacheKey);
         }
 
-        $sesion = Cache::get($cacheKey);
+        $sesion = $this->cacheLeer($cacheKey);
 
         if (!$sesion) {
             // La documentación dice que el login acepta la contraseña en plano,
@@ -205,7 +245,7 @@ class SuaporteApiService
                 // El refresh-token-ttl viene en segundos; se descuenta un margen
                 // para no usar una sesión que expire a mitad del flujo.
                 $ttl = max(60, ((int) ($sesion['refresh-token-ttl'] ?? 600)) - 60);
-                Cache::put($cacheKey, $sesion, $ttl);
+                $this->cacheGuardar($cacheKey, $sesion, $ttl);
             } catch (\Exception $e) {
                 Log::error('Suaporte: excepción en login', ['message' => $e->getMessage()]);
 

@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Cliente;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 
 class ClienteController extends Controller
@@ -369,67 +371,113 @@ class ClienteController extends Controller
 
         // El asesor puede entrar y salir del campo varias veces: se cachea
         // para no repetir el login contra el operador en cada blur.
-        return \Illuminate\Support\Facades\Cache::remember(
-            "ruaf_{$aliadoId}_{$cedula}",
-            600,
-            function () use ($aliadoId, $cedula) {
-                [$operador, $credencial] = $this->credencialParaRuaf($aliadoId);
+        //
+        // La caché es una optimización, NO un requisito: se lee y se escribe
+        // dentro de try/catch para que un fallo del driver no tumbe la
+        // consulta. Con CACHE_DRIVER=file basta un directorio de
+        // storage/framework/cache que Apache no pueda escribir (lo deja
+        // cualquier artisan corrido como root) para que Cache::remember
+        // lance ErrorException, y el modal muestre "No se pudo consultar"
+        // aunque el operador haya respondido bien.
+        //
+        // Por eso NO se usa Cache::remember: si la escritura falla después de
+        // consultar, se devuelve igual el resultado en vez de perderlo.
+        $llave = "ruaf_{$aliadoId}_{$cedula}";
 
-                if (!$operador || !$credencial) {
-                    return null;
-                }
+        try {
+            $cacheado = Cache::get($llave);
+        } catch (\Throwable $e) {
+            Log::warning('RUAF: no se pudo leer la caché', ['llave' => $llave, 'message' => $e->getMessage()]);
+            $cacheado = null;
+        }
 
-                $api = new \App\Services\SuaporteApiService([
-                    'operador'      => $operador->codigo,
-                    'usuario'       => $credencial->usuario,
-                    'contrasena'    => $credencial->contrasena,
-                    'clave_secreta' => $credencial->clave_secreta,
-                ]);
+        if ($cacheado !== null) {
+            return $cacheado;
+        }
 
-                $resultado = $api->consultarAfiliacion('CC', $cedula);
+        $resultado = $this->consultarRegistroOficialEnOperador($aliadoId, $cedula);
 
-                if (!$resultado['success']) {
-                    return null;
-                }
-
-                $d = $resultado['afiliacion'];
-
-                // Los códigos que devuelve el registro son los mismos que usan
-                // las tablas de referencia de Brynex.
-                $epsId = !empty($d['administradoraBDUA'])
-                    ? DB::table('eps')->where('codigo', $d['administradoraBDUA'])->value('id')
-                    : null;
-
-                $pensionId = !empty($d['administradoraRUAF'])
-                    ? DB::table('pensiones')->where('codigo', $d['administradoraRUAF'])->value('id')
-                    : null;
-
-                return [
-                    'encontrado'       => $resultado['registrado'],
-                    'operador'         => $operador->nombre,
-                    'primer_nombre'    => $d['primerNombre']    ?? '',
-                    'segundo_nombre'   => $d['segundoNombre']   ?? '',
-                    'primer_apellido'  => $d['primerApellido']  ?? '',
-                    'segundo_apellido' => $d['segundoApellido'] ?? '',
-                    'eps_id'           => $epsId,
-                    'eps_nombre'       => $epsId ? DB::table('eps')->where('id', $epsId)->value('nombre') : null,
-                    'eps_codigo'       => $d['administradoraBDUA'] ?? null,
-                    'pension_id'       => $pensionId,
-                    'pension_nombre'   => $pensionId ? DB::table('pensiones')->where('id', $pensionId)->value('razon_social') : null,
-                    'pension_codigo'   => $d['administradoraRUAF'] ?? null,
-                    'estado'           => $d['estado']  ?? null,
-                    'regimen'          => $d['regimen'] ?? null,
-                    // Figurar en RUAF (aunque hoy no tenga fondo activo) es lo
-                    // que impide declarar el subtipo 03 "no obligado por edad".
-                    'en_ruaf'          => !empty($d['fechaAfiliacionRUAF']),
-                    'ruaf_desde'       => $d['fechaAfiliacionRUAF'] ?? null,
-                    // Payload crudo del operador, sin filtrar: incluye campos
-                    // que hoy no se usan (valorUPC, coincidencia, fechas sin
-                    // formatear) para que el modal pueda mostrarlos todos.
-                    'raw'              => $d,
-                ];
+        // Un null (sin credenciales, o el operador falló) no se cachea a
+        // propósito: el siguiente intento vuelve a preguntar.
+        if ($resultado !== null) {
+            try {
+                Cache::put($llave, $resultado, 600);
+            } catch (\Throwable $e) {
+                Log::warning('RUAF: no se pudo guardar en caché', ['llave' => $llave, 'message' => $e->getMessage()]);
             }
-        );
+        }
+
+        return $resultado;
+    }
+
+    /**
+     * La consulta real al operador, sin caché. Separada de
+     * consultarRegistroOficial() solo para que el manejo de la caché quede
+     * legible; no llamar directamente.
+     */
+    private function consultarRegistroOficialEnOperador(int $aliadoId, string $cedula): ?array
+    {
+        [$operador, $credencial] = $this->credencialParaRuaf($aliadoId);
+
+        if (!$operador || !$credencial) {
+            return null;
+        }
+
+        $api = new \App\Services\SuaporteApiService([
+            'operador'      => $operador->codigo,
+            'usuario'       => $credencial->usuario,
+            'contrasena'    => $credencial->contrasena,
+            'clave_secreta' => $credencial->clave_secreta,
+        ]);
+
+        $resultado = $api->consultarAfiliacion('CC', $cedula);
+
+        if (!$resultado['success']) {
+            Log::warning('RUAF: el operador no respondió la consulta', [
+                'aliado_id' => $aliadoId,
+                'operador'  => $operador->codigo,
+                'message'   => $resultado['message'] ?? null,
+            ]);
+
+            return null;
+        }
+
+        $d = $resultado['afiliacion'];
+
+        // Los códigos que devuelve el registro son los mismos que usan
+        // las tablas de referencia de Brynex.
+        $epsId = !empty($d['administradoraBDUA'])
+            ? DB::table('eps')->where('codigo', $d['administradoraBDUA'])->value('id')
+            : null;
+
+        $pensionId = !empty($d['administradoraRUAF'])
+            ? DB::table('pensiones')->where('codigo', $d['administradoraRUAF'])->value('id')
+            : null;
+
+        return [
+            'encontrado'       => $resultado['registrado'],
+            'operador'         => $operador->nombre,
+            'primer_nombre'    => $d['primerNombre']    ?? '',
+            'segundo_nombre'   => $d['segundoNombre']   ?? '',
+            'primer_apellido'  => $d['primerApellido']  ?? '',
+            'segundo_apellido' => $d['segundoApellido'] ?? '',
+            'eps_id'           => $epsId,
+            'eps_nombre'       => $epsId ? DB::table('eps')->where('id', $epsId)->value('nombre') : null,
+            'eps_codigo'       => $d['administradoraBDUA'] ?? null,
+            'pension_id'       => $pensionId,
+            'pension_nombre'   => $pensionId ? DB::table('pensiones')->where('id', $pensionId)->value('razon_social') : null,
+            'pension_codigo'   => $d['administradoraRUAF'] ?? null,
+            'estado'           => $d['estado']  ?? null,
+            'regimen'          => $d['regimen'] ?? null,
+            // Figurar en RUAF (aunque hoy no tenga fondo activo) es lo
+            // que impide declarar el subtipo 03 "no obligado por edad".
+            'en_ruaf'          => !empty($d['fechaAfiliacionRUAF']),
+            'ruaf_desde'       => $d['fechaAfiliacionRUAF'] ?? null,
+            // Payload crudo del operador, sin filtrar: incluye campos
+            // que hoy no se usan (valorUPC, coincidencia, fechas sin
+            // formatear) para que el modal pueda mostrarlos todos.
+            'raw'              => $d,
+        ];
     }
 
     // ─── Helpers Privados ─────────────────────────────────────────────
