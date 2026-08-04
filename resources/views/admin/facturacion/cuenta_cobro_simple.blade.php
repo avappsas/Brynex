@@ -184,12 +184,13 @@ table.tbl-cc .num { text-align: right; font-family: monospace; }
     <div class="destinatario">
         <div>Señores:</div>
         <div class="empresa-dest">{{ $empresa->empresa ?? '' }}</div>
-        @if($empresa?->contacto)<div>Att. {{ $empresa->contacto }}</div>@endif
         {{-- Datos de entrega: los usa el mensajero que lleva el documento --}}
+        @php
+            $destTel  = collect([$empresa?->celular, $empresa?->telefono])->filter()->implode(' / ');
+            $destCont = collect([$empresa?->contacto, $destTel])->filter()->implode(' — ');
+        @endphp
+        @if($destCont)<div>{{ $destCont }}</div>@endif
         @if($empresa?->direccion)<div>{{ $empresa->direccion }}</div>@endif
-        @if($empresa?->celular || $empresa?->telefono)
-        <div>Tel. {{ collect([$empresa->celular, $empresa->telefono])->filter()->implode(' / ') }}</div>
-        @endif
     </div>
 
     <div style="margin-bottom:.6rem;"><em>Cordial Saludo,</em></div>

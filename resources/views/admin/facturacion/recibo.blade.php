@@ -568,13 +568,14 @@ $numGrupo    = str_pad($filas->first()?->numero_factura ?? $factura->numero_fact
             <div style="font-size:1.4rem;font-weight:900;color:#0f172a;line-height:1.15;letter-spacing:-.02em">{{ $empresaObj->empresa }}</div>
             <div style="font-size:.65rem;color:#64748b;margin-top:.05rem">NIT: {{ $empresaObj->nit ?? '—' }}</div>
             {{-- Datos de entrega: los usa el mensajero que lleva el recibo --}}
-            @if($empresaObj->contacto || $empresaObj->direccion || $empresaObj->celular || $empresaObj->telefono)
+            @php
+                $entTel  = collect([$empresaObj->celular, $empresaObj->telefono])->filter()->implode(' / ');
+                $entCont = collect([$empresaObj->contacto, $entTel])->filter()->implode(' — ');
+            @endphp
+            @if($entCont || $empresaObj->direccion)
             <div style="font-size:.63rem;color:#64748b;margin-top:.12rem;line-height:1.45">
-                @if($empresaObj->contacto)<div>Att. {{ $empresaObj->contacto }}</div>@endif
+                @if($entCont)<div>{{ $entCont }}</div>@endif
                 @if($empresaObj->direccion)<div>{{ $empresaObj->direccion }}</div>@endif
-                @if($empresaObj->celular || $empresaObj->telefono)
-                <div>Tel. {{ collect([$empresaObj->celular, $empresaObj->telefono])->filter()->implode(' / ') }}</div>
-                @endif
             </div>
             @endif
         @else
@@ -916,13 +917,15 @@ $empresaCliente = $cli1?->empresa ?? ($cli1?->cod_empresa ? \App\Models\Empresa:
             <div style="font-size:1.15rem;font-weight:900;color:#0f172a;line-height:1.1">{{ $factura->empresa->empresa }}</div>
             <div style="font-size:.68rem;color:#64748b;margin-top:.15rem">NIT: {{ $factura->empresa->nit ?? '—' }}</div>
             {{-- Datos de entrega: los usa el mensajero que lleva el recibo --}}
-            @if($factura->empresa->contacto || $factura->empresa->direccion || $factura->empresa->celular || $factura->empresa->telefono)
+            @php
+                $oiEmp  = $factura->empresa;
+                $oiTel  = collect([$oiEmp->celular, $oiEmp->telefono])->filter()->implode(' / ');
+                $oiCont = collect([$oiEmp->contacto, $oiTel])->filter()->implode(' — ');
+            @endphp
+            @if($oiCont || $oiEmp->direccion)
             <div style="font-size:.63rem;color:#64748b;margin-top:.12rem;line-height:1.45">
-                @if($factura->empresa->contacto)<div>Att. {{ $factura->empresa->contacto }}</div>@endif
-                @if($factura->empresa->direccion)<div>{{ $factura->empresa->direccion }}</div>@endif
-                @if($factura->empresa->celular || $factura->empresa->telefono)
-                <div>Tel. {{ collect([$factura->empresa->celular, $factura->empresa->telefono])->filter()->implode(' / ') }}</div>
-                @endif
+                @if($oiCont)<div>{{ $oiCont }}</div>@endif
+                @if($oiEmp->direccion)<div>{{ $oiEmp->direccion }}</div>@endif
             </div>
             @endif
         @elseif($rs1)
