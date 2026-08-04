@@ -605,21 +605,34 @@ class FacturacionController extends Controller
             $row++;
         }
 
-        // Fila de totales
-        $sheet->setCellValue('A' . $row, 'TOTALES');
-        $sheet->mergeCells('A' . $row . ':F' . $row);
-        $sheet->getStyle('A' . $row)->getFont()->setBold(true);
-        $sheet->getStyle('A' . $row)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+        $ultimaFilaDatos = $row - 1;
 
-        // Suma de Días (G)
-        $sheet->setCellValue('G' . $row, "=SUM(G5:G" . ($row - 1) . ")");
+        // Filtro de Excel sobre la cabecera + filas de clientes (sin la fila de totales).
+        // Ninguna celda dentro de este rango puede estar combinada, o Excel se queja
+        // con "todas las celdas combinadas deben tener el mismo tamaño" al filtrar.
+        $sheet->setAutoFilter('A4:S' . max($ultimaFilaDatos, 4));
+        // Cabecera siempre visible al desplazarse
+        $sheet->freezePane('A5');
+
+        // Fila de totales (sin combinar, para no romper el filtro)
+        $sheet->setCellValue('A' . $row, 'TOTALES');
+        $sheet->getStyle('A' . $row . ':F' . $row)->getFont()->setBold(true);
+        $sheet->getStyle('A' . $row)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT);
+
+        $hayDatos = $ultimaFilaDatos >= 5;
+
+        // Suma de Días (G) — SUBTOTAL para que respete el filtro activo
+        $sheet->setCellValue('G' . $row, $hayDatos ? "=SUBTOTAL(109,G5:G" . $ultimaFilaDatos . ")" : 0);
         $sheet->getStyle('G' . $row)->getFont()->setBold(true);
         $sheet->getStyle('G' . $row)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
         // Sumas por columnas con fórmulas de Excel (H a Q)
         $columnasMoneda = ['H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q'];
         foreach ($columnasMoneda as $colChar) {
-            $sheet->setCellValue($colChar . $row, "=SUM(" . $colChar . "5:" . $colChar . ($row - 1) . ")");
+            $sheet->setCellValue(
+                $colChar . $row,
+                $hayDatos ? "=SUBTOTAL(109," . $colChar . "5:" . $colChar . $ultimaFilaDatos . ")" : 0
+            );
             $sheet->getStyle($colChar . $row)->getFont()->setBold(true);
             $sheet->getStyle($colChar . $row)->getNumberFormat()->setFormatCode('$#,##0');
         }
