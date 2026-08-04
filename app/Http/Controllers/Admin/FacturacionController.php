@@ -676,6 +676,47 @@ class FacturacionController extends Controller
         );
     }
 
+    /**
+     * Fecha de pago del recibo (facturas.fecha_pago).
+     *
+     * Cuando el pago es 100% consignación el dinero entró el día en que el
+     * cliente consignó, no el día en que se factura → se usa la fecha MAYOR
+     * de las consignaciones del pago (varias consignaciones = la más reciente).
+     * Nunca se acepta una fecha futura: en ese caso se cae a hoy.
+     *
+     * Con efectivo de por medio (efectivo, mixto, préstamo) se mantiene HOY,
+     * porque ese efectivo entra a la caja del día y el cuadre diario agrupa
+     * el efectivo por fecha_pago.
+     *
+     * created_at siempre queda con la fecha real de digitación.
+     */
+    private function _fechaPagoRecibo(?string $formaPago, array $consignacionesData): string
+    {
+        $hoy = now()->toDateString();
+
+        if ($formaPago !== 'consignacion') {
+            return $hoy;
+        }
+
+        $fechas = [];
+        foreach ($consignacionesData as $cs) {
+            if ((int)($cs['valor'] ?? 0) <= 0 || empty($cs['fecha'])) continue;
+            try {
+                $fechas[] = \Carbon\Carbon::parse($cs['fecha'])->toDateString();
+            } catch (\Throwable $e) {
+                // fecha inválida → se ignora, no debe tumbar la facturación
+            }
+        }
+
+        if (empty($fechas)) {
+            return $hoy;
+        }
+
+        $mayor = max($fechas);
+
+        return $mayor > $hoy ? $hoy : $mayor;
+    }
+
     // ─── Facturar (crear factura) ────────────────────────────────────
     public function facturar(Request $request)
     {
@@ -804,6 +845,10 @@ class FacturacionController extends Controller
         $totalPagoConsig    = array_sum(array_column($consignacionesData, 'valor'));
         $totalPagoEfectivo  = (int)($validated['valor_efectivo']  ?? 0);
         $totalPagoPrestamo  = (int)($validated['valor_prestamo']  ?? 0);
+
+        // Fecha del recibo: si el pago es solo consignación, la fecha en que
+        // entró el dinero al banco (la mayor si son varias), no la de hoy.
+        $fechaPagoRecibo = $this->_fechaPagoRecibo($validated['forma_pago'], $consignacionesData);
 
         // ─── Pre-cargar anticipos seleccionados ────────────────────────────
         // Los anticipos son pagos previos sin factura. Se separan de valor_efectivo
@@ -1032,7 +1077,8 @@ class FacturacionController extends Controller
             $consignacionesData, $totalesRealesPorContrato, $granTotalReal, $batchNumeroFactura,
             &$efAcum, &$csAcum, &$prAcum, &$sfAcum, &$antAcum,
             $saldoEmpresaAplicar, &$contratosPendientes, $contratosCargados, $facturasDuplicadasLote,
-            $manualSsPorContrato, $facturasRetiro0Lote, $incluirAdmonRetiroCorto
+            $manualSsPorContrato, $facturasRetiro0Lote, $incluirAdmonRetiroCorto,
+            $fechaPagoRecibo
         ) {
             foreach ($validated['contratos'] as $contratoId) {
                 $contrato = $contratosCargados->get($contratoId);
@@ -1239,7 +1285,7 @@ class FacturacionController extends Controller
                         'empresa_id'              => $validated['empresa_id'] ?? null,
                         'mes'                     => $mes,
                         'anio'                    => $anio,
-                        'fecha_pago'              => now()->toDateString(),
+                        'fecha_pago'              => $fechaPagoRecibo,
                         'estado'                  => $validated['estado'],
                         'es_prestamo'             => $validated['estado'] === 'prestamo',
                         'forma_pago'              => $validated['forma_pago'],
@@ -1620,7 +1666,7 @@ class FacturacionController extends Controller
                     'contrato_id'      => $contrato->id,
                     'mes'              => $mes,
                     'anio'             => $anio,
-                    'fecha_pago'       => now()->toDateString(),
+                    'fecha_pago'       => $fechaPagoRecibo,
                     'estado'           => $validated['estado'],
                     'es_prestamo'      => $validated['estado'] === 'prestamo',
                     'forma_pago'       => $validated['forma_pago'],
@@ -2128,6 +2174,8 @@ class FacturacionController extends Controller
 
         $estado    = $validated['estado'];
         $formaPago = $validated['forma_pago'];
+        // Ambos registros del par comparten la fecha del recibo (ver _fechaPagoRecibo)
+        $fechaPagoRecibo = $this->_fechaPagoRecibo($formaPago, $consignacionesData);
 
         // ────────────────────────────────────────────────────────────────────────
         // REGISTRO 1: AFILIACIÓN
@@ -2140,7 +2188,7 @@ class FacturacionController extends Controller
             'contrato_id'      => $contrato->id,
             'mes'              => $mes,
             'anio'             => $anio,
-            'fecha_pago'       => now()->toDateString(),
+            'fecha_pago'       => $fechaPagoRecibo,
             'estado'           => $estado,
             'es_prestamo'      => $estado === 'prestamo',
             'forma_pago'       => $formaPago,
@@ -2215,7 +2263,7 @@ class FacturacionController extends Controller
             'contrato_id'      => $contrato->id,
             'mes'              => $mesPlan,
             'anio'             => $anioPlan,
-            'fecha_pago'       => now()->toDateString(),
+            'fecha_pago'       => $fechaPagoRecibo,
             'estado'           => $estado,
             'es_prestamo'      => $estado === 'prestamo',
             'forma_pago'       => $formaPago,
@@ -3308,11 +3356,14 @@ class FacturacionController extends Controller
         // ── Saldo previo del cliente ────────────────────────────────────
         $saldo = Factura::saldoClienteMesPrevio($aliadoId, $cedula, $mes, $anio);
 
+        // Fecha del recibo: la de la consignación si el pago es solo banco
+        $fechaPagoRecibo = $this->_fechaPagoRecibo($validated['forma_pago'], $consignacionesData);
+
         $factura = DB::transaction(function () use (
             $aliadoId, $cedula, $mes, $anio, $validated,
             $valorAdmon, $valorAsesor, $iva, $total,
             $totalConsig, $totalEfectivo, $totalPrestamo,
-            $consignacionesData, $saldo, $empresaId
+            $consignacionesData, $saldo, $empresaId, $fechaPagoRecibo
         ) {
             $numeroFactura = Factura::siguienteNumero($aliadoId);
 
@@ -3325,7 +3376,7 @@ class FacturacionController extends Controller
                 'empresa_id'          => $empresaId,
                 'mes'                 => $mes,
                 'anio'                => $anio,
-                'fecha_pago'          => now()->toDateString(),
+                'fecha_pago'          => $fechaPagoRecibo,
                 'estado'              => $validated['estado'],
                 'es_prestamo'         => $validated['estado'] === 'prestamo',
                 'forma_pago'          => $validated['forma_pago'],
