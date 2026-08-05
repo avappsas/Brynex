@@ -23,21 +23,19 @@ class UsuarioController extends Controller
     public function index(Request $request)
     {
         $alidoActivoId = session('aliado_id_activo');
-        $esBrynex      = auth()->user()->es_brynex;
+        $esBrynex = auth()->user()->es_brynex;
 
-        $buscar       = $request->input('q');
-        $filtroRol    = $request->input('rol');
+        $buscar = $request->input('q');
+        $filtroRol = $request->input('rol');
         $filtroEstado = $request->input('estado');
 
         // Obtener los roles para el filtro
         $roles = Role::orderBy('name')->pluck('name');
 
         $usuarios = User::with(['aliado', 'roles'])
-            ->when(!auth()->user()->hasRole('superadmin') || !$esBrynex, fn($q) =>
-                $q->where('aliado_id', $alidoActivoId)
+            ->when(! auth()->user()->hasRole('superadmin') || ! $esBrynex, fn ($q) => $q->where('aliado_id', $alidoActivoId)
             )
-            ->when(auth()->user()->hasRole('superadmin') && $esBrynex, fn($q) =>
-                $q->where('aliado_id', $alidoActivoId)
+            ->when(auth()->user()->hasRole('superadmin') && $esBrynex, fn ($q) => $q->where('aliado_id', $alidoActivoId)
             )
             ->when($buscar, function ($q) use ($buscar) {
                 $q->where(function ($sub) use ($buscar) {
@@ -46,7 +44,7 @@ class UsuarioController extends Controller
                 });
             })
             ->when($filtroRol, function ($q) use ($filtroRol) {
-                $q->whereHas('roles', fn($sub) => $sub->where('name', $filtroRol));
+                $q->whereHas('roles', fn ($sub) => $sub->where('name', $filtroRol));
             })
             ->when($filtroEstado, function ($q) use ($filtroEstado) {
                 if ($filtroEstado === 'activo') {
@@ -56,9 +54,11 @@ class UsuarioController extends Controller
                 } elseif ($filtroEstado === 'inactivo') {
                     $q->onlyTrashed();
                 }
-            }, function ($q) {
-                $q->withTrashed();
             })
+            // Sin filtro de estado se muestran solo los vigentes. Los borrados
+            // lógicamente (incluidas las cuentas duplicadas ya fusionadas) se
+            // ven eligiendo «Inactivo», no de entrada: si no, la misma persona
+            // aparece dos veces en la lista.
             ->orderByRaw('CASE WHEN deleted_at IS NULL AND activo = 1 THEN 0 WHEN deleted_at IS NULL AND activo = 0 THEN 1 ELSE 2 END')
             ->orderBy('nombre')
             ->get();
@@ -69,11 +69,12 @@ class UsuarioController extends Controller
     public function create()
     {
         $aliados = Aliado::activos()->orderBy('nombre')->get();
-        $roles   = Role::orderBy('name')->get()->pluck('name', 'name');
+        $roles = Role::orderBy('name')->get()->pluck('name', 'name');
+
         return view('admin.usuarios.form', [
-            'usuario' => new User(),
+            'usuario' => new User,
             'aliados' => $aliados,
-            'roles'   => $roles,
+            'roles' => $roles,
         ]);
     }
 
@@ -84,35 +85,35 @@ class UsuarioController extends Controller
         $esSuperBrynex = $authUser->hasRole('superadmin') && $authUser->es_brynex; // puede marcar es_brynex
 
         // Si no es BryNex, forzar aliado_id desde la sesión (ignorar el del request)
-        if (!$esBrynexAdmin) {
+        if (! $esBrynexAdmin) {
             $request->merge(['aliado_id' => session('aliado_id_activo')]);
         }
 
         $data = $request->validate([
-            'nombre'    => 'required|string|max:150',
-            'cedula'    => ['required','string','max:20', Rule::unique('users','cedula')->whereNull('deleted_at')],
-            'email'     => ['nullable','email','max:150', Rule::unique('users','email')->whereNull('deleted_at')],
-            'telefono'  => 'nullable|string|max:30',
+            'nombre' => 'required|string|max:150',
+            'cedula' => ['required', 'string', 'max:20', Rule::unique('users', 'cedula')->whereNull('deleted_at')],
+            'email' => ['nullable', 'email', 'max:150', Rule::unique('users', 'email')->whereNull('deleted_at')],
+            'telefono' => 'nullable|string|max:30',
             'aliado_id' => 'required|integer|exists:aliados,id',
-            'rol'       => 'required|string|exists:roles,name',
+            'rol' => 'required|string|exists:roles,name',
             'es_brynex' => 'boolean',
-            'activo'    => 'boolean',
-            'password'  => 'required|string|min:8|confirmed',
+            'activo' => 'boolean',
+            'password' => 'required|string|min:8|confirmed',
         ], [
             'cedula.unique' => 'Ya existe un usuario activo con esa cédula.',
-            'email.unique'  => 'Ya existe un usuario activo con ese correo.',
+            'email.unique' => 'Ya existe un usuario activo con ese correo.',
         ]);
 
         $usuario = User::create([
-            'nombre'    => $data['nombre'],
-            'cedula'    => $data['cedula'],
-            'email'     => $data['email'] ?? $data['cedula'] . '@brynex.local',
-            'telefono'  => $data['telefono'] ?? null,
+            'nombre' => $data['nombre'],
+            'cedula' => $data['cedula'],
+            'email' => $data['email'] ?? $data['cedula'].'@brynex.local',
+            'telefono' => $data['telefono'] ?? null,
             'aliado_id' => $data['aliado_id'],
             // es_brynex solo lo puede asignar superadmin BryNex
             'es_brynex' => $esSuperBrynex ? $request->boolean('es_brynex') : false,
-            'activo'    => $request->boolean('activo', true),
-            'password'  => Hash::make($data['password']),
+            'activo' => $request->boolean('activo', true),
+            'password' => Hash::make($data['password']),
         ]);
 
         $usuario->assignRole($data['rol']);
@@ -120,7 +121,7 @@ class UsuarioController extends Controller
         // Si es BryNex, agregar a pivot aliado_user con el aliado seleccionado
         if ($usuario->es_brynex) {
             $usuario->aliados()->syncWithoutDetaching([
-                $data['aliado_id'] => ['rol' => $data['rol'], 'activo' => true]
+                $data['aliado_id'] => ['rol' => $data['rol'], 'activo' => true],
             ]);
         }
 
@@ -131,7 +132,8 @@ class UsuarioController extends Controller
     public function edit(User $usuario)
     {
         $aliados = Aliado::activos()->orderBy('nombre')->get();
-        $roles   = Role::orderBy('name')->get()->pluck('name', 'name');
+        $roles = Role::orderBy('name')->get()->pluck('name', 'name');
+
         return view('admin.usuarios.form', compact('usuario', 'aliados', 'roles'));
     }
 
@@ -142,35 +144,35 @@ class UsuarioController extends Controller
         $esSuperBrynex = $authUser->hasRole('superadmin') && $authUser->es_brynex;
 
         // Si no es BryNex, forzar aliado_id desde la sesión
-        if (!$esBrynexAdmin) {
+        if (! $esBrynexAdmin) {
             $request->merge(['aliado_id' => session('aliado_id_activo')]);
         }
 
         $data = $request->validate([
-            'nombre'    => 'required|string|max:150',
-            'cedula'    => ['required','string','max:20', Rule::unique('users','cedula')->ignore($usuario->id)->whereNull('deleted_at')],
-            'email'     => ['nullable','email','max:150', Rule::unique('users','email')->ignore($usuario->id)->whereNull('deleted_at')],
-            'telefono'  => 'nullable|string|max:30',
+            'nombre' => 'required|string|max:150',
+            'cedula' => ['required', 'string', 'max:20', Rule::unique('users', 'cedula')->ignore($usuario->id)->whereNull('deleted_at')],
+            'email' => ['nullable', 'email', 'max:150', Rule::unique('users', 'email')->ignore($usuario->id)->whereNull('deleted_at')],
+            'telefono' => 'nullable|string|max:30',
             'aliado_id' => 'required|integer|exists:aliados,id',
-            'rol'       => 'required|string|exists:roles,name',
+            'rol' => 'required|string|exists:roles,name',
             'es_brynex' => 'boolean',
-            'activo'    => 'boolean',
-            'password'  => 'nullable|string|min:8|confirmed',
+            'activo' => 'boolean',
+            'password' => 'nullable|string|min:8|confirmed',
         ], [
             'cedula.unique' => 'Ya existe un usuario activo con esa cédula.',
-            'email.unique'  => 'Ya existe un usuario activo con ese correo.',
+            'email.unique' => 'Ya existe un usuario activo con ese correo.',
         ]);
 
         $usuario->update([
-            'nombre'    => $data['nombre'],
-            'cedula'    => $data['cedula'],
-            'email'     => $data['email'] ?? $usuario->email,
-            'telefono'  => $data['telefono'] ?? null,
+            'nombre' => $data['nombre'],
+            'cedula' => $data['cedula'],
+            'email' => $data['email'] ?? $usuario->email,
+            'telefono' => $data['telefono'] ?? null,
             'aliado_id' => $data['aliado_id'],
             // es_brynex solo lo puede cambiar superadmin BryNex; de lo contrario se preserva el valor actual
             'es_brynex' => $esSuperBrynex ? $request->boolean('es_brynex') : $usuario->es_brynex,
-            'activo'    => $request->boolean('activo'),
-            'password'  => $data['password'] ? Hash::make($data['password']) : $usuario->password,
+            'activo' => $request->boolean('activo'),
+            'password' => $data['password'] ? Hash::make($data['password']) : $usuario->password,
         ]);
 
         $usuario->syncRoles([$data['rol']]);
@@ -185,6 +187,7 @@ class UsuarioController extends Controller
             return back()->withErrors(['No puede eliminarse a sí mismo.']);
         }
         $usuario->delete();
+
         return redirect()->route('admin.usuarios.index')
             ->with('success', "Usuario '{$usuario->nombre}' desactivado.");
     }
@@ -193,6 +196,7 @@ class UsuarioController extends Controller
     {
         $usuario = User::withTrashed()->findOrFail($id);
         $usuario->restore();
+
         return redirect()->route('admin.usuarios.index')
             ->with('success', "Usuario '{$usuario->nombre}' restaurado.");
     }

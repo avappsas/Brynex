@@ -39,6 +39,16 @@ class CierrePeriodoService
     public const PERIODO_MINIMO = 202604;
 
     /**
+     * Gestión ARL: según su propia definición «NO es una planilla mensual, es
+     * únicamente el radicado de afiliación y el servicio ante la ARL». Nunca
+     * debe aparecer como pendiente de planilla.
+     */
+    public const MODALIDAD_GESTION_ARL = 15;
+
+    /** Independientes mes actual: el único que cotiza el mes de pago. */
+    public const MODALIDAD_INDEP_ACTUAL = 11;
+
+    /**
      * Traduce el mes de PAGO al período que guardan los planos.
      *
      * Los independientes (modalidad 11) guardan el mes de pago; el resto
@@ -66,12 +76,17 @@ class CierrePeriodoService
 
         // SQL Server no agrega sobre una subconsulta, así que el EXISTS se
         // resuelve por fila en una tabla derivada y se suma por fuera.
+        // Se mantienen las dos cifras: el total de vigentes —que es el número
+        // que el aliado reconoce— y cuántos de ellos deben cotizar de verdad
+        // este período. El pendiente se mide contra el segundo.
         $porContrato = DB::table('contratos AS c')
             ->where('c.aliado_id', $aliadoId)
             ->where('c.estado', 'vigente')
             ->selectRaw(
-                'c.razon_social_id, CASE WHEN '.$this->existePlanoSql().' THEN 1 ELSE 0 END AS con_plano',
-                $this->bindingsPlano($p)
+                'c.razon_social_id,
+                 CASE WHEN '.$this->existePlanoSql().' THEN 1 ELSE 0 END AS con_plano,
+                 CASE WHEN '.$this->aplicaPlanillaSql().' THEN 1 ELSE 0 END AS aplica',
+                array_merge($this->bindingsPlano($p), $this->bindingsAplica($p))
             );
 
         $filas = DB::query()->fromSub($porContrato, 't')
@@ -79,9 +94,10 @@ class CierrePeriodoService
             ->selectRaw("
                 t.razon_social_id,
                 MAX(ISNULL(rs.razon_social, '(sin razón social)')) AS razon_social,
-                MAX(rs.nit)     AS nit,
-                COUNT(*)        AS vigentes,
-                SUM(t.con_plano) AS con_plano
+                MAX(rs.nit)  AS nit,
+                COUNT(*)     AS vigentes,
+                SUM(t.aplica) AS deben_cotizar,
+                SUM(CASE WHEN t.aplica = 1 AND t.con_plano = 1 THEN 1 ELSE 0 END) AS con_plano
             ")
             ->groupBy('t.razon_social_id')
             ->get();
@@ -90,8 +106,9 @@ class CierrePeriodoService
 
         return $filas->map(function ($f) use ($liquidaciones) {
             $f->vigentes = (int) $f->vigentes;
+            $f->deben_cotizar = (int) $f->deben_cotizar;
             $f->con_plano = (int) $f->con_plano;
-            $f->pendientes = $f->vigentes - $f->con_plano;
+            $f->pendientes = $f->deben_cotizar - $f->con_plano;
             $f->api = $liquidaciones->get($f->razon_social_id);
 
             return $f;
@@ -117,6 +134,8 @@ class CierrePeriodoService
             ->where('c.aliado_id', $aliadoId)
             ->where('c.estado', 'vigente')
             ->whereRaw('NOT '.$this->existePlanoSql(), $this->bindingsPlano($p));
+
+        $this->soloLosQueCotizan($query, $p);
 
         if ($razonSocialId) {
             $query->where('c.razon_social_id', $razonSocialId);
@@ -153,10 +172,61 @@ class CierrePeriodoService
     /** Contratos vigentes del aliado sin plano del período. */
     private function queryPendientes(int $aliadoId, int $mesPago, int $anioPago)
     {
-        return DB::table('contratos AS c')
+        $p = $this->periodo($mesPago, $anioPago);
+
+        $query = DB::table('contratos AS c')
             ->where('c.aliado_id', $aliadoId)
             ->where('c.estado', 'vigente')
-            ->whereRaw('NOT '.$this->existePlanoSql(), $this->bindingsPlano($this->periodo($mesPago, $anioPago)));
+            ->whereRaw('NOT '.$this->existePlanoSql(), $this->bindingsPlano($p));
+
+        return $this->soloLosQueCotizan($query, $p);
+    }
+
+    /**
+     * Deja fuera a los contratos vigentes a los que NO les toca planilla en
+     * este período. Sin esto el informe acusa como pendiente a gente que está
+     * perfectamente al día, y el número deja de ser creíble.
+     *
+     * Dos casos, los dos confirmados contra los datos:
+     *
+     *  1. **Gestión ARL** (modalidad 15): no es una planilla mensual, es solo
+     *     el radicado y el servicio ante la ARL. Nunca paga planilla.
+     *  2. **El mes de la afiliación no se paga.** La primera planilla es la del
+     *     mes siguiente al ingreso — explícito en la modalidad Ingreso-Retiro
+     *     («al mes siguiente se paga una planilla de pocos días») y verificado
+     *     en los dependientes. Así que si el contrato nació dentro del mes
+     *     cubierto, o después, todavía no le corresponde.
+     *
+     * Los RETIROS sí siguen contando: a quien se retira hay que reportarlo en
+     * la planilla, y su plano de retiro es lo que lo da por cubierto.
+     */
+    private function soloLosQueCotizan($query, array $p)
+    {
+        return $query->whereRaw($this->aplicaPlanillaSql(), $this->bindingsAplica($p));
+    }
+
+    /** La condición de arriba como expresión, para usarla también en un CASE. */
+    private function aplicaPlanillaSql(): string
+    {
+        $gestionArl = self::MODALIDAD_GESTION_ARL;
+        $indepActual = self::MODALIDAD_INDEP_ACTUAL;
+
+        // Sin fecha de ingreso no se puede decidir: se deja dentro para que el
+        // dato incompleto se note en vez de desaparecer del informe.
+        return "(
+            (c.tipo_modalidad_id IS NULL OR c.tipo_modalidad_id <> {$gestionArl})
+            AND (c.fecha_ingreso IS NULL
+                 OR c.fecha_ingreso < CASE WHEN c.tipo_modalidad_id = {$indepActual} THEN ? ELSE ? END)
+        )";
+    }
+
+    /** Primer día del mes cubierto, según cotice el mes de pago o el vencido. */
+    private function bindingsAplica(array $p): array
+    {
+        return [
+            sprintf('%04d-%02d-01', $p['anio_pago'], $p['mes_pago']),
+            sprintf('%04d-%02d-01', $p['anio_vencido'], $p['mes_vencido']),
+        ];
     }
 
     // ── Cierre de operación (informe del aliado) ─────────────────────────

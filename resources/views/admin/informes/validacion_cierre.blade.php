@@ -4,6 +4,7 @@
 @php
     $meses = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
     $totVigentes   = $resumen->sum('vigentes');
+    $totCotizan    = $resumen->sum('deben_cotizar');
     $totConPlano   = $resumen->sum('con_plano');
     $totPendientes = $resumen->sum('pendientes');
 @endphp
@@ -35,7 +36,11 @@
         Pago de <strong>{{ $meses[$periodo['mes_pago']] }} {{ $periodo['anio_pago'] }}</strong> —
         planilla del período <strong>{{ $meses[$periodo['mes_vencido']] }}</strong> para dependientes y
         <strong>{{ $meses[$periodo['mes_pago']] }}</strong> para independientes.
-        Se cuenta como pendiente todo contrato <strong>vigente</strong> sin plano de planilla ni de retiro en ese período.
+        Se cuenta como pendiente el contrato vigente <strong>al que le toca cotizar</strong> y no tiene plano de
+        planilla ni de retiro. Quedan fuera los de <strong>Gestión ARL</strong> —que por definición no son planilla
+        mensual— y los <strong>afiliados dentro del período o después</strong>, porque el mes de la afiliación no se
+        paga: su primera planilla es la del mes siguiente. Los <strong>retiros sí cuentan</strong>: a quien se retira
+        hay que reportarlo.
         Con el mes en curso es normal que haya pendientes: la nómina se liquida por tandas.
         <strong>Al cerrar el mes, el que siga aquí es un retiro que nunca se registró.</strong>
     </div>
@@ -43,7 +48,8 @@
     {{-- Totales --}}
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:.75rem;margin-bottom:1.1rem;">
         @foreach([
-            ['Contratos vigentes', $totVigentes, '#3b82f6'],
+            ['Contratos vigentes', $totVigentes, '#94a3b8'],
+            ['Deben cotizar', $totCotizan, '#3b82f6'],
             ['En planilla', $totConPlano, '#10b981'],
             ['Pendientes', $totPendientes, $totPendientes > 0 ? '#ef4444' : '#10b981'],
         ] as [$label, $valor, $color])
@@ -60,6 +66,7 @@
             <thead><tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0;">
                 <th style="padding:.65rem 1rem;text-align:left;font-size:.7rem;text-transform:uppercase;color:#64748b;">Razón social</th>
                 <th style="padding:.65rem;text-align:center;font-size:.7rem;text-transform:uppercase;color:#64748b;">Vigentes</th>
+                <th style="padding:.65rem;text-align:center;font-size:.7rem;text-transform:uppercase;color:#64748b;">Deben cotizar</th>
                 <th style="padding:.65rem;text-align:center;font-size:.7rem;text-transform:uppercase;color:#64748b;">En planilla</th>
                 <th style="padding:.65rem;text-align:center;font-size:.7rem;text-transform:uppercase;color:#64748b;">Pendientes</th>
                 <th style="padding:.65rem 1rem;text-align:left;font-size:.7rem;text-transform:uppercase;color:#64748b;">Liquidación por API</th>
@@ -67,7 +74,7 @@
             </tr></thead>
             <tbody>
                 @forelse($resumen as $r)
-                @php $pct = $r->vigentes > 0 ? round($r->con_plano / $r->vigentes * 100) : 0; @endphp
+                @php $pct = $r->deben_cotizar > 0 ? round($r->con_plano / $r->deben_cotizar * 100) : 100; @endphp
                 <tr style="border-bottom:1px solid #f1f5f9;{{ (int) $rsId === (int) $r->razon_social_id ? 'background:#eff6ff;' : '' }}">
                     <td style="padding:.6rem 1rem;font-weight:600;color:#0d2550;">
                         {{ $r->razon_social }}
@@ -76,7 +83,15 @@
                             <div style="height:100%;width:{{ $pct }}%;background:{{ $pct === 100 ? '#10b981' : '#f59e0b' }};border-radius:3px;"></div>
                         </div>
                     </td>
-                    <td style="padding:.6rem;text-align:center;font-weight:700;color:#334155;">{{ $r->vigentes }}</td>
+                    <td style="padding:.6rem;text-align:center;color:#94a3b8;">{{ $r->vigentes }}</td>
+                    <td style="padding:.6rem;text-align:center;font-weight:700;color:#334155;">
+                        {{ $r->deben_cotizar }}
+                        @if($r->vigentes > $r->deben_cotizar)
+                            <div style="font-size:.66rem;color:#94a3b8;font-weight:400;">
+                                −{{ $r->vigentes - $r->deben_cotizar }} sin planilla
+                            </div>
+                        @endif
+                    </td>
                     <td style="padding:.6rem;text-align:center;font-weight:700;color:#10b981;">{{ $r->con_plano }}</td>
                     <td style="padding:.6rem;text-align:center;font-size:1.05rem;font-weight:800;color:{{ $r->pendientes > 0 ? '#ef4444' : '#10b981' }};">
                         {{ $r->pendientes }}
@@ -102,7 +117,7 @@
                     </td>
                 </tr>
                 @empty
-                <tr><td colspan="6" style="padding:2rem;text-align:center;color:#94a3b8;">No hay contratos vigentes en el período.</td></tr>
+                <tr><td colspan="7" style="padding:2rem;text-align:center;color:#94a3b8;">No hay contratos vigentes en el período.</td></tr>
                 @endforelse
             </tbody>
         </table>
