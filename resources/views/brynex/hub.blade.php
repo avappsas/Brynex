@@ -83,6 +83,23 @@
             </div>
         </div>
 
+        {{-- ── Supervisión de planilla ─────────────────────────────────────── --}}
+        @can('brynex_cierre.ver')
+        <div class="hub-section" style="border:1px solid #c7d2fe">
+            <div class="hub-section-title" style="color:#4338ca">🧾 Supervisión de Planilla</div>
+            <div class="hub-cards">
+                <a href="{{ route('admin.informes.validacion_cierre') }}" class="hub-card" style="border-color:#c7d2fe;background:#eef2ff">
+                    <div class="hc-icon">🧾</div>
+                    <div class="hc-body">
+                        <div class="hc-name" style="color:#4338ca">Validación de Cierre</div>
+                        <div class="hc-desc">Contratos vigentes que se quedaron por fuera de la planilla del período, por razón social · Estado de la liquidación por API</div>
+                    </div>
+                    <div class="hc-arrow" style="color:#4338ca">→</div>
+                </a>
+            </div>
+        </div>
+        @endcan
+
         {{-- ── Asistente Virtual IA ────────────────────────────────────────── --}}
         <div class="hub-section" style="border:1px solid #fde68a">
             <div class="hub-section-title" style="color:#b45309">🤖 Asistente Virtual IA</div>
