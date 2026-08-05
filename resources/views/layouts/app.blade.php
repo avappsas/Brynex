@@ -806,57 +806,65 @@
                 <div class="label">Inicio</div>
             </a>
 
+            @can('clientes.ver')
             <a href="{{ route('admin.clientes.index') }}" class="menu-item {{ request()->routeIs('admin.clientes*') ? 'activo' : '' }}">
                 <div class="icono">👥</div>
                 <div class="label">Clientes</div>
             </a>
+            @endcan
 
+            @can('facturacion.ver')
             <a href="{{ route('admin.facturacion.index') }}" class="menu-item {{ request()->routeIs('admin.facturacion*') ? 'activo' : '' }}">
                 <div class="icono">🏢</div>
                 <div class="label">Empresas</div>
             </a>
+            @endcan
 
-            @role('superadmin|admin|usuario')
+            @can('afiliaciones.ver')
             <a href="{{ route('admin.afiliaciones.index') }}" class="menu-item {{ request()->routeIs('admin.afiliaciones*') ? 'activo' : '' }}">
                 <div class="icono">🤝</div>
                 <div class="label">Afiliaciones</div>
             </a>
-            @endrole
+            @endcan
 
 
 
-            @role('superadmin|admin|usuario')
+            @can('planos.ver')
             <a href="{{ route('admin.planos.index') }}" class="menu-item {{ request()->routeIs('admin.planos*') ? 'activo' : '' }}">
                 <div class="icono">📄</div>
                 <div class="label">Planos SS</div>
             </a>
-            @endrole
+            @endcan
 
-            @role('superadmin|admin|usuario')
+            @can('cobros.ver')
             <a href="{{ route('admin.cobros.index') }}" class="menu-item {{ request()->routeIs('admin.cobros*') ? 'activo' : '' }}">
                 <div class="icono">💰</div>
                 <div class="label">Cobros</div>
             </a>
-            @endrole
+            @endcan
 
-            @role('superadmin|admin|usuario|contador')
+            @can('prestamos.ver')
             <a href="{{ route('admin.prestamos.index') }}" class="menu-item {{ request()->routeIs('admin.prestamos*') ? 'activo' : '' }}">
                 <div class="icono">📋</div>
                 <div class="label">Préstamos</div>
             </a>
-            @endrole
+            @endcan
 
+            @can('tareas.ver')
             <a href="{{ route('admin.tareas.index') }}" class="menu-item {{ request()->routeIs('admin.tareas*') ? 'activo' : '' }}">
                 <div class="icono">📌</div>
                 <div class="label">Tareas</div>
             </a>
+            @endcan
 
+            @can('incapacidades.ver')
             <a href="{{ route('admin.incapacidades.index') }}" class="menu-item {{ request()->routeIs('admin.incapacidades*') ? 'activo' : '' }}">
                 <div class="icono">🏥</div>
                 <div class="label">Incapacidades</div>
             </a>
+            @endcan
 
-            @role('superadmin|admin|usuario')
+            @can('whatsapp.ver')
             <a href="{{ route('admin.whatsapp.chat.index') }}"
                class="menu-item {{ request()->routeIs('admin.whatsapp*') ? 'activo' : '' }}"
                style="position:relative" title="WhatsApp Chat">
@@ -866,9 +874,9 @@
                 </div>
                 <div class="label">WhatsApp</div>
             </a>
-            @endrole
+            @endcan
 
-            @role('superadmin|admin|usuario')
+            @can('cuadre_diario.ver')
             <div class="menu-sep"></div>
 
             <a href="{{ route('admin.cuadre-diario.index') }}"
@@ -876,16 +884,16 @@
                 <div class="icono">🧾</div>
                 <div class="label">Cuadre Caja</div>
             </a>
-            @endrole
+            @endcan
 
-            @role('superadmin|admin|contador')
+            @can('informes.ver')
             <div class="menu-sep"></div>
             <a href="{{ route('admin.informes.hub') }}"
                class="menu-item {{ request()->routeIs('admin.informes*') && !request()->routeIs('admin.informes.comisiones*') ? 'activo' : '' }}">
                 <div class="icono">📊</div>
                 <div class="label">Informes</div>
             </a>
-            @endrole
+            @endcan
 
 
 
@@ -893,7 +901,7 @@
 
             {{-- DROPDOWN ADMIN: visible para admin y superadmin              --}}
             {{-- ───────────────────────────────────────────────────────────── --}}
-            @role('admin|superadmin')
+            @canany(['asesores.ver', 'usuarios.ver', 'configuracion.ver', 'bitacora.ver', 'traslados_rs.ejecutar'])
             <div class="menu-sep"></div>
             <div class="menu-dropdown">
                 <a href="{{ route('admin.configuracion.hub') }}" class="menu-dropdown-trigger {{ request()->routeIs('admin.asesores*', 'admin.bitacora*', 'admin.usuarios*', 'admin.configuracion*') ? 'activo' : '' }}">
@@ -903,34 +911,43 @@
                 <div class="menu-dropdown-panel">
                     <div class="panel-header">Administración</div>
 
-                    <a href="#" class="panel-item">
-                        <div class="pi">📊</div> Contabilidad
-                    </a>
+                    @can('asesores.ver')
                     <a href="{{ route('admin.asesores.index') }}" class="panel-item {{ request()->routeIs('admin.asesores*') ? 'activo' : '' }}">
                         <div class="pi">🤝</div> Asesores
                     </a>
+                    @endcan
+                    @can('bitacora.ver')
                     <a href="{{ route('admin.bitacora.index') }}" class="panel-item {{ request()->routeIs('admin.bitacora*') ? 'activo' : '' }}">
                         <div class="pi">👁️</div> Auditoría
                     </a>
+                    @endcan
 
+                    @canany(['usuarios.ver', 'configuracion.ver'])
                     <div class="panel-sep"></div>
+                    @endcanany
 
+                    @can('usuarios.ver')
                     <a href="{{ route('admin.usuarios.index') }}" class="panel-item {{ request()->routeIs('admin.usuarios*') ? 'activo' : '' }}">
                         <div class="pi">👥</div> Usuarios
                     </a>
+                    @endcan
+                    @can('configuracion.ver')
                     <a href="{{ route('admin.configuracion.hub') }}" class="panel-item {{ request()->routeIs('admin.configuracion*') ? 'activo' : '' }}">
                         <div class="pi">⚙️</div> Configuración
                     </a>
                     <a href="{{ route('admin.configuracion.index') }}" class="panel-item {{ request()->routeIs('admin.configuracion.index') ? 'activo' : '' }}">
                         <div class="pi">💲</div> Parámetros / Precios
                     </a>
+                    @endcan
+                    @can('traslados_rs.ejecutar')
                     <div class="panel-sep"></div>
                     <a href="{{ route('admin.traslados.index') }}" class="panel-item {{ request()->routeIs('admin.traslados*') ? 'activo' : '' }}">
                         <div class="pi">🔄</div> Traslado de RS
                     </a>
+                    @endcan
                 </div>
             </div>
-            @endrole
+            @endcanany
 
             {{-- ───────────────────────────────────────────────────────────── --}}
             {{-- DROPDOWN BRYNEX: solo para superadmin es_brynex              --}}
@@ -1048,89 +1065,107 @@
             <a href="{{ route('admin.facturacion.index') }}" class="drawer-item {{ request()->routeIs('admin.facturacion*') ? 'activo' : '' }}">
                 <span class="di-icon">🏢</span> Empresas
             </a>
-            @role('superadmin|admin|usuario')
+            @can('afiliaciones.ver')
             <a href="{{ route('admin.afiliaciones.index') }}" class="drawer-item {{ request()->routeIs('admin.afiliaciones*') ? 'activo' : '' }}">
                 <span class="di-icon">🤝</span> Afiliaciones
             </a>
-            @endrole
-            @role('superadmin|admin|usuario')
+            @endcan
+            @can('planos.ver')
             <a href="{{ route('admin.planos.index') }}" class="drawer-item {{ request()->routeIs('admin.planos*') ? 'activo' : '' }}">
                 <span class="di-icon">📄</span> Planos SS
             </a>
-            @endrole
-            @role('superadmin|admin|usuario')
+            @endcan
+            @can('cobros.ver')
             <a href="{{ route('admin.cobros.index') }}" class="drawer-item {{ request()->routeIs('admin.cobros*') ? 'activo' : '' }}">
                 <span class="di-icon">💰</span> Cobros
             </a>
-            @endrole
-            @role('superadmin|admin|usuario|contador')
+            @endcan
+            @can('prestamos.ver')
             <a href="{{ route('admin.prestamos.index') }}" class="drawer-item {{ request()->routeIs('admin.prestamos*') ? 'activo' : '' }}">
                 <span class="di-icon">📋</span> Préstamos
             </a>
-            @endrole
+            @endcan
             <a href="{{ route('admin.tareas.index') }}" class="drawer-item {{ request()->routeIs('admin.tareas*') ? 'activo' : '' }}">
                 <span class="di-icon">📌</span> Tareas
             </a>
             <a href="{{ route('admin.incapacidades.index') }}" class="drawer-item {{ request()->routeIs('admin.incapacidades*') ? 'activo' : '' }}">
                 <span class="di-icon">🏥</span> Incapacidades
             </a>
-            @role('superadmin|admin|usuario')
+            @can('whatsapp.ver')
             <a href="{{ route('admin.whatsapp.chat.index') }}" class="drawer-item {{ request()->routeIs('admin.whatsapp*') ? 'activo' : '' }}">
                 <span class="di-icon">💬</span> WhatsApp
             </a>
-            @endrole
+            @endcan
         </div>
 
         {{-- Sección financiero --}}
-        @role('superadmin|admin|usuario')
+        @canany(['cuadre_diario.ver', 'cotizaciones.ver'])
         <div class="drawer-sep"></div>
         <div class="drawer-section">
             <div class="drawer-section-label">Financiero</div>
+            @can('cuadre_diario.ver')
             <a href="{{ route('admin.cuadre-diario.index') }}" class="drawer-item {{ request()->routeIs('admin.cuadre-diario*') ? 'activo' : '' }}">
                 <span class="di-icon">🧾</span> Cuadre Caja
             </a>
+            @endcan
+            @can('cotizaciones.ver')
             <a href="{{ route('admin.cotizaciones.index') }}" class="drawer-item {{ request()->routeIs('admin.cotizaciones*') ? 'activo' : '' }}">
                 <span class="di-icon">💼</span> Cotizaciones
             </a>
+            @endcan
         </div>
-        @endrole
+        @endcanany
 
         {{-- Sección reportes --}}
-        @role('superadmin|admin|contador')
+        @canany(['informes.ver', 'comisiones.ver'])
         <div class="drawer-sep"></div>
         <div class="drawer-section">
             <div class="drawer-section-label">Reportes</div>
+            @can('informes.ver')
             <a href="{{ route('admin.informes.hub') }}" class="drawer-item {{ request()->routeIs('admin.informes*') && !request()->routeIs('admin.informes.comisiones*') ? 'activo' : '' }}">
                 <span class="di-icon">📊</span> Informes
             </a>
+            @endcan
+            @can('comisiones.ver')
             <a href="{{ route('admin.informes.comisiones.index') }}" class="drawer-item {{ request()->routeIs('admin.informes.comisiones*') ? 'activo' : '' }}">
                 <span class="di-icon">💼</span> Comisiones
             </a>
+            @endcan
         </div>
-        @endrole
+        @endcanany
 
         {{-- Sección administración --}}
-        @role('admin|superadmin')
+        @canany(['asesores.ver', 'usuarios.ver', 'configuracion.ver', 'bitacora.ver', 'traslados_rs.ejecutar'])
         <div class="drawer-sep"></div>
         <div class="drawer-section">
             <div class="drawer-section-label">Administración</div>
+            @can('asesores.ver')
             <a href="{{ route('admin.asesores.index') }}" class="drawer-item {{ request()->routeIs('admin.asesores*') ? 'activo' : '' }}">
                 <span class="di-icon">🤝</span> Asesores
             </a>
+            @endcan
+            @can('usuarios.ver')
             <a href="{{ route('admin.usuarios.index') }}" class="drawer-item {{ request()->routeIs('admin.usuarios*') ? 'activo' : '' }}">
                 <span class="di-icon">👥</span> Usuarios
             </a>
+            @endcan
+            @can('configuracion.ver')
             <a href="{{ route('admin.configuracion.hub') }}" class="drawer-item {{ request()->routeIs('admin.configuracion*') ? 'activo' : '' }}">
                 <span class="di-icon">⚙️</span> Configuración
             </a>
+            @endcan
+            @can('bitacora.ver')
             <a href="{{ route('admin.bitacora.index') }}" class="drawer-item {{ request()->routeIs('admin.bitacora*') ? 'activo' : '' }}">
                 <span class="di-icon">👁️</span> Auditoría
             </a>
+            @endcan
+            @can('traslados_rs.ejecutar')
             <a href="{{ route('admin.traslados.index') }}" class="drawer-item {{ request()->routeIs('admin.traslados*') ? 'activo' : '' }}">
                 <span class="di-icon">🔄</span> Traslados RS
             </a>
+            @endcan
         </div>
-        @endrole
+        @endcanany
 
         @if(Auth::user()->hasRole('superadmin') && Auth::user()->es_brynex)
         <div class="drawer-sep"></div>
@@ -1261,7 +1296,7 @@
         // ── Badge de mensajes no leídos de WhatsApp ───────────────────────────
         // Actualiza el badge del menú cada 30 segundos via polling.
         @auth
-        @role('superadmin|admin|usuario')
+        @can('whatsapp.ver')
         (function waBadge() {
             const badge = document.getElementById('wa-badge');
             if (!badge) return;
@@ -1286,7 +1321,7 @@
             actualizarBadge();
             setInterval(actualizarBadge, 30000); // cada 30 segundos
         })();
-        @endrole
+        @endcan
         @endauth
     </script>
 

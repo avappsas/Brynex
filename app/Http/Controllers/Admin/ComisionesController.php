@@ -24,8 +24,8 @@ class ComisionesController extends Controller
 
     private function checkAcceso(): void
     {
-        if (!Auth::user()->hasRole(['superadmin', 'admin', 'contador', 'usuario'])) {
-            abort(403, 'Acceso restringido.');
+        if (! Auth::user()->can('comisiones.ver')) {
+            abort(403, 'No tienes permiso para «Ver comisiones (Comisiones de asesores)».');
         }
     }
 

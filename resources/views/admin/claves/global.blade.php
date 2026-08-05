@@ -333,7 +333,13 @@
                             'Banco' => ['#f5f3ff','#6d28d9'], 'Operadores' => ['#f3e8ff','#7e22ce'], 'Otro' => ['#f1f5f9','#475569']
                         ];
                         $col = $colores[$c->tipo] ?? ['#f1f5f9','#475569'];
-                        $masked = $c->contrasena ? str_repeat('•', min(strlen($c->contrasena), 8)) . ' 👁' : '—';
+                        // '__oculta__' lo pone el controlador cuando el usuario
+                        // no tiene el permiso restringido claves_acceso.ver_contrasena:
+                        // sí sabe que hay clave guardada, pero no la recibe.
+                        $sinPermiso = $c->contrasena === '__oculta__';
+                        $masked = $c->contrasena && ! $sinPermiso
+                            ? str_repeat('•', min(strlen($c->contrasena), 8)) . ' 👁'
+                            : '—';
                     @endphp
                     <tr style="border-bottom:1px solid #fef3c7;">
                         {{-- Tipo --}}
@@ -352,7 +358,11 @@
                         </td>
                         {{-- Contraseña --}}
                         <td>
-                            @if($c->contrasena)
+                            @if($sinPermiso)
+                            <span style="color:#94a3b8;font-size:0.77rem;" title="Necesitas el permiso «Ver la contraseña en claro»">
+                                🔒 guardada
+                            </span>
+                            @elseif($c->contrasena)
                             <span style="font-family:monospace;font-size:0.77rem;cursor:pointer;"
                                   onclick="verPassGlobal(this, {{ $c->id }}, '{{ base64_encode($c->contrasena) }}')"
                                   title="Click para revelar">

@@ -7,8 +7,8 @@
     @include('admin.partials.table-header', [
         'titulo'    => '👤 Usuarios del Sistema',
         'subtitulo' => 'Aliado activo: ' . ($alidoActivo->nombre ?? 'BryNex'),
-        'btnTexto'  => 'Nuevo Usuario',
-        'btnRuta'   => route('admin.usuarios.create'),
+        'btnTexto'  => auth()->user()->can('usuarios.gestionar') ? 'Nuevo Usuario' : null,
+        'btnRuta'   => auth()->user()->can('usuarios.gestionar') ? route('admin.usuarios.create') : null,
     ])
 
     @if(session('success'))
@@ -120,10 +120,19 @@
                                 </button>
                             </form>
                         @else
+                            @can('usuarios.gestionar')
                             <a href="{{ route('admin.usuarios.edit', $usuario) }}"
                                 style="background:#dbeafe;border:none;color:#2563eb;padding:0.35rem 0.75rem;border-radius:6px;font-size:0.76rem;font-weight:600;text-decoration:none;display:inline-block;margin-right:0.25rem;">
                                 ✏️ Editar
                             </a>
+                            @endcan
+                            @can('usuarios.permisos')
+                            <a href="{{ route('admin.usuarios.permisos.edit', $usuario) }}"
+                                style="background:#fef3c7;border:none;color:#b45309;padding:0.35rem 0.75rem;border-radius:6px;font-size:0.76rem;font-weight:600;text-decoration:none;display:inline-block;margin-right:0.25rem;"
+                                title="Permisos por módulo de este usuario">
+                                🔐 Permisos
+                            </a>
+                            @endcan
                             @if($usuario->id !== auth()->id())
                             <form method="POST" action="{{ route('admin.usuarios.destroy', $usuario) }}" style="display:inline;"
                                 onsubmit="return confirm('¿Desactivar el usuario {{ $usuario->nombre }}?')">

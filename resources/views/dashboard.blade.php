@@ -74,15 +74,15 @@
                 ['icono'=>'💬', 'nombre'=>'Cotizaciones', 'color'=>'#ec4899', 'url'=>route('admin.cotizaciones.index')],
             ];
             // Informes solo para admin, superadmin y contador
-            if(auth()->user()?->hasRole(['admin','superadmin','contador'])){
+            if(auth()->user()?->can('informes.ver')){
                 $modulos[] = ['icono'=>'📊', 'nombre'=>'Informes', 'color'=>'#6366f1', 'url'=>route('admin.informes.hub')];
             }
             // Comisiones Asesores para usuario, admin, superadmin, contador
-            if(auth()->user()?->hasRole(['superadmin', 'admin', 'contador', 'usuario'])){
+            if(auth()->user()?->can('comisiones.ver')){
                 $modulos[] = ['icono'=>'💼', 'nombre'=>'Comisiones', 'color'=>'#f59e0b', 'url'=>route('admin.informes.comisiones.index')];
             }
             // Marketing: solo si el aliado tiene el módulo contratado y activo con Brynex
-            if(auth()->user()?->hasRole(['superadmin', 'admin', 'usuario'])){
+            if(auth()->user()?->can('marketing.ver')){
                 $moduloMarketingActivo = \App\Models\BrynexModuloAliado::where('aliado_id', session('aliado_id_activo'))
                     ->where('modulo_id', 9)
                     ->where('activo', true)

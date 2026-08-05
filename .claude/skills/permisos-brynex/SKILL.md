@@ -9,37 +9,124 @@ description: >
 
 # Skill: Roles, Permisos y Multi-tenancy — Brynex
 
-## Estado real: los roles existen, casi nadie los usa
+## Catálogo de módulos: el permiso es `modulo.accion`
 
-`database/seeders/RolesSeeder.php` define 6 roles con Spatie Permission:
+Desde agosto-2026 el control de acceso NO es por rol en la ruta, es por
+permiso de módulo. La tabla `modulos` (modelo `App\Models\Modulo`) es el
+catálogo: 41 módulos en 6 grupos, cada uno agrupando los permisos de Spatie
+que empiezan por su `codigo` (`facturacion.ver`, `facturacion.anular`, …).
+107 permisos en total, sembrados por `ModulosPermisosSeeder`.
+
+**No confundir `modulos` con `brynex_modulos`.** La primera decide quién ve
+qué; la segunda es la tabla de FACTURACIÓN de Brynex al aliado (cuánto le
+cobro a GiMave por WhatsApp). Se cruzan por `modulos.modulo_brynex_codigo`.
+
+### Los 6 roles
 
 ```
-superadmin → todo el sistema de SU empresa aliada
-admin      → todo excepto módulos contables restringidos
-contable   → solo módulo financiero/contable
-usuario    → empleado interno: clientes, facturación, afiliaciones
-asesor     → solo sus propios clientes
-cliente    → solo su información y pagos
+superadmin → todo, MENOS los permisos restringidos (vía Gate::before)
+admin      → operación y financiero completos, pero NO configuración del
+             aliado, NO crear usuarios, NO auditoría/traslados, y NO tocar
+             los datos de fondo de un contrato ya radicado
+contable   → solo lectura + exportar de lo financiero (+ emitir factura
+             electrónica). Reemplaza a `contador`, que fue eliminado.
+usuario    → trabajador del aliado: día a día completo (clientes, contratos,
+             facturar, cobrar, incapacidades, tareas, whatsapp, planos,
+             marketing, publicidad). Sin informes ni comisiones.
+asesor     → HOY solo lectura. Pendiente: no existe vínculo users↔asesores,
+             así que no se puede filtrar "solo sus clientes".
+cliente    → sin permisos. El portal del cliente no está construido.
 ```
 
-**Pero de 474 rutas en `routes/web.php`, solo UNA tiene `middleware('role:...')`**
-(`admin/traslados-rs`, role `superadmin|admin`). Todo lo demás cuelga de
-`Route::middleware('auth')` sin más filtro — cualquier usuario autenticado,
-sea `cliente` o `asesor`, puede invocar por URL cualquier acción de cualquier
-módulo. Ver `docs/auditoria-seguridad.md`, hallazgo A-1.
+### `asignable`: qué se ve en la pantalla de permisos
 
-**Antes de asumir que un módulo está protegido por rol, verificarlo** — la
-intención del seeder (ej. "contable ve solo finanzas") casi nunca está
-implementada en la ruta. Las únicas excepciones verificadas son:
-- `admin/traslados-rs` → `role:superadmin|admin`
-- `/finanzas/*` → NO usa Spatie, usa el middleware propio `finanzas.access`,
-  que además no comprueba rol sino **una cédula hardcodeada** (ver
-  [[finanzas-brynex]]).
+De los 107 permisos, solo **36** se pintan en `admin/usuarios/{id}/permisos`.
+La regla la aplica el seeder sola:
 
-Si vas a añadir control de acceso a un módulo, sigue el patrón de
-`admin/traslados-rs`: `->middleware('role:admin|superadmin')` o
-`->middleware('permission:nombre.permiso')`, no reinventes un middleware
-custom salvo que sea un caso tan especial como Finanzas.
+```php
+$asignable = $restringido || ! in_array('U', $roles);
+```
+
+**Si el rol `usuario` ya lo trae, no se muestra.** El sistema solo otorga
+permisos, nunca los revoca, así que esa casilla estaría siempre marcada y en
+gris: no hay nada que decidir. Los ~70 permisos del día a día (ver clientes,
+afiliar, radicar, cobrar, incapacidades, cotizar, claves de acceso) quedan
+fuera del formulario pero siguen existiendo y siendo exigidos por el
+middleware igual que antes.
+
+Lo que sí se pinta: lo que solo tiene admin (anular facturas, planos SS,
+gestionar razones sociales, reasignar tareas), lo que no trae nadie
+(`contratos.editar_radicado`, `usuarios.gestionar`) y los restringidos.
+
+El grupo `brynex` tampoco se pinta: esos permisos son de la empresa dueña de
+la plataforma y se reparten con `permisos:aplicar-inicial`.
+
+**Si agregas un permiso y quieres que salga en el formulario, no se lo des al
+rol `usuario`.** Esa es toda la palanca.
+
+### Permisos restringidos: la pieza clave
+
+Un permiso marcado `restringido` **no lo hereda ningún rol, ni superadmin**.
+Solo se otorga usuario por usuario en `admin/usuarios/{id}/permisos`
+(`UsuarioPermisoController`). Es el escalón de arriba de `asignable`: no
+basta con que ningún rol lo traiga, es que **ni el superadmin lo hereda**.
+Se reserva para credenciales. Hoy son 4:
+
+```
+whatsapp.configurar                operadores_planilla.credenciales
+redes_sociales.configurar          brynex_backup.ejecutar
+```
+
+Ojo: `claves_acceso.*` (EPS, ARL, cajas, operadores por cliente) **no** es
+restringido — el trabajador las necesita para afiliar, así que las trae el rol
+`usuario` completas, contraseña incluida. Si algún día hay claves de BANCOS,
+ese sí sería un módulo aparte y restringido.
+
+### Cómo proteger una ruta nueva
+
+```php
+// Entrada al módulo
+->middleware('permiso:facturacion.ver')
+
+// Toda escritura del grupo, sin repetir línea por línea
+->middleware(['permiso:tareas.ver', 'permiso.escritura:tareas.gestionar'])
+
+// Acción puntual más restrictiva (se acumula con la del grupo)
+->middleware('permiso:facturacion.anular')
+```
+
+`permiso` es `VerificarPermiso`: da un 403 con mensaje legible ("No tienes
+permiso para «Anular facturas (Facturación)»…"), lo registra en bitácora
+como `acceso_denegado`, y responde JSON si la petición es AJAX.
+`permiso.escritura` es el mismo pero solo actúa en POST/PUT/PATCH/DELETE.
+
+**No uses `role:` ni `hasRole()` en código nuevo.** El único uso legítimo que
+queda de `hasRole('superadmin')` es junto a `es_brynex` para lo de BryNex.
+
+### En las vistas
+
+`@can('modulo.ver')` / `@canany([...])`. El sidebar de `layouts/app.blade.php`
+ya está migrado entero; no quedan `@role` ahí.
+
+### Reglas que no caben en una ruta
+
+Tres casos dependen del registro, no de la URL, y viven en el controlador:
+
+- `contratos.editar_radicado` — si el contrato tiene radicado en trámite u OK,
+  salario, IBC, entidades, fechas, plan y razón social quedan congelados para
+  quien no tenga el permiso (`ContratoController::update`). Afecta ~25% de los
+  contratos.
+- `cuentas_bancarias.crear_incapacidad` — el rol `usuario` puede crear cuentas,
+  pero se le fuerza `incapacidad=1`, `cobro=0`, `facturacion=0`
+  (`ConfiguracionAliadoController::storeCuenta`).
+- `claves_acceso.ver_contrasena` — el controlador reemplaza la contraseña por
+  `'__oculta__'` antes de mandarla a la vista o al JSON. Ojo: taparla solo en
+  el Blade no sirve, los endpoints la devolvían en claro.
+
+### Puesta en marcha
+
+`php artisan permisos:aplicar-inicial` (en seco) y `--ejecutar` para aplicar:
+asigna rol `usuario` a los activos sin rol y entrega los restringidos al dueño.
 
 ## `es_brynex`: no es un rol, es un flag de identidad
 

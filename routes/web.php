@@ -114,7 +114,7 @@ Route::middleware('auth')->group(function () {
     })->name('dashboard');
 
     // ─── Asistente Virtual IA ───────────────────────────────────────
-    Route::prefix('asistente-ia')->name('asistente_ia.')->group(function () {
+    Route::prefix('asistente-ia')->name('asistente_ia.')->middleware('permiso:asistente_ia.usar')->group(function () {
         $ia = \App\Http\Controllers\AsistenteIaController::class;
         Route::get('/activo', [$ia, 'activo'])->name('activo');
         Route::post('/chat',  [$ia, 'chat'])  ->name('chat');
@@ -123,151 +123,240 @@ Route::middleware('auth')->group(function () {
     // ─── Panel Administración ──────────────────────────────────────
     Route::prefix('admin')->name('admin.')->group(function () {
 
-        // Aliados (solo superadmin)
-        Route::resource('aliados', \App\Http\Controllers\Admin\AlidoController::class)
-             ->except(['show']);
-        Route::patch('aliados/{id}/restore', [\App\Http\Controllers\Admin\AlidoController::class, 'restore'])
-             ->name('aliados.restore');
+        // Aliados (solo BryNex — el módulo `aliados` es solo_brynex)
+        Route::middleware('permiso:aliados.ver')->group(function () {
+            Route::get('aliados', [\App\Http\Controllers\Admin\AlidoController::class, 'index'])->name('aliados.index');
+        });
+        Route::middleware('permiso:aliados.gestionar')->group(function () {
+            Route::resource('aliados', \App\Http\Controllers\Admin\AlidoController::class)
+                 ->except(['show', 'index']);
+            Route::patch('aliados/{id}/restore', [\App\Http\Controllers\Admin\AlidoController::class, 'restore'])
+                 ->name('aliados.restore');
+        });
 
-        // Usuarios (superadmin + admin)
-        Route::resource('usuarios', \App\Http\Controllers\Admin\UsuarioController::class)
-             ->except(['show']);
-        Route::patch('usuarios/{id}/restore', [\App\Http\Controllers\Admin\UsuarioController::class, 'restore'])
-             ->name('usuarios.restore');
+        // Usuarios — ver: admin | crear/editar y permisos: solo superadmin
+        Route::middleware('permiso:usuarios.ver')->group(function () {
+            Route::get('usuarios', [\App\Http\Controllers\Admin\UsuarioController::class, 'index'])->name('usuarios.index');
+        });
+        Route::middleware('permiso:usuarios.gestionar')->group(function () {
+            Route::resource('usuarios', \App\Http\Controllers\Admin\UsuarioController::class)
+                 ->except(['show', 'index']);
+            Route::patch('usuarios/{id}/restore', [\App\Http\Controllers\Admin\UsuarioController::class, 'restore'])
+                 ->name('usuarios.restore');
+        });
+        // Permisos por usuario (pantalla de módulos) — solo superadmin
+        Route::middleware('permiso:usuarios.permisos')->group(function () {
+            Route::get('usuarios/{usuario}/permisos',  [\App\Http\Controllers\Admin\UsuarioPermisoController::class, 'edit'])->name('usuarios.permisos.edit');
+            Route::post('usuarios/{usuario}/permisos', [\App\Http\Controllers\Admin\UsuarioPermisoController::class, 'update'])->name('usuarios.permisos.update');
+        });
 
-        // Asesores (superadmin + admin + usuario)
-        Route::get('asesores/reporte-mensual', [\App\Http\Controllers\Admin\AsesorController::class, 'reporteMensual'])
-             ->name('asesores.reporte_mensual');
-        Route::resource('asesores', \App\Http\Controllers\Admin\AsesorController::class)->parameters(['asesores' => 'asesor']);
-        Route::patch('asesores/{id}/restore', [\App\Http\Controllers\Admin\AsesorController::class, 'restore'])
-             ->name('asesores.restore');
-        Route::post('asesores/{asesor}/comisiones', [\App\Http\Controllers\Admin\AsesorController::class, 'registrarComision'])
-             ->name('asesores.comisiones.store');
-        Route::patch('comisiones/{comision}/pagar', [\App\Http\Controllers\Admin\AsesorController::class, 'marcarPagada'])
-             ->name('asesores.comisiones.pagar');
+        // Asesores — ver: admin/contable/usuario | gestionar y comisiones: admin
+        Route::middleware('permiso:asesores.ver')->group(function () {
+            Route::get('asesores/reporte-mensual', [\App\Http\Controllers\Admin\AsesorController::class, 'reporteMensual'])
+                 ->name('asesores.reporte_mensual');
+            Route::get('asesores',               [\App\Http\Controllers\Admin\AsesorController::class, 'index'])->name('asesores.index');
+            Route::get('asesores/{asesor}',      [\App\Http\Controllers\Admin\AsesorController::class, 'show'])->name('asesores.show');
+        });
+        Route::middleware('permiso:asesores.gestionar')->group(function () {
+            Route::resource('asesores', \App\Http\Controllers\Admin\AsesorController::class)
+                 ->parameters(['asesores' => 'asesor'])
+                 ->except(['index', 'show']);
+            Route::patch('asesores/{id}/restore', [\App\Http\Controllers\Admin\AsesorController::class, 'restore'])
+                 ->name('asesores.restore');
+            Route::post('asesores/{asesor}/comisiones', [\App\Http\Controllers\Admin\AsesorController::class, 'registrarComision'])
+                 ->name('asesores.comisiones.store');
+            Route::patch('comisiones/{comision}/pagar', [\App\Http\Controllers\Admin\AsesorController::class, 'marcarPagada'])
+                 ->name('asesores.comisiones.pagar');
+        });
 
         // Cotizaciones y Prospectos
-        Route::post('cotizaciones/{id}/gestion', [\App\Http\Controllers\Admin\CotizacionController::class, 'registrarGestion'])->name('cotizaciones.gestion');
-        Route::post('cotizaciones/{id}/cotizar', [\App\Http\Controllers\Admin\CotizacionController::class, 'cotizar'])->name('cotizaciones.cotizar');
-        Route::post('cotizaciones/{id}/convertir', [\App\Http\Controllers\Admin\CotizacionController::class, 'convertirACliente'])->name('cotizaciones.convertir');
-        Route::get('cotizaciones/{id}/pdf', [\App\Http\Controllers\Admin\CotizacionController::class, 'descargarPdf'])->name('cotizaciones.pdf');
-        Route::resource('cotizaciones', \App\Http\Controllers\Admin\CotizacionController::class);
+        Route::middleware('permiso:cotizaciones.gestionar')->group(function () {
+            Route::post('cotizaciones/{id}/gestion', [\App\Http\Controllers\Admin\CotizacionController::class, 'registrarGestion'])->name('cotizaciones.gestion');
+            Route::post('cotizaciones/{id}/cotizar', [\App\Http\Controllers\Admin\CotizacionController::class, 'cotizar'])->name('cotizaciones.cotizar');
+            Route::post('cotizaciones/{id}/convertir', [\App\Http\Controllers\Admin\CotizacionController::class, 'convertirACliente'])->name('cotizaciones.convertir');
+        });
+        Route::middleware(['permiso:cotizaciones.ver', 'permiso.escritura:cotizaciones.gestionar'])->group(function () {
+            Route::get('cotizaciones/{id}/pdf', [\App\Http\Controllers\Admin\CotizacionController::class, 'descargarPdf'])->name('cotizaciones.pdf');
+            Route::resource('cotizaciones', \App\Http\Controllers\Admin\CotizacionController::class);
+        });
 
-        // Clientes (todos los roles con acceso)
-        Route::get('clientes/buscar-cedula', [\App\Http\Controllers\Admin\ClienteController::class, 'buscarPorCedula'])
-             ->name('clientes.buscar_cedula');
-        // Ficha por cédula (la usa el modal reutilizable de cliente)
-        Route::get('clientes/ficha/{cedula}', [\App\Http\Controllers\Admin\ClienteController::class, 'fichaPorCedula'])
-             ->name('clientes.ficha_cedula');
-        Route::resource('clientes', \App\Http\Controllers\Admin\ClienteController::class)
-             ->parameters(['clientes' => 'cliente'])
-             ->except(['show', 'destroy']);
+        // Clientes
+        Route::middleware('permiso:clientes.ver')->group(function () {
+            Route::get('clientes/buscar-cedula', [\App\Http\Controllers\Admin\ClienteController::class, 'buscarPorCedula'])
+                 ->name('clientes.buscar_cedula');
+            // Ficha por cédula (la usa el modal reutilizable de cliente)
+            Route::get('clientes/ficha/{cedula}', [\App\Http\Controllers\Admin\ClienteController::class, 'fichaPorCedula'])
+                 ->name('clientes.ficha_cedula');
+            Route::get('clientes', [\App\Http\Controllers\Admin\ClienteController::class, 'index'])->name('clientes.index');
+        });
+        Route::middleware('permiso:clientes.crear')->group(function () {
+            Route::get('clientes/create', [\App\Http\Controllers\Admin\ClienteController::class, 'create'])->name('clientes.create');
+            Route::post('clientes',      [\App\Http\Controllers\Admin\ClienteController::class, 'store'])->name('clientes.store');
+        });
+        Route::middleware('permiso:clientes.editar')->group(function () {
+            Route::get('clientes/{cliente}/edit', [\App\Http\Controllers\Admin\ClienteController::class, 'edit'])->name('clientes.edit');
+            Route::put('clientes/{cliente}',      [\App\Http\Controllers\Admin\ClienteController::class, 'update'])->name('clientes.update');
+            Route::patch('clientes/{cliente}',    [\App\Http\Controllers\Admin\ClienteController::class, 'update']);
+        });
 
         // Beneficiarios
-        Route::get('clientes/{cedula}/beneficiarios',  [\App\Http\Controllers\Admin\BeneficiarioController::class, 'index'])->name('clientes.beneficiarios.index');
-        Route::post('clientes/{cedula}/beneficiarios', [\App\Http\Controllers\Admin\BeneficiarioController::class, 'store'])->name('clientes.beneficiarios.store');
-        Route::put('beneficiarios/{id}',    [\App\Http\Controllers\Admin\BeneficiarioController::class, 'update'])->name('beneficiarios.update');
-        Route::delete('beneficiarios/{id}', [\App\Http\Controllers\Admin\BeneficiarioController::class, 'destroy'])->name('beneficiarios.destroy');
+        Route::get('clientes/{cedula}/beneficiarios',  [\App\Http\Controllers\Admin\BeneficiarioController::class, 'index'])->name('clientes.beneficiarios.index')->middleware('permiso:beneficiarios.ver');
+        Route::post('clientes/{cedula}/beneficiarios', [\App\Http\Controllers\Admin\BeneficiarioController::class, 'store'])->name('clientes.beneficiarios.store')->middleware('permiso:beneficiarios.gestionar');
+        Route::put('beneficiarios/{id}',    [\App\Http\Controllers\Admin\BeneficiarioController::class, 'update'])->name('beneficiarios.update')->middleware('permiso:beneficiarios.gestionar');
+        Route::delete('beneficiarios/{id}', [\App\Http\Controllers\Admin\BeneficiarioController::class, 'destroy'])->name('beneficiarios.destroy')->middleware('permiso:beneficiarios.eliminar');
 
         // Documentos del cliente
-        Route::get('clientes/{cedula}/documentos',  [\App\Http\Controllers\Admin\DocumentoClienteController::class, 'index'])->name('clientes.documentos.index');
-        Route::post('clientes/{cedula}/documentos', [\App\Http\Controllers\Admin\DocumentoClienteController::class, 'store'])->name('clientes.documentos.store');
-        Route::get('documentos/{id}/descargar',     [\App\Http\Controllers\Admin\DocumentoClienteController::class, 'download'])->name('documentos.download');
-        Route::delete('documentos/{id}',            [\App\Http\Controllers\Admin\DocumentoClienteController::class, 'destroy'])->name('documentos.destroy');
+        Route::get('clientes/{cedula}/documentos',  [\App\Http\Controllers\Admin\DocumentoClienteController::class, 'index'])->name('clientes.documentos.index')->middleware('permiso:documentos.ver');
+        Route::post('clientes/{cedula}/documentos', [\App\Http\Controllers\Admin\DocumentoClienteController::class, 'store'])->name('clientes.documentos.store')->middleware('permiso:documentos.subir');
+        Route::get('documentos/{id}/descargar',     [\App\Http\Controllers\Admin\DocumentoClienteController::class, 'download'])->name('documentos.download')->middleware('permiso:documentos.descargar');
+        Route::delete('documentos/{id}',            [\App\Http\Controllers\Admin\DocumentoClienteController::class, 'destroy'])->name('documentos.destroy')->middleware('permiso:documentos.eliminar');
 
         // Claves de acceso (cliente y razón social)
+        // OJO: `claves_acceso.ver` muestra el listado; la CONTRASEÑA en claro
+        // la tapa el permiso restringido `claves_acceso.ver_contrasena`, que se
+        // otorga usuario por usuario (ver ClaveAccesoController).
         $cac = \App\Http\Controllers\Admin\ClaveAccesoController::class;
-        Route::get('clave-accesos/global',                 [$cac, 'vistaGlobal'])       ->name('clave_accesos.global');
-        Route::get('clave-accesos',                        [$cac, 'index'])             ->name('clave_accesos.index');
-        Route::get('clave-accesos/razon-social/{id}',      [$cac, 'indexRazonSocial'])  ->name('clave_accesos.razon_social');
-        Route::get('clave-accesos/empresa/{id}',           [$cac, 'indexEmpresa'])      ->name('clave_accesos.empresa');
-        Route::post('clave-accesos',                       [$cac, 'store'])             ->name('clave_accesos.store');
-        Route::put('clave-accesos/{id}',                   [$cac, 'update'])            ->name('clave_accesos.update');
-        Route::delete('clave-accesos/{id}',                [$cac, 'destroy'])           ->name('clave_accesos.destroy');
+        Route::middleware('permiso:claves_acceso.ver')->group(function () use ($cac) {
+            Route::get('clave-accesos/global',            [$cac, 'vistaGlobal'])       ->name('clave_accesos.global');
+            Route::get('clave-accesos',                   [$cac, 'index'])             ->name('clave_accesos.index');
+            Route::get('clave-accesos/razon-social/{id}', [$cac, 'indexRazonSocial'])  ->name('clave_accesos.razon_social');
+            Route::get('clave-accesos/empresa/{id}',      [$cac, 'indexEmpresa'])      ->name('clave_accesos.empresa');
+        });
+        Route::middleware('permiso:claves_acceso.gestionar')->group(function () use ($cac) {
+            Route::post('clave-accesos',     [$cac, 'store'])  ->name('clave_accesos.store');
+            Route::put('clave-accesos/{id}', [$cac, 'update']) ->name('clave_accesos.update');
+        });
+        Route::delete('clave-accesos/{id}', [$cac, 'destroy'])->name('clave_accesos.destroy')->middleware('permiso:claves_acceso.eliminar');
 
         // Bitácora (solo superadmin)
-        Route::get('bitacora', [\App\Http\Controllers\Admin\BitacoraController::class, 'index'])->name('bitacora.index');
+        Route::get('bitacora', [\App\Http\Controllers\Admin\BitacoraController::class, 'index'])->name('bitacora.index')->middleware('permiso:bitacora.ver');
 
         // Contratos
-        Route::resource('contratos', \App\Http\Controllers\Admin\ContratoController::class)
-             ->parameters(['contratos' => 'contrato'])
-             ->except(['show', 'destroy']);
-        Route::patch('contratos/{contrato}/retirar',     [\App\Http\Controllers\Admin\ContratoController::class, 'retirar'])->name('contratos.retirar');
-        Route::post('contratos/{contrato}/duplicar-ir',  [\App\Http\Controllers\Admin\ContratoController::class, 'duplicarIngresoRetiro'])->name('contratos.duplicar-ir');
-        // APIs reactivas del cotizador
-        Route::get('contratos/api/calcular-retiro/{contrato}', [\App\Http\Controllers\Admin\ContratoController::class, 'apiCalcularRetiro'])->name('contratos.calcular_retiro');
-        Route::post('contratos/api/cotizar',             [\App\Http\Controllers\Admin\ContratoController::class, 'cotizar'])->name('contratos.cotizar');
-        Route::get('contratos/api/tarifas',              [\App\Http\Controllers\Admin\ContratoController::class, 'tarifasPorPlan'])->name('contratos.tarifas');
-        Route::patch('contratos/api/radicado/{id}',      [\App\Http\Controllers\Admin\ContratoController::class, 'actualizarRadicado'])->name('contratos.radicado.update');
+        Route::middleware('permiso:contratos.ver')->group(function () {
+            Route::get('contratos', [\App\Http\Controllers\Admin\ContratoController::class, 'index'])->name('contratos.index');
+            // APIs reactivas del cotizador (solo calculan, no escriben)
+            Route::get('contratos/api/calcular-retiro/{contrato}', [\App\Http\Controllers\Admin\ContratoController::class, 'apiCalcularRetiro'])->name('contratos.calcular_retiro');
+            Route::post('contratos/api/cotizar',             [\App\Http\Controllers\Admin\ContratoController::class, 'cotizar'])->name('contratos.cotizar');
+            Route::get('contratos/api/tarifas',              [\App\Http\Controllers\Admin\ContratoController::class, 'tarifasPorPlan'])->name('contratos.tarifas');
+        });
+        Route::middleware('permiso:contratos.crear')->group(function () {
+            Route::get('contratos/create', [\App\Http\Controllers\Admin\ContratoController::class, 'create'])->name('contratos.create');
+            Route::post('contratos',       [\App\Http\Controllers\Admin\ContratoController::class, 'store'])->name('contratos.store');
+            Route::post('contratos/{contrato}/duplicar-ir', [\App\Http\Controllers\Admin\ContratoController::class, 'duplicarIngresoRetiro'])->name('contratos.duplicar-ir');
+        });
+        Route::middleware('permiso:contratos.editar')->group(function () {
+            // El bloqueo fino "no editar un contrato YA RADICADO" (permiso
+            // contratos.editar_radicado, solo superadmin) va dentro del
+            // controlador: depende del estado del registro, no de la URL.
+            Route::get('contratos/{contrato}/edit', [\App\Http\Controllers\Admin\ContratoController::class, 'edit'])->name('contratos.edit');
+            Route::put('contratos/{contrato}',      [\App\Http\Controllers\Admin\ContratoController::class, 'update'])->name('contratos.update');
+            Route::patch('contratos/{contrato}',    [\App\Http\Controllers\Admin\ContratoController::class, 'update']);
+            Route::patch('contratos/api/radicado/{id}', [\App\Http\Controllers\Admin\ContratoController::class, 'actualizarRadicado'])->name('contratos.radicado.update');
+        });
+        Route::patch('contratos/{contrato}/retirar', [\App\Http\Controllers\Admin\ContratoController::class, 'retirar'])->name('contratos.retirar')->middleware('permiso:contratos.retirar');
 
         // Configuración del aliado (tarifas, admon, ARL)
-        Route::get('configuracion',            [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'hub'])  ->name('configuracion.hub');
-        Route::get('configuracion/parametros', [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'index'])->name('configuracion.index');
-        Route::post('configuracion/parametros',[\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'store'])->name('configuracion.store');
-        // Cuentas bancarias
-        Route::get('configuracion/cuentas',        [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'cuentas'])              ->name('configuracion.cuentas');
-        Route::post('configuracion/cuentas',       [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'storeCuenta'])            ->name('configuracion.cuentas.store');
-        Route::patch('configuracion/cuentas/{id}', [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'updateCuenta'])           ->name('configuracion.cuentas.update');
-        Route::delete('configuracion/cuentas/{id}',[\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'destroyCuenta'])          ->name('configuracion.cuentas.destroy');
-        Route::patch('configuracion/cuentas/{id}/inactivar',         [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'inactivarCuenta'])        ->name('configuracion.cuentas.inactivar');
-        Route::get('configuracion/cuentas/{id}/estado-registros',    [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'estadoCuentaContratos']) ->name('configuracion.cuentas.estado_registros');
-        // Configuración de modalidades → planes
+        // ── Configuración del aliado ──────────────────────────────────────
+        // ver: admin (solo lectura) · editar: solo superadmin
+        Route::middleware('permiso:configuracion.ver')->group(function () {
+            Route::get('configuracion',            [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'hub'])  ->name('configuracion.hub');
+            Route::get('configuracion/parametros', [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'index'])->name('configuracion.index');
+        });
+        Route::post('configuracion/parametros', [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'store'])->name('configuracion.store')->middleware('permiso:configuracion.editar');
+
+        // ── Cuentas bancarias ─────────────────────────────────────────────
+        // El rol `usuario` puede VER las cuentas y CREAR una de incapacidad
+        // (el controlador fuerza facturacion_incapacidad=1 si solo tiene ese
+        // permiso). Editar e inactivar siguen siendo de admin.
+        Route::middleware('permiso:cuentas_bancarias.ver')->group(function () {
+            Route::get('configuracion/cuentas',                       [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'cuentas'])              ->name('configuracion.cuentas');
+            Route::get('configuracion/cuentas/{id}/estado-registros', [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'estadoCuentaContratos'])->name('configuracion.cuentas.estado_registros');
+        });
+        Route::post('configuracion/cuentas', [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'storeCuenta'])->name('configuracion.cuentas.store')
+             ->middleware('permiso:cuentas_bancarias.crear_incapacidad|cuentas_bancarias.gestionar');
+        Route::middleware('permiso:cuentas_bancarias.gestionar')->group(function () {
+            Route::patch('configuracion/cuentas/{id}',            [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'updateCuenta'])   ->name('configuracion.cuentas.update');
+            Route::delete('configuracion/cuentas/{id}',           [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'destroyCuenta'])  ->name('configuracion.cuentas.destroy');
+            Route::patch('configuracion/cuentas/{id}/inactivar',  [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'inactivarCuenta'])->name('configuracion.cuentas.inactivar');
+        });
+
+        // Configuración de modalidades → planes (solo superadmin)
         $mc = \App\Http\Controllers\Admin\ModalidadConfigController::class;
-        Route::get('configuracion/modalidades',          [$mc, 'index'])        ->name('configuracion.modalidades');
-        Route::post('configuracion/modalidades',          [$mc, 'guardar'])      ->name('configuracion.modalidades.guardar');
-        Route::patch('configuracion/modalidades/{id}/toggle', [$mc, 'toggleActivo']) ->name('configuracion.modalidades.toggle');
+        Route::get('configuracion/modalidades', [$mc, 'index'])->name('configuracion.modalidades')->middleware('permiso:configuracion.ver');
+        Route::middleware('permiso:configuracion.editar')->group(function () use ($mc) {
+            Route::post('configuracion/modalidades',              [$mc, 'guardar'])     ->name('configuracion.modalidades.guardar');
+            Route::patch('configuracion/modalidades/{id}/toggle', [$mc, 'toggleActivo'])->name('configuracion.modalidades.toggle');
+        });
 
         // Configuración de operadores de planilla SS por aliado
         $opc = \App\Http\Controllers\Admin\OperadorPlanillaConfigController::class;
-        Route::get('configuracion/operadores-planilla',              [$opc, 'index'])         ->name('configuracion.operadores.index');
-        Route::patch('configuracion/operadores-planilla/{id}/toggle',[$opc, 'toggle'])        ->name('configuracion.operadores.toggle');
-        Route::post('configuracion/operadores-planilla/orden',       [$opc, 'guardarOrden'])  ->name('configuracion.operadores.orden');
+        Route::get('configuracion/operadores-planilla', [$opc, 'index'])->name('configuracion.operadores.index')->middleware('permiso:operadores_planilla.ver');
+        Route::middleware('permiso:operadores_planilla.configurar')->group(function () use ($opc) {
+            Route::patch('configuracion/operadores-planilla/{id}/toggle', [$opc, 'toggle'])      ->name('configuracion.operadores.toggle');
+            Route::post('configuracion/operadores-planilla/orden',        [$opc, 'guardarOrden'])->name('configuracion.operadores.orden');
+        });
 
-        // Credenciales de las APIs de operadores, a nivel de aliado
+        // Credenciales de las APIs de operadores — permiso RESTRINGIDO:
+        // con esto se liquida y se paga plata, no lo hereda ningún rol.
         $opcr = \App\Http\Controllers\Admin\OperadorCredencialController::class;
-        Route::post  ('configuracion/operadores-planilla/{operador}/credenciales',        [$opcr, 'storeAliado'])  ->name('configuracion.operadores.credenciales.store');
-        Route::post  ('configuracion/operadores-planilla/{operador}/credenciales/probar', [$opcr, 'probarAliado']) ->name('configuracion.operadores.credenciales.probar');
-        Route::delete('configuracion/operadores-planilla/{operador}/credenciales',        [$opcr, 'destroyAliado'])->name('configuracion.operadores.credenciales.destroy');
+        Route::middleware('permiso:operadores_planilla.credenciales')->group(function () use ($opcr) {
+            Route::post  ('configuracion/operadores-planilla/{operador}/credenciales',        [$opcr, 'storeAliado'])  ->name('configuracion.operadores.credenciales.store');
+            Route::post  ('configuracion/operadores-planilla/{operador}/credenciales/probar', [$opcr, 'probarAliado']) ->name('configuracion.operadores.credenciales.probar');
+            Route::delete('configuracion/operadores-planilla/{operador}/credenciales',        [$opcr, 'destroyAliado'])->name('configuracion.operadores.credenciales.destroy');
+        });
 
         // CRUD de Razones Sociales (empresas de afiliación) por aliado
+        // ver: admin/contable/usuario · gestionar: admin · eliminar: superadmin
         $rsc = \App\Http\Controllers\Admin\RazonSocialController::class;
-        Route::get( 'configuracion/razones-sociales',              [$rsc, 'index'])       ->name('configuracion.razones.index');
-        Route::get( 'configuracion/razones-sociales/crear',        [$rsc, 'create'])      ->name('configuracion.razones.create');
-        Route::post('configuracion/razones-sociales',              [$rsc, 'store'])       ->name('configuracion.razones.store');
-        Route::get( 'configuracion/razones-sociales/{id}/editar',  [$rsc, 'edit'])        ->name('configuracion.razones.edit');
-        Route::put( 'configuracion/razones-sociales/{id}',         [$rsc, 'update'])      ->name('configuracion.razones.update');
-        Route::delete('configuracion/razones-sociales/{id}',              [$rsc, 'destroy'])       ->name('configuracion.razones.destroy');
-        Route::patch('configuracion/razones-sociales/{id}/estado',        [$rsc, 'toggleEstado'])  ->name('configuracion.razones.estado');
-        Route::patch('configuracion/razones-sociales/{id}/inactivar',     [$rsc, 'inactivar'])     ->name('configuracion.razones.inactivar');
-        Route::get('configuracion/razones-sociales/{id}/estado-contratos',[$rsc, 'estadoContratos'])->name('configuracion.razones.estado_contratos');
-        Route::post('configuracion/razones-sociales/{id}/sello',          [$rsc, 'subirSello'])    ->name('configuracion.razones.sello');
+        Route::middleware('permiso:razones_sociales.ver')->group(function () use ($rsc) {
+            Route::get('configuracion/razones-sociales',                      [$rsc, 'index'])          ->name('configuracion.razones.index');
+            Route::get('configuracion/razones-sociales/{id}/estado-contratos',[$rsc, 'estadoContratos'])->name('configuracion.razones.estado_contratos');
+        });
+        Route::middleware('permiso:razones_sociales.gestionar')->group(function () use ($rsc) {
+            Route::get( 'configuracion/razones-sociales/crear',        [$rsc, 'create'])      ->name('configuracion.razones.create');
+            Route::post('configuracion/razones-sociales',              [$rsc, 'store'])       ->name('configuracion.razones.store');
+            Route::get( 'configuracion/razones-sociales/{id}/editar',  [$rsc, 'edit'])        ->name('configuracion.razones.edit');
+            Route::put( 'configuracion/razones-sociales/{id}',         [$rsc, 'update'])      ->name('configuracion.razones.update');
+            Route::patch('configuracion/razones-sociales/{id}/estado',    [$rsc, 'toggleEstado'])->name('configuracion.razones.estado');
+            Route::patch('configuracion/razones-sociales/{id}/inactivar', [$rsc, 'inactivar'])   ->name('configuracion.razones.inactivar');
+            Route::post('configuracion/razones-sociales/{id}/sello',      [$rsc, 'subirSello'])  ->name('configuracion.razones.sello');
+        });
+        Route::delete('configuracion/razones-sociales/{id}', [$rsc, 'destroy'])->name('configuracion.razones.destroy')->middleware('permiso:razones_sociales.eliminar');
 
         // Documentos de Razones Sociales
         $rsdc = \App\Http\Controllers\Admin\RazonSocialDocumentoController::class;
         // Credenciales de las APIs de operadores, por razón social
         $rsoc = \App\Http\Controllers\Admin\OperadorCredencialController::class;
-        Route::post  ('configuracion/razones-sociales/{id}/credenciales',                       [$rsoc, 'store'])  ->name('configuracion.razones.credenciales.store');
-        Route::post  ('configuracion/razones-sociales/{id}/credenciales/{operador}/probar',     [$rsoc, 'probar']) ->name('configuracion.razones.credenciales.probar');
-        Route::delete('configuracion/razones-sociales/{id}/credenciales/{operador}',            [$rsoc, 'destroy'])->name('configuracion.razones.credenciales.destroy');
+        Route::middleware('permiso:operadores_planilla.credenciales')->group(function () use ($rsoc) {
+            Route::post  ('configuracion/razones-sociales/{id}/credenciales',                   [$rsoc, 'store'])  ->name('configuracion.razones.credenciales.store');
+            Route::post  ('configuracion/razones-sociales/{id}/credenciales/{operador}/probar', [$rsoc, 'probar']) ->name('configuracion.razones.credenciales.probar');
+            Route::delete('configuracion/razones-sociales/{id}/credenciales/{operador}',        [$rsoc, 'destroy'])->name('configuracion.razones.credenciales.destroy');
+        });
 
-        Route::post('configuracion/razones-sociales/{id}/documentos',          [$rsdc, 'store'])   ->name('configuracion.razones.documentos.store');
-        Route::get('configuracion/razones-sociales/documentos/{id}/descargar', [$rsdc, 'download'])->name('configuracion.razones.documentos.download');
-        Route::delete('configuracion/razones-sociales/documentos/{id}',        [$rsdc, 'destroy'])  ->name('configuracion.razones.documentos.destroy');
+        Route::get('configuracion/razones-sociales/documentos/{id}/descargar', [$rsdc, 'download'])->name('configuracion.razones.documentos.download')->middleware('permiso:razones_sociales.ver');
+        Route::middleware('permiso:razones_sociales.gestionar')->group(function () use ($rsdc) {
+            Route::post('configuracion/razones-sociales/{id}/documentos',   [$rsdc, 'store'])  ->name('configuracion.razones.documentos.store');
+            Route::delete('configuracion/razones-sociales/documentos/{id}', [$rsdc, 'destroy'])->name('configuracion.razones.documentos.destroy');
+        });
 
         // Formularios EPS — mapeo visual de coordenadas
         $ef = \App\Http\Controllers\Admin\EpsFormularioController::class;
+        Route::middleware('permiso:configuracion.editar')->group(function () use ($ef) {
         Route::get ('configuracion/eps/{eps}/formulario',      [$ef, 'editor'])   ->name('configuracion.eps.formulario');
         Route::get ('configuracion/eps/{eps}/formulario/pdf',  [$ef, 'verPdf'])   ->name('configuracion.eps.formulario.vpdf');
         Route::post('configuracion/eps/{eps}/formulario',      [$ef, 'guardar'])  ->name('configuracion.eps.formulario.guardar');
         Route::post('configuracion/eps/{eps}/formulario/pdf',  [$ef, 'subirPdf']) ->name('configuracion.eps.formulario.pdf');
+        });
 
         // Planillas de Pago SS — mapeo visual de coordenadas
         $opf = \App\Http\Controllers\Admin\OperadorPlanillaFormularioController::class;
+        Route::middleware('permiso:configuracion.editar')->group(function () use ($opf) {
         Route::get ('configuracion/operadores/{operador}/formulario',     [$opf, 'editor'])  ->name('configuracion.operadores.formulario');
         Route::get ('configuracion/operadores/{operador}/formulario/pdf', [$opf, 'verPdf'])  ->name('configuracion.operadores.formulario.vpdf');
         Route::post('configuracion/operadores/{operador}/formulario',     [$opf, 'guardar']) ->name('configuracion.operadores.formulario.guardar');
         Route::post('configuracion/operadores/{operador}/formulario/pdf', [$opf, 'subirPdf'])->name('configuracion.operadores.formulario.pdf');
         Route::get ('configuracion/operadores/datos-ejemplo',             [$opf, 'obtenerDatosEjemplo'])->name('configuracion.operadores.ejemplo');
+        });
 
         // API utilitaria: ciudades por departamento (para selects dinámicos)
         Route::get('api/departamentos/{id}/ciudades', function ($id) {
@@ -277,18 +366,18 @@ Route::middleware('auth')->group(function () {
         })->name('api.ciudades');
 
         // ─── Facturación ──────────────────────────────────────────────
-        Route::prefix('facturacion')->name('facturacion.')->group(function () {
+        Route::prefix('facturacion')->name('facturacion.')->middleware(['permiso:facturacion.ver', 'permiso.escritura:facturacion.generar'])->group(function () {
             $fc = \App\Http\Controllers\Admin\FacturacionController::class;
             Route::get('/',                             [$fc, 'index'])             ->name('index');
-            Route::get('empresa/crear',                 [$fc, 'createEmpresa'])     ->name('empresa.create');
-            Route::post('empresa',                      [$fc, 'storeEmpresa'])      ->name('empresa.store');
+            Route::get('empresa/crear',                 [$fc, 'createEmpresa'])     ->name('empresa.create')->middleware('permiso:facturacion.editar');
+            Route::post('empresa',                      [$fc, 'storeEmpresa'])      ->name('empresa.store')->middleware('permiso:facturacion.editar');
             Route::get('empresa/{id}',                  [$fc, 'empresa'])           ->name('empresa');
-            Route::get('empresa/{id}/exportar',         [$fc, 'exportarEmpresaExcel'])->name('empresa.exportar');
+            Route::get('empresa/{id}/exportar',         [$fc, 'exportarEmpresaExcel'])->name('empresa.exportar')->middleware('permiso:facturacion.exportar');
             Route::get('empresa/{id}/historial',        [$fc, 'historialEmpresa'])  ->name('empresa.historial');
-            Route::get('empresa/{id}/editar',           [$fc, 'editEmpresa'])       ->name('empresa.edit');
-            Route::put('empresa/{id}/editar',           [$fc, 'updateEmpresa'])     ->name('empresa.update');
-            Route::post('facturar',                     [$fc, 'facturar'])          ->name('facturar');
-            Route::post('abonar/{id}',                  [$fc, 'abonar'])            ->name('abonar');
+            Route::get('empresa/{id}/editar',           [$fc, 'editEmpresa'])       ->name('empresa.edit')->middleware('permiso:facturacion.editar');
+            Route::put('empresa/{id}/editar',           [$fc, 'updateEmpresa'])     ->name('empresa.update')->middleware('permiso:facturacion.editar');
+            Route::post('facturar',                     [$fc, 'facturar'])          ->name('facturar')->middleware('permiso:facturacion.generar');
+            Route::post('abonar/{id}',                  [$fc, 'abonar'])            ->name('abonar')->middleware('permiso:facturacion.generar');
             Route::get('recibo/{id}',                   [$fc, 'recibo'])            ->name('recibo');
             Route::get('recibo-abono/{id}',             [$fc, 'reciboAbono'])       ->name('recibo-abono');
             Route::get('api/saldo/{cedula}',            [$fc, 'saldoCliente'])      ->name('api.saldo');
@@ -296,15 +385,15 @@ Route::middleware('auth')->group(function () {
             Route::get('api/plano/{razon_social_id}',   [$fc, 'planoActual'])       ->name('api.plano');
             Route::get('api/saldos-contratos',          [$fc, 'saldosContratos'])   ->name('api.saldos_contratos');
             Route::get('api/cotizacion-contrato/{id}',  [$fc, 'cotizacionContrato'])->name('api.cotizacion_contrato');
-            Route::delete('{id}/anular',                [$fc, 'anular'])            ->name('anular');
+            Route::delete('{id}/anular',                [$fc, 'anular'])            ->name('anular')->middleware('permiso:facturacion.anular');
             Route::get('historial/{cedula}',            [$fc, 'historial'])         ->name('historial');
             Route::get('anuladas',                      [$fc, 'anuladas'])          ->name('anuladas');
-            Route::post('{id}/restaurar',               [$fc, 'restaurar'])         ->name('restaurar');
+            Route::post('{id}/restaurar',               [$fc, 'restaurar'])         ->name('restaurar')->middleware('permiso:facturacion.anular');
             // Imágenes de consignaciones
             Route::post('consignacion/{id}/imagen',     [$fc, 'subirImagenConsignacion'])->name('consignacion.imagen.subir');
             Route::get('consignacion/{id}/imagen',      [$fc, 'verImagenConsignacion'])  ->name('consignacion.imagen.ver');
             // Otro ingreso (trámites: traslado EPS, inclusión beneficiarios, etc.)
-            Route::post('otro-ingreso',                 [$fc, 'facturarOtroIngreso'])    ->name('otro_ingreso.store');
+            Route::post('otro-ingreso',                 [$fc, 'facturarOtroIngreso'])    ->name('otro_ingreso.store')->middleware('permiso:facturacion.generar');
             Route::match(['get', 'post'], 'cuenta-cobro', [$fc, 'cuentaCobroPreview'])->name('cuenta_cobro.preview');
             Route::post('contrato/{contrato}/retiro-pendiente', [$fc, 'guardarRetiroPendiente'])->name('contrato.retiro_pendiente');
             // ── Carga masiva de cédulas con NP provisional ───────────────────────────
@@ -313,19 +402,21 @@ Route::middleware('auth')->group(function () {
 
 
             // ── Cobros adicionales por empresa (parafiscales, pendientes, etc.) ──
-            Route::get( 'empresa/{empresaId}/cobros-adicionales',        [$fc, 'cobrosAdicionalesIndex'])  ->name('cobros_adicionales.index');
-            Route::post('empresa/{empresaId}/cobros-adicionales',        [$fc, 'cobrosAdicionalesStore'])  ->name('cobros_adicionales.store');
-            Route::delete('cobros-adicionales/{cobroId}',                [$fc, 'cobrosAdicionalesDestroy'])->name('cobros_adicionales.destroy');
+            Route::middleware('permiso:facturacion.cobros_adicionales')->group(function () use ($fc) {
+                Route::get( 'empresa/{empresaId}/cobros-adicionales', [$fc, 'cobrosAdicionalesIndex'])  ->name('cobros_adicionales.index');
+                Route::post('empresa/{empresaId}/cobros-adicionales', [$fc, 'cobrosAdicionalesStore'])  ->name('cobros_adicionales.store');
+                Route::delete('cobros-adicionales/{cobroId}',         [$fc, 'cobrosAdicionalesDestroy'])->name('cobros_adicionales.destroy');
+            });
 
             // ── Facturación Electrónica (Dataico) — solo admin + superadmin ──
             $fe = \App\Http\Controllers\Admin\FacturacionElectronicaController::class;
-            Route::get( 'electronica',          [$fe, 'index'])   ->name('electronica.index');
-            Route::patch('electronica/marcar',  [$fe, 'marcar'])  ->name('electronica.marcar');
-            Route::get(  'electronica/exportar',[$fe, 'exportar'])->name('electronica.exportar');
+            Route::get('electronica',           [$fe, 'index'])   ->name('electronica.index')  ->middleware('permiso:facturacion_electronica.ver');
+            Route::get('electronica/exportar',  [$fe, 'exportar'])->name('electronica.exportar')->middleware('permiso:facturacion_electronica.ver');
+            Route::patch('electronica/marcar',  [$fe, 'marcar'])  ->name('electronica.marcar') ->middleware('permiso:facturacion_electronica.emitir');
         });
 
         // ── Planos (Pago Planillas SS) ────────────────────────────────────
-        Route::prefix('planos')->name('planos.')->group(function () {
+        Route::prefix('planos')->name('planos.')->middleware(['permiso:planos.ver', 'permiso.escritura:planos.generar'])->group(function () {
             $pp = \App\Http\Controllers\Admin\PlanoPagoController::class;
             Route::get('/',                     [$pp, 'index'])            ->name('index');
             Route::get('/descargar',            [$pp, 'descargar'])         ->name('descargar');
@@ -359,7 +450,7 @@ Route::middleware('auth')->group(function () {
         });
 
         // ── Cobros ───────────────────────────────────────────────────────
-        Route::prefix('cobros')->name('cobros.')->group(function () {
+        Route::prefix('cobros')->name('cobros.')->middleware(['permiso:cobros.ver', 'permiso.escritura:cobros.registrar'])->group(function () {
             $cb = \App\Http\Controllers\Admin\CobrosController::class;
             // Individuales
             Route::get('/',                          [$cb, 'index'])                  ->name('index');
@@ -382,7 +473,7 @@ Route::middleware('auth')->group(function () {
         });
 
         // ── Informes (admin + superadmin; financiero también para contador) ──
-        Route::prefix('informes')->name('informes.')->group(function () {
+        Route::prefix('informes')->name('informes.')->middleware(['permiso:informes.ver', 'permiso.escritura:cobros.registrar'])->group(function () {
             $ic = \App\Http\Controllers\Admin\InformeController::class;
             Route::get('/',                       [$ic, 'hub'])                  ->name('hub');
             Route::get('/consolidado-mensual',     [$ic, 'consolidadoMensual'])   ->name('consolidado_mensual');
@@ -415,22 +506,28 @@ Route::middleware('auth')->group(function () {
 
             // ── Gestión de gastos ──────────────────────────────────────────
             $ga = \App\Http\Controllers\Admin\GastoAdminController::class;
-            Route::get('/gastos',              [$ga, 'index'])   ->name('gastos.index');
-            Route::post('/gastos',             [$ga, 'store'])   ->name('gastos.store');
-            Route::put('/gastos/{id}',         [$ga, 'update'])  ->name('gastos.update');
-            Route::delete('/gastos/{id}',      [$ga, 'destroy']) ->name('gastos.destroy');
-            Route::post('/gastos/{id}/imagen', [$ga, 'imagen'])  ->name('gastos.imagen');
+            Route::get('/gastos', [$ga, 'index'])->name('gastos.index')->middleware('permiso:gastos.ver');
+            Route::middleware('permiso:gastos.gestionar')->group(function () use ($ga) {
+                Route::post('/gastos',             [$ga, 'store'])   ->name('gastos.store');
+                Route::put('/gastos/{id}',         [$ga, 'update'])  ->name('gastos.update');
+                Route::delete('/gastos/{id}',      [$ga, 'destroy']) ->name('gastos.destroy');
+                Route::post('/gastos/{id}/imagen', [$ga, 'imagen'])  ->name('gastos.imagen');
+            });
 
             // ── Comisiones Asesores ──────────────────────────────────────
             $cc = \App\Http\Controllers\Admin\ComisionesController::class;
-            Route::get('/comisiones',                            [$cc, 'index'])       ->name('comisiones.index');
-            Route::get('/comisiones/afiliaciones',               [$cc, 'afiliaciones'])->name('comisiones.afiliaciones');
-            Route::post('/comisiones/afiliaciones/{id}',         [$cc, 'distribuir'])  ->name('comisiones.distribuir');
-            Route::post('/comisiones/asesores/{asesor}/pagar',   [$cc, 'pagar'])       ->name('comisiones.pagar');
+            Route::middleware('permiso:comisiones.ver')->group(function () use ($cc) {
+                Route::get('/comisiones',              [$cc, 'index'])       ->name('comisiones.index');
+                Route::get('/comisiones/afiliaciones', [$cc, 'afiliaciones'])->name('comisiones.afiliaciones');
+            });
+            Route::middleware('permiso:comisiones.gestionar')->group(function () use ($cc) {
+                Route::post('/comisiones/afiliaciones/{id}',       [$cc, 'distribuir'])->name('comisiones.distribuir');
+                Route::post('/comisiones/asesores/{asesor}/pagar', [$cc, 'pagar'])     ->name('comisiones.pagar');
+            });
         });
 
         // ── Anticipos (Pagos sin Factura) ────────────────────────────────
-        Route::prefix('anticipos')->name('anticipos.')->group(function () {
+        Route::prefix('anticipos')->name('anticipos.')->middleware(['permiso:anticipos.ver', 'permiso.escritura:anticipos.gestionar'])->group(function () {
             $ac = \App\Http\Controllers\Admin\AnticipoController::class;
             Route::post('/',                        [$ac, 'store'])            ->name('store');
             Route::post('/distribuir',              [$ac, 'storeDistribuido']) ->name('distribuir');
@@ -447,7 +544,7 @@ Route::middleware('auth')->group(function () {
         });
 
         // ── Préstamos / Cartera ──────────────────────────────────────────
-        Route::prefix('prestamos')->name('prestamos.')->group(function () {
+        Route::prefix('prestamos')->name('prestamos.')->middleware(['permiso:prestamos.ver', 'permiso.escritura:prestamos.gestionar'])->group(function () {
             $pc = \App\Http\Controllers\Admin\PrestamosController::class;
             Route::get('/',                  [$pc, 'index'])              ->name('index');
             Route::get('/api/pendientes',    [$pc, 'apiPendientes'])      ->name('api.pendientes');
@@ -461,7 +558,7 @@ Route::middleware('auth')->group(function () {
     });
 
     // ── BryNex Global (solo usuarios es_brynex) ──────────────────────────
-    Route::prefix('brynex')->name('brynex.')->group(function () {
+    Route::prefix('brynex')->name('brynex.')->middleware('permiso:brynex_hub.ver')->group(function () {
         $bx = \App\Http\Controllers\BrynexController::class;
         Route::get('/',         [$bx, 'hub'])          ->name('hub');
         Route::get('/accesos',  [$bx, 'accesos'])       ->name('accesos');
@@ -474,7 +571,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/ia/{alidoId}',     [$iac, 'guardarAliado']) ->name('ia.aliado');
 
         // Simulador de conversación (probar la IA en vivo y anotar correcciones)
-        Route::prefix('ia/simulador')->name('ia.simulador.')->group(function () {
+        Route::prefix('ia/simulador')->name('ia.simulador.')->middleware('permiso:brynex_ia.ver')->group(function () {
             $ims = \App\Http\Controllers\IaSimuladorController::class;
             Route::get('/',                  [$ims, 'index'])        ->name('index');
             Route::get('/{alidoId}/historial',[$ims, 'historial'])    ->name('historial');
@@ -485,7 +582,7 @@ Route::middleware('auth')->group(function () {
         });
 
         // Entrenamiento / conocimiento del Asistente IA
-        Route::prefix('ia/conocimiento')->name('ia.conocimiento.')->group(function () {
+        Route::prefix('ia/conocimiento')->name('ia.conocimiento.')->middleware('permiso:brynex_ia.entrenar')->group(function () {
             $ick = \App\Http\Controllers\IaConocimientoController::class;
             Route::get('/',                        [$ick, 'index'])            ->name('index');
             Route::post('/guardar',                 [$ick, 'guardar'])          ->name('guardar');
@@ -498,27 +595,33 @@ Route::middleware('auth')->group(function () {
 
         // Copias de Seguridad (Backups)
         $bbc = \App\Http\Controllers\BrynexBackupController::class;
-        Route::get('/backups',           [$bbc, 'backups'])        ->name('backups');
-        Route::get('/backups/descargar', [$bbc, 'descargarBackup'])->name('backups.descargar');
-        Route::post('/backups/crear',    [$bbc, 'crearBackupManual'])->name('backups.crear');
+        Route::middleware('permiso:brynex_backup.ejecutar')->group(function () use ($bbc) {
+            Route::get('/backups',           [$bbc, 'backups'])          ->name('backups');
+            Route::get('/backups/descargar', [$bbc, 'descargarBackup'])  ->name('backups.descargar');
+            Route::post('/backups/crear',    [$bbc, 'crearBackupManual'])->name('backups.crear');
+        });
 
 
         // ── Módulo Consumo & Cobros ───────────────────────────────────────────
         $cx = \App\Http\Controllers\BrynexConsumoController::class;
-        Route::get('consumo',                                    [$cx, 'index'])             ->name('consumo.index');
-        Route::get('consumo/contabilidad',                       [$cx, 'contabilidad'])      ->name('consumo.contabilidad');
-        Route::get('consumo/{aliado}/{mes}/{anio}',              [$cx, 'show'])              ->name('consumo.show');
-        Route::post('consumo/{aliado}/{mes}/{anio}/cerrar',      [$cx, 'cerrar'])            ->name('consumo.cerrar');
-        Route::get('consumo/{aliado}/modulos',                   [$cx, 'modulosAliado'])     ->name('consumo.modulos');
-        Route::put('consumo/{aliado}/modulos',                   [$cx, 'actualizarModulos']) ->name('consumo.modulos.update');
-        Route::post('consumo/cobros/{cobro}/pago',               [$cx, 'registrarPago'])     ->name('consumo.pago');
-        Route::get('consumo/cobros/{cobro}/pdf',                 [$cx, 'descargarPdf'])      ->name('consumo.pdf');
+        Route::middleware('permiso:brynex_cobros.ver')->group(function () use ($cx) {
+            Route::get('consumo',                       [$cx, 'index'])        ->name('consumo.index');
+            Route::get('consumo/contabilidad',          [$cx, 'contabilidad']) ->name('consumo.contabilidad');
+            Route::get('consumo/{aliado}/{mes}/{anio}', [$cx, 'show'])         ->name('consumo.show');
+            Route::get('consumo/{aliado}/modulos',      [$cx, 'modulosAliado'])->name('consumo.modulos');
+            Route::get('consumo/cobros/{cobro}/pdf',    [$cx, 'descargarPdf']) ->name('consumo.pdf');
+        });
+        Route::middleware('permiso:brynex_cobros.gestionar')->group(function () use ($cx) {
+            Route::post('consumo/{aliado}/{mes}/{anio}/cerrar', [$cx, 'cerrar'])            ->name('consumo.cerrar');
+            Route::put('consumo/{aliado}/modulos',              [$cx, 'actualizarModulos']) ->name('consumo.modulos.update');
+            Route::post('consumo/cobros/{cobro}/pago',          [$cx, 'registrarPago'])     ->name('consumo.pago');
+        });
     });
 
 
     // ── Cuadre Diario ────────────────────────────────────────────────
 
-    Route::prefix('cuadre-diario')->name('admin.cuadre-diario.')->group(function () {
+    Route::prefix('cuadre-diario')->name('admin.cuadre-diario.')->middleware(['permiso:cuadre_diario.ver', 'permiso.escritura:cuadre_diario.gestionar'])->group(function () {
         $cd = \App\Http\Controllers\Admin\CuadreDiarioController::class;
         Route::get('/',                          [$cd, 'index'])                ->name('index');
         Route::post('/abrir',                    [$cd, 'abrir'])                ->name('abrir');
@@ -539,14 +642,14 @@ Route::middleware('auth')->group(function () {
     });
 
     // ── Caja Menor ───────────────────────────────────────────────────
-    Route::prefix('caja-menor')->name('admin.caja-menor.')->group(function () {
+    Route::prefix('caja-menor')->name('admin.caja-menor.')->middleware(['permiso:caja_menor.ver', 'permiso.escritura:caja_menor.gestionar'])->group(function () {
         $cm = \App\Http\Controllers\Admin\CajaMenorController::class;
         Route::get('/',    [$cm, 'index'])->name('index');
         Route::post('/',   [$cm, 'store'])->name('store');
     });
 
     // ── Gestión ARL (tipo_modalidad_id = 15)
-    Route::prefix('admin/gestion-arl')->name('admin.gestion-arl.')->group(function () {
+    Route::prefix('admin/gestion-arl')->name('admin.gestion-arl.')->middleware(['permiso:gestion_arl.ver', 'permiso.escritura:gestion_arl.gestionar'])->group(function () {
         $ga = \App\Http\Controllers\Admin\GestionArlController::class;
         Route::get('/',            [$ga, 'index'])   ->name('index');
         Route::patch('/{id}/renovar', [$ga, 'renovar'])->name('renovar');
@@ -583,7 +686,7 @@ Route::middleware('auth')->group(function () {
     });
 
     // -- Afiliaciones
-    Route::prefix('admin/afiliaciones')->name('admin.afiliaciones.')->group(function () {
+    Route::prefix('admin/afiliaciones')->name('admin.afiliaciones.')->middleware(['permiso:afiliaciones.ver', 'permiso.escritura:afiliaciones.gestionar'])->group(function () {
         $ac = \App\Http\Controllers\Admin\AfiliacionController::class;
         $fc = \App\Http\Controllers\Admin\FormularioEpsController::class;
         Route::get('/',                            [$ac, 'index'])   ->name('index');
@@ -595,7 +698,7 @@ Route::middleware('auth')->group(function () {
     });
 
     // ── Tareas ───────────────────────────────────────────────────────────────
-    Route::prefix('admin/tareas')->name('admin.tareas.')->group(function () {
+    Route::prefix('admin/tareas')->name('admin.tareas.')->middleware(['permiso:tareas.ver', 'permiso.escritura:tareas.gestionar'])->group(function () {
         $tc = \App\Http\Controllers\Admin\TareaController::class;
         Route::get('/',                        [$tc, 'index'])              ->name('index');
         Route::post('/',                       [$tc, 'store'])              ->name('store');
@@ -613,7 +716,7 @@ Route::middleware('auth')->group(function () {
     });
 
     // ── Traslado Masivo de Razón Social ─────────────────────────────────────
-    Route::prefix('admin/traslados-rs')->name('admin.traslados.')->middleware('role:superadmin|admin')->group(function () {
+    Route::prefix('admin/traslados-rs')->name('admin.traslados.')->middleware('permiso:traslados_rs.ejecutar')->group(function () {
         $trs = \App\Http\Controllers\Admin\TrasladoRazonSocialController::class;
         Route::get('/',                        [$trs, 'index'])           ->name('index');
         Route::post('/validar',                [$trs, 'validar'])         ->name('validar');
@@ -626,7 +729,7 @@ Route::middleware('auth')->group(function () {
     });
 
     // ── Incapacidades ────────────────────────────────────────────────────────
-    Route::prefix('admin/incapacidades')->name('admin.incapacidades.')->group(function () {
+    Route::prefix('admin/incapacidades')->name('admin.incapacidades.')->middleware(['permiso:incapacidades.ver', 'permiso.escritura:incapacidades.gestionar'])->group(function () {
         $ic = \App\Http\Controllers\Admin\IncapacidadController::class;
         Route::get('/',                        [$ic, 'index'])             ->name('index');
         Route::post('/',                       [$ic, 'store'])             ->name('store');
@@ -650,7 +753,7 @@ Route::middleware('auth')->group(function () {
     });
 
     // -- Radicados
-    Route::prefix('admin/radicados')->name('admin.radicados.')->group(function () {
+    Route::prefix('admin/radicados')->name('admin.radicados.')->middleware(['permiso:radicados.ver', 'permiso.escritura:radicados.gestionar'])->group(function () {
         $rc = \App\Http\Controllers\Admin\RadicadoController::class;
         Route::post('crear',             [$rc, 'crearPendiente'])     ->name('crear');
         Route::patch('{id}',             [$rc, 'update'])             ->name('update');
@@ -668,21 +771,28 @@ Route::middleware('auth')->group(function () {
         $masivo    = \App\Http\Controllers\Admin\WhatsappMasivoController::class;
         $config    = \App\Http\Controllers\Admin\WhatsappConfigController::class;
 
-        // ── Chat (todos los usuarios del aliado) ──────────────────────────────
-        Route::get('chat',                           [$chat, 'index'])                   ->name('chat.index');
-        Route::get('chat/{id}',                      [$chat, 'show'])                    ->name('chat.show');
-        Route::get('chat/{id}/api-mensajes',         [$chat, 'apiMensajes'])             ->name('chat.api_mensajes');
-        Route::get('chat/{id}/api-sidebar',          [$chat, 'apiConversacionSidebar'])  ->name('chat.api_sidebar');
-        Route::post('chat/{id}/mensaje',             [$chat, 'enviarMensaje'])           ->name('chat.mensaje');
-        Route::patch('chat/{id}/asignar',            [$chat, 'asignar'])                 ->name('chat.asignar');
-        Route::patch('chat/{id}/toggle-bot',         [$chat, 'toggleBot'])               ->name('chat.toggle_bot');
-        Route::patch('chat/{id}/cerrar',             [$chat, 'cerrar'])                  ->name('chat.cerrar');
-        Route::patch('chat/{id}/no-contactar',       [$chat, 'noContactar'])             ->name('chat.no_contactar');
-        Route::patch('chat/{id}/leer',               [$chat, 'marcarLeido'])             ->name('chat.leer');
-        Route::get('chat/media/{mensajeId}',         [$chat, 'descargarMedia'])          ->name('chat.media');
-        Route::get('api/no-leidos',                  [$chat, 'apiNoLeidos'])             ->name('api.no_leidos');
+        // ── Chat: ver el inbox ────────────────────────────────────────────────
+        Route::middleware('permiso:whatsapp.ver')->group(function () use ($chat) {
+            Route::get('chat',                   [$chat, 'index'])                  ->name('chat.index');
+            Route::get('chat/{id}',              [$chat, 'show'])                   ->name('chat.show');
+            Route::get('chat/{id}/api-mensajes', [$chat, 'apiMensajes'])            ->name('chat.api_mensajes');
+            Route::get('chat/{id}/api-sidebar',  [$chat, 'apiConversacionSidebar']) ->name('chat.api_sidebar');
+            Route::get('chat/media/{mensajeId}', [$chat, 'descargarMedia'])         ->name('chat.media');
+            Route::get('api/no-leidos',          [$chat, 'apiNoLeidos'])            ->name('api.no_leidos');
+            Route::patch('chat/{id}/leer',       [$chat, 'marcarLeido'])            ->name('chat.leer');
+        });
+        // ── Chat: responder y operar la conversación ──────────────────────────
+        Route::middleware('permiso:whatsapp.responder')->group(function () use ($chat) {
+            Route::post('chat/{id}/mensaje',       [$chat, 'enviarMensaje']) ->name('chat.mensaje');
+            Route::patch('chat/{id}/toggle-bot',   [$chat, 'toggleBot'])     ->name('chat.toggle_bot');
+            Route::patch('chat/{id}/cerrar',       [$chat, 'cerrar'])        ->name('chat.cerrar');
+            Route::patch('chat/{id}/no-contactar', [$chat, 'noContactar'])   ->name('chat.no_contactar');
+        });
+        Route::patch('chat/{id}/asignar', [$chat, 'asignar'])->name('chat.asignar')->middleware('permiso:whatsapp.asignar');
 
         // ── Plantillas (admin del aliado) ─────────────────────────────────────
+        Route::get('api/plantillas-aprobadas', [$plantilla, 'apiListarAprobadas'])->name('api.plantillas')->middleware('permiso:whatsapp.ver');
+        Route::middleware('permiso:whatsapp.plantillas')->group(function () use ($plantilla) {
         Route::get('plantillas',                 [$plantilla, 'index'])          ->name('plantillas.index');
         Route::get('plantillas/crear',           [$plantilla, 'create'])         ->name('plantillas.create');
         Route::post('plantillas',                [$plantilla, 'store'])          ->name('plantillas.store');
@@ -692,15 +802,18 @@ Route::middleware('auth')->group(function () {
         Route::put('plantillas/{id}',            [$plantilla, 'update'])         ->name('plantillas.update');
         Route::delete('plantillas/{id}',         [$plantilla, 'destroy'])        ->name('plantillas.destroy');
         Route::post('plantillas/sincronizar',    [$plantilla, 'sincronizar'])    ->name('plantillas.sincronizar');
-        Route::get('api/plantillas-aprobadas',   [$plantilla, 'apiListarAprobadas'])->name('api.plantillas');
+        });
 
         // ── Envíos masivos (admin del aliado) ─────────────────────────────────
-        Route::post('masivo/individual',         [$masivo, 'lanzarIndividual'])  ->name('masivo.individual');
-        Route::post('masivo/empresa',            [$masivo, 'lanzarEmpresa'])     ->name('masivo.empresa');
-        Route::get('masivo/historial',           [$masivo, 'historial'])         ->name('masivo.historial');
-        Route::get('masivo/{id}',                [$masivo, 'detalle'])           ->name('masivo.detalle');
+        Route::middleware('permiso:whatsapp.masivo')->group(function () use ($masivo) {
+            Route::post('masivo/individual', [$masivo, 'lanzarIndividual'])->name('masivo.individual');
+            Route::post('masivo/empresa',    [$masivo, 'lanzarEmpresa'])   ->name('masivo.empresa');
+            Route::get('masivo/historial',   [$masivo, 'historial'])       ->name('masivo.historial');
+            Route::get('masivo/{id}',        [$masivo, 'detalle'])         ->name('masivo.detalle');
+        });
 
-        // ── Configuración (solo Brynex superadmin) ────────────────────────────
+        // ── Configuración: permiso RESTRINGIDO (credenciales de Meta) ─────────
+        Route::middleware('permiso:whatsapp.configurar')->group(function () use ($config) {
         Route::get('configuracion',              [$config, 'index'])             ->name('config.index');
         Route::get('configuracion/global',       [$config, 'editGlobal'])        ->name('config.global');
         Route::post('configuracion/global',      [$config, 'updateGlobal'])       ->name('config.global.update');
@@ -710,10 +823,11 @@ Route::middleware('auth')->group(function () {
         Route::post('configuracion/{id}/copiar-plantilla', [$config, 'copiarPlantillaGlobal'])->name('config.copiar_plantilla');
         Route::post('configuracion/{id}/sincronizar-meta', [$config, 'sincronizarPlantillasMeta'])->name('config.sincronizar_meta');
         Route::post('configuracion/verificar',   [$config, 'verificarWebhook'])  ->name('config.verificar');
+        });
     });
 
     // ─── Módulo Marketing (envío masivo de campañas publicitarias) ─────────────
-    Route::prefix('admin/marketing')->name('admin.marketing.')->group(function () {
+    Route::prefix('admin/marketing')->name('admin.marketing.')->middleware(['permiso:marketing.ver', 'permiso.escritura:marketing.gestionar'])->group(function () {
         $listas   = \App\Http\Controllers\Admin\MarketingListaController::class;
         $campanas = \App\Http\Controllers\Admin\MarketingCampanaController::class;
 
@@ -738,7 +852,7 @@ Route::middleware('auth')->group(function () {
     });
 
     // ─── CMS ligero de la página web pública del aliado ────────────────────────
-    Route::prefix('admin/pagina')->name('admin.pagina.')->group(function () {
+    Route::prefix('admin/pagina')->name('admin.pagina.')->middleware(['permiso:pagina_web.ver', 'permiso.escritura:pagina_web.editar'])->group(function () {
         $pag = \App\Http\Controllers\Admin\PaginaAliadoAdminController::class;
 
         Route::get('/',              [$pag, 'edit'])       ->name('index');
@@ -754,7 +868,7 @@ Route::middleware('auth')->group(function () {
     });
 
     // ─── Credenciales de redes sociales por aliado (Facebook, Instagram, ...) ──
-    Route::prefix('admin/redes-sociales')->name('admin.redes-sociales.')->group(function () {
+    Route::prefix('admin/redes-sociales')->name('admin.redes-sociales.')->middleware(['permiso:redes_sociales.ver', 'permiso.escritura:redes_sociales.configurar'])->group(function () {
         $rs = \App\Http\Controllers\Admin\RedesSocialesController::class;
 
         Route::get('/',                 [$rs, 'edit'])          ->name('index');
@@ -763,7 +877,7 @@ Route::middleware('auth')->group(function () {
     });
 
     // ─── Generador de publicidad (plantillas/canvas + IA, aprobación, publicación) ─────
-    Route::prefix('admin/publicidad')->name('admin.publicidad.')->group(function () {
+    Route::prefix('admin/publicidad')->name('admin.publicidad.')->middleware(['permiso:publicidad.ver', 'permiso.escritura:publicidad.gestionar'])->group(function () {
         $pub = \App\Http\Controllers\Admin\PublicidadController::class;
 
         Route::get('/',                       [$pub, 'index'])         ->name('index');

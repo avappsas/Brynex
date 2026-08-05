@@ -14,8 +14,10 @@ class UsuarioController extends Controller
 {
     public function __construct()
     {
-        // Solo superadmin y admin pueden gestionar usuarios
-        $this->middleware(['auth', 'role:superadmin|admin']);
+        // El control fino vive en las rutas (permiso:usuarios.ver /
+        // usuarios.gestionar / usuarios.permisos). Aquí solo se exige sesión,
+        // para no tener dos fuentes de verdad que se contradigan.
+        $this->middleware('auth');
     }
 
     public function index(Request $request)

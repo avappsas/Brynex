@@ -14,7 +14,7 @@
 | Severidad | Total | Corregido | Pendiente |
 |---|---|---|---|
 | CRÍTICO | 6 | 6 | — |
-| ALTO | 5 | 3 | 2 (A-1, A-2: estructurales) |
+| ALTO | 5 | 4 | 1 (A-2: estructural) |
 | MEDIO | 6 | 5 | 1 (M-3: verificar `.env` del servidor) |
 | BAJO | 3 | 2 | 1 (B-1: sin impacto) |
 
@@ -30,7 +30,7 @@ Los 6 críticos eran explotables sin autenticación o con una cuenta de aliado c
 | C-4 | Documentos médicos públicos | ✅ disco privado + ruta autenticada — **falta correr la migración de archivos en el servidor** |
 | C-5 | IDOR en Incapacidades | ✅ 12 accesos filtrados por aliado |
 | C-6 | Login sin throttle / session fixation | ✅ `throttle:5,1` + `regenerate()` |
-| A-1 | Rutas sin permisos | ⬜ pendiente (estructural) |
+| A-1 | Rutas sin permisos | ✅ corregido (ago-2026) — catálogo de módulos + 96 puntos de control |
 | A-2 | Sin aislamiento multi-tenant en modelos | ⬜ pendiente (estructural) |
 | A-3 | Upload sin `mimes` | ✅ corregido |
 | A-4 | Scripts de mantenimiento versionados | ✅ 25 eliminados |
@@ -178,7 +178,15 @@ Hay verificaciones dentro de ~20 controladores, pero es cobertura parcial y desi
 
 **Impacto.** Cualquier usuario autenticado —un asesor, un auxiliar— puede invocar directamente por URL cualquier acción de cualquier módulo. La única barrera real es que el menú no muestre el enlace.
 
-**Fix.** Definir la matriz rol→permiso y aplicar `->middleware('permission:...')` por grupo de rutas. Es el trabajo más grande del informe; conviene hacerlo módulo por módulo, empezando por facturación, cobros y usuarios.
+**Fix aplicado (agosto 2026).** Se montó un catálogo de módulos en vez de una lista suelta de permisos:
+
+- Tabla `modulos` (41 módulos en 6 grupos) + columnas `modulo_id`, `etiqueta`, `accion`, `restringido` en `permissions`. 107 permisos con nombre `modulo.accion`, sembrados por `ModulosPermisosSeeder`.
+- 96 puntos de control en `routes/web.php` con los middleware `permiso:` y `permiso.escritura:` (`VerificarPermiso` / `VerificarPermisoEscritura`): mensaje legible, registro en bitácora como `acceso_denegado`, y JSON si la petición es AJAX.
+- `Gate::before` en `AuthServiceProvider`: superadmin recibe todo **menos** los permisos `restringido`, y los módulos `solo_brynex` exigen `es_brynex`.
+- Permisos restringidos (no los hereda ningún rol, se otorgan usuario por usuario en `admin/usuarios/{id}/permisos`): contraseñas de claves de acceso, credenciales de operadores PILA, credenciales de Meta, tokens de redes sociales y backup de la BD.
+- El sidebar pasó de `@role` a `@can`, y el rol duplicado `contador` se unificó en `contable`.
+
+Queda fuera del alcance de este fix: el rol `asesor` sigue viendo todo el aliado en solo lectura porque no existe vínculo `users` ↔ `asesores`, y el rol `cliente` no tiene portal. Ver [[permisos-brynex]].
 
 ---
 
@@ -295,7 +303,7 @@ Throttle + `session()->regenerate()` en login, `mimes` en el upload de incapacid
 **Tanda 4 — documentos médicos fuera del disco público** (C-4, M-6)
 Cambiar el disco, crear la ruta autenticada de descarga, migrar los archivos existentes y actualizar las vistas que enlazan `asset('storage/...')`. Es el cambio con más superficie.
 
-**Tanda 5 — estructural** (A-1, A-2)
+**Tanda 5 — estructural** (A-1 ✅ hecho, A-2 pendiente)
 Matriz de permisos por rol y trait de aislamiento por aliado. Proyecto aparte, módulo por módulo.
 
 Las tandas 1 a 4 son las que cierran la exposición real. La 5 es la que evita que vuelva a abrirse.

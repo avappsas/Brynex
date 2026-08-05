@@ -11,7 +11,7 @@
     </div>
 
     {{-- Grid KPIs operativos --}}
-    @role('admin|superadmin')
+    @can('informes.ver')
     <h2 style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin-bottom:.75rem;">Operaciones</h2>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:1rem;margin-bottom:1.75rem;">
 
@@ -39,7 +39,7 @@
         </a>
         @endforeach
     </div>
-    @endrole
+    @endcan
 
     {{-- Estado Financiero --}}
     @if($esFinanciero)
@@ -62,7 +62,7 @@
     @endif
 
     {{-- Cobros BryNex --}}
-    @role('admin|superadmin|contador')
+    @can('informes.ver')
     <h2 style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin-top:1.5rem;margin-bottom:.75rem;">Cobros por Uso</h2>
 
     {{-- Reporte de Ingresos y Retiros (Consolidado Mensual) --}}
@@ -75,7 +75,7 @@
             <div style="font-size:.82rem;color:rgba(255,255,255,.8);margin-top:.2rem;">Administración y afiliaciones históricas por mes · 6 meses de tendencia</div>
         </div>
     </a>
-    @endrole
+    @endcan
 
 </div>
 @endsection

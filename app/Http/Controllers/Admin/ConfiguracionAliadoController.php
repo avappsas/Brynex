@@ -273,6 +273,16 @@ class ConfiguracionAliadoController extends Controller
         $v['cobro']       = $request->boolean('cobro');
         $v['facturacion'] = $request->boolean('facturacion');
         $v['incapacidad'] = $request->boolean('incapacidad');
+
+        // El rol `usuario` solo puede dar de alta cuentas DE INCAPACIDAD: se le
+        // fuerzan las marcas para que no cree por accidente (ni a propósito) una
+        // cuenta que salga en el selector de facturar o en la cuenta de cobro.
+        if (! auth()->user()->can('cuentas_bancarias.gestionar')) {
+            $v['incapacidad'] = true;
+            $v['cobro']       = false;
+            $v['facturacion'] = false;
+        }
+
         \App\Models\BancoCuenta::create($v);
         return redirect()->route('admin.configuracion.cuentas')
             ->with('success', 'Cuenta bancaria creada.');

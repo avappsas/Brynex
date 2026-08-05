@@ -71,5 +71,9 @@ class Kernel extends HttpKernel
         'permission'       => \Spatie\Permission\Middleware\PermissionMiddleware::class,
         'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
         'finanzas.access'  => \App\Http\Middleware\FinanzasAccess::class,
+        // Permisos por módulo (catálogo `modulos`) — ver VerificarPermiso
+        'permiso'           => \App\Http\Middleware\VerificarPermiso::class,
+        // Igual, pero solo se exige en POST/PUT/PATCH/DELETE
+        'permiso.escritura' => \App\Http\Middleware\VerificarPermisoEscritura::class,
     ];
 }

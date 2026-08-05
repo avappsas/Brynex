@@ -17,15 +17,15 @@ class InformeController extends Controller
 
     private function checkAdmin(): void
     {
-        if (!Auth::user()->hasRole(['admin', 'superadmin'])) {
-            abort(403, 'Acceso restringido a administradores.');
+        if (! Auth::user()->can('informes.ver')) {
+            abort(403, 'No tienes permiso para «Ver informes (Informes)».');
         }
     }
 
     private function checkFinanciero(): void
     {
-        if (!Auth::user()->hasRole(['superadmin', 'contador'])) {
-            abort(403, 'Acceso restringido a superadmin y contador.');
+        if (! Auth::user()->can('informes.ver')) {
+            abort(403, 'No tienes permiso para «Ver informes (Informes)».');
         }
     }
 
@@ -110,7 +110,7 @@ class InformeController extends Controller
             'tareas'                    => DB::table('tareas')->where('aliado_id',$aid)->whereNull('deleted_at')->whereIn('estado',['pendiente','en_gestion','en_espera'])->count(),
         ];
 
-        $esFinanciero = Auth::user()->hasRole(['superadmin','contador']);
+        $esFinanciero = Auth::user()->can('informes.ver');
         if ($esFinanciero) {
             $kpis['ingresos_mes'] = DB::table('facturas')
                 ->where('aliado_id',$aid)->whereNull('deleted_at')
@@ -3087,7 +3087,7 @@ class InformeController extends Controller
 
     public function consolidadoMensual()
     {
-        if (!Auth::user()->hasRole(['admin', 'superadmin', 'contador'])) {
+        if (! Auth::user()->can('informes.ver')) {
             abort(403, 'Acceso restringido.');
         }
 
@@ -3262,7 +3262,7 @@ class InformeController extends Controller
 
     public function consolidadoMensualDetalle(Request $request)
     {
-        if (!Auth::user()->hasRole(['admin', 'superadmin', 'contador'])) {
+        if (! Auth::user()->can('informes.ver')) {
             return response()->json(['error' => 'Acceso restringido.'], 403);
         }
 
@@ -3425,7 +3425,7 @@ class InformeController extends Controller
 
     public function consolidadoMensualWhatsapp(Request $request)
     {
-        if (!Auth::user()->hasRole(['admin', 'superadmin', 'contador'])) {
+        if (! Auth::user()->can('informes.ver')) {
             return response()->json(['error' => 'Acceso restringido.'], 403);
         }
 

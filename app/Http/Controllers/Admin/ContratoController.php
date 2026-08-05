@@ -153,7 +153,7 @@ class ContratoController extends Controller
         // El superadmin no queda bloqueado: la vista le deja los campos
         // editables y le advierte antes de guardar (ver $rsDesbloqueoSuperadmin
         // en form.blade.php). El cambio forzado queda en bitácora.
-        $puedeForzarBloqueo      = Auth::user()->hasRole('superadmin');
+        $puedeForzarBloqueo      = Auth::user()->can('contratos.editar_radicado');
         $rsBloquedaPorAfiliacion = $hayAfiliacionActiva && !$puedeForzarBloqueo;
         $rsDesbloqueoSuperadmin  = $hayAfiliacionActiva && $puedeForzarBloqueo;
 
@@ -305,7 +305,7 @@ class ContratoController extends Controller
             ->whereIn('estado', $estadosBloqueantes)
             ->isNotEmpty();
 
-        $puedeForzarBloqueo      = Auth::user()->hasRole('superadmin');
+        $puedeForzarBloqueo      = Auth::user()->can('contratos.editar_radicado');
         $rsBloquedaPorAfiliacion = $hayAfiliacionActiva && !$puedeForzarBloqueo;
 
         if ($rsBloquedaPorAfiliacion &&
@@ -318,6 +318,55 @@ class ContratoController extends Controller
                     'iframe' => $request->input('iframe') ? '1' : null,
                 ]))
                 ->withErrors(['razon_social_id' => 'No se puede cambiar la Razón Social: ya existe una afiliación en trámite u OK. Para cambiarla, marque retiro del contrato.']);
+        }
+
+        // ── Contrato ya radicado: los datos de fondo quedan congelados ──
+        // Un contrato con afiliación en trámite u OK ya viajó a la EPS/ARL con
+        // unos valores concretos. Cambiarlos por detrás deja a Brynex diciendo
+        // una cosa y a la entidad otra, y eso solo se descubre cuando rebota la
+        // planilla. Salario, IBC, entidades y fechas solo los mueve quien tenga
+        // `contratos.editar_radicado` (hoy, solo superadmin). El resto del
+        // formulario —cargo, observaciones, asesor, encargado, NP— sigue
+        // editable por cualquiera que pueda editar contratos.
+        if ($rsBloquedaPorAfiliacion) {
+            $congelados = [
+                'salario', 'ibc', 'eps_id', 'pension_id', 'arl_id', 'caja_id',
+                'n_arl', 'fecha_ingreso', 'fecha_retiro', 'fecha_arl',
+            ];
+
+            $cambiados = [];
+            foreach ($congelados as $campo) {
+                if (! array_key_exists($campo, $data)) {
+                    continue;
+                }
+                // Comparación laxa a propósito: '1500000' y 1500000.00 son el
+                // mismo salario, y las fechas llegan como texto contra Carbon.
+                $actual = $contrato->{$campo};
+                $actual = $actual instanceof \DateTimeInterface ? $actual->format('Y-m-d') : $actual;
+                $nuevo  = $data[$campo];
+
+                $iguales = blank($actual) && blank($nuevo);
+                if (is_numeric($actual) && is_numeric($nuevo)) {
+                    $iguales = $iguales || (float) $actual === (float) $nuevo;
+                } else {
+                    $iguales = $iguales || (string) $actual === (string) $nuevo;
+                }
+
+                if (! $iguales) {
+                    $cambiados[] = $campo;
+                }
+            }
+
+            if ($cambiados) {
+                return redirect()
+                    ->route('admin.contratos.edit', array_filter([
+                        $id,
+                        'back'   => $request->input('back_url'),
+                        'iframe' => $request->input('iframe') ? '1' : null,
+                    ]))
+                    ->withErrors(['salario' => 'Este contrato ya tiene afiliación radicada (trámite u OK): '
+                        . implode(', ', $cambiados) . ' solo los puede cambiar el superadministrador.']);
+            }
         }
 
         // ── Protección de ENTIDADES con radicados activos ──────────────

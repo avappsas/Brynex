@@ -16,8 +16,8 @@ class GastoAdminController extends Controller
 
     private function checkAcceso(): void
     {
-        if (!Auth::user()->hasRole(['superadmin', 'contador'])) {
-            abort(403, 'Acceso restringido.');
+        if (! Auth::user()->can('gastos.ver')) {
+            abort(403, 'No tienes permiso para «Ver gastos (Gastos administrativos)».');
         }
     }
 

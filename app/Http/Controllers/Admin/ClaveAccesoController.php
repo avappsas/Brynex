@@ -55,7 +55,31 @@ class ClaveAccesoController extends Controller
             ->orderBy('razon_social')
             ->get(['id', 'razon_social']);
 
+        $claves = $this->taparContrasenas($claves);
+
         return view('admin.claves.global', compact('claves', 'razones'));
+    }
+
+    /**
+     * Quita la contraseña de la colección si el usuario no tiene el permiso
+     * restringido `claves_acceso.ver_contrasena`.
+     *
+     * Se hace en el servidor y no ocultándola en la vista porque el listado la
+     * mandaba entera al navegador (en base64, que no es cifrado) y los tres
+     * endpoints JSON la devolvían en claro: bastaba abrir el inspector. Tapar
+     * el <span> no habría tapado nada.
+     */
+    private function taparContrasenas($claves)
+    {
+        if (auth()->user()->can('claves_acceso.ver_contrasena')) {
+            return $claves;
+        }
+
+        return $claves->each(function ($c) {
+            // Se conserva si hay o no clave guardada (el usuario necesita saber
+            // que existe para pedirla), pero no su contenido.
+            $c->contrasena = $c->contrasena ? '__oculta__' : null;
+        });
     }
 
     // ─── Listar claves de un cliente (por cédula) ─────────────────────
@@ -74,7 +98,7 @@ class ClaveAccesoController extends Controller
             ->orderBy('entidad')
             ->get();
 
-        return response()->json($claves);
+        return response()->json($this->taparContrasenas($claves));
     }
 
     // ─── Listar claves de una razón social ────────────────────────────
@@ -88,7 +112,7 @@ class ClaveAccesoController extends Controller
             ->orderBy('entidad')
             ->get();
 
-        return response()->json($claves);
+        return response()->json($this->taparContrasenas($claves));
     }
 
     // ─── Listar claves de una empresa (por empresa_id directo) ────────
@@ -102,7 +126,7 @@ class ClaveAccesoController extends Controller
             ->orderBy('entidad')
             ->get();
 
-        return response()->json($claves);
+        return response()->json($this->taparContrasenas($claves));
     }
 
     // ─── Crear nueva clave ────────────────────────────────────────────
