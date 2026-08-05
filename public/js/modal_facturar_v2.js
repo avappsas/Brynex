@@ -63,6 +63,21 @@ const MF = (function () {
         _totalAfil = cfg.costoAfiliacion || 0;
     }
 
+    /**
+     * IVA que causa el costo de afiliación (modo individual).
+     * El cliente/empresa marcados con iva=SI pagan IVA sobre la afiliación,
+     * igual que sobre la administración. Espejo de IvaService en PHP.
+     */
+    function _ivaAfil() {
+        if (_modo !== 'individual' || !_cfg.tieneIva) return 0;
+        return Math.round((_totalAfil || 0) * (parseFloat(_cfg.ivaPct) || 19) / 100);
+    }
+
+    /** ¿El independiente eligió pagar Planilla + Afiliación en la misma factura? */
+    function _esModoAmbos() {
+        return document.querySelector('input[name="mf_indep_modo"]:checked')?.value === 'ambos';
+    }
+
     // ── Helper: asignar un File a una fila de consignación ────────
     function _applyFileToConsig(row, file) {
         if (!row || !file) return;
@@ -701,7 +716,8 @@ const MF = (function () {
             setText('mf-v-ss', fmt(ceil((r.eps || 0) + (r.arl || 0) + (r.pen || 0) + (r.caja || 0))));
             setText('mf-v-admon', fmt(ceil(r.admon || 0)));
             setText('mf-v-seg', fmt(ceil(r.seguro || 0)));
-            setText('mf-v-iva', fmt(ceil(r.iva || 0)));
+            const ivaExtraIni = _esModoAmbos() ? _ivaAfil() : 0;
+            setText('mf-v-iva', fmt(ceil(r.iva || 0) + ivaExtraIni));
 
             const arlBadge = el('mf-arl-badge');
             if (arlBadge) arlBadge.textContent = _cfg.arlNivel ? 'Nivel ' + _cfg.arlNivel : '';
@@ -716,7 +732,7 @@ const MF = (function () {
             }
 
             _total = Math.ceil((r.eps || 0) + (r.arl || 0) + (r.pen || 0) + (r.caja || 0))
-                + ceil(r.admon || 0) + ceil(r.seguro || 0) + ceil(r.iva || 0);
+                + ceil(r.admon || 0) + ceil(r.seguro || 0) + ceil(r.iva || 0) + ivaExtraIni;
             _totalAfil = _cfg.costoAfiliacion || 0;
         }
 
@@ -1004,6 +1020,12 @@ const MF = (function () {
                     rowAfil.style.display = '';
                     setText('mf-v-afil', fmt(_totalAfil));
                 }
+                // La afiliación también causa IVA: sumarlo al de la administración
+                const ivaAfil = _ivaAfil();
+                if (ivaAfil > 0) {
+                    const r = (_cfg.getAlpineResult && _cfg.getAlpineResult()) || {};
+                    setText('mf-v-iva', fmt(ceil(r.iva || 0) + ivaAfil));
+                }
             }
 
             // Mostrar aviso informativo sobre el período de la planilla
@@ -1075,11 +1097,15 @@ const MF = (function () {
         const retiroCard  = el('mf-retiro-card');
 
         if (tipo === 'afiliacion') {
-            _total = _totalAfil;
+            const ivaAfil = _ivaAfil();
+            _total = _totalAfil + ivaAfil;
             if (detallesSS) detallesSS.style.display = 'none';
             if (detallesAfil) {
                 detallesAfil.style.display = 'block';
-                detallesAfil.innerHTML = 'Costo afiliación: <strong>' + fmt(_totalAfil) + '</strong>';
+                detallesAfil.innerHTML = 'Costo afiliación: <strong>' + fmt(_totalAfil) + '</strong>'
+                    + (ivaAfil > 0
+                        ? '<br>IVA (' + (parseFloat(_cfg.ivaPct) || 19) + '%): <strong>' + fmt(ivaAfil) + '</strong>'
+                        : '');
             }
             if (distSec) {
                 distSec.style.display = 'block';
@@ -1099,8 +1125,9 @@ const MF = (function () {
                 setText('mf-v-ss', fmt(r.ss || 0));
                 setText('mf-v-admon', fmt(r.admon || 0));
                 setText('mf-v-seg', fmt(r.seguro || 0));
-                setText('mf-v-iva', fmt(r.iva || 0));
-                _total = Math.round(r.total || 0);
+                const ivaExtra = _esModoAmbos() ? _ivaAfil() : 0;
+                setText('mf-v-iva', fmt((r.iva || 0) + ivaExtra));
+                _total = Math.round(r.total || 0) + ivaExtra;
             }
             if (detallesSS) detallesSS.style.display = '';
             if (detallesAfil) detallesAfil.style.display = 'none';
@@ -1214,7 +1241,7 @@ const MF = (function () {
             const rowMora = el('mf-row-mora');
             if (rowMora) rowMora.style.display = mora > 0 ? '' : 'none';
         } else {
-            totalBruto = _totalAfil;
+            totalBruto = _totalAfil + _ivaAfil();
         }
 
         // ── Columa izquierda: TOTAL BRUTO (sin descontar saldo a favor) ──
@@ -1977,10 +2004,11 @@ const MF = (function () {
         setText('mf-v-ss', fmt(ceil((r.eps || 0) + (r.arl || 0) + (r.pen || 0) + (r.caja || 0))));
         setText('mf-v-admon', fmt(ceil(r.admon || 0)));
         setText('mf-v-seg', fmt(ceil(r.seguro || 0)));
-        setText('mf-v-iva', fmt(ceil(r.iva || 0)));
+        const ivaExtra = _esModoAmbos() ? _ivaAfil() : 0;
+        setText('mf-v-iva', fmt(ceil(r.iva || 0) + ivaExtra));
 
         _total = Math.ceil((r.eps || 0) + (r.arl || 0) + (r.pen || 0) + (r.caja || 0))
-            + ceil(r.admon || 0) + ceil(r.seguro || 0) + ceil(r.iva || 0);
+            + ceil(r.admon || 0) + ceil(r.seguro || 0) + ceil(r.iva || 0) + ivaExtra;
 
         recalc();
     }

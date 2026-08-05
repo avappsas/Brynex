@@ -163,11 +163,14 @@ class FacturacionController extends Controller
             ->select('contrato_id', DB::raw('SUM(saldo_proximo) as suma'))
             ->pluck('suma', 'contrato_id');
 
+        // IVA: aplica si el cliente lo tiene marcado o si la empresa lo tiene
+        // marcada (en cuyo caso cubre a todos sus clientes) — ver IvaService.
+        $empresaTieneIva = \App\Services\IvaService::bandera($empresa->iva);
         $ivaClientes = DB::table('clientes')
             ->where('aliado_id', $aliadoId)
             ->where('cod_empresa', $empresaId)
             ->pluck('iva', 'cedula')
-            ->map(fn($v) => strtoupper(trim($v ?? '')) === 'SI')
+            ->map(fn($v) => $empresaTieneIva || \App\Services\IvaService::bandera($v))
             ->toArray();
 
         $hoy = now();
@@ -240,6 +243,7 @@ class FacturacionController extends Controller
                 && $c->factura_exist === null;
 
             $ivaFlag = $ivaClientes[$c->cedula] ?? null;
+            $c->tiene_iva = (bool) $ivaFlag;
             $c->cotizacion_calc = $c->calcularCotizacion($diasCotizar, $ivaFlag);
 
             $sumaPrev = (int)($saldosPrevios[$c->id] ?? 0);
@@ -514,13 +518,17 @@ class FacturacionController extends Controller
                     $vArl  = $r100($cotiz['arl']??0);
                     $vPen  = $r100($cotiz['pen']??0);
                     $vCaja = $r100($cotiz['caja']??0);
-                    $vIva  = $r100($cotiz['iva']??0);
+                    // IVA: admon (ya viene en $cotiz) + costo de afiliación
+                    $vIva  = $r100($cotiz['iva']??0)
+                           + \App\Services\IvaService::calcular((int)($c->costo_afiliacion ?? 0), (bool)($c->tiene_iva ?? false));
                     $vSS   = $r100($cotiz['ss']);
                     $vTot  = $vSS + ($vAdmonBase + $vAdmonAsesor) + $vIva + (int)(($c->costo_afiliacion ?? 0) + ($c->seguro ?? 0));
                 } elseif ($esAfil) {
                     $vEps  = 0; $vArl  = 0; $vPen  = 0; $vCaja = 0;
-                    $vSS   = 0; $vIva  = 0;
-                    $vTot  = (int)(($c->costo_afiliacion ?? 0) + ($c->seguro ?? 0));
+                    $vSS   = 0;
+                    // El IVA de una afiliación grava el costo de afiliación
+                    $vIva  = \App\Services\IvaService::calcular((int)($c->costo_afiliacion ?? 0), (bool)($c->tiene_iva ?? false));
+                    $vTot  = (int)(($c->costo_afiliacion ?? 0) + ($c->seguro ?? 0)) + $vIva;
                 } else {
                     $vEps  = $r100($cotiz['eps']??0);
                     $vArl  = $r100($cotiz['arl']??0);
@@ -940,7 +948,7 @@ class FacturacionController extends Controller
                     $diasCotizar = $diasRetiro;
                 }
 
-                $tieneIva = $c->cliente ? (strtoupper(trim($c->cliente->iva ?? '')) === 'SI') : false;
+                $tieneIva = \App\Services\IvaService::aplicaContrato($c);
 
                 if ($esAfiliacion && !$esIndActPrimerMes) {
                     $calcSS = ['eps' => 0, 'arl' => 0, 'afp' => 0, 'caja' => 0];
@@ -978,15 +986,8 @@ class FacturacionController extends Controller
                 $otrosAdmon  = intval($validated['otros_admon'] ?? 0);
 
                 $totalSS  = $calcSS['eps'] + $calcSS['arl'] + $calcSS['afp'] + $calcSS['caja'];
-                $ivaBase  = $admon + $adminAsesor;
-                $iva      = 0;
-
-                if (!$esAfiliacion || $esIndActPrimerMes) {
-                    if ($tieneIva) {
-                        $cfgIva = \App\Models\ConfiguracionBrynex::porcentajeIva();
-                        $iva    = (int) round($ivaBase * $cfgIva / 100);
-                    }
-                }
+                // IVA sobre administración + costo de afiliación (ver IvaService)
+                $iva = \App\Services\IvaService::deFactura($tieneIva, $admon, $adminAsesor, $afiliacion);
 
                 $total = $totalSS + $admon + $adminAsesor + $otrosAdmon + $seguro + $afiliacion + $iva;
 
@@ -1460,7 +1461,7 @@ class FacturacionController extends Controller
 
                 // ── Fuente de verdad: calcularCotizacion() del modelo ──────────────────────
                 // Usar el mismo método que la UI para que total facturado = estimación exacta.
-                $tieneIva = $contrato->cliente ? (strtoupper(trim($contrato->cliente->iva ?? '')) === 'SI') : false;
+                $tieneIva = \App\Services\IvaService::aplicaContrato($contrato);
 
                 if ($esAfiliacion && !$esIndActPrimerMes) {
                     $calcSS = ['eps' => 0, 'arl' => 0, 'afp' => 0, 'caja' => 0];
@@ -1528,17 +1529,12 @@ class FacturacionController extends Controller
 
 
                 $totalSS  = $calcSS['eps'] + $calcSS['arl'] + $calcSS['afp'] + $calcSS['caja'];
-                $ivaBase  = $admon + $adminAsesor;
-                $iva      = 0;
 
-                // IVA aplica en planilla (sobre admon) — también para I ACT primer mes
-                // Usar round() igual que calcularCotizacion() del modelo (no ceil)
-                if (!$esAfiliacion || $esIndActPrimerMes) {
-                    if ($tieneIva) {
-                        $cfgIva = \App\Models\ConfiguracionBrynex::porcentajeIva();
-                        $iva    = (int) round($ivaBase * $cfgIva / 100);
-                    }
-                }
+                // IVA sobre administración + costo de afiliación (ver IvaService).
+                // En afiliación pura la admon es 0, así que grava solo la afiliación;
+                // en I ACT primer mes grava ambas. Usa round() igual que
+                // calcularCotizacion() del modelo (no ceil).
+                $iva = \App\Services\IvaService::deFactura($tieneIva, $admon, $adminAsesor, $afiliacion);
 
                 // total = BRUTO (SS + admon + seguro + IVA + afiliacion + otros).
                 // El anticipo (saldo_a_favor) y la deuda previa (saldo_pendiente) se guardan
@@ -2055,9 +2051,7 @@ class FacturacionController extends Controller
         array $manualSsPorContrato = [],
     ): array {
         // ── Datos comunes ────────────────────────────────────────────────────────
-        $tieneIva       = $contrato->cliente
-            ? (strtoupper(trim($contrato->cliente->iva ?? '')) === 'SI')
-            : false;
+        $tieneIva        = \App\Services\IvaService::aplicaContrato($contrato);
         $costoAfiliacion = (int)($contrato->costo_afiliacion ?? 0);
         $seguro          = (int)($contrato->seguro ?? 0);
         $admon           = (int)($contrato->administracion ?? 0);
@@ -2111,15 +2105,13 @@ class FacturacionController extends Controller
 
         $totalSS = $calcSS['eps'] + $calcSS['arl'] + $calcSS['afp'] + $calcSS['caja'];
 
-        // IVA de la planilla (sobre admon)
-        $iva = 0;
-        if ($tieneIva && ($admon + $adminAsesor) > 0) {
-            $cfgIva = \App\Models\ConfiguracionBrynex::porcentajeIva();
-            $iva    = (int) round(($admon + $adminAsesor) * $cfgIva / 100);
-        }
+        // IVA: cada registro del par lleva el suyo — la planilla sobre la admon,
+        // la afiliación sobre el costo de afiliación (ver IvaService).
+        $iva     = \App\Services\IvaService::calcular($admon + $adminAsesor, $tieneIva);
+        $ivaAfil = \App\Services\IvaService::calcular($costoAfiliacion, $tieneIva);
 
         // ── Totales de cada registro ─────────────────────────────────────────────
-        $totalAfil = $costoAfiliacion; // afiliación: solo costo_afiliacion (sin admon, sin SS)
+        $totalAfil = $costoAfiliacion + $ivaAfil; // afiliación: costo + IVA (sin admon, sin SS)
         $totalPlan = $totalSS + $admon + $adminAsesor + $seguro + $iva
                    + (int)($validated['otros_admon'] ?? 0);
 
@@ -2209,7 +2201,7 @@ class FacturacionController extends Controller
             'admin_asesor'     => 0,
             'seguro'           => 0,
             'afiliacion'       => $costoAfiliacion,
-            'iva'              => 0,
+            'iva'              => $ivaAfil,
             'mora'             => 0,
             'total'            => max(0, $totalAfil),
             'dist_admon'       => $distAdmon,
@@ -3648,10 +3640,8 @@ class FacturacionController extends Controller
         // ── Pre-calcular mora estimada por contrato en lote ──
         $moraPorContrato = [];
         $filasMora = [];
-        $ivaClientes = DB::table('clientes')
-            ->whereIn('cedula', $contratos->pluck('cedula'))
-            ->pluck('iva', 'cedula')
-            ->toArray();
+        // IVA por cédula: cliente marcado o empresa marcada (ver IvaService)
+        $ivaClientes = \App\Services\IvaService::mapaPorCedulas($contratos->pluck('cedula'));
 
         foreach ($contratos as $c) {
             $fact = $facturasExistentes->get($c->id);
@@ -3705,7 +3695,7 @@ class FacturacionController extends Controller
                 $diasCotizar = (int) $c->fecha_retiro_pendiente->day;
             }
 
-            $ivaFlag = $ivaClientes[$c->cedula] ?? null;
+            $ivaFlag = (bool) ($ivaClientes[$c->cedula] ?? false);
             $cotizCalc = $c->calcularCotizacion($diasCotizar, $ivaFlag);
             $vSS = (int)($cotizCalc['ss'] ?? 0);
             if ($vSS <= 0) continue;
@@ -3736,7 +3726,7 @@ class FacturacionController extends Controller
             }
         }
 
-        $items = $contratos->map(function ($c) use ($mes, $anio, $facturasExistentes, $facturasRetiro0, $admonRetiroCompleta, $r100, $aliadoId, $moraPorContrato) {
+        $items = $contratos->map(function ($c) use ($mes, $anio, $facturasExistentes, $facturasRetiro0, $admonRetiroCompleta, $r100, $aliadoId, $moraPorContrato, $ivaClientes) {
             $fact         = $facturasExistentes->get($c->id);
             $factRetiro0  = $facturasRetiro0->get($c->id);
             $nombre = $c->cliente?->nombre_completo
@@ -3855,23 +3845,30 @@ class FacturacionController extends Controller
                 $vTot = 0;
                 $estado = 'sin_factura';
             } elseif ($esIndActPrimerMes) {
-                $tieneIva = $c->cliente ? (strtoupper(trim($c->cliente->iva ?? '')) === 'SI') : false;
+                $tieneIva = (bool) ($ivaClientes[$c->cedula] ?? false);
                 $cotiz = $c->calcularCotizacion($diasCotizar, $tieneIva);
                 $vEps  = $r100($cotiz['eps']??0);
                 $vArl  = $r100($cotiz['arl']??0);
                 $vAFP  = $r100($cotiz['pen']??0);
                 $vCaja = $r100($cotiz['caja']??0);
-                $vIva  = $r100($cotiz['iva']??0);
+                // IVA: admon (ya viene en $cotiz) + costo de afiliación
+                $vIva  = $r100($cotiz['iva']??0)
+                       + \App\Services\IvaService::calcular((int)($c->costo_afiliacion ?? 0), $tieneIva);
                 $vSS   = $r100($cotiz['ss']);
                 $vAdm  = (int)(($c->administracion??0) + ($c->admon_asesor??0));
                 $vTot  = $vSS + $vAdm + $vIva + (int)(($c->costo_afiliacion ?? 0) + ($c->seguro ?? 0)) + $vMora;
                 $estado = 'sin_factura';
             } elseif ($esAfil) {
-                $vEps = $vArl = $vAFP = $vCaja = $vIva = $vAdm = 0;
-                $vTot = (int)(($c->costo_afiliacion ?? 0) + ($c->seguro ?? 0));
+                $vEps = $vArl = $vAFP = $vCaja = $vAdm = 0;
+                // El IVA de una afiliación grava el costo de afiliación
+                $vIva = \App\Services\IvaService::calcular(
+                    (int)($c->costo_afiliacion ?? 0),
+                    (bool) ($ivaClientes[$c->cedula] ?? false)
+                );
+                $vTot = (int)(($c->costo_afiliacion ?? 0) + ($c->seguro ?? 0)) + $vIva;
                 $estado = 'sin_factura';
             } else {
-                $tieneIva = $c->cliente ? (strtoupper(trim($c->cliente->iva ?? '')) === 'SI') : false;
+                $tieneIva = (bool) ($ivaClientes[$c->cedula] ?? false);
                 $cotiz = $c->calcularCotizacion($diasCotizar, $tieneIva);
                 $vEps  = $r100($cotiz['eps']  ?? 0);
                 $vArl  = $r100($cotiz['arl']  ?? 0);

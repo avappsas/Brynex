@@ -2,11 +2,10 @@
 
 namespace App\Services;
 
-use App\Models\ConfiguracionBrynex;
 use App\Models\Contrato;
 use App\Models\Factura;
+use App\Services\IvaService;
 use App\Services\MoraClienteService;
-use Illuminate\Support\Facades\DB;
 
 /**
  * Calcula cuánto debe pagar un contrato en un mes/año dado, cuando todavía NO ha sido
@@ -91,15 +90,13 @@ class CobroContratoService
             $admon       = ($esAfiliacion && !$esIndActPrimerMes) ? 0 : (int) ($contrato->administracion ?? 0);
             $admonAsesor = ($esAfiliacion && !$esIndActPrimerMes) ? 0 : (int) ($contrato->admon_asesor ?? 0);
 
-            // IVA
-            $iva = 0;
-            if (!$esAfiliacion || $esIndActPrimerMes) {
-                $clienteIva = DB::table('clientes')->where('cedula', $contrato->cedula)->value('iva');
-                if (strtoupper(trim($clienteIva ?? '')) === 'SI') {
-                    $cfgIva = ConfiguracionBrynex::porcentajeIva();
-                    $iva    = (int) round(($admon + $admonAsesor) * $cfgIva / 100);
-                }
-            }
+            // IVA — grava administración y costo de afiliación (ver IvaService)
+            $iva = IvaService::deFactura(
+                IvaService::aplicaContrato($contrato),
+                $admon,
+                $admonAsesor,
+                $afiliacion
+            );
 
             $total = $calcSS['ss'] + $admon + $admonAsesor + $seguro + $afiliacion + $iva;
         }

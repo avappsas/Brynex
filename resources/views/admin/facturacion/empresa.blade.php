@@ -473,15 +473,18 @@ if (!$fact) {
         $vArl  = $r100($cotiz['arl']??0);
         $vPen  = $r100($cotiz['pen']??0);
         $vCaja = $r100($cotiz['caja']??0);
-        $vIva  = $r100($cotiz['iva']??0);
+        // IVA: admon (ya viene en $cotiz) + costo de afiliación
+        $vIva  = $r100($cotiz['iva']??0)
+               + \App\Services\IvaService::calcular((int)($c->costo_afiliacion ?? 0), (bool)($c->tiene_iva ?? false));
         $vSS   = $r100($cotiz['ss']);
         // admon ya calculado arriba desde contrato
         $vTot  = $vSS + $vAdm + $vIva + (int)(($c->costo_afiliacion ?? 0) + ($c->seguro ?? 0));
     } elseif ($esAfil) {
-        // Afiliación pura (I VENC, empresa): SS=0, admon=0
+        // Afiliación pura (I VENC, empresa): SS=0, admon=0 — el IVA grava el costo de afiliación
         $vEps  = 0; $vArl  = 0; $vPen  = 0; $vCaja = 0;
-        $vSS   = 0; $vIva  = 0; $vAdm  = 0;
-        $vTot  = (int)(($c->costo_afiliacion ?? 0) + ($c->seguro ?? 0));
+        $vSS   = 0; $vAdm  = 0;
+        $vIva  = \App\Services\IvaService::calcular((int)($c->costo_afiliacion ?? 0), (bool)($c->tiene_iva ?? false));
+        $vTot  = (int)(($c->costo_afiliacion ?? 0) + ($c->seguro ?? 0)) + $vIva;
     } elseif ($esIngresoFuturo) {
         // Ingreso en mes futuro: el contrato aún no inicia → todo en 0
         $vEps = $vArl = $vPen = $vCaja = $vIva = $vAdm = $vSS = 0;

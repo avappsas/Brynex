@@ -6,7 +6,6 @@ use App\Models\BaseModel;
 use App\Models\Factura;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Support\Facades\DB;
 use App\Models\ConfiguracionBrynex;
 use App\Services\UpcAdicionalService;
 
@@ -294,19 +293,13 @@ class Contrato extends BaseModel
         $seguro = (float) ($this->seguro ?? 0);
         $admon  = (float) ($this->administracion ?? 0);
 
-        // IVA solo sobre la administración, solo si el cliente tiene iva=SI
+        // IVA solo sobre la administración (la afiliación se grava aparte, en el
+        // controlador: este método solo cotiza planilla).
         // Admon, seguro e IVA son cargos fijos mensuales: NO se prorratean
         // $ivaCliente: pre-cargado por el controller (evita N+1).
-        // Si viene null, consultar la BD como antes (compatibilidad).
-        $tieneIva = $ivaCliente;
-        if ($tieneIva === null && $this->cedula) {
-            $iva = DB::table('clientes')
-                ->where('cedula', $this->cedula)
-                ->value('iva');
-            $tieneIva = strtoupper(trim($iva ?? '')) === 'SI';
-        }
-        $pctIva = $tieneIva ? ConfiguracionBrynex::porcentajeIva() : 0;
-        $iva    = $tieneIva ? round($admon * $pctIva / 100) : 0;
+        // Si viene null, se resuelve con la regla completa (cliente o su empresa).
+        $tieneIva = $ivaCliente ?? \App\Services\IvaService::aplicaContrato($this);
+        $iva      = \App\Services\IvaService::calcular($admon, $tieneIva);
 
         $total = $ss + $seguro + $admon + $iva;
 

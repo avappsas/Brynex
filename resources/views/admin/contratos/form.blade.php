@@ -2974,6 +2974,9 @@ const FC_FECHA_ING_ANO = {{ $contrato->fecha_ingreso ? $contrato->fecha_ingreso-
 const FC_ES_INDEP      = {{ $contrato->tipoModalidad?->esIndependiente() ? 'true' : 'false' }};
 const FC_TIPO_MODALIDAD_ID = {{ (int)($contrato->tipo_modalidad_id ?? 0) }};
 const FC_COSTO_AFIL    = {{ (int)($contrato->costo_afiliacion ?? 0) }};
+// IVA: cliente marcado con iva=SI, o cliente de una empresa marcada (ver IvaService)
+const FC_TIENE_IVA     = {{ ($esEdicion && \App\Services\IvaService::aplicaContrato($contrato)) ? 'true' : 'false' }};
+const FC_IVA_PCT       = {{ \App\Models\ConfiguracionBrynex::porcentajeIva() }};
 const FC_ARL_NIVEL     = {!! json_encode($contrato->n_arl ?? '') !!};
 const FC_DIST_DEFAULTS = {
     asesor:    {{ (int)($contrato->asesor?->comision_afil_valor ?? 0) }},
@@ -2998,6 +3001,8 @@ if (typeof MF !== 'undefined' && FC_CONTRATO_ID) {
         esIndependiente:   FC_ES_INDEP,
         tipoModalidadId:   FC_TIPO_MODALIDAD_ID,
         costoAfiliacion:   FC_COSTO_AFIL,
+        tieneIva:          FC_TIENE_IVA,
+        ivaPct:            FC_IVA_PCT,
         arlNivel:          FC_ARL_NIVEL,
         salarioMinimo:     SALARIO_MINIMO,
         distDefaults:      FC_DIST_DEFAULTS,
