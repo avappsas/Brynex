@@ -436,6 +436,7 @@ Route::middleware('auth')->group(function () {
             Route::get ('/api-operador/estado',    [$pa, 'estado'])   ->name('api_operador.estado');
             Route::post('/api-operador/liquidar',  [$pa, 'liquidar']) ->name('api_operador.liquidar');
             Route::post('/api-operador/liquidar-independiente', [$pa, 'liquidarIndependiente'])->name('api_operador.liquidar_independiente');
+            Route::post('/api-operador/autocorregir', [$pa, 'autocorregir'])->name('api_operador.autocorregir');
             Route::get ('/api-operador/{codigoPlanilla}/inconsistencias', [$pa, 'inconsistencias'])
                 ->whereNumber('codigoPlanilla')->name('api_operador.inconsistencias');
 
@@ -487,6 +488,8 @@ Route::middleware('auth')->group(function () {
             Route::get('/empresas-clientes',      [$ic, 'empresasClientes'])     ->name('empresas_clientes');
             Route::get('/por-entidades',          [$ic, 'porEntidades'])         ->name('por_entidades');
             Route::get('/retirados-mes',          [$ic, 'retiradosMes'])         ->name('retirados_mes');
+            Route::get('/validacion-cierre',      [$ic, 'validacionCierre'])     ->name('validacion_cierre')
+                ->middleware('permiso:brynex_cierre.ver');
             Route::get('/incapacidades',          [$ic, 'resumenIncapacidades']) ->name('incapacidades');
             Route::get('/tareas',                 [$ic, 'resumenTareas'])        ->name('tareas');
             Route::get('/financiero',             [$ic, 'estadoFinanciero'])     ->name('financiero');

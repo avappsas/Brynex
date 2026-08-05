@@ -259,6 +259,13 @@ class ModulosPermisosSeeder extends Seeder
             ['brynex_backup', 'Backup de la BD', 'brynex', '💾', null, [
                 'ejecutar' => ['Generar y descargar backup', [], true, true],
             ]],
+            // Cuadre de cierre: qué vigentes se quedaron por fuera de la
+            // planilla. Es solo de BryNex a propósito — una razón social
+            // agrupa varias empresas cliente, así que ver "faltan 239" sin
+            // ese contexto siembra dudas en el aliado en vez de resolverlas.
+            ['brynex_cierre', 'Validación de cierre', 'brynex', '🧾', 'admin.informes.validacion_cierre', [
+                'ver' => ['Ver pendientes de planilla', [], false, true],
+            ]],
         ];
     }
 

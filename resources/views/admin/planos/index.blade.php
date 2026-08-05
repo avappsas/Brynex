@@ -1224,6 +1224,11 @@
 
                     {{-- Resultado de la última liquidación de este periodo --}}
                     <div id="enlace-ultima" style="display:none;margin-top:.6rem"></div>
+
+                    {{-- Cuadre del período: vigentes que aún no entran a ninguna
+                         planilla. Informativo — mientras el mes corre es normal
+                         que haya tandas por liquidar. --}}
+                    <div id="enlace-pendientes" style="display:none;margin-top:.6rem"></div>
                 </div>
 
                 {{-- Descargas manuales: colapsadas por defecto en cuanto se
@@ -1502,6 +1507,23 @@
         <div class="modal-body">
             <div id="enlace-errores-resumen" style="font-size:.78rem;font-weight:700;color:#92400e;margin-bottom:.75rem"></div>
 
+            {{-- Errores que Enlace marca como autocorregibles: se muestra a quién
+                 y qué se le va a cambiar antes de aceptar. --}}
+            <div id="enlace-autocorreccion" style="display:none;margin-bottom:.85rem;border:1px solid #bfdbfe;background:#eff6ff;border-radius:10px;padding:.75rem">
+                <div style="font-size:.78rem;font-weight:800;color:#1e40af;margin-bottom:.5rem">
+                    🔁 Enlace puede corregir esto automáticamente
+                </div>
+                <div id="enlace-autocorreccion-lista" style="display:flex;flex-direction:column;gap:.4rem;margin-bottom:.6rem"></div>
+                <div style="font-size:.72rem;color:#1e3a8a;margin-bottom:.6rem">
+                    El mismo cambio se guarda en Brynex (plano del período, contratos vigentes y ficha del
+                    cliente), para que no se repita el mes entrante ni en el próximo contrato.
+                </div>
+                <button type="button" id="btn-autocorregir" onclick="autocorregirEnlace()"
+                        style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:.45rem .85rem;font-size:.76rem;font-weight:700;cursor:pointer">
+                    Autocorregir en Enlace y en Brynex
+                </button>
+            </div>
+
             <div style="max-height:52vh;overflow:auto;border:1px solid #e2e8f0;border-radius:10px">
                 <table style="width:100%;border-collapse:collapse;font-size:.76rem">
                     <thead>
@@ -1681,6 +1703,7 @@ const CTX = {
         enlaceEstado   : '{{ route('admin.planos.api_operador.estado') }}',
         enlaceLiquidar : '{{ route('admin.planos.api_operador.liquidar') }}',
         enlaceLiquidarIndependiente: '{{ route('admin.planos.api_operador.liquidar_independiente') }}',
+        enlaceAutocorregir: '{{ route('admin.planos.api_operador.autocorregir') }}',
     },
     // Tipos de modalidad presentes en los planos cargados actualmente
     // Array de objetos: { id: int, nombre: string }
@@ -2458,6 +2481,8 @@ async function cargarEstadoEnlace() {
         // Si ya se liquidó este periodo, mostrarlo en vez de arrancar en blanco.
         const yaLiquidado = data.operadores.find(o => o.planilla);
         if (yaLiquidado) renderEstadoEnlace(yaLiquidado.planilla, yaLiquidado.nombre);
+
+        pintarPendientesCierre(data.pendientes);
     } catch (e) {
         // Silencioso: la integración es opcional, las descargas siguen sirviendo.
         console.warn('No se pudo consultar el estado de los operadores:', e);
@@ -2466,6 +2491,28 @@ async function cargarEstadoEnlace() {
 
 function avisoEnlace(bg, borde, color, html) {
     return `<div style="background:${bg};border:1px solid ${borde};border-radius:10px;padding:.7rem .85rem;font-size:.76rem;color:${color};line-height:1.4">${html}</div>`;
+}
+
+// Cuadre del período: cuántos contratos vigentes de esta razón social todavía
+// no entran a ninguna planilla. Es lo que Enlace reclama con la advertencia
+// "no se reportó novedad de retiro y no se encuentra reportado en esta
+// planilla". Informativo: al liquidar la última tanda debería quedar en cero.
+function pintarPendientesCierre(p) {
+    const cont = document.getElementById('enlace-pendientes');
+    if (!cont || !p) return;
+
+    if (!p.total) {
+        cont.style.display = '';
+        cont.innerHTML = avisoEnlace('#f0fdf4', '#bbf7d0', '#166534',
+            '✅ <strong>Sin pendientes.</strong> Todos los contratos vigentes de esta razón social ya están en una planilla del período.');
+        return;
+    }
+
+    cont.style.display = '';
+    cont.innerHTML = avisoEnlace('#fffbeb', '#fde68a', '#92400e',
+        `📋 Quedan <strong>${p.total}</strong> contrato(s) vigente(s) sin planilla en este período.` +
+        ` Si todavía faltan tandas por facturar es normal; si esta era la última, son retiros sin registrar.` +
+        (p.url ? `<br><a href="${p.url}" target="_blank" rel="noopener" style="color:#92400e;font-weight:700;text-decoration:underline">Ver quiénes son →</a>` : ''));
 }
 
 // Pinta el resultado guardado de una liquidación anterior.
@@ -2550,6 +2597,8 @@ async function liquidarEnEnlace(operadorId, operadorNombre) {
             (data.fecha_limite ? `<br>Fecha límite: ${String(data.fecha_limite).substring(0, 10)}` : '') +
             (data.url_pago ? `<br><a href="${data.url_pago}" target="_blank" rel="noopener" style="color:#15803d;font-weight:700;text-decoration:underline">Ir a pagar en PSE →</a>` : ''));
 
+        pintarPendientesCierre(data.pendientes);
+
         mostrarToast(`Planilla ${data.numero_planilla} liquidada en ${operadorNombre}.`, 'success');
     } catch (e) {
         cont.innerHTML = avisoEnlace('#fef2f2', '#fecaca', '#991b1b',
@@ -2633,15 +2682,19 @@ function verErroresEnlace() {
         filas.push(['Empresa', '', e.descripcion || e.mensaje || JSON.stringify(e)]);
     });
 
+    // Enlace identifica al cotizante en `identificacion` ("CC1062304870"),
+    // no en campos separados de tipo y número.
+    const refCotizante = e => e.identificacion || (e.linea ? 'Línea ' + e.linea : '');
+
     (data.errores_cotizante || []).forEach(e => {
-        const doc = [e.tipoDocumento, e.numeroDocumento].filter(Boolean).join(' ');
-        filas.push(['Cotizante', doc || (e.linea ? 'Línea ' + e.linea : ''), e.descripcion || e.mensaje || JSON.stringify(e)]);
+        filas.push(['Cotizante', refCotizante(e), e.descripcion || e.mensaje || JSON.stringify(e)]);
     });
 
     (data.advertencias || []).forEach(e => {
-        const doc = [e.tipoDocumento, e.numeroDocumento].filter(Boolean).join(' ');
-        filas.push(['Advertencia', doc, e.descripcion || e.mensaje || JSON.stringify(e)]);
+        filas.push(['Advertencia', refCotizante(e), e.descripcion || e.mensaje || JSON.stringify(e)]);
     });
+
+    pintarAutocorreccion(data);
 
     document.getElementById('enlace-errores-cuerpo').innerHTML = filas.length
         ? filas.map(([tipo, ref, desc]) => `
@@ -2656,6 +2709,107 @@ function verErroresEnlace() {
         `Código de planilla ${data.codigo_planilla} · ${data.total_errores} error(es)`;
 
     document.getElementById('modal-enlace-errores').classList.add('open');
+}
+
+// Errores que Enlace marca como autocorregibles: se listan a quién y qué
+// se le cambia, con el botón para aceptarlo.
+function pintarAutocorreccion(data) {
+    const caja  = document.getElementById('enlace-autocorreccion');
+    const lista = document.getElementById('enlace-autocorreccion-lista');
+    const correcciones = data.correcciones || [];
+
+    if (!correcciones.length || !data.codigo_planilla) {
+        caja.style.display = 'none';
+        return;
+    }
+
+    lista.innerHTML = correcciones.map(c => {
+        const quien = [c.nombre, c.identificacion].filter(Boolean).join(' · ') || 'Cotizante sin identificar';
+
+        const cambio = c.aplicable
+            ? `<span style="color:#334155">${c.etiqueta}: </span>` +
+              `<span style="text-decoration:line-through;color:#94a3b8">${c.actual?.nombre ?? '—'}</span>` +
+              `<span style="color:#334155"> → </span><strong style="color:#1d4ed8">${c.nueva?.nombre ?? '—'}</strong>`
+            : `<span style="color:#92400e">${c.motivo || 'Enlace lo corrige, pero hay que ajustarlo a mano en Brynex.'}</span>`;
+
+        return `<div style="font-size:.75rem;line-height:1.35">
+                    <strong style="color:#0f172a">${quien}</strong><br>${cambio}
+                </div>`;
+    }).join('');
+
+    const aplicables = correcciones.filter(c => c.aplicable).length;
+    document.getElementById('btn-autocorregir').textContent = aplicables === correcciones.length
+        ? 'Autocorregir en Enlace y en Brynex'
+        : `Autocorregir en Enlace (${aplicables} de ${correcciones.length} se guardan en Brynex)`;
+
+    caja.dataset.codigoPlanilla = data.codigo_planilla;
+    caja.style.display = 'block';
+}
+
+// Acepta la autocorrección: Enlace corrige la planilla y Brynex guarda el
+// mismo cambio en el plano y en los contratos vigentes del cotizante.
+async function autocorregirEnlace() {
+    const caja = document.getElementById('enlace-autocorreccion');
+    const btn  = document.getElementById('btn-autocorregir');
+    const codigoPlanilla = caja.dataset.codigoPlanilla;
+
+    if (!codigoPlanilla) return;
+
+    const orig = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Corrigiendo…';
+
+    try {
+        const resp = await fetch(CTX.routes.enlaceAutocorregir, {
+            method : 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept'      : 'application/json',
+                'X-CSRF-TOKEN': CTX.csrfToken,
+            },
+            body: JSON.stringify({ codigo_planilla: Number(codigoPlanilla) }),
+        });
+
+        const data = await resp.json();
+
+        if (!resp.ok || !data.success) {
+            mostrarToast(data.message || 'No se pudo autocorregir la planilla.', 'error');
+            return;
+        }
+
+        const ap = data.aplicado || {};
+        if (ap.planos || ap.contratos || ap.clientes) {
+            mostrarToast(
+                `Brynex actualizado: ${ap.planos} plano(s), ${ap.contratos} contrato(s) y ${ap.clientes} cliente(s).`,
+                'success');
+        }
+
+        if (!data.liquidada) {
+            // Quedan errores que Enlace no puede corregir: se repinta el modal.
+            window._enlaceErrores = data;
+            verErroresEnlace();
+            mostrarToast(data.message, 'error');
+            return;
+        }
+
+        cerrarModal('modal-enlace-errores');
+        mostrarToast(`Planilla ${data.numero_planilla} liquidada.`, 'success');
+
+        const cont = document.getElementById('enlace-ultima');
+        if (cont) {
+            cont.innerHTML = avisoEnlace('#f0fdf4', '#bbf7d0', '#166534',
+                `<strong>✅ Planilla ${data.numero_planilla} liquidada tras la autocorrección.</strong>` +
+                (data.valor_total ? `<br>Total a pagar: <strong>$ ${fmtNum(Math.round(data.valor_total))}</strong>` : '') +
+                (data.valor_mora ? ` (mora: $ ${fmtNum(Math.round(data.valor_mora))})` : '') +
+                (data.fecha_limite ? `<br>Fecha límite: ${String(data.fecha_limite).substring(0, 10)}` : '') +
+                (data.url_pago ? `<br><a href="${data.url_pago}" target="_blank" rel="noopener" style="color:#15803d;font-weight:700;text-decoration:underline">Ir a pagar en PSE →</a>` : ''));
+        }
+    } catch (e) {
+        mostrarToast('Error de conexión al autocorregir.', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = orig;
+    }
 }
 
 // ── Descargar Aportes en Línea (Excel AEL) ──────────────────────────

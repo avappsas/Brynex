@@ -599,25 +599,7 @@ class SuaporteApiService
                 ];
             }
 
-            $data = $response->json();
-            $validacion = $data['validacionPlanillas'][0] ?? [];
-
-            $numeroPlanilla = (int) ($validacion['numeroPlanilla'] ?? 0);
-            $errores = (int) ($validacion['cantidadErroresCotizante'] ?? 0)
-                            + (int) ($validacion['cantidadErroresEmpresa'] ?? 0);
-
-            return [
-                'success' => true,
-                'liquidada' => $numeroPlanilla > 0,
-                'estado_validacion' => $data['estadoValidacion'] ?? null,
-                'codigo_planilla' => (int) ($validacion['codigoPlanilla'] ?? 0),
-                'numero_planilla' => $numeroPlanilla,
-                'total_errores' => $errores,
-                'errores_cotizante' => $validacion['erroresCotizantePlanilla'] ?? [],
-                'errores_empresa' => $validacion['erroresEmpresaPlanilla'] ?? [],
-                'advertencias' => $validacion['advertenciasPlanilla'] ?? [],
-                'response' => $data,
-            ];
+            return $this->interpretarValidacion($response->json());
         } catch (\Exception $e) {
             Log::error('Suaporte: excepción al validar planilla', [
                 'message' => $e->getMessage(),
@@ -626,6 +608,86 @@ class SuaporteApiService
 
             return ['success' => false, 'message' => 'Error al enviar el archivo plano: '.$e->getMessage()];
         }
+    }
+
+    /**
+     * Pide a Enlace que corrija los errores que su propia validación marcó
+     * como `autocorreccion: "Si"` — típicamente que el cotizante esté
+     * afiliado a una administradora distinta de la que trae el archivo.
+     *
+     * Enlace NO autocorrige advertencias, solo errores de cotizante o de
+     * aportante, y devuelve el mismo DTO de la validación: si quedó limpia
+     * viene `numeroPlanilla` y el flujo sigue igual hacia totales y pago.
+     *
+     * Exige la misma sesión de la validación (los 9 headers), así que hay
+     * que autenticar y autorizar sobre el aportante dueño de la planilla
+     * antes de llamarlo.
+     */
+    public function corregirPlanilla(int $codigoPlanilla, array $opciones = []): array
+    {
+        try {
+            $response = Http::timeout($this->timeout)
+                ->withHeaders($this->headers)
+                ->post("{$this->apiUrl}/generadorPlanillas/v1/planillas/{$codigoPlanilla}/correccion", [
+                    'codigoPlanilla' => $codigoPlanilla,
+                    'tipoArchivo' => $opciones['tipoArchivo'] ?? 'I',
+                    'planillaUGPP' => (bool) ($opciones['planillaUGPP'] ?? false),
+                    'planillaNSoloNovedades' => (bool) ($opciones['planillaNSoloNovedades'] ?? false),
+                    // El corrector no toca advertencias: el spec exige false.
+                    'corregirInconsistenciaInformativa' => false,
+                    'validarIngresoRetiro' => (bool) ($opciones['validarIngresoRetiro'] ?? true),
+                ]);
+
+            if (! $response->successful()) {
+                Log::error('Suaporte: corrección de planilla fallida', [
+                    'status' => $response->status(),
+                    'codigo_planilla' => $codigoPlanilla,
+                    'body' => $response->body(),
+                ]);
+
+                return [
+                    'success' => false,
+                    'message' => $this->mensajeError($response, 'Enlace no pudo autocorregir la planilla.'),
+                    'response' => $response->json(),
+                ];
+            }
+
+            return $this->interpretarValidacion($response->json());
+        } catch (\Exception $e) {
+            Log::error('Suaporte: excepción al corregir planilla', [
+                'message' => $e->getMessage(),
+                'codigo_planilla' => $codigoPlanilla,
+            ]);
+
+            return ['success' => false, 'message' => 'Error al autocorregir la planilla: '.$e->getMessage()];
+        }
+    }
+
+    /**
+     * Normaliza el `RespuestaValidadorPlanillaDTO`, que es el mismo cuerpo
+     * que devuelven la validación y la corrección.
+     */
+    private function interpretarValidacion(?array $data): array
+    {
+        $data ??= [];
+        $validacion = $data['validacionPlanillas'][0] ?? [];
+
+        $numeroPlanilla = (int) ($validacion['numeroPlanilla'] ?? 0);
+        $errores = (int) ($validacion['cantidadErroresCotizante'] ?? 0)
+                        + (int) ($validacion['cantidadErroresEmpresa'] ?? 0);
+
+        return [
+            'success' => true,
+            'liquidada' => $numeroPlanilla > 0,
+            'estado_validacion' => $data['estadoValidacion'] ?? null,
+            'codigo_planilla' => (int) ($validacion['codigoPlanilla'] ?? 0),
+            'numero_planilla' => $numeroPlanilla,
+            'total_errores' => $errores,
+            'errores_cotizante' => $validacion['erroresCotizantePlanilla'] ?? [],
+            'errores_empresa' => $validacion['erroresEmpresaPlanilla'] ?? [],
+            'advertencias' => $validacion['advertenciasPlanilla'] ?? [],
+            'response' => $data,
+        ];
     }
 
     /**

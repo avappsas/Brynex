@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\{OperadorCredencial, OperadorPlanilla, OperadorPlanillaApi, RazonSocial};
+use App\Services\CorreccionEnlaceService;
 use App\Services\PlanoPilaTxtService;
 use App\Services\SuaporteApiService;
 use Illuminate\Http\Request;
@@ -76,7 +77,38 @@ class PlanillaApiController extends Controller
             'disponible' => count($operadores) > 0,
             'motivo'     => $operadores ? null : 'Ninguna razón social tiene credenciales de operador configuradas.',
             'operadores' => $operadores,
+            'pendientes' => $this->pendientesDelPeriodo(
+                $aliadoId, (int) $validated['razon_social_id'],
+                (int) $validated['mes'], (int) $validated['anio']
+            ),
         ]);
+    }
+
+    /**
+     * Cuántos contratos vigentes de la razón social todavía no entran a
+     * ninguna planilla del período. Es lo que Enlace reclama con la
+     * advertencia `eo.val.2.270`, y sirve para saber, al liquidar la última
+     * tanda, si de verdad quedó todo cubierto. Ver CierrePeriodoService.
+     *
+     * Solo para BryNex, igual que el informe: una razón social agrupa varias
+     * empresas cliente, así que el número suelto siembra dudas en el aliado.
+     * Devuelve null cuando no aplica y la vista no pinta nada.
+     */
+    private function pendientesDelPeriodo(int $aliadoId, int $razonSocialId, int $mes, int $anio): ?array
+    {
+        if (!\Illuminate\Support\Facades\Auth::user()?->can('brynex_cierre.ver')) {
+            return null;
+        }
+
+        $total = (new \App\Services\CierrePeriodoService())
+            ->contarPendientes($aliadoId, $razonSocialId, $mes, $anio);
+
+        return [
+            'total' => $total,
+            'url'   => route('admin.informes.validacion_cierre', [
+                'mes' => $mes, 'anio' => $anio, 'razon_social_id' => $razonSocialId,
+            ]),
+        ];
     }
 
     /**
@@ -222,6 +254,9 @@ class PlanillaApiController extends Controller
                 'response_log'    => $resultado['response'] ?? null,
             ]);
 
+            $correcciones = (new CorreccionEnlaceService())
+                ->interpretar($resultado['errores_cotizante'] ?? [], $aliadoId);
+
             return response()->json([
                 'success'          => true,
                 'liquidada'        => false,
@@ -230,6 +265,8 @@ class PlanillaApiController extends Controller
                 'errores_cotizante'=> $resultado['errores_cotizante'] ?? [],
                 'errores_empresa'  => $resultado['errores_empresa'] ?? [],
                 'advertencias'     => $resultado['advertencias'] ?? [],
+                'correcciones'     => $correcciones,
+                'razon_social_id'  => $rs->id,
                 'message'          => 'El archivo tiene errores. Corríjalos y vuelva a liquidar.',
             ]);
         }
@@ -254,6 +291,9 @@ class PlanillaApiController extends Controller
             'fecha_limite'    => $resultado['totales']['fecha_limite'] ?? null,
             'url_pago'        => $resultado['url_pago'] ?? null,
             'advertencias'    => $resultado['advertencias'] ?? [],
+            'pendientes'      => $this->pendientesDelPeriodo(
+                $aliadoId, (int) $rs->id, (int) $validated['mes'], (int) $validated['anio']
+            ),
             'message'         => "Planilla {$resultado['numero_planilla']} liquidada en Enlace Operativo.",
         ]);
     }
@@ -443,6 +483,9 @@ class PlanillaApiController extends Controller
                 'response_log'    => $resultado['response'] ?? null,
             ]);
 
+            $correcciones = (new CorreccionEnlaceService())
+                ->interpretar($resultado['errores_cotizante'] ?? [], $aliadoId);
+
             return response()->json([
                 'success'          => true,
                 'liquidada'        => false,
@@ -450,6 +493,8 @@ class PlanillaApiController extends Controller
                 'total_errores'    => $resultado['total_errores'] ?? 0,
                 'errores_cotizante'=> $resultado['errores_cotizante'] ?? [],
                 'errores_empresa'  => $resultado['errores_empresa'] ?? [],
+                'correcciones'     => $correcciones,
+                'razon_social_id'  => $rs->id,
                 'message'          => 'El archivo tiene errores. Corríjalos y vuelva a liquidar.',
             ]);
         }
@@ -477,6 +522,138 @@ class PlanillaApiController extends Controller
     }
 
     /**
+     * Le pide a Enlace que corrija los errores que su validación marcó como
+     * autocorregibles y refleja el mismo cambio en Brynex.
+     *
+     * Es una acción aparte y explícita, no un paso automático de liquidar():
+     * corregir solo del lado de Enlace dejaría el dato malo en el contrato y
+     * el error volvería el mes siguiente, así que el usuario ve primero a
+     * quién y qué se le va a cambiar (ver `correcciones` en liquidar()).
+     */
+    public function autocorregir(Request $request)
+    {
+        $aliadoId = session('aliado_id_activo');
+
+        $validated = $request->validate([
+            'codigo_planilla' => 'required|integer',
+            'solo_novedades'  => 'boolean',
+        ]);
+
+        $registro = OperadorPlanillaApi::where('aliado_id', $aliadoId)
+            ->where('api_planilla_id', $validated['codigo_planilla'])
+            ->latest('id')
+            ->first();
+
+        if (!$registro) {
+            return response()->json(['success' => false, 'message' => 'Planilla no encontrada.'], 404);
+        }
+
+        if ($registro->estado === 'validada') {
+            return response()->json(['success' => false, 'message' => 'Esta planilla ya está liquidada.'], 422);
+        }
+
+        // Las correcciones se leen de la validación original: son las que el
+        // usuario vio en pantalla antes de aceptar.
+        $erroresPrevios = $registro->response_log['validacionPlanillas'][0]['erroresCotizantePlanilla'] ?? [];
+        $servicio       = new CorreccionEnlaceService();
+        $correcciones   = $servicio->interpretar($erroresPrevios, $aliadoId);
+
+        if (!$correcciones) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Esta planilla no tiene errores que Enlace pueda autocorregir.',
+            ], 422);
+        }
+
+        $sesion = $this->abrirSesion($registro, $aliadoId);
+
+        if (!$sesion['success']) {
+            return response()->json(['success' => false, 'message' => $sesion['message']], 422);
+        }
+
+        $resultado = $sesion['api']->corregirPlanilla((int) $validated['codigo_planilla'], [
+            'planillaNSoloNovedades' => (bool) ($validated['solo_novedades'] ?? false),
+            'tipoArchivo'            => 'I',
+        ]);
+
+        if (!($resultado['success'] ?? false)) {
+            return response()->json([
+                'success' => false,
+                'message' => $resultado['message'] ?? 'Enlace no pudo autocorregir la planilla.',
+            ], 422);
+        }
+
+        // Enlace ya corrigió su lado: se replica en Brynex aunque queden otros
+        // errores no autocorregibles, para no volver a arrastrar el dato malo.
+        $aplicado = $servicio->aplicarEnBrynex($correcciones, [
+            'aliado_id'       => $aliadoId,
+            'razon_social_id' => $registro->razon_social_id,
+            'n_plano'         => $registro->n_plano,
+            'mes'             => $registro->mes,
+            'anio'            => $registro->anio,
+            'plano_id'        => $registro->plano_id,
+        ]);
+
+        Log::info('Enlace API: planilla autocorregida', [
+            'aliado_id'       => $aliadoId,
+            'codigo_planilla' => $validated['codigo_planilla'],
+            'correcciones'    => count($aplicado['aplicadas']),
+            'planos'          => $aplicado['planos'],
+            'contratos'       => $aplicado['contratos'],
+            'clientes'        => $aplicado['clientes'],
+        ]);
+
+        if (!($resultado['liquidada'] ?? false)) {
+            $registro->update([
+                'estado'        => 'con_errores',
+                'mensaje_error' => "Quedan {$resultado['total_errores']} error(es) que Enlace no puede corregir.",
+                'response_log'  => $resultado['response'] ?? null,
+            ]);
+
+            return response()->json([
+                'success'          => true,
+                'liquidada'        => false,
+                'codigo_planilla'  => $resultado['codigo_planilla'] ?? null,
+                'total_errores'    => $resultado['total_errores'] ?? 0,
+                'errores_cotizante'=> $resultado['errores_cotizante'] ?? [],
+                'errores_empresa'  => $resultado['errores_empresa'] ?? [],
+                'advertencias'     => $resultado['advertencias'] ?? [],
+                'correcciones'     => $servicio->interpretar($resultado['errores_cotizante'] ?? [], $aliadoId),
+                'aplicado'         => $aplicado,
+                'message'          => "Quedan {$resultado['total_errores']} error(es) que Enlace no puede corregir.",
+            ]);
+        }
+
+        // Quedó limpia: faltan los totales y la URL de pago, que la corrección
+        // no devuelve.
+        $totales = $sesion['api']->consultarTotales($resultado['numero_planilla']);
+        $pago    = $sesion['api']->obtenerUrlPago($resultado['numero_planilla']);
+
+        $registro->update([
+            'estado'          => 'validada',
+            'numero_planilla' => $resultado['numero_planilla'],
+            'valor_total'     => $totales['total_pagar'] ?? null,
+            'url_pago'        => $pago['url_pago'] ?? null,
+            'mensaje_error'   => null,
+            'response_log'    => $resultado['response'] ?? null,
+        ]);
+
+        return response()->json([
+            'success'         => true,
+            'liquidada'       => true,
+            'numero_planilla' => $resultado['numero_planilla'],
+            'codigo_planilla' => $resultado['codigo_planilla'] ?? null,
+            'valor_total'     => $totales['total_pagar'] ?? null,
+            'valor_mora'      => $totales['valor_mora'] ?? null,
+            'fecha_limite'    => $totales['fecha_limite'] ?? null,
+            'url_pago'        => $pago['url_pago'] ?? null,
+            'advertencias'    => $resultado['advertencias'] ?? [],
+            'aplicado'        => $aplicado,
+            'message'         => "Planilla {$resultado['numero_planilla']} liquidada tras la autocorrección.",
+        ]);
+    }
+
+    /**
      * Detalle paginado de inconsistencias de una planilla con errores.
      * La validación solo devuelve las primeras 100 líneas.
      */
@@ -500,45 +677,14 @@ class PlanillaApiController extends Controller
             return response()->json(['success' => false, 'message' => 'Planilla no encontrada.'], 404);
         }
 
-        $rs = RazonSocial::where('aliado_id', $aliadoId)->find($validated['razon_social_id']);
-
-        // El operador sale del propio registro de la liquidación.
-        $operador = $this->operadoresConApi($aliadoId)
-            ->firstWhere('id', (int) $registro->operador_planilla_id);
-
-        if (!$rs || !$operador) {
-            return response()->json(['success' => false, 'message' => 'Configuración incompleta.'], 422);
-        }
-
-        $credencial = $this->credencial($aliadoId, $operador->id, (int) $rs->id);
-
-        if (!$credencial) {
-            return response()->json(['success' => false, 'message' => "Faltan credenciales de {$operador->nombre}."], 422);
-        }
-
-        $api = new SuaporteApiService([
-            'operador'      => $operador->codigo,
-            'usuario'       => $credencial->usuario,
-            'contrasena'    => $credencial->contrasena,
-            'clave_secreta' => $credencial->clave_secreta,
-        ]);
-
         // Las inconsistencias también exigen sesión + autorización.
-        $auth = $api->autenticar();
-        if (!$auth['success']) {
-            return response()->json(['success' => false, 'message' => $auth['message']], 422);
+        $sesion = $this->abrirSesion($registro, $aliadoId);
+
+        if (!$sesion['success']) {
+            return response()->json(['success' => false, 'message' => $sesion['message']], 422);
         }
 
-        $nit       = preg_replace('/\D/', '', (string) $rs->nit);
-        $aportante = $api->consultarAportante('NI', $nit);
-        if (!$aportante['success']) {
-            return response()->json(['success' => false, 'message' => $aportante['message']], 422);
-        }
-
-        $autorizacion = $api->autorizar($aportante['id'], 'NI', $nit);
-        if (!$autorizacion['success']) {
-            return response()->json(['success' => false, 'message' => $autorizacion['message']], 422);
-        }
+        $api = $sesion['api'];
 
         $resultado = $api->consultarInconsistencias(
             $codigoPlanilla,
@@ -550,6 +696,81 @@ class PlanillaApiController extends Controller
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────
+
+    /**
+     * Deja lista una sesión de Enlace autorizada sobre el aportante dueño de
+     * una liquidación ya registrada: login → aportante → autorización.
+     *
+     * El aportante es la razón social (NI) salvo en los independientes, donde
+     * cada contratista liquida con su propia cédula (ver liquidarIndependiente).
+     *
+     * @return array{success: bool, api?: SuaporteApiService, message?: string}
+     */
+    private function abrirSesion(OperadorPlanillaApi $registro, int $aliadoId): array
+    {
+        $rs = RazonSocial::where('aliado_id', $aliadoId)->find($registro->razon_social_id);
+
+        $operador = $this->operadoresConApi($aliadoId)
+            ->firstWhere('id', (int) $registro->operador_planilla_id);
+
+        if (!$rs || !$operador) {
+            return ['success' => false, 'message' => 'Configuración incompleta para esta planilla.'];
+        }
+
+        $credencial = $this->credencial($aliadoId, $operador->id, (int) $rs->id);
+
+        if (!$credencial) {
+            return ['success' => false, 'message' => "Faltan credenciales de {$operador->nombre}."];
+        }
+
+        if ($credencial->claveSecretaVencida()) {
+            return ['success' => false, 'message' => "La clave secreta de {$operador->nombre} venció."];
+        }
+
+        // Independiente: el aportante es el contratista, no la razón social.
+        $tipoDocumento = 'NI';
+        $documento     = preg_replace('/\D/', '', (string) $rs->nit);
+
+        if ($registro->plano_id) {
+            $plano = DB::table('planos')
+                ->where('id', $registro->plano_id)
+                ->where('aliado_id', $aliadoId)
+                ->first(['no_identifi', 'tipo_doc']);
+
+            if (!$plano) {
+                return ['success' => false, 'message' => 'No se encontró el registro del contratista.'];
+            }
+
+            $mapaDoc       = ['C' => 'CC', 'NIT' => 'CC', 'PT' => 'CE', 'NUIP' => 'CC'];
+            $doc           = strtoupper(trim($plano->tipo_doc ?? 'CC'));
+            $tipoDocumento = $mapaDoc[$doc] ?? ($doc ?: 'CC');
+            $documento     = preg_replace('/\D/', '', (string) $plano->no_identifi);
+        }
+
+        $api = new SuaporteApiService([
+            'operador'      => $operador->codigo,
+            'usuario'       => $credencial->usuario,
+            'contrasena'    => $credencial->contrasena,
+            'clave_secreta' => $credencial->clave_secreta,
+        ]);
+
+        $auth = $api->autenticar();
+        if (!$auth['success']) {
+            return ['success' => false, 'message' => $auth['message']];
+        }
+
+        $aportante = $api->consultarAportante($tipoDocumento, $documento);
+        if (!$aportante['success']) {
+            return ['success' => false, 'message' => $aportante['message']];
+        }
+
+        $autorizacion = $api->autorizar($aportante['id'], $tipoDocumento, $documento);
+        if (!$autorizacion['success']) {
+            return ['success' => false, 'message' => $autorizacion['message']];
+        }
+
+        return ['success' => true, 'api' => $api];
+    }
 
     /**
      * Operadores del aliado que corren sobre la plataforma Enlace Operativo

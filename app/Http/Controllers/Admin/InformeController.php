@@ -110,6 +110,12 @@ class InformeController extends Controller
             'tareas'                    => DB::table('tareas')->where('aliado_id',$aid)->whereNull('deleted_at')->whereIn('estado',['pendiente','en_gestion','en_espera'])->count(),
         ];
 
+        // Vigentes que aún no entran a la planilla del período. Solo BryNex, y
+        // solo se calcula si se va a mostrar: es la consulta más cara del hub.
+        $kpis['cierre_pendientes'] = Auth::user()->can('brynex_cierre.ver')
+            ? (new \App\Services\CierrePeriodoService())->pendientesTotal($aid, $mes, $anio)
+            : null;
+
         $esFinanciero = Auth::user()->can('informes.ver');
         if ($esFinanciero) {
             $kpis['ingresos_mes'] = DB::table('facturas')
@@ -433,6 +439,53 @@ class InformeController extends Controller
             'retirados','mes','anio',
             'opcRs','opcPlan','opcModalidad','opcMotivo','opcTipo',
             'fRs','fPlan','fModalidad','fMotivo','fTipo'
+        ));
+    }
+
+    /**
+     * Validación de cierre: qué contratos vigentes se quedaron por fuera de la
+     * planilla del período, por razón social, junto con cómo va la liquidación
+     * por API de cada una.
+     *
+     * Mientras el mes corre es normal tener pendientes —la nómina se liquida
+     * en tandas—; al cerrarlo, el que siga aquí es un retiro que nunca se
+     * registró. Ver CierrePeriodoService.
+     *
+     * Solo BryNex: una razón social agrupa varias empresas cliente, así que
+     * el conteo de faltantes sin ese contexto siembra dudas en el aliado.
+     */
+    public function validacionCierre(Request $request)
+    {
+        if (! Auth::user()->can('brynex_cierre.ver')) {
+            abort(403, 'No tienes permiso para «Ver pendientes de planilla (Validación de cierre)».');
+        }
+
+        $aid  = $this->aliadoId();
+        $mes  = (int) $request->input('mes',  now()->month);
+        $anio = (int) $request->input('anio', now()->year);
+        $rsId = $request->input('razon_social_id');
+
+        $servicio = new \App\Services\CierrePeriodoService();
+        $periodo  = $servicio->periodo($mes, $anio);
+        $resumen  = $servicio->resumen($aid, $mes, $anio);
+
+        // El detalle es pesado: solo se arma para la razón social abierta.
+        $detalle = $rsId ? $servicio->pendientes($aid, $mes, $anio, (int) $rsId) : collect();
+
+        if ($request->input('excel')) {
+            $filas = $rsId ? $detalle : $servicio->pendientes($aid, $mes, $anio);
+
+            return $this->exportCsv($filas, 'validacion_cierre',
+                ['Cédula','Nombre','Razón Social','Plan','Modalidad','Celular','Fecha Ingreso','Último período en planilla'],
+                fn($r) => [
+                    $r->cedula, $r->nombre, $r->razon_social, $r->plan_nombre ?? '—',
+                    $r->modalidad ?? '—', $r->celular, $r->fecha_ingreso,
+                    $r->ultimo_periodo ? substr((string) $r->ultimo_periodo, 4, 2).'/'.substr((string) $r->ultimo_periodo, 0, 4) : 'nunca',
+                ]);
+        }
+
+        return view('admin.informes.validacion_cierre', compact(
+            'resumen', 'detalle', 'mes', 'anio', 'periodo', 'rsId'
         ));
     }
 
