@@ -64,6 +64,24 @@ la plataforma y se reparten con `permisos:aplicar-inicial`.
 **Si agregas un permiso y quieres que salga en el formulario, no se lo des al
 rol `usuario`.** Esa es toda la palanca.
 
+### La columna "quién lo tiene ya"
+
+A la derecha de cada permiso, la pantalla lista los usuarios activos del mismo
+aliado que ya lo tienen (gris = por el rol, ★ morado = otorgado a mano, azul =
+el usuario que se está editando). Sin eso, habilitar algo es a ciegas.
+
+Lo calcula `UsuarioPermisoController::quienTiene()` **por conjuntos, no con
+`can()` por casilla**: replica a mano las dos reglas del `Gate::before`. Dos
+cosas a respetar si tocas esto:
+
+1. **Si cambias el `Gate::before`, cambia también `quienTiene()`** o la
+   columna mentirá. Hay un contraste fácil: recorrer el mapa y compararlo
+   contra `$u->can($permiso)` — debe dar cero diferencias.
+2. **Lo caro son los viajes a la BD, no el CPU.** El servidor SQL es remoto y
+   cada consulta cuesta ~235 ms; la primera versión hacía 14 y tardaba 3,4 s.
+   Por eso el equipo se carga una sola vez con `roles.permissions` y de ahí
+   sale todo, incluidos los datos del usuario editado.
+
 ### Permisos restringidos: la pieza clave
 
 Un permiso marcado `restringido` **no lo hereda ningún rol, ni superadmin**.
