@@ -10,10 +10,32 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.8rem}
 .tbl th{background:#0f172a;color:#94a3b8;font-size:.63rem;text-transform:uppercase;padding:.42rem .6rem;white-space:nowrap}
 .tbl td{padding:.4rem .6rem;border-bottom:1px solid #f1f5f9;vertical-align:middle}
 .tbl tr:hover td{background:#f8fafc}
-.badge-cobro{display:inline-flex;align-items:center;gap:.25rem;padding:.18rem .55rem;border-radius:20px;font-size:.7rem;font-weight:700;cursor:pointer;border:none;transition:all .15s}
-.badge-cobro.on {background:#dbeafe;color:#1d4ed8;}
-.badge-cobro.off{background:#f1f5f9;color:#94a3b8;}
-.badge-cobro:hover{opacity:.8}
+.badge-uso{display:inline-flex;align-items:center;gap:.22rem;padding:.18rem .5rem;border-radius:20px;font-size:.68rem;font-weight:700;cursor:pointer;border:none;transition:all .15s;white-space:nowrap}
+.badge-uso.off{background:#f1f5f9;color:#94a3b8;}
+.badge-uso.on[data-uso="cobro"]      {background:#dbeafe;color:#1d4ed8;}
+.badge-uso.on[data-uso="facturacion"]{background:#dcfce7;color:#15803d;}
+.badge-uso.on[data-uso="incapacidad"]{background:#fef3c7;color:#b45309;}
+.badge-uso:hover{opacity:.75}
+.usos-cell{display:flex;gap:.25rem;justify-content:center;flex-wrap:wrap}
+.chk-uso{display:flex;align-items:center;gap:.35rem;font-size:.8rem;cursor:pointer;color:#334155;white-space:nowrap}
+.chk-uso input{width:1rem;height:1rem}
+.usos-box{display:flex;align-items:center;gap:.9rem;flex-wrap:wrap;padding-top:1.1rem}
+
+/* Buscador y botón dentro del header oscuro */
+.cc-buscar{
+    padding:.34rem .7rem;font-size:.78rem;border-radius:7px;width:230px;max-width:100%;
+    background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:#fff;outline:none;
+}
+.cc-buscar::placeholder{color:#94a3b8}
+.cc-buscar:focus{border-color:#60a5fa;background:rgba(255,255,255,.16)}
+.cc-btn-nueva{
+    background:#2563eb;color:#fff;border:none;border-radius:7px;padding:.36rem .85rem;
+    font-size:.78rem;cursor:pointer;font-weight:700;white-space:nowrap;
+}
+.cc-btn-nueva:hover{background:#1d4ed8}
+
+/* Leyenda de usos (pie de página) */
+.leyenda{padding:.9rem 1rem;display:flex;flex-direction:column;gap:.45rem;font-size:.78rem;color:#475569}
 .badge-activo.on {background:#dcfce7;color:#15803d;padding:.1rem .45rem;border-radius:12px;font-size:.65rem;font-weight:700;}
 .badge-activo.off{background:#fee2e2;color:#dc2626;padding:.1rem .45rem;border-radius:12px;font-size:.65rem;font-weight:700;}
 .btn-sm{padding:.22rem .6rem;font-size:.72rem;border-radius:6px;border:none;cursor:pointer;font-weight:600}
@@ -35,15 +57,22 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.8rem}
 </style>
 
 <div class="cc-header">
-    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem">
         <div>
             <a href="{{ route('admin.configuracion.hub') }}" style="color:#94a3b8;font-size:.78rem;text-decoration:none">← Configuración</a>
             <div style="font-size:1.1rem;font-weight:800;margin-top:.2rem">🏦 Cuentas Bancarias</div>
-            <div style="font-size:.75rem;color:#94a3b8;margin-top:.15rem">
-                Marca con 💳 <strong>Para Cobro</strong> las cuentas que aparecerán en la Cuenta de Cobro.
-            </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap">
+            <input type="text" id="filtro-titular" class="cc-buscar" placeholder="🔍 Buscar por titular..."
+                   oninput="filtrarCuentas()">
+            <button class="cc-btn-nueva"
+                    onclick="document.getElementById('formNueva').style.display=document.getElementById('formNueva').style.display==='none'?'block':'none'">
+                ➕ Nueva cuenta
+            </button>
         </div>
     </div>
+</div>
+
 @if ($errors->any())
 <div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:10px;padding:.8rem 1.1rem;margin-bottom:1rem;color:#b91c1c;font-size:.82rem">
     <div style="font-weight:700;margin-bottom:.3rem">⚠️ Se presentaron algunos errores al guardar:</div>
@@ -57,18 +86,6 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.8rem}
 
 {{-- Tabla de cuentas --}}
 <div class="card">
-    <div class="card-head">
-        <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;flex:1">
-            <span>📋 Cuentas registradas</span>
-            <input type="text" id="filtro-titular" placeholder="🔍 Buscar por titular..." 
-                   style="padding:.25rem .6rem;font-size:.78rem;border:1px solid #cbd5e1;border-radius:6px;width:100%;max-width:240px;outline:none;font-weight:normal"
-                   oninput="filtrarCuentas()">
-        </div>
-        <button onclick="document.getElementById('formNueva').style.display=document.getElementById('formNueva').style.display==='none'?'block':'none'"
-                style="background:#2563eb;color:#fff;border:none;border-radius:7px;padding:.3rem .8rem;font-size:.78rem;cursor:pointer;font-weight:700">
-            ➕ Nueva cuenta
-        </button>
-    </div>
 
     {{-- Formulario nueva cuenta (oculto por defecto) --}}
     <div id="formNueva" style="display:none;border-bottom:1px solid #e2e8f0;background:#f0f9ff">
@@ -103,15 +120,14 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.8rem}
                     <label class="flb">Llave de Pago</label>
                     <input type="text" name="llave" class="finp" placeholder="Llave alfanumérica (opcional)">
                 </div>
-                <div style="display:flex;align-items:center;gap:.5rem;padding-top:1.1rem">
-                    <label style="display:flex;align-items:center;gap:.4rem;font-size:.82rem;cursor:pointer;color:#334155">
-                        <input type="checkbox" name="cobro" value="1" style="width:1rem;height:1rem"> Para Cobro
-                    </label>
-                    <label style="display:flex;align-items:center;gap:.4rem;font-size:.82rem;cursor:pointer;color:#334155">
-                        <input type="checkbox" name="activo" value="1" checked style="width:1rem;height:1rem"> Activa
-                    </label>
+                <div class="usos-box" style="grid-column:1/-1">
+                    <span class="flb" style="margin:0 .3rem 0 0">Usos:</span>
+                    <label class="chk-uso"><input type="checkbox" name="cobro" value="1"> 💳 Cobro</label>
+                    <label class="chk-uso"><input type="checkbox" name="facturacion" value="1" checked> 🧾 Facturación</label>
+                    <label class="chk-uso"><input type="checkbox" name="incapacidad" value="1"> 🏥 Incapacidad</label>
+                    <label class="chk-uso" style="margin-left:auto"><input type="checkbox" name="activo" value="1" checked> Activa</label>
                 </div>
-                <div style="padding-top:.9rem">
+                <div style="padding-top:.9rem;grid-column:1/-1">
                     <button type="submit" style="background:#16a34a;color:#fff;border:none;border-radius:7px;padding:.4rem 1.2rem;font-size:.82rem;font-weight:700;cursor:pointer;width:100%">
                         💾 Guardar
                     </button>
@@ -142,18 +158,21 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.8rem}
                     </select>
                 </th>
                 <th>Número</th>
-                <th style="text-align:center">
-                    <select id="filtro-cobro" onchange="filtrarCuentas()" class="th-select">
-                        <option value="">↓ Para Cobro</option>
-                        <option value="1">Cobro ✓</option>
-                        <option value="0">Sin cobro</option>
+                <th style="text-align:center;min-width:250px">
+                    <select id="filtro-uso" onchange="filtrarCuentas()" class="th-select">
+                        <option value="">↓ Uso</option>
+                        <option value="cobro">💳 Cobro</option>
+                        <option value="facturacion">🧾 Facturación</option>
+                        <option value="incapacidad">🏥 Incapacidad</option>
+                        <option value="ninguno">Sin uso asignado</option>
                     </select>
                 </th>
                 <th style="text-align:center">
+                    {{-- Por defecto solo se ven las activas --}}
                     <select id="filtro-activo" onchange="filtrarCuentas()" class="th-select">
-                        <option value="">↓ Estado</option>
-                        <option value="1">Activa</option>
-                        <option value="0">Inactiva</option>
+                        <option value="1" selected>↓ Activas</option>
+                        <option value="0">Inactivas</option>
+                        <option value="">Todas</option>
                     </select>
                 </th>
                 <th style="text-align:center">Acciones</th>
@@ -166,7 +185,10 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.8rem}
             data-titular="{{ strtolower($c->nombre ?? '') }}"
             data-tipo="{{ $c->tipo_cuenta ?? '' }}"
             data-cobro="{{ $c->cobro ? '1' : '0' }}"
-            data-activo="{{ $c->activo ? '1' : '0' }}">
+            data-facturacion="{{ $c->facturacion ? '1' : '0' }}"
+            data-incapacidad="{{ $c->incapacidad ? '1' : '0' }}"
+            data-activo="{{ $c->activo ? '1' : '0' }}"
+            data-cuenta="{{ json_encode($c) }}">
             <td style="font-weight:700;color:#0f172a">{{ $c->banco }}</td>
             <td style="font-size:.75rem;color:#475569">{{ $c->nombre ?? '—' }}<br>
                 @if($c->nit)<span style="color:#94a3b8;font-size:.7rem">{{ $c->nit }}</span>@endif
@@ -178,13 +200,22 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.8rem}
                     <br><span style="font-family:sans-serif;font-size:.7rem;color:#475569;background:#f1f5f9;padding:.1rem .35rem;border-radius:4px;font-weight:600">🔑 {{ $c->llave }}</span>
                 @endif
             </td>
-            <td style="text-align:center">
-                <button class="badge-cobro {{ $c->cobro ? 'on' : 'off' }}"
-                        id="cobro-{{ $c->id }}"
-                        onclick="toggleCobro({{ $c->id }}, this, {{ json_encode($c) }})"
-                        title="{{ $c->cobro ? 'Quitar de Cuenta de Cobro' : 'Incluir en Cuenta de Cobro' }}">
-                    💳 {{ $c->cobro ? 'Cobro ✓' : 'Sin cobro' }}
-                </button>
+            <td>
+                <div class="usos-cell">
+                    @foreach([
+                        'cobro'       => ['💳', 'Cobro',       $c->cobro],
+                        'facturacion' => ['🧾', 'Facturación', $c->facturacion],
+                        'incapacidad' => ['🏥', 'Incapacidad', $c->incapacidad],
+                    ] as $uso => [$icono, $etiqueta, $activa])
+                        <button class="badge-uso {{ $activa ? 'on' : 'off' }}"
+                                data-uso="{{ $uso }}"
+                                id="{{ $uso }}-{{ $c->id }}"
+                                onclick="toggleUso({{ $c->id }}, '{{ $uso }}', this)"
+                                title="{{ $activa ? 'Quitar de' : 'Incluir en' }} {{ $etiqueta }}">
+                            {{ $icono }} {{ $etiqueta }}
+                        </button>
+                    @endforeach
+                </div>
             </td>
             <td style="text-align:center">
                 <span class="badge-activo {{ $c->activo ? 'on' : 'off' }}">
@@ -204,6 +235,19 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.8rem}
         @endforelse
         </tbody>
     </table>
+    </div>
+</div>
+
+{{-- Leyenda: qué significa cada marca de uso --}}
+<div class="card">
+    <div class="card-head">
+        <span>ℹ️ Para qué sirve cada marca</span>
+        <span style="font-weight:700">📋 Cuentas registradas <span id="contador-cuentas" style="color:#64748b;font-weight:600"></span></span>
+    </div>
+    <div class="leyenda">
+        <div>💳 <strong style="color:#1d4ed8">Cobro</strong> — aparece en la Cuenta de Cobro que ve el cliente.</div>
+        <div>🧾 <strong style="color:#15803d">Facturación</strong> — se puede escoger al facturar y al registrar movimientos.</div>
+        <div>🏥 <strong style="color:#b45309">Incapacidad</strong> — cuenta donde se reportan las entradas de incapacidades.</div>
     </div>
 </div>
 
@@ -246,15 +290,14 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.8rem}
                     <label class="flb">Llave de Pago</label>
                     <input type="text" name="llave" id="e_llave" class="finp" placeholder="Llave alfanumérica (opcional)">
                 </div>
-                <div style="display:flex;align-items:center;gap:.5rem;padding-top:1.1rem">
-                    <label style="display:flex;align-items:center;gap:.4rem;font-size:.82rem;cursor:pointer;color:#334155">
-                        <input type="checkbox" name="cobro" id="e_cobro" value="1" style="width:1rem;height:1rem"> Para Cobro
-                    </label>
-                    <label style="display:flex;align-items:center;gap:.4rem;font-size:.82rem;cursor:pointer;color:#334155">
-                        <input type="checkbox" name="activo" id="e_activo" value="1" style="width:1rem;height:1rem"> Activa
-                    </label>
+                <div class="usos-box" style="grid-column:1/-1">
+                    <span class="flb" style="margin:0 .3rem 0 0">Usos:</span>
+                    <label class="chk-uso"><input type="checkbox" name="cobro" id="e_cobro" value="1"> 💳 Cobro</label>
+                    <label class="chk-uso"><input type="checkbox" name="facturacion" id="e_facturacion" value="1"> 🧾 Facturación</label>
+                    <label class="chk-uso"><input type="checkbox" name="incapacidad" id="e_incapacidad" value="1"> 🏥 Incapacidad</label>
+                    <label class="chk-uso" style="margin-left:auto"><input type="checkbox" name="activo" id="e_activo" value="1"> Activa</label>
                 </div>
-                <div style="padding-top:.9rem">
+                <div style="padding-top:.9rem;grid-column:1/-1">
                     <button type="submit" style="background:#2563eb;color:#fff;border:none;border-radius:7px;padding:.4rem 1.2rem;font-size:.82rem;font-weight:700;cursor:pointer;width:100%">
                         💾 Actualizar
                     </button>
@@ -267,15 +310,34 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.8rem}
 <script>
 const CSRF = document.querySelector('meta[name="csrf-token"]').content;
 
-// Toggle cobro via AJAX (sin reload)
-async function toggleCobro(id, btn, data) {
-    const esCobro = btn.classList.contains('on');
+const USOS = {
+    cobro:       {etiqueta: 'Cobro'},
+    facturacion: {etiqueta: 'Facturación'},
+    incapacidad: {etiqueta: 'Incapacidad'},
+};
+
+// Toggle de un uso via AJAX (sin reload).
+// El PATCH reescribe la cuenta completa, así que los otros dos usos se envían
+// con su valor actual (leído de la fila) o el servidor los pondría en false.
+async function toggleUso(id, uso, btn) {
+    const row = document.getElementById(`row-${id}`);
+    if (!row) return;
+
+    const data     = JSON.parse(row.dataset.cuenta);
+    const activada = btn.classList.contains('on');
+    const flags    = {};
+    Object.keys(USOS).forEach(u => {
+        flags[u] = row.getAttribute(`data-${u}`) === '1' ? 1 : 0;
+    });
+    flags[uso] = activada ? 0 : 1;
+
+    btn.disabled = true;
     const resp = await fetch(`{{ url('admin/configuracion/cuentas') }}/${id}`, {
         method: 'POST',
         headers: {'Content-Type':'application/json','X-CSRF-TOKEN':CSRF,'X-HTTP-Method-Override':'PATCH','Accept':'application/json'},
         body: JSON.stringify({
             _method: 'PATCH',
-            cobro: esCobro ? 0 : 1,
+            ...flags,
             banco: data.banco,
             tipo_cuenta: data.tipo_cuenta || null,
             numero_cuenta: data.numero_cuenta,
@@ -285,18 +347,16 @@ async function toggleCobro(id, btn, data) {
             activo: data.activo !== false && data.activo !== 0 ? 1 : 0
         })
     });
-    if(resp.ok) {
-        btn.classList.toggle('on', !esCobro);
-        btn.classList.toggle('off', esCobro);
-        btn.textContent = !esCobro ? '💳 Cobro ✓' : '💳 Sin cobro';
-        btn.title = !esCobro ? 'Quitar de Cuenta de Cobro' : 'Incluir en Cuenta de Cobro';
-        
-        // Actualizar data-cobro en la fila y refrescar filtros
-        const row = document.getElementById(`row-${id}`);
-        if(row) {
-            row.setAttribute('data-cobro', esCobro ? '0' : '1');
-        }
+    btn.disabled = false;
+
+    if (resp.ok) {
+        btn.classList.toggle('on', !activada);
+        btn.classList.toggle('off', activada);
+        btn.title = (activada ? 'Incluir en ' : 'Quitar de ') + USOS[uso].etiqueta;
+        row.setAttribute(`data-${uso}`, activada ? '0' : '1');
         filtrarCuentas();
+    } else {
+        alert('No se pudo actualizar el uso de la cuenta.');
     }
 }
 
@@ -308,7 +368,13 @@ function editarCuenta(id, data) {
     document.getElementById('e_tipo').value    = data.tipo_cuenta || '';
     document.getElementById('e_numero').value  = data.numero_cuenta || '';
     document.getElementById('e_llave').value   = data.llave || '';
-    document.getElementById('e_cobro').checked  = !!data.cobro;
+    // Los usos se leen de la fila, no del JSON: el toggle los cambia sin recargar
+    const row = document.getElementById(`row-${id}`);
+    Object.keys(USOS).forEach(u => {
+        document.getElementById(`e_${u}`).checked = row
+            ? row.getAttribute(`data-${u}`) === '1'
+            : !!data[u];
+    });
     document.getElementById('e_activo').checked = data.activo !== false && data.activo !== 0;
     document.getElementById('modal-editar').style.display = 'flex';
 }
@@ -326,22 +392,21 @@ function filtrarCuentas() {
     const txtTitular = document.getElementById('filtro-titular').value.toLowerCase().trim();
     const selBanco   = document.getElementById('filtro-banco').value;
     const selTipo    = document.getElementById('filtro-tipo').value;
-    const selCobro   = document.getElementById('filtro-cobro').value;
+    const selUso     = document.getElementById('filtro-uso').value;
     const selActivo  = document.getElementById('filtro-activo').value;
 
     const rows = document.querySelectorAll('table.tbl tbody tr[id^="row-"]');
-    
+
     // Marcar como activo/inactivo las clases de los select según si están filtrando
     document.getElementById('filtro-banco').classList.toggle('activo', !!selBanco);
     document.getElementById('filtro-tipo').classList.toggle('activo', !!selTipo);
-    document.getElementById('filtro-cobro').classList.toggle('activo', !!selCobro);
+    document.getElementById('filtro-uso').classList.toggle('activo', !!selUso);
     document.getElementById('filtro-activo').classList.toggle('activo', !!selActivo);
 
     rows.forEach(row => {
         const banco   = row.getAttribute('data-banco');
         const titular = row.getAttribute('data-titular');
         const tipo    = row.getAttribute('data-tipo');
-        const cobro   = row.getAttribute('data-cobro');
         const activo  = row.getAttribute('data-activo');
 
         let matchTitular = true;
@@ -363,9 +428,11 @@ function filtrarCuentas() {
             }
         }
 
-        let matchCobro = true;
-        if (selCobro) {
-            matchCobro = (cobro === selCobro);
+        let matchUso = true;
+        if (selUso === 'ninguno') {
+            matchUso = Object.keys(USOS).every(u => row.getAttribute(`data-${u}`) !== '1');
+        } else if (selUso) {
+            matchUso = (row.getAttribute(`data-${selUso}`) === '1');
         }
 
         let matchActivo = true;
@@ -373,7 +440,7 @@ function filtrarCuentas() {
             matchActivo = (activo === selActivo);
         }
 
-        if (matchTitular && matchBanco && matchTipo && matchCobro && matchActivo) {
+        if (matchTitular && matchBanco && matchTipo && matchUso && matchActivo) {
             row.style.display = '';
         } else {
             row.style.display = 'none';
@@ -399,7 +466,17 @@ function filtrarCuentas() {
             noResultRow.style.display = 'none';
         }
     }
+
+    const contador = document.getElementById('contador-cuentas');
+    if (contador) {
+        contador.textContent = visibleRows.length === rows.length
+            ? `(${rows.length})`
+            : `(${visibleRows.length} de ${rows.length})`;
+    }
 }
+
+// Aplicar el filtro inicial: la tabla arranca mostrando solo las activas
+filtrarCuentas();
 </script>
 
 {{-- Modal inteligente cuentas --}}

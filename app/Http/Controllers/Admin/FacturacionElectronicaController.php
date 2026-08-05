@@ -45,7 +45,7 @@ class FacturacionElectronicaController extends Controller
     public function index(Request $request)
     {
         $aliadoId = session('aliado_id_activo');
-        $bancos   = BancoCuenta::activas($aliadoId);
+        $bancos   = BancoCuenta::paraFacturacion($aliadoId);
 
         // Filtros recibidos
         $mesPago       = $request->has('mes_pago') ? $request->input('mes_pago') : now()->month;

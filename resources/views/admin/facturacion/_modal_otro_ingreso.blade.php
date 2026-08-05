@@ -4,7 +4,7 @@
     ║  Modal para facturar trámites / otros ingresos          ║
     ║                                                          ║
     ║  Variables via @include:                                 ║
-    ║    $bancos   → colección BancoCuenta::activas()         ║
+    ║    $bancos   → colección BancoCuenta::paraFacturacion()   ║
     ║    $oiMes    → mes por defecto (opcional)               ║
     ║    $oiAnio   → año por defecto (opcional)               ║
     ║    $oiCedula → cédula del cliente (opcional, si es fijo)║

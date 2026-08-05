@@ -295,7 +295,7 @@ class FacturacionController extends Controller
             }
         }
 
-        $bancos   = BancoCuenta::activas($aliadoId);
+        $bancos   = BancoCuenta::paraFacturacion($aliadoId);
         $asesores = \App\Models\Asesor::where('aliado_id', $aliadoId)
             ->orderBy('nombre')
             ->get(['id', 'nombre']);

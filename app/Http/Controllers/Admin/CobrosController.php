@@ -969,7 +969,7 @@ class CobrosController extends Controller
             ->orderBy('nombre')
             ->get(['id', 'nombre']);
 
-        $bancos       = BancoCuenta::where('aliado_id', $aliadoId)->where('activo', true)->orderBy('nombre')->get();
+        $bancos       = BancoCuenta::paraFacturacion($aliadoId)->sortBy('nombre')->values();
         $cuentasCobro = BancoCuenta::paraCobro($aliadoId);
 
         // Modalidades disponibles pre-calculadas arriba según consulta

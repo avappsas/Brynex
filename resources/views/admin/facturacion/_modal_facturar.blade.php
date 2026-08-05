@@ -4,7 +4,7 @@
     ║  Modal UNIFICADO de Facturación — layout 2 columnas             ║
     ║                                                                  ║
     ║  Variables via @include:                                         ║
-    ║    $bancos   → colección BancoCuenta::activas() (requerida)     ║
+    ║    $bancos   → BancoCuenta::paraFacturacion() (requerida)   ║
     ║    $mfMes    → mes por defecto (opcional)                        ║
     ║    $mfAnio   → año por defecto (opcional)                        ║
     ╚══════════════════════════════════════════════════════════════════╝

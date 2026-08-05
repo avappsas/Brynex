@@ -284,7 +284,7 @@ class PlanoPagoController extends Controller
         }
 
         // Bancos (para modal confirmar pago)
-        $bancos = BancoCuenta::where('aliado_id', $aliadoId)->where('activo', true)->get();
+        $bancos = BancoCuenta::paraFacturacion($aliadoId);
 
         // Operadores:
         //   - RS Independiente (es_independiente=true) → mostrar TODOS los operadores

@@ -263,12 +263,16 @@ class ConfiguracionAliadoController extends Controller
             'numero_cuenta'=> 'required|string|max:30',
             'activo'       => 'boolean',
             'cobro'        => 'boolean',
+            'facturacion'  => 'boolean',
+            'incapacidad'  => 'boolean',
             'observacion'  => 'nullable|string|max:300',
             'llave'        => 'nullable|string|max:100',
         ]);
-        $v['aliado_id'] = $alidoId;
-        $v['activo']    = $request->boolean('activo');
-        $v['cobro']     = $request->boolean('cobro');
+        $v['aliado_id']   = $alidoId;
+        $v['activo']      = $request->boolean('activo');
+        $v['cobro']       = $request->boolean('cobro');
+        $v['facturacion'] = $request->boolean('facturacion');
+        $v['incapacidad'] = $request->boolean('incapacidad');
         \App\Models\BancoCuenta::create($v);
         return redirect()->route('admin.configuracion.cuentas')
             ->with('success', 'Cuenta bancaria creada.');
@@ -286,11 +290,15 @@ class ConfiguracionAliadoController extends Controller
             'numero_cuenta'=> 'required|string|max:30',
             'activo'       => 'boolean',
             'cobro'        => 'boolean',
+            'facturacion'  => 'boolean',
+            'incapacidad'  => 'boolean',
             'observacion'  => 'nullable|string|max:300',
             'llave'        => 'nullable|string|max:100',
         ]);
-        $v['activo'] = $request->boolean('activo');
-        $v['cobro']  = $request->boolean('cobro');
+        $v['activo']      = $request->boolean('activo');
+        $v['cobro']       = $request->boolean('cobro');
+        $v['facturacion'] = $request->boolean('facturacion');
+        $v['incapacidad'] = $request->boolean('incapacidad');
         $cuenta->update($v);
         // Si petición AJAX (fetch) devuelve JSON
         if ($request->expectsJson() || $request->ajax()) {

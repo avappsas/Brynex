@@ -348,7 +348,7 @@ class ComisionesController extends Controller
             }
         }
 
-        $bancos = BancoCuenta::where('aliado_id', $aid)->where('activo', true)->get();
+        $bancos = BancoCuenta::paraFacturacion($aid);
 
         return view('admin.informes.comisiones.index', compact(
             'asesores', 'asesor', 'asesorId',

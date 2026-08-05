@@ -172,7 +172,7 @@ class PrestamosController extends Controller
             ])
             ->findOrFail($facturaId);
 
-        $bancos = BancoCuenta::activas($aliadoId);
+        $bancos = BancoCuenta::paraFacturacion($aliadoId);
 
         // ── Detectar si es un lote empresarial ────────────────────────
         $esLoteEmpresa = $factura->empresa_id && $factura->empresa_id != 1;

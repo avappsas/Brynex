@@ -376,7 +376,7 @@ $totalBancos = $bancos->sum(fn($bc) => \App\Models\Consignacion::saldoBanco(sess
 @if($cuadre)
 @include('admin.partials.modal_gasto', [
     'formAction'  => route('admin.cuadre-diario.gasto.store', $cuadre->id),
-    'bancos'      => $bancos,
+    'bancos'      => $bancosFacturacion ?? $bancos,
     'esAdmin'     => $esAdmin,
     'modalId'     => 'modal-gasto',
     'imagenPaste' => true,

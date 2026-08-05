@@ -98,7 +98,7 @@ class GastoAdminController extends Controller
             ->selectRaw('ISNULL(SUM(CAST(valor AS BIGINT)),0) AS total')
             ->value('total');
 
-        $bancos      = BancoCuenta::where('aliado_id', $aid)->where('activo', true)->get();
+        $bancos      = BancoCuenta::paraFacturacion($aid);
         $usuarios    = User::where('aliado_id', $aid)->where('activo', true)->orderBy('nombre')->get(['id','nombre']);
         $esSuperAdmin = Auth::user()->hasRole('superadmin');
         $tiposGasto   = collect(Gasto::TIPOS)

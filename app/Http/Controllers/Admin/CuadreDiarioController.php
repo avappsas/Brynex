@@ -26,7 +26,11 @@ class CuadreDiarioController extends Controller
             ->first();
 
         $cajaMenor = CajaMenor::montoActivo($aliadoId, $usuarioId);
-        $bancos    = BancoCuenta::where('aliado_id', $aliadoId)->where('activo', true)->get();
+        // $bancos = TODAS las activas: alimenta el panel de saldos, que debe
+        // mostrar el dinero de cualquier cuenta. El selector de gastos usa
+        // $bancosFacturacion (solo las marcadas para facturación).
+        $bancos             = BancoCuenta::where('aliado_id', $aliadoId)->where('activo', true)->get();
+        $bancosFacturacion  = BancoCuenta::paraFacturacion($aliadoId);
         $usuarios  = User::where('aliado_id', $aliadoId)->where('activo', true)->orderBy('nombre')->get(['id','nombre']);
 
         // ── Datos del cuadre activo (batch: 4 queries, sin loop por día) ─────
@@ -133,7 +137,7 @@ class CuadreDiarioController extends Controller
             ->get();
 
         return view('admin.cuadre-diario.index', compact(
-            'cuadre', 'cajaMenor', 'bancos', 'usuarios', 'datosPeriodo',
+            'cuadre', 'cajaMenor', 'bancos', 'bancosFacturacion', 'usuarios', 'datosPeriodo',
             'gastos', 'facturasPeriodo', 'cuadresAnteriores'
         ));
     }
@@ -186,12 +190,15 @@ class CuadreDiarioController extends Controller
 
         $facturasPeriodo = $this->facturasPeriodo($cuadre, $aliadoId, $cuadre->usuario_id);
         $datosPeriodo    = $this->calcularPeriodo($cuadre, $aliadoId, $cuadre->usuario_id);
-        $bancos          = BancoCuenta::where('aliado_id', $aliadoId)->where('activo', true)->get();
+        // Ver nota en index(): $bancos son todas las activas (saldos),
+        // $bancosFacturacion solo las marcadas para facturación (selector).
+        $bancos            = BancoCuenta::where('aliado_id', $aliadoId)->where('activo', true)->get();
+        $bancosFacturacion = BancoCuenta::paraFacturacion($aliadoId);
         $usuarios        = User::where('aliado_id', $aliadoId)->where('activo', true)->orderBy('nombre')->get(['id','nombre']);
         $cajaMenor       = $cuadre->saldo_apertura;
 
         return view('admin.cuadre-diario.index', compact(
-            'cuadre', 'cajaMenor', 'bancos', 'usuarios', 'datosPeriodo',
+            'cuadre', 'cajaMenor', 'bancos', 'bancosFacturacion', 'usuarios', 'datosPeriodo',
             'gastos', 'facturasPeriodo'
         ));
     }

@@ -292,7 +292,7 @@ class ClienteController extends Controller
             ->orderBy('nombre')
             ->get(['id', 'nombre', 'codigo_ni']);
 
-        $bancos = \App\Models\BancoCuenta::activas(session('aliado_id_activo'));
+        $bancos = \App\Models\BancoCuenta::paraFacturacion(session('aliado_id_activo'));
 
         return view('admin.clientes.form', compact(
             'cliente', 'lookups', 'contratos', 'razonesMap', 'resumen', 'bancos',

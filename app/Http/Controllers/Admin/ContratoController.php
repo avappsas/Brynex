@@ -1136,7 +1136,7 @@ class ContratoController extends Controller
             'modalidadesAfpObligatorio' => $modalidadesAfpObligatorio,
             // Defaults de tarifas
             'defaultTarifas'            => Contrato::tarifasParaAliado($alidoId, null),
-            'bancos'                    => BancoCuenta::activas($alidoId),
+            'bancos'                    => BancoCuenta::paraFacturacion($alidoId),
             // RS ya usadas (para deshabilitar en el select de creación)
             'rsOcupadasIds'             => $rsOcupadasIds,
             // Operador de planilla (todos los globales, para RS independiente)
