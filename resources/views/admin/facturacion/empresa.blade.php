@@ -48,6 +48,17 @@ table.fac-tbl{width:100%;border-collapse:collapse;font-size:.78rem}
 .num-col{font-family:monospace;text-align:right}
 .totales{background:#0f172a;color:#fff;font-weight:700}
 .tot-val{color:#34d399}
+/* NP editable en la tabla */
+.np-chip{display:inline-block;padding:.12rem .45rem;border-radius:20px;font-size:.75rem;font-weight:800;
+         background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;cursor:pointer;user-select:none}
+.np-chip:hover{background:#ffedd5;border-color:#fb923c}
+.np-vacio{display:inline-block;min-width:26px;padding:.12rem .45rem;border-radius:20px;font-size:.7rem;
+          color:#cbd5e1;border:1px dashed transparent;cursor:pointer;user-select:none}
+.np-vacio:hover{color:#c2410c;border-color:#fed7aa;background:#fff7ed}
+.np-select{padding:.1rem .2rem;border:1px solid #fb923c;border-radius:6px;font-size:.75rem;font-weight:800;
+           color:#c2410c;background:#fff;text-align:center;cursor:pointer}
+.np-select:focus{outline:none;box-shadow:0 0 0 2px #fed7aa}
+.td-np.np-ok{background:#dcfce7!important;transition:background .5s}
 /* Modal */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:1000;display:flex;align-items:center;justify-content:center}
 .modal-box{background:#fff;border-radius:14px;padding:1.4rem;width:min(600px,96vw);max-height:92vh;overflow-y:auto}
@@ -704,19 +715,22 @@ if ($esRetirado && $esAfil && !$fact) {
         @endif
         @else<span style="color:#94a3b8;font-size:.7rem">Sin factura</span>@endif
     </td>
-    <td style="text-align:center;font-size:.8rem">
+    <td class="td-np" style="text-align:center;font-size:.8rem">
         @php
             $npMostrar = $fact?->np ?? $c->np ?? null;
             $npProvisional = !$fact && $c->np;
         @endphp
-        @if($npMostrar)
-            @if($npProvisional)
-                <span style="display:inline-block;padding:.12rem .45rem;border-radius:20px;font-size:.75rem;font-weight:800;background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;">{{ $npMostrar }}</span>
+        @if($fact)
+            {{-- Ya facturado: el NP viene de la factura, no se edita desde aquí --}}
+            @if($npMostrar)
+                <strong style="color:#2563eb;font-weight:800;" title="NP de la factura — no editable aquí">{{ $npMostrar }}</strong>
             @else
-                <strong style="color:#2563eb;font-weight:800;">{{ $npMostrar }}</strong>
+                <span style="color:#cbd5e1;font-size:.7rem">—</span>
             @endif
+        @elseif($npMostrar)
+            <span class="np-chip" onclick="npEditar(this)" title="Clic para cambiar el NP">{{ $npMostrar }}</span>
         @else
-            <span style="color:#cbd5e1;font-size:.7rem">—</span>
+            <span class="np-vacio" onclick="npEditar(this)" title="Clic para asignar NP">—</span>
         @endif
     </td>
     <td style="text-align:center;white-space:nowrap;">
@@ -1974,6 +1988,91 @@ const CC_ANIO = {{ $anio }};
 
 let _ccExitosas = [];
 
+// ════════════════════════════════════════════════════════════════════════
+//  NP EDITABLE EN LA TABLA — clic en la celda → select → guarda en BD
+//  Usa el mismo endpoint que la carga masiva de cédulas (asignar-np).
+// ════════════════════════════════════════════════════════════════════════
+
+// Pinta el contenido de una celda NP (chip clicable o guion clicable)
+function npRenderCelda(td, np) {
+    if (!td) return;
+    const val = (np || '').toString().trim();
+    td.innerHTML = val
+        ? `<span class="np-chip" onclick="npEditar(this)" title="Clic para cambiar el NP">${val}</span>`
+        : `<span class="np-vacio" onclick="npEditar(this)" title="Clic para asignar NP">—</span>`;
+}
+
+// Celda NP de una fila (o null si la fila no es editable — ya facturada)
+function npCelda(tr) {
+    const td = tr?.querySelector('td.td-np');
+    return (td && td.querySelector('.np-chip, .np-vacio, .np-select')) ? td : null;
+}
+
+// Clic → convierte la celda en un <select>
+function npEditar(el) {
+    const td = el.closest('td');
+    const tr = td.closest('tr');
+    if (td.querySelector('select')) return;
+
+    const actual = (tr.dataset.npProv || '').trim();
+    const opts = ['', '1', '2', '3', '4', '5']
+        .map(v => `<option value="${v}"${v === actual ? ' selected' : ''}>${v === '' ? '—' : 'NP ' + v}</option>`)
+        .join('');
+
+    td.innerHTML = `<select class="np-select" onchange="npGuardar(this)" onblur="npCancelar(this)">${opts}</select>`;
+    const sel = td.querySelector('select');
+    sel.focus();
+    // Escape = cancelar sin guardar
+    sel.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); sel.blur(); } });
+}
+
+function npCancelar(sel) {
+    const td = sel.closest('td');
+    if (td.dataset.guardando === '1') return;   // el onchange ya está guardando
+    npRenderCelda(td, td.closest('tr').dataset.npProv);
+}
+
+function npGuardar(sel) {
+    const td  = sel.closest('td');
+    const tr  = td.closest('tr');
+    const nuevo    = sel.value;
+    const anterior = (tr.dataset.npProv || '').trim();
+
+    if (nuevo === anterior) { npRenderCelda(td, anterior); return; }
+
+    td.dataset.guardando = '1';
+    sel.disabled = true;
+
+    fetch(CC_URL_ASIGNAR, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content },
+        body: JSON.stringify({ contrato_ids: [parseInt(tr.dataset.contrato)], np: nuevo === '' ? 0 : parseInt(nuevo) })
+    })
+    .then(r => r.json())
+    .then(data => {
+        td.dataset.guardando = '0';
+        if (!data.ok) { alert(data.message || 'Error al guardar el NP.'); npRenderCelda(td, anterior); return; }
+
+        tr.dataset.np     = nuevo;
+        tr.dataset.npProv = nuevo;
+        npRenderCelda(td, nuevo);
+
+        // Flash verde de confirmación
+        td.classList.add('np-ok');
+        setTimeout(() => td.classList.remove('np-ok'), 600);
+
+        // Repoblar el dropdown de filtro NP (y reaplicar si hay filtro activo)
+        inicializarFiltrosTabla();
+        const filtroNP = document.getElementById('filter-np');
+        if (filtroNP && filtroNP.value !== 'todos') setTimeout(aplicarFiltrosTabla, 650);
+    })
+    .catch(() => {
+        td.dataset.guardando = '0';
+        alert('Error de conexión al guardar el NP.');
+        npRenderCelda(td, anterior);
+    });
+}
+
 function abrirModalCargaCedulas() {
     ccVolver();
     document.getElementById('cc-cedulas').value = '';
@@ -2089,12 +2188,7 @@ function ccAsignar() {
             if (!tr) return;
             tr.dataset.np    = npStr;
             tr.dataset.npProv = npStr;
-            const celdas = tr.querySelectorAll('td');
-            const idx    = celdas.length - 2; // NP | SEL
-            if (celdas[idx]) {
-                celdas[idx].innerHTML =
-                    `<span style="display:inline-block;padding:.12rem .45rem;border-radius:20px;font-size:.75rem;font-weight:800;background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;">${npStr}</span>`;
-            }
+            npRenderCelda(npCelda(tr), npStr);
         });
 
         // Reinicializar filtros y aplicar NP
@@ -2133,11 +2227,7 @@ function ccResetearNPsEmpresa(btnId) {
     trConNP.forEach(tr => {
         tr.dataset.np     = '';
         tr.dataset.npProv = '';
-        const celdas = tr.querySelectorAll('td');
-        const idx    = celdas.length - 2;
-        if (celdas[idx]) {
-            celdas[idx].innerHTML = `<span style="color:#cbd5e1;font-size:.7rem">—</span>`;
-        }
+        npRenderCelda(npCelda(tr), '');
     });
 
     // 2. Limpiar los filtros si es necesario
