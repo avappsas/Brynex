@@ -25,15 +25,8 @@
             ['icono'=>'🚪','label'=>'Retirados del Mes','val'=>$kpis['retiros_mes_sin_renovar'].' / '.$kpis['retiros_mes_total'],'color'=>'#f59e0b','url'=>route('admin.informes.retirados_mes'),'desc'=>'Sin renovar / Total'],
             ['icono'=>'🏨','label'=>'Incapacidades','val'=>$kpis['incapacidades'],'color'=>'#ef4444','url'=>route('admin.informes.incapacidades'),'desc'=>'Casos activos'],
             ['icono'=>'📌','label'=>'Tareas','val'=>$kpis['tareas'],'color'=>'#f97316','url'=>route('admin.informes.tareas'),'desc'=>'Tareas activas'],
+            ['icono'=>'✅','label'=>'Cierre de Operación','val'=>$kpis['cierre_operacion']['lotes'].' tandas','color'=>$kpis['cierre_operacion']['total'] > 0 ? '#ef4444' : '#10b981','url'=>route('admin.informes.cierre_operacion'),'desc'=>$kpis['cierre_operacion']['vigentes'].' sin facturar · '.$kpis['cierre_operacion']['afiliaciones'].' afiliaciones'],
         ];
-
-        // Solo BryNex: el aliado no debe ver el conteo de faltantes (una razón
-        // social agrupa varias empresas cliente y el número siembra dudas).
-        if (auth()->user()->can('brynex_cierre.ver')) {
-            $cards[] = ['icono'=>'🧾','label'=>'Validación de Cierre','val'=>$kpis['cierre_pendientes'],
-                        'color'=>$kpis['cierre_pendientes'] > 0 ? '#ef4444' : '#10b981',
-                        'url'=>route('admin.informes.validacion_cierre'),'desc'=>'Vigentes fuera de la planilla'];
-        }
         @endphp
 
         @foreach($cards as $c)

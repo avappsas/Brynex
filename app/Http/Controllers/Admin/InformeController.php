@@ -110,11 +110,11 @@ class InformeController extends Controller
             'tareas'                    => DB::table('tareas')->where('aliado_id',$aid)->whereNull('deleted_at')->whereIn('estado',['pendiente','en_gestion','en_espera'])->count(),
         ];
 
-        // Vigentes que aún no entran a la planilla del período. Solo BryNex, y
-        // solo se calcula si se va a mostrar: es la consulta más cara del hub.
-        $kpis['cierre_pendientes'] = Auth::user()->can('brynex_cierre.ver')
-            ? (new \App\Services\CierrePeriodoService())->pendientesTotal($aid, $mes, $anio)
-            : null;
+        // Lo que le falta cerrar al aliado del mes. Son 3 consultas de ~250ms
+        // cada una (viaje al servidor remoto, no complejidad), pero es el
+        // número que da sentido a la tarjeta.
+        $kpis['cierre_operacion'] = (new \App\Services\CierrePeriodoService())
+            ->contadoresOperacion($aid, $mes, $anio);
 
         $esFinanciero = Auth::user()->can('informes.ver');
         if ($esFinanciero) {
@@ -486,6 +486,59 @@ class InformeController extends Controller
 
         return view('admin.informes.validacion_cierre', compact(
             'resumen', 'detalle', 'mes', 'anio', 'periodo', 'rsId'
+        ));
+    }
+
+    /**
+     * Cierre de operación: qué le falta cerrar al aliado del mes.
+     *
+     * Tres pendientes distintos que hoy solo se descubren mirando pantalla por
+     * pantalla: tandas de planilla sin número (o sin liquidar, o liquidadas sin
+     * confirmar el pago), vigentes sin factura del mes, y afiliaciones del mes
+     * sin facturar o sin cobrar la afiliación.
+     *
+     * A diferencia de validacionCierre(), este SÍ es del aliado.
+     */
+    public function cierreOperacion(Request $request)
+    {
+        $this->checkAdmin();
+        $aid  = $this->aliadoId();
+        $mes  = (int) $request->input('mes',  now()->month);
+        $anio = (int) $request->input('anio', now()->year);
+
+        $servicio     = new \App\Services\CierrePeriodoService();
+        $lotes        = $servicio->lotesSinConfirmar($aid);
+        $vigentes     = $servicio->vigentesSinFacturar($aid, $mes, $anio);
+        $afiliaciones = $servicio->afiliacionesDelMes($aid, $mes, $anio);
+
+        if ($excel = $request->input('excel')) {
+            if ($excel === 'lotes') {
+                return $this->exportCsv($lotes, 'planillas_sin_confirmar',
+                    ['Razón Social','Período plano','Tanda','Cotizantes','Valor SS','Estado','N° planilla'],
+                    fn($r) => [
+                        $r->razon_social, $r->anio_plano.'-'.str_pad($r->mes_plano, 2, '0', STR_PAD_LEFT),
+                        $r->n_plano, $r->cotizantes, (int) $r->valor_ss,
+                        $r->api ? 'Liquidada, falta confirmar el pago' : 'Sin liquidar',
+                        $r->api->numero_planilla ?? '',
+                    ]);
+            }
+
+            $filas  = $excel === 'afiliaciones' ? $afiliaciones : $vigentes;
+            $nombre = $excel === 'afiliaciones' ? 'afiliaciones_sin_facturar' : 'vigentes_sin_facturar';
+
+            return $this->exportCsv($filas, $nombre,
+                ['Cédula','Nombre','Razón Social','Plan','Modalidad','Celular','Fecha Ingreso','Pendiente'],
+                fn($r) => [
+                    $r->cedula, $r->nombre, $r->razon_social, $r->plan_nombre ?? '—',
+                    $r->modalidad ?? '—', $r->celular, $r->fecha_ingreso,
+                    isset($r->sin_factura)
+                        ? ((int) $r->sin_factura === 1 ? 'Sin factura' : 'Sin cobro de afiliación')
+                        : 'Sin factura del mes',
+                ]);
+        }
+
+        return view('admin.informes.cierre_operacion', compact(
+            'lotes', 'vigentes', 'afiliaciones', 'mes', 'anio'
         ));
     }
 
