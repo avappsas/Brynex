@@ -190,6 +190,7 @@ class UsuarioPermisoController extends Controller
 
                 $mapa[$nombre][] = [
                     'nombre' => $miembro->nombre,
+                    'corto' => $this->nombreCorto($miembro->nombre),
                     'directo' => $directo,
                     'rol' => $miembro->roles->pluck('name')->first() ?? 'sin rol',
                     'yo' => $miembro->id === $usuario->id,
@@ -201,6 +202,41 @@ class UsuarioPermisoController extends Controller
         // así que dentro de cada permiso el orden alfabético ya viene dado por
         // el orderBy del query.
         return $mapa;
+    }
+
+    /**
+     * Nombre acortado para los chips de "quién lo tiene ya".
+     *
+     * Cada permiso puede listar diez personas en una tarjeta de 430 px, así que
+     * los nombres largos se abrevian dejando el primero entero y el resto en
+     * inicial: "Heidy Jisell Escobar" → "Heidy J. E.". El nombre completo, el
+     * rol y el origen del permiso siguen en el `title` del chip.
+     *
+     * Si ni así cabe (un primer nombre larguísimo), se cae a iniciales puras.
+     */
+    private function nombreCorto(string $nombre, int $limite = 18): string
+    {
+        $nombre = trim(preg_replace('/\s+/', ' ', $nombre));
+
+        if (mb_strlen($nombre) <= $limite) {
+            return $nombre;
+        }
+
+        $palabras = explode(' ', $nombre);
+        $primero = array_shift($palabras);
+
+        $abreviado = $primero.' '.collect($palabras)
+            ->map(fn ($p) => mb_strtoupper(mb_substr($p, 0, 1)).'.')
+            ->join(' ');
+
+        if (mb_strlen($abreviado) <= $limite) {
+            return $abreviado;
+        }
+
+        return collect(explode(' ', $nombre))
+            ->map(fn ($p) => mb_strtoupper(mb_substr($p, 0, 1)))
+            ->take(4)
+            ->join('');
     }
 
     /**

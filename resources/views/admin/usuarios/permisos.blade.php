@@ -123,7 +123,7 @@
                                                              {{ $q['yo']
                                                                 ? 'background:#dbeafe;color:#1d4ed8;font-weight:700;'
                                                                 : ($q['directo'] ? 'background:#ede9fe;color:#6d28d9;font-weight:600;' : 'background:#f1f5f9;color:#94a3b8;') }}">
-                                                    {{ $q['directo'] && ! $q['yo'] ? '★ ' : '' }}{{ Str::limit($q['nombre'], 18) }}
+                                                    {{ $q['directo'] && ! $q['yo'] ? '★ ' : '' }}{{ $q['corto'] }}
                                                 </span>
                                             @empty
                                                 <span style="font-size:0.68rem;color:#cbd5e1;font-style:italic;">nadie del equipo</span>
