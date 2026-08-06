@@ -11,6 +11,7 @@ $r100 = fn($v) => (int)(ceil(($v ?? 0) / 100) * 100); // redondeo al centena sup
 $rIva = fn($v) => (int) round($v ?? 0);
 // Columna de IVA visible solo si la empresa está marcada con iva=SI
 $mostrarIva = \App\Services\IvaService::bandera($empresa->iva ?? null);
+$ivaPct     = \App\Models\ConfiguracionBrynex::porcentajeIva();
 
 $estadoLabel = fn($e) => match($e) {
     'pagada'      => 'Pago',
@@ -458,11 +459,13 @@ if (!$fact) {
         $vArl  = $r100($factRetiroPreview->v_arl);
         $vPen  = $r100($factRetiroPreview->v_afp);
         $vCaja = $r100($factRetiroPreview->v_caja);
-        $vIva  = $rIva($factRetiroPreview->iva);
         $vSS   = $r100($factRetiroPreview->total_ss);
         // Admon: el valor base de contrato (30 días); se recalculará por JS según el checkbox
         $vAdm  = (int)(($c->administracion??0) + ($c->admon_asesor??0));
         $vAdmProporcional = (int)(($vAdm / 30) * $dias); // proporcional a días de retiro
+        // El IVA del retiro grava la admon que se cobre; la factura_0 la guarda en 0
+        // porque aún no se sabe si se cobrará (lo decide el checkbox de admon).
+        $vIva  = \App\Services\IvaService::calcular($vAdm, (bool)($c->tiene_iva ?? false));
         $vTot  = $vSS + $vAdm + $vIva; // total con admon completa (JS ajusta si es proporcional)
     } elseif ($tieneRetiroPendiente) {
         // Retiro pendiente nuevo: calcular SS proporcional con los días del retiro
@@ -576,6 +579,7 @@ if ($esRetirado && $esAfil && !$fact) {
     data-fecha-retiro-pendiente="{{ $fechaRetiroPendienteStr }}"
     data-cobrar-admon-ret-pend="{{ $cobrarAdmonRetiroPendiente ? '1' : '0' }}"
     data-vmora="{{ $vMora }}"
+    data-iva-pct="{{ ($c->tiene_iva ?? false) ? $ivaPct : 0 }}"
     data-np="{{ $fact?->np ?? $c->np ?? '' }}"
     data-es-retiro-facturable="{{ ($factRetiroPreview ?? null) && !$esAfil ? '1' : '0' }}"
     data-dias-retiro="{{ ($factRetiroPreview ?? null) && !$esAfil ? (int)$factRetiroPreview->dias_cotizados : 0 }}"
@@ -642,7 +646,7 @@ if ($esRetirado && $esAfil && !$fact) {
     <td class="num-col">{{ $vCaja>0?'$'.number_format($vCaja,0,',','.'):'—' }}</td>
     <td class="num-col">{{ $vPen>0?'$'.number_format($vPen,0,',','.'):'—' }}</td>
     <td class="num-col celda-admon">${{ number_format($vAdm,0,',','.') }}</td>
-    <td class="num-col col-iva" @if(!$mostrarIva) style="display:none" @endif>{{ $vIva>0?'$'.number_format($vIva,0,',','.'):'—' }}</td>
+    <td class="num-col col-iva celda-iva" @if(!$mostrarIva) style="display:none" @endif>{{ $vIva>0?'$'.number_format($vIva,0,',','.'):'—' }}</td>
     <td class="num-col celda-tot" style="font-weight:700;color:{{ $yaP?'#16a34a':'#0f172a' }}">
         ${{ number_format($vTot,0,',','.') }}
     </td>
@@ -774,7 +778,7 @@ if ($esRetirado && $esAfil && !$fact) {
     <td class="num-col tot-val">${{ number_format($totCaja, 0,',','.') }}</td>
     <td class="num-col tot-val">${{ number_format($totPen,  0,',','.') }}</td>
     <td class="num-col tot-val" id="tot-admon-val">${{ number_format($totAdmon,0,',','.') }}</td>
-    <td class="num-col tot-val col-iva" @if(!$mostrarIva) style="display:none" @endif>${{ number_format($totIva,  0,',','.') }}</td>
+    <td class="num-col tot-val col-iva" id="tot-iva-val" @if(!$mostrarIva) style="display:none" @endif>${{ number_format($totIva,  0,',','.') }}</td>
     <td class="num-col tot-val" id="tot-general-val" style="font-size:.9rem">${{ number_format($totTotal,0,',','.') }}</td>
     @if($hayMora)
     <td class="num-col tot-val" style="color:#fbbf24;font-weight:800;">
@@ -805,7 +809,7 @@ function actualizarAdmonRetiro(admonCompleta) {
         const admonFull = parseInt(tr.dataset.admonFull || 0);
         const diasRet   = parseInt(tr.dataset.diasRetiro || 0);
         const vss       = parseInt(tr.dataset.vssRetiro || 0);
-        const viva      = parseInt(tr.dataset.viva || 0);
+        const ivaPct    = parseFloat(tr.dataset.ivaPct || 0);
 
         // Regla: marcado = admon completa siempre
         // Desmarcado: si días <= 3 → sin admon; si días > 3 → admon completa igualmente
@@ -816,12 +820,17 @@ function actualizarAdmonRetiro(admonCompleta) {
             nuevoAdmon = diasRet <= 3 ? 0 : admonFull;
         }
 
-        const nuevoTot = vss + nuevoAdmon + viva;
+        // El IVA grava la admon que se termine cobrando: si no se cobra, no hay IVA
+        const nuevoIva = Math.round(nuevoAdmon * ivaPct / 100);
+        const nuevoTot = vss + nuevoAdmon + nuevoIva;
         tr.dataset.vadmon = nuevoAdmon;
+        tr.dataset.viva   = nuevoIva;
         tr.dataset.vtot   = nuevoTot;
 
         const celdaAdmon = tr.querySelector('.celda-admon');
         if (celdaAdmon) celdaAdmon.textContent = '$' + nuevoAdmon.toLocaleString('es-CO');
+        const celdaIva = tr.querySelector('.celda-iva');
+        if (celdaIva) celdaIva.textContent = nuevoIva > 0 ? '$' + nuevoIva.toLocaleString('es-CO') : '—';
         const celdaTot = tr.querySelector('.celda-tot');
         if (celdaTot) celdaTot.textContent = '$' + nuevoTot.toLocaleString('es-CO');
     });
@@ -829,13 +838,17 @@ function actualizarAdmonRetiro(admonCompleta) {
     // Recalcular dinámicamente la suma acumulada de administración y total general en el tfoot de la tabla
     let totalAdmonAcum = 0;
     let totalGeneralAcum = 0;
+    let totalIvaAcum = 0;
     document.querySelectorAll('tbody tr[data-vadmon]').forEach(function(tr) {
         totalAdmonAcum += parseInt(tr.dataset.vadmon || 0);
         totalGeneralAcum += parseInt(tr.dataset.vtot || 0);
+        totalIvaAcum += parseInt(tr.dataset.viva || 0);
     });
 
     const elTotAdmon = document.getElementById('tot-admon-val');
     if (elTotAdmon) elTotAdmon.textContent = '$' + totalAdmonAcum.toLocaleString('es-CO');
+    const elTotIva = document.getElementById('tot-iva-val');
+    if (elTotIva) elTotIva.textContent = '$' + totalIvaAcum.toLocaleString('es-CO');
     const elTotGen = document.getElementById('tot-general-val');
     if (elTotGen) elTotGen.textContent = '$' + totalGeneralAcum.toLocaleString('es-CO');
 }

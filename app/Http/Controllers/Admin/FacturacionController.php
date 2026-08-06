@@ -517,7 +517,8 @@ class FacturacionController extends Controller
                     $vArl  = $r100($factRetiroPreview->v_arl);
                     $vPen  = $r100($factRetiroPreview->v_afp);
                     $vCaja = $r100($factRetiroPreview->v_caja);
-                    $vIva  = $r100($factRetiroPreview->iva);
+                    // El IVA grava la admon del retiro; la factura temporal la guarda en 0
+                    $vIva  = \App\Services\IvaService::calcular($vAdmonBase + $vAdmonAsesor, (bool)($c->tiene_iva ?? false));
                     $vSS   = $r100($factRetiroPreview->total_ss);
                     $vTot  = $vSS + ($vAdmonBase + $vAdmonAsesor) + $vIva;
                 } elseif ($esRetirado && !$factRetiroPreview) {
@@ -1280,7 +1281,15 @@ class FacturacionController extends Controller
                         $adminAsesorRetiro = intval($contrato->admon_asesor   ?? 0);
                     }
 
-                    $totalRetiro = $totalSSRet + $admonRetiro + $adminAsesorRetiro;
+                    // IVA sobre la admon que efectivamente se cobra en el retiro
+                    $ivaRetiro = \App\Services\IvaService::deFactura(
+                        \App\Services\IvaService::aplicaContrato($contrato),
+                        $admonRetiro,
+                        $adminAsesorRetiro,
+                        0
+                    );
+
+                    $totalRetiro = $totalSSRet + $admonRetiro + $adminAsesorRetiro + $ivaRetiro;
 
                     // n_plano: reutilizar el del plano de retiro existente
                     $rsIdRet = $contrato->razon_social_id;
@@ -1316,7 +1325,7 @@ class FacturacionController extends Controller
                         'admin_asesor'            => $adminAsesorRetiro,
                         'seguro'                  => 0,
                         'afiliacion'              => 0,
-                        'iva'                     => 0,
+                        'iva'                     => $ivaRetiro,
                         'mora'                    => 0,
                         'otros'                   => 0,
                         'otros_admon'             => 0,
@@ -3843,12 +3852,13 @@ class FacturacionController extends Controller
                 $vArl  = $r100($factRetiro0->v_arl);
                 $vAFP  = $r100($factRetiro0->v_afp);
                 $vCaja = $r100($factRetiro0->v_caja);
-                $vIva  = $rIva($factRetiro0->iva);
                 $diasCotizar = (int)$factRetiro0->dias_cotizados;
                 $vAdmonBase = (int)(($c->administracion ?? 0) + ($c->admon_asesor ?? 0));
                 $vAdm = $admonRetiroCompleta
                     ? $vAdmonBase
                     : ($diasCotizar <= 3 ? 0 : $vAdmonBase);
+                // El IVA grava la admon que se cobre; la factura temporal la guarda en 0
+                $vIva  = \App\Services\IvaService::calcular($vAdm, (bool) ($ivaClientes[$c->cedula] ?? false));
                 $vTot  = $r100($factRetiro0->total_ss) + $vAdm + $vIva;
                 $estado = 'sin_factura';
             } elseif ($esRetirado) {
