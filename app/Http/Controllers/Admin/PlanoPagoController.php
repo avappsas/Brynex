@@ -495,6 +495,72 @@ class PlanoPagoController extends Controller
         ]);
     }
 
+    // ── 3a-bis. Asignar operador de planilla al contratista ────────────
+    // Desde la tabla de planos: cuando un independiente no tiene operador,
+    // el select de la columna "Operador" lo asigna sin salir de la pantalla.
+    // Escribe en clientes.operador_planilla_id, el mismo campo que edita el
+    // formulario de contrato (ver ContratoController::update).
+    public function asignarOperadorCliente(Request $request)
+    {
+        $aliadoId = session('aliado_id_activo');
+
+        try {
+            $validated = $request->validate([
+                'cliente_id'           => 'required|integer',
+                'operador_planilla_id' => 'required|integer',
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'ok'      => false,
+                'mensaje' => 'Datos inválidos: ' . implode(', ', collect($e->errors())->flatten()->toArray()),
+            ], 422);
+        }
+
+        if (!$aliadoId) {
+            return response()->json([
+                'ok'      => false,
+                'mensaje' => 'Sesión expirada. Recargue la página.',
+            ], 401);
+        }
+
+        // Multi-tenant: el contratista debe ser del aliado activo
+        $cliente = \App\Models\Cliente::where('aliado_id', $aliadoId)
+            ->find($validated['cliente_id']);
+
+        if (!$cliente) {
+            return response()->json([
+                'ok'      => false,
+                'mensaje' => 'Contratista no encontrado o no pertenece a este aliado.',
+            ], 404);
+        }
+
+        // Solo operadores globales activos (los mismos que ofrece el select)
+        $operador = DB::table('operadores_planilla')
+            ->whereNull('aliado_id')
+            ->where('activo', true)
+            ->find($validated['operador_planilla_id']);
+
+        if (!$operador) {
+            return response()->json([
+                'ok'      => false,
+                'mensaje' => 'Operador no válido o inactivo.',
+            ], 404);
+        }
+
+        $cliente->update(['operador_planilla_id' => $operador->id]);
+
+        return response()->json([
+            'ok'       => true,
+            'operador' => [
+                'id'     => (int) $operador->id,
+                'nombre' => $operador->nombre,
+                // Si el operador tiene integración por API, el botón PSE se habilita
+                'api'    => in_array($operador->codigo, array_keys(\App\Services\SuaporteApiService::HOSTS), true),
+            ],
+            'mensaje'  => "Operador {$operador->nombre} asignado al contratista {$cliente->cedula}.",
+        ]);
+    }
+
     // ── 3b. Mover un registro de plano a otro n_plano ─────────────────
     public function moverPlano(Request $request, int $id)
     {

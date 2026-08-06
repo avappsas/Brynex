@@ -211,6 +211,20 @@
 .tabla-planos tbody td.td-envio { max-width:70px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 /* Pago (independientes): PSE y Pagar siempre en la misma línea, sin recortarse */
 .tabla-planos tbody td.td-pago { max-width:none; overflow:visible; white-space:nowrap; }
+/* Operador del contratista */
+.tabla-planos tbody td.td-operador { font-size:.72rem; color:#374151; white-space:nowrap; max-width:none; }
+.op-chip {
+    display:inline-flex; align-items:center; gap:.2rem;
+    background:#f0f9ff; color:#0284c7; border:1px solid #bae6fd;
+    border-radius:6px; padding:.1rem .4rem; font-size:.67rem; font-weight:600;
+}
+.sel-operador {
+    max-width:110px; padding:.12rem .2rem; border-radius:6px;
+    border:1px dashed #94a3b8; background:#f8fafc; color:#475569;
+    font-size:.66rem; font-weight:600; cursor:pointer;
+}
+.sel-operador:hover:not(:disabled) { border-color:#0284c7; color:#0284c7; background:#f0f9ff; }
+.sel-operador:disabled { opacity:.6; cursor:wait; }
 .tabla-planos tfoot tr {
     background:linear-gradient(135deg,#0a1628,#0d2550);
     color:#e2e8f0;
@@ -876,7 +890,10 @@
                 .($fRet ? 'Retiro: '.$fRet->format('d/m/Y') : '')
             ) ?: 'Sin novedad de ingreso ni retiro';
         @endphp
-        <tr id="fila-plano-{{ $p->id }}" class="{{ $p->numero_planilla ? 'ya-pago' : '' }}">
+        {{-- data-operador-id: lo leen los botones PSE/Pagar, así al asignar el operador
+             desde la columna Operador no hay que reescribir sus onclick --}}
+        <tr id="fila-plano-{{ $p->id }}" class="{{ $p->numero_planilla ? 'ya-pago' : '' }}"
+            data-operador-id="{{ $p->operador_cliente_id ?? '' }}">
             <td class="td-numero-plano" style="color:#1d4ed8;cursor:pointer;font-weight:600" data-order="{{ $i }}" data-numero="{{ $i }}" data-id="{{ $p->id }}" data-nplano="{{ $p->n_plano }}" onclick="manejarClicCeldaNumero(this, event)" title="Clic para mover este registro a otro plano (Plano actual: P{{ $p->n_plano }})">{{ $i++ }}</td>
             <td data-order="{{ $p->tipo_modal_nombre ?? $p->tipo_p }}">
                 @if($p->contrato_id ?? null)
@@ -941,14 +958,22 @@
             @endif
             @if(!$esIndependiente)<td class="td-empresa" title="{{ $p->nombre_empresa }}" data-order="{{ $p->nombre_empresa ?? '' }}">{{ $p->nombre_empresa ? \Illuminate\Support\Str::limit($p->nombre_empresa,14,'…') : '—' }}</td>@endif
             @if($esIndependiente)
-            {{-- Columna Operador (texto informativo, nombre abreviado) --}}
-            <td style="font-size:.72rem;color:#374151;white-space:nowrap" title="{{ $p->operador_cliente_nombre ?? 'Sin operador asignado' }}" data-order="{{ $p->operador_cliente_nombre ?? '' }}">
+            {{-- Columna Operador: chip si ya lo tiene, select para asignarlo si no --}}
+            <td class="td-operador" data-cliente-id="{{ $p->cliente_id ?? '' }}"
+                title="{{ $p->operador_cliente_nombre ?? 'Sin operador asignado' }}"
+                data-order="{{ $p->operador_cliente_nombre ?? '' }}">
                 @if($p->operador_cliente_nombre ?? null)
-                <span style="display:inline-flex;align-items:center;gap:.2rem;background:#f0f9ff;color:#0284c7;border:1px solid #bae6fd;border-radius:6px;padding:.1rem .4rem;font-size:.67rem;font-weight:600">
-                    🏦 {{ $operadorCorto($p->operador_cliente_nombre) }}
-                </span>
+                <span class="op-chip">🏦 {{ $operadorCorto($p->operador_cliente_nombre) }}</span>
+                @elseif($p->cliente_id ?? null)
+                <select class="sel-operador" onchange="asignarOperadorCliente(this)"
+                        title="Asignar operador de planilla a este contratista">
+                    <option value="">— asignar —</option>
+                    @foreach($operadores as $op)
+                    <option value="{{ $op->id }}" data-corto="{{ $operadorCorto($op->nombre) }}">{{ $op->nombre }}</option>
+                    @endforeach
+                </select>
                 @else
-                <span style="color:#cbd5e1;font-size:.67rem">— sin asignar—</span>
+                <span style="color:#cbd5e1;font-size:.67rem">— sin contratista —</span>
                 @endif
             </td>
             {{-- Columna Acción: Liquidar (PSE) / Pagar / Pagado --}}
@@ -979,13 +1004,13 @@
                     <button type="button"
                         id="btn-pse-{{ $p->id }}"
                         class="btn-pse-icon"
-                        onclick="liquidarIndependienteRow({{ $p->id }}, {{ $p->operador_cliente_id ?? 'null' }}, this)"
+                        onclick="liquidarIndependienteRow({{ $p->id }}, Number(this.closest('tr').dataset.operadorId) || null, this)"
                         @if(!$puedeLiquidarApi) disabled @endif
                         title="{{ $tituloIcono }}">PSE</button>
                     @endif
 
                     <button type="button"
-                        onclick="abrirModalPagoIndividual({{ $p->id }}, {{ $p->total_ss ?? 0 }}, '{{ addslashes($clienteNombre) }}', {{ $p->operador_cliente_id ?? 'null' }})"
+                        onclick="abrirModalPagoIndividual({{ $p->id }}, {{ $p->total_ss ?? 0 }}, '{{ addslashes($clienteNombre) }}', Number(this.closest('tr').dataset.operadorId) || null)"
                         style="padding:.2rem .55rem;border-radius:6px;font-size:.68rem;font-weight:700;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8;cursor:pointer;white-space:nowrap;flex-shrink:0;transition:all .15s"
                         onmouseover="this.style.background='#dbeafe'" onmouseout="this.style.background='#eff6ff'">
                         💳 Pagar
@@ -1720,6 +1745,7 @@ const CTX = {
         descargarMiPlanilla: '{{ route('admin.planos.descargar_miplanilla') }}',
         descargarAportesEnLinea: '{{ route('admin.planos.descargar_aportes_en_linea') }}',
         nPlanoUpdate : '{{ route('admin.planos.n_plano.update') }}',
+        asignarOperador: '{{ route('admin.planos.operador_cliente.asignar') }}',
         confirmarPago: '{{ route('admin.planos.confirmar_pago') }}',
         apiRazon     : '/admin/planos/api/razon/',
         enlaceEstado   : '{{ route('admin.planos.api_operador.estado') }}',
@@ -2629,6 +2655,66 @@ async function liquidarEnEnlace(operadorId, operadorNombre) {
     } finally {
         btn.disabled  = false;
         btn.innerHTML = orig;
+    }
+}
+
+// ── Asignar operador de planilla al contratista desde la tabla ─────────
+// Guarda en clientes.operador_planilla_id y actualiza TODAS las filas de ese
+// contratista (puede tener varias en el mismo plano), incluido el botón PSE.
+async function asignarOperadorCliente(sel) {
+    const operadorId = parseInt(sel.value);
+    if (!operadorId) return;
+
+    const td        = sel.closest('.td-operador');
+    const clienteId = td.dataset.clienteId;
+    const corto     = sel.options[sel.selectedIndex].dataset.corto || sel.options[sel.selectedIndex].textContent.trim();
+
+    sel.disabled = true;
+
+    try {
+        const resp = await fetch(CTX.routes.asignarOperador, {
+            method : 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept'      : 'application/json',
+                'X-CSRF-TOKEN': CTX.csrfToken,
+            },
+            body: JSON.stringify({ cliente_id: parseInt(clienteId), operador_planilla_id: operadorId }),
+        });
+
+        const data = await resp.json();
+
+        if (!resp.ok || !data.ok) {
+            mostrarToast(data.mensaje || 'No se pudo asignar el operador.', 'error');
+            sel.disabled = false;
+            sel.value    = '';
+            return;
+        }
+
+        document.querySelectorAll(`.td-operador[data-cliente-id="${clienteId}"]`).forEach(celda => {
+            celda.innerHTML = `<span class="op-chip">🏦 ${corto}</span>`;
+            celda.title     = data.operador.nombre;
+            celda.setAttribute('data-order', data.operador.nombre);
+
+            const fila = celda.closest('tr');
+            if (!fila) return;
+            fila.dataset.operadorId = data.operador.id;
+
+            // El botón PSE se habilita solo si el operador tiene integración por API
+            const btnPse = fila.querySelector('.btn-pse-icon');
+            if (btnPse) {
+                btnPse.disabled = !data.operador.api;
+                btnPse.title    = data.operador.api
+                    ? `Liquidar en ${data.operador.nombre} y generar el link de pago PSE`
+                    : `Este contratista usa ${data.operador.nombre}, que no tiene integración por API.`;
+            }
+        });
+
+        mostrarToast(data.mensaje, 'success');
+    } catch (e) {
+        mostrarToast('Error de conexión al asignar el operador.', 'error');
+        sel.disabled = false;
+        sel.value    = '';
     }
 }
 

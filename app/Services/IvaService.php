@@ -10,9 +10,12 @@ use Illuminate\Support\Facades\DB;
  * Regla única de IVA para la facturación.
  *
  * ¿Quién causa IVA?
- *   • El cliente independiente, cuando `clientes.iva = 'SI'`.
- *   • Todos los clientes de una empresa marcada con `empresas.iva = 'SI'`,
- *     aunque el cliente no lo tenga marcado individualmente.
+ *   • Si el cliente pertenece a una empresa (`clientes.cod_empresa`), **manda la
+ *     empresa**: `empresas.iva = 'SI'` cobra IVA a todos sus clientes, y
+ *     `empresas.iva = 'No'` exime a todos — aunque el cliente tenga su propia
+ *     marca en 'SI'. La cuenta de cobro se le emite a la empresa, así que es su
+ *     condición tributaria la que aplica.
+ *   • Si el cliente no tiene empresa (independiente), manda `clientes.iva`.
  *
  * ¿Sobre qué?
  *   • Planilla    → administración (admon empresa + admon asesor).
@@ -35,8 +38,8 @@ class IvaService
     }
 
     /**
-     * ¿El contrato causa IVA? Mira el cliente y, si pertenece a una empresa,
-     * también la empresa.
+     * ¿El contrato causa IVA? Si el cliente tiene empresa, decide la empresa;
+     * si no la tiene, decide su propia marca.
      */
     public static function aplicaContrato(?Contrato $contrato): bool
     {
@@ -53,14 +56,15 @@ class IvaService
             ? $contrato->cliente
             : $contrato->cliente()->first();
 
-        $aplica = $cliente && self::bandera($cliente->iva);
+        if (! $cliente) {
+            return self::$cache[$cedula] = false;
+        }
 
         $empresaId = $cliente->cod_empresa ?? null;
-        if (! $aplica && $empresaId) {
-            $aplica = self::bandera(
-                DB::table('empresas')->where('id', $empresaId)->value('iva')
-            );
-        }
+
+        $aplica = $empresaId
+            ? self::bandera(DB::table('empresas')->where('id', $empresaId)->value('iva'))
+            : self::bandera($cliente->iva);
 
         return self::$cache[$cedula] = $aplica;
     }
@@ -96,8 +100,9 @@ class IvaService
 
         $mapa = [];
         foreach ($clientes as $cli) {
-            $mapa[$cli->cedula] = self::bandera($cli->iva)
-                || (bool) ($empresasIva[$cli->cod_empresa] ?? false);
+            $mapa[$cli->cedula] = $cli->cod_empresa
+                ? (bool) ($empresasIva[$cli->cod_empresa] ?? false)
+                : self::bandera($cli->iva);
         }
 
         self::$cache += $mapa;

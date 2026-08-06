@@ -425,6 +425,7 @@ Route::middleware('auth')->group(function () {
             Route::get('/descargar-aportes-en-linea', [$pp, 'descargarAportesEnLinea'])->name('descargar_aportes_en_linea');
             Route::get('/certificado-pdf',      [$pp, 'descargarCertificadoPdf'])->name('certificado_pdf');
             Route::patch('/n-plano',            [$pp, 'actualizarNPlano']) ->name('n_plano.update');
+            Route::patch('/operador-cliente',   [$pp, 'asignarOperadorCliente'])->name('operador_cliente.asignar');
             Route::patch('/mover-masivo',       [$pp, 'moverPlanoMasivo']) ->name('mover_masivo');
             Route::patch('/{id}/mover',         [$pp, 'moverPlano'])       ->name('mover');
             Route::post('/confirmar-pago',      [$pp, 'confirmarPago'])    ->name('confirmar_pago');

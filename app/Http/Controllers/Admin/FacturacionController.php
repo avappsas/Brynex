@@ -163,14 +163,14 @@ class FacturacionController extends Controller
             ->select('contrato_id', DB::raw('SUM(saldo_proximo) as suma'))
             ->pluck('suma', 'contrato_id');
 
-        // IVA: aplica si el cliente lo tiene marcado o si la empresa lo tiene
-        // marcada (en cuyo caso cubre a todos sus clientes) — ver IvaService.
+        // IVA: todos estos clientes pertenecen a esta empresa, así que manda la
+        // marca de la empresa — la del cliente no cuenta aquí (ver IvaService).
         $empresaTieneIva = \App\Services\IvaService::bandera($empresa->iva);
         $ivaClientes = DB::table('clientes')
             ->where('aliado_id', $aliadoId)
             ->where('cod_empresa', $empresaId)
             ->pluck('iva', 'cedula')
-            ->map(fn($v) => $empresaTieneIva || \App\Services\IvaService::bandera($v))
+            ->map(fn($v) => $empresaTieneIva)
             ->toArray();
 
         $hoy = now();
