@@ -43,10 +43,12 @@ class RetrocederPeriodoFacturas extends Command
                             {cedula? : Cédula a corregir (omitir si se usa --rs-independientes)}
                             {--aliado= : aliado_id propietario de las facturas (obligatorio)}
                             {--meses=1 : Cuántos meses retroceder}
-                            {--contrato= : Limitar a un contrato_id específico}
+                            {--contrato= : Limitar a uno o varios contrato_id (separados por coma)}
                             {--rs-independientes : Todos los contratos de razones sociales con es_independiente=1}
                             {--solo-vigentes : Limitar a contratos vigentes/activos}
                             {--solo-desfase= : Mover solo las facturas con este desfase (ej. 0)}
+                            {--desde-anio= : Solo facturas de este año en adelante (deja quieta la historia vieja)}
+                            {--desde-periodo= : Solo facturas desde este período AAAA-MM (para mover un tramo de la serie)}
                             {--detalle : Listar factura por factura en vez del resumen por contrato}
                             {--ejecutar : Aplica los cambios (sin esta bandera solo simula)}';
 
@@ -87,7 +89,25 @@ class RetrocederPeriodoFacturas extends Command
             $q->where('cedula', trim((string) $cedula));
         }
         if ($this->option('contrato')) {
-            $q->where('contrato_id', (int) $this->option('contrato'));
+            $ctrIds = collect(explode(',', (string) $this->option('contrato')))
+                ->map(fn ($v) => (int) trim($v))
+                ->filter()
+                ->all();
+            $q->whereIn('contrato_id', $ctrIds);
+        }
+        if ($this->option('desde-anio')) {
+            $q->where('anio', '>=', (int) $this->option('desde-anio'));
+        }
+        if ($this->option('desde-periodo')) {
+            if (!preg_match('/^(\d{4})-(\d{1,2})$/', (string) $this->option('desde-periodo'), $m)) {
+                $this->error('--desde-periodo debe tener el formato AAAA-MM (ej. 2021-04).');
+
+                return self::FAILURE;
+            }
+            // Un tramo de la serie: útil cuando el inicio ya está bien registrado
+            // y solo se corrió de cierto mes en adelante.
+            [$pAnio, $pMes] = [(int) $m[1], (int) $m[2]];
+            $q->whereRaw('(anio * 12 + mes) >= ?', [$pAnio * 12 + $pMes]);
         }
 
         if ($porRsInd) {
@@ -145,6 +165,24 @@ class RetrocederPeriodoFacturas extends Command
             ->get()
             ->keyBy('id');
 
+        // Ocupación actual de períodos, en una sola query en vez de una por factura
+        // (con miles de facturas contra SQL Server remoto la diferencia es de
+        // minutos a segundos). Índice: "contratoId-mes-anio" => numero_factura,
+        // ya sin las que se van a mover, que liberan su casilla.
+        $idsMoverSet = array_flip($idsQueSeMueven);
+        $ocupacion   = [];
+        Factura::where('aliado_id', $aliadoId)
+            ->whereIn('contrato_id', $porContrato->keys())
+            ->where('tipo', 'planilla')
+            ->where('numero_factura', '>', 0)
+            ->get(['id', 'contrato_id', 'mes', 'anio', 'numero_factura'])
+            ->each(function ($f) use (&$ocupacion, $idsMoverSet) {
+                if (isset($idsMoverSet[$f->id])) {
+                    return;
+                }
+                $ocupacion["{$f->contrato_id}-{$f->mes}-{$f->anio}"] = $f->numero_factura;
+            });
+
         $mover   = [];   // contrato_id => [ ['factura'=>, 'mesDest'=>, 'anioDest'=>], ... ]
         $omitidos = [];  // contrato_id => motivo
 
@@ -158,22 +196,35 @@ class RetrocederPeriodoFacturas extends Command
                 // El destino solo estorba si lo ocupa una factura que NO se mueve.
                 // Con --solo-desfase eso pasa de verdad: las planillas que ya estaban
                 // en vencido se quedan quietas y pueden estar justo en el destino.
-                $ocupado = Factura::where('aliado_id', $aliadoId)
-                    ->where('contrato_id', $f->contrato_id)
-                    ->where('tipo', 'planilla')
-                    ->where('mes', $mesDest)
-                    ->where('anio', $anioDest)
-                    ->where('numero_factura', '>', 0)
-                    ->whereNotIn('id', $idsQueSeMueven)
-                    ->first(['id', 'numero_factura']);
+                $ocupado = $ocupacion["{$f->contrato_id}-{$mesDest}-{$anioDest}"] ?? null;
 
                 if ($ocupado) {
                     $choque = sprintf('recibo #%s (%02d/%d) ya ocupa el destino de #%s',
-                        $ocupado->numero_factura, $mesDest, $anioDest, $f->numero_factura);
+                        $ocupado, $mesDest, $anioDest, $f->numero_factura);
                     break;
                 }
 
                 $movimientos[] = ['factura' => $f, 'mesDest' => $mesDest, 'anioDest' => $anioDest];
+            }
+
+            // Nunca dejar una planilla en un mes en que el contrato aún no existía.
+            // Pasa cuando la primera planilla ya coincide con el mes de ingreso:
+            // retrocederla la sacaría fuera de la vida del contrato.
+            if (!$choque && $movimientos) {
+                $contrato = $datosContrato->get($contratoId);
+                if ($contrato?->fecha_ingreso) {
+                    $primero = collect($movimientos)
+                        ->sortBy(fn ($m) => $m['anioDest'] * 12 + $m['mesDest'])
+                        ->first();
+                    $kDest = $primero['anioDest'] * 12 + $primero['mesDest'];
+                    $kIng  = (int) $contrato->fecha_ingreso->year * 12 + (int) $contrato->fecha_ingreso->month;
+
+                    if ($kDest < $kIng) {
+                        $choque = sprintf('el destino %02d/%d queda antes del ingreso (%s)',
+                            $primero['mesDest'], $primero['anioDest'],
+                            $contrato->fecha_ingreso->format('Y-m-d'));
+                    }
+                }
             }
 
             if ($choque) {
