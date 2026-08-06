@@ -7,6 +7,10 @@ $meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Sep
 $fmt   = fn($v) => '$' . number_format($v ?? 0, 0, ',', '.');
 $aliadoId = session('aliado_id_activo');
 $r100 = fn($v) => (int)(ceil(($v ?? 0) / 100) * 100); // redondeo al centena superior
+// El IVA NO se redondea a centena: es impuesto, va exacto como se factura.
+$rIva = fn($v) => (int) round($v ?? 0);
+// Columna de IVA visible solo si la empresa está marcada con iva=SI
+$mostrarIva = \App\Services\IvaService::bandera($empresa->iva ?? null);
 
 $estadoLabel = fn($e) => match($e) {
     'pagada'      => 'Pago',
@@ -46,6 +50,7 @@ table.fac-tbl{width:100%;border-collapse:collapse;font-size:.78rem}
 .fac-tbl tr.ya-pago td{background:#f0fdf4}
 .fac-tbl input[type=checkbox]{width:1.1rem;height:1.1rem;cursor:pointer}
 .num-col{font-family:monospace;text-align:right}
+.col-iva{text-align:center}
 .totales{background:#0f172a;color:#fff;font-weight:700}
 .tot-val{color:#34d399}
 /* NP editable en la tabla */
@@ -329,13 +334,15 @@ table.fac-tbl{width:100%;border-collapse:collapse;font-size:.78rem}
             <option value="todos">ADMON ▾</option>
         </select>
     </th>
-    <th class="num-col" style="display:none">IVA</th>
+    <th class="num-col col-iva" @if(!$mostrarIva) style="display:none" @endif>IVA</th>
     <th onclick="ordenarTabla('total')" style="cursor:pointer;" class="num-col" title="Clic para ordenar por Total">
         TOTAL <span id="sort-icon-total" class="sort-icon"></span>
     </th>
+    @if($hayMora)
     <th onclick="ordenarTabla('mora')" style="cursor:pointer;" class="num-col" title="Clic para ordenar por Mora">
         ⚠️ MORA <span id="sort-icon-mora" class="sort-icon"></span>
     </th>
+    @endif
     @if($hayAnticipos)
     <th class="num-col" style="color:#b45309;" title="Anticipo disponible asignado a este contrato">
         🟡 ANTICIPO
@@ -441,7 +448,7 @@ $vArl  = $fact ? $r100($fact->v_arl)  : 0;
 $vCaja = $fact ? $r100($fact->v_caja) : 0;
 $vPen  = $fact ? $r100($fact->v_afp)  : 0;
 $vAdm  = $fact ? (int)($fact->admon + $fact->admin_asesor) : (($esRetirado && !$esAfil) ? 0 : (int)(($c->administracion??0) + ($c->admon_asesor??0)));
-$vIva  = $fact ? $r100($fact->iva)    : 0;
+$vIva  = $fact ? $rIva($fact->iva)    : 0;
 // Total y SS
 $cotiz = $c->cotizacion_calc ?? $c->calcularCotizacion($dias); // pre-calculado en controller
 if (!$fact) {
@@ -451,7 +458,7 @@ if (!$fact) {
         $vArl  = $r100($factRetiroPreview->v_arl);
         $vPen  = $r100($factRetiroPreview->v_afp);
         $vCaja = $r100($factRetiroPreview->v_caja);
-        $vIva  = $r100($factRetiroPreview->iva);
+        $vIva  = $rIva($factRetiroPreview->iva);
         $vSS   = $r100($factRetiroPreview->total_ss);
         // Admon: el valor base de contrato (30 días); se recalculará por JS según el checkbox
         $vAdm  = (int)(($c->administracion??0) + ($c->admon_asesor??0));
@@ -464,7 +471,7 @@ if (!$fact) {
         $vArl  = $r100($cotizRetPend['arl']  ?? 0);
         $vPen  = $r100($cotizRetPend['pen']  ?? 0);
         $vCaja = $r100($cotizRetPend['caja'] ?? 0);
-        $vIva  = $r100($cotizRetPend['iva']  ?? 0);
+        $vIva  = $rIva($cotizRetPend['iva']  ?? 0);
         $vSS   = $r100($cotizRetPend['ss']   ?? 0);
         $vAdm  = $cobrarAdmonRetiroPendiente
             ? (int)(($c->administracion??0) + ($c->admon_asesor??0))
@@ -485,7 +492,7 @@ if (!$fact) {
         $vPen  = $r100($cotiz['pen']??0);
         $vCaja = $r100($cotiz['caja']??0);
         // IVA: admon (ya viene en $cotiz) + costo de afiliación
-        $vIva  = $r100($cotiz['iva']??0)
+        $vIva  = $rIva($cotiz['iva']??0)
                + \App\Services\IvaService::calcular((int)($c->costo_afiliacion ?? 0), (bool)($c->tiene_iva ?? false));
         $vSS   = $r100($cotiz['ss']);
         // admon ya calculado arriba desde contrato
@@ -505,7 +512,7 @@ if (!$fact) {
         $vArl  = $r100($cotiz['arl']??0);
         $vPen  = $r100($cotiz['pen']??0);
         $vCaja = $r100($cotiz['caja']??0);
-        $vIva  = $r100($cotiz['iva']??0);
+        $vIva  = $rIva($cotiz['iva']??0);
         $vSS   = $r100($cotiz['ss']);
         $vTot  = $vSS + $vAdm + $vIva;
     }
@@ -635,11 +642,12 @@ if ($esRetirado && $esAfil && !$fact) {
     <td class="num-col">{{ $vCaja>0?'$'.number_format($vCaja,0,',','.'):'—' }}</td>
     <td class="num-col">{{ $vPen>0?'$'.number_format($vPen,0,',','.'):'—' }}</td>
     <td class="num-col celda-admon">${{ number_format($vAdm,0,',','.') }}</td>
-    <td class="num-col" style="display:none">{{ $vIva>0?'$'.number_format($vIva,0,',','.'):'—' }}</td>
+    <td class="num-col col-iva" @if(!$mostrarIva) style="display:none" @endif>{{ $vIva>0?'$'.number_format($vIva,0,',','.'):'—' }}</td>
     <td class="num-col celda-tot" style="font-weight:700;color:{{ $yaP?'#16a34a':'#0f172a' }}">
         ${{ number_format($vTot,0,',','.') }}
     </td>
-    {{-- Mora: real si ya facturada, estimada si no --}}
+    {{-- Mora: real si ya facturada, estimada si no. La columna solo existe si alguien tiene mora --}}
+    @if($hayMora)
     <td class="num-col">
         @if($vMora > 0)
             <span style="display:inline-block;padding:.1rem .4rem;border-radius:20px;font-size:.62rem;font-weight:700;background:#fef3c7;color:#92400e;"
@@ -650,6 +658,7 @@ if ($esRetirado && $esAfil && !$fact) {
             <span style="color:#cbd5e1;font-size:.7rem">—</span>
         @endif
     </td>
+    @endif
     @if($hayAnticipos)
     @php
         $vAnticipo = $saldoAnticipoPorContrato->get($c->id, 0);
@@ -765,11 +774,13 @@ if ($esRetirado && $esAfil && !$fact) {
     <td class="num-col tot-val">${{ number_format($totCaja, 0,',','.') }}</td>
     <td class="num-col tot-val">${{ number_format($totPen,  0,',','.') }}</td>
     <td class="num-col tot-val" id="tot-admon-val">${{ number_format($totAdmon,0,',','.') }}</td>
-    <td class="num-col tot-val" style="display:none">${{ number_format($totIva,  0,',','.') }}</td>
+    <td class="num-col tot-val col-iva" @if(!$mostrarIva) style="display:none" @endif>${{ number_format($totIva,  0,',','.') }}</td>
     <td class="num-col tot-val" id="tot-general-val" style="font-size:.9rem">${{ number_format($totTotal,0,',','.') }}</td>
+    @if($hayMora)
     <td class="num-col tot-val" style="color:#fbbf24;font-weight:800;">
         {{ $totMora > 0 ? '$'.number_format($totMora,0,',','.') : '—' }}
     </td>
+    @endif
     <td colspan="3"></td>
 </tr>
 </tfoot>

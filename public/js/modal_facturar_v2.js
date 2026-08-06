@@ -659,7 +659,7 @@ const MF = (function () {
             setText('mf-v-ss', fmt(ceil(ss)));
             setText('mf-v-admon', fmt(ceil(admon)));
             setText('mf-v-seg', fmt(ceil(seg)));
-            setText('mf-v-iva', fmt(ceil(iva)));
+            setText('mf-v-iva', fmt(Math.round(iva)));
 
             // ── Mora: sumar la mora de TODOS los contratos seleccionados ──
             // Si varios clientes tienen mora y el pagador manda el total completo,
@@ -704,7 +704,7 @@ const MF = (function () {
                 setText('mf-badge-dias', '📅 ' + _selContratos.length + ' trab. · ' + dias + ' días');
             }
 
-            _total = ceil(ss) + ceil(admon) + ceil(seg) + ceil(iva) + afil;
+            _total = ceil(ss) + ceil(admon) + ceil(seg) + Math.round(iva) + afil;
 
         } else {
             // Modo individual: leer del cotizador Alpine
@@ -717,7 +717,7 @@ const MF = (function () {
             setText('mf-v-admon', fmt(ceil(r.admon || 0)));
             setText('mf-v-seg', fmt(ceil(r.seguro || 0)));
             const ivaExtraIni = _esModoAmbos() ? _ivaAfil() : 0;
-            setText('mf-v-iva', fmt(ceil(r.iva || 0) + ivaExtraIni));
+            setText('mf-v-iva', fmt(Math.round(r.iva || 0) + ivaExtraIni));
 
             const arlBadge = el('mf-arl-badge');
             if (arlBadge) arlBadge.textContent = _cfg.arlNivel ? 'Nivel ' + _cfg.arlNivel : '';
@@ -732,7 +732,7 @@ const MF = (function () {
             }
 
             _total = Math.ceil((r.eps || 0) + (r.arl || 0) + (r.pen || 0) + (r.caja || 0))
-                + ceil(r.admon || 0) + ceil(r.seguro || 0) + ceil(r.iva || 0) + ivaExtraIni;
+                + ceil(r.admon || 0) + ceil(r.seguro || 0) + Math.round(r.iva || 0) + ivaExtraIni;
             _totalAfil = _cfg.costoAfiliacion || 0;
         }
 
@@ -1024,7 +1024,7 @@ const MF = (function () {
                 const ivaAfil = _ivaAfil();
                 if (ivaAfil > 0) {
                     const r = (_cfg.getAlpineResult && _cfg.getAlpineResult()) || {};
-                    setText('mf-v-iva', fmt(ceil(r.iva || 0) + ivaAfil));
+                    setText('mf-v-iva', fmt(Math.round(r.iva || 0) + ivaAfil));
                 }
             }
 
@@ -2005,10 +2005,10 @@ const MF = (function () {
         setText('mf-v-admon', fmt(ceil(r.admon || 0)));
         setText('mf-v-seg', fmt(ceil(r.seguro || 0)));
         const ivaExtra = _esModoAmbos() ? _ivaAfil() : 0;
-        setText('mf-v-iva', fmt(ceil(r.iva || 0) + ivaExtra));
+        setText('mf-v-iva', fmt(Math.round(r.iva || 0) + ivaExtra));
 
         _total = Math.ceil((r.eps || 0) + (r.arl || 0) + (r.pen || 0) + (r.caja || 0))
-            + ceil(r.admon || 0) + ceil(r.seguro || 0) + ceil(r.iva || 0) + ivaExtra;
+            + ceil(r.admon || 0) + ceil(r.seguro || 0) + Math.round(r.iva || 0) + ivaExtra;
 
         recalc();
     }

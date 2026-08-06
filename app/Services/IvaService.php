@@ -28,7 +28,11 @@ use Illuminate\Support\Facades\DB;
  */
 class IvaService
 {
-    /** cedula => bool, para no repetir la consulta por cada contrato del mismo request */
+    /**
+     * "aliado:cedula" => bool, para no repetir la consulta por cada contrato del
+     * mismo request. La llave lleva el aliado porque la misma cédula existe en
+     * varios aliados con marcas de IVA distintas.
+     */
     private static array $cache = [];
 
     /** ¿Un valor de la columna `iva` (clientes/empresas) significa "sí"? */
@@ -47,36 +51,52 @@ class IvaService
             return false;
         }
 
-        $cedula = $contrato->cedula;
-        if (array_key_exists($cedula, self::$cache)) {
-            return self::$cache[$cedula];
+        $llave = self::llave($contrato->aliado_id, $contrato->cedula);
+        if (array_key_exists($llave, self::$cache)) {
+            return self::$cache[$llave];
         }
 
+        // La relación cliente() ya filtra por el aliado del contrato: obligatorio,
+        // porque la misma cédula puede estar en otro aliado con otra marca de IVA.
         $cliente = $contrato->relationLoaded('cliente')
             ? $contrato->cliente
             : $contrato->cliente()->first();
 
         if (! $cliente) {
-            return self::$cache[$cedula] = false;
+            return self::$cache[$llave] = false;
         }
 
         $empresaId = $cliente->cod_empresa ?? null;
 
         $aplica = $empresaId
-            ? self::bandera(DB::table('empresas')->where('id', $empresaId)->value('iva'))
+            ? self::bandera(
+                DB::table('empresas')
+                    ->where('id', $empresaId)
+                    ->where('aliado_id', $contrato->aliado_id)
+                    ->value('iva')
+            )
             : self::bandera($cliente->iva);
 
-        return self::$cache[$cedula] = $aplica;
+        return self::$cache[$llave] = $aplica;
+    }
+
+    private static function llave($aliadoId, $cedula): string
+    {
+        return ((int) $aliadoId).':'.$cedula;
     }
 
     /**
-     * Mapa cedula => bool para un lote de contratos, en 2 queries.
+     * Mapa cedula => bool para un lote de contratos de UN aliado, en 2 queries.
      * Evita el N+1 de aplicaContrato() dentro de un foreach.
+     *
+     * El filtro por aliado es obligatorio: la misma cédula existe en varios
+     * aliados (con empresa y marca de IVA distintas), y sin él la fila del otro
+     * aliado pisa la correcta al indexar por cédula.
      *
      * @param  iterable<int|string>  $cedulas
      * @return array<int|string, bool>
      */
-    public static function mapaPorCedulas(iterable $cedulas): array
+    public static function mapaPorCedulas(int $aliadoId, iterable $cedulas): array
     {
         $cedulas = collect($cedulas)->filter()->unique()->values();
         if ($cedulas->isEmpty()) {
@@ -84,6 +104,7 @@ class IvaService
         }
 
         $clientes = DB::table('clientes')
+            ->where('aliado_id', $aliadoId)
             ->whereIn('cedula', $cedulas)
             ->select('cedula', 'iva', 'cod_empresa')
             ->get();
@@ -92,6 +113,7 @@ class IvaService
         $empresaIds = $clientes->pluck('cod_empresa')->filter()->unique()->values();
         if ($empresaIds->isNotEmpty()) {
             $empresasIva = DB::table('empresas')
+                ->where('aliado_id', $aliadoId)
                 ->whereIn('id', $empresaIds)
                 ->pluck('iva', 'id')
                 ->map(fn ($v) => self::bandera($v))
@@ -103,9 +125,8 @@ class IvaService
             $mapa[$cli->cedula] = $cli->cod_empresa
                 ? (bool) ($empresasIva[$cli->cod_empresa] ?? false)
                 : self::bandera($cli->iva);
+            self::$cache[self::llave($aliadoId, $cli->cedula)] = $mapa[$cli->cedula];
         }
-
-        self::$cache += $mapa;
 
         return $mapa;
     }

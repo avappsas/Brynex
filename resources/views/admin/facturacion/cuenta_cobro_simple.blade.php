@@ -214,10 +214,14 @@ table.tbl-cc .num { text-align: right; font-family: monospace; }
             </tr>
         </thead>
         <tbody>
-        @php $no = 1; $totalSaldo = 0; $totIva = 0; @endphp
+        @php $no = 1; $totalSaldo = 0; $totIva = 0; $ivaSobreAdmon = false; $ivaSobreAfil = false; @endphp
         @foreach($items as $item)
         @php
             $totIva += (int)($item->v_iva ?? 0);
+            // Qué base gravó el IVA, para nombrarla en el renglón
+            if ((int)($item->v_iva ?? 0) > 0) {
+                if ($item->es_afil) { $ivaSobreAfil = true; } else { $ivaSobreAdmon = true; }
+            }
             // saldo_proximo: positivo = a favor, negativo = pendiente
             $spItem = (int)($item->saldo_proximo ?? 0);
             $itemAFavor    = $spItem > 0 ? $spItem : 0;
@@ -269,13 +273,17 @@ table.tbl-cc .num { text-align: right; font-family: monospace; }
             </td>
         </tr>
         @endforeach
+        @php
+            $ivaBaseTexto = ($ivaSobreAdmon && $ivaSobreAfil) ? 'administración y afiliación'
+                : ($ivaSobreAfil ? 'la afiliación' : 'administración');
+        @endphp
         {{-- IVA como renglón único, no prorrateado por trabajador --}}
         @if($totIva > 0)
         <tr>
             <td style="text-align:center;color:#94a3b8;font-size:10px;">—</td>
             <td colspan="4">
                 <div style="font-weight:700;font-size:10.5px;color:#1e3a5f;">IVA ({{ rtrim(rtrim(number_format($ivaPct ?? 19, 2, ',', '.'), '0'), ',') }}%)</div>
-                <span style="font-size:8.5px;color:#64748b;font-weight:600;">Sobre el valor de administración</span>
+                <span style="font-size:8.5px;color:#64748b;font-weight:600;">Sobre el valor de {{ $ivaBaseTexto }}</span>
             </td>
             <td class="num" style="font-weight:700;">${{ number_format($totIva, 0, ',', '.') }}</td>
             <td style="text-align:center;">

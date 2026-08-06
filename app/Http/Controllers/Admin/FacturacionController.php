@@ -329,6 +329,19 @@ class FacturacionController extends Controller
         $saldoAnticipoPorContrato = $anticiposPorContrato->map(fn($group) => $group->sum('valor_disponible'));
         $hayAnticipos = $saldoAnticipoPorContrato->isNotEmpty() || $totalAnticipoDisponible > 0;
 
+        // ¿Alguien tiene mora este período? Si no, la columna se oculta.
+        // Misma regla que la fila: lo ya pagado no muestra mora (ver empresa.blade).
+        $hayMora = $contratos->contains(function ($c) use ($moraPorContrato) {
+            $fact = $c->factura_exist;
+            if ($fact && in_array($fact->estado, ['pagada', 'prestamo'])) {
+                return false;
+            }
+
+            return $fact
+                ? (int) ($fact->mora ?? 0) > 0
+                : (int) ($moraPorContrato[$c->id] ?? 0) > 0;
+        });
+
         $cobrosAdicionales = \App\Models\CobrosAdicionalEmpresa::where('aliado_id', $aliadoId)
             ->where('empresa_id', $empresa->id)
             ->where('activo', true)
@@ -347,7 +360,7 @@ class FacturacionController extends Controller
             'empresa', 'contratos', 'facturasExistentes', 'bancos', 'planosActuales', 'asesores',
             'saldoEmpresaFavor', 'saldoEmpresaPendiente', 'moraPorContrato',
             'anticiposEmpresa', 'totalAnticipoDisponible', 'saldoAnticipoPorContrato', 'hayAnticipos',
-            'cobrosAdicionales', 'cobrosRecurrentes', 'meses'
+            'hayMora', 'cobrosAdicionales', 'cobrosRecurrentes', 'meses'
         );
     }
 
@@ -3636,12 +3649,14 @@ class FacturacionController extends Controller
             ->keyBy('contrato_id');
 
         $r100 = fn($v) => (int)(ceil(($v ?? 0) / 100) * 100);
+        // El IVA NO se redondea a centena: es impuesto, va exacto como se factura.
+        $rIva = fn($v) => (int) round($v ?? 0);
 
         // ── Pre-calcular mora estimada por contrato en lote ──
         $moraPorContrato = [];
         $filasMora = [];
-        // IVA por cédula: cliente marcado o empresa marcada (ver IvaService)
-        $ivaClientes = \App\Services\IvaService::mapaPorCedulas($contratos->pluck('cedula'));
+        // IVA por cédula: manda la empresa del cliente; si no tiene, su marca (ver IvaService)
+        $ivaClientes = \App\Services\IvaService::mapaPorCedulas($aliadoId, $contratos->pluck('cedula'));
 
         foreach ($contratos as $c) {
             $fact = $facturasExistentes->get($c->id);
@@ -3726,7 +3741,7 @@ class FacturacionController extends Controller
             }
         }
 
-        $items = $contratos->map(function ($c) use ($mes, $anio, $facturasExistentes, $facturasRetiro0, $admonRetiroCompleta, $r100, $aliadoId, $moraPorContrato, $ivaClientes) {
+        $items = $contratos->map(function ($c) use ($mes, $anio, $facturasExistentes, $facturasRetiro0, $admonRetiroCompleta, $r100, $rIva, $aliadoId, $moraPorContrato, $ivaClientes) {
             $fact         = $facturasExistentes->get($c->id);
             $factRetiro0  = $facturasRetiro0->get($c->id);
             $nombre = $c->cliente?->nombre_completo
@@ -3818,7 +3833,7 @@ class FacturacionController extends Controller
                 $vAFP  = $r100($fact->v_afp);
                 $vCaja = $r100($fact->v_caja);
                 $vAdm  = (int)($fact->admon + $fact->admin_asesor);
-                $vIva  = $r100($fact->iva);
+                $vIva  = $rIva($fact->iva);
                 $vTot  = (int)$fact->total;
                 $estado = $fact->estado;
                 $diasCotizar = (int)$fact->dias_cotizados;
@@ -3828,7 +3843,7 @@ class FacturacionController extends Controller
                 $vArl  = $r100($factRetiro0->v_arl);
                 $vAFP  = $r100($factRetiro0->v_afp);
                 $vCaja = $r100($factRetiro0->v_caja);
-                $vIva  = $r100($factRetiro0->iva);
+                $vIva  = $rIva($factRetiro0->iva);
                 $diasCotizar = (int)$factRetiro0->dias_cotizados;
                 $vAdmonBase = (int)(($c->administracion ?? 0) + ($c->admon_asesor ?? 0));
                 $vAdm = $admonRetiroCompleta
@@ -3852,7 +3867,7 @@ class FacturacionController extends Controller
                 $vAFP  = $r100($cotiz['pen']??0);
                 $vCaja = $r100($cotiz['caja']??0);
                 // IVA: admon (ya viene en $cotiz) + costo de afiliación
-                $vIva  = $r100($cotiz['iva']??0)
+                $vIva  = $rIva($cotiz['iva']??0)
                        + \App\Services\IvaService::calcular((int)($c->costo_afiliacion ?? 0), $tieneIva);
                 $vSS   = $r100($cotiz['ss']);
                 $vAdm  = (int)(($c->administracion??0) + ($c->admon_asesor??0));
@@ -3875,7 +3890,7 @@ class FacturacionController extends Controller
                 $vAFP  = $r100($cotiz['pen']  ?? 0);
                 $vCaja = $r100($cotiz['caja'] ?? 0);
                 $vAdm  = (int)(($c->administracion ?? 0) + ($c->admon_asesor ?? 0));
-                $vIva  = $r100($cotiz['iva']  ?? 0);
+                $vIva  = $rIva($cotiz['iva']  ?? 0);
                 $vSS   = $r100($cotiz['ss']   ?? 0);
                 $vTot  = $vSS + $vAdm + $vIva + $vMora;
                 $estado = 'sin_factura';

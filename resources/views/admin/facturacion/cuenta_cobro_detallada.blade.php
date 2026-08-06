@@ -197,7 +197,7 @@ table.tbl-det tfoot .num { color: #34d399; }
             </tr>
         </thead>
         <tbody>
-        @php $no=1; $totEps=$totArl=$totAfp=$totCaja=$totAdmon=$totIva=$totMora=$totTotal=0; $totalSaldo=0; @endphp
+        @php $no=1; $totEps=$totArl=$totAfp=$totCaja=$totAdmon=$totIva=$totMora=$totTotal=0; $totalSaldo=0; $ivaSobreAdmon = false; $ivaSobreAfil = false; @endphp
         @foreach($items as $item)
         @php
             $totEps   += $item->v_eps;
@@ -206,6 +206,10 @@ table.tbl-det tfoot .num { color: #34d399; }
             $totCaja  += $item->v_caja;
             $totAdmon += $item->v_admon;
             $totIva   += $item->v_iva;
+            // Qué base gravó el IVA, para nombrarla en el renglón
+            if ((int)($item->v_iva ?? 0) > 0) {
+                if ($item->es_afil) { $ivaSobreAfil = true; } else { $ivaSobreAdmon = true; }
+            }
             $totMora  += $item->v_mora ?? 0;
             $totTotal += $item->v_total;
             // saldo_proximo: positivo = a favor, negativo = pendiente
@@ -310,6 +314,10 @@ table.tbl-det tfoot .num { color: #34d399; }
             </td>
         </tr>
         @endforeach
+        @php
+            $ivaBaseTexto = ($ivaSobreAdmon && $ivaSobreAfil) ? 'administración y afiliación'
+                : ($ivaSobreAfil ? 'la afiliación' : 'administración');
+        @endphp
         {{-- IVA como renglón único sobre el total de administración --}}
         @if($totIva > 0)
         <tr>
@@ -317,7 +325,7 @@ table.tbl-det tfoot .num { color: #34d399; }
             <td style="font-family:monospace;color:#94a3b8;">—</td>
             <td colspan="3">
                 <div style="font-weight:700;font-size:10px;color:#1e3a5f;">IVA ({{ rtrim(rtrim(number_format($ivaPct, 2, ',', '.'), '0'), ',') }}%)</div>
-                <span style="font-size:8px;color:#64748b;font-weight:600;">Sobre el valor de administración</span>
+                <span style="font-size:8px;color:#64748b;font-weight:600;">Sobre el valor de {{ $ivaBaseTexto }}</span>
             </td>
             <td colspan="6" style="color:#cbd5e1;text-align:center;">—</td>
             <td class="num" style="font-weight:800;color:#0f172a;">${{ number_format($totIva,0,',','.') }}</td>
