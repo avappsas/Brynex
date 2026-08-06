@@ -49,6 +49,13 @@ class CierrePeriodoService
     public const MODALIDAD_INDEP_ACTUAL = 11;
 
     /**
+     * BRYGAR: sus razones sociales son la operación principal de BryNex, así
+     * que la validación de cierre las muestra de primeras y deja las de los
+     * demás aliados debajo.
+     */
+    public const ALIADO_PRINCIPAL = 2;
+
+    /**
      * Traduce el mes de PAGO al período que guardan los planos.
      *
      * Los independientes (modalidad 11) guardan el mes de pago; el resto
@@ -69,8 +76,11 @@ class CierrePeriodoService
     /**
      * Una fila por razón social con contratos vigentes: cuántos entraron a
      * planilla, cuántos quedaron pendientes y cómo va la liquidación por API.
+     *
+     * `$aliadoId` en null recorre TODOS los aliados: el informe es de BryNex,
+     * no de uno solo. Con un id se filtra a ese aliado.
      */
-    public function resumen(int $aliadoId, int $mesPago, int $anioPago)
+    public function resumen(?int $aliadoId, int $mesPago, int $anioPago)
     {
         $p = $this->periodo($mesPago, $anioPago);
 
@@ -80,10 +90,11 @@ class CierrePeriodoService
         // que el aliado reconoce— y cuántos de ellos deben cotizar de verdad
         // este período. El pendiente se mide contra el segundo.
         $porContrato = DB::table('contratos AS c')
-            ->where('c.aliado_id', $aliadoId)
             ->where('c.estado', 'vigente')
+            ->when($aliadoId, fn ($q) => $q->where('c.aliado_id', $aliadoId))
             ->selectRaw(
-                'c.razon_social_id,
+                'c.aliado_id,
+                 c.razon_social_id,
                  CASE WHEN '.$this->existePlanoSql().' THEN 1 ELSE 0 END AS con_plano,
                  CASE WHEN '.$this->aplicaPlanillaSql().' THEN 1 ELSE 0 END AS aplica',
                 array_merge($this->bindingsPlano($p), $this->bindingsAplica($p))
@@ -91,74 +102,183 @@ class CierrePeriodoService
 
         $filas = DB::query()->fromSub($porContrato, 't')
             ->leftJoin('razones_sociales AS rs', 'rs.id', '=', 't.razon_social_id')
+            ->leftJoin('aliados AS a', 'a.id', '=', 't.aliado_id')
             ->selectRaw("
+                t.aliado_id,
                 t.razon_social_id,
+                MAX(ISNULL(a.nombre, '(sin aliado)'))          AS aliado,
                 MAX(ISNULL(rs.razon_social, '(sin razón social)')) AS razon_social,
                 MAX(rs.nit)  AS nit,
                 COUNT(*)     AS vigentes,
                 SUM(t.aplica) AS deben_cotizar,
                 SUM(CASE WHEN t.aplica = 1 AND t.con_plano = 1 THEN 1 ELSE 0 END) AS con_plano
             ")
-            ->groupBy('t.razon_social_id')
+            ->groupBy('t.aliado_id', 't.razon_social_id')
             ->get();
 
-        $liquidaciones = $this->liquidacionesApi($aliadoId, $mesPago, $anioPago);
+        return $this->agruparPorNit($filas, $this->liquidacionesApi($aliadoId, $mesPago, $anioPago));
+    }
 
-        return $filas->map(function ($f) use ($liquidaciones) {
-            $f->vigentes = (int) $f->vigentes;
-            $f->deben_cotizar = (int) $f->deben_cotizar;
-            $f->con_plano = (int) $f->con_plano;
-            $f->pendientes = $f->deben_cotizar - $f->con_plano;
-            $f->api = $liquidaciones->get($f->razon_social_id);
+    /**
+     * La misma empresa vive repetida como razón social en varios aliados —cada
+     * uno la creó por su lado—, así que el informe global la mostraría tres
+     * veces y los totales se leerían mal. Se junta por NIT en una sola fila que
+     * suma los contadores y guarda de qué aliados viene.
+     *
+     * Sin NIT no hay manera de saber si dos filas son la misma empresa: esas
+     * quedan cada una por su lado, con su propio id.
+     */
+    private function agruparPorNit($filas, $liquidaciones)
+    {
+        return $filas
+            ->groupBy(fn ($f) => filled($f->nit) ? 'nit:'.trim((string) $f->nit) : 'rs:'.$f->razon_social_id)
+            ->map(function ($grupo, $clave) use ($liquidaciones) {
+                $aliados = $grupo->map(function ($f) {
+                    $f->aliado_id = (int) $f->aliado_id;
+                    $f->vigentes = (int) $f->vigentes;
+                    $f->deben_cotizar = (int) $f->deben_cotizar;
+                    $f->con_plano = (int) $f->con_plano;
+                    $f->pendientes = $f->deben_cotizar - $f->con_plano;
+                    $f->sin_planilla = $f->vigentes - $f->deben_cotizar;
 
-            return $f;
-        })->sortByDesc('pendientes')->values();
+                    return $f;
+                })->sortByDesc('pendientes')->values();
+
+                // El nombre que manda es el que le puso el aliado principal:
+                // los demás suelen tenerla escrita a su manera.
+                $principal = $aliados->firstWhere('aliado_id', self::ALIADO_PRINCIPAL) ?? $aliados->first();
+
+                return (object) [
+                    'clave' => $clave,
+                    'razon_social' => $principal->razon_social,
+                    'nit' => $principal->nit,
+                    'razon_social_id' => $principal->razon_social_id,
+                    'razon_social_ids' => $aliados->pluck('razon_social_id')->map(fn ($i) => (int) $i)->all(),
+                    'es_principal' => $aliados->contains('aliado_id', self::ALIADO_PRINCIPAL),
+                    'aliados' => $aliados,
+                    'vigentes' => $aliados->sum('vigentes'),
+                    'deben_cotizar' => $aliados->sum('deben_cotizar'),
+                    'con_plano' => $aliados->sum('con_plano'),
+                    'pendientes' => $aliados->sum('pendientes'),
+                    'sin_planilla' => $aliados->sum('sin_planilla'),
+                    'api' => $this->fusionarApi($aliados->pluck('razon_social_id')
+                        ->map(fn ($id) => $liquidaciones->get($id))->filter()),
+                ];
+            })
+            ->sort(fn ($a, $b) => [$b->es_principal, $b->pendientes] <=> [$a->es_principal, $a->pendientes])
+            ->values();
+    }
+
+    /** Las liquidaciones por API de todas las razones sociales del grupo, en una. */
+    private function fusionarApi($api)
+    {
+        if ($api->isEmpty()) {
+            return null;
+        }
+
+        return (object) [
+            'intentos' => $api->sum('intentos'),
+            'liquidadas' => $api->sum('liquidadas'),
+            'valor_liquidado' => $api->sum('valor_liquidado'),
+            'ultima_fecha' => $api->max('ultima_fecha'),
+            'operador' => $api->pluck('operador')->filter()->unique()->implode(', ') ?: null,
+        ];
     }
 
     /**
      * Contratos vigentes sin plano del período, con lo mínimo para saber a
-     * quién llamar: desde cuándo está, qué plan tiene y cuándo fue la última
-     * vez que sí entró a una planilla.
+     * quién llamar: de qué aliado es, desde cuándo está, qué plan tiene y
+     * cuándo fue la última vez que sí entró a una planilla.
+     *
+     * `$razonSocialIds` acepta la lista completa del grupo, porque una fila del
+     * informe puede venir de varias razones sociales con el mismo NIT.
      */
-    public function pendientes(int $aliadoId, int $mesPago, int $anioPago, ?int $razonSocialId = null)
+    public function pendientes(?int $aliadoId, int $mesPago, int $anioPago, array|int|null $razonSocialIds = null)
     {
         $p = $this->periodo($mesPago, $anioPago);
 
-        $query = DB::table('contratos AS c')
-            ->leftJoin('clientes AS cl', function ($j) use ($aliadoId) {
-                $j->on('cl.cedula', '=', 'c.cedula')->where('cl.aliado_id', '=', $aliadoId);
-            })
-            ->leftJoin('razones_sociales AS rs', 'rs.id', '=', 'c.razon_social_id')
-            ->leftJoin('planes_contrato AS pl', 'pl.id', '=', 'c.plan_id')
-            ->leftJoin('tipo_modalidad AS tm', 'tm.id', '=', 'c.tipo_modalidad_id')
-            ->where('c.aliado_id', $aliadoId)
-            ->where('c.estado', 'vigente')
+        $query = $this->queryDetalle($aliadoId, $razonSocialIds)
             ->whereRaw('NOT '.$this->existePlanoSql(), $this->bindingsPlano($p));
 
         $this->soloLosQueCotizan($query, $p);
 
-        if ($razonSocialId) {
-            $query->where('c.razon_social_id', $razonSocialId);
-        }
-
-        return $query->selectRaw("
-                c.id AS contrato_id,
-                c.cedula,
-                c.razon_social_id,
-                ISNULL(rs.razon_social, '(sin razón social)') AS razon_social,
-                LTRIM(RTRIM(ISNULL(cl.primer_nombre,'')+' '+ISNULL(cl.segundo_nombre,'')+' '
-                      +ISNULL(cl.primer_apellido,'')+' '+ISNULL(cl.segundo_apellido,''))) AS nombre,
-                cl.celular,
-                pl.nombre AS plan_nombre,
-                tm.tipo_modalidad AS modalidad,
-                CONVERT(VARCHAR(10), c.fecha_ingreso, 23) AS fecha_ingreso,
+        return $query->selectRaw($this->columnasDetalle().",
                 (SELECT MAX(p2.anio_plano * 100 + p2.mes_plano) FROM planos p2
                   WHERE p2.aliado_id = c.aliado_id AND p2.no_identifi = c.cedula
                     AND p2.deleted_at IS NULL AND p2.tipo_reg IN ('planilla','retiro')) AS ultimo_periodo
             ")
             ->orderBy('rs.razon_social')
+            ->orderBy('a.nombre')
             ->orderBy('c.cedula')
             ->get();
+    }
+
+    /**
+     * El otro lado de la moneda: los vigentes a los que este período NO les
+     * toca planilla, con el porqué. Es la diferencia entre «vigentes» y «deben
+     * cotizar», que sin explicación se lee como gente que se dejó por fuera.
+     */
+    public function noAplican(?int $aliadoId, int $mesPago, int $anioPago, array|int|null $razonSocialIds = null)
+    {
+        $p = $this->periodo($mesPago, $anioPago);
+
+        $gestionArl = self::MODALIDAD_GESTION_ARL;
+
+        return $this->queryDetalle($aliadoId, $razonSocialIds)
+            ->whereRaw('NOT '.$this->aplicaPlanillaSql(), $this->bindingsAplica($p))
+            ->selectRaw($this->columnasDetalle().",
+                CASE WHEN c.tipo_modalidad_id = {$gestionArl}
+                     THEN 'Gestión ARL'
+                     ELSE 'Afiliado dentro del período o después' END AS motivo
+            ")
+            ->orderBy('rs.razon_social')
+            ->orderBy('a.nombre')
+            ->orderBy('c.cedula')
+            ->get();
+    }
+
+    /**
+     * Base común de los dos detalles. El cliente se cruza por el aliado del
+     * contrato —no por el de la sesión— porque el informe es global.
+     */
+    private function queryDetalle(?int $aliadoId, array|int|null $razonSocialIds)
+    {
+        $query = DB::table('contratos AS c')
+            ->leftJoin('clientes AS cl', function ($j) {
+                $j->on('cl.cedula', '=', 'c.cedula')->on('cl.aliado_id', '=', 'c.aliado_id');
+            })
+            ->leftJoin('razones_sociales AS rs', 'rs.id', '=', 'c.razon_social_id')
+            ->leftJoin('aliados AS a', 'a.id', '=', 'c.aliado_id')
+            ->leftJoin('planes_contrato AS pl', 'pl.id', '=', 'c.plan_id')
+            ->leftJoin('tipo_modalidad AS tm', 'tm.id', '=', 'c.tipo_modalidad_id')
+            ->where('c.estado', 'vigente');
+
+        if ($aliadoId) {
+            $query->where('c.aliado_id', $aliadoId);
+        }
+
+        if ($razonSocialIds !== null) {
+            $query->whereIn('c.razon_social_id', (array) $razonSocialIds);
+        }
+
+        return $query;
+    }
+
+    private function columnasDetalle(): string
+    {
+        return "c.id AS contrato_id,
+                c.cedula,
+                c.aliado_id,
+                ISNULL(a.nombre, '—') AS aliado,
+                c.razon_social_id,
+                ISNULL(rs.razon_social, '(sin razón social)') AS razon_social,
+                cl.id AS cliente_id,
+                LTRIM(RTRIM(ISNULL(cl.primer_nombre,'')+' '+ISNULL(cl.segundo_nombre,'')+' '
+                      +ISNULL(cl.primer_apellido,'')+' '+ISNULL(cl.segundo_apellido,''))) AS nombre,
+                cl.celular,
+                pl.nombre AS plan_nombre,
+                tm.tipo_modalidad AS modalidad,
+                CONVERT(VARCHAR(10), c.fecha_ingreso, 23) AS fecha_ingreso";
     }
 
     /** Solo el conteo de una razón social, para el aviso de /admin/planos. */
@@ -242,19 +362,11 @@ class CierrePeriodoService
      */
     public function lotesSinConfirmar(int $aliadoId)
     {
-        $lotes = DB::table('planos AS p')
+        $lotes = $this->planosSinNumero($aliadoId)
             ->leftJoin('razones_sociales AS rs', 'rs.id', '=', 'p.razon_social_id')
             ->leftJoin('facturas AS f', function ($j) {
                 $j->on('f.id', '=', 'p.factura_id')->whereNull('f.deleted_at');
             })
-            ->where('p.aliado_id', $aliadoId)
-            ->whereNull('p.deleted_at')
-            ->whereIn('p.tipo_reg', ['planilla', 'retiro'])
-            ->whereNotNull('p.razon_social_id')
-            ->where(function ($q) {
-                $q->whereNull('p.numero_planilla')->orWhere('p.numero_planilla', '');
-            })
-            ->whereRaw('(p.anio_plano * 100 + p.mes_plano) >= ?', [self::PERIODO_MINIMO])
             ->selectRaw("
                 p.razon_social_id, p.anio_plano, p.mes_plano, p.n_plano,
                 MAX(ISNULL(rs.razon_social, '(sin razón social)')) AS razon_social,
@@ -290,17 +402,22 @@ class CierrePeriodoService
     }
 
     /**
-     * Los cotizantes de cada tanda sin número, indexados por la misma llave
-     * que arma lotesSinConfirmar(). Es el detalle de "quién está ahí dentro":
-     * sin esto el informe da un conteo que no se puede auditar.
+     * Planos que de verdad esperan un número de planilla. Es la base de las
+     * tres consultas del bloque, en un solo sitio para que no se desincronicen.
+     *
+     * Deja fuera dos cosas que nunca van a tener número, y que si se listan
+     * convierten el bloque en ruido:
+     *
+     *  - **Gestión ARL**: no es una planilla mensual, solo el radicado y el
+     *    servicio ante la ARL. Su pendiente es de facturación, y ahí sí sale,
+     *    en «vigentes sin facturar».
+     *  - **Planos de cero días**: `PlanoPilaTxtService` exige `num_dias > 0`
+     *    para incluir una línea en el archivo, así que un plano de 0 días
+     *    jamás llega al operador y jamás recibe número.
      */
-    public function cotizantesDeLotes(int $aliadoId)
+    private function planosSinNumero(int $aliadoId)
     {
         return DB::table('planos AS p')
-            ->leftJoin('facturas AS f', function ($j) {
-                $j->on('f.id', '=', 'p.factura_id')->whereNull('f.deleted_at');
-            })
-            ->leftJoin('tipo_modalidad AS tm', 'tm.id', '=', 'p.tipo_modalidad_id')
             ->where('p.aliado_id', $aliadoId)
             ->whereNull('p.deleted_at')
             ->whereIn('p.tipo_reg', ['planilla', 'retiro'])
@@ -308,7 +425,26 @@ class CierrePeriodoService
             ->where(function ($q) {
                 $q->whereNull('p.numero_planilla')->orWhere('p.numero_planilla', '');
             })
-            ->whereRaw('(p.anio_plano * 100 + p.mes_plano) >= ?', [self::PERIODO_MINIMO])
+            ->where(function ($q) {
+                $q->whereNull('p.tipo_modalidad_id')
+                    ->orWhere('p.tipo_modalidad_id', '<>', self::MODALIDAD_GESTION_ARL);
+            })
+            ->whereRaw('ISNULL(p.num_dias, 0) > 0')
+            ->whereRaw('(p.anio_plano * 100 + p.mes_plano) >= ?', [self::PERIODO_MINIMO]);
+    }
+
+    /**
+     * Los cotizantes de cada tanda sin número, indexados por la misma llave
+     * que arma lotesSinConfirmar(). Es el detalle de "quién está ahí dentro":
+     * sin esto el informe da un conteo que no se puede auditar.
+     */
+    public function cotizantesDeLotes(int $aliadoId)
+    {
+        return $this->planosSinNumero($aliadoId)
+            ->leftJoin('facturas AS f', function ($j) {
+                $j->on('f.id', '=', 'p.factura_id')->whereNull('f.deleted_at');
+            })
+            ->leftJoin('tipo_modalidad AS tm', 'tm.id', '=', 'p.tipo_modalidad_id')
             ->selectRaw("
                 p.id AS plano_id, p.razon_social_id, p.anio_plano, p.mes_plano, p.n_plano,
                 p.no_identifi AS cedula, p.tipo_reg, p.num_dias,
@@ -367,17 +503,9 @@ class CierrePeriodoService
      */
     public function contadoresOperacion(int $aliadoId, int $mes, int $anio): array
     {
-        $lotes = DB::table('planos')
-            ->where('aliado_id', $aliadoId)
-            ->whereNull('deleted_at')
-            ->whereIn('tipo_reg', ['planilla', 'retiro'])
-            ->whereNotNull('razon_social_id')
-            ->where(function ($q) {
-                $q->whereNull('numero_planilla')->orWhere('numero_planilla', '');
-            })
-            ->whereRaw('(anio_plano * 100 + mes_plano) >= ?', [self::PERIODO_MINIMO])
+        $lotes = $this->planosSinNumero($aliadoId)
             ->distinct()
-            ->count(DB::raw('CONCAT(razon_social_id, \'|\', anio_plano, \'|\', mes_plano, \'|\', n_plano)'));
+            ->count(DB::raw('CONCAT(p.razon_social_id, \'|\', p.anio_plano, \'|\', p.mes_plano, \'|\', p.n_plano)'));
 
         $vigentes = DB::table('contratos AS c')
             ->where('c.aliado_id', $aliadoId)
@@ -485,11 +613,11 @@ class CierrePeriodoService
      * Liquidaciones por API del período, por razón social: cuántas planillas y
      * cuál fue la última. Es lo que responde "¿hasta dónde va este cierre?".
      */
-    private function liquidacionesApi(int $aliadoId, int $mesPago, int $anioPago)
+    private function liquidacionesApi(?int $aliadoId, int $mesPago, int $anioPago)
     {
         return DB::table('operador_planillas_api AS a')
             ->leftJoin('operadores_planilla AS op', 'op.id', '=', 'a.operador_planilla_id')
-            ->where('a.aliado_id', $aliadoId)
+            ->when($aliadoId, fn ($q) => $q->where('a.aliado_id', $aliadoId))
             ->where('a.anio', $anioPago)
             ->where('a.mes', $mesPago)
             ->whereNull('a.deleted_at')
