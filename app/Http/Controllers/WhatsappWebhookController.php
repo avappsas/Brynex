@@ -25,19 +25,20 @@ class WhatsappWebhookController extends Controller
      */
     public function verify(Request $request): Response
     {
-        $mode      = $request->query('hub_mode');
-        $token     = $request->query('hub_verify_token');
+        $mode = $request->query('hub_mode');
+        $token = $request->query('hub_verify_token');
         $challenge = $request->query('hub_challenge');
 
         $tokenEsperado = config('services.whatsapp.webhook_verify_token');
 
         if ($mode === 'subscribe' && $token === $tokenEsperado) {
             Log::info('WhatsApp webhook verificado correctamente');
+
             return response($challenge, 200);
         }
 
         Log::warning('WhatsApp webhook: verificación fallida', [
-            'mode'  => $mode,
+            'mode' => $mode,
             'token' => $token,
         ]);
 
@@ -51,10 +52,11 @@ class WhatsappWebhookController extends Controller
     public function receive(Request $request): Response
     {
         // Validar firma HMAC para garantizar que el request viene de Meta
-        if (!$this->validarFirmaHmac($request)) {
+        if (! $this->validarFirmaHmac($request)) {
             Log::warning('WhatsApp webhook: firma HMAC inválida', [
                 'ip' => $request->ip(),
             ]);
+
             return response('Unauthorized', 401);
         }
 
@@ -73,7 +75,7 @@ class WhatsappWebhookController extends Controller
             $this->webhookService->procesarPayload($payload);
         } catch (\Throwable $e) {
             Log::error('WhatsApp webhook: error al procesar payload', [
-                'error'   => $e->getMessage(),
+                'error' => $e->getMessage(),
                 'payload' => $payload,
             ]);
         }
@@ -90,18 +92,28 @@ class WhatsappWebhookController extends Controller
     {
         $appSecret = config('services.whatsapp.app_secret');
 
-        // Si no hay App Secret configurado, saltamos la validación (desarrollo local)
+        // Sin App Secret no hay nada que validar. Solo se deja pasar en local:
+        // fuera de ahí este endpoint es público, así que fallar abierto significa
+        // aceptar payloads falsificados de cualquiera — y un mensaje entrante
+        // falso hace que el asistente de IA le conteste al número del atacante
+        // con los datos del cliente cuya cédula diga tener.
         if (empty($appSecret)) {
+            if (! app()->environment('local')) {
+                Log::error('WhatsApp webhook: WHATSAPP_APP_SECRET sin configurar, se rechaza el payload.');
+
+                return false;
+            }
+
             return true;
         }
 
         $signatureHeader = $request->header('X-Hub-Signature-256', '');
-        if (!str_starts_with($signatureHeader, 'sha256=')) {
+        if (! str_starts_with($signatureHeader, 'sha256=')) {
             return false;
         }
 
         $signatureRecibida = substr($signatureHeader, 7);
-        $payload           = $request->getContent();
+        $payload = $request->getContent();
         $signatureEsperada = hash_hmac('sha256', $payload, $appSecret);
 
         return hash_equals($signatureEsperada, $signatureRecibida);
