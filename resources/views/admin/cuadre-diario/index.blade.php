@@ -102,8 +102,25 @@ $totalFacturas   = array_sum($canales['conteo']);
     .cd-panel, .cn-card{ break-inside:avoid; page-break-inside:avoid;
                          box-shadow:none !important }
     .cd-header{ padding:.6rem .9rem !important; margin-bottom:.6rem !important }
-    .cn-lbl, .cn-v{ font-size:.65rem !important }
     .tbl-cd th, .tbl-cd td{ padding:.2rem .4rem !important; font-size:.68rem !important }
+
+    /* En carta cada canal mide ~240px: la etiqueta cede ancho y todo encoge,
+       incluido el pie — si no, los dos valores del total se tocan. */
+    .cn-card-head{ padding:.45rem .6rem !important }
+    .cn-title{ font-size:.78rem !important }
+    .cn-body, .cn-card-foot{ padding:.4rem .5rem !important }
+    .cn-lbl, .cn-v{ font-size:.62rem !important }
+    /* En papel no hay hover ni tooltip: una etiqueta cortada se pierde para
+       siempre, así que aquí se deja envolver en vez de truncar. */
+    .cn-lbl{ white-space:normal !important; overflow:visible !important;
+             text-overflow:clip !important; line-height:1.15; align-items:flex-start }
+    .cn-row{ grid-template-columns:minmax(0,1.2fr) 1fr 1fr 1fr !important; gap:.5rem !important;
+             padding:.2rem .15rem !important }
+    .cn-grid.sin-prestado .cn-row{ grid-template-columns:minmax(0,1.2fr) 1fr 1fr !important }
+    .cn-row-head div{ font-size:.55rem !important }
+    .cn-foot-l{ font-size:.54rem !important; line-height:1.15 }
+    .cn-foot-v{ font-size:.64rem !important }
+    .cn-foot-tot{ font-size:.58rem !important }
 }
 </style>
 

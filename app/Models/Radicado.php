@@ -124,9 +124,14 @@ class Radicado extends BaseModel
     public function estadoTextoEfectivo(): string
     {
         if ($this->esFuturoProgramado()) {
-            return '📅F';
+            return '📅 F';
         }
-        return $this->estadoIcono() . strtoupper(substr($this->estado, 0, 1));
+        // "OK" se muestra completo; el resto con su inicial.
+        $texto = $this->estado === self::ESTADO_OK
+            ? 'OK'
+            : strtoupper(substr($this->estado, 0, 1));
+
+        return $this->estadoIcono() . ' ' . $texto;
     }
 
     /**

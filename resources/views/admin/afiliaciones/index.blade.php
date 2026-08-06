@@ -69,10 +69,12 @@ body {
 .cedula-link:hover { text-decoration:underline; }
 
 /* ── Badges estado ── */
-.badge-estado { display:inline-flex;align-items:center;gap:0.2rem;padding:0.2rem 0.4rem;border-radius:20px;font-size:0.65rem;font-weight:700;cursor:pointer;transition:all .15s;border:1.5px solid transparent;min-width:52px;justify-content:center; }
+.badge-estado { display:inline-flex;align-items:center;gap:0.2rem;padding:0.2rem 0.4rem;border-radius:20px;font-size:0.65rem;font-weight:700;cursor:pointer;transition:all .15s;border:1.5px solid transparent;min-width:58px;justify-content:center;white-space:nowrap; }
 .badge-estado:hover { transform:scale(1.05);box-shadow:0 2px 8px rgba(0,0,0,0.1); }
 .badge-inactivo { background:#f1f5f9;color:#94a3b8;border-color:#e2e8f0;cursor:default;opacity:0.5; }
-.badge-pendiente { background:#fef3c7;color:#b45309;border-color:#fcd34d; }
+/* Pendiente en naranja fuerte: lee como alerta y no se confunde con el
+   traslado (naranja pálido) ni con el error (rojo). */
+.badge-pendiente { background:#f97316;color:#fff;border-color:#ea580c; }
 .badge-tramite   { background:#dbeafe;color:#1e40af;border-color:#93c5fd; }
 .badge-traslado  { background:#fed7aa;color:#c2410c;border-color:#fb923c; }
 .badge-error     { background:#fee2e2;color:#b91c1c;border-color:#fca5a5; }
@@ -272,7 +274,7 @@ body {
 
         {{-- Estado del radicado --}}
         <select name="estado_rad" onchange="this.form.submit()" style="font-size:0.78rem;padding:0.3rem 0.5rem;border:1px solid #334155;border-radius:6px;cursor:pointer;
-            @if($estadoRad === 'pendiente')   background:#b45309;color:#fff;
+            @if($estadoRad === 'pendiente')   background:#f97316;color:#fff;
             @elseif($estadoRad === 'tramite') background:#1e40af;color:#fff;
             @elseif($estadoRad === 'traslado') background:#c2410c;color:#fff;
             @elseif($estadoRad === 'error')   background:#b91c1c;color:#fff;
@@ -360,7 +362,15 @@ function sortClass($col, $currSort, $currDir) {
             <th>Nombres</th>
 
             {{-- Tipo Modalidad --}}
-            <th style="white-space:nowrap">Modalidad</th>
+            <th style="white-space:nowrap;max-width:120px;">
+                <form method="GET" action="{{ route('admin.afiliaciones.index') }}" style="margin:0;">
+                    @foreach(request()->except(['tipo_modalidad_id','page']) as $k => $v)<input type="hidden" name="{{ $k }}" value="{{ $v }}">@endforeach
+                    <select name="tipo_modalidad_id" onchange="this.form.submit()" class="th-select {{ $tipoModId ? 'activo' : '' }}" style="max-width:115px;">
+                        <option value="">↓ Modalidad</option>
+                        @foreach($tiposModalidad as $tm)<option value="{{ $tm->id }}" {{ $tipoModId == $tm->id ? 'selected' : '' }}>{{ $tm->tipo_modalidad }}</option>@endforeach
+                    </select>
+                </form>
+            </th>
 
 
             {{-- EPS --}}
@@ -408,7 +418,15 @@ function sortClass($col, $currSort, $currDir) {
             </th>
 
             {{-- Empresa --}}
-            <th>Empresa</th>
+            <th style="max-width:150px;width:150px;">
+                <form method="GET" action="{{ route('admin.afiliaciones.index') }}" style="margin:0;">
+                    @foreach(request()->except(['empresa_id','page']) as $k => $v)<input type="hidden" name="{{ $k }}" value="{{ $v }}">@endforeach
+                    <select name="empresa_id" onchange="this.form.submit()" class="th-select {{ $empresaF ? 'activo' : '' }}" style="max-width:145px;">
+                        <option value="">↓ Empresa</option>
+                        @foreach($empresasDisponibles as $emp)<option value="{{ $emp->id }}" {{ $empresaF == $emp->id ? 'selected' : '' }}>{{ (int) $emp->id === 1 ? 'Individual' : ($emp->empresa ?: "Empresa #{$emp->id}") }}</option>@endforeach
+                    </select>
+                </form>
+            </th>
 
             {{-- Docs --}}
             <th>Docs</th>
@@ -566,13 +584,13 @@ function sortClass($col, $currSort, $currDir) {
             </button>
             @elseif($plan?->incluye_eps)
                 @if($esFuturo)
-                <span class="badge-estado badge-programado">📅F</span>
+                <span class="badge-estado badge-programado">📅 F</span>
                 @else
                 <button class="badge-estado badge-pendiente btn-rad-crear"
                     data-contrato-id="{{ $c->id }}" data-tipo="eps"
                     data-eps-formulario="{{ $c->eps?->formulario_pdf ? '1' : '0' }}"
                     data-ctx='{{ $contexto }}'
-                    title="Sin radicado registrado — clic para abrir el trámite">⏳P</button>
+                    title="Sin radicado registrado — clic para abrir el trámite">⏳ P</button>
                 @endif
             @else
             <span class="badge-estado badge-inactivo">–</span>
@@ -602,12 +620,12 @@ function sortClass($col, $currSort, $currDir) {
             </button>
             @elseif($plan?->incluye_arl)
                 @if($esFuturo)
-                <span class="badge-estado badge-programado">📅F</span>
+                <span class="badge-estado badge-programado">📅 F</span>
                 @else
                 <button class="badge-estado badge-pendiente btn-rad-crear"
                     data-contrato-id="{{ $c->id }}" data-tipo="arl"
                     data-ctx='{{ $contexto }}'
-                    title="Sin radicado registrado — clic para abrir el trámite">⏳P</button>
+                    title="Sin radicado registrado — clic para abrir el trámite">⏳ P</button>
                 @endif
             @else
             <span class="badge-estado badge-inactivo">–</span>
@@ -628,12 +646,12 @@ function sortClass($col, $currSort, $currDir) {
             </button>
             @elseif($plan?->incluye_caja)
                 @if($esFuturo)
-                <span class="badge-estado badge-programado">📅F</span>
+                <span class="badge-estado badge-programado">📅 F</span>
                 @else
                 <button class="badge-estado badge-pendiente btn-rad-crear"
                     data-contrato-id="{{ $c->id }}" data-tipo="caja"
                     data-ctx='{{ $contexto }}'
-                    title="Sin radicado registrado — clic para abrir el trámite">⏳P</button>
+                    title="Sin radicado registrado — clic para abrir el trámite">⏳ P</button>
                 @endif
             @else
             <span class="badge-estado badge-inactivo">–</span>
@@ -654,12 +672,12 @@ function sortClass($col, $currSort, $currDir) {
             </button>
             @elseif($plan?->incluye_pension)
                 @if($esFuturo)
-                <span class="badge-estado badge-programado">📅F</span>
+                <span class="badge-estado badge-programado">📅 F</span>
                 @else
                 <button class="badge-estado badge-pendiente btn-rad-crear"
                     data-contrato-id="{{ $c->id }}" data-tipo="pension"
                     data-ctx='{{ $contexto }}'
-                    title="Sin radicado registrado — clic para abrir el trámite">⏳P</button>
+                    title="Sin radicado registrado — clic para abrir el trámite">⏳ P</button>
                 @endif
             @else
             <span class="badge-estado badge-inactivo">–</span>
@@ -698,7 +716,7 @@ function sortClass($col, $currSort, $currDir) {
     <div style="display:flex;align-items:center;gap:0.3rem;background:#f8fafc;padding:0.2rem 0.5rem;border-radius:8px;border:1px solid #e2e8f0;flex-wrap:wrap;">
         <span style="color:#6b21a8;font-size:0.68rem;font-weight:700;padding:0.1rem 0.35rem;border-radius:4px;background:#f3e8ff;border:1px solid #c084fc;" title="Afiliaciones Futuras">📅 Futuras: <strong>{{ $totalFuturas }}</strong></span>
         <span style="color:#b91c1c;font-size:0.68rem;font-weight:700;padding:0.1rem 0.35rem;border-radius:4px;background:#fee2e2;border:1px solid #fca5a5;" title="Radicados con Error">🔴 Errores: <strong>{{ $totalErrores }}</strong></span>
-        <span style="color:#b45309;font-size:0.68rem;font-weight:700;padding:0.1rem 0.35rem;border-radius:4px;background:#fef3c7;border:1px solid #fcd34d;" title="Radicados Pendientes">⏳ Pendientes: <strong>{{ $totalPendientes }}</strong></span>
+        <span style="color:#fff;font-size:0.68rem;font-weight:700;padding:0.1rem 0.35rem;border-radius:4px;background:#f97316;border:1px solid #ea580c;" title="Radicados Pendientes">⏳ Pendientes: <strong>{{ $totalPendientes }}</strong></span>
         <span style="color:#c2410c;font-size:0.68rem;font-weight:700;padding:0.1rem 0.35rem;border-radius:4px;background:#fed7aa;border:1px solid #fb923c;" title="Radicados en Traslado">🔄 Traslados: <strong>{{ $totalTraslados }}</strong></span>
         <span style="color:#1e40af;font-size:0.68rem;font-weight:700;padding:0.1rem 0.35rem;border-radius:4px;background:#dbeafe;border:1px solid #93c5fd;" title="Radicados en Trámite">🔵 Trámite: <strong>{{ $totalTramites }}</strong></span>
         <span style="color:#15803d;font-size:0.68rem;font-weight:700;padding:0.1rem 0.35rem;border-radius:4px;background:#dcfce7;border:1px solid #86efac;" title="Radicados OK">✅ OK: <strong>{{ $totalOks }}</strong></span>

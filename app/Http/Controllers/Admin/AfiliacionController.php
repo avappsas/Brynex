@@ -48,6 +48,7 @@ class AfiliacionController extends Controller
         $arlF       = $request->get('arl_id');
         $cajaF      = $request->get('caja_id');
         $pensionF   = $request->get('pension_id');
+        $empresaF   = $request->get('empresa_id'); // empresa cliente (clientes.cod_empresa)
         $estadoRad  = $request->get('estado_rad'); // estado del radicado
         // Estado del contrato: por defecto se muestran TODAS las afiliaciones del mes
         // (incluidos los que ya se retiraron), porque la afiliación sí ocurrió en el período.
@@ -132,6 +133,10 @@ class AfiliacionController extends Controller
         if ($cajaF)     $query->where('caja_id', $cajaF);
         if ($pensionF)  $query->where('pension_id', $pensionF);
         if ($tipoModId) $query->where('tipo_modalidad_id', $tipoModId);
+        if ($empresaF) {
+            $query->whereHas('cliente', fn($q) => $q->where('clientes.aliado_id', $alidoId)
+                                                    ->where('cod_empresa', $empresaF));
+        }
         // Filtro por estado del radicado (al menos uno con ese estado)
         $estadosPermitidos = ['pendiente','tramite','traslado','error','ok'];
         if ($estadoRad && in_array($estadoRad, $estadosPermitidos)) {
@@ -203,6 +208,22 @@ class AfiliacionController extends Controller
             ->whereIn('id', $baseContratos->pluck('pension_id')->filter()->unique())
             ->orderBy('razon_social')->get(['id', 'razon_social']);
 
+        // Empresas cliente presentes en el período (vía cliente, que se une por
+        // cédula + aliado). Se hace con JOIN y no con whereIn de cédulas para no
+        // chocar con el límite de parámetros de SQL Server en meses grandes.
+        $empresasDisponibles = DB::table('empresas as e')
+            ->join('clientes as cl', 'cl.cod_empresa', '=', 'e.id')
+            ->join('contratos as ct', function ($j) {
+                $j->on('ct.cedula', '=', 'cl.cedula')
+                  ->on('ct.aliado_id', '=', 'cl.aliado_id');
+            })
+            ->where('ct.aliado_id', $alidoId)
+            ->whereMonth('ct.fecha_ingreso', $mes)
+            ->whereYear('ct.fecha_ingreso', $anio)
+            ->distinct()
+            ->orderBy('e.empresa')
+            ->get(['e.id', 'e.empresa']);
+
         // Para BryNex: lista de aliados accesibles
         $alidosDisponibles = [];
         if ($user->es_brynex) {
@@ -212,9 +233,10 @@ class AfiliacionController extends Controller
         return view('admin.afiliaciones.index', compact(
             'contratos', 'mes', 'anio', 'encId', 'encargados',
             'alidoId', 'alidosDisponibles', 'user',
-            'rsId', 'tipoModId', 'epsF', 'arlF', 'cajaF', 'pensionF', 'estadoRad', 'estadoCont',
+            'rsId', 'tipoModId', 'epsF', 'arlF', 'cajaF', 'pensionF', 'empresaF', 'estadoRad', 'estadoCont',
             'sort', 'dir', 'razonesDisponibles', 'tiposModalidad',
-            'epsDisponibles', 'arlDisponibles', 'cajaDisponibles', 'pensionDisponibles'
+            'epsDisponibles', 'arlDisponibles', 'cajaDisponibles', 'pensionDisponibles',
+            'empresasDisponibles'
         ));
     }
 
@@ -237,6 +259,7 @@ class AfiliacionController extends Controller
         $arlF       = $request->get('arl_id');
         $cajaF      = $request->get('caja_id');
         $pensionF   = $request->get('pension_id');
+        $empresaF   = $request->get('empresa_id');
         $estadoRad  = $request->get('estado_rad');
         $estadoCont = $request->get('estado_contrato');
         if (!in_array($estadoCont, ['vigente', 'retirado'], true)) $estadoCont = '';
@@ -293,7 +316,11 @@ class AfiliacionController extends Controller
         if ($cajaF)     $query->where('caja_id', $cajaF);
         if ($pensionF)  $query->where('pension_id', $pensionF);
         if ($tipoModId) $query->where('tipo_modalidad_id', $tipoModId);
-        
+        if ($empresaF) {
+            $query->whereHas('cliente', fn($q) => $q->where('clientes.aliado_id', $alidoId)
+                                                    ->where('cod_empresa', $empresaF));
+        }
+
         $estadosPermitidos = ['pendiente','tramite','traslado','error','ok'];
         if ($estadoRad && in_array($estadoRad, $estadosPermitidos)) {
             $query->whereHas('radicados', fn($q) => $q->where('estado', $estadoRad));
