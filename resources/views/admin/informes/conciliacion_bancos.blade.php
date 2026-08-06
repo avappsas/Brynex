@@ -1,5 +1,5 @@
 @extends('layouts.app')
-@section('modulo', 'Saldos Bancarios')
+@section('modulo', 'Conciliación de Bancos')
 
 @php
 $fmt = fn($v) => '$'.number_format(abs($v ?? 0), 0, ',', '.');
@@ -153,8 +153,8 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: .78rem; min-width
 {{-- ═══ PAGE HEADER STICKY (Título + Mes + Filtros Globales) ═══ --}}
 <div class="bk-page-header">
     <div class="bk-page-header__left">
-        <a href="{{ route('admin.cuadre-diario.index') }}" style="color:rgba(255,255,255,.55);font-size:.75rem;text-decoration:none;display:flex;align-items:center;gap:.25rem;">← Cuadre Diario</a>
-        <div style="font-size:1.05rem;font-weight:800;letter-spacing:-.01em;">🏦 Saldos Bancarios</div>
+        <a href="{{ route('admin.informes.hub') }}" style="color:rgba(255,255,255,.55);font-size:.75rem;text-decoration:none;display:flex;align-items:center;gap:.25rem;">← Informes</a>
+        <div style="font-size:1.05rem;font-weight:800;letter-spacing:-.01em;">🏦 Conciliación de Bancos</div>
     </div>
     <div class="bk-page-header__right">
         {{-- Filtros globales --}}

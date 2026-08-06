@@ -1,294 +1,369 @@
 @extends('layouts.app')
-@section('modulo', 'Cuadre Diario')
+@section('modulo', 'Cuadre de Caja')
 
 @php
-use Carbon\Carbon;
 $fmt = fn($v) => '$'.number_format($v ?? 0, 0, ',', '.');
-$tiposGasto = \App\Models\Gasto::TIPOS;
-$tiposAdmin = \App\Models\Gasto::TIPOS_ADMIN;
-$esAdmin = auth()->user()->hasRole(['admin','superadmin']);
 $esSuperAdmin = auth()->user()->hasRole('superadmin');
+
+$carbonFecha = \Carbon\Carbon::parse($fecha);
+$esHoy       = $carbonFecha->isToday();
+
+// El día cuadrado queda congelado: no se registran ni se borran movimientos.
+$diaBloqueado    = (bool) $cuadreDia;
+$totalConsignado = $consignaciones->flatten()->sum('valor');
+$totalFacturas   = array_sum($canales['conteo']);
 @endphp
 
 @section('contenido')
 <style>
 .cd-header{background:linear-gradient(135deg,#0f172a,#1e3a5f);border-radius:14px;color:#fff;padding:1rem 1.4rem;margin-bottom:1rem}
-.cd-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:.8rem;margin-bottom:1rem}
+.cd-link{padding:.35rem .85rem;font-size:.78rem;font-weight:600;border-radius:7px;background:rgba(255,255,255,.12);color:#cbd5e1;text-decoration:none;white-space:nowrap}
+.cd-input{border-radius:7px;padding:.32rem .6rem;font-size:.8rem;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.1);color:#fff;outline:none}
+.cd-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(185px,1fr));gap:.8rem;margin-bottom:1rem}
 .cd-card{background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:1rem 1.2rem}
 .cd-card-title{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#64748b;margin-bottom:.4rem}
 .cd-card-val{font-size:1.5rem;font-weight:800;color:#0f172a}
+.cd-card.facturado{border-color:#ddd6fe}
+.cd-card.facturado .cd-card-val{color:#4c1d95}
+.cd-card.efectivo{border-color:#bbf7d0}
 .cd-card.efectivo .cd-card-val{color:#15803d}
+.cd-card.gastos{border-color:#fecaca}
 .cd-card.gastos .cd-card-val{color:#dc2626}
+.cd-card.saldo{border-color:#bfdbfe;background:#f8fbff}
 .cd-card.saldo .cd-card-val{color:#1d4ed8}
+.cd-card-click{cursor:pointer;transition:box-shadow .15s,transform .15s}
+.cd-card-click:hover{box-shadow:0 6px 18px rgba(3,105,161,.16);transform:translateY(-2px)}
+.cd-panel{background:#fff;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden;margin-bottom:.8rem}
+.cd-panel-head{padding:.7rem 1rem;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.4rem}
+.cd-panel-title{font-size:.85rem;font-weight:700;color:#0f172a}
 .tbl-cd{width:100%;border-collapse:collapse;font-size:.8rem}
-.tbl-cd th{background:#0f172a;color:#94a3b8;font-size:.65rem;text-transform:uppercase;padding:.4rem .6rem;position:sticky;top:0}
+.tbl-cd th{background:#0f172a;color:#94a3b8;font-size:.65rem;text-transform:uppercase;padding:.4rem .6rem;text-align:left}
 .tbl-cd td{padding:.38rem .6rem;border-bottom:1px solid #f1f5f9}
 .tbl-cd tr:hover td{background:#f8fafc}
+.tbl-cd tfoot td{background:#0f172a;color:#e2e8f0;font-weight:700}
 .num{text-align:right;font-family:monospace}
-.badge-tipo{padding:.12rem .4rem;border-radius:20px;font-size:.66rem;font-weight:700}
-.btn-sm{padding:.25rem .65rem;border-radius:6px;font-size:.75rem;font-weight:600;border:none;cursor:pointer}
-.btn-open{background:#2563eb;color:#fff}
+.badge-tipo{padding:.12rem .45rem;border-radius:20px;font-size:.66rem;font-weight:700;color:#fff}
+.btn-sm{padding:.28rem .7rem;border-radius:6px;font-size:.75rem;font-weight:600;border:none;cursor:pointer}
 .btn-gasto{background:#065f46;color:#fff}
 .btn-cerrar{background:#dc2626;color:#fff}
-.dia-row td{background:#f8fafc;font-weight:600}
+.vacio{padding:1.5rem;text-align:center;color:#94a3b8;font-size:.83rem}
+
+/* ── Canales del día ── */
+.cn-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.4rem;margin:1.2rem 0 .7rem}
+.cn-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:.8rem;align-items:stretch}
+@media (max-width:1100px){.cn-grid{grid-template-columns:1fr}}
+.cn-card{background:#fff;border-radius:13px;border:1px solid #e2e8f0;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 1px 5px rgba(0,0,0,.05)}
+.cn-card-head{padding:.6rem .9rem;color:#fff}
+.cn-label{font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:rgba(255,255,255,.6)}
+.cn-title{font-size:.95rem;font-weight:800;margin-top:.1rem}
+.cn-body{padding:.5rem .6rem;flex:1}
+.cn-section{font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#94a3b8;padding:.15rem .3rem .35rem}
+/* 4 columnas: etiqueta + efectivo + consignado + prestado */
+.cn-row{display:grid;grid-template-columns:minmax(0,1.5fr) 1fr 1fr 1fr;gap:.3rem;align-items:center;
+        padding:.26rem .3rem;border-bottom:1px solid #f8fafc}
+.cn-row-head{border-bottom:1px solid #e2e8f0;padding-bottom:.3rem}
+.cn-row-head div{font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#94a3b8;text-align:right}
+.cn-lbl{font-size:.73rem;color:#334155;display:flex;align-items:center;gap:.3rem;min-width:0;
+        overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cn-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.cn-v{font-size:.73rem;font-family:monospace;font-weight:700;text-align:right;white-space:nowrap}
+/* Prestado: no es plata recibida, se separa visualmente */
+.cn-pr{border-left:1px dashed #e2e8f0;padding-left:.3rem}
+/* Sin préstamos en el día la columna sobra: se cae a 3 columnas */
+.cn-grid.sin-prestado .cn-pr{display:none}
+.cn-grid.sin-prestado .cn-row{grid-template-columns:minmax(0,1.5fr) 1fr 1fr}
+.cn-nota{opacity:.6;font-style:italic;border-top:1px dashed #e2e8f0;border-bottom:0;margin-top:.2rem}
+.cn-nota .cn-v{color:#f59e0b}
+.cn-card-foot{padding:.5rem .9rem;color:#fff}
+.cn-foot-l{font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:rgba(255,255,255,.7)}
+.cn-foot-v{font-size:.82rem;font-weight:900;font-family:monospace;text-align:right;color:#fff;white-space:nowrap}
+.cn-foot-tot{font-size:.68rem;color:rgba(255,255,255,.55);text-align:right;margin-top:.2rem}
+
+/* ── Impresión: hoja carta vertical ── */
+@media print {
+    @page { size: letter portrait; margin: 12mm; }
+
+    /* Los fondos de color son la identidad de cada canal: deben salir */
+    *{ -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important }
+
+    /* Fuera el chrome de la app y todo lo accionable */
+    .header, .mobile-drawer, .no-print, .no-print *,
+    #modal-gasto, #modal-cerrar, #modal-consig { display:none !important }
+    .contenido{ padding:0 !important; margin:0 !important }
+    body{ background:#fff !important }
+
+    /* La hoja carta mide ~730px útiles: el breakpoint de 1100px la volvería
+       de una columna, así que aquí se fuerza la retícula. */
+    .cn-grid{ grid-template-columns:repeat(3,1fr) !important; gap:.4rem !important;
+              break-inside:avoid; page-break-inside:avoid }
+    .cd-cards{ grid-template-columns:repeat(auto-fit,minmax(125px,1fr)) !important; gap:.4rem !important }
+    .cd-card{ padding:.6rem .7rem !important }
+    .cd-card-val{ font-size:1.05rem !important }
+    .cd-panel, .cn-card{ break-inside:avoid; page-break-inside:avoid;
+                         box-shadow:none !important }
+    .cd-header{ padding:.6rem .9rem !important; margin-bottom:.6rem !important }
+    .cn-lbl, .cn-v{ font-size:.65rem !important }
+    .tbl-cd th, .tbl-cd td{ padding:.2rem .4rem !important; font-size:.68rem !important }
+}
 </style>
 
-{{-- Header --}}
+{{-- ═══════════ Header: fecha + usuario + accesos ═══════════ --}}
 <div class="cd-header">
-    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.7rem">
         <div>
-            <div style="font-size:1.15rem;font-weight:800">💰 Cuadre Diario</div>
+            <div style="font-size:1.15rem;font-weight:800">💰 Caja del día</div>
             <div style="font-size:.8rem;color:#94a3b8;margin-top:.2rem">
-                {{ auth()->user()->nombre }} — {{ now()->format('d/m/Y') }}
+                {{ $usuarioVista->nombre }} ·
+                {{ $carbonFecha->locale('es')->isoFormat('dddd D [de] MMMM [de] YYYY') }}
+                @if($esHoy)<span style="color:#4ade80;font-weight:700"> · hoy</span>@endif
             </div>
         </div>
-        <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+
+        <div class="no-print" style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+            {{-- Filtros y accesos en una sola barra --}}
+            <form method="GET" style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;margin:0">
+                <input type="date" name="fecha" value="{{ $fecha }}" max="{{ today()->toDateString() }}"
+                       onchange="this.form.submit()" class="cd-input" title="Día que estás viendo">
+                @if($esAdmin)
+                <select name="usuario_id" onchange="this.form.submit()" class="cd-input" title="Usuario">
+                    @foreach($usuarios as $u)
+                    <option value="{{ $u->id }}" @selected($u->id === $usuarioId) style="background:#0f172a">
+                        {{ $u->nombre }}@if($u->id === auth()->id()) (yo)@endif
+                    </option>
+                    @endforeach
+                </select>
+                @endif
+            </form>
+
             @if($esAdmin)
-            <a href="{{ route('admin.cuadre-diario.consolidado') }}"
-               style="padding:.35rem .85rem;font-size:.78rem;font-weight:600;border-radius:7px;background:rgba(255,255,255,.12);color:#cbd5e1;text-decoration:none">
-                📊 Consolidado
-            </a>
+            <a href="{{ route('admin.cuadre-diario.facturas-dia', ['fecha' => $fecha]) }}" class="cd-link">🧾 Facturas del día</a>
+            <a href="{{ route('admin.anticipos.informe') }}" class="cd-link" style="background:rgba(253,230,138,.25);color:#fde68a">💰 Anticipos</a>
             @endif
-            @if($esAdmin)
-            <a href="{{ route('admin.cuadre-diario.facturas-dia') }}"
-               style="padding:.35rem .85rem;font-size:.78rem;font-weight:600;border-radius:7px;background:rgba(255,255,255,.12);color:#cbd5e1;text-decoration:none">
-                🧾 Facturas del día
-            </a>
+            @if(!$diaBloqueado && $esPropio)
+            <button type="button" onclick="abrirModalGasto()" class="cd-link"
+                    style="background:#059669;color:#fff;border:none;cursor:pointer;font-family:inherit">
+                + Registrar gasto
+            </button>
             @endif
-            @if($esAdmin)
-            <a href="{{ route('admin.cuadre-diario.bancos') }}"
-               style="padding:.35rem .85rem;font-size:.78rem;font-weight:600;border-radius:7px;background:rgba(255,255,255,.12);color:#cbd5e1;text-decoration:none">
-                🏦 Bancos
-            </a>
-            @endif
-            @if($esAdmin)
-            <a href="{{ route('admin.anticipos.informe') }}"
-               style="padding:.35rem .85rem;font-size:.78rem;font-weight:600;border-radius:7px;background:rgba(253,230,138,.25);color:#fde68a;text-decoration:none">
-                💰 Anticipos
-            </a>
-            @endif
-            @if($esAdmin)
-            <a href="{{ route('admin.caja-menor.index') }}"
-               style="padding:.35rem .85rem;font-size:.78rem;font-weight:600;border-radius:7px;background:#f59e0b;color:#fff;text-decoration:none">
-                💵 Caja Menor
-            </a>
-            @endif
+            <button type="button" onclick="window.print()" class="cd-link"
+                    style="border:none;cursor:pointer;font-family:inherit;padding:.35rem .6rem;font-size:.9rem"
+                    title="Imprimir en hoja carta vertical" aria-label="Imprimir">🖨️</button>
         </div>
     </div>
 </div>
 
+@if(session('success'))
+<div style="background:#dcfce7;border:1px solid #86efac;color:#166534;padding:.6rem 1rem;border-radius:8px;margin-bottom:.8rem;font-size:.83rem">
+    ✅ {{ session('success') }}
+</div>
+@endif
 @if(session('error'))
 <div style="background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;padding:.6rem 1rem;border-radius:8px;margin-bottom:.8rem;font-size:.83rem">
     ❌ {{ session('error') }}
 </div>
 @endif
 
-@if(!$cuadre)
-{{-- Sin cuadre abierto --}}
-<div style="background:#fff;border-radius:14px;border:2px dashed #cbd5e1;padding:3rem;text-align:center">
-    <div style="font-size:2.5rem;margin-bottom:.8rem">📋</div>
-    <div style="font-size:1.1rem;font-weight:700;color:#0f172a;margin-bottom:.4rem">No tienes un cuadre abierto</div>
-    <div style="color:#64748b;font-size:.85rem;margin-bottom:1.5rem">
-        Caja menor disponible: <strong>{{ $fmt($cajaMenor) }}</strong>
+{{-- Aviso de día ya cuadrado --}}
+@if($cuadreDia)
+<div style="background:#ecfdf5;border:1px solid #6ee7b7;border-radius:10px;padding:.7rem 1rem;margin-bottom:.8rem;
+            display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem">
+    <div style="font-size:.83rem;color:#065f46">
+        🔒 Día cuadrado por <strong>{{ $cuadreDia->cerradoPor?->nombre ?? '—' }}</strong>
+        con <strong>{{ $fmt($cuadreDia->saldo_cierre) }}</strong> en efectivo.
+        @if($cuadreDia->observacion)<span style="color:#047857"> · {{ $cuadreDia->observacion }}</span>@endif
     </div>
-    <form method="POST" action="{{ route('admin.cuadre-diario.abrir') }}">
-        @csrf
-        <button type="submit" class="btn-sm btn-open" style="font-size:.9rem;padding:.5rem 1.5rem">
-            ▶ Abrir Cuadre
-        </button>
+    @if($esSuperAdmin)
+    <form method="POST" action="{{ route('admin.cuadre-diario.reabrir-dia', $cuadreDia->id) }}"
+          onsubmit="return confirm('¿Reabrir este día? El registro de cuadre se elimina.')">
+        @csrf @method('DELETE')
+        <button type="submit" class="btn-sm" style="background:#fff;color:#065f46;border:1px solid #6ee7b7">🔓 Reabrir</button>
     </form>
+    @endif
 </div>
+@endif
 
-@else
-{{-- Cuadre abierto --}}
-
-{{-- Tarjetas resumen --}}
-@php
-$totalBancos = $bancos->sum(fn($bc) => \App\Models\Consignacion::saldoBanco(session('aliado_id_activo'), $bc->id));
-@endphp
-<div class="cd-cards" style="grid-template-columns:repeat(5,1fr)">
-    <div class="cd-card efectivo">
-        <div class="cd-card-title">💵 Efectivo cobrado</div>
-        <div class="cd-card-val">{{ $fmt($datosPeriodo['efectivo_total']) }}</div>
+{{-- ═══════════ 1. Resumen de la caja del día ═══════════ --}}
+<div class="cd-cards">
+    {{-- Lo facturado va primero: es el bruto del que sale todo lo demás. --}}
+    <div class="cd-card facturado">
+        <div class="cd-card-title">🧾 Total facturado</div>
+        <div class="cd-card-val">{{ $fmt($resumen['total_facturado']) }}</div>
         <div style="font-size:.72rem;color:#64748b;margin-top:.3rem">
-            {{ $facturasPeriodo->count() }} facturas
+            Sin retiros ni facturas en cero
         </div>
     </div>
-    {{-- Cobros de cartera: abonos a préstamos cuya plata entró en este período --}}
-    @if(($datosPeriodo['cobros_cartera'] ?? 0) > 0)
+
+    <div class="cd-card efectivo">
+        <div class="cd-card-title">💵 Recibido en efectivo</div>
+        <div class="cd-card-val">{{ $fmt($resumen['recibido_efectivo']) }}</div>
+        <div style="font-size:.72rem;color:#64748b;margin-top:.3rem">
+            Facturas + cartera + anticipos
+        </div>
+    </div>
+
+    <div class="cd-card gastos">
+        <div class="cd-card-title">📤 Gastos en efectivo</div>
+        <div class="cd-card-val">-{{ $fmt($resumen['gastos_efectivo']) }}</div>
+        <div style="font-size:.72rem;color:#64748b;margin-top:.3rem">
+            {{ $gastos->count() }} {{ \Illuminate\Support\Str::plural('registro', $gastos->count()) }}
+        </div>
+    </div>
+
+    <div class="cd-card saldo">
+        <div class="cd-card-title">✅ Efectivo en caja</div>
+        <div class="cd-card-val">{{ $fmt($resumen['saldo_esperado']) }}</div>
+        <div style="font-size:.72rem;color:#64748b;margin-top:.3rem"
+             title="Una factura de empresa cubre varios empleados y cuenta una sola vez">
+            {{ $resumen['num_facturas'] }} {{ \Illuminate\Support\Str::plural('factura', $resumen['num_facturas']) }}
+            · base caja menor {{ $fmt($resumen['base_caja']) }}
+        </div>
+    </div>
+
+    {{-- El cliente consigna; el usuario solo registra el soporte. Clic → detalle. --}}
+    <div class="cd-card cd-card-click" style="border-color:#bae6fd"
+         onclick="document.getElementById('modal-consig').style.display='flex'"
+         title="Ver el detalle por cuenta">
+        <div class="cd-card-title" style="color:#0369a1">🏦 Consignado en cuentas</div>
+        <div class="cd-card-val" style="color:#0369a1">{{ $fmt($resumen['consignado']) }}</div>
+        <div style="font-size:.72rem;color:#64748b;margin-top:.3rem">
+            {{ $consignaciones->count() }} {{ \Illuminate\Support\Str::plural('cuenta', $consignaciones->count()) }}<span
+                class="no-print" style="color:#2563eb;font-weight:600"> · ver detalle →</span>
+        </div>
+    </div>
+
+    @if($resumen['cobros_cartera'] > 0)
     <div class="cd-card" style="border-color:#d1fae5">
-        <div class="cd-card-title" style="color:#065f46">📋 Cobros cartera</div>
-        <div class="cd-card-val" style="color:#065f46">{{ $fmt($datosPeriodo['cobros_cartera']) }}</div>
-        <div style="font-size:.72rem;color:#6b7280;margin-top:.3rem">Préstamos recuperados</div>
+        <div class="cd-card-title" style="color:#065f46">📋 Cobros de cartera</div>
+        <div class="cd-card-val" style="color:#065f46">{{ $fmt($resumen['cobros_cartera']) }}</div>
+        <div style="font-size:.72rem;color:#64748b;margin-top:.3rem">Préstamos recuperados</div>
     </div>
     @endif
-    {{-- Anticipos efectivo/Nequi recibidos en este período --}}
-    @if(($datosPeriodo['anticipos_efectivo'] ?? 0) > 0)
+
+    @if($resumen['anticipos_efectivo'] > 0)
     <div class="cd-card" style="border-color:#fde68a">
         <div class="cd-card-title" style="color:#78350f">💰 Anticipos recibidos</div>
-        <div class="cd-card-val" style="color:#78350f">{{ $fmt($datosPeriodo['anticipos_efectivo']) }}</div>
-        <div style="font-size:.72rem;color:#6b7280;margin-top:.3rem">Efectivo/Nequi (no facturado aún)</div>
+        <div class="cd-card-val" style="color:#78350f">{{ $fmt($resumen['anticipos_efectivo']) }}</div>
+        <div style="font-size:.72rem;color:#64748b;margin-top:.3rem">Efectivo/Nequi, aún sin facturar</div>
     </div>
     @endif
-    {{-- Total prestado: informativo, no es ingreso real --}}
-    @if(($datosPeriodo['total_prestado'] ?? 0) > 0)
-    <div class="cd-card" style="border-color:#fde68a">
-        <div class="cd-card-title" style="color:#92400e">⚠️ Total prestado</div>
-        <div class="cd-card-val" style="color:#b45309">{{ $fmt($datosPeriodo['total_prestado']) }}</div>
-        <div style="font-size:.72rem;color:#6b7280;margin-top:.3rem">Cartera por cobrar</div>
+
+    @if($resumen['total_prestado'] > 0)
+    <div class="cd-card" style="border-color:#e9d5ff">
+        <div class="cd-card-title" style="color:#6b21a8">⚠️ Prestado hoy</div>
+        <div class="cd-card-val" style="color:#7c3aed">{{ $fmt($resumen['total_prestado']) }}</div>
+        <div style="font-size:.72rem;color:#64748b;margin-top:.3rem">Cartera por cobrar, no es ingreso</div>
     </div>
     @endif
-    {{-- Bancos: una sola tarjeta clickeable --}}
-    <div class="cd-card" onclick="document.getElementById('modal-bancos').style.display='flex'"
-         style="cursor:pointer;border-color:#bfdbfe;transition:box-shadow .15s"
-         onmouseover="this.style.boxShadow='0 4px 16px rgba(37,99,235,.15)'"
-         onmouseout="this.style.boxShadow=''">
-        <div class="cd-card-title" style="color:#1d4ed8">🏦 Bancos
-            <span style="font-size:.6rem;background:#dbeafe;color:#1d4ed8;padding:.1rem .35rem;border-radius:20px;margin-left:.3rem;font-weight:600">
-                {{ $bancos->count() }} cuentas
-            </span>
+</div>
+
+{{-- ═══════════ 2. Los 3 canales del día ═══════════ --}}
+@php
+// Cada canal reparte sus componentes según cómo se pagó la factura.
+$val = fn($v) => abs($v) >= 1 ? $fmt(round($v)) : null;
+@endphp
+
+<div class="cn-head">
+    <div>
+        <div class="cd-panel-title">📊 Resumen del día por canal</div>
+        <div style="font-size:.72rem;color:#94a3b8;margin-top:.15rem">
+            Cada renglón repartido según cómo se pagó la factura ·
+            {{ $canales['conteo']['planilla'] }} planillas ·
+            {{ $canales['conteo']['afiliacion'] }} afiliaciones ·
+            {{ $canales['conteo']['prestamo'] }} préstamos ·
+            {{ $canales['conteo']['retiro'] }} retiros
         </div>
-        <div class="cd-card-val" style="color:#1d4ed8">{{ $fmt($totalBancos) }}</div>
-        <div style="font-size:.7rem;color:#64748b;margin-top:.3rem">Clic para ver detalle</div>
-    </div>
-    <div class="cd-card gastos">
-        <div class="cd-card-title">📤 Gastos efectivo</div>
-        <div class="cd-card-val">-{{ $fmt($datosPeriodo['gastos_efectivo']) }}</div>
-    </div>
-    <div class="cd-card saldo">
-        <div class="cd-card-title">✅ Saldo esperado</div>
-        <div class="cd-card-val">{{ $fmt($datosPeriodo['saldo_final']) }}</div>
     </div>
 </div>
 
-{{-- Modal: Detalle de cuentas bancarias --}}
-<div id="modal-bancos"
-     onclick="if(event.target.id==='modal-bancos')this.style.display='none'"
-     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;align-items:center;justify-content:center">
-    <div style="background:#fff;border-radius:14px;width:min(480px,96vw);box-shadow:0 20px 50px rgba(0,0,0,.25);overflow:hidden">
-        <div style="background:#1e3a5f;padding:.85rem 1.1rem;display:flex;justify-content:space-between;align-items:center">
-            <span style="color:#fff;font-weight:700;font-size:.95rem">🏦 Saldos por cuenta bancaria</span>
-            <button onclick="document.getElementById('modal-bancos').style.display='none'"
-                    style="background:rgba(255,255,255,.18);color:#fff;border:none;border-radius:5px;width:28px;height:28px;cursor:pointer;font-weight:800;font-size:1rem">×</button>
+@if($totalFacturas === 0)
+<div class="cd-panel"><div class="vacio">Sin facturas ese día</div></div>
+@else
+<div class="cn-grid {{ $canales['hay_prestado'] ? '' : 'sin-prestado' }}">
+    @foreach($canales['canales'] as $cn)
+    <div class="cn-card">
+        <div class="cn-card-head" style="background:linear-gradient(135deg,{{ $cn['gradiente'] }})">
+            <div class="cn-label">Canal {{ $cn['n'] }}</div>
+            <div class="cn-title">{{ $cn['titulo'] }}</div>
         </div>
-        <div style="padding:1.1rem;display:flex;flex-direction:column;gap:.55rem">
-            @forelse($bancos as $bc)
-            @php $saldo = \App\Models\Consignacion::saldoBanco(session('aliado_id_activo'), $bc->id); @endphp
-            <div style="display:flex;align-items:center;justify-content:space-between;
-                        background:#f8fafc;border-radius:9px;padding:.65rem .9rem;
-                        border:1px solid #e2e8f0">
-                <div>
-                    <div style="font-weight:700;font-size:.85rem;color:#0f172a">
-                        {{ $bc->banco }} {{ $bc->nombre }}
-                    </div>
-                    @if($bc->numero_cuenta)
-                    <div style="font-size:.72rem;color:#94a3b8;margin-top:.1rem">{{ $bc->numero_cuenta }}</div>
-                    @endif
-                </div>
-                <div style="font-size:1.05rem;font-weight:800;color:{{ $saldo > 0 ? '#1d4ed8' : ($saldo < 0 ? '#dc2626' : '#64748b') }}">
-                    {{ $fmt($saldo) }}
-                </div>
+
+        <div class="cn-body">
+            <div class="cn-section">{{ $cn['subtitulo'] }}</div>
+
+            <div class="cn-row cn-row-head">
+                <div></div>
+                <div>💵 Efectivo</div>
+                <div>🏦 Consignado</div>
+                <div class="cn-pr">📋 Prestado</div>
+            </div>
+
+            @forelse($cn['filas'] as $f)
+            <div class="cn-row">
+                <div class="cn-lbl"><span class="cn-dot" style="background:{{ $f['color'] }}"></span>{{ $f['etiqueta'] }}</div>
+                <div class="cn-v" style="color:{{ $val($f['efectivo'])   ? '#15803d' : '#cbd5e1' }}">{{ $val($f['efectivo'])   ?? '—' }}</div>
+                <div class="cn-v" style="color:{{ $val($f['consignado']) ? '#0369a1' : '#cbd5e1' }}">{{ $val($f['consignado']) ?? '—' }}</div>
+                <div class="cn-v cn-pr" style="color:{{ $val($f['prestado']) ? '#7c3aed' : '#cbd5e1' }}">{{ $val($f['prestado']) ?? '—' }}</div>
             </div>
             @empty
-            <div style="text-align:center;color:#94a3b8;font-size:.83rem;padding:1rem">Sin cuentas registradas</div>
+            <div style="padding:.9rem;text-align:center;color:#cbd5e1;font-size:.78rem">Sin movimiento en este canal</div>
             @endforelse
-            <div style="border-top:2px solid #e2e8f0;margin-top:.3rem;padding-top:.7rem;
-                        display:flex;justify-content:space-between;align-items:center">
-                <span style="font-size:.78rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.04em">Total bancos</span>
-                <span style="font-size:1.15rem;font-weight:800;color:#1d4ed8">{{ $fmt($totalBancos) }}</span>
+
+            @if($cn['n'] === 1 && ($val($canales['nota']['efectivo']) || $val($canales['nota']['consignado']) || $val($canales['nota']['prestado'])))
+            <div class="cn-row cn-nota" title="Comisión ganada por asesores — sale de la administración, aún sin pagar">
+                <div class="cn-lbl">↳ {{ $canales['nota']['etiqueta'] }}</div>
+                <div class="cn-v">{{ $val($canales['nota']['efectivo'])   ?? '—' }}</div>
+                <div class="cn-v">{{ $val($canales['nota']['consignado']) ?? '—' }}</div>
+                <div class="cn-v cn-pr">{{ $val($canales['nota']['prestado']) ?? '—' }}</div>
             </div>
-            <a href="{{ route('admin.cuadre-diario.bancos') }}"
-               style="text-align:center;font-size:.78rem;color:#2563eb;text-decoration:none;font-weight:600;padding:.4rem;border-radius:7px;border:1px solid #bfdbfe;margin-top:.2rem">
-                Ver movimientos completos →
-            </a>
+            @endif
+        </div>
+
+        <div class="cn-card-foot" style="background:linear-gradient(135deg,{{ $cn['gradiente'] }})">
+            <div class="cn-row" style="border:0;padding:0">
+                <div class="cn-foot-l">{{ $cn['n'] === 2 ? 'Total bruto' : 'Total canal' }}</div>
+                <div class="cn-foot-v">{{ $val($cn['total']['efectivo'])   ?? '—' }}</div>
+                <div class="cn-foot-v">{{ $val($cn['total']['consignado']) ?? '—' }}</div>
+                <div class="cn-foot-v cn-pr">{{ $val($cn['total']['prestado']) ?? '—' }}</div>
+            </div>
+            <div class="cn-foot-tot">
+                Total {{ $fmt(round($cn['total']['efectivo'] + $cn['total']['consignado'] + $cn['total']['prestado'])) }}
+            </div>
         </div>
     </div>
+    @endforeach
 </div>
+@endif
 
-{{-- Tabla de caja por día --}}
-<div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden;margin-bottom:.8rem">
-    <div style="padding:.7rem 1rem;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between">
-        <div style="font-size:.85rem;font-weight:700">
-            📅 Período: {{ $cuadre->fecha_inicio->format('d/m/Y') }} —
-            {{ $cuadre->fecha_fin ? $cuadre->fecha_fin->format('d/m/Y') : 'Abierto' }}
-        </div>
+{{-- ═══════════ 3. Gastos del día ═══════════ --}}
+<div class="cd-panel">
+    <div class="cd-panel-head">
+        <div class="cd-panel-title">📋 Gastos que reportaste</div>
         <div style="font-size:.75rem;color:#64748b">
-            Caja Menor Inicial: <strong>{{ $fmt($cajaMenor) }}</strong>
+            Total <strong style="color:#dc2626">-{{ $fmt($gastos->sum('valor')) }}</strong>
         </div>
-    </div>
-    <div style="overflow-x:auto">
-    <table class="tbl-cd">
-        <thead><tr>
-            <th>Día</th>
-            <th class="num">+ Ingresos efectivo</th>
-            <th class="num" style="color:#6ee7b7">+ Cobros cartera</th>
-            <th class="num" style="color:#fde68a">💰 Anticipos</th>
-            <th class="num">- Gastos efectivo</th>
-            <th class="num">Saldo acumulado</th>
-        </tr></thead>
-        <tbody>
-        @foreach($datosPeriodo['por_dia'] as $dia)
-        <tr class="{{ ($dia['ingresos'] > 0 || ($dia['cartera'] ?? 0) > 0 || ($dia['anticipos'] ?? 0) > 0 || $dia['gastos'] > 0) ? '' : 'opacity-40' }}">
-            <td>{{ sqldate($dia['fecha'])->locale('es')->isoFormat('ddd DD MMM') }}</td>
-            <td class="num" style="color:#15803d">{{ $dia['ingresos'] ? '+'.$fmt($dia['ingresos']) : '—' }}</td>
-            <td class="num" style="color:#065f46;font-size:.75rem">
-                {{ ($dia['cartera'] ?? 0) > 0 ? '+'.$fmt($dia['cartera']) : '' }}
-            </td>
-            <td class="num" style="color:#d97706;font-size:.75rem">
-                {{ ($dia['anticipos'] ?? 0) > 0 ? '+'.$fmt($dia['anticipos']) : '' }}
-            </td>
-            <td class="num" style="color:#dc2626">{{ $dia['gastos'] ? '-'.$fmt($dia['gastos']) : '—' }}</td>
-            <td class="num" style="font-weight:700;color:{{ $dia['saldo'] >= 0 ? '#1d4ed8' : '#dc2626' }}">
-                {{ $fmt($dia['saldo']) }}
-            </td>
-        </tr>
-        @endforeach
-        <tr style="background:#0f172a">
-            <td style="color:#94a3b8;font-weight:600;font-size:.75rem">SALDO FINAL ESPERADO</td>
-            <td class="num" style="color:#4ade80;font-weight:800;font-size:.9rem">{{ $fmt($datosPeriodo['efectivo_total']) }}</td>
-            <td class="num" style="color:#6ee7b7;font-weight:700;font-size:.85rem">{{ ($datosPeriodo['cobros_cartera'] ?? 0) > 0 ? '+'.$fmt($datosPeriodo['cobros_cartera']) : '—' }}</td>
-            <td class="num" style="color:#fde68a;font-weight:700;font-size:.85rem">{{ ($datosPeriodo['anticipos_efectivo'] ?? 0) > 0 ? '+'.$fmt($datosPeriodo['anticipos_efectivo']) : '—' }}</td>
-            <td class="num" style="color:#f87171;font-weight:800;font-size:.9rem">-{{ $fmt($datosPeriodo['gastos_efectivo']) }}</td>
-            <td class="num" style="color:#fbbf24;font-weight:800;font-size:.95rem">{{ $fmt($datosPeriodo['saldo_final']) }}</td>
-        </tr>
-        </tbody>
-    </table>
-    </div>
-</div>
-
-{{-- Gastos registrados --}}
-<div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden;margin-bottom:.8rem">
-    <div style="padding:.7rem 1rem;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.4rem">
-        <div style="font-size:.85rem;font-weight:700">📋 Gastos del período</div>
-        <button onclick="abrirModalGasto()" class="btn-sm btn-gasto">
-            + Registrar Gasto
-        </button>
     </div>
     @if($gastos->isEmpty())
-    <div style="padding:1.5rem;text-align:center;color:#94a3b8;font-size:.83rem">Sin gastos registrados</div>
+    <div class="vacio">Sin gastos ese día</div>
     @else
     <div style="overflow-x:auto">
     <table class="tbl-cd">
         <thead><tr>
-            <th>Fecha</th>
             <th>Tipo</th>
             <th>Descripción</th>
-            <th>Forma Pago</th>
+            <th>Forma de pago</th>
             <th>Banco</th>
             <th class="num">Valor</th>
-            <th style="text-align:center">Acción</th>
+            <th class="no-print" style="text-align:center">Acción</th>
         </tr></thead>
         <tbody>
         @foreach($gastos as $g)
         <tr>
-            <td style="font-size:.75rem">{{ $g->fecha->format('d/m/Y') }}</td>
             <td>
                 <span class="badge-tipo"
-                    style="background:{{ in_array($g->tipo, ['nomina','transferencia_banco','banco_banco']) ? '#fef3c7' : '#dbeafe' }};color:{{ in_array($g->tipo, ['nomina','transferencia_banco','banco_banco']) ? '#92400e' : '#1d4ed8' }}">
+                      style="background:{{ in_array($g->tipo, ['nomina','transferencia_banco','banco_banco']) ? '#b45309' : '#1d4ed8' }}">
                     {{ $g->tipoLabel() }}
                 </span>
             </td>
-            <td style="max-width:250px;font-size:.77rem">
+            <td style="max-width:280px;font-size:.77rem">
                 {{ $g->descripcion }}
                 @if($g->pagado_a)<div style="color:#64748b;font-size:.7rem">→ {{ $g->pagado_a }}</div>@endif
             </td>
@@ -301,107 +376,154 @@ $totalBancos = $bancos->sum(fn($bc) => \App\Models\Consignacion::saldoBanco(sess
                 } }}
             </td>
             <td style="font-size:.72rem;color:#64748b">
-                {{ $g->bancoOrigen?->banco ?? '—' }}
-                @if($g->bancoDestino) → {{ $g->bancoDestino->banco }} @endif
+                {{ $g->bancoOrigen?->banco ?? '—' }}@if($g->bancoDestino) → {{ $g->bancoDestino->banco }} @endif
             </td>
             <td class="num" style="color:#dc2626;font-weight:700">-{{ $fmt($g->valor) }}</td>
-            <td style="text-align:center">
+            <td class="no-print" style="text-align:center">
+                @if(!$diaBloqueado)
                 <form method="POST" action="{{ route('admin.cuadre-diario.gasto.destroy', $g->id) }}"
-                    onsubmit="return confirm('¿Eliminar este gasto?')" style="display:inline">
+                      onsubmit="return confirm('¿Eliminar este gasto?')" style="display:inline">
                     @csrf @method('DELETE')
-                    <button type="submit" style="background:#fee2e2;color:#991b1b;border:none;border-radius:5px;padding:.2rem .5rem;cursor:pointer;font-size:.72rem">
-                        🗑️
-                    </button>
+                    <button type="submit" style="background:#fee2e2;color:#991b1b;border:none;border-radius:5px;padding:.2rem .5rem;cursor:pointer;font-size:.72rem">🗑️</button>
                 </form>
+                @else
+                <span style="color:#cbd5e1;font-size:.72rem">🔒</span>
+                @endif
             </td>
         </tr>
         @endforeach
         </tbody>
+        <tfoot><tr>
+            <td colspan="4" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.05em">Total gastos</td>
+            <td class="num" style="color:#f87171">-{{ $fmt($gastos->sum('valor')) }}</td>
+            <td></td>
+        </tr></tfoot>
     </table>
     </div>
     @endif
 </div>
 
-{{-- Cerrar cuadre --}}
-@if($esSuperAdmin)
-<div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:1rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem">
+{{-- ═══════════ 4. Cerrar el día ═══════════ --}}
+@if($esSuperAdmin && !$cuadreDia)
+<div class="no-print" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:1rem;display:flex;
+            align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;margin-bottom:.8rem">
     <div style="font-size:.83rem;color:#64748b">
-        🔒 Cerrar el cuadre registrará que recibiste <strong>{{ $fmt($datosPeriodo['saldo_final']) }}</strong> en efectivo.
+        🔒 Al cuadrar quedará registrado que <strong>{{ $usuarioVista->nombre }}</strong> entregó
+        <strong>{{ $fmt($resumen['saldo_esperado']) }}</strong> del {{ $carbonFecha->format('d/m/Y') }}.
     </div>
     <button onclick="document.getElementById('modal-cerrar').style.display='flex'" class="btn-sm btn-cerrar">
-        🔒 Cerrar Cuadre
+        🔒 Cuadrar este día
     </button>
 </div>
 @endif
 
-@endif
-
-{{-- Cuadres anteriores --}}
-@if(isset($cuadresAnteriores) && $cuadresAnteriores->isNotEmpty())
-<div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden;margin-top:.8rem">
-    <div style="padding:.7rem 1rem;border-bottom:1px solid #f1f5f9;font-size:.85rem;font-weight:700">
-        🗂️ Cuadres anteriores (últimos 15 días)
-    </div>
-    <table class="tbl-cd">
-        <thead><tr>
-            <th>Período</th>
-            <th class="num">Saldo Apertura</th>
-            <th class="num">Saldo Cierre</th>
-            <th>Cerrado por</th>
-            <th style="text-align:center">Ver</th>
-        </tr></thead>
-        <tbody>
-        @foreach($cuadresAnteriores as $ca)
-        <tr>
-            <td style="font-size:.77rem">
-                {{ $ca->fecha_inicio->format('d/m/Y') }}
-                @if($ca->fecha_fin) — {{ $ca->fecha_fin->format('d/m/Y') }} @endif
-            </td>
-            <td class="num">{{ $fmt($ca->saldo_apertura) }}</td>
-            <td class="num" style="font-weight:700;color:#1d4ed8">{{ $fmt($ca->saldo_cierre) }}</td>
-            <td style="font-size:.72rem;color:#64748b">{{ $ca->cerradoPor?->nombre ?? '—' }}</td>
-            <td style="text-align:center">
-                <a href="{{ route('admin.cuadre-diario.ver', $ca->id) }}"
-                   style="padding:.2rem .5rem;background:#0f172a;color:#fff;border-radius:5px;font-size:.72rem;text-decoration:none">
-                    👁️ Ver
-                </a>
-            </td>
-        </tr>
-        @endforeach
-        </tbody>
-    </table>
+{{-- ═══════════ 5. Consolidado (superadmin) ═══════════ --}}
+@if($esSuperAdmin)
+<div class="no-print" style="text-align:center;margin:1.2rem 0 .5rem">
+    <a href="{{ route('admin.cuadre-diario.consolidado', ['fecha' => $fecha]) }}"
+       style="display:inline-flex;align-items:center;gap:.4rem;padding:.45rem 1.1rem;border-radius:8px;
+              background:#0f172a;color:#cbd5e1;text-decoration:none;font-size:.8rem;font-weight:600">
+        📊 Ver el consolidado del día — todos los usuarios
+    </a>
 </div>
 @endif
 
-@if($cuadre)
+{{-- ═══════════ Modales ═══════════ --}}
+
+{{-- Detalle de consignaciones del día, por cuenta --}}
+<div id="modal-consig"
+     onclick="if(event.target.id==='modal-consig')this.style.display='none'"
+     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;align-items:center;justify-content:center">
+    <div style="background:#fff;border-radius:14px;width:min(720px,96vw);max-height:88vh;display:flex;flex-direction:column;box-shadow:0 20px 50px rgba(0,0,0,.25);overflow:hidden">
+        <div style="background:#0369a1;padding:.85rem 1.1rem;display:flex;justify-content:space-between;align-items:center">
+            <div>
+                <div style="color:#fff;font-weight:700;font-size:.95rem">🏦 Consignado en cuentas</div>
+                <div style="color:rgba(255,255,255,.7);font-size:.72rem;margin-top:.1rem">
+                    Soportes que registraste el {{ $carbonFecha->format('d/m/Y') }} · Total {{ $fmt($totalConsignado) }}
+                </div>
+            </div>
+            <button onclick="document.getElementById('modal-consig').style.display='none'"
+                    style="background:rgba(255,255,255,.18);color:#fff;border:none;border-radius:5px;width:28px;height:28px;cursor:pointer;font-weight:800;font-size:1rem">×</button>
+        </div>
+
+        <div style="overflow-y:auto">
+            @if($consignaciones->isEmpty())
+            <div class="vacio">Sin consignaciones registradas ese día</div>
+            @else
+            @foreach($consignaciones as $bancoId => $movs)
+            @php $bc = $movs->first()->bancoCuenta; @endphp
+            <div style="border-bottom:1px solid #f1f5f9">
+                <div style="display:flex;align-items:center;justify-content:space-between;background:#f8fafc;padding:.5rem 1rem">
+                    <div style="font-size:.8rem;font-weight:700;color:#0f172a">
+                        {{ $bc?->banco ?? 'Cuenta ' . $bancoId }} {{ $bc?->nombre }}
+                        @if($bc?->numero_cuenta)
+                        <span style="font-weight:500;color:#94a3b8;font-size:.72rem"> · {{ $bc->numero_cuenta }}</span>
+                        @endif
+                    </div>
+                    <div style="font-size:.9rem;font-weight:800;color:#0369a1">{{ $fmt($movs->sum('valor')) }}</div>
+                </div>
+                <table class="tbl-cd">
+                    <tbody>
+                    @foreach($movs as $cs)
+                    <tr>
+                        <td style="width:110px;font-size:.75rem;color:#64748b">
+                            {{ $cs->factura?->numero_factura ? 'Fact. '.$cs->factura->numero_factura : ucfirst($cs->tipo ?? 'ingreso') }}
+                        </td>
+                        <td style="font-size:.77rem">{{ $cs->observacion ?: ($cs->referencia ?: '—') }}</td>
+                        <td style="width:130px">
+                            @if($cs->no_aparece)
+                            <span class="badge-tipo" style="background:#dc2626">❌ No aparece</span>
+                            @elseif($cs->confirmado)
+                            <span class="badge-tipo" style="background:#15803d">✅ Confirmada</span>
+                            @else
+                            <span class="badge-tipo" style="background:#f59e0b">🕐 Pendiente</span>
+                            @endif
+                        </td>
+                        <td class="num" style="width:130px;font-weight:700;color:#0369a1">{{ $fmt($cs->valor) }}</td>
+                    </tr>
+                    @endforeach
+                    </tbody>
+                </table>
+            </div>
+            @endforeach
+            @endif
+        </div>
+    </div>
+</div>
+
+@if(!$diaBloqueado && $esPropio)
 @include('admin.partials.modal_gasto', [
-    'formAction'  => route('admin.cuadre-diario.gasto.store', $cuadre->id),
-    'bancos'      => $bancosFacturacion ?? $bancos,
-    'esAdmin'     => $esAdmin,
-    'modalId'     => 'modal-gasto',
-    'imagenPaste' => true,
+    'formAction'   => route('admin.cuadre-diario.gasto.store'),
+    'bancos'       => $bancosFacturacion,
+    'esAdmin'      => $esAdmin,
+    'usuarios'     => $usuarios,
+    'modalId'      => 'modal-gasto',
+    'imagenPaste'  => true,
+    'fechaDefault' => $fecha,
 ])
 @endif
 
-{{-- Modal: Cerrar Cuadre --}}
-@if($cuadre && $esSuperAdmin)
+@if($esSuperAdmin && !$cuadreDia)
 <div id="modal-cerrar"
      onclick="if(event.target.id==='modal-cerrar')this.style.display='none'"
      style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center">
     <div style="background:#fff;border-radius:14px;width:min(420px,96vw);box-shadow:0 20px 50px rgba(0,0,0,.3)">
         <div style="background:#991b1b;padding:.8rem 1.1rem;border-radius:14px 14px 0 0;display:flex;justify-content:space-between;align-items:center">
-            <span style="color:#fff;font-weight:700">🔒 Cerrar Cuadre</span>
+            <span style="color:#fff;font-weight:700">🔒 Cuadrar el día</span>
             <button onclick="document.getElementById('modal-cerrar').style.display='none'"
                     style="background:rgba(255,255,255,.15);color:#fff;border:none;border-radius:5px;width:26px;height:26px;cursor:pointer;font-weight:700">×</button>
         </div>
         <div style="padding:1.2rem">
             <div style="background:#fef3c7;border-radius:8px;padding:.8rem;font-size:.83rem;color:#92400e;margin-bottom:1rem">
-                ⚠️ Al cerrar, quedará registrado que <strong>{{ auth()->user()->nombre }}</strong>
-                recibió <strong>{{ $fmt($datosPeriodo['saldo_final']) }}</strong> en efectivo.
+                ⚠️ Quedará registrado que <strong>{{ $usuarioVista->nombre }}</strong> entregó
+                <strong>{{ $fmt($resumen['saldo_esperado']) }}</strong> en efectivo del
+                <strong>{{ $carbonFecha->format('d/m/Y') }}</strong>. Ese día no admitirá más gastos.
             </div>
-            <form method="POST" action="{{ route('admin.cuadre-diario.cerrar', $cuadre->id) }}"
+            <form method="POST" action="{{ route('admin.cuadre-diario.cerrar-dia') }}"
                   style="display:flex;flex-direction:column;gap:.8rem">
                 @csrf
+                <input type="hidden" name="fecha" value="{{ $fecha }}">
+                <input type="hidden" name="usuario_id" value="{{ $usuarioId }}">
                 <div>
                     <label style="font-size:.76rem;font-weight:600;color:#374151;display:block;margin-bottom:.3rem">Observación</label>
                     <textarea name="observacion" rows="3" placeholder="Ej: Efectivo entregado a caja principal"
@@ -409,7 +531,7 @@ $totalBancos = $bancos->sum(fn($bc) => \App\Models\Consignacion::saldoBanco(sess
                 </div>
                 <button type="submit"
                         style="background:#dc2626;color:#fff;border:none;border-radius:8px;padding:.6rem;font-size:.88rem;font-weight:700;cursor:pointer">
-                    🔒 Confirmar Cierre
+                    🔒 Confirmar cuadre del día
                 </button>
             </form>
         </div>
@@ -418,15 +540,15 @@ $totalBancos = $bancos->sum(fn($bc) => \App\Models\Consignacion::saldoBanco(sess
 @endif
 
 <script>
-// Los aliases actualizarBancos/actualizarFormPago ya están definidos en el partial modal_gasto
+// Los helpers gasto_* ya están definidos en el partial modal_gasto.
 function abrirModalGasto() {
     const form = document.getElementById('modal-gasto-form');
     if (form) {
         form.reset();
-        // Re-ocultar paneles que el JS de tipo/forma_pago podría haber mostrado
-        const hide = ['modal-gasto-banco-origen','modal-gasto-banco-destino','modal-gasto-blq-usuario'];
-        hide.forEach(id => { const el = document.getElementById(id); if(el) el.style.display='none'; });
-        // Limpiar zona de imagen si existe
+        // Re-ocultar paneles que el JS de tipo/forma_pago pudo haber mostrado
+        ['modal-gasto-banco-origen','modal-gasto-banco-destino','modal-gasto-blq-usuario']
+            .forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+
         const zone = document.getElementById('modal-gasto-paste-zone');
         if (zone) {
             zone.style.borderColor = '#cbd5e1';

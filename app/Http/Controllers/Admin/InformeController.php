@@ -1760,6 +1760,221 @@ class InformeController extends Controller
         ]);
     }
 
+    /**
+     * Conciliación de bancos: movimientos del mes por cuenta (entradas por
+     * consignación, salidas por gasto) contra el saldo calculado.
+     *
+     * Las acciones de escritura (confirmar, reversar, subir imagen) siguen
+     * viviendo en CuadreDiarioController y verifican el rol internamente.
+     */
+    public function conciliacionBancos(Request $request)
+    {
+        $this->checkFinanciero();
+
+        set_time_limit(120); // protección ante meses con muchos movimientos
+
+        $aliadoId = $this->aliadoId();
+        $mes      = $request->input('mes', now()->format('Y-m'));
+        [$anio, $mesNum] = explode('-', $mes);
+        $inicio = "{$anio}-{$mesNum}-01";
+        $fin    = date('Y-m-t', strtotime($inicio));
+
+        $bancos   = BancoCuenta::where('aliado_id', $aliadoId)->where('activo', true)->get();
+        $bancoIds = $bancos->pluck('id')->toArray();
+
+        // ── 1. Cargar TODAS las consignaciones con nombres via JOIN (igual que financiero) ──
+        // Un solo query con LEFT JOIN a clientes y empresas — replica exactamente
+        // el patrón de InformeController::movimientosBancos() que funciona correctamente.
+        $todasConsigRaw = DB::table('consignaciones AS cs')
+            ->leftJoin('facturas AS f',  'f.id',  '=', 'cs.factura_id')
+            ->leftJoin('clientes AS cl', function ($j) use ($aliadoId) {
+                $j->on('cl.cedula', '=', 'f.cedula')
+                  ->where('cl.aliado_id', $aliadoId);
+            })
+            ->leftJoin('empresas AS em', 'em.id', '=', 'f.empresa_id')
+            ->leftJoin('users AS u',     'u.id',  '=', 'cs.usuario_id')
+            ->where('cs.aliado_id', $aliadoId)
+            ->whereIn('cs.banco_cuenta_id', $bancoIds)
+            ->whereBetween('cs.fecha', [$inicio, $fin])
+            ->selectRaw("
+                cs.id,
+                cs.banco_cuenta_id,
+                cs.factura_id,
+                cs.anticipo_id,
+                cs.tipo,
+                cs.referencia,
+                cs.observacion,
+                cs.valor,
+                cs.confirmado,
+                cs.no_aparece,
+                cs.imagen_path,
+                CONVERT(VARCHAR(10), cs.fecha, 120) AS fecha,
+                f.numero_factura,
+                f.empresa_id,
+                CASE
+                    WHEN f.empresa_id IS NOT NULL AND f.empresa_id > 0
+                        THEN UPPER(ISNULL(em.empresa, '—'))
+                    ELSE
+                        LTRIM(RTRIM(
+                            ISNULL(cl.primer_nombre,'') + ' ' +
+                            ISNULL(cl.segundo_nombre,'') + ' ' +
+                            ISNULL(cl.primer_apellido,'') + ' ' +
+                            ISNULL(cl.segundo_apellido,'')
+                        ))
+                END AS nombre_cliente,
+                u.nombre AS usuario_nombre
+            ")
+            ->orderByDesc('cs.fecha')
+            ->orderByDesc('cs.id')
+            ->get();
+
+        // ── 2. Cargar anticipos relacionados (batch) ─────────────────────────
+        $anticIds = $todasConsigRaw->where('tipo', 'anticipo')->pluck('anticipo_id')->filter()->unique();
+        $anticipos = collect();
+        if ($anticIds->isNotEmpty()) {
+            $anticipos = \App\Models\Anticipo::whereIn('id', $anticIds)
+                ->with(['factura', 'cliente', 'empresa'])
+                ->get()
+                ->keyBy('id');
+        }
+
+        // ── 3. Cargar TODOS los gastos del período (batch) ───────────────────
+        // NOTA: gastos tipo 'pago_planilla' se guardan con forma_pago='transferencia'
+        //       (no 'transferencia_bancaria'), por eso se incluyen explícitamente por tipo.
+        $todasSalidas = \App\Models\Gasto::where('aliado_id', $aliadoId)
+            ->whereIn('banco_origen_id', $bancoIds)
+            ->where(function ($q) {
+                $q->whereIn('forma_pago', ['transferencia_bancaria', 'banco_banco'])
+                  ->orWhere('tipo', 'pago_planilla');   // ← pago_planilla usa forma_pago='transferencia'
+            })
+            ->whereBetween('fecha', [$inicio, $fin])
+            ->with(['usuario', 'bancoDestino'])
+            ->orderByDesc('fecha')->orderByDesc('id')
+            ->get()
+            ->groupBy('banco_origen_id');
+
+        // ── 4. Pre-calcular saldos (uno por banco) ────────────────────────────
+        $saldosBanco = [];
+        foreach ($bancoIds as $bid) {
+            $saldosBanco[$bid] = \App\Models\Consignacion::saldoBanco($aliadoId, $bid);
+        }
+
+        // ── 5. Agrupar y transformar por banco ────────────────────────────────
+        $consigPorBanco = $todasConsigRaw->groupBy('banco_cuenta_id');
+
+        $saldos = $bancos->map(function ($bc) use ($consigPorBanco, $todasSalidas, $saldosBanco, $anticipos) {
+
+            $movEntradas = ($consigPorBanco[$bc->id] ?? collect())->map(function ($c) use ($anticipos) {
+                // nombre_cliente ya viene del CASE WHEN en SQL Server (igual que financiero)
+                $pagador   = trim($c->nombre_cliente ?? '');
+                $esEmpresa = ($c->empresa_id ?? 0) > 0;
+
+                if ($pagador === '' || $pagador === '— — — —') $pagador = null;
+
+                // Trazabilidad anticipo
+                $anticFact = $anticFactNum = null;
+                if (($c->tipo ?? '') === 'anticipo' && $c->anticipo_id) {
+                    $ant = $anticipos[$c->anticipo_id] ?? null;
+                    if ($ant) {
+                        $anticFact    = $ant->factura_id;
+                        $anticFactNum = $ant->factura?->numero_factura;
+
+                        // Si no se obtuvo pagador del join (porque es anticipo disponible sin factura), resolverlo del anticipo
+                        if (!$pagador) {
+                            if ($ant->empresa) {
+                                $pagador   = trim($ant->empresa->empresa);
+                                $esEmpresa = true;
+                            } elseif ($ant->cliente) {
+                                $pagador   = trim($ant->cliente->nombre_completo);
+                                $esEmpresa = false;
+                            }
+                        }
+                    }
+                }
+
+                return (object)[
+                    'id'                   => $c->id,
+                    'cs_id'                => $c->id,
+                    'fecha'                => $c->fecha,
+                    'tipo'                 => $c->tipo ?? 'cliente',
+                    'confirmado'           => (bool)$c->confirmado,
+                    'no_aparece'           => (bool)($c->no_aparece ?? false),
+                    'factura_id'           => $c->factura_id,
+                    'num_factura'          => $c->numero_factura ?? $c->factura_id,
+                    'anticipo_id'          => $c->anticipo_id,
+                    'anticipo_factura_id'  => $anticFact,
+                    'anticipo_factura_num' => $anticFactNum,
+                    'pagador'              => $pagador ?: null,
+                    'es_empresa'           => $esEmpresa,
+                    'descripcion'          => match($c->tipo ?? 'cliente') {
+                        'traslado_efectivo' => 'Traslado efectivo → banco',
+                        'banco_recibido'    => 'Transferencia banco recibida',
+                        'anticipo'          => 'Anticipo' . ($c->referencia ? ' · Ref: ' . $c->referencia : ''),
+                        default             => $c->observacion,
+                    },
+                    'usuario'              => $c->usuario_nombre,
+                    'valor'                => $c->valor,
+                    'imagen_path'          => $c->imagen_path,
+                    'imagen_url'           => $c->imagen_path ? \Storage::url($c->imagen_path) : null,
+                    'es_salida'            => false,
+                    'es_gasto'             => false,
+                    'referencia'           => $c->referencia,
+                ];
+            });
+
+            $movSalidas = ($todasSalidas[$bc->id] ?? collect())->map(fn($g) => (object)[
+                'id'               => $g->id,
+                'cs_id'            => null,
+                'fecha'            => $g->fecha,
+                'tipo'             => $g->tipo,
+                'confirmado'       => true,
+                'no_aparece'       => false,
+                'factura_id'       => null,
+                'num_factura'      => $g->tipo === 'pago_planilla' ? ($g->numero_planilla ?? null) : null,
+                'pagador'          => $g->pagado_a,
+                'descripcion'      => $g->tipo === 'pago_planilla'
+                    ? '📋 Planilla SS' . ($g->numero_planilla ? ' #' . $g->numero_planilla : '')
+                        . ($g->pagado_a ? ' · ' . $g->pagado_a : '')
+                    : ($g->descripcion . ($g->bancoDestino ? ' → ' . $g->bancoDestino->banco : '')),
+                'usuario'          => $g->usuario?->nombre,
+                'valor'            => $g->valor,
+                'imagen_path'      => $g->imagen_path,
+                'imagen_url'       => $g->imagen_path ? \Storage::url($g->imagen_path) : null,
+                'es_salida'        => true,
+                'es_gasto'         => true,
+                'es_planilla'      => $g->tipo === 'pago_planilla',
+                'referencia'       => $g->numero_planilla ?? null,
+            ]);
+
+            $movimientos = $movEntradas->merge($movSalidas)
+                ->sort(function ($a, $b) {
+                    $fA = $a->fecha instanceof \Carbon\Carbon ? $a->fecha->toDateString() : $a->fecha;
+                    $fB = $b->fecha instanceof \Carbon\Carbon ? $b->fecha->toDateString() : $b->fecha;
+                    
+                    if ($fA !== $fB) {
+                        return strcmp($fB, $fA);
+                    }
+                    
+                    // Si son del mismo día, entradas (es_salida = false) van primero que salidas (es_salida = true)
+                    if ($a->es_salida !== $b->es_salida) {
+                        return $a->es_salida ? 1 : -1;
+                    }
+                    
+                    // Si son del mismo día y del mismo tipo, ordenar por valor de mayor a menor
+                    return $b->valor <=> $a->valor;
+                })
+                ->values();
+
+            return [
+                'banco'       => $bc,
+                'saldo'       => $saldosBanco[$bc->id] ?? 0,
+                'movimientos' => $movimientos,
+            ];
+        });
+
+        return view('admin.informes.conciliacion_bancos', compact('saldos', 'bancos', 'mes'));
+    }
+
     // ── JSON: movimientos de un banco ────────────────────────────────
     public function financieroBancos(Request $request)
     {

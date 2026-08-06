@@ -56,51 +56,46 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.8rem}
 </div>
 @endif
 
-{{-- Tabla consolidada de cuadres --}}
+{{-- Tabla consolidada del día, usuario por usuario --}}
 <div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden">
     @if($resumen->isEmpty())
-    <div style="padding:2rem;text-align:center;color:#94a3b8">Sin cuadres para la fecha seleccionada</div>
+    <div style="padding:2rem;text-align:center;color:#94a3b8">Nadie movió plata en la fecha seleccionada</div>
     @else
     <div style="overflow-x:auto">
     <table class="tbl">
         <thead><tr>
             <th>Usuario</th>
-            <th>Período</th>
-            <th class="num">Caja Menor</th>
-            <th class="num">Efectivo cobrado</th>
+            <th class="num">Facturas</th>
+            <th class="num">Caja menor</th>
+            <th class="num">Efectivo recibido</th>
+            <th class="num">Consignado</th>
             <th class="num">Gastos efectivo</th>
-            <th class="num">Saldo esperado</th>
+            <th class="num">Efectivo en caja</th>
             <th>Estado</th>
-            <th>Cerrado por</th>
             <th style="text-align:center">Ver</th>
         </tr></thead>
         <tbody>
         @foreach($resumen as $r)
         <tr>
-            <td style="font-weight:600">{{ $r->cuadre->usuario?->nombre ?? '—' }}</td>
-            <td style="font-size:.75rem">
-                {{ $r->cuadre->fecha_inicio->format('d/m/Y') }}
-                @if($r->cuadre->fecha_fin) — {{ $r->cuadre->fecha_fin->format('d/m/Y') }} @endif
-            </td>
-            <td class="num">{{ $fmt($r->cuadre->saldo_apertura) }}</td>
+            <td style="font-weight:600">{{ $r->usuario->nombre }}</td>
+            <td class="num" style="color:#64748b">{{ $r->facturas ?: '—' }}</td>
+            <td class="num">{{ $fmt($r->base_caja) }}</td>
             <td class="num" style="color:#15803d;font-weight:600">+{{ $fmt($r->efectivo_total) }}</td>
+            <td class="num" style="color:#0369a1">{{ $r->consignado ? $fmt($r->consignado) : '—' }}</td>
             <td class="num" style="color:#dc2626">-{{ $fmt($r->gastos_efectivo) }}</td>
             <td class="num" style="font-weight:800;color:#1d4ed8">{{ $fmt($r->saldo_esperado) }}</td>
             <td>
-                @if($r->cuadre->estado === 'abierto')
-                <span class="badge-est" style="background:#dbeafe;color:#1d4ed8">🟢 Abierto</span>
+                @if($r->cuadre)
+                <span class="badge-est" style="background:#dcfce7;color:#15803d">✅ Cuadrado</span>
+                <div style="font-size:.68rem;color:#64748b;margin-top:.15rem">
+                    {{ $r->cuadre->cerradoPor?->nombre ?? '—' }} · {{ $fmt($r->cuadre->saldo_cierre) }}
+                </div>
                 @else
-                <span class="badge-est" style="background:#dcfce7;color:#15803d">✅ Cerrado</span>
-                @endif
-            </td>
-            <td style="font-size:.72rem;color:#64748b">
-                {{ $r->cuadre->cerradoPor?->nombre ?? '—' }}
-                @if($r->cuadre->saldo_cierre !== null)
-                <div style="font-weight:600;color:#0f172a">{{ $fmt($r->cuadre->saldo_cierre) }}</div>
+                <span class="badge-est" style="background:#fef3c7;color:#92400e">🕐 Pendiente</span>
                 @endif
             </td>
             <td style="text-align:center">
-                <a href="{{ route('admin.cuadre-diario.ver', $r->cuadre->id) }}"
+                <a href="{{ route('admin.cuadre-diario.index', ['fecha' => $fecha, 'usuario_id' => $r->usuario->id]) }}"
                    style="padding:.2rem .55rem;background:#0f172a;color:#fff;border-radius:5px;font-size:.72rem;text-decoration:none">
                     👁️ Ver
                 </a>
@@ -108,6 +103,14 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.8rem}
         </tr>
         @endforeach
         </tbody>
+        <tfoot><tr style="background:#0f172a;color:#e2e8f0;font-weight:700">
+            <td colspan="3" style="font-size:.7rem;text-transform:uppercase;letter-spacing:.05em">Total del día</td>
+            <td class="num" style="color:#4ade80">+{{ $fmt($resumen->sum('efectivo_total')) }}</td>
+            <td class="num" style="color:#7dd3fc">{{ $fmt($resumen->sum('consignado')) }}</td>
+            <td class="num" style="color:#f87171">-{{ $fmt($resumen->sum('gastos_efectivo')) }}</td>
+            <td class="num" style="color:#fbbf24">{{ $fmt($resumen->sum('saldo_esperado')) }}</td>
+            <td colspan="2"></td>
+        </tr></tfoot>
     </table>
     </div>
     @endif

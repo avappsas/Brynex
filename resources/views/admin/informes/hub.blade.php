@@ -60,6 +60,17 @@
         </div>
         @endif
     </a>
+
+    {{-- Conciliación de Bancos --}}
+    <a href="{{ route('admin.informes.conciliacion_bancos') }}" style="display:flex;align-items:center;gap:1.25rem;background:linear-gradient(135deg,#0369a1,#075985);border-radius:14px;padding:1.5rem 1.75rem;text-decoration:none;border:2px solid transparent;box-shadow:0 4px 20px rgba(3,105,161,.3);transition:all .18s;margin-top:1rem;"
+       onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 12px 32px rgba(3,105,161,.4)'"
+       onmouseout="this.style.transform='';this.style.boxShadow='0 4px 20px rgba(3,105,161,.3)'">
+        <div style="font-size:2.5rem;">🏦</div>
+        <div>
+            <div style="font-size:1rem;font-weight:700;color:#fff;">Conciliación de Bancos</div>
+            <div style="font-size:.82rem;color:rgba(255,255,255,.7);margin-top:.2rem;">Movimientos del mes por cuenta · Confirmar consignaciones · Saldos</div>
+        </div>
+    </a>
     @endif
 
     {{-- Cobros BryNex --}}

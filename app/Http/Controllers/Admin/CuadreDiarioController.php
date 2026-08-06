@@ -11,168 +11,57 @@ use Illuminate\Support\Facades\Storage;
 
 class CuadreDiarioController extends Controller
 {
-    // ── Index: cuadre propio del usuario ─────────────────────────────
+    /**
+     * Index: la caja de UN día concreto, del usuario logueado.
+     *
+     * El cuadre dejó de ser un período que se abre y se cierra: cada día es
+     * independiente y se calcula al vuelo por (aliado, usuario, fecha). La
+     * fila en `cuadres` solo se crea cuando el superadmin marca el día como
+     * cuadrado — ver cerrarDia().
+     */
     public function index(Request $request)
     {
-        $aliadoId  = session('aliado_id_activo');
+        $aliadoId = session('aliado_id_activo');
+        $esAdmin  = Auth::user()->hasRole(['admin', 'superadmin']);
+        $fecha    = $this->fechaValida($request->input('fecha'));
+
+        $usuarios = User::where('aliado_id', $aliadoId)->where('activo', true)
+            ->orderBy('nombre')->get(['id', 'nombre']);
+
+        // Solo admin/superadmin puede mirar el día de otro usuario.
         $usuarioId = Auth::id();
-        $fecha     = $request->input('fecha', today()->toDateString());
-
-        // Cuadre abierto actual del usuario
-        $cuadre = Cuadre::where('aliado_id', $aliadoId)
-            ->where('usuario_id', $usuarioId)
-            ->where('estado', 'abierto')
-            ->latest('fecha_inicio')
-            ->first();
-
-        $cajaMenor = CajaMenor::montoActivo($aliadoId, $usuarioId);
-        // $bancos = TODAS las activas: alimenta el panel de saldos, que debe
-        // mostrar el dinero de cualquier cuenta. El selector de gastos usa
-        // $bancosFacturacion (solo las marcadas para facturación).
-        $bancos             = BancoCuenta::where('aliado_id', $aliadoId)->where('activo', true)->get();
-        $bancosFacturacion  = BancoCuenta::paraFacturacion($aliadoId);
-        $usuarios  = User::where('aliado_id', $aliadoId)->where('activo', true)->orderBy('nombre')->get(['id','nombre']);
-
-        // ── Datos del cuadre activo (batch: 4 queries, sin loop por día) ─────
-        if ($cuadre) {
-            $inicio = $cuadre->fecha_inicio->toDateString();
-            $fin    = ($cuadre->fecha_fin ?? today())->toDateString();
-            $uid    = $usuarioId;
-
-            // 1) Facturas efectivo por fecha
-            $ingPorFecha = DB::table('facturas')
-                ->where('aliado_id', $aliadoId)->where('usuario_id', $uid)
-                ->whereBetween('fecha_pago', [$inicio, $fin])
-                ->where('es_prestamo', false)->whereNotNull('valor_efectivo')
-                ->selectRaw("CONVERT(VARCHAR(10), fecha_pago, 120) AS d, SUM(valor_efectivo) AS t")
-                ->groupByRaw("CONVERT(VARCHAR(10), fecha_pago, 120)")
-                ->pluck('t', 'd');
-
-            // 2) Abonos cartera por fecha
-            $carteraPorFecha = DB::table('abonos')
-                ->join('facturas', 'abonos.factura_id', '=', 'facturas.id')
-                ->where('facturas.aliado_id', $aliadoId)->where('facturas.es_prestamo', true)
-                ->where('abonos.usuario_id', $uid)
-                ->whereBetween('abonos.fecha', [$inicio, $fin])
-                ->selectRaw("CONVERT(VARCHAR(10), abonos.fecha, 120) AS d, SUM(abonos.valor_efectivo) AS t")
-                ->groupByRaw("CONVERT(VARCHAR(10), abonos.fecha, 120)")
-                ->pluck('t', 'd');
-
-            // 3) Anticipos efectivo/nequi por fecha
-            $anticiposPorFecha = DB::table('anticipos')
-                ->where('aliado_id', $aliadoId)->where('usuario_id', $uid)
-                ->whereIn('forma_pago', ['efectivo', 'nequi'])
-                ->whereBetween('fecha_pago', [$inicio, $fin])
-                ->whereNotIn('estado', ['devuelto'])
-                ->selectRaw("CONVERT(VARCHAR(10), fecha_pago, 120) AS d, SUM(valor) AS t")
-                ->groupByRaw("CONVERT(VARCHAR(10), fecha_pago, 120)")
-                ->pluck('t', 'd');
-
-            // 4) Gastos del cuadre por fecha
-            $gastosPorFecha = DB::table('gastos')
-                ->where('cuadre_id', $cuadre->id)
-                ->where(fn($q) => $q->where('forma_pago', 'efectivo')->orWhere('tipo', 'efectivo_banco'))
-                ->selectRaw("CONVERT(VARCHAR(10), fecha, 120) AS d, SUM(valor) AS t")
-                ->groupByRaw("CONVERT(VARCHAR(10), fecha, 120)")
-                ->pluck('t', 'd');
-
-            // Totales del período
-            $ingresosEfectivo   = (int) $ingPorFecha->sum();
-            $cobrosCartera      = (int) $carteraPorFecha->sum();
-            $anticiposEfectivo  = (int) $anticiposPorFecha->sum();
-            $gastosEfectivo     = (int) $gastosPorFecha->sum();
-            $totalPrestado      = (int) DB::table('facturas')
-                ->where('aliado_id', $aliadoId)->where('usuario_id', $uid)
-                ->where('es_prestamo', true)->whereBetween('fecha_pago', [$inicio, $fin])
-                ->sum('total');
-
-            // Desglose por día (puro PHP, sin queries)
-            $saldoAcum = (int)($cuadre->saldo_apertura ?? 0);
-            $dias      = $cuadre->diasDelPeriodo();
-            $porDia    = $dias->map(function($dia) use (
-                $ingPorFecha, $carteraPorFecha, $anticiposPorFecha, $gastosPorFecha, &$saldoAcum
-            ) {
-                $d   = $dia->toDateString();
-                $ing = (int)($ingPorFecha[$d]        ?? 0);
-                $car = (int)($carteraPorFecha[$d]    ?? 0);
-                $ant = (int)($anticiposPorFecha[$d]  ?? 0);
-                $gas = (int)($gastosPorFecha[$d]     ?? 0);
-                $saldoAcum += $ing + $car + $ant - $gas;
-                return ['fecha' => $dia, 'ingresos' => $ing, 'cartera' => $car,
-                        'anticipos' => $ant, 'gastos' => $gas, 'saldo' => $saldoAcum];
-            });
-
-            $datosPeriodo = [
-                'efectivo_total'     => $ingresosEfectivo,
-                'cobros_cartera'     => $cobrosCartera,
-                'total_prestado'     => $totalPrestado,
-                'anticipos_efectivo' => $anticiposEfectivo,
-                'gastos_efectivo'    => $gastosEfectivo,
-                'saldo_inicial'      => (int)($cuadre->saldo_apertura ?? 0),
-                'saldo_final'        => (int)($cuadre->saldo_apertura ?? 0) + $ingresosEfectivo + $cobrosCartera + $anticiposEfectivo - $gastosEfectivo,
-                'por_dia'            => $porDia,
-            ];
-        } else {
-            $datosPeriodo = null;
+        if ($esAdmin && $request->filled('usuario_id')
+            && $usuarios->contains('id', (int) $request->input('usuario_id'))) {
+            $usuarioId = (int) $request->input('usuario_id');
         }
+        $usuarioVista = $usuarios->firstWhere('id', $usuarioId) ?? Auth::user();
+        $esPropio     = $usuarioId === Auth::id();
 
-        // Gastos del cuadre actual
-        $gastos = $cuadre
-            ? Gasto::where('cuadre_id', $cuadre->id)
-                ->with(['bancoOrigen', 'bancoDestino', 'usuario'])
-                ->orderBy('fecha')->orderBy('id')
-                ->get()
-            : collect();
+        // El selector de gastos solo ofrece las cuentas de facturación.
+        $bancosFacturacion = BancoCuenta::paraFacturacion($aliadoId);
 
-        // Facturas del período (si hay cuadre abierto)
-        $facturasPeriodo = $cuadre ? $this->facturasPeriodo($cuadre, $aliadoId, $usuarioId) : collect();
+        // Las facturas del día se cargan una sola vez: alimentan el resumen y
+        // los canales. Cada query a SQL Server cuesta ~200 ms de red.
+        $facturasDia    = $this->facturasDelDia($aliadoId, $usuarioId, $fecha);
 
-        // Cuadres anteriores (máx 15 días atrás)
-        $cuadresAnteriores = Cuadre::where('aliado_id', $aliadoId)
-            ->where('usuario_id', $usuarioId)
-            ->where('estado', 'cerrado')
-            ->where('fecha_inicio', '>=', now()->subDays(15)->toDateString())
-            ->orderByDesc('fecha_inicio')
-            ->with(['cerradoPor'])
-            ->get();
+        $resumen        = $this->resumenDia($aliadoId, $usuarioId, $fecha, $facturasDia);
+        $canales        = $this->canalesDelDia($facturasDia);
+        $gastos         = $this->gastosDelDia($aliadoId, $usuarioId, $fecha);
+        $consignaciones = $this->consignacionesDelDia($aliadoId, $usuarioId, $fecha);
+        $cuadreDia      = $this->cuadreDelDia($aliadoId, $usuarioId, $fecha);
 
         return view('admin.cuadre-diario.index', compact(
-            'cuadre', 'cajaMenor', 'bancos', 'bancosFacturacion', 'usuarios', 'datosPeriodo',
-            'gastos', 'facturasPeriodo', 'cuadresAnteriores'
+            'fecha', 'esAdmin', 'esPropio', 'usuarios', 'usuarioId', 'usuarioVista',
+            'bancosFacturacion', 'resumen', 'canales', 'gastos',
+            'consignaciones', 'cuadreDia'
         ));
     }
 
-    // ── Abrir cuadre ─────────────────────────────────────────────────
-    public function abrir(Request $request)
-    {
-        $aliadoId  = session('aliado_id_activo');
-        $usuarioId = Auth::id();
-
-        // Validar que no haya cuadre abierto
-        $existente = Cuadre::where('aliado_id', $aliadoId)
-            ->where('usuario_id', $usuarioId)
-            ->where('estado', 'abierto')
-            ->exists();
-
-        if ($existente) {
-            return back()->with('error', 'Ya tienes un cuadre abierto.');
-        }
-
-        $cajaMenor = CajaMenor::montoActivo($aliadoId, $usuarioId);
-
-        Cuadre::create([
-            'aliado_id'      => $aliadoId,
-            'usuario_id'     => $usuarioId,
-            'fecha_inicio'   => today(),
-            'estado'         => 'abierto',
-            'saldo_apertura' => $cajaMenor,
-        ]);
-
-        return redirect()->route('admin.cuadre-diario.index')
-            ->with('success', 'Cuadre abierto correctamente.');
-    }
-
-    // ── Ver cuadre específico ─────────────────────────────────────────
+    /**
+     * Ver un cuadre histórico. Los registros viejos abarcan varios días
+     * (modelo anterior), así que conservan su propia vista de solo lectura.
+     * Los nuevos son de un solo día → se redirige al índice de esa fecha.
+     */
     public function ver(int $id)
     {
         $aliadoId  = session('aliado_id_activo');
@@ -184,125 +73,127 @@ class CuadreDiarioController extends Controller
             ->with(['usuario', 'cerradoPor'])
             ->findOrFail($id);
 
+        $esDeUnDia = $cuadre->fecha_fin
+            && $cuadre->fecha_inicio->toDateString() === $cuadre->fecha_fin->toDateString();
+
+        if ($esDeUnDia) {
+            return redirect()->route('admin.cuadre-diario.index', [
+                'fecha'      => $cuadre->fecha_inicio->toDateString(),
+                'usuario_id' => $cuadre->usuario_id,
+            ]);
+        }
+
         $gastos = Gasto::where('cuadre_id', $cuadre->id)
             ->with(['bancoOrigen', 'bancoDestino', 'usuario'])
             ->orderBy('fecha')->get();
 
         $facturasPeriodo = $this->facturasPeriodo($cuadre, $aliadoId, $cuadre->usuario_id);
         $datosPeriodo    = $this->calcularPeriodo($cuadre, $aliadoId, $cuadre->usuario_id);
-        // Ver nota en index(): $bancos son todas las activas (saldos),
-        // $bancosFacturacion solo las marcadas para facturación (selector).
-        $bancos            = BancoCuenta::where('aliado_id', $aliadoId)->where('activo', true)->get();
-        $bancosFacturacion = BancoCuenta::paraFacturacion($aliadoId);
-        $usuarios        = User::where('aliado_id', $aliadoId)->where('activo', true)->orderBy('nombre')->get(['id','nombre']);
         $cajaMenor       = $cuadre->saldo_apertura;
 
-        return view('admin.cuadre-diario.index', compact(
-            'cuadre', 'cajaMenor', 'bancos', 'bancosFacturacion', 'usuarios', 'datosPeriodo',
-            'gastos', 'facturasPeriodo'
+        return view('admin.cuadre-diario.historico', compact(
+            'cuadre', 'cajaMenor', 'datosPeriodo', 'gastos', 'facturasPeriodo'
         ));
     }
 
-    // ── Consolidado Admin ────────────────────────────────────────────
+    /**
+     * Consolidado admin: la caja de TODOS los usuarios en un día.
+     *
+     * Ya no depende de que exista una fila en `cuadres` — se calcula por
+     * fecha igual que el índice, y la fila solo aporta el estado (cuadrado
+     * o pendiente). Todo en 6 queries agregadas, sin N+1 por usuario.
+     */
     public function consolidado(Request $request)
     {
         if (!Auth::user()->hasRole(['admin', 'superadmin'])) {
             abort(403, 'Solo administradores pueden ver el consolidado.');
         }
 
-        $aliadoId = session('aliado_id_activo');
-        $fecha    = $request->input('fecha', today()->toDateString());
+        $aliadoId      = session('aliado_id_activo');
+        $fecha         = $this->fechaValida($request->input('fecha'));
         $usuarioFiltro = $request->input('usuario_id');
 
         $usuarios = User::where('aliado_id', $aliadoId)->orderBy('nombre')->get();
 
-        $cuadresQuery = Cuadre::where('aliado_id', $aliadoId)
-            ->with(['usuario', 'cerradoPor'])
-            ->where(function($q) use ($fecha) {
-                $q->where('fecha_inicio', '<=', $fecha)
-                  ->where(function($q2) use ($fecha) {
-                      $q2->whereNull('fecha_fin')->orWhere('fecha_fin', '>=', $fecha);
-                  });
-            });
+        $visibles = $usuarioFiltro
+            ? $usuarios->where('id', (int) $usuarioFiltro)
+            : $usuarios;
+        $usuarioIds = $visibles->pluck('id')->all();
 
-        if ($usuarioFiltro) {
-            $cuadresQuery->where('usuario_id', $usuarioFiltro);
-        }
+        $porUsuario = fn($q) => $usuarioIds ? $q->get()->keyBy('uid') : collect();
 
-        $cuadres = $cuadresQuery->orderBy('usuario_id')->get();
-
-        // ── Resumen batch: 4 queries en total (sin N+1) ──────────────────────
-        // Recopilamos todos los usuario_id + rango de fechas de los cuadres activos
-        // y hacemos una sola query por tabla, agrupando por usuario_id.
-        $cuadreIds   = $cuadres->pluck('id')->toArray();
-        $usuarioIds  = $cuadres->pluck('usuario_id')->toArray();
-
-        // 1) Facturas efectivo por usuario (periodo = desde fecha_inicio más antigua hasta hoy)
-        $fechaMin = $cuadres->min('fecha_inicio');
-        $hoy      = today()->toDateString();
-
-        $ingresosEfPorUsuario = DB::table('facturas')
-            ->where('aliado_id', $aliadoId)
-            ->whereIn('usuario_id', $usuarioIds)
-            ->whereBetween('fecha_pago', [$fechaMin, $hoy])
-            ->where('es_prestamo', false)
-            ->whereNotNull('valor_efectivo')
+        $ingresos = $porUsuario(DB::table('facturas')
+            ->whereNull('deleted_at')
+            ->where('aliado_id', $aliadoId)->whereIn('usuario_id', $usuarioIds)
+            ->whereDate('fecha_pago', $fecha)->where('es_prestamo', false)
             ->groupBy('usuario_id')
-            ->selectRaw('usuario_id, SUM(valor_efectivo) AS total')
-            ->pluck('total', 'usuario_id');
+            ->selectRaw('usuario_id AS uid, SUM(ISNULL(valor_efectivo,0)) AS efectivo,
+                         SUM(ISNULL(valor_consignado,0)) AS consignado, COUNT(*) AS facturas'));
 
-        // 2) Cobros cartera (abonos a préstamos) por usuario
-        $carteraEfPorUsuario = DB::table('abonos')
+        $cartera = $porUsuario(DB::table('abonos')
             ->join('facturas', 'abonos.factura_id', '=', 'facturas.id')
-            ->where('facturas.aliado_id', $aliadoId)
-            ->where('facturas.es_prestamo', true)
+            ->whereNull('facturas.deleted_at')
+            ->where('facturas.aliado_id', $aliadoId)->where('facturas.es_prestamo', true)
             ->whereIn('abonos.usuario_id', $usuarioIds)
-            ->whereBetween('abonos.fecha', [$fechaMin, $hoy])
+            ->whereDate('abonos.fecha', $fecha)
             ->groupBy('abonos.usuario_id')
-            ->selectRaw('abonos.usuario_id, SUM(abonos.valor_efectivo) AS total')
-            ->pluck('total', 'usuario_id');
+            ->selectRaw('abonos.usuario_id AS uid, SUM(ISNULL(abonos.valor_efectivo,0)) AS t'));
 
-        // 3) Anticipos efectivo/nequi por usuario
-        $anticiposEfPorUsuario = DB::table('anticipos')
-            ->where('aliado_id', $aliadoId)
-            ->whereIn('usuario_id', $usuarioIds)
+        $anticipos = $porUsuario(DB::table('anticipos')
+            ->whereNull('deleted_at')
+            ->where('aliado_id', $aliadoId)->whereIn('usuario_id', $usuarioIds)
             ->whereIn('forma_pago', ['efectivo', 'nequi'])
-            ->whereBetween('fecha_pago', [$fechaMin, $hoy])
-            ->whereNotIn('estado', ['devuelto'])
+            ->whereNotIn('estado', [Anticipo::ESTADO_DEVUELTO])
+            ->whereDate('fecha_pago', $fecha)
             ->groupBy('usuario_id')
-            ->selectRaw('usuario_id, SUM(valor) AS total')
-            ->pluck('total', 'usuario_id');
+            ->selectRaw('usuario_id AS uid, SUM(ISNULL(valor,0)) AS t'));
 
-        // 4) Gastos efectivo por cuadre_id
-        $gastosEfPorCuadre = DB::table('gastos')
-            ->whereIn('cuadre_id', $cuadreIds)
-            ->where(fn($q) => $q->where('forma_pago', 'efectivo')
-                                ->orWhere('tipo', 'efectivo_banco'))
-            ->groupBy('cuadre_id')
-            ->selectRaw('cuadre_id, SUM(valor) AS total')
-            ->pluck('total', 'cuadre_id');
+        $gastos = $porUsuario(DB::table('gastos')
+            ->where('aliado_id', $aliadoId)->whereIn('usuario_id', $usuarioIds)
+            ->whereDate('fecha', $fecha)
+            ->where(fn($q) => $q->where('forma_pago', 'efectivo')->orWhere('tipo', 'efectivo_banco'))
+            ->groupBy('usuario_id')
+            ->selectRaw('usuario_id AS uid, SUM(ISNULL(valor,0)) AS t'));
 
-        // Construir resumen en PHP (sin más queries)
-        $resumen = $cuadres->map(function($c) use (
-            $ingresosEfPorUsuario, $carteraEfPorUsuario,
-            $anticiposEfPorUsuario, $gastosEfPorCuadre
+        $consignado = $porUsuario(DB::table('consignaciones')
+            ->whereNull('deleted_at')
+            ->where('aliado_id', $aliadoId)->whereIn('usuario_id', $usuarioIds)
+            ->whereDate('fecha', $fecha)
+            ->groupBy('usuario_id')
+            ->selectRaw('usuario_id AS uid, SUM(ISNULL(valor,0)) AS t'));
+
+        // Días ya cuadrados de esa fecha (modelo por día).
+        $cuadrados = Cuadre::where('aliado_id', $aliadoId)
+            ->whereIn('usuario_id', $usuarioIds)
+            ->whereDate('fecha_inicio', $fecha)
+            ->whereColumn('fecha_inicio', 'fecha_fin')
+            ->with('cerradoPor:id,nombre')
+            ->get()->keyBy('usuario_id');
+
+        $resumen = $visibles->map(function ($u) use (
+            $aliadoId, $ingresos, $cartera, $anticipos, $gastos, $consignado, $cuadrados
         ) {
-            $uid          = $c->usuario_id;
-            $ingresos     = (int)($ingresosEfPorUsuario[$uid]  ?? 0);
-            $cartera      = (int)($carteraEfPorUsuario[$uid]   ?? 0);
-            $anticipos    = (int)($anticiposEfPorUsuario[$uid] ?? 0);
-            $gastos       = (int)($gastosEfPorCuadre[$c->id]   ?? 0);
-            $apertura     = (int)($c->saldo_apertura            ?? 0);
-            $efectivoTotal = $ingresos + $cartera + $anticipos;
-            $saldoEsperado = $apertura + $efectivoTotal - $gastos;
+            $ing  = (int) ($ingresos[$u->id]->efectivo ?? 0);
+            $car  = (int) ($cartera[$u->id]->t         ?? 0);
+            $ant  = (int) ($anticipos[$u->id]->t       ?? 0);
+            $gas  = (int) ($gastos[$u->id]->t          ?? 0);
+            $base = CajaMenor::montoActivo($aliadoId, $u->id);
 
-            return (object)[
-                'cuadre'          => $c,
-                'efectivo_total'  => $efectivoTotal,
-                'gastos_efectivo' => $gastos,
-                'saldo_esperado'  => $saldoEsperado,
+            return (object) [
+                'usuario'         => $u,
+                'base_caja'       => $base,
+                'facturas'        => (int) ($ingresos[$u->id]->facturas ?? 0),
+                'efectivo_total'  => $ing + $car + $ant,
+                'consignado'      => (int) ($consignado[$u->id]->t ?? 0),
+                'gastos_efectivo' => $gas,
+                'saldo_esperado'  => $base + $ing + $car + $ant - $gas,
+                'cuadre'          => $cuadrados[$u->id] ?? null,
             ];
-        });
+        })
+        // Solo quien movió plata ese día; sin esto la tabla es una lista de ceros.
+        ->filter(fn($r) => $r->efectivo_total || $r->consignado || $r->gastos_efectivo || $r->cuadre)
+        ->sortByDesc('efectivo_total')
+        ->values();
 
         // Saldos bancarios actuales (calculados desde consignaciones + gastos)
         $saldosBanco = BancoCuenta::where('aliado_id', $aliadoId)
@@ -314,20 +205,16 @@ class CuadreDiarioController extends Controller
             ]);
 
         return view('admin.cuadre-diario.consolidado', compact(
-            'cuadres', 'resumen', 'usuarios', 'fecha', 'saldosBanco'
+            'resumen', 'usuarios', 'fecha', 'saldosBanco'
         ));
     }
 
     // ── Registrar gasto ──────────────────────────────────────────────
-    public function registrarGasto(Request $request, int $cuadreId)
+    public function registrarGasto(Request $request)
     {
         $aliadoId  = session('aliado_id_activo');
         $usuarioId = Auth::id();
         $esAdmin   = Auth::user()->hasRole(['admin', 'superadmin']);
-
-        $cuadre = Cuadre::where('aliado_id', $aliadoId)
-            ->where('estado', 'abierto')
-            ->findOrFail($cuadreId);
 
         $validated = $request->validate([
             'fecha'             => 'required|date',
@@ -347,12 +234,18 @@ class CuadreDiarioController extends Controller
             return back()->with('error', 'No tienes permiso para este tipo de gasto.');
         }
 
+        // El día ya cuadrado no admite movimientos nuevos.
+        $cuadreDia = $this->cuadreDelDia($aliadoId, $usuarioId, $validated['fecha']);
+        if ($cuadreDia) {
+            return back()->with('error', 'Ese día ya fue cuadrado; no se pueden registrar más gastos.');
+        }
+
         DB::beginTransaction();
         try {
             $gasto = Gasto::create(array_merge($validated, [
                 'aliado_id'  => $aliadoId,
                 'usuario_id' => $usuarioId,
-                'cuadre_id'  => $cuadreId,
+                'cuadre_id'  => null,   // se asocia al cuadrar el día — ver cerrarDia()
             ]));
 
             // ── Traslado efectivo → banco ────────────────────────────────
@@ -366,7 +259,7 @@ class CuadreDiarioController extends Controller
                     'fecha'           => $validated['fecha'],
                     'valor'           => $validated['valor'],
                     'tipo'            => Consignacion::TIPO_TRASLADO_EFECTIVO,
-                    'referencia'      => 'Cuadre #' . $cuadreId,
+                    'referencia'      => 'Cuadre ' . $validated['fecha'],
                     'confirmado'      => true,
                     'observacion'     => $validated['descripcion'],
                     'usuario_id'      => $usuarioId,
@@ -414,243 +307,110 @@ class CuadreDiarioController extends Controller
             return back()->with('error', 'Sin permiso.');
         }
 
+        if ($this->cuadreDelDia($aliadoId, $gasto->usuario_id, $gasto->fecha->toDateString())) {
+            return back()->with('error', 'Ese día ya fue cuadrado; el gasto no se puede eliminar.');
+        }
+
         $gasto->delete();
         return back()->with('success', 'Gasto eliminado.');
     }
 
-    // ── Cerrar cuadre (solo superadmin) ──────────────────────────────
-    public function cerrar(Request $request, int $cuadreId)
+    /**
+     * Marca un día como cuadrado (solo superadmin). Crea la fila en `cuadres`
+     * con fecha_inicio = fecha_fin = el día, y engancha los gastos sueltos de
+     * ese día para dejar la trazabilidad completa.
+     */
+    public function cerrarDia(Request $request)
     {
         if (!Auth::user()->hasRole('superadmin')) {
-            abort(403, 'Solo el Superadmin puede cerrar un cuadre.');
+            abort(403, 'Solo el Superadmin puede cuadrar un día.');
         }
 
         $aliadoId = session('aliado_id_activo');
-        $cuadre   = Cuadre::where('aliado_id', $aliadoId)
-            ->where('estado', 'abierto')
-            ->findOrFail($cuadreId);
 
-        $datos = $this->calcularPeriodo($cuadre, $aliadoId, $cuadre->usuario_id);
-
-        $cuadre->update([
-            'estado'       => 'cerrado',
-            'fecha_fin'    => today(),
-            'saldo_cierre' => $datos['saldo_final'],
-            'cerrado_por'  => Auth::id(),
-            'observacion'  => $request->input('observacion'),
+        $datos = $request->validate([
+            'fecha'       => 'required|date',
+            'usuario_id'  => 'required|integer',
+            'observacion' => 'nullable|string',
         ]);
 
-        return back()->with('success', 'Cuadre cerrado. Saldo: $' . number_format($datos['saldo_final'], 0, ',', '.'));
-    }
+        $fecha     = \Carbon\Carbon::parse($datos['fecha'])->toDateString();
+        $usuarioId = (int) $datos['usuario_id'];
 
-    // ── Saldos bancarios (visible para todos los roles autenticados) ──────
-    public function bancos(Request $request)
-    {
-        // Acceso de lectura para todos; las acciones de escritura
-        // (confirmar, reversar, subir imagen) verifican el rol internamente.
-
-        set_time_limit(120); // protección ante meses con muchos movimientos
-
-        $aliadoId = session('aliado_id_activo');
-        $mes      = $request->input('mes', now()->format('Y-m'));
-        [$anio, $mesNum] = explode('-', $mes);
-        $inicio = "{$anio}-{$mesNum}-01";
-        $fin    = date('Y-m-t', strtotime($inicio));
-
-        $bancos   = BancoCuenta::where('aliado_id', $aliadoId)->where('activo', true)->get();
-        $bancoIds = $bancos->pluck('id')->toArray();
-
-        // ── 1. Cargar TODAS las consignaciones con nombres via JOIN (igual que financiero) ──
-        // Un solo query con LEFT JOIN a clientes y empresas — replica exactamente
-        // el patrón de InformeController::movimientosBancos() que funciona correctamente.
-        $todasConsigRaw = DB::table('consignaciones AS cs')
-            ->leftJoin('facturas AS f',  'f.id',  '=', 'cs.factura_id')
-            ->leftJoin('clientes AS cl', function ($j) use ($aliadoId) {
-                $j->on('cl.cedula', '=', 'f.cedula')
-                  ->where('cl.aliado_id', $aliadoId);
-            })
-            ->leftJoin('empresas AS em', 'em.id', '=', 'f.empresa_id')
-            ->leftJoin('users AS u',     'u.id',  '=', 'cs.usuario_id')
-            ->where('cs.aliado_id', $aliadoId)
-            ->whereIn('cs.banco_cuenta_id', $bancoIds)
-            ->whereBetween('cs.fecha', [$inicio, $fin])
-            ->selectRaw("
-                cs.id,
-                cs.banco_cuenta_id,
-                cs.factura_id,
-                cs.anticipo_id,
-                cs.tipo,
-                cs.referencia,
-                cs.observacion,
-                cs.valor,
-                cs.confirmado,
-                cs.no_aparece,
-                cs.imagen_path,
-                CONVERT(VARCHAR(10), cs.fecha, 120) AS fecha,
-                f.numero_factura,
-                f.empresa_id,
-                CASE
-                    WHEN f.empresa_id IS NOT NULL AND f.empresa_id > 0
-                        THEN UPPER(ISNULL(em.empresa, '—'))
-                    ELSE
-                        LTRIM(RTRIM(
-                            ISNULL(cl.primer_nombre,'') + ' ' +
-                            ISNULL(cl.segundo_nombre,'') + ' ' +
-                            ISNULL(cl.primer_apellido,'') + ' ' +
-                            ISNULL(cl.segundo_apellido,'')
-                        ))
-                END AS nombre_cliente,
-                u.nombre AS usuario_nombre
-            ")
-            ->orderByDesc('cs.fecha')
-            ->orderByDesc('cs.id')
-            ->get();
-
-        // ── 2. Cargar anticipos relacionados (batch) ─────────────────────────
-        $anticIds = $todasConsigRaw->where('tipo', 'anticipo')->pluck('anticipo_id')->filter()->unique();
-        $anticipos = collect();
-        if ($anticIds->isNotEmpty()) {
-            $anticipos = \App\Models\Anticipo::whereIn('id', $anticIds)
-                ->with(['factura', 'cliente', 'empresa'])
-                ->get()
-                ->keyBy('id');
+        // El usuario debe pertenecer al aliado activo (evita cuadrar ajeno por id).
+        $usuario = User::where('aliado_id', $aliadoId)->find($usuarioId);
+        if (!$usuario) {
+            return back()->with('error', 'El usuario no pertenece a este aliado.');
         }
 
-        // ── 3. Cargar TODOS los gastos del período (batch) ───────────────────
-        // NOTA: gastos tipo 'pago_planilla' se guardan con forma_pago='transferencia'
-        //       (no 'transferencia_bancaria'), por eso se incluyen explícitamente por tipo.
-        $todasSalidas = Gasto::where('aliado_id', $aliadoId)
-            ->whereIn('banco_origen_id', $bancoIds)
-            ->where(function ($q) {
-                $q->whereIn('forma_pago', ['transferencia_bancaria', 'banco_banco'])
-                  ->orWhere('tipo', 'pago_planilla');   // ← pago_planilla usa forma_pago='transferencia'
-            })
-            ->whereBetween('fecha', [$inicio, $fin])
-            ->with(['usuario', 'bancoDestino'])
-            ->orderByDesc('fecha')->orderByDesc('id')
-            ->get()
-            ->groupBy('banco_origen_id');
-
-        // ── 4. Pre-calcular saldos (uno por banco) ────────────────────────────
-        $saldosBanco = [];
-        foreach ($bancoIds as $bid) {
-            $saldosBanco[$bid] = Consignacion::saldoBanco($aliadoId, $bid);
+        if ($this->cuadreDelDia($aliadoId, $usuarioId, $fecha)) {
+            return back()->with('error', 'Ese día ya está cuadrado.');
         }
 
-        // ── 5. Agrupar y transformar por banco ────────────────────────────────
-        $consigPorBanco = $todasConsigRaw->groupBy('banco_cuenta_id');
+        $resumen = $this->resumenDia(
+            $aliadoId, $usuarioId, $fecha,
+            $this->facturasDelDia($aliadoId, $usuarioId, $fecha)
+        );
 
-        $saldos = $bancos->map(function ($bc) use ($consigPorBanco, $todasSalidas, $saldosBanco, $anticipos) {
-
-            $movEntradas = ($consigPorBanco[$bc->id] ?? collect())->map(function ($c) use ($anticipos) {
-                // nombre_cliente ya viene del CASE WHEN en SQL Server (igual que financiero)
-                $pagador   = trim($c->nombre_cliente ?? '');
-                $esEmpresa = ($c->empresa_id ?? 0) > 0;
-
-                if ($pagador === '' || $pagador === '— — — —') $pagador = null;
-
-                // Trazabilidad anticipo
-                $anticFact = $anticFactNum = null;
-                if (($c->tipo ?? '') === 'anticipo' && $c->anticipo_id) {
-                    $ant = $anticipos[$c->anticipo_id] ?? null;
-                    if ($ant) {
-                        $anticFact    = $ant->factura_id;
-                        $anticFactNum = $ant->factura?->numero_factura;
-
-                        // Si no se obtuvo pagador del join (porque es anticipo disponible sin factura), resolverlo del anticipo
-                        if (!$pagador) {
-                            if ($ant->empresa) {
-                                $pagador   = trim($ant->empresa->empresa);
-                                $esEmpresa = true;
-                            } elseif ($ant->cliente) {
-                                $pagador   = trim($ant->cliente->nombre_completo);
-                                $esEmpresa = false;
-                            }
-                        }
-                    }
-                }
-
-                return (object)[
-                    'id'                   => $c->id,
-                    'cs_id'                => $c->id,
-                    'fecha'                => $c->fecha,
-                    'tipo'                 => $c->tipo ?? 'cliente',
-                    'confirmado'           => (bool)$c->confirmado,
-                    'no_aparece'           => (bool)($c->no_aparece ?? false),
-                    'factura_id'           => $c->factura_id,
-                    'num_factura'          => $c->numero_factura ?? $c->factura_id,
-                    'anticipo_id'          => $c->anticipo_id,
-                    'anticipo_factura_id'  => $anticFact,
-                    'anticipo_factura_num' => $anticFactNum,
-                    'pagador'              => $pagador ?: null,
-                    'es_empresa'           => $esEmpresa,
-                    'descripcion'          => match($c->tipo ?? 'cliente') {
-                        'traslado_efectivo' => 'Traslado efectivo → banco',
-                        'banco_recibido'    => 'Transferencia banco recibida',
-                        'anticipo'          => 'Anticipo' . ($c->referencia ? ' · Ref: ' . $c->referencia : ''),
-                        default             => $c->observacion,
-                    },
-                    'usuario'              => $c->usuario_nombre,
-                    'valor'                => $c->valor,
-                    'imagen_path'          => $c->imagen_path,
-                    'imagen_url'           => $c->imagen_path ? Storage::url($c->imagen_path) : null,
-                    'es_salida'            => false,
-                    'es_gasto'             => false,
-                    'referencia'           => $c->referencia,
-                ];
-            });
-
-            $movSalidas = ($todasSalidas[$bc->id] ?? collect())->map(fn($g) => (object)[
-                'id'               => $g->id,
-                'cs_id'            => null,
-                'fecha'            => $g->fecha,
-                'tipo'             => $g->tipo,
-                'confirmado'       => true,
-                'no_aparece'       => false,
-                'factura_id'       => null,
-                'num_factura'      => $g->tipo === 'pago_planilla' ? ($g->numero_planilla ?? null) : null,
-                'pagador'          => $g->pagado_a,
-                'descripcion'      => $g->tipo === 'pago_planilla'
-                    ? '📋 Planilla SS' . ($g->numero_planilla ? ' #' . $g->numero_planilla : '')
-                        . ($g->pagado_a ? ' · ' . $g->pagado_a : '')
-                    : ($g->descripcion . ($g->bancoDestino ? ' → ' . $g->bancoDestino->banco : '')),
-                'usuario'          => $g->usuario?->nombre,
-                'valor'            => $g->valor,
-                'imagen_path'      => $g->imagen_path,
-                'imagen_url'       => $g->imagen_path ? Storage::url($g->imagen_path) : null,
-                'es_salida'        => true,
-                'es_gasto'         => true,
-                'es_planilla'      => $g->tipo === 'pago_planilla',
-                'referencia'       => $g->numero_planilla ?? null,
+        DB::beginTransaction();
+        try {
+            $cuadre = Cuadre::create([
+                'aliado_id'      => $aliadoId,
+                'usuario_id'     => $usuarioId,
+                'fecha_inicio'   => $fecha,
+                'fecha_fin'      => $fecha,
+                'estado'         => 'cerrado',
+                'saldo_apertura' => $resumen['base_caja'],
+                'saldo_cierre'   => $resumen['saldo_esperado'],
+                'cerrado_por'    => Auth::id(),
+                'observacion'    => $datos['observacion'] ?? null,
             ]);
 
-            $movimientos = $movEntradas->merge($movSalidas)
-                ->sort(function ($a, $b) {
-                    $fA = $a->fecha instanceof \Carbon\Carbon ? $a->fecha->toDateString() : $a->fecha;
-                    $fB = $b->fecha instanceof \Carbon\Carbon ? $b->fecha->toDateString() : $b->fecha;
-                    
-                    if ($fA !== $fB) {
-                        return strcmp($fB, $fA);
-                    }
-                    
-                    // Si son del mismo día, entradas (es_salida = false) van primero que salidas (es_salida = true)
-                    if ($a->es_salida !== $b->es_salida) {
-                        return $a->es_salida ? 1 : -1;
-                    }
-                    
-                    // Si son del mismo día y del mismo tipo, ordenar por valor de mayor a menor
-                    return $b->valor <=> $a->valor;
-                })
-                ->values();
+            Gasto::where('aliado_id', $aliadoId)
+                ->where('usuario_id', $usuarioId)
+                ->whereDate('fecha', $fecha)
+                ->whereNull('cuadre_id')
+                ->update(['cuadre_id' => $cuadre->id]);
 
-            return [
-                'banco'       => $bc,
-                'saldo'       => $saldosBanco[$bc->id] ?? 0,
-                'movimientos' => $movimientos,
-            ];
-        });
+            DB::commit();
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return back()->with('error', 'No se pudo cuadrar el día: ' . $e->getMessage());
+        }
 
-        return view('admin.cuadre-diario.bancos', compact('saldos', 'bancos', 'mes'));
+        return back()->with('success',
+            'Día cuadrado. Saldo: $' . number_format($resumen['saldo_esperado'], 0, ',', '.'));
+    }
+
+    /** Reabre un día ya cuadrado (solo superadmin). */
+    public function reabrirDia(Request $request, int $cuadreId)
+    {
+        if (!Auth::user()->hasRole('superadmin')) {
+            abort(403, 'Solo el Superadmin puede reabrir un día.');
+        }
+
+        $aliadoId = session('aliado_id_activo');
+        $cuadre   = Cuadre::where('aliado_id', $aliadoId)->findOrFail($cuadreId);
+
+        // Solo los cuadres del modelo por día. Los históricos multi-día son
+        // registros del modelo anterior y no se tocan.
+        $esDeUnDia = $cuadre->fecha_fin
+            && $cuadre->fecha_inicio->toDateString() === $cuadre->fecha_fin->toDateString();
+        if (!$esDeUnDia) {
+            return back()->with('error', 'Este cuadre es de un período histórico y no se puede reabrir.');
+        }
+
+        DB::beginTransaction();
+        try {
+            Gasto::where('cuadre_id', $cuadre->id)->update(['cuadre_id' => null]);
+            $cuadre->delete();
+            DB::commit();
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return back()->with('error', 'No se pudo reabrir el día: ' . $e->getMessage());
+        }
+
+        return back()->with('success', 'Día reabierto.');
     }
 
     // ── Confirmar consignación ────────────────────────────────────────
@@ -888,6 +648,338 @@ class CuadreDiarioController extends Controller
     }
 
     // ── Calcular datos del período ────────────────────────────────────
+    // ═════════════════════════════════════════════════════════════════
+    //  Modelo por día
+    // ═════════════════════════════════════════════════════════════════
+
+    /** Normaliza la fecha del filtro; cualquier basura cae en hoy. */
+    private function fechaValida(?string $fecha): string
+    {
+        if (!$fecha) return today()->toDateString();
+
+        try {
+            return \Carbon\Carbon::parse($fecha)->toDateString();
+        } catch (\Exception $e) {
+            return today()->toDateString();
+        }
+    }
+
+    /** Cuadre (día ya cuadrado) de ese usuario en esa fecha, si existe. */
+    private function cuadreDelDia(int $aliadoId, int $usuarioId, string $fecha): ?Cuadre
+    {
+        return Cuadre::where('aliado_id', $aliadoId)
+            ->where('usuario_id', $usuarioId)
+            ->whereDate('fecha_inicio', $fecha)
+            ->whereDate('fecha_fin', $fecha)
+            ->with('cerradoPor')
+            ->first();
+    }
+
+    /**
+     * Resumen de caja de un día para un usuario.
+     *
+     * `saldo_esperado` = base de caja menor + lo recibido en efectivo del día
+     * - los gastos en efectivo del día. No arrastra saldo de días anteriores:
+     * el cuadre se hace y se entrega por día.
+     */
+    private function resumenDia(int $aliadoId, int $usuarioId, string $fecha, $facturasDia): array
+    {
+        // Facturas cobradas en efectivo (los préstamos no entran: no hay plata).
+        $ingresosEfectivo = (int) $facturasDia
+            ->where('es_prestamo', false)
+            ->sum('valor_efectivo');
+
+        // Abonos en efectivo a préstamos: plata de cartera recuperada hoy.
+        $cobrosCartera = (int) DB::table('abonos')
+            ->join('facturas', 'abonos.factura_id', '=', 'facturas.id')
+            ->where('facturas.aliado_id', $aliadoId)
+            ->where('facturas.es_prestamo', true)
+            ->where('abonos.usuario_id', $usuarioId)
+            ->whereDate('abonos.fecha', $fecha)
+            ->sum('abonos.valor_efectivo');
+
+        // Anticipos en efectivo/Nequi. Los de transferencia ya viven en el
+        // saldo del banco, sumarlos aquí sería doble conteo.
+        $anticiposEfectivo = (int) Anticipo::where('aliado_id', $aliadoId)
+            ->where('usuario_id', $usuarioId)
+            ->whereIn('forma_pago', ['efectivo', 'nequi'])
+            ->whereDate('fecha_pago', $fecha)
+            ->whereNotIn('estado', [Anticipo::ESTADO_DEVUELTO])
+            ->sum('valor');
+
+        // Informativo: lo que se prestó hoy no es ingreso, es cartera.
+        $totalPrestado = (int) $facturasDia->where('es_prestamo', true)->sum('total');
+
+        $gastosEfectivo = (int) Gasto::where('aliado_id', $aliadoId)
+            ->where('usuario_id', $usuarioId)
+            ->whereDate('fecha', $fecha)
+            ->where(fn($q) => $q->where('forma_pago', 'efectivo')->orWhere('tipo', 'efectivo_banco'))
+            ->sum('valor');
+
+        // Consignado: solo lo que ESTE usuario registró en cuentas bancarias.
+        $consignado = (int) Consignacion::where('aliado_id', $aliadoId)
+            ->where('usuario_id', $usuarioId)
+            ->whereDate('fecha', $fecha)
+            ->sum('valor');
+
+        // Total facturado del día. Fuera los retiros (numero_factura = 0) y todo
+        // lo que quedó en cero: son papeles sin plata. Afiliaciones y préstamos
+        // sí entran — son factura con valor.
+        $conValor = $facturasDia->filter(
+            fn($f) => (int) $f->numero_factura !== 0 && (float) $f->total > 0
+        );
+
+        // Una factura de empresa son varias filas (una por empleado) con el mismo
+        // numero_factura: el valor se suma todo, pero se cuenta una sola vez.
+        $numFacturas = $conValor->pluck('numero_factura')->unique()->count();
+
+        $baseCaja  = CajaMenor::montoActivo($aliadoId, $usuarioId);
+        $recibido  = $ingresosEfectivo + $cobrosCartera + $anticiposEfectivo;
+
+        return [
+            'total_facturado'    => (int) $conValor->sum('total'),
+            'num_facturas'       => $numFacturas,
+            'base_caja'          => $baseCaja,
+            'ingresos_efectivo'  => $ingresosEfectivo,
+            'cobros_cartera'     => $cobrosCartera,
+            'anticipos_efectivo' => $anticiposEfectivo,
+            'total_prestado'     => $totalPrestado,
+            'gastos_efectivo'    => $gastosEfectivo,
+            'consignado'         => $consignado,
+            'recibido_efectivo'  => $recibido,
+            'saldo_esperado'     => $baseCaja + $recibido - $gastosEfectivo,
+        ];
+    }
+
+    /** Facturas que el usuario cobró ese día, con las columnas que usan el resumen y los canales. */
+    private function facturasDelDia(int $aliadoId, int $usuarioId, string $fecha)
+    {
+        return Factura::where('aliado_id', $aliadoId)
+            ->where('usuario_id', $usuarioId)
+            ->whereDate('fecha_pago', $fecha)
+            ->get([
+                'id', 'tipo', 'estado', 'es_prestamo', 'forma_pago', 'total',
+                'valor_efectivo', 'valor_consignado', 'numero_factura', 'factura_retiro_origen_id',
+                'total_ss', 'v_eps', 'v_arl', 'v_afp', 'v_caja',
+                'admon', 'admin_asesor', 'seguro', 'afiliacion', 'mensajeria',
+                'otros', 'iva', 'retiro', 'mora', 'otros_admon',
+                'dist_admon', 'dist_asesor', 'dist_retiro', 'dist_utilidad', 'dist_encargado',
+            ]);
+    }
+
+    /**
+     * Cómo entró la plata de una factura: pesos para repartir sus componentes
+     * entre efectivo / consignado / prestado.
+     *
+     * Se reparte por lo realmente pagado (así una factura mixta divide cada
+     * componente en la misma proporción). Cuando no se movió plata — la pagó
+     * un anticipo recibido antes, o quedó saldo pendiente — se clasifica por
+     * la forma de pago declarada.
+     */
+    private function pesosPago(Factura $f): array
+    {
+        if ($f->es_prestamo || $f->forma_pago === 'prestamo' || $f->estado === Factura::ESTADO_PRESTAMO) {
+            return ['efectivo' => 0.0, 'consignado' => 0.0, 'prestado' => 1.0];
+        }
+
+        $ef   = (float) $f->valor_efectivo;
+        $co   = (float) $f->valor_consignado;
+        $base = $ef + $co;
+
+        if ($base > 0) {
+            return ['efectivo' => $ef / $base, 'consignado' => $co / $base, 'prestado' => 0.0];
+        }
+
+        return $f->forma_pago === 'consignacion'
+            ? ['efectivo' => 0.0, 'consignado' => 1.0, 'prestado' => 0.0]
+            : ['efectivo' => 1.0, 'consignado' => 0.0, 'prestado' => 0.0];
+    }
+
+    /**
+     * Los 3 canales del informe financiero, pero solo del día y del usuario, y
+     * con cada renglón partido en efectivo / consignado / prestado.
+     *
+     * Cada canal totaliza lo suyo; los tres NO suman el total facturado del día
+     * (igual que en el informe financiero: hay componentes fuera de canal).
+     */
+    private function canalesDelDia($facturas): array
+    {
+        $sum = [];
+        $conteo = ['planilla' => 0, 'afiliacion' => 0, 'otro' => 0, 'prestamo' => 0, 'retiro' => 0];
+
+        foreach ($facturas as $f) {
+            $w = $this->pesosPago($f);
+
+            $add = function (string $slug, $valor) use (&$sum, $w) {
+                $v = (float) $valor;
+                if (abs($v) < 0.005) return;
+                foreach (['efectivo', 'consignado', 'prestado'] as $col) {
+                    $sum[$slug][$col] = ($sum[$slug][$col] ?? 0.0) + $v * $w[$col];
+                }
+            };
+
+            $etiqueta = $this->etiquetaTipoFactura($f);
+            $conteo[match ($etiqueta) {
+                'afiliacion'   => 'afiliacion',
+                'prestamo'     => 'prestamo',
+                'retiro'       => 'retiro',
+                'otro_ingreso' => 'otro',
+                default        => 'planilla',
+            }]++;
+
+            if ($f->tipo === 'afiliacion') {
+                $add('afiliacion',     $f->afiliacion);
+                $add('dist_admon',     $f->dist_admon);
+                $add('dist_asesor',    $f->dist_asesor);
+                $add('dist_retiro',    $f->dist_retiro);
+                $add('dist_utilidad',  $f->dist_utilidad);
+                $add('dist_encargado', $f->dist_encargado);
+            } elseif ($f->tipo === 'otro_ingreso') {
+                // Trámites: en este tipo 'otros' es ingreso propio, no SS.
+                $add('tramites', (float) $f->admon + (float) $f->otros);
+            } else {
+                $add('admon',        $f->admon);
+                $add('seguro',       $f->seguro);
+                $add('mensajeria',   $f->mensajeria);
+                $add('iva',          $f->iva);
+                $add('otros_admon',  $f->otros_admon);
+                $add('retiro_campo', $f->retiro);
+                $add('admin_asesor', $f->admin_asesor);   // informativo: sale de admon
+                $add('otros_ss',     $f->otros);          // 'otros' pertenece al canal SS
+            }
+
+            $add('eps',  $f->v_eps);
+            $add('arl',  $f->v_arl);
+            $add('afp',  $f->v_afp);
+            $add('caja', $f->v_caja);
+            $add('mora', $f->mora);
+        }
+
+        $fila = function (string $etiqueta, string $slug, string $color) use ($sum) {
+            $v = $sum[$slug] ?? [];
+            return [
+                'etiqueta'   => $etiqueta,
+                'color'      => $color,
+                'efectivo'   => (float) ($v['efectivo']   ?? 0),
+                'consignado' => (float) ($v['consignado'] ?? 0),
+                'prestado'   => (float) ($v['prestado']   ?? 0),
+            ];
+        };
+        $totalizar = function (array $filas) {
+            $t = ['efectivo' => 0.0, 'consignado' => 0.0, 'prestado' => 0.0];
+            foreach ($filas as $f) {
+                foreach ($t as $k => $_) $t[$k] += $f[$k];
+            }
+            return $t;
+        };
+
+        // ── Canal 1: Administración ──────────────────────────────────────
+        $c1 = [
+            $fila('Administración',   'admon',        '#3b82f6'),
+            $fila('Seguro',           'seguro',       '#0ea5e9'),
+            $fila('Mensajería',       'mensajeria',   '#06b6d4'),
+            $fila('IVA',              'iva',          '#8b5cf6'),
+            $fila('Otros admon',      'otros_admon',  '#a78bfa'),
+            $fila('Comisión retiros', 'retiro_campo', '#c2410c'),
+            $fila('Trámites',         'tramites',     '#10b981'),
+            $fila('Mora',             'mora',         '#f43f5e'),
+        ];
+
+        // ── Canal 2: Afiliaciones (distribución del ingreso) ─────────────
+        $bruto  = $fila('Total distribución (bruto)', 'afiliacion', '#5b21b6');
+        $c2 = [
+            $fila('→ Admon',              'dist_admon',     '#3b82f6'),
+            $fila('→ Comisión asesor',    'dist_asesor',    '#f59e0b'),
+            $fila('→ Retiro',             'dist_retiro',    '#c2410c'),
+            $fila('→ Utilidad',           'dist_utilidad',  '#16a34a'),
+            $fila('→ Comisión encargado', 'dist_encargado', '#8b5cf6'),
+        ];
+        // Lo que quedó sin repartir en dist_*: cuadra el bruto con la distribución.
+        $repartido = $totalizar($c2);
+        $c2[] = [
+            'etiqueta'   => '→ Sin distribuir',
+            'color'      => '#94a3b8',
+            'efectivo'   => $bruto['efectivo']   - $repartido['efectivo'],
+            'consignado' => $bruto['consignado'] - $repartido['consignado'],
+            'prestado'   => $bruto['prestado']   - $repartido['prestado'],
+        ];
+
+        // ── Canal 3: Seguridad Social ────────────────────────────────────
+        $c3 = [
+            $fila('EPS',      'eps',      '#0d9488'),
+            $fila('ARL',      'arl',      '#14b8a6'),
+            $fila('Pensión',  'afp',      '#2dd4bf'),
+            $fila('Caja',     'caja',     '#5eead4'),
+            $fila('Otros SS', 'otros_ss', '#99f6e4'),
+        ];
+
+        $limpiar = fn(array $filas) => array_values(array_filter(
+            $filas,
+            fn($f) => abs($f['efectivo']) >= 1 || abs($f['consignado']) >= 1 || abs($f['prestado']) >= 1
+        ));
+
+        // Sin préstamos en el día, la columna sobra y se oculta en la vista.
+        $hayPrestado = collect(array_merge($c1, $c2, $c3))
+            ->contains(fn($f) => abs($f['prestado']) >= 1);
+
+        return [
+            'conteo'       => $conteo,
+            'hay_prestado' => $hayPrestado,
+            'nota'         => $fila('Comisión asesor', 'admin_asesor', '#f59e0b'),
+            'canales'      => [
+                [
+                    'n' => 1, 'titulo' => '💼 Administración', 'gradiente' => '#1e3a8a,#2563eb',
+                    'subtitulo' => 'Ingresos cobrados',
+                    'filas' => $limpiar($c1), 'total' => $totalizar($limpiar($c1)),
+                ],
+                [
+                    'n' => 2, 'titulo' => '🔖 Afiliaciones', 'gradiente' => '#5b21b6,#7c3aed',
+                    'subtitulo' => 'Distribución del ingreso',
+                    'filas' => $limpiar($c2), 'total' => $bruto,
+                ],
+                [
+                    'n' => 3, 'titulo' => '🏥 Seguridad Social', 'gradiente' => '#0f766e,#0d9488',
+                    'subtitulo' => 'Recaudo del día',
+                    'filas' => $limpiar($c3), 'total' => $totalizar($limpiar($c3)),
+                ],
+            ],
+        ];
+    }
+
+    /**
+     * Gastos que el usuario registró ese día.
+     *
+     * Los pagos de planilla quedan fuera: son plata de la seguridad social
+     * saliendo del banco, no un gasto de la caja del usuario. Se ven en la
+     * conciliación de bancos.
+     */
+    private function gastosDelDia(int $aliadoId, int $usuarioId, string $fecha)
+    {
+        return Gasto::where('aliado_id', $aliadoId)
+            ->where('usuario_id', $usuarioId)
+            ->whereDate('fecha', $fecha)
+            ->where('tipo', '!=', 'pago_planilla')
+            ->with(['bancoOrigen', 'bancoDestino'])
+            ->orderBy('id')
+            ->get();
+    }
+
+    /** Consignaciones que el usuario registró ese día, agrupadas por cuenta. */
+    private function consignacionesDelDia(int $aliadoId, int $usuarioId, string $fecha)
+    {
+        return Consignacion::where('aliado_id', $aliadoId)
+            ->where('usuario_id', $usuarioId)
+            ->whereDate('fecha', $fecha)
+            ->with(['bancoCuenta', 'factura:id,numero_factura,cedula'])
+            ->orderByDesc('valor')
+            ->get()
+            ->groupBy('banco_cuenta_id');
+    }
+
+    // ═════════════════════════════════════════════════════════════════
+    //  Cuadres históricos (modelo anterior, por período)
+    // ═════════════════════════════════════════════════════════════════
+
     private function calcularPeriodo(Cuadre $cuadre, int $aliadoId, int $usuarioId): array
     {
         $inicio = $cuadre->fecha_inicio->toDateString();

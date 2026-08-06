@@ -8,10 +8,12 @@
   Opcionales:
     $modalId     — ID del div (default: 'modal-gasto')
     $imagenPaste — bool: zona paste/drag imagen
+    $fechaDefault— fecha preseleccionada (default: hoy)
 --}}
 @php
     $modalId    = $modalId    ?? 'modal-gasto';
     $imagenPaste= $imagenPaste ?? false;
+    $fechaDefault = $fechaDefault ?? today()->toDateString();
     $tiposGrupos= \App\Models\Gasto::TIPOS_GRUPOS;
     $tiposNomina= \App\Models\Gasto::TIPOS_NOMINA;
     $tiposAdmin = \App\Models\Gasto::TIPOS_ADMIN;
@@ -44,7 +46,7 @@
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:.7rem">
                 <div>
                     <label class="lbl-g">Fecha *</label>
-                    <input type="date" name="fecha" value="{{ today()->toDateString() }}" required class="inp-g">
+                    <input type="date" name="fecha" value="{{ $fechaDefault }}" required class="inp-g">
                 </div>
                 <div>
                     <label class="lbl-g">Tipo *</label>

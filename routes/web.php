@@ -498,6 +498,7 @@ Route::middleware('auth')->group(function () {
             Route::get('/cierre-operacion',       [$ic, 'cierreOperacion'])      ->name('cierre_operacion');
             Route::get('/incapacidades',          [$ic, 'resumenIncapacidades']) ->name('incapacidades');
             Route::get('/tareas',                 [$ic, 'resumenTareas'])        ->name('tareas');
+            Route::get('/conciliacion-bancos',    [$ic, 'conciliacionBancos'])   ->name('conciliacion_bancos');
             Route::get('/financiero',             [$ic, 'estadoFinanciero'])     ->name('financiero');
             Route::get('/financiero/bancos',      [$ic, 'financieroBancos'])     ->name('financiero.bancos');
             Route::get('/financiero/efectivo',     [$ic, 'financieroEfectivo'])   ->name('financiero.efectivo');
@@ -633,11 +634,10 @@ Route::middleware('auth')->group(function () {
     Route::prefix('cuadre-diario')->name('admin.cuadre-diario.')->middleware(['permiso:cuadre_diario.ver', 'permiso.escritura:cuadre_diario.gestionar'])->group(function () {
         $cd = \App\Http\Controllers\Admin\CuadreDiarioController::class;
         Route::get('/',                          [$cd, 'index'])                ->name('index');
-        Route::post('/abrir',                    [$cd, 'abrir'])                ->name('abrir');
         Route::get('/consolidado',               [$cd, 'consolidado'])          ->name('consolidado');
         Route::get('/facturas-dia',              [$cd, 'facturasDia'])          ->name('facturas-dia');
         Route::get('/facturas-dia/exportar',     [$cd, 'exportarFacturasDia'])  ->name('facturas-dia.exportar');
-        Route::get('/bancos',                    [$cd, 'bancos'])               ->name('bancos');
+        Route::post('/gasto',                    [$cd, 'registrarGasto'])       ->name('gasto.store');
         Route::delete('/gasto/{gastoId}',        [$cd, 'eliminarGasto'])        ->name('gasto.destroy');
         Route::post('/gasto/{gastoId}/imagen',               [$cd, 'subirImagenGasto'])       ->name('gasto.imagen');
         Route::post('/consignacion/{csId}/imagen',            [$cd, 'subirImagenConsignacion'])->name('consignacion.imagen');
@@ -645,9 +645,9 @@ Route::middleware('auth')->group(function () {
         Route::patch('/consignacion/{csId}/confirmar/reversar', [$cd, 'reversarConsignacion']) ->name('consignacion.reversar');
         Route::post('/consignacion/{csId}/no-aparece',          [$cd, 'noApareceConsignacion'])->name('consignacion.no-aparece');
         Route::delete('/consignacion/{csId}/anular-prestamo',   [$cd, 'anularConsignacionPrestamo'])->name('consignacion.anular-prestamo');
+        Route::post('/cerrar-dia',               [$cd, 'cerrarDia'])            ->name('cerrar-dia');
+        Route::delete('/cerrar-dia/{cuadreId}',  [$cd, 'reabrirDia'])           ->name('reabrir-dia');
         Route::get('/{id}',                      [$cd, 'ver'])                  ->name('ver');
-        Route::post('/{id}/gasto',               [$cd, 'registrarGasto'])       ->name('gasto.store');
-        Route::post('/{id}/cerrar',              [$cd, 'cerrar'])               ->name('cerrar');
     });
 
     // ── Caja Menor ───────────────────────────────────────────────────
