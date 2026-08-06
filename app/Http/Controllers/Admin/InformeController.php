@@ -3571,34 +3571,18 @@ class InformeController extends Controller
                 ->count();
 
             // 3. Afiliaciones del Mes (nuevos contratos ingresados en el período por fecha de ingreso)
-            //    Se discriminan los reingresos ("ingreso-retiro"): la misma cédula tuvo
-            //    otro contrato al que se le marcó retiro con factura #0 en ESTE mismo mes.
-            //    Va como subconsulta y no como query aparte: cada viaje al servidor
-            //    remoto cuesta ~250ms y este bloque corre 7 veces.
-            $afilRow = DB::table('contratos as c')
+            //    Se traen las cédulas (no un COUNT) para poder cruzarlas más abajo
+            //    contra los retiros del mes y separar reingresos de altas nuevas,
+            //    sin pagar una consulta extra: cada viaje al servidor remoto cuesta
+            //    ~250ms y este bloque corre 7 veces.
+            $afiliacionesMes = DB::table('contratos as c')
                 ->where('c.aliado_id', $aid)
                 ->where('c.fecha_ingreso', '>=', $primerDia->toDateString())
                 ->where('c.fecha_ingreso', '<=', $ultimoDia->toDateString())
-                ->selectRaw("COUNT(*) AS total, ISNULL(SUM(CASE WHEN EXISTS (
-                        SELECT 1 FROM contratos c2
-                        WHERE c2.cedula = c.cedula
-                          AND c2.aliado_id = c.aliado_id
-                          AND c2.id <> c.id
-                          AND c2.estado = 'retirado'
-                          AND EXISTS (
-                              SELECT 1 FROM facturas f
-                              WHERE f.contrato_id = c2.id
-                                AND f.numero_factura = 0
-                                AND f.tipo <> 'afiliacion'
-                                AND f.mes = ? AND f.anio = ?
-                                AND f.deleted_at IS NULL
-                          )
-                    ) THEN 1 ELSE 0 END), 0) AS reingresos", [$mesVal, $anioVal])
-                ->first();
+                ->select('c.id', 'c.cedula')
+                ->get();
 
-            $afilPorFecha   = (int) $afilRow->total;
-            $afilReingresos = (int) $afilRow->reingresos;
-            $afilNuevas     = $afilPorFecha - $afilReingresos;
+            $afilPorFecha = $afiliacionesMes->count();
 
             // 4. Retiros Puros (guiados estrictamente por el período mes/año de la factura de retiro #0)
             $retiradosRaw = DB::table('contratos as c')
@@ -3624,7 +3608,7 @@ class InformeController extends Controller
                        ->where('f.anio', $anioVal)
                        ->whereNull('f.deleted_at');
                 })
-                ->select('c.id',
+                ->select('c.id', 'c.cedula',
                     DB::raw("(SELECT TOP 1 total_ss FROM facturas WHERE contrato_id = c.id AND numero_factura = 0 AND tipo <> 'afiliacion' AND mes = {$mesVal} AND anio = {$anioVal} AND deleted_at IS NULL ORDER BY id DESC) as costo_ss"),
                     // Retiro que en realidad fue una renovación ("ingreso-retiro"):
                     // o se le abrió otro contrato con fecha de ingreso dentro del mismo
@@ -3657,6 +3641,26 @@ class InformeController extends Controller
                     $retirosRenovados++;
                 }
             }
+
+            // Reingresos del mes ("ingreso-retiro"): afiliaciones cuya cédula también
+            // aparece entre los retiros de ESTE mes, en un contrato distinto. El
+            // contrato que entra y sale dentro del mismo mes no cuenta — es una
+            // afiliación que se retiró, no alguien que volvió.
+            $retiradosPorCedula = [];
+            foreach ($retiradosRaw as $r) {
+                $retiradosPorCedula[$r->cedula][] = $r->id;
+            }
+
+            $afilReingresos = 0;
+            foreach ($afiliacionesMes as $a) {
+                foreach ($retiradosPorCedula[$a->cedula] ?? [] as $idRetirado) {
+                    if ((int) $idRetirado !== (int) $a->id) {
+                        $afilReingresos++;
+                        break;
+                    }
+                }
+            }
+            $afilNuevas = $afilPorFecha - $afilReingresos;
 
             $label = $nombresMeses[$mesVal] . ' ' . $anioVal;
 
