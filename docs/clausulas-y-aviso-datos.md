@@ -128,8 +128,9 @@ con fecha, hora e IP. Sin aceptación no debería haber acceso.
 > estos datos para evaluar tu desempeño laboral, ni los compartimos con tu
 > empleador con ese fin, ni los vendemos o cedemos a terceros.**
 >
-> **Cuánto tiempo.** Los registros de acceso y actividad se conservan
-> **[N] años** y luego se eliminan o se anonimizan.
+> **Cuánto tiempo.** Los registros de acceso se conservan **2 años** y el
+> registro de operaciones **5 años**. Cumplido el plazo se eliminan
+> automáticamente.
 >
 > **Tus derechos.** Puedes conocer, actualizar y rectificar tus datos; solicitar
 > prueba de esta autorización; ser informado sobre el uso que les damos;
@@ -161,11 +162,16 @@ por escrito protege a las dos partes.
 
 ## C. Qué falta para que esto funcione
 
-1. **Pantalla de aceptación** en el primer ingreso, con registro de fecha e IP.
-   Sin la aceptación registrada, el aviso no prueba nada. Requiere: columna
-   `acepto_tratamiento_at` en `users`, un middleware y una vista.
-2. **Definir la retención** (el `[N] años`) y que **coincida con lo que hace el
-   código**. Prometer dos años y conservar cinco es peor que no prometer nada.
+1. ~~Pantalla de aceptación~~ **Hecha.** `/tratamiento-datos`, exigida por el
+   middleware `ExigirAvisoTratamiento`. Guarda fecha, IP y **versión** del
+   aviso: al subir `AvisoTratamientoController::VERSION` se vuelve a pedir a
+   todos, sin tener que resetear nada a mano.
+2. ~~Definir la retención~~ **Hecho:** 2 años para los accesos (dato de
+   vigilancia: el principio de temporalidad de la Ley 1581 pide el mínimo) y 5
+   años para la bitácora de operaciones (tiene que sobrevivir a la ventana de
+   reclamación, y las obligaciones de la cláusula A.5 duran 5 años tras
+   terminar el contrato). Lo aplica `retencion:limpiar`, mensual en el
+   scheduler. **Si cambias un plazo, cámbialo en los dos sitios.**
 3. **Registro Nacional de Bases de Datos (RNBD)** ante la SIC: verificar con el
    abogado si BryNex supera el umbral de activos que obliga a inscribirse.
 4. **Firmar el Anexo B con los aliados existentes**, no solo con los nuevos. Los

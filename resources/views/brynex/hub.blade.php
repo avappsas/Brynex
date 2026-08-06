@@ -165,6 +165,16 @@
                     </div>
                     <div class="hc-arrow">→</div>
                 </a>
+                @if(in_array(strtolower((string) auth()->user()->email), array_map('strtolower', (array) config('exportacion.correos_autorizados')), true))
+                <a href="{{ route('brynex.exportaciones.index') }}" class="hub-card" style="border-color:#fed7aa;background:#fff7ed">
+                    <div class="hc-icon">📦</div>
+                    <div class="hc-body">
+                        <div class="hc-name" style="color:#c2410c">Entrega de Datos de un Aliado</div>
+                        <div class="hc-desc">Paquete CSV/TXT con la información propia de un aliado que se va</div>
+                    </div>
+                    <div class="hc-arrow" style="color:#ea580c">→</div>
+                </a>
+                @endif
             </div>
         </div>
 

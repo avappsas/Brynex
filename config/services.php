@@ -53,6 +53,13 @@ return [
         'app_secret' => env('WHATSAPP_APP_SECRET'),
         // Destino de las alertas operativas a BryNex (backups, accesos raros).
         'alertas_numero' => env('WHATSAPP_ALERTAS_NUMERO', '3117762689'),
+        // Rechazar los payloads cuya firma no valide. Arranca en false a
+        // propósito: el webhook de Meta no apunta directo a BryNex sino a un
+        // relay, y si ese relay reserializa el cuerpo o no reenvía la cabecera
+        // X-Hub-Signature-256, la firma no puede cuadrar nunca. Activar esto
+        // sin comprobarlo antes dejaría a los aliados sin recibir mensajes.
+        // El propio webhook avisa cuándo es seguro ponerlo en true.
+        'webhook_estricto' => env('WHATSAPP_WEBHOOK_ESTRICTO', false),
         'webhook_verify_token' => env('WHATSAPP_WEBHOOK_VERIFY_TOKEN', 'brynex_wh_secret_2026'),
     ],
 

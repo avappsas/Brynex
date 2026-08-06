@@ -26,6 +26,32 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule): void
     {
+        // ── Retención de accesos y bitácora ───────────────────────────
+        // El día 2 de cada mes a las 02:30: borra accesos con más de 2 años y
+        // bitácora con más de 5, que son los plazos que el aviso de tratamiento
+        // de datos le promete al usuario. Si se cambian los plazos aquí, hay
+        // que cambiarlos también en docs/clausulas-y-aviso-datos.md.
+        // Ejecución manual: php artisan retencion:limpiar (sin --ejecutar simula)
+        $schedule->command('retencion:limpiar --ejecutar')
+            ->monthlyOn(2, '02:30')
+            ->timezone('America/Bogota')
+            ->user('www-data')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo(storage_path('logs/retencion.log'));
+
+        // ── Retención de las entregas de datos a aliados ──────────────
+        // Cada día a las 03:00 borra los ZIP que pasaron de la ventana de
+        // config/exportacion (7 días). Son datos personales de miles de
+        // personas: prometer que se borran y dejarlos ahí es peor que no
+        // prometer nada. La pantalla también purga al entrar, pero eso depende
+        // de que alguien entre.
+        $schedule->call(fn () => app(\App\Services\Exportacion\ExportAliadoService::class)->purgarVencidas())
+            ->dailyAt('03:00')
+            ->timezone('America/Bogota')
+            ->name('exportaciones-purgar')
+            ->withoutOverlapping();
+
         // ── Reset mensual de n_plano ──────────────────────────────────
         // El día 1 de cada mes a las 00:01 (hora Colombia) resetea n_plano=1
         // y avanza mes_pagos/anio_pagos en todas las razones sociales.

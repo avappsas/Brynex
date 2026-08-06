@@ -37,6 +37,7 @@ class Kernel extends HttpKernel
             \App\Http\Middleware\VerifyCsrfToken::class,
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
             \App\Http\Middleware\SetAlidoContext::class,
+            \App\Http\Middleware\ExigirAvisoTratamiento::class,  // Ley 1581: sin autorización no se opera
             \App\Http\Middleware\ExpireOldSessionCookie::class,  // limpia cookies viejas del browser
         ],
 
@@ -55,24 +56,26 @@ class Kernel extends HttpKernel
      * @var array<string, class-string|string>
      */
     protected $middlewareAliases = [
-        'auth'             => \App\Http\Middleware\Authenticate::class,
-        'auth.basic'       => \Illuminate\Auth\Middleware\AuthenticateWithBasicAuth::class,
-        'auth.session'     => \Illuminate\Session\Middleware\AuthenticateSession::class,
-        'cache.headers'    => \Illuminate\Http\Middleware\SetCacheHeaders::class,
-        'can'              => \Illuminate\Auth\Middleware\Authorize::class,
-        'guest'            => \App\Http\Middleware\RedirectIfAuthenticated::class,
+        'auth' => \App\Http\Middleware\Authenticate::class,
+        'auth.basic' => \Illuminate\Auth\Middleware\AuthenticateWithBasicAuth::class,
+        'auth.session' => \Illuminate\Session\Middleware\AuthenticateSession::class,
+        'cache.headers' => \Illuminate\Http\Middleware\SetCacheHeaders::class,
+        'can' => \Illuminate\Auth\Middleware\Authorize::class,
+        'guest' => \App\Http\Middleware\RedirectIfAuthenticated::class,
         'password.confirm' => \Illuminate\Auth\Middleware\RequirePassword::class,
-        'precognitive'     => \Illuminate\Foundation\Http\Middleware\HandlePrecognitiveRequests::class,
-        'signed'           => \App\Http\Middleware\ValidateSignature::class,
-        'throttle'         => \Illuminate\Routing\Middleware\ThrottleRequests::class,
-        'verified'         => \Illuminate\Auth\Middleware\EnsureEmailIsVerified::class,
+        'precognitive' => \Illuminate\Foundation\Http\Middleware\HandlePrecognitiveRequests::class,
+        'signed' => \App\Http\Middleware\ValidateSignature::class,
+        'throttle' => \Illuminate\Routing\Middleware\ThrottleRequests::class,
+        'verified' => \Illuminate\Auth\Middleware\EnsureEmailIsVerified::class,
         // Spatie Permission
-        'role'             => \Spatie\Permission\Middleware\RoleMiddleware::class,
-        'permission'       => \Spatie\Permission\Middleware\PermissionMiddleware::class,
+        'role' => \Spatie\Permission\Middleware\RoleMiddleware::class,
+        'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
         'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
-        'finanzas.access'  => \App\Http\Middleware\FinanzasAccess::class,
+        'finanzas.access' => \App\Http\Middleware\FinanzasAccess::class,
+        // Entrega de datos de un aliado que se va — lista blanca en config/exportacion
+        'exportacion.access' => \App\Http\Middleware\ExportacionAliadoAccess::class,
         // Permisos por módulo (catálogo `modulos`) — ver VerificarPermiso
-        'permiso'           => \App\Http\Middleware\VerificarPermiso::class,
+        'permiso' => \App\Http\Middleware\VerificarPermiso::class,
         // Igual, pero solo se exige en POST/PUT/PATCH/DELETE
         'permiso.escritura' => \App\Http\Middleware\VerificarPermisoEscritura::class,
     ];

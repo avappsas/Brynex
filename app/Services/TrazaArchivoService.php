@@ -36,12 +36,20 @@ class TrazaArchivoService
     {
         $user = Auth::user();
 
-        $payload = sprintf(
-            'u%s-a%s-%d',
-            $user->id ?? '0',
-            $user->aliado_id ?? session('aliado_id_activo') ?? '0',
-            now()->timestamp
+        return $this->tokenPara(
+            $user->id ?? 0,
+            $user->aliado_id ?? session('aliado_id_activo') ?? 0
         );
+    }
+
+    /**
+     * Igual que token(), pero para procesos sin sesión — un comando de Artisan
+     * no tiene Auth::user(). Mismo formato y misma firma, así que
+     * `traza:verificar` lo reconoce sin cambios.
+     */
+    public function tokenPara(int|string|null $userId, int|string|null $aliadoId): string
+    {
+        $payload = sprintf('u%d-a%d-%d', (int) $userId, (int) $aliadoId, now()->timestamp);
 
         return $payload.'.'.$this->firmar($payload);
     }

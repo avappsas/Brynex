@@ -1,8 +1,8 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\AlidoSelectorController;
+use App\Http\Controllers\Auth\LoginController;
+use Illuminate\Support\Facades\Route;
 
 // ─── Dominio propio del aliado (Fase 6) — ej. brygar.com sirviendo directamente su página ──
 // DEBE ir antes que cualquier ruta "/" sin restricción de dominio (como el login de abajo):
@@ -16,7 +16,7 @@ use App\Http\Controllers\AlidoSelectorController;
 foreach (\App\Models\Aliado::whereNotNull('dominio_propio')->where('activo', true)->get(['slug', 'dominio_propio']) as $aliadoConDominio) {
     $dominioBase = strtolower(preg_replace('/^www\./', '', $aliadoConDominio->dominio_propio));
 
-    foreach ([$dominioBase, 'www.' . $dominioBase] as $dominio) {
+    foreach ([$dominioBase, 'www.'.$dominioBase] as $dominio) {
         Route::domain($dominio)
             ->get('/', [\App\Http\Controllers\Publico\PaginaAliadoController::class, 'show'])
             ->defaults('slug', $aliadoConDominio->slug)
@@ -35,11 +35,11 @@ foreach (\App\Models\Aliado::whereNotNull('dominio_propio')->where('activo', tru
 }
 
 // ─── Rutas públicas ────────────────────────────────────────────────────────
-Route::get('/',      [LoginController::class, 'showLogin'])->name('login');
+Route::get('/', [LoginController::class, 'showLogin'])->name('login');
 Route::get('/login', [LoginController::class, 'showLogin']);
 // Throttle obligatorio: el identificador de acceso es la cédula, un dato
 // semi-público y de formato predecible. Sin límite, la fuerza bruta es trivial.
-Route::post('/login',  [LoginController::class, 'login'])->name('login.submit')
+Route::post('/login', [LoginController::class, 'login'])->name('login.submit')
     ->middleware('throttle:5,1');
 Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
 
@@ -47,8 +47,8 @@ Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
 // No requiere auth — solo verificación de cédula dentro del controller.
 // Throttle: la verificación es por cédula (dato de bajo secreto), así que sin
 // límite se puede adivinar por fuerza bruta sobre un token conocido.
-Route::get( '/incapacidades/subir/{token}',  [\App\Http\Controllers\IncapacidadUploadController::class, 'show'])  ->name('incapacidades.subir');
-Route::post('/incapacidades/subir/{token}',  [\App\Http\Controllers\IncapacidadUploadController::class, 'upload'])->name('incapacidades.subir.post')
+Route::get('/incapacidades/subir/{token}', [\App\Http\Controllers\IncapacidadUploadController::class, 'show'])->name('incapacidades.subir');
+Route::post('/incapacidades/subir/{token}', [\App\Http\Controllers\IncapacidadUploadController::class, 'upload'])->name('incapacidades.subir.post')
     ->middleware('throttle:10,1');
 
 // ─── Página web pública de aliado (brynex.co/aliado/{slug}) ────────────────
@@ -88,7 +88,7 @@ Route::get('/wa/{publicacion}', [\App\Http\Controllers\Publico\WhatsappRedirectC
 
 // ─── Webhook público WhatsApp (Meta Cloud API) ─────────────────────────────
 // No requiere auth — Meta llama directamente. Seguridad via HMAC en el controller.
-Route::get( '/whatsapp/webhook', [\App\Http\Controllers\WhatsappWebhookController::class, 'verify']) ->name('whatsapp.webhook.verify');
+Route::get('/whatsapp/webhook', [\App\Http\Controllers\WhatsappWebhookController::class, 'verify'])->name('whatsapp.webhook.verify');
 Route::post('/whatsapp/webhook', [\App\Http\Controllers\WhatsappWebhookController::class, 'receive'])->name('whatsapp.webhook.receive');
 
 // ─── CSRF token fresco (puede llamarse sin auth, pero solo desde session activa) ──
@@ -99,14 +99,21 @@ Route::get('/csrf-token', function () {
     ]);
 })->name('csrf.token')->middleware('web');
 
-
 // ─── Rutas protegidas ──────────────────────────────────────────────────────
 Route::middleware('auth')->group(function () {
 
+    // Aviso de tratamiento de datos (Ley 1581). ExigirAvisoTratamiento manda
+    // aquí a quien no lo haya aceptado, y deja pasar estas dos rutas para no
+    // dejarlo dando vueltas en un bucle de redirecciones.
+    Route::get('/tratamiento-datos', [\App\Http\Controllers\AvisoTratamientoController::class, 'mostrar'])
+        ->name('tratamiento.mostrar');
+    Route::post('/tratamiento-datos', [\App\Http\Controllers\AvisoTratamientoController::class, 'aceptar'])
+        ->name('tratamiento.aceptar');
+
     // Selector de aliado (solo usuarios BryNex)
-    Route::get('/seleccionar-aliado',  [AlidoSelectorController::class, 'index'])->name('aliado.selector');
+    Route::get('/seleccionar-aliado', [AlidoSelectorController::class, 'index'])->name('aliado.selector');
     Route::post('/seleccionar-aliado', [AlidoSelectorController::class, 'seleccionar'])->name('aliado.seleccionar');
-    Route::post('/cambiar-aliado',     [AlidoSelectorController::class, 'cambiar'])->name('aliado.cambiar');
+    Route::post('/cambiar-aliado', [AlidoSelectorController::class, 'cambiar'])->name('aliado.cambiar');
 
     // Dashboard principal
     Route::get('/dashboard', function () {
@@ -117,7 +124,7 @@ Route::middleware('auth')->group(function () {
     Route::prefix('asistente-ia')->name('asistente_ia.')->middleware('permiso:asistente_ia.usar')->group(function () {
         $ia = \App\Http\Controllers\AsistenteIaController::class;
         Route::get('/activo', [$ia, 'activo'])->name('activo');
-        Route::post('/chat',  [$ia, 'chat'])  ->name('chat');
+        Route::post('/chat', [$ia, 'chat'])->name('chat');
     });
 
     // ─── Panel Administración ──────────────────────────────────────
@@ -129,9 +136,9 @@ Route::middleware('auth')->group(function () {
         });
         Route::middleware('permiso:aliados.gestionar')->group(function () {
             Route::resource('aliados', \App\Http\Controllers\Admin\AlidoController::class)
-                 ->except(['show', 'index']);
+                ->except(['show', 'index']);
             Route::patch('aliados/{id}/restore', [\App\Http\Controllers\Admin\AlidoController::class, 'restore'])
-                 ->name('aliados.restore');
+                ->name('aliados.restore');
         });
 
         // Usuarios — ver: admin | crear/editar y permisos: solo superadmin
@@ -140,33 +147,33 @@ Route::middleware('auth')->group(function () {
         });
         Route::middleware('permiso:usuarios.gestionar')->group(function () {
             Route::resource('usuarios', \App\Http\Controllers\Admin\UsuarioController::class)
-                 ->except(['show', 'index']);
+                ->except(['show', 'index']);
             Route::patch('usuarios/{id}/restore', [\App\Http\Controllers\Admin\UsuarioController::class, 'restore'])
-                 ->name('usuarios.restore');
+                ->name('usuarios.restore');
         });
         // Permisos por usuario (pantalla de módulos) — solo superadmin
         Route::middleware('permiso:usuarios.permisos')->group(function () {
-            Route::get('usuarios/{usuario}/permisos',  [\App\Http\Controllers\Admin\UsuarioPermisoController::class, 'edit'])->name('usuarios.permisos.edit');
+            Route::get('usuarios/{usuario}/permisos', [\App\Http\Controllers\Admin\UsuarioPermisoController::class, 'edit'])->name('usuarios.permisos.edit');
             Route::post('usuarios/{usuario}/permisos', [\App\Http\Controllers\Admin\UsuarioPermisoController::class, 'update'])->name('usuarios.permisos.update');
         });
 
         // Asesores — ver: admin/contable/usuario | gestionar y comisiones: admin
         Route::middleware('permiso:asesores.ver')->group(function () {
             Route::get('asesores/reporte-mensual', [\App\Http\Controllers\Admin\AsesorController::class, 'reporteMensual'])
-                 ->name('asesores.reporte_mensual');
-            Route::get('asesores',               [\App\Http\Controllers\Admin\AsesorController::class, 'index'])->name('asesores.index');
-            Route::get('asesores/{asesor}',      [\App\Http\Controllers\Admin\AsesorController::class, 'show'])->name('asesores.show');
+                ->name('asesores.reporte_mensual');
+            Route::get('asesores', [\App\Http\Controllers\Admin\AsesorController::class, 'index'])->name('asesores.index');
+            Route::get('asesores/{asesor}', [\App\Http\Controllers\Admin\AsesorController::class, 'show'])->name('asesores.show');
         });
         Route::middleware('permiso:asesores.gestionar')->group(function () {
             Route::resource('asesores', \App\Http\Controllers\Admin\AsesorController::class)
-                 ->parameters(['asesores' => 'asesor'])
-                 ->except(['index', 'show']);
+                ->parameters(['asesores' => 'asesor'])
+                ->except(['index', 'show']);
             Route::patch('asesores/{id}/restore', [\App\Http\Controllers\Admin\AsesorController::class, 'restore'])
-                 ->name('asesores.restore');
+                ->name('asesores.restore');
             Route::post('asesores/{asesor}/comisiones', [\App\Http\Controllers\Admin\AsesorController::class, 'registrarComision'])
-                 ->name('asesores.comisiones.store');
+                ->name('asesores.comisiones.store');
             Route::patch('comisiones/{comision}/pagar', [\App\Http\Controllers\Admin\AsesorController::class, 'marcarPagada'])
-                 ->name('asesores.comisiones.pagar');
+                ->name('asesores.comisiones.pagar');
         });
 
         // Cotizaciones y Prospectos
@@ -183,33 +190,33 @@ Route::middleware('auth')->group(function () {
         // Clientes
         Route::middleware('permiso:clientes.ver')->group(function () {
             Route::get('clientes/buscar-cedula', [\App\Http\Controllers\Admin\ClienteController::class, 'buscarPorCedula'])
-                 ->name('clientes.buscar_cedula');
+                ->name('clientes.buscar_cedula');
             // Ficha por cédula (la usa el modal reutilizable de cliente)
             Route::get('clientes/ficha/{cedula}', [\App\Http\Controllers\Admin\ClienteController::class, 'fichaPorCedula'])
-                 ->name('clientes.ficha_cedula');
+                ->name('clientes.ficha_cedula');
             Route::get('clientes', [\App\Http\Controllers\Admin\ClienteController::class, 'index'])->name('clientes.index');
         });
         Route::middleware('permiso:clientes.crear')->group(function () {
             Route::get('clientes/create', [\App\Http\Controllers\Admin\ClienteController::class, 'create'])->name('clientes.create');
-            Route::post('clientes',      [\App\Http\Controllers\Admin\ClienteController::class, 'store'])->name('clientes.store');
+            Route::post('clientes', [\App\Http\Controllers\Admin\ClienteController::class, 'store'])->name('clientes.store');
         });
         Route::middleware('permiso:clientes.editar')->group(function () {
             Route::get('clientes/{cliente}/edit', [\App\Http\Controllers\Admin\ClienteController::class, 'edit'])->name('clientes.edit');
-            Route::put('clientes/{cliente}',      [\App\Http\Controllers\Admin\ClienteController::class, 'update'])->name('clientes.update');
-            Route::patch('clientes/{cliente}',    [\App\Http\Controllers\Admin\ClienteController::class, 'update']);
+            Route::put('clientes/{cliente}', [\App\Http\Controllers\Admin\ClienteController::class, 'update'])->name('clientes.update');
+            Route::patch('clientes/{cliente}', [\App\Http\Controllers\Admin\ClienteController::class, 'update']);
         });
 
         // Beneficiarios
-        Route::get('clientes/{cedula}/beneficiarios',  [\App\Http\Controllers\Admin\BeneficiarioController::class, 'index'])->name('clientes.beneficiarios.index')->middleware('permiso:beneficiarios.ver');
+        Route::get('clientes/{cedula}/beneficiarios', [\App\Http\Controllers\Admin\BeneficiarioController::class, 'index'])->name('clientes.beneficiarios.index')->middleware('permiso:beneficiarios.ver');
         Route::post('clientes/{cedula}/beneficiarios', [\App\Http\Controllers\Admin\BeneficiarioController::class, 'store'])->name('clientes.beneficiarios.store')->middleware('permiso:beneficiarios.gestionar');
-        Route::put('beneficiarios/{id}',    [\App\Http\Controllers\Admin\BeneficiarioController::class, 'update'])->name('beneficiarios.update')->middleware('permiso:beneficiarios.gestionar');
+        Route::put('beneficiarios/{id}', [\App\Http\Controllers\Admin\BeneficiarioController::class, 'update'])->name('beneficiarios.update')->middleware('permiso:beneficiarios.gestionar');
         Route::delete('beneficiarios/{id}', [\App\Http\Controllers\Admin\BeneficiarioController::class, 'destroy'])->name('beneficiarios.destroy')->middleware('permiso:beneficiarios.eliminar');
 
         // Documentos del cliente
-        Route::get('clientes/{cedula}/documentos',  [\App\Http\Controllers\Admin\DocumentoClienteController::class, 'index'])->name('clientes.documentos.index')->middleware('permiso:documentos.ver');
+        Route::get('clientes/{cedula}/documentos', [\App\Http\Controllers\Admin\DocumentoClienteController::class, 'index'])->name('clientes.documentos.index')->middleware('permiso:documentos.ver');
         Route::post('clientes/{cedula}/documentos', [\App\Http\Controllers\Admin\DocumentoClienteController::class, 'store'])->name('clientes.documentos.store')->middleware('permiso:documentos.subir');
-        Route::get('documentos/{id}/descargar',     [\App\Http\Controllers\Admin\DocumentoClienteController::class, 'download'])->name('documentos.download')->middleware('permiso:documentos.descargar');
-        Route::delete('documentos/{id}',            [\App\Http\Controllers\Admin\DocumentoClienteController::class, 'destroy'])->name('documentos.destroy')->middleware('permiso:documentos.eliminar');
+        Route::get('documentos/{id}/descargar', [\App\Http\Controllers\Admin\DocumentoClienteController::class, 'download'])->name('documentos.download')->middleware('permiso:documentos.descargar');
+        Route::delete('documentos/{id}', [\App\Http\Controllers\Admin\DocumentoClienteController::class, 'destroy'])->name('documentos.destroy')->middleware('permiso:documentos.eliminar');
 
         // Claves de acceso (cliente y razón social)
         // OJO: `claves_acceso.ver` muestra el listado; la CONTRASEÑA en claro
@@ -217,14 +224,14 @@ Route::middleware('auth')->group(function () {
         // otorga usuario por usuario (ver ClaveAccesoController).
         $cac = \App\Http\Controllers\Admin\ClaveAccesoController::class;
         Route::middleware('permiso:claves_acceso.ver')->group(function () use ($cac) {
-            Route::get('clave-accesos/global',            [$cac, 'vistaGlobal'])       ->name('clave_accesos.global');
-            Route::get('clave-accesos',                   [$cac, 'index'])             ->name('clave_accesos.index');
-            Route::get('clave-accesos/razon-social/{id}', [$cac, 'indexRazonSocial'])  ->name('clave_accesos.razon_social');
-            Route::get('clave-accesos/empresa/{id}',      [$cac, 'indexEmpresa'])      ->name('clave_accesos.empresa');
+            Route::get('clave-accesos/global', [$cac, 'vistaGlobal'])->name('clave_accesos.global');
+            Route::get('clave-accesos', [$cac, 'index'])->name('clave_accesos.index');
+            Route::get('clave-accesos/razon-social/{id}', [$cac, 'indexRazonSocial'])->name('clave_accesos.razon_social');
+            Route::get('clave-accesos/empresa/{id}', [$cac, 'indexEmpresa'])->name('clave_accesos.empresa');
         });
         Route::middleware('permiso:claves_acceso.gestionar')->group(function () use ($cac) {
-            Route::post('clave-accesos',     [$cac, 'store'])  ->name('clave_accesos.store');
-            Route::put('clave-accesos/{id}', [$cac, 'update']) ->name('clave_accesos.update');
+            Route::post('clave-accesos', [$cac, 'store'])->name('clave_accesos.store');
+            Route::put('clave-accesos/{id}', [$cac, 'update'])->name('clave_accesos.update');
         });
         Route::delete('clave-accesos/{id}', [$cac, 'destroy'])->name('clave_accesos.destroy')->middleware('permiso:claves_acceso.eliminar');
 
@@ -236,12 +243,12 @@ Route::middleware('auth')->group(function () {
             Route::get('contratos', [\App\Http\Controllers\Admin\ContratoController::class, 'index'])->name('contratos.index');
             // APIs reactivas del cotizador (solo calculan, no escriben)
             Route::get('contratos/api/calcular-retiro/{contrato}', [\App\Http\Controllers\Admin\ContratoController::class, 'apiCalcularRetiro'])->name('contratos.calcular_retiro');
-            Route::post('contratos/api/cotizar',             [\App\Http\Controllers\Admin\ContratoController::class, 'cotizar'])->name('contratos.cotizar');
-            Route::get('contratos/api/tarifas',              [\App\Http\Controllers\Admin\ContratoController::class, 'tarifasPorPlan'])->name('contratos.tarifas');
+            Route::post('contratos/api/cotizar', [\App\Http\Controllers\Admin\ContratoController::class, 'cotizar'])->name('contratos.cotizar');
+            Route::get('contratos/api/tarifas', [\App\Http\Controllers\Admin\ContratoController::class, 'tarifasPorPlan'])->name('contratos.tarifas');
         });
         Route::middleware('permiso:contratos.crear')->group(function () {
             Route::get('contratos/create', [\App\Http\Controllers\Admin\ContratoController::class, 'create'])->name('contratos.create');
-            Route::post('contratos',       [\App\Http\Controllers\Admin\ContratoController::class, 'store'])->name('contratos.store');
+            Route::post('contratos', [\App\Http\Controllers\Admin\ContratoController::class, 'store'])->name('contratos.store');
             Route::post('contratos/{contrato}/duplicar-ir', [\App\Http\Controllers\Admin\ContratoController::class, 'duplicarIngresoRetiro'])->name('contratos.duplicar-ir');
         });
         Route::middleware('permiso:contratos.editar')->group(function () {
@@ -249,8 +256,8 @@ Route::middleware('auth')->group(function () {
             // contratos.editar_radicado, solo superadmin) va dentro del
             // controlador: depende del estado del registro, no de la URL.
             Route::get('contratos/{contrato}/edit', [\App\Http\Controllers\Admin\ContratoController::class, 'edit'])->name('contratos.edit');
-            Route::put('contratos/{contrato}',      [\App\Http\Controllers\Admin\ContratoController::class, 'update'])->name('contratos.update');
-            Route::patch('contratos/{contrato}',    [\App\Http\Controllers\Admin\ContratoController::class, 'update']);
+            Route::put('contratos/{contrato}', [\App\Http\Controllers\Admin\ContratoController::class, 'update'])->name('contratos.update');
+            Route::patch('contratos/{contrato}', [\App\Http\Controllers\Admin\ContratoController::class, 'update']);
             Route::patch('contratos/api/radicado/{id}', [\App\Http\Controllers\Admin\ContratoController::class, 'actualizarRadicado'])->name('contratos.radicado.update');
         });
         Route::patch('contratos/{contrato}/retirar', [\App\Http\Controllers\Admin\ContratoController::class, 'retirar'])->name('contratos.retirar')->middleware('permiso:contratos.retirar');
@@ -259,7 +266,7 @@ Route::middleware('auth')->group(function () {
         // ── Configuración del aliado ──────────────────────────────────────
         // ver: admin (solo lectura) · editar: solo superadmin
         Route::middleware('permiso:configuracion.ver')->group(function () {
-            Route::get('configuracion',            [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'hub'])  ->name('configuracion.hub');
+            Route::get('configuracion', [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'hub'])->name('configuracion.hub');
             Route::get('configuracion/parametros', [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'index'])->name('configuracion.index');
         });
         Route::post('configuracion/parametros', [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'store'])->name('configuracion.store')->middleware('permiso:configuracion.editar');
@@ -269,22 +276,22 @@ Route::middleware('auth')->group(function () {
         // (el controlador fuerza facturacion_incapacidad=1 si solo tiene ese
         // permiso). Editar e inactivar siguen siendo de admin.
         Route::middleware('permiso:cuentas_bancarias.ver')->group(function () {
-            Route::get('configuracion/cuentas',                       [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'cuentas'])              ->name('configuracion.cuentas');
+            Route::get('configuracion/cuentas', [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'cuentas'])->name('configuracion.cuentas');
             Route::get('configuracion/cuentas/{id}/estado-registros', [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'estadoCuentaContratos'])->name('configuracion.cuentas.estado_registros');
         });
         Route::post('configuracion/cuentas', [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'storeCuenta'])->name('configuracion.cuentas.store')
-             ->middleware('permiso:cuentas_bancarias.crear_incapacidad|cuentas_bancarias.gestionar');
+            ->middleware('permiso:cuentas_bancarias.crear_incapacidad|cuentas_bancarias.gestionar');
         Route::middleware('permiso:cuentas_bancarias.gestionar')->group(function () {
-            Route::patch('configuracion/cuentas/{id}',            [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'updateCuenta'])   ->name('configuracion.cuentas.update');
-            Route::delete('configuracion/cuentas/{id}',           [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'destroyCuenta'])  ->name('configuracion.cuentas.destroy');
-            Route::patch('configuracion/cuentas/{id}/inactivar',  [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'inactivarCuenta'])->name('configuracion.cuentas.inactivar');
+            Route::patch('configuracion/cuentas/{id}', [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'updateCuenta'])->name('configuracion.cuentas.update');
+            Route::delete('configuracion/cuentas/{id}', [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'destroyCuenta'])->name('configuracion.cuentas.destroy');
+            Route::patch('configuracion/cuentas/{id}/inactivar', [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'inactivarCuenta'])->name('configuracion.cuentas.inactivar');
         });
 
         // Configuración de modalidades → planes (solo superadmin)
         $mc = \App\Http\Controllers\Admin\ModalidadConfigController::class;
         Route::get('configuracion/modalidades', [$mc, 'index'])->name('configuracion.modalidades')->middleware('permiso:configuracion.ver');
         Route::middleware('permiso:configuracion.editar')->group(function () use ($mc) {
-            Route::post('configuracion/modalidades',              [$mc, 'guardar'])     ->name('configuracion.modalidades.guardar');
+            Route::post('configuracion/modalidades', [$mc, 'guardar'])->name('configuracion.modalidades.guardar');
             Route::patch('configuracion/modalidades/{id}/toggle', [$mc, 'toggleActivo'])->name('configuracion.modalidades.toggle');
         });
 
@@ -292,34 +299,34 @@ Route::middleware('auth')->group(function () {
         $opc = \App\Http\Controllers\Admin\OperadorPlanillaConfigController::class;
         Route::get('configuracion/operadores-planilla', [$opc, 'index'])->name('configuracion.operadores.index')->middleware('permiso:operadores_planilla.ver');
         Route::middleware('permiso:operadores_planilla.configurar')->group(function () use ($opc) {
-            Route::patch('configuracion/operadores-planilla/{id}/toggle', [$opc, 'toggle'])      ->name('configuracion.operadores.toggle');
-            Route::post('configuracion/operadores-planilla/orden',        [$opc, 'guardarOrden'])->name('configuracion.operadores.orden');
+            Route::patch('configuracion/operadores-planilla/{id}/toggle', [$opc, 'toggle'])->name('configuracion.operadores.toggle');
+            Route::post('configuracion/operadores-planilla/orden', [$opc, 'guardarOrden'])->name('configuracion.operadores.orden');
         });
 
         // Credenciales de las APIs de operadores — permiso RESTRINGIDO:
         // con esto se liquida y se paga plata, no lo hereda ningún rol.
         $opcr = \App\Http\Controllers\Admin\OperadorCredencialController::class;
         Route::middleware('permiso:operadores_planilla.credenciales')->group(function () use ($opcr) {
-            Route::post  ('configuracion/operadores-planilla/{operador}/credenciales',        [$opcr, 'storeAliado'])  ->name('configuracion.operadores.credenciales.store');
-            Route::post  ('configuracion/operadores-planilla/{operador}/credenciales/probar', [$opcr, 'probarAliado']) ->name('configuracion.operadores.credenciales.probar');
-            Route::delete('configuracion/operadores-planilla/{operador}/credenciales',        [$opcr, 'destroyAliado'])->name('configuracion.operadores.credenciales.destroy');
+            Route::post('configuracion/operadores-planilla/{operador}/credenciales', [$opcr, 'storeAliado'])->name('configuracion.operadores.credenciales.store');
+            Route::post('configuracion/operadores-planilla/{operador}/credenciales/probar', [$opcr, 'probarAliado'])->name('configuracion.operadores.credenciales.probar');
+            Route::delete('configuracion/operadores-planilla/{operador}/credenciales', [$opcr, 'destroyAliado'])->name('configuracion.operadores.credenciales.destroy');
         });
 
         // CRUD de Razones Sociales (empresas de afiliación) por aliado
         // ver: admin/contable/usuario · gestionar: admin · eliminar: superadmin
         $rsc = \App\Http\Controllers\Admin\RazonSocialController::class;
         Route::middleware('permiso:razones_sociales.ver')->group(function () use ($rsc) {
-            Route::get('configuracion/razones-sociales',                      [$rsc, 'index'])          ->name('configuracion.razones.index');
-            Route::get('configuracion/razones-sociales/{id}/estado-contratos',[$rsc, 'estadoContratos'])->name('configuracion.razones.estado_contratos');
+            Route::get('configuracion/razones-sociales', [$rsc, 'index'])->name('configuracion.razones.index');
+            Route::get('configuracion/razones-sociales/{id}/estado-contratos', [$rsc, 'estadoContratos'])->name('configuracion.razones.estado_contratos');
         });
         Route::middleware('permiso:razones_sociales.gestionar')->group(function () use ($rsc) {
-            Route::get( 'configuracion/razones-sociales/crear',        [$rsc, 'create'])      ->name('configuracion.razones.create');
-            Route::post('configuracion/razones-sociales',              [$rsc, 'store'])       ->name('configuracion.razones.store');
-            Route::get( 'configuracion/razones-sociales/{id}/editar',  [$rsc, 'edit'])        ->name('configuracion.razones.edit');
-            Route::put( 'configuracion/razones-sociales/{id}',         [$rsc, 'update'])      ->name('configuracion.razones.update');
-            Route::patch('configuracion/razones-sociales/{id}/estado',    [$rsc, 'toggleEstado'])->name('configuracion.razones.estado');
-            Route::patch('configuracion/razones-sociales/{id}/inactivar', [$rsc, 'inactivar'])   ->name('configuracion.razones.inactivar');
-            Route::post('configuracion/razones-sociales/{id}/sello',      [$rsc, 'subirSello'])  ->name('configuracion.razones.sello');
+            Route::get('configuracion/razones-sociales/crear', [$rsc, 'create'])->name('configuracion.razones.create');
+            Route::post('configuracion/razones-sociales', [$rsc, 'store'])->name('configuracion.razones.store');
+            Route::get('configuracion/razones-sociales/{id}/editar', [$rsc, 'edit'])->name('configuracion.razones.edit');
+            Route::put('configuracion/razones-sociales/{id}', [$rsc, 'update'])->name('configuracion.razones.update');
+            Route::patch('configuracion/razones-sociales/{id}/estado', [$rsc, 'toggleEstado'])->name('configuracion.razones.estado');
+            Route::patch('configuracion/razones-sociales/{id}/inactivar', [$rsc, 'inactivar'])->name('configuracion.razones.inactivar');
+            Route::post('configuracion/razones-sociales/{id}/sello', [$rsc, 'subirSello'])->name('configuracion.razones.sello');
         });
         Route::delete('configuracion/razones-sociales/{id}', [$rsc, 'destroy'])->name('configuracion.razones.destroy')->middleware('permiso:razones_sociales.eliminar');
 
@@ -328,34 +335,34 @@ Route::middleware('auth')->group(function () {
         // Credenciales de las APIs de operadores, por razón social
         $rsoc = \App\Http\Controllers\Admin\OperadorCredencialController::class;
         Route::middleware('permiso:operadores_planilla.credenciales')->group(function () use ($rsoc) {
-            Route::post  ('configuracion/razones-sociales/{id}/credenciales',                   [$rsoc, 'store'])  ->name('configuracion.razones.credenciales.store');
-            Route::post  ('configuracion/razones-sociales/{id}/credenciales/{operador}/probar', [$rsoc, 'probar']) ->name('configuracion.razones.credenciales.probar');
-            Route::delete('configuracion/razones-sociales/{id}/credenciales/{operador}',        [$rsoc, 'destroy'])->name('configuracion.razones.credenciales.destroy');
+            Route::post('configuracion/razones-sociales/{id}/credenciales', [$rsoc, 'store'])->name('configuracion.razones.credenciales.store');
+            Route::post('configuracion/razones-sociales/{id}/credenciales/{operador}/probar', [$rsoc, 'probar'])->name('configuracion.razones.credenciales.probar');
+            Route::delete('configuracion/razones-sociales/{id}/credenciales/{operador}', [$rsoc, 'destroy'])->name('configuracion.razones.credenciales.destroy');
         });
 
         Route::get('configuracion/razones-sociales/documentos/{id}/descargar', [$rsdc, 'download'])->name('configuracion.razones.documentos.download')->middleware('permiso:razones_sociales.ver');
         Route::middleware('permiso:razones_sociales.gestionar')->group(function () use ($rsdc) {
-            Route::post('configuracion/razones-sociales/{id}/documentos',   [$rsdc, 'store'])  ->name('configuracion.razones.documentos.store');
+            Route::post('configuracion/razones-sociales/{id}/documentos', [$rsdc, 'store'])->name('configuracion.razones.documentos.store');
             Route::delete('configuracion/razones-sociales/documentos/{id}', [$rsdc, 'destroy'])->name('configuracion.razones.documentos.destroy');
         });
 
         // Formularios EPS — mapeo visual de coordenadas
         $ef = \App\Http\Controllers\Admin\EpsFormularioController::class;
         Route::middleware('permiso:configuracion.editar')->group(function () use ($ef) {
-        Route::get ('configuracion/eps/{eps}/formulario',      [$ef, 'editor'])   ->name('configuracion.eps.formulario');
-        Route::get ('configuracion/eps/{eps}/formulario/pdf',  [$ef, 'verPdf'])   ->name('configuracion.eps.formulario.vpdf');
-        Route::post('configuracion/eps/{eps}/formulario',      [$ef, 'guardar'])  ->name('configuracion.eps.formulario.guardar');
-        Route::post('configuracion/eps/{eps}/formulario/pdf',  [$ef, 'subirPdf']) ->name('configuracion.eps.formulario.pdf');
+            Route::get('configuracion/eps/{eps}/formulario', [$ef, 'editor'])->name('configuracion.eps.formulario');
+            Route::get('configuracion/eps/{eps}/formulario/pdf', [$ef, 'verPdf'])->name('configuracion.eps.formulario.vpdf');
+            Route::post('configuracion/eps/{eps}/formulario', [$ef, 'guardar'])->name('configuracion.eps.formulario.guardar');
+            Route::post('configuracion/eps/{eps}/formulario/pdf', [$ef, 'subirPdf'])->name('configuracion.eps.formulario.pdf');
         });
 
         // Planillas de Pago SS — mapeo visual de coordenadas
         $opf = \App\Http\Controllers\Admin\OperadorPlanillaFormularioController::class;
         Route::middleware('permiso:configuracion.editar')->group(function () use ($opf) {
-        Route::get ('configuracion/operadores/{operador}/formulario',     [$opf, 'editor'])  ->name('configuracion.operadores.formulario');
-        Route::get ('configuracion/operadores/{operador}/formulario/pdf', [$opf, 'verPdf'])  ->name('configuracion.operadores.formulario.vpdf');
-        Route::post('configuracion/operadores/{operador}/formulario',     [$opf, 'guardar']) ->name('configuracion.operadores.formulario.guardar');
-        Route::post('configuracion/operadores/{operador}/formulario/pdf', [$opf, 'subirPdf'])->name('configuracion.operadores.formulario.pdf');
-        Route::get ('configuracion/operadores/datos-ejemplo',             [$opf, 'obtenerDatosEjemplo'])->name('configuracion.operadores.ejemplo');
+            Route::get('configuracion/operadores/{operador}/formulario', [$opf, 'editor'])->name('configuracion.operadores.formulario');
+            Route::get('configuracion/operadores/{operador}/formulario/pdf', [$opf, 'verPdf'])->name('configuracion.operadores.formulario.vpdf');
+            Route::post('configuracion/operadores/{operador}/formulario', [$opf, 'guardar'])->name('configuracion.operadores.formulario.guardar');
+            Route::post('configuracion/operadores/{operador}/formulario/pdf', [$opf, 'subirPdf'])->name('configuracion.operadores.formulario.pdf');
+            Route::get('configuracion/operadores/datos-ejemplo', [$opf, 'obtenerDatosEjemplo'])->name('configuracion.operadores.ejemplo');
         });
 
         // API utilitaria: ciudades por departamento (para selects dinámicos)
@@ -368,150 +375,149 @@ Route::middleware('auth')->group(function () {
         // ─── Facturación ──────────────────────────────────────────────
         Route::prefix('facturacion')->name('facturacion.')->middleware(['permiso:facturacion.ver', 'permiso.escritura:facturacion.generar'])->group(function () {
             $fc = \App\Http\Controllers\Admin\FacturacionController::class;
-            Route::get('/',                             [$fc, 'index'])             ->name('index');
-            Route::get('empresa/crear',                 [$fc, 'createEmpresa'])     ->name('empresa.create')->middleware('permiso:facturacion.editar');
-            Route::post('empresa',                      [$fc, 'storeEmpresa'])      ->name('empresa.store')->middleware('permiso:facturacion.editar');
-            Route::get('empresa/{id}',                  [$fc, 'empresa'])           ->name('empresa');
-            Route::get('empresa/{id}/exportar',         [$fc, 'exportarEmpresaExcel'])->name('empresa.exportar')->middleware('permiso:facturacion.exportar');
-            Route::get('empresa/{id}/historial',        [$fc, 'historialEmpresa'])  ->name('empresa.historial');
-            Route::get('empresa/{id}/editar',           [$fc, 'editEmpresa'])       ->name('empresa.edit')->middleware('permiso:facturacion.editar');
-            Route::put('empresa/{id}/editar',           [$fc, 'updateEmpresa'])     ->name('empresa.update')->middleware('permiso:facturacion.editar');
-            Route::post('facturar',                     [$fc, 'facturar'])          ->name('facturar')->middleware('permiso:facturacion.generar');
-            Route::post('abonar/{id}',                  [$fc, 'abonar'])            ->name('abonar')->middleware('permiso:facturacion.generar');
-            Route::get('recibo/{id}',                   [$fc, 'recibo'])            ->name('recibo');
-            Route::get('recibo-abono/{id}',             [$fc, 'reciboAbono'])       ->name('recibo-abono');
-            Route::get('api/saldo/{cedula}',            [$fc, 'saldoCliente'])      ->name('api.saldo');
-            Route::get('api/mes-pagado/{contratoId}',   [$fc, 'mesPagado'])         ->name('api.mes_pagado');
-            Route::get('api/plano/{razon_social_id}',   [$fc, 'planoActual'])       ->name('api.plano');
-            Route::get('api/saldos-contratos',          [$fc, 'saldosContratos'])   ->name('api.saldos_contratos');
-            Route::post('api/verificar-periodo',        [$fc, 'verificarPeriodoLote'])->name('api.verificar_periodo');
-            Route::get('api/cotizacion-contrato/{id}',  [$fc, 'cotizacionContrato'])->name('api.cotizacion_contrato');
-            Route::delete('{id}/anular',                [$fc, 'anular'])            ->name('anular')->middleware('permiso:facturacion.anular');
-            Route::get('historial/{cedula}',            [$fc, 'historial'])         ->name('historial');
-            Route::get('anuladas',                      [$fc, 'anuladas'])          ->name('anuladas');
-            Route::post('{id}/restaurar',               [$fc, 'restaurar'])         ->name('restaurar')->middleware('permiso:facturacion.anular');
+            Route::get('/', [$fc, 'index'])->name('index');
+            Route::get('empresa/crear', [$fc, 'createEmpresa'])->name('empresa.create')->middleware('permiso:facturacion.editar');
+            Route::post('empresa', [$fc, 'storeEmpresa'])->name('empresa.store')->middleware('permiso:facturacion.editar');
+            Route::get('empresa/{id}', [$fc, 'empresa'])->name('empresa');
+            Route::get('empresa/{id}/exportar', [$fc, 'exportarEmpresaExcel'])->name('empresa.exportar')->middleware('permiso:facturacion.exportar');
+            Route::get('empresa/{id}/historial', [$fc, 'historialEmpresa'])->name('empresa.historial');
+            Route::get('empresa/{id}/editar', [$fc, 'editEmpresa'])->name('empresa.edit')->middleware('permiso:facturacion.editar');
+            Route::put('empresa/{id}/editar', [$fc, 'updateEmpresa'])->name('empresa.update')->middleware('permiso:facturacion.editar');
+            Route::post('facturar', [$fc, 'facturar'])->name('facturar')->middleware('permiso:facturacion.generar');
+            Route::post('abonar/{id}', [$fc, 'abonar'])->name('abonar')->middleware('permiso:facturacion.generar');
+            Route::get('recibo/{id}', [$fc, 'recibo'])->name('recibo');
+            Route::get('recibo-abono/{id}', [$fc, 'reciboAbono'])->name('recibo-abono');
+            Route::get('api/saldo/{cedula}', [$fc, 'saldoCliente'])->name('api.saldo');
+            Route::get('api/mes-pagado/{contratoId}', [$fc, 'mesPagado'])->name('api.mes_pagado');
+            Route::get('api/plano/{razon_social_id}', [$fc, 'planoActual'])->name('api.plano');
+            Route::get('api/saldos-contratos', [$fc, 'saldosContratos'])->name('api.saldos_contratos');
+            Route::post('api/verificar-periodo', [$fc, 'verificarPeriodoLote'])->name('api.verificar_periodo');
+            Route::get('api/cotizacion-contrato/{id}', [$fc, 'cotizacionContrato'])->name('api.cotizacion_contrato');
+            Route::delete('{id}/anular', [$fc, 'anular'])->name('anular')->middleware('permiso:facturacion.anular');
+            Route::get('historial/{cedula}', [$fc, 'historial'])->name('historial');
+            Route::get('anuladas', [$fc, 'anuladas'])->name('anuladas');
+            Route::post('{id}/restaurar', [$fc, 'restaurar'])->name('restaurar')->middleware('permiso:facturacion.anular');
             // Imágenes de consignaciones
-            Route::post('consignacion/{id}/imagen',     [$fc, 'subirImagenConsignacion'])->name('consignacion.imagen.subir');
-            Route::get('consignacion/{id}/imagen',      [$fc, 'verImagenConsignacion'])  ->name('consignacion.imagen.ver');
+            Route::post('consignacion/{id}/imagen', [$fc, 'subirImagenConsignacion'])->name('consignacion.imagen.subir');
+            Route::get('consignacion/{id}/imagen', [$fc, 'verImagenConsignacion'])->name('consignacion.imagen.ver');
             // Otro ingreso (trámites: traslado EPS, inclusión beneficiarios, etc.)
-            Route::post('otro-ingreso',                 [$fc, 'facturarOtroIngreso'])    ->name('otro_ingreso.store')->middleware('permiso:facturacion.generar');
+            Route::post('otro-ingreso', [$fc, 'facturarOtroIngreso'])->name('otro_ingreso.store')->middleware('permiso:facturacion.generar');
             Route::match(['get', 'post'], 'cuenta-cobro', [$fc, 'cuentaCobroPreview'])->name('cuenta_cobro.preview');
             Route::post('contrato/{contrato}/retiro-pendiente', [$fc, 'guardarRetiroPendiente'])->name('contrato.retiro_pendiente');
             // ── Carga masiva de cédulas con NP provisional ───────────────────────────
-            Route::post('empresa/{id}/verificar-cedulas', [$fc, 'verificarCedulas'])   ->name('empresa.verificar_cedulas');
-            Route::post('empresa/{id}/asignar-np',        [$fc, 'asignarNpProvisional'])->name('empresa.asignar_np');
-
+            Route::post('empresa/{id}/verificar-cedulas', [$fc, 'verificarCedulas'])->name('empresa.verificar_cedulas');
+            Route::post('empresa/{id}/asignar-np', [$fc, 'asignarNpProvisional'])->name('empresa.asignar_np');
 
             // ── Cobros adicionales por empresa (parafiscales, pendientes, etc.) ──
             Route::middleware('permiso:facturacion.cobros_adicionales')->group(function () use ($fc) {
-                Route::get( 'empresa/{empresaId}/cobros-adicionales', [$fc, 'cobrosAdicionalesIndex'])  ->name('cobros_adicionales.index');
-                Route::post('empresa/{empresaId}/cobros-adicionales', [$fc, 'cobrosAdicionalesStore'])  ->name('cobros_adicionales.store');
-                Route::delete('cobros-adicionales/{cobroId}',         [$fc, 'cobrosAdicionalesDestroy'])->name('cobros_adicionales.destroy');
+                Route::get('empresa/{empresaId}/cobros-adicionales', [$fc, 'cobrosAdicionalesIndex'])->name('cobros_adicionales.index');
+                Route::post('empresa/{empresaId}/cobros-adicionales', [$fc, 'cobrosAdicionalesStore'])->name('cobros_adicionales.store');
+                Route::delete('cobros-adicionales/{cobroId}', [$fc, 'cobrosAdicionalesDestroy'])->name('cobros_adicionales.destroy');
             });
 
             // ── Facturación Electrónica (Dataico) — solo admin + superadmin ──
             $fe = \App\Http\Controllers\Admin\FacturacionElectronicaController::class;
-            Route::get('electronica',           [$fe, 'index'])   ->name('electronica.index')  ->middleware('permiso:facturacion_electronica.ver');
-            Route::get('electronica/exportar',  [$fe, 'exportar'])->name('electronica.exportar')->middleware('permiso:facturacion_electronica.ver');
-            Route::patch('electronica/marcar',  [$fe, 'marcar'])  ->name('electronica.marcar') ->middleware('permiso:facturacion_electronica.emitir');
+            Route::get('electronica', [$fe, 'index'])->name('electronica.index')->middleware('permiso:facturacion_electronica.ver');
+            Route::get('electronica/exportar', [$fe, 'exportar'])->name('electronica.exportar')->middleware('permiso:facturacion_electronica.ver');
+            Route::patch('electronica/marcar', [$fe, 'marcar'])->name('electronica.marcar')->middleware('permiso:facturacion_electronica.emitir');
         });
 
         // ── Planos (Pago Planillas SS) ────────────────────────────────────
         Route::prefix('planos')->name('planos.')->middleware(['permiso:planos.ver', 'permiso.escritura:planos.generar'])->group(function () {
             $pp = \App\Http\Controllers\Admin\PlanoPagoController::class;
-            Route::get('/',                     [$pp, 'index'])            ->name('index');
-            Route::get('/descargar',            [$pp, 'descargar'])         ->name('descargar');
-            Route::get('/descargar-asopagos',   [$pp, 'descargarAsopagos'])->name('descargar_asopagos');
-            Route::get('/descargar-miplanilla',       [$pp, 'descargarMiPlanilla'])    ->name('descargar_miplanilla');
+            Route::get('/', [$pp, 'index'])->name('index');
+            Route::get('/descargar', [$pp, 'descargar'])->name('descargar');
+            Route::get('/descargar-asopagos', [$pp, 'descargarAsopagos'])->name('descargar_asopagos');
+            Route::get('/descargar-miplanilla', [$pp, 'descargarMiPlanilla'])->name('descargar_miplanilla');
             Route::get('/descargar-aportes-en-linea', [$pp, 'descargarAportesEnLinea'])->name('descargar_aportes_en_linea');
-            Route::get('/certificado-pdf',      [$pp, 'descargarCertificadoPdf'])->name('certificado_pdf');
-            Route::patch('/n-plano',            [$pp, 'actualizarNPlano']) ->name('n_plano.update');
-            Route::patch('/operador-cliente',   [$pp, 'asignarOperadorCliente'])->name('operador_cliente.asignar');
-            Route::patch('/mover-masivo',       [$pp, 'moverPlanoMasivo']) ->name('mover_masivo');
-            Route::patch('/{id}/mover',         [$pp, 'moverPlano'])       ->name('mover');
-            Route::post('/confirmar-pago',      [$pp, 'confirmarPago'])    ->name('confirmar_pago');
-            Route::get('/api/razon/{id}',       [$pp, 'apiRazonSocial'])   ->name('api.razon');
-            Route::get('/api/resumen',           [$pp, 'apiResumenPlanos']) ->name('api.resumen');
+            Route::get('/certificado-pdf', [$pp, 'descargarCertificadoPdf'])->name('certificado_pdf');
+            Route::patch('/n-plano', [$pp, 'actualizarNPlano'])->name('n_plano.update');
+            Route::patch('/operador-cliente', [$pp, 'asignarOperadorCliente'])->name('operador_cliente.asignar');
+            Route::patch('/mover-masivo', [$pp, 'moverPlanoMasivo'])->name('mover_masivo');
+            Route::patch('/{id}/mover', [$pp, 'moverPlano'])->name('mover');
+            Route::post('/confirmar-pago', [$pp, 'confirmarPago'])->name('confirmar_pago');
+            Route::get('/api/razon/{id}', [$pp, 'apiRazonSocial'])->name('api.razon');
+            Route::get('/api/resumen', [$pp, 'apiResumenPlanos'])->name('api.resumen');
 
             // Liquidación directa contra la API del operador (Enlace Operativo)
             $pa = \App\Http\Controllers\Admin\PlanillaApiController::class;
-            Route::get ('/api-operador/estado',    [$pa, 'estado'])   ->name('api_operador.estado');
-            Route::post('/api-operador/liquidar',  [$pa, 'liquidar']) ->name('api_operador.liquidar');
+            Route::get('/api-operador/estado', [$pa, 'estado'])->name('api_operador.estado');
+            Route::post('/api-operador/liquidar', [$pa, 'liquidar'])->name('api_operador.liquidar');
             Route::post('/api-operador/liquidar-independiente', [$pa, 'liquidarIndependiente'])->name('api_operador.liquidar_independiente');
             Route::post('/api-operador/autocorregir', [$pa, 'autocorregir'])->name('api_operador.autocorregir');
-            Route::get ('/api-operador/{codigoPlanilla}/inconsistencias', [$pa, 'inconsistencias'])
+            Route::get('/api-operador/{codigoPlanilla}/inconsistencias', [$pa, 'inconsistencias'])
                 ->whereNumber('codigoPlanilla')->name('api_operador.inconsistencias');
 
             // Envío de planillas por WhatsApp
-            Route::get('/envio-planillas',                     [$pp, 'enviosPlanillaIndex'])->name('envio_planillas');
-            Route::get('/envio-planillas/api',                 [$pp, 'enviosPlanillaApi'])->name('envio_planillas.api');
-            Route::post('/envio-planillas/enviar',             [$pp, 'enviosPlanillaEnviar'])->name('envio_planillas.enviar');
+            Route::get('/envio-planillas', [$pp, 'enviosPlanillaIndex'])->name('envio_planillas');
+            Route::get('/envio-planillas/api', [$pp, 'enviosPlanillaApi'])->name('envio_planillas.api');
+            Route::post('/envio-planillas/enviar', [$pp, 'enviosPlanillaEnviar'])->name('envio_planillas.enviar');
             Route::post('/envio-planillas/{detalleId}/reenviar', [$pp, 'enviosPlanillaReenviar'])->name('envio_planillas.reenviar');
-            Route::get('/envio-planillas/historial',           [$pp, 'enviosPlanillaHistorial'])->name('envio_planillas.historial');
-            Route::get('/envio-planillas/{loteId}/detalle',    [$pp, 'enviosPlanillaLoteDetalle'])->name('envio_planillas.lote_detalle');
-            Route::post('/envio-planillas/crear-plantilla',    [$pp, 'enviosPlanillaCrearPlantilla'])->name('envio_planillas.crear_plantilla');
+            Route::get('/envio-planillas/historial', [$pp, 'enviosPlanillaHistorial'])->name('envio_planillas.historial');
+            Route::get('/envio-planillas/{loteId}/detalle', [$pp, 'enviosPlanillaLoteDetalle'])->name('envio_planillas.lote_detalle');
+            Route::post('/envio-planillas/crear-plantilla', [$pp, 'enviosPlanillaCrearPlantilla'])->name('envio_planillas.crear_plantilla');
         });
 
         // ── Cobros ───────────────────────────────────────────────────────
         Route::prefix('cobros')->name('cobros.')->middleware(['permiso:cobros.ver', 'permiso.escritura:cobros.registrar'])->group(function () {
             $cb = \App\Http\Controllers\Admin\CobrosController::class;
             // Individuales
-            Route::get('/',                          [$cb, 'index'])                  ->name('index');
-            Route::get('/exportar',                  [$cb, 'exportar'])               ->name('exportar');
-            Route::get('/whatsapp/previsualizar',         [$cb, 'vistaPrevisualizarWhatsApp']) ->name('whatsapp.previsualizar');
-            Route::post('/whatsapp/prueba',               [$cb, 'enviarPruebaWhatsApp'])        ->name('whatsapp.prueba');
-            Route::post('/whatsapp/enviar-filtro',        [$cb, 'enviarFiltroWhatsApp'])        ->name('whatsapp.enviar_filtro');
-            Route::get('/whatsapp/historial',             [$cb, 'historialEnviosWhatsApp'])     ->name('whatsapp.historial');
-            Route::get('/whatsapp/{loteId}/reporte',      [$cb, 'reporteLoteWhatsApp'])         ->name('whatsapp.reporte');
-            Route::post('/whatsapp/{loteId}/reintentar',  [$cb, 'reintentarLoteWhatsApp'])      ->name('whatsapp.reintentar');
-            Route::post('/{contratoId}/llamada',     [$cb, 'registrarLlamada'])       ->name('llamada.store');
-            Route::get('/{contratoId}/llamadas',     [$cb, 'historialLlamadas'])      ->name('llamadas');
+            Route::get('/', [$cb, 'index'])->name('index');
+            Route::get('/exportar', [$cb, 'exportar'])->name('exportar');
+            Route::get('/whatsapp/previsualizar', [$cb, 'vistaPrevisualizarWhatsApp'])->name('whatsapp.previsualizar');
+            Route::post('/whatsapp/prueba', [$cb, 'enviarPruebaWhatsApp'])->name('whatsapp.prueba');
+            Route::post('/whatsapp/enviar-filtro', [$cb, 'enviarFiltroWhatsApp'])->name('whatsapp.enviar_filtro');
+            Route::get('/whatsapp/historial', [$cb, 'historialEnviosWhatsApp'])->name('whatsapp.historial');
+            Route::get('/whatsapp/{loteId}/reporte', [$cb, 'reporteLoteWhatsApp'])->name('whatsapp.reporte');
+            Route::post('/whatsapp/{loteId}/reintentar', [$cb, 'reintentarLoteWhatsApp'])->name('whatsapp.reintentar');
+            Route::post('/{contratoId}/llamada', [$cb, 'registrarLlamada'])->name('llamada.store');
+            Route::get('/{contratoId}/llamadas', [$cb, 'historialLlamadas'])->name('llamadas');
             // Empresas
-            Route::get('/empresas',                  [$cb, 'empresas'])               ->name('empresas');
+            Route::get('/empresas', [$cb, 'empresas'])->name('empresas');
             Route::get('/empresas/whatsapp/previsualizar', [$cb, 'previsualizarWhatsAppEmpresas'])->name('empresas.whatsapp.previsualizar');
-            Route::post('/empresas/whatsapp/enviar',        [$cb, 'enviarWhatsAppEmpresas'])->name('empresas.whatsapp.enviar');
-            Route::post('/empresa/{id}/llamada',     [$cb, 'registrarLlamadaEmpresa'])->name('empresa.llamada.store');
-            Route::get('/empresa/{id}/llamadas',     [$cb, 'historialEmpresa'])       ->name('empresa.llamadas');
-            Route::patch('/empresa/{id}/encargado',  [$cb, 'asignarEncargado'])       ->name('empresa.encargado');
+            Route::post('/empresas/whatsapp/enviar', [$cb, 'enviarWhatsAppEmpresas'])->name('empresas.whatsapp.enviar');
+            Route::post('/empresa/{id}/llamada', [$cb, 'registrarLlamadaEmpresa'])->name('empresa.llamada.store');
+            Route::get('/empresa/{id}/llamadas', [$cb, 'historialEmpresa'])->name('empresa.llamadas');
+            Route::patch('/empresa/{id}/encargado', [$cb, 'asignarEncargado'])->name('empresa.encargado');
         });
 
         // ── Informes (admin + superadmin; financiero también para contador) ──
         Route::prefix('informes')->name('informes.')->middleware(['permiso:informes.ver', 'permiso.escritura:cobros.registrar'])->group(function () {
             $ic = \App\Http\Controllers\Admin\InformeController::class;
-            Route::get('/',                       [$ic, 'hub'])                  ->name('hub');
-            Route::get('/consolidado-mensual',     [$ic, 'consolidadoMensual'])   ->name('consolidado_mensual');
+            Route::get('/', [$ic, 'hub'])->name('hub');
+            Route::get('/consolidado-mensual', [$ic, 'consolidadoMensual'])->name('consolidado_mensual');
             Route::get('/consolidado-mensual/detalle', [$ic, 'consolidadoMensualDetalle'])->name('consolidado_mensual_detalle');
             Route::get('/consolidado-mensual/whatsapp-detalle', [$ic, 'consolidadoMensualWhatsapp'])->name('consolidado_mensual_whatsapp');
-            Route::get('/brynex-cobros',           [$ic, 'brynexCobros'])         ->name('brynex_cobros');
-            Route::get('/brynex-cobros/{cobro}/pdf', [$ic, 'brynexCobroPdf'])       ->name('brynex_cobros.pdf');
-            Route::get('/clientes-activos',       [$ic, 'clientesActivos'])      ->name('clientes_activos');
-            Route::get('/por-razon-social',       [$ic, 'porRazonSocial'])       ->name('por_razon_social');
-            Route::get('/afiliaciones-retiros',   [$ic, 'afiliacionesRetiros'])  ->name('afiliaciones_retiros');
-            Route::get('/empresas-clientes',      [$ic, 'empresasClientes'])     ->name('empresas_clientes');
-            Route::get('/por-entidades',          [$ic, 'porEntidades'])         ->name('por_entidades');
-            Route::get('/retirados-mes',          [$ic, 'retiradosMes'])         ->name('retirados_mes');
-            Route::get('/validacion-cierre',      [$ic, 'validacionCierre'])     ->name('validacion_cierre')
+            Route::get('/brynex-cobros', [$ic, 'brynexCobros'])->name('brynex_cobros');
+            Route::get('/brynex-cobros/{cobro}/pdf', [$ic, 'brynexCobroPdf'])->name('brynex_cobros.pdf');
+            Route::get('/clientes-activos', [$ic, 'clientesActivos'])->name('clientes_activos');
+            Route::get('/por-razon-social', [$ic, 'porRazonSocial'])->name('por_razon_social');
+            Route::get('/afiliaciones-retiros', [$ic, 'afiliacionesRetiros'])->name('afiliaciones_retiros');
+            Route::get('/empresas-clientes', [$ic, 'empresasClientes'])->name('empresas_clientes');
+            Route::get('/por-entidades', [$ic, 'porEntidades'])->name('por_entidades');
+            Route::get('/retirados-mes', [$ic, 'retiradosMes'])->name('retirados_mes');
+            Route::get('/validacion-cierre', [$ic, 'validacionCierre'])->name('validacion_cierre')
                 ->middleware('permiso:brynex_cierre.ver');
             Route::get('/validacion-cierre/sin-planilla', [$ic, 'validacionCierreSinPlanilla'])
                 ->name('validacion_cierre.sin_planilla')->middleware('permiso:brynex_cierre.ver');
             Route::get('/validacion-cierre/ficha', [$ic, 'validacionCierreFicha'])
                 ->name('validacion_cierre.ficha')->middleware('permiso:brynex_cierre.ver');
-            Route::get('/cierre-operacion',       [$ic, 'cierreOperacion'])      ->name('cierre_operacion');
-            Route::get('/incapacidades',          [$ic, 'resumenIncapacidades']) ->name('incapacidades');
-            Route::get('/tareas',                 [$ic, 'resumenTareas'])        ->name('tareas');
-            Route::get('/conciliacion-bancos',    [$ic, 'conciliacionBancos'])   ->name('conciliacion_bancos');
-            Route::get('/financiero',             [$ic, 'estadoFinanciero'])     ->name('financiero');
-            Route::get('/financiero/bancos',      [$ic, 'financieroBancos'])     ->name('financiero.bancos');
-            Route::get('/financiero/efectivo',     [$ic, 'financieroEfectivo'])   ->name('financiero.efectivo');
+            Route::get('/cierre-operacion', [$ic, 'cierreOperacion'])->name('cierre_operacion');
+            Route::get('/incapacidades', [$ic, 'resumenIncapacidades'])->name('incapacidades');
+            Route::get('/tareas', [$ic, 'resumenTareas'])->name('tareas');
+            Route::get('/conciliacion-bancos', [$ic, 'conciliacionBancos'])->name('conciliacion_bancos');
+            Route::get('/financiero', [$ic, 'estadoFinanciero'])->name('financiero');
+            Route::get('/financiero/bancos', [$ic, 'financieroBancos'])->name('financiero.bancos');
+            Route::get('/financiero/efectivo', [$ic, 'financieroEfectivo'])->name('financiero.efectivo');
 
-            Route::get('/financiero/auditar-planilla', [$ic, 'auditarPlanilla']) ->name('financiero.auditar_planilla');
-            Route::get('/financiero/ss-planillas',     [$ic, 'ssPlanillas'])     ->name('financiero.ss_planillas');
-            Route::get('/financiero/conciliacion-ss',  [$ic, 'conciliacionSS'])  ->name('financiero.conciliacion_ss');
-            Route::get('/financiero/detalle-dia',      [$ic, 'detalleDia'])      ->name('financiero.detalle_dia');
-            Route::get('/financiero/desglose-dia',     [$ic, 'desgloseDia'])     ->name('financiero.desglose_dia');
-            Route::get('/financiero/prestamos-mes',    [$ic, 'prestamesMes'])    ->name('financiero.prestamos_mes');
-            Route::get('/financiero/gastos-detalle',   [$ic, 'gastosDetalle'])   ->name('financiero.gastos_detalle');
-            Route::patch('/financiero/consignacion/{id}',  [$ic, 'editarConsignacion'])->name('financiero.consignacion.editar');
+            Route::get('/financiero/auditar-planilla', [$ic, 'auditarPlanilla'])->name('financiero.auditar_planilla');
+            Route::get('/financiero/ss-planillas', [$ic, 'ssPlanillas'])->name('financiero.ss_planillas');
+            Route::get('/financiero/conciliacion-ss', [$ic, 'conciliacionSS'])->name('financiero.conciliacion_ss');
+            Route::get('/financiero/detalle-dia', [$ic, 'detalleDia'])->name('financiero.detalle_dia');
+            Route::get('/financiero/desglose-dia', [$ic, 'desgloseDia'])->name('financiero.desglose_dia');
+            Route::get('/financiero/prestamos-mes', [$ic, 'prestamesMes'])->name('financiero.prestamos_mes');
+            Route::get('/financiero/gastos-detalle', [$ic, 'gastosDetalle'])->name('financiero.gastos_detalle');
+            Route::patch('/financiero/consignacion/{id}', [$ic, 'editarConsignacion'])->name('financiero.consignacion.editar');
             Route::post('/financiero/consignacion/{id}/imagen', [$ic, 'subirImagenConsignacionFinanciero'])->name('financiero.consignacion.imagen');
             Route::get('/auditoria-facturas', [$ic, 'auditoriaFacturas'])->name('auditoria_facturas');
 
@@ -519,51 +525,51 @@ Route::middleware('auth')->group(function () {
             $ga = \App\Http\Controllers\Admin\GastoAdminController::class;
             Route::get('/gastos', [$ga, 'index'])->name('gastos.index')->middleware('permiso:gastos.ver');
             Route::middleware('permiso:gastos.gestionar')->group(function () use ($ga) {
-                Route::post('/gastos',             [$ga, 'store'])   ->name('gastos.store');
-                Route::put('/gastos/{id}',         [$ga, 'update'])  ->name('gastos.update');
-                Route::delete('/gastos/{id}',      [$ga, 'destroy']) ->name('gastos.destroy');
-                Route::post('/gastos/{id}/imagen', [$ga, 'imagen'])  ->name('gastos.imagen');
+                Route::post('/gastos', [$ga, 'store'])->name('gastos.store');
+                Route::put('/gastos/{id}', [$ga, 'update'])->name('gastos.update');
+                Route::delete('/gastos/{id}', [$ga, 'destroy'])->name('gastos.destroy');
+                Route::post('/gastos/{id}/imagen', [$ga, 'imagen'])->name('gastos.imagen');
             });
 
             // ── Comisiones Asesores ──────────────────────────────────────
             $cc = \App\Http\Controllers\Admin\ComisionesController::class;
             Route::middleware('permiso:comisiones.ver')->group(function () use ($cc) {
-                Route::get('/comisiones',              [$cc, 'index'])       ->name('comisiones.index');
+                Route::get('/comisiones', [$cc, 'index'])->name('comisiones.index');
                 Route::get('/comisiones/afiliaciones', [$cc, 'afiliaciones'])->name('comisiones.afiliaciones');
             });
             Route::middleware('permiso:comisiones.gestionar')->group(function () use ($cc) {
-                Route::post('/comisiones/afiliaciones/{id}',       [$cc, 'distribuir'])->name('comisiones.distribuir');
-                Route::post('/comisiones/asesores/{asesor}/pagar', [$cc, 'pagar'])     ->name('comisiones.pagar');
+                Route::post('/comisiones/afiliaciones/{id}', [$cc, 'distribuir'])->name('comisiones.distribuir');
+                Route::post('/comisiones/asesores/{asesor}/pagar', [$cc, 'pagar'])->name('comisiones.pagar');
             });
         });
 
         // ── Anticipos (Pagos sin Factura) ────────────────────────────────
         Route::prefix('anticipos')->name('anticipos.')->middleware(['permiso:anticipos.ver', 'permiso.escritura:anticipos.gestionar'])->group(function () {
             $ac = \App\Http\Controllers\Admin\AnticipoController::class;
-            Route::post('/',                        [$ac, 'store'])            ->name('store');
-            Route::post('/distribuir',              [$ac, 'storeDistribuido']) ->name('distribuir');
-            Route::get('/informe',                  [$ac, 'informe'])          ->name('informe');
-            Route::get('/{id}/recibo',              [$ac, 'reciboAnticipo'])   ->name('recibo');
-            Route::post('/{id}/anular',             [$ac, 'anular'])           ->name('anular');
-            Route::post('/{id}/devolver',           [$ac, 'devolver'])         ->name('devolver');
-            Route::delete('/{id}',                  [$ac, 'destroy'])          ->name('destroy');
+            Route::post('/', [$ac, 'store'])->name('store');
+            Route::post('/distribuir', [$ac, 'storeDistribuido'])->name('distribuir');
+            Route::get('/informe', [$ac, 'informe'])->name('informe');
+            Route::get('/{id}/recibo', [$ac, 'reciboAnticipo'])->name('recibo');
+            Route::post('/{id}/anular', [$ac, 'anular'])->name('anular');
+            Route::post('/{id}/devolver', [$ac, 'devolver'])->name('devolver');
+            Route::delete('/{id}', [$ac, 'destroy'])->name('destroy');
             // APIs para modal facturar
-            Route::get('/api/contrato/{id}',        [$ac, 'porContrato'])      ->name('api.contrato');
-            Route::get('/api/empresa/{id}',         [$ac, 'porEmpresa'])       ->name('api.empresa');
+            Route::get('/api/contrato/{id}', [$ac, 'porContrato'])->name('api.contrato');
+            Route::get('/api/empresa/{id}', [$ac, 'porEmpresa'])->name('api.empresa');
             Route::get('/api/contratos-empresa/{id}', [$ac, 'contratosEmpresa'])->name('api.contratos_empresa');
-            Route::get('/api/cliente/{cedula}',     [$ac, 'porCliente'])       ->name('api.cliente');
+            Route::get('/api/cliente/{cedula}', [$ac, 'porCliente'])->name('api.cliente');
         });
 
         // ── Préstamos / Cartera ──────────────────────────────────────────
         Route::prefix('prestamos')->name('prestamos.')->middleware(['permiso:prestamos.ver', 'permiso.escritura:prestamos.gestionar'])->group(function () {
             $pc = \App\Http\Controllers\Admin\PrestamosController::class;
-            Route::get('/',                  [$pc, 'index'])              ->name('index');
-            Route::get('/api/pendientes',    [$pc, 'apiPendientes'])      ->name('api.pendientes');
-            Route::get('/{id}',              [$pc, 'show'])               ->name('show');
-            Route::post('/{id}/abonar',      [$pc, 'abonar'])             ->name('abonar');
-            Route::post('/{id}/condonar',    [$pc, 'condonar'])           ->name('condonar');
-            Route::post('/{id}/gestion',     [$pc, 'registrarGestion'])   ->name('gestion.store');
-            Route::get('/{id}/gestiones',    [$pc, 'historialGestiones']) ->name('gestiones');
+            Route::get('/', [$pc, 'index'])->name('index');
+            Route::get('/api/pendientes', [$pc, 'apiPendientes'])->name('api.pendientes');
+            Route::get('/{id}', [$pc, 'show'])->name('show');
+            Route::post('/{id}/abonar', [$pc, 'abonar'])->name('abonar');
+            Route::post('/{id}/condonar', [$pc, 'condonar'])->name('condonar');
+            Route::post('/{id}/gestion', [$pc, 'registrarGestion'])->name('gestion.store');
+            Route::get('/{id}/gestiones', [$pc, 'historialGestiones'])->name('gestiones');
         });
 
     });
@@ -571,125 +577,138 @@ Route::middleware('auth')->group(function () {
     // ── BryNex Global (solo usuarios es_brynex) ──────────────────────────
     Route::prefix('brynex')->name('brynex.')->middleware('permiso:brynex_hub.ver')->group(function () {
         $bx = \App\Http\Controllers\BrynexController::class;
-        Route::get('/',         [$bx, 'hub'])          ->name('hub');
-        Route::get('/accesos',  [$bx, 'accesos'])       ->name('accesos');
-        Route::post('/accesos', [$bx, 'toggleAcceso'])  ->name('accesos.toggle');
+        Route::get('/', [$bx, 'hub'])->name('hub');
+        Route::get('/accesos', [$bx, 'accesos'])->name('accesos');
+        Route::post('/accesos', [$bx, 'toggleAcceso'])->name('accesos.toggle');
 
         // Configuración del Asistente Virtual IA
         $iac = \App\Http\Controllers\IaConfigController::class;
-        Route::get('/ia',                [$iac, 'index'])         ->name('ia.index');
-        Route::post('/ia/global',        [$iac, 'guardarGlobal']) ->name('ia.global');
-        Route::post('/ia/{alidoId}',     [$iac, 'guardarAliado']) ->name('ia.aliado');
+        Route::get('/ia', [$iac, 'index'])->name('ia.index');
+        Route::post('/ia/global', [$iac, 'guardarGlobal'])->name('ia.global');
+        Route::post('/ia/{alidoId}', [$iac, 'guardarAliado'])->name('ia.aliado');
 
         // Simulador de conversación (probar la IA en vivo y anotar correcciones)
         Route::prefix('ia/simulador')->name('ia.simulador.')->middleware('permiso:brynex_ia.ver')->group(function () {
             $ims = \App\Http\Controllers\IaSimuladorController::class;
-            Route::get('/',                  [$ims, 'index'])        ->name('index');
-            Route::get('/{alidoId}/historial',[$ims, 'historial'])    ->name('historial');
-            Route::post('/mensaje',          [$ims, 'mensaje'])       ->name('mensaje');
-            Route::post('/nota',             [$ims, 'guardarNota'])   ->name('nota');
-            Route::post('/nota/{id}/resolver',[$ims, 'resolverNota']) ->name('nota.resolver');
-            Route::post('/reiniciar',        [$ims, 'reiniciar'])     ->name('reiniciar');
+            Route::get('/', [$ims, 'index'])->name('index');
+            Route::get('/{alidoId}/historial', [$ims, 'historial'])->name('historial');
+            Route::post('/mensaje', [$ims, 'mensaje'])->name('mensaje');
+            Route::post('/nota', [$ims, 'guardarNota'])->name('nota');
+            Route::post('/nota/{id}/resolver', [$ims, 'resolverNota'])->name('nota.resolver');
+            Route::post('/reiniciar', [$ims, 'reiniciar'])->name('reiniciar');
         });
 
         // Entrenamiento / conocimiento del Asistente IA
         Route::prefix('ia/conocimiento')->name('ia.conocimiento.')->middleware('permiso:brynex_ia.entrenar')->group(function () {
             $ick = \App\Http\Controllers\IaConocimientoController::class;
-            Route::get('/',                        [$ick, 'index'])            ->name('index');
-            Route::post('/guardar',                 [$ick, 'guardar'])          ->name('guardar');
-            Route::post('/{id}/aprobar',            [$ick, 'aprobar'])          ->name('aprobar');
-            Route::post('/{id}/rechazar',           [$ick, 'rechazar'])         ->name('rechazar');
-            Route::post('/{id}/eliminar',           [$ick, 'eliminar'])         ->name('eliminar');
-            Route::post('/preguntas/{id}/responder',[$ick, 'responderPregunta'])->name('preguntas.responder');
-            Route::post('/preguntas/{id}/descartar',[$ick, 'descartarPregunta'])->name('preguntas.descartar');
+            Route::get('/', [$ick, 'index'])->name('index');
+            Route::post('/guardar', [$ick, 'guardar'])->name('guardar');
+            Route::post('/{id}/aprobar', [$ick, 'aprobar'])->name('aprobar');
+            Route::post('/{id}/rechazar', [$ick, 'rechazar'])->name('rechazar');
+            Route::post('/{id}/eliminar', [$ick, 'eliminar'])->name('eliminar');
+            Route::post('/preguntas/{id}/responder', [$ick, 'responderPregunta'])->name('preguntas.responder');
+            Route::post('/preguntas/{id}/descartar', [$ick, 'descartarPregunta'])->name('preguntas.descartar');
         });
 
         // Copias de Seguridad (Backups)
         $bbc = \App\Http\Controllers\BrynexBackupController::class;
         Route::middleware('permiso:brynex_backup.ejecutar')->group(function () use ($bbc) {
-            Route::get('/backups',           [$bbc, 'backups'])          ->name('backups');
-            Route::get('/backups/descargar', [$bbc, 'descargarBackup'])  ->name('backups.descargar');
-            Route::post('/backups/crear',    [$bbc, 'crearBackupManual'])->name('backups.crear');
+            Route::get('/backups', [$bbc, 'backups'])->name('backups');
+            Route::get('/backups/descargar', [$bbc, 'descargarBackup'])->name('backups.descargar');
+            Route::post('/backups/crear', [$bbc, 'crearBackupManual'])->name('backups.crear');
         });
 
+        // Entrega de datos a un aliado que se va. El acceso lo cierra
+        // `exportacion.access` (lista blanca en config/exportacion) + un código
+        // por WhatsApp que exige el controlador.
+        $bex = \App\Http\Controllers\BrynexExportController::class;
+        Route::prefix('exportaciones')->name('exportaciones.')->group(function () use ($bex) {
+            Route::get('/', [$bex, 'index'])->name('index');
+            Route::post('/solicitar', [$bex, 'solicitar'])->name('solicitar');
+            Route::post('/confirmar', [$bex, 'confirmar'])->name('confirmar');
+            Route::post('/cancelar', [$bex, 'cancelar'])->name('cancelar');
+            Route::get('/{id}/descargar', [$bex, 'descargar'])->name('descargar');
+            Route::get('/{id}/password', [$bex, 'password'])->name('password');
+            Route::delete('/{id}', [$bex, 'eliminar'])->name('eliminar');
+        });
 
         // ── Módulo Consumo & Cobros ───────────────────────────────────────────
         $cx = \App\Http\Controllers\BrynexConsumoController::class;
         Route::middleware('permiso:brynex_cobros.ver')->group(function () use ($cx) {
-            Route::get('consumo',                       [$cx, 'index'])        ->name('consumo.index');
-            Route::get('consumo/contabilidad',          [$cx, 'contabilidad']) ->name('consumo.contabilidad');
-            Route::get('consumo/{aliado}/{mes}/{anio}', [$cx, 'show'])         ->name('consumo.show');
-            Route::get('consumo/{aliado}/modulos',      [$cx, 'modulosAliado'])->name('consumo.modulos');
-            Route::get('consumo/cobros/{cobro}/pdf',    [$cx, 'descargarPdf']) ->name('consumo.pdf');
+            Route::get('consumo', [$cx, 'index'])->name('consumo.index');
+            Route::get('consumo/contabilidad', [$cx, 'contabilidad'])->name('consumo.contabilidad');
+            Route::get('consumo/{aliado}/{mes}/{anio}', [$cx, 'show'])->name('consumo.show');
+            Route::get('consumo/{aliado}/modulos', [$cx, 'modulosAliado'])->name('consumo.modulos');
+            Route::get('consumo/cobros/{cobro}/pdf', [$cx, 'descargarPdf'])->name('consumo.pdf');
         });
         Route::middleware('permiso:brynex_cobros.gestionar')->group(function () use ($cx) {
-            Route::post('consumo/{aliado}/{mes}/{anio}/cerrar', [$cx, 'cerrar'])            ->name('consumo.cerrar');
-            Route::put('consumo/{aliado}/modulos',              [$cx, 'actualizarModulos']) ->name('consumo.modulos.update');
-            Route::post('consumo/cobros/{cobro}/pago',          [$cx, 'registrarPago'])     ->name('consumo.pago');
+            Route::post('consumo/{aliado}/{mes}/{anio}/cerrar', [$cx, 'cerrar'])->name('consumo.cerrar');
+            Route::put('consumo/{aliado}/modulos', [$cx, 'actualizarModulos'])->name('consumo.modulos.update');
+            Route::post('consumo/cobros/{cobro}/pago', [$cx, 'registrarPago'])->name('consumo.pago');
         });
     });
-
 
     // ── Cuadre Diario ────────────────────────────────────────────────
 
     Route::prefix('cuadre-diario')->name('admin.cuadre-diario.')->middleware(['permiso:cuadre_diario.ver', 'permiso.escritura:cuadre_diario.gestionar'])->group(function () {
         $cd = \App\Http\Controllers\Admin\CuadreDiarioController::class;
-        Route::get('/',                          [$cd, 'index'])                ->name('index');
-        Route::get('/consolidado',               [$cd, 'consolidado'])          ->name('consolidado');
-        Route::get('/facturas-dia',              [$cd, 'facturasDia'])          ->name('facturas-dia');
-        Route::get('/facturas-dia/exportar',     [$cd, 'exportarFacturasDia'])  ->name('facturas-dia.exportar');
-        Route::post('/gasto',                    [$cd, 'registrarGasto'])       ->name('gasto.store');
-        Route::delete('/gasto/{gastoId}',        [$cd, 'eliminarGasto'])        ->name('gasto.destroy');
-        Route::post('/gasto/{gastoId}/imagen',               [$cd, 'subirImagenGasto'])       ->name('gasto.imagen');
-        Route::post('/consignacion/{csId}/imagen',            [$cd, 'subirImagenConsignacion'])->name('consignacion.imagen');
-        Route::post('/consignacion/{csId}/confirmar',          [$cd, 'confirmarConsignacion'])->name('consignacion.confirmar');
-        Route::patch('/consignacion/{csId}/confirmar/reversar', [$cd, 'reversarConsignacion']) ->name('consignacion.reversar');
-        Route::post('/consignacion/{csId}/no-aparece',          [$cd, 'noApareceConsignacion'])->name('consignacion.no-aparece');
-        Route::delete('/consignacion/{csId}/anular-prestamo',   [$cd, 'anularConsignacionPrestamo'])->name('consignacion.anular-prestamo');
-        Route::post('/cerrar-dia',               [$cd, 'cerrarDia'])            ->name('cerrar-dia');
-        Route::delete('/cerrar-dia/{cuadreId}',  [$cd, 'reabrirDia'])           ->name('reabrir-dia');
-        Route::get('/{id}',                      [$cd, 'ver'])                  ->name('ver');
+        Route::get('/', [$cd, 'index'])->name('index');
+        Route::get('/consolidado', [$cd, 'consolidado'])->name('consolidado');
+        Route::get('/facturas-dia', [$cd, 'facturasDia'])->name('facturas-dia');
+        Route::get('/facturas-dia/exportar', [$cd, 'exportarFacturasDia'])->name('facturas-dia.exportar');
+        Route::post('/gasto', [$cd, 'registrarGasto'])->name('gasto.store');
+        Route::delete('/gasto/{gastoId}', [$cd, 'eliminarGasto'])->name('gasto.destroy');
+        Route::post('/gasto/{gastoId}/imagen', [$cd, 'subirImagenGasto'])->name('gasto.imagen');
+        Route::post('/consignacion/{csId}/imagen', [$cd, 'subirImagenConsignacion'])->name('consignacion.imagen');
+        Route::post('/consignacion/{csId}/confirmar', [$cd, 'confirmarConsignacion'])->name('consignacion.confirmar');
+        Route::patch('/consignacion/{csId}/confirmar/reversar', [$cd, 'reversarConsignacion'])->name('consignacion.reversar');
+        Route::post('/consignacion/{csId}/no-aparece', [$cd, 'noApareceConsignacion'])->name('consignacion.no-aparece');
+        Route::delete('/consignacion/{csId}/anular-prestamo', [$cd, 'anularConsignacionPrestamo'])->name('consignacion.anular-prestamo');
+        Route::post('/cerrar-dia', [$cd, 'cerrarDia'])->name('cerrar-dia');
+        Route::delete('/cerrar-dia/{cuadreId}', [$cd, 'reabrirDia'])->name('reabrir-dia');
+        Route::get('/{id}', [$cd, 'ver'])->name('ver');
     });
 
     // ── Caja Menor ───────────────────────────────────────────────────
     Route::prefix('caja-menor')->name('admin.caja-menor.')->middleware(['permiso:caja_menor.ver', 'permiso.escritura:caja_menor.gestionar'])->group(function () {
         $cm = \App\Http\Controllers\Admin\CajaMenorController::class;
-        Route::get('/',    [$cm, 'index'])->name('index');
-        Route::post('/',   [$cm, 'store'])->name('store');
+        Route::get('/', [$cm, 'index'])->name('index');
+        Route::post('/', [$cm, 'store'])->name('store');
     });
 
     // ── Gestión ARL (tipo_modalidad_id = 15)
     Route::prefix('admin/gestion-arl')->name('admin.gestion-arl.')->middleware(['permiso:gestion_arl.ver', 'permiso.escritura:gestion_arl.gestionar'])->group(function () {
         $ga = \App\Http\Controllers\Admin\GestionArlController::class;
-        Route::get('/',            [$ga, 'index'])   ->name('index');
+        Route::get('/', [$ga, 'index'])->name('index');
         Route::patch('/{id}/renovar', [$ga, 'renovar'])->name('renovar');
 
         // ── DEBUG TEMPORAL — borrar después ──
         Route::get('/debug/{cedula}', function ($cedula) {
             $contratos = \App\Models\Contrato::where('cedula', $cedula)
                 ->with(['tipoModalidad:id,tipo_modalidad,modalidad', 'razonSocial:id,razon_social', 'encargado:id,nombre'])
-                ->get(['id','cedula','estado','tipo_modalidad_id','aliado_id','encargado_id','razon_social_id','fecha_ingreso','fecha_arl']);
+                ->get(['id', 'cedula', 'estado', 'tipo_modalidad_id', 'aliado_id', 'encargado_id', 'razon_social_id', 'fecha_ingreso', 'fecha_arl']);
             $user = \Illuminate\Support\Facades\Auth::user();
+
             return response()->json([
-                'cedula_buscada'    => $cedula,
+                'cedula_buscada' => $cedula,
                 'aliado_id_session' => session('aliado_id_activo', $user->aliado_id),
-                'tu_aliado_id'      => $user->aliado_id,
-                'es_brynex'         => $user->es_brynex,
-                'TIPO_MODALIDAD_ARL'=> 15,
+                'tu_aliado_id' => $user->aliado_id,
+                'es_brynex' => $user->es_brynex,
+                'TIPO_MODALIDAD_ARL' => 15,
                 'contratos_encontrados' => $contratos->count(),
-                'contratos'         => $contratos->map(fn($c) => [
-                    'id'               => $c->id,
-                    'estado'           => $c->estado,
-                    'tipo_modalidad_id'=> $c->tipo_modalidad_id,
-                    'tipo_modalidad'   => $c->tipoModalidad?->tipo_modalidad . ' / ' . $c->tipoModalidad?->modalidad,
-                    'aliado_id'        => $c->aliado_id,
-                    'coincide_aliado'  => $c->aliado_id == session('aliado_id_activo', $user->aliado_id),
-                    'es_tipo_15'       => $c->tipo_modalidad_id == 15,
-                    'es_vigente'       => $c->estado === 'vigente',
-                    'razon_social'     => $c->razonSocial?->razon_social,
-                    'encargado'        => $c->encargado?->nombre,
-                    'fecha_ingreso'    => $c->fecha_ingreso,
-                    'fecha_arl'        => $c->fecha_arl,
+                'contratos' => $contratos->map(fn ($c) => [
+                    'id' => $c->id,
+                    'estado' => $c->estado,
+                    'tipo_modalidad_id' => $c->tipo_modalidad_id,
+                    'tipo_modalidad' => $c->tipoModalidad?->tipo_modalidad.' / '.$c->tipoModalidad?->modalidad,
+                    'aliado_id' => $c->aliado_id,
+                    'coincide_aliado' => $c->aliado_id == session('aliado_id_activo', $user->aliado_id),
+                    'es_tipo_15' => $c->tipo_modalidad_id == 15,
+                    'es_vigente' => $c->estado === 'vigente',
+                    'razon_social' => $c->razonSocial?->razon_social,
+                    'encargado' => $c->encargado?->nombre,
+                    'fecha_ingreso' => $c->fecha_ingreso,
+                    'fecha_arl' => $c->fecha_arl,
                 ]),
             ], 200, [], JSON_PRETTY_PRINT);
         })->name('debug');
@@ -699,227 +718,227 @@ Route::middleware('auth')->group(function () {
     Route::prefix('admin/afiliaciones')->name('admin.afiliaciones.')->middleware(['permiso:afiliaciones.ver', 'permiso.escritura:afiliaciones.gestionar'])->group(function () {
         $ac = \App\Http\Controllers\Admin\AfiliacionController::class;
         $fc = \App\Http\Controllers\Admin\FormularioEpsController::class;
-        Route::get('/',                            [$ac, 'index'])   ->name('index');
-        Route::get('/exportar',                    [$ac, 'exportar'])->name('exportar');
-        Route::get('/{contrato}/historial',        [$ac, 'historial'])->name('historial');
-        Route::get('/{contrato}/formulario/eps',       [$fc, 'vista'])   ->name('formulario.eps');
-        Route::get('/{contrato}/formulario/eps/raw',   [$fc, 'generar']) ->name('formulario.eps.raw');
-        Route::post('/{contrato}/formulario/eps/firma',[$fc, 'guardarFirma'])->name('formulario.eps.firma');
+        Route::get('/', [$ac, 'index'])->name('index');
+        Route::get('/exportar', [$ac, 'exportar'])->name('exportar');
+        Route::get('/{contrato}/historial', [$ac, 'historial'])->name('historial');
+        Route::get('/{contrato}/formulario/eps', [$fc, 'vista'])->name('formulario.eps');
+        Route::get('/{contrato}/formulario/eps/raw', [$fc, 'generar'])->name('formulario.eps.raw');
+        Route::post('/{contrato}/formulario/eps/firma', [$fc, 'guardarFirma'])->name('formulario.eps.firma');
     });
 
     // ── Tareas ───────────────────────────────────────────────────────────────
     Route::prefix('admin/tareas')->name('admin.tareas.')->middleware(['permiso:tareas.ver', 'permiso.escritura:tareas.gestionar'])->group(function () {
         $tc = \App\Http\Controllers\Admin\TareaController::class;
-        Route::get('/',                        [$tc, 'index'])              ->name('index');
-        Route::post('/',                       [$tc, 'store'])              ->name('store');
-        Route::get('/reporte',                 [$tc, 'reporte'])            ->name('reporte');
-        Route::put('/{id}',                    [$tc, 'update'])             ->name('update');
-        Route::delete('/{id}',                 [$tc, 'destroy'])            ->name('destroy');
-        Route::get('/{id}/show',               [$tc, 'show'])               ->name('show');
-        Route::post('/{id}/gestion',           [$tc, 'gestion'])            ->name('gestion');
-        Route::patch('/{id}/trasladar',        [$tc, 'trasladar'])          ->name('trasladar');
-        Route::patch('/{id}/cerrar',           [$tc, 'cerrar'])             ->name('cerrar');
-        Route::post('/{id}/documento',         [$tc, 'subirDocumento'])     ->name('documento.store');
-        Route::get('/documento/{docId}',       [$tc, 'descargarDocumento']) ->name('documento.download');
-        Route::get('/api/clientes',            [$tc, 'buscarCliente'])      ->name('api.clientes');
-        Route::get('/api/contratos',           [$tc, 'contratosPorCedula']) ->name('api.contratos');
+        Route::get('/', [$tc, 'index'])->name('index');
+        Route::post('/', [$tc, 'store'])->name('store');
+        Route::get('/reporte', [$tc, 'reporte'])->name('reporte');
+        Route::put('/{id}', [$tc, 'update'])->name('update');
+        Route::delete('/{id}', [$tc, 'destroy'])->name('destroy');
+        Route::get('/{id}/show', [$tc, 'show'])->name('show');
+        Route::post('/{id}/gestion', [$tc, 'gestion'])->name('gestion');
+        Route::patch('/{id}/trasladar', [$tc, 'trasladar'])->name('trasladar');
+        Route::patch('/{id}/cerrar', [$tc, 'cerrar'])->name('cerrar');
+        Route::post('/{id}/documento', [$tc, 'subirDocumento'])->name('documento.store');
+        Route::get('/documento/{docId}', [$tc, 'descargarDocumento'])->name('documento.download');
+        Route::get('/api/clientes', [$tc, 'buscarCliente'])->name('api.clientes');
+        Route::get('/api/contratos', [$tc, 'contratosPorCedula'])->name('api.contratos');
     });
 
     // ── Traslado Masivo de Razón Social ─────────────────────────────────────
     Route::prefix('admin/traslados-rs')->name('admin.traslados.')->middleware('permiso:traslados_rs.ejecutar')->group(function () {
         $trs = \App\Http\Controllers\Admin\TrasladoRazonSocialController::class;
-        Route::get('/',                        [$trs, 'index'])           ->name('index');
-        Route::post('/validar',                [$trs, 'validar'])         ->name('validar');
-        Route::post('/ejecutar',               [$trs, 'ejecutar'])        ->name('ejecutar');
-        Route::post('/retiro-opcion-a',        [$trs, 'retirarOpcionA'])  ->name('retiro_a');
-        Route::post('/retiro-opcion-b',        [$trs, 'retirarOpcionB'])  ->name('retiro_b');
-        Route::get('/descargar-plano',         [$trs, 'descargarPlano'])  ->name('descargar_plano');
-        Route::get('/descargar-excel',         [$trs, 'descargarExcel'])  ->name('descargar_excel');
-        Route::get('/api/n-planos/{id}',       [$trs, 'apiNPlanosRs'])    ->name('api.n_planos');
+        Route::get('/', [$trs, 'index'])->name('index');
+        Route::post('/validar', [$trs, 'validar'])->name('validar');
+        Route::post('/ejecutar', [$trs, 'ejecutar'])->name('ejecutar');
+        Route::post('/retiro-opcion-a', [$trs, 'retirarOpcionA'])->name('retiro_a');
+        Route::post('/retiro-opcion-b', [$trs, 'retirarOpcionB'])->name('retiro_b');
+        Route::get('/descargar-plano', [$trs, 'descargarPlano'])->name('descargar_plano');
+        Route::get('/descargar-excel', [$trs, 'descargarExcel'])->name('descargar_excel');
+        Route::get('/api/n-planos/{id}', [$trs, 'apiNPlanosRs'])->name('api.n_planos');
     });
 
     // ── Incapacidades ────────────────────────────────────────────────────────
     Route::prefix('admin/incapacidades')->name('admin.incapacidades.')->middleware(['permiso:incapacidades.ver', 'permiso.escritura:incapacidades.gestionar'])->group(function () {
         $ic = \App\Http\Controllers\Admin\IncapacidadController::class;
-        Route::get('/',                        [$ic, 'index'])             ->name('index');
-        Route::post('/',                       [$ic, 'store'])             ->name('store');
-        Route::put('/{id}',                    [$ic, 'update'])            ->name('update');
-        Route::delete('/{id}',                 [$ic, 'destroy'])           ->name('destroy');
-        Route::get('/{id}/show',               [$ic, 'show'])              ->name('show');
-        Route::post('/{id}/gestion',           [$ic, 'storeGestion'])      ->name('gestion.store');
-        Route::post('/{id}/documento',         [$ic, 'storeDocumento'])    ->name('documento.store');
-        Route::get('/documento/{docId}',       [$ic, 'descargarDocumento'])->name('documento.download');
-        Route::get('/documento/{docId}/ver',   [$ic, 'verDocumento'])      ->name('documento.ver');
-        Route::get('/{id}/documentos-familia', [$ic, 'documentosFamilia']) ->name('documentos.familia');
-        Route::post('/{id}/pago',              [$ic, 'registrarPago'])     ->name('pago.store');
-        Route::get('/api/calcular/{id}',       [$ic, 'calcularValor'])     ->name('api.calcular');
-        Route::get('/api/clientes',            [$ic, 'apiClientes'])       ->name('api.clientes');
-        Route::get('/api/contratos',           [$ic, 'apiContratos'])      ->name('api.contratos');
+        Route::get('/', [$ic, 'index'])->name('index');
+        Route::post('/', [$ic, 'store'])->name('store');
+        Route::put('/{id}', [$ic, 'update'])->name('update');
+        Route::delete('/{id}', [$ic, 'destroy'])->name('destroy');
+        Route::get('/{id}/show', [$ic, 'show'])->name('show');
+        Route::post('/{id}/gestion', [$ic, 'storeGestion'])->name('gestion.store');
+        Route::post('/{id}/documento', [$ic, 'storeDocumento'])->name('documento.store');
+        Route::get('/documento/{docId}', [$ic, 'descargarDocumento'])->name('documento.download');
+        Route::get('/documento/{docId}/ver', [$ic, 'verDocumento'])->name('documento.ver');
+        Route::get('/{id}/documentos-familia', [$ic, 'documentosFamilia'])->name('documentos.familia');
+        Route::post('/{id}/pago', [$ic, 'registrarPago'])->name('pago.store');
+        Route::get('/api/calcular/{id}', [$ic, 'calcularValor'])->name('api.calcular');
+        Route::get('/api/clientes', [$ic, 'apiClientes'])->name('api.clientes');
+        Route::get('/api/contratos', [$ic, 'apiContratos'])->name('api.contratos');
         // Nuevas rutas
-        Route::post('/{id}/link',              [$ic, 'generarLink'])       ->name('link.generar');
-        Route::post('/{id}/abono',             [$ic, 'storeAbono'])        ->name('abono.store');
-        Route::post('/{id}/prorroga',          [$ic, 'storeProrroga'])     ->name('prorroga.store');
-        Route::get('/{id}/cuentas-rs',         [$ic, 'cuentasRazonSocial'])->name('cuentas.rs');
+        Route::post('/{id}/link', [$ic, 'generarLink'])->name('link.generar');
+        Route::post('/{id}/abono', [$ic, 'storeAbono'])->name('abono.store');
+        Route::post('/{id}/prorroga', [$ic, 'storeProrroga'])->name('prorroga.store');
+        Route::get('/{id}/cuentas-rs', [$ic, 'cuentasRazonSocial'])->name('cuentas.rs');
     });
 
     // -- Radicados
     Route::prefix('admin/radicados')->name('admin.radicados.')->middleware(['permiso:radicados.ver', 'permiso.escritura:radicados.gestionar'])->group(function () {
         $rc = \App\Http\Controllers\Admin\RadicadoController::class;
-        Route::post('crear',             [$rc, 'crearPendiente'])     ->name('crear');
-        Route::patch('{id}',             [$rc, 'update'])             ->name('update');
-        Route::post('{id}/pdf',          [$rc, 'subirPdf'])           ->name('pdf');
-        Route::get('{id}/pdf/descargar', [$rc, 'descargarPdf'])       ->name('pdf.download');
-        Route::patch('{id}/enviado',     [$rc, 'marcarEnviado'])      ->name('enviado');
-        Route::get('{id}/bitacora',      [$rc, 'bitacora'])           ->name('bitacora');
-        Route::get('{id}/documentos',    [$rc, 'documentosCotizante'])->name('documentos');
+        Route::post('crear', [$rc, 'crearPendiente'])->name('crear');
+        Route::patch('{id}', [$rc, 'update'])->name('update');
+        Route::post('{id}/pdf', [$rc, 'subirPdf'])->name('pdf');
+        Route::get('{id}/pdf/descargar', [$rc, 'descargarPdf'])->name('pdf.download');
+        Route::patch('{id}/enviado', [$rc, 'marcarEnviado'])->name('enviado');
+        Route::get('{id}/bitacora', [$rc, 'bitacora'])->name('bitacora');
+        Route::get('{id}/documentos', [$rc, 'documentosCotizante'])->name('documentos');
     });
 
     // ─── Módulo WhatsApp ───────────────────────────────────────────────────────
     Route::prefix('admin/whatsapp')->name('admin.whatsapp.')->group(function () {
-        $chat      = \App\Http\Controllers\Admin\WhatsappChatController::class;
+        $chat = \App\Http\Controllers\Admin\WhatsappChatController::class;
         $plantilla = \App\Http\Controllers\Admin\WhatsappPlantillaController::class;
-        $masivo    = \App\Http\Controllers\Admin\WhatsappMasivoController::class;
-        $config    = \App\Http\Controllers\Admin\WhatsappConfigController::class;
+        $masivo = \App\Http\Controllers\Admin\WhatsappMasivoController::class;
+        $config = \App\Http\Controllers\Admin\WhatsappConfigController::class;
 
         // ── Chat: ver el inbox ────────────────────────────────────────────────
         Route::middleware('permiso:whatsapp.ver')->group(function () use ($chat) {
-            Route::get('chat',                   [$chat, 'index'])                  ->name('chat.index');
-            Route::get('chat/{id}',              [$chat, 'show'])                   ->name('chat.show');
-            Route::get('chat/{id}/api-mensajes', [$chat, 'apiMensajes'])            ->name('chat.api_mensajes');
-            Route::get('chat/{id}/api-sidebar',  [$chat, 'apiConversacionSidebar']) ->name('chat.api_sidebar');
-            Route::get('chat/media/{mensajeId}', [$chat, 'descargarMedia'])         ->name('chat.media');
-            Route::get('api/no-leidos',          [$chat, 'apiNoLeidos'])            ->name('api.no_leidos');
-            Route::patch('chat/{id}/leer',       [$chat, 'marcarLeido'])            ->name('chat.leer');
+            Route::get('chat', [$chat, 'index'])->name('chat.index');
+            Route::get('chat/{id}', [$chat, 'show'])->name('chat.show');
+            Route::get('chat/{id}/api-mensajes', [$chat, 'apiMensajes'])->name('chat.api_mensajes');
+            Route::get('chat/{id}/api-sidebar', [$chat, 'apiConversacionSidebar'])->name('chat.api_sidebar');
+            Route::get('chat/media/{mensajeId}', [$chat, 'descargarMedia'])->name('chat.media');
+            Route::get('api/no-leidos', [$chat, 'apiNoLeidos'])->name('api.no_leidos');
+            Route::patch('chat/{id}/leer', [$chat, 'marcarLeido'])->name('chat.leer');
         });
         // ── Chat: responder y operar la conversación ──────────────────────────
         Route::middleware('permiso:whatsapp.responder')->group(function () use ($chat) {
-            Route::post('chat/{id}/mensaje',       [$chat, 'enviarMensaje']) ->name('chat.mensaje');
-            Route::patch('chat/{id}/toggle-bot',   [$chat, 'toggleBot'])     ->name('chat.toggle_bot');
-            Route::patch('chat/{id}/cerrar',       [$chat, 'cerrar'])        ->name('chat.cerrar');
-            Route::patch('chat/{id}/no-contactar', [$chat, 'noContactar'])   ->name('chat.no_contactar');
+            Route::post('chat/{id}/mensaje', [$chat, 'enviarMensaje'])->name('chat.mensaje');
+            Route::patch('chat/{id}/toggle-bot', [$chat, 'toggleBot'])->name('chat.toggle_bot');
+            Route::patch('chat/{id}/cerrar', [$chat, 'cerrar'])->name('chat.cerrar');
+            Route::patch('chat/{id}/no-contactar', [$chat, 'noContactar'])->name('chat.no_contactar');
         });
         Route::patch('chat/{id}/asignar', [$chat, 'asignar'])->name('chat.asignar')->middleware('permiso:whatsapp.asignar');
 
         // ── Plantillas (admin del aliado) ─────────────────────────────────────
         Route::get('api/plantillas-aprobadas', [$plantilla, 'apiListarAprobadas'])->name('api.plantillas')->middleware('permiso:whatsapp.ver');
         Route::middleware('permiso:whatsapp.plantillas')->group(function () use ($plantilla) {
-        Route::get('plantillas',                 [$plantilla, 'index'])          ->name('plantillas.index');
-        Route::get('plantillas/crear',           [$plantilla, 'create'])         ->name('plantillas.create');
-        Route::post('plantillas',                [$plantilla, 'store'])          ->name('plantillas.store');
-        Route::get('plantillas/importar',        [$plantilla, 'vistaImportar'])  ->name('plantillas.importar');
-        Route::post('plantillas/importar',       [$plantilla, 'procesarImportar'])->name('plantillas.importar.store');
-        Route::get('plantillas/{id}/editar',     [$plantilla, 'edit'])           ->name('plantillas.edit');
-        Route::put('plantillas/{id}',            [$plantilla, 'update'])         ->name('plantillas.update');
-        Route::delete('plantillas/{id}',         [$plantilla, 'destroy'])        ->name('plantillas.destroy');
-        Route::post('plantillas/sincronizar',    [$plantilla, 'sincronizar'])    ->name('plantillas.sincronizar');
+            Route::get('plantillas', [$plantilla, 'index'])->name('plantillas.index');
+            Route::get('plantillas/crear', [$plantilla, 'create'])->name('plantillas.create');
+            Route::post('plantillas', [$plantilla, 'store'])->name('plantillas.store');
+            Route::get('plantillas/importar', [$plantilla, 'vistaImportar'])->name('plantillas.importar');
+            Route::post('plantillas/importar', [$plantilla, 'procesarImportar'])->name('plantillas.importar.store');
+            Route::get('plantillas/{id}/editar', [$plantilla, 'edit'])->name('plantillas.edit');
+            Route::put('plantillas/{id}', [$plantilla, 'update'])->name('plantillas.update');
+            Route::delete('plantillas/{id}', [$plantilla, 'destroy'])->name('plantillas.destroy');
+            Route::post('plantillas/sincronizar', [$plantilla, 'sincronizar'])->name('plantillas.sincronizar');
         });
 
         // ── Envíos masivos (admin del aliado) ─────────────────────────────────
         Route::middleware('permiso:whatsapp.masivo')->group(function () use ($masivo) {
             Route::post('masivo/individual', [$masivo, 'lanzarIndividual'])->name('masivo.individual');
-            Route::post('masivo/empresa',    [$masivo, 'lanzarEmpresa'])   ->name('masivo.empresa');
-            Route::get('masivo/historial',   [$masivo, 'historial'])       ->name('masivo.historial');
-            Route::get('masivo/{id}',        [$masivo, 'detalle'])         ->name('masivo.detalle');
+            Route::post('masivo/empresa', [$masivo, 'lanzarEmpresa'])->name('masivo.empresa');
+            Route::get('masivo/historial', [$masivo, 'historial'])->name('masivo.historial');
+            Route::get('masivo/{id}', [$masivo, 'detalle'])->name('masivo.detalle');
         });
 
         // ── Configuración: permiso RESTRINGIDO (credenciales de Meta) ─────────
         Route::middleware('permiso:whatsapp.configurar')->group(function () use ($config) {
-        Route::get('configuracion',              [$config, 'index'])             ->name('config.index');
-        Route::get('configuracion/global',       [$config, 'editGlobal'])        ->name('config.global');
-        Route::post('configuracion/global',      [$config, 'updateGlobal'])       ->name('config.global.update');
-        Route::get('configuracion/{id}/editar',  [$config, 'edit'])              ->name('config.edit');
-        Route::put('configuracion/{id}',         [$config, 'update'])            ->name('config.update');
-        Route::get('configuracion/{id}/switch-and-go', [$config, 'switchAndGo'])->name('config.switch_and_go');
-        Route::post('configuracion/{id}/copiar-plantilla', [$config, 'copiarPlantillaGlobal'])->name('config.copiar_plantilla');
-        Route::post('configuracion/{id}/sincronizar-meta', [$config, 'sincronizarPlantillasMeta'])->name('config.sincronizar_meta');
-        Route::post('configuracion/verificar',   [$config, 'verificarWebhook'])  ->name('config.verificar');
+            Route::get('configuracion', [$config, 'index'])->name('config.index');
+            Route::get('configuracion/global', [$config, 'editGlobal'])->name('config.global');
+            Route::post('configuracion/global', [$config, 'updateGlobal'])->name('config.global.update');
+            Route::get('configuracion/{id}/editar', [$config, 'edit'])->name('config.edit');
+            Route::put('configuracion/{id}', [$config, 'update'])->name('config.update');
+            Route::get('configuracion/{id}/switch-and-go', [$config, 'switchAndGo'])->name('config.switch_and_go');
+            Route::post('configuracion/{id}/copiar-plantilla', [$config, 'copiarPlantillaGlobal'])->name('config.copiar_plantilla');
+            Route::post('configuracion/{id}/sincronizar-meta', [$config, 'sincronizarPlantillasMeta'])->name('config.sincronizar_meta');
+            Route::post('configuracion/verificar', [$config, 'verificarWebhook'])->name('config.verificar');
         });
     });
 
     // ─── Módulo Marketing (envío masivo de campañas publicitarias) ─────────────
     Route::prefix('admin/marketing')->name('admin.marketing.')->middleware(['permiso:marketing.ver', 'permiso.escritura:marketing.gestionar'])->group(function () {
-        $listas   = \App\Http\Controllers\Admin\MarketingListaController::class;
+        $listas = \App\Http\Controllers\Admin\MarketingListaController::class;
         $campanas = \App\Http\Controllers\Admin\MarketingCampanaController::class;
 
         // ── Hub (punto de entrada desde la tarjeta del dashboard) ──────────────
         Route::get('/', [\App\Http\Controllers\Admin\MarketingHubController::class, 'index'])->name('index');
 
         // ── Listas de contactos ────────────────────────────────────────────────
-        Route::get('listas',            [$listas, 'index'])   ->name('listas.index');
-        Route::get('listas/crear',      [$listas, 'create'])  ->name('listas.create');
-        Route::post('listas',           [$listas, 'store'])   ->name('listas.store');
-        Route::get('listas/{id}',       [$listas, 'show'])    ->name('listas.show');
-        Route::delete('listas/{id}',    [$listas, 'destroy']) ->name('listas.destroy');
+        Route::get('listas', [$listas, 'index'])->name('listas.index');
+        Route::get('listas/crear', [$listas, 'create'])->name('listas.create');
+        Route::post('listas', [$listas, 'store'])->name('listas.store');
+        Route::get('listas/{id}', [$listas, 'show'])->name('listas.show');
+        Route::delete('listas/{id}', [$listas, 'destroy'])->name('listas.destroy');
 
         // ── Campañas y lanzamiento de tandas ───────────────────────────────────
-        Route::get('campanas',                    [$campanas, 'index'])         ->name('campanas.index');
-        Route::get('campanas/crear',               [$campanas, 'create'])        ->name('campanas.create');
-        Route::post('campanas',                    [$campanas, 'store'])         ->name('campanas.store');
-        Route::get('campanas/{id}',                [$campanas, 'show'])          ->name('campanas.show');
-        Route::patch('campanas/{id}',              [$campanas, 'update'])        ->name('campanas.update');
-        Route::get('campanas/{id}/previsualizar',  [$campanas, 'previsualizar']) ->name('campanas.previsualizar');
-        Route::post('campanas/{id}/lanzar-tanda',  [$campanas, 'lanzarTanda'])   ->name('campanas.lanzar_tanda');
+        Route::get('campanas', [$campanas, 'index'])->name('campanas.index');
+        Route::get('campanas/crear', [$campanas, 'create'])->name('campanas.create');
+        Route::post('campanas', [$campanas, 'store'])->name('campanas.store');
+        Route::get('campanas/{id}', [$campanas, 'show'])->name('campanas.show');
+        Route::patch('campanas/{id}', [$campanas, 'update'])->name('campanas.update');
+        Route::get('campanas/{id}/previsualizar', [$campanas, 'previsualizar'])->name('campanas.previsualizar');
+        Route::post('campanas/{id}/lanzar-tanda', [$campanas, 'lanzarTanda'])->name('campanas.lanzar_tanda');
     });
 
     // ─── CMS ligero de la página web pública del aliado ────────────────────────
     Route::prefix('admin/pagina')->name('admin.pagina.')->middleware(['permiso:pagina_web.ver', 'permiso.escritura:pagina_web.editar'])->group(function () {
         $pag = \App\Http\Controllers\Admin\PaginaAliadoAdminController::class;
 
-        Route::get('/',              [$pag, 'edit'])       ->name('index');
-        Route::post('/',             [$pag, 'update'])     ->name('update');
+        Route::get('/', [$pag, 'edit'])->name('index');
+        Route::post('/', [$pag, 'update'])->name('update');
 
-        Route::get('faqs',           [$pag, 'faqs'])       ->name('faqs.index');
-        Route::post('faqs',          [$pag, 'faqStore'])   ->name('faqs.store');
-        Route::put('faqs/{id}',      [$pag, 'faqUpdate'])  ->name('faqs.update');
-        Route::delete('faqs/{id}',   [$pag, 'faqDestroy']) ->name('faqs.destroy');
+        Route::get('faqs', [$pag, 'faqs'])->name('faqs.index');
+        Route::post('faqs', [$pag, 'faqStore'])->name('faqs.store');
+        Route::put('faqs/{id}', [$pag, 'faqUpdate'])->name('faqs.update');
+        Route::delete('faqs/{id}', [$pag, 'faqDestroy'])->name('faqs.destroy');
 
-        Route::get('leads',           [$pag, 'leads'])           ->name('leads.index');
-        Route::patch('leads/{id}',    [$pag, 'leadUpdateEstado']) ->name('leads.update');
+        Route::get('leads', [$pag, 'leads'])->name('leads.index');
+        Route::patch('leads/{id}', [$pag, 'leadUpdateEstado'])->name('leads.update');
     });
 
     // ─── Credenciales de redes sociales por aliado (Facebook, Instagram, ...) ──
     Route::prefix('admin/redes-sociales')->name('admin.redes-sociales.')->middleware(['permiso:redes_sociales.ver', 'permiso.escritura:redes_sociales.configurar'])->group(function () {
         $rs = \App\Http\Controllers\Admin\RedesSocialesController::class;
 
-        Route::get('/',                 [$rs, 'edit'])          ->name('index');
-        Route::post('{red}',            [$rs, 'update'])        ->name('update');
-        Route::post('{red}/probar',     [$rs, 'probarConexion'])->name('probar');
+        Route::get('/', [$rs, 'edit'])->name('index');
+        Route::post('{red}', [$rs, 'update'])->name('update');
+        Route::post('{red}/probar', [$rs, 'probarConexion'])->name('probar');
     });
 
     // ─── Generador de publicidad (plantillas/canvas + IA, aprobación, publicación) ─────
     Route::prefix('admin/publicidad')->name('admin.publicidad.')->middleware(['permiso:publicidad.ver', 'permiso.escritura:publicidad.gestionar'])->group(function () {
         $pub = \App\Http\Controllers\Admin\PublicidadController::class;
 
-        Route::get('/',                       [$pub, 'index'])         ->name('index');
-        Route::get('crear',                   [$pub, 'create'])        ->name('create');
-        Route::post('/',                      [$pub, 'store'])         ->name('store');
+        Route::get('/', [$pub, 'index'])->name('index');
+        Route::get('crear', [$pub, 'create'])->name('create');
+        Route::post('/', [$pub, 'store'])->name('store');
 
         // Piloto automático (antes de {id} para que no lo capture la ruta genérica)
-        Route::get('autopilot',               [$pub, 'autopilot'])       ->name('autopilot');
-        Route::post('autopilot',              [$pub, 'autopilotUpdate']) ->name('autopilot.update');
-        Route::post('autopilot/generar-ahora',[$pub, 'autopilotGenerarAhora']) ->name('autopilot.generar_ahora');
-        Route::post('autopilot/flyer-ahora',  [$pub, 'flyerGenerarAhora'])     ->name('autopilot.flyer_ahora');
+        Route::get('autopilot', [$pub, 'autopilot'])->name('autopilot');
+        Route::post('autopilot', [$pub, 'autopilotUpdate'])->name('autopilot.update');
+        Route::post('autopilot/generar-ahora', [$pub, 'autopilotGenerarAhora'])->name('autopilot.generar_ahora');
+        Route::post('autopilot/flyer-ahora', [$pub, 'flyerGenerarAhora'])->name('autopilot.flyer_ahora');
 
         // Pauta pagada — config antes de {id} por el mismo motivo
-        Route::get('pauta/config',            [$pub, 'pautaConfig'])       ->name('pauta.config');
-        Route::post('pauta/config',           [$pub, 'pautaConfigUpdate']) ->name('pauta.config.update');
+        Route::get('pauta/config', [$pub, 'pautaConfig'])->name('pauta.config');
+        Route::post('pauta/config', [$pub, 'pautaConfigUpdate'])->name('pauta.config.update');
 
-        Route::get('{id}',                    [$pub, 'show'])          ->whereNumber('id')->name('show');
-        Route::delete('{id}',                 [$pub, 'destroy'])       ->whereNumber('id')->name('destroy');
-        Route::post('{id}/aprobar',           [$pub, 'aprobar'])       ->whereNumber('id')->name('aprobar');
-        Route::post('{id}/rechazar',          [$pub, 'rechazar'])      ->whereNumber('id')->name('rechazar');
-        Route::post('{id}/reintentar/{red}',  [$pub, 'reintentar'])    ->whereNumber('id')->name('reintentar');
-        Route::post('{id}/pauta/crear',       [$pub, 'pautaCrear'])    ->whereNumber('id')->name('pauta.crear');
-        Route::post('{id}/pauta/activar',     [$pub, 'pautaActivar'])  ->whereNumber('id')->name('pauta.activar');
-        Route::post('{id}/pauta/pausar',      [$pub, 'pautaPausar'])   ->whereNumber('id')->name('pauta.pausar');
+        Route::get('{id}', [$pub, 'show'])->whereNumber('id')->name('show');
+        Route::delete('{id}', [$pub, 'destroy'])->whereNumber('id')->name('destroy');
+        Route::post('{id}/aprobar', [$pub, 'aprobar'])->whereNumber('id')->name('aprobar');
+        Route::post('{id}/rechazar', [$pub, 'rechazar'])->whereNumber('id')->name('rechazar');
+        Route::post('{id}/reintentar/{red}', [$pub, 'reintentar'])->whereNumber('id')->name('reintentar');
+        Route::post('{id}/pauta/crear', [$pub, 'pautaCrear'])->whereNumber('id')->name('pauta.crear');
+        Route::post('{id}/pauta/activar', [$pub, 'pautaActivar'])->whereNumber('id')->name('pauta.activar');
+        Route::post('{id}/pauta/pausar', [$pub, 'pautaPausar'])->whereNumber('id')->name('pauta.pausar');
 
-        Route::post('generar-copia',          [$pub, 'generarCopia'])  ->name('generar_copia');
-        Route::post('generar-imagen',         [$pub, 'generarImagen']) ->name('generar_imagen');
-        Route::post('subir-canvas',           [$pub, 'subirCanvas'])   ->name('subir_canvas');
+        Route::post('generar-copia', [$pub, 'generarCopia'])->name('generar_copia');
+        Route::post('generar-imagen', [$pub, 'generarImagen'])->name('generar_imagen');
+        Route::post('subir-canvas', [$pub, 'subirCanvas'])->name('subir_canvas');
 
         // Video IA (Veo + overlay) — antes de {id} por el mismo motivo que autopilot/pauta
-        Route::post('generar-video',          [$pub, 'generarVideo'])  ->name('generar_video');
-        Route::get('video/{id}/estado',       [$pub, 'estadoVideo'])   ->whereNumber('id')->name('video.estado');
+        Route::post('generar-video', [$pub, 'generarVideo'])->name('generar_video');
+        Route::get('video/{id}/estado', [$pub, 'estadoVideo'])->whereNumber('id')->name('video.estado');
     });
 
     // ============================================
@@ -940,106 +959,105 @@ Route::middleware('auth')->group(function () {
 
         // Dashboard API — endpoints AJAX para carga progresiva
         Route::prefix('api')->name('api.')->group(function () use ($ns) {
-            Route::get('/resumen',     [$ns, 'apiResumen'])->name('resumen');
-            Route::get('/evolucion',   [$ns, 'apiEvolucion'])->name('evolucion');
+            Route::get('/resumen', [$ns, 'apiResumen'])->name('resumen');
+            Route::get('/evolucion', [$ns, 'apiEvolucion'])->name('evolucion');
             Route::get('/consolidado', [$ns, 'apiConsolidado'])->name('consolidado');
-            Route::get('/cuentas',     [$ns, 'apiCuentas'])->name('cuentas');
-            Route::get('/alertas',     [$ns, 'apiAlertas'])->name('alertas');
+            Route::get('/cuentas', [$ns, 'apiCuentas'])->name('cuentas');
+            Route::get('/alertas', [$ns, 'apiAlertas'])->name('alertas');
         });
 
         // Cuentas / Bolsillos
-        Route::get('/cuentas',                   [$cta, 'index'])->name('cuentas.index');
-        Route::post('/cuentas',                  [$cta, 'store'])->name('cuentas.store');
-        Route::put('/cuentas/{cuenta}',          [$cta, 'update'])->name('cuentas.update');
-        Route::delete('/cuentas/{cuenta}',       [$cta, 'destroy'])->name('cuentas.destroy');
-        Route::post('/cuentas/transferir',       [$cta, 'transferir'])->name('cuentas.transferir');
+        Route::get('/cuentas', [$cta, 'index'])->name('cuentas.index');
+        Route::post('/cuentas', [$cta, 'store'])->name('cuentas.store');
+        Route::put('/cuentas/{cuenta}', [$cta, 'update'])->name('cuentas.update');
+        Route::delete('/cuentas/{cuenta}', [$cta, 'destroy'])->name('cuentas.destroy');
+        Route::post('/cuentas/transferir', [$cta, 'transferir'])->name('cuentas.transferir');
         Route::delete('/cuentas/transferencia/{id}', [$cta, 'eliminarTransferencia'])->name('cuentas.transferencia.destroy');
 
         // Entradas / Fuentes
-        Route::get('/entradas',                  [$ent, 'index'])->name('entradas.index');
-        Route::post('/entradas',                 [$ent, 'store'])->name('entradas.store');
+        Route::get('/entradas', [$ent, 'index'])->name('entradas.index');
+        Route::post('/entradas', [$ent, 'store'])->name('entradas.store');
         Route::get('/entradas/detalle-esporadico', [$ent, 'getDetalleEsporadico'])->name('entradas.detalle-esporadico');
-        Route::put('/entradas/esporadico/{id}',   [$ent, 'updateEsporadico'])->name('entradas.update-esporadico');
+        Route::put('/entradas/esporadico/{id}', [$ent, 'updateEsporadico'])->name('entradas.update-esporadico');
         Route::delete('/entradas/esporadico/{id}', [$ent, 'destroyEsporadico'])->name('entradas.destroy-esporadico');
-        Route::get('/fuentes',                   [$ent, 'fuentesIndex'])->name('fuentes.index');
-        Route::post('/fuentes',                  [$ent, 'fuenteStore'])->name('fuentes.store');
-        Route::put('/fuentes/{fuente}',          [$ent, 'fuenteUpdate'])->name('fuentes.update');
-        Route::delete('/fuentes/{fuente}',       [$ent, 'fuenteDestroy'])->name('fuentes.destroy');
+        Route::get('/fuentes', [$ent, 'fuentesIndex'])->name('fuentes.index');
+        Route::post('/fuentes', [$ent, 'fuenteStore'])->name('fuentes.store');
+        Route::put('/fuentes/{fuente}', [$ent, 'fuenteUpdate'])->name('fuentes.update');
+        Route::delete('/fuentes/{fuente}', [$ent, 'fuenteDestroy'])->name('fuentes.destroy');
 
         // App Líderes / Otras App
-        Route::get('/app-lideres',               [\App\Http\Controllers\Finanzas\AppLiderController::class, 'index'])->name('app-lideres.index');
-        Route::post('/app-lideres/aliados',      [\App\Http\Controllers\Finanzas\AppLiderController::class, 'storeAliado'])->name('app-lideres.store-aliado');
-        Route::post('/app-lideres/update',       [\App\Http\Controllers\Finanzas\AppLiderController::class, 'updateAliado'])->name('app-lideres.update-aliado');
-        Route::post('/app-lideres/save-cell',    [\App\Http\Controllers\Finanzas\AppLiderController::class, 'saveCell'])->name('app-lideres.save-cell');
-        Route::post('/app-lideres/recibos',      [\App\Http\Controllers\Finanzas\AppLiderController::class, 'registrarRecibo'])->name('app-lideres.registrar-recibo');
+        Route::get('/app-lideres', [\App\Http\Controllers\Finanzas\AppLiderController::class, 'index'])->name('app-lideres.index');
+        Route::post('/app-lideres/aliados', [\App\Http\Controllers\Finanzas\AppLiderController::class, 'storeAliado'])->name('app-lideres.store-aliado');
+        Route::post('/app-lideres/update', [\App\Http\Controllers\Finanzas\AppLiderController::class, 'updateAliado'])->name('app-lideres.update-aliado');
+        Route::post('/app-lideres/save-cell', [\App\Http\Controllers\Finanzas\AppLiderController::class, 'saveCell'])->name('app-lideres.save-cell');
+        Route::post('/app-lideres/recibos', [\App\Http\Controllers\Finanzas\AppLiderController::class, 'registrarRecibo'])->name('app-lideres.registrar-recibo');
         Route::delete('/app-lideres/recibos/{id}', [\App\Http\Controllers\Finanzas\AppLiderController::class, 'deleteRecibo'])->name('app-lideres.delete-recibo');
         Route::get('/app-lideres/recibos/{id}/soporte', [\App\Http\Controllers\Finanzas\AppLiderController::class, 'descargarSoporte'])->name('app-lideres.descargar-soporte');
 
         // Brynex Aliados
-        Route::get('/brynex-aliados',               [\App\Http\Controllers\Finanzas\BrynexAliadoController::class, 'index'])->name('brynex-aliados.index');
-        Route::post('/brynex-aliados/aliados',      [\App\Http\Controllers\Finanzas\BrynexAliadoController::class, 'storeAliado'])->name('brynex-aliados.store-aliado');
-        Route::post('/brynex-aliados/update',       [\App\Http\Controllers\Finanzas\BrynexAliadoController::class, 'updateAliado'])->name('brynex-aliados.update-aliado');
-        Route::post('/brynex-aliados/save-cell',    [\App\Http\Controllers\Finanzas\BrynexAliadoController::class, 'saveCell'])->name('brynex-aliados.save-cell');
-        Route::post('/brynex-aliados/recibos',      [\App\Http\Controllers\Finanzas\BrynexAliadoController::class, 'registrarRecibo'])->name('brynex-aliados.registrar-recibo');
+        Route::get('/brynex-aliados', [\App\Http\Controllers\Finanzas\BrynexAliadoController::class, 'index'])->name('brynex-aliados.index');
+        Route::post('/brynex-aliados/aliados', [\App\Http\Controllers\Finanzas\BrynexAliadoController::class, 'storeAliado'])->name('brynex-aliados.store-aliado');
+        Route::post('/brynex-aliados/update', [\App\Http\Controllers\Finanzas\BrynexAliadoController::class, 'updateAliado'])->name('brynex-aliados.update-aliado');
+        Route::post('/brynex-aliados/save-cell', [\App\Http\Controllers\Finanzas\BrynexAliadoController::class, 'saveCell'])->name('brynex-aliados.save-cell');
+        Route::post('/brynex-aliados/recibos', [\App\Http\Controllers\Finanzas\BrynexAliadoController::class, 'registrarRecibo'])->name('brynex-aliados.registrar-recibo');
         Route::delete('/brynex-aliados/recibos/{id}', [\App\Http\Controllers\Finanzas\BrynexAliadoController::class, 'deleteRecibo'])->name('brynex-aliados.delete-recibo');
         Route::get('/brynex-aliados/recibos/{recibo}/soporte', [\App\Http\Controllers\Finanzas\BrynexAliadoController::class, 'descargarSoporte'])->name('brynex-aliados.descargar-soporte');
 
         // Gastos / Categorías
-        Route::get('/gastos',                    [$gas, 'index'])->name('gastos.index');
-        Route::post('/gastos',                   [$gas, 'store'])->name('gastos.store');
-        Route::put('/gastos/{gasto}',            [$gas, 'update'])->name('gastos.update');
-        Route::delete('/gastos/{gasto}',         [$gas, 'destroy'])->name('gastos.destroy');
-        Route::get('/gastos/informe',            [$gas, 'informe'])->name('gastos.informe');
-        Route::get('/gastos/{gasto}/soporte',    [$gas, 'descargarSoporte'])->name('gastos.descargar-soporte');
-        Route::get('/categorias',                [$gas, 'categoriasIndex'])->name('categorias.index');
-        Route::post('/categorias',               [$gas, 'categoriaStore'])->name('categorias.store');
-        Route::put('/categorias/{cat}',          [$gas, 'categoriaUpdate'])->name('categorias.update');
-        Route::delete('/categorias/{cat}',       [$gas, 'categoriaDestroy'])->name('categorias.destroy');
+        Route::get('/gastos', [$gas, 'index'])->name('gastos.index');
+        Route::post('/gastos', [$gas, 'store'])->name('gastos.store');
+        Route::put('/gastos/{gasto}', [$gas, 'update'])->name('gastos.update');
+        Route::delete('/gastos/{gasto}', [$gas, 'destroy'])->name('gastos.destroy');
+        Route::get('/gastos/informe', [$gas, 'informe'])->name('gastos.informe');
+        Route::get('/gastos/{gasto}/soporte', [$gas, 'descargarSoporte'])->name('gastos.descargar-soporte');
+        Route::get('/categorias', [$gas, 'categoriasIndex'])->name('categorias.index');
+        Route::post('/categorias', [$gas, 'categoriaStore'])->name('categorias.store');
+        Route::put('/categorias/{cat}', [$gas, 'categoriaUpdate'])->name('categorias.update');
+        Route::delete('/categorias/{cat}', [$gas, 'categoriaDestroy'])->name('categorias.destroy');
 
         // Préstamos
-        Route::get('/prestamos',                 [$pre, 'index'])->name('prestamos.index');
-        Route::get('/prestamos/crear',           [$pre, 'create'])->name('prestamos.create');
-        Route::post('/prestamos',                [$pre, 'store'])->name('prestamos.store');
-        Route::get('/prestamos/{prestamo}',      [$pre, 'show'])->name('prestamos.show');
+        Route::get('/prestamos', [$pre, 'index'])->name('prestamos.index');
+        Route::get('/prestamos/crear', [$pre, 'create'])->name('prestamos.create');
+        Route::post('/prestamos', [$pre, 'store'])->name('prestamos.store');
+        Route::get('/prestamos/{prestamo}', [$pre, 'show'])->name('prestamos.show');
         Route::get('/prestamos/{prestamo}/edit', [$pre, 'edit'])->name('prestamos.edit');
-        Route::put('/prestamos/{prestamo}',      [$pre, 'update'])->name('prestamos.update');
-        Route::post('/prestamos/{prestamo}/pago',         [$pre, 'registrarPago'])->name('prestamos.pago');
-        Route::post('/prestamos/{prestamo}/anexar',       [$pre, 'anexarValor'])->name('prestamos.anexar');
-        Route::post('/prestamos/{prestamo}/liquidar',     [$pre, 'liquidarMes'])->name('prestamos.liquidar');
-        Route::post('/prestamos/{prestamo}/whatsapp',     [$pre, 'enviarWhatsapp'])->name('prestamos.whatsapp');
-        Route::post('/prestamos/{prestamo}/toggle-alertas',[$pre, 'toggleAlertas'])->name('prestamos.toggle-alertas');
-        Route::post('/prestamos/{prestamo}/castigar',       [$pre, 'castigar'])->name('prestamos.castigar');
-        Route::post('/prestamos/{prestamo}/reactivar',      [$pre, 'reactivar'])->name('prestamos.reactivar');
-        Route::get('/cuenta-corriente',          [$pre, 'cuentaCorriente'])->name('prestamos.cuenta-corriente');
+        Route::put('/prestamos/{prestamo}', [$pre, 'update'])->name('prestamos.update');
+        Route::post('/prestamos/{prestamo}/pago', [$pre, 'registrarPago'])->name('prestamos.pago');
+        Route::post('/prestamos/{prestamo}/anexar', [$pre, 'anexarValor'])->name('prestamos.anexar');
+        Route::post('/prestamos/{prestamo}/liquidar', [$pre, 'liquidarMes'])->name('prestamos.liquidar');
+        Route::post('/prestamos/{prestamo}/whatsapp', [$pre, 'enviarWhatsapp'])->name('prestamos.whatsapp');
+        Route::post('/prestamos/{prestamo}/toggle-alertas', [$pre, 'toggleAlertas'])->name('prestamos.toggle-alertas');
+        Route::post('/prestamos/{prestamo}/castigar', [$pre, 'castigar'])->name('prestamos.castigar');
+        Route::post('/prestamos/{prestamo}/reactivar', [$pre, 'reactivar'])->name('prestamos.reactivar');
+        Route::get('/cuenta-corriente', [$pre, 'cuentaCorriente'])->name('prestamos.cuenta-corriente');
         Route::post('/prestamos-movimiento/{movimiento}', [$pre, 'updateMovimiento'])->name('prestamos.movimiento.update');
         Route::delete('/prestamos-movimiento/{movimiento}', [$pre, 'destroyMovimiento'])->name('prestamos.movimiento.destroy');
         Route::get('/prestamos/{prestamo}/soporte', [$pre, 'descargarSoporte'])->name('prestamos.descargar-soporte');
         Route::get('/prestamos-movimiento/{movimiento}/soporte', [$pre, 'descargarSoporteMovimiento'])->name('prestamos.movimiento.descargar-soporte');
 
         // Inversiones
-        Route::get('/inversiones',               [$inv, 'index'])->name('inversiones.index');
-        Route::post('/inversiones',              [$inv, 'store'])->name('inversiones.store');
-        Route::put('/inversiones/{inv}',         [$inv, 'update'])->name('inversiones.update');
-        Route::delete('/inversiones/{inv}',      [$inv, 'destroy'])->name('inversiones.destroy');
-        Route::get('/inversiones/precio-usdt',   [$inv, 'precioUsdt'])->name('inversiones.precio-usdt');
+        Route::get('/inversiones', [$inv, 'index'])->name('inversiones.index');
+        Route::post('/inversiones', [$inv, 'store'])->name('inversiones.store');
+        Route::put('/inversiones/{inv}', [$inv, 'update'])->name('inversiones.update');
+        Route::delete('/inversiones/{inv}', [$inv, 'destroy'])->name('inversiones.destroy');
+        Route::get('/inversiones/precio-usdt', [$inv, 'precioUsdt'])->name('inversiones.precio-usdt');
         Route::post('/inversiones/{inv}/movimientos', [$inv, 'storeMovimiento'])->name('inversiones.movimientos.store');
 
         // Patrimonio
-        Route::get('/patrimonio',                [$pat, 'index'])->name('patrimonio.index');
-        Route::post('/patrimonio',               [$pat, 'store'])->name('patrimonio.store');
-        Route::get('/patrimonio/{pat}',          [$pat, 'show'])->name('patrimonio.show');
-        Route::put('/patrimonio/{pat}',          [$pat, 'update'])->name('patrimonio.update');
-        Route::post('/patrimonio/{pat}/gasto',   [$pat, 'agregarGasto'])->name('patrimonio.gasto');
+        Route::get('/patrimonio', [$pat, 'index'])->name('patrimonio.index');
+        Route::post('/patrimonio', [$pat, 'store'])->name('patrimonio.store');
+        Route::get('/patrimonio/{pat}', [$pat, 'show'])->name('patrimonio.show');
+        Route::put('/patrimonio/{pat}', [$pat, 'update'])->name('patrimonio.update');
+        Route::post('/patrimonio/{pat}/gasto', [$pat, 'agregarGasto'])->name('patrimonio.gasto');
 
         // Proyectos
-        Route::get('/proyectos',                 [$pro, 'index'])->name('proyectos.index');
-        Route::post('/proyectos',                [$pro, 'store'])->name('proyectos.store');
-        Route::get('/proyectos/{proyecto}',      [$pro, 'show'])->name('proyectos.show');
-        Route::put('/proyectos/{proyecto}',      [$pro, 'update'])->name('proyectos.update');
+        Route::get('/proyectos', [$pro, 'index'])->name('proyectos.index');
+        Route::post('/proyectos', [$pro, 'store'])->name('proyectos.store');
+        Route::get('/proyectos/{proyecto}', [$pro, 'show'])->name('proyectos.show');
+        Route::put('/proyectos/{proyecto}', [$pro, 'update'])->name('proyectos.update');
         Route::post('/proyectos/{proyecto}/movimiento', [$pro, 'agregarMovimiento'])->name('proyectos.movimiento');
         Route::delete('/proyectos-movimiento/{movimiento}', [$pro, 'eliminarMovimiento'])->name('proyectos.movimiento.destroy');
         Route::put('/proyectos-movimiento/{movimiento}', [$pro, 'actualizarMovimiento'])->name('proyectos.movimiento.update');
         Route::get('/proyectos-movimiento/{movimiento}/soporte', [$pro, 'descargarSoporteMovimiento'])->name('proyectos.movimiento.descargar-soporte');
     });
 });
-
