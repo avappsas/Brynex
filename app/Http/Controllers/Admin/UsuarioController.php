@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Aliado;
+use App\Models\Bitacora;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -69,12 +70,11 @@ class UsuarioController extends Controller
     public function create()
     {
         $aliados = Aliado::activos()->orderBy('nombre')->get();
-        $roles = Role::orderBy('name')->get()->pluck('name', 'name');
 
         return view('admin.usuarios.form', [
             'usuario' => new User,
             'aliados' => $aliados,
-            'roles' => $roles,
+            'roles' => $this->rolesAsignables(),
         ]);
     }
 
@@ -104,6 +104,8 @@ class UsuarioController extends Controller
             'email.unique' => 'Ya existe un usuario activo con ese correo.',
         ]);
 
+        $this->autorizarRol($data['rol']);
+
         $usuario = User::create([
             'nombre' => $data['nombre'],
             'cedula' => $data['cedula'],
@@ -117,6 +119,15 @@ class UsuarioController extends Controller
         ]);
 
         $usuario->assignRole($data['rol']);
+
+        Bitacora::registrar(
+            'usuario_creado',
+            'User',
+            $usuario->id,
+            "Se creó el usuario '{$usuario->nombre}' con rol {$data['rol']}.",
+            ['cedula' => $usuario->cedula, 'rol' => $data['rol'], 'creado_por' => $authUser->nombre],
+            (int) $usuario->aliado_id
+        );
 
         // Si es BryNex, agregar a pivot aliado_user con el aliado seleccionado
         if ($usuario->es_brynex) {
@@ -134,7 +145,7 @@ class UsuarioController extends Controller
         $this->autorizarUsuario($usuario);
 
         $aliados = Aliado::activos()->orderBy('nombre')->get();
-        $roles = Role::orderBy('name')->get()->pluck('name', 'name');
+        $roles = $this->rolesAsignables($usuario);
 
         return view('admin.usuarios.form', compact('usuario', 'aliados', 'roles'));
     }
@@ -167,6 +178,10 @@ class UsuarioController extends Controller
             'email.unique' => 'Ya existe un usuario activo con ese correo.',
         ]);
 
+        $this->autorizarRol($data['rol'], $usuario);
+
+        $rolAnterior = $usuario->getRoleNames()->first();
+
         $usuario->update([
             'nombre' => $data['nombre'],
             'cedula' => $data['cedula'],
@@ -180,6 +195,17 @@ class UsuarioController extends Controller
         ]);
 
         $usuario->syncRoles([$data['rol']]);
+
+        if ($rolAnterior !== $data['rol']) {
+            Bitacora::registrar(
+                'usuario_rol_cambiado',
+                'User',
+                $usuario->id,
+                "Rol de '{$usuario->nombre}': {$rolAnterior} → {$data['rol']}.",
+                ['antes' => $rolAnterior, 'despues' => $data['rol'], 'cambiado_por' => $authUser->nombre],
+                (int) $usuario->aliado_id
+            );
+        }
 
         return redirect()->route('admin.usuarios.index')
             ->with('success', "Usuario '{$usuario->nombre}' actualizado.");
@@ -221,6 +247,50 @@ class UsuarioController extends Controller
      * tienen un `aliado_id` real (hoy el 1 y el 2), que comparten con
      * superadmins de aliado; `puedeAccederAliado` les diría que sí.
      */
+    /**
+     * Roles que el usuario autenticado puede repartir.
+     *
+     * `superadmin` solo lo entrega BryNex. Se sigue mostrando cuando el editado
+     * YA es superadmin: si no apareciera en el select, guardar el formulario
+     * para corregirle el teléfono lo degradaría sin querer.
+     */
+    private function rolesAsignables(?User $editado = null)
+    {
+        // El pluck va en PHP, no en SQL: `->pluck('name','name')` sobre el query
+        // genera `select [name], [name]` y sqlsrv lo rechaza por ambiguo.
+        $roles = Role::orderBy('name')->get()->pluck('name', 'name');
+
+        if (auth()->user()->es_brynex || ($editado && $editado->hasRole('superadmin'))) {
+            return $roles;
+        }
+
+        return $roles->forget('superadmin');
+    }
+
+    /**
+     * Nadie fuera de BryNex otorga `superadmin`.
+     *
+     * El rol hereda todo el catálogo salvo lo `restringido` (ver el Gate::before
+     * de AuthServiceProvider), así que repartirlo equivale a entregar el aliado
+     * entero. Antes lo podía hacer cualquier superadmin de aliado sobre cuentas
+     * nuevas, que es justo por donde entra un tercero al que nadie invitó.
+     *
+     * No es escalada mantener el rol de quien ya lo tenía: eso se permite para
+     * poder editarle los datos sin degradarlo.
+     */
+    private function autorizarRol(string $rol, ?User $editado = null): void
+    {
+        if ($rol !== 'superadmin' || auth()->user()->es_brynex) {
+            return;
+        }
+
+        abort_if(
+            ! $editado || ! $editado->hasRole('superadmin'),
+            403,
+            'Solo BryNex puede otorgar el rol superadmin. Solicítalo a tu contacto en BryNex.'
+        );
+    }
+
     private function autorizarUsuario(User $usuario): void
     {
         abort_unless(
