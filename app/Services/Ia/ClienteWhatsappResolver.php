@@ -12,6 +12,16 @@ use App\Models\WhatsappConversacion;
  * - Si el cliente (o quien escribe en su nombre) da una cédula explícita, esa cédula ES
  *   la verificación: se busca directo por cédula, sin importar de qué número escriban
  *   (permite casos legítimos como un familiar o un tercero consultando a nombre de otro).
+ *
+ * DECISIÓN CONSCIENTE (ago-2026), no la "corrijas" sin hablarlo: cualquiera, desde
+ * cualquier número, puede pedir los datos de cualquier cédula del aliado — contratos,
+ * saldos, préstamos, cuentas de cobro y el envío de la planilla PILA. En Colombia la
+ * cédula está impresa en cada contrato y cada factura, así que no es un secreto; se
+ * asume igual como credencial suficiente porque el caso del familiar que pide la
+ * planilla pesa más que el riesgo. `es_propia` existe y se calcula, pero se usa SOLO
+ * para redactar la respuesta ("tu planilla" vs "la planilla de Fulano"), nunca para
+ * autorizar. Si algún día se quiere cerrar, la vía es graduar por sensibilidad con ese
+ * mismo campo, no exigir el número del titular.
  * - Si no dan cédula, se resuelve por el número de WhatsApp. Si ese número está
  *   registrado para más de una persona, se exige la cédula antes de identificar a nadie.
  */
