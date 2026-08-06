@@ -3631,13 +3631,27 @@ class InformeController extends Controller
             $retirosReales = 0;
             $retirosInformativos = 0;
             $retirosRenovados = 0;
+            // Renovado es un corte transversal, no una tercera categoría: se abre
+            // dentro de reales y dentro de informativos para poder mostrarlo bajo
+            // cada uno en la tabla.
+            $retirosRealesRenov = 0;
+            $retirosInformRenov = 0;
             foreach ($retiradosRaw as $r) {
+                $esRenovado = (int) $r->es_renovado === 1;
+
                 if (($r->costo_ss ?? 0) > 0) {
                     $retirosReales++;
+                    if ($esRenovado) {
+                        $retirosRealesRenov++;
+                    }
                 } else {
                     $retirosInformativos++;
+                    if ($esRenovado) {
+                        $retirosInformRenov++;
+                    }
                 }
-                if ((int) $r->es_renovado === 1) {
+
+                if ($esRenovado) {
                     $retirosRenovados++;
                 }
             }
@@ -3728,6 +3742,8 @@ class InformeController extends Controller
                 'afil_reingresos'  => $afilReingresos,
                 'retiros_reales'   => $retirosReales,
                 'retiros_inform'   => $retirosInformativos,
+                'retiros_reales_renov' => $retirosRealesRenov,
+                'retiros_inform_renov' => $retirosInformRenov,
                 'retiros_renovados'   => $retirosRenovados,
                 'retiros_definitivos' => $retirosDefinitivos,
                 'total_retiros'    => $totalRetiros,

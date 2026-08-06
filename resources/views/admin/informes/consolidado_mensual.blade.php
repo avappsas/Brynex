@@ -138,7 +138,6 @@
                         <th style="text-align: right;">Afil. Fecha Ingreso</th>
                         <th style="text-align: right;">Retiros Reales</th>
                         <th style="text-align: right;">Retiros Informativos</th>
-                        <th style="text-align: right;" title="Del total de retiros del mes, cuántos volvieron con otro contrato">Retiros Renovados</th>
                         <th style="text-align: right; background-color: rgba(13, 148, 136, 0.04); color: #0d9488; font-weight: 800;">Total Activos</th>
                         <th style="text-align: center;">Variación</th>
                         <th style="text-align: right;">WA (Plan. / Rec.)</th>
@@ -161,14 +160,14 @@
                         </td>
                         <td style="text-align: right; color: #d97706;" class="clickable-cell" onclick="abrirDetalle({{ $mes['mes'] }}, {{ $mes['anio'] }}, 'retiros_reales')">
                             {{ number_format($mes['retiros_reales'], 0, ',', '.') }}
+                            <div style="font-size: 0.68rem; font-weight: 500; color: #94a3b8; margin-top: 0.15rem; white-space: nowrap;">
+                                <span style="color: #0891b2;">{{ number_format($mes['retiros_reales_renov'], 0, ',', '.') }}</span> renovados
+                            </div>
                         </td>
                         <td style="text-align: right; color: #78350f;" class="clickable-cell" onclick="abrirDetalle({{ $mes['mes'] }}, {{ $mes['anio'] }}, 'retiros_informativos')">
                             {{ number_format($mes['retiros_inform'], 0, ',', '.') }}
-                        </td>
-                        <td style="text-align: right; color: #0891b2; font-weight: 600;">
-                            {{ number_format($mes['retiros_renovados'], 0, ',', '.') }}
                             <div style="font-size: 0.68rem; font-weight: 500; color: #94a3b8; margin-top: 0.15rem; white-space: nowrap;">
-                                de {{ number_format($mes['total_retiros'], 0, ',', '.') }} retiros
+                                <span style="color: #0891b2;">{{ number_format($mes['retiros_inform_renov'], 0, ',', '.') }}</span> renovados
                             </div>
                         </td>
                         <td style="text-align: right; font-weight: 800; color: #0d9488; background-color: rgba(13, 148, 136, 0.04); font-size: 0.95rem;">
@@ -200,7 +199,7 @@
         <p style="font-size: 0.72rem; color: #94a3b8; margin-top: 1rem; line-height: 1.5;">
             * <strong>Admon (Vigentes)</strong>: Contratos activos continuos durante el mes (incluye contratos con retiro y facturación regular). 
             * <strong>Afil. Fecha Ingreso</strong>: Nuevos contratos ingresados en el mes, discriminando <strong>nuevas</strong> (cédulas sin retiro marcado ese mes) y <strong>reingresos</strong> (se les marcó retiro y se les abrió contrato nuevo dentro del mismo mes).
-            * <strong>Retiros Renovados</strong>: Del total de retiros del mes, los que volvieron — se les abrió otro contrato con fecha de ingreso en el mismo mes del retiro, o esa cédula tiene hoy un contrato vigente con el aliado. Es un corte transversal: un retiro renovado puede ser real o informativo, por eso no suma con las dos columnas anteriores.
+            * <strong>renovados</strong> (bajo Retiros Reales e Informativos): De esos retiros, cuántos volvieron — se les abrió otro contrato con fecha de ingreso en el mismo mes del retiro, o esa cédula tiene hoy un contrato vigente con el aliado. Es una parte del número de arriba, no un retiro adicional.
             * <strong>WA (Plan. / Rec.)</strong>: Relación de WhatsApps del mes (Enviados en plantilla masiva / Recibidos iniciados por el cliente tras 24h de inactividad). 
             * <strong>Total Activos</strong>: Suma de Admon (Vigentes) y Afil. Fecha Ingreso.
             * <strong>Variación</strong>: Diferencia del Total Activos de este mes comparado con el mes anterior.
