@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Jobs\EnviarAlertaOperativa;
 use App\Models\AccesoUsuario;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -38,6 +39,13 @@ class RegistroAccesoService
     /** IPs distintas en 24h a partir de las cuales se sospecha rotación. */
     private const UMBRAL_IP_ROTATIVA = 5;
 
+    /** Las únicas que disparan alerta por WhatsApp. Ver alertar(). */
+    private const ANOMALIAS_GRAVES = [
+        'dispositivo_multicuenta',
+        'dispositivo_nuevo',
+        'ip_rotativa',
+    ];
+
     /**
      * Registra el acceso. Nunca lanza: un fallo aquí no puede impedir entrar.
      */
@@ -68,12 +76,48 @@ class RegistroAccesoService
                 'ultimo_dispositivo_id' => $dispositivoId,
             ])->saveQuietly();
 
+            $this->alertar($user, $acceso, $anomalias);
+
             return $acceso;
         } catch (\Throwable $e) {
             Log::warning('RegistroAccesoService falló: '.$e->getMessage());
 
             return null;
         }
+    }
+
+    /**
+     * Avisa por WhatsApp, y solo por lo que de verdad amerita despertar a alguien.
+     *
+     * `ip_nueva`, `red_nueva` y `huella_nueva` quedan fuera a propósito: las
+     * dispara cualquiera que trabaje desde casa, cambie de celular o actualice
+     * el navegador. Si el teléfono suena por eso, en una semana nadie abre las
+     * alertas — y entonces tampoco se ve la que sí importaba.
+     */
+    private function alertar(User $user, AccesoUsuario $acceso, array $anomalias): void
+    {
+        $graves = array_values(array_intersect($anomalias, self::ANOMALIAS_GRAVES));
+
+        if (! $graves) {
+            return;
+        }
+
+        $aliado = $user->aliado->nombre ?? ('aliado '.$user->aliado_id);
+        $motivos = implode(', ', array_map([AccesoUsuario::class, 'etiqueta'], $graves));
+
+        EnviarAlertaOperativa::dispatch(
+            'Acceso inusual',
+            sprintf(
+                '%s (CC %s) de %s entró desde %s. Motivo: %s.',
+                $user->nombre,
+                $user->cedula,
+                $aliado,
+                $acceso->ip ?? 'IP desconocida',
+                $motivos
+            ),
+            // Mismo usuario + mismo equipo + mismos motivos = un solo aviso por hora.
+            sprintf('acceso:%d:%s:%s', $user->id, $acceso->dispositivo_id, implode('|', $graves)),
+        );
     }
 
     /**
@@ -139,7 +183,9 @@ class RegistroAccesoService
             $anomalias[] = 'primer_acceso';
         }
 
-        if (! $esPrimerAcceso && ! $previos->pluck('dispositivo_id')->contains($dispositivoId)) {
+        $yaUsoEsteEquipo = $previos->pluck('dispositivo_id')->contains($dispositivoId);
+
+        if (! $esPrimerAcceso && ! $yaUsoEsteEquipo) {
             $anomalias[] = 'dispositivo_nuevo';
         }
 
@@ -175,12 +221,19 @@ class RegistroAccesoService
         // La señal más útil de todas: un equipo que ya entró con OTRA cuenta.
         // Es lo que delata una credencial prestada o a un tercero operando
         // varias cuentas del mismo aliado.
-        $multicuenta = AccesoUsuario::where('dispositivo_id', $dispositivoId)
-            ->where('user_id', '!=', $user->id)
-            ->exists();
+        //
+        // Solo se evalúa la primera vez que ESTA cuenta usa ESTE equipo. Si no,
+        // un PC compartido de recepción marcaría anomalía en cada login de cada
+        // empleada, para siempre: el hecho relevante es el estreno, no la
+        // convivencia. Sin este filtro la alerta se vuelve ruido y se ignora.
+        if (! $yaUsoEsteEquipo) {
+            $multicuenta = AccesoUsuario::where('dispositivo_id', $dispositivoId)
+                ->where('user_id', '!=', $user->id)
+                ->exists();
 
-        if ($multicuenta) {
-            $anomalias[] = 'dispositivo_multicuenta';
+            if ($multicuenta) {
+                $anomalias[] = 'dispositivo_multicuenta';
+            }
         }
 
         return $anomalias;

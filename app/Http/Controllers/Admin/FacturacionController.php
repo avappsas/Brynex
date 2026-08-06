@@ -739,6 +739,155 @@ class FacturacionController extends Controller
         return $mayor > $hoy ? $hoy : $mayor;
     }
 
+    /**
+     * Detecta qué contratos de un lote YA tienen factura para el período pedido.
+     *
+     * Replica exactamente los tres criterios de omisión que aplica facturar():
+     *   1. Modo "ambos" (I Venc / I Act en su mes de ingreso): bloquea si ya hay
+     *      afiliación del período, o —para I Venc— planilla del mes siguiente.
+     *   2. Retiro facturable (contrato retirado con factura numero_factura=0):
+     *      nunca bloquea, tiene su propio flujo.
+     *   3. Flujo normal: bloquea si ya hay una factura del MISMO tipo solicitado.
+     *
+     * Lo usan facturar() (para abortar el lote) y verificarPeriodoLote() (para
+     * avisar en el modal antes de que el usuario dé "Facturar ahora").
+     *
+     * @param  \Illuminate\Support\Collection  $contratosCargados  contratos con tipoModalidad y cliente
+     * @return array<int, array{contrato_id:mixed, cedula:mixed, nombre:string, motivo:string}>
+     */
+    private function _detectarDuplicadosLote(
+        int $aliadoId,
+        $contratosCargados,
+        int $mes,
+        int $anio,
+        string $tipoSolicitado,
+        string $indepModo = 'normal'
+    ): array {
+        $contratoIds = $contratosCargados->pluck('id')->all();
+        if (empty($contratoIds)) {
+            return [];
+        }
+
+        $facturasPeriodo = Factura::where('aliado_id', $aliadoId)
+            ->whereIn('contrato_id', $contratoIds)
+            ->where('mes', $mes)
+            ->where('anio', $anio)
+            ->whereNotIn('estado', ['anulada'])
+            ->get(['id', 'contrato_id', 'tipo'])
+            ->groupBy('contrato_id');
+
+        $facturasRetiro0 = Factura::where('aliado_id', $aliadoId)
+            ->whereIn('contrato_id', $contratoIds)
+            ->where('numero_factura', 0)
+            ->get(['id', 'contrato_id'])
+            ->keyBy('contrato_id');
+
+        // Planillas del mes siguiente: solo pesa en modo "ambos" con I Venc
+        $mesSig  = $mes === 12 ? 1 : $mes + 1;
+        $anioSig = $mes === 12 ? $anio + 1 : $anio;
+        $planillasMesSig = [];
+        if ($indepModo === 'ambos') {
+            $planillasMesSig = Factura::where('aliado_id', $aliadoId)
+                ->whereIn('contrato_id', $contratoIds)
+                ->where('mes', $mesSig)
+                ->where('anio', $anioSig)
+                ->where('tipo', 'planilla')
+                ->pluck('contrato_id')
+                // sqlsrv devuelve los ids como string — normalizar para comparar
+                ->map(fn ($v) => (string) $v)
+                ->all();
+        }
+
+        $duplicados = [];
+        foreach ($contratosCargados as $contrato) {
+            $facturasDup = $facturasPeriodo->get($contrato->id) ?: collect();
+            $nombre = trim(($contrato->cliente?->primer_nombre ?? '') . ' ' . ($contrato->cliente?->primer_apellido ?? ''));
+
+            $esIndVenc    = (int) $contrato->tipo_modalidad_id === 10;
+            $esIndAct     = (int) $contrato->tipo_modalidad_id === 11;
+            $esIndep      = $contrato->tipoModalidad?->esIndependiente() ?? false;
+            $esMesIngreso = $contrato->fecha_ingreso
+                && (int) $contrato->fecha_ingreso->month === $mes
+                && (int) $contrato->fecha_ingreso->year  === $anio;
+
+            $esAmbos = ($indepModo === 'ambos') && $esIndep && ($esIndVenc || $esIndAct) && $esMesIngreso;
+
+            if ($esAmbos) {
+                if ($facturasDup->contains(fn ($f) => $f->tipo === 'afiliacion')) {
+                    $duplicados[] = [
+                        'contrato_id' => $contrato->id,
+                        'cedula'      => $contrato->cedula,
+                        'nombre'      => $nombre,
+                        'motivo'      => "Ya existe una afiliación para {$mes}/{$anio} en este contrato",
+                    ];
+                } elseif ($esIndVenc && in_array((string) $contrato->id, $planillasMesSig, true)) {
+                    $duplicados[] = [
+                        'contrato_id' => $contrato->id,
+                        'cedula'      => $contrato->cedula,
+                        'nombre'      => $nombre,
+                        'motivo'      => "Ya existe una planilla para {$mesSig}/{$anioSig} en este contrato",
+                    ];
+                }
+                continue;
+            }
+
+            // Retiro facturable: no bloquea, se procesa en su propio flujo
+            if ($contrato->estado === 'retirado' && $facturasRetiro0->has($contrato->id)) {
+                continue;
+            }
+
+            if ($facturasDup->contains(fn ($f) => $f->tipo === $tipoSolicitado)) {
+                $duplicados[] = [
+                    'contrato_id' => $contrato->id,
+                    'cedula'      => $contrato->cedula,
+                    'nombre'      => $nombre,
+                    'motivo'      => "Ya existe una {$tipoSolicitado} para {$mes}/{$anio} en este contrato",
+                ];
+            }
+        }
+
+        return $duplicados;
+    }
+
+    // ─── API: verificar qué contratos del lote ya están facturados ───
+    /**
+     * Lo consulta el modal de facturación masiva al abrirse y al cambiar el
+     * período, para avisar ANTES de que el usuario meta el dinero y dé
+     * "Facturar ahora" (facturar() rechaza el lote completo si hay duplicados).
+     */
+    public function verificarPeriodoLote(Request $request)
+    {
+        $aliadoId = session('aliado_id_activo');
+
+        $validated = $request->validate([
+            'contratos'   => 'required|array|min:1',
+            'contratos.*' => 'integer',
+            'mes'         => 'required|integer|min:1|max:12',
+            'anio'        => 'required|integer|min:2000|max:2100',
+            'tipo'        => 'nullable|in:afiliacion,planilla',
+            'indep_modo'  => 'nullable|in:normal,ambos',
+        ]);
+
+        $contratos = Contrato::where('aliado_id', $aliadoId)
+            ->whereIn('id', $validated['contratos'])
+            ->with(['tipoModalidad', 'cliente' => fn ($q) => $q->where('aliado_id', $aliadoId)])
+            ->get();
+
+        $duplicados = $this->_detectarDuplicadosLote(
+            $aliadoId,
+            $contratos,
+            (int) $validated['mes'],
+            (int) $validated['anio'],
+            $validated['tipo'] ?? 'planilla',
+            $validated['indep_modo'] ?? 'normal'
+        );
+
+        return response()->json([
+            'ok'         => true,
+            'duplicados' => $duplicados,
+        ]);
+    }
+
     // ─── Facturar (crear factura) ────────────────────────────────────
     public function facturar(Request $request)
     {
@@ -1082,6 +1231,39 @@ class FacturacionController extends Controller
             ->keyBy('contrato_id');
 
         $incluirAdmonRetiroCorto = !empty($validated['incluir_admon_retiro_corto']);
+
+        // ── Bloqueo del lote completo si alguno ya está facturado ─────────────
+        // Antes se omitía el duplicado en silencio y se seguía facturando el resto.
+        // El problema: el pago recibido se reparte proporcionalmente entre los
+        // contratos del lote y el ÚLTIMO no omitido se lleva el residuo completo
+        // ($totalPagoEfectivo - $efAcum). Como el omitido nunca acumula, su parte
+        // del dinero caía sobre la factura creada y generaba un saldo a favor
+        // falso (caso empresa 1030, ago-2026: 2 personas seleccionadas, 1 omitida,
+        // $11.593.100 cobrados sobre una factura de $11.172.905).
+        // Ahora no se crea nada: el usuario anula la factura previa o quita a esa
+        // persona de la selección y vuelve a facturar.
+        $duplicadosLote = $this->_detectarDuplicadosLote(
+            $aliadoId,
+            $contratosCargados,
+            $mes,
+            $anio,
+            $validated['tipo'],
+            $validated['indep_modo'] ?? 'normal'
+        );
+        if (!empty($duplicadosLote)) {
+            $nombres = collect($duplicadosLote)
+                ->map(fn ($d) => trim($d['nombre']) !== '' ? trim($d['nombre']) : $d['cedula'])
+                ->join(', ');
+
+            return response()->json([
+                'ok'         => false,
+                'duplicados' => true,
+                'mensaje'    => 'No se generó ninguna factura. Ya existe factura para '
+                    . $mes . '/' . $anio . ' de: ' . $nombres
+                    . '. Anúlela o quite a esa(s) persona(s) de la selección antes de facturar.',
+                'omitidos'   => $duplicadosLote,
+            ], 422);
+        }
 
         DB::transaction(function () use (
             $validated, $aliadoId, $np, $mes, $anio,

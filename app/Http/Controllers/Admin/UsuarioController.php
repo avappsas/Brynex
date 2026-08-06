@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\EnviarAlertaOperativa;
 use App\Models\Aliado;
 use App\Models\Bitacora;
 use App\Models\User;
@@ -128,6 +129,23 @@ class UsuarioController extends Controller
             ['cedula' => $usuario->cedula, 'rol' => $data['rol'], 'creado_por' => $authUser->nombre],
             (int) $usuario->aliado_id
         );
+
+        // Una cuenta nueva en un aliado es el momento exacto en que entra al
+        // sistema alguien a quien BryNex no invitó. Cuando la crea BryNex no
+        // hay nada que avisar: ya lo sabe quien la está creando.
+        if (! $authUser->es_brynex) {
+            EnviarAlertaOperativa::dispatch(
+                'Usuario nuevo en un aliado',
+                sprintf(
+                    '%s creó la cuenta "%s" (CC %s) con rol %s en %s.',
+                    $authUser->nombre,
+                    $usuario->nombre,
+                    $usuario->cedula,
+                    $data['rol'],
+                    $usuario->aliado->nombre ?? ('aliado '.$usuario->aliado_id)
+                )
+            );
+        }
 
         // Si es BryNex, agregar a pivot aliado_user con el aliado seleccionado
         if ($usuario->es_brynex) {

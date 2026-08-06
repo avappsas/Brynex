@@ -46,11 +46,13 @@ return [
     | webhook_verify_token: Token que Meta usa para verificar el webhook (GET)
     */
     'whatsapp' => [
-        'waba_id'              => env('WHATSAPP_BRYNEX_WABA_ID'),
-        'phone_number_id'      => env('WHATSAPP_BRYNEX_PHONE_NUMBER_ID'),
-        'token'                => env('WHATSAPP_BRYNEX_TOKEN'),
-        'numero'               => env('WHATSAPP_BRYNEX_NUMERO'),
-        'app_secret'           => env('WHATSAPP_APP_SECRET'),
+        'waba_id' => env('WHATSAPP_BRYNEX_WABA_ID'),
+        'phone_number_id' => env('WHATSAPP_BRYNEX_PHONE_NUMBER_ID'),
+        'token' => env('WHATSAPP_BRYNEX_TOKEN'),
+        'numero' => env('WHATSAPP_BRYNEX_NUMERO'),
+        'app_secret' => env('WHATSAPP_APP_SECRET'),
+        // Destino de las alertas operativas a BryNex (backups, accesos raros).
+        'alertas_numero' => env('WHATSAPP_ALERTAS_NUMERO', '3117762689'),
         'webhook_verify_token' => env('WHATSAPP_WEBHOOK_VERIFY_TOKEN', 'brynex_wh_secret_2026'),
     ],
 
@@ -59,12 +61,12 @@ return [
     // (la BD sí se sincroniza a producción, el .env no). Lo de aquí es solo
     // fallback para pruebas locales. Ver App\Services\SuaporteApiService.
     'suaporte' => [
-        'api_url'       => env('SUAPORTE_API_URL', 'https://www.suaporte.com.co/api'),
-        'auth_url'      => env('SUAPORTE_AUTH_URL', 'https://www.suaporte.com.co/auth'),
-        'usuario'       => env('SUAPORTE_USUARIO'),        // tipo+número de documento, ej: CC1234567
-        'contrasena'    => env('SUAPORTE_CONTRASENA'),     // 4 dígitos numéricos
+        'api_url' => env('SUAPORTE_API_URL', 'https://www.suaporte.com.co/api'),
+        'auth_url' => env('SUAPORTE_AUTH_URL', 'https://www.suaporte.com.co/auth'),
+        'usuario' => env('SUAPORTE_USUARIO'),        // tipo+número de documento, ej: CC1234567
+        'contrasena' => env('SUAPORTE_CONTRASENA'),     // 4 dígitos numéricos
         'clave_secreta' => env('SUAPORTE_CLAVE_SECRETA'),  // generada en el tablero, vence al año
-        'timeout'       => env('SUAPORTE_TIMEOUT', 120),
+        'timeout' => env('SUAPORTE_TIMEOUT', 120),
 
         // Consultar BDUA/RUAF (afiliación a salud/pensión) es una operación
         // de solo lectura que no exige autorización por aportante — cualquier
@@ -82,7 +84,6 @@ return [
         'binario' => env('FFMPEG_BINARY', 'ffmpeg'),
         'ffprobe' => env('FFPROBE_BINARY', 'ffprobe'),
     ],
-
 
     // Worker de Node que maneja el navegador contra ADRES (ver adres-worker/).
     // Debe escuchar solo en loopback: puede consultar el historial de salud de
