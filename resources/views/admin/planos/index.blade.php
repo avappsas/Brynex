@@ -209,6 +209,8 @@
 .tabla-planos tbody td.td-fechas b { font-weight:800; opacity:.75; margin-right:.1rem; }
 .tabla-planos tbody td.td-empresa { max-width:90px; }
 .tabla-planos tbody td.td-envio { max-width:70px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+/* Pago (independientes): PSE y Pagar siempre en la misma línea, sin recortarse */
+.tabla-planos tbody td.td-pago { max-width:none; overflow:visible; white-space:nowrap; }
 .tabla-planos tfoot tr {
     background:linear-gradient(135deg,#0a1628,#0d2550);
     color:#e2e8f0;
@@ -559,7 +561,7 @@
     display:inline-flex; align-items:center; gap:.25rem;
     background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;
     border-radius:20px; padding:.1rem .5rem; font-size:.64rem; font-weight:700;
-    font-family:monospace; white-space:nowrap;
+    font-family:monospace; white-space:nowrap; flex-shrink:0;
 }
 .chip-liquidado-api a { color:#1d4ed8; text-decoration:underline; font-family:sans-serif; margin-left:.15rem; }
 
@@ -950,13 +952,13 @@
                 @endif
             </td>
             {{-- Columna Acción: Liquidar (PSE) / Pagar / Pagado --}}
-            <td id="accion-{{ $p->id }}" data-order="{{ $p->numero_planilla ?? '' }}">
+            <td class="td-pago" id="accion-{{ $p->id }}" data-order="{{ $p->numero_planilla ?? '' }}">
                 @if($p->numero_planilla)
                 <span class="chip-planilla" data-num="{{ $p->numero_planilla }}"
                       onclick="copiarPlanilla(this)"
                       title="Planilla: {{ $p->numero_planilla }} (clic para copiar)">✅ {{ $p->numero_planilla }}</span>
                 @else
-                <div style="display:flex;align-items:center;gap:.3rem;flex-wrap:wrap">
+                <div style="display:flex;align-items:center;gap:.3rem;flex-wrap:nowrap">
                     @if($p->numero_planilla_api)
                     {{-- Ya liquidada en el operador: falta confirmar el pago manualmente --}}
                     <span class="chip-liquidado-api" title="Liquidada en {{ $p->operador_cliente_nombre }}: {{ $p->numero_planilla_api }}">
@@ -984,7 +986,7 @@
 
                     <button type="button"
                         onclick="abrirModalPagoIndividual({{ $p->id }}, {{ $p->total_ss ?? 0 }}, '{{ addslashes($clienteNombre) }}', {{ $p->operador_cliente_id ?? 'null' }})"
-                        style="padding:.2rem .55rem;border-radius:6px;font-size:.68rem;font-weight:700;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8;cursor:pointer;white-space:nowrap;transition:all .15s"
+                        style="padding:.2rem .55rem;border-radius:6px;font-size:.68rem;font-weight:700;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8;cursor:pointer;white-space:nowrap;flex-shrink:0;transition:all .15s"
                         onmouseover="this.style.background='#dbeafe'" onmouseout="this.style.background='#eff6ff'">
                         💳 Pagar
                     </button>
