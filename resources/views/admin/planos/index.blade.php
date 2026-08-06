@@ -187,9 +187,11 @@
     background: linear-gradient(135deg,var(--azul-oscuro),var(--azul-medio)) !important;
 }
 .tabla-planos tbody tr { border-bottom:1px solid #f1f5f9; }
-.tabla-planos tbody tr:hover td { background:#f8fafc !important; }
-.tabla-planos tbody tr.ya-pago td { background:#f0fdf4; }
-.tabla-planos tbody tr.ya-pago:hover td { background:#dcfce7; }
+/* Sin pagar: hover gris. Pagado: verde claro siempre, verde más fuerte en hover.
+   El :hover de ya-pago va después y también con !important, si no lo pisa el gris. */
+.tabla-planos tbody tr:hover td { background:#e2e8f0 !important; }
+.tabla-planos tbody tr.ya-pago td { background:#dcfce7 !important; }
+.tabla-planos tbody tr.ya-pago:hover td { background:#86efac !important; }
 .tabla-planos tbody td {
     padding:.4rem .45rem; color:#334155;
     white-space:nowrap; overflow:hidden;
@@ -197,6 +199,14 @@
     border-bottom:1px solid #f1f5f9; /* Línea divisoria en celdas para border-collapse:separate */
 }
 .tabla-planos tbody td.td-nombre { max-width:130px; }
+/* Fechas ingreso/retiro unificadas: verde arriba (ingreso), rojo abajo (retiro) */
+.tabla-planos tbody td.td-fechas { max-width:none; padding-top:.3rem; padding-bottom:.3rem; text-align:center; }
+.tabla-planos tbody td.td-fechas span {
+    display:block; line-height:1.15; font-size:.72rem; font-weight:600; letter-spacing:.01em;
+}
+.tabla-planos tbody td.td-fechas .fec-ing { color:#15803d; }
+.tabla-planos tbody td.td-fechas .fec-ret { color:#dc2626; }
+.tabla-planos tbody td.td-fechas b { font-weight:800; opacity:.75; margin-right:.1rem; }
 .tabla-planos tbody td.td-empresa { max-width:90px; }
 .tabla-planos tbody td.td-envio { max-width:70px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .tabla-planos tfoot tr {
@@ -367,22 +377,16 @@
 .empty-state .es-icon { font-size:2.5rem; margin-bottom:.5rem; }
 .empty-state p { font-size:.85rem; }
 
-/* ── Planilla icon tooltip ────────────────────────────────────── */
-.pla-ico {
-    cursor:pointer; font-size:1rem; position:relative;
-    display:inline-block; transition:transform .15s;
+/* ── Chip con el número de planilla ya confirmada (clic = copiar) ─── */
+/* Fondo blanco: la fila pagada ya es verde, el chip tiene que despegarse de ella */
+.chip-planilla {
+    display:inline-flex; align-items:center; gap:.25rem;
+    background:#fff; color:#15803d; border:1px solid #4ade80;
+    border-radius:20px; padding:.15rem .5rem;
+    font-size:.66rem; font-weight:700; font-family:ui-monospace,monospace;
+    white-space:nowrap; cursor:pointer; transition:background .15s;
 }
-.pla-ico:hover { transform:scale(1.25); }
-.pla-ico::after {
-    content:attr(data-num);
-    position:absolute; bottom:calc(100% + 5px); left:50%;
-    transform:translateX(-50%);
-    background:#1e293b; color:#fff;
-    padding:.2rem .5rem; border-radius:5px;
-    font-size:.7rem; white-space:nowrap; font-family:monospace;
-    opacity:0; pointer-events:none; transition:opacity .15s; z-index:10;
-}
-.pla-ico:hover::after { opacity:1; }
+.chip-planilla:hover { background:#f0fdf4; }
 
 /* ── Custom RS Dropdown ────────────────────────────────────────────── */
 .rs-wrap { position:relative; }
@@ -821,8 +825,7 @@
             <th class="sortable">Tipo</th>
             <th class="sortable">No. ID</th>
             <th class="sortable">Nombre</th>
-            <th class="sortable">Fec. Ing</th>
-            <th class="sortable">Fec. Ret</th>
+            <th class="sortable" style="text-align:center" title="Fecha de ingreso (verde) / fecha de retiro (rojo)">Fechas</th>
             <th class="sortable">Días</th>
             <th class="sortable">EPS</th>
             <th class="sortable" title="Valor EPS">V.EPS</th>
@@ -835,22 +838,44 @@
             <th class="sortable" title="Total Seguridad Social"><b>TOTAL SS</b></th>
             @if(!$esIndependiente)<th class="sortable">Planilla</th>@endif
             @if(!$esIndependiente)<th class="sortable">Empresa</th>@endif
-            <th class="sortable">Envío</th>
-            <th title="Acciones">⋯</th>
             @if($esIndependiente)<th class="sortable">Operador</th><th class="sortable">Pago</th>@endif
+            <th class="sortable">Envío</th>
         </tr>
     </thead>
     <tbody>
-        @php $i = 1; @endphp
+        @php
+            $i = 1;
+            // Nombres cortos de operador para que la columna no se estire
+            $operadorCorto = function ($nombre) {
+                $mapa = [
+                    'arus enlace'      => 'Enlace',
+                    'aportes en línea' => 'Aportes',
+                    'aportes en linea' => 'Aportes',
+                    'mi planilla'      => 'MiPlanilla',
+                ];
+                $clave = mb_strtolower(trim($nombre ?? ''));
+                return $mapa[$clave] ?? \Illuminate\Support\Str::limit($nombre, 10, '…');
+            };
+        @endphp
         @foreach($planos as $p)
         @php
             $tipoClass = match(strtoupper(substr($p->tipo_modal_nombre ?? '', 0, 1))) {
                 'E' => 'e', 'I' => 'i', 'K' => 'k', 'T' => 'tp', default => ''
             };
             $clienteNombre = trim(($p->primer_nombre ?? '').' '.($p->primer_ape ?? ''));
+
+            // Fechas ingreso/retiro en una sola columna
+            $fIng = $p->fecha_ing ? sqldate($p->fecha_ing) : null;
+            $fRet = $p->fecha_ret ? sqldate($p->fecha_ret) : null;
+            $fecCorta = fn($d) => $d->format('d-').strtolower($d->locale('es')->isoFormat('MMM'));
+            $fecTitulo = trim(
+                ($fIng ? 'Ingreso: '.$fIng->format('d/m/Y') : '')
+                .($fIng && $fRet ? ' · ' : '')
+                .($fRet ? 'Retiro: '.$fRet->format('d/m/Y') : '')
+            ) ?: 'Sin novedad de ingreso ni retiro';
         @endphp
         <tr id="fila-plano-{{ $p->id }}" class="{{ $p->numero_planilla ? 'ya-pago' : '' }}">
-            <td class="td-numero-plano" style="color:#1d4ed8;cursor:pointer;font-weight:600" data-order="{{ $i }}" data-numero="{{ $i }}" data-id="{{ $p->id }}" data-nplano="{{ $p->n_plano }}" onclick="manejarClicCeldaNumero(this, event)" title="Editar número de plano de este registro (Plano actual: P{{ $p->n_plano }})">{{ $i++ }}</td>
+            <td class="td-numero-plano" style="color:#1d4ed8;cursor:pointer;font-weight:600" data-order="{{ $i }}" data-numero="{{ $i }}" data-id="{{ $p->id }}" data-nplano="{{ $p->n_plano }}" onclick="manejarClicCeldaNumero(this, event)" title="Clic para mover este registro a otro plano (Plano actual: P{{ $p->n_plano }})">{{ $i++ }}</td>
             <td data-order="{{ $p->tipo_modal_nombre ?? $p->tipo_p }}">
                 @if($p->contrato_id ?? null)
                 <a href="{{ url('/admin/contratos/'.$p->contrato_id.'/edit') }}" style="text-decoration:none" title="Ver contrato">
@@ -873,8 +898,11 @@
                     {{ $p->primer_nombre }} {{ $p->primer_ape }}
                 </a>
             </td>
-            <td data-order="{{ $p->fecha_ing ?? '' }}">{{ $p->fecha_ing ? sqldate($p->fecha_ing)->format('d-') . strtolower(sqldate($p->fecha_ing)->locale('es')->isoFormat('MMM')) : '—' }}</td>
-            <td data-order="{{ $p->fecha_ret ?? '' }}">{{ $p->fecha_ret ? sqldate($p->fecha_ret)->format('d-') . strtolower(sqldate($p->fecha_ret)->locale('es')->isoFormat('MMM')) : '—' }}</td>
+            <td class="td-fechas" title="{{ $fecTitulo }}" data-order="{{ $p->fecha_ing ?: ($p->fecha_ret ?: '') }}">
+                @if($fIng)<span class="fec-ing"><b>Ing:</b>{{ $fecCorta($fIng) }}</span>@endif
+                @if($fRet)<span class="fec-ret"><b>Ret:</b>{{ $fecCorta($fRet) }}</span>@endif
+                @if(!$fIng && !$fRet)<span style="color:#cbd5e1">—</span>@endif
+            </td>
             <td data-order="{{ $p->num_dias }}">{{ $p->num_dias }}</td>
             <td title="{{ $p->nombre_eps ?? $p->cod_eps }}" style="font-size:.72rem;white-space:nowrap" data-order="{{ $p->nombre_eps ?? $p->cod_eps ?? '' }}">
                 {{ $p->nombre_eps ? \Illuminate\Support\Str::limit($p->nombre_eps, 9, '…') : ($p->cod_eps ?? '—') }}
@@ -901,28 +929,21 @@
                 @php
                     $horaConf = $p->updated_at ? sqldate($p->updated_at, 'd/m/y H:i') : '';
                 @endphp
-                <span class="pla-ico" data-num="{{ $p->numero_planilla }}"
+                <span class="chip-planilla" data-num="{{ $p->numero_planilla }}"
                       onclick="copiarPlanilla(this)"
-                      title="{{ $p->numero_planilla }}{{ $horaConf ? ' · '.$horaConf : '' }}">✅</span>
+                      title="Planilla: {{ $p->numero_planilla }}{{ $horaConf ? ' · confirmada '.$horaConf : '' }} (clic para copiar)">✅ {{ $p->numero_planilla }}</span>
                 @else
                 <span style="color:#cbd5e1">—</span>
                 @endif
             </td>
             @endif
             @if(!$esIndependiente)<td class="td-empresa" title="{{ $p->nombre_empresa }}" data-order="{{ $p->nombre_empresa ?? '' }}">{{ $p->nombre_empresa ? \Illuminate\Support\Str::limit($p->nombre_empresa,14,'…') : '—' }}</td>@endif
-            <td class="td-envio" title="{{ $p->envio_planilla }}" data-order="{{ $p->envio_planilla ? 1 : 0 }}">{{ $p->envio_planilla ? 'Sí' : 'No' }}</td>
-            <td style="text-align:center">
-                <button type="button"
-                    onclick="abrirModalMover({{ $p->id }}, {{ $p->n_plano }})"
-                    style="padding:.18rem .45rem;border-radius:5px;font-size:.75rem;border:1px solid #e2e8f0;background:#f8fafc;color:#475569;cursor:pointer;line-height:1"
-                    title="Mover a otro plano">🔄</button>
-            </td>
             @if($esIndependiente)
-            {{-- Columna Operador (texto informativo) --}}
-            <td style="font-size:.72rem;color:#374151;white-space:nowrap" data-order="{{ $p->operador_cliente_nombre ?? '' }}">
+            {{-- Columna Operador (texto informativo, nombre abreviado) --}}
+            <td style="font-size:.72rem;color:#374151;white-space:nowrap" title="{{ $p->operador_cliente_nombre ?? 'Sin operador asignado' }}" data-order="{{ $p->operador_cliente_nombre ?? '' }}">
                 @if($p->operador_cliente_nombre ?? null)
                 <span style="display:inline-flex;align-items:center;gap:.2rem;background:#f0f9ff;color:#0284c7;border:1px solid #bae6fd;border-radius:6px;padding:.1rem .4rem;font-size:.67rem;font-weight:600">
-                    🏦 {{ $p->operador_cliente_nombre }}
+                    🏦 {{ $operadorCorto($p->operador_cliente_nombre) }}
                 </span>
                 @else
                 <span style="color:#cbd5e1;font-size:.67rem">— sin asignar—</span>
@@ -931,8 +952,9 @@
             {{-- Columna Acción: Liquidar (PSE) / Pagar / Pagado --}}
             <td id="accion-{{ $p->id }}" data-order="{{ $p->numero_planilla ?? '' }}">
                 @if($p->numero_planilla)
-                <span style="display:inline-flex;align-items:center;gap:.25rem;background:#dcfce7;color:#15803d;border:1px solid #bbf7d0;border-radius:20px;padding:.15rem .55rem;font-size:.67rem;font-weight:700;font-family:monospace;white-space:nowrap"
-                      title="Planilla: {{ $p->numero_planilla }}">✅ {{ $p->numero_planilla }}</span>
+                <span class="chip-planilla" data-num="{{ $p->numero_planilla }}"
+                      onclick="copiarPlanilla(this)"
+                      title="Planilla: {{ $p->numero_planilla }} (clic para copiar)">✅ {{ $p->numero_planilla }}</span>
                 @else
                 <div style="display:flex;align-items:center;gap:.3rem;flex-wrap:wrap">
                     @if($p->numero_planilla_api)
@@ -970,12 +992,13 @@
                 @endif
             </td>
             @endif
+            <td class="td-envio" title="{{ $p->envio_planilla }}" data-order="{{ $p->envio_planilla ? 1 : 0 }}">{{ $p->envio_planilla ? 'Sí' : 'No' }}</td>
         </tr>
         @endforeach
     </tbody>
     <tfoot>
         <tr>
-            <td colspan="7" style="text-align:right">TOTALES &rarr;</td>
+            <td colspan="6" style="text-align:right">TOTALES &rarr;</td>
             <td></td>
             {{-- EPS: ceil(v_eps/100)*100 por cotizante, luego sumar --}}
             <td>{{ number_format($planos->sum(fn($p) => (int)(ceil(($p->v_eps??0)/100)*100)),0,',','.') }}</td>
@@ -989,11 +1012,8 @@
             {{-- AFP --}}
             <td>{{ number_format($planos->sum(fn($p) => (int)(ceil(($p->v_afp??0)/100)*100)),0,',','.') }}</td>
             <td></td>{{-- TOTAL SS: se muestra en el resumen inferior --}}
-            <td colspan="{{ $esIndependiente ? 2 : 4 }}"></td>
-            @if($esIndependiente)
-            <td></td>
-            <td></td>
-            @endif
+            {{-- Empresas: Planilla + Empresa + Envío · Independientes: Operador + Pago + Envío --}}
+            <td colspan="3"></td>
         </tr>
     </tfoot>
 </table>
@@ -3091,7 +3111,7 @@ async function ejecutarConfirmarPago() {
             mostrarToast(data.mensaje, 'success');
             if (_planoIdActual) {
                 // Modo individual: actualizar visualmente la fila sin recargar
-                const chip = `<span style="display:inline-flex;align-items:center;gap:.25rem;background:#dcfce7;color:#15803d;border:1px solid #bbf7d0;border-radius:20px;padding:.15rem .55rem;font-size:.67rem;font-weight:700;font-family:monospace;white-space:nowrap" title="Planilla: ${numero}">✅ ${numero}</span>`;
+                const chip = `<span class="chip-planilla" data-num="${numero}" onclick="copiarPlanilla(this)" title="Planilla: ${numero} (clic para copiar)">✅ ${numero}</span>`;
                 const tdPlanilla = document.getElementById('planilla-' + _planoIdActual);
                 const tdAccion   = document.getElementById('accion-'   + _planoIdActual);
                 if (tdPlanilla) tdPlanilla.innerHTML = chip;
@@ -3489,7 +3509,7 @@ function toggleSeleccionMasiva(activo) {
             const num = td.getAttribute('data-numero');
             td.innerHTML = num;
             td.style.textAlign = 'left';
-            td.title = `Editar número de plano de este registro (Plano actual: P${td.getAttribute('data-nplano')})`;
+            td.title = `Clic para mover este registro a otro plano (Plano actual: P${td.getAttribute('data-nplano')})`;
         });
 
         // Ocular barra flotante y desmarcar todos
