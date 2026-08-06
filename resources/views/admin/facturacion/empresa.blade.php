@@ -1253,9 +1253,14 @@ MF.init({
     urlFacturar: URL_FAC,
     urlMesPagado: '', // no aplica en masivo
     urlSaldosContratos: '{{ route('admin.facturacion.api.saldos_contratos') }}',
+    urlVerificarPeriodo: '{{ route('admin.facturacion.api.verificar_periodo') }}',
     urlConsignacionImagen: '{{ route('admin.facturacion.consignacion.imagen.subir', ['id' => '__ID__']) }}',
     csrf: CSRF,
     empresaId: {{ $empresa->id }}, // para identificar pagos de empresa
+    // Período de la vista: el modal resincroniza mf-mes/mf-anio con esto cada
+    // vez que se abre, para que no quede pegado en un mes anterior.
+    mes:  {{ $mes }},
+    anio: {{ $anio }},
     salarioMinimo: {{ (int) \App\Models\ConfiguracionBrynex::obtener('salario_minimo', 1423500) }},
     onExito: (data) => {
         MF.cerrar();

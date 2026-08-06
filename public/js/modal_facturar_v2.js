@@ -449,11 +449,25 @@ const MF = (function () {
         const npWrap = el('mf-nplano-wrap');
         if (npWrap) npWrap.style.display = _modo === 'masivo' ? 'block' : 'none';
 
+        // ── Resincronizar el período con el de la vista ───────────────────────
+        // Los selects mf-mes/mf-anio viven fuera del reset, así que si el usuario
+        // los cambió y volvió a abrir el modal, quedaban pegados en el período
+        // anterior: la pantalla mostraba los valores de un mes y se facturaba
+        // otro. Solo aplica si la vista declaró su período en MF.init().
+        if (_cfg.mes)  setVal('mf-mes',  _cfg.mes);
+        if (_cfg.anio) setVal('mf-anio', _cfg.anio);
+
         // Calcular resumen de los contratos seleccionados
         _calcularResumenInicial();
 
         // Mostrar overlay
         el('mf-overlay').style.display = 'flex';
+
+        // Avisar si alguno de los seleccionados ya tiene factura del período
+        // (limpiar primero: el panel sobrevive entre aperturas del modal)
+        _dupsLote = [];
+        _pintarAvisoDup();
+        _verificarPeriodoLote();
 
         // ── Listener global de PASTE en el modal (Ctrl+V / ⌘+V) ──────────────
         // Permite pegar capturas de WhatsApp/galería directamente sin hacer click
@@ -1160,10 +1174,90 @@ const MF = (function () {
         }
     }
 
+    // ── Duplicados del lote (masivo) ──────────────────────────────
+    // El backend rechaza el lote COMPLETO si alguno de los seleccionados ya
+    // tiene factura del período (antes omitía al duplicado en silencio y le
+    // encajaba su parte del pago a la última factura creada, dejando un saldo
+    // a favor falso). Esto avisa antes de que el usuario cargue el dinero.
+    let _dupsLote = [];
+
+    function _panelDup() {
+        let p = el('mf-aviso-dup');
+        if (!p) {
+            p = document.createElement('div');
+            p.id = 'mf-aviso-dup';
+            p.style.cssText = 'display:none;margin:.4rem 0;padding:.45rem .7rem;border-radius:8px;'
+                + 'font-size:.78rem;font-weight:600;border:1.5px solid #ef4444;background:#fef2f2;color:#991b1b;';
+            const ancla = el('mf-aviso-mes');
+            if (ancla && ancla.parentNode) ancla.parentNode.insertBefore(p, ancla.nextSibling);
+            else return null;
+        }
+        return p;
+    }
+
+    function _pintarAvisoDup() {
+        const panel = _panelDup();
+        const btn = el('mf-btn-guardar');
+        const hay = _dupsLote.length > 0;
+
+        if (panel) {
+            if (hay) {
+                const nombres = _dupsLote
+                    .map(d => (d.nombre || '').trim() || d.cedula)
+                    .join(', ');
+                const mesTxt = el('mf-mes')?.selectedOptions[0]?.textContent || '';
+                const anioTxt = el('mf-anio')?.value || '';
+                panel.innerHTML = '🚫 Ya tiene factura de ' + mesTxt + ' ' + anioTxt + ': <strong>' + nombres
+                    + '</strong>. Anúlela o quite a esa(s) persona(s) de la selección — el lote completo se rechaza.';
+                panel.style.display = 'block';
+            } else {
+                panel.style.display = 'none';
+            }
+        }
+        if (btn) {
+            btn.disabled = hay;
+            btn.style.opacity = hay ? '0.5' : '';
+            btn.style.cursor = hay ? 'not-allowed' : '';
+        }
+    }
+
+    async function _verificarPeriodoLote() {
+        if (_modo !== 'masivo' || !_cfg.urlVerificarPeriodo) return;
+
+        const ids = (_selContratos || []).map(c => parseInt(c.id)).filter(Boolean);
+        if (!ids.length) { _dupsLote = []; _pintarAvisoDup(); return; }
+
+        try {
+            const res = await fetch(_cfg.urlVerificarPeriodo, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': _cfg.csrf,
+                },
+                body: JSON.stringify({
+                    contratos:  ids,
+                    mes:        parseInt(el('mf-mes')?.value),
+                    anio:       parseInt(el('mf-anio')?.value),
+                    tipo:       el('mf-tipo')?.value || 'planilla',
+                    indep_modo: document.querySelector('input[name="mf_indep_modo"]:checked')?.value || 'normal',
+                }),
+            });
+            const data = await res.json();
+            _dupsLote = (data && data.duplicados) || [];
+        } catch (e) {
+            // Sin red: no bloquear el modal; el backend rechaza el lote igual.
+            _dupsLote = [];
+        }
+        _pintarAvisoDup();
+    }
+
     // ── Cambio de período (llama a re-detectar tipo en individual) ─
     function cambiarPeriodo() {
         if (_modo === 'individual') {
             _verificarMesPagado().then(() => detectarTipo());
+        } else {
+            _verificarPeriodoLote();
         }
     }
 
@@ -1946,6 +2040,11 @@ const MF = (function () {
                     if (data.omitidos && data.omitidos.length > 0) {
                         const lista = data.omitidos.map(o => '• ' + o.nombre + ' (' + o.motivo + ')').join('\n');
                         msg += '\n\n🚫 Ya facturados para este período:\n' + lista;
+                        // Lote rechazado por duplicados: dejar el aviso fijo en el
+                        // modal para que se vea a quién hay que quitar o anular.
+                        if (data.duplicados && _modo === 'masivo') {
+                            _dupsLote = data.omitidos;
+                        }
                     }
                     alert(msg);
                 }
@@ -1962,7 +2061,10 @@ const MF = (function () {
             }
             alert(msg);
         } finally {
-            if (btn) { btn.disabled = false; btn.textContent = '🧾 Facturar'; }
+            if (btn) { btn.disabled = false; btn.textContent = '🧾 Facturar ahora'; }
+            // Si el lote quedó marcado con duplicados, volver a bloquear el botón
+            // (el finally lo reactiva siempre) y repintar el aviso.
+            if (_modo === 'masivo') _pintarAvisoDup();
         }
     }
 
