@@ -125,14 +125,16 @@ class ExportacionAliado extends BaseModel
 
     public function tamanoLegible(): string
     {
-        $bytes = (int) $this->archivo_bytes;
+        $valor = (float) $this->archivo_bytes;
 
-        foreach (['B', 'KB', 'MB', 'GB'] as $i => $unidad) {
-            if ($bytes < 1024 || $unidad === 'GB') {
-                return round($bytes / (1024 ** $i), $i > 1 ? 1 : 0).' '.$unidad;
+        foreach (['B', 'KB', 'MB', 'GB'] as $unidad) {
+            if ($valor < 1024 || $unidad === 'GB') {
+                return round($valor, $unidad === 'B' ? 0 : 1).' '.$unidad;
             }
+
+            $valor /= 1024;
         }
 
-        return $bytes.' B';
+        return $this->archivo_bytes.' B';
     }
 }

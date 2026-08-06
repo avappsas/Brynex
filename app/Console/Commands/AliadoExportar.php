@@ -69,7 +69,10 @@ class AliadoExportar extends Command
 
         try {
             $registro = $exportador->generar($registro, function (string $titulo, int $filas) {
-                $this->line(sprintf('  %-32s %10s', $titulo, number_format($filas, 0, ',', '.')));
+                // Relleno por caracteres y no por bytes: con sprintf, "Facturación"
+                // cuenta 12 y desalinea la columna.
+                $relleno = str_repeat('.', max(1, 34 - mb_strlen($titulo)));
+                $this->line('  '.$titulo.' '.$relleno.' '.number_format($filas, 0, ',', '.'));
             });
         } catch (\Throwable $e) {
             $this->newLine();

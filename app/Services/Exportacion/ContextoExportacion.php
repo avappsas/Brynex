@@ -22,6 +22,9 @@ class ContextoExportacion
     /** @var array<string, array<int,int>> mapa[tipo][id interno] = consecutivo */
     private array $mapas = [];
 
+    /** @var array<string, array<string,int>> llave alterna → consecutivo */
+    private array $alias = [];
+
     /** @var array<string,int> */
     private array $contadores = [];
 
@@ -53,9 +56,36 @@ class ContextoExportacion
         return $this->mapas[$tipo][(int) $id] ?? null;
     }
 
+    /**
+     * Segunda llave para llegar al mismo consecutivo.
+     *
+     * Existe por la migración del sistema viejo: el 99% de las consignaciones
+     * quedó sin `factura_id` y el único rastro del vínculo es el id legacy
+     * escrito en la observación. Registrando el `id_legacy` de cada factura como
+     * alias, un pago migrado sí puede apuntar a su factura.
+     */
+    public function alias(string $tipo, int|string|null $clave, int $consecutivo): void
+    {
+        if ($clave === null || $clave === '') {
+            return;
+        }
+
+        $this->alias[$tipo][(string) $clave] = $consecutivo;
+    }
+
+    public function porAlias(string $tipo, int|string|null $clave): ?int
+    {
+        if ($clave === null || $clave === '') {
+            return null;
+        }
+
+        return $this->alias[$tipo][(string) $clave] ?? null;
+    }
+
     public function liberar(): void
     {
         $this->mapas = [];
+        $this->alias = [];
         $this->contadores = [];
     }
 }

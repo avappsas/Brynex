@@ -3,7 +3,6 @@
 namespace App\Services\Exportacion;
 
 use Carbon\Carbon;
-use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -111,7 +110,7 @@ class InformesAliado
                 'Aplica IVA' => fn ($f) => $this->si($f->iva),
                 'Saldo en Deuda' => fn ($f) => $this->dinero($f->deuda),
                 'Fecha Probable de Pago' => fn ($f) => $this->fecha($f->fecha_probable_pago),
-                'Modo Probable de Pago' => 'modo_probable_pago',
+                'Modo Probable de Pago' => $this->humano('modo_probable_pago'),
                 'Observación' => 'observacion',
                 'Observación de Llamada' => 'observacion_llamada',
                 'Fecha de Registro' => fn ($f) => $this->fechaHora($f->created_at),
@@ -253,7 +252,7 @@ class InformesAliado
                 'NIT' => 'nit',
                 'Dígito de Verificación' => 'dv',
                 'Razón Social' => 'razon_social',
-                'Estado' => 'estado',
+                'Estado' => $this->humano('estado'),
                 'Plan' => 'plan',
                 'Es Independiente' => fn ($f) => $this->si($f->es_independiente),
                 'Dirección' => 'direccion',
@@ -269,7 +268,7 @@ class InformesAliado
                 'Fecha de Constitución' => fn ($f) => $this->fecha($f->fecha_constitucion),
                 'Fecha Límite de Pago' => fn ($f) => $this->fecha($f->fecha_limite_pago),
                 'Día Hábil de Pago' => 'dia_habil',
-                'Forma de Presentación' => 'forma_presentacion',
+                'Forma de Presentación' => $this->humano('forma_presentacion'),
                 'Sucursal' => 'nombre_sucursal',
                 'Encargado' => 'encargado',
                 'Observación' => 'observacion',
@@ -319,7 +318,7 @@ class InformesAliado
                 'Correo' => 'correo',
                 'Razón Social' => 'razon_social',
                 'NIT Razón Social' => 'nit_razon_social',
-                'Estado' => 'estado',
+                'Estado' => $this->humano('estado'),
                 'Plan' => 'plan',
                 'Modalidad' => 'modalidad',
                 'Cargo' => 'cargo',
@@ -331,7 +330,11 @@ class InformesAliado
                 'Fondo de Pensión' => 'pension',
                 'ARL' => 'arl',
                 'Nivel de Riesgo ARL' => 'n_arl',
-                'Cobertura ARL' => 'arl_modo',
+                'Cobertura ARL' => fn ($f) => match ((string) $f->arl_modo) {
+                    'razon_social' => 'Razón social',
+                    'independiente' => 'Independiente',
+                    default => $this->humano('arl_modo')($f),
+                },
                 'NIT Cotizante ARL' => 'arl_nit_cotizante',
                 'Caja de Compensación' => 'caja',
                 'Porcentaje Caja' => 'porcentaje_caja',
@@ -346,9 +349,9 @@ class InformesAliado
                 'Seguro' => fn ($f) => $this->dinero($f->seguro),
                 'Asesor' => 'asesor',
                 'Encargado' => 'encargado',
-                'Envío de Planilla' => 'envio_planilla',
+                'Envío de Planilla' => $this->humano('envio_planilla'),
                 'Fecha Probable de Pago' => fn ($f) => $this->fecha($f->fecha_probable_pago),
-                'Modo Probable de Pago' => 'modo_probable_pago',
+                'Modo Probable de Pago' => $this->humano('modo_probable_pago'),
                 'Observación' => 'observacion',
                 'Observación de Afiliación' => 'observacion_afiliacion',
                 'Observación de Llamada' => 'observacion_llamada',
@@ -420,18 +423,26 @@ class InformesAliado
             'titulo' => 'Facturación',
             'descripcion' => 'Todas las facturas del periodo histórico, con el desglose de cada concepto. Las anuladas van incluidas con Estado = ANULADA.',
             'columnas' => [
-                'Consecutivo' => fn ($f, $ctx) => $ctx->asignar('factura', $f->id),
+                'Consecutivo' => function ($f, $ctx) {
+                    $n = $ctx->asignar('factura', $f->id);
+                    // Segunda llave para los pagos migrados del sistema viejo,
+                    // que perdieron el factura_id. `id_legacy` no sale en
+                    // ninguna columna: solo sirve para amarrar los archivos.
+                    $ctx->alias('factura', $f->id_legacy, $n);
+
+                    return $n;
+                },
                 'Número de Factura' => 'numero_factura',
-                'Tipo' => 'tipo',
+                'Tipo' => $this->humano('tipo'),
                 'Mes' => 'mes',
                 'Año' => 'anio',
                 'Documento' => 'cedula',
                 'Nombre Completo' => fn ($f) => $this->nombre($f),
                 'Razón Social' => 'razon_social',
                 'Empresa' => 'empresa',
-                'Estado' => fn ($f) => $f->deleted_at ? 'ANULADA' : $f->estado,
+                'Estado' => fn ($f) => $f->deleted_at ? 'ANULADA' : $this->humano('estado')($f),
                 'Fecha de Pago' => fn ($f) => $this->fecha($f->fecha_pago),
-                'Forma de Pago' => 'forma_pago',
+                'Forma de Pago' => $this->humano('forma_pago'),
                 'Días Cotizados' => 'dias_cotizados',
                 'Valor EPS' => fn ($f) => $this->dinero($f->v_eps),
                 'Valor ARL' => fn ($f) => $this->dinero($f->v_arl),
@@ -492,6 +503,7 @@ class InformesAliado
                         'facturas.c_utilidad', 'facturas.descripcion_tramite',
                         'facturas.motivo_anulacion', 'facturas.observacion',
                         'facturas.obs_factura', 'facturas.deleted_at', 'facturas.created_at',
+                        'facturas.id_legacy',
                         'clientes.primer_nombre', 'clientes.segundo_nombre',
                         'clientes.primer_apellido', 'clientes.segundo_apellido',
                         'razones_sociales.razon_social',
@@ -510,9 +522,9 @@ class InformesAliado
     private function pagosRecibidos(): array
     {
         $columnas = [
-            'Consecutivo Factura' => fn ($f, $ctx) => $ctx->consecutivo('factura', $f->factura_id),
+            'Consecutivo Factura' => fn ($f, $ctx) => $this->consecutivoFactura($f, $ctx),
             'Concepto' => 'concepto',
-            'Detalle del Concepto' => 'detalle',
+            'Detalle del Concepto' => $this->humano('detalle'),
             'Fecha' => fn ($f) => $this->fecha($f->fecha),
             'Documento' => 'cedula',
             'Nombre Completo' => fn ($f) => $this->limpiar($f->nombre_completo),
@@ -520,14 +532,14 @@ class InformesAliado
             'Valor Aplicado' => fn ($f) => $this->dinero($f->valor_aplicado),
             'Valor en Efectivo' => fn ($f) => $this->dinero($f->valor_efectivo),
             'Valor Consignado' => fn ($f) => $this->dinero($f->valor_consignado),
-            'Forma de Pago' => 'forma_pago',
+            'Forma de Pago' => $this->humano('forma_pago'),
             'Banco' => 'banco',
             'Referencia' => 'referencia',
-            'Estado' => 'estado',
+            'Estado' => $this->humano('estado'),
             'Registrado Por' => 'registrado_por',
             'Validado Por' => 'validado_por',
             'Fecha de Validación' => fn ($f) => $this->fechaHora($f->fecha_validacion),
-            'Observación' => 'observacion',
+            'Observación' => fn ($f) => $this->observacionLimpia($f->observacion),
         ];
 
         return [
@@ -652,8 +664,8 @@ class InformesAliado
                 'Documento' => 'cedula',
                 'Nombre Completo' => fn ($f) => $this->limpiar($f->nombre_completo),
                 'Empresa' => 'empresa',
-                'Tipo' => 'tipo',
-                'Resultado' => 'resultado',
+                'Tipo' => $this->humano('tipo'),
+                'Resultado' => $this->humano('resultado'),
                 'Observación' => 'observacion',
                 'Registrado Por' => 'registrado_por',
             ],
@@ -694,11 +706,11 @@ class InformesAliado
             'descripcion' => 'Incapacidades médicas registradas, con su radicación, su estado de pago y su encadenamiento de prórrogas.',
             'columnas' => [
                 'Consecutivo' => fn ($f, $ctx) => $ctx->asignar('incapacidad', $f->id),
-                'Consecutivo de la Incapacidad Padre' => fn ($f, $ctx) => $ctx->consecutivo('incapacidad', $f->incapacidad_padre_id),
+                'Consecutivo de la Incapacidad Padre' => fn ($f, $ctx) => $ctx->asignar('incapacidad', $f->incapacidad_padre_id),
                 'Documento' => 'cedula_usuario',
                 'Nombre Completo' => fn ($f) => $this->limpiar($f->nombre_completo),
                 'Razón Social' => fn ($f) => $f->razon_social ?: $f->razon_social_nombre,
-                'Tipo de Incapacidad' => 'tipo_incapacidad',
+                'Tipo de Incapacidad' => $this->humano('tipo_incapacidad'),
                 'Es Prórroga' => fn ($f) => $this->si($f->prorroga),
                 'Número de Prórroga' => 'numero_proroga',
                 'Días de Incapacidad' => 'dias_incapacidad',
@@ -707,7 +719,7 @@ class InformesAliado
                 'Fecha de Recibido' => fn ($f) => $this->fecha($f->fecha_recibido),
                 'Quién Remite' => 'quien_remite',
                 'Quién Recibe' => 'quien_recibe',
-                'Tipo de Entidad' => 'tipo_entidad',
+                'Tipo de Entidad' => $this->humano('tipo_entidad'),
                 'Entidad Responsable' => 'entidad_nombre',
                 'Número de Radicado' => 'numero_radicado',
                 'Fecha de Radicado' => fn ($f) => $this->fecha($f->fecha_radicado),
@@ -715,8 +727,8 @@ class InformesAliado
                 'Transcripción Completada' => fn ($f) => $this->si($f->transcripcion_completada),
                 'Diagnóstico' => 'diagnostico',
                 'Concepto de Rehabilitación' => 'concepto_rehabilitacion',
-                'Estado' => 'estado',
-                'Estado de Pago' => 'estado_pago',
+                'Estado' => $this->humano('estado'),
+                'Estado de Pago' => $this->humano('estado_pago'),
                 'Fecha de Pago' => fn ($f) => $this->fecha($f->fecha_pago),
                 'Salario Base' => fn ($f) => $this->dinero($f->salario_base),
                 'Valor Esperado' => fn ($f) => $this->dinero($f->valor_esperado),
@@ -780,13 +792,13 @@ class InformesAliado
                 'Documento' => 'cedula_usuario',
                 'Fecha de Inicio de la Incapacidad' => fn ($f) => $this->fecha($f->fecha_inicio),
                 'Fecha de la Gestión' => fn ($f) => $this->fechaHora($f->created_at),
-                'Tipo' => 'tipo',
-                'Trámite' => 'tramite',
+                'Tipo' => $this->humano('tipo'),
+                'Trámite' => $this->humano('tramite'),
                 'Respuesta' => 'respuesta',
-                'Resultado' => 'estado_resultado',
+                'Resultado' => $this->humano('estado_resultado'),
                 'Aplica a Toda la Familia' => fn ($f) => $this->si($f->aplica_a_familia),
                 'Cambió el Estado' => fn ($f) => $this->si($f->cambia_estado),
-                'Estado Nuevo' => 'estado_nuevo',
+                'Estado Nuevo' => $this->humano('estado_nuevo'),
                 'Fecha para Recordar' => fn ($f) => $this->fecha($f->fecha_recordar),
                 'Realizada Por' => 'realizada_por',
             ],
@@ -829,13 +841,13 @@ class InformesAliado
                 'Documento' => 'cedula',
                 'Nombre Completo' => fn ($f) => $this->limpiar($f->nombre_completo),
                 'Razón Social' => 'razon_social',
-                'Trámite' => 'tipo',
+                'Trámite' => $this->humano('tipo'),
                 'Número de Radicado' => 'numero_radicado',
-                'Estado' => 'estado',
-                'Tipo de Documento' => 'tipo_documento',
-                'Canal de Envío' => 'canal_envio',
+                'Estado' => $this->humano('estado'),
+                'Tipo de Documento' => $this->humano('tipo_documento'),
+                'Canal de Envío' => $this->humano('canal_envio'),
                 'Enviado al Cliente' => fn ($f) => $this->si($f->enviado_al_cliente),
-                'Canal de Envío al Cliente' => 'canal_envio_cliente',
+                'Canal de Envío al Cliente' => $this->humano('canal_envio_cliente'),
                 'Fecha de Envío al Cliente' => fn ($f) => $this->fechaHora($f->fecha_envio_cliente),
                 'Fecha de Inicio del Trámite' => fn ($f) => $this->fecha($f->fecha_inicio_tramite),
                 'Fecha de Confirmación' => fn ($f) => $this->fecha($f->fecha_confirmacion),
@@ -884,10 +896,10 @@ class InformesAliado
             'columnas' => [
                 'Consecutivo Trámite' => fn ($f, $ctx) => $ctx->consecutivo('radicado', $f->radicado_id),
                 'Documento' => 'cedula',
-                'Proceso' => 'tipo_proceso',
+                'Proceso' => $this->humano('tipo_proceso'),
                 'Entidad' => 'entidad',
-                'Estado Anterior' => 'estado_anterior',
-                'Estado Nuevo' => 'estado_nuevo',
+                'Estado Anterior' => $this->humano('estado_anterior'),
+                'Estado Nuevo' => $this->humano('estado_nuevo'),
                 'Observación' => 'observacion',
                 'Registrado Por' => 'registrado_por',
                 'Fecha del Movimiento' => fn ($f) => $this->fechaHora($f->created_at),
@@ -925,9 +937,9 @@ class InformesAliado
             'descripcion' => 'Tareas y pendientes operativos.',
             'columnas' => [
                 'Consecutivo' => fn ($f, $ctx) => $ctx->asignar('tarea', $f->id),
-                'Tipo' => 'tipo',
-                'Estado' => 'estado',
-                'Resultado' => 'resultado',
+                'Tipo' => $this->humano('tipo'),
+                'Estado' => $this->humano('estado'),
+                'Resultado' => $this->humano('resultado'),
                 'Documento' => 'cedula',
                 'Nombre Completo' => fn ($f) => $this->limpiar($f->nombre_completo),
                 'Razón Social' => 'razon_social',
@@ -983,9 +995,9 @@ class InformesAliado
             'columnas' => [
                 'Consecutivo Tarea' => fn ($f, $ctx) => $ctx->consecutivo('tarea', $f->tarea_id),
                 'Documento' => 'cedula',
-                'Acción' => 'tipo_accion',
+                'Acción' => $this->humano('tipo_accion'),
                 'Observación' => 'observacion',
-                'Estado de la Tarea' => 'estado_tarea',
+                'Estado de la Tarea' => $this->humano('estado_tarea'),
                 'Días para Recordar' => 'recordar_dias',
                 'Fecha de Alerta' => fn ($f) => $this->fecha($f->fecha_alerta),
                 'Encargado Anterior' => 'encargado_anterior',
@@ -1036,7 +1048,7 @@ class InformesAliado
                 'Correo' => 'correo',
                 'Ocupación' => 'ocupacion',
                 'Municipio' => fn ($f) => $f->municipio_nombre ?: $f->municipio,
-                'Canal de Origen' => 'canal_origen',
+                'Canal de Origen' => $this->humano('canal_origen'),
                 'Referido Por' => 'referido',
                 'Modalidad' => 'modalidad',
                 'Plan' => 'plan',
@@ -1045,7 +1057,7 @@ class InformesAliado
                 'Nivel de Riesgo ARL' => 'n_arl',
                 'Costo de Afiliación' => fn ($f) => $this->dinero($f->costo_afiliacion),
                 'Administración' => fn ($f) => $this->dinero($f->administracion),
-                'Estado' => 'estado',
+                'Estado' => $this->humano('estado'),
                 'Razón de No Afiliación' => 'razon_no_afiliacion',
                 'Fecha de Cotización' => fn ($f) => $this->fecha($f->fecha_cotizacion),
                 'Próxima Llamada' => fn ($f) => $this->fecha($f->proxima_llamada),
@@ -1172,6 +1184,42 @@ class InformesAliado
     // Formato de valores
     // ══════════════════════════════════════════════════════════════════════
 
+    /**
+     * Consecutivo de la factura de un pago.
+     *
+     * Casi ningún pago tiene `factura_id`: la migración del sistema viejo dejó
+     * 159.548 consignaciones de GiMave (y 38.273 de BRYGAR) sin él, y el único
+     * rastro del vínculo es el id de la factura vieja escrito en la observación
+     * — "Migrada de factura legacy #27216". Se recupera por ahí contra el alias
+     * de `id_legacy`, y así el pago sí queda amarrado a su factura en la entrega.
+     */
+    private function consecutivoFactura(object $f, ContextoExportacion $ctx): ?int
+    {
+        if ($n = $ctx->consecutivo('factura', $f->factura_id)) {
+            return $n;
+        }
+
+        if (preg_match('/factura legacy #(\d+)/i', (string) ($f->observacion ?? ''), $m)) {
+            return $ctx->porAlias('factura', $m[1]);
+        }
+
+        return null;
+    }
+
+    /**
+     * La observación, sin el rastro de nuestra migración.
+     *
+     * "Migrada de factura legacy #27216" no es información del aliado: es una
+     * nota que se puso el sistema a sí mismo, y con el consecutivo ya no hace
+     * falta para nada. Hay una variante con "(fix)" de una corrección posterior.
+     */
+    private function observacionLimpia($v): string
+    {
+        $texto = trim((string) $v);
+
+        return preg_match('/^Migrada\b.*\bfactura legacy #\d+$/i', $texto) ? '' : $texto;
+    }
+
     /** CONCAT de los cuatro campos de nombre de una tabla, para subconsultas. */
     private function sqlNombre(string $tabla): string
     {
@@ -1248,5 +1296,28 @@ class InformesAliado
         }
 
         return ((int) $v) === 1 ? $si : $no;
+    }
+
+    /**
+     * Presenta un valor de estado o de tipo como texto y no como constante.
+     *
+     * En la base viven así: `razon_social`, `afiliacion`, `no_contesta`. Sacarlos
+     * tal cual entrega de regalo el vocabulario interno del sistema, y además
+     * se lee como un volcado de tabla. Aquí solo cambia la presentación: el
+     * significado es el mismo.
+     */
+    private function humano(string $columna): \Closure
+    {
+        return function (object $f) use ($columna) {
+            $v = trim((string) ($f->{$columna} ?? ''));
+
+            if ($v === '') {
+                return '';
+            }
+
+            $v = str_replace('_', ' ', $v);
+
+            return mb_strtoupper(mb_substr($v, 0, 1)).mb_substr($v, 1);
+        };
     }
 }

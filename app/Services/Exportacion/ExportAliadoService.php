@@ -139,7 +139,7 @@ class ExportAliadoService
 
         fwrite($csv, self::BOM);
         fwrite($txt, self::BOM);
-        fputcsv($csv, $cabeceras, ',', '"');
+        fputcsv($csv, $cabeceras, ',', '"', '');
         fwrite($txt, implode("\t", $cabeceras)."\r\n");
 
         $filas = 0;
@@ -152,7 +152,7 @@ class ExportAliadoService
                         foreach ($lote as $fila) {
                             $valores = $this->valores($informe['columnas'], $fila, $ctx);
 
-                            fputcsv($csv, array_map([$this, 'paraCsv'], $valores), ',', '"');
+                            fputcsv($csv, array_map([$this, 'paraCsv'], $valores), ',', '"', '');
                             fwrite($txt, implode("\t", $valores)."\r\n");
                             $filas++;
                         }
@@ -331,8 +331,12 @@ class ExportAliadoService
 
         foreach ($this->informes->todos() as $informe) {
             $filas = $resumen[$informe['titulo']] ?? 0;
-            $lineas[] = sprintf('  %-34s %8s registros', $informe['archivo'], number_format($filas, 0, ',', '.'));
-            $lineas[] = sprintf('  %-34s %s', '', $informe['descripcion']);
+            $lineas[] = sprintf('  %-34s %9s registros', $informe['archivo'], number_format($filas, 0, ',', '.'));
+
+            foreach (explode("\n", wordwrap($informe['descripcion'], 62)) as $renglon) {
+                $lineas[] = '      '.$renglon;
+            }
+
             $lineas[] = '';
         }
 

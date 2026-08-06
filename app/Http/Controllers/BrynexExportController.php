@@ -56,7 +56,15 @@ class BrynexExportController extends Controller
             ->orderByDesc('id')
             ->first();
 
-        return view('brynex.exportaciones', compact('aliados', 'entregas', 'pendiente'));
+        // Las facturas son la tabla que manda el tiempo de generación (GiMave
+        // tiene 115.000). Sirven para avisar cuándo conviene irse al comando en
+        // vez de dejar la petición HTTP colgada media hora.
+        $volumenes = \Illuminate\Support\Facades\DB::table('facturas')
+            ->select('aliado_id', \Illuminate\Support\Facades\DB::raw('COUNT(*) as total'))
+            ->groupBy('aliado_id')
+            ->pluck('total', 'aliado_id');
+
+        return view('brynex.exportaciones', compact('aliados', 'entregas', 'pendiente', 'volumenes'));
     }
 
     // ── Paso 1: pedir el código ──────────────────────────────────────────

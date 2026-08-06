@@ -43,6 +43,9 @@
                         <div style="font-family:ui-monospace,Menlo,monospace;font-size:1.15rem;font-weight:700;color:#065f46;letter-spacing:.08em">
                             {{ $nueva->passwordPlano() }}
                         </div>
+                        <div style="font-size:.72rem;color:#065f46;margin-top:.45rem">
+                            Mándela por un canal distinto al del archivo.
+                        </div>
                     </div>
                 @endif
             </div>
@@ -91,7 +94,11 @@
                     <select name="aliado_id" required class="select-bx">
                         <option value="">— Seleccione el aliado —</option>
                         @foreach($aliados as $aliado)
-                            <option value="{{ $aliado->id }}">{{ $aliado->nombre }}@if(!$aliado->activo) (inactivo)@endif</option>
+                            @php $vol = (int) ($volumenes[$aliado->id] ?? 0); @endphp
+                            <option value="{{ $aliado->id }}">
+                                {{ $aliado->nombre }}@if(!$aliado->activo) (inactivo)@endif
+                                — {{ number_format($vol, 0, ',', '.') }} facturas
+                            </option>
                         @endforeach
                     </select>
                 </div>
@@ -101,6 +108,15 @@
             <div style="margin-top:1rem;font-size:.78rem;color:#64748b;line-height:1.5">
                 Al pedir el código, llega un mensaje al WhatsApp de BryNex. Nada se genera hasta confirmarlo.
             </div>
+
+            @if($volumenes->contains(fn ($v) => $v > 40000))
+            <div style="margin-top:.8rem;padding:.6rem .8rem;background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;font-size:.76rem;color:#78350f;line-height:1.5">
+                Para los aliados de más de 40.000 facturas la generación tarda varios minutos y el
+                servidor puede cortar la petición antes de terminar. En esos casos conviene el comando:
+                <code>php artisan aliado:exportar {id}</code> — hace exactamente lo mismo y queda
+                registrado igual.
+            </div>
+            @endif
         </div>
     @endif
 
@@ -125,11 +141,16 @@
                 planes, modalidades), ni los planos PILA, ni credenciales, ni adjuntos, ni un solo id
                 interno: cada entidad sale con su nombre.
             </p>
-            <p style="margin:0">
+            <p style="margin:0 0 .6rem">
                 El ZIP se guarda cifrado en el servidor y se borra solo a los
                 <strong>{{ config('exportacion.dias_retencion') }} días</strong>.
                 Si WhatsApp falla, la salida es
                 <code>php artisan aliado:exportar {id}</code>.
+            </p>
+            <p style="margin:0;padding:.6rem .8rem;background:#fffbeb;border:1px solid #fcd34d;border-radius:6px">
+                ⚠️ <strong>Para abrirlo hace falta 7-Zip, WinRAR o Keka.</strong> El ZIP va cifrado con
+                AES-256, y el descompresor que traen Windows y Mac de fábrica no entiende ese cifrado:
+                pide la contraseña y falla igual. Avísele al aliado cuando le mande el archivo.
             </p>
         </div>
     </details>
