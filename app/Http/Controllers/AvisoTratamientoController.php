@@ -30,6 +30,14 @@ class AvisoTratamientoController extends Controller
 
     public const ANIOS_BITACORA = 5;
 
+    /**
+     * Canal para ejercer los derechos de habeas data. Va aquí y no en
+     * config('mail.from.address'): esa es la dirección desde la que sale el
+     * correo del sistema, no a la que un titular escribe para pedir que le
+     * borren los datos. Cambiarla es un cambio legal, no de configuración.
+     */
+    public const CORREO_CONTACTO = 'brynex@gmail.com';
+
     public function __construct()
     {
         $this->middleware('auth');
@@ -45,6 +53,7 @@ class AvisoTratamientoController extends Controller
             'version' => self::VERSION,
             'aniosAccesos' => self::ANIOS_ACCESOS,
             'aniosBitacora' => self::ANIOS_BITACORA,
+            'correo' => self::CORREO_CONTACTO,
         ]);
     }
 

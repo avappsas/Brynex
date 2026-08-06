@@ -143,7 +143,7 @@ con fecha, hora e IP. Sin aceptación no debería haber acceso.
 > realizó cada operación. Si revocas la autorización, procederemos a cerrar tu
 > cuenta.
 >
-> **Cómo ejercerlos.** Escribe a **[correo]**. Respondemos consultas en 10 días
+> **Cómo ejercerlos.** Escribe a **brynex@gmail.com**. Respondemos consultas en 10 días
 > hábiles y reclamos en 15, conforme a la Ley 1581 de 2012.
 >
 > ☐ He leído este aviso y **autorizo** el tratamiento de mis datos personales en

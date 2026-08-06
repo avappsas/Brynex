@@ -107,7 +107,7 @@
 
         <h2>Cómo ejercerlos</h2>
         <p>
-            Escribe a <strong>{{ config('mail.from.address') ?: 'contacto@brynex.co' }}</strong>.
+            Escribe a <strong><a href="mailto:{{ $correo }}" style="color:#6ba8ff">{{ $correo }}</a></strong>.
             Respondemos consultas en 10 días hábiles y reclamos en 15, conforme a la
             Ley 1581 de 2012.
         </p>
