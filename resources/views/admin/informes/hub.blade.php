@@ -75,9 +75,24 @@
         </div>
     </a>
 
-    {{-- Cobros BryNex --}}
+    {{-- Distribución de Afiliaciones: entrar con `comisiones.ver` (admin,
+         contable y superadmin), repartir con `comisiones.gestionar` (solo
+         admin y superadmin, que es quien puede editar). --}}
+    @can('comisiones.ver')
+    <a href="{{ route('admin.informes.comisiones.afiliaciones', ['mes' => now()->month, 'anio' => now()->year]) }}" style="display:flex;align-items:center;gap:1.25rem;background:linear-gradient(135deg,#7c3aed,#5b21b6);border-radius:14px;padding:1.5rem 1.75rem;text-decoration:none;border:2px solid transparent;box-shadow:0 4px 20px rgba(124,58,237,.3);transition:all .18s;margin-top:1rem;"
+       onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 12px 32px rgba(124,58,237,.4)'"
+       onmouseout="this.style.transform='';this.style.boxShadow='0 4px 20px rgba(124,58,237,.3)'">
+        <div style="font-size:2.5rem;">📋</div>
+        <div>
+            <div style="font-size:1rem;font-weight:700;color:#fff;">Distribución de Afiliaciones</div>
+            <div style="font-size:.82rem;color:rgba(255,255,255,.7);margin-top:.2rem;">Repartir el valor de cada afiliación entre los asesores · Comisiones del mes</div>
+        </div>
+    </a>
+    @endcan
+
+    {{-- Historial --}}
     @can('informes.ver')
-    <h2 style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin-top:1.5rem;margin-bottom:.75rem;">Cobros por Uso</h2>
+    <h2 style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin-top:1.5rem;margin-bottom:.75rem;">Historial Informes</h2>
 
     {{-- Reporte de Ingresos y Retiros (Consolidado Mensual) --}}
     <a href="{{ route('admin.informes.consolidado_mensual') }}" style="display:flex;align-items:center;gap:1.25rem;background:linear-gradient(135deg,#0d9488,#0f766e);border-radius:14px;padding:1.5rem 1.75rem;text-decoration:none;border:2px solid transparent;box-shadow:0 4px 20px rgba(13,148,136,.3);transition:all .18s;"

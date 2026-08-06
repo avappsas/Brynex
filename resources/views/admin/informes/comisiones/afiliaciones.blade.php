@@ -357,11 +357,16 @@
                             @endif
                         </td>
                         <td>
+                            {{-- Repartir es de admin y superadmin. El contable
+                                 entra a consultar: sin el permiso no se pinta
+                                 el lápiz, que si no guardaría contra un 403. --}}
+                            @can('comisiones.gestionar')
                             <div style="display:flex; gap:.4rem; align-items:center;">
                                 <button class="btn-edit" onclick="editarFila({{ $f->id }})">✏️ Editar</button>
                                 <button class="btn-save" id="save-{{ $f->id }}" onclick="guardarFila({{ $f->id }})" style="display:none">💾 Guardar</button>
                                 <button class="btn-cancel-row" id="cancel-{{ $f->id }}" onclick="cancelarFila({{ $f->id }})" style="display:none">✕</button>
                             </div>
+                            @endcan
                             <div class="residuo" id="residuo-{{ $f->id }}"></div>
                         </td>
                     </tr>
