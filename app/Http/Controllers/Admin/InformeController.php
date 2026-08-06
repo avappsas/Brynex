@@ -453,6 +453,10 @@ class InformeController extends Controller
      *
      * Solo BryNex: una razón social agrupa varias empresas cliente, así que
      * el conteo de faltantes sin ese contexto siembra dudas en el aliado.
+     *
+     * A diferencia del resto de informes, este NO se limita al aliado activo:
+     * recorre todos y junta por NIT las razones sociales repetidas, con las de
+     * BRYGAR de primeras. El filtro por aliado sirve para aislar a uno.
      */
     public function validacionCierre(Request $request)
     {
@@ -460,33 +464,130 @@ class InformeController extends Controller
             abort(403, 'No tienes permiso para «Ver pendientes de planilla (Validación de cierre)».');
         }
 
-        $aid  = $this->aliadoId();
         $mes  = (int) $request->input('mes',  now()->month);
         $anio = (int) $request->input('anio', now()->year);
         $rsId = $request->input('razon_social_id');
+        $fAliado = $request->input('aliado_id') ? (int) $request->input('aliado_id') : null;
 
         $servicio = new \App\Services\CierrePeriodoService();
         $periodo  = $servicio->periodo($mes, $anio);
-        $resumen  = $servicio->resumen($aid, $mes, $anio);
+        $resumen  = $servicio->resumen($fAliado, $mes, $anio);
+        $aliados  = $this->aliadosConVigentes();
+
+        // La URL trae un solo id —viene del aviso de /admin/planos—, pero la
+        // fila del informe puede juntar varias razones sociales del mismo NIT:
+        // el detalle se abre para el grupo completo.
+        $grupo = $rsId
+            ? $resumen->first(fn($g) => in_array((int) $rsId, $g->razon_social_ids, true))
+            : null;
 
         // El detalle es pesado: solo se arma para la razón social abierta.
-        $detalle = $rsId ? $servicio->pendientes($aid, $mes, $anio, (int) $rsId) : collect();
+        $detalle = $grupo
+            ? $servicio->pendientes($fAliado, $mes, $anio, $grupo->razon_social_ids)
+            : collect();
 
         if ($request->input('excel')) {
-            $filas = $rsId ? $detalle : $servicio->pendientes($aid, $mes, $anio);
+            $filas = $grupo ? $detalle : $servicio->pendientes($fAliado, $mes, $anio);
 
             return $this->exportCsv($filas, 'validacion_cierre',
-                ['Cédula','Nombre','Razón Social','Plan','Modalidad','Celular','Fecha Ingreso','Último período en planilla'],
+                ['Cédula','Nombre','Aliado','Razón Social','Plan','Modalidad','Celular','Fecha Ingreso','Último período en planilla'],
                 fn($r) => [
-                    $r->cedula, $r->nombre, $r->razon_social, $r->plan_nombre ?? '—',
+                    $r->cedula, $r->nombre, $r->aliado, $r->razon_social, $r->plan_nombre ?? '—',
                     $r->modalidad ?? '—', $r->celular, $r->fecha_ingreso,
                     $r->ultimo_periodo ? substr((string) $r->ultimo_periodo, 4, 2).'/'.substr((string) $r->ultimo_periodo, 0, 4) : 'nunca',
                 ]);
         }
 
         return view('admin.informes.validacion_cierre', compact(
-            'resumen', 'detalle', 'mes', 'anio', 'periodo', 'rsId'
+            'resumen', 'detalle', 'grupo', 'mes', 'anio', 'periodo', 'rsId', 'fAliado', 'aliados'
         ));
+    }
+
+    /**
+     * Los vigentes que NO deben cotizar el período, para el modal de «sin
+     * planilla». Se pide por AJAX: son la minoría de las filas y cargarlas
+     * todas de entrada duplicaría el peso del informe.
+     */
+    public function validacionCierreSinPlanilla(Request $request)
+    {
+        if (! Auth::user()->can('brynex_cierre.ver')) {
+            abort(403);
+        }
+
+        $mes  = (int) $request->input('mes',  now()->month);
+        $anio = (int) $request->input('anio', now()->year);
+        $fAliado = $request->input('aliado_id') ? (int) $request->input('aliado_id') : null;
+
+        $ids = collect(explode(',', (string) $request->input('ids')))
+            ->map(fn($i) => (int) trim($i))->filter()->values()->all();
+
+        if (empty($ids)) {
+            return response()->json(['filas' => []]);
+        }
+
+        $filas = (new \App\Services\CierrePeriodoService())
+            ->noAplican($fAliado, $mes, $anio, $ids);
+
+        return response()->json([
+            'filas' => $filas->map(fn($f) => [
+                'cedula'        => $f->cedula,
+                'nombre'        => $f->nombre ?: '—',
+                'aliado'        => $f->aliado,
+                'aliado_id'     => (int) $f->aliado_id,
+                'razon_social'  => $f->razon_social,
+                'plan'          => $f->plan_nombre ?? '—',
+                'modalidad'     => $f->modalidad ?? '—',
+                'fecha_ingreso' => $f->fecha_ingreso ?? '—',
+                'motivo'        => $f->motivo,
+                'ficha'         => route('admin.informes.validacion_cierre.ficha', [
+                    'aliado_id' => $f->aliado_id, 'cedula' => $f->cedula,
+                ]),
+            ])->values(),
+        ]);
+    }
+
+    /**
+     * Abre la ficha de un cliente de otro aliado desde el informe global.
+     *
+     * La ficha vive detrás del aliado activo de la sesión, así que hay que
+     * moverlo antes de redirigir; el informe no se afecta —ya es global— pero
+     * el resto del panel sí queda parado en ese aliado. Por eso el enlace del
+     * informe lo advierte y se abre en pestaña nueva.
+     */
+    public function validacionCierreFicha(Request $request)
+    {
+        if (! Auth::user()->can('brynex_cierre.ver')) {
+            abort(403);
+        }
+
+        $request->validate([
+            'aliado_id' => 'required|integer|exists:aliados,id',
+            'cedula'    => 'required|string',
+        ]);
+
+        $user     = Auth::user();
+        $aliadoId = (int) $request->input('aliado_id');
+
+        if (! $user->puedeAccederAliado($aliadoId)) {
+            abort(403, 'No tiene acceso a este aliado.');
+        }
+
+        session(['aliado_id_activo' => $aliadoId]);
+
+        return redirect()->route('admin.clientes.ficha_cedula', [
+            'cedula' => $request->input('cedula'),
+        ]);
+    }
+
+    /** Aliados con contratos vigentes: los únicos que pueden salir en el informe. */
+    private function aliadosConVigentes()
+    {
+        return DB::table('aliados AS a')
+            ->join('contratos AS c', 'c.aliado_id', '=', 'a.id')
+            ->where('c.estado', 'vigente')
+            ->groupBy('a.id', 'a.nombre')
+            ->orderBy('a.nombre')
+            ->get(['a.id', 'a.nombre']);
     }
 
     /**

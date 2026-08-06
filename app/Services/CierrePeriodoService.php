@@ -126,12 +126,18 @@ class CierrePeriodoService
      * suma los contadores y guarda de qué aliados viene.
      *
      * Sin NIT no hay manera de saber si dos filas son la misma empresa: esas
-     * quedan cada una por su lado, con su propio id.
+     * quedan cada una por su lado, con su propio id. Y solo cuenta como NIT lo
+     * que tenga 9 o 10 dígitos —hay razones sociales de relleno con «2», «5» o
+     * «333333» en varios aliados que juntadas darían una fila sin sentido.
      */
     private function agruparPorNit($filas, $liquidaciones)
     {
         return $filas
-            ->groupBy(fn ($f) => filled($f->nit) ? 'nit:'.trim((string) $f->nit) : 'rs:'.$f->razon_social_id)
+            ->groupBy(function ($f) {
+                $nit = preg_replace('/\D/', '', (string) $f->nit);
+
+                return strlen($nit) >= 9 && strlen($nit) <= 10 ? 'nit:'.$nit : 'rs:'.$f->razon_social_id;
+            })
             ->map(function ($grupo, $clave) use ($liquidaciones) {
                 $aliados = $grupo->map(function ($f) {
                     $f->aliado_id = (int) $f->aliado_id;

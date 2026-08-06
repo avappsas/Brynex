@@ -490,6 +490,10 @@ Route::middleware('auth')->group(function () {
             Route::get('/retirados-mes',          [$ic, 'retiradosMes'])         ->name('retirados_mes');
             Route::get('/validacion-cierre',      [$ic, 'validacionCierre'])     ->name('validacion_cierre')
                 ->middleware('permiso:brynex_cierre.ver');
+            Route::get('/validacion-cierre/sin-planilla', [$ic, 'validacionCierreSinPlanilla'])
+                ->name('validacion_cierre.sin_planilla')->middleware('permiso:brynex_cierre.ver');
+            Route::get('/validacion-cierre/ficha', [$ic, 'validacionCierreFicha'])
+                ->name('validacion_cierre.ficha')->middleware('permiso:brynex_cierre.ver');
             Route::get('/cierre-operacion',       [$ic, 'cierreOperacion'])      ->name('cierre_operacion');
             Route::get('/incapacidades',          [$ic, 'resumenIncapacidades']) ->name('incapacidades');
             Route::get('/tareas',                 [$ic, 'resumenTareas'])        ->name('tareas');
