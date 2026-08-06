@@ -22,10 +22,27 @@ class InformeController extends Controller
         }
     }
 
+    /**
+     * El estado financiero va aparte del resto de informes: un admin gestiona
+     * la operación del aliado sin tener por qué ver ingresos, egresos,
+     * utilidad ni saldos. Solo superadmin y contable, más el admin puntual al
+     * que se le otorgue `informes.financiero` a mano.
+     *
+     * Las rutas ya lo exigen; esto es el segundo cerrojo, para que quitar el
+     * middleware por descuido no abra la caja.
+     */
     private function checkFinanciero(): void
     {
-        if (! Auth::user()->can('informes.ver')) {
-            abort(403, 'No tienes permiso para «Ver informes (Informes)».');
+        if (! Auth::user()->can('informes.financiero')) {
+            abort(403, 'No tienes permiso para «Ver el estado financiero (Informes)».');
+        }
+    }
+
+    /** Corregir consignaciones y subir soportes desde el financiero. */
+    private function checkFinancieroEscritura(): void
+    {
+        if (! Auth::user()->can('informes.financiero_editar')) {
+            abort(403, 'No tienes permiso para «Corregir consignaciones y subir soportes desde el financiero (Informes)».');
         }
     }
 
@@ -1547,7 +1564,7 @@ class InformeController extends Controller
      */
     public function editarConsignacion(Request $request, int $id)
     {
-        $this->checkFinanciero();
+        $this->checkFinancieroEscritura();
         $aid = $this->aliadoId();
 
         $consig = \App\Models\Consignacion::where('id', $id)
@@ -1675,7 +1692,7 @@ class InformeController extends Controller
      */
     public function subirImagenConsignacionFinanciero(Request $request, int $id)
     {
-        $this->checkFinanciero();
+        $this->checkFinancieroEscritura();
         $aid = $this->aliadoId();
 
         $consig = \App\Models\Consignacion::where('id', $id)
@@ -1771,7 +1788,7 @@ class InformeController extends Controller
      */
     public function conciliacionBancos(Request $request)
     {
-        $this->checkFinanciero();
+        $this->checkAdmin();
 
         set_time_limit(120); // protección ante meses con muchos movimientos
 
@@ -3360,7 +3377,9 @@ class InformeController extends Controller
     // ── JSON: resumen préstamos pendientes del mes ────────────────────
     public function prestamesMes(Request $request)
     {
-        $this->checkFinanciero();
+        if (! Auth::user()->can('prestamos.ver')) {
+            abort(403, 'No tienes permiso para «Ver préstamos (Préstamos)».');
+        }
         $aid  = $this->aliadoId();
         $mes  = (int)$request->input('mes', now()->month);
         $anio = (int)$request->input('anio', now()->year);

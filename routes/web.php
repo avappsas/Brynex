@@ -162,7 +162,9 @@ Route::middleware('auth')->group(function () {
             Route::get('asesores/reporte-mensual', [\App\Http\Controllers\Admin\AsesorController::class, 'reporteMensual'])
                 ->name('asesores.reporte_mensual');
             Route::get('asesores', [\App\Http\Controllers\Admin\AsesorController::class, 'index'])->name('asesores.index');
-            Route::get('asesores/{asesor}', [\App\Http\Controllers\Admin\AsesorController::class, 'show'])->name('asesores.show');
+            Route::get('asesores/{asesor}', [\App\Http\Controllers\Admin\AsesorController::class, 'show'])
+                ->whereNumber('asesor')
+                ->name('asesores.show');
         });
         Route::middleware('permiso:asesores.gestionar')->group(function () {
             Route::resource('asesores', \App\Http\Controllers\Admin\AsesorController::class)
