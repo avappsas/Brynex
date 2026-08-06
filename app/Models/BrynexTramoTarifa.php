@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 class BrynexTramoTarifa extends BaseModel
@@ -68,36 +69,63 @@ class BrynexTramoTarifa extends BaseModel
         ?int $alidoId = null,
         string $fecha = ''
     ): array {
-        $fecha = $fecha ?: now()->toDateString();
+        return self::calcularCobroConTramos(
+            self::tramosDelModulo($moduloId, $alidoId),
+            $cantidad,
+            $alidoId,
+            $fecha
+        );
+    }
 
-        // 1. Buscar tramos: primero personalizados del aliado, luego globales
-        $tramos = self::where('modulo_id', $moduloId)
+    /**
+     * Todos los tramos de un módulo —los del aliado y los globales— sin filtrar
+     * vigencia. Permite calcular varios meses, cada uno con su propia fecha de
+     * referencia, trayendo los tramos de la BD una sola vez.
+     */
+    public static function tramosDelModulo(int $moduloId, ?int $alidoId = null): Collection
+    {
+        return self::where('modulo_id', $moduloId)
             ->where(function ($q) use ($alidoId) {
                 if ($alidoId) {
-                    $q->where('aliado_id', $alidoId);
+                    $q->where('aliado_id', $alidoId)->orWhereNull('aliado_id');
                 } else {
                     $q->whereNull('aliado_id');
                 }
             })
-            ->where('vigente_desde', '<=', $fecha)
-            ->where(function ($q) use ($fecha) {
-                $q->whereNull('vigente_hasta')
-                  ->orWhere('vigente_hasta', '>=', $fecha);
-            })
             ->orderBy('desde_cant')
             ->get();
+    }
+
+    /**
+     * Igual que calcularCobro(), pero sobre una colección ya traída con
+     * tramosDelModulo(): resuelve en memoria el filtro de vigencia y la caída a
+     * los tramos globales, sin volver a consultar la BD.
+     *
+     * @param Collection<int, self> $todosLosTramos
+     */
+    public static function calcularCobroConTramos(
+        Collection $todosLosTramos,
+        int $cantidad,
+        ?int $alidoId = null,
+        string $fecha = ''
+    ): array {
+        $fecha = $fecha ?: now()->toDateString();
+
+        $vigentes = fn (Collection $tramos) => $tramos->filter(function ($t) use ($fecha) {
+            $desde = $t->vigente_desde?->toDateString();
+            $hasta = $t->vigente_hasta?->toDateString();
+
+            return $desde !== null && $desde <= $fecha && ($hasta === null || $hasta >= $fecha);
+        })->values();
+
+        // 1. Elegir tramos: primero los personalizados del aliado, luego globales
+        $tramos = $alidoId
+            ? $vigentes($todosLosTramos->where('aliado_id', $alidoId))
+            : collect();
 
         // Si no hay tramos personalizados para el aliado, usar globales
-        if ($tramos->isEmpty() && $alidoId) {
-            $tramos = self::where('modulo_id', $moduloId)
-                ->whereNull('aliado_id')
-                ->where('vigente_desde', '<=', $fecha)
-                ->where(function ($q) use ($fecha) {
-                    $q->whereNull('vigente_hasta')
-                      ->orWhere('vigente_hasta', '>=', $fecha);
-                })
-                ->orderBy('desde_cant')
-                ->get();
+        if ($tramos->isEmpty()) {
+            $tramos = $vigentes($todosLosTramos->whereNull('aliado_id'));
         }
 
         // 2. Encontrar el tramo aplicable

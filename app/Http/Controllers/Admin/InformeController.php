@@ -3530,6 +3530,31 @@ class InformeController extends Controller
         return $pdf->download($nombreArchivo);
     }
 
+    /**
+     * Tabla derivada `(VALUES ...) AS m(...)` con los períodos del informe, para
+     * que una consulta agrupada por (anio, mes) reemplace a una consulta por mes.
+     *
+     * Las fechas se materializan aquí, con CAST explícito, en vez de construirse
+     * en SQL desde las columnas mes/anio: hay facturas con `mes = 0, anio = 0` y
+     * un DATEFROMPARTS sobre ellas aborta la consulta entera.
+     *
+     * Sólo recibe enteros y fechas generadas por Carbon, nunca entrada del usuario.
+     */
+    private function tablaPeriodosSql(array $periodos): string
+    {
+        $filas = array_map(fn ($p) => sprintf(
+            "(%d, %d, CAST('%s' AS date), CAST('%s' AS date), CAST('%s' AS datetime), CAST('%s' AS datetime))",
+            $p['anio'],
+            $p['mes'],
+            $p['primer_dia']->toDateString(),
+            $p['ultimo_dia']->toDateString(),
+            $p['primer_dia']->toDateTimeString(),
+            $p['ultimo_dia']->toDateTimeString()
+        ), $periodos);
+
+        return '(VALUES ' . implode(', ', $filas) . ') AS m(anio, mes, ini_d, fin_d, ini_dt, fin_dt)';
+    }
+
     public function consolidadoMensual()
     {
         if (! Auth::user()->can('informes.ver')) {
@@ -3543,90 +3568,201 @@ class InformeController extends Controller
             9 => 'Septiembre', 10 => 'Octubre', 11 => 'Noviembre', 12 => 'Diciembre'
         ];
 
-        $meses = [];
+        // Los 7 períodos del informe (el séptimo solo existe para poder calcular
+        // la variación del sexto). Se arman primero porque todas las consultas de
+        // abajo resuelven los 7 meses de una sola vez.
+        $periodos = [];
         $fechaIteracion = now()->startOfMonth();
-        $iaModuloId = \App\Models\BrynexModulo::where('codigo', 'ia_asistente')->value('id');
-
-        // Calculamos 7 meses para tener la variación del sexto mes
         for ($i = 0; $i < 7; $i++) {
-            $mesVal = $fechaIteracion->month;
-            $anioVal = $fechaIteracion->year;
+            $primerDia = \Carbon\Carbon::create($fechaIteracion->year, $fechaIteracion->month, 1)->startOfDay();
+            $periodos[] = [
+                'mes'        => $fechaIteracion->month,
+                'anio'       => $fechaIteracion->year,
+                'primer_dia' => $primerDia,
+                'ultimo_dia' => $primerDia->copy()->endOfMonth(),
+            ];
+            $fechaIteracion->subMonth();
+        }
 
-            $primerDia = \Carbon\Carbon::create($anioVal, $mesVal, 1)->startOfDay();
-            $ultimoDia = $primerDia->copy()->endOfMonth();
+        // Tabla derivada con esos períodos: convierte el mes/año y las fechas de
+        // corte en columnas, para que una sola consulta agrupada por (anio, mes)
+        // reemplace a las siete que había antes. Cada viaje al servidor remoto
+        // cuesta ~250ms, así que lo que se ahorra son round-trips, no cómputo.
+        $tp = $this->tablaPeriodosSql($periodos);
 
-            // 1. Admon Vigentes (factura regular de administración en M)
-            $admonVigentes = DB::table('contratos as c')
-                ->where('c.aliado_id', $aid)
-                ->where('c.fecha_ingreso', '<', $primerDia->toDateString())
-                ->whereExists(function($sq) use ($mesVal, $anioVal) {
-                    $sq->select(DB::raw(1))
-                       ->from('facturas as f')
-                       ->whereColumn('f.contrato_id', 'c.id')
-                       ->where('f.numero_factura', '>', 0)
-                       ->where('f.mes', $mesVal)
-                       ->where('f.anio', $anioVal)
-                       ->whereNull('f.deleted_at');
-                })
-                ->count();
+        $clave  = fn ($anio, $mes) => ((int) $anio) . '-' . ((int) $mes);
+        $porMes = fn ($filas) => collect($filas)
+            ->mapWithKeys(fn ($r) => [$clave($r->anio, $r->mes) => $r->total])
+            ->all();
 
-            // 3. Afiliaciones del Mes (nuevos contratos ingresados en el período por fecha de ingreso)
-            //    Se traen las cédulas (no un COUNT) para poder cruzarlas más abajo
-            //    contra los retiros del mes y separar reingresos de altas nuevas,
-            //    sin pagar una consulta extra: cada viaje al servidor remoto cuesta
-            //    ~250ms y este bloque corre 7 veces.
-            $afiliacionesMes = DB::table('contratos as c')
-                ->where('c.aliado_id', $aid)
-                ->where('c.fecha_ingreso', '>=', $primerDia->toDateString())
-                ->where('c.fecha_ingreso', '<=', $ultimoDia->toDateString())
-                ->select('c.id', 'c.cedula')
-                ->get();
+        $rangoIni = $periodos[count($periodos) - 1]['primer_dia']; // el mes más viejo
+        $rangoFin = $periodos[0]['ultimo_dia'];                    // el mes más reciente
 
-            $afilPorFecha = $afiliacionesMes->count();
+        // 1. Admon Vigentes (factura regular de administración en M)
+        $admonPorMes = $porMes(DB::table(DB::raw($tp))
+            ->join('facturas as f', function ($j) {
+                $j->on('f.mes', '=', 'm.mes')->on('f.anio', '=', 'm.anio');
+            })
+            ->join('contratos as c', 'c.id', '=', 'f.contrato_id')
+            ->where('c.aliado_id', $aid)
+            ->where('f.numero_factura', '>', 0)
+            ->whereNull('f.deleted_at')
+            ->whereColumn('c.fecha_ingreso', '<', 'm.ini_d')
+            ->groupBy('m.anio', 'm.mes')
+            ->select('m.anio', 'm.mes', DB::raw('COUNT(DISTINCT c.id) as total'))
+            ->get());
 
-            // 4. Retiros Puros (guiados estrictamente por el período mes/año de la factura de retiro #0)
-            $retiradosRaw = DB::table('contratos as c')
-                ->where('c.aliado_id', $aid)
-                ->where('c.estado', 'retirado')
-                ->whereExists(function($sq) use ($mesVal, $anioVal) {
-                    $sq->select(DB::raw(1))
-                       ->from('facturas as f')
-                       ->whereColumn('f.contrato_id', 'c.id')
-                       ->where('f.numero_factura', 0)
-                       ->where('f.tipo', '<>', 'afiliacion')
-                       ->where('f.mes', $mesVal)
-                       ->where('f.anio', $anioVal)
-                       ->whereNull('f.deleted_at');
-                })
-                ->whereNotExists(function($sq) use ($mesVal, $anioVal) {
-                    $sq->select(DB::raw(1))
-                       ->from('facturas as f')
-                       ->whereColumn('f.contrato_id', 'c.id')
-                       ->where('f.numero_factura', '>', 0)
-                       ->where('f.tipo', '<>', 'afiliacion')
-                       ->where('f.mes', $mesVal)
-                       ->where('f.anio', $anioVal)
-                       ->whereNull('f.deleted_at');
-                })
-                ->select('c.id', 'c.cedula',
-                    DB::raw("(SELECT TOP 1 total_ss FROM facturas WHERE contrato_id = c.id AND numero_factura = 0 AND tipo <> 'afiliacion' AND mes = {$mesVal} AND anio = {$anioVal} AND deleted_at IS NULL ORDER BY id DESC) as costo_ss"),
-                    // Retiro que en realidad fue una renovación ("ingreso-retiro"):
-                    // o se le abrió otro contrato con fecha de ingreso dentro del mismo
-                    // mes del retiro, o esa cédula hoy tiene un contrato vigente con
-                    // este mismo aliado. Basta con una de las dos.
-                    DB::raw("CASE WHEN EXISTS (
-                            SELECT 1 FROM contratos c2
-                            WHERE c2.cedula = c.cedula
-                              AND c2.aliado_id = c.aliado_id
-                              AND c2.id <> c.id
-                              AND (
-                                    (c2.fecha_ingreso >= '{$primerDia->toDateString()}'
-                                     AND c2.fecha_ingreso <= '{$ultimoDia->toDateString()}')
-                                 OR c2.estado = 'vigente'
-                              )
-                        ) THEN 1 ELSE 0 END as es_renovado")
-                )
-                ->get();
+        // 3. Afiliaciones del Mes (nuevos contratos ingresados en el período por fecha de ingreso)
+        //    Se traen las cédulas (no un COUNT) para poder cruzarlas más abajo
+        //    contra los retiros del mes y separar reingresos de altas nuevas.
+        $afiliacionesPorMes = DB::table('contratos as c')
+            ->where('c.aliado_id', $aid)
+            ->where('c.fecha_ingreso', '>=', $rangoIni->toDateString())
+            ->where('c.fecha_ingreso', '<=', $rangoFin->toDateString())
+            ->select('c.id', 'c.cedula', 'c.fecha_ingreso')
+            ->get()
+            ->groupBy(fn ($a) => $clave(substr($a->fecha_ingreso, 0, 4), substr($a->fecha_ingreso, 5, 2)));
+
+        // 4. Retiros Puros (guiados estrictamente por el período mes/año de la factura de retiro #0)
+        $retiradosPorMes = DB::table(DB::raw($tp))
+            ->join('contratos as c', function ($j) use ($aid) {
+                $j->where('c.aliado_id', '=', $aid)->where('c.estado', '=', 'retirado');
+            })
+            ->whereExists(function ($sq) {
+                $sq->select(DB::raw(1))
+                   ->from('facturas as f')
+                   ->whereColumn('f.contrato_id', 'c.id')
+                   ->where('f.numero_factura', 0)
+                   ->where('f.tipo', '<>', 'afiliacion')
+                   ->whereColumn('f.mes', 'm.mes')
+                   ->whereColumn('f.anio', 'm.anio')
+                   ->whereNull('f.deleted_at');
+            })
+            ->whereNotExists(function ($sq) {
+                $sq->select(DB::raw(1))
+                   ->from('facturas as f')
+                   ->whereColumn('f.contrato_id', 'c.id')
+                   ->where('f.numero_factura', '>', 0)
+                   ->where('f.tipo', '<>', 'afiliacion')
+                   ->whereColumn('f.mes', 'm.mes')
+                   ->whereColumn('f.anio', 'm.anio')
+                   ->whereNull('f.deleted_at');
+            })
+            ->select('m.anio', 'm.mes', 'c.id', 'c.cedula',
+                DB::raw("(SELECT TOP 1 total_ss FROM facturas WHERE contrato_id = c.id AND numero_factura = 0 AND tipo <> 'afiliacion' AND mes = m.mes AND anio = m.anio AND deleted_at IS NULL ORDER BY id DESC) as costo_ss"),
+                // Retiro que en realidad fue una renovación ("ingreso-retiro"):
+                // o se le abrió otro contrato con fecha de ingreso dentro del mismo
+                // mes del retiro, o esa cédula hoy tiene un contrato vigente con
+                // este mismo aliado. Basta con una de las dos.
+                DB::raw("CASE WHEN EXISTS (
+                        SELECT 1 FROM contratos c2
+                        WHERE c2.cedula = c.cedula
+                          AND c2.aliado_id = c.aliado_id
+                          AND c2.id <> c.id
+                          AND (
+                                (c2.fecha_ingreso >= m.ini_d
+                                 AND c2.fecha_ingreso <= m.fin_d)
+                             OR c2.estado = 'vigente'
+                          )
+                    ) THEN 1 ELSE 0 END as es_renovado")
+            )
+            ->get()
+            ->groupBy(fn ($r) => $clave($r->anio, $r->mes));
+
+        // WA Enviados: mensajes de cobro que Meta si acepto.
+        // Se cuenta el detalle (una fila por destinatario) y no total_destinatarios de
+        // la cabecera: ese es el planeado e incluye los que fallaron o se omitieron.
+        // Tampoco sirve total_enviados de la cabecera, que el worker va acumulando y
+        // queda desfasado cuando el lote se corta. Misma regla en las tres consultas.
+        $waCobrosPorMes = $porMes(DB::table(DB::raw($tp))
+            ->join('whatsapp_envios_masivos as e', function ($j) use ($aid) {
+                $j->on('e.mes', '=', 'm.mes')
+                  ->on('e.anio', '=', 'm.anio')
+                  ->where('e.aliado_id', '=', $aid);
+            })
+            ->join('whatsapp_envios_masivos_detalle as d', 'd.envio_id', '=', 'e.id')
+            ->where('d.estado', 'enviado')
+            ->groupBy('m.anio', 'm.mes')
+            ->select('m.anio', 'm.mes', DB::raw('COUNT(*) as total'))
+            ->get());
+
+        // WA Enviados: mensajes de planilla efectivamente enviados en lotes
+        $waPlanillasPorMes = $porMes(DB::table(DB::raw($tp))
+            ->join('planilla_envios_whatsapp as pe', function ($j) use ($aid) {
+                $j->on('pe.mes', '=', 'm.mes')
+                  ->on('pe.anio', '=', 'm.anio')
+                  ->where('pe.aliado_id', '=', $aid);
+            })
+            ->join('planilla_envios_whatsapp_detalle as ped', 'ped.envio_id', '=', 'pe.id')
+            ->where('ped.estado', 'enviado')
+            ->groupBy('m.anio', 'm.mes')
+            ->select('m.anio', 'm.mes', DB::raw('COUNT(*) as total'))
+            ->get());
+
+        // WA Enviados: reenvíos/envíos individuales de planillas
+        $waIndivPorMes = $porMes(DB::table(DB::raw($tp))
+            ->join('planilla_envios_whatsapp_detalle as ped', function ($j) {
+                $j->on('ped.created_at', '>=', 'm.ini_dt')->on('ped.created_at', '<=', 'm.fin_dt');
+            })
+            ->join('planos as p', 'p.id', '=', 'ped.plano_id')
+            ->where('p.aliado_id', $aid)
+            ->where('ped.envio_id', 0)
+            ->where('ped.estado', 'enviado')
+            ->groupBy('m.anio', 'm.mes')
+            ->select('m.anio', 'm.mes', DB::raw('COUNT(*) as total'))
+            ->get());
+
+        // Respuestas Clientes: conversaciones iniciadas por el cliente (primer mensaje entrante pasadas 24h de inactividad)
+        $respuestasPorMes = $porMes(DB::table(DB::raw($tp))
+            ->join('whatsapp_mensajes as msj', function ($j) {
+                $j->on('msj.created_at', '>=', 'm.ini_dt')->on('msj.created_at', '<=', 'm.fin_dt');
+            })
+            ->where('msj.aliado_id', $aid)
+            ->where('msj.direccion', 'entrante')
+            ->whereNotExists(function ($sq) {
+                $sq->select(DB::raw(1))
+                   ->from('whatsapp_mensajes as prev')
+                   ->whereColumn('prev.conversacion_id', 'msj.conversacion_id')
+                   ->whereColumn('prev.id', '<>', 'msj.id')
+                   ->whereRaw('prev.created_at >= DATEADD(hour, -24, msj.created_at)')
+                   ->whereRaw('prev.created_at < msj.created_at');
+            })
+            ->groupBy('m.anio', 'm.mes')
+            ->select('m.anio', 'm.mes', DB::raw('COUNT(*) as total'))
+            ->get());
+
+        // Asistente IA: consultas del mes (web + whatsapp) y valor configurado en BryNex
+        // (tramos de tarifa del módulo "ia_asistente", editables en /brynex/consumo/{aliado}/modulos).
+        $iaPorMes = $porMes(DB::table(DB::raw($tp))
+            ->join('ia_consumo as ic', function ($j) {
+                $j->on('ic.created_at', '>=', 'm.ini_dt')->on('ic.created_at', '<=', 'm.fin_dt');
+            })
+            ->where('ic.aliado_id', $aid)
+            ->groupBy('m.anio', 'm.mes')
+            ->select('m.anio', 'm.mes', DB::raw('COUNT(*) as total'))
+            ->get());
+
+        // Los tramos de tarifa se traen una vez y la vigencia de cada mes se
+        // resuelve en memoria; antes eran hasta 2 consultas por mes.
+        $iaModuloId = \App\Models\BrynexModulo::where('codigo', 'ia_asistente')->value('id');
+        $iaTramos   = $iaModuloId
+            ? \App\Models\BrynexTramoTarifa::tramosDelModulo($iaModuloId, $aid)
+            : collect();
+
+        $meses = [];
+
+        foreach ($periodos as $p) {
+            $mesVal    = $p['mes'];
+            $anioVal   = $p['anio'];
+            $ultimoDia = $p['ultimo_dia'];
+            $kMes      = $clave($anioVal, $mesVal);
+
+            $admonVigentes = (int) ($admonPorMes[$kMes] ?? 0);
+
+            $afiliacionesMes = $afiliacionesPorMes->get($kMes, collect());
+            $afilPorFecha    = $afiliacionesMes->count();
+
+            $retiradosRaw = $retiradosPorMes->get($kMes, collect());
 
             $retirosReales = 0;
             $retirosInformativos = 0;
@@ -3682,64 +3818,16 @@ class InformeController extends Controller
             $totalActivos = $admonVigentes + $afilPorFecha;
             $retirosDefinitivos = $totalRetiros - $retirosRenovados;
 
-            // WA Enviados: mensajes de cobro que Meta sí aceptó.
-            // Se cuenta el detalle (una fila por destinatario) y no `total_destinatarios`
-            // de la cabecera: ese es el planeado, e incluye los que fallaron o se
-            // omitieron. Tampoco se usa `total_enviados` de la cabecera porque es un
-            // contador que el worker actualiza y puede quedar desfasado si el lote se
-            // corta a mitad — el detalle es el que refleja lo realmente salido.
-            $waEnviadosCobros = DB::table('whatsapp_envios_masivos_detalle as d')
-                ->join('whatsapp_envios_masivos as e', 'e.id', '=', 'd.envio_id')
-                ->where('e.aliado_id', $aid)
-                ->where('e.mes', $mesVal)
-                ->where('e.anio', $anioVal)
-                ->where('d.estado', 'enviado')
-                ->count();
+            $waEnviados = (int) ($waCobrosPorMes[$kMes] ?? 0)
+                        + (int) ($waPlanillasPorMes[$kMes] ?? 0)
+                        + (int) ($waIndivPorMes[$kMes] ?? 0);
 
-            // WA Enviados: mensajes de planilla efectivamente enviados en lotes
-            $waEnviadosPlanillas = DB::table('planilla_envios_whatsapp_detalle as ped')
-                ->join('planilla_envios_whatsapp as pe', 'pe.id', '=', 'ped.envio_id')
-                ->where('pe.aliado_id', $aid)
-                ->where('pe.mes', $mesVal)
-                ->where('pe.anio', $anioVal)
-                ->where('ped.estado', 'enviado')
-                ->count();
+            $respuestasClientes = (int) ($respuestasPorMes[$kMes] ?? 0);
 
-            // WA Enviados: reenvíos/envíos individuales de planillas
-            $waEnviadosIndividuales = DB::table('planilla_envios_whatsapp_detalle as ped')
-                ->join('planos as p', 'p.id', '=', 'ped.plano_id')
-                ->where('p.aliado_id', $aid)
-                ->where('ped.envio_id', 0)
-                ->where('ped.estado', 'enviado')
-                ->whereBetween('ped.created_at', [$primerDia->toDateTimeString(), $ultimoDia->toDateTimeString()])
-                ->count();
-
-            $waEnviados = $waEnviadosCobros + $waEnviadosPlanillas + $waEnviadosIndividuales;
-
-            // Respuestas Clientes: conversaciones iniciadas por el cliente (primer mensaje entrante pasadas 24h de inactividad)
-            $respuestasClientes = DB::table('whatsapp_mensajes as m')
-                ->where('m.aliado_id', $aid)
-                ->where('m.direccion', 'entrante')
-                ->whereBetween('m.created_at', [$primerDia->toDateTimeString(), $ultimoDia->toDateTimeString()])
-                ->whereNotExists(function($sq) {
-                    $sq->select(DB::raw(1))
-                       ->from('whatsapp_mensajes as prev')
-                       ->whereColumn('prev.conversacion_id', 'm.conversacion_id')
-                       ->whereColumn('prev.id', '<>', 'm.id')
-                       ->whereRaw('prev.created_at >= DATEADD(hour, -24, m.created_at)')
-                       ->whereRaw('prev.created_at < m.created_at');
-                })
-                ->count();
-
-            // Asistente IA: consultas del mes (web + whatsapp) y valor configurado en BryNex
-            // (tramos de tarifa del módulo "ia_asistente", editables en /brynex/consumo/{aliado}/modulos).
-            $iaConsultas = DB::table('ia_consumo')
-                ->where('aliado_id', $aid)
-                ->whereBetween('created_at', [$primerDia->toDateTimeString(), $ultimoDia->toDateTimeString()])
-                ->count();
+            $iaConsultas = (int) ($iaPorMes[$kMes] ?? 0);
 
             $iaValorMensual = $iaModuloId
-                ? (\App\Models\BrynexTramoTarifa::calcularCobro($iaModuloId, $iaConsultas, $aid, $ultimoDia->toDateString())['subtotal'] ?? 0)
+                ? (\App\Models\BrynexTramoTarifa::calcularCobroConTramos($iaTramos, $iaConsultas, $aid, $ultimoDia->toDateString())['subtotal'] ?? 0)
                 : 0;
 
             $meses[] = [
@@ -3764,8 +3852,6 @@ class InformeController extends Controller
                 'ia_consultas'     => (int) $iaConsultas,
                 'ia_valor_mensual' => (float) $iaValorMensual,
             ];
-
-            $fechaIteracion->subMonth();
         }
 
         // Calcular la variación para los primeros 6 meses sobre Total Activos
