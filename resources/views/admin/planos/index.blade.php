@@ -2480,7 +2480,12 @@ async function cargarEstadoEnlace() {
     if (detalles) detalles.open = true; // por defecto abiertas hasta confirmar que hay liquidación en línea
 
     try {
-        const qs   = new URLSearchParams(paramsEnlace());
+        // El filtro de modalidades va también aquí: la planilla de los K y la
+        // de los E son distintas aunque compartan tanda, y sin esto el bloque
+        // mostraba el número y el valor de la que no era.
+        const qs = new URLSearchParams(paramsEnlace());
+        CTX.modalidadesIds.forEach(id => qs.append('tipos_modalidad[]', id));
+
         const resp = await fetch(CTX.routes.enlaceEstado + '?' + qs.toString(), {
             headers: { 'Accept': 'application/json' }
         });
@@ -2609,7 +2614,7 @@ async function liquidarEnEnlace(operadorId, operadorNombre) {
             tipos_modalidad     : CTX.modalidadesIds,
         };
 
-        const resp = await fetch(CTX.routes.enlaceLiquidar, {
+        const enviar = () => fetch(CTX.routes.enlaceLiquidar, {
             method : 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -2619,7 +2624,32 @@ async function liquidarEnEnlace(operadorId, operadorNombre) {
             body: JSON.stringify(body),
         });
 
-        const data = await resp.json();
+        let resp = await enviar();
+        let data = await resp.json();
+
+        // 409: la tanda ya tiene planilla liquidada. Volver a liquidar
+        // reemplaza ese número, así que se pregunta antes de insistir.
+        if (resp.status === 409 && data.requiere_confirmacion) {
+            const total = data.valor_total ? ` por $ ${fmtNum(Math.round(data.valor_total))}` : '';
+            const riesgo = data.reemplaza
+                ? 'Si continúa, ese número se reemplaza por el de la nueva liquidación y Brynex deja de tener la referencia anterior.'
+                : 'Esa planilla se liquidó con otro filtro. Si la gente de este archivo ya está incluida ahí, quedaría pagada dos veces en el operador.';
+
+            const ok = confirm(
+                `Esta tanda ya tiene la planilla ${data.numero_planilla}${total}, liquidada el ${data.fecha || ''}.\n\n` +
+                `${riesgo}\n\n` +
+                `¿Liquidar de nuevo?`);
+
+            if (!ok) {
+                cont.innerHTML = avisoEnlace('#f8fafc', '#e2e8f0', '#475569',
+                    `Se mantiene la planilla <strong>${data.numero_planilla}</strong>. No se liquidó nada nuevo.`);
+                return;
+            }
+
+            body.reliquidar = true;
+            resp = await enviar();
+            data = await resp.json();
+        }
 
         if (!resp.ok || !data.success) {
             cont.innerHTML = avisoEnlace('#fef2f2', '#fecaca', '#991b1b',

@@ -31,11 +31,15 @@ class PlanillaApiController extends Controller
         $aliadoId = session('aliado_id_activo');
 
         $validated = $request->validate([
-            'razon_social_id' => 'required|integer',
-            'mes'             => 'required|integer|min:1|max:12',
-            'anio'            => 'required|integer|min:2000|max:2100',
-            'n_plano'         => 'required|integer|min:1',
+            'razon_social_id'   => 'required|integer',
+            'mes'               => 'required|integer|min:1|max:12',
+            'anio'              => 'required|integer|min:2000|max:2100',
+            'n_plano'           => 'required|integer|min:1',
+            'tipos_modalidad'   => 'array',
+            'tipos_modalidad.*' => 'integer',
         ]);
+
+        $filtro = $this->filtroModalidades($validated['tipos_modalidad'] ?? []);
 
         $operadores = [];
 
@@ -47,12 +51,16 @@ class PlanillaApiController extends Controller
                 continue;
             }
 
+            // El filtro de modalidades forma parte de la identidad: la planilla
+            // de los K y la de los E son dos planillas distintas de la misma
+            // tanda, y mostrar la de la otra confundía más que ayudar.
             $planilla = OperadorPlanillaApi::where('aliado_id', $aliadoId)
                 ->where('razon_social_id', $validated['razon_social_id'])
                 ->where('operador_planilla_id', $operador->id)
                 ->where('anio', $validated['anio'])
                 ->where('mes', $validated['mes'])
                 ->where('n_plano', $validated['n_plano'])
+                ->whereRaw("ISNULL(tipos_modalidad, '') = ?", [$filtro])
                 ->latest('id')
                 ->first();
 
@@ -127,7 +135,12 @@ class PlanillaApiController extends Controller
             'tipos_modalidad'      => 'array',
             'tipos_modalidad.*'    => 'integer',
             'solo_novedades'       => 'boolean',
+            // El usuario ya vio que hay una planilla liquidada y aun así quiere
+            // volver a liquidar (ver el 409 más abajo).
+            'reliquidar'           => 'boolean',
         ]);
+
+        $filtro = $this->filtroModalidades($validated['tipos_modalidad'] ?? []);
 
         // Multi-tenant: la razón social debe ser del aliado activo.
         $rs = RazonSocial::where('aliado_id', $aliadoId)
@@ -205,15 +218,65 @@ class PlanillaApiController extends Controller
         }
 
         // ── 2. Registro de trazabilidad ──────────────────────────────────
+        // La llave incluye el filtro de modalidades: sin él, liquidar los K
+        // pisaba el registro de los E y se perdía su número de planilla.
+        $llave = [
+            'aliado_id'            => $aliadoId,
+            'razon_social_id'      => $rs->id,
+            'operador_planilla_id' => $operador->id,
+            'anio'                 => $validated['anio'],
+            'mes'                  => $validated['mes'],
+            'n_plano'              => $validated['n_plano'],
+            'tipos_modalidad'      => $filtro,
+        ];
+
+        // Re-liquidar borra el número anterior, así que no puede pasar de
+        // largo: se devuelve 409 con el número que se va a perder y el front
+        // reintenta con `reliquidar` si el usuario confirma.
+        //
+        // El aviso es a propósito más amplio que la llave: también entran los
+        // registros anteriores a la columna `tipos_modalidad`, que están en
+        // NULL y de los que no se sabe con qué filtro se liquidaron. Tratarlos
+        // como "de cualquier filtro" hace que avisen de más una vez, en vez de
+        // dejar liquidar dos veces la misma tanda y duplicar la planilla en el
+        // operador —que cuesta dinero de verdad—.
+        $previo = OperadorPlanillaApi::where('aliado_id', $aliadoId)
+            ->where('razon_social_id', $rs->id)
+            ->where('operador_planilla_id', $operador->id)
+            ->where('anio', $validated['anio'])
+            ->where('mes', $validated['mes'])
+            ->where('n_plano', $validated['n_plano'])
+            ->where('estado', 'validada')
+            ->where(function ($q) use ($filtro) {
+                $q->whereNull('tipos_modalidad')->orWhere('tipos_modalidad', $filtro);
+            })
+            ->latest('id')
+            ->first();
+
+        if ($previo && !($validated['reliquidar'] ?? false)) {
+            // Solo se pisa el registro si el filtro coincide exactamente. Si el
+            // anterior es de otro filtro —o es uno viejo, sin filtro guardado—
+            // lo que se arriesga es duplicar la planilla en el operador, que es
+            // un problema distinto y hay que decirlo distinto.
+            $reemplaza = $previo->tipos_modalidad === $filtro;
+
+            return response()->json([
+                'success'               => false,
+                'requiere_confirmacion' => true,
+                'reemplaza'             => $reemplaza,
+                'numero_planilla'       => $previo->numero_planilla,
+                'valor_total'           => $previo->valor_total,
+                'fecha'                 => optional($previo->updated_at)->format('Y-m-d H:i'),
+                'message'               => $reemplaza
+                    ? "Esta tanda ya tiene la planilla {$previo->numero_planilla} liquidada. "
+                      ."Si vuelve a liquidar, ese número se reemplaza."
+                    : "Esta tanda ya tiene la planilla {$previo->numero_planilla} liquidada con otro filtro. "
+                      ."Si la gente que va en este archivo ya está en esa planilla, quedaría duplicada en el operador.",
+            ], 409);
+        }
+
         $registro = OperadorPlanillaApi::updateOrCreate(
-            [
-                'aliado_id'            => $aliadoId,
-                'razon_social_id'      => $rs->id,
-                'operador_planilla_id' => $operador->id,
-                'anio'                 => $validated['anio'],
-                'mes'                  => $validated['mes'],
-                'n_plano'              => $validated['n_plano'],
-            ],
+            $llave,
             ['estado' => 'procesando', 'mensaje_error' => null]
         );
 
@@ -805,6 +868,21 @@ class PlanillaApiController extends Controller
             ->whereIn('codigo', array_keys(SuaporteApiService::HOSTS))
             ->orderBy('orden')
             ->get();
+    }
+
+    /**
+     * El filtro de modalidades, normalizado para poder compararlo: ids únicos,
+     * ordenados y unidos por coma. Cadena vacía cuando no hay filtro.
+     *
+     * Se normaliza porque el mismo filtro puede llegar en cualquier orden
+     * desde la interfaz, y `[12,0]` y `[0,12]` son la misma planilla.
+     */
+    private function filtroModalidades(array $tipos): string
+    {
+        $tipos = array_values(array_unique(array_map('intval', $tipos)));
+        sort($tipos);
+
+        return implode(',', $tipos);
     }
 
     /** Credencial de la razón social, o la general del aliado. */

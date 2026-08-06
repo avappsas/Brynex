@@ -19,6 +19,7 @@ class OperadorPlanillaApi extends BaseModel
         'anio',
         'mes',
         'n_plano',
+        'tipos_modalidad',
         'api_planilla_id',
         'numero_planilla',
         'valor_total',
