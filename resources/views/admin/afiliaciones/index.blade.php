@@ -85,6 +85,10 @@ body {
 /* Alerta días en trámite */
 .alert-dias { background:#fef2f2;color:#b91c1c;border-radius:4px;padding:0.1rem 0.35rem;font-size:0.6rem;font-weight:700;margin-left:0.2rem;border:1px solid #fca5a5; }
 
+/* Celda de ARL: el nombre se recorta si no cabe, pero el nivel siempre se ve */
+.arl-celda  { display:inline-flex;align-items:center;max-width:100%;min-width:0; }
+.arl-nombre { overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0; }
+
 /* Badge redondo para el nivel de ARL */
 .arl-nivel-badge {
     display: inline-flex;
@@ -92,6 +96,7 @@ body {
     justify-content: center;
     width: 16px;
     height: 16px;
+    flex: none;
     border-radius: 50%;
     background: #cbd5e1;
     color: #334155;
@@ -599,12 +604,14 @@ function sortClass($col, $currSort, $currDir) {
 
         {{-- ARL — efectiva según razón social --}}
         @php $rArl = $radicados->get('arl'); @endphp
-        <td style="font-size:0.7rem;color:#475569;max-width:85px;overflow:hidden;text-overflow:ellipsis;padding-right:0;" title="{{ $c->arl_efectiva_nombre }}{{ $c->n_arl ? " ({$c->n_arl})" : '' }}">
+        <td style="font-size:0.7rem;color:#475569;max-width:130px;padding-right:0;white-space:nowrap;" title="{{ $c->arl_efectiva_nombre }}{{ $c->n_arl ? " ({$c->n_arl})" : '' }}">
             @if($plan?->incluye_arl)
-                {{ $c->arl_efectiva_nombre }}
-                @if($c->n_arl)
-                    <span class="arl-nivel-badge" title="Nivel de Riesgo {{ $c->n_arl }}">{{ $c->n_arl }}</span>
-                @endif
+                <span class="arl-celda">
+                    <span class="arl-nombre">{{ $c->arl_efectiva_nombre }}</span>
+                    @if($c->n_arl)
+                        <span class="arl-nivel-badge" title="Nivel de Riesgo {{ $c->n_arl }}">{{ $c->n_arl }}</span>
+                    @endif
+                </span>
             @else
                 —
             @endif

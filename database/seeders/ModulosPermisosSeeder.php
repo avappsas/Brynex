@@ -386,12 +386,23 @@ class ModulosPermisosSeeder extends Seeder
             $p->delete();
         });
 
+        // Ojo: esto limpia la caché de ESTA máquina, no la del servidor. La BD
+        // es compartida pero la caché de Spatie es de archivo y dura 24 h, así
+        // que sembrar desde local deja a producción sin ver el permiso nuevo:
+        // el menú lo esconde y la ruta devuelve 403 sin razón aparente.
         app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
 
         $this->command->info('✅ '.Modulo::count().' módulos y '.Permission::count().' permisos sembrados '
             .'('.Permission::where('asignable', true)->count().' visibles en la pantalla de permisos).');
         $this->command->warn('⚠️  El rol `asesor` quedó SOLO LECTURA sobre todo el aliado: todavía no existe');
         $this->command->warn('   el vínculo users ↔ asesores, así que no se puede filtrar "solo sus clientes".');
+
+        if (! app()->runningUnitTests()) {
+            $this->command->newLine();
+            $this->command->warn('⚠️  La caché de permisos limpiada es la de ESTA máquina. La BD es la misma');
+            $this->command->warn('   que producción, pero su caché no. En el servidor, como usuario de Apache:');
+            $this->command->line('       sudo -u www-data php artisan permission:cache-reset');
+        }
     }
 
     /**

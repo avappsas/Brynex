@@ -3571,11 +3571,34 @@ class InformeController extends Controller
                 ->count();
 
             // 3. Afiliaciones del Mes (nuevos contratos ingresados en el período por fecha de ingreso)
-            $afilPorFecha = DB::table('contratos as c')
+            //    Se discriminan los reingresos ("ingreso-retiro"): la misma cédula tuvo
+            //    otro contrato al que se le marcó retiro con factura #0 en ESTE mismo mes.
+            //    Va como subconsulta y no como query aparte: cada viaje al servidor
+            //    remoto cuesta ~250ms y este bloque corre 7 veces.
+            $afilRow = DB::table('contratos as c')
                 ->where('c.aliado_id', $aid)
                 ->where('c.fecha_ingreso', '>=', $primerDia->toDateString())
                 ->where('c.fecha_ingreso', '<=', $ultimoDia->toDateString())
-                ->count();
+                ->selectRaw("COUNT(*) AS total, ISNULL(SUM(CASE WHEN EXISTS (
+                        SELECT 1 FROM contratos c2
+                        WHERE c2.cedula = c.cedula
+                          AND c2.aliado_id = c.aliado_id
+                          AND c2.id <> c.id
+                          AND c2.estado = 'retirado'
+                          AND EXISTS (
+                              SELECT 1 FROM facturas f
+                              WHERE f.contrato_id = c2.id
+                                AND f.numero_factura = 0
+                                AND f.tipo <> 'afiliacion'
+                                AND f.mes = ? AND f.anio = ?
+                                AND f.deleted_at IS NULL
+                          )
+                    ) THEN 1 ELSE 0 END), 0) AS reingresos", [$mesVal, $anioVal])
+                ->first();
+
+            $afilPorFecha   = (int) $afilRow->total;
+            $afilReingresos = (int) $afilRow->reingresos;
+            $afilNuevas     = $afilPorFecha - $afilReingresos;
 
             // 4. Retiros Puros (guiados estrictamente por el período mes/año de la factura de retiro #0)
             $retiradosRaw = DB::table('contratos as c')
@@ -3602,17 +3625,36 @@ class InformeController extends Controller
                        ->whereNull('f.deleted_at');
                 })
                 ->select('c.id',
-                    DB::raw("(SELECT TOP 1 total_ss FROM facturas WHERE contrato_id = c.id AND numero_factura = 0 AND tipo <> 'afiliacion' AND mes = {$mesVal} AND anio = {$anioVal} AND deleted_at IS NULL ORDER BY id DESC) as costo_ss")
+                    DB::raw("(SELECT TOP 1 total_ss FROM facturas WHERE contrato_id = c.id AND numero_factura = 0 AND tipo <> 'afiliacion' AND mes = {$mesVal} AND anio = {$anioVal} AND deleted_at IS NULL ORDER BY id DESC) as costo_ss"),
+                    // Retiro que en realidad fue una renovación ("ingreso-retiro"):
+                    // o se le abrió otro contrato con fecha de ingreso dentro del mismo
+                    // mes del retiro, o esa cédula hoy tiene un contrato vigente con
+                    // este mismo aliado. Basta con una de las dos.
+                    DB::raw("CASE WHEN EXISTS (
+                            SELECT 1 FROM contratos c2
+                            WHERE c2.cedula = c.cedula
+                              AND c2.aliado_id = c.aliado_id
+                              AND c2.id <> c.id
+                              AND (
+                                    (c2.fecha_ingreso >= '{$primerDia->toDateString()}'
+                                     AND c2.fecha_ingreso <= '{$ultimoDia->toDateString()}')
+                                 OR c2.estado = 'vigente'
+                              )
+                        ) THEN 1 ELSE 0 END as es_renovado")
                 )
                 ->get();
 
             $retirosReales = 0;
             $retirosInformativos = 0;
+            $retirosRenovados = 0;
             foreach ($retiradosRaw as $r) {
                 if (($r->costo_ss ?? 0) > 0) {
                     $retirosReales++;
                 } else {
                     $retirosInformativos++;
+                }
+                if ((int) $r->es_renovado === 1) {
+                    $retirosRenovados++;
                 }
             }
 
@@ -3620,6 +3662,7 @@ class InformeController extends Controller
 
             $totalRetiros = $retirosReales + $retirosInformativos;
             $totalActivos = $admonVigentes + $afilPorFecha;
+            $retirosDefinitivos = $totalRetiros - $retirosRenovados;
 
             // WA Enviados: total destinatarios de lotes masivos de cobros
             $waEnviadosCobros = DB::table('whatsapp_envios_masivos as e')
@@ -3677,8 +3720,12 @@ class InformeController extends Controller
                 'anio'             => $anioVal,
                 'admon_vigentes'   => $admonVigentes,
                 'afil_por_fecha'   => $afilPorFecha,
+                'afil_nuevas'      => $afilNuevas,
+                'afil_reingresos'  => $afilReingresos,
                 'retiros_reales'   => $retirosReales,
                 'retiros_inform'   => $retirosInformativos,
+                'retiros_renovados'   => $retirosRenovados,
+                'retiros_definitivos' => $retirosDefinitivos,
                 'total_retiros'    => $totalRetiros,
                 'total_activos'    => $totalActivos,
                 'neto_periodo'     => $totalActivos - $totalRetiros,

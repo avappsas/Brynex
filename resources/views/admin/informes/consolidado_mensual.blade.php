@@ -55,8 +55,13 @@
                 </div>
                 <div style="font-size:0.72rem;color:#94a3b8;margin-top:0.2rem;">Nuevas afiliaciones por fecha de ingreso</div>
             </div>
-            <div style="margin-top: 1rem; display: flex; align-items: center; gap: 0.5rem; border-top: 1px solid #f1f5f9; padding-top: 0.75rem;">
-                <span style="font-size:0.75rem;color:#94a3b8;">Ingresos del período actual</span>
+            <div style="margin-top: 1rem; display: flex; justify-content: space-between; border-top: 1px solid #f1f5f9; padding-top: 0.75rem;">
+                <div style="font-size:0.75rem;color:#475569;" title="Cédulas que no traían un retiro marcado este mes">
+                    Nuevas: <strong style="color:#4f46e5;">{{ number_format($kpisActual['afil_nuevas'], 0, ',', '.') }}</strong>
+                </div>
+                <div style="font-size:0.75rem;color:#475569;" title="Se les marcó retiro y se les abrió contrato nuevo en el mismo mes (ingreso-retiro)">
+                    Reingresos: <strong style="color:#0891b2;">{{ number_format($kpisActual['afil_reingresos'], 0, ',', '.') }}</strong>
+                </div>
             </div>
         </div>
 
@@ -76,6 +81,14 @@
                 </div>
                 <div style="font-size:0.75rem;color:#475569; cursor:pointer;" onclick="abrirDetalle({{ $kpisActual['mes'] }}, {{ $kpisActual['anio'] }}, 'retiros_informativos')">
                     Informativos: <strong style="color:#78350f;">{{ $kpisActual['retiros_inform'] }}</strong>
+                </div>
+            </div>
+            <div style="margin-top: 0.5rem; display: flex; justify-content: space-between; border-top: 1px dashed #f1f5f9; padding-top: 0.5rem;">
+                <div style="font-size:0.75rem;color:#475569;" title="Se les abrió contrato nuevo en el mismo mes del retiro, o la cédula tiene contrato vigente hoy">
+                    Renovados: <strong style="color:#0891b2;">{{ $kpisActual['retiros_renovados'] }}</strong>
+                </div>
+                <div style="font-size:0.75rem;color:#475569;" title="Se fueron y no volvieron">
+                    Definitivos: <strong style="color:#dc2626;">{{ $kpisActual['retiros_definitivos'] }}</strong>
                 </div>
             </div>
         </div>
@@ -125,6 +138,7 @@
                         <th style="text-align: right;">Afil. Fecha Ingreso</th>
                         <th style="text-align: right;">Retiros Reales</th>
                         <th style="text-align: right;">Retiros Informativos</th>
+                        <th style="text-align: right;" title="Del total de retiros del mes, cuántos volvieron con otro contrato">Retiros Renovados</th>
                         <th style="text-align: right; background-color: rgba(13, 148, 136, 0.04); color: #0d9488; font-weight: 800;">Total Activos</th>
                         <th style="text-align: center;">Variación</th>
                         <th style="text-align: right;">WA (Plan. / Rec.)</th>
@@ -140,12 +154,22 @@
                         </td>
                         <td style="text-align: right; font-weight: 600; color: #6366f1;" class="clickable-cell" onclick="abrirDetalle({{ $mes['mes'] }}, {{ $mes['anio'] }}, 'afiliaciones')">
                             {{ number_format($mes['afil_por_fecha'], 0, ',', '.') }}
+                            <div style="font-size: 0.68rem; font-weight: 500; color: #94a3b8; margin-top: 0.15rem; white-space: nowrap;">
+                                {{ number_format($mes['afil_nuevas'], 0, ',', '.') }} nuevas ·
+                                <span style="color: #0891b2;">{{ number_format($mes['afil_reingresos'], 0, ',', '.') }} reing.</span>
+                            </div>
                         </td>
                         <td style="text-align: right; color: #d97706;" class="clickable-cell" onclick="abrirDetalle({{ $mes['mes'] }}, {{ $mes['anio'] }}, 'retiros_reales')">
                             {{ number_format($mes['retiros_reales'], 0, ',', '.') }}
                         </td>
                         <td style="text-align: right; color: #78350f;" class="clickable-cell" onclick="abrirDetalle({{ $mes['mes'] }}, {{ $mes['anio'] }}, 'retiros_informativos')">
                             {{ number_format($mes['retiros_inform'], 0, ',', '.') }}
+                        </td>
+                        <td style="text-align: right; color: #0891b2; font-weight: 600;">
+                            {{ number_format($mes['retiros_renovados'], 0, ',', '.') }}
+                            <div style="font-size: 0.68rem; font-weight: 500; color: #94a3b8; margin-top: 0.15rem; white-space: nowrap;">
+                                de {{ number_format($mes['total_retiros'], 0, ',', '.') }} retiros
+                            </div>
                         </td>
                         <td style="text-align: right; font-weight: 800; color: #0d9488; background-color: rgba(13, 148, 136, 0.04); font-size: 0.95rem;">
                             {{ number_format($mes['total_activos'], 0, ',', '.') }}
@@ -175,7 +199,8 @@
         </div>
         <p style="font-size: 0.72rem; color: #94a3b8; margin-top: 1rem; line-height: 1.5;">
             * <strong>Admon (Vigentes)</strong>: Contratos activos continuos durante el mes (incluye contratos con retiro y facturación regular). 
-            * <strong>Afil. Fecha Ingreso</strong>: Nuevos contratos ingresados en el mes. 
+            * <strong>Afil. Fecha Ingreso</strong>: Nuevos contratos ingresados en el mes, discriminando <strong>nuevas</strong> (cédulas sin retiro marcado ese mes) y <strong>reingresos</strong> (se les marcó retiro y se les abrió contrato nuevo dentro del mismo mes).
+            * <strong>Retiros Renovados</strong>: Del total de retiros del mes, los que volvieron — se les abrió otro contrato con fecha de ingreso en el mismo mes del retiro, o esa cédula tiene hoy un contrato vigente con el aliado. Es un corte transversal: un retiro renovado puede ser real o informativo, por eso no suma con las dos columnas anteriores.
             * <strong>WA (Plan. / Rec.)</strong>: Relación de WhatsApps del mes (Enviados en plantilla masiva / Recibidos iniciados por el cliente tras 24h de inactividad). 
             * <strong>Total Activos</strong>: Suma de Admon (Vigentes) y Afil. Fecha Ingreso.
             * <strong>Variación</strong>: Diferencia del Total Activos de este mes comparado con el mes anterior.
