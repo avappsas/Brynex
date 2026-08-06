@@ -61,8 +61,11 @@ class User extends Authenticatable
     // Verifica si el usuario puede acceder a un aliado dado
     public function puedeAccederAliado(int $alidoId): bool
     {
-        // El aliado propio siempre es accesible
-        if ($this->aliado_id === $alidoId) {
+        // El aliado propio siempre es accesible.
+        // El cast a int no es cosmético: sqlsrv devuelve `aliado_id` como
+        // string ("1"), así que con `===` esta rama nunca se cumplía y el
+        // método devolvía false hasta para el aliado propio.
+        if ((int) $this->aliado_id === $alidoId) {
             return true;
         }
         // Superadmin BryNex → accede a CUALQUIER aliado activo

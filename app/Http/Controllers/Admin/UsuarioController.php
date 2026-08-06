@@ -131,6 +131,8 @@ class UsuarioController extends Controller
 
     public function edit(User $usuario)
     {
+        $this->autorizarUsuario($usuario);
+
         $aliados = Aliado::activos()->orderBy('nombre')->get();
         $roles = Role::orderBy('name')->get()->pluck('name', 'name');
 
@@ -139,6 +141,8 @@ class UsuarioController extends Controller
 
     public function update(Request $request, User $usuario)
     {
+        $this->autorizarUsuario($usuario);
+
         $authUser = auth()->user();
         $esBrynexAdmin = $authUser->es_brynex;
         $esSuperBrynex = $authUser->hasRole('superadmin') && $authUser->es_brynex;
@@ -183,6 +187,8 @@ class UsuarioController extends Controller
 
     public function destroy(User $usuario)
     {
+        $this->autorizarUsuario($usuario);
+
         if ($usuario->id === auth()->id()) {
             return back()->withErrors(['No puede eliminarse a sí mismo.']);
         }
@@ -195,9 +201,38 @@ class UsuarioController extends Controller
     public function restore($id)
     {
         $usuario = User::withTrashed()->findOrFail($id);
+        $this->autorizarUsuario($usuario);
         $usuario->restore();
 
         return redirect()->route('admin.usuarios.index')
             ->with('success', "Usuario '{$usuario->nombre}' restaurado.");
+    }
+
+    /**
+     * Quién puede tocar la ficha de otro usuario.
+     *
+     * `index` filtra por aliado, pero `edit`/`update`/`destroy`/`restore`
+     * reciben el usuario por la URL: sin esto, el superadmin de un aliado
+     * podía editar a CUALQUIER usuario de la plataforma con solo cambiar el
+     * id, y como `update` conserva el `es_brynex` del registro, se quedaba con
+     * una cuenta BryNex + superadmin y acceso a todos los aliados.
+     *
+     * Son dos reglas, no una. La del aliado sola no basta: los usuarios BryNex
+     * tienen un `aliado_id` real (hoy el 1 y el 2), que comparten con
+     * superadmins de aliado; `puedeAccederAliado` les diría que sí.
+     */
+    private function autorizarUsuario(User $usuario): void
+    {
+        abort_unless(
+            auth()->user()->puedeAccederAliado((int) $usuario->aliado_id),
+            403,
+            'Ese usuario pertenece a un aliado al que no tienes acceso.'
+        );
+
+        abort_if(
+            $usuario->es_brynex && ! auth()->user()->es_brynex,
+            403,
+            'Solo un usuario de BryNex puede modificar una cuenta de BryNex.'
+        );
     }
 }
