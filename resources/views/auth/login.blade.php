@@ -218,9 +218,58 @@
             </label>
 
             <button type="submit" class="btn-login">Ingresar</button>
+
+            {{-- Huella del equipo. Se combina con la cookie de dispositivo para
+                 reconocer la máquina aunque cambie de red — ver
+                 RegistroAccesoService. Si el navegador no ejecuta JS queda
+                 vacía y el acceso se registra igual, solo que sin esta señal. --}}
+            <input type="hidden" name="huella" id="huella">
         </form>
 
         <p class="footer-txt">© {{ date('Y') }} BryNex · Sistema de Gestión</p>
     </div>
+
+    <script>
+    // Huella del equipo: rasgos estables del navegador y del hardware. Cambia
+    // si es otra máquina, no si cambió la IP — que es justo lo contrario de lo
+    // que aporta la dirección de red. El más específico de todos es el
+    // renderizador WebGL: identifica el modelo de tarjeta gráfica.
+    (function () {
+        var partes = [];
+        var push = function (fn) {
+            try { partes.push(String(fn())); } catch (e) { partes.push('?'); }
+        };
+
+        push(function () { return navigator.userAgent; });
+        push(function () { return navigator.language + '|' + (navigator.languages || []).join(','); });
+        push(function () { return screen.width + 'x' + screen.height + 'x' + screen.colorDepth; });
+        push(function () { return window.devicePixelRatio; });
+        push(function () { return Intl.DateTimeFormat().resolvedOptions().timeZone; });
+        push(function () { return new Date().getTimezoneOffset(); });
+        push(function () { return navigator.hardwareConcurrency; });
+        push(function () { return navigator.deviceMemory; });
+        push(function () { return navigator.maxTouchPoints; });
+
+        push(function () {
+            var gl = document.createElement('canvas').getContext('webgl');
+            if (!gl) { return 'no-webgl'; }
+            var info = gl.getExtension('WEBGL_debug_renderer_info');
+            if (!info) { return gl.getParameter(gl.VERSION); }
+            return gl.getParameter(info.UNMASKED_VENDOR_WEBGL) + '|' + gl.getParameter(info.UNMASKED_RENDERER_WEBGL);
+        });
+
+        // Hash FNV-1a de 32 bits: comprime la huella a algo corto y opaco. No
+        // es criptográfico — el servidor le aplica sha256 antes de guardarla.
+        var texto = partes.join('~');
+        var h = 0x811c9dc5;
+        for (var i = 0; i < texto.length; i++) {
+            h ^= texto.charCodeAt(i);
+            h = (h + (h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24)) >>> 0;
+        }
+
+        var campo = document.getElementById('huella');
+        if (campo) { campo.value = h.toString(16) + '-' + texto.length; }
+    })();
+    </script>
 </body>
 </html>
