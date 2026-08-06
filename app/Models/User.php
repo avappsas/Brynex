@@ -2,19 +2,22 @@
 
 namespace App\Models;
 
+use App\Services\PermisoService;
 use App\Traits\HasSqlServerDates;
-
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Spatie\Permission\Traits\HasRoles;
 
 class User extends Authenticatable
 {
+    use HasRoles {
+        hasPermissionTo as private hasPermissionToSpatie;
+    }
     use HasSqlServerDates;
-    use Notifiable, HasRoles, SoftDeletes;
+    use Notifiable, SoftDeletes;
 
     // Sin conexión fija: usa el 'default' de config/database.php (sqlsrv en
     // producción vía DB_CONNECTION en .env). Fijarla a mano rompía los tests
@@ -39,9 +42,9 @@ class User extends Authenticatable
 
     protected $casts = [
         'email_verified_at' => 'datetime',
-        'password'          => 'hashed',
-        'es_brynex'         => 'boolean',
-        'activo'            => 'boolean',
+        'password' => 'hashed',
+        'es_brynex' => 'boolean',
+        'activo' => 'boolean',
     ];
 
     // Aliado principal del usuario
@@ -54,8 +57,8 @@ class User extends Authenticatable
     public function aliados(): BelongsToMany
     {
         return $this->belongsToMany(Aliado::class, 'aliado_user', 'user_id', 'aliado_id')
-                    ->withPivot('rol', 'activo')
-                    ->withTimestamps();
+            ->withPivot('rol', 'activo')
+            ->withTimestamps();
     }
 
     // Verifica si el usuario puede acceder a un aliado dado
@@ -75,11 +78,12 @@ class User extends Authenticatable
         // BryNex regular → solo los aliados asignados en el pivot aliado_user
         if ($this->es_brynex) {
             return $this->aliados()
-                        ->where('aliados.id', $alidoId)
-                        ->where('aliados.activo', true)
-                        ->wherePivot('activo', true)
-                        ->exists();
+                ->where('aliados.id', $alidoId)
+                ->where('aliados.activo', true)
+                ->wherePivot('activo', true)
+                ->exists();
         }
+
         return false;
     }
 
@@ -90,6 +94,33 @@ class User extends Authenticatable
         if ($this->es_brynex && $alidoIdSesion) {
             return Aliado::find($alidoIdSesion) ?? $this->aliado;
         }
+
         return $this->aliado;
+    }
+
+    /**
+     * Los permisos de módulos marcados `solo_brynex` exigen `es_brynex`, sin
+     * importar de dónde vengan.
+     *
+     * El chequeo tiene que estar AQUÍ y no solo en el `Gate::before` de
+     * AuthServiceProvider: Spatie registra su propio `before`
+     * (PermissionRegistrar::registerPermissions) y lo hace primero, así que
+     * cuando el permiso llega por un rol Spatie contesta `true` y el nuestro
+     * ni siquiera corre. Este método es justo el que Spatie consulta, de modo
+     * que ya no depende del orden en que arranquen los service providers.
+     *
+     * Se vio con `formularios_pdf.editar`: al ser el primer permiso
+     * `solo_brynex` asignado por rol, cuatro admin de aliados quedaron
+     * editando el mapeo de formularios de toda la plataforma.
+     */
+    public function hasPermissionTo($permission, $guardName = null): bool
+    {
+        $nombre = is_string($permission) ? $permission : ($permission->name ?? null);
+
+        if ($nombre !== null && ! $this->es_brynex && PermisoService::esSoloBrynex($nombre)) {
+            return false;
+        }
+
+        return $this->hasPermissionToSpatie($permission, $guardName);
     }
 }

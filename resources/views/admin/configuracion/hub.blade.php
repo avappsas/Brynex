@@ -143,7 +143,7 @@
         </a>
         @endif
 
-        @if(Auth::user()->hasAnyRole(['superadmin', 'admin']) && Auth::user()->es_brynex && ($primeraEps ?? null))
+        @if(($primeraEps ?? null) && auth()->user()->can('formularios_pdf.editar'))
         @if(!Auth::user()->hasRole('superadmin'))
         <hr class="cfg-sep">
         <div class="cfg-sep-label">🔍 Auditoría</div>
@@ -157,7 +157,7 @@
         </a>
         @endif
 
-        @if(Auth::user()->hasAnyRole(['superadmin', 'admin']) && Auth::user()->es_brynex && ($primerOperador ?? null))
+        @if(($primerOperador ?? null) && auth()->user()->can('formularios_pdf.editar'))
         <a class="cfg-card" href="{{ route('admin.configuracion.operadores.formulario', $primerOperador) }}"
            style="--c:#0f172a;--bc:#94a3b8">
             <span class="c-badge" style="background:#f1f5f9;color:#475569">Solo BryNex</span>

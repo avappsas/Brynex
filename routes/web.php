@@ -349,8 +349,11 @@ Route::middleware('auth')->group(function () {
         });
 
         // Formularios EPS — mapeo visual de coordenadas
+        // Mapeo de los PDF: el permiso es de BryNex, no de configuración del
+        // aliado. `configuracion.editar` cubre además parámetros y modalidades,
+        // que sí son solo de superadmin — no sirve para esto.
         $ef = \App\Http\Controllers\Admin\EpsFormularioController::class;
-        Route::middleware('permiso:configuracion.editar')->group(function () use ($ef) {
+        Route::middleware('permiso:formularios_pdf.editar')->group(function () use ($ef) {
             Route::get('configuracion/eps/{eps}/formulario', [$ef, 'editor'])->name('configuracion.eps.formulario');
             Route::get('configuracion/eps/{eps}/formulario/pdf', [$ef, 'verPdf'])->name('configuracion.eps.formulario.vpdf');
             Route::post('configuracion/eps/{eps}/formulario', [$ef, 'guardar'])->name('configuracion.eps.formulario.guardar');
@@ -359,7 +362,7 @@ Route::middleware('auth')->group(function () {
 
         // Planillas de Pago SS — mapeo visual de coordenadas
         $opf = \App\Http\Controllers\Admin\OperadorPlanillaFormularioController::class;
-        Route::middleware('permiso:configuracion.editar')->group(function () use ($opf) {
+        Route::middleware('permiso:formularios_pdf.editar')->group(function () use ($opf) {
             Route::get('configuracion/operadores/{operador}/formulario', [$opf, 'editor'])->name('configuracion.operadores.formulario');
             Route::get('configuracion/operadores/{operador}/formulario/pdf', [$opf, 'verPdf'])->name('configuracion.operadores.formulario.vpdf');
             Route::post('configuracion/operadores/{operador}/formulario', [$opf, 'guardar'])->name('configuracion.operadores.formulario.guardar');

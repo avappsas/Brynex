@@ -273,6 +273,14 @@ class ModulosPermisosSeeder extends Seeder
             ['brynex_cierre', 'Validación de cierre', 'brynex', '🧾', 'admin.informes.validacion_cierre', [
                 'ver' => ['Ver pendientes de planilla', [], false, true],
             ]],
+            // Mapeo de coordenadas sobre los PDF de EPS y de planillas SS. El
+            // formato es el mismo para todos los aliados (los operadores no
+            // tienen aliado_id), así que un aliado no puede tocarlo: sería
+            // mover el formulario de los demás. Único módulo BryNex que va por
+            // rol y no a dedo — lo hace cualquier admin de BryNex.
+            ['formularios_pdf', 'Mapeo de formularios PDF', 'brynex', '🗺️', null, [
+                'editar' => ['Mapear formularios de EPS y planillas', ['A'], false, true],
+            ]],
         ];
     }
 
