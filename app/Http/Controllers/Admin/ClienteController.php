@@ -23,6 +23,7 @@ class ClienteController extends Controller
         $aliadoId = session('aliado_id_activo');
         $buscar = $request->get('buscar');
         $filtroEmpresa = $request->get('empresa');
+        $filtroEstado = $request->get('estado');
 
         $query = Cliente::with(['empresa'])
             ->where('clientes.aliado_id', $aliadoId)
@@ -62,6 +63,26 @@ class ClienteController extends Controller
         // Filtro por empresa
         if ($filtroEmpresa) {
             $query->where('cod_empresa', $filtroEmpresa);
+        }
+
+        // Filtro por estado del contrato. Debe coincidir con el estado que se
+        // pinta en la tabla, que NO es "cualquier contrato" sino el contrato
+        // ganador por cédula (vigente/activo primero, luego el de mayor id).
+        // Subconsulta correlacionada para que aproveche el índice de cedula
+        // en contratos en vez de materializar todos los contratos del aliado.
+        // Un cliente sin contratos devuelve NULL y queda fuera de ambos filtros.
+        if (in_array($filtroEstado, ['vigente', 'retirado'], true)) {
+            $query->whereRaw(
+                "? = (SELECT TOP 1 c.estado
+                        FROM contratos c
+                       WHERE c.aliado_id = ?
+                         AND c.cedula = clientes.cedula
+                    ORDER BY CASE WHEN c.estado IN ('vigente','activo') THEN 0 ELSE 1 END ASC,
+                             c.id DESC)",
+                [$filtroEstado, $aliadoId]
+            );
+        } else {
+            $filtroEstado = null;
         }
 
         $clientes = $query->orderByDesc('id')->paginate(30);
@@ -112,7 +133,7 @@ class ClienteController extends Controller
         // del real devuelve vacío (no error), que parece "no registrado".
         $tiposDoc = $this->getLookups()['tipos_doc'];
 
-        return view('admin.clientes.index', compact('clientes', 'buscar', 'filtroEmpresa', 'empresas', 'ultimosContratos', 'tiposDoc'));
+        return view('admin.clientes.index', compact('clientes', 'buscar', 'filtroEmpresa', 'filtroEstado', 'empresas', 'ultimosContratos', 'tiposDoc'));
     }
 
     // ─── Crear nuevo cliente ──────────────────────────────────────────

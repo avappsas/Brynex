@@ -17,6 +17,13 @@ class ComisionesController extends Controller
     private const CORTE_MES  = 7;
     private const CORTE_ANIO = 2026;
 
+    /**
+     * Una afiliación está sin distribuir cuando no se le asignó nada a nadie.
+     * La utilidad queda fuera a propósito: la factura recién creada trae ahí
+     * todo el valor, y eso es exactamente lo que falta repartir.
+     */
+    private const SQL_SIN_DISTRIBUIR = "(ISNULL(f.dist_asesor, 0) + ISNULL(f.dist_retiro, 0) + ISNULL(f.dist_encargado, 0) + ISNULL(f.dist_admon, 0)) = 0";
+
     private function aliadoId(): int
     {
         return (int) session('aliado_id_activo');
@@ -370,6 +377,10 @@ class ComisionesController extends Controller
         $anio     = (int) $request->input('anio', now()->year);
         $asesorId = (int) $request->input('asesor_id', 0);
         $filtro   = $request->input('filtro', 'todas'); // 'todas' | 'sin_distribuir'
+        $empresa  = trim((string) $request->input('empresa', ''));
+        $planMod  = trim((string) $request->input('plan_mod', '')); // 'plan:ID' | 'mod:ID'
+        $sort     = (string) $request->input('sort', 'factura');
+        $dir      = strtolower($request->input('dir', 'asc')) === 'desc' ? 'desc' : 'asc';
 
         $query = DB::table('facturas AS f')
             ->join('contratos AS c', 'c.id', '=', 'f.contrato_id')
@@ -388,12 +399,74 @@ class ComisionesController extends Controller
             ->where('f.mes', $mes)
             ->where('f.anio', $anio);
 
+        // Opciones de los filtros de columna: se sacan del período completo,
+        // antes de aplicar los filtros, para que no se vacíen al filtrar.
+        $opciones = (clone $query)->selectRaw("DISTINCT
+                ISNULL(c.asesor_id, 0)         AS asesor_id,
+                ISNULL(a.nombre, '—')          AS asesor_nombre,
+                ISNULL(em.empresa, '—')        AS empresa_nombre,
+                ISNULL(c.plan_id, 0)           AS plan_id,
+                ISNULL(pc.nombre, '—')         AS plan_nombre,
+                ISNULL(c.tipo_modalidad_id, 0) AS modalidad_id,
+                ISNULL(tm.tipo_modalidad, '—') AS modalidad_nombre
+            ")->get();
+
+        $asesores = $opciones->where('asesor_id', '>', 0)
+            ->unique('asesor_id')->sortBy('asesor_nombre')
+            ->map(fn ($o) => (object) ['id' => (int) $o->asesor_id, 'nombre' => $o->asesor_nombre])
+            ->values();
+
+        $empresasDisponibles = $opciones->pluck('empresa_nombre')->unique()->sort()->values();
+
+        $planesDisponibles = $opciones->where('plan_id', '>', 0)
+            ->unique('plan_id')->sortBy('plan_nombre')
+            ->map(fn ($o) => (object) ['id' => (int) $o->plan_id, 'nombre' => $o->plan_nombre])
+            ->values();
+
+        $modalidadesDisponibles = $opciones->where('modalidad_id', '>', 0)
+            ->unique('modalidad_id')->sortBy('modalidad_nombre')
+            ->map(fn ($o) => (object) ['id' => (int) $o->modalidad_id, 'nombre' => $o->modalidad_nombre])
+            ->values();
+
         if ($asesorId) {
             $query->where('c.asesor_id', $asesorId);
         }
 
+        if ($empresa !== '') {
+            $query->whereRaw("ISNULL(em.empresa, '—') = ?", [$empresa]);
+        }
+
+        if (str_starts_with($planMod, 'plan:')) {
+            $query->where('c.plan_id', (int) substr($planMod, 5));
+        } elseif (str_starts_with($planMod, 'mod:')) {
+            $query->where('c.tipo_modalidad_id', (int) substr($planMod, 4));
+        }
+
+        // Sin distribuir = no se le asignó nada a nadie. La utilidad NO cuenta:
+        // una afiliación recién facturada llega con todo el valor ahí, y eso es
+        // justamente lo que falta repartir.
         if ($filtro === 'sin_distribuir') {
-            $query->whereRaw("(ISNULL(f.dist_asesor, 0) + ISNULL(f.dist_retiro, 0) + ISNULL(f.dist_encargado, 0) + ISNULL(f.dist_admon, 0) + ISNULL(f.dist_utilidad, 0)) = 0");
+            $query->whereRaw(self::SQL_SIN_DISTRIBUIR);
+        }
+
+        // Orden por columna. Lista blanca: el valor entra por querystring.
+        $columnasOrden = [
+            'factura'   => 'f.numero_factura',
+            'fecha'     => 'f.fecha_pago',
+            'cliente'   => 'nombre_cliente',
+            'empresa'   => 'empresa_nombre',
+            'asesor'    => 'asesor_nombre',
+            'plan'      => 'plan_nombre',
+            'afiliacion'=> 'f.afiliacion',
+            'v_asesor'  => 'f.dist_asesor',
+            'v_retiro'  => 'f.dist_retiro',
+            'v_encarg'  => 'f.dist_encargado',
+            'v_admon'   => 'f.dist_admon',
+            'v_util'    => 'f.dist_utilidad',
+        ];
+        $colOrden = $columnasOrden[$sort] ?? 'f.numero_factura';
+        if (! isset($columnasOrden[$sort])) {
+            $sort = 'factura';
         }
 
         $facturas = $query->selectRaw("
@@ -407,6 +480,7 @@ class ComisionesController extends Controller
                 f.dist_utilidad,
                 f.estado,
                 f.cedula,
+                ISNULL(NULLIF(LTRIM(RTRIM(cl.tipo_doc)), ''), 'CC') AS tipo_doc,
                 CONVERT(VARCHAR(10), f.fecha_pago, 120) AS fecha_pago,
                 ISNULL(a.nombre, '—') AS asesor_nombre,
                 c.asesor_id,
@@ -420,23 +494,24 @@ class ComisionesController extends Controller
                 )) AS nombre_cliente,
                 ISNULL(em.empresa, '—') AS empresa_nombre
             ")
-            ->orderBy('f.numero_factura')
+            ->orderBy(DB::raw($colOrden), $dir)
             ->get()
             ->map(function ($f) {
+                // Mismo criterio que el filtro: sin la utilidad.
                 $f->distribuida = (
-                    ((int)$f->dist_asesor  + (int)$f->dist_retiro +
-                     (int)$f->dist_admon   + (int)$f->dist_utilidad + (int)($f->dist_encargado ?? 0)) > 0
+                    ((int)$f->dist_asesor + (int)$f->dist_retiro +
+                     (int)$f->dist_admon  + (int)($f->dist_encargado ?? 0)) > 0
                 );
                 return $f;
             });
-
-        $asesores = Asesor::where('aliado_id', $aid)->where('activo', true)->orderBy('nombre')->get();
 
         $totalSinDistribuir = $facturas->where('distribuida', false)->count();
 
         return view('admin.informes.comisiones.afiliaciones', compact(
             'facturas', 'asesores', 'mes', 'anio', 'asesorId',
-            'filtro', 'totalSinDistribuir'
+            'filtro', 'totalSinDistribuir', 'empresa', 'planMod',
+            'empresasDisponibles', 'planesDisponibles', 'modalidadesDisponibles',
+            'sort', 'dir'
         ));
     }
 
