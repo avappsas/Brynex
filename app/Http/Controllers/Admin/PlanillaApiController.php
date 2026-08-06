@@ -333,13 +333,13 @@ class PlanillaApiController extends Controller
             return response()->json(['success' => false, 'message' => 'Este registro no pertenece a la razón social de independientes.'], 422);
         }
 
-        $operador = $this->operadoresConApi($aliadoId)
+        $operador = $this->operadoresApiIndependiente()
             ->firstWhere('id', (int) $validated['operador_planilla_id']);
 
         if (!$operador) {
             return response()->json([
                 'success' => false,
-                'message' => 'Ese operador no está activo para este aliado o no tiene integración por API.',
+                'message' => 'Ese operador no tiene integración por API.',
             ], 422);
         }
 
@@ -710,7 +710,11 @@ class PlanillaApiController extends Controller
     {
         $rs = RazonSocial::where('aliado_id', $aliadoId)->find($registro->razon_social_id);
 
-        $operador = $this->operadoresConApi($aliadoId)
+        // En independientes el operador lo trae el contratista, no el pivot
+        // del aliado — mismo criterio que liquidarIndependiente().
+        $operador = ($rs?->es_independiente
+                ? $this->operadoresApiIndependiente()
+                : $this->operadoresConApi($aliadoId))
             ->firstWhere('id', (int) $registro->operador_planilla_id);
 
         if (!$rs || !$operador) {
@@ -775,11 +779,31 @@ class PlanillaApiController extends Controller
     /**
      * Operadores del aliado que corren sobre la plataforma Enlace Operativo
      * (hoy ARUS Enlace y Simple, ver SuaporteApiService::HOSTS).
+     *
+     * Respeta el pivot `aliado_operadores_planilla`: qué operadores usa el
+     * aliado para las planillas de sus empresas.
      */
     private function operadoresConApi(int $aliadoId)
     {
         return OperadorPlanilla::paraAliado($aliadoId)
             ->whereIn('codigo', array_keys(SuaporteApiService::HOSTS))
+            ->get();
+    }
+
+    /**
+     * Lo mismo, pero para independientes: ahí el operador lo trae cada
+     * contratista (`clientes.operador_planilla_id`), no la configuración del
+     * aliado, así que el pivot NO aplica. Es el mismo criterio con el que
+     * PlanoPagoController arma `$operadoresApiIds` y habilita el botón PSE de
+     * la fila; si aquí se filtrara por pivot, el botón se vería habilitado y
+     * el POST respondería "operador no activo para este aliado".
+     */
+    private function operadoresApiIndependiente()
+    {
+        return OperadorPlanilla::whereNull('aliado_id')
+            ->where('activo', true)
+            ->whereIn('codigo', array_keys(SuaporteApiService::HOSTS))
+            ->orderBy('orden')
             ->get();
     }
 
