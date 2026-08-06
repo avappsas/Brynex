@@ -42,9 +42,11 @@
     </div>
     @endcan
 
-    {{-- Estado Financiero --}}
-    @if($esFinanciero)
     <h2 style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin-bottom:.75rem;">Financiero</h2>
+
+    {{-- Estado Financiero: solo superadmin y contable (informes.financiero).
+         Un admin ve la conciliación de abajo pero no la utilidad del aliado. --}}
+    @if($esFinanciero)
     <a href="{{ route('admin.informes.financiero') }}" style="display:flex;align-items:center;gap:1.25rem;background:linear-gradient(135deg,#0d2550,#1e40af);border-radius:14px;padding:1.5rem 1.75rem;text-decoration:none;border:2px solid transparent;box-shadow:0 4px 20px rgba(30,64,175,.3);transition:all .18s;"
        onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 12px 32px rgba(30,64,175,.4)'"
        onmouseout="this.style.transform='';this.style.boxShadow='0 4px 20px rgba(30,64,175,.3)'">
@@ -60,6 +62,7 @@
         </div>
         @endif
     </a>
+    @endif
 
     {{-- Conciliación de Bancos --}}
     <a href="{{ route('admin.informes.conciliacion_bancos') }}" style="display:flex;align-items:center;gap:1.25rem;background:linear-gradient(135deg,#0369a1,#075985);border-radius:14px;padding:1.5rem 1.75rem;text-decoration:none;border:2px solid transparent;box-shadow:0 4px 20px rgba(3,105,161,.3);transition:all .18s;margin-top:1rem;"
@@ -71,7 +74,6 @@
             <div style="font-size:.82rem;color:rgba(255,255,255,.7);margin-top:.2rem;">Movimientos del mes por cuenta · Confirmar consignaciones · Saldos</div>
         </div>
     </a>
-    @endif
 
     {{-- Cobros BryNex --}}
     @can('informes.ver')

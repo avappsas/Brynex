@@ -116,7 +116,9 @@ class InformeController extends Controller
         $kpis['cierre_operacion'] = (new \App\Services\CierrePeriodoService())
             ->contadoresOperacion($aid, $mes, $anio);
 
-        $esFinanciero = Auth::user()->can('informes.ver');
+        // Ojo: NO es `informes.ver`. El bloque financiero del hub (ingresos,
+        // egresos, utilidad, saldos) es solo de superadmin y contable.
+        $esFinanciero = Auth::user()->can('informes.financiero');
         if ($esFinanciero) {
             $kpis['ingresos_mes'] = DB::table('facturas')
                 ->where('aliado_id',$aid)->whereNull('deleted_at')

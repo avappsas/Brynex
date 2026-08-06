@@ -506,19 +506,32 @@ Route::middleware('auth')->group(function () {
             Route::get('/incapacidades', [$ic, 'resumenIncapacidades'])->name('incapacidades');
             Route::get('/tareas', [$ic, 'resumenTareas'])->name('tareas');
             Route::get('/conciliacion-bancos', [$ic, 'conciliacionBancos'])->name('conciliacion_bancos');
-            Route::get('/financiero', [$ic, 'estadoFinanciero'])->name('financiero');
-            Route::get('/financiero/bancos', [$ic, 'financieroBancos'])->name('financiero.bancos');
-            Route::get('/financiero/efectivo', [$ic, 'financieroEfectivo'])->name('financiero.efectivo');
 
-            Route::get('/financiero/auditar-planilla', [$ic, 'auditarPlanilla'])->name('financiero.auditar_planilla');
-            Route::get('/financiero/ss-planillas', [$ic, 'ssPlanillas'])->name('financiero.ss_planillas');
-            Route::get('/financiero/conciliacion-ss', [$ic, 'conciliacionSS'])->name('financiero.conciliacion_ss');
-            Route::get('/financiero/detalle-dia', [$ic, 'detalleDia'])->name('financiero.detalle_dia');
-            Route::get('/financiero/desglose-dia', [$ic, 'desgloseDia'])->name('financiero.desglose_dia');
-            Route::get('/financiero/prestamos-mes', [$ic, 'prestamesMes'])->name('financiero.prestamos_mes');
-            Route::get('/financiero/gastos-detalle', [$ic, 'gastosDetalle'])->name('financiero.gastos_detalle');
-            Route::patch('/financiero/consignacion/{id}', [$ic, 'editarConsignacion'])->name('financiero.consignacion.editar');
-            Route::post('/financiero/consignacion/{id}/imagen', [$ic, 'subirImagenConsignacionFinanciero'])->name('financiero.consignacion.imagen');
+            // El KPI de préstamos del mes también lo consume la pantalla de
+            // Cobros, así que cuelga de `prestamos.ver` y no del financiero:
+            // si no, a un `usuario` en Cobros le respondería 403.
+            Route::get('/financiero/prestamos-mes', [$ic, 'prestamesMes'])
+                ->name('financiero.prestamos_mes')->middleware('permiso:prestamos.ver');
+
+            // ── Estado financiero: superadmin y contable ───────────────────
+            // La plata del aliado va aparte del resto de informes. Escribir
+            // (corregir una consignación, subir su soporte) pide otro permiso
+            // que ningún rol trae: contable mira, no toca.
+            Route::middleware('permiso:informes.financiero')->group(function () use ($ic) {
+                Route::get('/financiero', [$ic, 'estadoFinanciero'])->name('financiero');
+                Route::get('/financiero/bancos', [$ic, 'financieroBancos'])->name('financiero.bancos');
+                Route::get('/financiero/efectivo', [$ic, 'financieroEfectivo'])->name('financiero.efectivo');
+                Route::get('/financiero/auditar-planilla', [$ic, 'auditarPlanilla'])->name('financiero.auditar_planilla');
+                Route::get('/financiero/ss-planillas', [$ic, 'ssPlanillas'])->name('financiero.ss_planillas');
+                Route::get('/financiero/conciliacion-ss', [$ic, 'conciliacionSS'])->name('financiero.conciliacion_ss');
+                Route::get('/financiero/detalle-dia', [$ic, 'detalleDia'])->name('financiero.detalle_dia');
+                Route::get('/financiero/desglose-dia', [$ic, 'desgloseDia'])->name('financiero.desglose_dia');
+                Route::get('/financiero/gastos-detalle', [$ic, 'gastosDetalle'])->name('financiero.gastos_detalle');
+            });
+            Route::middleware('permiso:informes.financiero_editar')->group(function () use ($ic) {
+                Route::patch('/financiero/consignacion/{id}', [$ic, 'editarConsignacion'])->name('financiero.consignacion.editar');
+                Route::post('/financiero/consignacion/{id}/imagen', [$ic, 'subirImagenConsignacionFinanciero'])->name('financiero.consignacion.imagen');
+            });
             Route::get('/auditoria-facturas', [$ic, 'auditoriaFacturas'])->name('auditoria_facturas');
 
             // ── Gestión de gastos ──────────────────────────────────────────

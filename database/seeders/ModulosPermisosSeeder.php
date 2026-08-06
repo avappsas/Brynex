@@ -170,6 +170,13 @@ class ModulosPermisosSeeder extends Seeder
             ['informes', 'Informes', 'reportes', '📊', 'admin.informes.hub', [
                 'ver' => ['Ver informes',      ['A', 'C']],
                 'exportar' => ['Exportar informes', ['A', 'C']],
+                // El estado financiero (ingresos, egresos, utilidad, saldos en
+                // banco y efectivo del aliado) no va con el resto de informes:
+                // un admin gestiona la operación sin tener por qué ver la plata.
+                // Queda para superadmin y contable; a un admin puntual se le
+                // otorga a mano desde Usuarios → Permisos.
+                'financiero' => ['Ver el estado financiero',   ['C']],
+                'financiero_editar' => ['Corregir consignaciones y subir soportes desde el financiero', []],
             ]],
             ['comisiones', 'Comisiones de asesores', 'reportes', '💼', 'admin.informes.comisiones.index', [
                 'ver' => ['Ver comisiones',            ['A', 'C']],

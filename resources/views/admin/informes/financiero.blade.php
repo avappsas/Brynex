@@ -1946,7 +1946,10 @@ function verMovimientosBanco(bancoId, label) {
                         +'<div style="text-align:center;">'+factTxt+'</div>'
                         +'<div style="text-align:center;">'+estadoLbl+'</div>'
                         +'<div style="text-align:center;">'+sopBtn+'</div>'
-                        +'<div style="text-align:center;"><button onclick="abrirEditarConsig('+e.id+')" style="background:#f59e0b;border:none;color:#fff;border-radius:7px;width:26px;height:26px;cursor:pointer;font-size:.72rem;display:inline-flex;align-items:center;justify-content:center;" title="Editar">✏️</button></div>'
+                        {{-- Sin `informes.financiero_editar` (el caso del contable) no se
+                             pinta el lápiz: el endpoint responde 403 igual, pero un botón
+                             que siempre falla es peor que no tenerlo. --}}
+                        +'<div style="text-align:center;">@can('informes.financiero_editar')<button onclick="abrirEditarConsig('+e.id+')" style="background:#f59e0b;border:none;color:#fff;border-radius:7px;width:26px;height:26px;cursor:pointer;font-size:.72rem;display:inline-flex;align-items:center;justify-content:center;" title="Editar">✏️</button>@endcan</div>'
                         +'</div>';
                 });
                 html += '</div>';
