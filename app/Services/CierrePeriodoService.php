@@ -282,9 +282,44 @@ class CierrePeriodoService
             $l->anio_pago = $anioPago;
             $l->api = $api->get("{$l->razon_social_id}|{$anioPago}|{$mesPago}|{$l->n_plano}");
             $l->cotizantes = (int) $l->cotizantes;
+            // Misma llave que cotizantesDeLotes(), para colgarle el detalle.
+            $l->llave = "{$l->razon_social_id}|{$l->anio_plano}|{$l->mes_plano}|{$l->n_plano}";
 
             return $l;
         });
+    }
+
+    /**
+     * Los cotizantes de cada tanda sin número, indexados por la misma llave
+     * que arma lotesSinConfirmar(). Es el detalle de "quién está ahí dentro":
+     * sin esto el informe da un conteo que no se puede auditar.
+     */
+    public function cotizantesDeLotes(int $aliadoId)
+    {
+        return DB::table('planos AS p')
+            ->leftJoin('facturas AS f', function ($j) {
+                $j->on('f.id', '=', 'p.factura_id')->whereNull('f.deleted_at');
+            })
+            ->leftJoin('tipo_modalidad AS tm', 'tm.id', '=', 'p.tipo_modalidad_id')
+            ->where('p.aliado_id', $aliadoId)
+            ->whereNull('p.deleted_at')
+            ->whereIn('p.tipo_reg', ['planilla', 'retiro'])
+            ->whereNotNull('p.razon_social_id')
+            ->where(function ($q) {
+                $q->whereNull('p.numero_planilla')->orWhere('p.numero_planilla', '');
+            })
+            ->whereRaw('(p.anio_plano * 100 + p.mes_plano) >= ?', [self::PERIODO_MINIMO])
+            ->selectRaw("
+                p.id AS plano_id, p.razon_social_id, p.anio_plano, p.mes_plano, p.n_plano,
+                p.no_identifi AS cedula, p.tipo_reg, p.num_dias,
+                LTRIM(RTRIM(ISNULL(p.primer_nombre,'')+' '+ISNULL(p.segundo_nombre,'')+' '
+                      +ISNULL(p.primer_ape,'')+' '+ISNULL(p.segundo_ape,''))) AS nombre,
+                tm.tipo_modalidad AS modalidad,
+                ISNULL(f.total_ss, 0) AS valor_ss
+            ")
+            ->orderBy('p.primer_ape')
+            ->get()
+            ->groupBy(fn ($r) => "{$r->razon_social_id}|{$r->anio_plano}|{$r->mes_plano}|{$r->n_plano}");
     }
 
     /**

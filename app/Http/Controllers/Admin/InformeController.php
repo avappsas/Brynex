@@ -508,6 +508,7 @@ class InformeController extends Controller
 
         $servicio     = new \App\Services\CierrePeriodoService();
         $lotes        = $servicio->lotesSinConfirmar($aid);
+        $cotizantes   = $servicio->cotizantesDeLotes($aid);
         $vigentes     = $servicio->vigentesSinFacturar($aid, $mes, $anio);
         $afiliaciones = $servicio->afiliacionesDelMes($aid, $mes, $anio);
 
@@ -538,7 +539,7 @@ class InformeController extends Controller
         }
 
         return view('admin.informes.cierre_operacion', compact(
-            'lotes', 'vigentes', 'afiliaciones', 'mes', 'anio'
+            'lotes', 'cotizantes', 'vigentes', 'afiliaciones', 'mes', 'anio'
         ));
     }
 
