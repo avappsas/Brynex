@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Services\TrazaArchivoService;
 use App\Models\{Factura, Abono, Plano, Contrato, Empresa, RazonSocial, User, BancoCuenta};
 use App\Models\Bitacora;
 use App\Services\MoraClienteService;
@@ -383,6 +384,8 @@ class FacturacionController extends Controller
         $meses = $datos['meses'];
 
         $spreadsheet = new Spreadsheet();
+        // Traza invisible de quién exportó (propiedades del documento).
+        app(TrazaArchivoService::class)->marcarExcel($spreadsheet);
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setTitle('Facturación');
 

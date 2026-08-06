@@ -260,6 +260,8 @@ class ExcelAportesEnLineaService
 
         // ── Construir Spreadsheet ─────────────────────────────────────────
         $spreadsheet = new Spreadsheet();
+        // Traza invisible de quién exportó (propiedades del documento).
+        app(TrazaArchivoService::class)->marcarExcel($spreadsheet);
         $spreadsheet->getProperties()
             ->setTitle('Aportes en Línea — ' . ($rs->razon_social ?? ''))
             ->setCreator('BryNex');

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Services\TrazaArchivoService;
 use App\Models\BancoCuenta;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -217,6 +218,8 @@ class FacturacionElectronicaController extends Controller
 
         // ── Construir el Excel ────────────────────────────────────────────────
         $spreadsheet = new Spreadsheet();
+        // Traza invisible de quién exportó (propiedades del documento).
+        app(TrazaArchivoService::class)->marcarExcel($spreadsheet);
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setTitle('importacion-facturas-multiples-');
 

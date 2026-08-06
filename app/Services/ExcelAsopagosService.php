@@ -154,6 +154,8 @@ class ExcelAsopagosService
 
         // ── Spreadsheet ─────────────────────────────────────────────────────
         $spreadsheet = new Spreadsheet();
+        // Traza invisible de quién exportó (propiedades del documento).
+        app(TrazaArchivoService::class)->marcarExcel($spreadsheet);
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setTitle('Asopagos');
 

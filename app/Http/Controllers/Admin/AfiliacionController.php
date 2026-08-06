@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Services\TrazaArchivoService;
 use App\Models\Aliado;
 use App\Models\Beneficiario;
 use App\Models\Contrato;
@@ -340,6 +341,8 @@ class AfiliacionController extends Controller
             ->pluck('numero_factura', 'contrato_id');
 
         $spreadsheet = new Spreadsheet();
+        // Traza invisible de quién exportó (propiedades del documento).
+        app(TrazaArchivoService::class)->marcarExcel($spreadsheet);
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setTitle('Afiliaciones');
 

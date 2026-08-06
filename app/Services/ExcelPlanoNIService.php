@@ -338,6 +338,8 @@ class ExcelPlanoNIService
 
         // -- 6. Construir Spreadsheet ----------------------------------------------
         $spreadsheet = new Spreadsheet();
+        // Traza invisible de quién exportó (propiedades del documento).
+        app(TrazaArchivoService::class)->marcarExcel($spreadsheet);
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setTitle('Planilla base');
 

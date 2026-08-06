@@ -70,6 +70,8 @@ class ExcelMiPlanillaService
             ->get();
 
         $spreadsheet = new Spreadsheet();
+        // Traza invisible de quién exportó (propiedades del documento).
+        app(TrazaArchivoService::class)->marcarExcel($spreadsheet);
         $spreadsheet->getProperties()
             ->setTitle('Planilla MiPlanilla — Traslado')
             ->setCreator('BryNex');

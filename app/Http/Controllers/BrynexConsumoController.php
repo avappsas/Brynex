@@ -380,6 +380,7 @@ class BrynexConsumoController extends Controller
             ->sum(fn($c) => $c->saldo_pendiente);
 
         $pdf = Pdf::loadView('pdf.brynex_cobro', compact('cobro', 'saldoAnterior'));
+        app(\App\Services\TrazaArchivoService::class)->marcarPdf($pdf);
 
         $nombreArchivo = 'Cuenta_de_Cobro_Brynex_' . str_replace(' ', '_', $cobro->aliado->nombre) . '_' . $cobro->anio . '_' . str_pad($cobro->mes, 2, '0', STR_PAD_LEFT) . '.pdf';
 

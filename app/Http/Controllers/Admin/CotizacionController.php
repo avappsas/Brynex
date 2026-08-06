@@ -278,6 +278,7 @@ class CotizacionController extends Controller
         $aliado = \App\Models\Aliado::find($aliadoId);
 
         $pdf = \PDF::loadView('pdf.cotizacion_prospecto', compact('prospecto', 'cotizacionCalc', 'aliado'));
+        app(\App\Services\TrazaArchivoService::class)->marcarPdf($pdf);
         
         return $pdf->download("Cotizacion_Prospecto_{$prospecto->cedula}.pdf");
     }
