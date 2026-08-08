@@ -10,19 +10,30 @@ class Kernel extends ConsoleKernel
     /**
      * Define the application's command schedule.
      *
-     * TODAS las tareas llevan ->user('www-data'). No es opcional ni cosmético:
-     * el cron del servidor es de root, y `withoutOverlapping()` guarda su
-     * mutex en la CACHÉ (`framework/schedule-<hash>`). Con CACHE_DRIVER=file
-     * eso significa que cada corrida escribe en storage/framework/cache — así
-     * que cualquier tarea de root, haga lo que haga, va dejando directorios
-     * con dueño root ahí dentro. Cuando a Apache (www-data) le toca una llave
-     * de caché que cae en uno de esos directorios, no puede crear el archivo
-     * y la petición revienta con un 500.
+     * NINGUNA tarea lleva ->user('www-data'), y es a propósito: el cron que
+     * dispara `schedule:run` es de **www-data** (`crontab -u www-data`), así
+     * que todo corre ya con el usuario correcto. Poner ->user() aquí sería
+     * peor que redundante — Laravel lo implementa envolviendo el comando en
+     * `sudo -u www-data`, y www-data NO está en sudoers: el subproceso muere
+     * con "www-data is not in the sudoers file" mientras `schedule:run`
+     * reporta DONE. Tareas caídas en silencio.
      *
-     * Eso fue lo que rompió la consulta de cédula del modal de clientes el
-     * 2026-08-04 (ver commit 49c0454): 7 de 118 shards habían quedado de root.
+     * Por qué el cron es de www-data y no de root: `withoutOverlapping()`
+     * guarda su mutex en la CACHÉ (`framework/schedule-<hash>`), y con
+     * CACHE_DRIVER=file eso escribe en storage/framework/cache en cada
+     * corrida, haga lo que haga el comando. Peor: ese mutex lo crea el
+     * proceso de `schedule:run` (ver Event::run() → shouldSkipDueToOverlapping()),
+     * ANTES de que ->user() tenga efecto en start(). Con el cron de root eso
+     * sembraba directorios de dueño root en la caché, y cuando a Apache le
+     * tocaba una llave que caía en uno de ellos, la petición reventaba con 500.
      *
-     * Al agregar una tarea nueva, ponerle ->user('www-data') también.
+     * Rompió la consulta de cédula del modal de clientes el 2026-08-04 (commit
+     * 49c0454) y el LOGIN completo el 2026-08-08 — el throttle del login
+     * shardea por IP, así que dejó fuera solo a las IPs con mala suerte.
+     * `storage/` quedó además con ACL por defecto para www-data como red de
+     * seguridad, pero la causa se corta aquí: el cron corre como www-data.
+     *
+     * Al agregar una tarea nueva: NO le pongas ->user().
      */
     protected function schedule(Schedule $schedule): void
     {
@@ -35,7 +46,6 @@ class Kernel extends ConsoleKernel
         $schedule->command('retencion:limpiar --ejecutar')
             ->monthlyOn(2, '02:30')
             ->timezone('America/Bogota')
-            ->user('www-data')
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/retencion.log'));
@@ -59,7 +69,6 @@ class Kernel extends ConsoleKernel
         $schedule->command('planos:reset-mensual')
             ->monthlyOn(1, '00:01')
             ->timezone('America/Bogota')
-            ->user('www-data')
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/reset-n-plano.log'));
@@ -71,7 +80,6 @@ class Kernel extends ConsoleKernel
         $schedule->command('finanzas:liquidar-intereses')
             ->dailyAt('01:00')
             ->timezone('America/Bogota')
-            ->user('www-data')
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/finanzas-liquidacion.log'));
@@ -86,7 +94,6 @@ class Kernel extends ConsoleKernel
             ->everyFifteenMinutes()
             ->between('07:00', '21:00')
             ->timezone('America/Bogota')
-            ->user('www-data')
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/whatsapp-seguimiento-ia.log'));
@@ -97,7 +104,6 @@ class Kernel extends ConsoleKernel
         $schedule->command('publicaciones:despachar')
             ->everyFiveMinutes()
             ->timezone('America/Bogota')
-            ->user('www-data')
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/publicaciones-despacho.log'));
@@ -109,7 +115,6 @@ class Kernel extends ConsoleKernel
         $schedule->command('videos:procesar')
             ->everyMinute()
             ->timezone('America/Bogota')
-            ->user('www-data')
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/videos-procesar.log'));
@@ -121,7 +126,6 @@ class Kernel extends ConsoleKernel
         $schedule->command('marketing:metricas')
             ->dailyAt('21:30')
             ->timezone('America/Bogota')
-            ->user('www-data')
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/marketing-metricas.log'));
@@ -134,7 +138,6 @@ class Kernel extends ConsoleKernel
         $schedule->command('marketing:pauta-sync')
             ->hourly()
             ->timezone('America/Bogota')
-            ->user('www-data')
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/marketing-pauta-sync.log'));
@@ -147,7 +150,6 @@ class Kernel extends ConsoleKernel
             ->everyThirtyMinutes()
             ->between('05:00', '21:00')
             ->timezone('America/Bogota')
-            ->user('www-data')
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/marketing-autopilot.log'));
@@ -170,7 +172,6 @@ class Kernel extends ConsoleKernel
         $schedule->command('clientes:completar-ruaf --limite=1000 --pausa=250 --aplicar')
             ->hourly()
             ->timezone('America/Bogota')
-            ->user('www-data')
             ->withoutOverlapping(120)
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/completar-ruaf.log'));
