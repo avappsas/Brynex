@@ -33,7 +33,26 @@ class Kernel extends ConsoleKernel
      * `storage/` quedó además con ACL por defecto para www-data como red de
      * seguridad, pero la causa se corta aquí: el cron corre como www-data.
      *
-     * Al agregar una tarea nueva: NO le pongas ->user().
+     * TODOS los withoutOverlapping() llevan minutos explícitos, nunca el
+     * default. El default son 1440 minutos: si el proceso muere sin llegar a
+     * `schedule:finish`, el mutex queda tomado y la tarea no vuelve a correr
+     * **en 24 horas**, sin un solo error en ningún log. Eso ya pasó — el
+     * 2026-08-07 siete tareas quedaron congeladas 17 horas por el problema de
+     * permisos de la caché, y solo se notó al revisar los mutexes a mano
+     * (`clientes:completar-ruaf` fue la única que siguió viva, justamente
+     * porque era la única con expiración explícita).
+     *
+     * El criterio es por frecuencia, con holgura amplia sobre lo que tarda la
+     * tarea de verdad: **15** para las que corren cada 1-5 min, **30** para las
+     * de 15-60 min, **60** para las diarias y mensuales. El número solo tiene
+     * que ser mayor que la duración real (si no, se solapa de verdad) y lo
+     * bastante chico para que un atasco se cure solo.
+     *
+     * Para ver si hay mutexes atascados, recorrer los eventos y mirar
+     * `$e->mutex->exists($e)`; se limpian con `schedule:clear-cache`.
+     *
+     * Al agregar una tarea nueva: NO le pongas ->user(), y SÍ dale minutos
+     * explícitos a withoutOverlapping().
      */
     protected function schedule(Schedule $schedule): void
     {
@@ -46,7 +65,7 @@ class Kernel extends ConsoleKernel
         $schedule->command('retencion:limpiar --ejecutar')
             ->monthlyOn(2, '02:30')
             ->timezone('America/Bogota')
-            ->withoutOverlapping()
+            ->withoutOverlapping(60)
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/retencion.log'));
 
@@ -60,7 +79,7 @@ class Kernel extends ConsoleKernel
             ->dailyAt('03:00')
             ->timezone('America/Bogota')
             ->name('exportaciones-purgar')
-            ->withoutOverlapping();
+            ->withoutOverlapping(30);
 
         // ── Reset mensual de n_plano ──────────────────────────────────
         // El día 1 de cada mes a las 00:01 (hora Colombia) resetea n_plano=1
@@ -69,7 +88,7 @@ class Kernel extends ConsoleKernel
         $schedule->command('planos:reset-mensual')
             ->monthlyOn(1, '00:01')
             ->timezone('America/Bogota')
-            ->withoutOverlapping()
+            ->withoutOverlapping(60)
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/reset-n-plano.log'));
 
@@ -80,7 +99,7 @@ class Kernel extends ConsoleKernel
         $schedule->command('finanzas:liquidar-intereses')
             ->dailyAt('01:00')
             ->timezone('America/Bogota')
-            ->withoutOverlapping()
+            ->withoutOverlapping(60)
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/finanzas-liquidacion.log'));
 
@@ -94,7 +113,7 @@ class Kernel extends ConsoleKernel
             ->everyFifteenMinutes()
             ->between('07:00', '21:00')
             ->timezone('America/Bogota')
-            ->withoutOverlapping()
+            ->withoutOverlapping(30)
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/whatsapp-seguimiento-ia.log'));
 
@@ -104,7 +123,7 @@ class Kernel extends ConsoleKernel
         $schedule->command('publicaciones:despachar')
             ->everyFiveMinutes()
             ->timezone('America/Bogota')
-            ->withoutOverlapping()
+            ->withoutOverlapping(15)
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/publicaciones-despacho.log'));
 
@@ -115,7 +134,7 @@ class Kernel extends ConsoleKernel
         $schedule->command('videos:procesar')
             ->everyMinute()
             ->timezone('America/Bogota')
-            ->withoutOverlapping()
+            ->withoutOverlapping(15)
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/videos-procesar.log'));
 
@@ -126,7 +145,7 @@ class Kernel extends ConsoleKernel
         $schedule->command('marketing:metricas')
             ->dailyAt('21:30')
             ->timezone('America/Bogota')
-            ->withoutOverlapping()
+            ->withoutOverlapping(60)
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/marketing-metricas.log'));
 
@@ -138,7 +157,7 @@ class Kernel extends ConsoleKernel
         $schedule->command('marketing:pauta-sync')
             ->hourly()
             ->timezone('America/Bogota')
-            ->withoutOverlapping()
+            ->withoutOverlapping(30)
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/marketing-pauta-sync.log'));
 
@@ -150,7 +169,7 @@ class Kernel extends ConsoleKernel
             ->everyThirtyMinutes()
             ->between('05:00', '21:00')
             ->timezone('America/Bogota')
-            ->withoutOverlapping()
+            ->withoutOverlapping(30)
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/marketing-autopilot.log'));
 
@@ -172,7 +191,7 @@ class Kernel extends ConsoleKernel
         $schedule->command('clientes:completar-ruaf --limite=1000 --pausa=250 --aplicar')
             ->hourly()
             ->timezone('America/Bogota')
-            ->withoutOverlapping(120)
+            ->withoutOverlapping(30)
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/completar-ruaf.log'));
     }
