@@ -1,6 +1,23 @@
 # Sacar la aplicación de `sa`
 
-**Estado: preparado, sin aplicar.** Nada de este documento se ha ejecutado.
+**Estado al 2026-08-08: pasos 1-3 hechos. Falta el paso 4 (el corte del `.env`).**
+
+Los logins `brynex_app` y `cf_app` **ya existen** en el servidor con `db_owner`
+en sus bases, `CHECK_POLICY = ON` y sin roles de servidor. Verificados con
+`db:verificar-permisos --ddl` en las conexiones `sqlsrv` y `finanzas`: todo en
+orden y `sysadmin: no`. La aplicación **sigue conectándose con `sa`** hasta que
+se haga el paso 4; crear los logins no cambió nada del funcionamiento.
+
+Aislamiento comprobado con pruebas negativas: `brynex_app` no puede entrar a
+`Cuenta`, ni crear logins, ni ejecutar `sp_configure`, ni habilitar
+`xp_cmdshell`, ni respaldar bases ajenas. En `sys.sql_logins` ve 2 filas con
+**0 hashes legibles**, contra 5 y 5 que ve `sa`.
+
+Cuidado si se vuelve a correr la creación: es idempotente (`IF SUSER_ID(...) IS
+NULL`), así que **no** cambia la contraseña de un login que ya existe. Generar
+contraseñas nuevas y correrla otra vez deja el archivo de credenciales
+desincronizado de la realidad. Para rotar una contraseña hay que usar
+`ALTER LOGIN ... WITH PASSWORD`, no volver a ejecutar el script.
 
 ## Por qué
 
