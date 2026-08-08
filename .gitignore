@@ -6,8 +6,12 @@
 /storage/*.key
 /vendor
 .env
-.env.backup
-.env.production
+# Cualquier variante: respaldos con fecha (.env.antes-del-corte-*), .env.local,
+# .env.bak... Todos llevan credenciales de producción en texto plano, y uno
+# suelto en el working tree es un commit accidental esperando ocurrir.
+# .env.example sí se versiona: no tiene secretos.
+.env.*
+!.env.example
 .phpunit.result.cache
 Homestead.json
 Homestead.yaml

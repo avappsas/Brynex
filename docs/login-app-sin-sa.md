@@ -1,12 +1,26 @@
 # Sacar la aplicación de `sa`
 
-**Estado al 2026-08-08: pasos 1-3 hechos. Falta el paso 4 (el corte del `.env`).**
+**Estado al 2026-08-08: HECHO. La aplicación ya no usa `sa`.**
 
-Los logins `brynex_app` y `cf_app` **ya existen** en el servidor con `db_owner`
-en sus bases, `CHECK_POLICY = ON` y sin roles de servidor. Verificados con
-`db:verificar-permisos --ddl` en las conexiones `sqlsrv` y `finanzas`: todo en
-orden y `sysadmin: no`. La aplicación **sigue conectándose con `sa`** hasta que
-se haga el paso 4; crear los logins no cambió nada del funcionamiento.
+`brynex.co` y `cuentafacil.co` conectan con `brynex_app` y `cf_app`
+respectivamente, ambos `db_owner` en sus bases, `CHECK_POLICY = ON` y sin roles
+de servidor. Verificado en caliente:
+
+```
+sqlsrv    -> brynex_app  en BryNex            sysadmin: no
+finanzas  -> brynex_app  en BryNex_Finanzas   sysadmin: no
+cf        -> cf_app      en Cuenta            sysadmin: no
+```
+
+Los respaldos de los `.env` de antes del corte están en `/root/env-backups/`
+(600, root, **fuera** de los directorios de los repos) y en
+`~/.brynex-env-backups/` en la Mac. Se verificó que la credencial de `sa` del
+respaldo conecta, o sea que el rollback de verdad sirve.
+
+Detalle del `.env` de producción de brynex: **no tiene variables `FINANZAS_*`**.
+La conexión `finanzas` hereda `DB_USERNAME`/`DB_PASSWORD` por los defaults de
+`config/database.php`, así que basta cambiar las dos de `DB_*`. En el `.env`
+local sí existen las cuatro y hay que cambiarlas todas.
 
 Aislamiento comprobado con pruebas negativas: `brynex_app` no puede entrar a
 `Cuenta`, ni crear logins, ni ejecutar `sp_configure`, ni habilitar
