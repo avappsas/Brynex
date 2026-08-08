@@ -23,7 +23,7 @@ class VerificarPermisosBd extends Command
     protected $signature = 'db:verificar-permisos
         {--conexion=sqlsrv : Conexión de config/database.php a revisar}
         {--usuario= : Probar con otro login en vez del configurado}
-        {--password= : Contraseña de ese login (se pide por consola si se omite)}
+        {--password= : Contraseña de ese login. Mejor no usarla: queda en `ps` y en el historial. Si se omite se toma de DB_VERIFY_PASSWORD, y si tampoco está se pide por consola}
         {--ddl : Además de los permisos declarados, probar DDL de verdad (crea y borra una tabla _zz_)}';
 
     protected $description = 'Verifica que el login de una conexión alcanza para lo que hace la app (para migrar fuera de sa)';
@@ -36,7 +36,12 @@ class VerificarPermisosBd extends Command
         $conexion = $this->option('conexion');
 
         if ($this->option('usuario')) {
-            $password = $this->option('password') ?: $this->secret('Contraseña de '.$this->option('usuario'));
+            // Orden a propósito: la variable de entorno antes que el prompt, para
+            // que esto se pueda automatizar sin que la contraseña acabe en la
+            // línea de comandos (donde cualquier usuario local la ve en `ps`).
+            $password = $this->option('password')
+                ?: (getenv('DB_VERIFY_PASSWORD') ?: null)
+                ?: $this->secret('Contraseña de '.$this->option('usuario'));
             config([
                 "database.connections.$conexion.username" => $this->option('usuario'),
                 "database.connections.$conexion.password" => $password,

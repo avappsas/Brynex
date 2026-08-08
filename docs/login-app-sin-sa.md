@@ -123,9 +123,22 @@ php artisan db:verificar-permisos --conexion=sqlsrv   --usuario=brynex_app --ddl
 php artisan db:verificar-permisos --conexion=finanzas --usuario=brynex_app --ddl
 ```
 
-Pide la contraseña por consola (no la pongas en la línea de comandos, queda en el
-historial). Con `--ddl` crea, altera, escribe y borra una tabla `_zz_` propia:
-prueba de verdad, sin tocar datos reales, y limpia siempre.
+Pide la contraseña por consola. **No uses `--password`**: queda en el historial y,
+peor, en `ps`, donde cualquier usuario local la ve mientras corre. Para
+automatizarlo sin ese riesgo, el comando toma `DB_VERIFY_PASSWORD` del entorno:
+
+```bash
+DB_VERIFY_PASSWORD="$(cat /ruta/segura)" php artisan db:verificar-permisos \
+    --conexion=sqlsrv --usuario=brynex_app --ddl
+```
+
+Con `--ddl` crea, altera, escribe y borra una tabla `_zz_` propia: prueba de
+verdad, sin tocar datos reales, y limpia siempre.
+
+`sqlcmd` tiene su equivalente, **`SQLCMDPASSWORD`**, y por lo mismo conviene
+usarlo en vez de `-P`. El binario está en
+`/opt/mssql-tools18/bin/sqlcmd` (v18, necesita `-C` para confiar en el
+certificado).
 
 Debe decir **"Todo en orden"** y, esta vez, `sysadmin: no`. Si algo sale `FALTA`,
 no sigas: falta un permiso y el corte dejaría la app rota de una forma que no se
