@@ -232,9 +232,43 @@ USE master;           DROP LOGIN brynex_app;
 La conexión `sqlsrv_legacy` no entra en esto: apunta a **otro** servidor
 (`200.29.120.228:1533`) con el usuario `Brygar`.
 
-## Pendiente relacionado
+## Registro de logins exitosos (hecho el 2026-08-08)
 
-La auditoría de logins registra solo los fallos, así que hoy un acceso exitoso
-no deja rastro. Subirla a "both" es una opción del servidor y un reinicio del
-servicio — conviene hacerlo antes o durante este cambio, para tener registro de
-quién entra con cada login.
+Antes solo se registraban los fallos, así que un acceso exitoso no dejaba rastro.
+Ahora hay cobertura de los dos lados:
+
+- **Fallos** → siguen en el errorlog de SQL Server, como siempre
+  (`AuditLevel = 2`, que significa *solo fallos*: los valores son `1` éxitos,
+  `2` fallos, `3` ambos — es fácil leerlos al revés).
+- **Éxitos** → `AuditoriaLoginsExitosos`, un SQL Server Audit que escribe en
+  `/var/opt/mssql/audit/`.
+
+No se usó la vía clásica de subir `AuditLevel` a 3 porque **exige reiniciar el
+servicio SQL Server** (downtime de la base para las dos webs) y habría metido los
+éxitos en el errorlog, que ya arrastra 458.000 líneas de fuerza bruta. SQL Server
+Audit se activa en caliente y va a un archivo aparte. Funciona en Express.
+
+Configuración, y por qué:
+
+| Ajuste | Valor | Motivo |
+|---|---|---|
+| `ON_FAILURE` | `CONTINUE` | **No cambiar a SHUTDOWN.** Con eso, un disco lleno tumbaría el servidor entero. Antes perder registros que la base. |
+| `MAXSIZE` / `MAX_ROLLOVER_FILES` | 20 MB × 10 | Tope de 200 MB, rotación automática, sin cron que limpie. |
+| `WHERE` | excluye `brynex_app` y `cf_app` | Las apps abren una conexión por request: sin filtro serían decenas de miles de líneas de ruido al día y la rotación se comería la historia. Filtrados, **cada línea que queda es interesante**. |
+
+Consultar quién ha entrado:
+
+```sql
+SELECT server_principal_name AS login, client_ip AS ip, application_name AS programa,
+       COUNT(*) AS veces, MAX(event_time) AS ultimo_utc
+FROM sys.fn_get_audit_file('/var/opt/mssql/audit/*.sqlaudit', DEFAULT, DEFAULT)
+GROUP BY server_principal_name, client_ip, application_name
+ORDER BY veces DESC;
+```
+
+**`event_time` viene en UTC**, no en hora de Colombia: un acceso de las 12:50
+aparece como 17:50.
+
+Para ver también los logins de las aplicaciones, hay que rehacer el filtro
+(`ALTER SERVER AUDIT` con `STATE = OFF`, cambiar el `WHERE`, `STATE = ON`), y
+contar con que el archivo crecerá mucho más rápido.
