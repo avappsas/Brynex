@@ -27,6 +27,7 @@ Los 6 críticos eran explotables sin autenticación o con una cuenta de aliado c
 | C-1 | `public/tmp_fix_cedula.php` | ✅ eliminado |
 | C-2 | `public/debug_saldos.php` | ✅ eliminado |
 | C-3 | `public/fix_config_cache.php` | ✅ eliminado |
+| C-1/C-3 bis | El mismo patrón **reapareció en cuentafacil.co** (`/var/www/cf`, mismo servidor): `diagnostico_storage.php` —que ejecutaba `unlink()`+`symlink()` sin autenticación—, `debug_schema.php` —que publicaba host y usuario del SQL Server— y `opcache_reset.php` | ✅ los tres eliminados (ago-2026) — ver [endurecimiento-servidor-2026-08.md](endurecimiento-servidor-2026-08.md) |
 | C-4 | Documentos médicos públicos | ✅ disco privado + ruta autenticada — **falta correr la migración de archivos en el servidor** |
 | C-5 | IDOR en Incapacidades | ✅ 12 accesos filtrados por aliado |
 | C-6 | Login sin throttle / session fixation | ✅ `throttle:5,1` + `regenerate()` |
