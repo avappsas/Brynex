@@ -21,6 +21,7 @@ yarn-error.log
 /.fleet
 /.idea
 /.vscode
+.DS_Store
 
 # Laravel cache / runtime — nunca subir al repo
 /storage/framework/cache/*
