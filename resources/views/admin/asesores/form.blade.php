@@ -90,6 +90,63 @@
 
         <h3 style="font-size:0.95rem;color:#0f172a;margin-bottom:1rem;border-bottom:1px solid #f1f5f9;padding-bottom:0.5rem;">Configuración de Comisiones y Pagos</h3>
 
+        @isset($asesor->id)
+        {{-- ── Nivel y tarifario ─────────────────────────────────────────────
+             Va FUERA del formulario de datos (no se puede anidar un <form>): el bloque de
+             abajo solo enlaza y el formulario de aplicar nivel está al final de la página. --}}
+        <div style="background:#f0f9ff;border:1.5px solid #bae6fd;border-radius:10px;padding:1rem 1.15rem;margin-bottom:1.5rem;">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap;">
+            <div style="min-width:0;">
+              <div style="font-size:0.68rem;font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.3rem;">
+                🎚️ Nivel y tarifario
+              </div>
+              <div style="font-size:0.8rem;color:#0c4a6e;">
+                @if($asesor->nivel)
+                  Nivel actual: <strong>{{ $asesor->nivel->nombre }}</strong>
+                  <span style="color:#64748b;">· {{ $asesor->nivel->rangoLabel() }}</span>
+                @else
+                  <span style="color:#b45309;font-weight:600;">Sin nivel asignado</span>
+                  <span style="color:#64748b;">— usa su comisión general de abajo</span>
+                @endif
+              </div>
+              <div style="font-size:0.74rem;color:#64748b;margin-top:0.3rem;">
+                {{ $contratosVigentes }} contrato(s) vigente(s)
+                @if($celdasPropias > 0)
+                  · <strong style="color:#0369a1;">{{ $celdasPropias }}</strong> tarifa(s) propias
+                @endif
+              </div>
+            </div>
+
+            <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
+              @if($celdasPropias > 0)
+              <a href="{{ route('admin.asesores.tarifas', $asesor) }}"
+                 style="padding:0.42rem 0.85rem;background:#0369a1;border-radius:7px;color:#fff;text-decoration:none;font-size:0.77rem;font-weight:600;">
+                📊 Ver / editar tarifas
+              </a>
+              <a href="{{ route('admin.asesores.tarifario_pdf', $asesor) }}"
+                 style="padding:0.42rem 0.85rem;border:1px solid #cbd5e1;border-radius:7px;background:#fff;color:#475569;text-decoration:none;font-size:0.77rem;font-weight:600;">
+                📄 Imprimir tarifario
+              </a>
+              @endif
+            </div>
+          </div>
+
+          @if($nivelSugerido && (int) $asesor->nivel_id !== (int) $nivelSugerido->id)
+          <div style="background:#fef9c3;border:1px solid #fde047;border-radius:7px;padding:0.5rem 0.75rem;margin-top:0.7rem;font-size:0.76rem;color:#92400e;">
+            💡 Con {{ $contratosVigentes }} contrato(s) vigente(s) le correspondería
+            <strong>{{ $nivelSugerido->nombre }}</strong>. Es solo una sugerencia: nada cambia hasta que lo apliques.
+          </div>
+          @endif
+
+          @if($nivelesDisponibles->isEmpty())
+          <div style="font-size:0.75rem;color:#64748b;margin-top:0.7rem;">
+            Aún no hay niveles creados.
+            <a href="{{ route('admin.configuracion.niveles.index') }}" style="color:#0369a1;font-weight:600;">Crear el primero →</a>
+          </div>
+          @endif
+        </div>
+        @endisset
+
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:2rem;margin-bottom:1.5rem;">
             {{-- Comisión Afiliación --}}
             <div style="background:#f8fafc;padding:1.25rem;border-radius:10px;border:1px solid #e2e8f0;">
@@ -167,6 +224,59 @@
             </button>
         </div>
     </form>
+
+    {{-- Aplicar un nivel: formulario aparte porque copiar la matriz pisa lo que el asesor
+         tuviera, y eso debe ser una acción deliberada, no un efecto de guardar el teléfono. --}}
+    @isset($asesor->id)
+    @can('asesores.gestionar')
+    @if($nivelesDisponibles->isNotEmpty())
+    <div style="border-top:1px solid #f1f5f9;margin-top:1.5rem;padding-top:1.25rem;">
+        <div style="font-size:0.68rem;font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem;">
+            Aplicar un nivel
+        </div>
+        <form method="POST" action="{{ route('admin.asesores.nivel.aplicar', $asesor) }}"
+              onsubmit="return confirm('Se copiarán al asesor los valores del nivel elegido. ¿Continuar?')">
+            @csrf
+            <div style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;">
+                <select name="nivel_id" required
+                    style="flex:1;min-width:220px;padding:0.5rem 0.65rem;border:1px solid #cbd5e1;border-radius:8px;font-size:0.85rem;background:#fff;">
+                    <option value="">— Elige un nivel —</option>
+                    @foreach($nivelesDisponibles as $nv)
+                    <option value="{{ $nv->id }}"
+                        {{ (int) $asesor->nivel_id === (int) $nv->id ? 'selected' : '' }}>
+                        {{ $nv->nombre }} — {{ $nv->rangoLabel() }} · admon ${{ number_format($nv->admon_asesor, 0, ',', '.') }}
+                        {{ $nivelSugerido && (int) $nivelSugerido->id === (int) $nv->id ? '  (sugerido)' : '' }}
+                    </option>
+                    @endforeach
+                </select>
+
+                <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.76rem;color:#475569;cursor:pointer;"
+                       title="Conserva las celdas que ya le ajustaste y su administración mensual, si es distinta a la del nivel.">
+                    <input type="checkbox" name="conservar_editadas" value="1" style="width:16px;height:16px;cursor:pointer;">
+                    No pisar lo que ya ajusté
+                </label>
+
+                <button type="submit"
+                    style="padding:0.5rem 1.2rem;background:#0369a1;border:none;border-radius:8px;color:#fff;font-size:0.82rem;font-weight:700;cursor:pointer;">
+                    Aplicar nivel
+                </button>
+            </div>
+            <div style="font-size:0.72rem;color:#94a3b8;margin-top:0.4rem;line-height:1.5;">
+                Copia al asesor las tarifas de afiliación del nivel y su administración mensual.
+                @if($celdasPropias > 0)
+                    Hoy tiene <strong>{{ $celdasPropias }}</strong> celdas propias.
+                @endif
+                <br>
+                Con <strong>«No pisar lo que ya ajusté»</strong> conserva las celdas que ya tiene y
+                le respeta su administración mensual si le pusiste una distinta a la del nivel;
+                solo completa lo que le falte. Sin marcar, rehace la matriz completa y le deja la
+                administración del nivel.
+            </div>
+        </form>
+    </div>
+    @endif
+    @endcan
+    @endisset
 
 </div>
 </div>

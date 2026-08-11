@@ -157,11 +157,28 @@ Route::middleware('auth')->group(function () {
             Route::post('usuarios/{usuario}/permisos', [\App\Http\Controllers\Admin\UsuarioPermisoController::class, 'update'])->name('usuarios.permisos.update');
         });
 
+        // Niveles de asesor (plantillas de comisión) — viven en el hub de Configuración.
+        // Van fuera de 'asesores/...' para no chocar con Route::resource('asesores').
+        // La autorización fina (ver vs gestionar) la aplica el propio controlador.
+        Route::prefix('configuracion/niveles-asesor')->name('configuracion.niveles.')->group(function () {
+            $nc = \App\Http\Controllers\Admin\AsesorNivelController::class;
+            Route::get('/', [$nc, 'index'])->name('index');
+            Route::post('/', [$nc, 'store'])->name('store');
+            Route::put('{id}', [$nc, 'update'])->whereNumber('id')->name('update');
+            Route::delete('{id}', [$nc, 'destroy'])->whereNumber('id')->name('destroy');
+            Route::post('{id}/duplicar', [$nc, 'duplicar'])->whereNumber('id')->name('duplicar');
+            Route::get('{id}/matriz', [$nc, 'matriz'])->whereNumber('id')->name('matriz');
+            Route::post('{id}/matriz', [$nc, 'guardarMatriz'])->whereNumber('id')->name('matriz.guardar');
+        });
+
         // Asesores — ver: admin/contable/usuario | gestionar y comisiones: admin
         Route::middleware('permiso:asesores.ver')->group(function () {
             Route::get('asesores/reporte-mensual', [\App\Http\Controllers\Admin\AsesorController::class, 'reporteMensual'])
                 ->name('asesores.reporte_mensual');
             Route::get('asesores', [\App\Http\Controllers\Admin\AsesorController::class, 'index'])->name('asesores.index');
+            // Antes de asesores/{asesor} no hace falta cuidarse: show tiene whereNumber.
+            Route::get('asesores/{asesor}/tarifas', [\App\Http\Controllers\Admin\AsesorController::class, 'tarifas'])
+                ->whereNumber('asesor')->name('asesores.tarifas');
             Route::get('asesores/{asesor}', [\App\Http\Controllers\Admin\AsesorController::class, 'show'])
                 ->whereNumber('asesor')
                 ->name('asesores.show');
@@ -172,6 +189,13 @@ Route::middleware('auth')->group(function () {
                 ->except(['index', 'show']);
             Route::patch('asesores/{id}/restore', [\App\Http\Controllers\Admin\AsesorController::class, 'restore'])
                 ->name('asesores.restore');
+            // Tarifario del asesor: aplicar un nivel, editar su matriz propia e imprimir.
+            Route::post('asesores/{asesor}/nivel', [\App\Http\Controllers\Admin\AsesorController::class, 'aplicarNivel'])
+                ->whereNumber('asesor')->name('asesores.nivel.aplicar');
+            Route::post('asesores/{asesor}/tarifas', [\App\Http\Controllers\Admin\AsesorController::class, 'guardarTarifas'])
+                ->whereNumber('asesor')->name('asesores.tarifas.guardar');
+            Route::get('asesores/{asesor}/tarifario-pdf', [\App\Http\Controllers\Admin\AsesorController::class, 'tarifarioPdf'])
+                ->whereNumber('asesor')->name('asesores.tarifario_pdf');
             Route::post('asesores/{asesor}/comisiones', [\App\Http\Controllers\Admin\AsesorController::class, 'registrarComision'])
                 ->name('asesores.comisiones.store');
             Route::patch('comisiones/{comision}/pagar', [\App\Http\Controllers\Admin\AsesorController::class, 'marcarPagada'])
@@ -272,6 +296,19 @@ Route::middleware('auth')->group(function () {
             Route::get('configuracion/parametros', [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'index'])->name('configuracion.index');
         });
         Route::post('configuracion/parametros', [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'store'])->name('configuracion.store')->middleware('permiso:configuracion.editar');
+
+        // Sugerir y aplicar precios de afiliación de los planes sin AFP. Solo superadmin:
+        // reescribe la lista de precios completa del aliado.
+        Route::get('configuracion/precios-sugeridos', [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'preciosSugeridos'])
+            ->name('configuracion.precios_sugeridos')->middleware('role:superadmin');
+        Route::post('configuracion/precios-sugeridos', [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'aplicarPreciosSugeridos'])
+            ->name('configuracion.precios_sugeridos.aplicar')->middleware('role:superadmin');
+
+        // Recalcular los retiros con el salario mínimo del año. Solo sube los que quedaron cortos.
+        Route::get('configuracion/retiros-sugeridos', [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'retirosSugeridos'])
+            ->name('configuracion.retiros_sugeridos')->middleware('role:superadmin');
+        Route::post('configuracion/retiros-sugeridos', [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'aplicarRetirosSugeridos'])
+            ->name('configuracion.retiros_sugeridos.aplicar')->middleware('role:superadmin');
 
         // ── Cuentas bancarias ─────────────────────────────────────────────
         // El rol `usuario` puede VER las cuentas y CREAR una de incapacidad
@@ -598,6 +635,11 @@ Route::middleware('auth')->group(function () {
         Route::get('/', [$bx, 'hub'])->name('hub');
         Route::get('/accesos', [$bx, 'accesos'])->name('accesos');
         Route::post('/accesos', [$bx, 'toggleAcceso'])->name('accesos.toggle');
+
+        // Parámetros globales del sistema (salario mínimo, % de SS, tarifas ARL).
+        // Estaban en la Configuración de cada aliado aunque no son del aliado.
+        Route::get('/parametros', [$bx, 'parametros'])->name('parametros');
+        Route::post('/parametros', [$bx, 'guardarParametros'])->name('parametros.guardar');
 
         // Configuración del Asistente Virtual IA
         $iac = \App\Http\Controllers\IaConfigController::class;

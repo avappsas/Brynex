@@ -114,4 +114,69 @@ class BrynexController extends Controller
             'mensaje' => $nuevoEstado ? 'Acceso habilitado.' : 'Acceso revocado.',
         ]);
     }
+
+    // ── Parámetros globales del sistema ──────────────────────────────────
+    // Salían en la Configuración de cada aliado, pero no son del aliado: el salario
+    // mínimo, los porcentajes de seguridad social y las tarifas ARL son los mismos
+    // para todos. Verlos ahí invitaba a creer que se editaban solo para ese aliado.
+
+    /** Solo el superadmin de BryNex toca estos números: mueven la cotización de todos. */
+    private function soloSuperadminBrynex(): void
+    {
+        $u = Auth::user();
+        if (! $u->es_brynex || ! $u->hasRole('superadmin')) {
+            abort(403, 'Solo el superadmin de BryNex puede ver los parámetros globales.');
+        }
+    }
+
+    public function parametros()
+    {
+        $this->soloSuperadminBrynex();
+
+        return view('brynex.parametros', [
+            'configBrynex' => \App\Models\ConfiguracionBrynex::all()->keyBy('clave'),
+            'arlGlobal' => \App\Models\ArlTarifa::whereNull('aliado_id')->orderBy('nivel')->get()->keyBy('nivel'),
+        ]);
+    }
+
+    public function guardarParametros(Request $request)
+    {
+        $this->soloSuperadminBrynex();
+
+        DB::transaction(function () use ($request) {
+            foreach ($request->input('brynex', []) as $clave => $valor) {
+                if ($valor !== null && $valor !== '') {
+                    \App\Models\ConfiguracionBrynex::establecer($clave, $valor);
+                }
+            }
+
+            // Las tarifas ARL globales son las de aliado_id NULL. Aquí no se borran ni se
+            // crean niveles: solo se actualiza el porcentaje de los cinco que ya existen.
+            foreach ($request->input('arl', []) as $nivel => $data) {
+                $pct = $data['porcentaje'] ?? null;
+                if ($pct === null || $pct === '') {
+                    continue;
+                }
+                \App\Models\ArlTarifa::whereNull('aliado_id')->where('nivel', (int) $nivel)
+                    ->update(['porcentaje' => $pct, 'updated_at' => now()]);
+            }
+        });
+
+        \App\Models\ConfiguracionBrynex::limpiarCache();
+
+        // La grilla de seguridad social está cacheada 12h POR ALIADO y se calcula con el
+        // salario mínimo y estos porcentajes: si no se limpia la de todos, media plataforma
+        // sigue mostrando la cotización vieja hasta que venza el caché.
+        foreach (Aliado::pluck('id') as $id) {
+            \App\Services\TarifaAsesorService::olvidarGridSs((int) $id);
+        }
+
+        \App\Models\Bitacora::registrar(
+            'updated', 'ConfiguracionBrynex', 0,
+            'Parámetros globales del sistema actualizados desde BryNex.'
+        );
+
+        return redirect()->route('brynex.parametros')
+            ->with('success', 'Parámetros globales actualizados.');
+    }
 }

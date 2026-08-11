@@ -47,7 +47,40 @@ class ModalidadConfigController extends Controller
         // Valor actual de la regla AFP obligatorio
         $reglaAfpActiva = ConfiguracionBrynex::reglaAfpObligatorio();
 
-        return view('admin.configuracion.modalidades', compact('modalidades', 'planes', 'mapa', 'razionesSociales', 'reglaAfpActiva'));
+        // Combinaciones activas que el aliado todavía no ha tarifado, para marcarlas en la
+        // grilla: activar un plan en una modalidad sin ponerle precio la deja cotizando con
+        // el valor general del plan, que casi nunca es el correcto.
+        $sinTarifar = $this->combinacionesSinTarifar((int) $aliadoId);
+
+        return view('admin.configuracion.modalidades', compact(
+            'modalidades', 'planes', 'mapa', 'razionesSociales', 'reglaAfpActiva', 'sinTarifar'
+        ));
+    }
+
+    /**
+     * Mapa [modalidad][plan] = true para las combinaciones vendibles que no tienen ninguna
+     * celda de tarifario en este aliado.
+     */
+    private function combinacionesSinTarifar(int $aliadoId): array
+    {
+        $celdas = \App\Services\TarifaAsesorService::celdasDelAliado($aliadoId);
+
+        $sinTarifar = [];
+        foreach (\App\Services\TarifaAsesorService::combinaciones() as $combo) {
+            $planId      = (int) $combo['plan']->id;
+            $modalidadId = (int) $combo['modalidad']->id;
+
+            // Basta con que un nivel de riesgo tenga valor para no marcarla como pendiente.
+            $tiene = collect($combo['niveles'])->contains(
+                fn ($n) => $celdas->has("{$planId}_{$modalidadId}_{$n}")
+            );
+
+            if (! $tiene) {
+                $sinTarifar[$modalidadId][$planId] = true;
+            }
+        }
+
+        return $sinTarifar;
     }
 
     /**
@@ -88,12 +121,27 @@ class ModalidadConfigController extends Controller
                 }
             }
         }
+
+        // Combinaciones que existían antes de guardar, para saber cuáles quedaron nuevas y
+        // avisar que les falta precio.
+        $antes = DB::table('modalidad_planes')
+            ->get()
+            ->map(fn ($r) => $r->tipo_modalidad_id.'_'.$r->plan_id)
+            ->flip();
+
         DB::transaction(function () use ($nuevos) {
-            DB::table('modalidad_planes')->truncate();
+            // delete() en vez de truncate(): hace lo mismo, pero truncate es DDL y en este
+            // proyecto está prohibido (ver CLAUDE.md) — además delete sí respeta el rollback
+            // de la transacción en todos los motores.
+            DB::table('modalidad_planes')->delete();
             if (!empty($nuevos)) {
                 DB::table('modalidad_planes')->insert($nuevos);
             }
         });
+
+        $recienActivadas = collect($nuevos)
+            ->reject(fn ($n) => $antes->has($n['tipo_modalidad_id'].'_'.$n['plan_id']))
+            ->values();
 
         // 2. Guardar qué RS son independientes (por aliado)
         $rsIndependientes = $request->input('rs_independientes', []);
@@ -113,8 +161,38 @@ class ModalidadConfigController extends Controller
         $reglaAfp = $request->has('regla_afp_obligatorio') ? '1' : '0';
         ConfiguracionBrynex::establecer('regla_afp_obligatorio', $reglaAfp);
 
+        // 4. Avisar de las combinaciones recién habilitadas que aún no tienen precio: si nadie
+        //    las tarifa, cotizan con el valor general del plan sin que se note.
+        \App\Services\TarifaAsesorService::limpiarCache();
+        $aviso = $this->avisoSinTarifar($recienActivadas, (int) $aliadoId);
+
         return redirect()
             ->route('admin.configuracion.modalidades')
-            ->with('success', '✅ Configuración actualizada correctamente.');
+            ->with('success', '✅ Configuración actualizada correctamente.')
+            ->with('pendientes_tarifar', $aviso);
+    }
+
+    /**
+     * Texto del aviso: qué combinaciones nuevas quedaron sin precio. Devuelve null si no hay
+     * nada que avisar (nada nuevo, o todo lo nuevo ya tenía tarifa).
+     */
+    private function avisoSinTarifar($recienActivadas, int $aliadoId): ?array
+    {
+        if ($recienActivadas->isEmpty()) {
+            return null;
+        }
+
+        $sinTarifar = $this->combinacionesSinTarifar($aliadoId);
+        $planes = DB::table('planes_contrato')->pluck('nombre', 'id');
+        $modalidades = TipoModalidad::pluck('observacion', 'id');
+        $modalidadesAlt = TipoModalidad::pluck('tipo_modalidad', 'id');
+
+        $faltan = $recienActivadas
+            ->filter(fn ($n) => isset($sinTarifar[$n['tipo_modalidad_id']][$n['plan_id']]))
+            ->map(fn ($n) => ($modalidades[$n['tipo_modalidad_id']] ?: $modalidadesAlt[$n['tipo_modalidad_id']] ?? '?')
+                .' · '.($planes[$n['plan_id']] ?? '?'))
+            ->values();
+
+        return $faltan->isEmpty() ? null : $faltan->all();
     }
 }

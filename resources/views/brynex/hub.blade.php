@@ -149,6 +149,14 @@
         <div class="hub-section">
             <div class="hub-section-title">⚙️ Configuración Global <span class="badge-sa">Solo Superadmin</span></div>
             <div class="hub-cards">
+                <a href="{{ route('brynex.parametros') }}" class="hub-card" style="border-color:#bfdbfe;background:#eff6ff">
+                    <div class="hc-icon">🔒</div>
+                    <div class="hc-body">
+                        <div class="hc-name">Parámetros BryNex</div>
+                        <div class="hc-desc">Salario mínimo, porcentajes de seguridad social y tarifas ARL por nivel de riesgo</div>
+                    </div>
+                    <div class="hc-arrow">→</div>
+                </a>
                 <a href="{{ route('admin.bitacora.index') }}" class="hub-card">
                     <div class="hc-icon">👁️</div>
                     <div class="hc-body">

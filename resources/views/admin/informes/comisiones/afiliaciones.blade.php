@@ -295,8 +295,8 @@
                         <th class="num"><a href="{{ $sortUrl('v_asesor') }}"   class="{{ $sortClass('v_asesor') }}">💼 Asesor</a></th>
                         <th class="num"><a href="{{ $sortUrl('v_retiro') }}"   class="{{ $sortClass('v_retiro') }}">🔒 Retiro</a></th>
                         <th class="num"><a href="{{ $sortUrl('v_encarg') }}"   class="{{ $sortClass('v_encarg') }}">👤 Encargado</a></th>
-                        <th class="num"><a href="{{ $sortUrl('v_admon') }}"    class="{{ $sortClass('v_admon') }}">🏢 Gastos</a></th>
-                        <th class="num"><a href="{{ $sortUrl('v_util') }}"     class="{{ $sortClass('v_util') }}">📊 Utilidad</a></th>
+                        <th class="num" title="En contratos con tarifario es el rubro «otros» de la celda (Parámetros)"><a href="{{ $sortUrl('v_admon') }}"    class="{{ $sortClass('v_admon') }}">🏢 Gastos</a></th>
+                        <th class="num" title="Lo que le queda al aliado: afiliación cobrada − retiro − otros − asesor"><a href="{{ $sortUrl('v_util') }}"     class="{{ $sortClass('v_util') }}">📊 Utilidad</a></th>
                         <th>Acción</th>
                     </tr>
                 </thead>

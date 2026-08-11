@@ -95,6 +95,14 @@
             <div class="c-desc">Registrar y gestionar asesores comerciales. Configure su comisión por afiliación y por planilla (fija o porcentaje).</div>
         </a>
 
+        <a class="cfg-card" href="{{ route('admin.configuracion.niveles.index') }}"
+           style="--c:#0369a1;--bc:#7dd3fc">
+            <span class="c-badge" style="background:#e0f2fe;color:#0369a1">Red Comercial</span>
+            <div class="c-icon">🎚️</div>
+            <div class="c-title">Niveles de Asesores</div>
+            <div class="c-desc">Plantillas de comisión por tamaño de cartera. Defina una vez cuánto gana cada nivel por plan, modalidad y riesgo ARL, y aplíquelo a los asesores nuevos sin configurarlos uno por uno.</div>
+        </a>
+
         <a class="cfg-card" href="{{ route('admin.pagina.index') }}"
            style="--c:#2563eb;--bc:#93c5fd">
             <span class="c-badge" style="background:#dbeafe;color:#1e40af">Público</span>

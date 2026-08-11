@@ -15,6 +15,17 @@
   $defCosto       = (int) old('costo_afiliacion', $contrato->costo_afiliacion ?? $defaultTarifas['costo_afiliacion'] ?? 0);
   $defSeguro      = (int) old('seguro',           $contrato->seguro           ?? $defaultTarifas['seguro']           ?? 0);
   $defEncargado   = old('encargado_id',     $contrato->encargado_id     ?? $defaultTarifas['encargado_id']     ?? auth()->id());
+
+  // ── Reparto de la afiliación: empresa + asesor = costo_afiliacion ──
+  // Vacío (no 0) en la parte del asesor significa "contrato sin tarifario": la facturación
+  // lo reparte con la lógica anterior. Hay que conservar la diferencia entre '' y 0.
+  $defAfilAsesor = old('afiliacion_asesor', $contrato->afiliacion_asesor ?? null);
+  $defAfilAsesor = ($defAfilAsesor === null || $defAfilAsesor === '') ? '' : (int) $defAfilAsesor;
+  $defAfilEmpresa = max(0, $defCosto - ($defAfilAsesor === '' ? 0 : $defAfilAsesor));
+  // Sin asesor la casilla va en 0; con asesor y sin valor guardado se deja vacía (ver el campo).
+  $defAfilAsesorVista = $defAfilAsesor !== ''
+    ? number_format($defAfilAsesor, 0, '', '.')
+    : (old('asesor_id', $contrato->asesor_id ?? null) ? '' : '0');
   $defSalario     = (int) old('salario',          $contrato->salario          ?? $salarioMinimo);
   $defIbc         = (int) old('ibc',              $contrato->ibc              ?? $defSalario);
   $S = 'width:100%;padding:0.38rem 0.5rem;border:1px solid #cbd5e1;border-radius:6px;font-size:0.82rem;background:#fff;box-sizing:border-box;';
@@ -217,19 +228,7 @@
       </div>
 
     </div>
-    <div style="display:grid;grid-template-columns:1.8fr 1.2fr 1fr;gap:0.5rem;margin-top:0.5rem;">
-      <div>
-        <label class="lb">Actividad Economica</label>
-        <select name="actividad_economica_id" @change="onActividadChange" style="{{ $S }}">
-          <option value="">--</option>
-          @foreach($actividades as $act)
-          <option value="{{ $act->id }}" data-nivel="{{ $act->nivel_arl_sugerido }}"
-              {{ old('actividad_economica_id', $contrato->actividad_economica_id ?? '') == $act->id ? 'selected' : '' }}>
-            [N{{ $act->nivel_arl_sugerido }}] {{ $act->nombre }}
-          </option>
-          @endforeach
-        </select>
-      </div>
+    <div style="display:grid;grid-template-columns:1.2fr 1fr 1fr 1fr;gap:0.5rem;margin-top:0.5rem;align-items:end;">
       <div>
         <label class="lb">Motivo Afiliacion</label>
         <select name="motivo_afiliacion_id" style="{{ $S }}">
@@ -242,6 +241,29 @@
       <div>
         <label class="lb">Cargo / Ocupacion</label>
         <input type="text" name="cargo" value="{{ old('cargo', $contrato->cargo ?? '') }}" style="{{ $I }}">
+      </div>
+      {{-- Operador Planilla: visible SOLO cuando la RS es independiente, sin importar si hay ARL --}}
+      <div id="panel-operador-planilla" style="display:none;">
+        <label class="lb" style="color:#1d4ed8;">&#x1F4B3; Operador Planilla</label>
+        <select name="operador_planilla_id"
+                style="{{ $S }}border-color:#bfdbfe;background:#eff6ff;color:#1d4ed8;font-weight:600;">
+          <option value="">&mdash; Seleccione &mdash;</option>
+          @foreach($operadoresPlanilla ?? [] as $op)
+          <option value="{{ $op->id }}"
+              {{ old('operador_planilla_id', $clienteOperadorId ?? '') == $op->id ? 'selected' : '' }}>
+            {{ $op->nombre }}{{ $op->codigo_ni ? ' ('.$op->codigo_ni.')' : '' }}
+          </option>
+          @endforeach
+        </select>
+      </div>
+      <div>
+        <label class="lb">Envio Planilla</label>
+        <select name="envio_planilla" style="{{ $S }}">
+          <option value="">--</option>
+          @foreach(['Correo','WhatsApp','Fisica','Web','Otro'] as $ep)
+          <option value="{{ $ep }}" {{ old('envio_planilla', $contrato->envio_planilla ?? '') === $ep ? 'selected' : '' }}>{{ $ep }}</option>
+          @endforeach
+        </select>
       </div>
     </div>
   </div>
@@ -412,21 +434,6 @@
       <input type="hidden" name="arl_nit_cotizante" id="inp_arl_nit"
           value="{{ old('arl_nit_cotizante', $contrato->arl_nit_cotizante ?? '') }}">
     </div>
-
-    {{-- Panel Operador Planilla: visible SOLO cuando RS es independiente, sin importar si hay ARL --}}
-    <div id="panel-operador-planilla" style="display:none;margin-top:0.5rem;max-width:280px;">
-      <label class="lb" style="color:#1d4ed8;">&#x1F4B3; Operador Planilla</label>
-      <select name="operador_planilla_id"
-              style="{{ $S }}border-color:#bfdbfe;background:#eff6ff;color:#1d4ed8;font-weight:600;">
-        <option value="">&mdash; Seleccione &mdash;</option>
-        @foreach($operadoresPlanilla ?? [] as $op)
-        <option value="{{ $op->id }}"
-            {{ old('operador_planilla_id', $clienteOperadorId ?? '') == $op->id ? 'selected' : '' }}>
-          {{ $op->nombre }}{{ $op->codigo_ni ? ' ('.$op->codigo_ni.')' : '' }}
-        </option>
-        @endforeach
-      </select>
-    </div>
   </div>
 
   {{-- Panel 3: Salario + Asesor + Tarifas --}}
@@ -485,7 +492,9 @@
       </div>
     </div>
 
-    {{-- Fila 2: Admon + Admon Asesor + Costo + Seguro + Envio Planilla --}}
+    {{-- Fila 2: Admon + Admon Asesor + Afiliación (empresa | asesor) + Seguro.
+         El costo de afiliación ya no se escribe directo: se arma sumando las dos partes,
+         y viaja en el campo oculto costo_afiliacion, que es el que sigue guardando la BD. --}}
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:0.5rem;">
       <div>
         <label class="lb">Admon Mensual $</label>
@@ -501,10 +510,20 @@
             data-raw="{{ $defAdmonAsesor }}">
       </div>
       <div>
-        <label class="lb">Costo Afiliacion $</label>
-        <input type="text" inputmode="numeric" name="costo_afiliacion" id="inp_costo" class="campo-money"
-            value="{{ number_format($defCosto, 0, '', '.') }}" style="{{ $M }}"
-            data-raw="{{ $defCosto }}">
+        <label class="lb">Afiliacion Empresa $</label>
+        <input type="text" inputmode="numeric" id="inp_afiliacion_empresa"
+            oninput="repartoAfiliacion('empresa')"
+            value="{{ number_format($defAfilEmpresa, 0, '', '.') }}" style="{{ $M }}">
+      </div>
+      <div>
+        <label class="lb">Afiliacion Asesor $</label>
+        {{-- Sin asesor va en 0. Solo queda vacío en un contrato viejo que SÍ tiene asesor y
+             nunca pasó por el tarifario: ese vacío es lo que mantiene su factura en la regla
+             anterior, y convertirlo en 0 le quitaría la comisión sin que nadie lo note.
+             Por eso el campo no es .campo-money, que fuerza el 0. --}}
+        <input type="text" inputmode="numeric" name="afiliacion_asesor" id="inp_afiliacion_asesor"
+            oninput="repartoAfiliacion('asesor')" placeholder="sin tarifario"
+            value="{{ $defAfilAsesorVista }}" style="{{ $M }}">
       </div>
       <div>
         <label class="lb">Seguro $</label>
@@ -513,16 +532,17 @@
             value="{{ number_format($defSeguro, 0, '', '.') }}" style="{{ $M }}"
             data-raw="{{ $defSeguro }}">
       </div>
-      <div>
-        <label class="lb">Envio Planilla</label>
-        <select name="envio_planilla" style="{{ $S }}">
-          <option value="">--</option>
-          @foreach(['Correo','WhatsApp','Fisica','Web','Otro'] as $ep)
-          <option value="{{ $ep }}" {{ old('envio_planilla', $contrato->envio_planilla ?? '') === $ep ? 'selected' : '' }}>{{ $ep }}</option>
-          @endforeach
-        </select>
-      </div>
     </div>
+
+    {{-- Costo total de la afiliación = empresa + asesor. Lo mantiene repartoAfiliacion();
+         media vista y el cotizador leen #inp_costo, por eso conserva id, name y clase. --}}
+    <input type="hidden" name="costo_afiliacion" id="inp_costo" class="campo-money"
+        value="{{ $defCosto }}" data-raw="{{ $defCosto }}">
+
+    {{-- Único aviso que queda: renovación de Ingreso-Retiro / Gestión ARL, que no se
+         deduce de ninguna casilla. Lo pinta pintarAvisoTarifa(). --}}
+    <div id="aviso_tarifa_asesor" style="display:none;margin-top:0.5rem;padding:0.45rem 0.65rem;
+         background:#fffbeb;border:1px solid #fde68a;border-radius:6px;font-size:0.72rem;color:#78350f;line-height:1.5;"></div>
   </div>
 
   {{-- Panel 4: Observacion --}}
@@ -1685,7 +1705,10 @@ function mrOnSubmit() {
 @endif
 
 <style>
-.lb  { display:block;font-size:0.67rem;font-weight:700;color:#475569;margin-bottom:0.15rem;text-transform:uppercase;letter-spacing:0.03em; }
+/* line-height fijo: un label con emoji (💳 Operador Planilla) hereda las métricas de la
+   fuente de emoji y crece más que los de solo texto, empujando su input hacia abajo y
+   desalineando la fila del grid. */
+.lb  { display:block;font-size:0.67rem;font-weight:700;color:#475569;margin-bottom:0.15rem;text-transform:uppercase;letter-spacing:0.03em;line-height:1.35; }
 .cp  { background:#fff;border-radius:11px;border:1px solid #e2e8f0;padding:0.8rem 0.95rem; }
 .pt  { font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.5rem; }
 .cr  { display:flex;justify-content:space-between;padding:0.25rem 0;border-bottom:1px solid rgba(255,255,255,0.06); }
@@ -1717,6 +1740,9 @@ select:disabled { background:#f1f5f9;color:#1e293b;cursor:not-allowed;opacity:1;
 <script>
 const MODALIDADES_MODO_ARL  = @json($modalidadesModoArl ?? []);
 const MODALIDADES_ARL_LIBRE = @json($modalidadesArlLibre ?? []);
+// {modalidad_id: [niveles]} — Estudiante K solo 1-3, ARL Tipo Y solo 4-5. Viene de
+// TarifaAsesorService::NIVELES_ARL_POR_MODALIDAD, la misma que restringe el tarifario.
+const NIVELES_ARL_POR_MODALIDAD = @json($nivelesArlPorModalidad ?? []);
 const ARL_ID_RS             = {{ $arlIdRazonSocial ?? 'null' }};
 const SALARIO_MINIMO        = {{ $salarioMinimo ?? 0 }};
 const PLAN_DATA             = {};
@@ -2172,27 +2198,33 @@ function actualizarBloqueoArl(evitarRecalcular = false) {
 }
 
 /**
- * Cuando la RS seleccionada NO es independiente y la modalidad es id=8,
- * sólo se permiten los niveles de ARL 4 y 5.
- * En cualquier otro caso se restauran todos los niveles (1 al 5).
+ * Deja en el selector de riesgo ARL solo los niveles que admite la modalidad:
+ * Estudiante K (−1) los riesgos 1-3 y ARL Tipo Y (8) los riesgos 4-5, porque son los dos
+ * tipos de planilla PILA y cada uno cubre su rango. El resto de modalidades, los 5.
+ *
+ * Antes la restricción era solo para la modalidad 8 y únicamente si la razón social NO era
+ * independiente; ahora aplica siempre, que es la regla real del negocio y la misma que usa
+ * el tarifario (TarifaAsesorService::NIVELES_ARL_POR_MODALIDAD).
  */
+function nivelesArlPermitidos(modalidadId) {
+    const r = NIVELES_ARL_POR_MODALIDAD[modalidadId];
+    return (Array.isArray(r) && r.length) ? r.map(Number) : [1, 2, 3, 4, 5];
+}
+
 function actualizarNivelesArl(evitarRecalcular = false) {
     const selMod    = document.querySelector('select[name=tipo_modalidad_id]');
-    const selRS     = document.getElementById('sel_rs');
     const selNivel  = document.querySelector('select[name=n_arl]');
     if (!selNivel) return;
 
-    const modalidadId  = parseInt(selMod?.value || 0);
-    const esIndepRS    = selRS?.options[selRS.selectedIndex]?.dataset?.independiente === '1';
-    // Condición: modalidad 8 + RS no independiente
-    const soloNivel4y5 = (modalidadId === 8) && !esIndepRS;
+    const modalidadId       = parseInt(selMod?.value || 0);
+    const nivelesPermitidos = nivelesArlPermitidos(modalidadId);
+    const restringido       = nivelesPermitidos.length < 5;
 
     // Guardar valor actual antes de manipular opciones
     const nivelActual = parseInt(selNivel.value || 1);
 
     // Limpiar y reconstruir opciones
     selNivel.innerHTML = '';
-    const nivelesPermitidos = soloNivel4y5 ? [4, 5] : [1, 2, 3, 4, 5];
     nivelesPermitidos.forEach(n => {
         const opt = document.createElement('option');
         opt.value = n;
@@ -2214,9 +2246,11 @@ function actualizarNivelesArl(evitarRecalcular = false) {
         if (!evitarRecalcular) alpineComp.recalcular();
     }
 
-    // Indicador visual: marcar el selector con borde si está restringido
-    selNivel.style.border   = soloNivel4y5 ? '2px solid #f59e0b' : '1px solid #cbd5e1';
-    selNivel.title          = soloNivel4y5 ? 'Modalidad id=8 con RS empresa: solo niveles 4 y 5' : '';
+    // Indicador visual: borde ámbar cuando la modalidad recorta los niveles
+    selNivel.style.border = restringido ? '2px solid #f59e0b' : '1px solid #cbd5e1';
+    selNivel.title        = restringido
+        ? `Esta modalidad solo admite riesgo ${nivelesPermitidos.join(' y ')}`
+        : '';
 }
 
 // Estilos base para entidades
@@ -2502,19 +2536,134 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
+/** Alpine del formulario, para poder llamarlo desde los handlers globales. */
+function datosContrato() {
+    return document.querySelector('[x-data]')?._x_dataStack?.[0] || null;
+}
+
+// ── Reparto de la afiliación: asesor ↔ empresa ───────────────────
+// Son las dos caras de la misma moneda: costo − retiro − otros = asesor + empresa.
+// Se edita cualquiera de las dos y la otra se ajusta. Solo viaja afiliacion_asesor.
+// El vacío es significativo: '' = contrato sin tarifario, y 0 = el asesor no gana nada
+// por la afiliación. La facturación los trata distinto, así que nunca convertir '' en 0.
+
+/** Lee una de las dos casillas. Solo le quita el formato a la que se está tecleando:
+ *  a la otra hay que dejarle sus puntos de miles. Devuelve null si está vacía. */
+function repartoLeer(el) {
+    if (el === document.activeElement) {
+        const pos = el.selectionStart;
+        el.value = el.value.replace(/[^0-9]/g, '');
+        try { el.setSelectionRange(pos, pos); } catch (e) {}
+    }
+    const limpio = el.value.replace(/\./g, '');
+
+    return limpio === '' ? null : (parseInt(limpio, 10) || 0);
+}
+
+/**
+ * Rearma el costo de afiliación cada vez que se teclea una de las dos partes:
+ *   afiliación empresa + afiliación asesor = costo_afiliacion (campo oculto)
+ * El asesor vacío no suma y deja el contrato sin tarifario.
+ */
+function repartoAfiliacion(origen) {
+    const ipA = document.getElementById('inp_afiliacion_asesor');
+    const ipE = document.getElementById('inp_afiliacion_empresa');
+    const ipC = document.getElementById('inp_costo');
+    if (!ipA || !ipE || !ipC) return;
+
+    // Se lee la que se está tecleando (queda en dígitos limpios) y también la otra.
+    if (origen === 'asesor') repartoLeer(ipA); else if (origen === 'empresa') repartoLeer(ipE);
+
+    const asesor  = repartoLeer(ipA) ?? 0;
+    const empresa = repartoLeer(ipE) ?? 0;
+    const costo   = empresa + asesor;
+
+    ipC.value = costo;
+    ipC.dataset.raw = costo;
+    // Sin recalcular(): la cotización de la derecha es de seguridad social + admon y no
+    // incluye la afiliación, así que llamarla aquí sería una consulta por cada tecla.
+}
+
+/** Precarga las dos casillas desde el tarifario. */
+function repartoSincronizar(d, tieneAsesor) {
+    const ipA = document.getElementById('inp_afiliacion_asesor');
+    const ipE = document.getElementById('inp_afiliacion_empresa');
+    const ipC = document.getElementById('inp_costo');
+    if (!ipA || !ipE || !ipC) return;
+
+    const costo = parseInt(ipC.dataset.raw || ipC.value || 0);
+    const tiene = tieneAsesor && d && d.afiliacion_asesor !== undefined && d.afiliacion_asesor !== null;
+    const asesor = tiene ? Math.round(d.afiliacion_asesor) : 0;
+
+    // Sin asesor: 0. Con asesor pero sin tarifario: vacío, que es lo que deja la factura
+    // en la regla anterior; poner 0 ahí le quitaría la comisión al asesor en silencio.
+    ipA.value = tiene ? numFmt(asesor) : (tieneAsesor ? '' : '0');
+    ipE.value = numFmt(Math.max(0, costo - asesor));
+    repartoAfiliacion();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const ipA = document.getElementById('inp_afiliacion_asesor');
+    const ipE = document.getElementById('inp_afiliacion_empresa');
+    if (!ipA || !ipE) return;
+
+    // Al salir de la casilla se vuelve a poner el punto de miles; el vacío sigue vacío.
+    [ipA, ipE].forEach(el => el.addEventListener('blur', () => {
+        if (el.value !== '') el.value = numFmt(parseInt(el.value.replace(/\./g, ''), 10) || 0);
+    }));
+
+    // El backend distingue '' (sin tarifario) de 0; hay que mandarlo sin los puntos.
+    document.getElementById('form-contrato')?.addEventListener('submit', () => {
+        ipA.value = ipA.value === '' ? '' : ipA.value.replace(/\./g, '');
+    }, true);
+});
+
+/**
+ * Aviso bajo la fila de admon. El desglose ya no se escribe aquí: las dos casillas
+ * (empresa y asesor) lo dicen solas. Queda solo lo que no se ve en ninguna casilla:
+ * que este cliente ya se afilió antes y por eso al asesor le tocará la admon.
+ */
+function pintarAvisoTarifa(d, tieneAsesor) {
+    const caja = document.getElementById('aviso_tarifa_asesor');
+    if (!caja) return;
+
+    if (!tieneAsesor || !d || !d.es_renovacion) {
+        caja.style.display = 'none';
+        caja.innerHTML = '';
+        return;
+    }
+
+    caja.innerHTML = '<span style="color:#b45309;font-weight:700">↻ Este cliente ya tuvo una afiliación en esta modalidad:</span>'
+                   + ' al facturar se le pagará al asesor la administración, no la comisión de afiliación.';
+    caja.style.display = 'block';
+}
+
 function onAsesorChange(sel) {
+    const datos = datosContrato();
+
+    // Con plan y modalidad elegidos, el servidor resuelve todo el reparto (incluida la parte
+    // de la afiliación, que antes no existía). Sin ellos se conserva el reparto local de siempre.
+    if (datos && datos.planId) {
+        datos.refrescarTarifas();
+        return;
+    }
+
     const opt      = sel.options[sel.selectedIndex];
     const admonAse = parseFloat(opt?.dataset?.admon || 0);
     const admonIp  = document.getElementById('inp_admon_asesor');
     const admonTot = document.getElementById('inp_admon');
+    const afilAse  = document.getElementById('inp_afiliacion_asesor');
     if (!admonIp) return;
 
     if (!sel.value) {
-        // Sin asesor: admon_asesor = 0, admon queda completo
+        // Sin asesor: admon_asesor = 0, admon queda completo y no hay parte de afiliación.
         admonIp.value = 0;
+        if (afilAse) afilAse.value = '';
+        repartoSincronizar(null, false);
     } else {
         // Con asesor: admon_asesor = su comision, admon = admon_plan - comision
         admonIp.value = admonAse;
+        repartoSincronizar(null, true);
         if (admonTot) {
             const admonActual = parseFloat(admonTot.value || 0);
             // Solo resta si el admon actual NO fue ya reducido (es mayor que admonAse)
@@ -2525,7 +2674,7 @@ function onAsesorChange(sel) {
             if (planOpt && !planOpt.dataset.admonPlan) planOpt.dataset.admonPlan = admonActual;
             admonTot.value = Math.max(0, (planOpt?.dataset.admonPlan ? parseFloat(planOpt.dataset.admonPlan) : admonActual) - admonAse);
             // Actualizar Alpine
-            const alpineData = document.querySelector('[x-data]')?._x_dataStack?.[0];
+            const alpineData = datosContrato();
             if (alpineData) { alpineData.admon = parseFloat(admonTot.value); alpineData.recalcular(); }
         }
     }
@@ -2841,6 +2990,8 @@ function cotizador() {
             filtrarPlanes(e.target.value);
             // Recalcular días según la nueva modalidad (especialmente ARL → 0 días)
             this.calcularDiasDesde(document.querySelector('input[name=fecha_ingreso]')?.value);
+            // El tarifario cambia por modalidad, no solo por plan.
+            this.refrescarTarifas();
             this.recalcular();
         },
 
@@ -2848,53 +2999,84 @@ function cotizador() {
         onPlanChange(e) {
             this.planNombre = e.target.options[e.target.selectedIndex]?.textContent?.trim() || '';
             bloquearEntidadesPorPlan(this.planId);
-        fetch(`${URL_TARIFAS}?plan_id=${this.planId}`)
-                .then(r => r.json())
-                .then(d => {
-                    const f        = document.getElementById('form-contrato');
-                    const asesorSel = document.getElementById('sel_asesor');
-                    const asesorOpt = asesorSel?.options[asesorSel.selectedIndex];
-                    const admonAse  = parseFloat(asesorOpt?.dataset?.admon || 0);
-                    const tieneAsesor = asesorSel?.value && parseFloat(asesorSel.value) > 0;
-
-                    // Seguro y costo (solo actualizar si la API devuelve valor > 0)
-                    if (d.seguro > 0) {
-                        const inpSeg = document.getElementById('inp_seguro');
-                        if (inpSeg) { inpSeg.dataset.raw = d.seguro; inpSeg.value = numFmt(d.seguro); }
-                        this.seguro = d.seguro;
-                    }
-                    if (d.costo_afiliacion > 0) {
-                        const inpCosto = document.getElementById('inp_costo');
-                        if (inpCosto) { inpCosto.dataset.raw = d.costo_afiliacion; inpCosto.value = numFmt(d.costo_afiliacion); }
-                    }
-                    if (d.encargado_id && f.elements['encargado_id']) f.elements['encargado_id'].value = d.encargado_id;
-
-                    // Admon: solo actualizar si la API devuelve valor > 0 (no borrar valor existente)
-                    if (d.administracion > 0) {
-                        const admonPlan  = d.administracion;
-                        const planOpt    = e.target.options[e.target.selectedIndex];
-                        if (planOpt) planOpt.dataset.admonPlan = admonPlan;
-
-                        const admonFinal = tieneAsesor ? Math.max(0, admonPlan - admonAse) : admonPlan;
-                        this.admon       = admonFinal;
-                        const inpAdmon   = document.getElementById('inp_admon');
-                        if (inpAdmon) { inpAdmon.dataset.raw = admonFinal; inpAdmon.value = numFmt(admonFinal); }
-                    }
-                    // Admon asesor
-                    if (d.administracion > 0 || tieneAsesor) {
-                        const admonAsesorInput = document.getElementById('inp_admon_asesor');
-                        const admonAseVal = tieneAsesor ? (d.admon_asesor ?? admonAse) : 0;
-                        if (admonAsesorInput) { admonAsesorInput.dataset.raw = admonAseVal; admonAsesorInput.value = numFmt(admonAseVal); }
-                    }
-
-                    this.recalcular();
-                }).catch(() => this.recalcular());
+            this.refrescarTarifas();
         },
 
-        onActividadChange(e) {
-            const nivel = parseInt(e.target.options[e.target.selectedIndex]?.dataset.nivel || 1);
-            this.nivelArl = nivel;
-            document.querySelector('select[name=n_arl]').value = nivel;
+        /**
+         * Pide al servidor las tarifas de la combinación actual (plan + modalidad + riesgo +
+         * asesor) y las precarga. Se llama al cambiar cualquiera de esos cuatro, porque el
+         * tarifario puede tener un precio distinto por cada uno.
+         */
+        refrescarTarifas() {
+            if (!this.planId) return Promise.resolve();
+
+            const asesorSel = document.getElementById('sel_asesor');
+            const cedula    = document.querySelector('input[name=cedula]')?.value || '';
+
+            const params = new URLSearchParams({ plan_id: this.planId, n_arl: this.nivelArl || 1 });
+            // Sin modalidad el servidor responde el formato viejo: el formulario sigue igual.
+            if (this.tipoModalidadId !== '' && this.tipoModalidadId !== null && this.tipoModalidadId !== undefined) {
+                params.set('tipo_modalidad_id', this.tipoModalidadId);
+            }
+            if (asesorSel?.value) params.set('asesor_id', asesorSel.value);
+            if (cedula)           params.set('cedula', cedula);
+
+            return fetch(`${URL_TARIFAS}?${params.toString()}`)
+                .then(r => r.json())
+                .then(d => this.aplicarTarifas(d))
+                .catch(() => this.recalcular());
+        },
+
+        aplicarTarifas(d) {
+            const f           = document.getElementById('form-contrato');
+            const asesorSel   = document.getElementById('sel_asesor');
+            const asesorOpt   = asesorSel?.options[asesorSel.selectedIndex];
+            const admonAseOpt = parseFloat(asesorOpt?.dataset?.admon || 0);
+            const tieneAsesor = !!(asesorSel?.value && parseFloat(asesorSel.value) > 0);
+
+            // Seguro y costo: solo se pisan si la API trae un valor real, para no borrar
+            // lo que el usuario ya escribió a mano.
+            if (d.seguro > 0) {
+                const inpSeg = document.getElementById('inp_seguro');
+                if (inpSeg) { inpSeg.dataset.raw = d.seguro; inpSeg.value = numFmt(d.seguro); }
+                this.seguro = d.seguro;
+            }
+            if (d.costo_afiliacion > 0) {
+                const inpCosto = document.getElementById('inp_costo');
+                if (inpCosto) { inpCosto.dataset.raw = d.costo_afiliacion; inpCosto.value = numFmt(d.costo_afiliacion); }
+            }
+            if (d.encargado_id && f?.elements['encargado_id']) f.elements['encargado_id'].value = d.encargado_id;
+
+            // Admon. Con el tarifario nuevo el servidor ya manda separada la parte de la
+            // empresa (admon_total − asesor); sin él se conserva el reparto de siempre.
+            const tarifarioFino = (d.admon_total !== undefined && d.admon_total !== null);
+            const admonTotal    = tarifarioFino ? d.admon_total : d.administracion;
+
+            if (admonTotal > 0) {
+                const admonEmpresa = tarifarioFino
+                    ? d.administracion
+                    : (tieneAsesor ? Math.max(0, d.administracion - admonAseOpt) : d.administracion);
+
+                const planOpt = document.querySelector('#sel_plan option[value="' + this.planId + '"]');
+                if (planOpt) planOpt.dataset.admonPlan = admonTotal;
+
+                this.admon = admonEmpresa;
+                const inpAdmon = document.getElementById('inp_admon');
+                if (inpAdmon) { inpAdmon.dataset.raw = admonEmpresa; inpAdmon.value = numFmt(admonEmpresa); }
+            }
+
+            if (admonTotal > 0 || tieneAsesor) {
+                const inpAdmonAse = document.getElementById('inp_admon_asesor');
+                const valAdmonAse = tieneAsesor ? (d.admon_asesor ?? admonAseOpt) : 0;
+                if (inpAdmonAse) { inpAdmonAse.dataset.raw = valAdmonAse; inpAdmonAse.value = numFmt(valAdmonAse); }
+            }
+
+            // Parte del asesor en la afiliación y lo que le queda a la empresa. Vacío (no 0)
+            // cuando no hay asesor o no hay tarifario: ese vacío es el que deja la facturación
+            // en su lógica anterior.
+            repartoSincronizar(d, tieneAsesor);
+
+            pintarAvisoTarifa(d, tieneAsesor);
             this.recalcular();
         },
 

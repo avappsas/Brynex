@@ -1044,7 +1044,9 @@ class FacturacionController extends Controller
         // Precargar todos los contratos involucrados en una sola query (con eager loading de relaciones)
         $contratosCargados = Contrato::where('aliado_id', $aliadoId)
             ->whereIn('id', $validated['contratos'])
-            ->with(['eps', 'arl', 'pension', 'caja', 'tipoModalidad', 'razonSocial', 'asesor', 'cliente'])
+            // 'plan' lo pide calcularCotizacion() en cada contrato (planilla, y ahora también
+            // el retiro calculado de la afiliación): sin precargarlo es una query por contrato.
+            ->with(['eps', 'arl', 'pension', 'caja', 'tipoModalidad', 'razonSocial', 'asesor', 'cliente', 'plan'])
             ->get()
             ->keyBy('id');
 
@@ -1779,9 +1781,23 @@ class FacturacionController extends Controller
                 // ─── Calcular distribución de afiliación ───────────────────
                 $distAdmon = $distAsesor = $distRetiro = $distUtilidad = $distEncargado = 0;
                 if ($esAfiliacion && $afiliacion > 0) {
-                    // Si el frontend envió valores manuales, usarlos
+                    // Si el frontend envió valores manuales, usarlos.
                     $hasManual = isset($validated['dist_asesor']) || isset($validated['dist_retiro'])
                               || isset($validated['dist_encargado']) || isset($validated['dist_admon']);
+
+                    // El modal (public/js/modal_facturar_v2.js) manda SIEMPRE las cuatro claves,
+                    // en cero cuando nadie tocó nada, así que isset() las daba por manuales y
+                    // todo terminaba en utilidad. Un reparto en ceros no es una decisión del
+                    // usuario: si el contrato tiene tarifario, manda el tarifario.
+                    // Los contratos SIN tarifario conservan el comportamiento anterior.
+                    $manualEnCeros = ((int) ($validated['dist_asesor'] ?? 0)
+                                    + (int) ($validated['dist_retiro'] ?? 0)
+                                    + (int) ($validated['dist_encargado'] ?? 0)
+                                    + (int) ($validated['dist_admon'] ?? 0)) === 0;
+
+                    if ($hasManual && $manualEnCeros && $contrato->afiliacion_asesor !== null) {
+                        $hasManual = false;
+                    }
 
                     if ($hasManual) {
                         $distAsesor   = (int)($validated['dist_asesor']    ?? 0);
@@ -1798,17 +1814,32 @@ class FacturacionController extends Controller
                         // Recalcular utilidad = total - todos los demás
                         $distUtilidad = max(0, $afiliacion - $distAsesor - $distRetiro - $distEncargado - $distAdmon);
                     } else {
-                        $cfg = \App\Models\ConfiguracionAliado::paraAliado($aliadoId, $contrato->plan_id);
-                        if ($cfg) {
-                            $dist         = $cfg->calcularDistribucion($afiliacion, $contrato->asesor ?? null);
-                            $distAdmon    = $dist['admon'];
-                            $distAsesor   = $dist['asesor'];
-                            $distRetiro   = $dist['retiro'];
-                            $distUtilidad = $dist['utilidad'];
-                            
-                            if ((int)$contrato->tipo_modalidad_id === 15) {
-                                $distUtilidad += $distRetiro;
-                                $distRetiro = 0;
+                        // Contrato con tarifario (afiliacion_asesor no nulo): el reparto sale
+                        // de lo que quedó congelado en el contrato. Ver TarifaAsesorService.
+                        $dist = \App\Services\TarifaAsesorService::distribucionFactura(
+                            $contrato, $afiliacion, $mes, $anio
+                        );
+
+                        if ($dist) {
+                            $distAdmon     = $dist['admon'];
+                            $distAsesor    = $dist['asesor'];
+                            $distRetiro    = $dist['retiro'];
+                            $distUtilidad  = $dist['utilidad'];
+                            $distEncargado = $dist['encargado'];
+                        } else {
+                            // Contrato anterior al tarifario: camino de siempre.
+                            $cfg = \App\Models\ConfiguracionAliado::paraAliado($aliadoId, $contrato->plan_id);
+                            if ($cfg) {
+                                $dist         = $cfg->calcularDistribucion($afiliacion, $contrato->asesor ?? null);
+                                $distAdmon    = $dist['admon'];
+                                $distAsesor   = $dist['asesor'];
+                                $distRetiro   = $dist['retiro'];
+                                $distUtilidad = $dist['utilidad'];
+
+                                if ((int)$contrato->tipo_modalidad_id === 15) {
+                                    $distUtilidad += $distRetiro;
+                                    $distRetiro = 0;
+                                }
                             }
                         }
                     }
@@ -2343,6 +2374,18 @@ class FacturacionController extends Controller
         if ($costoAfiliacion > 0) {
             $hasManual = isset($validated['dist_asesor']) || isset($validated['dist_retiro'])
                       || isset($validated['dist_encargado']) || isset($validated['dist_admon']);
+
+            // Mismo caso que en facturar(): el modal manda las claves siempre, en cero. Ver el
+            // comentario largo allá. Un reparto en ceros no pisa el tarifario del contrato.
+            $manualEnCeros = ((int) ($validated['dist_asesor'] ?? 0)
+                            + (int) ($validated['dist_retiro'] ?? 0)
+                            + (int) ($validated['dist_encargado'] ?? 0)
+                            + (int) ($validated['dist_admon'] ?? 0)) === 0;
+
+            if ($hasManual && $manualEnCeros && $contrato->afiliacion_asesor !== null) {
+                $hasManual = false;
+            }
+
             if ($hasManual) {
                 $distAsesor    = (int)($validated['dist_asesor']    ?? 0);
                 $distRetiro    = (int)($validated['dist_retiro']    ?? 0);
@@ -2355,17 +2398,32 @@ class FacturacionController extends Controller
 
                 $distUtilidad  = max(0, $costoAfiliacion - $distAsesor - $distRetiro - $distEncargado - $distAdmon);
             } else {
-                $cfg = \App\Models\ConfiguracionAliado::paraAliado($aliadoId, $contrato->plan_id);
-                if ($cfg) {
-                    $dist          = $cfg->calcularDistribucion($costoAfiliacion, $contrato->asesor ?? null);
+                // Contrato con tarifario (afiliacion_asesor no nulo): el reparto sale de lo
+                // que quedó congelado en el contrato. Ver TarifaAsesorService.
+                $dist = \App\Services\TarifaAsesorService::distribucionFactura(
+                    $contrato, $costoAfiliacion, $mes, $anio
+                );
+
+                if ($dist) {
                     $distAdmon     = $dist['admon'];
                     $distAsesor    = $dist['asesor'];
                     $distRetiro    = $dist['retiro'];
                     $distUtilidad  = $dist['utilidad'];
+                    $distEncargado = $dist['encargado'];
+                } else {
+                    // Contrato anterior al tarifario: camino de siempre.
+                    $cfg = \App\Models\ConfiguracionAliado::paraAliado($aliadoId, $contrato->plan_id);
+                    if ($cfg) {
+                        $dist          = $cfg->calcularDistribucion($costoAfiliacion, $contrato->asesor ?? null);
+                        $distAdmon     = $dist['admon'];
+                        $distAsesor    = $dist['asesor'];
+                        $distRetiro    = $dist['retiro'];
+                        $distUtilidad  = $dist['utilidad'];
 
-                    if ((int)$contrato->tipo_modalidad_id === 15) {
-                        $distUtilidad += $distRetiro;
-                        $distRetiro = 0;
+                        if ((int)$contrato->tipo_modalidad_id === 15) {
+                            $distUtilidad += $distRetiro;
+                            $distRetiro = 0;
+                        }
                     }
                 }
             }

@@ -483,7 +483,8 @@ class PlanillaApiController extends Controller
             'clave_secreta' => $credencial->clave_secreta,
         ]);
 
-        $mapaDoc = ['C' => 'CC', 'NIT' => 'CC', 'PT' => 'CE', 'NUIP' => 'CC'];
+        // PT (Permiso por Protección Temporal) es código PILA válido: no se traduce a CE
+        $mapaDoc = ['C' => 'CC', 'NIT' => 'CC', 'NUIP' => 'CC'];
         $tipoDoc = $mapaDoc[strtoupper(trim($plano->tipo_doc ?? 'CC'))] ?? strtoupper(trim($plano->tipo_doc ?? 'CC'));
 
         // Datos de contacto para registrar al contratista como aportante
@@ -808,7 +809,8 @@ class PlanillaApiController extends Controller
                 return ['success' => false, 'message' => 'No se encontró el registro del contratista.'];
             }
 
-            $mapaDoc       = ['C' => 'CC', 'NIT' => 'CC', 'PT' => 'CE', 'NUIP' => 'CC'];
+            // PT (Permiso por Protección Temporal) es código PILA válido: no se traduce a CE
+            $mapaDoc       = ['C' => 'CC', 'NIT' => 'CC', 'NUIP' => 'CC'];
             $doc           = strtoupper(trim($plano->tipo_doc ?? 'CC'));
             $tipoDocumento = $mapaDoc[$doc] ?? ($doc ?: 'CC');
             $documento     = preg_replace('/\D/', '', (string) $plano->no_identifi);

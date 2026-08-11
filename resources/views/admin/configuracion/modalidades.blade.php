@@ -70,6 +70,27 @@ $modsDep   = $modalidades->filter(fn($m) => !$m->esTiempoParcial() && !in_array(
 <div style="background:#dcfce7;border:1px solid #86efac;border-radius:8px;color:#166534;padding:.55rem 1rem;margin-bottom:.75rem;font-size:.82rem;">✓ {{ session('success') }}</div>
 @endif
 
+{{-- Combinaciones recién habilitadas sin precio: si nadie las tarifa, cotizan con el valor
+     general del plan y nadie se entera hasta que se factura. --}}
+@if(session('pendientes_tarifar'))
+<div style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:9px;padding:.7rem 1rem;margin-bottom:.75rem;font-size:.82rem;color:#92400e;">
+  <strong>🏷️ Falta ponerles precio</strong><br>
+  <span style="font-size:.78rem;">
+    Acabas de habilitar {{ count(session('pendientes_tarifar')) }} combinación(es) que todavía no
+    tienen tarifa propia. Mientras tanto cotizan con el valor general del plan.
+  </span>
+  <ul style="margin:.4rem 0 .5rem 1.1rem;font-size:.78rem;">
+    @foreach(session('pendientes_tarifar') as $c)
+    <li>{{ $c }}</li>
+    @endforeach
+  </ul>
+  <a href="{{ route('admin.configuracion.index') }}"
+     style="display:inline-block;padding:.35rem .8rem;background:#b45309;color:#fff;border-radius:6px;text-decoration:none;font-size:.76rem;font-weight:600;">
+    Ir a ponerles precio →
+  </a>
+</div>
+@endif
+
 <form method="POST" action="{{ route('admin.configuracion.modalidades.guardar') }}">
     @csrf
 
@@ -186,6 +207,11 @@ $modsDep   = $modalidades->filter(fn($m) => !$m->esTiempoParcial() && !in_array(
                                name="relaciones[{{ $mod->id }}][{{ $plan->id }}]"
                                value="1"
                                {{ isset($mapa[$mod->id][$plan->id]) ? 'checked' : '' }}>
+                        {{-- Activa pero sin precio propio: cotiza con el valor general del plan --}}
+                        @if(isset($sinTarifar[$mod->id][$plan->id]))
+                        <span title="Habilitada pero sin tarifa propia: cotiza con el valor general del plan"
+                              style="color:#b45309;font-size:.7rem;cursor:help;">🏷️</span>
+                        @endif
                     </td>
                     @endforeach
                     <td>
@@ -241,6 +267,11 @@ $modsDep   = $modalidades->filter(fn($m) => !$m->esTiempoParcial() && !in_array(
                                name="relaciones[{{ $mod->id }}][{{ $plan->id }}]"
                                value="1"
                                {{ isset($mapa[$mod->id][$plan->id]) ? 'checked' : '' }}>
+                        {{-- Activa pero sin precio propio: cotiza con el valor general del plan --}}
+                        @if(isset($sinTarifar[$mod->id][$plan->id]))
+                        <span title="Habilitada pero sin tarifa propia: cotiza con el valor general del plan"
+                              style="color:#b45309;font-size:.7rem;cursor:help;">🏷️</span>
+                        @endif
                     </td>
                     @endforeach
                     <td>

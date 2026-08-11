@@ -200,7 +200,8 @@ class ExcelAsopagosService
 
         // Tipo documento
         $tipoDoc = strtoupper(trim($p->tipo_doc ?? 'CC'));
-        $mapaDoc = ['C'=>'CC','NIT'=>'CC','CE'=>'CE','TI'=>'TI','PA'=>'PA','CD'=>'CD','SC'=>'SC','RC'=>'RC','PE'=>'PE','NUIP'=>'CC','PT'=>'CE'];
+        // PT (Permiso por Protección Temporal) es código PILA válido: no se traduce a CE
+        $mapaDoc = ['C'=>'CC','NIT'=>'CC','CE'=>'CE','TI'=>'TI','PA'=>'PA','CD'=>'CD','SC'=>'SC','RC'=>'RC','PE'=>'PE','NUIP'=>'CC','PT'=>'PT'];
         $tipoDoc = $mapaDoc[$tipoDoc] ?? $tipoDoc;
 
         // Actividad Económica

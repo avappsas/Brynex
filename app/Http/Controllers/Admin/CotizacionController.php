@@ -353,14 +353,7 @@ class CotizacionController extends Controller
             'costo_afiliacion_default' => $cfg ? $cfg->costo_afiliacion : 0,
             'administracion_default' => $cfg ? $cfg->administracion : 0,
             'modalidadesIndependientes' => [10, 11, 13, 14],
-            'tipos_doc'     => [
-                'CC'  => 'CC - Cédula de Ciudadanía',
-                'TI'  => 'TI - Tarjeta de Identidad',
-                'CE'  => 'CE - Cédula de Extranjería',
-                'PA'  => 'PA - Pasaporte',
-                'PT'  => 'PT - Permiso de Protección Temporal',
-                'PE'  => 'PE - Permiso Especial de Permanencia',
-            ],
+            'tipos_doc'     => \App\Models\Cliente::TIPOS_DOC,
             'canales'       => [
                 'redes_sociales' => 'Redes Sociales',
                 'whatsapp' => 'WhatsApp',

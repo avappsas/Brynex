@@ -2,6 +2,22 @@
 @section('modulo', 'Configuración')
 
 @section('contenido')
+<style>
+/* Selector de plan del tarifario: tarjeta con el nombre y su avance de llenado. */
+.btn-plan {
+    display:flex; flex-direction:column; align-items:flex-start; gap:0.15rem;
+    padding:0.45rem 0.75rem; border-radius:9px; cursor:pointer; text-align:left;
+    border:1.5px solid; transition:all .12s ease; min-width:130px; line-height:1.25;
+}
+.btn-plan-nombre { font-size:0.76rem; font-weight:700; white-space:nowrap; }
+.btn-plan-meta   { font-size:0.62rem; opacity:.9; white-space:nowrap; }
+
+.btn-plan.plan-off            { background:#fff; color:#475569; border-color:#e2e8f0; }
+.btn-plan.plan-off:hover      { border-color:#93c5fd; background:#f8fafc; transform:translateY(-1px); }
+.btn-plan.plan-on             { background:linear-gradient(135deg,#0369a1,#075985); color:#fff;
+                                border-color:#075985; box-shadow:0 3px 10px rgba(3,105,161,.28); }
+.btn-plan.plan-on .btn-plan-meta span { color:#bae6fd !important; }
+</style>
 <div style="max-width:1100px;margin:0 auto;">
 
 {{-- Encabezado --}}
@@ -28,81 +44,21 @@
 <form method="POST" action="{{ route('admin.configuracion.store') }}" enctype="multipart/form-data">
 @csrf
 
-{{-- ══ SECCIÓN 1: Porcentajes Seguridad Social — Solo Superadmin BryNex ══ --}}
+{{-- Los parámetros globales (salario mínimo, % de seguridad social, tarifas ARL) se fueron
+     a BryNex → Parámetros BryNex: no son del aliado, son del sistema, y verlos aquí hacía
+     creer que se editaban solo para este aliado. Ver BrynexController::parametros(). --}}
 @if(Auth::user()->hasRole('superadmin') && Auth::user()->es_brynex)
-<div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:1rem 1.25rem;margin-bottom:1rem;">
-  @php $esSuperadmin = true; @endphp
-  <div style="font-size:0.72rem;font-weight:700;color:#0891b2;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.85rem;">
-    🔒 Parámetros Globales BryNex
-    <span style="background:#dcfce7;color:#166534;font-size:0.65rem;font-weight:600;padding:0.1rem 0.5rem;border-radius:999px;text-transform:none;margin-left:0.5rem;">✏️ Editables como Superadmin BryNex</span>
+<div style="background:#f8fafc;border:1px dashed #cbd5e1;border-radius:10px;padding:0.7rem 1rem;margin-bottom:1rem;
+            display:flex;align-items:center;justify-content:space-between;gap:1rem;">
+  <div style="font-size:0.74rem;color:#475569;line-height:1.5;">
+    🔒 El salario mínimo, los porcentajes de seguridad social y las tarifas ARL ahora se editan
+    en <strong>BryNex → Parámetros BryNex</strong>, porque son iguales para todos los aliados.
   </div>
-  <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:0.75rem;">
-    @foreach([
-      'salario_minimo'                => ['label'=>'Salario Mínimo',   'prefix'=>'$',  'suffix'=>'',  'step'=>'1',    'decimals'=>0],
-      'pct_salud_dependiente'         => ['label'=>'EPS Dependiente',  'prefix'=>'',   'suffix'=>'%', 'step'=>'0.01', 'decimals'=>2],
-      'pct_salud_independiente'       => ['label'=>'EPS Independiente','prefix'=>'',   'suffix'=>'%', 'step'=>'0.01', 'decimals'=>2],
-      'pct_pension_dependiente'       => ['label'=>'Pensión Dep.',     'prefix'=>'',   'suffix'=>'%', 'step'=>'0.01', 'decimals'=>2],
-      'pct_pension_independiente'     => ['label'=>'Pensión Indep.',   'prefix'=>'',   'suffix'=>'%', 'step'=>'0.01', 'decimals'=>2],
-      'pct_caja_dependiente'          => ['label'=>'Caja Dep.',        'prefix'=>'',   'suffix'=>'%', 'step'=>'0.01', 'decimals'=>2],
-      'pct_caja_independiente_alto'   => ['label'=>'Caja Indep. Alt.', 'prefix'=>'',   'suffix'=>'%', 'step'=>'0.01', 'decimals'=>2],
-      'pct_caja_independiente_bajo'   => ['label'=>'Caja Indep. Baj.', 'prefix'=>'',   'suffix'=>'%', 'step'=>'0.01', 'decimals'=>2],
-      'pct_ibc_independiente_sugerido'=> ['label'=>'% IBC Sugerido',   'prefix'=>'',   'suffix'=>'%', 'step'=>'1',    'decimals'=>2],
-      'porcentaje_iva'                => ['label'=>'IVA Admin',         'prefix'=>'',   'suffix'=>'%', 'step'=>'0.01', 'decimals'=>2],
-      'tasa_mora_pila'                => ['label'=>'Tasa Mora PILA (Art.635 ET)', 'prefix'=>'', 'suffix'=>'% E.A.', 'step'=>'0.01', 'decimals'=>2],
-    ] as $clave => $cfg)
-    @php $valor = $configBrynex[$clave]->valor ?? null; @endphp
-    <div style="background:#f8fafc;border-radius:8px;padding:0.65rem 0.75rem;border:1px solid #bfdbfe;overflow:hidden;">
-      <div style="font-size:0.6rem;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:0.3rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ $cfg['label'] }}</div>
-      <div style="display:flex;align-items:center;gap:0.2rem;">
-        @if($cfg['prefix']) <span style="color:#64748b;font-size:0.72rem;flex-shrink:0;">{{ $cfg['prefix'] }}</span> @endif
-        <input type="number" step="{{ $cfg['step'] }}" min="0"
-            name="brynex[{{ $clave }}]"
-            value="{{ $valor !== null ? $valor : '' }}"
-            style="width:100%;padding:0.28rem 0.35rem;border:1px solid #93c5fd;border-radius:5px;font-size:0.82rem;font-family:monospace;font-weight:700;background:#fff;min-width:0;color:#0f172a;box-sizing:border-box;">
-        @if($cfg['suffix']) <span style="color:#64748b;font-size:0.72rem;flex-shrink:0;">{{ $cfg['suffix'] }}</span> @endif
-      </div>
-    </div>
-    @endforeach
-  </div>
-</div>
-@endif
-
-{{-- ══ SECCIÓN 2: Tarifas ARL — Solo Superadmin BryNex ══ --}}
-@if(Auth::user()->hasRole('superadmin') && Auth::user()->es_brynex)
-<div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:1rem 1.25rem;margin-bottom:1rem;">
-  <div style="font-size:0.72rem;font-weight:700;color:#16a34a;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.85rem;">
-    🦺 Tarifas ARL por Nivel de Riesgo
-    <span style="font-size:0.65rem;color:#94a3b8;text-transform:none;font-weight:400;margin-left:0.5rem;">Dejar vacío para usar valores globales del sistema</span>
-  </div>
-  <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:0.75rem;">
-    @foreach($arlGlobal as $nivel => $global)
-    @php $personalizada = $arlAliado[$nivel] ?? null; @endphp
-    <div style="border:1px solid #e2e8f0;border-radius:10px;padding:0.85rem;background:{{ $personalizada ? '#f0fdf4' : '#fafafa' }};">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;">
-        <span style="font-size:0.8rem;font-weight:700;color:#0f172a;">Nivel {{ $nivel }}</span>
-        @if($personalizada)
-        <span style="background:#dcfce7;color:#16a34a;font-size:0.63rem;font-weight:700;padding:0.1rem 0.4rem;border-radius:999px;">Personalizado</span>
-        @else
-        <span style="background:#f1f5f9;color:#64748b;font-size:0.63rem;padding:0.1rem 0.4rem;border-radius:999px;">Global</span>
-        @endif
-      </div>
-      <div style="font-size:0.68rem;color:#64748b;margin-bottom:0.5rem;line-height:1.3;">
-        {{ $global->descripcion ?? '' }}
-        <br>Global: <strong>{{ $global->porcentaje }}%</strong>
-      </div>
-      <label style="display:block;font-size:0.65rem;font-weight:700;color:#475569;margin-bottom:0.2rem;">% PERSONALIZADO</label>
-      <div style="display:flex;align-items:center;gap:0.35rem;">
-        <input type="number" step="0.0001" min="0" max="100"
-            name="arl[{{ $nivel }}][porcentaje]"
-            value="{{ $personalizada ? $personalizada->porcentaje : '' }}"
-            placeholder="{{ $global->porcentaje }}"
-            style="flex:1;padding:0.38rem 0.5rem;border:1px solid #cbd5e1;border-radius:6px;font-size:0.82rem;font-family:monospace;">
-        <span style="color:#64748b;font-size:0.75rem;">%</span>
-      </div>
-      <input type="hidden" name="arl[{{ $nivel }}][descripcion]" value="{{ $personalizada?->descripcion ?? $global->descripcion }}">
-    </div>
-    @endforeach
-  </div>
+  <a href="{{ route('brynex.parametros') }}"
+     style="flex-shrink:0;padding:0.4rem 0.9rem;border:1px solid #93c5fd;border-radius:8px;background:#eff6ff;
+            color:#0369a1;text-decoration:none;font-size:0.76rem;font-weight:700;white-space:nowrap;">
+    Ir a Parámetros BryNex →
+  </a>
 </div>
 @endif
 
@@ -288,185 +244,168 @@
   </div>
 </div>
 
-{{-- ══ SECCIÓN 3: Tarifas de Administración (Global y Por Plan) ══ --}}
+{{-- ══ SECCIÓN 3: Valores generales (respaldo de todos los planes) ══ --}}
+@php $globalCfg = $configs['global'] ?? null; @endphp
 <div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:1rem 1.25rem;margin-bottom:1rem;">
-  <div style="font-size:0.72rem;font-weight:700;color:#7c3aed;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.85rem;">
-    💰 Tarifas de Administración y Comisiones
-    <span style="font-size:0.65rem;color:#94a3b8;text-transform:none;font-weight:400;margin-left:0.5rem;">Se precargan en el formulario de contrato</span>
+  <div style="font-size:0.72rem;font-weight:700;color:#7c3aed;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.35rem;">
+    💰 Valores generales
+  </div>
+  <div style="font-size:0.72rem;color:#64748b;margin-bottom:0.85rem;line-height:1.5;">
+    Se usan cuando la celda del tarifario no tiene valor propio. La
+    <strong>administración</strong> de aquí es la que cotiza la página pública y la que se precarga en el contrato.
   </div>
 
-  {{-- Tabla con encabezados --}}
-  <div style="overflow-x:auto;">
-  <table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
-    <thead>
-      <tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0;">
-        <th style="padding:0.55rem 0.75rem;text-align:left;color:#475569;font-weight:600;font-size:0.73rem;">PLAN</th>
-        <th style="padding:0.55rem 0.75rem;text-align:right;color:#475569;font-weight:600;font-size:0.73rem;">ADMON MENSUAL</th>
-        <th style="padding:0.55rem 0.75rem;text-align:right;color:#475569;font-weight:600;font-size:0.73rem;">ADMON ASESOR</th>
-        <th style="padding:0.55rem 0.75rem;text-align:right;color:#475569;font-weight:600;font-size:0.73rem;">COSTO AFILIACIÓN</th>
-        <th style="padding:0.55rem 0.75rem;text-align:center;color:#b45309;font-weight:600;font-size:0.73rem;">🏷️ PROMOCIÓN</th>
-        <th style="padding:0.55rem 0.75rem;text-align:right;color:#7c3aed;font-weight:600;font-size:0.73rem;" title="% del costo de afiliación que va a la empresa">% ADMON AFIL</th>
-        <th style="padding:0.55rem 0.75rem;text-align:center;color:#475569;font-weight:600;font-size:0.73rem;">ENCARGADO DEFAULT</th>
-        <th style="padding:0.55rem 0.75rem;text-align:center;color:#0369a1;font-weight:600;font-size:0.73rem;">🦺 AFILIACIÓN POR RIESGO ARL</th>
-      </tr>
-    </thead>
-    <tbody x-data="{ arlAbierto: {} }">
-      {{-- Fila Global (aplica a todos los planes si no hay específico) --}}
-      @php $globalCfg = $configs['global'] ?? null; @endphp
-      <tr style="border-bottom:1px solid #f1f5f9;background:#fffbeb;">
-        <td style="padding:0.6rem 0.75rem;white-space:nowrap;">
-          <span style="font-weight:700;color:#0f172a;font-size:0.82rem;">Todos los planes</span>
-        </td>
-        @foreach(['administracion','admon_asesor','costo_afiliacion'] as $campo)
-        <td style="padding:0.5rem 0.75rem;text-align:right;">
-          <div style="display:flex;align-items:center;justify-content:flex-end;gap:0.25rem;">
-            <span style="color:#64748b;font-size:0.75rem;">$</span>
-            <input type="text"
-                name="configs[global][{{ $campo }}]"
-                value="{{ $globalCfg ? number_format($globalCfg->$campo, 0, ',', '.') : '0' }}"
-                class="input-miles"
-                style="width:110px;padding:0.38rem 0.5rem;border:1px solid #cbd5e1;border-radius:6px;font-size:0.83rem;font-family:monospace;text-align:right;">
-          </div>
-        </td>
-        @endforeach
-        {{-- Promoción --}}
-        <td style="padding:0.5rem 0.75rem;text-align:center;">
-          @include('admin.configuracion._boton_promocion', ['key' => 'global', 'cfg' => $globalCfg])
-        </td>
-        {{-- % Admon Afil --}}
-        <td style="padding:0.5rem 0.75rem;text-align:right;">
-          <div style="display:flex;align-items:center;justify-content:flex-end;gap:0.25rem;">
-            <input type="number" step="1" min="0" max="100"
-                name="configs[global][dist_admon_pct]"
-                value="{{ intval($globalCfg?->dist_admon_pct ?? 0) }}"
-                style="width:70px;padding:0.38rem 0.5rem;border:1.5px solid #c4b5fd;border-radius:6px;font-size:0.83rem;font-family:monospace;text-align:right;background:#faf5ff;">
-            <span style="color:#7c3aed;font-size:0.75rem;">%</span>
-          </div>
-        </td>
-        {{-- % Retiro Afil (oculto, se conserva el valor) --}}
-        <input type="hidden" name="configs[global][dist_retiro_pct]" value="{{ intval($globalCfg?->dist_retiro_pct ?? 0) }}">
-        {{-- Seguro global ahora en card Parámetros Especiales (hidden aquí para no duplicar) --}}
-        <td style="padding:0.5rem 0.75rem;text-align:center;">
-          <select name="configs[global][encargado_default_id]"
-              style="padding:0.38rem 0.5rem;border:1px solid #cbd5e1;border-radius:6px;font-size:0.78rem;background:#fff;max-width:140px;">
-            <option value="">— Ninguno —</option>
-            @foreach($usuarios as $usr)
-            <option value="{{ $usr->id }}" {{ ($globalCfg?->encargado_default_id == $usr->id) ? 'selected' : '' }}>{{ $usr->nombre }}</option>
-            @endforeach
-          </select>
-        </td>
-        <td style="padding:0.5rem 0.75rem;text-align:center;color:#cbd5e1;font-size:0.75rem;">—</td>
-      </tr>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1.3fr 1.1fr;gap:0.9rem;align-items:end;">
 
-      {{-- Filas por Plan --}}
-      @foreach($planes as $plan)
-      @php $cfg = $configs[$plan->id] ?? null; @endphp
-      <tr style="border-bottom:1px solid #f1f5f9;" onmouseover="this.style.background='#fafbff'" onmouseout="this.style.background=''">
-        <td style="padding:0.55rem 0.75rem;white-space:nowrap;">
-          <span style="font-weight:600;color:#0f172a;font-size:0.82rem;">{{ $plan->nombre }}</span>
-        </td>
-        @foreach(['administracion','admon_asesor','costo_afiliacion'] as $campo)
-        <td style="padding:0.5rem 0.75rem;text-align:right;">
-          <div style="display:flex;align-items:center;justify-content:flex-end;gap:0.25rem;">
-            <span style="color:#94a3b8;font-size:0.75rem;">$</span>
-            <input type="text"
-                name="configs[{{ $plan->id }}][{{ $campo }}]"
-                value="{{ $cfg ? number_format($cfg->$campo, 0, ',', '.') : '' }}"
-                placeholder="{{ $globalCfg ? number_format($globalCfg->$campo, 0, ',', '.') : '0' }}"
-                class="input-miles"
-                style="width:110px;padding:0.38rem 0.5rem;border:1px solid #e2e8f0;border-radius:6px;font-size:0.83rem;font-family:monospace;text-align:right;background:{{ $cfg ? '#fff' : '#f8fafc' }};"
-                onfocus="this.style.borderColor='#3b82f6';this.style.background='#fff'" onblur="this.style.borderColor='#e2e8f0'">
-          </div>
-        </td>
+    {{-- Admon mensual: al cambiarla ofrece llevarla a todo el tarifario, porque es el
+         respaldo de las 140 casillas y dejarla desalineada descuadra el cotizador. --}}
+    <div style="background:#f8fafc;border-radius:9px;padding:0.7rem 0.8rem;border:1px solid #e2e8f0;">
+      <div style="font-size:0.62rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:0.4rem;">Admon mensual</div>
+      <div style="display:flex;align-items:center;gap:0.25rem;">
+        <span style="color:#94a3b8;font-size:0.8rem;">$</span>
+        <input type="text" name="configs[global][administracion]" id="inp_admon_general"
+            data-admon-general="1" data-general="1"
+            value="{{ $globalCfg ? number_format($globalCfg->administracion, 0, ',', '.') : '0' }}"
+            class="input-miles"
+            style="width:100%;padding:0.4rem 0.5rem;border:1px solid #cbd5e1;border-radius:6px;font-size:0.87rem;font-family:monospace;text-align:right;font-weight:700;color:#0f172a;">
+      </div>
+    </div>
+
+    <div style="background:#f8fafc;border-radius:9px;padding:0.7rem 0.8rem;border:1px solid #e2e8f0;">
+      <div style="font-size:0.62rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:0.4rem;">Costo afiliación</div>
+      <div style="display:flex;align-items:center;gap:0.25rem;">
+        <span style="color:#94a3b8;font-size:0.8rem;">$</span>
+        <input type="text" name="configs[global][costo_afiliacion]"
+            value="{{ $globalCfg ? number_format($globalCfg->costo_afiliacion, 0, ',', '.') : '0' }}"
+            class="input-miles"
+            style="width:100%;padding:0.4rem 0.5rem;border:1px solid #cbd5e1;border-radius:6px;font-size:0.87rem;font-family:monospace;text-align:right;font-weight:700;color:#0f172a;">
+      </div>
+    </div>
+
+    {{-- Otros gastos. NO se guarda aquí: «otros» solo existe por celda del tarifario, así que
+         esta casilla muestra el valor que más se repite hoy y sirve de atajo para cambiarlo en
+         todos los planes. Por eso no lleva name y no viaja en el formulario. --}}
+    <div style="background:#f8fafc;border-radius:9px;padding:0.7rem 0.8rem;border:1px solid #e2e8f0;">
+      <div style="font-size:0.62rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:0.4rem;">Otros gastos</div>
+      <div style="display:flex;align-items:center;gap:0.25rem;">
+        <span style="color:#94a3b8;font-size:0.8rem;">$</span>
+        <input type="text" id="inp_otros_general" data-campo="otros" data-general="1"
+            value="{{ number_format($otrosGeneral, 0, ',', '.') }}"
+            class="input-miles"
+            style="width:100%;padding:0.4rem 0.5rem;border:1px solid #cbd5e1;border-radius:6px;font-size:0.87rem;font-family:monospace;text-align:right;font-weight:700;color:#0f172a;">
+      </div>
+    </div>
+
+    <div>
+      <div style="font-size:0.62rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:0.35rem;">Encargado por defecto</div>
+      <select name="configs[global][encargado_default_id]"
+          style="width:100%;padding:0.45rem 0.6rem;border:1px solid #cbd5e1;border-radius:6px;font-size:0.82rem;background:#fff;">
+        <option value="">— Ninguno —</option>
+        @foreach($usuarios as $usr)
+        <option value="{{ $usr->id }}" {{ ($globalCfg?->encargado_default_id == $usr->id) ? 'selected' : '' }}>{{ $usr->nombre }}</option>
         @endforeach
-        {{-- Promoción --}}
-        <td style="padding:0.5rem 0.75rem;text-align:center;">
-          @include('admin.configuracion._boton_promocion', ['key' => $plan->id, 'cfg' => $cfg])
-        </td>
-        {{-- % Admon Afil por plan --}}
-        <td style="padding:0.5rem 0.75rem;text-align:right;">
-          <div style="display:flex;align-items:center;justify-content:flex-end;gap:0.25rem;">
-            <input type="number" step="1" min="0" max="100"
-                name="configs[{{ $plan->id }}][dist_admon_pct]"
-                value="{{ $cfg?->dist_admon_pct !== null ? intval($cfg->dist_admon_pct) : '' }}"
-                placeholder="{{ intval($globalCfg?->dist_admon_pct ?? 0) }}"
-                style="width:70px;padding:0.38rem 0.5rem;border:1.5px solid #e2e8f0;border-radius:6px;font-size:0.83rem;font-family:monospace;text-align:right;background:{{ $cfg?->dist_admon_pct ? '#faf5ff' : '#f8fafc' }};"
-                onfocus="this.style.borderColor='#7c3aed';this.style.background='#faf5ff'" onblur="this.style.borderColor='#e2e8f0'">
-            <span style="color:#7c3aed;font-size:0.75rem;">%</span>
-          </div>
-        </td>
-        {{-- % Retiro Afil (oculto, conserva valor) --}}
-        <input type="hidden" name="configs[{{ $plan->id }}][dist_retiro_pct]" value="{{ $cfg?->dist_retiro_pct !== null ? intval($cfg->dist_retiro_pct) : '' }}">
-        {{-- Seguro por plan (oculto, se maneja globalmente) --}}
-        <input type="hidden" name="configs[{{ $plan->id }}][seguro_valor]" value="{{ $cfg ? intval($cfg->seguro_valor) : '' }}">
-        <td style="padding:0.5rem 0.75rem;text-align:center;">
-          <select name="configs[{{ $plan->id }}][encargado_default_id]"
-              style="padding:0.38rem 0.5rem;border:1px solid #e2e8f0;border-radius:6px;font-size:0.78rem;background:#fff;max-width:140px;">
-            <option value="">— Global —</option>
-            @foreach($usuarios as $usr)
-            <option value="{{ $usr->id }}" {{ ($cfg?->encargado_default_id == $usr->id) ? 'selected' : '' }}>{{ $usr->nombre }}</option>
-            @endforeach
-          </select>
-        </td>
-        <td style="padding:0.5rem 0.75rem;text-align:center;">
-          @if($plan->incluye_arl)
-            <button type="button" class="btn-glass" style="font-size:0.7rem;padding:0.3rem 0.6rem;"
-                @click="arlAbierto[{{ $plan->id }}] = !arlAbierto[{{ $plan->id }}]">
-              <i class="fas fa-chevron-down" :class="arlAbierto[{{ $plan->id }}] ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
-              Desplegar
-            </button>
-          @else
-            <span style="color:#cbd5e1;font-size:0.75rem;">—</span>
-          @endif
-        </td>
-      </tr>
-      @if($plan->incluye_arl)
-      <tr x-show="arlAbierto[{{ $plan->id }}]" x-cloak>
-        <td colspan="8" style="padding:0.85rem 1.25rem;background:#f0f9ff;border-bottom:1px solid #e2e8f0;">
-          <div style="font-size:0.68rem;color:#0369a1;margin-bottom:0.6rem;">
-            Afiliación específica por modalidad y nivel de riesgo ARL para <strong>{{ $plan->nombre }}</strong>.
-            Vacío = usa el "Costo Afiliación" general de este plan (arriba). La mensualidad siempre se calcula sola.
-          </div>
-          <div style="overflow-x:auto;">
-          <table style="width:100%;border-collapse:collapse;font-size:0.78rem;">
-            <thead>
-              <tr style="background:#e0f2fe;">
-                <th style="padding:0.4rem 0.6rem;text-align:left;color:#0369a1;font-size:0.68rem;">MODALIDAD</th>
-                @for($n = 1; $n <= 5; $n++)
-                <th style="padding:0.4rem 0.6rem;text-align:center;color:#0369a1;font-size:0.68rem;">RIESGO {{ $n }}</th>
-                @endfor
-              </tr>
-            </thead>
-            <tbody>
-              @foreach($modalidadesArlPorPlan[$plan->id] ?? [] as $modalidad)
-              <tr style="border-bottom:1px solid #dbeafe;">
-                <td style="padding:0.4rem 0.6rem;white-space:nowrap;color:#0f172a;font-weight:600;">{{ $modalidad['nombre'] }}</td>
-                @for($n = 1; $n <= 5; $n++)
-                <td style="padding:0.35rem 0.5rem;text-align:center;">
-                  <input type="text"
-                      name="arl_afiliacion[{{ $plan->id }}][{{ $modalidad['id'] }}][{{ $n }}]"
-                      value="{{ $modalidad['niveles'][$n] !== null ? number_format($modalidad['niveles'][$n], 0, ',', '.') : '' }}"
-                      placeholder="{{ $cfg ? number_format($cfg->costo_afiliacion, 0, ',', '.') : '0' }}"
-                      class="input-miles"
-                      style="width:85px;padding:0.3rem 0.4rem;border:1px solid #bae6fd;border-radius:5px;font-size:0.76rem;font-family:monospace;text-align:right;background:#fff;">
-                </td>
-                @endfor
-              </tr>
-              @endforeach
-            </tbody>
-          </table>
-          </div>
-        </td>
-      </tr>
-      @endif
-      @endforeach
-    </tbody>
-  </table>
+      </select>
+    </div>
+
+    <div>
+      <div style="font-size:0.62rem;font-weight:700;color:#b45309;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:0.35rem;">🏷️ Promoción de afiliación</div>
+      @include('admin.configuracion._boton_promocion', ['key' => 'global', 'cfg' => $globalCfg, 'nombre' => 'Todos los planes'])
+    </div>
   </div>
-  <div style="font-size:0.72rem;color:#94a3b8;margin-top:0.65rem;">
-    💡 Si un plan tiene celdas vacías, usa los valores de "Todos los planes". Encargado "Global" usa el configurado en la fila general.
-  </div>
+
+  {{-- Se conservan sin editar. La admon del asesor salió de aquí: ahora sale del nivel del
+       asesor (ver AsesorNivel::admon_asesor), no de un valor suelto del aliado. Los % de
+       reparto los sigue usando la afiliación de los contratos sin tarifario
+       (ver ConfiguracionAliado::calcularDistribucion). --}}
+  <input type="hidden" name="configs[global][admon_asesor]" value="{{ intval($globalCfg?->admon_asesor ?? 0) }}">
+  <input type="hidden" name="configs[global][dist_admon_pct]" value="{{ intval($globalCfg?->dist_admon_pct ?? 0) }}">
+  <input type="hidden" name="configs[global][dist_retiro_pct]" value="{{ intval($globalCfg?->dist_retiro_pct ?? 0) }}">
 </div>
+
+{{-- ══ SECCIÓN 4: Tarifario por modalidad → plan → riesgo ARL ══ --}}
+@php
+  $resumenMod = [];
+  foreach ($tarifario as $mid => $t) {
+      $total = 0; $llenas = 0;
+      foreach ($t['opciones'] as $o) {
+          foreach ($o['niveles_arl'] as $n) {
+              $total++;
+              $c = $o['niveles'][$n];
+              if ($c['costo_afiliacion'] !== null || $c['retiro'] !== null || $c['otros'] !== null || $c['administracion'] !== null) $llenas++;
+          }
+      }
+      $resumenMod[$mid] = ['total' => $total, 'llenas' => $llenas];
+  }
+
+  // Tiempo Parcial va aparte: son 8 variantes de lo mismo y ahogaban la lista principal.
+  $modsNormales = array_filter($tarifario, fn ($t) => ! $t['tiempo_parcial']);
+  $modsParcial  = array_filter($tarifario, fn ($t) => $t['tiempo_parcial']);
+@endphp
+
+<div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:1rem 1.25rem;margin-bottom:1rem;"
+     x-data="{ abierto: null, opcion: {} }">
+
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;margin-bottom:0.85rem;">
+    <div>
+      <div style="font-size:0.72rem;font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:0.06em;">
+        🦺 Tarifario por modalidad
+      </div>
+      <div style="font-size:0.72rem;color:#64748b;margin-top:0.25rem;line-height:1.5;">
+        Elige la modalidad, luego el plan, y define el precio por cada nivel de riesgo ARL.
+        Casilla vacía = usa el <strong>costo de afiliación general</strong> de arriba (aparece en gris).
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:0.5rem;white-space:nowrap;">
+      @if(Auth::user()->hasRole('superadmin'))
+      {{-- Recalcula el precio de afiliación de todos los planes contra lo que cuestan al mes. Solo
+           superadmin: reescribe la lista de precios completa del aliado. --}}
+      <button type="button" onclick="abrirPreciosSugeridos()"
+          style="padding:0.4rem 0.85rem;border:1px solid #93c5fd;border-radius:8px;background:#eff6ff;
+                 color:#0369a1;font-size:0.74rem;font-weight:700;cursor:pointer;">
+        🧮 Calcular precios de afiliación
+      </button>
+      {{-- El retiro depende del salario mínimo: se recalcula cada año. --}}
+      <button type="button" onclick="abrirRetirosSugeridos()"
+          style="padding:0.4rem 0.85rem;border:1px solid #fde68a;border-radius:8px;background:#fffbeb;
+                 color:#92400e;font-size:0.74rem;font-weight:700;cursor:pointer;">
+        ♻️ Recalcular retiros
+      </button>
+      @endif
+      <span style="font-size:0.68rem;color:#94a3b8;text-align:right;">Total mes estimado<br>sobre salario mínimo</span>
+    </div>
+  </div>
+
+  @if(count($descuadradas))
+  <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:9px;padding:0.6rem 0.85rem;margin-bottom:0.85rem;font-size:0.75rem;color:#991b1b;">
+    ⚠️ Hay <strong>{{ count($descuadradas) }}</strong> celda(s) de niveles de asesor donde
+    retiro + otros + lo del asesor supera el precio de afiliación. Al crear un contrato, la parte
+    del aliado se ajusta a 0. Revísalas en Configuración → Niveles de asesores.
+  </div>
+  @endif
+
+  @foreach($modsNormales as $modId => $t)
+    @include('admin.configuracion._tarifario_modalidad', ['t' => $t, 'r' => $resumenMod[$modId]])
+  @endforeach
+</div>
+
+{{-- ══ SECCIÓN 4.5: Tiempo Parcial (tarjeta aparte) ══ --}}
+@if(count($modsParcial))
+<div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:1rem 1.25rem;margin-bottom:1rem;"
+     x-data="{ abierto: null, opcion: {} }">
+  <div style="font-size:0.72rem;font-weight:700;color:#7c3aed;text-transform:uppercase;letter-spacing:0.06em;">
+    ⏱️ Tiempo Parcial
+  </div>
+  <div style="font-size:0.72rem;color:#64748b;margin:0.25rem 0 0.85rem 0;line-height:1.5;">
+    Las {{ count($modsParcial) }} variantes de Tiempo Parcial, separadas para no mezclarlas con
+    las modalidades de mes completo. La ARL siempre cotiza el mes entero; lo que cambia por
+    variante son los días de pensión y caja.
+  </div>
+
+  @foreach($modsParcial as $modId => $t)
+    @include('admin.configuracion._tarifario_modalidad', ['t' => $t, 'r' => $resumenMod[$modId]])
+  @endforeach
+</div>
+@endif
 
 {{-- ══ Botón guardar ══ --}}
 <div style="display:flex;justify-content:flex-end;gap:0.75rem;">
@@ -512,9 +451,430 @@
     </div>
   </div>
 </div>
+
+@if(Auth::user()->hasRole('superadmin'))
+{{-- ══ Modal: precios de afiliación sugeridos ══
+     Muestra el cálculo antes de escribir nada. El formulario va aparte del de configuración
+     porque no puede haber un <form> dentro de otro. --}}
+<div id="modalPrecios" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,0.5);z-index:1000;align-items:center;justify-content:center;padding:1.5rem;">
+  <div style="background:#fff;border-radius:14px;padding:1.4rem 1.6rem;width:100%;max-width:640px;max-height:85vh;overflow:auto;box-shadow:0 20px 50px rgba(0,0,0,0.25);">
+    <div style="font-size:1rem;font-weight:700;color:#0f172a;">🧮 Precios de afiliación sugeridos</div>
+    <div id="preciosIntro" style="font-size:0.75rem;color:#64748b;margin:0.3rem 0 0.9rem;line-height:1.5;"></div>
+    <div id="preciosTabla" style="font-size:0.78rem;"></div>
+    <div style="display:flex;justify-content:flex-end;gap:0.5rem;margin-top:1.1rem;">
+      <button type="button" onclick="document.getElementById('modalPrecios').style.display='none'"
+          style="padding:0.5rem 1rem;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#475569;font-size:0.8rem;cursor:pointer;">
+        Cancelar
+      </button>
+      <button type="button" id="btnAplicarPrecios" onclick="document.getElementById('formPrecios').submit()"
+          style="padding:0.5rem 1.1rem;border:none;border-radius:8px;background:#0369a1;color:#fff;font-size:0.8rem;font-weight:700;cursor:pointer;">
+        Aplicar estos precios
+      </button>
+    </div>
+  </div>
+</div>
+
+<form id="formPrecios" method="POST" action="{{ route('admin.configuracion.precios_sugeridos.aplicar') }}">@csrf</form>
+
+{{-- ══ Modal: retiros recalculados con el salario mínimo del año ══ --}}
+<div id="modalRetiros" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,0.5);z-index:1000;align-items:center;justify-content:center;padding:1.5rem;">
+  <div style="background:#fff;border-radius:14px;padding:1.4rem 1.6rem;width:100%;max-width:640px;max-height:85vh;overflow:auto;box-shadow:0 20px 50px rgba(0,0,0,0.25);">
+    <div style="font-size:1rem;font-weight:700;color:#0f172a;">♻️ Retiros con el salario mínimo actual</div>
+    <div id="retirosIntro" style="font-size:0.75rem;color:#64748b;margin:0.3rem 0 0.9rem;line-height:1.5;"></div>
+    <div id="retirosTabla" style="font-size:0.78rem;"></div>
+    <div style="display:flex;justify-content:flex-end;gap:0.5rem;margin-top:1.1rem;">
+      <button type="button" onclick="document.getElementById('modalRetiros').style.display='none'"
+          style="padding:0.5rem 1rem;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#475569;font-size:0.8rem;cursor:pointer;">
+        Cancelar
+      </button>
+      <button type="button" id="btnAplicarRetiros" onclick="document.getElementById('formRetiros').submit()"
+          style="padding:0.5rem 1.1rem;border:none;border-radius:8px;background:#b45309;color:#fff;font-size:0.8rem;font-weight:700;cursor:pointer;">
+        Actualizar retiros
+      </button>
+    </div>
+  </div>
+</div>
+
+<form id="formRetiros" method="POST" action="{{ route('admin.configuracion.retiros_sugeridos.aplicar') }}">@csrf</form>
+@endif
+
+{{-- ══ Modal: replicar la admon mensual a los demás planes ══
+     Sale solo al cambiar una casilla de ADMON MES, porque en la práctica la admon es la
+     misma en todos los planes y cambiarla una por una son 97 casillas. Solo mueve las
+     casillas en pantalla; se guarda con el botón de siempre. --}}
+<div id="modalAdmon" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,0.5);z-index:1000;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:14px;padding:1.5rem 1.75rem;width:100%;max-width:440px;box-shadow:0 20px 50px rgba(0,0,0,0.25);">
+    <div id="modalAdmonTitulo" style="font-size:1rem;font-weight:700;color:#0f172a;margin-bottom:0.2rem;">🏛️ Admon mensual</div>
+    <div id="modalAdmonResumen" style="font-size:0.8rem;color:#64748b;margin-bottom:1rem;line-height:1.5;"></div>
+
+    <div style="display:flex;flex-direction:column;gap:0.5rem;">
+      <button type="button" id="btnAdmonMenores" onclick="admonAplicar('menores')"
+          style="text-align:left;padding:0.65rem 0.85rem;border:1px solid #bbf7d0;border-radius:9px;background:#f0fdf4;cursor:pointer;font-size:0.82rem;color:#166534;font-weight:600;"></button>
+      <button type="button" id="btnAdmonTodos" onclick="admonAplicar('todos')"
+          style="text-align:left;padding:0.65rem 0.85rem;border:1px solid #ddd6fe;border-radius:9px;background:#faf5ff;cursor:pointer;font-size:0.82rem;color:#6d28d9;font-weight:600;"></button>
+      <button type="button" onclick="cerrarModalAdmon()"
+          style="text-align:left;padding:0.65rem 0.85rem;border:1px solid #e2e8f0;border-radius:9px;background:#fff;cursor:pointer;font-size:0.82rem;color:#475569;font-weight:600;">
+        No cambiar ningún otro plan
+      </button>
+    </div>
+  </div>
+</div>
 </div>
 
 <script>
+// Seguridad social por celda ("plan_modalidad_riesgo" → pesos), calculada en el servidor a
+// salario mínimo. Alimenta el "Total mes" y el ajuste por delta de ARL.
+const GRID_SS     = @json($gridSs);
+const SEGURO_BASE = {{ (int) $seguroBase }};
+// {id: nombre} — lo usa "copiar de otro plan" para poder nombrarlos sin recorrer el DOM.
+const PLANES      = @json($planes->pluck('nombre', 'id'));
+
+const soloDigitos = v => parseInt(String(v ?? '').replace(/\D/g, '') || '0', 10);
+const conMiles    = n => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+
+function celdaInput(plan, mod, nivel, campo) {
+    return document.querySelector(
+        `input[name="tarifario[${plan}][${mod}][${nivel}][${campo}]"]`
+    );
+}
+
+/** Recalcula el "Total mes" de la fila: seguridad social + admon escrita (o su respaldo) + seguro. */
+function recalcTotal(input) {
+    const fila = input.closest('tr');
+    if (!fila) return;
+    const clave = fila.dataset.celda;
+    const td    = document.querySelector(`[data-total="${clave}"]`);
+    if (!td) return;
+
+    // Vacío = usa el respaldo, que es justo lo que muestra el placeholder.
+    const admon = input.value.trim() === ''
+        ? soloDigitos(input.placeholder)
+        : soloDigitos(input.value);
+
+    td.textContent = conMiles((GRID_SS[clave] || 0) + admon + SEGURO_BASE);
+}
+
+/** Copia los 4 valores del riesgo 1 a los riesgos 2..5 de esa modalidad. */
+function replicarRiesgos(plan, mod) {
+    const campos = ['costo_afiliacion', 'retiro', 'otros', 'administracion'];
+    campos.forEach(campo => {
+        const origen = celdaInput(plan, mod, 1, campo);
+        if (!origen) return;
+        for (let n = 2; n <= 5; n++) {
+            const destino = celdaInput(plan, mod, n, campo);
+            if (!destino) continue;
+            destino.value = origen.value;
+            destino.style.background = origen.value ? '#fff' : '#fafafa';
+            if (campo === 'administracion') recalcTotal(destino);
+        }
+    });
+}
+
+/**
+ * Sube la afiliación de cada riesgo según lo que sube la prima de ARL frente al riesgo 1,
+ * redondeado a miles. Es la regla de "el mismo plan con ARL 2 solo cambia lo que sube la ARL".
+ * La admon se replica igual en los 5, que es como se maneja en la práctica.
+ */
+function ajustarPorArl(plan, mod) {
+    const base = celdaInput(plan, mod, 1, 'costo_afiliacion');
+    if (!base) return;
+
+    const afilBase = base.value.trim() === '' ? soloDigitos(base.placeholder) : soloDigitos(base.value);
+    const ssBase   = GRID_SS[`${plan}_${mod}_1`] || 0;
+
+    let cambios = [];
+    for (let n = 2; n <= 5; n++) {
+        const destino = celdaInput(plan, mod, n, 'costo_afiliacion');
+        if (!destino) continue;
+        const delta = Math.round(((GRID_SS[`${plan}_${mod}_${n}`] || 0) - ssBase) / 1000) * 1000;
+        cambios.push({ input: destino, valor: afilBase + Math.max(0, delta), delta: Math.max(0, delta) });
+    }
+
+    if (!cambios.length) return;
+    const resumen = cambios.map((c, i) => `  Riesgo ${i + 2}: $${conMiles(c.valor)}  (+$${conMiles(c.delta)})`).join('\n');
+    if (!confirm(`Afiliación del riesgo 1: $${conMiles(afilBase)}\n\nSe aplicará:\n${resumen}\n\n¿Continuar?`)) return;
+
+    cambios.forEach(c => { c.input.value = conMiles(c.valor); c.input.style.background = '#fff'; });
+
+    // La admon no depende del riesgo: se replica tal cual.
+    const admonBase = celdaInput(plan, mod, 1, 'administracion');
+    if (admonBase) {
+        for (let n = 2; n <= 5; n++) {
+            const d = celdaInput(plan, mod, n, 'administracion');
+            if (!d) continue;
+            d.value = admonBase.value;
+            recalcTotal(d);
+        }
+    }
+}
+
+// ── Precios sugeridos para los planes sin AFP ─────────────────────────
+// Se pide el cálculo al servidor y se muestra ANTES de escribir: reescribe la lista de
+// precios completa del aliado y eso no se hace a ciegas.
+const URL_PRECIOS = '{{ route('admin.configuracion.precios_sugeridos') }}';
+
+function abrirPreciosSugeridos() {
+    const caja = document.getElementById('modalPrecios');
+    const tabla = document.getElementById('preciosTabla');
+    const intro = document.getElementById('preciosIntro');
+    const btn = document.getElementById('btnAplicarPrecios');
+
+    intro.textContent = 'Calculando…';
+    tabla.innerHTML = '';
+    btn.disabled = true;
+    caja.style.display = 'flex';
+
+    fetch(URL_PRECIOS)
+        .then(r => r.json())
+        .then(d => {
+            intro.innerHTML =
+                `Todo sale del <strong>costo mensual del plan</strong> (seguridad social + admon, a salario mínimo).`
+                + `<br>· Plan <strong>sin pensión</strong>: el <strong>${d.pct}%</strong> de su propio mes.`
+                + `<br>· Plan <strong>con pensión</strong>: el mes de ese mismo plan <strong>quitándole la AFP</strong>, `
+                + `completo — la pensión se lleva más de la mitad de la cotización y no puede arrastrar la afiliación.`
+                + `<br>Nunca menos de $${conMiles(d.piso)} ni más de lo que cuesta el mes. Los riesgos 2 al 5 conservan la escalera que ya usas.`;
+
+            const filas = d.filas.map(f => {
+                const flecha = f.hoy === 0 ? '<span style="color:#0369a1">nuevo</span>'
+                    : (f.nuevo > f.hoy ? '<span style="color:#166534">↑</span>'
+                    : (f.nuevo < f.hoy ? '<span style="color:#b45309">↓</span>' : '='));
+                return `<tr style="border-bottom:1px solid #f1f5f9">
+                    <td style="padding:.25rem .4rem">${f.plan}</td>
+                    <td style="padding:.25rem .4rem;text-align:center;color:#94a3b8">${f.nivel_arl || '—'}</td>
+                    <td style="padding:.25rem .4rem;text-align:right;color:#94a3b8;font-family:monospace">${conMiles(f.mes)}</td>
+                    <td style="padding:.25rem .4rem;text-align:right;color:#94a3b8;font-family:monospace">${f.pension ? conMiles(f.base) : '—'}</td>
+                    <td style="padding:.25rem .4rem;text-align:right;color:#94a3b8;font-family:monospace">${f.hoy ? conMiles(f.hoy) : '—'}</td>
+                    <td style="padding:.25rem .4rem;text-align:right;font-family:monospace;font-weight:700">${conMiles(f.nuevo)}</td>
+                    <td style="padding:.25rem .4rem;text-align:center">${flecha}</td>
+                </tr>`;
+            }).join('');
+
+            tabla.innerHTML = `<table style="width:100%;border-collapse:collapse">
+                <thead><tr style="background:#f8fafc">
+                  <th style="padding:.3rem .4rem;text-align:left;font-size:.62rem;color:#475569">PLAN</th>
+                  <th style="padding:.3rem .4rem;font-size:.62rem;color:#475569">ARL</th>
+                  <th style="padding:.3rem .4rem;text-align:right;font-size:.62rem;color:#475569">CUESTA AL MES</th>
+                  <th style="padding:.3rem .4rem;text-align:right;font-size:.62rem;color:#475569">SIN AFP</th>
+                  <th style="padding:.3rem .4rem;text-align:right;font-size:.62rem;color:#475569">HOY</th>
+                  <th style="padding:.3rem .4rem;text-align:right;font-size:.62rem;color:#475569">NUEVO</th>
+                  <th></th>
+                </tr></thead><tbody>${filas}</tbody></table>
+                <div style="font-size:.7rem;color:#64748b;margin-top:.6rem">
+                  Cambian <strong>${d.cambian}</strong> precios y se escriben <strong>${d.celdas}</strong>
+                  casillas (el precio del plan se replica a todas sus modalidades).
+                  Solo se toca el costo de afiliación: retiro, otros y admon quedan igual.
+                </div>`
+                // El precio se calcula contra el plan como dependiente, pero el retiro es de
+                // la modalidad: en tiempo parcial puede costar más que toda la afiliación.
+                + (d.subidas && d.subidas.length ? `<div style="margin-top:.6rem;padding:.6rem .8rem;
+                    background:#fffbeb;border:1px solid #fde68a;border-radius:8px;font-size:.7rem;color:#78350f;line-height:1.5">
+                    En <strong>${d.subidas.length}</strong> casillas el precio del plan no alcanzaba ni para pagar el
+                    retiro de esa modalidad, así que se suben hasta el retiro. Ahí al asesor no le queda comisión:
+                    si quieres que gane algo, sube esa casilla a mano.<br>
+                    ${d.subidas.slice(0, 6).map(s => `· ${s.plan} · ${s.modalidad} · riesgo ${s.nivel_arl}: `
+                      + `${conMiles(s.del_plan)} → <strong>${conMiles(s.valor)}</strong> (retiro ${conMiles(s.retiro)})`).join('<br>')}
+                    ${d.subidas.length > 6 ? `<br>… y ${d.subidas.length - 6} más` : ''}
+                  </div>` : '')
+                // Las que ya valen más de lo propuesto no se bajan: son ajustes del aliado.
+                + (d.conservadas && d.conservadas.length ? `<div style="margin-top:.6rem;padding:.6rem .8rem;
+                    background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;font-size:.7rem;color:#166534;line-height:1.5">
+                    <strong>${d.conservadas.length}</strong> casillas se quedan como están porque ya valen más de lo
+                    que propone el cálculo. Para bajarlas hay que editarlas a mano.<br>
+                    ${d.conservadas.slice(0, 6).map(s => `· ${s.plan} · ${s.modalidad} · riesgo ${s.nivel_arl}: `
+                      + `sigue en <strong>${conMiles(s.actual)}</strong> (proponía ${conMiles(s.propuesto)})`).join('<br>')}
+                    ${d.conservadas.length > 6 ? `<br>… y ${d.conservadas.length - 6} más` : ''}
+                  </div>` : '');
+            btn.disabled = false;
+        })
+        .catch(() => { intro.textContent = 'No se pudo calcular. Intenta de nuevo.'; });
+}
+
+// ── Retiros recalculados con el salario mínimo del año ────────────────
+const URL_RETIROS = '{{ route('admin.configuracion.retiros_sugeridos') }}';
+
+function abrirRetirosSugeridos() {
+    const caja = document.getElementById('modalRetiros');
+    const tabla = document.getElementById('retirosTabla');
+    const intro = document.getElementById('retirosIntro');
+    const btn = document.getElementById('btnAplicarRetiros');
+
+    intro.textContent = 'Calculando…';
+    tabla.innerHTML = '';
+    btn.disabled = true;
+    caja.style.display = 'flex';
+
+    fetch(URL_RETIROS)
+        .then(r => r.json())
+        .then(d => {
+            intro.innerHTML =
+                `El retiro es lo que cuesta sacar a la persona: <strong>un día</strong> de seguridad social, `
+                + `y en <strong>tiempo parcial el bloque mínimo de ${d.dias_tp} días</strong> (ahí la planilla no admite `
+                + `menos, y la ARL siempre cotiza el mes entero).`
+                + `<br>Solo se actualizan los que quedaron por debajo del cálculo — los que están más altos `
+                + `son ajustes tuyos y no se tocan.`;
+
+            if (!d.suben) {
+                tabla.innerHTML = '<div style="padding:.8rem;background:#f0fdf4;border:1px solid #bbf7d0;'
+                    + 'border-radius:8px;color:#166534">Todos los retiros están al día. No hay nada que cambiar.</div>';
+                return;
+            }
+
+            const filas = d.filas.map(f => `<tr style="border-bottom:1px solid #f1f5f9">
+                    <td style="padding:.25rem .4rem">${f.plan}</td>
+                    <td style="padding:.25rem .4rem;color:#64748b">${f.modalidad}</td>
+                    <td style="padding:.25rem .4rem;text-align:center;color:#94a3b8">${f.nivel_arl}</td>
+                    <td style="padding:.25rem .4rem;text-align:right;color:#94a3b8;font-family:monospace">${f.hoy === null ? '—' : conMiles(f.hoy)}</td>
+                    <td style="padding:.25rem .4rem;text-align:right;font-family:monospace;font-weight:700">${conMiles(f.calculado)}</td>
+                </tr>`).join('');
+
+            tabla.innerHTML = `<table style="width:100%;border-collapse:collapse">
+                <thead><tr style="background:#f8fafc">
+                  <th style="padding:.3rem .4rem;text-align:left;font-size:.62rem;color:#475569">PLAN</th>
+                  <th style="padding:.3rem .4rem;text-align:left;font-size:.62rem;color:#475569">MODALIDAD</th>
+                  <th style="padding:.3rem .4rem;font-size:.62rem;color:#475569">ARL</th>
+                  <th style="padding:.3rem .4rem;text-align:right;font-size:.62rem;color:#475569">HOY</th>
+                  <th style="padding:.3rem .4rem;text-align:right;font-size:.62rem;color:#475569">NUEVO</th>
+                </tr></thead><tbody>${filas}</tbody></table>
+                <div style="font-size:.7rem;color:#64748b;margin-top:.6rem">
+                  Suben <strong>${d.suben}</strong> de ${d.total} casillas. Solo se toca el retiro.
+                </div>`;
+            btn.disabled = false;
+        })
+        .catch(() => { intro.textContent = 'No se pudo calcular. Intenta de nuevo.'; });
+}
+
+// ── Replicar la admon mensual a los demás planes ──────────────────────
+// La admon es la misma en casi todos los planes, y el tarifario tiene ~97 casillas: al
+// cambiar una se ofrece llevarla al resto. Todo pasa en pantalla; guarda el botón de siempre.
+
+/** Valor efectivo de una casilla: lo escrito, o el respaldo que muestra el placeholder. */
+function valorEfectivo(input) {
+    return input.value.trim() === '' ? soloDigitos(input.placeholder) : soloDigitos(input.value);
+}
+
+let admonPendiente = null;
+
+const COLUMNAS_REPLICABLES = {
+    administracion: { titulo: '🏛️ Admon mensual', etiqueta: 'la admon' },
+    otros: { titulo: '🧾 Otros', etiqueta: 'este gasto' },
+};
+
+/**
+ * Casillas de una columna del tarifario. La admon suma además la de Valores generales, que
+ * es su respaldo: dejar una desalineada de las otras descuadra el cotizador.
+ */
+function casillasDe(campo) {
+    const celdas = [...document.querySelectorAll(`input[data-campo="${campo}"]`)];
+
+    return campo === 'administracion'
+        ? [...celdas, ...document.querySelectorAll('input[data-admon-general]')]
+        : celdas;
+}
+
+function casillasAdmon() {
+    return casillasDe('administracion');
+}
+
+function propagarAdmon(input) {
+    // La casilla de Valores generales no tiene data-campo: es la admon del aliado.
+    const campo = input.dataset.campo || 'administracion';
+    const cfg = COLUMNAS_REPLICABLES[campo];
+    if (!cfg) return;
+
+    const nuevo = valorEfectivo(input);
+    const antes = parseInt(input.dataset.antes || '0', 10);
+    // Solo la admon entra en el "Total mes" de la fila; "otros" no se cotiza al cliente.
+    if (campo === 'administracion') recalcTotal(input);
+    if (nuevo === antes) return;
+
+    const otras = casillasDe(campo)
+        .filter(i => i !== input)
+        .map(i => ({ input: i, valor: valorEfectivo(i) }));
+
+    const menores = otras.filter(o => o.valor < nuevo);
+    const mayores = otras.filter(o => o.valor > nuevo);
+    if (!menores.length && !mayores.length) return; // el resto ya está en ese valor
+
+    admonPendiente = { nuevo, menores, otras, campo };
+
+    const rangoMayores = mayores.length
+        ? ` y ${mayores.length} por encima (hasta $${conMiles(Math.max(...mayores.map(m => m.valor)))})`
+        : '';
+    const donde = input.dataset.general ? `${cfg.etiqueta} de Valores generales` : 'esta casilla';
+    document.getElementById('modalAdmonTitulo').textContent = cfg.titulo;
+    document.getElementById('modalAdmonResumen').innerHTML =
+        `Cambiaste ${donde} de <strong>$${conMiles(antes)}</strong> a <strong>$${conMiles(nuevo)}</strong>.<br>`
+        + `Quedan ${menores.length} casillas por debajo${rangoMayores}.`;
+
+    // Sin casillas por encima, "subir las de abajo" y "poner en todas" hacen lo mismo:
+    // se muestra un solo botón para no ofrecer dos veces la misma acción.
+    const bMenores = document.getElementById('btnAdmonMenores');
+    const bTodos = document.getElementById('btnAdmonTodos');
+
+    bMenores.style.display = (menores.length && mayores.length) ? 'block' : 'none';
+    bMenores.textContent = `Poner $${conMiles(nuevo)} solo en las ${menores.length} que están por debajo`;
+
+    bTodos.style.display = 'block';
+    const altas = mayores.length === 1
+        ? 'incluida la que está más alta'
+        : `incluidas las ${mayores.length} que están más altas`;
+    bTodos.textContent = mayores.length
+        ? `Poner $${conMiles(nuevo)} en las ${otras.length}, ${altas}`
+        : `Poner $${conMiles(nuevo)} en las ${menores.length} casillas restantes`;
+
+    document.getElementById('modalAdmon').style.display = 'flex';
+}
+
+function admonAplicar(alcance) {
+    if (!admonPendiente) return;
+    const { nuevo, menores, otras, campo } = admonPendiente;
+
+    (alcance === 'menores' ? menores : otras).forEach(({ input }) => {
+        input.value = conMiles(nuevo);
+        input.dataset.antes = nuevo;
+        input.style.background = '#fff';
+        if (campo === 'administracion') recalcTotal(input);
+    });
+
+    cerrarModalAdmon();
+}
+
+function cerrarModalAdmon() {
+    document.getElementById('modalAdmon').style.display = 'none';
+    admonPendiente = null;
+}
+
+/** Copia esta misma modalidad desde otro plan que ya esté tarifado. */
+function copiarDePlan(planDestino, mod) {
+    const disponibles = [];
+    document.querySelectorAll(`input[data-mod="${mod}"][data-campo="costo_afiliacion"]`).forEach(i => {
+        const p = parseInt(i.dataset.plan, 10);
+        if (p !== planDestino && !disponibles.includes(p)) disponibles.push(p);
+    });
+
+    if (!disponibles.length) {
+        alert('Ningún otro plan tiene esta modalidad para copiar.');
+        return;
+    }
+
+    const nombres = disponibles.map(p => `${p} = ${PLANES[p] ?? ('Plan ' + p)}`).join('\n');
+
+    const elegido = prompt(`Copiar esta modalidad desde qué plan?\n\n${nombres}\n\nEscribe el número:`);
+    const origen  = parseInt(elegido, 10);
+    if (!origen || !disponibles.includes(origen)) return;
+
+    ['costo_afiliacion', 'retiro', 'otros', 'administracion'].forEach(campo => {
+        for (let n = 1; n <= 5; n++) {
+            const o = celdaInput(origen, mod, n, campo);
+            const d = celdaInput(planDestino, mod, n, campo);
+            if (!o || !d) continue;
+            d.value = o.value;
+            d.style.background = o.value ? '#fff' : '#fafafa';
+            if (campo === 'administracion') recalcTotal(d);
+        }
+    });
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     const inputs = document.querySelectorAll('.input-miles');
     
@@ -545,6 +905,16 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
+    // La admon mensual y "otros" ofrecen replicarse al resto del tarifario: son valores que
+    // en la práctica se repiten en todos los planes y son ~140 casillas. Se guarda el valor
+    // con el que entró al foco para poder decir "de X a Y", y el aviso sale al salir de la
+    // casilla (change), no en cada tecla.
+    [...casillasDe('administracion'), ...casillasDe('otros')].forEach(el => {
+        el.dataset.antes = valorEfectivo(el);
+        el.addEventListener('focus', () => { el.dataset.antes = valorEfectivo(el); });
+        el.addEventListener('change', () => propagarAdmon(el));
+    });
+
     // Antes de enviar el formulario, limpiar los puntos para que a Laravel le lleguen números
     const form = document.querySelector('form');
     if (form) {
@@ -561,7 +931,8 @@ let promoKeyActual = null;
 
 function abrirModalPromocion(btn) {
     promoKeyActual = btn.dataset.key;
-    document.getElementById('modalPromocionPlan').textContent = btn.closest('tr').querySelector('td').textContent.trim();
+    document.getElementById('modalPromocionPlan').textContent =
+        btn.dataset.nombre || btn.closest('tr')?.querySelector('td')?.textContent.trim() || '';
     document.getElementById('modalPromoPrecio').value = btn.dataset.precio ? Number(btn.dataset.precio).toLocaleString('es-CO') : '';
     document.getElementById('modalPromoVence').value = btn.dataset.vence || '';
     document.getElementById('modalPromocion').style.display = 'flex';

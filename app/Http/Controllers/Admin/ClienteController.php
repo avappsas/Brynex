@@ -353,7 +353,7 @@ class ClienteController extends Controller
         // porque va directo en la URL del operador; cualquier cosa rara cae
         // a CC, que es el 94% de los clientes.
         $tipoDoc = strtoupper((string) $request->get('tipo_doc', 'CC'));
-        if (! array_key_exists($tipoDoc, $this->getLookups()['tipos_doc'])) {
+        if (! array_key_exists($tipoDoc, Cliente::TIPOS_DOC)) {
             $tipoDoc = 'CC';
         }
 
@@ -582,7 +582,10 @@ class ClienteController extends Controller
             ->when($id !== null, fn ($rule) => $rule->ignore($id));
 
         return $request->validate([
-            'tipo_doc' => 'nullable|string|max:10',
+            // Contra el catálogo, no un string libre: un cliente es persona
+            // natural y el NIT es de la empresa. Así entró el 'NI' de los
+            // registros legacy y no debe volver a entrar.
+            'tipo_doc' => ['nullable', Rule::in(array_keys(Cliente::TIPOS_DOC))],
             'cod_empresa' => 'nullable|integer',
             'cedula' => ['required', 'numeric', $reglaCedula],
             'primer_nombre' => 'required|string|max:55',
@@ -667,14 +670,7 @@ class ClienteController extends Controller
                 ->get(['id', 'empresa']),
             'departamentos' => $departamentos,
             'ciudades' => $ciudades,
-            'tipos_doc' => [
-                'CC' => 'CC - Cédula de Ciudadanía',
-                'TI' => 'TI - Tarjeta de Identidad',
-                'CE' => 'CE - Cédula de Extranjería',
-                'PA' => 'PA - Pasaporte',
-                'PT' => 'PT - Permiso de Protección Temporal',
-                'PE' => 'PE - Permiso Especial de Permanencia',
-            ],
+            'tipos_doc' => Cliente::TIPOS_DOC,
             'generos' => ['M' => 'Masculino', 'F' => 'Femenino'],
             'rh' => ['O+' => 'O+', 'O-' => 'O-', 'A+' => 'A+', 'A-' => 'A-', 'B+' => 'B+', 'B-' => 'B-', 'AB+' => 'AB+', 'AB-' => 'AB-'],
             'sisben' => ['NC' => 'NC - Sin Sisben', 'A' => 'A', 'B' => 'B', 'C' => 'C', 'D' => 'D'],

@@ -211,7 +211,8 @@ class PlanoPilaTxtService
                 ($persona->primer_nombre ?? '') . ' ' . ($persona->segundo_nombre ?? '') . ' ' .
                 ($persona->primer_ape    ?? '') . ' ' . ($persona->segundo_ape    ?? '')
             );
-            $mapaDoc = ['C' => 'CC', 'NIT' => 'CC', 'PT' => 'CE', 'NUIP' => 'CC'];
+            // PT (Permiso por Protección Temporal) es código PILA válido: no se traduce a CE
+            $mapaDoc = ['C' => 'CC', 'NIT' => 'CC', 'NUIP' => 'CC'];
             $tipoDocRaw = strtoupper(trim($persona->tipo_doc ?? 'CC'));
             $aportanteOverride = [
                 'tipo_doc' => $mapaDoc[$tipoDocRaw] ?? $tipoDocRaw,
@@ -345,7 +346,8 @@ class PlanoPilaTxtService
 
         // ── Tipo documento ────────────────────────────────────────────────────
         $tipoDoc = strtoupper(trim($p->tipo_doc ?? 'CC'));
-        $mapaDoc = ['C' => 'CC', 'NIT' => 'CC', 'PT' => 'CE', 'NUIP' => 'CC'];
+        // PT (Permiso por Protección Temporal) es código PILA válido: no se traduce a CE
+        $mapaDoc = ['C' => 'CC', 'NIT' => 'CC', 'NUIP' => 'CC'];
         $tipoDoc = $mapaDoc[$tipoDoc] ?? $tipoDoc;
         $esExtranjero = $c['esExtranjero'] ? 'X' : ' ';
 

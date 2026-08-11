@@ -24,6 +24,29 @@ class ComisionesController extends Controller
      */
     private const SQL_SIN_DISTRIBUIR = "(ISNULL(f.dist_asesor, 0) + ISNULL(f.dist_retiro, 0) + ISNULL(f.dist_encargado, 0) + ISNULL(f.dist_admon, 0)) = 0";
 
+    /**
+     * Categorías de la liquidación. Ingreso-Retiro (12) y Gestión ARL (15) se separan de las
+     * afiliaciones normales porque, aunque se facturan como afiliación, el asesor cobra por
+     * ellas todos los meses: mezclarlas inflaba el renglón de "Afiliaciones".
+     *
+     * Se decide por la modalidad del contrato, así que aplica igual al histórico. Es un cambio
+     * SOLO de presentación: el total y el saldo se calculan exactamente como antes.
+     */
+    private const SQL_CATEGORIA = "CASE
+        WHEN c.tipo_modalidad_id = 12 THEN 'ingreso_retiro'
+        WHEN c.tipo_modalidad_id = 15 THEN 'gestion_arl'
+        WHEN f.tipo = 'afiliacion'    THEN 'afiliaciones'
+        ELSE 'planillas'
+    END";
+
+    /** Etiqueta, icono y color de cada categoría, para la vista. */
+    public const CATEGORIAS = [
+        'afiliaciones'   => ['label' => 'Afiliaciones',   'icono' => '🤝', 'color' => '#a78bfa'],
+        'planillas'      => ['label' => 'Planillas',      'icono' => '📋', 'color' => '#38bdf8'],
+        'ingreso_retiro' => ['label' => 'Ingreso-Retiro', 'icono' => '🔄', 'color' => '#fbbf24'],
+        'gestion_arl'    => ['label' => 'Gestión ARL',    'icono' => '🦺', 'color' => '#34d399'],
+    ];
+
     private function aliadoId(): int
     {
         return (int) session('aliado_id_activo');
@@ -186,6 +209,7 @@ class ComisionesController extends Controller
                             WHEN 'afiliacion' THEN f.dist_asesor
                             ELSE f.admin_asesor
                         END AS valor_comision,
+                        ".self::SQL_CATEGORIA." AS categoria,
                         LTRIM(RTRIM(
                             ISNULL(cl.primer_nombre,'') + ' ' +
                             ISNULL(cl.segundo_nombre,'') + ' ' +
@@ -213,6 +237,22 @@ class ComisionesController extends Controller
                     ")
                     ->first();
 
+                // Desglose por categoría: los MISMOS pesos del resumen de arriba, repartidos en
+                // 4 renglones. La suma de las 4 es idéntica a afiliaciones + planillas.
+                $porCategoria = DB::table('facturas AS f')
+                    ->join('contratos AS c', 'c.id', '=', 'f.contrato_id')
+                    ->where('f.aliado_id', $aid)
+                    ->whereNull('f.deleted_at')
+                    ->whereNotNull('f.fecha_pago')
+                    ->whereIn('f.estado', ['pagada', 'abono', 'prestamo'])
+                    ->where('c.asesor_id', $realId)
+                    ->where('f.mes', $mes)
+                    ->where('f.anio', $anio)
+                    ->selectRaw(self::SQL_CATEGORIA . " AS categoria,
+                        ISNULL(SUM(CASE WHEN f.tipo = 'afiliacion' THEN f.dist_asesor ELSE f.admin_asesor END), 0) AS valor")
+                    ->groupBy(DB::raw(self::SQL_CATEGORIA))
+                    ->pluck('valor', 'categoria');
+
                 // Pagos del período
                 $pagosPeriodo = PagoAsesor::where('aliado_id', $aid)
                     ->where('asesor_id', $realId)
@@ -226,6 +266,10 @@ class ComisionesController extends Controller
                     'total'        => (int) ($resumenPeriodo->afiliaciones ?? 0) + (int) ($resumenPeriodo->planillas ?? 0),
                     'pagado'       => (int) $pagosPeriodo,
                     'saldo'        => ((int) ($resumenPeriodo->afiliaciones ?? 0) + (int) ($resumenPeriodo->planillas ?? 0)) - (int) $pagosPeriodo,
+                    // Solo presentación: no entra en total ni en saldo.
+                    'categorias'   => collect(self::CATEGORIAS)
+                        ->map(fn ($meta, $clave) => $meta + ['valor' => (int) ($porCategoria[$clave] ?? 0)])
+                        ->all(),
                 ];
 
                 // ── Saldo acumulado total (desde mayo 2025) ──────────────────

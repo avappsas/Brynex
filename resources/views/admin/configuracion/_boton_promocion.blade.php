@@ -2,6 +2,9 @@
     $precioPromo = $cfg?->promocion_costo_afiliacion;
     $vencePromo  = $cfg?->promocion_vencimiento?->format('Y-m-d');
     $vigente     = $cfg?->promocionVigente() ?? false;
+    // El nombre viaja en un data-attribute: el botón ya no vive dentro de una tabla, así que
+    // el modal no puede sacarlo recorriendo el <tr> como hacía antes.
+    $nombrePromo = $nombre ?? ($key === 'global' ? 'Todos los planes' : 'Plan');
 @endphp
 <input type="hidden" class="promo-input-precio" data-key="{{ $key }}" name="configs[{{ $key }}][promocion_costo_afiliacion]" value="{{ $precioPromo !== null ? (int) $precioPromo : '' }}">
 <input type="hidden" class="promo-input-vence" data-key="{{ $key }}" name="configs[{{ $key }}][promocion_vencimiento]" value="{{ $vencePromo }}">
@@ -9,6 +12,7 @@
 <button type="button"
     class="btn-promocion"
     data-key="{{ $key }}"
+    data-nombre="{{ $nombrePromo }}"
     data-precio="{{ $precioPromo !== null ? (int) $precioPromo : '' }}"
     data-vence="{{ $vencePromo }}"
     onclick="abrirModalPromocion(this)"

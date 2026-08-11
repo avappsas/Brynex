@@ -94,6 +94,21 @@ class Cliente extends BaseModel
         return $this->fecha_nacimiento->age;
     }
 
+    /**
+     * Tipos de documento válidos para un cliente. Un cliente es siempre una
+     * persona natural, así que NIT/NI no van acá: el NIT es de la empresa o de
+     * la razón social, nunca del afiliado. Fuente única para el formulario, el
+     * cotizador y la validación.
+     */
+    public const TIPOS_DOC = [
+        'CC' => 'CC - Cédula de Ciudadanía',
+        'TI' => 'TI - Tarjeta de Identidad',
+        'CE' => 'CE - Cédula de Extranjería',
+        'PA' => 'PA - Pasaporte',
+        'PT' => 'PT - Permiso de Protección Temporal',
+        'PE' => 'PE - Permiso Especial de Permanencia',
+    ];
+
     /** Documentos cuyo titular puede omitir el aporte a pensión. */
     public const DOCS_EXENTOS_AFP = ['CE', 'PT', 'PP', 'PE', 'PA'];
 

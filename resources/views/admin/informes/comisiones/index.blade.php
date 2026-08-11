@@ -305,7 +305,24 @@
 
                 {{-- KPIs del período --}}
                 @if(!empty($consolidado))
+                {{-- Desglose por categoría. Ingreso-Retiro y Gestión ARL se cobran todos los
+                     meses aunque se facturen como afiliación, por eso van aparte. La suma de
+                     las 4 es exactamente el total; el saldo no cambia. --}}
+                @if(!empty($consolidado['categorias']))
+                <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);">
+                    @foreach($consolidado['categorias'] as $cat)
+                    <div class="kpi-card">
+                        <div class="kpi-label">{{ $cat['icono'] }} {{ $cat['label'] }}</div>
+                        <div class="kpi-val" style="color:{{ $cat['valor'] > 0 ? $cat['color'] : 'var(--c-muted)' }}">
+                            ${{ number_format($cat['valor']) }}
+                        </div>
+                    </div>
+                    @endforeach
+                </div>
+                @endif
+
                 <div class="kpi-grid">
+                    @if(empty($consolidado['categorias']))
                     <div class="kpi-card">
                         <div class="kpi-label">🤝 Afiliaciones</div>
                         <div class="kpi-val purple">${{ number_format($consolidado['afiliaciones']) }}</div>
@@ -314,6 +331,7 @@
                         <div class="kpi-label">📋 Planillas</div>
                         <div class="kpi-val" style="color:#38bdf8">${{ number_format($consolidado['planillas']) }}</div>
                     </div>
+                    @endif
                     <div class="kpi-card">
                         <div class="kpi-label">✅ Pagado período</div>
                         <div class="kpi-val green">${{ number_format($consolidado['pagado']) }}</div>
@@ -322,7 +340,7 @@
                         <div class="kpi-label">📊 Total ganado</div>
                         <div class="kpi-val">${{ number_format($consolidado['total']) }}</div>
                     </div>
-                    <div class="kpi-card" style="grid-column: span 2;">
+                    <div class="kpi-card">
                         <div class="kpi-label">⏳ Saldo del período</div>
                         <div class="kpi-val {{ $consolidado['saldo'] > 0 ? 'yellow' : 'green' }}">
                             ${{ number_format($consolidado['saldo']) }}
@@ -367,7 +385,16 @@
                                         </td>
                                         <td style="font-size:.78rem">{{ $f->empresa_nombre }}</td>
                                         <td>
-                                            @if($f->tipo === 'planilla')
+                                            {{-- La categoría manda sobre f.tipo: en IR y Gestión ARL
+                                                 la factura es de tipo afiliación pero se cobra cada mes. --}}
+                                            @php
+                                                $cat = \App\Http\Controllers\Admin\ComisionesController::CATEGORIAS[$f->categoria ?? ''] ?? null;
+                                            @endphp
+                                            @if($cat)
+                                                <span class="badge" style="background:{{ $cat['color'] }}22;color:{{ $cat['color'] }};border:1px solid {{ $cat['color'] }}55;">
+                                                    {{ $cat['icono'] }} {{ $cat['label'] }}
+                                                </span>
+                                            @elseif($f->tipo === 'planilla')
                                                 <span class="badge badge-plan">Planilla</span>
                                             @else
                                                 <span class="badge badge-afil">Afiliación</span>

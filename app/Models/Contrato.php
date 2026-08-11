@@ -2,19 +2,18 @@
 
 namespace App\Models;
 
-use App\Models\BaseModel;
-use App\Models\Factura;
+use App\Services\UpcAdicionalService;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use App\Models\ConfiguracionBrynex;
-use App\Services\UpcAdicionalService;
 
 class Contrato extends BaseModel
 {
     // ID auto-incremental (IDENTITY en SQL Server)
     public $incrementing = true;
-    protected $keyType   = 'int';
-    protected $table     = 'contratos';
+
+    protected $keyType = 'int';
+
+    protected $table = 'contratos';
 
     protected $fillable = [
         'aliado_id', 'cedula', 'estado',
@@ -23,7 +22,7 @@ class Contrato extends BaseModel
         'eps_id', 'pension_id', 'arl_id', 'n_arl', 'arl_modo', 'arl_nit_cotizante', 'caja_id',
         'cargo', 'fecha_ingreso', 'fecha_retiro', 'fecha_retiro_pendiente', 'retiro_pendiente_cobrar_admon', 'actividad_economica_id',
         'salario', 'ibc', 'porcentaje_caja',
-        'administracion', 'admon_asesor', 'costo_afiliacion', 'seguro',
+        'administracion', 'admon_asesor', 'costo_afiliacion', 'afiliacion_asesor', 'seguro',
         'asesor_id', 'encargado_id',
         'motivo_afiliacion_id', 'motivo_retiro_id',
         'fecha_arl', 'envio_planilla', 'fecha_probable_pago', 'modo_probable_pago',
@@ -32,19 +31,20 @@ class Contrato extends BaseModel
     ];
 
     protected $casts = [
-        'fecha_ingreso'                  => 'date',
-        'fecha_retiro'                   => 'date',
-        'fecha_retiro_pendiente'         => 'date',
-        'retiro_pendiente_cobrar_admon'  => 'boolean',
-        'fecha_arl'               => 'date',
-        'razon_social_bloqueada'  => 'boolean',
-        'salario'                 => 'decimal:2',
-        'ibc'                     => 'decimal:2',
-        'administracion'          => 'decimal:2',
-        'admon_asesor'            => 'decimal:2',
-        'costo_afiliacion'        => 'decimal:2',
-        'seguro'                  => 'decimal:2',
-        'porcentaje_caja'         => 'decimal:2',
+        'fecha_ingreso' => 'date',
+        'fecha_retiro' => 'date',
+        'fecha_retiro_pendiente' => 'date',
+        'retiro_pendiente_cobrar_admon' => 'boolean',
+        'fecha_arl' => 'date',
+        'razon_social_bloqueada' => 'boolean',
+        'salario' => 'decimal:2',
+        'ibc' => 'decimal:2',
+        'administracion' => 'decimal:2',
+        'admon_asesor' => 'decimal:2',
+        'costo_afiliacion' => 'decimal:2',
+        'afiliacion_asesor' => 'decimal:2',
+        'seguro' => 'decimal:2',
+        'porcentaje_caja' => 'decimal:2',
         'cobra_planilla_primer_mes' => 'boolean',
     ];
 
@@ -171,8 +171,9 @@ class Contrato extends BaseModel
 
     public function aplicaCargoSinCcf(): bool
     {
-        $esDependienteTarget = in_array((int)$this->tipo_modalidad_id, self::IDS_SIN_CCF);
-        $sinCaja = $this->plan && !$this->plan->incluye_caja;
+        $esDependienteTarget = in_array((int) $this->tipo_modalidad_id, self::IDS_SIN_CCF);
+        $sinCaja = $this->plan && ! $this->plan->incluye_caja;
+
         return $esDependienteTarget && $sinCaja;
     }
 
@@ -187,17 +188,17 @@ class Contrato extends BaseModel
      *   - Cada entidad (ARL, AFP, CAJA) tiene sus propios días fijos.
      *   - No se usa $dias global para SS; se usan days del tipo_modalidad.
      *
-     * @param int $dias Días cotizados en el mes (1-30). Ignorado en Tiempo Parcial.
+     * @param  int  $dias  Días cotizados en el mes (1-30). Ignorado en Tiempo Parcial.
      */
     public function calcularCotizacion(int $dias = 30, ?bool $ivaCliente = null): array
     {
-        $ibcRaw   = (float) ($this->ibc ?? 0);
-        $salRaw   = (float) ($this->salario ?? 0);
-        $alidoId  = $this->aliado_id;
+        $ibcRaw = (float) ($this->ibc ?? 0);
+        $salRaw = (float) ($this->salario ?? 0);
+        $alidoId = $this->aliado_id;
         $nivelArl = (int) ($this->n_arl ?? 1);
-        $esIndep  = $this->esIndependiente();
-        $mod      = $this->tipoModalidad;
-        $esTP     = $mod && $mod->esTiempoParcial();
+        $esIndep = $this->esIndependiente();
+        $mod = $this->tipoModalidad;
+        $esTP = $mod && $mod->esTiempoParcial();
 
         // Independientes cotizan sobre IBC; dependientes (razón social) sobre salario.
         // Si el campo principal es 0 (legacy), usar el otro como fallback.
@@ -209,18 +210,18 @@ class Contrato extends BaseModel
 
         // Obtener porcentajes
         if ($esIndep) {
-            $pctEps   = ConfiguracionBrynex::pctSaludIndependiente();
-            $pctPen   = ConfiguracionBrynex::pctPensionIndependiente();
-            $pctCaja  = (float) ($this->porcentaje_caja ?? ConfiguracionBrynex::pctCajaIndependienteAlto());
+            $pctEps = ConfiguracionBrynex::pctSaludIndependiente();
+            $pctPen = ConfiguracionBrynex::pctPensionIndependiente();
+            $pctCaja = (float) ($this->porcentaje_caja ?? ConfiguracionBrynex::pctCajaIndependienteAlto());
         } else {
-            $pctEps   = ConfiguracionBrynex::pctSaludDependiente();
-            $pctPen   = ConfiguracionBrynex::pctPensionDependiente();
-            $pctCaja  = ConfiguracionBrynex::pctCajaDependiente();
+            $pctEps = ConfiguracionBrynex::pctSaludDependiente();
+            $pctPen = ConfiguracionBrynex::pctPensionDependiente();
+            $pctCaja = ConfiguracionBrynex::pctCajaDependiente();
         }
 
         $pctArl = ArlTarifa::porcentajePara($nivelArl, $alidoId);
-        $plan   = $this->plan;
-        $r      = fn($v) => (int)(ceil($v / 100) * 100);
+        $plan = $this->plan;
+        $r = fn ($v) => (int) (ceil($v / 100) * 100);
 
         if ($esTP) {
             // ── Tiempo Parcial: IBC diferente por entidad, sin EPS ─────────
@@ -228,22 +229,22 @@ class Contrato extends BaseModel
             //   ARL  = SM_completo × tasaArl  (cotiza mes completo)
             //   AFP  = SM × factor_afp × pctPen  (factor = dias_afp/28 aprox)
             //   CAJA = SM × factor_caja × pctCaja (puede diferir de AFP)
-            $diasP       = $mod->diasPorEntidad(); // ['arl'=>30, 'afp'=>7, 'caja'=>14, ...]
-            $factorMap   = [7 => 0.25, 14 => 0.50, 21 => 0.75, 30 => 1.00];
-            $factorAfp   = $factorMap[$diasP['afp']]  ?? 1.0;
-            $factorCaja  = $factorMap[$diasP['caja']] ?? 1.0;
+            $diasP = $mod->diasPorEntidad(); // ['arl'=>30, 'afp'=>7, 'caja'=>14, ...]
+            $factorMap = [7 => 0.25, 14 => 0.50, 21 => 0.75, 30 => 1.00];
+            $factorAfp = $factorMap[$diasP['afp']] ?? 1.0;
+            $factorCaja = $factorMap[$diasP['caja']] ?? 1.0;
 
             // SM desde ConfiguracionBrynex (fuente correcta del sistema)
             $sm = (float) ConfiguracionBrynex::obtener('salario_minimo', 1423500);
 
-            $ibcArl  = $sm;                       // ARL siempre SM completo
-            $ibcAfp  = round($sm * $factorAfp);   // AFP según factor dias_afp
+            $ibcArl = $sm;                       // ARL siempre SM completo
+            $ibcAfp = round($sm * $factorAfp);   // AFP según factor dias_afp
             $ibcCaja = round($sm * $factorCaja);  // CAJA según factor dias_caja
 
-            $eps   = 0;
-            $arl   = ($plan && $plan->incluye_arl)     ? $r($ibcArl  * $pctArl  / 100) : 0;
-            $pen   = ($plan && $plan->incluye_pension)  ? $r($ibcAfp  * $pctPen  / 100) : 0;
-            $caja  = ($plan && $plan->incluye_caja)     ? $r($ibcCaja * $pctCaja / 100) : 0;
+            $eps = 0;
+            $arl = ($plan && $plan->incluye_arl) ? $r($ibcArl * $pctArl / 100) : 0;
+            $pen = ($plan && $plan->incluye_pension) ? $r($ibcAfp * $pctPen / 100) : 0;
+            $caja = ($plan && $plan->incluye_caja) ? $r($ibcCaja * $pctCaja / 100) : 0;
         } elseif ((int) $this->tipo_modalidad_id === self::MODALIDAD_UPC) {
             // ── UPC adicional: EPS no es % de IBC, es la tarifa fija por edad/
             //    sexo/zona del beneficiario (Resolución 2764/2025). Siempre es
@@ -257,8 +258,8 @@ class Contrato extends BaseModel
                 $upc = UpcAdicionalService::valorParaCliente($cliente);
                 $eps = (int) ($upc['valor'] ?? 0);
             }
-            $arl  = 0;
-            $pen  = 0;
+            $arl = 0;
+            $pen = 0;
             $caja = 0;
 
             if ($dias < 30) {
@@ -267,17 +268,17 @@ class Contrato extends BaseModel
         } else {
             // ── Normal: calcular por mes completo y prorratear si $dias < 30 ─
             // Mes completo: ceil al centena superior para garantizar múltiplos de 100.
-            $eps   = ($plan && $plan->incluye_eps)     ? $r($ibc * $pctEps / 100)  : 0;
-            $arl   = ($plan && $plan->incluye_arl)     ? $r($ibc * $pctArl / 100)  : 0;
-            $pen   = ($plan && $plan->incluye_pension)  ? $r($ibc * $pctPen / 100)  : 0;
-            $caja  = ($plan && $plan->incluye_caja)     ? $r($ibc * $pctCaja / 100) : 0;
+            $eps = ($plan && $plan->incluye_eps) ? $r($ibc * $pctEps / 100) : 0;
+            $arl = ($plan && $plan->incluye_arl) ? $r($ibc * $pctArl / 100) : 0;
+            $pen = ($plan && $plan->incluye_pension) ? $r($ibc * $pctPen / 100) : 0;
+            $caja = ($plan && $plan->incluye_caja) ? $r($ibc * $pctCaja / 100) : 0;
 
             if ($dias < 30) {
                 // EPS/ARL/AFP/CAJA: siempre usar ceil al centena superior para consistencia en retiros y facturación.
-                $eps  = (int)(ceil($eps  * $dias / 30 / 100) * 100);
-                $arl  = (int)(ceil($arl  * $dias / 30 / 100) * 100);
-                $pen  = (int)(ceil($pen  * $dias / 30 / 100) * 100);
-                $caja = (int)(ceil($caja * $dias / 30 / 100) * 100);
+                $eps = (int) (ceil($eps * $dias / 30 / 100) * 100);
+                $arl = (int) (ceil($arl * $dias / 30 / 100) * 100);
+                $pen = (int) (ceil($pen * $dias / 30 / 100) * 100);
+                $caja = (int) (ceil($caja * $dias / 30 / 100) * 100);
             }
 
             // ── Cargo sin-CCF: dependiente E o Ingreso-Retiro sin caja ─────
@@ -291,7 +292,7 @@ class Contrato extends BaseModel
         $ss = $eps + $arl + $pen + $caja;
 
         $seguro = (float) ($this->seguro ?? 0);
-        $admon  = (float) ($this->administracion ?? 0);
+        $admon = (float) ($this->administracion ?? 0);
 
         // IVA solo sobre la administración (la afiliación se grava aparte, en el
         // controlador: este método solo cotiza planilla).
@@ -299,7 +300,7 @@ class Contrato extends BaseModel
         // $ivaCliente: pre-cargado por el controller (evita N+1).
         // Si viene null, se resuelve con la regla completa (cliente o su empresa).
         $tieneIva = $ivaCliente ?? \App\Services\IvaService::aplicaContrato($this);
-        $iva      = \App\Services\IvaService::calcular($admon, $tieneIva);
+        $iva = \App\Services\IvaService::calcular($admon, $tieneIva);
 
         $total = $ss + $seguro + $admon + $iva;
 
@@ -313,15 +314,17 @@ class Contrato extends BaseModel
      */
     public function crearRadicadosPendientes(): void
     {
-        if (!$this->plan) return;
+        if (! $this->plan) {
+            return;
+        }
 
         foreach ($this->plan->tiposRadicado() as $tipo) {
             // Solo si no existe ya
-            if (!$this->radicados()->where('tipo', $tipo)->exists()) {
+            if (! $this->radicados()->where('tipo', $tipo)->exists()) {
                 $this->radicados()->create([
                     'aliado_id' => $this->aliado_id,
-                    'tipo'      => $tipo,
-                    'estado'    => Radicado::ESTADO_PENDIENTE,
+                    'tipo' => $tipo,
+                    'estado' => Radicado::ESTADO_PENDIENTE,
                 ]);
             }
         }
@@ -334,14 +337,16 @@ class Contrato extends BaseModel
     public static function tarifasParaAliado(int $alidoId, ?int $planId): array
     {
         $cfg = ConfiguracionAliado::paraAliado($alidoId, $planId);
-        if (!$cfg) return [];
+        if (! $cfg) {
+            return [];
+        }
 
         return [
-            'administracion'        => $cfg->administracion,
-            'admon_asesor'          => $cfg->admon_asesor,
-            'costo_afiliacion'      => $cfg->costo_afiliacion,
-            'seguro'                => $cfg->seguro_valor,
-            'encargado_id'          => $cfg->encargado_default_id,
+            'administracion' => $cfg->administracion,
+            'admon_asesor' => $cfg->admon_asesor,
+            'costo_afiliacion' => $cfg->costo_afiliacion,
+            'seguro' => $cfg->seguro_valor,
+            'encargado_id' => $cfg->encargado_default_id,
         ];
     }
 }
