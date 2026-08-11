@@ -5,11 +5,15 @@ namespace App\Services\Ia;
 use App\Models\Aliado;
 use App\Models\Cliente;
 use App\Models\Contrato;
+use App\Models\Empresa;
 use App\Models\IaConfiguracionAliado;
 use App\Models\IaConsumo;
 use App\Models\IaConversacion;
 use App\Models\IaMensaje;
 use App\Models\MarketingCampana;
+use App\Models\WhatsappConversacion;
+use App\Models\WhatsappMensaje;
+use App\Models\WhatsappPlantilla;
 use App\Services\Ia\Tools\BuscarConocimientoTool;
 use App\Services\Ia\Tools\BuscarInternetTool;
 use App\Services\Ia\Tools\CatalogoModulosTool;
@@ -94,8 +98,10 @@ class AsistenteIaService
         }
 
         $conversacion = IaConversacion::paraTelefono($alidoId, $telefono);
-        $clienteInfo = $this->resolverClienteExistente($alidoId, $telefono);
+        $waConversacion = $waConversacionId ? WhatsappConversacion::find($waConversacionId) : null;
+        $clienteInfo = $this->resolverContactoExistente($alidoId, $telefono, $waConversacion);
         $campana = $origenCampanaId ? MarketingCampana::find($origenCampanaId) : null;
+        $ultimoEnvio = $this->resolverUltimaPlantillaEnviada($waConversacionId);
 
         $aliado = Aliado::find($alidoId);
         $systemPrompt = $this->construirSystemPromptWhatsapp(
@@ -104,7 +110,8 @@ class AsistenteIaService
             $origenCampana,
             $origenCampanaCategoria,
             $clienteInfo,
-            $campana
+            $campana,
+            $ultimoEnvio
         );
         $tools = $this->construirToolsWhatsapp($credenciales);
         // modo_prueba: usado por el simulador de conversación (/brynex/ia/simulador) para que las
@@ -176,26 +183,47 @@ class AsistenteIaService
     }
 
     /**
-     * Verificación barata (sin saldo) de si el número que escribe ya es cliente con
-     * contrato vigente, para ajustar el tono desde el primer mensaje. El saldo y las
-     * cuentas de pago solo se consultan bajo demanda vía la tool consultar_cliente.
+     * Verificación barata (sin saldo) de quién es el número que escribe, para ajustar el
+     * tono desde el primer mensaje. Puede ser un cliente (persona afiliada) o un EMPLEADOR
+     * (empresa que nos paga la seguridad social de sus trabajadores) — este segundo caso
+     * antes no se miraba, así que todo empleador que respondía un cobro caía como
+     * "prospecto" y la IA le ofrecía afiliarse. El saldo y las cuentas de pago solo se
+     * consultan bajo demanda vía la tool consultar_cliente.
      *
-     * @return array{es_cliente: bool, nombre: ?string, plan_actual: ?string}
+     * @return array{es_cliente: bool, nombre: ?string, plan_actual: ?string, empresa: ?array{nombre: string, contacto: ?string}}
      */
-    private function resolverClienteExistente(int $alidoId, string $telefono): array
+    private function resolverContactoExistente(int $alidoId, string $telefono, ?WhatsappConversacion $waConversacion = null): array
     {
         $numeroLimpio = preg_replace('/[^0-9]/', '', $telefono);
+        $matchTelefono = function ($q, string $columna) use ($numeroLimpio) {
+            $q->where($columna, $numeroLimpio)
+              ->orWhere($columna, '+57' . $numeroLimpio)
+              ->orWhere($columna, 'like', '%' . substr($numeroLimpio, -10));
+        };
+
+        // Empresa: primero la que ya tenga vinculada la conversación (la deja el envío
+        // masivo de cobros), y si no, por el teléfono o celular registrado.
+        $empresa = $waConversacion?->empresa_id ? Empresa::find($waConversacion->empresa_id) : null;
+        if (!$empresa) {
+            $empresa = Empresa::where('aliado_id', $alidoId)
+                ->where(function ($q) use ($matchTelefono) {
+                    $q->where(fn ($s) => $matchTelefono($s, 'celular'))
+                      ->orWhere(fn ($s) => $matchTelefono($s, 'telefono'));
+                })
+                ->first();
+        }
+
+        $empresaInfo = $empresa ? [
+            'nombre'   => $empresa->empresa ?: "Empresa #{$empresa->id}",
+            'contacto' => $empresa->contacto ?: null,
+        ] : null;
 
         $cliente = Cliente::where('aliado_id', $alidoId)
-            ->where(function ($q) use ($numeroLimpio) {
-                $q->where('celular', $numeroLimpio)
-                  ->orWhere('celular', '+57' . $numeroLimpio)
-                  ->orWhere('celular', 'like', '%' . substr($numeroLimpio, -10));
-            })
+            ->where(fn ($q) => $matchTelefono($q, 'celular'))
             ->first();
 
         if (!$cliente) {
-            return ['es_cliente' => false, 'nombre' => null, 'plan_actual' => null];
+            return ['es_cliente' => false, 'nombre' => null, 'plan_actual' => null, 'empresa' => $empresaInfo];
         }
 
         $contrato = Contrato::where('aliado_id', $alidoId)
@@ -208,7 +236,70 @@ class AsistenteIaService
             'es_cliente'  => true,
             'nombre'      => trim(($cliente->primer_nombre ?? '') . ' ' . ($cliente->primer_apellido ?? '')),
             'plan_actual' => $contrato?->plan?->nombre,
+            'empresa'     => $empresaInfo,
         ];
+    }
+
+    /**
+     * Última plantilla que LE ENVIAMOS a este número (últimos 7 días), con sus variables ya
+     * reemplazadas: es el mensaje que el cliente está respondiendo cuando escribe. Se lee de
+     * los mensajes de la conversación, no del origen guardado, porque así cubre todas las
+     * vías de envío (cobro masivo, cobro individual, planillas) sin depender de que cada una
+     * recuerde marcar la conversación.
+     *
+     * @return array{nombre: string, categoria: ?string, texto: ?string, dias: int}|null
+     */
+    private function resolverUltimaPlantillaEnviada(?int $waConversacionId): ?array
+    {
+        if (!$waConversacionId) {
+            return null;
+        }
+
+        $mensaje = WhatsappMensaje::where('conversacion_id', $waConversacionId)
+            ->where('direccion', 'saliente')
+            ->where('tipo', 'template')
+            ->whereNotNull('plantilla_id')
+            ->where('created_at', '>=', now()->subDays(7))
+            ->latest('id')
+            ->first(['plantilla_id', 'plantilla_parametros', 'created_at']);
+
+        if (!$mensaje) {
+            return null;
+        }
+
+        $plantilla = WhatsappPlantilla::find($mensaje->plantilla_id);
+        if (!$plantilla) {
+            return null;
+        }
+
+        return [
+            'nombre'    => $plantilla->nombre_display ?: $plantilla->nombre,
+            'categoria' => $plantilla->categoria,
+            'texto'     => $this->renderizarCuerpoPlantilla($plantilla->cuerpo, $mensaje->plantilla_parametros ?? []),
+            'dias'      => (int) $mensaje->created_at->startOfDay()->diffInDays(now()->startOfDay()),
+        ];
+    }
+
+    /**
+     * Reemplaza {{1}}, {{2}}… por los valores con los que se envió realmente la plantilla,
+     * para que la IA lea el mismo texto que leyó el cliente (incluidas las cuentas de pago
+     * y el plazo). Se recorta porque este texto entra al system prompt en CADA turno.
+     */
+    private function renderizarCuerpoPlantilla(?string $cuerpo, array $parametros): ?string
+    {
+        if (empty($cuerpo)) {
+            return null;
+        }
+
+        foreach (array_values($parametros) as $indice => $valor) {
+            if (is_scalar($valor)) {
+                $cuerpo = str_replace('{{' . ($indice + 1) . '}}', (string) $valor, $cuerpo);
+            }
+        }
+
+        $cuerpo = trim($cuerpo);
+
+        return mb_strlen($cuerpo) > 700 ? mb_substr($cuerpo, 0, 700) . '…' : $cuerpo;
     }
 
     /**
@@ -416,12 +507,32 @@ class AsistenteIaService
         ?string $origenCampana = null,
         ?string $origenCampanaCategoria = null,
         array $clienteInfo = [],
-        ?MarketingCampana $campana = null
+        ?MarketingCampana $campana = null,
+        ?array $ultimoEnvio = null
     ): string {
         $fecha = now()->translatedFormat('d \d\e F \d\e Y');
         $esCliente = $clienteInfo['es_cliente'] ?? false;
+        $empresa   = $clienteInfo['empresa'] ?? null;
 
-        if ($esCliente) {
+        if ($empresa) {
+            $quienEscribe = $esCliente && !empty($clienteInfo['nombre'])
+                ? "{$clienteInfo['nombre']}, de la empresa \"{$empresa['nombre']}\""
+                : ($empresa['contacto']
+                    ? "{$empresa['contacto']}, de la empresa \"{$empresa['nombre']}\""
+                    : "la empresa \"{$empresa['nombre']}\"");
+
+            $contextoContacto = "\n## Quién te escribe: es un EMPLEADOR ({$quienEscribe}). Es una empresa que ya "
+                . "trabaja con nosotros y nos paga la seguridad social de sus trabajadores. NO es un prospecto: "
+                . "NUNCA le preguntes si quiere afiliarse ni le ofrezcas cotizar un plan para él — ya es cliente. "
+                . "Lo que suele necesitar es algo de su cuenta: el valor a pagar del mes, las cuentas para pagar, "
+                . "confirmar un pago que ya hizo, o algo de alguno de sus trabajadores. Las herramientas que "
+                . "tienes consultan personas por cédula, no empresas: si pide el total de la empresa, el detalle "
+                . "de sus trabajadores o confirmar un pago suyo, no lo adivines ni lo calcules — pásalo con un "
+                . "asesor (hablar_con_asesor). NO llames consultar_cliente ni enviar_planilla mientras no te haya "
+                . "dado la cédula de una persona concreta: por el número de la empresa no van a encontrar nada y "
+                . "gastas un turno en vano. Con esa cédula en la mano, ahí sí úsalas. Solo cotiza si ÉL MISMO pide "
+                . "expresamente cotizar a alguien nuevo que quiera vincular.\n";
+        } elseif ($esCliente) {
             $nombreCliente = $clienteInfo['nombre'] ?: null;
             $planActual    = $clienteInfo['plan_actual'] ?? null;
             $contextoContacto = "\n## Quién te escribe: YA ES CLIENTE"
@@ -437,7 +548,12 @@ class AsistenteIaService
         }
 
         $contextoCampana = '';
-        if ($campana) {
+        // Una plantilla de servicio (UTILITY: cobro, planilla, notificación) se evalúa ANTES
+        // que la campaña de marketing que originó la conversación: si le mandamos un cobro
+        // después de la campaña, el cobro es lo que está respondiendo hoy.
+        if ($ultimoEnvio && ($ultimoEnvio['categoria'] ?? null) === 'UTILITY') {
+            $contextoCampana = $this->bloqueUltimaPlantillaEnviada($ultimoEnvio);
+        } elseif ($campana) {
             $guiaTexto = '';
             if (!empty($campana->guia_botones)) {
                 $lineas = [];
@@ -456,6 +572,8 @@ class AsistenteIaService
                 . "como si ya supieras de qué se trata, y guía la conversación hacia cerrarlo."
                 . ($campana->objetivo ? " Objetivo de esta campaña: {$campana->objetivo}." : '')
                 . $guiaTexto . "\n";
+        } elseif ($ultimoEnvio) {
+            $contextoCampana = $this->bloqueUltimaPlantillaEnviada($ultimoEnvio);
         } elseif ($origenCampana) {
             if ($origenCampanaCategoria === 'MARKETING') {
                 $contextoCampana = "Este contacto respondió a nuestra campaña/promoción \"{$origenCampana}\": "
@@ -648,6 +766,51 @@ class AsistenteIaService
           afiliación|||¿Iniciamos con la afiliación?" — cada parte entre "|||" debe tener sentido leída sola, sin
           cortar una frase a la mitad. No uses "|||" si la respuesta es corta y cabe natural en un solo mensaje.
         PROMPT;
+    }
+
+    /**
+     * Contexto de la última plantilla que le enviamos: sin esto, alguien que solo contestó
+     * un recordatorio de cobro entraba a la conversación como si llegara de cero y la IA
+     * le respondía ofreciéndole afiliarse, cuando el motivo real del contacto lo pusimos
+     * nosotros. Las UTILITY (cobros, notificaciones de cuenta) llevan además la instrucción
+     * explícita de no vender: quien las recibe ya es cliente nuestro.
+     *
+     * @param array{nombre: string, categoria: ?string, texto: ?string, dias: int} $ultimoEnvio
+     */
+    private function bloqueUltimaPlantillaEnviada(array $ultimoEnvio): string
+    {
+        $cuando = match (true) {
+            $ultimoEnvio['dias'] <= 0 => 'hoy',
+            $ultimoEnvio['dias'] === 1 => 'ayer',
+            default => "hace {$ultimoEnvio['dias']} días",
+        };
+
+        $bloque = "\n## Por qué te está escribiendo: {$cuando} NOSOTROS le enviamos la plantilla "
+            . "\"{$ultimoEnvio['nombre']}\", y lo que escribe es su respuesta a ESE mensaje — no está llegando "
+            . "de cero ni buscándonos por su cuenta.";
+
+        if (!empty($ultimoEnvio['texto'])) {
+            $bloque .= " Esto fue lo que le llegó, textualmente:\n\"\"\"\n{$ultimoEnvio['texto']}\n\"\"\"\n"
+                . "Léelo antes de responder: los datos que ya le dimos ahí (cuentas de pago, plazos, a qué "
+                . "número enviar el comprobante) son los que debes usar si pregunta por ellos, sin inventar otros.";
+        }
+
+        if (($ultimoEnvio['categoria'] ?? null) === 'UTILITY') {
+            $motivo = !empty($ultimoEnvio['texto'])
+                ? 'el motivo real es exactamente el de ese mensaje que te copié arriba — sácalo de ahí, no lo adivines'
+                : "el motivo real es el de esa plantilla (\"{$ultimoEnvio['nombre']}\"), no lo adivines";
+
+            $bloque .= " Es un mensaje de servicio sobre su cuenta, NO publicidad: quien lo recibe ya es cliente "
+                . "nuestro. Por lo tanto NO le preguntes si necesita afiliarse, NO le ofrezcas cotizar un plan y "
+                . "NO arranques con \"¿en qué te puedo ayudar?\" — reconoce tú misma por qué le escribimos: "
+                . "{$motivo}. Si es un recordatorio de pago, el pago puede ser suyo o el de sus trabajadores "
+                . "cuando quien escribe es una empresa; si te dice que ya pagó, agradécele y pídele el comprobante "
+                . "por este mismo chat para registrarlo, y si pregunta cuánto debe usa consultar_cliente (o pasa "
+                . "con un asesor si es una empresa y no puedes consultarla). Si te dice que eso no le corresponde "
+                . "o que no sabe de qué se trata, no insistas: pásalo con un asesor (hablar_con_asesor).";
+        }
+
+        return $bloque . "\n";
     }
 
     private function cargarHistorialNormalizado(int $conversacionId): array

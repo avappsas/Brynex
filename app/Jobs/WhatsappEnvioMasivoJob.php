@@ -73,11 +73,7 @@ class WhatsappEnvioMasivoJob implements ShouldQueue
                 $params = $this->construirParametros($plantilla, $detalle, $this->parametrosGlobales);
 
                 // Obtener o crear la conversación para este destinatario
-                $conversacion = $this->obtenerOCrearConversacion(
-                    $detalle->wa_numero,
-                    $envio->aliado_id,
-                    $detalle->nombre_destinatario
-                );
+                $conversacion = $this->obtenerOCrearConversacion($detalle, $envio, $plantilla);
 
                 // Enviar el template (con imagen del header si aplica)
                 $resultado = $apiService->enviarTemplate(
@@ -372,32 +368,68 @@ class WhatsappEnvioMasivoJob implements ShouldQueue
         };
     }
 
+    /**
+     * Conversación donde queda registrado este envío, con el contexto de por qué se le
+     * escribió: qué plantilla recibió, de qué campaña viene y a qué empresa/contrato
+     * corresponde el destinatario.
+     *
+     * El origen se escribe SIEMPRE, también en conversaciones que ya existían: antes solo
+     * lo hacía WhatsappWebhookService al CREAR una conversación, y como este job crea la
+     * conversación al mandar la plantilla, esa rama ya nunca se ejecutaba — el contacto
+     * respondía al recordatorio de cobro y el Asistente IA lo recibía sin ningún contexto,
+     * como un prospecto frío al que había que venderle una afiliación.
+     */
     private function obtenerOCrearConversacion(
-        string $numero,
-        int $alidoId,
-        string $nombre
+        WhatsappEnvioMasivoDetalle $detalle,
+        WhatsappEnvioMasivo $envio,
+        WhatsappPlantilla $plantilla
     ): WhatsappConversacion {
+        $origen = [
+            'origen_campana'            => $plantilla->nombre_display ?: $plantilla->nombre,
+            'origen_campana_categoria'  => $plantilla->categoria,
+            'origen_campana_id'         => $envio->campana_id,
+        ];
+
         // Buscar conversación existente por aliado + número (sin importar el estado)
-        $conversacion = WhatsappConversacion::where('aliado_id', $alidoId)
-            ->where('wa_contact_id', $numero)
+        $conversacion = WhatsappConversacion::where('aliado_id', $envio->aliado_id)
+            ->where('wa_contact_id', $detalle->wa_numero)
             ->orderByDesc('updated_at')
             ->first();
 
         if ($conversacion) {
+            // La atribución a una campaña de marketing no se pisa con un envío que no viene
+            // de ninguna (ej. un cobro): esa atribución es la que alimenta las métricas de
+            // MarketingCampana. Para el contexto del Asistente IA no hace falta pisarla —
+            // él lee la última plantilla enviada directo de los mensajes de la conversación.
+            $cambios = (!$conversacion->origen_campana_id || $envio->campana_id) ? $origen : [];
+
             // Re-abrir si estaba cerrada
             if ($conversacion->estado === 'cerrada') {
-                $conversacion->update(['estado' => 'abierta']);
+                $cambios['estado'] = 'abierta';
             }
+            // El vínculo con empresa/contrato solo se completa si falta: lo que ya esté
+            // asignado (a mano o por el webhook) manda sobre lo que traiga este envío.
+            if (!$conversacion->empresa_id && $detalle->empresa_id) {
+                $cambios['empresa_id'] = $detalle->empresa_id;
+            }
+            if (!$conversacion->contrato_id && $detalle->contrato_id) {
+                $cambios['contrato_id'] = $detalle->contrato_id;
+            }
+
+            $conversacion->update($cambios);
+
             return $conversacion;
         }
 
         // Crear nueva conversación vinculada al aliado
-        return WhatsappConversacion::create([
-            'aliado_id'             => $alidoId,
-            'wa_contact_id'         => $numero,
-            'nombre_contacto'       => $nombre,
+        return WhatsappConversacion::create(array_merge($origen, [
+            'aliado_id'             => $envio->aliado_id,
+            'wa_contact_id'         => $detalle->wa_numero,
+            'nombre_contacto'       => $detalle->nombre_destinatario,
+            'empresa_id'            => $detalle->empresa_id,
+            'contrato_id'           => $detalle->contrato_id,
             'estado'                => 'abierta',
             'ultimo_mensaje_at'     => now(),
-        ]);
+        ]));
     }
 }

@@ -150,7 +150,7 @@ class IaSimuladorController extends Controller
 
     private function telefonoPlayground(int $alidoId): string
     {
-        // Debe tener EXACTAMENTE 10 dígitos: resolverClienteExistente() limpia todo lo que no sea
+        // Debe tener EXACTAMENTE 10 dígitos: resolverContactoExistente() limpia todo lo que no sea
         // número y compara los últimos 10 contra celular con LIKE — con menos de 10 dígitos (ej.
         // "playground-2" quedaba en solo "2") ese comodín hacía match con cualquier cliente real
         // cuyo celular terminara en ese dígito, filtrando su nombre al simulador (bug real,
