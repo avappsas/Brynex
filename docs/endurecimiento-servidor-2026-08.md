@@ -146,8 +146,69 @@ ufw allow from <ip> to any port 1433 proto tcp
 Respaldos del firewall previo en `/root/ufw-backups/`. Revertir a abierto:
 `ufw allow 1433/tcp`.
 
+## 9. El token OAuth del backup offsite a Google Drive expira sin aviso previo
+
+2026-08-11. Alerta por WhatsApp (`whatsapp:alerta-backup`, ver
+[AlertaOperativaService.php](../app/Services/AlertaOperativaService.php)) de
+`sync-offsite-logs` fallando cada 30 min desde las 11:30. Causa: el token OAuth
+del remote `gdrive:` de `rclone` (`/root/.config/rclone/rclone.conf`) venció —
+`invalid_grant: maybe token expired?`. Cron relevante (`crontab -u root`):
+
+```
+*/30 * * * * /usr/local/bin/sync-offsite-logs.sh >> /var/log/sync-offsite-logs.log 2>&1 || /usr/local/bin/alertar-fallo-backup.sh "sync-offsite-logs"
+0 4 * * *    /usr/local/bin/sync-offsite-full.sh  >> /var/log/sync-offsite-full.log  2>&1 || /usr/local/bin/alertar-fallo-backup.sh "sync-offsite-full"
+```
+
+**`gdrivecrypt-brynex` y `gdrivecrypt-cf` comparten el mismo token.** Ambos son
+remotes tipo *crypt* que envuelven el remote base `gdrive:` (solo cambia la
+carpeta destino: "⚠️ NO TOCAR - Backup Brynex" / "⚠️ NO TOCAR - Backup CF").
+Reautorizar `gdrive:` una sola vez arregla los dos — no hace falta repetir el
+proceso por cada uno.
+
+Cuenta de Google del backup: `seguridadsocial.brygar@gmail.com`.
+
+### Cómo reautorizar
+
+El servidor no tiene navegador, así que `rclone config reconnect gdrive:`
+interactivo por SSH es frágil (el paso de pegar el token JSON a mano se rompe
+fácil: procesos que quedan `Stopped` por un Ctrl+Z accidental, el JSON
+interpretado por bash en vez de por el prompt de rclone, etc.). Camino que sí
+funcionó, de punta a punta:
+
+```bash
+# En el servidor, en background, con salida a archivo (evita leer un token
+# largo de una captura de pantalla — un solo caracter mal transcrito, tipo
+# I/l/1 u O/0, da "State did not match"):
+nohup rclone config update gdrive token '<pegar aquí el token actual del remote, o cualquier JSON — se descarta y se genera uno nuevo>' \
+  > /tmp/rclone_update.log 2>&1 &
+disown
+cat /tmp/rclone_update.log   # imprime la URL con el ?state=... real
+```
+
+Desde la máquina de trabajo (con navegador y `rclone` instalado):
+
+```bash
+ssh -f -N -L 53682:localhost:53682 brynex-prod   # túnel al puerto local del rclone del servidor
+# abrir en el navegador la URL que imprimió el cat de arriba (http://127.0.0.1:53682/auth?state=...)
+# elegir la cuenta seguridadsocial.brygar@gmail.com y aceptar
+# la página debe mostrar "Success!" y el proceso del servidor guarda el token solo
+```
+
+Verificar y limpiar:
+
+```bash
+rclone lsd gdrivecrypt-brynex:
+rclone lsd gdrivecrypt-cf:
+shred -u /tmp/rclone_update.log   # queda client_secret y el token en texto plano
+kill %1                            # cerrar el túnel SSH local
+```
+
 ## Lo que queda pendiente
 
+- **Cuenta de servicio para `gdrive:`** en vez de OAuth de usuario: el token de
+  usuario vence y obliga a este proceso manual; una *service account* con
+  acceso delegado a la carpeta no expira sola. Pendiente evaluar si Google
+  Workspace de Brygar lo permite.
 - **Migrar al túnel SSH** en vez de la regla por rango: es inmune a la IP
   dinámica y deja el puerto cerrado del todo. Implica `DB_HOST=127.0.0.1` en el
   `.env` local y mantener `ssh -L 1433:localhost:1433` mientras se trabaja.
