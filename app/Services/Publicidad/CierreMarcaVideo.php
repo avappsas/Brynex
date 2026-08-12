@@ -240,7 +240,10 @@ class CierreMarcaVideo
         self::momentoAnios($aliado, $anios, $capas['m1']);
         self::momentoAsesores($aliado, $capas['m2']);
         self::momentoCobertura($aliado, $ciudad, $capas['m3']);
-        self::momentoLlamado($aliado, $capas['m4']);
+        // Sin cuarto momento: la asesora ya dice "¡Escríbenos ya!" en el clip, y ponerlo
+        // tambien en pantalla repetia el mismo llamado dos veces. La barra inferior, visible
+        // todo el tiempo, es la que indica por donde escribir.
+        self::momentoCierreLimpio($capas['m4']);
         self::pintarBarraWhatsapp($aliado, $capas['barra']);
         self::pintarRayo($capas['rayo']);
         self::pintarIconoSuelto($capas['wa']);
@@ -251,8 +254,10 @@ class CierreMarcaVideo
         $m = [
             ['in' => 0.35 * $u, 'out' => 2.20 * $u],
             ['in' => 2.45 * $u, 'out' => 4.30 * $u],
-            ['in' => 4.55 * $u, 'out' => 6.30 * $u],
-            ['in' => 6.55 * $u, 'out' => $segundos],
+            // El tercero se estira hasta el final: al quitar el cuarto momento, cortarlo a
+            // los 6,3s dejaba casi dos segundos de video sin ningun mensaje en pantalla.
+            ['in' => 4.55 * $u, 'out' => $segundos],
+            ['in' => $segundos, 'out' => $segundos],
         ];
         $rayos = [2.25 * $u, 4.35 * $u, 6.35 * $u];
 
@@ -522,6 +527,14 @@ class CierreMarcaVideo
         );
         self::centrado($img, $texto, $cx, $yBase, $tam, self::colorMarcaOscuro($img, $aliado), self::FUENTE, $tracking);
 
+        imagepng($img, $destino);
+        imagedestroy($img);
+    }
+
+    /** Cuarto momento vacío: el filtro espera 4 capas, pero aquí no se dibuja nada. */
+    private static function momentoCierreLimpio(string $destino): void
+    {
+        $img = self::lienzo();
         imagepng($img, $destino);
         imagedestroy($img);
     }
