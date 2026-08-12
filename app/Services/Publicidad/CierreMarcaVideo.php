@@ -161,12 +161,36 @@ class CierreMarcaVideo
             $prev = "r{$k}";
         }
 
-        // Logo chico arriba y barra de WhatsApp abajo: presentes todo el tiempo.
-        $anchoLogo = (int) round(self::ANCHO * 0.30);
+        // Logo arriba a la IZQUIERDA: centrado le quedaba encima de la cara del asesor, que
+        // es justo lo que da el respaldo. Barra de WhatsApp abajo. Ambos, todo el tiempo.
+        $anchoLogo = (int) round(self::ANCHO * 0.26);
         $f[] = "[7:v]format=rgba,scale={$anchoLogo}:-1,fade=in:st=0:d=0.5:alpha=1[logo]";
-        $f[] = "[{$prev}][logo]overlay=(W-w)/2:70[conlogo]";
+        $f[] = "[{$prev}][logo]overlay=38:44[conlogo]";
         $f[] = '[8:v]format=rgba,fade=in:st=0.6:d=0.5:alpha=1[barra]';
         $f[] = '[conlogo][barra]overlay=0:0[out]';
+
+        // ── Audio ────────────────────────────────────────────────────────────
+        // Se parte del ambiente que trae el propio clip de Veo (audio generado, sin problema
+        // de licencia) y encima se sintetizan los golpes con FFmpeg. Deliberadamente NO se
+        // usa música de terceros: sin licencia, Meta silencia el post o lo penaliza, y el
+        // cierre se reutiliza en todas las piezas, así que el riesgo se multiplicaría.
+        $a = [];
+        $a[] = '[0:a]aformat=channel_layouts=stereo,volume=0.85,afade=t=in:st=0:d=0.3,afade=t=out:st=' . round($segundos - 0.6, 2) . ':d=0.6[amb]';
+
+        // Golpe grave cuando aterriza el número: es el dato que queremos que se fije.
+        $a[] = '[9:a]atrim=0:0.55,aformat=channel_layouts=stereo,volume=1.5,afade=t=out:st=0:d=0.55,adelay=350|350[hit]';
+
+        // Barrido en cada transición, sincronizado con el destello visual.
+        $mezcla = '[amb][hit]';
+        foreach ($rayos as $k => $t0) {
+            $ms = (int) round($t0 * 1000);
+            $ent = 10 + $k;   // entradas 10, 11, 12
+            $a[] = "[{$ent}:a]atrim=0:0.6,aformat=channel_layouts=stereo,volume=0.9,afade=t=in:st=0:d=0.12,afade=t=out:st=0.2:d=0.4,adelay={$ms}|{$ms}[w{$k}]";
+            $mezcla .= "[w{$k}]";
+        }
+        $a[] = $mezcla . 'amix=inputs=' . (2 + count($rayos)) . ':duration=first:dropout_transition=0:normalize=0,aformat=channel_layouts=stereo,loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000,alimiter=limit=0.97[aout]';
+
+        $f = array_merge($f, $a);
 
         $ffmpeg = config('services.ffmpeg.bin', 'ffmpeg');
 
@@ -181,9 +205,14 @@ class CierreMarcaVideo
             '-loop', '1', '-t', (string) $segundos, '-i', $capas['rayo'],
             '-loop', '1', '-t', (string) $segundos, '-i', $logoAbs,
             '-loop', '1', '-t', (string) $segundos, '-i', $capas['barra'],
-            '-f', 'lavfi', '-t', (string) $segundos, '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
+            // [9] golpe grave del número y [10..12] barridos de transición: se sintetizan
+            // aquí mismo, no son archivos de audio con licencia de terceros.
+            '-f', 'lavfi', '-i', 'sine=frequency=76:duration=1:sample_rate=48000',
+            '-f', 'lavfi', '-i', 'anoisesrc=color=pink:amplitude=0.5:duration=1:sample_rate=48000',
+            '-f', 'lavfi', '-i', 'anoisesrc=color=pink:amplitude=0.5:duration=1:sample_rate=48000',
+            '-f', 'lavfi', '-i', 'anoisesrc=color=pink:amplitude=0.5:duration=1:sample_rate=48000',
             '-filter_complex', implode(';', $f),
-            '-map', '[out]', '-map', '9:a',
+            '-map', '[out]', '-map', '[aout]',
             '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-r', '30',
             '-c:a', 'aac', '-shortest',
             $destino,
