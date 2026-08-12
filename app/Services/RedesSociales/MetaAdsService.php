@@ -615,11 +615,12 @@ class MetaAdsService
         })->values();
 
         $fb = RedSocialConfig::paraAliado($aliadoId, 'facebook');
+        $token = self::tokenAds($config, $fb);
         $pausadas = 0;
         foreach ($ordenadas->slice($maximo) as $pieza) {
             $r = Http::asForm()->post(self::BASE_URL . "/{$pieza->meta_ad_id}", [
                 'status'       => 'PAUSED',
-                'access_token' => $fb->access_token,
+                'access_token' => $token,
             ]);
             if ($r->successful()) {
                 $pieza->update(['pauta_estado' => 'pausada']);
@@ -652,7 +653,7 @@ class MetaAdsService
         $fb = RedSocialConfig::paraAliado($publicacion->aliado_id, 'facebook');
         $payload = [
             'status'       => 'ACTIVE',
-            'access_token' => $fb->access_token,
+            'access_token' => self::tokenAds($config, $fb),
         ];
         if ($diasDuracion) {
             $payload['end_time'] = now()->addDays($diasDuracion)->toIso8601String();
@@ -678,7 +679,7 @@ class MetaAdsService
         $fb = RedSocialConfig::paraAliado($publicacion->aliado_id, 'facebook');
         $resp = Http::asForm()->post(self::BASE_URL . "/{$publicacion->meta_adset_id}", [
             'status'       => 'PAUSED',
-            'access_token' => $fb->access_token,
+            'access_token' => self::tokenAds(PautaConfig::paraAliado($publicacion->aliado_id), $fb),
         ]);
 
         if (!$resp->successful()) {
@@ -698,7 +699,7 @@ class MetaAdsService
         $resp = Http::get(self::BASE_URL . "/{$publicacion->meta_adset_id}/insights", [
             'fields'       => 'spend',
             'date_preset'  => 'maximum',
-            'access_token' => $fb->access_token,
+            'access_token' => self::tokenAds(PautaConfig::paraAliado($publicacion->aliado_id), $fb),
         ]);
 
         if ($resp->successful()) {
