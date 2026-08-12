@@ -177,39 +177,59 @@ class FormularioEpsService
     }
 
     /**
-     * Decrypts an encrypted PDF to a temp file using qpdf or GhostScript.
-     * Returns the path to the decrypted file, or null if the PDF is not
-     * encrypted / no tool is available.
+     * Reescribe el PDF a una forma que el parser libre de FPDI sí entiende:
+     * sin cifrado y sin object/xref streams (PDF 1.5+), usando qpdf o GhostScript.
+     * Devuelve la ruta del PDF normalizado, o null si no hay herramienta disponible
+     * o ninguna logró convertirlo.
      */
-    protected function descifrarPdf(string $rutaPdf): ?string
+    protected function normalizarPdf(string $rutaPdf): ?string
     {
-        $tmp = tempnam(sys_get_temp_dir(), 'fpdi_dec_') . '.pdf';
+        // Si ya se convirtió antes y la plantilla no cambió, se reutiliza:
+        // convertir con gs cuesta ~1s y esta vista se abre en cada afiliación.
+        $cache = $this->rutaCacheNormalizado($rutaPdf);
+        if ($cache && file_exists($cache) && filemtime($cache) >= filemtime($rutaPdf)) {
+            return $cache;
+        }
 
-        // 1. Try qpdf
+        $destino = $cache ?: tempnam(sys_get_temp_dir(), 'fpdi_norm_') . '.pdf';
+
+        // 1. qpdf: descifra y deshace los object streams conservando el original tal cual
         if (($qpdf = trim(shell_exec('which qpdf 2>/dev/null') ?? '')) !== '') {
-            exec(escapeshellcmd($qpdf) . ' --decrypt ' .
-                escapeshellarg($rutaPdf) . ' ' . escapeshellarg($tmp) . ' 2>&1', $out, $code);
-            if ($code === 0 && file_exists($tmp) && filesize($tmp) > 0) {
-                return $tmp;
+            exec(escapeshellcmd($qpdf) . ' --decrypt --object-streams=disable ' .
+                escapeshellarg($rutaPdf) . ' ' . escapeshellarg($destino) . ' 2>&1', $out, $code);
+            // qpdf devuelve 3 cuando solo hubo advertencias; el archivo de salida sirve
+            if (in_array($code, [0, 3], true) && file_exists($destino) && filesize($destino) > 0) {
+                return $destino;
             }
         }
 
-        // 2. Try GhostScript
+        // 2. GhostScript: reescribe a PDF 1.4, que no tiene xref/object streams.
+        //    Sin -dCompatibilityLevel gs emite 1.7 y FPDI vuelve a fallar igual.
         foreach (['gs', 'ghostscript'] as $bin) {
             if (($gs = trim(shell_exec("which {$bin} 2>/dev/null") ?? '')) !== '') {
                 exec(escapeshellcmd($gs) .
-                    ' -dBATCH -dNOPAUSE -sDEVICE=pdfwrite' .
-                    ' -dEncryptionR=3 -dKeyLength=128' .
-                    ' -sOutputFile=' . escapeshellarg($tmp) . ' ' .
+                    ' -dBATCH -dNOPAUSE -dQUIET -sDEVICE=pdfwrite' .
+                    ' -dCompatibilityLevel=1.4' .
+                    ' -sOutputFile=' . escapeshellarg($destino) . ' ' .
                     escapeshellarg($rutaPdf) . ' 2>&1', $out, $code);
-                if ($code === 0 && file_exists($tmp) && filesize($tmp) > 0) {
-                    return $tmp;
+                if ($code === 0 && file_exists($destino) && filesize($destino) > 0) {
+                    return $destino;
                 }
             }
         }
 
-        @unlink($tmp);
+        @unlink($destino);
         return null;
+    }
+
+    /** Ruta donde se cachea la versión normalizada de una plantilla, o null si no se puede escribir. */
+    protected function rutaCacheNormalizado(string $rutaPdf): ?string
+    {
+        $dir = storage_path('app/formularios/eps/_normalizados');
+        if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) return null;
+        if (!is_writable($dir)) return null;
+
+        return $dir . '/' . md5($rutaPdf) . '.pdf';
     }
 
     protected function rellenarPdf(string $rutaPdf, array $campos, array $datos): string
@@ -217,33 +237,30 @@ class FormularioEpsService
         $pdf = new Fpdi('P', 'pt');
         $pdf->SetAutoPageBreak(false);
 
-        // If the PDF is encrypted or uses unsupported features/compression, FPDI cannot read it.
-        // Attempt to decrypt/reformat it using qpdf/GhostScript.
-        $tmpDecrypted = null;
+        // Si el PDF está cifrado o usa compresión que el parser libre de FPDI no soporta
+        // (object/xref streams de PDF 1.5+), se reescribe antes con qpdf/GhostScript.
+        $normalizado = null;
         try {
             $totalPaginas = $pdf->setSourceFile($rutaPdf);
         } catch (\Exception $e) {
-            $tmpDecrypted = $this->descifrarPdf($rutaPdf);
-            if ($tmpDecrypted) {
+            $normalizado = $this->normalizarPdf($rutaPdf);
+            if ($normalizado) {
                 try {
                     $pdf = new Fpdi('P', 'pt');
                     $pdf->SetAutoPageBreak(false);
-                    $totalPaginas = $pdf->setSourceFile($tmpDecrypted);
+                    $totalPaginas = $pdf->setSourceFile($normalizado);
                 } catch (\Exception $subException) {
-                    if ($tmpDecrypted && file_exists($tmpDecrypted)) {
-                        @unlink($tmpDecrypted);
-                    }
+                    $this->limpiarNormalizado($normalizado);
                     throw $e;
                 }
             } else {
-                if (stripos($e->getMessage(), 'encrypted') !== false) {
-                    throw new \RuntimeException(
-                        'El PDF está cifrado y no se encontró qpdf ni GhostScript en el servidor ' .
-                        'para descifrarlo. Instale qpdf (`apt install qpdf`) y vuelva a intentarlo.',
-                        0, $e
-                    );
-                }
-                throw $e;
+                throw new \RuntimeException(
+                    'La plantilla PDF de esta EPS está cifrada o comprimida en un formato que ' .
+                    'FPDI no puede leer, y no se pudo reescribir con qpdf ni GhostScript en el ' .
+                    'servidor. Instale qpdf (`apt install qpdf`) o vuelva a subir la plantilla ' .
+                    'guardándola como PDF 1.4.',
+                    0, $e
+                );
             }
         }
         $tpls = [];
@@ -340,11 +357,17 @@ class FormularioEpsService
 
         $resultado = $pdf->Output('S');
 
-        // Clean up the temporary decrypted file if one was created
-        if ($tmpDecrypted && file_exists($tmpDecrypted)) {
-            @unlink($tmpDecrypted);
-        }
+        $this->limpiarNormalizado($normalizado);
 
         return $resultado;
+    }
+
+    /** Borra el PDF normalizado solo si fue temporal; el de caché se conserva. */
+    protected function limpiarNormalizado(?string $ruta): void
+    {
+        if (!$ruta || !file_exists($ruta)) return;
+        if (str_starts_with($ruta, storage_path())) return;   // está en caché, se reutiliza
+
+        @unlink($ruta);
     }
 }
