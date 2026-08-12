@@ -38,8 +38,36 @@ class CierreMarcaVideo
     private const FUENTE_SEMI   = 'resources/fonts/Poppins-SemiBold.ttf';
     private const FUENTE_SCRIPT = 'resources/fonts/KaushanScript-Regular.ttf';
 
+    /** Retardo antes de que arranque la voz, y aire que se deja despues de la ultima palabra. */
+    private const RETARDO_VOZ = 0.12;
+    private const COLA_VOZ    = 0.55;
+
     private const ANCHO = 720;
     private const ALTO  = 1280;
+
+    /**
+     * Variantes del cierre, para que no salga siempre el mismo y la gente deje de verlo. Se
+     * turnan por dia; cada una tiene su fondo (generado una vez con Veo y cacheado) y su
+     * guion.
+     *
+     * `logo_pared` marca los fondos que traen un panel vacio en la pared: ahi se compone el
+     * logo REAL encima. No se le pide el letrero a Veo porque destroza el texto --- en las
+     * pruebas devolvio "CURSTRA ORIGRMN" en vez de una palabra.
+     */
+    private const VARIANTES = [
+        1 => [
+            'fondo'      => 'publicidad/cierres/fondo_asesores_%d.mp4',
+            'logo_pared' => false,
+            'guion'      => 'Más de {anios} años respaldando trabajadores colombianos. '
+                          . 'Asesores calificados en {ciudad}, y en toda Colombia. ¡Escríbenos ya!',
+        ],
+        2 => [
+            'fondo'      => 'publicidad/cierres/fondo_asesores_%d_v2.mp4',
+            'logo_pared' => true,
+            'guion'      => 'En {marca} afiliamos tu seguridad social sin enredos. '
+                          . 'Convenio con todas las EPS del país. ¡Escríbenos hoy!',
+        ],
+    ];
 
     /** Fondo de video reutilizable, generado con Veo una sola vez por aliado. */
     private const FONDO_REL = 'publicidad/cierres/fondo_asesores_%d.mp4';
@@ -54,9 +82,11 @@ class CierreMarcaVideo
         int $anios = 12,
         string $ciudad = 'Cali',
         float $segundos = 8.0,
-        bool $regenerar = false
+        bool $regenerar = false,
+        ?int $variante = null
     ): array {
-        $firma = md5($anios . '|' . $ciudad . '|' . $segundos . '|' . ($aliado->color_primario ?? ''));
+        $variante = $variante ?: self::varianteDelDia();
+        $firma = md5($variante . '|' . $anios . '|' . $ciudad . '|' . $segundos . '|' . ($aliado->color_primario ?? ''));
         $rutaRelativa = "publicidad/cierres/cierre_{$aliado->id}_{$firma}.mp4";
         $rutaAbsoluta = Storage::disk('public')->path($rutaRelativa);
 
@@ -67,16 +97,25 @@ class CierreMarcaVideo
         Storage::disk('public')->makeDirectory('publicidad/cierres');
 
         try {
-            return self::construir($aliado, $anios, $ciudad, $segundos, $rutaAbsoluta);
+            return self::construir($aliado, $anios, $ciudad, $segundos, $rutaAbsoluta, $variante);
         } catch (\Throwable $e) {
             return ['ok' => false, 'path' => null, 'error' => $e->getMessage()];
         }
     }
 
-    /** Ruta del clip de fondo; null si todavía no se ha generado para este aliado. */
-    public static function rutaFondo(int $aliadoId): ?string
+    /** Variante que toca hoy. Alterna por dia del anio, asi no sale siempre la misma. */
+    public static function varianteDelDia(): int
     {
-        $rel = sprintf(self::FONDO_REL, $aliadoId);
+        $claves = array_keys(self::VARIANTES);
+
+        return $claves[(int) now('America/Bogota')->dayOfYear % count($claves)];
+    }
+
+    /** Ruta del clip de fondo de una variante; null si todavía no se ha generado. */
+    public static function rutaFondo(int $aliadoId, int $variante = 1): ?string
+    {
+        $def = self::VARIANTES[$variante] ?? self::VARIANTES[1];
+        $rel = sprintf($def['fondo'], $aliadoId);
 
         return Storage::disk('public')->exists($rel) ? Storage::disk('public')->path($rel) : null;
     }
@@ -90,9 +129,9 @@ class CierreMarcaVideo
      *
      * @return array{ok: bool, path: ?string, error: ?string}
      */
-    public static function locucion(Aliado $aliado, int $anios, string $ciudad, bool $regenerar = false): array
+    public static function locucion(Aliado $aliado, int $anios, string $ciudad, bool $regenerar = false, int $variante = 1): array
     {
-        $rel = "publicidad/cierres/locucion_{$aliado->id}_" . md5($anios . '|' . $ciudad) . '.wav';
+        $rel = "publicidad/cierres/locucion_{$aliado->id}_" . md5($variante . '|' . $anios . '|' . $ciudad) . '.wav';
         $abs = Storage::disk('public')->path($rel);
 
         if (!$regenerar && Storage::disk('public')->exists($rel)) {
@@ -106,9 +145,12 @@ class CierreMarcaVideo
 
         Storage::disk('public')->makeDirectory('publicidad/cierres');
 
-        $marca = self::comoSuena($aliado->nombre);
-        $guion = "Más de {$anios} años respaldando trabajadores colombianos. "
-            . "Asesores calificados en {$ciudad}, y en toda Colombia. ¡Escríbenos ya!";
+        $def = self::VARIANTES[$variante] ?? self::VARIANTES[1];
+        $guion = strtr($def['guion'], [
+            '{anios}'  => (string) $anios,
+            '{ciudad}' => $ciudad,
+            '{marca}'  => self::comoSuena($aliado->nombre),
+        ]);
 
         $r = LocucionIaService::generar(
             $apiKey,
@@ -121,6 +163,18 @@ class CierreMarcaVideo
         return ['ok' => $r['ok'], 'path' => $r['ok'] ? $abs : null, 'error' => $r['error']];
     }
 
+    /** Duración en segundos de un archivo de audio; 0 si no se puede leer. */
+    private static function duracionAudio(string $ruta): float
+    {
+        $ffprobe = config('services.ffmpeg.ffprobe', 'ffprobe');
+        $r = Process::timeout(30)->run([
+            $ffprobe, '-v', 'error', '-show_entries', 'format=duration',
+            '-of', 'default=noprint_wrappers=1:nokey=1', $ruta,
+        ]);
+
+        return $r->successful() ? (float) trim($r->output()) : 0.0;
+    }
+
     /** El TTS lee literal: la marca se escribe fonéticamente para que no la deletree. */
     private static function comoSuena(string $nombre): string
     {
@@ -131,9 +185,10 @@ class CierreMarcaVideo
     }
 
     /** @return array{ok: bool, path: ?string, error: ?string} */
-    private static function construir(Aliado $aliado, int $anios, string $ciudad, float $segundos, string $destino): array
+    private static function construir(Aliado $aliado, int $anios, string $ciudad, float $segundos, string $destino, int $variante = 1): array
     {
-        $fondo = self::rutaFondo($aliado->id);
+        $def = self::VARIANTES[$variante] ?? self::VARIANTES[1];
+        $fondo = self::rutaFondo($aliado->id, $variante);
         if (!$fondo) {
             return ['ok' => false, 'path' => null, 'error' => 'Falta el clip de fondo de asesores. Generarlo primero (ver rutaFondo).'];
         }
@@ -146,8 +201,21 @@ class CierreMarcaVideo
 
         // Locución en español. Si falla, el cierre sale igual con solo la base musical:
         // es preferible una pieza muda a no tener pieza.
-        $voz = self::locucion($aliado, $anios, $ciudad);
+        $voz = self::locucion($aliado, $anios, $ciudad, false, $variante);
         $rutaVoz = $voz['ok'] ? $voz['path'] : null;
+
+        // El video se estira para que la voz quepa ENTERA. Antes se cortaba la última
+        // palabra: el TTS no da una duración exacta —depende de cómo lea el guion— así que
+        // fijar 8 segundos a mano siempre iba a fallar con algún texto. Se mide y se ajusta.
+        if ($rutaVoz) {
+            $durVoz = self::duracionAudio($rutaVoz);
+            if ($durVoz > 0) {
+                $necesario = $durVoz + self::RETARDO_VOZ + self::COLA_VOZ;
+                if ($necesario > $segundos) {
+                    $segundos = round($necesario, 2);
+                }
+            }
+        }
 
         $tmp = sys_get_temp_dir();
         $id  = Str::random(10);
@@ -217,9 +285,18 @@ class CierreMarcaVideo
 
         // Logo arriba a la IZQUIERDA: centrado le quedaba encima de la cara del asesor, que
         // es justo lo que da el respaldo. Barra de WhatsApp abajo. Ambos, todo el tiempo.
-        $anchoLogo = (int) round(self::ANCHO * 0.26);
-        $f[] = "[7:v]format=rgba,scale={$anchoLogo}:-1,fade=in:st=0:d=0.5:alpha=1[logo]";
-        $f[] = "[{$prev}][logo]overlay=38:44[conlogo]";
+        if (!empty($def['logo_pared'])) {
+            // El fondo trae un panel vacio en la pared: el logo va AHI, como si fuera el
+            // letrero de la oficina. Se le baja la opacidad y se difumina apenas para que
+            // se integre con la profundidad de campo del video en vez de verse pegado.
+            $anchoLogo = (int) round(self::ANCHO * 0.30);
+            $f[] = "[7:v]format=rgba,scale={$anchoLogo}:-1,boxblur=1:1,colorchannelmixer=aa=0.88,fade=in:st=0.2:d=0.6:alpha=1[logo]";
+            $f[] = "[{$prev}][logo]overlay=W-w-58:118[conlogo]";
+        } else {
+            $anchoLogo = (int) round(self::ANCHO * 0.26);
+            $f[] = "[7:v]format=rgba,scale={$anchoLogo}:-1,fade=in:st=0:d=0.5:alpha=1[logo]";
+            $f[] = "[{$prev}][logo]overlay=38:44[conlogo]";
+        }
         $f[] = '[8:v]format=rgba,fade=in:st=0.6:d=0.5:alpha=1[barra]';
         $f[] = '[conlogo][barra]overlay=0:0[out]';
 
@@ -263,7 +340,7 @@ class CierreMarcaVideo
             $a[] = $mezcla . 'amix=inputs=' . (2 + count($rayos)) . ':duration=first:dropout_transition=0:normalize=0,volume=0.12[lecho]';
             $a[] = '[15:a]aformat=channel_layouts=stereo:sample_rates=48000,'
                 . 'acompressor=threshold=0.12:ratio=4:attack=8:release=180,'
-                . 'volume=4.0,adelay=120|120[voz]';
+                . 'volume=4.0,adelay=' . (int) (self::RETARDO_VOZ * 1000) . '|' . (int) (self::RETARDO_VOZ * 1000) . '[voz]';
             $a[] = '[lecho][voz]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,'
                 . 'aformat=channel_layouts=stereo,loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000,alimiter=limit=0.97[aout]';
         } else {
@@ -470,24 +547,49 @@ class CierreMarcaVideo
         imagedestroy($img);
     }
 
-    /** Ícono de WhatsApp: círculo verde con el auricular. */
+    /**
+     * Ícono de WhatsApp dibujado como la marca real: burbuja verde con la cola apuntando
+     * abajo-izquierda y el auricular blanco dentro. La version anterior era un arco fino que
+     * a 44px se leia como un pin de ubicacion, no como WhatsApp.
+     */
     private static function iconoWhatsapp($img, int $cx, int $cy, int $diam): void
     {
-        $verde = imagecolorallocate($img, 37, 211, 102);
+        $verde  = imagecolorallocate($img, 37, 211, 102);
         $blanco = imagecolorallocate($img, 255, 255, 255);
+        $u = $diam / 100;   // todas las medidas en % del diametro, para que escale
 
+        // Cuerpo de la burbuja.
         imagefilledellipse($img, $cx, $cy, $diam, $diam, $verde);
 
-        // Auricular estilizado: dos trazos gruesos en diagonal dentro del círculo.
-        // Auricular clasico: dos bocinas gruesas unidas por un puente en diagonal. Se lee
-        // mejor a este tamano que un trazo fino, que a 44px se convierte en un borron.
-        $u = $diam / 100;
-        $grosor = max(4, (int) (14 * $u));
-        imagesetthickness($img, $grosor);
-        imageline($img, (int) ($cx - 20 * $u), (int) ($cy - 18 * $u), (int) ($cx + 18 * $u), (int) ($cy + 20 * $u), $blanco);
-        imagefilledellipse($img, (int) ($cx - 22 * $u), (int) ($cy - 20 * $u), (int) (20 * $u), (int) (20 * $u), $blanco);
-        imagefilledellipse($img, (int) ($cx + 20 * $u), (int) ($cy + 22 * $u), (int) (20 * $u), (int) (20 * $u), $blanco);
+        // Cola: triangulo hacia abajo-izquierda, lo que distingue a WhatsApp de un circulo.
+        $cola = [
+            (int) ($cx - 30 * $u), (int) ($cy + 28 * $u),
+            (int) ($cx - 8 * $u),  (int) ($cy + 42 * $u),
+            (int) ($cx - 4 * $u),  (int) ($cy + 20 * $u),
+        ];
+        imagefilledpolygon($img, $cola, $verde);
+
+        // Auricular: dos bulbos gruesos unidos por un puente en diagonal. Las proporciones
+        // importan mas que el detalle: a este tamano lo que se reconoce es la silueta.
+        $grosorPuente = max(5, (int) (17 * $u));
+        imagesetthickness($img, $grosorPuente);
+        imageline(
+            $img,
+            (int) ($cx - 14 * $u), (int) ($cy - 13 * $u),
+            (int) ($cx + 13 * $u), (int) ($cy + 14 * $u),
+            $blanco
+        );
         imagesetthickness($img, 1);
+
+        $bulbo = (int) (30 * $u);
+        imagefilledellipse($img, (int) ($cx - 17 * $u), (int) ($cy - 16 * $u), $bulbo, $bulbo, $blanco);
+        imagefilledellipse($img, (int) ($cx + 16 * $u), (int) ($cy + 17 * $u), $bulbo, $bulbo, $blanco);
+
+        // Muescas verdes: le dan al auricular la curvatura caracteristica en vez de dejarlo
+        // como una barra con dos pelotas.
+        $muesca = (int) (17 * $u);
+        imagefilledellipse($img, (int) ($cx - 27 * $u), (int) ($cy - 5 * $u), $muesca, $muesca, $verde);
+        imagefilledellipse($img, (int) ($cx + 6 * $u), (int) ($cy + 27 * $u), $muesca, $muesca, $verde);
     }
 
     /** Franja diagonal luminosa que barre la pantalla entre momento y momento. */

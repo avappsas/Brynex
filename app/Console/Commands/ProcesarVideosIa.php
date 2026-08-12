@@ -219,6 +219,8 @@ class ProcesarVideosIa extends Command
             return $rutaContenidoRelativa;
         }
 
+        // Sin variante explícita, obtener() alterna sola por día: así el mismo seguidor no
+        // ve el mismo cierre en piezas consecutivas.
         $cierre = CierreMarcaVideo::obtener(
             $aliado,
             (int) ($config->cierre_anios ?: 12),
