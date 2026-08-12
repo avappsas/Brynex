@@ -106,7 +106,14 @@ class CopiaIaGenerator
             . 'Ejemplo de estructura (NO la copies, es solo el molde): A close-up handheld shot of a Colombian '
             . 'motorcycle delivery rider in his 20s, helmet in hand, catching his breath on a busy street, looking '
             . 'straight at the camera with a serious expression, he says in Spanish: "Me caí en la moto y ahí me di '
-            . 'cuenta que no tenía ARL." ' . "\n\n"
+            . 'cuenta que no tenía a ere ele." ' . "\n\n"
+
+            . 'SIGLAS — REGLA OBLIGATORIA: dentro de la frase hablada, escribe las siglas DELETREADAS '
+            . 'FONÉTICAMENTE, nunca con sus letras juntas, porque el modelo de voz las lee como si fueran una '
+            . 'palabra y suenan mal. Usa exactamente: ARL → "a ere ele", EPS → "e pe ese", AFP → "a efe pe", '
+            . 'IBC → "i be ce", ARP → "a ere pe". Ojo: es "ere" (suave), NO "erre". '
+            . 'Esto aplica SOLO a la frase que la persona pronuncia en voz alta; en el resto del prompt (la '
+            . 'descripción de la escena en inglés) las siglas van normales.' . "\n\n"
 
             . 'Máximo 80 palabras en total. NO menciones texto en pantalla, subtítulos, logos ni marcas — eso se agrega '
             . 'después por separado. Responde ÚNICAMENTE con el prompt en sí, sin explicación, sin bloque de código.';
