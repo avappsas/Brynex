@@ -52,9 +52,31 @@ class PautaToken extends Command
             $this->error('Meta dice que ese token no es válido. No se guardó.');
             return self::FAILURE;
         }
-        if (!in_array('ads_management', $d['scopes'] ?? [], true)) {
-            $this->error('Al token le falta el permiso ads_management. No se guardó.');
+
+        // La prueba que vale es usar el token contra la cuenta publicitaria de verdad. La
+        // lista de `scopes` de debug_token NO sirve como criterio: cuando un token se depura
+        // consigo mismo, Meta a veces devuelve la lista vacía aunque los permisos estén, y
+        // rechazar por eso deja afuera tokens perfectamente buenos.
+        if (!$config->ad_account_id) {
+            $this->error('El aliado no tiene cuenta publicitaria configurada.');
             return self::FAILURE;
+        }
+        $cuenta = 'act_' . ltrim($config->ad_account_id, 'act_');
+        $prueba = Http::get("https://graph.facebook.com/v23.0/{$cuenta}", [
+            'fields'       => 'id,name,account_status',
+            'access_token' => $token,
+        ]);
+
+        if (!$prueba->successful()) {
+            $this->error('Ese token no puede leer la cuenta publicitaria. No se guardó.');
+            $this->line('  Meta dijo: ' . (string) $prueba->json('error.message'));
+            return self::FAILURE;
+        }
+
+        $scopes = $d['scopes'] ?? [];
+        if ($scopes && !in_array('ads_management', $scopes, true)) {
+            $this->warn('Aviso: entre los permisos declarados no aparece ads_management,');
+            $this->warn('pero el token sí lee la cuenta publicitaria. Se guarda igual.');
         }
 
         $quien = Http::get('https://graph.facebook.com/v23.0/me', [
