@@ -291,7 +291,7 @@ class CierreMarcaVideo
 
         // Logo arriba a la IZQUIERDA: centrado le quedaba encima de la cara del asesor, que
         // es justo lo que da el respaldo. Barra de WhatsApp abajo. Ambos, todo el tiempo.
-        if (!empty($def['logo_pared'])) {
+        if (false) {
             // El fondo trae un panel vacio en la pared: el logo va AHI, como si fuera el
             // letrero de la oficina. Se le baja la opacidad y se difumina apenas para que
             // se integre con la profundidad de campo del video en vez de verse pegado.
@@ -299,9 +299,9 @@ class CierreMarcaVideo
             $f[] = "[7:v]format=rgba,scale={$anchoLogo}:-1,boxblur=1:1,colorchannelmixer=aa=0.88,fade=in:st=0.2:d=0.6:alpha=1[logo]";
             $f[] = "[{$prev}][logo]overlay=W-w-58:118[conlogo]";
         } else {
-            $anchoLogo = (int) round(self::ANCHO * 0.26);
-            $f[] = "[7:v]format=rgba,scale={$anchoLogo}:-1,fade=in:st=0:d=0.5:alpha=1[logo]";
-            $f[] = "[{$prev}][logo]overlay=38:44[conlogo]";
+            // Sin logo arriba: ya va en la barra inferior junto al numero, y repetirlo solo
+            // le quita escena al video --- que es lo que en realidad sostiene la mirada.
+            $f[] = "[{$prev}]null[conlogo]";
         }
         $f[] = '[8:v]format=rgba,fade=in:st=0.6:d=0.5:alpha=1[barra]';
         $f[] = '[conlogo][barra]overlay=0:0[conbarra]';
@@ -317,10 +317,15 @@ class CierreMarcaVideo
             . "fade=in:st=0.7:d=0.35:alpha=1[walogo]";
         $f[] = "[conbarra][walogo]overlay=x='{$pos['wa']}+({$lado}-overlay_w)/2':y='{$yLogo}+({$lado}-overlay_h)/2':eval=frame[conwa]";
 
-        $f[] = "[16:v]format=rgba,scale={$lado}:-1,"
+        $ladoMarca = (int) round($lado * 1.45);
+        $f[] = "[16:v]format=rgba,scale={$ladoMarca}:-1,"
             . "scale=w='iw*(0.55+0.45*(1-exp(-7*max(0,t-0.95))))+iw*0.05*sin(2.2*t)*exp(-0.7*max(0,t-1.65))':h=-1:eval=frame,"
             . "fade=in:st=0.95:d=0.35:alpha=1[marcalogo]";
-        $f[] = "[conwa][marcalogo]overlay=x='{$pos['marca']}+({$lado}-overlay_w)/2':y='{$yLogo}+({$lado}-overlay_h)/2':eval=frame[out]";
+        // El logo va mas grande que su hueco y se centra sobre el, sobresaliendo un poco de
+        // la pastilla: asi pesa visualmente sin desalinear el numero.
+        $cxMarca = $pos['marca'] + (int) ($lado / 2);
+        $cyMarca = self::Y_BARRA - (int) ($lado / 2) + 12;
+        $f[] = "[conwa][marcalogo]overlay=x='{$cxMarca}-overlay_w/2':y='{$cyMarca}-overlay_h/2':eval=frame[out]";
 
         // ── Audio ────────────────────────────────────────────────────────────
         // Se parte del ambiente que trae el propio clip de Veo (audio generado, sin problema
@@ -553,11 +558,11 @@ class CierreMarcaVideo
         $y  = self::Y_BARRA;
 
         // Pastilla oscura translucida: el texto tiene que leerse sobre cualquier fotograma.
-        self::capsula($img, $x0 - 24, $y - 46, $x0 + $anchoTotal + 24, $y + 24, imagecolorallocatealpha($img, 0, 0, 0, 52));
+        self::capsula($img, $x0 - 26, $y - 56, $x0 + $anchoTotal + 26, $y + 26, imagecolorallocatealpha($img, 0, 0, 0, 52));
 
-        self::texto($img, 'WhatsApp', $x0 + $hueco + 14, $y - 20, 20,
-            imagecolorallocate($img, 168, 240, 198), self::FUENTE_SEMI, 1.2);
-        self::texto($img, $legible, $x0 + $hueco + 14, $y + 12, $tam,
+        self::texto($img, 'WhatsApp', $x0 + $hueco + 16, $y - 30, 18,
+            imagecolorallocate($img, 168, 240, 198), self::FUENTE_SEMI, 1.4);
+        self::texto($img, $legible, $x0 + $hueco + 16, $y + 14, $tam,
             imagecolorallocate($img, 255, 255, 255), self::FUENTE, $tracking);
 
         imagepng($img, $destino);
