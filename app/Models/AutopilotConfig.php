@@ -33,6 +33,9 @@ class AutopilotConfig extends BaseModel
         'formato',
         'video_nivel',
         'video_duracion',
+        'cierre_activo',
+        'cierre_anios',
+        'cierre_ciudad',
     ];
 
     protected $casts = [
@@ -40,6 +43,8 @@ class AutopilotConfig extends BaseModel
         'dias'           => 'array',
         'dias_flyer'     => 'array',
         'video_duracion' => 'integer',
+        'cierre_activo'  => 'boolean',
+        'cierre_anios'   => 'integer',
     ];
 
     public function aliado(): BelongsTo

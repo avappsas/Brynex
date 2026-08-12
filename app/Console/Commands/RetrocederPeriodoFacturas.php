@@ -10,6 +10,22 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
+ * ⚠ OBSOLETO — contradice la convención vigente. Leer esto antes de usarlo.
+ *
+ * La factura guarda el mes en que se COBRA y el plano PILA cubre el mes de servicio
+ * que ese cobro paga (ver Plano::periodoPlano). Este comando reetiqueta la factura
+ * con el mes cotizado y copia ese mismo período al plano, dejando ambos en el mismo
+ * mes. La consecuencia no es cosmética: la siguiente facturación del contrato genera
+ * un plano en un período que la factura anterior ya cubría, y las dos quedan en la
+ * misma planilla. Tampoco respeta la modalidad 11 (Independiente Mes Actual): en la
+ * corrida del 06/08/2026 movió 20 planos ya liquidados ante el operador.
+ *
+ * Aquella corrida (615 facturas, 28 contratos) se deshizo con
+ * `php artisan facturas:restaurar-periodo`, que es también el remedio si alguien
+ * vuelve a ejecutar este comando.
+ *
+ * ── Documentación original ──────────────────────────────────────────────────
+ *
  * Retrocede el período (mes/anio) de las planillas hacia el mes cotizado.
  *
  * Contexto: al facturar, el sistema guarda como período el mes en que se cobra.
@@ -52,10 +68,22 @@ class RetrocederPeriodoFacturas extends Command
                             {--detalle : Listar factura por factura en vez del resumen por contrato}
                             {--ejecutar : Aplica los cambios (sin esta bandera solo simula)}';
 
-    protected $description = 'Retrocede el período de las planillas hacia el mes cotizado (con sus planos PILA)';
+    protected $description = '[OBSOLETO] Retrocede el período de las planillas hacia el mes cotizado — desalinea los planos PILA';
 
     public function handle(): int
     {
+        $this->warn('⚠ Este comando contradice la convención vigente: la factura guarda el mes de COBRO');
+        $this->warn('  y el plano el mes de servicio (Plano::periodoPlano). Al igualar los dos, la siguiente');
+        $this->warn('  facturación cae en un período ya cubierto y dos personas quedan en la misma planilla.');
+        $this->warn('  La corrida del 06/08/2026 hubo que deshacerla con facturas:restaurar-periodo.');
+        $this->newLine();
+
+        if ($this->option('ejecutar') && !$this->confirm('¿Ejecutar de todas formas?', false)) {
+            $this->info('Cancelado.');
+
+            return self::SUCCESS;
+        }
+
         $aliadoId = (int) $this->option('aliado');
         $meses    = (int) $this->option('meses');
         $ejecutar = (bool) $this->option('ejecutar');

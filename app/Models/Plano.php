@@ -93,6 +93,36 @@ class Plano extends BaseModel
     }
 
     /**
+     * Período que cubre el plano PILA a partir del período de su factura.
+     *
+     * Convención vigente: la factura se registra en el mes en que se COBRA.
+     * El plano es el mes de servicio que ese cobro paga:
+     *
+     *   • Independiente Mes Actual (modalidad 11) → paga el mes corriente   → plano = mes factura
+     *   • Dependientes e Independiente Vencido    → paga el mes vencido     → plano = mes factura − 1
+     *   • Afiliación                              → va en el mes de ingreso → plano = mes factura
+     *
+     * Ejemplo (modalidad 10): cobro del 04/08/2026 → factura Ago 2026 → plano Jul 2026.
+     *
+     * Único lugar donde vive esta regla: cualquier proceso que mueva el período de
+     * una factura debe recalcular el plano con este método en vez de copiar el mes.
+     * Igualar ambos períodos hace que la siguiente facturación caiga en un mes ya
+     * cubierto y mete dos veces a la misma persona en la planilla.
+     *
+     * @return array{0:int,1:int} [mes, anio]
+     */
+    public static function periodoPlano(int $mesFactura, int $anioFactura, int $tipoModalidadId, bool $esAfiliacion): array
+    {
+        if ($esAfiliacion || $tipoModalidadId === 11) {
+            return [$mesFactura, $anioFactura];
+        }
+
+        return $mesFactura > 1
+            ? [$mesFactura - 1, $anioFactura]
+            : [12, $anioFactura - 1];
+    }
+
+    /**
      * Genera el registro de plano a partir de un contrato y factura.
      * Snapshot de los datos al momento de facturar.
      */
@@ -133,21 +163,20 @@ class Plano extends BaseModel
         [$primerNom, $segundoNom] = static::splitNombre($cliente?->nombres    ?? ($cliente?->primer_nombre   . ' ' . $cliente?->segundo_nombre   ?? ''));
 
         $esAfiliacion = $factura->tipo === 'afiliacion';
-        $esPlanilla   = !$esAfiliacion;
 
         // Independientes "Mes Actual" (tipo_modalidad_id = 11): el plano cubre el mes facturado.
         // Dependientes de empresa: el plano cubre el MES ANTERIOR (billing mayo → plano abril).
-        $esIndepMesActual = $modal && (int)$modal->id === 11;
+        // Misma fuente que periodoPlano(): el id del contrato y no la relación, que
+        // puede no venir cargada y haría divergir el período de la fecha de ingreso.
+        $modalidadId      = (int)($contrato->tipo_modalidad_id ?? 0);
+        $esIndepMesActual = $modalidadId === 11;
 
-        if ($esPlanilla && !$esIndepMesActual) {
-            // Dependiente empresa: mes anterior
-            $mesPlan  = $factura->mes > 1 ? $factura->mes - 1 : 12;
-            $anioPlan = $factura->mes > 1 ? $factura->anio    : $factura->anio - 1;
-        } else {
-            // Afiliación o independiente mes actual
-            $mesPlan  = $factura->mes;
-            $anioPlan = $factura->anio;
-        }
+        [$mesPlan, $anioPlan] = static::periodoPlano(
+            (int)$factura->mes,
+            (int)$factura->anio,
+            $modalidadId,
+            $esAfiliacion
+        );
 
         // fecha_ing: en afiliación siempre; en planilla solo el primer mes de cotización.
         // • Independiente mes actual (tipo 11): fecha_ingreso = mes facturado (paga el mismo mes)

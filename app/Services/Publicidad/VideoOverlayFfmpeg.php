@@ -163,6 +163,67 @@ class VideoOverlayFfmpeg
         return ['ok' => true, 'error' => null];
     }
 
+    /**
+     * Pega el cierre de marca al final de una pieza, con una transición real en vez de un
+     * corte seco.
+     *
+     * Se usa `xfade` con un destello a blanco, no un fundido común: es el mismo recurso que
+     * el propio cierre usa entre sus momentos, así la costura se lee como parte de la pieza
+     * y no como dos videos pegados. El audio cruza con `acrossfade` a la vez, porque si solo
+     * cruzara la imagen se notaría el salto en el sonido.
+     *
+     * Los dos clips deben coincidir en fps y formato de pixel para que xfade funcione: el
+     * contenido de Veo viene a 24 fps y el cierre a 30, así que se normalizan aquí.
+     *
+     * @return array{ok: bool, error: ?string}
+     */
+    public static function pegarCierre(
+        string $rutaContenido,
+        string $rutaCierre,
+        string $destinoAbsoluto,
+        float $transicion = 0.5
+    ): array {
+        $binario  = config('services.ffmpeg.binario', 'ffmpeg');
+        $ffprobe  = config('services.ffmpeg.ffprobe', 'ffprobe');
+
+        $dim = self::obtenerDimensiones($ffprobe, $rutaContenido);
+        if (!$dim) {
+            return ['ok' => false, 'error' => 'No se pudo leer la duración del video de contenido.'];
+        }
+        [$ancho, $alto, $duracion] = $dim;
+
+        // El cruce arranca antes de que termine el contenido; si la pieza fuera más corta
+        // que la transición, se recorta para no pedirle a xfade un offset negativo.
+        $cruce  = min($transicion, max(0.2, $duracion - 0.2));
+        $offset = round(max(0, $duracion - $cruce), 3);
+
+        $filtro = implode(';', [
+            "[0:v]fps=30,scale={$ancho}:{$alto},setsar=1,format=yuv420p,settb=AVTB[v0]",
+            "[1:v]fps=30,scale={$ancho}:{$alto},setsar=1,format=yuv420p,settb=AVTB[v1]",
+            "[v0][v1]xfade=transition=fadewhite:duration={$cruce}:offset={$offset}[v]",
+            '[0:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[a0]',
+            '[1:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[a1]',
+            "[a0][a1]acrossfade=d={$cruce}:c1=tri:c2=tri[a]",
+        ]);
+
+        $resultado = Process::timeout(300)->run([
+            $binario, '-y',
+            '-i', $rutaContenido,
+            '-i', $rutaCierre,
+            '-filter_complex', $filtro,
+            '-map', '[v]', '-map', '[a]',
+            '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-preset', 'veryfast', '-crf', '20',
+            '-c:a', 'aac', '-b:a', '128k',
+            $destinoAbsoluto,
+        ]);
+
+        if (!$resultado->successful()) {
+            return ['ok' => false, 'error' => 'FFmpeg falló al pegar el cierre: ' . mb_substr($resultado->errorOutput(), -500)];
+        }
+
+        return ['ok' => true, 'error' => null];
+    }
+
     /** @return array{0:int,1:int,2:float}|null [ancho, alto, duracion_seg] */
     private static function obtenerDimensiones(string $ffprobe, string $rutaVideo): ?array
     {

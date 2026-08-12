@@ -6,6 +6,7 @@ use App\Models\AutopilotConfig;
 use App\Models\IaConfiguracionAliado;
 use App\Models\Publicacion;
 use App\Models\PublicidadVideoIa;
+use App\Services\Publicidad\CierreMarcaVideo;
 use App\Services\Publicidad\PublicacionPublisher;
 use App\Services\Publicidad\VeoVideoGenerator;
 use App\Services\Publicidad\VideoOverlayFfmpeg;
@@ -181,6 +182,13 @@ class ProcesarVideosIa extends Command
             return;
         }
 
+        // Cierre de marca al final, con transición. Solo para las piezas del piloto: un video
+        // generado a mano desde el panel puede tener otro destino (una historia, un envío
+        // suelto) donde el cierre corporativo no viene al caso.
+        if ($video->autopilot_payload) {
+            $rutaFinalRelativa = $this->pegarCierreDeMarca($video, $rutaFinalRelativa);
+        }
+
         $video->update([
             'estado'             => PublicidadVideoIa::ESTADO_LISTA,
             'video_path'         => $rutaFinalRelativa,
@@ -190,6 +198,57 @@ class ProcesarVideosIa extends Command
         $this->info("Video #{$video->id} listo.");
 
         $this->publicarDesdeAutopilot($video->fresh());
+    }
+
+    /**
+     * Le pega el cierre de marca a la pieza. Si algo falla —falta el clip de fondo, falla
+     * FFmpeg— se devuelve la pieza SIN cierre en vez de romper: es preferible publicar un
+     * Reel sin la cola corporativa a perder el video que ya se pagó.
+     *
+     * @return string Ruta relativa del video final (con cierre si se pudo, sin él si no).
+     */
+    private function pegarCierreDeMarca(PublicidadVideoIa $video, string $rutaContenidoRelativa): string
+    {
+        $aliado = $video->aliado;
+        if (!$aliado) {
+            return $rutaContenidoRelativa;
+        }
+
+        $config = \App\Models\AutopilotConfig::paraAliado($aliado->id);
+        if (!$config->cierre_activo) {
+            return $rutaContenidoRelativa;
+        }
+
+        $cierre = CierreMarcaVideo::obtener(
+            $aliado,
+            (int) ($config->cierre_anios ?: 12),
+            $config->cierre_ciudad ?: 'Cali'
+        );
+
+        if (!$cierre['ok']) {
+            $this->warn("Video #{$video->id}: sin cierre de marca ({$cierre['error']}).");
+            return $rutaContenidoRelativa;
+        }
+
+        $rutaConCierre = 'publicidad/video_ia/' . Str::random(20) . '.mp4';
+
+        $union = VideoOverlayFfmpeg::pegarCierre(
+            Storage::disk('public')->path($rutaContenidoRelativa),
+            $cierre['path'],
+            Storage::disk('public')->path($rutaConCierre)
+        );
+
+        if (!$union['ok']) {
+            $this->warn("Video #{$video->id}: no se pudo pegar el cierre ({$union['error']}).");
+            return $rutaContenidoRelativa;
+        }
+
+        // El clip sin cierre ya no se usa: se borra para no acumular archivos huérfanos.
+        Storage::disk('public')->delete($rutaContenidoRelativa);
+
+        $this->info("Video #{$video->id}: cierre de marca pegado.");
+
+        return $rutaConCierre;
     }
 
     /**
