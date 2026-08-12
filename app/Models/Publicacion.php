@@ -31,6 +31,7 @@ class Publicacion extends BaseModel
         'tema',
         'estilo_imagen',
         'pauta_estado',
+        'pauta_excluida',
         'pauta_presupuesto_diario_cop',
         'pauta_gasto_total_cop',
         'meta_campana_id',
@@ -56,6 +57,7 @@ class Publicacion extends BaseModel
         'pauta_presupuesto_diario_cop' => 'decimal:2',
         'pauta_gasto_total_cop'        => 'decimal:2',
         'pauta_activada_at'            => 'datetime',
+        'pauta_excluida'               => 'boolean',
     ];
 
     protected $attributes = [

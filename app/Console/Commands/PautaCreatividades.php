@@ -49,6 +49,7 @@ class PautaCreatividades extends Command
             $candidata = Publicacion::where('aliado_id', $aliado->id)
                 ->whereNotNull('publicada_at')
                 ->whereNull('meta_ad_id')
+                ->where('pauta_excluida', false)
                 ->orderByDesc('publicada_at')
                 ->first();
 
