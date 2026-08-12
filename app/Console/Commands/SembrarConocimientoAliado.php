@@ -14,10 +14,12 @@ use Illuminate\Console\Command;
  * pagado pregunta otra cosa —quiénes son ustedes, por qué ustedes, atienden en mi ciudad— y
  * sin eso el asistente contesta con generalidades.
  *
- * Solo se siembra lo que la marca YA afirma en sus propias piezas o lo verificable en el
- * sistema. Los datos de operación (tiempos de afiliación, fechas de pago, mora, retiro) NO
- * van aquí: los tiene que dictar el aliado, porque el asistente se los va a decir a clientes
- * reales y equivocarse ahí cuesta caro.
+ * Las reglas de operación (tiempos de afiliación, fecha de pago, mora, retiro) las dictó el
+ * aliado el 12-ago-2026 y están transcritas tal cual: el asistente se las va a decir a
+ * clientes reales, así que no se adornan ni se completan con supuestos. Si cambian, se
+ * cambian aquí — no se le pide al modelo que las deduzca.
+ *
+ * Las cuentas de pago NO se escriben nunca: varían por aliado y salen de consultar_cliente.
  *
  * Es idempotente: se reconoce por título, así que correrlo dos veces actualiza en vez de
  * duplicar.
@@ -77,6 +79,45 @@ class SembrarConocimientoAliado extends Command
                     . "justamente el servicio: quitarle de encima el trámite.",
             ],
             [
+                'titulo'    => '¿En cuánto tiempo queda activa la afiliación?',
+                'categoria' => 'proceso',
+                'contenido' => "La EPS demora entre 1 y 2 días hábiles, dependiendo de cuál sea. La ARL queda activa "
+                    . "al día siguiente, pero el radicado sale el MISMO día — o sea que el soporte de que el trámite "
+                    . "ya está en curso se entrega de una, aunque la cobertura empiece al día siguiente. Ese radicado "
+                    . "es lo que suele necesitar quien lo pide para empezar a trabajar.",
+            ],
+            [
+                'titulo'    => '¿Cuándo se paga cada mes?',
+                'categoria' => 'pagos',
+                'contenido' => "El pago va dentro de los primeros 10 días del mes. Nunca dar por tuya una fecha "
+                    . "distinta ni improvisar plazos: si la persona pregunta por su valor exacto, su período o hasta "
+                    . "cuándo tiene, hay que consultarlo con consultar_cliente.",
+            ],
+            [
+                'titulo'    => '¿Cómo y dónde pago?',
+                'categoria' => 'pagos',
+                'contenido' => "Las cuentas de pago cambian según el aliado, así que NUNCA se dictan de memoria ni se "
+                    . "inventan: se obtienen con consultar_cliente, que devuelve las cuentas vigentes junto con el "
+                    . "valor del período. Dar un número de cuenta equivocado hace que el cliente mande la plata a otro "
+                    . "lado, así que ante cualquier duda es preferible pasar con un asesor.",
+            ],
+            [
+                'titulo'    => '¿Qué pasa si me atraso en el pago?',
+                'categoria' => 'pagos',
+                'contenido' => "Si se atrasa queda en mora PERO NO pierde el servicio: la cobertura sigue activa. Lo "
+                    . "que no puede es pasarse del mes — si llega el cambio de mes sin pagar, ahí sí se retira. "
+                    . "Conviene decirlo con calma y sin amenazar: la persona sigue cubierta, pero tiene que ponerse al "
+                    . "día antes de que termine el mes.",
+            ],
+            [
+                'titulo'    => '¿Cómo me retiro del servicio?',
+                'categoria' => 'proceso',
+                'contenido' => "El retiro va antes del cambio de mes. Hay dos caminos. Si a la persona le toca pagar "
+                    . "el mes y no paga, se retira sola por falta de pago, sin necesidad de que avise. Y si ya sabe "
+                    . "que se quiere retirar, lo mejor es que lo informe antes, para no tener que esperar a fin de mes "
+                    . "y dejar el trámite en orden.",
+            ],
+            [
                 'titulo'    => '¿Por dónde me contacto con un asesor?',
                 'categoria' => 'contacto',
                 'contenido' => "El canal principal es WhatsApp" . ($numero ? " al {$numero}" : '') . ". Si la persona "
@@ -111,18 +152,6 @@ class SembrarConocimientoAliado extends Command
         }
 
         $this->info("Conocimiento de {$nombre}: {$nuevas} nueva(s), {$actualizadas} actualizada(s).");
-        $this->newLine();
-        $this->warn('Falta el conocimiento de OPERACIÓN, que no se puede deducir del sistema y');
-        $this->warn('el aliado tiene que dictar (el asistente se lo dirá a clientes reales):');
-        foreach ([
-            'Desde cuándo queda cubierta la persona una vez se afilia',
-            'Cuándo se paga cada mes y hasta qué día hay plazo',
-            'Qué medios de pago se aceptan',
-            'Qué pasa si se atrasa (mora): cuándo se suspende y cómo se reactiva',
-            'Cómo se hace el retiro y con cuánta anticipación hay que avisar',
-        ] as $i => $falta) {
-            $this->line('  ' . ($i + 1) . '. ' . $falta);
-        }
 
         return self::SUCCESS;
     }
