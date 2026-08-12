@@ -597,15 +597,24 @@ class CierreMarcaVideo
                 $tam = min($tam, self::ajustar($tam, $sust($linea), -1.5));
             }
 
+            // El salto entre líneas se MIDE, no se estima: con un alto fijo la tilde de
+            // "DÍA" se le montaba a la "N" de la línea de arriba (el mismo defecto que ya
+            // habia con la Ñ). Cada línea baja lo que de verdad ocupa la de abajo.
             $y = 700 + (int) round((66 - $tam) / 2);
+            $yLinea = $y;
+            $yFin = $y;
             foreach ($lineas as $i => $linea) {
+                $texto = mb_strtoupper($sust($linea));
+                if ($i > 0) {
+                    $yLinea += max($tam + 6, self::altoSobreBase($texto, $tam) + 14);
+                }
                 self::centrado(
-                    $img, mb_strtoupper($sust($linea)), $cx, $y + $i * ($tam + 6), $tam,
+                    $img, $texto, $cx, $yLinea, $tam,
                     $i === 0 ? $blanco : $oroAlto, self::FUENTE, -1.5
                 );
+                $yFin = $yLinea;
             }
 
-            $yFin = $y + max(0, count($lineas) - 1) * ($tam + 6);
             self::regla($img, $cx, $yFin + 34, 100, $regla);
             if (!empty($def['sub'])) {
                 self::centrado($img, $sust($def['sub']), $cx, $yFin + 88, 34, $blanco, self::FUENTE_SCRIPT, 0);
@@ -620,6 +629,15 @@ class CierreMarcaVideo
      * Baja el tamaño de fuente hasta que la línea quepa a lo ancho. Sin esto, un texto largo
      * del catálogo —"CUALQUIER COTIZACIÓN"— se sale del lienzo y sale cortado por los lados.
      */
+    /** Cuánto sube el texto por encima de su línea base, tildes incluidas. */
+    private static function altoSobreBase(string $texto, int $tam): int
+    {
+        $ruta = base_path(self::FUENTE);
+        $caja = @imagettfbbox($tam, 0, $ruta, $texto);
+
+        return $caja ? (int) abs($caja[7]) : (int) round($tam * 0.95);
+    }
+
     private static function ajustar(int $tam, string $texto, float $tracking): int
     {
         $maxAncho = self::ANCHO - 72;

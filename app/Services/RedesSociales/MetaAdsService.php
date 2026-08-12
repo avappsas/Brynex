@@ -40,6 +40,9 @@ class MetaAdsService
         if (!$config->activo || !$config->ad_account_id) {
             return ['ok' => false, 'mensaje' => 'La pauta pagada no está configurada para este aliado.'];
         }
+        if ($presupuestoDiarioCop > PautaConfig::TOPE_DIARIO_COP) {
+            return ['ok' => false, 'mensaje' => 'El tope diario es de $' . number_format(PautaConfig::TOPE_DIARIO_COP, 0, ',', '.') . ' COP.'];
+        }
         if ($presupuestoDiarioCop > $config->disponibleEsteMes()) {
             return ['ok' => false, 'mensaje' => 'Ese presupuesto supera el tope mensual disponible ($' . number_format($config->disponibleEsteMes(), 0, ',', '.') . ' COP restantes este mes).'];
         }
@@ -58,7 +61,11 @@ class MetaAdsService
         $pageId = $fb->identificador;
         $numeroWa = preg_replace('/\D/', '', $waConfig->numero_telefono);
 
-        // 0. Subir la imagen al catálogo de anuncios de la cuenta (hace falta el image_hash)
+        // 0. Subir la imagen al catálogo de anuncios de la cuenta (hace falta el image_hash).
+        // En una pieza de video esta imagen es el póster: sirve de miniatura, no de anuncio.
+        if (!$publicacion->imagen_path || !Storage::disk('public')->exists($publicacion->imagen_path)) {
+            return ['ok' => false, 'mensaje' => 'La pieza no tiene imagen (ni póster, si es video) para el anuncio.'];
+        }
         $subida = Http::asMultipart()->attach(
             'source', Storage::disk('public')->get($publicacion->imagen_path), basename($publicacion->imagen_path)
         )->post(self::BASE_URL . "/{$cuenta}/adimages", ['access_token' => $token]);
@@ -69,6 +76,17 @@ class MetaAdsService
         $imageHash = data_get(reset($imagenes) ?: [], 'hash');
         if (!$imageHash) {
             return ['ok' => false, 'mensaje' => 'Meta no devolvió el hash de la imagen subida.'];
+        }
+
+        // 0b. Si la pieza es un Reel, el anuncio tiene que ser el VIDEO. Antes se pautaba el
+        // póster: se pagaba por un cuadro fijo justo del formato que da más alcance.
+        $videoId = null;
+        if (($publicacion->tipo_pieza ?? null) === 'video' && $publicacion->video_path) {
+            $sube = self::subirVideo($publicacion, $cuenta, $token);
+            if (!$sube['ok']) {
+                return ['ok' => false, 'mensaje' => $sube['mensaje']];
+            }
+            $videoId = $sube['video_id'];
         }
 
         // 1. Campaña
@@ -95,7 +113,7 @@ class MetaAdsService
             'optimization_goal'  => 'CONVERSATIONS',
             'bid_strategy'       => 'LOWEST_COST_WITHOUT_CAP',
             'promoted_object'    => json_encode(['page_id' => $pageId, 'whatsapp_phone_number' => $numeroWa]),
-            'targeting'          => json_encode(['geo_locations' => ['countries' => ['CO']], 'age_min' => 18, 'age_max' => 65]),
+            'targeting'          => json_encode(self::segmentacion($config, $token)),
             'status'             => 'PAUSED',
             'access_token'       => $token,
         ]);
@@ -107,35 +125,47 @@ class MetaAdsService
 
         // 3. Creatividad: botón "Enviar mensaje" + mensaje precargado con el código de
         // referencia — mismo texto que usa el link orgánico, para atribuir igual.
+        $bienvenida = [
+            'type'                => 'VISUAL_EDITOR',
+            'version'             => 2,
+            'landing_screen_type' => 'welcome_message',
+            'media_type'          => 'text',
+            'text_format'         => [
+                'customer_action_type' => 'autofill_message',
+                'message' => [
+                    'text'             => '¡Hola! 👋 Gracias por escribirnos.',
+                    'autofill_message' => ['content' => $publicacion->mensajeWhatsappRastreado()],
+                ],
+            ],
+        ];
+        $llamado = [
+            'type'  => 'WHATSAPP_MESSAGE',
+            'value' => ['app_destination' => 'WHATSAPP'],
+        ];
+
+        // `video_data` y `link_data` son excluyentes: Meta rechaza el creativo si van los dos.
+        $historia = $videoId
+            ? ['video_data' => [
+                'video_id'             => $videoId,
+                'message'              => $publicacion->copy ?: $publicacion->titulo,
+                'title'                => $publicacion->titulo,
+                'image_hash'           => $imageHash,   // miniatura: el póster del Reel
+                'call_to_action'       => $llamado,
+                'page_welcome_message' => $bienvenida,
+            ]]
+            : ['link_data' => [
+                'message'              => $publicacion->copy ?: $publicacion->titulo,
+                'name'                 => $publicacion->titulo,
+                'image_hash'           => $imageHash,
+                'link'                 => 'https://api.whatsapp.com/send',
+                'call_to_action'       => $llamado,
+                'page_welcome_message' => $bienvenida,
+            ]];
+
         $creativa = Http::asForm()->post(self::BASE_URL . "/{$cuenta}/adcreatives", [
             'name'               => "Pieza #{$publicacion->id} — creatividad",
-            'object_story_spec'  => json_encode([
-                'page_id'   => $pageId,
-                'link_data' => [
-                    'message'      => $publicacion->copy ?: $publicacion->titulo,
-                    'name'         => $publicacion->titulo,
-                    'image_hash'   => $imageHash,
-                    'link'         => 'https://api.whatsapp.com/send',
-                    'call_to_action' => [
-                        'type'  => 'WHATSAPP_MESSAGE',
-                        'value' => ['app_destination' => 'WHATSAPP'],
-                    ],
-                    'page_welcome_message' => [
-                        'type'                => 'VISUAL_EDITOR',
-                        'version'             => 2,
-                        'landing_screen_type' => 'welcome_message',
-                        'media_type'          => 'text',
-                        'text_format'         => [
-                            'customer_action_type' => 'autofill_message',
-                            'message' => [
-                                'text'             => '¡Hola! 👋 Gracias por escribirnos.',
-                                'autofill_message' => ['content' => $publicacion->mensajeWhatsappRastreado()],
-                            ],
-                        ],
-                    ],
-                ],
-            ]),
-            'access_token' => $token,
+            'object_story_spec'  => json_encode(['page_id' => $pageId] + $historia),
+            'access_token'       => $token,
         ]);
         if (!$creativa->successful()) {
             self::borrar($campanaId, $token);
@@ -165,6 +195,113 @@ class MetaAdsService
         ]);
 
         return ['ok' => true, 'mensaje' => 'Pauta creada en pausa (botón nativo de WhatsApp) — $0 gastado hasta que la actives.'];
+    }
+
+    /**
+     * Sube el video de la pieza al catálogo de la cuenta y espera a que Meta lo procese.
+     *
+     * El creativo no se puede crear con un video a medio procesar: Meta acepta la subida al
+     * instante pero devuelve error al referenciarlo hasta que el estado es `ready`. Un Reel de
+     * 16 segundos tarda entre 10 y 40 segundos.
+     *
+     * @return array{ok: bool, video_id: ?string, mensaje: string}
+     */
+    private static function subirVideo(Publicacion $publicacion, string $cuenta, string $token): array
+    {
+        if (!Storage::disk('public')->exists($publicacion->video_path)) {
+            return ['ok' => false, 'video_id' => null, 'mensaje' => 'No se encuentra el archivo de video de la pieza.'];
+        }
+
+        $subida = Http::timeout(180)->asMultipart()->attach(
+            'source',
+            Storage::disk('public')->get($publicacion->video_path),
+            basename($publicacion->video_path)
+        )->post(self::BASE_URL . "/{$cuenta}/advideos", ['access_token' => $token]);
+
+        if (!$subida->successful()) {
+            return ['ok' => false, 'video_id' => null, 'mensaje' => 'Video: ' . self::errorDeMeta($subida)];
+        }
+        $videoId = $subida->json('id');
+        if (!$videoId) {
+            return ['ok' => false, 'video_id' => null, 'mensaje' => 'Meta no devolvió el id del video subido.'];
+        }
+
+        // Hasta 2 minutos de espera. Si Meta se demora más, es mejor fallar y reintentar que
+        // dejar una campaña a medio armar apuntando a un video que no existe todavía.
+        for ($intento = 0; $intento < 24; $intento++) {
+            sleep(5);
+            $estado = Http::get(self::BASE_URL . "/{$videoId}", [
+                'fields'       => 'status',
+                'access_token' => $token,
+            ]);
+            $fase = $estado->json('status.video_status');
+            if ($fase === 'ready') {
+                return ['ok' => true, 'video_id' => $videoId, 'mensaje' => 'Video listo.'];
+            }
+            if ($fase === 'error') {
+                return ['ok' => false, 'video_id' => null, 'mensaje' => 'Meta no pudo procesar el video de la pieza.'];
+            }
+        }
+
+        return ['ok' => false, 'video_id' => null, 'mensaje' => 'Meta sigue procesando el video (más de 2 minutos). Reintenta en un momento.'];
+    }
+
+    /**
+     * Segmentación del conjunto de anuncios.
+     *
+     * Antes estaba quemada en toda Colombia de 18 a 65: con 5.000 COP/día eso reparte el
+     * alcance entre 50 millones de personas. Ahora sale de `pauta_config`, y las ciudades se
+     * traducen a las claves internas de Meta —que no se pueden escribir a mano— la primera
+     * vez y quedan cacheadas.
+     *
+     * Sin ciudades configuradas se mantiene el país entero: es el comportamiento anterior y
+     * nunca deja un conjunto sin geografía, que Meta rechazaría.
+     */
+    private static function segmentacion(PautaConfig $config, string $token): array
+    {
+        $base = [
+            'age_min' => $config->edad_min ?: 25,
+            'age_max' => $config->edad_max ?: 55,
+        ];
+
+        $ciudades = $config->ciudades ?: [];
+        if (empty($ciudades)) {
+            return $base + ['geo_locations' => ['countries' => ['CO']]];
+        }
+
+        $claves = $config->ciudades_claves ?: [];
+        $faltan = array_diff($ciudades, array_keys($claves));
+
+        foreach ($faltan as $ciudad) {
+            $r = Http::get(self::BASE_URL . '/search', [
+                'type'           => 'adgeolocation',
+                'location_types' => json_encode(['city']),
+                'q'              => $ciudad,
+                'country_code'   => 'CO',
+                'limit'          => 1,
+                'access_token'   => $token,
+            ]);
+            $clave = data_get($r->json('data.0') ?: [], 'key');
+            if ($clave) {
+                $claves[$ciudad] = $clave;
+            }
+        }
+
+        if ($claves !== ($config->ciudades_claves ?: [])) {
+            $config->update(['ciudades_claves' => $claves]);
+        }
+
+        // Si ninguna ciudad se pudo resolver, país entero antes que un conjunto inválido.
+        $resueltas = array_values(array_intersect_key($claves, array_flip($ciudades)));
+        if (empty($resueltas)) {
+            return $base + ['geo_locations' => ['countries' => ['CO']]];
+        }
+
+        return $base + [
+            'geo_locations' => [
+                'cities' => array_map(fn ($k) => ['key' => $k, 'radius' => 25, 'distance_unit' => 'kilometer'], $resueltas),
+            ],
+        ];
     }
 
     /**
@@ -274,7 +411,9 @@ class MetaAdsService
 
         $costoPorConversacion = $gastoTotal / $conversaciones;
         // Umbral simple: si el costo por conversación real es bueno (<15.000 COP), sugerir +40%.
-        return $costoPorConversacion < 15000 ? round($base * 1.4) : $base;
+        $sugerido = $costoPorConversacion < 15000 ? round($base * 1.4) : $base;
+
+        return min($sugerido, PautaConfig::TOPE_DIARIO_COP);
     }
 
     private static function borrar(string $campanaId, string $token): void

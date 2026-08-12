@@ -17,6 +17,10 @@ class PautaConfig extends BaseModel
         'audiencias_sync_at',
         'limite_mensual_cop',
         'presupuesto_diario_default_cop',
+        'ciudades',
+        'ciudades_claves',
+        'edad_min',
+        'edad_max',
     ];
 
     protected $casts = [
@@ -25,7 +29,14 @@ class PautaConfig extends BaseModel
         'presupuesto_diario_default_cop'  => 'decimal:2',
         'audiencias'                      => 'array',
         'audiencias_sync_at'              => 'datetime',
+        'ciudades'                        => 'array',
+        'ciudades_claves'                 => 'array',
+        'edad_min'                        => 'integer',
+        'edad_max'                        => 'integer',
     ];
+
+    /** Techo duro de gasto diario. Ni el ajuste automático ni el panel pueden pasarse de aquí. */
+    public const TOPE_DIARIO_COP = 15000.0;
 
     public function aliado(): BelongsTo
     {
