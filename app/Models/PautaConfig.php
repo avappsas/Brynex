@@ -21,6 +21,11 @@ class PautaConfig extends BaseModel
         'ciudades_claves',
         'edad_min',
         'edad_max',
+        'presupuesto_semanal_cop',
+        'meta_campana_permanente_id',
+        'meta_adset_permanente_id',
+        'creatividades_max',
+        'piezas_semana_max',
     ];
 
     protected $casts = [
@@ -33,10 +38,30 @@ class PautaConfig extends BaseModel
         'ciudades_claves'                 => 'array',
         'edad_min'                        => 'integer',
         'edad_max'                        => 'integer',
+        'presupuesto_semanal_cop'         => 'decimal:2',
+        'creatividades_max'               => 'integer',
+        'piezas_semana_max'               => 'integer',
     ];
 
     /** Techo duro de gasto diario. Ni el ajuste automático ni el panel pueden pasarse de aquí. */
     public const TOPE_DIARIO_COP = 15000.0;
+
+    /**
+     * Presupuesto diario del conjunto permanente, derivado del semanal.
+     *
+     * Meta cobra por día, no por semana: el semanal es como el dueño piensa el gasto, y esta
+     * es su traducción. Se recorta al tope diario para que subir el semanal por descuido no
+     * pueda desbordar el límite de seguridad.
+     */
+    public function presupuestoDiarioCop(): float
+    {
+        $semanal = (float) ($this->presupuesto_semanal_cop ?: 0);
+        if ($semanal <= 0) {
+            return min((float) $this->presupuesto_diario_default_cop, self::TOPE_DIARIO_COP);
+        }
+
+        return min(round($semanal / 7), self::TOPE_DIARIO_COP);
+    }
 
     public function aliado(): BelongsTo
     {

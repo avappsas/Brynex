@@ -31,6 +31,9 @@ class MetaAdsService
 {
     private const BASE_URL = 'https://graph.facebook.com/v23.0';
 
+    /** Días que una creatividad nueva queda a salvo de la rotación, para que junte datos. */
+    private const DIAS_GRACIA = 4;
+
     /**
      * Crea Campaña + Conjunto de anuncios (destino WhatsApp) + Creatividad con botón nativo
      * "Enviar mensaje" + Anuncio, todo en PAUSED (cero gasto). No activa nada.
@@ -62,33 +65,15 @@ class MetaAdsService
         $pageId = $fb->identificador;
         $numeroWa = preg_replace('/\D/', '', $waConfig->numero_telefono);
 
-        // 0. Subir la imagen al catálogo de anuncios de la cuenta (hace falta el image_hash).
-        // En una pieza de video esta imagen es el póster: sirve de miniatura, no de anuncio.
-        if (!$publicacion->imagen_path || !Storage::disk('public')->exists($publicacion->imagen_path)) {
-            return ['ok' => false, 'mensaje' => 'La pieza no tiene imagen (ni póster, si es video) para el anuncio.'];
+        // 0. Media al catálogo de la cuenta. Si la pieza es un Reel, el anuncio tiene que ser
+        // el VIDEO: antes se pautaba el póster, o sea un cuadro fijo justo del formato que
+        // más alcance da.
+        $media = self::subirMedia($publicacion, $cuenta, $token);
+        if (!$media['ok']) {
+            return ['ok' => false, 'mensaje' => $media['mensaje']];
         }
-        $subida = Http::asMultipart()->attach(
-            'source', Storage::disk('public')->get($publicacion->imagen_path), basename($publicacion->imagen_path)
-        )->post(self::BASE_URL . "/{$cuenta}/adimages", ['access_token' => $token]);
-        if (!$subida->successful()) {
-            return ['ok' => false, 'mensaje' => 'Imagen: ' . self::errorDeMeta($subida)];
-        }
-        $imagenes = $subida->json('images') ?? [];
-        $imageHash = data_get(reset($imagenes) ?: [], 'hash');
-        if (!$imageHash) {
-            return ['ok' => false, 'mensaje' => 'Meta no devolvió el hash de la imagen subida.'];
-        }
-
-        // 0b. Si la pieza es un Reel, el anuncio tiene que ser el VIDEO. Antes se pautaba el
-        // póster: se pagaba por un cuadro fijo justo del formato que da más alcance.
-        $videoId = null;
-        if (($publicacion->tipo_pieza ?? null) === 'video' && $publicacion->video_path) {
-            $sube = self::subirVideo($publicacion, $cuenta, $token);
-            if (!$sube['ok']) {
-                return ['ok' => false, 'mensaje' => $sube['mensaje']];
-            }
-            $videoId = $sube['video_id'];
-        }
+        $imageHash = $media['image_hash'];
+        $videoId   = $media['video_id'];
 
         // 1. Campaña
         $campana = Http::asForm()->post(self::BASE_URL . "/{$cuenta}/campaigns", [
@@ -126,46 +111,11 @@ class MetaAdsService
 
         // 3. Creatividad: botón "Enviar mensaje" + mensaje precargado con el código de
         // referencia — mismo texto que usa el link orgánico, para atribuir igual.
-        $bienvenida = [
-            'type'                => 'VISUAL_EDITOR',
-            'version'             => 2,
-            'landing_screen_type' => 'welcome_message',
-            'media_type'          => 'text',
-            'text_format'         => [
-                'customer_action_type' => 'autofill_message',
-                'message' => [
-                    'text'             => '¡Hola! 👋 Gracias por escribirnos.',
-                    'autofill_message' => ['content' => $publicacion->mensajeWhatsappRastreado()],
-                ],
-            ],
-        ];
-        $llamado = [
-            'type'  => 'WHATSAPP_MESSAGE',
-            'value' => ['app_destination' => 'WHATSAPP'],
-        ];
-
-        // `video_data` y `link_data` son excluyentes: Meta rechaza el creativo si van los dos.
-        $historia = $videoId
-            ? ['video_data' => [
-                'video_id'             => $videoId,
-                'message'              => $publicacion->copy ?: $publicacion->titulo,
-                'title'                => $publicacion->titulo,
-                'image_hash'           => $imageHash,   // miniatura: el póster del Reel
-                'call_to_action'       => $llamado,
-                'page_welcome_message' => $bienvenida,
-            ]]
-            : ['link_data' => [
-                'message'              => $publicacion->copy ?: $publicacion->titulo,
-                'name'                 => $publicacion->titulo,
-                'image_hash'           => $imageHash,
-                'link'                 => 'https://api.whatsapp.com/send',
-                'call_to_action'       => $llamado,
-                'page_welcome_message' => $bienvenida,
-            ]];
-
         $creativa = Http::asForm()->post(self::BASE_URL . "/{$cuenta}/adcreatives", [
             'name'               => "Pieza #{$publicacion->id} — creatividad",
-            'object_story_spec'  => json_encode(['page_id' => $pageId] + $historia),
+            'object_story_spec'  => json_encode(
+                ['page_id' => $pageId] + self::historia($publicacion, $imageHash, $videoId)
+            ),
             'access_token'       => $token,
         ]);
         if (!$creativa->successful()) {
@@ -196,6 +146,90 @@ class MetaAdsService
         ]);
 
         return ['ok' => true, 'mensaje' => 'Pauta creada en pausa (botón nativo de WhatsApp) — $0 gastado hasta que la actives.'];
+    }
+
+    /**
+     * Sube la imagen (y el video, si la pieza es un Reel) al catálogo de la cuenta.
+     *
+     * En una pieza de video la imagen es el póster: sirve de miniatura, no de anuncio.
+     *
+     * @return array{ok: bool, image_hash: ?string, video_id: ?string, mensaje: string}
+     */
+    private static function subirMedia(Publicacion $publicacion, string $cuenta, string $token): array
+    {
+        if (!$publicacion->imagen_path || !Storage::disk('public')->exists($publicacion->imagen_path)) {
+            return ['ok' => false, 'image_hash' => null, 'video_id' => null, 'mensaje' => 'La pieza no tiene imagen (ni póster, si es video) para el anuncio.'];
+        }
+
+        $subida = Http::asMultipart()->attach(
+            'source', Storage::disk('public')->get($publicacion->imagen_path), basename($publicacion->imagen_path)
+        )->post(self::BASE_URL . "/{$cuenta}/adimages", ['access_token' => $token]);
+        if (!$subida->successful()) {
+            return ['ok' => false, 'image_hash' => null, 'video_id' => null, 'mensaje' => 'Imagen: ' . self::errorDeMeta($subida)];
+        }
+        $imagenes  = $subida->json('images') ?? [];
+        $imageHash = data_get(reset($imagenes) ?: [], 'hash');
+        if (!$imageHash) {
+            return ['ok' => false, 'image_hash' => null, 'video_id' => null, 'mensaje' => 'Meta no devolvió el hash de la imagen subida.'];
+        }
+
+        $videoId = null;
+        if (($publicacion->tipo_pieza ?? null) === 'video' && $publicacion->video_path) {
+            $sube = self::subirVideo($publicacion, $cuenta, $token);
+            if (!$sube['ok']) {
+                return ['ok' => false, 'image_hash' => null, 'video_id' => null, 'mensaje' => $sube['mensaje']];
+            }
+            $videoId = $sube['video_id'];
+        }
+
+        return ['ok' => true, 'image_hash' => $imageHash, 'video_id' => $videoId, 'mensaje' => 'Media lista.'];
+    }
+
+    /**
+     * `object_story_spec` de la creatividad: botón nativo de WhatsApp + mensaje precargado con
+     * el código de referencia de la pieza, que es lo que permite atribuir la conversación.
+     *
+     * `video_data` y `link_data` son excluyentes: Meta rechaza el creativo si van los dos.
+     */
+    private static function historia(Publicacion $publicacion, string $imageHash, ?string $videoId): array
+    {
+        $bienvenida = [
+            'type'                => 'VISUAL_EDITOR',
+            'version'             => 2,
+            'landing_screen_type' => 'welcome_message',
+            'media_type'          => 'text',
+            'text_format'         => [
+                'customer_action_type' => 'autofill_message',
+                'message' => [
+                    'text'             => '¡Hola! 👋 Gracias por escribirnos.',
+                    'autofill_message' => ['content' => $publicacion->mensajeWhatsappRastreado()],
+                ],
+            ],
+        ];
+        $llamado = [
+            'type'  => 'WHATSAPP_MESSAGE',
+            'value' => ['app_destination' => 'WHATSAPP'],
+        ];
+
+        if ($videoId) {
+            return ['video_data' => [
+                'video_id'             => $videoId,
+                'message'              => $publicacion->copy ?: $publicacion->titulo,
+                'title'                => $publicacion->titulo,
+                'image_hash'           => $imageHash,
+                'call_to_action'       => $llamado,
+                'page_welcome_message' => $bienvenida,
+            ]];
+        }
+
+        return ['link_data' => [
+            'message'              => $publicacion->copy ?: $publicacion->titulo,
+            'name'                 => $publicacion->titulo,
+            'image_hash'           => $imageHash,
+            'link'                 => 'https://api.whatsapp.com/send',
+            'call_to_action'       => $llamado,
+            'page_welcome_message' => $bienvenida,
+        ]];
     }
 
     /**
@@ -331,6 +365,232 @@ class MetaAdsService
         )));
 
         return $normalizar($a) === $normalizar($b);
+    }
+
+    /**
+     * Crea (una sola vez) el conjunto permanente del aliado y devuelve su id.
+     *
+     * Todo se crea en PAUSED: encender el gasto sigue siendo un acto explícito. De ahí en
+     * adelante las piezas entran como anuncios dentro de este mismo conjunto, que ya viene
+     * con historial — que es justamente lo que evita reiniciar el aprendizaje de Meta.
+     *
+     * Si el conjunto ya existe, sincroniza el presupuesto diario por si cambió el semanal.
+     *
+     * @return array{ok: bool, adset_id: ?string, mensaje: string}
+     */
+    public static function asegurarConjuntoPermanente(PautaConfig $config, int $aliadoId): array
+    {
+        if (!$config->activo || !$config->ad_account_id) {
+            return ['ok' => false, 'adset_id' => null, 'mensaje' => 'La pauta pagada no está configurada para este aliado.'];
+        }
+
+        $fb = RedSocialConfig::paraAliado($aliadoId, 'facebook');
+        if (!$fb->credencialesCompletas()) {
+            return ['ok' => false, 'adset_id' => null, 'mensaje' => 'Faltan credenciales de Facebook (ver Redes Sociales).'];
+        }
+        $waConfig = WhatsappConfig::where('aliado_id', $aliadoId)->where('activo', true)->first();
+        if (!$waConfig?->numero_telefono) {
+            return ['ok' => false, 'adset_id' => null, 'mensaje' => 'No hay un número de WhatsApp del bot configurado.'];
+        }
+
+        $token    = $fb->access_token;
+        $cuenta   = 'act_' . ltrim($config->ad_account_id, 'act_');
+        $diario   = (int) round($config->presupuestoDiarioCop());
+        $numeroWa = preg_replace('/\D/', '', $waConfig->numero_telefono);
+
+        // Ya existe: solo alinear el presupuesto. Cambiarlo reinicia parcialmente el
+        // aprendizaje, así que se toca únicamente cuando de verdad difiere.
+        if ($config->meta_adset_permanente_id) {
+            $actual = Http::get(self::BASE_URL . "/{$config->meta_adset_permanente_id}", [
+                'fields'       => 'daily_budget,status',
+                'access_token' => $token,
+            ]);
+            if ($actual->successful() && (int) $actual->json('daily_budget') !== $diario) {
+                Http::asForm()->post(self::BASE_URL . "/{$config->meta_adset_permanente_id}", [
+                    'daily_budget' => $diario,
+                    'access_token' => $token,
+                ]);
+            }
+            return ['ok' => true, 'adset_id' => $config->meta_adset_permanente_id, 'mensaje' => 'Conjunto permanente ya existía.'];
+        }
+
+        $campana = Http::asForm()->post(self::BASE_URL . "/{$cuenta}/campaigns", [
+            'name'                            => 'BRYGAR — conjunto permanente (WhatsApp)',
+            'objective'                       => 'OUTCOME_ENGAGEMENT',
+            'status'                          => 'PAUSED',
+            'special_ad_categories'           => json_encode([]),
+            'is_adset_budget_sharing_enabled' => 'false',
+            'access_token'                    => $token,
+        ]);
+        if (!$campana->successful()) {
+            return ['ok' => false, 'adset_id' => null, 'mensaje' => 'Campaña: ' . self::errorDeMeta($campana)];
+        }
+        $campanaId = $campana->json('id');
+
+        $adset = Http::asForm()->post(self::BASE_URL . "/{$cuenta}/adsets", [
+            'name'              => 'Permanente — Cali y Valle',
+            'campaign_id'       => $campanaId,
+            'destination_type'  => 'WHATSAPP',
+            'daily_budget'      => $diario,
+            'billing_event'     => 'IMPRESSIONS',
+            'optimization_goal' => 'CONVERSATIONS',
+            'bid_strategy'      => 'LOWEST_COST_WITHOUT_CAP',
+            'promoted_object'   => json_encode(['page_id' => $fb->identificador, 'whatsapp_phone_number' => $numeroWa]),
+            'targeting'         => json_encode(self::segmentacion($config, $token)),
+            'status'            => 'PAUSED',
+            'access_token'      => $token,
+        ]);
+        if (!$adset->successful()) {
+            self::borrar($campanaId, $token);
+            return ['ok' => false, 'adset_id' => null, 'mensaje' => 'Conjunto: ' . self::errorDeMeta($adset)];
+        }
+
+        $config->update([
+            'meta_campana_permanente_id' => $campanaId,
+            'meta_adset_permanente_id'   => $adset->json('id'),
+        ]);
+
+        return ['ok' => true, 'adset_id' => $adset->json('id'), 'mensaje' => 'Conjunto permanente creado en pausa — $0 gastado hasta que lo actives.'];
+    }
+
+    /**
+     * Mete una pieza como anuncio nuevo dentro del conjunto permanente.
+     *
+     * El anuncio entra ACTIVO si el conjunto ya lo está: el retador tiene que competir de
+     * verdad contra las creatividades que ya viven ahí. El gasto no sube por esto — el
+     * presupuesto es del conjunto y se reparte entre sus anuncios.
+     *
+     * @return array{ok: bool, mensaje: string}
+     */
+    public static function agregarPieza(Publicacion $publicacion): array
+    {
+        $config = PautaConfig::paraAliado($publicacion->aliado_id);
+
+        $conjunto = self::asegurarConjuntoPermanente($config, $publicacion->aliado_id);
+        if (!$conjunto['ok']) {
+            return ['ok' => false, 'mensaje' => $conjunto['mensaje']];
+        }
+        if ($publicacion->meta_ad_id) {
+            return ['ok' => false, 'mensaje' => 'Esta pieza ya está en el conjunto permanente.'];
+        }
+
+        // El piloto genera una pieza DIARIA, pero el presupuesto semanal es uno solo. Si
+        // entraran las siete, 50.000 se partirían en siete y ninguna juntaría datos para
+        // saber si sirve. Solo pasan las primeras del cupo semanal; el resto se queda en
+        // orgánico, que no cuesta nada.
+        $cupo = max(1, (int) ($config->piezas_semana_max ?: 3));
+        $estaSemana = Publicacion::where('aliado_id', $publicacion->aliado_id)
+            ->where('meta_adset_id', $conjunto['adset_id'])
+            ->where('updated_at', '>=', now()->subDays(7))
+            ->whereNotNull('meta_ad_id')
+            ->count();
+        if ($estaSemana >= $cupo) {
+            return ['ok' => false, 'mensaje' => "Cupo semanal lleno: ya hay {$estaSemana} pieza(s) pautada(s) de {$cupo}. Esta se queda solo en orgánico."];
+        }
+
+        $fb     = RedSocialConfig::paraAliado($publicacion->aliado_id, 'facebook');
+        $token  = $fb->access_token;
+        $cuenta = 'act_' . ltrim($config->ad_account_id, 'act_');
+
+        $media = self::subirMedia($publicacion, $cuenta, $token);
+        if (!$media['ok']) {
+            return ['ok' => false, 'mensaje' => $media['mensaje']];
+        }
+
+        $creativa = Http::asForm()->post(self::BASE_URL . "/{$cuenta}/adcreatives", [
+            'name'              => "Pieza #{$publicacion->id} — creatividad",
+            'object_story_spec' => json_encode(
+                ['page_id' => $fb->identificador] + self::historia($publicacion, $media['image_hash'], $media['video_id'])
+            ),
+            'access_token'      => $token,
+        ]);
+        if (!$creativa->successful()) {
+            return ['ok' => false, 'mensaje' => 'Creatividad: ' . self::errorDeMeta($creativa)];
+        }
+
+        // El anuncio sigue el estado del conjunto: si la pauta está encendida, el retador
+        // entra compitiendo; si está en pausa, entra en pausa.
+        $estadoConjunto = Http::get(self::BASE_URL . "/{$conjunto['adset_id']}", [
+            'fields'       => 'status',
+            'access_token' => $token,
+        ])->json('status');
+
+        $ad = Http::asForm()->post(self::BASE_URL . "/{$cuenta}/ads", [
+            'name'         => "Pieza #{$publicacion->id} — anuncio",
+            'adset_id'     => $conjunto['adset_id'],
+            'creative'     => json_encode(['creative_id' => $creativa->json('id')]),
+            'status'       => $estadoConjunto === 'ACTIVE' ? 'ACTIVE' : 'PAUSED',
+            'access_token' => $token,
+        ]);
+        if (!$ad->successful()) {
+            return ['ok' => false, 'mensaje' => 'Anuncio: ' . self::errorDeMeta($ad)];
+        }
+
+        $publicacion->update([
+            'pauta_estado'                 => $estadoConjunto === 'ACTIVE' ? 'activa' : 'borrador',
+            'pauta_presupuesto_diario_cop' => $config->presupuestoDiarioCop(),
+            'meta_campana_id'              => $config->meta_campana_permanente_id,
+            'meta_adset_id'                => $conjunto['adset_id'],
+            'meta_ad_id'                   => $ad->json('id'),
+            'pauta_activada_at'            => $estadoConjunto === 'ACTIVE' ? ($publicacion->pauta_activada_at ?: now()) : $publicacion->pauta_activada_at,
+        ]);
+
+        return ['ok' => true, 'mensaje' => "Pieza #{$publicacion->id} agregada al conjunto permanente."];
+    }
+
+    /**
+     * Deja activas solo las mejores creatividades del conjunto y pausa el resto.
+     *
+     * Se ordena por conversaciones de WhatsApp atribuidas de verdad, no por likes: un like no
+     * paga una afiliación. Las piezas con menos de $DIAS_GRACIA días quedan protegidas —
+     * juzgar un anuncio sin datos es tirar una moneda, no medir.
+     *
+     * @return array{ok: bool, mensaje: string, pausadas: int}
+     */
+    public static function rotarCreatividades(PautaConfig $config, int $aliadoId): array
+    {
+        if (!$config->meta_adset_permanente_id) {
+            return ['ok' => false, 'mensaje' => 'Todavía no hay conjunto permanente.', 'pausadas' => 0];
+        }
+
+        $maximo = max(1, (int) ($config->creatividades_max ?: 3));
+        $activas = Publicacion::where('aliado_id', $aliadoId)
+            ->where('meta_adset_id', $config->meta_adset_permanente_id)
+            ->where('pauta_estado', 'activa')
+            ->whereNotNull('meta_ad_id')
+            ->get();
+
+        if ($activas->count() <= $maximo) {
+            return ['ok' => true, 'mensaje' => "Nada que rotar ({$activas->count()} de {$maximo}).", 'pausadas' => 0];
+        }
+
+        $conversaciones = \App\Models\WhatsappConversacion::whereIn('origen_publicacion_id', $activas->pluck('id'))
+            ->selectRaw('origen_publicacion_id, COUNT(*) as total')
+            ->groupBy('origen_publicacion_id')
+            ->pluck('total', 'origen_publicacion_id');
+
+        $ordenadas = $activas->sortByDesc(function ($p) use ($conversaciones) {
+            $protegida = $p->pauta_activada_at && $p->pauta_activada_at->gt(now()->subDays(self::DIAS_GRACIA));
+
+            // Las protegidas van primero para que nunca caigan en la zona de pausa; entre
+            // iguales manda la fecha, así el retador más nuevo desplaza al más viejo.
+            return [$protegida ? 1 : 0, (int) ($conversaciones[$p->id] ?? 0), $p->pauta_activada_at?->timestamp ?? 0];
+        })->values();
+
+        $fb = RedSocialConfig::paraAliado($aliadoId, 'facebook');
+        $pausadas = 0;
+        foreach ($ordenadas->slice($maximo) as $pieza) {
+            $r = Http::asForm()->post(self::BASE_URL . "/{$pieza->meta_ad_id}", [
+                'status'       => 'PAUSED',
+                'access_token' => $fb->access_token,
+            ]);
+            if ($r->successful()) {
+                $pieza->update(['pauta_estado' => 'pausada']);
+                $pausadas++;
+            }
+        }
+
+        return ['ok' => true, 'mensaje' => "Rotación: {$pausadas} creatividad(es) pausada(s), se dejan {$maximo}.", 'pausadas' => $pausadas];
     }
 
     /**

@@ -161,6 +161,18 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/marketing-pauta-sync.log'));
 
+        // ── Creatividades del conjunto permanente de pauta ───────────────────
+        // Diario a las 12:00: mete la pieza publicada más reciente al conjunto
+        // permanente (si queda cupo semanal) y pausa las que ya no compiten.
+        // No enciende gasto: si el conjunto está en pausa, la creatividad entra
+        // en pausa. Ejecución manual: php artisan marketing:pauta-creatividades
+        $schedule->command('marketing:pauta-creatividades')
+            ->dailyAt('12:00')
+            ->timezone('America/Bogota')
+            ->withoutOverlapping(30)
+            ->runInBackground()
+            ->appendOutputTo(storage_path('logs/marketing-pauta-creatividades.log'));
+
         // ── Piloto automático de marketing (community manager IA) ────────────
         // Cada 30 min en horario diurno: genera la pieza publicitaria del día de
         // cada aliado con piloto activo (una por día, desde la hora configurada).
