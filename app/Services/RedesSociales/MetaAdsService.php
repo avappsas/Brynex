@@ -175,14 +175,30 @@ class MetaAdsService
 
         $videoId = null;
         if (($publicacion->tipo_pieza ?? null) === 'video' && $publicacion->video_path) {
-            $sube = self::subirVideo($publicacion, $cuenta, $token);
-            if (!$sube['ok']) {
-                return ['ok' => false, 'image_hash' => null, 'video_id' => null, 'mensaje' => $sube['mensaje']];
+            // Preferir el video que YA está en la página: no hay que volver a subir 3 MB ni
+            // esperar a que Meta lo procese otra vez. Además el token del aliado es de PÁGINA,
+            // y Meta no deja subir a la biblioteca de la cuenta publicitaria con ese tipo de
+            // token —falla con "An unknown error has occurred."— aunque tenga ads_management.
+            $videoId = self::videoIdDePagina($publicacion);
+
+            if (!$videoId) {
+                $sube = self::subirVideo($publicacion, $cuenta, $token);
+                if (!$sube['ok']) {
+                    return ['ok' => false, 'image_hash' => null, 'video_id' => null, 'mensaje' => $sube['mensaje']];
+                }
+                $videoId = $sube['video_id'];
             }
-            $videoId = $sube['video_id'];
         }
 
         return ['ok' => true, 'image_hash' => $imageHash, 'video_id' => $videoId, 'mensaje' => 'Media lista.'];
+    }
+
+    /** Id del video que quedó en la página al publicar la pieza, si la publicación fue a Facebook. */
+    private static function videoIdDePagina(Publicacion $publicacion): ?string
+    {
+        $id = data_get($publicacion->resultado_publicacion, 'facebook.id');
+
+        return (data_get($publicacion->resultado_publicacion, 'facebook.ok') && $id) ? (string) $id : null;
     }
 
     /**
