@@ -70,6 +70,14 @@ class PautaToken extends Command
         if (!$prueba->successful()) {
             $this->error('Ese token no puede leer la cuenta publicitaria. No se guardó.');
             $this->line('  Meta dijo: ' . (string) $prueba->json('error.message'));
+            // Sin esto quedaría en adivinanza: el motivo más común de un (#200) con la cuenta
+            // bien asignada es haber generado el token con OTRA app —la del Explorador por
+            // defecto— que no tiene ads_management aprobado.
+            $this->newLine();
+            $this->line('  Token generado con la app: ' . ($d['app_id'] ?? '?'));
+            $this->line('  Tipo: ' . ($d['type'] ?? '?') . '   Usuario: ' . ($d['user_id'] ?? '?'));
+            $this->line('  Permisos que reporta Meta: ' . (implode(', ', $d['scopes'] ?? []) ?: '(ninguno)'));
+
             return self::FAILURE;
         }
 
