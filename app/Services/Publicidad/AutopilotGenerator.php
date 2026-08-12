@@ -32,6 +32,9 @@ class AutopilotGenerator
         'ventaja de afiliarse con una agencia que hace todo el trámite por ti',
         'cobertura para toda la familia (beneficiarios en EPS y caja)',
         'testimonio/confianza: años de experiencia acompañando afiliados',
+        // Le habla al que ya está cotizando con otro: es el momento en que se decide, y el
+        // único ángulo del catálogo que compite de frente en vez de explicar.
+        'te mejoramos cualquier cotización que ya tengas (invita a comparar antes de afiliarse, sin mencionar ni desprestigiar a la competencia por nombre y sin prometer un precio concreto)',
     ];
 
     /**
