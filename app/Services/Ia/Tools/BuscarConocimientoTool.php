@@ -60,7 +60,14 @@ class BuscarConocimientoTool implements IaToolInterface
             $palabras = collect([Str::ascii(mb_strtolower($consulta))])->filter();
         }
 
-        $umbral = max(1, (int) ceil($palabras->count() * 0.6));
+        // El 60% se topa en 2 palabras: sin tope, el umbral crecía con la longitud de la
+        // consulta y castigaba justo al modelo que busca bien. Preguntando por el retiro buscó
+        // "retiro cancelacion servicio desvinculacion" —cuatro palabras, tres exigidas— y la
+        // entrada del aliado, que dice "retiro" y "servicio", quedó fuera por una. El asistente
+        // respondió que no sabía y escaló al entrenador, teniendo la respuesta escrita.
+        // Aflojar aquí es seguro: los resultados van ordenados por coincidencias y limitados a
+        // 5, así que lo más pertinente sigue quedando arriba.
+        $umbral = max(1, min(2, (int) ceil($palabras->count() * 0.6)));
 
         $resultados = IaConocimiento::vigente($alidoId)
             ->get(['aliado_id', 'titulo', 'contenido', 'categoria', 'vigente_desde'])
@@ -78,7 +85,9 @@ class BuscarConocimientoTool implements IaToolInterface
             // dice hasta cuándo tiene plazo antes de que lo retiren.
             ->sortByDesc(fn ($item) => [$item['propia'] ? 1 : 0, $item['match_count']])
             ->take(5)
-            ->pluck('modelo')
+            // aliado_id se trae solo para priorizar; al modelo no le sirve y no tiene por qué
+            // ver ids internos en una respuesta que termina llegando a un cliente.
+            ->map(fn ($item) => collect($item['modelo']->toArray())->except('aliado_id')->all())
             ->values();
 
         if ($resultados->isEmpty()) {
