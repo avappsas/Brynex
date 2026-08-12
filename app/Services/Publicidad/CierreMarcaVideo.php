@@ -98,7 +98,7 @@ class CierreMarcaVideo
             'logo_pared' => false,
             'voz_propia' => true,
             'textos'     => ['respaldo', 'asesores', 'experiencia'],
-            'escena'     => 'a warm Colombian man advisor, around 35, in a light blue shirt, standing in a modern office with colleagues working softly out of focus behind him, medium wide shot',
+            'escena'     => 'a warm Colombian man advisor, around 35, in a light blue shirt, standing to the LEFT side of the frame in a modern office with colleagues working softly out of focus behind him, wide shot showing his full upper body with plenty of room above his head',
             'dice'       => 'EPS, ARL, pensión y caja: en Brigar te afiliamos el mismo día. ¡Escríbenos ya!',
         ],
         5 => [
@@ -246,6 +246,8 @@ class CierreMarcaVideo
      *   - La frase la dice la persona con lip-sync: superponerle un TTS encima dejaba la boca
      *     descuadrada, que es justo lo que delata que la pieza es generada.
      *   - Plano medio, no primer plano: de cerca no se ve la oficina, que es la que respalda.
+     *   - Se pide que la persona NO se cruce con el letrero: en la variante 4 la cabeza le
+     *     tapaba la "R" durante los ocho segundos y el letrero decia "BYGAR".
      */
     public static function promptFondo(string $marca, int $variante = 1): string
     {
@@ -256,6 +258,8 @@ class CierreMarcaVideo
             . 'a large modern office sign reading exactly the single word "' . mb_strtoupper($marca) . '" '
             . 'in bold clean uppercase letters. No other text, no numbers, no additional signage anywhere, '
             . 'no logos, no phone numbers, no WhatsApp icons. '
+            . 'The sign must stay fully readable for the whole shot: the person never overlaps it, '
+            . 'blocks it or passes in front of it, and their head stays well below the letters. '
             . 'Warm natural lighting, shallow depth of field, premium corporate look, authentic Colombian people. '
             . 'Leave the bottom fifth of the frame clear of anything important. '
             . 'The person speaks to camera in clear Colombian Spanish, lip-synced: "' . $def['dice'] . '"';
