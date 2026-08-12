@@ -31,12 +31,14 @@ class PublicidadVideoIa extends BaseModel
         'video_path',
         'imagen_poster_path',
         'error_mensaje',
+        'autopilot_payload',
         'creado_por',
     ];
 
     protected $casts = [
-        'frases_texto' => 'array',
-        'escenas'      => 'array',
+        'frases_texto'      => 'array',
+        'escenas'           => 'array',
+        'autopilot_payload' => 'array',
     ];
 
     protected $attributes = [

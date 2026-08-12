@@ -6,6 +6,7 @@ use App\Models\Aliado;
 use App\Models\AutopilotConfig;
 use App\Models\IaConfiguracionAliado;
 use App\Models\Publicacion;
+use App\Models\PublicidadVideoIa;
 use App\Models\RedSocialConfig;
 use App\Services\CotizacionPublicaService;
 use App\Services\Ia\IaProviderFactory;
@@ -46,6 +47,13 @@ class AutopilotGenerator
 
         $iaConfig     = IaConfiguracionAliado::paraAliado($aliado->id);
         $credenciales = $iaConfig->credencialesEfectivas();
+
+        // Reel: la medición propia manda. Sobre las piezas ya publicadas, las imágenes
+        // promediaron 5,2 de alcance en Instagram y los videos 159,5 — Meta reparte Reels
+        // a no-seguidores y las imágenes casi no salen ni a los propios.
+        if ($config->tocaReelHoy()) {
+            return self::iniciarReelDelDia($aliado, $config, $iaConfig, $credenciales);
+        }
 
         if (empty($credenciales['api_key'])) {
             return ['ok' => false, 'publicacion' => null, 'error' => 'No hay clave de IA de texto configurada (ver Asistente Virtual).'];
@@ -115,6 +123,121 @@ class AutopilotGenerator
         }
 
         return ['ok' => true, 'publicacion' => $publicacion, 'error' => null];
+    }
+
+    /**
+     * Arranca el Reel del día y devuelve de inmediato: Veo tarda 1-3 minutos, así que aquí
+     * solo se lanza la generación y se guarda, en `autopilot_payload`, el concepto y el
+     * destino que ya se decidieron. Cuando `videos:procesar` termine el clip creará la
+     * Publicacion con esos datos (ver ProcesarVideosIa::publicarDesdeAutopilot).
+     *
+     * Se devuelve `publicacion => null` a propósito: todavía no existe una pieza, y fingir
+     * que sí obligaría a inventar un registro que habría que limpiar si Veo falla.
+     *
+     * @return array{ok: bool, publicacion: ?Publicacion, video: ?PublicidadVideoIa, error: ?string}
+     */
+    private static function iniciarReelDelDia(
+        Aliado $aliado,
+        AutopilotConfig $config,
+        IaConfiguracionAliado $iaConfig,
+        array $credenciales
+    ): array {
+        if (empty($credenciales['api_key'])) {
+            return ['ok' => false, 'publicacion' => null, 'video' => null, 'error' => 'No hay clave de IA de texto configurada (ver Asistente Virtual).'];
+        }
+        if (!$iaConfig->tieneGemini()) {
+            return ['ok' => false, 'publicacion' => null, 'video' => null, 'error' => 'No hay clave de Gemini configurada para generar el video (ver Asistente Virtual).'];
+        }
+
+        // El tema, el título y el copy salen del mismo cerebro que los posts de imagen: así
+        // el Reel sigue rotando ángulos y respetando el historial y los precios reales.
+        $concepto = self::pedirConceptoALaIa($aliado, $credenciales, $config->estiloDelDia());
+        if (!$concepto['ok']) {
+            return ['ok' => false, 'publicacion' => null, 'video' => null, 'error' => $concepto['error']];
+        }
+
+        $contexto  = $concepto['tema'] ?: 'seguridad social para independientes en Colombia';
+        $modelo    = $config->modeloVideo();
+        $duracion  = max(8, (int) ($config->video_duracion ?: 8));
+
+        // Frases del overlay animado: van encima del clip, no dentro del prompt de Veo —
+        // los modelos de video no escriben texto legible.
+        $frasesResultado = CopiaIaGenerator::generarFrasesVideo($aliado->id, $aliado->nombre, $contexto);
+        $frases = $frasesResultado['ok'] ? array_slice($frasesResultado['frases'], 0, 3) : [];
+
+        $payload = [
+            'tema'     => $concepto['tema'],
+            'titulo'   => $concepto['titulo'],
+            'copy'     => $concepto['copy'],
+            'modo'     => $config->modo,
+            'destinos' => array_merge(
+                ['web'],
+                RedSocialConfig::where('aliado_id', $aliado->id)->where('activo', true)->pluck('red')->all()
+            ),
+        ];
+
+        // Más de 8 segundos se arma por escenas y se concatena después (igual que el flujo
+        // manual del panel), porque Veo genera clips de 8s como máximo.
+        if ($duracion > 8) {
+            $numEscenas = (int) ($duracion / 8);
+            $prompts = CopiaIaGenerator::generarPromptsMultiEscena($aliado->id, $aliado->nombre, $contexto, $numEscenas);
+            if (!$prompts['ok']) {
+                return ['ok' => false, 'publicacion' => null, 'video' => null, 'error' => $prompts['error']];
+            }
+
+            $escenas = [];
+            foreach ($prompts['prompts'] as $orden => $promptEscena) {
+                $inicio = VeoVideoGenerator::iniciar($iaConfig->gemini_api_key, $promptEscena, $modelo, '9:16', '720p', 8);
+                if (!$inicio['ok']) {
+                    return ['ok' => false, 'publicacion' => null, 'video' => null, 'error' => 'Escena ' . ($orden + 1) . ': ' . $inicio['error']];
+                }
+                $escenas[] = [
+                    'orden'            => $orden,
+                    'prompt'           => $promptEscena,
+                    'operation_name'   => $inicio['operationName'],
+                    'estado'           => 'generando',
+                    'video_bruto_path' => null,
+                ];
+            }
+
+            $video = PublicidadVideoIa::create([
+                'aliado_id'          => $aliado->id,
+                'prompt_video'       => implode(' / ', $prompts['prompts']),
+                'frases_texto'       => $frases,
+                'modelo'             => $modelo,
+                'duracion_seg'       => $duracion,
+                'costo_estimado_usd' => VeoVideoGenerator::costoEstimadoUsd($modelo, $duracion),
+                'escenas'            => $escenas,
+                'autopilot_payload'  => $payload,
+                'creado_por'         => null,
+            ]);
+
+            return ['ok' => true, 'publicacion' => null, 'video' => $video, 'error' => null];
+        }
+
+        $promptResultado = CopiaIaGenerator::generarPromptVideo($aliado->id, $aliado->nombre, $contexto);
+        if (!$promptResultado['ok']) {
+            return ['ok' => false, 'publicacion' => null, 'video' => null, 'error' => $promptResultado['error']];
+        }
+
+        $inicio = VeoVideoGenerator::iniciar($iaConfig->gemini_api_key, $promptResultado['prompt'], $modelo, '9:16', '720p', $duracion);
+        if (!$inicio['ok']) {
+            return ['ok' => false, 'publicacion' => null, 'video' => null, 'error' => $inicio['error']];
+        }
+
+        $video = PublicidadVideoIa::create([
+            'aliado_id'          => $aliado->id,
+            'prompt_video'       => $promptResultado['prompt'],
+            'frases_texto'       => $frases,
+            'modelo'             => $modelo,
+            'duracion_seg'       => $duracion,
+            'costo_estimado_usd' => VeoVideoGenerator::costoEstimadoUsd($modelo, $duracion),
+            'operation_name'     => $inicio['operationName'],
+            'autopilot_payload'  => $payload,
+            'creado_por'         => null,
+        ]);
+
+        return ['ok' => true, 'publicacion' => null, 'video' => $video, 'error' => null];
     }
 
     /**

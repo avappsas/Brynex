@@ -2,8 +2,11 @@
 
 namespace App\Console\Commands;
 
+use App\Models\AutopilotConfig;
 use App\Models\IaConfiguracionAliado;
+use App\Models\Publicacion;
 use App\Models\PublicidadVideoIa;
+use App\Services\Publicidad\PublicacionPublisher;
 use App\Services\Publicidad\VeoVideoGenerator;
 use App\Services\Publicidad\VideoOverlayFfmpeg;
 use Illuminate\Console\Command;
@@ -185,6 +188,55 @@ class ProcesarVideosIa extends Command
         ]);
 
         $this->info("Video #{$video->id} listo.");
+
+        $this->publicarDesdeAutopilot($video->fresh());
+    }
+
+    /**
+     * Cierra el ciclo del piloto automático: el Reel se lanzó hace unos minutos sin poder
+     * crear su Publicacion (Veo es asíncrono), así que se crea ahora con el concepto que
+     * quedó guardado en `autopilot_payload`.
+     *
+     * Los videos generados a mano desde el panel no traen payload y no se tocan: esos los
+     * publica el admin cuando quiere.
+     */
+    private function publicarDesdeAutopilot(PublicidadVideoIa $video): void
+    {
+        $payload = $video->autopilot_payload;
+        if (!$payload) {
+            return;
+        }
+
+        $esAuto = ($payload['modo'] ?? null) === AutopilotConfig::MODO_AUTO;
+
+        $publicacion = Publicacion::create([
+            'aliado_id'          => $video->aliado_id,
+            'titulo'             => $payload['titulo'] ?? 'Reel del día',
+            'copy'               => $payload['copy'] ?? null,
+            // El poster es el primer frame: sirve de portada en la web y de respaldo si una
+            // red no acepta el video.
+            'imagen_path'        => $video->imagen_poster_path ?: '',
+            'tipo_pieza'         => 'video',
+            'video_path'         => $video->video_path,
+            'video_modelo'       => $video->modelo,
+            'origen'             => 'ia_auto',
+            'tema'               => $payload['tema'] ?? null,
+            'costo_estimado_usd' => $video->costo_estimado_usd,
+            'destinos'           => $payload['destinos'] ?? ['web'],
+            'estado'             => $esAuto ? Publicacion::ESTADO_APROBADA : Publicacion::ESTADO_PENDIENTE,
+            'creado_por'         => null,
+        ]);
+
+        // El payload se limpia para que un reintento del comando no publique dos veces.
+        $video->update(['autopilot_payload' => null]);
+
+        if ($esAuto) {
+            PublicacionPublisher::publicar($publicacion);
+            $this->info("Reel del piloto publicado como pieza #{$publicacion->id}.");
+            return;
+        }
+
+        $this->info("Reel del piloto creado como pieza #{$publicacion->id} (pendiente de aprobación).");
     }
 
     private function rutaTempPublica(string $nombreArchivo): string

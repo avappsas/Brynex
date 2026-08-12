@@ -107,8 +107,40 @@
         </div>
     </div>
 
+    <div style="margin-bottom:1rem;padding:.85rem;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:10px;">
+        <label style="display:block;font-size:.72rem;font-weight:600;color:#334155;margin-bottom:.3rem;">Formato del post del día</label>
+        <select name="formato" style="width:100%;padding:.5rem .7rem;border:1px solid #cbd5e1;border-radius:8px;font-size:.83rem;">
+            <option value="reel" @selected(($config->formato ?? 'reel') === 'reel')>🎬 Reel (video) — mucho más alcance</option>
+            <option value="imagen" @selected(($config->formato ?? 'reel') === 'imagen')>🖼️ Imagen fija — más barato</option>
+        </select>
+        <div class="form-hint" style="font-size:.72rem;color:#7c3aed;margin-top:.35rem;">
+            Medido en esta cuenta: las imágenes promediaron <strong>5,2</strong> de alcance en Instagram y los videos <strong>159,5</strong>. Meta reparte los Reels a gente que no te sigue; las imágenes casi no salen ni a tus seguidores.
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem;margin-top:.7rem;">
+            <div>
+                <label style="display:block;font-size:.72rem;font-weight:600;color:#334155;margin-bottom:.3rem;">Calidad del video</label>
+                <select name="video_nivel" style="width:100%;padding:.5rem .7rem;border:1px solid #cbd5e1;border-radius:8px;font-size:.83rem;">
+                    <option value="lite" @selected(($config->video_nivel ?? 'lite') === 'lite')>Lite — USD 0,05/seg</option>
+                    <option value="standard" @selected(($config->video_nivel ?? 'lite') === 'standard')>Standard — USD 0,40/seg</option>
+                </select>
+            </div>
+            <div>
+                <label style="display:block;font-size:.72rem;font-weight:600;color:#334155;margin-bottom:.3rem;">Duración</label>
+                <select name="video_duracion" style="width:100%;padding:.5rem .7rem;border:1px solid #cbd5e1;border-radius:8px;font-size:.83rem;">
+                    <option value="8"  @selected((int)($config->video_duracion ?? 8) === 8)>8 segundos</option>
+                    <option value="16" @selected((int)($config->video_duracion ?? 8) === 16)>16 segundos (2 escenas)</option>
+                    <option value="24" @selected((int)($config->video_duracion ?? 8) === 24)>24 segundos (3 escenas)</option>
+                </select>
+            </div>
+        </div>
+        <div class="form-hint" style="font-size:.72rem;color:#94a3b8;margin-top:.35rem;">
+            ⚠️ El costo cambia muchísimo: un Reel diario en <strong>Lite 8s</strong> cuesta ~USD 12/mes (~$50.000 COP). El mismo en <strong>Standard</strong> cuesta ~USD 96/mes (~$400.000 COP) — casi todo tu presupuesto de pauta.
+        </div>
+    </div>
+
     <div style="margin-bottom:1rem;">
-        <label style="display:block;font-size:.72rem;font-weight:600;color:#334155;margin-bottom:.3rem;">Estilo de imagen</label>
+        <label style="display:block;font-size:.72rem;font-weight:600;color:#334155;margin-bottom:.3rem;">Estilo de imagen <span style="font-weight:400;color:#94a3b8;">(aplica a flyers y a los días de imagen)</span></label>
         <select name="estilo_imagen" style="width:100%;padding:.5rem .7rem;border:1px solid #cbd5e1;border-radius:8px;font-size:.83rem;">
             <option value="ilustracion" @selected($config->estilo_imagen === 'ilustracion')>🎨 Económicas — ilustración (flat design)</option>
             <option value="fotorrealista" @selected($config->estilo_imagen === 'fotorrealista')>📷 Caras — fotorrealista (fotos de personas reales)</option>

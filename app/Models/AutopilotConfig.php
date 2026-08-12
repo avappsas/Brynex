@@ -16,6 +16,12 @@ class AutopilotConfig extends BaseModel
     public const ESTILO_FOTORREALISTA = 'fotorrealista';
     public const ESTILO_ALTERNAR      = 'alternar';
 
+    public const FORMATO_REEL   = 'reel';
+    public const FORMATO_IMAGEN = 'imagen';
+
+    public const NIVEL_LITE     = 'lite';
+    public const NIVEL_STANDARD = 'standard';
+
     protected $fillable = [
         'aliado_id',
         'activo',
@@ -24,12 +30,16 @@ class AutopilotConfig extends BaseModel
         'dias',
         'dias_flyer',
         'estilo_imagen',
+        'formato',
+        'video_nivel',
+        'video_duracion',
     ];
 
     protected $casts = [
-        'activo'     => 'boolean',
-        'dias'       => 'array',
-        'dias_flyer' => 'array',
+        'activo'         => 'boolean',
+        'dias'           => 'array',
+        'dias_flyer'     => 'array',
+        'video_duracion' => 'integer',
     ];
 
     public function aliado(): BelongsTo
@@ -72,11 +82,36 @@ class AutopilotConfig extends BaseModel
         return $this->estilo_imagen ?: self::ESTILO_ILUSTRACION;
     }
 
+    /**
+     * ¿El post educativo de hoy va como Reel? Los días de flyer promocional siempre son
+     * pieza gráfica: ahí lo que importa es que se lean los precios, no el alcance.
+     */
+    public function tocaReelHoy(): bool
+    {
+        return !$this->tocaFlyerHoy() && ($this->formato ?? self::FORMATO_REEL) === self::FORMATO_REEL;
+    }
+
+    /** Modelo de Veo a usar, resuelto desde la config (ver costos en la migración). */
+    public function modeloVideo(): string
+    {
+        return ($this->video_nivel ?? self::NIVEL_LITE) === self::NIVEL_STANDARD
+            ? \App\Services\Publicidad\VeoVideoGenerator::MODELO_STANDARD
+            : \App\Services\Publicidad\VeoVideoGenerator::MODELO_LITE;
+    }
+
     public static function paraAliado(int $aliadoId): static
     {
         return static::firstOrCreate(
             ['aliado_id' => $aliadoId],
-            ['activo' => false, 'modo' => self::MODO_APROBAR, 'hora' => '09:00', 'estilo_imagen' => self::ESTILO_ILUSTRACION]
+            [
+                'activo'         => false,
+                'modo'           => self::MODO_APROBAR,
+                'hora'           => '09:00',
+                'estilo_imagen'  => self::ESTILO_ILUSTRACION,
+                'formato'        => self::FORMATO_REEL,
+                'video_nivel'    => self::NIVEL_LITE,
+                'video_duracion' => 8,
+            ]
         );
     }
 }

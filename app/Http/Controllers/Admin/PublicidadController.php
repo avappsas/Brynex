@@ -263,24 +263,30 @@ class PublicidadController extends Controller
         $aliado = $this->aliadoActivo();
 
         $validated = $request->validate([
-            'activo'        => 'required|boolean',
-            'modo'          => 'required|in:aprobar,auto',
-            'hora'          => 'required|date_format:H:i',
-            'dias'          => 'nullable|array',
-            'dias.*'        => 'integer|between:1,7',
-            'dias_flyer'    => 'nullable|array',
-            'dias_flyer.*'  => 'integer|between:1,7',
-            'estilo_imagen' => 'required|in:ilustracion,fotorrealista,alternar',
+            'activo'         => 'required|boolean',
+            'modo'           => 'required|in:aprobar,auto',
+            'hora'           => 'required|date_format:H:i',
+            'dias'           => 'nullable|array',
+            'dias.*'         => 'integer|between:1,7',
+            'dias_flyer'     => 'nullable|array',
+            'dias_flyer.*'   => 'integer|between:1,7',
+            'estilo_imagen'  => 'required|in:ilustracion,fotorrealista,alternar',
+            'formato'        => 'required|in:reel,imagen',
+            'video_nivel'    => 'required|in:lite,standard',
+            'video_duracion' => 'required|in:8,16,24',
         ]);
 
         $config = \App\Models\AutopilotConfig::paraAliado($aliado->id);
         $config->update([
-            'activo'        => $validated['activo'],
-            'modo'          => $validated['modo'],
-            'hora'          => $validated['hora'],
-            'dias'          => !empty($validated['dias']) && count($validated['dias']) < 7 ? array_values($validated['dias']) : null,
-            'dias_flyer'    => !empty($validated['dias_flyer']) ? array_values($validated['dias_flyer']) : null,
-            'estilo_imagen' => $validated['estilo_imagen'],
+            'activo'         => $validated['activo'],
+            'modo'           => $validated['modo'],
+            'hora'           => $validated['hora'],
+            'dias'           => !empty($validated['dias']) && count($validated['dias']) < 7 ? array_values($validated['dias']) : null,
+            'dias_flyer'     => !empty($validated['dias_flyer']) ? array_values($validated['dias_flyer']) : null,
+            'estilo_imagen'  => $validated['estilo_imagen'],
+            'formato'        => $validated['formato'],
+            'video_nivel'    => $validated['video_nivel'],
+            'video_duracion' => (int) $validated['video_duracion'],
         ]);
 
         return redirect()->route('admin.publicidad.autopilot')->with('success', 'Piloto automático actualizado.');
@@ -298,8 +304,20 @@ class PublicidadController extends Controller
             return redirect()->route('admin.publicidad.autopilot')->with('error', $resultado['error']);
         }
 
-        $p = $resultado['publicacion'];
-        return redirect()->route('admin.publicidad.autopilot')->with('success', "Pieza #{$p->id} generada — [{$p->tema}] {$p->titulo} ({$p->etiquetaEstado()}).");
+        // Un Reel todavía no tiene pieza: Veo tarda 1-3 min y `videos:procesar` la crea al
+        // terminar. Se avisa así en vez de asumir que siempre hay una Publicacion.
+        if ($p = $resultado['publicacion'] ?? null) {
+            return redirect()->route('admin.publicidad.autopilot')
+                ->with('success', "Pieza #{$p->id} generada — [{$p->tema}] {$p->titulo} ({$p->etiquetaEstado()}).");
+        }
+
+        $v = $resultado['video'] ?? null;
+        return redirect()->route('admin.publicidad.autopilot')->with(
+            'success',
+            $v
+                ? "🎬 Reel en generación ({$v->duracion_seg}s, ~USD {$v->costo_estimado_usd}). Aparecerá en la lista en 1-3 minutos, cuando el video termine."
+                : 'Pieza generada.'
+        );
     }
 
     /** Genera un flyer promocional de un plan ya mismo (para probar la plantilla o adelantar la pieza). */
