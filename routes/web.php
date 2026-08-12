@@ -81,9 +81,11 @@ Route::post('/aliado/{slug}/metrica', [\App\Http\Controllers\Publico\PaginaAliad
 
 Route::get('/sitemap.xml', [\App\Http\Controllers\Publico\PaginaAliadoController::class, 'sitemap'])->name('publico.sitemap');
 
-// Link corto del WhatsApp rastreado que se comenta en cada pieza publicada (ver
-// PublicacionPublisher::linkWhatsappRastreado) — evita mostrar el wa.me largo con el
-// mensaje precargado codificado en la URL visible del comentario.
+// Link corto que redirige al wa.me rastreado. YA NO se usa al publicar (ver
+// PublicacionPublisher::linkWhatsappRastreado: se volvió al wa.me directo porque Meta exime
+// del castigo de alcance a los enlaces hacia sus propias tecnologías, y un dominio propio no).
+// La ruta se conserva porque los comentarios ya publicados en Facebook/Instagram apuntan
+// aquí: borrarla los dejaría en 404.
 Route::get('/wa/{publicacion}', [\App\Http\Controllers\Publico\WhatsappRedirectController::class, 'redirigir'])->name('publico.wa');
 
 // ─── Webhook público WhatsApp (Meta Cloud API) ─────────────────────────────
