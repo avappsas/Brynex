@@ -134,25 +134,33 @@ class ConsentimientoDato extends BaseModel
             return ['contactables' => [], 'excluidos' => []];
         }
 
-        // Última fila por teléfono; solo interesan las que terminan en baja.
-        $revocados = self::where('aliado_id', $aliadoId)
-            ->where('canal', $canal)
-            ->whereIn('telefono', $normalizados)
-            ->orderBy('telefono')
-            ->orderByDesc('fecha_evento')
-            ->orderByDesc('id')
-            ->get(['telefono', 'otorgado'])
-            ->groupBy('telefono')
-            ->filter(fn ($filas) => !$filas->first()->otorgado)
-            ->keys()
-            ->all();
+        // SQL Server no acepta más de 2.100 parámetros por consulta, y un segmento de
+        // ex-clientes pasa de 2.500 teléfonos: el whereIn hay que partirlo o revienta.
+        $lotes = array_chunk($normalizados, 1000);
 
-        // Mismo lote contra la lista del botón "No me interesa" / Asistente IA, en una sola
-        // consulta más (no una por destinatario).
-        $bloqueados = MarketingBloqueado::where('aliado_id', $aliadoId)
-            ->whereIn('celular', $normalizados)
-            ->pluck('celular')
-            ->all();
+        $revocados  = [];
+        $bloqueados = [];
+
+        foreach ($lotes as $lote) {
+            // Última fila por teléfono; solo interesan las que terminan en baja.
+            $revocados = array_merge($revocados, self::where('aliado_id', $aliadoId)
+                ->where('canal', $canal)
+                ->whereIn('telefono', $lote)
+                ->orderBy('telefono')
+                ->orderByDesc('fecha_evento')
+                ->orderByDesc('id')
+                ->get(['telefono', 'otorgado'])
+                ->groupBy('telefono')
+                ->filter(fn ($filas) => !$filas->first()->otorgado)
+                ->keys()
+                ->all());
+
+            // Mismo lote contra la lista del botón "No me interesa" / Asistente IA.
+            $bloqueados = array_merge($bloqueados, MarketingBloqueado::where('aliado_id', $aliadoId)
+                ->whereIn('celular', $lote)
+                ->pluck('celular')
+                ->all());
+        }
 
         $excluidos = array_values(array_unique(array_merge($revocados, $bloqueados)));
 

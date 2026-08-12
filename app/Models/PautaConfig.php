@@ -13,6 +13,8 @@ class PautaConfig extends BaseModel
         'aliado_id',
         'activo',
         'ad_account_id',
+        'audiencias',
+        'audiencias_sync_at',
         'limite_mensual_cop',
         'presupuesto_diario_default_cop',
     ];
@@ -21,6 +23,8 @@ class PautaConfig extends BaseModel
         'activo'                          => 'boolean',
         'limite_mensual_cop'              => 'decimal:2',
         'presupuesto_diario_default_cop'  => 'decimal:2',
+        'audiencias'                      => 'array',
+        'audiencias_sync_at'              => 'datetime',
     ];
 
     public function aliado(): BelongsTo
