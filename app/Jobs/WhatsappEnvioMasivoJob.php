@@ -3,10 +3,12 @@
 namespace App\Jobs;
 
 use App\Models\{
+    ConsentimientoDato,
     WhatsappConfig, WhatsappConversacion,
     WhatsappEnvioMasivo, WhatsappEnvioMasivoDetalle,
     WhatsappMensaje, WhatsappPlantilla
 };
+use App\Services\Cumplimiento\VentanaContactoLey2300;
 use App\Services\WhatsappApiService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -54,6 +56,33 @@ class WhatsappEnvioMasivoJob implements ShouldQueue
         }
 
         $plantilla = $envio->plantilla;
+
+        // Qué reglas aplican según lo que ES este mensaje:
+        //  - Ventana horaria (Ley 2300 art. 3): cubre publicidad Y cobranza. Un envío de
+        //    planilla es entrega de un servicio que el cliente pidió, y no cae ahí.
+        //  - Lista de baja: solo publicidad. Que alguien no quiera promociones no significa
+        //    que deje de deberle a la empresa, así que el cobro sigue saliendo.
+        $esMarketing = strtoupper((string) $plantilla->categoria) === 'MARKETING';
+        $esCobranza  = str_contains(strtolower((string) $plantilla->nombre), 'cobro');
+
+        // Fuera de la ventana no se cancela nada: se reprograma para la próxima hora hábil.
+        // Se despacha un job nuevo en vez de release() para no gastar los reintentos, que
+        // están para fallos reales de la API.
+        if (($esMarketing || $esCobranza) && !VentanaContactoLey2300::permite()) {
+            $espera = VentanaContactoLey2300::segundosHastaApertura();
+
+            $envio->update(['estado' => 'pendiente']);
+            self::dispatch($this->envioId, $this->parametrosGlobales, $this->headerImageUrl)
+                ->delay(now()->addSeconds($espera));
+
+            Log::info("WhatsApp masivo #{$this->envioId} reprogramado por Ley 2300", [
+                'motivo'          => VentanaContactoLey2300::motivoBloqueo(),
+                'proxima_ventana' => VentanaContactoLey2300::proximaApertura()->format('Y-m-d H:i'),
+            ]);
+
+            return;
+        }
+
         $enviados  = 0;
         $fallidos  = 0;
         $omitidos  = 0;
@@ -67,7 +96,28 @@ class WhatsappEnvioMasivoJob implements ShouldQueue
         // Procesar solo los pendientes (permite reanudar si el job falla a mitad)
         $pendientes = $envio->detalles()->where('estado', 'pendiente')->get();
 
+        // Quiénes pidieron la baja. Se resuelve de una sola vez para todo el lote: con la
+        // latencia al SQL Server, preguntar por destinatario agregaría minutos a una tanda
+        // grande. Cubre tanto el botón "No me interesa" como la herramienta del Asistente IA.
+        $excluidos = [];
+        if ($esMarketing) {
+            $excluidos = array_flip(ConsentimientoDato::filtrarContactables(
+                $envio->aliado_id,
+                $pendientes->pluck('wa_numero')->all()
+            )['excluidos']);
+        }
+
         foreach ($pendientes as $detalle) {
+            // Baja pedida por el cliente: no se le manda publicidad nunca más.
+            if ($esMarketing && isset($excluidos[ConsentimientoDato::normalizarTelefono($detalle->wa_numero)])) {
+                $detalle->update([
+                    'estado' => 'omitido',
+                    'error'  => 'Excluido: el cliente pidió no recibir publicidad.',
+                ]);
+                $omitidos++;
+                continue;
+            }
+
             try {
                 // Construir parámetros para esta plantilla
                 $params = $this->construirParametros($plantilla, $detalle, $this->parametrosGlobales);
