@@ -81,6 +81,55 @@ class CierreMarcaVideo
         return Storage::disk('public')->exists($rel) ? Storage::disk('public')->path($rel) : null;
     }
 
+    /**
+     * Locución en español del cierre. Se genera una vez y se cachea: el guion es siempre el
+     * mismo, así que no tiene sentido volver a pedirla en cada pieza.
+     *
+     * El guion se escribe COMO DEBE SONAR, no como se escribe: "Brigar" y "doce" en letras,
+     * porque el TTS lee literal y de otro modo saldría deletreado o con acento extranjero.
+     *
+     * @return array{ok: bool, path: ?string, error: ?string}
+     */
+    public static function locucion(Aliado $aliado, int $anios, string $ciudad, bool $regenerar = false): array
+    {
+        $rel = "publicidad/cierres/locucion_{$aliado->id}_" . md5($anios . '|' . $ciudad) . '.wav';
+        $abs = Storage::disk('public')->path($rel);
+
+        if (!$regenerar && Storage::disk('public')->exists($rel)) {
+            return ['ok' => true, 'path' => $abs, 'error' => null];
+        }
+
+        $apiKey = \App\Models\IaConfiguracionAliado::paraAliado($aliado->id)->gemini_api_key;
+        if (!$apiKey) {
+            return ['ok' => false, 'path' => null, 'error' => 'No hay clave de Gemini para generar la locución.'];
+        }
+
+        Storage::disk('public')->makeDirectory('publicidad/cierres');
+
+        $marca = self::comoSuena($aliado->nombre);
+        $guion = "Más de {$anios} años respaldando trabajadores colombianos. "
+            . "Asesores calificados en {$ciudad}, y en toda Colombia. ¡Escríbenos ya!";
+
+        $r = LocucionIaService::generar(
+            $apiKey,
+            $guion,
+            $abs,
+            LocucionIaService::VOZ_FEMENINA,
+            'Léelo con energía, cercano y convincente, en español colombiano, ritmo ágil de comercial de radio'
+        );
+
+        return ['ok' => $r['ok'], 'path' => $r['ok'] ? $abs : null, 'error' => $r['error']];
+    }
+
+    /** El TTS lee literal: la marca se escribe fonéticamente para que no la deletree. */
+    private static function comoSuena(string $nombre): string
+    {
+        return match (mb_strtoupper($nombre)) {
+            'BRYGAR' => 'Brigar',
+            default  => $nombre,
+        };
+    }
+
     /** @return array{ok: bool, path: ?string, error: ?string} */
     private static function construir(Aliado $aliado, int $anios, string $ciudad, float $segundos, string $destino): array
     {
@@ -94,6 +143,11 @@ class CierreMarcaVideo
             return ['ok' => false, 'path' => null, 'error' => 'El aliado no tiene logo cargado.'];
         }
         $logoAbs = Storage::disk('public')->path($logoRel);
+
+        // Locución en español. Si falla, el cierre sale igual con solo la base musical:
+        // es preferible una pieza muda a no tener pieza.
+        $voz = self::locucion($aliado, $anios, $ciudad);
+        $rutaVoz = $voz['ok'] ? $voz['path'] : null;
 
         $tmp = sys_get_temp_dir();
         $id  = Str::random(10);
@@ -201,13 +255,22 @@ class CierreMarcaVideo
             $a[] = "[{$ent}:a]atrim=0:0.6,aformat=channel_layouts=stereo,volume=0.9,afade=t=in:st=0:d=0.12,afade=t=out:st=0.2:d=0.4,adelay={$ms}|{$ms}[w{$k}]";
             $mezcla .= "[w{$k}]";
         }
-        $a[] = $mezcla . 'amix=inputs=' . (2 + count($rayos)) . ':duration=first:dropout_transition=0:normalize=0,aformat=channel_layouts=stereo,loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000,alimiter=limit=0.97[aout]';
+        if ($rutaVoz) {
+            // La voz manda: la base y los golpes se agachan debajo (ducking) para que no le
+            // compitan. Sin esto la locucion se oye "dentro" de la musica y no se entiende.
+            $a[] = $mezcla . 'amix=inputs=' . (2 + count($rayos)) . ':duration=first:dropout_transition=0:normalize=0,volume=0.42[lecho]';
+            $a[] = '[15:a]aformat=channel_layouts=stereo:sample_rates=48000,volume=1.35,adelay=150|150[voz]';
+            $a[] = '[lecho][voz]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,'
+                . 'aformat=channel_layouts=stereo,loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000,alimiter=limit=0.97[aout]';
+        } else {
+            $a[] = $mezcla . 'amix=inputs=' . (2 + count($rayos)) . ':duration=first:dropout_transition=0:normalize=0,aformat=channel_layouts=stereo,loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000,alimiter=limit=0.97[aout]';
+        }
 
         $f = array_merge($f, $a);
 
         $ffmpeg = config('services.ffmpeg.bin', 'ffmpeg');
 
-        $resultado = Process::timeout(240)->run([
+        $resultado = Process::timeout(240)->run(array_merge([
             $ffmpeg, '-y',
             '-stream_loop', '-1', '-t', (string) $segundos, '-i', $fondo,
             '-loop', '1', '-t', (string) $segundos, '-i', $capas['velo'],
@@ -227,12 +290,13 @@ class CierreMarcaVideo
             // [13][14] base musical: dos graves en quinta (110 Hz y 165 Hz).
             '-f', 'lavfi', '-t', (string) $segundos, '-i', 'sine=frequency=110:sample_rate=48000',
             '-f', 'lavfi', '-t', (string) $segundos, '-i', 'sine=frequency=165:sample_rate=48000',
+        ], $rutaVoz ? ['-i', $rutaVoz] : [], [
             '-filter_complex', implode(';', $f),
             '-map', '[out]', '-map', '[aout]',
             '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-r', '30',
             '-c:a', 'aac', '-shortest',
             $destino,
-        ]);
+        ]));
 
         foreach ($capas as $ruta) {
             @unlink($ruta);
@@ -311,7 +375,7 @@ class CierreMarcaVideo
         $blanco = imagecolorallocate($img, 255, 255, 255);
         $oro    = imagecolorallocate($img, 255, 228, 146);
 
-        self::centrado($img, 'ESTAMOS EN', $cx, 672, 24, imagecolorallocatealpha($img, 255, 255, 255, 25), self::FUENTE_MEDIA, 9.0);
+        self::centrado($img, 'ESTAMOS EN', $cx, 604, 24, imagecolorallocatealpha($img, 255, 255, 255, 25), self::FUENTE_MEDIA, 9.0);
         self::sombra($img, mb_strtoupper($ciudad), $cx, 754, 88, self::FUENTE, -2.0);
         self::centrado($img, mb_strtoupper($ciudad), $cx, 754, 88, $oro, self::FUENTE, -2.0);
         self::regla($img, $cx, 788, 100, imagecolorallocatealpha($img, 255, 255, 255, 55));
