@@ -3,6 +3,15 @@
 Estado a 12 de agosto de 2026. Objetivo: que el sistema consiga clientes solo,
 midiendo lo que funciona y moviendo la plata hacia ahí.
 
+## 0. Decisiones tomadas (12-ago-2026)
+
+- **Presupuesto:** un conjunto permanente que acumula aprendizaje; las piezas entran como
+  creatividades rotativas y la del día compite como retadora.
+- **Ciudades:** arranque en Cali y Valle (Palmira, Yumbo, Jamundí). Se amplía con evidencia.
+- **IA en WhatsApp:** califica y cotiza sola a los leads de pauta, y pasa a asesor cuando
+  hay intención real de pagar.
+- **Publicación:** sigue pidiendo aprobación. Se revisa tras 2-3 semanas de piezas correctas.
+
 ---
 
 ## 1. Qué está automatizado hoy (verificado en producción)
@@ -13,7 +22,8 @@ midiendo lo que funciona y moviendo la plata hacia ahí.
 | Pegarle el cierre de marca | ✅ `cierre_activo = SI`, se pega solo al terminar Veo |
 | Publicar en Facebook + Instagram | ⚠️ **Solo tras tu aprobación** — `modo = aprobar` |
 | Poner a pautar automáticamente | ❌ **No existe.** 0 campañas creadas en toda la historia, $0 gastados |
-| Analizar resultados y decidir | ⚠️ Se miden (21:30) pero **nadie los lee**: el piloto no consulta métricas |
+| Analizar resultados y decidir la pieza | ✅ El piloto ordena los temas por conversaciones atribuidas ×3 + interacciones y se lo pasa a la IA |
+| Analizar resultados y mover el presupuesto | ❌ No existe: no hay pauta que mover |
 | Exponer la página web | ❌ El aliado no tiene `sitio_web`; las piezas solo enlazan a WhatsApp |
 
 ### Los números que mandan
@@ -115,23 +125,26 @@ a Meta el volumen que necesita para aprender. Después de 15 días, apagar la fr
 
 ---
 
-## 5. El análisis diario (lo que falta de verdad)
+## 5. El análisis diario
 
-Antes de generar la pieza del día, el piloto debe leer qué pasó. Hoy no lo hace.
+**Lo que ya funciona:** `AutopilotGenerator::rendimientoPiezasAnteriores()` lee las métricas
+de los últimos 30 días, cuenta las conversaciones de WhatsApp con atribución real y ordena
+los temas por `conversaciones × 3 + interacciones` antes de pedirle el concepto a la IA. El
+aprendizaje creativo ya está cerrado.
 
-Comando nuevo: `marketing:analisis` — corre 08:30, antes del autopilot de las 09:00.
+La atribución también funciona: `buscarPublicacionOrigen()` lee el `ref: P##` del primer
+mensaje y lo guarda en `origen_publicacion_id`. Está en cero porque nadie ha escrito desde
+una pieza todavía — no porque esté roto.
 
-1. Lee métricas orgánicas + resultados de pauta de los últimos 14 días.
-2. Cruza contra los WhatsApp entrantes con `ref: P##` → **conversaciones reales por pieza**.
-3. Ordena los ángulos (miedo al accidente, costo, trámite, familia) por conversaciones,
-   no por likes. *Un like no paga una afiliación.*
-4. Escribe un resumen que el generador recibe como contexto: qué repetir y qué no.
-5. Mueve el presupuesto según la regla de la sección 3.
-6. Te manda el resumen por WhatsApp.
+**Lo que falta:**
 
-**Requisito previo:** hoy llegarían 0 conversaciones atribuidas porque nadie ha escrito
-desde una pieza. El `ref: P##` ya viaja en el link orgánico y en el anuncio; hay que
-guardarlo en la conversación al primer mensaje, no solo dejarlo en el texto.
+1. **Atribución de anuncios CTWA.** El `ref: P##` viaja en el texto precargado, pero el
+   usuario puede borrarlo antes de enviar. Meta manda además un objeto `referral` con el id
+   del anuncio; hay que leerlo, es la fuente confiable.
+2. **Atribución en conversaciones ya existentes.** Hoy el `ref` solo se lee al *crear* la
+   conversación. Un ex-cliente que vuelve por un anuncio ya tiene conversación, así que su
+   reactivación no se le acredita a la pieza — justo el segmento que más va a convertir.
+3. **El circuito del presupuesto** (sección 3), que no existe porque no hay pauta.
 
 ---
 

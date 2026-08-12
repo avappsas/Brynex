@@ -70,11 +70,80 @@ class CierreMarcaVideo
             'fondo'      => 'publicidad/cierres/fondo_asesores_%d.mp4',
             'logo_pared' => false,
             'voz_propia' => true,
+            'textos'     => ['experiencia', 'asesores', 'cobertura'],
         ],
         2 => [
             'fondo'      => 'publicidad/cierres/fondo_asesores_%d_v2.mp4',
             'logo_pared' => false,
             'voz_propia' => true,
+            'textos'     => ['experiencia', 'cotizacion', 'cobertura'],
+        ],
+        3 => [
+            'fondo'      => 'publicidad/cierres/fondo_asesores_%d_v3.mp4',
+            'logo_pared' => false,
+            'voz_propia' => true,
+            'textos'     => ['cotizacion', 'rapidez', 'cobertura'],
+        ],
+        4 => [
+            'fondo'      => 'publicidad/cierres/fondo_asesores_%d_v4.mp4',
+            'logo_pared' => false,
+            'voz_propia' => true,
+            'textos'     => ['respaldo', 'asesores', 'experiencia'],
+        ],
+        5 => [
+            'fondo'      => 'publicidad/cierres/fondo_asesores_%d_v5.mp4',
+            'logo_pared' => false,
+            'voz_propia' => true,
+            'textos'     => ['rapidez', 'cotizacion', 'asesores'],
+        ],
+    ];
+
+    /**
+     * Textos generales del cierre: sirven para cualquier pieza, sin atarse al plan ni al tema
+     * del día. Cada variante arma su trío desde aquí (ver VARIANTES) para que dos cierres
+     * seguidos no digan lo mismo aunque compartan el estilo.
+     *
+     * Dos formas de bloque, que son las que ya estaban probadas en pantalla:
+     *   - `etiqueta` + un `destacado` enorme + `subs`  — para un dato duro (los años, la ciudad).
+     *   - dos `lineas` grandes + un `sub`              — para una frase.
+     *
+     * Nada de cifras inventadas: lo que se afirme aquí sale en publicidad y tiene que ser
+     * verdad. {anios} y {ciudad} los reemplaza construir() con lo que hay en la config.
+     */
+    private const TEXTOS = [
+        'experiencia' => [
+            'etiqueta'  => 'MÁS DE',
+            'destacado' => '{anios} AÑOS',
+            'tam'       => 112,
+            'subs'      => ['DE EXPERIENCIA'],
+        ],
+        'cobertura' => [
+            'etiqueta'  => 'ESTAMOS EN',
+            'destacado' => '{ciudad}',
+            'tam'       => 88,
+            'subs'      => ['CONVENIO CON TODAS LAS EPS', 'A NIVEL NACIONAL'],
+        ],
+        'asesores' => [
+            'lineas' => ['ASESORES', 'CALIFICADOS'],
+            'tam'    => 66,
+            'sub'    => 'Te acompañamos en todo el trámite',
+        ],
+        // La pidió el dueño para turnarla en las piezas: es el diferencial que de verdad
+        // mueve al que ya tiene una cotización de la competencia en la mano.
+        'cotizacion' => [
+            'lineas' => ['TE MEJORAMOS', 'CUALQUIER COTIZACIÓN'],
+            'tam'    => 54,
+            'sub'    => 'Compáranos antes de afiliarte',
+        ],
+        'rapidez' => [
+            'lineas' => ['AFILIACIÓN', 'EL MISMO DÍA'],
+            'tam'    => 62,
+            'sub'    => 'Sin filas y sin papeleo',
+        ],
+        'respaldo' => [
+            'lineas' => ['EPS · ARL', 'PENSIÓN Y CAJA'],
+            'tam'    => 60,
+            'sub'    => 'Todo en un solo lugar',
         ],
     ];
 
@@ -94,7 +163,7 @@ class CierreMarcaVideo
         bool $regenerar = false,
         ?int $variante = null
     ): array {
-        $variante = $variante ?: self::varianteDelDia();
+        $variante = $variante ?: self::varianteDelDia($aliado->id);
         $firma = md5($variante . '|' . $anios . '|' . $ciudad . '|' . $segundos . '|' . ($aliado->color_primario ?? ''));
         $rutaRelativa = "publicidad/cierres/cierre_{$aliado->id}_{$firma}.mp4";
         $rutaAbsoluta = Storage::disk('public')->path($rutaRelativa);
@@ -112,10 +181,27 @@ class CierreMarcaVideo
         }
     }
 
-    /** Variante que toca hoy. Alterna por dia del anio, asi no sale siempre la misma. */
-    public static function varianteDelDia(): int
+    /**
+     * Variante que toca hoy. Alterna por dia del anio, asi no sale siempre la misma.
+     *
+     * Solo entran en la rotación las variantes que ya tienen su clip de fondo generado: sin
+     * clip, construir() falla y la pieza sale SIN cierre. Filtrando aquí se pueden dejar las
+     * variantes declaradas en el código desde antes y se van sumando solas a medida que se
+     * genera cada fondo, en vez de publicar Reels mochos mientras tanto.
+     */
+    public static function varianteDelDia(?int $aliadoId = null): int
     {
         $claves = array_keys(self::VARIANTES);
+
+        if ($aliadoId !== null) {
+            $disponibles = array_values(array_filter(
+                $claves,
+                fn (int $v) => self::rutaFondo($aliadoId, $v) !== null
+            ));
+            if ($disponibles) {
+                $claves = $disponibles;
+            }
+        }
 
         return $claves[(int) now('America/Bogota')->dayOfYear % count($claves)];
     }
@@ -245,10 +331,16 @@ class CierreMarcaVideo
             'wa'      => "{$tmp}/c_wa_{$id}.png",
         ];
 
+        // Los tres textos salen del catálogo según la variante: así el cierre de mañana no
+        // repite palabra por palabra el de hoy aunque comparta el estilo.
+        $vars = ['{anios}' => (string) $anios, '{ciudad}' => $ciudad];
+        $claves = $def['textos'] ?? ['experiencia', 'asesores', 'cobertura'];
+
         self::pintarVelo($aliado, $capas['velo']);
-        self::momentoAnios($aliado, $anios, $capas['m1']);
-        self::momentoAsesores($aliado, $capas['m2']);
-        self::momentoCobertura($aliado, $ciudad, $capas['m3']);
+        foreach (['m1', 'm2', 'm3'] as $i => $capa) {
+            $clave = $claves[$i] ?? 'experiencia';
+            self::momentoTexto(self::TEXTOS[$clave] ?? self::TEXTOS['experiencia'], $vars, $capas[$capa]);
+        }
         // Sin cuarto momento: la asesora ya dice "¡Escríbenos ya!" en el clip, y ponerlo
         // tambien en pantalla repetia el mismo llamado dos veces. La barra inferior, visible
         // todo el tiempo, es la que indica por donde escribir.
@@ -452,63 +544,91 @@ class CierreMarcaVideo
         imagedestroy($img);
     }
 
-    private static function momentoAnios(Aliado $aliado, int $anios, string $destino): void
+    /**
+     * Pinta uno de los bloques de TEXTOS. Reemplaza a los tres momentos que antes estaban
+     * quemados uno por uno: la maquetación es la misma —son las dos formas que ya estaban
+     * probadas en pantalla— pero ahora el contenido sale del catálogo, que es lo que permite
+     * que cada variante diga cosas distintas.
+     *
+     * @param array<string,string> $vars Reemplazos del tipo {anios}, {ciudad}.
+     */
+    private static function momentoTexto(array $def, array $vars, string $destino): void
     {
         $img = self::lienzo();
         $cx  = (int) (self::ANCHO / 2);
-        $blanco = imagecolorallocate($img, 255, 255, 255);
+        $blanco  = imagecolorallocate($img, 255, 255, 255);
         $oroAlto = imagecolorallocate($img, 255, 228, 146);
         $oroBajo = imagecolorallocate($img, 208, 150, 40);
+        $tenue   = imagecolorallocatealpha($img, 255, 255, 255, 25);
+        $regla   = imagecolorallocatealpha($img, 255, 255, 255, 55);
 
-        // La etiqueta va MUY por encima del número: antes se la comía la tilde de la Ñ.
-        self::centrado($img, 'MÁS DE', $cx, 612, 24, imagecolorallocatealpha($img, 255, 255, 255, 25), self::FUENTE_MEDIA, 10.0);
+        $sust = fn (string $t) => strtr($t, $vars);
 
-        $y = 762;
-        self::sombra($img, "{$anios} AÑOS", $cx, $y, 112, self::FUENTE, -3.0);
-        self::centrado($img, "{$anios} AÑOS", $cx, $y + 5, 112, $oroBajo, self::FUENTE, -3.0);
-        self::centrado($img, "{$anios} AÑOS", $cx, $y, 112, $oroAlto, self::FUENTE, -3.0);
+        if (!empty($def['destacado'])) {
+            // Un dato duro: etiqueta pequeña arriba, el dato enorme en oro con sombra, y el
+            // detalle abajo. La etiqueta va MUY por encima porque si no se la come la tilde.
+            $tam  = self::ajustar($def['tam'] ?? 96, $sust($def['destacado']), -2.5);
+            $y    = $tam >= 100 ? 762 : 754;
+            $trk  = $tam >= 100 ? -3.0 : -2.0;
+            $texto = mb_strtoupper($sust($def['destacado']));
 
-        self::regla($img, $cx, $y + 34, 100, imagecolorallocatealpha($img, 255, 255, 255, 55));
-        self::centrado($img, 'DE EXPERIENCIA', $cx, $y + 84, 26, $blanco, self::FUENTE_MEDIA, 5.5);
+            if (!empty($def['etiqueta'])) {
+                self::centrado($img, $def['etiqueta'], $cx, $y - 150, 24, $tenue, self::FUENTE_MEDIA, 9.5);
+            }
 
-        imagepng($img, $destino);
-        imagedestroy($img);
-    }
+            self::sombra($img, $texto, $cx, $y, $tam, self::FUENTE, $trk);
+            self::centrado($img, $texto, $cx, $y + 5, $tam, $oroBajo, self::FUENTE, $trk);
+            self::centrado($img, $texto, $cx, $y, $tam, $oroAlto, self::FUENTE, $trk);
+            self::regla($img, $cx, $y + 34, 100, $regla);
 
-    private static function momentoAsesores(Aliado $aliado, string $destino): void
-    {
-        $img = self::lienzo();
-        $cx  = (int) (self::ANCHO / 2);
-        $blanco = imagecolorallocate($img, 255, 255, 255);
-        $oro    = imagecolorallocate($img, 255, 228, 146);
+            $subs = $def['subs'] ?? [];
+            $unaSola = count($subs) === 1;
+            foreach ($subs as $i => $linea) {
+                self::centrado(
+                    $img, $sust($linea), $cx, $y + 84 + $i * 40,
+                    $unaSola ? 26 : 25, $blanco, self::FUENTE_MEDIA, $unaSola ? 5.5 : 3.2
+                );
+            }
+        } else {
+            // Una frase: dos líneas grandes, la segunda en oro, y la bajada en manuscrita.
+            $lineas = $def['lineas'] ?? [];
+            $tam = $def['tam'] ?? 66;
+            foreach ($lineas as $linea) {
+                $tam = min($tam, self::ajustar($tam, $sust($linea), -1.5));
+            }
 
-        self::centrado($img, 'ASESORES', $cx, 700, 66, $blanco, self::FUENTE, -1.5);
-        self::centrado($img, 'CALIFICADOS', $cx, 772, 66, $oro, self::FUENTE, -1.5);
-        self::regla($img, $cx, 806, 100, imagecolorallocatealpha($img, 255, 255, 255, 55));
-        self::centrado($img, 'Te acompañamos en todo el trámite', $cx, 860, 34, $blanco, self::FUENTE_SCRIPT, 0);
+            $y = 700 + (int) round((66 - $tam) / 2);
+            foreach ($lineas as $i => $linea) {
+                self::centrado(
+                    $img, mb_strtoupper($sust($linea)), $cx, $y + $i * ($tam + 6), $tam,
+                    $i === 0 ? $blanco : $oroAlto, self::FUENTE, -1.5
+                );
+            }
 
-        imagepng($img, $destino);
-        imagedestroy($img);
-    }
-
-    private static function momentoCobertura(Aliado $aliado, string $ciudad, string $destino): void
-    {
-        $img = self::lienzo();
-        $cx  = (int) (self::ANCHO / 2);
-        $blanco = imagecolorallocate($img, 255, 255, 255);
-        $oro    = imagecolorallocate($img, 255, 228, 146);
-
-        self::centrado($img, 'ESTAMOS EN', $cx, 604, 24, imagecolorallocatealpha($img, 255, 255, 255, 25), self::FUENTE_MEDIA, 9.0);
-        self::sombra($img, mb_strtoupper($ciudad), $cx, 754, 88, self::FUENTE, -2.0);
-        self::centrado($img, mb_strtoupper($ciudad), $cx, 754, 88, $oro, self::FUENTE, -2.0);
-        self::regla($img, $cx, 788, 100, imagecolorallocatealpha($img, 255, 255, 255, 55));
-
-        foreach (['CONVENIO CON TODAS LAS EPS', 'A NIVEL NACIONAL'] as $i => $linea) {
-            self::centrado($img, $linea, $cx, 838 + $i * 40, 25, $blanco, self::FUENTE_MEDIA, 3.2);
+            $yFin = $y + max(0, count($lineas) - 1) * ($tam + 6);
+            self::regla($img, $cx, $yFin + 34, 100, $regla);
+            if (!empty($def['sub'])) {
+                self::centrado($img, $sust($def['sub']), $cx, $yFin + 88, 34, $blanco, self::FUENTE_SCRIPT, 0);
+            }
         }
 
         imagepng($img, $destino);
         imagedestroy($img);
+    }
+
+    /**
+     * Baja el tamaño de fuente hasta que la línea quepa a lo ancho. Sin esto, un texto largo
+     * del catálogo —"CUALQUIER COTIZACIÓN"— se sale del lienzo y sale cortado por los lados.
+     */
+    private static function ajustar(int $tam, string $texto, float $tracking): int
+    {
+        $maxAncho = self::ANCHO - 72;
+
+        while ($tam > 24 && self::anchoTexto(mb_strtoupper($texto), $tam, self::FUENTE, $tracking) > $maxAncho) {
+            $tam -= 2;
+        }
+
+        return $tam;
     }
 
     private static function momentoLlamado(Aliado $aliado, string $destino): void
