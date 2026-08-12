@@ -126,7 +126,15 @@ class SembrarConocimientoAliado extends Command
                 'contenido' => "El retiro va antes del cambio de mes. Hay dos caminos. Si a la persona le toca pagar "
                     . "el mes y no paga, se retira sola por falta de pago, sin necesidad de que avise. Y si ya sabe "
                     . "que se quiere retirar, lo mejor es que lo informe antes, para no tener que esperar a fin de mes "
-                    . "y dejar el trámite en orden.",
+                    . "y dejar el trámite en orden. No hay permanencia mínima ni penalidad por retirarse.",
+            ],
+            [
+                'titulo'    => '¿Tengo que quedarme un tiempo mínimo? ¿Hay cláusula de permanencia?',
+                'categoria' => 'comercial',
+                'contenido' => "No hay cláusula de permanencia ni tiempo mínimo de estadía: la persona puede retirarse "
+                    . "cuando quiera, sin penalidad ni multa por irse antes. Solo hay que avisar antes del cambio de "
+                    . "mes para dejar el trámite en orden. Es un buen argumento cuando alguien duda por miedo a quedar "
+                    . "amarrado: no se está firmando un contrato de permanencia, se paga el mes que se usa.",
             ],
             [
                 'titulo'    => '¿Por dónde me contacto con un asesor?',

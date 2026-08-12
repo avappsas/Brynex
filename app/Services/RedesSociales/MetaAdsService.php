@@ -195,7 +195,14 @@ class MetaAdsService
             // esperar a que Meta lo procese otra vez. Además el token del aliado es de PÁGINA,
             // y Meta no deja subir a la biblioteca de la cuenta publicitaria con ese tipo de
             // token —falla con "An unknown error has occurred."— aunque tenga ads_management.
+            // ...pero solo si el token con el que se crea el anuncio puede LEERLO. Con un token
+            // de usuario para pauta, el video de la pagina puede quedar fuera de su alcance, y
+            // entonces Meta acepta la creatividad y revienta al crear el anuncio con un
+            // "Especifica el contenido multimedia" que no dice nada del permiso que falta.
             $videoId = self::videoIdDePagina($publicacion);
+            if ($videoId && !self::videoLegiblePor($videoId, $token)) {
+                $videoId = null;
+            }
 
             if (!$videoId) {
                 $sube = self::subirVideo($publicacion, $cuenta, $token);
@@ -207,6 +214,23 @@ class MetaAdsService
         }
 
         return ['ok' => true, 'image_hash' => $imageHash, 'video_id' => $videoId, 'mensaje' => 'Media lista.'];
+    }
+
+    /**
+     * ¿El token con el que se va a crear el anuncio alcanza a ver ese video, y está listo?
+     *
+     * Una sola consulta barata que evita el error opaco de más adelante. `video_status` tiene
+     * que ser `ready`: Meta acepta la creatividad con un video a medio procesar y recién falla
+     * al crear el anuncio.
+     */
+    private static function videoLegiblePor(string $videoId, string $token): bool
+    {
+        $r = Http::get(self::BASE_URL . "/{$videoId}", [
+            'fields'       => 'id,status',
+            'access_token' => $token,
+        ]);
+
+        return $r->successful() && data_get($r->json(), 'status.video_status') === 'ready';
     }
 
     /** Id del video que quedó en la página al publicar la pieza, si la publicación fue a Facebook. */
