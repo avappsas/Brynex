@@ -164,6 +164,48 @@ class CierreMarcaVideo
     private const FONDO_REL = 'publicidad/cierres/fondo_asesores_%d.mp4';
 
     /**
+     * Lo que va a DECIR el cierre de una variante, en texto plano: los tres bloques de
+     * pantalla mas la frase hablada.
+     *
+     * Existe para que quien redacta las frases del clip sepa que no puede repetir. El clip y
+     * el cierre se escriben por separado y no se ven entre si: asi salio una pieza que decia
+     * "Te mejoramos cualquier cotizacion" y cuatro segundos despues el cierre mostraba
+     * "TE MEJORAMOS CUALQUIER COTIZACION" en pantalla.
+     *
+     * @return string[]
+     */
+    public static function loQueDice(int $variante, int $anios = 12, string $ciudad = 'Cali'): array
+    {
+        $def = self::VARIANTES[$variante] ?? self::VARIANTES[1];
+        $frases = [];
+
+        foreach ($def['textos'] ?? [] as $clave) {
+            $t = self::TEXTOS[$clave] ?? null;
+            if (!$t) {
+                continue;
+            }
+
+            $partes = array_merge(
+                [$t['etiqueta'] ?? null, $t['destacado'] ?? null],
+                $t['lineas'] ?? [],
+                [$t['sub'] ?? null],
+                $t['subs'] ?? []
+            );
+
+            $frases[] = strtr(implode(' ', array_filter($partes)), [
+                '{anios}'  => (string) $anios,
+                '{ciudad}' => $ciudad,
+            ]);
+        }
+
+        if (!empty($def['dice'])) {
+            $frases[] = $def['dice'];
+        }
+
+        return $frases;
+    }
+
+    /**
      * @param int    $anios   Años de experiencia. Va en publicidad: usar la cifra real.
      * @param string $ciudad  Ciudad sede.
      * @return array{ok: bool, path: ?string, error: ?string}

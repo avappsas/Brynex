@@ -698,7 +698,16 @@ class IncapacidadController extends Controller
             $tieneRS = $tieneRS || $historial->contains('pagada_razon_social');
             $tieneAf = $tieneAf || $historial->contains('pagada_afiliado');
 
-            if (! $tieneRS || ! $tieneAf) {
+            // Pago directo de la entidad al afiliado (típico tras derecho de petición
+            // o tutela): la plata nunca entró a la razón social, así que no existe ni
+            // puede existir un 'pagada_razon_social'. Se reconoce porque no hay
+            // ninguna entrada de dinero registrada para esta incapacidad.
+            $huboEntradaRS = DB::table('abonos_incapacidades')
+                ->where('incapacidad_id', $inc->id)
+                ->where('tipo', 'entrada_incapacidad')
+                ->exists();
+
+            if (! $tieneAf || (! $tieneRS && $huboEntradaRS)) {
                 return response()->json([
                     'ok' => false,
                     'message' => 'Para el cierre exitoso se requiere haber registrado primero "Pagada a Razón Social" y "Pagada al Afiliado".',
@@ -712,6 +721,29 @@ class IncapacidadController extends Controller
         if ($esFamilia) {
             // Guardar en el padre de la familia
             $incGestionId = $inc->incapacidad_padre_id ?? $inc->id;
+        }
+
+        $incActualizar = $nuevoEstado ? Incapacidad::find($incGestionId) : null;
+
+        // Pago directo: se pasa a 'pagada_afiliado' sin pasar por 'pagada_razon_social'
+        // porque la entidad le consignó al afiliado, no al aliado (pasa sobre todo
+        // cuando el pago sale de un derecho de petición o una tutela). No se toca el
+        // efectivo del aliado — ni gasto, ni consignación, ni descuentos —, solo se
+        // deja constancia de que la incapacidad ya no tiene plata por entrar.
+        // Se exige que sea una transición real: si la incapacidad ya está en
+        // 'pagada_afiliado' y solo se está registrando otra gestión sin cambiar el
+        // estado, no se vuelve a abonar.
+        $esPagoDirectoAfiliado = $incActualizar
+            && $nuevoEstado === 'pagada_afiliado'
+            && ! in_array($incActualizar->estado, ['pagada_razon_social', 'pagada_afiliado', 'cierre_exitoso'], true);
+
+        // Se valida antes de crear la gestión: si se validara después quedaría una
+        // gestión diciendo que la incapacidad pasó a pagada, con la incapacidad sin tocar.
+        if ($esPagoDirectoAfiliado && (! $request->filled('valor_pago_afiliado') || (float) $request->valor_pago_afiliado <= 0)) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'Ingresa el valor que la entidad le pagó directamente al afiliado.',
+            ], 422);
         }
 
         $gestion = GestionIncapacidad::create([
@@ -729,7 +761,6 @@ class IncapacidadController extends Controller
 
         // ── Aplicar cambio de estado si se especificó ────────────────────────
         if ($nuevoEstado) {
-            $incActualizar = Incapacidad::find($incGestionId);
             if ($incActualizar) {
                 $incActualizar->estado = $nuevoEstado;
                 // Si cierre_exitoso, mantener ese estado (ya no mapear a 'pagada' legacy)
@@ -814,8 +845,44 @@ class IncapacidadController extends Controller
                     ]);
                 }
 
+                // Pago directo de la entidad al afiliado: sin gasto, sin consignación
+                // y sin descuentos. Se registra solo el abono para que la incapacidad
+                // deje de figurar con saldo por entrar.
+                if ($esPagoDirectoAfiliado) {
+                    $valorDirecto = (float) $request->valor_pago_afiliado;
+                    $fechaPago = $request->fecha_pago_afiliado ?? now()->toDateString();
+
+                    $rsIdAbono = $incActualizar->razon_social_id;
+                    if (! $rsIdAbono && $incActualizar->contrato_id) {
+                        $rsIdAbono = DB::table('contratos')->where('id', $incActualizar->contrato_id)->value('razon_social_id') ?: null;
+                    }
+
+                    $obsAbono = 'Pago directo de la entidad al afiliado — no ingresó a la razón social'
+                        ." — Incapacidad #{$incActualizar->id}";
+
+                    DB::table('abonos_incapacidades')->insert([
+                        'aliado_id' => $incActualizar->aliado_id,
+                        'incapacidad_id' => $incActualizar->id,
+                        'razon_social_id' => $rsIdAbono,
+                        'tipo' => 'pago_cliente',
+                        'valor' => $valorDirecto,
+                        'fecha' => $fechaPago,
+                        'banco_cuenta_id' => null,
+                        'usuario_id' => Auth::id(),
+                        'observacion' => $obsAbono,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+
+                    $incActualizar->estado_pago = 'pagado_afiliado';
+                    $incActualizar->valor_pago = $valorDirecto;
+                    $incActualizar->fecha_pago = $fechaPago;
+                    $incActualizar->pagado_a = 'cliente';
+                    $incActualizar->detalle_pago = $obsAbono;
+                }
+
                 // Si pagada_afiliado, registrar abono pago_cliente + gasto admin tipo pago_incapacidad
-                if ($nuevoEstado === 'pagada_afiliado' && $request->filled('valor_pago_afiliado')) {
+                if ($nuevoEstado === 'pagada_afiliado' && ! $esPagoDirectoAfiliado && $request->filled('valor_pago_afiliado')) {
                     $valorNeto = $request->valor_pago_afiliado;
                     $fechaPago = $request->fecha_pago_afiliado ?? now()->toDateString();
                     $formaPago = $request->forma_pago ?? 'transferencia_bancaria';

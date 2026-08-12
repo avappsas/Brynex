@@ -102,6 +102,12 @@ class AsistenteIaService
         $clienteInfo = $this->resolverContactoExistente($alidoId, $telefono, $waConversacion);
         $campana = $origenCampanaId ? MarketingCampana::find($origenCampanaId) : null;
         $ultimoEnvio = $this->resolverUltimaPlantillaEnviada($waConversacionId);
+        // Pieza de publicidad que originó la conversación (el "ref: P##" del anuncio). Un lead
+        // que llega de pauta se paga, así que no puede recibir el mismo saludo tibio que un
+        // cliente de toda la vida: ver el bloque de guion en construirSystemPromptWhatsapp.
+        $piezaOrigen = $waConversacion?->origen_publicacion_id
+            ? \App\Models\Publicacion::find($waConversacion->origen_publicacion_id)
+            : null;
 
         $aliado = Aliado::find($alidoId);
         $systemPrompt = $this->construirSystemPromptWhatsapp(
@@ -111,7 +117,8 @@ class AsistenteIaService
             $origenCampanaCategoria,
             $clienteInfo,
             $campana,
-            $ultimoEnvio
+            $ultimoEnvio,
+            $piezaOrigen
         );
         $tools = $this->construirToolsWhatsapp($credenciales);
         // modo_prueba: usado por el simulador de conversación (/brynex/ia/simulador) para que las
@@ -508,7 +515,8 @@ class AsistenteIaService
         ?string $origenCampanaCategoria = null,
         array $clienteInfo = [],
         ?MarketingCampana $campana = null,
-        ?array $ultimoEnvio = null
+        ?array $ultimoEnvio = null,
+        ?\App\Models\Publicacion $piezaOrigen = null
     ): string {
         $fecha = now()->translatedFormat('d \d\e F \d\e Y');
         $esCliente = $clienteInfo['es_cliente'] ?? false;
@@ -545,6 +553,37 @@ class AsistenteIaService
         } else {
             $contextoContacto = "\n## Quién te escribe: es un PROSPECTO (no tiene contrato activo con nosotros). "
                 . "Aquí sí aplica todo el enfoque de venta de abajo.\n";
+        }
+
+        // Lead que llegó de una pieza de publicidad (el "ref: P##" del anuncio). Se antepone a
+        // todo lo demás cuando es prospecto: por este contacto se pagó, llega tibio y se enfría
+        // en minutos. Un "¡Hola! 😊" y nada más es plata tirada.
+        $contextoPieza = '';
+        if ($piezaOrigen && !$esCliente && !$empresa) {
+            $tema = $piezaOrigen->tema ?: $piezaOrigen->titulo;
+            $contextoPieza = <<<PIEZA
+
+            ## ⚠️ Este contacto llegó por un ANUNCIO PAGADO (pieza #{$piezaOrigen->id}: "{$tema}")
+
+            Vio ese anuncio y decidió escribir. Tienes su atención AHORA y no la vas a tener en una hora.
+
+            - NO abras con "¿en qué te puedo ayudar?" ni con un saludo suelto: ya sabes de qué vino. Saluda
+              en media línea y pasa de una a lo suyo, retomando el tema del anuncio.
+            - CALIFICA en el primer mensaje, con máximo dos preguntas juntas (más de dos y no responde):
+              qué necesita (EPS, ARL, pensión o el combo), y si es para él solo o para varias personas.
+            - En cuanto tengas con qué, COTIZA en ese mismo turno con cotizar_plan. No prometas "ya te
+              paso el valor": pásalo. Si pregunta por precios en general y todavía no sabes qué quiere,
+              manda enviar_tabla_planes y sobre eso preguntas.
+            - CIERRA cada mensaje pidiendo el dato que falta para avanzar (la cédula, desde cuándo lo
+              necesita, el nombre completo). Nunca termines con "cualquier cosa me avisas": eso deja la
+              pelota del lado de alguien que ya se distrajo.
+            - Si menciona a otra empresa, dice que consiguió algo más barato o que está caro, responde:
+              "te mejoramos cualquier cotización que tengas" — pídele que te mande la que tiene y
+              compárala. No inventes descuentos ni precios: solo cotiza con la herramienta.
+            - Cuando haya intención real de pagar o afiliarse ya (pide cuenta, dice "listo, hagámoslo",
+              pregunta cómo pagar), pásalo con un asesor (hablar_con_asesor). Ahí cierra mejor una persona.
+
+            PIEZA;
         }
 
         $contextoCampana = '';
@@ -592,7 +631,7 @@ class AsistenteIaService
         Eres {$nombreBot}, asesora comercial experta en seguridad social de "{$nombreAliado}", atendiendo por
         WhatsApp a un cliente o prospecto externo. Hoy es {$fecha}. Preséntate por tu nombre si es natural en el
         saludo inicial, y si te preguntan quién eres, responde que eres {$nombreBot}, el asistente virtual.
-        {$contextoContacto}{$contextoCampana}
+        {$contextoContacto}{$contextoPieza}{$contextoCampana}
         ## Cómo cotizar (usa cotizar_plan) — simplifica al máximo, el cliente casi nunca sabe estos términos:
         - Si pregunta por planes o precios EN GENERAL, sin haber dicho aún qué componentes quiere (ej. "¿qué
           planes tienen?", "quiero info de precios", "cuánto cuesta afiliarme"), arranca la conversación con

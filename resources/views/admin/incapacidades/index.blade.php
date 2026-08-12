@@ -1233,6 +1233,21 @@ function registrarGestion(incId) {
     });
 }
 
+// 'pagada_afiliado' significa dos cosas distintas según de dónde venga: desde
+// 'pagada a razón social' es el giro que hace el aliado con la plata que recibió;
+// desde liquidación es un pago directo de la entidad al afiliado, donde el aliado
+// no mueve un peso. Se distinguen en el selector para no registrar uno por el otro.
+function _esPagoDirectoAfiliado(estadoDestino, estadoOrigen) {
+    return estadoDestino === 'pagada_afiliado' && estadoOrigen !== 'pagada_razon_social';
+}
+
+function _labelEstadoDestino(estadoDestino, estadoOrigen) {
+    if (_esPagoDirectoAfiliado(estadoDestino, estadoOrigen)) {
+        return '🏛️ Pagada al Afiliado (pago directo de la entidad)';
+    }
+    return ((window.ESTADOS || {})[estadoDestino] || {}).label || estadoDestino;
+}
+
 function _mostrarModalGestion(incId, familia, inc = {}) {
     const TIPOS = {
         llamada:  '📞 Llamada',
@@ -1277,8 +1292,10 @@ function _mostrarModalGestion(incId, familia, inc = {}) {
         'derecho_peticion_radicado':   ['rechazado', 'tutela', 'en_liquidacion'],
         'tutela':                      ['tutela_radicada', 'rechazado'],
         'tutela_radicada':             ['en_liquidacion', 'rechazado'],
-        'en_liquidacion':              ['pagada_razon_social'],
-        'liquidacion':                 ['pagada_razon_social'],
+        // 'pagada_afiliado' directo desde liquidación: la entidad le pagó al afiliado
+        // y no a la razón social (pasa sobre todo tras derecho de petición o tutela).
+        'en_liquidacion':              ['pagada_razon_social', 'pagada_afiliado'],
+        'liquidacion':                 ['pagada_razon_social', 'pagada_afiliado'],
         'pagada_razon_social':         ['pagada_afiliado'],
         'pagada_afiliado':             ['cierre_exitoso'],
         'cierre_exitoso':              [],
@@ -1293,7 +1310,7 @@ function _mostrarModalGestion(incId, familia, inc = {}) {
     if (siguientesValidos.length > 0) {
         optEstados += siguientesValidos.map(k => {
             const cfg = ESTADOS[k] || {};
-            const lbl = (cfg.label || k);
+            const lbl = _labelEstadoDestino(k, estadoActual);
             const icons = { secondary:'⬜', info:'🔵', primary:'📋', warning:'🟡', danger:'🔴', success:'🟢' };
             const dot = icons[cfg.color || 'secondary'] || '⬜';
             return `<option value="${k}">${dot} ${lbl}</option>`;
@@ -1345,6 +1362,7 @@ function _mostrarModalGestion(incId, familia, inc = {}) {
 
         <div id="gAlertaCierre" style="display:none;background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:.6rem .85rem;font-size:.78rem;color:#92400e">
             ⚠️ Para el <strong>Cierre Exitoso</strong> se requiere haber registrado previamente <em>Pagada a Razón Social</em> y <em>Pagada al Afiliado</em>.
+            Si la entidad le pagó <strong>directo al afiliado</strong>, basta con <em>Pagada al Afiliado</em>.
         </div>
 
         <div id="gPanelPagoRS" style="display:none;background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:.75rem .9rem">
@@ -1357,22 +1375,32 @@ function _mostrarModalGestion(incId, familia, inc = {}) {
         </div>
 
         <div id="gPanelPagoAfiliado" style="display:none;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:.75rem .9rem">
-            <div style="font-size:.72rem;font-weight:700;color:#15803d;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.6rem">
+            <div id="gTituloPagoAfiliado" style="font-size:.72rem;font-weight:700;color:#15803d;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.6rem">
                 🏦 Registrar Pago al Afiliado
             </div>
+
+            <!-- Aviso del pago directo: la entidad le consignó al afiliado, no al aliado -->
+            <div id="gAvisoPagoDirecto" style="display:none;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;
+                        padding:.55rem .75rem;font-size:.76rem;color:#1e40af;margin-bottom:.6rem;line-height:1.35">
+                🏛️ La entidad le pagó <strong>directamente al afiliado</strong>: no entró ni salió dinero de la razón social,
+                así que <strong>no se registra gasto ni consignación</strong> y no se descuenta administración.
+                Solo se deja constancia del valor para que la incapacidad no quede con saldo por entrar.
+            </div>
+
             <div style="display:flex;flex-direction:column;gap:.55rem">
                 <!-- Cuenta de origen -->
-                <div class="form-group" style="margin:0">
+                <div class="form-group" id="gBloqueCuentaOrigen" style="margin:0">
                     <label style="font-weight:600;font-size:.8rem">Cuenta Bancaria de Origen</label>
                     <input type="text" id="gCuentaOrigenAfiliado" class="form-control" readonly style="background:#f8fafc;color:#475569;font-weight:500">
                     <input type="hidden" id="gBancoOrigenIdAfiliado" value="">
                 </div>
-                
+
                 <!-- Valores y deducciones -->
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem">
                     <div class="form-group" style="margin:0">
-                        <label style="font-weight:600;font-size:.8rem">Valor Recibido EPS *</label>
-                        <input type="number" id="gValorRecibidoEps" class="form-control" readonly style="background:#f8fafc;color:#475569;font-weight:600">
+                        <label style="font-weight:600;font-size:.8rem" id="gLabelValorRecibido">Valor Recibido EPS *</label>
+                        <input type="number" id="gValorRecibidoEps" class="form-control" readonly
+                               style="background:#f8fafc;color:#475569;font-weight:600" oninput="_calcularNetoAfiliado()">
                     </div>
                     <div class="form-group" style="margin:0">
                         <label style="font-weight:600;font-size:.8rem">Fecha de Pago *</label>
@@ -1380,7 +1408,7 @@ function _mostrarModalGestion(incId, familia, inc = {}) {
                     </div>
                 </div>
 
-                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.4rem">
+                <div id="gBloqueDescuentos" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.4rem">
                     <div class="form-group" style="margin:0">
                         <label style="font-weight:600;font-size:.76rem">Descuento Admon</label>
                         <input type="number" id="gDescuentoAdmon" class="form-control" value="0" min="0" oninput="_calcularNetoAfiliado()">
@@ -1395,7 +1423,7 @@ function _mostrarModalGestion(incId, familia, inc = {}) {
                     </div>
                 </div>
 
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem">
+                <div id="gBloqueFormaPago" style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem">
                     <div class="form-group" style="margin:0">
                         <label style="font-weight:600;font-size:.8rem">Forma de Pago *</label>
                         <select id="gFormaPagoAfiliado" class="form-control" onchange="_cambioFormaPagoAfiliado(this.value)">
@@ -1410,7 +1438,7 @@ function _mostrarModalGestion(incId, familia, inc = {}) {
                 </div>
 
                 <!-- Foto del comprobante de soporte para el gasto -->
-                <div class="form-group" style="margin:.3rem 0 0">
+                <div class="form-group" id="gBloqueSoporteAfiliado" style="margin:.3rem 0 0">
                     <label style="font-size:.78rem;font-weight:600">Soporte del Gasto / Transferencia <span style="color:#94a3b8">(opcional)</span></label>
                     <div id="_mFotoZoneAfiliado" onclick="document.getElementById('_mFotoInputAfiliado').click()"
                         style="border:2px dashed #bbf7d0;border-radius:8px;padding:.6rem;text-align:center;
@@ -1519,7 +1547,11 @@ function _mostrarModalGestion(incId, familia, inc = {}) {
                     const debeMostrarAfiliado = selEstado === 'pagada_afiliado' && incEstadoActual !== 'pagada_afiliado';
                     pagoAfiliado.style.display = debeMostrarAfiliado ? 'block' : 'none';
                     if (debeMostrarAfiliado) {
-                        _cargarDatosPagoAfiliado(inc, incId);
+                        _cargarDatosPagoAfiliado(inc, incId, _esPagoDirectoAfiliado(selEstado, incEstadoActual));
+                    } else {
+                        // Con el panel oculto no hay pago que registrar: se limpia la
+                        // bandera para no arrastrar el modo de una selección anterior.
+                        window._pagoAfiliadoDirecto = false;
                     }
                 }
             };
@@ -1907,7 +1939,8 @@ function _actualizarSubtituloGestion(sel) {
             'derecho_peticion':['derecho_peticion_radicado'],
             'derecho_peticion_radicado':['rechazado','tutela','en_liquidacion'],
             'tutela':['tutela_radicada','rechazado'],'tutela_radicada':['en_liquidacion','rechazado'],
-            'en_liquidacion':['pagada_razon_social'],'liquidacion':['pagada_razon_social'],
+            'en_liquidacion':['pagada_razon_social','pagada_afiliado'],
+            'liquidacion':['pagada_razon_social','pagada_afiliado'],
             'pagada_razon_social':['pagada_afiliado'],'pagada_afiliado':['cierre_exitoso'],
             'cierre_exitoso':[],'rechazado':[],'pagada':[],
         };
@@ -1917,7 +1950,7 @@ function _actualizarSubtituloGestion(sel) {
         const opts = sigs.map(k => {
             const cfg = ESTADOS_LBL[k] || {};
             const dot = icons[cfg.color||'secondary']||'⬜';
-            return `<option value="${k}">${dot} ${cfg.label||k}</option>`;
+            return `<option value="${k}">${dot} ${_labelEstadoDestino(k, estadoMiembro)}</option>`;
         }).join('');
         const estadoLbl = (ESTADOS_LBL[estadoMiembro]||{}).label || estadoMiembro || '—';
         gEstadoEl.disabled = sigs.length === 0;
@@ -1949,6 +1982,9 @@ function enviarGestion(incId) {
     const estadoNuevo    = document.getElementById('gEstado').value || null;
     const esPagoRS       = estadoNuevo === 'pagada_razon_social';
     const esPagoAfiliado = estadoNuevo === 'pagada_afiliado';
+    // Pago directo de la entidad al afiliado: no hay cuenta de origen, forma de pago
+    // ni descuentos que mandar, porque no hubo movimiento de plata del aliado.
+    const esPagoDirecto  = esPagoAfiliado && window._pagoAfiliadoDirecto === true;
 
     const body = {
         tipo:            document.getElementById('gTipo').value,
@@ -1960,17 +1996,17 @@ function enviarGestion(incId) {
         fecha_radicado:  estadoNuevo === 'radicada' ? (document.getElementById('gFechaRadicado')?.value || null) : null,
         // Pago a Razón Social
         forma_pago_rs:   esPagoRS ? (document.getElementById('gFormaPagoRS')?.value || null) : null,
-        banco_cuenta_id: esPagoRS ? (document.getElementById('gBancoCuentaId')?.value || null) : (esPagoAfiliado ? (document.getElementById('gBancoOrigenIdAfiliado')?.value || null) : null),
+        banco_cuenta_id: esPagoRS ? (document.getElementById('gBancoCuentaId')?.value || null) : ((esPagoAfiliado && !esPagoDirecto) ? (document.getElementById('gBancoOrigenIdAfiliado')?.value || null) : null),
         valor_pago_rs:   esPagoRS ? (document.getElementById('gValorPagoRS')?.value || null) : null,
         fecha_pago_rs:   esPagoRS ? (document.getElementById('gFechaPagoRS')?.value || null) : null,
         ref_pago_rs:     esPagoRS ? (document.getElementById('gRefPagoRS')?.value || null) : null,
         // Pago al Afiliado (Gasto)
-        forma_pago:          esPagoAfiliado ? (document.getElementById('gFormaPagoAfiliado')?.value || null) : null,
-        valor_pago_afiliado: esPagoAfiliado ? (document.getElementById('gValorPagoAfiliado')?.value || null) : null,
+        forma_pago:          (esPagoAfiliado && !esPagoDirecto) ? (document.getElementById('gFormaPagoAfiliado')?.value || null) : null,
+        valor_pago_afiliado: esPagoAfiliado ? (document.getElementById(esPagoDirecto ? 'gValorRecibidoEps' : 'gValorPagoAfiliado')?.value || null) : null,
         fecha_pago_afiliado: esPagoAfiliado ? (document.getElementById('gFechaPagoAfiliado')?.value || null) : null,
-        descuento_admon:     esPagoAfiliado ? (document.getElementById('gDescuentoAdmon')?.value || 0) : 0,
-        descuento_4x1000:    esPagoAfiliado ? (document.getElementById('gDescuento4x1000')?.value || 0) : 0,
-        descuento_otros:     esPagoAfiliado ? (document.getElementById('gDescuentoOtros')?.value || 0) : 0,
+        descuento_admon:     (esPagoAfiliado && !esPagoDirecto) ? (document.getElementById('gDescuentoAdmon')?.value || 0) : 0,
+        descuento_4x1000:    (esPagoAfiliado && !esPagoDirecto) ? (document.getElementById('gDescuento4x1000')?.value || 0) : 0,
+        descuento_otros:     (esPagoAfiliado && !esPagoDirecto) ? (document.getElementById('gDescuentoOtros')?.value || 0) : 0,
         _token:              TOKEN,
     };
 
@@ -1992,7 +2028,13 @@ function enviarGestion(incId) {
     }
 
     // Validar pago al afiliado
-    if (esPagoAfiliado) {
+    if (esPagoDirecto) {
+        if (!body.valor_pago_afiliado || Number(body.valor_pago_afiliado) <= 0) {
+            alert('Ingresa el valor que la entidad le pagó directamente al afiliado.');
+            return;
+        }
+        if (!body.fecha_pago_afiliado) { alert('Ingresa la fecha del pago.'); return; }
+    } else if (esPagoAfiliado) {
         if (body.forma_pago === 'transferencia_bancaria' && !body.banco_cuenta_id) {
             alert('No se detectó la cuenta bancaria de origen (Razón Social) asignada.');
             return;
@@ -2073,15 +2115,74 @@ function cerrarModalGestion() {
     window._afiliadoFotoFile = null;
 }
 
-function _cargarDatosPagoAfiliado(inc, incId) {
+// Alterna el panel entre los dos pagos al afiliado: el normal (el aliado gira la
+// plata que le entró a la razón social → gasto + descuentos) y el directo (la
+// entidad le pagó al afiliado → ningún movimiento de caja del aliado).
+function _aplicarModoPagoAfiliado(esDirecto) {
+    const mostrar = (id, visible, display = 'block') => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = visible ? display : 'none';
+    };
+
+    mostrar('gAvisoPagoDirecto',     esDirecto);
+    mostrar('gBloqueCuentaOrigen',   !esDirecto);
+    mostrar('gBloqueDescuentos',     !esDirecto, 'grid');
+    mostrar('gBloqueFormaPago',      !esDirecto, 'grid');
+    mostrar('gBloqueSoporteAfiliado', !esDirecto);
+
+    const titulo = document.getElementById('gTituloPagoAfiliado');
+    if (titulo) titulo.textContent = esDirecto ? '🏛️ Pago directo de la entidad al afiliado' : '🏦 Registrar Pago al Afiliado';
+
+    const label = document.getElementById('gLabelValorRecibido');
+    if (label) label.textContent = esDirecto ? 'Valor que la entidad le pagó al afiliado *' : 'Valor Recibido EPS *';
+
+    // En el pago directo el valor lo digita el usuario: no hay entrada registrada
+    // de la cual deducirlo.
+    const valorInp = document.getElementById('gValorRecibidoEps');
+    if (valorInp) {
+        valorInp.readOnly = !esDirecto;
+        valorInp.style.background = esDirecto ? '#fff' : '#f8fafc';
+        valorInp.style.color = esDirecto ? '#166534' : '#475569';
+    }
+}
+
+function _cargarDatosPagoAfiliado(inc, incId, esDirecto = false) {
+    window._pagoAfiliadoDirecto = !!esDirecto;
+    _aplicarModoPagoAfiliado(!!esDirecto);
+
     const abonoEps = (inc.abonos || []).find(a => a.tipo === 'entrada_incapacidad');
     const today = new Date().toISOString().substring(0,10);
-    
+
     document.getElementById('gFechaPagoAfiliado').value = today;
     document.getElementById('gDescuentoAdmon').value = 0;
     document.getElementById('gDescuentoOtros').value = 0;
     document.getElementById('gFormaPagoAfiliado').value = 'transferencia_bancaria';
-    
+
+    if (esDirecto) {
+        // Sin descuentos: el aliado no retuvo nada porque la plata no le pasó por las manos.
+        document.getElementById('gDescuento4x1000').value = 0;
+
+        // El valor sugerido solo sirve si la gestión es sobre esta misma incapacidad;
+        // si se eligió una prórroga de la familia, el esperado es otro y toca digitarlo.
+        const alcVal = document.getElementById('gAlcance')?.value || 'esta_incapacidad';
+        const esMismaInc = !alcVal.startsWith('incapacidad_') || parseInt(alcVal.replace('incapacidad_', '')) === incId;
+        document.getElementById('gValorRecibidoEps').value = esMismaInc ? Math.round(Number(inc.valor_esperado || 0)) : '';
+
+        document.getElementById('gBancoOrigenIdAfiliado').value = '';
+        document.getElementById('gCuentaOrigenAfiliado').value = '';
+
+        // Sin gasto ni consignación no hay a qué adjuntar el comprobante, así que
+        // se apaga el pegado de imágenes para no dejar un archivo colgando.
+        window._afiliadoFotoFile = null;
+        if (window._afiliadoPasteHandler) {
+            document.removeEventListener('paste', window._afiliadoPasteHandler);
+            window._afiliadoPasteHandler = null;
+        }
+
+        _calcularNetoAfiliado();
+        return;
+    }
+
     // Limpiar vista previa de la foto al cargar
     const prev = document.getElementById('_mFotoPreviewAfiliado');
     if (prev) prev.innerHTML = '📷 Haz clic, arrastra o Ctrl+V para pegar soporte';

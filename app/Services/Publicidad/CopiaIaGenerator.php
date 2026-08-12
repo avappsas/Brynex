@@ -215,6 +215,11 @@ class CopiaIaGenerator
      *                           última frase NO debe ser otro "escríbenos": pedir dos veces lo
      *                           mismo con cuatro segundos de diferencia suena a relleno y le
      *                           quita fuerza al cierre.
+     * @param  string[]  $diceElCierre  Lo que el cierre ya dice en pantalla o en voz (ver
+     *                                  CierreMarcaVideo::loQueDice). El clip y el cierre se
+     *                                  escriben por separado y no se ven entre sí; sin esto
+     *                                  salió una pieza que decía "Te mejoramos cualquier
+     *                                  cotización" y el cierre lo repetía en pantalla.
      * @return array{ok: bool, frases: string[], error: ?string}
      */
     public static function generarFrasesVideo(
@@ -222,7 +227,8 @@ class CopiaIaGenerator
         string $nombreAliado,
         string $contexto,
         int $cantidad = 3,
-        bool $conCierre = false
+        bool $conCierre = false,
+        array $diceElCierre = []
     ): array {
         $config = IaConfiguracionAliado::paraAliado($aliadoId);
         $credenciales = $config->credencialesEfectivas();
@@ -243,6 +249,14 @@ class CopiaIaGenerator
               . '"contáctanos", "llámanos" ni "mándanos".'
             : '(3) la última es el llamado a la acción para afiliarse o cotizar.';
 
+        $evitar = $diceElCierre
+            ? "\n\n" . 'NO REPITAS EL CIERRE. Cuatro segundos después de tus frases, el video remata con un cierre '
+              . 'de marca que ya dice esto:' . "\n  · " . implode("\n  · ", $diceElCierre) . "\n"
+              . 'Tus frases tienen que decir algo DISTINTO: ni la misma idea con otras palabras, ni las mismas '
+              . 'palabras clave. Si el cierre ya habla de mejorar cotizaciones, tú no hablas de cotizaciones; si '
+              . 'ya habla de rapidez o de no hacer papeleo, tú buscas otro ángulo.'
+            : '';
+
         $prompt = "Eres redactor publicitario de {$nombreAliado}, una agencia de afiliación a seguridad social en Colombia. "
             . "Escribe {$cantidad} frases MUY CORTAS (máximo 6 palabras cada una, español colombiano) para animar como "
             . 'texto en pantalla sobre un video publicitario.' . "\n\n"
@@ -255,6 +269,7 @@ class CopiaIaGenerator
             . 'inventar precios, sin urgencia falsa (nada de "cupos limitados" ni "solo hoy"). '
             . 'Trata al espectador de TÚ, nunca de USTED (nada de "escríbanos", "cotice", "afíliese"): el resto de '
             . 'la pieza tutea y mezclar los dos tratos se nota. '
+            . $evitar . "\n\n"
             . 'Responde ÚNICAMENTE con un array JSON de strings, sin texto adicional ni bloque de código. '
             . 'Ejemplo de formato: ["frase 1", "frase 2", "frase 3"]';
 
@@ -295,10 +310,54 @@ class CopiaIaGenerator
             ));
         }
 
+        // Misma historia con el contenido del cierre: el Reel #10 traía "Te mejoramos cualquier
+        // cotización" el mismo día en que al cierre le tocaba mostrar "TE MEJORAMOS CUALQUIER
+        // COTIZACIÓN". Dos palabras con carga en común ya es repetición para el que mira.
+        if ($diceElCierre) {
+            $delCierre = array_map([self::class, 'palabrasClave'], $diceElCierre);
+            $frases = array_values(array_filter($frases, function (string $f) use ($delCierre) {
+                $mias = self::palabrasClave($f);
+                foreach ($delCierre as $suyas) {
+                    if (count(array_intersect($mias, $suyas)) >= 2) {
+                        return false;
+                    }
+                }
+
+                return true;
+            }));
+        }
+
         if (empty($frases)) {
             return ['ok' => false, 'frases' => [], 'error' => 'La IA no devolvió frases utilizables.'];
         }
 
         return ['ok' => true, 'frases' => $frases, 'error' => null];
+    }
+
+    /**
+     * Palabras con carga de una frase: sin tildes, sin puntuación y sin las que no distinguen
+     * nada. Comparar frases enteras no sirve —"Te mejoramos cualquier cotización" y "TE
+     * MEJORAMOS CUALQUIER COTIZACIÓN" no son iguales como cadena—, y comparar todas las
+     * palabras haría que cualquier "te" o "tu" contara como repetición.
+     *
+     * @return string[]
+     */
+    private static function palabrasClave(string $texto): array
+    {
+        $vacias = ['el', 'la', 'los', 'las', 'un', 'una', 'unos', 'unas', 'de', 'del', 'al', 'a',
+            'en', 'y', 'o', 'que', 'te', 'tu', 'tus', 'su', 'sus', 'con', 'sin', 'por', 'para',
+            'es', 'ya', 'no', 'mas', 'muy', 'lo', 'se', 'me', 'mi', 'todo', 'toda', 'todos',
+            'todas', 'cualquier', 'hoy', 'dia', 'mismo', 'antes', 'nivel'];
+
+        $norm = mb_strtolower($texto, 'UTF-8');
+        $norm = strtr($norm, ['á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u', 'ñ' => 'n', 'ü' => 'u']);
+        $norm = preg_replace('/[^a-z0-9\s]/', ' ', $norm);
+
+        $palabras = array_filter(
+            preg_split('/\s+/', trim($norm), -1, PREG_SPLIT_NO_EMPTY) ?: [],
+            fn (string $p) => mb_strlen($p) > 2 && !in_array($p, $vacias, true)
+        );
+
+        return array_values(array_unique($palabras));
     }
 }

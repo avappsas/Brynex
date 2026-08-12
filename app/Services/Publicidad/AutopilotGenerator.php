@@ -167,12 +167,23 @@ class AutopilotGenerator
         // los modelos de video no escriben texto legible.
         // Con el cierre de marca pegado atrás, el llamado a la acción ya lo hace el cierre:
         // las frases del clip se quedan en el problema y la solución (ver generarFrasesVideo).
+        // Y se le dice QUÉ dice el cierre que le va a tocar, para que no lo repita con otras
+        // palabras: la variante rota por día, así que el trío de textos cambia solo.
+        $diceElCierre = $config->cierre_activo
+            ? CierreMarcaVideo::loQueDice(
+                CierreMarcaVideo::varianteDelDia($aliado->id),
+                (int) ($config->cierre_anios ?: 12),
+                $config->cierre_ciudad ?: 'Cali'
+            )
+            : [];
+
         $frasesResultado = CopiaIaGenerator::generarFrasesVideo(
             $aliado->id,
             $aliado->nombre,
             $contexto,
             3,
-            (bool) $config->cierre_activo
+            (bool) $config->cierre_activo,
+            $diceElCierre
         );
         $frases = $frasesResultado['ok'] ? array_slice($frasesResultado['frases'], 0, 3) : [];
 
