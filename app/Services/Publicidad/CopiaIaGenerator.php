@@ -108,12 +108,14 @@ class CopiaIaGenerator
             . 'straight at the camera with a serious expression, he says in Spanish: "Me caí en la moto y ahí me di '
             . 'cuenta que no tenía a ere ele." ' . "\n\n"
 
-            . 'SIGLAS — REGLA OBLIGATORIA: dentro de la frase hablada, escribe las siglas DELETREADAS '
-            . 'FONÉTICAMENTE, nunca con sus letras juntas, porque el modelo de voz las lee como si fueran una '
-            . 'palabra y suenan mal. Usa exactamente: ARL → "a ere ele", EPS → "e pe ese", AFP → "a efe pe", '
-            . 'IBC → "i be ce", ARP → "a ere pe". Ojo: es "ere" (suave), NO "erre". '
-            . 'Esto aplica SOLO a la frase que la persona pronuncia en voz alta; en el resto del prompt (la '
-            . 'descripción de la escena en inglés) las siglas van normales.' . "\n\n"
+            . 'PRONUNCIACIÓN — REGLA OBLIGATORIA en la frase hablada (el modelo de voz lee literal lo que se '
+            . 'escriba, así que hay que escribirlo como debe sonar):' . "\n"
+            . '  · Siglas DELETREADAS FONÉTICAMENTE, nunca con las letras juntas: ARL → "a ere ele", '
+            . 'EPS → "e pe ese", AFP → "a efe pe", IBC → "i be ce". Ojo: es "ere" (suave), NO "erre".' . "\n"
+            . "  · El nombre de la marca {$nombreAliado} se escribe \"brigar\" cuando lo diga en voz alta, "
+            . 'para que no lo lea deletreado ni con acento extranjero.' . "\n"
+            . 'Todo esto aplica SOLO a la frase que la persona pronuncia; en la descripción de la escena en '
+            . 'inglés las siglas y la marca van escritas normales.' . "\n\n"
 
             . 'Máximo 80 palabras en total. NO menciones texto en pantalla, subtítulos, logos ni marcas — eso se agrega '
             . 'después por separado. Responde ÚNICAMENTE con el prompt en sí, sin explicación, sin bloque de código.';
