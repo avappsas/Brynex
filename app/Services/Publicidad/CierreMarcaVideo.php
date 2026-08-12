@@ -28,7 +28,10 @@ use Illuminate\Support\Str;
  */
 class CierreMarcaVideo
 {
-    private const FUENTE = 'resources/fonts/Poppins-Bold.ttf';
+    private const FUENTE        = 'resources/fonts/Poppins-Bold.ttf';
+    private const FUENTE_MEDIA  = 'resources/fonts/Poppins-Medium.ttf';
+    private const FUENTE_SEMI   = 'resources/fonts/Poppins-SemiBold.ttf';
+    private const FUENTE_SCRIPT = 'resources/fonts/KaushanScript-Regular.ttf';
     private const ANCHO  = 720;
     private const ALTO   = 1280;
 
@@ -164,12 +167,12 @@ class CierreMarcaVideo
             for ($x = 0; $x < $w; $x += 2) {
                 // Base: degradado diagonal (más oscuro arriba-izquierda).
                 $d = ($x / $w) * 0.35 + ($y / $h) * 0.65;
-                $f = 0.30 + 0.75 * $d;
+                $f = 0.22 + 0.82 * $d;
 
                 // Resplandor radial detrás del logo.
                 $dist = sqrt((($x - $cx) ** 2) + (($y - $cy) ** 2));
                 if ($dist < $radio) {
-                    $f += 0.42 * (1 - $dist / $radio) ** 2;
+                    $f += 0.62 * (1 - $dist / $radio) ** 2;
                 }
 
                 $color = imagecolorallocate(
@@ -209,30 +212,53 @@ class CierreMarcaVideo
         imagedestroy($img);
     }
 
-    /** Número de años (grande) + la promesa debajo. */
+    /**
+     * Bloque de confianza. La jerarquía es lo que hace que se vea diseñado y no escrito:
+     * una etiqueta diminuta con las letras muy separadas, el número enorme con las letras
+     * apretadas, una línea fina que ancla, y la promesa en un peso más liviano. El contraste
+     * fuerte entre tamaños y entre trackings es justo lo que le falta a un texto "de Word",
+     * donde todo va del mismo tamaño y con el espaciado que venga por defecto.
+     */
     private static function pintarBloqueConfianza(Aliado $aliado, int $anios, string $promesa, string $destino): void
     {
         $img = self::lienzoTransparente();
-        $fuente = base_path(self::FUENTE);
-        $blanco = imagecolorallocate($img, 255, 255, 255);
-        $dorado = imagecolorallocate($img, 255, 214, 102);
+        $cx  = (int) (self::ANCHO / 2);
 
-        // El número, protagonista.
-        self::centrar($img, $fuente, "+{$anios} AÑOS", 96, (int) (self::ALTO * 0.615), $dorado, true);
-        // La promesa, en dos líneas si hace falta.
-        foreach (self::partirEnLineas($promesa, 26) as $i => $linea) {
-            self::centrar($img, $fuente, $linea, 30, (int) (self::ALTO * 0.665) + $i * 40, $blanco);
+        $blanco    = imagecolorallocate($img, 255, 255, 255);
+        $tenue     = imagecolorallocatealpha($img, 255, 255, 255, 18);
+        $linea     = imagecolorallocatealpha($img, 255, 255, 255, 60);
+        $doradoAlt = imagecolorallocate($img, 255, 226, 140);
+        $doradoBaj = imagecolorallocate($img, 214, 158, 46);
+
+        // Etiqueta pequeñísima, muy abierta: el recurso clásico para que se lea "diseñado".
+        self::centrado($img, 'MÁS DE', $cx, (int) (self::ALTO * 0.545), 22, $tenue, self::FUENTE_MEDIA, 9.0);
+
+        // El número: enorme y con tracking negativo. Se dibuja en dos capas de dorado
+        // (una más oscura desplazada abajo) para que tenga volumen sin necesidad de un
+        // degradado real, que GD haría lento a este tamaño.
+        $y = (int) (self::ALTO * 0.635);
+        self::sombraMultiple($img, "{$anios} AÑOS", $cx, $y, 104, self::FUENTE, -3.0);
+        self::centrado($img, "{$anios} AÑOS", $cx, $y + 4, 104, $doradoBaj, self::FUENTE, -3.0);
+        self::centrado($img, "{$anios} AÑOS", $cx, $y, 104, $doradoAlt, self::FUENTE, -3.0);
+
+        // Línea fina como ancla entre el número y la promesa.
+        $anchoLinea = 90;
+        imagefilledrectangle($img, $cx - $anchoLinea, $y + 26, $cx + $anchoLinea, $y + 28, $linea);
+
+        // La promesa, peso liviano y letras abiertas: contrasta con el número y respira.
+        foreach (self::partirEnLineas($promesa, 30) as $i => $linea) {
+            self::centrado($img, $linea, $cx, $y + 68 + $i * 34, 21, $blanco, self::FUENTE_MEDIA, 3.4);
         }
 
         imagepng($img, $destino);
         imagedestroy($img);
     }
 
-    /** Llamado a la acción + WhatsApp. */
+    /** Llamado a la acción en cápsula + WhatsApp, con una línea manuscrita que humaniza. */
     private static function pintarLlamado(Aliado $aliado, string $destino): void
     {
         $img = self::lienzoTransparente();
-        $fuente = base_path(self::FUENTE);
+        $cx  = (int) (self::ANCHO / 2);
         $blanco = imagecolorallocate($img, 255, 255, 255);
 
         $wa = \App\Models\WhatsappConfig::where('aliado_id', $aliado->id)->where('activo', true)->first();
@@ -241,28 +267,35 @@ class CierreMarcaVideo
             $numero = substr($numero, 2);
         }
 
-        // Cápsula clara detrás del CTA, para que salte sobre el fondo.
-        $yCta = (int) (self::ALTO * 0.815);
-        $texto = 'ESCRÍBENOS YA';
-        $caja = imagettfbbox(40, 0, $fuente, $texto);
-        $anchoTxt = abs($caja[4] - $caja[0]);
-        $padX = 46;
-        $x0 = (int) ((self::ANCHO - $anchoTxt) / 2) - $padX;
-        $x1 = (int) ((self::ANCHO + $anchoTxt) / 2) + $padX;
-        self::capsula($img, $x0, $yCta - 52, $x1, $yCta + 20, imagecolorallocate($img, 255, 255, 255));
+        // La línea manuscrita rompe la rigidez de todo-mayúsculas y da calidez — es el mismo
+        // recurso que ya usan los flyers para la frase emocional.
+        self::centrado($img, 'Los mejores asesores', $cx, (int) (self::ALTO * 0.762), 40,
+            imagecolorallocate($img, 255, 226, 140), self::FUENTE_SCRIPT, 0);
 
-        // Texto del CTA en el color de la marca, sobre la cápsula blanca.
+        // Cápsula blanca: el CTA tiene que saltar sobre el fondo de color.
+        $yCta = (int) (self::ALTO * 0.845);
+        $texto = 'ESCRÍBENOS YA';
+        $anchoTxt = self::anchoTexto($texto, 38, self::FUENTE, 2.0);
+        $padX = 52;
+        $x0 = $cx - (int) ($anchoTxt / 2) - $padX;
+        $x1 = $cx + (int) ($anchoTxt / 2) + $padX;
+        self::capsula($img, $x0, $yCta - 48, $x1, $yCta + 18, $blanco);
+
         $hex = ltrim($aliado->color_primario ?: '#1e3a8a', '#');
         $colorMarca = imagecolorallocate(
             $img,
-            (int) (hexdec(substr($hex, 0, 2)) * 0.75),
-            (int) (hexdec(substr($hex, 2, 2)) * 0.75),
-            (int) (hexdec(substr($hex, 4, 2)) * 0.75)
+            (int) (hexdec(substr($hex, 0, 2)) * 0.72),
+            (int) (hexdec(substr($hex, 2, 2)) * 0.72),
+            (int) (hexdec(substr($hex, 4, 2)) * 0.72)
         );
-        self::centrar($img, $fuente, $texto, 40, $yCta, $colorMarca);
+        self::centrado($img, $texto, $cx, $yCta, 38, $colorMarca, self::FUENTE, 2.0);
 
         if ($numero) {
-            self::centrar($img, $fuente, 'WhatsApp ' . $numero, 32, $yCta + 78, $blanco, true);
+            // Agrupado (320 540 0870): un número corrido de 10 dígitos no se retiene de una
+            // pasada, y este cierre dura segundos.
+            $legible = trim(preg_replace('/(\d{3})(\d{3})(\d{4})/', '$1 $2 $3', $numero));
+            self::sombraMultiple($img, $legible, $cx, $yCta + 84, 34, self::FUENTE_SEMI, 3.0);
+            self::centrado($img, $legible, $cx, $yCta + 84, 34, $blanco, self::FUENTE_SEMI, 3.0);
         }
 
         imagepng($img, $destino);
@@ -280,16 +313,62 @@ class CierreMarcaVideo
         return $img;
     }
 
-    private static function centrar($img, string $fuente, string $texto, int $tam, int $y, int $color, bool $sombra = false): void
+    /**
+     * Dibuja letra por letra para poder aplicar tracking. GD no tiene espaciado entre
+     * caracteres: `imagettftext` escupe la cadena con el kerning por defecto de la fuente, y
+     * eso es exactamente lo que hace que un texto se vea "escrito" y no "compuesto". Misma
+     * técnica que FlyerPlanBuilder::texto().
+     */
+    private static function texto($img, string $texto, int $x, int $y, int $tam, int $color, string $fuente, float $tracking = 0): void
     {
-        $caja = imagettfbbox($tam, 0, $fuente, $texto);
-        $ancho = abs($caja[4] - $caja[0]);
-        $x = (int) ((self::ANCHO - $ancho) / 2);
+        $ruta = base_path($fuente);
 
-        if ($sombra) {
-            imagettftext($img, $tam, 0, $x + 3, $y + 3, imagecolorallocatealpha($img, 0, 0, 0, 75), $fuente, $texto);
+        if (abs($tracking) < 0.01) {
+            imagettftext($img, $tam, 0, $x, $y, $color, $ruta, $texto);
+            return;
         }
-        imagettftext($img, $tam, 0, $x, $y, $color, $fuente, $texto);
+
+        $cursor = (float) $x;
+        foreach (preg_split('//u', $texto, -1, PREG_SPLIT_NO_EMPTY) as $letra) {
+            imagettftext($img, $tam, 0, (int) round($cursor), $y, $color, $ruta, $letra);
+            $caja = imagettfbbox($tam, 0, $ruta, $letra);
+            $cursor += ($caja[2] - $caja[0]) + $tracking;
+        }
+    }
+
+    private static function centrado($img, string $texto, int $cx, int $y, int $tam, int $color, string $fuente, float $tracking = 0): void
+    {
+        $ancho = self::anchoTexto($texto, $tam, $fuente, $tracking);
+        self::texto($img, $texto, (int) round($cx - $ancho / 2), $y, $tam, $color, $fuente, $tracking);
+    }
+
+    /** Ancho real contando el tracking con el que se va a dibujar. */
+    private static function anchoTexto(string $texto, int $tam, string $fuente, float $tracking = 0): int
+    {
+        $ruta = base_path($fuente);
+
+        if (abs($tracking) < 0.01) {
+            $caja = imagettfbbox($tam, 0, $ruta, $texto);
+            return (int) abs($caja[2] - $caja[0]);
+        }
+
+        $ancho = 0.0;
+        foreach (preg_split('//u', $texto, -1, PREG_SPLIT_NO_EMPTY) as $letra) {
+            $caja = imagettfbbox($tam, 0, $ruta, $letra);
+            $ancho += ($caja[2] - $caja[0]) + $tracking;
+        }
+
+        return (int) round($ancho - $tracking);
+    }
+
+    /** Sombra en varias direcciones: despega el texto del fondo sin verse como un borde duro. */
+    private static function sombraMultiple($img, string $texto, int $cx, int $y, int $tam, string $fuente, float $tracking = 0): void
+    {
+        $sombra = imagecolorallocatealpha($img, 0, 0, 0, 92);
+        foreach ([[2, 3], [-2, 3], [3, 4], [0, 5]] as [$dx, $dy]) {
+            $ancho = self::anchoTexto($texto, $tam, $fuente, $tracking);
+            self::texto($img, $texto, (int) round($cx - $ancho / 2) + $dx, $y + $dy, $tam, $sombra, $fuente, $tracking);
+        }
     }
 
     /** Rectángulo de esquinas redondeadas. */
