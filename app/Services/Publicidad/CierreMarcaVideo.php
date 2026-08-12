@@ -177,7 +177,10 @@ class CierreMarcaVideo
         ?int $variante = null
     ): array {
         $variante = $variante ?: self::varianteDelDia($aliado->id);
-        $firma = md5($variante . '|' . $anios . '|' . $ciudad . '|' . $segundos . '|' . ($aliado->color_primario ?? ''));
+        // Los textos entran en la firma: sin ellos, cambiar el trío de una variante no cambia
+        // el nombre del archivo y se sigue sirviendo el cierre viejo desde el caché.
+        $textos = implode(',', self::VARIANTES[$variante]['textos'] ?? []);
+        $firma = md5($variante . '|' . $anios . '|' . $ciudad . '|' . $segundos . '|' . ($aliado->color_primario ?? '') . '|' . $textos);
         $rutaRelativa = "publicidad/cierres/cierre_{$aliado->id}_{$firma}.mp4";
         $rutaAbsoluta = Storage::disk('public')->path($rutaRelativa);
 
