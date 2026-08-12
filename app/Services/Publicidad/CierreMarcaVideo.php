@@ -69,9 +69,11 @@ class CierreMarcaVideo
         1 => [
             'fondo'      => 'publicidad/cierres/fondo_asesores_%d.mp4',
             'logo_pared' => false,
-            // El clip ya trae la voz de la propia asesora, sincronizada con sus labios, y el
-            // letrero BRYGAR renderizado en la pared del set. No se le monta locucion encima:
-            // eso era justo lo que hacia que la boca no cuadrara con lo que se escuchaba.
+            'voz_propia' => true,
+        ],
+        2 => [
+            'fondo'      => 'publicidad/cierres/fondo_asesores_%d_v2.mp4',
+            'logo_pared' => false,
             'voz_propia' => true,
         ],
     ];
