@@ -297,6 +297,11 @@ class MetaAdsService
         $base = [
             'age_min' => $config->edad_min ?: 25,
             'age_max' => $config->edad_max ?: 55,
+            // Meta exige declararlo explícitamente o rechaza la creación del conjunto.
+            // En 0 respeta la segmentación tal cual: con presupuesto chico y una etapa de
+            // aprendizaje, que Meta amplíe el público por su cuenta haría imposible saber
+            // qué funcionó. Se puede subir a 1 cuando ya haya un ganador claro.
+            'targeting_automation' => ['advantage_audience' => 0],
         ];
 
         $ciudades = $config->ciudades ?: [];
