@@ -71,11 +71,11 @@ class BuscarConocimientoTool implements IaToolInterface
             })
             ->filter(fn ($item) => $item['match_count'] >= $umbral)
             // Lo del aliado manda sobre lo global, aunque coincida en menos palabras. El
-            // conocimiento general describe cómo funciona la seguridad social "en teoría" y
-            // puede CONTRADECIR la política real del aliado: la entrada global sobre mora dice
-            // que la cobertura se puede ver afectada, mientras que en BRYGAR el servicio sigue
-            // activo. Ordenando solo por coincidencias, la genérica ganaba y el asistente le
-            // decía al cliente justo lo contrario de lo que pasa.
+            // conocimiento general explica cómo funciona la seguridad social en abstracto; el
+            // del aliado dice cómo opera él. Cuando los dos hablan del mismo tema, el segundo
+            // es el que responde la pregunta del cliente: preguntando por la mora, la entrada
+            // global explica el recargo y las molestias con las citas, pero solo la del aliado
+            // dice hasta cuándo tiene plazo antes de que lo retiren.
             ->sortByDesc(fn ($item) => [$item['propia'] ? 1 : 0, $item['match_count']])
             ->take(5)
             ->pluck('modelo')

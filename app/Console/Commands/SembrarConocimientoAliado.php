@@ -87,6 +87,16 @@ class SembrarConocimientoAliado extends Command
                     . "es lo que suele necesitar quien lo pide para empezar a trabajar.",
             ],
             [
+                'titulo'    => '¿Afiliarme nuevo es lo mismo que trasladarme de EPS?',
+                'categoria' => 'proceso',
+                'contenido' => "No, y confundirlos genera un reclamo seguro. Una afiliación NUEVA queda en 1 a 2 días "
+                    . "hábiles. Un TRASLADO —cuando la persona ya está afiliada a una EPS y quiere cambiarse a otra— "
+                    . "es otro proceso: primero se afilia con la EPS que ya tiene y después se pide el traslado, que "
+                    . "tarda alrededor de 2 meses en hacerse efectivo. Antes de prometer tiempos hay que averiguar si "
+                    . "la persona ya tiene EPS activa. Nunca decirle 1 a 2 días a alguien que en realidad necesita un "
+                    . "traslado.",
+            ],
+            [
                 'titulo'    => '¿Cuándo se paga cada mes?',
                 'categoria' => 'pagos',
                 'contenido' => "El pago va dentro de los primeros 10 días del mes. Nunca dar por tuya una fecha "
@@ -104,10 +114,11 @@ class SembrarConocimientoAliado extends Command
             [
                 'titulo'    => '¿Qué pasa si me atraso en el pago?',
                 'categoria' => 'pagos',
-                'contenido' => "Si se atrasa queda en mora PERO NO pierde el servicio: la cobertura sigue activa. Lo "
-                    . "que no puede es pasarse del mes — si llega el cambio de mes sin pagar, ahí sí se retira. "
-                    . "Conviene decirlo con calma y sin amenazar: la persona sigue cubierta, pero tiene que ponerse al "
-                    . "día antes de que termine el mes.",
+                'contenido' => "Si se atrasa queda en mora PERO NO pierde el servicio: la afiliación sigue activa. "
+                    . "Eso sí, mientras esté en mora puede encontrar dificultades para acceder a citas médicas o para "
+                    . "reclamar una incapacidad, porque las entidades ven el aporte pendiente. Lo que no puede es "
+                    . "pasarse del mes: si llega el cambio de mes sin pagar, ahí sí se retira. Conviene decirlo con "
+                    . "calma y sin amenazar — sigue cubierto, pero tiene que ponerse al día antes de fin de mes.",
             ],
             [
                 'titulo'    => '¿Cómo me retiro del servicio?',
