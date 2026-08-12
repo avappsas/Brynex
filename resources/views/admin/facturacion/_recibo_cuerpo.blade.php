@@ -386,7 +386,9 @@ $tSS = $tEps + $tArl + $tPen + $tCaj;
 {{-- BARRA INFERIOR dentro del cuadro --}}
 <div class="fact-bottom-bar" style="border-top:1px solid rgba(255,255,255,.07);margin: 0 0 0; border-radius:0">
     <span>{{ $nomAliadoG }} — Asesoría en Seguridad Social</span>
-    <span style="font-size:.65rem;color:#94a3b8">Facturó: {{ $factura->usuario?->nombre ?? $factura->usuario?->name ?? 'Usuario' }} &nbsp;&middot;&nbsp; Impreso: {{ now()->format('d/m/Y H:i') }}</span>
+    {{-- Sin "Facturó"/"Creado": el lote agrupa varios trabajadores y sus filas
+         pueden venir de personas y momentos distintos; un solo nombre mentiría. --}}
+    <span style="font-size:.65rem;color:#94a3b8">Impreso: {{ now()->format('d/m/Y H:i') }}</span>
 </div>
 </div>{{-- /recibo-inner --}}
 @else
@@ -1104,7 +1106,7 @@ $fpLabel = match($factura->forma_pago ?? '') {
 <div style="margin: 0 1.2rem 1rem; border-radius: 0 0 6px 6px; overflow:hidden; border: 1px solid #e2e8f0; border-top: none;">
 <div class="fact-bottom-bar" style="border-radius:0">
     <span>{{ $nomAliado }} — Asesoría en Seguridad Social</span>
-    <span>Impreso: {{ now()->format('d/m/Y H:i') }}</span>
+    <span>Facturó: {{ $factura->usuario?->nombre ?? 'Usuario' }} &nbsp;&middot;&nbsp; Creado: {{ $factura->created_at?->format('d/m/Y H:i') ?? '—' }} &nbsp;&middot;&nbsp; Impreso: {{ now()->format('d/m/Y H:i') }}</span>
 </div>{{-- /fact-bottom-bar --}}
 </div>{{-- /bottom-wrapper --}}
 

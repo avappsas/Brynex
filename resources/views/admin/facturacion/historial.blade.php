@@ -162,7 +162,7 @@ table.hi-tbl{width:100%;border-collapse:collapse;font-size:.77rem}
             <thead><tr>
                 <th>N° Recibo</th>
                 <th>Fecha</th>
-                <th>Período</th>
+                <th>Servicio</th>
                 <th>Tipo</th>
                 <th class="num">Total</th>
                 <th>Estado</th>
@@ -191,6 +191,25 @@ table.hi-tbl{width:100%;border-collapse:collapse;font-size:.77rem}
                 : ($f->tipo === 'afiliacion'
                     ? ['badge-afil', '📌 Afiliación']
                     : ['badge-plan', '📄 Planilla']);
+
+            // Mes que cubre el plano PILA. No es el de la columna Servicio: un cobro
+            // de agosto paga la planilla de julio (salvo Indep. Mes Actual). Se anexa
+            // al badge para no tener que abrir el plano y verlo. En afiliación no,
+            // que ahí ambos meses son el mismo.
+            $mesPlano = '';
+            if ($f->plano && (int)$f->plano->mes_plano) {
+                $mesPlano = mb_strtolower($meses_full[(int)$f->plano->mes_plano] ?? '');
+                if ($mesPlano && (int)$f->plano->anio_plano !== (int)$f->anio) {
+                    $mesPlano .= ' ' . $f->plano->anio_plano;
+                }
+            }
+            if ($mesPlano && ($esRetiro || $f->tipo === 'planilla')) {
+                $tipoBadge[1] .= ' ' . $mesPlano;
+            }
+            // Título del modal del plano: su propio período, no el del recibo.
+            $periodoPlanoLabel = $f->plano && (int)$f->plano->mes_plano
+                ? (($meses[(int)$f->plano->mes_plano] ?? '') . ' ' . $f->plano->anio_plano)
+                : (($meses[$f->mes] ?? '') . ' ' . $f->anio);
 
             $esPorEmpresa = !is_null($f->empresa_id);
             // N° Planilla del operador (si el plano fue pagado al operador)
@@ -320,7 +339,7 @@ table.hi-tbl{width:100%;border-collapse:collapse;font-size:.77rem}
                         <button onclick="abrirRecibo(
                                     '{{ route('admin.facturacion.recibo', $f->id) }}?modal=1&individual=1',
                                     {{ $planoModal ? json_encode($planoModal) : 'null' }},
-                                    '{{ ($meses[$f->mes] ?? '') . ' ' . $f->anio }}'
+                                    '{{ $periodoPlanoLabel }}'
                                 )"
                                 class="btn-act-sm btn-recibo" title="Ver recibo">
                             📄 Recibo
@@ -337,7 +356,7 @@ table.hi-tbl{width:100%;border-collapse:collapse;font-size:.77rem}
                         
                         @if($f->plano)
                         <button type="button" class="btn-act-sm btn-plano"
-                            onclick="verPlano({{ $planoModal ? json_encode($planoModal) : 'null' }}, '{{ $meses[$f->mes] ?? '' }} {{ $f->anio }}')"
+                            onclick="verPlano({{ $planoModal ? json_encode($planoModal) : 'null' }}, '{{ $periodoPlanoLabel }}')"
                             title="Ver datos del plano — también disponible dentro del recibo">
                             📋
                         </button>

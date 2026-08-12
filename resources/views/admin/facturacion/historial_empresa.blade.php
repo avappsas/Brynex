@@ -123,7 +123,7 @@ table.htbl{width:100%;border-collapse:collapse;font-size:.8rem}
     <th>Fecha</th>
     <th>Tipo</th>
     <th>Descripción / Info</th>
-    <th>Período</th>
+    <th>Servicio</th>
     <th class="num">Total</th>
     <th style="text-align:center">Saldo</th>
     <th>Estado</th>
