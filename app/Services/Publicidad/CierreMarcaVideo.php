@@ -72,7 +72,7 @@ class CierreMarcaVideo
             'voz_propia' => true,
             'textos'     => ['experiencia', 'asesores', 'cobertura'],
             'escena'     => 'a friendly professional Colombian woman advisor, around 30, and a male colleague standing together in a modern office with a warm wood wall behind them',
-            'dice'       => 'En Brigar llevamos más de doce años afiliando trabajadores colombianos. ¡Escríbenos ya!',
+            'dice'       => 'En BRYGAR llevamos más de doce años afiliando trabajadores colombianos. ¡Escríbenos ya!',
         ],
         2 => [
             'fondo'      => 'publicidad/cierres/fondo_asesores_%d_v2.mp4',
@@ -83,7 +83,7 @@ class CierreMarcaVideo
             // OJO: el clip que hay cacheado se generó a mano antes de que el guion viviera
             // aquí, así que su audio no es exactamente esta frase. Es el que el dueño aprobó,
             // así que NO regenerarlo salvo que se quiera cambiarlo a propósito (--rehacer).
-            'dice'       => 'En Brigar te afiliamos rápido y sin vueltas. ¡Escríbenos ya!',
+            'dice'       => 'En BRYGAR te afiliamos rápido y sin vueltas. ¡Escríbenos ya!',
         ],
         3 => [
             'fondo'      => 'publicidad/cierres/fondo_asesores_%d_v3.mp4',
@@ -91,7 +91,7 @@ class CierreMarcaVideo
             'voz_propia' => true,
             'textos'     => ['cotizacion', 'rapidez', 'cobertura'],
             'escena'     => 'a confident Colombian woman advisor, around 28, seated at a clean desk with a laptop in a modern office, medium wide shot with the office visible around her',
-            'dice'       => 'En Brigar te mejoramos cualquier cotización que tengas. ¡Escríbenos ya!',
+            'dice'       => 'En BRYGAR te mejoramos cualquier cotización que tengas. ¡Escríbenos ya!',
         ],
         4 => [
             'fondo'      => 'publicidad/cierres/fondo_asesores_%d_v4.mp4',
@@ -99,7 +99,7 @@ class CierreMarcaVideo
             'voz_propia' => true,
             'textos'     => ['respaldo', 'asesores', 'experiencia'],
             'escena'     => 'a warm Colombian man advisor, around 35, in a light blue shirt, standing to the LEFT side of the frame in a modern office with colleagues working softly out of focus behind him, wide shot showing his full upper body with plenty of room above his head',
-            'dice'       => 'EPS, ARL, pensión y caja: en Brigar te afiliamos el mismo día. ¡Escríbenos ya!',
+            'dice'       => 'EPS, ARL, pensión y caja: en BRYGAR te afiliamos el mismo día. ¡Escríbenos ya!',
         ],
         5 => [
             'fondo'      => 'publicidad/cierres/fondo_asesores_%d_v5.mp4',
@@ -107,7 +107,7 @@ class CierreMarcaVideo
             'voz_propia' => true,
             'textos'     => ['rapidez', 'cotizacion', 'asesores'],
             'escena'     => 'a cheerful young Colombian woman advisor, around 26, with a headset, in a modern customer service office, medium wide shot showing the workspace behind her',
-            'dice'       => 'En Brigar te asesoramos sin costo y te afiliamos el mismo día. ¡Escríbenos ya!',
+            'dice'       => 'En BRYGAR te asesoramos sin costo y te afiliamos el mismo día. ¡Escríbenos ya!',
         ],
     ];
 
@@ -265,7 +265,11 @@ class CierreMarcaVideo
             . 'blocks it or passes in front of it, and their head stays well below the letters. '
             . 'Warm natural lighting, shallow depth of field, premium corporate look, authentic Colombian people. '
             . 'Leave the bottom fifth of the frame clear of anything important. '
-            . 'The person speaks to camera in clear Colombian Spanish, lip-synced: "' . $def['dice'] . '"';
+            // La frase se pasa por PronunciacionEsp: si no, Veo deletrea "EPS, ARL" letra por
+            // letra con una pausa en cada una y se come medio clip.
+            . 'The person speaks to camera in clear Colombian Spanish, lip-synced, spoken fluidly and '
+            . 'naturally, never spelling out letters and never pausing between them: "'
+            . PronunciacionEsp::paraLocucion($def['dice']) . '"';
     }
 
     /** Ruta del clip de fondo de una variante; null si todavía no se ha generado. */
@@ -303,11 +307,11 @@ class CierreMarcaVideo
         Storage::disk('public')->makeDirectory('publicidad/cierres');
 
         $def = self::VARIANTES[$variante] ?? self::VARIANTES[1];
-        $guion = strtr($def['guion'], [
+        $guion = PronunciacionEsp::paraLocucion(strtr($def['guion'] ?? $def['dice'] ?? '', [
             '{anios}'  => (string) $anios,
             '{ciudad}' => $ciudad,
-            '{marca}'  => self::comoSuena($aliado->nombre),
-        ]);
+            '{marca}'  => $aliado->nombre,
+        ]));
 
         $r = LocucionIaService::generar(
             $apiKey,
@@ -332,14 +336,6 @@ class CierreMarcaVideo
         return $r->successful() ? (float) trim($r->output()) : 0.0;
     }
 
-    /** El TTS lee literal: la marca se escribe fonéticamente para que no la deletree. */
-    private static function comoSuena(string $nombre): string
-    {
-        return match (mb_strtoupper($nombre)) {
-            'BRYGAR' => 'Brigar',
-            default  => $nombre,
-        };
-    }
 
     /** @return array{ok: bool, path: ?string, error: ?string} */
     private static function construir(Aliado $aliado, int $anios, string $ciudad, float $segundos, string $destino, int $variante = 1): array

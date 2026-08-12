@@ -106,16 +106,9 @@ class CopiaIaGenerator
             . 'Ejemplo de estructura (NO la copies, es solo el molde): A close-up handheld shot of a Colombian '
             . 'motorcycle delivery rider in his 20s, helmet in hand, catching his breath on a busy street, looking '
             . 'straight at the camera with a serious expression, he says in Spanish: "Me caí en la moto y ahí me di '
-            . 'cuenta que no tenía a ere ele." ' . "\n\n"
+            . 'cuenta que no tenía ' . PronunciacionEsp::SIGLAS['ARL'] . '." ' . "\n\n"
 
-            . 'PRONUNCIACIÓN — REGLA OBLIGATORIA en la frase hablada (el modelo de voz lee literal lo que se '
-            . 'escriba, así que hay que escribirlo como debe sonar):' . "\n"
-            . '  · Siglas DELETREADAS FONÉTICAMENTE, nunca con las letras juntas: ARL → "a ere ele", '
-            . 'EPS → "e pe ese", AFP → "a efe pe", IBC → "i be ce". Ojo: es "ere" (suave), NO "erre".' . "\n"
-            . "  · El nombre de la marca {$nombreAliado} se escribe \"brigar\" cuando lo diga en voz alta, "
-            . 'para que no lo lea deletreado ni con acento extranjero.' . "\n"
-            . 'Todo esto aplica SOLO a la frase que la persona pronuncia; en la descripción de la escena en '
-            . 'inglés las siglas y la marca van escritas normales.' . "\n\n"
+            . PronunciacionEsp::reglaParaPrompt($nombreAliado) . "\n\n"
 
             . 'Máximo 80 palabras en total. NO menciones texto en pantalla, subtítulos, logos ni marcas — eso se agrega '
             . 'después por separado. Responde ÚNICAMENTE con el prompt en sí, sin explicación, sin bloque de código.';
@@ -180,7 +173,11 @@ class CopiaIaGenerator
             . 'convenga — cuando una escena SÍ tenga diálogo, inclúyelo TEXTUAL y entre comillas dentro de su prompt, en '
             . 'ESPAÑOL COLOMBIANO (máx. 15 palabras), natural para ese momento de la historia. No describas texto en '
             . 'pantalla, subtítulos, logos, ni marcas en ninguna escena (eso se agrega después por separado). Cada prompt '
-            . 'máximo 60 palabras. Responde ÚNICAMENTE con un array JSON de strings en el orden de las escenas, sin texto '
+            . 'máximo 60 palabras.' . "\n\n"
+            // Faltaba aquí: los videos de más de 8 segundos se arman por escenas y salían sin
+            // ninguna regla de pronunciación, así que las siglas se leían deletreadas.
+            . PronunciacionEsp::reglaParaPrompt($nombreAliado) . "\n\n"
+            . 'Responde ÚNICAMENTE con un array JSON de strings en el orden de las escenas, sin texto '
             . 'adicional ni bloque de código. Ejemplo de formato: ["prompt escena 1", "prompt escena 2"]';
 
         try {

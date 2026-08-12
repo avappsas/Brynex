@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Models\BaseModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Crypt;
 
 class PautaConfig extends BaseModel
 {
@@ -13,6 +14,7 @@ class PautaConfig extends BaseModel
         'aliado_id',
         'activo',
         'ad_account_id',
+        'access_token_ads',
         'audiencias',
         'audiencias_sync_at',
         'limite_mensual_cop',
@@ -66,6 +68,25 @@ class PautaConfig extends BaseModel
     public function aliado(): BelongsTo
     {
         return $this->belongsTo(Aliado::class);
+    }
+
+    // ── Token de pauta, cifrado (mismo patrón que RedSocialConfig) ───────────────────────
+
+    public function setAccessTokenAdsAttribute(?string $value): void
+    {
+        $this->attributes['access_token_ads'] = $value ? Crypt::encryptString($value) : null;
+    }
+
+    public function getAccessTokenAdsAttribute(?string $value): ?string
+    {
+        if (!$value) {
+            return null;
+        }
+        try {
+            return Crypt::decryptString($value);
+        } catch (\Exception $e) {
+            return null;
+        }
     }
 
     public static function paraAliado(int $aliadoId): static

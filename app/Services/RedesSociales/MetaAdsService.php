@@ -35,6 +35,22 @@ class MetaAdsService
     private const DIAS_GRACIA = 4;
 
     /**
+     * Token con el que se habla con la API de anuncios.
+     *
+     * Meta exige que quien crea un anuncio haya aceptado la certificación de no
+     * discriminación. El token de redes del aliado es de PÁGINA y lo generó un usuario del
+     * sistema, que no puede aceptarla: no tiene sesión ni navegador. Certificar a los
+     * usuarios humanos tampoco sirve, porque ante Meta el anuncio no lo crea ninguno de
+     * ellos. Por eso la pauta puede llevar su propio token, de una persona ya certificada.
+     *
+     * Sin token propio se usa el de la página, que es como funcionaba antes.
+     */
+    private static function tokenAds(PautaConfig $config, RedSocialConfig $fb): string
+    {
+        return $config->access_token_ads ?: (string) $fb->access_token;
+    }
+
+    /**
      * Crea Campaña + Conjunto de anuncios (destino WhatsApp) + Creatividad con botón nativo
      * "Enviar mensaje" + Anuncio, todo en PAUSED (cero gasto). No activa nada.
      * @return array{ok: bool, mensaje: string}
@@ -60,7 +76,7 @@ class MetaAdsService
             return ['ok' => false, 'mensaje' => 'No hay un número de WhatsApp del bot configurado para este aliado.'];
         }
 
-        $token = $fb->access_token;
+        $token = self::tokenAds($config, $fb);
         $cuenta = 'act_' . ltrim($config->ad_account_id, 'act_');
         $pageId = $fb->identificador;
         $numeroWa = preg_replace('/\D/', '', $waConfig->numero_telefono);
@@ -414,7 +430,7 @@ class MetaAdsService
             return ['ok' => false, 'adset_id' => null, 'mensaje' => 'No hay un número de WhatsApp del bot configurado.'];
         }
 
-        $token    = $fb->access_token;
+        $token    = self::tokenAds($config, $fb);
         $cuenta   = 'act_' . ltrim($config->ad_account_id, 'act_');
         $diario   = (int) round($config->presupuestoDiarioCop());
         $numeroWa = preg_replace('/\D/', '', $waConfig->numero_telefono);
@@ -510,7 +526,7 @@ class MetaAdsService
         }
 
         $fb     = RedSocialConfig::paraAliado($publicacion->aliado_id, 'facebook');
-        $token  = $fb->access_token;
+        $token  = self::tokenAds($config, $fb);
         $cuenta = 'act_' . ltrim($config->ad_account_id, 'act_');
 
         $media = self::subirMedia($publicacion, $cuenta, $token);
