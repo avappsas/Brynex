@@ -7,6 +7,7 @@ use App\Models\PautaConfig;
 use App\Models\RedSocialConfig;
 use App\Models\WhatsappConfig;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -278,12 +279,29 @@ class MetaAdsService
                 'location_types' => json_encode(['city']),
                 'q'              => $ciudad,
                 'country_code'   => 'CO',
-                'limit'          => 1,
+                'limit'          => 10,
                 'access_token'   => $token,
             ]);
-            $clave = data_get($r->json('data.0') ?: [], 'key');
+
+            // Meta ignora el filtro de tipo cuando no encuentra la ciudad y devuelve BARRIOS:
+            // "Palmira" trae "Ciudadela Palmira" de primero. Quedarse con data.0 significaba
+            // pautarle a un barrio creyendo que era el municipio. Se exige tipo `city` y que
+            // el nombre coincida de verdad.
+            $clave = null;
+            foreach ((array) $r->json('data') as $d) {
+                if (($d['type'] ?? null) !== 'city') {
+                    continue;
+                }
+                if (self::mismoNombre($d['name'] ?? '', $ciudad)) {
+                    $clave = $d['key'] ?? null;
+                    break;
+                }
+            }
+
             if ($clave) {
                 $claves[$ciudad] = $clave;
+            } else {
+                Log::warning("Pauta: Meta no tiene la ciudad '{$ciudad}' como municipio; se excluye de la segmentación.");
             }
         }
 
@@ -302,6 +320,17 @@ class MetaAdsService
                 'cities' => array_map(fn ($k) => ['key' => $k, 'radius' => 25, 'distance_unit' => 'kilometer'], $resueltas),
             ],
         ];
+    }
+
+    /** Compara nombres de ciudad ignorando tildes y mayúsculas: "Jamundi" debe casar con "Jamundí". */
+    private static function mismoNombre(string $a, string $b): bool
+    {
+        $normalizar = fn (string $s) => mb_strtolower(trim(strtr(
+            $s,
+            ['á'=>'a','é'=>'e','í'=>'i','ó'=>'o','ú'=>'u','Á'=>'A','É'=>'E','Í'=>'I','Ó'=>'O','Ú'=>'U','ñ'=>'n','Ñ'=>'N']
+        )));
+
+        return $normalizar($a) === $normalizar($b);
     }
 
     /**

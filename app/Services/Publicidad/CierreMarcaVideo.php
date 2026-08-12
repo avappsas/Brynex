@@ -71,30 +71,40 @@ class CierreMarcaVideo
             'logo_pared' => false,
             'voz_propia' => true,
             'textos'     => ['experiencia', 'asesores', 'cobertura'],
+            'escena'     => 'a friendly professional Colombian woman advisor, around 30, and a male colleague standing together in a modern office with a warm wood wall behind them',
+            'dice'       => 'En Brigar llevamos más de doce años afiliando trabajadores colombianos. ¡Escríbenos ya!',
         ],
         2 => [
             'fondo'      => 'publicidad/cierres/fondo_asesores_%d_v2.mp4',
             'logo_pared' => false,
             'voz_propia' => true,
             'textos'     => ['experiencia', 'cotizacion', 'cobertura'],
+            'escena'     => 'an attractive Colombian woman advisor, 22 to 25 years old, in a bright modern open-plan office, medium wide shot showing the whole office behind her, not a close-up',
+            'dice'       => 'En Brigar te afiliamos rápido y sin vueltas. ¡Escríbenos ya!',
         ],
         3 => [
             'fondo'      => 'publicidad/cierres/fondo_asesores_%d_v3.mp4',
             'logo_pared' => false,
             'voz_propia' => true,
             'textos'     => ['cotizacion', 'rapidez', 'cobertura'],
+            'escena'     => 'a confident Colombian woman advisor, around 28, seated at a clean desk with a laptop in a modern office, medium wide shot with the office visible around her',
+            'dice'       => 'En Brigar te mejoramos cualquier cotización que tengas. ¡Escríbenos ya!',
         ],
         4 => [
             'fondo'      => 'publicidad/cierres/fondo_asesores_%d_v4.mp4',
             'logo_pared' => false,
             'voz_propia' => true,
             'textos'     => ['respaldo', 'asesores', 'experiencia'],
+            'escena'     => 'a warm Colombian man advisor, around 35, in a light blue shirt, standing in a modern office with colleagues working softly out of focus behind him, medium wide shot',
+            'dice'       => 'EPS, ARL, pensión y caja: en Brigar te afiliamos el mismo día. ¡Escríbenos ya!',
         ],
         5 => [
             'fondo'      => 'publicidad/cierres/fondo_asesores_%d_v5.mp4',
             'logo_pared' => false,
             'voz_propia' => true,
             'textos'     => ['rapidez', 'cotizacion', 'asesores'],
+            'escena'     => 'a cheerful young Colombian woman advisor, around 26, with a headset, in a modern customer service office, medium wide shot showing the workspace behind her',
+            'dice'       => 'En Brigar te asesoramos sin costo y te afiliamos el mismo día. ¡Escríbenos ya!',
         ],
     ];
 
@@ -204,6 +214,48 @@ class CierreMarcaVideo
         }
 
         return $claves[(int) now('America/Bogota')->dayOfYear % count($claves)];
+    }
+
+    /** Variantes declaradas, con su estado de fondo. Para el comando de generación. */
+    public static function variantes(int $aliadoId): array
+    {
+        $out = [];
+        foreach (self::VARIANTES as $n => $def) {
+            $out[$n] = [
+                'textos' => $def['textos'] ?? [],
+                'dice'   => $def['dice'] ?? null,
+                'fondo'  => sprintf($def['fondo'], $aliadoId),
+                'listo'  => self::rutaFondo($aliadoId, $n) !== null,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Prompt de Veo para el clip de fondo de una variante. Lo que está aquí no es adorno,
+     * cada regla salió de un intento fallido:
+     *
+     *   - El letrero se pide EXPLÍCITAMENTE centrado y con margen, porque Veo lo encuadraba
+     *     cortado ("BRYGA", "RYGAR") y el nombre de la marca a medias es peor que ninguno.
+     *   - Se prohíbe cualquier otro texto: cuando se le dejaba libertad escribía WhatsApp y
+     *     números inventados, y el número real va en la barra que compone FFmpeg abajo.
+     *   - La frase la dice la persona con lip-sync: superponerle un TTS encima dejaba la boca
+     *     descuadrada, que es justo lo que delata que la pieza es generada.
+     *   - Plano medio, no primer plano: de cerca no se ve la oficina, que es la que respalda.
+     */
+    public static function promptFondo(string $marca, int $variante = 1): string
+    {
+        $def = self::VARIANTES[$variante] ?? self::VARIANTES[1];
+
+        return 'Vertical 9:16 video of ' . $def['escena'] . '. '
+            . 'On the wall behind, centered and completely within frame with clear margin on both sides, '
+            . 'a large modern office sign reading exactly the single word "' . mb_strtoupper($marca) . '" '
+            . 'in bold clean uppercase letters. No other text, no numbers, no additional signage anywhere, '
+            . 'no logos, no phone numbers, no WhatsApp icons. '
+            . 'Warm natural lighting, shallow depth of field, premium corporate look, authentic Colombian people. '
+            . 'Leave the bottom fifth of the frame clear of anything important. '
+            . 'The person speaks to camera in clear Colombian Spanish, lip-synced: "' . $def['dice'] . '"';
     }
 
     /** Ruta del clip de fondo de una variante; null si todavía no se ha generado. */
