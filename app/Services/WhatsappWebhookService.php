@@ -11,6 +11,7 @@ use App\Jobs\WhatsappEscalarMultimediaJob;
 use App\Jobs\WhatsappResponderIaJob;
 use App\Models\{
     AdresChequeo,
+    ConsentimientoDato,
     IaConfiguracionAliado,
     MarketingBloqueado,
     WhatsappConfig,
@@ -18,6 +19,7 @@ use App\Models\{
     WhatsappMensaje
 };
 use App\Services\Adres\RespuestaCaptcha;
+use App\Services\Cumplimiento\DetectorBajaPublicidad;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -264,16 +266,71 @@ class WhatsappWebhookService
         // bloquea de una vez, sin pasar por la IA — es un rechazo explícito, no algo que
         // requiera interpretación.
         $esRechazoPublicidad = $tipo === 'button' && self::esBotonNoInteresa($dataMensaje['contenido'] ?? '');
-        if ($esRechazoPublicidad) {
+
+        // La misma baja pero escrita a mano ("no me escriban más", "BAJA"). Se atiende aquí
+        // y no en la IA porque la baja no puede depender de que el modelo interprete bien:
+        // si el cliente lo pidió, se honra. DetectorBajaPublicidad es deliberadamente
+        // estricto para no confundir un trámite con una baja — en este negocio "cancelar"
+        // es pagar y "dar de baja" es retirar a un empleado.
+        $esBajaEscrita = !$esRechazoPublicidad
+            && $tipo === 'text'
+            && DetectorBajaPublicidad::esPeticionDeBaja($dataMensaje['contenido'] ?? null);
+
+        if ($esRechazoPublicidad || $esBajaEscrita) {
+            $motivo = $esRechazoPublicidad
+                ? 'Tocó el botón "' . $dataMensaje['contenido'] . '" de una plantilla de marketing.'
+                : (DetectorBajaPublicidad::motivo($dataMensaje['contenido'] ?? null) ?? 'Pidió por escrito no recibir publicidad.');
+
             MarketingBloqueado::bloquear(
                 $alidoId,
                 $waFrom,
-                'boton_no_interesa',
-                'Tocó el botón "' . $dataMensaje['contenido'] . '" de una plantilla de marketing.',
+                $esRechazoPublicidad ? 'boton_no_interesa' : 'texto_baja',
+                $motivo,
                 null,
                 $conversacion->id
             );
+
+            // Además del bloqueo operativo, queda la prueba de que el titular pidió la baja
+            // y de cuándo: es lo que hay que poder mostrar si preguntan por qué se le
+            // escribía antes y ya no.
+            ConsentimientoDato::revocar(
+                $alidoId,
+                $waFrom,
+                $esRechazoPublicidad ? 'boton_no_interesa' : 'texto_baja',
+                [
+                    'motivo'          => $motivo,
+                    'mensaje'         => mb_substr((string) ($dataMensaje['contenido'] ?? ''), 0, 500),
+                    'conversacion_id' => $conversacion->id,
+                ]
+            );
+
             dispatch(new MarketingConfirmarBloqueoJob($conversacion->id));
+        }
+
+        // Deshacer: quien está bloqueado responde al acuse pidiendo volver. Solo se evalúa
+        // si YA está bloqueado, así que un "sí" suelto aquí es inequívoco — es la respuesta
+        // al mensaje que le acabamos de mandar, no parte de otra conversación.
+        //
+        // Se registra como autorización expresa: el titular pidió por escrito que le
+        // volviéramos a escribir, y ese texto queda como prueba del opt-in.
+        if (!$esRechazoPublicidad && !$esBajaEscrita && $tipo === 'text'
+            && DetectorBajaPublicidad::esReactivacion($dataMensaje['contenido'] ?? null)
+            && MarketingBloqueado::estaBloqueado($alidoId, $waFrom)) {
+
+            MarketingBloqueado::where('aliado_id', $alidoId)->where('celular', $waFrom)->delete();
+
+            ConsentimientoDato::otorgar(
+                $alidoId,
+                $waFrom,
+                'reactivacion_whatsapp',
+                mb_substr((string) ($dataMensaje['contenido'] ?? ''), 0, 500),
+                ['conversacion_id' => $conversacion->id],
+                ConsentimientoDato::CANAL_WHATSAPP,
+                null,
+                $conversacion->nombre_contacto
+            );
+
+            dispatch(new MarketingConfirmarBloqueoJob($conversacion->id, 'reactivacion'));
         }
 
         // Si hay un chequeo de ADRES esperando el código de seguridad, este mensaje

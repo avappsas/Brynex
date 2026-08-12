@@ -25,7 +25,11 @@ class MarketingConfirmarBloqueoJob implements ShouldQueue
     public int $tries = 2;
     public int $timeout = 30;
 
-    public function __construct(protected int $conversacionId) {}
+    /** @param string $tipoAcuse 'baja' (por defecto) o 'reactivacion'. */
+    public function __construct(
+        protected int $conversacionId,
+        protected string $tipoAcuse = 'baja'
+    ) {}
 
     public function handle(WhatsappApiService $whatsappApi): void
     {
@@ -35,7 +39,15 @@ class MarketingConfirmarBloqueoJob implements ShouldQueue
         $config = WhatsappConfig::paraAliado($conversacion->aliado_id);
         if (!$config->credencialesCompletas()) return;
 
-        $texto = 'Listo, no volverás a recibir mensajes publicitarios de nuestra parte. Disculpa la molestia. 🙏';
+        // El acuse de baja cumple tres cosas a la vez: confirma la baja, aclara que los
+        // mensajes de sus trámites y pagos siguen llegando (para que no crea que se quedó
+        // incomunicado), y deja una salida por si el bloqueo se disparó por error. Ese
+        // "responde SÍ QUIERO" recupera a quien se arrepiente, con constancia de que lo pidió.
+        $texto = $this->tipoAcuse === 'reactivacion'
+            ? '¡Listo! Volverás a recibir nuestra información. Gracias por confiar en nosotros. 🙌'
+            : 'Listo, no volverás a recibir publicidad nuestra. Disculpa la molestia. 🙏' . "\n\n"
+                . 'Seguirás recibiendo solo lo de tus trámites y pagos.' . "\n"
+                . 'Si fue un error, respóndeme *SÍ QUIERO* y te reactivo.';
 
         $envio = $whatsappApi->enviarTexto($conversacion->wa_contact_id, $texto, $config);
         if (!$envio['ok']) {
