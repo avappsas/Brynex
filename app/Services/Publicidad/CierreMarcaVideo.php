@@ -80,6 +80,9 @@ class CierreMarcaVideo
             'voz_propia' => true,
             'textos'     => ['experiencia', 'cotizacion', 'cobertura'],
             'escena'     => 'an attractive Colombian woman advisor, 22 to 25 years old, in a bright modern open-plan office, medium wide shot showing the whole office behind her, not a close-up',
+            // OJO: el clip que hay cacheado se generó a mano antes de que el guion viviera
+            // aquí, así que su audio no es exactamente esta frase. Es el que el dueño aprobó,
+            // así que NO regenerarlo salvo que se quiera cambiarlo a propósito (--rehacer).
             'dice'       => 'En Brigar te afiliamos rápido y sin vueltas. ¡Escríbenos ya!',
         ],
         3 => [
