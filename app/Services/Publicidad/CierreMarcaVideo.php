@@ -175,7 +175,20 @@ class CierreMarcaVideo
         // usa música de terceros: sin licencia, Meta silencia el post o lo penaliza, y el
         // cierre se reutiliza en todas las piezas, así que el riesgo se multiplicaría.
         $a = [];
-        $a[] = '[0:a]aformat=channel_layouts=stereo,volume=0.85,afade=t=in:st=0:d=0.3,afade=t=out:st=' . round($segundos - 0.6, 2) . ':d=0.6[amb]';
+
+        // El audio del clip de Veo se DESCARTA a propósito. Veo genera a los asesores
+        // hablando, y lo hace en inglés — frente a un público colombiano eso resta en vez de
+        // sumar. Aunque hablara español, una voz de fondo competiría con los cuatro mensajes
+        // que hay que leer en pantalla. Se arma entonces una base sintetizada, que además es
+        // neutra de idioma y no tiene problema de licencia.
+        //
+        // Base: dos tonos graves en quinta, con un pulso lento. Suena a "corporativo
+        // confiable" sin melodía que distraiga.
+        $a[] = '[13:a]aformat=channel_layouts=stereo,volume=0.16,'
+            . 'tremolo=f=2:d=0.35,afade=t=in:st=0:d=0.5,afade=t=out:st=' . round($segundos - 1.0, 2) . ':d=1.0[base1]';
+        $a[] = '[14:a]aformat=channel_layouts=stereo,volume=0.10,'
+            . 'afade=t=in:st=0:d=0.8,afade=t=out:st=' . round($segundos - 1.0, 2) . ':d=1.0[base2]';
+        $a[] = '[base1][base2]amix=inputs=2:duration=first:normalize=0[amb]';
 
         // Golpe grave cuando aterriza el número: es el dato que queremos que se fije.
         $a[] = '[9:a]atrim=0:0.55,aformat=channel_layouts=stereo,volume=1.5,afade=t=out:st=0:d=0.55,adelay=350|350[hit]';
@@ -211,6 +224,9 @@ class CierreMarcaVideo
             '-f', 'lavfi', '-i', 'anoisesrc=color=pink:amplitude=0.5:duration=1:sample_rate=48000',
             '-f', 'lavfi', '-i', 'anoisesrc=color=pink:amplitude=0.5:duration=1:sample_rate=48000',
             '-f', 'lavfi', '-i', 'anoisesrc=color=pink:amplitude=0.5:duration=1:sample_rate=48000',
+            // [13][14] base musical: dos graves en quinta (110 Hz y 165 Hz).
+            '-f', 'lavfi', '-t', (string) $segundos, '-i', 'sine=frequency=110:sample_rate=48000',
+            '-f', 'lavfi', '-t', (string) $segundos, '-i', 'sine=frequency=165:sample_rate=48000',
             '-filter_complex', implode(';', $f),
             '-map', '[out]', '-map', '[aout]',
             '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-r', '30',
