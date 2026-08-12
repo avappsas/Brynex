@@ -23,7 +23,11 @@ class PronunciacionEsp
      * a otra cosa. Y va pegado a propósito: separado en tres palabras el modelo mete pausa.
      */
     public const SIGLAS = [
-        'ARL' => 'a ereele',
+        // Pegado y sin espacios. Con "a ereele" el modelo se comía la "a" y endurecía la R
+        // —sonaba "erreele"—: el espacio le daba pie a arrancar la palabra en la R, y una R
+        // en inicio de palabra en español SIEMPRE es fuerte. Junta, queda entre vocales y sale
+        // suave, que es como se llama la letra.
+        'ARL' => 'aereele',
         'EPS' => 'epeese',
         'AFP' => 'aefepe',
         'IBC' => 'ibece',
