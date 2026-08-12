@@ -42,6 +42,10 @@ class CierreMarcaVideo
     private const RETARDO_VOZ = 0.12;
     private const COLA_VOZ    = 0.55;
 
+    /** Geometría de la barra inferior, compartida entre la pastilla y los logos animados. */
+    private const Y_BARRA    = 1140;
+    private const ALTO_BARRA = 56;
+
     private const ANCHO = 720;
     private const ALTO  = 1280;
 
@@ -58,14 +62,10 @@ class CierreMarcaVideo
         1 => [
             'fondo'      => 'publicidad/cierres/fondo_asesores_%d.mp4',
             'logo_pared' => false,
-            'guion'      => 'Más de {anios} años respaldando trabajadores colombianos. '
-                          . 'Asesores calificados en {ciudad}, y en toda Colombia. ¡Escríbenos ya!',
-        ],
-        2 => [
-            'fondo'      => 'publicidad/cierres/fondo_asesores_%d_v2.mp4',
-            'logo_pared' => true,
-            'guion'      => 'En {marca} afiliamos tu seguridad social sin enredos. '
-                          . 'Convenio con todas las EPS del país. ¡Escríbenos hoy!',
+            // El clip ya trae la voz de la propia asesora, sincronizada con sus labios, y el
+            // letrero BRYGAR renderizado en la pared del set. No se le monta locucion encima:
+            // eso era justo lo que hacia que la boca no cuadrara con lo que se escuchaba.
+            'voz_propia' => true,
         ],
     ];
 
@@ -201,8 +201,12 @@ class CierreMarcaVideo
 
         // Locución en español. Si falla, el cierre sale igual con solo la base musical:
         // es preferible una pieza muda a no tener pieza.
-        $voz = self::locucion($aliado, $anios, $ciudad, false, $variante);
-        $rutaVoz = $voz['ok'] ? $voz['path'] : null;
+        $vozPropia = !empty($def['voz_propia']);
+        $rutaVoz = null;
+        if (!$vozPropia) {
+            $voz = self::locucion($aliado, $anios, $ciudad, false, $variante);
+            $rutaVoz = $voz['ok'] ? $voz['path'] : null;
+        }
 
         // El video se estira para que la voz quepa ENTERA. Antes se cortaba la última
         // palabra: el TTS no da una duración exacta —depende de cómo lea el guion— así que
@@ -229,6 +233,7 @@ class CierreMarcaVideo
             'm4'      => "{$tmp}/c_m4_{$id}.png",
             'barra'   => "{$tmp}/c_barra_{$id}.png",
             'rayo'    => "{$tmp}/c_rayo_{$id}.png",
+            'wa'      => "{$tmp}/c_wa_{$id}.png",
         ];
 
         self::pintarVelo($aliado, $capas['velo']);
@@ -238,6 +243,7 @@ class CierreMarcaVideo
         self::momentoLlamado($aliado, $capas['m4']);
         self::pintarBarraWhatsapp($aliado, $capas['barra']);
         self::pintarRayo($capas['rayo']);
+        self::pintarIconoSuelto($capas['wa']);
 
         // Ventanas de cada momento. Se solapan 0,2s con el destello para que el corte no
         // se sienta seco.
@@ -298,7 +304,23 @@ class CierreMarcaVideo
             $f[] = "[{$prev}][logo]overlay=38:44[conlogo]";
         }
         $f[] = '[8:v]format=rgba,fade=in:st=0.6:d=0.5:alpha=1[barra]';
-        $f[] = '[conlogo][barra]overlay=0:0[out]';
+        $f[] = '[conlogo][barra]overlay=0:0[conbarra]';
+
+        // Los dos logos de la barra entran escalando con un rebote amortiguado y despues
+        // laten muy suave: es lo que hace que la franja se sienta viva y no un pie de pagina.
+        $pos = self::posicionesLogosBarra($aliado);
+        $lado = self::ALTO_BARRA;
+        $yLogo = self::Y_BARRA - $lado + 12;
+
+        $f[] = "[15:v]format=rgba,scale={$lado}:{$lado},"
+            . "scale=w='iw*(0.55+0.45*(1-exp(-7*max(0,t-0.7))))+iw*0.05*sin(2.2*t)*exp(-0.7*max(0,t-1.4))':h=-1:eval=frame,"
+            . "fade=in:st=0.7:d=0.35:alpha=1[walogo]";
+        $f[] = "[conbarra][walogo]overlay=x='{$pos['wa']}+({$lado}-overlay_w)/2':y='{$yLogo}+({$lado}-overlay_h)/2':eval=frame[conwa]";
+
+        $f[] = "[16:v]format=rgba,scale={$lado}:-1,"
+            . "scale=w='iw*(0.55+0.45*(1-exp(-7*max(0,t-0.95))))+iw*0.05*sin(2.2*t)*exp(-0.7*max(0,t-1.65))':h=-1:eval=frame,"
+            . "fade=in:st=0.95:d=0.35:alpha=1[marcalogo]";
+        $f[] = "[conwa][marcalogo]overlay=x='{$pos['marca']}+({$lado}-overlay_w)/2':y='{$yLogo}+({$lado}-overlay_h)/2':eval=frame[out]";
 
         // ── Audio ────────────────────────────────────────────────────────────
         // Se parte del ambiente que trae el propio clip de Veo (audio generado, sin problema
@@ -307,44 +329,42 @@ class CierreMarcaVideo
         // cierre se reutiliza en todas las piezas, así que el riesgo se multiplicaría.
         $a = [];
 
-        // El audio del clip de Veo se DESCARTA a propósito. Veo genera a los asesores
-        // hablando, y lo hace en inglés — frente a un público colombiano eso resta en vez de
-        // sumar. Aunque hablara español, una voz de fondo competiría con los cuatro mensajes
-        // que hay que leer en pantalla. Se arma entonces una base sintetizada, que además es
-        // neutra de idioma y no tiene problema de licencia.
-        //
-        // Base: dos tonos graves en quinta, con un pulso lento. Suena a "corporativo
-        // confiable" sin melodía que distraiga.
-        $a[] = '[13:a]aformat=channel_layouts=stereo,volume=0.045,'
-            . 'tremolo=f=2:d=0.35,afade=t=in:st=0:d=0.5,afade=t=out:st=' . round($segundos - 1.0, 2) . ':d=1.0[base1]';
-        $a[] = '[14:a]aformat=channel_layouts=stereo,volume=0.03,'
-            . 'afade=t=in:st=0:d=0.8,afade=t=out:st=' . round($segundos - 1.0, 2) . ':d=1.0[base2]';
-        $a[] = '[base1][base2]amix=inputs=2:duration=first:normalize=0[amb]';
-
-        // Golpe grave cuando aterriza el número: es el dato que queremos que se fije.
-        $a[] = '[9:a]atrim=0:0.55,aformat=channel_layouts=stereo,volume=0.45,afade=t=out:st=0:d=0.55,adelay=350|350[hit]';
-
-        // Barrido en cada transición, sincronizado con el destello visual.
-        $mezcla = '[amb][hit]';
-        foreach ($rayos as $k => $t0) {
-            $ms = (int) round($t0 * 1000);
-            $ent = 10 + $k;   // entradas 10, 11, 12
-            $a[] = "[{$ent}:a]atrim=0:0.38,aformat=channel_layouts=stereo,"
-                . "highpass=f=900,lowpass=f=7000,"
-                . "volume=0.16,afade=t=in:st=0:d=0.06,afade=t=out:st=0.10:d=0.28,adelay={$ms}|{$ms}[w{$k}]";
-            $mezcla .= "[w{$k}]";
-        }
-        if ($rutaVoz) {
-            // La voz manda: la base y los golpes se agachan debajo (ducking) para que no le
-            // compitan. Sin esto la locucion se oye "dentro" de la musica y no se entiende.
-            $a[] = $mezcla . 'amix=inputs=' . (2 + count($rayos)) . ':duration=first:dropout_transition=0:normalize=0,volume=0.12[lecho]';
-            $a[] = '[15:a]aformat=channel_layouts=stereo:sample_rates=48000,'
-                . 'acompressor=threshold=0.12:ratio=4:attack=8:release=180,'
-                . 'volume=4.0,adelay=' . (int) (self::RETARDO_VOZ * 1000) . '|' . (int) (self::RETARDO_VOZ * 1000) . '[voz]';
-            $a[] = '[lecho][voz]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,'
-                . 'aformat=channel_layouts=stereo,loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000,alimiter=limit=0.97[aout]';
+        if ($vozPropia) {
+            // La voz viene del clip y está sincronizada con los labios: se respeta tal cual y
+            // solo se nivela, para que empareje con el Reel de contenido en el corte.
+            $a[] = '[0:a]aformat=channel_layouts=stereo,volume=1.3,'
+                . 'afade=t=in:st=0:d=0.15,afade=t=out:st=' . round($segundos - 0.5, 2) . ':d=0.5,'
+                . 'loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000,alimiter=limit=0.97[aout]';
         } else {
-            $a[] = $mezcla . 'amix=inputs=' . (2 + count($rayos)) . ':duration=first:dropout_transition=0:normalize=0,aformat=channel_layouts=stereo,loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000,alimiter=limit=0.97[aout]';
+            // Sin voz propia se descarta el audio del clip (Veo habla en inglés por su cuenta)
+            // y se arma una base sintetizada, neutra de idioma y sin problema de licencia.
+            $a[] = '[13:a]aformat=channel_layouts=stereo,volume=0.045,'
+                . 'tremolo=f=2:d=0.35,afade=t=in:st=0:d=0.5,afade=t=out:st=' . round($segundos - 1.0, 2) . ':d=1.0[base1]';
+            $a[] = '[14:a]aformat=channel_layouts=stereo,volume=0.03,'
+                . 'afade=t=in:st=0:d=0.8,afade=t=out:st=' . round($segundos - 1.0, 2) . ':d=1.0[base2]';
+            $a[] = '[base1][base2]amix=inputs=2:duration=first:normalize=0[amb]';
+            $a[] = '[9:a]atrim=0:0.55,aformat=channel_layouts=stereo,volume=0.45,afade=t=out:st=0:d=0.55,adelay=350|350[hit]';
+
+            $mezcla = '[amb][hit]';
+            foreach ($rayos as $k => $t0) {
+                $ms = (int) round($t0 * 1000);
+                $ent = 10 + $k;
+                $a[] = "[{$ent}:a]atrim=0:0.38,aformat=channel_layouts=stereo,"
+                    . "highpass=f=900,lowpass=f=7000,"
+                    . "volume=0.16,afade=t=in:st=0:d=0.06,afade=t=out:st=0.10:d=0.28,adelay={$ms}|{$ms}[w{$k}]";
+                $mezcla .= "[w{$k}]";
+            }
+
+            if ($rutaVoz) {
+                $a[] = $mezcla . 'amix=inputs=' . (2 + count($rayos)) . ':duration=first:dropout_transition=0:normalize=0,volume=0.12[lecho]';
+                $a[] = '[15:a]aformat=channel_layouts=stereo:sample_rates=48000,'
+                    . 'acompressor=threshold=0.12:ratio=4:attack=8:release=180,'
+                    . 'volume=4.0,adelay=' . (int) (self::RETARDO_VOZ * 1000) . '|' . (int) (self::RETARDO_VOZ * 1000) . '[voz]';
+                $a[] = '[lecho][voz]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,'
+                    . 'aformat=channel_layouts=stereo,loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000,alimiter=limit=0.97[aout]';
+            } else {
+                $a[] = $mezcla . 'amix=inputs=' . (2 + count($rayos)) . ':duration=first:dropout_transition=0:normalize=0,aformat=channel_layouts=stereo,loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000,alimiter=limit=0.97[aout]';
+            }
         }
 
         $f = array_merge($f, $a);
@@ -371,6 +391,9 @@ class CierreMarcaVideo
             // [13][14] base musical: dos graves en quinta (110 Hz y 165 Hz).
             '-f', 'lavfi', '-t', (string) $segundos, '-i', 'sine=frequency=110:sample_rate=48000',
             '-f', 'lavfi', '-t', (string) $segundos, '-i', 'sine=frequency=165:sample_rate=48000',
+            // [15] ícono de WhatsApp y [16] logo de la marca, para la barra animada.
+            '-loop', '1', '-t', (string) $segundos, '-i', $capas['wa'],
+            '-loop', '1', '-t', (string) $segundos, '-i', $logoAbs,
         ], $rutaVoz ? ['-i', $rutaVoz] : [], [
             '-filter_complex', implode(';', $f),
             '-map', '[out]', '-map', '[aout]',
@@ -517,34 +540,46 @@ class CierreMarcaVideo
         if (str_starts_with($numero, '57')) {
             $numero = substr($numero, 2);
         }
-        // Agrupado: diez dígitos corridos no se retienen de una pasada.
+        // Agrupado: diez digitos corridos no se retienen en un cierre de segundos.
         $legible = trim(preg_replace('/(\d{3})(\d{3})(\d{4})/', '$1 $2 $3', $numero));
 
-        $tam = 32;
+        $tam = 33;
         $tracking = 2.0;
-        $etiqueta = 'WhatsApp';
-        $tamEtiq = 24;
         $anchoTxt = self::anchoTexto($legible, $tam, self::FUENTE, $tracking);
-        $anchoEtiq = self::anchoTexto($etiqueta, $tamEtiq, self::FUENTE_SEMI, 1.0);
-        $diamIcono = 44;
-        $gap = 14;
-        $anchoTotal = $diamIcono + $gap + max($anchoTxt, $anchoEtiq);
+        $hueco = self::ALTO_BARRA;   // espacio reservado a cada logo
 
-        $y = 1120;
+        $anchoTotal = $hueco + 14 + $anchoTxt + 18 + $hueco;
         $x0 = $cx - (int) round($anchoTotal / 2);
+        $y  = self::Y_BARRA;
 
-        // Píldora oscura translúcida de fondo, para que se lea sobre cualquier fotograma.
-        self::capsula($img, $x0 - 32, $y - 52, $x0 + $anchoTotal + 32, $y + 26, imagecolorallocatealpha($img, 0, 0, 0, 58));
+        // Pastilla oscura translucida: el texto tiene que leerse sobre cualquier fotograma.
+        self::capsula($img, $x0 - 24, $y - 46, $x0 + $anchoTotal + 24, $y + 24, imagecolorallocatealpha($img, 0, 0, 0, 52));
 
-        self::iconoWhatsapp($img, $x0 + (int) ($diamIcono / 2), $y - 12, $diamIcono);
-        // La palabra encima del numero: deja claro por que canal escribir.
-        self::texto($img, $etiqueta, $x0 + $diamIcono + $gap, $y - 26, $tamEtiq,
-            imagecolorallocate($img, 168, 240, 198), self::FUENTE_SEMI, 1.0);
-        self::texto($img, $legible, $x0 + $diamIcono + $gap, $y + 8, $tam,
+        self::texto($img, 'WhatsApp', $x0 + $hueco + 14, $y - 20, 20,
+            imagecolorallocate($img, 168, 240, 198), self::FUENTE_SEMI, 1.2);
+        self::texto($img, $legible, $x0 + $hueco + 14, $y + 12, $tam,
             imagecolorallocate($img, 255, 255, 255), self::FUENTE, $tracking);
 
         imagepng($img, $destino);
         imagedestroy($img);
+    }
+
+    /** Posicion X donde va cada logo de la barra: [whatsapp, marca]. */
+    private static function posicionesLogosBarra(Aliado $aliado): array
+    {
+        $wa = \App\Models\WhatsappConfig::where('aliado_id', $aliado->id)->where('activo', true)->first();
+        $numero = preg_replace('/\D/', '', $wa?->numero_telefono ?? '');
+        if (str_starts_with($numero, '57')) {
+            $numero = substr($numero, 2);
+        }
+        $legible = trim(preg_replace('/(\d{3})(\d{3})(\d{4})/', '$1 $2 $3', $numero));
+
+        $anchoTxt = self::anchoTexto($legible, 33, self::FUENTE, 2.0);
+        $hueco = self::ALTO_BARRA;
+        $anchoTotal = $hueco + 14 + $anchoTxt + 18 + $hueco;
+        $x0 = (int) (self::ANCHO / 2) - (int) round($anchoTotal / 2);
+
+        return ['wa' => $x0, 'marca' => $x0 + $anchoTotal - $hueco];
     }
 
     /**
@@ -590,6 +625,22 @@ class CierreMarcaVideo
         $muesca = (int) (17 * $u);
         imagefilledellipse($img, (int) ($cx - 27 * $u), (int) ($cy - 5 * $u), $muesca, $muesca, $verde);
         imagefilledellipse($img, (int) ($cx + 6 * $u), (int) ($cy + 27 * $u), $muesca, $muesca, $verde);
+    }
+
+    /** El ícono de WhatsApp en su propio lienzo, para poder animarlo como capa de video. */
+    private static function pintarIconoSuelto(string $destino): void
+    {
+        $lado = 200;
+        $img = imagecreatetruecolor($lado, $lado);
+        imagealphablending($img, false);
+        imagesavealpha($img, true);
+        imagefilledrectangle($img, 0, 0, $lado, $lado, imagecolorallocatealpha($img, 0, 0, 0, 127));
+        imagealphablending($img, true);
+
+        self::iconoWhatsapp($img, (int) ($lado / 2), (int) ($lado / 2), (int) ($lado * 0.92));
+
+        imagepng($img, $destino);
+        imagedestroy($img);
     }
 
     /** Franja diagonal luminosa que barre la pantalla entre momento y momento. */
