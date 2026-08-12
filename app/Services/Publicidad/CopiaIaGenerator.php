@@ -77,22 +77,39 @@ class CopiaIaGenerator
             return ['ok' => false, 'prompt' => null, 'error' => 'No hay una clave de IA configurada para este aliado (ver Asistente Virtual).'];
         }
 
+        // La escena sale del tema: un anuncio de ARL tiene que verse en el andamio o en la
+        // moto, no en una oficina. Ver CatalogoEscenasVideo.
+        $escena = CatalogoEscenasVideo::paraContexto($contexto);
+
         $prompt = "Eres director creativo de anuncios en video para {$nombreAliado}, una agencia de afiliación a seguridad social "
             . 'en Colombia (EPS, ARL, pensión, caja de compensación). Escribe UN SOLO prompt para un modelo de IA de '
             . 'texto-a-video (Veo 3.1) que produzca un video LLAMATIVO tipo TESTIMONIO A CÁMARA — no una escena ambiental '
             . 'pasiva, sino una persona colombiana común mirando directo a la cámara y HABLANDO, como si grabara un '
-            . 'video para redes sociales. El prompt debe describir en inglés (los modelos de video entienden mejor la '
-            . 'dirección de escena en inglés): quién es la persona, dónde está, la cámara (handheld cercano, estilo '
-            . 'selfie-video o entrevista) y su expresión/energía (cercana, genuina, entusiasta) — Y debe incluir, '
-            . 'TEXTUAL y entre comillas dentro del mismo prompt, la frase EXACTA que la persona dice en VOZ ALTA en '
-            . "ESPAÑOL COLOMBIANO (no en inglés): una frase corta (máx. 15 palabras), clara y natural, que mencione "
-            . "explícitamente cotizar o afiliarse a seguridad social, relacionada con: {$contexto} — para que cualquiera "
-            . 'que vea el video entienda de qué se trata sin necesitar texto en pantalla. Ejemplo de estructura (no la '
-            . 'copies literal, adapta el contenido): A close-up handheld shot of a Colombian woman in her 30s in her '
-            . 'kitchen, speaking directly and warmly to the camera, she says in Spanish: "¿Ya cotizaste tu seguridad '
-            . 'social este mes? Yo lo hice en cinco minutos." Máximo 70 palabras en total. NO menciones texto en '
-            . 'pantalla, subtítulos, logos, ni marcas — eso se agrega después por separado. Responde ÚNICAMENTE con '
-            . 'el prompt en sí, sin explicación, sin bloque de código.';
+            . 'video para redes sociales.' . "\n\n"
+
+            . "PROTAGONISTA Y LUGAR (respétalo, es lo que hace que el espectador se reconozca): {$escena['oficio']}. "
+            . 'Tiene que verse EN SU OFICIO, con la ropa, las herramientas y el entorno reales de ese trabajo — nada de '
+            . 'oficinas genéricas ni gente de saco y corbata. Aspecto auténtico de colombiano de a pie, no modelo de '
+            . 'banco de imágenes.' . "\n\n"
+
+            . "LO QUE TIENE QUE REMOVER: {$escena['emocion']}. La tensión de fondo es esta: {$escena['tension']} "
+            . 'La frase hablada debe tocar ESA necesidad concreta, no repetir un eslogan. Que suene a alguien contando '
+            . 'algo que le pasó o que le preocupa, no a comercial de televisión. Puede empezar con una pregunta '
+            . 'incómoda, una confesión ("yo pensaba que..."), o un alivio ("por fin..."). Evita el tono publicitario '
+            . 'alegre y plano: la emoción real vende más que el entusiasmo fingido.' . "\n\n"
+
+            . 'FORMATO DEL PROMPT: describe en inglés (los modelos de video entienden mejor la dirección de escena en '
+            . 'inglés) quién es la persona, dónde está y qué está haciendo con las manos, la cámara (handheld cercano, '
+            . 'estilo selfie-video o entrevista, vertical 9:16) y la luz. Incluye TEXTUAL y entre comillas, dentro del '
+            . 'mismo prompt, la frase EXACTA que dice en VOZ ALTA en ESPAÑOL COLOMBIANO (no en inglés): corta (máx. 15 '
+            . "palabras), natural, hablada como habla la gente, relacionada con: {$contexto}. "
+            . 'Ejemplo de estructura (NO la copies, es solo el molde): A close-up handheld shot of a Colombian '
+            . 'motorcycle delivery rider in his 20s, helmet in hand, catching his breath on a busy street, looking '
+            . 'straight at the camera with a serious expression, he says in Spanish: "Me caí en la moto y ahí me di '
+            . 'cuenta que no tenía ARL." ' . "\n\n"
+
+            . 'Máximo 80 palabras en total. NO menciones texto en pantalla, subtítulos, logos ni marcas — eso se agrega '
+            . 'después por separado. Responde ÚNICAMENTE con el prompt en sí, sin explicación, sin bloque de código.';
 
         try {
             $provider = IaProviderFactory::make($credenciales['proveedor']);
@@ -198,11 +215,21 @@ class CopiaIaGenerator
             return ['ok' => false, 'frases' => [], 'error' => 'No hay una clave de IA configurada para este aliado (ver Asistente Virtual).'];
         }
 
+        // Mismo resorte emocional que la escena, para que el texto en pantalla y lo que se ve
+        // cuenten la misma historia y no vayan cada uno por su lado.
+        $escena = CatalogoEscenasVideo::paraContexto($contexto);
+
         $prompt = "Eres redactor publicitario de {$nombreAliado}, una agencia de afiliación a seguridad social en Colombia. "
             . "Escribe {$cantidad} frases MUY CORTAS (máximo 6 palabras cada una, español colombiano) para animar como "
-            . 'texto en pantalla sobre un video publicitario, en este orden: la primera plantea el problema/necesidad, '
-            . "la última es un llamado a la acción claro para cotizar. Contexto: {$contexto}. Sin emojis, sin inventar "
-            . 'precios. Responde ÚNICAMENTE con un array JSON de strings, sin texto adicional ni bloque de código. '
+            . 'texto en pantalla sobre un video publicitario.' . "\n\n"
+            . "Contexto: {$contexto}. La tensión que hay que tocar: {$escena['tension']}" . "\n\n"
+            . 'ORDEN OBLIGATORIO: (1) la primera GOLPEA con el problema o el miedo concreto —que el espectador piense '
+            . '"eso me puede pasar a mí"—, idealmente una pregunta o una frase incómoda; (2) la del medio muestra la '
+            . 'salida o el alivio; (3) la última es el llamado a la acción para afiliarse o cotizar.' . "\n\n"
+            . 'Habla como la gente en la calle, no como un folleto: nada de "soluciones integrales", "bienestar '
+            . 'garantizado" ni "protección integral". Frases que un trabajador diría de verdad. Sin emojis, sin '
+            . 'inventar precios, sin urgencia falsa (nada de "cupos limitados" ni "solo hoy"). '
+            . 'Responde ÚNICAMENTE con un array JSON de strings, sin texto adicional ni bloque de código. '
             . 'Ejemplo de formato: ["frase 1", "frase 2", "frase 3"]';
 
         try {
