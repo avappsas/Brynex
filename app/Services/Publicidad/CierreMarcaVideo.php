@@ -238,28 +238,32 @@ class CierreMarcaVideo
         //
         // Base: dos tonos graves en quinta, con un pulso lento. Suena a "corporativo
         // confiable" sin melodía que distraiga.
-        $a[] = '[13:a]aformat=channel_layouts=stereo,volume=0.16,'
+        $a[] = '[13:a]aformat=channel_layouts=stereo,volume=0.045,'
             . 'tremolo=f=2:d=0.35,afade=t=in:st=0:d=0.5,afade=t=out:st=' . round($segundos - 1.0, 2) . ':d=1.0[base1]';
-        $a[] = '[14:a]aformat=channel_layouts=stereo,volume=0.10,'
+        $a[] = '[14:a]aformat=channel_layouts=stereo,volume=0.03,'
             . 'afade=t=in:st=0:d=0.8,afade=t=out:st=' . round($segundos - 1.0, 2) . ':d=1.0[base2]';
         $a[] = '[base1][base2]amix=inputs=2:duration=first:normalize=0[amb]';
 
         // Golpe grave cuando aterriza el número: es el dato que queremos que se fije.
-        $a[] = '[9:a]atrim=0:0.55,aformat=channel_layouts=stereo,volume=1.5,afade=t=out:st=0:d=0.55,adelay=350|350[hit]';
+        $a[] = '[9:a]atrim=0:0.55,aformat=channel_layouts=stereo,volume=0.45,afade=t=out:st=0:d=0.55,adelay=350|350[hit]';
 
         // Barrido en cada transición, sincronizado con el destello visual.
         $mezcla = '[amb][hit]';
         foreach ($rayos as $k => $t0) {
             $ms = (int) round($t0 * 1000);
             $ent = 10 + $k;   // entradas 10, 11, 12
-            $a[] = "[{$ent}:a]atrim=0:0.6,aformat=channel_layouts=stereo,volume=0.9,afade=t=in:st=0:d=0.12,afade=t=out:st=0.2:d=0.4,adelay={$ms}|{$ms}[w{$k}]";
+            $a[] = "[{$ent}:a]atrim=0:0.38,aformat=channel_layouts=stereo,"
+                . "highpass=f=900,lowpass=f=7000,"
+                . "volume=0.16,afade=t=in:st=0:d=0.06,afade=t=out:st=0.10:d=0.28,adelay={$ms}|{$ms}[w{$k}]";
             $mezcla .= "[w{$k}]";
         }
         if ($rutaVoz) {
             // La voz manda: la base y los golpes se agachan debajo (ducking) para que no le
             // compitan. Sin esto la locucion se oye "dentro" de la musica y no se entiende.
-            $a[] = $mezcla . 'amix=inputs=' . (2 + count($rayos)) . ':duration=first:dropout_transition=0:normalize=0,volume=0.42[lecho]';
-            $a[] = '[15:a]aformat=channel_layouts=stereo:sample_rates=48000,volume=1.35,adelay=150|150[voz]';
+            $a[] = $mezcla . 'amix=inputs=' . (2 + count($rayos)) . ':duration=first:dropout_transition=0:normalize=0,volume=0.12[lecho]';
+            $a[] = '[15:a]aformat=channel_layouts=stereo:sample_rates=48000,'
+                . 'acompressor=threshold=0.12:ratio=4:attack=8:release=180,'
+                . 'volume=4.0,adelay=120|120[voz]';
             $a[] = '[lecho][voz]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,'
                 . 'aformat=channel_layouts=stereo,loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000,alimiter=limit=0.97[aout]';
         } else {
