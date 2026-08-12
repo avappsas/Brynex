@@ -38,6 +38,13 @@ class CierreMarcaVideo
     private const FUENTE_SEMI   = 'resources/fonts/Poppins-SemiBold.ttf';
     private const FUENTE_SCRIPT = 'resources/fonts/KaushanScript-Regular.ttf';
 
+    /**
+     * Marca de WhatsApp, archivo oficial. Antes se dibujaba con primitivas de GD y no se
+     * reconocia: a 44px la silueta se leia como un pin de ubicacion. Una marca registrada
+     * hay que usarla como es.
+     */
+    private const MARCA_WHATSAPP = 'resources/marcas/whatsapp.png';
+
     /** Retardo antes de que arranque la voz, y aire que se deja despues de la ultima palabra. */
     private const RETARDO_VOZ = 0.12;
     private const COLA_VOZ    = 0.55;
@@ -566,7 +573,7 @@ class CierreMarcaVideo
         $anchoTxt = self::anchoTexto($legible, $tam, self::FUENTE, $tracking);
         $hueco = self::ALTO_BARRA;   // espacio reservado a cada logo
 
-        $anchoTotal = $hueco + 14 + $anchoTxt + 18 + $hueco;
+        $anchoTotal = $hueco + 14 + $anchoTxt + 46 + $hueco;
         $x0 = $cx - (int) round($anchoTotal / 2);
         $y  = self::Y_BARRA;
 
@@ -594,7 +601,7 @@ class CierreMarcaVideo
 
         $anchoTxt = self::anchoTexto($legible, 33, self::FUENTE, 2.0);
         $hueco = self::ALTO_BARRA;
-        $anchoTotal = $hueco + 14 + $anchoTxt + 18 + $hueco;
+        $anchoTotal = $hueco + 14 + $anchoTxt + 46 + $hueco;
         $x0 = (int) (self::ANCHO / 2) - (int) round($anchoTotal / 2);
 
         return ['wa' => $x0, 'marca' => $x0 + $anchoTotal - $hueco];
@@ -645,18 +652,25 @@ class CierreMarcaVideo
         imagefilledellipse($img, (int) ($cx + 6 * $u), (int) ($cy + 27 * $u), $muesca, $muesca, $verde);
     }
 
-    /** El ícono de WhatsApp en su propio lienzo, para poder animarlo como capa de video. */
+    /** El ícono oficial de WhatsApp, como capa suelta para poder animarlo. */
     private static function pintarIconoSuelto(string $destino): void
     {
+        $origen = base_path(self::MARCA_WHATSAPP);
+
+        if (is_file($origen)) {
+            copy($origen, $destino);
+            return;
+        }
+
+        // Sin el archivo oficial se cae al dibujo propio: peor, pero mejor que una barra
+        // con un hueco vacío donde deberia ir el icono.
         $lado = 200;
         $img = imagecreatetruecolor($lado, $lado);
         imagealphablending($img, false);
         imagesavealpha($img, true);
         imagefilledrectangle($img, 0, 0, $lado, $lado, imagecolorallocatealpha($img, 0, 0, 0, 127));
         imagealphablending($img, true);
-
         self::iconoWhatsapp($img, (int) ($lado / 2), (int) ($lado / 2), (int) ($lado * 0.92));
-
         imagepng($img, $destino);
         imagedestroy($img);
     }
