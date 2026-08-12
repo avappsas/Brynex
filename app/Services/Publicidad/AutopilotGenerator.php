@@ -162,7 +162,15 @@ class AutopilotGenerator
 
         // Frases del overlay animado: van encima del clip, no dentro del prompt de Veo —
         // los modelos de video no escriben texto legible.
-        $frasesResultado = CopiaIaGenerator::generarFrasesVideo($aliado->id, $aliado->nombre, $contexto);
+        // Con el cierre de marca pegado atrás, el llamado a la acción ya lo hace el cierre:
+        // las frases del clip se quedan en el problema y la solución (ver generarFrasesVideo).
+        $frasesResultado = CopiaIaGenerator::generarFrasesVideo(
+            $aliado->id,
+            $aliado->nombre,
+            $contexto,
+            3,
+            (bool) $config->cierre_activo
+        );
         $frases = $frasesResultado['ok'] ? array_slice($frasesResultado['frases'], 0, 3) : [];
 
         $payload = [

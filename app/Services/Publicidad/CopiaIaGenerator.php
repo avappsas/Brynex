@@ -213,10 +213,20 @@ class CopiaIaGenerator
      * VideoOverlayFfmpeg monta sobre el video — distinto de generarVariantes() (que redacta
      * el copy largo del post, no texto en pantalla).
      *
+     * @param  bool  $conCierre  El video llevará pegado el cierre de marca, que ya remata con
+     *                           "¡Escríbenos ya!" y el WhatsApp en pantalla. En ese caso la
+     *                           última frase NO debe ser otro "escríbenos": pedir dos veces lo
+     *                           mismo con cuatro segundos de diferencia suena a relleno y le
+     *                           quita fuerza al cierre.
      * @return array{ok: bool, frases: string[], error: ?string}
      */
-    public static function generarFrasesVideo(int $aliadoId, string $nombreAliado, string $contexto, int $cantidad = 3): array
-    {
+    public static function generarFrasesVideo(
+        int $aliadoId,
+        string $nombreAliado,
+        string $contexto,
+        int $cantidad = 3,
+        bool $conCierre = false
+    ): array {
         $config = IaConfiguracionAliado::paraAliado($aliadoId);
         $credenciales = $config->credencialesEfectivas();
 
@@ -228,16 +238,26 @@ class CopiaIaGenerator
         // cuenten la misma historia y no vayan cada uno por su lado.
         $escena = CatalogoEscenasVideo::paraContexto($contexto);
 
+        $cierreFrase = $conCierre
+            ? '(3) la última DEJA CLARO lo fácil o rápido que es resolverlo con la marca (ej. "Te afiliamos hoy '
+              . 'mismo", "Sin filas ni papeleo"). PROHIBIDO que la última frase pida escribir, contactar, llamar o '
+              . 'mandar mensaje: el video termina con un cierre de marca que ya lo pide con el WhatsApp en pantalla, '
+              . 'y repetirlo aquí lo arruina. Ninguna de las tres frases puede contener "escríbe", "escríba", '
+              . '"contáctanos", "llámanos" ni "mándanos".'
+            : '(3) la última es el llamado a la acción para afiliarse o cotizar.';
+
         $prompt = "Eres redactor publicitario de {$nombreAliado}, una agencia de afiliación a seguridad social en Colombia. "
             . "Escribe {$cantidad} frases MUY CORTAS (máximo 6 palabras cada una, español colombiano) para animar como "
             . 'texto en pantalla sobre un video publicitario.' . "\n\n"
             . "Contexto: {$contexto}. La tensión que hay que tocar: {$escena['tension']}" . "\n\n"
             . 'ORDEN OBLIGATORIO: (1) la primera GOLPEA con el problema o el miedo concreto —que el espectador piense '
             . '"eso me puede pasar a mí"—, idealmente una pregunta o una frase incómoda; (2) la del medio muestra la '
-            . 'salida o el alivio; (3) la última es el llamado a la acción para afiliarse o cotizar.' . "\n\n"
+            . 'salida o el alivio; ' . $cierreFrase . "\n\n"
             . 'Habla como la gente en la calle, no como un folleto: nada de "soluciones integrales", "bienestar '
             . 'garantizado" ni "protección integral". Frases que un trabajador diría de verdad. Sin emojis, sin '
             . 'inventar precios, sin urgencia falsa (nada de "cupos limitados" ni "solo hoy"). '
+            . 'Trata al espectador de TÚ, nunca de USTED (nada de "escríbanos", "cotice", "afíliese"): el resto de '
+            . 'la pieza tutea y mezclar los dos tratos se nota. '
             . 'Responde ÚNICAMENTE con un array JSON de strings, sin texto adicional ni bloque de código. '
             . 'Ejemplo de formato: ["frase 1", "frase 2", "frase 3"]';
 
@@ -263,6 +283,25 @@ class CopiaIaGenerator
             return ['ok' => false, 'frases' => [], 'error' => 'La IA no devolvió frases utilizables.'];
         }
 
-        return ['ok' => true, 'frases' => array_values(array_filter(array_map('strval', $frases))), 'error' => null];
+        $frases = array_values(array_filter(array_map('strval', $frases)));
+
+        // El prompt lo pide, pero el modelo se le escapa: la pieza #58 salió con "Escríbanos y
+        // cotice sin tanto enredo" cuatro segundos antes de que el cierre dijera "¡Escríbenos
+        // ya!". Aquí se corta en seco, sin depender de que el modelo haga caso.
+        if ($conCierre) {
+            $frases = array_values(array_filter(
+                $frases,
+                fn (string $f) => !preg_match(
+                    '/\b(escr[ií]b|cont[áa]ctanos|cont[áa]ctenos|ll[áa]manos|ll[áa]menos|m[áa]ndanos|m[áa]ndenos|whatsapp)/iu',
+                    $f
+                )
+            ));
+        }
+
+        if (empty($frases)) {
+            return ['ok' => false, 'frases' => [], 'error' => 'La IA no devolvió frases utilizables.'];
+        }
+
+        return ['ok' => true, 'frases' => $frases, 'error' => null];
     }
 }
