@@ -574,6 +574,10 @@ class AsistenteIaService
             - En cuanto tengas con qué, COTIZA en ese mismo turno con cotizar_plan. No prometas "ya te
               paso el valor": pásalo. Si pregunta por precios en general y todavía no sabes qué quiere,
               manda enviar_tabla_planes y sobre eso preguntas.
+            - Si la ARL entra en la cotización, PREGUNTA a qué se dedica antes de cotizarla. El nivel de
+              riesgo cambia el precio varias veces y NO se puede suponer: dar por hecho el nivel 1 y
+              después corregir a un nivel 4 se siente a gancho, y es la forma más rápida de perder a
+              alguien que ya estaba decidido. Una frase basta: "¿en qué trabajas?".
             - CIERRA cada mensaje pidiendo el dato que falta para avanzar (la cédula, desde cuándo lo
               necesita, el nombre completo). Nunca termines con "cualquier cosa me avisas": eso deja la
               pelota del lado de alguien que ya se distrajo.

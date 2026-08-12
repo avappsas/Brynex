@@ -63,14 +63,20 @@ class BuscarConocimientoTool implements IaToolInterface
         $umbral = max(1, (int) ceil($palabras->count() * 0.6));
 
         $resultados = IaConocimiento::vigente($alidoId)
-            ->get(['titulo', 'contenido', 'categoria', 'vigente_desde'])
+            ->get(['aliado_id', 'titulo', 'contenido', 'categoria', 'vigente_desde'])
             ->map(function ($c) use ($palabras) {
                 $texto = Str::ascii(mb_strtolower($c->titulo . ' ' . $c->contenido));
                 $matchCount = $palabras->filter(fn ($p) => str_contains($texto, $p))->count();
-                return ['modelo' => $c, 'match_count' => $matchCount];
+                return ['modelo' => $c, 'match_count' => $matchCount, 'propia' => $c->aliado_id !== null];
             })
             ->filter(fn ($item) => $item['match_count'] >= $umbral)
-            ->sortByDesc('match_count')
+            // Lo del aliado manda sobre lo global, aunque coincida en menos palabras. El
+            // conocimiento general describe cómo funciona la seguridad social "en teoría" y
+            // puede CONTRADECIR la política real del aliado: la entrada global sobre mora dice
+            // que la cobertura se puede ver afectada, mientras que en BRYGAR el servicio sigue
+            // activo. Ordenando solo por coincidencias, la genérica ganaba y el asistente le
+            // decía al cliente justo lo contrario de lo que pasa.
+            ->sortByDesc(fn ($item) => [$item['propia'] ? 1 : 0, $item['match_count']])
             ->take(5)
             ->pluck('modelo')
             ->values();
