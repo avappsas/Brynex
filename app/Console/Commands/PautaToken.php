@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\Aliado;
 use App\Models\PautaConfig;
+use App\Services\RedesSociales\MetaTokenLargo;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
 
@@ -92,12 +93,32 @@ class PautaToken extends Command
             'access_token' => $token,
         ])->json();
 
+        // Alargarlo aquí y no dejárselo al usuario: el token que da el Explorador dura una o
+        // dos horas, y alargarlo a mano exige encontrar un botón que solo aparece al final de
+        // una tabla del depurador. Guardar el corto sin darse cuenta es el error natural, y lo
+        // que se rompe después —el piloto deja de crear anuncios— no delata la causa.
+        $expiraEn = (int) ($d['expires_at'] ?? 0);
+        $vencePronto = $expiraEn > 0 && ($expiraEn - time()) < 7 * 86400;
+
+        if ($vencePronto) {
+            $canje = MetaTokenLargo::canjear($token, (string) ($d['app_id'] ?? ''));
+
+            if ($canje['ok']) {
+                $token = $canje['token'];
+                $expiraEn = $canje['expira_en'] ? time() + $canje['expira_en'] : 0;
+                $this->info('Se alargó solo: de horas a ' . ($canje['expira_en'] ? round($canje['expira_en'] / 86400) . ' días' : 'sin vencimiento') . '.');
+            } else {
+                $this->warn('No se pudo alargar: ' . $canje['error']);
+                $this->warn('Se guarda tal cual, pero vence el ' . date('Y-m-d H:i', $expiraEn) . '.');
+            }
+        }
+
         $config->update(['access_token_ads' => $token]);
 
         $this->info('Token guardado y cifrado.');
         $this->line('  Tipo:    ' . ($d['type'] ?? '?'));
         $this->line('  Usuario: ' . ($quien['name'] ?? '?') . ' (' . ($quien['id'] ?? '?') . ')');
-        $this->line('  Expira:  ' . (($d['expires_at'] ?? 0) ? date('Y-m-d', $d['expires_at']) : 'nunca'));
+        $this->line('  Expira:  ' . ($expiraEn ? date('Y-m-d', $expiraEn) : 'nunca'));
 
         if (($d['type'] ?? '') !== 'USER') {
             $this->warn('  Ojo: no es un token de USUARIO. Si es de página o de usuario del sistema,');

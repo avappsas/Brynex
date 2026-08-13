@@ -92,6 +92,19 @@ return [
         'ffprobe' => env('FFPROBE_BINARY', 'ffprobe'),
     ],
 
+    /*
+    | Meta (Facebook/Instagram) — lo que no es específico de WhatsApp.
+    |
+    | app_secret: clave secreta de la app con la que se crean los anuncios (BRYGAR). Solo se
+    |             usa para canjear un token de usuario corto por uno de ~60 días, y para
+    |             renovarlo antes de que venza. Sin esto el token hay que alargarlo a mano en
+    |             el depurador de Meta, que es donde se pierde todo el mundo.
+    |             Se saca de: Mis aplicaciones → la app → Configuración → Básica.
+    */
+    'meta' => [
+        'app_secret' => env('META_APP_SECRET'),
+    ],
+
     // Worker de Node que maneja el navegador contra ADRES (ver adres-worker/).
     // Debe escuchar solo en loopback: puede consultar el historial de salud de
     // cualquier cédula, así que no puede quedar expuesto en red.

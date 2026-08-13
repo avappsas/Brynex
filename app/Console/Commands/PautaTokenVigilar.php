@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\Aliado;
 use App\Models\PautaConfig;
 use App\Services\AlertaOperativaService;
+use App\Services\RedesSociales\MetaTokenLargo;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
 
@@ -23,7 +24,9 @@ use Illuminate\Support\Facades\Http;
  */
 class PautaTokenVigilar extends Command
 {
-    protected $signature = 'pauta:token-vigilar {--dias=7 : Con cuántos días de anticipación avisar}';
+    protected $signature = 'pauta:token-vigilar
+        {--dias=7 : Con cuántos días de anticipación actuar}
+        {--solo-avisar : No renovar solo; limitarse a avisar}';
 
     protected $description = 'Revisa cuánto le queda al token de pauta y avisa por WhatsApp antes de que venza';
 
@@ -104,7 +107,38 @@ class PautaTokenVigilar extends Command
         $this->line("{$nombre}: al token le quedan {$dias} día(s) — vence el {$fecha}.");
 
         $umbral = (int) $this->option('dias');
-        if ($dias > $umbral || !in_array($dias, self::HITOS, true)) {
+        if ($dias > $umbral) {
+            return;
+        }
+
+        // Antes de molestar a nadie, intentar renovarlo. Canjear un token largo por otro largo
+        // devuelve el reloj a cero, así que el vencimiento deja de ser un problema recurrente:
+        // una alerta que se repite cada dos meses termina siendo una tarea manual disfrazada.
+        if (!$this->option('solo-avisar') && MetaTokenLargo::hayClaveSecreta()) {
+            $canje = MetaTokenLargo::canjear($config->access_token_ads, (string) ($datos['app_id'] ?? ''));
+
+            if ($canje['ok']) {
+                $config->update(['access_token_ads' => $canje['token']]);
+                $nuevoHasta = $canje['expira_en'] ? date('Y-m-d', time() + $canje['expira_en']) : 'sin vencimiento';
+                $this->info("  → renovado solo, ahora hasta {$nuevoHasta}. Sin avisar a nadie.");
+
+                return;
+            }
+
+            // Si el canje falla, el aviso pasa a ser MÁS urgente, no menos: significa que la
+            // renovación automática tampoco va a funcionar sola la próxima vez.
+            $this->warn('  → no se pudo renovar solo: ' . $canje['error']);
+            $alertas->enviarUnaVez(
+                "pauta_token_renovacion_fallida_{$config->aliado_id}",
+                'Pauta ' . $nombre,
+                "El token de anuncios vence el {$fecha} y la renovación automática falló: {$canje['error']} Hay que renovarlo a mano con pauta:token.",
+                60 * 20
+            );
+
+            return;
+        }
+
+        if (!in_array($dias, self::HITOS, true)) {
             return;
         }
 
