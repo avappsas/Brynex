@@ -355,8 +355,13 @@ class PlanoPilaTxtService
         $ibcFull   = $c['ibcFull'];
         $ibcProp   = $c['ibcProp'];
         $dias      = $c['dias'];
-        // Tipo salario: blank para tipo 51 (PILA prohíbe marcar el campo para cotizante 51)
-        $esIntegral = $c['esTiempoParcial'] ? ' ' : (strtoupper(trim($p->tipo_p ?? '')) === 'I' ? 'X' : 'F');
+        // Tipo salario: blank para los tipos de cotizante a los que PILA le
+        // prohíbe marcar el campo — 51 (tiempo parcial) y 23 (estudiante K,
+        // Decreto 055/2015, que solo aporta a riesgos). Marcarlo en el 23 es
+        // el error `eo.val.2.237` de Enlace.
+        $esIntegral = ($c['esTiempoParcial'] || $c['esKMatriz'])
+            ? ' '
+            : (strtoupper(trim($p->tipo_p ?? '')) === 'I' ? 'X' : 'F');
 
         // ── Cotizaciones (del calculador) ──────────────────────────────────────
         $vAfp = $c['vAfp'];

@@ -176,7 +176,11 @@ class PilaCotizanteCalculator
                 'esTiempoParcial'  => false,
                 'depCod'           => '94',
                 'munCod'           => '1',
-                'horasLaboradas'   => 30 * 8,   // K: siempre 30 días
+                // Las horas laboradas son el insumo del aporte a caja, y el
+                // estudiante K no aporta a CCF (días, IBC y código de caja van
+                // en cero). Reportarlas es el error `eo.val.2.636` de Enlace:
+                // "registra horas laboradas pero no realiza aportes a CCF".
+                'horasLaboradas'   => 0,
             ];
         }
 
