@@ -66,32 +66,40 @@ class CierreMarcaVideo
      * pruebas devolvio "CURSTRA ORIGRMN" en vez de una palabra.
      */
     private const VARIANTES = [
+        // Las cuatro escenas de trabajadores existen porque las cinco variantes eran la misma
+        // fórmula —asesor mirando a cámara en oficina— y rotarlas no se notaba: cambiaba el
+        // actor, no la sensación. Aquí el respaldo lo da la barra inferior, que va fija, así
+        // que la escena queda libre para mostrar a quién le sirve el servicio.
+        //
+        // Ojo con la voz: cuando habla un trabajador y no un asesor, la frase es un testimonio
+        // y NO lleva llamado a la acción. Pedir "escríbenos" en boca de un cliente choca con la
+        // barra que ya lo pide, y es el mismo error del doble "¡Escríbenos ya!".
         1 => [
             'fondo'      => 'publicidad/cierres/fondo_asesores_%d.mp4',
             'logo_pared' => false,
             'voz_propia' => true,
             'textos'     => ['experiencia', 'asesores', 'cobertura'],
-            'escena'     => 'a friendly professional Colombian woman advisor, around 30, and a male colleague standing together in a modern office with a warm wood wall behind them',
-            'dice'       => 'En BRYGAR llevamos más de doce años afiliando trabajadores colombianos. ¡Escríbenos ya!',
+            'escena'     => 'a Colombian construction worker, around 35, wearing a hard hat and a reflective vest, standing at a building site with scaffolding and coworkers softly out of focus behind him, medium shot from the chest up with plenty of room above his head',
+            'marca_en'   => 'Printed clearly across the front of his reflective vest, the single word "{marca}" in bold clean uppercase letters, fully readable and never folded or cut off.',
+            'dice'       => 'Yo trabajo tranquilo: con BRYGAR tengo mi ARL al día desde el primer día.',
         ],
         2 => [
             'fondo'      => 'publicidad/cierres/fondo_asesores_%d_v2.mp4',
             'logo_pared' => false,
             'voz_propia' => true,
             'textos'     => ['experiencia', 'cotizacion', 'cobertura'],
-            'escena'     => 'an attractive Colombian woman advisor, 22 to 25 years old, in a bright modern open-plan office, medium wide shot showing the whole office behind her, not a close-up',
-            // OJO: el clip que hay cacheado se generó a mano antes de que el guion viviera
-            // aquí, así que su audio no es exactamente esta frase. Es el que el dueño aprobó,
-            // así que NO regenerarlo salvo que se quiera cambiarlo a propósito (--rehacer).
-            'dice'       => 'En BRYGAR te afiliamos rápido y sin vueltas. ¡Escríbenos ya!',
+            'escena'     => 'a Colombian delivery motorcyclist, around 28, wearing a helmet pushed up and a jacket, standing next to his motorcycle on a sunny city street in Cali, medium shot from the chest up',
+            'marca_en'   => 'On the large delivery box mounted on the back of the motorcycle, the single word "{marca}" printed large in bold clean uppercase letters, fully readable.',
+            'dice'       => 'Me afilié en un día y sin papeleo. BRYGAR me resolvió todo por WhatsApp.',
         ],
         3 => [
             'fondo'      => 'publicidad/cierres/fondo_asesores_%d_v3.mp4',
             'logo_pared' => false,
             'voz_propia' => true,
             'textos'     => ['cotizacion', 'rapidez', 'cobertura'],
-            'escena'     => 'a confident Colombian woman advisor, around 28, seated at a clean desk with a laptop in a modern office, medium wide shot with the office visible around her',
-            'dice'       => 'En BRYGAR te mejoramos cualquier cotización que tengas. ¡Escríbenos ya!',
+            'escena'     => 'a Colombian woman hairdresser, around 40, in her own small neighborhood salon, standing in front of her workstation with mirrors and chairs behind her, medium shot from the chest up',
+            'marca_en'   => 'On a small clean sign on the wall behind her, the single word "{marca}" in bold clean uppercase letters, fully readable and never blocked by her head.',
+            'dice'       => 'Yo soy independiente y con BRYGAR pago menos de lo que pagaba antes.',
         ],
         4 => [
             'fondo'      => 'publicidad/cierres/fondo_asesores_%d_v4.mp4',
@@ -106,8 +114,9 @@ class CierreMarcaVideo
             'logo_pared' => false,
             'voz_propia' => true,
             'textos'     => ['rapidez', 'cotizacion', 'asesores'],
-            'escena'     => 'a cheerful young Colombian woman advisor, around 26, with a headset, in a modern customer service office, medium wide shot showing the workspace behind her',
-            'dice'       => 'En BRYGAR te asesoramos sin costo y te afiliamos el mismo día. ¡Escríbenos ya!',
+            'escena'     => 'a Colombian mechanic, around 45, in a clean work uniform, standing in his own small motorcycle repair shop with tools and a workbench behind him, medium shot from the chest up',
+            'marca_en'   => 'Embroidered on the chest of his work uniform, the single word "{marca}" in bold clean uppercase letters, fully readable.',
+            'dice'       => 'Llevo tres años con BRYGAR y nunca he tenido un problema con mi seguridad social.',
         ],
     ];
 
@@ -298,13 +307,22 @@ class CierreMarcaVideo
     {
         $def = self::VARIANTES[$variante] ?? self::VARIANTES[1];
 
+        // Cada variante decide DÓNDE aparece la marca: en la pared, en un chaleco, en el
+        // maletín de la moto. Fijarla siempre en un letrero de oficina era lo que obligaba a
+        // que todas las escenas fueran una oficina.
+        $marcaEn = strtr(
+            $def['marca_en'] ?? 'On the wall behind, centered and completely within frame with clear margin on both '
+                . 'sides, a large modern office sign reading exactly the single word "{marca}" in bold clean '
+                . 'uppercase letters.',
+            ['{marca}' => mb_strtoupper($marca)]
+        );
+
         return 'Vertical 9:16 video of ' . $def['escena'] . '. '
-            . 'On the wall behind, centered and completely within frame with clear margin on both sides, '
-            . 'a large modern office sign reading exactly the single word "' . mb_strtoupper($marca) . '" '
-            . 'in bold clean uppercase letters. No other text, no numbers, no additional signage anywhere, '
+            . $marcaEn . ' '
+            . 'No other text, no numbers, no additional signage anywhere, '
             . 'no logos, no phone numbers, no WhatsApp icons. '
-            . 'The sign must stay fully readable for the whole shot: the person never overlaps it, '
-            . 'blocks it or passes in front of it, and their head stays well below the letters. '
+            . 'The brand word must stay fully readable for the whole shot: nothing overlaps it, '
+            . 'blocks it or passes in front of it. '
             . 'Warm natural lighting, shallow depth of field, premium corporate look, authentic Colombian people. '
             . 'Leave the bottom fifth of the frame clear of anything important. '
             // La frase se pasa por PronunciacionEsp: si no, Veo deletrea "EPS, ARL" letra por
