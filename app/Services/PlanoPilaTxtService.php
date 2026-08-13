@@ -221,13 +221,27 @@ class PlanoPilaTxtService
             ];
         }
 
-        // Tipo de planilla: 'N' si hay algún registro con tipo_p = 16, 'K' si todos son Estudiante K (-1), 'Y' si tiene modalidad 8, 'E' en cualquier otro caso
+        // Razón social genérica de independientes: cada persona se liquida con
+        // su propia cédula como aportante, y eso solo cabe en la planilla I.
+        // En la E, PILA prohíbe que el documento del cotizante sea el mismo del
+        // aportante (Res. 2388) y no admite los tipos de cotizante 2 ni 59.
+        $esRsIndependiente = (bool)($rs->es_independiente ?? false);
+
+        // Tipo de planilla: 'N' si hay algún registro con tipo_p = 16, 'K' si todos son Estudiante K (-1), 'Y' si tiene modalidad 8, 'I' si la RS es de independientes, 'E' en cualquier otro caso
         $tipoPlanilla = $params['tipo_planilla'] ?? null;
         if (!$tipoPlanilla) {
             $tieneN       = $planos->count() > 0 && $planos->contains(fn($p) => (int)($p->tipo_p ?? 0) === 16);
             $todosK       = !$tieneN && $planos->count() > 0 && $planos->every(fn($p) => (int)$p->tipo_modalidad_id === -1);
             $tieneY       = !$tieneN && !$todosK && $planos->count() > 0 && $planos->contains(fn($p) => (int)$p->tipo_modalidad_id === 8);
-            $tipoPlanilla = $tieneN ? 'N' : ($todosK ? 'K' : ($tieneY ? 'Y' : 'E'));
+            $tipoPlanilla = $tieneN ? 'N' : ($todosK ? 'K' : ($tieneY ? 'Y' : ($esRsIndependiente ? 'I' : 'E')));
+        }
+
+        // El código de riesgos del registro tipo 1 sale de la razón social, y
+        // la genérica de independientes no tiene ARL propia: la de cada
+        // contratista viene en su plano. Sin esto Enlace reclama que el
+        // cotizante aporta a riesgos sin código de riesgos en el tipo 1.
+        if ($tipoPlanilla === 'I' && empty($codigoArlRs)) {
+            $codigoArlRs = $planos->pluck('cod_arl_pila')->first(fn($c) => !empty($c));
         }
 
         $nit     = $aportanteOverride['numero'] ?? preg_replace('/[^0-9]/', '', (string)($rs->nit ?? ''));
@@ -308,6 +322,16 @@ class PlanoPilaTxtService
             ? '0'
             : str_pad(preg_replace('/[^0-9]/', '', (string)($rs->dv ?? '0')), 1, '0', STR_PAD_LEFT);
 
+        // El independiente es persona natural: se presenta como aportante único
+        // ('U') y no tiene sucursales. Con 'S' el operador reclama que la forma
+        // de presentación no concuerda con la que tiene registrada, y de paso
+        // exige un código y un nombre de sucursal que no existen — la razón
+        // social genérica de independientes no los tiene.
+        $esIndependiente   = $tipoPlanilla === 'I';
+        $formaPresentacion = $esIndependiente ? 'U' : 'S';
+        $codigoSucursal    = $esIndependiente ? '' : ($rs->codigo_sucursal ?? '');
+        $nombreSucursal    = $esIndependiente ? '' : ($rs->nombre_sucursal ?? '');
+
         $linea =
             '01'                                                   // 1  tipo_registro       N 2   pos 1-2
             . '1'                                                  // 2  modalidad_planilla   N 1   pos 3   (1=electrónica)
@@ -316,12 +340,12 @@ class PlanoPilaTxtService
             . $this->A($tipoDocAportante, 2)                       // 5  tipo_doc_aportante   A 2   pos 208-209
             . $this->A($nit, 16)                                   // 6  num_doc_aportante    A 16  pos 210-225
             . $dv                                                   // 7  digito_verificacion  N 1   pos 226
-            . $this->A($tipoPlanilla, 1)                         // 8  tipo_planilla        A 1   pos 227 ('K'=Estudiante | 'E'=Ordinaria)
+            . $this->A($tipoPlanilla, 1)                         // 8  tipo_planilla        A 1   pos 227 ('K'=Estudiante | 'I'=Independientes | 'E'=Ordinaria)
             . $this->A('', 10)                                     // 9  num_planilla_asoc    N 10  pos 228-237 (vacío si no es corrección)
             . $this->A('', 10)                                     // 10 fecha_pago_asoc      A 10  pos 238-247
-            . $this->A('S', 1)                                     // 11 forma_presentacion   A 1   pos 248 (S=sucursal)
-            . $this->A($rs->codigo_sucursal ?? '', 10)             // 12 codigo_sucursal      A 10  pos 249-258
-            . $this->A($rs->nombre_sucursal ?? '', 40)             // 13 nombre_sucursal      A 40  pos 259-298
+            . $this->A($formaPresentacion, 1)                      // 11 forma_presentacion   A 1   pos 248 (S=sucursal | U=único)
+            . $this->A($codigoSucursal, 10)                        // 12 codigo_sucursal      A 10  pos 249-258
+            . $this->A($nombreSucursal, 40)                        // 13 nombre_sucursal      A 40  pos 259-298
             . $this->A($codigoArlRs ?? '', 6)                      // 14 codigo_arl           A 6   pos 299-304
             . $this->A($periodoNoSalud, 7)                         // 15 periodo_no_salud     A 7   pos 305-311
             . $this->A($periodoSalud, 7)                           // 16 periodo_salud        A 7   pos 312-318

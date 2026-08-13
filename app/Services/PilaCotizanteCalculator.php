@@ -93,15 +93,20 @@ class PilaCotizanteCalculator
 
         $esIndependiente = (bool)($p->razonSocial?->es_independiente ?? false);
 
+        // La ARL distingue los dos tipos de independiente: quien la lleva
+        // tiene contrato de prestación de servicios de más de un mes, y ese
+        // contrato obliga a afiliarlo a riesgos (Decreto 723/2013) → tipo 59.
+        // Sin ARL es un independiente por cuenta propia → tipo 2.
+        $codArlRaw = trim((string)($p->cod_arl ?? ''));
+        $llevaArl  = $codArlRaw !== '' && $codArlRaw !== '0';
+
         // ── Tipo cotizante ───────────────────────────────────────────────────
         if ($esKMatriz) {
             $tipoCotizante = 23;
         } elseif ($esTiempoParcial) {
             $tipoCotizante = 51;
-        } elseif ($esIndependiente) {
-            $tipoCotizante = 59;
-        } elseif ($esIndep) {
-            $tipoCotizante = 2;
+        } elseif ($esIndependiente || $esIndep) {
+            $tipoCotizante = $llevaArl ? 59 : 2;
         } else {
             $tipoCotizante = 1;
         }
@@ -331,6 +336,13 @@ class PilaCotizanteCalculator
         // Independientes/K/TP → N
         $exonerado = (!$esIndep && !$esKMatriz && !$esTiempoParcial && !$esIndependiente) ? 'S' : 'N';
 
+        // SENA e ICBF son aportes del empleador. El independiente cotiza por su
+        // cuenta y no los paga nunca: no es que esté exonerado (ahí sigue en N,
+        // que es lo que le fija la salud en 12,5%), es que no le aplican. Con
+        // valores, Enlace rechaza con "El tipo de cotizante 02 no puede
+        // realizar aportes a Sena/Icbf".
+        $pagaParafiscales = $exonerado === 'N' && !$esIndep && !$esIndependiente;
+
         // ── Código CCF ─────────────────────────────────────────────────────
         $codCcfFin = 'CCF68';
         if (!empty($codCajRaw)) {
@@ -355,13 +367,13 @@ class PilaCotizanteCalculator
 
         // ── Tarifas EPS/SENA/ICBF ──────────────────────────────────────────
         $tarifaEpsStr  = $exonerado === 'S' ? '0.04000' : '0.12500';
-        $tarifaSenaStr = $exonerado === 'S' ? '0.00000' : '0.02000';
-        $tarifaIcbfStr = $exonerado === 'S' ? '0.00000' : '0.03000';
+        $tarifaSenaStr = $pagaParafiscales ? '0.02000' : '0.00000';
+        $tarifaIcbfStr = $pagaParafiscales ? '0.03000' : '0.00000';
 
         // ── Parafiscales ────────────────────────────────────────────────────
-        $ibcOtros = $exonerado === 'S' ? 0 : $ibcProp;
-        $vSena    = $exonerado === 'S' ? 0 : self::roundPila($ibcProp * 0.02);
-        $vIcbf    = $exonerado === 'S' ? 0 : self::roundPila($ibcProp * 0.03);
+        $ibcOtros = $pagaParafiscales ? $ibcProp : 0;
+        $vSena    = $pagaParafiscales ? self::roundPila($ibcProp * 0.02) : 0;
+        $vIcbf    = $pagaParafiscales ? self::roundPila($ibcProp * 0.03) : 0;
 
         // ── Código AFP PILA ─────────────────────────────────────────────────
         $codAfpPila = '';
