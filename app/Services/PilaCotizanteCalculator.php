@@ -169,6 +169,7 @@ class PilaCotizanteCalculator
                 'codArlPila'       => $p->cod_arl_pila ?? ($p->codigo_arl_pila ?? ''),
                 'tarifaAfpDecimal' => 0.0,
                 'tarifaEpsStr'     => '0.00000',
+                'tarifaCcfStr'     => '0.04000',
                 'tarifaSenaStr'    => '0.00000',
                 'tarifaIcbfStr'    => '0.00000',
                 'tarifaArlStr'     => sprintf('%.5f', $tasaArl),
@@ -292,6 +293,7 @@ class PilaCotizanteCalculator
                 'sinCaja'          => $sinCaja,
                 'tarifaAfpDecimal' => $tienePension ? 0.16 : 0.0,
                 'tarifaEpsStr'     => '0.00000',
+                'tarifaCcfStr'     => '0.04000',
                 'tarifaSenaStr'    => '0.00000',
                 'tarifaIcbfStr'    => '0.00000',
                 'tarifaArlStr'     => sprintf('%.5f', $tasaArl),
@@ -357,16 +359,39 @@ class PilaCotizanteCalculator
         $ibcArl = $ibcProp;
         $ibcCcf = ($codCcfFin === 'CCF68') ? ($esIndependiente ? 0 : 100) : $ibcProp;
 
+        // ── Tarifa de caja ─────────────────────────────────────────────────
+        // El dependiente aporta el 4% de ley. El independiente se afilia a la
+        // caja de forma voluntaria y su tarifa es la que quedó pactada en el
+        // contrato: 2% o 0,6%. Cobrarle el 4% le liquida de más lo que no se
+        // le facturó (35.000 al mes con un IBC de un salario mínimo).
+        //
+        // La señal es la razón social, no la modalidad: hay 431 planos de
+        // razones sociales de independientes con modalidades distintas a
+        // 10/11, y 35 de modalidad 10/11 en razones sociales normales.
+        // `rs_es_independiente` lo inyecta PlanoPilaTxtService — se usa SOLO
+        // para esto y no se mezcla con `$esIndependiente`, que gobierna
+        // exoneración y tipo de cotizante y no se puede reactivar sin mover
+        // la tarifa de salud de esos 431.
+        $rsEsIndependiente = (bool)($p->rs_es_independiente ?? false);
+        $pctCaja           = $p->porcentaje_caja ?? null;
+        $tarifaCcf         = 0.04;
+        if ($rsEsIndependiente) {
+            $tarifaCcf = ($pctCaja !== null && (float)$pctCaja > 0)
+                ? (float)$pctCaja / 100
+                : 0.02;
+        }
+
         // ── Cotizaciones ───────────────────────────────────────────────────
         $vAfp = $tienePension ? self::roundPila($ibcProp * 0.16) : 0;
         $vEps = self::roundPila($ibcProp * ($exonerado === 'S' ? 0.04 : 0.125));
         $vArl = self::roundPila($ibcProp * $tasaArl);
         $vCcf = ($codCcfFin === 'CCF68')
             ? ($esIndependiente ? 0 : 100)
-            : self::roundPila($ibcProp * 0.04);
+            : self::roundPila($ibcProp * $tarifaCcf);
 
         // ── Tarifas EPS/SENA/ICBF ──────────────────────────────────────────
         $tarifaEpsStr  = $exonerado === 'S' ? '0.04000' : '0.12500';
+        $tarifaCcfStr  = sprintf('%.5f', $codCcfFin === 'CCF68' ? 0.04 : $tarifaCcf);
         $tarifaSenaStr = $pagaParafiscales ? '0.02000' : '0.00000';
         $tarifaIcbfStr = $pagaParafiscales ? '0.03000' : '0.00000';
 
@@ -446,6 +471,7 @@ class PilaCotizanteCalculator
             'codArlPila'       => (string)$codArlPila,
             'tarifaAfpDecimal' => 0.16,
             'tarifaEpsStr'     => $tarifaEpsStr,
+            'tarifaCcfStr'     => $tarifaCcfStr,
             'tarifaSenaStr'    => $tarifaSenaStr,
             'tarifaIcbfStr'    => $tarifaIcbfStr,
             'tarifaArlStr'     => sprintf('%.5f', $tasaArlFin),

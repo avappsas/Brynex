@@ -156,6 +156,9 @@ class PlanoPilaTxtService
             // arl_tarifas NO se une: puede tener múltiples filas por nivel y causa duplicados
             ->leftJoin('arls AS arl_m',       DB::raw('CAST(arl_m.nit AS VARCHAR(20))'), '=', DB::raw('p.cod_arl'))
             ->leftJoin('tipo_modalidad AS tm', 'tm.id', '=', 'p.tipo_modalidad_id')
+            // Solo por la tarifa de caja del independiente, que se pacta por
+            // contrato (2% o 0,6%) — ver PilaCotizanteCalculator.
+            ->leftJoin('contratos AS ctr', 'ctr.id', '=', 'p.contrato_id')
             ->where('p.aliado_id',       $aliadoId)
             ->where('p.razon_social_id', $razonSocialId)
             ->where('p.n_plano',         $nPlano)
@@ -193,6 +196,10 @@ class PlanoPilaTxtService
                 DB::raw('tm.es_tiempo_parcial   AS es_tiempo_parcial'),
                 DB::raw('ISNULL(tm.dias_afp, 30) AS dias_afp'),
                 DB::raw('ISNULL(tm.dias_caja,30) AS dias_caja'),
+                // Tarifa de caja del independiente: la marca de la razón social
+                // es constante para todo el archivo, el porcentaje es por contrato.
+                DB::raw(((int)($rs->es_independiente ?? 0)).' AS rs_es_independiente'),
+                'ctr.porcentaje_caja',
             ]);
 
         if (!empty($tiposModal)) $query->whereIn('p.tipo_modalidad_id', $tiposModal);
@@ -514,7 +521,7 @@ class PlanoPilaTxtService
             . $tarifaArl                                        // 61 tarifa riesgos 381-389
             . $this->N('1', 9)                                  // 62 centro de trabajo 390-398
             . $this->N((string)$vArl, 9)                        // 63 cotización ARL 399-407
-            . ($c['esKMatriz'] ? '0.00000' : '0.04000')         // 64 tarifa CCF 408-414
+            . ($c['esKMatriz'] ? '0.00000' : $c['tarifaCcfStr']) // 64 tarifa CCF 408-414 (4% dependiente, 2%/0,6% independiente)
             . $this->N((string)$vCaj, 9)                        // 65 valor CCF 415-423
             . $tarifaSENA                                        // 66 tarifa SENA 424-430
             . $this->N((string)$vSENA, 9)                       // 67 valor SENA 431-439
