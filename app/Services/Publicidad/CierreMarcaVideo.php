@@ -68,14 +68,18 @@ class CierreMarcaVideo
     private const VARIANTES = [
         1 => [
             'fondo'      => 'publicidad/cierres/fondo_asesores_%d.mp4',
+            'estilo'     => 'oro',
             'logo_pared' => false,
             'voz_propia' => true,
             'textos'     => ['experiencia', 'asesores', 'cobertura'],
-            'escena'     => 'a friendly professional Colombian woman advisor, around 30, and a male colleague standing together in a modern office with a warm wood wall behind them',
+            // El clip original decía "¡Escríbenos ya!" dos veces: se generó a mano antes de que
+            // el guion viviera aquí, así que su audio nunca fue el de esta definición.
+            'escena'     => 'a young Colombian woman advisor, around 26, standing at the reception counter of a modern office, welcoming and smiling at the camera, with the waiting area softly out of focus behind her',
             'dice'       => 'En BRYGAR llevamos más de doce años afiliando trabajadores colombianos. ¡Escríbenos ya!',
         ],
         2 => [
             'fondo'      => 'publicidad/cierres/fondo_asesores_%d_v2.mp4',
+            'estilo'     => 'blanco',
             'logo_pared' => false,
             'voz_propia' => true,
             'textos'     => ['experiencia', 'cotizacion', 'cobertura'],
@@ -87,6 +91,7 @@ class CierreMarcaVideo
         ],
         3 => [
             'fondo'      => 'publicidad/cierres/fondo_asesores_%d_v3.mp4',
+            'estilo'     => 'marca',
             'logo_pared' => false,
             'voz_propia' => true,
             'textos'     => ['cotizacion', 'rapidez', 'cobertura'],
@@ -95,6 +100,7 @@ class CierreMarcaVideo
         ],
         4 => [
             'fondo'      => 'publicidad/cierres/fondo_asesores_%d_v4.mp4',
+            'estilo'     => 'oro',
             'logo_pared' => false,
             'voz_propia' => true,
             'textos'     => ['respaldo', 'asesores', 'experiencia'],
@@ -103,11 +109,66 @@ class CierreMarcaVideo
         ],
         5 => [
             'fondo'      => 'publicidad/cierres/fondo_asesores_%d_v5.mp4',
+            'estilo'     => 'blanco',
             'logo_pared' => false,
             'voz_propia' => true,
             'textos'     => ['rapidez', 'cotizacion', 'asesores'],
             'escena'     => 'a cheerful young Colombian woman advisor, around 26, with a headset, in a modern customer service office, medium wide shot showing the workspace behind her',
             'dice'       => 'En BRYGAR te asesoramos sin costo y te afiliamos el mismo día. ¡Escríbenos ya!',
+        ],
+        // La sexta trae movimiento: hasta ahora las cinco eran alguien quieto mirando a
+        // cámara, y un plano donde la persona camina mientras el equipo trabaja detrás vende
+        // "empresa con gente" mucho mejor que un retrato estático.
+        6 => [
+            'fondo'      => 'publicidad/cierres/fondo_asesores_%d_v6.mp4',
+            'estilo'     => 'marca',
+            'logo_pared' => false,
+            'voz_propia' => true,
+            'textos'     => ['asesores', 'experiencia', 'rapidez'],
+            'escena'     => 'a young Colombian woman advisor, around 25, walking slowly through a busy modern office while several colleagues work at their desks on both sides, the camera tracking with her as she turns to look at the lens, wide shot showing the whole office',
+            'dice'       => 'Somos un equipo de asesores dedicado a tu seguridad social. ¡Escríbenos ya!',
+        ],
+    ];
+
+    /**
+     * Tratamiento visual de cada variante.
+     *
+     * Rotar el clip y los textos no alcanzaba: las cinco compartían la misma tipografía dorada
+     * y la misma animación, así que se percibían como un solo cierre repetido. Esto es lo que
+     * de verdad hace que se noten distintas, y no cuesta generar nada.
+     *
+     * Tres tratamientos y no cinco a propósito: más looks dejan de leerse como una marca.
+     *
+     *   - `acento`  color de la línea destacada (la cifra, la ciudad, la segunda línea).
+     *   - `sombra`  si la línea destacada lleva sombra proyectada.
+     *   - `regla`   semiancho de la línea divisoria; 0 la quita.
+     *   - `sub`     fuente de la bajada: manuscrita (cálida) o medium en versales (sobria).
+     */
+    private const ESTILOS = [
+        // El de siempre: cálido, con oro y manuscrita. Es el que el dueño aprobó en la v4.
+        'oro' => [
+            'acento' => [255, 228, 146],
+            'bajo'   => [208, 150, 40],
+            'sombra' => true,
+            'regla'  => 100,
+            'sub'    => self::FUENTE_SCRIPT,
+        ],
+        // Sobrio: todo blanco, sin oro ni sombra, regla ancha. Lee más corporativo y serio.
+        'blanco' => [
+            'acento' => [255, 255, 255],
+            'bajo'   => null,
+            'sombra' => false,
+            'regla'  => 150,
+            'sub'    => self::FUENTE_MEDIA,
+        ],
+        // Con el color de la marca en el acento — se resuelve en tiempo de dibujo con el
+        // color_primario del aliado, así que no hay que tocar esto si cambia la identidad.
+        'marca' => [
+            'acento' => null,
+            'bajo'   => null,
+            'sombra' => true,
+            'regla'  => 0,
+            'sub'    => self::FUENTE_MEDIA,
         ],
     ];
 
@@ -222,7 +283,11 @@ class CierreMarcaVideo
         // Los textos entran en la firma: sin ellos, cambiar el trío de una variante no cambia
         // el nombre del archivo y se sigue sirviendo el cierre viejo desde el caché.
         $textos = implode(',', self::VARIANTES[$variante]['textos'] ?? []);
-        $firma = md5($variante . '|' . $anios . '|' . $ciudad . '|' . $segundos . '|' . ($aliado->color_primario ?? '') . '|' . $textos);
+        // El estilo entra en la firma igual que los textos: cambiar el tratamiento visual de
+        // una variante no cambia su número, y sin esto se seguiría sirviendo el cierre viejo
+        // desde el caché sin que nada avise.
+        $estilo = self::VARIANTES[$variante]['estilo'] ?? 'oro';
+        $firma = md5($variante . '|' . $anios . '|' . $ciudad . '|' . $segundos . '|' . ($aliado->color_primario ?? '') . '|' . $textos . '|' . $estilo);
         $rutaRelativa = "publicidad/cierres/cierre_{$aliado->id}_{$firma}.mp4";
         $rutaAbsoluta = Storage::disk('public')->path($rutaRelativa);
 
@@ -439,7 +504,7 @@ class CierreMarcaVideo
         self::pintarVelo($aliado, $capas['velo']);
         foreach (['m1', 'm2', 'm3'] as $i => $capa) {
             $clave = $claves[$i] ?? 'experiencia';
-            self::momentoTexto(self::TEXTOS[$clave] ?? self::TEXTOS['experiencia'], $vars, $capas[$capa]);
+            self::momentoTexto(self::TEXTOS[$clave] ?? self::TEXTOS['experiencia'], $vars, $capas[$capa], $def['estilo'] ?? 'oro', $aliado);
         }
         // Sin cuarto momento: la asesora ya dice "¡Escríbenos ya!" en el clip, y ponerlo
         // tambien en pantalla repetia el mismo llamado dos veces. La barra inferior, visible
@@ -652,15 +717,21 @@ class CierreMarcaVideo
      *
      * @param array<string,string> $vars Reemplazos del tipo {anios}, {ciudad}.
      */
-    private static function momentoTexto(array $def, array $vars, string $destino): void
+    private static function momentoTexto(array $def, array $vars, string $destino, string $estilo = 'oro', ?Aliado $aliado = null): void
     {
+        $e = self::ESTILOS[$estilo] ?? self::ESTILOS['oro'];
+
         $img = self::lienzo();
         $cx  = (int) (self::ANCHO / 2);
         $blanco  = imagecolorallocate($img, 255, 255, 255);
-        $oroAlto = imagecolorallocate($img, 255, 228, 146);
-        $oroBajo = imagecolorallocate($img, 208, 150, 40);
+        // `acento` null = usar el color de la marca, aclarado para que se lea sobre el velo.
+        [$ar, $ag, $ab] = $e['acento'] ?? self::acentoDeMarca($aliado);
+        $oroAlto = imagecolorallocate($img, $ar, $ag, $ab);
+        $oroBajo = $e['bajo'] ? imagecolorallocate($img, ...$e['bajo']) : $oroAlto;
         $tenue   = imagecolorallocatealpha($img, 255, 255, 255, 25);
         $regla   = imagecolorallocatealpha($img, 255, 255, 255, 55);
+        $anchoRegla = (int) $e['regla'];
+        $fuenteSub  = $e['sub'];
 
         $sust = fn (string $t) => strtr($t, $vars);
 
@@ -676,10 +747,14 @@ class CierreMarcaVideo
                 self::centrado($img, $def['etiqueta'], $cx, $y - 150, 24, $tenue, self::FUENTE_MEDIA, 9.5);
             }
 
-            self::sombra($img, $texto, $cx, $y, $tam, self::FUENTE, $trk);
-            self::centrado($img, $texto, $cx, $y + 5, $tam, $oroBajo, self::FUENTE, $trk);
+            if ($e['sombra']) {
+                self::sombra($img, $texto, $cx, $y, $tam, self::FUENTE, $trk);
+                self::centrado($img, $texto, $cx, $y + 5, $tam, $oroBajo, self::FUENTE, $trk);
+            }
             self::centrado($img, $texto, $cx, $y, $tam, $oroAlto, self::FUENTE, $trk);
-            self::regla($img, $cx, $y + 34, 100, $regla);
+            if ($anchoRegla > 0) {
+                self::regla($img, $cx, $y + 34, $anchoRegla, $regla);
+            }
 
             $subs = $def['subs'] ?? [];
             $unaSola = count($subs) === 1;
@@ -715,9 +790,18 @@ class CierreMarcaVideo
                 $yFin = $yLinea;
             }
 
-            self::regla($img, $cx, $yFin + 34, 100, $regla);
+            if ($anchoRegla > 0) {
+                self::regla($img, $cx, $yFin + 34, $anchoRegla, $regla);
+            }
             if (!empty($def['sub'])) {
-                self::centrado($img, $sust($def['sub']), $cx, $yFin + 88, 34, $blanco, self::FUENTE_SCRIPT, 0);
+                // La manuscrita se dibuja tal cual; la medium va en versales con tracking,
+                // que es lo que la hace leer sobria en vez de "texto suelto".
+                $esScript = $fuenteSub === self::FUENTE_SCRIPT;
+                self::centrado(
+                    $img,
+                    $esScript ? $sust($def['sub']) : mb_strtoupper($sust($def['sub'])),
+                    $cx, $yFin + 88, $esScript ? 34 : 24, $blanco, $fuenteSub, $esScript ? 0 : 4.0
+                );
             }
         }
 
@@ -729,6 +813,28 @@ class CierreMarcaVideo
      * Baja el tamaño de fuente hasta que la línea quepa a lo ancho. Sin esto, un texto largo
      * del catálogo —"CUALQUIER COTIZACIÓN"— se sale del lienzo y sale cortado por los lados.
      */
+    /**
+     * Color de marca aclarado para usarlo como acento sobre el velo oscuro.
+     *
+     * El color_primario crudo no sirve: un azul corporativo sobre un fondo ya oscurecido queda
+     * casi negro y el texto desaparece. Se lleva hacia el blanco lo suficiente para que
+     * contraste sin dejar de reconocerse como el color de la marca.
+     */
+    private static function acentoDeMarca(?Aliado $aliado): array
+    {
+        if (!$aliado) {
+            return [255, 228, 146];
+        }
+
+        [$r, $g, $b] = self::rgb($aliado);
+
+        return [
+            (int) min(255, $r + (255 - $r) * 0.55),
+            (int) min(255, $g + (255 - $g) * 0.55),
+            (int) min(255, $b + (255 - $b) * 0.55),
+        ];
+    }
+
     /** Cuánto sube el texto por encima de su línea base, tildes incluidas. */
     private static function altoSobreBase(string $texto, int $tam): int
     {
