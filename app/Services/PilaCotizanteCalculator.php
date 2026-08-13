@@ -387,6 +387,23 @@ class PilaCotizanteCalculator
         $codEpsPila = $p->cod_eps_pila ?? $p->codigo_eps ?? ($codEpsRaw ?? '');
         $codArlPila = $p->cod_arl_pila ?? $p->codigo_arl_pila ?? '';
 
+        // Sin ARL no hay a quién reportarle el aporte de riesgos. El registro
+        // salía con cotización pero sin código de administradora —ni en el
+        // tipo 2 ni en el tipo 1—, que es lo que el operador rechaza con
+        // "está realizando aportes a riesgos y debe ingresar un código de
+        // riesgos en el registro tipo 01". La factura tampoco lo cobra: en la
+        // razón social de independientes, los 9 sin ARL tienen v_arl en cero y
+        // los 7 con ARL la pagan, sin un solo caso cruzado.
+        $diasArl     = $dias;
+        $tasaArlFin  = $tasaArl;
+        if (! $llevaArl) {
+            $ibcArl     = 0;
+            $vArl       = 0;
+            $diasArl    = 0;
+            $tasaArlFin = 0.0;
+            $codArlPila = '';
+        }
+
         // ── Departamento / Municipio ─────────────────────────────────────────
         // Sin caja propia (CCF68): departamento 94 por defecto, municipio 1
         $sinCaja = ($codCcfFin === 'CCF68');
@@ -417,7 +434,7 @@ class PilaCotizanteCalculator
             'dias'             => $dias,
             'diasPension'      => $tienePension ? $dias : 0,
             'diasSalud'        => $dias,
-            'diasArl'          => $dias,
+            'diasArl'          => $diasArl,
             'diasCcf'          => $dias,
             'vAfp'             => $vAfp,
             'vEps'             => $vEps,
@@ -431,8 +448,8 @@ class PilaCotizanteCalculator
             'tarifaEpsStr'     => $tarifaEpsStr,
             'tarifaSenaStr'    => $tarifaSenaStr,
             'tarifaIcbfStr'    => $tarifaIcbfStr,
-            'tarifaArlStr'     => sprintf('%.5f', $tasaArl),
-            'tarifaArlDecimal' => $tasaArl,
+            'tarifaArlStr'     => sprintf('%.5f', $tasaArlFin),
+            'tarifaArlDecimal' => $tasaArlFin,
             'nivelRiesgo'      => $nivel,
             'ibcOtros'         => $ibcOtros,
             'vSena'            => $vSena,
