@@ -88,8 +88,10 @@ class CierreMarcaVideo
             'logo_pared' => false,
             'voz_propia' => true,
             'textos'     => ['experiencia', 'cotizacion', 'cobertura'],
-            'escena'     => 'a Colombian delivery motorcyclist, around 28, wearing a helmet pushed up and a jacket, standing next to his motorcycle on a sunny city street in Cali, medium shot from the chest up',
-            'marca_en'   => 'On the large delivery box mounted on the back of the motorcycle, the single word "{marca}" printed large in bold clean uppercase letters, fully readable.',
+            // Plano más abierto y el maletín OBLIGADO a caber entero: en el intento anterior
+            // la marca quedó cortada por el borde derecho del cuadro.
+            'escena'     => 'a Colombian woman delivery motorcyclist, around 30, wearing a helmet pushed up, standing beside her motorcycle on a sunny city street, wide shot with the whole motorcycle and its delivery box completely inside the frame with clear margin on both sides',
+            'marca_en'   => 'On the large delivery box mounted on the back of the motorcycle, the single word "{marca}" printed large in bold clean uppercase letters, entirely inside the frame with clear margin on every side, never cropped by the edge of the picture.',
             'dice'       => 'Me afilié en un día y sin papeleo. BRYGAR me resolvió todo por WhatsApp.',
         ],
         3 => [
@@ -114,8 +116,8 @@ class CierreMarcaVideo
             'logo_pared' => false,
             'voz_propia' => true,
             'textos'     => ['rapidez', 'cotizacion', 'asesores'],
-            'escena'     => 'a Colombian mechanic, around 45, in a clean work uniform, standing in his own small motorcycle repair shop with tools and a workbench behind him, medium shot from the chest up',
-            'marca_en'   => 'Embroidered on the chest of his work uniform, the single word "{marca}" in bold clean uppercase letters, fully readable.',
+            'escena'     => 'a Colombian woman seamstress, around 45, in her own small sewing workshop, standing in front of her sewing machine with rolls of fabric and colorful thread spools behind her, medium shot from the chest up',
+            'marca_en'   => 'Embroidered on the chest of her work apron, the single word "{marca}" in bold clean uppercase letters, fully readable and never folded or cut off.',
             'dice'       => 'Llevo tres años con BRYGAR y nunca he tenido un problema con mi seguridad social.',
         ],
     ];
