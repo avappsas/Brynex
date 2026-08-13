@@ -236,8 +236,15 @@ class PlanoPilaTxtService
 
         // Campo 20 Tipo1: valor_total_nomina = SUMA de IBC caja de cada cotizante
         // (MiPlanilla valida que coincida con sumatoria de campo 45 del Tipo 2)
+        //
+        // El estudiante K (tipo cotizante 23) no aporta a caja: su campo 45 va
+        // en cero, así que aquí tampoco puede sumar los $100 de la convención
+        // CCF68 o los dos campos dejan de cuadrar.
         $valorNomina = 0;
         foreach ($planos as $_p) {
+            if ((int)$_p->tipo_modalidad_id === -1) {
+                continue;
+            }
             $ibcF  = (int)($_p->salario_basico ?? 0);
             $dias_ = (int)($_p->num_dias ?? $_p->dias_cotizados ?? 30);
             $ibcP  = $dias_ < 30 ? (int)(ceil($ibcF * $dias_ / 30 / 100) * 100) : $ibcF;
