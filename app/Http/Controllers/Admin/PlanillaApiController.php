@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\{OperadorCredencial, OperadorPlanilla, OperadorPlanillaApi, RazonSocial};
 use App\Services\CorreccionEnlaceService;
+use App\Services\CorreccionPensionFaltanteService;
 use App\Services\PlanoPilaTxtService;
 use App\Services\SuaporteApiService;
 use Illuminate\Http\Request;
@@ -192,32 +193,11 @@ class PlanillaApiController extends Controller
             ], 422);
         }
 
-        // ── 1. Generar el archivo plano en memoria ───────────────────────
-        try {
-            $plano = (new PlanoPilaTxtService())->construir([
-                'aliado_id'       => $aliadoId,
-                'razon_social_id' => $rs->id,
-                'mes'             => $validated['mes'],
-                'anio'            => $validated['anio'],
-                'n_plano'         => $validated['n_plano'],
-                'tipos_modalidad' => $validated['tipos_modalidad'] ?? [],
-                'codigo_operador' => (string) $operador->codigo_ni,
-            ]);
-        } catch (\RuntimeException $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
-        } catch (\Exception $e) {
-            Log::error('Enlace API: error al construir el plano', [
-                'razon_social_id' => $rs->id,
-                'message'         => $e->getMessage(),
-            ]);
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Error al generar el archivo plano: ' . $e->getMessage(),
-            ], 500);
-        }
-
-        // ── 2. Registro de trazabilidad ──────────────────────────────────
+        // ── 1. ¿Esta tanda ya tiene planilla? ────────────────────────────
+        // Se pregunta ANTES de tocar nada: si el usuario cancela en el 409, no
+        // se corrigieron datos ni se generó archivo por una liquidación que
+        // nunca ocurrió.
+        //
         // La llave incluye el filtro de modalidades: sin él, liquidar los K
         // pisaba el registro de los E y se perdía su número de planilla.
         $llave = [
@@ -275,12 +255,59 @@ class PlanillaApiController extends Controller
             ], 409);
         }
 
+        // ── 2. Fondo de pensión faltante ─────────────────────────────────
+        // Quien va al archivo sin AFP no cotiza pensión, aunque su factura se
+        // la haya cobrado. Se corrige aquí, antes de armar el TXT, para que la
+        // planilla salga bien de una vez en lugar de liquidar de menos y tener
+        // que anularla en el operador — ver CorreccionPensionFaltanteService.
+        $pensionCorregida = (new CorreccionPensionFaltanteService())->corregir([
+            'aliado_id'       => $aliadoId,
+            'razon_social_id' => (int) $rs->id,
+            'mes'             => (int) $validated['mes'],
+            'anio'            => (int) $validated['anio'],
+            'n_plano'         => (int) $validated['n_plano'],
+        ], $validated['tipos_modalidad'] ?? []);
+
+        if (!empty($pensionCorregida['aplicadas'])) {
+            Log::info('Enlace API: fondo de pensión corregido antes de liquidar', [
+                'razon_social_id' => $rs->id,
+                'n_plano'         => $validated['n_plano'],
+                'correcciones'    => $pensionCorregida['aplicadas'],
+            ]);
+        }
+
+        // ── 3. Generar el archivo plano en memoria ───────────────────────
+        try {
+            $plano = (new PlanoPilaTxtService())->construir([
+                'aliado_id'       => $aliadoId,
+                'razon_social_id' => $rs->id,
+                'mes'             => $validated['mes'],
+                'anio'            => $validated['anio'],
+                'n_plano'         => $validated['n_plano'],
+                'tipos_modalidad' => $validated['tipos_modalidad'] ?? [],
+                'codigo_operador' => (string) $operador->codigo_ni,
+            ]);
+        } catch (\RuntimeException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+        } catch (\Exception $e) {
+            Log::error('Enlace API: error al construir el plano', [
+                'razon_social_id' => $rs->id,
+                'message'         => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al generar el archivo plano: ' . $e->getMessage(),
+            ], 500);
+        }
+
+        // ── 4. Registro de trazabilidad ──────────────────────────────────
         $registro = OperadorPlanillaApi::updateOrCreate(
             $llave,
             ['estado' => 'procesando', 'mensaje_error' => null]
         );
 
-        // ── 3. Liquidar contra el operador ───────────────────────────────
+        // ── 5. Liquidar contra el operador ───────────────────────────────
         $api = new SuaporteApiService([
             'operador'      => $operador->codigo, // define el host de la plataforma
             'usuario'       => $credencial->usuario,
@@ -329,6 +356,7 @@ class PlanillaApiController extends Controller
                 'errores_empresa'  => $resultado['errores_empresa'] ?? [],
                 'advertencias'     => $resultado['advertencias'] ?? [],
                 'correcciones'     => $correcciones,
+                'pension_corregida'=> $pensionCorregida['aplicadas'],
                 'razon_social_id'  => $rs->id,
                 'message'          => 'El archivo tiene errores. Corríjalos y vuelva a liquidar.',
             ]);
@@ -354,6 +382,7 @@ class PlanillaApiController extends Controller
             'fecha_limite'    => $resultado['totales']['fecha_limite'] ?? null,
             'url_pago'        => $resultado['url_pago'] ?? null,
             'advertencias'    => $resultado['advertencias'] ?? [],
+            'pension_corregida' => $pensionCorregida['aplicadas'],
             'pendientes'      => $this->pendientesDelPeriodo(
                 $aliadoId, (int) $rs->id, (int) $validated['mes'], (int) $validated['anio']
             ),
@@ -438,6 +467,25 @@ class PlanillaApiController extends Controller
         } else {
             $mesPago  = $plano->mes_plano == 12 ? 1 : (int) $plano->mes_plano + 1;
             $anioPago = $plano->mes_plano == 12 ? (int) $plano->anio_plano + 1 : (int) $plano->anio_plano;
+        }
+
+        // Mismo arreglo que en el lote de empresa: si la factura le cobró
+        // pensión pero el registro va sin AFP, se le pone el fondo antes de
+        // armar el TXT — ver CorreccionPensionFaltanteService.
+        $pensionCorregida = (new CorreccionPensionFaltanteService())->corregir([
+            'aliado_id'       => $aliadoId,
+            'razon_social_id' => (int) $rs->id,
+            'mes'             => $mesPago,
+            'anio'            => $anioPago,
+            'n_plano'         => (int) $plano->n_plano,
+            'plano_id'        => $plano->id,
+        ]);
+
+        if (!empty($pensionCorregida['aplicadas'])) {
+            Log::info('Enlace API: fondo de pensión corregido antes de liquidar (independiente)', [
+                'plano_id'     => $plano->id,
+                'correcciones' => $pensionCorregida['aplicadas'],
+            ]);
         }
 
         try {
@@ -558,6 +606,7 @@ class PlanillaApiController extends Controller
                 'errores_cotizante'=> $resultado['errores_cotizante'] ?? [],
                 'errores_empresa'  => $resultado['errores_empresa'] ?? [],
                 'correcciones'     => $correcciones,
+                'pension_corregida'=> $pensionCorregida['aplicadas'],
                 'razon_social_id'  => $rs->id,
                 'message'          => 'El archivo tiene errores. Corríjalos y vuelva a liquidar.',
             ]);
@@ -581,6 +630,7 @@ class PlanillaApiController extends Controller
             'valor_mora'      => $resultado['totales']['valor_mora'] ?? null,
             'fecha_limite'    => $resultado['totales']['fecha_limite'] ?? null,
             'url_pago'        => $resultado['url_pago'] ?? null,
+            'pension_corregida' => $pensionCorregida['aplicadas'],
             'message'         => "Planilla {$resultado['numero_planilla']} liquidada en {$operador->nombre} para {$nombreCotizante}.",
         ]);
     }

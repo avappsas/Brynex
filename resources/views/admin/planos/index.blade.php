@@ -2542,6 +2542,24 @@ async function cargarEstadoEnlace() {
     }
 }
 
+// Fondos de pensión que Brynex corrigió solo antes de mandar el archivo:
+// gente que iba sin AFP aunque su factura sí le cobró el aporte. Se muestra
+// siempre —no es un detalle técnico—: cambió el contrato y la ficha de esa
+// persona, y el total de la planilla sube por ese aporte.
+function avisoPensionCorregida(correcciones) {
+    if (!correcciones || !correcciones.length) return '';
+
+    const filas = correcciones.map(c =>
+        `<li><strong>${c.nombre || c.documento}</strong> (${c.documento}): ${c.de} → <strong>${c.a}</strong></li>`
+    ).join('');
+
+    return avisoEnlace('#eff6ff', '#bfdbfe', '#1e40af',
+        `<strong>🔧 Se corrigió el fondo de pensión de ${correcciones.length} cotizante(s) antes de liquidar.</strong>` +
+        `<ul style="margin:.35rem 0 0 1rem;padding:0">${filas}</ul>` +
+        `<div style="margin-top:.35rem;font-size:.72rem">Iban sin AFP aunque la factura sí les cobró pensión. ` +
+        `El cambio quedó también en el contrato y en la ficha del cliente.</div>`);
+}
+
 function avisoEnlace(bg, borde, color, html) {
     return `<div style="background:${bg};border:1px solid ${borde};border-radius:10px;padding:.7rem .85rem;font-size:.76rem;color:${color};line-height:1.4">${html}</div>`;
 }
@@ -2659,7 +2677,8 @@ async function liquidarEnEnlace(operadorId, operadorNombre) {
         }
 
         if (!data.liquidada) {
-            cont.innerHTML = avisoEnlace('#fffbeb', '#fde68a', '#92400e',
+            cont.innerHTML = avisoPensionCorregida(data.pension_corregida) +
+                avisoEnlace('#fffbeb', '#fde68a', '#92400e',
                 `<strong>⚠️ El archivo tiene ${data.total_errores} error(es).</strong> ` +
                 `Enlace no generó número de planilla.<br>` +
                 `<button type="button" onclick="verErroresEnlace()" style="margin-top:.4rem;background:#f59e0b;color:#fff;border:none;border-radius:8px;padding:.35rem .7rem;font-size:.74rem;font-weight:700;cursor:pointer">Ver detalle de errores</button>`);
@@ -2668,7 +2687,8 @@ async function liquidarEnEnlace(operadorId, operadorNombre) {
             return;
         }
 
-        cont.innerHTML = avisoEnlace('#f0fdf4', '#bbf7d0', '#166534',
+        cont.innerHTML = avisoPensionCorregida(data.pension_corregida) +
+            avisoEnlace('#f0fdf4', '#bbf7d0', '#166534',
             `<strong>✅ Planilla ${data.numero_planilla} liquidada en ${operadorNombre}.</strong>` +
             (data.valor_total ? `<br>Total a pagar: <strong>$ ${fmtNum(Math.round(data.valor_total))}</strong>` : '') +
             (data.valor_mora ? ` (mora: $ ${fmtNum(Math.round(data.valor_mora))})` : '') +
