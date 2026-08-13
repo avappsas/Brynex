@@ -161,6 +161,18 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/marketing-pauta-sync.log'));
 
+        // ── Vencimiento del token de pauta ───────────────────────────────────
+        // Diario a las 08:00: el token de anuncios dura ~60 días y al vencer deja
+        // de crear anuncios EN SILENCIO — el piloto sigue publicando, solo se
+        // congela el gasto. Avisa a 7, 3 y 1 día, y cuando ya venció.
+        // Ejecución manual: php artisan pauta:token-vigilar
+        $schedule->command('pauta:token-vigilar')
+            ->dailyAt('08:00')
+            ->timezone('America/Bogota')
+            ->withoutOverlapping(15)
+            ->runInBackground()
+            ->appendOutputTo(storage_path('logs/pauta-token-vigilar.log'));
+
         // ── Creatividades del conjunto permanente de pauta ───────────────────
         // Diario a las 12:00: mete la pieza publicada más reciente al conjunto
         // permanente (si queda cupo semanal) y pausa las que ya no compiten.
