@@ -161,6 +161,18 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/marketing-pauta-sync.log'));
 
+        // ── Informe diario de la pauta ───────────────────────────────────────
+        // Diario a las 20:00, con el día ya corrido: qué se gastó y qué trajo.
+        // Va a esa hora y no en la mañana porque las métricas de Meta llegan con
+        // retraso; a las 8am el día apenas empieza y el informe no diría nada.
+        // Ejecución manual: php artisan marketing:informe-pauta
+        $schedule->command('marketing:informe-pauta')
+            ->dailyAt('20:00')
+            ->timezone('America/Bogota')
+            ->withoutOverlapping(15)
+            ->runInBackground()
+            ->appendOutputTo(storage_path('logs/marketing-informe-pauta.log'));
+
         // ── Vencimiento del token de pauta ───────────────────────────────────
         // Diario a las 08:00: el token de anuncios dura ~60 días y al vencer deja
         // de crear anuncios EN SILENCIO — el piloto sigue publicando, solo se
