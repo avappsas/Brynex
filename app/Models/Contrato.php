@@ -274,11 +274,19 @@ class Contrato extends BaseModel
             $caja = ($plan && $plan->incluye_caja) ? $r($ibc * $pctCaja / 100) : 0;
 
             if ($dias < 30) {
-                // EPS/ARL/AFP/CAJA: siempre usar ceil al centena superior para consistencia en retiros y facturación.
-                $eps = (int) (ceil($eps * $dias / 30 / 100) * 100);
-                $arl = (int) (ceil($arl * $dias / 30 / 100) * 100);
-                $pen = (int) (ceil($pen * $dias / 30 / 100) * 100);
-                $caja = (int) (ceil($caja * $dias / 30 / 100) * 100);
+                // Mes parcial: se prorratea el IBC y se redondea UNA sola vez,
+                // igual que PilaCotizanteCalculator — que es de donde sale el
+                // archivo plano y, por tanto, lo que el operador cobra de
+                // verdad. Prorratear el aporte ya redondeado y volver a subirlo
+                // al centenar (como se hacía antes) le sumaba hasta $100 por
+                // subsistema y por persona, y la factura terminaba por encima
+                // de la planilla sin que nadie pudiera explicar la diferencia.
+                $ibcProp = (int) round($ibc * $dias / 30);
+
+                $eps = ($plan && $plan->incluye_eps) ? $r($ibcProp * $pctEps / 100) : 0;
+                $arl = ($plan && $plan->incluye_arl) ? $r($ibcProp * $pctArl / 100) : 0;
+                $pen = ($plan && $plan->incluye_pension) ? $r($ibcProp * $pctPen / 100) : 0;
+                $caja = ($plan && $plan->incluye_caja) ? $r($ibcProp * $pctCaja / 100) : 0;
             }
 
             // ── Cargo sin-CCF: dependiente E o Ingreso-Retiro sin caja ─────
