@@ -23,7 +23,7 @@ class PrestamoMovimiento extends BaseFinanzasModel
 
     protected $fillable = [
         'prestamo_id',
-        'tipo', // desembolso | interes_mensual | capitalizacion | abono_interes | abono_capital | pago_total
+        'tipo', // desembolso | interes_mensual | interes_proporcional | capitalizacion | abono_interes | abono_capital | pago_total
         'fecha',
         'monto',
         'saldo_antes',

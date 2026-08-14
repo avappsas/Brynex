@@ -176,12 +176,17 @@ class PrestamoController extends Controller
 
         $cuentas = \App\Models\Finanzas\Cuenta::where('user_id', Auth::id())->activas()->orderBy('orden')->get();
 
+        // Cuánto tendría que pagar hoy para quedar a paz y salvo (cortes pendientes + días sueltos)
+        $cierre = $prestamo->saldo_actual > 0
+            ? $this->liquidacionService->calcularCierre($prestamo)
+            : null;
+
         // Vista optimizada para dispositivos móviles
         if ($this->isMobileDevice(request())) {
-            return view('finanzas.prestamos.show_movil', compact('prestamo', 'cuentas'));
+            return view('finanzas.prestamos.show_movil', compact('prestamo', 'cuentas', 'cierre'));
         }
 
-        return view('finanzas.prestamos.show', compact('prestamo', 'cuentas'));
+        return view('finanzas.prestamos.show', compact('prestamo', 'cuentas', 'cierre'));
     }
 
     /**
@@ -258,8 +263,15 @@ class PrestamoController extends Controller
                 (int) date('Y', strtotime($request->fecha)),
                 (int) date('n', strtotime($request->fecha))
             );
-            return redirect()->route('finanzas.prestamos.show', $prestamo->id)
-                ->with('success', "Pago registrado con éxito. Se abonaron \${$res['abono_interes']} a intereses y \${$res['abono_capital']} a capital.");
+            $detalle = 'Pago registrado con éxito. Se abonaron $' . number_format($res['abono_interes'], 0, ',', '.')
+                . ' a intereses y $' . number_format($res['abono_capital'], 0, ',', '.') . ' a capital.';
+
+            if (!empty($res['interes_fraccion'])) {
+                $detalle .= ' Incluye $' . number_format($res['interes_fraccion'], 0, ',', '.')
+                    . ' de interés causado por los días corridos del capital abonado.';
+            }
+
+            return redirect()->route('finanzas.prestamos.show', $prestamo->id)->with('success', $detalle);
         }
 
         return redirect()->route('finanzas.prestamos.show', $prestamo->id)->with('error', $res['message']);
@@ -559,16 +571,18 @@ class PrestamoController extends Controller
         foreach ($movimientos as $mov) {
             $mov->saldo_antes = $saldo;
             
-            if (in_array($mov->tipo, ['desembolso', 'interes_mensual', 'capitalizacion'])) {
+            if (in_array($mov->tipo, ['desembolso', 'interes_mensual', 'interes_proporcional', 'capitalizacion'])) {
                 $mov->saldo_despues = $saldo + $mov->monto;
             } else {
                 // abono_capital, abono_interes, pago_total
                 $mov->saldo_despues = $saldo - $mov->monto;
             }
-            
+
             $mov->save();
             $saldo = $mov->saldo_despues;
 
+            // Sólo los cortes mensuales mueven la fecha de corte. El interés proporcional de un abono
+            // se cobra dentro del ciclo abierto y no lo reinicia.
             if ($mov->tipo === 'interes_mensual') {
                 $ultimoCorteFecha = $mov->fecha;
             }

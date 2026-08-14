@@ -101,6 +101,7 @@
         .btype { display:inline-block; font-size:0.6rem; font-weight:700; padding:0.1rem 0.4rem; border-radius:5px; text-transform:uppercase; }
         .btype.desembolso      { background:rgba(100,116,139,0.18); color:#94a3b8; }
         .btype.interes_mensual { background:var(--rojo-bg);  color:var(--rojo); }
+        .btype.interes_proporcional { background:var(--rojo-bg);  color:var(--rojo); }
         .btype.capitalizacion  { background:var(--rojo-bg);  color:var(--rojo); }
         .btype.abono_interes   { background:var(--verde-bg); color:var(--verde); }
         .btype.abono_capital   { background:var(--verde-bg); color:var(--verde); border:1px dashed rgba(16,185,129,0.4); }
@@ -346,13 +347,14 @@
             @forelse($prestamo->movimientos as $m)
             @php
                 $isAbono = in_array($m->tipo, ['abono_interes','abono_capital','pago_total']);
-                $isCargo = in_array($m->tipo, ['interes_mensual','capitalizacion','desembolso']);
+                $isCargo = in_array($m->tipo, ['interes_mensual','interes_proporcional','capitalizacion','desembolso']);
                 $cColor  = $isAbono ? 'c-green' : ($isCargo ? 'c-red' : 'c-gray');
                 $dotC    = $isAbono ? '#10b981' : ($isCargo ? '#f43f5e' : '#94a3b8');
                 $sig     = $isAbono ? '+' : '-';
                 $label   = match($m->tipo) {
                     'desembolso'      => 'Capital Inicial',
                     'interes_mensual' => 'Liq. Interés',
+                    'interes_proporcional' => 'Interés x Días',
                     'capitalizacion'  => 'Capitalización',
                     'abono_interes'   => 'Abono Interés',
                     'abono_capital'   => 'Abono Capital',
@@ -398,9 +400,32 @@
                 <div class="fg"><label>Fecha de Recepción</label><input type="date" name="fecha" value="{{ now()->toDateString() }}" required></div>
                 <div class="fg">
                     <label>Monto Recibido ($ COP)</label>
-                    <input type="number" name="monto" placeholder="Ej: 200000" required min="1" autocomplete="off">
-                    <small>Se abona primero a intereses acumulados y luego a capital.</small>
+                    <input type="number" name="monto" x-ref="montoAbono" placeholder="Ej: 200000" required min="1" autocomplete="off">
+                    <small>Cubre primero los intereses liquidados, luego el interés por los días corridos del capital abonado, y el resto baja capital.</small>
                 </div>
+                @if(!empty($cierre))
+                <div style="border:1px solid #bbf7d0; background:#f0fdf4; border-radius:10px; padding:.6rem .7rem; margin-bottom:.8rem;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:.5rem;">
+                        <div>
+                            <span style="font-size:.62rem; color:#166534; font-weight:700; text-transform:uppercase;">Paz y salvo hoy</span>
+                            <div style="font-size:1.05rem; font-weight:800; color:#14532d;">${{ number_format($cierre['total'], 0, ',', '.') }}</div>
+                        </div>
+                        <button type="button" @click="$refs.montoAbono.value = {{ (int) round($cierre['total']) }}"
+                                style="border:none; background:#16a34a; color:#fff; font-size:.66rem; font-weight:700; padding:.4rem .65rem; border-radius:8px; white-space:nowrap;">
+                            Usar valor
+                        </button>
+                    </div>
+                    <div style="margin-top:.4rem; font-size:.62rem; color:#3f6212; line-height:1.5;">
+                        Capital ${{ number_format($cierre['capital'], 0, ',', '.') }}
+                        @if($cierre['intereses_pendientes'] > 0)
+                            · Int. liquidados ${{ number_format($cierre['intereses_pendientes'], 0, ',', '.') }}
+                        @endif
+                        @if($cierre['interes_fraccion'] > 0)
+                            · {{ $cierre['dias_fraccion'] }} días ${{ number_format($cierre['interes_fraccion'], 0, ',', '.') }}
+                        @endif
+                    </div>
+                </div>
+                @endif
                 @if(isset($cuentas) && $cuentas->isNotEmpty())
                 <div class="fg"><label>¿A qué cuenta entró el dinero?</label>
                     <select name="cuenta_id" required>
@@ -431,7 +456,25 @@
          x-data="{
             fechaDesde: '{{ $prestamo->ultimo_corte ?: $prestamo->fecha_desembolso }}',
             fechaHasta: '{{ now()->toDateString() }}',
+            diaCobro: {{ (int) \Carbon\Carbon::parse($prestamo->fecha_desembolso)->day }},
             meses: [],
+            /* Mismo cálculo que siguienteCorte() en PrestamoLiquidacionService: el corte cae el
+               mismo día de cada mes y, si ese día no existe, en el último día del mes. */
+            siguienteCorte(desde) {
+                let diasMes = new Date(desde.getFullYear(), desde.getMonth() + 1, 0).getDate();
+                let dia = desde.getDate();
+                let mesBase = new Date(desde.getFullYear(), desde.getMonth(), 1);
+                if (dia === diasMes && this.diaCobro > dia) {
+                    dia = this.diaCobro;
+                } else if (dia <= 3 && this.diaCobro >= 29) {
+                    mesBase = new Date(desde.getFullYear(), desde.getMonth() - 1, 1);
+                    dia = this.diaCobro;
+                }
+                let sig = new Date(mesBase.getFullYear(), mesBase.getMonth() + 1, 1);
+                let diasSig = new Date(sig.getFullYear(), sig.getMonth() + 1, 0).getDate();
+                sig.setDate(Math.min(dia, diasSig));
+                return sig;
+            },
             calcularMeses() {
                 if (!this.fechaDesde || !this.fechaHasta) {
                     this.meses = [];
@@ -439,18 +482,17 @@
                 }
                 let start = new Date(this.fechaDesde + 'T00:00:00');
                 let end = new Date(this.fechaHasta + 'T00:00:00');
-                
+
                 if (start >= end) {
                     this.meses = [];
                     return;
                 }
-                
+
                 let result = [];
                 let current = new Date(start);
-                
+
                 while (true) {
-                    let next = new Date(current);
-                    next.setMonth(next.getMonth() + 1);
+                    let next = this.siguienteCorte(current);
                     if (next > end) {
                         break;
                     }

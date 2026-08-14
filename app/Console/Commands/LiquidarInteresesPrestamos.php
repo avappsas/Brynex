@@ -46,7 +46,7 @@ class LiquidarInteresesPrestamos extends Command
             }
 
             // Solo meses completos: la fracción corriente queda pendiente hasta cumplirse
-            $interes = $liquidacionService->liquidarPeriodo($prestamo, $hoy, true);
+            $interes = $liquidacionService->liquidarPeriodo($prestamo, null, $hoy, [], true);
 
             if ($interes > 0) {
                 $prestamosAfectados++;

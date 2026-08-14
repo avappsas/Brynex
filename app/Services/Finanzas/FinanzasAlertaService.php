@@ -195,7 +195,7 @@ class FinanzasAlertaService
             ->where('finanzas_prestamos.user_id', $userId)
             ->whereYear('finanzas_prestamo_movimientos.fecha', $anio)
             ->whereMonth('finanzas_prestamo_movimientos.fecha', $mes)
-            ->where('finanzas_prestamo_movimientos.tipo', 'interes_mensual')
+            ->whereIn('finanzas_prestamo_movimientos.tipo', ['interes_mensual', 'interes_proporcional'])
             ->sum('finanzas_prestamo_movimientos.monto');
 
         // 5.2 Intereses COBRADOS del mes (lo que realmente pagaron los deudores)
@@ -360,7 +360,7 @@ class FinanzasAlertaService
             ->join('finanzas_prestamos', 'finanzas_prestamo_movimientos.prestamo_id', '=', 'finanzas_prestamos.id')
             ->where('finanzas_prestamos.user_id', $userId)
             ->whereYear('finanzas_prestamo_movimientos.fecha', $anio)
-            ->where('finanzas_prestamo_movimientos.tipo', 'interes_mensual')
+            ->whereIn('finanzas_prestamo_movimientos.tipo', ['interes_mensual', 'interes_proporcional'])
             ->selectRaw('MONTH(finanzas_prestamo_movimientos.fecha) as mes, SUM(finanzas_prestamo_movimientos.monto) as total')
             ->groupByRaw('MONTH(finanzas_prestamo_movimientos.fecha)')
             ->pluck('total', 'mes');

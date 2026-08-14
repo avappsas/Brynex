@@ -205,6 +205,7 @@
                                 {{ match($mov->tipo) {
                                     'desembolso' => 'Capital Inicial',
                                     'interes_mensual' => 'Liquidación Interés',
+                                    'interes_proporcional' => 'Interés por Días',
                                     'capitalizacion' => 'Capitalización',
                                     'abono_interes' => 'Abono Interés',
                                     'abono_capital' => 'Abono Capital',
@@ -295,12 +296,40 @@
 
                     <div class="form-group-bx" style="margin-top:1rem;">
                         <label class="form-label-bx">Monto Recibido ($ COP)</label>
-                        <input type="number" name="monto" placeholder="Ej: 200000" class="form-input-bx" required min="1" autocomplete="off">
+                        <input type="number" name="monto" x-ref="montoAbono" placeholder="Ej: 200000" class="form-input-bx" required min="1" autocomplete="off">
                         <small style="color:#64748b; font-size:0.7rem; display:block; margin-top:0.25rem;">
-                            El sistema abonará este pago automáticamente priorizando intereses acumulados y luego abono a capital.
+                            El pago cubre primero los intereses ya liquidados, luego el interés causado por los días
+                            corridos del capital que se abona, y el resto baja capital.
                         </small>
                     </div>
-                    
+
+                    @if(!empty($cierre))
+                    <div style="margin-top:1rem; border:1px solid #bbf7d0; background:#f0fdf4; border-radius:10px; padding:0.7rem 0.85rem;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem;">
+                            <div>
+                                <span style="font-size:0.68rem; color:#166534; font-weight:700; text-transform:uppercase; letter-spacing:0.02em;">Para quedar a paz y salvo hoy</span>
+                                <div style="font-size:1.15rem; font-weight:800; color:#14532d; line-height:1.3;">
+                                    ${{ number_format($cierre['total'], 0, ',', '.') }}
+                                </div>
+                            </div>
+                            <button type="button" @click="$refs.montoAbono.value = {{ (int) round($cierre['total']) }}"
+                                    style="border:none; background:#16a34a; color:#fff; font-size:0.7rem; font-weight:700; padding:0.4rem 0.7rem; border-radius:8px; cursor:pointer; white-space:nowrap;">
+                                Usar este valor
+                            </button>
+                        </div>
+                        <div style="margin-top:0.5rem; font-size:0.68rem; color:#3f6212; line-height:1.6;">
+                            Capital ${{ number_format($cierre['capital'], 0, ',', '.') }}
+                            @if($cierre['intereses_pendientes'] > 0)
+                                · Intereses liquidados ${{ number_format($cierre['intereses_pendientes'], 0, ',', '.') }}
+                            @endif
+                            @if($cierre['interes_fraccion'] > 0)
+                                · {{ $cierre['dias_fraccion'] }} días corridos ${{ number_format($cierre['interes_fraccion'], 0, ',', '.') }}
+                            @endif
+                        </div>
+                    </div>
+                    @endif
+
+
                     <div class="form-group-bx" style="margin-top:1rem;">
                         <label class="form-label-bx">Archivo Soporte (Opcional - Adjuntar o Pegar captura)</label>
                         <input type="file" name="soporte" x-ref="soporteInputAbono" @change="handleFile" class="form-input-bx" style="padding:0.35rem 0.5rem;" accept="image/*,application/pdf">
@@ -343,7 +372,25 @@
          x-data="{
             fechaDesde: '{{ $prestamo->ultimo_corte ?: $prestamo->fecha_desembolso }}',
             fechaHasta: '{{ now()->toDateString() }}',
+            diaCobro: {{ (int) \Carbon\Carbon::parse($prestamo->fecha_desembolso)->day }},
             meses: [],
+            /* Mismo cálculo que siguienteCorte() en PrestamoLiquidacionService: el corte cae el
+               mismo día de cada mes y, si ese día no existe, en el último día del mes. */
+            siguienteCorte(desde) {
+                let diasMes = new Date(desde.getFullYear(), desde.getMonth() + 1, 0).getDate();
+                let dia = desde.getDate();
+                let mesBase = new Date(desde.getFullYear(), desde.getMonth(), 1);
+                if (dia === diasMes && this.diaCobro > dia) {
+                    dia = this.diaCobro;
+                } else if (dia <= 3 && this.diaCobro >= 29) {
+                    mesBase = new Date(desde.getFullYear(), desde.getMonth() - 1, 1);
+                    dia = this.diaCobro;
+                }
+                let sig = new Date(mesBase.getFullYear(), mesBase.getMonth() + 1, 1);
+                let diasSig = new Date(sig.getFullYear(), sig.getMonth() + 1, 0).getDate();
+                sig.setDate(Math.min(dia, diasSig));
+                return sig;
+            },
             calcularMeses() {
                 if (!this.fechaDesde || !this.fechaHasta) {
                     this.meses = [];
@@ -351,18 +398,17 @@
                 }
                 let start = new Date(this.fechaDesde + 'T00:00:00');
                 let end = new Date(this.fechaHasta + 'T00:00:00');
-                
+
                 if (start >= end) {
                     this.meses = [];
                     return;
                 }
-                
+
                 let result = [];
                 let current = new Date(start);
-                
+
                 while (true) {
-                    let next = new Date(current);
-                    next.setMonth(next.getMonth() + 1);
+                    let next = this.siguienteCorte(current);
                     if (next > end) {
                         break;
                     }
@@ -760,6 +806,7 @@
 .mov-tipo-tag { display: inline-block; font-size: 0.62rem; font-weight: 700; padding: 0.15rem 0.45rem; border-radius: 6px; text-transform: uppercase; }
 .mov-tipo-tag.desembolso { background: #f1f5f9; color: #475569; }
 .mov-tipo-tag.interes_mensual { background: #fee2e2; color: #991b1b; }
+.mov-tipo-tag.interes_proporcional { background: #ffedd5; color: #9a3412; }
 .mov-tipo-tag.abono_interes { background: #d1fae5; color: #065f46; }
 .mov-tipo-tag.abono_capital { background: #d1fae5; color: #065f46; border: 1px dashed #059669; }
 .mov-tipo-tag.pago_total { background: #d1fae5; color: #065f46; font-weight: 800; border: 1px solid #059669; }
