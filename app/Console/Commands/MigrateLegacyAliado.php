@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\DB;
 
 class MigrateLegacyAliado extends Command
 {
-    protected $signature   = 'legacy:migrate-aliado {aliado : faga | gimave | mave | brygar | fecop | luislopez} {--step=all : Paso a ejecutar}';
+    protected $signature   = 'legacy:migrate-aliado {aliado : faga | gimave | mave | brygar | fecop | luislopez} {--step=all : Paso a ejecutar} {--pisar-con-legacy : Deja que los fixers reescriban contratos ya migrados con los valores del sistema viejo}';
     protected $description = 'Migra datos de un aliado específico desde su BD legacy a BryNex';
 
     // IDs de aliados en BryNex (se llenan en handle())
@@ -2014,6 +2014,10 @@ class MigrateLegacyAliado extends Command
     // exactamente tal como viene. Solo usa inferencia como último fallback.
     private function stepFixModalidad(): void
     {
+        if ($this->fixerLegacyBloqueado('fix-modalidad', 'de la modalidad del contrato')) {
+            return;
+        }
+
         $validIds = [-100,-8,-7,-6,-4,-1,0,1,2,3,4,5,6,7,8,10,11,12,13];
         $updated  = 0; $fallback = 0; $sin_dato = 0;
 
@@ -2063,7 +2067,7 @@ class MigrateLegacyAliado extends Command
             // Ejecutar bulk updates agrupados por tipo_modalidad_id
             foreach ($updates as $modId => $ids) {
                 foreach (array_chunk($ids, 1000) as $chunkIds) {
-                    DB::table('contratos')->whereIn('id', $chunkIds)->update(['tipo_modalidad_id' => $modId]);
+                    DB::table('contratos')->whereIn('id', $chunkIds)->update(['tipo_modalidad_id' => $modId, 'updated_at' => now()]);
                 }
             }
             $this->info("  ✅ $db → desde legacy: $updated | fallback: $fallback | sin dato: $sin_dato");
@@ -2081,6 +2085,10 @@ class MigrateLegacyAliado extends Command
     // Regla: eps_id != null → incluye_eps=1, caja_id = null → incluye_caja=0, etc.
     private function stepFixPlan(): void
     {
+        if ($this->fixerLegacyBloqueado('fix-plan', 'del plan del contrato')) {
+            return;
+        }
+
         // Planes normalizados a int (SQL Server devuelve 0/1 no bool)
         $planesAll = DB::table('planes_contrato')
             ->where('activo', true)
@@ -2170,7 +2178,7 @@ class MigrateLegacyAliado extends Command
             // Ejecutar bulk updates
             foreach ($planUpdates as $planId => $ids) {
                 foreach (array_chunk($ids, 1000) as $chunkIds) {
-                    DB::table('contratos')->whereIn('id', $chunkIds)->update(['plan_id' => $planId]);
+                    DB::table('contratos')->whereIn('id', $chunkIds)->update(['plan_id' => $planId, 'updated_at' => now()]);
                 }
             }
 
@@ -2183,8 +2191,44 @@ class MigrateLegacyAliado extends Command
     // ─── FIX-NARL: copia N_ARL del legacy directamente ────────────────────────
     // N_ARL = nivel de riesgo ARL (0-5). En step06 se filtraba con >= 0 <= 5
     // pero valores como 0.0 o strings no pasaban. Los copiamos directamente.
+    /**
+     * Los fixers que leen un valor del sistema viejo y lo escriben encima del
+     * contrato ya migrado están apagados: la migración de todos los aliados
+     * terminó y BryNex es la fuente de verdad.
+     *
+     * Mientras estuvieron activos deshacían en silencio las correcciones
+     * hechas a mano. El caso que lo destapó: a un cotizante de ELITES
+     * CREACIONES le bajaron el riesgo de 3 a 2 en BryNex, una corrida
+     * posterior de `fix-narl` se lo devolvió a 3 desde el legacy, y la
+     * planilla de agosto salió 24.400 por encima de lo facturado. Como
+     * escriben con `DB::table()->update()` sin timestamps, `updated_at` ni
+     * siquiera se movía: no quedaba rastro de quién lo había cambiado.
+     *
+     * Siguen disponibles con `--pisar-con-legacy` por si algún día entra un
+     * aliado nuevo que sí haya que traer desde cero.
+     */
+    private function fixerLegacyBloqueado(string $paso, string $campos): bool
+    {
+        if ($this->option('pisar-con-legacy')) {
+            $this->warn("  ⚠  $paso: reescribiendo los valores $campos con los datos del sistema viejo (--pisar-con-legacy).");
+
+            return false;
+        }
+
+        $this->warn("  ⏭  $paso: omitido.");
+        $this->line("     BryNex es la fuente de verdad $campos; este paso los reescribía");
+        $this->line("     con los del sistema viejo y deshacía las correcciones manuales.");
+        $this->line("     Use --pisar-con-legacy solo para un aliado que se migre desde cero.");
+
+        return true;
+    }
+
     private function stepFixNarl(): void
     {
+        if ($this->fixerLegacyBloqueado('fix-narl', 'del nivel de riesgo ARL')) {
+            return;
+        }
+
         $updated = 0; $sin_dato = 0;
 
         foreach ($this->dbs as $db => $key) {
@@ -2257,7 +2301,8 @@ class MigrateLegacyAliado extends Command
                 foreach (array_chunk($group['ids'], 1000) as $chunkIds) {
                     DB::table('contratos')->whereIn('id', $chunkIds)->update([
                         'n_arl'  => $group['n_arl'],
-                        'arl_id' => $group['arl_id']
+                        'arl_id' => $group['arl_id'],
+                        'updated_at' => now(),
                     ]);
                 }
             }
