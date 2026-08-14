@@ -236,6 +236,15 @@ class ModulosPermisosSeeder extends Seeder
                 'configurar' => ['Activar y ordenar operadores', []],
                 'credenciales' => ['Ver y editar credenciales',   [], true],
             ]],
+            // Claves de DIAN, bancos y cámara de comercio, dentro de la ficha
+            // de cada razón social. No tiene pantalla propia (`ruta_nombre`
+            // null): se abre con un botón en la ficha. Ningún rol lo trae —
+            // solo lo hereda el superadmin del aliado (Gate::before) y se
+            // otorga a dedo a quien más deba verlas.
+            ['credenciales_rs', 'Claves DIAN, bancos y cámara', 'administracion', '🔐', null, [
+                'ver' => ['Ver y revelar las claves',      []],
+                'gestionar' => ['Crear, editar y eliminar claves', []],
+            ]],
             ['bitacora', 'Auditoría', 'administracion', '👁️', 'admin.bitacora.index', [
                 'ver' => ['Ver la bitácora', []],
             ]],

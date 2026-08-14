@@ -381,6 +381,21 @@ Route::middleware('auth')->group(function () {
             Route::delete('configuracion/razones-sociales/{id}/credenciales/{operador}', [$rsoc, 'destroy'])->name('configuracion.razones.credenciales.destroy');
         });
 
+        // Claves de portales críticos por razón social: DIAN, bancos, cámara.
+        // Aparte de `clave_accesos` (EPS/ARL/caja), que las ve todo el rol
+        // `usuario`: estas solo el superadmin del aliado y a quien se le
+        // otorgue `credenciales_rs.*` a mano.
+        $rscc = \App\Http\Controllers\Admin\RazonSocialCredencialController::class;
+        Route::middleware('permiso:credenciales_rs.ver')->group(function () use ($rscc) {
+            Route::get('configuracion/razones-sociales/{id}/claves', [$rscc, 'index'])->name('configuracion.razones.claves.index');
+            Route::get('configuracion/razones-sociales/{id}/claves/{cred}/revelar', [$rscc, 'revelar'])->name('configuracion.razones.claves.revelar');
+        });
+        Route::middleware('permiso:credenciales_rs.gestionar')->group(function () use ($rscc) {
+            Route::post('configuracion/razones-sociales/{id}/claves', [$rscc, 'store'])->name('configuracion.razones.claves.store');
+            Route::put('configuracion/razones-sociales/{id}/claves/{cred}', [$rscc, 'update'])->name('configuracion.razones.claves.update');
+            Route::delete('configuracion/razones-sociales/{id}/claves/{cred}', [$rscc, 'destroy'])->name('configuracion.razones.claves.destroy');
+        });
+
         Route::get('configuracion/razones-sociales/documentos/{id}/descargar', [$rsdc, 'download'])->name('configuracion.razones.documentos.download')->middleware('permiso:razones_sociales.ver');
         Route::middleware('permiso:razones_sociales.gestionar')->group(function () use ($rsdc) {
             Route::post('configuracion/razones-sociales/{id}/documentos', [$rsdc, 'store'])->name('configuracion.razones.documentos.store');
