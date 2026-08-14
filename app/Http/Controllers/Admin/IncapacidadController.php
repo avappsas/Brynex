@@ -30,6 +30,7 @@ class IncapacidadController extends Controller
      */
     public const ESTADOS_FINALES = [
         'pagada',                 // legacy
+        'pagado_afiliado',        // legacy (ortografía vieja de 'pagada_afiliado')
         'pagada_afiliado',
         'pagada_razon_social',
         'cierre_exitoso',
@@ -57,6 +58,7 @@ class IncapacidadController extends Controller
      */
     public const ESTADOS_SIN_PENDIENTE = [
         'pagada',
+        'pagado_afiliado',        // legacy
         'pagada_afiliado',
         'pagada_razon_social',
         'cierre_exitoso',
@@ -219,7 +221,7 @@ class IncapacidadController extends Controller
             }
         } else {
             $query->orderByRaw("
-                CASE WHEN estado IN ('pagada','pagada_afiliado','pagada_razon_social','cierre_exitoso','rechazado','negada') THEN 99 ELSE 0 END ASC
+                CASE WHEN estado IN ('pagada','pagado_afiliado','pagada_afiliado','pagada_razon_social','cierre_exitoso','rechazado','negada') THEN 99 ELSE 0 END ASC
             ")->orderByDesc('fecha_recibido');
         }
 
@@ -690,7 +692,8 @@ class IncapacidadController extends Controller
         // cierre_exitoso requiere que la incapacidad tenga pagada_razon_social Y pagada_afiliado
         if ($nuevoEstado === 'cierre_exitoso') {
             $tieneRS = in_array($inc->estado, ['pagada_razon_social', 'cierre_exitoso']);
-            $tieneAf = in_array($inc->estado, ['pagada_afiliado', 'cierre_exitoso']);
+            // 'pagado_afiliado' es la ortografía vieja que dejó la migración del legacy
+            $tieneAf = in_array($inc->estado, ['pagada_afiliado', 'pagado_afiliado', 'cierre_exitoso']);
             // También revisar si previamente se marcó alguno de los dos estados
             $historial = GestionIncapacidad::where('incapacidad_id', $inc->id)
                 ->whereIn('estado_nuevo', ['pagada_razon_social', 'pagada_afiliado'])
@@ -735,7 +738,7 @@ class IncapacidadController extends Controller
         // estado, no se vuelve a abonar.
         $esPagoDirectoAfiliado = $incActualizar
             && $nuevoEstado === 'pagada_afiliado'
-            && ! in_array($incActualizar->estado, ['pagada_razon_social', 'pagada_afiliado', 'cierre_exitoso'], true);
+            && ! in_array($incActualizar->estado, ['pagada_razon_social', 'pagada_afiliado', 'pagado_afiliado', 'cierre_exitoso'], true);
 
         // Se valida antes de crear la gestión: si se validara después quedaría una
         // gestión diciendo que la incapacidad pasó a pagada, con la incapacidad sin tocar.

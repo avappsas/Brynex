@@ -122,6 +122,10 @@ class Incapacidad extends BaseModel
         'cierre_exitoso'            => ['label' => '✅ Cierre Exitoso',              'color' => 'success'],
         // ── Legacy (no mostrar en selector) ──────────────────────────────────
         'pagada'                    => ['label' => '✅ Pagada (legacy)',              'color' => 'success', 'legacy' => true],
+        // Ortografía vieja de 'pagada_afiliado' que dejó la migración del legacy.
+        // Sin esta entrada el badge sale crudo y el estado queda fuera del mapa de
+        // transiciones, así que la incapacidad no se puede cerrar (caso #329).
+        'pagado_afiliado'           => ['label' => '🏦 Pagada al Afiliado (legacy)',  'color' => 'success', 'legacy' => true],
         'liquidacion'               => ['label' => '💰 En Liquidación (legacy)',     'color' => 'info',    'legacy' => true],
         'transcripcion'             => ['label' => '🏥 Transcripción (legacy)',      'color' => 'info',    'legacy' => true],
     ];

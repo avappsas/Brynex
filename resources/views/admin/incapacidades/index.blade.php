@@ -374,7 +374,7 @@ tbody td{padding:.6rem .85rem;vertical-align:middle;}
                     @if($numPrr > 0)
                     <span class="badge badge-primary">+{{ $numPrr }} prórr.</span>
                     @php
-                        $estadosFinales = ['pagada','pagada_afiliado','pagada_razon_social','cierre_exitoso','rechazado'];
+                        $estadosFinales = ['pagada','pagado_afiliado','pagada_afiliado','pagada_razon_social','cierre_exitoso','rechazado'];
                         $hayPendiente = $inc->prorrogas->whereNotIn('estado', $estadosFinales)->count() > 0;
                     @endphp
                     @if($hayPendiente)
@@ -539,7 +539,7 @@ function actualizarFilaIncapacidad(id) {
             const inc = data.incapacidad;
 
             // Determinar opacidad de fila según estado
-            const estadosPagados = ['pagada','pagada_afiliado','pagada_razon_social','cierre_exitoso'];
+            const estadosPagados = ['pagada','pagado_afiliado','pagada_afiliado','pagada_razon_social','cierre_exitoso'];
             if (estadosPagados.includes(inc.estado)) {
                 row.style.opacity = '0.65';
             } else {
@@ -571,6 +571,7 @@ function actualizarFilaIncapacidad(id) {
                 en_liquidacion:            {label: '💰 En Liquidación',              color: 'info'},
                 pagada_razon_social:       {label: '🏢 Pagada a Razón Social',       color: 'info'},
                 pagada_afiliado:           {label: '🏦 Pagada al Afiliado',          color: 'success'},
+                pagado_afiliado:           {label: '🏦 Pagada al Afiliado (legacy)', color: 'success'},
                 cierre_exitoso:            {label: '✅ Cierre Exitoso',              color: 'success'}
             };
             const cfg = configEstados[inc.estado] || {label: inc.estado, color: 'secondary'};
@@ -1079,7 +1080,7 @@ function verDetalle(id){
                 </tbody></table></div>`;
 
             // Valor esperado — solo lo pendiente (no pagado)
-            const _estadosPag = ['pagada','pagada_afiliado','pagada_razon_social','cierre_exitoso'];
+            const _estadosPag = ['pagada','pagado_afiliado','pagada_afiliado','pagada_razon_social','cierre_exitoso'];
             let _valPending = 0;
             if (!_estadosPag.includes(inc.estado)) _valPending += Number(inc.valor_esperado||0);
             (inc.prorrogas||[]).forEach(p => { if (!_estadosPag.includes(p.estado)) _valPending += Number(p.valor_esperado||0); });
@@ -1298,6 +1299,9 @@ function _mostrarModalGestion(incId, familia, inc = {}) {
         'liquidacion':                 ['pagada_razon_social', 'pagada_afiliado'],
         'pagada_razon_social':         ['pagada_afiliado'],
         'pagada_afiliado':             ['cierre_exitoso'],
+        // Ortografía vieja que dejó la migración del legacy: sin esta entrada el
+        // selector solo ofrece "mantener estado actual" y la incapacidad no cierra.
+        'pagado_afiliado':             ['cierre_exitoso'],
         'cierre_exitoso':              [],
         'rechazado':                   [],
         'pagada':                      [],
