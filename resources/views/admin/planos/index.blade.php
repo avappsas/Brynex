@@ -1679,6 +1679,10 @@ const CTX = {
     pendienteARL      : {{ $planos->filter(fn($p) => empty($p->numero_planilla))->sum('v_arl') }},
     pendienteCCF      : {{ $planos->filter(fn($p) => empty($p->numero_planilla))->sum('v_caja') }},
     tasaMora          : {{ \App\Models\ConfiguracionBrynex::obtener('tasa_mora_pila', 26.17) }},
+    // Último cambio de los planos de la tanda. Si es posterior a la fecha en
+    // que se liquidó, la planilla del operador ya no representa este archivo
+    // y la diferencia contra los aportes no es mora — ver aplicarTotalDelOperador.
+    planosUltimoCambio: '{{ substr((string) $planos->pluck('updated_at')->filter()->max(), 0, 16) }}',
     // Totales por entidad (para mora exacta igual al operador PILA)
     // PILA redondea cada aporte al siguiente múltiplo de 100 POR COTIZANTE antes de agrupar.
     // Así PORVENIR-AFP suma ceil(v_afp/100)*100 de cada persona individualmente.
@@ -2560,6 +2564,69 @@ function avisoPensionCorregida(correcciones) {
         `El cambio quedó también en el contrato y en la ficha del cliente.</div>`);
 }
 
+// Cuando el operador ya liquidó la tanda, manda su número y no la estimación.
+//
+// La mora que calcula Brynex es una proyección: sale de la tabla legal del
+// Decreto 1990/2016 (últimos dos dígitos del NIT → día hábil) y de la tasa
+// configurada. Sirve para saber a qué atenerse ANTES de liquidar, pero no
+// siempre coincide con lo que el operador termina cobrando — en la planilla
+// 87590315 de ELITES CREACIONES, Brynex proyectaba $0 y Enlace cobró $4.800.
+// Una vez existe planilla, lo que hay que pagar es lo que dice el operador.
+function aplicarTotalDelOperador(valorTotal, numeroPlanilla, fechaLiquidacion) {
+    const total = Math.round(Number(valorTotal) || 0);
+    if (!total) return;
+
+    const ssBase = CTX.ssBaseOperador || CTX.totalSS || 0;
+    const dif    = total - ssBase;
+
+    // La diferencia entre lo liquidado y los aportes es mora... siempre que la
+    // planilla siga representando este archivo. Si algún plano de la tanda se
+    // tocó después de liquidar —se corrigió un contrato, entró gente nueva—,
+    // esa diferencia no es mora sino un archivo desactualizado, y llamarla
+    // mora manda a pagar un valor que ya no corresponde.
+    const desactualizada = fechaLiquidacion && CTX.planosUltimoCambio
+                        && CTX.planosUltimoCambio > fechaLiquidacion;
+
+    // Segundo filtro, por tamaño: a 26,17% E.A. la mora es ~0,072% por día,
+    // así que ni dos meses de atraso llegan al 10% de los aportes.
+    const esMoraPlausible = !desactualizada && dif >= 0 && dif <= ssBase * 0.10;
+
+    const set = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
+    const ver = (id) => { const el = document.getElementById(id); if (el) el.hidden = false; };
+
+    ['mora-sep3','mora-item-valor','mora-sep4','mora-item-total'].forEach(ver);
+    set('mora-valor', esMoraPlausible ? '$ ' + fmtNum(dif) : '—');
+    set('mora-total', '$ ' + fmtNum(total));
+
+    const bloque = document.getElementById('mora-bloque');
+    if (bloque) {
+        const alerta = !esMoraPlausible;
+        const conMora = esMoraPlausible && dif > 0;
+        bloque.style.background  = alerta  ? 'linear-gradient(135deg,#fef2f2,#fee2e2)'
+                                 : conMora ? 'linear-gradient(135deg,#fff7ed,#fef3c7)'
+                                           : 'linear-gradient(135deg,#f0fdf4,#dcfce7)';
+        bloque.style.borderColor = alerta ? '#fecaca' : (conMora ? '#fde68a' : '#86efac');
+    }
+
+    const info = document.getElementById('mora-info-txt');
+    if (info) {
+        info.style.display = '';
+        info.textContent = esMoraPlausible
+            ? `Valores de la planilla ${numeroPlanilla} liquidada en el operador`
+              + (dif > 0 ? ` · incluye $${fmtNum(dif)} de mora` : ' · sin mora')
+            : `⚠️ La planilla ${numeroPlanilla} quedó en $${fmtNum(total)} y los aportes de esta `
+              + `tanda suman $${fmtNum(ssBase)}. `
+              + (desactualizada
+                  ? `El archivo cambió después de liquidarla (último cambio ${CTX.planosUltimoCambio}, `
+                    + `liquidada ${fechaLiquidacion}). `
+                  : '')
+              + `Vuelva a liquidar antes de pagar.`;
+    }
+
+    // El modal de pago debe proponer lo que se va a pagar de verdad.
+    window.CTX_TOTAL_PAGAR = total;
+}
+
 function avisoEnlace(bg, borde, color, html) {
     return `<div style="background:${bg};border:1px solid ${borde};border-radius:10px;padding:.7rem .85rem;font-size:.76rem;color:${color};line-height:1.4">${html}</div>`;
 }
@@ -2593,6 +2660,7 @@ function renderEstadoEnlace(p, operadorNombre) {
     const enOperador = operadorNombre ? ` en ${operadorNombre}` : '';
 
     if (p.estado === 'validada' && p.numero_planilla) {
+        aplicarTotalDelOperador(p.valor_total, p.numero_planilla, p.fecha);
         cont.innerHTML = avisoEnlace('#f0fdf4', '#bbf7d0', '#166534',
             `<strong>✅ Planilla ${p.numero_planilla}</strong> liquidada${enOperador} el ${p.fecha || ''}.` +
             (p.valor_total ? `<br>Total a pagar: <strong>$ ${fmtNum(Math.round(p.valor_total))}</strong>` : '') +
@@ -2686,6 +2754,8 @@ async function liquidarEnEnlace(operadorId, operadorNombre) {
             mostrarToast(`La planilla tiene ${data.total_errores} error(es).`, 'error');
             return;
         }
+
+        aplicarTotalDelOperador(data.valor_total, data.numero_planilla, null);
 
         cont.innerHTML = avisoPensionCorregida(data.pension_corregida) +
             avisoEnlace('#f0fdf4', '#bbf7d0', '#166534',
