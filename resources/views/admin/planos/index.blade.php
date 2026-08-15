@@ -1818,12 +1818,27 @@ window.CTX_TOTAL_PAGAR = CTX.totalSS;
 
     if (!fechaVence) return;
 
-    // 3) Días calendario de mora: si hoy es fin de semana/festivo,
-    //    el pago real ocurre el próximo día hábil → usar esa fecha para contar
+    // 3) Días calendario de mora: la mora no se cuenta hasta hoy sino hasta el
+    //    día en que el pago realmente se abona, que es lo que liquida el
+    //    operador. Dos cosas lo mueven:
+    //
+    //    a) Si hoy no es día hábil, se abona el próximo que lo sea.
+    //    b) Pasada la hora de corte bancaria ya no alcanza a abonarse hoy,
+    //       así que se va al siguiente día hábil aunque hoy sí lo sea.
+    //
+    //    Faltaba (b), y por eso una planilla del viernes por la noche salía
+    //    con "0 días" mientras Enlace cobraba 4: el pago caía el martes 18
+    //    porque el sábado y domingo no cuentan y el lunes 17 es festivo.
+    const HORA_CORTE = 16.5;   // 4:30 p.m.
+
+    const ahora = new Date();
     const hoy = new Date();
     hoy.setHours(0,0,0,0);
-    // Avanzar al próximo día hábil si hoy no lo es
+
     const fechaPago = new Date(hoy);
+    if (ahora.getHours() + ahora.getMinutes() / 60 >= HORA_CORTE) {
+        fechaPago.setDate(fechaPago.getDate() + 1);
+    }
     while (true) {
         const dow = fechaPago.getDay();
         const key = `${fechaPago.getFullYear()}-${String(fechaPago.getMonth()+1).padStart(2,'0')}-${String(fechaPago.getDate()).padStart(2,'0')}`;
@@ -1867,7 +1882,8 @@ window.CTX_TOTAL_PAGAR = CTX.totalSS;
 
         mostrarEl('mora-info-txt');
         document.getElementById('mora-info-txt').textContent =
-            `${infoSufijo} · Sin mora hasta ${fechaVence.toLocaleDateString('es-CO',{weekday:'long',day:'2-digit',month:'long'})}`;
+            `${infoSufijo} · Sin mora si paga hasta ${fechaVence.toLocaleDateString('es-CO',{weekday:'long',day:'2-digit',month:'long'})}`
+            + ` antes de las 4:30 p.m.`;
 
         // Tabla desglose sin mora
         renderDesglose(0, {});
