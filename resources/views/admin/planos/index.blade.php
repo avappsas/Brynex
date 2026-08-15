@@ -2537,7 +2537,30 @@ async function cargarEstadoEnlace() {
 
         // Si ya se liquidó este periodo, mostrarlo en vez de arrancar en blanco.
         const yaLiquidado = data.operadores.find(o => o.planilla);
-        if (yaLiquidado) renderEstadoEnlace(yaLiquidado.planilla, yaLiquidado.nombre);
+        if (yaLiquidado) {
+            renderEstadoEnlace(yaLiquidado.planilla, yaLiquidado.nombre);
+        } else {
+            // No hay planilla para ESTE filtro, pero sí para la tanda con otro.
+            // Callarlo hace creer que nunca se liquidó, y basta marcar una
+            // modalidad de más —aunque no aporte a nadie— para llegar aquí.
+            const otra = data.operadores.find(o => (o.planillas_tanda || []).length);
+            if (otra) {
+                const filas = otra.planillas_tanda.map(p =>
+                    `<li><strong>${p.numero_planilla}</strong> · $ ${fmtNum(Math.round(p.valor_total))} · ` +
+                    `<em>${p.modalidades}</em> · ${p.fecha || ''}` +
+                    (p.url_pago ? ` · <a href="${p.url_pago}" target="_blank" rel="noopener" style="color:#92400e;font-weight:700;text-decoration:underline">pagar en PSE →</a>` : '') +
+                    `</li>`).join('');
+
+                const cont = document.getElementById('enlace-ultima');
+                cont.style.display = '';
+                cont.innerHTML = avisoEnlace('#fffbeb', '#fde68a', '#92400e',
+                    `<strong>ℹ️ Esta tanda ya tiene ${otra.planillas_tanda.length} planilla(s) liquidada(s) en ${otra.nombre},</strong> ` +
+                    `pero ninguna con el filtro de Modalidad que tiene puesto:` +
+                    `<ul style="margin:.35rem 0 0 1rem;padding:0">${filas}</ul>` +
+                    `<div style="margin-top:.35rem;font-size:.72rem">Por eso los totales de arriba no las incluyen. ` +
+                    `Ajuste el filtro para ver una de ellas, o liquide aparte lo que falte — pero revise antes que esa gente no esté ya en las de arriba.</div>`);
+            }
+        }
 
         pintarPendientesCierre(data.pendientes);
     } catch (e) {

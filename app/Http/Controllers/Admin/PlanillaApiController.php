@@ -65,6 +65,26 @@ class PlanillaApiController extends Controller
                 ->latest('id')
                 ->first();
 
+            // Si no hay ninguna con ESTE filtro, puede haberla de la misma
+            // tanda liquidada con otro. Antes el bloque simplemente se quedaba
+            // callado y parecía que nunca se había liquidado: basta marcar una
+            // modalidad de más en la pantalla —aunque no aporte a nadie— para
+            // dejar de reconocer la planilla que ya existe. No se devuelve como
+            // `planilla` porque cubre a otra gente y su valor no es el de este
+            // filtro; se devuelve aparte, solo para avisarlo.
+            $otrosFiltros = collect();
+            if (! $planilla) {
+                $otrosFiltros = OperadorPlanillaApi::where('aliado_id', $aliadoId)
+                    ->where('razon_social_id', $validated['razon_social_id'])
+                    ->where('operador_planilla_id', $operador->id)
+                    ->where('anio', $validated['anio'])
+                    ->where('mes', $validated['mes'])
+                    ->where('n_plano', $validated['n_plano'])
+                    ->where('estado', 'validada')
+                    ->orderBy('id')
+                    ->get();
+            }
+
             $operadores[] = [
                 'id'            => $operador->id,
                 'nombre'        => $operador->nombre,
@@ -79,6 +99,13 @@ class PlanillaApiController extends Controller
                     'mensaje_error'   => $planilla->mensaje_error,
                     'fecha'           => optional($planilla->updated_at)->format('Y-m-d H:i'),
                 ] : null,
+                'planillas_tanda' => $otrosFiltros->map(fn ($p) => [
+                    'numero_planilla' => $p->numero_planilla,
+                    'valor_total'     => $p->valor_total,
+                    'url_pago'        => $p->url_pago,
+                    'fecha'           => optional($p->updated_at)->format('Y-m-d H:i'),
+                    'modalidades'     => $this->nombresModalidades($p->tipos_modalidad),
+                ])->values(),
             ];
         }
 
@@ -929,6 +956,29 @@ class PlanillaApiController extends Controller
      * Se normaliza porque el mismo filtro puede llegar en cualquier orden
      * desde la interfaz, y `[12,0]` y `[0,12]` son la misma planilla.
      */
+    /**
+     * Los ids guardados en `tipos_modalidad` traducidos a nombres, para poder
+     * decirle al usuario con qué modalidades se liquidó una planilla en vez de
+     * mostrarle "-6,0,12". Cadena vacía = sin filtro, o sea todas.
+     */
+    private function nombresModalidades(?string $csv): string
+    {
+        if (trim((string) $csv) === '') {
+            return 'todas las modalidades';
+        }
+
+        // La modalidad 0 es un id válido, así que no se puede descartar el cero
+        // que devuelve intval(): el filtro se aplica sobre las cadenas.
+        $ids = array_map('intval', array_filter(array_map('trim', explode(',', $csv)), 'strlen'));
+
+        $nombres = DB::table('tipo_modalidad')->whereIn('id', $ids)
+            ->orderByRaw('CHARINDEX(CAST(id AS VARCHAR(10)), ?)', [$csv])
+            ->pluck('tipo_modalidad', 'id');
+
+        // Un id que no esté en el catálogo se muestra crudo antes que perderse.
+        return implode(', ', array_map(fn ($id) => $nombres[$id] ?? "#$id", $ids));
+    }
+
     private function filtroModalidades(array $tipos): string
     {
         $tipos = array_values(array_unique(array_map('intval', $tipos)));
