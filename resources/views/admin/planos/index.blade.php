@@ -1848,6 +1848,10 @@ window.CTX_TOTAL_PAGAR = CTX.totalSS;
         if (dow !== 0 && dow !== 6 && !festivosCo.has(key)) break;
         fechaPago.setDate(fechaPago.getDate() + 1);
     }
+    // Se comparte: la nota del bloque explica los días de mora del operador
+    // con esta misma fecha, que es hasta cuándo cuenta.
+    window.CTX_FECHA_ABONO = new Date(fechaPago);
+
     const venceMs  = fechaVence.getTime();
     const pagoMs   = fechaPago.getTime();
     const diasMora = Math.max(0, Math.floor((pagoMs - venceMs) / 86400000));
@@ -2649,13 +2653,13 @@ function diasSegunMoraDelOperador(mora) {
     return mejor ? mejor.dias : null;
 }
 
-// La fecha de vencimiento que se deduce de los días que cobró el operador,
-// contando hacia atrás desde el día en que se liquidó.
-function fechaVenceImplicita(dias, fechaLiquidacion) {
-    const base = fechaLiquidacion ? new Date(fechaLiquidacion.replace(' ', 'T')) : new Date();
-    if (isNaN(base)) return 'fecha desconocida';
-    base.setDate(base.getDate() - dias);
-    return base.toLocaleDateString('es-CO', { day: '2-digit', month: 'long' });
+// Hasta cuándo cuenta la mora: el día en que el pago se abona, que es lo que
+// calcula calcularMora() y lo que explica los días que cobró el operador.
+function fechaHastaLaQueCuentaLaMora() {
+    const f = window.CTX_FECHA_ABONO;
+    return (f instanceof Date && !isNaN(f))
+        ? f.toLocaleDateString('es-CO', { weekday: 'long', day: '2-digit', month: 'long' })
+        : null;
 }
 
 function aplicarTotalDelOperador(valorTotal, numeroPlanilla, fechaLiquidacion) {
@@ -2712,10 +2716,12 @@ function aplicarTotalDelOperador(valorTotal, numeroPlanilla, fechaLiquidacion) {
                   ? ` · incluye $${fmtNum(dif)} de mora`
                     + (dias
                         ? ` ≈ ${dias} día(s) al ${CTX.tasaMora}% E.A.`
-                          // Los días implican una fecha de vencimiento. Si no es
-                          // la que dice la tabla del decreto, hay que verlo: es
-                          // la pista de por qué el aviso previo llega tarde.
-                          + ` · el operador cobra como si hubiera vencido el ${fechaVenceImplicita(dias, fechaLiquidacion)}`
+                          // El operador cuenta hasta que el pago se abona, no
+                          // hasta hoy: por eso una planilla del viernes por la
+                          // noche ya trae la mora del próximo día hábil.
+                          + (fechaHastaLaQueCuentaLaMora()
+                              ? `, contados hasta el ${fechaHastaLaQueCuentaLaMora()}, que es cuando se abona el pago`
+                              : '')
                         : '')
                   : ' · sin mora')
             : `⚠️ La planilla ${numeroPlanilla} quedó en $${fmtNum(total)} y los aportes de esta `
