@@ -2595,6 +2595,50 @@ function avisoPensionCorregida(correcciones) {
 // siempre coincide con lo que el operador termina cobrando — en la planilla
 // 87590315 de ELITES CREACIONES, Brynex proyectaba $0 y Enlace cobró $4.800.
 // Una vez existe planilla, lo que hay que pagar es lo que dice el operador.
+// A cuántos días de atraso equivale la mora que cobró el operador.
+//
+// El operador no dice los días, solo el valor. Pero la mora se arma con una
+// fórmula conocida —tasa × días sobre el aporte de cada administradora,
+// redondeando cada una al centenar— así que se invierte: se prueban los días
+// hasta dar con el valor que cobró. Es la misma fórmula de calcularMora(),
+// leída al revés.
+//
+// Sirve porque el vencimiento que calcula Brynex no siempre coincide con el
+// que aplica el operador: en el plano 5 de ELITES CREACIONES la tabla del
+// Decreto 1990/2016 daba "vence hoy, 0 días" y Enlace cobraba 4 días.
+// Mientras eso no se aclare, los días que valen son los que explican el cobro.
+function diasSegunMoraDelOperador(mora) {
+    if (mora <= 0) return 0;
+
+    const entidades = (CTX.porEntidad || []).length
+        ? CTX.porEntidad.map(e => e.total)
+        : [CTX.pendienteEPS, CTX.pendienteAFP, CTX.pendienteARL, CTX.pendienteCCF];
+
+    if (!entidades.some(v => v > 0)) return null;
+
+    const anio     = CTX.anio;
+    const diasAnio = (anio % 4 === 0 && anio % 100 !== 0) || anio % 400 === 0 ? 366 : 365;
+
+    let mejor = null;
+    for (let d = 1; d <= 400; d++) {
+        const factor = (CTX.tasaMora / 100) / diasAnio * d;
+        const valor  = entidades.reduce((a, v) => a + Math.ceil(v * factor / 100) * 100, 0);
+        const brecha = Math.abs(valor - mora);
+        if (!mejor || brecha < mejor.brecha) mejor = { dias: d, brecha };
+        if (valor > mora) break;   // ya se pasó: el mínimo está en este entorno
+    }
+    return mejor ? mejor.dias : null;
+}
+
+// La fecha de vencimiento que se deduce de los días que cobró el operador,
+// contando hacia atrás desde el día en que se liquidó.
+function fechaVenceImplicita(dias, fechaLiquidacion) {
+    const base = fechaLiquidacion ? new Date(fechaLiquidacion.replace(' ', 'T')) : new Date();
+    if (isNaN(base)) return 'fecha desconocida';
+    base.setDate(base.getDate() - dias);
+    return base.toLocaleDateString('es-CO', { day: '2-digit', month: 'long' });
+}
+
 function aplicarTotalDelOperador(valorTotal, numeroPlanilla, fechaLiquidacion) {
     const total = Math.round(Number(valorTotal) || 0);
     if (!total) return;
@@ -2617,9 +2661,18 @@ function aplicarTotalDelOperador(valorTotal, numeroPlanilla, fechaLiquidacion) {
     const set = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
     const ver = (id) => { const el = document.getElementById(id); if (el) el.hidden = false; };
 
-    ['mora-sep3','mora-item-valor','mora-sep4','mora-item-total'].forEach(ver);
+    ['mora-sep2','mora-item-dias','mora-sep3','mora-item-valor','mora-sep4','mora-item-total'].forEach(ver);
     set('mora-valor', esMoraPlausible ? '$ ' + fmtNum(dif) : '—');
     set('mora-total', '$ ' + fmtNum(total));
+
+    // Los días también salen del operador: mostrar "0 días" al lado de una mora
+    // cobrada es la contradicción que hacía dudar del número.
+    const dias = esMoraPlausible ? diasSegunMoraDelOperador(dif) : null;
+    if (esMoraPlausible) {
+        set('mora-dias', dias === null ? '—' : (dias === 0 ? '0 días' : `≈ ${dias} día(s)`));
+    } else {
+        set('mora-dias', '—');
+    }
 
     const bloque = document.getElementById('mora-bloque');
     if (bloque) {
@@ -2636,7 +2689,16 @@ function aplicarTotalDelOperador(valorTotal, numeroPlanilla, fechaLiquidacion) {
         info.style.display = '';
         info.textContent = esMoraPlausible
             ? `Valores de la planilla ${numeroPlanilla} liquidada en el operador`
-              + (dif > 0 ? ` · incluye $${fmtNum(dif)} de mora` : ' · sin mora')
+              + (dif > 0
+                  ? ` · incluye $${fmtNum(dif)} de mora`
+                    + (dias
+                        ? ` ≈ ${dias} día(s) al ${CTX.tasaMora}% E.A.`
+                          // Los días implican una fecha de vencimiento. Si no es
+                          // la que dice la tabla del decreto, hay que verlo: es
+                          // la pista de por qué el aviso previo llega tarde.
+                          + ` · el operador cobra como si hubiera vencido el ${fechaVenceImplicita(dias, fechaLiquidacion)}`
+                        : '')
+                  : ' · sin mora')
             : `⚠️ La planilla ${numeroPlanilla} quedó en $${fmtNum(total)} y los aportes de esta `
               + `tanda suman $${fmtNum(ssBase)}. `
               + (desactualizada
