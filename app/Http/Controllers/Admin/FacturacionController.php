@@ -3257,9 +3257,15 @@ class FacturacionController extends Controller
 
             $meses = ['', 'ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
             $vence = $info['fecha_vence'] ? $info['fecha_vence']->format('d') . ' ' . ($meses[$info['fecha_vence']->month] ?? '') . ' ' . $info['fecha_vence']->year : null;
+            // El "sin mora" lleva la hora: pasado el corte bancario el pago ya
+            // no se abona ese día y la mora empieza a correr aunque la fecha de
+            // vencimiento sea hoy — ver MoraClienteService::fechaAbono().
+            $horaCorte = \Carbon\Carbon::createFromFormat('H:i', MoraClienteService::HORA_CORTE)
+                ->format('g:i a');
             $infoTexto = $info['aplica']
                 ? "⚠️ {$info['dias_mora']} días mora · día hábil {$info['dia_habil']} · vence {$vence}"
-                : "✅ Sin mora hasta día hábil {$info['dia_habil']}" . ($vence ? " ($vence)" : '');
+                : "✅ Sin mora si paga hasta día hábil {$info['dia_habil']}"
+                  . ($vence ? " ($vence)" : '') . " antes de las {$horaCorte}";
 
             return [
                 'mora_cliente'      => $info['mora'],
