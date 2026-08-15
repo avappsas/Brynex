@@ -45,9 +45,11 @@ class PlanillaEnvioWhatsapp extends BaseModel
         return $this->belongsTo(User::class, 'usuario_id');
     }
 
+    // withTrashed: el histórico del envío conserva el nombre de la plantilla
+    // aunque esta se haya retirado del catálogo después.
     public function plantilla(): BelongsTo
     {
-        return $this->belongsTo(WhatsappPlantilla::class, 'plantilla_id');
+        return $this->belongsTo(WhatsappPlantilla::class, 'plantilla_id')->withTrashed();
     }
 
     public function detalles(): HasMany

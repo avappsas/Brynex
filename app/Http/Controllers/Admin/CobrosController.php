@@ -2154,6 +2154,17 @@ class CobrosController extends Controller
         $lote = WhatsappEnvioMasivo::where('aliado_id', $aliadoId)
             ->findOrFail($loteId);
 
+        // La plantilla del lote pudo retirarse del catálogo después del envío
+        // (la relación la trae con withTrashed para conservar el histórico). Hay que
+        // frenar ANTES de tocar los detalles: si no, se resetean los fallidos a
+        // pendiente y el job muere sin plantilla, dejando el lote en 'procesando'.
+        if (!$lote->plantilla || $lote->plantilla->trashed()) {
+            return response()->json([
+                'ok'      => false,
+                'mensaje' => 'La plantilla de este lote ya no está disponible. Cree un envío nuevo con una plantilla vigente.',
+            ], 422);
+        }
+
         // Solo reintentar si hay detalles fallidos
         $fallidos = WhatsappEnvioMasivoDetalle::where('envio_id', $loteId)
             ->where('estado', 'fallido')

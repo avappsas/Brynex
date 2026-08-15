@@ -43,9 +43,14 @@ class WhatsappEnvioMasivo extends BaseModel
         return $this->belongsTo(Aliado::class);
     }
 
+    /**
+     * withTrashed: un lote ya enviado debe seguir diciendo con qué plantilla salió,
+     * aunque después se haya retirado del catálogo. Quien vaya a *volver* a enviar
+     * (el job, el reintento) tiene que comprobar `trashed()` aparte.
+     */
     public function plantilla(): BelongsTo
     {
-        return $this->belongsTo(WhatsappPlantilla::class, 'plantilla_id');
+        return $this->belongsTo(WhatsappPlantilla::class, 'plantilla_id')->withTrashed();
     }
 
     public function campana(): BelongsTo

@@ -57,6 +57,14 @@ class WhatsappEnvioMasivoJob implements ShouldQueue
 
         $plantilla = $envio->plantilla;
 
+        // Una plantilla retirada del catálogo no se vuelve a enviar: se retiró por algo
+        // (típicamente porque ya no existe en Meta y todo el lote rebota con #132001).
+        if (!$plantilla || $plantilla->trashed()) {
+            $envio->update(['estado' => 'fallido']);
+            Log::error("WhatsApp masivo #{$this->envioId}: la plantilla #{$envio->plantilla_id} ya no está disponible");
+            return;
+        }
+
         // Qué reglas aplican según lo que ES este mensaje:
         //  - Ventana horaria (Ley 2300 art. 3): cubre publicidad Y cobranza. Un envío de
         //    planilla es entrega de un servicio que el cliente pidió, y no cae ahí.

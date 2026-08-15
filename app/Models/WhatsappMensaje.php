@@ -47,9 +47,11 @@ class WhatsappMensaje extends BaseModel
         return $this->belongsTo(Aliado::class);
     }
 
+    // withTrashed: el mensaje enviado conserva de qué plantilla salió aunque
+    // esta se haya retirado del catálogo después.
     public function plantilla(): BelongsTo
     {
-        return $this->belongsTo(WhatsappPlantilla::class, 'plantilla_id');
+        return $this->belongsTo(WhatsappPlantilla::class, 'plantilla_id')->withTrashed();
     }
 
     public function usuario(): BelongsTo
