@@ -3908,5 +3908,13 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 });
+
+// ── Estado del operador al cargar la página ──────────────────────────
+// Antes solo se consultaba dentro de abrirModalDescarga(), así que la barra
+// de totales de arriba nunca se enteraba de que la tanda ya estaba liquidada:
+// seguía mostrando su propia estimación —"Sin mora", $0— aunque el operador
+// ya hubiera cobrado. Se consulta también al entrar, que es cuando el usuario
+// mira ese bloque. Al abrir el modal se vuelve a consultar para refrescar.
+if (CTX.razonSocialId) cargarEstadoEnlace();
 </script>
 @endpush
