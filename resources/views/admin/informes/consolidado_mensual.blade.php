@@ -200,7 +200,7 @@
             * <strong>Admon (Vigentes)</strong>: Contratos activos continuos durante el mes (incluye contratos con retiro y facturación regular). 
             * <strong>Afil. Fecha Ingreso</strong>: Nuevos contratos ingresados en el mes, discriminando <strong>nuevas</strong> (cédulas sin retiro marcado ese mes) y <strong>reingresos</strong> (se les marcó retiro y se les abrió contrato nuevo dentro del mismo mes).
             * <strong>renovados</strong> (bajo Retiros Reales e Informativos): De esos retiros, cuántos volvieron — se les abrió otro contrato con fecha de ingreso en el mismo mes del retiro, o esa cédula tiene hoy un contrato vigente con el aliado. Es una parte del número de arriba, no un retiro adicional.
-            * <strong>WA (Plan. / Rec.)</strong>: Relación de WhatsApps del mes (Enviados en plantilla masiva / Recibidos iniciados por el cliente tras 24h de inactividad). 
+            * <strong>WA (Plan. / Rec.)</strong>: Relación de WhatsApps del mes (Enviados en plantilla masiva / Recibidos iniciados por el cliente tras 24h de inactividad). Los enviados cuentan solo los mensajes que sí salieron: no incluyen los destinatarios cuyo envío falló ni los omitidos por envío repetido.
             * <strong>Total Activos</strong>: Suma de Admon (Vigentes) y Afil. Fecha Ingreso.
             * <strong>Variación</strong>: Diferencia del Total Activos de este mes comparado con el mes anterior.
             * <strong>🤖 Asistente IA</strong>: Valor calculado con la tarifa configurada en BryNex para el módulo (editable en Configuración IA → activación por aliado) según las consultas reales del mes.

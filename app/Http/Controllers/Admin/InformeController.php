@@ -3682,25 +3682,35 @@ class InformeController extends Controller
             $totalActivos = $admonVigentes + $afilPorFecha;
             $retirosDefinitivos = $totalRetiros - $retirosRenovados;
 
-            // WA Enviados: total destinatarios de lotes masivos de cobros
-            $waEnviadosCobros = DB::table('whatsapp_envios_masivos as e')
+            // WA Enviados: mensajes de cobro que Meta sí aceptó.
+            // Se cuenta el detalle (una fila por destinatario) y no `total_destinatarios`
+            // de la cabecera: ese es el planeado, e incluye los que fallaron o se
+            // omitieron. Tampoco se usa `total_enviados` de la cabecera porque es un
+            // contador que el worker actualiza y puede quedar desfasado si el lote se
+            // corta a mitad — el detalle es el que refleja lo realmente salido.
+            $waEnviadosCobros = DB::table('whatsapp_envios_masivos_detalle as d')
+                ->join('whatsapp_envios_masivos as e', 'e.id', '=', 'd.envio_id')
                 ->where('e.aliado_id', $aid)
                 ->where('e.mes', $mesVal)
                 ->where('e.anio', $anioVal)
-                ->sum('e.total_destinatarios') ?: 0;
+                ->where('d.estado', 'enviado')
+                ->count();
 
-            // WA Enviados: total destinatarios de lotes de planillas
-            $waEnviadosPlanillas = DB::table('planilla_envios_whatsapp as pe')
+            // WA Enviados: mensajes de planilla efectivamente enviados en lotes
+            $waEnviadosPlanillas = DB::table('planilla_envios_whatsapp_detalle as ped')
+                ->join('planilla_envios_whatsapp as pe', 'pe.id', '=', 'ped.envio_id')
                 ->where('pe.aliado_id', $aid)
                 ->where('pe.mes', $mesVal)
                 ->where('pe.anio', $anioVal)
-                ->sum('pe.total_destinatarios') ?: 0;
+                ->where('ped.estado', 'enviado')
+                ->count();
 
             // WA Enviados: reenvíos/envíos individuales de planillas
             $waEnviadosIndividuales = DB::table('planilla_envios_whatsapp_detalle as ped')
                 ->join('planos as p', 'p.id', '=', 'ped.plano_id')
                 ->where('p.aliado_id', $aid)
                 ->where('ped.envio_id', 0)
+                ->where('ped.estado', 'enviado')
                 ->whereBetween('ped.created_at', [$primerDia->toDateTimeString(), $ultimoDia->toDateTimeString()])
                 ->count();
 
@@ -3974,8 +3984,11 @@ class InformeController extends Controller
                 'p.nombre_display as plantilla',
                 'e.tipo_envio',
                 'e.total_destinatarios',
-                'e.total_enviados',
-                'e.total_fallidos',
+                // Enviados y fallidos se cuentan del detalle, no de los contadores de la
+                // cabecera: esos los va acumulando el worker y quedan desfasados cuando
+                // un lote se corta. El detalle tiene una fila por destinatario.
+                DB::raw("(SELECT COUNT(*) FROM whatsapp_envios_masivos_detalle d WHERE d.envio_id = e.id AND d.estado = 'enviado') as total_enviados"),
+                DB::raw("(SELECT COUNT(*) FROM whatsapp_envios_masivos_detalle d WHERE d.envio_id = e.id AND d.estado = 'fallido') as total_fallidos"),
                 'e.total_omitidos',
                 'e.estado',
                 DB::raw("'cobro' as tipo_lote")
@@ -3994,8 +4007,8 @@ class InformeController extends Controller
                 DB::raw("COALESCE(p.nombre_display, 'Envío Planilla') as plantilla"),
                 'pe.tipo_envio',
                 'pe.total_destinatarios',
-                'pe.total_enviados',
-                'pe.total_fallidos',
+                DB::raw("(SELECT COUNT(*) FROM planilla_envios_whatsapp_detalle d WHERE d.envio_id = pe.id AND d.estado = 'enviado') as total_enviados"),
+                DB::raw("(SELECT COUNT(*) FROM planilla_envios_whatsapp_detalle d WHERE d.envio_id = pe.id AND d.estado = 'fallido') as total_fallidos"),
                 'pe.total_omitidos',
                 'pe.estado',
                 DB::raw("'planilla' as tipo_lote")
@@ -4013,6 +4026,7 @@ class InformeController extends Controller
             ->join('planos as p', 'p.id', '=', 'ped.plano_id')
             ->where('p.aliado_id', $aid)
             ->where('ped.envio_id', 0)
+            ->where('ped.estado', 'enviado')
             ->whereBetween('ped.created_at', [$primerDia->toDateTimeString(), $ultimoDia->toDateTimeString()])
             ->count();
 
@@ -4045,7 +4059,7 @@ class InformeController extends Controller
             'mes_label'           => $nombresMeses[$mes] . ' ' . $anio,
             'lotes'               => $lotesUnificados,
             'total_lotes'         => $lotesUnificados->count(),
-            'total_enviados'      => $lotesUnificados->sum('total_destinatarios') + $individualesCount,
+            'total_enviados'      => $lotesUnificados->sum('total_enviados') + $individualesCount,
             'total_fallidos'      => $lotesUnificados->sum('total_fallidos'),
             'conversaciones'      => $conversaciones,
             'total_conv'          => $conversaciones->count(),
