@@ -1679,6 +1679,7 @@ const CTX = {
     pendienteARL      : {{ $planos->filter(fn($p) => empty($p->numero_planilla))->sum('v_arl') }},
     pendienteCCF      : {{ $planos->filter(fn($p) => empty($p->numero_planilla))->sum('v_caja') }},
     tasaMora          : {{ \App\Models\ConfiguracionBrynex::obtener('tasa_mora_pila', 26.17) }},
+    horaCorte         : '{{ \App\Services\MoraClienteService::HORA_CORTE }}',
     // Último cambio de los planos de la tanda. Si es posterior a la fecha en
     // que se liquidó, la planilla del operador ya no representa este archivo
     // y la diferencia contra los aportes no es mora — ver aplicarTotalDelOperador.
@@ -1829,14 +1830,16 @@ window.CTX_TOTAL_PAGAR = CTX.totalSS;
     //    Faltaba (b), y por eso una planilla del viernes por la noche salía
     //    con "0 días" mientras Enlace cobraba 4: el pago caía el martes 18
     //    porque el sábado y domingo no cuentan y el lunes 17 es festivo.
-    const HORA_CORTE = 16.5;   // 4:30 p.m.
+    //    La hora de corte sale de MoraClienteService, que es quien calcula la
+    //    mora en cobros y facturación: una sola definición para todo.
+    const [corteH, corteM] = (CTX.horaCorte || '16:30').split(':').map(Number);
 
     const ahora = new Date();
     const hoy = new Date();
     hoy.setHours(0,0,0,0);
 
     const fechaPago = new Date(hoy);
-    if (ahora.getHours() + ahora.getMinutes() / 60 >= HORA_CORTE) {
+    if (ahora.getHours() > corteH || (ahora.getHours() === corteH && ahora.getMinutes() >= corteM)) {
         fechaPago.setDate(fechaPago.getDate() + 1);
     }
     while (true) {

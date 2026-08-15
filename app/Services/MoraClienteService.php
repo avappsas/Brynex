@@ -115,6 +115,58 @@ class MoraClienteService
         return self::$cacheFestivos[$anio];
     }
 
+    /** Hora de corte bancaria: después de esto el pago ya no se abona hoy. */
+    public const HORA_CORTE = '16:30';
+
+    /**
+     * El día en que un pago hecho "ahora" se abona de verdad.
+     *
+     * La mora no se cuenta hasta hoy sino hasta que la plata entra, que es
+     * como la liquida el operador. Dos cosas mueven esa fecha:
+     *
+     *   a) Si hoy no es día hábil, se abona el próximo que lo sea.
+     *   b) Pasada la hora de corte tampoco alcanza a abonarse hoy, aunque hoy
+     *      sí sea hábil.
+     *
+     * Faltaba (b), y por eso una planilla generada un viernes por la noche
+     * salía sin mora mientras el operador cobraba cuatro días: el pago caía el
+     * martes siguiente porque el fin de semana no cuenta y el lunes era
+     * festivo. Caso real: plano 5 de ELITES CREACIONES, 14-ago-2026, Enlace
+     * cobró $4.800 = 4 días.
+     *
+     * @param  Carbon|null  $ahora  Para poder fijarlo en pruebas. Si viene sin
+     *                              hora (medianoche), la hora de corte no
+     *                              aplica: se está preguntando por un día, no
+     *                              por un instante.
+     */
+    public static function fechaAbono(?Carbon $ahora = null): Carbon
+    {
+        $ahora = $ahora ? $ahora->copy() : Carbon::now();
+        $fecha = $ahora->copy()->startOfDay();
+
+        if ($ahora->format('H:i') >= self::HORA_CORTE) {
+            $fecha->addDay();
+        }
+
+        $anio     = (int) $fecha->year;
+        $festivos = array_flip(self::festivosColombia($anio));
+
+        while (true) {
+            if ((int) $fecha->year !== $anio) {   // el salto puede cruzar el año
+                $anio     = (int) $fecha->year;
+                $festivos = array_flip(self::festivosColombia($anio));
+            }
+
+            $dow = $fecha->dayOfWeek;
+            if ($dow !== Carbon::SUNDAY && $dow !== Carbon::SATURDAY
+                && ! isset($festivos[$fecha->format('Y-m-d')])) {
+                return $fecha;
+            }
+
+            $fecha->addDay();
+        }
+    }
+
     /**
      * Determina el N-ésimo día hábil de un mes/año dado.
      * Excluye sábados, domingos y festivos colombianos.
@@ -277,7 +329,8 @@ class MoraClienteService
         int $anio,
         ?Carbon $fechaHoy = null
     ): array {
-        $hoy       = ($fechaHoy ?? Carbon::today())->startOfDay();
+        // Se cuenta hasta el día en que el pago se abona, no hasta hoy.
+        $hoy       = self::fechaAbono($fechaHoy ?? Carbon::now());
         $diaHabil  = self::diaHabilVencimiento($aliadoId, $rsNit, $rsDiaHabil);
         $fechaVence = self::getNthDiaHabil($anio, $mes, $diaHabil);
 
@@ -333,7 +386,7 @@ class MoraClienteService
         $moraMinimo     = (int) ($cfg->mora_minimo  ?? 2000);
         $moraSeg        = (int) ($cfg->mora_segundo ?? 5000);
         $tasaAnual      = (float) ConfiguracionBrynex::obtener('tasa_mora_pila', 26.17);
-        $hoy            = Carbon::today()->startOfDay();
+        $hoy            = self::fechaAbono();   // día de abono, no hoy
 
         return array_map(function ($fila) use (
             $aliadoId, $diaHabilGlobal, $moraMinimo, $moraSeg, $tasaAnual, $hoy
