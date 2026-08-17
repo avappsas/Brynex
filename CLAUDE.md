@@ -7,7 +7,11 @@ dueño, todo bajo Laravel 10.
 ## ⚠️ Reglas críticas — leer antes de tocar nada
 
 1. **La base de datos local ES la de producción.** No hay entorno de staging.
-   `DB_CONNECTION=sqlsrv` en `.env` apunta a `207.244.249.160` → BD `BryNex`.
+   `DB_CONNECTION=sqlsrv` en `.env` apunta al SQL Server de **netcup**
+   (`159.195.233.132`, migrado el 17-ago-2026) → BD `BryNex`.
+   Ese 1433 **solo escucha en loopback**: desde el Mac se llega abriendo el
+   túnel `ssh -fN netcup-db`, y por eso el `.env` local dice
+   `DB_HOST=127.0.0.1`. Sin el túnel arriba, nada conecta.
    Nunca ejecutar `migrate:fresh`, `migrate:reset`, `db:wipe`, `DROP TABLE` ni
    `TRUNCATE` sin confirmación explícita del usuario.
 

@@ -19,7 +19,8 @@
 > ⚠️ **CRÍTICO**: La base de datos local y la de producción son LA MISMA.
 > NUNCA usar `migrate:fresh`, `migrate:reset`, `db:wipe`, `DROP TABLE` ni `TRUNCATE` sin autorización explícita.
 
-- **Conexión principal**: `DB_CONNECTION=sqlsrv` → `207.244.249.160:1433` → BD `BryNex`
+- **Conexión principal**: `DB_CONNECTION=sqlsrv` → netcup `159.195.233.132:1433` → BD `BryNex`
+  - El 1433 solo escucha en loopback. Desde el Mac: `ssh -fN netcup-db` y `DB_HOST=127.0.0.1`.
 - **Conexión legacy**: `DB_LEGACY_*` → `200.29.120.228:1533` → BD `Brygar_BD` (solo migración/consulta)
 - **Regla**: Siempre usar migraciones incrementales (`addColumn`, `createIndex`). Nunca recrear tablas existentes.
 - **Naming BD**: `snake_case` en columnas y tablas. IDs como `IDENTITY` (auto-incremental) en SQL Server.

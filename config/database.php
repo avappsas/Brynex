@@ -81,7 +81,9 @@ return [
         'sqlsrv' => [
             'driver'   => 'sqlsrv',
             'url'      => env('DATABASE_URL'),
-            'host'     => env('DB_HOST', 'localhost'),
+            // 127.0.0.1 y no 'localhost': ese nombre resuelve primero a ::1 y
+            // SQL Server solo escucha en el loopback IPv4.
+            'host'     => env('DB_HOST', '127.0.0.1'),
             'port'     => env('DB_PORT', '1433'),
             'database' => env('DB_DATABASE', 'forge'),
             'username' => env('DB_USERNAME', 'forge'),
@@ -114,7 +116,9 @@ return [
         // Módulo de Finanzas (Base de datos propia separada)
         'finanzas' => [
             'driver'                   => 'sqlsrv',
-            'host'                     => env('FINANZAS_DB_HOST', env('DB_HOST', '207.244.249.160')),
+            // Sin IP quemada: la 207.244.249.160 era el servidor viejo, y al
+            // migrar quedaba como destino silencioso si faltaba DB_HOST.
+            'host'                     => env('FINANZAS_DB_HOST', env('DB_HOST', '127.0.0.1')),
             'port'                     => env('FINANZAS_DB_PORT', env('DB_PORT', '1433')),
             'database'                 => env('FINANZAS_DB_DATABASE', 'BryNex_Finanzas'),
             'username'                 => env('FINANZAS_DB_USERNAME', env('DB_USERNAME')),
