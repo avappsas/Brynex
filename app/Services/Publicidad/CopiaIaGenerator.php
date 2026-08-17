@@ -66,7 +66,7 @@ class CopiaIaGenerator
      * depender solo de imágenes. NUNCA se pide texto en pantalla ni logos (eso lo agrega
      * VideoOverlayFfmpeg después por separado, igual que el logo real en las fotos).
      *
-     * @return array{ok: bool, prompt: ?string, error: ?string}
+     * @return array{ok: bool, prompt: ?string, dialogo: bool, error: ?string}
      */
     public static function generarPromptVideo(int $aliadoId, string $nombreAliado, string $contexto): array
     {
@@ -74,7 +74,7 @@ class CopiaIaGenerator
         $credenciales = $config->credencialesEfectivas();
 
         if (empty($credenciales['api_key'])) {
-            return ['ok' => false, 'prompt' => null, 'error' => 'No hay una clave de IA configurada para este aliado (ver Asistente Virtual).'];
+            return ['ok' => false, 'prompt' => null, 'dialogo' => true, 'error' => 'No hay una clave de IA configurada para este aliado (ver Asistente Virtual).'];
         }
 
         // La escena sale del tema: un anuncio de ARL tiene que verse en el andamio o en la
@@ -130,17 +130,17 @@ class CopiaIaGenerator
                 []
             );
         } catch (\Throwable $e) {
-            return ['ok' => false, 'prompt' => null, 'error' => 'Error al generar el prompt: ' . $e->getMessage()];
+            return ['ok' => false, 'prompt' => null, 'dialogo' => true, 'error' => 'Error al generar el prompt: ' . $e->getMessage()];
         }
 
         $texto = trim($resp['content'] ?? '');
         $texto = trim($texto, "\"'“” \t\n\r");
 
         if ($texto === '') {
-            return ['ok' => false, 'prompt' => null, 'error' => 'La IA no devolvió un prompt utilizable.'];
+            return ['ok' => false, 'prompt' => null, 'dialogo' => true, 'error' => 'La IA no devolvió un prompt utilizable.'];
         }
 
-        return ['ok' => true, 'prompt' => $texto, 'error' => null];
+        return ['ok' => true, 'prompt' => $texto, 'dialogo' => $formato['dialogo'], 'error' => null];
     }
 
     /**

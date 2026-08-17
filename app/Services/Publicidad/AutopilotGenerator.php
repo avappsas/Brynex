@@ -254,6 +254,9 @@ class AutopilotGenerator
             'aliado_id'          => $aliado->id,
             'prompt_video'       => $promptResultado['prompt'],
             'frases_texto'       => $frases,
+            // Sin diálogo el clip queda mudo salvo el ambiente, y un Reel mudo se salta: se
+            // marca para ponerle narración en off cuando Veo termine.
+            'narrar'             => !($promptResultado['dialogo'] ?? true),
             'modelo'             => $modelo,
             'duracion_seg'       => $duracion,
             'costo_estimado_usd' => VeoVideoGenerator::costoEstimadoUsd($modelo, $duracion),

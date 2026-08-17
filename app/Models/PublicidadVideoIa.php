@@ -22,6 +22,7 @@ class PublicidadVideoIa extends BaseModel
         'aliado_id',
         'prompt_video',
         'frases_texto',
+        'narrar',
         'modelo',
         'duracion_seg',
         'costo_estimado_usd',
@@ -37,6 +38,7 @@ class PublicidadVideoIa extends BaseModel
 
     protected $casts = [
         'frases_texto'      => 'array',
+        'narrar'            => 'boolean',
         'escenas'           => 'array',
         'autopilot_payload' => 'array',
     ];

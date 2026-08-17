@@ -165,6 +165,8 @@ class ProcesarVideosIa extends Command
         $rutaFinalRelativa  = 'publicidad/video_ia/' . Str::random(20) . '.mp4';
         $rutaPosterRelativa = 'publicidad/video_ia/' . Str::random(20) . '.jpg';
 
+        $narracion = $video->narrar ? $this->narrar($video) : null;
+
         $overlay = VideoOverlayFfmpeg::aplicar(
             $rutaBrutaFinal,
             $video->frases_texto ?? [],
@@ -172,10 +174,14 @@ class ProcesarVideosIa extends Command
             $aliado?->logo_marca_recorte,
             $aliado?->color_primario,
             Storage::disk('public')->path($rutaFinalRelativa),
-            Storage::disk('public')->path($rutaPosterRelativa)
+            Storage::disk('public')->path($rutaPosterRelativa),
+            $narracion
         );
 
         @unlink($rutaBrutaFinal);
+        if ($narracion) {
+            @unlink($narracion);
+        }
 
         if (!$overlay['ok']) {
             $video->update(['estado' => PublicidadVideoIa::ESTADO_ERROR, 'error_mensaje' => $overlay['error']]);
@@ -198,6 +204,57 @@ class ProcesarVideosIa extends Command
         $this->info("Video #{$video->id} listo.");
 
         $this->publicarDesdeAutopilot($video->fresh());
+    }
+
+    /**
+     * Voz en off para los clips donde nadie habla.
+     *
+     * El guion son las MISMAS frases que van en pantalla, unidas. No se pide otro texto a la
+     * IA a propósito: esas frases ya pasaron por todos los filtros —no repiten lo que dice el
+     * cierre, no piden escribir, tutean— y volver a generar abriría la puerta a que la voz
+     * contradiga lo que se está leyendo.
+     *
+     * Si falla, se devuelve null y el video sale con su sonido ambiente: mejor un Reel sin
+     * narración que ningún Reel.
+     */
+    private function narrar(PublicidadVideoIa $video): ?string
+    {
+        $frases = array_values(array_filter($video->frases_texto ?? []));
+        if (empty($frases)) {
+            return null;
+        }
+
+        $apiKey = \App\Models\IaConfiguracionAliado::paraAliado($video->aliado_id)->gemini_api_key;
+        if (!$apiKey) {
+            $this->warn("Video #{$video->id}: sin clave de Gemini, se queda sin narración.");
+            return null;
+        }
+
+        // Cada frase termina en punto para que el TTS respire entre una y otra en vez de
+        // leerlas de corrido como una sola oración.
+        $guion = implode(' ', array_map(
+            fn (string $f) => rtrim(trim($f), '.') . '.',
+            $frases
+        ));
+
+        $destino = sys_get_temp_dir() . '/narracion_' . $video->id . '_' . Str::random(6) . '.wav';
+
+        $r = \App\Services\Publicidad\LocucionIaService::generar(
+            $apiKey,
+            \App\Services\Publicidad\PronunciacionEsp::paraLocucion($guion),
+            $destino,
+            \App\Services\Publicidad\LocucionIaService::VOZ_FEMENINA,
+            'Léelo en español colombiano, cercano y con energía contenida, como una narración de anuncio; sin gritar'
+        );
+
+        if (!$r['ok']) {
+            $this->warn("Video #{$video->id}: no se pudo narrar ({$r['error']}).");
+            return null;
+        }
+
+        $this->line("Video #{$video->id}: narración lista.");
+
+        return $destino;
     }
 
     /**

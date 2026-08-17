@@ -34,7 +34,8 @@ class VideoOverlayFfmpeg
         ?array $recorte,
         ?string $colorPrimario,
         string $destinoVideoAbsoluto,
-        string $destinoPosterAbsoluto
+        string $destinoPosterAbsoluto,
+        ?string $rutaNarracion = null
     ): array {
         $binario = config('services.ffmpeg.binario', 'ffmpeg');
         $ffprobe = config('services.ffmpeg.ffprobe', 'ffprobe');
@@ -100,12 +101,30 @@ class VideoOverlayFfmpeg
             $mapaOverlay = '[vout]';
         }
 
+        // Narración en off, cuando el clip no trae a nadie hablando. El ambiente NO se quita:
+        // se agacha a un tercio y queda debajo, que es lo que hace que la escena siga
+        // sintiéndose real en vez de un video mudo con una voz encima.
+        $mapaAudio = '0:a?';
+        if ($rutaNarracion && is_file($rutaNarracion)) {
+            $args[] = '-i';
+            $args[] = $rutaNarracion;
+            $idxVoz = $entradaIdx;
+
+            $filtrosCapas[] = "[0:a]volume=0.32,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[amb]";
+            // Medio segundo de aire antes de que arranque la voz: entrar en el fotograma uno
+            // suena atropellado y se pierde la primera palabra.
+            $filtrosCapas[] = "[{$idxVoz}:a]adelay=500|500,volume=1.9,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[voz]";
+            // `duration=first` para que la voz no alargue el clip si el TTS se pasa de largo.
+            $filtrosCapas[] = '[amb][voz]amix=inputs=2:duration=first:dropout_transition=0,alimiter=limit=0.95[aout]';
+            $mapaAudio = '[aout]';
+        }
+
         $filtroCompleto = implode(';', array_filter($filtrosCapas));
 
         $args = array_merge($args, [
             '-filter_complex', $filtroCompleto,
             '-map', $mapaOverlay,
-            '-map', '0:a?',
+            '-map', $mapaAudio,
             '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-preset', 'veryfast', '-crf', '20',
             '-c:a', 'aac', '-b:a', '128k',
             $destinoVideoAbsoluto,
