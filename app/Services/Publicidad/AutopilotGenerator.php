@@ -21,6 +21,9 @@ use App\Services\Ia\IaProviderFactory;
 class AutopilotGenerator
 {
     /** Ángulos temáticos entre los que la IA rota. */
+    /** Cuántas piezas hacia atrás se mira para no repetir ángulo. Con 11 temas, 6 es holgado. */
+    private const TEMAS_SIN_REPETIR = 6;
+
     private const CATALOGO_TEMAS = [
         'beneficios de la caja de compensación (subsidios, recreación, educación, vivienda)',
         'beneficios de estar afiliado a una EPS (salud para ti y tu familia)',
@@ -353,7 +356,44 @@ class AutopilotGenerator
 
         $rendimiento = self::resumenRendimiento($aliado->id);
 
-        $catalogo = implode("\n", array_map(fn ($t) => "- {$t}", array_merge(self::CATALOGO_TEMAS, $temaPromocion)));
+        // Los ángulos usados hace poco NO se le ofrecen: pedirle en el prompt que varíe
+        // respecto al historial no alcanzó —las piezas #58 y #66 eligieron el mismo tema con
+        // ocho de diferencia—, y un ángulo repetido a la semana se nota en el muro. Con once
+        // temas, bloquear los seis últimos deja margen de sobra.
+        $recientes = Publicacion::where('aliado_id', $aliado->id)
+            ->whereNotIn('estado', [Publicacion::ESTADO_RECHAZADA])
+            ->whereNotNull('tema')
+            ->orderByDesc('created_at')
+            ->limit(self::TEMAS_SIN_REPETIR)
+            ->pluck('tema')
+            ->all();
+
+        // Comparar por PREFIJO y no por igualdad: la IA devuelve el tema del catálogo con una
+        // cola propia —"promoción de un plan con su precio real: Plan Dependiente Completo"—,
+        // así que un in_array() estricto dejaría pasar justo los temas que más se repiten.
+        $disponibles = array_values(array_filter(
+            self::CATALOGO_TEMAS,
+            function (string $tema) use ($recientes) {
+                // La clave es la parte anterior al primer paréntesis o dos puntos: es la que
+                // identifica el ángulo sin la explicación que lo acompaña.
+                $clave = mb_strtolower(trim(preg_split('/[(:]/u', $tema)[0]));
+
+                foreach ($recientes as $usado) {
+                    if (str_contains(mb_strtolower((string) $usado), $clave)) {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+        ));
+
+        // Si por lo que sea se agotaran, mejor repetir que quedarse sin catálogo que ofrecer.
+        if (empty($disponibles)) {
+            $disponibles = self::CATALOGO_TEMAS;
+        }
+
+        $catalogo = implode("\n", array_map(fn ($t) => "- {$t}", array_merge($disponibles, $temaPromocion)));
         $color    = $aliado->color_primario ?: '#2563eb';
         $fecha    = now('America/Bogota')->locale('es')->isoFormat('dddd D [de] MMMM [de] YYYY');
 

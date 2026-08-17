@@ -81,34 +81,41 @@ class CopiaIaGenerator
         // moto, no en una oficina. Ver CatalogoEscenasVideo.
         $escena = CatalogoEscenasVideo::paraContexto($contexto);
 
+        // Y la FORMA de contarlo rota, en vez de ser siempre un testimonio a cámara. Las
+        // frases en pantalla ya cargan el mensaje, así que un video sin diálogo comunica
+        // igual — ver CatalogoFormatosVideo.
+        $formato = CatalogoFormatosVideo::siguiente($aliadoId);
+
+        // Sin diálogo el prompt NO debe pedir una frase hablada: si se la pide igual, Veo mete
+        // a alguien hablando y el formato se pierde. Y la regla de pronunciación solo aplica
+        // cuando de verdad hay alguien pronunciando algo.
+        $instruccionDialogo = $formato['dialogo']
+            ? 'Incluye TEXTUAL y entre comillas, dentro del mismo prompt, la frase EXACTA que dice en VOZ ALTA en '
+              . 'ESPAÑOL COLOMBIANO (no en inglés): corta (máx. 15 palabras), natural, hablada como habla la gente, '
+              . "que toque esa necesidad concreta y se relacione con: {$contexto}. No un eslogan: algo que la persona "
+              . 'diría de verdad — una pregunta incómoda, una confesión ("yo pensaba que..."), un alivio ("por fin..."). '
+              . "\n\n" . PronunciacionEsp::reglaParaPrompt($nombreAliado)
+            : 'NADIE HABLA en este video: no incluyas ninguna frase, ni diálogo, ni voz en off, ni gente mirando a '
+              . 'la cámara. El mensaje lo lleva el texto que se sobrepone después, así que el clip solo tiene que '
+              . 'mostrar la escena y transmitir la emoción con la imagen. Describe el sonido ambiente real del lugar '
+              . '(la calle, el taller, las herramientas), nunca música ni locución.';
+
         $prompt = "Eres director creativo de anuncios en video para {$nombreAliado}, una agencia de afiliación a seguridad social "
             . 'en Colombia (EPS, ARL, pensión, caja de compensación). Escribe UN SOLO prompt para un modelo de IA de '
-            . 'texto-a-video (Veo 3.1) que produzca un video LLAMATIVO tipo TESTIMONIO A CÁMARA — no una escena ambiental '
-            . 'pasiva, sino una persona colombiana común mirando directo a la cámara y HABLANDO, como si grabara un '
-            . 'video para redes sociales.' . "\n\n"
+            . 'texto-a-video (Veo 3.1) que produzca un video LLAMATIVO de 8 segundos.' . "\n\n"
+
+            . "FORMA DE CONTARLO — es OBLIGATORIA, no la cambies ({$formato['nombre']}): {$formato['direccion']}" . "\n\n"
 
             . "PROTAGONISTA Y LUGAR (respétalo, es lo que hace que el espectador se reconozca): {$escena['oficio']}. "
             . 'Tiene que verse EN SU OFICIO, con la ropa, las herramientas y el entorno reales de ese trabajo — nada de '
             . 'oficinas genéricas ni gente de saco y corbata. Aspecto auténtico de colombiano de a pie, no modelo de '
             . 'banco de imágenes.' . "\n\n"
 
-            . "LO QUE TIENE QUE REMOVER: {$escena['emocion']}. La tensión de fondo es esta: {$escena['tension']} "
-            . 'La frase hablada debe tocar ESA necesidad concreta, no repetir un eslogan. Que suene a alguien contando '
-            . 'algo que le pasó o que le preocupa, no a comercial de televisión. Puede empezar con una pregunta '
-            . 'incómoda, una confesión ("yo pensaba que..."), o un alivio ("por fin..."). Evita el tono publicitario '
-            . 'alegre y plano: la emoción real vende más que el entusiasmo fingido.' . "\n\n"
+            . "LO QUE TIENE QUE REMOVER: {$escena['emocion']}. La tensión de fondo es esta: {$escena['tension']}" . "\n\n"
 
             . 'FORMATO DEL PROMPT: describe en inglés (los modelos de video entienden mejor la dirección de escena en '
-            . 'inglés) quién es la persona, dónde está y qué está haciendo con las manos, la cámara (handheld cercano, '
-            . 'estilo selfie-video o entrevista, vertical 9:16) y la luz. Incluye TEXTUAL y entre comillas, dentro del '
-            . 'mismo prompt, la frase EXACTA que dice en VOZ ALTA en ESPAÑOL COLOMBIANO (no en inglés): corta (máx. 15 '
-            . "palabras), natural, hablada como habla la gente, relacionada con: {$contexto}. "
-            . 'Ejemplo de estructura (NO la copies, es solo el molde): A close-up handheld shot of a Colombian '
-            . 'motorcycle delivery rider in his 20s, helmet in hand, catching his breath on a busy street, looking '
-            . 'straight at the camera with a serious expression, he says in Spanish: "Me caí en la moto y ahí me di '
-            . 'cuenta que no tenía ' . PronunciacionEsp::SIGLAS['ARL'] . '." ' . "\n\n"
-
-            . PronunciacionEsp::reglaParaPrompt($nombreAliado) . "\n\n"
+            . 'inglés) quién es la persona, dónde está y qué está haciendo con las manos, la cámara y la luz. '
+            . $instruccionDialogo . "\n\n"
 
             . 'Máximo 80 palabras en total. NO menciones texto en pantalla, subtítulos, logos ni marcas — eso se agrega '
             . 'después por separado. Responde ÚNICAMENTE con el prompt en sí, sin explicación, sin bloque de código.';
