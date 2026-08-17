@@ -856,6 +856,14 @@ Route::middleware('auth')->group(function () {
         Route::post('/{id}/abono', [$ic, 'storeAbono'])->name('abono.store');
         Route::post('/{id}/prorroga', [$ic, 'storeProrroga'])->name('prorroga.store');
         Route::get('/{id}/cuentas-rs', [$ic, 'cuentasRazonSocial'])->name('cuentas.rs');
+        // Deshacer el último cambio de estado y los movimientos de plata que
+        // generó. Permiso aparte: ningún rol lo trae de fábrica, lo hereda el
+        // superadmin por el Gate::before y se otorga a un admin desde
+        // admin/usuarios/{id}/permisos.
+        Route::get('/{id}/reversion/preview', [$ic, 'previewReversion'])
+            ->name('reversion.preview')->middleware('permiso:incapacidades.revertir_estado');
+        Route::post('/{id}/reversion', [$ic, 'revertirGestion'])
+            ->name('reversion.store')->middleware('permiso:incapacidades.revertir_estado');
     });
 
     // -- Radicados

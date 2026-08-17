@@ -95,6 +95,11 @@ class ModulosPermisosSeeder extends Seeder
                 'gestionar' => ['Registrar y gestionar', ['A', 'U']],
                 'abonos' => ['Registrar abonos',      ['A', 'U']],
                 'eliminar' => ['Eliminar incapacidades', ['A']],
+                // Deshace el último cambio de estado y borra el gasto, el
+                // abono y la consignación que ese cambio generó. No lo trae
+                // ningún rol: lo hereda el superadmin por el Gate::before y se
+                // le entrega a un admin uno por uno desde la pantalla de permisos.
+                'revertir_estado' => ['Reversar estado y anular su pago', []],
             ]],
             ['tareas', 'Tareas', 'operacion', '📌', 'admin.tareas.index', [
                 'ver' => ['Ver el tablero completo',        ['A', 'C', 'U', 'E']],

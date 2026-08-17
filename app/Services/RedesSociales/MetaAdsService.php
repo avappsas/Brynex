@@ -717,10 +717,15 @@ class MetaAdsService
     /** Lee el gasto real acumulado de Meta y lo guarda — llamado por el comando diario de sincronización. */
     public static function sincronizarGasto(Publicacion $publicacion): void
     {
-        if (!$publicacion->meta_adset_id) return;
+        // Del ANUNCIO, no del conjunto: el conjunto es uno solo y lo comparten todas las
+        // piezas, así que consultarlo le escribía a cada una el gasto de todas juntas. Con
+        // tres piezas activas el sistema creía que llevaba $212.355 cuando iban $71.000 --- y
+        // como gastadoEsteMes() suma esta columna, el tope mensual habría pausado la pauta a
+        // un tercio del presupuesto real.
+        if (!$publicacion->meta_ad_id) return;
 
         $fb = RedSocialConfig::paraAliado($publicacion->aliado_id, 'facebook');
-        $resp = Http::get(self::BASE_URL . "/{$publicacion->meta_adset_id}/insights", [
+        $resp = Http::get(self::BASE_URL . "/{$publicacion->meta_ad_id}/insights", [
             'fields'       => 'spend',
             'date_preset'  => 'maximum',
             'access_token' => self::tokenAds(PautaConfig::paraAliado($publicacion->aliado_id), $fb),

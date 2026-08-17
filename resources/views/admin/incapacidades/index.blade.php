@@ -500,6 +500,9 @@ const TIPOS_INCAPACIDAD = @json(\App\Models\Incapacidad::TIPOS_INCAPACIDAD);
 const TIPOS_ENTIDAD     = @json(\App\Models\Incapacidad::TIPOS_ENTIDAD);
 const ESTADOS_INC       = @json(\App\Models\Incapacidad::ESTADOS);
 const ESTADOS_PAGO_INC  = @json(\App\Models\Incapacidad::ESTADOS_PAGO);
+// Deshacer un estado borra plata (gasto, abono, consignación): el botón solo
+// existe para quien tenga el permiso. El backend lo vuelve a exigir igual.
+const PUEDE_REVERSAR    = @json(auth()->user()?->can('incapacidades.revertir_estado') ?? false);
 
 function labelTipo(key){ return TIPOS_INCAPACIDAD[key] || key; }
 function labelEstado(key){ const v = ESTADOS_INC[key]; return (v && v.label) ? v.label : (key || '—'); }
@@ -1027,15 +1030,32 @@ function verDetalle(id){
                    </div>` : '';
 
             // Gestiones (timeline)
-            const gestiones = (inc.gestiones||[]).map(g=>`
-                <div class="timeline-item">
-                    <div class="tl-dot">${iconoTipoGestion(g.tipo)}</div>
+            const gestionReversableId = data.gestion_reversable_id || null;
+            const gestiones = (inc.gestiones||[]).map(g=>{
+                const revertida = !!g.revertida_at;
+                // El botón solo se pinta en la gestión que el backend declaró
+                // reversable: la última que movió el estado y que sigue vigente.
+                const btnRevertir = (PUEDE_REVERSAR && !revertida && g.id === gestionReversableId)
+                    ? `<button class="btn btn-danger btn-sm" style="margin-top:.4rem;font-size:.7rem"
+                               onclick="abrirModalReversion(${inc.id})"
+                               title="Deshacer este cambio de estado y anular lo que generó">↩️ Reversar estado</button>`
+                    : '';
+                const avisoRevertida = revertida
+                    ? `<div style="margin-top:.35rem;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:.3rem .5rem;font-size:.7rem;color:#991b1b">
+                           ↩️ Reversada el ${formatFechaLarga(g.revertida_at)}${g.revertida_motivo?` — ${g.revertida_motivo}`:''}
+                       </div>`
+                    : '';
+                return `
+                <div class="timeline-item"${revertida?' style="opacity:.6"':''}>
+                    <div class="tl-dot">${g.es_reversion?'↩️':iconoTipoGestion(g.tipo)}</div>
                     <div class="tl-content">
                         <div class="tl-tipo">${g.tipo}${g.aplica_a_familia?' <span style="color:#d97706">· Familia</span>':''}</div>
-                        <div class="tl-tramite">${g.tramite || g.respuesta || '—'}</div>
+                        <div class="tl-tramite"${revertida?' style="text-decoration:line-through"':''}>${g.tramite || g.respuesta || '—'}</div>
                         <div class="tl-meta">${g.user?.nombre||'Sistema'} · ${formatFechaLarga(g.created_at)} ${g.fecha_recordar?`· 🔔 Recordar: ${formatFechaLarga(g.fecha_recordar)}`:''}${g.estado_resultado?` · Estado: ${labelEstado(g.estado_resultado)}`:''}</div>
+                        ${avisoRevertida}${btnRevertir}
                     </div>
-                </div>`).join('');
+                </div>`;
+            }).join('');
 
             // Prórrogas — tabla con original + prórrogas
             const _bcMap = {success:'#d1fae5;color:#065f46',danger:'#fee2e2;color:#991b1b',warning:'#fef3c7;color:#92400e',primary:'#dbeafe;color:#1e40af',info:'#cffafe;color:#155e75',secondary:'#f1f5f9;color:#475569'};
@@ -1074,7 +1094,11 @@ function verDetalle(id){
                 ${_filaOrig}
                 ${(inc.prorrogas||[]).map((p)=>{
                     const ec=colorEstado(p.estado); const bcp=(_bcMap[ec]||_bcMap.secondary).split(';');
-                    return _renderFila(false,p.id,p.numero_proroga,labelTipo(p.tipo_incapacidad),p.dias_incapacidad,p.fecha_inicio,p.fecha_terminacion,p.tipo_entidad,p.entidad_nombre,_badge(labelEstado(p.estado),bcp[0],bcp[1]||'color:#475569'),p.valor_esperado,
+                    // El número abre el detalle de la prórroga: sus gestiones (y
+                    // el botón de reversar) viven ahí, no en las del original.
+                    const numLink = `<a href="javascript:void(0)" onclick="verDetalle(${p.id})"
+                        style="color:#2563eb;text-decoration:underline" title="Ver detalle y gestiones de esta prórroga">${p.numero_proroga}</a>`;
+                    return _renderFila(false,p.id,numLink,labelTipo(p.tipo_incapacidad),p.dias_incapacidad,p.fecha_inicio,p.fecha_terminacion,p.tipo_entidad,p.entidad_nombre,_badge(labelEstado(p.estado),bcp[0],bcp[1]||'color:#475569'),p.valor_esperado,
                         `<button class="btn btn-info btn-sm" onclick="registrarGestion(${p.id})" title="Gestión">📞</button><button class="btn btn-primary btn-sm" onclick="registrarPago(${p.id})" title="Anticipo / Préstamo">💰</button><button class="btn btn-warning btn-sm" onclick="cerrarModal('modalDetalle');abrirModalEditar(${p.id})" title="Editar">✏️</button><button class="btn btn-secondary btn-sm" onclick="recalcularValor(${p.id})" title="Recalcular Valor">🔄</button>`);
                 }).join('')}
                 </tbody></table></div>`;
@@ -1214,6 +1238,145 @@ function recalcularValor(incId) {
             }
         })
         .catch(e => alert('Error de red: ' + e.message));
+}
+
+// ── Reversar un cambio de estado ─────────────────────────────────────────────
+// Deshace el último cambio de estado y borra los movimientos que generó (gasto
+// del pago, 4x1000, admon, abono y consignación). Antes de pedir confirmación
+// se muestra exactamente qué se va a anular: es plata, no una etiqueta.
+function abrirModalReversion(incId) {
+    fetch(`/admin/incapacidades/${incId}/reversion/preview`, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
+        .then(async r => ({ok: r.ok, data: await r.json().catch(() => ({}))}))
+        .then(({ok, data}) => {
+            if (!ok || !data.ok) {
+                alert(data.mensaje || data.message || 'No se pudo preparar la reversión.');
+                return;
+            }
+            _pintarModalReversion(incId, data);
+        })
+        .catch(e => alert('Error de red: ' + e.message));
+}
+
+function _pintarModalReversion(incId, d) {
+    const money = v => '$' + Number(v || 0).toLocaleString('es-CO');
+
+    const movimientos = (d.movimientos || []).length === 0
+        ? `<div style="font-size:.8rem;color:#64748b">Este cambio de estado no generó movimientos de plata: solo se devuelve el estado.</div>`
+        : `<table style="width:100%;border-collapse:collapse;font-size:.78rem">
+            ${d.movimientos.map(m => `
+                <tr style="border-bottom:1px solid #fee2e2">
+                    <td style="padding:.35rem .2rem">${m.etiqueta}<div style="color:#94a3b8;font-size:.68rem">${m.detalle || ''}</div></td>
+                    <td style="padding:.35rem .2rem;white-space:nowrap;color:#64748b">${m.fecha || ''}</td>
+                    <td style="padding:.35rem .2rem;text-align:right;font-weight:700;color:#991b1b;white-space:nowrap">− ${money(m.valor)}</td>
+                </tr>`).join('')}
+           </table>`;
+
+    const bloqueos = (d.bloqueos || []).length === 0 ? '' : `
+        <div style="background:${d.puede_forzar ? '#fff7ed' : '#fef2f2'};border:1px solid ${d.puede_forzar ? '#fed7aa' : '#fecaca'};
+                    border-radius:8px;padding:.6rem .8rem;font-size:.78rem;color:${d.puede_forzar ? '#9a3412' : '#991b1b'};line-height:1.4">
+            <strong>${d.puede_forzar ? '⚠️ Esto toca un día ya cerrado' : '🚫 No se puede reversar'}</strong>
+            <ul style="margin:.35rem 0 0 1rem;padding:0">${d.bloqueos.map(b => `<li>${b}</li>`).join('')}</ul>
+            ${d.puede_forzar
+                ? '<div style="margin-top:.35rem">Como superadmin de BryNex puedes continuar, pero los totales de ese cuadre van a cambiar.</div>'
+                : '<div style="margin-top:.35rem">Solo un superadmin de BryNex puede forzarlo.</div>'}
+        </div>`;
+
+    const bloqueado = (d.bloqueos || []).length > 0 && !d.puede_forzar;
+    const titulo = d.es_prorroga ? `Prórroga ${d.numero_proroga} (#${d.incapacidad_id})` : `Incapacidad #${d.incapacidad_id}`;
+
+    const html = `
+    <div class="modal-header" style="background:linear-gradient(135deg,#b91c1c,#dc2626);border-radius:16px 16px 0 0">
+        <div>
+            <h3 style="color:#fff;font-size:1rem;font-weight:700;margin:0">↩️ Reversar estado</h3>
+            <div style="font-size:.75rem;color:rgba(255,255,255,.8);margin-top:.1rem">${titulo}</div>
+        </div>
+        <button class="btn-close-modal" onclick="cerrarModalReversion()">×</button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:.75rem">
+
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:.7rem .85rem;font-size:.82rem">
+            <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap">
+                <span style="padding:.15rem .5rem;border-radius:999px;background:#fee2e2;color:#991b1b;font-weight:600;font-size:.72rem">${d.estado_actual_label}</span>
+                <span style="color:#64748b">→</span>
+                <span style="padding:.15rem .5rem;border-radius:999px;background:#dcfce7;color:#166534;font-weight:600;font-size:.72rem">${d.estado_destino_label}</span>
+            </div>
+            <div style="color:#64748b;font-size:.72rem;margin-top:.4rem">
+                Gestión del ${d.gestion_fecha || '—'}${d.gestion_usuario ? ` · registrada por ${d.gestion_usuario}` : ''}
+            </div>
+        </div>
+
+        <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:.7rem .85rem">
+            <div style="font-size:.72rem;font-weight:700;color:#991b1b;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.5rem">
+                Se van a anular estos movimientos
+            </div>
+            ${movimientos}
+            ${d.total_gastos ? `<div style="text-align:right;margin-top:.5rem;font-weight:800;color:#991b1b">Sale del gasto: − ${money(d.total_gastos)}</div>` : ''}
+        </div>
+
+        ${bloqueos}
+
+        <div class="form-group" style="margin:0">
+            <label style="font-weight:600;font-size:.82rem">Motivo de la reversión *</label>
+            <textarea id="revMotivo" class="form-control" style="min-height:70px"
+                      placeholder="Ej: se marcó pagada al afiliado por error, el pago nunca se hizo."></textarea>
+            <div style="font-size:.7rem;color:#94a3b8;margin-top:.25rem">Queda en la bitácora junto con el detalle de lo anulado.</div>
+        </div>
+    </div>
+    <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="cerrarModalReversion()">Cancelar</button>
+        <button class="btn btn-danger" id="revBtnConfirmar" ${bloqueado ? 'disabled style="opacity:.5;cursor:not-allowed"' : ''}
+                onclick="confirmarReversion(${incId}, ${d.gestion_id})">↩️ Reversar y anular</button>
+    </div>`;
+
+    let overlay = document.getElementById('modalReversion');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'modalReversion';
+        overlay.className = 'modal-overlay';
+        overlay.innerHTML = `<div class="modal" style="max-width:560px">${html}</div>`;
+        document.body.appendChild(overlay);
+    } else {
+        overlay.querySelector('.modal').innerHTML = html;
+    }
+    overlay.classList.add('open');
+}
+
+function cerrarModalReversion() {
+    document.getElementById('modalReversion')?.classList.remove('open');
+}
+
+function confirmarReversion(incId, gestionId) {
+    const motivo = (document.getElementById('revMotivo')?.value || '').trim();
+    if (motivo.length < 5) {
+        alert('Escribe el motivo de la reversión (mínimo 5 caracteres).');
+        return;
+    }
+
+    const btn = document.getElementById('revBtnConfirmar');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Reversando...'; }
+
+    fetch(`/admin/incapacidades/${incId}/reversion`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRF-TOKEN': TOKEN, 'X-Requested-With': 'XMLHttpRequest'},
+        body: JSON.stringify({motivo, gestion_id: gestionId}),
+    })
+        .then(async r => ({ok: r.ok, data: await r.json().catch(() => ({}))}))
+        .then(({ok, data}) => {
+            if (!ok || !data.ok) {
+                alert(data.mensaje || data.message || 'No se pudo reversar el estado.');
+                if (btn) { btn.disabled = false; btn.textContent = '↩️ Reversar y anular'; }
+                return;
+            }
+            cerrarModalReversion();
+            alert(`${data.message} Estado actual: ${data.estado_label}`);
+            const abierto = document.getElementById('modalDetalle')?.dataset.incId;
+            if (abierto) verDetalle(abierto);
+            actualizarFilaIncapacidad(incId);
+        })
+        .catch(e => {
+            alert('Error de red: ' + e.message);
+            if (btn) { btn.disabled = false; btn.textContent = '↩️ Reversar y anular'; }
+        });
 }
 
 function registrarGestion(incId) {

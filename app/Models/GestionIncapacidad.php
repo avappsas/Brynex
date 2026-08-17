@@ -2,12 +2,12 @@
 
 namespace App\Models;
 
-use App\Models\BaseModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class GestionIncapacidad extends BaseModel
 {
     public $timestamps = false;
+
     protected $table = 'gestiones_incapacidad';
 
     protected $fillable = [
@@ -21,14 +21,21 @@ class GestionIncapacidad extends BaseModel
         'fecha_recordar',
         'cambia_estado',
         'estado_nuevo',
+        'estado_anterior',
+        'es_reversion',
+        'revertida_at',
+        'revertida_por',
+        'revertida_motivo',
         'created_at',
     ];
 
     protected $casts = [
-        'created_at'       => 'datetime',
-        'fecha_recordar'   => 'date',
+        'created_at' => 'datetime',
+        'fecha_recordar' => 'date',
         'aplica_a_familia' => 'boolean',
-        'cambia_estado'    => 'boolean',
+        'cambia_estado' => 'boolean',
+        'es_reversion' => 'boolean',
+        'revertida_at' => 'datetime',
     ];
 
     // ── Relaciones ────────────────────────────────────────────────────────────
@@ -48,12 +55,14 @@ class GestionIncapacidad extends BaseModel
     public function tipoLabel(): string
     {
         $cfg = Incapacidad::TIPOS_GESTION[$this->tipo] ?? null;
+
         return $cfg['label'] ?? ucfirst($this->tipo);
     }
 
     public function estadoResultadoLabel(): string
     {
         $cfg = Incapacidad::ESTADOS[$this->estado_resultado] ?? null;
+
         return $cfg['label'] ?? ucfirst($this->estado_resultado ?? '');
     }
 
@@ -62,19 +71,19 @@ class GestionIncapacidad extends BaseModel
      */
     public function tipoIcono(): string
     {
-        return match($this->tipo) {
-            'llamada'         => '📞',
-            'correo'          => '📧',
-            'whatsapp'        => '💬',
-            'portal'          => '🌐',
-            'transcripcion'   => '🏥',
-            'radico'          => '📋',
-            'tutela'          => '⚖️',
+        return match ($this->tipo) {
+            'llamada' => '📞',
+            'correo' => '📧',
+            'whatsapp' => '💬',
+            'portal' => '🌐',
+            'transcripcion' => '🏥',
+            'radico' => '📋',
+            'tutela' => '⚖️',
             'tutela_radicada' => '📜',
-            'liquidacion'     => '💰',
-            'pago'            => '✅',
-            'rechazado'       => '❌',
-            default           => '📝',
+            'liquidacion' => '💰',
+            'pago' => '✅',
+            'rechazado' => '❌',
+            default => '📝',
         };
     }
 
@@ -90,17 +99,19 @@ class GestionIncapacidad extends BaseModel
      * Aplica el cambio de estado a la incapacidad si este tipo lo requiere.
      * Se llama desde el controller al guardar la gestión.
      *
-     * @return bool  true si se actualizó el estado, false si no aplica.
+     * @return bool true si se actualizó el estado, false si no aplica.
      */
     public function aplicarCambioEstado(): bool
     {
         $cfg = Incapacidad::TIPOS_GESTION[$this->tipo] ?? null;
-        if (!$cfg || !$cfg['cambia_estado'] || !$cfg['nuevo_estado']) {
+        if (! $cfg || ! $cfg['cambia_estado'] || ! $cfg['nuevo_estado']) {
             return false;
         }
 
         $incapacidad = $this->incapacidad;
-        if (!$incapacidad) return false;
+        if (! $incapacidad) {
+            return false;
+        }
 
         $incapacidad->estado = $cfg['nuevo_estado'];
 
@@ -113,7 +124,7 @@ class GestionIncapacidad extends BaseModel
 
         // Marcar esta gestión como la que cambió el estado
         $this->cambia_estado = true;
-        $this->estado_nuevo  = $cfg['nuevo_estado'];
+        $this->estado_nuevo = $cfg['nuevo_estado'];
 
         return true;
     }

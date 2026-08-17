@@ -661,6 +661,9 @@ class IncapacidadController extends Controller
             'total_valor_esperado' => $totalValorEsperado,
             'total_pagado' => (float) $totalPagado,
             'prorrogas_pendientes' => $prorrogasPendientes,
+            // Única gestión que se puede deshacer hoy (null si no hay). La regla
+            // vive en el controlador para que la vista no la duplique.
+            'gestion_reversable_id' => $this->gestionReversable($inc)?->id,
         ]);
     }
 
@@ -694,9 +697,12 @@ class IncapacidadController extends Controller
             $tieneRS = in_array($inc->estado, ['pagada_razon_social', 'cierre_exitoso']);
             // 'pagado_afiliado' es la ortografía vieja que dejó la migración del legacy
             $tieneAf = in_array($inc->estado, ['pagada_afiliado', 'pagado_afiliado', 'cierre_exitoso']);
-            // También revisar si previamente se marcó alguno de los dos estados
+            // También revisar si previamente se marcó alguno de los dos estados.
+            // Las gestiones reversadas no cuentan: su pago fue anulado, así que
+            // dejarlas aquí permitiría cerrar una incapacidad que ya no se pagó.
             $historial = GestionIncapacidad::where('incapacidad_id', $inc->id)
                 ->whereIn('estado_nuevo', ['pagada_razon_social', 'pagada_afiliado'])
+                ->whereNull('revertida_at')
                 ->pluck('estado_nuevo');
             $tieneRS = $tieneRS || $historial->contains('pagada_razon_social');
             $tieneAf = $tieneAf || $historial->contains('pagada_afiliado');
@@ -759,6 +765,9 @@ class IncapacidadController extends Controller
             'estado_resultado' => $nuevoEstado,
             'cambia_estado' => (bool) $nuevoEstado,
             'estado_nuevo' => $nuevoEstado,
+            // Se guarda de dónde venía para poder devolverla ahí si hay que
+            // reversar. Sin esto habría que adivinar mirando la gestión anterior.
+            'estado_anterior' => $nuevoEstado ? ($incActualizar?->estado ?? $inc->estado) : null,
             'created_at' => now(),
         ]);
 
@@ -820,6 +829,7 @@ class IncapacidadController extends Controller
                             'observacion' => $obsAbono,
                             'tipo' => 'incapacidad',
                             'incapacidad_id' => $incActualizar->id,
+                            'gestion_incapacidad_id' => $gestion->id,
                             'confirmado' => 0,
                             'usuario_id' => Auth::id(),
                             'created_at' => now(),
@@ -836,6 +846,7 @@ class IncapacidadController extends Controller
                         'aliado_id' => $incActualizar->aliado_id,
                         'incapacidad_id' => $incActualizar->id,
                         'razon_social_id' => $rsIdAbono,
+                        'gestion_incapacidad_id' => $gestion->id,
                         'tipo' => 'entrada_incapacidad',
                         'valor' => $request->valor_pago_rs,
                         'fecha' => $request->fecha_pago_rs ?? now()->toDateString(),
@@ -867,6 +878,7 @@ class IncapacidadController extends Controller
                         'aliado_id' => $incActualizar->aliado_id,
                         'incapacidad_id' => $incActualizar->id,
                         'razon_social_id' => $rsIdAbono,
+                        'gestion_incapacidad_id' => $gestion->id,
                         'tipo' => 'pago_cliente',
                         'valor' => $valorDirecto,
                         'fecha' => $fechaPago,
@@ -908,6 +920,7 @@ class IncapacidadController extends Controller
                         'aliado_id' => $incActualizar->aliado_id,
                         'incapacidad_id' => $incActualizar->id,
                         'razon_social_id' => $rsIdAbono,
+                        'gestion_incapacidad_id' => $gestion->id,
                         'tipo' => 'pago_cliente',
                         'valor' => $valorNeto,
                         'fecha' => $fechaPago,
@@ -931,6 +944,8 @@ class IncapacidadController extends Controller
                         'cuadre_id' => null,
                         'fecha' => $fechaPago,
                         'tipo' => 'pago_incapacidad',
+                        'incapacidad_id' => $incActualizar->id,
+                        'gestion_incapacidad_id' => $gestion->id,
                         'descripcion' => "Pago incapacidad #{$incActualizar->id} al afiliado (Neto: \${$valorNeto})",
                         'pagado_a' => $nombreCliente,
                         'cc_pagado_a' => $incActualizar->cedula_usuario,
@@ -952,6 +967,8 @@ class IncapacidadController extends Controller
                             'cuadre_id' => null,
                             'fecha' => $fechaPago,
                             'tipo' => 'cuatropormil_incapacidad',
+                            'incapacidad_id' => $incActualizar->id,
+                            'gestion_incapacidad_id' => $gestion->id,
                             'descripcion' => "4x1000 incapacidad #{$incActualizar->id}",
                             'pagado_a' => 'DIAN',
                             'cc_pagado_a' => null,
@@ -974,6 +991,8 @@ class IncapacidadController extends Controller
                             'cuadre_id' => null,
                             'fecha' => $fechaPago,
                             'tipo' => 'otros_incapacidad',
+                            'incapacidad_id' => $incActualizar->id,
+                            'gestion_incapacidad_id' => $gestion->id,
                             'descripcion' => "Otros descuentos incapacidad #{$incActualizar->id}",
                             'pagado_a' => $nombreCliente,
                             'cc_pagado_a' => $incActualizar->cedula_usuario,
@@ -996,6 +1015,8 @@ class IncapacidadController extends Controller
                             'cuadre_id' => null,
                             'fecha' => $fechaPago,
                             'tipo' => 'admon_incapacidad',
+                            'incapacidad_id' => $incActualizar->id,
+                            'gestion_incapacidad_id' => $gestion->id,
                             'descripcion' => "Ganancia admon incapacidad #{$incActualizar->id}",
                             'pagado_a' => null,
                             'cc_pagado_a' => null,
@@ -1028,6 +1049,382 @@ class IncapacidadController extends Controller
             'estado' => $inc->fresh()->estado,
             'alcance' => $alcance,
             'consignacion_id' => $consignacionId ?? null,
+        ]);
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // REVERSAR UN CAMBIO DE ESTADO
+    //
+    // Un estado mal puesto no es solo una etiqueta: "Pagada al Afiliado" crea
+    // el gasto del pago, el 4x1000, la ganancia de administración y el abono
+    // que le quita el saldo pendiente a la incapacidad. Deshacerlo a mano en la
+    // BD es justo lo que no se debe hacer, así que se deshace desde la interfaz,
+    // con motivo obligatorio y bitácora.
+    //
+    // Solo se puede reversar la ÚLTIMA gestión que cambió el estado, y solo si
+    // la incapacidad sigue en ese estado. Reversar una del medio dejaría
+    // combinaciones imposibles (pagada al afiliado sin la plata que la respalda).
+    // ════════════════════════════════════════════════════════════════════════
+
+    /**
+     * La única gestión reversable de esta incapacidad, o null.
+     *
+     * Excluye las gestiones de reversión: deshacer una reversión sería un
+     * "rehacer" que no puede reconstruir los gastos ya borrados.
+     */
+    private function gestionReversable(Incapacidad $inc): ?GestionIncapacidad
+    {
+        $g = GestionIncapacidad::where('incapacidad_id', $inc->id)
+            ->where('cambia_estado', true)
+            ->where('es_reversion', false)
+            ->whereNull('revertida_at')
+            ->orderByDesc('id')
+            ->first();
+
+        if (! $g || ! $g->estado_nuevo) {
+            return null;
+        }
+
+        // La incapacidad tiene que seguir donde esta gestión la dejó. Si alguien
+        // movió el estado por otro camino (abono, edición), esta ya no manda.
+        $equivalentes = ['pagada_afiliado', 'pagado_afiliado'];
+        $mismoEstado = $g->estado_nuevo === $inc->estado
+            || (in_array($g->estado_nuevo, $equivalentes, true) && in_array($inc->estado, $equivalentes, true));
+
+        return $mismoEstado ? $g : null;
+    }
+
+    /** Estado al que vuelve la incapacidad si se reversa esta gestión. */
+    private function estadoDestinoReversion(Incapacidad $inc, GestionIncapacidad $g): string
+    {
+        if ($g->estado_anterior) {
+            return $g->estado_anterior;
+        }
+
+        // Gestiones anteriores a esta funcionalidad no guardaron de dónde venían:
+        // se deduce del último cambio de estado que hubo antes.
+        $previa = GestionIncapacidad::where('incapacidad_id', $inc->id)
+            ->where('cambia_estado', true)
+            ->whereNull('revertida_at')
+            ->where('id', '<', $g->id)
+            ->orderByDesc('id')
+            ->value('estado_nuevo');
+
+        return $previa ?: 'recibido';
+    }
+
+    /**
+     * Qué se va a deshacer: movimientos a borrar y razones para no dejar hacerlo.
+     *
+     * Los movimientos se buscan primero por el vínculo directo con la gestión.
+     * Los registros anteriores a esa columna no lo tienen, así que se cae al
+     * respaldo: mismo tipo, misma incapacidad y la fecha de pago que quedó
+     * guardada en la incapacidad.
+     */
+    private function analizarReversion(Incapacidad $inc, GestionIncapacidad $g): array
+    {
+        $estadoDestino = $this->estadoDestinoReversion($inc, $g);
+        $fechaPago = $inc->fecha_pago?->format('Y-m-d');
+
+        $gastos = collect();
+        $abonos = collect();
+        $consignaciones = collect();
+
+        $esPagoAfiliado = in_array($g->estado_nuevo, ['pagada_afiliado', 'pagado_afiliado'], true);
+        $esPagoRS = $g->estado_nuevo === 'pagada_razon_social';
+
+        if ($esPagoAfiliado) {
+            $gastos = DB::table('gastos')
+                ->where('aliado_id', $inc->aliado_id)
+                ->whereIn('tipo', \App\Models\Gasto::TIPOS_INCAPACIDAD)
+                ->where('gestion_incapacidad_id', $g->id)
+                ->get();
+
+            if ($gastos->isEmpty()) {
+                $q = DB::table('gastos')
+                    ->where('aliado_id', $inc->aliado_id)
+                    ->whereIn('tipo', \App\Models\Gasto::TIPOS_INCAPACIDAD)
+                    ->where('incapacidad_id', $inc->id)
+                    ->whereNull('gestion_incapacidad_id');
+                if ($fechaPago) {
+                    $q->whereDate('fecha', $fechaPago);
+                }
+                $gastos = $q->get();
+            }
+
+            $abonos = DB::table('abonos_incapacidades')
+                ->where('incapacidad_id', $inc->id)
+                ->where('tipo', 'pago_cliente')
+                ->where('gestion_incapacidad_id', $g->id)
+                ->get();
+
+            if ($abonos->isEmpty()) {
+                $q = DB::table('abonos_incapacidades')
+                    ->where('incapacidad_id', $inc->id)
+                    ->where('tipo', 'pago_cliente')
+                    ->whereNull('gestion_incapacidad_id');
+                if ($fechaPago) {
+                    $q->whereDate('fecha', $fechaPago);
+                }
+                $abonos = $q->get();
+            }
+        }
+
+        if ($esPagoRS) {
+            $abonos = DB::table('abonos_incapacidades')
+                ->where('incapacidad_id', $inc->id)
+                ->where('tipo', 'entrada_incapacidad')
+                ->where('gestion_incapacidad_id', $g->id)
+                ->get();
+
+            if ($abonos->isEmpty()) {
+                // Sin vínculo: la entrada más reciente es la que dejó esta gestión.
+                $abonos = DB::table('abonos_incapacidades')
+                    ->where('incapacidad_id', $inc->id)
+                    ->where('tipo', 'entrada_incapacidad')
+                    ->whereNull('gestion_incapacidad_id')
+                    ->orderByDesc('id')
+                    ->limit(1)
+                    ->get();
+            }
+
+            $idsConsignacion = $abonos->pluck('consignacion_id')->filter()->all();
+            if ($idsConsignacion) {
+                $consignaciones = DB::table('consignaciones')
+                    ->whereIn('id', $idsConsignacion)
+                    ->whereNull('deleted_at')
+                    ->get();
+            }
+        }
+
+        // ── Bloqueos: lo que ya salió del módulo y afecta a terceros ─────────
+        $bloqueos = [];
+
+        $cuadresIds = $gastos->pluck('cuadre_id')->filter()->unique();
+        if ($cuadresIds->isNotEmpty()) {
+            $fechas = DB::table('cuadres')->whereIn('id', $cuadresIds)->pluck('fecha_fin', 'id');
+            foreach ($gastos->whereNotNull('cuadre_id') as $ga) {
+                $fecha = $fechas[$ga->cuadre_id] ?? null;
+                $fecha = $fecha ? \Carbon\Carbon::parse($fecha)->format('d/m/Y') : 'sin fecha';
+                $bloqueos[] = 'El gasto #'.$ga->id.' de $'.number_format((float) $ga->valor, 0, ',', '.')
+                    ." ya quedó dentro del cuadre del {$fecha}: borrarlo cambia el cierre de ese día.";
+            }
+        }
+
+        foreach ($consignaciones as $c) {
+            if ($c->confirmado) {
+                $bloqueos[] = 'La consignación #'.$c->id.' de $'.number_format((float) $c->valor, 0, ',', '.')
+                    .' ya fue confirmada en banco.';
+            }
+        }
+
+        return [
+            'estado_destino' => $estadoDestino,
+            'gastos' => $gastos,
+            'abonos' => $abonos,
+            'consignaciones' => $consignaciones,
+            'bloqueos' => $bloqueos,
+        ];
+    }
+
+    /** ¿Este usuario puede pasar por encima de un bloqueo? */
+    private function puedeForzarReversion(): bool
+    {
+        $user = Auth::user();
+
+        return $user && $user->es_brynex && $user->hasRole('superadmin');
+    }
+
+    /** Resumen legible de un movimiento, para la pantalla de confirmación. */
+    private function etiquetaMovimiento(string $prefijo, $fila, string $detalle): array
+    {
+        return [
+            'id' => $fila->id,
+            'etiqueta' => $prefijo,
+            'detalle' => $detalle,
+            'valor' => (float) $fila->valor,
+            'fecha' => $fila->fecha ? \Carbon\Carbon::parse($fila->fecha)->format('d/m/Y') : null,
+        ];
+    }
+
+    // ── PREVIEW: qué pasaría si se reversa ───────────────────────────────────
+    public function previewReversion(int $id)
+    {
+        $inc = $this->incapacidadDelAliado($id);
+        $g = $this->gestionReversable($inc);
+
+        if (! $g) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'Esta incapacidad no tiene un cambio de estado reversable. '
+                    .'Solo se puede deshacer el último cambio, y únicamente si la incapacidad sigue en ese estado.',
+            ], 422);
+        }
+
+        $analisis = $this->analizarReversion($inc, $g);
+
+        $movimientos = [];
+        foreach ($analisis['gastos'] as $ga) {
+            $movimientos[] = $this->etiquetaMovimiento('🧾 Gasto', $ga, \App\Models\Gasto::TIPOS[$ga->tipo] ?? $ga->tipo);
+        }
+        foreach ($analisis['abonos'] as $ab) {
+            $etiqueta = $ab->tipo === 'entrada_incapacidad' ? '💵 Entrada de la entidad' : '💸 Abono pago al afiliado';
+            $movimientos[] = $this->etiquetaMovimiento($etiqueta, $ab, $ab->observacion ?? '');
+        }
+        foreach ($analisis['consignaciones'] as $c) {
+            $movimientos[] = $this->etiquetaMovimiento('🏦 Consignación', $c, $c->referencia ?? '');
+        }
+
+        return response()->json([
+            'ok' => true,
+            'gestion_id' => $g->id,
+            'gestion_fecha' => $g->created_at?->format('d/m/Y H:i'),
+            'gestion_usuario' => optional(User::find($g->user_id))->nombre,
+            'incapacidad_id' => $inc->id,
+            'es_prorroga' => (bool) $inc->incapacidad_padre_id,
+            'numero_proroga' => $inc->numero_proroga,
+            'estado_actual' => $g->estado_nuevo,
+            'estado_actual_label' => Incapacidad::ESTADOS[$g->estado_nuevo]['label'] ?? $g->estado_nuevo,
+            'estado_destino' => $analisis['estado_destino'],
+            'estado_destino_label' => Incapacidad::ESTADOS[$analisis['estado_destino']]['label'] ?? $analisis['estado_destino'],
+            'movimientos' => $movimientos,
+            // Solo los gastos suman: el abono es el mismo dinero visto desde la
+            // incapacidad, sumarlo daría el doble de lo que realmente se mueve.
+            'total_gastos' => (float) $analisis['gastos']->sum('valor'),
+            'bloqueos' => $analisis['bloqueos'],
+            'puede_forzar' => $this->puedeForzarReversion(),
+        ]);
+    }
+
+    // ── EJECUTAR LA REVERSIÓN ────────────────────────────────────────────────
+    public function revertirGestion(Request $request, int $id)
+    {
+        $request->validate([
+            'motivo' => 'required|string|min:5|max:500',
+            'gestion_id' => 'nullable|integer',
+        ]);
+
+        $inc = $this->incapacidadDelAliado($id);
+        $g = $this->gestionReversable($inc);
+
+        if (! $g) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'Esta incapacidad no tiene un cambio de estado reversable.',
+            ], 422);
+        }
+
+        // La pantalla pudo quedar vieja: si entre que se abrió y se confirmó
+        // alguien registró otra gestión, se reversaría algo distinto a lo que
+        // el usuario vio en el resumen.
+        if ($request->filled('gestion_id') && (int) $request->gestion_id !== (int) $g->id) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'La incapacidad cambió mientras revisabas el resumen. Vuelve a abrir el detalle.',
+            ], 409);
+        }
+
+        $analisis = $this->analizarReversion($inc, $g);
+        $forzar = $this->puedeForzarReversion();
+
+        if ($analisis['bloqueos'] && ! $forzar) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'No se puede reversar: '.implode(' ', $analisis['bloqueos'])
+                    .' Solo un superadmin de BryNex puede forzarlo.',
+                'bloqueos' => $analisis['bloqueos'],
+            ], 403);
+        }
+
+        $motivo = trim($request->motivo);
+        $estadoAnteriorReal = $inc->estado;
+        $estadoDestino = $analisis['estado_destino'];
+
+        // Snapshot ANTES de borrar: es lo único que queda de estos movimientos.
+        $snapshot = [
+            'gestion' => $g->toArray(),
+            'estado_previo' => $estadoAnteriorReal,
+            'estado_destino' => $estadoDestino,
+            'gastos' => $analisis['gastos']->map(fn ($x) => (array) $x)->all(),
+            'abonos' => $analisis['abonos']->map(fn ($x) => (array) $x)->all(),
+            'consignaciones' => $analisis['consignaciones']->map(fn ($x) => (array) $x)->all(),
+            'bloqueos_forzados' => $forzar ? $analisis['bloqueos'] : [],
+            'motivo' => $motivo,
+        ];
+
+        DB::transaction(function () use ($inc, $g, $analisis, $motivo, $estadoDestino) {
+            if ($analisis['gastos']->isNotEmpty()) {
+                DB::table('gastos')->whereIn('id', $analisis['gastos']->pluck('id'))->delete();
+            }
+            if ($analisis['abonos']->isNotEmpty()) {
+                DB::table('abonos_incapacidades')->whereIn('id', $analisis['abonos']->pluck('id'))->delete();
+            }
+            foreach ($analisis['consignaciones'] as $c) {
+                // Soft delete: la consignación es un documento del banco, no se
+                // borra de verdad, se anula.
+                \App\Models\Consignacion::where('id', $c->id)->update([
+                    'observacion' => trim((string) $c->observacion).' — ANULADA por reversión de incapacidad #'.$inc->id,
+                    'updated_at' => now(),
+                ]);
+                \App\Models\Consignacion::where('id', $c->id)->delete();
+            }
+
+            // Si lo que se deshace es el pago, la incapacidad vuelve a quedar
+            // sin pagar. El número de radicado NO se toca: sigue siendo cierto
+            // que se radicó, aunque el estado retroceda.
+            if (in_array($g->estado_nuevo, ['pagada_afiliado', 'pagado_afiliado'], true)) {
+                $inc->estado_pago = 'pendiente';
+                $inc->valor_pago = null;
+                $inc->fecha_pago = null;
+                $inc->pagado_a = null;
+                $inc->detalle_pago = null;
+            }
+
+            $inc->estado = $estadoDestino;
+            $inc->saveQuietly();
+
+            $g->revertida_at = now();
+            $g->revertida_por = Auth::id();
+            $g->revertida_motivo = $motivo;
+            $g->save();
+
+            $labelDesde = Incapacidad::ESTADOS[$g->estado_nuevo]['label'] ?? $g->estado_nuevo;
+            $labelHasta = Incapacidad::ESTADOS[$estadoDestino]['label'] ?? $estadoDestino;
+
+            GestionIncapacidad::create([
+                'incapacidad_id' => $inc->id,
+                'user_id' => Auth::id(),
+                'aplica_a_familia' => false,
+                'tipo' => 'otro',
+                'tramite' => "↩️ Reversión: {$labelDesde} → {$labelHasta}",
+                'respuesta' => $motivo,
+                'estado_resultado' => $estadoDestino,
+                'cambia_estado' => true,
+                'estado_nuevo' => $estadoDestino,
+                'estado_anterior' => $g->estado_nuevo,
+                'es_reversion' => true,
+                'created_at' => now(),
+            ]);
+        });
+
+        Bitacora::registrar(
+            accion: 'deleted',
+            modelo: 'Incapacidad',
+            registroId: $inc->id,
+            descripcion: "Estado reversado en incapacidad #{$inc->id} (Cédula: {$inc->cedula_usuario}): "
+                .($estadoAnteriorReal)." → {$estadoDestino}. Se anularon "
+                .$analisis['gastos']->count().' gasto(s), '
+                .$analisis['abonos']->count().' abono(s) y '
+                .$analisis['consignaciones']->count()." consignación(es). Motivo: {$motivo}",
+            detalle: $snapshot,
+            alidoId: $inc->aliado_id
+        );
+
+        return response()->json([
+            'ok' => true,
+            'message' => 'Estado reversado. Se deshicieron los movimientos que había generado.',
+            'estado' => $estadoDestino,
+            'estado_label' => Incapacidad::ESTADOS[$estadoDestino]['label'] ?? $estadoDestino,
         ]);
     }
 
