@@ -27,6 +27,13 @@ class VideoOverlayFfmpeg
      * @param string[] $frases 2-3 frases cortas para el texto animado en pantalla.
      * @return array{ok: bool, videoPath: ?string, posterPath: ?string, error: ?string}
      */
+    /**
+     * Mismo objetivo de sonoridad que el cierre de marca (ver CierreMarcaVideo): así el
+     * contenido y la cola corporativa suenan al mismo nivel y no hay salto de volumen a mitad
+     * de la pieza. Medido antes de esto: el contenido iba 4,5 dB por debajo del cierre.
+     */
+    private const NORMALIZACION = 'loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000,alimiter=limit=0.95';
+
     public static function aplicar(
         string $rutaVideoBruto,
         array $frases,
@@ -105,17 +112,37 @@ class VideoOverlayFfmpeg
         // se agacha a un tercio y queda debajo, que es lo que hace que la escena siga
         // sintiéndose real en vez de un video mudo con una voz encima.
         $mapaAudio = '0:a?';
+        $tieneAudio = self::tieneAudio($ffprobe, $rutaVideoBruto);
+
         if ($rutaNarracion && is_file($rutaNarracion)) {
             $args[] = '-i';
             $args[] = $rutaNarracion;
             $idxVoz = $entradaIdx;
 
-            $filtrosCapas[] = "[0:a]volume=0.32,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[amb]";
             // Medio segundo de aire antes de que arranque la voz: entrar en el fotograma uno
             // suena atropellado y se pierde la primera palabra.
-            $filtrosCapas[] = "[{$idxVoz}:a]adelay=500|500,volume=1.9,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[voz]";
-            // `duration=first` para que la voz no alargue el clip si el TTS se pasa de largo.
-            $filtrosCapas[] = '[amb][voz]amix=inputs=2:duration=first:dropout_transition=0,alimiter=limit=0.95[aout]';
+            // La voz se normaliza SOLA antes de mezclar. Normalizar solo la mezcla final la
+            // deja a merced del ambiente: con un clip de calle ruidosa, loudnorm baja todo
+            // junto y la narradora se vuelve a hundir. Así queda al mismo nivel siempre,
+            // tenga el clip el fondo que tenga.
+            $filtrosCapas[] = "[{$idxVoz}:a]adelay=500|500,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,"
+                . 'loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000[voz]';
+
+            if ($tieneAudio) {
+                $filtrosCapas[] = '[0:a]volume=0.32,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[amb]';
+                // `duration=first` para que la voz no alargue el clip si el TTS se pasa de largo.
+                $filtrosCapas[] = '[amb][voz]amix=inputs=2:duration=first:dropout_transition=0[mez]';
+            } else {
+                $filtrosCapas[] = '[voz]anull[mez]';
+            }
+
+            $filtrosCapas[] = '[mez]' . self::NORMALIZACION . '[aout]';
+            $mapaAudio = '[aout]';
+        } elseif ($tieneAudio) {
+            // También sin narración: el clip de Veo trae el volumen que le da la gana y el
+            // cierre está normalizado a -16 LUFS, así que sin esto se oye un salto al pasar
+            // de una parte a la otra.
+            $filtrosCapas[] = '[0:a]' . self::NORMALIZACION . '[aout]';
             $mapaAudio = '[aout]';
         }
 
@@ -420,5 +447,16 @@ class VideoOverlayFfmpeg
         }
 
         return $lineas ?: [$texto];
+    }
+
+    /** ¿El clip trae pista de audio? Sin esto, filtrar [0:a] en un video mudo revienta FFmpeg. */
+    private static function tieneAudio(string $ffprobe, string $ruta): bool
+    {
+        $r = Process::timeout(30)->run([
+            $ffprobe, '-v', 'error', '-select_streams', 'a:0',
+            '-show_entries', 'stream=codec_type', '-of', 'csv=p=0', $ruta,
+        ]);
+
+        return $r->successful() && str_contains($r->output(), 'audio');
     }
 }
