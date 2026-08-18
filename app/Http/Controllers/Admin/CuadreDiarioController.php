@@ -775,6 +775,11 @@ class CuadreDiarioController extends Controller
      * componente en la misma proporción). Cuando no se movió plata — la pagó
      * un anticipo recibido antes, o quedó saldo pendiente — se clasifica por
      * la forma de pago declarada.
+     *
+     * La planilla sin cobro (omisos, correcciones: total en cero pero con
+     * seguridad social liquidada) no reparte nada: esa plata nunca entró y no
+     * es recaudo del día. Es el mismo criterio con el que el resumen deja los
+     * papeles sin plata fuera del total facturado.
      */
     private function pesosPago(Factura $f): array
     {
@@ -788,6 +793,10 @@ class CuadreDiarioController extends Controller
 
         if ($base > 0) {
             return ['efectivo' => $ef / $base, 'consignado' => $co / $base, 'prestado' => 0.0];
+        }
+
+        if ((float) $f->total <= 0) {
+            return ['efectivo' => 0.0, 'consignado' => 0.0, 'prestado' => 0.0];
         }
 
         return $f->forma_pago === 'consignacion'
@@ -809,6 +818,12 @@ class CuadreDiarioController extends Controller
 
         foreach ($facturas as $f) {
             $w = $this->pesosPago($f);
+
+            // Papel sin plata (planilla de omiso, corrección): no reparte nada
+            // y tampoco cuenta como factura del día.
+            if ($w['efectivo'] + $w['consignado'] + $w['prestado'] <= 0) {
+                continue;
+            }
 
             $add = function (string $slug, $valor) use (&$sum, $w) {
                 $v = (float) $valor;
