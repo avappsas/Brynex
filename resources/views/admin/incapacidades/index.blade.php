@@ -1160,7 +1160,7 @@ function verDetalle(id){
                     <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin-bottom:.8rem">
                         <button class="btn btn-primary btn-sm" onclick="registrarGestion(${inc.id})">📞 Nueva Gestión</button>
                         <select id="gestionesFiltro" onchange="filtrarGestiones(this.value)"
-                                style="display:none;border:1px solid #cbd5e1;border-radius:8px;padding:.38rem .65rem;font-size:.8rem;background:#f8fafc;max-width:100%"></select>
+                                style="display:none;flex:1 1 20rem;min-width:0;border:1px solid #cbd5e1;border-radius:8px;padding:.38rem .65rem;font-size:.8rem;background:#f8fafc"></select>
                     </div>
                     <div class="timeline" id="gestionesTimeline"></div>
                 </div>
@@ -1221,15 +1221,18 @@ function renderGestiones(){
             sel.style.display = 'none';
         } else {
             const nFam = (GEST.familia||[]).filter(g => !!g.aplica_a_familia).length;
-            let opts = opcionGestion('todas', `📁 Todas (${GEST.familia.length})`);
+            let opts = opcionGestion('todas', `📁 Todas · ${GEST.familia.length} gest.`);
             miembros.forEach(m => {
                 const icono = m.es_padre ? '🏥' : '📄';
                 // Ojo: sqlsrv devuelve los ids como string en el JSON, así que
                 // toda comparación de ids va por String().
                 const abierta = String(m.id) === String(GEST.incActivo) ? ' · abierta' : '';
-                opts += opcionGestion(m.id, `${icono} ${m.label} (${gestionesVisibles(m.id).length})${abierta}`);
+                // El número de prórroga solo no dice cuál es: van también los
+                // días, el período y el valor, que es como se reconocen.
+                opts += opcionGestion(m.id, `${icono} ${m.label} (${periodoMiembro(m)}) · `
+                    + `${gestionesVisibles(m.id).length} gest.${abierta}`);
             });
-            if (nFam) opts += opcionGestion('familia', `👨‍👩‍👦 Solo gestiones de familia (${nFam})`);
+            if (nFam) opts += opcionGestion('familia', `👨‍👩‍👦 Solo gestiones de familia · ${nFam} gest.`);
             sel.innerHTML = opts;
             sel.style.display = '';
         }
@@ -1270,6 +1273,20 @@ function renderGestiones(){
             </div>
         </div>`;
     }).join('') || '<div style="color:#94a3b8;font-size:.82rem">Sin gestiones para este filtro.</div>';
+}
+
+// "4d del 13-feb al 16-feb por $233.454" — lo que distingue a una prórroga de
+// la siguiente cuando todas se llaman igual.
+function periodoMiembro(m){
+    const corta = f => {
+        if (!f) return '—';
+        const meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+        const d = new Date(String(f).substring(0,10)+'T12:00:00');
+        return `${d.getDate()}-${meses[d.getMonth()]}`;
+    };
+    const valor = Number(m.valor_esperado||0) > 0
+        ? ` por $${Math.round(Number(m.valor_esperado)).toLocaleString('es-CO')}` : '';
+    return `${m.dias_incapacidad}d del ${corta(m.fecha_inicio)} al ${corta(m.fecha_terminacion)}${valor}`;
 }
 
 function opcionGestion(valor, label){

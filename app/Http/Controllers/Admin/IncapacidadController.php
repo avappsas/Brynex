@@ -742,6 +742,7 @@ class IncapacidadController extends Controller
             'fecha_inicio' => $m->fecha_inicio,
             'fecha_terminacion' => $m->fecha_terminacion,
             'dias_incapacidad' => $m->dias_incapacidad,
+            'valor_esperado' => $m->valor_esperado,
             'estado' => $m->estado,
         ])->values();
 
