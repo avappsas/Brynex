@@ -816,14 +816,36 @@ $estadoCls = fn($e) => match($e) {
     <div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:.6rem .8rem;margin-bottom:.9rem;font-size:.81rem;color:#991b1b">
         Esta acción es <strong>irreversible</strong>. Se eliminará la factura con sus abonos y plano. Todo quedará en la bitácora de auditoría.
     </div>
+    @if(($planillasGrupo ?? collect())->isNotEmpty())
+    <div style="background:#fef9c3;border:1px solid #fde68a;border-radius:8px;padding:.6rem .8rem;margin-bottom:.9rem;font-size:.79rem;color:#92400e;line-height:1.5">
+        <strong>⚠️ Este recibo ya tiene pago confirmado al operador.</strong><br>
+        Los planos que se anulen quedan <strong>sin número de planilla</strong> y hay que re-vincularlos a mano:
+        <ul style="margin:.35rem 0 0;padding-left:1.1rem">
+            @foreach($planillasGrupo as $pl)
+            <li>{{ $pl['nombre'] }} (CC {{ $pl['cedula'] }}) — planilla Nº <strong>{{ $pl['planilla'] }}</strong></li>
+            @endforeach
+        </ul>
+    </div>
+    @endif
     <div style="margin-bottom:.75rem">
         <label style="font-size:.78rem;font-weight:700;color:#374151;display:block;margin-bottom:.3rem">Motivo de anulación <span style="color:#dc2626">*</span></label>
         <textarea id="an_motivo" rows="3" placeholder="Motivo obligatorio..." style="width:100%;border:1px solid #d1d5db;border-radius:6px;padding:.42rem .6rem;font-size:.82rem;resize:vertical;box-sizing:border-box"></textarea>
     </div>
-    @if($factura->np)
-    <label style="display:flex;align-items:center;gap:.45rem;font-size:.81rem;margin-bottom:.75rem;cursor:pointer">
-        <input type="checkbox" id="an_np" style="width:16px;height:16px" checked>
-        Anular <strong>todas las {{ $filas->count() }} facturas</strong> del NP {{ $factura->np }}
+    @php
+        // Lo que arrastra "todo_np" es el lote completo del numero_factura, NO lo que
+        // se ve en pantalla: abierto con ?individual=1 el recibo muestra una sola fila
+        // y el conteo decía "1 factura" mientras se anulaban todas las del recibo.
+        $grupoAnular   = ($grupoNp && $grupoNp->count()) ? $grupoNp : collect([$factura]);
+        $ctosAnular    = $grupoAnular->pluck('contrato_id')->filter()->unique()->count()
+                         ?: $grupoAnular->count();
+    @endphp
+    @if($factura->np && $grupoAnular->count() > 1)
+    <label style="display:flex;align-items:flex-start;gap:.45rem;font-size:.81rem;margin-bottom:.75rem;cursor:pointer">
+        <input type="checkbox" id="an_np" style="width:16px;height:16px;margin-top:.12rem;flex:none">
+        <span>
+            Anular <strong>el recibo completo — {{ $ctosAnular }} contrato{{ $ctosAnular == 1 ? '' : 's' }}</strong> del NP {{ $factura->np }}.<br>
+            <span style="color:#6b7280;font-size:.76rem">Sin marcar, solo se anula la factura de este contrato.</span>
+        </span>
     </label>
     @endif
     <div style="display:flex;justify-content:flex-end;gap:.5rem">
@@ -954,7 +976,7 @@ document.addEventListener('DOMContentLoaded', () => {
 function abrirAnular() {
     document.getElementById('modalAnular').style.display = 'flex';
 }
-async function confirmarAnulacion() {
+async function confirmarAnulacion(confirmarPlanilla = false) {
     const motivo = (document.getElementById('an_motivo')?.value ?? '').trim();
     const todoNp = document.getElementById('an_np')?.checked ?? false;
     if (!motivo) { alert('Ingrese el motivo de anulación.'); return; }
@@ -964,9 +986,19 @@ async function confirmarAnulacion() {
         const res  = await fetch(URL_ANUL, {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF_REC },
-            body: JSON.stringify({ motivo, todo_np: todoNp })
+            body: JSON.stringify({ motivo, todo_np: todoNp, confirmar_planilla: confirmarPlanilla })
         });
         const data = await res.json();
+        // El recibo tiene planilla pagada: el superadmin debe confirmar viendo los números.
+        if (!data.ok && data.requiere_confirmacion) {
+            btn.disabled = false; btn.textContent = '🗑 Confirmar Anulación';
+            const detalle = (data.afectados || []).join('\n • ');
+            if (confirm(data.message + '\n\n • ' + detalle
+                + '\n\nAcepte solo si está seguro: tendrá que re-vincular la planilla a mano después de re-facturar.')) {
+                return confirmarAnulacion(true);
+            }
+            return;
+        }
         if (data.ok) {
             // Cerrar el modal de anulación
             document.getElementById('modalAnular').style.display = 'none';
@@ -984,7 +1016,8 @@ async function confirmarAnulacion() {
                 }
             }, 300);
         } else {
-            alert(data.message || 'Error al anular.');
+            const detalle = (data.afectados || []).length ? '\n\n • ' + data.afectados.join('\n • ') : '';
+            alert((data.message || 'Error al anular.') + detalle);
             btn.disabled = false;
             btn.textContent = '🗑 Confirmar Anulación';
         }

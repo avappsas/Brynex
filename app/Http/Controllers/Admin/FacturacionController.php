@@ -2727,8 +2727,21 @@ class FacturacionController extends Controller
             $saldoAnterior = (int) $qSaldo->sum('saldo_proximo');
         }
 
+        // Planillas ya pagadas al operador dentro del recibo (el lote completo).
+        // El modal de anulación las muestra: anular aquí deja esos planos sin
+        // número de planilla aunque el pago al operador ya esté hecho.
+        $planillasGrupo = Plano::whereIn('factura_id', ($grupoNp ?? collect([$factura]))->pluck('id'))
+            ->whereNotNull('numero_planilla')
+            ->where('numero_planilla', '<>', '')
+            ->get(['no_identifi', 'primer_nombre', 'primer_ape', 'numero_planilla'])
+            ->map(fn($p) => [
+                'nombre'   => trim("{$p->primer_nombre} {$p->primer_ape}") ?: "CC {$p->no_identifi}",
+                'cedula'   => $p->no_identifi,
+                'planilla' => $p->numero_planilla,
+            ]);
+
         return view('admin.facturacion.recibo',
-            compact('factura','grupoNp','anticiposAplicados','reciboDoble','saldoAnterior'));
+            compact('factura','grupoNp','anticiposAplicados','reciboDoble','saldoAnterior','planillasGrupo'));
     }
 
     // ─── Anular factura (solo admin) ─────────────────────────────────
@@ -2743,19 +2756,6 @@ class FacturacionController extends Controller
         $factura  = Factura::where('aliado_id', $aliadoId)
             ->with(['contrato.cliente', 'abonos', 'plano'])
             ->findOrFail($facturaId);
-
-        // ── Protección: factura con planilla pagada solo la puede anular superadmin BryNex ──
-        $numeroPlanillaOp = $factura->plano?->numero_planilla;
-        if ($numeroPlanillaOp) {
-            $esSuperBrynex = $user->es_brynex && $user->hasRole('superadmin');
-            if (!$esSuperBrynex) {
-                return response()->json([
-                    'ok'      => false,
-                    'message' => "Esta factura tiene planilla pagada al operador (Nº {$numeroPlanillaOp}). "
-                               . 'Solo un superadmin de BryNex puede anularla.',
-                ], 403);
-            }
-        }
 
         $motivo = trim($request->input('motivo', ''));
         if (!$motivo) {
@@ -2772,8 +2772,50 @@ class FacturacionController extends Controller
                 ->get();
         }
 
+        // ── Protección: planilla ya pagada al operador ────────────────────
+        // Se revisan TODAS las facturas que se van a anular (el lote completo
+        // cuando viene todo_np) y TODOS los planos de cada una: con el hasOne
+        // se veía un solo plano de la factura clickeada, así que anular el NP
+        // desde el recibo arrastraba planos pagados de los demás contratos.
+        $planosPagados = Plano::whereIn('factura_id', $facturasAnular->pluck('id'))
+            ->whereNotNull('numero_planilla')
+            ->where('numero_planilla', '<>', '')
+            ->get(['id', 'factura_id', 'no_identifi', 'primer_nombre', 'primer_ape', 'numero_planilla']);
 
-        DB::transaction(function () use ($facturasAnular, $motivo, $aliadoId, $user) {
+        if ($planosPagados->isNotEmpty()) {
+            $planillas = $planosPagados->pluck('numero_planilla')->unique()->values();
+            $afectados = $planosPagados->map(function ($p) {
+                $nombre = trim("{$p->primer_nombre} {$p->primer_ape}") ?: "CC {$p->no_identifi}";
+                return "{$nombre} (CC {$p->no_identifi}) — planilla Nº {$p->numero_planilla}";
+            })->values();
+
+            $esSuperBrynex = $user->es_brynex && $user->hasRole('superadmin');
+            if (!$esSuperBrynex) {
+                return response()->json([
+                    'ok'        => false,
+                    'message'   => 'No se puede anular: ' . $planosPagados->count() . ' plano(s) de este recibo ya '
+                                 . 'tienen planilla pagada al operador (Nº ' . $planillas->implode(', ') . '). '
+                                 . 'Solo un superadmin de BryNex puede anularlo.',
+                    'planillas' => $planillas,
+                    'afectados' => $afectados,
+                ], 403);
+            }
+
+            // Superadmin BryNex sí puede, pero debe confirmar viendo los números de planilla.
+            if (!$request->boolean('confirmar_planilla')) {
+                return response()->json([
+                    'ok'                    => false,
+                    'requiere_confirmacion' => true,
+                    'message'               => 'Este recibo ya tiene pago confirmado al operador con la(s) planilla(s) Nº '
+                                             . $planillas->implode(', ') . '. Si lo anula, esos planos quedarán sin '
+                                             . 'número de planilla y habrá que re-vincularlos a mano. ¿Está seguro?',
+                    'planillas'             => $planillas,
+                    'afectados'             => $afectados,
+                ], 409);
+            }
+        }
+
+        DB::transaction(function () use ($facturasAnular, $motivo, $aliadoId, $user, $planosPagados) {
             foreach ($facturasAnular as $f) {
                 // Registrar en bitácora ANTES de anular
                 Bitacora::registrar(
@@ -2782,10 +2824,15 @@ class FacturacionController extends Controller
                     registroId: $f->id,
                     descripcion: "Factura #{$f->numero_factura} anulada. Motivo: {$motivo}",
                     detalle: [
-                        'snapshot' => $f->toArray(),
-                        'abonos'   => $f->abonos->toArray(),
-                        'plano_id' => $f->plano?->id,
-                        'motivo'   => $motivo,
+                        'snapshot'  => $f->toArray(),
+                        'abonos'    => $f->abonos->toArray(),
+                        'plano_id'  => $f->plano?->id,
+                        'motivo'    => $motivo,
+                        // Planillas que quedan huérfanas con esta anulación: es el
+                        // rastro para re-vincularlas si hay que re-facturar.
+                        'planillas' => $planosPagados->where('factura_id', $f->id)
+                            ->map(fn($p) => ['plano_id' => $p->id, 'numero_planilla' => $p->numero_planilla])
+                            ->values()->all(),
                     ],
                     alidoId: $aliadoId
                 );

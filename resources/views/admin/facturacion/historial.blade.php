@@ -679,7 +679,7 @@ function cerrarAnular() {
     document.getElementById('modal-anular-ov').style.display = 'none';
     _anularId = null;
 }
-async function confirmarAnular() {
+async function confirmarAnular(confirmarPlanilla = false) {
     const motivo = document.getElementById('anular-motivo').value.trim();
     if (!motivo) { alert('Debe indicar el motivo de anulación.'); return; }
     const btn = document.getElementById('btn-ejecutar-anular');
@@ -694,9 +694,19 @@ async function confirmarAnular() {
                 'Accept': 'application/json',
                 'X-Requested-With': 'XMLHttpRequest'
             },
-            body: JSON.stringify({ motivo }),
+            body: JSON.stringify({ motivo, confirmar_planilla: confirmarPlanilla }),
         });
         const data = await resp.json();
+        // Planilla ya pagada al operador: el superadmin confirma viendo los números.
+        if (!data.ok && data.requiere_confirmacion) {
+            btn.disabled = false; btn.textContent = '⛔ Confirmar Anulación';
+            const detalle = (data.afectados || []).join('\n • ');
+            if (confirm(data.message + '\n\n • ' + detalle
+                + '\n\nAcepte solo si está seguro: tendrá que re-vincular la planilla a mano después de re-facturar.')) {
+                return confirmarAnular(true);
+            }
+            return;
+        }
         if (data.ok) {
             cerrarAnular();
             const toast = document.createElement('div');
@@ -710,7 +720,8 @@ async function confirmarAnular() {
 
             setTimeout(() => location.reload(), 1800);
         } else {
-            alert('❌ ' + (data.message || data.mensaje || 'Error al anular.'));
+            const detalle = (data.afectados || []).length ? '\n\n • ' + data.afectados.join('\n • ') : '';
+            alert('❌ ' + (data.message || data.mensaje || 'Error al anular.') + detalle);
             btn.disabled = false; btn.textContent = '⛔ Confirmar Anulación';
         }
     } catch(e) {
