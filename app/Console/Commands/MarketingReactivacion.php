@@ -34,7 +34,8 @@ class MarketingReactivacion extends Command
         {--plantilla= : Nombre de la plantilla de WhatsApp aprobada (categoría MARKETING)}
         {--limite=50 : Máximo de destinatarios por corrida}
         {--enviar : Enviar de verdad. Sin esto solo simula y muestra a quién le llegaría}
-        {--prueba= : Manda UN mensaje a este número y no toca la lista real}';
+        {--prueba= : Manda UN mensaje a este número y no toca la lista real}
+        {--usuario=2 : Id del usuario al que se le atribuye el envío (la columna no admite nulos)}';
 
     protected $description = 'Escribe por WhatsApp a los clientes retirados que no han vuelto';
 
@@ -147,7 +148,8 @@ class MarketingReactivacion extends Command
             $aliado,
             collect($destinatarios),
             $nombrePlantilla,
-            ['dias_desde' => $desde, 'dias_hasta' => $hasta]
+            ['dias_desde' => $desde, 'dias_hasta' => $hasta],
+            (int) $this->option('usuario') ?: null
         );
 
         $r['ok'] ? $this->info($r['mensaje']) : $this->error($r['mensaje']);

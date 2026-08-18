@@ -19,8 +19,13 @@ use Illuminate\Support\Collection;
  */
 class EnvioReactivacion
 {
-    /** @return array{ok: bool, envio_id: ?int, enviados: int, mensaje: string} */
-    public static function lanzar(Aliado $aliado, Collection $destinatarios, string $nombrePlantilla, array $ventana = []): array
+    /**
+     * @param  ?int  $usuarioId  Quién lo lanzó. Desde el panel es el usuario en sesión; desde
+     *                           la consola no hay sesión y la columna no admite nulos, así que
+     *                           hay que pasarlo o se cae el insert justo antes de enviar.
+     * @return array{ok: bool, envio_id: ?int, enviados: int, mensaje: string}
+     */
+    public static function lanzar(Aliado $aliado, Collection $destinatarios, string $nombrePlantilla, array $ventana = [], ?int $usuarioId = null): array
     {
         if ($destinatarios->isEmpty()) {
             return ['ok' => false, 'envio_id' => null, 'enviados' => 0, 'mensaje' => 'No hay destinatarios.'];
@@ -39,6 +44,7 @@ class EnvioReactivacion
         $envio = WhatsappEnvioMasivo::create([
             'aliado_id'           => $aliado->id,
             'plantilla_id'        => $plantilla->id,
+            'usuario_id'          => $usuarioId ?? auth()->id() ?? \App\Models\User::where('aliado_id', $aliado->id)->value('id'),
             'tipo_envio'          => 'reactivacion',
             'mes'                 => (int) now('America/Bogota')->format('m'),
             'anio'                => (int) now('America/Bogota')->format('Y'),
