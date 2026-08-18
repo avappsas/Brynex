@@ -393,13 +393,46 @@ class Incapacidad extends BaseModel
     // ════════════════════════════════════════════════════════════════════════
 
     /**
+     * Precargas para quien ya tiene la familia en memoria (el detalle del modal
+     * la trae completa en una sola consulta). Sin esto, cada llamada al semáforo
+     * y a los días de familia vuelve a la BD: abrir el detalle costaba 25
+     * consultas y ~5 s, la mitad repetidas.
+     */
+    protected ?int $diasFamiliaCache = null;
+
+    protected ?\Illuminate\Support\Collection $gestionesFamiliaCache = null;
+
+    protected ?int $diasGestionCache = null;
+
+    /** Días totales de la familia, ya calculados por quien llama. */
+    public function precargarDiasFamilia(int $dias): static
+    {
+        $this->diasFamiliaCache = $dias;
+
+        return $this;
+    }
+
+    /** Gestiones de toda la familia, para que el semáforo no vuelva a consultar. */
+    public function precargarGestionesFamilia(\Illuminate\Support\Collection $gestiones): static
+    {
+        $this->gestionesFamiliaCache = $gestiones;
+        $this->diasGestionCache = null;
+
+        return $this;
+    }
+
+    /**
      * Retorna el total de días de toda la familia (original + prórrogas).
      * Si $this es una prórroga, sube al padre primero.
      */
     public function totalDiasFamilia(): int
     {
+        if ($this->diasFamiliaCache !== null) {
+            return $this->diasFamiliaCache;
+        }
+
         $padreId = $this->incapacidad_padre_id ?? $this->id;
-        return (int) DB::table('incapacidades')
+        return $this->diasFamiliaCache = (int) DB::table('incapacidades')
             ->where(function ($q) use ($padreId) {
                 $q->where('id', $padreId)
                   ->orWhere('incapacidad_padre_id', $padreId);
@@ -483,6 +516,28 @@ class Incapacidad extends BaseModel
      */
     public function diasDesdeUltimaGestion(): int
     {
+        // Memoizado: colorSemaforo() e iconoSemaforo() también lo llaman, y sin
+        // esto cada uno repetía las mismas dos consultas.
+        if ($this->diasGestionCache !== null) {
+            return $this->diasGestionCache;
+        }
+
+        // Con la familia precargada no hace falta ir a la BD: la última gestión
+        // que cuenta es la propia o una del padre marcada "aplica a familia",
+        // que es la misma regla de abajo.
+        if ($this->gestionesFamiliaCache !== null) {
+            $padreId = (int) ($this->incapacidad_padre_id ?? 0);
+            $ultima = $this->gestionesFamiliaCache
+                ->filter(fn ($g) => (int) $g->incapacidad_id === (int) $this->id
+                    || ($padreId && (int) $g->incapacidad_id === $padreId && $g->aplica_a_familia))
+                ->sortByDesc(fn ($g) => $g->created_at)
+                ->first();
+
+            return $this->diasGestionCache = max(0, (int) now()->diffInDays(
+                $ultima->created_at ?? $this->created_at
+            ));
+        }
+
         // Buscar la gestión más reciente propia
         if ($this->relationLoaded('latestGestion')) {
             $ultima = $this->latestGestion;
@@ -503,9 +558,9 @@ class Incapacidad extends BaseModel
         }
 
         if (!$ultima) {
-            return max(0, (int) now()->diffInDays($this->created_at));
+            return $this->diasGestionCache = max(0, (int) now()->diffInDays($this->created_at));
         }
-        return max(0, (int) now()->diffInDays($ultima->created_at));
+        return $this->diasGestionCache = max(0, (int) now()->diffInDays($ultima->created_at));
     }
 
     /**

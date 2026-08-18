@@ -608,9 +608,7 @@ class IncapacidadController extends Controller
     {
         $inc = $this->incapacidadesDelAliado()->with([
             'quienRecibe', 'creadoPor', 'razonSocial',
-            'gestiones.user',
             'documentos.user',
-            'prorrogas.documentos',
             'abonos.bancoCuenta',
         ])->findOrFail($id);
 
@@ -628,17 +626,106 @@ class IncapacidadController extends Controller
             $empresa = DB::table('empresas')->where('id', $cliente->cod_empresa)->value('empresa');
         }
 
-        // Calcular resumen de familia
+        // ── Toda la familia en una sola consulta ────────────────────────────
+        // Original + prórrogas + sus gestiones + quién las registró. De aquí
+        // salen el timeline con filtro por miembro, la tabla de prórrogas, los
+        // días de familia, el semáforo y la gestión reversable.
+        //
+        // Antes cada uno resolvía lo suyo por su cuenta y abrir el detalle
+        // costaba 25 consultas (~5 s con la latencia al SQL Server): el
+        // semáforo repetía sus dos consultas en cada llamada, y el sum de días
+        // y el count de prórrogas iban aparte teniendo la familia a la mano.
+        //
+        // Se arma aquí y no en la vista porque, si el modal se abrió sobre una
+        // prórroga, `prorrogas` viene vacío y no habría forma de ver las
+        // gestiones de sus hermanas.
+        $padreId = $inc->incapacidad_padre_id ?? $inc->id;
+
+        $filas = DB::table('incapacidades as i')
+            ->leftJoin('gestiones_incapacidad as g', 'g.incapacidad_id', '=', 'i.id')
+            ->leftJoin('users as u', 'u.id', '=', 'g.user_id')
+            ->where(function ($q) use ($padreId) {
+                $q->where('i.id', $padreId)->orWhere('i.incapacidad_padre_id', $padreId);
+            })
+            ->whereNull('i.deleted_at')
+            ->orderBy('i.numero_proroga')
+            ->select(
+                'i.*',
+                'g.id as g_id', 'g.incapacidad_id as g_incapacidad_id',
+                'g.aplica_a_familia as g_aplica_a_familia', 'g.tipo as g_tipo',
+                'g.tramite as g_tramite', 'g.respuesta as g_respuesta',
+                'g.estado_resultado as g_estado_resultado', 'g.fecha_recordar as g_fecha_recordar',
+                'g.cambia_estado as g_cambia_estado', 'g.estado_nuevo as g_estado_nuevo',
+                'g.es_reversion as g_es_reversion', 'g.revertida_at as g_revertida_at',
+                'g.revertida_motivo as g_revertida_motivo', 'g.created_at as g_created_at',
+                'u.nombre as g_user_nombre'
+            )
+            ->get();
+
+        // El join repite la incapacidad por cada gestión: una fila por miembro.
+        $familia = Incapacidad::hydrate(
+            $filas->unique('id')
+                ->map(fn ($f) => collect((array) $f)
+                    ->reject(fn ($v, $k) => str_starts_with($k, 'g_'))
+                    ->all())
+                ->values()
+                ->all()
+        );
+
+        $etiqueta = $familia->mapWithKeys(fn ($m) => [
+            (int) $m->id => is_null($m->incapacidad_padre_id) ? 'Original' : "Prórroga {$m->numero_proroga}",
+        ]);
+
+        $gestionesFamilia = $filas->whereNotNull('g_id')
+            ->unique('g_id')
+            ->sortByDesc(fn ($f) => (int) $f->g_id)
+            ->map(function ($f) use ($etiqueta) {
+                $g = new GestionIncapacidad();
+                $g->setRawAttributes([
+                    'id' => $f->g_id,
+                    'incapacidad_id' => $f->g_incapacidad_id,
+                    'aplica_a_familia' => $f->g_aplica_a_familia,
+                    'tipo' => $f->g_tipo,
+                    'tramite' => $f->g_tramite,
+                    'respuesta' => $f->g_respuesta,
+                    'estado_resultado' => $f->g_estado_resultado,
+                    'fecha_recordar' => $f->g_fecha_recordar,
+                    'cambia_estado' => $f->g_cambia_estado,
+                    'estado_nuevo' => $f->g_estado_nuevo,
+                    'es_reversion' => $f->g_es_reversion,
+                    'revertida_at' => $f->g_revertida_at,
+                    'revertida_motivo' => $f->g_revertida_motivo,
+                    'created_at' => $f->g_created_at,
+                    // De qué miembro viene: lo pinta el chip del timeline.
+                    'origen_label' => $etiqueta[(int) $f->g_incapacidad_id] ?? '—',
+                ], true);
+
+                $g->setRelation('user', $f->g_user_nombre
+                    ? (new User)->forceFill(['nombre' => $f->g_user_nombre])
+                    : null);
+
+                return $g;
+            })
+            ->values();
+
+        // Relaciones y cálculos que antes consultaban por su cuenta, servidos
+        // desde lo que ya está en memoria.
+        $inc->setRelation('gestiones', $gestionesFamilia
+            ->filter(fn ($g) => (int) $g->incapacidad_id === (int) $inc->id)->values());
+        $inc->setRelation('prorrogas', $familia
+            ->filter(fn ($m) => (int) $m->incapacidad_padre_id === (int) $inc->id)->values());
+        $inc->precargarDiasFamilia((int) $familia->sum('dias_incapacidad'))
+            ->precargarGestionesFamilia($gestionesFamilia);
+
         $familiaDias = $inc->totalDiasFamilia();
-        $numProrrogas = $inc->numeroProrrogas();
+        $numProrrogas = $familia->filter(fn ($m) => ! is_null($m->incapacidad_padre_id))->count();
 
         // Valor esperado total: original + todas las prórrogas
         $totalValorEsperado = (float) ($inc->valor_esperado ?? 0)
             + (float) $inc->prorrogas->sum('valor_esperado');
 
         // Total ya pagado (abonos tipo entrada_incapacidad en la incapacidad original)
-        $totalPagado = DB::table('abonos_incapacidades')
-            ->where('incapacidad_id', $inc->id)
+        $totalPagado = (float) $inc->abonos
             ->whereIn('tipo', ['entrada_incapacidad', 'pago_cliente'])
             ->sum('valor');
 
@@ -647,33 +734,9 @@ class IncapacidadController extends Controller
             ->whereNotIn('estado', self::ESTADOS_FINALES)
             ->count();
 
-        // ── Familia y sus gestiones ─────────────────────────────────────────
-        // La pestaña Gestiones del modal muestra el timeline de toda la familia
-        // con un filtro por miembro, así que se arma aquí (y no en la vista):
-        // si el modal se abrió sobre una prórroga, `prorrogas` viene vacío y
-        // sin esto no habría forma de ver las gestiones de sus hermanas.
-        $padreId = $inc->incapacidad_padre_id ?? $inc->id;
-
-        $familia = Incapacidad::where(function ($q) use ($padreId) {
-            $q->where('id', $padreId)->orWhere('incapacidad_padre_id', $padreId);
-        })
-            ->orderBy('numero_proroga')
-            ->get(['id', 'incapacidad_padre_id', 'numero_proroga', 'fecha_inicio',
-                'fecha_terminacion', 'dias_incapacidad', 'estado']);
-
-        $etiqueta = $familia->mapWithKeys(fn ($m) => [
-            $m->id => is_null($m->incapacidad_padre_id) ? 'Original' : "Prórroga {$m->numero_proroga}",
-        ]);
-
-        $gestionesFamilia = GestionIncapacidad::with('user:id,nombre')
-            ->whereIn('incapacidad_id', $familia->pluck('id'))
-            ->orderByDesc('id')
-            ->get()
-            ->each(fn ($g) => $g->origen_label = $etiqueta[$g->incapacidad_id] ?? '—');
-
         $miembrosFamilia = $familia->map(fn ($m) => [
             'id' => $m->id,
-            'label' => $etiqueta[$m->id],
+            'label' => $etiqueta[(int) $m->id],
             'es_padre' => is_null($m->incapacidad_padre_id),
             'numero_proroga' => $m->numero_proroga,
             'fecha_inicio' => $m->fecha_inicio,
@@ -693,11 +756,11 @@ class IncapacidadController extends Controller
             'num_prorrogas' => $numProrrogas,
             'alerta_180' => $inc->alertaDias180(),
             'total_valor_esperado' => $totalValorEsperado,
-            'total_pagado' => (float) $totalPagado,
+            'total_pagado' => $totalPagado,
             'prorrogas_pendientes' => $prorrogasPendientes,
             // Única gestión que se puede deshacer hoy (null si no hay). La regla
             // vive en el controlador para que la vista no la duplique.
-            'gestion_reversable_id' => $this->gestionReversable($inc)?->id,
+            'gestion_reversable_id' => $this->gestionReversable($inc, $gestionesFamilia)?->id,
             // Timeline completo de la familia + los miembros para los chips.
             'gestiones_familia' => $gestionesFamilia,
             'familia_miembros' => $miembrosFamilia,
@@ -1109,14 +1172,21 @@ class IncapacidadController extends Controller
      * Excluye las gestiones de reversión: deshacer una reversión sería un
      * "rehacer" que no puede reconstruir los gastos ya borrados.
      */
-    private function gestionReversable(Incapacidad $inc): ?GestionIncapacidad
+    private function gestionReversable(Incapacidad $inc, ?\Illuminate\Support\Collection $gestiones = null): ?GestionIncapacidad
     {
-        $g = GestionIncapacidad::where('incapacidad_id', $inc->id)
-            ->where('cambia_estado', true)
-            ->where('es_reversion', false)
-            ->whereNull('revertida_at')
-            ->orderByDesc('id')
-            ->first();
+        // Con las gestiones de la familia ya en memoria (detalle del modal) se
+        // filtra ahí mismo; el resto de llamadas siguen consultando.
+        $g = $gestiones
+            ? $gestiones->filter(fn ($x) => (int) $x->incapacidad_id === (int) $inc->id
+                && $x->cambia_estado && ! $x->es_reversion && is_null($x->revertida_at))
+                ->sortByDesc(fn ($x) => (int) $x->id)
+                ->first()
+            : GestionIncapacidad::where('incapacidad_id', $inc->id)
+                ->where('cambia_estado', true)
+                ->where('es_reversion', false)
+                ->whereNull('revertida_at')
+                ->orderByDesc('id')
+                ->first();
 
         if (! $g || ! $g->estado_nuevo) {
             return null;
