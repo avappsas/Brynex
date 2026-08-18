@@ -957,6 +957,7 @@ Route::middleware('auth')->group(function () {
 
         // ── Reactivación de retirados (solo informe; el envío va por comando) ──
         Route::get('reactivacion', [\App\Http\Controllers\Admin\MarketingReactivacionController::class, 'index'])->name('reactivacion');
+        Route::post('reactivacion/enviar', [\App\Http\Controllers\Admin\MarketingReactivacionController::class, 'enviar'])->name('reactivacion.enviar');
 
         // ── Campañas y lanzamiento de tandas ───────────────────────────────────
         Route::get('campanas', [$campanas, 'index'])->name('campanas.index');

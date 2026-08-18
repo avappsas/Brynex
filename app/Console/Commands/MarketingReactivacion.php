@@ -100,50 +100,15 @@ class MarketingReactivacion extends Command
             return self::FAILURE;
         }
 
-        $plantilla = WhatsappPlantilla::where('aliado_id', $aliado->id)
-            ->where('nombre', $nombrePlantilla)
-            ->where('estado', 'approved')
-            ->first();
+        $r = \App\Services\Marketing\EnvioReactivacion::lanzar(
+            $aliado,
+            collect($destinatarios),
+            $nombrePlantilla,
+            ['dias_desde' => $desde, 'dias_hasta' => $hasta]
+        );
 
-        if (!$plantilla) {
-            $this->error("No hay una plantilla aprobada llamada '{$nombrePlantilla}' en este aliado.");
-            $this->line('Aprobadas hoy: ' . WhatsappPlantilla::where('aliado_id', $aliado->id)->where('estado', 'approved')->pluck('nombre')->implode(', '));
-            return self::FAILURE;
-        }
+        $r['ok'] ? $this->info($r['mensaje']) : $this->error($r['mensaje']);
 
-        // La ley no distingue entre "mi campaña" y "un envío suelto": si no es hora de
-        // contactar, no se contacta. El envío queda creado y se despacha cuando abra.
-        if (!VentanaContactoLey2300::permite()) {
-            $this->warn('Fuera del horario de la Ley 2300: ' . VentanaContactoLey2300::motivoBloqueo());
-            $this->warn('Los mensajes quedan encolados y salen en la próxima apertura (' . VentanaContactoLey2300::proximaApertura()->format('d/m H:i') . ').');
-        }
-
-        $envio = WhatsappEnvioMasivo::create([
-            'aliado_id'           => $aliado->id,
-            'plantilla_id'        => $plantilla->id,
-            'tipo_envio'          => 'reactivacion',
-            'mes'                 => (int) now('America/Bogota')->format('m'),
-            'anio'                => (int) now('America/Bogota')->format('Y'),
-            'total_destinatarios' => $destinatarios->count(),
-            'estado'              => 'en_proceso',
-            'parametros_json'     => ['dias_desde' => $desde, 'dias_hasta' => $hasta],
-        ]);
-
-        foreach ($destinatarios as $d) {
-            $detalle = WhatsappEnvioMasivoDetalle::create([
-                'envio_id'            => $envio->id,
-                'contrato_id'         => $d->contrato_id,
-                'wa_numero'           => $d->telefono,
-                'nombre_destinatario' => $d->nombre,
-                'estado'              => 'pendiente',
-            ]);
-
-            \App\Jobs\WhatsappEnvioMasivoJob::dispatch($detalle->id);
-        }
-
-        $this->info("Campaña #{$envio->id} encolada: {$destinatarios->count()} mensajes.");
-        $this->line('El worker los despacha respetando el horario y las bajas.');
-
-        return self::SUCCESS;
+        return $r['ok'] ? self::SUCCESS : self::FAILURE;
     }
 }

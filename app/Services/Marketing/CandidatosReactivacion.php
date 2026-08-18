@@ -82,9 +82,10 @@ class CandidatosReactivacion
         $aplazados = MarketingAplazado::vigentesDe($aliadoId, $contactables);
         $contactables = array_values(array_diff($contactables, $aplazados));
 
-        // Y a quien ya se le mandó esta campaña no se le repite. Sin esto, correr el comando
-        // dos veces le escribe de nuevo a la misma gente.
-        $yaEnviados = self::yaContactados($aliadoId, $contactables);
+        // A quien ya se le escribió ESTE MES no se le vuelve a escribir. No es un bloqueo
+        // permanente: quien dejó el mensaje en visto puede estar en otro momento el mes que
+        // viene. Insistir dentro del mismo mes es lo que se siente acoso.
+        $yaEnviados = self::contactadosEsteMes($aliadoId, $contactables);
         $contactables = array_values(array_diff($contactables, $yaEnviados));
 
         $mapa = array_flip($contactables);
@@ -101,8 +102,8 @@ class CandidatosReactivacion
         ];
     }
 
-    /** Teléfonos a los que ya se les mandó una tanda de reactivación. */
-    private static function yaContactados(int $aliadoId, array $telefonos): array
+    /** Teléfonos a los que ya se les mandó reactivación dentro del mes en curso. */
+    public static function contactadosEsteMes(int $aliadoId, array $telefonos): array
     {
         if (!$telefonos) {
             return [];
@@ -110,6 +111,7 @@ class CandidatosReactivacion
 
         $envios = WhatsappEnvioMasivo::where('aliado_id', $aliadoId)
             ->where('tipo_envio', 'reactivacion')
+            ->where('created_at', '>=', now('America/Bogota')->startOfMonth())
             ->pluck('id');
 
         if ($envios->isEmpty()) {

@@ -36,10 +36,33 @@
         <button type="submit" style="padding:.45rem 1rem;border:none;border-radius:8px;background:#0f172a;color:#fff;font-size:.8rem;cursor:pointer;">Ver</button>
     </form>
 
-    <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:.85rem 1rem;margin-bottom:1.5rem;font-size:.8rem;color:#92400e;line-height:1.5;">
-        El envío no se dispara desde aquí. Son mensajes a personas reales con costo por plantilla, así que sale por comando:
-        <code style="background:#fff;padding:.15rem .4rem;border-radius:6px;">php artisan marketing:reactivacion --aliado=brygar --plantilla=reactivacion_afiliacion --limite=10 --enviar</code>
-    </div>
+    @if(session('exito'))
+        <div style="background:#dcfce7;border:1px solid #86efac;border-radius:12px;padding:.85rem 1rem;margin-bottom:1.25rem;font-size:.85rem;color:#166534;">{{ session('exito') }}</div>
+    @endif
+    @if(session('error'))
+        <div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:12px;padding:.85rem 1rem;margin-bottom:1.25rem;font-size:.85rem;color:#991b1b;">{{ session('error') }}</div>
+    @endif
+
+    @if($pendientes->isNotEmpty())
+        <form method="POST" action="{{ route('admin.marketing.reactivacion.enviar') }}"
+              onsubmit="return confirm('Se van a enviar mensajes de WhatsApp a ' + this.cantidad.value + ' persona(s) reales. Esto no se puede deshacer. ¿Continuar?');"
+              style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:1rem 1.15rem;margin-bottom:1.5rem;">
+            @csrf
+            <input type="hidden" name="desde" value="{{ $desde }}">
+            <input type="hidden" name="hasta" value="{{ $hasta }}">
+            <input type="hidden" name="plantilla" value="{{ $plantilla }}">
+            <div style="display:flex;gap:.75rem;align-items:end;flex-wrap:wrap;">
+                <label style="font-size:.8rem;color:#475569;">¿A cuántos les escribimos ahora?
+                    <input type="number" name="cantidad" value="10" min="1" max="{{ min(200, $pendientes->count()) }}"
+                           style="display:block;width:110px;padding:.4rem .55rem;border:1px solid #cbd5e1;border-radius:8px;font-size:.9rem;">
+                </label>
+                <button type="submit" style="padding:.55rem 1.25rem;border:none;border-radius:8px;background:#16a34a;color:#fff;font-size:.85rem;font-weight:600;cursor:pointer;">
+                    Enviar por WhatsApp
+                </button>
+                <span style="font-size:.75rem;color:#64748b;">Se toman los primeros de la fila. Plantilla: <code>{{ $plantilla }}</code></span>
+            </div>
+        </form>
+    @endif
 
     <h2 style="font-size:.95rem;font-weight:700;color:#0f172a;margin:0 0 .6rem;">Los siguientes en la fila</h2>
 
@@ -71,6 +94,31 @@
         @if($pendientes->count() > 50)
             <p style="font-size:.78rem;color:#64748b;margin:.6rem 0 0;">Se muestran los primeros 50 de {{ $pendientes->count() }}.</p>
         @endif
+    @endif
+
+    @if($enviadosMes->isNotEmpty())
+        <h2 style="font-size:.95rem;font-weight:700;color:#0f172a;margin:1.75rem 0 .6rem;">Ya contactados este mes ({{ $enviadosMes->count() }})</h2>
+        <p style="font-size:.78rem;color:#64748b;margin:0 0 .6rem;">No vuelven a la fila hasta el mes entrante, aunque no hayan respondido.</p>
+        <div style="background:#fff;border-radius:12px;box-shadow:0 1px 6px rgba(0,0,0,.05);overflow:hidden;">
+            <table style="width:100%;border-collapse:collapse;font-size:.82rem;">
+                <thead>
+                    <tr style="background:#f8fafc;color:#475569;text-align:left;">
+                        <th style="padding:.6rem .8rem;font-weight:600;">Nombre</th>
+                        <th style="padding:.6rem .8rem;font-weight:600;">Celular</th>
+                        <th style="padding:.6rem .8rem;font-weight:600;">Estado</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach($enviadosMes as $d)
+                        <tr style="border-top:1px solid #f1f5f9;">
+                            <td style="padding:.55rem .8rem;color:#0f172a;">{{ $d->nombre_destinatario }}</td>
+                            <td style="padding:.55rem .8rem;color:#475569;">{{ $d->wa_numero }}</td>
+                            <td style="padding:.55rem .8rem;color:#475569;">{{ $d->estado }}</td>
+                        </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </div>
     @endif
 
     @if($envios->isNotEmpty())
