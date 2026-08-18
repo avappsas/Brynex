@@ -228,11 +228,12 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.78rem}
             </th>
 
             {{-- Modalidad --}}
-            <th style="min-width:110px">
+            <th style="min-width:85px">
                 <form method="GET" action="{{ $ruta }}" style="margin:0">
                     @foreach(request()->except(['tipo_modalidad_id','page']) as $k => $v)<input type="hidden" name="{{ $k }}" value="{{ $v }}">@endforeach
+                    {{-- "Mod." y no "Tipo": la tercera columna ya se llama así --}}
                     <select name="tipo_modalidad_id" onchange="this.form.submit()" class="th-select {{ $modalSel !== null ? 'activo' : '' }}">
-                        <option value="">↓ Modalidad</option>
+                        <option value="">↓ Mod.</option>
                         @if($haySinModal)
                         <option value="sin" @selected($modalSel === 'sin')>— Sin modalidad</option>
                         @endif
