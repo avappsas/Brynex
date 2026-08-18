@@ -152,6 +152,9 @@ class WhatsappEnvioMasivoJob implements ShouldQueue
                         'tipo'                 => 'template',
                         'plantilla_id'         => $plantilla->id,
                         'plantilla_parametros' => $params,
+                        // El texto tal como le llegó: sin esto el chat del panel muestra el
+                        // mensaje vacío y quien atiende la respuesta no ve a qué contestan.
+                        'contenido'            => $plantilla->cuerpoRenderizado($params),
                         'estado'               => 'enviado',
                         'usuario_id'           => $envio->usuario_id,
                     ]);

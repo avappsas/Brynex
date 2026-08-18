@@ -1029,33 +1029,14 @@ function verDetalle(id){
                     <span class="badge badge-info">📅 Total familia: ${data.familia_dias} días</span>
                    </div>` : '';
 
-            // Gestiones (timeline)
-            const gestionReversableId = data.gestion_reversable_id || null;
-            const gestiones = (inc.gestiones||[]).map(g=>{
-                const revertida = !!g.revertida_at;
-                // El botón solo se pinta en la gestión que el backend declaró
-                // reversable: la última que movió el estado y que sigue vigente.
-                const btnRevertir = (PUEDE_REVERSAR && !revertida && g.id === gestionReversableId)
-                    ? `<button class="btn btn-danger btn-sm" style="margin-top:.4rem;font-size:.7rem"
-                               onclick="abrirModalReversion(${inc.id})"
-                               title="Deshacer este cambio de estado y anular lo que generó">↩️ Reversar estado</button>`
-                    : '';
-                const avisoRevertida = revertida
-                    ? `<div style="margin-top:.35rem;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:.3rem .5rem;font-size:.7rem;color:#991b1b">
-                           ↩️ Reversada el ${formatFechaLarga(g.revertida_at)}${g.revertida_motivo?` — ${g.revertida_motivo}`:''}
-                       </div>`
-                    : '';
-                return `
-                <div class="timeline-item"${revertida?' style="opacity:.6"':''}>
-                    <div class="tl-dot">${g.es_reversion?'↩️':iconoTipoGestion(g.tipo)}</div>
-                    <div class="tl-content">
-                        <div class="tl-tipo">${g.tipo}${g.aplica_a_familia?' <span style="color:#d97706">· Familia</span>':''}</div>
-                        <div class="tl-tramite"${revertida?' style="text-decoration:line-through"':''}>${g.tramite || g.respuesta || '—'}</div>
-                        <div class="tl-meta">${g.user?.nombre||'Sistema'} · ${formatFechaLarga(g.created_at)} ${g.fecha_recordar?`· 🔔 Recordar: ${formatFechaLarga(g.fecha_recordar)}`:''}${g.estado_resultado?` · Estado: ${labelEstado(g.estado_resultado)}`:''}</div>
-                        ${avisoRevertida}${btnRevertir}
-                    </div>
-                </div>`;
-            }).join('');
+            // Gestiones (timeline) — se pintan aparte porque la pestaña filtra
+            // por miembro de la familia. Todo lo que necesita el render vive en
+            // estas globales; el HTML lo arma renderGestiones().
+            GEST.familia   = data.gestiones_familia || inc.gestiones || [];
+            GEST.miembros  = data.familia_miembros || [];
+            GEST.incActivo = inc.id;
+            GEST.reversable = data.gestion_reversable_id || null;
+            GEST.filtro    = 'todas';
 
             // Prórrogas — tabla con original + prórrogas
             const _bcMap = {success:'#d1fae5;color:#065f46',danger:'#fee2e2;color:#991b1b',warning:'#fef3c7;color:#92400e',primary:'#dbeafe;color:#1e40af',info:'#cffafe;color:#155e75',secondary:'#f1f5f9;color:#475569'};
@@ -1118,7 +1099,7 @@ function verDetalle(id){
                     <button class="tab-btn active" onclick="switchTab(this,'tabInfo')">📋 Datos</button>
                     <button class="tab-btn" onclick="switchTab(this,'tabDocumentos');cargarDocsFamilia(${inc.id})">📎 Documentos</button>
                     ${data.num_prorrogas>0?`<button class="tab-btn" onclick="switchTab(this,'tabProrrogas')">📄 Prórrogas (${data.num_prorrogas})</button>`:''}
-                    <button class="tab-btn" onclick="switchTab(this,'tabGestiones')">📞 Gestiones (${(inc.gestiones||[]).length})</button>
+                    <button class="tab-btn" onclick="switchTab(this,'tabGestiones')">📞 Gestiones (${GEST.familia.length})</button>
                     <button class="tab-btn" onclick="switchTab(this,'tabPago')">💰 Anticipo/Préstamo</button>
                 </div>
 
@@ -1177,7 +1158,8 @@ function verDetalle(id){
 
                 <div id="tabGestiones" class="tab-pane">
                     <button class="btn btn-primary btn-sm" style="margin-bottom:.8rem" onclick="registrarGestion(${inc.id})">📞 Nueva Gestión</button>
-                    <div class="timeline">${gestiones||'<div style="color:#94a3b8;font-size:.82rem">Sin gestiones aún.</div>'}</div>
+                    <div id="gestionesChips" style="display:flex;gap:.35rem;flex-wrap:wrap;margin-bottom:.8rem"></div>
+                    <div class="timeline" id="gestionesTimeline"></div>
                 </div>
 
                 ${data.num_prorrogas>0?`<div id="tabProrrogas" class="tab-pane">${prorrogas}</div>`:''}
@@ -1199,9 +1181,101 @@ function verDetalle(id){
                     </div>
                 </div>`;
 
+            renderGestiones();
+
             // Guardar ID activo
             document.getElementById('modalDetalle').dataset.incId = id;
         });
+}
+
+// ── Pestaña Gestiones: timeline de toda la familia con filtro por miembro ──
+// Las gestiones marcadas "aplica a familia" cubren a todos los miembros, así
+// que salen en cualquier filtro (no solo en el de la incapacidad donde se
+// registraron) y además tienen su propio chip.
+const GEST = {familia: [], miembros: [], incActivo: null, reversable: null, filtro: 'todas'};
+
+function gestionesVisibles(filtro){
+    const gs = GEST.familia || [];
+    if (filtro === 'todas')   return gs;
+    if (filtro === 'familia') return gs.filter(g => !!g.aplica_a_familia);
+    return gs.filter(g => String(g.incapacidad_id) === String(filtro) || !!g.aplica_a_familia);
+}
+
+function filtrarGestiones(filtro){
+    GEST.filtro = filtro;
+    renderGestiones();
+}
+
+function renderGestiones(){
+    const cont  = document.getElementById('gestionesTimeline');
+    const chips = document.getElementById('gestionesChips');
+    if (!cont) return;
+
+    // Chips: solo tienen sentido si la familia tiene más de un miembro.
+    if (chips) {
+        const miembros = GEST.miembros || [];
+        if (miembros.length < 2) {
+            chips.innerHTML = '';
+        } else {
+            const nFam = (GEST.familia||[]).filter(g => !!g.aplica_a_familia).length;
+            let html = chipGestion('todas', '📁 Todas', GEST.familia.length);
+            miembros.forEach(m => {
+                const icono = m.es_padre ? '🏥' : '📄';
+                // Ojo: sqlsrv devuelve los ids como string en el JSON, así que
+                // toda comparación de ids va por String().
+                html += chipGestion(m.id, `${icono} ${m.label}`, gestionesVisibles(m.id).length,
+                                    String(m.id) === String(GEST.incActivo));
+            });
+            if (nFam) html += chipGestion('familia', '👨‍👩‍👦 Familia', nFam);
+            chips.innerHTML = html;
+        }
+    }
+
+    const visibles = gestionesVisibles(GEST.filtro);
+    const varios   = (GEST.miembros || []).length > 1;
+
+    cont.innerHTML = visibles.map(g => {
+        const revertida = !!g.revertida_at;
+        // El botón solo se pinta en la gestión que el backend declaró
+        // reversable, y solo sobre la incapacidad que está abierta: reversar
+        // una gestión de otro miembro se hace abriendo ese miembro.
+        const btnRevertir = (PUEDE_REVERSAR && !revertida && g.id === GEST.reversable
+                             && String(g.incapacidad_id) === String(GEST.incActivo))
+            ? `<button class="btn btn-danger btn-sm" style="margin-top:.4rem;font-size:.7rem"
+                       onclick="abrirModalReversion(${GEST.incActivo})"
+                       title="Deshacer este cambio de estado y anular lo que generó">↩️ Reversar estado</button>`
+            : '';
+        const avisoRevertida = revertida
+            ? `<div style="margin-top:.35rem;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:.3rem .5rem;font-size:.7rem;color:#991b1b">
+                   ↩️ Reversada el ${formatFechaLarga(g.revertida_at)}${g.revertida_motivo?` — ${g.revertida_motivo}`:''}
+               </div>`
+            : '';
+        // De qué incapacidad viene: solo si hay más de una en la familia.
+        const origen = varios
+            ? `<span onclick="filtrarGestiones(${g.incapacidad_id})" title="Ver solo las gestiones de ${g.origen_label}"
+                     style="cursor:pointer;background:#f1f5f9;color:#475569;border-radius:999px;padding:.1rem .45rem;font-size:.65rem;font-weight:700;margin-left:.35rem">${g.origen_label}</span>`
+            : '';
+        return `
+        <div class="timeline-item"${revertida?' style="opacity:.6"':''}>
+            <div class="tl-dot">${g.es_reversion?'↩️':iconoTipoGestion(g.tipo)}</div>
+            <div class="tl-content">
+                <div class="tl-tipo">${g.tipo}${g.aplica_a_familia?' <span style="color:#d97706">· Familia</span>':''}${origen}</div>
+                <div class="tl-tramite"${revertida?' style="text-decoration:line-through"':''}>${g.tramite || g.respuesta || '—'}</div>
+                <div class="tl-meta">${g.user?.nombre||'Sistema'} · ${formatFechaLarga(g.created_at)} ${g.fecha_recordar?`· 🔔 Recordar: ${formatFechaLarga(g.fecha_recordar)}`:''}${g.estado_resultado?` · Estado: ${labelEstado(g.estado_resultado)}`:''}</div>
+                ${avisoRevertida}${btnRevertir}
+            </div>
+        </div>`;
+    }).join('') || '<div style="color:#94a3b8;font-size:.82rem">Sin gestiones para este filtro.</div>';
+}
+
+function chipGestion(valor, label, n, esActiva){
+    const activo = String(GEST.filtro) === String(valor);
+    const val = typeof valor === 'number' ? valor : `'${valor}'`;
+    return `<button type="button" onclick="filtrarGestiones(${val})"
+        style="border:1px solid ${activo?'#2563eb':'#e2e8f0'};background:${activo?'#eff6ff':'#fff'};
+               color:${activo?'#1e40af':'#475569'};padding:.28rem .65rem;border-radius:999px;
+               font-size:.72rem;font-weight:600;cursor:pointer;white-space:nowrap${esActiva&&!activo?';box-shadow:0 0 0 1px #bfdbfe inset':''}">
+        ${label} <span style="opacity:.6">(${n})</span></button>`;
 }
 
 function switchTab(btn, tabId){

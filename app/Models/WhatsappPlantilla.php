@@ -118,6 +118,24 @@ class WhatsappPlantilla extends BaseModel
      *                                    header_valor no está guardado en la plantilla
      *                                    (p.ej. cobro_header_imagen de WhatsappConfig).
      */
+    /**
+     * El cuerpo con las variables ya reemplazadas — lo que la persona ve en su teléfono.
+     *
+     * Se guarda junto al mensaje porque, sin esto, el chat del panel muestra los envíos por
+     * plantilla en blanco: cuando el cliente responde, el asesor abre la conversación y no
+     * sabe a qué le está contestando, que es justo cuando más falta hace el contexto.
+     */
+    public function cuerpoRenderizado(array $parametros): string
+    {
+        $texto = (string) $this->cuerpo;
+
+        foreach (array_values($parametros) as $i => $valor) {
+            $texto = str_replace('{{' . ($i + 1) . '}}', (string) $valor, $texto);
+        }
+
+        return $texto;
+    }
+
     public function construirComponentes(array $parametros, ?string $headerImageUrl = null): array
     {
         $componentes = [];

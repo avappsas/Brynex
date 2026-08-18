@@ -610,7 +610,6 @@ class IncapacidadController extends Controller
             'quienRecibe', 'creadoPor', 'razonSocial',
             'gestiones.user',
             'documentos.user',
-            'prorrogas.gestiones.user',
             'prorrogas.documentos',
             'abonos.bancoCuenta',
         ])->findOrFail($id);
@@ -648,6 +647,41 @@ class IncapacidadController extends Controller
             ->whereNotIn('estado', self::ESTADOS_FINALES)
             ->count();
 
+        // ── Familia y sus gestiones ─────────────────────────────────────────
+        // La pestaña Gestiones del modal muestra el timeline de toda la familia
+        // con un filtro por miembro, así que se arma aquí (y no en la vista):
+        // si el modal se abrió sobre una prórroga, `prorrogas` viene vacío y
+        // sin esto no habría forma de ver las gestiones de sus hermanas.
+        $padreId = $inc->incapacidad_padre_id ?? $inc->id;
+
+        $familia = Incapacidad::where(function ($q) use ($padreId) {
+            $q->where('id', $padreId)->orWhere('incapacidad_padre_id', $padreId);
+        })
+            ->orderBy('numero_proroga')
+            ->get(['id', 'incapacidad_padre_id', 'numero_proroga', 'fecha_inicio',
+                'fecha_terminacion', 'dias_incapacidad', 'estado']);
+
+        $etiqueta = $familia->mapWithKeys(fn ($m) => [
+            $m->id => is_null($m->incapacidad_padre_id) ? 'Original' : "Prórroga {$m->numero_proroga}",
+        ]);
+
+        $gestionesFamilia = GestionIncapacidad::with('user:id,nombre')
+            ->whereIn('incapacidad_id', $familia->pluck('id'))
+            ->orderByDesc('id')
+            ->get()
+            ->each(fn ($g) => $g->origen_label = $etiqueta[$g->incapacidad_id] ?? '—');
+
+        $miembrosFamilia = $familia->map(fn ($m) => [
+            'id' => $m->id,
+            'label' => $etiqueta[$m->id],
+            'es_padre' => is_null($m->incapacidad_padre_id),
+            'numero_proroga' => $m->numero_proroga,
+            'fecha_inicio' => $m->fecha_inicio,
+            'fecha_terminacion' => $m->fecha_terminacion,
+            'dias_incapacidad' => $m->dias_incapacidad,
+            'estado' => $m->estado,
+        ])->values();
+
         return response()->json([
             'incapacidad' => $inc,
             'cliente' => $cliente,
@@ -664,6 +698,9 @@ class IncapacidadController extends Controller
             // Única gestión que se puede deshacer hoy (null si no hay). La regla
             // vive en el controlador para que la vista no la duplique.
             'gestion_reversable_id' => $this->gestionReversable($inc)?->id,
+            // Timeline completo de la familia + los miembros para los chips.
+            'gestiones_familia' => $gestionesFamilia,
+            'familia_miembros' => $miembrosFamilia,
         ]);
     }
 
