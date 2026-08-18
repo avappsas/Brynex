@@ -855,6 +855,10 @@ Route::middleware('auth')->group(function () {
         Route::post('/{id}/link', [$ic, 'generarLink'])->name('link.generar');
         Route::post('/{id}/abono', [$ic, 'storeAbono'])->name('abono.store');
         Route::post('/{id}/prorroga', [$ic, 'storeProrroga'])->name('prorroga.store');
+        // Vecinas por fechas (aviso al crear y modal de unir) + unir dos que
+        // quedaron separadas.
+        Route::get('/api/vecinas', [$ic, 'vecinas'])->name('api.vecinas');
+        Route::post('/{id}/unir-prorroga', [$ic, 'unirProrroga'])->name('unir.prorroga');
         Route::get('/{id}/cuentas-rs', [$ic, 'cuentasRazonSocial'])->name('cuentas.rs');
         // Deshacer el último cambio de estado y los movimientos de plata que
         // generó. Permiso aparte: ningún rol lo trae de fábrica, lo hereda el

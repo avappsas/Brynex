@@ -128,6 +128,11 @@
                     </div>
                 </div>
 
+                {{-- Aviso de posible prórroga: aparece solo si la persona ya tiene
+                     una incapacidad cuyo período toca al que se está registrando.
+                     Quien digita tiene el soporte a la vista y es quien decide. --}}
+                <div id="avisoProrroga" style="display:none;margin-bottom:.85rem"></div>
+
                 {{-- Tipo Entidad + Entidad en una fila --}}
                 <div class="section-title" style="margin-top:.7rem">🏦 Entidad Responsable</div>
                 

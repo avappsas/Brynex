@@ -443,7 +443,9 @@ class IncapacidadController extends Controller
             'fecha_inicio' => $request->fecha_inicio,
             'fecha_terminacion' => $fechaTerminacion,
             'fecha_recibido' => $request->fecha_recibido,
-            'prorroga' => $request->boolean('prorroga'),
+            // Si se colgó de un padre es prórroga, marque o no la casilla: de eso
+            // depende el valor esperado en EPS (la prórroga no descuenta 2 días).
+            'prorroga' => $padreId ? true : $request->boolean('prorroga'),
             'tipo_entidad' => $request->tipo_entidad,
             'entidad_responsable_id' => $request->entidad_responsable_id ?: null,
             'entidad_nombre' => $entidadNombre,
@@ -680,7 +682,7 @@ class IncapacidadController extends Controller
             ->unique('g_id')
             ->sortByDesc(fn ($f) => (int) $f->g_id)
             ->map(function ($f) use ($etiqueta) {
-                $g = new GestionIncapacidad();
+                $g = new GestionIncapacidad;
                 $g->setRawAttributes([
                     'id' => $f->g_id,
                     'incapacidad_id' => $f->g_incapacidad_id,
@@ -1726,6 +1728,149 @@ class IncapacidadController extends Controller
             'message' => 'Registrado correctamente.',
             'saldo_pendiente' => $inc->saldo_pendiente,
             'total_prestado' => $inc->total_prestado,
+        ]);
+    }
+
+    // ── VECINAS: INCAPACIDADES DE LA MISMA PERSONA QUE TOCAN UN PERÍODO ──────
+    /**
+     * Incapacidades del aliado activo para una cédula, con qué tan pegadas están
+     * a la fecha de inicio que se consulta.
+     *
+     * Alimenta dos cosas: el aviso al crear ("esta persona ya tiene una que
+     * termina el día anterior, ¿es prórroga?") y el modal de unir. La decisión
+     * NUNCA se toma sola: una incapacidad que arranca al día siguiente puede ser
+     * otro diagnóstico, y ligarla cambia el valor esperado en EPS.
+     */
+    public function vecinas(Request $request)
+    {
+        $request->validate([
+            'cedula' => 'required|string|max:20',
+            'fecha_inicio' => 'nullable|date',
+            'excluir_id' => 'nullable|integer',
+            'todas' => 'nullable|boolean',
+        ]);
+
+        $incs = $this->incapacidadesDelAliado()
+            ->where('cedula_usuario', $request->cedula)
+            ->when($request->excluir_id, fn ($q) => $q->where('id', '!=', $request->excluir_id))
+            ->orderBy('fecha_inicio')
+            ->get(['id', 'incapacidad_padre_id', 'numero_proroga', 'fecha_inicio', 'fecha_terminacion',
+                'dias_incapacidad', 'tipo_entidad', 'entidad_nombre', 'estado', 'estado_pago',
+                'valor_esperado', 'diagnostico']);
+
+        $fecha = $request->fecha_inicio ? \Carbon\Carbon::parse($request->fecha_inicio)->startOfDay() : null;
+
+        $items = $incs->map(function ($i) use ($fecha) {
+            // Días entre el fin de la existente y el inicio que se consulta:
+            // 1 = arranca justo al día siguiente, 0 = el mismo día que termina,
+            // negativo = se solapan.
+            $gap = ($fecha && $i->fecha_terminacion)
+                ? (int) $i->fecha_terminacion->copy()->startOfDay()->diffInDays($fecha, false)
+                : null;
+
+            return [
+                'id' => $i->id,
+                'label' => is_null($i->incapacidad_padre_id) ? 'Original' : "Prórroga {$i->numero_proroga}",
+                'fecha_inicio' => $i->fecha_inicio?->format('Y-m-d'),
+                'fecha_terminacion' => $i->fecha_terminacion?->format('Y-m-d'),
+                'dias_incapacidad' => $i->dias_incapacidad,
+                'tipo_entidad' => $i->tipo_entidad,
+                'entidad_nombre' => $i->entidad_nombre,
+                'estado' => $i->estado,
+                'estado_pago' => $i->estado_pago,
+                'valor_esperado' => $i->valor_esperado,
+                'diagnostico' => $i->diagnostico,
+                // A quién habría que colgarse: la familia se cuelga del original.
+                'padre_id' => $i->incapacidad_padre_id ?? $i->id,
+                'gap' => $gap,
+                'relacion' => match (true) {
+                    $gap === null => null,
+                    $gap === 1 => 'continua',      // termina el 12, la nueva arranca el 13
+                    $gap === 0 => 'mismo_dia',     // arranca el día que la otra termina
+                    $gap < 0 && $gap >= -3 => 'solapa',
+                    $gap > 1 && $gap <= 5 => 'cerca',
+                    default => 'lejos',
+                },
+            ];
+        });
+
+        // Para el aviso solo interesan las pegadas; para el modal de unir, todas.
+        if (! $request->boolean('todas')) {
+            $items = $items->whereIn('relacion', ['continua', 'mismo_dia', 'solapa'])->values();
+        }
+
+        return response()->json(['ok' => true, 'vecinas' => $items->values()]);
+    }
+
+    // ── UNIR UNA INCAPACIDAD YA CREADA COMO PRÓRROGA DE OTRA ─────────────────
+    public function unirProrroga(Request $request, int $id)
+    {
+        $request->validate(['padre_id' => 'required|integer']);
+
+        $hija = $this->incapacidadDelAliado($id);
+        $destino = $this->incapacidadDelAliado((int) $request->padre_id);
+        $alidoId = session('aliado_id_activo') ?? Auth::user()->aliado_id;
+
+        // La familia siempre cuelga del original: si eligieron una prórroga, se
+        // sube al padre real en vez de armar cadenas de dos niveles.
+        $padre = $destino->incapacidad_padre_id
+            ? $this->incapacidadDelAliado($destino->incapacidad_padre_id)
+            : $destino;
+
+        $error = match (true) {
+            $padre->id === $hija->id => 'No se puede unir una incapacidad consigo misma.',
+            $hija->cedula_usuario !== $padre->cedula_usuario => 'Son de cédulas distintas.',
+            (bool) $hija->incapacidad_padre_id => 'Esta incapacidad ya es prórroga de la #'.$hija->incapacidad_padre_id.'.',
+            Incapacidad::where('incapacidad_padre_id', $hija->id)->exists() => 'Esta incapacidad ya tiene prórrogas colgando. Une primero las hijas, o elige la otra dirección.',
+            default => null,
+        };
+
+        if ($error) {
+            return response()->json(['ok' => false, 'message' => $error], 422);
+        }
+
+        // Lo ya pagado no se recalcula: mover el valor esperado de un cobro
+        // liquidado descuadra la plata que ya se giró.
+        $yaPagada = in_array($hija->estado, self::ESTADOS_FINALES, true)
+            || $hija->estado_pago !== 'pendiente';
+
+        $numProrroga = Incapacidad::where('incapacidad_padre_id', $padre->id)->count() + 1;
+        $valorAntes = (float) $hija->valor_esperado;
+
+        $hija->update([
+            'incapacidad_padre_id' => $padre->id,
+            'numero_proroga' => $numProrroga,
+            'prorroga' => true,
+        ]);
+
+        $valorDespues = $yaPagada ? $valorAntes : (float) $hija->calcularValorEsperado(persistir: true);
+
+        Bitacora::registrar(
+            accion: 'updated',
+            modelo: 'Incapacidad',
+            registroId: $hija->id,
+            descripcion: "Incapacidad #{$hija->id} unida como prórroga {$numProrroga} de la #{$padre->id} "
+                ."(Cédula: {$hija->cedula_usuario})."
+                .($yaPagada ? ' El valor esperado no se recalculó: ya estaba pagada.' : ''),
+            detalle: [
+                'incapacidad_padre_id' => ['old' => null, 'new' => $padre->id],
+                'numero_proroga' => ['old' => 0, 'new' => $numProrroga],
+                'valor_esperado' => ['old' => $valorAntes, 'new' => $valorDespues],
+                'ya_pagada' => $yaPagada,
+            ],
+            alidoId: $alidoId
+        );
+
+        return response()->json([
+            'ok' => true,
+            'message' => "Unida como prórroga {$numProrroga} de la #{$padre->id}."
+                .($yaPagada
+                    ? ' El valor esperado se dejó como estaba porque ya está pagada.'
+                    : ($valorAntes != $valorDespues
+                        ? ' Valor esperado: $'.number_format($valorAntes, 0, ',', '.')
+                          .' → $'.number_format($valorDespues, 0, ',', '.').'.'
+                        : '')),
+            'padre_id' => $padre->id,
         ]);
     }
 

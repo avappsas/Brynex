@@ -488,6 +488,7 @@ tbody td{padding:.6rem .85rem;vertical-align:middle;}
 @push('scripts')
 <script>
 const TOKEN = document.querySelector('meta[name="csrf-token"]').content;
+let _detalleActual = null;   // respuesta del último /show, para el modal de unir
 const EPS_LIST   = @json($epsList->map(fn($e)=>['id'=>$e->id,'nombre'=>$e->nombre]));
 const ARL_LIST   = @json($arlList->map(fn($e)=>['id'=>$e->id,'nombre'=>$e->nombre_arl]));
 const AFP_LIST   = @json($pensionList->map(fn($e)=>['id'=>$e->id,'nombre'=>$e->razon_social]));
@@ -669,6 +670,7 @@ function actualizarFilaIncapacidad(id) {
 
 function abrirModalCrear(){
     document.getElementById('modalCrearTitle').textContent = '➕ Nueva Incapacidad';
+    descartarProrroga();
     document.getElementById('formMethod').value = 'POST';
     document.getElementById('formId').value = '';
     document.getElementById('padreId').value = '';
@@ -1153,6 +1155,9 @@ function verDetalle(id){
                         <button class="btn btn-primary btn-sm" onclick="registrarGestion(${inc.id})">📞 Nueva Gestión</button>
                         <button class="btn btn-warning btn-sm" onclick="cerrarModal('modalDetalle'); abrirModalEditar(${inc.id})">✏️ Editar Incapacidad</button>
                         <button class="btn btn-secondary btn-sm" onclick="cerrarModal('modalDetalle'); abrirModalProroga(${inc.id})">➕ Agregar Prórroga</button>
+                        ${(!inc.incapacidad_padre_id && (inc.prorrogas||[]).length === 0)
+                            ? `<button class="btn btn-secondary btn-sm" onclick="abrirModalUnir(${inc.id})"
+                                       title="Si esta incapacidad quedó suelta y en realidad continúa otra">🔗 Unir a otra incapacidad</button>` : ''}
                     </div>
                 </div>
 
@@ -1186,8 +1191,9 @@ function verDetalle(id){
 
             renderGestiones();
 
-            // Guardar ID activo
+            // Guardar ID activo y el detalle en curso (lo usa el modal de unir)
             document.getElementById('modalDetalle').dataset.incId = id;
+            _detalleActual = data;
         });
 }
 
@@ -1292,6 +1298,90 @@ function periodoMiembro(m){
 function opcionGestion(valor, label){
     const sel = String(GEST.filtro) === String(valor) ? ' selected' : '';
     return `<option value="${valor}"${sel}>${label}</option>`;
+}
+
+// ── Unir una incapacidad suelta a la familia de otra ─────────────────────────
+// Existe porque el aviso al crear solo previene de aquí en adelante: lo que ya
+// quedó partido no había forma de juntarlo sin tocar la BD a mano.
+function abrirModalUnir(incId){
+    const inc = _detalleActual?.incapacidad;
+    if(!inc) return;
+
+    fetch(`/admin/incapacidades/api/vecinas?cedula=${encodeURIComponent(inc.cedula_usuario)}`
+          + `&fecha_inicio=${(inc.fecha_inicio||'').substring(0,10)}&excluir_id=${incId}&todas=1`,
+          { headers: { 'Accept': 'application/json' } })
+        .then(r => r.ok ? r.json() : Promise.reject(new Error('no se pudo consultar')))
+        .then(d => pintarModalUnir(incId, inc, d.vecinas || []))
+        .catch(e => alert('Error al buscar incapacidades de esta persona: ' + e.message));
+}
+
+function pintarModalUnir(incId, inc, vecinas){
+    const sugerida = v => ['continua','mismo_dia','solapa'].includes(v.relacion);
+    const nota = v => ({
+        continua:  '✓ termina justo el día antes de esta',
+        mismo_dia: '⚠️ termina el mismo día en que esta empieza',
+        solapa:    `⚠️ se cruza ${Math.abs(v.gap)+1} día(s) con esta`,
+    }[v.relacion] || '');
+
+    const filas = vecinas.length ? vecinas.map(v => `
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:.6rem;flex-wrap:wrap;
+                    border:1px solid ${sugerida(v)?'#bfdbfe':'#e2e8f0'};background:${sugerida(v)?'#eff6ff':'#fff'};
+                    border-radius:8px;padding:.5rem .7rem;margin-bottom:.4rem">
+            <div style="font-size:.78rem;color:#334155">
+                <strong>#${v.id}</strong> ${v.label} · ${v.dias_incapacidad}d del ${v.fecha_inicio} al ${v.fecha_terminacion}<br>
+                <span style="color:#64748b">${(v.tipo_entidad||'').toUpperCase()} ${v.entidad_nombre||''} · ${labelEstado(v.estado)}</span>
+                ${sugerida(v)?`<span style="color:#1e40af;font-weight:600"> — ${nota(v)}</span>`:''}
+            </div>
+            <button class="btn btn-primary btn-sm" style="font-size:.72rem"
+                    onclick="confirmarUnion(${incId}, ${v.padre_id}, '#${v.id}')">Unir a esta</button>
+        </div>`).join('')
+        : '<p style="color:#94a3b8;font-size:.82rem">Esta persona no tiene otras incapacidades registradas.</p>';
+
+    const html = `
+    <div class="modal-header">
+        <div><h3>🔗 Unir como prórroga</h3></div>
+        <button class="btn-close-modal" onclick="cerrarModalUnir()">✕</button>
+    </div>
+    <div class="modal-body">
+        <p style="font-size:.82rem;color:#475569;margin-bottom:.7rem">
+            La incapacidad <strong>#${incId}</strong> (${inc.dias_incapacidad}d desde
+            ${(inc.fecha_inicio||'').substring(0,10)}) pasará a ser prórroga de la que elijas.
+            El valor esperado se recalcula, salvo que ya esté pagada.
+        </p>
+        ${filas}
+    </div>`;
+
+    let overlay = document.getElementById('modalUnir');
+    if(!overlay){
+        overlay = document.createElement('div');
+        overlay.id = 'modalUnir';
+        overlay.className = 'modal-overlay';
+        overlay.innerHTML = `<div class="modal" style="max-width:620px">${html}</div>`;
+        document.body.appendChild(overlay);
+    } else {
+        overlay.querySelector('.modal').innerHTML = html;
+    }
+    overlay.classList.add('open');
+}
+
+function cerrarModalUnir(){ document.getElementById('modalUnir')?.classList.remove('open'); }
+
+function confirmarUnion(incId, padreId, etiqueta){
+    if(!confirm(`¿Unir la incapacidad #${incId} como prórroga de ${etiqueta}?`)) return;
+
+    fetch(`/admin/incapacidades/${incId}/unir-prorroga`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': TOKEN, 'Accept': 'application/json' },
+        body: JSON.stringify({ padre_id: padreId }),
+    })
+    .then(async r => ({ ok: r.ok, data: await r.json().catch(()=>({})) }))
+    .then(({ok, data}) => {
+        if(!ok || !data.ok){ alert(data.message || 'No se pudo unir.'); return; }
+        alert(data.message);
+        cerrarModalUnir();
+        location.reload();
+    })
+    .catch(e => alert('Error de red: ' + e.message));
 }
 
 function switchTab(btn, tabId){
@@ -2952,6 +3042,7 @@ function seleccionarCliente(cedula, nombre, empresaNombre, clienteEpsId = null, 
     document.getElementById('cedulaInput').value = cedula;
     document.getElementById('nombreCliente').value = nombre;
     document.getElementById('clienteSugerencias').style.display='none';
+    revisarPosibleProrroga();
     _clienteNombre = nombre;
     _empresaNombre = empresaNombre || '';
     _fallbackEpsId = clienteEpsId;
@@ -3129,6 +3220,87 @@ function calcularFechaFin(){
         d.setDate(d.getDate()+dias-1);
         document.getElementById('fechaFinInput').value = d.toISOString().substring(0,10);
     }
+    revisarPosibleProrroga();
+}
+
+// ── Aviso de posible prórroga al crear ───────────────────────────────────────
+// El sistema no decide solo: propone. Fechas pegadas no implican mismo caso (un
+// accidente el viernes y una gripa el lunes encadenan igual de bien), y ligar
+// cambia el valor esperado en EPS, donde la prórroga no descuenta los 2 días.
+let _vecinasTimeout = null;
+
+function revisarPosibleProrroga(){
+    const caja = document.getElementById('avisoProrroga');
+    if(!caja) return;
+
+    // No estorbar al editar ni cuando ya se está registrando una prórroga desde
+    // el botón del detalle (ahí el padre ya viene decidido).
+    const esCreacion = document.getElementById('formMethod')?.value === 'POST';
+    if(!esCreacion || document.getElementById('padreId').value){ return; }
+
+    const cedula = document.getElementById('cedulaInput')?.value?.trim();
+    const inicio = document.querySelector('[name=fecha_inicio]')?.value;
+    if(!cedula || cedula.length < 5 || !inicio){ caja.style.display='none'; return; }
+
+    clearTimeout(_vecinasTimeout);
+    _vecinasTimeout = setTimeout(()=>{
+        fetch(`/admin/incapacidades/api/vecinas?cedula=${encodeURIComponent(cedula)}&fecha_inicio=${inicio}`,
+              { headers: { 'Accept': 'application/json' } })
+            .then(r => r.ok ? r.json() : null)
+            .then(d => pintarAvisoProrroga(d?.vecinas || []))
+            .catch(()=>{});
+    }, 350);
+}
+
+function pintarAvisoProrroga(vecinas){
+    const caja = document.getElementById('avisoProrroga');
+    if(!caja) return;
+    if(!vecinas.length){ caja.style.display='none'; caja.innerHTML=''; return; }
+
+    const filas = vecinas.slice(0,3).map(v => {
+        const motivo = {
+            continua:  'termina el día anterior',
+            mismo_dia: '⚠️ termina el mismo día en que empieza esta — revisa si hay un día repetido',
+            solapa:    `⚠️ se cruza ${Math.abs(v.gap)+1} día(s) con esta — puede ser un error de fechas`,
+        }[v.relacion] || '';
+        return `<div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;padding:.35rem 0;border-top:1px solid #fde68a">
+            <span style="font-size:.78rem;color:#78350f">
+                <strong>#${v.id}</strong> ${v.label} · ${v.dias_incapacidad}d del ${v.fecha_inicio} al ${v.fecha_terminacion}
+                · ${(v.tipo_entidad||'').toUpperCase()} ${v.entidad_nombre||''} — ${motivo}
+            </span>
+            <button type="button" class="btn btn-sm btn-primary" style="font-size:.7rem"
+                    onclick="marcarComoProrroga(${v.padre_id}, '${(v.label||'').replace(/'/g,"")} #${v.id}')">
+                Sí, es prórroga de esta</button>
+        </div>`;
+    }).join('');
+
+    caja.innerHTML = `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:.6rem .85rem">
+        <div style="font-size:.8rem;font-weight:700;color:#92400e;margin-bottom:.2rem">
+            📎 Esta persona ya tiene ${vecinas.length===1?'una incapacidad':'incapacidades'} pegada${vecinas.length===1?'':'s'} a este período
+        </div>
+        ${filas}
+        <div style="margin-top:.4rem"><button type="button" class="btn btn-sm btn-secondary" style="font-size:.7rem"
+             onclick="descartarProrroga()">No, es independiente</button></div>
+    </div>`;
+    caja.style.display='';
+}
+
+function marcarComoProrroga(padreId, etiqueta){
+    document.getElementById('padreId').value = padreId;
+    const caja = document.getElementById('avisoProrroga');
+    caja.innerHTML = `<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:.55rem .85rem;
+                                  font-size:.8rem;color:#1e40af;display:flex;gap:.6rem;align-items:center;flex-wrap:wrap">
+        <span>🔗 Se registrará como <strong>prórroga de ${etiqueta}</strong>.</span>
+        <button type="button" class="btn btn-sm btn-secondary" style="font-size:.7rem"
+                onclick="descartarProrroga();revisarPosibleProrroga()">Deshacer</button>
+    </div>`;
+    caja.style.display='';
+}
+
+function descartarProrroga(){
+    document.getElementById('padreId').value = '';
+    const caja = document.getElementById('avisoProrroga');
+    caja.style.display='none'; caja.innerHTML='';
 }
 
 // Cerrar sugerencias al hacer clic fuera
