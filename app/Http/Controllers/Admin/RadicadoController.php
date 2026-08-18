@@ -227,8 +227,12 @@ class RadicadoController extends Controller
                 'user_id'        => Auth::id(),
                 'estado_anterior'=> $radicado->estado,
                 'estado_nuevo'   => $radicado->estado,
+                // Ojo con el ?? : 'nullable' no mete la clave en $data cuando el
+                // request no la trae, y el front nunca manda observacion_envio.
+                // Leerla directo reventaba aquí con "Undefined array key" — 500
+                // silencioso que dejó 125 envíos sin su registro en bitácora.
                 'observacion'    => 'Radicado enviado al cliente vía ' . ($data['canal_envio_cliente'] ?? 'sin especificar')
-                    . ($data['observacion_envio'] ? '. ' . $data['observacion_envio'] : ''),
+                    . (($data['observacion_envio'] ?? null) ? '. ' . $data['observacion_envio'] : ''),
             ]);
         }
 

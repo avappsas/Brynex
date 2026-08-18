@@ -1641,16 +1641,21 @@ async function guardarRadicado(e) {
             const fd = new FormData();
             fd.append('pdf', pdfFile);
             fd.append('_token', CSRF);
-            await fetch(`/admin/radicados/${id}/pdf`, { method: 'POST', body: fd });
+            const rPdf = await fetch(`/admin/radicados/${id}/pdf`, { method: 'POST', body: fd });
+            if(!rPdf.ok) throw new Error('el estado se guardó, pero el PDF no se pudo subir');
         }
 
         // 3. Marcar enviado si cambió
         if(enviado) {
-            await fetch(`/admin/radicados/${id}/enviado`, {
+            // Sin mirar la respuesta, un 500 aquí seguía derecho hasta el toast
+            // verde: así pasó inadvertido que la bitácora del envío no se
+            // estaba escribiendo.
+            const rEnv = await fetch(`/admin/radicados/${id}/enviado`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json' },
                 body: JSON.stringify({ enviado_al_cliente: true, canal_envio_cliente: canalCli })
             });
+            if(!rEnv.ok) throw new Error('el estado se guardó, pero no se pudo marcar como enviado al cliente');
         }
 
         // Actualizar badge en tabla sin recargar
