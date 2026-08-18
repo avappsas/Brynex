@@ -13,8 +13,17 @@ $colorTipo = [
 ];
 
 $ruta     = route('admin.cuadre-diario.facturas-dia');
-$qsExport = array_filter(request()->only(['fecha','tipo','forma_pago','banco_cuenta_id','empresa_id','usuario_id','razon_social_id','sort','dir']));
-$hayFiltro = request()->hasAny(['tipo','forma_pago','banco_cuenta_id','empresa_id','usuario_id','razon_social_id']);
+// array_filter sin callback se comería tipo_modalidad_id=0 (Dependiente E),
+// que es una modalidad real y la más frecuente.
+$qsExport = array_filter(
+    request()->only(['fecha','tipo','forma_pago','banco_cuenta_id','empresa_id','usuario_id','razon_social_id','tipo_modalidad_id','sort','dir']),
+    fn($v) => $v !== null && $v !== ''
+);
+$hayFiltro = request()->hasAny(['tipo','forma_pago','banco_cuenta_id','empresa_id','usuario_id','razon_social_id','tipo_modalidad_id']);
+
+// Filtro de modalidad activo: '0' es un id válido, así que no vale un truthy.
+$modalSel = request('tipo_modalidad_id');
+$modalSel = ($modalSel === null || $modalSel === '') ? null : (string) $modalSel;
 
 // Enlace de ordenamiento: repite la columna → alterna asc/desc
 $sortUrl = function (string $col) use ($sort, $dir) {
@@ -218,7 +227,23 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.78rem}
                 </form>
             </th>
 
-            <th style="min-width:90px">Modalidad</th>
+            {{-- Modalidad --}}
+            <th style="min-width:110px">
+                <form method="GET" action="{{ $ruta }}" style="margin:0">
+                    @foreach(request()->except(['tipo_modalidad_id','page']) as $k => $v)<input type="hidden" name="{{ $k }}" value="{{ $v }}">@endforeach
+                    <select name="tipo_modalidad_id" onchange="this.form.submit()" class="th-select {{ $modalSel !== null ? 'activo' : '' }}">
+                        <option value="">↓ Modalidad</option>
+                        @if($haySinModal)
+                        <option value="sin" @selected($modalSel === 'sin')>— Sin modalidad</option>
+                        @endif
+                        @foreach($modalidadesDisp as $m)
+                        <option value="{{ $m->id }}" @selected($modalSel === (string) $m->id)>
+                            {{ $m->tipo_modalidad }} — {{ \Illuminate\Support\Str::limit($m->nombre, 22, '…') }}
+                        </option>
+                        @endforeach
+                    </select>
+                </form>
+            </th>
 
             {{-- Banco --}}
             <th style="min-width:120px">

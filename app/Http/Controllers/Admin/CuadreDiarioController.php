@@ -1248,6 +1248,10 @@ class CuadreDiarioController extends Controller
         $fEmpresa  = $request->input('empresa_id');   // 'individuales' = sin empresa
         $fUsuario  = $request->input('usuario_id');
         $fRazon    = $request->input('razon_social_id');
+        // 'sin' = facturas sin contrato. Ojo: la modalidad más común
+        // (Dependiente E) tiene id 0, así que no sirve un chequeo por truthy.
+        $fModal    = $request->input('tipo_modalidad_id');
+        $fModal    = ($fModal === null || $fModal === '') ? null : $fModal;
 
         $sort = in_array($request->input('sort'), ['factura', 'cedula'], true)
             ? $request->input('sort') : null;
@@ -1297,6 +1301,17 @@ class CuadreDiarioController extends Controller
                   ->orWhere(fn($q2) => $q2->whereNull('razon_social_id')
                       ->whereHas('contrato', fn($c) => $c->where('razon_social_id', $fRazon)));
             });
+        }
+
+        // Modalidad: vive en el contrato, no en la factura.
+        if ($fModal !== null) {
+            if ($fModal === 'sin') {
+                $query->whereDoesntHave('contrato',
+                    fn($c) => $c->whereNotNull('tipo_modalidad_id'));
+            } else {
+                $query->whereHas('contrato',
+                    fn($c) => $c->where('tipo_modalidad_id', (int) $fModal));
+            }
         }
 
         if ($sort === 'factura') {
@@ -1393,8 +1408,10 @@ class CuadreDiarioController extends Controller
         $base = Factura::where('aliado_id', $aliadoId)
             ->whereDate('fecha_pago', $fecha)
             ->with(['empresa:id,empresa', 'usuario:id,nombre',
-                    'razonSocial:id,razon_social', 'contrato:id,razon_social_id',
-                    'contrato.razonSocial:id,razon_social'])
+                    'razonSocial:id,razon_social',
+                    'contrato:id,razon_social_id,tipo_modalidad_id',
+                    'contrato.razonSocial:id,razon_social',
+                    'contrato.tipoModalidad'])
             // numero_factura es obligatorio aquí: etiquetaTipoFactura lo usa
             // para detectar retiros y sin él todo se clasificaría como retiro.
             ->get(['id', 'tipo', 'numero_factura', 'es_prestamo', 'estado',
@@ -1424,6 +1441,9 @@ class CuadreDiarioController extends Controller
             // Mismo respaldo al contrato que usa razon_social_texto
             'razonesDisp'  => $base->map(fn($f) => $f->razonSocial ?? $f->contrato?->razonSocial)
                                 ->filter()->unique('id')->sortBy('razon_social')->values(),
+            'modalidadesDisp' => $base->map(fn($f) => $f->contrato?->tipoModalidad)
+                                ->filter()->unique('id')->sortBy('orden')->values(),
+            'haySinModal'  => $base->contains(fn($f) => !$f->contrato?->tipoModalidad),
         ];
     }
 
