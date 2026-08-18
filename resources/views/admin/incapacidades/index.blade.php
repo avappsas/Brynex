@@ -1091,7 +1091,23 @@ function verDetalle(id){
             let _valPending = 0;
             if (!_estadosPag.includes(inc.estado)) _valPending += Number(inc.valor_esperado||0);
             (inc.prorrogas||[]).forEach(p => { if (!_estadosPag.includes(p.estado)) _valPending += Number(p.valor_esperado||0); });
+            // Los días que dos miembros comparten se pagan una sola vez: sumarlos
+            // dos veces sería esperar una plata que la entidad no va a girar.
+            const _descCruce = Number(data.descuento_cruce||0);
+            _valPending = Math.max(0, _valPending - _descCruce);
             const val = _valPending > 0 ? `$${_valPending.toLocaleString('es-CO')}` : '—';
+
+            const avisoCruce = (data.dias_cruzados > 0) ? `
+                <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:.6rem .9rem;
+                            margin-bottom:.75rem;font-size:.8rem;color:#1e40af;display:flex;gap:.6rem;align-items:flex-start">
+                    <span style="font-size:1.05rem">📌</span>
+                    <div><strong>${data.dias_cruzados} día(s) compartido(s)</strong> entre incapacidades de esta familia
+                    ${(data.pares_cruce||[]).map(p=>`(#${p.incapacidades[0]} y #${p.incapacidades[1]}: ${p.dias}d)`).join(' ')}.
+                    La entidad los paga en una sola de las dos, así que
+                    ${_descCruce > 0
+                        ? `se descontaron <strong>$${_descCruce.toLocaleString('es-CO')}</strong> del valor esperado total.`
+                        : `no suman al valor esperado (las que los comparten ya están pagadas).`}</div>
+                </div>` : '';
             const totalPagado = data.total_pagado || 0;
             const prorrogasPend = data.prorrogas_pendientes || 0;
 
@@ -1106,6 +1122,7 @@ function verDetalle(id){
                 </div>
 
                 <div id="tabInfo" class="tab-pane active">
+                    ${avisoCruce}
                     ${prorrogasPend>0?`<div style="background:#fef3c7;border:1px solid #fde68a;border-radius:10px;padding:.6rem .9rem;margin-bottom:.75rem;display:flex;align-items:center;gap:.6rem;font-size:.82rem;color:#92400e"><span style="font-size:1.1rem">⚠️</span><div><strong>${prorrogasPend} prórroga(s) activa(s)</strong> pendiente(s) de gestión — revisa la pestaña <em>Prórrogas</em> para ver el detalle.</div></div>`:''}
                     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:.65rem;margin-bottom:.8rem">
                         <div style="background:#eff6ff;border-radius:10px;padding:.7rem .85rem;border:1px solid #bfdbfe">
@@ -1140,6 +1157,7 @@ function verDetalle(id){
                         <div style="background:#f0fdf4;border-radius:10px;padding:.65rem .85rem;border:1px solid #bbf7d0">
                             <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;color:#059669;letter-spacing:.06em;margin-bottom:.2rem">💰 Valor Esperado${data.num_prorrogas>0?' (Total)':''}</div>
                             <div style="font-size:1.05rem;font-weight:800;color:#059669">${val}</div>
+                            ${_descCruce>0?`<div style="font-size:.65rem;color:#1e40af">−$${_descCruce.toLocaleString('es-CO')} por ${data.dias_cruzados} día(s) compartido(s)</div>`:''}
                             ${data.num_prorrogas>0&&totalPagado>0?`<div style="font-size:.65rem;color:#64748b">Pagado orig.: $${Number(totalPagado).toLocaleString('es-CO')}</div>`:''}
                         </div>
                     </div>
@@ -1319,8 +1337,8 @@ function pintarModalUnir(incId, inc, vecinas){
     const sugerida = v => ['continua','mismo_dia','solapa'].includes(v.relacion);
     const nota = v => ({
         continua:  '✓ termina justo el día antes de esta',
-        mismo_dia: '⚠️ termina el mismo día en que esta empieza',
-        solapa:    `⚠️ se cruza ${Math.abs(v.gap)+1} día(s) con esta`,
+        mismo_dia: '✓ termina el mismo día en que esta empieza (ese día se paga una sola vez)',
+        solapa:    `✓ se cruza ${Math.abs(v.gap)+1} día(s) con esta (esos días se pagan una sola vez)`,
     }[v.relacion] || '');
 
     const filas = vecinas.length ? vecinas.map(v => `
@@ -3260,8 +3278,8 @@ function pintarAvisoProrroga(vecinas){
     const filas = vecinas.slice(0,3).map(v => {
         const motivo = {
             continua:  'termina el día anterior',
-            mismo_dia: '⚠️ termina el mismo día en que empieza esta — revisa si hay un día repetido',
-            solapa:    `⚠️ se cruza ${Math.abs(v.gap)+1} día(s) con esta — puede ser un error de fechas`,
+            mismo_dia: 'termina el mismo día en que empieza esta — ese día lo paga la entidad en una sola de las dos',
+            solapa:    `se cruza ${Math.abs(v.gap)+1} día(s) con esta — esos días los paga la entidad en una sola de las dos`,
         }[v.relacion] || '';
         return `<div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;padding:.35rem 0;border-top:1px solid #fde68a">
             <span style="font-size:.78rem;color:#78350f">

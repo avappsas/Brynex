@@ -719,12 +719,50 @@ class IncapacidadController extends Controller
         $inc->precargarDiasFamilia((int) $familia->sum('dias_incapacidad'))
             ->precargarGestionesFamilia($gestionesFamilia);
 
+        // ── Días que dos miembros de la familia comparten ───────────────────
+        // Que dos incapacidades se pisen es normal: la entidad paga ese día en
+        // una sola de las dos, nunca en ambas. Pero cada incapacidad calcula su
+        // valor completa, así que el total de la familia lo cuenta dos veces y
+        // pide una plata que no va a llegar. Aquí se mide para descontarlo.
+        $cubierto = [];      // día => quién lo cubrió primero
+        $diasCruzados = 0;
+        $descuentoCruce = 0.0;
+        $paresCruce = [];
+
+        foreach ($familia->sortBy('fecha_inicio') as $m) {
+            if (! $m->fecha_inicio || ! $m->fecha_terminacion) {
+                continue;
+            }
+            $repetidos = 0;
+            foreach (\Carbon\CarbonPeriod::create($m->fecha_inicio, $m->fecha_terminacion) as $dia) {
+                $clave = $dia->format('Y-m-d');
+                if (isset($cubierto[$clave])) {
+                    $repetidos++;
+                    $paresCruce[$cubierto[$clave].'-'.$m->id] = ($paresCruce[$cubierto[$clave].'-'.$m->id] ?? 0) + 1;
+                } else {
+                    $cubierto[$clave] = $m->id;
+                }
+            }
+
+            if ($repetidos > 0) {
+                $diasCruzados += $repetidos;
+                // Solo descuenta lo que todavía se espera cobrar: si esa
+                // incapacidad ya se pagó, su valor no está en el pendiente.
+                $pendiente = ! in_array($m->estado, self::ESTADOS_FINALES, true);
+                if ($pendiente && $m->salario_base > 0) {
+                    $descuentoCruce += round($repetidos * ((float) $m->salario_base / 30), 2);
+                }
+            }
+        }
+
         $familiaDias = $inc->totalDiasFamilia();
         $numProrrogas = $familia->filter(fn ($m) => ! is_null($m->incapacidad_padre_id))->count();
 
-        // Valor esperado total: original + todas las prórrogas
+        // Valor esperado total: original + prórrogas, menos los días que dos
+        // miembros comparten (la entidad los paga una sola vez).
         $totalValorEsperado = (float) ($inc->valor_esperado ?? 0)
-            + (float) $inc->prorrogas->sum('valor_esperado');
+            + (float) $inc->prorrogas->sum('valor_esperado')
+            - $descuentoCruce;
 
         // Total ya pagado (abonos tipo entrada_incapacidad en la incapacidad original)
         $totalPagado = (float) $inc->abonos
@@ -761,6 +799,13 @@ class IncapacidadController extends Controller
             'total_valor_esperado' => $totalValorEsperado,
             'total_pagado' => $totalPagado,
             'prorrogas_pendientes' => $prorrogasPendientes,
+            // Días que dos miembros comparten y lo que sobra en el total por eso.
+            'dias_cruzados' => $diasCruzados,
+            'descuento_cruce' => $descuentoCruce,
+            'pares_cruce' => collect($paresCruce)->map(fn ($dias, $par) => [
+                'incapacidades' => explode('-', $par),
+                'dias' => $dias,
+            ])->values(),
             // Única gestión que se puede deshacer hoy (null si no hay). La regla
             // vive en el controlador para que la vista no la duplique.
             'gestion_reversable_id' => $this->gestionReversable($inc, $gestionesFamilia)?->id,

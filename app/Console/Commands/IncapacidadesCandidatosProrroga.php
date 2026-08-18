@@ -204,8 +204,9 @@ class IncapacidadesCandidatosProrroga extends Command
                 (float) $c['valor'], (float) $c['cambio_valor'], '', '',
             ], null, 'A'.$fila);
 
-            // Lo que no es continuidad limpia va en ámbar: ahí suele haber un día
-            // repetido o una fecha mal digitada, no una prórroga.
+            // En ámbar las que comparten días: son continuidad igual, pero la
+            // entidad paga el día compartido en una sola de las dos, así que al
+            // unirlas el total de la familia se ajusta.
             if ($c['relacion'] !== 'continua') {
                 $h->getStyle("A{$fila}:P{$fila}")->getFill()
                     ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
@@ -240,6 +241,7 @@ class IncapacidadesCandidatosProrroga extends Command
         $resumen->fromArray(['Pares omitidos por estar ya pagados', $pagadas], null, 'A'.$r++);
         $resumen->fromArray(['Generado', now('America/Bogota')->format('d/m/Y H:i')], null, 'A'.$r++);
         $resumen->fromArray(['Ojo', 'Solo en EPS cambia el valor: la prórroga no descuenta los 2 primeros días.'], null, 'A'.$r++);
+        $resumen->fromArray(['Días compartidos', 'Cuando los períodos se pisan, la entidad paga ese día en una sola de las dos. Al unirlas, el total de la familia lo descuenta.'], null, 'A'.$r++);
         $resumen->getStyle('A1:C1')->getFont()->setBold(true);
         $resumen->getStyle("C2:C{$r}")->getNumberFormat()->setFormatCode('$#,##0');
         foreach (range('A', 'C') as $col) {
