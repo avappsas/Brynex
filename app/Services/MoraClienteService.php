@@ -72,6 +72,14 @@ class MoraClienteService
             "{$anio}-11-11", // Independencia de Cartagena
         ];
 
+        // Ley 2578, sancionada el 1-jun-2026: el 9 de julio (Virgen de Chiquinquirá)
+        // pasa a ser festivo nacional, también sujeto a la Ley Emiliani. No es
+        // retroactivo: los años anteriores tienen que seguir liquidándose sin él,
+        // o se le mueve la mora a facturas ya cobradas.
+        if ($anio >= 2026) {
+            $emiliani[] = "{$anio}-07-09";
+        }
+
         $fechas = [];
 
         foreach ($fijos as $fechaStr) {

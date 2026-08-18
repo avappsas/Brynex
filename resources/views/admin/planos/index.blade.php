@@ -2080,6 +2080,13 @@ function getFestivosColombia(anio) {
         new Date(anio, 10, 1),  // Todos los Santos
         new Date(anio, 10, 11), // Independencia de Cartagena
     ];
+
+    // Ley 2578 del 1-jun-2026: el 9 de julio (Virgen de Chiquinquirá) es festivo
+    // nacional, tambien sujeto a la Ley Emiliani. No es retroactivo — mismo
+    // criterio que MoraClienteService::festivosColombia().
+    if (anio >= 2026) {
+        emiliani.push(new Date(anio, 6, 9));
+    }
     
     // Algoritmo Meeus/Jones/Butcher para Domingo de Pascua (Easter Sunday)
     const a = anio % 19;

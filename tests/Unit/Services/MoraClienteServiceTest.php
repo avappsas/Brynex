@@ -91,6 +91,48 @@ class MoraClienteServiceTest extends TestCase
         }
     }
 
+    public function test_virgen_de_chiquinquira_es_festivo_y_cae_en_lunes_desde_2026(): void
+    {
+        // Ley 2578, sancionada el 1-jun-2026: el 9 de julio entra al calendario
+        // sujeto a la Ley Emiliani. En 2029 la fecha base ya es lunes, así que
+        // cubre las dos ramas del traslado.
+        foreach ([2026, 2027, 2028, 2029, 2030] as $anio) {
+            $festivos = MoraClienteService::festivosColombia($anio);
+
+            $base = Carbon::createFromFormat('Y-m-d', "{$anio}-07-09")->startOfDay();
+            $observado = $base->dayOfWeek === Carbon::MONDAY
+                ? $base
+                : $base->copy()->next(Carbon::MONDAY);
+
+            $this->assertSame(Carbon::MONDAY, $observado->dayOfWeek);
+            $this->assertContains(
+                $observado->format('Y-m-d'),
+                $festivos,
+                "Virgen de Chiquinquirá debe ser festivo en {$anio}"
+            );
+        }
+    }
+
+    public function test_virgen_de_chiquinquira_no_aplica_antes_de_2026(): void
+    {
+        // La ley no es retroactiva. Si se colara en años anteriores movería la
+        // mora de facturas ya liquidadas. Se comprueba contra la fecha trasladada
+        // exacta y no contra "julio no tiene más festivos", porque San Pedro
+        // (29-jun) se traslada a julio en varios años: el 3-jul-2023, por ejemplo.
+        foreach ([2023, 2024, 2025] as $anio) {
+            $base = Carbon::createFromFormat('Y-m-d', "{$anio}-07-09")->startOfDay();
+            $observado = $base->dayOfWeek === Carbon::MONDAY
+                ? $base
+                : $base->copy()->next(Carbon::MONDAY);
+
+            $this->assertNotContains(
+                $observado->format('Y-m-d'),
+                MoraClienteService::festivosColombia($anio),
+                "Virgen de Chiquinquirá no existía en {$anio}"
+            );
+        }
+    }
+
     public function test_get_nth_dia_habil_salta_fines_de_semana_y_festivos(): void
     {
         // Enero 2026: 1-ene es festivo (jueves). El primer día hábil debe ser
