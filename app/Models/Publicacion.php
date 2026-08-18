@@ -109,14 +109,22 @@ class Publicacion extends BaseModel
     }
 
     /**
-     * Mensaje precargado con el código de referencia ("ref: P{id}") — el MISMO texto se usa
-     * en el link wa.me de la publicación orgánica y en el botón nativo de la pauta pagada,
-     * para que WhatsappWebhookService::buscarPublicacionOrigen atribuya igual sin importar
-     * de dónde vino el clic.
+     * Texto que queda precargado cuando alguien abre el WhatsApp desde una pieza.
+     *
+     * Corto a propósito: la persona todavía tiene que darle "enviar" —WhatsApp no permite
+     * mandarlo solo— y cada palabra de más es una razón para no hacerlo. Antes decía "Hola, vi
+     * esta publicación de BRYGAR y quiero información. (ref: P58)": el código a la vista se
+     * podía borrar y, peor, hacía dudar antes de enviar.
+     *
+     * El código sigue yendo en los enlaces ORGÁNICOS, donde es la única forma de saber de qué
+     * pieza vino. En los anuncios ya no hace falta: Meta manda el id del anuncio en el
+     * `referral` de cada mensaje (ver WhatsappWebhookService::piezaDelReferral).
      */
-    public function mensajeWhatsappRastreado(): string
+    public function mensajeWhatsappRastreado(bool $conCodigo = true): string
     {
-        return "Hola, vi esta publicación de {$this->aliado->nombre} y quiero información. (ref: P{$this->id})";
+        return $conCodigo
+            ? "Hola, quiero información. (ref: P{$this->id})"
+            : 'Hola, quiero información';
     }
 
     public function etiquetaEstado(): string

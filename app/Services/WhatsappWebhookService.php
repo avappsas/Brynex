@@ -515,6 +515,17 @@ class WhatsappWebhookService
             ->first();
 
         if ($conversacion) {
+            // Atribuir también cuando la conversación YA existía: el referral viene en cada
+            // mensaje, no en la conversación. Antes, un cliente de siempre que hiciera clic en
+            // un anuncio no contaba para nada — el 16-ago-2026 Meta reportó una conversación
+            // desde anuncio y aquí quedó en cero por exactamente esto.
+            if (!$conversacion->origen_publicacion_id) {
+                $piezaId = $this->piezaDelReferral($msgData, $alidoId);
+                if ($piezaId) {
+                    $conversacion->update(['origen_publicacion_id' => $piezaId]);
+                }
+            }
+
             // Si la conversación ya existe pero tiene un nombre genérico o vacío, intentar corregirlo
             $nombreActual = $conversacion->nombre_contacto;
             if (!$nombreActual || strtolower(trim($nombreActual)) === 'contacto de prueba') {
@@ -642,7 +653,8 @@ class WhatsappWebhookService
         }
 
         $campana = $this->buscarCampanaOrigen($numeroLimpio, $alidoId);
-        $publicacionOrigenId = $this->buscarPublicacionOrigen($msgData['text']['body'] ?? '', $alidoId);
+        $publicacionOrigenId = $this->piezaDelReferral($msgData, $alidoId)
+            ?? $this->buscarPublicacionOrigen($msgData['text']['body'] ?? '', $alidoId);
 
         return WhatsappConversacion::create([
             'aliado_id'                 => $alidoId,
@@ -680,6 +692,31 @@ class WhatsappWebhookService
      * conversación a esa publicación concreta — atribución real, no una correlación por
      * ventana de tiempo. Solo se llama al CREAR una conversación nueva.
      */
+    /**
+     * Pieza de la que viene el mensaje, según el `referral` que Meta adjunta a los mensajes
+     * que nacen de un anuncio de Click-to-WhatsApp.
+     *
+     * Es mejor que leer el "(ref: P58)" del texto por dos razones: no obliga a ensuciar el
+     * mensaje precargado con un código —que el usuario ve y puede borrar, o que lo hace dudar
+     * antes de enviar— y funciona aunque la conversación ya existiera, porque el referral
+     * viaja en cada mensaje.
+     *
+     * `source_id` es el id del anuncio, que es justo lo que se guarda en meta_ad_id al crearlo.
+     */
+    private function piezaDelReferral(array $msgData, int $alidoId): ?int
+    {
+        $ref = $msgData['referral'] ?? null;
+        $adId = $ref['source_id'] ?? null;
+
+        if (!$adId) {
+            return null;
+        }
+
+        return \App\Models\Publicacion::where('aliado_id', $alidoId)
+            ->where('meta_ad_id', (string) $adId)
+            ->value('id');
+    }
+
     private function buscarPublicacionOrigen(string $texto, int $alidoId): ?int
     {
         if (!preg_match('/ref:\s*P(\d+)/i', $texto, $m)) {

@@ -258,7 +258,9 @@ class MetaAdsService
                 'customer_action_type' => 'autofill_message',
                 'message' => [
                     'text'             => '¡Hola! 👋 Gracias por escribirnos.',
-                    'autofill_message' => ['content' => $publicacion->mensajeWhatsappRastreado()],
+                    // Sin el código: en la pauta el anuncio lo identifica el `referral` que manda Meta,
+                    // así que el texto queda lo más corto posible para que le den enviar.
+                    'autofill_message' => ['content' => $publicacion->mensajeWhatsappRastreado(false)],
                 ],
             ],
         ];
