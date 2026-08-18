@@ -1181,10 +1181,10 @@ class CuadreDiarioController extends Controller
             'No.', 'Factura', 'Tipo', 'Cédula', 'Nombres', 'Forma pago',
             'Pago total', 'Efectivo', 'Consignado', 'Admón empresa', 'Admón asesor',
             'Seguro', 'Seg. social', 'IVA',
-            'Empresa', 'Razón social', 'Banco', 'Facturó',
+            'Empresa', 'Razón social', 'Modalidad', 'Banco', 'Facturó',
         ];
         $sheet->fromArray($headers, null, 'A1');
-        $sheet->getStyle('A1:R1')->applyFromArray([
+        $sheet->getStyle('A1:S1')->applyFromArray([
             'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
             'fill' => ['fillType' => 'solid', 'startColor' => ['rgb' => '1e40af']],
         ]);
@@ -1208,6 +1208,7 @@ class CuadreDiarioController extends Controller
                 (int) $f->iva,
                 $f->empresa?->empresa ?? 'INDIVIDUALES',
                 $f->razon_social_texto,
+                $f->modalidad_nombre,
                 $f->banco_texto ?: '—',
                 $f->usuario?->nombre ?? '—',
                 // strictNullComparison: sin esto fromArray compara con != y
@@ -1218,7 +1219,7 @@ class CuadreDiarioController extends Controller
             $row++;
         }
 
-        foreach (range('A', 'R') as $col) {
+        foreach (range('A', 'S') as $col) {
             $sheet->getColumnDimension($col)->setAutoSize(true);
         }
 
@@ -1257,7 +1258,8 @@ class CuadreDiarioController extends Controller
         // se carga también para usarla como respaldo.
         $query = Factura::where('aliado_id', $aliadoId)
             ->whereDate('fecha_pago', $fecha)
-            ->with(['empresa', 'razonSocial', 'usuario', 'contrato.razonSocial', 'consignaciones.bancoCuenta']);
+            ->with(['empresa', 'razonSocial', 'usuario', 'contrato.razonSocial',
+                   'contrato.tipoModalidad', 'consignaciones.bancoCuenta']);
 
         // ── Tipo derivado (misma precedencia que etiquetaTipoFactura) ──
         if ($fTipo && isset(self::TIPOS_FACTURA_DIA[$fTipo])) {
@@ -1328,6 +1330,11 @@ class CuadreDiarioController extends Controller
             $f->razon_social_texto = $f->razonSocial?->razon_social
                 ?? $f->contrato?->razonSocial?->razon_social
                 ?? '—';
+
+            // Modalidad: solo vive en el contrato. Las facturas sin contrato
+            // (otros ingresos, préstamos sueltos) quedan sin modalidad.
+            $f->modalidad_texto  = $f->contrato?->tipoModalidad?->tipo_modalidad ?: '—';
+            $f->modalidad_nombre = $f->contrato?->tipoModalidad?->nombre ?: '—';
 
             // Cuenta destino: se muestra el titular, que es lo que identifica la
             // cuenta en la operación. Las facturas sincronizadas desde el legacy

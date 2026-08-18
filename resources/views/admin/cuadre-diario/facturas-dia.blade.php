@@ -218,6 +218,8 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.78rem}
                 </form>
             </th>
 
+            <th style="min-width:90px">Modalidad</th>
+
             {{-- Banco --}}
             <th style="min-width:120px">
                 <form method="GET" action="{{ $ruta }}" style="margin:0">
@@ -281,13 +283,16 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.78rem}
             <td style="font-size:.72rem;color:#b45309" title="{{ $f->razon_social_texto }}">
                 {{ \Illuminate\Support\Str::limit($f->razon_social_texto, 20, '…') }}
             </td>
+            <td style="font-size:.72rem;color:#475569" title="{{ $f->modalidad_nombre }}">
+                {{ $f->modalidad_texto }}
+            </td>
             <td style="font-size:.72rem" title="{{ $bancoTxt }}">
                 {{ \Illuminate\Support\Str::limit($bancoTxt, 20, '…') }}
             </td>
             <td style="font-size:.72rem;color:#64748b">{{ $f->usuario?->nombre ?? '—' }}</td>
         </tr>
         @empty
-        <tr><td colspan="18" style="padding:2.5rem;text-align:center;color:#94a3b8">
+        <tr><td colspan="19" style="padding:2.5rem;text-align:center;color:#94a3b8">
             Sin facturas para la fecha y filtros seleccionados
         </td></tr>
         @endforelse
@@ -304,7 +309,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.78rem}
             <td class="num"></td>
             <td class="num">{{ $fmt($totales['seg_social']) }}</td>
             <td class="num">{{ $fmt($totales['iva']) }}</td>
-            <td colspan="4"></td>
+            <td colspan="5"></td>
         </tr></tfoot>
         @endif
     </table>
