@@ -50,8 +50,10 @@ class CandidatosReactivacion
             })
             // El vínculo con el cliente es por CÉDULA, no por un id — ver Contrato::cliente().
             ->join('clientes', 'clientes.cedula', '=', 'contratos.cedula')
+            // Solo el PRIMER NOMBRE: en la base están en mayúsculas y con apellido, y "Hola
+            // NOLVIA LOANGO" se lee a carta de cobranza. El saludo se capitaliza abajo.
             ->selectRaw("contratos.id as contrato_id, contratos.cedula, contratos.fecha_retiro,
-                         LTRIM(RTRIM(CONCAT(clientes.primer_nombre, ' ', clientes.primer_apellido))) as nombre,
+                         LTRIM(RTRIM(clientes.primer_nombre)) as nombre,
                          COALESCE(clientes.celular, clientes.telefono) as telefono,
                          DATEDIFF(day, contratos.fecha_retiro, GETDATE()) as dias")
             ->where(function ($q) {
@@ -61,6 +63,10 @@ class CandidatosReactivacion
             ->get()
             // Una persona pudo retirar varios contratos: se le escribe UNA vez.
             ->unique('cedula')
+            ->map(function ($c) {
+                $c->nombre = mb_convert_case(mb_strtolower(trim((string) $c->nombre), 'UTF-8'), MB_CASE_TITLE, 'UTF-8');
+                return $c;
+            })
             ->values();
     }
 
