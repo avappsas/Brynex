@@ -33,7 +33,8 @@ class MarketingReactivacion extends Command
         {--hasta=90 : Días máximos desde el retiro}
         {--plantilla= : Nombre de la plantilla de WhatsApp aprobada (categoría MARKETING)}
         {--limite=50 : Máximo de destinatarios por corrida}
-        {--enviar : Enviar de verdad. Sin esto solo simula y muestra a quién le llegaría}';
+        {--enviar : Enviar de verdad. Sin esto solo simula y muestra a quién le llegaría}
+        {--prueba= : Manda UN mensaje a este número y no toca la lista real}';
 
     protected $description = 'Escribe por WhatsApp a los clientes retirados que no han vuelto';
 
@@ -43,6 +44,12 @@ class MarketingReactivacion extends Command
         if (!$aliado) {
             $this->error('No existe ese aliado.');
             return self::FAILURE;
+        }
+
+        // Prueba a un número propio: se atiende antes que nada para no calcular candidatos
+        // ni tocar la campaña. Sirve para ver cómo llega el mensaje antes de soltarlo.
+        if ($numeroPrueba = $this->option('prueba')) {
+            return $this->prueba($aliado, (string) $numeroPrueba);
         }
 
         $desde = (int) $this->option('desde');
@@ -90,6 +97,42 @@ class MarketingReactivacion extends Command
         }
 
         return $this->enviar($aliado, $destinatarios, $desde, $hasta);
+    }
+
+    /** Manda la plantilla a un solo número, sin registrar campaña ni consumir la fila. */
+    private function prueba(Aliado $aliado, string $numero): int
+    {
+        $nombrePlantilla = $this->option('plantilla');
+        if (!$nombrePlantilla) {
+            $this->error('Falta --plantilla.');
+            return self::FAILURE;
+        }
+
+        $plantilla = \App\Models\WhatsappPlantilla::where('aliado_id', $aliado->id)
+            ->where('nombre', $nombrePlantilla)->where('estado', 'approved')->first();
+
+        if (!$plantilla) {
+            $this->error("No hay plantilla aprobada '{$nombrePlantilla}'.");
+            return self::FAILURE;
+        }
+
+        $config = \App\Models\WhatsappConfig::where('aliado_id', $aliado->id)->where('activo', true)->first();
+        if (!$config) {
+            $this->error('El aliado no tiene WhatsApp configurado.');
+            return self::FAILURE;
+        }
+
+        $r = app(\App\Services\WhatsappApiService::class)
+            ->enviarTemplate($numero, $plantilla, ['Brayan'], $config);
+
+        if (!empty($r['ok'])) {
+            $this->info("Prueba enviada a {$numero}.");
+            return self::SUCCESS;
+        }
+
+        $this->error('No se pudo enviar: ' . ($r['error'] ?? json_encode($r)));
+
+        return self::FAILURE;
     }
 
     private function enviar(Aliado $aliado, $destinatarios, int $desde, int $hasta): int
