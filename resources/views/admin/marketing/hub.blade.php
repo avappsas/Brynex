@@ -32,6 +32,19 @@
             </div>
         </a>
 
+        <a href="{{ route('admin.marketing.reactivacion') }}" style="text-decoration:none;color:inherit;">
+            <div style="background:#fff;border:2px solid transparent;border-radius:16px;padding:1.75rem 1.5rem;box-shadow:0 1px 8px rgba(0,0,0,.06);transition:border-color .15s,transform .15s;height:100%;position:relative;"
+                 onmouseover="this.style.borderColor='#f59e0b';this.style.transform='translateY(-3px)'"
+                 onmouseout="this.style.borderColor='transparent';this.style.transform=''">
+                @if(!is_null($porReactivar) && $porReactivar > 0)
+                    <span style="position:absolute;top:1.1rem;right:1.1rem;background:#dcfce7;color:#166534;font-size:.68rem;font-weight:700;padding:.2rem .55rem;border-radius:999px;">{{ $porReactivar }} por escribir</span>
+                @endif
+                <div style="font-size:2.2rem;margin-bottom:.75rem;">🔄</div>
+                <div style="font-size:1.05rem;font-weight:700;color:#0f172a;margin-bottom:.35rem;">Reactivación de retirados</div>
+                <div style="font-size:.82rem;color:#64748b;line-height:1.4;">Ex-clientes sin contrato vigente a los que se les puede ofrecer volver. Muestra a quiénes se va a contactar y cuántos faltan.</div>
+            </div>
+        </a>
+
     </div>
 </div>
 @endsection

@@ -3,8 +3,6 @@
 namespace App\Console\Commands;
 
 use App\Models\Aliado;
-use App\Models\ConsentimientoDato;
-use App\Models\Contrato;
 use App\Models\WhatsappEnvioMasivo;
 use App\Models\WhatsappEnvioMasivoDetalle;
 use App\Models\WhatsappPlantilla;
@@ -52,48 +50,23 @@ class MarketingReactivacion extends Command
         $limite = (int) $this->option('limite');
         $enviarDeVerdad = (bool) $this->option('enviar');
 
-        $candidatos = $this->candidatos($aliado->id, $desde, $hasta);
-        $this->line("Retirados hace {$desde}-{$hasta} días: {$candidatos->count()}");
+        $r = \App\Services\Marketing\CandidatosReactivacion::elegibles($aliado->id, $desde, $hasta);
+        $elegibles = $r['elegibles'];
 
-        if ($candidatos->isEmpty()) {
-            $this->warn('Nadie en esa ventana. Probar con --desde/--hasta más amplios.');
+        $this->line("Retirados hace {$desde}-{$hasta} días que ya no son clientes: {$r['candidatos']}");
+        $this->line("Contactables hoy: {$elegibles->count()}"
+            . "  (fuera: {$r['sin_consentimiento']} por baja o teléfono inválido, "
+            . "{$r['aplazados']} aplazados, {$r['ya_enviados']} ya contactados)");
+
+        if ($elegibles->isEmpty()) {
+            $this->warn('Nadie por contactar en esta ventana.');
             return self::SUCCESS;
         }
 
-        // Se filtra por consentimiento ANTES de cualquier otra cosa: quien pidió no recibir
-        // más publicidad no entra ni a la simulación, para que la lista que se revisa sea la
-        // lista que de verdad se manda.
-        $telefonos = $candidatos->pluck('telefono')->all();
-        // Devuelve ['contactables' => [...], 'excluidos' => [...]], no una lista plana.
-        $filtro = ConsentimientoDato::filtrarContactables($aliado->id, $telefonos);
-        $contactables = $filtro['contactables'] ?? [];
-
-        // Quien contestó "por ahora no" queda fuera hasta que venza su aplazamiento. Volver a
-        // escribirle antes es lo que convierte un "todavía no" en una baja.
-        $aplazados = array_flip(\App\Models\MarketingAplazado::vigentesDe($aliado->id, $contactables));
-        $contactables = array_values(array_filter($contactables, fn ($t) => !isset($aplazados[$t])));
-
-        $mapa = array_flip($contactables);
-
-        $elegibles = $candidatos->filter(
-            fn ($c) => isset($mapa[ConsentimientoDato::normalizarTelefono($c->telefono)])
-        )->values();
-
-        // Los dos números van separados a propósito: juntarlos hacía parecer que se habían
-        // descartado 34 personas cuando en realidad se descartaron 9 y las otras 25 solo
-        // quedaban fuera de ESTA corrida por el --limite. Es justo donde hace falta claridad,
-        // porque el paso siguiente le manda mensajes a gente real.
-        $excluidos = $candidatos->count() - $elegibles->count();
         $destinatarios = $elegibles->take($limite)->values();
         $recortados = $elegibles->count() - $destinatarios->count();
-
-        $this->line("Contactables: {$elegibles->count()}" . ($excluidos > 0 ? "  (excluidos {$excluidos} por baja, aplazamiento, repetido o teléfono inválido)" : ''));
         if ($recortados > 0) {
             $this->line("En esta corrida: {$destinatarios->count()} por el --limite. Quedan {$recortados} para la siguiente.");
-        }
-
-        if ($destinatarios->isEmpty()) {
-            return self::SUCCESS;
         }
 
         $this->table(
@@ -117,53 +90,6 @@ class MarketingReactivacion extends Command
         }
 
         return $this->enviar($aliado, $destinatarios, $desde, $hasta);
-    }
-
-    /**
-     * Retirados en la ventana que NO tienen otro contrato vigente: si ya volvió por otro lado,
-     * escribirle "vuelve" es la mejor forma de quedar mal.
-     */
-    private function candidatos(int $aliadoId, int $desde, int $hasta)
-    {
-        return Contrato::query()
-            ->where('contratos.aliado_id', $aliadoId)
-            ->whereNotNull('contratos.fecha_retiro')
-            ->whereBetween('contratos.fecha_retiro', [
-                now()->subDays($hasta)->toDateString(),
-                now()->subDays($desde)->toDateString(),
-            ])
-            // El vínculo con el cliente es por CÉDULA, no por un id — ver Contrato::cliente().
-            //
-            // "Sigue siendo cliente" se decide por ESTADO y no por fecha_retiro: hay 2.825
-            // contratos marcados 'retirado' a los que nunca se les puso la fecha, y filtrar
-            // por `fecha_retiro IS NULL` los daba por vigentes — dejando fuera de la campaña
-            // justo a gente que sí se había ido.
-            //
-            // Se excluye también al que tiene un contrato POR EMPEZAR (fecha_ingreso futura):
-            // ya volvió, aunque todavía no arranque.
-            ->whereNotExists(function ($q) use ($aliadoId) {
-                $q->selectRaw('1')
-                  ->from('contratos as otros')
-                  ->whereColumn('otros.cedula', 'contratos.cedula')
-                  ->where('otros.aliado_id', $aliadoId)
-                  ->where(function ($w) {
-                      $w->where('otros.estado', 'vigente')
-                        ->orWhere('otros.fecha_ingreso', '>', now()->toDateString());
-                  });
-            })
-            ->join('clientes', 'clientes.cedula', '=', 'contratos.cedula')
-            ->selectRaw("contratos.id as contrato_id, contratos.cedula, contratos.fecha_retiro,
-                         LTRIM(RTRIM(CONCAT(clientes.primer_nombre, ' ', clientes.primer_apellido))) as nombre,
-                         COALESCE(clientes.celular, clientes.telefono) as telefono,
-                         DATEDIFF(day, contratos.fecha_retiro, GETDATE()) as dias")
-            ->where(function ($q) {
-                $q->whereNotNull('clientes.celular')->orWhereNotNull('clientes.telefono');
-            })
-            ->orderBy('contratos.fecha_retiro', 'desc')
-            ->get()
-            // Una persona pudo retirar varios contratos: se le escribe UNA vez.
-            ->unique('cedula')
-            ->values();
     }
 
     private function enviar(Aliado $aliado, $destinatarios, int $desde, int $hasta): int

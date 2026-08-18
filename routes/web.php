@@ -955,6 +955,9 @@ Route::middleware('auth')->group(function () {
         Route::get('listas/{id}', [$listas, 'show'])->name('listas.show');
         Route::delete('listas/{id}', [$listas, 'destroy'])->name('listas.destroy');
 
+        // ── Reactivación de retirados (solo informe; el envío va por comando) ──
+        Route::get('reactivacion', [\App\Http\Controllers\Admin\MarketingReactivacionController::class, 'index'])->name('reactivacion');
+
         // ── Campañas y lanzamiento de tandas ───────────────────────────────────
         Route::get('campanas', [$campanas, 'index'])->name('campanas.index');
         Route::get('campanas/crear', [$campanas, 'create'])->name('campanas.create');

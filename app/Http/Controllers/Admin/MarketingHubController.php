@@ -13,8 +13,17 @@ class MarketingHubController extends Controller
 {
     public function index()
     {
-        $pendientes = Publicacion::where('aliado_id', session('aliado_id_activo'))->pendientes()->count();
+        $aliadoId = session('aliado_id_activo');
+        $pendientes = Publicacion::where('aliado_id', $aliadoId)->pendientes()->count();
 
-        return view('admin.marketing.hub', compact('pendientes'));
+        // Cuántos ex-clientes están esperando el mensaje de reactivación. Va en la tarjeta
+        // para que el dueño vea que hay gente por contactar sin tener que entrar a buscarla.
+        try {
+            $porReactivar = \App\Services\Marketing\CandidatosReactivacion::elegibles($aliadoId)['elegibles']->count();
+        } catch (\Throwable $e) {
+            $porReactivar = null;
+        }
+
+        return view('admin.marketing.hub', compact('pendientes', 'porReactivar'));
     }
 }
