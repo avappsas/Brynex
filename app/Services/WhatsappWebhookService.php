@@ -38,6 +38,16 @@ class WhatsappWebhookService
     private const SEGUNDOS_MAX_ESPERA_TOTAL = 20;
 
     /** Frases de botón (ya normalizadas: minúsculas, sin tildes) que se interpretan como rechazo de publicidad. */
+    /**
+     * Botón "por ahora no": NO es una baja. El cliente dijo que más adelante, así que se
+     * aplaza y vuelve a entrar solo cuando venza. Meterlo en FRASES_NO_INTERESA lo bloquearía
+     * para siempre y perdería un cliente que dijo que sí, pero después.
+     */
+    private const FRASES_APLAZAR = ['por ahora no', 'mas adelante', 'luego', 'despues', 'otro dia'];
+
+    /** Botón "hablar con un asesor": lo atiende una persona, no la IA. */
+    private const FRASES_ASESOR = ['hablar con un asesor', 'con un asesor', 'asesor'];
+
     private const FRASES_NO_INTERESA = [
         'no me interesa', 'no interesa', 'no gracias', 'no quiero', 'no deseo recibir mas',
         'dejar de recibir', 'eliminarme', 'quitarme', 'no contactar', 'unsubscribe', 'stop',
@@ -52,6 +62,30 @@ class WhatsappWebhookService
 
         foreach (self::FRASES_NO_INTERESA as $frase) {
             if (str_contains($normalizado, $frase)) return true;
+        }
+
+        return false;
+    }
+
+    /** ¿El botón pide que le escribamos más adelante? */
+    private static function esBotonAplazar(string $textoBoton): bool
+    {
+        $n = Str::ascii(mb_strtolower(trim($textoBoton)));
+
+        foreach (self::FRASES_APLAZAR as $f) {
+            if (str_contains($n, $f)) return true;
+        }
+
+        return false;
+    }
+
+    /** ¿El botón pide hablar con una persona? */
+    private static function esBotonAsesor(string $textoBoton): bool
+    {
+        $n = Str::ascii(mb_strtolower(trim($textoBoton)));
+
+        foreach (self::FRASES_ASESOR as $f) {
+            if (str_contains($n, $f)) return true;
         }
 
         return false;
@@ -261,6 +295,39 @@ class WhatsappWebhookService
         // Emitir evento Reverb para actualizar el chat en tiempo real
         broadcast(new WhatsappMensajeNuevo($mensaje, $conversacion))->toOthers();
         broadcast(new WhatsappConversacionActualizada($conversacion))->toOthers();
+
+        // Botones de la plantilla de reactivación que NO son un rechazo. Se atienden antes
+        // que nada porque cada uno contradice lo que haría el flujo normal: aplazar no puede
+        // terminar en bloqueo, y pedir un asesor no puede terminar contestado por la IA.
+        if ($tipo === 'button') {
+            $textoBoton = (string) ($dataMensaje['contenido'] ?? '');
+
+            if (self::esBotonAplazar($textoBoton)) {
+                \App\Models\MarketingAplazado::aplazar(
+                    $alidoId,
+                    $waFrom,
+                    \App\Models\MarketingAplazado::DIAS_POR_DEFECTO,
+                    'boton_por_ahora_no',
+                    'Tocó el botón "' . $textoBoton . '" en una plantilla de marketing.',
+                    $conversacion->id
+                );
+            }
+
+            if (self::esBotonAsesor($textoBoton)) {
+                // Sin esto le respondería el bot a alguien que acaba de pedir una persona.
+                $conversacion->update(['bot_activo' => false]);
+
+                try {
+                    app(\App\Services\AlertaOperativaService::class)->enviar(
+                        'Reactivación',
+                        'Un contacto pidió hablar con un asesor: ' . ($conversacion->nombre_contacto ?: $waFrom)
+                        . ' (' . $waFrom . '). El bot quedó apagado en esa conversación.'
+                    );
+                } catch (\Throwable $e) {
+                    Log::warning('No se pudo avisar del traspaso a asesor', ['error' => $e->getMessage()]);
+                }
+            }
+        }
 
         // Botón "No me interesa" (u otro equivalente) de una plantilla de marketing: se
         // bloquea de una vez, sin pasar por la IA — es un rechazo explícito, no algo que

@@ -66,14 +66,21 @@ class MarketingReactivacion extends Command
         $telefonos = $candidatos->pluck('telefono')->all();
         // Devuelve ['contactables' => [...], 'excluidos' => [...]], no una lista plana.
         $filtro = ConsentimientoDato::filtrarContactables($aliado->id, $telefonos);
-        $mapa = array_flip($filtro['contactables'] ?? []);
+        $contactables = $filtro['contactables'] ?? [];
+
+        // Quien contestó "por ahora no" queda fuera hasta que venza su aplazamiento. Volver a
+        // escribirle antes es lo que convierte un "todavía no" en una baja.
+        $aplazados = array_flip(\App\Models\MarketingAplazado::vigentesDe($aliado->id, $contactables));
+        $contactables = array_values(array_filter($contactables, fn ($t) => !isset($aplazados[$t])));
+
+        $mapa = array_flip($contactables);
 
         $destinatarios = $candidatos->filter(
             fn ($c) => isset($mapa[ConsentimientoDato::normalizarTelefono($c->telefono)])
         )->take($limite)->values();
 
         $bloqueados = $candidatos->count() - $destinatarios->count();
-        $this->line("Contactables: {$destinatarios->count()}" . ($bloqueados > 0 ? "  (excluidos {$bloqueados} por baja, repetido o teléfono inválido)" : ''));
+        $this->line("Contactables: {$destinatarios->count()}" . ($bloqueados > 0 ? "  (excluidos {$bloqueados} por baja, aplazamiento, repetido o teléfono inválido)" : ''));
 
         if ($destinatarios->isEmpty()) {
             return self::SUCCESS;
