@@ -54,16 +54,20 @@ class EnvioReactivacion
         ]);
 
         foreach ($destinatarios as $d) {
-            $detalle = WhatsappEnvioMasivoDetalle::create([
+            WhatsappEnvioMasivoDetalle::create([
                 'envio_id'            => $envio->id,
                 'contrato_id'         => $d->contrato_id ?? null,
                 'wa_numero'           => $d->telefono,
                 'nombre_destinatario' => $d->nombre,
                 'estado'              => 'pendiente',
             ]);
-
-            WhatsappEnvioMasivoJob::dispatch($detalle->id);
         }
+
+        // UN job por envío, no uno por destinatario: el job recibe el id del ENVÍO y recorre
+        // sus detalles pendientes. Despacharlo por detalle le pasaba el id equivocado, buscaba
+        // un envío que no existe y terminaba en 4 ms sin mandar nada — y si ese id hubiera
+        // coincidido con otra campaña, la habría reprocesado.
+        WhatsappEnvioMasivoJob::dispatch($envio->id);
 
         // La ley no distingue entre una campaña y un envío suelto. Si está cerrado, los
         // mensajes quedan encolados y el worker los despacha en la próxima apertura.

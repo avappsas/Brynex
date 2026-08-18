@@ -219,6 +219,13 @@ class WhatsappEnvioMasivoJob implements ShouldQueue
             return array_values($parametrosGlobales);
         }
 
+        // Plantilla de UNA variable: es el nombre de quien recibe y nada más. Lo de abajo está
+        // construido para las de cobro, que llevan valor, cuentas, plazo y soporte; caer ahí
+        // con una sola variable devuelve un arreglo que no encaja y Meta rechaza el envío.
+        if ($plantilla->cantidadVariables() === 1) {
+            return [$detalle->nombre_destinatario ?: 'Hola'];
+        }
+
         // Determinar si es un envío a empresa o si hay un contrato primario
         if ($detalle->empresa_id) {
             $empresa = \App\Models\Empresa::find($detalle->empresa_id);
