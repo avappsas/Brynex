@@ -123,12 +123,23 @@ class MarketingReactivacion extends Command
                 now()->subDays($desde)->toDateString(),
             ])
             // El vínculo con el cliente es por CÉDULA, no por un id — ver Contrato::cliente().
+            //
+            // "Sigue siendo cliente" se decide por ESTADO y no por fecha_retiro: hay 2.825
+            // contratos marcados 'retirado' a los que nunca se les puso la fecha, y filtrar
+            // por `fecha_retiro IS NULL` los daba por vigentes — dejando fuera de la campaña
+            // justo a gente que sí se había ido.
+            //
+            // Se excluye también al que tiene un contrato POR EMPEZAR (fecha_ingreso futura):
+            // ya volvió, aunque todavía no arranque.
             ->whereNotExists(function ($q) use ($aliadoId) {
                 $q->selectRaw('1')
-                  ->from('contratos as vigentes')
-                  ->whereColumn('vigentes.cedula', 'contratos.cedula')
-                  ->where('vigentes.aliado_id', $aliadoId)
-                  ->whereNull('vigentes.fecha_retiro');
+                  ->from('contratos as otros')
+                  ->whereColumn('otros.cedula', 'contratos.cedula')
+                  ->where('otros.aliado_id', $aliadoId)
+                  ->where(function ($w) {
+                      $w->where('otros.estado', 'vigente')
+                        ->orWhere('otros.fecha_ingreso', '>', now()->toDateString());
+                  });
             })
             ->join('clientes', 'clientes.cedula', '=', 'contratos.cedula')
             ->selectRaw("contratos.id as contrato_id, contratos.cedula, contratos.fecha_retiro,
