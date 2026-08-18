@@ -75,12 +75,22 @@ class MarketingReactivacion extends Command
 
         $mapa = array_flip($contactables);
 
-        $destinatarios = $candidatos->filter(
+        $elegibles = $candidatos->filter(
             fn ($c) => isset($mapa[ConsentimientoDato::normalizarTelefono($c->telefono)])
-        )->take($limite)->values();
+        )->values();
 
-        $bloqueados = $candidatos->count() - $destinatarios->count();
-        $this->line("Contactables: {$destinatarios->count()}" . ($bloqueados > 0 ? "  (excluidos {$bloqueados} por baja, aplazamiento, repetido o teléfono inválido)" : ''));
+        // Los dos números van separados a propósito: juntarlos hacía parecer que se habían
+        // descartado 34 personas cuando en realidad se descartaron 9 y las otras 25 solo
+        // quedaban fuera de ESTA corrida por el --limite. Es justo donde hace falta claridad,
+        // porque el paso siguiente le manda mensajes a gente real.
+        $excluidos = $candidatos->count() - $elegibles->count();
+        $destinatarios = $elegibles->take($limite)->values();
+        $recortados = $elegibles->count() - $destinatarios->count();
+
+        $this->line("Contactables: {$elegibles->count()}" . ($excluidos > 0 ? "  (excluidos {$excluidos} por baja, aplazamiento, repetido o teléfono inválido)" : ''));
+        if ($recortados > 0) {
+            $this->line("En esta corrida: {$destinatarios->count()} por el --limite. Quedan {$recortados} para la siguiente.");
+        }
 
         if ($destinatarios->isEmpty()) {
             return self::SUCCESS;
