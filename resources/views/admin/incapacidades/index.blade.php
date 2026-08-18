@@ -1157,8 +1157,11 @@ function verDetalle(id){
                 </div>
 
                 <div id="tabGestiones" class="tab-pane">
-                    <button class="btn btn-primary btn-sm" style="margin-bottom:.8rem" onclick="registrarGestion(${inc.id})">📞 Nueva Gestión</button>
-                    <div id="gestionesChips" style="display:flex;gap:.35rem;flex-wrap:wrap;margin-bottom:.8rem"></div>
+                    <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin-bottom:.8rem">
+                        <button class="btn btn-primary btn-sm" onclick="registrarGestion(${inc.id})">📞 Nueva Gestión</button>
+                        <select id="gestionesFiltro" onchange="filtrarGestiones(this.value)"
+                                style="display:none;border:1px solid #cbd5e1;border-radius:8px;padding:.38rem .65rem;font-size:.8rem;background:#f8fafc;max-width:100%"></select>
+                    </div>
                     <div class="timeline" id="gestionesTimeline"></div>
                 </div>
 
@@ -1207,27 +1210,28 @@ function filtrarGestiones(filtro){
 }
 
 function renderGestiones(){
-    const cont  = document.getElementById('gestionesTimeline');
-    const chips = document.getElementById('gestionesChips');
+    const cont = document.getElementById('gestionesTimeline');
+    const sel  = document.getElementById('gestionesFiltro');
     if (!cont) return;
 
-    // Chips: solo tienen sentido si la familia tiene más de un miembro.
-    if (chips) {
+    // El select solo tiene sentido si la familia tiene más de un miembro.
+    if (sel) {
         const miembros = GEST.miembros || [];
         if (miembros.length < 2) {
-            chips.innerHTML = '';
+            sel.style.display = 'none';
         } else {
             const nFam = (GEST.familia||[]).filter(g => !!g.aplica_a_familia).length;
-            let html = chipGestion('todas', '📁 Todas', GEST.familia.length);
+            let opts = opcionGestion('todas', `📁 Todas (${GEST.familia.length})`);
             miembros.forEach(m => {
                 const icono = m.es_padre ? '🏥' : '📄';
                 // Ojo: sqlsrv devuelve los ids como string en el JSON, así que
                 // toda comparación de ids va por String().
-                html += chipGestion(m.id, `${icono} ${m.label}`, gestionesVisibles(m.id).length,
-                                    String(m.id) === String(GEST.incActivo));
+                const abierta = String(m.id) === String(GEST.incActivo) ? ' · abierta' : '';
+                opts += opcionGestion(m.id, `${icono} ${m.label} (${gestionesVisibles(m.id).length})${abierta}`);
             });
-            if (nFam) html += chipGestion('familia', '👨‍👩‍👦 Familia', nFam);
-            chips.innerHTML = html;
+            if (nFam) opts += opcionGestion('familia', `👨‍👩‍👦 Solo gestiones de familia (${nFam})`);
+            sel.innerHTML = opts;
+            sel.style.display = '';
         }
     }
 
@@ -1252,8 +1256,8 @@ function renderGestiones(){
             : '';
         // De qué incapacidad viene: solo si hay más de una en la familia.
         const origen = varios
-            ? `<span onclick="filtrarGestiones(${g.incapacidad_id})" title="Ver solo las gestiones de ${g.origen_label}"
-                     style="cursor:pointer;background:#f1f5f9;color:#475569;border-radius:999px;padding:.1rem .45rem;font-size:.65rem;font-weight:700;margin-left:.35rem">${g.origen_label}</span>`
+            ? `<span title="Esta gestión se registró en: ${g.origen_label}"
+                     style="background:#f1f5f9;color:#475569;border-radius:999px;padding:.1rem .45rem;font-size:.65rem;font-weight:700;margin-left:.35rem">${g.origen_label}</span>`
             : '';
         return `
         <div class="timeline-item"${revertida?' style="opacity:.6"':''}>
@@ -1268,14 +1272,9 @@ function renderGestiones(){
     }).join('') || '<div style="color:#94a3b8;font-size:.82rem">Sin gestiones para este filtro.</div>';
 }
 
-function chipGestion(valor, label, n, esActiva){
-    const activo = String(GEST.filtro) === String(valor);
-    const val = typeof valor === 'number' ? valor : `'${valor}'`;
-    return `<button type="button" onclick="filtrarGestiones(${val})"
-        style="border:1px solid ${activo?'#2563eb':'#e2e8f0'};background:${activo?'#eff6ff':'#fff'};
-               color:${activo?'#1e40af':'#475569'};padding:.28rem .65rem;border-radius:999px;
-               font-size:.72rem;font-weight:600;cursor:pointer;white-space:nowrap${esActiva&&!activo?';box-shadow:0 0 0 1px #bfdbfe inset':''}">
-        ${label} <span style="opacity:.6">(${n})</span></button>`;
+function opcionGestion(valor, label){
+    const sel = String(GEST.filtro) === String(valor) ? ' selected' : '';
+    return `<option value="${valor}"${sel}>${label}</option>`;
 }
 
 function switchTab(btn, tabId){
