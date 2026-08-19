@@ -1579,9 +1579,18 @@ class CobrosController extends Controller
             $valorFormateado = '$' . number_format($valorCobro, 0, ',', '.');
 
             $cantVars = $plantilla->cantidadVariables();
-            $params = $cantVars <= 5
-                ? [$nombreCliente, $nombreAliadoEfectivo, $plazoDias, $cuentasText, $celularSoporte]
-                : [$nombreCliente, $nombreAliadoEfectivo, $plazoDias, $cuentasText, $celularSoporte, $valorFormateado];
+            if ($plantilla->usaMoldeCorto()) {
+                // Mismo molde que usa el envío real (WhatsappEnvioMasivoJob): si aquí se
+                // arman los cinco del recordatorio de cobro, la vista previa muestra un
+                // mensaje que no es el que va a salir.
+                $params = $cantVars === 3
+                    ? [$nombreCliente, $nombreAliadoEfectivo, $valorFormateado]
+                    : [$nombreCliente, $nombreAliadoEfectivo];
+            } else {
+                $params = $cantVars <= 5
+                    ? [$nombreCliente, $nombreAliadoEfectivo, $plazoDias, $cuentasText, $celularSoporte]
+                    : [$nombreCliente, $nombreAliadoEfectivo, $plazoDias, $cuentasText, $celularSoporte, $valorFormateado];
+            }
 
             $cuerpoReal = $plantilla->cuerpo;
             foreach ($params as $i => $val) {
@@ -2414,6 +2423,19 @@ class CobrosController extends Controller
     /**
      * Previsualiza los mensajes de WhatsApp para cobros masivos a empresas.
      */
+    /**
+     * Lo que se le anuncia a una empresa como valor a pagar: la administración de sus
+     * contratos pendientes más la mora que ya corrieron.
+     *
+     * La mora se calcula en obtenerEmpresasConDatosCobro() y la tabla de cobros la
+     * muestra en su propia columna, pero no entraba en el mensaje: al cliente le
+     * llegaba un valor menor al que de verdad debía y pagaba de menos.
+     */
+    private function valorCobroEmpresa(object $empresa): float
+    {
+        return (float) ($empresa->admon_pend ?? 0) + (float) ($empresa->mora_estimada ?? 0);
+    }
+
     public function previsualizarWhatsAppEmpresas(Request $request)
     {
         $aliadoId = session('aliado_id_activo');
@@ -2525,11 +2547,15 @@ class CobrosController extends Controller
 
             $celularSoporte = $config->numero_telefono ?: 'no tiene configurado';
 
-            $valorCobro = (float)($e->admon_pend ?? 0);
+            $valorCobro = $this->valorCobroEmpresa($e);
             $valorFormateado = '$' . number_format($valorCobro, 0, ',', '.');
 
             $cantVars = $plantilla->cantidadVariables();
-            if ($cantVars <= 5 || !$incluirValor) {
+            if ($plantilla->usaMoldeCorto()) {
+                $params = ($cantVars === 3 && $incluirValor)
+                    ? [$nombreContacto, $nombreAliadoEfectivo, $valorFormateado]
+                    : [$nombreContacto, $nombreAliadoEfectivo];
+            } elseif ($cantVars <= 5 || !$incluirValor) {
                 $params = [$nombreContacto, $nombreAliadoEfectivo, $plazoDias, $cuentasText, $celularSoporte];
             } else {
                 $params = [$nombreContacto, $nombreAliadoEfectivo, $plazoDias, $cuentasText, $celularSoporte, $valorFormateado];
@@ -2685,7 +2711,7 @@ class CobrosController extends Controller
         foreach ($empresas as $e) {
             $num = $normalizarCelular($e->telefono ?: $e->celular);
             $sinNumero = empty($num);
-            $valorCobro = $incluirValor ? (float)($e->admon_pend ?? 0) : 0.0;
+            $valorCobro = $incluirValor ? $this->valorCobroEmpresa($e) : 0.0;
 
             if (isset($empresaIdsEnviadosSet[$e->id])) {
                 WhatsappEnvioMasivoDetalle::create([
