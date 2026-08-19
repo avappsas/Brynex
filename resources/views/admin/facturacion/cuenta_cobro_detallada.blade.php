@@ -197,7 +197,7 @@ table.tbl-det tfoot .num { color: #34d399; }
             </tr>
         </thead>
         <tbody>
-        @php $no=1; $totEps=$totArl=$totAfp=$totCaja=$totAdmon=$totIva=$totMora=$totTotal=0; $totalSaldo=0; $ivaSobreAdmon = false; $ivaSobreAfil = false; @endphp
+        @php $no=1; $totEps=$totArl=$totAfp=$totCaja=$totAdmon=$totIva=$totMora=$totTotal=0; $ivaSobreAdmon = false; $ivaSobreAfil = false; @endphp
         @foreach($items as $item)
         @php
             $totEps   += $item->v_eps;
@@ -216,7 +216,6 @@ table.tbl-det tfoot .num { color: #34d399; }
             $spItem = (int)($item->saldo_proximo ?? 0);
             $itemAFavor    = $spItem > 0 ? $spItem : 0;
             $itemPendiente = $spItem < 0 ? abs($spItem) : 0;
-            $totalSaldo += $itemPendiente - $itemAFavor;
             $estadoClass = match($item->estado) {
                 'pagada'      => 'est-vigente',
                 'prestamo'    => 'est-prestamo',
@@ -245,7 +244,7 @@ table.tbl-det tfoot .num { color: #34d399; }
                     <div class="saldo-info saldo-favor">✅ A favor: ${{ number_format($itemAFavor,0,',','.') }}</div>
                 @endif
                 @if($itemPendiente > 0)
-                    <div class="saldo-info saldo-pendiente">⚠️ Pendiente: ${{ number_format($itemPendiente,0,',','.') }}</div>
+                    <div class="saldo-info saldo-pendiente">⚠️ Pendiente meses anteriores: ${{ number_format($itemPendiente,0,',','.') }}</div>
                 @endif
             </td>
             <td style="text-align:center;color:#64748b;white-space:nowrap;">
@@ -377,18 +376,23 @@ table.tbl-det tfoot .num { color: #34d399; }
     </table>
     </div>
 
-    {{-- Resumen de saldos --}}
+    {{-- Resumen de saldos — ya incluidos en el TOTAL A COBRAR --}}
     @if($totalFavor > 0 || $totalPendiente > 0)
-    <div style="display:flex;gap:1.5rem;margin:.7rem 0;flex-wrap:wrap;">
+    @php $subtotalCC = (int) $items->sum('v_total') + (int) ($totalCobrosAdicionales ?? 0); @endphp
+    <div style="display:flex;gap:1.5rem;margin:.7rem 0;flex-wrap:wrap;align-items:center;">
+        <div style="background:#f1f5f9;border-radius:8px;padding:.45rem .85rem;font-size:10px;">
+            <strong>Subtotal del mes:</strong>
+            <span style="font-family:monospace;font-weight:800;">${{ number_format($subtotalCC,0,',','.') }}</span>
+        </div>
         @if($totalFavor > 0)
         <div style="background:#dcfce7;border-radius:8px;padding:.45rem .85rem;font-size:10px;">
-            ✅ <strong>Total a favor:</strong>
+            ✅ <strong>(−) Saldo a favor de meses anteriores:</strong>
             <span style="font-family:monospace;color:#15803d;font-weight:800;">${{ number_format($totalFavor,0,',','.') }}</span>
         </div>
         @endif
         @if($totalPendiente > 0)
         <div style="background:#fee2e2;border-radius:8px;padding:.45rem .85rem;font-size:10px;">
-            ⚠️ <strong>Total pendiente:</strong>
+            ⚠️ <strong>(+) Saldo pendiente de meses anteriores:</strong>
             <span style="font-family:monospace;color:#dc2626;font-weight:800;">${{ number_format($totalPendiente,0,',','.') }}</span>
         </div>
         @endif

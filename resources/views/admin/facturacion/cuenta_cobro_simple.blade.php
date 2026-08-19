@@ -214,7 +214,7 @@ table.tbl-cc .num { text-align: right; font-family: monospace; }
             </tr>
         </thead>
         <tbody>
-        @php $no = 1; $totalSaldo = 0; $totIva = 0; $ivaSobreAdmon = false; $ivaSobreAfil = false; @endphp
+        @php $no = 1; $totIva = 0; $ivaSobreAdmon = false; $ivaSobreAfil = false; @endphp
         @foreach($items as $item)
         @php
             $totIva += (int)($item->v_iva ?? 0);
@@ -226,7 +226,6 @@ table.tbl-cc .num { text-align: right; font-family: monospace; }
             $spItem = (int)($item->saldo_proximo ?? 0);
             $itemAFavor    = $spItem > 0 ? $spItem : 0;
             $itemPendiente = $spItem < 0 ? abs($spItem) : 0;
-            $totalSaldo += $itemPendiente - $itemAFavor;
             $estadoClass = match($item->estado) {
                 'pagada'      => 'est-vigente',
                 'prestamo'    => 'est-prestamo',
@@ -257,7 +256,7 @@ table.tbl-cc .num { text-align: right; font-family: monospace; }
                     <div class="saldo-info saldo-favor">✅ Saldo a favor: ${{ number_format($itemAFavor,0,',','.') }}</div>
                 @endif
                 @if($itemPendiente > 0)
-                    <div class="saldo-info saldo-pendiente">⚠️ Pendiente: ${{ number_format($itemPendiente,0,',','.') }}</div>
+                    <div class="saldo-info saldo-pendiente">⚠️ Pendiente meses anteriores: ${{ number_format($itemPendiente,0,',','.') }}</div>
                 @endif
                 @if(isset($item->v_mora) && $item->v_mora > 0)
                     <div class="saldo-info" style="color:#b45309;font-weight:700;">⚠️ Mora: ${{ number_format($item->v_mora,0,',','.') }}</div>
@@ -315,16 +314,25 @@ table.tbl-cc .num { text-align: right; font-family: monospace; }
         @endif
         </tbody>
         <tfoot>
+            @if(($saldoNetoCC ?? 0) != 0)
+            @php $subtotalCC = (int) $items->sum('v_total') + (int) ($totalCobrosAdicionales ?? 0); @endphp
             <tr>
                 <td colspan="5" style="text-align:right;padding:.45rem;font-weight:700;font-size:10px;color:#64748b;">
-                    SALDO (pendientes - a favor):
+                    SUBTOTAL DEL MES:
                 </td>
-                <td class="num" style="font-weight:700;color:{{ $totalSaldo > 0 ? '#dc2626' : ($totalSaldo < 0 ? '#15803d' : '#64748b') }}">
-                    ${{ number_format(abs($totalSaldo),0,',','.') }}
-                    @if($totalSaldo < 0) <span style="font-size:9px;">(a favor)</span>@endif
+                <td class="num" style="font-weight:700;">${{ number_format($subtotalCC,0,',','.') }}</td>
+                <td></td>
+            </tr>
+            <tr>
+                <td colspan="5" style="text-align:right;padding:.45rem;font-weight:700;font-size:10px;color:{{ $saldoNetoCC > 0 ? '#dc2626' : '#15803d' }};">
+                    {{ $saldoNetoCC > 0 ? '(+) SALDO PENDIENTE DE MESES ANTERIORES:' : '(−) SALDO A FAVOR DE MESES ANTERIORES:' }}
+                </td>
+                <td class="num" style="font-weight:700;color:{{ $saldoNetoCC > 0 ? '#dc2626' : '#15803d' }}">
+                    {{ $saldoNetoCC > 0 ? '' : '−' }}${{ number_format(abs($saldoNetoCC),0,',','.') }}
                 </td>
                 <td></td>
             </tr>
+            @endif
             <tr style="background:#1e3a5f;">
                 <td colspan="5" style="text-align:right;padding:.5rem;color:#94a3b8;font-weight:700;font-size:11px;">
                     TOTAL

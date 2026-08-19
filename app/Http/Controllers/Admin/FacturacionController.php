@@ -4234,18 +4234,14 @@ class FacturacionController extends Controller
         });
 
         $totalGeneral   = $items->sum('v_total');
-        // Saldo neto de la empresa derivado de saldo_proximo acumulado
-        $saldoNetoEmpresaCC = 0;
-        if ($empresa) {
-            $saldoNetoEmpresaCC = (int) Factura::where('aliado_id', $aliadoId)
-                ->where('empresa_id', $empresa->id)
-                ->whereIn('estado', ['pagada', 'prestamo', 'abono'])
-                ->whereNotNull('saldo_proximo')
-                ->whereNull('deleted_at')
-                ->sum('saldo_proximo');
-        }
-        $totalFavor     = $saldoNetoEmpresaCC > 0 ? $saldoNetoEmpresaCC : 0;
-        $totalPendiente = $saldoNetoEmpresaCC < 0 ? abs($saldoNetoEmpresaCC) : 0;
+
+        // Saldo de meses anteriores de los trabajadores listados: SÍ entra al total.
+        // Solo el de quienes aparecen en el documento — no se traen deudas de otros
+        // contratos de la empresa, que el cliente no podría ver aquí.
+        // saldo_proximo: positivo = a favor del cliente, negativo = pendiente.
+        $saldoNetoCC    = -1 * (int) $items->sum('saldo_proximo'); // positivo = a cobrar
+        $totalFavor     = $saldoNetoCC < 0 ? abs($saldoNetoCC) : 0;
+        $totalPendiente = $saldoNetoCC > 0 ? $saldoNetoCC : 0;
 
         $meses = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio',
                   'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
@@ -4269,13 +4265,16 @@ class FacturacionController extends Controller
         $totalCobrosAdicionales = (int)$cobrosAdicionalesCC->sum('valor');
         $totalGeneral += $totalCobrosAdicionales;
 
+        // El saldo entra al total: pendiente suma, a favor descuenta. Nunca negativo.
+        $totalGeneral = max(0, $totalGeneral + $saldoNetoCC);
+
         // IVA: se muestra como un solo renglón en la cuenta de cobro, no por trabajador
         $totalIva = (int) $items->sum('v_iva');
         $ivaPct   = \App\Models\ConfiguracionBrynex::porcentajeIva();
 
         return view($vista, compact(
             'aliado','empresa','items','cuentasCobro',
-            'mes','anio','meses','totalGeneral','totalFavor','totalPendiente',
+            'mes','anio','meses','totalGeneral','totalFavor','totalPendiente','saldoNetoCC',
             'cobrosAdicionalesCC', 'totalCobrosAdicionales', 'totalIva', 'ivaPct'
         ));
     }
