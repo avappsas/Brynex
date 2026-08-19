@@ -293,6 +293,23 @@ $meses = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','
                 @if($abono->observacion)
                 <div class="abono-meta" style="color:#475569;margin-top:.1rem;">{{ $abono->observacion }}</div>
                 @endif
+                <div style="margin-top:.25rem;display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;" id="sop-box-{{ $abono->id }}">
+                    @if($abono->soporte_path)
+                    <a href="{{ route('admin.prestamos.abono.soporte', $abono->id) }}"
+                       style="font-size:.72rem;font-weight:700;color:#2563eb;text-decoration:none;">
+                        📎 Ver certificado{{ $abono->soporte_nombre ? ' — ' . \Illuminate\Support\Str::limit($abono->soporte_nombre, 32) : '' }}
+                    </a>
+                    <button type="button" onclick="adjuntarSoporte({{ $abono->id }}, true)"
+                            style="background:none;border:none;padding:0;cursor:pointer;font-size:.7rem;color:#94a3b8;text-decoration:underline;">
+                        cambiar
+                    </button>
+                    @else
+                    <button type="button" onclick="adjuntarSoporte({{ $abono->id }}, false)"
+                            style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:.15rem .5rem;cursor:pointer;font-size:.7rem;font-weight:700;color:#2563eb;">
+                        📎 Adjuntar certificado
+                    </button>
+                    @endif
+                </div>
             </div>
             @empty
             <div class="empty-list">Sin abonos registrados aún</div>
@@ -364,6 +381,11 @@ $meses = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','
         <div id="ab-cs-row" class="form-grp" style="display:none;">
             <label>Valor consignado</label>
             <input type="number" id="ab-cs" min="0">
+        </div>
+        <div id="ab-sop-row" class="form-grp">
+            <label id="ab-sop-lbl">📎 Certificado de la consignación</label>
+            <input type="file" id="ab-sop" accept="image/jpeg,image/png,application/pdf">
+            <div style="font-size:.7rem;color:#94a3b8;margin-top:.15rem;">JPG, PNG o PDF — máximo 10 MB.</div>
         </div>
         <div class="form-grp">
             <label>Observación</label>
@@ -445,6 +467,7 @@ function abrirAbonar(id, saldo) {
     document.getElementById('ab-ef').value = saldo;
     document.getElementById('ab-cs').value = '';
     document.getElementById('ab-obs').value = '';
+    document.getElementById('ab-sop').value = '';
     toggleForma();
     document.getElementById('modalAbonar').classList.add('open');
 }
@@ -452,22 +475,34 @@ function toggleForma() {
     const f = document.getElementById('ab-forma').value;
     document.getElementById('ab-ef-row').style.display = (f==='efectivo'||f==='mixto') ? '' : 'none';
     document.getElementById('ab-cs-row').style.display = (f==='consignacion'||f==='mixto') ? '' : 'none';
+    // El certificado solo se exige cuando hay plata entrando por el banco
+    const exige = (f==='consignacion'||f==='mixto');
+    document.getElementById('ab-sop').required = exige;
+    document.getElementById('ab-sop-lbl').textContent = exige
+        ? '📎 Certificado de la consignación *'
+        : '📎 Certificado / soporte (opcional)';
 }
 document.getElementById('formAbonar').addEventListener('submit', async e => {
     e.preventDefault();
     const id = document.getElementById('ab-id').value;
-    const r  = await fetch(`/admin/prestamos/${id}/abonar`, {
-        method:'POST', headers:{'Content-Type':'application/json','X-CSRF-TOKEN':CSRF},
-        body: JSON.stringify({
-            valor:            document.getElementById('ab-valor').value,
-            forma_pago:       document.getElementById('ab-forma').value,
-            valor_efectivo:   document.getElementById('ab-ef').value || 0,
-            valor_consignado: document.getElementById('ab-cs').value || 0,
-            observacion:      document.getElementById('ab-obs').value,
-        })
+    const fd = new FormData();
+    fd.append('valor',            document.getElementById('ab-valor').value);
+    fd.append('forma_pago',       document.getElementById('ab-forma').value);
+    fd.append('valor_efectivo',   document.getElementById('ab-ef').value || 0);
+    fd.append('valor_consignado', document.getElementById('ab-cs').value || 0);
+    fd.append('observacion',      document.getElementById('ab-obs').value);
+    const sop = document.getElementById('ab-sop').files[0];
+    if (sop) fd.append('soporte', sop);
+
+    const r   = await fetch(`/admin/prestamos/${id}/abonar`, {
+        method:'POST', headers:{'X-CSRF-TOKEN':CSRF,'Accept':'application/json'}, body: fd
     });
     const res = await r.json();
-    alert(res.mensaje || (res.ok ? 'Abono registrado' : 'Error'));
+    if (!r.ok) {
+        alert(res.message || Object.values(res.errors || {}).flat().join('\n') || 'Error al registrar el abono');
+        return;
+    }
+    alert(res.mensaje || 'Abono registrado');
     if (res.ok) location.reload();
 });
 
@@ -488,6 +523,39 @@ document.getElementById('formGestion').addEventListener('submit', async e => {
     if (res.ok) { alert('✅ Gestión registrada.'); location.reload(); }
     else alert('Error al registrar gestión');
 });
+
+// ── Adjuntar certificado a un abono ya registrado ────────────
+function adjuntarSoporte(abonoId, tieneYa) {
+    if (tieneYa && !confirm('Ya hay un certificado adjunto. ¿Reemplazarlo?')) return;
+
+    const inp = document.createElement('input');
+    inp.type   = 'file';
+    inp.accept = 'image/jpeg,image/png,application/pdf';
+    inp.onchange = async () => {
+        const f = inp.files[0];
+        if (!f) return;
+        const fd = new FormData();
+        fd.append('soporte', f);
+
+        const r   = await fetch(`/admin/prestamos/abono/${abonoId}/soporte`, {
+            method:'POST', headers:{'X-CSRF-TOKEN':CSRF,'Accept':'application/json'}, body: fd
+        });
+        const res = await r.json();
+        if (!r.ok) {
+            alert(res.message || Object.values(res.errors || {}).flat().join('\n') || 'No se pudo adjuntar el certificado');
+            return;
+        }
+        const box = document.getElementById('sop-box-' + abonoId);
+        if (box) {
+            const nombre = (res.nombre || '').length > 32 ? res.nombre.slice(0, 32) + '…' : (res.nombre || '');
+            box.innerHTML =
+                `<a href="${res.url}" style="font-size:.72rem;font-weight:700;color:#2563eb;text-decoration:none;">📎 Ver certificado${nombre ? ' — ' + nombre : ''}</a>` +
+                `<button type="button" onclick="adjuntarSoporte(${abonoId}, true)" style="background:none;border:none;padding:0;cursor:pointer;font-size:.7rem;color:#94a3b8;text-decoration:underline;">cambiar</button>`;
+        }
+        alert(res.mensaje || '📎 Certificado adjuntado.');
+    };
+    inp.click();
+}
 
 // ── Condonar ─────────────────────────────────────────────────
 function abrirCondonar(id) {

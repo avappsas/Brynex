@@ -11,6 +11,7 @@ class Abono extends BaseModel
         'factura_id','valor','forma_pago',
         'valor_efectivo','valor_consignado',
         'banco_cuenta_id','fecha','usuario_id','observacion',
+        'soporte_path','soporte_nombre',
     ];
 
     protected $casts = ['fecha' => 'date'];

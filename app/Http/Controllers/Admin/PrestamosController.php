@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\{Factura, Abono, BitacoraCobro, Contrato, Empresa, BancoCuenta};
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\{Auth, DB};
+use Illuminate\Support\Facades\{Auth, DB, Storage};
 
 class PrestamosController extends Controller
 {
@@ -244,6 +244,10 @@ class PrestamosController extends Controller
             ->whereNull('deleted_at')
             ->findOrFail($facturaId);
 
+        // El certificado es obligatorio cuando entra plata por el banco:
+        // sin él no hay cómo probar la consignación después.
+        $exigeSoporte = in_array($request->input('forma_pago'), ['consignacion', 'mixto'], true);
+
         $validated = $request->validate([
             'valor'            => 'required|numeric|min:1',
             'forma_pago'       => 'required|in:efectivo,consignacion,mixto',
@@ -251,12 +255,26 @@ class PrestamosController extends Controller
             'valor_consignado' => 'nullable|numeric|min:0',
             'banco_cuenta_id'  => 'nullable|integer',
             'observacion'      => 'nullable|string|max:500',
+            'soporte'          => ($exigeSoporte ? 'required' : 'nullable') . '|file|mimes:jpeg,jpg,png,pdf|max:10240',
+        ], [
+            'soporte.required' => 'Adjunta el certificado de la consignación.',
+            'soporte.mimes'    => 'El certificado debe ser una imagen (JPG/PNG) o un PDF.',
+            'soporte.max'      => 'El certificado no puede pesar más de 10 MB.',
         ]);
+
+        // Soporte al disco `local` (storage/app): lleva datos bancarios del cliente
+        $soportePath   = null;
+        $soporteNombre = null;
+        if ($request->hasFile('soporte')) {
+            $archivo       = $request->file('soporte');
+            $soportePath   = $archivo->store("prestamos/soportes/{$aliadoId}", 'local');
+            $soporteNombre = mb_substr($archivo->getClientOriginalName(), 0, 200);
+        }
 
         // Detectar si es un lote de empresa (mismo numero_factura, varios clientes)
         $esLote = $factura->empresa_id && $factura->empresa_id != 1;
 
-        DB::transaction(function () use ($factura, $validated, $esLote, $aliadoId) {
+        DB::transaction(function () use ($factura, $validated, $esLote, $aliadoId, $soportePath, $soporteNombre) {
             // El abono se registra siempre en la factura de referencia del lote
             Abono::create([
                 'factura_id'       => $factura->id,
@@ -266,6 +284,8 @@ class PrestamosController extends Controller
                 'valor_consignado' => (int)($validated['valor_consignado'] ?? 0),
                 'banco_cuenta_id'  => $validated['banco_cuenta_id'] ?? null,
                 'observacion'      => $validated['observacion'] ?? null,
+                'soporte_path'     => $soportePath,
+                'soporte_nombre'   => $soporteNombre,
                 'fecha'            => today()->toDateString(),
                 'usuario_id'       => Auth::id(),
             ]);
@@ -439,6 +459,72 @@ class PrestamosController extends Controller
             ]);
 
         return response()->json(['ok' => true, 'gestiones' => $gestiones]);
+    }
+
+    // ─── Adjuntar el certificado a un abono ya registrado ────────────
+    // Para los abonos viejos, que se guardaron antes de que existiera el campo.
+    public function adjuntarSoporteAbono(Request $request, int $abonoId)
+    {
+        $aliadoId = session('aliado_id_activo');
+
+        $abono = Abono::whereHas('factura', fn($q) => $q->where('aliado_id', $aliadoId))
+            ->findOrFail($abonoId);
+
+        $request->validate([
+            'soporte' => 'required|file|mimes:jpeg,jpg,png,pdf|max:10240',
+        ], [
+            'soporte.required' => 'Selecciona el certificado de la consignación.',
+            'soporte.mimes'    => 'El certificado debe ser una imagen (JPG/PNG) o un PDF.',
+            'soporte.max'      => 'El certificado no puede pesar más de 10 MB.',
+        ]);
+
+        $anterior = $abono->soporte_path;
+        $archivo  = $request->file('soporte');
+
+        $abono->update([
+            'soporte_path'   => $archivo->store("prestamos/soportes/{$aliadoId}", 'local'),
+            'soporte_nombre' => mb_substr($archivo->getClientOriginalName(), 0, 200),
+        ]);
+
+        // Reemplazar deja rastro: el soporte es la prueba del pago
+        \App\Models\Bitacora::registrar(
+            accion: 'updated',
+            modelo: 'Abono',
+            registroId: $abono->id,
+            descripcion: $anterior
+                ? "Certificado del abono #{$abono->id} reemplazado por '{$abono->soporte_nombre}'."
+                : "Certificado '{$abono->soporte_nombre}' adjuntado al abono #{$abono->id}.",
+            detalle: ['anterior' => $anterior, 'nuevo' => $abono->soporte_path],
+            alidoId: $aliadoId
+        );
+
+        if ($anterior) {
+            Storage::disk('local')->delete($anterior);
+        }
+
+        return response()->json([
+            'ok'      => true,
+            'mensaje' => $anterior ? '📎 Certificado reemplazado.' : '📎 Certificado adjuntado.',
+            'url'     => route('admin.prestamos.abono.soporte', $abono->id),
+            'nombre'  => $abono->soporte_nombre,
+        ]);
+    }
+
+    // ─── Descargar el certificado de consignación de un abono ────────
+    public function descargarSoporteAbono(int $abonoId)
+    {
+        $aliadoId = session('aliado_id_activo');
+
+        // El abono no tiene aliado_id: se filtra por el de su factura
+        $abono = Abono::whereHas('factura', fn($q) => $q->where('aliado_id', $aliadoId))
+            ->findOrFail($abonoId);
+
+        abort_if(!$abono->soporte_path || !Storage::disk('local')->exists($abono->soporte_path), 404, 'El abono no tiene certificado adjunto.');
+
+        return Storage::disk('local')->download(
+            $abono->soporte_path,
+            $abono->soporte_nombre ?: basename($abono->soporte_path)
+        );
     }
 
     // ─── API ligera: cédulas con préstamo pendiente ──────────────────

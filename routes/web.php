@@ -637,6 +637,8 @@ Route::middleware('auth')->group(function () {
             $pc = \App\Http\Controllers\Admin\PrestamosController::class;
             Route::get('/', [$pc, 'index'])->name('index');
             Route::get('/api/pendientes', [$pc, 'apiPendientes'])->name('api.pendientes');
+            Route::get('/abono/{id}/soporte', [$pc, 'descargarSoporteAbono'])->name('abono.soporte');
+            Route::post('/abono/{id}/soporte', [$pc, 'adjuntarSoporteAbono'])->name('abono.soporte.adjuntar');
             Route::get('/{id}', [$pc, 'show'])->name('show');
             Route::post('/{id}/abonar', [$pc, 'abonar'])->name('abonar');
             Route::post('/{id}/condonar', [$pc, 'condonar'])->name('condonar');

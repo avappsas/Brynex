@@ -356,6 +356,11 @@ $meses = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','
             <label>Valor consignado</label>
             <input type="number" id="ab-cs" min="0">
         </div>
+        <div id="ab-sop-row" class="form-grp">
+            <label id="ab-sop-lbl">📎 Certificado de la consignación</label>
+            <input type="file" id="ab-sop" accept="image/jpeg,image/png,application/pdf">
+            <div style="font-size:.7rem;color:#94a3b8;margin-top:.15rem;">JPG, PNG o PDF — máximo 10 MB.</div>
+        </div>
         <div class="form-grp">
             <label>Observación</label>
             <textarea id="ab-obs" rows="2"></textarea>
@@ -414,6 +419,7 @@ function abrirAbonar(id, nombre, saldo) {
     document.getElementById('ab-ef').value = saldo;
     document.getElementById('ab-cs').value = '';
     document.getElementById('ab-obs').value = '';
+    document.getElementById('ab-sop').value = '';
     toggleAbonoForma();
     document.getElementById('modalAbonar').classList.add('open');
 }
@@ -421,22 +427,34 @@ function toggleAbonoForma() {
     const f = document.getElementById('ab-forma').value;
     document.getElementById('ab-ef-row').style.display = (f==='efectivo'||f==='mixto') ? '' : 'none';
     document.getElementById('ab-cs-row').style.display = (f==='consignacion'||f==='mixto') ? '' : 'none';
+    // El certificado solo se exige cuando hay plata entrando por el banco
+    const exige = (f==='consignacion'||f==='mixto');
+    document.getElementById('ab-sop').required = exige;
+    document.getElementById('ab-sop-lbl').textContent = exige
+        ? '📎 Certificado de la consignación *'
+        : '📎 Certificado / soporte (opcional)';
 }
 document.getElementById('formAbonar').addEventListener('submit', async e => {
     e.preventDefault();
     const id = document.getElementById('ab-id').value;
-    const r  = await fetch(`/admin/prestamos/${id}/abonar`, {
-        method:'POST', headers:{'Content-Type':'application/json','X-CSRF-TOKEN':CSRF},
-        body: JSON.stringify({
-            valor:            document.getElementById('ab-valor').value,
-            forma_pago:       document.getElementById('ab-forma').value,
-            valor_efectivo:   document.getElementById('ab-ef').value || 0,
-            valor_consignado: document.getElementById('ab-cs').value || 0,
-            observacion:      document.getElementById('ab-obs').value,
-        })
+    const fd = new FormData();
+    fd.append('valor',            document.getElementById('ab-valor').value);
+    fd.append('forma_pago',       document.getElementById('ab-forma').value);
+    fd.append('valor_efectivo',   document.getElementById('ab-ef').value || 0);
+    fd.append('valor_consignado', document.getElementById('ab-cs').value || 0);
+    fd.append('observacion',      document.getElementById('ab-obs').value);
+    const sop = document.getElementById('ab-sop').files[0];
+    if (sop) fd.append('soporte', sop);
+
+    const r   = await fetch(`/admin/prestamos/${id}/abonar`, {
+        method:'POST', headers:{'X-CSRF-TOKEN':CSRF,'Accept':'application/json'}, body: fd
     });
     const res = await r.json();
-    alert(res.mensaje || (res.ok ? 'Abono registrado' : 'Error'));
+    if (!r.ok) {
+        alert(res.message || Object.values(res.errors || {}).flat().join('\n') || 'Error al registrar el abono');
+        return;
+    }
+    alert(res.mensaje || 'Abono registrado');
     if (res.ok) location.reload();
 });
 
