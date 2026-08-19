@@ -2,9 +2,17 @@
 
 namespace App\Models;
 
+use Illuminate\Support\Facades\DB;
+
 class Gasto extends BaseModel
 {
     protected $table = 'gastos';
+
+    /**
+     * Cuántos registros de plano se liberaron al eliminar este gasto.
+     * Lo llena el evento `deleting`; sirve para armar el mensaje al usuario.
+     */
+    public int $planosLiberados = 0;
 
     protected $fillable = [
         'aliado_id', 'usuario_id', 'cuadre_id',
@@ -74,6 +82,64 @@ class Gasto extends BaseModel
 
     // ── Tipos que solo puede usar admin/superadmin ───────────────────
     const TIPOS_ADMIN = ['banco_banco', 'efectivo_banco', 'nomina', 'transferencia_banco', 'otro_admin'];
+
+    // ── Eventos ───────────────────────────────────────────────────────
+    protected static function booted(): void
+    {
+        // Un gasto `pago_planilla` es lo que marca los planos como pagados
+        // (ver PlanoPagoController::confirmarPago). Si el gasto desaparece,
+        // los planos deben volver a «pendiente»: se les quita el número de
+        // planilla para poder confirmar el pago de nuevo. Los planos NO se
+        // borran. Va aquí y no en el controlador para que aplique desde
+        // cualquier punto que elimine el gasto.
+        static::deleting(function (self $gasto) {
+            $gasto->planosLiberados = $gasto->liberarPlanos();
+        });
+    }
+
+    /**
+     * Envuelve el borrado en una transacción para que quitar el número de
+     * planilla a los planos y eliminar el gasto sean atómicos, sin depender
+     * de que quien llama abra la transacción. Si ya hay una transacción
+     * abierta, esta anida con savepoint y no cambia nada.
+     */
+    public function delete()
+    {
+        return DB::transaction(fn () => parent::delete());
+    }
+
+    // ── Pago de planilla ──────────────────────────────────────────────
+    public function esPagoPlanilla(): bool
+    {
+        return $this->tipo === 'pago_planilla' && trim((string) $this->numero_planilla) !== '';
+    }
+
+    /**
+     * Query de los planos marcados con el número de planilla de este gasto.
+     * $alias = null para poder hacer UPDATE (SQL Server no acepta alias ahí).
+     */
+    public function planosPagados(?string $alias = 'p')
+    {
+        $col = $alias ? "{$alias}." : '';
+
+        return DB::table($alias ? "planos AS {$alias}" : 'planos')
+            ->where("{$col}aliado_id", $this->aliado_id)
+            ->whereNull("{$col}deleted_at")
+            ->where("{$col}numero_planilla", trim((string) $this->numero_planilla));
+    }
+
+    /** Devuelve los planos de esta planilla a «pendiente de pago». */
+    public function liberarPlanos(): int
+    {
+        if (! $this->esPagoPlanilla()) {
+            return 0;
+        }
+
+        return $this->planosPagados(null)->update([
+            'numero_planilla' => null,
+            'updated_at' => now(),
+        ]);
+    }
 
     // ── Relaciones ────────────────────────────────────────────────────
     public function cuadre()

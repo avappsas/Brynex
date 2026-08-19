@@ -237,6 +237,49 @@ class GastoAdminController extends Controller
         return redirect()->back()->with('success', 'Gasto actualizado.');
     }
 
+    // ── Impacto de eliminar un pago de planilla ───────────────────────
+    // Devuelve los planos que quedarían sin pago si se elimina el gasto,
+    // para confirmarlo en un modal antes de borrar.
+    public function impactoPlanilla(int $id)
+    {
+        $this->checkSuperAdmin();
+        $aid   = $this->aliadoId();
+        $gasto = Gasto::where('aliado_id', $aid)->findOrFail($id);
+
+        if (! $gasto->esPagoPlanilla()) {
+            return response()->json([
+                'ok'              => true,
+                'es_planilla'     => false,
+                'numero_planilla' => null,
+                'total_registros' => 0,
+                'planos'          => [],
+            ]);
+        }
+
+        $planos = $gasto->planosPagados()
+            ->leftJoin('razones_sociales AS rs', 'rs.id', '=', 'p.razon_social_id')
+            ->groupBy('p.razon_social_id', 'rs.razon_social', 'p.n_plano', 'p.mes_plano', 'p.anio_plano')
+            ->select([
+                'p.n_plano', 'p.mes_plano', 'p.anio_plano',
+                DB::raw('MAX(rs.razon_social) AS razon_social'),
+                DB::raw('COUNT(*) AS registros'),
+            ])
+            ->orderBy('rs.razon_social')
+            ->orderBy('p.anio_plano')
+            ->orderBy('p.mes_plano')
+            ->orderBy('p.n_plano')
+            ->get();
+
+        return response()->json([
+            'ok'              => true,
+            'es_planilla'     => true,
+            'numero_planilla' => trim((string) $gasto->numero_planilla),
+            'valor'           => (int) $gasto->valor,
+            'total_registros' => (int) $planos->sum('registros'),
+            'planos'          => $planos,
+        ]);
+    }
+
     // ── Eliminar gasto ────────────────────────────────────────────────
     public function destroy(int $id)
     {
@@ -244,20 +287,34 @@ class GastoAdminController extends Controller
         $aid   = $this->aliadoId();
         $gasto = Gasto::where('aliado_id', $aid)->findOrFail($id);
 
-        // Eliminar consignaciones internas generadas por traslados banco a banco
-        // que referencian a este gasto (identificadas por la referencia 'Gasto #ID')
-        if (in_array($gasto->tipo, ['efectivo_banco', 'banco_banco'])) {
-            Consignacion::where('aliado_id', $aid)
-                ->where('referencia', 'Gasto #' . $id)
-                ->delete();
-        }
+        $numeroPlanilla = trim((string) $gasto->numero_planilla);
+        $esPagoPlanilla = $gasto->esPagoPlanilla();
+
+        DB::transaction(function () use ($aid, $id, $gasto) {
+            // Eliminar consignaciones internas generadas por traslados banco a banco
+            // que referencian a este gasto (identificadas por la referencia 'Gasto #ID')
+            if (in_array($gasto->tipo, ['efectivo_banco', 'banco_banco'])) {
+                Consignacion::where('aliado_id', $aid)
+                    ->where('referencia', 'Gasto #' . $id)
+                    ->delete();
+            }
+
+            // Si es un pago de planilla, el modelo libera los planos
+            // (les quita el número de planilla) dentro del mismo delete.
+            $gasto->delete();
+        });
 
         if ($gasto->imagen_path) {
             Storage::disk('public')->delete($gasto->imagen_path);
         }
-        $gasto->delete();
 
-        return redirect()->back()->with('success', 'Gasto eliminado.');
+        $msg = 'Gasto eliminado.';
+        if ($esPagoPlanilla) {
+            $msg = "Gasto eliminado. Se quitó la planilla N° {$numeroPlanilla} a {$gasto->planosLiberados} registro(s) "
+                 . 'del plano, que quedaron pendientes de pago.';
+        }
+
+        return redirect()->back()->with('success', $msg);
     }
 
     // ── Subir imagen individual ───────────────────────────────────────

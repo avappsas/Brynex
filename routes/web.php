@@ -597,6 +597,7 @@ Route::middleware('auth')->group(function () {
             $ga = \App\Http\Controllers\Admin\GastoAdminController::class;
             Route::get('/gastos', [$ga, 'index'])->name('gastos.index')->middleware('permiso:gastos.ver');
             Route::middleware('permiso:gastos.gestionar')->group(function () use ($ga) {
+                Route::get('/gastos/{id}/impacto-planilla', [$ga, 'impactoPlanilla'])->name('gastos.impacto_planilla');
                 Route::post('/gastos', [$ga, 'store'])->name('gastos.store');
                 Route::put('/gastos/{id}', [$ga, 'update'])->name('gastos.update');
                 Route::delete('/gastos/{id}', [$ga, 'destroy'])->name('gastos.destroy');

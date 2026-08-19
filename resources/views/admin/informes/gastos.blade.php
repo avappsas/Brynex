@@ -248,10 +248,8 @@ td{padding:.55rem .8rem;color:#334155;vertical-align:middle}
                 <td>
                     <div style="display:flex;gap:.3rem">
                         <button class="btn btn-warning btn-sm" onclick="abrirModalEditar({{ json_encode($g) }})">✏️</button>
-                        <form method="POST" action="{{ route('admin.informes.gastos.destroy', $g->id) }}" onsubmit="return confirm('¿Eliminar?')">
-                            @csrf @method('DELETE')
-                            <button class="btn btn-danger btn-sm" type="submit">🗑️</button>
-                        </form>
+                        <button class="btn btn-danger btn-sm" type="button"
+                                onclick="abrirModalEliminarPlanilla({{ $g->id }}, @js($g->numero_planilla))">🗑️</button>
                     </div>
                 </td>
                 @endif
@@ -288,6 +286,24 @@ td{padding:.55rem .8rem;color:#334155;vertical-align:middle}
             <button type="button" class="btn btn-ghost" onclick="document.getElementById('modalImagen').classList.remove('open')">Cancelar</button>
             <button type="submit" class="btn btn-primary">Subir</button>
         </div>
+    </form>
+</div>
+</div>
+@endif
+
+{{-- Modal confirmar eliminación de un pago de planilla --}}
+@if($esSuperAdmin)
+<div class="modal-overlay" id="modalEliminarPlanilla">
+<div class="modal" style="max-width:560px">
+    <h3>🗑️ Eliminar pago de planilla</h3>
+    <div id="epContenido" style="font-size:.85rem;color:#334155;line-height:1.5">
+        <p style="color:var(--gray)">Consultando los planos afectados…</p>
+    </div>
+    <form id="epForm" method="POST" style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:1.2rem">
+        @csrf @method('DELETE')
+        <button type="button" class="btn btn-ghost"
+                onclick="document.getElementById('modalEliminarPlanilla').classList.remove('open')">Cancelar</button>
+        <button type="submit" class="btn btn-danger" id="epConfirmar" disabled>Sí, eliminar</button>
     </form>
 </div>
 </div>
@@ -389,6 +405,51 @@ function abrirModalEditar(g){
     gasto_actualizarBancos('modal-gasto');
 
     modal.style.display = 'flex';
+}
+
+function abrirModalEliminarPlanilla(id, numero){
+    const modal = document.getElementById('modalEliminarPlanilla');
+    const cont  = document.getElementById('epContenido');
+    const form  = document.getElementById('epForm');
+    const btn   = document.getElementById('epConfirmar');
+
+    form.action = `/admin/informes/gastos/${id}`;
+    btn.disabled = true;
+    cont.innerHTML = `<p style="color:var(--gray)">Consultando los planos de la planilla N° ${numero ?? ''}…</p>`;
+    modal.classList.add('open');
+
+    fetch(`/admin/informes/gastos/${id}/impacto-planilla`, {headers:{'Accept':'application/json'}})
+        .then(r => r.ok ? r.json() : Promise.reject(r.status))
+        .then(d => {
+            if(!d.es_planilla){
+                cont.innerHTML = '<p>Se eliminará este gasto. No hay planos marcados con esta planilla.</p>';
+                btn.disabled = false;
+                return;
+            }
+            const meses = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+            const filas = (d.planos || []).map(p => `
+                <tr>
+                    <td>${p.razon_social ?? '—'}</td>
+                    <td style="white-space:nowrap">Plano ${p.n_plano} · ${meses[p.mes_plano] ?? p.mes_plano} ${p.anio_plano}</td>
+                    <td style="text-align:right">${p.registros}</td>
+                </tr>`).join('');
+
+            cont.innerHTML = `
+                <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:.7rem .85rem;margin-bottom:.9rem">
+                    <strong>La planilla N° ${d.numero_planilla} quedará sin pago.</strong><br>
+                    Se le quitará el número de planilla a <strong>${d.total_registros}</strong> registro(s) de plano
+                    y volverán a quedar <strong>pendientes de pago</strong>, para poder confirmarlos de nuevo.
+                    <br><span style="color:var(--gray);font-size:.78rem">Los planos NO se eliminan.</span>
+                </div>
+                ${filas ? `<table style="font-size:.8rem">
+                    <thead><tr><th>Razón social</th><th>Plano</th><th style="text-align:right">Registros</th></tr></thead>
+                    <tbody>${filas}</tbody>
+                </table>` : '<p style="color:var(--gray)">No hay planos marcados con esta planilla.</p>'}`;
+            btn.disabled = false;
+        })
+        .catch(() => {
+            cont.innerHTML = '<p style="color:var(--red)">No se pudo consultar el impacto. Intenta de nuevo.</p>';
+        });
 }
 
 function abrirSubirImagen(id){
