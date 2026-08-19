@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
 
 class User extends Authenticatable
@@ -16,6 +17,11 @@ class User extends Authenticatable
     use HasRoles {
         hasPermissionTo as private hasPermissionToSpatie;
     }
+    // Sanctum solo para los usuarios de servicio que consumen routes/api.php
+    // (hoy, el de Cuenta_facil). Los usuarios del panel siguen entrando por
+    // sesión: el trait no cambia nada para ellos mientras no se les emita un
+    // token.
+    use HasApiTokens;
     use HasSqlServerDates;
     use Notifiable, SoftDeletes;
 
