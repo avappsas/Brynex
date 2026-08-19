@@ -223,7 +223,12 @@ class WhatsappApiService
                 // Agregar ejemplo para el header multimedia (exigido por Meta)
                 $ejemploUrl = 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf';
                 if ($plantilla->header_tipo === 'IMAGE') {
-                    $ejemploUrl = 'https://brynex.co/public/img/logo-brynex.png';
+                    // Meta descarga este ejemplo para revisar la plantilla. Se manda la
+                    // imagen que el aliado usa de verdad en el header; el logo solo cubre
+                    // al aliado que todavía no ha subido la suya.
+                    $ejemploUrl = $config->cobro_header_imagen
+                        ? url('storage/' . $config->cobro_header_imagen)
+                        : url('img/logo-brynex.png');
                 }
                 $headerComp['example'] = [
                     'header_handle' => [$ejemploUrl]
@@ -248,7 +253,7 @@ class WhatsappApiService
                     $muestras[] = match($v) {
                         1 => 'Juan Perez',
                         2 => 'ARUS Enlace',
-                        3 => '86659838',
+                        3 => $plantilla->usaMoldeCorto() ? '$150.000' : '86659838',
                         default => 'Ejemplo ' . $v
                     };
                 }
@@ -301,7 +306,7 @@ class WhatsappApiService
             return [
                 'ok'                => true,
                 'meta_template_id'  => $data['id'] ?? null,
-                'estado'            => $data['status'] ?? 'pending',
+                'estado'            => strtolower($data['status'] ?? 'pending'),
             ];
         } catch (RequestException $e) {
             $body = $e->hasResponse() ? $e->getResponse()->getBody()->getContents() : '';

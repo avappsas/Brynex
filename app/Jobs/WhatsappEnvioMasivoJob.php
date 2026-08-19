@@ -265,7 +265,7 @@ class WhatsappEnvioMasivoJob implements ShouldQueue
                 $valorFormateado = '$' . number_format($valorCobro, 0, ',', '.');
 
                 $cantVars = $plantilla->cantidadVariables();
-                if (str_contains($plantilla->nombre, 'cierre')) {
+                if ($plantilla->usaMoldeCorto()) {
                     if ($cantVars === 3) {
                         return [$nombreContacto, $nombreAliado, $valorFormateado];
                     } else {
@@ -396,7 +396,7 @@ class WhatsappEnvioMasivoJob implements ShouldQueue
 
                 // Determinar el número de variables de la plantilla (5 o 6)
                 $cantVars = $plantilla->cantidadVariables();
-                if (str_contains($plantilla->nombre, 'cierre')) {
+                if ($plantilla->usaMoldeCorto()) {
                     if ($cantVars === 3) {
                         return [$nombreCliente, $nombreAliado, $valorFormateado];
                     } else {

@@ -101,6 +101,29 @@ class WhatsappPlantilla extends BaseModel
     }
 
     /**
+     * Plantillas cuyo cuerpo solo lleva destinatario, aliado y —si tiene tres
+     * variables— el valor a pagar.
+     *
+     * Se reconocen por el nombre porque los envíos arman los parámetros por
+     * posición, no desde `variables_mapa`: una plantilla de dos o tres variables
+     * que no esté marcada aquí recibe los cinco o seis del recordatorio de cobro
+     * (plazo, cuentas, celular de soporte) y Meta rechaza el envío por cantidad
+     * de parámetros.
+     */
+    public const NOMBRES_MOLDE_CORTO = ['cierre', 'sismo'];
+
+    public function usaMoldeCorto(): bool
+    {
+        foreach (self::NOMBRES_MOLDE_CORTO as $marca) {
+            if (str_contains((string) $this->nombre, $marca)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Cuenta las variables {{N}} en el cuerpo de la plantilla.
      */
     public function cantidadVariables(): int

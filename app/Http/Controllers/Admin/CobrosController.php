@@ -1426,7 +1426,7 @@ class CobrosController extends Controller
         $nombreAliado = $aliado ? $aliado->nombre : 'BryNex Global';
 
         // Parámetros de prueba
-        if (str_contains($plantilla->nombre, 'cierre')) {
+        if ($plantilla->usaMoldeCorto()) {
             $paramsPrueba = $plantilla->cantidadVariables() === 3
                 ? ['Juan Pérez (PRUEBA)', $nombreAliado, '$150.000']
                 : ['Juan Pérez (PRUEBA)', $nombreAliado];
@@ -1702,7 +1702,7 @@ class CobrosController extends Controller
         $plazoDias = $cfgAliado?->mora_dia_habil_inicio ? (string)$cfgAliado->mora_dia_habil_inicio : '10';
 
         $cantVars = $plantilla->cantidadVariables();
-        if (str_contains($plantilla->nombre, 'cierre')) {
+        if ($plantilla->usaMoldeCorto()) {
             $params = $cantVars === 3
                 ? ['Juan Pérez (PRUEBA)', $nombreAliado, '$150.000']
                 : ['Juan Pérez (PRUEBA)', $nombreAliado];
