@@ -426,36 +426,60 @@ class VideoOverlayFfmpeg
      */
     private const TRACKING = -1.5;
 
+    /**
+     * Dibuja con tracking sin romper la composición de la fuente.
+     *
+     * La forma ingenua —dibujar letra por letra y avanzar el ancho de cada una— parece
+     * funcionar y no: `imagettfbbox` mide la TINTA, no el avance, así que ignora los costados
+     * de cada letra y el kerning entre pares. Medido sobre "ARL desde" a 86 px, la cadena
+     * quedaba 43 px más angosta que compuesta, y las palabras se pegaban ("al mes" se leía
+     * "almes").
+     *
+     * Aquí cada letra se posiciona midiendo el PREFIJO completo hasta ella, que es texto real
+     * compuesto por la fuente: conserva avances y kerning, y el tracking se suma aparte.
+     */
     private static function textoConTracking($lienzo, string $texto, int $x, int $y, int $tam, int $color, string $fuente, float $tracking): void
     {
-        foreach (preg_split('//u', $texto, -1, PREG_SPLIT_NO_EMPTY) as $letra) {
-            imagettftext($lienzo, $tam, 0, (int) round($x), $y, $color, $fuente, $letra);
-            $caja = imagettfbbox($tam, 0, $fuente, $letra);
-            $x += ($caja[2] - $caja[0]) + $tracking;
+        $letras = preg_split('//u', $texto, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+
+        foreach ($letras as $i => $letra) {
+            if ($letra === ' ') {
+                continue;
+            }
+
+            $prefijo = mb_substr($texto, 0, $i, 'UTF-8');
+            $corrido = $prefijo === '' ? 0 : self::anchoTinta($prefijo, $tam, $fuente);
+            imagettftext($lienzo, $tam, 0, (int) round($x + $corrido + $i * $tracking), $y, $color, $fuente, $letra);
         }
     }
 
     private static function anchoConTracking(string $texto, int $tam, string $fuente, float $tracking): int
     {
-        $ancho = 0;
-        foreach (preg_split('//u', $texto, -1, PREG_SPLIT_NO_EMPTY) as $letra) {
-            $caja = imagettfbbox($tam, 0, $fuente, $letra);
-            $ancho += ($caja[2] - $caja[0]) + $tracking;
-        }
+        $largo = max(1, mb_strlen($texto, 'UTF-8'));
 
-        return (int) round($ancho - $tracking);
+        return (int) round(self::anchoTinta($texto, $tam, $fuente) + ($largo - 1) * $tracking);
+    }
+
+    private static function anchoTinta(string $texto, int $tam, string $fuente): int
+    {
+        $caja = imagettfbbox($tam, 0, $fuente, $texto);
+
+        return $caja[2] - $caja[0];
     }
 
     private static function pastillaRedondeada($lienzo, int $x, int $y, int $w, int $h, int $r, $color): void
     {
-        $r = min($r, (int) round($h / 2));
+        $mezclaPrevia = imagealphablending($lienzo, false);
+
+        $d = $r * 2;
         imagefilledrectangle($lienzo, $x + $r, $y, $x + $w - $r, $y + $h, $color);
         imagefilledrectangle($lienzo, $x, $y + $r, $x + $w, $y + $h - $r, $color);
-        $d = $r * 2;
         imagefilledellipse($lienzo, $x + $r, $y + $r, $d, $d, $color);
         imagefilledellipse($lienzo, $x + $w - $r, $y + $r, $d, $d, $color);
         imagefilledellipse($lienzo, $x + $r, $y + $h - $r, $d, $d, $color);
         imagefilledellipse($lienzo, $x + $w - $r, $y + $h - $r, $d, $d, $color);
+
+        imagealphablending($lienzo, $mezclaPrevia);
     }
 
     private static function hexARgb(string $hex): array
