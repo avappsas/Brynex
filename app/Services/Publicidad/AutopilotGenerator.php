@@ -145,6 +145,57 @@ class AutopilotGenerator
      *
      * @return array{ok: bool, publicacion: ?Publicacion, video: ?PublicidadVideoIa, error: ?string}
      */
+    /**
+     * Precio que se muestra en pantalla, elegido según de qué habla la pieza.
+     *
+     * No es un adorno: de 13 personas que llegaron por un anuncio sin ver una cifra, 7
+     * escribieron una vez y no volvieron. Quien ve el número decide antes de escribir.
+     *
+     * Sale del cotizador en cada generación —nunca de una constante— para que el día que
+     * cambie una tarifa la pieza del día siguiente ya salga con la nueva. Devuelve null cuando
+     * el tema no es de precio: un post sobre los beneficios de la caja no necesita cifra, y
+     * meterla a la fuerza vuelve toda la cuenta un catálogo.
+     */
+    private static function precioEnPantalla(int $aliadoId, string $contexto): ?string
+    {
+        $t = mb_strtolower($contexto, 'UTF-8');
+
+        $esDePrecio = str_contains($t, 'precio') || str_contains($t, 'cotizaci')
+            || str_contains($t, 'plan') || str_contains($t, 'afiliar') || str_contains($t, 'afiliaci');
+        $esDeArl = str_contains($t, 'arl') || str_contains($t, 'riesgo') || str_contains($t, 'accidente');
+
+        if (!$esDePrecio && !$esDeArl) {
+            return null;
+        }
+
+        try {
+            // ARL es el producto de ENTRADA: la cifra más baja y la que menos asusta. Va con
+            // "desde" porque el nivel de riesgo la multiplica por tres — un obrero de andamio
+            // paga riesgo V, no I, y prometerle el piso es prometer lo que no se le va a cobrar.
+            if ($esDeArl) {
+                $arl = CotizacionPublicaService::cotizarGestionArlConDescuento($aliadoId, 1);
+                return !empty($arl['valor_descuento'])
+                    ? 'ARL desde $' . number_format($arl['valor_descuento'], 0, ',', '.') . ' al mes'
+                    : null;
+            }
+
+            // Para lo demás, el plan más barato por su PRIMER MES, que es más económico que la
+            // mensualidad y es la cifra que de verdad baja la barrera de entrada.
+            $planes = CotizacionPublicaService::planesDestacadosConPrecio($aliadoId, true)
+                ->filter(fn ($p) => !empty($p['costo_afiliacion']))
+                ->sortBy('costo_afiliacion');
+
+            $barato = $planes->first();
+
+            return $barato
+                ? 'Afíliate desde $' . number_format($barato['costo_afiliacion'], 0, ',', '.') . ' el primer mes'
+                : null;
+        } catch (\Throwable $e) {
+            // Sin precio la pieza sale igual: es peor no publicar que publicar sin cifra.
+            return null;
+        }
+    }
+
     private static function iniciarReelDelDia(
         Aliado $aliado,
         AutopilotConfig $config,
@@ -189,7 +240,8 @@ class AutopilotGenerator
             $contexto,
             3,
             (bool) $config->cierre_activo,
-            $diceElCierre
+            $diceElCierre,
+            self::precioEnPantalla($aliado->id, $contexto)
         );
         $frases = $frasesResultado['ok'] ? array_slice($frasesResultado['frases'], 0, 3) : [];
 

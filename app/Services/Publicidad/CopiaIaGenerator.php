@@ -235,7 +235,8 @@ class CopiaIaGenerator
         string $contexto,
         int $cantidad = 3,
         bool $conCierre = false,
-        array $diceElCierre = []
+        array $diceElCierre = [],
+        ?string $precioEntrada = null
     ): array {
         $config = IaConfiguracionAliado::paraAliado($aliadoId);
         $credenciales = $config->credencialesEfectivas();
@@ -264,6 +265,16 @@ class CopiaIaGenerator
               . 'ya habla de rapidez o de no hacer papeleo, tú buscas otro ángulo.'
             : '';
 
+        // El precio en pantalla: de 13 personas que escribieron por un anuncio sin haber visto
+        // una cifra, 7 no volvieron a responder. Quien ve el número decide antes de escribir, y
+        // el que escribe llega precalificado en vez de a preguntar cuánto vale.
+        $bloquePrecio = $precioEntrada
+            ? "\n\nPRECIO EN PANTALLA — OBLIGATORIO: una de las tres frases (la segunda, salvo que quede "
+              . "forzada) tiene que llevar este precio TAL CUAL, sin redondear ni cambiarlo: \"{$precioEntrada}\". "
+              . 'Conserva la palabra "desde": el valor final depende del oficio y del salario, y sin ese "desde" '
+              . 'es una promesa que no se puede sostener. Esa frase puede pasar de 6 palabras si el precio no cabe.'
+            : '';
+
         $prompt = "Eres redactor publicitario de {$nombreAliado}, una agencia de afiliación a seguridad social en Colombia. "
             . "Escribe {$cantidad} frases MUY CORTAS (máximo 6 palabras cada una, español colombiano) para animar como "
             . 'texto en pantalla sobre un video publicitario.' . "\n\n"
@@ -277,6 +288,7 @@ class CopiaIaGenerator
             . 'Trata al espectador de TÚ, nunca de USTED (nada de "escríbanos", "cotice", "afíliese"): el resto de '
             . 'la pieza tutea y mezclar los dos tratos se nota. '
             . $evitar . "\n\n"
+            . $bloquePrecio . "\n\n"
             . 'Responde ÚNICAMENTE con un array JSON de strings, sin texto adicional ni bloque de código. '
             . 'Ejemplo de formato: ["frase 1", "frase 2", "frase 3"]';
 
