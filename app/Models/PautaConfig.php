@@ -26,6 +26,12 @@ class PautaConfig extends BaseModel
         'presupuesto_semanal_cop',
         'meta_campana_permanente_id',
         'meta_adset_permanente_id',
+        'exterior_activo',
+        'meta_adset_exterior_id',
+        'exterior_pais',
+        'exterior_interes_id',
+        'exterior_interes_nombre',
+        'exterior_presupuesto_diario_cop',
         'creatividades_max',
         'piezas_semana_max',
     ];
@@ -41,6 +47,8 @@ class PautaConfig extends BaseModel
         'edad_min'                        => 'integer',
         'edad_max'                        => 'integer',
         'presupuesto_semanal_cop'         => 'decimal:2',
+        'exterior_activo'                 => 'boolean',
+        'exterior_presupuesto_diario_cop' => 'decimal:2',
         'creatividades_max'               => 'integer',
         'piezas_semana_max'               => 'integer',
     ];
