@@ -332,14 +332,23 @@ class VideoOverlayFfmpeg
         // Ancho real de la pastilla = el de la línea más larga.
         $anchoMaxLinea = 0;
         foreach ($lineas as $linea) {
-            $caja = imagettfbbox($tamFuente, 0, $rutaFuente, $linea);
-            $anchoMaxLinea = max($anchoMaxLinea, $caja[2] - $caja[0]);
+            $anchoMaxLinea = max($anchoMaxLinea, self::anchoConTracking($linea, $tamFuente, $rutaFuente, self::TRACKING));
         }
 
-        $padX = (int) round($tamFuente * 0.85);
-        $padY = (int) round($tamFuente * 0.55);
+        // El alto se calcula con la TINTA real, no con el tamaño de fuente: los rasgos que
+        // bajan —la "g" de "aseguradas", el punto final— viven por debajo de la línea base y la
+        // fórmula anterior los ignoraba. Dejaba 24 px de aire arriba y 8 abajo, y el texto se
+        // veía pegado al borde aunque técnicamente cupiera.
+        $cajaPrimera = imagettfbbox($tamFuente, 0, $rutaFuente, $lineas[0]);
+        $cajaUltima  = imagettfbbox($tamFuente, 0, $rutaFuente, $lineas[count($lineas) - 1]);
+        $subePrimera = abs($cajaPrimera[7]);           // cuánto sube la primera línea
+        $bajaUltima  = max(0, $cajaUltima[1]);          // cuánto baja la última
+
+        $padX = (int) round($tamFuente * 0.95);
+        $padY = (int) round($tamFuente * 0.50);
         $wPastilla = $anchoMaxLinea + $padX * 2;
-        $hPastilla = count($lineas) * $alturaLinea + $padY * 2 - (int) round($alturaLinea - $tamFuente);
+        $altoTinta = $subePrimera + (count($lineas) - 1) * $alturaLinea + $bajaUltima;
+        $hPastilla = $altoTinta + $padY * 2;
         $xPastilla = (int) round(($anchoG - $wPastilla) / 2);
         // Tercio inferior — en un plano medio/cercano la cara suele estar en el tercio superior,
         // así el texto no la tapa. No hace falta esquivar el logo por posición: como el texto ya
@@ -361,14 +370,18 @@ class VideoOverlayFfmpeg
         imagefilledrectangle($temp, 0, 0, $wTemp, $hTemp, imagecolorallocatealpha($temp, 0, 0, 0, 127));
         imagealphablending($temp, true);
 
+        // Radio acotado: con la mitad del alto, tres líneas convierten la pastilla en un óvalo
+        // gigante que se lee amateur. Un rectángulo bien redondeado se ve compuesto.
+        $radio = (int) round(min($hPastilla / 2, $tamFuente * 1.15));
+
         $colorSombra = imagecolorallocatealpha($temp, 0, 0, 0, 95);
-        self::pastillaRedondeada($temp, $margenBlur, (int) round($margenBlur + $tamFuente * 0.15), $wPastilla, $hPastilla, (int) round($hPastilla / 2), $colorSombra);
+        self::pastillaRedondeada($temp, $margenBlur, (int) round($margenBlur + $tamFuente * 0.15), $wPastilla, $hPastilla, $radio, $colorSombra);
         for ($i = 0; $i < 3; $i++) {
             imagefilter($temp, IMG_FILTER_GAUSSIAN_BLUR);
         }
 
         $colorFondo = imagecolorallocatealpha($temp, $r, $g, $b, 10);
-        self::pastillaRedondeada($temp, $margenBlur, $margenBlur, $wPastilla, $hPastilla, (int) round($hPastilla / 2), $colorFondo);
+        self::pastillaRedondeada($temp, $margenBlur, $margenBlur, $wPastilla, $hPastilla, $radio, $colorFondo);
         for ($i = 0; $i < 2; $i++) {
             imagefilter($temp, IMG_FILTER_GAUSSIAN_BLUR);
         }
@@ -378,13 +391,14 @@ class VideoOverlayFfmpeg
 
         // Texto NÍTIDO encima, sin blur.
         $blanco = imagecolorallocate($lienzo, 255, 255, 255);
-        $yTexto = $yPastilla + $padY + $tamFuente;
+        // La primera línea base se coloca desde la tinta, no desde el tamaño de fuente: así el
+        // aire de arriba y el de abajo quedan iguales y el bloque se ve centrado de verdad.
+        $yTexto = $yPastilla + $padY + $subePrimera;
         foreach ($lineas as $i => $linea) {
-            $caja = imagettfbbox($tamFuente, 0, $rutaFuente, $linea);
-            $anchoLinea = $caja[2] - $caja[0];
+            $anchoLinea = self::anchoConTracking($linea, $tamFuente, $rutaFuente, self::TRACKING);
             $x = (int) round(($anchoG - $anchoLinea) / 2);
             $y = $yTexto + $i * $alturaLinea;
-            imagettftext($lienzo, $tamFuente, 0, $x, $y, $blanco, $rutaFuente, $linea);
+            self::textoConTracking($lienzo, $linea, $x, $y, $tamFuente, $blanco, $rutaFuente, self::TRACKING);
         }
 
         $final = imagecreatetruecolor($ancho, $alto);
@@ -402,6 +416,36 @@ class VideoOverlayFfmpeg
     }
 
     /** Rectángulo con esquinas totalmente redondas (píldora) — mismo patrón que FlyerPlanBuilder::rectRedondeado. */
+    /**
+     * Tracking (espaciado entre letras). GD no lo tiene: `imagettftext` dibuja la cadena de
+     * corrido y con una bold display eso se ve "escrito" en vez de compuesto. Se dibuja letra
+     * por letra — misma técnica que el cierre de marca, ver CierreMarcaVideo::texto().
+     *
+     * Negativo a propósito: en titulares grandes, apretar levemente es lo que los hace ver de
+     * diseño. En cuerpos pequeños sería ilegible; aquí el texto nunca baja de ~40 px.
+     */
+    private const TRACKING = -1.5;
+
+    private static function textoConTracking($lienzo, string $texto, int $x, int $y, int $tam, int $color, string $fuente, float $tracking): void
+    {
+        foreach (preg_split('//u', $texto, -1, PREG_SPLIT_NO_EMPTY) as $letra) {
+            imagettftext($lienzo, $tam, 0, (int) round($x), $y, $color, $fuente, $letra);
+            $caja = imagettfbbox($tam, 0, $fuente, $letra);
+            $x += ($caja[2] - $caja[0]) + $tracking;
+        }
+    }
+
+    private static function anchoConTracking(string $texto, int $tam, string $fuente, float $tracking): int
+    {
+        $ancho = 0;
+        foreach (preg_split('//u', $texto, -1, PREG_SPLIT_NO_EMPTY) as $letra) {
+            $caja = imagettfbbox($tam, 0, $fuente, $letra);
+            $ancho += ($caja[2] - $caja[0]) + $tracking;
+        }
+
+        return (int) round($ancho - $tracking);
+    }
+
     private static function pastillaRedondeada($lienzo, int $x, int $y, int $w, int $h, int $r, $color): void
     {
         $r = min($r, (int) round($h / 2));
