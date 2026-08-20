@@ -38,6 +38,9 @@ class AutopilotGenerator
         // Le habla al que ya está cotizando con otro: es el momento en que se decide, y el
         // único ángulo del catálogo que compite de frente en vez de explicar.
         'te mejoramos cualquier cotización que ya tengas (invita a comparar antes de afiliarse, sin mencionar ni desprestigiar a la competencia por nombre y sin prometer un precio concreto)',
+        // El ángulo del precio de entrada: quien ve un anuncio quiere saber cuánto cuesta, y
+        // de 13 personas que escribieron sin haber visto un precio, 7 no volvieron a responder.
+        'precio de entrada con la cifra real (usa el valor "desde" del plan más económico y aclara que el primer mes de afiliación cuesta menos que la mensualidad)',
     ];
 
     /**
@@ -343,6 +346,19 @@ class AutopilotGenerator
                 return $linea;
             })
             ->implode("\n") ?: '- (sin planes configurados: no menciones precios)';
+
+        // Solo ARL no está entre los destacados y es el producto de ENTRADA: la cifra más baja
+        // que se puede anunciar, y la que le habla al independiente que trabaja con riesgo. Va
+        // con el rango completo a propósito — el nivel de riesgo multiplica el precio por tres,
+        // y anunciar el nivel 1 a un obrero de andamio es prometer lo que no se va a cobrar.
+        $arl1 = CotizacionPublicaService::cotizarGestionArlConDescuento($aliado->id, 1);
+        $arl5 = CotizacionPublicaService::cotizarGestionArlConDescuento($aliado->id, 5);
+        if (!empty($arl1['valor_descuento'])) {
+            $listaPlanes .= "\n- Solo ARL (cubre: ARL): desde $" . number_format($arl1['valor_descuento'], 0, ',', '.')
+                . ' COP/mes en riesgo I (oficios de oficina) y hasta $' . number_format($arl5['valor_descuento'], 0, ',', '.')
+                . ' COP/mes en riesgo V (construcción, alturas). Si la pieza menciona este precio, SIEMPRE con la palabra'
+                . ' "desde" y sin prometer el valor bajo a oficios de riesgo alto.';
+        }
 
         $hayPromocion = collect($planes)->contains('en_promocion', true);
         $temaPromocion = $hayPromocion
