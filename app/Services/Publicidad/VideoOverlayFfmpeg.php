@@ -380,11 +380,15 @@ class VideoOverlayFfmpeg
             imagefilter($temp, IMG_FILTER_GAUSSIAN_BLUR);
         }
 
-        $colorFondo = imagecolorallocatealpha($temp, $r, $g, $b, 10);
+        // Opaca del todo. Antes iba con alfa 10 y se veía sólida solo porque los rectángulos
+        // superpuestos pintaban el color dos veces; al arreglar las muescas apagando la mezcla
+        // esa opacidad de rebote desapareció y el texto quedó compitiendo con el fondo. La
+        // pastilla existe justamente para que el texto se lea sobre cualquier escena.
+        $colorFondo = imagecolorallocate($temp, $r, $g, $b);
         self::pastillaRedondeada($temp, $margenBlur, $margenBlur, $wPastilla, $hPastilla, $radio, $colorFondo);
-        for ($i = 0; $i < 2; $i++) {
-            imagefilter($temp, IMG_FILTER_GAUSSIAN_BLUR);
-        }
+        // Un solo pase de desenfoque: con dos, el borde se come tanto la forma que la pastilla
+        // pierde cuerpo. El suavizado real ya lo da el supersampling de 2x al reducir.
+        imagefilter($temp, IMG_FILTER_GAUSSIAN_BLUR);
 
         imagecopy($lienzo, $temp, $xPastilla - $margenBlur, $yPastilla - $margenBlur, 0, 0, $wTemp, $hTemp);
         imagedestroy($temp);
