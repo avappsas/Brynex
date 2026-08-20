@@ -270,6 +270,7 @@ class MetaAdsService
         $token  = self::tokenAds($config, $fb);
         $cuenta = 'act_' . ltrim($config->ad_account_id, 'act_');
         $diario = (int) round($config->exterior_presupuesto_diario_cop ?: 5000);
+        $nombreAnunciante = \App\Models\Aliado::find($aliadoId)?->nombre ?: 'BRYGAR';
 
         if ($config->meta_adset_exterior_id) {
             return ['ok' => true, 'adset_id' => $config->meta_adset_exterior_id, 'mensaje' => 'El conjunto del exterior ya existía.'];
@@ -289,6 +290,12 @@ class MetaAdsService
             ]),
             'targeting'         => json_encode(self::segmentacionExterior($config)),
             'status'            => 'PAUSED',
+            // Obligatorio para entregar en la UNIÓN EUROPEA (ley de servicios digitales):
+            // hay que declarar a quién beneficia el anuncio y quién lo paga. El conjunto de
+            // Colombia no lo necesita, y sin esto Meta rechaza la creación con un mensaje que
+            // no menciona la UE ("Indica la persona u organización que se promociona").
+            'dsa_beneficiary'   => $nombreAnunciante,
+            'dsa_payor'         => $nombreAnunciante,
             'access_token'      => $token,
         ]);
 
