@@ -242,6 +242,92 @@ class MetaAdsService
     }
 
     /**
+     * Conjunto de anuncios para colombianos en el EXTERIOR.
+     *
+     * Va aparte del permanente porque la segmentación vive en el conjunto: no se puede tener
+     * una pieza apuntando a España y otra a Colombia dentro del mismo. Separarlos además deja
+     * comparar los dos mercados en vez de un promedio que no dice de dónde vino qué.
+     *
+     * Se crea PAUSADO, igual que el otro: encender gasto sigue siendo un acto explícito.
+     *
+     * @return array{ok: bool, adset_id: ?string, mensaje: string}
+     */
+    public static function asegurarConjuntoExterior(PautaConfig $config, int $aliadoId): array
+    {
+        if (!$config->exterior_activo || !$config->exterior_pais) {
+            return ['ok' => false, 'adset_id' => null, 'mensaje' => 'El conjunto del exterior no está configurado.'];
+        }
+        if (!$config->meta_campana_permanente_id) {
+            return ['ok' => false, 'adset_id' => null, 'mensaje' => 'Primero tiene que existir la campaña permanente.'];
+        }
+
+        $fb = RedSocialConfig::paraAliado($aliadoId, 'facebook');
+        $waConfig = WhatsappConfig::where('aliado_id', $aliadoId)->where('activo', true)->first();
+        if (!$fb->credencialesCompletas() || !$waConfig?->numero_telefono) {
+            return ['ok' => false, 'adset_id' => null, 'mensaje' => 'Faltan credenciales de Facebook o el número de WhatsApp.'];
+        }
+
+        $token  = self::tokenAds($config, $fb);
+        $cuenta = 'act_' . ltrim($config->ad_account_id, 'act_');
+        $diario = (int) round($config->exterior_presupuesto_diario_cop ?: 5000);
+
+        if ($config->meta_adset_exterior_id) {
+            return ['ok' => true, 'adset_id' => $config->meta_adset_exterior_id, 'mensaje' => 'El conjunto del exterior ya existía.'];
+        }
+
+        $adset = Http::asForm()->post(self::BASE_URL . "/{$cuenta}/adsets", [
+            'name'              => 'Permanente — colombianos en el exterior',
+            'campaign_id'       => $config->meta_campana_permanente_id,
+            'destination_type'  => 'WHATSAPP',
+            'daily_budget'      => $diario,
+            'billing_event'     => 'IMPRESSIONS',
+            'optimization_goal' => 'CONVERSATIONS',
+            'bid_strategy'      => 'LOWEST_COST_WITHOUT_CAP',
+            'promoted_object'   => json_encode([
+                'page_id'                => $fb->identificador,
+                'whatsapp_phone_number'  => preg_replace('/\D/', '', $waConfig->numero_telefono),
+            ]),
+            'targeting'         => json_encode(self::segmentacionExterior($config)),
+            'status'            => 'PAUSED',
+            'access_token'      => $token,
+        ]);
+
+        if (!$adset->successful()) {
+            return ['ok' => false, 'adset_id' => null, 'mensaje' => 'Conjunto del exterior: ' . self::errorDeMeta($adset)];
+        }
+
+        $config->update(['meta_adset_exterior_id' => $adset->json('id')]);
+
+        return ['ok' => true, 'adset_id' => $adset->json('id'), 'mensaje' => 'Conjunto del exterior creado (en pausa).'];
+    }
+
+    /**
+     * A un colombiano en España solo se le llega por PROXY de interés: Meta eliminó en 2022 la
+     * segmentación por expatriados. "Selección de fútbol de Colombia" es el mejor sustituto
+     * —identifica al colombiano de verdad mejor que el interés genérico "Colombia", que
+     * incluye a cualquiera que haya viajado— pero sigue siendo un proxy: parte del gasto va a
+     * caer en gente de allá aficionada al fútbol sudamericano.
+     */
+    private static function segmentacionExterior(PautaConfig $config): array
+    {
+        $targeting = [
+            'geo_locations' => ['countries' => [$config->exterior_pais]],
+            'age_min'       => $config->edad_min ?: 25,
+            'age_max'       => $config->edad_max ?: 55,
+            'targeting_automation' => ['advantage_audience' => 0],
+        ];
+
+        if ($config->exterior_interes_id) {
+            $targeting['interests'] = [[
+                'id'   => $config->exterior_interes_id,
+                'name' => $config->exterior_interes_nombre ?: '',
+            ]];
+        }
+
+        return $targeting;
+    }
+
+    /**
      * `object_story_spec` de la creatividad: botón nativo de WhatsApp + mensaje precargado con
      * el código de referencia de la pieza, que es lo que permite atribuir la conversación.
      *
@@ -589,6 +675,35 @@ class MetaAdsService
             return ['ok' => false, 'mensaje' => 'Anuncio: ' . self::errorDeMeta($ad)];
         }
 
+        // Si la pieza habla de PENSIÓN, entra también al conjunto del exterior: es el único
+        // producto que le sirve igual a alguien en Cali que a un colombiano en España, porque
+        // las semanas se siguen cotizando viva donde viva. Se reutiliza la MISMA creatividad
+        // —no se vuelve a subir el video— y el anuncio queda con su propio id en ese conjunto.
+        $extra = '';
+        if (self::esDePension($publicacion) && $config->exterior_activo) {
+            $ext = self::asegurarConjuntoExterior($config, $publicacion->aliado_id);
+            if ($ext['ok']) {
+                $estadoExt = Http::get(self::BASE_URL . "/{$ext['adset_id']}", [
+                    'fields'       => 'status',
+                    'access_token' => $token,
+                ])->json('status');
+
+                $adExt = Http::asForm()->post(self::BASE_URL . "/{$cuenta}/ads", [
+                    'name'         => "Pieza #{$publicacion->id} — anuncio exterior",
+                    'adset_id'     => $ext['adset_id'],
+                    'creative'     => json_encode(['creative_id' => $creativa->json('id')]),
+                    'status'       => $estadoExt === 'ACTIVE' ? 'ACTIVE' : 'PAUSED',
+                    'access_token' => $token,
+                ]);
+
+                $extra = $adExt->successful()
+                    ? ' También entró al conjunto del exterior.'
+                    : ' No entró al del exterior: ' . self::errorDeMeta($adExt);
+            } else {
+                $extra = ' No entró al del exterior: ' . $ext['mensaje'];
+            }
+        }
+
         $publicacion->update([
             'pauta_estado'                 => $estadoConjunto === 'ACTIVE' ? 'activa' : 'borrador',
             'pauta_presupuesto_diario_cop' => $config->presupuestoDiarioCop(),
@@ -598,7 +713,21 @@ class MetaAdsService
             'pauta_activada_at'            => $estadoConjunto === 'ACTIVE' ? ($publicacion->pauta_activada_at ?: now()) : $publicacion->pauta_activada_at,
         ]);
 
-        return ['ok' => true, 'mensaje' => "Pieza #{$publicacion->id} agregada al conjunto permanente."];
+        return ['ok' => true, 'mensaje' => "Pieza #{$publicacion->id} agregada al conjunto permanente." . $extra];
+    }
+
+    /**
+     * ¿La pieza habla de pensión?
+     *
+     * Se mira el tema y el título, no una marca aparte: el tema lo escribe la IA a partir del
+     * catálogo y es lo que de verdad describe la pieza. "AFP" entra porque es como se nombra
+     * el fondo en los planes ("Solo AFP").
+     */
+    private static function esDePension(Publicacion $publicacion): bool
+    {
+        $texto = mb_strtolower(($publicacion->tema ?? '') . ' ' . ($publicacion->titulo ?? ''), 'UTF-8');
+
+        return str_contains($texto, 'pensi') || str_contains($texto, 'afp') || str_contains($texto, 'semanas');
     }
 
     /**
