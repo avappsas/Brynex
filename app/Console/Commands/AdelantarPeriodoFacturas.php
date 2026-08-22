@@ -222,7 +222,7 @@ class AdelantarPeriodoFacturas extends Command
                     accion: 'updated',
                     modelo: 'Factura',
                     registroId: $f->id,
-                    descripcion: "Período adelantado 1 mes: {$r['origen']} → {$r['destino']} "
+                    descripcion: "Período realineado al mes de cobro: {$r['origen']} → {$r['destino']} "
                         . "(recibo #{$f->numero_factura}) por facturas:adelantar-periodo. "
                         . 'Venía etiquetada con el mes cotizado en vez del mes de cobro.',
                     detalle: [
