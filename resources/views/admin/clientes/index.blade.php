@@ -61,7 +61,7 @@
 
 /* ── Filtros ── */
 .cl-filters {
-    display: flex; gap: .6rem; flex-wrap: wrap; align-items: center;
+    display: flex; gap: .6rem; flex-wrap: nowrap; align-items: center;
     background: #fff;
     border: 1px solid #e2e8f0;
     border-radius: 12px;
@@ -69,7 +69,7 @@
     box-shadow: 0 1px 6px rgba(0,0,0,.04);
 }
 .cl-filter-search {
-    position: relative; flex: 1; min-width: 200px;
+    position: relative; flex: 1 1 auto; min-width: 160px;
     display: flex; align-items: center;
 }
 .cl-filter-search svg { position: absolute; left: .75rem; pointer-events: none; }
@@ -82,9 +82,15 @@
 .cl-search-input:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,.1); background: #fff; }
 .cl-select {
     padding: .5rem .85rem; border: 1.5px solid #e2e8f0; border-radius: 8px;
-    font-size: .85rem; color: #334155; background: #f8fafc; min-width: 180px;
+    font-size: .85rem; color: #334155; background: #f8fafc;
     cursor: pointer; transition: border-color .2s;
+    /* Ancho tope a proposito: sin el, el <select> se estira hasta su opcion mas
+       larga (los nombres de empresa) y empuja el boton a una segunda fila.
+       Puede encogerse (shrink 1) para que la fila unica aguante tambien las
+       pantallas intermedias, donde a ancho fijo se desbordaba. */
+    flex: 0 1 200px; min-width: 130px; width: auto;
 }
+.cl-filters .cl-select[name="estado"] { flex-basis: 165px; }
 .cl-select:focus { outline: none; border-color: #2563eb; }
 .cl-btn-search {
     display: inline-flex; align-items: center; gap: .4rem;
@@ -95,10 +101,13 @@
 }
 .cl-btn-search:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(37,99,235,.35); }
 .cl-btn-clear {
-    display: inline-flex; align-items: center; gap: .35rem;
-    padding: .52rem .9rem; border: 1.5px solid #e2e8f0;
+    /* Solo icono: cuadrado del alto de los demas controles. El texto vive en el
+       title/aria-label para no gastar ancho de la fila. */
+    display: inline-flex; align-items: center; justify-content: center;
+    flex: 0 0 auto; width: 34px; height: 34px;
+    border: 1.5px solid #e2e8f0;
     border-radius: 8px; color: #64748b; text-decoration: none;
-    font-size: .83rem; font-weight: 500; transition: all .15s; white-space: nowrap;
+    transition: all .15s;
     background: #fff;
 }
 .cl-btn-clear:hover { background: #f1f5f9; border-color: #cbd5e1; }
@@ -282,6 +291,16 @@
     box-shadow: 0 2px 8px rgba(37,99,235,.35);
 }
 .cl-page-dots { color: #94a3b8; font-size: .8rem; padding: 0 .1rem; }
+
+/* Por debajo de ~760px la fila unica ya no cabe ni con los selects encogidos
+   (buscador + 2 selects + boton pasan del ancho util), asi que ahi se deja
+   envolver: buscador arriba y los dos selects a mitad y mitad. */
+@media (max-width: 760px) {
+    .cl-filters { flex-wrap: wrap; }
+    .cl-filter-search { flex: 1 1 100%; }
+    .cl-filters .cl-select,
+    .cl-filters .cl-select[name="estado"] { flex: 1 1 calc(50% - .3rem); }
+}
 
 @media (max-width: 640px) {
     .cl-pagination { flex-direction: column; align-items: flex-start; }
@@ -540,9 +559,9 @@
             Buscar
         </button>
         @if($buscar || $filtroEmpresa || $filtroEstado)
-        <a href="{{ route('admin.clientes.index') }}" class="cl-btn-clear">
+        <a href="{{ route('admin.clientes.index') }}" class="cl-btn-clear"
+           title="Limpiar filtros" aria-label="Limpiar filtros">
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-            Limpiar
         </a>
         @endif
     </form>
