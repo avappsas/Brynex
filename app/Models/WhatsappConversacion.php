@@ -34,6 +34,23 @@ class WhatsappConversacion extends BaseModel
         'total_mensajes_no_leidos',
     ];
 
+    /**
+     * Clasificación del contacto (cliente | excliente | nuevo) y si llegó por
+     * marketing. Se calculan en caliente (ver WhatsappTipoContacto) y NO son
+     * columnas: van como propiedades declaradas justamente para que no entren al
+     * arreglo de atributos de Eloquent — ahí quedarían marcadas como "sucias" y el
+     * siguiente save() intentaría escribir una columna que no existe.
+     */
+    public ?string $tipo_contacto = null;
+
+    public bool $desde_marketing = false;
+
+    /** Fecha del último retiro, solo en los exclientes. */
+    public ?string $fecha_retiro_contrato = null;
+
+    /** Igual que las anteriores: se calcula en el controlador, no es columna. */
+    public ?bool $atendida_por_ia = null;
+
     protected $casts = [
         'ultimo_mensaje_at'         => 'datetime',
         'ventana_activa_hasta'      => 'datetime',

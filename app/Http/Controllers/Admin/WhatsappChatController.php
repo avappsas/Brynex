@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\{IaConfiguracionAliado, MarketingBloqueado, User, WhatsappConfig, WhatsappConversacion, WhatsappMensaje};
 use App\Services\Finanzas\TelefonosDeudores;
 use App\Services\WhatsappApiService;
+use App\Services\WhatsappTipoContacto;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\{Auth, DB, Storage};
 
@@ -16,7 +17,10 @@ use Illuminate\Support\Facades\{Auth, DB, Storage};
  */
 class WhatsappChatController extends Controller
 {
-    public function __construct(protected WhatsappApiService $apiService) {}
+    public function __construct(
+        protected WhatsappApiService $apiService,
+        protected WhatsappTipoContacto $tipos,
+    ) {}
 
     /**
      * Inbox de conversaciones del aliado.
@@ -27,9 +31,14 @@ class WhatsappChatController extends Controller
         $alidoId = session('aliado_id_activo');
         $tab     = $request->get('tab', 'general');
         $buscar  = $request->get('buscar');
+        $tipo    = $this->tipoContactoPedido($request);
 
-        ['conversaciones' => $conversaciones, 'totalNoLeidos' => $totalNoLeidos, 'totalIa' => $totalIa] =
-            $this->cargarDatosSidebar($alidoId, $tab, $buscar);
+        [
+            'conversaciones' => $conversaciones,
+            'totalNoLeidos'  => $totalNoLeidos,
+            'totalIa'        => $totalIa,
+            'conteoTipos'    => $conteoTipos,
+        ] = $this->cargarDatosSidebar($alidoId, $tab, $buscar, $tipo);
 
         // Usuarios del aliado para la asignación
         $usuarios = User::where('aliado_id', $alidoId)
@@ -38,7 +47,8 @@ class WhatsappChatController extends Controller
             ->get(['id', 'nombre']);
 
         return view('admin.whatsapp.chat.index', compact(
-            'conversaciones', 'tab', 'buscar', 'totalNoLeidos', 'totalIa', 'usuarios'
+            'conversaciones', 'tab', 'buscar', 'tipo', 'totalNoLeidos', 'totalIa',
+            'conteoTipos', 'usuarios'
         ));
     }
 
@@ -50,6 +60,7 @@ class WhatsappChatController extends Controller
         $alidoId      = session('aliado_id_activo');
         $tab          = $request->get('tab', 'general');
         $buscar       = $request->get('buscar');
+        $tipo         = $this->tipoContactoPedido($request);
 
         $conversacion = $this->findConversacionProtected($alidoId, $id);
         $conversacion->resetNoLeidos();
@@ -84,8 +95,12 @@ class WhatsappChatController extends Controller
             ->get();
 
         // Sidebar — método compartido, sin duplicar lógica
-        ['conversaciones' => $conversaciones, 'totalNoLeidos' => $totalNoLeidos, 'totalIa' => $totalIa] =
-            $this->cargarDatosSidebar($alidoId, $tab, $buscar);
+        [
+            'conversaciones' => $conversaciones,
+            'totalNoLeidos'  => $totalNoLeidos,
+            'totalIa'        => $totalIa,
+            'conteoTipos'    => $conteoTipos,
+        ] = $this->cargarDatosSidebar($alidoId, $tab, $buscar, $tipo);
 
         // Mapear conversaciones para Alpine.js
         $conversacionesData = $this->mapearConversacionesSidebar($conversaciones);
@@ -107,11 +122,12 @@ class WhatsappChatController extends Controller
             'pendiente_motivo'   => $conversacion->pendiente_motivo,
             'ventana_activa'     => $conversacion->ventanaActiva(),
             'ventana_minutos'    => $conversacion->minutosVentanaRestante(),
-        ];
+        ] + $this->identidadContacto($conversacion, $alidoId);
 
         return view('admin.whatsapp.chat.show', compact(
             'conversacion', 'mensajes', 'usuarios', 'plantillas',
-            'conversaciones', 'conversacionesData', 'tab', 'buscar', 'totalNoLeidos', 'totalIa',
+            'conversaciones', 'conversacionesData', 'tab', 'buscar', 'tipo',
+            'totalNoLeidos', 'totalIa', 'conteoTipos',
             'mensajesData', 'conversacionData'
         ));
     }
@@ -382,7 +398,7 @@ class WhatsappChatController extends Controller
                 'pendiente_motivo'   => $conversacion->pendiente_motivo,
                 'ventana_activa'     => $conversacion->ventanaActiva(),
                 'ventana_minutos'    => $conversacion->minutosVentanaRestante(),
-            ],
+            ] + $this->identidadContacto($conversacion, $alidoId),
             'mensajes' => $this->mapearMensajes($mensajes),
         ]);
     }
@@ -399,12 +415,7 @@ class WhatsappChatController extends Controller
         $conversacion = WhatsappConversacion::delAliado($alidoId)
             ->activas()
             ->with(['mensajes' => fn($q) => $q->reorder()->latest()->limit(1), 'asignado'])
-            ->select([
-                'id', 'aliado_id', 'wa_contact_id', 'nombre_contacto',
-                'total_mensajes_no_leidos', 'ultimo_mensaje_at',
-                'asignado_a', 'estado', 'contrato_id',
-                'bot_activo', 'pendiente_atencion', 'pendiente_motivo',
-            ])
+            ->select($this->columnasSidebar())
             ->find($id);
 
         if (!$conversacion) {
@@ -412,6 +423,8 @@ class WhatsappChatController extends Controller
         }
 
         $this->verificarAccesoConversacion($conversacion);
+
+        $this->tipos->clasificar(collect([$conversacion]), $alidoId);
 
         return response()->json([
             'ok'           => true,
@@ -422,10 +435,46 @@ class WhatsappChatController extends Controller
     // ── Helpers privados ─────────────────────────────────────────────
 
     /**
+     * Identificación del contacto para el encabezado del chat abierto: si es
+     * cliente, excliente o nuevo, desde cuándo está retirado y de qué campaña o
+     * pieza llegó. Cuesta una consulta, la misma que clasifica el sidebar.
+     */
+    private function identidadContacto(WhatsappConversacion $c, int $alidoId): array
+    {
+        $this->tipos->clasificar(collect([$c]), $alidoId);
+
+        return [
+            'tipo_contacto'   => $c->tipo_contacto,
+            'tipo_label'      => WhatsappTipoContacto::ETIQUETAS[$c->tipo_contacto] ?? null,
+            'desde_marketing' => $c->desde_marketing,
+            'retirado_desde'  => $c->fecha_retiro_contrato
+                ? \Illuminate\Support\Carbon::parse($c->fecha_retiro_contrato)->format('d/m/Y')
+                : null,
+            // Solo si vino de marketing: `origen_campana` también se llena con la
+            // plantilla de un envío de cobro, y ahí "llegó por" sería mentira.
+            'origen'          => $c->desde_marketing
+                ? \Illuminate\Support\Str::limit($c->origen_campana ?: $c->publicacionOrigen?->titulo, 45) ?: null
+                : null,
+        ];
+    }
+
+    /**
+     * Filtro de tipo de contacto pedido en la URL, o null si no viene o no es uno
+     * de los tres válidos. Se normaliza aquí para que las vistas puedan tratar
+     * "hay filtro" como un simple truthy.
+     */
+    private function tipoContactoPedido(Request $request): ?string
+    {
+        $tipo = $request->get('tipo');
+
+        return isset(WhatsappTipoContacto::ETIQUETAS[$tipo]) ? $tipo : null;
+    }
+
+    /**
      * Carga las conversaciones y el total de no leídos para el sidebar.
      * Método compartido entre index() y show() para eliminar duplicación.
      */
-    private function cargarDatosSidebar(int $alidoId, ?string $tab, ?string $buscar): array
+    private function cargarDatosSidebar(int $alidoId, ?string $tab, ?string $buscar, ?string $tipo = null): array
     {
         $userId  = Auth::id();
         $user    = Auth::user();
@@ -434,12 +483,7 @@ class WhatsappChatController extends Controller
         $query = WhatsappConversacion::delAliado($alidoId)
             ->activas()
             ->with(['mensajes' => fn($q) => $q->reorder()->latest()->limit(1), 'asignado'])
-            ->select([
-                'id', 'aliado_id', 'wa_contact_id', 'nombre_contacto',
-                'total_mensajes_no_leidos', 'ultimo_mensaje_at',
-                'asignado_a', 'estado', 'contrato_id',
-                'bot_activo', 'pendiente_atencion', 'pendiente_motivo',
-            ])
+            ->select($this->columnasSidebar())
             ->orderByDesc('ultimo_mensaje_at');
 
         $this->excluirDeudoresDelDueno($query, $userId);
@@ -464,6 +508,13 @@ class WhatsappChatController extends Controller
         }
 
         $conversaciones = $query->get();
+
+        // Cliente / excliente / nuevo — una sola consulta para todo el sidebar.
+        $this->tipos->clasificar($conversaciones, $alidoId);
+
+        // Conteo por tipo ANTES de filtrar, para que los chips del filtro sigan
+        // mostrando cuántos hay en cada grupo aunque haya uno seleccionado.
+        $conteoTipos = $conversaciones->countBy('tipo_contacto')->all();
 
         // "Atendida por IA" de verdad = permiso en la conversación (bot_activo) Y el
         // aliado tiene la IA de WhatsApp encendida. Sin esto, una conversación con
@@ -497,7 +548,29 @@ class WhatsappChatController extends Controller
         // Contador para la pestaña "IA" (independiente del tab actual)
         $totalIa = WhatsappConversacion::delAliado($alidoId)->activas()->atendidasPorIa()->count();
 
-        return compact('conversaciones', 'totalNoLeidos', 'totalIa');
+        // El filtro por tipo se aplica de último: los badges de no leídos y de IA
+        // cuentan el inbox completo, no el subconjunto que se está mirando.
+        if ($tipo) {
+            $conversaciones = $conversaciones->where('tipo_contacto', $tipo)->values();
+        }
+
+        return compact('conversaciones', 'totalNoLeidos', 'totalIa', 'conteoTipos');
+    }
+
+    /**
+     * Columnas que necesita una fila del sidebar. Las de origen (`empresa_id`,
+     * `origen_campana_categoria`, `origen_publicacion_id`) las lee
+     * WhatsappTipoContacto para clasificar el contacto.
+     */
+    private function columnasSidebar(): array
+    {
+        return [
+            'id', 'aliado_id', 'wa_contact_id', 'nombre_contacto',
+            'total_mensajes_no_leidos', 'ultimo_mensaje_at',
+            'asignado_a', 'estado', 'contrato_id', 'empresa_id',
+            'origen_campana', 'origen_campana_categoria', 'origen_publicacion_id',
+            'bot_activo', 'pendiente_atencion', 'pendiente_motivo',
+        ];
     }
 
     /**
@@ -538,6 +611,9 @@ class WhatsappChatController extends Controller
             'atendida_por_ia'          => (bool) ($c->atendida_por_ia ?? $this->esAtendidaPorIa($c)),
             'pendiente_atencion'       => (bool) $c->pendiente_atencion,
             'pendiente_motivo'         => $c->pendiente_motivo,
+            'tipo_contacto'            => $c->tipo_contacto,
+            'tipo_label'               => WhatsappTipoContacto::ETIQUETAS[$c->tipo_contacto] ?? null,
+            'desde_marketing'          => $c->desde_marketing,
             'url_show'                 => route('admin.whatsapp.chat.show', $c->id),
         ];
     }

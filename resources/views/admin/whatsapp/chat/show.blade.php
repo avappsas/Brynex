@@ -27,6 +27,31 @@
 .conv-avatar { width:40px; height:40px; border-radius:50%; background:linear-gradient(135deg,#2563eb,#7c3aed); display:flex; align-items:center; justify-content:center; font-size:1rem; color:#fff; font-weight:700; flex-shrink:0; }
 .conv-info { flex:1; min-width:0; }
 .conv-name { font-size:.83rem; font-weight:600; color:#0f172a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+/* ── Filtro por tipo de contacto ─────────────────────── */
+.sidebar-tipos { display:flex; flex-wrap:wrap; gap:.2rem; margin-top:.45rem; }
+.tipo-filtro {
+    font-size:.64rem; font-weight:600; padding:.18rem .42rem; border-radius:999px;
+    text-decoration:none; color:#64748b; background:#f1f5f9;
+    border:1px solid transparent; transition:background .12s, color .12s;
+}
+.tipo-filtro:hover { background:#e2e8f0; }
+.tipo-filtro.active { border-color:currentColor; }
+.tipo-filtro.t-cliente.active   { background:#dcfce7; color:#15803d; }
+.tipo-filtro.t-excliente.active { background:#fef3c7; color:#b45309; }
+.tipo-filtro.t-nuevo.active     { background:#ede9fe; color:#6d28d9; }
+.tipo-filtro.t-todos.active     { background:#e0e7ff; color:#4338ca; }
+
+/* ── Chip de tipo en cada conversación ───────────────── */
+.tipo-chip {
+    display:inline-block; font-size:.6rem; font-weight:700; line-height:1;
+    padding:.15rem .35rem; border-radius:4px; flex-shrink:0; white-space:nowrap;
+}
+.tipo-chip.t-cliente   { background:#dcfce7; color:#15803d; }
+.tipo-chip.t-excliente { background:#fef3c7; color:#b45309; }
+.tipo-chip.t-nuevo     { background:#ede9fe; color:#6d28d9; }
+.conv-name-row { display:flex; align-items:center; gap:.35rem; min-width:0; }
+.conv-name-row .conv-name { flex:1; min-width:0; }
 .conv-preview { font-size:.74rem; color:#94a3b8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:.1rem; }
 .conv-meta { display:flex; flex-direction:column; align-items:flex-end; gap:.25rem; flex-shrink:0; }
 .conv-time { font-size:.68rem; color:#cbd5e1; }
@@ -34,11 +59,17 @@
 
 /* Chat principal */
 .chat-main { flex:1; display:flex; flex-direction:column; min-width:0; }
-.chat-header { padding:.75rem 1rem; border-bottom:1px solid #f1f5f9; display:flex; align-items:center; gap:.75rem; background:#fff; flex-shrink:0; }
-.chat-contact-info { flex:1; }
-.chat-contact-name { font-size:.9rem; font-weight:700; color:#0f172a; }
-.chat-contact-sub { font-size:.72rem; color:#94a3b8; }
-.header-actions { display:flex; gap:.4rem; flex-shrink:0; align-items:center; }
+/* flex-wrap para que los botones bajen de línea en vez de aplastar el nombre:
+   con `min-width:0` en el bloque de la izquierda, sin wrap se encogía a 0 y el
+   contacto desaparecía en cuanto la ventana era angosta. */
+.chat-header { padding:.75rem 1rem; border-bottom:1px solid #f1f5f9; display:flex; align-items:center; gap:.75rem; background:#fff; flex-shrink:0; flex-wrap:wrap; }
+.chat-contact-info { flex:1 1 220px; min-width:0; }
+.chat-contact-name { font-size:.9rem; font-weight:700; color:#0f172a; display:flex; align-items:center; gap:.4rem; min-width:0; }
+.chat-contact-name > span:first-child { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.chat-contact-sub { font-size:.72rem; color:#94a3b8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.chat-contact-sub .dato-retiro { color:#b45309; font-weight:600; }
+.chat-contact-sub .dato-origen { color:#6d28d9; font-weight:600; }
+.header-actions { display:flex; gap:.4rem; flex-shrink:0; align-items:center; flex-wrap:wrap; }
 .btn-sm { padding:.3rem .65rem; border-radius:7px; font-size:.75rem; font-weight:600; cursor:pointer; border:none; display:inline-flex; align-items:center; gap:.3rem; text-decoration:none; transition:opacity .15s; }
 .btn-sm:hover { opacity:.87; }
 .btn-primary { background:#2563eb; color:#fff; }
@@ -112,30 +143,49 @@
 
             <form method="GET">
                 <input type="hidden" name="tab" value="{{ $tab }}">
+                <input type="hidden" name="tipo" value="{{ $tipo }}">
                 <input type="text" name="buscar" class="sidebar-search"
                        value="{{ $buscar }}" placeholder="Buscar conversación...">
             </form>
 
             <div class="sidebar-tabs">
-                <a href="{{ route('admin.whatsapp.chat.show', $conversacion->id) }}?tab=general&buscar={{ urlencode($buscar) }}"
+                <a href="{{ route('admin.whatsapp.chat.show', ['id' => $conversacion->id, 'tab' => 'general', 'buscar' => $buscar, 'tipo' => $tipo]) }}"
                    class="sidebar-tab {{ $tab === 'general' ? 'active' : '' }}">📥 General</a>
-                <a href="{{ route('admin.whatsapp.chat.show', $conversacion->id) }}?tab=mias&buscar={{ urlencode($buscar) }}"
+                <a href="{{ route('admin.whatsapp.chat.show', ['id' => $conversacion->id, 'tab' => 'mias', 'buscar' => $buscar, 'tipo' => $tipo]) }}"
                    class="sidebar-tab {{ $tab === 'mias' ? 'active' : '' }}">👤 Mis chats</a>
-                <a href="{{ route('admin.whatsapp.chat.show', $conversacion->id) }}?tab=ia&buscar={{ urlencode($buscar) }}"
+                <a href="{{ route('admin.whatsapp.chat.show', ['id' => $conversacion->id, 'tab' => 'ia', 'buscar' => $buscar, 'tipo' => $tipo]) }}"
                    class="sidebar-tab {{ $tab === 'ia' ? 'active' : '' }}">🤖 IA
                     @if($totalIa > 0)<span class="sidebar-badge" style="margin-left:.25rem;">{{ $totalIa }}</span>@endif
                 </a>
+            </div>
+
+            {{-- Filtro por tipo de contacto: cliente / excliente / nuevo --}}
+            <div class="sidebar-tipos">
+                <a href="{{ route('admin.whatsapp.chat.show', ['id' => $conversacion->id, 'tab' => $tab, 'buscar' => $buscar]) }}"
+                   class="tipo-filtro t-todos {{ $tipo ? '' : 'active' }}">Todos</a>
+                @foreach(\App\Services\WhatsappTipoContacto::ETIQUETAS as $clave => $etiqueta)
+                    <a href="{{ route('admin.whatsapp.chat.show', ['id' => $conversacion->id, 'tab' => $tab, 'buscar' => $buscar, 'tipo' => $clave]) }}"
+                       class="tipo-filtro t-{{ $clave }} {{ $tipo === $clave ? 'active' : '' }}">
+                        {{ $etiqueta }} {{ $conteoTipos[$clave] ?? 0 }}
+                    </a>
+                @endforeach
             </div>
         </div>
 
         <div class="conv-list">
             <template x-for="c in listaConversaciones" :key="c.id">
-                <a :href="c.url_show + '?tab={{ $tab }}&buscar={{ urlencode($buscar) }}'"
+                <a :href="c.url_show + '?tab={{ $tab }}&buscar={{ urlencode($buscar ?? '') }}&tipo={{ urlencode($tipo ?? '') }}'"
                    @click.prevent="cargarConversacion(c.id)"
                    class="conv-item" :class="c.id == convId ? 'activa' : ''">
                     <div class="conv-avatar" x-text="c.nombre.substring(0, 1).toUpperCase()"></div>
                     <div class="conv-info">
-                        <div class="conv-name" x-text="c.nombre"></div>
+                        <div class="conv-name-row">
+                            <span class="conv-name" x-text="c.nombre"></span>
+                            <template x-if="c.tipo_contacto">
+                                <span class="tipo-chip" :class="'t-' + c.tipo_contacto"
+                                      x-text="(c.desde_marketing ? '📣 ' : '') + c.tipo_label"></span>
+                            </template>
+                        </div>
                         <div class="conv-preview">
                             <template x-if="c.pendiente_atencion">
                                 <span style="color:#d97706;font-weight:600">⚠️ Pendiente por atender</span>
@@ -158,7 +208,11 @@
                 </a>
             </template>
             <div x-show="listaConversaciones.length === 0" style="text-align:center;padding:2rem 1rem;color:#94a3b8;font-size:.82rem">
-                No hay conversaciones.
+                @if($tipo)
+                    No hay conversaciones de tipo «{{ \App\Services\WhatsappTipoContacto::ETIQUETAS[$tipo] ?? $tipo }}» en esta pestaña.
+                @else
+                    No hay conversaciones.
+                @endif
             </div>
         </div>
     </aside>
@@ -171,7 +225,13 @@
             <div class="conv-avatar" style="width:42px;height:42px" x-text="conversacion.nombre.substring(0, 1).toUpperCase()">
             </div>
             <div class="chat-contact-info">
-                <div class="chat-contact-name" x-text="conversacion.nombre"></div>
+                <div class="chat-contact-name">
+                    <span x-text="conversacion.nombre"></span>
+                    <template x-if="conversacion.tipo_contacto">
+                        <span class="tipo-chip" :class="'t-' + conversacion.tipo_contacto"
+                              x-text="(conversacion.desde_marketing ? '📣 ' : '') + conversacion.tipo_label"></span>
+                    </template>
+                </div>
                 <div class="chat-contact-sub">
                     <span x-text="conversacion.celular"></span>
                     <span x-show="conversacion.estado === 'asignada' && conversacion.asignado_nombre">
@@ -180,6 +240,12 @@
                     <span x-show="conversacion.estado !== 'asignada' || !conversacion.asignado_nombre" style="color:#94a3b8">
                         · Inbox general
                     </span>
+                    <template x-if="conversacion.retirado_desde">
+                        <span class="dato-retiro"> · Retirado el <span x-text="conversacion.retirado_desde"></span></span>
+                    </template>
+                    <template x-if="conversacion.origen">
+                        <span class="dato-origen"> · Llegó por <span x-text="conversacion.origen"></span></span>
+                    </template>
                 </div>
             </div>
             <div class="header-actions">
@@ -426,6 +492,7 @@ function chatApp() {
         alidoId: '{{ session('aliado_id_activo') }}',
         convId: {{ $conversacion->id }},
         listaConversaciones: @json($conversacionesData),
+        tipoFiltro: @json($tipo),
         totalNoLeidos: {{ (int) $totalNoLeidos }},
 
         init() {
@@ -458,7 +525,7 @@ function chatApp() {
             this.mensajeError = '';
 
             // Cambiar URL en el navegador de manera SPA
-            const newUrl = `/admin/whatsapp/chat/${id}?tab={{ $tab }}&buscar={{ urlencode($buscar) }}`;
+            const newUrl = `/admin/whatsapp/chat/${id}?tab={{ $tab }}&buscar={{ urlencode($buscar ?? '') }}&tipo={{ urlencode($tipo ?? '') }}`;
             window.history.pushState({ path: newUrl }, '', newUrl);
 
             try {
@@ -841,9 +908,14 @@ function chatApp() {
                             const sidebarResp = await fetch(`/admin/whatsapp/chat/${convIdTarget}/api-sidebar`);
                             const sidebarData = await sidebarResp.json();
                             if (sidebarData.ok && sidebarData.conversacion) {
-                                this.listaConversaciones.unshift(sidebarData.conversacion);
+                                // Con un filtro de tipo activo, el contador de no leídos
+                                // sigue contando todo el inbox, pero la fila solo entra a
+                                // la lista si pertenece al tipo que se está mirando.
                                 this.totalNoLeidos += sidebarData.conversacion.total_mensajes_no_leidos;
-                                this.ordenarConversaciones();
+                                if (!this.tipoFiltro || sidebarData.conversacion.tipo_contacto === this.tipoFiltro) {
+                                    this.listaConversaciones.unshift(sidebarData.conversacion);
+                                    this.ordenarConversaciones();
+                                }
                             }
                         } catch (err) {
                             console.warn('No se pudo cargar la conversación nueva al sidebar:', err);
