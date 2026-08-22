@@ -926,7 +926,6 @@ class CuadreDiarioController extends Controller
             $fila('Otros admon',      'otros_admon',  '#a78bfa'),
             $fila('Comisión retiros', 'retiro_campo', '#c2410c'),
             $fila('Trámites',         'tramites',     '#10b981'),
-            $fila('Mora',             'mora',         '#f43f5e'),
         ];
 
         // ── Canal 2: Afiliaciones (distribución del ingreso) ─────────────
@@ -955,6 +954,10 @@ class CuadreDiarioController extends Controller
             $fila('Pensión',  'afp',      '#2dd4bf'),
             $fila('Caja',     'caja',     '#5eead4'),
             $fila('Otros SS', 'otros_ss', '#99f6e4'),
+            // La mora al cliente no es ingreso del aliado: entra para cubrir lo que
+            // la planilla cobra de mas por pagarse tarde. Va en este canal, que es
+            // donde ya la cuenta el informe financiero (moraRecogida en el canal SS).
+            $fila('Mora',     'mora',     '#f43f5e'),
         ];
 
         $limpiar = fn(array $filas) => array_values(array_filter(
