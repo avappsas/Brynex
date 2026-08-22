@@ -292,14 +292,15 @@
 }
 .cl-page-dots { color: #94a3b8; font-size: .8rem; padding: 0 .1rem; }
 
-/* Por debajo de ~760px la fila unica ya no cabe ni con los selects encogidos
-   (buscador + 2 selects + boton pasan del ancho util), asi que ahi se deja
-   envolver: buscador arriba y los dos selects a mitad y mitad. */
+/* Por debajo de ~760px la fila unica ya no cabe: se deja envolver con el
+   buscador completo arriba y el resto (estado + botones) en la fila de abajo.
+   El select se estira para llenar lo que sobra en vez de tomar un ancho fijo,
+   asi el boton de limpiar no cae solo a una tercera fila. */
 @media (max-width: 760px) {
     .cl-filters { flex-wrap: wrap; }
     .cl-filter-search { flex: 1 1 100%; }
     .cl-filters .cl-select,
-    .cl-filters .cl-select[name="estado"] { flex: 1 1 calc(50% - .3rem); }
+    .cl-filters .cl-select[name="estado"] { flex: 1 1 130px; }
 }
 
 @media (max-width: 640px) {
@@ -325,7 +326,7 @@
                 <p class="cl-subtitle">
                     <span class="cl-badge-count">{{ number_format($clientes->total()) }}</span>
                     clientes registrados
-                    @if($buscar || $filtroEmpresa || $filtroEstado)
+                    @if($buscar || $filtroEstado)
                         <span class="cl-badge-filter">· Filtros activos</span>
                     @endif
                 </p>
@@ -536,18 +537,6 @@
                    class="cl-search-input">
         </div>
 
-        <select name="empresa" class="cl-select">
-            <option value="">— Todas las empresas —</option>
-            <option value="1" {{ ($filtroEmpresa ?? '') == '1' ? 'selected' : '' }}>Individual</option>
-            @foreach($empresas as $emp)
-                @if($emp->id != 1)
-                <option value="{{ $emp->id }}" {{ ($filtroEmpresa ?? '') == $emp->id ? 'selected' : '' }}>
-                    {{ $emp->empresa }}
-                </option>
-                @endif
-            @endforeach
-        </select>
-
         <select name="estado" class="cl-select">
             <option value="">— Todos los estados —</option>
             <option value="vigente"  {{ ($filtroEstado ?? '') === 'vigente'  ? 'selected' : '' }}>Vigentes</option>
@@ -558,7 +547,7 @@
             <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"/></svg>
             Buscar
         </button>
-        @if($buscar || $filtroEmpresa || $filtroEstado)
+        @if($buscar || $filtroEstado)
         <a href="{{ route('admin.clientes.index') }}" class="cl-btn-clear"
            title="Limpiar filtros" aria-label="Limpiar filtros">
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
@@ -692,7 +681,7 @@
                     <td colspan="6" class="cl-empty">
                         <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" fill="none" viewBox="0 0 24 24" stroke="#cbd5e1" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"/></svg>
                         <p>
-                            @if($buscar || $filtroEmpresa || $filtroEstado)
+                            @if($buscar || $filtroEstado)
                                 No se encontraron clientes con los filtros aplicados.
                             @else
                                 No hay clientes registrados.
@@ -723,7 +712,7 @@
                     Anterior
                 </span>
             @else
-                <a href="{{ $clientes->appends(['buscar' => $buscar, 'empresa' => $filtroEmpresa, 'estado' => $filtroEstado])->previousPageUrl() }}" class="cl-page-btn">
+                <a href="{{ $clientes->appends(['buscar' => $buscar, 'estado' => $filtroEstado])->previousPageUrl() }}" class="cl-page-btn">
                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5"/></svg>
                     Anterior
                 </a>
@@ -738,7 +727,7 @@
             @endphp
 
             @if($start > 1)
-                <a href="{{ $clientes->appends(['buscar' => $buscar, 'empresa' => $filtroEmpresa, 'estado' => $filtroEstado])->url(1) }}" class="cl-page-num">1</a>
+                <a href="{{ $clientes->appends(['buscar' => $buscar, 'estado' => $filtroEstado])->url(1) }}" class="cl-page-num">1</a>
                 @if($start > 2)<span class="cl-page-dots">…</span>@endif
             @endif
 
@@ -746,18 +735,18 @@
                 @if($p === $currentPage)
                     <span class="cl-page-num cl-page-num--active">{{ $p }}</span>
                 @else
-                    <a href="{{ $clientes->appends(['buscar' => $buscar, 'empresa' => $filtroEmpresa, 'estado' => $filtroEstado])->url($p) }}" class="cl-page-num">{{ $p }}</a>
+                    <a href="{{ $clientes->appends(['buscar' => $buscar, 'estado' => $filtroEstado])->url($p) }}" class="cl-page-num">{{ $p }}</a>
                 @endif
             @endfor
 
             @if($end < $lastPage)
                 @if($end < $lastPage - 1)<span class="cl-page-dots">…</span>@endif
-                <a href="{{ $clientes->appends(['buscar' => $buscar, 'empresa' => $filtroEmpresa, 'estado' => $filtroEstado])->url($lastPage) }}" class="cl-page-num">{{ $lastPage }}</a>
+                <a href="{{ $clientes->appends(['buscar' => $buscar, 'estado' => $filtroEstado])->url($lastPage) }}" class="cl-page-num">{{ $lastPage }}</a>
             @endif
 
             {{-- Siguiente --}}
             @if($clientes->hasMorePages())
-                <a href="{{ $clientes->appends(['buscar' => $buscar, 'empresa' => $filtroEmpresa, 'estado' => $filtroEstado])->nextPageUrl() }}" class="cl-page-btn">
+                <a href="{{ $clientes->appends(['buscar' => $buscar, 'estado' => $filtroEstado])->nextPageUrl() }}" class="cl-page-btn">
                     Siguiente
                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/></svg>
                 </a>

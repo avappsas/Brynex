@@ -22,7 +22,6 @@ class ClienteController extends Controller
     {
         $aliadoId = session('aliado_id_activo');
         $buscar = $request->get('buscar');
-        $filtroEmpresa = $request->get('empresa');
         $filtroEstado = $request->get('estado');
 
         $query = Cliente::with(['empresa'])
@@ -58,11 +57,6 @@ class ClienteController extends Controller
                     });
                 }
             });
-        }
-
-        // Filtro por empresa
-        if ($filtroEmpresa) {
-            $query->where('cod_empresa', $filtroEmpresa);
         }
 
         // Filtro por estado del contrato. Debe coincidir con el estado que se
@@ -123,17 +117,12 @@ class ClienteController extends Controller
             $ultimosContratos = $subs->toArray();
         }
 
-        // Lista de empresas para filtro (del aliado activo)
-        $empresas = \App\Models\Empresa::where('aliado_id', $aliadoId)
-            ->orderBy('empresa')
-            ->get(['id', 'empresa']);
-
         // El modal "Nuevo Cliente" deja escoger el tipo de documento antes de
         // consultar: BDUA/RUAF responde por tipo + número, y un tipo distinto
         // del real devuelve vacío (no error), que parece "no registrado".
         $tiposDoc = $this->getLookups()['tipos_doc'];
 
-        return view('admin.clientes.index', compact('clientes', 'buscar', 'filtroEmpresa', 'filtroEstado', 'empresas', 'ultimosContratos', 'tiposDoc'));
+        return view('admin.clientes.index', compact('clientes', 'buscar', 'filtroEstado', 'ultimosContratos', 'tiposDoc'));
     }
 
     // ─── Crear nuevo cliente ──────────────────────────────────────────
