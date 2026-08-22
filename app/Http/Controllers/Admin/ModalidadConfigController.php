@@ -109,6 +109,16 @@ class ModalidadConfigController extends Controller
         $aliadoId = session('aliado_id_activo');
 
         // 1. Guardar mapa modalidad → planes (global, no por aliado)
+        // Combinaciones marcadas solo_ia: existen en el formulario de contrato pero no se
+        // ofrecen en el cotizador ni en el tarifario. Esta pantalla no expone esa marca, así
+        // que hay que releerla y volver a aplicarla — si no, guardar aquí las convertiría en
+        // combinaciones normales y las devolvería al mostrador público sin que nadie lo pida.
+        $soloIa = DB::table('modalidad_planes')
+            ->where('solo_ia', true)
+            ->get()
+            ->map(fn ($r) => $r->tipo_modalidad_id.'_'.$r->plan_id)
+            ->flip();
+
         $relaciones = $request->input('relaciones', []);
         $nuevos = [];
         foreach ($relaciones as $modalidadId => $planes) {
@@ -117,6 +127,7 @@ class ModalidadConfigController extends Controller
                     $nuevos[] = [
                         'tipo_modalidad_id' => (int) $modalidadId,
                         'plan_id'           => (int) $planId,
+                        'solo_ia'           => $soloIa->has($modalidadId.'_'.$planId),
                     ];
                 }
             }
