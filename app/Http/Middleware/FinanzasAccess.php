@@ -15,10 +15,12 @@ class FinanzasAccess
     {
         $user = auth()->user();
 
-        // Acceso exclusivo para el usuario Brayan García (cédula 1143944458), superadmin de brynex.
-        if (!$user 
-            || $user->cedula !== '1143944458' 
-            || !$user->hasRole('superadmin') 
+        // Acceso exclusivo del dueño de finanzas: ver `config/finanzas.php`.
+        // Si la config faltara, `!==` contra null rechaza a todo el mundo — que
+        // es la dirección correcta en la que fallar para una puerta de acceso.
+        if (!$user
+            || $user->cedula !== config('finanzas.cedula_dueno')
+            || !$user->hasRole('superadmin')
             || !$user->es_brynex) {
             abort(403, 'Acceso no autorizado al módulo de Finanzas.');
         }

@@ -186,7 +186,7 @@
             </div>
         </div>
 
-        @if(auth()->user()->cedula === '1143944458')
+        @if(auth()->user()->cedula === config('finanzas.cedula_dueno'))
         <div class="hub-section" style="border:1px solid #c084fc">
             <div class="hub-section-title" style="color:#a855f7">💰 Finanzas Personales <span class="badge-sa" style="background:#a855f7">Privado</span></div>
             <div class="hub-cards">

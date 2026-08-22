@@ -35,7 +35,7 @@ class ImportarExcelFinanzas extends Command
         }
 
         // Buscar al usuario de Brayan García
-        $user = User::where('cedula', '1143944458')->first();
+        $user = User::where('cedula', config('finanzas.cedula_dueno'))->first();
         if (!$user) {
             $user = User::first();
         }

@@ -985,7 +985,7 @@
                         <div class="pi">💾</div> Copias de Seguridad
                     </a>
 
-                    @if(Auth::user()->cedula === '1143944458')
+                    @if(Auth::user()->cedula === config('finanzas.cedula_dueno'))
                     <div class="panel-sep"></div>
                     <a href="{{ route('finanzas.dashboard') }}" class="panel-item {{ request()->routeIs('finanzas*') ? 'activo' : '' }}" style="background: rgba(168, 85, 247, 0.08); border-left: 3px solid #a855f7;">
                         <div class="pi">💰</div> Finanzas Personales

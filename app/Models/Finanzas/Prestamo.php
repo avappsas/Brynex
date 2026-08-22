@@ -33,6 +33,18 @@ class Prestamo extends BaseFinanzasModel
 {
     protected $table = 'finanzas_prestamos';
 
+    /**
+     * La lista de teléfonos de deudores se cachea para no consultarla en cada
+     * sondeo del badge de WhatsApp. Sin esto, un préstamo nuevo tardaría hasta
+     * `finanzas.cache_deudores_segundos` en ocultarse del panel de los demás
+     * usuarios — y esa demora es justo una fuga de privacidad.
+     */
+    protected static function booted(): void
+    {
+        static::saved(fn () => \App\Services\Finanzas\TelefonosDeudores::olvidar());
+        static::deleted(fn () => \App\Services\Finanzas\TelefonosDeudores::olvidar());
+    }
+
     protected $fillable = [
         'user_id',
         'nombre_deudor',
