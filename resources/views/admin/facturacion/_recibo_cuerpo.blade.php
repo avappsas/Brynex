@@ -289,6 +289,11 @@ $tSS = $tEps + $tArl + $tPen + $tCaj;
             <span>Afiliación</span><strong>{{ $fmt($totAfil) }}</strong>
         </div>
         @endif
+        @if(($totMora ?? 0) > 0)
+        <div class="fact-pago-row" style="color:#92400e">
+            <span>Mora</span><strong>{{ $fmt($totMora) }}</strong>
+        </div>
+        @endif
         @if($totSeg > 0)
         <div class="fact-pago-row">
             <span>Seguro</span><strong>{{ $fmt($totSeg) }}</strong>
@@ -422,6 +427,9 @@ $vAfil1   = $esPar ? $totAfil : (int)($factura->afiliacion ?? 0);
 $vMens1   = (int)($factura->mensajeria ?? 0);
 $vOtros1  = (int)($factura->otros ?? 0);
 $vIva1    = (int)($factura->iva ?? 0);
+// La mora entra en factura->total pero no estaba en ninguna linea del resumen: un
+// recibo con mora cobraba mas de lo que su propio desglose sumaba.
+$vMora1   = (int)($factura->mora ?? 0);
 $dias1    = $factura->dias_cotizados ?? 30;
 
 // Sello de estado
@@ -883,6 +891,11 @@ $empresaCliente = $cli1?->empresa ?? ($cli1?->cod_empresa ? \App\Models\Empresa:
         @if($vIva1 > 0)
         <div class="fact-pago-row" style="color:#92400e">
             <span>IVA / 4×mil</span><strong>{{ $fmt($vIva1) }}</strong>
+        </div>
+        @endif
+        @if($vMora1 > 0)
+        <div class="fact-pago-row" style="color:#92400e">
+            <span>Mora</span><strong>{{ $fmt($vMora1) }}</strong>
         </div>
         @endif
         @php

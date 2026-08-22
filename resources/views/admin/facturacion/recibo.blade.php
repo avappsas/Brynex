@@ -63,7 +63,7 @@ if ($esGrupo && !$empresaObj) {
 }
 
 // Totales del grupo
-$totSS=$totAdmon=$totSeg=$totAfil=$totIva=$totTotal=$totPrest=0;
+$totSS=$totAdmon=$totSeg=$totAfil=$totIva=$totTotal=$totPrest=$totMora=0;
 $totEfect=$totConsig=$totBanco2=$totAnticipo=0;
 foreach ($filas as $f) {
     $totSS    += (int)($f->total_ss ?? 0);
@@ -71,6 +71,7 @@ foreach ($filas as $f) {
     $totSeg   += (int)($f->seguro ?? 0);
     $totAfil  += (int)($f->afiliacion ?? 0);
     $totIva   += (int)($f->iva ?? 0);
+    $totMora  += (int)($f->mora ?? 0);
     $totTotal += (int)($f->total ?? 0);
     $totPrest += (int)($f->valor_prestamo ?? 0);
     $totEfect += (int)($f->valor_efectivo ?? 0);
