@@ -11,6 +11,9 @@ use Illuminate\Support\Facades\Storage;
 
 class CuadreDiarioController extends Controller
 {
+    /** Valor del selector de usuario que pide la caja de todos juntos. */
+    private const FILTRO_TODOS = 'todos';
+
     /**
      * Index: la caja de UN día concreto, del usuario logueado.
      *
@@ -28,14 +31,33 @@ class CuadreDiarioController extends Controller
         $usuarios = User::where('aliado_id', $aliadoId)->where('activo', true)
             ->orderBy('nombre')->get(['id', 'nombre']);
 
-        // Solo admin/superadmin puede mirar el día de otro usuario.
-        $usuarioId = Auth::id();
-        if ($esAdmin && $request->filled('usuario_id')
+        // Un usuario de BryNex operando dentro de otro aliado no figura en esa lista,
+        // pero sus cobros de ese dia si quedan a su nombre: sin esto el selector no
+        // marcaba ninguna opcion y parecia que se estaba viendo la caja de todos.
+        if (! $usuarios->contains('id', (int) Auth::id())) {
+            $usuarios = $usuarios
+                ->push(User::select('id', 'nombre')->find(Auth::id()))
+                ->filter()
+                ->sortBy('nombre')
+                ->values();
+        }
+
+        // Solo admin/superadmin puede mirar el día de otro usuario, y solo ellos
+        // pueden pedir la caja de TODOS juntos ($usuarioId = null → sin filtro por
+        // usuario en las consultas del día).
+        $usuarioId = (int) Auth::id();
+        $verTodos  = false;
+        if ($esAdmin && $request->input('usuario_id') === self::FILTRO_TODOS) {
+            $usuarioId = null;
+            $verTodos  = true;
+        } elseif ($esAdmin && $request->filled('usuario_id')
             && $usuarios->contains('id', (int) $request->input('usuario_id'))) {
             $usuarioId = (int) $request->input('usuario_id');
         }
-        $usuarioVista = $usuarios->firstWhere('id', $usuarioId) ?? Auth::user();
-        $esPropio     = $usuarioId === Auth::id();
+        $usuarioVista = $verTodos ? null : ($usuarios->firstWhere('id', $usuarioId) ?? Auth::user());
+        // Con la caja de todos no hay un dueño del día: no se registra gasto ni se
+        // cuadra desde esa vista, solo se mira el total.
+        $esPropio     = ! $verTodos && $usuarioId === (int) Auth::id();
 
         // El selector de gastos solo ofrece las cuentas de facturación.
         $bancosFacturacion = BancoCuenta::paraFacturacion($aliadoId);
@@ -51,7 +73,7 @@ class CuadreDiarioController extends Controller
         $cuadreDia      = $this->cuadreDelDia($aliadoId, $usuarioId, $fecha);
 
         return view('admin.cuadre-diario.index', compact(
-            'fecha', 'esAdmin', 'esPropio', 'usuarios', 'usuarioId', 'usuarioVista',
+            'fecha', 'esAdmin', 'esPropio', 'verTodos', 'usuarios', 'usuarioId', 'usuarioVista',
             'bancosFacturacion', 'resumen', 'canales', 'gastos',
             'consignaciones', 'cuadreDia'
         ));
@@ -665,8 +687,13 @@ class CuadreDiarioController extends Controller
     }
 
     /** Cuadre (día ya cuadrado) de ese usuario en esa fecha, si existe. */
-    private function cuadreDelDia(int $aliadoId, int $usuarioId, string $fecha): ?Cuadre
+    private function cuadreDelDia(int $aliadoId, ?int $usuarioId, string $fecha): ?Cuadre
     {
+        // El cierre es por persona: la vista de todos juntos no se cuadra ni se bloquea.
+        if ($usuarioId === null) {
+            return null;
+        }
+
         return Cuadre::where('aliado_id', $aliadoId)
             ->where('usuario_id', $usuarioId)
             ->whereDate('fecha_inicio', $fecha)
@@ -682,7 +709,7 @@ class CuadreDiarioController extends Controller
      * - los gastos en efectivo del día. No arrastra saldo de días anteriores:
      * el cuadre se hace y se entrega por día.
      */
-    private function resumenDia(int $aliadoId, int $usuarioId, string $fecha, $facturasDia): array
+    private function resumenDia(int $aliadoId, ?int $usuarioId, string $fecha, $facturasDia): array
     {
         // Facturas cobradas en efectivo (los préstamos no entran: no hay plata).
         $ingresosEfectivo = (int) $facturasDia
@@ -694,14 +721,14 @@ class CuadreDiarioController extends Controller
             ->join('facturas', 'abonos.factura_id', '=', 'facturas.id')
             ->where('facturas.aliado_id', $aliadoId)
             ->where('facturas.es_prestamo', true)
-            ->where('abonos.usuario_id', $usuarioId)
+            ->when($usuarioId, fn ($q) => $q->where('abonos.usuario_id', $usuarioId))
             ->whereDate('abonos.fecha', $fecha)
             ->sum('abonos.valor_efectivo');
 
         // Anticipos en efectivo/Nequi. Los de transferencia ya viven en el
         // saldo del banco, sumarlos aquí sería doble conteo.
         $anticiposEfectivo = (int) Anticipo::where('aliado_id', $aliadoId)
-            ->where('usuario_id', $usuarioId)
+            ->when($usuarioId, fn ($q) => $q->where('usuario_id', $usuarioId))
             ->whereIn('forma_pago', ['efectivo', 'nequi'])
             ->whereDate('fecha_pago', $fecha)
             ->whereNotIn('estado', [Anticipo::ESTADO_DEVUELTO])
@@ -711,14 +738,14 @@ class CuadreDiarioController extends Controller
         $totalPrestado = (int) $facturasDia->where('es_prestamo', true)->sum('total');
 
         $gastosEfectivo = (int) Gasto::where('aliado_id', $aliadoId)
-            ->where('usuario_id', $usuarioId)
+            ->when($usuarioId, fn ($q) => $q->where('usuario_id', $usuarioId))
             ->whereDate('fecha', $fecha)
             ->where(fn($q) => $q->where('forma_pago', 'efectivo')->orWhere('tipo', 'efectivo_banco'))
             ->sum('valor');
 
         // Consignado: solo lo que ESTE usuario registró en cuentas bancarias.
         $consignado = (int) Consignacion::where('aliado_id', $aliadoId)
-            ->where('usuario_id', $usuarioId)
+            ->when($usuarioId, fn ($q) => $q->where('usuario_id', $usuarioId))
             ->whereDate('fecha', $fecha)
             ->sum('valor');
 
@@ -733,7 +760,9 @@ class CuadreDiarioController extends Controller
         // numero_factura: el valor se suma todo, pero se cuenta una sola vez.
         $numFacturas = $conValor->pluck('numero_factura')->unique()->count();
 
-        $baseCaja  = CajaMenor::montoActivo($aliadoId, $usuarioId);
+        $baseCaja  = $usuarioId === null
+            ? CajaMenor::montoActivoTotal($aliadoId)
+            : CajaMenor::montoActivo($aliadoId, $usuarioId);
         $recibido  = $ingresosEfectivo + $cobrosCartera + $anticiposEfectivo;
 
         return [
@@ -752,10 +781,10 @@ class CuadreDiarioController extends Controller
     }
 
     /** Facturas que el usuario cobró ese día, con las columnas que usan el resumen y los canales. */
-    private function facturasDelDia(int $aliadoId, int $usuarioId, string $fecha)
+    private function facturasDelDia(int $aliadoId, ?int $usuarioId, string $fecha)
     {
         return Factura::where('aliado_id', $aliadoId)
-            ->where('usuario_id', $usuarioId)
+            ->when($usuarioId, fn ($q) => $q->where('usuario_id', $usuarioId))
             ->whereDate('fecha_pago', $fecha)
             ->get([
                 'id', 'tipo', 'estado', 'es_prestamo', 'forma_pago', 'total',
@@ -968,10 +997,10 @@ class CuadreDiarioController extends Controller
      * saliendo del banco, no un gasto de la caja del usuario. Se ven en la
      * conciliación de bancos.
      */
-    private function gastosDelDia(int $aliadoId, int $usuarioId, string $fecha)
+    private function gastosDelDia(int $aliadoId, ?int $usuarioId, string $fecha)
     {
         return Gasto::where('aliado_id', $aliadoId)
-            ->where('usuario_id', $usuarioId)
+            ->when($usuarioId, fn ($q) => $q->where('usuario_id', $usuarioId))
             ->whereDate('fecha', $fecha)
             ->where('tipo', '!=', 'pago_planilla')
             ->with(['bancoOrigen', 'bancoDestino'])
@@ -980,10 +1009,10 @@ class CuadreDiarioController extends Controller
     }
 
     /** Consignaciones que el usuario registró ese día, agrupadas por cuenta. */
-    private function consignacionesDelDia(int $aliadoId, int $usuarioId, string $fecha)
+    private function consignacionesDelDia(int $aliadoId, ?int $usuarioId, string $fecha)
     {
         return Consignacion::where('aliado_id', $aliadoId)
-            ->where('usuario_id', $usuarioId)
+            ->when($usuarioId, fn ($q) => $q->where('usuario_id', $usuarioId))
             ->whereDate('fecha', $fecha)
             ->with(['bancoCuenta', 'factura:id,numero_factura,cedula'])
             ->orderByDesc('valor')

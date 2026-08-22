@@ -130,7 +130,7 @@ $totalFacturas   = array_sum($canales['conteo']);
         <div>
             <div style="font-size:1.15rem;font-weight:800">💰 Caja del día</div>
             <div style="font-size:.8rem;color:#94a3b8;margin-top:.2rem">
-                {{ $usuarioVista->nombre }} ·
+                {{ ($verTodos ?? false) ? 'Todos los usuarios' : $usuarioVista->nombre }} ·
                 {{ $carbonFecha->locale('es')->isoFormat('dddd D [de] MMMM [de] YYYY') }}
                 @if($esHoy)<span style="color:#4ade80;font-weight:700"> · hoy</span>@endif
             </div>
@@ -143,8 +143,13 @@ $totalFacturas   = array_sum($canales['conteo']);
                        onchange="this.form.submit()" class="cd-input" title="Día que estás viendo">
                 @if($esAdmin)
                 <select name="usuario_id" onchange="this.form.submit()" class="cd-input" title="Usuario">
+                    {{-- Solo admin/superadmin ve este selector, asi que la caja total
+                         queda restringida a ellos sin necesidad de otra guarda. --}}
+                    <option value="todos" @selected($verTodos ?? false) style="background:#0f172a">
+                        👥 Todos (caja total)
+                    </option>
                     @foreach($usuarios as $u)
-                    <option value="{{ $u->id }}" @selected($u->id === $usuarioId) style="background:#0f172a">
+                    <option value="{{ $u->id }}" @selected((int) $u->id === $usuarioId) style="background:#0f172a">
                         {{ $u->nombre }}@if($u->id === auth()->id()) (yo)@endif
                     </option>
                     @endforeach
@@ -353,7 +358,7 @@ $val = fn($v) => abs($v) >= 1 ? $fmt(round($v)) : null;
 {{-- ═══════════ 3. Gastos del día ═══════════ --}}
 <div class="cd-panel">
     <div class="cd-panel-head">
-        <div class="cd-panel-title">📋 Gastos que reportaste</div>
+        <div class="cd-panel-title">📋 {{ ($verTodos ?? false) ? 'Gastos del día — todos los usuarios' : 'Gastos que reportaste' }}</div>
         <div style="font-size:.75rem;color:#64748b">
             Total <strong style="color:#dc2626">-{{ $fmt($gastos->sum('valor')) }}</strong>
         </div>
@@ -421,7 +426,8 @@ $val = fn($v) => abs($v) >= 1 ? $fmt(round($v)) : null;
 </div>
 
 {{-- ═══════════ 4. Cerrar el día ═══════════ --}}
-@if($esSuperAdmin && !$cuadreDia)
+{{-- El cierre es por persona: con "Todos" solo se mira el total, no se cuadra. --}}
+@if($esSuperAdmin && !$cuadreDia && !($verTodos ?? false))
 <div class="no-print" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:1rem;display:flex;
             align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;margin-bottom:.8rem">
     <div style="font-size:.83rem;color:#64748b">
@@ -520,7 +526,7 @@ $val = fn($v) => abs($v) >= 1 ? $fmt(round($v)) : null;
 ])
 @endif
 
-@if($esSuperAdmin && !$cuadreDia)
+@if($esSuperAdmin && !$cuadreDia && !($verTodos ?? false))
 <div id="modal-cerrar"
      onclick="if(event.target.id==='modal-cerrar')this.style.display='none'"
      style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center">

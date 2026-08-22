@@ -47,4 +47,21 @@ class CajaMenor extends BaseModel
             ->orderByDesc('fecha')
             ->value('monto') ?? 0;
     }
+
+    /**
+     * Suma de las bases de caja activas del aliado, una por usuario.
+     *
+     * Cada usuario puede tener varias filas activas; vale la ultima, igual que en
+     * montoActivo(). Se resuelve en una sola consulta y no llamando montoActivo()
+     * por usuario: cada ida a SQL Server cuesta ~250 ms de red.
+     */
+    public static function montoActivoTotal(int $aliadoId): int
+    {
+        return (int) static::where('aliado_id', $aliadoId)
+            ->where('activo', true)
+            ->orderByDesc('fecha')
+            ->get(['usuario_id', 'monto'])
+            ->groupBy('usuario_id')
+            ->sum(fn ($cajas) => (int) $cajas->first()->monto);
+    }
 }
