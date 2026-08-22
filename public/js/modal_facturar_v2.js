@@ -40,6 +40,11 @@ const MF = (function () {
     let _esRetiro = false;         // si el usuario marcó retiro en este período
     let _mora = 0;                 // mora pre-calculada por el servidor (editable)
     let _moraReal = 0;             // mora REAL (sin tramos) — solo para Retiro → Otros planilla
+    // El usuario edito la mora a mano en este modal. Mientras sea true, nada la vuelve
+    // a pisar: ni el pre-calculo del servidor (que llega asincrono y alcanzaba a borrar
+    // lo recien escrito) ni la suma por contratos del modo masivo. Se limpia al abrir
+    // el modal y al cambiar de periodo, donde la mora es otra y hay que recalcularla.
+    let _moraTocada = false;
     // ── Estado 2do contrato (multi-contrato desde form individual) ──
     let _segundoContrato = null;   // null | { id, razon_social, ss, admon, seguro, afiliacion, iva, mora, total }
 
@@ -426,6 +431,7 @@ const MF = (function () {
         setVal('mf-estado', 'pagada');
         setVal('mf-nplano', '');
         // Mora: pre-cargar desde _cfg si viene del servidor, si no 0
+        _moraTocada = false;
         _mora = parseInt(_cfg.moraCalculada || 0);
         setVal('mf-mora', _mora);
         document.querySelectorAll('input[name="mf_indep_modo"]').forEach(r => { if (r.value === 'normal') r.checked = true; });
@@ -678,10 +684,12 @@ const MF = (function () {
             // ── Mora: sumar la mora de TODOS los contratos seleccionados ──
             // Si varios clientes tienen mora y el pagador manda el total completo,
             // el campo mf-mora debe reflejar esa suma para que el saldo cuadre.
-            _mora = mora;
-            setVal('mf-mora', mora);
-            const rowMora = el('mf-row-mora');
-            if (rowMora) rowMora.style.display = mora > 0 ? '' : 'none';
+            if (!_moraTocada) {
+                _mora = mora;
+                setVal('mf-mora', mora);
+                const rowMora = el('mf-row-mora');
+                if (rowMora) rowMora.style.display = mora > 0 ? '' : 'none';
+            }
 
             // Afiliación: mostrar fila siempre que haya valor (I ACT o I VENC afil)
             const rowAfil = el('mf-row-afil');
@@ -1254,6 +1262,8 @@ const MF = (function () {
 
     // ── Cambio de período (llama a re-detectar tipo en individual) ─
     function cambiarPeriodo() {
+        // Otro mes es otra mora: se descarta lo que el usuario haya escrito para el anterior.
+        _moraTocada = false;
         if (_modo === 'individual') {
             _verificarMesPagado().then(() => detectarTipo());
         } else {
@@ -1331,9 +1341,11 @@ const MF = (function () {
             // Actualizar _mora para el envío al servidor
             _mora = mora;
 
-            // Mostrar/ocultar fila de mora según valor
+            // Mostrar/ocultar fila de mora según valor. Si el usuario la puso en 0 a
+            // proposito, la fila se queda: esconderle el campo que acaba de editar le
+            // impide ver que quedo en cero y volver a subirla.
             const rowMora = el('mf-row-mora');
-            if (rowMora) rowMora.style.display = mora > 0 ? '' : 'none';
+            if (rowMora) rowMora.style.display = (mora > 0 || _moraTocada) ? '' : 'none';
         } else {
             totalBruto = _totalAfil + _ivaAfil();
         }
@@ -1910,6 +1922,10 @@ const MF = (function () {
                 otros: parse(el('mf-otros')?.value),
                 otros_admon: parse(el('mf-otros-admon')?.value),
                 mora: _mora,  // mora cobrada al cliente (NO es ingreso)
+                // El usuario edito la mora a mano. En el lote de empresa el backend
+                // la recalcula por contrato, y sin esta bandera no hay forma de saber
+                // que la quiso quitar.
+                mora_manual: _moraTocada,
                 mensajeria: 0,
                 observacion: obs,
                 np: parse(el('mf-nplano')?.value) || null,
@@ -2083,8 +2099,25 @@ const MF = (function () {
         // La barra de controles (mf-c2-ctrl) se re-evaluará al abrir de nuevo
     }
 
+    /**
+     * El usuario escribio en el campo de mora. Desde aca manda su valor: si la deja
+     * en 0 no se le cobra, y la fila sigue a la vista para que pueda volver a subirla.
+     */
+    function onMoraInput() {
+        _moraTocada = true;
+        recalc();
+    }
+
     // ── Establecer mora desde fuera (llamado por el servidor al pre-calcular) ─
     function setMora(valor, info) {
+        // Si el usuario ya la decidio, el pre-calculo no la pisa: solo deja su texto
+        // explicativo. Sin esto, la respuesta del servidor llegaba despues de que el
+        // usuario escribiera 0 y devolvia la mora, que terminaba cobrada en la factura.
+        if (_moraTocada) {
+            const infoEl0 = el('mf-mora-info');
+            if (infoEl0 && info) { infoEl0.textContent = info; infoEl0.style.display = 'block'; }
+            return;
+        }
         _mora = parseInt(valor || 0);
         setVal('mf-mora', _mora);
         const rowMora = el('mf-row-mora');
@@ -2137,7 +2170,7 @@ const MF = (function () {
         ANT.abrir(contratoId, empresaId, onRegistrado);
     }
 
-    return { init, abrir, cerrar, detectarTipo, actualizarTipo, cambiarPeriodo, onEstado, recalc, distRecalc, addConsig, guardar, toggleRetiro, onRetiroFecha, setMora, seleccionarSegundoContrato, _abrirAnticipo, actualizarValoresDesdeAlpine };
+    return { init, abrir, cerrar, detectarTipo, actualizarTipo, cambiarPeriodo, onEstado, recalc, distRecalc, addConsig, guardar, toggleRetiro, onRetiroFecha, setMora, onMoraInput, seleccionarSegundoContrato, _abrirAnticipo, actualizarValoresDesdeAlpine };
 
 })();
 

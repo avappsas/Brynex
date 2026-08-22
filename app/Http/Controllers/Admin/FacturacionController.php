@@ -943,6 +943,8 @@ class FacturacionController extends Controller
             'dias_retiro'          => 'nullable|integer|min:1|max:30',
             // Mora al cliente (cobrada en la factura, no es ingreso)
             'mora'                 => 'nullable|integer|min:0',
+            // El usuario edito la mora a mano en el modal (ver modal_facturar_v2.js).
+            'mora_manual'          => 'boolean',
             // Cartera pendiente: marcar si el usuario incluyó deuda de préstamo anterior
             'incluir_cartera'      => 'boolean',
             'valor_cartera'        => 'nullable|integer|min:0',
@@ -1019,6 +1021,17 @@ class FacturacionController extends Controller
         $totalPagoConsig    = array_sum(array_column($consignacionesData, 'valor'));
         $totalPagoEfectivo  = (int)($validated['valor_efectivo']  ?? 0);
         $totalPagoPrestamo  = (int)($validated['valor_prestamo']  ?? 0);
+
+        // ─── ¿El usuario quito la mora a mano? ─────────────────────────────
+        // En el lote de empresa la mora se calcula por contrato con MoraClienteService
+        // y se ignora lo que venga del modal (cada RS tiene su propio vencimiento). Pero
+        // si el usuario la puso en 0 a proposito, esa decision manda: no se le cobra a
+        // nadie del lote y la factura queda por el valor sin mora, sin dejar saldo
+        // pendiente que despues se cobre como deuda.
+        // Solo cuenta el 0 explicito: un valor editado > 0 en masivo no se puede repartir
+        // entre contratos con vencimientos distintos, asi que ahi sigue mandando el calculo.
+        $moraAnulada = ! empty($validated['mora_manual'])
+                    && (int) ($validated['mora'] ?? 0) === 0;
 
         // Fecha del recibo: si el pago es solo consignación, la fecha en que
         // entró el dinero al banco (la mayor si son varias), no la de hoy.
@@ -1163,7 +1176,7 @@ class FacturacionController extends Controller
                 if ($esModoIndividual) {
                     $moraCliente = $esAfiliacion ? 0 : (int)($validated['mora'] ?? 0);
                 } else {
-                    if (!$esAfiliacion) {
+                    if (!$esAfiliacion && !$moraAnulada) {
                         $rs       = $c->razonSocial;
                         $esIndep  = $c->esIndependiente() || ($rs && $rs->es_independiente);
                         $rsNit    = $esIndep ? (int)$c->cedula : ($rs ? (int)($rs->nit ?: $rs->id) : 0);
@@ -1764,7 +1777,7 @@ class FacturacionController extends Controller
                 } else {
                     // Modo masivo (empresa): calcular mora por contrato si aplica
                     // Afiliaciones nunca generan mora (no hay pago de planilla)
-                    if (!$esAfiliacion) {
+                    if (!$esAfiliacion && !$moraAnulada) {
                         $rs       = $contrato->razonSocial;
                         $esIndep  = $contrato->esIndependiente() || ($rs && $rs->es_independiente);
                         $rsNit    = $esIndep ? (int)$contrato->cedula : ($rs ? (int)($rs->nit ?: $rs->id) : 0);

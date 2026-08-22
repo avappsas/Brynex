@@ -685,7 +685,7 @@
                         ⚠️ Mora cliente
                     </label>
                     <input type="text" id="mf-mora" class="mf-edit-inp" value="0"
-                           oninput="MF.recalc()"
+                           oninput="MF.onMoraInput()"
                            style="border-color:#f59e0b;background:#fffbeb;color:#92400e;"
                            title="Mora por pago tardío. Editable. No se contabiliza como ingreso.">
                 </div>
