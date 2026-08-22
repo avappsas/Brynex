@@ -451,8 +451,12 @@
       </div>
       <div x-show="esIndependiente" style="display:none;">
         <label class="lb">IBC <span style="color:#f59e0b;font-size:0.63rem;" x-text="ibcSugFmt ? 'sug:'+ibcSugFmt : ''"></span></label>
-        <input type="number" step="1" min="0" name="ibc" x-model="ibc" @input="recalcular"
-            value="{{ old('ibc', $contrato->ibc ?? '') }}"
+        {{-- type=text y no number: un <input type=number> no acepta los puntos de miles.
+             El valor real vive en dataset.raw, y el submit de .campo-money limpia el formato. --}}
+        <input type="text" inputmode="numeric" name="ibc" id="inp_ibc" class="campo-money"
+            @input="onIbcInput" @change="onIbcChange"
+            value="{{ number_format($defIbc, 0, '', '.') }}"
+            data-raw="{{ $defIbc }}"
             style="width:100%;padding:0.38rem 0.5rem;border:1px solid #f59e0b;border-radius:6px;font-size:0.82rem;font-family:monospace;background:#fffbeb;box-sizing:border-box;">
       </div>
       <div x-show="esIndependiente" id="div-pct-caja" style="display:none;">
@@ -2749,6 +2753,10 @@ function cotizador() {
         esUpc: false,
         mostrarModoArl:  false,
         ibcSugFmt:       '',
+        // Secuencia de cotizaciones en vuelo: cada tecla dispara un fetch y sin esto
+        // la respuesta que llegue de ultimas pisa el estado aunque sea de un valor viejo
+        // (el badge "sug:" y los totales quedaban mostrando el salario anterior).
+        _reqSeq:         0,
         pctEps:0, pctPen:0, pctArl:0, pctCajaCalc:0,
         diasCotizar: 30,
         diasArl: 0, diasAfp: 0, diasCaja: 0,
@@ -2802,7 +2810,7 @@ function cotizador() {
             }
             // Sincronizar IBC según modalidad
             if (!this.esIndependiente) {
-                this.ibc = this.salario;
+                this.setIbc(this.salario);
             } else if (this.salario > 0) {
                 // En modo edición: si ya hay IBC guardado, respetar; si no, auto-calcular
                 if (!this.ibc || this.ibc <= 0) {
@@ -2828,14 +2836,83 @@ function cotizador() {
             }, 300);
         },
 
-        /** Calcula el IBC sugerido (40% del salario) con piso en salario_minimo */
+        /**
+         * Escribe el IBC en Alpine y en el campo visible a la vez.
+         * El input ya no usa x-model (es un .campo-money con puntos de miles), asi que
+         * cada asignacion tiene que mover tambien dataset.raw y el texto formateado.
+         */
+        setIbc(v) {
+            const val = Math.round(v || 0);
+            this.ibc = val;
+            const el = document.getElementById('inp_ibc');
+            if (el) {
+                el.dataset.raw = val;
+                el.value = val > 0 ? numFmt(val) : '';
+            }
+        },
+
+        /** Mientras teclean: el valor real son los digitos, sin los puntos. */
+        onIbcInput(e) {
+            this.ibc = parseInt((e?.target?.value || '').replace(/\D/g, '') || 0);
+            this.recalcular();
+        },
+
+        /**
+         * Piso legal del IBC/salario para la modalidad activa.
+         * Tiempo parcial cotiza sobre una fraccion del minimo (TP 7 = 25%), y UPC
+         * no depende del salario, asi que no tiene piso. Misma regla que
+         * TipoModalidad::salarioMinimoPermitido() en el backend.
+         */
+        pisoSalario() {
+            const id = parseInt(this.tipoModalidadId || 0);
+            if (id === MODALIDAD_UPC) return 0;
+            const tp = MODALIDADES_TP[id];
+            return Math.round(SALARIO_MINIMO * (tp?.factor_salario || 1));
+        },
+
+        /** Calcula el IBC sugerido (40% del salario) con piso en el minimo de la modalidad */
         ibcSugerido() {
             // Leer salario real del campo money (puede estar en dataset.raw)
             const inpSal = document.getElementById('inp_salario');
             const salReal = parseInt(inpSal?.dataset?.raw || inpSal?.value?.replace(/\./g,'') || this.salario || 0);
             if (salReal > 0) this.salario = salReal;
             const raw = Math.round(this.salario * {{ $pctIbcSugerido }} / 100);
-            return Math.max(raw, SALARIO_MINIMO);
+            return Math.max(raw, this.pisoSalario());
+        },
+
+        /**
+         * Vuelta del calculo: el operador digita el IBC y el salario se deduce.
+         * El IBC es el {{ $pctIbcSugerido }}% del ingreso, asi que el salario del que sale
+         * ese IBC es ibc / {{ $pctIbcSugerido }}%. Asi las dos direcciones cuadran: escribir
+         * el salario da ese IBC, y escribir el IBC devuelve ese salario.
+         *
+         * Corre en @change (al salir del campo), no en cada tecla: si no, al teclear
+         * "1750905" el salario iria saltando digito por digito.
+         */
+        onIbcChange() {
+            const piso = this.pisoSalario();
+            let ibcVal = parseInt(this.ibc || 0);
+            if (ibcVal <= 0) { this.recalcular(); return; }
+
+            // El IBC nunca puede quedar bajo el piso legal de la modalidad.
+            if (ibcVal < piso) {
+                ibcVal   = piso;
+                this.setIbc(piso);
+            }
+
+            const sal = Math.round(ibcVal * 100 / {{ $pctIbcSugerido }});
+            this.salario = Math.max(sal, piso);
+
+            // El salario vive en un .campo-money: hay que mover dataset.raw y el texto
+            // formateado a mano, porque no lo maneja x-model.
+            const inpSal = document.getElementById('inp_salario');
+            if (inpSal) {
+                inpSal.dataset.raw = this.salario;
+                inpSal.value       = numFmt(this.salario);
+            }
+
+            this.ibcSugFmt = this.fmt(this.ibc);
+            this.recalcular();
         },
 
         /**
@@ -2845,11 +2922,8 @@ function cotizador() {
          */
         calcularIbcIndependiente() {
             const sug = this.ibcSugerido();
-            this.ibc       = sug;
+            this.setIbc(sug);
             this.ibcSugFmt = this.fmt(sug);
-            // Sincronizar el <input name="ibc"> visible
-            const inpIbc = document.querySelector('input[name="ibc"]');
-            if (inpIbc) inpIbc.value = sug;
         },
 
         onSalarioChange() {
@@ -2860,7 +2934,7 @@ function cotizador() {
 
             if (!this.esIndependiente) {
                 // Dependiente: IBC siempre = salario
-                this.ibc = this.salario;
+                this.setIbc(this.salario);
             } else if (this.salario > 0) {
                 // Independiente: IBC = max(salario_minimo, salario * {{ $pctIbcSugerido }}%)
                 this.calcularIbcIndependiente();
@@ -2935,7 +3009,7 @@ function cotizador() {
                 // salario ya cargado, se limpia para no dejar un valor que
                 // ya no significa nada en pantalla.
                 this.salario = 0;
-                this.ibc     = 0;
+                this.setIbc(0);
                 this.ibcSugFmt = '';
                 const inpSalUpc = document.getElementById('inp_salario');
                 if (inpSalUpc) { inpSalUpc.dataset.raw = 0; inpSalUpc.value = ''; }
@@ -2956,7 +3030,7 @@ function cotizador() {
                 const factor     = tpData.factor_salario || 1;
                 const salarioTP  = Math.round(SALARIO_MINIMO * factor);
                 this.salario     = salarioTP;
-                this.ibc         = salarioTP;
+                this.setIbc(salarioTP);
                 // Actualizar el campo .campo-money del salario
                 const inpSal = document.getElementById('inp_salario');
                 if (inpSal) {
@@ -2980,7 +3054,7 @@ function cotizador() {
             }
             if (!this.esIndependiente) {
                 // Dependiente: IBC = salario
-                this.ibc = this.salario;
+                this.setIbc(this.salario);
                 this.ibcSugFmt = '';
             } else if (this.salario > 0) {
                 // Al pasar a independiente: auto-calcular IBC
@@ -3088,6 +3162,7 @@ function cotizador() {
             const ibcVal  = (this.esIndependiente && this.ibc > 0) ? this.ibc : (salRaw || this.salario);
             // UPC no depende de salario (el valor sale de la edad/zona del beneficiario).
             if (!this.planId || (!this.salario && !this.esUpc)) return Promise.resolve();
+            const seq = ++this._reqSeq;
             return fetch(URL_COTIZAR, {
                 method: 'POST',
                 headers: {
@@ -3110,6 +3185,8 @@ function cotizador() {
             })
             .then(r => { if (!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
             .then(d => {
+                // Llego tarde: ya se pidio otra cotizacion mas reciente.
+                if (seq !== this._reqSeq) return;
                 this.result = {
                     eps:    d.eps    ?? 0,
                     arl:    d.arl    ?? 0,

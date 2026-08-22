@@ -206,7 +206,21 @@ class CotizadorService
         $iva = $tieneIva ? $r($admonTotal * $pctIva / 100) : 0;
         $total = $ss + $seguro + $admonTotal + $iva;
 
-        $ibcSugerido = $esIndep ? $r($salario * ConfiguracionBrynex::pctIbcIndependienteSugerido() / 100) : null;
+        // El 40% del salario no puede quedar por debajo del piso legal de la modalidad
+        // (el minimo, o su fraccion en tiempo parcial; UPC no tiene piso). Sin este max
+        // el badge "sug:" del formulario mostraba un IBC ilegal — p.ej. 700.400 sobre un
+        // salario minimo — porque esta respuesta pisa el calculo que el JS ya hacia bien.
+        $ibcSugerido = null;
+        if ($esIndep) {
+            // round y no $r(): el IBC es una base de cotizacion, no un valor cobrado.
+            // Con el ceil a la centena el badge decia 1.751.000 mientras el campo tenia
+            // 1.750.905 — $95 de diferencia que se leen como "te falta subirlo". El JS
+            // calcula con round, asi que esta es la misma cuenta de los dos lados.
+            $ibcSugerido = max(
+                round($salario * ConfiguracionBrynex::pctIbcIndependienteSugerido() / 100),
+                $tipoModalidad->salarioMinimoPermitido()
+            );
+        }
 
         return [
             'eps' => $eps,
