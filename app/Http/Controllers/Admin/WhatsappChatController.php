@@ -469,8 +469,16 @@ class WhatsappChatController extends Controller
         // aliado tiene la IA de WhatsApp encendida. Sin esto, una conversación con
         // bot_activo=true por una prueba/reactivación se etiqueta como IA aunque el
         // interruptor general esté apagado y el bot nunca vaya a responder.
+        // `foreach`, no `each()`: el closure devolvía el valor asignado, y en cuanto
+        // una conversación daba `false` (la IA no la atiende), Collection::each
+        // interpretaba ese false como "corta la iteración" y dejaba al resto en null.
+        // Cada una de esas caía después en esAtendidaPorIa(), una consulta por fila:
+        // 78 viajes a ia_configuracion_aliado, ~15 s de la carga del chat.
         $iaActivaAliado = IaConfiguracionAliado::where('aliado_id', $alidoId)->value('activo_whatsapp') ?? false;
-        $conversaciones->each(fn ($c) => $c->atendida_por_ia = $iaActivaAliado && (bool) $c->bot_activo);
+
+        foreach ($conversaciones as $c) {
+            $c->atendida_por_ia = $iaActivaAliado && (bool) $c->bot_activo;
+        }
 
         // Badge total no leídos — reutiliza la misma colección, sin segunda query
         $totalNoLeidos = $conversaciones->sum('total_mensajes_no_leidos');
