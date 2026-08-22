@@ -1293,7 +1293,7 @@ class FacturacionController extends Controller
             &$efAcum, &$csAcum, &$prAcum, &$sfAcum, &$antAcum,
             $saldoEmpresaAplicar, &$contratosPendientes, $contratosCargados, $facturasDuplicadasLote,
             $manualSsPorContrato, $facturasRetiro0Lote, $incluirAdmonRetiroCorto,
-            $fechaPagoRecibo
+            $fechaPagoRecibo, $moraAnulada
         ) {
             foreach ($validated['contratos'] as $contratoId) {
                 $contrato = $contratosCargados->get($contratoId);
