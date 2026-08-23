@@ -115,7 +115,13 @@
   {{-- Panel 1: RS + Modalidad + Plan + F.Ingreso --}}
   <div class="cp">
     <div class="pt" style="color:#2563eb;">&#127970; Contrato</div>
-    <div style="display:grid;grid-template-columns:1.6fr 1.2fr 1.2fr 120px;gap:0.5rem;">
+    {{-- La columna del período solo existe para las modalidades que la admiten:
+         el grid pasa de cuatro a cinco y reparte el ancho, en vez de dejar un
+         hueco fijo que la mayoría de contratos nunca usa. --}}
+    <div style="display:grid;gap:0.5rem;"
+         :style="MODALIDADES_MES_ACTUAL.includes(parseInt(tipoModalidadId))
+             ? 'grid-template-columns:1.45fr 1.1fr 1.05fr 1.05fr 120px'
+             : 'grid-template-columns:1.6fr 1.2fr 1.2fr 120px'">
       <div>
         <label class="lb">Razon Social <span id="badge-rs-nit" style="font-weight:400;color:#64748b;font-size:0.63rem;background:#f1f5f9;padding:0.1rem 0.45rem;border-radius:6px;margin-left:4px;font-family:monospace;letter-spacing:0.02em;display:none;"></span></label>
         <div class="{{ $rsLock ? 'tip-lock' : '' }}" data-tip="{{ $tipLock }}">
@@ -164,18 +170,17 @@
           </option>
           @endforeach
         </select>
-        {{-- Independientes, ARL Tipo Y y Exterior pueden cotizar el mes en curso
-             en vez del vencido. No es otra modalidad: es cuándo se paga. --}}
-        <label x-show="MODALIDADES_MES_ACTUAL.includes(parseInt(tipoModalidadId))" x-cloak
-            style="display:flex;align-items:center;gap:.4rem;margin-top:.35rem;font-size:.72rem;color:#475569;cursor:pointer;">
-          <input type="hidden" name="paga_mes_actual" value="0">
-          <input type="checkbox" name="paga_mes_actual" value="1" x-model="pagaMesActual"
-              style="width:.85rem;height:.85rem;cursor:pointer;" {!! $prot !!}>
-          <span>Paga mes actual
-            <span title="En agosto cotiza la planilla de agosto. Sin marcar, en agosto cotiza la de julio."
-                style="cursor:help;color:#94a3b8;">&#9432;</span>
-          </span>
-        </label>
+      </div>
+      {{-- Independientes, ARL Tipo Y y Exterior pueden cotizar el mes en curso
+           en vez del vencido. No es otra modalidad: es cuándo se paga, y por eso
+           va como campo propio y no como una modalidad más del catálogo. --}}
+      <div x-show="MODALIDADES_MES_ACTUAL.includes(parseInt(tipoModalidadId))" x-cloak>
+        <label class="lb">Período</label>
+        <select name="paga_mes_actual" x-model="pagaMesActual" style="{{ $S }}" {!! $prot !!}
+            title="Mes vencido: en agosto cotiza la planilla de julio.&#10;Mes actual: en agosto cotiza la planilla de agosto.">
+          <option value="0">Mes vencido</option>
+          <option value="1">Mes actual</option>
+        </select>
       </div>
       <div>
         <label class="lb">Plan
@@ -1725,6 +1730,7 @@ function mrOnSubmit() {
    fuente de emoji y crece más que los de solo texto, empujando su input hacia abajo y
    desalineando la fila del grid. */
 .lb  { display:block;font-size:0.67rem;font-weight:700;color:#475569;margin-bottom:0.15rem;text-transform:uppercase;letter-spacing:0.03em;line-height:1.35; }
+
 .cp  { background:#fff;border-radius:11px;border:1px solid #e2e8f0;padding:0.8rem 0.95rem; }
 .pt  { font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.5rem; }
 .cr  { display:flex;justify-content:space-between;padding:0.25rem 0;border-bottom:1px solid rgba(255,255,255,0.06); }
@@ -2762,7 +2768,7 @@ function cotizador() {
         planId:          '{{ $esEdicion ? old('plan_id', $contrato->plan_id ?? '') : '' }}',
         planNombre:      '',
         tipoModalidadId: '{{ old('tipo_modalidad_id', $contrato->tipo_modalidad_id ?? '') }}',
-        pagaMesActual:   {{ old('paga_mes_actual', ($contrato->paga_mes_actual ?? false) ? 1 : 0) ? 'true' : 'false' }},
+        pagaMesActual:   '{{ old('paga_mes_actual', ($contrato->paga_mes_actual ?? false) ? '1' : '0') }}',
         MODALIDADES_MES_ACTUAL: @json($modalidadesMesActual ?? [8, 10, 14]),
         esIndependiente: false,
         esTiempoParcial: false,
@@ -3021,7 +3027,7 @@ function cotizador() {
             this.esUpc = (id === MODALIDAD_UPC);
             // El mes actual solo existe en algunas modalidades: al salir de ellas
             // se desmarca, para no guardar un flag que la nueva no admite.
-            if (! this.MODALIDADES_MES_ACTUAL.includes(id)) { this.pagaMesActual = false; }
+            if (! this.MODALIDADES_MES_ACTUAL.includes(id)) { this.pagaMesActual = '0'; }
             if (this.esUpc) {
                 // UPC no depende de salario/IBC: el valor de EPS sale de la
                 // edad/zona del beneficiario. Si venía de otra modalidad con
