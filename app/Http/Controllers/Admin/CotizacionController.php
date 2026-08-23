@@ -352,7 +352,7 @@ class CotizacionController extends Controller
             'pctIbcSugerido' => \App\Models\ConfiguracionBrynex::pctIbcIndependienteSugerido(),
             'costo_afiliacion_default' => $cfg ? $cfg->costo_afiliacion : 0,
             'administracion_default' => $cfg ? $cfg->administracion : 0,
-            'modalidadesIndependientes' => [10, 11, 13, 14],
+            'modalidadesIndependientes' => [10, 13, 14],
             'tipos_doc'     => \App\Models\Cliente::TIPOS_DOC,
             'canales'       => [
                 'redes_sociales' => 'Redes Sociales',

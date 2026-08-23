@@ -44,7 +44,7 @@ class FixRetiroMesPlano extends Command
             ->join('facturas as f', 'f.id', '=', 'p.factura_id')
             ->where('p.tipo_reg', 'retiro')
             ->where('p.num_dias', '>', 0)
-            ->where('p.tipo_modalidad_id', '<>', 11)   // no-independientes
+            ->where('p.paga_mes_actual', 0)            // los de mes vencido
             ->whereNull('p.deleted_at')
             ->whereNull('f.deleted_at')
             ->where('f.numero_factura', 0)              // factura inicial (no lote)

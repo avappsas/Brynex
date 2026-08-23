@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Pension;
 use Illuminate\Support\Facades\DB;
+use App\Models\Plano;
 
 /**
  * Encuentra a los cotizantes que van al archivo plano SIN fondo de pensión
@@ -115,7 +116,7 @@ class CorreccionPensionFaltanteService
      * de planilla: ahí el snapshot debe seguir reflejando lo que se pagó.
      *
      * El período se resuelve igual que en PlanoPilaTxtService: los
-     * independientes (modalidad 11) guardan el mes de pago y los demás el mes
+     * los de `paga_mes_actual` guardan el mes de pago y los demás el mes
      * vencido.
      */
     private function planosSinAfpConAporte(array $lote, array $tiposModalidad)
@@ -161,15 +162,7 @@ class CorreccionPensionFaltanteService
 
         $query->where('p.razon_social_id', (int) $lote['razon_social_id'])
             ->where('p.n_plano', (int) $lote['n_plano'])
-            ->where(function ($q) use ($mesPago, $anioPago, $mesVencido, $anioVencido) {
-                $q->where(function ($i) use ($mesPago, $anioPago) {
-                    $i->where('p.tipo_modalidad_id', 11)
-                        ->where('p.mes_plano', $mesPago)->where('p.anio_plano', $anioPago);
-                })->orWhere(function ($i) use ($mesVencido, $anioVencido) {
-                    $i->where('p.tipo_modalidad_id', '<>', 11)
-                        ->where('p.mes_plano', $mesVencido)->where('p.anio_plano', $anioVencido);
-                });
-            });
+            ->tap(fn ($q) => Plano::filtrarPeriodoDePago($q, $mesPago, $anioPago));
 
         if (! empty($tiposModalidad)) {
             $query->whereIn('p.tipo_modalidad_id', $tiposModalidad);

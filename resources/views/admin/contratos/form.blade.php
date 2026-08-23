@@ -164,6 +164,18 @@
           </option>
           @endforeach
         </select>
+        {{-- Independientes, ARL Tipo Y y Exterior pueden cotizar el mes en curso
+             en vez del vencido. No es otra modalidad: es cuándo se paga. --}}
+        <label x-show="MODALIDADES_MES_ACTUAL.includes(parseInt(tipoModalidadId))" x-cloak
+            style="display:flex;align-items:center;gap:.4rem;margin-top:.35rem;font-size:.72rem;color:#475569;cursor:pointer;">
+          <input type="hidden" name="paga_mes_actual" value="0">
+          <input type="checkbox" name="paga_mes_actual" value="1" x-model="pagaMesActual"
+              style="width:.85rem;height:.85rem;cursor:pointer;" {!! $prot !!}>
+          <span>Paga mes actual
+            <span title="En agosto cotiza la planilla de agosto. Sin marcar, en agosto cotiza la de julio."
+                style="cursor:help;color:#94a3b8;">&#9432;</span>
+          </span>
+        </label>
       </div>
       <div>
         <label class="lb">Plan
@@ -1023,8 +1035,8 @@
 const MR = {
     // Fecha ingreso del contrato (ISO string o null)
     fechaIngreso: @if($contrato->fecha_ingreso)'{{ sqldate($contrato->fecha_ingreso)->format('Y-m-d') }}'@else null @endif,
-    // ¿Es independiente mes actual? (tipo_modalidad_id = 11)
-    esMesActual: {{ (int)($contrato->tipo_modalidad_id) === 11 ? 'true' : 'false' }},
+    // ¿El contrato paga el mes en curso?
+    esMesActual: {{ (bool) ($contrato->paga_mes_actual ?? false) ? 'true' : 'false' }},
     // ¿Tiene planillas pagadas con días cotizados > 0?
     tienePlanillaConDias: {{ ($tienePlanillaConDias ?? false) ? 'true' : 'false' }},
 };
@@ -1759,7 +1771,7 @@ const CLIENTE_EPS_ID     = {{ $clienteEpsId ?? 'null' }};
 const CLIENTE_PENSION_ID = {{ $clientePensionId ?? 'null' }};
 // ── Filtrado inteligente: modalidades → planes ─────────────────────
 const MODALIDAD_PLANES   = @json($planesPermitidos ?? []);
-const MODALIDADES_INDEP          = @json($modalidadesIndependientes ?? [10,11]);
+const MODALIDADES_INDEP          = @json($modalidadesIndependientes ?? [10, 13, 14]);
 const CLIENTE_EXENTO_AFP         = {{ ($clienteExentoAfp ?? false) ? 'true' : 'false' }};
 const CLIENTE_TIPO_DOC           = @json($clienteTipoDoc ?? null);
 const ES_EDICION                 = {{ ($esEdicion ?? false) ? 'true' : 'false' }};
@@ -1788,7 +1800,7 @@ console.log('[AFP] tipo_doc en BD:', CLIENTE_TIPO_DOC, '| exento AFP:', CLIENTE_
 // Activa: planes sin AFP quedan deshabilitados para las modalidades indicadas
 // (a menos que el cliente esté exento por tipo_doc o edad)
 const REGLA_AFP_ACTIVA           = {{ ($reglaAfpActiva ?? false) ? 'true' : 'false' }};
-const MODALIDADES_AFP_OBLIGATORIO = @json($modalidadesAfpObligatorio ?? [0,10,11]);
+const MODALIDADES_AFP_OBLIGATORIO = @json($modalidadesAfpObligatorio ?? [0, 10]);
 @php
 // Construir mapa de días TP antes de inyectarlo como JS
 // factor_salario: fraccion del salario mínimo a usar como salario mensual.
@@ -1808,6 +1820,8 @@ foreach ($tiposModalidad as $_tm) {
 @endphp
 const MODALIDADES_TP = {!! json_encode($_modalidadesTPData) !!};
 const MODALIDAD_UPC  = 13; // Afiliar a alguien fuera del núcleo familiar: no depende de salario.
+// Modalidades que pueden cotizar el mes en curso (Independientes, ARL Tipo Y, Exterior).
+const MODALIDADES_MES_ACTUAL = @json($modalidadesMesActual ?? [8, 10, 14]);
 
 
 // ── Formateador de miles para campos .campo-money ────────────────
@@ -2748,6 +2762,8 @@ function cotizador() {
         planId:          '{{ $esEdicion ? old('plan_id', $contrato->plan_id ?? '') : '' }}',
         planNombre:      '',
         tipoModalidadId: '{{ old('tipo_modalidad_id', $contrato->tipo_modalidad_id ?? '') }}',
+        pagaMesActual:   {{ old('paga_mes_actual', ($contrato->paga_mes_actual ?? false) ? 1 : 0) ? 'true' : 'false' }},
+        MODALIDADES_MES_ACTUAL: @json($modalidadesMesActual ?? [8, 10, 14]),
         esIndependiente: false,
         esTiempoParcial: false,
         esUpc: false,
@@ -3003,6 +3019,9 @@ function cotizador() {
             const id  = parseInt(e.target.value || 0);
             this.esIndependiente = MODALIDADES_INDEP.includes(id);
             this.esUpc = (id === MODALIDAD_UPC);
+            // El mes actual solo existe en algunas modalidades: al salir de ellas
+            // se desmarca, para no guardar un flag que la nueva no admite.
+            if (! this.MODALIDADES_MES_ACTUAL.includes(id)) { this.pagaMesActual = false; }
             if (this.esUpc) {
                 // UPC no depende de salario/IBC: el valor de EPS sale de la
                 // edad/zona del beneficiario. Si venía de otra modalidad con

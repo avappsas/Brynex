@@ -342,7 +342,7 @@ class WhatsappEnvioMasivoJob implements ShouldQueue
                         $esIndActPrimerMes = false;
                         if ($contrato->fecha_ingreso) {
                             $fIng = $contrato->fecha_ingreso;
-                            $esIndAct = (int)($contrato->tipo_modalidad_id) === 11;
+                            $esIndAct = (bool) ($contrato->paga_mes_actual ?? false);
                             if ((int)$fIng->month === $mesEnvio && (int)$fIng->year === $anioEnvio) {
                                 $esIndActPrimerMes = $esIndAct;
                                 $esAfil = !$esIndAct;

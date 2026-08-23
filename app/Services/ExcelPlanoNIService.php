@@ -6,6 +6,7 @@ use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use PhpOffice\PhpSpreadsheet\Style\NumberFormat;
 use Illuminate\Support\Facades\DB;
+use App\Models\Plano;
 
 /**
  * ExcelPlanoNIService
@@ -234,19 +235,7 @@ class ExcelPlanoNIService
             ->whereIn('p.tipo_reg',       ['planilla', 'retiro'])
             ->whereRaw('ISNULL(p.num_dias, 0) > 0')   // excluir num_dias=0 Y num_dias=NULL
             ->whereNull('p.deleted_at')
-            ->where(function ($q) use ($mesPago, $anioPago, $mesVencido, $anioVencido) {
-                $q->where(function ($i) use ($mesPago, $anioPago) {
-                    // Independientes (tipo_modalidad_id = 11) → mes actual
-                    $i->where('p.tipo_modalidad_id', 11)
-                      ->where('p.mes_plano',  $mesPago)
-                      ->where('p.anio_plano', $anioPago);
-                })->orWhere(function ($i) use ($mesVencido, $anioVencido) {
-                    // Todos los demás → mes vencido
-                    $i->where('p.tipo_modalidad_id', '<>', 11)
-                      ->where('p.mes_plano',  $mesVencido)
-                      ->where('p.anio_plano', $anioVencido);
-                });
-            })
+            ->tap(fn ($q) => Plano::filtrarPeriodoDePago($q, $mesPago, $anioPago))
             ->select([
                 // Identificación
                 'p.tipo_doc',

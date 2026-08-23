@@ -45,9 +45,6 @@ class CierrePeriodoService
      */
     public const MODALIDAD_GESTION_ARL = 15;
 
-    /** Independientes mes actual: el único que cotiza el mes de pago. */
-    public const MODALIDAD_INDEP_ACTUAL = 11;
-
     /**
      * BRYGAR: sus razones sociales son la operación principal de BryNex, así
      * que la validación de cierre las muestra de primeras y deja las de los
@@ -58,8 +55,8 @@ class CierrePeriodoService
     /**
      * Traduce el mes de PAGO al período que guardan los planos.
      *
-     * Los independientes (modalidad 11) guardan el mes de pago; el resto
-     * guarda el mes vencido, el anterior al de pago.
+     * Quien paga el mes actual guarda el mes de pago; el resto guarda el mes
+     * vencido, el anterior al de pago.
      *
      * @return array{mes_pago: int, anio_pago: int, mes_vencido: int, anio_vencido: int}
      */
@@ -335,14 +332,13 @@ class CierrePeriodoService
     private function aplicaPlanillaSql(): string
     {
         $gestionArl = self::MODALIDAD_GESTION_ARL;
-        $indepActual = self::MODALIDAD_INDEP_ACTUAL;
 
         // Sin fecha de ingreso no se puede decidir: se deja dentro para que el
         // dato incompleto se note en vez de desaparecer del informe.
         return "(
             (c.tipo_modalidad_id IS NULL OR c.tipo_modalidad_id <> {$gestionArl})
             AND (c.fecha_ingreso IS NULL
-                 OR c.fecha_ingreso < CASE WHEN c.tipo_modalidad_id = {$indepActual} THEN ? ELSE ? END)
+                 OR c.fecha_ingreso < CASE WHEN c.paga_mes_actual = 1 THEN ? ELSE ? END)
         )";
     }
 
@@ -378,7 +374,7 @@ class CierrePeriodoService
                 MAX(ISNULL(rs.razon_social, '(sin razón social)')) AS razon_social,
                 COUNT(*) AS cotizantes,
                 SUM(ISNULL(f.total_ss, 0)) AS valor_ss,
-                MIN(CASE WHEN p.tipo_modalidad_id = 11 THEN 1 ELSE 0 END) AS todos_independientes
+                MIN(CASE WHEN p.paga_mes_actual = 1 THEN 1 ELSE 0 END) AS todos_independientes
             ")
             ->groupBy('p.razon_social_id', 'p.anio_plano', 'p.mes_plano', 'p.n_plano')
             ->orderByDesc('p.anio_plano')->orderByDesc('p.mes_plano')->orderBy('p.n_plano')
@@ -604,8 +600,8 @@ class CierrePeriodoService
               AND p.deleted_at IS NULL
               AND p.tipo_reg IN ('planilla','retiro')
               AND (
-                    (c.tipo_modalidad_id = 11 AND p.mes_plano = ? AND p.anio_plano = ?)
-                 OR (ISNULL(c.tipo_modalidad_id, 0) <> 11 AND p.mes_plano = ? AND p.anio_plano = ?)
+                    (c.paga_mes_actual = 1 AND p.mes_plano = ? AND p.anio_plano = ?)
+                 OR (c.paga_mes_actual = 0 AND p.mes_plano = ? AND p.anio_plano = ?)
               )
         )";
     }

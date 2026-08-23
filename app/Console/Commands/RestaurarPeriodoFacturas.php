@@ -87,7 +87,7 @@ class RestaurarPeriodoFacturas extends Command
             ->keyBy('id');
 
         $planos = Plano::whereIn('factura_id', $facturaIds)
-            ->get(['id', 'factura_id', 'mes_plano', 'anio_plano', 'tipo_modalidad_id', 'numero_planilla'])
+            ->get(['id', 'factura_id', 'mes_plano', 'anio_plano', 'tipo_modalidad_id', 'paga_mes_actual', 'numero_planilla'])
             ->keyBy('factura_id');
 
         // Ocupación de períodos por contrato, en una sola query. Las facturas que
@@ -148,7 +148,7 @@ class RestaurarPeriodoFacturas extends Command
         // Datos de los planos del arrastre, para recalcular su período
         $planosArrastre = $arrastre
             ? Plano::whereIn('factura_id', array_keys($arrastre))
-                ->get(['id', 'factura_id', 'mes_plano', 'anio_plano', 'tipo_modalidad_id', 'numero_planilla'])
+                ->get(['id', 'factura_id', 'mes_plano', 'anio_plano', 'tipo_modalidad_id', 'paga_mes_actual', 'numero_planilla'])
                 ->keyBy('factura_id')
             : collect();
 
@@ -191,7 +191,7 @@ class RestaurarPeriodoFacturas extends Command
             $planoDest = null;
 
             if ($plano) {
-                [$mPl, $aPl] = Plano::periodoPlano($mOrig, $aOrig, (int) $plano->tipo_modalidad_id, $f->tipo === 'afiliacion');
+                [$mPl, $aPl] = Plano::periodoPlano($mOrig, $aOrig, (bool) $plano->paga_mes_actual, $f->tipo === 'afiliacion');
                 $cambia = (int) $plano->mes_plano !== $mPl || (int) $plano->anio_plano !== $aPl;
 
                 if ($cambia && $plano->numero_planilla && !$this->option('forzar-liquidados')) {
@@ -233,7 +233,7 @@ class RestaurarPeriodoFacturas extends Command
                 $pl = $planosArrastre->get($fid);
                 $plTxt = '—';
                 if ($pl) {
-                    [$mPl, $aPl] = Plano::periodoPlano($a['mes'], $a['anio'], (int) $pl->tipo_modalidad_id, false);
+                    [$mPl, $aPl] = Plano::periodoPlano($a['mes'], $a['anio'], (bool) $pl->paga_mes_actual, false);
                     $plTxt = sprintf('%02d/%d → %02d/%d', $pl->mes_plano, $pl->anio_plano, $mPl, $aPl);
                 }
                 $filas[] = [
@@ -297,7 +297,7 @@ class RestaurarPeriodoFacturas extends Command
                 $detalle = ['periodo_anterior' => $desde, 'periodo_nuevo' => $hasta];
 
                 if ($pl = $planosArrastre->get($fid)) {
-                    [$mPl, $aPl] = Plano::periodoPlano($a['mes'], $a['anio'], (int) $pl->tipo_modalidad_id, false);
+                    [$mPl, $aPl] = Plano::periodoPlano($a['mes'], $a['anio'], (bool) $pl->paga_mes_actual, false);
                     if ((int) $pl->mes_plano !== $mPl || (int) $pl->anio_plano !== $aPl) {
                         DB::table('planos')->where('id', $pl->id)->update([
                             'mes_plano' => $mPl,

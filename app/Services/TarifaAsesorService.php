@@ -46,12 +46,12 @@ class TarifaAsesorService
     /**
      * Modalidades que comparten tarifa con otra: la clave se cobra igual que el valor.
      *
-     * Independientes Mes Actual (11) vale lo mismo que Independientes (10) — se diferencian en
-     * cómo se factura el primer mes (proporcional vs afiliación pura, ver CobroContratoService),
-     * no en el precio. Así se configura una sola vez y no hay dos celdas que se puedan
-     * desincronizar. Solo afecta al TARIFARIO: la facturación sigue distinguiéndolas.
+     * Quedó vacío al jubilarse Independientes Mes Actual (11), que valía lo mismo que
+     * Independientes (10) y solo existía para marcar el mes que cotiza — eso ahora es
+     * `paga_mes_actual` y no cambia el precio. El mecanismo se conserva por si otra
+     * modalidad vuelve a necesitarlo. Solo afecta al TARIFARIO.
      */
-    public const MODALIDADES_ALIAS = [11 => 10];
+    public const MODALIDADES_ALIAS = [];
 
     /** Modalidad bajo la que se guarda y se busca la tarifa de esta modalidad. */
     public static function modalidadTarifa(int $modalidadId): int

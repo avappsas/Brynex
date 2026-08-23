@@ -486,7 +486,7 @@ class PlanillaApiController extends Controller
         }
 
         // El período que espera construir() es "mes de pago"; el plano guarda
-        // mes_plano/anio_plano ya sea como mes de pago (I Act, tm=11) o como
+        // mes_plano/anio_plano ya sea como mes de pago (paga_mes_actual) o como
         // mes vencido (el resto) — mismo criterio que el resto del módulo.
         $tipoModId = (int) $plano->tipo_modalidad_id;
         if ($tipoModId === 11) {

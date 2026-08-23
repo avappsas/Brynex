@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use Illuminate\Support\Facades\DB;
+use App\Models\Plano;
 
 /**
  * Traduce los errores autocorregibles que devuelve la validación de Enlace
@@ -306,7 +307,7 @@ class CorreccionEnlaceService
      * de planilla: si ya se liquidó, el snapshot debe reflejar lo que se pagó.
      *
      * El período se resuelve igual que en PlanoPilaTxtService: los
-     * independientes (modalidad 11) guardan el mes de pago y los demás el mes
+     * los de `paga_mes_actual` guardan el mes de pago y los demás el mes
      * vencido.
      */
     private function actualizarPlanos(string $documento, array $ambito, array $destino, array $lote): int
@@ -327,15 +328,7 @@ class CorreccionEnlaceService
 
             $query->where('razon_social_id', $lote['razon_social_id'])
                 ->where('n_plano', $lote['n_plano'])
-                ->where(function ($q) use ($mesPago, $anioPago, $mesVencido, $anioVencido) {
-                    $q->where(function ($i) use ($mesPago, $anioPago) {
-                        $i->where('tipo_modalidad_id', 11)
-                            ->where('mes_plano', $mesPago)->where('anio_plano', $anioPago);
-                    })->orWhere(function ($i) use ($mesVencido, $anioVencido) {
-                        $i->where('tipo_modalidad_id', '<>', 11)
-                            ->where('mes_plano', $mesVencido)->where('anio_plano', $anioVencido);
-                    });
-                });
+                ->tap(fn ($q) => Plano::filtrarPeriodoDePago($q, $mesPago, $anioPago, null));
         }
 
         return $query->update([

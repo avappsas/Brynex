@@ -232,7 +232,7 @@
     // Periodo servicio (vencido o actual según modalidad)
     $mesServicio = $plano->mes_plano > 1 ? $plano->mes_plano - 1 : 12;
     $anioServicio = $plano->mes_plano > 1 ? $plano->anio_plano : $plano->anio_plano - 1;
-    if ($plano->tipo_modalidad_id == 11) {
+    if ($plano->paga_mes_actual) {
         $mesServicio = $plano->mes_plano;
         $anioServicio = $plano->anio_plano;
     }

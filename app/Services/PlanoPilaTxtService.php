@@ -3,7 +3,7 @@
 namespace App\Services;
 
 use Illuminate\Support\Facades\DB;
-
+use App\Models\Plano;
 
 class PlanoPilaTxtService
 {
@@ -165,17 +165,7 @@ class PlanoPilaTxtService
             ->whereIn('p.tipo_reg',      ['planilla', 'retiro'])
             ->whereRaw('ISNULL(p.num_dias, 0) > 0')   // excluir num_dias=0 y NULL
             ->whereNull('p.deleted_at')
-            ->where(function ($q) use ($mesPago, $anioPago, $mesVencido, $anioVencido) {
-                // Independientes (tipo 11): usan mes de pago
-                // Dependientes (otros): usan mes vencido (mes anterior al pago)
-                $q->where(function ($i) use ($mesPago, $anioPago) {
-                    $i->where('p.tipo_modalidad_id', 11)
-                      ->where('p.mes_plano', $mesPago)->where('p.anio_plano', $anioPago);
-                })->orWhere(function ($i) use ($mesVencido, $anioVencido) {
-                    $i->where('p.tipo_modalidad_id', '<>', 11)
-                      ->where('p.mes_plano', $mesVencido)->where('p.anio_plano', $anioVencido);
-                });
-            })
+            ->tap(fn ($q) => Plano::filtrarPeriodoDePago($q, $mesPago, $anioPago))
             ->select([
                 'p.tipo_doc','p.no_identifi','p.tipo_modalidad_id','p.tipo_p',
                 'p.primer_nombre','p.segundo_nombre','p.primer_ape','p.segundo_ape',

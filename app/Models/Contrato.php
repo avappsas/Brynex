@@ -28,6 +28,7 @@ class Contrato extends BaseModel
         'fecha_arl', 'envio_planilla', 'fecha_probable_pago', 'modo_probable_pago',
         'observacion', 'observacion_afiliacion', 'observacion_llamada', 'np',
         'fecha_created', 'cobra_planilla_primer_mes',
+        'paga_mes_actual',
     ];
 
     protected $casts = [
@@ -46,6 +47,7 @@ class Contrato extends BaseModel
         'seguro' => 'decimal:2',
         'porcentaje_caja' => 'decimal:2',
         'cobra_planilla_primer_mes' => 'boolean',
+        'paga_mes_actual' => 'boolean',
     ];
 
     // ── Relaciones ──
@@ -138,6 +140,28 @@ class Contrato extends BaseModel
     }
 
     // ── Helpers de estado ──
+
+    /**
+     * Modalidades que admiten cotizar el mes en curso: Independientes (10),
+     * ARL Tipo Y (8) y En el Exterior (14).
+     *
+     * En la Y y en el exterior es práctica del operador más que de la norma
+     * —el Decreto 1273/2018 manda mes vencido para el contratista—, pero Enlace
+     * liquida las dos con el período del mes de pago.
+     */
+    const MODALIDADES_MES_ACTUAL = [8, 10, 14];
+
+    /**
+     * ¿El contrato cotiza el mes en curso en vez del vencido?
+     *
+     * Es un atributo del contrato, no de la modalidad: aplica igual a
+     * Independientes, a la Y de solo ARL y a los del exterior. Antes era la
+     * modalidad 11, jubilada al nacer este campo.
+     */
+    public function pagaMesActual(): bool
+    {
+        return (bool) $this->paga_mes_actual;
+    }
 
     public function estaVigente(): bool
     {

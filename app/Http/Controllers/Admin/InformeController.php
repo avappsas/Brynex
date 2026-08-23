@@ -62,14 +62,11 @@ class InformeController extends Controller
             ->where('c.estado','retirado')
             ->where(function ($q) use ($mes, $anio, $mesAnterior, $anioAnterior) {
                 $q->where(function ($q1) use ($mes, $anio) {
-                    $q1->where('c.tipo_modalidad_id', 11)
+                    $q1->where('c.paga_mes_actual', 1)
                        ->whereMonth('c.fecha_retiro', $mes)
                        ->whereYear('c.fecha_retiro', $anio);
                 })->orWhere(function ($q2) use ($mesAnterior, $anioAnterior) {
-                    $q2->where(function ($q3) {
-                        $q3->whereNull('c.tipo_modalidad_id')
-                           ->orWhere('c.tipo_modalidad_id', '<>', 11);
-                    })
+                    $q2->where('c.paga_mes_actual', 0)
                     ->whereMonth('c.fecha_retiro', $mesAnterior)
                     ->whereYear('c.fecha_retiro', $anioAnterior);
                 });
@@ -99,14 +96,11 @@ class InformeController extends Controller
                     ->where('c2.estado', 'retirado')
                     ->where(function ($q) use ($mes, $anio, $mesAnterior, $anioAnterior) {
                         $q->where(function ($q1) use ($mes, $anio) {
-                            $q1->where('c2.tipo_modalidad_id', 11)
+                            $q1->where('c2.paga_mes_actual', 1)
                                ->whereMonth('c2.fecha_retiro', $mes)
                                ->whereYear('c2.fecha_retiro', $anio);
                         })->orWhere(function ($q2) use ($mesAnterior, $anioAnterior) {
-                            $q2->where(function ($q3) {
-                                $q3->whereNull('c2.tipo_modalidad_id')
-                                   ->orWhere('c2.tipo_modalidad_id', '<>', 11);
-                            })
+                            $q2->where('c2.paga_mes_actual', 0)
                             ->whereMonth('c2.fecha_retiro', $mesAnterior)
                             ->whereYear('c2.fecha_retiro', $anioAnterior);
                         });
@@ -307,14 +301,11 @@ class InformeController extends Controller
             ->where('c.aliado_id',$aid)->where('c.estado','retirado')
             ->where(function ($q) use ($mes, $anio, $mesAnterior, $anioAnterior) {
                 $q->where(function ($q1) use ($mes, $anio) {
-                    $q1->where('c.tipo_modalidad_id', 11)
+                    $q1->where('c.paga_mes_actual', 1)
                        ->whereMonth('c.fecha_retiro', $mes)
                        ->whereYear('c.fecha_retiro', $anio);
                 })->orWhere(function ($q2) use ($mesAnterior, $anioAnterior) {
-                    $q2->where(function ($q3) {
-                        $q3->whereNull('c.tipo_modalidad_id')
-                           ->orWhere('c.tipo_modalidad_id', '<>', 11);
-                    })
+                    $q2->where('c.paga_mes_actual', 0)
                     ->whereMonth('c.fecha_retiro', $mesAnterior)
                     ->whereYear('c.fecha_retiro', $anioAnterior);
                 });
@@ -390,14 +381,11 @@ class InformeController extends Controller
             ->where('c.aliado_id',$aid)->where('c.estado','retirado')
             ->where(function ($q) use ($mes, $anio, $mesAnterior, $anioAnterior) {
                 $q->where(function ($q1) use ($mes, $anio) {
-                    $q1->where('c.tipo_modalidad_id', 11)
+                    $q1->where('c.paga_mes_actual', 1)
                        ->whereMonth('c.fecha_retiro', $mes)
                        ->whereYear('c.fecha_retiro', $anio);
                 })->orWhere(function ($q2) use ($mesAnterior, $anioAnterior) {
-                    $q2->where(function ($q3) {
-                        $q3->whereNull('c.tipo_modalidad_id')
-                           ->orWhere('c.tipo_modalidad_id', '<>', 11);
-                    })
+                    $q2->where('c.paga_mes_actual', 0)
                     ->whereMonth('c.fecha_retiro', $mesAnterior)
                     ->whereYear('c.fecha_retiro', $anioAnterior);
                 });

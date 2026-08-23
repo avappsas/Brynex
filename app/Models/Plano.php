@@ -43,12 +43,15 @@ class Plano extends BaseModel
         'razon_social_id',        // ID de razones_sociales
         'tipo_p',                 // ID tipo modalidad (= tipo_modalidad_id, legacy smallint)
         'tipo_modalidad_id',      // ID de tipo_modalidad
+        'paga_mes_actual',        // snapshot: el contrato pagaba el mes en curso
         'usuario_id',
     ];
 
     protected $casts = [
         'fecha_ing' => 'date',
         'fecha_ret' => 'date',
+        // sqlsrv devuelve los BIT como string: sin el cast, un === true falla en silencio.
+        'paga_mes_actual' => 'boolean',
     ];
 
     public function factura()      { return $this->belongsTo(Factura::class); }
@@ -98,11 +101,11 @@ class Plano extends BaseModel
      * Convención vigente: la factura se registra en el mes en que se COBRA.
      * El plano es el mes de servicio que ese cobro paga:
      *
-     *   • Independiente Mes Actual (modalidad 11) → paga el mes corriente   → plano = mes factura
-     *   • Dependientes e Independiente Vencido    → paga el mes vencido     → plano = mes factura − 1
+     *   • Contrato con `paga_mes_actual`          → paga el mes corriente   → plano = mes factura
+     *   • Todos los demás                         → paga el mes vencido     → plano = mes factura − 1
      *   • Afiliación                              → va en el mes de ingreso → plano = mes factura
      *
-     * Ejemplo (modalidad 10): cobro del 04/08/2026 → factura Ago 2026 → plano Jul 2026.
+     * Ejemplo (independiente vencido): cobro del 04/08/2026 → factura Ago 2026 → plano Jul 2026.
      *
      * Único lugar donde vive esta regla: cualquier proceso que mueva el período de
      * una factura debe recalcular el plano con este método en vez de copiar el mes.
@@ -111,15 +114,55 @@ class Plano extends BaseModel
      *
      * @return array{0:int,1:int} [mes, anio]
      */
-    public static function periodoPlano(int $mesFactura, int $anioFactura, int $tipoModalidadId, bool $esAfiliacion): array
+    public static function periodoPlano(int $mesFactura, int $anioFactura, bool $pagaMesActual, bool $esAfiliacion): array
     {
-        if ($esAfiliacion || $tipoModalidadId === 11) {
+        if ($esAfiliacion || $pagaMesActual) {
             return [$mesFactura, $anioFactura];
         }
 
         return $mesFactura > 1
             ? [$mesFactura - 1, $anioFactura]
             : [12, $anioFactura - 1];
+    }
+
+    /**
+     * Filtra planos por el período que le corresponde al mes de PAGO.
+     *
+     * Quien paga el mes en curso cotiza el mes del pago; el resto, el vencido.
+     * La regla estaba copiada literal en trece consultas —los cuatro servicios
+     * de Excel, el TXT, los envíos por WhatsApp, las correcciones…— y bastaba
+     * con que una quedara sin actualizar para dejar a alguien dos veces en la
+     * misma planilla. Vive aquí y solo aquí.
+     *
+     * Sirve tanto para Eloquent como para query builder: `$alias` es el alias
+     * de la tabla `planos` en la consulta (null si no tiene), y `$aliasFlag`
+     * permite leer el flag desde `contratos` cuando la consulta ya lo tiene
+     * unido (los dos valores coinciden; manda el que la consulta ya trae).
+     */
+    public static function filtrarPeriodoDePago(
+        $query,
+        int $mesPago,
+        int $anioPago,
+        ?string $alias = 'p',
+        ?string $aliasFlag = null
+    ) {
+        $col     = $alias ? "{$alias}." : '';
+        $colFlag = ($aliasFlag ? "{$aliasFlag}." : $col).'paga_mes_actual';
+
+        $mesVencido  = $mesPago > 1 ? $mesPago - 1 : 12;
+        $anioVencido = $mesPago > 1 ? $anioPago : $anioPago - 1;
+
+        return $query->where(function ($q) use ($col, $colFlag, $mesPago, $anioPago, $mesVencido, $anioVencido) {
+            $q->where(function ($i) use ($col, $colFlag, $mesPago, $anioPago) {
+                $i->where($colFlag, 1)
+                  ->where("{$col}mes_plano", $mesPago)
+                  ->where("{$col}anio_plano", $anioPago);
+            })->orWhere(function ($i) use ($col, $colFlag, $mesVencido, $anioVencido) {
+                $i->where($colFlag, 0)
+                  ->where("{$col}mes_plano", $mesVencido)
+                  ->where("{$col}anio_plano", $anioVencido);
+            });
+        });
     }
 
     /**
@@ -164,23 +207,22 @@ class Plano extends BaseModel
 
         $esAfiliacion = $factura->tipo === 'afiliacion';
 
-        // Independientes "Mes Actual" (tipo_modalidad_id = 11): el plano cubre el mes facturado.
-        // Dependientes de empresa: el plano cubre el MES ANTERIOR (billing mayo → plano abril).
-        // Misma fuente que periodoPlano(): el id del contrato y no la relación, que
-        // puede no venir cargada y haría divergir el período de la fecha de ingreso.
-        $modalidadId      = (int)($contrato->tipo_modalidad_id ?? 0);
-        $esIndepMesActual = $modalidadId === 11;
+        // Quien paga el mes actual: el plano cubre el mes facturado.
+        // Los demás: el plano cubre el MES ANTERIOR (billing mayo → plano abril).
+        // Se lee del contrato y no de la relación, que puede no venir cargada y
+        // haría divergir el período de la fecha de ingreso.
+        $esIndepMesActual = (bool) ($contrato->paga_mes_actual ?? false);
 
         [$mesPlan, $anioPlan] = static::periodoPlano(
             (int)$factura->mes,
             (int)$factura->anio,
-            $modalidadId,
+            $esIndepMesActual,
             $esAfiliacion
         );
 
         // fecha_ing: en afiliación siempre; en planilla solo el primer mes de cotización.
-        // • Independiente mes actual (tipo 11): fecha_ingreso = mes facturado (paga el mismo mes)
-        // • Dependiente / I Vencido:            fecha_ingreso = mes ANTERIOR al facturado
+        // • Mes actual: fecha_ingreso = mes facturado (paga el mismo mes)
+        // • Vencido:    fecha_ingreso = mes ANTERIOR al facturado
         $fechaIng = null;
         if ($esAfiliacion) {
             $fechaIng = $contrato->fecha_ingreso;
@@ -242,6 +284,9 @@ class Plano extends BaseModel
             'razon_social_id'   => $contrato->razon_social_id,
             'tipo_p'            => $contrato->tipo_modalidad_id,  // ID (evita texto largo)
             'tipo_modalidad_id' => $contrato->tipo_modalidad_id,
+            // Snapshot: si el contrato cambia después, el período que cubrió
+            // este plano no se puede recalcular desde el contrato.
+            'paga_mes_actual'   => $esIndepMesActual,
             'usuario_id'        => $factura->usuario_id,
         ]);
     }

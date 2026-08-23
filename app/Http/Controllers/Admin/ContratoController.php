@@ -15,6 +15,7 @@ use App\Models\Eps;
 use App\Models\MotivoAfiliacion;
 use App\Models\MotivoRetiro;
 use App\Models\Pension;
+use App\Models\Plano;
 use App\Models\PlanContrato;
 use App\Models\Radicado;
 use App\Models\RazonSocial;
@@ -495,7 +496,9 @@ class ContratoController extends Controller
             }
         }
 
-        DB::transaction(function () use ($contrato, $data, $alidoId, $cambiosForzados) {
+        $avisoMesActual = null;
+
+        DB::transaction(function () use ($contrato, $data, $alidoId, $cambiosForzados, &$avisoMesActual) {
             $oldPlanId = $contrato->plan_id;
 
             // Detectar cambios en campos sensibles de tarifa
@@ -513,7 +516,21 @@ class ContratoController extends Controller
                 }
             }
 
+            // El cambio de período no se puede deshacer solo: deja un mes
+            // duplicado o uno sin cotizar. Se avisa y queda en la bitácora.
+            $avisoMesActual = $this->avisoCambioMesActual($contrato, $data);
+
             $contrato->update($data);
+
+            if ($avisoMesActual) {
+                \App\Models\Bitacora::registrar(
+                    'updated', 'Contrato', $contrato->id,
+                    "Período de cotización cambiado a ".($contrato->paga_mes_actual ? 'mes actual' : 'mes vencido')
+                        ." (Cédula: {$contrato->cedula}). {$avisoMesActual}",
+                    ['paga_mes_actual' => ['antes' => ! $contrato->paga_mes_actual, 'despues' => (bool) $contrato->paga_mes_actual]],
+                    $alidoId
+                );
+            }
 
             if (! empty($cambios)) {
                 \App\Models\Bitacora::registrar(
@@ -561,9 +578,75 @@ class ContratoController extends Controller
             $redirectParams['iframe'] = '1';
         }
 
-        return redirect()
+        $redirect = redirect()
             ->route('admin.contratos.edit', $redirectParams)
             ->with('success', 'Contrato actualizado correctamente.');
+
+        return $avisoMesActual
+            ? $redirect->with('warning', $avisoMesActual)
+            : $redirect;
+    }
+
+    /**
+     * Qué le pasa al calendario de cotización de un contrato al que se le cambia
+     * el período de pago: o el mes que sigue ya está cubierto por un plano
+     * —quedaría duplicado en la planilla— o se salta uno que nadie cotizó.
+     *
+     * Devuelve null si el flag no cambió, si el contrato no está vigente o si
+     * todavía no tiene planillas: sin historial no hay salto que avisar.
+     */
+    private function avisoCambioMesActual(Contrato $contrato, array $data): ?string
+    {
+        if (! array_key_exists('paga_mes_actual', $data)) {
+            return null;
+        }
+
+        $antes   = (bool) $contrato->paga_mes_actual;
+        $despues = (bool) $data['paga_mes_actual'];
+
+        if ($antes === $despues || ! $contrato->estaVigente()) {
+            return null;
+        }
+
+        // Último período que el contrato ya tiene cubierto, en meses absolutos.
+        $ultimo = DB::table('planos')
+            ->where('contrato_id', $contrato->id)
+            ->whereNull('deleted_at')
+            ->whereIn('tipo_reg', ['planilla', 'retiro'])
+            ->whereRaw('ISNULL(num_dias, 0) > 0')
+            ->max(DB::raw('anio_plano * 12 + mes_plano'));
+
+        if (! $ultimo) {
+            return null;
+        }
+
+        // Período que cubriría la próxima factura con el esquema nuevo.
+        $hoy = now('America/Bogota');
+        [$mesProx, $anioProx] = Plano::periodoPlano((int) $hoy->month, (int) $hoy->year, $despues, false);
+        $proximo = $anioProx * 12 + $mesProx;
+
+        $comoMes = fn (int $abs) => sprintf('%02d/%d', (($abs - 1) % 12) + 1, intdiv($abs - 1, 12));
+
+        if ($proximo <= $ultimo) {
+            return sprintf(
+                'El período %s ya está cubierto por un plano de este contrato: al facturar quedaría dos veces en la misma planilla.',
+                $comoMes($proximo)
+            );
+        }
+
+        if ($proximo > $ultimo + 1) {
+            $faltantes = [];
+            for ($m = $ultimo + 1; $m < $proximo; $m++) {
+                $faltantes[] = $comoMes($m);
+            }
+
+            return sprintf(
+                'Queda sin cotizar %s: la última planilla cubrió %s y la próxima cubrirá %s.',
+                implode(', ', $faltantes), $comoMes($ultimo), $comoMes($proximo)
+            );
+        }
+
+        return null;
     }
 
     // ─── Retirar contrato ─────────────────────────────────────────────
@@ -726,7 +809,7 @@ class ContratoController extends Controller
 
         // ── Mora real del retiro (sin tramos mínimos) ─────────────────────────
         $moraRetiro = 0;
-        $esMesActual = (int) ($contrato->tipo_modalidad_id) === 11;
+        $esMesActual = (bool) ($contrato->paga_mes_actual ?? false);
 
         if ($request->has('mora') && ! is_null($request->input('mora'))) {
             $moraRetiro = (int) $request->input('mora');
@@ -954,7 +1037,7 @@ class ContratoController extends Controller
 
         $costoSs = 0;
         $mora = 0;
-        $esMesActual = (int) ($contrato->tipo_modalidad_id) === 11;
+        $esMesActual = (bool) ($contrato->paga_mes_actual ?? false);
 
         $desglose = [
             'eps' => ['valor' => 0, 'mora' => 0],
@@ -1190,16 +1273,21 @@ class ContratoController extends Controller
         }
 
         // Modalidades que permiten cambiar ARL y muestran Modo ARL
-        $modalidadesArlLibre = \App\Models\TipoModalidad::IDS_ARL_LIBRE;  // [10, 11, -1, 8]
+        $modalidadesArlLibre = \App\Models\TipoModalidad::IDS_ARL_LIBRE;  // [10, -1, 8]
         // Niveles de riesgo que admite cada modalidad (K: 1-3, Y: 4-5). Se envía la MISMA
         // constante que usa el tarifario, para que el selector y los precios no se contradigan.
         $nivelesArlPorModalidad = TarifaAsesorService::NIVELES_ARL_POR_MODALIDAD;
-        $modalidadesModoArl = \App\Models\TipoModalidad::IDS_MODO_ARL;   // [10, 11, -1]
+        $modalidadesModoArl = \App\Models\TipoModalidad::IDS_MODO_ARL;   // [10, -1]
 
-        // IDs de modalidades independientes (I Act=11, I Venc=10, En el Exterior=14, UPC=13)
+        // IDs de modalidades independientes (I Venc=10, En el Exterior=14, UPC=13)
         // NOTA: Las modalidades TP NO son "independientes" a efectos del filtro de RS;
         // se manejan por su propia lógica (es_tiempo_parcial=1 en la BD).
-        $modalidadesIndependientes = [10, 11, 13, 14];
+        $modalidadesIndependientes = [10, 13, 14];
+
+        // Modalidades que pueden cotizar el mes en curso en vez del vencido.
+        // Es un atributo del contrato (`paga_mes_actual`), no una modalidad aparte:
+        // Independientes (10), ARL Tipo Y (8) y En el Exterior (14).
+        $modalidadesMesActual = Contrato::MODALIDADES_MES_ACTUAL;
 
         // Mapa: tipo_modalidad_id => [plan_ids] — para filtrado dinámico en el JS
         $planesPermitidos = DB::table('modalidad_planes')
@@ -1225,11 +1313,11 @@ class ContratoController extends Controller
 
         // ── Regla AFP obligatorio ───────────────────────────────────────
         // Modalidades donde AFP es obligatorio (a menos que el cliente esté exento):
-        //   - Dependiente E (0), I Venc (10), I Act (11)
+        //   - Dependiente E (0), I Venc (10)
         //   - TODAS las modalidades con es_tiempo_parcial=1 (independiente del ID)
         //     → el plan "ARL+CCF" sin AFP (APTP) solo es válido para clientes exentos
         $idsTP = TipoModalidad::where('es_tiempo_parcial', true)->pluck('id')->map(fn ($id) => (int) $id)->toArray();
-        $modalidadesAfpObligatorio = array_values(array_unique(array_merge([0, 10, 11], $idsTP)));
+        $modalidadesAfpObligatorio = array_values(array_unique(array_merge([0, 10], $idsTP)));
 
         return [
             // Razones sociales: activas primero (ordenadas por nombre), inactivas al final
@@ -1260,6 +1348,7 @@ class ContratoController extends Controller
             // Filtrado inteligente
             'planesPermitidos' => $planesPermitidos,
             'modalidadesIndependientes' => $modalidadesIndependientes,
+            'modalidadesMesActual' => $modalidadesMesActual,
             'clienteExentoAfp' => $this->detectarExencionAfp($cliente),
             'clientePensionado' => (int) ($cliente?->pension_id ?? 0) === \App\Models\Pension::ID_PENSIONADO,
             'clienteTipoDoc' => $cliente?->tipo_doc,
@@ -1725,10 +1814,21 @@ class ContratoController extends Controller
             'observacion_afiliacion' => 'nullable|string',
             'operador_planilla_id' => 'nullable|integer',
             'cobra_planilla_primer_mes' => 'boolean',
+            'paga_mes_actual' => 'boolean',
         ]);
 
         $this->validarSalarioMinimo($data);
         $this->validarNivelArl($data, $contrato);
+
+        // El mes actual solo existe en algunas modalidades. Se decide aquí y no en
+        // el formulario: el checkbox se oculta al cambiar de modalidad, pero un
+        // navegador puede mandar el valor igual.
+        if (array_key_exists('paga_mes_actual', $data)) {
+            $modalidadId = isset($data['tipo_modalidad_id']) ? (int) $data['tipo_modalidad_id'] : null;
+            if (! in_array($modalidadId, Contrato::MODALIDADES_MES_ACTUAL, true)) {
+                $data['paga_mes_actual'] = false;
+            }
+        }
 
         // "" → null. Sin esto, un formulario sin asesor guardaría 0 y la facturación creería
         // que es un contrato con tarifario y comisión cero, en vez de caer a la lógica vieja.

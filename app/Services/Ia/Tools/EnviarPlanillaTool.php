@@ -105,14 +105,7 @@ class EnviarPlanillaTool implements IaToolInterface
             $mesVencido = $mes > 1 ? $mes - 1 : 12;
             $anioVencido = $mes > 1 ? $anio : $anio - 1;
 
-            $query->where(function ($q) use ($mes, $anio, $mesVencido, $anioVencido) {
-                $q->where(function ($i) use ($mes, $anio) {
-                    // Independientes "mes actual" (tipo_modalidad_id 11): el plano cubre el mes en curso.
-                    $i->where('tipo_modalidad_id', 11)->where('mes_plano', $mes)->where('anio_plano', $anio);
-                })->orWhere(function ($i) use ($mesVencido, $anioVencido) {
-                    $i->where('tipo_modalidad_id', '<>', 11)->where('mes_plano', $mesVencido)->where('anio_plano', $anioVencido);
-                });
-            });
+            Plano::filtrarPeriodoDePago($query, $mes, $anio, null);
         }
 
         $planos = $query->orderByDesc('id')->get();

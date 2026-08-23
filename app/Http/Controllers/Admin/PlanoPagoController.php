@@ -30,7 +30,7 @@ class PlanoPagoController extends Controller
         // ── Logica de mes vencido ────────────────────────────────────────
         // El filtro MES muestra el mes de PAGO (mes seleccionado por el usuario).
         // Internamente:
-        //   - Independientes (tipo_modalidad_id = 11) → mes_plano = mes_pago (mes actual)
+        //   - Con `paga_mes_actual`                   → mes_plano = mes_pago (mes actual)
         //   - Todos los demas (dependientes, etc.)    → mes_plano = mes_pago - 1 (mes vencido)
         $mesVencido  = $mes > 1 ? $mes - 1 : 12;
         $anioVencido = $mes > 1 ? $anio    : $anio - 1;
@@ -42,17 +42,7 @@ class PlanoPagoController extends Controller
                 $q->whereIn('p.mes_plano', [$mes, $mesVencido])
                   ->whereIn('p.anio_plano', [$anio, $anioVencido]);
             } else {
-                $q->where(function ($inner) use ($mes, $anio) {
-                    // Independientes → mes actual
-                    $inner->where('p.tipo_modalidad_id', 11)
-                          ->where('p.mes_plano',  $mes)
-                          ->where('p.anio_plano', $anio);
-                })->orWhere(function ($inner) use ($mesVencido, $anioVencido) {
-                    // Todos los demas → mes vencido (mes_pago - 1)
-                    $inner->where('p.tipo_modalidad_id', '<>', 11)
-                          ->where('p.mes_plano',  $mesVencido)
-                          ->where('p.anio_plano', $anioVencido);
-                });
+                Plano::filtrarPeriodoDePago($q, $mes, $anio);
             }
         };
 
@@ -384,17 +374,7 @@ class PlanoPagoController extends Controller
         $mesVencido  = $mes > 1 ? $mes - 1 : 12;
         $anioVencido = $mes > 1 ? $anio    : $anio - 1;
 
-        $wherePeriodo = function ($q) use ($mes, $anio, $mesVencido, $anioVencido) {
-            $q->where(function ($inner) use ($mes, $anio) {
-                $inner->where('p.tipo_modalidad_id', 11)
-                      ->where('p.mes_plano',  $mes)
-                      ->where('p.anio_plano', $anio);
-            })->orWhere(function ($inner) use ($mesVencido, $anioVencido) {
-                $inner->where('p.tipo_modalidad_id', '<>', 11)
-                      ->where('p.mes_plano',  $mesVencido)
-                      ->where('p.anio_plano', $anioVencido);
-            });
-        };
+        $wherePeriodo = fn ($q) => Plano::filtrarPeriodoDePago($q, $mes, $anio);
 
         // Contar pagados y pendientes agrupados por RS y n_plano
         $rows = DB::table('planos AS p')
@@ -1001,8 +981,8 @@ class PlanoPagoController extends Controller
 
 
             // ── b) Calcular periodos reales (logica mes vencido) ──────
-            // Independientes (tipo_modalidad_id=11) → mes real = mes_pago
-            // Dependientes y demas               → mes real = mes_pago - 1
+            // Con `paga_mes_actual` → mes real = mes_pago
+            // Los demas            → mes real = mes_pago - 1
             $mesPago     = $validated['mes_plano'];
             $anioPago    = $validated['anio_plano'];
             $mesVencido  = $mesPago > 1 ? $mesPago - 1 : 12;
@@ -1030,17 +1010,7 @@ class PlanoPagoController extends Controller
                     ->where('num_dias', '>', 0)
                     ->where('razon_social_id', $validated['razon_social_id'])
                     ->where('n_plano', $validated['n_plano'])
-                    ->where(function ($q) use ($mesPago, $anioPago, $mesVencido, $anioVencido) {
-                        $q->where(function ($i) use ($mesPago, $anioPago) {
-                            $i->where('tipo_modalidad_id', 11)
-                              ->where('mes_plano',  $mesPago)
-                              ->where('anio_plano', $anioPago);
-                        })->orWhere(function ($i) use ($mesVencido, $anioVencido) {
-                            $i->where('tipo_modalidad_id', '<>', 11)
-                              ->where('mes_plano',  $mesVencido)
-                              ->where('anio_plano', $anioVencido);
-                        });
-                    });
+                    ->tap(fn ($q) => Plano::filtrarPeriodoDePago($q, $mesPago, $anioPago, null));
 
                 if (!empty($validated['tipos_modalidad'])) {
                     // Castear a int para que SQL Server compare correctamente

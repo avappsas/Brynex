@@ -87,21 +87,21 @@ class FacturacionController extends Controller
                       $q2->where('estado', 'retirado')
                          ->where(function ($q3) use ($mes, $anio, $mesAnterior, $anioAnterior) {
                              $q3->where(function ($qa) use ($mes, $anio) {
-                                      // Tipo 11 (I ACT): retiro se factura en el MES del retiro
-                                      $qa->where('tipo_modalidad_id', 11)
+                                      // Mes actual: el retiro se factura en el MES del retiro
+                                      $qa->where('paga_mes_actual', 1)
                                          ->whereMonth('fecha_retiro', $mes)
                                          ->whereYear('fecha_retiro', $anio);
                                   })
                                  ->orWhere(function ($qb) use ($mesAnterior, $anioAnterior) {
                                       // Otros: retiro del mes anterior se factura este mes
-                                      $qb->where('tipo_modalidad_id', '!=', 11)
+                                      $qb->where('paga_mes_actual', 0)
                                          ->whereMonth('fecha_retiro', $mesAnterior)
                                          ->whereYear('fecha_retiro', $anioAnterior);
                                   })
                                  ->orWhere(function ($qc) use ($mes, $anio) {
                                       // Otros: retiro en el mes actual (se factura en el mismo mes)
                                       // Ej: ingresó julio, se retira agosto → aparece en agosto
-                                      $qc->where('tipo_modalidad_id', '!=', 11)
+                                      $qc->where('paga_mes_actual', 0)
                                          ->whereMonth('fecha_retiro', $mes)
                                          ->whereYear('fecha_retiro', $anio);
                                   })
@@ -198,7 +198,7 @@ class FacturacionController extends Controller
                 $fIng = $c->fecha_ingreso;
                 $mesIngreso  = (int)$fIng->month;
                 $anioIngreso = (int)$fIng->year;
-                $esIndAct = (int)($c->tipo_modalidad_id) === 11;
+                $esIndAct = (bool) ($c->paga_mes_actual ?? false);
 
                 $periodoIngreso = $anioIngreso * 100 + $mesIngreso;
                 $periodoActual  = $anio * 100 + $mes;
@@ -807,7 +807,7 @@ class FacturacionController extends Controller
             $nombre = trim(($contrato->cliente?->primer_nombre ?? '') . ' ' . ($contrato->cliente?->primer_apellido ?? ''));
 
             $esIndVenc    = (int) $contrato->tipo_modalidad_id === 10;
-            $esIndAct     = (int) $contrato->tipo_modalidad_id === 11;
+            $esIndAct     = (bool) ($contrato->paga_mes_actual ?? false);
             $esIndep      = $contrato->tipoModalidad?->esIndependiente() ?? false;
             $esMesIngreso = $contrato->fecha_ingreso
                 && (int) $contrato->fecha_ingreso->month === $mes
@@ -1070,7 +1070,7 @@ class FacturacionController extends Controller
             if (!$c) { $totalesRealesPorContrato[$cId] = 0; continue; }
             
             $esIndep = $c->tipoModalidad?->esIndependiente() ?? false;
-            $esIndAct = (int)($c->tipo_modalidad_id) === 11;
+            $esIndAct = (bool) ($c->paga_mes_actual ?? false);
             $esArl = (int)($c->tipo_modalidad_id) === 15;
             $tipoForzado = $validated['tipo'];
             $esMesIng = false;
@@ -1309,7 +1309,7 @@ class FacturacionController extends Controller
                 // ─── Detectar modo "ambos" (afiliación + planilla) ────────
                 $indepModo      = $validated['indep_modo'] ?? 'normal';
                 $esIndVenc      = (int)($contrato->tipo_modalidad_id) === 10;
-                $esIndActCheck  = (int)($contrato->tipo_modalidad_id) === 11;
+                $esIndActCheck  = (bool) ($contrato->paga_mes_actual ?? false);
                 $esIndepCheck   = $contrato->tipoModalidad?->esIndependiente() ?? false;
                 $esMesIngresoCheck = false;
                 if ($contrato->fecha_ingreso) {
@@ -1612,9 +1612,9 @@ class FacturacionController extends Controller
 
 
                 $esIndependiente = $contrato->tipoModalidad?->esIndependiente() ?? false;
-                // I Act (id=11): cobra afiliación + planilla el mismo mes de ingreso
+                // Mes actual: cobra afiliación + planilla el mismo mes de ingreso
                 // I Venc (id=10): solo afiliación el primer mes
-                $esIndAct = (int)($contrato->tipo_modalidad_id) === 11;
+                $esIndAct = (bool) ($contrato->paga_mes_actual ?? false);
                 $tipoForzado = $validated['tipo'];
 
                 if ($contrato->fecha_ingreso) {
@@ -1630,7 +1630,7 @@ class FacturacionController extends Controller
                             // I Venc: solo afiliación el primer mes
                             $tipoForzado = 'afiliacion';
                         }
-                        // I Act: tipo=planilla (afiliación se suma al total, ver abajo)
+                        // Mes actual: tipo=planilla (afiliación se suma al total, ver abajo)
                     }
                 }
 
@@ -1639,8 +1639,8 @@ class FacturacionController extends Controller
                     $tipoForzado = 'afiliacion';
                 }
 
-                // ─── Detectar I Act primer mes ─────────────────────────────
-                // I Act (id=11) en mes de ingreso: paga afiliación + planilla juntas
+                // ─── Detectar primer mes de quien paga el mes actual ───────
+                // En el mes de ingreso paga afiliación + planilla juntas
                 $esIndActPrimerMes = $esIndAct && isset($esMesIngreso) && $esMesIngreso;
 
                 // ─── Tipo, días y SS ───────────────────────────────────────
@@ -2275,7 +2275,7 @@ class FacturacionController extends Controller
     /**
      * Crea 2 registros Factura con el mismo numero_factura:
      *   1) Afiliación  → mes=X, tipo=afiliacion, dias=0, SS=0
-     *   2) Planilla    → mes=X (I Act) | mes=X+1 (I Venc), tipo=planilla, SS calculado
+     *   2) Planilla    → mes=X (mes actual) | mes=X+1 (vencido), tipo=planilla, SS calculado
      *
      * Ambos registros comparten: numero_factura, np, estado, forma_pago, fecha_pago.
      * El pago (efectivo + consig) se divide proporcionalmente según el costo de cada uno.
@@ -2317,7 +2317,7 @@ class FacturacionController extends Controller
 
         // ── Mes/Año de la planilla ───────────────────────────────────────────────
         // I Venc → mes siguiente (paga adelantado al ingresar)
-        // I Act  → mismo mes
+        // Mes actual → mismo mes
         if ($esIndVenc) {
             $mesPlan  = $mes === 12 ? 1  : $mes + 1;
             $anioPlan = $mes === 12 ? $anio + 1 : $anio;
@@ -3271,7 +3271,7 @@ class FacturacionController extends Controller
 
             // Detectar si el contrato es afiliación para este período
             $esIndependiente = $contrato->tipoModalidad?->esIndependiente() ?? false;
-            $esIndAct        = (int)($contrato->tipo_modalidad_id) === 11;
+            $esIndAct        = (bool) ($contrato->paga_mes_actual ?? false);
             $esArlModalidad  = (int)($contrato->tipo_modalidad_id) === 15;
             $esMesIngreso    = $contrato->fecha_ingreso
                 && (int)$contrato->fecha_ingreso->month === $mes
@@ -3991,7 +3991,7 @@ class FacturacionController extends Controller
                 $fIng = $c->fecha_ingreso;
                 $mesIngreso  = (int)$fIng->month;
                 $anioIngreso = (int)$fIng->year;
-                $esIndAct = (int)($c->tipo_modalidad_id) === 11;
+                $esIndAct = (bool) ($c->paga_mes_actual ?? false);
 
                 if ($mesIngreso === $mes && $anioIngreso === $anio) {
                     if ($esIndAct) {
@@ -4090,7 +4090,7 @@ class FacturacionController extends Controller
                 $fIng = $c->fecha_ingreso;
                 $mesIngreso  = (int)$fIng->month;
                 $anioIngreso = (int)$fIng->year;
-                $esIndAct = (int)($c->tipo_modalidad_id) === 11;
+                $esIndAct = (bool) ($c->paga_mes_actual ?? false);
 
                 $periodoIngreso = $anioIngreso * 100 + $mesIngreso;
                 $periodoActual  = $anio * 100 + $mes;
@@ -4500,12 +4500,12 @@ class FacturacionController extends Controller
                       $q2->where('estado', 'retirado')
                          ->where(function ($q3) use ($mes, $anio, $mesAnterior, $anioAnterior) {
                              $q3->where(function ($qa) use ($mes, $anio) {
-                                      $qa->where('tipo_modalidad_id', 11)
+                                      $qa->where('paga_mes_actual', 1)
                                          ->whereMonth('fecha_retiro', $mes)
                                          ->whereYear('fecha_retiro', $anio);
                                   })
                                 ->orWhere(function ($qb) use ($mesAnterior, $anioAnterior) {
-                                      $qb->where('tipo_modalidad_id', '!=', 11)
+                                      $qb->where('paga_mes_actual', 0)
                                          ->whereMonth('fecha_retiro', $mesAnterior)
                                          ->whereYear('fecha_retiro', $anioAnterior);
                                   });

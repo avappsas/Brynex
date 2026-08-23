@@ -28,7 +28,7 @@ class CobroContratoService
     {
         // Detectar tipo
         $esIndependiente = $contrato->tipoModalidad?->esIndependiente() ?? false;
-        $esIndAct        = (int) $contrato->tipo_modalidad_id === 11;
+        $esIndAct        = (bool) ($contrato->paga_mes_actual ?? false);
         $esArl           = (int) $contrato->tipo_modalidad_id === 15;
         $esMesIngreso    = false;
 
@@ -182,7 +182,7 @@ class CobroContratoService
         $anioAnterior = $mes === 1 ? $anio - 1 : $anio;
         if ($mesIngreso === $mesAnterior && $anioIngreso === $anioAnterior) {
             // EXCEPCIÓN 1: Independiente Activo (11) ya cobró su planilla en el mes de ingreso.
-            if ((int) $contrato->tipo_modalidad_id === 11) {
+            if ((bool) ($contrato->paga_mes_actual ?? false)) {
                 return 30;
             }
             // EXCEPCIÓN 2: Si ya existe una factura de tipo 'planilla' pagada para el mes de ingreso.

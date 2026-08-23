@@ -44,17 +44,17 @@ class TipoModalidad extends BaseModel
         return $this->observacion ?: $this->tipo_modalidad;
     }
 
-    /** IDs que corresponden a modalidades independientes (I Venc=10, I Act=11, UPC=13, En el Exterior=14) */
-    const IDS_INDEPENDIENTE = [10, 11, 13, 14];
+    /** IDs que corresponden a modalidades independientes (I Venc=10, UPC=13, En el Exterior=14) */
+    const IDS_INDEPENDIENTE = [10, 13, 14];
 
     /** UPC: afiliar a alguien fuera del núcleo familiar — no depende del salario */
     const ID_UPC = 13;
 
     /** IDs que requieren el campo "Modo ARL" */
-    const IDS_MODO_ARL = [10, 11, -1];
+    const IDS_MODO_ARL = [10, -1];
 
     /** IDs en que la ARL es libre (no bloqueada a la razon social) */
-    const IDS_ARL_LIBRE = [10, 11, -1, 8];
+    const IDS_ARL_LIBRE = [10, -1, 8];
 
     public function esIndependiente(): bool
     {

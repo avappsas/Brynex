@@ -9,11 +9,14 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Pasa a Independiente Vencido (10) los contratos marcados Independiente Mes
- * Actual (11) que en realidad cotizan el mes vencido, y baja los planos que la
- * app ya generó adelantados.
+ * Quita el `paga_mes_actual` a los contratos que en realidad cotizan el mes
+ * vencido, y baja los planos que la app ya generó adelantados.
  *
- * Caso GiMave (aliado 4), ago-2026: 65 contratos vigentes figuraban como "I Act"
+ * Escrito cuando "mes actual" era la modalidad 11; al jubilarse esa modalidad
+ * la corrección pasó a hacerse sobre el flag, que es lo que hoy decide el
+ * período. El caso que lo originó se conserva porque explica cómo se detecta.
+ *
+ * Caso GiMave (aliado 4), ago-2026: 65 contratos vigentes figuraban como mes actual
  * pero su operación real —la del sistema legacy, donde siguen facturando— pone
  * la planilla en el mes vencido. En [GiMave_Integral].dbo.PLANOS los 1.361
  * registros con Tipo_P=11 llevan MES_PLANO un mes por detrás de la factura, sin
@@ -25,10 +28,9 @@ use Illuminate\Support\Facades\DB;
  *
  * Se corrigen tres cosas a la vez, porque por separado no sirven:
  *   • el período del plano   → mes vencido;
- *   • su snapshot de modalidad (tipo_modalidad_id y tipo_p) → 10, si no el plano
- *     desaparece del módulo de planos, que filtra el mes según ese snapshot
- *     (ver PlanoPagoController::index);
- *   • la modalidad del contrato → 10, o el problema se repite cada mes.
+ *   • su snapshot `paga_mes_actual` → 0, si no el plano desaparece del módulo
+ *     de planos, que filtra el mes según ese snapshot (ver PlanoPagoController::index);
+ *   • el flag del contrato → 0, o el problema se repite cada mes.
  *
  * No toca los planos ya liquidados ante el operador ni los que aterrizarían
  * sobre un período que otro plano del contrato ya cubre: los reporta.
@@ -38,10 +40,7 @@ use Illuminate\Support\Facades\DB;
  */
 class CorregirModalidadMesActual extends Command
 {
-    /** Independiente Mes Actual → el plano cubre el mes facturado */
-    private const MODALIDAD_ACTUAL = 11;
-
-    /** Independiente Vencido → el plano cubre el mes anterior */
+    /** Modalidad de independiente vencido, la que queda tras la corrección. */
     private const MODALIDAD_VENCIDO = 10;
 
     protected $signature = 'contratos:corregir-modalidad-vencido
@@ -51,7 +50,7 @@ class CorregirModalidadMesActual extends Command
                             {--solo-planos : Corrige los planos adelantados sin tocar la modalidad de los contratos}
                             {--ejecutar : Aplica los cambios (sin esta bandera solo simula)}';
 
-    protected $description = 'Pasa de Mes Actual (11) a Vencido (10) los contratos que cotizan vencido, y baja los planos que quedaron adelantados';
+    protected $description = 'Quita el mes actual a los contratos que en realidad cotizan vencido, y baja los planos que quedaron adelantados';
 
     public function handle(): int
     {
@@ -81,7 +80,7 @@ class CorregirModalidadMesActual extends Command
             ->whereNull('p.deleted_at')
             ->whereNull('f.deleted_at')
             ->where('p.tipo_reg', 'planilla')
-            ->where('p.tipo_modalidad_id', self::MODALIDAD_ACTUAL)
+            ->where('p.paga_mes_actual', 1)
             ->whereRaw('(p.anio_plano * 12 + p.mes_plano) = (f.anio * 12 + f.mes)')
             ->when($ctrFiltro, fn ($q) => $q->whereIn('p.contrato_id', $ctrFiltro))
             ->orderBy('p.contrato_id')
@@ -110,7 +109,7 @@ class CorregirModalidadMesActual extends Command
 
         foreach ($planos as $p) {
             [$mDest, $aDest] = Plano::periodoPlano(
-                (int) $p->fmes, (int) $p->fanio, self::MODALIDAD_VENCIDO, false
+                (int) $p->fmes, (int) $p->fanio, false, false
             );
 
             if ($p->numero_planilla) {
@@ -132,17 +131,17 @@ class CorregirModalidadMesActual extends Command
         $contratos = collect();
         if (!$this->option('solo-planos')) {
             $contratos = Contrato::where('aliado_id', $aliadoId)
-                ->where('tipo_modalidad_id', self::MODALIDAD_ACTUAL)
+                ->where('paga_mes_actual', 1)
                 ->when(!$this->option('incluir-retirados'),
                     fn ($q) => $q->whereIn('estado', ['vigente', 'activo']))
                 ->when($ctrFiltro, fn ($q) => $q->whereIn('id', $ctrFiltro))
-                ->get(['id', 'cedula', 'estado', 'tipo_modalidad_id']);
+                ->get(['id', 'cedula', 'estado', 'tipo_modalidad_id', 'paga_mes_actual']);
         }
 
         // ── Reporte ───────────────────────────────────────────────────────────
         $this->newLine();
         $this->info(($ejecutar ? '▶ APLICANDO' : '🔍 SIMULACIÓN (dry-run)')
-            . " — aliado {$aliadoId}: Mes Actual (11) → Vencido (10)");
+            . " — aliado {$aliadoId}: mes actual → mes vencido");
         $this->newLine();
         $this->line(sprintf('  Planos a bajar al mes vencido : %d', count($bajar)));
         $this->line(sprintf('  Contratos a reetiquetar       : %d', $contratos->count()));
@@ -187,6 +186,7 @@ class CorregirModalidadMesActual extends Command
                     'mes_plano'         => $b['mes'],
                     'anio_plano'        => $b['anio'],
                     'tipo_modalidad_id' => self::MODALIDAD_VENCIDO,
+                    'paga_mes_actual'   => 0,
                     'tipo_p'            => (string) self::MODALIDAD_VENCIDO,
                     'updated_at'        => now(),
                 ]);
@@ -198,12 +198,11 @@ class CorregirModalidadMesActual extends Command
                     registroId: (int) $p->plano_id,
                     descripcion: "Plano bajado al mes vencido: {$desde} → {$hasta} "
                         . "(recibo #{$p->numero_factura}, contrato {$p->contrato_id}). "
-                        . 'La modalidad decía Mes Actual pero el contrato cotiza vencido.',
+                        . 'El plano decía mes actual pero el contrato cotiza vencido.',
                     detalle: [
-                        'plano_anterior'     => $desde,
-                        'plano_nuevo'        => $hasta,
-                        'modalidad_anterior' => self::MODALIDAD_ACTUAL,
-                        'modalidad_nueva'    => self::MODALIDAD_VENCIDO,
+                        'plano_anterior' => $desde,
+                        'plano_nuevo'    => $hasta,
+                        'paga_mes_actual' => ['antes' => 1, 'despues' => 0],
                     ],
                     alidoId: $aliadoId
                 );
@@ -212,6 +211,7 @@ class CorregirModalidadMesActual extends Command
             foreach ($contratos as $c) {
                 DB::table('contratos')->where('id', $c->id)->update([
                     'tipo_modalidad_id' => self::MODALIDAD_VENCIDO,
+                    'paga_mes_actual'   => 0,
                     'updated_at'        => now(),
                 ]);
                 $nContratos++;
@@ -220,11 +220,10 @@ class CorregirModalidadMesActual extends Command
                     accion: 'updated',
                     modelo: 'Contrato',
                     registroId: (int) $c->id,
-                    descripcion: "Modalidad corregida de Independiente Mes Actual (11) a Vencido (10) "
+                    descripcion: "Contrato pasado de mes actual a mes vencido "
                         . "(cédula {$c->cedula}). Cotiza el mes vencido según su historial de planillas.",
                     detalle: [
-                        'modalidad_anterior' => self::MODALIDAD_ACTUAL,
-                        'modalidad_nueva'    => self::MODALIDAD_VENCIDO,
+                        'paga_mes_actual' => ['antes' => 1, 'despues' => 0],
                         'estado'             => $c->estado,
                     ],
                     alidoId: $aliadoId

@@ -303,17 +303,14 @@ class CobrosController extends Controller
             ->where('estado', 'retirado')
             ->whereNotIn('contratos.id', $idsYaCaptadosTodos)
             ->where(function ($q) use ($mes, $anio, $mesAntInf, $anioAntInf) {
-                // tipo_modalidad=11 (Ind.Act.): fecha_retiro en el mes consultado
+                // Mes actual: fecha_retiro en el mes consultado
                 $q->where(function ($q1) use ($mes, $anio) {
-                    $q1->where('tipo_modalidad_id', 11)
+                    $q1->where('paga_mes_actual', 1)
                        ->whereMonth('fecha_retiro', $mes)
                        ->whereYear('fecha_retiro', $anio);
                 // Resto: fecha_retiro en el mes ANTERIOR
                 })->orWhere(function ($q2) use ($mesAntInf, $anioAntInf) {
-                    $q2->where(function ($q3) {
-                        $q3->whereNull('tipo_modalidad_id')
-                           ->orWhere('tipo_modalidad_id', '<>', 11);
-                    })
+                    $q2->where('paga_mes_actual', 0)
                     ->whereMonth('fecha_retiro', $mesAntInf)
                     ->whereYear('fecha_retiro', $anioAntInf);
                 });
@@ -450,7 +447,7 @@ class CobrosController extends Controller
                 $esAfil = true;
             } elseif ($c->fecha_ingreso) {
                 $fIng     = $c->fecha_ingreso;
-                $esIndAct = (int)($c->tipo_modalidad_id) === 11;
+                $esIndAct = (bool) ($c->paga_mes_actual ?? false);
                 if ((int)$fIng->month === $mes && (int)$fIng->year === $anio) {
                     $esIndActPrimerMes = $esIndAct;
                     $esAfil            = !$esIndAct;

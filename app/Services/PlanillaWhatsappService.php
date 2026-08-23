@@ -38,19 +38,7 @@ class PlanillaWhatsappService
             ->get(['id', 'nombre', 'codigo']);
 
         // 2. Closure de periodos mixtos
-        $wherePeriodo = function ($q) use ($mes, $anio, $mesVencido, $anioVencido) {
-            $q->where(function ($inner) use ($mes, $anio) {
-                // Independientes (modalidad 11) -> mes actual
-                $inner->where('p.tipo_modalidad_id', 11)
-                      ->where('p.mes_plano', $mes)
-                      ->where('p.anio_plano', $anio);
-            })->orWhere(function ($inner) use ($mesVencido, $anioVencido) {
-                // Todos los demas -> mes vencido
-                $inner->where('p.tipo_modalidad_id', '<>', 11)
-                      ->where('p.mes_plano', $mesVencido)
-                      ->where('p.anio_plano', $anioVencido);
-            });
-        };
+        $wherePeriodo = fn ($q) => Plano::filtrarPeriodoDePago($q, $mes, $anio);
 
         // 3. Consultar planos con número de planilla (pagadas)
         $planosQuery = DB::table('planos AS p')

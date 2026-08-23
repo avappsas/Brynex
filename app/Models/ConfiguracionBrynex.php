@@ -102,7 +102,7 @@ class ConfiguracionBrynex extends BaseModel
      * ¿Está activa la regla de AFP obligatorio?
      *
      * Si true, los contratos de modalidad Dependiente E (id=0),
-     * I Venc (id=10) e I Act (id=11) no pueden usar planes sin AFP,
+     * I Venc (id=10) no puede usar planes sin AFP,
      * a menos que el cliente esté exento (tipo_doc ≠ CC, mujer ≥50, hombre ≥55).
      */
     public static function reglaAfpObligatorio(): bool

@@ -452,7 +452,7 @@ class CotizacionPublicaService
     private const MODALIDAD_EXTERIOR_ID       = 14; // "En el Exterior"
     private const MODALIDAD_UPC_ID            = 13; // "UPC" — salud de alguien fuera del núcleo familiar
     private const MODALIDAD_INGRESO_RETIRO_ID = 12; // "Ingreso-Retiro" — estrategia de pocos días por mes
-    private const PRIORIDAD_INDEPENDIENTE_IDS = [10, 11, 13, 14];
+    private const PRIORIDAD_INDEPENDIENTE_IDS = [10, 13, 14];
     private const PRIORIDAD_DEPENDIENTE_IDS   = [0, 7];
 
     /** Días válidos de Tiempo Parcial -> id de modalidad (públicos, ofrecidos siempre por días parejos). */
@@ -722,11 +722,11 @@ class CotizacionPublicaService
         // (CobroContratoService::calcular/calcularDias) para quien se afilia hoy —
         // mes 1 = SOLO el cobro de afiliación (sin SS ni administración); mes 2 = proporcional de
         // los días restantes del mes vencido + administración COMPLETA (nunca se prorratea); mes
-        // 3 en adelante = mes completo. Solo aplica al esquema de "afiliación pura" (Dependiente e
-        // Independiente Vencido); Independiente Activo (id 11) cobra proporcional + administración
-        // + afiliación TODO junto desde el mes de ingreso, sin este diferimiento, así que se omite
-        // para no sugerirle al cliente un plan de pago que no le aplica.
-        if (!($opciones['sin_plan_pago'] ?? false) && (int) $tipoModalidad->id !== 11) {
+        // 3 en adelante = mes completo. Solo aplica al esquema de "afiliación pura": quien paga el
+        // mes actual cobra proporcional + administración + afiliación TODO junto desde el mes de
+        // ingreso, sin este diferimiento. El cotizador público no ofrece esa opción —el flag
+        // `paga_mes_actual` se decide al crear el contrato—, así que aquí siempre es afiliación pura.
+        if (!($opciones['sin_plan_pago'] ?? false)) {
             $diaIngreso         = (int) $fechaAfiliacion->day;
             $diasProporcionales = max(1, 30 - $diaIngreso + 1);
 
