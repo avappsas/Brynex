@@ -118,10 +118,15 @@
     {{-- La columna del período solo existe para las modalidades que la admiten:
          el grid pasa de cuatro a cinco y reparte el ancho, en vez de dejar un
          hueco fijo que la mayoría de contratos nunca usa. --}}
-    <div style="display:grid;gap:0.5rem;"
+    {{-- El binding va como objeto y no como cadena: Alpine, con una cadena,
+         reescribe el atributo entero y se lleva por delante el `display:grid`
+         —la fila se apila—. Con objeto toca solo la propiedad que nombra. Las
+         columnas también van en el style estático para que la fila ya esté
+         armada antes de que Alpine arranque. --}}
+    <div style="display:grid;gap:0.5rem;grid-template-columns:1.6fr 1.2fr 1.2fr 120px;"
          :style="MODALIDADES_MES_ACTUAL.includes(parseInt(tipoModalidadId))
-             ? 'grid-template-columns:1.45fr 1.1fr 1.05fr 1.05fr 120px'
-             : 'grid-template-columns:1.6fr 1.2fr 1.2fr 120px'">
+             ? { gridTemplateColumns: '1.45fr 1.1fr 1.05fr 1.05fr 120px' }
+             : { gridTemplateColumns: '1.6fr 1.2fr 1.2fr 120px' }">
       <div>
         <label class="lb">Razon Social <span id="badge-rs-nit" style="font-weight:400;color:#64748b;font-size:0.63rem;background:#f1f5f9;padding:0.1rem 0.45rem;border-radius:6px;margin-left:4px;font-family:monospace;letter-spacing:0.02em;display:none;"></span></label>
         <div class="{{ $rsLock ? 'tip-lock' : '' }}" data-tip="{{ $tipLock }}">
