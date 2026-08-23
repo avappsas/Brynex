@@ -125,7 +125,7 @@
          armada antes de que Alpine arranque. --}}
     <div style="display:grid;gap:0.5rem;grid-template-columns:1.6fr 1.2fr 1.2fr 120px;"
          :style="MODALIDADES_MES_ACTUAL.includes(parseInt(tipoModalidadId))
-             ? { gridTemplateColumns: '1.45fr 1.1fr 1.05fr 1.05fr 120px' }
+             ? { gridTemplateColumns: '1.35fr 1fr 0.85fr 1.45fr 120px' }
              : { gridTemplateColumns: '1.6fr 1.2fr 1.2fr 120px' }">
       <div>
         <label class="lb">Razon Social <span id="badge-rs-nit" style="font-weight:400;color:#64748b;font-size:0.63rem;background:#f1f5f9;padding:0.1rem 0.45rem;border-radius:6px;margin-left:4px;font-family:monospace;letter-spacing:0.02em;display:none;"></span></label>
