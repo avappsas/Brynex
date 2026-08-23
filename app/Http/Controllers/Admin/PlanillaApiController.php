@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\{OperadorCredencial, OperadorPlanilla, OperadorPlanillaApi, RazonSocial};
 use App\Services\CorreccionEnlaceService;
 use App\Services\CorreccionPensionFaltanteService;
+use App\Services\PlanillaE1Service;
 use App\Services\PlanoPilaTxtService;
 use App\Services\SuaporteApiService;
 use Illuminate\Http\Request;
@@ -42,6 +43,10 @@ class PlanillaApiController extends Controller
 
         $filtro = $this->filtroModalidades($validated['tipos_modalidad'] ?? []);
 
+        // La E-1 se paga en dos liquidaciones encadenadas, así que la pantalla
+        // necesita saber en cuál va la tanda. Ver PlanillaE1Service.
+        $esE1 = PlanillaE1Service::aplica($validated['tipos_modalidad'] ?? []);
+
         $operadores = [];
 
         foreach ($this->operadoresConApi($aliadoId) as $operador) {
@@ -62,6 +67,9 @@ class PlanillaApiController extends Controller
                 ->where('mes', $validated['mes'])
                 ->where('n_plano', $validated['n_plano'])
                 ->whereRaw("ISNULL(tipos_modalidad, '') = ?", [$filtro])
+                // Todo lo que no sea la corrección de una E-1 es paso 1, así
+                // que para el resto de modalidades esto no filtra nada.
+                ->where('paso', 1)
                 ->latest('id')
                 ->first();
 
@@ -91,6 +99,11 @@ class PlanillaApiController extends Controller
                 'codigo'        => $operador->codigo,
                 'clave_vencida' => $credencial->claveSecretaVencida(),
                 'sin_codigo_ni' => empty($operador->codigo_ni),
+                // Estado del flujo de dos pasos; null cuando la tanda no es E-1
+                // y la pantalla pinta el botón único de siempre.
+                'e1'            => $esE1
+                    ? $this->estadoE1($aliadoId, (int) $validated['razon_social_id'], $operador->id, $validated, $filtro, $planilla)
+                    : null,
                 'planilla'      => $planilla ? [
                     'estado'          => $planilla->estado,
                     'numero_planilla' => $planilla->numero_planilla,
@@ -118,6 +131,49 @@ class PlanillaApiController extends Controller
                 (int) $validated['mes'], (int) $validated['anio']
             ),
         ]);
+    }
+
+    /**
+     * Dónde va la tanda dentro del flujo de dos pasos de la E-1: si el paso 1
+     * está liquidado, si su pago ya se confirmó (que es lo que habilita la
+     * corrección) y si el paso 2 ya salió. Ver PlanillaE1Service.
+     */
+    private function estadoE1(
+        int $aliadoId,
+        int $razonSocialId,
+        int $operadorId,
+        array $validated,
+        string $filtro,
+        ?OperadorPlanillaApi $paso1
+    ): array {
+        $paso2 = OperadorPlanillaApi::where('aliado_id', $aliadoId)
+            ->where('razon_social_id', $razonSocialId)
+            ->where('operador_planilla_id', $operadorId)
+            ->where('anio', $validated['anio'])
+            ->where('mes', $validated['mes'])
+            ->where('n_plano', $validated['n_plano'])
+            ->whereRaw("ISNULL(tipos_modalidad, '') = ?", [$filtro])
+            ->where('paso', 2)
+            ->latest('id')
+            ->first();
+
+        $pago = ($paso1 && $paso1->estado === 'validada' && $paso1->numero_planilla)
+            ? PlanillaE1Service::pagoConfirmado($aliadoId, (string) $paso1->numero_planilla)
+            : null;
+
+        return [
+            'paso1_liquidado' => (bool) ($paso1 && $paso1->estado === 'validada' && $paso1->numero_planilla),
+            'pago_confirmado' => (bool) $pago,
+            'fecha_pago'      => $pago ? $pago->fecha->format('Y-m-d') : null,
+            'paso2'           => $paso2 ? [
+                'estado'          => $paso2->estado,
+                'numero_planilla' => $paso2->numero_planilla,
+                'valor_total'     => $paso2->valor_total,
+                'url_pago'        => $paso2->url_pago,
+                'mensaje_error'   => $paso2->mensaje_error,
+                'fecha'           => optional($paso2->updated_at)->format('Y-m-d H:i'),
+            ] : null,
+        ];
     }
 
     /**
@@ -166,9 +222,13 @@ class PlanillaApiController extends Controller
             // El usuario ya vio que hay una planilla liquidada y aun así quiere
             // volver a liquidar (ver el 409 más abajo).
             'reliquidar'           => 'boolean',
+            // Modalidad E-1: 1 = planilla E de un día, 2 = corrección de la
+            // anterior. Cualquier otra liquidación es y sigue siendo paso 1.
+            'paso'                 => 'integer|in:1,2',
         ]);
 
         $filtro = $this->filtroModalidades($validated['tipos_modalidad'] ?? []);
+        $paso   = (int) ($validated['paso'] ?? 1);
 
         // Multi-tenant: la razón social debe ser del aliado activo.
         $rs = RazonSocial::where('aliado_id', $aliadoId)
@@ -237,6 +297,44 @@ class PlanillaApiController extends Controller
             'tipos_modalidad'      => $filtro,
         ];
 
+        // ── Paso 2 de la E-1: la corrección ──────────────────────────────
+        // Solo puede salir si la planilla del paso 1 ya está liquidada Y
+        // pagada, porque de ahí salen los campos 9 y 10 del registro tipo 1.
+        // Ver PlanillaE1Service.
+        $opcionesPlano = [];
+
+        if ($paso === 2) {
+            if (! PlanillaE1Service::aplica($validated['tipos_modalidad'] ?? [])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'La corrección solo existe en la modalidad E-1, y el filtro '
+                        . 'de modalidades debe traer únicamente esa. Con otras mezcladas, el '
+                        . 'paso 1 dejaría sin salud a gente que no está en este esquema.',
+                ], 422);
+            }
+
+            $contexto = PlanillaE1Service::contextoCorreccion($llave);
+
+            if (! $contexto['ok']) {
+                return response()->json([
+                    'success'      => false,
+                    'falta_pago'   => true,
+                    'message'      => $contexto['message'],
+                ], 422);
+            }
+
+            $opcionesPlano = [
+                'tipo_planilla'     => 'N',
+                'paso'              => 2,
+                'planilla_asociada' => $contexto['planilla_asociada'],
+            ];
+        }
+
+        // El paso distingue las dos liquidaciones de la misma tanda: sin él, la
+        // corrección pisaría el registro del paso 1 y se perdería el número de
+        // la planilla que acaba de pagarse.
+        $llave['paso'] = $paso;
+
         // Re-liquidar borra el número anterior, así que no puede pasar de
         // largo: se devuelve 409 con el número que se va a perder y el front
         // reintenta con `reliquidar` si el usuario confirma.
@@ -253,6 +351,9 @@ class PlanillaApiController extends Controller
             ->where('anio', $validated['anio'])
             ->where('mes', $validated['mes'])
             ->where('n_plano', $validated['n_plano'])
+            // La corrección no compite con la planilla que corrige: son dos
+            // liquidaciones legítimas de la misma tanda, no un duplicado.
+            ->where('paso', $paso)
             ->where('estado', 'validada')
             ->where(function ($q) use ($filtro) {
                 $q->whereNull('tipos_modalidad')->orWhere('tipos_modalidad', $filtro);
@@ -305,7 +406,7 @@ class PlanillaApiController extends Controller
 
         // ── 3. Generar el archivo plano en memoria ───────────────────────
         try {
-            $plano = (new PlanoPilaTxtService())->construir([
+            $plano = (new PlanoPilaTxtService())->construir(array_merge([
                 'aliado_id'       => $aliadoId,
                 'razon_social_id' => $rs->id,
                 'mes'             => $validated['mes'],
@@ -313,7 +414,7 @@ class PlanillaApiController extends Controller
                 'n_plano'         => $validated['n_plano'],
                 'tipos_modalidad' => $validated['tipos_modalidad'] ?? [],
                 'codigo_operador' => (string) $operador->codigo_ni,
-            ]);
+            ], $opcionesPlano));
         } catch (\RuntimeException $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
         } catch (\Exception $e) {
@@ -346,6 +447,15 @@ class PlanillaApiController extends Controller
             'planillaNSoloNovedades' => (bool) ($validated['solo_novedades'] ?? false),
             'tipoArchivo'            => 'I',
         ]);
+
+        // Deja constancia de qué planilla corrige esta, para no tener que
+        // reconstruir el número después leyendo el archivo.
+        $datosAsociada = isset($opcionesPlano['planilla_asociada'])
+            ? [
+                'planilla_asociada_numero'     => $opcionesPlano['planilla_asociada']['numero'],
+                'planilla_asociada_fecha_pago' => $opcionesPlano['planilla_asociada']['fecha_pago'],
+            ]
+            : [];
 
         // ── 4. Persistir el resultado ────────────────────────────────────
         if (!($resultado['success'] ?? false)) {
@@ -389,7 +499,7 @@ class PlanillaApiController extends Controller
             ]);
         }
 
-        $registro->update([
+        $registro->update(array_merge([
             'estado'          => 'validada',
             'api_planilla_id' => $resultado['codigo_planilla'] ?? null,
             'numero_planilla' => $resultado['numero_planilla'] ?? null,
@@ -397,7 +507,7 @@ class PlanillaApiController extends Controller
             'url_pago'        => $resultado['url_pago'] ?? null,
             'mensaje_error'   => null,
             'response_log'    => $resultado['response'] ?? null,
-        ]);
+        ], $datosAsociada));
 
         return response()->json([
             'success'         => true,
@@ -413,6 +523,7 @@ class PlanillaApiController extends Controller
             'pendientes'      => $this->pendientesDelPeriodo(
                 $aliadoId, (int) $rs->id, (int) $validated['mes'], (int) $validated['anio']
             ),
+            'paso'            => $paso,
             'message'         => "Planilla {$resultado['numero_planilla']} liquidada en Enlace Operativo.",
         ]);
     }

@@ -921,6 +921,11 @@ class PlanoPagoController extends Controller
             'soporte'          => 'nullable|file|mimes:jpg,jpeg,png,pdf,webp|max:5120', // 5MB
             // Confirmación individual (RS independiente): ID del plano específico
             'plano_id'         => 'nullable|integer',
+            // Fecha real del pago. Por defecto hoy, como siempre; se puede
+            // corregir cuando la confirmación se registra días después, que es
+            // lo que la corrección de una E-1 lleva al campo 10 del registro
+            // tipo 1 y el operador valida contra el pago real.
+            'fecha_pago'       => 'nullable|date',
         ]);
 
 
@@ -956,7 +961,7 @@ class PlanoPagoController extends Controller
                 'aliado_id'         => $aliadoId,
                 'usuario_id'        => $usuarioId,
                 'cuadre_id'         => null,
-                'fecha'             => today(),
+                'fecha'             => $validated['fecha_pago'] ?? today(),
                 'tipo'              => 'pago_planilla',
                 'numero_planilla'   => $validated['numero_planilla'],   // ← campo dedicado
                 'descripcion'       => $descripcion,

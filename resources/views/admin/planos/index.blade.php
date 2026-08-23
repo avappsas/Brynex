@@ -1462,6 +1462,14 @@
 
             <div class="form-row">
                 <div class="form-grupo">
+                    <label>Fecha del Pago</label>
+                    <input type="date" id="pago-fecha" value="{{ now()->format('Y-m-d') }}"
+                           max="{{ now()->format('Y-m-d') }}">
+                    <small style="color:#64748b;font-size:.7rem">
+                        La del soporte. Solo cámbiela si está confirmando un pago de otro día.
+                    </small>
+                </div>
+                <div class="form-grupo">
                     <label>Observación</label>
                     <textarea id="pago-obs" placeholder="Observaciones del pago..."></textarea>
                 </div>
@@ -2535,28 +2543,70 @@ async function cargarEstadoEnlace() {
         cont.innerHTML = '';
 
         data.operadores.forEach(op => {
-            const btn = document.createElement('button');
-            btn.className = 'btn-descarga-principal';
-            btn.style.cssText = 'background:linear-gradient(135deg,#8b5cf6,#6d28d9);box-shadow:0 4px 12px rgba(139,92,246,.2)';
-            btn.id = 'btn-liquidar-' + op.id;
-            btn.innerHTML = `🚀 Liquidar en ${op.nombre}`;
-
             // Motivos por los que no se puede liquidar con ese operador.
             let bloqueo = null;
             if (CTX.planoPagado)   bloqueo = 'Este plano ya fue confirmado como pagado.';
             else if (op.clave_vencida) bloqueo = `La clave secreta de ${op.nombre} venció. Genere una nueva desde el tablero del operador.`;
             else if (op.sin_codigo_ni)  bloqueo = `Falta el código PILA de ${op.nombre}. Configúrelo en Configuración → Operadores de planilla.`;
 
-            if (bloqueo) {
-                btn.disabled = true;
-                btn.title    = bloqueo;
-                btn.style.opacity = '.55';
-                btn.style.cursor  = 'not-allowed';
-            } else {
-                btn.onclick = () => liquidarEnEnlace(op.id, op.nombre);
-            }
+            const crearBoton = (etiqueta, paso, bloqueoPropio) => {
+                const btn = document.createElement('button');
+                btn.className = 'btn-descarga-principal';
+                btn.style.cssText = 'background:linear-gradient(135deg,#8b5cf6,#6d28d9);box-shadow:0 4px 12px rgba(139,92,246,.2)';
+                btn.id = 'btn-liquidar-' + op.id + (paso === 2 ? '-p2' : '');
+                btn.innerHTML = etiqueta;
 
-            cont.appendChild(btn);
+                const motivo = bloqueo || bloqueoPropio;
+                if (motivo) {
+                    btn.disabled = true;
+                    btn.title    = motivo;
+                    btn.style.opacity = '.55';
+                    btn.style.cursor  = 'not-allowed';
+                } else {
+                    btn.onclick = () => liquidarEnEnlace(op.id, op.nombre, paso);
+                }
+
+                cont.appendChild(btn);
+                return btn;
+            };
+
+            if (op.e1) {
+                // Modalidad E-1: son dos liquidaciones encadenadas. La segunda
+                // no puede salir hasta que la primera esté pagada, porque el
+                // operador solo acepta corregir una planilla ya pagada y el
+                // archivo tiene que decir en qué fecha se pagó.
+                crearBoton(
+                    (op.e1.paso1_liquidado ? '✅ ' : '1️⃣ ') + `Paso 1 · Planilla de 1 día en ${op.nombre}`,
+                    1, null
+                );
+
+                let bloqueoP2 = null;
+                if (!op.e1.paso1_liquidado) {
+                    bloqueoP2 = 'Primero hay que liquidar la planilla del paso 1.';
+                } else if (!op.e1.pago_confirmado) {
+                    bloqueoP2 = 'La planilla del paso 1 todavía no tiene el pago confirmado. '
+                              + 'El operador rechaza una corrección sobre una planilla sin pagar.';
+                }
+
+                crearBoton(
+                    (op.e1.paso2 && op.e1.paso2.estado === 'validada' ? '✅ ' : '2️⃣ ')
+                        + 'Paso 2 · Corrección (salud + ARL + caja)',
+                    2, bloqueoP2
+                );
+
+                if (bloqueoP2 && !bloqueo) {
+                    const aviso = document.createElement('div');
+                    aviso.innerHTML = avisoEnlace('#fffbeb', '#fde68a', '#92400e', '⏳ ' + bloqueoP2);
+                    cont.appendChild(aviso);
+                } else if (op.e1.pago_confirmado && !op.e1.paso2) {
+                    const aviso = document.createElement('div');
+                    aviso.innerHTML = avisoEnlace('#f0fdf4', '#bbf7d0', '#166534',
+                        `✅ Pago del paso 1 confirmado el <strong>${op.e1.fecha_pago}</strong>. Ya se puede enviar la corrección.`);
+                    cont.appendChild(aviso);
+                }
+            } else {
+                crearBoton(`🚀 Liquidar en ${op.nombre}`, 1, null);
+            }
 
             if (bloqueo && !CTX.planoPagado) {
                 const aviso = document.createElement('div');
@@ -2793,13 +2843,13 @@ function renderEstadoEnlace(p, operadorNombre) {
     }
 }
 
-async function liquidarEnEnlace(operadorId, operadorNombre) {
+async function liquidarEnEnlace(operadorId, operadorNombre, paso = 1) {
     if (!CTX.razonSocialId) {
         mostrarToast('Seleccione una Razón Social primero.', 'error');
         return;
     }
 
-    const btn  = document.getElementById('btn-liquidar-' + operadorId);
+    const btn  = document.getElementById('btn-liquidar-' + operadorId + (paso === 2 ? '-p2' : ''));
     const orig = btn.innerHTML;
 
     btn.disabled  = true;
@@ -2815,6 +2865,7 @@ async function liquidarEnEnlace(operadorId, operadorNombre) {
             ...paramsEnlace(),
             operador_planilla_id: operadorId,
             tipos_modalidad     : CTX.modalidadesIds,
+            paso                : paso,
         };
 
         const enviar = () => fetch(CTX.routes.enlaceLiquidar, {
@@ -2855,8 +2906,14 @@ async function liquidarEnEnlace(operadorId, operadorNombre) {
         }
 
         if (!resp.ok || !data.success) {
-            cont.innerHTML = avisoEnlace('#fef2f2', '#fecaca', '#991b1b',
-                `<strong>✗ No se pudo liquidar.</strong><br>${data.message || 'Error desconocido.'}`);
+            // La corrección de una E-1 rebotada por falta de pago no es un
+            // error del archivo: es que todavía no es su turno.
+            const estilo = data.falta_pago
+                ? ['#fffbeb', '#fde68a', '#92400e', '⏳ Todavía no se puede enviar la corrección.']
+                : ['#fef2f2', '#fecaca', '#991b1b', '✗ No se pudo liquidar.'];
+
+            cont.innerHTML = avisoEnlace(estilo[0], estilo[1], estilo[2],
+                `<strong>${estilo[3]}</strong><br>${data.message || 'Error desconocido.'}`);
             mostrarToast(data.message || 'No se pudo liquidar la planilla.', 'error');
             return;
         }
@@ -2874,9 +2931,13 @@ async function liquidarEnEnlace(operadorId, operadorNombre) {
 
         aplicarTotalDelOperador(data.valor_total, data.numero_planilla, null);
 
+        const titulo = paso === 2
+            ? `✅ Corrección ${data.numero_planilla} liquidada en ${operadorNombre}.`
+            : `✅ Planilla ${data.numero_planilla} liquidada en ${operadorNombre}.`;
+
         cont.innerHTML = avisoPensionCorregida(data.pension_corregida) +
             avisoEnlace('#f0fdf4', '#bbf7d0', '#166534',
-            `<strong>✅ Planilla ${data.numero_planilla} liquidada en ${operadorNombre}.</strong>` +
+            `<strong>${titulo}</strong>` +
             (data.valor_total ? `<br>Total a pagar: <strong>$ ${fmtNum(Math.round(data.valor_total))}</strong>` : '') +
             (data.valor_mora ? ` (mora: $ ${fmtNum(Math.round(data.valor_mora))})` : '') +
             (data.fecha_limite ? `<br>Fecha límite: ${String(data.fecha_limite).substring(0, 10)}` : '') +
@@ -2885,6 +2946,10 @@ async function liquidarEnEnlace(operadorId, operadorNombre) {
         pintarPendientesCierre(data.pendientes);
 
         mostrarToast(`Planilla ${data.numero_planilla} liquidada en ${operadorNombre}.`, 'success');
+
+        // El paso 1 acaba de generar el número que habilita la corrección
+        // (una vez se confirme su pago): hay que repintar los botones.
+        cargarEstadoEnlace();
     } catch (e) {
         cont.innerHTML = avisoEnlace('#fef2f2', '#fecaca', '#991b1b',
             `<strong>✗ Error de conexión.</strong><br>${e.message}`);
@@ -3375,6 +3440,7 @@ async function ejecutarConfirmarPago() {
     const valor    = parseInt(document.getElementById('pago-valor').value);
     const banco    = document.getElementById('pago-banco').value;
     const obs      = document.getElementById('pago-obs').value.trim();
+    const fecha    = document.getElementById('pago-fecha')?.value || '';
     const soporteInput = document.getElementById('pago-soporte');
     const soporteFile  = soporteInput.files[0] || window._soportePasteBlob || null;
 
@@ -3398,6 +3464,7 @@ async function ejecutarConfirmarPago() {
     fd.append('forma_pago', 'transferencia');
     fd.append('banco_id', banco);
     fd.append('observacion', obs);
+    if (fecha) fd.append('fecha_pago', fecha);
     if (soporteFile) fd.append('soporte', soporteFile);
 
     if (_planoIdActual) {

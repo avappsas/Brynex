@@ -28,6 +28,7 @@ class PilaCotizanteCalculator
     // ── tipo_modalidad_id especiales ────────────────────────────────────────
     private const TIPO_K_MATRIZ        = -1; // Planilla K: solo ARL, tipo cotizante 23
     private const TIPOS_INDEPENDIENTE  = [10, 11]; // tipo cotizante 2
+    public  const TIPO_E1              = -4; // E-1: salud sin pensión, en dos planillas (ver PilaCotizanteE1)
     // Tiempo parcial: detectado por tm.es_tiempo_parcial = 1, tipo_cot viene de la tabla
 
     // ── Tarifas ARL por nivel de riesgo ────────────────────────────────────
@@ -39,7 +40,12 @@ class PilaCotizanteCalculator
     /**
      * Calcula todos los valores necesarios para generar un registro PILA.
      *
-     * @param  object $p  Fila del plano con sus JOINs ya resueltos
+     * @param  object $p  Fila del plano con sus JOINs ya resueltos.
+     *                    Dos campos opcionales los usa solo la modalidad E-1
+     *                    (ver PilaCotizanteE1): `paso_e1` (1|2) elige entre la
+     *                    planilla de un día y la corrección, y `cod_afp_cliente`
+     *                    es la AFP de la ficha del cliente, que sirve de
+     *                    respaldo cuando el plano va sin fondo de pensión.
      * @return array {
      *   tipoCotizante: int,       // 1=dep, 2=indep, 23=K
      *   subtipoCotizante: int,    // 0, 3, 4
@@ -510,6 +516,14 @@ class PilaCotizanteCalculator
             $res['ibcOtros']         = 0;
             $res['vSena']            = 0;
             $res['vIcbf']            = 0;
+        }
+
+        // ── Modalidad E-1: salud sin pensión, partida en dos planillas ──────
+        // Esquema temporal y con reglas propias que no comparte con ninguna
+        // otra modalidad: vive aparte para que el día que se deje de usar
+        // baste con borrar la clase y esta línea. Ver PilaCotizanteE1.
+        if ($tipoModalidad === self::TIPO_E1) {
+            $res = PilaCotizanteE1::ajustar($res, $p, $ibcFull, $codAfpPila, $sinCaja);
         }
 
         return $res;
