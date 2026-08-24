@@ -2364,8 +2364,13 @@ class FacturacionController extends Controller
         }
 
         // ── Días proporcionales para la planilla ─────────────────────────────────
-        $diaIngreso = $contrato->fecha_ingreso ? (int)$contrato->fecha_ingreso->day : 1;
-        $diasPlan   = max(1, 30 - $diaIngreso + 1);
+        // Del ingreso al fin de mes, salvo que en el mismo período se marque el
+        // retiro: ahí manda lo que va del ingreso al retiro (ingresa el 22 y se
+        // retira el 26 → 5 días, no los 9 que quedan hasta fin de mes).
+        $diaIngreso  = $contrato->fecha_ingreso ? (int)$contrato->fecha_ingreso->day : 1;
+        $esRetiroPar = ! empty($validated['es_retiro']);
+        $diasRetiro  = $esRetiroPar ? (int) ($validated['dias_retiro'] ?? 0) : 0;
+        $diasPlan    = $diasRetiro > 0 ? $diasRetiro : max(1, 30 - $diaIngreso + 1);
 
         // ── Calcular SS de la planilla ───────────────────────────────────────────
         $cotiz = $contrato->calcularCotizacion($diasPlan, $tieneIva);
@@ -2611,9 +2616,15 @@ class FacturacionController extends Controller
         $pagadoPlan = $vConsigPlan + $vEfectPlan + $vAntPlan;
         $factPlan->update(['saldo_proximo' => $pagadoPlan - $totalPlan]);
 
-        // Plano de planilla
+        // Plano de planilla. Si el par se factura con retiro marcado, la novedad
+        // va en este registro: sin la fecha, la planilla reporta el ingreso pero
+        // nunca el retiro y la persona sigue cotizando el mes siguiente.
         if (in_array($factPlan->estado, [Factura::ESTADO_PAGADA, Factura::ESTADO_PRESTAMO])) {
-            Plano::generarDesdeContrato($contrato, $factPlan);
+            Plano::generarDesdeContrato(
+                $contrato,
+                $factPlan,
+                $esRetiroPar ? ($validated['fecha_retiro'] ?? null) : null
+            );
         }
 
         return [$factAfil->id, $factPlan->id];
