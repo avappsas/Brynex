@@ -186,3 +186,167 @@ GET  /admin/facturacion/empresa/{empresa}         → empresa (con ?mes=&anio=)
 POST /admin/facturacion/generar                   → generar facturas del mes
 POST /admin/facturacion/{factura}/marcar-pagada   → cambiar estado
 ```
+
+## Facturación electrónica (Dataico)
+
+Hay **dos caminos** hacia Dataico, y comparten la marca `facturas.fe_marcada`
+para no emitir dos veces lo mismo:
+
+| Camino | Controlador | Qué hace |
+|---|---|---|
+| Manual (viejo) | `FacturacionElectronicaController` | Exporta el Excel `importacion-facturas-multiples` y marca `fe_marcada` a mano |
+| API (nuevo) | `DataicoController` + `App\Services\Dataico\*` | Emite por `POST /direct/dataico_api/v2/invoices` y marca `fe_marcada` al recibir el OK |
+
+### ⚠️ Estado: bloqueado en la numeración (24-ago-2026)
+
+El payload ya es correcto y el API acepta cuenta, cliente e ítems, pero
+responde **401 «No se encuentra numeración … en la cuenta de DATAICO»** con las
+dos resoluciones que el propio API reporta en las facturas ya emitidas de
+BRYGAR (`FE/18764092296384` de mayo y `FE/18764110623435` de agosto). Se probó
+el número como texto y entero, `prefix`+`resolution_number` sueltos, `numbering`
+como texto, `numbering_range_id` y solo el prefijo: todas dan lo mismo.
+
+Sospecha: la numeración existe pero no está habilitada para emisión por API.
+Es configuración del lado de Dataico. **Nada se ha emitido**: la última factura
+de la cuenta sigue siendo FE1184.
+
+### La forma del cuerpo — tres trampas, todas confirmadas a golpes
+
+```jsonc
+{
+  "invoice": {
+    "dataico_account_id": "…",      // ← DENTRO de invoice.
+    "numbering": { "prefix": "FE", "resolution_number": "…" },
+    "customer": { /* dirección PLANA, no anidada en address */ },
+    "items": [ { "sku": "SKU 0001", "description": "0001-…", … } ],
+    "notes": ["JULIO", "Brynex 13069"]   // ← array, no string
+  },
+  "actions": { "send_dian": true, "send_email": false }  // ← en la RAÍZ
+}
+```
+
+1. El cuerpo admite **solo** `invoice` y, opcional, `actions`. Cualquier otra
+   llave en la raíz → HTTP 500 diciendo justamente eso.
+2. `actions` va en la **raíz**, no dentro de `invoice`.
+3. `dataico_account_id` va **dentro de `invoice`**. En la raíz, como header
+   (`Dataico_account_id`, `dataico-account-id`, `Dataico-Account-Id`) o como
+   parámetro de URL, todas responden 500 «Debe enviar un dataico account id
+   válido» — aunque el mismo valor sí sirve como parámetro en el **GET** de
+   consulta. Los dos endpoints no lo reciben igual.
+
+Los enums salieron de facturas reales, no de la documentación:
+`PERSONA_NATURAL`/`PERSONA_JURIDICA`, `CC`/`NIT`, `DEBITO`, `BANK_TRANSFER`,
+`SIMPLIFICADO`, `FACTURA_VENTA`. `PERSONA_NATURAL` usa `first_name` +
+`family_name`; `PERSONA_JURIDICA` usa `company_name`. Nunca los dos. Los ítems
+no llevan impuestos ni descuento: BRYGAR no cobra IVA.
+
+Único campo sin confirmar: el formato de `issue_date`. Se manda ISO
+(`2026-07-01`) porque así lo lleva el QR de la DIAN, pero la respuesta lo
+devuelve `15/08/2026 13:31:57`.
+
+### Consultar lo ya emitido
+
+```
+GET /direct/dataico_api/v2/invoices?dataico_account_id=…&number=FE1184
+```
+
+Devuelve la factura completa con `cufe`, `uuid`, `dian_status`, `numbering` y
+`pdf_url`. Es la única forma de saber qué se emitió: el Excel viejo no dejaba
+ninguna referencia hacia Brynex.
+
+### Qué se emite
+
+**Solo `admon + afiliacion`.** La seguridad social (`v_eps`, `v_arl`, `v_afp`,
+`v_caja`), la `mora`, el `seguro` y la `mensajeria` NO se facturan: son plata
+que el aliado recauda y traslada, no ingreso propio.
+
+El criterio de selección es la **cuenta bancaria**, no la razón social.
+`dataico_configuraciones.banco_cuenta_id` apunta a la cuenta de la razón social
+emisora y se emite todo grupo de `numero_factura` con al menos una consignación
+ahí.
+
+⚠️ `facturas.razon_social_id` **no sirve** para esto: guarda la razón social por
+la que está *afiliado* el cliente (la de la planilla PILA), no la que emite.
+En BRYGAR, filtrar por ahí dejaría fuera el 97% de la facturación.
+
+Consecuencias conscientes: el **efectivo puro** no tiene consignación, así que
+no se emite. Y el dato de cuenta **solo es confiable desde mayo-2026**: la
+migración del legacy metió los 32.084 pagos de 2020-2025 en una sola cuenta
+genérica (id 137) y sin `factura_id`. Ver [[legacy-sigue-vivo-desfase]].
+
+### Adquirientes
+
+La factura de un lote empresarial sale **a nombre de la empresa, por la suma de
+todos sus afiliados** — una sola factura, no una por trabajador. Verificado
+contra FE1184: $92.000 = 2 × $46.000 a nombre del empleador.
+
+`empresas` NO son todas personas jurídicas: en BRYGAR, de 227 registros solo 15
+tienen NIT de verdad. Se clasifica por la forma del documento (9-10 dígitos
+empezando en 8 o 9 → NIT), no por estar en esa tabla.
+
+Sin documento utilizable manda `dataico_configuraciones.consumidor_final`:
+apagado se retienen y se listan en el panel, encendido salen con
+`222222222222`. Va como interruptor porque en las 1.128 facturas que BRYGAR ya
+tiene ante la DIAN **no hay una sola** con esa figura.
+
+Un `numero_factura` que agrupe filas de empresas distintas queda **fuera** y se
+lista aparte: emitirlo cargaría a una empresa plata de otra. Son 4 en toda la
+historia de BRYGAR.
+
+### Doble emisión
+
+Es el riesgo real: una factura emitida dos veces ante la DIAN no se deshace,
+toca nota crédito. Tres defensas, en orden de importancia:
+
+1. Índice único `(aliado_id, numero_factura)` en `dataico_envios`.
+2. Reclamo atómico: `EmisionService::reclamar()` pasa la fila a `enviando` con
+   un UPDATE condicional antes de tocar el API. Quien afecte 0 filas se retira.
+3. `ShouldBeUnique` en el job (lock de caché, por servidor — la más débil).
+
+### `dataico:conciliar` — y por qué es delicado
+
+Reconstruye qué se emitió antes de que existiera este módulo. `fe_marcada`
+estaba en **cero en las 1.393 filas** de BRYGAR pese a tener 1.128 facturas ante
+la DIAN: nadie usó nunca el botón de marcar del flujo viejo.
+
+Cruza por **documento + valor exacto + coherencia de fechas**. Las dos reglas
+que costaron sangre:
+
+- **Un 429 NO es un 404.** Dataico responde `429 Demasiadas peticiones
+  paralelas` a las ráfagas. Tratarlo como «esa factura no existe» deja
+  facturas ya emitidas sin marcar → se reemiten. Va con 350 ms entre llamadas
+  y backoff; los fallos se cuentan aparte y el comando avisa.
+- **La factura de Brynex no puede ser posterior a la emisión.** Sin esa
+  condición, 189 de 1.111 cruces fueron falsos: el valor $46.000 se repite
+  cientos de veces y la cédula de quien paga todos los meses cruza con
+  cualquiera de sus facturas. El daño va en la dirección peligrosa — marcada
+  como emitida sin estarlo, no se emite nunca.
+
+Va en tres fases: precarga (3 consultas), consulta a Dataico (~20 min sin tocar
+la BD, porque el túnel SSH se cae en corridas largas) y escritura en tandas.
+Con `--cache` guarda lo traído y un recruce tarda segundos.
+
+### Piezas
+
+```
+app/Services/Dataico/SeleccionFacturasService.php  ← qué se emite y a nombre de quién
+app/Services/Dataico/PayloadBuilder.php            ← el JSON; único archivo que
+                                                     conoce el contrato de Dataico
+app/Services/Dataico/ApiClient.php                 ← HTTP; nunca reintenta un 4xx
+app/Services/Dataico/EmisionService.php            ← orquesta y deja rastro
+app/Jobs/EmitirFacturaDataicoJob.php               ← modo 'factura'
+app/Observers/ConsignacionObserver.php             ← dispara al entrar la plata
+app/Console/Commands/DataicoEmitir.php             ← modo 'diario' + reintentos
+app/Console/Commands/DataicoConciliar.php          ← cruce con lo ya emitido
+app/Console/Commands/DataicoNumeraciones.php       ← busca el numbering_range_id
+```
+
+```bash
+php artisan dataico:emitir --aliado=2 --simular --limite=1   # ver el JSON sin enviar
+php artisan dataico:emitir --aliado=2 --limite=10 --forzar   # tanda manual con la config apagada
+php artisan dataico:conciliar --aliado=2 --cache=/tmp/dc.json # cruce con lo ya emitido
+```
+
+`activo` gobierna solo la emisión **automática**; `--forzar` es una persona
+apretando el botón, y existe para poder probar de a diez sin dejar programado
+el barrido nocturno.

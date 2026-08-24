@@ -38,6 +38,10 @@ class AppServiceProvider extends ServiceProvider
         DocumentoCliente::observe(DocumentoObserver::class);
         Cliente::observe(ClienteObserver::class);
 
+        // Dispara la factura electrónica cuando entra plata a la cuenta de la
+        // razón social emisora y la config está en modo 'factura'.
+        \App\Models\Consignacion::observe(\App\Observers\ConsignacionObserver::class);
+
         // Paginación con vista personalizada (compatible con el diseño del sistema)
         Paginator::defaultView('vendor.pagination.custom');
         Paginator::defaultSimpleView('vendor.pagination.custom');

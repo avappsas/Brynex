@@ -81,6 +81,21 @@ class Kernel extends ConsoleKernel
             ->name('exportaciones-purgar')
             ->withoutOverlapping(30);
 
+        // ── Facturación electrónica: cierre del día ───────────────────
+        // Corre cada hora y el comando se queda solo con las configuraciones
+        // cuya `hora_cierre` cae en esta hora. Así cada razón social cierra a
+        // la hora que quiera sin volver a tocar este archivo, y las que están
+        // en modo 'factura' (emiten al llegar la consignación) se saltan solas.
+        // Reintenta también lo que quedó en `error` en corridas anteriores.
+        // Ejecución manual: php artisan dataico:emitir --aliado=2 --simular
+        $schedule->command('dataico:emitir')
+            ->hourly()
+            ->timezone('America/Bogota')
+            ->name('dataico-emitir')
+            ->withoutOverlapping(30)
+            ->runInBackground()
+            ->appendOutputTo(storage_path('logs/dataico.log'));
+
         // ── Reset mensual de n_plano ──────────────────────────────────
         // El día 1 de cada mes a las 00:01 (hora Colombia) resetea n_plano=1
         // y avanza mes_pagos/anio_pagos en todas las razones sociales.

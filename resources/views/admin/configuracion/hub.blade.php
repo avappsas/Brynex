@@ -74,6 +74,14 @@
             <div class="c-desc">Gestión y control de Facturación Electrónica a través del proveedor tecnológico Dataico.</div>
         </a>
 
+        <a class="cfg-card" href="{{ route('admin.facturacion.dataico.index') }}"
+           style="--c:#0e4d2f;--bc:#6ee7b7">
+            <span class="c-badge" style="background:#d1fae5;color:#065f46">Dataico API</span>
+            <div class="c-icon">🔗</div>
+            <div class="c-title">Dataico por API</div>
+            <div class="c-desc">Emisión automática ante la DIAN de lo que entra por la cuenta de la razón social emisora. Reemplaza la subida manual del Excel.</div>
+        </a>
+
 
         {{-- ── USUARIOS Y ACCESO ────────────────────────────── --}}
         <hr class="cfg-sep">

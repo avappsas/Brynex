@@ -479,6 +479,14 @@ Route::middleware('auth')->group(function () {
             Route::get('electronica', [$fe, 'index'])->name('electronica.index')->middleware('permiso:facturacion_electronica.ver');
             Route::get('electronica/exportar', [$fe, 'exportar'])->name('electronica.exportar')->middleware('permiso:facturacion_electronica.ver');
             Route::patch('electronica/marcar', [$fe, 'marcar'])->name('electronica.marcar')->middleware('permiso:facturacion_electronica.emitir');
+
+            // ── Dataico por API — reemplaza el Excel manual de arriba ──
+            $dc = \App\Http\Controllers\Admin\DataicoController::class;
+            Route::get('dataico', [$dc, 'index'])->name('dataico.index')->middleware('permiso:facturacion_electronica.ver');
+            Route::get('dataico/simular', [$dc, 'simular'])->name('dataico.simular')->middleware('permiso:facturacion_electronica.ver');
+            Route::post('dataico/reintentar', [$dc, 'reintentar'])->name('dataico.reintentar')->middleware('permiso:facturacion_electronica.emitir');
+            Route::post('dataico/omitir', [$dc, 'omitir'])->name('dataico.omitir')->middleware('permiso:facturacion_electronica.emitir');
+            Route::post('dataico/configuracion', [$dc, 'guardarConfiguracion'])->name('dataico.configuracion')->middleware('permiso:facturacion_electronica.configurar');
         });
 
         // ── Planos (Pago Planillas SS) ────────────────────────────────────

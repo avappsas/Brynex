@@ -136,6 +136,9 @@ class ModulosPermisosSeeder extends Seeder
             ['facturacion_electronica', 'Facturación electrónica (DIAN)', 'financiero', '📤', null, [
                 'ver' => ['Ver documentos electrónicos', ['A', 'C']],
                 'emitir' => ['Emitir a la DIAN',            ['A', 'C']],
+                // Solo admin: esta pantalla guarda el token del API de Dataico
+                // y decide qué se emite y desde qué fecha.
+                'configurar' => ['Configurar la conexión con Dataico', ['A']],
             ]],
             ['cobros', 'Cobros', 'financiero', '💰', 'admin.cobros.index', [
                 'ver' => ['Ver cobros',                ['A', 'C', 'U']],
