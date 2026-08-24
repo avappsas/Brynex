@@ -166,6 +166,9 @@ class PlanoPagoController extends Controller
                     'p.razon_social',
                     'p.tipo_modalidad_id',
                     'p.tipo_p',
+                    // La tabla lo necesita para marcar quién cotiza el mes en curso:
+                    // en una misma planilla conviven los dos períodos.
+                    'p.paga_mes_actual',
                     'p.updated_at',
                     // Desde factura (snapshot)
                     'f.id AS factura_id',

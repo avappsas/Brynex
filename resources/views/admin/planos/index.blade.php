@@ -247,6 +247,13 @@
 .chip-tipo.i   { background:#fef9c3; color:#a16207; }
 .chip-tipo.k   { background:#f3e8ff; color:#7e22ce; }
 .chip-tipo.tp  { background:#ffe4e6; color:#be123c; }
+/* Cotiza el mes en curso: en una misma planilla conviven los dos períodos y sin
+   esta marca no hay forma de saber por qué esta fila cubre un mes distinto. */
+.chip-mesact {
+    display:inline-block; margin-left:.2rem; padding:.1rem .3rem;
+    border-radius:4px; font-size:.58rem; font-weight:800; letter-spacing:.02em;
+    background:#dbeafe; color:#1d4ed8; cursor:help;
+}
 
 /* ── Pie: resumen ────────────────────────────────────────────────────── */
 .resumen-pie {
@@ -880,6 +887,11 @@
             };
             $clienteNombre = trim(($p->primer_nombre ?? '').' '.($p->primer_ape ?? ''));
 
+            // Período que cubre esta fila, para explicar la marca de mes actual.
+            $mesesCortos = [1=>'ene',2=>'feb',3=>'mar',4=>'abr',5=>'may',6=>'jun',
+                            7=>'jul',8=>'ago',9=>'sep',10=>'oct',11=>'nov',12=>'dic'];
+            $periodoFila = ($mesesCortos[(int) $p->mes_plano] ?? $p->mes_plano).'-'.$p->anio_plano;
+
             // Fechas ingreso/retiro en una sola columna
             $fIng = $p->fecha_ing ? sqldate($p->fecha_ing) : null;
             $fRet = $p->fecha_ret ? sqldate($p->fecha_ret) : null;
@@ -902,6 +914,9 @@
                 </a>
                 @else
                 <span class="chip-tipo {{ $tipoClass }}">{{ $p->tipo_modal_nombre ?? $p->tipo_p }}</span>
+                @endif
+                @if($p->paga_mes_actual ?? false)
+                <span class="chip-mesact" title="Cotiza el mes en curso — esta fila cubre {{ $periodoFila }}">MES ACT</span>
                 @endif
             </td>
             <td style="white-space:nowrap" data-order="{{ $p->no_identifi }}">

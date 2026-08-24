@@ -3323,6 +3323,9 @@ if (typeof MF !== 'undefined' && FC_CONTRATO_ID) {
                 alert(data.mensaje || 'Factura generada correctamente.');
                 window.location.reload();
                 @endif
+// Cotiza el mes en curso: el modal lo necesita para no tratar el mes de ingreso
+// como afiliación pura (ver modal_facturar_v2.js).
+const FC_PAGA_MES_ACTUAL = {{ ($contrato->paga_mes_actual ?? false) ? 'true' : 'false' }};
             }
         }
     });
@@ -3350,6 +3353,7 @@ function abrirModalFacturarContrato() {
 
 
 
+        pagaMesActual:     FC_PAGA_MES_ACTUAL,
 
 @if(request()->has('iframe') && session('success') === 'Contrato retirado correctamente.')
 // Modo iframe: retiro completado → notificar al padre

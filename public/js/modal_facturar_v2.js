@@ -19,6 +19,7 @@
  *     fechaIngresoMes: 4,          // mes de ingreso del contrato (0 = sin fecha)
  *     fechaIngresoAnio: 2026,
  *     esIndependiente: false,
+ *     pagaMesActual: false,        // cotiza el mes en curso (contratos.paga_mes_actual)
  *     costoAfiliacion: 120000,
  *     arlNivel: 1,
  *     distDefaults: { asesor: 0, retiro: 0, encargado: 0 },
@@ -434,7 +435,10 @@ const MF = (function () {
         _moraTocada = false;
         _mora = parseInt(_cfg.moraCalculada || 0);
         setVal('mf-mora', _mora);
-        document.querySelectorAll('input[name="mf_indep_modo"]').forEach(r => { if (r.value === 'normal') r.checked = true; });
+        // Quien cotiza el mes en curso cobra planilla y afiliación juntas desde el
+        // mes de ingreso: ese es su default, no "solo afiliación".
+        const modoPorDefecto = _cfg.pagaMesActual ? 'ambos' : 'normal';
+        document.querySelectorAll('input[name="mf_indep_modo"]').forEach(r => { r.checked = (r.value === modoPorDefecto); });
         _saldoFavor = 0; _saldoPendiente = 0;
         // Reset checkbox cartera
         const chkCart = document.getElementById('mf-chk-cartera');
@@ -1010,7 +1014,11 @@ const MF = (function () {
             return;
         }
 
-        if (!_cfg.esIndependiente) {
+        // Quien cotiza el mes en curso cobra afiliación y planilla juntas en el mes
+        // de ingreso, así que elige igual que un independiente aunque su modalidad
+        // no lo sea — la Y de solo ARL es el caso. Preguntar solo por la modalidad
+        // lo mandaba a afiliación pura ignorando el flag.
+        if (!_cfg.esIndependiente && !_cfg.pagaMesActual) {
             if (avisoEl) {
                 avisoEl.style.display = 'block';
                 avisoEl.style.background = '';
