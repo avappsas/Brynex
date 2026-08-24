@@ -22,7 +22,7 @@ class Contrato extends BaseModel
         'eps_id', 'pension_id', 'arl_id', 'n_arl', 'arl_modo', 'arl_nit_cotizante', 'caja_id',
         'cargo', 'fecha_ingreso', 'fecha_retiro', 'fecha_retiro_pendiente', 'retiro_pendiente_cobrar_admon', 'actividad_economica_id',
         'salario', 'ibc', 'porcentaje_caja',
-        'administracion', 'admon_asesor', 'costo_afiliacion', 'afiliacion_asesor', 'seguro',
+        'administracion', 'admon_asesor', 'costo_afiliacion', 'afiliacion_asesor', 'seguro', 'seguro_id',
         'asesor_id', 'encargado_id',
         'motivo_afiliacion_id', 'motivo_retiro_id',
         'fecha_arl', 'envio_planilla', 'fecha_probable_pago', 'modo_probable_pago',
@@ -77,6 +77,17 @@ class Contrato extends BaseModel
     public function plan(): BelongsTo
     {
         return $this->belongsTo(PlanContrato::class, 'plan_id');
+    }
+
+    /**
+     * El seguro del catálogo del aliado que se le vendió, si lleva alguno.
+     *
+     * Se llama `seguroPlan` y no `seguro` porque `seguro` ya es la columna con el valor
+     * cobrado: cuál se vendió lo dice la relación, cuánto se cobra lo dice el campo.
+     */
+    public function seguroPlan(): BelongsTo
+    {
+        return $this->belongsTo(AliadoSeguro::class, 'seguro_id');
     }
 
     public function tipoModalidad(): BelongsTo
@@ -192,6 +203,19 @@ class Contrato extends BaseModel
 
     /** Modalidad UPC: afiliar a alguien fuera del núcleo familiar del cotizante. Solo EPS. */
     const MODALIDAD_UPC = 13;
+
+    /**
+     * Modalidad Seguros: a esta persona solo se le vendió un seguro. No lleva EPS, ARL,
+     * pensión ni caja, no entra en planilla y no paga administración — el mes vale lo que
+     * valga el seguro. Ver AliadoSeguro y `seguro_id`.
+     */
+    const MODALIDAD_SEGUROS = 17;
+
+    /** ¿Este contrato es de solo seguro (sin seguridad social)? */
+    public function esSoloSeguro(): bool
+    {
+        return (int) $this->tipo_modalidad_id === self::MODALIDAD_SEGUROS;
+    }
 
     public function aplicaCargoSinCcf(): bool
     {
