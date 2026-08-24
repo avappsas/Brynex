@@ -181,7 +181,12 @@ class FacturacionController extends Controller
             $esIndActPrimerMes = false;
 
             $esArlModalidad = (int)($c->tipo_modalidad_id) === 15;
-            if ($esArlModalidad) {
+            // Solo seguro: no cotiza, no paga administración y no genera planilla.
+            $esSoloSeguro   = (int)($c->tipo_modalidad_id) === \App\Models\Contrato::MODALIDAD_SEGUROS;
+            if ($esSoloSeguro) {
+                // No hay días que cotizar: se cobra el seguro completo cada mes.
+                $diasCotizar = 0;
+            } elseif ($esArlModalidad) {
                 $fArl = $c->fecha_arl ?? $c->fecha_ingreso;
                 if ($fArl) {
                     $mesArl  = (int)$fArl->month;
@@ -457,9 +462,13 @@ class FacturacionController extends Controller
 
             $esIndActPrimerMes = $c->es_ind_act_primer_mes ?? false;
             $esArlModalidad = (int)($c->tipo_modalidad_id) === 15;
+            // Solo seguro: no cotiza, no paga administración y no genera planilla.
+            $esSoloSeguro   = (int)($c->tipo_modalidad_id) === \App\Models\Contrato::MODALIDAD_SEGUROS;
             
             $esAfil = false;
-            if ($esArlModalidad) {
+            if ($esSoloSeguro) {
+                $esAfil = false;   // el seguro se cobra igual todos los meses, no hay afiliación
+            } elseif ($esArlModalidad) {
                 $esAfil = true;
             } elseif ($c->fecha_ingreso) {
                 $fIngC = $c->fecha_ingreso;
@@ -497,7 +506,7 @@ class FacturacionController extends Controller
                         $vAdmonBase = 0;
                         $vAdmonAsesor = 0;
                     }
-                } elseif ($esArlModalidad && !$esAfil) {
+                } elseif ($esSoloSeguro || ($esArlModalidad && !$esAfil)) {
                     $vAdmonBase = 0;
                     $vAdmonAsesor = 0;
                 } elseif ($esAfil) {
@@ -527,6 +536,11 @@ class FacturacionController extends Controller
                 } elseif ($esRetirado && !$factRetiroPreview) {
                     $vEps = $vArl = $vPen = $vCaja = $vIva = $vSS = 0;
                     $vTot = 0;
+                } elseif ($esSoloSeguro) {
+                    // El mes vale el seguro y nada más: sin seguridad social, sin
+                    // administración, sin IVA y sin costo de afiliación.
+                    $vEps = $vArl = $vPen = $vCaja = $vIva = $vSS = 0;
+                    $vTot = (int)($c->seguro ?? 0);
                 } elseif ($esArlModalidad && !$esAfil) {
                     $vEps = $vArl = $vPen = $vCaja = $vIva = $vSS = 0;
                     $vTot = 0;
@@ -808,12 +822,11 @@ class FacturacionController extends Controller
 
             $esIndVenc    = (int) $contrato->tipo_modalidad_id === 10;
             $esIndAct     = (bool) ($contrato->paga_mes_actual ?? false);
-            $esIndep      = $contrato->tipoModalidad?->esIndependiente() ?? false;
             $esMesIngreso = $contrato->fecha_ingreso
                 && (int) $contrato->fecha_ingreso->month === $mes
                 && (int) $contrato->fecha_ingreso->year  === $anio;
 
-            $esAmbos = ($indepModo === 'ambos') && $esIndep && ($esIndVenc || $esIndAct) && $esMesIngreso;
+            $esAmbos = ($indepModo === 'ambos') && ($esIndVenc || $esIndAct) && $esMesIngreso;
 
             if ($esAmbos) {
                 if ($facturasDup->contains(fn ($f) => $f->tipo === 'afiliacion')) {
@@ -1069,7 +1082,6 @@ class FacturacionController extends Controller
             $c = $contratosCargados->get($cId);
             if (!$c) { $totalesRealesPorContrato[$cId] = 0; continue; }
             
-            $esIndep = $c->tipoModalidad?->esIndependiente() ?? false;
             $esIndAct = (bool) ($c->paga_mes_actual ?? false);
             $esArl = (int)($c->tipo_modalidad_id) === 15;
             $tipoForzado = $validated['tipo'];
@@ -1084,18 +1096,21 @@ class FacturacionController extends Controller
                 $esMesIng = ($mes === $mesIng && $anio === $anioIng);
             }
 
-            if ($esMesIng) {
-                if ($esArl) {
-                    $tipoForzado = 'afiliacion';
-                } elseif (!$esIndep) {
-                    $tipoForzado = 'afiliacion';
-                } elseif (!$esIndAct) {
-                    $tipoForzado = 'afiliacion';
-                }
+            // Afiliación pura salvo que cotice el mes en curso — lo decide el
+            // flag, no la modalidad (ver CobroContratoService::calcular).
+            if ($esMesIng && ($esArl || ! $esIndAct)) {
+                $tipoForzado = 'afiliacion';
             }
 
             if ($esArl) {
                 $tipoForzado = 'afiliacion';
+            }
+
+            // Solo seguro: siempre la mensualidad del seguro, nunca afiliación.
+            // Misma decisión que en la segunda pasada, donde se crea la factura.
+            $esSoloSeguro = (int) $c->tipo_modalidad_id === \App\Models\Contrato::MODALIDAD_SEGUROS;
+            if ($esSoloSeguro) {
+                $tipoForzado = 'planilla';
             }
 
             $esIndActPrimerMes = $esIndAct && isset($esMesIng) && $esMesIng;
@@ -1166,6 +1181,14 @@ class FacturacionController extends Controller
                 $adminAsesor = ($esAfiliacion && !$esIndActPrimerMes) ? 0 : intval($c->admon_asesor   ?? 0);
                 $otrosAdmon  = intval($validated['otros_admon'] ?? 0);
 
+                // Solo seguro: el mes vale el seguro y nada más.
+                if ($esSoloSeguro) {
+                    $calcSS      = ['eps' => 0, 'arl' => 0, 'afp' => 0, 'caja' => 0];
+                    $admon       = 0;
+                    $adminAsesor = 0;
+                    $afiliacion  = 0;
+                }
+
                 $totalSS  = $calcSS['eps'] + $calcSS['arl'] + $calcSS['afp'] + $calcSS['caja'];
                 // IVA sobre administración + costo de afiliación (ver IvaService)
                 $iva = \App\Services\IvaService::deFactura($tieneIva, $admon, $adminAsesor, $afiliacion);
@@ -1173,7 +1196,9 @@ class FacturacionController extends Controller
                 $total = $totalSS + $admon + $adminAsesor + $otrosAdmon + $seguro + $afiliacion + $iva;
 
                 $moraCliente = 0;
-                if ($esModoIndividual) {
+                if ((int) $c->tipo_modalidad_id === \App\Models\Contrato::MODALIDAD_SEGUROS) {
+                    $moraCliente = 0;   // sin planilla que pagar tarde no hay mora
+                } elseif ($esModoIndividual) {
                     $moraCliente = $esAfiliacion ? 0 : (int)($validated['mora'] ?? 0);
                 } else {
                     if (!$esAfiliacion && !$moraAnulada) {
@@ -1310,7 +1335,6 @@ class FacturacionController extends Controller
                 $indepModo      = $validated['indep_modo'] ?? 'normal';
                 $esIndVenc      = (int)($contrato->tipo_modalidad_id) === 10;
                 $esIndActCheck  = (bool) ($contrato->paga_mes_actual ?? false);
-                $esIndepCheck   = $contrato->tipoModalidad?->esIndependiente() ?? false;
                 $esMesIngresoCheck = false;
                 if ($contrato->fecha_ingreso) {
                     $esMesIngresoCheck = ((int)$contrato->fecha_ingreso->month === $mes
@@ -1318,7 +1342,6 @@ class FacturacionController extends Controller
                 }
 
                 $esAmbos = ($indepModo === 'ambos')
-                    && $esIndepCheck
                     && ($esIndVenc || $esIndActCheck)
                     && $esMesIngresoCheck;
 
@@ -1611,9 +1634,8 @@ class FacturacionController extends Controller
                 }
 
 
-                $esIndependiente = $contrato->tipoModalidad?->esIndependiente() ?? false;
-                // Mes actual: cobra afiliación + planilla el mismo mes de ingreso
-                // I Venc (id=10): solo afiliación el primer mes
+                // Mes actual: cobra afiliación + planilla el mismo mes de ingreso.
+                // Sin el flag: solo afiliación el primer mes.
                 $esIndAct = (bool) ($contrato->paga_mes_actual ?? false);
                 $tipoForzado = $validated['tipo'];
 
@@ -1622,21 +1644,24 @@ class FacturacionController extends Controller
                     $anioIngreso = (int)$contrato->fecha_ingreso->year;
                     $esMesIngreso = ($mes === $mesIngreso && $anio === $anioIngreso);
 
-                    if ($esMesIngreso) {
-                        if (!$esIndependiente) {
-                            // Empresa / dependiente: siempre afiliación en el mes de ingreso
-                            $tipoForzado = 'afiliacion';
-                        } elseif (!$esIndAct) {
-                            // I Venc: solo afiliación el primer mes
-                            $tipoForzado = 'afiliacion';
-                        }
-                        // Mes actual: tipo=planilla (afiliación se suma al total, ver abajo)
+                    if ($esMesIngreso && ! $esIndAct) {
+                        // Sin mes actual, el primer mes es solo afiliación.
+                        // Con mes actual: tipo=planilla y la afiliación se suma al
+                        // total más abajo.
+                        $tipoForzado = 'afiliacion';
                     }
                 }
 
                 // ── Gestión ARL (id=15): SIEMPRE afiliación, nunca planilla ──
                 if ((int)$contrato->tipo_modalidad_id === 15) {
                     $tipoForzado = 'afiliacion';
+                }
+
+                // ── Solo seguro: SIEMPRE la mensualidad, nunca afiliación ──
+                // Sin esto, el mes de ingreso lo tomaría por afiliación de empresa y
+                // cobraría costo de afiliación en vez del seguro.
+                if ($contrato->esSoloSeguro()) {
+                    $tipoForzado = 'planilla';
                 }
 
                 // ─── Detectar primer mes de quien paga el mes actual ───────
@@ -1749,6 +1774,16 @@ class FacturacionController extends Controller
                 }
                 $otrosAdmon  = intval($validated['otros_admon'] ?? 0);
 
+                // Solo seguro: el mes vale el seguro y nada más. Se fuerza aquí, después de
+                // los overrides manuales, para que ninguna casilla de la UI meta seguridad
+                // social en una factura que no cotiza nada.
+                if ($contrato->esSoloSeguro()) {
+                    $calcSS      = ['eps' => 0, 'arl' => 0, 'afp' => 0, 'caja' => 0];
+                    $admon       = 0;
+                    $adminAsesor = 0;
+                    $afiliacion  = 0;
+                    $diasCotizar = 0;
+                }
 
                 $totalSS  = $calcSS['eps'] + $calcSS['arl'] + $calcSS['afp'] + $calcSS['caja'];
 
@@ -1770,7 +1805,9 @@ class FacturacionController extends Controller
                 // cada RS tiene su propio vencimiento y su propio cálculo.
                 // Por diseño: en masivo el frontend envía mora=0 (pendiente de impl. por RS).
                 $moraCliente = 0;
-                if ($esModoIndividual) {
+                if ($contrato->esSoloSeguro()) {
+                    $moraCliente = 0;   // sin planilla que pagar tarde no hay mora
+                } elseif ($esModoIndividual) {
                     // Modo individual: usar el valor del modal (puede ser 0 o el calculado)
                     // Si es afiliación pura, forzar mora=0 sin importar lo que envíe el frontend
                     $moraCliente = $esAfiliacion ? 0 : (int)($validated['mora'] ?? 0);
@@ -2683,6 +2720,19 @@ class FacturacionController extends Controller
     public function recibo(int $facturaId)
     {
         $aliadoId = session('aliado_id_activo');
+
+        // Solo seguro: recibo propio, y se resuelve antes de armar nada más. El recibo
+        // de siempre imprime EPS, ARL, pensión y caja en guiones y notas legales sobre
+        // incapacidades que aquí no aplican, y para llegar hasta allá agrupa por
+        // numero_factura y suma saldos — trabajo que este recibo no necesita.
+        $facturaSeguro = Factura::where('aliado_id', $aliadoId)
+            ->with(['contrato.cliente', 'contrato.seguroPlan', 'usuario', 'consignaciones.bancoCuenta'])
+            ->findOrFail($facturaId);
+
+        if ($facturaSeguro->contrato?->esSoloSeguro()) {
+            return view('admin.facturacion.recibo_seguro', ['factura' => $facturaSeguro]);
+        }
+
         $factura  = Factura::where('aliado_id', $aliadoId)
             ->with(['contrato.cliente','contrato.eps','contrato.arl',
                     'contrato.pension','contrato.caja','contrato.razonSocial',
@@ -3270,15 +3320,12 @@ class FacturacionController extends Controller
             }
 
             // Detectar si el contrato es afiliación para este período
-            $esIndependiente = $contrato->tipoModalidad?->esIndependiente() ?? false;
             $esIndAct        = (bool) ($contrato->paga_mes_actual ?? false);
             $esArlModalidad  = (int)($contrato->tipo_modalidad_id) === 15;
             $esMesIngreso    = $contrato->fecha_ingreso
                 && (int)$contrato->fecha_ingreso->month === $mes
                 && (int)$contrato->fecha_ingreso->year  === $anio;
-            $esAfiliacion    = $esArlModalidad
-                || ($esMesIngreso && !$esIndependiente)
-                || ($esMesIngreso && $esIndependiente && !$esIndAct);
+            $esAfiliacion    = $esArlModalidad || ($esMesIngreso && ! $esIndAct);
 
             // Contrato con ingreso en mes futuro: aún no inicia → sin mora
             if ($contrato->fecha_ingreso) {
@@ -3288,6 +3335,11 @@ class FacturacionController extends Controller
                     return ['mora_cliente' => 0, 'mora_real' => 0, 'mora_dias' => 0, 'mora_fecha_vence' => null, 'mora_dia_habil' => 0, 'mora_info' => '✅ Ingreso futuro — sin mora', 'mora_aplica' => false];
                 }
             }
+            // Solo seguro: no hay planilla que pagar tarde.
+            if ($contrato->esSoloSeguro()) {
+                return ['mora_cliente' => 0, 'mora_real' => 0, 'mora_dias' => 0, 'mora_fecha_vence' => null, 'mora_dia_habil' => 0, 'mora_info' => '💼 Seguro — sin mora', 'mora_aplica' => false];
+            }
+
             // Las afiliaciones nunca tienen mora (no hay pago de planilla)
             if ($esAfiliacion) {
                 return ['mora_cliente' => 0, 'mora_real' => 0, 'mora_dias' => 0, 'mora_fecha_vence' => null, 'mora_dia_habil' => 0, 'mora_info' => '✅ Afiliación — sin mora', 'mora_aplica' => false];
@@ -3984,8 +4036,10 @@ class FacturacionController extends Controller
             $diasCotizar = 30;
             $esIndActPrimerMes = false;
             $esArlModalidad = (int)($c->tipo_modalidad_id) === 15;
+            // Solo seguro: no cotiza, no paga administración y no genera planilla.
+            $esSoloSeguro   = (int)($c->tipo_modalidad_id) === \App\Models\Contrato::MODALIDAD_SEGUROS;
 
-            if ($esArlModalidad) {
+            if ($esSoloSeguro || $esArlModalidad) {
                 $diasCotizar = 0;
             } elseif ($c->fecha_ingreso) {
                 $fIng = $c->fecha_ingreso;
@@ -4011,7 +4065,9 @@ class FacturacionController extends Controller
 
             // ¿Es afiliación pura?
             $esAfil = false;
-            if ($esArlModalidad) {
+            if ($esSoloSeguro) {
+                $esAfil = false;   // el seguro se cobra igual todos los meses
+            } elseif ($esArlModalidad) {
                 $esAfil = true;
             } elseif ($c->fecha_ingreso) {
                 $fIngC = $c->fecha_ingreso;
@@ -4073,7 +4129,11 @@ class FacturacionController extends Controller
             $esIndActPrimerMes = false;
 
             $esArlModalidad = (int)($c->tipo_modalidad_id) === 15;
-            if ($esArlModalidad) {
+            // Solo seguro: no cotiza, no paga administración y no genera planilla.
+            $esSoloSeguro   = (int)($c->tipo_modalidad_id) === \App\Models\Contrato::MODALIDAD_SEGUROS;
+            if ($esSoloSeguro) {
+                $diasCotizar = 0;
+            } elseif ($esArlModalidad) {
                 $fArl = $c->fecha_arl ?? $c->fecha_ingreso;
                 if ($fArl) {
                     $mesArl  = (int)$fArl->month;
@@ -4173,6 +4233,11 @@ class FacturacionController extends Controller
             } elseif ($esRetirado) {
                 $vEps = $vArl = $vAFP = $vCaja = $vIva = $vAdm = 0;
                 $vTot = 0;
+                $estado = 'sin_factura';
+            } elseif ($esSoloSeguro) {
+                // El mes vale el seguro y nada más.
+                $vEps = $vArl = $vAFP = $vCaja = $vIva = $vAdm = $vSS = 0;
+                $vTot = (int)($c->seguro ?? 0);
                 $estado = 'sin_factura';
             } elseif ($esArlModalidad && !$esAfil) {
                 $vEps = $vArl = $vAFP = $vCaja = $vIva = $vAdm = 0;

@@ -26,6 +26,28 @@ class CobroContratoService
      */
     public static function calcular(Contrato $contrato, int $mes, int $anio): array
     {
+        // Solo seguro: no cotiza nada, no paga administración y no genera planilla.
+        // El mes vale lo que valga el seguro que se le vendió, y punto.
+        if ($contrato->esSoloSeguro()) {
+            $seguro = (int) ($contrato->seguro ?? 0);
+
+            return [
+                'tipo'       => 'planilla',   // es el cobro mensual, no una afiliación
+                'eps'        => 0,
+                'arl'        => 0,
+                'afp'        => 0,
+                'caja'       => 0,
+                'ss'         => 0,
+                'admon'      => 0,
+                'seguro'     => $seguro,
+                'afiliacion' => 0,
+                'iva'        => 0,
+                'mora'       => 0,            // sin planilla que pagar tarde no hay mora
+                'total'      => $seguro,
+                'dias'       => 0,
+            ];
+        }
+
         // Detectar tipo
         $esIndependiente = $contrato->tipoModalidad?->esIndependiente() ?? false;
         $esIndAct        = (bool) ($contrato->paga_mes_actual ?? false);
@@ -40,15 +62,14 @@ class CobroContratoService
                 && (int) $contrato->fecha_ingreso->year === $anio;
         }
 
+        // El primer mes es afiliación pura salvo que el contrato cotice el mes en
+        // curso: ese cobra afiliación y planilla juntas. Lo decide el flag y no la
+        // modalidad — la Y de solo ARL también puede pagar mes actual y no está
+        // entre las independientes, así que preguntar por la modalidad la mandaba
+        // a afiliación pura ignorando el flag.
         $esAfiliacion = false;
-        if ($esMesIngreso) {
-            if ($esArl) {
-                $esAfiliacion = true;
-            } elseif (!$esIndependiente) {
-                $esAfiliacion = true; // empresa: afiliación pura
-            } elseif (!$esIndAct) {
-                $esAfiliacion = true; // I Venc: afiliación pura
-            }
+        if ($esMesIngreso && ($esArl || ! $esIndAct)) {
+            $esAfiliacion = true;
         }
         $esIndActPrimerMes = $esIndAct && $esMesIngreso;
 
