@@ -54,6 +54,25 @@ class Plano extends BaseModel
         'paga_mes_actual' => 'boolean',
     ];
 
+    /**
+     * El plano es un snapshot del período que cotiza el contrato. Quien lo crea
+     * debería decirlo, pero no todos pasan por generarDesdeContrato(): los
+     * retiros y los traslados de razón social arman el registro a mano. Si no
+     * viene, se toma del contrato en este momento.
+     *
+     * Sin esto el plano nace en mes vencido y la persona aparece un mes tarde
+     * en la planilla — o no aparece en la que le toca.
+     */
+    protected static function booted(): void
+    {
+        static::creating(function (self $plano) {
+            if ($plano->paga_mes_actual === null && $plano->contrato_id) {
+                $plano->paga_mes_actual = (bool) Contrato::whereKey($plano->contrato_id)
+                    ->value('paga_mes_actual');
+            }
+        });
+    }
+
     public function factura()      { return $this->belongsTo(Factura::class); }
     public function contrato()     { return $this->belongsTo(Contrato::class); }
     public function razonSocial()  { return $this->belongsTo(RazonSocial::class, 'razon_social_id'); }
@@ -169,8 +188,16 @@ class Plano extends BaseModel
      * Genera el registro de plano a partir de un contrato y factura.
      * Snapshot de los datos al momento de facturar.
      */
-    public static function generarDesdeContrato(Contrato $contrato, Factura $factura, ?string $fechaRetiro = null): static
+    public static function generarDesdeContrato(Contrato $contrato, Factura $factura, ?string $fechaRetiro = null): ?static
     {
+        // ── Modalidades que no cotizan seguridad social ──────────────────────────
+        // Un contrato de solo seguro no va en ninguna planilla: no tiene EPS, ARL,
+        // pensión ni caja que reportar. Generarle un plano metería una línea vacía
+        // en el TXT del operador. Ningún llamador usa el valor de retorno.
+        if ($contrato->esSoloSeguro()) {
+            return null;
+        }
+
         // ── Protección idempotente: no generar dos planos para la misma factura ──
         // Si ya existe un plano activo (no soft-deleted) para esta factura_id, retornarlo
         // sin crear un duplicado (ej: flujo abonar() que completa una factura ya planificada).
