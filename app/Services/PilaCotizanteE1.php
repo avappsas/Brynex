@@ -10,8 +10,8 @@ namespace App\Services;
  * El operador rechaza una planilla E ordinaria con 30 días de salud y cero de
  * pensión, así que el pago se parte:
  *
- *   paso 1 — planilla E: un día de pensión y nada más. Salud y caja van en
- *            cero y la ARL se reporta con tarifa cero.
+ *   paso 1 — planilla E: un día de pensión y uno de caja. La salud va en cero
+ *            y la ARL se reporta con su día pero con tarifa cero.
  *   paso 2 — planilla N (corrección de la anterior, ya pagada): salud, ARL y
  *            caja suben a los días reales con IBC completo, y el subtipo pasa
  *            a 4 (requisitos cumplidos para pensión) para justificar que la
@@ -38,18 +38,23 @@ class PilaCotizanteE1
     private const AFP_POR_DEFECTO = '25-14';
 
     /**
-     * Operadores que NO exigen alinear pensión con riesgos en el paso 1, y a
-     * los que por tanto se les puede mandar la ARL en cero días.
+     * Operadores que aceptan que la corrección cambie el subtipo de cotizante.
      *
-     * ARUS rechaza esa forma con eo.val.2.244.2 ("los días de pensión y
-     * riesgos deben ser iguales") y eo.val.2.198.2, su equivalente en IBC;
-     * Simple la acepta. Como el día de ARL va con tarifa cero, las dos formas
-     * liquidan por el mismo valor, así que el default —para un operador que no
-     * esté en esta lista— es el día puesto, que es el que pasa en todas partes.
+     * Está vacía a propósito: **ninguno lo acepta**. Probado contra Simple y
+     * ARUS el 24-ago-2026, los dos responden eo.val.2.746, "el cambio de
+     * subtipo de cotizante no está permitido". Simple además agrega
+     * eo.val.2.053.1 ("el subtipo 4 no debe tener código de administradora,
+     * cotización y/o tarifa para Pensiones").
      *
-     * Códigos PILA de operador de información: 88 = Simple, 89 = ARUS Enlace.
+     * Queda como lista y no como un `false` porque es justo la pieza que le
+     * falta al esquema —sin el subtipo 4, el operador exige días e IBC iguales
+     * entre pensión, salud y riesgos (eo.val.2.244 y 2.198), y la corrección a
+     * 1/30/30 es imposible—. Si algún operador llega a permitirlo, se agrega su
+     * código aquí y el esquema completo funciona.
+     *
+     * Códigos PILA: 88 = Simple, 89 = ARUS Enlace.
      */
-    private const OPERADORES_SIN_ALINEAR_RIESGOS = ['88'];
+    private const OPERADORES_PERMITEN_CAMBIO_SUBTIPO = [];
 
     /** Departamento del cotizante sin caja propia, con la marca de exterior. */
     private const DEP_SIN_CAJA = '95';
@@ -94,30 +99,45 @@ class PilaCotizanteE1
         // se pertenece por defecto, sin trámite de traslado—.
         $codAfp = self::afpDelCliente($p, $codAfpPila);
 
-        // Dentro de una corrección la administradora de pensión se calla en las
-        // dos líneas: ver el comentario de PlanoPilaTxtService al armarlas.
-        if (! empty($p->en_correccion)) {
-            $codAfp = '';
-        }
-
         // La pensión se queda en un día en las DOS planillas: es el mínimo que
         // el operador exige para aceptar el registro, no un aporte comprado.
         $res['colombianoExterior'] = false;
         $res['tienePension'] = true;
         $res['codAfpPila'] = $codAfp;
-        $res['subtipoCotizante'] = ($paso === 2) ? 4 : 0;
+        // El subtipo 4 solo entra en la corrección, y solo donde el operador
+        // lo permita: ver OPERADORES_PERMITEN_CAMBIO_SUBTIPO.
+        $permiteCambioSubtipo = in_array(
+            trim((string) ($p->codigo_operador ?? '')),
+            self::OPERADORES_PERMITEN_CAMBIO_SUBTIPO,
+            true
+        );
+        $res['subtipoCotizante'] = ($paso === 2 && $permiteCambioSubtipo) ? 4 : 0;
         $res['diasPension'] = 1;
         $res['ibcAfp'] = $ibcUnDia;
         $res['tarifaAfpDecimal'] = 0.16;
         $res['vAfp'] = PilaCotizanteCalculator::roundPila($ibcUnDia * 0.16);
 
         if ($paso === 2) {
-            // El subtipo 4 y una administradora de pensión no pueden convivir:
-            // "El código de la administradora de Pensión debe estar vacío"
-            // (eo.val.2.116). Los días, el IBC y la cotización del día de
-            // pensión sí se conservan —así viene el archivo que el operador
-            // aceptó—, pero la administradora se calla.
-            $res['codAfpPila'] = '';
+            // Con el subtipo 4 la pensión no puede llevar administradora
+            // (eo.val.2.116). Sin él se deja tal cual quedó pagada: el operador
+            // contrasta la línea C contra la planilla pagada, no contra la
+            // línea A del archivo, y cualquier diferencia sale como
+            // eo.val.2.087.
+            if ($permiteCambioSubtipo) {
+                $res['codAfpPila'] = '';
+            }
+
+            // La línea C puede retirar la pensión del registro en vez de
+            // repetirla: es la forma de preguntarle al operador si una
+            // corrección que solo anexa días de salud, riesgos y caja le sirve.
+            if (($p->paso2_pension ?? 'igual') === 'cero') {
+                $res['tienePension'] = false;
+                $res['codAfpPila'] = '';
+                $res['diasPension'] = 0;
+                $res['ibcAfp'] = 0;
+                $res['tarifaAfpDecimal'] = 0.0;
+                $res['vAfp'] = 0;
+            }
 
             // El operador exige IBC de otros parafiscales cuando el cotizante
             // va marcado como exonerado (eo.val.2.439); el archivo del cliente
@@ -159,20 +179,15 @@ class PilaCotizanteE1
             $res['munCod'] = self::MUN_SIN_CAJA;
         }
 
-        // La ARL nunca cobra en el paso 1 —el aporte de riesgos completo entra
-        // en la corrección—, pero si va con días o en cero depende del
-        // operador: ver OPERADORES_SIN_ALINEAR_RIESGOS.
-        //
-        // La tarifa en cero, en cambio, la obliga la novedad de ausentismo en
-        // todos: "cuando se presenta novedad de ausentismo la tarifa de ARL
-        // debe de ser cero" (eo.val.2.447).
-        $alineaRiesgos = ! in_array(
-            trim((string) ($p->codigo_operador ?? '')),
-            self::OPERADORES_SIN_ALINEAR_RIESGOS,
-            true
-        );
-        $res['diasArl'] = $alineaRiesgos ? 1 : 0;
-        $res['ibcArl'] = $alineaRiesgos ? $ibcUnDia : 0;
+        // La ARL va con su día pero sin cobrar. El día tiene que estar: ARUS
+        // exige que pensión y riesgos coincidan en días e IBC (eo.val.2.244.2 y
+        // eo.val.2.198.2) y Simple lo acepta igual, así que un solo día sirve
+        // en los dos. La tarifa en cero la obliga la novedad de ausentismo:
+        // "cuando se presenta novedad de ausentismo la tarifa de ARL debe de
+        // ser cero" (eo.val.2.447). El aporte de riesgos no se paga en este
+        // esquema ni aquí ni en la corrección.
+        $res['diasArl'] = 1;
+        $res['ibcArl'] = $ibcUnDia;
         $res['tarifaArlStr'] = '0.00000';
         $res['tarifaArlDecimal'] = 0.0;
         $res['vArl'] = 0;
@@ -180,9 +195,13 @@ class PilaCotizanteE1
         // La caja va en cero, igual que la salud: el mes completo de caja entra
         // en la corrección. Sin esto el paso 1 cobraría un día de caja que
         // después habría que volver a cobrar completo.
-        $res['diasCcf'] = 0;
-        $res['ibcCcf'] = 0;
-        $res['vCcf'] = 0;
+        // La caja sí cobra su día. La corrección no la sube al mes completo
+        // —el archivo del cliente la deja en un día en las dos planillas y sus
+        // totales no traen registro tipo 07—, así que este es el único aporte
+        // de caja del esquema.
+        $res['diasCcf'] = 1;
+        $res['ibcCcf'] = $sinCaja ? 100 : $ibcUnDia;
+        $res['vCcf'] = $sinCaja ? 100 : PilaCotizanteCalculator::roundPila($ibcUnDia * 0.04);
 
         $res['horasLaboradas'] = 0;
 
@@ -265,6 +284,18 @@ class PilaCotizanteE1
                 $res['ibcAfp'] = $ibcUnDia;
                 $res['tarifaAfpDecimal'] = 0.16;
                 $res['vAfp'] = PilaCotizanteCalculator::roundPila($ibcUnDia * 0.16);
+                break;
+
+                // Sin pensión y sin invocar ningún subtipo: la forma más limpia de
+                // preguntar si algún TIPO DE PLANILLA permite lo que el tipo E no.
+            case 'sin_pension_subtipo0':
+                $res['subtipoCotizante'] = 0;
+                $res['tienePension'] = false;
+                $res['codAfpPila'] = '';
+                $res['diasPension'] = 0;
+                $res['ibcAfp'] = 0;
+                $res['tarifaAfpDecimal'] = 0.0;
+                $res['vAfp'] = 0;
                 break;
 
                 // Sin pensión invocando el subtipo 3 (no obligado por edad).

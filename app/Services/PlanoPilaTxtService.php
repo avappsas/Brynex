@@ -2,8 +2,8 @@
 
 namespace App\Services;
 
-use Illuminate\Support\Facades\DB;
 use App\Models\Plano;
+use Illuminate\Support\Facades\DB;
 
 class PlanoPilaTxtService
 {
@@ -132,6 +132,9 @@ class PlanoPilaTxtService
         $pasoE1 = ((int) ($params['paso'] ?? 1) === 2) ? 2 : 1;
         // Banco de pruebas: forma alterna del archivo de la E-1 (ver PilaCotizanteE1).
         $varianteE1 = $params['variante_e1'] ?? null;
+        // Qué hace la línea C con la pensión: 'igual' la deja como quedó pagada,
+        // 'cero' la retira del registro por completo.
+        $paso2Pension = $params['paso2_pension'] ?? 'igual';
         // Planilla que corrige este archivo: ['numero' => ..., 'fecha_pago' => 'AAAA-MM-DD'].
         // Campos 9 y 10 del registro tipo 1, obligatorios en una planilla N.
         $planillaAsociada = $params['planilla_asociada'] ?? null;
@@ -285,11 +288,11 @@ class PlanoPilaTxtService
             $ibcF = (int) ($_p->salario_basico ?? 0);
             $dias_ = (int) ($_p->num_dias ?? $_p->dias_cotizados ?? 30);
             $ibcP = $dias_ < 30 ? (int) (ceil($ibcF * $dias_ / 30 / 100) * 100) : $ibcF;
-            // La E-1 en su paso 1 no cotiza caja: su campo 45 va en cero y aquí
-            // tampoco puede sumar, o el campo 20 deja de cuadrar con la suma de
-            // los campos 45 y el operador rechaza el archivo.
+            // La E-1 en su paso 1 cotiza caja por un solo día: si aquí se suma el
+            // mes completo, el campo 20 deja de cuadrar con la suma de los
+            // campos 45 y el operador rechaza el archivo.
             if ((int) $_p->tipo_modalidad_id === PilaCotizanteCalculator::TIPO_E1 && $pasoE1 === 1 && ! $varianteE1) {
-                continue;
+                $ibcP = PilaCotizanteE1::ibcUnDia($ibcF);
             }
             $cajP = ! empty($_p->cod_caj_pila) ? $_p->cod_caj_pila : 'CCF68';
             $valorNomina += ($cajP === 'CCF68') ? 100 : $ibcP;
@@ -311,13 +314,8 @@ class PlanoPilaTxtService
                 // caja completas), y quien decide qué sale en cada una es
                 // `paso_e1`. Para el resto de modalidades las dos líneas
                 // siguen saliendo iguales, como hasta ahora.
-                // Las dos líneas van sin administradora de pensión. La C no
-                // puede llevarla porque su subtipo es 4 (eo.val.2.116), y si la
-                // A la lleva el operador reclama que no coinciden
-                // (eo.val.2.087, "la Administradora de Pensiones de la línea A
-                // es diferente a la de la línea C").
-                $p->en_correccion = true;
                 $p->codigo_operador = $codigoOperador;
+                $p->paso2_pension = $paso2Pension;
                 $p->paso_e1 = 1;
                 $lineas[] = $this->tipo2($p, $seqLineas++, $actEco, $codigoArlRs, $periodoLiq, 'A');
                 $p->paso_e1 = 2;

@@ -866,14 +866,37 @@ class SuaporteApiService
     }
 
     /**
+     * Códigos de `estadoPlanilla` observados. La plataforma no los documenta,
+     * así que esta tabla es empírica y deliberadamente incompleta: lo que no
+     * esté aquí se reporta como "no se sabe", nunca como un no.
+     *
+     * Recorrido real de una planilla pagada por PSE (24-ago-2026, ARUS):
+     *   GU → PS (minutos después de aprobar el banco) → OK
+     * Una planilla liquidada y jamás pagada se queda en GU o PP.
+     */
+    private const ESTADOS_PAGADA = ['OK'];
+
+    private const ESTADOS_SIN_PAGAR = ['GU', 'PP'];
+
+    /**
      * ¿La planilla ya fue pagada?
      *
-     * La plataforma no expone un campo de estado de pago: `estadoPlanilla`
-     * trae códigos internos (GU = generada, OK = …) sin documentar. El único
-     * indicador fiable es que el servicio de URL de pago se niega a operar
-     * sobre una planilla ya pagada o en trámite de pago.
+     * Dos señales, y ninguna es un campo que la plataforma exponga como tal:
      *
-     * @return array{success: bool, pagada?: bool, estado?: string, ...}
+     *   1. El servicio de URL de pago se niega a operar sobre una planilla ya
+     *      pagada o en trámite de pago. Que la URL SÍ responda es prueba firme
+     *      de que sigue pendiente; que no responda no dice por qué.
+     *   2. `estadoPlanilla` cambia al entrar el pago. Ver ESTADOS_PAGADA: la
+     *      tabla es empírica y sólo afirma lo que se observó, porque hay
+     *      códigos que parecen pago y no lo son —'PP' lo trae una planilla
+     *      recién liquidada que nadie ha tocado—.
+     *
+     * `pagada` viene en **null** cuando no se pudo determinar —un timeout de
+     * red, por ejemplo—. Antes esos casos devolvían `false`, que hacía
+     * indistinguible "no está pagada" de "no pude preguntar"; quien decida algo
+     * con esto debe tratar el null como desconocido, no como un no.
+     *
+     * @return array{success: bool, pagada?: bool|null, estado?: string, ...}
      */
     public function consultarEstadoPago(int $numeroPlanilla): array
     {
@@ -899,7 +922,23 @@ class SuaporteApiService
             ];
         }
 
-        $pagada = str_contains(mb_strtolower($pago['message'] ?? ''), 'pagada');
+        // Sin URL de pago hay que deducirlo. El mensaje del operador es la
+        // señal más explícita; si no la trae, manda el estado; y si tampoco
+        // sirve, se admite no saberlo.
+        $mensaje = mb_strtolower($pago['message'] ?? '');
+        $estado = (string) ($totales['estado'] ?? '');
+
+        if (str_contains($mensaje, 'pagada')) {
+            $pagada = true;
+        } elseif (in_array($estado, self::ESTADOS_PAGADA, true)) {
+            $pagada = true;
+        } elseif (in_array($estado, self::ESTADOS_SIN_PAGAR, true)) {
+            $pagada = false;
+        } else {
+            // Estado desconocido —o 'PS', que es el pago en tránsito y todavía
+            // no sirve para corregir—. No se adivina.
+            $pagada = null;
+        }
 
         return [
             'success' => true,
