@@ -18,6 +18,7 @@
  *     contratoId: 3,
  *     fechaIngresoMes: 4,          // mes de ingreso del contrato (0 = sin fecha)
  *     fechaIngresoAnio: 2026,
+ *     fechaIngresoDia: 22,         // día de ingreso (0 = sin fecha)
  *     esIndependiente: false,
  *     pagaMesActual: false,        // cotiza el mes en curso (contratos.paga_mes_actual)
  *     costoAfiliacion: 120000,
@@ -1561,14 +1562,15 @@ const MF = (function () {
         if (body)  body.style.display = _esRetiro ? 'flex' : 'none';
 
         if (_esRetiro) {
-            // Prellenar con el último día del mes anterior al período
+            // Prellenar con el último día del período que cubre esta factura:
+            // el mes anterior si cotiza vencido, el mismo mes si cotiza el actual.
             const mes  = parseInt(el('mf-mes')?.value  || new Date().getMonth() + 1);
             const anio = parseInt(el('mf-anio')?.value || new Date().getFullYear());
-            const mesPrev  = mes > 1 ? mes - 1 : 12;
-            const anioPrev = mes > 1 ? anio    : anio - 1;
-            // Día 0 del mes actual = último día del mes anterior
-            const lastDay  = new Date(anioPrev, mesPrev, 0).getDate();
-            const fechaStr = anioPrev + '-' + String(mesPrev).padStart(2,'0') + '-' + String(lastDay).padStart(2,'0');
+            const mesCub  = _cfg.pagaMesActual ? mes  : (mes > 1 ? mes - 1 : 12);
+            const anioCub = _cfg.pagaMesActual ? anio : (mes > 1 ? anio    : anio - 1);
+            // Día 0 del mes siguiente = último día del mes que se pide
+            const lastDay  = new Date(anioCub, mesCub, 0).getDate();
+            const fechaStr = anioCub + '-' + String(mesCub).padStart(2,'0') + '-' + String(lastDay).padStart(2,'0');
             setVal('mf-retiro-fecha', fechaStr);
             onRetiroFecha();
         } else {
@@ -1595,7 +1597,11 @@ const MF = (function () {
     /**
      * Calcula los días a pagar desde la fecha de retiro y los sincroniza
      * con el selector de días del cotizador Alpine.
-     * Días = día del mes de retiro (ej: retiro el 15 → 15 días).
+     *
+     * Días = día del mes de retiro (retiro el 15 → 15 días), salvo que el
+     * contrato haya ingresado dentro de ese mismo mes: ahí se cuenta desde que
+     * entró (ingresa el 22, se retira el 26 → 5 días, no 26). Es la misma regla
+     * que aplica el servidor en CobroContratoService::calcularDias.
      */
     function onRetiroFecha() {
         const fechaVal = el('mf-retiro-fecha')?.value;
@@ -1603,14 +1609,22 @@ const MF = (function () {
             setText('mf-retiro-dias-num', '—');
             return;
         }
-        const [, , diaStr] = fechaVal.split('-');
+        const [anioStr, mesStr, diaStr] = fechaVal.split('-');
         const diasRaw = parseInt(diaStr, 10);
         if (!diasRaw || diasRaw < 1 || diasRaw > 31) {
             setText('mf-retiro-dias-num', '—');
             return;
         }
         // Máximo 30 días (día 31 del mes → 30 en PILA)
-        const dias = Math.min(diasRaw, 30);
+        let dias = Math.min(diasRaw, 30);
+
+        // Retiro en el mismo mes en que ingresó: los días arrancan en su ingreso.
+        const diaIng = parseInt(_cfg.fechaIngresoDia || 0);
+        if (diaIng > 0
+            && parseInt(_cfg.fechaIngresoMes)  === parseInt(mesStr)
+            && parseInt(_cfg.fechaIngresoAnio) === parseInt(anioStr)) {
+            dias = Math.max(1, dias - diaIng + 1);
+        }
         setText('mf-retiro-dias-num', dias);
 
         // Actualizar selector de días del cotizador Alpine para SS proporcional
