@@ -122,9 +122,11 @@ class CobroContratoService
             $total = $calcSS['ss'] + $admon + $admonAsesor + $seguro + $afiliacion + $iva;
         }
 
-        // Mora estimada — las afiliaciones nunca generan mora (no hay pago de planilla)
+        // Mora estimada. No la generan las afiliaciones (no hay pago de planilla)
+        // ni quien cotiza el mes en curso: ese paga por adelantado el período que
+        // está corriendo, así que no hay plazo vencido que penalizar.
         $mora = 0;
-        if (!$esAfiliacion) {
+        if (! $esAfiliacion && ! $esIndAct) {
             try {
                 $rs      = $contrato->razonSocial;
                 $esIndep = $contrato->esIndependiente() || ($rs && $rs->es_independiente);

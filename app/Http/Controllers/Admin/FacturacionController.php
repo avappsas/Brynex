@@ -3327,6 +3327,13 @@ class FacturacionController extends Controller
                 && (int)$contrato->fecha_ingreso->year  === $anio;
             $esAfiliacion    = $esArlModalidad || ($esMesIngreso && ! $esIndAct);
 
+            // Quien cotiza el mes en curso paga por adelantado: no hay plazo
+            // vencido que penalizar. Misma regla que CobroContratoService.
+            if ($esIndAct) {
+                return ['mora_cliente' => 0, 'mora_real' => 0, 'mora_dias' => 0, 'mora_fecha_vence' => null,
+                        'mora_dia_habil' => 0, 'mora_info' => '📅 Mes actual — sin mora', 'mora_aplica' => false];
+            }
+
             // Contrato con ingreso en mes futuro: aún no inicia → sin mora
             if ($contrato->fecha_ingreso) {
                 $periodoIngreso = (int)$contrato->fecha_ingreso->year * 100 + (int)$contrato->fecha_ingreso->month;
