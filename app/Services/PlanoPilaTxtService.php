@@ -189,7 +189,7 @@ class PlanoPilaTxtService
             ->whereNull('p.deleted_at')
             ->tap(fn ($q) => Plano::filtrarPeriodoDePago($q, $mesPago, $anioPago))
             ->select([
-                'p.tipo_doc', 'p.no_identifi', 'p.tipo_modalidad_id', 'p.tipo_p',
+                'p.tipo_doc', 'p.no_identifi', 'p.tipo_modalidad_id', 'p.tipo_p', 'p.paga_mes_actual',
                 'p.primer_nombre', 'p.segundo_nombre', 'p.primer_ape', 'p.segundo_ape',
                 'p.cod_eps', 'p.cod_afp', 'p.cod_arl', 'p.cod_caja',
                 'p.salario_basico', 'p.num_dias', 'p.nivel_riesgo',
@@ -224,6 +224,8 @@ class PlanoPilaTxtService
             $query->where('p.id', $planoIdFiltro);
         }
         $planos = $query->orderBy('p.primer_ape')->orderBy('p.primer_nombre')->get();
+
+        Plano::validarPeriodoUnico($planos);
 
         if ($planoIdFiltro && $planos->isEmpty()) {
             throw new \RuntimeException("El registro {$planoIdFiltro} no existe, no coincide con el período o ya fue eliminado.");

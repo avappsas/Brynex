@@ -185,6 +185,35 @@ class Plano extends BaseModel
     }
 
     /**
+     * El archivo PILA declara UN período de cotización para toda la planilla
+     * (campos 15 y 16 del registro tipo 1). Quien cotiza el mes en curso y quien
+     * cotiza el vencido conviven en la misma tanda de PAGO, pero no pueden
+     * viajar en el mismo archivo: el período que se declare deja a la mitad de
+     * la gente reportada en un mes que no es el suyo.
+     *
+     * @throws \RuntimeException si la selección mezcla los dos esquemas
+     */
+    public static function validarPeriodoUnico($planos): void
+    {
+        $esquemas = collect($planos)
+            ->map(fn ($p) => (int) (bool) ($p->paga_mes_actual ?? 0))
+            ->unique();
+
+        if ($esquemas->count() <= 1) {
+            return;
+        }
+
+        $actual  = collect($planos)->filter(fn ($p) => (bool) ($p->paga_mes_actual ?? false))->count();
+        $vencido = collect($planos)->count() - $actual;
+
+        throw new \RuntimeException(
+            "Esta selección mezcla {$actual} cotizante(s) de mes actual con {$vencido} de mes vencido, "
+            .'y cada grupo cotiza un mes distinto. El archivo declara un solo período, así que hay que '
+            .'descargarlos por separado: filtre primero un grupo y luego el otro.'
+        );
+    }
+
+    /**
      * Genera el registro de plano a partir de un contrato y factura.
      * Snapshot de los datos al momento de facturar.
      */

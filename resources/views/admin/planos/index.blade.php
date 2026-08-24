@@ -1788,6 +1788,12 @@ const CTX = {
                ->unique('id')
                ->values()
     ) !!},
+    // Cuántos cotizan el mes en curso y cuántos el vencido: el archivo declara
+    // un solo período, así que los dos grupos no pueden descargarse juntos.
+    esquemasEnPlanos: {!! json_encode([
+        'mes_actual' => $planos->filter(fn($p) => (bool) ($p->paga_mes_actual ?? false))->count(),
+        'vencido'    => $planos->filter(fn($p) => ! ($p->paga_mes_actual ?? false))->count(),
+    ]) !!},
 };
 window.CTX_TOTAL_PAGAR = CTX.totalSS;
 
@@ -2367,6 +2373,14 @@ function validarCompatibilidadModalidades() {
  * @param {'descarga'|'pago'} accion
  */
 function validarCompatibilidadYAbrir(accion) {
+    // Mes actual y mes vencido conviven en la misma tanda de pago pero cotizan
+    // meses distintos, y el archivo declara un solo período: van por separado.
+    const esq = CTX.esquemasEnPlanos || {};
+    if ((esq.mes_actual || 0) > 0 && (esq.vencido || 0) > 0) {
+        mostrarAvisoEsquemasMezclados(esq);
+        return;
+    }
+
     const result = validarCompatibilidadModalidades();
 
     if (!result.ok) {
@@ -2390,6 +2404,32 @@ function validarCompatibilidadYAbrir(accion) {
     } else {
         abrirModalPago();
     }
+}
+
+/**
+ * Aviso cuando la selección junta los dos esquemas de período. No es un
+ * problema de modalidades —pueden ser todos independientes— sino de qué mes
+ * cotiza cada uno: el registro tipo 1 del archivo lleva un único período.
+ */
+function mostrarAvisoEsquemasMezclados(esq) {
+    const titulo = document.querySelector('#modal-incompatibilidad .modal-head h3');
+    if (titulo) titulo.innerHTML = '⚠️ Mes actual y mes vencido en el mismo filtro';
+
+    const cuerpo = document.getElementById('incompat-tipos-detectados');
+    if (cuerpo) {
+        cuerpo.innerHTML =
+            `<span style="display:inline-flex;align-items:center;gap:.3rem;background:#dbeafe;color:#1d4ed8;border:1px solid #1d4ed840;border-radius:20px;padding:.2rem .7rem;font-size:.75rem;font-weight:600">📅 Mes actual: <code style="font-weight:700">${esq.mes_actual}</code></span>`
+          + `<span style="display:inline-flex;align-items:center;gap:.3rem;background:#f1f5f9;color:#475569;border:1px solid #47556940;border-radius:20px;padding:.2rem .7rem;font-size:.75rem;font-weight:600">🗓️ Mes vencido: <code style="font-weight:700">${esq.vencido}</code></span>`;
+    }
+
+    const texto = document.querySelector('#modal-incompatibilidad .modal-body > div:first-child');
+    if (texto) {
+        texto.innerHTML =
+            '<p style="font-size:.82rem;color:#991b1b;font-weight:600;margin-bottom:.4rem">Esta selección junta gente que cotiza <strong>el mes en curso</strong> con gente que cotiza <strong>el mes vencido</strong>, y cada grupo cotiza un mes distinto.</p>'
+          + '<p style="font-size:.78rem;color:#b91c1c">El archivo declara un solo período de cotización, así que la mitad quedaría reportada en el mes que no es. Descárguelos por separado usando el filtro de modalidad.</p>';
+    }
+
+    document.getElementById('modal-incompatibilidad').classList.add('open');
 }
 
 // ── Modales ───────────────────────────────────────────────────────────

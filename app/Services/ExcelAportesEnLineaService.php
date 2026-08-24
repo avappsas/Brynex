@@ -205,7 +205,7 @@ class ExcelAportesEnLineaService
             ->whereNull('p.deleted_at')
             ->tap(fn ($q) => Plano::filtrarPeriodoDePago($q, $mesPago, $anioPago))
             ->select([
-                'p.tipo_doc', 'p.no_identifi', 'p.tipo_modalidad_id', 'p.tipo_p',
+                'p.tipo_doc', 'p.no_identifi', 'p.tipo_modalidad_id', 'p.tipo_p', 'p.paga_mes_actual',
                 'p.primer_nombre', 'p.segundo_nombre', 'p.primer_ape', 'p.segundo_ape',
                 'p.cod_eps', 'p.cod_afp', 'p.cod_arl', 'p.cod_caja',
                 'p.salario_basico', 'p.num_dias', 'p.nivel_riesgo',
@@ -237,6 +237,8 @@ class ExcelAportesEnLineaService
         }
 
         $planos = $query->orderBy('p.primer_ape')->orderBy('p.primer_nombre')->get();
+
+        Plano::validarPeriodoUnico($planos);
 
         // Tipo planilla: K si todos son Estudiante K (-1), Y si hay modalidad 8, E en otro caso
         $todosK       = $planos->count() > 0 && $planos->every(fn($p) => (int)$p->tipo_modalidad_id === -1);

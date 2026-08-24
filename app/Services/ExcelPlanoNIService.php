@@ -241,6 +241,7 @@ class ExcelPlanoNIService
                 'p.tipo_doc',
                 'p.no_identifi',
                 'p.tipo_modalidad_id',
+                'p.paga_mes_actual',
                 'p.tipo_p',
                 // Nombres
                 'p.primer_nombre',
@@ -298,6 +299,8 @@ class ExcelPlanoNIService
             ->orderBy('p.primer_ape')
             ->orderBy('p.primer_nombre')
             ->get();
+
+        Plano::validarPeriodoUnico($planos);
 
         // -- 3. Numero planilla (del primer registro con numero_planilla) -----------
         $numeroPlanilla = DB::table('planos')
