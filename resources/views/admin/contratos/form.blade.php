@@ -198,7 +198,8 @@
                   ? 'Documento: '.$clienteTipoDoc
                   : 'Edad: '.$clienteEdad.' años ('.($clienteGenero === 'M' ? 'hombre' : 'mujer').')');
           @endphp
-          <span id="badge-exento-afp"
+          {{-- En Seguros no hay pensión de por medio, así que la exención no dice nada. --}}
+          <span id="badge-exento-afp" x-show="!esSeguros"
               title="{{ $motivoExencion }}"
               style="background:#ede9fe;color:#7c3aed;font-size:.6rem;font-weight:700;padding:.12rem .45rem;border-radius:20px;margin-left:.4rem;cursor:help;letter-spacing:.02em;">
             📌 Puede omitir AFP
@@ -290,8 +291,9 @@
     </div>
   </div>
 
-  {{-- Panel 2: Entidades --}}
-  <div class="cp">
+  {{-- Panel 2: Entidades — no existe en la modalidad Seguros: a esa persona no se le
+       afilia a EPS, ARL, pensión ni caja, solo se le vende el seguro. --}}
+  <div class="cp" x-show="!esSeguros">
     <div class="pt" style="color:#16a34a;">&#127963; Entidades</div>
     @php
       // Radicados indexados por tipo para mostrar estado en cada entidad
@@ -464,7 +466,7 @@
 
     {{-- Fila 1: Salario + IBC(indep) + Asesor + Encargado --}}
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1.4fr;gap:0.5rem;margin-bottom:0.5rem;">
-      <div>
+      <div x-show="!esSeguros">
         <label class="lb">Salario Mensual</label>
         <input type="text" inputmode="numeric" name="salario" id="inp_salario" class="campo-money"
             @input="onSalarioChange"
@@ -521,27 +523,32 @@
     {{-- Fila 2: Admon + Admon Asesor + Afiliación (empresa | asesor) + Seguro.
          El costo de afiliación ya no se escribe directo: se arma sumando las dos partes,
          y viaja en el campo oculto costo_afiliacion, que es el que sigue guardando la BD. --}}
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:0.5rem;">
-      <div>
+    {{-- En Seguros solo quedan las dos casillas del seguro: administración y afiliación
+         no se cobran, y dejarlas vacías empujaba el campo Seguro a una segunda fila. --}}
+    <div :style="esSeguros
+            ? 'display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;'
+            : 'display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:0.5rem;'"
+         style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:0.5rem;">
+      <div x-show="!esSeguros">
         <label class="lb">Admon Mensual $</label>
         <input type="text" inputmode="numeric" name="administracion" id="inp_admon" class="campo-money"
             @input="recalcular"
             value="{{ number_format($defAdmon, 0, '', '.') }}" style="{{ $M }}"
             data-raw="{{ $defAdmon }}">
       </div>
-      <div>
+      <div x-show="!esSeguros">
         <label class="lb">Admon Asesor $</label>
         <input type="text" inputmode="numeric" name="admon_asesor" id="inp_admon_asesor" class="campo-money"
             value="{{ number_format($defAdmonAsesor, 0, '', '.') }}" style="{{ $M }}"
             data-raw="{{ $defAdmonAsesor }}">
       </div>
-      <div>
+      <div x-show="!esSeguros">
         <label class="lb">Afiliacion Empresa $</label>
         <input type="text" inputmode="numeric" id="inp_afiliacion_empresa"
             oninput="repartoAfiliacion('empresa')"
             value="{{ number_format($defAfilEmpresa, 0, '', '.') }}" style="{{ $M }}">
       </div>
-      <div>
+      <div x-show="!esSeguros">
         <label class="lb">Afiliacion Asesor $</label>
         {{-- Sin asesor va en 0. Solo queda vacío en un contrato viejo que SÍ tiene asesor y
              nunca pasó por el tarifario: ese vacío es lo que mantiene su factura en la regla
@@ -551,6 +558,23 @@
             oninput="repartoAfiliacion('asesor')" placeholder="sin tarifario"
             value="{{ $defAfilAsesorVista }}" style="{{ $M }}">
       </div>
+      @if(($segurosCatalogo ?? collect())->isNotEmpty())
+      {{-- Cuál seguro se le vendió. El valor del catálogo se copia al campo de al lado,
+           que sigue siendo el que manda: el contrato guarda el precio con el que se vendió. --}}
+      <div>
+        <label class="lb">Plan de seguro</label>
+        <select name="seguro_id" id="sel_seguro" style="{{ $S }}" {!! $prot !!}
+            onchange="aplicarSeguroCatalogo(this)">
+          <option value="">-- Ninguno --</option>
+          @foreach($segurosCatalogo as $sg)
+          <option value="{{ $sg->id }}" data-valor="{{ (int) $sg->valor }}"
+              {{ (int) old('seguro_id', $contrato->seguro_id ?? 0) === (int) $sg->id ? 'selected' : '' }}>
+            {{ $sg->nombre }} · ${{ number_format($sg->valor, 0, ',', '.') }}
+          </option>
+          @endforeach
+        </select>
+      </div>
+      @endif
       <div>
         <label class="lb">Seguro $</label>
         <input type="text" inputmode="numeric" name="seguro" id="inp_seguro" class="campo-money"
@@ -598,7 +622,8 @@
       &#129518; Cotizacion
       <span style="font-size:0.63rem;background:rgba(255,255,255,0.1);padding:0.1rem 0.45rem;border-radius:999px;font-weight:400;" x-text="planNombre || 'Sin plan'"></span>
     </div>
-    <div style="background:rgba(255,255,255,0.06);border-radius:6px;padding:0.4rem 0.6rem;margin-bottom:0.55rem;font-size:0.72rem;display:flex;justify-content:space-between;align-items:center;gap:0.5rem;">
+    {{-- IBC y días: no existen cuando lo único que se cobra es el seguro. --}}
+    <div x-show="!esSeguros" style="background:rgba(255,255,255,0.06);border-radius:6px;padding:0.4rem 0.6rem;margin-bottom:0.55rem;font-size:0.72rem;display:flex;justify-content:space-between;align-items:center;gap:0.5rem;">
       <div style="display:flex;align-items:center;gap:0.35rem;">
         <span style="color:#94a3b8;">IBC: <strong x-text="fmt(ibc)">$0</strong></span>
         {{-- Badge Tiempo Parcial --}}
@@ -618,9 +643,9 @@
     </div>
     <div style="font-size:0.75rem;">
       {{-- EPS: oculta en Tiempo Parcial --}}
-      <div class="cr" x-show="!esTiempoParcial"><span style="color:#93c5fd;">EPS <span class="cp2" x-text="'('+pctEps+'%)'"></span></span><strong x-text="fmt(result.eps)">$0</strong></div>
+      <div class="cr" x-show="!esTiempoParcial && !esSeguros"><span style="color:#93c5fd;">EPS <span class="cp2" x-text="'('+pctEps+'%)'"></span></span><strong x-text="fmt(result.eps)">$0</strong></div>
       {{-- ARL --}}
-      <div class="cr">
+      <div class="cr" x-show="!esSeguros">
         <span style="color:#6ee7b7;">ARL <span class="cp2" x-text="'N'+nivelArl+' ('+pctArl+'%)'"></span>
           <template x-if="esTiempoParcial">
             <span style="color:#f59e0b;font-size:.58rem;font-weight:700;"> · 30d</span>
@@ -629,7 +654,7 @@
         <strong x-text="fmt(result.arl)">$0</strong>
       </div>
       {{-- PENSIÓN --}}
-      <div class="cr">
+      <div class="cr" x-show="!esSeguros">
         <span style="color:#c4b5fd;">PENSIÓN <span class="cp2" x-text="'('+pctPen+'%)'"></span>
           <template x-if="esTiempoParcial && diasAfp">
             <span style="color:#f59e0b;font-size:.58rem;font-weight:700;" x-text="' · '+diasAfp+'d'"></span>
@@ -638,7 +663,7 @@
         <strong x-text="fmt(result.pen)">$0</strong>
       </div>
       {{-- CAJA --}}
-      <div class="cr">
+      <div class="cr" x-show="!esSeguros">
         <span style="color:#fcd34d;">CAJA <span class="cp2" x-text="'('+pctCajaCalc+'%)'"></span>
           <template x-if="esTiempoParcial && diasCaja">
             <span style="color:#f59e0b;font-size:.58rem;font-weight:700;" x-text="' · '+diasCaja+'d'"></span>
@@ -647,14 +672,14 @@
         <strong x-text="fmt(result.caja)">$0</strong>
       </div>
       {{-- S. Social --}}
-      <div class="cr" style="border-bottom:2px solid rgba(255,255,255,0.18);padding-bottom:0.35rem;margin-bottom:0.1rem;font-weight:700;">
+      <div class="cr" x-show="!esSeguros" style="border-bottom:2px solid rgba(255,255,255,0.18);padding-bottom:0.35rem;margin-bottom:0.1rem;font-weight:700;">
         <span>S. Social
           <span class="cp2" x-show="!esTiempoParcial && diasCotizar < 30" x-text="'('+diasCotizar+'d)'"></span>
         </span>
         <span x-text="fmt(result.ss)">$0</span>
       </div>
       <div class="cr"><span style="color:#94a3b8;">Seguro <span class="cp2" style="color:#34d399;" x-show="!esTiempoParcial && diasCotizar < 30">(completo)</span></span><strong x-text="fmt(result.seguro)">$0</strong></div>
-      <div class="cr"><span style="color:#94a3b8;">Admon <span class="cp2" style="color:#34d399;" x-show="!esTiempoParcial && diasCotizar < 30">(completo)</span></span><strong x-text="fmt(result.admon)">$0</strong></div>
+      <div class="cr" x-show="!esSeguros"><span style="color:#94a3b8;">Admon <span class="cp2" style="color:#34d399;" x-show="!esTiempoParcial && diasCotizar < 30">(completo)</span></span><strong x-text="fmt(result.admon)">$0</strong></div>
       <div x-show="result.iva > 0" class="cr"><span style="color:#fca5a5;">IVA 19%</span><strong x-text="fmt(result.iva)">$0</strong></div>
       <div class="cr" style="font-size:0.95rem;font-weight:800;padding-top:0.4rem;"><span>TOTAL</span><span style="color:#34d399;" x-text="fmt(result.total)">$0</span></div>
     </div>
@@ -1783,6 +1808,10 @@ const CLIENTE_PENSION_ID = {{ $clientePensionId ?? 'null' }};
 // ── Filtrado inteligente: modalidades → planes ─────────────────────
 const MODALIDAD_PLANES   = @json($planesPermitidos ?? []);
 const MODALIDADES_INDEP          = @json($modalidadesIndependientes ?? [10, 13, 14]);
+// Modalidades que no dependen de la razón social: a quien solo se le vende un seguro
+// le da igual si la RS es de independientes o de empresa.
+const MODALIDAD_SEGUROS          = {{ \App\Models\Contrato::MODALIDAD_SEGUROS }};
+const MODALIDADES_SIN_FILTRO_RS  = [MODALIDAD_SEGUROS];
 const CLIENTE_EXENTO_AFP         = {{ ($clienteExentoAfp ?? false) ? 'true' : 'false' }};
 const CLIENTE_TIPO_DOC           = @json($clienteTipoDoc ?? null);
 const ES_EDICION                 = {{ ($esEdicion ?? false) ? 'true' : 'false' }};
@@ -2048,7 +2077,8 @@ function filtrarModalidades(soloIndependiente, evitarRecalcular = false) {
             return;
         }
         const esIndepOpt = MODALIDADES_INDEP.includes(parseInt(value));
-        const mostrar = soloIndependiente ? esIndepOpt : !esIndepOpt;
+        const mostrar = MODALIDADES_SIN_FILTRO_RS.includes(parseInt(value))
+                     || (soloIndependiente ? esIndepOpt : !esIndepOpt);
         if (mostrar) {
             selMod.appendChild(el);
             if (!primerValido) primerValido = value;
@@ -2590,6 +2620,23 @@ function repartoLeer(el) {
 }
 
 /**
+ * Al escoger un seguro del catálogo del aliado, copia su valor al campo "Seguro $".
+ *
+ * Es una precarga, no un candado: el precio puede editarse a mano después, porque lo
+ * que se le cobra a esa persona vive en el contrato y no en el catálogo. Dejar el
+ * selector en "Ninguno" pone el valor en cero.
+ */
+function aplicarSeguroCatalogo(sel) {
+    const inp = document.getElementById('inp_seguro');
+    if (!inp) return;
+
+    const valor = parseInt(sel.selectedOptions[0]?.dataset.valor || 0, 10) || 0;
+    inp.value = numFmt(valor);
+    inp.dataset.raw = valor;
+    inp.dispatchEvent(new Event('input'));   // que la cotización de la derecha se entere
+}
+
+/**
  * Rearma el costo de afiliación cada vez que se teclea una de las dos partes:
  *   afiliación empresa + afiliación asesor = costo_afiliacion (campo oculto)
  * El asesor vacío no suma y deja el contrato sin tarifario.
@@ -2778,6 +2825,9 @@ function cotizador() {
         esIndependiente: false,
         esTiempoParcial: false,
         esUpc: false,
+        // Solo seguro: sin entidades, sin salario y sin planilla. Lo único que se cobra
+        // es el seguro, así que el panel de cotización no depende del salario.
+        esSeguros: false,
         mostrarModoArl:  false,
         ibcSugFmt:       '',
         // Secuencia de cotizaciones en vuelo: cada tecla dispara un fetch y sin esto
@@ -2799,6 +2849,7 @@ function cotizador() {
             const opt = document.querySelector(`select[name=tipo_modalidad_id] option[value="${this.tipoModalidadId}"]`);
             this.esIndependiente = opt?.dataset.independiente === '1';
             this.esUpc = (parseInt(this.tipoModalidadId) === MODALIDAD_UPC);
+            this.esSeguros = (parseInt(this.tipoModalidadId) === MODALIDAD_SEGUROS);
             // Mostrar panel Modo ARL si la modalidad lo requiere O si la RS es independiente
             const rsSelInit = document.getElementById('sel_rs');
             const rsEsIndepInit = rsSelInit?.options[rsSelInit.selectedIndex]?.dataset?.independiente === '1';
@@ -2859,7 +2910,7 @@ function cotizador() {
             // Disparar cotizacion inicial después de que Alpine termine de montar
             // (UPC no depende de salario: se recalcula igual aunque esté en 0)
             setTimeout(() => {
-                if ((this.salario > 0 || this.esUpc) && this.planId) this.recalcular();
+                if ((this.salario > 0 || this.esUpc || this.esSeguros) && this.planId) this.recalcular();
             }, 300);
         },
 
@@ -2892,7 +2943,8 @@ function cotizador() {
          */
         pisoSalario() {
             const id = parseInt(this.tipoModalidadId || 0);
-            if (id === MODALIDAD_UPC) return 0;
+            // UPC y Seguros no cotizan sobre el salario, así que no tienen piso.
+            if (id === MODALIDAD_UPC || id === MODALIDAD_SEGUROS) return 0;
             const tp = MODALIDADES_TP[id];
             return Math.round(SALARIO_MINIMO * (tp?.factor_salario || 1));
         },
@@ -3030,6 +3082,15 @@ function cotizador() {
             const id  = parseInt(e.target.value || 0);
             this.esIndependiente = MODALIDADES_INDEP.includes(id);
             this.esUpc = (id === MODALIDAD_UPC);
+            this.esSeguros = (id === MODALIDAD_SEGUROS);
+            if (this.esSeguros) {
+                // No cotiza nada: sin salario, sin IBC y sin entidades que escoger.
+                this.salario = 0;
+                this.setIbc(0);
+                this.ibcSugFmt = '';
+                const inpSalSeg = document.getElementById('inp_salario');
+                if (inpSalSeg) { inpSalSeg.dataset.raw = 0; inpSalSeg.value = ''; }
+            }
             // El mes actual solo existe en algunas modalidades: al salir de ellas
             // se desmarca, para no guardar un flag que la nueva no admite.
             if (! this.MODALIDADES_MES_ACTUAL.includes(id)) { this.pagaMesActual = '0'; }
@@ -3073,7 +3134,7 @@ function cotizador() {
                 // Sin esto el salario quedaba pegado en la fracción del SMMLV
                 // (ej. 437.726 al venir de TP 7) y se guardaba un dependiente
                 // cotizando sobre un cuarto del mínimo.
-                if (!this.esUpc && this.salario < SALARIO_MINIMO) {
+                if (!this.esUpc && !this.esSeguros && this.salario < SALARIO_MINIMO) {
                     this.salario = SALARIO_MINIMO;
                     const inpSalTC = document.getElementById('inp_salario');
                     if (inpSalTC) {
@@ -3191,7 +3252,7 @@ function cotizador() {
             if (salRaw > 0 && salRaw !== this.salario) this.salario = salRaw;
             const ibcVal  = (this.esIndependiente && this.ibc > 0) ? this.ibc : (salRaw || this.salario);
             // UPC no depende de salario (el valor sale de la edad/zona del beneficiario).
-            if (!this.planId || (!this.salario && !this.esUpc)) return Promise.resolve();
+            if (!this.planId || (!this.salario && !this.esUpc && !this.esSeguros)) return Promise.resolve();
             const seq = ++this._reqSeq;
             return fetch(URL_COTIZAR, {
                 method: 'POST',
@@ -3262,6 +3323,9 @@ const FC_FECHA_ING_MES = {{ $contrato->fecha_ingreso ? $contrato->fecha_ingreso-
 const FC_FECHA_ING_ANO = {{ $contrato->fecha_ingreso ? $contrato->fecha_ingreso->year : 0 }};
 const FC_ES_INDEP      = {{ $contrato->tipoModalidad?->esIndependiente() ? 'true' : 'false' }};
 const FC_TIPO_MODALIDAD_ID = {{ (int)($contrato->tipo_modalidad_id ?? 0) }};
+// Cotiza el mes en curso: el modal lo necesita para no tratar el mes de ingreso
+// como afiliación pura (ver modal_facturar_v2.js).
+const FC_PAGA_MES_ACTUAL = {{ ($contrato->paga_mes_actual ?? false) ? 'true' : 'false' }};
 const FC_COSTO_AFIL    = {{ (int)($contrato->costo_afiliacion ?? 0) }};
 // IVA: cliente marcado con iva=SI, o cliente de una empresa marcada (ver IvaService)
 const FC_TIENE_IVA     = {{ ($esEdicion && \App\Services\IvaService::aplicaContrato($contrato)) ? 'true' : 'false' }};
@@ -3289,6 +3353,7 @@ if (typeof MF !== 'undefined' && FC_CONTRATO_ID) {
         fechaIngresoAnio:  FC_FECHA_ING_ANO,
         esIndependiente:   FC_ES_INDEP,
         tipoModalidadId:   FC_TIPO_MODALIDAD_ID,
+        pagaMesActual:     FC_PAGA_MES_ACTUAL,
         costoAfiliacion:   FC_COSTO_AFIL,
         tieneIva:          FC_TIENE_IVA,
         ivaPct:            FC_IVA_PCT,
@@ -3323,9 +3388,6 @@ if (typeof MF !== 'undefined' && FC_CONTRATO_ID) {
                 alert(data.mensaje || 'Factura generada correctamente.');
                 window.location.reload();
                 @endif
-// Cotiza el mes en curso: el modal lo necesita para no tratar el mes de ingreso
-// como afiliación pura (ver modal_facturar_v2.js).
-const FC_PAGA_MES_ACTUAL = {{ ($contrato->paga_mes_actual ?? false) ? 'true' : 'false' }};
             }
         }
     });
@@ -3353,7 +3415,6 @@ function abrirModalFacturarContrato() {
 
 
 
-        pagaMesActual:     FC_PAGA_MES_ACTUAL,
 
 @if(request()->has('iframe') && session('success') === 'Contrato retirado correctamente.')
 // Modo iframe: retiro completado → notificar al padre

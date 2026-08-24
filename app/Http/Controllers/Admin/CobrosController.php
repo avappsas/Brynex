@@ -440,9 +440,13 @@ class CobrosController extends Controller
 
         foreach ($contratos as $c) {
             $esArl = (int)($c->tipo_modalidad_id) === 15;
+            // Solo seguro: se cobra el seguro todos los meses, sin seguridad social.
+            $esSoloSeguro = (int)($c->tipo_modalidad_id) === \App\Models\Contrato::MODALIDAD_SEGUROS;
             $esAfil = false;
             $esIndActPrimerMes = false;
-            if ($esArl) {
+            if ($esSoloSeguro) {
+                $esAfil = false;
+            } elseif ($esArl) {
                 // Gestión ARL siempre es cobro de afiliación, no planilla
                 $esAfil = true;
             } elseif ($c->fecha_ingreso) {
@@ -458,7 +462,10 @@ class CobrosController extends Controller
             $ibc     = (float)($c->salario ?? 0);
             $plan    = $c->plan;
 
-            if ($esIndActPrimerMes) {
+            if ($esSoloSeguro) {
+                $vEps = $vArl = $vPen = $vCaja = $vSS = 0;
+                $totalEstimado = (int)($c->seguro ?? 0);
+            } elseif ($esIndActPrimerMes) {
                 $diasAct = max(1, 30 - (int)$c->fecha_ingreso->day + 1);
                 $pctEps = ConfiguracionBrynex::pctSaludIndependiente();
                 $pctPen = ConfiguracionBrynex::pctPensionIndependiente();

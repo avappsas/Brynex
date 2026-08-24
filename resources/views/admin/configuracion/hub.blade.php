@@ -66,6 +66,14 @@
             <div class="c-desc">Gestionar cuentas bancarias del aliado. Marcar cuáles aparecen en la <strong>Cuenta de Cobro</strong> (campo 💳 Para Cobro).</div>
         </a>
 
+        <a class="cfg-card" href="{{ route('admin.configuracion.seguros') }}"
+           style="--c:#7c3aed;--bc:#c4b5fd">
+            <span class="c-badge" style="background:#ede9fe;color:#5b21b6">Seguros</span>
+            <div class="c-icon">💼</div>
+            <div class="c-title">Seguros</div>
+            <div class="c-desc">Los seguros que vendes aparte de la seguridad social (plan exequial, mascotas, vida) y cuánto vale cada uno al mes.</div>
+        </a>
+
         <a class="cfg-card" href="{{ route('admin.facturacion.electronica.index') }}"
            style="--c:#2563eb;--bc:#93c5fd">
             <span class="c-badge" style="background:#dbeafe;color:#1e40af">Electrónica</span>

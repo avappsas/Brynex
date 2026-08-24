@@ -1003,6 +1003,23 @@ const MF = (function () {
             return;
         }
 
+        // ── SEGUROS (id=17): SIEMPRE planilla ───────────────────────────────
+        // Solo se le vendió un seguro: se cobra igual todos los meses, incluido el
+        // primero. Como afiliación el total saldría en cero, porque esa rama ignora
+        // el seguro y estos contratos no tienen costo de afiliación.
+        if (parseInt(_cfg.tipoModalidadId || 0) === 17) {
+            if (avisoEl) {
+                avisoEl.style.display = 'block';
+                avisoEl.style.background = '#faf5ff';
+                avisoEl.style.borderColor = '#d8b4fe';
+                avisoEl.style.color = '#6b21a8';
+                avisoEl.innerHTML = '💼 <strong>Seguro</strong> — Se cobra el valor del seguro, sin seguridad social';
+            }
+            if (indepOpts) indepOpts.style.display = 'none';
+            _setTipo('planilla');
+            return;
+        }
+
         const esPrimMes = _cfg.fechaIngresoMes > 0
             && mes === _cfg.fechaIngresoMes
             && anio === _cfg.fechaIngresoAnio;

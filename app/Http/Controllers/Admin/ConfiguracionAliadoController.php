@@ -484,6 +484,87 @@ class ConfiguracionAliadoController extends Controller
     }
 
     // ─── Cuentas Bancarias ────────────────────────────────────────────
+    // ─── Catálogo de seguros del aliado ──────────────────────────────────────
+    // Los seguros que este aliado vende ("Plan exequial 2" a $30.000, mascotas,
+    // vida…). En el contrato se escoge uno y su valor se copia a `contratos.seguro`.
+
+    public function seguros()
+    {
+        $alidoId = session('aliado_id_activo');
+
+        $seguros = \App\Models\AliadoSeguro::where('aliado_id', $alidoId)
+            ->withCount(['contratos as contratos_vigentes' => fn ($q) => $q->where('estado', 'vigente')])
+            ->orderBy('orden')->orderBy('nombre')
+            ->get();
+
+        return view('admin.configuracion.seguros', compact('seguros'));
+    }
+
+    public function storeSeguro(Request $request)
+    {
+        $alidoId = session('aliado_id_activo');
+
+        $v = $request->validate([
+            'nombre'      => 'required|string|max:120',
+            'valor'       => 'required|numeric|min:0',
+            'descripcion' => 'nullable|string|max:500',
+            'orden'       => 'nullable|integer|min:0|max:999',
+        ]);
+
+        $v['aliado_id'] = $alidoId;
+        $v['orden']     = $v['orden'] ?? 99;
+        $v['activo']    = $request->boolean('activo', true);
+
+        \App\Models\AliadoSeguro::create($v);
+
+        return redirect()->route('admin.configuracion.seguros')
+            ->with('success', 'Seguro agregado al catálogo.');
+    }
+
+    public function updateSeguro(Request $request, int $id)
+    {
+        $alidoId = session('aliado_id_activo');
+        $seguro  = \App\Models\AliadoSeguro::where('aliado_id', $alidoId)->findOrFail($id);
+
+        $v = $request->validate([
+            'nombre'      => 'required|string|max:120',
+            'valor'       => 'required|numeric|min:0',
+            'descripcion' => 'nullable|string|max:500',
+            'orden'       => 'nullable|integer|min:0|max:999',
+        ]);
+
+        $v['orden']  = $v['orden'] ?? $seguro->orden;
+        $v['activo'] = $request->boolean('activo');
+
+        // El valor nuevo es la tarifa de aquí en adelante: los contratos que ya lo
+        // tienen conservan lo suyo, porque el precio vive en `contratos.seguro`.
+        $seguro->update($v);
+
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json(['ok' => true]);
+        }
+
+        return redirect()->route('admin.configuracion.seguros')
+            ->with('success', 'Seguro actualizado.');
+    }
+
+    public function destroySeguro(int $id)
+    {
+        $alidoId = session('aliado_id_activo');
+        $seguro  = \App\Models\AliadoSeguro::where('aliado_id', $alidoId)->findOrFail($id);
+
+        if ($seguro->contratos()->exists()) {
+            return response()->json([
+                'ok'      => false,
+                'mensaje' => 'Este seguro ya está vendido en uno o más contratos. Solo puede inactivarse.',
+            ], 422);
+        }
+
+        $seguro->delete();
+
+        return response()->json(['ok' => true]);
+    }
+
     public function cuentas()
     {
         $alidoId = session('aliado_id_activo');

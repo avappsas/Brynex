@@ -25,11 +25,16 @@ class TipoModalidad extends BaseModel
         'dias_caja'         => 'integer',
     ];
 
-    /** Scope: activos, ordenados, sin el registro "Todos" (-100) */
+    /**
+     * Scope: activos, ordenados, sin los registros que no son una modalidad
+     * que se pueda contratar — "Todos" (-100), que es un filtro, y "Corrección"
+     * (16), que solo existe para que el traslado de razón social marque sus
+     * planos con tipo_p = 16 y el TXT salga como planilla tipo N.
+     */
     public function scopeActivos($q)
     {
         return $q->where('activo', true)
-                 ->where('id', '!=', -100)
+                 ->whereNotIn('id', self::IDS_NO_CONTRATABLES)
                  ->orderBy('orden');
     }
 
@@ -44,11 +49,26 @@ class TipoModalidad extends BaseModel
         return $this->observacion ?: $this->tipo_modalidad;
     }
 
+    /** Corrección: planilla tipo N generada por un traslado de razón social, no se contrata */
+    const ID_CORRECCION = 16;
+
+    /** No se le ofrecen a un cliente: "Todos" es un filtro y "Corrección" es operativa */
+    const IDS_NO_CONTRATABLES = [-100, self::ID_CORRECCION];
+
     /** IDs que corresponden a modalidades independientes (I Venc=10, UPC=13, En el Exterior=14) */
     const IDS_INDEPENDIENTE = [10, 13, 14];
 
     /** UPC: afiliar a alguien fuera del núcleo familiar — no depende del salario */
     const ID_UPC = 13;
+
+    /** Gestión ARL: no cotiza seguridad social, solo se le hace el trámite de la ARL */
+    const ID_GESTION_ARL = 15;
+
+    /** Seguros: solo se le vendió un seguro — sin EPS, ARL, pensión, caja ni planilla */
+    const ID_SEGUROS = 17;
+
+    /** Modalidades que no cotizan seguridad social: no liquidan planilla ni generan plano */
+    const IDS_SIN_SEGURIDAD_SOCIAL = [self::ID_GESTION_ARL, self::ID_SEGUROS];
 
     /** IDs que requieren el campo "Modo ARL" */
     const IDS_MODO_ARL = [10, -1];
@@ -59,6 +79,18 @@ class TipoModalidad extends BaseModel
     public function esIndependiente(): bool
     {
         return in_array($this->id, self::IDS_INDEPENDIENTE);
+    }
+
+    /** ¿Solo seguro? Sin EPS, ARL, pensión ni caja: el mes vale lo que valga el seguro. */
+    public function esSeguros(): bool
+    {
+        return (int) $this->id === self::ID_SEGUROS;
+    }
+
+    /** ¿Esta modalidad cotiza seguridad social? Gestión ARL y Seguros no. */
+    public function cotizaSeguridadSocial(): bool
+    {
+        return ! in_array((int) $this->id, self::IDS_SIN_SEGURIDAD_SOCIAL, true);
     }
 
     /**
@@ -115,7 +147,8 @@ class TipoModalidad extends BaseModel
     public function salarioMinimoPermitido(): float
     {
         // (int) obligatorio: el id no es IDENTITY y llega como string
-        if ((int) $this->id === self::ID_UPC) {
+        // Seguros no cotiza nada, así que tampoco tiene piso de salario.
+        if (in_array((int) $this->id, [self::ID_UPC, self::ID_SEGUROS], true)) {
             return 0.0;
         }
         return round(ConfiguracionBrynex::salarioMinimo() * $this->factorSalario());

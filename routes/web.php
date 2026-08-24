@@ -328,6 +328,16 @@ Route::middleware('auth')->group(function () {
             Route::patch('configuracion/cuentas/{id}/inactivar', [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'inactivarCuenta'])->name('configuracion.cuentas.inactivar');
         });
 
+        // Catálogo de seguros del aliado (plan exequial, mascotas, vida…)
+        $cs = \App\Http\Controllers\Admin\ConfiguracionAliadoController::class;
+        Route::get('configuracion/seguros', [$cs, 'seguros'])->name('configuracion.seguros')
+            ->middleware('permiso:configuracion.ver');
+        Route::middleware('permiso:configuracion.editar')->group(function () use ($cs) {
+            Route::post('configuracion/seguros', [$cs, 'storeSeguro'])->name('configuracion.seguros.store');
+            Route::patch('configuracion/seguros/{id}', [$cs, 'updateSeguro'])->name('configuracion.seguros.update');
+            Route::delete('configuracion/seguros/{id}', [$cs, 'destroySeguro'])->name('configuracion.seguros.destroy');
+        });
+
         // Configuración de modalidades → planes (solo superadmin)
         $mc = \App\Http\Controllers\Admin\ModalidadConfigController::class;
         Route::get('configuracion/modalidades', [$mc, 'index'])->name('configuracion.modalidades')->middleware('permiso:configuracion.ver');

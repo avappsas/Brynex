@@ -1331,6 +1331,9 @@ class ContratoController extends Controller
             'arlList' => Arl::orderBy('nombre_arl')->get(),
             'cajas' => $this->cajasOrdenadas($cliente),
             'tiposModalidad' => TipoModalidad::activos()->get(),
+            // Catálogo de seguros del aliado: en la modalidad Seguros es el producto que
+            // se vende, y en cualquier otro contrato es un adicional sobre la mensualidad.
+            'segurosCatalogo' => \App\Models\AliadoSeguro::activos($alidoId)->get(),
             'planes' => PlanContrato::where('activo', true)->get(),
             'actividades' => ActividadEconomica::where('activo', true)->orderBy('nombre')->get(),
             'motivosAfiliacion' => MotivoAfiliacion::where('activo', true)->get(),
@@ -1803,6 +1806,7 @@ class ContratoController extends Controller
             // de siempre — ver la migración add_afiliacion_asesor_to_contratos_table.
             'afiliacion_asesor' => 'nullable|numeric|min:0',
             'seguro' => 'nullable|numeric|min:0',
+            'seguro_id' => 'nullable|integer',
             'asesor_id' => 'nullable|exists:asesores,id',
             'encargado_id' => 'nullable|exists:users,id',
             'motivo_afiliacion_id' => 'nullable|exists:motivos_afiliacion,id',
@@ -1828,6 +1832,20 @@ class ContratoController extends Controller
             if (! in_array($modalidadId, Contrato::MODALIDADES_MES_ACTUAL, true)) {
                 $data['paga_mes_actual'] = false;
             }
+        }
+
+        // El seguro escogido tiene que ser del catálogo de ESTE aliado: el id viene de un
+        // <select> y nada impide mandar el de otro. Si no le pertenece, se descarta.
+        if (! empty($data['seguro_id'])) {
+            $esDelAliado = \App\Models\AliadoSeguro::where('id', $data['seguro_id'])
+                ->where('aliado_id', session('aliado_id_activo'))
+                ->exists();
+
+            if (! $esDelAliado) {
+                $data['seguro_id'] = null;
+            }
+        } else {
+            $data['seguro_id'] = null;
         }
 
         // "" → null. Sin esto, un formulario sin asesor guardaría 0 y la facturación creería
