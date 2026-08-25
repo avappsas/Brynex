@@ -2,59 +2,60 @@
 
 namespace App\Console\Commands;
 
-use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
-use PhpOffice\PhpSpreadsheet\IOFactory;
-use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
-use App\Models\User;
-use App\Models\Finanzas\FuenteIngreso;
-use App\Models\Finanzas\Entrada;
+use App\Models\Finanzas\AppLiderAliado;
 use App\Models\Finanzas\CategoriaGasto;
+use App\Models\Finanzas\Entrada;
+use App\Models\Finanzas\FuenteIngreso;
 use App\Models\Finanzas\Gasto;
 use App\Models\Finanzas\Prestamo;
 use App\Models\Finanzas\PrestamoMovimiento;
-use App\Models\Finanzas\Inversion;
-use App\Models\Finanzas\Patrimonio;
-use App\Models\Finanzas\AppLiderAliado;
 use App\Models\Finanzas\Proyecto;
 use App\Models\Finanzas\ProyectoMovimiento;
-use Carbon\Carbon;
+use App\Models\User;
+use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 
 class ImportarExcelFinanzas extends Command
 {
     protected $signature = 'finanzas:import-excel {--file=Brayan_Garcia_2026.xlsx} {--force}';
+
     protected $description = 'Importa la contabilidad del archivo Excel Brayan_Garcia_2026.xlsx en la base de datos finanzas';
 
     public function handle()
     {
         $filePath = base_path($this->option('file'));
 
-        if (!file_exists($filePath)) {
+        if (! file_exists($filePath)) {
             $this->error("El archivo no existe en la ruta: {$filePath}");
+
             return 1;
         }
 
         // Buscar al usuario de Brayan García
         $user = User::where('cedula', config('finanzas.cedula_dueno'))->first();
-        if (!$user) {
+        if (! $user) {
             $user = User::first();
         }
 
-        if (!$user) {
-            $this->error("No se encontró ningún usuario en la base de datos para asociar los registros.");
+        if (! $user) {
+            $this->error('No se encontró ningún usuario en la base de datos para asociar los registros.');
+
             return 1;
         }
 
         $this->info("Asociando registros al usuario: {$user->nombre} (Cédula: {$user->cedula})");
 
-        if (!$this->option('force')) {
-            if (!$this->confirm("¿Seguro que deseas limpiar las tablas de la base de datos 'finanzas' y realizar una nueva importación?")) {
-                $this->info("Importación cancelada.");
+        if (! $this->option('force')) {
+            if (! $this->confirm("¿Seguro que deseas limpiar las tablas de la base de datos 'finanzas' y realizar una nueva importación?")) {
+                $this->info('Importación cancelada.');
+
                 return 0;
             }
         }
 
-        $this->info("Cargando archivo de Excel...");
+        $this->info('Cargando archivo de Excel...');
         $reader = IOFactory::createReaderForFile($filePath);
         $reader->setReadDataOnly(true);
         $spreadsheet = $reader->load($filePath);
@@ -69,14 +70,15 @@ class ImportarExcelFinanzas extends Command
             $this->importarPrestamosYHistorial($spreadsheet, $user);
         });
 
-        $this->info("✅ Importación completada con éxito!");
+        $this->info('✅ Importación completada con éxito!');
+
         return 0;
     }
 
     private function limpiarTablas()
     {
-        $this->info("Limpiando tablas de la base de datos de Finanzas...");
-        
+        $this->info('Limpiando tablas de la base de datos de Finanzas...');
+
         // Desactivar restricciones FK temporalmente para SQL Server en conexión finanzas
         DB::connection('finanzas')->statement('EXEC sp_MSforeachtable "ALTER TABLE ? NOCHECK CONSTRAINT ALL"');
 
@@ -102,10 +104,11 @@ class ImportarExcelFinanzas extends Command
 
     private function importarFuentesYEntradas($spreadsheet, $user)
     {
-        $this->info("Importando Fuentes de Ingresos y Entradas (BRAYAN)...");
+        $this->info('Importando Fuentes de Ingresos y Entradas (BRAYAN)...');
         $sheet = $spreadsheet->getSheetByName('BRAYAN');
-        if (!$sheet) {
-            $this->warn("Hoja BRAYAN no encontrada.");
+        if (! $sheet) {
+            $this->warn('Hoja BRAYAN no encontrada.');
+
             return;
         }
 
@@ -134,7 +137,7 @@ class ImportarExcelFinanzas extends Command
                 'tipo' => $f['tipo'],
                 'orden' => $f['orden'],
                 'activo' => true,
-                'user_id' => $user->id
+                'user_id' => $user->id,
             ]);
             $fuentesMap[$f['nombre']] = $model->id;
         }
@@ -142,7 +145,7 @@ class ImportarExcelFinanzas extends Command
         // Mapeo detallado de conceptos del Excel a las 11 fuentes
         $mapping = [
             'SEGURIDAD SOCIAL' => 'BRYGAR',
-            
+
             // Brynex Aliados
             'FECOP' => 'BRYNEX',
             'Halcon' => 'BRYNEX',
@@ -152,29 +155,29 @@ class ImportarExcelFinanzas extends Command
             'FAGA - INTEGRAL' => 'BRYNEX',
             'BJSVISSION carlos herm' => 'BRYNEX',
             'Servidor Web' => 'BRYNEX',
-            
+
             // Megatransportes
             'Mega-Transportes JUAMVI' => 'MEGATRANSPORTES JUAMVI',
-            
+
             // Camiones
             'Megamudanzas CAMIONES' => 'CAMIONES JUAMVI',
-            
+
             // Llamadas
             'Llamadas' => 'ACUERDO LLAMADAS',
-            
+
             // Congreso
             'Congreso' => 'CONGRESO',
-            
+
             // Concejo
             'Concejo rolo' => 'CONCEJO',
             'CONTRATO CONCEJO' => 'CONCEJO',
-            
+
             // Proyectos
             'Cuenta Facil' => 'PROYECTOS',
-            
+
             // Intereses préstamos
             'INTERESES PRESTAMOS' => 'INTERESES PRESTAMOS',
-            
+
             // Otras entradas
             'OTROS ENTRADAS' => 'OTRAS ENTRADAS',
             'Internet' => 'OTRAS ENTRADAS',
@@ -193,7 +196,7 @@ class ImportarExcelFinanzas extends Command
 
         // Construir el mapeo de columnas del Excel (2020 a 2026)
         $monthsMap = [];
-        
+
         // 2020: Cols 3 a 14 (C a N)
         for ($col = 3; $col <= 14; $col++) {
             $monthsMap[$col] = ['year' => 2020, 'month' => $col - 2];
@@ -232,6 +235,7 @@ class ImportarExcelFinanzas extends Command
                 if ($emptyCount > 10) {
                     break;
                 }
+
                 continue;
             }
             $emptyCount = 0;
@@ -244,7 +248,7 @@ class ImportarExcelFinanzas extends Command
             if (isset($mapping[$concepto])) {
                 $destNombre = $mapping[$concepto];
             } elseif (
-                str_contains($conceptoLower, 'interes') 
+                str_contains($conceptoLower, 'interes')
                 || str_contains($conceptoLower, 'lucy')
                 || str_contains($conceptoLower, 'hector')
                 || str_contains($conceptoLower, 'toño')
@@ -265,7 +269,9 @@ class ImportarExcelFinanzas extends Command
             }
 
             $fid = $fuentesMap[$destNombre] ?? null;
-            if (!$fid) continue;
+            if (! $fid) {
+                continue;
+            }
 
             // Si el destino es BRYNEX, guardar en finanzas_brynex_pagos
             if ($destNombre === 'BRYNEX') {
@@ -280,7 +286,7 @@ class ImportarExcelFinanzas extends Command
                     if ($monto > 0) {
                         $y = $period['year'];
                         $m = $period['month'];
-                        
+
                         \App\Models\Finanzas\BrynexPago::updateOrCreate(
                             [
                                 'aliado_id' => $aliadoId,
@@ -295,6 +301,7 @@ class ImportarExcelFinanzas extends Command
                         );
                     }
                 }
+
                 continue;
             }
 
@@ -343,16 +350,17 @@ class ImportarExcelFinanzas extends Command
 
     private function importarGastosYCategorias($spreadsheet, $user)
     {
-        $this->info("Importando Categorías y Gastos...");
+        $this->info('Importando Categorías y Gastos...');
         $sheet = $spreadsheet->getSheetByName('GASTOS');
-        if (!$sheet) {
-            $this->warn("Hoja GASTOS no encontrada.");
+        if (! $sheet) {
+            $this->warn('Hoja GASTOS no encontrada.');
+
             return;
         }
 
         $data = $sheet->toArray(null, false, false, true);
         $highestRow = count($data);
-        
+
         $estilosCategorias = [
             'GASOLINA' => ['icono' => '🚗', 'color' => '#00838f', 'recurrente' => false],
             'OTROS' => ['icono' => '📦', 'color' => '#64748b', 'recurrente' => false],
@@ -368,11 +376,11 @@ class ImportarExcelFinanzas extends Command
 
         $categoriasCache = CategoriaGasto::where('user_id', $user->id)
             ->get()
-            ->mapWithKeys(fn($c) => [strtoupper(trim($c->nombre)) => $c->id])
+            ->mapWithKeys(fn ($c) => [strtoupper(trim($c->nombre)) => $c->id])
             ->toArray();
 
         // Asegurar categoría para ingresos esporádicos
-        if (!isset($categoriasCache['INGRESOS ESPORÁDICOS']) && !isset($categoriasCache['INGRESOS ESPORADICOS'])) {
+        if (! isset($categoriasCache['INGRESOS ESPORÁDICOS']) && ! isset($categoriasCache['INGRESOS ESPORADICOS'])) {
             $catEsporadica = CategoriaGasto::create([
                 'user_id' => $user->id,
                 'nombre' => 'Ingresos Esporádicos',
@@ -402,6 +410,7 @@ class ImportarExcelFinanzas extends Command
                 if ($emptyCount > 15) {
                     break;
                 }
+
                 continue;
             }
             $emptyCount = 0;
@@ -433,10 +442,10 @@ class ImportarExcelFinanzas extends Command
             }
 
             // Registrar salida si tiene valor positivo
-            if ($salida > 0 && !empty($tipoName)) {
+            if ($salida > 0 && ! empty($tipoName)) {
                 // Buscar en caché local o crear en base de datos
-                if (!isset($categoriasCache[$tipoName])) {
-                    $estilo = $estilosCategorias[$tipoName] ?? ['icono' => '📂', 'color' => '#' . substr(md5($tipoName), 0, 6), 'recurrente' => false];
+                if (! isset($categoriasCache[$tipoName])) {
+                    $estilo = $estilosCategorias[$tipoName] ?? ['icono' => '📂', 'color' => '#'.substr(md5($tipoName), 0, 6), 'recurrente' => false];
                     $categoria = CategoriaGasto::create([
                         'nombre' => $tipoName,
                         'icono' => $estilo['icono'],
@@ -482,10 +491,11 @@ class ImportarExcelFinanzas extends Command
 
     private function importarProyectosYMovimientos($spreadsheet, $user)
     {
-        $this->info("Importando Proyectos y sus Flujos de Caja...");
+        $this->info('Importando Proyectos y sus Flujos de Caja...');
         $sheet = $spreadsheet->getSheetByName('PROYECTOS');
-        if (!$sheet) {
-            $this->warn("Hoja PROYECTOS no encontrada.");
+        if (! $sheet) {
+            $this->warn('Hoja PROYECTOS no encontrada.');
+
             return;
         }
 
@@ -493,7 +503,7 @@ class ImportarExcelFinanzas extends Command
         $highestRow = count($data);
         $proyectosCache = Proyecto::where('user_id', $user->id)
             ->get()
-            ->mapWithKeys(fn($p) => [strtoupper(trim($p->nombre)) => $p->id])
+            ->mapWithKeys(fn ($p) => [strtoupper(trim($p->nombre)) => $p->id])
             ->toArray();
         $movimientosToInsert = [];
         $emptyCount = 0;
@@ -512,6 +522,7 @@ class ImportarExcelFinanzas extends Command
                 if ($emptyCount > 10) {
                     break;
                 }
+
                 continue;
             }
             $emptyCount = 0;
@@ -522,10 +533,10 @@ class ImportarExcelFinanzas extends Command
 
             // Buscar en caché local o crear
             $projNameUpper = strtoupper($proyectoName);
-            if (!isset($proyectosCache[$projNameUpper])) {
+            if (! isset($proyectosCache[$projNameUpper])) {
                 $proyecto = Proyecto::create([
                     'nombre' => $proyectoName,
-                    'descripcion' => "Proyecto importado desde el Excel.",
+                    'descripcion' => 'Proyecto importado desde el Excel.',
                     'activo' => true,
                     'user_id' => $user->id,
                 ]);
@@ -571,10 +582,11 @@ class ImportarExcelFinanzas extends Command
 
     private function importarAppLideres($spreadsheet, $user)
     {
-        $this->info("Importando Aliados de App Líderes...");
+        $this->info('Importando Aliados de App Líderes...');
         $sheet = $spreadsheet->getSheetByName('APP');
-        if (!$sheet) {
-            $this->warn("Hoja APP no encontrada.");
+        if (! $sheet) {
+            $this->warn('Hoja APP no encontrada.');
+
             return;
         }
 
@@ -584,7 +596,7 @@ class ImportarExcelFinanzas extends Command
         $aliadosMap = [];
         for ($col = 'B'; $col <= 'J'; $col++) {
             $nombre = isset($data[1][$col]) ? trim($data[1][$col]) : '';
-            if (!empty($nombre) && $nombre !== 'TOTAL MENSUAL') {
+            if (! empty($nombre) && $nombre !== 'TOTAL MENSUAL') {
                 $aliado = AppLiderAliado::create([
                     'nombre' => $nombre,
                     'valor_mensual' => 1000000,
@@ -603,7 +615,7 @@ class ImportarExcelFinanzas extends Command
         $mesesNombres = [
             'ENERO' => 1, 'FEBRERO' => 2, 'MARZO' => 3, 'ABRIL' => 4,
             'MAYO' => 5, 'JUNIO' => 6, 'JULIO' => 7, 'AGOSTO' => 8,
-            'SEPTIEMBRE' => 9, 'OCTUBRE' => 10, 'NOVIEMBRE' => 11, 'DICIEMBRE' => 12
+            'SEPTIEMBRE' => 9, 'OCTUBRE' => 10, 'NOVIEMBRE' => 11, 'DICIEMBRE' => 12,
         ];
 
         $entradasToInsert = [];
@@ -611,7 +623,9 @@ class ImportarExcelFinanzas extends Command
         for ($row = 2; $row <= 13; $row++) {
             $mesName = isset($data[$row]['A']) ? strtoupper(trim($data[$row]['A'])) : '';
             $mesNum = $mesesNombres[$mesName] ?? null;
-            if (!$mesNum) continue;
+            if (! $mesNum) {
+                continue;
+            }
 
             $totalMes = 0;
             foreach ($aliadosMap as $col => $aliado) {
@@ -647,10 +661,11 @@ class ImportarExcelFinanzas extends Command
 
     private function importarPrestamosYHistorial($spreadsheet, $user)
     {
-        $this->info("Importando Préstamos y reconstruyendo historial de movimientos...");
+        $this->info('Importando Préstamos y reconstruyendo historial de movimientos...');
         $sheet = $spreadsheet->getSheetByName('PRESTAMOS');
-        if (!$sheet) {
-            $this->warn("Hoja PRESTAMOS no encontrada.");
+        if (! $sheet) {
+            $this->warn('Hoja PRESTAMOS no encontrada.');
+
             return;
         }
 
@@ -679,6 +694,7 @@ class ImportarExcelFinanzas extends Command
                 if ($emptyCount > 10) {
                     break;
                 }
+
                 continue;
             }
             $emptyCount = 0;
@@ -729,7 +745,7 @@ class ImportarExcelFinanzas extends Command
             $prestamosCreados[] = [
                 'model' => $prestamo,
                 'row' => $row,
-                'nombre' => $nombre
+                'nombre' => $nombre,
             ];
         }
 
@@ -739,20 +755,23 @@ class ImportarExcelFinanzas extends Command
         foreach ($prestamosCreados as $pInfo) {
             $prestamo = $pInfo['model'];
             $rowIdx = $pInfo['row'];
-            
+
             // Obtener la tasa de interés específica del préstamo
             $tasaVal = $data[$rowIdx]['G'] ?? 0;
             if (is_string($tasaVal) && str_starts_with($tasaVal, '=')) {
                 $tasaVal = $this->evaluarFormulaAritmetica($tasaVal);
             }
-            $tasaVal = (float)$tasaVal;
-            
+            $tasaVal = (float) $tasaVal;
+
             $saldoActual = $prestamo->monto_original;
+            $capitalVigente = (float) $prestamo->monto_original;
 
             for ($col = 8; $col <= 40; $col += 2) {
                 $monthConfig = $this->getYearMonthFromCol($col);
-                if (!$monthConfig) continue;
-                list($y, $m) = $monthConfig;
+                if (! $monthConfig) {
+                    continue;
+                }
+                [$y, $m] = $monthConfig;
 
                 $colLetter = Coordinate::stringFromColumnIndex($col);
                 $colIntLetter = Coordinate::stringFromColumnIndex($col + 1);
@@ -769,14 +788,14 @@ class ImportarExcelFinanzas extends Command
                 if ($interesGenerado > 0) {
                     $saldoAntes = $saldoActual;
                     $saldoActual += $interesGenerado;
-                    
+
                     $movimientosToInsert[] = [
                         'prestamo_id' => $prestamo->id,
                         'tipo' => 'interes_mensual',
                         'monto' => $interesGenerado,
                         'saldo_antes' => $saldoAntes,
                         'saldo_despues' => $saldoActual,
-                        'fecha' => "{$y}-" . str_pad($m, 2, '0', STR_PAD_LEFT) . "-15",
+                        'fecha' => "{$y}-".str_pad($m, 2, '0', STR_PAD_LEFT).'-15',
                         'observacion' => 'Liquidación mensual de intereses.',
                         'created_at' => now(),
                         'updated_at' => now(),
@@ -795,11 +814,13 @@ class ImportarExcelFinanzas extends Command
                             'monto' => $montoAbono,
                             'saldo_antes' => $saldoAntes,
                             'saldo_despues' => $saldoActual,
-                            'fecha' => "{$y}-" . str_pad($m, 2, '0', STR_PAD_LEFT) . "-28",
+                            'fecha' => "{$y}-".str_pad($m, 2, '0', STR_PAD_LEFT).'-28',
                             'observacion' => 'Abono recibido (Importación automática).',
                             'created_at' => now(),
                             'updated_at' => now(),
                         ];
+
+                        $capitalVigente = max(0.0, $capitalVigente - $montoAbono);
                     } else {
                         $montoExtra = $newBalance - $saldoActual;
                         $saldoAntes = $saldoActual;
@@ -811,17 +832,25 @@ class ImportarExcelFinanzas extends Command
                             'monto' => $montoExtra,
                             'saldo_antes' => $saldoAntes,
                             'saldo_despues' => $saldoActual,
-                            'fecha' => "{$y}-" . str_pad($m, 2, '0', STR_PAD_LEFT) . "-05",
+                            'fecha' => "{$y}-".str_pad($m, 2, '0', STR_PAD_LEFT).'-05',
                             'observacion' => 'Capitalización o desembolso adicional.',
                             'created_at' => now(),
                             'updated_at' => now(),
                         ];
+
+                        // Una capitalización es plata nueva prestada: tiene que subir el
+                        // capital vigente igual que un desembolso. Sin esto, `monto_original`
+                        // se queda en el desembolso inicial y todo lo capitalizado termina
+                        // contándose como interés impago — así se desfasó el préstamo de
+                        // Fabio Arroyave en $258M (ver finanzas:recalcular-capital-prestamos).
+                        $capitalVigente += $montoExtra;
                     }
                 }
             }
 
-            // Actualizar saldo final del préstamo
+            // Actualizar saldo y capital finales del préstamo
             $prestamo->saldo_actual = $saldoActual;
+            $prestamo->monto_original = round($capitalVigente, 2);
             if ($saldoActual <= 0) {
                 $prestamo->estado = 'pagado';
             }
@@ -839,6 +868,7 @@ class ImportarExcelFinanzas extends Command
     {
         if ($colIndex >= 8 && $colIndex <= 22) {
             $month = ($colIndex - 8) / 2 + 2; // Col 8 es Febrero (2)
+
             return [2024, $month];
         }
         if ($colIndex == 24) {
@@ -846,8 +876,10 @@ class ImportarExcelFinanzas extends Command
         }
         if ($colIndex >= 26 && $colIndex <= 40) {
             $month = ($colIndex - 26) / 2 + 1; // Col 26 es Enero (1)
+
             return [2025, $month];
         }
+
         return null;
     }
 
@@ -857,28 +889,30 @@ class ImportarExcelFinanzas extends Command
         if (str_starts_with($formula, '=')) {
             $formula = substr($formula, 1);
         }
-        
+
         $formula = str_replace(' ', '', $formula);
-        
+
         if (preg_match('/^[0-9+\\-*\/.]*$/', $formula)) {
             try {
                 $val = null;
                 if (str_contains($formula, '/0')) {
                     return 0;
                 }
-                eval('$val = ' . $formula . ';');
+                eval('$val = '.$formula.';');
+
                 return $val;
             } catch (\Throwable $e) {
                 return 0;
             }
         }
+
         return 0;
     }
 
     private function obtenerAliadoId($concepto, $user)
     {
         $conceptoLower = strtolower($concepto);
-        
+
         // Mapeos conocidos
         if (str_contains($conceptoLower, 'fecop')) {
             $nombreBusqueda = 'Grupo Fecop';
@@ -891,20 +925,20 @@ class ImportarExcelFinanzas extends Command
         } else {
             $nombreBusqueda = $concepto;
         }
-        
+
         $aliado = \App\Models\Aliado::where('nombre', 'like', "%{$nombreBusqueda}%")->first();
-        
-        if (!$aliado) {
+
+        if (! $aliado) {
             // Crear el aliado en la tabla principal de la base de datos BryNex
             $aliado = \App\Models\Aliado::create([
                 'nombre' => $concepto,
                 'razon_social' => $concepto,
-                'nit' => 'TEMP-' . substr(md5($concepto), 0, 10),
+                'nit' => 'TEMP-'.substr(md5($concepto), 0, 10),
                 'activo' => true,
                 'afiliaciones_brynex' => false,
             ]);
         }
-        
+
         return $aliado->id;
     }
 }

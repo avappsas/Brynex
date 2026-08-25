@@ -4,23 +4,24 @@ namespace App\Http\Controllers\Finanzas;
 
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Finanzas\Concerns\DetectaDispositivoMovil;
+use App\Models\Finanzas\CategoriaGasto;
+use App\Models\Finanzas\Gasto;
 use App\Models\Finanzas\Prestamo;
 use App\Models\Finanzas\PrestamoMovimiento;
-use App\Models\Finanzas\Gasto;
-use App\Models\Finanzas\CategoriaGasto;
-use App\Services\Finanzas\PrestamoLiquidacionService;
 use App\Services\Finanzas\FinanzasWhatsappService;
+use App\Services\Finanzas\PrestamoLiquidacionService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 
 class PrestamoController extends Controller
 {
-    use DetectaDispositivoMovil;
-    use \App\Http\Controllers\Finanzas\Concerns\ResuelveCuenta;
     use \App\Http\Controllers\Finanzas\Concerns\InvalidaFinanzasCache;
+    use \App\Http\Controllers\Finanzas\Concerns\ResuelveCuenta;
+    use DetectaDispositivoMovil;
 
     protected PrestamoLiquidacionService $liquidacionService;
+
     protected FinanzasWhatsappService $whatsappService;
 
     public function __construct(
@@ -65,6 +66,7 @@ class PrestamoController extends Controller
     public function create()
     {
         $cuentas = \App\Models\Finanzas\Cuenta::where('user_id', Auth::id())->activas()->orderBy('orden')->get();
+
         return view('finanzas.prestamos.create', compact('cuentas'));
     }
 
@@ -120,7 +122,7 @@ class PrestamoController extends Controller
 
         // Asegurar la existencia de la categoría "Otros" para asociar el egreso del préstamo
         $categoriaOtros = CategoriaGasto::where('user_id', $user->id)->where('nombre', 'Otros')->first();
-        if (!$categoriaOtros) {
+        if (! $categoriaOtros) {
             $categoriaOtros = CategoriaGasto::create([
                 'user_id' => $user->id,
                 'nombre' => 'Otros',
@@ -186,6 +188,7 @@ class PrestamoController extends Controller
     public function edit($id)
     {
         $prestamo = Prestamo::where('user_id', Auth::id())->findOrFail($id);
+
         return view('finanzas.prestamos.edit', compact('prestamo'));
     }
 
@@ -254,12 +257,12 @@ class PrestamoController extends Controller
                 (int) date('Y', strtotime($request->fecha)),
                 (int) date('n', strtotime($request->fecha))
             );
-            $detalle = 'Pago registrado con éxito. Se abonaron $' . number_format($res['abono_interes'], 0, ',', '.')
-                . ' a intereses y $' . number_format($res['abono_capital'], 0, ',', '.') . ' a capital.';
+            $detalle = 'Pago registrado con éxito. Se abonaron $'.number_format($res['abono_interes'], 0, ',', '.')
+                .' a intereses y $'.number_format($res['abono_capital'], 0, ',', '.').' a capital.';
 
-            if (!empty($res['interes_fraccion'])) {
-                $detalle .= ' Incluye $' . number_format($res['interes_fraccion'], 0, ',', '.')
-                    . ' de interés causado por los días corridos del capital abonado.';
+            if (! empty($res['interes_fraccion'])) {
+                $detalle .= ' Incluye $'.number_format($res['interes_fraccion'], 0, ',', '.')
+                    .' de interés causado por los días corridos del capital abonado.';
             }
 
             return redirect()->route('finanzas.prestamos.show', $prestamo->id)->with('success', $detalle);
@@ -289,10 +292,10 @@ class PrestamoController extends Controller
         }
 
         $res = $this->liquidacionService->registrarDesembolsoAdicional(
-            $prestamo, 
-            (float) $request->monto, 
-            $request->fecha, 
-            $request->observacion, 
+            $prestamo,
+            (float) $request->monto,
+            $request->fecha,
+            $request->observacion,
             $soportePath
         );
 
@@ -301,27 +304,27 @@ class PrestamoController extends Controller
             $user = Auth::user();
             $categoriaOtros = CategoriaGasto::where('user_id', $user->id)->where('nombre', 'Otros')->first();
 
-            if (!$categoriaOtros) {
+            if (! $categoriaOtros) {
                 $categoriaOtros = CategoriaGasto::create([
                     'user_id' => $user->id,
-                    'nombre'  => 'Otros',
-                    'icono'   => '📁',
-                    'orden'   => 99,
+                    'nombre' => 'Otros',
+                    'icono' => '📁',
+                    'orden' => 99,
                 ]);
             }
 
             $catId = $categoriaOtros->id;
 
             Gasto::create([
-                'user_id'        => $user->id,
-                'categoria_id'   => $catId,
-                'cuenta_id'      => $this->resolverCuenta($request->cuenta_id),
-                'fecha'          => $request->fecha,
-                'monto'          => (float) $request->monto,
-                'descripcion'    => "Desembolso adicional a: {$prestamo->nombre_deudor}. Obs: {$request->observacion}",
-                'tipo_movimiento'=> 'prestamo',
-                'es_patrimonio'  => false,
-                'patrimonio_id'  => null,
+                'user_id' => $user->id,
+                'categoria_id' => $catId,
+                'cuenta_id' => $this->resolverCuenta($request->cuenta_id),
+                'fecha' => $request->fecha,
+                'monto' => (float) $request->monto,
+                'descripcion' => "Desembolso adicional a: {$prestamo->nombre_deudor}. Obs: {$request->observacion}",
+                'tipo_movimiento' => 'prestamo',
+                'es_patrimonio' => false,
+                'patrimonio_id' => null,
             ]);
 
             $this->invalidarCacheFinanzas(
@@ -330,7 +333,7 @@ class PrestamoController extends Controller
             );
 
             return redirect()->route('finanzas.prestamos.show', $prestamo->id)
-                ->with('success', "Desembolso adicional registrado con éxito por \$" . number_format($request->monto, 0, ',', '.') . " COP.");
+                ->with('success', 'Desembolso adicional registrado con éxito por $'.number_format($request->monto, 0, ',', '.').' COP.');
         }
 
         return redirect()->route('finanzas.prestamos.show', $prestamo->id)->with('error', $res['message']);
@@ -342,10 +345,10 @@ class PrestamoController extends Controller
     public function liquidarMes(Request $request, $id)
     {
         $prestamo = Prestamo::where('user_id', Auth::id())->findOrFail($id);
-        
+
         $fechaDesde = $request->input('fecha_desde', $prestamo->ultimo_corte);
         $fechaHasta = $request->input('fecha_hasta', now()->toDateString());
-        
+
         $mesesExcluidos = $request->input('meses_excluidos', []);
 
         $interes = $this->liquidacionService->liquidarPeriodo($prestamo, $fechaDesde, $fechaHasta, $mesesExcluidos);
@@ -368,15 +371,17 @@ class PrestamoController extends Controller
             if ($res['ok']) {
                 $ultimoMsg = $prestamo->ultimo_mensaje_cobro;
                 $fechaEnvio = $ultimoMsg ? $ultimoMsg->created_at->format('d/m/Y H:i') : now()->format('d/m/Y H:i');
+
                 return response()->json([
                     'success' => true,
                     'message' => $res['message'],
-                    'fecha_envio' => $fechaEnvio
+                    'fecha_envio' => $fechaEnvio,
                 ]);
             }
+
             return response()->json([
                 'success' => false,
-                'message' => $res['message'] . ' Detalles: ' . ($res['error'] ?? 'ninguno')
+                'message' => $res['message'].' Detalles: '.($res['error'] ?? 'ninguno'),
             ], 400);
         }
 
@@ -384,7 +389,7 @@ class PrestamoController extends Controller
             return redirect()->route('finanzas.prestamos.show', $prestamo->id)->with('success', $res['message']);
         }
 
-        return redirect()->route('finanzas.prestamos.show', $prestamo->id)->with('error', $res['message'] . ' Detalles: ' . ($res['error'] ?? 'ninguno'));
+        return redirect()->route('finanzas.prestamos.show', $prestamo->id)->with('error', $res['message'].' Detalles: '.($res['error'] ?? 'ninguno'));
     }
 
     /**
@@ -401,19 +406,19 @@ class PrestamoController extends Controller
         }
 
         $motivo = $request->input('motivo', 'Sin motivo especificado.');
-        $fecha  = now()->format('d/m/Y');
+        $fecha = now()->format('d/m/Y');
 
         // Congelar intereses poniendo tasa a 0, desactivar alertas y registrar el motivo
         $notaHistorica = "[{$fecha}] INACTIVADO — Motivo: {$motivo}";
         $observacionesActualizadas = $prestamo->observaciones
-            ? $prestamo->observaciones . "\n" . $notaHistorica
+            ? $prestamo->observaciones."\n".$notaHistorica
             : $notaHistorica;
 
         $prestamo->update([
-            'estado'              => 'castigado',
-            'tasa_interes_mensual'=> 0,
-            'alertas_activas'    => false,
-            'observaciones'      => $observacionesActualizadas,
+            'estado' => 'castigado',
+            'tasa_interes_mensual' => 0,
+            'alertas_activas' => false,
+            'observaciones' => $observacionesActualizadas,
         ]);
         $this->invalidarCacheFinanzas();
 
@@ -433,18 +438,18 @@ class PrestamoController extends Controller
                 ->with('error', 'Solo se pueden reactivar préstamos en estado castigado.');
         }
 
-        $fecha  = now()->format('d/m/Y');
+        $fecha = now()->format('d/m/Y');
         $tasaNueva = (float) $request->input('tasa_interes_mensual', 0);
         $notaHistorica = "[{$fecha}] REACTIVADO — Nueva tasa: {$tasaNueva}%";
         $observacionesActualizadas = $prestamo->observaciones
-            ? $prestamo->observaciones . "\n" . $notaHistorica
+            ? $prestamo->observaciones."\n".$notaHistorica
             : $notaHistorica;
 
         $prestamo->update([
-            'estado'               => $prestamo->saldo_actual > 0 ? 'mora' : 'activo',
+            'estado' => $prestamo->saldo_actual > 0 ? 'mora' : 'activo',
             'tasa_interes_mensual' => $tasaNueva,
-            'alertas_activas'     => true,
-            'observaciones'       => $observacionesActualizadas,
+            'alertas_activas' => true,
+            'observaciones' => $observacionesActualizadas,
         ]);
         $this->invalidarCacheFinanzas();
 
@@ -458,7 +463,7 @@ class PrestamoController extends Controller
     public function toggleAlertas($id)
     {
         $prestamo = Prestamo::where('user_id', Auth::id())->findOrFail($id);
-        $prestamo->update(['alertas_activas' => !$prestamo->alertas_activas]);
+        $prestamo->update(['alertas_activas' => ! $prestamo->alertas_activas]);
         $this->invalidarCacheFinanzas();
 
         return redirect()->route('finanzas.prestamos.show', $prestamo->id)
@@ -477,7 +482,7 @@ class PrestamoController extends Controller
             'fecha' => 'required|date',
             'monto' => 'required|numeric|min:0',
             'observacion' => 'nullable|string|max:255',
-            'soporte' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:10240'
+            'soporte' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:10240',
         ]);
 
         $movimiento->fecha = $request->input('fecha');
@@ -539,16 +544,26 @@ class PrestamoController extends Controller
     {
         $movimientos = $prestamo->movimientos()->orderBy('fecha', 'asc')->orderBy('id', 'asc')->get();
         $saldo = 0.00;
+        $capital = 0.00;
         $ultimoCorteFecha = null;
 
         foreach ($movimientos as $mov) {
             $mov->saldo_antes = $saldo;
-            
+
             if (in_array($mov->tipo, ['desembolso', 'interes_mensual', 'interes_proporcional', 'capitalizacion'])) {
                 $mov->saldo_despues = $saldo + $mov->monto;
             } else {
                 // abono_capital, abono_interes, pago_total
                 $mov->saldo_despues = $saldo - $mov->monto;
+            }
+
+            // El capital vigente sigue a los movimientos que mueven capital. La
+            // capitalización cuenta como plata nueva prestada, igual que un desembolso:
+            // dejarla fuera es lo que hacía que lo capitalizado se leyera como interés.
+            if (in_array($mov->tipo, ['desembolso', 'capitalizacion'])) {
+                $capital += (float) $mov->monto;
+            } elseif ($mov->tipo === 'abono_capital') {
+                $capital = max(0.00, $capital - (float) $mov->monto);
             }
 
             $mov->save();
@@ -572,8 +587,9 @@ class PrestamoController extends Controller
 
         $prestamo->update([
             'saldo_actual' => $saldo,
+            'monto_original' => $saldo <= 0 ? 0.00 : round(min($capital, $saldo), 2),
             'ultimo_corte' => $corteVigente,
-            'estado'       => $estadoCalculado,
+            'estado' => $estadoCalculado,
         ]);
     }
 
@@ -584,10 +600,10 @@ class PrestamoController extends Controller
     {
         $prestamo = Prestamo::where('user_id', Auth::id())->findOrFail($id);
 
-        if (!$prestamo->soporte_path || !Storage::disk('local')->exists($prestamo->soporte_path)) {
+        if (! $prestamo->soporte_path || ! Storage::disk('local')->exists($prestamo->soporte_path)) {
             // Si el archivo no existe localmente, pero estamos en desarrollo local, redirigimos a producción
             if (config('app.env') === 'local' || request()->getHost() === '127.0.0.1' || request()->getHost() === 'localhost') {
-                return redirect('https://brynex.co/finanzas/prestamos/' . $prestamo->id . '/soporte');
+                return redirect('https://brynex.co/finanzas/prestamos/'.$prestamo->id.'/soporte');
             }
             abort(404, 'Archivo de soporte no encontrado.');
         }
@@ -601,14 +617,14 @@ class PrestamoController extends Controller
     public function descargarSoporteMovimiento($id)
     {
         $movimiento = PrestamoMovimiento::findOrFail($id);
-        
+
         // Validar que el movimiento pertenezca a un préstamo del usuario actual
         $prestamo = Prestamo::where('user_id', Auth::id())->findOrFail($movimiento->prestamo_id);
 
-        if (!$movimiento->soporte_path || !Storage::disk('local')->exists($movimiento->soporte_path)) {
+        if (! $movimiento->soporte_path || ! Storage::disk('local')->exists($movimiento->soporte_path)) {
             // Si el archivo no existe localmente, pero estamos en desarrollo local, redirigimos a producción
             if (config('app.env') === 'local' || request()->getHost() === '127.0.0.1' || request()->getHost() === 'localhost') {
-                return redirect('https://brynex.co/finanzas/prestamos-movimiento/' . $movimiento->id . '/soporte');
+                return redirect('https://brynex.co/finanzas/prestamos-movimiento/'.$movimiento->id.'/soporte');
             }
             abort(404, 'Archivo de soporte no encontrado.');
         }
