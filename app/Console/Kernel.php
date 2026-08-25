@@ -118,6 +118,18 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/finanzas-liquidacion.log'));
 
+        // ── Recordatorios de préstamo por WhatsApp (Finanzas) ────────────
+        // 9:00 AM Colombia: avisa 3 días antes del corte y cobra 3 días después,
+        // una vez por ciclo. Va después de la liquidación de la 1:00 para que el
+        // interés del corte ya esté causado cuando se decide qué mensaje mandar.
+        // Ejecución manual: php artisan finanzas:recordar-prestamos [--dry-run]
+        $schedule->command('finanzas:recordar-prestamos')
+            ->dailyAt('09:00')
+            ->timezone('America/Bogota')
+            ->withoutOverlapping(30)
+            ->runInBackground()
+            ->appendOutputTo(storage_path('logs/finanzas-recordatorios.log'));
+
         // ── Seguimiento comercial del Asistente IA (WhatsApp) ────────────
         // Cada 15 min, en horario comercial: revisa conversaciones que la IA
         // dejó sin respuesta del cliente hace 3h+ y, SOLO si quedó una afiliación

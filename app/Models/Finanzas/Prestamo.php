@@ -21,6 +21,8 @@ use Carbon\Carbon;
  * @property string $estado
  * @property int $dias_mora_alerta
  * @property bool $alertas_activas
+ * @property \Carbon\Carbon|null $aviso_previo_enviado_para
+ * @property \Carbon\Carbon|null $cobro_enviado_para
  * @property string|null $soporte_path
  * @property string|null $descripcion
  * @property string|null $observaciones
@@ -60,6 +62,8 @@ class Prestamo extends BaseFinanzasModel
         'estado', // activo | pagado | mora | castigado
         'dias_mora_alerta',
         'alertas_activas',
+        'aviso_previo_enviado_para',
+        'cobro_enviado_para',
         'soporte_path',
         'descripcion',
         'observaciones',
@@ -76,6 +80,8 @@ class Prestamo extends BaseFinanzasModel
         'saldo_actual' => 'float',
         'dias_mora_alerta' => 'integer',
         'alertas_activas' => 'boolean',
+        'aviso_previo_enviado_para' => 'date',
+        'cobro_enviado_para' => 'date',
         'es_cuenta_corriente' => 'boolean',
         'cc_cliente_id' => 'integer',
         'sin_interes' => 'boolean',

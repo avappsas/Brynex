@@ -39,8 +39,17 @@ class FinanzasWhatsappService
             $numeroNormalizado = '57'.$numeroNormalizado; // Prefijo Colombia por defecto si tiene 10 dígitos
         }
 
-        // Obtener configuración de WhatsApp para el aliado activo del usuario autenticado
-        $user = Auth::user();
+        // El dueño del préstamo manda sobre la sesión: así el envío programado, que
+        // corre por consola y no tiene usuario autenticado, resuelve el mismo aliado
+        // que resolvería el botón del panel.
+        // Se resuelve por id y no con la relación `user()`: el belongsTo hereda la
+        // conexión `finanzas` del préstamo, donde la tabla `users` no existe.
+        $user = ($prestamo->user_id ? \App\Models\User::find($prestamo->user_id) : null) ?: Auth::user();
+
+        if (! $user) {
+            return ['ok' => false, 'message' => 'El préstamo no tiene un usuario dueño y no hay sesión activa para resolver el aliado.'];
+        }
+
         $aliadoId = $user->aliado_id;
         $config = WhatsappConfig::paraAliado($aliadoId);
 
