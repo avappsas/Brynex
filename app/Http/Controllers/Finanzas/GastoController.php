@@ -183,6 +183,10 @@ class GastoController extends Controller
     {
         $gasto = Gasto::where('user_id', Auth::id())->findOrFail($id);
 
+        if ($bloqueo = $this->bloquearSiEsCostoDeTrabajo($gasto, 'editar')) {
+            return $bloqueo;
+        }
+
         $request->validate([
             'categoria_id' => 'required_without:nueva_categoria|nullable|integer',
             'nueva_categoria' => 'required_without:categoria_id|nullable|string|max:50',
@@ -266,6 +270,10 @@ class GastoController extends Controller
     {
         $gasto = Gasto::where('user_id', Auth::id())->findOrFail($id);
 
+        if ($bloqueo = $this->bloquearSiEsCostoDeTrabajo($gasto, 'eliminar')) {
+            return $bloqueo;
+        }
+
         if ($gasto->soporte_path) {
             Storage::disk('local')->delete($gasto->soporte_path);
         }
@@ -278,6 +286,39 @@ class GastoController extends Controller
             return redirect()->route('finanzas.dashboard', ['tab' => 'historial'])->with('success', 'Gasto eliminado.');
         }
         return redirect()->route('finanzas.gastos.index')->with('success', 'Gasto eliminado.');
+    }
+
+    /**
+     * Los gastos de un trabajo de cuenta corriente no se tocan desde aquí.
+     *
+     * Su monto lo gobierna la suma de los costos del desglose del trabajo, así
+     * que borrarlo o editarlo por este lado deja al trabajo declarando un costo
+     * que ya no salió de ninguna cuenta: la utilidad que muestra queda falsa y
+     * el descuadre no avisa. Se redirige al trabajo, que es la única fuente de
+     * verdad de ese valor.
+     */
+    private function bloquearSiEsCostoDeTrabajo(Gasto $gasto, string $accion)
+    {
+        if (! $gasto->cc_trabajo_id) {
+            return null;
+        }
+
+        $trabajo = \App\Models\Finanzas\Prestamo::find($gasto->cc_trabajo_id);
+
+        // Si el trabajo ya no existe, el gasto quedó suelto y sí puede tocarse.
+        if (! $trabajo) {
+            return null;
+        }
+
+        $mensaje = "⚠️ Este gasto es el costo del trabajo «{$trabajo->descripcion}» de {$trabajo->nombre_deudor}, "
+            . "y su valor sale del desglose de ese trabajo. Para {$accion}rlo entra al trabajo en Cuenta Corriente "
+            . 'y ajusta ahí los costos de sus líneas: el gasto y el saldo de la cuenta se actualizan solos.';
+
+        $destino = $trabajo->cc_cliente_id
+            ? redirect()->route('finanzas.cuenta-corriente.show', $trabajo->cc_cliente_id)
+            : redirect()->route('finanzas.gastos.index');
+
+        return $destino->with('warning', $mensaje);
     }
 
     /**

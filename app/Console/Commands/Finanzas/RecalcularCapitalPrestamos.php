@@ -27,6 +27,7 @@ class RecalcularCapitalPrestamos extends Command
      */
     protected $signature = 'finanzas:recalcular-capital-prestamos
                             {ids?* : Ids de préstamo; sin ids, todos los que tengan capitalizaciones}
+                            {--todos : Revisa todos los préstamos vivos, no solo los que tienen capitalizaciones}
                             {--apply : Escribe los cambios; sin esta opción solo simula}';
 
     protected $description = 'Reconstruye el capital vigente y la clasificación de abonos de los préstamos con capitalizaciones';
@@ -38,7 +39,11 @@ class RecalcularCapitalPrestamos extends Command
     {
         $ids = $this->argument('ids');
 
-        if (empty($ids)) {
+        if (! empty($ids)) {
+            $prestamos = Prestamo::whereIn('id', $ids)->orderBy('id')->get();
+        } elseif ($this->option('todos')) {
+            $prestamos = Prestamo::where('saldo_actual', '>', 0)->orderBy('id')->get();
+        } else {
             $ids = DB::connection('finanzas')
                 ->table('finanzas_prestamo_movimientos')
                 ->where('tipo', 'capitalizacion')
@@ -49,8 +54,6 @@ class RecalcularCapitalPrestamos extends Command
             // Sin ids explícitos solo se tocan los vivos: un préstamo ya pagado
             // cerró en cero y reclasificar su historia no cambia ningún saldo.
             $prestamos = Prestamo::whereIn('id', $ids)->where('saldo_actual', '>', 0)->orderBy('id')->get();
-        } else {
-            $prestamos = Prestamo::whereIn('id', $ids)->orderBy('id')->get();
         }
 
         if ($prestamos->isEmpty()) {
@@ -60,9 +63,18 @@ class RecalcularCapitalPrestamos extends Command
         }
 
         $aplicar = $this->option('apply');
+        $intactos = 0;
 
         foreach ($prestamos as $prestamo) {
             $plan = $this->planificar($prestamo);
+
+            // Un préstamo ya correcto no aporta nada al informe: se cuenta y se salta,
+            // que si no la revisión completa entierra los casos que sí hay que mirar.
+            if ($this->sinCambios($prestamo, $plan)) {
+                $intactos++;
+
+                continue;
+            }
 
             $this->line('');
             $this->info("#{$prestamo->id} {$prestamo->nombre_deudor}");
@@ -104,12 +116,25 @@ class RecalcularCapitalPrestamos extends Command
             $this->info('  ✔ aplicado');
         }
 
+        $this->line('');
+        $this->info("Revisados: {$prestamos->count()}. Ya correctos: {$intactos}.");
+
         if (! $aplicar) {
-            $this->line('');
-            $this->comment('Simulación terminada. Repite con --apply para escribir.');
+            $this->comment('Simulación: no se escribió nada. Repite con --apply para aplicar.');
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * ¿El préstamo ya está como debería?
+     */
+    private function sinCambios(Prestamo $prestamo, array $plan): bool
+    {
+        return empty($plan['reclasificar'])
+            && empty($plan['partir'])
+            && empty($plan['notas'])
+            && abs($plan['capital_vigente'] - (float) $prestamo->monto_original) < self::RESIDUO;
     }
 
     /**
@@ -180,7 +205,9 @@ class RecalcularCapitalPrestamos extends Command
 
             $destino = $aInteres > 0 ? 'abono_interes' : 'abono_capital';
 
-            if ($m->tipo !== $destino) {
+            // Un abono de unos pocos pesos es el arrastre de un redondeo, no un pago:
+            // reetiquetarlo no cambia nada y llena la ficha de ruido.
+            if ($m->tipo !== $destino && $monto >= self::RESIDUO) {
                 $reclasificar[] = [
                     'id' => $m->id,
                     'fecha' => substr((string) $m->fecha, 0, 10),

@@ -16,22 +16,22 @@ class RecordarPrestamos extends Command
      *   - 3 días ANTES de la fecha de corte → aviso previo (plantilla `aviso_previo_prestamo`)
      *   - 3 días DESPUÉS del corte, si quedó interés sin pagar → cobro (`recordatorio_prestamo`)
      *
-     * Pasada esa ventana el sistema no vuelve a escribir: la gestión de un vencido
-     * viejo es manual, y un automático insistiendo por su cuenta pisaría esa gestión.
-     * Por eso el cobro tiene tope por arriba (`--margen`) y no dispara sobre atrasos
-     * de semanas — que es justo lo que pasaría el primer día que corre el comando.
+     * El día es exacto por decisión del dueño: a 2 días del corte no se escribe, a 1
+     * tampoco, y un vencido de semanas tampoco — pasado el día, la gestión es manual y
+     * un automático insistiendo por su cuenta la pisaría. `--margen` existe para
+     * ampliar la ventana si algún día se quiere tolerar que el cron no corra, pero por
+     * omisión vale 0: si esa madrugada el cron no arranca, ese ciclo no se envía.
      *
-     * El margen existe porque comparar contra un día exacto pierde el envío si el cron
-     * no corrió esa madrugada. El control de repetición va en `aviso_previo_enviado_para`
-     * / `cobro_enviado_para`, que guardan la fecha de corte atendida: pasado el corte, el
-     * ciclo siguiente vuelve a disparar.
+     * El control de repetición va en `aviso_previo_enviado_para` / `cobro_enviado_para`,
+     * que guardan la fecha de corte atendida: pasado el corte, el ciclo siguiente vuelve
+     * a disparar.
      *
      * Ejecución manual: php artisan finanzas:recordar-prestamos [--dry-run]
      */
     protected $signature = 'finanzas:recordar-prestamos
                             {--dry-run : Muestra a quién le escribiría, sin enviar nada ni marcar la base}
                             {--dias=3 : Días antes del corte para el aviso y días después para el cobro}
-                            {--margen=2 : Días extra de tolerancia por si el cron no corrió; pasados, la gestión es manual}';
+                            {--margen=0 : Días extra de tolerancia si el cron no corrió; 0 = solo el día exacto}';
 
     protected $description = 'Envía por WhatsApp el aviso previo al corte y el cobro de lo vencido de cada préstamo';
 
@@ -102,7 +102,7 @@ class RecordarPrestamos extends Command
     private function accionPendiente(Prestamo $prestamo, int $dias, int $margen): ?array
     {
         if ($prestamo->esta_vencido) {
-            // Fuera de la ventana no se escribe: antes todavía no toca, después ya es manual.
+            // Fuera del día no se escribe: antes todavía no toca, después ya es manual.
             if ($prestamo->dias_vencidos < $dias || $prestamo->dias_vencidos > $dias + $margen) {
                 return null;
             }
@@ -119,7 +119,9 @@ class RecordarPrestamos extends Command
 
         $faltan = $prestamo->dias_para_corte;
 
-        if ($faltan < 0 || $faltan > $dias) {
+        // Los días bajan según se acerca el corte, así que aquí el margen abre hacia
+        // abajo: con margen 0 solo entra el día exacto, ni a 2 días ni a 1.
+        if ($faltan > $dias || $faltan < $dias - $margen) {
             return null;
         }
 
