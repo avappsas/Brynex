@@ -56,8 +56,9 @@
                 </strong>
             </div>
             <div class="cc-cifra">
-                <span>Trabajos</span>
+                <span>Valor de trabajos</span>
                 <strong>${{ number_format($totales['capital'], 0, ',', '.') }}</strong>
+                <small style="display:block; font-size:0.62rem; color:#94a3b8; text-transform:none;">sin intereses</small>
             </div>
             <div class="cc-cifra">
                 <span>Intereses causados</span>
@@ -100,6 +101,25 @@
 
         <button @click="openCliente = true" class="btn-fin">✏️ Editar cliente</button>
     </div>
+
+    {{-- Filtro --}}
+    @if($conteos['cerrados'] > 0)
+    <div class="cc-filtros">
+        @php
+            $opciones = [
+                'pendientes' => ['Por cobrar', $conteos['pendientes']],
+                'cerrados' => ['Saldados', $conteos['cerrados']],
+                'todos' => ['Todos', $conteos['todos']],
+            ];
+        @endphp
+        @foreach($opciones as $clave => [$etiqueta, $cuenta])
+            <a href="{{ route('finanzas.cuenta-corriente.show', ['cliente' => $cliente->id, 'ver' => $clave]) }}"
+               class="cc-filtro {{ $ver === $clave ? 'activo' : '' }}">
+                {{ $etiqueta }} <span>{{ $cuenta }}</span>
+            </a>
+        @endforeach
+    </div>
+    @endif
 
     {{-- Trabajos --}}
     <div class="cc-trabajos">
@@ -314,8 +334,19 @@
             </div>
         @empty
             <div class="cc-vacio">
-                Este cliente todavía no tiene trabajos registrados.<br>
-                <small>Usa «Registrar Trabajo» para cargar el primero con su desglose.</small>
+                @if($conteos['todos'] === 0)
+                    Este cliente todavía no tiene trabajos registrados.<br>
+                    <small>Usa «Registrar Trabajo» para cargar el primero con su desglose.</small>
+                @elseif($ver === 'pendientes')
+                    🎉 {{ $cliente->nombre }} está a paz y salvo: no hay nada por cobrar.<br>
+                    <small>
+                        Tiene {{ $conteos['cerrados'] }} trabajo(s) saldado(s).
+                        <a href="{{ route('finanzas.cuenta-corriente.show', ['cliente' => $cliente->id, 'ver' => 'cerrados']) }}"
+                           style="color:#7e22ce; font-weight:600;">Verlos</a>
+                    </small>
+                @else
+                    No hay trabajos saldados todavía.
+                @endif
             </div>
         @endforelse
     </div>
@@ -345,7 +376,14 @@
 .cc-acciones { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 1rem; }
 .cc-acciones button[disabled] { opacity: 0.45; cursor: not-allowed; }
 
-.cc-trabajos { display: flex; flex-direction: column; gap: 0.85rem; margin-top: 1.25rem; }
+.cc-filtros { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-top: 1.25rem; }
+.cc-filtro { text-decoration: none; background: #fff; border: 1px solid #cbd5e1; border-radius: 999px; padding: 0.3rem 0.75rem; font-size: 0.75rem; font-weight: 600; color: #475569; display: inline-flex; align-items: center; gap: 0.35rem; transition: all .12s ease; }
+.cc-filtro:hover { border-color: #a855f7; color: #7e22ce; }
+.cc-filtro span { background: #f1f5f9; border-radius: 999px; padding: 0 0.35rem; font-size: 0.68rem; color: #64748b; }
+.cc-filtro.activo { background: #7e22ce; border-color: #7e22ce; color: #fff; }
+.cc-filtro.activo span { background: rgba(255,255,255,0.25); color: #fff; }
+
+.cc-trabajos { display: flex; flex-direction: column; gap: 0.85rem; margin-top: 1rem; }
 .cc-trabajo { background: #fff; border: 1px solid #cbd5e1; border-left: 4px solid #7e22ce; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.04); }
 .cc-trabajo.pagado { border-left-color: #16a34a; opacity: 0.82; }
 .cc-trabajo.vencido { border-left-color: #b91c1c; }

@@ -78,37 +78,55 @@ class CuentaCorrienteController extends Controller
     /**
      * Ficha del cliente: sus trabajos, el desglose de cada uno y su historial.
      */
-    public function show($id)
+    public function show(Request $request, $id)
     {
         $cliente = $this->clienteDelUsuario($id);
 
-        $trabajos = $cliente->trabajos()
+        $todos = $cliente->trabajos()
             ->with(['items', 'movimientos' => fn ($q) => $q->orderBy('fecha', 'desc')->orderBy('id', 'desc')])
             ->orderByRaw("CASE WHEN estado IN ('activo', 'mora') THEN 0 ELSE 1 END")
             ->orderBy('fecha_desembolso', 'desc')
             ->orderByDesc('id')
             ->get();
 
-        $pendientes = $trabajos->whereIn('estado', ['activo', 'mora']);
+        $pendientes = $todos->whereIn('estado', ['activo', 'mora']);
+        $cerrados = $todos->reject(fn ($t) => in_array($t->estado, ['activo', 'mora']));
+
+        // Por defecto la ficha muestra solo lo que falta por cobrar: lo saldado
+        // ya no pide nada y solo estorba a medida que el cliente acumula historia.
+        $ver = in_array($request->input('ver'), ['todos', 'cerrados']) ? $request->input('ver') : 'pendientes';
+
+        $trabajos = match ($ver) {
+            'todos' => $todos,
+            'cerrados' => $cerrados,
+            default => $pendientes,
+        };
+
+        $conteos = [
+            'pendientes' => $pendientes->count(),
+            'cerrados' => $cerrados->count(),
+            'todos' => $todos->count(),
+        ];
 
         $totales = [
             'saldo' => (float) $pendientes->sum('saldo_actual'),
             'capital' => (float) $pendientes->sum('monto_original'),
             'intereses' => (float) $pendientes->sum(fn ($t) => $t->intereses_acumulados),
             'trabajos_pendientes' => $pendientes->count(),
-            'trabajos_totales' => $trabajos->count(),
+            'trabajos_totales' => $todos->count(),
             'vencidos' => $pendientes->filter(fn ($t) => $t->esta_vencido)->count(),
-            // La utilidad se mide sobre TODOS los trabajos, cobrados o no: es el
-            // negocio del cliente, no la plata que falta por entrar.
-            'facturado' => (float) $trabajos->sum(fn ($t) => $t->total_items),
-            'costos' => (float) $trabajos->sum(fn ($t) => $t->costo_items),
-            'utilidad' => (float) $trabajos->sum(fn ($t) => $t->utilidad),
+            // La utilidad se mide sobre TODOS los trabajos, cobrados o no, y no
+            // sobre los que deje ver el filtro: es el negocio acumulado del
+            // cliente, no la plata que falta por entrar.
+            'facturado' => (float) $todos->sum(fn ($t) => $t->total_items),
+            'costos' => (float) $todos->sum(fn ($t) => $t->costo_items),
+            'utilidad' => (float) $todos->sum(fn ($t) => $t->utilidad),
         ];
 
         $cuentas = Cuenta::where('user_id', Auth::id())->activas()->orderBy('orden')->get();
         $categorias = CategoriaGasto::where('user_id', Auth::id())->orderBy('nombre')->get();
 
-        return view('finanzas.cuenta-corriente.show', compact('cliente', 'trabajos', 'totales', 'cuentas', 'categorias'));
+        return view('finanzas.cuenta-corriente.show', compact('cliente', 'trabajos', 'totales', 'cuentas', 'categorias', 'ver', 'conteos'));
     }
 
     /* ---------------------------------------------------------------- Clientes */
