@@ -120,12 +120,18 @@
                         </td>
                         <td style="text-align:center;">
                             <div style="display:flex; justify-content:center; gap:0.4rem;">
-                                <button @click="selectedGasto = {{ json_encode($gasto) }}; openEditar = true" class="btn-icon-bx edit" title="Editar">✏️</button>
-                                <form action="{{ route('finanzas.gastos.destroy', $gasto->id) }}" method="POST" onsubmit="return confirm('¿Seguro que deseas eliminar este gasto?')" style="display:inline;">
-                                    @csrf
-                                    @method('DELETE')
-                                    <button type="submit" class="btn-icon-bx delete" title="Eliminar">❌</button>
-                                </form>
+                                @if($gasto->cc_trabajo_id)
+                                    {{-- El monto lo gobierna el desglose del trabajo: se edita allá o queda descuadrado --}}
+                                    <a href="{{ route('finanzas.cuenta-corriente.index') }}" class="btn-icon-bx"
+                                       title="Costo de un trabajo de Cuenta Corriente. Se edita desde el trabajo, no desde aquí.">🛠️</a>
+                                @else
+                                    <button @click="selectedGasto = {{ json_encode($gasto) }}; openEditar = true" class="btn-icon-bx edit" title="Editar">✏️</button>
+                                    <form action="{{ route('finanzas.gastos.destroy', $gasto->id) }}" method="POST" onsubmit="return confirm('¿Seguro que deseas eliminar este gasto?')" style="display:inline;">
+                                        @csrf
+                                        @method('DELETE')
+                                        <button type="submit" class="btn-icon-bx delete" title="Eliminar">❌</button>
+                                    </form>
+                                @endif
                             </div>
                         </td>
                     </tr>
@@ -187,12 +193,19 @@
                         </div>
                         
                         <div style="display:flex; gap:0.4rem;">
-                            <button @click="selectedGasto = {{ json_encode($gasto) }}; openEditar = true" class="btn-glass-bx" style="padding: 0.3rem 0.6rem; font-size: 0.72rem; border-color:#cbd5e1; color:#334155; font-weight:600;" title="Editar">✏️ Editar</button>
-                            <form action="{{ route('finanzas.gastos.destroy', $gasto->id) }}" method="POST" onsubmit="return confirm('¿Seguro que deseas eliminar este gasto?')" style="display:inline; margin:0;">
-                                @csrf
-                                @method('DELETE')
-                                <button type="submit" class="btn-glass-bx" style="padding: 0.3rem 0.6rem; font-size: 0.72rem; background:#fef2f2; color:#ef4444; border-color:#fee2e2; font-weight:600;" title="Eliminar">🗑️ Borrar</button>
-                            </form>
+                            @if($gasto->cc_trabajo_id)
+                                <a href="{{ route('finanzas.cuenta-corriente.index') }}" class="btn-glass-bx"
+                                   style="padding: 0.3rem 0.6rem; font-size: 0.72rem; background:#fffbeb; color:#b45309; border-color:#fcd34d; font-weight:600; text-decoration:none;">
+                                    🛠️ Editar en el trabajo
+                                </a>
+                            @else
+                                <button @click="selectedGasto = {{ json_encode($gasto) }}; openEditar = true" class="btn-glass-bx" style="padding: 0.3rem 0.6rem; font-size: 0.72rem; border-color:#cbd5e1; color:#334155; font-weight:600;" title="Editar">✏️ Editar</button>
+                                <form action="{{ route('finanzas.gastos.destroy', $gasto->id) }}" method="POST" onsubmit="return confirm('¿Seguro que deseas eliminar este gasto?')" style="display:inline; margin:0;">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button type="submit" class="btn-glass-bx" style="padding: 0.3rem 0.6rem; font-size: 0.72rem; background:#fef2f2; color:#ef4444; border-color:#fee2e2; font-weight:600;" title="Eliminar">🗑️ Borrar</button>
+                                </form>
+                            @endif
                         </div>
                     </div>
 

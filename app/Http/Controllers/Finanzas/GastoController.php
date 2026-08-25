@@ -14,9 +14,9 @@ use Illuminate\Support\Facades\Storage;
 
 class GastoController extends Controller
 {
-    use DetectaDispositivoMovil;
-    use \App\Http\Controllers\Finanzas\Concerns\ResuelveCuenta;
     use \App\Http\Controllers\Finanzas\Concerns\InvalidaFinanzasCache;
+    use \App\Http\Controllers\Finanzas\Concerns\ResuelveCuenta;
+    use DetectaDispositivoMovil;
 
     public function __construct()
     {
@@ -37,7 +37,7 @@ class GastoController extends Controller
             return redirect()->route('finanzas.dashboard', [
                 'mes' => $mes,
                 'anio' => $anio,
-                'tab' => 'historial'
+                'tab' => 'historial',
             ]);
         }
 
@@ -176,6 +176,7 @@ class GastoController extends Controller
         if ($this->isMobileDevice($request)) {
             return redirect()->route('finanzas.dashboard')->with('success', 'Transacción registrada con éxito.');
         }
+
         return redirect()->route('finanzas.gastos.index')->with('success', 'Transacción registrada con éxito.');
     }
 
@@ -263,6 +264,7 @@ class GastoController extends Controller
         if ($this->isMobileDevice($request)) {
             return redirect()->route('finanzas.dashboard', ['tab' => 'historial'])->with('success', 'Transacción actualizada.');
         }
+
         return redirect()->route('finanzas.gastos.index')->with('success', 'Transacción actualizada.');
     }
 
@@ -285,6 +287,7 @@ class GastoController extends Controller
         if ($this->isMobileDevice(request())) {
             return redirect()->route('finanzas.dashboard', ['tab' => 'historial'])->with('success', 'Gasto eliminado.');
         }
+
         return redirect()->route('finanzas.gastos.index')->with('success', 'Gasto eliminado.');
     }
 
@@ -311,8 +314,8 @@ class GastoController extends Controller
         }
 
         $mensaje = "⚠️ Este gasto es el costo del trabajo «{$trabajo->descripcion}» de {$trabajo->nombre_deudor}, "
-            . "y su valor sale del desglose de ese trabajo. Para {$accion}rlo entra al trabajo en Cuenta Corriente "
-            . 'y ajusta ahí los costos de sus líneas: el gasto y el saldo de la cuenta se actualizan solos.';
+            ."y su valor sale del desglose de ese trabajo. Para {$accion}lo entra al trabajo en Cuenta Corriente "
+            .'y ajusta ahí los costos de sus líneas: el gasto y el saldo de la cuenta se actualizan solos.';
 
         $destino = $trabajo->cc_cliente_id
             ? redirect()->route('finanzas.cuenta-corriente.show', $trabajo->cc_cliente_id)
@@ -328,7 +331,7 @@ class GastoController extends Controller
     {
         $gasto = Gasto::where('user_id', Auth::id())->findOrFail($id);
 
-        if (!$gasto->soporte_path || !Storage::disk('local')->exists($gasto->soporte_path)) {
+        if (! $gasto->soporte_path || ! Storage::disk('local')->exists($gasto->soporte_path)) {
             abort(404, 'Archivo de soporte no encontrado.');
         }
 
@@ -424,5 +427,4 @@ class GastoController extends Controller
 
         return redirect()->route('finanzas.categorias.index')->with('success', 'Categoría desactivada.');
     }
-
 }
