@@ -87,7 +87,9 @@ class RecalcularCapitalPrestamos extends Command
                 ]
             );
 
-            if (round($plan['saldo'], 2) != round($prestamo->saldo_actual, 2)) {
+            // La guarda es contra un descuadre de verdad, no contra los centavos que deja
+            // el redondeo de las liquidaciones: por debajo de un peso se sigue de largo.
+            if (abs($plan['saldo'] - (float) $prestamo->saldo_actual) >= 1) {
                 $this->error('  El saldo reconstruido no coincide con el guardado. Se omite este préstamo.');
 
                 continue;
@@ -104,6 +106,10 @@ class RecalcularCapitalPrestamos extends Command
 
             foreach ($plan['notas'] as $n) {
                 $this->line("  mov #{$n['id']}: la nota automática pasa a «{$n['nota']}»");
+            }
+
+            if ($plan['saldos_rotos']) {
+                $this->line('  se reescribe la columna de saldos de la ficha');
             }
 
             if (! $aplicar) {
@@ -134,7 +140,33 @@ class RecalcularCapitalPrestamos extends Command
         return empty($plan['reclasificar'])
             && empty($plan['partir'])
             && empty($plan['notas'])
+            && ! $plan['saldos_rotos']
             && abs($plan['capital_vigente'] - (float) $prestamo->monto_original) < self::RESIDUO;
+    }
+
+    /**
+     * ¿La columna de saldos de la ficha encadena? Tras partir un abono, el movimiento
+     * nuevo entra sin saldos y parte la cadena hasta que se reescriba.
+     */
+    private function saldosRotos(Prestamo $prestamo): bool
+    {
+        $saldo = 0.0;
+
+        $movimientos = PrestamoMovimiento::where('prestamo_id', $prestamo->id)
+            ->orderBy('fecha')
+            ->orderBy('id')
+            ->get();
+
+        foreach ($movimientos as $m) {
+            if (abs((float) $m->saldo_antes - $saldo) >= 1) {
+                return true;
+            }
+
+            $suma = in_array($m->tipo, ['desembolso', 'capitalizacion', 'interes_mensual', 'interes_proporcional']);
+            $saldo = $suma ? $saldo + (float) $m->monto : $saldo - (float) $m->monto;
+        }
+
+        return false;
     }
 
     /**
@@ -225,6 +257,7 @@ class RecalcularCapitalPrestamos extends Command
             'reclasificar' => $reclasificar,
             'partir' => $partir,
             'notas' => $this->notasContradictorias($movimientos, $reclasificar),
+            'saldos_rotos' => $this->saldosRotos($prestamo),
         ];
     }
 
@@ -273,12 +306,22 @@ class RecalcularCapitalPrestamos extends Command
     /**
      * Reescribe `saldo_antes` / `saldo_despues` de todos los movimientos en orden,
      * para que la ficha del préstamo cuadre tras partir y reclasificar.
+     *
+     * Va por (fecha, id) a propósito, no en orden contable: `PrestamoController::show`
+     * recalcula los saldos con ese orden cada vez que se abre la ficha, y si aquí se
+     * escribiera otro los dos se estarían pisando. El orden contable es solo para
+     * decidir qué parte de cada abono fue interés.
      */
     private function recalcularSaldos(Prestamo $prestamo): void
     {
         $saldo = 0.0;
 
-        foreach ($this->enOrden($prestamo) as $m) {
+        $movimientos = PrestamoMovimiento::where('prestamo_id', $prestamo->id)
+            ->orderBy('fecha')
+            ->orderBy('id')
+            ->get();
+
+        foreach ($movimientos as $m) {
             $suma = in_array($m->tipo, ['desembolso', 'capitalizacion', 'interes_mensual', 'interes_proporcional']);
 
             $m->saldo_antes = $saldo;
