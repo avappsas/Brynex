@@ -16,22 +16,29 @@ class RecordarPrestamos extends Command
      *   - 3 días ANTES de la fecha de corte → aviso previo (plantilla `aviso_previo_prestamo`)
      *   - 3 días DESPUÉS del corte, si quedó interés sin pagar → cobro (`recordatorio_prestamo`)
      *
-     * Las ventanas son "3 días o menos" y no "exactamente 3", porque comparar contra
-     * un día exacto pierde el envío si el cron no corrió esa madrugada. El control de
-     * repetición va en `aviso_previo_enviado_para` / `cobro_enviado_para`, que guardan
-     * la fecha de corte atendida: pasado el corte, el ciclo siguiente vuelve a disparar.
+     * Pasada esa ventana el sistema no vuelve a escribir: la gestión de un vencido
+     * viejo es manual, y un automático insistiendo por su cuenta pisaría esa gestión.
+     * Por eso el cobro tiene tope por arriba (`--margen`) y no dispara sobre atrasos
+     * de semanas — que es justo lo que pasaría el primer día que corre el comando.
+     *
+     * El margen existe porque comparar contra un día exacto pierde el envío si el cron
+     * no corrió esa madrugada. El control de repetición va en `aviso_previo_enviado_para`
+     * / `cobro_enviado_para`, que guardan la fecha de corte atendida: pasado el corte, el
+     * ciclo siguiente vuelve a disparar.
      *
      * Ejecución manual: php artisan finanzas:recordar-prestamos [--dry-run]
      */
     protected $signature = 'finanzas:recordar-prestamos
                             {--dry-run : Muestra a quién le escribiría, sin enviar nada ni marcar la base}
-                            {--dias=3 : Días antes del corte para el aviso y días después para el cobro}';
+                            {--dias=3 : Días antes del corte para el aviso y días después para el cobro}
+                            {--margen=2 : Días extra de tolerancia por si el cron no corrió; pasados, la gestión es manual}';
 
     protected $description = 'Envía por WhatsApp el aviso previo al corte y el cobro de lo vencido de cada préstamo';
 
     public function handle(FinanzasWhatsappService $whatsapp): int
     {
         $dias = max(0, (int) $this->option('dias'));
+        $margen = max(0, (int) $this->option('margen'));
         $seco = $this->option('dry-run');
 
         $prestamos = Prestamo::whereIn('estado', ['activo', 'mora'])
@@ -45,7 +52,7 @@ class RecordarPrestamos extends Command
         $fallos = 0;
 
         foreach ($prestamos as $prestamo) {
-            $accion = $this->accionPendiente($prestamo, $dias);
+            $accion = $this->accionPendiente($prestamo, $dias, $margen);
 
             if (! $accion) {
                 continue;
@@ -92,10 +99,11 @@ class RecordarPrestamos extends Command
      *
      * @return array{0: string, 1: string, 2: string}|null [tipo, corte atendido, detalle]
      */
-    private function accionPendiente(Prestamo $prestamo, int $dias): ?array
+    private function accionPendiente(Prestamo $prestamo, int $dias, int $margen): ?array
     {
         if ($prestamo->esta_vencido) {
-            if ($prestamo->dias_vencidos < $dias) {
+            // Fuera de la ventana no se escribe: antes todavía no toca, después ya es manual.
+            if ($prestamo->dias_vencidos < $dias || $prestamo->dias_vencidos > $dias + $margen) {
                 return null;
             }
 
