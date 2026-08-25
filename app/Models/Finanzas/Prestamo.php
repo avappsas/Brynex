@@ -166,6 +166,32 @@ class Prestamo extends BaseFinanzasModel
     }
 
     /**
+     * Lo que costó hacer el trabajo: la suma de los costos de sus líneas. Es el
+     * valor que respalda el gasto enlazado por `cc_trabajo_id`.
+     */
+    public function getCostoItemsAttribute(): float
+    {
+        return round($this->items->sum(fn ($i) => $i->cantidad * $i->costo_unitario), 2);
+    }
+
+    /**
+     * Utilidad bruta del trabajo: lo cobrado menos lo gastado. No descuenta los
+     * intereses, que son rendimiento de la mora y no parte del negocio.
+     */
+    public function getUtilidadAttribute(): float
+    {
+        return round($this->total_items - $this->costo_items, 2);
+    }
+
+    /**
+     * Gasto de finanzas que materializa el costo de este trabajo.
+     */
+    public function gastoCosto()
+    {
+        return $this->hasOne(Gasto::class, 'cc_trabajo_id');
+    }
+
+    /**
      * Accessor para obtener los días de mora a partir del último corte o la fecha de desembolso
      */
     public function getDiasMoraAttribute(): int

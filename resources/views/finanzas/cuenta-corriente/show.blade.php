@@ -8,7 +8,7 @@
 
 @php
     $hoy = now()->toDateString();
-    $itemsVacio = [['descripcion' => '', 'cantidad' => 1, 'valor_unitario' => 0]];
+    $itemsVacio = [['descripcion' => '', 'cantidad' => 1, 'valor_unitario' => 0, 'costo_unitario' => 0]];
 @endphp
 
 <div class="finanzas-container" x-data="ccCliente()">
@@ -65,6 +65,17 @@
                     ${{ number_format($totales['intereses'], 0, ',', '.') }}
                 </strong>
             </div>
+            @if($totales['costos'] > 0)
+            <div class="cc-cifra">
+                <span>Utilidad acumulada</span>
+                <strong style="color:{{ $totales['utilidad'] >= 0 ? '#16a34a' : '#b91c1c' }};">
+                    ${{ number_format($totales['utilidad'], 0, ',', '.') }}
+                </strong>
+                <small style="display:block; font-size:0.62rem; color:#94a3b8; text-transform:none;">
+                    ${{ number_format($totales['facturado'], 0, ',', '.') }} cobrado − ${{ number_format($totales['costos'], 0, ',', '.') }} en costos
+                </small>
+            </div>
+            @endif
         </div>
     </div>
 
@@ -101,6 +112,7 @@
                     'descripcion' => $i->descripcion,
                     'cantidad' => (float) $i->cantidad,
                     'valor_unitario' => (float) $i->valor_unitario,
+                    'costo_unitario' => (float) $i->costo_unitario,
                 ])->values();
             @endphp
 
@@ -129,6 +141,14 @@
                             <span>Valor</span>
                             <strong>${{ number_format($t->total_items, 0, ',', '.') }}</strong>
                         </div>
+                        @if($t->costo_items > 0)
+                        <div class="cc-trabajo-valor">
+                            <span>Utilidad</span>
+                            <strong style="color:{{ $t->utilidad >= 0 ? '#16a34a' : '#b91c1c' }};">
+                                ${{ number_format($t->utilidad, 0, ',', '.') }}
+                            </strong>
+                        </div>
+                        @endif
                         <div class="cc-trabajo-valor">
                             <span>Saldo</span>
                             <strong style="color:{{ $t->saldo_actual > 0 ? '#b91c1c' : '#16a34a' }};">
@@ -154,9 +174,11 @@
                             <thead>
                                 <tr>
                                     <th>Concepto</th>
-                                    <th style="text-align:center; width:80px;">Cant.</th>
-                                    <th style="text-align:right; width:120px;">V. unitario</th>
-                                    <th style="text-align:right; width:120px;">Subtotal</th>
+                                    <th style="text-align:center; width:70px;">Cant.</th>
+                                    <th style="text-align:right; width:105px;">Costo unit.</th>
+                                    <th style="text-align:right; width:105px;">Cobro unit.</th>
+                                    <th style="text-align:right; width:110px;">Subtotal</th>
+                                    <th style="text-align:right; width:105px;">Utilidad</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -164,12 +186,18 @@
                                     <tr>
                                         <td>{{ $item->descripcion }}</td>
                                         <td style="text-align:center;">{{ rtrim(rtrim(number_format($item->cantidad, 2, ',', '.'), '0'), ',') }}</td>
+                                        <td style="text-align:right; color:{{ $item->costo_unitario > 0 ? '#b45309' : '#cbd5e1' }};">
+                                            {{ $item->costo_unitario > 0 ? '$' . number_format($item->costo_unitario, 0, ',', '.') : '—' }}
+                                        </td>
                                         <td style="text-align:right;">${{ number_format($item->valor_unitario, 0, ',', '.') }}</td>
                                         <td style="text-align:right; font-weight:600;">${{ number_format($item->subtotal, 0, ',', '.') }}</td>
+                                        <td style="text-align:right; font-weight:600; color:{{ $item->utilidad >= 0 ? '#16a34a' : '#b91c1c' }};">
+                                            ${{ number_format($item->utilidad, 0, ',', '.') }}
+                                        </td>
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="4" style="color:#94a3b8; font-style:italic;">
+                                        <td colspan="6" style="color:#94a3b8; font-style:italic;">
                                             Este trabajo se registró antes del desglose; su valor total es ${{ number_format($t->monto_original, 0, ',', '.') }}.
                                         </td>
                                     </tr>
@@ -178,19 +206,34 @@
                             @if($t->items->isNotEmpty())
                             <tfoot>
                                 <tr>
-                                    <td colspan="3" style="text-align:right; font-weight:700;">Total del trabajo</td>
+                                    <td colspan="4" style="text-align:right; font-weight:700;">Total del trabajo</td>
                                     <td style="text-align:right; font-weight:800; color:#7e22ce;">${{ number_format($t->total_items, 0, ',', '.') }}</td>
+                                    <td style="text-align:right; font-weight:800; color:{{ $t->utilidad >= 0 ? '#16a34a' : '#b91c1c' }};">
+                                        ${{ number_format($t->utilidad, 0, ',', '.') }}
+                                    </td>
                                 </tr>
+                                @if($t->costo_items > 0)
+                                <tr>
+                                    <td colspan="4" style="text-align:right; color:#b45309;">
+                                        Costos, ya descontados de
+                                        {{ optional($t->gastoCosto)->cuenta_id ? optional(\App\Models\Finanzas\Cuenta::find($t->gastoCosto->cuenta_id))->nombre : 'tu cuenta' }}
+                                    </td>
+                                    <td style="text-align:right; color:#b45309; font-weight:700;">−${{ number_format($t->costo_items, 0, ',', '.') }}</td>
+                                    <td></td>
+                                </tr>
+                                @endif
                                 @if($abonado > 0)
                                 <tr>
-                                    <td colspan="3" style="text-align:right; color:#16a34a;">Abonado al trabajo</td>
+                                    <td colspan="4" style="text-align:right; color:#16a34a;">Abonado al trabajo</td>
                                     <td style="text-align:right; color:#16a34a; font-weight:700;">−${{ number_format($abonado, 0, ',', '.') }}</td>
+                                    <td></td>
                                 </tr>
                                 @endif
                                 @if($t->intereses_acumulados > 0)
                                 <tr>
-                                    <td colspan="3" style="text-align:right; color:#b91c1c;">Intereses causados sin pagar</td>
+                                    <td colspan="4" style="text-align:right; color:#b91c1c;">Intereses causados sin pagar</td>
                                     <td style="text-align:right; color:#b91c1c; font-weight:700;">+${{ number_format($t->intereses_acumulados, 0, ',', '.') }}</td>
+                                    <td></td>
                                 </tr>
                                 @endif
                             </tfoot>
@@ -355,6 +398,11 @@
 .cc-item-fila .cc-col-sub { flex: 0 0 110px; text-align: right; font-size: 0.78rem; font-weight: 700; color: #334155; padding-top: 0.5rem; }
 .cc-item-quitar { flex: 0 0 30px; background: #fee2e2; color: #b91c1c; border: none; border-radius: 8px; cursor: pointer; font-weight: 700; height: 33px; }
 .cc-item-total { display: flex; justify-content: space-between; align-items: center; margin-top: 0.75rem; padding-top: 0.6rem; border-top: 2px solid #f1f5f9; font-weight: 800; color: #7e22ce; font-size: 0.9rem; }
+.cc-item-utilidad { display: flex; justify-content: space-between; align-items: center; margin-top: 0.3rem; font-weight: 700; font-size: 0.78rem; color: #64748b; }
+.cc-item-cabecera { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.3rem; font-size: 0.62rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.03em; }
+.cc-item-cabecera .cc-col-val, .cc-item-cabecera .cc-col-num { text-align: center; }
+.cc-item-cabecera .cc-col-sub { text-align: right; padding-top: 0; }
+.cc-input-costo { background: #fffbeb !important; border-color: #fcd34d !important; }
 
 @media (max-width: 720px) {
     .cc-resumen-cifras { width: 100%; justify-content: space-between; gap: 0.75rem; }

@@ -40,21 +40,37 @@
                 {{-- Desglose --}}
                 <div style="margin-top:1.25rem;" x-data="ccItems(@js($itemsVacio))">
                     <label class="form-label-bx">Desglose del trabajo</label>
-                    <small class="cc-hint" style="margin-bottom:0.5rem;">Una línea por concepto: cámaras, DVR, mano de obra…</small>
+                    <small class="cc-hint" style="margin-bottom:0.5rem;">
+                        Una línea por concepto. <strong>Costo</strong> es lo que te salió a ti (sale de tu cuenta hoy);
+                        <strong>cobro</strong> es lo que le facturas al cliente.
+                    </small>
+
+                    <div class="cc-item-cabecera">
+                        <div class="cc-col-desc">Concepto</div>
+                        <div class="cc-col-num">Cant.</div>
+                        <div class="cc-col-val">Costo unit.</div>
+                        <div class="cc-col-val">Cobro unit.</div>
+                        <div class="cc-col-sub">Subtotal</div>
+                        <div style="flex:0 0 30px;"></div>
+                    </div>
 
                     <template x-for="(item, i) in items" :key="i">
                         <div class="cc-item-fila">
                             <div class="cc-col-desc">
                                 <input type="text" :name="`items[${i}][descripcion]`" x-model="item.descripcion"
-                                       placeholder="Ej: Cámara Hikvision 1080p" maxlength="150" required>
+                                       placeholder="Ej: Disco duro sólido 1TB" maxlength="150" required>
                             </div>
                             <div class="cc-col-num">
                                 <input type="number" step="0.01" min="0.01" :name="`items[${i}][cantidad]`"
-                                       x-model.number="item.cantidad" placeholder="Cant." required>
+                                       x-model.number="item.cantidad" required>
+                            </div>
+                            <div class="cc-col-val">
+                                <input type="number" step="1" min="0" :name="`items[${i}][costo_unitario]`"
+                                       x-model.number="item.costo_unitario" placeholder="0" class="cc-input-costo">
                             </div>
                             <div class="cc-col-val">
                                 <input type="number" step="1" min="0" :name="`items[${i}][valor_unitario]`"
-                                       x-model.number="item.valor_unitario" placeholder="V. unitario" required>
+                                       x-model.number="item.valor_unitario" placeholder="0" required>
                             </div>
                             <div class="cc-col-sub" x-text="money(sub(item))"></div>
                             <button type="button" class="cc-item-quitar" @click="quitar(i)"
@@ -68,25 +84,35 @@
                         <span>Total del trabajo</span>
                         <span x-text="money(total)"></span>
                     </div>
+                    <div class="cc-item-utilidad" x-show="totalCosto > 0">
+                        <span>Costos <span x-text="money(totalCosto)"></span> · Utilidad</span>
+                        <span :style="`color:${total - totalCosto >= 0 ? '#16a34a' : '#b91c1c'}`"
+                              x-text="money(total - totalCosto)"></span>
+                    </div>
                 </div>
 
-                {{-- Costo real --}}
+                {{-- Dónde se registra el egreso de los costos --}}
                 <div style="display:flex; gap:1rem; margin-top:1.25rem;">
-                    <div class="form-group-bx" style="flex:1;">
-                        <label class="form-label-bx">¿Cuánto te costaron los materiales? (opcional)</label>
-                        <input type="number" step="1" min="0" name="costo_materiales" class="form-input-bx" placeholder="Ej: 900000">
-                        <small class="cc-hint">Se registra como gasto para ver la utilidad real.</small>
-                    </div>
                     @if($cuentas->isNotEmpty())
                     <div class="form-group-bx" style="flex:1;">
-                        <label class="form-label-bx">¿De qué cuenta salió ese costo?</label>
+                        <label class="form-label-bx">¿De qué cuenta salen los costos?</label>
                         <select name="cuenta_costo_id" class="form-select-bx">
                             @foreach($cuentas as $cta)
                                 <option value="{{ $cta->id }}">{{ $cta->icono }} {{ $cta->nombre }}</option>
                             @endforeach
                         </select>
+                        <small class="cc-hint">Solo aplica si alguna línea tiene costo.</small>
                     </div>
                     @endif
+                    <div class="form-group-bx" style="flex:1;">
+                        <label class="form-label-bx">Categoría del gasto</label>
+                        <select name="categoria_costo_id" class="form-select-bx">
+                            <option value="">🛠️ TRABAJOS (por defecto)</option>
+                            @foreach($categorias as $cat)
+                                <option value="{{ $cat->id }}">{{ $cat->icono }} {{ $cat->nombre }}</option>
+                            @endforeach
+                        </select>
+                    </div>
                 </div>
 
                 <div class="form-group-bx" style="margin-top:1rem;">
@@ -144,6 +170,15 @@
                 <div style="margin-top:1.25rem;">
                     <label class="form-label-bx">Desglose del trabajo</label>
 
+                    <div class="cc-item-cabecera">
+                        <div class="cc-col-desc">Concepto</div>
+                        <div class="cc-col-num">Cant.</div>
+                        <div class="cc-col-val">Costo unit.</div>
+                        <div class="cc-col-val">Cobro unit.</div>
+                        <div class="cc-col-sub">Subtotal</div>
+                        <div style="flex:0 0 30px;"></div>
+                    </div>
+
                     <template x-for="(item, i) in editar.items" :key="i">
                         <div class="cc-item-fila">
                             <div class="cc-col-desc">
@@ -151,6 +186,10 @@
                             </div>
                             <div class="cc-col-num">
                                 <input type="number" step="0.01" min="0.01" :name="`items[${i}][cantidad]`" x-model.number="item.cantidad" required>
+                            </div>
+                            <div class="cc-col-val">
+                                <input type="number" step="1" min="0" :name="`items[${i}][costo_unitario]`"
+                                       x-model.number="item.costo_unitario" placeholder="0" class="cc-input-costo">
                             </div>
                             <div class="cc-col-val">
                                 <input type="number" step="1" min="0" :name="`items[${i}][valor_unitario]`" x-model.number="item.valor_unitario" required>
@@ -162,13 +201,41 @@
                     </template>
 
                     <button type="button" class="btn-fin" style="margin-top:0.35rem;"
-                            @click="editar.items.push({ descripcion: '', cantidad: 1, valor_unitario: 0 })">＋ Agregar línea</button>
+                            @click="editar.items.push({ descripcion: '', cantidad: 1, valor_unitario: 0, costo_unitario: 0 })">＋ Agregar línea</button>
 
                     <div class="cc-item-total">
                         <span>Total del trabajo</span>
                         <span x-text="money(totalDe(editar.items))"></span>
                     </div>
+                    <div class="cc-item-utilidad" x-show="costoDe(editar.items) > 0">
+                        <span>Costos <span x-text="money(costoDe(editar.items))"></span> · Utilidad</span>
+                        <span :style="`color:${totalDe(editar.items) - costoDe(editar.items) >= 0 ? '#16a34a' : '#b91c1c'}`"
+                              x-text="money(totalDe(editar.items) - costoDe(editar.items))"></span>
+                    </div>
                 </div>
+
+                @if($cuentas->isNotEmpty())
+                <div style="display:flex; gap:1rem; margin-top:1rem;">
+                    <div class="form-group-bx" style="flex:1;">
+                        <label class="form-label-bx">Cuenta de los costos</label>
+                        <select name="cuenta_costo_id" class="form-select-bx">
+                            <option value="">— dejar donde está —</option>
+                            @foreach($cuentas as $cta)
+                                <option value="{{ $cta->id }}">{{ $cta->icono }} {{ $cta->nombre }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="form-group-bx" style="flex:1;">
+                        <label class="form-label-bx">Categoría del gasto</label>
+                        <select name="categoria_costo_id" class="form-select-bx">
+                            <option value="">— dejar como está —</option>
+                            @foreach($categorias as $cat)
+                                <option value="{{ $cat->id }}">{{ $cat->icono }} {{ $cat->nombre }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                </div>
+                @endif
 
                 <div class="form-group-bx" style="margin-top:1rem;">
                     <label class="form-label-bx">Observaciones</label>
@@ -410,6 +477,11 @@
                 return (items || []).reduce((acc, item) => acc + this.sub(item), 0);
             },
 
+            costoDe(items) {
+                return (items || []).reduce(
+                    (acc, item) => acc + (parseFloat(item.cantidad) || 0) * (parseFloat(item.costo_unitario) || 0), 0);
+            },
+
             money(valor) {
                 return '$' + Math.round(valor || 0).toLocaleString('es-CO');
             },
@@ -422,7 +494,7 @@
             items: JSON.parse(JSON.stringify(iniciales)),
 
             agregar() {
-                this.items.push({ descripcion: '', cantidad: 1, valor_unitario: 0 });
+                this.items.push({ descripcion: '', cantidad: 1, valor_unitario: 0, costo_unitario: 0 });
             },
 
             quitar(i) {
@@ -437,6 +509,11 @@
 
             get total() {
                 return this.items.reduce((acc, item) => acc + this.sub(item), 0);
+            },
+
+            get totalCosto() {
+                return this.items.reduce(
+                    (acc, item) => acc + (parseFloat(item.cantidad) || 0) * (parseFloat(item.costo_unitario) || 0), 0);
             },
 
             money(valor) {

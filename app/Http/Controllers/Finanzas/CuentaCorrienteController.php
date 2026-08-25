@@ -98,11 +98,17 @@ class CuentaCorrienteController extends Controller
             'trabajos_pendientes' => $pendientes->count(),
             'trabajos_totales' => $trabajos->count(),
             'vencidos' => $pendientes->filter(fn ($t) => $t->esta_vencido)->count(),
+            // La utilidad se mide sobre TODOS los trabajos, cobrados o no: es el
+            // negocio del cliente, no la plata que falta por entrar.
+            'facturado' => (float) $trabajos->sum(fn ($t) => $t->total_items),
+            'costos' => (float) $trabajos->sum(fn ($t) => $t->costo_items),
+            'utilidad' => (float) $trabajos->sum(fn ($t) => $t->utilidad),
         ];
 
         $cuentas = Cuenta::where('user_id', Auth::id())->activas()->orderBy('orden')->get();
+        $categorias = CategoriaGasto::where('user_id', Auth::id())->orderBy('nombre')->get();
 
-        return view('finanzas.cuenta-corriente.show', compact('cliente', 'trabajos', 'totales', 'cuentas'));
+        return view('finanzas.cuenta-corriente.show', compact('cliente', 'trabajos', 'totales', 'cuentas', 'categorias'));
     }
 
     /* ---------------------------------------------------------------- Clientes */
@@ -203,9 +209,10 @@ class CuentaCorrienteController extends Controller
             'items.*.descripcion' => 'required|string|max:150',
             'items.*.cantidad' => 'required|numeric|min:0.01',
             'items.*.valor_unitario' => 'required|numeric|min:0',
+            'items.*.costo_unitario' => 'nullable|numeric|min:0',
             'observaciones' => 'nullable|string',
-            'costo_materiales' => 'nullable|numeric|min:0',
             'cuenta_costo_id' => 'nullable|integer',
+            'categoria_costo_id' => 'nullable|integer',
             'soporte' => 'nullable|file|mimes:jpeg,png,jpg,pdf|max:10240',
         ]);
 
@@ -214,6 +221,7 @@ class CuentaCorrienteController extends Controller
                 'descripcion' => trim($i['descripcion']),
                 'cantidad' => (float) $i['cantidad'],
                 'valor_unitario' => (float) $i['valor_unitario'],
+                'costo_unitario' => (float) ($i['costo_unitario'] ?? 0),
             ])
             ->values();
 
@@ -255,6 +263,7 @@ class CuentaCorrienteController extends Controller
                     'descripcion' => $item['descripcion'],
                     'cantidad' => $item['cantidad'],
                     'valor_unitario' => $item['valor_unitario'],
+                    'costo_unitario' => $item['costo_unitario'],
                     'orden' => $orden,
                 ]);
             }
@@ -265,11 +274,8 @@ class CuentaCorrienteController extends Controller
         });
 
         // A diferencia de un préstamo, aquí no salió plata por el valor del trabajo:
-        // el egreso real es lo que costaron los materiales, si se registró.
-        $costo = (float) $request->input('costo_materiales', 0);
-        if ($costo > 0) {
-            $this->registrarCostoMateriales($trabajo, $costo, $request->fecha, $request->cuenta_costo_id);
-        }
+        // el egreso real es la suma de los costos de las líneas del desglose.
+        $this->sincronizarGastoCosto($trabajo, $request->cuenta_costo_id, $request->categoria_costo_id);
 
         $this->invalidarCacheFinanzas(
             (int) date('Y', strtotime($request->fecha)),
@@ -295,7 +301,10 @@ class CuentaCorrienteController extends Controller
             'items.*.descripcion' => 'required|string|max:150',
             'items.*.cantidad' => 'required|numeric|min:0.01',
             'items.*.valor_unitario' => 'required|numeric|min:0',
+            'items.*.costo_unitario' => 'nullable|numeric|min:0',
             'observaciones' => 'nullable|string',
+            'cuenta_costo_id' => 'nullable|integer',
+            'categoria_costo_id' => 'nullable|integer',
         ]);
 
         $items = collect($request->input('items'))->values();
@@ -330,6 +339,7 @@ class CuentaCorrienteController extends Controller
                     'descripcion' => trim($item['descripcion']),
                     'cantidad' => (float) $item['cantidad'],
                     'valor_unitario' => (float) $item['valor_unitario'],
+                    'costo_unitario' => (float) ($item['costo_unitario'] ?? 0),
                     'orden' => $orden,
                 ]);
             }
@@ -349,6 +359,10 @@ class CuentaCorrienteController extends Controller
 
             $this->recalcularSaldos($trabajo->fresh());
         });
+
+        // El gasto sigue a los costos del desglose: si subieron, bajaron o
+        // quedaron en cero, la cuenta tiene que reflejarlo.
+        $this->sincronizarGastoCosto($trabajo->fresh(), $request->cuenta_costo_id, $request->categoria_costo_id);
 
         $this->invalidarCacheFinanzas();
 
@@ -372,6 +386,10 @@ class CuentaCorrienteController extends Controller
             if ($trabajo->soporte_path) {
                 Storage::disk('local')->delete($trabajo->soporte_path);
             }
+
+            // El gasto solo existe por este trabajo: si el trabajo se va, la plata
+            // vuelve a la cuenta.
+            Gasto::where('cc_trabajo_id', $trabajo->id)->delete();
 
             $trabajo->items()->delete();
             $trabajo->movimientos()->delete();
@@ -591,27 +609,77 @@ class CuentaCorrienteController extends Controller
     }
 
     /**
-     * El costo real de un trabajo (lo que se pagó por cámaras, DVR, etc.) sale de
-     * una cuenta y se registra como gasto, para poder ver la utilidad del trabajo.
+     * Mantiene el gasto del trabajo alineado con la suma de los costos de su
+     * desglose. Es un gasto normal (`tipo_movimiento = 'gasto'`) enlazado por
+     * `cc_trabajo_id`: sale de la cuenta y entra al gasto del mes por el camino
+     * de siempre, sin depender de que un tipo nuevo esté dado de alta en todas
+     * las listas blancas que suman caja.
+     *
+     * Un solo gasto por trabajo, no uno por línea: el detalle se ve en la ficha
+     * y la lista de gastos del día no se llena de renglones sueltos.
      */
-    private function registrarCostoMateriales(Prestamo $trabajo, float $costo, string $fecha, $cuentaId): void
+    private function sincronizarGastoCosto(Prestamo $trabajo, $cuentaId = null, $categoriaId = null): void
     {
-        $categoria = CategoriaGasto::firstOrCreate(
-            ['user_id' => $trabajo->user_id, 'nombre' => 'Otros'],
-            ['icono' => '📁', 'orden' => 99]
-        );
+        $trabajo->load('items');
+        $costo = $trabajo->costo_items;
+        $gasto = Gasto::where('cc_trabajo_id', $trabajo->id)->first();
 
-        Gasto::create([
-            'user_id' => $trabajo->user_id,
-            'categoria_id' => $categoria->id,
-            'cuenta_id' => $this->resolverCuenta($cuentaId),
-            'fecha' => $fecha,
+        // Sin costos no hay egreso: si antes lo había, se retira de la cuenta.
+        if ($costo <= 0) {
+            $gasto?->delete();
+
+            return;
+        }
+
+        $datos = [
             'monto' => $costo,
-            'descripcion' => "Materiales/costo del trabajo: {$trabajo->descripcion} ({$trabajo->nombre_deudor})",
+            'fecha' => $trabajo->fecha_desembolso,
+            'descripcion' => "Costos del trabajo: {$trabajo->descripcion} ({$trabajo->nombre_deudor})",
+        ];
+
+        if ($gasto) {
+            // La cuenta y la categoría solo se pisan si el formulario las mandó;
+            // así una edición del desglose no mueve dónde quedó registrado el egreso.
+            if ($cuentaId) {
+                $datos['cuenta_id'] = $this->resolverCuenta($cuentaId);
+            }
+            if ($categoriaId) {
+                $datos['categoria_id'] = $this->resolverCategoriaCosto($trabajo, $categoriaId);
+            }
+
+            $gasto->update($datos);
+
+            return;
+        }
+
+        Gasto::create($datos + [
+            'user_id' => $trabajo->user_id,
+            'categoria_id' => $this->resolverCategoriaCosto($trabajo, $categoriaId),
+            'cuenta_id' => $this->resolverCuenta($cuentaId),
             'tipo_movimiento' => 'gasto',
             'es_patrimonio' => false,
             'patrimonio_id' => null,
+            'cc_trabajo_id' => $trabajo->id,
         ]);
+    }
+
+    /**
+     * Categoría del gasto de costos: la que se eligió, o una propia para no
+     * revolver los costos de trabajos con los gastos de la casa.
+     */
+    private function resolverCategoriaCosto(Prestamo $trabajo, $categoriaId): int
+    {
+        if ($categoriaId) {
+            $elegida = CategoriaGasto::where('user_id', $trabajo->user_id)->find($categoriaId);
+            if ($elegida) {
+                return $elegida->id;
+            }
+        }
+
+        return CategoriaGasto::firstOrCreate(
+            ['user_id' => $trabajo->user_id, 'nombre' => 'TRABAJOS'],
+            ['icono' => '🛠️', 'orden' => 98]
+        )->id;
     }
 
     /**

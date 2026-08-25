@@ -13,6 +13,7 @@ namespace App\Models\Finanzas;
  * @property string $descripcion
  * @property float $cantidad
  * @property float $valor_unitario
+ * @property float $costo_unitario
  * @property int $orden
  */
 class CuentaCorrienteItem extends BaseFinanzasModel
@@ -24,6 +25,7 @@ class CuentaCorrienteItem extends BaseFinanzasModel
         'descripcion',
         'cantidad',
         'valor_unitario',
+        'costo_unitario',
         'orden',
     ];
 
@@ -31,6 +33,7 @@ class CuentaCorrienteItem extends BaseFinanzasModel
         'prestamo_id' => 'integer',
         'cantidad' => 'float',
         'valor_unitario' => 'float',
+        'costo_unitario' => 'float',
         'orden' => 'integer',
     ];
 
@@ -42,5 +45,18 @@ class CuentaCorrienteItem extends BaseFinanzasModel
     public function getSubtotalAttribute(): float
     {
         return round($this->cantidad * $this->valor_unitario, 2);
+    }
+
+    /**
+     * Lo que costó esta línea: lo que salió del bolsillo, no lo que se cobra.
+     */
+    public function getCostoSubtotalAttribute(): float
+    {
+        return round($this->cantidad * $this->costo_unitario, 2);
+    }
+
+    public function getUtilidadAttribute(): float
+    {
+        return round($this->subtotal - $this->costo_subtotal, 2);
     }
 }
