@@ -117,7 +117,7 @@
                         ['finanzas.gastos.index','💸','e0f2fe','0369a1','Transacciones Diarias','Gastos cotidianos e ingresos extras'],
                         ['finanzas.prestamos.index','🤝','fef3c7','92400e','Préstamos a Terceros','Control de deudas e intereses'],
                         ['finanzas.cuentas.index','💳','eef2ff','4338ca','Cuentas y Bolsillos','Banco, efectivo y transferencias'],
-                        ['finanzas.prestamos.cuenta-corriente','💼','f3e8ff','6b21a8','Cuenta Corriente (Servicios)','Cliente recurrente de trabajos'],
+                        ['finanzas.cuenta-corriente.index','💼','f3e8ff','6b21a8','Cuenta Corriente (Servicios)','Cliente recurrente de trabajos'],
                         ['finanzas.inversiones.index','🪙','e0f2fe','075985','Inversiones Cripto','Binance USDT y rentabilidades'],
                         ['finanzas.patrimonio.index','🏠','e0f7fa','006064','Patrimonio Físico','Vehículos, apartamentos y gastos'],
                         ['finanzas.proyectos.index','🏗️','f0fdf4','166534','Proyectos de Negocio','CuentaFacil y balances individuales'],
@@ -364,14 +364,14 @@ async function cargarAlertas(){
             ${faltantes.map(g=>`<span class="badge-warn" style="font-size:0.75rem;">${g.icono} ${g.nombre}</span>`).join('')}
             </div></div></div>`;
         if(mora.length>0) html+=`<div class="alert-card-bx error" ${faltantes.length>0?'style="margin-top:0.75rem;"':''}><div class="ac-icon">⚠️</div><div class="ac-body">
-            <h3>Deudores en Mora (Vencidos)</h3><p>Las siguientes personas tienen préstamos activos vencidos hace más de 30 días:</p>
+            <h3>Préstamos por gestionar</h3><p>Estos préstamos están marcados en mora; los que ya tienen interés sin pagar se señalan con los días vencidos:</p>
             <div class="ac-list" style="margin-top:0.5rem;display:flex;flex-direction:column;gap:0.5rem;">
             ${mora.map(p=>`<div style="display:flex;justify-content:space-between;align-items:center;background:rgba(239,68,68,0.06);padding:0.4rem 0.6rem;border-radius:6px;font-size:0.8rem;">
                 <div><strong>${p.nombre_deudor}</strong> <span style="color:#64748b;">(Debe: ${fmt(p.saldo_actual)} COP)</span>
-                <span class="badge-err" style="font-size:0.65rem;margin-left:5px;">${p.dias_mora} días mora</span></div>
+                <span class="badge-err" style="font-size:0.65rem;margin-left:5px;">${p.esta_vencido ? p.dias_mora + ' días vencido' : 'corte ' + p.fecha_corte}</span></div>
                 <div style="display:flex;gap:0.4rem;"><a href="${p.url_ficha}" class="btn-fin-small primary">Ficha</a>
                 <form action="${p.url_whatsapp}" method="POST" style="display:inline;"><input type="hidden" name="_token" value="${CSRF}">
-                <button type="submit" class="btn-fin-small success">🟢 Cobrar WA</button></form></div></div>`).join('')}
+                <button type="submit" class="btn-fin-small success">${p.esta_vencido ? '🔴 Cobrar WA' : '🟢 Recordar WA'}</button></form></div></div>`).join('')}
             </div></div></div>`;
         if(html){sec.innerHTML=html; sec.style.display='';}
     }catch(e){}

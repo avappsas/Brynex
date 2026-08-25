@@ -26,6 +26,8 @@ use Carbon\Carbon;
  * @property string|null $observaciones
  * @property bool $es_cuenta_corriente
  * @property string|null $cuenta_corriente_grupo
+ * @property int|null $cc_cliente_id
+ * @property bool $sin_interes
  * @property \Carbon\Carbon|null $created_at
  * @property \Carbon\Carbon|null $updated_at
  */
@@ -63,6 +65,8 @@ class Prestamo extends BaseFinanzasModel
         'observaciones',
         'es_cuenta_corriente',
         'cuenta_corriente_grupo',
+        'cc_cliente_id',
+        'sin_interes',
     ];
 
     protected $casts = [
@@ -73,6 +77,8 @@ class Prestamo extends BaseFinanzasModel
         'dias_mora_alerta' => 'integer',
         'alertas_activas' => 'boolean',
         'es_cuenta_corriente' => 'boolean',
+        'cc_cliente_id' => 'integer',
+        'sin_interes' => 'boolean',
     ];
 
     /**
@@ -116,6 +122,44 @@ class Prestamo extends BaseFinanzasModel
     }
 
     /**
+     * Cliente de cuenta corriente al que pertenece este trabajo.
+     */
+    public function ccCliente()
+    {
+        return $this->belongsTo(CuentaCorrienteCliente::class, 'cc_cliente_id');
+    }
+
+    /**
+     * Desglose del trabajo (cámaras, DVR, mano de obra...).
+     */
+    public function items()
+    {
+        return $this->hasMany(CuentaCorrienteItem::class, 'prestamo_id')->orderBy('orden')->orderBy('id');
+    }
+
+    /**
+     * Tasa que realmente se aplica. Un trabajo marcado "sin interés" conserva su
+     * tasa guardada — así se puede volver a activar sin tener que recordarla —
+     * pero no causa nada mientras el marcador esté puesto.
+     */
+    public function getTasaEfectivaAttribute(): float
+    {
+        return $this->sin_interes ? 0.00 : (float) $this->tasa_interes_mensual;
+    }
+
+    /**
+     * Total del trabajo según su desglose. Si no hay ítems, vale el monto registrado.
+     */
+    public function getTotalItemsAttribute(): float
+    {
+        if ($this->items->isEmpty()) {
+            return (float) $this->monto_original;
+        }
+
+        return round($this->items->sum(fn ($i) => $i->cantidad * $i->valor_unitario), 2);
+    }
+
+    /**
      * Accessor para obtener los días de mora a partir del último corte o la fecha de desembolso
      */
     public function getDiasMoraAttribute(): int
@@ -146,17 +190,84 @@ class Prestamo extends BaseFinanzasModel
     }
 
     /**
+     * Fecha del próximo corte: un ciclo después del último corte causado, el mismo
+     * día del mes del desembolso. Se delega en el servicio de liquidación para que
+     * el recordatorio anuncie exactamente el día en que el cron cobra el interés.
+     */
+    public function getFechaCorteAttribute(): Carbon
+    {
+        return app(\App\Services\Finanzas\PrestamoLiquidacionService::class)->proximoCorte($this);
+    }
+
+    /**
+     * Días que faltan para el próximo corte. Negativo si el corte ya pasó.
+     */
+    public function getDiasParaCorteAttribute(): int
+    {
+        return (int) Carbon::now()->startOfDay()->diffInDays($this->fecha_corte->copy()->startOfDay(), false);
+    }
+
+    /**
+     * Piso en pesos por debajo del cual un interés pendiente se considera residuo
+     * de redondeo y no cuenta como deuda vencida.
+     */
+    public const MINIMO_VENCIDO = 1000;
+
+    /**
+     * ¿Hay interés liquidado sin pagar? Es el criterio para cobrar en vez de
+     * recordar, y para pintar el semáforo en rojo.
+     */
+    public function getEstaVencidoAttribute(): bool
+    {
+        return $this->intereses_acumulados >= self::MINIMO_VENCIDO;
+    }
+
+    /**
+     * Días transcurridos desde el último corte causado. Es el vencimiento real de
+     * lo que está pendiente, a diferencia de `dias_mora`, que cuenta desde el
+     * último abono y por eso se dispara aunque el deudor esté al día.
+     */
+    public function getDiasVencidosAttribute(): int
+    {
+        if (! $this->esta_vencido) {
+            return 0;
+        }
+
+        $corte = $this->ultimo_corte
+            ? Carbon::parse($this->ultimo_corte)
+            : Carbon::parse($this->fecha_desembolso);
+
+        return max(1, (int) $corte->startOfDay()->diffInDays(Carbon::now()->startOfDay(), false));
+    }
+
+    /**
+     * Interés que se causará en el próximo corte: la tasa mensual sobre el saldo
+     * actual. NO es lo mismo que `intereses_acumulados`, que es todo el interés
+     * histórico impago.
+     */
+    public function getInteresCicloAttribute(): float
+    {
+        // Sobre la tasa efectiva: un trabajo marcado "sin interés" conserva su tasa
+        // guardada, y anunciarla en el recordatorio cobraría algo que no se causa.
+        if ($this->tasa_efectiva <= 0) {
+            return 0.00;
+        }
+
+        return round($this->saldo_actual * ($this->tasa_efectiva / 100), 0);
+    }
+
+    /**
      * Accessor para obtener el último mensaje de cobro (saliente) enviado por WhatsApp
      */
     public function getUltimoMensajeCobroAttribute(): ?\App\Models\WhatsappMensaje
     {
-        if (!$this->telefono_deudor) {
+        if (! $this->telefono_deudor) {
             return null;
         }
 
         $numeroNormalizado = preg_replace('/[^0-9]/', '', $this->telefono_deudor);
         if (strlen($numeroNormalizado) === 10) {
-            $numeroNormalizado = '57' . $numeroNormalizado;
+            $numeroNormalizado = '57'.$numeroNormalizado;
         }
 
         $aliadoId = null;
@@ -165,11 +276,11 @@ class Prestamo extends BaseFinanzasModel
             $aliadoId = $user ? $user->aliado_id : null;
         }
 
-        if (!$aliadoId && auth()->check()) {
+        if (! $aliadoId && auth()->check()) {
             $aliadoId = auth()->user()->aliado_id;
         }
 
-        if (!$aliadoId) {
+        if (! $aliadoId) {
             return null;
         }
 
@@ -177,7 +288,7 @@ class Prestamo extends BaseFinanzasModel
             ->where('wa_contact_id', $numeroNormalizado)
             ->first();
 
-        if (!$conversacion) {
+        if (! $conversacion) {
             return null;
         }
 
@@ -185,9 +296,10 @@ class Prestamo extends BaseFinanzasModel
             ->where('direccion', 'saliente')
             ->where(function ($q) {
                 $q->where('contenido', 'like', '%préstamo%')
-                  ->orWhere('contenido', 'like', '%prestamo%')
-                  ->orWhere('contenido', 'like', '%interes%')
-                  ->orWhere('contenido', 'like', '%cobro%');
+                    ->orWhere('contenido', 'like', '%prestamo%')
+                    ->orWhere('contenido', 'like', '%interes%')
+                    ->orWhere('contenido', 'like', '%corte%')
+                    ->orWhere('contenido', 'like', '%cobro%');
             })
             ->latest('id')
             ->first();

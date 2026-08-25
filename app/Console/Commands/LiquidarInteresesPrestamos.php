@@ -24,6 +24,7 @@ class LiquidarInteresesPrestamos extends Command
     {
         $prestamos = Prestamo::whereIn('estado', ['activo', 'mora'])
             ->where('tasa_interes_mensual', '>', 0)
+            ->where('sin_interes', false)
             ->where('saldo_actual', '>', 0)
             ->get();
 

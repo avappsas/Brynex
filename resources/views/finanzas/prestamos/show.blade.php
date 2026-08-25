@@ -90,7 +90,21 @@
                     <span>Última Liquidación:</span> <strong>{{ $prestamo->ultimo_corte ? Carbon\Carbon::parse($prestamo->ultimo_corte)->format('d/m/Y') : 'Ninguna' }}</strong>
                 </div>
                 <div class="fdcg-row">
-                    <span>Mora Actual:</span> <strong>{{ $prestamo->dias_mora }} días</strong>
+                    <span>Próximo Corte:</span>
+                    <strong>{{ $prestamo->fecha_corte->format('d/m/Y') }}
+                        <small style="font-weight:500; color:#6b7280;">({{ $prestamo->dias_para_corte }}d)</small>
+                    </strong>
+                </div>
+                <div class="fdcg-row">
+                    <span>Vencido:</span>
+                    <strong>
+                        @if($prestamo->esta_vencido)
+                            ${{ number_format($prestamo->intereses_acumulados, 0, ',', '.') }}
+                            <small style="font-weight:500; color:#b91c1c;">({{ $prestamo->dias_vencidos }}d)</small>
+                        @else
+                            Al día
+                        @endif
+                    </strong>
                 </div>
                 @if($prestamo->soporte_path)
                     <div class="fdcg-row" style="margin-top:0.75rem;">
@@ -129,12 +143,12 @@
                         <form action="{{ route('finanzas.prestamos.whatsapp', $prestamo->id) }}" method="POST" style="display:block;">
                             @csrf
                             <button type="submit" class="btn-fac-action success" style="width:100%;">
-                                🟢 Cobrar por WhatsApp
+                                {{ $prestamo->esta_vencido ? '🔴 Cobrar por WhatsApp' : '🟢 Recordar por WhatsApp' }}
                             </button>
                         </form>
                     @else
                         <button @click="openNoTelefono = true" class="btn-fac-action success" style="width:100%; opacity: 0.7;">
-                            🟢 Cobrar por WhatsApp
+                            {{ $prestamo->esta_vencido ? '🔴 Cobrar por WhatsApp' : '🟢 Recordar por WhatsApp' }}
                         </button>
                     @endif
 

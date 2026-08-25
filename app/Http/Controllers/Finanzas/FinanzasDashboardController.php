@@ -11,12 +11,12 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
-
 class FinanzasDashboardController extends Controller
 {
     use DetectaDispositivoMovil;
 
     protected FinanzasAlertaService $alertaService;
+
     protected CriptoApiService $criptoService;
 
     public function __construct(FinanzasAlertaService $alertaService, CriptoApiService $criptoService)
@@ -44,7 +44,7 @@ class FinanzasDashboardController extends Controller
     {
         $user = Auth::user();
         $anio = (int) $request->input('anio', now()->year);
-        $mes  = (int) $request->input('mes', now()->month);
+        $mes = (int) $request->input('mes', now()->month);
 
         // Precio cripto (caché rápido, siempre disponible)
         $criptoPrecio = $this->criptoService->getPrecioUsdt();
@@ -57,12 +57,12 @@ class FinanzasDashboardController extends Controller
 
         // Dispositivo móvil: carga directa (los servicios usan Cache::remember internamente)
         if ($this->isMobileDevice($request)) {
-            $resumen         = $this->alertaService->getResumenMensual($user->id, $anio, $mes);
-            $prestamosMora   = $this->alertaService->getPrestamosEnMora($user->id);
+            $resumen = $this->alertaService->getResumenMensual($user->id, $anio, $mes);
+            $prestamosMora = $this->alertaService->getPrestamosEnMora($user->id);
             $gastosFaltantes = $this->alertaService->getGastosRecurrentesPendientes($user->id, $anio, $mes);
-            $consolidado     = $this->alertaService->getConsolidadoGlobal($user->id);
-            $cuentas         = \App\Models\Finanzas\Cuenta::conSaldos($user->id);
-            $evolucion       = $this->alertaService->getEvolucionAnual($user->id, $anio);
+            $consolidado = $this->alertaService->getConsolidadoGlobal($user->id);
+            $cuentas = \App\Models\Finanzas\Cuenta::conSaldos($user->id);
+            $evolucion = $this->alertaService->getEvolucionAnual($user->id, $anio);
 
             $transacciones = \App\Models\Finanzas\Gasto::with('categoria')
                 ->where('user_id', $user->id)
@@ -104,7 +104,7 @@ class FinanzasDashboardController extends Controller
     {
         $user = Auth::user();
         $anio = (int) $request->input('anio', now()->year);
-        $mes  = (int) $request->input('mes', now()->month);
+        $mes = (int) $request->input('mes', now()->month);
 
         $resumen = $this->alertaService->getResumenMensual($user->id, $anio, $mes);
 
@@ -117,13 +117,13 @@ class FinanzasDashboardController extends Controller
             ->groupBy('categoria_id')
             ->get()
             ->map(fn ($g) => [
-                'total'    => (float) $g->total,
-                'nombre'   => $g->categoria?->nombre ?? 'Sin categoría',
-                'color'    => $g->categoria?->color  ?? '#64748b',
+                'total' => (float) $g->total,
+                'nombre' => $g->categoria?->nombre ?? 'Sin categoría',
+                'color' => $g->categoria?->color ?? '#64748b',
             ]);
 
         return response()->json([
-            'resumen'          => $resumen,
+            'resumen' => $resumen,
             'gastos_categoria' => $gastosCategoria,
         ]);
     }
@@ -143,14 +143,14 @@ class FinanzasDashboardController extends Controller
             ->take(6)
             ->sortBy('mes')
             ->map(fn ($m) => [
-                'label'    => $m['label'],
+                'label' => $m['label'],
                 'entradas' => $m['entradas'],
-                'gastos'   => $m['salidas'],
+                'gastos' => $m['salidas'],
             ])
             ->values();
 
         return response()->json([
-            'evolucion'     => $evolucion,
+            'evolucion' => $evolucion,
             'ultimos_meses' => $ultimosMeses,
         ]);
     }
@@ -162,6 +162,7 @@ class FinanzasDashboardController extends Controller
     {
         $user = Auth::user();
         $consolidado = $this->alertaService->getConsolidadoGlobal($user->id);
+
         return response()->json($consolidado);
     }
 
@@ -173,10 +174,10 @@ class FinanzasDashboardController extends Controller
         $user = Auth::user();
         $cuentas = \App\Models\Finanzas\Cuenta::conSaldos($user->id)
             ->map(fn ($c) => [
-                'id'          => $c->id,
-                'nombre'      => $c->nombre,
-                'icono'       => $c->icono,
-                'saldo_actual'=> (float) $c->saldo_actual,
+                'id' => $c->id,
+                'nombre' => $c->nombre,
+                'icono' => $c->icono,
+                'saldo_actual' => (float) $c->saldo_actual,
             ]);
 
         return response()->json($cuentas);
@@ -189,28 +190,31 @@ class FinanzasDashboardController extends Controller
     {
         $user = Auth::user();
         $anio = (int) $request->input('anio', now()->year);
-        $mes  = (int) $request->input('mes', now()->month);
+        $mes = (int) $request->input('mes', now()->month);
 
         $prestamosMora = $this->alertaService->getPrestamosEnMora($user->id)
             ->map(fn ($p) => [
-                'id'           => $p->id,
-                'nombre_deudor'=> $p->nombre_deudor,
+                'id' => $p->id,
+                'nombre_deudor' => $p->nombre_deudor,
                 'saldo_actual' => (float) $p->saldo_actual,
-                'dias_mora'    => $p->dias_mora ?? 0,
-                'url_ficha'    => route('finanzas.prestamos.show', $p->id),
+                // Días desde el corte impago, no desde el último abono (ver Prestamo::dias_vencidos)
+                'dias_mora' => $p->dias_vencidos,
+                'esta_vencido' => $p->esta_vencido,
+                'fecha_corte' => $p->fecha_corte->format('d/m/Y'),
+                'url_ficha' => route('finanzas.prestamos.show', $p->id),
                 'url_whatsapp' => route('finanzas.prestamos.whatsapp', $p->id),
             ]);
 
         $gastosFaltantes = $this->alertaService
             ->getGastosRecurrentesPendientes($user->id, $anio, $mes)
             ->map(fn ($g) => [
-                'id'     => $g->id,
+                'id' => $g->id,
                 'nombre' => $g->nombre,
-                'icono'  => $g->icono,
+                'icono' => $g->icono,
             ])->values();
 
         return response()->json([
-            'prestamos_mora'   => $prestamosMora->values(),
+            'prestamos_mora' => $prestamosMora->values(),
             'gastos_faltantes' => $gastosFaltantes,
         ]);
     }

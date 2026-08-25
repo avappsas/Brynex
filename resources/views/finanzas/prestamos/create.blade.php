@@ -89,18 +89,13 @@
                 </div>
                 @endif
 
-                {{-- Cuenta corriente --}}
-                <div x-data="{ esCC: false }" style="margin-top:1rem; background:#f8fafc; padding:0.75rem; border-radius:9px; border:1px dashed #cbd5e1;">
-                    <div style="display:flex; align-items:center; gap:0.5rem;">
-                        <input type="checkbox" name="es_cuenta_corriente" value="1" x-model="esCC" id="cc_check" style="cursor:pointer; width:16px; height:16px;">
-                        <label for="cc_check" style="font-size:0.8rem; font-weight:700; color:#334155; cursor:pointer;">
-                            ¿Es Cuenta Corriente? (Trabajos acumulados)
-                        </label>
-                    </div>
-                    <div x-show="esCC" x-cloak style="margin-top:0.5rem; padding-left:1.25rem;">
-                        <label class="form-label-bx">Nombre del Grupo / Mes de Trabajo</label>
-                        <input type="text" name="cuenta_corriente_grupo" placeholder="Ej: Trabajos Junio 2026, Proyecto X" class="form-input-bx">
-                    </div>
+                {{-- Cuenta corriente: los trabajos a clientes recurrentes se registran
+                     en su propio módulo, con desglose por ítem y pago por trabajo. --}}
+                <div style="margin-top:1rem; background:#faf5ff; padding:0.75rem; border-radius:9px; border:1px dashed #d8b4fe; font-size:0.78rem; color:#581c87;">
+                    ¿Es un <strong>trabajo</strong> para un cliente recurrente y no un préstamo en efectivo?
+                    Regístralo en
+                    <a href="{{ route('finanzas.cuenta-corriente.index') }}" style="color:#7e22ce; font-weight:700;">Cuenta Corriente de Servicios</a>,
+                    donde puedes discriminar materiales y mano de obra y cobrar trabajo por trabajo.
                 </div>
 
                 {{-- Alertas --}}

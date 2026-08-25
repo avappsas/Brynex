@@ -28,7 +28,7 @@
                 </a>
             </div>
             
-            <a href="{{ route('finanzas.prestamos.cuenta-corriente') }}" class="btn-fin-link success">💼 Cuenta Corriente (Servicios)</a>
+            <a href="{{ route('finanzas.cuenta-corriente.index') }}" class="btn-fin-link success">💼 Cuenta Corriente (Servicios)</a>
             <a href="{{ route('finanzas.prestamos.create') }}" class="btn-fin success">
                 ➕ Nuevo Préstamo
             </a>
@@ -54,24 +54,25 @@
     <div class="prestamos-grid">
         @forelse($prestamos as $p)
             @php
-                $diasMora = $p->dias_mora;
                 $esCastigado = $p->estado === 'castigado';
-                // Semáforo de mora:
-                // Verde: < 25 días (Al día / Normal)
-                // Naranja: 25 a 35 días (Próximo a vencer / Mora temprana)
-                // Rojo: > 35 días (Mora grave, pasados 5 días del mes de mora)
+                // Semáforo anclado a la fecha de corte real, la misma que anuncia el
+                // recordatorio de WhatsApp. Antes se calculaba sobre `dias_mora`, que
+                // cuenta desde el último abono y pintaba en rojo a deudores al día.
+                $vencido      = $p->esta_vencido;
+                $diasVencidos = $p->dias_vencidos;
+                $diasParaCorte = $p->dias_para_corte;
+                $fechaCorte    = $p->fecha_corte->format('d/m');
+
                 $claseMora = 'ok';
                 $colorMora = '#22c55e';
                 if ($esCastigado) {
                     $colorMora = '#9ca3af'; // Gris para inactivos
-                } elseif ($diasMora >= 25) {
-                    if ($diasMora <= 35) {
-                        $claseMora = 'warning';
-                        $colorMora = '#f59e0b';
-                    } else {
-                        $claseMora = 'danger';
-                        $colorMora = '#ef4444';
-                    }
+                } elseif ($vencido) {
+                    $claseMora = $diasVencidos > 5 ? 'danger' : 'warning';
+                    $colorMora = $diasVencidos > 5 ? '#ef4444' : '#f59e0b';
+                } elseif ($diasParaCorte <= 5) {
+                    $claseMora = 'warning';
+                    $colorMora = '#f59e0b';
                 }
             @endphp
             <div class="prestamo-card {{ $esCastigado ? 'card-castigada' : '' }}" 
@@ -80,7 +81,7 @@
                      ultimoEnvio: '{{ $p->ultimo_mensaje_cobro ? $p->ultimo_mensaje_cobro->created_at->format('d/m/Y H:i') : '' }}',
                      enviarCobro(id) {
                          this.enviando = true;
-                         fetch('{{ route('finanzas.prestamos.whatsapp', '') }}/' + id, {
+                         fetch('{{ route('finanzas.prestamos.whatsapp', '__ID__') }}'.replace('__ID__', id), {
                              method: 'POST',
                              headers: {
                                  'X-CSRF-TOKEN': '{{ csrf_token() }}',
@@ -120,14 +121,14 @@
                         <span class="badge-err-bx" style="background:rgba(156,163,175,0.15); border-color:#d1d5db; color:#4b5563;">⛔ Inactivo</span>
                     @elseif($p->estado === 'pagado')
                         <span class="badge-ok-bx">Pagado</span>
-                    @elseif($diasMora > 35)
-                        <span class="badge-err-bx" style="background:rgba(239,68,68,0.1); border-color:#fca5a5; color:#b91c1c;">Mora Grave: {{ $diasMora - 30 }} días</span>
-                    @elseif($diasMora >= 30)
-                        <span class="badge-ok-bx" style="background:rgba(245,158,11,0.1); color:#b45309; border-color:#fde68a;">Mora Temprana: {{ $diasMora - 30 }} días</span>
-                    @elseif($diasMora >= 25)
-                        <span class="badge-ok-bx" style="background:rgba(245,158,11,0.1); color:#b45309; border-color:#fde68a;">Próximo a Vencer ({{ 30 - $diasMora }}d)</span>
+                    @elseif($vencido && $diasVencidos > 5)
+                        <span class="badge-err-bx" style="background:rgba(239,68,68,0.1); border-color:#fca5a5; color:#b91c1c;">Vencido: {{ $diasVencidos }} días</span>
+                    @elseif($vencido)
+                        <span class="badge-ok-bx" style="background:rgba(245,158,11,0.1); color:#b45309; border-color:#fde68a;">Vencido: {{ $diasVencidos }} {{ $diasVencidos === 1 ? 'día' : 'días' }}</span>
+                    @elseif($diasParaCorte <= 5)
+                        <span class="badge-ok-bx" style="background:rgba(245,158,11,0.1); color:#b45309; border-color:#fde68a;">Corte en {{ $diasParaCorte }}d ({{ $fechaCorte }})</span>
                     @else
-                        <span class="badge-ok-bx" style="background:rgba(34,197,94,0.1); color:#166534;">Al día ({{ $diasMora }}d)</span>
+                        <span class="badge-ok-bx" style="background:rgba(34,197,94,0.1); color:#166534;">Al día · corte {{ $fechaCorte }}</span>
                     @endif
                 </div>
 
@@ -162,12 +163,12 @@
                                     class="btn-fin-card success" 
                                     :disabled="enviando"
                                     style="display: inline-flex; align-items: center; justify-content: center;">
-                                <span x-show="!enviando">🟢 Cobrar WhatsApp</span>
+                                <span x-show="!enviando">{{ $vencido ? '🔴 Cobrar WhatsApp' : '🟢 Recordar WhatsApp' }}</span>
                                 <span x-show="enviando">⏳ Enviando...</span>
                             </button>
                         @else
                             <button @click="alert('Este deudor no tiene un número de celular registrado. Por favor, edita su ficha para agregar su número.')" class="btn-fin-card success" style="opacity: 0.65;">
-                                🟢 Cobrar WhatsApp
+                                {{ $vencido ? '🔴 Cobrar WhatsApp' : '🟢 Recordar WhatsApp' }}
                             </button>
                         @endif
                     @endif

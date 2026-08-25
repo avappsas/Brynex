@@ -621,7 +621,7 @@
                                     <div>
                                         <strong>{{ $p->nombre_deudor }}</strong> 
                                         <span style="color:var(--texto-secundario);">(${{ number_format($p->saldo_actual, 0, ',', '.') }})</span>
-                                        <span class="badge danger" style="font-size:0.58rem; margin-left:3px; padding:0.1rem 0.3rem;">{{ $p->dias_mora }}d</span>
+                                        <span class="badge danger" style="font-size:0.58rem; margin-left:3px; padding:0.1rem 0.3rem;">{{ $p->esta_vencido ? $p->dias_vencidos . 'd venc.' : 'corte ' . $p->fecha_corte->format('d/m') }}</span>
                                     </div>
                                     <form action="{{ route('finanzas.prestamos.whatsapp', $p->id) }}" method="POST" style="margin:0;">
                                         @csrf
@@ -826,22 +826,19 @@
                 @endphp
                 @forelse($prestamosDeudas as $pres)
                     @php
-                        $diasMora = $pres->dias_mora;
-                        $colorMora  = '#22c55e';
-                        $bgMora     = 'rgba(34,197,94,0.12)';
-                        $labelMora  = 'Al día (' . $diasMora . 'd)';
-                        if ($diasMora >= 35) {
-                            $colorMora = '#f43f5e';
-                            $bgMora    = 'rgba(244,63,94,0.12)';
-                            $labelMora = 'Mora grave: ' . ($diasMora - 30) . 'd venc.';
-                        } elseif ($diasMora >= 30) {
+                        // Semáforo sobre la fecha de corte real, igual que el listado de préstamos
+                        $colorMora = '#22c55e';
+                        $bgMora    = 'rgba(34,197,94,0.12)';
+                        $labelMora = 'Al día · corte ' . $pres->fecha_corte->format('d/m');
+                        if ($pres->esta_vencido) {
+                            $grave     = $pres->dias_vencidos > 5;
+                            $colorMora = $grave ? '#f43f5e' : '#f59e0b';
+                            $bgMora    = $grave ? 'rgba(244,63,94,0.12)' : 'rgba(245,158,11,0.12)';
+                            $labelMora = 'Vencido: ' . $pres->dias_vencidos . 'd';
+                        } elseif ($pres->dias_para_corte <= 5) {
                             $colorMora = '#f59e0b';
                             $bgMora    = 'rgba(245,158,11,0.12)';
-                            $labelMora = 'Mora: ' . ($diasMora - 30) . 'd venc.';
-                        } elseif ($diasMora >= 25) {
-                            $colorMora = '#f59e0b';
-                            $bgMora    = 'rgba(245,158,11,0.12)';
-                            $labelMora = 'Próx. vencer (' . (30 - $diasMora) . 'd)';
+                            $labelMora = 'Corte en ' . $pres->dias_para_corte . 'd';
                         }
                     @endphp
                     <a href="{{ route('finanzas.prestamos.show', $pres->id) }}"

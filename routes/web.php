@@ -1063,6 +1063,7 @@ Route::middleware('auth')->group(function () {
         $ent = \App\Http\Controllers\Finanzas\EntradaController::class;
         $gas = \App\Http\Controllers\Finanzas\GastoController::class;
         $pre = \App\Http\Controllers\Finanzas\PrestamoController::class;
+        $cc  = \App\Http\Controllers\Finanzas\CuentaCorrienteController::class;
         $inv = \App\Http\Controllers\Finanzas\InversionController::class;
         $pat = \App\Http\Controllers\Finanzas\PatrimonioController::class;
         $pro = \App\Http\Controllers\Finanzas\ProyectoController::class;
@@ -1143,7 +1144,21 @@ Route::middleware('auth')->group(function () {
         Route::post('/prestamos/{prestamo}/toggle-alertas', [$pre, 'toggleAlertas'])->name('prestamos.toggle-alertas');
         Route::post('/prestamos/{prestamo}/castigar', [$pre, 'castigar'])->name('prestamos.castigar');
         Route::post('/prestamos/{prestamo}/reactivar', [$pre, 'reactivar'])->name('prestamos.reactivar');
-        Route::get('/cuenta-corriente', [$pre, 'cuentaCorriente'])->name('prestamos.cuenta-corriente');
+        // Cuenta corriente de servicios: clientes recurrentes con varios trabajos.
+        // La ruta vieja se conserva como redirección para no romper enlaces guardados.
+        Route::get('/cuenta-corriente', [$cc, 'index'])->name('cuenta-corriente.index');
+        Route::post('/cuenta-corriente/clientes', [$cc, 'storeCliente'])->name('cuenta-corriente.clientes.store');
+        Route::get('/cuenta-corriente/{cliente}', [$cc, 'show'])->whereNumber('cliente')->name('cuenta-corriente.show');
+        Route::put('/cuenta-corriente/{cliente}', [$cc, 'updateCliente'])->whereNumber('cliente')->name('cuenta-corriente.clientes.update');
+        Route::delete('/cuenta-corriente/{cliente}', [$cc, 'destroyCliente'])->whereNumber('cliente')->name('cuenta-corriente.clientes.destroy');
+        Route::post('/cuenta-corriente/{cliente}/trabajos', [$cc, 'storeTrabajo'])->whereNumber('cliente')->name('cuenta-corriente.trabajos.store');
+        Route::post('/cuenta-corriente/{cliente}/abono', [$cc, 'abonoGeneral'])->whereNumber('cliente')->name('cuenta-corriente.abono');
+        Route::post('/cuenta-corriente/{cliente}/liquidar', [$cc, 'liquidarCliente'])->whereNumber('cliente')->name('cuenta-corriente.liquidar');
+        Route::post('/cuenta-corriente/{cliente}/whatsapp', [$cc, 'whatsapp'])->whereNumber('cliente')->name('cuenta-corriente.whatsapp');
+        Route::put('/cuenta-corriente-trabajo/{trabajo}', [$cc, 'updateTrabajo'])->name('cuenta-corriente.trabajos.update');
+        Route::delete('/cuenta-corriente-trabajo/{trabajo}', [$cc, 'destroyTrabajo'])->name('cuenta-corriente.trabajos.destroy');
+        Route::post('/cuenta-corriente-trabajo/{trabajo}/pago', [$cc, 'pagarTrabajo'])->name('cuenta-corriente.trabajos.pago');
+        Route::get('/prestamos-cuenta-corriente', fn () => redirect()->route('finanzas.cuenta-corriente.index'))->name('prestamos.cuenta-corriente');
         Route::post('/prestamos-movimiento/{movimiento}', [$pre, 'updateMovimiento'])->name('prestamos.movimiento.update');
         Route::delete('/prestamos-movimiento/{movimiento}', [$pre, 'destroyMovimiento'])->name('prestamos.movimiento.destroy');
         Route::get('/prestamos/{prestamo}/soporte', [$pre, 'descargarSoporte'])->name('prestamos.descargar-soporte');

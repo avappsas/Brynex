@@ -15,8 +15,7 @@ class PrestamoLiquidacionService
      * Si es menos, se calcula proporcionalmente.
      * Si no se paga, los intereses liquidados se capitalizan (interés compuesto).
      *
-     * @param Prestamo $prestamo
-     * @param string|null $fecha
+     * @param  string|null  $fecha
      * @return float Interés liquidado
      */
     public function liquidarPeriodo(
@@ -28,6 +27,12 @@ class PrestamoLiquidacionService
     ): float {
         $fechaCorte = $fechaHasta ? Carbon::parse($fechaHasta) : Carbon::now();
         $ultimoCorte = $fechaDesde ? Carbon::parse($fechaDesde) : $this->corteVigente($prestamo);
+
+        // Un trabajo de cuenta corriente no cobra fracciones de mes: o se cumplió
+        // el ciclo completo y se liquida, o el trabajo simplemente se pagó.
+        if ($prestamo->es_cuenta_corriente) {
+            $soloMesesCompletos = true;
+        }
 
         if ($ultimoCorte->diffInDays($fechaCorte, false) <= 0) {
             return 0.00;
@@ -78,7 +83,7 @@ class PrestamoLiquidacionService
         bool $soloMesesCompletos = false
     ): array {
         // Tasa mensual (ej. 3.5% es 3.5 / 100 = 0.035)
-        $tasaDecimal = $prestamo->tasa_interes_mensual / 100;
+        $tasaDecimal = $this->tasaVigente($prestamo) / 100;
         $saldo = (float) $prestamo->saldo_actual;
         $total = 0.00;
         $ciclos = [];
@@ -118,13 +123,13 @@ class PrestamoLiquidacionService
         }
 
         // Liquidar la fracción restante de días (menor a un mes completo) sólo si no se requiere únicamente meses completos
-        if (!$soloMesesCompletos) {
+        if (! $soloMesesCompletos) {
             $diasRestantes = $corteIter->diffInDays($fechaCorte, false);
             if ($diasRestantes > 0) {
                 $fechaCorteFraccion = $fechaCorte->toDateString();
 
                 // Si la fracción restante está excluida, se omite el cobro pero el corte avanza
-                if (!in_array($fechaCorteFraccion, $mesesExcluidos)) {
+                if (! in_array($fechaCorteFraccion, $mesesExcluidos)) {
                     $interesProporcional = round($saldo * $tasaDecimal * ($diasRestantes / 30), 2);
 
                     if ($interesProporcional > 0) {
@@ -165,12 +170,6 @@ class PrestamoLiquidacionService
      *
      * La fecha de corte mensual NO se mueve por el abono: el ciclo siguiente se sigue cobrando
      * el mismo día del mes, ahora sobre el capital ya reducido.
-     *
-     * @param Prestamo $prestamo
-     * @param float $monto
-     * @param string|null $fecha
-     * @param string|null $observacion
-     * @return array
      */
     public function registrarPago(Prestamo $prestamo, float $monto, ?string $fecha = null, ?string $observacion = null, ?string $soportePath = null, ?int $cuentaId = null): array
     {
@@ -258,7 +257,7 @@ class PrestamoLiquidacionService
                     'monto' => $abonoInteres,
                     'saldo_antes' => $saldoCorriente,
                     'saldo_despues' => $saldoCorriente - $abonoInteres,
-                    'observacion' => $observacion ?: "Abono a intereses acumulados.",
+                    'observacion' => $observacion ?: 'Abono a intereses acumulados.',
                     'soporte_path' => $soportePath,
                     'cuenta_id' => $cuentaId,
                 ]);
@@ -275,7 +274,7 @@ class PrestamoLiquidacionService
                     'monto' => $abonoCapital,
                     'saldo_antes' => $saldoCorriente,
                     'saldo_despues' => $saldoCorriente - $abonoCapital,
-                    'observacion' => $observacion ?: "Abono a capital.",
+                    'observacion' => $observacion ?: 'Abono a capital.',
                     'soporte_path' => $soportePath,
                     'cuenta_id' => $cuentaId,
                 ]);
@@ -322,9 +321,12 @@ class PrestamoLiquidacionService
         $saldoTrasMeses = $plan['saldo_final'];
         $interesesPendientes = max(0.00, $saldoTrasMeses - $capital);
 
-        // Días sueltos del ciclo abierto, cobrados sobre el capital
+        // Días sueltos del ciclo abierto, cobrados sobre el capital.
+        // En cuenta corriente no se cobran: el interés solo aparece al cumplir el mes.
         $dias = max(0, (int) $plan['corte_final']->diffInDays($fechaCorte, false));
-        $interesFraccion = round($capital * ($prestamo->tasa_interes_mensual / 100) * ($dias / 30), 2);
+        $interesFraccion = $prestamo->es_cuenta_corriente
+            ? 0.00
+            : round($capital * ($this->tasaVigente($prestamo) / 100) * ($dias / 30), 2);
 
         return [
             'fecha' => $fechaCorte->toDateString(),
@@ -376,6 +378,39 @@ class PrestamoLiquidacionService
     }
 
     /**
+     * Fecha en la que cae el próximo corte del préstamo: un ciclo después del
+     * corte vigente, el mismo día del mes en que se desembolsó.
+     *
+     * Es la misma fecha que usa la liquidación automática para causar el interés,
+     * así que los recordatorios de WhatsApp anuncian exactamente el día que se cobra.
+     */
+    public function proximoCorte(Prestamo $prestamo, ?Carbon $desde = null): Carbon
+    {
+        $diaCobro = (int) Carbon::parse($prestamo->fecha_desembolso)->day;
+        $hoy = ($desde ?: Carbon::now())->copy()->startOfDay();
+        $corte = $this->siguienteCorte($this->corteVigente($prestamo), $diaCobro);
+
+        // Un préstamo sin tasa nunca genera cortes, así que su `ultimo_corte` se
+        // queda en el desembolso y el siguiente corte quedaría en el pasado.
+        // Se adelanta ciclo a ciclo hasta el primero que aún no llega.
+        $vueltas = 0;
+        while ($corte->copy()->startOfDay()->lt($hoy) && $vueltas < 600) {
+            $corte = $this->siguienteCorte($corte, $diaCobro);
+            $vueltas++;
+        }
+
+        return $corte;
+    }
+
+    /**
+     * Fecha del corte vigente (el último ya causado), expuesta para los recordatorios.
+     */
+    public function corteAnterior(Prestamo $prestamo): Carbon
+    {
+        return $this->corteVigente($prestamo);
+    }
+
+    /**
      * Días corridos del ciclo abierto hasta la fecha dada.
      */
     private function diasFraccion(Prestamo $prestamo, Carbon $fecha): int
@@ -388,11 +423,22 @@ class PrestamoLiquidacionService
      */
     private function factorFraccion(Prestamo $prestamo, Carbon $fecha): float
     {
-        if ($prestamo->tasa_interes_mensual <= 0) {
+        // En cuenta corriente el interés solo nace al cumplirse el mes: pagar un
+        // trabajo antes de su primer corte no debe causar nada por días corridos.
+        if ($prestamo->es_cuenta_corriente || $this->tasaVigente($prestamo) <= 0) {
             return 0.00;
         }
 
-        return ($prestamo->tasa_interes_mensual / 100) * ($this->diasFraccion($prestamo, $fecha) / 30);
+        return ($this->tasaVigente($prestamo) / 100) * ($this->diasFraccion($prestamo, $fecha) / 30);
+    }
+
+    /**
+     * Tasa que realmente se causa. Un trabajo marcado "sin interés" guarda su tasa
+     * pero no la cobra, así se puede reactivar sin volver a digitarla.
+     */
+    private function tasaVigente(Prestamo $prestamo): float
+    {
+        return $prestamo->sin_interes ? 0.00 : (float) $prestamo->tasa_interes_mensual;
     }
 
     /**
@@ -407,7 +453,7 @@ class PrestamoLiquidacionService
             'monto' => $prestamo->monto_original,
             'saldo_antes' => 0.00,
             'saldo_despues' => $prestamo->monto_original,
-            'observacion' => $prestamo->descripcion ?: "Desembolso de préstamo inicial.",
+            'observacion' => $prestamo->descripcion ?: 'Desembolso de préstamo inicial.',
         ]);
     }
 
@@ -427,22 +473,22 @@ class PrestamoLiquidacionService
 
             // Registrar movimiento de desembolso (suma saldo)
             PrestamoMovimiento::create([
-                'prestamo_id'  => $prestamo->id,
-                'tipo'         => 'desembolso',
-                'fecha'        => $fecha,
-                'monto'        => $monto,
-                'saldo_antes'  => $saldoAntes,
-                'saldo_despues'=> $nuevoSaldo,
-                'observacion'  => $observacion ?: "Desembolso adicional de capital.",
+                'prestamo_id' => $prestamo->id,
+                'tipo' => 'desembolso',
+                'fecha' => $fecha,
+                'monto' => $monto,
+                'saldo_antes' => $saldoAntes,
+                'saldo_despues' => $nuevoSaldo,
+                'observacion' => $observacion ?: 'Desembolso adicional de capital.',
                 'soporte_path' => $soportePath,
             ]);
 
             $nuevoEstado = $nuevoSaldo <= 0 ? 'pagado' : $this->evaluarEstado($prestamo, Carbon::parse($fecha));
 
             $prestamo->update([
-                'monto_original'=> $nuevoMontoOriginal,
-                'saldo_actual'  => $nuevoSaldo,
-                'estado'        => $nuevoEstado,
+                'monto_original' => $nuevoMontoOriginal,
+                'saldo_actual' => $nuevoSaldo,
+                'estado' => $nuevoEstado,
             ]);
 
             return [

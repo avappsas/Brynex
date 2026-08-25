@@ -143,11 +143,17 @@
 </head>
 
 @php
-    $dias = $prestamo->dias_mora;
-    if ($dias >= 35)      { $cMora='#f43f5e'; $bgMora='rgba(244,63,94,0.15)';  $lMora='🔴 Mora grave · ' . ($dias-30) . 'd vencidos'; }
-    elseif ($dias >= 30)  { $cMora='#f59e0b'; $bgMora='rgba(245,158,11,0.15)'; $lMora='🟡 En mora · ' . ($dias-30) . 'd vencidos'; }
-    elseif ($dias >= 25)  { $cMora='#f59e0b'; $bgMora='rgba(245,158,11,0.15)'; $lMora='🟡 Próximo a vencer · ' . (30-$dias) . 'd restantes'; }
-    else                  { $cMora='#22c55e'; $bgMora='rgba(34,197,94,0.15)';  $lMora='🟢 Al día · ' . $dias . 'd transcurridos'; }
+    // Semáforo sobre la fecha de corte real (la misma que anuncia el recordatorio
+    // de WhatsApp), no sobre `dias_mora`, que cuenta desde el último abono.
+    $vencido      = $prestamo->esta_vencido;
+    $diasVencidos = $prestamo->dias_vencidos;
+    $diasCorte    = $prestamo->dias_para_corte;
+    $fCorte       = $prestamo->fecha_corte->format('d/m/Y');
+
+    if ($vencido && $diasVencidos > 5) { $cMora='#f43f5e'; $bgMora='rgba(244,63,94,0.15)';  $lMora='🔴 Vencido · ' . $diasVencidos . 'd'; }
+    elseif ($vencido)                  { $cMora='#f59e0b'; $bgMora='rgba(245,158,11,0.15)'; $lMora='🟡 Vencido · ' . $diasVencidos . 'd'; }
+    elseif ($diasCorte <= 5)           { $cMora='#f59e0b'; $bgMora='rgba(245,158,11,0.15)'; $lMora='🟡 Corte en ' . $diasCorte . 'd · ' . $fCorte; }
+    else                               { $cMora='#22c55e'; $bgMora='rgba(34,197,94,0.15)';  $lMora='🟢 Al día · corte ' . $fCorte; }
     $paid = $prestamo->estado === 'pagado';
 @endphp
 
@@ -281,6 +287,14 @@
                 <span class="lbl">Último Corte</span>
                 <span class="val">{{ $prestamo->ultimo_corte ? \Carbon\Carbon::parse($prestamo->ultimo_corte)->format('d/m/Y') : 'Ninguno' }}</span>
             </div>
+            <div class="ir">
+                <span class="lbl">Próximo Corte</span>
+                <span class="val">{{ $fCorte }} ({{ $diasCorte }}d)</span>
+            </div>
+            <div class="ir">
+                <span class="lbl">Vencido</span>
+                <span class="val">{{ $vencido ? '$' . number_format($prestamo->intereses_acumulados, 0, ',', '.') . ' (' . $diasVencidos . 'd)' : 'Al día' }}</span>
+            </div>
             @if($prestamo->soporte_path)
             <div class="ir">
                 <span class="lbl">Soporte</span>
@@ -315,12 +329,12 @@
             <form action="{{ route('finanzas.prestamos.whatsapp', $prestamo->id) }}" method="POST" style="display:contents">
                 @csrf
                 <button type="submit" class="btn-acc wa">
-                    <i class="fab fa-whatsapp"></i>Cobrar WA
+                    <i class="fab fa-whatsapp"></i>{{ $vencido ? 'Cobrar WA' : 'Recordar WA' }}
                 </button>
             </form>
             @else
             <button @click="openNoTelefono = true" class="btn-acc wa" style="opacity: 0.7;">
-                <i class="fab fa-whatsapp"></i>Cobrar WA
+                <i class="fab fa-whatsapp"></i>{{ $vencido ? 'Cobrar WA' : 'Recordar WA' }}
             </button>
             @endif
             <form action="{{ route('finanzas.prestamos.toggle-alertas', $prestamo->id) }}" method="POST" style="display:contents">

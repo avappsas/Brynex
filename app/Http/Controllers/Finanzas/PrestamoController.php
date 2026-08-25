@@ -83,8 +83,6 @@ class PrestamoController extends Controller
             'fecha_desembolso' => 'required|date',
             'dias_mora_alerta' => 'required|integer|min:1',
             'alertas_activas' => 'nullable|boolean',
-            'es_cuenta_corriente' => 'nullable|boolean',
-            'cuenta_corriente_grupo' => 'nullable|string|max:50',
             'cuenta_id' => 'nullable|integer',
             'descripcion' => 'nullable|string|max:255',
             'observaciones' => 'nullable|string',
@@ -97,8 +95,6 @@ class PrestamoController extends Controller
         if ($request->hasFile('soporte')) {
             $soportePath = $request->file('soporte')->store('finanzas/prestamos', 'local');
         }
-
-        $esCC = $request->has('es_cuenta_corriente') ? (bool) $request->es_cuenta_corriente : false;
 
         $prestamo = Prestamo::create([
             'user_id' => $user->id,
@@ -116,8 +112,7 @@ class PrestamoController extends Controller
             'soporte_path' => $soportePath,
             'descripcion' => $request->descripcion,
             'observaciones' => $request->observaciones,
-            'es_cuenta_corriente' => $esCC,
-            'cuenta_corriente_grupo' => $request->cuenta_corriente_grupo,
+            'es_cuenta_corriente' => false,
         ]);
 
         // Registrar el movimiento de desembolso inicial en el historial
@@ -151,10 +146,6 @@ class PrestamoController extends Controller
             (int) date('Y', strtotime($request->fecha_desembolso)),
             (int) date('n', strtotime($request->fecha_desembolso))
         );
-
-        if ($esCC) {
-            return redirect()->route('finanzas.prestamos.cuenta-corriente')->with('success', 'Préstamo registrado en Cuenta Corriente.');
-        }
 
         return redirect()->route('finanzas.prestamos.index')->with('success', 'Préstamo registrado y salida creada con éxito.');
     }
@@ -472,24 +463,6 @@ class PrestamoController extends Controller
 
         return redirect()->route('finanzas.prestamos.show', $prestamo->id)
             ->with('success', $prestamo->alertas_activas ? 'Recordatorios activados.' : 'Recordatorios desactivados.');
-    }
-
-    /**
-     * Muestra la vista de "Cuenta Corriente" (servicios prestados al cliente habitual).
-     */
-    public function cuentaCorriente()
-    {
-        $prestamos = Prestamo::where('user_id', Auth::id())
-            ->where('es_cuenta_corriente', true)
-            ->orderBy('estado', 'asc')
-            ->orderBy('fecha_desembolso', 'desc')
-            ->get();
-
-        // Agruparlos por su campo de grupo (usualmente el nombre del mes de trabajo o proyecto)
-        $grupos = $prestamos->groupBy('cuenta_corriente_grupo');
-        $saldoTotalPendiente = $prestamos->whereIn('estado', ['activo', 'mora'])->sum('saldo_actual');
-
-        return view('finanzas.prestamos.cuenta-corriente', compact('grupos', 'saldoTotalPendiente'));
     }
 
     /**
