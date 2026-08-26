@@ -159,15 +159,24 @@
     cursor:pointer; font-weight:700; transition:background .15s;
 }
 .oi-consig-add-btn:hover { background:#d1fae5; }
-#oi-consig-list { padding:.3rem .5rem; display:flex; flex-direction:column; gap:.22rem; max-height:130px; overflow-y:auto; }
-.oi-consig-row { display:grid; grid-template-columns:2fr 90px 100px 22px; gap:.25rem; align-items:center; }
+#oi-consig-list { padding:.3rem .4rem; display:flex; flex-direction:column; gap:.22rem; max-height:130px; overflow-y:auto; }
+.oi-consig-row { display:grid; grid-template-columns:minmax(0,1fr) 62px 92px 26px 20px; gap:.22rem; align-items:center; }
+.oi-consig-row > * { min-width:0; }
+.oi-consig-img-lbl {
+    display:flex; align-items:center; justify-content:center;
+    height:23px; border-radius:5px; border:1px solid #bae6fd;
+    background:#f0f9ff; cursor:pointer; font-size:.78rem; transition:all .15s;
+}
+.oi-consig-img-lbl:hover { background:#e0f2fe; border-color:#38bdf8; }
+.oi-consig-img-lbl.tiene { background:#dcfce7; border-color:#86efac; }
 .oi-consig-sel, .oi-consig-monto, .oi-consig-fecha {
-    padding:.25rem .35rem; border:1px solid #e2e8f0; border-radius:5px;
+    padding:.25rem .2rem; border:1px solid #e2e8f0; border-radius:5px;
     font-size:.71rem; font-family:inherit; outline:none; background:#fff;
     transition:border-color .15s;
 }
 .oi-consig-sel:focus, .oi-consig-monto:focus, .oi-consig-fecha:focus { border-color:#10b981; }
 .oi-consig-monto { text-align:right; font-weight:700; font-family:monospace; }
+.oi-consig-fecha { font-size:.66rem; }
 .oi-consig-del {
     padding:2px 5px; border:none; background:#fee2e2; color:#dc2626;
     border-radius:5px; cursor:pointer; font-size:.85rem;
@@ -234,6 +243,64 @@
     #oi-body { grid-template-columns:1fr; }
     #oi-col-valores { border-right:none; border-bottom:1px solid #d1fae5; }
 }
+/* ── Mini-modal: soporte de pago ── */
+#oiadj-overlay {
+    position:fixed; inset:0; z-index:2300;
+    background:rgba(10,10,20,.7); backdrop-filter:blur(4px);
+    display:none; align-items:center; justify-content:center; padding:1rem;
+}
+#oiadj-box {
+    background:#fff; border-radius:16px; width:min(440px,96vw);
+    box-shadow:0 28px 80px rgba(0,0,0,.45); overflow:hidden;
+    display:flex; flex-direction:column;
+}
+#oiadj-hdr {
+    background:linear-gradient(135deg,#064e3b,#065f46);
+    padding:.7rem 1rem; display:flex; align-items:center; justify-content:space-between;
+}
+#oiadj-hdr h3 { margin:0; font-size:.85rem; font-weight:800; color:#fff; }
+#oiadj-hdr p  { margin:0; font-size:.62rem; color:rgba(255,255,255,.6); }
+#oiadj-close {
+    width:26px; height:26px; border:none; border-radius:6px; cursor:pointer;
+    background:rgba(255,255,255,.12); color:#fff; font-size:.85rem;
+}
+#oiadj-body { padding:.9rem 1rem; display:flex; flex-direction:column; gap:.6rem; }
+#oiadj-zona {
+    border:2px dashed #a7f3d0; border-radius:12px; background:#f0fdf4;
+    min-height:120px; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; gap:.25rem; cursor:pointer; outline:none;
+    transition:all .15s; text-align:center; padding:.8rem;
+}
+#oiadj-zona:focus, #oiadj-zona.drag { border-color:#10b981; background:#dcfce7; }
+#oiadj-zona-t1 { font-size:.82rem; font-weight:800; color:#065f46; }
+#oiadj-zona-t2 { font-size:.68rem; color:#059669; }
+#oiadj-file-btn {
+    padding:.4rem .9rem; border:1.5px solid #a7f3d0; border-radius:8px;
+    background:#fff; color:#065f46; font-weight:700; font-size:.76rem; cursor:pointer;
+}
+#oiadj-file-btn:hover { background:#ecfdf5; }
+#oiadj-prev { display:none; text-align:center; }
+#oiadj-prev-img { max-width:100%; max-height:220px; border-radius:10px; border:1px solid #e2e8f0; }
+#oiadj-prev-name { font-size:.72rem; font-weight:700; color:#065f46; margin-top:.35rem; word-break:break-all; }
+#oiadj-footer {
+    background:#f8fafc; border-top:1px solid #e2e8f0; padding:.6rem 1rem;
+    display:flex; gap:.45rem; justify-content:flex-end; align-items:center;
+}
+#oiadj-quitar {
+    margin-right:auto; padding:.38rem .8rem; border:1.5px solid #fecaca;
+    background:#fff1f2; color:#be123c; border-radius:8px; cursor:pointer;
+    font-size:.75rem; font-weight:700;
+}
+#oiadj-cancel {
+    padding:.38rem .9rem; border:1.5px solid #e2e8f0; background:#fff;
+    color:#475569; border-radius:8px; cursor:pointer; font-size:.77rem; font-weight:600;
+}
+#oiadj-ok {
+    padding:.4rem 1.1rem; border:none; border-radius:8px; cursor:pointer;
+    background:linear-gradient(135deg,#065f46,#047857); color:#fff;
+    font-size:.79rem; font-weight:800;
+}
+#oiadj-ok:disabled { opacity:.5; cursor:not-allowed; }
 </style>
 
 {{-- ════════════════════ OVERLAY ════════════════════ --}}
@@ -351,10 +418,11 @@
                     <span>🏦 Consignaciones</span>
                     <button class="oi-consig-add-btn" onclick="OI.addConsig()">＋ Agregar</button>
                 </div>
-                <div style="display:grid;grid-template-columns:2fr 90px 100px 22px;gap:.25rem;padding:.22rem .6rem .15rem;background:#f8fafc;border-bottom:1px solid #f1f5f9;">
+                <div style="display:grid;grid-template-columns:minmax(0,1fr) 62px 92px 26px 20px;gap:.22rem;padding:.22rem .5rem .15rem;background:#f8fafc;border-bottom:1px solid #f1f5f9;">
                     <span style="font-size:.57rem;font-weight:700;color:#94a3b8;text-transform:uppercase;">Banco</span>
                     <span style="font-size:.57rem;font-weight:700;color:#94a3b8;text-transform:uppercase;text-align:right;">Valor</span>
                     <span style="font-size:.57rem;font-weight:700;color:#94a3b8;text-transform:uppercase;text-align:center;">Fecha</span>
+                    <span style="font-size:.57rem;font-weight:700;color:#94a3b8;text-transform:uppercase;text-align:center;">Adj.</span>
                     <span></span>
                 </div>
                 <div id="oi-consig-list"></div>
@@ -398,6 +466,38 @@
         <button class="oi-btn-guardar" id="oi-btn-guardar" onclick="OI.guardar()">💼 Registrar trámite</button>
     </div>
 
+</div>
+</div>
+
+{{-- ═══════════ MINI-MODAL: soporte de pago de la consignación ═══════════ --}}
+<div id="oiadj-overlay" onclick="if(event.target===this)OI._cerrarAdjunto()">
+<div id="oiadj-box" onclick="event.stopPropagation()">
+    <div id="oiadj-hdr">
+        <div>
+            <h3>📎 Soporte de pago</h3>
+            <p>Comprobante de la consignación</p>
+        </div>
+        <button id="oiadj-close" type="button" onclick="OI._cerrarAdjunto()">✕</button>
+    </div>
+    <div id="oiadj-body">
+        <div id="oiadj-zona" tabindex="0">
+            <div style="font-size:1.6rem;line-height:1">📋</div>
+            <div id="oiadj-zona-t1">Pega aquí con Ctrl+V</div>
+            <div id="oiadj-zona-t2">o arrastra la imagen / PDF del comprobante</div>
+        </div>
+        <button id="oiadj-file-btn" type="button">📁 Elegir archivo</button>
+        <input type="file" id="oiadj-file-inp" style="display:none"
+               accept="image/jpeg,image/png,image/webp,application/pdf">
+        <div id="oiadj-prev">
+            <img id="oiadj-prev-img" alt="Soporte">
+            <div id="oiadj-prev-name"></div>
+        </div>
+    </div>
+    <div id="oiadj-footer">
+        <button id="oiadj-quitar" type="button" onclick="OI._quitarAdjunto()">Quitar</button>
+        <button id="oiadj-cancel" type="button" onclick="OI._cerrarAdjunto()">Cancelar</button>
+        <button id="oiadj-ok" type="button" disabled onclick="OI._confirmarAdjunto()">✅ Confirmar soporte</button>
+    </div>
 </div>
 </div>
 
@@ -469,9 +569,17 @@ const OI = (() => {
 
         recalc();
         _el('oi-overlay').style.display = 'flex';
+        _initPaste();
     }
 
-    function cerrar() { _el('oi-overlay').style.display = 'none'; }
+    function cerrar() {
+        _el('oi-overlay').style.display = 'none';
+        _cerrarAdjunto();
+        if (document._oiPasteHandler) {
+            document.removeEventListener('paste', document._oiPasteHandler);
+            document._oiPasteHandler = null;
+        }
+    }
 
     // ── Recalc totales ───────────────────────────────────────────────
     function recalc() {
@@ -520,10 +628,168 @@ const OI = (() => {
             <select class="oi-consig-sel">${opts}</select>
             <input type="text"  class="oi-consig-monto oi-monto-inp" placeholder="0" oninput="OI.recalc()">
             <input type="date"  class="oi-consig-fecha" value="${new Date().toISOString().slice(0,10)}">
+            <label class="oi-consig-img-lbl" tabindex="0" title="📎 Adjuntar soporte de pago">
+                <span class="oi-consig-img-icon">📎</span>
+                <input type="file" class="oi-consig-img-inp"
+                       accept="image/jpeg,image/png,image/webp,application/pdf" style="display:none">
+            </label>
             <button class="oi-consig-del" onclick="this.closest('.oi-consig-row').remove();OI.recalc()">✕</button>
         `;
+        // Click en el 📎 → mini-modal de adjunto (no el file picker nativo)
+        row.querySelector('.oi-consig-img-lbl').addEventListener('click', function (e) {
+            e.preventDefault();
+            _abrirAdjunto(row);
+        });
         list.appendChild(row);
         recalc();
+        return row;
+    }
+
+    // ── Soporte de pago por consignación ────────────────────────────
+    // Guarda el File en el input de la fila (o en _pastedFile si el
+    // navegador no soporta DataTransfer) y marca el 📎 en verde.
+    function _setFile(row, file) {
+        if (!row || !file) return;
+        const inp  = row.querySelector('.oi-consig-img-inp');
+        const icon = row.querySelector('.oi-consig-img-icon');
+        const lbl  = row.querySelector('.oi-consig-img-lbl');
+        if (!inp) return;
+        try {
+            const dt = new DataTransfer();
+            dt.items.add(file);
+            inp.files = dt.files;
+            inp._pastedFile = null;
+        } catch (_) {
+            inp._pastedFile = file;
+        }
+        if (icon) icon.textContent = '🖼️';
+        if (lbl) {
+            lbl.classList.add('tiene');
+            lbl.title = '✅ ' + (file.name || 'soporte') + ' — Click para cambiar';
+        }
+    }
+
+    function _getFile(row) {
+        const inp = row ? row.querySelector('.oi-consig-img-inp') : null;
+        if (!inp) return null;
+        if (inp.files && inp.files[0]) return inp.files[0];
+        return inp._pastedFile || null;
+    }
+
+    function _clearFile(row) {
+        const inp  = row.querySelector('.oi-consig-img-inp');
+        const icon = row.querySelector('.oi-consig-img-icon');
+        const lbl  = row.querySelector('.oi-consig-img-lbl');
+        if (inp) { inp.value = ''; inp._pastedFile = null; }
+        if (icon) icon.textContent = '📎';
+        if (lbl) { lbl.classList.remove('tiene'); lbl.title = '📎 Adjuntar soporte de pago'; }
+    }
+
+    // Mini-modal: pegar (Ctrl+V), arrastrar o elegir archivo
+    let _adjRow = null, _adjFile = null;
+
+    function _abrirAdjunto(row) {
+        _adjRow  = row;
+        _adjFile = _getFile(row);
+        const zona = _el('oiadj-zona');
+        const prev = _el('oiadj-prev');
+        const img  = _el('oiadj-prev-img');
+        const nom  = _el('oiadj-prev-name');
+        const ok   = _el('oiadj-ok');
+
+        if (_adjFile) {
+            _pintarPrev(_adjFile);
+        } else {
+            zona.style.display = 'flex';
+            prev.style.display = 'none';
+            img.src = ''; nom.textContent = '';
+            ok.disabled = true;
+        }
+        _el('oiadj-overlay').style.display = 'flex';
+        setTimeout(() => zona.focus(), 80);
+    }
+
+    function _pintarPrev(file) {
+        _adjFile = file;
+        const img = _el('oiadj-prev-img');
+        const nom = _el('oiadj-prev-name');
+        if (file.type === 'application/pdf') {
+            img.style.display = 'none';
+            nom.textContent = '📄 ' + file.name;
+        } else {
+            img.src = URL.createObjectURL(file);
+            img.style.display = 'block';
+            nom.textContent = '✅ ' + (file.name || 'imagen_pegada.png');
+        }
+        _el('oiadj-zona').style.display = 'none';
+        _el('oiadj-prev').style.display = 'block';
+        _el('oiadj-ok').disabled = false;
+    }
+
+    function _cerrarAdjunto() {
+        _el('oiadj-overlay').style.display = 'none';
+        _adjRow = null; _adjFile = null;
+    }
+
+    function _confirmarAdjunto() {
+        if (_adjRow && _adjFile) _setFile(_adjRow, _adjFile);
+        _cerrarAdjunto();
+    }
+
+    function _quitarAdjunto() {
+        if (_adjRow) _clearFile(_adjRow);
+        _cerrarAdjunto();
+    }
+
+    // Ctrl+V global mientras el modal de trámite está abierto:
+    // la imagen va a la última consignación (creando una si no hay).
+    function _initPaste() {
+        if (document._oiPasteHandler) {
+            document.removeEventListener('paste', document._oiPasteHandler);
+        }
+        document._oiPasteHandler = function (e) {
+            const ov = _el('oi-overlay');
+            if (!ov || ov.style.display === 'none') return;
+
+            const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/'));
+            if (!item) return;
+
+            // Si el mini-modal de adjunto está abierto, la imagen es para él
+            const adjOv = _el('oiadj-overlay');
+            if (adjOv && adjOv.style.display === 'flex') {
+                e.preventDefault();
+                _pintarPrev(item.getAsFile());
+                return;
+            }
+
+            // No interferir si se está escribiendo en un campo
+            const tag  = document.activeElement?.tagName?.toLowerCase();
+            const tipo = document.activeElement?.type?.toLowerCase();
+            if ((tag === 'input' && tipo !== 'file') || tag === 'textarea' || tag === 'select') return;
+
+            e.preventDefault();
+            const rows = [..._el('oi-consig-list').querySelectorAll('.oi-consig-row')];
+            const row  = rows[rows.length - 1] || addConsig();
+            if (!row) return;
+            _setFile(row, item.getAsFile());
+            row.scrollIntoView({ behavior:'smooth', block:'nearest' });
+        };
+        document.addEventListener('paste', document._oiPasteHandler);
+    }
+
+    // ── Subir los soportes ya creada la factura ─────────────────────
+    async function _subirSoportes(consigIds, rows) {
+        const subidas = [];
+        rows.forEach((row, idx) => {
+            const file = _getFile(row);
+            const id   = consigIds && consigIds[idx];
+            if (!file || !id) return;
+            const fd = new FormData();
+            fd.append('imagen', file);
+            fd.append('_token', _csrf);
+            subidas.push(fetch(_urlConsigImg.replace('__ID__', id), { method:'POST', body: fd }));
+        });
+        if (subidas.length) await Promise.all(subidas);
     }
 
     // ── Guardar ─────────────────────────────────────────────────────
@@ -539,14 +805,26 @@ const OI = (() => {
         const asesor = _val('oi-asesor');
         if (admon <= 0 && asesor <= 0) { alert('Ingrese al menos el valor de admon o asesor.'); return; }
 
-        // Consignaciones
-        const consigs = [];
+        // Consignaciones — se guardan también las filas para poder subir el
+        // soporte de cada una: el backend crea una consignación por elemento
+        // de `consigs`, en ese mismo orden.
+        const consigs    = [];
+        const consigRows = [];
         _el('oi-consig-list').querySelectorAll('.oi-consig-row').forEach(row => {
             const banco = row.querySelector('.oi-consig-sel').value;
             const valor = parse(row.querySelector('.oi-monto-inp').value);
             const fecha = row.querySelector('.oi-consig-fecha').value;
-            if (banco && valor > 0) consigs.push({ banco_cuenta_id: banco, valor, fecha });
+            if (banco && valor > 0) { consigs.push({ banco_cuenta_id: banco, valor, fecha }); consigRows.push(row); }
         });
+
+        // Soporte de pago: se pide, no se obliga (igual que en facturas)
+        const sinSoporte = consigRows.filter(r => !_getFile(r)).length;
+        if (sinSoporte > 0) {
+            const msg = sinSoporte === 1
+                ? 'Hay 1 consignación sin soporte de pago adjunto.\n\n¿Registrar el trámite de todas formas?'
+                : `Hay ${sinSoporte} consignaciones sin soporte de pago adjunto.\n\n¿Registrar el trámite de todas formas?`;
+            if (!confirm(msg)) return;
+        }
 
         const body = {
             cedula:              cedulaFinal,
@@ -580,6 +858,13 @@ const OI = (() => {
             const data = await res.json();
 
             if (data.ok) {
+                // Subir los soportes de pago adjuntos a cada consignación
+                try {
+                    await _subirSoportes(data.consignacion_ids, consigRows);
+                } catch (e) {
+                    console.error(e);
+                    alert('El trámite se registró, pero falló la subida de algún soporte de pago.\nPuedes adjuntarlo después desde el historial.');
+                }
                 cerrar();
                 if (data.recibo_url) {
                     if (typeof abrirRecibo === 'function') {
@@ -612,6 +897,36 @@ const OI = (() => {
         }
     }
 
-    return { abrir, cerrar, recalc, onEstado, addConsig, guardar };
+    // ── Eventos del mini-modal de adjunto (su HTML es estático) ─────
+    (function _bindAdjunto() {
+        const zona = _el('oiadj-zona');
+        const inp  = _el('oiadj-file-inp');
+        const btn  = _el('oiadj-file-btn');
+        if (!zona || !inp || !btn) return;
+
+        zona.addEventListener('click', () => zona.focus());
+        zona.addEventListener('paste', (e) => {
+            const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/'));
+            if (item) { e.preventDefault(); e.stopPropagation(); _pintarPrev(item.getAsFile()); }
+        });
+        zona.addEventListener('dragover',  (e) => { e.preventDefault(); zona.classList.add('drag'); });
+        zona.addEventListener('dragleave', () => zona.classList.remove('drag'));
+        zona.addEventListener('drop', (e) => {
+            e.preventDefault(); zona.classList.remove('drag');
+            const f = e.dataTransfer?.files?.[0];
+            if (f) _pintarPrev(f);
+        });
+
+        btn.addEventListener('click', () => inp.click());
+        inp.addEventListener('change', function () {
+            if (this.files && this.files[0]) _pintarPrev(this.files[0]);
+            this.value = '';
+        });
+    })();
+
+    return {
+        abrir, cerrar, recalc, onEstado, addConsig, guardar,
+        _cerrarAdjunto, _confirmarAdjunto, _quitarAdjunto,
+    };
 })();
 </script>
