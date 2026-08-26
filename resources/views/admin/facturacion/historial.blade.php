@@ -61,6 +61,9 @@ table.hi-tbl{width:100%;border-collapse:collapse;font-size:.77rem}
 .badge-abono   {background:#fef9c3;color:#854d0e}
 .badge-plan    {background:#dbeafe;color:#1e40af}
 .badge-afil    {background:#fce7f3;color:#9d174d}
+.badge-tram    {background:#dcfce7;color:#065f46;border:1px solid #a7f3d0}
+.hi-tram-desc{font-size:.68rem;font-weight:700;color:#065f46;margin-top:.15rem;line-height:1.25;max-width:220px;white-space:normal}
+.hi-tram-obs {font-size:.65rem;font-weight:500;color:#64748b;margin-top:.1rem;line-height:1.25;max-width:220px;white-space:normal;font-style:italic}
 .badge-ret     {background:#ffe4e6;color:#9f1239;border:1px solid #fecdd3}
 .badge-ret-info{background:#f1f5f9;color:#475569;border:1px solid #cbd5e1}
 .badge-emp     {background:#f0fdf4;color:#166534;border:1px solid #bbf7d0}
@@ -182,7 +185,8 @@ table.hi-tbl{width:100%;border-collapse:collapse;font-size:.77rem}
                 'abono'       => ['badge-abono', '💰 Abono'],
                 default       => ['badge-pre',   ucfirst($f->estado)],
             };
-            $esRetiro = ((int)$f->numero_factura === 0) || ($f->plano && !is_null($f->plano->fecha_ret));
+            $esTramite = $f->tipo === 'otro_ingreso';
+            $esRetiro = !$esTramite && (((int)$f->numero_factura === 0) || ($f->plano && !is_null($f->plano->fecha_ret)));
             $esRetiroReal = $esRetiro && (int)($f->dias_cotizados ?? 0) > 0;
             $tipoBadge = $esRetiro
                 ? ($esRetiroReal
@@ -190,7 +194,9 @@ table.hi-tbl{width:100%;border-collapse:collapse;font-size:.77rem}
                     : ['badge-ret-info', '🔕 Retiro Informativo'])
                 : ($f->tipo === 'afiliacion'
                     ? ['badge-afil', '📌 Afiliación']
-                    : ['badge-plan', '📄 Planilla']);
+                    : ($esTramite
+                        ? ['badge-tram', '💼 Trámite']
+                        : ['badge-plan', '📄 Planilla']));
 
             // Mes que cubre el plano PILA. No es el de la columna Servicio: un cobro
             // de agosto paga la planilla de julio (salvo Indep. Mes Actual). Se anexa
@@ -287,7 +293,15 @@ table.hi-tbl{width:100%;border-collapse:collapse;font-size:.77rem}
             <tr>
                 <td style="font-family:monospace;font-weight:800;color:#1d4ed8;font-size:.76rem">#{{ $f->numero_factura ?? '—' }}</td>
                 <td style="color:#64748b;font-size:.72rem">{{ $f->fecha_pago?->format('d/m/Y') ?? '—' }}</td>
-                <td style="font-weight:600;color:#0f172a">{{ $meses[$f->mes] ?? '' }} {{ $f->anio }}</td>
+                <td style="font-weight:600;color:#0f172a">
+                    {{ $meses[$f->mes] ?? '' }} {{ $f->anio }}
+                    @if($esTramite && filled($f->descripcion_tramite))
+                    <div class="hi-tram-desc" title="{{ $f->descripcion_tramite }}">💼 {{ $f->descripcion_tramite }}</div>
+                    @endif
+                    @if($esTramite && filled($f->observacion))
+                    <div class="hi-tram-obs" title="{{ $f->observacion }}">🗒 {{ $f->observacion }}</div>
+                    @endif
+                </td>
                 <td><span class="badge {{ $tipoBadge[0] }}">{{ $tipoBadge[1] }}</span></td>
                 <td class="num" style="font-weight:900;color:{{ $f->estado==='pagada'?'#16a34a':'#0f172a' }}">{{ $fmt($f->total) }}</td>
                 <td><span class="badge {{ $estadoBadge[0] }}">{{ $estadoBadge[1] }}</span></td>
