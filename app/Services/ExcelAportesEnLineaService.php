@@ -150,7 +150,15 @@ class ExcelAportesEnLineaService
     // ─────────────────────────────────────────────────────────────────────
     // PÚBLICO: generar()
     // ─────────────────────────────────────────────────────────────────────
-    public function generar(array $params): Spreadsheet
+    /**
+     * Reúne los datos del plano: razón social, cotizantes, periodos y tipo de
+     * planilla. Vive aparte de generar() porque ExcelAportesEnLinea2Service
+     * necesita exactamente los mismos datos con otro envase (la plantilla del
+     * portal).
+     *
+     * @return array{0:object,1:\Illuminate\Support\Collection,2:string,3:string,4:string,5:?string}
+     */
+    protected function recolectar(array $params): array
     {
         $aliadoId      = $params['aliado_id'];
         $razonSocialId = $params['razon_social_id'];
@@ -250,6 +258,13 @@ class ExcelAportesEnLineaService
         $periodoSalud = ($tipoPlanilla === 'Y')
             ? $periodoSS
             : sprintf('%04d-%02d', $anioPago, $mesPago);
+
+        return [$rs, $planos, $periodoSS, $periodoSalud, $tipoPlanilla, $nombreArl];
+    }
+
+    public function generar(array $params): Spreadsheet
+    {
+        [$rs, $planos, $periodoSS, $periodoSalud, $tipoPlanilla, $nombreArl] = $this->recolectar($params);
 
         // ── Construir Spreadsheet ─────────────────────────────────────────
         $spreadsheet = new Spreadsheet();
@@ -459,7 +474,7 @@ class ExcelAportesEnLineaService
         }
     }
 
-    private function writeEmployeeRow($sheet, int $fila, object $p, int $seq): void
+    protected function writeEmployeeRow($sheet, int $fila, object $p, int $seq): void
     {
         $c = PilaCotizanteCalculator::calcular($p);
 
@@ -659,7 +674,7 @@ class ExcelAportesEnLineaService
     // ─────────────────────────────────────────────────────────────────────
     // Helper: obtener letra de columna desde índice 1-based
     // ─────────────────────────────────────────────────────────────────────
-    private function col(int $idx): string
+    protected function col(int $idx): string
     {
         return Coordinate::stringFromColumnIndex($idx);
     }

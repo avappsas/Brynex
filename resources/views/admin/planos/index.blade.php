@@ -545,7 +545,9 @@
     filter: grayscale(.8);
     opacity: .6;
 }
-.btn-descarga-secundario:last-child {
+/* El último botón ocupa las dos columnas solo si queda impar; con los cuatro
+   formatos de Excel la grilla es 2x2 y no debe estirarse ninguno. */
+.btn-descarga-secundario:last-child:nth-child(odd) {
     grid-column: span 2;
 }
 
@@ -1343,6 +1345,14 @@
                                     @if($pagado) disabled @endif>
                                 📈 Excel Aportes en Línea
                             </button>
+
+                            <button class="btn-descarga-secundario"
+                                    id="btn-aportes-en-linea-2"
+                                    onclick="ejecutarDescargaAportesEnLinea(2)"
+                                    title="Mismos datos, sobre la plantilla que descarga el portal (con sus listas desplegables)"
+                                    @if($pagado) disabled @endif>
+                                📈 Excel Aportes en Línea 2
+                            </button>
                         </div>
                     </div>
                 </details>
@@ -1772,6 +1782,7 @@ const CTX = {
         descargarAsopagos  : '{{ route('admin.planos.descargar_asopagos') }}',
         descargarMiPlanilla: '{{ route('admin.planos.descargar_miplanilla') }}',
         descargarAportesEnLinea: '{{ route('admin.planos.descargar_aportes_en_linea') }}',
+        descargarAportesEnLinea2: '{{ route('admin.planos.descargar_aportes_en_linea_2') }}',
         nPlanoUpdate : '{{ route('admin.planos.n_plano.update') }}',
         asignarOperador: '{{ route('admin.planos.operador_cliente.asignar') }}',
         confirmarPago: '{{ route('admin.planos.confirmar_pago') }}',
@@ -3278,7 +3289,8 @@ async function autocorregirEnlace() {
 }
 
 // ── Descargar Aportes en Línea (Excel AEL) ──────────────────────────
-function ejecutarDescargaAportesEnLinea() {
+// version 2 = mismos datos sobre la plantilla del portal.
+function ejecutarDescargaAportesEnLinea(version = 1) {
     if (!CTX.razonSocialId) {
         mostrarToast('Seleccione una Razón Social primero.', 'error');
         return;
@@ -3290,7 +3302,8 @@ function ejecutarDescargaAportesEnLinea() {
         n_plano: CTX.nPlanoFiltro ?? '',
     });
     CTX.modalidadesIds.forEach(id => params.append('tipos_modalidad[]', id));
-    window.location.href = CTX.routes.descargarAportesEnLinea + '?' + params.toString();
+    const ruta = version === 2 ? CTX.routes.descargarAportesEnLinea2 : CTX.routes.descargarAportesEnLinea;
+    window.location.href = ruta + '?' + params.toString();
 }
 
 // ── Guardar N_PLANO ────────────────────────────────────────────────────

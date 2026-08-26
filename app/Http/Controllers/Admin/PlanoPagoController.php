@@ -808,6 +808,27 @@ class PlanoPagoController extends Controller
     // ── 4c. Descargar Excel Aportes en Línea (formato AEL / ASOPAGOS) ──────────
     public function descargarAportesEnLinea(Request $request)
     {
+        return $this->descargarExcelAel($request, new \App\Services\ExcelAportesEnLineaService(), 'AEL');
+    }
+
+    // ── 4c-bis. Excel Aportes en Línea 2 (plantilla del portal) ──────────────
+    /**
+     * Mismos datos que descargarAportesEnLinea(), pero escritos sobre la
+     * plantilla que entrega el propio portal al "Exportar plano": conserva la
+     * hoja oculta de catálogos y las listas desplegables de validación.
+     */
+    public function descargarAportesEnLinea2(Request $request)
+    {
+        return $this->descargarExcelAel($request, new \App\Services\ExcelAportesEnLinea2Service(), 'AEL2');
+    }
+
+    /**
+     * Tronco común de los dos Excel de Aportes en Línea: valida la razón
+     * social, arma el nombre del archivo y traduce las excepciones del
+     * servicio en códigos HTTP.
+     */
+    private function descargarExcelAel(Request $request, \App\Services\ExcelAportesEnLineaService $service, string $prefijo)
+    {
         $aliadoId      = session('aliado_id_activo');
         $razonSocialId = $request->input('razon_social_id');
         $mes           = (int) $request->input('mes',  now()->month);
@@ -824,10 +845,9 @@ class PlanoPagoController extends Controller
         if ($rs) {
             $rsNombre = preg_replace('/[^A-Za-z0-9_\-]/', '_', $rs->razon_social);
         }
-        $filename = "AEL_{$rsNombre}_{$mes}_{$anio}_P{$nPlano}.xlsx";
+        $filename = "{$prefijo}_{$rsNombre}_{$mes}_{$anio}_P{$nPlano}.xlsx";
 
         try {
-            $service     = new \App\Services\ExcelAportesEnLineaService();
             $spreadsheet = $service->generar([
                 'aliado_id'       => $aliadoId,
                 'razon_social_id' => $razonSocialId,
@@ -838,14 +858,14 @@ class PlanoPagoController extends Controller
             ]);
             return $service->respuesta($spreadsheet, $filename);
         } catch (\Illuminate\Database\QueryException $e) {
-            \Illuminate\Support\Facades\Log::error('AEL QueryException', [
+            \Illuminate\Support\Facades\Log::error("{$prefijo} QueryException", [
                 'sql' => $e->getSql(), 'msg' => $e->getMessage(),
             ]);
-            abort(500, 'Error de base de datos al generar el Excel AEL.');
+            abort(500, "Error de base de datos al generar el Excel {$prefijo}.");
         } catch (\RuntimeException $e) {
             abort(422, $e->getMessage());
         } catch (\Exception $e) {
-            abort(500, 'Error al generar Excel AEL: ' . $e->getMessage());
+            abort(500, "Error al generar Excel {$prefijo}: " . $e->getMessage());
         }
     }
 
