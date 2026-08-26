@@ -212,6 +212,12 @@ tbody td{padding:.6rem .85rem;vertical-align:middle;}
         <input id="inp-busqueda" name="busqueda" value="{{ $busqueda }}"
                placeholder="🔍 Nombre o cédula..." x-model="busqueda"
                @input="debouncedSubmit()" autocomplete="off">
+        {{-- Empresa del cliente: solo las que tienen clientes con incapacidad --}}
+        @include('components.filtro-empresa', [
+            'empresas' => $empresasDisponibles,
+            'formId'   => 'filtro-form',
+            'ancho'    => '180px',
+        ])
         <select name="vista" @change="$el.form.submit()">
             <option value="agrupada" @selected($vista=='agrupada')>📁 Agrupada</option>
             <option value="plana"    @selected($vista=='plana')>📋 Plana</option>

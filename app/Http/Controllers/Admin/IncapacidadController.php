@@ -171,6 +171,16 @@ class IncapacidadController extends Controller
         if ($request->filled('fecha_hasta')) {
             $query->where('fecha_recibido', '<=', $request->fecha_hasta);
         }
+        // Empresa del cliente (clientes.cod_empresa). La incapacidad guarda la
+        // cédula, así que se resuelve con una subconsulta scopeada por aliado.
+        if ($request->filled('empresa_id')) {
+            $query->whereIn('incapacidades.cedula_usuario', function ($sub) use ($request, $alidoId) {
+                $sub->from('clientes')
+                    ->select('cedula')
+                    ->where('aliado_id', $alidoId)
+                    ->where('cod_empresa', $request->empresa_id);
+            });
+        }
 
         // Si hay búsqueda: mostrar TODAS (pagadas, rechazadas, activas)
         // Sin búsqueda: ocultar estados finales/cerrados por defecto.
@@ -326,11 +336,26 @@ class IncapacidadController extends Controller
         // con 17 estados de los cuales usa 4 no ayuda a nadie.
         $opcionesColumna = $this->opcionesFiltroColumna($alidoId);
 
+        // Empresas para el filtro: solo las que tienen algún cliente con
+        // incapacidad. Con joins y no con IN anidados sobre las cédulas, que
+        // en tareas resultó seis veces más lento.
+        $empresasDisponibles = DB::table('incapacidades as i')
+            ->join('clientes as c', function ($j) use ($alidoId) {
+                $j->on('c.cedula', '=', 'i.cedula_usuario')->where('c.aliado_id', $alidoId);
+            })
+            ->join('empresas as e', 'e.id', '=', 'c.cod_empresa')
+            ->where('i.aliado_id', $alidoId)
+            ->whereNull('i.deleted_at')
+            ->where('e.aliado_id', $alidoId)
+            ->distinct()
+            ->orderBy('e.empresa')
+            ->get(['e.id', 'e.empresa']);
+
         return view('admin.incapacidades.index', compact(
             'incapacidades', 'resumen', 'totalActivas', 'totalPagadas', 'totalNoPagadas',
             'sinGestion10dias', 'sinGestion7dias',
             'trabajadores', 'epsList', 'arlList', 'pensionList', 'razonesSociales',
-            'smmlv', 'vista', 'busqueda', 'opcionesColumna'
+            'smmlv', 'vista', 'busqueda', 'opcionesColumna', 'empresasDisponibles'
         ));
     }
 
