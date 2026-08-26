@@ -4008,6 +4008,11 @@ class FacturacionController extends Controller
 
         $empresa = Empresa::where('aliado_id', $aliadoId)->find($empresaId);
         $admonRetiroCompleta = $request->input('admon_retiro_completa', '1') === '1'; // checkbox de admon en retiros
+        // Botón de la barra: permite emitir la cuenta de cobro sin cobrar la mora.
+        // Se le quita a todo el que aún no ha pagado — sin factura o con factura
+        // pendiente/abono/préstamo. La factura ya PAGADA conserva su mora: ese
+        // dinero ya entró y quitarlo descuadraría lo cobrado.
+        $incluirMora = $request->input('incluir_mora', '1') === '1';
 
         // Cuentas bancarias marcadas para cobro
         $cuentasCobro = BancoCuenta::paraCobro($aliadoId);
@@ -4046,7 +4051,8 @@ class FacturacionController extends Controller
         // IVA por cédula: manda la empresa del cliente; si no tiene, su marca (ver IvaService)
         $ivaClientes = \App\Services\IvaService::mapaPorCedulas($aliadoId, $contratos->pluck('cedula'));
 
-        foreach ($contratos as $c) {
+        // Con la mora apagada no hay nada que estimar: se ahorra el cálculo en lote
+        foreach ($incluirMora ? $contratos : collect() as $c) {
             $fact = $facturasExistentes->get($c->id);
             if ($fact) continue;
             if ($c->estado === 'retirado') continue;
@@ -4133,7 +4139,7 @@ class FacturacionController extends Controller
             }
         }
 
-        $items = $contratos->map(function ($c) use ($mes, $anio, $facturasExistentes, $facturasRetiro0, $admonRetiroCompleta, $r100, $rIva, $aliadoId, $moraPorContrato, $ivaClientes) {
+        $items = $contratos->map(function ($c) use ($mes, $anio, $facturasExistentes, $facturasRetiro0, $admonRetiroCompleta, $r100, $rIva, $aliadoId, $moraPorContrato, $ivaClientes, $incluirMora) {
             $fact         = $facturasExistentes->get($c->id);
             $factRetiro0  = $facturasRetiro0->get($c->id);
             $nombre = $c->cliente?->nombre_completo
@@ -4217,9 +4223,13 @@ class FacturacionController extends Controller
             $esRetirado = $c->estado === 'retirado';
 
             $vMora = 0;
+            // Con la mora apagada solo la conserva quien ya pagó su factura
+            $moraYaPagada = $fact && $fact->estado === \App\Models\Factura::ESTADO_PAGADA;
             if ($fact && ($fact->mora ?? 0) > 0) {
-                $vMora = (int)$fact->mora;
-            } elseif (!$fact) {
+                if ($incluirMora || $moraYaPagada) {
+                    $vMora = (int)$fact->mora;
+                }
+            } elseif (!$fact && $incluirMora) {
                 $vMora = (int)($moraPorContrato[$c->id] ?? 0);
             }
 
@@ -4230,7 +4240,9 @@ class FacturacionController extends Controller
                 $vCaja = $r100($fact->v_caja);
                 $vAdm  = (int)($fact->admon + $fact->admin_asesor);
                 $vIva  = $rIva($fact->iva);
-                $vTot  = (int)$fact->total;
+                // El total facturado ya trae la mora dentro: si se dejó de cobrar,
+                // se descuenta aquí para que el documento cuadre con lo que se pide.
+                $vTot  = (int)$fact->total - (int)(($fact->mora ?? 0) - $vMora);
                 $estado = $fact->estado;
                 $diasCotizar = (int)$fact->dias_cotizados;
             } elseif ($esRetirado && $factRetiro0) {
@@ -4371,7 +4383,8 @@ class FacturacionController extends Controller
         return view($vista, compact(
             'aliado','empresa','items','cuentasCobro',
             'mes','anio','meses','totalGeneral','totalFavor','totalPendiente','saldoNetoCC',
-            'cobrosAdicionalesCC', 'totalCobrosAdicionales', 'totalIva', 'ivaPct'
+            'cobrosAdicionalesCC', 'totalCobrosAdicionales', 'totalIva', 'ivaPct',
+            'tipo', 'incluirMora', 'admonRetiroCompleta'
         ));
     }
 

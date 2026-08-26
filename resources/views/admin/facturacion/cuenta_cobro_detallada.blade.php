@@ -111,17 +111,11 @@ table.tbl-det tfoot .num { color: #34d399; }
     @if($empresa)
     <button class="btn-ac" onclick="MCA.abrir({{ $empresa->id }})" style="background:#0284c7;color:#fff;">⚙️ Cobros Adicionales</button>
     @endif
-    <form id="frmSimple" method="POST" action="{{ route('admin.facturacion.cuenta_cobro.preview') }}" target="_blank" style="display:inline;">
-        @csrf
-        <input type="hidden" name="tipo" value="simple">
-        <input type="hidden" name="mes" value="{{ $mes }}">
-        <input type="hidden" name="anio" value="{{ $anio }}">
-        <input type="hidden" name="empresa_id" value="{{ $empresa?->id ?? '' }}">
-        @foreach(request()->input('contratos', []) as $cid)
-        <input type="hidden" name="contratos[]" value="{{ $cid }}">
-        @endforeach
+    <form id="frmSimple" class="frm-cc" method="POST" action="{{ route('admin.facturacion.cuenta_cobro.preview') }}" target="_blank" style="display:inline;">
+        @include('admin.facturacion._cc_params', ['tipoDestino' => 'simple', 'moraDestino' => ($incluirMora ?? true) ? '1' : '0'])
         <button type="submit" class="btn-ac btn-simple">📄 Ver Simple</button>
     </form>
+    @include('admin.facturacion._cc_boton_mora')
     <button class="btn-ac btn-close" onclick="window.close()">✕ Cerrar</button>
     <span style="color:#94a3b8;font-size:.72rem;margin-left:.5rem;">
         Vista Detallada — {{ $empresa->empresa ?? '' }} — {{ $meses[$mes] }} {{ $anio }}
