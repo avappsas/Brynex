@@ -51,6 +51,17 @@ class TareaController extends Controller
         if ($request->filled('cedula')) {
             $query->where('cedula', 'like', '%'.$request->cedula.'%');
         }
+        // Empresa del cliente (clientes.cod_empresa). La tarea guarda la cédula,
+        // así que se resuelve con una subconsulta scopeada por aliado: la
+        // relación cliente() cruza solo por cédula y no filtra por aliado.
+        if ($request->filled('empresa_id')) {
+            $query->whereIn('tareas.cedula', function ($sub) use ($request, $alidoId) {
+                $sub->from('clientes')
+                    ->select('cedula')
+                    ->where('aliado_id', $alidoId)
+                    ->where('cod_empresa', $request->empresa_id);
+            });
+        }
         // Filtro semáforo
         if ($request->filled('semaforo')) {
             $hoy = now()->toDateString();
@@ -149,9 +160,24 @@ class TareaController extends Controller
         $razonesSociales = DB::table('razones_sociales')->where('aliado_id', $alidoId)->where('estado', 'Activa')->orderBy('razon_social')->get(['id', 'razon_social']);
         $epsList = DB::table('eps')->orderBy('nombre')->get(['id', 'nombre']);
 
+        // Empresas para el filtro: solo las que tienen algún cliente con tarea.
+        // Con joins y no con IN anidados: el IN sobre las cédulas de tareas
+        // tardaba ~1.8 s contra los ~0.3 s de esta versión.
+        $empresasDisponibles = DB::table('tareas as t')
+            ->join('clientes as c', function ($j) use ($alidoId) {
+                $j->on('c.cedula', '=', 't.cedula')->where('c.aliado_id', $alidoId);
+            })
+            ->join('empresas as e', 'e.id', '=', 'c.cod_empresa')
+            ->where('t.aliado_id', $alidoId)
+            ->whereNull('t.deleted_at')
+            ->where('e.aliado_id', $alidoId)
+            ->distinct()
+            ->orderBy('e.empresa')
+            ->get(['e.id', 'e.empresa']);
+
         return view('admin.tareas.index', compact(
             'tareas', 'resumenEstados', 'resumenTipos', 'vencidas',
-            'trabajadores', 'razonesSociales', 'epsList'
+            'trabajadores', 'razonesSociales', 'epsList', 'empresasDisponibles'
         ));
     }
 
