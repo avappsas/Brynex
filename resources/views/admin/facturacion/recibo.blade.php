@@ -48,11 +48,22 @@ $tituloPersona = null;
 $subtituloPersona = null;
 if ($esGrupo && !$empresaObj) {
     if ($filas->count() === 1) {
-        $cliUno = $filas->first()->contrato?->cliente;
+        $fUno   = $filas->first();
+        $cliUno = $fUno->contrato?->cliente;
+        // Un trámite (otro_ingreso) se factura sin contrato, así que por esa vía
+        // no hay cliente y el recibo salía encabezado "C.C. 123 / C.C. 123".
+        // El cliente se resuelve por cédula dentro del aliado, igual que hace la
+        // vista individual de _recibo_cuerpo. Se limita a los trámites a
+        // propósito: hay facturas legacy sin contrato cuyo encabezado no se
+        // quiere cambiar de rebote.
+        if (!$cliUno && $fUno->tipo === 'otro_ingreso') {
+            $cliUno = \App\Models\Cliente::where('aliado_id', $fUno->aliado_id)
+                ->where('cedula', $fUno->cedula)->first();
+        }
         $tituloPersona = trim(($cliUno?->primer_nombre ?? '').' '.($cliUno?->segundo_nombre ?? '')
                             .' '.($cliUno?->primer_apellido ?? '').' '.($cliUno?->segundo_apellido ?? ''));
-        $tituloPersona = $tituloPersona ?: ('C.C. '.$filas->first()->cedula);
-        $subtituloPersona = 'C.C. '.$filas->first()->cedula;
+        $tituloPersona = $tituloPersona ?: ('C.C. '.$fUno->cedula);
+        $subtituloPersona = 'C.C. '.$fUno->cedula;
     } else {
         $rsUnicas = $filas->map(fn($x) => $x->contrato?->razonSocial?->razon_social)
                           ->filter()->unique()->values();
@@ -672,6 +683,13 @@ $estadoCls = fn($e) => match($e) {
     font-style: italic; font-weight: 600; font-family: monospace;
 }
 .det .liq-item em { display: block; }
+/* Trámite: el concepto ocupa las dos columnas — una descripción no cabe
+   en media grilla y partirla la vuelve ilegible. */
+.liq-item-full { grid-column: 1 / -1; justify-content: flex-start; }
+.liq-item-full > b {
+    flex: 1; text-align: left; color: #065f46; font-size: .8rem;
+    white-space: normal; line-height: 1.3;
+}
 .liq-total {
     background: #0f172a;
     display: flex; justify-content: space-between; align-items: center;

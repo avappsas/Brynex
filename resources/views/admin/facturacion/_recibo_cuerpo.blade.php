@@ -120,8 +120,10 @@ $numGrupo    = str_pad($filas->first()?->numero_factura ?? $factura->numero_fact
      social ya salen en el encabezado: repetirlos en la tabla solo roba
      ancho a las entidades. Se omiten las columnas No / Nombre / RS. --}}
 @php $unaPersona = ($filas->count() === 1 && !$empresaObj); @endphp
+@php $esTramiteG = $filas->count() === 1 && $filas->first()->tipo === 'otro_ingreso'; @endphp
 <div class="fact-section-title">
-    @if($unaPersona) DETALLE DE LA LIQUIDACIÓN
+    @if($esTramiteG) DETALLE DEL TRÁMITE
+    @elseif($unaPersona) DETALLE DE LA LIQUIDACIÓN
     @else TRABAJADORES &mdash; {{ $filas->count() }} registros @endif
 </div>
 
@@ -132,20 +134,36 @@ $numGrupo    = str_pad($filas->first()?->numero_factura ?? $factura->numero_fact
      vacía), las entidades van como etiqueta/valor en dos columnas. --}}
 @php
 $fU = $filas->first();
-$uArlNit = $fU->contrato?->razonSocial?->arl_nit ?? null;
-$uArl    = $uArlNit ? (\App\Models\Arl::where('nit',$uArlNit)->value('nombre_arl') ?? $uArlNit) : null;
-if (!$uArl) { $uArl = $fU->contrato?->arl?->nombre_arl ?? '—'; }
-if ($fU->contrato?->n_arl) { $uArl .= ' N'.$fU->contrato->n_arl; }
-$uEntidades = [
-    ['EPS',            $fU->contrato?->eps?->nombre ?? '—', (int)($fU->v_eps ?? 0),  '#1d4ed8'],
-    ['ARL',            $uArl,                               (int)($fU->v_arl ?? 0),  '#15803d'],
-    ['Pensión',        $fU->contrato?->pension?->razon_social ?? '—', (int)($fU->v_afp ?? 0),  '#7c3aed'],
-    ['Caja de compensación', $fU->contrato?->caja?->nombre ?? $fU->contrato?->caja?->razon_social ?? 'Ninguna', (int)($fU->v_caja ?? 0), '#0369a1'],
-    ['Días cotizados', $fU->dias_cotizados ?? 30, null,                     '#0f172a'],
-];
+if ($esTramiteG) {
+    // Un trámite no liquida seguridad social: EPS, ARL, pensión, caja y días
+    // saldrían todos en guiones y el recibo no diría qué se cobró. En su lugar
+    // van el concepto y los valores que sí tiene.
+    $uEntidades = [];
+    if (($fU->admon ?? 0) > 0)           $uEntidades[] = ['Administración',   $fmt($fU->admon),           null, '#0f172a'];
+    if (($fU->admon_asesor_oi ?? 0) > 0) $uEntidades[] = ['Honorarios asesor', $fmt($fU->admon_asesor_oi), null, '#0f172a'];
+    if (($fU->iva ?? 0) > 0)             $uEntidades[] = ['IVA',              $fmt($fU->iva),             null, '#92400e'];
+} else {
+    $uArlNit = $fU->contrato?->razonSocial?->arl_nit ?? null;
+    $uArl    = $uArlNit ? (\App\Models\Arl::where('nit',$uArlNit)->value('nombre_arl') ?? $uArlNit) : null;
+    if (!$uArl) { $uArl = $fU->contrato?->arl?->nombre_arl ?? '—'; }
+    if ($fU->contrato?->n_arl) { $uArl .= ' N'.$fU->contrato->n_arl; }
+    $uEntidades = [
+        ['EPS',            $fU->contrato?->eps?->nombre ?? '—', (int)($fU->v_eps ?? 0),  '#1d4ed8'],
+        ['ARL',            $uArl,                               (int)($fU->v_arl ?? 0),  '#15803d'],
+        ['Pensión',        $fU->contrato?->pension?->razon_social ?? '—', (int)($fU->v_afp ?? 0),  '#7c3aed'],
+        ['Caja de compensación', $fU->contrato?->caja?->nombre ?? $fU->contrato?->caja?->razon_social ?? 'Ninguna', (int)($fU->v_caja ?? 0), '#0369a1'],
+        ['Días cotizados', $fU->dias_cotizados ?? 30, null,                     '#0f172a'],
+    ];
+}
 @endphp
 <div style="padding:.45rem .85rem .1rem">
     <div class="liq-grid">
+        @if($esTramiteG)
+        <div class="liq-item liq-item-full">
+            <span>Concepto</span>
+            <b>💼 {{ $fU->descripcion_tramite ?: 'Trámite / Servicio' }}</b>
+        </div>
+        @endif
         @foreach($uEntidades as [$lbl, $val, $imp, $col])
         <div class="liq-item">
             <span>{{ $lbl }}</span>
