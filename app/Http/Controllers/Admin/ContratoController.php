@@ -159,6 +159,12 @@ class ContratoController extends Controller
         $rsBloquedaPorAfiliacion = $hayAfiliacionActiva && ! $puedeForzarBloqueo;
         $rsDesbloqueoSuperadmin = $hayAfiliacionActiva && $puedeForzarBloqueo;
 
+        // Salario, IBC y encargado no viajan en el radicado: la afiliación ya
+        // quedó hecha y lo que cambian es lo que se cotiza y se cobra de ahí
+        // en adelante. Por eso el admin sí los mueve aunque el contrato esté
+        // radicado; las entidades y las fechas siguen siendo del superadmin.
+        $economicoDesbloqueado = $rsBloquedaPorAfiliacion && $this->puedeEditarEconomico();
+
         // ── Otros contratos vigentes del mismo cliente (para modal multi-contrato) ──
         // Se excluye el contrato actual. Solo se muestran vigentes (no activo, no retirado).
         $otrosContratosVigentes = Contrato::where('aliado_id', $alidoId)
@@ -291,7 +297,7 @@ class ContratoController extends Controller
 
         return view('admin.contratos.form', array_merge(
             $this->datosFormulario($alidoId, $cliente, $contrato->razon_social_id, $contrato->id),
-            compact('contrato', 'cliente', 'backUrl', 'radicadosPorTipo', 'rsBloquedaPorAfiliacion', 'rsDesbloqueoSuperadmin', 'otrosContratosVigentes', 'tienePlanillaConDias', 'retiroInfoBloqueado', 'retiroInfoForzado', 'rsIrOpciones', 'rsIrPreviewId', 'rsIrHayDisponible', 'diaIngresoIr')
+            compact('contrato', 'cliente', 'backUrl', 'radicadosPorTipo', 'rsBloquedaPorAfiliacion', 'rsDesbloqueoSuperadmin', 'economicoDesbloqueado', 'otrosContratosVigentes', 'tienePlanillaConDias', 'retiroInfoBloqueado', 'retiroInfoForzado', 'rsIrOpciones', 'rsIrPreviewId', 'rsIrHayDisponible', 'diaIngresoIr')
         ));
     }
 
@@ -331,15 +337,25 @@ class ContratoController extends Controller
         // Un contrato con afiliación en trámite u OK ya viajó a la EPS/ARL con
         // unos valores concretos. Cambiarlos por detrás deja a Brynex diciendo
         // una cosa y a la entidad otra, y eso solo se descubre cuando rebota la
-        // planilla. Salario, IBC, entidades y fechas solo los mueve quien tenga
-        // `contratos.editar_radicado` (hoy, solo superadmin). El resto del
-        // formulario —cargo, observaciones, asesor, encargado, NP— sigue
-        // editable por cualquiera que pueda editar contratos.
+        // planilla. Entidades y fechas solo las mueve quien tenga
+        // `contratos.editar_radicado` (hoy, solo superadmin).
+        //
+        // Salario e IBC son la excepción: no van en el radicado, cambian lo que
+        // se cotiza y se cobra de ahí en adelante, así que el admin también los
+        // mueve. El resto del formulario —cargo, motivo de afiliación, envío de
+        // planilla, tarifas, asesor, observaciones— sigue editable por
+        // cualquiera que pueda editar contratos.
+        $puedeEditarEconomico = $this->puedeEditarEconomico();
+
         if ($rsBloquedaPorAfiliacion) {
             $congelados = [
-                'salario', 'ibc', 'eps_id', 'pension_id', 'arl_id', 'caja_id',
+                'eps_id', 'pension_id', 'arl_id', 'caja_id',
                 'n_arl', 'fecha_ingreso', 'fecha_retiro', 'fecha_arl',
             ];
+
+            if (! $puedeEditarEconomico) {
+                array_unshift($congelados, 'salario', 'ibc');
+            }
 
             $cambiados = [];
             foreach ($congelados as $campo) {
@@ -351,6 +367,18 @@ class ContratoController extends Controller
                 $actual = $contrato->{$campo};
                 $actual = $actual instanceof \DateTimeInterface ? $actual->format('Y-m-d') : $actual;
                 $nuevo = $data[$campo];
+
+                // El formulario siempre manda un IBC: en los dependientes lo
+                // iguala al salario aunque en BD esté en blanco. Eso no es un
+                // cambio de fondo, y hacía rebotar el guardado completo de un
+                // contrato radicado sin que nadie hubiera tocado nada.
+                if ($campo === 'ibc' && blank($actual)) {
+                    $salarioRef = $data['salario'] ?? $contrato->salario;
+                    if (is_numeric($nuevo) && is_numeric($salarioRef)
+                        && (float) $nuevo === (float) $salarioRef) {
+                        continue;
+                    }
+                }
 
                 $iguales = blank($actual) && blank($nuevo);
                 if (is_numeric($actual) && is_numeric($nuevo)) {
@@ -371,7 +399,7 @@ class ContratoController extends Controller
                         'back' => $request->input('back_url'),
                         'iframe' => $request->input('iframe') ? '1' : null,
                     ]))
-                    ->withErrors(['salario' => 'Este contrato ya tiene afiliación radicada (trámite u OK): '
+                    ->withErrors(['contrato_radicado' => 'Este contrato ya tiene afiliación radicada (trámite u OK): '
                         .implode(', ', $cambiados).' solo los puede cambiar el superadministrador.']);
             }
         }
@@ -475,8 +503,10 @@ class ContratoController extends Controller
         // los campos que normalmente estarían bloqueados sí pudieron cambiar.
         // Se deja constancia en bitácora de qué se tocó y quién lo tocó.
         $cambiosForzados = [];
-        if ($hayAfiliacionActiva && $puedeForzarBloqueo) {
-            $camposProtegidos = ['razon_social_id', 'plan_id', 'fecha_ingreso', 'tipo_modalidad_id', 'encargado_id'];
+        if ($hayAfiliacionActiva && ($puedeForzarBloqueo || $puedeEditarEconomico)) {
+            $camposProtegidos = $puedeForzarBloqueo
+                ? ['razon_social_id', 'plan_id', 'fecha_ingreso', 'tipo_modalidad_id', 'encargado_id', 'salario', 'ibc']
+                : ['encargado_id', 'salario', 'ibc'];
             foreach ($camposProtegidos as $campo) {
                 if (! array_key_exists($campo, $data)) {
                     continue;
@@ -544,7 +574,7 @@ class ContratoController extends Controller
             if (! empty($cambiosForzados)) {
                 \App\Models\Bitacora::registrar(
                     'updated', 'Contrato', $contrato->id,
-                    'Superadmin modificó campos protegidos de un contrato con afiliaciones en trámite u OK (Cédula: '.$contrato->cedula.').',
+                    'Se modificaron campos protegidos de un contrato con afiliaciones en trámite u OK (Cédula: '.$contrato->cedula.').',
                     ['cambios_forzados' => $cambiosForzados],
                     $alidoId
                 );
@@ -585,6 +615,20 @@ class ContratoController extends Controller
         return $avisoMesActual
             ? $redirect->with('warning', $avisoMesActual)
             : $redirect;
+    }
+
+    /**
+     * Quién puede mover salario, IBC y encargado de un contrato ya radicado.
+     *
+     * Esos tres no viajan en el radicado —la afiliación a EPS/ARL ya se hizo—:
+     * lo que cambian es lo que se cotiza y se cobra de ahí en adelante, así que
+     * el admin también los mueve. Entidades y fechas sí son datos de fondo y
+     * siguen pidiendo `contratos.editar_radicado` (hoy, solo superadmin).
+     */
+    private function puedeEditarEconomico(): bool
+    {
+        return Auth::user()->can('contratos.editar_radicado')
+            || Auth::user()->hasRole('admin');
     }
 
     /**

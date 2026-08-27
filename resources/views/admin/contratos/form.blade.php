@@ -45,6 +45,19 @@
   $tipLock = $rsLock
     ? '🔒 Bloqueado — hay afiliaciones en trámite u OK'
     : '⚠️ Hay afiliaciones en trámite u OK — desbloqueado por ser superadmin';
+  // $ecoLock: salario, IBC y encargado. No viajan en el radicado, así que el
+  // admin los mueve aunque el contrato ya esté radicado (ver
+  // ContratoController::puedeEditarEconomico). Para el resto siguen bloqueados,
+  // y bloqueados de verdad: el valor original viaja en un hidden para que el
+  // recálculo automático del IBC no haga rebotar el guardado completo.
+  $ecoLock = $rsLock && ! ($economicoDesbloqueado ?? false);
+  $tipEco  = '🔒 Bloqueado — hay afiliaciones en trámite u OK. Lo puede cambiar un administrador.';
+  // Los hidden llevan el valor de la BD, no el de $defSalario/$defIbc: esos dos
+  // arrastran el old() de un intento rechazado, y el IBC en blanco lo rellena el
+  // cotizador con el salario. Enviar el valor guardado es lo único que garantiza
+  // que el campo bloqueado no cuente como cambio.
+  $ecoSalarioBd = $esEdicion ? (int) ($contrato->salario ?? 0) : 0;
+  $ecoIbcBd     = ($esEdicion && $contrato->ibc !== null) ? (int) $contrato->ibc : '';
 @endphp
 
 <div style="max-width:1240px;margin:0 auto;" x-data="cotizador()">
@@ -468,20 +481,31 @@
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1.4fr;gap:0.5rem;margin-bottom:0.5rem;">
       <div x-show="!esSeguros">
         <label class="lb">Salario Mensual</label>
+        <div class="{{ $ecoLock ? 'tip-lock' : '' }}" data-tip="{{ $tipEco }}">
         <input type="text" inputmode="numeric" name="salario" id="inp_salario" class="campo-money"
             @input="onSalarioChange"
-            value="{{ number_format($defSalario, 0, '', '.') }}" style="{{ $M }}"
-            data-raw="{{ $defSalario }}">
+            value="{{ number_format($defSalario, 0, '', '.') }}"
+            style="{{ $M }}{{ $ecoLock ? 'background:#f1f5f9;color:#1e293b;cursor:not-allowed;' : '' }}"
+            data-raw="{{ $defSalario }}" {{ $ecoLock ? 'readonly' : '' }}>
+        @if($ecoLock)
+        <input type="hidden" name="salario" value="{{ $ecoSalarioBd }}">
+        @endif
+        </div>
       </div>
       <div x-show="esIndependiente" style="display:none;">
         <label class="lb">IBC <span style="color:#f59e0b;font-size:0.63rem;" x-text="ibcSugFmt ? 'sug:'+ibcSugFmt : ''"></span></label>
         {{-- type=text y no number: un <input type=number> no acepta los puntos de miles.
              El valor real vive en dataset.raw, y el submit de .campo-money limpia el formato. --}}
+        <div class="{{ $ecoLock ? 'tip-lock' : '' }}" data-tip="{{ $tipEco }}">
         <input type="text" inputmode="numeric" name="ibc" id="inp_ibc" class="campo-money"
             @input="onIbcInput" @change="onIbcChange"
             value="{{ number_format($defIbc, 0, '', '.') }}"
-            data-raw="{{ $defIbc }}"
-            style="width:100%;padding:0.38rem 0.5rem;border:1px solid #f59e0b;border-radius:6px;font-size:0.82rem;font-family:monospace;background:#fffbeb;box-sizing:border-box;">
+            data-raw="{{ $defIbc }}" {{ $ecoLock ? 'readonly' : '' }}
+            style="width:100%;padding:0.38rem 0.5rem;border:1px solid #f59e0b;border-radius:6px;font-size:0.82rem;font-family:monospace;background:{{ $ecoLock ? '#f1f5f9;cursor:not-allowed' : '#fffbeb' }};box-sizing:border-box;">
+        @if($ecoLock)
+        <input type="hidden" name="ibc" value="{{ $ecoIbcBd }}">
+        @endif
+        </div>
       </div>
       <div x-show="esIndependiente" id="div-pct-caja" style="display:none;">
         <label class="lb">% Caja</label>
@@ -505,15 +529,15 @@
       </div>
       <div>
         <label class="lb">Encargado Afiliacion</label>
-        <div class="{{ $rsLock ? 'tip-lock' : '' }}" data-tip="{{ $tipLock }}">
-        <select name="encargado_id" {!! $prot !!} style="{{ $S }}{{ $rsLock ? 'background:#f1f5f9;color:#1e293b;cursor:not-allowed;opacity:1;' : '' }}"
-            {{ $rsLock ? 'disabled' : '' }}>
+        <div class="{{ $ecoLock ? 'tip-lock' : '' }}" data-tip="{{ $tipEco }}">
+        <select name="encargado_id" {!! $prot !!} style="{{ $S }}{{ $ecoLock ? 'background:#f1f5f9;color:#1e293b;cursor:not-allowed;opacity:1;' : '' }}"
+            {{ $ecoLock ? 'disabled' : '' }}>
           <option value="">-- Responsable --</option>
           @foreach($usuarios as $usr)
           <option value="{{ $usr->id }}" {{ $defEncargado == $usr->id ? 'selected' : '' }}>{{ $usr->nombre }}</option>
           @endforeach
         </select>
-        @if($rsLock)
+        @if($ecoLock)
         <input type="hidden" name="encargado_id" value="{{ $defEncargado }}">
         @endif
         </div>
