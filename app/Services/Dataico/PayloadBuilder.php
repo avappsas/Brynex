@@ -53,13 +53,23 @@ class PayloadBuilder
      */
     private const CORREO_RELLENO = 'notiene@gmail.com';
 
-    public function construir(DataicoConfiguracion $cfg, object $grupo): array
+    public function construir(DataicoConfiguracion $cfg, object $grupo, ?int $consecutivo = null): array
     {
         $adq = $grupo->adquiriente;
-        $fecha = $grupo->fecha_pago
-            ? Carbon::parse($grupo->fecha_pago)->format('Y-m-d')
-            : now()->format('Y-m-d');
         $esAfiliacion = strtolower($grupo->tipo ?? '') === 'afiliacion';
+
+        // La fecha es HOY, no la del pago.
+        //
+        // La DIAN rechaza con la regla FAD09e —«valida que fecha de generación
+        // de la factura sea igual a la fecha de firma»— cualquier factura
+        // fechada antes del día en que se firma. Pasó con FE1185: se mandó con
+        // issue_date del 15-jul y se firmó el 27-ago.
+        //
+        // Por eso el período NO puede vivir en la fecha: va en la descripción
+        // del ítem y en las notas. Es exactamente lo que hacen las 1.184
+        // facturas que la DIAN ya aceptó — todas las del lote del 15-ago
+        // llevan issue_date 15/08 y «JUNIO» en las notas.
+        $fecha = now()->format('Y-m-d');
 
         $invoice = [
             // Va DENTRO de invoice. En la raíz del cuerpo el API responde 500
@@ -68,6 +78,15 @@ class PayloadBuilder
             // diciendo que falta un account id válido — aunque el mismo valor
             // sí funciona como parámetro en el GET de consulta.
             'dataico_account_id' => $cfg->dataico_account_id,
+
+            // Sin esto el API responde 401 «No se encuentra numeración» aunque
+            // la numeración esté vigente y en uso. No está documentado; lo
+            // entregó el soporte de Dataico al cerrar el ticket #47903972886
+            // el 27-ago-2026, y es el único campo que destraba la emisión —
+            // el `flexible` de `numbering` que venía en el mismo ejemplo no
+            // cambia nada por sí solo.
+            'env' => $cfg->env ?: 'PRODUCCION',
+
             'issue_date' => $fecha,
             'payment_date' => $fecha,
             'invoice_type_code' => 'FACTURA_VENTA',
@@ -82,9 +101,13 @@ class PayloadBuilder
             'notes' => $this->notas($grupo),
         ];
 
-        // El número lo asigna Dataico del rango autorizado. Mandarlo vacío es a
-        // propósito: BRYGAR también emite por fuera de Brynex y el consecutivo
-        // interno no está sincronizado con la resolución.
+        // El consecutivo lo ponemos nosotros: `number` es obligatorio y va como
+        // ENTERO, sin el prefijo. Con "FE1185" el API responde 500 «Entero
+        // inválido»; el prefijo viaja aparte, en `numbering`.
+        if ($consecutivo !== null) {
+            $invoice['number'] = $consecutivo;
+        }
+
         if ($numeracion = $this->numeracion($cfg)) {
             $invoice['numbering'] = $numeracion;
         }
@@ -112,6 +135,8 @@ class PayloadBuilder
             return [
                 'prefix' => $cfg->prefijo,
                 'resolution_number' => $cfg->resolucion,
+                // Viene en el ejemplo que mandó el soporte de Dataico.
+                'flexible' => true,
             ];
         }
 
@@ -127,7 +152,6 @@ class PayloadBuilder
             'party_identification_type' => $adq['tipo_documento'],
             'party_identification' => $adq['identificacion'],
             'tax_level_code' => 'SIMPLIFICADO',
-            'country_code' => 'CO',
             'email' => $this->correo($cfg, $adq),
         ];
 
@@ -138,27 +162,63 @@ class PayloadBuilder
             $customer['family_name'] = $adq['apellido'];
         }
 
-        // La dirección va plana. Ciudad y departamento viajan juntos o no
-        // viajan: Dataico rechaza la combinación si va incompleta.
-        if (filled($adq['ciudad']) && filled($adq['departamento'])) {
+        // La dirección va plana y es TODO O NADA — `country_code` incluido.
+        //
+        // Mandar una parte hace que el API rechace con 500: sin address_line
+        // dice «Le falta el campo 'address_line' en su direccion», y sin
+        // departamento dice «Departamento '' es inválido para pais de
+        // Colombia». Tumbó 3 de las primeras 10 emisiones.
+        //
+        // Lo que no era evidente: **`country_code` solo ya abre la validación
+        // de dirección**. Con `country_code: CO` y sin los otros tres, rebota;
+        // sin `country_code` y sin dirección, pasa limpio. Por eso vive aquí
+        // dentro y no suelto en el customer. De 269 pendientes, 90 no tienen
+        // dirección completa y se emiten sin ella, que la DIAN sí acepta.
+        if (filled($adq['ciudad']) && filled($adq['departamento']) && filled($adq['direccion'])) {
+            $customer['country_code'] = 'CO';
             $customer['city'] = $adq['ciudad'];
             $customer['department'] = $adq['departamento'];
-        }
-        if (filled($adq['direccion'])) {
             $customer['address_line'] = $adq['direccion'];
         }
 
         return $customer;
     }
 
+    /**
+     * La descripción lleva el mes COBRADO (`mes`/`anio`), no el mes de pago:
+     * hay facturas pagadas en julio que cobran agosto. Va igual que en el
+     * Excel de importación manual, para que una misma factura se lea idéntica
+     * salga por donde salga.
+     */
     private function item(object $grupo, bool $esAfiliacion): array
     {
+        $descripcion = $esAfiliacion ? self::DESC_AFILIACION : self::DESC_ADMON;
+
+        if ($periodo = $this->periodo($grupo)) {
+            $descripcion .= " - {$periodo}";
+        }
+
         return [
             'sku' => $esAfiliacion ? self::SKU_AFILIACION : self::SKU_ADMON,
-            'description' => $esAfiliacion ? self::DESC_AFILIACION : self::DESC_ADMON,
+            'description' => $descripcion,
             'quantity' => 1,
             'price' => (float) $grupo->base_admon,
         ];
+    }
+
+    /** "JULIO 2026" a partir del mes cobrado del grupo. */
+    private function periodo(object $grupo): ?string
+    {
+        $mes = (int) ($grupo->mes ?? 0);
+        $anio = (int) ($grupo->anio ?? 0);
+
+        if ($mes < 1 || $mes > 12 || $anio < 2000) {
+            return null;
+        }
+
+        return mb_strtoupper(
+            Carbon::create($anio, $mes, 1)->locale('es')->isoFormat('MMMM')
+        )." {$anio}";
     }
 
     private function actions(DataicoConfiguracion $cfg, array $adq): array

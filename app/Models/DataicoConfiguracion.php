@@ -27,6 +27,8 @@ class DataicoConfiguracion extends BaseModel
         'numbering_range_id',
         'prefijo',
         'resolucion',
+        'env',
+        'ultimo_numero',
         'correo_fallback',
         'enviar_email',
         'consumidor_final',

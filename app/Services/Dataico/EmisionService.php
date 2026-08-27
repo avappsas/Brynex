@@ -67,7 +67,8 @@ class EmisionService
     public function emitirGrupo(DataicoConfiguracion $cfg, object $grupo, bool $simular = false): array
     {
         $numero = (int) $grupo->numero_factura;
-        $payload = $this->builder->construir($cfg, $grupo);
+        $consecutivo = $this->siguienteConsecutivo($cfg);
+        $payload = $this->builder->construir($cfg, $grupo, $consecutivo);
 
         if ($simular) {
             return [
@@ -89,9 +90,48 @@ class EmisionService
             ];
         }
 
-        $respuesta = (new ApiClient($cfg))->crearFactura($payload);
+        $cliente = new ApiClient($cfg);
+        $respuesta = $cliente->crearFactura($payload);
+
+        // El API rechaza un consecutivo fuera de orden y dice cuál espera.
+        // Pasa cuando alguien emitió por el portal entremedio, o cuando el
+        // contador local quedó atrás. Se corrige con lo que él mismo indica en
+        // vez de dejar la factura en error esperando a una persona.
+        if (! $respuesta['ok'] && $esperado = $this->consecutivoEsperado($respuesta['error'] ?? '')) {
+            $cfg->forceFill(['ultimo_numero' => $esperado - 1])->save();
+            $consecutivo = $esperado;
+            $payload = $this->builder->construir($cfg, $grupo, $consecutivo);
+            $respuesta = $cliente->crearFactura($payload);
+        }
 
         if ($respuesta['ok']) {
+            // El consecutivo queda consumido pase lo que pase con la DIAN: el
+            // documento ya existe en Dataico aunque lo rechacen.
+            $cfg->forceFill(['ultimo_numero' => $consecutivo])->save();
+
+            // HTTP 200 no significa factura válida. Dataico acepta la petición
+            // y la DIAN puede rechazarla después; el veredicto viene en
+            // `dian_status` dentro de la misma respuesta. Darla por buena sin
+            // mirarlo marca `fe_marcada` sobre una factura que no existe ante
+            // la DIAN, y esa factura no se vuelve a emitir nunca.
+            if ($rechazo = $this->rechazoDian($respuesta['body'] ?? [])) {
+                $this->marcarError($envio, ['raw' => $respuesta['raw'], 'error' => $rechazo]);
+
+                Log::warning('[dataico] la DIAN rechazó la factura', [
+                    'aliado_id' => $cfg->aliado_id,
+                    'numero_factura' => $numero,
+                    'consecutivo' => $consecutivo,
+                    'motivo' => $rechazo,
+                ]);
+
+                return [
+                    'numero_factura' => $numero,
+                    'resultado' => 'errores',
+                    'mensaje' => $rechazo,
+                    'payload' => null,
+                ];
+            }
+
             $this->marcarEnviado($cfg, $envio, $respuesta);
 
             return [
@@ -117,6 +157,90 @@ class EmisionService
             'mensaje' => $respuesta['error'],
             'payload' => null,
         ];
+    }
+
+    /**
+     * ¿La DIAN rechazó la factura? Devuelve el motivo, o null si no.
+     *
+     * Solo `DIAN_RECHAZADO` cuenta como rechazo. `DIAN_PENDIENTE` o
+     * `DIAN_NO_ENVIADO` no lo son: el documento existe y ya consumió su
+     * consecutivo, así que reemitirlo sería duplicarlo.
+     */
+    private function rechazoDian(array $body): ?string
+    {
+        $invoice = $body['invoice'] ?? $body;
+        $estado = (string) ($invoice['dian_status'] ?? '');
+
+        if ($estado !== 'DIAN_RECHAZADO') {
+            return null;
+        }
+
+        $motivos = collect($invoice['dian_messages'] ?? [])
+            ->filter(fn ($m) => is_string($m) && str_contains($m, 'Rechazo'))
+            ->implode(' | ');
+
+        return 'DIAN_RECHAZADO: '.($motivos !== '' ? $motivos : 'sin detalle');
+    }
+
+    // ─── Consecutivo ─────────────────────────────────────────────────────
+
+    /**
+     * Cuál es el próximo número de factura.
+     *
+     * Dataico NO lo asigna: `number` es obligatorio en el POST, así que el
+     * consecutivo lo lleva Brynex. Si la configuración todavía no tiene
+     * contador, se deduce del rastro que dejó la conciliación —
+     * `dataico_envios.dataico_numero` guarda el número real de cada factura ya
+     * emitida, incluidas las 1.113 que se subieron por Excel.
+     *
+     * No se persiste antes de enviar. Si la emisión falla, el número queda
+     * libre para el siguiente intento y no se abre un hueco en la numeración.
+     */
+    private function siguienteConsecutivo(DataicoConfiguracion $cfg): int
+    {
+        if ($cfg->ultimo_numero) {
+            return (int) $cfg->ultimo_numero + 1;
+        }
+
+        $prefijo = (string) $cfg->prefijo;
+        $ultimo = 0;
+
+        foreach (DataicoEnvio::aliado($cfg->aliado_id)->whereNotNull('dataico_numero')->pluck('dataico_numero') as $n) {
+            $soloDigitos = (int) preg_replace('/\D+/', '', (string) $n);
+            if ($soloDigitos > $ultimo) {
+                $ultimo = $soloDigitos;
+            }
+        }
+
+        if ($ultimo === 0) {
+            Log::warning('[dataico] sin consecutivo conocido; se arranca en 1', [
+                'aliado_id' => $cfg->aliado_id,
+                'prefijo' => $prefijo,
+            ]);
+        }
+
+        return $ultimo + 1;
+    }
+
+    /**
+     * Extrae el consecutivo que el API dice esperar.
+     *
+     * El mensaje es del tipo: "El número para este documento 'FE1190' es
+     * inválido. Tiene que ser el siguiente número 'FE1185'".
+     */
+    private function consecutivoEsperado(string $error): ?int
+    {
+        if (! str_contains($error, 'siguiente número')) {
+            return null;
+        }
+
+        if (! preg_match_all("/'([^']*?)(\d+)'/", $error, $m)) {
+            return null;
+        }
+
+        $ultimo = end($m[2]);
+
+        return $ultimo !== false ? (int) $ultimo : null;
     }
 
     // ─── Reclamo atómico ─────────────────────────────────────────────────
