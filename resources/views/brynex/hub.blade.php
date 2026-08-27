@@ -83,6 +83,42 @@
             </div>
         </div>
 
+        {{-- ── Razones sociales ante la DIAN ───────────────────────────────── --}}
+        {{-- Ojo: esta tarjeta solo la ve quien entre al hub, y el hub exige
+             `brynex_hub.ver`. El contable llega al módulo por el ítem suelto
+             del sidebar, no por aquí. --}}
+        @can('brynex_razones.ver')
+        <div class="hub-section" style="border:1px solid #99f6e4">
+            <div class="hub-section-title" style="color:#0f766e">🏛️ Razones Sociales</div>
+            <div class="hub-cards">
+                <a href="{{ route('brynex.razones.index') }}" class="hub-card" style="border-color:#99f6e4;background:#f0fdfa">
+                    <div class="hc-icon">🏛️</div>
+                    <div class="hc-body">
+                        <div class="hc-name" style="color:#0f766e">Razones Sociales de BryNex</div>
+                        <div class="hc-desc">Todas las razones sociales agrupadas por NIT · Afiliados y movimientos de dinero consolidados sin importar el aliado · Claves de DIAN, banco y cámara</div>
+                    </div>
+                    <div class="hc-arrow" style="color:#0f766e">→</div>
+                </a>
+                <a href="{{ route('brynex.razones.tablero') }}" class="hub-card" style="border-color:#99f6e4;background:#f0fdfa">
+                    <div class="hc-icon">🚨</div>
+                    <div class="hc-body">
+                        <div class="hc-name" style="color:#0f766e">Vencimientos Tributarios</div>
+                        <div class="hc-desc">Lo que ya se venció y lo que vence pronto ante la DIAN · Firmas electrónicas por caducar</div>
+                    </div>
+                    <div class="hc-arrow" style="color:#0f766e">→</div>
+                </a>
+                <a href="{{ route('brynex.razones.calendario') }}" class="hub-card" style="border-color:#99f6e4;background:#f0fdfa">
+                    <div class="hc-icon">📅</div>
+                    <div class="hc-body">
+                        <div class="hc-name" style="color:#0f766e">Calendario Tributario</div>
+                        <div class="hc-desc">Fechas de vencimiento por último dígito del NIT · Aquí se cargan a mano la exógena y el ICA, que no vienen en el calendario de la DIAN</div>
+                    </div>
+                    <div class="hc-arrow" style="color:#0f766e">→</div>
+                </a>
+            </div>
+        </div>
+        @endcan
+
         {{-- ── Supervisión de planilla ─────────────────────────────────────── --}}
         @can('brynex_cierre.ver')
         <div class="hub-section" style="border:1px solid #c7d2fe">
