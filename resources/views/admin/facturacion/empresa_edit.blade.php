@@ -52,53 +52,7 @@
     @csrf
     @method('PUT')
 
-    {{-- Datos básicos --}}
-    <div class="card">
-        <div class="card-title">🏢 Datos Básicos</div>
-        <div class="form-row">
-            <div class="form-full">
-                <label class="flb">Nombre empresa *</label>
-                <input class="finp" type="text" name="empresa" value="{{ old('empresa', $empresa->empresa) }}" required>
-            </div>
-            <div>
-                <label class="flb">NIT</label>
-                <input class="finp" type="number" name="nit" value="{{ old('nit', $empresa->nit) }}">
-            </div>
-            <div>
-                <label class="flb">Correo</label>
-                <input class="finp" type="email" name="correo" value="{{ old('correo', $empresa->correo) }}">
-            </div>
-            <div>
-                <label class="flb">Teléfono</label>
-                <input class="finp" type="text" name="telefono" value="{{ old('telefono', $empresa->telefono) }}">
-            </div>
-            <div>
-                <label class="flb">Celular</label>
-                <input class="finp" type="text" name="celular" value="{{ old('celular', $empresa->celular) }}">
-            </div>
-            <div class="form-full">
-                <label class="flb">Dirección</label>
-                <input class="finp" type="text" name="direccion" value="{{ old('direccion', $empresa->direccion) }}">
-            </div>
-            <div>
-                <label class="flb">Contacto</label>
-                <input class="finp" type="text" name="contacto" value="{{ old('contacto', $empresa->contacto) }}">
-            </div>
-            <div>
-                <label class="flb">IVA</label>
-                <div class="iva-group">
-                    <label>
-                        <input type="radio" name="iva" value="SI" {{ strtoupper(old('iva', $empresa->iva)) === 'SI' ? 'checked' : '' }}>
-                        <span>Sí</span>
-                    </label>
-                    <label>
-                        <input type="radio" name="iva" value="NO" {{ strtoupper(old('iva', $empresa->iva)) !== 'SI' ? 'checked' : '' }}>
-                        <span>No</span>
-                    </label>
-                </div>
-            </div>
-        </div>
-    </div>
+    @include('admin.facturacion._empresa_campos')
 
     {{-- Asesor --}}
     <div class="card">

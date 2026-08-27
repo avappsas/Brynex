@@ -181,8 +181,10 @@ class WhatsappMasivoController extends Controller
 
         $destinatarios = [];
         foreach ($empresas as $empresa) {
-            // El contacto de la empresa es quien recibe el mensaje
-            $numero = $this->normalizarNumero($empresa->celular ?? $empresa->telefono ?? '');
+            // El contacto de la empresa es quien recibe el mensaje: primero el
+            // celular del encargado de la seguridad social si lo tiene, y solo
+            // si no, el número general de la empresa.
+            $numero = $this->normalizarNumero($empresa->celularParaEnviar() ?? '');
             if (!$numero) continue;
             if (isset($yaEnviados[$numero])) continue;
 

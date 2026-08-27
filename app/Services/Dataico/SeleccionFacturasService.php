@@ -237,7 +237,7 @@ class SeleccionFacturasService
         if (! empty($empresaIds)) {
             $empresas = DB::table('empresas')
                 ->whereIn('id', $empresaIds)
-                ->select(['id', 'empresa', 'nit', 'contacto', 'telefono', 'celular', 'correo', 'direccion'])
+                ->select(['id', 'empresa', 'nombre_legal', 'nit', 'tipo_documento', 'contacto', 'telefono', 'celular', 'correo', 'direccion'])
                 ->get()
                 ->keyBy('id')
                 ->all();

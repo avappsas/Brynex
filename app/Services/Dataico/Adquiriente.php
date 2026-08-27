@@ -32,17 +32,25 @@ class Adquiriente
     public static function deEmpresa(object $e, bool $consumidorFinal): array
     {
         $doc = self::soloDigitos($e->nit ?? '');
-        $nombre = trim($e->empresa ?? '');
+
+        // El nombre que viaja a la DIAN es el del documento, no el del
+        // establecimiento: una factura a la cédula de ANCIZAR GARCIA no puede
+        // salir a nombre de MAXIDROGAS. `empresa` sigue siendo el nombre con
+        // el que se reconoce al cliente en el resto de Brynex.
+        $nombre = trim(($e->nombre_legal ?? '') ?: ($e->empresa ?? ''));
 
         if ($doc === '') {
             return self::sinDocumento($nombre, trim($e->correo ?? ''), $consumidorFinal);
         }
 
-        $esNit = self::pareceNitEmpresa($doc);
+        // El tipo capturado manda sobre la forma del número. La heurística
+        // solo cubre las empresas viejas que todavía no tienen `tipo_documento`.
+        $tipo = strtoupper(trim((string) ($e->tipo_documento ?? '')));
+        $esNit = $tipo !== '' ? $tipo === 'NIT' : self::pareceNitEmpresa($doc);
 
         return [
             'tipo_persona' => $esNit ? 'PERSONA_JURIDICA' : 'PERSONA_NATURAL',
-            'tipo_documento' => $esNit ? 'NIT' : 'CC',
+            'tipo_documento' => $esNit ? 'NIT' : ($tipo !== '' && $tipo !== 'NIT' ? $tipo : 'CC'),
             'identificacion' => $doc,
             'nombre_completo' => $nombre,
             'primer_nombre' => $esNit ? $nombre : self::nombresDe($nombre),

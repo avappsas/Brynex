@@ -40,53 +40,9 @@
 <form method="POST" action="{{ route('admin.facturacion.empresa.store') }}">
     @csrf
 
-    {{-- Datos básicos --}}
-    <div class="card">
-        <div class="card-title">🏢 Datos Básicos</div>
-        <div class="form-row">
-            <div class="form-full">
-                <label class="flb">Nombre empresa *</label>
-                <input class="finp" type="text" name="empresa" value="{{ old('empresa') }}" required>
-            </div>
-            <div>
-                <label class="flb">NIT</label>
-                <input class="finp" type="number" name="nit" value="{{ old('nit') }}">
-            </div>
-            <div>
-                <label class="flb">Correo</label>
-                <input class="finp" type="email" name="correo" value="{{ old('correo') }}">
-            </div>
-            <div>
-                <label class="flb">Teléfono</label>
-                <input class="finp" type="text" name="telefono" value="{{ old('telefono') }}">
-            </div>
-            <div>
-                <label class="flb">Celular</label>
-                <input class="finp" type="text" name="celular" value="{{ old('celular') }}">
-            </div>
-            <div class="form-full">
-                <label class="flb">Dirección</label>
-                <input class="finp" type="text" name="direccion" value="{{ old('direccion') }}">
-            </div>
-            <div>
-                <label class="flb">Contacto</label>
-                <input class="finp" type="text" name="contacto" value="{{ old('contacto') }}">
-            </div>
-            <div>
-                <label class="flb">IVA</label>
-                <div class="iva-group">
-                    <label>
-                        <input type="radio" name="iva" value="SI" {{ strtoupper(old('iva')) === 'SI' ? 'checked' : '' }}>
-                        <span>Sí</span>
-                    </label>
-                    <label>
-                        <input type="radio" name="iva" value="NO" {{ strtoupper(old('iva', 'NO')) === 'NO' ? 'checked' : '' }}>
-                        <span>No</span>
-                    </label>
-                </div>
-            </div>
-        </div>
-    </div>
+    {{-- Ficha de la empresa: campos compartidos con el formulario de editar --}}
+    @php $empresa = new \App\Models\Empresa; @endphp
+    @include('admin.facturacion._empresa_campos')
 
     {{-- Asesor --}}
     <div class="card">

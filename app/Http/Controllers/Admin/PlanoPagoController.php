@@ -1334,8 +1334,10 @@ class PlanoPagoController extends Controller
         $tipoEnvio = $request->input('tipo_envio', 'individual');
         if ($tipoEnvio === 'contacto_empresa' || !$numeroCelular) {
             $empresa = \App\Models\Empresa::find($cliente?->cod_empresa);
-            if ($empresa && $empresa->celular) {
-                $numeroCelular = $empresa->celular;
+            // Primero el celular del encargado de la seguridad social; si la
+            // empresa no tiene encargado, el número general.
+            if ($empresa && $empresa->celularParaEnviar()) {
+                $numeroCelular = $empresa->celularParaEnviar();
                 // nombre sigue siendo el del CLIENTE (no el contacto de empresa)
             }
         }
