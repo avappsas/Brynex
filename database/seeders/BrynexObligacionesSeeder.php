@@ -51,37 +51,41 @@ class BrynexObligacionesSeeder extends Seeder
     private function catalogo(): void
     {
         $filas = [
+            // [codigo, nombre, entidad, formulario, regimen, periodicidad,
+            //  requiere_iva, periodicidad_iva_requerida, orden, descripcion,
+            //  anios_desfase]
+
             // ── Régimen Simple ────────────────────────────────────────
             ['rst_anticipo_bimestral', 'Anticipo bimestral SIMPLE', 'DIAN', '2593', 'RST', 'bimestral', false, null, 10,
-                'Seis anticipos al año. Los contribuyentes con ingresos brutos anuales inferiores a 3.500 UVT están exentos de pagarlo, pero igual se marca aquí como "No aplica" para dejar el rastro.'],
+                'Seis anticipos al año. Los contribuyentes con ingresos brutos anuales inferiores a 3.500 UVT están exentos de pagarlo, pero igual se marca aquí como "No aplica" para dejar el rastro.', 0],
             ['rst_anual_consolidada', 'Declaración anual consolidada SIMPLE', 'DIAN', '260', 'RST', 'anual', false, null, 11,
-                'Cierra el año del régimen simple. Vence en abril del año siguiente.'],
+                'Cierra el año del régimen simple. Vence en abril del año siguiente.', 1],
             ['rst_iva_anual', 'IVA anual consolidada (SIMPLE)', 'DIAN', '300', 'RST', 'anual', true, null, 12,
-                'Los del régimen simple responsables de IVA declaran una sola vez al año, en febrero del año siguiente.'],
+                'Los del régimen simple responsables de IVA declaran una sola vez al año, en febrero del año siguiente.', 1],
 
             // ── Régimen Ordinario ─────────────────────────────────────
             ['iva_bimestral', 'IVA bimestral', 'DIAN', '300', 'ORDINARIO', 'bimestral', true, 'bimestral', 20,
-                'Aplica a quienes el año anterior tuvieron ingresos brutos iguales o superiores a 92.000 UVT.'],
+                'Aplica a quienes el año anterior tuvieron ingresos brutos iguales o superiores a 92.000 UVT.', 0],
             ['iva_cuatrimestral', 'IVA cuatrimestral', 'DIAN', '300', 'ORDINARIO', 'cuatrimestral', true, 'cuatrimestral', 21,
-                'Aplica a quienes el año anterior tuvieron ingresos brutos inferiores a 92.000 UVT.'],
+                'Aplica a quienes el año anterior tuvieron ingresos brutos inferiores a 92.000 UVT.', 0],
             ['retefuente_mensual', 'Retención en la fuente', 'DIAN', '350', 'ORDINARIO', 'mensual', false, null, 22,
-                'Mensual y con pago total: sin el pago, la declaración se tiene por no presentada.'],
+                'Mensual y con pago total: sin el pago, la declaración se tiene por no presentada.', 0],
             ['renta_juridica', 'Renta persona jurídica — declaración y 1ª cuota', 'DIAN', '110', 'ORDINARIO', 'anual', false, null, 23,
-                'Se declara y paga la primera cuota en mayo del año siguiente.'],
+                'Se declara y paga la primera cuota en mayo del año siguiente.', 1],
             ['renta_juridica_cuota2', 'Renta persona jurídica — 2ª cuota', 'DIAN', '110', 'ORDINARIO', 'anual', false, null, 24,
-                'Segunda cuota, en julio del año siguiente.'],
+                'Segunda cuota, en julio del año siguiente.', 1],
 
             // ── Comunes a los dos regímenes ───────────────────────────
             ['exogena', 'Información exógena', 'DIAN', '1001+', null, 'anual', false, null, 30,
-                'La fija una resolución aparte cada año, no el calendario tributario. Cargar la fecha a mano cuando salga la resolución.'],
+                'La fija una resolución aparte cada año, no el calendario tributario. Cargar la fecha a mano cuando salga la resolución.', 1],
             ['camara_renovacion', 'Renovación de matrícula mercantil', 'CAMARA', null, null, 'anual', false, null, 40,
-                'Hasta el 31 de marzo, igual para todos: no depende del NIT.'],
+                'Hasta el 31 de marzo, igual para todos: no depende del NIT.', 0],
 
             // ── Municipio: una entrada por periodicidad ───────────────
             ['ica_bimestral', 'ICA bimestral', 'MUNICIPIO', null, null, 'bimestral', false, null, 50,
-                'Lo fija el municipio. Cargar las fechas a mano en la pantalla de calendario.'],
+                'Lo fija el municipio. Cargar las fechas a mano en la pantalla de calendario.', 0],
             ['ica_anual', 'ICA anual', 'MUNICIPIO', null, null, 'anual', false, null, 51,
-                'Lo fija el municipio. Cargar la fecha a mano en la pantalla de calendario.'],
+                'Lo fija el municipio. Cargar la fecha a mano en la pantalla de calendario.', 1],
         ];
 
         foreach ($filas as $f) {
@@ -97,6 +101,9 @@ class BrynexObligacionesSeeder extends Seeder
                     'periodicidad_iva_requerida' => $f[7],
                     'orden' => $f[8],
                     'descripcion' => $f[9],
+                    // Años entre el año gravable y el plazo. Ordena el
+                    // checklist cuando todavía no hay calendario cargado.
+                    'anios_desfase' => $f[10],
                     'activo' => true,
                 ]
             );

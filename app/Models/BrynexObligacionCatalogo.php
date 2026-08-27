@@ -16,6 +16,9 @@ class BrynexObligacionCatalogo extends BaseModel
     protected $fillable = [
         'codigo', 'nombre', 'entidad', 'formulario', 'regimen',
         'periodicidad', 'requiere_iva', 'periodicidad_iva_requerida',
+        // Años entre el año gravable y el plazo: la anual del 2026 se presenta
+        // en 2027, pero la renovación de cámara del 2026 se hace en 2026.
+        'anios_desfase',
         'descripcion', 'orden', 'activo',
     ];
 

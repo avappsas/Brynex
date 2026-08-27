@@ -201,20 +201,32 @@ class BrynexRazonSocialController extends Controller
         // y buscarla en la pestaña de 2025 no tiene sentido — en 2025 no había
         // nada que hacer con ella.
         //
-        // Los renglones sin fecha (años viejos, sin calendario cargado) caen a
-        // su año gravable, que es lo único que se sabe de ellos.
-        $porPlazo = 'COALESCE(YEAR(fecha_vencimiento), anio)';
+        // Cuando todavía no hay calendario cargado no se cae al año gravable a
+        // secas, sino al año gravable más el desfase de la obligación: la
+        // declaración anual del 2026 se presenta en 2027, aunque su fecha
+        // exacta no se sepa hasta que la DIAN publique el calendario. Sin eso,
+        // la anual aparecía dos veces en la misma pestaña — la del año pasado
+        // con su fecha real y la del año en curso sin fecha.
+        // Sin alias sobre `brynex_obligaciones`: el scope de SoftDeletes
+        // califica `deleted_at` con el nombre real de la tabla y con alias
+        // responde «multi-part identifier could not be bound».
+        $t = 'brynex_obligaciones';
+        $porPlazo = "COALESCE(YEAR({$t}.fecha_vencimiento), {$t}.anio + ISNULL(cat.anios_desfase, 0))";
 
-        $obligaciones = $ficha->obligaciones()
+        $base = fn () => $ficha->obligaciones()
+            ->leftJoin('brynex_obligaciones_catalogo as cat', 'cat.codigo', '=', "{$t}.obligacion_codigo");
+
+        $obligaciones = $base()
             ->with('documentos')
             ->whereRaw("{$porPlazo} = ?", [$anio])
-            ->orderByRaw('CASE WHEN fecha_vencimiento IS NULL THEN 1 ELSE 0 END')
-            ->orderBy('fecha_vencimiento')
-            ->orderBy('obligacion_codigo')
-            ->orderBy('periodo')
+            ->orderByRaw("CASE WHEN {$t}.fecha_vencimiento IS NULL THEN 1 ELSE 0 END")
+            ->orderBy("{$t}.fecha_vencimiento")
+            ->orderBy('cat.orden')
+            ->orderBy("{$t}.periodo")
+            ->select("{$t}.*")
             ->get();
 
-        $aniosConDatos = $ficha->obligaciones()
+        $aniosConDatos = $base()
             ->selectRaw("DISTINCT {$porPlazo} as anio")
             ->orderByDesc('anio')
             ->pluck('anio');
