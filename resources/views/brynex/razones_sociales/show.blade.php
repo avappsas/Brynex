@@ -46,6 +46,30 @@
                         · Contador: {{ $ficha->contador->nombre }}
                     @endif
                 </div>
+
+                {{-- Las cifras van en una sola línea de chips y no en un bloque
+                     aparte: eran tres números enormes que empujaban la tabla
+                     media pantalla hacia abajo. El detalle de cada uno está en
+                     su pestaña. --}}
+                <div style="display:flex;gap:0.4rem;flex-wrap:wrap;margin-top:0.6rem;">
+                    <span class="rs-chip" title="{{ $afiliados['por_aliado']->map(fn ($f) => $f->aliado.': '.$f->total)->implode(' · ') ?: 'Sin afiliados vigentes' }}">
+                        👥 <b>{{ number_format($afiliados['total'], 0, ',', '.') }}</b> afiliados vigentes
+                    </span>
+
+                    <span class="rs-chip {{ $resumenChecklist['rojo'] ? 'alerta' : '' }}">
+                        ✅ <b>{{ $resumenChecklist['verde'] }}/{{ $resumenChecklist['total'] }}</b> al día en {{ $anio }}
+                        @if($resumenChecklist['rojo'])
+                            · <b>{{ $resumenChecklist['rojo'] }}</b> vencida(s)
+                        @endif
+                        @if($resumenChecklist['amarillo'])
+                            · {{ $resumenChecklist['amarillo'] }} por vencer
+                        @endif
+                    </span>
+
+                    <span class="rs-chip" title="{{ $vinculos->pluck('aliado')->filter()->implode(' · ') }}">
+                        🏢 <b>{{ $vinculos->count() }}</b> {{ $vinculos->count() === 1 ? 'aliado la usa' : 'aliados la usan' }}
+                    </span>
+                </div>
             </div>
 
             <div style="display:flex;gap:0.5rem;align-items:center;">
@@ -81,30 +105,6 @@
             </div>
         </div>
 
-        {{-- Resumen: solo lo que describe a la razón social. Las cifras de
-             dinero viven en la pestaña de Movimientos y lo pagado a la DIAN en
-             la del Checklist, junto a los renglones que lo explican. --}}
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:0.8rem;margin-top:1.1rem;padding-top:1rem;border-top:1px solid #f1f5f9;">
-            <div>
-                <div style="font-size:0.68rem;text-transform:uppercase;color:#64748b;font-weight:700;">Afiliados vigentes</div>
-                <div style="font-size:1.35rem;font-weight:800;color:#0f172a;">{{ number_format($afiliados['total'], 0, ',', '.') }}</div>
-                <div style="font-size:0.7rem;color:#94a3b8;">en {{ $afiliados['por_aliado']->count() }} aliado(s)</div>
-            </div>
-            <div>
-                <div style="font-size:0.68rem;text-transform:uppercase;color:#64748b;font-weight:700;">Checklist {{ $anio }}</div>
-                <div style="font-size:1.35rem;font-weight:800;color:{{ $resumenChecklist['rojo'] > 0 ? '#b91c1c' : '#047857' }};">
-                    {{ $resumenChecklist['verde'] }}/{{ $resumenChecklist['total'] }}
-                </div>
-                <div style="font-size:0.7rem;color:#94a3b8;">
-                    {{ $resumenChecklist['rojo'] }} vencida(s) · {{ $resumenChecklist['amarillo'] }} por vencer
-                </div>
-            </div>
-            <div>
-                <div style="font-size:0.68rem;text-transform:uppercase;color:#64748b;font-weight:700;">Aliados que la usan</div>
-                <div style="font-size:1.35rem;font-weight:800;color:#0f172a;">{{ $vinculos->count() }}</div>
-                <div style="font-size:0.7rem;color:#94a3b8;">{{ $vinculos->pluck('aliado')->filter()->take(3)->implode(', ') ?: '—' }}</div>
-            </div>
-        </div>
     </div>
 
     @include('brynex.razones_sociales._alertas')
@@ -790,7 +790,27 @@
 }
 .rs-tab.activa .rs-pill { background: #dbeafe; color: #1d4ed8; }
 .rs-pill-rojo { background: #fee2e2; color: #b91c1c; }
+
+.rs-chip {
+    display: inline-flex; align-items: center; gap: .3rem;
+    background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 20px;
+    padding: .25rem .7rem; font-size: .78rem; color: #475569;
+    white-space: nowrap;
+}
+.rs-chip b { color: #0f172a; font-weight: 800; }
+.rs-chip.alerta { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
+.rs-chip.alerta b { color: #b91c1c; }
 .rs-tab.activa .rs-pill-rojo { background: #fee2e2; color: #b91c1c; }
+
+.rs-chip {
+    display: inline-flex; align-items: center; gap: .3rem;
+    background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 20px;
+    padding: .25rem .7rem; font-size: .78rem; color: #475569;
+    white-space: nowrap;
+}
+.rs-chip b { color: #0f172a; font-weight: 800; }
+.rs-chip.alerta { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
+.rs-chip.alerta b { color: #b91c1c; }
 
 @media (max-width: 640px) {
     .rs-tabs { display: flex; width: 100%; }
