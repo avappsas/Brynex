@@ -208,9 +208,6 @@ class SeleccionFacturasService
      * Adjunta a cada grupo los datos del adquiriente: la empresa si la factura
      * es de un lote empresarial, el cliente si es individual.
      */
-    /** Identificación con la que la DIAN recibe una venta a consumidor final. */
-    public const CONSUMIDOR_FINAL_ID = '222222222222';
-
     private function hydratarAdquirientes(DataicoConfiguracion $cfg, Collection $grupos): Collection
     {
         $cedulas = $grupos->pluck('cedula_muestra')->filter()->unique()->values()->all();
@@ -254,129 +251,34 @@ class SeleccionFacturasService
     }
 
     /**
-     * Quién es el adquiriente de la factura.
-     *
-     * Ojo con `empresas` en BRYGAR: de 227 registros, solo 15 tienen un NIT de
-     * verdad. 75 llevan una cédula en el campo `nit` y 137 lo tienen vacío —
-     * son personas naturales que contratan (contratistas, hogares), no
-     * sociedades. Emitirlas como PERSONA_JURIDICA con NIT vacío hace que la
-     * DIAN rechace la factura, así que aquí se clasifica por la forma del
-     * documento y no por el hecho de estar en la tabla `empresas`.
-     *
-     * Sin documento utilizable el grupo queda retenido, no se emite: BRYGAR
-     * nunca ha usado la figura de consumidor final y el dato que falta lo
-     * puede llenar una persona en dos minutos.
+     * Quién es el adquiriente. La clasificación vive en [[Adquiriente]], que
+     * comparten este flujo y el Excel de importación manual, para que los dos
+     * caminos hacia Dataico no clasifiquen distinto al mismo cliente.
      */
     private function resolverAdquiriente(DataicoConfiguracion $cfg, object $g, array $clientes, array $empresas): array
     {
-        // Lote empresarial: el adquiriente es el empleador, no el trabajador.
-        if ($g->empresa_id && isset($empresas[$g->empresa_id])) {
-            $e = $empresas[$g->empresa_id];
-            $doc = $this->soloDigitos($e->nit ?? '');
+        $cl = $clientes[$g->cedula_muestra] ?? null;
+        $empresa = $g->empresa_id ? ($empresas[$g->empresa_id] ?? null) : null;
 
-            if ($doc === '') {
-                return $this->retenidoSinDocumento($cfg, trim($e->empresa ?? ''), trim($e->correo ?? ''));
+        if ($empresa) {
+            // Lote empresarial: el adquiriente es el empleador, no el trabajador.
+            if (Adquiriente::empresaTieneDocumento($empresa)) {
+                return Adquiriente::deEmpresa($empresa, (bool) $cfg->consumidor_final);
             }
 
-            $esNit = $this->pareceNitEmpresa($doc);
-            $nombre = trim($e->empresa ?? '');
+            // Empresa sin documento y un solo afiliado: la empresa no aporta
+            // nada (a veces es un comodín como «Individual») y el cliente sí
+            // tiene cédula. Se le factura a él antes que a consumidor final.
+            if ((int) $g->num_clientes === 1 && $cl) {
+                return Adquiriente::deCliente($cl);
+            }
 
-            return [
-                'tipo_persona' => $esNit ? 'PERSONA_JURIDICA' : 'PERSONA_NATURAL',
-                'tipo_documento' => $esNit ? 'NIT' : 'CC',
-                'identificacion' => $doc,
-                'nombre_completo' => $nombre,
-                'primer_nombre' => $esNit ? $nombre : $this->nombresDe($nombre),
-                'apellido' => $esNit ? '' : $this->apellidosDe($nombre),
-                'direccion' => trim($e->direccion ?? ''),
-                'telefono' => trim($e->celular ?: ($e->telefono ?? '')),
-                'ciudad' => '',
-                'departamento' => '',
-                'correo' => trim($e->correo ?? ''),
-                'sin_documento' => false,
-            ];
+            // Varios afiliados y ningún documento: no hay a quién atribuirle.
+            return Adquiriente::deEmpresa($empresa, (bool) $cfg->consumidor_final);
         }
 
-        $cl = $clientes[$g->cedula_muestra] ?? null;
-
-        if (! $cl) {
-            return $this->retenidoSinDocumento($cfg, '', '');
-        }
-
-        $nombres = trim(($cl->primer_nombre ?? '').' '.($cl->segundo_nombre ?? ''));
-        $apellidos = trim(($cl->primer_apellido ?? '').' '.($cl->segundo_apellido ?? ''));
-
-        $mapaDoc = ['CC' => 'CC', 'NIT' => 'NIT', 'CE' => 'CE', 'PAS' => 'PASAPORTE', 'TI' => 'TI'];
-        $tipoDoc = strtoupper(trim($cl->tipo_doc ?? 'CC'));
-
-        return [
-            'tipo_persona' => $tipoDoc === 'NIT' ? 'PERSONA_JURIDICA' : 'PERSONA_NATURAL',
-            'tipo_documento' => $mapaDoc[$tipoDoc] ?? 'CC',
-            'identificacion' => (string) ($cl->cedula ?? $g->cedula_muestra),
-            'nombre_completo' => trim("$nombres $apellidos"),
-            'primer_nombre' => $nombres,
-            'apellido' => $apellidos,
-            'direccion' => trim($cl->direccion_vivienda ?? ''),
-            'telefono' => trim($cl->celular ?: ($cl->telefono ?? '')),
-            'ciudad' => trim($cl->ciudad_nombre ?? ''),
-            'departamento' => trim($cl->departamento_nombre ?? ''),
-            'correo' => trim($cl->correo ?? ''),
-            'sin_documento' => false,
-        ];
-    }
-
-    /**
-     * Adquiriente sin documento utilizable. NO se emite: queda retenido para
-     * que alguien le capture la cédula o el NIT del empleador.
-     *
-     * Se conserva el nombre para poder identificarlo en el listado.
-     */
-    private function retenidoSinDocumento(DataicoConfiguracion $cfg, string $nombre, string $correo): array
-    {
-        return [
-            'tipo_persona' => 'PERSONA_NATURAL',
-            'tipo_documento' => 'CC',
-            'identificacion' => $cfg->consumidor_final ? self::CONSUMIDOR_FINAL_ID : '',
-            'nombre_completo' => $nombre !== '' ? $nombre : 'Consumidor final',
-            'primer_nombre' => $this->nombresDe($nombre),
-            'apellido' => $this->apellidosDe($nombre),
-            'direccion' => '',
-            'telefono' => '',
-            'ciudad' => '',
-            'departamento' => '',
-            'correo' => $correo,
-            'sin_documento' => true,
-        ];
-    }
-
-    /**
-     * NIT de sociedad: 9 o 10 dígitos empezando en 8 o 9. Todo lo demás en el
-     * campo `nit` de `empresas` es en la práctica una cédula.
-     */
-    private function pareceNitEmpresa(string $doc): bool
-    {
-        return strlen($doc) >= 9
-            && strlen($doc) <= 10
-            && in_array($doc[0], ['8', '9'], true);
-    }
-
-    /** Reparto ingenuo de un nombre suelto: las 2 últimas palabras son apellidos. */
-    private function nombresDe(string $completo): string
-    {
-        $p = preg_split('/\s+/', trim($completo), -1, PREG_SPLIT_NO_EMPTY) ?: [];
-
-        return count($p) <= 2 ? ($p[0] ?? '') : implode(' ', array_slice($p, 0, count($p) - 2));
-    }
-
-    private function apellidosDe(string $completo): string
-    {
-        $p = preg_split('/\s+/', trim($completo), -1, PREG_SPLIT_NO_EMPTY) ?: [];
-
-        return count($p) <= 2 ? ($p[1] ?? '') : implode(' ', array_slice($p, -2));
-    }
-
-    private function soloDigitos(string $v): string
-    {
-        return preg_replace('/\D+/', '', $v) ?? '';
+        return $cl
+            ? Adquiriente::deCliente($cl)
+            : Adquiriente::sinDocumento('', '', (bool) $cfg->consumidor_final);
     }
 }
