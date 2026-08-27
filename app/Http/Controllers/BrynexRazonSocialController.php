@@ -193,15 +193,31 @@ class BrynexRazonSocialController extends Controller
         // fila con este NIT, aparece sin que nadie tenga que acordarse.
         $this->servicio->sincronizarVinculos($ficha);
 
+        // El año de la pestaña es el del PLAZO, no el gravable.
+        //
+        // `anio` guarda el año gravable, que es lo correcto para cruzar contra
+        // el calendario. Pero el contador trabaja por plazo: la declaración
+        // anual consolidada del año gravable 2025 se presenta en abril de 2026,
+        // y buscarla en la pestaña de 2025 no tiene sentido — en 2025 no había
+        // nada que hacer con ella.
+        //
+        // Los renglones sin fecha (años viejos, sin calendario cargado) caen a
+        // su año gravable, que es lo único que se sabe de ellos.
+        $porPlazo = 'COALESCE(YEAR(fecha_vencimiento), anio)';
+
         $obligaciones = $ficha->obligaciones()
             ->with('documentos')
-            ->where('anio', $anio)
+            ->whereRaw("{$porPlazo} = ?", [$anio])
+            ->orderByRaw('CASE WHEN fecha_vencimiento IS NULL THEN 1 ELSE 0 END')
+            ->orderBy('fecha_vencimiento')
             ->orderBy('obligacion_codigo')
             ->orderBy('periodo')
             ->get();
 
         $aniosConDatos = $ficha->obligaciones()
-            ->select('anio')->distinct()->orderByDesc('anio')->pluck('anio');
+            ->selectRaw("DISTINCT {$porPlazo} as anio")
+            ->orderByDesc('anio')
+            ->pluck('anio');
 
         return view('brynex.razones_sociales.show', [
             'ficha' => $ficha,

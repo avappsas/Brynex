@@ -74,19 +74,38 @@ class BrynexObligacionCatalogo extends BaseModel
         return true;
     }
 
-    /** 'Bimestre 1 (ene-feb)' — se guarda en el renglón para no rearmarlo. */
+    private const MESES_CORTOS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun',
+        'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+
+    private const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+        'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
+    /**
+     * Cómo se nombra el período. Se guarda en el renglón para no rearmarlo.
+     *
+     * Va en el orden en que se dice en la práctica contable: «1 bimestre», no
+     * «Bimestre 1». Los meses del período van aparte, en `mesesDelPeriodo()`,
+     * para que la vista los pinte como apoyo y no dentro del nombre.
+     */
     public function etiquetaPeriodo(int $periodo): string
     {
-        $meses = ['ene', 'feb', 'mar', 'abr', 'may', 'jun',
-            'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
-
         return match ($this->periodicidad) {
-            'mensual' => 'Mes '.$periodo.' ('.$meses[$periodo - 1].')',
-            'bimestral' => 'Bimestre '.$periodo.' ('
-                .$meses[($periodo - 1) * 2].'-'.$meses[($periodo - 1) * 2 + 1].')',
-            'cuatrimestral' => 'Cuatrimestre '.$periodo.' ('
-                .$meses[($periodo - 1) * 4].'-'.$meses[($periodo - 1) * 4 + 3].')',
+            'mensual' => self::MESES[$periodo - 1] ?? ('Mes '.$periodo),
+            'bimestral' => $periodo.' bimestre',
+            'cuatrimestral' => $periodo.' cuatrimestre',
             default => 'Anual',
+        };
+    }
+
+    /** 'ene-feb' — el rango que cubre el período. Vacío en las anuales. */
+    public function mesesDelPeriodo(int $periodo): string
+    {
+        return match ($this->periodicidad) {
+            'bimestral' => self::MESES_CORTOS[($periodo - 1) * 2]
+                .'-'.self::MESES_CORTOS[($periodo - 1) * 2 + 1],
+            'cuatrimestral' => self::MESES_CORTOS[($periodo - 1) * 4]
+                .'-'.self::MESES_CORTOS[($periodo - 1) * 4 + 3],
+            default => '',
         };
     }
 }

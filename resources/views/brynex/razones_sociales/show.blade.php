@@ -58,28 +58,37 @@
                         </div>
                     </div>
                 @endif
+                {{-- El año manda sobre el checklist y sobre los movimientos,
+                     así que vive en la cabecera y no dentro de una pestaña.
+                     `t` conserva la pestaña abierta al recargar. --}}
+                <form method="GET" style="display:flex;align-items:center;gap:0.4rem;background:#f8fafc;border:1px solid #e2e8f0;padding:0.3rem 0.55rem;border-radius:9px;">
+                    <input type="hidden" name="t" :value="pestana">
+                    <span style="font-size:0.7rem;text-transform:uppercase;color:#64748b;font-weight:700;letter-spacing:0.03em;">Año</span>
+                    <select name="anio" onchange="this.form.submit()"
+                            style="border:none;background:transparent;font-size:0.95rem;font-weight:800;color:#0d2550;cursor:pointer;outline:none;">
+                        @foreach($anios as $a)
+                            <option value="{{ $a }}" @selected($anio == $a)>{{ $a }}</option>
+                        @endforeach
+                        @if(! $anios->contains($anio))
+                            <option value="{{ $anio }}" selected>{{ $anio }}</option>
+                        @endif
+                    </select>
+                </form>
+
                 @can('brynex_razones.gestionar')
                     <button type="button" @click="pestana = 'datos'" style="background:#1e3a8a;color:#fff;border:none;padding:0.5rem 0.9rem;border-radius:8px;font-size:0.82rem;font-weight:600;cursor:pointer;">✏️ Editar ficha</button>
                 @endcan
             </div>
         </div>
 
-        {{-- Resumen rápido --}}
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:0.8rem;margin-top:1.1rem;padding-top:1rem;border-top:1px solid #f1f5f9;">
+        {{-- Resumen: solo lo que describe a la razón social. Las cifras de
+             dinero viven en la pestaña de Movimientos y lo pagado a la DIAN en
+             la del Checklist, junto a los renglones que lo explican. --}}
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:0.8rem;margin-top:1.1rem;padding-top:1rem;border-top:1px solid #f1f5f9;">
             <div>
                 <div style="font-size:0.68rem;text-transform:uppercase;color:#64748b;font-weight:700;">Afiliados vigentes</div>
                 <div style="font-size:1.35rem;font-weight:800;color:#0f172a;">{{ number_format($afiliados['total'], 0, ',', '.') }}</div>
                 <div style="font-size:0.7rem;color:#94a3b8;">en {{ $afiliados['por_aliado']->count() }} aliado(s)</div>
-            </div>
-            <div>
-                <div style="font-size:0.68rem;text-transform:uppercase;color:#64748b;font-weight:700;">Entró en {{ $anio }}</div>
-                <div style="font-size:1.35rem;font-weight:800;color:#047857;">${{ number_format($movimientos['total_entradas'], 0, ',', '.') }}</div>
-                <div style="font-size:0.7rem;color:#94a3b8;">{{ count($movimientos['cuentas']) }} cuenta(s) bancaria(s)</div>
-            </div>
-            <div>
-                <div style="font-size:0.68rem;text-transform:uppercase;color:#64748b;font-weight:700;">Salió en {{ $anio }}</div>
-                <div style="font-size:1.35rem;font-weight:800;color:#b91c1c;">${{ number_format($movimientos['total_salidas'], 0, ',', '.') }}</div>
-                <div style="font-size:0.7rem;color:#94a3b8;">Neto ${{ number_format($movimientos['neto'], 0, ',', '.') }}</div>
             </div>
             <div>
                 <div style="font-size:0.68rem;text-transform:uppercase;color:#64748b;font-weight:700;">Checklist {{ $anio }}</div>
@@ -91,8 +100,9 @@
                 </div>
             </div>
             <div>
-                <div style="font-size:0.68rem;text-transform:uppercase;color:#64748b;font-weight:700;">Pagado a la DIAN {{ $anio }}</div>
-                <div style="font-size:1.35rem;font-weight:800;color:#0f172a;">${{ number_format($resumenChecklist['pagado'], 0, ',', '.') }}</div>
+                <div style="font-size:0.68rem;text-transform:uppercase;color:#64748b;font-weight:700;">Aliados que la usan</div>
+                <div style="font-size:1.35rem;font-weight:800;color:#0f172a;">{{ $vinculos->count() }}</div>
+                <div style="font-size:0.7rem;color:#94a3b8;">{{ $vinculos->pluck('aliado')->filter()->take(3)->implode(', ') ?: '—' }}</div>
             </div>
         </div>
     </div>
@@ -100,33 +110,48 @@
     @include('brynex.razones_sociales._alertas')
 
     {{-- ── Pestañas ────────────────────────────────────────────────── --}}
-    <div style="display:flex;gap:0.3rem;border-bottom:2px solid #e2e8f0;margin-bottom:1.2rem;flex-wrap:wrap;">
-        @foreach(['checklist'=>'✅ Checklist','afiliados'=>'👥 Afiliados','dinero'=>'💰 Movimientos','claves'=>'🔑 Claves','datos'=>'⚙️ Datos'] as $k => $etiqueta)
-            <button type="button" @click="pestana = '{{ $k }}'"
-                    :style="pestana === '{{ $k }}'
-                        ? 'background:#fff;color:#1e3a8a;border-bottom:2px solid #1e3a8a;margin-bottom:-2px;'
-                        : 'background:transparent;color:#64748b;border-bottom:2px solid transparent;margin-bottom:-2px;'"
-                    style="border:none;padding:0.6rem 1rem;font-size:0.85rem;font-weight:700;cursor:pointer;">
-                {{ $etiqueta }}
+    @php
+        $pestanas = [
+            'checklist' => ['✅', 'Checklist', $resumenChecklist['rojo'] ?: null, 'rojo'],
+            'afiliados' => ['👥', 'Afiliados', $afiliados['total'] ?: null,       'neutro'],
+            'dinero'    => ['💰', 'Movimientos', null,                            'neutro'],
+            'claves'    => ['🔑', 'Claves',    $credenciales->count() ?: null,    'neutro'],
+            'datos'     => ['⚙️', 'Datos',     null,                              'neutro'],
+        ];
+    @endphp
+
+    <div class="rs-tabs">
+        @foreach($pestanas as $k => [$icono, $texto, $contador, $tono])
+            <button type="button" class="rs-tab" @click="pestana = '{{ $k }}'"
+                    :class="pestana === '{{ $k }}' ? 'activa' : ''">
+                <span class="rs-tab-ico">{{ $icono }}</span>{{ $texto }}
+                @if($contador)
+                    <span class="rs-pill rs-pill-{{ $tono }}">{{ number_format($contador, 0, ',', '.') }}</span>
+                @endif
             </button>
         @endforeach
     </div>
 
     {{-- ══ CHECKLIST ═══════════════════════════════════════════════ --}}
     <div x-show="pestana === 'checklist'" x-cloak>
+        {{-- Lo pagado a la DIAN vive aquí y no en la cabecera: son los mismos
+             renglones de abajo los que lo explican. --}}
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.8rem;flex-wrap:wrap;gap:0.6rem;">
-            <form method="GET" style="display:flex;gap:0.5rem;align-items:center;">
-                <input type="hidden" name="t" value="checklist">
-                <label style="font-size:0.8rem;color:#475569;font-weight:600;">Año:</label>
-                <select name="anio" onchange="this.form.submit()" style="padding:0.4rem 0.6rem;border:1px solid #cbd5e1;border-radius:8px;font-size:0.85rem;">
-                    @foreach($anios as $a)
-                        <option value="{{ $a }}" @selected($anio == $a)>{{ $a }}</option>
-                    @endforeach
-                    @if(! $anios->contains($anio))
-                        <option value="{{ $anio }}" selected>{{ $anio }}</option>
-                    @endif
-                </select>
-            </form>
+            <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
+                <span style="background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;font-size:0.78rem;font-weight:700;padding:0.35rem 0.7rem;border-radius:9px;">
+                    Pagado a la DIAN en {{ $anio }}: ${{ number_format($resumenChecklist['pagado'], 0, ',', '.') }}
+                </span>
+                @if($resumenChecklist['rojo'])
+                    <span style="background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;font-size:0.78rem;font-weight:700;padding:0.35rem 0.7rem;border-radius:9px;">
+                        {{ $resumenChecklist['rojo'] }} vencida(s)
+                    </span>
+                @endif
+                @if($resumenChecklist['gris'])
+                    <span style="background:#f8fafc;border:1px solid #e2e8f0;color:#64748b;font-size:0.78rem;font-weight:700;padding:0.35rem 0.7rem;border-radius:9px;">
+                        {{ $resumenChecklist['gris'] }} sin fecha
+                    </span>
+                @endif
+            </div>
 
             @can('brynex_razones.gestionar')
                 <form method="POST" action="{{ route('brynex.razones.regenerar', $ficha->id) }}">
@@ -168,7 +193,24 @@
                                     <span style="color:#94a3b8;font-weight:400;font-size:0.75rem;">· form. {{ $cat->formulario }}</span>
                                 @endif
                             </td>
-                            <td style="padding:0.6rem;color:#475569;">{{ $o->periodo_etiqueta }}</td>
+                            <td style="padding:0.6rem;color:#475569;white-space:nowrap;">
+                                {{ $o->periodo_etiqueta }}
+                                {{-- `$mesesPeriodo` y no `$meses`: arriba ya hay un
+                                     `$meses` con los nombres de los 12 meses que usa la
+                                     pestaña de Movimientos. --}}
+                                @php $mesesPeriodo = $cat?->mesesDelPeriodo($o->periodo); @endphp
+                                @if($mesesPeriodo)
+                                    <div style="font-size:0.7rem;color:#94a3b8;">{{ $mesesPeriodo }}</div>
+                                @endif
+                                {{-- El año gravable solo se dice cuando NO coincide con la
+                                     pestaña: es el caso de la anual, que se presenta al año
+                                     siguiente y si no se aclara parece un error. --}}
+                                {{-- Con cast: sqlsrv devuelve `anio` como string y
+                                     "2026" !== 2026 sería siempre verdadero. --}}
+                                @if((int) $o->anio !== $anio)
+                                    <div style="font-size:0.7rem;color:#b45309;font-weight:600;">año gravable {{ $o->anio }}</div>
+                                @endif
+                            </td>
                             <td style="padding:0.6rem;color:{{ $colorSemaforo[$sem] }};font-weight:600;white-space:nowrap;">
                                 @if($o->fecha_vencimiento)
                                     {{ $o->fecha_vencimiento->format('d/m/Y') }}
@@ -720,5 +762,40 @@
         </div>
     </div>
 </div>
+
+<style>
+.rs-tabs {
+    display: inline-flex; flex-wrap: wrap; gap: .2rem;
+    background: #f1f5f9; border: 1px solid #e2e8f0;
+    padding: .25rem; border-radius: 12px; margin-bottom: 1.2rem;
+}
+.rs-tab {
+    display: inline-flex; align-items: center; gap: .4rem;
+    border: 0; background: transparent; cursor: pointer;
+    padding: .5rem .9rem; border-radius: 9px;
+    font-size: .84rem; font-weight: 700; color: #64748b;
+    transition: background .12s, color .12s;
+}
+.rs-tab:hover { background: #e2e8f0; color: #334155; }
+.rs-tab.activa {
+    background: #fff; color: #1e3a8a;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, .1);
+}
+.rs-tab.activa:hover { background: #fff; }
+.rs-tab-ico { font-size: .95rem; line-height: 1; }
+.rs-pill {
+    font-size: .68rem; font-weight: 800; line-height: 1;
+    padding: .2rem .4rem; border-radius: 20px;
+    background: #e2e8f0; color: #475569;
+}
+.rs-tab.activa .rs-pill { background: #dbeafe; color: #1d4ed8; }
+.rs-pill-rojo { background: #fee2e2; color: #b91c1c; }
+.rs-tab.activa .rs-pill-rojo { background: #fee2e2; color: #b91c1c; }
+
+@media (max-width: 640px) {
+    .rs-tabs { display: flex; width: 100%; }
+    .rs-tab { flex: 1; justify-content: center; padding: .5rem .4rem; }
+}
+</style>
 
 @endsection
