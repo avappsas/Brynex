@@ -120,6 +120,9 @@
         ];
     @endphp
 
+    {{-- Las pestañas y lo del checklist comparten fila: eran dos renglones
+         completos para tres datos y un botón. --}}
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:0.8rem;flex-wrap:wrap;margin-bottom:1.2rem;">
     <div class="rs-tabs">
         @foreach($pestanas as $k => [$icono, $texto, $contador, $tono])
             <button type="button" class="rs-tab" @click="pestana = '{{ $k }}'"
@@ -132,37 +135,26 @@
         @endforeach
     </div>
 
-    {{-- ══ CHECKLIST ═══════════════════════════════════════════════ --}}
-    <div x-show="pestana === 'checklist'" x-cloak>
-        {{-- Lo pagado a la DIAN vive aquí y no en la cabecera: son los mismos
-             renglones de abajo los que lo explican. --}}
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.8rem;flex-wrap:wrap;gap:0.6rem;">
-            <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
-                <span style="background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;font-size:0.78rem;font-weight:700;padding:0.35rem 0.7rem;border-radius:9px;">
-                    Pagado a la DIAN en {{ $anio }}: ${{ number_format($resumenChecklist['pagado'], 0, ',', '.') }}
-                </span>
-                @if($resumenChecklist['rojo'])
-                    <span style="background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;font-size:0.78rem;font-weight:700;padding:0.35rem 0.7rem;border-radius:9px;">
-                        {{ $resumenChecklist['rojo'] }} vencida(s)
-                    </span>
-                @endif
-                @if($resumenChecklist['gris'])
-                    <span style="background:#f8fafc;border:1px solid #e2e8f0;color:#64748b;font-size:0.78rem;font-weight:700;padding:0.35rem 0.7rem;border-radius:9px;">
-                        {{ $resumenChecklist['gris'] }} sin fecha
-                    </span>
-                @endif
-            </div>
-
+        {{-- Solo tiene sentido junto al checklist, así que se esconde con él.
+             Ni lo vencido ni lo pagado se repiten aquí: lo vencido ya lo dice
+             el contador rojo de la pestaña y lo pagado está en la columna de
+             valores, fila por fila. --}}
+        <div x-show="pestana === 'checklist'" x-cloak
+             style="display:flex;gap:0.45rem;align-items:center;flex-wrap:wrap;">
             @can('brynex_razones.gestionar')
                 <form method="POST" action="{{ route('brynex.razones.regenerar', $ficha->id) }}">
                     @csrf
-                    <button type="submit" style="background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;padding:0.4rem 0.8rem;border-radius:8px;font-size:0.8rem;font-weight:600;cursor:pointer;">
-                        🔄 Generar las que falten
+                    <button type="submit" class="rs-chip" style="cursor:pointer;background:#fff;"
+                            title="Crea los renglones que falten según el régimen y la fecha de constitución. No toca los que ya existen.">
+                        🔄 Generar faltantes
                     </button>
                 </form>
             @endcan
         </div>
+    </div>
 
+    {{-- ══ CHECKLIST ═══════════════════════════════════════════════ --}}
+    <div x-show="pestana === 'checklist'" x-cloak>
         <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
             <div style="overflow-x:auto;">
                 <table style="width:100%;border-collapse:collapse;font-size:0.84rem;">
@@ -767,7 +759,7 @@
 .rs-tabs {
     display: inline-flex; flex-wrap: wrap; gap: .2rem;
     background: #f1f5f9; border: 1px solid #e2e8f0;
-    padding: .25rem; border-radius: 12px; margin-bottom: 1.2rem;
+    padding: .25rem; border-radius: 12px;
 }
 .rs-tab {
     display: inline-flex; align-items: center; gap: .4rem;
