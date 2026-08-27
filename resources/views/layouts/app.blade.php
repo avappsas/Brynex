@@ -949,6 +949,19 @@
             </div>
             @endcanany
 
+            {{-- Razones sociales de BryNex. Va suelto y no dentro del dropdown
+                 de abajo porque ese dropdown pide `superadmin`, y quien opera
+                 este módulo es el contable de la casa. Para el superadmin no se
+                 repite: ya lo tiene dentro del panel BryNex. --}}
+            @can('brynex_razones.ver')
+                @unless(Auth::user()->hasRole('superadmin') && Auth::user()->es_brynex)
+                <a href="{{ route('brynex.razones.index') }}" class="menu-item {{ request()->routeIs('brynex.razones*') ? 'activo' : '' }}">
+                    <div class="icono">🏛️</div>
+                    <div class="label">Razones Sociales</div>
+                </a>
+                @endunless
+            @endcan
+
             {{-- ───────────────────────────────────────────────────────────── --}}
             {{-- DROPDOWN BRYNEX: solo para superadmin es_brynex              --}}
             {{-- ───────────────────────────────────────────────────────────── --}}
@@ -971,6 +984,11 @@
                     <a href="{{ route('brynex.accesos') }}" class="panel-item {{ request()->routeIs('brynex.accesos') ? 'activo' : '' }}">
                         <div class="pi">🔐</div> Accesos de Usuarios
                     </a>
+                    @can('brynex_razones.ver')
+                    <a href="{{ route('brynex.razones.index') }}" class="panel-item {{ request()->routeIs('brynex.razones*') ? 'activo' : '' }}">
+                        <div class="pi">🏛️</div> Razones Sociales
+                    </a>
+                    @endcan
 
                     <div class="panel-sep"></div>
                     <div class="panel-header" style="margin-top:0.2rem">Operaciones</div>

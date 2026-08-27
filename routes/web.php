@@ -747,6 +747,49 @@ Route::middleware('auth')->group(function () {
         });
     });
 
+    // ── Razones sociales de BryNex ────────────────────────────────────────
+    // Va en su propio grupo y NO dentro del de arriba a propósito: ese exige
+    // `brynex_hub.ver`, y el contable de la casa no tiene por qué entrar al hub
+    // entero (backups, cobros a aliados, entrenamiento de la IA) solo para
+    // llegar a su módulo. Aquí la puerta la abre `brynex_razones.ver`, que
+    // igual es `solo_brynex` y exige es_brynex vía el Gate::before.
+    //
+    // Cruza aliados a propósito: una razón social la usan varios y las
+    // obligaciones ante la DIAN son una sola.
+    Route::prefix('brynex/razones-sociales')->name('brynex.razones.')->group(function () {
+        $brs = \App\Http\Controllers\BrynexRazonSocialController::class;
+        $bob = \App\Http\Controllers\BrynexObligacionController::class;
+
+        Route::middleware('permiso:brynex_razones.ver')->group(function () use ($brs, $bob) {
+            Route::get('/', [$brs, 'index'])->name('index');
+            Route::get('/tablero', [$brs, 'tablero'])->name('tablero');
+            Route::get('/calendario', [$bob, 'calendario'])->name('calendario');
+            Route::get('/{id}', [$brs, 'show'])->whereNumber('id')->name('show');
+            Route::get('/documentos/{id}/descargar', [$bob, 'descargarDocumento'])->name('documentos.descargar');
+        });
+
+        Route::middleware('permiso:brynex_razones.gestionar')->group(function () use ($brs, $bob) {
+            Route::post('/seguir', [$brs, 'seguir'])->name('seguir');
+            Route::put('/{id}', [$brs, 'update'])->whereNumber('id')->name('update');
+            Route::post('/{id}/dejar-de-seguir', [$brs, 'dejarDeSeguir'])->name('dejar');
+            Route::post('/{id}/regenerar', [$bob, 'regenerar'])->name('regenerar');
+
+            Route::put('/obligaciones/{id}', [$bob, 'actualizar'])->name('obligaciones.update');
+            Route::post('/obligaciones/{id}/documento', [$bob, 'subirDocumento'])->name('obligaciones.documento');
+            Route::delete('/documentos/{id}', [$bob, 'eliminarDocumento'])->name('documentos.destroy');
+            Route::post('/calendario', [$bob, 'guardarCalendario'])->name('calendario.guardar');
+        });
+
+        // Las claves van por su propio permiso: el contador necesita las de la
+        // DIAN y la cámara, pero no las del banco (ver `claves_banco`, que es
+        // restringido y no lo hereda ni el superadmin).
+        Route::middleware('permiso:brynex_razones.claves')->group(function () use ($brs) {
+            Route::post('/{id}/claves', [$brs, 'guardarClave'])->whereNumber('id')->name('claves.guardar');
+            Route::get('/claves/{id}/revelar', [$brs, 'revelarClave'])->name('claves.revelar');
+            Route::delete('/claves/{id}', [$brs, 'eliminarClave'])->name('claves.destroy');
+        });
+    });
+
     // ── Cuadre Diario ────────────────────────────────────────────────
 
     Route::prefix('cuadre-diario')->name('admin.cuadre-diario.')->middleware(['permiso:cuadre_diario.ver', 'permiso.escritura:cuadre_diario.gestionar'])->group(function () {

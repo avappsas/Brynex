@@ -18,6 +18,10 @@ class RazonSocialCredencial extends BaseModel
     protected $fillable = [
         'aliado_id',
         'razon_social_id',
+        // Llave real desde el módulo de BryNex: la clave es del NIT, no de la
+        // fila de razón social de un aliado. Eso es lo que hace que si un
+        // aliado la cambia, el otro vea el cambio.
+        'ficha_id',
         'tipo',
         'entidad',
         'link_acceso',
@@ -48,6 +52,16 @@ class RazonSocialCredencial extends BaseModel
     public function razonSocial()
     {
         return $this->belongsTo(RazonSocial::class, 'razon_social_id');
+    }
+
+    public function ficha()
+    {
+        return $this->belongsTo(BrynexRazonSocial::class, 'ficha_id');
+    }
+
+    public function scopeDeFicha($query, int $fichaId)
+    {
+        return $query->where('ficha_id', $fichaId);
     }
 
     public function creador()

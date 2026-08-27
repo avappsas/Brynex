@@ -283,6 +283,22 @@ class ModulosPermisosSeeder extends Seeder
             ['brynex_backup', 'Backup de la BD', 'brynex', '💾', null, [
                 'ejecutar' => ['Generar y descargar backup', [], true, true],
             ]],
+            // Razones sociales de BryNex: obligaciones ante la DIAN, claves de
+            // los portales y consolidado de afiliados y dinero por NIT. Lo
+            // opera el contador de la casa, que es `es_brynex` con rol
+            // `contable`, así que los permisos se reparten a dedo con
+            // `permisos:aplicar-inicial` y no por rol.
+            //
+            // `claves_banco` va aparte y marcado restringido: por esas cuentas
+            // pasa plata de los afiliados, no de la empresa. Es justo el caso
+            // que anticipaba el comentario de `claves_acceso` — "si algún día
+            // hay claves de BANCOS, ese sí se crea aparte y restringido".
+            ['brynex_razones', 'Razones sociales BryNex', 'brynex', '🏛️', 'brynex.razones.index', [
+                'ver' => ['Ver razones sociales y obligaciones', [], false, true],
+                'gestionar' => ['Seguir, chulear y subir soportes', [], false, true],
+                'claves' => ['Ver claves de DIAN y cámara',       [], false, true],
+                'claves_banco' => ['Ver claves de banco',              [], true,  true],
+            ]],
             // Cuadre de cierre: qué vigentes se quedaron por fuera de la
             // planilla. Es solo de BryNex a propósito — una razón social
             // agrupa varias empresas cliente, así que ver "faltan 239" sin

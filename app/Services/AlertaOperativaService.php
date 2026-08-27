@@ -42,6 +42,18 @@ class AlertaOperativaService
      */
     public function enviar(string $origen, string $mensaje): bool
     {
+        return $this->enviarA($this->numeroDestino(), $origen, $mensaje);
+    }
+
+    /**
+     * Igual que enviar(), pero a un número concreto en vez del de guardia.
+     *
+     * Lo usa el módulo de razones sociales para avisarle los vencimientos al
+     * contador asignado a cada una, que no es quien recibe las alertas de
+     * infraestructura.
+     */
+    public function enviarA(string $numero, string $origen, string $mensaje): bool
+    {
         try {
             $config = WhatsappConfig::paraAliado(self::ALIADO_ID);
 
@@ -63,7 +75,7 @@ class AlertaOperativaService
             }
 
             $envio = $this->whatsappApi->enviarTemplate(
-                $this->numeroDestino(),
+                $numero,
                 $plantilla,
                 [$this->sanear($origen), $this->sanear($mensaje)],
                 $config

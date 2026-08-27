@@ -103,6 +103,7 @@ antes de tocar un módulo de negocio:
 - [[planos-brynex]] — archivos planos PILA para operadores de planilla
 - [[whatsapp-brynex]] — WhatsApp Business API, plantillas, webhooks
 - [[ia-brynex]] — asistente de IA, proveedores, tools, conocimiento
+- [[razones-sociales-brynex]] — obligaciones DIAN, claves y consolidado por NIT (módulo del contable de BryNex)
 - [[finanzas-brynex]] — finanzas personales del dueño (módulo aparte, acceso exclusivo)
 - [[permisos-brynex]] — roles Spatie, `es_brynex`, aliado activo en sesión
 - [[blade-alpine-brynex]] — patrones de UI (Blade + Alpine.js)

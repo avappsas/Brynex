@@ -130,6 +130,20 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/finanzas-recordatorios.log'));
 
+        // ── Vencimientos tributarios de las razones sociales ─────────────
+        // 7:30 AM Colombia, de lunes a viernes: un solo mensaje por contador
+        // con lo vencido y lo que vence en la semana. Entre semana porque los
+        // vencimientos de la DIAN caen en día hábil y avisar en domingo no
+        // sirve de nada.
+        // Ejecución manual: php artisan brynex:alertar-vencimientos [--seco]
+        $schedule->command('brynex:alertar-vencimientos --dias=7')
+            ->weekdays()
+            ->at('07:30')
+            ->timezone('America/Bogota')
+            ->withoutOverlapping(30)
+            ->runInBackground()
+            ->appendOutputTo(storage_path('logs/brynex-vencimientos.log'));
+
         // ── Seguimiento comercial del Asistente IA (WhatsApp) ────────────
         // Cada 15 min, en horario comercial: revisa conversaciones que la IA
         // dejó sin respuesta del cliente hace 3h+ y, SOLO si quedó una afiliación
