@@ -1035,6 +1035,19 @@ class FacturacionController extends Controller
         $totalPagoEfectivo  = (int)($validated['valor_efectivo']  ?? 0);
         $totalPagoPrestamo  = (int)($validated['valor_prestamo']  ?? 0);
 
+        // ── Un préstamo sin monto no es un préstamo ────────────────────
+        // El módulo de cobro calcula el saldo como valor_prestamo - abonos, así
+        // que una factura marcada préstamo con el campo en 0 sale con el sello
+        // morado en el recibo pero NUNCA aparece en /admin/prestamos: nadie la
+        // cobra. Así se colaron 20 lotes ($8,1M) entre may-ago 2026.
+        if ($validated['estado'] === 'prestamo' && $totalPagoPrestamo <= 0) {
+            return response()->json([
+                'error'   => true,
+                'mensaje' => '🚫 Marcaste la factura como PRÉSTAMO pero el campo Préstamo quedó en $0. '
+                    .'Escribe cuánto queda debiendo el cliente, o cambia el estado a Pagada.',
+            ], 422);
+        }
+
         // ─── ¿El usuario quito la mora a mano? ─────────────────────────────
         // En el lote de empresa la mora se calcula por contrato con MoraClienteService
         // y se ignora lo que venga del modal (cada RS tiene su propio vencimiento). Pero
@@ -3774,6 +3787,16 @@ class FacturacionController extends Controller
         $totalConsig  = array_sum(array_column($consignacionesData, 'valor'));
         $totalEfectivo = (int)($validated['valor_efectivo'] ?? 0);
         $totalPrestamo = (int)($validated['valor_prestamo'] ?? 0);
+
+        // Mismo candado que en facturar(): un trámite marcado préstamo sin monto
+        // queda invisible en el módulo de cobro.
+        if ($validated['estado'] === 'prestamo' && $totalPrestamo <= 0) {
+            return response()->json([
+                'error'   => true,
+                'mensaje' => '🚫 Marcaste el trámite como PRÉSTAMO pero el campo Préstamo quedó en $0. '
+                    .'Escribe cuánto queda debiendo el cliente, o cambia el estado a Pagada.',
+            ], 422);
+        }
 
         // ── Saldo previo del cliente ────────────────────────────────────
         $saldo = Factura::saldoClienteMesPrevio($aliadoId, $cedula, $mes, $anio);

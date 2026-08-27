@@ -845,6 +845,15 @@ const OI = (() => {
             observacion:         _el('oi-obs').value.trim() || null,
         };
 
+        // Mismo candado que en el modal de facturar: un préstamo sin monto queda
+        // invisible en /admin/prestamos (el saldo se calcula con valor_prestamo).
+        if (body.estado === 'prestamo' && body.valor_prestamo <= 0) {
+            alert('🚫 Marcaste el trámite como PRÉSTAMO pero el campo Préstamo quedó en $0.\n\n'
+                + 'Escribe cuánto queda debiendo el cliente, o cambia el estado a Pagada.');
+            _el('oi-prestamo')?.focus();
+            return;
+        }
+
         const btn = _el('oi-btn-guardar');
         btn.disabled = true;
         btn.textContent = '⏳ Guardando...';

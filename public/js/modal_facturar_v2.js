@@ -1940,6 +1940,16 @@ const MF = (function () {
         else if (totalConsig > 0) formaPago = 'consignacion';
         else if (prest > 0) formaPago = 'prestamo';
 
+        // Préstamo sin monto: el recibo saldría con el sello morado pero la deuda
+        // no entra al módulo de cobro (el saldo se calcula con valor_prestamo).
+        // El backend también lo rechaza; aquí se avisa sin gastar el viaje.
+        if (el('mf-estado')?.value === 'prestamo' && prest <= 0) {
+            alert('🚫 Marcaste la factura como PRÉSTAMO pero el campo Préstamo quedó en $0.\n\n'
+                + 'Escribe cuánto queda debiendo el cliente, o cambia el estado a Pagada.');
+            el('mf-prestamo')?.focus();
+            return;
+        }
+
         const btn = el('mf-btn-guardar');
         if (btn) { btn.disabled = true; btn.textContent = '⏳ Guardando...'; }
 
