@@ -50,6 +50,12 @@ class BrynexRazonSocialController extends Controller
             ->get([
                 'nit',
                 DB::raw('MAX(razon_social) as razon_social'),
+                // El DV y la fecha de constitución ya los tiene el aliado en su
+                // fila: no hay por qué volver a pedirlos al poner la razón
+                // social en seguimiento. MAX() se queda con el valor no nulo
+                // cuando unos aliados lo tienen y otros no.
+                DB::raw('MAX(dv) as dv'),
+                DB::raw('MAX(fecha_constitucion) as fecha_constitucion'),
                 DB::raw('COUNT(DISTINCT aliado_id) as n_aliados'),
                 DB::raw('COUNT(*) as n_filas'),
                 DB::raw("SUM(CASE WHEN estado = 'Activa' THEN 1 ELSE 0 END) as n_activas"),
@@ -75,6 +81,10 @@ class BrynexRazonSocialController extends Controller
             return (object) [
                 'nit' => $g->nit,
                 'razon_social' => $ficha->razon_social ?? $g->razon_social,
+                'dv' => $g->dv,
+                'fecha_constitucion' => $g->fecha_constitucion
+                    ? \Carbon\Carbon::parse($g->fecha_constitucion)->toDateString()
+                    : null,
                 'n_aliados' => (int) $g->n_aliados,
                 'n_activas' => (int) $g->n_activas,
                 'afiliados' => (int) ($vigentes[$g->nit] ?? 0),

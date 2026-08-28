@@ -126,7 +126,12 @@
                             @else
                                 @can('brynex_razones.gestionar')
                                     <button type="button"
-                                            @click="seguir = { nit: '{{ $r->nit }}', razon_social: @js($r->razon_social) }"
+                                            @click="seguir = @js([
+                                                'nit' => (string) $r->nit,
+                                                'razon_social' => $r->razon_social,
+                                                'dv' => $r->dv,
+                                                'fecha_constitucion' => $r->fecha_constitucion,
+                                            ])"
                                             style="background:#047857;color:#fff;border:none;padding:0.3rem 0.7rem;border-radius:6px;font-size:0.75rem;font-weight:600;cursor:pointer;">
                                         + Seguir
                                     </button>
@@ -152,19 +157,23 @@
          @click.self="seguir = null">
         <div style="background:#fff;border-radius:16px;max-width:640px;width:100%;max-height:90vh;overflow-y:auto;padding:1.5rem;">
             <h2 style="font-size:1.15rem;font-weight:800;color:#0d2550;margin:0 0 0.2rem 0;">Poner en seguimiento</h2>
-            <p style="color:#64748b;font-size:0.8rem;margin:0 0 1.1rem 0;" x-text="seguir?.razon_social"></p>
+            <p style="color:#64748b;font-size:0.8rem;margin:0 0 1.1rem 0;">
+                <span x-text="seguir?.razon_social"></span>
+                · NIT <span x-text="seguir?.nit"></span><span x-show="seguir?.dv !== null && seguir?.dv !== ''">-<span x-text="seguir?.dv"></span></span>
+            </p>
 
             <form method="POST" action="{{ route('brynex.razones.seguir') }}">
                 @csrf
                 <input type="hidden" name="nit" :value="seguir?.nit">
                 <input type="hidden" name="razon_social" :value="seguir?.razon_social">
 
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.9rem;">
-                    <label style="font-size:0.78rem;font-weight:700;color:#334155;">
-                        Dígito de verificación
-                        <input type="number" name="dv" min="0" max="9" style="width:100%;margin-top:0.25rem;padding:0.45rem;border:1px solid #cbd5e1;border-radius:8px;font-weight:400;">
-                    </label>
+                {{-- El dígito de verificación no se pregunta: ya lo tiene el
+                     aliado en su fila de `razones_sociales` (231 de 249). Va
+                     oculto, y las pocas que no lo tengan se completan después
+                     en la pestaña Datos de la ficha. --}}
+                <input type="hidden" name="dv" :value="seguir?.dv">
 
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.9rem;">
                     <label style="font-size:0.78rem;font-weight:700;color:#334155;">
                         ¿De quién es? *
                         <select name="propiedad" required style="width:100%;margin-top:0.25rem;padding:0.45rem;border:1px solid #cbd5e1;border-radius:8px;font-weight:400;">
@@ -195,9 +204,11 @@
                     <label style="font-size:0.78rem;font-weight:700;color:#334155;grid-column:span 2;">
                         Fecha de constitución *
                         <input type="date" name="fecha_constitucion" required max="{{ now()->toDateString() }}"
+                               :value="seguir?.fecha_constitucion"
                                style="width:100%;margin-top:0.25rem;padding:0.45rem;border:1px solid #cbd5e1;border-radius:8px;font-weight:400;">
                         <span style="display:block;font-weight:400;color:#94a3b8;font-size:0.72rem;margin-top:0.2rem;">
-                            Desde este año se genera el checklist hacia atrás, para poder ponerse al día con los soportes viejos.
+                            <span x-show="seguir?.fecha_constitucion">Viene de la razón social del aliado; corrígela si está mal.</span>
+                            <span x-show="! seguir?.fecha_constitucion">Desde este año se genera el checklist hacia atrás, para poder ponerse al día con los soportes viejos.</span>
                         </span>
                     </label>
 
