@@ -73,7 +73,7 @@ class BrynexObligacionesSeeder extends Seeder
 
             // ── Régimen Simple ────────────────────────────────────────
             ['rst_anticipo_bimestral', 'Anticipo bimestral SIMPLE', 'DIAN', '2593', 'RST', 'bimestral', false, null, 10,
-                'Seis anticipos al año. Los contribuyentes con ingresos brutos anuales inferiores a 3.500 UVT están exentos de pagarlo, pero igual se marca aquí como "No aplica" para dejar el rastro.', 0],
+                'Seis anticipos al año. Incluye el ICA de los municipios que se acogieron al simple: por eso el régimen simple NO lleva una obligación de ICA aparte. Los contribuyentes con ingresos brutos anuales inferiores a 3.500 UVT están exentos del anticipo, pero igual se marca aquí como "No aplica" para dejar el rastro.', 0],
             ['rst_anual_consolidada', 'Declaración anual consolidada SIMPLE', 'DIAN', '260', 'RST', 'anual', false, null, 11,
                 'Cierra el año del régimen simple. Vence en abril del año siguiente.', 1],
             ['rst_iva_anual', 'IVA anual consolidada (SIMPLE)', 'DIAN', '300', 'RST', 'anual', true, null, 12,
@@ -98,10 +98,15 @@ class BrynexObligacionesSeeder extends Seeder
                 'Hasta el 31 de marzo, igual para todos: no depende del NIT.', 0],
 
             // ── Municipio: una entrada por periodicidad ───────────────
-            ['ica_bimestral', 'ICA bimestral', 'MUNICIPIO', null, null, 'bimestral', false, null, 50,
-                'Lo fija el municipio. Cargar las fechas a mano en la pantalla de calendario.', 0],
-            ['ica_anual', 'ICA anual', 'MUNICIPIO', null, null, 'anual', false, null, 51,
-                'Lo fija el municipio. Cargar la fecha a mano en la pantalla de calendario.', 1],
+            // Solo del régimen ORDINARIO. En el simple el ICA no se declara
+            // aparte: va incluido dentro del anticipo bimestral del 2593, que
+            // ya está en el checklist. Generarlo suelto sería un renglón
+            // fantasma que el contador tendría que marcar «no aplica» seis
+            // veces al año.
+            ['ica_bimestral', 'ICA bimestral', 'MUNICIPIO', null, 'ORDINARIO', 'bimestral', false, null, 50,
+                'Lo fija el municipio (Bogotá y otros lo cobran bimestral). Cargar las fechas a mano en la pantalla de calendario.', 0],
+            ['ica_anual', 'ICA anual', 'MUNICIPIO', null, 'ORDINARIO', 'anual', false, null, 51,
+                'Lo fija el municipio; en Cali el ordinario declara una vez al año. Cargar la fecha a mano en la pantalla de calendario.', 1],
         ];
 
         $responsabilidades = self::RESPONSABILIDADES;

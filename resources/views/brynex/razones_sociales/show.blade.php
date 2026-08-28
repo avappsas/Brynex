@@ -651,6 +651,10 @@
                         <option value="bimestral" @selected(old('periodicidad_ica', $ficha->periodicidad_ica) === 'bimestral')>Bimestral</option>
                         <option value="anual"     @selected(old('periodicidad_ica', $ficha->periodicidad_ica) === 'anual')>Anual</option>
                     </select>
+                    <span style="display:block;font-weight:400;color:#94a3b8;font-size:0.72rem;margin-top:0.2rem;">
+                        En el régimen simple el ICA va dentro del anticipo bimestral (form. 2593), así que no se genera aparte
+                        por más que lo marques aquí.
+                    </span>
                 </label>
 
                 <label style="font-size:0.78rem;font-weight:700;color:#334155;">

@@ -320,6 +320,9 @@
                             <option value="bimestral">Bimestral</option>
                             <option value="anual">Anual</option>
                         </select>
+                        <span style="display:block;font-weight:400;color:#94a3b8;font-size:0.72rem;margin-top:0.2rem;">
+                            En el régimen simple el ICA va dentro del anticipo bimestral (form. 2593): déjalo sin controlar.
+                        </span>
                     </label>
 
                     <label style="font-size:0.78rem;font-weight:700;color:#334155;">
